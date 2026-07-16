@@ -1,5 +1,6 @@
 import {
 	composeBundledAgentSteps,
+	orderHostedContributions,
 	parsePluginPackageName,
 	type BundledPlugin,
 	type HostedAgentStepDefinition,
@@ -18,6 +19,8 @@ export interface GeneratedPluginComposition {
 	readonly agentStepModules: string;
 	readonly draftStrategyCatalog: string;
 	readonly draftStrategyModules: string;
+	readonly autonomyGateCatalog: string;
+	readonly autonomyGateModules: string;
 }
 
 export function renderPluginComposition(
@@ -51,7 +54,73 @@ export function renderPluginComposition(
 		agentStepModules: renderAgentStepModules(agentSteps),
 		draftStrategyCatalog: renderDraftStrategyCatalog(plugins),
 		draftStrategyModules: renderDraftStrategyModules(plugins),
+		autonomyGateCatalog: renderAutonomyGateCatalog(plugins),
+		autonomyGateModules: renderAutonomyGateModules(plugins),
 	});
+}
+
+function autonomyGatesFor(plugins: readonly BundledPlugin[]) {
+	return orderHostedContributions(
+		plugins.flatMap((plugin) =>
+			(plugin.manifest.contributes?.sendGates ?? []).map((gate) => ({
+				pluginId: parsePluginId(plugin.manifest.id),
+				contributionId: gate.id,
+				value: {
+					packageName: parsePluginPackageName(plugin.packageName),
+					label: gate.label,
+					exportPath: gate.module.exportPath,
+					timeoutMs: gate.timeoutMs,
+					requiredEnvVars: plugin.manifest.flag?.requiredEnvVars ?? [],
+				},
+			}))
+		)
+	).map(({ pluginId, contributionId, value }) => ({
+		...value,
+		pluginId,
+		kind: `plugin.${pluginId}.${contributionId}`,
+	}));
+}
+
+function renderAutonomyGateCatalog(plugins: readonly BundledPlugin[]): string {
+	const entries = autonomyGatesFor(plugins)
+		.map(
+			(gate) => `\tObject.freeze({
+\t\tkind: ${JSON.stringify(gate.kind)},
+\t\tpluginId: ${JSON.stringify(gate.pluginId)},
+\t\tlabel: ${JSON.stringify(gate.label)},
+\t\ttimeoutMs: ${gate.timeoutMs},
+\t\trequiredEnvVars: Object.freeze(${JSON.stringify(gate.requiredEnvVars)}),
+\t\trequiredCapability: 'send:gate',
+\t}),`
+		)
+		.join('\n');
+	const catalog = entries
+		? `Object.freeze([\n${entries}\n] as const)`
+		: 'Object.freeze([] as const)';
+	return `${GENERATED_HEADER}export const BUNDLED_PLUGIN_AUTONOMY_GATE_CATALOG = ${catalog};\n`;
+}
+
+function renderAutonomyGateModules(plugins: readonly BundledPlugin[]): string {
+	const gates = autonomyGatesFor(plugins);
+	const imports = gates
+		.map(
+			(gate, index) =>
+				`import bundledPluginAutonomyGate${index} from ${JSON.stringify(`${gate.packageName}${gate.exportPath.slice(1)}`)};`
+		)
+		.join('\n');
+	const entries = gates
+		.map(
+			(gate, index) =>
+				`\tObject.freeze({ kind: ${JSON.stringify(gate.kind)}, pluginId: ${JSON.stringify(gate.pluginId)}, module: bundledPluginAutonomyGate${index} satisfies PluginAutonomyGateModule }),`
+		)
+		.join('\n');
+	const modules = entries
+		? `Object.freeze([\n${entries}\n] as const)`
+		: 'Object.freeze([] as const)';
+	const contractImport = gates.length
+		? "import type { PluginAutonomyGateModule } from '@owlat/plugin-kit';\n"
+		: '';
+	return `'use node';\n\n${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_AUTONOMY_GATE_MODULES = ${modules};\n`;
 }
 
 function draftStrategiesFor(plugins: readonly BundledPlugin[]) {

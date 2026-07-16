@@ -102,6 +102,7 @@ if (!(new PluginManifestError([]) instanceof Error)) throw new Error('error expo
   type JsonPrimitive,
   type JsonValue,
   type PluginCapability,
+  type PluginAutonomyGateModule,
   type PluginCapabilityGrant,
   type PluginComponentDefinition,
   type PluginContext,
@@ -134,7 +135,11 @@ const manifest: PluginManifest = definePlugin({
   version: '1.0.0',
   capabilities: ['mail:read'],
 });
+const gate: PluginAutonomyGateModule = {
+  async evaluate() { return { outcome: 'no-objection' }; },
+};
 void manifest;
+void gate;
 `
 	);
 	writeFileSync(

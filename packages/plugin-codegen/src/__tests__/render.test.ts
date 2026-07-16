@@ -71,6 +71,48 @@ describe('composition rendering', () => {
 		expect(rendered.agentStepModules).toContain("'use node';");
 		expect(rendered.draftStrategyCatalog).toContain('Object.freeze([] as const)');
 		expect(rendered.draftStrategyModules).toContain("'use node';");
+		expect(rendered.autonomyGateCatalog).toContain('Object.freeze([] as const)');
+		expect(rendered.autonomyGateModules).toContain("'use node';");
+		expect(rendered.autonomyGateModules).toContain('Object.freeze([] as const)');
+	});
+
+	it('orders autonomy gates deterministically and separates metadata from executable modules', () => {
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/policy-plugin',
+				manifest: {
+					id: 'policy-pack',
+					version: '1.0.0',
+					capabilities: ['send:gate'],
+					flag: { default: false, requiredEnvVars: ['POLICY_TOKEN'] },
+					contributes: {
+						sendGates: [
+							{
+								id: 'z-last',
+								label: 'Last policy',
+								module: { exportPath: './gates/last' },
+								timeoutMs: 4_000,
+							},
+							{
+								id: 'a-first',
+								label: 'First policy',
+								module: { exportPath: './gates/first' },
+								timeoutMs: 1_000,
+							},
+						],
+					},
+				},
+			},
+		]);
+		const rendered = renderPluginComposition(plugins);
+		expect(rendered.autonomyGateCatalog.indexOf('a-first')).toBeLessThan(
+			rendered.autonomyGateCatalog.indexOf('z-last')
+		);
+		expect(rendered.autonomyGateCatalog).toContain("requiredCapability: 'send:gate'");
+		expect(rendered.autonomyGateCatalog).toContain('POLICY_TOKEN');
+		expect(rendered.autonomyGateCatalog).not.toContain('@acme/policy-plugin');
+		expect(rendered.autonomyGateModules).toContain('satisfies PluginAutonomyGateModule');
+		expect(rendered.autonomyGateModules).toContain('from "@acme/policy-plugin/gates/first"');
 	});
 
 	it('separates draft strategy metadata from executable modules', () => {

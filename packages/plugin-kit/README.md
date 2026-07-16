@@ -64,6 +64,13 @@ draft body. Owlat keeps injection scanning, self-check, review options,
 persistence, autonomy, and sending outside the plugin, and falls back to the
 built-in `default` strategy on denial, timeout, failure, or invalid output.
 
+Autonomy gates use the existing `sendGates` contribution bucket and require
+the exact `send:gate` capability. They receive only a bounded, frozen mail and
+draft projection plus an abort signal. A gate may return `no-objection` or an
+`objection`; there is deliberately no approval result. Core gates always run
+first, and missing authority, malformed output, failure, or timeout holds the
+reply for human review.
+
 The hosted input projection is truncated by Unicode code points: `from` 512,
 `to` 2,048, `subject` 1,024, and each decrypted body 65,536. A plugin's output
 and caution reason are validated at the boundary but never stored or returned;

@@ -19,7 +19,7 @@
  *
  * Precedence (documented so it stays stable):
  *   1. This working-hours gate runs at ROUTING/decision time, inside the
- *      route step's `assertSafeToAutoSend`, BEFORE the daily cap is charged and
+ *      route step's ordered final gate registry, BEFORE the daily cap is charged and
  *      BEFORE the send-delay/undo window or the outbox coalescing ever apply —
  *      an out-of-hours reply never becomes a pending auto-send at all, so there
  *      is nothing for the undo window or the kill switch to cancel later.

@@ -21,6 +21,10 @@ const DRAFT_STRATEGY_CATALOG_OUTPUT_PATH =
 	'apps/api/convex/plugins/draftStrategyCatalog.generated.ts';
 const DRAFT_STRATEGY_MODULES_OUTPUT_PATH =
 	'apps/api/convex/plugins/draftStrategyModules.generated.ts';
+const AUTONOMY_GATE_CATALOG_OUTPUT_PATH =
+	'apps/api/convex/plugins/autonomyGateCatalog.generated.ts';
+const AUTONOMY_GATE_MODULES_OUTPUT_PATH =
+	'apps/api/convex/plugins/autonomyGateModules.generated.ts';
 const MAX_GENERATED_FILE_BYTES = 4 * 1024 * 1024;
 
 export interface GeneratePluginCompositionOptions {
@@ -66,6 +70,14 @@ export async function generatePluginComposition(
 		{
 			path: join(workspaceRoot, DRAFT_STRATEGY_MODULES_OUTPUT_PATH),
 			source: generated.draftStrategyModules,
+		},
+		{
+			path: join(workspaceRoot, AUTONOMY_GATE_CATALOG_OUTPUT_PATH),
+			source: generated.autonomyGateCatalog,
+		},
+		{
+			path: join(workspaceRoot, AUTONOMY_GATE_MODULES_OUTPUT_PATH),
+			source: generated.autonomyGateModules,
 		},
 	] as const;
 

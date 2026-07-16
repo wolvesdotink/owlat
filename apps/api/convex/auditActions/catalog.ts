@@ -198,6 +198,7 @@ export type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
 /** Hosted operations safe to persist and display in plugin audit metadata. */
 export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'agent.step',
+	'autonomy.gate',
 	'draft.strategy',
 	'llm.generate',
 	'storage.delete',

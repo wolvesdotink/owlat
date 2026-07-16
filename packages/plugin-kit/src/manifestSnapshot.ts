@@ -40,7 +40,10 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 			path,
 			MAX_CONTRIBUTIONS_PER_KIND,
 			issues,
-			key === 'sendTransports' || key === 'agentSteps' || key === 'draftStrategies'
+			key === 'sendTransports' ||
+				key === 'agentSteps' ||
+				key === 'draftStrategies' ||
+				key === 'sendGates'
 				? (item, index) =>
 						snapshotRecord(item, (field, fieldValue) =>
 							field === 'module'

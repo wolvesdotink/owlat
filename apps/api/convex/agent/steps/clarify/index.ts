@@ -42,7 +42,7 @@
  * cheap coverage short-circuit is disabled so the highest-stakes mail always
  * gets the missing-info check. The hard rule that complaint/urgent are NEVER
  * auto-send-eligible is enforced independently in the `route` step's
- * `assertSafeToAutoSend`; nothing here can make them auto-sendable.
+ * ordered final gate registry; nothing here can make them auto-sendable.
  */
 
 import { internal } from '../../../_generated/api';
@@ -233,7 +233,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// Dial set to Off → never ask; draft for human review (today's
 			// pre-clarify behaviour minus the ask). Category can't override Off here:
 			// complaint/urgent are still forced to HUMAN REVIEW downstream (the route
-			// step's assertSafeToAutoSend), they just aren't asked a question.
+			// step's ordered final gate registry), they just aren't asked a question.
 			if (!policy.enabled) {
 				return { output: { questions: [], memoryAnswers: [], resolution: 'eagerness_off' } };
 			}

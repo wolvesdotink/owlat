@@ -259,6 +259,20 @@ attributed/budgeted LLM service, never a Convex context. Last-moment denial,
 timeout, failure, malformed/oversized/injection-like output, and stale selection
 all conservatively fall back to `default`. See ADR-0050.
 
+### Bundled autonomy gates
+
+Autonomy-gate contributions require a feature flag and `send:gate`. Static
+codegen emits a deterministic data catalog and separate Node module registry.
+They append after every immutable core route-time gate and can return only
+`no-objection` or an objection reason; they cannot approve, reorder, replace, or
+skip core policy.
+
+The host reauthorizes immediately before invocation and supplies only a frozen,
+bounded mail projection plus an abort signal. Disabled, revoked, stale, missing,
+timed-out, failed, or malformed catalogued gates conservatively route to human
+review. Audit accepts only fixed operation/outcome/reason codes and never plugin
+text or mail content. See ADR-0051.
+
 ### Three execution tiers
 
 1. **Bundled plugins** are operator-installed packages composed at build time.
