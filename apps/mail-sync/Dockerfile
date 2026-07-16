@@ -4,14 +4,21 @@ FROM oven/bun:1-alpine AS builder
 
 WORKDIR /app
 
+# Copy workspace root + all package.json files for dependency resolution
 COPY package.json bun.lock ./
 COPY patches/ patches/
-COPY --parents apps/mail-sync/package.json ./
+COPY --parents apps/*/package.json packages/*/package.json ./
 
-RUN cd apps/mail-sync && bun install
+# Root-level filtered install (same idiom as apps/mta): only this package's deps.
+# mail-sync now has its first workspace dependency (@owlat/smtp-client), which the
+# old `cd apps/mail-sync && bun install` could not resolve — a workspace-scoped
+# install off the repo root can.
+RUN bun install --frozen-lockfile --filter @owlat/mail-sync
 
+# Copy mail-sync source + the workspace packages it imports (TypeScript source).
 COPY apps/mail-sync/tsconfig.json apps/mail-sync/
 COPY apps/mail-sync/src/ apps/mail-sync/src/
+COPY packages/smtp-client/ packages/smtp-client/
 
 RUN cd apps/mail-sync && bun run build
 

@@ -133,17 +133,16 @@
       "version": "0.3.2",
       "dependencies": {
         "@hono/node-server": "^2.0.0",
+        "@owlat/smtp-client": "workspace:*",
         "convex": "catalog:convex",
         "hono": "^4.12.25",
         "imapflow": "^1.0.171",
         "mailparser": "^3.7.0",
-        "nodemailer": "^9.0.3",
         "pino": "^10.3.1",
       },
       "devDependencies": {
         "@types/mailparser": "^3.4.5",
         "@types/node": "catalog:",
-        "@types/nodemailer": "^8.0.0",
         "tsx": "^4.19.0",
         "typescript": "catalog:",
         "vitest": "catalog:",
