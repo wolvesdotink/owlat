@@ -20,8 +20,8 @@ export function useDesktopMenu() {
 				await onMenuAction('preferences', () => router.push('/dashboard/settings/desktop')),
 				await onMenuAction('new-workspace', () => router.push('/desktop/welcome')),
 				await onMenuAction('check-updates', () =>
-					window.dispatchEvent(new Event('owlat:check-updates')),
-				),
+					window.dispatchEvent(new Event('owlat:check-updates'))
+				)
 			);
 		} catch {
 			// Tauri not available
