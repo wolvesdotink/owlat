@@ -1,6 +1,7 @@
 export type PluginCodegenErrorCode =
 	| 'composition_invalid'
 	| 'component_export_invalid'
+	| 'contribution_export_invalid'
 	| 'conditional_manifest_export'
 	| 'config_invalid'
 	| 'dependency_missing'
