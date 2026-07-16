@@ -44,7 +44,7 @@ describe('routeStep.route', () => {
 	});
 });
 
-// ─── Auto-send safety gate (assertSafeToAutoSend) ───────────────────────────
+// ─── Ordered final auto-send gates ──────────────────────────────────────────
 //
 // Even when the autonomy tiers permit auto-approval, the final gate must fail
 // closed (→ human review) when the inbound guard couldn't run or the outbound
@@ -57,7 +57,7 @@ interface FakeMessage {
 	securityFlags?: { guardUnavailable?: boolean };
 }
 
-function makeExecuteCtx(message: FakeMessage) {
+function makeExecuteCtx(message: FakeMessage, mutationNames: string[] = []) {
 	// Default to a resolvable authenticated inbound sender so the recipient-lock
 	// gate passes unless a test deliberately omits/garbles `from`.
 	const withFrom: FakeMessage = { from: 'Alice Customer <alice@customer.example>', ...message };
@@ -74,6 +74,7 @@ function makeExecuteCtx(message: FakeMessage) {
 		},
 		runMutation: async (ref: unknown) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+			mutationNames.push(name);
 			if (name.includes('incrementDailyCount')) return { allowed: true };
 			throw new Error(`unexpected runMutation: ${name}`);
 		},
@@ -91,13 +92,18 @@ describe('routeStep.execute — auto-send safety gate', () => {
 	});
 
 	it('downgrades to human review when the inbound guard was unavailable', async () => {
-		const ctx = makeExecuteCtx({
-			draftResponse: 'Thanks for reaching out!',
-			securityFlags: { guardUnavailable: true },
-		});
+		const mutationNames: string[] = [];
+		const ctx = makeExecuteCtx(
+			{
+				draftResponse: 'Thanks for reaching out!',
+				securityFlags: { guardUnavailable: true },
+			},
+			mutationNames
+		);
 		const { output } = await routeStep.execute(ctx, sampleInput);
 		expect(output.decision).toBe('human_review');
 		expect(output.reason).toMatch(/guard was unavailable/i);
+		expect(mutationNames.some((name) => name.includes('incrementDailyCount'))).toBe(false);
 	});
 
 	it('downgrades to human review when the outbound draft trips an injection pattern', async () => {
