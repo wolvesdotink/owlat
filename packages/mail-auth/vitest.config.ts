@@ -10,7 +10,10 @@ export default defineConfig({
 			reporter: ['text', 'json-summary', 'html'],
 			reportsDirectory: './coverage',
 			include: ['src/**/*.ts'],
-			exclude: ['src/**/__tests__/**', 'src/index.ts'],
+			// `src/canon.ts` is now a pure re-export barrel over `@owlat/mail-canon`
+			// (the implementation + its own vector coverage live in that leaf), so it
+			// carries no executable logic — exclude it like the `index.ts` barrel.
+			exclude: ['src/**/__tests__/**', 'src/index.ts', 'src/canon.ts'],
 			thresholds: {
 				lines: 90,
 				// Branch coverage is enforced (plan doctrine) — the DKIM verify core,

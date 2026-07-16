@@ -28,6 +28,10 @@
 		"./compose/messageId": {
 			"types": "./src/compose/messageId.ts",
 			"import": "./src/compose/messageId.ts"
+		},
+		"./compose/dkim": {
+			"types": "./src/compose/dkim.ts",
+			"import": "./src/compose/dkim.ts"
 		}
 	},
 	"scripts": {
@@ -38,11 +42,15 @@
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest run --coverage"
 	},
+	"dependencies": {
+		"@owlat/mail-canon": "workspace:*"
+	},
 	"devDependencies": {
 		"@types/mailparser": "^3.4.5",
 		"@types/node": "catalog:",
 		"@types/nodemailer": "^8.0.0",
 		"@vitest/coverage-v8": "catalog:",
+		"mailauth": "^4.13.3",
 		"mailparser": "^3.7.0",
 		"nodemailer": "^9.0.3",
 		"typescript": "catalog:",

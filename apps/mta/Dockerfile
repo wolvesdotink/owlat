@@ -20,6 +20,7 @@ COPY apps/mta/src/ apps/mta/src/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/shared/ packages/shared/
 COPY packages/mail-auth/ packages/mail-auth/
+COPY packages/mail-canon/ packages/mail-canon/
 
 RUN cd apps/mta && bun run build
 

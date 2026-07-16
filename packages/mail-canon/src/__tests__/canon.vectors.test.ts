@@ -15,12 +15,13 @@ import { describe, it, expect } from 'vitest';
 import { createHash } from 'crypto';
 import { dkimBody } from 'mailauth/lib/dkim/body/index.js';
 import {
+	canonicalizeBody,
 	canonicalizeBodyRelaxed,
 	canonicalizeBodySimple,
 	canonicalizeHeaderField,
 	parseCanonicalization,
 	stripSignatureValue,
-} from '../../canon.js';
+} from '../canon.js';
 
 /** SHA-256 base64 of a buffer — the DKIM body-hash primitive. */
 function sha256(buf: Buffer): string {
@@ -86,6 +87,17 @@ describe('canonicalizeBody — RFC 6376 §3.4.5 examples', () => {
 		expect(canonicalizeBodySimple(Buffer.from('x\n\n\n', 'latin1')).toString('latin1')).toBe(
 			'x\r\n'
 		);
+	});
+});
+
+describe('canonicalizeBody dispatch', () => {
+	it('routes to the relaxed algorithm for mode=relaxed', () => {
+		const input = Buffer.from(' C \r\nD \t E\r\n\r\n\r\n', 'latin1');
+		expect(canonicalizeBody(input, 'relaxed')).toEqual(canonicalizeBodyRelaxed(input));
+	});
+	it('routes to the simple algorithm for mode=simple', () => {
+		const input = Buffer.from('Hello\r\n\r\n\r\n', 'latin1');
+		expect(canonicalizeBody(input, 'simple')).toEqual(canonicalizeBodySimple(input));
 	});
 });
 

@@ -1,10 +1,10 @@
 {
-	"name": "@owlat/mail-auth",
-	"version": "0.3.2",
+	"name": "@owlat/mail-canon",
+	"version": "0.1.0",
 	"private": true,
 	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
-	"description": "In-house email authentication — RFC 7208 SPF, RFC 7489 DMARC, RFC 6376 DKIM canonicalization + verification, and a cached injectable DNS resolver",
+	"description": "RFC 6376 §3.4 DKIM canonicalization — the ONE shared canonicalizer (U4). A dependency-free leaf: node:crypto/node:buffer only, so both the inbound verifier (@owlat/mail-auth) and the outbound signer (@owlat/mail-message) consume it without a build cycle and stay Convex-'use node' safe.",
 	"type": "module",
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
@@ -13,10 +13,6 @@
 		".": {
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
-		},
-		"./canon": {
-			"types": "./src/canon.ts",
-			"import": "./src/canon.ts"
 		}
 	},
 	"scripts": {
@@ -30,13 +26,8 @@
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
-		"ioredis-mock": "^8.9.0",
 		"mailauth": "^4.13.3",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
-	},
-	"dependencies": {
-		"@owlat/mail-canon": "workspace:*",
-		"@owlat/shared": "workspace:*"
 	}
 }
