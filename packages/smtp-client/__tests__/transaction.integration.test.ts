@@ -22,7 +22,7 @@ import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 
 import { SmtpConnection } from '../src/connection';
-import { authenticate, sendEnvelope, sendMessage } from '../src/transaction';
+import { authenticate, sendEnvelope, sendMessage, verify } from '../src/transaction';
 import { isSmtpError } from '../src/errors';
 import { VALID_CERT, VALID_KEY } from './certFixtures';
 
@@ -228,25 +228,38 @@ describe('transaction layer — smtp-server integration', () => {
 
 	// (d) ── AUTH refused on an unsecured non-loopback connection, before serialize ──
 	it('refuses AUTH on an unsecured non-loopback connection before serializing credentials', async () => {
-		let onAuthCalled = false;
-		running = await startServer({
-			secure: false,
-			disabledCommands: ['STARTTLS'],
-			authOptional: true,
-			authMethods: ['PLAIN', 'LOGIN'],
-			onAuth(_auth, _session, callback) {
-				onAuthCalled = true;
-				callback(null, { user: 'x' });
-			},
+		// Drive against a RAW cleartext peer that DOES advertise AUTH and records
+		// every line it receives. This is the only way to detect the regression the
+		// gate guards: if the client-side pre-serialization refusal were deleted, the
+		// client would happily serialize `AUTH PLAIN <token>` here (the server offers
+		// it) and the recorded lines would prove it. smtp-server, by contrast, hides
+		// AUTH on an insecure link and refuses it itself, so a hollow assertion passes
+		// either way.
+		const received: string[] = [];
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			received.push(line);
+			if (/^EHLO/i.test(line)) {
+				return '250-raw greets you\r\n250-AUTH PLAIN LOGIN\r\n250 SIZE 1000000\r\n';
+			}
+			if (/^AUTH/i.test(line)) {
+				// A server that received AUTH would answer — recorded above proves it.
+				return '235 2.7.0 authenticated\r\n';
+			}
+			if (/^QUIT/i.test(line)) {
+				return '221 bye\r\n';
+			}
+			return '250 OK\r\n';
 		});
 
 		const conn = await SmtpConnection.connect({
 			host: '127.0.0.1',
-			port: running.port,
+			port,
 			ehloName: 'client.test',
 			tlsMode: 'none',
 		});
 		expect(conn.secured).toBe(false);
+		// The server genuinely offered AUTH, so a serializing client would proceed.
+		expect(conn.capabilities.authMechanisms.has('PLAIN')).toBe(true);
 
 		let caught: unknown;
 		try {
@@ -262,9 +275,12 @@ describe('transaction layer — smtp-server integration', () => {
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('auth');
 			expect(caught.secured).toBe(false);
+			// A client-side refusal carries NO reply code; a server 5xx refusal would.
+			expect(caught.replyCode).toBeUndefined();
 		}
-		// The credentials never reached the wire.
-		expect(onAuthCalled).toBe(false);
+		// The load-bearing assertion: no AUTH command ever reached the wire, so the
+		// credentials were never serialized. Deleting the client refusal breaks this.
+		expect(received.some((line) => /^AUTH/i.test(line))).toBe(false);
 	});
 });
 
@@ -356,6 +372,166 @@ describe('transaction layer — phase-tagged failures against raw peers', () => 
 			// data / data-final = the never-auto-retried region. Distinguishable from
 			// the phase `mail` reject above purely by the discriminant.
 			expect(['data', 'data-final']).toContain(caught.phase);
+		}
+	});
+});
+
+// ── verify() and the AUTH LOGIN path, against raw loopback peers ──
+// These peers live on 127.0.0.1, so the client's loopback exception permits
+// cleartext AUTH without a secured channel — letting the raw peer script the
+// exact 334 continuations the LOGIN state machine needs.
+describe('transaction layer — verify() and AUTH LOGIN', () => {
+	afterEach(() => {
+		while (cleanups.length > 0) {
+			try {
+				cleanups.pop()?.();
+			} catch {
+				// best-effort teardown
+			}
+		}
+	});
+
+	it('verify() resolves against a reachable AUTH endpoint with valid credentials', async () => {
+		let authToken: string | undefined;
+		let quitSeen = false;
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			if (/^EHLO/i.test(line)) {
+				return '250-raw greets you\r\n250 AUTH PLAIN LOGIN\r\n';
+			}
+			const plain = /^AUTH PLAIN (.+)$/i.exec(line);
+			if (plain) {
+				authToken = plain[1];
+				return '235 2.7.0 authenticated\r\n';
+			}
+			if (/^QUIT/i.test(line)) {
+				quitSeen = true;
+				return '221 bye\r\n';
+			}
+			return '250 OK\r\n';
+		});
+
+		await expect(
+			verify({
+				connect: { host: '127.0.0.1', port, ehloName: 'client.test', tlsMode: 'none' },
+				auth: { credentials: { username: 'submituser', password: 's3cret' } },
+			})
+		).resolves.toBeUndefined();
+
+		// The PLAIN token is base64(`\0user\0pass`); decoding proves the creds were
+		// serialized exactly once, and QUIT ran (verify never sends a message).
+		expect(Buffer.from(authToken ?? '', 'base64').toString('utf8')).toBe('\0submituser\0s3cret');
+		expect(quitSeen).toBe(true);
+	});
+
+	it('verify() rejects with phase `auth` on bad credentials', async () => {
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			if (/^EHLO/i.test(line)) {
+				return '250-raw greets you\r\n250 AUTH PLAIN LOGIN\r\n';
+			}
+			if (/^AUTH PLAIN/i.test(line)) {
+				return '535 5.7.8 authentication failed\r\n';
+			}
+			if (/^QUIT/i.test(line)) {
+				return '221 bye\r\n';
+			}
+			return '250 OK\r\n';
+		});
+
+		let caught: unknown;
+		try {
+			await verify({
+				connect: { host: '127.0.0.1', port, ehloName: 'client.test', tlsMode: 'none' },
+				auth: { credentials: { username: 'submituser', password: 'wrong' } },
+			});
+		} catch (err) {
+			caught = err;
+		}
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('auth');
+			expect(caught.replyCode).toBe(535);
+			expect(caught.enhancedCode).toBe('5.7.8');
+		}
+	});
+
+	it('authenticates via AUTH LOGIN, walking both 334 continuations', async () => {
+		const received: string[] = [];
+		let loginStep = 0;
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			received.push(line);
+			if (/^EHLO/i.test(line)) {
+				// Advertise only LOGIN so the mechanism selector picks it over PLAIN.
+				return '250-raw greets you\r\n250 AUTH LOGIN\r\n';
+			}
+			if (/^AUTH LOGIN$/i.test(line)) {
+				loginStep = 1;
+				return '334 VXNlcm5hbWU6\r\n'; // base64("Username:")
+			}
+			if (loginStep === 1) {
+				loginStep = 2;
+				return '334 UGFzc3dvcmQ6\r\n'; // base64("Password:")
+			}
+			if (loginStep === 2) {
+				loginStep = 3;
+				return '235 2.7.0 authenticated\r\n';
+			}
+			if (/^QUIT/i.test(line)) {
+				return '221 bye\r\n';
+			}
+			return '250 OK\r\n';
+		});
+
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		await authenticate(conn, { username: 'loginuser', password: 'l0ginpass' });
+		conn.close();
+
+		// The two continuation lines carry base64(username) then base64(password).
+		const userLine = received[received.indexOf('AUTH LOGIN') + 1];
+		const passLine = received[received.indexOf('AUTH LOGIN') + 2];
+		expect(Buffer.from(userLine ?? '', 'base64').toString('utf8')).toBe('loginuser');
+		expect(Buffer.from(passLine ?? '', 'base64').toString('utf8')).toBe('l0ginpass');
+	});
+
+	it('surfaces an AUTH LOGIN challenge rejection as phase `auth`', async () => {
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			if (/^EHLO/i.test(line)) {
+				return '250-raw greets you\r\n250 AUTH LOGIN\r\n';
+			}
+			if (/^AUTH LOGIN$/i.test(line)) {
+				// Refuse at the very first continuation — exercises assertContinuation's
+				// non-334 throw branch before any credential bytes are serialized.
+				return '504 5.5.4 unrecognized authentication type\r\n';
+			}
+			if (/^QUIT/i.test(line)) {
+				return '221 bye\r\n';
+			}
+			return '250 OK\r\n';
+		});
+
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		let caught: unknown;
+		try {
+			await authenticate(conn, { username: 'loginuser', password: 'l0ginpass' });
+		} catch (err) {
+			caught = err;
+		}
+		conn.close();
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('auth');
+			expect(caught.replyCode).toBe(504);
 		}
 	});
 });
