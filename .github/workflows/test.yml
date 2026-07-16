@@ -54,6 +54,8 @@ jobs:
             name: code-worker
           - workspace: packages/email-previewer
             name: email-previewer
+          - workspace: packages/mail-message
+            name: mail-message
 
     steps:
       - uses: step-security/harden-runner@v2

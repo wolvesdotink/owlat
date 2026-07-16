@@ -14,16 +14,27 @@
  * `new TextDecoder('latin1').decode(bytes)`) so binary parts survive.
  */
 
+// The RFC 2047 / 2231 header helpers now live in `@owlat/mail-message` (the
+// in-house parser that replaces mailparser). This module keeps re-exporting
+// them from their new home so every existing importer of
+// `@owlat/shared/mailMime` — including `decodeEncodedWords` — keeps working
+// unchanged. We import from the `/headers` subpath (which pulls in nothing
+// else) so the web bundle that consumes this extractor is not enlarged.
+import {
+	unfold,
+	decodeQpHexEscapes,
+	decodeEncodedWords,
+	decodeRfc2231,
+} from '@owlat/mail-message/headers';
+
+export { unfold, decodeEncodedWords, decodeRfc2231 };
+
 export interface ExtractedAttachment {
 	filename: string;
 	contentType: string;
 	contentId?: string;
 	disposition: 'attachment' | 'inline';
 	bytes: Uint8Array;
-}
-
-function unfold(headerText: string): string {
-	return headerText.replace(/\r?\n[ \t]+/g, ' ');
 }
 
 function parseHeaders(headerText: string): Map<string, string> {
@@ -45,16 +56,6 @@ function splitHeadersBody(raw: string): { headers: Map<string, string>; body: st
 	};
 }
 
-function decodeRfc2231(v: string): string {
-	const m = v.match(/^[^']*'[^']*'(.*)$/);
-	const enc = m ? m[1]! : v;
-	try {
-		return decodeURIComponent(enc);
-	} catch {
-		return enc;
-	}
-}
-
 function getParam(headerValue: string | undefined, name: string): string | undefined {
 	if (!headerValue) return undefined;
 	const continued: string[] = [];
@@ -72,50 +73,6 @@ function getParam(headerValue: string | undefined, name: string): string | undef
 	const m = headerValue.match(re);
 	const value = m ? (m[2] ?? m[3] ?? '') : undefined;
 	return value ? decodeRfc2231(value.trim()) : undefined;
-}
-
-/**
- * Decode `=HH` hex escapes (quoted-printable / RFC 2047 Q-encoding) into their
- * raw bytes-as-chars. Callers apply their own pre-step first: Q-encoding maps
- * `_`→space, the QP body strips soft line breaks (`=\r?\n`).
- */
-function decodeQpHexEscapes(s: string): string {
-	return s.replace(/=([0-9A-Fa-f]{2})/g, (_m, h: string) =>
-		String.fromCharCode(Number.parseInt(h, 16))
-	);
-}
-
-/**
- * Decode RFC 2047 encoded-words (`=?charset?B|Q?payload?=`), honoring the
- * DECLARED charset — a previous version always decoded as UTF-8, which
- * mangled ISO-8859-1 / Shift_JIS subjects. Falls back utf-8 → raw payload
- * when the charset is unknown. Canonical implementation: the IMAP server
- * had its own charset-aware copy; both now live here.
- */
-export function decodeEncodedWords(s: string): string {
-	return s.replace(
-		/=\?([^?]+)\?([bBqQ])\?([^?]*)\?=/g,
-		(whole, charset: string, enc: string, text: string) => {
-			try {
-				let bin: string;
-				if (enc.toUpperCase() === 'B') {
-					bin = atob(text);
-				} else {
-					bin = decodeQpHexEscapes(text.replace(/_/g, ' '));
-				}
-				const bytes = new Uint8Array(bin.length);
-				for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff;
-				const cs = charset.toLowerCase() === 'utf8' ? 'utf-8' : charset;
-				try {
-					return new TextDecoder(cs).decode(bytes);
-				} catch {
-					return new TextDecoder('utf-8').decode(bytes);
-				}
-			} catch {
-				return whole;
-			}
-		}
-	);
 }
 
 function getBoundary(contentType: string): string | null {
