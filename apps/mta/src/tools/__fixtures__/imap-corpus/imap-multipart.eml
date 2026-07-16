@@ -1,0 +1,19 @@
+From: Alice <alice@example.com>
+To: Bob <bob@example.org>
+Subject: Report and chart
+Date: Wed, 17 Jun 2026 11:15:00 +0000
+Message-ID: <mixed-4@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="m1"
+
+--m1
+Content-Type: text/plain; charset=utf-8
+
+Plain version of the report.
+--m1
+Content-Type: image/png; name="chart.png"
+Content-Disposition: attachment; filename="chart.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMCAoO9PXwAAAAASUVORK5CYII=
+--m1--
