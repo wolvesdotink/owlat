@@ -546,6 +546,22 @@ export const CORPUS: CorpusCase[] = [
 		messageId: mid(40),
 		date: FIXED_DATE,
 	},
+	{
+		// A single To address whose ASCII display name alone exceeds the RFC 5322
+		// §2.1.1 998-octet line cap: only encoded-word folding can keep the physical
+		// lines legal (there is no second address to fold between). Parsed equality
+		// cancels the folding cosmetics; gate (b) pins the line lengths.
+		name: 'long-display-name-single-address',
+		from: 'sender@owlat.test',
+		to: [
+			`${Array.from({ length: 190 }, (_, i) => `word${String(i)}`).join(' ')} <long@example.com>`,
+		],
+		subject: 'Long display name',
+		html: '<p>x</p>',
+		text: 'x',
+		messageId: mid(41),
+		date: FIXED_DATE,
+	},
 ];
 
 /** Adapt a corpus case to our `composeMessage` input. */

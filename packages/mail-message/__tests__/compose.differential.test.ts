@@ -120,6 +120,7 @@ function attachmentSet(mail: ParsedMail): Array<Record<string, unknown>> {
 function project(mail: ParsedMail) {
 	return {
 		subject: mail.subject ?? '',
+		date: mail.date?.toISOString() ?? '',
 		from: addrList(mail.from),
 		to: addrList(mail.to),
 		cc: addrList(mail.cc),

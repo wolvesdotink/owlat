@@ -104,8 +104,8 @@ describe('composeMessage CRLF header-injection defence', () => {
 		// The CRLF is collapsed to a single space, so the injected `Bcc:` never
 		// begins a physical line — nothing parses as a smuggled header. The
 		// `leak@evil.test` text survives, folded onto the Message-ID's own line;
-		// that it is inert (not a header) is exactly what line 103 + the exact
-		// neutralized line below assert.
+		// that it is inert (not a header) is exactly what the `not.toMatch(/^Bcc:/im)`
+		// assertion below + the exact neutralized line below assert.
 		expect(eml).not.toMatch(/^Bcc:/im);
 		expect(eml).toMatch(/^Message-ID: <x@y> Bcc: leak@evil\.test\r$/m);
 	});
@@ -218,6 +218,46 @@ describe('composeMessage msg-id list folding (998-octet hard cap)', () => {
 		// mailparser exposes inReplyTo as the raw folded value; assert the ids survive.
 		const joined = got.join(' ');
 		for (const id of ids) expect(joined).toContain(id);
+	});
+});
+
+describe('composeMessage long display-name folding (998-octet hard cap)', () => {
+	// A single address with an over-long ASCII display name is never folded
+	// BETWEEN addresses (there is only one), so the phrase must be RFC-2047
+	// encoded to keep every physical line under the RFC 5322 §2.1.1 cap. Reachable
+	// from attacker-influenced data (reply flows build `To:` from an inbound
+	// message's From display name).
+	const spaceyName = Array.from({ length: 190 }, (_, i) => `word${String(i)}`).join(' ');
+	const quotedName = `"${'A'.repeat(1100)}"`;
+
+	it('encodes a long spacey ASCII display name so no physical line exceeds 998 octets', async () => {
+		const to = `${spaceyName} <recipient@example.test>`;
+		// Sanity: rendered verbatim this address alone would blow the cap.
+		expect('To: '.length + to.length).toBeGreaterThan(998);
+		const { raw } = composeMessage({ ...BASE, to: [to], messageId: '<id@owlat.test>' });
+		const eml = raw.toString('utf-8');
+		for (const line of eml.split('\r\n')) {
+			expect(Buffer.byteLength(line, 'utf-8')).toBeLessThanOrEqual(998);
+		}
+		const parsed = await simpleParser(raw);
+		const addr = parsed.to && !Array.isArray(parsed.to) ? parsed.to.value[0] : undefined;
+		expect(addr?.address).toBe('recipient@example.test');
+		expect(addr?.name).toBe(spaceyName);
+	});
+
+	it('encodes a long quoted display name (quotes dropped) within the cap', async () => {
+		const to = `${quotedName} <recipient@example.test>`;
+		expect('To: '.length + to.length).toBeGreaterThan(998);
+		const { raw } = composeMessage({ ...BASE, to: [to], messageId: '<id@owlat.test>' });
+		const eml = raw.toString('utf-8');
+		for (const line of eml.split('\r\n')) {
+			expect(Buffer.byteLength(line, 'utf-8')).toBeLessThanOrEqual(998);
+		}
+		const parsed = await simpleParser(raw);
+		const addr = parsed.to && !Array.isArray(parsed.to) ? parsed.to.value[0] : undefined;
+		expect(addr?.address).toBe('recipient@example.test');
+		// The surrounding DQUOTEs are dropped when the phrase is encoded.
+		expect(addr?.name).toBe('A'.repeat(1100));
 	});
 });
 
