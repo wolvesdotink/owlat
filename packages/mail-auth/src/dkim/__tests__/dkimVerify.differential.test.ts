@@ -343,6 +343,15 @@ describe('verifyDkim differential vs mailauth', () => {
 		await assertAgree(msg, resolverFor(rsaTxt), 'neutral');
 	});
 
+	it('x= with trailing garbage is DROPPED (not expired) -> pass on BOTH', async () => {
+		// `x=500abc`: mailauth parses `x=` with Number() over the whole string, gets
+		// NaN, and drops the tag (no expiry check) -> `pass`. Number.parseInt would
+		// read `500` and (wrongly) treat the signature as long-expired -> neutral;
+		// the full-string digit guard keeps us in lockstep with the oracle.
+		const msg = mintOverOurCanon({ hTag: 'from:to:subject', extraTags: 't=100; x=500abc; ' });
+		await assertAgree(msg, resolverFor(rsaTxt), 'pass');
+	});
+
 	// --- structurally-unusable signatures are SKIPPED (-> none) on BOTH sides --
 	// mailauth skips a signature it cannot use; the replaced normalizeStatus maps
 	// skipped -> none. Ours must not record `permerror` (rank 4) for these.
