@@ -65,8 +65,13 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     // Manual update check. The handler emits `menu://check-updates`; the SPA
     // re-dispatches it to the auto-updater (see apps/web updater.client.ts).
     // Lives in the app menu on macOS (native home for it) and Help elsewhere.
-    let check_updates =
-        MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
+    let check_updates = MenuItem::with_id(
+        app,
+        "check_updates",
+        "Check for Updates…",
+        true,
+        None::<&str>,
+    )?;
 
     // Edit / Window are identical on every platform.
     let edit = SubmenuBuilder::new(app, "Edit")
