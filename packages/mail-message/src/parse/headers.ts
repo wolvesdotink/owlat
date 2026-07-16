@@ -234,6 +234,22 @@ export class MessageHeaders {
 		return this.map.get(name.toLowerCase())?.[0];
 	}
 
+	/**
+	 * LAST raw value for `name` (case-insensitive), or `undefined`.
+	 *
+	 * This is the effective value of a duplicated MIME header for
+	 * `mailMime.extractAttachments` parity: `mailMime.parseHeaders` builds its map
+	 * with `map.set` per line, so a repeated `Content-Type` /
+	 * `Content-Disposition` / `Content-Transfer-Encoding` / `Content-ID` collapses
+	 * to the LAST occurrence. The walker reads those four headers via `last` so
+	 * duplicate-header MIME-confusion shapes resolve identically on both sides and
+	 * the stored `partIndex` contract is preserved. (Display/trace headers keep
+	 * using {@link get}/{@link getAll}.)
+	 */
+	last(name: string): string | undefined {
+		return this.map.get(name.toLowerCase())?.at(-1);
+	}
+
 	/** Every raw value for `name` in document order. */
 	getAll(name: string): string[] {
 		return this.map.get(name.toLowerCase()) ?? [];
@@ -260,12 +276,12 @@ export class MessageHeaders {
 	 * default and callers also get the split `type`/`subtype`.
 	 */
 	get contentType(): ContentType {
-		return parseContentType(this.get('content-type'));
+		return parseContentType(this.last('content-type'));
 	}
 
 	/** Structured `Content-Disposition`, or `undefined` when absent. */
 	get contentDisposition(): StructuredHeader | undefined {
-		const raw = this.get('content-disposition');
+		const raw = this.last('content-disposition');
 		return raw === undefined ? undefined : parseStructuredHeader(raw);
 	}
 }

@@ -86,13 +86,19 @@ export function parseMimeTree(raw: string, depth = 0): MimeNode {
 	const children: MimeNode[] = [];
 	let isMultipart = false;
 
-	if (contentType.type === 'multipart' && depth < MAX_DEPTH) {
+	if (contentType.value.startsWith('multipart/') && depth < MAX_DEPTH) {
+		// Gate on the `multipart/` PREFIX, not `type === 'multipart'`: `value` is
+		// byte-identical to mailMime's `mainType` (up-to-first-`;`, trimmed,
+		// lowercased), so a slashless `Content-Type: multipart` is NOT a container
+		// (matching `mainType.startsWith('multipart/')` === false) and stays a leaf
+		// exactly as the oracle treats it.
+		//
 		// Read the boundary from the RAW Content-Type via the whitespace-anchored
 		// scanner, byte-for-byte as `mailMime.getBoundary` does — NOT from the
 		// semicolon-anchored `contentType.params`, so a no-semicolon
 		// `multipart/mixed boundary="B"` is a multipart with indexed parts on both
 		// sides and the stored partIndex contract is preserved.
-		const boundary = getRawParam(headers.get('content-type'), 'boundary');
+		const boundary = getRawParam(headers.last('content-type'), 'boundary');
 		if (boundary !== undefined && boundary !== '') {
 			isMultipart = true;
 			for (const part of splitMultipart(body, boundary)) {
@@ -119,7 +125,7 @@ export function walkLeaves(root: MimeNode, visit: (leaf: MimeNode) => void): voi
 
 /** The raw (lowercased, trimmed) `Content-Disposition` value of a part. */
 function rawDisposition(node: MimeNode): string {
-	return (node.headers.get('content-disposition') ?? '').toLowerCase().trim();
+	return (node.headers.last('content-disposition') ?? '').toLowerCase().trim();
 }
 
 /**
@@ -129,8 +135,8 @@ function rawDisposition(node: MimeNode): string {
  */
 export function partFilename(node: MimeNode): string {
 	const rawName =
-		getRawParam(node.headers.get('content-disposition'), 'filename') ??
-		getRawParam(node.headers.get('content-type'), 'name');
+		getRawParam(node.headers.last('content-disposition'), 'filename') ??
+		getRawParam(node.headers.last('content-type'), 'name');
 	return rawName ? decodeEncodedWords(rawName) : '';
 }
 
@@ -150,7 +156,7 @@ export function partDisposition(node: MimeNode): 'attachment' | 'inline' {
  * without a semicolon still counts).
  */
 export function isAttachmentPart(node: MimeNode): boolean {
-	if (node.contentType.type === 'multipart') return false;
+	if (node.contentType.value.startsWith('multipart/')) return false;
 	if (rawDisposition(node).startsWith('attachment')) return true;
 	return partFilename(node) !== '';
 }
@@ -213,7 +219,7 @@ export function assembleBody(root: MimeNode): AssembledBody {
 		const { type, subtype } = leaf.contentType;
 		if (type !== 'text') return;
 		if (subtype !== 'plain' && subtype !== 'html') return;
-		const bytes = transferDecode(leaf.rawBody, leaf.headers.get('content-transfer-encoding'));
+		const bytes = transferDecode(leaf.rawBody, leaf.headers.last('content-transfer-encoding'));
 		const decoded = decodeCharset(bytes, leaf.contentType.params['charset']);
 		if (subtype === 'html') htmlParts.push(decoded);
 		else textParts.push(decoded);

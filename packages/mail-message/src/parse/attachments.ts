@@ -45,12 +45,12 @@ function stripBrackets(value: string | undefined): string | undefined {
 
 /** Build a {@link MessageAttachment} from an attachment leaf node. */
 function toAttachment(node: MimeNode): MessageAttachment {
-	const bytes = transferDecode(node.rawBody, node.headers.get('content-transfer-encoding'));
+	const bytes = transferDecode(node.rawBody, node.headers.last('content-transfer-encoding'));
 	const content = Buffer.from(bytes);
 	return {
 		filename: partFilename(node) || 'attachment',
 		contentType: node.contentType.value,
-		contentId: stripBrackets(node.headers.get('content-id')),
+		contentId: stripBrackets(node.headers.last('content-id')),
 		disposition: partDisposition(node),
 		content,
 		size: content.length,
