@@ -160,6 +160,20 @@ export class SmtpConnection {
 	 * throws a phase-tagged {@link SmtpError}.
 	 */
 	static async connect(options: SmtpConnectOptions): Promise<SmtpConnection> {
+		// Fail closed on a contradictory floor: `none` never reaches TLS, so a
+		// caller that also set `requireTls` (e.g. a config-driven flag combined
+		// with a loopback-computed `'none'` mode) would otherwise silently proceed
+		// in cleartext — a fail-open trap for the cutover pieces. `implicit`
+		// trivially satisfies the floor, so only `none` is a contradiction here.
+		if (options.tlsMode === 'none' && options.requireTls === true) {
+			throw new SmtpError({
+				phase: 'connect',
+				message:
+					"tlsMode 'none' contradicts requireTls: a cleartext connection cannot satisfy a required TLS floor",
+				secured: false,
+			});
+		}
+
 		const timeouts: SmtpTimeouts = { ...DEFAULT_TIMEOUTS, ...options.timeouts };
 		const tlsOptions = options.tls ?? {};
 		const servername = tlsOptions.servername ?? options.host;

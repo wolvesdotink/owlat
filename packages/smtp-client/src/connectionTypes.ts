@@ -67,9 +67,12 @@ export interface SmtpConnectOptions {
 	 */
 	tlsMode: SmtpTlsMode;
 	/**
-	 * For `starttls`: require the upgrade to succeed. If the server does not
-	 * advertise STARTTLS, connect() fails closed (`starttls-unavailable`)
-	 * instead of proceeding in cleartext. Ignored for `implicit` / `none`.
+	 * Require the connection to reach TLS. For `starttls`: if the server does not
+	 * advertise STARTTLS, connect() fails closed (`starttls-unavailable`) instead
+	 * of proceeding in cleartext. `implicit` is TLS from byte zero and trivially
+	 * satisfies the floor. Combining it with `none` is a contradiction — a
+	 * cleartext connection cannot satisfy a required floor — so connect() fails
+	 * closed in phase `connect` rather than silently proceeding in cleartext.
 	 */
 	requireTls?: boolean;
 	/** Source address to bind the outgoing socket to (per-IP egress). */
