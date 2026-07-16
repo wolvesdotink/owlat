@@ -179,9 +179,8 @@ function validateEdges(
 		throwUnsafeLifecycleEdge(definition.kind, undefined);
 	}
 	for (const edge of definition.lifecycleEdges) {
-		const tuple = readLifecycleEdgeTuple(edge);
-		if (!tuple || !isSafeLifecycleEdge(placement, tuple)) {
-			throwUnsafeLifecycleEdge(definition.kind, tuple);
+		if (!isSafeAgentLifecycleEdge(placement, edge)) {
+			throwUnsafeLifecycleEdge(definition.kind, readLifecycleEdgeTuple(edge));
 		}
 	}
 }
@@ -202,9 +201,16 @@ function ownStringField(value: object, field: keyof LifecycleEdgeTuple): string 
 		: undefined;
 }
 
-function isSafeLifecycleEdge(placement: AgentStepPlacement, edge: LifecycleEdgeTuple): boolean {
+/** Runtime-check a complete edge tuple against the host-owned placement policy. */
+export function isSafeAgentLifecycleEdge(
+	placement: AgentStepPlacement,
+	edge: unknown
+): edge is PluginAgentLifecycleEdge {
+	const tuple = readLifecycleEdgeTuple(edge);
+	if (!tuple) return false;
 	return SAFE_LIFECYCLE_EDGES_BY_PLACEMENT[placement].some(
-		(allowed) => allowed.kind === edge.kind && allowed.from === edge.from && allowed.to === edge.to
+		(allowed) =>
+			allowed.kind === tuple.kind && allowed.from === tuple.from && allowed.to === tuple.to
 	);
 }
 
