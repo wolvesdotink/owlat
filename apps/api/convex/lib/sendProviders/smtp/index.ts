@@ -5,13 +5,15 @@
  *
  * Per ADR-0020. The long-tail transport: any provider that speaks SMTP
  * submission (Mailgun, Postmark, SendGrid, Brevo, or a self-run relay) plugs in
- * here by host/port/TLS/username/password — no per-provider API adapter. A
- * single nodemailer transport is built lazily from the instance-level
- * `SMTP_RELAY_*` env config and cached across sends on the warm worker.
+ * here by host/port/TLS/username/password — no per-provider API adapter. The
+ * non-secret client config is resolved lazily (once) from the instance-level
+ * `SMTP_RELAY_*` env and cached across sends on the warm worker; each send
+ * composes the message with `@owlat/mail-message` and delivers it with the
+ * in-house `@owlat/smtp-client` (one connection per send, W3).
  *
  * Single-attempt `sendEmail`; the **Send dispatch (helper)** owns the retry
  * loop and consumes `retryDelays` + `categorizeError`. This module runs on the
- * `'use node'` delivery worker (`delivery/worker.ts`) where nodemailer's raw
+ * `'use node'` delivery worker (`delivery/worker.ts`) where the client's raw
  * TCP/TLS sockets are available.
  *
  * Deliverability note: with a relay the outbound IPs belong to the relay
@@ -20,8 +22,15 @@
  * operator-facing UX lands in the Sending-transport settings surface (a4).
  */
 
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
+import os from 'node:os';
+import { composeMessage } from '@owlat/mail-message';
+import {
+	isSmtpError,
+	sendMessage,
+	type AuthConfig,
+	type SmtpConnectOptions,
+	type SmtpPhase,
+} from '@owlat/smtp-client';
 import { getBoolean, getOptional, getRequired } from '../../env';
 import { withTimeout } from '../../inputGuards';
 import {
@@ -38,8 +47,8 @@ import { RETRY_DELAYS_MS } from '../../constants';
  * idempotency surface — once the message is on the wire a timeout is AMBIGUOUS
  * (the relay may already have accepted and queued it), so such a timeout is
  * TERMINAL rather than retryable to avoid a double-delivery. Definite
- * pre-acceptance failures (connection refused, DNS) stay retryable via
- * `categorizeError`.
+ * pre-acceptance failures (connection refused, DNS, a rejected recipient) stay
+ * retryable via the phase-based `classifySmtpError`.
  */
 const SMTP_SEND_TIMEOUT_MS = 30_000;
 const SMTP_SEND_TIMEOUT_MESSAGE = 'SMTP relay send timed out';
@@ -49,58 +58,80 @@ const DEFAULT_SMTP_PORT = 587;
 
 /**
  * Bound the pre-acceptance phase (TCP connect + server greeting) well under
- * `SMTP_SEND_TIMEOUT_MS` so an unreachable relay fails as a nodemailer `CONN`
- * error — which is retryable (nothing reached the wire) — rather than tripping
- * the ambiguous outer `withTimeout` that has to be treated as terminal.
+ * `SMTP_SEND_TIMEOUT_MS` so an unreachable relay fails in a pre-wire phase
+ * (`connect`/`greeting`) — which is retryable (nothing reached the wire) —
+ * rather than tripping the ambiguous outer `withTimeout` that has to be treated
+ * as terminal.
  */
 const SMTP_CONNECTION_TIMEOUT_MS = 15_000;
 
-let cachedTransport: Transporter | null = null;
+/** Resolved, non-secret relay client config: how to connect + how to AUTH. */
+export interface RelayClientConfig {
+	connect: SmtpConnectOptions;
+	auth: AuthConfig;
+}
 
-/** Resolved, non-secret transport inputs (env-derived). */
-export interface RelayTransportInput {
+let cachedConfig: RelayClientConfig | null = null;
+
+/** Resolved, non-secret relay client inputs (env-derived). */
+export interface RelayClientInput {
 	host: string;
 	port: number;
 	/** true ⇒ implicit TLS (465); false ⇒ STARTTLS upgrade (587). */
 	secure: boolean;
 	user: string;
 	pass: string;
+	/** EHLO identity announced to the relay. */
+	ehloName: string;
 }
 
 /**
- * Assemble the nodemailer transport options for a relay send. Pure and exported
+ * Assemble the in-house SMTP-client config for a relay send. Pure and exported
  * so the TLS floor and STARTTLS-enforcement invariants are pinned by a test
  * rather than living only inside the network path.
  *
- * - `requireTLS: !secure` — on the STARTTLS path demand the upgrade so a relay
+ * - `requireTls: !secure` — on the STARTTLS path demand the upgrade so a relay
  *   that omits STARTTLS (or a MITM stripping it) can't silently downgrade the
- *   AUTH credentials + body to cleartext.
+ *   AUTH credentials + body to cleartext; the client fails closed
+ *   (`starttls-unavailable`) instead of proceeding cleartext. `implicit` is TLS
+ *   from byte zero and trivially satisfies the floor.
  * - `tls.minVersion: 'TLSv1.2'` — pin the floor (RFC 8996 deprecates TLS 1.0/1.1,
  *   RFC 9325 mandates 1.2+). The direct-MX pool already pins this; without it the
  *   relay path's floor was Node's env-fragile process default.
+ * - the connect/greeting timeout is bounded so an unreachable relay fails in a
+ *   pre-wire phase (retryable) rather than tripping the ambiguous outer timeout.
  */
-export function buildRelayTransportOptions(input: RelayTransportInput) {
+export function buildRelayClientConfig(input: RelayClientInput): RelayClientConfig {
 	return {
-		host: input.host,
-		port: input.port,
-		secure: input.secure,
-		requireTLS: !input.secure,
-		// Fail a merely-unreachable relay fast and retryably (see the constant).
-		connectionTimeout: SMTP_CONNECTION_TIMEOUT_MS,
-		greetingTimeout: SMTP_CONNECTION_TIMEOUT_MS,
-		tls: { minVersion: 'TLSv1.2' as const },
-		auth: { user: input.user, pass: input.pass },
+		connect: {
+			host: input.host,
+			port: input.port,
+			ehloName: input.ehloName,
+			tlsMode: input.secure ? 'implicit' : 'starttls',
+			// Fail closed if the STARTTLS relay omits the upgrade — credentials + body
+			// must never reach a cleartext channel.
+			requireTls: !input.secure,
+			tls: { minVersion: 'TLSv1.2' as const },
+			// Fail a merely-unreachable relay fast and retryably (see the constant).
+			timeouts: {
+				connect: SMTP_CONNECTION_TIMEOUT_MS,
+				greeting: SMTP_CONNECTION_TIMEOUT_MS,
+			},
+		},
+		auth: {
+			credentials: { username: input.user, password: input.pass },
+		},
 	};
 }
 
 /**
- * Build (once) the nodemailer transport from the instance-level relay config.
- * `secure: true` opens an implicit TLS connection (typically port 465);
- * `secure: false` connects in cleartext and upgrades via STARTTLS (587). Auth
+ * Resolve (once) the relay client config from the instance-level env.
+ * `SMTP_RELAY_SECURE=true` opens an implicit-TLS connection (typically 465);
+ * unset/false connects cleartext and upgrades via STARTTLS (587). Auth
  * credentials are required — this deployment authenticates to the relay.
  */
-function getTransport(): Transporter {
-	if (cachedTransport) return cachedTransport;
+function getClientConfig(): RelayClientConfig {
+	if (cachedConfig) return cachedConfig;
 	const host = getRequired('SMTP_RELAY_HOST');
 	const portRaw = getOptional('SMTP_RELAY_PORT');
 	const port = portRaw ? Number.parseInt(portRaw, 10) : DEFAULT_SMTP_PORT;
@@ -108,84 +139,66 @@ function getTransport(): Transporter {
 		throw new Error(`Invalid SMTP_RELAY_PORT: ${portRaw}`);
 	}
 	const secure = getBoolean('SMTP_RELAY_SECURE');
-	cachedTransport = nodemailer.createTransport(
-		buildRelayTransportOptions({
-			host,
-			port,
-			secure,
-			user: getRequired('SMTP_RELAY_USERNAME'),
-			pass: getRequired('SMTP_RELAY_PASSWORD'),
-		})
-	);
-	return cachedTransport;
+	cachedConfig = buildRelayClientConfig({
+		host,
+		port,
+		secure,
+		user: getRequired('SMTP_RELAY_USERNAME'),
+		pass: getRequired('SMTP_RELAY_PASSWORD'),
+		ehloName: getOptional('EHLO_HOSTNAME') ?? os.hostname(),
+	});
+	return cachedConfig;
 }
 
 /**
- * Does this error look like a timeout (the outer `withTimeout` sentinel, a
- * socket-level `ETIMEDOUT`, or "timed out" wording)? Timeout classification is
- * only AMBIGUOUS when no SMTP reply arrived — see `classifySmtpError`.
- */
-function isTimeoutError(code: string | undefined, message: string): boolean {
-	if (message === SMTP_SEND_TIMEOUT_MESSAGE) return true;
-	const upperCode = (code ?? '').toUpperCase();
-	if (upperCode === 'ETIMEDOUT') return true;
-	const lower = message.toLowerCase();
-	return lower.includes('timed out') || lower.includes('timeout');
-}
-
-/**
- * Does this error represent a mid-session TCP/TLS connection loss (as opposed to
- * an SMTP-level rejection)? Matched by nodemailer's `ESOCKET`/`ECONNECTION`
- * codes and the "connection closed" / "socket hang up" wording.
- */
-function isConnectionLoss(code: string | undefined, message: string): boolean {
-	const upperCode = (code ?? '').toUpperCase();
-	if (upperCode === 'ESOCKET' || upperCode === 'ECONNECTION') return true;
-	const lower = message.toLowerCase();
-	return lower.includes('connection closed') || lower.includes('socket hang up');
-}
-
-/**
- * Catch-side classification for a nodemailer send failure. Pure and exported so
- * the branch logic (which decides retry vs. terminal, and — critically — which
- * failures are double-delivery-ambiguous) is pinned by table-driven tests
- * rather than living only inside the network path.
+ * Catch-side classification for a structured {@link SmtpError} from the SMTP
+ * client. Pure and exported so the branch logic (which decides retry vs.
+ * terminal, and — critically — which failures are double-delivery-ambiguous) is
+ * pinned by table-driven tests rather than living only inside the network path.
  *
- * Order matters:
- *  1. `command === 'CONN'` — TCP connect / greeting failure (incl. the
- *     connection/greeting timeouts). Nothing reached the wire ⇒ retryable.
- *  2. A timeout is AMBIGUOUS only when NO SMTP reply arrived
- *     (`responseCode === undefined`). A numeric reply code is the server's
- *     definitive verdict — even a `421 4.4.2 Error: timeout exceeded` means the
- *     message was rejected, not accepted — so it falls through to the reply-code
- *     path and is classified as the retryable/permanent code it deserves.
- *  3. A `command === 'DATA'` connection loss is AMBIGUOUS: the final dot may
- *     have been sent and the `250` lost — the same on-the-wire ambiguity a
- *     post-dispatch timeout carries. Connection losses at EHLO/MAIL/RCPT stay
- *     retryable because the server discards an incomplete transaction.
- *  4. Everything else falls back to the reply-code + message-text taxonomy.
+ * The rule is entirely structural — no message-text sniffing:
+ *  1. A numeric `replyCode` is the server's DEFINITIVE verdict, authoritative in
+ *     every phase. Even a `421 4.4.2 Error: timeout exceeded` acknowledging DATA
+ *     means the message was REJECTED, not accepted — so it maps through the
+ *     unchanged {@link smtpReplyCodeToErrorCode} table and is the retryable /
+ *     permanent code it deserves.
+ *  2. With no reply, the `phase` decides. `connect`/`greeting`/`ehlo`/`starttls`/
+ *     `mail`/`rcpt` are pre-acceptance: the server discards an incomplete
+ *     transaction, so they are retryable `SERVER_ERROR`. `auth` without a reply
+ *     is an `AUTH_FAILED` credential/handshake problem.
+ *  3. `data`/`data-final` with NO reply is the double-delivery-ambiguous region:
+ *     the terminating dot may be on the wire and the `250` lost, so it is
+ *     `AMBIGUOUS_TIMEOUT` and is NEVER auto-retried.
  */
-export function classifySmtpError(input: {
-	code?: string;
-	command?: string;
-	responseCode?: number;
+export function classifySmtpError(err: {
+	phase: SmtpPhase;
+	replyCode?: number;
 	message: string;
 }): EmailErrorCode {
-	const { code, command, responseCode, message } = input;
-
-	if (command === 'CONN') {
-		return EmailErrorCode.SERVER_ERROR;
+	if (err.replyCode !== undefined) {
+		const byCode = smtpReplyCodeToErrorCode(err.replyCode, err.message);
+		if (byCode !== undefined) return byCode;
 	}
 
-	if (responseCode === undefined && isTimeoutError(code, message)) {
-		return EmailErrorCode.AMBIGUOUS_TIMEOUT;
+	switch (err.phase) {
+		case 'connect':
+		case 'greeting':
+		case 'ehlo':
+		case 'starttls':
+		case 'mail':
+		case 'rcpt':
+			return EmailErrorCode.SERVER_ERROR;
+		case 'auth':
+			return EmailErrorCode.AUTH_FAILED;
+		case 'data':
+		case 'data-final':
+			return EmailErrorCode.AMBIGUOUS_TIMEOUT;
+		default: {
+			// Exhaustive over SmtpPhase; a new phase must be classified explicitly.
+			const _exhaustive: never = err.phase;
+			return _exhaustive;
+		}
 	}
-
-	if (command === 'DATA' && responseCode === undefined && isConnectionLoss(code, message)) {
-		return EmailErrorCode.AMBIGUOUS_TIMEOUT;
-	}
-
-	return categorizeSmtpError(`${code ?? ''}: ${message}`, responseCode);
 }
 
 /**
@@ -208,9 +221,9 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	retryDelays: RETRY_DELAYS_MS,
 
 	async sendEmail(params: EmailSendParams, _extras?: SmtpExtras): Promise<EmailSendAttempt> {
-		let transport: Transporter;
+		let config: RelayClientConfig;
 		try {
-			transport = getTransport();
+			config = getClientConfig();
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			return {
@@ -220,43 +233,79 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 			};
 		}
 
+		// Compose OUTSIDE the wire timeout: composition is pure and local (no
+		// socket), so a failure here is a terminal, unambiguous local error —
+		// nothing ever reached the relay.
+		let composed: ReturnType<typeof composeMessage>;
 		try {
-			const info = await withTimeout(
-				transport.sendMail({
-					from: params.from,
-					to: params.to,
-					subject: params.subject,
-					html: params.html,
-					text: params.text,
-					replyTo: params.replyTo,
-					headers:
-						params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
-					attachments: params.attachments?.map((a) => ({
-						filename: a.filename,
-						content: a.content,
-						contentType: a.contentType,
-					})),
+			composed = composeMessage({
+				from: params.from,
+				to: [params.to],
+				subject: params.subject,
+				html: params.html,
+				text: params.text,
+				replyTo: params.replyTo,
+				headers:
+					params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
+				attachments: params.attachments?.map((a) => ({
+					filename: a.filename,
+					contentType: a.contentType ?? 'application/octet-stream',
+					isInline: false,
+					data: a.content,
+				})),
+			});
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+			// A composition failure never touched the wire — classify it via the
+			// text taxonomy (envelope/content wording), terminal by default.
+			return {
+				success: false,
+				errorMessage,
+				errorCode: categorizeSmtpError(errorMessage),
+			};
+		}
+
+		try {
+			await withTimeout(
+				sendMessage({
+					connect: config.connect,
+					auth: config.auth,
+					envelope: {
+						from: composed.envelope.from,
+						to: composed.envelope.to,
+						data: composed.raw,
+					},
 				}),
 				SMTP_SEND_TIMEOUT_MS,
 				SMTP_SEND_TIMEOUT_MESSAGE
 			);
 
-			return { success: true, id: info.messageId };
+			return { success: true, id: composed.messageId };
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-			// nodemailer errors carry a string `code` (e.g. `EAUTH`, `ECONNECTION`)
-			// and, for SMTP-level rejections, a numeric `responseCode` (the reply
-			// code). Pull both off defensively — they are untyped on the base Error.
-			const errorObj = error as { code?: unknown; responseCode?: unknown; command?: unknown };
-			const code = typeof errorObj.code === 'string' ? errorObj.code : undefined;
-			const command = typeof errorObj.command === 'string' ? errorObj.command : undefined;
-			const responseCode =
-				typeof errorObj.responseCode === 'number' ? errorObj.responseCode : undefined;
 
+			// A structured SmtpError carries the protocol phase + reply code — the
+			// only inputs the retry-vs-terminal decision is allowed to read.
+			if (isSmtpError(error)) {
+				return {
+					success: false,
+					errorMessage,
+					errorCode: classifySmtpError({
+						phase: error.phase,
+						replyCode: error.replyCode,
+						message: errorMessage,
+					}),
+				};
+			}
+
+			// Anything else escaping the send — the outer `withTimeout` sentinel, or
+			// an unexpected throw — happened somewhere in the send with no structured
+			// phase to prove it was pre-acceptance. The message MAY have been
+			// delivered, so treat it as ambiguous and TERMINAL (never auto-retry).
 			return {
 				success: false,
 				errorMessage,
-				errorCode: classifySmtpError({ code, command, responseCode, message: errorMessage }),
+				errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
 			};
 		}
 	},
@@ -271,9 +320,10 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
  * code). When a numeric SMTP reply code is present it is authoritative (note:
  * unlike HTTP, an SMTP 5xx is a PERMANENT reject, not a retryable server error —
  * so this maps reply codes directly rather than through the shared
- * `httpStatusToErrorCode`). Otherwise it falls back to nodemailer's string
- * `code` + message text. Kept standalone (and reused by `classifySmtpError`) so
- * both the module method and the catch-side classifier share one taxonomy.
+ * `httpStatusToErrorCode`). Otherwise it falls back to the string `code` +
+ * message text. Kept standalone (and consumed by the retry loop's
+ * `categorizeError` + the compose-failure path) so the whole module shares one
+ * taxonomy.
  */
 export function categorizeSmtpError(message: string, smtpReplyCode?: number): EmailErrorCode {
 	if (smtpReplyCode !== undefined) {
@@ -288,8 +338,7 @@ export function categorizeSmtpError(message: string, smtpReplyCode?: number): Em
 	if (mentionsRateLimit(lower)) {
 		return EmailErrorCode.RATE_LIMIT;
 	}
-	// nodemailer transport/connection failures — never reached acceptance, so
-	// safe to retry.
+	// Transport/connection failures — never reached acceptance, so safe to retry.
 	if (
 		lower.includes('econnection') ||
 		lower.includes('econnrefused') ||
