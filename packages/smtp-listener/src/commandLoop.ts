@@ -1,24 +1,23 @@
 /**
- * The SMTP command loop: a byte-oriented reader over a raw `net` socket plus the
- * MAIL / RCPT / DATA / RSET / NOOP / QUIT (+ HELO/EHLO/VRFY) state machine.
+ * The SMTP command loop: the MAIL / RCPT / DATA / RSET / NOOP / QUIT / STARTTLS
+ * / AUTH (+ HELO/EHLO/VRFY) state machine over a byte-oriented socket reader.
  *
- * No TLS and no AUTH live here — L2 layers those on. The loop is written against
- * a plain duplex socket so the same machine runs over `net.Socket` and (later)
- * `tls.TLSSocket`. DATA is bounded by {@link ByteBudget} (D5) and dot-decoded by
- * {@link dotDecode}; every stall is closed by the socket idle timeout.
+ * The loop is written against a plain duplex socket so the same machine runs
+ * over `net.Socket` and `tls.TLSSocket`; a STARTTLS upgrade rebinds the same
+ * connection to TLS mid-loop and performs a full RFC 3207 state reset. DATA is
+ * bounded by {@link ByteBudget} (D5) and dot-decoded by {@link dotDecode}; the
+ * wire reader and command parsers live in {@link module:reader}; every stall is
+ * closed by the socket idle timeout.
  */
 
 import type { Socket } from 'node:net';
 import { ByteBudget } from './budget.js';
 import { dotDecode } from './dotDecode.js';
 import { Reply, replyBytes, SmtpReplyError } from './reply.js';
-import type {
-	SmtpAddress,
-	SmtpHandlerResult,
-	SmtpListenerOptions,
-	SmtpReply,
-	SmtpSession,
-} from './types.js';
+import { performAuth, type SmtpAuthConfig } from './auth.js';
+import { upgradeTls, type ResolvedTlsConfig } from './tls.js';
+import { SmtpCommandReader, parseAddressCommand, parseCommand } from './reader.js';
+import type { SmtpHandlerResult, SmtpListenerOptions, SmtpReply, SmtpSession } from './types.js';
 
 /** Fully-resolved listener configuration (defaults applied). */
 export interface ResolvedListenerConfig<S, T> {
@@ -31,164 +30,13 @@ export interface ResolvedListenerConfig<S, T> {
 	maxBadCommands: number;
 	commandMs: number;
 	dataMs: number;
+	/** Resolved TLS material, present when the listener can speak TLS. */
+	tls?: ResolvedTlsConfig;
+	/** Whether the accepted socket is already TLS (implicit-TLS listener). */
+	implicitTls: boolean;
+	/** SASL AUTH configuration, present when the listener advertises AUTH. */
+	auth?: SmtpAuthConfig<S, T>;
 	opts: SmtpListenerOptions<S, T>;
-}
-
-const CR = 0x0d;
-const LF = 0x0a;
-const EMPTY = Buffer.alloc(0);
-const TERMINATOR = Buffer.from('\r\n.\r\n');
-
-/** Thrown internally when a command line exceeds the configured cap. */
-class LineTooLongError extends Error {}
-
-/**
- * Byte-oriented reader over a socket's async-iterable chunks. Buffers exactly
- * one chunk of look-ahead; never accumulates unboundedly. Exposes CRLF command
- * lines and a budgeted, terminator-aware DATA reader.
- */
-export class SmtpCommandReader {
-	private buf: Buffer = EMPTY;
-	private readonly iter: AsyncIterator<Buffer>;
-	private ended = false;
-
-	constructor(source: AsyncIterable<Buffer>) {
-		this.iter = source[Symbol.asyncIterator]() as AsyncIterator<Buffer>;
-	}
-
-	private async pull(): Promise<boolean> {
-		if (this.ended) return false;
-		try {
-			const next = await this.iter.next();
-			if (next.done || next.value === undefined) {
-				this.ended = true;
-				return false;
-			}
-			const chunk = next.value;
-			this.buf = this.buf.length > 0 ? Buffer.concat([this.buf, chunk]) : chunk;
-			return true;
-		} catch {
-			this.ended = true;
-			return false;
-		}
-	}
-
-	/**
-	 * Read one CRLF-terminated command line, WITHOUT the trailing CRLF. Returns
-	 * `null` on EOF. Throws {@link LineTooLongError} if the line exceeds
-	 * `maxBytes` before a terminator arrives (flood / slowloris bound).
-	 */
-	async readCommandLine(maxBytes: number): Promise<Buffer | null> {
-		for (;;) {
-			const lf = this.buf.indexOf(LF);
-			if (lf !== -1) {
-				const hasCr = lf > 0 && this.buf[lf - 1] === CR;
-				const end = hasCr ? lf - 1 : lf;
-				const line = this.buf.subarray(0, end);
-				this.buf = this.buf.subarray(lf + 1);
-				return line;
-			}
-			if (this.buf.length > maxBytes) {
-				throw new LineTooLongError();
-			}
-			if (!(await this.pull())) {
-				// EOF. Any residual bytes are an unterminated command fragment
-				// (SMTP commands require CRLF); drop it rather than executing a
-				// non-conformant partial line.
-				this.buf = EMPTY;
-				return null;
-			}
-		}
-	}
-
-	/**
-	 * Read the DATA payload, feeding raw (still dot-stuffed) body bytes through
-	 * `budget` and stopping at the `<CRLF>.<CRLF>` terminator. A leading
-	 * `.<CRLF>` (empty message) is handled via a virtual CRLF sentinel so both
-	 * cases share one search. Any bytes after the terminator (pipelined next
-	 * command) are pushed back for the following {@link readCommandLine}.
-	 *
-	 *  - `ok`     — terminator reached within budget; `budget.result()` is the body.
-	 *  - `over`   — terminator reached but the budget was crossed (reply 552).
-	 *  - `abort`  — the abort ceiling was crossed; caller must destroy the socket.
-	 *  - `closed` — EOF before any terminator (peer hung up mid-DATA).
-	 */
-	async readDataBody(budget: ByteBudget): Promise<'ok' | 'over' | 'abort' | 'closed'> {
-		// `pending` holds not-yet-flushed trailing bytes that might begin a
-		// terminator. It starts as a sentinel CRLF (never emitted) so a message
-		// that is only `.<CRLF>` is recognized as an empty body.
-		let pending: Buffer = Buffer.from('\r\n');
-		let sentinelActive = true;
-		for (;;) {
-			if (this.buf.length === 0 && !(await this.pull())) {
-				return 'closed';
-			}
-			const chunk = this.buf;
-			this.buf = EMPTY;
-			const window = pending.length > 0 ? Buffer.concat([pending, chunk]) : chunk;
-			const start = sentinelActive ? 2 : 0;
-			const idx = window.indexOf(TERMINATOR);
-			if (idx !== -1) {
-				const body = window.subarray(start, idx + 2); // include closing CRLF of last line
-				const verdict = body.length > 0 ? budget.push(body) : 'ok';
-				const after = window.subarray(idx + TERMINATOR.length);
-				if (after.length > 0) this.buf = after;
-				if (verdict === 'abort') return 'abort';
-				return budget.isExceeded ? 'over' : 'ok';
-			}
-			// No terminator yet: flush all but the last (TERMINATOR.length - 1)
-			// bytes, which could be a partial terminator spanning the next chunk.
-			const keep = Math.min(TERMINATOR.length - 1, window.length - start);
-			const flushEnd = window.length - keep;
-			if (flushEnd > start) {
-				const emit = window.subarray(start, flushEnd);
-				const verdict = budget.push(emit);
-				sentinelActive = false;
-				if (verdict === 'abort') return 'abort';
-				pending = window.subarray(flushEnd);
-			} else {
-				pending = window;
-			}
-		}
-	}
-}
-
-/** Split a command line into an uppercased verb and its (trimmed) argument. */
-export function parseCommand(line: string): { verb: string; rest: string } {
-	const sp = line.indexOf(' ');
-	if (sp === -1) return { verb: line.toUpperCase(), rest: '' };
-	return { verb: line.slice(0, sp).toUpperCase(), rest: line.slice(sp + 1).trim() };
-}
-
-/**
- * Parse a `FROM:<addr> PARAM=VALUE ...` / `TO:<addr> ...` argument. Returns
- * `null` on a syntax error (missing/broken angle-addr). A null reverse-path
- * `<>` yields `address: ''`.
- */
-export function parseAddressCommand(rest: string, keyword: 'FROM' | 'TO'): SmtpAddress | null {
-	const upper = rest.toUpperCase();
-	const prefix = `${keyword}:`;
-	if (!upper.startsWith(prefix)) return null;
-	let idx = prefix.length;
-	// Optional whitespace between the colon and the angle-addr is tolerated.
-	while (idx < rest.length && rest[idx] === ' ') idx++;
-	if (rest[idx] !== '<') return null;
-	const close = rest.indexOf('>', idx);
-	if (close === -1) return null;
-	const address = rest.slice(idx + 1, close);
-	const params: Record<string, string> = {};
-	const tail = rest.slice(close + 1).trim();
-	if (tail.length > 0) {
-		for (const token of tail.split(/\s+/)) {
-			const eq = token.indexOf('=');
-			if (eq === -1) {
-				params[token.toUpperCase()] = '';
-			} else {
-				params[token.slice(0, eq).toUpperCase()] = token.slice(eq + 1);
-			}
-		}
-	}
-	return { address, params };
 }
 
 /** Invoke a handler, normalizing its accept/reject outcome. */
@@ -222,19 +70,25 @@ export async function runCommandLoop<S, T>(
 	config: ResolvedListenerConfig<S, T>
 ): Promise<void> {
 	const { opts } = config;
+	// `activeSocket` and `reader` are reassigned by a STARTTLS upgrade: after the
+	// handshake the loop continues over the TLS socket with a FRESH reader (any
+	// bytes buffered on the plaintext socket are discarded — RFC 3207).
+	let activeSocket: Socket = socket;
 	const write = (reply: SmtpReply): void => {
-		if (!socket.writableEnded && !socket.destroyed) socket.write(replyBytes(reply));
+		if (!activeSocket.writableEnded && !activeSocket.destroyed) {
+			activeSocket.write(replyBytes(reply));
+		}
 	};
 	// Emit one final reply and tear the socket down, but only AFTER the reply has
 	// flushed to the kernel — a bare `destroy()` right after `write()` can drop
 	// the reply. Destroying also ends the read side, unblocking the command loop.
 	const writeThenDestroy = (reply: SmtpReply): void => {
-		if (socket.destroyed || socket.writableEnded) {
-			if (!socket.destroyed) socket.destroy();
+		if (activeSocket.destroyed || activeSocket.writableEnded) {
+			if (!activeSocket.destroyed) activeSocket.destroy();
 			return;
 		}
-		socket.write(replyBytes(reply), () => {
-			if (!socket.destroyed) socket.destroy();
+		activeSocket.write(replyBytes(reply), () => {
+			if (!activeSocket.destroyed) activeSocket.destroy();
 		});
 	};
 	const resetTransaction = (): void => {
@@ -244,13 +98,17 @@ export async function runCommandLoop<S, T>(
 	};
 
 	// One idle timer governs every stall. Its duration is switched between the
-	// command phase and the DATA phase; on fire we emit 421 and destroy.
-	socket.setTimeout(config.commandMs);
-	socket.on('timeout', () => {
-		writeThenDestroy(Reply.shuttingDown(config.hostname));
-	});
+	// command phase and the DATA phase; on fire we emit 421 and destroy. The
+	// handler is re-armed on the TLS socket after a STARTTLS upgrade.
+	const armTimeout = (sock: Socket): void => {
+		sock.setTimeout(config.commandMs);
+		sock.on('timeout', () => {
+			writeThenDestroy(Reply.shuttingDown(config.hostname));
+		});
+	};
+	armTimeout(activeSocket);
 
-	const reader = new SmtpCommandReader(socket);
+	let reader = new SmtpCommandReader(activeSocket);
 	let badCommands = 0;
 
 	// Greeting + optional connect hook. onConnect takes only the session, so it
@@ -262,12 +120,12 @@ export async function runCommandLoop<S, T>(
 		: { accept: true as const };
 	if (!connect.accept) {
 		if (connect.reply) write(connect.reply);
-		socket.end();
+		activeSocket.end();
 		return;
 	}
 
 	for (;;) {
-		socket.setTimeout(config.commandMs);
+		activeSocket.setTimeout(config.commandMs);
 		let line: Buffer | null;
 		try {
 			line = await reader.readCommandLine(config.maxCommandBytes);
@@ -281,7 +139,7 @@ export async function runCommandLoop<S, T>(
 
 		if (verb === 'QUIT') {
 			write(Reply.bye(config.hostname));
-			socket.end();
+			activeSocket.end();
 			return;
 		}
 		if (verb === 'NOOP') {
@@ -309,7 +167,10 @@ export async function runCommandLoop<S, T>(
 					write(hello.reply);
 				} else if (verb === 'EHLO') {
 					write(
-						Reply.helloOk([`${config.hostname} greets ${rest || 'you'}`, ...ehloLines(config)])
+						Reply.helloOk([
+							`${config.hostname} greets ${rest || 'you'}`,
+							...ehloLines(config, session),
+						])
 					);
 				} else {
 					write(Reply.helloOk([`${config.hostname} at your service`]));
@@ -373,13 +234,13 @@ export async function runCommandLoop<S, T>(
 				continue;
 			}
 			write(Reply.startMailInput());
-			socket.setTimeout(config.dataMs);
+			activeSocket.setTimeout(config.dataMs);
 			const budget = new ByteBudget(config.maxMessageBytes, config.abortFactor);
 			const outcome = await reader.readDataBody(budget);
-			socket.setTimeout(config.commandMs);
+			activeSocket.setTimeout(config.commandMs);
 			if (outcome === 'closed') return;
 			if (outcome === 'abort') {
-				socket.destroy();
+				activeSocket.destroy();
 				return;
 			}
 			if (outcome === 'over') {
@@ -405,7 +266,102 @@ export async function runCommandLoop<S, T>(
 			write({ code: 214, enhanced: '2.0.0', text: 'See RFC 5321' });
 			continue;
 		}
-		// STARTTLS / AUTH are added in L2; everything else is unimplemented.
+		if (verb === 'STARTTLS') {
+			// Advertised only when TLS is available and the channel is not already
+			// secure; refuse otherwise so the capability list and behavior agree.
+			if (!config.tls || session.secure) {
+				write(session.secure ? Reply.badSequence('TLS already active') : Reply.notImplemented());
+				if (!session.secure) {
+					badCommands++;
+					if (badCommands >= config.maxBadCommands) {
+						writeThenDestroy(Reply.tooManyErrors());
+						return;
+					}
+				}
+				continue;
+			}
+			// Capture the narrowed TLS config before any `await` so narrowing on the
+			// mutable `config.tls` property cannot be invalidated across the calls.
+			const tlsConfig = config.tls;
+			// 220, then the client begins the TLS handshake on THIS socket.
+			write(Reply.tlsReady());
+			// Detach the plaintext reader from the socket (without destroying it)
+			// so TLS can take over the same connection cleanly.
+			await reader.release();
+			let tlsSocket: Socket;
+			try {
+				tlsSocket = await upgradeTls(activeSocket, tlsConfig);
+			} catch (err) {
+				opts.onError?.(err instanceof Error ? err : new Error(String(err)));
+				if (!activeSocket.destroyed) activeSocket.destroy();
+				return;
+			}
+			// FULL STATE RESET (RFC 3207 §4.2 / §6): everything learned before the
+			// upgrade is discarded, including any pending MAIL FROM, the greeting,
+			// and any prior AUTH. A fresh reader over the TLS socket drops any
+			// plaintext bytes the peer pipelined behind STARTTLS (injection guard).
+			resetTransaction();
+			session.clientHostname = undefined;
+			session.esmtp = false;
+			session.authenticated = false;
+			session.user = undefined;
+			session.secure = true;
+			// Silence the plaintext socket's idle timer; the TLS socket owns it now.
+			activeSocket.setTimeout(0);
+			activeSocket = tlsSocket;
+			activeSocket.setNoDelay(true);
+			activeSocket.on('error', (e: Error) => opts.onError?.(e));
+			armTimeout(activeSocket);
+			reader = new SmtpCommandReader(activeSocket);
+			badCommands = 0;
+			continue;
+		}
+		if (verb === 'AUTH') {
+			if (!config.auth) {
+				write(Reply.notImplemented());
+				badCommands++;
+				if (badCommands >= config.maxBadCommands) {
+					writeThenDestroy(Reply.tooManyErrors());
+					return;
+				}
+				continue;
+			}
+			if (config.auth.requireTls && !session.secure) {
+				// AUTH before TLS is refused with a distinct encryption-required
+				// reply — this is not an auth oracle (it reveals nothing about any
+				// credential), it enforces RFC 4954 §4.
+				write(Reply.encryptionRequired());
+				continue;
+			}
+			if (session.authenticated) {
+				write(Reply.badSequence('Already authenticated'));
+				continue;
+			}
+			const sp = rest.indexOf(' ');
+			const mechanism = (sp === -1 ? rest : rest.slice(0, sp)).toUpperCase();
+			const initialResponse = sp === -1 ? null : rest.slice(sp + 1).trim();
+			const result = await performAuth({
+				mechanism,
+				initialResponse,
+				session,
+				auth: config.auth,
+				write,
+				readLine: async () => {
+					const l = await reader.readCommandLine(config.maxCommandBytes);
+					return l === null ? null : l.toString('utf8');
+				},
+			});
+			if (result === 'closed') return;
+			// One byte-identical reply per outcome — no auth oracle (D6).
+			if (result === 'ok') {
+				badCommands = 0;
+				write(Reply.authOk());
+			} else {
+				write(Reply.authFailed());
+			}
+			continue;
+		}
+		// Everything else is unimplemented.
 		write(Reply.notImplemented());
 		badCommands++;
 		if (badCommands >= config.maxBadCommands) {
@@ -415,7 +371,25 @@ export async function runCommandLoop<S, T>(
 	}
 }
 
-/** EHLO capability lines: caller extensions plus the derived SIZE advertisement. */
-function ehloLines<S, T>(config: ResolvedListenerConfig<S, T>): string[] {
-	return [...config.extensions, `SIZE ${config.maxMessageBytes}`];
+/**
+ * EHLO capability lines: caller extensions, then STARTTLS / AUTH (gated on the
+ * live TLS + auth posture so the list FLIPS across a STARTTLS upgrade), then the
+ * derived SIZE advertisement.
+ *
+ *  - STARTTLS is advertised only while TLS is available AND the channel is still
+ *    plaintext — it disappears once `session.secure` is true.
+ *  - AUTH is advertised only when the channel is eligible (already secure, or the
+ *    listener does not require TLS for AUTH) — it appears after the upgrade.
+ */
+function ehloLines<S, T>(
+	config: ResolvedListenerConfig<S, T>,
+	session: SmtpSession<S, T>
+): string[] {
+	const lines = [...config.extensions];
+	if (config.tls && !session.secure) lines.push('STARTTLS');
+	if (config.auth && (session.secure || !config.auth.requireTls)) {
+		lines.push(`AUTH ${config.auth.mechanisms.join(' ')}`);
+	}
+	lines.push(`SIZE ${config.maxMessageBytes}`);
+	return lines;
 }

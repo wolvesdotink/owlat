@@ -9,6 +9,7 @@
  */
 
 import { createServer, type Server, type Socket } from 'node:net';
+import { createServer as createTlsServer } from 'node:tls';
 import { handleConnection, resolveConfig } from './session.js';
 import type { SmtpListenerOptions } from './types.js';
 
@@ -32,9 +33,18 @@ export function createSmtpListener<S = unknown, T = unknown>(
 	opts: SmtpListenerOptions<S, T>
 ): SmtpListener {
 	const config = resolveConfig<S, T>(opts);
-	const server = createServer({ pauseOnConnect: false }, (socket: Socket) => {
-		handleConnection(socket, config);
-	});
+	// Implicit TLS (port 465): the whole connection is wrapped in TLS before the
+	// banner, so the accepted socket is already a handshaken `tls.TLSSocket` and
+	// the session starts `secure`. Otherwise a plaintext `net` server that may
+	// upgrade later via STARTTLS.
+	const server: Server =
+		config.implicitTls && config.tls
+			? createTlsServer(config.tls.options, (socket: Socket) => {
+					handleConnection(socket, config, true);
+				})
+			: createServer({ pauseOnConnect: false }, (socket: Socket) => {
+					handleConnection(socket, config, false);
+				});
 	server.on('error', (err: Error) => {
 		opts.onError?.(err);
 	});
