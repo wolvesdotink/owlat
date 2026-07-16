@@ -389,6 +389,16 @@
         "sanitize-html",
       ],
     },
+    "packages/smtp-client": {
+      "name": "@owlat/smtp-client",
+      "version": "0.3.0",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/ui": {
       "name": "@owlat/ui",
       "devDependencies": {
@@ -988,6 +998,8 @@
     "@owlat/setup-cli": ["@owlat/setup-cli@workspace:apps/setup-cli"],
 
     "@owlat/shared": ["@owlat/shared@workspace:packages/shared"],
+
+    "@owlat/smtp-client": ["@owlat/smtp-client@workspace:packages/smtp-client"],
 
     "@owlat/ui": ["@owlat/ui@workspace:packages/ui"],
 
