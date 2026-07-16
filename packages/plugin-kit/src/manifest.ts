@@ -11,6 +11,10 @@ import { validateAutonomyGateContributions } from './autonomyGateManifest';
 import { PLUGIN_DRAFT_STRATEGY_CAPABILITY } from './draftStrategy';
 import { validateDraftStrategyContributions } from './draftStrategyManifest';
 import { validateAgentStepContributions } from './agentStepManifest';
+import { PLUGIN_IMPORT_PROVIDER_CAPABILITY } from './importProvider';
+import { validateImportProviderContributions } from './importProviderManifest';
+import { PLUGIN_WEBHOOK_EVENT_CAPABILITY } from './webhookEvent';
+import { validateWebhookEventContributions } from './webhookEventManifest';
 import { isPluginContributionKind, type PluginContributions } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { snapshotManifestInput } from './manifestSnapshot';
@@ -307,6 +311,16 @@ const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 		capability: PLUGIN_AUTOMATION_CONDITION_CAPABILITY,
 		noun: 'automation conditions',
 	},
+	{
+		bucket: 'webhookEvents',
+		capability: PLUGIN_WEBHOOK_EVENT_CAPABILITY,
+		noun: 'webhook events',
+	},
+	{
+		bucket: 'importProviders',
+		capability: PLUGIN_IMPORT_PROVIDER_CAPABILITY,
+		noun: 'import providers',
+	},
 ] as const;
 
 type ContributionBucket = (typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[number]['bucket'];
@@ -362,6 +376,8 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 			) {
 				validateAutomationContributions(key, items, issues);
 			}
+			if (key === 'webhookEvents' && items) validateWebhookEventContributions(items, issues);
+			if (key === 'importProviders' && items) validateImportProviderContributions(items, issues);
 		}
 	}
 }
