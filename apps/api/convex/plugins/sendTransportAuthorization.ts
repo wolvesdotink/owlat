@@ -30,8 +30,9 @@ function matchingPluginScope(
 
 /** Rechecks flag, grant, environment, and singleton scope just before an attempt. */
 export const authorizeAttempt = internalMutation({
-	args: { pluginId: v.string(), providerKind: v.string() },
+	args: { pluginId: v.string(), providerKind: v.string(), priorAttempts: v.number() },
 	handler: async (ctx, args): Promise<boolean> => {
+		if (!Number.isSafeInteger(args.priorAttempts) || args.priorAttempts < 0) return false;
 		const organizationId = await getSingletonOrganizationId(ctx).catch(() => null);
 		if (!organizationId) return false;
 		const auditScope = matchingPluginScope(organizationId, args.pluginId, args.providerKind);
@@ -43,7 +44,8 @@ export const authorizeAttempt = internalMutation({
 		);
 		if (scope) return true;
 		await recordHostedPluginAudit(ctx, auditScope, 'transport.send', 'denied', {
-			reasonCode: 'access_or_budget_denied',
+			attempts: args.priorAttempts,
+			reasonCode: 'access_denied',
 		});
 		return false;
 	},
