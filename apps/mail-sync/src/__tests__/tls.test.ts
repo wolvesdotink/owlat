@@ -127,28 +127,39 @@ describe('isLoopbackHost ⇄ isLocalMailHost agree (worker gate vs backend gate)
 });
 
 describe('smtpTlsOptions', () => {
-	it('forces STARTTLS (requireTLS) for a remote host even when secure=false (587/STARTTLS preset)', () => {
+	it('forces STARTTLS (requireTls) for a remote host even when secure=false (587/STARTTLS preset)', () => {
 		// iCloud / Outlook.com ship smtpPort 587 with isSmtpSecure=false.
 		expect(smtpTlsOptions('smtp.mail.me.com', false)).toEqual({
-			secure: false,
-			requireTLS: true,
+			tlsMode: 'starttls',
+			requireTls: true,
 			tls: { minVersion: 'TLSv1.2' },
 		});
 	});
 
-	it('keeps requireTLS on for a remote host with implicit TLS', () => {
+	it('uses implicit TLS with requireTls on for a remote host with a secure port', () => {
 		expect(smtpTlsOptions('smtp.mail.me.com', true)).toEqual({
-			secure: true,
-			requireTLS: true,
+			tlsMode: 'implicit',
+			requireTls: true,
 			tls: { minVersion: 'TLSv1.2' },
 		});
 	});
 
-	it('allows plaintext to a loopback host (local relay / Proton Bridge)', () => {
-		expect(smtpTlsOptions('127.0.0.1', false)).toEqual({ secure: false, requireTLS: false });
+	// Loopback + insecure keeps nodemailer's old `{ secure:false, requireTLS:false }`
+	// posture: opportunistic STARTTLS — upgrade when the local relay (Proton Bridge)
+	// advertises it, stay cleartext only when it does not. Never forced (requireTls
+	// false), never unconditionally plaintext (`tlsMode: 'none'`).
+	it('uses opportunistic STARTTLS for a loopback host on an insecure port (Proton Bridge)', () => {
+		expect(smtpTlsOptions('127.0.0.1', false)).toEqual({
+			tlsMode: 'starttls',
+			requireTls: false,
+		});
 	});
 
-	// Regression-lock (PR-75 §1): the options handed to nodemailer must never
+	it('uses implicit TLS (never plaintext) to a loopback host on a secure port', () => {
+		expect(smtpTlsOptions('127.0.0.1', true)).toEqual({ tlsMode: 'implicit', requireTls: false });
+	});
+
+	// Regression-lock (PR-75 §1): the options handed to the SMTP client must never
 	// disable certificate verification, on any branch.
 	it('never disables certificate verification on any branch', () => {
 		for (const [host, secure] of [

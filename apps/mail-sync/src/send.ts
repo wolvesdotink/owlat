@@ -11,7 +11,9 @@
  * never crosses the network in the clear regardless of the secure/STARTTLS choice.
  */
 
-import nodemailer from 'nodemailer';
+import os from 'node:os';
+import { sendMessage, verify as verifySmtp } from '@owlat/smtp-client';
+import type { SmtpConnectOptions } from '@owlat/smtp-client';
 import { ImapFlow } from 'imapflow';
 import type { WorkerCredentials } from './convex.js';
 import { mapFolderRole } from './folders.js';
@@ -24,25 +26,65 @@ export interface RecipientResult {
 	error?: string;
 }
 
+/**
+ * The name announced in EHLO to the user's submission server. This replicates
+ * nodemailer's `_getHostname()` byte-for-byte so the cutover changes no observable
+ * EHLO identity: the machine hostname when it is an FQDN, otherwise the
+ * `[127.0.0.1]` fallback (mail-sync ships in Docker, where container hostnames are
+ * dotless hex — a bare non-FQDN token would be rejected by strict submission
+ * servers, e.g. postfix `reject_non_fqdn_helo_hostname`), and a bare IPv4 literal
+ * enclosed in brackets as an address literal (RFC 5321 §4.1.3).
+ */
+function ehloName(): string {
+	let host: string;
+	try {
+		host = os.hostname() || '';
+	} catch {
+		// os.hostname() can throw on some platforms (nodemailer guards this too).
+		host = 'localhost';
+	}
+	// Not an FQDN (no dot) → nodemailer's fallback identity.
+	if (host === '' || !host.includes('.')) {
+		host = '[127.0.0.1]';
+	}
+	// A bare IPv4 literal must be sent as a bracketed address literal.
+	if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+		host = `[${host}]`;
+	}
+	return host;
+}
+
+/**
+ * The shared `@owlat/smtp-client` connect shape for both the live send
+ * (`sendViaExternal`) and the credential probe (`testSmtp`): identical host /
+ * port / EHLO identity / TLS posture. Extracting it keeps the test path
+ * byte-identical to the live path structurally (PR-75 §6), not merely by
+ * assertion.
+ */
+function smtpConnectOptions(host: string, port: number, secure: boolean): SmtpConnectOptions {
+	return {
+		host,
+		port,
+		ehloName: ehloName(),
+		...smtpTlsOptions(host, secure),
+	};
+}
+
 export async function sendViaExternal(
 	creds: WorkerCredentials,
 	params: { from: string; recipients: string[]; raw: Buffer }
 ): Promise<{ recipients: RecipientResult[] }> {
-	const transport = nodemailer.createTransport({
-		host: creds.smtpHost,
-		port: creds.smtpPort,
-		...smtpTlsOptions(creds.smtpHost, creds.isSmtpSecure),
-		auth: { user: creds.smtpUsername, pass: creds.smtpPassword },
+	// The custom envelope keeps the SMTP RCPT set exactly our recipients (including
+	// Bcc), independent of the visible headers. The client collects a per-recipient
+	// RCPT verdict — the authoritative accept/reject signal — and ships the exact
+	// .eml bytes Convex already built.
+	const result = await sendMessage({
+		connect: smtpConnectOptions(creds.smtpHost, creds.smtpPort, creds.isSmtpSecure),
+		auth: { credentials: { username: creds.smtpUsername, password: creds.smtpPassword } },
+		envelope: { from: params.from, to: params.recipients, data: params.raw },
 	});
 
-	const info = await transport.sendMail({
-		// Custom envelope so the SMTP RCPT set is exactly our recipients
-		// (including Bcc), independent of the visible headers.
-		envelope: { from: params.from, to: params.recipients },
-		raw: params.raw,
-	});
-
-	const rejected = new Set((info.rejected ?? []).map((a) => String(a).toLowerCase()));
+	const rejected = new Set(result.rejected.map((v) => v.recipient.toLowerCase()));
 	const recipients: RecipientResult[] = params.recipients.map((address) =>
 		rejected.has(address.toLowerCase())
 			? { address, status: 'bounced', error: 'Rejected by SMTP server' }
@@ -112,14 +154,13 @@ async function testImap(c: ProtocolCreds): Promise<{ ok: boolean; error?: string
 }
 
 async function testSmtp(c: ProtocolCreds): Promise<{ ok: boolean; error?: string }> {
-	const transport = nodemailer.createTransport({
-		host: c.host,
-		port: c.port,
-		...smtpTlsOptions(c.host, c.secure),
-		auth: { user: c.username, pass: c.password },
-	});
 	try {
-		await transport.verify();
+		// verify() drives connect → EHLO → AUTH → QUIT with no message sent, on the
+		// same TLS posture as the live send path.
+		await verifySmtp({
+			connect: smtpConnectOptions(c.host, c.port, c.secure),
+			auth: { credentials: { username: c.username, password: c.password } },
+		});
 		return { ok: true };
 	} catch (err) {
 		return { ok: false, error: err instanceof Error ? err.message : String(err) };

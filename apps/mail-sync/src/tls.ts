@@ -5,10 +5,12 @@
  * it is the standard STARTTLS configuration (iCloud, Outlook.com, many others).
  * We must therefore guarantee the wire is encrypted regardless of whether the
  * server uses implicit TLS or STARTTLS: for any non-loopback host we force a
- * STARTTLS-before-auth upgrade (nodemailer `requireTLS`, imapflow `doSTARTTLS`),
+ * STARTTLS-before-auth upgrade (smtp-client `requireTls`, imapflow `doSTARTTLS`),
  * so the connection FAILS rather than send the mailbox password in the clear.
  * Plaintext is allowed only to a loopback host (a local Proton Bridge / relay).
  */
+
+import type { SmtpTlsMode } from '@owlat/smtp-client';
 
 /**
  * True when `host` is a loopback address — the only host for which an
@@ -36,19 +38,39 @@ export function isLoopbackHost(host: string): boolean {
 const MIN_TLS_VERSION = 'TLSv1.2' as const;
 
 /**
- * nodemailer transport TLS options. `requireTLS` forces a STARTTLS upgrade on a
- * non-secure connection and aborts the send if it cannot be encrypted. Harmless
- * when `secure: true` (already implicit TLS). For a non-loopback host we also pin
- * the TLS floor at 1.2; certificate verification is left at nodemailer's secure
- * default (`tls.rejectUnauthorized` is never set to false). Disabled only for
- * loopback.
+ * The TLS-bearing subset of an `@owlat/smtp-client` connect option set: the
+ * negotiation shape (`tlsMode`), the fail-closed floor flag (`requireTls`), and
+ * the secured-leg TLS parameters. `smtpTlsOptions` returns exactly this so the
+ * send / verify call sites merge it with `host` / `port` / `ehloName`.
  */
-export function smtpTlsOptions(
-	host: string,
-	secure: boolean,
-): { secure: boolean; requireTLS: boolean; tls?: { minVersion: typeof MIN_TLS_VERSION } } {
-	if (isLoopbackHost(host)) return { secure, requireTLS: false };
-	return { secure, requireTLS: true, tls: { minVersion: MIN_TLS_VERSION } };
+export interface SmtpClientTlsOptions {
+	tlsMode: SmtpTlsMode;
+	requireTls: boolean;
+	tls?: { minVersion: typeof MIN_TLS_VERSION };
+}
+
+/**
+ * `@owlat/smtp-client` connect TLS options. For a non-loopback host the wire MUST
+ * be encrypted: `secure` picks implicit TLS (465) vs. a forced STARTTLS upgrade
+ * (587/25), and `requireTls: true` makes the client fail closed rather than send
+ * credentials over cleartext if STARTTLS is not offered. The TLS floor is pinned
+ * at 1.2; certificate verification is left at the client's secure default
+ * (`rejectUnauthorized` is never set to false). For a loopback relay (Proton
+ * Bridge) TLS is not forced: an insecure loopback port uses opportunistic
+ * STARTTLS (`tlsMode: 'starttls'` + `requireTls: false`) — it upgrades when the
+ * relay advertises STARTTLS and stays cleartext only when it does not, exactly as
+ * the previous nodemailer `{ secure: false, requireTLS: false }` config did — and
+ * a loopback host that asked for a secure port still gets implicit TLS.
+ */
+export function smtpTlsOptions(host: string, secure: boolean): SmtpClientTlsOptions {
+	if (isLoopbackHost(host)) {
+		return { tlsMode: secure ? 'implicit' : 'starttls', requireTls: false };
+	}
+	return {
+		tlsMode: secure ? 'implicit' : 'starttls',
+		requireTls: true,
+		tls: { minVersion: MIN_TLS_VERSION },
+	};
 }
 
 /**
@@ -61,7 +83,7 @@ export function smtpTlsOptions(
  */
 export function imapTlsOptions(
 	host: string,
-	secure: boolean,
+	secure: boolean
 ): { secure: boolean; doSTARTTLS?: true; tls?: { minVersion: typeof MIN_TLS_VERSION } } {
 	if (isLoopbackHost(host)) return { secure };
 	if (!secure) return { secure, doSTARTTLS: true, tls: { minVersion: MIN_TLS_VERSION } };
