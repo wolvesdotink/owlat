@@ -31,6 +31,35 @@ afterEach(() => {
 });
 
 /**
+ * Buffer the socket's input, split it on `\n`, strip a trailing `\r`, and answer
+ * each complete command line from `handle`. Returning `null` from `handle` drops
+ * the connection without replying. Shared by every raw/TLS test server below so
+ * the read loop lives in exactly one place.
+ */
+function attachLineResponder(
+	socket: net.Socket,
+	handle: (command: string, socket: net.Socket) => string | null
+): void {
+	let buffer = '';
+	socket.on('data', (chunk) => {
+		buffer += chunk.toString('utf8');
+		let nl = buffer.indexOf('\n');
+		while (nl !== -1) {
+			const line = buffer.slice(0, nl).replace(/\r$/, '');
+			buffer = buffer.slice(nl + 1);
+			const reply = handle(line, socket);
+			if (reply === null) {
+				socket.destroy();
+				return;
+			}
+			socket.write(reply);
+			nl = buffer.indexOf('\n');
+		}
+	});
+	socket.on('error', () => {});
+}
+
+/**
  * A raw cleartext SMTP responder. `greeting` is written on connect; each
  * received command line is answered from `handle` (default: 250 OK). Returning
  * `null` from `handle` drops the connection without replying.
@@ -41,23 +70,9 @@ function startRawServer(config: {
 }): Promise<number> {
 	const server = net.createServer((socket) => {
 		socket.write(config.greeting);
-		let buffer = '';
-		socket.on('data', (chunk) => {
-			buffer += chunk.toString('utf8');
-			let nl = buffer.indexOf('\n');
-			while (nl !== -1) {
-				const line = buffer.slice(0, nl).replace(/\r$/, '');
-				buffer = buffer.slice(nl + 1);
-				const reply = config.handle ? config.handle(line, socket) : '250 OK\r\n';
-				if (reply === null) {
-					socket.destroy();
-					return;
-				}
-				socket.write(reply);
-				nl = buffer.indexOf('\n');
-			}
-		});
-		socket.on('error', () => {});
+		attachLineResponder(socket, (line, s) =>
+			config.handle ? config.handle(line, s) : '250 OK\r\n'
+		);
 	});
 	server.on('error', () => {});
 	cleanups.push(() => server.close());
@@ -99,18 +114,7 @@ const EHLO_REPLY = '250-mx.test\r\n250-PIPELINING\r\n250-SIZE 10485760\r\n250 SM
 function startTlsSmtpServer(cert: string, key: string): Promise<number> {
 	const server = tls.createServer({ cert, key, minVersion: 'TLSv1.2' }, (socket) => {
 		socket.write('220 mx.test ready\r\n');
-		let buffer = '';
-		socket.on('data', (chunk) => {
-			buffer += chunk.toString('utf8');
-			let nl = buffer.indexOf('\n');
-			while (nl !== -1) {
-				const line = buffer.slice(0, nl).replace(/\r$/, '');
-				buffer = buffer.slice(nl + 1);
-				socket.write(line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n');
-				nl = buffer.indexOf('\n');
-			}
-		});
-		socket.on('error', () => {});
+		attachLineResponder(socket, (line) => (line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n'));
 	});
 	server.on('tlsClientError', () => {});
 	server.on('error', () => {});
@@ -214,6 +218,42 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		}
 		// The first read stays alive and eventually times out on its own.
 		await expect(first).rejects.toThrow();
+	});
+
+	it('command() refuses a second command BEFORE writing while a reply is awaited', async () => {
+		const received: string[] = [];
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => {
+				received.push(line);
+				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		cleanups.push(() => conn.close());
+		const receivedBeforeGuard = received.length;
+		// Park a waiter so the reader is busy; the server sends nothing more.
+		const parked = conn.readReply('mail', 1_000);
+		let caught: unknown;
+		try {
+			await conn.command('NOOP', 'rcpt');
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('rcpt');
+		}
+		// The refused command must never have reached the wire. Give the loopback a
+		// tick to have delivered anything that was (wrongly) written.
+		await new Promise((r) => setTimeout(r, 50));
+		expect(received.length).toBe(receivedBeforeGuard);
+		await expect(parked).rejects.toThrow();
 	});
 
 	it('classifies a self-signed cert as cert-untrusted', async () => {
