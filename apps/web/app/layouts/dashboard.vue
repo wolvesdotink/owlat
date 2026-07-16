@@ -480,6 +480,7 @@ const sidebarDesktopClass = computed(() => {
 						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 text-brand" />
 					</div>
 					<span v-if="!isCollapsed" class="text-lg font-semibold text-text-primary"> Owlat </span>
+					<UiBadge v-if="!isCollapsed" size="sm">Alpha</UiBadge>
 				</NuxtLink>
 
 				<!-- Mobile close button -->
