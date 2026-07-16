@@ -273,6 +273,7 @@ const HOSTED_PLUGIN_OPERATION_LABELS = {
 	'agent.step': 'Agent pipeline step',
 	'automation.step': 'Automation step',
 	'autonomy.gate': 'Autonomy gate',
+	'cron.run': 'Scheduled cron run',
 	'draft.strategy': 'Draft strategy',
 	'import.provider': 'Import provider',
 	'llm.generate': 'LLM generation',
