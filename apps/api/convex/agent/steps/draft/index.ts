@@ -133,12 +133,6 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		// email body): a clearly-trivial, high-confidence, low-stakes message may
 		// draft on the fast tier when complexity routing is enabled. FAIL-SOFT:
 		// routing off / any ambiguity keeps the capable tier — today's behaviour.
-		const model = await resolveLanguageModelForClassifiedDraft(ctx, {
-			category: safeCategory,
-			intent: safeIntent,
-			priority: safePriority,
-			confidence: input.classification.confidence,
-		});
 		// Bounded, contact-scoped recall tool — lets the model FETCH a missing fact
 		// mid-draft instead of hallucinating it. Same isolation gate as the context
 		// step: scope to the inbound's contact, or org-general-only when there's no
@@ -180,7 +174,13 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			ctx,
 			{
 				surface: 'organization',
-				model,
+				resolveModel: () =>
+					resolveLanguageModelForClassifiedDraft(ctx, {
+						category: safeCategory,
+						intent: safeIntent,
+						priority: safePriority,
+						confidence: input.classification.confidence,
+					}),
 				audience: 'an organization',
 				styleReference: "the organization's",
 				context: input.context,

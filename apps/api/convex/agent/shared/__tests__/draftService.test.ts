@@ -27,6 +27,7 @@ const runLlmTextWithToolsMock = vi.fn(async (_a: unknown) => ({
 	tokenUsage: undefined,
 	modelUsed: 'mock-model',
 }));
+const resolveDefaultModelMock = vi.fn(async () => ({}) as never);
 const runLlmObjectMock = vi.fn(async (_a: unknown) => ({
 	object: { score: 0.72, complete: true, grounded: true, flags: [] },
 	tokenUsage: undefined,
@@ -72,7 +73,7 @@ const fakeCtx = {} as never;
 function baseParams(overrides: Partial<SharedDraftParams> = {}): SharedDraftParams {
 	return {
 		surface: 'organization',
-		model: {} as never,
+		resolveModel: resolveDefaultModelMock,
 		audience: 'an organization',
 		styleReference: "the organization's",
 		context: 'From: sam@acme.test\nSubject: Question\nWhat is the price?',
@@ -96,6 +97,7 @@ beforeEach(() => {
 	runLlmTextWithToolsMock.mockClear();
 	runLlmObjectMock.mockClear();
 	generateReplyOptionsMock.mockClear();
+	resolveDefaultModelMock.mockClear();
 	runHostedDraftStrategyMock.mockReset();
 	runLlmObjectMock.mockResolvedValue({
 		object: { score: 0.72, complete: true, grounded: true, flags: [] },
@@ -113,6 +115,7 @@ describe('runSharedDraft — one pipeline, both entry points', () => {
 			baseParams({ strategyScope: { classification: 'support' } })
 		);
 		expect(out.draftBody).toBe('CUSTOM PRIMARY');
+		expect(resolveDefaultModelMock).not.toHaveBeenCalled();
 		expect(runLlmTextMock).not.toHaveBeenCalled();
 		expect(runLlmObjectMock).toHaveBeenCalledTimes(1); // host-owned self-check
 		expect(generateReplyOptionsMock).toHaveBeenCalledTimes(1); // host-owned review options
@@ -126,6 +129,7 @@ describe('runSharedDraft — one pipeline, both entry points', () => {
 			baseParams({ strategyScope: { classification: 'support' } })
 		);
 		expect(out.draftBody).toBe('GENERATED DRAFT BODY');
+		expect(resolveDefaultModelMock).toHaveBeenCalledTimes(1);
 		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
 		expect(runHostedDraftStrategyMock).toHaveBeenCalledTimes(1);
 	});
