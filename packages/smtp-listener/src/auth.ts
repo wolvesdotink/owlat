@@ -15,7 +15,7 @@
  * call pattern of the listener it replaces.
  */
 
-import type { SmtpReply, SmtpSession } from './types.js';
+import type { MutableSmtpSession, SmtpReply, SmtpSession } from './types.js';
 import { Reply } from './reply.js';
 
 /** SASL mechanisms this listener speaks. */
@@ -60,7 +60,8 @@ interface PerformAuthParams<S, T> {
 	mechanism: string;
 	/** Initial response from `AUTH <mech> <ir>`, or `null` when absent. */
 	initialResponse: string | null;
-	session: SmtpSession<S, T>;
+	/** Mutable session view — `performAuth` sets `authenticated` / `user` on success. */
+	session: MutableSmtpSession<S, T>;
 	auth: SmtpAuthConfig<S, T>;
 	write: (reply: SmtpReply) => void;
 	/** Read one command line (without CRLF) from the peer; `null` on EOF. */

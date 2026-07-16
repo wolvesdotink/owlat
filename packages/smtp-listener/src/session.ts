@@ -10,7 +10,7 @@
 import type { Socket } from 'node:net';
 import { runCommandLoop, type ResolvedListenerConfig } from './commandLoop.js';
 import { resolveTlsConfig } from './tls.js';
-import type { SmtpListenerOptions, SmtpSession } from './types.js';
+import type { MutableSmtpSession, SmtpListenerOptions } from './types.js';
 
 const DEFAULT_MAX_MESSAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_ABORT_FACTOR = 4;
@@ -50,9 +50,9 @@ function buildSession<S, T>(
 	socket: Socket,
 	config: ResolvedListenerConfig<S, T>,
 	initialSecure: boolean
-): SmtpSession<S, T> {
+): MutableSmtpSession<S, T> {
 	connectionCounter = (connectionCounter + 1) >>> 0;
-	const base: SmtpSession<S, T> = {
+	const base: MutableSmtpSession<S, T> = {
 		id: `${Date.now().toString(36)}-${connectionCounter.toString(36)}`,
 		remoteAddress: socket.remoteAddress ?? '',
 		remotePort: socket.remotePort ?? 0,

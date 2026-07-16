@@ -17,7 +17,13 @@ import { Reply, replyBytes, SmtpReplyError } from './reply.js';
 import { performAuth, type SmtpAuthConfig } from './auth.js';
 import { upgradeTls, type ResolvedTlsConfig } from './tls.js';
 import { SmtpCommandReader, parseAddressCommand, parseCommand } from './reader.js';
-import type { SmtpHandlerResult, SmtpListenerOptions, SmtpReply, SmtpSession } from './types.js';
+import type {
+	MutableSmtpSession,
+	SmtpHandlerResult,
+	SmtpListenerOptions,
+	SmtpReply,
+	SmtpSession,
+} from './types.js';
 
 /** Fully-resolved listener configuration (defaults applied). */
 export interface ResolvedListenerConfig<S, T> {
@@ -66,7 +72,7 @@ async function invokeHandler<S, T, A>(
  */
 export async function runCommandLoop<S, T>(
 	socket: Socket,
-	session: SmtpSession<S, T>,
+	session: MutableSmtpSession<S, T>,
 	config: ResolvedListenerConfig<S, T>
 ): Promise<void> {
 	const { opts } = config;
@@ -110,6 +116,22 @@ export async function runCommandLoop<S, T>(
 
 	let reader = new SmtpCommandReader(activeSocket);
 	let badCommands = 0;
+
+	// Emit `reply`, count it against the bad-command budget, and — once the
+	// budget is exhausted — send 421 and tear the socket down. Returns `'stop'`
+	// when the caller must return from the loop, `'continue'` otherwise. This is
+	// the single choke point that bounds every hostile command stream (unknown
+	// verbs, malformed MAIL/RCPT, STARTTLS/AUTH misuse, and failed AUTH attempts
+	// — matching `smtp-server`'s unauthenticated-command cap, D2).
+	const noteBadCommand = (reply: SmtpReply): 'continue' | 'stop' => {
+		write(reply);
+		badCommands++;
+		if (badCommands >= config.maxBadCommands) {
+			writeThenDestroy(Reply.tooManyErrors());
+			return 'stop';
+		}
+		return 'continue';
+	};
 
 	// Greeting + optional connect hook. onConnect takes only the session, so it
 	// is adapted to the (arg, session) shape invokeHandler expects.
@@ -159,8 +181,7 @@ export async function runCommandLoop<S, T>(
 			resetTransaction();
 			const hello = await invokeHandler(opts.onHelo, rest, session, opts.onError);
 			if (!hello.accept) {
-				write(hello.reply ?? Reply.paramError());
-				badCommands++;
+				if (noteBadCommand(hello.reply ?? Reply.paramError()) === 'stop') return;
 			} else {
 				badCommands = 0;
 				if (hello.reply) {
@@ -185,12 +206,7 @@ export async function runCommandLoop<S, T>(
 			}
 			const parsed = parseAddressCommand(rest, 'FROM');
 			if (!parsed) {
-				write(Reply.paramError());
-				badCommands++;
-				if (badCommands >= config.maxBadCommands) {
-					writeThenDestroy(Reply.tooManyErrors());
-					return;
-				}
+				if (noteBadCommand(Reply.paramError()) === 'stop') return;
 				continue;
 			}
 			const res = await invokeHandler(opts.onMailFrom, parsed, session, opts.onError);
@@ -210,12 +226,7 @@ export async function runCommandLoop<S, T>(
 			}
 			const parsed = parseAddressCommand(rest, 'TO');
 			if (!parsed) {
-				write(Reply.paramError());
-				badCommands++;
-				if (badCommands >= config.maxBadCommands) {
-					writeThenDestroy(Reply.tooManyErrors());
-					return;
-				}
+				if (noteBadCommand(Reply.paramError()) === 'stop') return;
 				continue;
 			}
 			const res = await invokeHandler(opts.onRcptTo, parsed, session, opts.onError);
@@ -267,16 +278,19 @@ export async function runCommandLoop<S, T>(
 			continue;
 		}
 		if (verb === 'STARTTLS') {
+			// RFC 3207 §4: STARTTLS takes NO parameter; reject any argument with
+			// 501 (matches `smtp-server`) without upgrading.
+			if (rest.length > 0) {
+				if (noteBadCommand(Reply.paramError()) === 'stop') return;
+				continue;
+			}
 			// Advertised only when TLS is available and the channel is not already
 			// secure; refuse otherwise so the capability list and behavior agree.
 			if (!config.tls || session.secure) {
-				write(session.secure ? Reply.badSequence('TLS already active') : Reply.notImplemented());
-				if (!session.secure) {
-					badCommands++;
-					if (badCommands >= config.maxBadCommands) {
-						writeThenDestroy(Reply.tooManyErrors());
-						return;
-					}
+				if (session.secure) {
+					write(Reply.badSequence('TLS already active'));
+				} else if (noteBadCommand(Reply.notImplemented()) === 'stop') {
+					return;
 				}
 				continue;
 			}
@@ -318,23 +332,19 @@ export async function runCommandLoop<S, T>(
 		}
 		if (verb === 'AUTH') {
 			if (!config.auth) {
-				write(Reply.notImplemented());
-				badCommands++;
-				if (badCommands >= config.maxBadCommands) {
-					writeThenDestroy(Reply.tooManyErrors());
-					return;
-				}
+				if (noteBadCommand(Reply.notImplemented()) === 'stop') return;
 				continue;
 			}
 			if (config.auth.requireTls && !session.secure) {
 				// AUTH before TLS is refused with a distinct encryption-required
 				// reply — this is not an auth oracle (it reveals nothing about any
-				// credential), it enforces RFC 4954 §4.
-				write(Reply.encryptionRequired());
+				// credential), it enforces RFC 4954 §4. Counted against the
+				// bad-command budget so a pre-TLS AUTH flood cannot loop forever.
+				if (noteBadCommand(Reply.encryptionRequired()) === 'stop') return;
 				continue;
 			}
 			if (session.authenticated) {
-				write(Reply.badSequence('Already authenticated'));
+				if (noteBadCommand(Reply.badSequence('Already authenticated')) === 'stop') return;
 				continue;
 			}
 			const sp = rest.indexOf(' ');
@@ -356,18 +366,18 @@ export async function runCommandLoop<S, T>(
 			if (result === 'ok') {
 				badCommands = 0;
 				write(Reply.authOk());
-			} else {
-				write(Reply.authFailed());
+				continue;
 			}
+			// Every failed AUTH (rejected credentials OR protocol garbage that never
+			// reached the backend) counts against the bad-command budget, so a
+			// hostile client looping AUTH cannot hold the connection open forever —
+			// the cap `smtp-server` enforces via `_maxAllowedUnauthenticatedCommands`
+			// (D2). The 535 bytes are unchanged (no oracle).
+			if (noteBadCommand(Reply.authFailed()) === 'stop') return;
 			continue;
 		}
 		// Everything else is unimplemented.
-		write(Reply.notImplemented());
-		badCommands++;
-		if (badCommands >= config.maxBadCommands) {
-			writeThenDestroy(Reply.tooManyErrors());
-			return;
-		}
+		if (noteBadCommand(Reply.notImplemented()) === 'stop') return;
 	}
 }
 

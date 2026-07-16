@@ -52,13 +52,18 @@ export interface SmtpSession<S = unknown, T = unknown> {
 	readonly localPort: number;
 	/**
 	 * Whether the underlying socket is TLS. Set for implicit-TLS connections and
-	 * flipped to `true` by a successful STARTTLS upgrade (RFC 3207).
+	 * flipped to `true` by a successful STARTTLS upgrade (RFC 3207). `readonly` in
+	 * the public type: only the command loop owns the security posture, so a
+	 * handler cannot forge it (mutated internally via {@link MutableSmtpSession}).
 	 */
-	secure: boolean;
-	/** Whether AUTH has succeeded on this connection. */
-	authenticated: boolean;
-	/** Authenticated user identity, set by a successful AUTH. */
-	user?: string;
+	readonly secure: boolean;
+	/**
+	 * Whether AUTH has succeeded on this connection. `readonly` in the public
+	 * type so a handler cannot forge an authenticated session.
+	 */
+	readonly authenticated: boolean;
+	/** Authenticated user identity, set by a successful AUTH. Read-only to handlers. */
+	readonly user?: string;
 	/** Argument of the last HELO/EHLO, if any. */
 	clientHostname?: string;
 	/** Whether the peer greeted with EHLO (ESMTP) vs HELO. */
@@ -71,6 +76,22 @@ export interface SmtpSession<S = unknown, T = unknown> {
 	state: S;
 	/** Caller per-transaction state. */
 	transaction?: T;
+}
+
+/**
+ * Internal mutable view of {@link SmtpSession}. The command loop and auth module
+ * flip `secure` / `authenticated` / `user` through this view; the public
+ * {@link SmtpSession} keeps those fields `readonly` so a handler cannot forge
+ * the security posture. NOT part of the package's public API (not re-exported
+ * from `index.ts`).
+ */
+export interface MutableSmtpSession<S = unknown, T = unknown> extends Omit<
+	SmtpSession<S, T>,
+	'secure' | 'authenticated' | 'user'
+> {
+	secure: boolean;
+	authenticated: boolean;
+	user?: string;
 }
 
 /**
