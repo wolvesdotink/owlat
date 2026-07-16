@@ -25,6 +25,13 @@ describe('plugin contribution export loading', () => {
 			exportPath: './agent/spam-score',
 			filePath: 'agent/spam-score.js',
 		},
+		{
+			label: 'draft strategy',
+			packageName: 'draft-plugin',
+			manifest: `export default { id: 'draft', version: '1.0.0', capabilities: ['draft:strategy'], flag: { default: false }, contributes: { draftStrategies: [{ id: 'legal', label: 'Legal', module: { exportPath: './draft/legal' }, timeoutMs: 1000 }] } };`,
+			exportPath: './draft/legal',
+			filePath: 'draft/legal.js',
+		},
 	] as const)('verifies $label exports without executing them', async (fixture) => {
 		const root = await createPackageLoaderWorkspace(
 			{ [fixture.packageName]: '1.0.0' },

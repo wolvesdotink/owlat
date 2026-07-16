@@ -69,6 +69,38 @@ describe('composition rendering', () => {
 		expect(rendered.sendTransportModules).toContain('Object.freeze([])');
 		expect(rendered.agentStepCatalog).toContain('Object.freeze([] as const)');
 		expect(rendered.agentStepModules).toContain("'use node';");
+		expect(rendered.draftStrategyCatalog).toContain('Object.freeze([] as const)');
+		expect(rendered.draftStrategyModules).toContain("'use node';");
+	});
+
+	it('separates draft strategy metadata from executable modules', () => {
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/draft-plugin',
+				manifest: {
+					id: 'draft-pack',
+					version: '1.0.0',
+					capabilities: ['draft:strategy'],
+					flag: { default: false, requiredEnvVars: ['DRAFT_TOKEN'] },
+					contributes: {
+						draftStrategies: [
+							{
+								id: 'legal',
+								label: 'Legal',
+								module: { exportPath: './draft/legal' },
+								timeoutMs: 4000,
+							},
+						],
+					},
+				},
+			},
+		]);
+		const rendered = renderPluginComposition(plugins);
+		expect(rendered.draftStrategyCatalog).toContain('plugin.draft-pack.legal');
+		expect(rendered.draftStrategyCatalog).toContain('DRAFT_TOKEN');
+		expect(rendered.draftStrategyCatalog).not.toContain('@acme/draft-plugin');
+		expect(rendered.draftStrategyModules).toContain('satisfies PluginDraftStrategyModule');
+		expect(rendered.draftStrategyModules).toContain('from "@acme/draft-plugin/draft/legal"');
 	});
 
 	it('separates agent step policy metadata from Node-only executable imports', () => {
