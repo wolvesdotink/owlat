@@ -2,20 +2,22 @@
  * Inbound shadow-replay harness — CI slice (piece C0).
  *
  * Runs the checked-in, non-sensitive corpus through BOTH inbound stacks — the
- * OLD oracle stack (mailparser `simpleParser` for the drivers + the ACTUAL
- * production `verifyDkim` driver from `bounce/inboundDkim` for the DKIM verdict)
- * and the NEW in-house stack ({@link owlatNewStack}: `parseMessage` +
+ * OLD oracle stack (mailparser `simpleParser` for the drivers + the pinned
+ * `mailauth`-backed `verifyDkim` oracle from `bounce/inboundDkim` for the DKIM
+ * verdict) and the NEW in-house stack ({@link owlatNewStack}: `parseMessage` +
  * `@owlat/mail-auth`'s `verifyDkim`) — and asserts a field-level diff of the
  * routing / delivery drivers with a categorized divergence report and ZERO
  * unsanctioned divergence (the only sanctioned inbound changes are the
  * enumerated l= / charset improvements; I2).
  *
- * The old side wires the REAL production driver, never a re-implemented copy of
- * its verdict normalization: `bounce/inboundDkim.verifyDkim` accepts an injected
- * resolver, so the differential compares production-old against in-house-new (a
- * private copy could drift and mask divergence in exactly the normalization
- * layer being replaced). mailparser / mailauth survive only as differential
- * oracles (I1) and are wired HERE, never imported by the shipped tool.
+ * The old side wires the pinned `mailauth` oracle, never a re-implemented copy
+ * of its verdict normalization: `bounce/inboundDkim.verifyDkim` normalizes
+ * `mailauth`'s own per-signature output and accepts an injected resolver, so the
+ * differential compares the library-normalized verdict against the in-house one
+ * (a private copy could drift and mask divergence in exactly the normalization
+ * layer being replaced). Production has cut over to `@owlat/mail-auth` (CI3);
+ * mailparser / mailauth survive only as differential oracles (I1) and are wired
+ * HERE, never imported by the shipped tool.
  *
  * The final block pins the load-bearing I7 invariant — the harness NEVER writes
  * decoded body text to a log or report — by seeding a corpus message with a
@@ -58,11 +60,11 @@ const CORPUS_DIR = join(
 const BODY_MARKER = 'SECRETBODYMARKER7f3a';
 
 /**
- * The OLD (oracle) stack: mailparser for the drivers, and the ACTUAL production
- * DKIM driver (`bounce/inboundDkim.verifyDkim`) — the exact code the inbound
- * path runs today — for the verdict. Both verifiers return a verdict
- * unconditionally (`none` for an unsigned message), so unsigned corpus mail
- * yields matching `none` verdicts and no auth diff.
+ * The OLD (oracle) stack: mailparser for the drivers, and the pinned
+ * `mailauth`-backed DKIM oracle (`bounce/inboundDkim.verifyDkim`) — the library
+ * verdict the in-house verifier replaced — for the verdict. Both verifiers
+ * return a verdict unconditionally (`none` for an unsigned message), so unsigned
+ * corpus mail yields matching `none` verdicts and no auth diff.
  */
 const oracleOldStack: ReplayStackSide = {
 	async project(raw: Buffer): Promise<RoutingDrivers> {

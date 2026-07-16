@@ -1,16 +1,23 @@
 /**
- * Inbound DKIM verification — RFC 6376 + RFC 8601.
+ * Inbound DKIM verification — RFC 6376 + RFC 8601 — the `mailauth` DIFFERENTIAL
+ * ORACLE.
  *
- * The inbound SMTP server (`bounce/server.ts`) buffers the raw RFC822 of
- * every accepted message. This module verifies the message's DKIM
- * signature(s) against the signer's published public key and returns a
- * single normalized verdict suitable for `Authentication-Results` (RFC 8601)
- * and for the `dkimResult` field on the personal-mailbox inbound payload.
+ * PRODUCTION HAS CUT OVER: `bounce/server.ts` no longer calls this module — the
+ * inbound path now verifies DKIM with the in-house `@owlat/mail-auth` `verifyDkim`
+ * (piece CI3). This module survives ONLY as the pinned `mailauth`-backed oracle
+ * for the shadow-replay differential (`tools/__tests__/replay.corpus.test.ts`)
+ * and the `inboundAuth.dkim` suite: per locked decision I1, `mailauth` stays a
+ * test/operator differential oracle so the in-house verifier is never allowed to
+ * verify itself. It MUST NOT be re-imported by any MTA runtime path.
  *
- * We delegate the cryptographic + canonicalization work to `mailauth`
- * (which `inboundSecurity.ts` already recommends for full RFC compliance)
- * and normalize its per-signature output into the small RFC-8601 vocabulary
- * the rest of Owlat consumes (`mailMessages.dkimResult`).
+ * It verifies a message's DKIM signature(s) against the signer's published
+ * public key and returns a single normalized verdict suitable for
+ * `Authentication-Results` (RFC 8601) and for the `dkimResult` field on the
+ * personal-mailbox inbound payload.
+ *
+ * We delegate the cryptographic + canonicalization work to `mailauth` and
+ * normalize its per-signature output into the small RFC-8601 vocabulary the rest
+ * of Owlat consumes (`mailMessages.dkimResult`).
  *
  * Normalization rules (RFC 6376 §3.9 + §6.1):
  *   - No DKIM-Signature header at all            -> 'none'
