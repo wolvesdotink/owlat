@@ -36,14 +36,16 @@ export function isPluginContributionKind(value: string): value is PluginContribu
  */
 type DeferredPluginContributionKind = Exclude<
 	PluginContributionKind,
-	'sendTransports' | 'agentSteps'
+	'sendTransports' | 'agentSteps' | 'draftStrategies'
 >;
 
 export type PluginContributions = Readonly<
 	{
 		readonly sendTransports?: readonly PluginSendTransportDefinition[];
 		readonly agentSteps?: readonly PluginAgentStepDefinition[];
+		readonly draftStrategies?: readonly PluginDraftStrategyDefinition[];
 	} & Partial<Record<DeferredPluginContributionKind, readonly unknown[]>>
 >;
 import type { PluginAgentStepDefinition } from './agentStep';
+import type { PluginDraftStrategyDefinition } from './draftStrategy';
 import type { PluginSendTransportDefinition } from './sendTransport';

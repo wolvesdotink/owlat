@@ -83,11 +83,11 @@ baseline entry once its file falls back under the cap.
 
 Once a file lives in its domain folder, drop the prefix from the filename:
 
-| Before                    | After                |
-| ------------------------- | -------------------- |
-| `mailAliases.ts`          | `mail/aliases.ts`    |
-| `mailMailbox.ts`          | `mail/mailbox.ts`    |
-| `campaignArchive.ts`      | `campaigns/archive.ts` |
+| Before                    | After                                  |
+| ------------------------- | -------------------------------------- |
+| `mailAliases.ts`          | `mail/aliases.ts`                      |
+| `mailMailbox.ts`          | `mail/mailbox.ts`                      |
+| `campaignArchive.ts`      | `campaigns/archive.ts`                 |
 | `contactsOrganization.ts` | `contacts/index.ts` (or feature-named) |
 
 The `*Organization.ts` suffix should disappear — it was a workaround for the
@@ -172,9 +172,9 @@ so feature-gated actions keep the in-handler check against a query they call.
 
 ## Permissions
 
-`authedMutation` / `authedAction` only enforce the auth *floor* (an authenticated
+`authedMutation` / `authedAction` only enforce the auth _floor_ (an authenticated
 org member of **any** role, including `editor`). Every **state-changing** public
-function must additionally make an explicit **authorization** decision — *who* may
+function must additionally make an explicit **authorization** decision — _who_ may
 run it. `scripts/check-permissions.sh` (wired into `bun run lint`, baseline 0)
 fails CI on any `authedMutation`/`authedAction` that makes none. Satisfy it one of
 three ways:
@@ -228,6 +228,14 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
 - Plugin-attributed rows always carry both `organizationId` and `pluginId`.
   Admin reads scope those rows to the active organization; only legacy core
   rows may omit organization attribution under the singleton-org invariant.
+- Draft strategies replace only primary generation. The host always performs
+  assembled-context injection scanning before selection and quality self-check,
+  review-option generation, persistence, routing, autonomy, and sending after
+  it. Never move those responsibilities into a strategy module.
+- Strategy input is a copied, frozen, bounded projection. Strategy LLM calls use
+  the system-attributed budgeted host service and require their own `llm:invoke`
+  grant. Timeout, denial, exception, invalid/oversized/injection-like output, or
+  stale registration falls back once to the built-in `default` strategy.
 - Bundled agent steps expose one data-only descriptor and one generated Node
   export. Derive action kinds and Convex validators from the combined catalog;
   never repeat a literal union in the walker, lifecycle, or schema.
@@ -289,9 +297,9 @@ import { mailTables } from './schema/mail';
 import { campaignTables } from './schema/campaigns';
 
 export default defineSchema({
-  ...mailTables,
-  ...campaignTables,
-  // ...
+	...mailTables,
+	...campaignTables,
+	// ...
 });
 ```
 
@@ -305,6 +313,7 @@ migration: existing rows already use the old shape, and external consumers
 (SDKs, webhook receivers) depend on the wire contract.
 
 ### Never do these without a version bump
+
 - Rename a field on a production table. Add a new field, dual-write,
   deprecate the old one, then drop after a deprecation window.
 - Change a `v.literal()` literal value. Add a new value; migrate writers
@@ -315,6 +324,7 @@ migration: existing rows already use the old shape, and external consumers
   bumping its sibling `<field>Version`.
 
 ### Versioning rules
+
 - Every JSON blob in a `v.string()` or `v.any()` field MUST be paired with a
   sibling `<field>Version: v.optional(v.number())` field. Bump the matching
   constant in `lib/constants.ts` when the shape changes; reader code can
@@ -331,16 +341,20 @@ migration: existing rows already use the old shape, and external consumers
   a `shareLinks` snapshot or rehydrating cached output.
 
 ### Boolean naming
+
 All boolean fields use the `is*` prefix: `isVerified`, `isEnabled`, `isActive`,
 `isDefault`, `isPrimary`. Domain enums that happen to spell `'verified'` as a
 literal value (e.g. `domains.status='verified'`) are status strings, not
 booleans, and are exempt.
 
 ### Soft-delete contract
+
 Tables with `deletedAt: v.optional(v.number())`:
+
 - `contacts`, `userProfiles`, `emailSends`, `transactionalSends`
 
 Rules:
+
 - User-initiated deletes mark the row (`softDeleteContact` etc.) — never
   hard-delete from a user-facing mutation.
 - All list / search / lookup queries MUST filter `deletedAt === undefined`
@@ -352,6 +366,7 @@ Rules:
   in `lib/contactMutations.ts:permanentlyDeleteContactWithRelations`.
 
 ### Polymorphic foreign keys
+
 When a table can reference one of multiple parents (e.g. `shareLinks` →
 `emailTemplate | transactionalEmail`), include a `<name>Type` discriminator
 literal union alongside the optional id fields. Mutations enforce the xor
@@ -359,6 +374,7 @@ invariant at insert time: exactly one id must be set, matching the
 discriminator. See `shareLinks.targetType` and `blockedEmails.sourceType`.
 
 ### Denormalized & snapshot fields
+
 - Snapshot fields (captured at an event, never updated) are marked with
   a `// SNAPSHOT —` comment in the schema. Examples: `emailSends.contactEmail`,
   `emailSends.contactFirstName`, `emailSends.contactLastName` — they record
@@ -372,12 +388,14 @@ discriminator. See `shareLinks.targetType` and `blockedEmails.sourceType`.
   mutation. Track freshness with `statsUpdatedAt`/`cachedCountUpdatedAt`.
 
 ### Cascade contracts
+
 Parent tables document their cascade-on-delete contract in the schema header
 comment (see `schema/contacts.ts`). Permanent-delete helpers in
 `lib/contactMutations.ts` are the only place that performs the cascade —
 mutation code calls the helper rather than handling children inline.
 
 ### Audit logging
+
 Use `recordAuditLog` from `lib/auditLog.ts`. Never call
 `ctx.db.insert('auditLogs', ...)` directly — the helper is the only place
 the action/resource literal union is validated against the schema. Every
@@ -388,6 +406,7 @@ domains, blocklist) should emit an audit log. See
 `details` / `detailsBlob` shapes.
 
 ### Embeddings
+
 Every embedding-bearing row (`knowledgeEntries`, `semanticFiles`) MUST
 record `embeddingModel: v.string()` and `embeddingGeneratedAt: v.number()`.
 Switching models or bumping the model version triggers a re-embed —

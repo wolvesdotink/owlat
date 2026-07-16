@@ -30,6 +30,27 @@ export class PluginLlmError extends Error {
 	}
 }
 
+interface PluginLlmActorPolicy {
+	readonly kind: 'authenticated_actor' | 'system_actor';
+	authorize(ctx: ActionCtx, pluginId: string): Promise<unknown>;
+	recordDenied(ctx: ActionCtx, pluginId: string): Promise<unknown>;
+}
+
+const AUTHENTICATED_ACTOR_POLICY: PluginLlmActorPolicy = Object.freeze({
+	kind: 'authenticated_actor',
+	authorize: (ctx: ActionCtx, pluginId: string) =>
+		ctx.runQuery(internal.plugins.llmAccounting.authorize, { pluginId }),
+	recordDenied: (ctx: ActionCtx, pluginId: string) =>
+		ctx.runMutation(internal.plugins.llmAccounting.recordDenied, { pluginId }),
+});
+const SYSTEM_ACTOR_POLICY: PluginLlmActorPolicy = Object.freeze({
+	kind: 'system_actor',
+	authorize: (ctx: ActionCtx, pluginId: string) =>
+		ctx.runQuery(internal.plugins.llmAccounting.authorizeSystem, { pluginId }),
+	recordDenied: (ctx: ActionCtx, pluginId: string) =>
+		ctx.runMutation(internal.plugins.llmAccounting.recordDeniedSystem, { pluginId }),
+});
+
 /**
  * Bind the public plugin service to one validated plugin id. Organization,
  * actor, grants, enablement, and budget are derived and rechecked inside the
@@ -38,6 +59,24 @@ export class PluginLlmError extends Error {
 export function bindAuthenticatedBundledPluginLlm(
 	ctx: ActionCtx,
 	pluginIdInput: unknown
+): PluginLlmService {
+	return bindBundledPluginLlm(ctx, pluginIdInput, AUTHENTICATED_ACTOR_POLICY);
+}
+
+/** Background-host variant; authorization and settlement remain system-attributed. */
+export function bindSystemBundledPluginLlm(
+	ctx: ActionCtx,
+	pluginIdInput: unknown,
+	executionSignal?: AbortSignal
+): PluginLlmService {
+	return bindBundledPluginLlm(ctx, pluginIdInput, SYSTEM_ACTOR_POLICY, executionSignal);
+}
+
+function bindBundledPluginLlm(
+	ctx: ActionCtx,
+	pluginIdInput: unknown,
+	actorPolicy: PluginLlmActorPolicy,
+	executionSignal?: AbortSignal
 ): PluginLlmService {
 	let pluginId;
 	try {
@@ -48,18 +87,22 @@ export function bindAuthenticatedBundledPluginLlm(
 
 	return Object.freeze({
 		async generate(requestInput: PluginLlmGenerateRequest): Promise<PluginLlmGenerateResult> {
+			assertExecutionActive(executionSignal);
 			let request;
 			try {
 				request = validatePluginLlmRequest(requestInput);
 			} catch {
-				await recordDenied(ctx, pluginId);
+				assertExecutionActive(executionSignal);
+				await recordDenied(ctx, pluginId, actorPolicy);
 				throw new PluginLlmError('invalid_input');
 			}
 
 			try {
-				await ctx.runQuery(internal.plugins.llmAccounting.authorize, { pluginId });
+				await actorPolicy.authorize(ctx, pluginId);
+				assertExecutionActive(executionSignal);
 			} catch {
-				await recordDenied(ctx, pluginId);
+				assertExecutionActive(executionSignal);
+				await recordDenied(ctx, pluginId, actorPolicy);
 				throw new PluginLlmError('access_denied');
 			}
 
@@ -77,18 +120,21 @@ export function bindAuthenticatedBundledPluginLlm(
 						totalTokens: request.inputTokensUpperBound + PLUGIN_LLM_MAX_OUTPUT_TOKENS,
 					}) ?? 0;
 				if (perAttemptMicrousd < 1) throw new Error('Unpriced model');
+				assertExecutionActive(executionSignal);
 			} catch {
-				await recordDenied(ctx, pluginId);
+				assertExecutionActive(executionSignal);
+				await recordDenied(ctx, pluginId, actorPolicy);
 				throw new PluginLlmError('access_denied');
 			}
 
 			const reservationId = randomUUID();
 			const reservedMicrousd = perAttemptMicrousd * MAX_LLM_ATTEMPTS;
 			if (!Number.isSafeInteger(reservedMicrousd)) {
-				await recordDenied(ctx, pluginId);
+				await recordDenied(ctx, pluginId, actorPolicy);
 				throw new PluginLlmError('access_denied');
 			}
 			try {
+				assertExecutionActive(executionSignal);
 				await ctx.runMutation(internal.plugins.llmAccounting.reserve, {
 					pluginId,
 					reservationId,
@@ -96,32 +142,46 @@ export function bindAuthenticatedBundledPluginLlm(
 					tier: request.tier,
 					modelId: resolvedModel.modelId,
 					endpointProvenance: resolvedModel.endpointProvenance,
+					actorMode: actorPolicy.kind,
 				});
 			} catch {
-				await recordDenied(ctx, pluginId);
+				assertExecutionActive(executionSignal);
+				await recordDenied(ctx, pluginId, actorPolicy);
+				throw new PluginLlmError('access_denied');
+			}
+			if (executionSignal?.aborted) {
+				await settleFailure(ctx, reservationId, actorPolicy);
 				throw new PluginLlmError('access_denied');
 			}
 
 			let dispatched;
 			try {
+				assertExecutionActive(executionSignal);
 				dispatched = await runLlmTextWithAttemptMetadata({
 					model: resolvedModel.model,
 					...request.dispatchInput,
 					maxOutputTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
+					...(executionSignal ? { abortSignal: executionSignal } : {}),
 				});
+				assertExecutionActive(executionSignal);
 			} catch {
-				const settled = await settleFailure(ctx, reservationId);
+				const settled = await settleFailure(ctx, reservationId, actorPolicy);
 				if (!settled) throw new PluginLlmError('accounting_unavailable');
+				assertExecutionActive(executionSignal);
 				throw new PluginLlmError('provider_failure');
 			}
 			try {
+				assertExecutionActive(executionSignal);
 				await ctx.runMutation(internal.plugins.llmAccounting.settleSuccess, {
 					reservationId,
 					modelUsed: dispatched.result.modelUsed,
 					tokenUsage: dispatched.result.tokenUsage,
 					attempts: dispatched.attempts,
+					actorMode: actorPolicy.kind,
 				});
+				assertExecutionActive(executionSignal);
 			} catch {
+				assertExecutionActive(executionSignal);
 				// The reservation mutation already consumed headroom. A failed
 				// settlement leaves it pending and fully charged.
 				throw new PluginLlmError('accounting_unavailable');
@@ -135,15 +195,28 @@ export function bindAuthenticatedBundledPluginLlm(
 	});
 }
 
-async function recordDenied(ctx: ActionCtx, pluginId: string): Promise<void> {
-	await ctx
-		.runMutation(internal.plugins.llmAccounting.recordDenied, { pluginId })
-		.catch(() => null);
+function assertExecutionActive(executionSignal: AbortSignal | undefined): void {
+	if (executionSignal?.aborted) throw new PluginLlmError('access_denied');
 }
 
-async function settleFailure(ctx: ActionCtx, reservationId: string): Promise<boolean> {
+async function recordDenied(
+	ctx: ActionCtx,
+	pluginId: string,
+	actorPolicy: PluginLlmActorPolicy
+): Promise<void> {
+	await actorPolicy.recordDenied(ctx, pluginId).catch(() => null);
+}
+
+async function settleFailure(
+	ctx: ActionCtx,
+	reservationId: string,
+	actorPolicy: PluginLlmActorPolicy
+): Promise<boolean> {
 	try {
-		await ctx.runMutation(internal.plugins.llmAccounting.settleFailure, { reservationId });
+		await ctx.runMutation(internal.plugins.llmAccounting.settleFailure, {
+			reservationId,
+			actorMode: actorPolicy.kind,
+		});
 		return true;
 	} catch {
 		// Pending reservations remain fully charged through their UTC day. Never

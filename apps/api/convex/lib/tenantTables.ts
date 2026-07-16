@@ -177,6 +177,7 @@ export const TENANT_TABLES = [
 	'pluginStorageUsage',
 	'pluginLlmReservations',
 	'pluginLlmDailyUsage',
+	'draftStrategySelections',
 	'shareLinks',
 	'integrationImports',
 	'codeWorkTasks',

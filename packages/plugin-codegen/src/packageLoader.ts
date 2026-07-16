@@ -74,6 +74,9 @@ export async function loadBundledPlugins(
 		for (const step of manifest.contributes?.agentSteps ?? []) {
 			await verifyPluginContributionExport(workspaceRoot, packageName, step.module.exportPath);
 		}
+		for (const strategy of manifest.contributes?.draftStrategies ?? []) {
+			await verifyPluginContributionExport(workspaceRoot, packageName, strategy.module.exportPath);
+		}
 		sources.push({ packageName, manifest });
 	}
 

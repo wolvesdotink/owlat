@@ -246,6 +246,19 @@ a Convex context. Its result is descriptor-safe bounded JSON and either
 exception fails the inbox lifecycle closed. Agent-action rows and redacted
 `agent.step` audit rows remain host-owned.
 
+### Bundled draft strategies
+
+Draft contributions require a feature flag and `draft:strategy`. Static codegen
+separates their data-only catalog from Node modules and namespaces each kind.
+Selection is contact, then mailbox, then classification, then `default`.
+
+Only primary generation is replaceable. The host retains assembled-context
+injection scanning, quality self-check, review options, persistence, routing,
+autonomy, and sending. Modules receive a frozen bounded projection and optional
+attributed/budgeted LLM service, never a Convex context. Last-moment denial,
+timeout, failure, malformed/oversized/injection-like output, and stale selection
+all conservatively fall back to `default`. See ADR-0050.
+
 ### Three execution tiers
 
 1. **Bundled plugins** are operator-installed packages composed at build time.

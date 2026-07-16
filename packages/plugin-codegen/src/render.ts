@@ -16,6 +16,8 @@ export interface GeneratedPluginComposition {
 	readonly sendTransportModules: string;
 	readonly agentStepCatalog: string;
 	readonly agentStepModules: string;
+	readonly draftStrategyCatalog: string;
+	readonly draftStrategyModules: string;
 }
 
 export function renderPluginComposition(
@@ -47,7 +49,65 @@ export function renderPluginComposition(
 		sendTransportModules: renderSendTransportModules(plugins),
 		agentStepCatalog: renderAgentStepCatalog(agentSteps),
 		agentStepModules: renderAgentStepModules(agentSteps),
+		draftStrategyCatalog: renderDraftStrategyCatalog(plugins),
+		draftStrategyModules: renderDraftStrategyModules(plugins),
 	});
+}
+
+function draftStrategiesFor(plugins: readonly BundledPlugin[]) {
+	return plugins.flatMap((plugin) =>
+		(plugin.manifest.contributes?.draftStrategies ?? []).map((strategy) => ({
+			packageName: parsePluginPackageName(plugin.packageName),
+			pluginId: parsePluginId(plugin.manifest.id),
+			kind: `plugin.${plugin.manifest.id}.${strategy.id}`,
+			label: strategy.label,
+			exportPath: strategy.module.exportPath,
+			timeoutMs: strategy.timeoutMs,
+			requiredEnvVars: plugin.manifest.flag?.requiredEnvVars ?? [],
+		}))
+	);
+}
+
+function renderDraftStrategyCatalog(plugins: readonly BundledPlugin[]): string {
+	const entries = draftStrategiesFor(plugins)
+		.map(
+			(strategy) => `\tObject.freeze({
+\t\tkind: ${JSON.stringify(strategy.kind)},
+\t\tpluginId: ${JSON.stringify(strategy.pluginId)},
+\t\tlabel: ${JSON.stringify(strategy.label)},
+\t\ttimeoutMs: ${strategy.timeoutMs},
+\t\trequiredEnvVars: Object.freeze(${JSON.stringify(strategy.requiredEnvVars)}),
+\t\trequiredCapability: 'draft:strategy',
+\t}),`
+		)
+		.join('\n');
+	const catalog = entries
+		? `Object.freeze([\n${entries}\n] as const)`
+		: 'Object.freeze([] as const)';
+	return `${GENERATED_HEADER}export const BUNDLED_PLUGIN_DRAFT_STRATEGY_CATALOG = ${catalog};\n`;
+}
+
+function renderDraftStrategyModules(plugins: readonly BundledPlugin[]): string {
+	const strategies = draftStrategiesFor(plugins);
+	const imports = strategies
+		.map(
+			(strategy, index) =>
+				`import bundledPluginDraftStrategy${index} from ${JSON.stringify(`${strategy.packageName}${strategy.exportPath.slice(1)}`)};`
+		)
+		.join('\n');
+	const entries = strategies
+		.map(
+			(strategy, index) =>
+				`\tObject.freeze({ kind: ${JSON.stringify(strategy.kind)}, pluginId: ${JSON.stringify(strategy.pluginId)}, module: bundledPluginDraftStrategy${index} satisfies PluginDraftStrategyModule }),`
+		)
+		.join('\n');
+	const modules = entries
+		? `Object.freeze([\n${entries}\n] as const)`
+		: 'Object.freeze([] as const)';
+	const contractImport = strategies.length
+		? "import type { PluginDraftStrategyModule } from '@owlat/plugin-kit';\n"
+		: '';
+	return `'use node';\n\n${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_DRAFT_STRATEGY_MODULES = ${modules};\n`;
 }
 
 function renderAgentStepCatalog(steps: readonly HostedAgentStepDefinition[]): string {

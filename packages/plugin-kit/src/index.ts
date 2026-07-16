@@ -12,6 +12,20 @@ export type {
 	PluginAgentStepModule,
 	PluginAgentStepResult,
 } from './agentStep';
+export {
+	PLUGIN_DRAFT_STRATEGY_CAPABILITY,
+	PLUGIN_DRAFT_STRATEGY_TIMEOUT_MAX_MS,
+	pluginDraftStrategyKind,
+} from './draftStrategy';
+export type {
+	PluginDraftClassification,
+	PluginDraftStrategyDefinition,
+	PluginDraftStrategyInput,
+	PluginDraftStrategyKind,
+	PluginDraftStrategyModule,
+	PluginDraftStrategyResult,
+	PluginDraftStrategyServices,
+} from './draftStrategy';
 export type {
 	PluginCapability,
 	PluginCapabilityGrant,
