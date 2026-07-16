@@ -131,4 +131,24 @@ describe('hosted plugin audit boundary', () => {
 			expect(JSON.stringify(row?.details)).not.toMatch(/prompt|draft|message|plugin reason/i);
 		});
 	});
+
+	it('records cron outcomes with plugin attribution and a bounded reason code', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await recordHostedPluginAudit(
+				ctx,
+				{ organizationId: 'tenant', pluginId: parsePluginId('seed-lab'), userId: 'system' },
+				'cron.run',
+				'failed',
+				{ reasonCode: 'cron_timeout' }
+			);
+			const row = await ctx.db.query('auditLogs').unique();
+			expect(row?.pluginId).toBe('seed-lab');
+			expect(row?.details).toEqual({
+				operation: 'cron.run',
+				outcome: 'failed',
+				reasonCode: 'cron_timeout',
+			});
+		});
+	});
 });
