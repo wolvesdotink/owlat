@@ -13,6 +13,10 @@
 		".": {
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
+		},
+		"./canon": {
+			"types": "./src/canon.ts",
+			"import": "./src/canon.ts"
 		}
 	},
 	"scripts": {
