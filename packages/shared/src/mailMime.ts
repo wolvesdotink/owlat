@@ -25,6 +25,7 @@ import {
 	decodeQpHexEscapes,
 	decodeEncodedWords,
 	decodeRfc2231,
+	getRawParam,
 } from '@owlat/mail-message/headers';
 
 export { unfold, decodeEncodedWords, decodeRfc2231 };
@@ -56,27 +57,10 @@ function splitHeadersBody(raw: string): { headers: Map<string, string>; body: st
 	};
 }
 
-function getParam(headerValue: string | undefined, name: string): string | undefined {
-	if (!headerValue) return undefined;
-	const continued: string[] = [];
-	// `(?:^|[;\s])` so `getParam(..., 'name')` can't match inside `filename`.
-	const contRe = new RegExp(
-		`(?:^|[;\\s])${name}\\*(\\d+)\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`,
-		'gi'
-	);
-	let cm: RegExpExecArray | null;
-	while ((cm = contRe.exec(headerValue))) {
-		continued[Number.parseInt(cm[1]!, 10)] = (cm[3] ?? cm[4] ?? '').trim();
-	}
-	if (continued.length > 0) return decodeRfc2231(continued.join(''));
-	const re = new RegExp(`(?:^|[;\\s])${name}\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`, 'i');
-	const m = headerValue.match(re);
-	const value = m ? (m[2] ?? m[3] ?? '') : undefined;
-	return value ? decodeRfc2231(value.trim()) : undefined;
-}
-
+// The whitespace-anchored param scanner now lives in `@owlat/mail-message`
+// (imported above) so it has ONE home shared with the in-house MIME walker.
 function getBoundary(contentType: string): string | null {
-	return getParam(contentType, 'boundary') ?? null;
+	return getRawParam(contentType, 'boundary') ?? null;
 }
 
 function decodeBody(body: string, encoding: string): Uint8Array {
@@ -145,8 +129,8 @@ function walk(raw: string, out: ExtractedAttachment[]): void {
 
 	const disposition = (headers.get('content-disposition') ?? '').toLowerCase().trim();
 	const rawName =
-		getParam(headers.get('content-disposition'), 'filename') ??
-		getParam(headers.get('content-type'), 'name');
+		getRawParam(headers.get('content-disposition'), 'filename') ??
+		getRawParam(headers.get('content-type'), 'name');
 	const filename = rawName ? decodeEncodedWords(rawName) : '';
 	const isAttachment = disposition.startsWith('attachment') || filename.length > 0;
 	if (!isAttachment) return;
@@ -184,8 +168,8 @@ function findByType(raw: string, typePrefix: string): ExtractedAttachment | null
 	if (!mainType.startsWith(typePrefix)) return null;
 
 	const rawName =
-		getParam(headers.get('content-disposition'), 'filename') ??
-		getParam(headers.get('content-type'), 'name');
+		getRawParam(headers.get('content-disposition'), 'filename') ??
+		getRawParam(headers.get('content-type'), 'name');
 	const disposition = (headers.get('content-disposition') ?? '').toLowerCase().trim();
 	return {
 		filename: (rawName ? decodeEncodedWords(rawName) : '') || 'part',
