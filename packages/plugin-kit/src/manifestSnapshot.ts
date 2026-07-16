@@ -46,10 +46,11 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 				key === 'sendGates' ||
 				key === 'automationTriggers' ||
 				key === 'automationSteps' ||
-				key === 'automationConditions'
+				key === 'automationConditions' ||
+				key === 'crons'
 				? (item, index) =>
 						snapshotRecord(item, (field, fieldValue) =>
-							field === 'module'
+							field === 'module' || field === 'schedule'
 								? snapshotRecord(fieldValue)
 								: field === 'retryDelays'
 									? snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues)
