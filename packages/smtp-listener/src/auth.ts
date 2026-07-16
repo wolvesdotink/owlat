@@ -13,6 +13,20 @@
  * well-formed credential pair has been collected — protocol-level failures
  * short-circuit without touching the backend, preserving the throttle/record
  * call pattern of the listener it replaces.
+ *
+ * DIVERGENCES FROM smtp-server (signed off — the no-oracle rule + real enhanced
+ * status codes; all intentional, pinned by `auth.test.ts`, NOT silent):
+ *
+ *  - Pre-TLS AUTH is refused with `530 5.7.0` (encryption required, RFC 4954 §4)
+ *    where smtp-server replies `538`. `530 5.7.0` is the correct modern code.
+ *  - An unsupported mechanism, a client cancel (`*`), and malformed base64 all
+ *    fail with the SAME `535 5.7.8` as rejected credentials — smtp-server leaks
+ *    the stage via `504` (bad mechanism) / `501` (bad base64 / cancel). Collapsing
+ *    them to one reply is the deliberate no-oracle invariant (D6): the client
+ *    cannot tell which stage or which field was wrong.
+ *  - The failure text is `535 5.7.8 Authentication credentials invalid` (a real
+ *    enhanced status code) rather than smtp-server's `535 Error: Authentication
+ *    failed`.
  */
 
 import type { MutableSmtpSession, SmtpReply, SmtpSession } from './types.js';
