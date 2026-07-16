@@ -9,11 +9,17 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
+		requireOrgMember: vi
+			.fn()
+			.mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
-		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
+		getMutationContext: vi
+			.fn()
+			.mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
+		requireAdminContext: vi
+			.fn()
+			.mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
 	};
 });
 vi.mock('../lib/posthogHelpers', async () => ({
@@ -39,11 +45,11 @@ const modules = Object.fromEntries(
 			!path.includes('agentClassifier') &&
 			!path.includes('agentDrafter') &&
 			!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
@@ -55,7 +61,7 @@ const modules = Object.fromEntries(
  * `ai.agent` feature flag — `isEnabled` is no longer a column). */
 function configData(overrides: Record<string, unknown> = {}) {
 	const { autoReplyCount, autoReplyCountResetAt, isEnabled, ...rest } = createTestAgentConfig(
-		overrides,
+		overrides
 	) as ReturnType<typeof createTestAgentConfig> & { isEnabled?: unknown };
 	return rest;
 }
@@ -77,10 +83,7 @@ describe('agentConfigMutations.getConfig', () => {
 
 	it('should return null when no config exists', async () => {
 		const t = convexTest(schema, modules);
-		const result = await t.withIdentity(testIdentity).query(
-			api.agentConfigMutations.getConfig,
-			{}
-		);
+		const result = await t.withIdentity(testIdentity).query(api.agentConfigMutations.getConfig, {});
 		expect(result).toBeNull();
 	});
 
@@ -91,10 +94,7 @@ describe('agentConfigMutations.getConfig', () => {
 			await ctx.db.insert('agentConfig', configData({ confidenceThreshold: 0.75 }));
 		});
 
-		const result = await t.withIdentity(testIdentity).query(
-			api.agentConfigMutations.getConfig,
-			{}
-		);
+		const result = await t.withIdentity(testIdentity).query(api.agentConfigMutations.getConfig, {});
 
 		expect(result).toBeDefined();
 		expect(result!.confidenceThreshold).toBe(0.75);
@@ -127,10 +127,9 @@ describe('agentConfigMutations.updateConfig', () => {
 	it('should create config on first call with defaults', async () => {
 		const t = convexTest(schema, modules);
 
-		const configId = await t.withIdentity(testIdentity).mutation(
-			api.agentConfigMutations.updateConfig,
-			{ confidenceThreshold: 0.7 }
-		);
+		const configId = await t
+			.withIdentity(testIdentity)
+			.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.7 });
 
 		expect(configId).toBeDefined();
 
@@ -155,13 +154,12 @@ describe('agentConfigMutations.updateConfig', () => {
 			);
 		});
 
-		const returnedId = await t.withIdentity(testIdentity).mutation(
-			api.agentConfigMutations.updateConfig,
-			{
+		const returnedId = await t
+			.withIdentity(testIdentity)
+			.mutation(api.agentConfigMutations.updateConfig, {
 				confidenceThreshold: 0.7,
 				toneDescription: 'Casual and friendly',
-			}
-		);
+			});
 
 		expect(returnedId).toBe(existingConfigId);
 
@@ -175,10 +173,9 @@ describe('agentConfigMutations.updateConfig', () => {
 	it('should create an audit log on config creation', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.withIdentity(testIdentity).mutation(
-			api.agentConfigMutations.updateConfig,
-			{ confidenceThreshold: 0.7 }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.7 });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -202,10 +199,9 @@ describe('agentConfigMutations.updateConfig', () => {
 			await ctx.db.insert('agentConfig', configData());
 		});
 
-		await t.withIdentity(testIdentity).mutation(
-			api.agentConfigMutations.updateConfig,
-			{ confidenceThreshold: 0.6 }
-		);
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.6 });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db

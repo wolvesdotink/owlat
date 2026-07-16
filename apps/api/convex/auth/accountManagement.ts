@@ -208,8 +208,9 @@ async function collectPersonalData(ctx: QueryCtx, authUserId: string): Promise<P
 		await ctx.db
 			.query('mailboxes')
 			.withIndex('by_user', (q) => q.eq('userId', authUserId))
-			.collect() // bounded: account-export, one user's own mailboxes (+ any team inboxes they created)
-	).filter((m) => m.scope !== 'shared');
+			.collect()
+	) // bounded: account-export, one user's own mailboxes (+ any team inboxes they created)
+		.filter((m) => m.scope !== 'shared');
 
 	const mailMessages: PersonalDataExport['mailMessages'] = [];
 	const mailDrafts: Doc<'mailDrafts'>[] = [];
@@ -240,8 +241,9 @@ async function collectPersonalData(ctx: QueryCtx, authUserId: string): Promise<P
 		await ctx.db
 			.query('externalMailAccounts')
 			.withIndex('by_user', (q) => q.eq('userId', authUserId))
-			.collect() // bounded: account-export, a user connects a handful of accounts
-	).filter((a) => a.scope !== 'shared'); // shared = the org's team-inbox credentials, not personal data
+			.collect()
+	) // bounded: account-export, a user connects a handful of accounts
+		.filter((a) => a.scope !== 'shared'); // shared = the org's team-inbox credentials, not personal data
 	// Redact the encrypted credential envelope (same posture as webhook secrets).
 	const externalMailAccounts = rawExternalAccounts.map(
 		({ secretCiphertext: _ct, secretIv: _iv, secretAuthTag: _tag, ...account }) => account
