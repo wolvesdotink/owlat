@@ -40,14 +40,28 @@ function toggleExpanded(id: Id<'mailboxes'>) {
 }
 
 // An external team inbox whose credentials stopped working (a rotated app
-// password → auth_error) can be reconnected in place: the credentials live off
-// the mailbox on the shared external account, so `listShared` surfaces that
-// account's status and an admin repairs it via `updateCredentialsShared`.
-function needsReconnect(inbox: SharedInbox): boolean {
+// password → auth_error). The credentials live off the mailbox on the shared
+// external account, so `listShared` surfaces that account's status.
+function hasConnectionError(inbox: SharedInbox): boolean {
 	return (
 		inbox.kind === 'external' &&
 		(inbox.externalStatus === 'auth_error' || inbox.externalStatus === 'error')
 	);
+}
+
+// Reconnect is only reachable on an ACTIVE inbox: `getSharedExternalAccount`
+// (the form's prefill) and `_updateCredentialsSharedInternal` both go through
+// `requireMailboxAccess`, which refuses a non-active mailbox — so offering the
+// button on a suspended inbox would open an empty, formless panel. A suspended
+// inbox with a broken connection is surfaced via `reconnectBlocked` instead.
+function needsReconnect(inbox: SharedInbox): boolean {
+	return hasConnectionError(inbox) && inbox.status === 'active';
+}
+
+// A broken connection the admin can't repair yet because the inbox is suspended:
+// show the problem, but explain the block rather than dead-ending on a button.
+function reconnectBlocked(inbox: SharedInbox): boolean {
+	return hasConnectionError(inbox) && inbox.status !== 'active';
 }
 
 // The reconnect form's non-secret prefill (servers, username) comes from the
@@ -210,7 +224,7 @@ function formatCreated(createdAt: number) {
 								Suspended
 							</span>
 							<span
-								v-if="needsReconnect(inbox)"
+								v-if="hasConnectionError(inbox)"
 								class="text-xs px-2 py-0.5 rounded bg-error/10 text-error"
 								:title="inbox.externalLastError || undefined"
 							>
@@ -302,6 +316,19 @@ function formatCreated(createdAt: number) {
 						{{ inbox.pendingInvites.length }}
 						{{ inbox.pendingInvites.length === 1 ? 'invitation' : 'invitations' }} pending:
 						{{ inbox.pendingInvites.join(', ') }}
+					</p>
+
+					<!-- Connection is broken but the inbox is suspended, so the in-place
+					     reconnect (which needs an active mailbox) isn't available yet. -->
+					<p
+						v-if="reconnectBlocked(inbox)"
+						class="mt-3 text-xs text-text-tertiary flex items-start gap-1.5"
+					>
+						<Icon name="lucide:triangle-alert" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
+						<span>
+							This inbox's mail connection stopped working, but it's suspended — restore it
+							first to reconnect the mailbox.
+						</span>
 					</p>
 				</div>
 
