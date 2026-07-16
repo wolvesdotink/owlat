@@ -1,5 +1,5 @@
-import { isPluginContributionKind } from './contributions';
-import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
+import { isPluginContributionKind } from "./contributions";
+import { addManifestIssue, type PluginManifestIssue } from "./manifestIssues";
 
 // Manifests are static declarations: these limits leave ample composition room
 // while bounding validation work at the public `unknown` input boundary.
@@ -15,15 +15,15 @@ type SnapshotDataValue = (key: PropertyKey, value: unknown) => unknown;
 export function snapshotManifestInput(value: unknown, issues: PluginManifestIssue[]): unknown {
 	return snapshotRecord(value, (key, propertyValue) => {
 		switch (key) {
-			case 'capabilities':
-				return snapshotArray(propertyValue, '$.capabilities', MAX_CAPABILITIES, issues);
-			case 'contributes':
+			case "capabilities":
+				return snapshotArray(propertyValue, "$.capabilities", MAX_CAPABILITIES, issues);
+			case "contributes":
 				return snapshotContributions(propertyValue, issues);
-			case 'flag':
+			case "flag":
 				return snapshotFlag(propertyValue, issues);
-			case 'llmBudget':
+			case "llmBudget":
 				return snapshotRecord(propertyValue);
-			case 'component':
+			case "component":
 				return snapshotRecord(propertyValue);
 			default:
 				return propertyValue;
@@ -33,37 +33,45 @@ export function snapshotManifestInput(value: unknown, issues: PluginManifestIssu
 
 function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): unknown {
 	return snapshotRecord(value, (key, propertyValue) => {
-		if (typeof key !== 'string' || !isPluginContributionKind(key)) return propertyValue;
+		if (typeof key !== "string" || !isPluginContributionKind(key)) return propertyValue;
 		const path = `$.contributes.${key}`;
 		return snapshotArray(
 			propertyValue,
 			path,
 			MAX_CONTRIBUTIONS_PER_KIND,
 			issues,
-			key === 'sendTransports'
+			key === "sendTransports" || key === "agentSteps"
 				? (item, index) =>
 						snapshotRecord(item, (field, fieldValue) =>
-							field === 'module'
+							field === "module"
 								? snapshotRecord(fieldValue)
-								: field === 'retryDelays'
+								: field === "retryDelays"
 									? snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues)
-									: fieldValue
+									: field === "lifecycleEdges"
+										? snapshotArray(
+												fieldValue,
+												`${path}[${index}].lifecycleEdges`,
+												12,
+												issues,
+												(edge) => snapshotRecord(edge),
+											)
+										: fieldValue,
 						)
-				: undefined
+				: undefined,
 		);
 	});
 }
 
 function snapshotFlag(value: unknown, issues: PluginManifestIssue[]): unknown {
 	return snapshotRecord(value, (key, propertyValue) =>
-		key === 'requiredEnvVars'
-			? snapshotArray(propertyValue, '$.flag.requiredEnvVars', MAX_REQUIRED_ENV_VARS, issues)
-			: propertyValue
+		key === "requiredEnvVars"
+			? snapshotArray(propertyValue, "$.flag.requiredEnvVars", MAX_REQUIRED_ENV_VARS, issues)
+			: propertyValue,
 	);
 }
 
 function snapshotRecord(value: unknown, snapshotDataValue?: SnapshotDataValue): unknown {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) return value;
+	if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
 
 	const descriptors = captureOwnPropertyDescriptors(value);
 	const snapshot = Object.create(Object.getPrototypeOf(value)) as Record<PropertyKey, unknown>;
@@ -71,9 +79,9 @@ function snapshotRecord(value: unknown, snapshotDataValue?: SnapshotDataValue): 
 		Object.defineProperty(
 			snapshot,
 			key,
-			'value' in descriptor && snapshotDataValue
+			"value" in descriptor && snapshotDataValue
 				? { ...descriptor, value: snapshotDataValue(key, descriptor.value) }
-				: descriptor
+				: descriptor,
 		);
 	}
 	return Object.freeze(snapshot);
@@ -84,36 +92,36 @@ function snapshotArray(
 	path: string,
 	maximumItems: number,
 	issues: PluginManifestIssue[],
-	snapshotItem?: (value: unknown, index: number) => unknown
+	snapshotItem?: (value: unknown, index: number) => unknown,
 ): unknown {
 	if (!Array.isArray(value)) return value;
 
-	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+	const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
 	if (!lengthDescriptor) {
-		addManifestIssue(issues, 'missing', `${path}.length`, 'is required');
+		addManifestIssue(issues, "missing", `${path}.length`, "is required");
 		return INVALID_SCHEMA_ARRAY;
 	}
-	if (!('value' in lengthDescriptor)) {
-		addManifestIssue(issues, 'accessor_not_allowed', `${path}.length`, 'must be a data property');
+	if (!("value" in lengthDescriptor)) {
+		addManifestIssue(issues, "accessor_not_allowed", `${path}.length`, "must be a data property");
 		return INVALID_SCHEMA_ARRAY;
 	}
 	const length = lengthDescriptor.value;
 	if (
-		typeof length !== 'number' ||
+		typeof length !== "number" ||
 		!Number.isInteger(length) ||
 		length < 0 ||
 		length > MAX_ARRAY_LENGTH
 	) {
 		addManifestIssue(
 			issues,
-			'invalid_type',
+			"invalid_type",
 			`${path}.length`,
-			'must be an unsigned 32-bit integer'
+			"must be an unsigned 32-bit integer",
 		);
 		return INVALID_SCHEMA_ARRAY;
 	}
 	if (length > maximumItems) {
-		addManifestIssue(issues, 'too_many_items', path, `must contain at most ${maximumItems} items`);
+		addManifestIssue(issues, "too_many_items", path, `must contain at most ${maximumItems} items`);
 		return INVALID_SCHEMA_ARRAY;
 	}
 
@@ -121,28 +129,28 @@ function snapshotArray(
 	snapshot.length = length;
 	let reportedOutOfRangeIndex = false;
 	for (const key of Reflect.ownKeys(value)) {
-		if (key === 'length') continue;
+		if (key === "length") continue;
 		const descriptor = Object.getOwnPropertyDescriptor(value, key);
 		if (!descriptor) continue;
-		if (typeof key === 'string' && isArrayIndexAtOrBeyondLength(key, length)) {
+		if (typeof key === "string" && isArrayIndexAtOrBeyondLength(key, length)) {
 			if (!reportedOutOfRangeIndex) {
 				addManifestIssue(
 					issues,
-					'unknown_field',
+					"unknown_field",
 					`${path}[${key}]`,
-					'is outside the declared array length'
+					"is outside the declared array length",
 				);
 				reportedOutOfRangeIndex = true;
 			}
 			continue;
 		}
-		const arrayIndex = typeof key === 'string' && /^(0|[1-9]\d*)$/.test(key) ? Number(key) : null;
+		const arrayIndex = typeof key === "string" && /^(0|[1-9]\d*)$/.test(key) ? Number(key) : null;
 		Object.defineProperty(
 			snapshot,
 			key,
-			arrayIndex !== null && 'value' in descriptor && snapshotItem
+			arrayIndex !== null && "value" in descriptor && snapshotItem
 				? { ...descriptor, value: snapshotItem(descriptor.value, arrayIndex) }
-				: descriptor
+				: descriptor,
 		);
 	}
 	return Object.freeze(snapshot);
@@ -155,7 +163,7 @@ function isArrayIndexAtOrBeyondLength(key: string, length: number): boolean {
 }
 
 function captureOwnPropertyDescriptors(
-	value: object
+	value: object,
 ): readonly (readonly [PropertyKey, PropertyDescriptor])[] {
 	const descriptors: Array<readonly [PropertyKey, PropertyDescriptor]> = [];
 	for (const key of Reflect.ownKeys(value)) {

@@ -1,11 +1,22 @@
-export type { JsonObject, JsonPrimitive, JsonValue } from './json';
-export { isPluginId, parsePluginId, PluginIdError } from './pluginId';
-export type { PluginId } from './pluginId';
+export type { JsonObject, JsonPrimitive, JsonValue } from "./json";
+export { isPluginId, parsePluginId, PluginIdError } from "./pluginId";
+export type { PluginId } from "./pluginId";
+export { PLUGIN_AGENT_STEP_CAPABILITY, pluginAgentStepKind } from "./agentStep";
+export type {
+	PluginAgentLifecycleEdge,
+	PluginAgentStepCapability,
+	PluginAgentStepDefinition,
+	PluginAgentStepInput,
+	PluginAgentStepKind,
+	PluginAgentStepLocalId,
+	PluginAgentStepModule,
+	PluginAgentStepResult,
+} from "./agentStep";
 export type {
 	PluginCapability,
 	PluginCapabilityGrant,
 	PluginPermissionService,
-} from './capabilities';
+} from "./capabilities";
 export type {
 	PluginContext,
 	PluginLlmGenerateRequest,
@@ -21,7 +32,7 @@ export type {
 	PluginStorageListOptions,
 	PluginStorageListResult,
 	PluginStorageService,
-} from './context';
+} from "./context";
 export {
 	definePlugin,
 	isPluginManifest,
@@ -29,12 +40,12 @@ export {
 	PLUGIN_CONTRIBUTION_KINDS,
 	PluginManifestError,
 	validatePluginManifest,
-} from './manifest';
+} from "./manifest";
 export {
 	PLUGIN_SEND_FAILURE_CODES,
 	PLUGIN_SEND_TRANSPORT_CAPABILITY,
 	pluginSendTransportKind,
-} from './sendTransport';
+} from "./sendTransport";
 export type {
 	PluginSendAttachment,
 	PluginSendAttempt,
@@ -46,7 +57,7 @@ export type {
 	PluginSendTransportModule,
 	PluginSendTransportParams,
 	PluginStaticModuleExport,
-} from './sendTransport';
+} from "./sendTransport";
 export type {
 	PluginComponentDefinition,
 	PluginContributionKind,
@@ -57,4 +68,4 @@ export type {
 	PluginManifestIssue,
 	PluginManifestIssueCode,
 	PluginManifestValidation,
-} from './manifest';
+} from "./manifest";
