@@ -8,6 +8,8 @@
  * exception. (Locked decision D7: the verifier as a whole never throws.)
  */
 
+import { parseTagList } from './tagList.js';
+
 /** A successfully-parsed DKIM key record. */
 export interface DkimKeyRecord {
 	/** `v=` — version. Absent is tolerated; when present it must be `DKIM1`. */
@@ -47,40 +49,17 @@ export function isKeyRecordError(record: ParsedKeyRecord): record is DkimKeyReco
 }
 
 /**
- * Split a TXT record body into its `tag=value` pairs. Tag names are
- * case-sensitive per §3.2 except we lowercase them for lookup; values keep
- * their case. Whitespace (including folded FWS) around tags and values is
- * stripped. Duplicate tags: the FIRST occurrence wins (later ones ignored),
- * matching how a conservative verifier reads a hostile record.
- */
-function parseTagList(txt: string): Map<string, string> {
-	const tags = new Map<string, string>();
-	for (const segment of txt.split(';')) {
-		const eq = segment.indexOf('=');
-		if (eq === -1) {
-			continue;
-		}
-		const name = segment.slice(0, eq).trim().toLowerCase();
-		if (name === '') {
-			continue;
-		}
-		// Strip all internal whitespace from the value: base64 (`p=`, folded
-		// across TXT chunks) and colon-lists (`h=`, `t=`) never contain WSP.
-		const value = segment.slice(eq + 1).replace(/[ \t\r\n]+/g, '');
-		if (!tags.has(name)) {
-			tags.set(name, value);
-		}
-	}
-	return tags;
-}
-
-/**
  * Parse one joined DKIM key TXT record. `txt` is the concatenation of the
  * record's character-strings (RFC 1035 §3.3.14) — the caller joins multi-chunk
- * TXT records before calling.
+ * TXT records before calling. Tag names are lowercased for lookup; values keep
+ * their case but have all internal whitespace removed, since base64 (`p=`,
+ * folded across TXT chunks) and colon lists (`h=`, `t=`) never contain WSP.
  */
 export function parseDkimKeyRecord(txt: string): ParsedKeyRecord {
-	const tags = parseTagList(txt);
+	const tags = parseTagList(txt, {
+		lowercaseName: true,
+		normalizeValue: (raw) => raw.replace(/[ \t\r\n]+/g, ''),
+	});
 
 	// v= is optional, but if present it MUST be DKIM1 (§3.6.1).
 	const version = tags.get('v');
