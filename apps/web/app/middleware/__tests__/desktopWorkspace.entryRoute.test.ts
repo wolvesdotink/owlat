@@ -68,4 +68,11 @@ describe('desktop-workspace.global — desktop entry routing', () => {
 		}
 		expect(navigateTo).not.toHaveBeenCalled();
 	});
+
+	it('lets the settings surface through with no active workspace (native menu entry)', () => {
+		// Regression: the menu's Settings item was a silent no-op pre-connection;
+		// /desktop/settings must be reachable without a workspace or session.
+		expect(middleware({ path: '/desktop/settings' })).toBeUndefined();
+		expect(navigateTo).not.toHaveBeenCalled();
+	});
 });

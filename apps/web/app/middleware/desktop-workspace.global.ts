@@ -9,7 +9,15 @@
  */
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 
-const ALLOWED_PREFIXES = ['/desktop/welcome', '/desktop/connect', '/desktop/setup'];
+// `/desktop/settings` is deliberately reachable with no active workspace: the
+// native menu's Settings item must open it from the welcome flow too (global
+// device settings don't need a connection).
+const ALLOWED_PREFIXES = [
+	'/desktop/welcome',
+	'/desktop/connect',
+	'/desktop/setup',
+	'/desktop/settings',
+];
 
 export default defineNuxtRouteMiddleware((to) => {
 	if (import.meta.server) return;
