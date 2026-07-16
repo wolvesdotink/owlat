@@ -102,17 +102,38 @@ export async function runCommandLoop<S, T>(
 		session.rcptTo = [];
 		session.transaction = undefined;
 	};
+	// The RFC 3207 §4.2/§6 full state reset performed on a STARTTLS upgrade:
+	// discard the transaction AND every connection-level fact learned in the
+	// plaintext phase (EHLO identity, ESMTP mode, any prior AUTH). Named so a
+	// future session field cannot silently miss the reset the piece exists to
+	// guarantee — `session.secure` is set to `true` by the caller, separately,
+	// because it is the NEW posture rather than a cleared plaintext-phase fact.
+	const resetSessionForTls = (): void => {
+		resetTransaction();
+		session.clientHostname = undefined;
+		session.esmtp = false;
+		session.authenticated = false;
+		session.user = undefined;
+	};
 
 	// One idle timer governs every stall. Its duration is switched between the
-	// command phase and the DATA phase; on fire we emit 421 and destroy. The
-	// handler is re-armed on the TLS socket after a STARTTLS upgrade.
-	const armTimeout = (sock: Socket): void => {
-		sock.setTimeout(config.commandMs);
-		sock.on('timeout', () => {
+	// command phase and the DATA phase; on fire we emit 421 and destroy. Returns
+	// a disarm handle that both silences the timer AND detaches the handler —
+	// used at a STARTTLS upgrade so the plaintext socket's timer cannot fire a
+	// stale `writeThenDestroy` against the NEW (TLS) `activeSocket`. The loop
+	// re-arms on the TLS socket after the upgrade.
+	const armTimeout = (sock: Socket): (() => void) => {
+		const onTimeout = (): void => {
 			writeThenDestroy(Reply.shuttingDown(config.hostname));
-		});
+		};
+		sock.setTimeout(config.commandMs);
+		sock.on('timeout', onTimeout);
+		return (): void => {
+			sock.setTimeout(0);
+			sock.removeListener('timeout', onTimeout);
+		};
 	};
-	armTimeout(activeSocket);
+	let disarmTimeout = armTimeout(activeSocket);
 
 	let reader = new SmtpCommandReader(activeSocket);
 	let badCommands = 0;
@@ -315,18 +336,17 @@ export async function runCommandLoop<S, T>(
 			// upgrade is discarded, including any pending MAIL FROM, the greeting,
 			// and any prior AUTH. A fresh reader over the TLS socket drops any
 			// plaintext bytes the peer pipelined behind STARTTLS (injection guard).
-			resetTransaction();
-			session.clientHostname = undefined;
-			session.esmtp = false;
-			session.authenticated = false;
-			session.user = undefined;
+			resetSessionForTls();
 			session.secure = true;
-			// Silence the plaintext socket's idle timer; the TLS socket owns it now.
-			activeSocket.setTimeout(0);
+			// Fully disarm the plaintext socket's idle timer AND detach its handler
+			// before rebinding: the handler's closure calls `writeThenDestroy`, which
+			// dereferences the mutable `activeSocket`, so a stale timer left attached
+			// could tear down the NEW TLS session.
+			disarmTimeout();
 			activeSocket = tlsSocket;
 			activeSocket.setNoDelay(true);
 			activeSocket.on('error', (e: Error) => opts.onError?.(e));
-			armTimeout(activeSocket);
+			disarmTimeout = armTimeout(activeSocket);
 			reader = new SmtpCommandReader(activeSocket);
 			badCommands = 0;
 			continue;
