@@ -69,6 +69,27 @@ export interface HostedAssistantToolModule {
 export type ResolvedFlags = Readonly<Record<string, boolean>>;
 
 /**
+ * True for a *plain* object — a `{}` literal or `Object.create(null)`. Class
+ * instances (`Date`, `Map`, custom classes) and other exotic objects are not
+ * plain: recursing into them with `Object.entries` would flatten them to `{}`
+ * and discard the value. `scrubToolOutput` only recurses into plain objects (and
+ * arrays) and passes everything else through untouched.
+ */
+function isPlainObject(value: object): value is Record<string, unknown> {
+	const proto = Object.getPrototypeOf(value);
+	return proto === Object.prototype || proto === null;
+}
+
+/** True for an async-iterable value (a streaming tool result). */
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		typeof (value as Record<symbol, unknown>)[Symbol.asyncIterator] === 'function'
+	);
+}
+
+/**
  * Keep only the modules whose flag is enabled (or unset). Ordering is preserved,
  * so the assembled set's iteration order matches the registry's declaration
  * order. Pure so the gate is unit-tested without a Convex context.
@@ -93,30 +114,54 @@ export function hasFlaggedModule(modules: readonly HostedAssistantToolModule[]):
  * is the host's blanket guarantee that untrusted tool text — from any tool,
  * including future plugin tools that forget to scrub — cannot smuggle
  * instructions into the model.
+ *
+ * Recursion is confined to arrays and *plain* objects; a non-plain value (a
+ * `Date`, a class instance) is passed through unchanged rather than flattened to
+ * `{}` by `Object.entries`. The scrub is a caution over string content, not a
+ * serializer — it must never destroy a value it does not understand.
  */
 export function scrubToolOutput(value: unknown): unknown {
 	if (typeof value === 'string') return scrubForInjection(value);
 	if (Array.isArray(value)) return value.map(scrubToolOutput);
-	if (value !== null && typeof value === 'object') {
+	if (value !== null && typeof value === 'object' && isPlainObject(value)) {
 		return Object.fromEntries(
-			Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
-				key,
-				scrubToolOutput(entry),
-			])
+			Object.entries(value).map(([key, entry]) => [key, scrubToolOutput(entry)])
 		);
 	}
 	return value;
+}
+
+/** Scrub every chunk of a streaming tool result, preserving iteration semantics. */
+async function* scrubAsyncIterable(
+	source: AsyncIterable<unknown>
+): AsyncGenerator<unknown, void, unknown> {
+	for await (const chunk of source) {
+		yield scrubToolOutput(chunk);
+	}
 }
 
 /**
  * Wrap a built tool so the host scrubs its output. The wrapper preserves the
  * tool's description and input schema and only interposes on `execute`; a tool
  * with no `execute` (none of the built-ins) is returned unchanged.
+ *
+ * The AI-SDK `execute` contract lets a tool return an `AsyncIterable` of
+ * preliminary/final outputs (streaming), a `PromiseLike<OUTPUT>`, or a plain
+ * `OUTPUT`. The SDK decides which by testing `isAsyncIterable` on the *synchronous*
+ * return of `execute`, so this wrapper must not swallow a streaming result into a
+ * single awaited value: it mirrors the SDK's own dispatch. A streaming result is
+ * re-wrapped as a scrubbing async generator (still async-iterable, chunks scrubbed
+ * as they flow); a promise resolves and the value is scrubbed; a synchronous value
+ * is scrubbed inline. Rejections propagate untouched — the host never swallows,
+ * rewraps, or scrubs an error, only a fulfilled output.
  */
 export function withHostScrub(built: Tool): Tool {
 	const original = built.execute;
 	if (typeof original !== 'function') return built;
-	const execute: ToolExecuteFunction<unknown, unknown> = async (input, options) =>
-		scrubToolOutput(await original(input, options));
+	const execute: ToolExecuteFunction<unknown, unknown> = (input, options) => {
+		const result = original(input, options);
+		if (isAsyncIterable(result)) return scrubAsyncIterable(result);
+		return Promise.resolve(result).then(scrubToolOutput);
+	};
 	return { ...built, execute } as Tool;
 }
