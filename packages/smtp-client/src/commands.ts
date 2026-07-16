@@ -9,13 +9,16 @@
 
 import type { SmtpReply } from './reply';
 
-/** Thrown when a command field contains a CR or LF (a wire-injection attempt). */
+/**
+ * Thrown when a command field contains a forbidden byte (a wire-injection
+ * attempt). The offending value is NEVER embedded in the message — for AUTH
+ * fields it would be base64-encoded credential material, and callers log these
+ * errors. The field name alone is enough to debug.
+ */
 export class SmtpCommandInjectionError extends Error {
 	readonly field: string;
-	constructor(field: string, value: string) {
-		super(
-			`refusing to serialize SMTP command: field ${field} contains a CR/LF (${JSON.stringify(value)})`
-		);
+	constructor(field: string, reason: string) {
+		super(`refusing to serialize SMTP command: field ${field} ${reason}`);
 		this.name = 'SmtpCommandInjectionError';
 		this.field = field;
 		Object.setPrototypeOf(this, SmtpCommandInjectionError.prototype);
@@ -26,7 +29,28 @@ const CRLF = '\r\n';
 
 function assertNoCrlf(field: string, value: string): void {
 	if (value.includes('\r') || value.includes('\n')) {
-		throw new SmtpCommandInjectionError(field, value);
+		throw new SmtpCommandInjectionError(field, 'contains a CR/LF');
+	}
+}
+
+/**
+ * Guard an address field (the mailbox inside `<...>`). Beyond CR/LF, an
+ * attacker-controlled address containing `>` + space could smuggle extra ESMTP
+ * parameters onto the command (e.g. `a@b.com> NOTIFY=NEVER`), and `AUTH=<>` /
+ * `SIZE` smuggling on MAIL FROM changes semantics. A valid mailbox contains no
+ * angle brackets, whitespace, or ASCII control characters, so we reject them.
+ */
+function assertAddress(field: string, address: string): void {
+	for (let i = 0; i < address.length; i++) {
+		const code = address.charCodeAt(i);
+		// ASCII control characters (includes CR/LF) or DEL.
+		if (code < 0x20 || code === 0x7f) {
+			throw new SmtpCommandInjectionError(field, 'contains a control character');
+		}
+		// Whitespace, angle brackets — the ESMTP-parameter smuggling vector.
+		if (code === 0x20 || address[i] === '<' || address[i] === '>') {
+			throw new SmtpCommandInjectionError(field, 'contains whitespace or an angle bracket');
+		}
 	}
 }
 
@@ -58,14 +82,14 @@ export function serializeHelo(domain: string): string {
  * An empty address serializes the null return path `<>`.
  */
 export function serializeMailFrom(address: string, params: readonly string[] = []): string {
-	assertNoCrlf('MAIL FROM address', address);
+	assertAddress('MAIL FROM address', address);
 	assertParams(params);
 	return withParams(`MAIL FROM:<${address}>`, params);
 }
 
 /** `RCPT TO:<address>` with optional ESMTP parameters (e.g. `NOTIFY=NEVER`). */
 export function serializeRcptTo(address: string, params: readonly string[] = []): string {
-	assertNoCrlf('RCPT TO address', address);
+	assertAddress('RCPT TO address', address);
 	assertParams(params);
 	return withParams(`RCPT TO:<${address}>`, params);
 }
@@ -154,13 +178,27 @@ export function parseEhloCapabilities(reply: SmtpReply): EhloCapabilities {
 		if (line === '') {
 			continue;
 		}
-		// Old-style `AUTH=LOGIN PLAIN` collapses the `=` into the separator.
-		const tokens = line.split(/[ \t=]+/).filter((t) => t !== '');
-		const keyword = (tokens[0] ?? '').toUpperCase();
+		// Split on whitespace, then split ONLY the first token on `=` so old-style
+		// `AUTH=LOGIN PLAIN` recovers the keyword and its first arg, without
+		// mangling later args that legitimately contain `=`.
+		const words = line.split(/[ \t]+/).filter((t) => t !== '');
+		const firstWord = words[0] ?? '';
+		const eqIndex = firstWord.indexOf('=');
+		let keyword: string;
+		const args: string[] = [];
+		if (eqIndex === -1) {
+			keyword = firstWord.toUpperCase();
+		} else {
+			keyword = firstWord.slice(0, eqIndex).toUpperCase();
+			const firstArg = firstWord.slice(eqIndex + 1);
+			if (firstArg !== '') {
+				args.push(firstArg);
+			}
+		}
+		args.push(...words.slice(1));
 		if (keyword === '') {
 			continue;
 		}
-		const args = tokens.slice(1);
 		raw.set(keyword, args);
 
 		if (keyword === 'AUTH') {

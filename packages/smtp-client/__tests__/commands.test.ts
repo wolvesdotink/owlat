@@ -74,6 +74,30 @@ describe('CRLF injection guards throw before serialization', () => {
 		expect(() => serializeAuth('PLAIN', 'AGZvbwB=\r\nDATA')).toThrow(SmtpCommandInjectionError);
 	});
 
+	it('rejects ESMTP-parameter smuggling via > and whitespace in the address', () => {
+		expect(() => serializeRcptTo('a@b.com> NOTIFY=NEVER')).toThrow(SmtpCommandInjectionError);
+		expect(() => serializeMailFrom('a@b.com> AUTH=<>')).toThrow(SmtpCommandInjectionError);
+		expect(() => serializeMailFrom('a@b.com SIZE=1')).toThrow(SmtpCommandInjectionError);
+		expect(() => serializeRcptTo('<nested@evil.test')).toThrow(SmtpCommandInjectionError);
+	});
+
+	it('rejects ASCII control characters in the address', () => {
+		expect(() => serializeRcptTo('a@b.com\tX')).toThrow(SmtpCommandInjectionError);
+		expect(() => serializeRcptTo('a@b.com\x00')).toThrow(SmtpCommandInjectionError);
+	});
+
+	it('never embeds the offending value (credential material) in the error message', () => {
+		const secret = 'AGZvbwBzZWNyZXQ='; // base64 credential-shaped token
+		let message = '';
+		try {
+			serializeAuth('PLAIN', `${secret}\r\nDATA`);
+		} catch (err) {
+			message = (err as Error).message;
+		}
+		expect(message).not.toContain(secret);
+		expect(message).toContain('AUTH initial-response');
+	});
+
 	it('does not serialize any bytes when it throws', () => {
 		let serialized: string | undefined;
 		try {
@@ -128,5 +152,11 @@ describe('EHLO capability-table parser', () => {
 		const caps = parseEhloCapabilities(ehloReply('exim-ehlo.txt'));
 		expect(caps.raw.get('HELP')).toEqual([]);
 		expect(caps.raw.get('AUTH')).toEqual(['PLAIN', 'LOGIN']);
+	});
+
+	it('splits only the first token on = so later args keeping = are preserved', () => {
+		const reply = parseReply('250-greeting.example\r\n250 X-TOKEN a=b c=d\r\n');
+		const caps = parseEhloCapabilities(reply);
+		expect(caps.raw.get('X-TOKEN')).toEqual(['a=b', 'c=d']);
 	});
 });
