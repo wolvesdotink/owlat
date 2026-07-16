@@ -3,12 +3,8 @@ import type { Doc } from '../_generated/dataModel';
 import { contactPropertyConditionModule } from './contact_property';
 import { emailActivityConditionModule } from './email_activity';
 import { topicMembershipConditionModule } from './topic_membership';
-import type {
-	Condition,
-	ConditionKind,
-	ConditionOfKind,
-	ConditionTypeModule,
-} from './types';
+import type { Condition, ConditionKind, ConditionOfKind, ConditionTypeModule } from './types';
+import { isPluginConditionKind } from './catalog';
 
 // ============== Module registry ==============
 
@@ -45,6 +41,14 @@ export function parseCondition(raw: unknown): Condition {
 	}
 	if (kind === 'contact_property' || kind === 'email_activity' || kind === 'topic_membership') {
 		return conditionTypeModuleFor(kind).parseCondition(raw) as Condition;
+	}
+	// Plugin condition kinds are namespaced and carry editor metadata through the
+	// host (see `conditions/catalog.ts`), but the shared segment matcher does not
+	// yet evaluate them — a persisted plugin condition would only arrive here via
+	// the audience/segment surface, which owns its own gating. Reject it
+	// explicitly rather than mislabel it as corrupt data.
+	if (isPluginConditionKind(kind)) {
+		throw new Error(`Plugin condition kind "${kind}" is not evaluable in this context`);
 	}
 	throw new Error(`Unknown condition kind "${kind}"`);
 }
@@ -132,9 +136,11 @@ export function evaluateOne(
 	lookup: ConditionsLookup
 ): boolean {
 	const module = conditionTypeModuleFor(condition.kind);
-	return (
-		module.evaluate as (c: Condition, contact: Doc<'contacts'>, l: unknown) => boolean
-	)(condition, contact, lookup[condition.kind]);
+	return (module.evaluate as (c: Condition, contact: Doc<'contacts'>, l: unknown) => boolean)(
+		condition,
+		contact,
+		lookup[condition.kind]
+	);
 }
 
 // ============== Segment matching ==============

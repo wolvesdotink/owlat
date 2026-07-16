@@ -6,6 +6,8 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { stepModuleFor, computeEntryDelay } from './steps';
+import { isPluginStepKind, type CoreStepKind } from './steps/catalog';
+import { executePluginStep } from './steps/pluginStep';
 import { PENDING_DELAY_BATCH } from './stepExecutorQueries';
 import type { StepOutcome } from './types';
 
@@ -189,14 +191,22 @@ export const executeStep = internalAction({
 		}
 
 		try {
-			const module = stepModuleFor(step.stepType);
-			const config = module.parseConfig(step.config);
-			const outcome: StepOutcome = await module.execute(ctx, {
-				config: config as never,
-				contact,
-				automation,
-				stepRunId: args.stepRunId,
-			});
+			// Plugin step kinds run through the host-gated runner (authorize →
+			// bounded input → module → scrubbed result); core kinds dispatch to
+			// their module directly. Both feed the same retry/idempotency path.
+			let outcome: StepOutcome;
+			if (isPluginStepKind(step.stepType)) {
+				outcome = await executePluginStep(ctx, step, contact);
+			} else {
+				const module = stepModuleFor(step.stepType as CoreStepKind);
+				const config = module.parseConfig(step.config);
+				outcome = await module.execute(ctx, {
+					config: config as never,
+					contact,
+					automation,
+					stepRunId: args.stepRunId,
+				});
+			}
 
 			if (outcome.status === 'failed') {
 				throw new Error(outcome.error);
@@ -290,10 +300,13 @@ export const startAutomationRun = internalAction({
 			return { success: false, error: 'Automation is not active' };
 		}
 
-		const firstStep = await ctx.runQuery(internal.automations.stepExecutorQueries.getAutomationStep, {
-			automationId: run.automationId,
-			stepIndex: 0,
-		});
+		const firstStep = await ctx.runQuery(
+			internal.automations.stepExecutorQueries.getAutomationStep,
+			{
+				automationId: run.automationId,
+				stepIndex: 0,
+			}
+		);
 
 		if (!firstStep) {
 			await ctx.runMutation(internal.automations.stepExecutorQueries.completeAutomationRun, {
@@ -313,13 +326,16 @@ export const startAutomationRun = internalAction({
 			});
 		}
 
-		const stepRunId = await ctx.runMutation(internal.automations.stepExecutorQueries.createStepRun, {
-			automationRunId: args.automationRunId,
-			automationStepId: firstStep._id,
-			stepIndex: 0,
-			stepType: firstStep.stepType,
-			delayUntil,
-		});
+		const stepRunId = await ctx.runMutation(
+			internal.automations.stepExecutorQueries.createStepRun,
+			{
+				automationRunId: args.automationRunId,
+				automationStepId: firstStep._id,
+				stepIndex: 0,
+				stepType: firstStep.stepType,
+				delayUntil,
+			}
+		);
 
 		await ctx.scheduler.runAfter(delayMs, internal.automations.stepWalker.executeStep, {
 			automationRunId: args.automationRunId,

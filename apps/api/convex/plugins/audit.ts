@@ -12,6 +12,7 @@ export const HOSTED_PLUGIN_AUDIT_REASON_CODES = Object.freeze([
 	'access_denied',
 	'access_or_budget_denied',
 	'agent_step_failed',
+	'automation_step_failed',
 	'autonomy_gate_failed',
 	'autonomy_gate_invalid',
 	'autonomy_gate_timeout',
