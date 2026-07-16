@@ -78,9 +78,18 @@ export class SmtpConnection {
 		this.capabilities = init.capabilities;
 	}
 
-	/** The active socket, for the layers that write the DATA payload. */
+	/** The active socket, for the rare layer that needs the raw handle. */
 	get rawSocket(): net.Socket {
 		return this.reader.socket;
+	}
+
+	/**
+	 * The peer's remote address (e.g. `127.0.0.1`, `::1`), or `undefined` once the
+	 * socket has been destroyed. The transaction layer reads this to decide whether
+	 * a cleartext AUTH is permitted (loopback exception) without touching the socket.
+	 */
+	get remoteAddress(): string | undefined {
+		return this.reader.socket.remoteAddress;
 	}
 
 	/**
@@ -150,6 +159,51 @@ export class SmtpConnection {
 	/** Read the next complete reply, or reject after `timeoutMs`. */
 	readReply(phase: SmtpPhase, timeoutMs: number): Promise<SmtpReply> {
 		return this.reader.read(phase, timeoutMs, this.secured);
+	}
+
+	/**
+	 * Write a payload buffer (the dot-stuffed DATA body) to the socket, honoring
+	 * backpressure: a `false` from `write()` means the kernel buffer is full, so
+	 * this resolves only after the socket's `'drain'`. A socket `error`/`close`
+	 * mid-write rejects with a phase-tagged {@link SmtpError}. This method owns the
+	 * socket lifecycle so higher layers never touch {@link rawSocket} directly.
+	 */
+	writePayload(payload: Buffer, phase: SmtpPhase): Promise<void> {
+		const socket = this.reader.socket;
+		return new Promise<void>((resolve, reject) => {
+			const cleanup = (): void => {
+				socket.removeListener('error', onError);
+				socket.removeListener('close', onClose);
+				socket.removeListener('drain', onDrain);
+			};
+			const fail = (cause: unknown, message: string): void => {
+				cleanup();
+				reject(new SmtpError({ phase, message, secured: this.secured, cause }));
+			};
+			const onError = (err: Error): void => fail(err, 'socket error while writing the payload');
+			const onClose = (): void => fail(undefined, 'socket closed while writing the payload');
+			const onDrain = (): void => {
+				cleanup();
+				resolve();
+			};
+			socket.once('error', onError);
+			socket.once('close', onClose);
+			let drained: boolean;
+			try {
+				drained = this.write(payload, phase);
+			} catch (err) {
+				cleanup();
+				reject(err);
+				return;
+			}
+			if (drained) {
+				cleanup();
+				resolve();
+				return;
+			}
+			// Kernel buffer full: wait for 'drain' before the caller reads the reply.
+			socket.once('drain', onDrain);
+		});
 	}
 
 	/** Close the socket and release the reader. Idempotent. */
