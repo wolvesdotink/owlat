@@ -26,7 +26,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { SMTPServerOptions } from 'smtp-server';
 import type { SmtpListenerOptions } from '../types.js';
-import { startListener, closeAllListeners } from './tlsTestUtil.js';
+import { startListener, closeAllListeners, b64 } from './tlsTestUtil.js';
 import {
 	converse,
 	startOracle,
@@ -217,7 +217,6 @@ describe('smtp-server parity — SMTP framing', () => {
 
 const GOOD_USER = 'good';
 const GOOD_PASS = 'pw';
-const b64 = (s: string): string => Buffer.from(s, 'utf8').toString('base64');
 
 function ourAuthOptions(requireTls: boolean): SmtpListenerOptions {
 	return {
@@ -233,11 +232,16 @@ function ourAuthOptions(requireTls: boolean): SmtpListenerOptions {
 	};
 }
 
-function oracleAuthOptions(allowInsecureAuth: boolean): SMTPServerOptions {
+function oracleAuthOptions(allowInsecureAuth: boolean, enableStarttls = false): SMTPServerOptions {
 	return {
 		authMethods: ['PLAIN', 'LOGIN'],
 		allowInsecureAuth,
-		disabledCommands: ['STARTTLS'],
+		// smtp-server only replies 538 to pre-TLS AUTH when STARTTLS is actually
+		// SUPPORTED (smtp-connection.js:1451 guards on `_isSupported('STARTTLS')`).
+		// The `auth-pre-tls-refused` divergence therefore boots the oracle with
+		// STARTTLS enabled (its bundled self-signed cert suffices); every other
+		// AUTH scenario disables it so the plaintext-loopback dialogue is comparable.
+		...(enableStarttls ? {} : { disabledCommands: ['STARTTLS'] }),
 		onAuth(auth, _session, callback) {
 			if (auth.username === GOOD_USER && auth.password === GOOD_PASS) {
 				return callback(null, { user: GOOD_USER });
@@ -287,6 +291,13 @@ describe('smtp-server parity — AUTH chain', () => {
 // here we prove OUR replies carry the RFC 3463 code the oracle omits — the
 // sanctioned divergence, asserted against the fixture rather than discovered.
 // ---------------------------------------------------------------------------
+
+/** Look up an enrichment fixture entry, throwing (not silently skipping) if absent. */
+function enrichment(id: string): (typeof ENHANCED_CODE_ENRICHMENTS)[number] {
+	const e = ENHANCED_CODE_ENRICHMENTS.find((x) => x.id === id);
+	if (!e) throw new Error(`fixture missing enrichment ${id}`);
+	return e;
+}
 
 describe('sanctioned enhanced-code enrichment (I2c) — enumerated, not live', () => {
 	it('our accept/close replies carry the RFC 3463 codes the oracle omits', async () => {
@@ -339,18 +350,19 @@ describe('sanctioned enhanced-code enrichment (I2c) — enumerated, not live', (
 	});
 
 	it('our oversize 552 carries 5.3.4 where the oracle 552 does not', async () => {
-		const enrich = ENHANCED_CODE_ENRICHMENTS.find((e) => e.id === 'message-too-large');
-		expect(enrich).toBeDefined();
+		const enrich = enrichment('message-too-large');
 		oracle = await startOracle(
 			oracleOptions({
 				onData(stream, _session, callback) {
 					stream.on('data', () => {});
-					stream.on('end', () => callback(rejectWith(552, 'Quota exceeded')));
+					stream.on('end', () => callback(rejectWith(enrich.code, 'Quota exceeded')));
 				},
 			})
 		);
 		const { port: ourPort } = await startListener(
-			ourOptions({ onData: () => ({ code: 552, enhanced: '5.3.4', text: 'Quota exceeded' }) })
+			ourOptions({
+				onData: () => ({ code: enrich.code, enhanced: enrich.enhanced, text: 'Quota exceeded' }),
+			})
 		);
 		const script = [
 			'EHLO client.test',
@@ -362,9 +374,9 @@ describe('sanctioned enhanced-code enrichment (I2c) — enumerated, not live', (
 		];
 		const our = (await converse(ourPort, script))[5];
 		const orc = (await converse(oracle.port, script))[5];
-		expect(our?.code).toBe(552);
-		expect(our?.enhanced).toBe('5.3.4');
-		expect(orc?.code).toBe(552);
+		expect(our?.code).toBe(enrich.code);
+		expect(our?.enhanced).toBe(enrich.enhanced);
+		expect(orc?.code).toBe(enrich.code);
 		expect(orc?.enhanced).toBeUndefined();
 	});
 });
@@ -386,7 +398,9 @@ describe('sanctioned AUTH base-code divergence (D6) — enumerated, not live', (
 
 	it('pre-TLS AUTH: ours 530 vs oracle 538 (encryption required)', async () => {
 		const d = divergence('auth-pre-tls-refused');
-		oracle = await startOracle(oracleAuthOptions(false)); // allowInsecureAuth=false
+		// STARTTLS enabled on the oracle so it genuinely emits the enumerated 538
+		// (see oracleAuthOptions); insecure AUTH still refused (allowInsecureAuth=false).
+		oracle = await startOracle(oracleAuthOptions(false, true));
 		const { port: ourPort } = await startListener(ourAuthOptions(true)); // requireTls=true
 		const script = ['EHLO client.test', 'AUTH LOGIN', { send: 'QUIT', expectClose: true }];
 		const our = (await converse(ourPort, script))[2];
@@ -394,8 +408,7 @@ describe('sanctioned AUTH base-code divergence (D6) — enumerated, not live', (
 
 		expect(our?.code).toBe(d.ourCode); // 530 — the modern encryption-required code
 		expect(our?.enhanced).toBe(d.ourEnhanced); // 5.7.0
-		expect(orc?.code).not.toBe(d.ourCode); // oracle diverges (538)
-		expect(orc?.code, 'oracle refuses pre-TLS AUTH with a 5xx').toBeGreaterThanOrEqual(500);
+		expect(orc?.code).toBe(d.oracleCode); // oracle diverges with the enumerated 538
 	});
 
 	it('unsupported mechanism: ours 535 (no oracle) vs oracle 504', async () => {
@@ -408,8 +421,7 @@ describe('sanctioned AUTH base-code divergence (D6) — enumerated, not live', (
 
 		expect(our?.code).toBe(d.ourCode); // 535 — identical to bad credentials
 		expect(our?.enhanced).toBe(d.ourEnhanced); // 5.7.8
-		expect(orc?.code).not.toBe(d.ourCode); // oracle leaks the stage (504)
-		expect(orc?.code).toBeGreaterThanOrEqual(500);
+		expect(orc?.code).toBe(d.oracleCode); // oracle leaks the stage with 504
 	});
 
 	it('client cancel (*): ours 535 (no oracle) vs oracle 501', async () => {
@@ -426,7 +438,6 @@ describe('sanctioned AUTH base-code divergence (D6) — enumerated, not live', (
 
 		expect(our?.code).toBe(d.ourCode); // 535
 		expect(our?.enhanced).toBe(d.ourEnhanced); // 5.7.8
-		expect(orc?.code).not.toBe(d.ourCode); // oracle leaks the stage (501)
-		expect(orc?.code).toBeGreaterThanOrEqual(500);
+		expect(orc?.code).toBe(d.oracleCode); // oracle leaks the stage with 501
 	});
 });
