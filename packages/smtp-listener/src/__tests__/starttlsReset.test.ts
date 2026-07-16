@@ -13,6 +13,24 @@ import type { SmtpListener } from '../server.js';
 import type { SmtpListenerOptions, SmtpSession } from '../types.js';
 import { Client, generateCert, startListener, closeAllListeners } from './tlsTestUtil.js';
 
+/**
+ * The consumed session fields, captured while the callback holds the live
+ * session — before the command loop's post-DATA resetTransaction() clears them.
+ */
+interface SessionSnapshot {
+	secure: boolean;
+	mailFrom: SmtpSession['mailFrom'];
+	clientHostname: string | undefined;
+}
+
+function snapshot(session: SmtpSession): SessionSnapshot {
+	return {
+		secure: session.secure,
+		mailFrom: session.mailFrom,
+		clientHostname: session.clientHostname,
+	};
+}
+
 let cert: string;
 let key: string;
 
@@ -58,10 +76,14 @@ describe('STARTTLS discards pre-upgrade state', () => {
 	});
 
 	it('discards plaintext pipelined behind STARTTLS in one segment (injection guard)', async () => {
-		const seen: Array<SmtpSession> = [];
+		// Snapshot the consumed fields INSIDE the callback: the command loop calls
+		// resetTransaction() immediately after writing the 250, clearing the live
+		// session's mailFrom before the post-await assertion runs (live-session
+		// semantics match smtp-server).
+		const seen: Array<SessionSnapshot> = [];
 		const { port } = await start({
 			onData: (_message, session) => {
-				seen.push(session);
+				seen.push(snapshot(session));
 			},
 		});
 		const c = await Client.connect(port);
@@ -91,10 +113,10 @@ describe('STARTTLS discards pre-upgrade state', () => {
 	});
 
 	it('observes a fully reset session object inside onData after the upgrade', async () => {
-		const seen: Array<SmtpSession> = [];
+		const seen: Array<SessionSnapshot> = [];
 		const { port } = await start({
 			onData: (_message, session) => {
-				seen.push(session);
+				seen.push(snapshot(session));
 			},
 		});
 		const c = await Client.connect(port);

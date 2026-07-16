@@ -291,6 +291,30 @@ describe('performAuth unit — mechanism handling', () => {
 		expect(result).toBe('closed');
 	});
 
+	it('routes a throwing backend hook to onError and fails generically (no escape)', async () => {
+		const backendError = new Error('throttle store offline');
+		const authenticate = vi.fn(() => {
+			throw backendError;
+		});
+		const errors: Error[] = [];
+		const session = makeSession();
+		const result = await performAuth({
+			mechanism: 'PLAIN',
+			initialResponse: plainToken('good', 'pw'),
+			session,
+			auth: { mechanisms: ['PLAIN', 'LOGIN'], requireTls: true, authenticate },
+			write: () => {},
+			readLine: async () => null,
+			onError: (e) => void errors.push(e),
+		});
+		// The rejection is caught, surfaced to onError, and downgraded to the same
+		// generic failure — never an unhandled rejection that drops the connection
+		// with no reply (D6: failures byte-identical regardless of cause).
+		expect(result).toBe('fail');
+		expect(session.authenticated).toBe(false);
+		expect(errors).toEqual([backendError]);
+	});
+
 	it('fails an unsupported mechanism without touching the backend', async () => {
 		const authenticate = vi.fn(() => ({ ok: false }) as const);
 		const result = await performAuth({

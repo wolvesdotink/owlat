@@ -110,6 +110,8 @@ export class Client {
 	private cursor = 0;
 	private waiters: Waiter[] = [];
 	closed = false;
+	/** Last socket error, recorded so a server-initiated destroy never crashes the suite. */
+	error: Error | undefined;
 	socket: net.Socket | tls.TLSSocket;
 
 	private constructor(socket: net.Socket | tls.TLSSocket) {
@@ -124,6 +126,14 @@ export class Client {
 			this.pump();
 		});
 		socket.on('close', () => {
+			this.closed = true;
+			for (const w of this.waiters.splice(0)) w.resolve();
+		});
+		// A server-initiated destroy (the 421 flood test, listener close() teardown)
+		// surfaces as ECONNRESET here; record it and resolve waiters like close, so
+		// an unhandled 'error' event never crashes the suite.
+		socket.on('error', (err: Error) => {
+			this.error = err;
 			this.closed = true;
 			for (const w of this.waiters.splice(0)) w.resolve();
 		});
