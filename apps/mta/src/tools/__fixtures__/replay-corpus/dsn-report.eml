@@ -10,4 +10,23 @@ Content-Type: multipart/report; report-type=delivery-status; boundary="d1"
 Content-Type: text/plain; charset=utf-8
 
 Your message to nobody@example.net could not be delivered (5.1.1).
+--d1
+Content-Type: message/delivery-status
+Content-Disposition: attachment; filename="delivery-status.txt"
+
+Reporting-MTA: dns; mx.example.com
+Final-Recipient: rfc822; nobody@example.net
+Action: failed
+Status: 5.1.1
+Diagnostic-Code: smtp; 550 5.1.1 User unknown
+--d1
+Content-Type: message/rfc822
+Content-Disposition: attachment; filename="original.eml"
+
+From: sender@example.org
+To: nobody@example.net
+Subject: Original
+Message-ID: <orig-1@example.org>
+
+Original body.
 --d1--
