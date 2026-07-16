@@ -48,7 +48,7 @@ function addrList(field: AddressObject | AddressObject[] | undefined): string[] 
  */
 function primaryAddress(field: AddressObject | AddressObject[] | undefined): string {
 	const obj = Array.isArray(field) ? field[0] : field;
-	return obj?.value?.[0]?.address ?? '';
+	return obj?.value[0]?.address ?? '';
 }
 
 /**
