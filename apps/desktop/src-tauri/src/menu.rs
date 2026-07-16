@@ -7,7 +7,7 @@
 //!
 //! Navigation items reuse `window::navigate_to` (a small JS-injection helper);
 //! app-level actions emit `menu://…` events the SPA listens for (see apps/web
-//! `useDesktopMenu.ts`). The Edit submenu uses predefined roles so
+//! `plugins/1.desktop-menu.client.ts`). The Edit submenu uses predefined roles so
 //! Cut/Copy/Paste/Select-All work inside the webview — essential on macOS.
 //!
 //! NB: Tauri 2.10 exposes no dock-menu API — the macOS dock menu is provided
@@ -55,13 +55,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let chat = MenuItem::with_id(app, "chat", "Chat", true, None::<&str>)?;
     let docs = MenuItem::with_id(app, "docs", "Owlat Documentation", true, None::<&str>)?;
     let report = MenuItem::with_id(app, "report", "Report an Issue…", true, None::<&str>)?;
-    let prefs = MenuItem::with_id(
-        app,
-        "preferences",
-        "Preferences…",
-        true,
-        Some("CmdOrCtrl+,"),
-    )?;
+    // Labeled "Settings…" per current macOS 13+ / Windows convention; the id and
+    // the `menu://preferences` event stay `preferences` (internal contract).
+    let prefs = MenuItem::with_id(app, "preferences", "Settings…", true, Some("CmdOrCtrl+,"))?;
     // Manual update check. The handler emits `menu://check-updates`; the SPA
     // re-dispatches it to the auto-updater (see apps/web updater.client.ts).
     // Lives in the app menu on macOS (native home for it) and Help elsewhere.

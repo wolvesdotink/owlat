@@ -146,8 +146,17 @@ async function seedLocalDevWorkspace(): Promise<void> {
  *
  * `seedLocalDev` (passed by the boot plugin only in dev) auto-connects the
  * page's own origin as a workspace — see `seedLocalDevWorkspace`.
+ *
+ * `preferredActiveId` (the user's "Open at startup" pin, passed by the boot
+ * plugin only on a cold launch of the main window — never on the webview
+ * reloads a workspace switch performs) overrides the persisted last-active
+ * workspace when it still exists. Persisted when applied, so secondary windows
+ * (compose) reading the store agree on the active workspace.
  */
-export async function loadWorkspaces(options?: { seedLocalDev?: boolean }): Promise<void> {
+export async function loadWorkspaces(options?: {
+	seedLocalDev?: boolean;
+	preferredActiveId?: string | null;
+}): Promise<void> {
 	if (!isDesktopRuntime() || loaded) return;
 	loaded = true;
 
@@ -168,6 +177,15 @@ export async function loadWorkspaces(options?: { seedLocalDev?: boolean }): Prom
 	if (backfilled) await persistStore();
 
 	if (options?.seedLocalDev) await seedLocalDevWorkspace();
+
+	if (
+		options?.preferredActiveId &&
+		options.preferredActiveId !== activeId.value &&
+		workspaces.value.some((w) => w.id === options.preferredActiveId)
+	) {
+		activeId.value = options.preferredActiveId;
+		await persistStore();
+	}
 
 	const active = workspaces.value.find((w) => w.id === activeId.value) ?? null;
 	setActiveWorkspace(active);
@@ -291,7 +309,7 @@ export async function completeConnection(params: { ott: string; state: string })
 	window.location.assign('/dashboard');
 }
 
-async function switchTo(id: string): Promise<void> {
+async function switchTo(id: string, opts?: { destination?: string }): Promise<void> {
 	if (id === activeId.value) return;
 	const ws = workspaces.value.find((w) => w.id === id);
 	if (!ws) return;
@@ -326,7 +344,9 @@ async function switchTo(id: string): Promise<void> {
 			window.location.reload();
 		}, SWITCH_FLAG_TTL_MS);
 	}
-	window.location.assign('/dashboard');
+	// `destination` lets callers land somewhere specific after the re-seeding
+	// reload (e.g. /desktop/settings → "Workspace settings" → /dashboard/settings).
+	window.location.assign(opts?.destination ?? '/dashboard');
 }
 
 /**
@@ -364,6 +384,16 @@ async function removeWorkspace(id: string): Promise<void> {
 	workspaces.value = workspaces.value.filter((w) => w.id !== id);
 	if (wasActive) activeId.value = workspaces.value[0]?.id ?? null;
 	await persistStore();
+
+	// Drop the workspace's device-local settings (mute, startup pin) so
+	// settings.json doesn't accumulate orphaned entries. Before the reload
+	// below — pruneWorkspaceSettings persists synchronously-awaited.
+	try {
+		const { pruneWorkspaceSettings } = await import('~/composables/useDesktopAppSettings');
+		await pruneWorkspaceSettings(id);
+	} catch {
+		// Best-effort cleanup; an orphaned entry is harmless.
+	}
 
 	window.location.assign(workspaces.value.length ? '/dashboard' : '/desktop/welcome');
 }
