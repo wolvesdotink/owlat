@@ -28,6 +28,11 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { stepModuleFor } from './steps';
+import {
+	agentStepKindValidator,
+	isPluginAgentStepKind,
+	pluginStepsFollowing,
+} from './steps/catalog';
 import { contextRetrievalStep } from './steps/context_retrieval';
 import { buildConfirmedContext } from './steps/draft';
 import type {
@@ -37,15 +42,15 @@ import type {
 	AgentStepResult,
 	RouteTransition,
 } from './steps/types';
+import type { NextStep } from './steps/types';
+import { runHostedPluginStep } from './hostedStepRunner';
 
-const agentStepKindValidator = v.union(
-	v.literal('security_scan'),
-	v.literal('context_retrieval'),
-	v.literal('classify'),
-	v.literal('clarify'),
-	v.literal('draft'),
-	v.literal('route'),
-);
+const continuationValidator = v.object({ kind: agentStepKindValidator, input: v.any() });
+
+interface PluginStepContinuation {
+	readonly remainingPluginSteps: readonly AgentStepKind[];
+	readonly coreStep?: NextStep;
+}
 
 /**
  * Walker-assembled lifecycle TransitionInput. Adds the bookkeeping
@@ -61,7 +66,7 @@ function assembleTransition(
 	routeT: RouteTransition,
 	actionId: Id<'agentActions'>,
 	result: AgentStepResult<unknown>,
-	durationMs: number,
+	durationMs: number
 ) {
 	const at = Date.now();
 	const output = JSON.stringify(result.output);
@@ -153,13 +158,63 @@ function assembleTransition(
 
 async function loadRunContext(
 	ctx: ActionCtx,
-	inboundMessageId: Id<'inboundMessages'>,
+	inboundMessageId: Id<'inboundMessages'>
 ): Promise<AgentRunContext> {
-	const agentConfig = await ctx.runQuery(
-		internal.agent.agentPipeline.getAgentConfig,
-		{},
-	);
+	const agentConfig = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
 	return { inboundMessageId, agentConfig };
+}
+
+async function scheduleStep(
+	ctx: ActionCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	step: NextStep,
+	continuation?: PluginStepContinuation
+): Promise<void> {
+	await ctx.scheduler.runAfter(0, internal.agent.walker.runStep, {
+		inboundMessageId,
+		kind: step.kind,
+		input: step.input,
+		remainingPluginSteps: continuation ? [...continuation.remainingPluginSteps] : undefined,
+		coreStep: continuation?.coreStep,
+	});
+}
+
+async function scheduleAfterCoreStep(
+	ctx: ActionCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	completedKind: AgentStepKind,
+	nextStep: NextStep
+): Promise<void> {
+	const pluginSteps = pluginStepsFollowing(completedKind);
+	const [firstPluginStep, ...remainingPluginSteps] = pluginSteps;
+	if (!firstPluginStep) {
+		await scheduleStep(ctx, inboundMessageId, nextStep);
+		return;
+	}
+	await scheduleStep(
+		ctx,
+		inboundMessageId,
+		{ kind: firstPluginStep, input: { inboundMessageId } },
+		{ remainingPluginSteps, coreStep: nextStep }
+	);
+}
+
+async function scheduleAfterPluginStep(
+	ctx: ActionCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	continuation: PluginStepContinuation
+): Promise<void> {
+	const [nextPluginStep, ...remainingPluginSteps] = continuation.remainingPluginSteps;
+	if (nextPluginStep) {
+		await scheduleStep(
+			ctx,
+			inboundMessageId,
+			{ kind: nextPluginStep, input: { inboundMessageId } },
+			{ remainingPluginSteps, coreStep: continuation.coreStep }
+		);
+		return;
+	}
+	if (continuation.coreStep) await scheduleStep(ctx, inboundMessageId, continuation.coreStep);
 }
 
 /**
@@ -176,13 +231,10 @@ export const start = internalAction({
 		// `archived`, which are legal edges only from `security_check`. Without
 		// this transition the step's very first emit is rejected as an illegal
 		// edge and the message stalls in `received` — no draft is ever produced.
-		const outcome = await ctx.runMutation(
-			internal.inbox.processingLifecycle.transition,
-			{
-				inboundMessageId: args.inboundMessageId,
-				input: { to: 'security_check', at: Date.now() },
-			},
-		);
+		const outcome = await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+			inboundMessageId: args.inboundMessageId,
+			input: { to: 'security_check', at: Date.now() },
+		});
 		// Not in `received` (already processing, terminal, or vanished) — a
 		// concurrent start or a racing terminal transition won; nothing to do.
 		if (!outcome.ok) return;
@@ -218,10 +270,9 @@ export const start = internalAction({
 export const resumeDraft = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
 	handler: async (ctx, args) => {
-		const message = await ctx.runQuery(
-			internal.agent.agentPipeline.getMessage,
-			{ inboundMessageId: args.inboundMessageId },
-		);
+		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
+			inboundMessageId: args.inboundMessageId,
+		});
 		// Only resume a message the lifecycle has already moved into `drafting`.
 		// If it's not there (already resumed, dismissed, or vanished), do nothing —
 		// re-running the draft step against a stale state would produce an illegal
@@ -278,23 +329,47 @@ export const runStep = internalAction({
 		inboundMessageId: v.id('inboundMessages'),
 		kind: agentStepKindValidator,
 		input: v.any(),
+		remainingPluginSteps: v.optional(v.array(agentStepKindValidator)),
+		coreStep: v.optional(continuationValidator),
 	},
 	handler: async (ctx, args) => {
+		if (isPluginAgentStepKind(args.kind)) {
+			const continuation = {
+				remainingPluginSteps: args.remainingPluginSteps ?? [],
+				coreStep: args.coreStep,
+			};
+			try {
+				await runHostedPluginStep(
+					ctx,
+					{ inboundMessageId: args.inboundMessageId, kind: args.kind },
+					() => scheduleAfterPluginStep(ctx, args.inboundMessageId, continuation)
+				);
+			} catch {
+				await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+					inboundMessageId: args.inboundMessageId,
+					input: {
+						to: 'failed',
+						at: Date.now(),
+						errorMessage: 'Hosted agent step authorization failed',
+					},
+				});
+			}
+			return;
+		}
 		const module = stepModuleFor(args.kind);
 
 		// Begin the agentAction row up front so a crash inside `execute`
 		// still has an actionId to fail.
-		const { actionId } = await ctx.runMutation(
-			internal.inbox.processingLifecycle.recordStepBegin,
-			{ inboundMessageId: args.inboundMessageId, actionType: args.kind },
-		);
-
-		const runCtx = await loadRunContext(ctx, args.inboundMessageId);
+		const { actionId } = await ctx.runMutation(internal.inbox.processingLifecycle.recordStepBegin, {
+			inboundMessageId: args.inboundMessageId,
+			actionType: args.kind,
+		});
 
 		const startedAt = Date.now();
 		let result: AgentStepResult<unknown>;
 		let route: AgentRoute;
 		try {
+			const runCtx = await loadRunContext(ctx, args.inboundMessageId);
 			result = await module.execute(ctx, args.input);
 			route = module.route(result.output, args.input, runCtx);
 		} catch (error) {
@@ -314,37 +389,22 @@ export const runStep = internalAction({
 
 		switch (route.kind) {
 			case 'in_state':
-				await ctx.runMutation(
-					internal.inbox.processingLifecycle.recordStepEnd,
-					{
-						actionId,
-						output: JSON.stringify(result.output),
-						durationMs,
-						modelUsed: result.modelUsed,
-						tokenUsage: result.tokenUsage,
-					},
-				);
-				await ctx.scheduler.runAfter(0, internal.agent.walker.runStep, {
-					inboundMessageId: args.inboundMessageId,
-					kind: route.nextStep.kind,
-					input: route.nextStep.input,
+				await ctx.runMutation(internal.inbox.processingLifecycle.recordStepEnd, {
+					actionId,
+					output: JSON.stringify(result.output),
+					durationMs,
+					modelUsed: result.modelUsed,
+					tokenUsage: result.tokenUsage,
 				});
+				await scheduleAfterCoreStep(ctx, args.inboundMessageId, args.kind, route.nextStep);
 				return;
 
 			case 'transition': {
-				const transitionInput = assembleTransition(
-					route.transition,
-					actionId,
-					result,
-					durationMs,
-				);
-				const outcome = await ctx.runMutation(
-					internal.inbox.processingLifecycle.transition,
-					{
-						inboundMessageId: args.inboundMessageId,
-						input: transitionInput,
-					},
-				);
+				const transitionInput = assembleTransition(route.transition, actionId, result, durationMs);
+				const outcome = await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+					inboundMessageId: args.inboundMessageId,
+					input: transitionInput,
+				});
 				if (!outcome.ok) {
 					// The lifecycle rejected the transition (illegal edge, terminal
 					// state, or vanished message — e.g. a concurrent archive /
@@ -353,36 +413,26 @@ export const runStep = internalAction({
 					// legitimate terminal win) and do NOT schedule the next step —
 					// silently continuing here is exactly what once let a broken
 					// entry edge advance the pipeline against a stalled message.
-					await ctx.runMutation(
-						internal.inbox.processingLifecycle.recordStepFail,
-						{
-							actionId,
-							errorMessage: `transition to ${transitionInput.to} rejected: ${outcome.reason}`,
-						},
-					);
+					await ctx.runMutation(internal.inbox.processingLifecycle.recordStepFail, {
+						actionId,
+						errorMessage: `transition to ${transitionInput.to} rejected: ${outcome.reason}`,
+					});
 					return;
 				}
 				if (route.nextStep) {
-					await ctx.scheduler.runAfter(0, internal.agent.walker.runStep, {
-						inboundMessageId: args.inboundMessageId,
-						kind: route.nextStep.kind,
-						input: route.nextStep.input,
-					});
+					await scheduleAfterCoreStep(ctx, args.inboundMessageId, args.kind, route.nextStep);
 				}
 				return;
 			}
 
 			case 'done':
-				await ctx.runMutation(
-					internal.inbox.processingLifecycle.recordStepEnd,
-					{
-						actionId,
-						output: JSON.stringify(result.output),
-						durationMs,
-						modelUsed: result.modelUsed,
-						tokenUsage: result.tokenUsage,
-					},
-				);
+				await ctx.runMutation(internal.inbox.processingLifecycle.recordStepEnd, {
+					actionId,
+					output: JSON.stringify(result.output),
+					durationMs,
+					modelUsed: result.modelUsed,
+					tokenUsage: result.tokenUsage,
+				});
 				return;
 		}
 	},
