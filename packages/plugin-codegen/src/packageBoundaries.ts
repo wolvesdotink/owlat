@@ -37,6 +37,8 @@ const GENERATED_COMPOSITION_FILES = new Set([
 	'apps/api/convex/plugins/agentStepModules.generated.ts',
 	'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
 	'apps/api/convex/plugins/draftStrategyModules.generated.ts',
+	'apps/api/convex/plugins/autonomyGateCatalog.generated.ts',
+	'apps/api/convex/plugins/autonomyGateModules.generated.ts',
 ]);
 
 export interface DirectPluginImport {
