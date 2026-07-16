@@ -104,6 +104,7 @@
         "@nuxtjs/color-mode": "catalog:vue",
         "@nuxtjs/seo": "^5.1.0",
         "@tailwindcss/vite": "catalog:vue",
+        "@vitest/coverage-v8": "catalog:",
         "@vue/server-renderer": "^3.5.30",
         "better-sqlite3": "^12.8.0",
         "tailwindcss": "catalog:vue",
@@ -161,7 +162,9 @@
       },
       "devDependencies": {
         "@nuxt/fonts": "catalog:vue",
+        "@vitest/coverage-v8": "catalog:",
         "typescript": "catalog:",
+        "vitest": "catalog:",
         "vue-tsc": "catalog:",
       },
     },
