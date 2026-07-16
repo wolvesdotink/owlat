@@ -33,6 +33,47 @@ export function escapeHeader(value: string): string {
 }
 
 /**
+ * Fold a msg-id-list header value (`References` / `In-Reply-To`, RFC 5322
+ * §3.6.4) so no physical line crosses the 998-octet hard cap.
+ *
+ * A long thread accumulates msg-ids and a References value of many
+ * `<id@host>` tokens on one line trivially exceeds §2.1.1's 998-octet cap.
+ * RFC 2047 encoded-words are forbidden in a `msg-id` context, so unlike a
+ * subject this value can *only* be folded on the folding white space that
+ * already separates the ids — CRLF + SP before a `<`. The receiver drops the
+ * folding white space, so the id list round-trips identically.
+ *
+ * The value is first CRLF-stripped (injection defence — the ids are routinely
+ * derived from an inbound message's Message-ID in reply flows), then the
+ * whitespace-separated tokens are re-joined, breaking to a continuation line
+ * whenever appending the next token against the actual `Name: ` prefix would
+ * cross the cap. A single token longer than the cap (a pathological msg-id) is
+ * emitted as-is — there is no interior FWS to fold on, exactly as for a
+ * whitespace-free ASCII subject.
+ */
+export function foldMsgIdList(value: string, prefixOctets: number): string {
+	const tokens = escapeHeader(value)
+		.trim()
+		.split(/\s+/)
+		.filter((t) => t.length > 0);
+	const first = tokens[0];
+	if (first === undefined) return '';
+	let out = first;
+	let lineLen = prefixOctets + first.length;
+	for (let i = 1; i < tokens.length; i++) {
+		const next = tokens[i]!;
+		if (lineLen + 1 + next.length > MAX_HEADER_LINE_OCTETS) {
+			out += `\r\n ${next}`;
+			lineLen = 1 + next.length; // leading SP + token on the continuation line
+		} else {
+			out += ` ${next}`;
+			lineLen += 1 + next.length;
+		}
+	}
+	return out;
+}
+
+/**
  * RFC 2047 encoded-word for a header value that may contain non-ASCII
  * characters. Plain-ASCII strings round-trip unchanged so most subjects
  * stay readable on the wire.

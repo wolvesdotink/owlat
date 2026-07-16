@@ -11,7 +11,7 @@
  * Convex adapter (`apps/api/convex/mail/rfc822.ts`) and `outbound.ts`.
  */
 
-import { encodeAddressHeader, encodeHeaderValue, escapeHeader } from './headers';
+import { encodeAddressHeader, encodeHeaderValue, escapeHeader, foldMsgIdList } from './headers';
 import { randomBoundary } from './encoding';
 import { buildMessageId } from './messageId';
 import { assembleBody, type ComposeAttachment, type MimeEntity } from './mime';
@@ -302,8 +302,16 @@ export function composeMessage(input: ComposeMessageInput): ComposedMessage {
 	// subject is emitted as-is (nodemailer parity — the composer invents no
 	// placeholder; a placeholder subject is the caller's decision).
 	headers.push(`Subject: ${encodeHeaderValue(input.subject)}`);
-	if (input.inReplyTo) headers.push(`In-Reply-To: ${escapeHeader(input.inReplyTo)}`);
-	if (input.references) headers.push(`References: ${escapeHeader(input.references)}`);
+	// msg-id lists cannot carry RFC 2047 encoded-words, so they fold only on the
+	// FWS between ids (CRLF + SP before a `<`) against their real prefix so a long
+	// thread's value never crosses the 998-octet hard cap. foldMsgIdList also
+	// CRLF-strips (reply flows derive these from an inbound Message-ID).
+	if (input.inReplyTo) {
+		headers.push(`In-Reply-To: ${foldMsgIdList(input.inReplyTo, 'In-Reply-To: '.length)}`);
+	}
+	if (input.references) {
+		headers.push(`References: ${foldMsgIdList(input.references, 'References: '.length)}`);
+	}
 	headers.push('MIME-Version: 1.0');
 
 	// Arbitrary extra headers, injection-stripped, minus any collision with a
