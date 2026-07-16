@@ -9,7 +9,8 @@
  * `externalAccounts.ts`; the BetterAuth session propagates from these public
  * actions into those internal calls.
  *
- *   Public:   connect, updateCredentials, testConnection
+ *   Public:   connect, connectShared, updateCredentials, updateCredentialsShared,
+ *             testConnection
  *   Internal: getCredentialsForWorker (the ONLY function that returns plaintext
  *             credentials — internal/admin-key only, never exposed publicly)
  *
@@ -17,7 +18,7 @@
  * endpoint, so the heavy protocol libraries stay out of the Convex bundle.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { authedAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -100,6 +101,33 @@ function encodeEnvelope(password: string, smtpPassword?: string) {
 	};
 }
 
+type CredentialArgs = Infer<ReturnType<typeof v.object<typeof credentialArgs>>>;
+
+/**
+ * Map the public credential args → the internal connect-fields shape every
+ * persistence mutation takes (non-secret IMAP/SMTP settings + the encrypted
+ * password envelope). The single source of truth reused by `connect`,
+ * `connectShared`, `updateCredentials`, and `updateCredentialsShared` so the
+ * 12-field mapping (incl. `username → imapUsername` and the `authMethod`) never
+ * drifts across the four call sites — a new field (e.g. an `oauth` authMethod)
+ * is a one-line change here instead of a four-site shotgun edit.
+ */
+function toConnectFields(args: CredentialArgs) {
+	return {
+		emailAddress: args.emailAddress,
+		imapHost: args.imapHost,
+		imapPort: args.imapPort,
+		isImapSecure: args.isImapSecure,
+		smtpHost: args.smtpHost,
+		smtpPort: args.smtpPort,
+		isSmtpSecure: args.isSmtpSecure,
+		imapUsername: args.username,
+		smtpUsername: args.smtpUsername,
+		authMethod: 'password' as const,
+		...encodeEnvelope(args.password, args.smtpPassword),
+	};
+}
+
 /** Connect a new external account: validate → encrypt → persist (status pending). */
 // authz: external mailbox connect — authedAction (authenticated member) +
 // assertExternalEnabled gate; persistence in internal._connectInternal.
@@ -111,19 +139,65 @@ export const connect = authedAction({
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
-		return await ctx.runMutation(internal.mail.externalAccounts._connectInternal, {
-			emailAddress: args.emailAddress,
-			imapHost: args.imapHost,
-			imapPort: args.imapPort,
-			isImapSecure: args.isImapSecure,
-			smtpHost: args.smtpHost,
-			smtpPort: args.smtpPort,
-			isSmtpSecure: args.isSmtpSecure,
-			imapUsername: args.username,
-			smtpUsername: args.smtpUsername,
-			authMethod: 'password',
-			...encodeEnvelope(args.password, args.smtpPassword),
+		return await ctx.runMutation(
+			internal.mail.externalAccounts._connectInternal,
+			toConnectFields(args)
+		);
+	},
+});
+
+/**
+ * Connect an external account AS A SHARED TEAM INBOX: validate → encrypt →
+ * persist a `kind='external', scope='shared'` mailbox with the connecting admin
+ * as owner and `memberUserIds` seeded as members. The external-transport twin of
+ * `mailboxMembers.createShared`, reusing the same encryption path as `connect`.
+ */
+// authz: shared external inbox connect — authedAction + assertExternalEnabled here;
+// the ADMIN floor + org-member validation + persistence live in
+// internal._connectSharedInternal (a team inbox is org infrastructure).
+export const connectShared = authedAction({
+	args: {
+		...credentialArgs,
+		displayName: v.optional(v.string()),
+		memberUserIds: v.array(v.string()),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
+		await assertExternalEnabled(ctx);
+		validateShape(args);
+		return await ctx.runMutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+			...toConnectFields(args),
+			displayName: args.displayName,
+			memberUserIds: args.memberUserIds,
 		});
+	},
+});
+
+/**
+ * Rotate / repair the credentials of an external account connected AS A SHARED
+ * TEAM INBOX (issue #234): validate → encrypt → persist against the mailbox's
+ * linked account, resetting it to `pending` so the worker re-validates. The
+ * admin-gated twin of `updateCredentials` — the personal path resolves the
+ * caller's live personal account and can never reach a team inbox, so a rotated
+ * app password would otherwise brick the shared inbox forever.
+ */
+// authz: shared external inbox credential update — authedAction + assertExternalEnabled here;
+// the ADMIN floor + shared-external scope gate + persistence live in
+// internal._updateCredentialsSharedInternal.
+export const updateCredentialsShared = authedAction({
+	args: { ...credentialArgs, mailboxId: v.id('mailboxes') },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
+		await assertExternalEnabled(ctx);
+		validateShape(args);
+		return await ctx.runMutation(
+			internal.mail.externalSharedInbox._updateCredentialsSharedInternal,
+			{ ...toConnectFields(args), mailboxId: args.mailboxId }
+		);
 	},
 });
 
@@ -138,19 +212,10 @@ export const updateCredentials = authedAction({
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
-		return await ctx.runMutation(internal.mail.externalAccounts._updateCredentialsInternal, {
-			emailAddress: args.emailAddress,
-			imapHost: args.imapHost,
-			imapPort: args.imapPort,
-			isImapSecure: args.isImapSecure,
-			smtpHost: args.smtpHost,
-			smtpPort: args.smtpPort,
-			isSmtpSecure: args.isSmtpSecure,
-			imapUsername: args.username,
-			smtpUsername: args.smtpUsername,
-			authMethod: 'password',
-			...encodeEnvelope(args.password, args.smtpPassword),
-		});
+		return await ctx.runMutation(
+			internal.mail.externalAccounts._updateCredentialsInternal,
+			toConnectFields(args)
+		);
 	},
 });
 

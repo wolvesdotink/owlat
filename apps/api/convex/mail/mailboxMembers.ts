@@ -61,13 +61,47 @@ async function loadMemberProfile(
  * nonexistent id — bricking the inbox for its owner. `requireMailboxAccess`
  * already blocks cross-org READS; this blocks bogus WRITES.
  */
-async function assertOrgMemberUser(ctx: MutationCtx, authUserId: string): Promise<void> {
+export async function assertOrgMemberUser(ctx: MutationCtx, authUserId: string): Promise<void> {
 	const profile = await ctx.db
 		.query('userProfiles')
 		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))
 		.first();
 	if (!profile || profile.deletedAt !== undefined) {
 		throwInvalidInput('That person is not a member of your organization.');
+	}
+}
+
+/**
+ * Validate, dedupe, and seed the initial member roster for a freshly-provisioned
+ * shared inbox. The owner membership was already inserted by `provisionMailbox`;
+ * this adds every id in `memberUserIds` (deduped, creator excluded) as a `member`
+ * after asserting each is a real org member. A bogus id throws and — because a
+ * Convex mutation is transactional — rolls back the whole create, so no dangling
+ * mailbox or half-seeded roster survives. Shared by `createShared` (hosted) and
+ * `externalSharedInbox._connectSharedInternal` (external) so the two provisioning
+ * paths never drift on how the roster is validated and seeded.
+ */
+export async function seedSharedInboxRoster(
+	ctx: MutationCtx,
+	params: {
+		mailboxId: Id<'mailboxes'>;
+		creatorUserId: string;
+		memberUserIds: string[];
+		now: number;
+	}
+): Promise<void> {
+	const memberIds = [...new Set(params.memberUserIds)].filter((id) => id !== params.creatorUserId);
+	for (const memberUserId of memberIds) {
+		await assertOrgMemberUser(ctx, memberUserId);
+	}
+	for (const memberUserId of memberIds) {
+		await ctx.db.insert('mailboxMembers', {
+			mailboxId: params.mailboxId,
+			authUserId: memberUserId,
+			role: 'member',
+			addedBy: params.creatorUserId,
+			createdAt: params.now,
+		});
 	}
 }
 
@@ -113,14 +147,6 @@ export const createShared = authedMutation({
 		}
 		await assertVerifiedDomain(ctx, domain);
 
-		// Validate every initial member (deduped, creator excluded) is a real org
-		// member up front, so a bogus id fails the whole create rather than
-		// silently seeding a dangling membership row.
-		const memberIds = [...new Set(args.memberUserIds)].filter((id) => id !== session.userId);
-		for (const memberUserId of memberIds) {
-			await assertOrgMemberUser(ctx, memberUserId);
-		}
-
 		const mailboxId = await createProvisionedMailbox(ctx, {
 			userId: session.userId,
 			organizationId: session.activeOrganizationId,
@@ -129,16 +155,15 @@ export const createShared = authedMutation({
 			scope: 'shared',
 		});
 
-		const now = Date.now();
-		for (const memberUserId of memberIds) {
-			await ctx.db.insert('mailboxMembers', {
-				mailboxId,
-				authUserId: memberUserId,
-				role: 'member',
-				addedBy: session.userId,
-				createdAt: now,
-			});
-		}
+		// Validate + seed the initial roster. A bogus member id throws and rolls the
+		// whole create back (Convex mutations are transactional), so the provisioned
+		// mailbox above never survives a partial seed.
+		await seedSharedInboxRoster(ctx, {
+			mailboxId,
+			creatorUserId: session.userId,
+			memberUserIds: args.memberUserIds,
+			now: Date.now(),
+		});
 
 		return mailboxId;
 	},
@@ -189,6 +214,14 @@ export const listShared = adminQuery({
 					.query('pendingMailboxMembers')
 					.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
 					.collect(); // bounded: open invites on one inbox
+				// Surface the linked external account's connection status so an admin
+				// sees an auth_error (rotated app password) on the team inbox and can
+				// reconnect it — the credentials live off-mailbox, so without this the
+				// inbox would silently stop syncing with no signal on this page.
+				const externalAccount =
+					mailbox.kind === 'external' && mailbox.externalAccountId
+						? await ctx.db.get(mailbox.externalAccountId)
+						: null;
 				return {
 					_id: mailbox._id,
 					address: mailbox.address,
@@ -199,6 +232,8 @@ export const listShared = adminQuery({
 					memberCount: rows.length,
 					members,
 					pendingInvites: pending.map((p) => p.inviteeEmail).sort(),
+					externalStatus: externalAccount?.status ?? null,
+					externalLastError: externalAccount?.lastError ?? null,
 				};
 			})
 		);
