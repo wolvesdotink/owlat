@@ -1,0 +1,1 @@
+220 mail.exim.example ESMTP Exim 4.94.2 Thu, 16 Jul 2026 09:14:02 +0000
