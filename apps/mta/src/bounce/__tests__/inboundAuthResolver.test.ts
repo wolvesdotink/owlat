@@ -20,7 +20,7 @@
  * transient-rethrow conversions are exercised hermetically (no real DNS).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import RedisMock from 'ioredis-mock';
 import type { RedisLike } from '@owlat/mail-auth';
 import { checkSpf } from '@owlat/mail-auth';
@@ -60,7 +60,7 @@ function countingDns(): { dns: DnsResolveFn; calls: () => number } {
 			err.code = 'ENOTFOUND';
 			throw err;
 		}
-		return records as unknown[];
+		return { records: records as unknown[] };
 	};
 	return { dns, calls: () => calls };
 }
@@ -68,6 +68,14 @@ function countingDns(): { dns: DnsResolveFn; calls: () => number } {
 function freshRedis(): RedisLike {
 	return new RedisMock() as unknown as RedisLike;
 }
+
+// `ioredis-mock` instances with default options share ONE backing store, so a
+// fresh `RedisMock()` does not give a fresh keyspace. Wipe it before each test
+// (the repo pattern, cf. `effects.test.ts`) so cache state cannot leak across
+// tests and make a lookup-count assertion order-dependent.
+beforeEach(async () => {
+	await (new RedisMock() as unknown as { flushall: () => Promise<unknown> }).flushall();
+});
 
 describe('createInboundAuthResolvers — DNS cache lookup reduction (CI3 gate)', () => {
 	it('a warm cache serves the SPF include chain with FEWER base calls than cold', async () => {
@@ -136,7 +144,7 @@ describe('makeNodeBaseResolver — NXDOMAIN / transient handling (verdict-equiva
 	it('a transient DNS error is re-thrown and never cached', async () => {
 		const redis = freshRedis();
 		let calls = 0;
-		const dns = async (): Promise<unknown[]> => {
+		const dns: DnsResolveFn = async () => {
 			calls += 1;
 			const err = new Error('SERVFAIL') as Error & { code: string };
 			err.code = 'ESERVFAIL';
@@ -147,5 +155,35 @@ describe('makeNodeBaseResolver — NXDOMAIN / transient handling (verdict-equiva
 		// A retry re-queries the base resolver (nothing was cached).
 		await expect(resolvers.dkim('sel._domainkey.flaky.test')).rejects.toThrow();
 		expect(calls).toBe(2);
+	});
+});
+
+describe('createInboundAuthResolvers.arc — mailauth throwing-resolver shape', () => {
+	it('re-throws ENOTFOUND for a "no record" answer (empty → rejection)', async () => {
+		const redis = freshRedis();
+		const counter = countingDns();
+		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(counter.dns));
+
+		// The cached DKIM resolver surfaces "no record" as an EMPTY array; the ARC
+		// adapter restores the `dns/promises` shape mailauth keys off — an
+		// ENOTFOUND-coded rejection — so ARC key lookups behave identically to
+		// mailauth's default (uncached) resolver, just served from the shared cache.
+		await expect(resolvers.arc('sel._domainkey.absent.test', 'TXT')).rejects.toMatchObject({
+			code: 'ENOTFOUND',
+		});
+	});
+
+	it('returns the records verbatim for a published name, over the shared cache', async () => {
+		const redis = freshRedis();
+		const counter = countingDns();
+		const resolvers = createInboundAuthResolvers(redis, makeNodeBaseResolver(counter.dns));
+
+		// Warm the shared cache via the DKIM resolver, then confirm the ARC adapter
+		// serves the same records from cache without a second base call.
+		await resolvers.dkim('_spf1.parent.com');
+		expect(counter.calls()).toBe(1);
+		const arcRecs = await resolvers.arc('_spf1.parent.com', 'TXT');
+		expect(arcRecs).toEqual([['v=spf1 ip4:10.0.0.0/24 -all']]);
+		expect(counter.calls()).toBe(1);
 	});
 });
