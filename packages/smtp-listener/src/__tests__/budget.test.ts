@@ -117,6 +117,15 @@ describe('ByteBudget', () => {
 		expect(b.push(Buffer.alloc(4))).toBe('over'); // total 16 == ceiling, not > it
 		expect(b.push(Buffer.alloc(1))).toBe('abort'); // total 17 > 16
 	});
+
+	it('aborts immediately on a single push past the abort ceiling (no unbounded buffering)', () => {
+		// A hostile peer that dumps one giant chunk must be caught by the same abort
+		// ceiling, without ever buffering the payload — the DATA-phase bound behind
+		// the hostile suite, pinned here so ByteBudget semantics live in one place.
+		const b = new ByteBudget(1024, 4); // abort at 4096 bytes
+		expect(b.push(Buffer.alloc(10 * 1024))).toBe('abort');
+		expect(b.result()).toHaveLength(0);
+	});
 });
 
 // ---------------------------------------------------------------------------

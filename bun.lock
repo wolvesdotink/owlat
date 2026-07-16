@@ -429,7 +429,9 @@
       "version": "0.3.2",
       "devDependencies": {
         "@types/node": "catalog:",
+        "@types/smtp-server": "^3.5.10",
         "@vitest/coverage-v8": "catalog:",
+        "smtp-server": "^3.13.0",
         "typescript": "catalog:",
         "vitest": "catalog:",
       },
