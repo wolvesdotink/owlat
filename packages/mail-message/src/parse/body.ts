@@ -10,7 +10,13 @@
  * the walker is depth-bounded and NEVER throws.
  */
 
-import { parseHeaders, type MessageHeaders } from './headers';
+import {
+	parseHeaders,
+	decodeQpHexEscapes,
+	decodeEncodedWords,
+	decodeRfc2231,
+	type MessageHeaders,
+} from './headers';
 import { type ContentType } from './contentType';
 import { decodeCharset } from './charset';
 
@@ -106,27 +112,66 @@ export function walkLeaves(root: MimeNode, visit: (leaf: MimeNode) => void): voi
 	visit(root);
 }
 
-/** Decoded filename of a part (Content-Disposition `filename`, else Content-Type `name`), or `''`. */
-export function partFilename(node: MimeNode): string {
-	const fromDisposition = node.headers.contentDisposition?.params['filename'];
-	if (fromDisposition !== undefined && fromDisposition !== '') return fromDisposition;
-	const fromType = node.contentType.params['name'];
-	return fromType ?? '';
+/**
+ * Extract a structured-header param by name from a RAW header value, byte-for-byte
+ * as `mailMime.getParam` does: the `(?:^|[;\s])` anchor matches a param after ANY
+ * whitespace (not only after a `;`), so real broken generators that emit
+ * `Content-Disposition: attachment filename="x"` (no semicolon) are read the same
+ * way on both sides. RFC 2231 continuations are reassembled and percent-decoded.
+ */
+function getRawParam(headerValue: string | undefined, name: string): string | undefined {
+	if (!headerValue) return undefined;
+	const continued: string[] = [];
+	const contRe = new RegExp(
+		`(?:^|[;\\s])${name}\\*(\\d+)\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`,
+		'gi'
+	);
+	let cm: RegExpExecArray | null;
+	while ((cm = contRe.exec(headerValue))) {
+		continued[Number.parseInt(cm[1]!, 10)] = (cm[3] ?? cm[4] ?? '').trim();
+	}
+	if (continued.length > 0) return decodeRfc2231(continued.join(''));
+	const re = new RegExp(`(?:^|[;\\s])${name}\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`, 'i');
+	const m = headerValue.match(re);
+	const value = m ? (m[2] ?? m[3] ?? '') : undefined;
+	return value ? decodeRfc2231(value.trim()) : undefined;
 }
 
-/** `inline` when Content-Disposition says so, otherwise `attachment` (mailMime parity). */
-export function partDisposition(node: MimeNode): 'attachment' | 'inline' {
-	return node.headers.contentDisposition?.value === 'inline' ? 'inline' : 'attachment';
+/** The raw (lowercased, trimmed) `Content-Disposition` value of a part. */
+function rawDisposition(node: MimeNode): string {
+	return (node.headers.get('content-disposition') ?? '').toLowerCase().trim();
 }
 
 /**
- * Whether a leaf is an attachment: an explicit `attachment` disposition or the
- * presence of a filename. `multipart/*` nodes are never attachments. This is the
- * exact predicate the current `mailMime.extractAttachments` uses.
+ * Decoded filename of a part (Content-Disposition `filename`, else Content-Type
+ * `name`), or `''`. Matches `mailMime.extractAttachments` byte-for-byte, including
+ * the no-semicolon param extraction and the `decodeEncodedWords` post-step.
+ */
+export function partFilename(node: MimeNode): string {
+	const rawName =
+		getRawParam(node.headers.get('content-disposition'), 'filename') ??
+		getRawParam(node.headers.get('content-type'), 'name');
+	return rawName ? decodeEncodedWords(rawName) : '';
+}
+
+/**
+ * `inline` when the disposition token starts with `inline`, otherwise
+ * `attachment` (mailMime parity: `disposition.startsWith('inline')`).
+ */
+export function partDisposition(node: MimeNode): 'attachment' | 'inline' {
+	return rawDisposition(node).startsWith('inline') ? 'inline' : 'attachment';
+}
+
+/**
+ * Whether a leaf is an attachment: a disposition that starts with `attachment`
+ * OR the presence of a filename. `multipart/*` nodes are never attachments. This
+ * is byte-for-byte the predicate `mailMime.extractAttachments` uses (a raw
+ * `startsWith('attachment')`, not token equality — so `attachment filename="x"`
+ * without a semicolon still counts).
  */
 export function isAttachmentPart(node: MimeNode): boolean {
 	if (node.contentType.type === 'multipart') return false;
-	if (node.headers.contentDisposition?.value === 'attachment') return true;
+	if (rawDisposition(node).startsWith('attachment')) return true;
 	return partFilename(node) !== '';
 }
 
@@ -151,11 +196,7 @@ export function transferDecode(rawBody: string, encoding: string | undefined): U
 		return out;
 	}
 	if (enc === 'quoted-printable') {
-		const decoded = rawBody
-			.replace(/=\r?\n/g, '')
-			.replace(/=([0-9A-Fa-f]{2})/g, (_m, h: string) =>
-				String.fromCharCode(Number.parseInt(h, 16))
-			);
+		const decoded = decodeQpHexEscapes(rawBody.replace(/=\r?\n/g, ''));
 		const out = new Uint8Array(decoded.length);
 		for (let i = 0; i < decoded.length; i++) out[i] = decoded.charCodeAt(i) & 0xff;
 		return out;
