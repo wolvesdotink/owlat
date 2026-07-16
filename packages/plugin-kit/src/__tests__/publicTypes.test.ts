@@ -8,6 +8,8 @@ import {
 	type PluginId,
 	type PluginManifest,
 	type PluginAutonomyGateModule,
+	type PluginCronModule,
+	type PluginCronServices,
 	type PluginSendTransportModule,
 } from '../index';
 
@@ -52,6 +54,21 @@ describe('public plugin-kit types', () => {
 				| { readonly outcome: 'objection'; readonly reason: string }
 			>
 		>();
+	});
+
+	it('gives crons cancellation, logging, and budgeted LLM but no raw context', () => {
+		const cron: PluginCronModule = {
+			async run(services) {
+				expectTypeOf(services).toEqualTypeOf<PluginCronServices>();
+				expectTypeOf(services).toHaveProperty('signal');
+				expectTypeOf(services).toHaveProperty('logger');
+				expectTypeOf(services).toHaveProperty('llm');
+				expectTypeOf(services).not.toHaveProperty('ctx');
+				expectTypeOf(services).not.toHaveProperty('db');
+				expectTypeOf(services.signal).toEqualTypeOf<AbortSignal>();
+			},
+		};
+		expectTypeOf(cron.run).returns.toEqualTypeOf<Promise<void>>();
 	});
 
 	it('exposes only host-mediated context services', () => {

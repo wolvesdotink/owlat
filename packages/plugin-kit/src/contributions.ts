@@ -45,6 +45,7 @@ type DeferredPluginContributionKind = Exclude<
 	| 'automationConditions'
 	| 'webhookEvents'
 	| 'importProviders'
+	| 'crons'
 >;
 
 export type PluginContributions = Readonly<
@@ -58,6 +59,7 @@ export type PluginContributions = Readonly<
 		readonly automationConditions?: readonly PluginAutomationConditionDefinition[];
 		readonly webhookEvents?: readonly PluginWebhookEventDefinition[];
 		readonly importProviders?: readonly PluginImportProviderDefinition[];
+		readonly crons?: readonly PluginCronDefinition[];
 	} & Partial<Record<DeferredPluginContributionKind, readonly unknown[]>>
 >;
 import type { PluginAgentStepDefinition } from './agentStep';
@@ -67,6 +69,7 @@ import type {
 	PluginAutomationTriggerDefinition,
 } from './automation';
 import type { PluginAutonomyGateDefinition } from './autonomyGate';
+import type { PluginCronDefinition } from './cron';
 import type { PluginDraftStrategyDefinition } from './draftStrategy';
 import type { PluginImportProviderDefinition } from './importProvider';
 import type { PluginSendTransportDefinition } from './sendTransport';
