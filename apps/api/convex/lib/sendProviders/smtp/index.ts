@@ -73,8 +73,8 @@ export interface RelayClientConfig {
 
 let cachedConfig: RelayClientConfig | null = null;
 
-/** Resolved, non-secret transport inputs (env-derived). */
-export interface RelayTransportInput {
+/** Resolved, non-secret relay client inputs (env-derived). */
+export interface RelayClientInput {
 	host: string;
 	port: number;
 	/** true ⇒ implicit TLS (465); false ⇒ STARTTLS upgrade (587). */
@@ -101,7 +101,7 @@ export interface RelayTransportInput {
  * - the connect/greeting timeout is bounded so an unreachable relay fails in a
  *   pre-wire phase (retryable) rather than tripping the ambiguous outer timeout.
  */
-export function buildRelayClientConfig(input: RelayTransportInput): RelayClientConfig {
+export function buildRelayClientConfig(input: RelayClientInput): RelayClientConfig {
 	return {
 		connect: {
 			host: input.host,
