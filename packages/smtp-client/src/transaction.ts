@@ -17,8 +17,6 @@
  *    at least one recipient was accepted, reporting the rest with their codes.
  */
 
-import type net from 'node:net';
-
 import {
 	serializeMailFrom,
 	serializeRcptTo,
@@ -30,7 +28,7 @@ import {
 	type EhloCapabilities,
 } from './commands';
 import { SmtpConnection, type SmtpConnectOptions } from './connection';
-import { SmtpError } from './errors';
+import { SmtpError, type SmtpErrorInit, type SmtpPhase } from './errors';
 import { dotStuffMessage } from './dotStuff';
 import { isPositiveCompletion, isPositiveIntermediate, type SmtpReply } from './reply';
 
@@ -53,27 +51,29 @@ export interface AuthenticateOptions {
 	mechanisms?: readonly SmtpAuthMechanism[];
 	/**
 	 * Whether the peer is a trusted loopback relay, letting AUTH proceed over a
-	 * cleartext channel (the mail-sync submission-to-localhost path). When
-	 * omitted, loopback is auto-detected from the socket's remote address, so a
-	 * genuinely remote cleartext connection is refused even if the caller forgot
-	 * to pass this. Passing `false` forces the strict rule regardless of address.
+	 * cleartext channel (the mail-sync submission-to-localhost path). This flag
+	 * can only STRENGTHEN the rule, never widen it: loopback is always derived
+	 * from the socket's remote address, so a genuinely remote cleartext peer is
+	 * refused regardless of what the caller passes. Passing `false` forces the
+	 * strict "secured only" rule even on a loopback peer; passing `true` (or
+	 * omitting it) still requires the address to actually be loopback — it cannot
+	 * assert loopback for a remote peer.
 	 */
 	loopback?: boolean;
 }
 
 const DEFAULT_AUTH_MECHANISMS: readonly SmtpAuthMechanism[] = ['PLAIN', 'LOGIN'];
 
-/** RFC 5321 §4.1.1.1 loopback literals, incl. the IPv4-mapped-IPv6 form. */
+/**
+ * RFC 5321 §4.1.1.1 loopback literals, incl. the whole IPv4-mapped-IPv6 form.
+ * Mirrors mail-sync's `isLoopbackHost`, which accepts all of `127.x.x.x` and its
+ * `::ffff:127.x.x.x` mapping — the invariant this client encodes.
+ */
 function isLoopbackAddress(address: string | undefined): boolean {
 	if (address === undefined) {
 		return false;
 	}
-	return (
-		address === '127.0.0.1' ||
-		address === '::1' ||
-		address === '::ffff:127.0.0.1' ||
-		address.startsWith('127.')
-	);
+	return address === '::1' || address.startsWith('127.') || address.startsWith('::ffff:127.');
 }
 
 function base64(value: string): string {
@@ -91,7 +91,11 @@ export async function authenticate(
 	credentials: SmtpCredentials,
 	options: AuthenticateOptions = {}
 ): Promise<void> {
-	const loopback = options.loopback ?? isLoopbackAddress(conn.rawSocket.remoteAddress);
+	// The flag can only STRENGTHEN: `loopback: false` forces the strict rule, but a
+	// truthy/absent flag still requires the address itself to be loopback. A call
+	// site can never assert loopback for a remote peer and leak credentials in
+	// cleartext — the address is always the ground truth.
+	const loopback = options.loopback === false ? false : isLoopbackAddress(conn.remoteAddress);
 	if (!conn.secured && !loopback) {
 		// Fail closed BEFORE serialization: never put credentials on the wire in
 		// cleartext to a non-loopback peer.
@@ -163,7 +167,7 @@ function assertContinuation(reply: SmtpReply, secured: boolean): void {
 	if (isPositiveIntermediate(reply.code)) {
 		return;
 	}
-	throw authError(reply, secured);
+	throw errorFromReply('auth', `AUTH rejected with ${reply.code}`, secured, reply);
 }
 
 function assertAuthAccepted(reply: SmtpReply, secured: boolean): void {
@@ -172,24 +176,27 @@ function assertAuthAccepted(reply: SmtpReply, secured: boolean): void {
 	if (reply.code === 235) {
 		return;
 	}
-	throw authError(reply, secured);
+	throw errorFromReply('auth', `AUTH rejected with ${reply.code}`, secured, reply);
 }
 
-function authError(reply: SmtpReply, secured: boolean): SmtpError {
-	const init: {
-		phase: 'auth';
-		message: string;
-		secured: boolean;
-		replyCode: number;
-		enhancedCode?: string;
-	} = {
-		phase: 'auth',
-		message: `AUTH rejected with ${reply.code}`,
-		secured,
-		replyCode: reply.code,
-	};
-	if (reply.enhancedCode !== undefined) {
-		init.enhancedCode = reply.enhancedCode;
+/**
+ * The single constructor for a phase-tagged {@link SmtpError} carrying a server
+ * reply's code. Pass the `reply` (or a `{ code, enhancedCode }` view of a
+ * per-recipient verdict) to copy its `replyCode`/`enhancedCode`; omit it for a
+ * client-side refusal that carries no reply code.
+ */
+function errorFromReply(
+	phase: SmtpPhase,
+	message: string,
+	secured: boolean,
+	reply?: { code: number; enhancedCode?: string }
+): SmtpError {
+	const init: SmtpErrorInit = { phase, message, secured };
+	if (reply !== undefined) {
+		init.replyCode = reply.code;
+		if (reply.enhancedCode !== undefined) {
+			init.enhancedCode = reply.enhancedCode;
+		}
 	}
 	return new SmtpError(init);
 }
@@ -244,6 +251,13 @@ export async function sendEnvelope(
 	conn: SmtpConnection,
 	options: EnvelopeOptions
 ): Promise<SendResult> {
+	if (options.to.length === 0) {
+		// Nothing to deliver to — refuse BEFORE MAIL FROM reaches the wire. A
+		// client-side refusal, so no reply code; phase `rcpt` keeps it in the safely
+		// retryable region.
+		throw errorFromReply('rcpt', 'no recipients supplied', conn.secured);
+	}
+
 	const body = typeof options.data === 'string' ? Buffer.from(options.data, 'utf8') : options.data;
 
 	// MAIL FROM, with SIZE when the server advertised it (RFC 1870). The declared
@@ -275,36 +289,30 @@ export async function sendEnvelope(
 		// Every recipient was refused — there is nothing to deliver. Report in phase
 		// `rcpt` (pre-DATA, so safely retryable) carrying the last rejection's code.
 		const last = rejected[rejected.length - 1];
-		const init: {
-			phase: 'rcpt';
-			message: string;
-			secured: boolean;
-			replyCode?: number;
-			enhancedCode?: string;
-		} = {
-			phase: 'rcpt',
-			message: 'every recipient was rejected',
-			secured: conn.secured,
-		};
-		if (last !== undefined) {
-			init.replyCode = last.replyCode;
-			if (last.enhancedCode !== undefined) {
-				init.enhancedCode = last.enhancedCode;
-			}
-		}
-		throw new SmtpError(init);
+		throw errorFromReply(
+			'rcpt',
+			'every recipient was rejected',
+			conn.secured,
+			last === undefined ? undefined : { code: last.replyCode, enhancedCode: last.enhancedCode }
+		);
 	}
 
 	// DATA — the 354 intermediate handshake (phase `data`).
 	const dataReply = await conn.command(serializeData(), 'data');
 	if (!isPositiveIntermediate(dataReply.code)) {
-		throw replyError(dataReply, 'data', conn.secured);
+		throw errorFromReply(
+			'data',
+			`server rejected data with ${dataReply.code}`,
+			conn.secured,
+			dataReply
+		);
 	}
 
 	// Stream the dot-stuffed body + terminator, then await the final reply. Both
 	// the write and the wait live in phase `data-final`: a drop here is the
 	// double-delivery-ambiguous region the retry taxonomy must never auto-retry.
-	await writeBody(conn, dotStuffMessage(body));
+	// The socket-lifecycle mechanics live on SmtpConnection, which owns the socket.
+	await conn.writePayload(dotStuffMessage(body), 'data-final');
 	const finalReply = await conn.readReply('data-final', conn.dataTimeoutMs);
 	assertCompletion(finalReply, 'data-final', conn.secured);
 
@@ -324,84 +332,11 @@ function toVerdict(recipient: string, reply: SmtpReply): RecipientVerdict {
 	return verdict;
 }
 
-/**
- * Write the encoded DATA payload, honoring socket backpressure: a `false` from
- * `write()` means the kernel buffer is full and we must wait for `'drain'` before
- * continuing. A socket error mid-write rejects in phase `data-final`.
- */
-function writeBody(conn: SmtpConnection, payload: Buffer): Promise<void> {
-	const socket: net.Socket = conn.rawSocket;
-	return new Promise<void>((resolve, reject) => {
-		const cleanup = (): void => {
-			socket.removeListener('error', onError);
-			socket.removeListener('close', onClose);
-			socket.removeListener('drain', onDrain);
-		};
-		const fail = (cause: unknown, message: string): void => {
-			cleanup();
-			reject(
-				new SmtpError({
-					phase: 'data-final',
-					message,
-					secured: conn.secured,
-					cause,
-				})
-			);
-		};
-		const onError = (err: Error): void => fail(err, 'socket error while writing the DATA payload');
-		const onClose = (): void => fail(undefined, 'socket closed while writing the DATA payload');
-		const onDrain = (): void => {
-			cleanup();
-			resolve();
-		};
-		socket.once('error', onError);
-		socket.once('close', onClose);
-		let drained: boolean;
-		try {
-			drained = conn.write(payload, 'data-final');
-		} catch (err) {
-			cleanup();
-			reject(err);
-			return;
-		}
-		if (drained) {
-			cleanup();
-			resolve();
-			return;
-		}
-		// Kernel buffer full: wait for 'drain' before the caller reads the reply.
-		socket.once('drain', onDrain);
-	});
-}
-
 function assertCompletion(reply: SmtpReply, phase: 'mail' | 'data-final', secured: boolean): void {
 	if (isPositiveCompletion(reply.code)) {
 		return;
 	}
-	throw replyError(reply, phase, secured);
-}
-
-function replyError(
-	reply: SmtpReply,
-	phase: 'mail' | 'data' | 'data-final',
-	secured: boolean
-): SmtpError {
-	const init: {
-		phase: 'mail' | 'data' | 'data-final';
-		message: string;
-		secured: boolean;
-		replyCode: number;
-		enhancedCode?: string;
-	} = {
-		phase,
-		message: `server rejected ${phase} with ${reply.code}`,
-		secured,
-		replyCode: reply.code,
-	};
-	if (reply.enhancedCode !== undefined) {
-		init.enhancedCode = reply.enhancedCode;
-	}
-	return new SmtpError(init);
+	throw errorFromReply(phase, `server rejected ${phase} with ${reply.code}`, secured, reply);
 }
 
 // ── Teardown ──────────────────────────────────────────────────────────────────
@@ -413,6 +348,9 @@ function replyError(
  */
 export async function quit(conn: SmtpConnection): Promise<void> {
 	try {
+		// The `'connect'` phase label is unobservable: any error here is swallowed
+		// below and never escapes to a classifier, so QUIT needs no phase of its own
+		// (there is no `'quit'` in the retry taxonomy). The label is inert bookkeeping.
 		await conn.command(serializeQuit(), 'connect');
 	} catch {
 		// Swallow: the transaction already succeeded/failed on its own terms; a
