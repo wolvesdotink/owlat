@@ -1,14 +1,17 @@
 /**
- * An AddressObject layer over the shared RFC 5322 address primitives.
+ * An AddressObject layer over a self-contained RFC 5322 mailbox primitive.
  *
- * `@owlat/shared`'s `parseAddress` handles a single mailbox; this module adds
- * the pieces a message parser needs on top of it: RFC 5322 group syntax
- * (`Team: a@x, b@y;`), a decoded display `name`, a `.text` reconstruction of
- * the whole list, and the mailparser-style single-header-vs-many-headers
- * duality (`from` is one object, repeated `To:` headers are an array).
+ * `mail-message` is the in-house parser that replaces mailparser, so it owns
+ * its own mailbox primitive rather than depending back on the foundational
+ * `@owlat/shared` package — that keeps the workspace graph one-directional
+ * (`shared` re-exports the header helpers *from* `mail-message`; nothing flows
+ * back). On top of the single-mailbox parse this module adds what a message
+ * parser needs: RFC 5322 group syntax (`Team: a@x, b@y;`), a decoded display
+ * `name`, a `.text` reconstruction of the whole list, and the mailparser-style
+ * single-header-vs-many-headers duality (`from` is one object, repeated `To:`
+ * headers are an array).
  */
 
-import { parseAddress } from '@owlat/shared';
 import { decodeHeaderValue } from './headers';
 
 /** One parsed mailbox, or (when `group` is set) a group container. */
@@ -19,6 +22,34 @@ export interface EmailAddress {
 	address: string;
 	/** Members, present only when this entry is an RFC 5322 group. */
 	group?: EmailAddress[];
+}
+
+/** The raw name/address of a single mailbox before RFC 2047 decoding. */
+interface RawMailbox {
+	name?: string;
+	address: string;
+}
+
+/**
+ * Parse one mailbox token. Accepts `email@host`, `<email@host>`, or
+ * `"Name" <email@host>` / `Name <email@host>`; returns `null` when no
+ * `local@domain` can be extracted. Address is lowercased; a surrounding pair
+ * of quotes is stripped from the display name (RFC 2047 decoding happens in
+ * {@link toEmailAddress}).
+ */
+function parseMailbox(input: string): RawMailbox | null {
+	const trimmed = input.trim();
+	if (!trimmed) return null;
+	const angle = trimmed.match(/^(.*?)<\s*([^>]+?)\s*>\s*$/);
+	if (angle && angle[1] !== undefined && angle[2] !== undefined) {
+		const rawName = angle[1].trim().replace(/^"(.*)"$/, '$1');
+		const address = angle[2].toLowerCase();
+		if (!address.includes('@')) return null;
+		return { name: rawName || undefined, address };
+	}
+	const bareMatch = trimmed.match(/([^\s<>]+@[^\s<>]+)/);
+	if (!bareMatch || bareMatch[1] === undefined) return null;
+	return { address: bareMatch[1].toLowerCase() };
 }
 
 /** The parsed contents of one address header. */
@@ -32,7 +63,7 @@ export interface AddressObject {
 const NAME_NEEDS_QUOTING = /[()<>[\]:;@\\",.]/;
 
 function toEmailAddress(raw: string): EmailAddress | null {
-	const parsed = parseAddress(raw);
+	const parsed = parseMailbox(raw);
 	if (!parsed) return null;
 	return {
 		name: parsed.name === undefined ? '' : decodeHeaderValue(parsed.name),
