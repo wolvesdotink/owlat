@@ -9,11 +9,11 @@
  * document-order attachment set (named + inline).
  *
  * The corpus mirrors the shapes of the real MTA / mail-sync inline fixtures
- * (the ingest `RAW`, the bounce/forwarder message shapes) but keeps every part
- * a body or a NAMED attachment: message-part attachments (message/delivery-
- * status, message/rfc822) are the P2-pinned mailMime-parity classification, a
- * deliberate difference from mailparser handled at cutover, and out of the
- * facade differential's scope.
+ * (the ingest `RAW`, the bounce/forwarder message shapes), including the DSN
+ * shape whose `message/delivery-status` + `message/rfc822` parts the bounce/FBL
+ * scrapers read. `parseMessage` keeps those `message/*` payloads VERBATIM (CRLF
+ * preserved) exactly as mailparser does, so the DSN fixture below is compared
+ * against the oracle on the full attachment `content`/`size` like every other.
  */
 
 const eml = (...lines: string[]): string => lines.join('\r\n');
@@ -416,6 +416,51 @@ export const RAW_FIXTURES: RawFixture[] = [
 			'--KS--'
 		),
 	},
+	{
+		// Genuine DSN (multipart/report; report-type=delivery-status) carrying the
+		// two `message/*` parts the bounce/FBL scrapers read: a
+		// `message/delivery-status` and the returned `message/rfc822`. mailparser
+		// keeps their payloads VERBATIM (CRLF preserved), so `parseMessage` must too
+		// — this pins the size/content of both non-text parts against the oracle
+		// (the C0 shadow-replay DSN case, fed back into P3). The `message/*` parts
+		// are the ONLY reason CRLF survives into an attachment payload here, and the
+		// differential compares the full attachment `content`/`size`.
+		name: 'dsn-delivery-status-with-message-rfc822',
+		raw: eml(
+			'From: MAILER-DAEMON@mx.example.com',
+			'To: sender@example.org',
+			'Subject: Delivery Status Notification (Failure)',
+			'Date: Fri, 20 Jun 2026 08:15:00 +0000',
+			'Message-ID: <dsn-corpus-1@mx.example.com>',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/report; report-type=delivery-status; boundary="d1"',
+			'',
+			'--d1',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Your message to nobody@example.net could not be delivered (5.1.1).',
+			'--d1',
+			'Content-Type: message/delivery-status',
+			'Content-Disposition: attachment; filename="delivery-status.txt"',
+			'',
+			'Reporting-MTA: dns; mx.example.com',
+			'Final-Recipient: rfc822; nobody@example.net',
+			'Action: failed',
+			'Status: 5.1.1',
+			'Diagnostic-Code: smtp; 550 5.1.1 User unknown',
+			'--d1',
+			'Content-Type: message/rfc822',
+			'Content-Disposition: attachment; filename="original.eml"',
+			'',
+			'From: sender@example.org',
+			'To: nobody@example.net',
+			'Subject: Original',
+			'Message-ID: <orig-1@example.org>',
+			'',
+			'Original body.',
+			'--d1--'
+		),
+	},
 ];
 
 /**
@@ -435,11 +480,11 @@ export const RAW_FIXTURES: RawFixture[] = [
  * SIGNED-OFF EXCLUSION (differential scope, tied to the card's "P2 hostile
  * corpus"): the hostile classes with NO shared consumed-field contract — part
  * bombs (attachment-count divergence), boundary-in-base64 and NUL/control-byte
- * mangling (decoder-dependent), and the message-part attachment classification
- * (message/delivery-status, message/rfc822 — the P2-pinned mailMime-parity
- * difference from mailparser, handled at cutover) — are exercised for
- * no-throw + boundedness in `fuzz.test.ts`, NOT compared against the oracle,
- * because there is no single "correct" projection both libraries share.
+ * mangling (decoder-dependent) — are exercised for no-throw + boundedness in
+ * `fuzz.test.ts`, NOT compared against the oracle, because there is no single
+ * "correct" projection both libraries share. (The well-formed `message/*`
+ * message-part case is NOT excluded: `parseMessage` keeps those payloads verbatim
+ * like mailparser, so the DSN fixture in `RAW_FIXTURES` is compared byte-for-byte.)
  */
 export const HOSTILE_FIXTURES: RawFixture[] = [
 	{

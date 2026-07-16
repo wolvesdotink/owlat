@@ -33,3 +33,7 @@ apps/api/fixtures/sealed-mail/** -text
 # AMS body hashes are computed over exact CRLF bytes, so these must never be
 # EOL-normalized either.
 fixtures/sealed-mail/** -text
+# The C0 inbound-replay corpus slice is checked in AS BYTES: RFC 5322 messages
+# are CRLF and the harness diffs the two parse stacks over exact bytes, so git
+# must never EOL-normalize them.
+apps/mta/src/tools/__fixtures__/replay-corpus/** -text
