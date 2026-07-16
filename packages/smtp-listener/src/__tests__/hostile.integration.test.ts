@@ -8,8 +8,9 @@
  *   - the right TIMEOUT fires (a 421 4.4.2 close on the command / DATA idle
  *     timer), or
  *   - a COUNTER caps it: the per-command byte cap (500 + destroy), the
- *     bad-command budget (421 4.7.0 after N), or the {@link ByteBudget}
- *     drain-past-limit / destroy-at-abort ceiling.
+ *     bad-command budget (421 4.7.0 after N), or the DATA-phase byte budget's
+ *     drain-past-limit / destroy-at-abort ceiling (the `ByteBudget` core is
+ *     pinned directly in `budget.test.ts`).
  *
  * Each attack also asserts the listener SURVIVES — a fresh, well-behaved
  * connection completes a transaction afterward — so a bounded attack never
@@ -23,7 +24,6 @@ import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import net from 'node:net';
 import type { SmtpListener } from '../server.js';
 import type { SmtpListenerOptions } from '../types.js';
-import { ByteBudget } from '../budget.js';
 import { Client, generateCert, startListener, closeAllListeners } from './tlsTestUtil.js';
 
 async function start(overrides: Partial<SmtpListenerOptions> = {}): Promise<{
@@ -250,6 +250,25 @@ describe('TLS-handshake abandonment', () => {
 		await expectStillServes(port);
 	});
 
+	it('STARTTLS then total silence: the command idle timer tears down with 421 4.4.2', async () => {
+		// The slowloris TLS variant: read the 220 Ready, then send NO ClientHello and
+		// NO FIN. Neither the TLS `secure` nor `error` event fires, so boundedness
+		// rests SOLELY on the plaintext command idle timer staying armed across
+		// `upgradeTls` (src/tls.ts / commandLoop.ts) — the exact attack the tls.ts
+		// doc-comment names. The client never began TLS, so the teardown 421 is
+		// readable in plaintext.
+		const { port } = await start({ tls: { cert, key }, timeouts: { commandMs: 150, dataMs: 150 } });
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('STARTTLS\r\n');
+		await c.waitCode(220);
+		// Total silence from here: the idle timer must fire the 421 4.4.2 close.
+		await c.waitFor((b) => /421 4\.4\.2/.test(b), 3000);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		await expectStillServes(port);
+	});
+
 	it('implicit-TLS port fed plaintext garbage: the connection is dropped', async () => {
 		const { port } = await start({ tls: { cert, key }, implicitTls: true });
 		// Connect with a RAW (non-TLS) socket and shove plaintext at the 465-style
@@ -258,12 +277,20 @@ describe('TLS-handshake abandonment', () => {
 			const sock = net.connect(port, '127.0.0.1', () => {
 				sock.write('EHLO plaintext-on-implicit-tls\r\n');
 			});
-			sock.on('close', () => resolve(true));
-			sock.on('error', () => resolve(true));
-			setTimeout(() => {
+			// Capture the fallback timer so it can be cleared once close/error wins —
+			// otherwise it stays armed and holds the event loop after the test resolves.
+			const fallback = setTimeout(() => {
 				sock.destroy();
 				resolve(false);
 			}, 4000);
+			sock.on('close', () => {
+				clearTimeout(fallback);
+				resolve(true);
+			});
+			sock.on('error', () => {
+				clearTimeout(fallback);
+				resolve(true);
+			});
 		});
 		expect(closed).toBe(true);
 		// A proper implicit-TLS client still connects afterward.
@@ -325,37 +352,5 @@ describe('pipelining desync', () => {
 		await c.waitCode(421);
 		await c.waitClose();
 		expect(c.closed).toBe(true);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// The ByteBudget counter itself — the load-bearing bound behind the DATA-phase
-// hostile cases (I4). Asserted directly so the "bounded via budget counter"
-// guarantee is pinned independently of socket timing.
-// ---------------------------------------------------------------------------
-
-describe('ByteBudget counter (the DATA-phase bound)', () => {
-	it('buffers within budget and releases everything once the limit is crossed', () => {
-		const budget = new ByteBudget(100, 4);
-		expect(budget.push(Buffer.alloc(60))).toBe('ok');
-		expect(budget.isExceeded).toBe(false);
-		// Crossing maxBytes flips to `over` and releases the buffer (memory bound).
-		expect(budget.push(Buffer.alloc(60))).toBe('over');
-		expect(budget.isExceeded).toBe(true);
-		expect(budget.result()).toHaveLength(0);
-	});
-
-	it('signals abort once the abortFactor ceiling is crossed (bandwidth bound)', () => {
-		const budget = new ByteBudget(100, 2); // abort past 200 bytes
-		expect(budget.push(Buffer.alloc(100))).toBe('ok');
-		expect(budget.push(Buffer.alloc(80))).toBe('over'); // 180 <= 200
-		expect(budget.push(Buffer.alloc(40))).toBe('abort'); // 220 > 200
-		expect(budget.total).toBe(220);
-	});
-
-	it('a single oversized push aborts immediately — no unbounded buffering', () => {
-		const budget = new ByteBudget(1024, 4);
-		expect(budget.push(Buffer.alloc(10 * 1024))).toBe('abort');
-		expect(budget.result()).toHaveLength(0);
 	});
 });
