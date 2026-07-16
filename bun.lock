@@ -362,6 +362,7 @@
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
         "ioredis-mock": "^8.9.0",
+        "mailauth": "^4.13.3",
         "typescript": "catalog:",
         "vitest": "catalog:",
       },
