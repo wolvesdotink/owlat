@@ -8,6 +8,9 @@
  * `smtp-server` today so the L2/L3 cutover is a drop-in.
  */
 
+import type { SmtpAuthConfig } from './auth.js';
+import type { SmtpTlsConfig } from './tls.js';
+
 /**
  * A structured SMTP reply. Serialized byte-exactly by {@link module:reply}.
  *
@@ -47,8 +50,15 @@ export interface SmtpSession<S = unknown, T = unknown> {
 	readonly remotePort: number;
 	readonly localAddress: string;
 	readonly localPort: number;
-	/** Whether the underlying socket is TLS. Always false in L1. */
-	readonly secure: boolean;
+	/**
+	 * Whether the underlying socket is TLS. Set for implicit-TLS connections and
+	 * flipped to `true` by a successful STARTTLS upgrade (RFC 3207).
+	 */
+	secure: boolean;
+	/** Whether AUTH has succeeded on this connection. */
+	authenticated: boolean;
+	/** Authenticated user identity, set by a successful AUTH. */
+	user?: string;
 	/** Argument of the last HELO/EHLO, if any. */
 	clientHostname?: string;
 	/** Whether the peer greeted with EHLO (ESMTP) vs HELO. */
@@ -99,6 +109,19 @@ export interface SmtpListenerOptions<S = unknown, T = unknown> {
 	/** Consecutive unrecognized/erroring commands tolerated before 421 + close. Default 25. */
 	maxBadCommands?: number;
 	timeouts?: Partial<SmtpTimeouts>;
+	/**
+	 * TLS material. When present the listener advertises STARTTLS and upgrades on
+	 * demand (RFC 3207). Required when {@link implicitTls} is set.
+	 */
+	tls?: SmtpTlsConfig;
+	/**
+	 * Wrap the whole connection in TLS from the first byte (implicit TLS, e.g.
+	 * port 465 — RFC 8314). Requires {@link tls}. When set, STARTTLS is not
+	 * advertised and the session starts `secure`.
+	 */
+	implicitTls?: boolean;
+	/** SASL AUTH configuration. When present the listener advertises + accepts AUTH. */
+	auth?: SmtpAuthConfig<S, T>;
 	/** Build caller session state for a new connection. */
 	createSession?: (base: SmtpSession<S, T>) => S;
 	/** Called after the banner is sent. */
