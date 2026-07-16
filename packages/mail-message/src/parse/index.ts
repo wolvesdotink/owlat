@@ -137,8 +137,8 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 			continue;
 		}
 		if (name === 'date') {
-			const date = parseDate(headers.get(name));
-			structured.set(name, date ?? headers.get(name) ?? '');
+			const raw = headers.get(name);
+			structured.set(name, parseDate(raw) ?? raw ?? '');
 			continue;
 		}
 		const all = headers.getAll(name);
