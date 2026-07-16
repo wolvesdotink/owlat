@@ -32,6 +32,10 @@
 		"./connection": {
 			"types": "./src/connection.ts",
 			"import": "./src/connection.ts"
+		},
+		"./transaction": {
+			"types": "./src/transaction.ts",
+			"import": "./src/transaction.ts"
 		}
 	},
 	"scripts": {
