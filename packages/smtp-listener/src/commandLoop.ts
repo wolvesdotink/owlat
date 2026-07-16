@@ -117,7 +117,7 @@ export class SmtpCommandReader {
 		// `pending` holds not-yet-flushed trailing bytes that might begin a
 		// terminator. It starts as a sentinel CRLF (never emitted) so a message
 		// that is only `.<CRLF>` is recognized as an empty body.
-		let pending = Buffer.from('\r\n');
+		let pending: Buffer = Buffer.from('\r\n');
 		let sentinelActive = true;
 		for (;;) {
 			if (this.buf.length === 0 && !(await this.pull())) {
