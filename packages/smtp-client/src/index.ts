@@ -3,8 +3,9 @@
  *
  * This entry point re-exports the pure, socket-free core: the reply parser, the
  * structured {@link SmtpError} taxonomy, the streaming dot-stuffing encoder, and
- * the command serializers + EHLO capability parser. The socket-driven state
- * machine (`SmtpClient.connect` / `.send`) lands in a later piece.
+ * the command serializers + EHLO capability parser — plus the connection engine
+ * ({@link SmtpConnection.connect}), which drives the socket layer up through
+ * EHLO. The higher send state machine (`.send`) lands in a later piece.
  */
 
 export {
@@ -43,3 +44,11 @@ export {
 	parseEhloCapabilities,
 	hasCapability,
 } from './commands';
+
+export {
+	type SmtpConnectOptions,
+	type SmtpTlsOptions,
+	type SmtpTlsMode,
+	type SmtpTimeouts,
+	SmtpConnection,
+} from './connection';
