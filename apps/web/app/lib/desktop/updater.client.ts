@@ -24,11 +24,22 @@ export async function runUpdateCheck(opts?: { announce?: boolean }): Promise<voi
 }
 
 /**
- * Register update handling: a non-blocking check on boot, plus a manual trigger
- * (the native menu / command palette dispatch `owlat:check-updates`).
+ * Register update handling: a non-blocking check on boot (unless the user
+ * turned auto-checks off on /desktop/settings), plus a manual trigger (the
+ * native menu / command palette / settings page dispatch `owlat:check-updates`)
+ * that always runs regardless of the auto-check setting.
  */
 export function setupUpdateChecks(): void {
-	void runUpdateCheck();
+	void (async () => {
+		try {
+			const { loadDesktopAppSettings } = await import('~/composables/useDesktopAppSettings');
+			const settings = await loadDesktopAppSettings();
+			if (!settings.global.autoCheckUpdates) return;
+		} catch {
+			// Settings unreadable — default to checking.
+		}
+		void runUpdateCheck();
+	})();
 	if (typeof window !== 'undefined') {
 		window.addEventListener('owlat:check-updates', () => void runUpdateCheck({ announce: true }));
 	}
