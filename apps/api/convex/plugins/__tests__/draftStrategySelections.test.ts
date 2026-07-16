@@ -22,7 +22,7 @@ function fakeCtx(rows: Readonly<Record<string, Row>>) {
 					apply(chain);
 					const key = values.join(':');
 					reads.push(key);
-					return { unique: async () => rows[key] ?? null };
+					return { take: async () => (rows[key] ? [rows[key]] : []) };
 				},
 			}),
 		},
