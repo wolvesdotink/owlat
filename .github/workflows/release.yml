@@ -71,7 +71,7 @@ jobs:
       # ci:verify ends with the knip dead-code gate (scripts/check-dead-code.sh),
       # whose binary and JSON normaliser run on node; setup-bun does not put node
       # on PATH, so pin it explicitly (mirrors the lint job in test.yml).
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 

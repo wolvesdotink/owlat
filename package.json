@@ -88,6 +88,7 @@
 		"ci:lint": "turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports",
 		"ci:typecheck": "turbo typecheck --filter='!@owlat/desktop'",
 		"ci:test": "turbo test --filter='!@owlat/desktop'",
+		"ci:test:coverage": "turbo test:coverage --filter='!@owlat/desktop'",
 		"ci:verify": "turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports",
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
