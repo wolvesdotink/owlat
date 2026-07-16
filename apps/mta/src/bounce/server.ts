@@ -20,11 +20,10 @@ import type { MtaConfig } from '../config.js';
 import { findRoute } from '../inbound/router.js';
 import { findMailboxRoute } from '../inbound/mailboxResolver.js';
 import { logger } from '../monitoring/logger.js';
-import { resolveTxt as dnsResolveTxt } from 'dns/promises';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
-import { checkSpf, evaluateDmarc, dnsDmarcLookup } from '@owlat/mail-auth';
-import { verifyDkim } from './inboundDkim.js';
+import { checkSpf, evaluateDmarc, dnsDmarcLookup, verifyDkim } from '@owlat/mail-auth';
+import { createInboundAuthResolvers } from './inboundAuthResolver.js';
 import { verifyArcChain } from './inboundArc.js';
 import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
@@ -57,6 +56,12 @@ interface SessionWithSpf extends SMTPServerSession {
  * Create and start the bounce processing SMTP server
  */
 export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer {
+	// One Redis-backed DNS cache shared across every inbound SPF/DMARC/DKIM
+	// lookup this server performs (verdict-equivalent caching, I2 f): a name
+	// resolved for one check is served from cache for the next, and the SPF
+	// §4.6.4 lookup budget — which counts real resolver CALLS — is unaffected.
+	const authResolvers = createInboundAuthResolvers(redis);
+
 	// Build TLS options if cert+key are provided (enables STARTTLS)
 	const tlsOptions: Record<string, unknown> = {};
 	if (config.bounceServerTlsCert && config.bounceServerTlsKey) {
@@ -162,7 +167,8 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				const spfResult = await checkSpf(
 					session.remoteAddress,
 					address.address,
-					session.hostNameAppearsAs || config.ehloHostname
+					session.hostNameAppearsAs || config.ehloHostname,
+					authResolvers.spf
 				);
 
 				// Record the full RFC 7208 §2.6 verdict on the session (not just
@@ -287,7 +293,9 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				// mangles canonicalization. The verdict is threaded onto the
 				// personal-mailbox payload's `dkimResult`. Fail-open: a verify
 				// crash yields `temperror`, never a NACK of accepted bytes.
-				const dkim = config.inboundDkimEnabled ? await verifyDkim(rawBuffer) : undefined;
+				const dkim = config.inboundDkimEnabled
+					? await verifyDkim(rawBuffer, { resolver: authResolvers.dkim })
+					: undefined;
 				const dkimResult = dkim?.result;
 
 				// Evaluate DMARC (RFC 7489): bind the (envelope-authenticated) SPF
@@ -302,7 +310,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 								fromDomain,
 								spf: { result: spfResult ?? 'none', domain: envelopeFromDomain },
 								dkim: { result: dkim?.result ?? 'none', domain: dkim?.domain },
-								policyLookup: (domain) => dnsDmarcLookup(domain, dnsResolveTxt),
+								policyLookup: (domain) => dnsDmarcLookup(domain, authResolvers.dmarcTxt),
 								logger,
 							})
 						: undefined;
@@ -316,11 +324,16 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				// decision made in Convex against the operator's editable allow-list.
 				// The MTA only extracts the honest verdict here. Fail-open: a crash
 				// yields `cv: 'none'` (no rescue), never a NACK of accepted bytes.
-				// Reuse the ARC seed `verifyDkim` already parsed from these bytes so we
-				// verify DKIM once, not twice, on the hot ingest path. When DKIM is
-				// disabled the seed is absent and `verifyArcChain` parses it itself.
+				// COST: ARC verification still runs on `mailauth` (a `packages/mail-auth`
+				// ARC implementation is deferred), and the in-house DKIM verifier does
+				// not thread a mailauth-shaped seed — so this runs a FULL second DKIM
+				// pass (a re-parse plus body/header hashing) over the raw bytes. We at
+				// least keep its `_domainkey` / ARC-seal key lookups on the SAME shared
+				// cache by threading `authResolvers.arc` (the DKIM TXT resolver in the
+				// `dns/promises` throwing shape mailauth needs), so the second pass adds
+				// no uncached real-DNS round-trips. Verdict-equivalent (caching only).
 				const arcVerdict = config.inboundArcEnabled
-					? await verifyArcChain(rawBuffer, { arcSeed: dkim?.arcSeed })
+					? await verifyArcChain(rawBuffer, { resolver: authResolvers.arc })
 					: undefined;
 				const arcCv = arcVerdict?.cv;
 				const arcSealerDomain = arcVerdict?.sealerDomain;

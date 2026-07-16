@@ -43,6 +43,7 @@ import {
 	type Canonicalization,
 } from '../canon.js';
 import type { DkimVerdict } from '../dmarc.js';
+import { isNoRecordDnsError } from '../dnsErrors.js';
 import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from './keyRecord.js';
 import { splitMessage, type HeaderField } from './message.js';
 import { parseTagList } from './tagList.js';
@@ -92,9 +93,6 @@ const VERDICT_RANK: Record<DkimVerdict, number> = {
 	neutral: 2,
 	none: 1,
 };
-
-/** DNS error codes that mean "no such record" — a permanent DKIM failure. */
-const PERMANENT_DNS_CODES = new Set(['ENOTFOUND', 'ENODATA', 'NXDOMAIN', 'NOTFOUND']);
 
 /**
  * Upper bound on the number of DKIM-Signature headers we evaluate. Legitimate
@@ -466,11 +464,7 @@ function buildPublicKey(record: DkimKeyRecord, keyType: 'rsa' | 'ed25519'): KeyO
 
 /** Classify a resolver rejection into a permanent vs transient DKIM verdict. */
 function classifyDnsError(err: unknown): DkimVerdict {
-	const code =
-		typeof err === 'object' && err !== null && 'code' in err
-			? String((err as { code: unknown }).code)
-			: '';
-	return PERMANENT_DNS_CODES.has(code) ? 'permerror' : 'temperror';
+	return isNoRecordDnsError(err) ? 'permerror' : 'temperror';
 }
 
 /**
