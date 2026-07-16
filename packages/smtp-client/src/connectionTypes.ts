@@ -49,6 +49,16 @@ export interface SmtpTlsOptions {
 	ca?: string | Buffer | Array<string | Buffer>;
 	/** Custom identity check (e.g. DANE). Return an `Error` to reject. */
 	checkServerIdentity?: (servername: string, cert: PeerCertificate) => Error | undefined;
+	/**
+	 * Post-handshake certificate authenticator, run on the freshly-secured socket
+	 * BEFORE the (re-)EHLO resumes. Unlike {@link checkServerIdentity} — which Node
+	 * invokes only when `rejectUnauthorized` is true — this ALWAYS runs, so it can
+	 * authenticate a certificate the WebPKI path deliberately ignores (RFC 7672
+	 * DANE-EE, where `rejectUnauthorized` is false). A returned `Error` destroys the
+	 * socket and fails the connection closed with `tlsCause: 'handshake'` — no
+	 * cleartext fallback, no SMTP resumed over an unauthenticated channel.
+	 */
+	verifyPeerCertificate?: (socket: tls.TLSSocket) => Error | undefined;
 }
 
 /** How the connection reaches TLS (or stays cleartext). */
