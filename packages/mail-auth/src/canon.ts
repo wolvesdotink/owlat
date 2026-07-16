@@ -103,13 +103,23 @@ export function stripSignatureValue(field: string): string {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Strip trailing empty lines (CRLF pairs) from `body`, returning the offset of
- * the first byte that is NOT part of the trailing run of CRLFs.
+ * Strip the trailing run of line-break bytes from `body`, returning the offset
+ * of the first byte that is NOT part of that run.
+ *
+ * mailauth / OpenDKIM strip EVERY trailing CR or LF byte (not just complete
+ * CRLF pairs) before re-terminating with a single CRLF, so an LF-normalized
+ * body (`'a\nb\n'`) canonicalizes to `'a\nb\r\n'` and `'x\n\n\n'` to `'x\r\n'`.
+ * Stripping only `\r\n` pairs would leave a stray `\n` in the hash and diverge
+ * from the oracle on bare-LF mail; the byte-identity vector suite pins this.
  */
 function stripTrailingCrlf(body: Buffer): number {
 	let end = body.length;
-	while (end >= 2 && body[end - 2] === CR && body[end - 1] === LF) {
-		end -= 2;
+	while (end > 0) {
+		const b = body[end - 1];
+		if (b !== CR && b !== LF) {
+			break;
+		}
+		end -= 1;
 	}
 	return end;
 }
