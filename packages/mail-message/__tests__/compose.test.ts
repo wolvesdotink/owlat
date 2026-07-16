@@ -5,20 +5,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildRfc822, type ComposeInput } from '../src/index';
-
-function makeInput(overrides: Partial<ComposeInput> = {}): ComposeInput {
-	return {
-		toAddresses: ['rcpt@example.com'],
-		ccAddresses: [],
-		bccAddresses: [],
-		fromAddress: 'sender@owlat.test',
-		subject: 'Weekly update',
-		bodyHtml: '<p>Hello</p>',
-		bodyText: 'Hello',
-		...overrides,
-	};
-}
+import { buildRfc822 } from '../src/index';
+import { makeInput } from './helpers';
 
 describe('buildRfc822 (ComposeInput)', () => {
 	it('emits exactly one domain-scoped Message-ID and never leaks Bcc into headers', () => {
@@ -76,5 +64,24 @@ describe('buildRfc822 (ComposeInput)', () => {
 			eml.replace(/^Date: .*$/m, 'Date: X').replace(/--_owlat_[0-9a-f]+/g, '--_owlat_B');
 		expect(normalize(fromBase64)).toBe(normalize(fromBuffer));
 		expect(fromBuffer).toContain('Content-Disposition: attachment; filename="note.txt"');
+	});
+
+	it('rejects a string attachment that is not valid base64 (raw text passed by mistake)', () => {
+		expect(() =>
+			buildRfc822(
+				makeInput(),
+				[
+					{
+						filename: 'note.txt',
+						contentType: 'text/plain',
+						isInline: false,
+						data: 'this is raw text, not base64!',
+					},
+				],
+				'<id@owlat.test>',
+				undefined,
+				undefined
+			)
+		).toThrow(/base64/);
 	});
 });

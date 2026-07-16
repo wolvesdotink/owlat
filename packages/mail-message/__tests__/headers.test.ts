@@ -18,25 +18,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-	buildRfc822,
-	encodeHeaderValue,
-	encodeAddressHeader,
-	type ComposeInput,
-} from '../src/index';
-
-function makeInput(overrides: Partial<ComposeInput> = {}): ComposeInput {
-	return {
-		toAddresses: ['rcpt@example.com'],
-		ccAddresses: [],
-		bccAddresses: [],
-		fromAddress: 'sender@owlat.test',
-		subject: 'Weekly update',
-		bodyHtml: '<p>Hello</p>',
-		bodyText: 'Hello',
-		...overrides,
-	};
-}
+import { buildRfc822, encodeHeaderValue, encodeAddressHeader } from '../src/index';
+import { makeInput } from './helpers';
 
 /** First-line-up-to-blank-line header block of the raw .eml. */
 function headerBlock(raw: Buffer): string {
