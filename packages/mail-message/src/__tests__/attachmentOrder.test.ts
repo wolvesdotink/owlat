@@ -1,19 +1,45 @@
 import { describe, it, expect } from 'vitest';
 import { extractAttachments } from '../parse/attachments';
+import { extractAttachments as oracleExtract } from '@owlat/shared/mailMime';
 
 /**
  * Attachment order is the load-bearing contract shared with the read side:
- * `mailMime.extractAttachments` records `partIndex === String(i)` on stored
- * metadata, so this parser MUST emit attachment leaves in the exact same
- * document order (depth-first, children left-to-right) and with the exact same
- * "is this an attachment" predicate (explicit attachment disposition OR a
- * filename; `multipart/*` never an attachment). These fixtures pin that order.
+ * `@owlat/shared/mailMime.extractAttachments` records `partIndex === String(i)`
+ * on stored metadata, so this parser MUST emit attachment leaves in the exact
+ * same document order (depth-first, children left-to-right) and with the exact
+ * same "is this an attachment" predicate.
+ *
+ * This is a DIFFERENTIAL against that named oracle: every fixture is run through
+ * BOTH extractors and their outputs are asserted equal on filename order,
+ * contentType, disposition, contentId and decoded bytes. Hand-computed
+ * expectations alone can't catch a shared misreading of the mailMime predicate;
+ * pinning to the oracle can.
  */
 
 /** Assemble an eml with CRLF line endings from raw lines. */
 const eml = (...lines: string[]): string => lines.join('\r\n');
 
-describe('extractAttachments document order', () => {
+/**
+ * Assert that the new extractor matches `mailMime.extractAttachments` on every
+ * observable field, and (when given) that the filename order is the expected one
+ * — so a bug that moved BOTH sides identically still fails on `expectedNames`.
+ */
+function expectParity(raw: string, expectedNames?: string[]): void {
+	const got = extractAttachments(raw);
+	const oracle = oracleExtract(raw);
+
+	expect(got.map((a) => a.filename)).toEqual(oracle.map((a) => a.filename));
+	expect(got.map((a) => a.contentType)).toEqual(oracle.map((a) => a.contentType));
+	expect(got.map((a) => a.disposition)).toEqual(oracle.map((a) => a.disposition));
+	expect(got.map((a) => a.contentId ?? null)).toEqual(oracle.map((a) => a.contentId ?? null));
+	expect(got.map((a) => [...a.content])).toEqual(oracle.map((a) => [...a.bytes]));
+
+	if (expectedNames !== undefined) {
+		expect(got.map((a) => a.filename)).toEqual(expectedNames);
+	}
+}
+
+describe('extractAttachments document order (differential vs mailMime)', () => {
 	it('flat multipart/mixed: attachments in listed order', () => {
 		const raw = eml(
 			'Content-Type: multipart/mixed; boundary="B"',
@@ -34,12 +60,9 @@ describe('extractAttachments document order', () => {
 			'BBBB',
 			'--B--'
 		);
-		const got = extractAttachments(raw);
-		expect(got.map((a) => a.filename)).toEqual(['a.txt', 'b.pdf']);
-		expect(got.map((a) => a.contentType)).toEqual(['text/plain', 'application/pdf']);
-		// Every attachment carries decoded bytes; partIndex on the read side is
-		// simply this array index, so order alone fixes the contract.
-		for (const a of got) expect(a.size).toBeGreaterThan(0);
+		expectParity(raw, ['a.txt', 'b.pdf']);
+		// partIndex on the read side is simply this array index.
+		for (const a of extractAttachments(raw)) expect(a.size).toBeGreaterThan(0);
 	});
 
 	it('nested tree: depth-first, children left-to-right', () => {
@@ -79,7 +102,7 @@ describe('extractAttachments document order', () => {
 			'--INNER--',
 			'--OUT--'
 		);
-		expect(extractAttachments(raw).map((a) => a.filename)).toEqual(['c.pdf', 'd.png', 'e.png']);
+		expectParity(raw, ['c.pdf', 'd.png', 'e.png']);
 	});
 
 	it('a filename in Content-Type name (no disposition) still counts as an attachment', () => {
@@ -96,10 +119,9 @@ describe('extractAttachments document order', () => {
 			'GIFDATA',
 			'--B--'
 		);
-		const got = extractAttachments(raw);
-		expect(got.map((a) => a.filename)).toEqual(['named.gif']);
+		expectParity(raw, ['named.gif']);
 		// No Content-Disposition → defaults to attachment (mailMime parity).
-		expect(got[0]!.disposition).toBe('attachment');
+		expect(extractAttachments(raw)[0]!.disposition).toBe('attachment');
 	});
 
 	it('an inline part with a filename is an ordered attachment with inline disposition', () => {
@@ -118,14 +140,36 @@ describe('extractAttachments document order', () => {
 			'PNGDATA',
 			'--R--'
 		);
+		expectParity(raw, ['logo.png']);
 		const got = extractAttachments(raw);
-		expect(got.map((a) => a.filename)).toEqual(['logo.png']);
 		expect(got[0]!.disposition).toBe('inline');
 		expect(got[0]!.contentId).toBe('img1');
 	});
 
+	it('malformed Content-Disposition (no semicolon before filename) is an attachment on BOTH sides', () => {
+		// Real broken generators emit `attachment filename="x"` with no separating
+		// `;`. mailMime matches it via `startsWith('attachment')` + a whitespace-
+		// anchored param scan, so the new extractor must too or the stored
+		// partIndex contract silently drops the part. (Blocking 3.)
+		const raw = eml(
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: text/plain',
+			'',
+			'body',
+			'--B',
+			'Content-Type: application/octet-stream',
+			'Content-Disposition: attachment filename="broken.bin"',
+			'',
+			'BROKEN',
+			'--B--'
+		);
+		expectParity(raw, ['broken.bin']);
+	});
+
 	it('a body-only text/plain leaf produces no attachments', () => {
 		const raw = eml('Content-Type: text/plain', '', 'just a body, no parts');
-		expect(extractAttachments(raw)).toEqual([]);
+		expectParity(raw, []);
 	});
 });
