@@ -1,18 +1,18 @@
-import { pathToFileURL } from "node:url";
+import { pathToFileURL } from 'node:url';
 import {
 	composeValidatedBundledPlugins,
 	parsePluginPackageName,
 	PluginCompositionError,
 	type BundledPlugin,
 	type ValidatedBundledPluginSource,
-} from "@owlat/plugin-host";
-import { parsePluginManifest } from "@owlat/plugin-kit";
-import { PluginCodegenError } from "./errors";
+} from '@owlat/plugin-host';
+import { parsePluginManifest } from '@owlat/plugin-kit';
+import { PluginCodegenError } from './errors';
 import {
 	resolveVerifiedPluginEntry,
 	verifyPluginComponentExport,
 	verifyPluginContributionExport,
-} from "./packageProvenance";
+} from './packageProvenance';
 
 type LoadModule = (resolvedEntry: string) => Promise<unknown>;
 
@@ -23,7 +23,7 @@ export interface PackageLoadingOptions {
 export async function loadBundledPlugins(
 	workspaceRoot: string,
 	packageNames: readonly string[],
-	options: PackageLoadingOptions = {},
+	options: PackageLoadingOptions = {}
 ): Promise<readonly BundledPlugin[]> {
 	const loadModule = options.loadModule ?? importModule;
 	const sources: ValidatedBundledPluginSource[] = [];
@@ -34,10 +34,10 @@ export async function loadBundledPlugins(
 			packageName = parsePluginPackageName(packageNameInput);
 		} catch (cause) {
 			throw new PluginCodegenError(
-				"dependency_provenance",
-				"Bundled plugin configuration contains an invalid package name",
+				'dependency_provenance',
+				'Bundled plugin configuration contains an invalid package name',
 				[],
-				{ cause },
+				{ cause }
 			);
 		}
 		const resolvedEntry = await resolveVerifiedPluginEntry(workspaceRoot, packageName);
@@ -47,10 +47,10 @@ export async function loadBundledPlugins(
 			loadedModule = await loadModule(resolvedEntry);
 		} catch (cause) {
 			throw new PluginCodegenError(
-				"package_load_failed",
+				'package_load_failed',
 				`Bundled plugin ${packageName} could not be imported`,
 				[],
-				{ cause },
+				{ cause }
 			);
 		}
 
@@ -59,10 +59,10 @@ export async function loadBundledPlugins(
 			manifest = parsePluginManifest(readDefaultExport(loadedModule));
 		} catch (cause) {
 			throw new PluginCodegenError(
-				"invalid_manifest",
+				'invalid_manifest',
 				`Bundled plugin ${packageName} does not export a valid default manifest`,
 				[],
-				{ cause },
+				{ cause }
 			);
 		}
 		if (manifest.component) {
@@ -81,7 +81,7 @@ export async function loadBundledPlugins(
 		return composeValidatedBundledPlugins(sources);
 	} catch (cause) {
 		if (cause instanceof PluginCompositionError) {
-			throw new PluginCodegenError("composition_invalid", cause.message, [], { cause });
+			throw new PluginCodegenError('composition_invalid', cause.message, [], { cause });
 		}
 		throw cause;
 	}
@@ -89,12 +89,12 @@ export async function loadBundledPlugins(
 
 function readDefaultExport(loadedModule: unknown): unknown {
 	if (!isRecord(loadedModule)) return undefined;
-	const descriptor = Object.getOwnPropertyDescriptor(loadedModule, "default");
-	return descriptor && "value" in descriptor ? descriptor.value : undefined;
+	const descriptor = Object.getOwnPropertyDescriptor(loadedModule, 'default');
+	return descriptor && 'value' in descriptor ? descriptor.value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
+	return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 async function importModule(resolvedEntry: string): Promise<unknown> {

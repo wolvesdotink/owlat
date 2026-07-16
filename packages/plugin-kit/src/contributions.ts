@@ -1,25 +1,25 @@
 export const PLUGIN_CONTRIBUTION_KINDS = [
-	"sendTransports",
-	"agentSteps",
-	"draftStrategies",
-	"sendGates",
-	"lifecycleEffects",
-	"assistantTools",
-	"automationTriggers",
-	"automationSteps",
-	"automationConditions",
-	"inboundAdapters",
-	"webhookEvents",
-	"importProviders",
-	"channelAdapters",
-	"crons",
-	"emailBlocks",
-	"commands",
-	"navItems",
-	"settingsPanels",
-	"panels",
-	"widgets",
-	"taskCards",
+	'sendTransports',
+	'agentSteps',
+	'draftStrategies',
+	'sendGates',
+	'lifecycleEffects',
+	'assistantTools',
+	'automationTriggers',
+	'automationSteps',
+	'automationConditions',
+	'inboundAdapters',
+	'webhookEvents',
+	'importProviders',
+	'channelAdapters',
+	'crons',
+	'emailBlocks',
+	'commands',
+	'navItems',
+	'settingsPanels',
+	'panels',
+	'widgets',
+	'taskCards',
 ] as const;
 
 export type PluginContributionKind = (typeof PLUGIN_CONTRIBUTION_KINDS)[number];
@@ -36,7 +36,7 @@ export function isPluginContributionKind(value: string): value is PluginContribu
  */
 type DeferredPluginContributionKind = Exclude<
 	PluginContributionKind,
-	"sendTransports" | "agentSteps"
+	'sendTransports' | 'agentSteps'
 >;
 
 export type PluginContributions = Readonly<
@@ -45,5 +45,5 @@ export type PluginContributions = Readonly<
 		readonly agentSteps?: readonly PluginAgentStepDefinition[];
 	} & Partial<Record<DeferredPluginContributionKind, readonly unknown[]>>
 >;
-import type { PluginAgentStepDefinition } from "./agentStep";
-import type { PluginSendTransportDefinition } from "./sendTransport";
+import type { PluginAgentStepDefinition } from './agentStep';
+import type { PluginSendTransportDefinition } from './sendTransport';
