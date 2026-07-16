@@ -371,11 +371,15 @@
     "packages/mail-message": {
       "name": "@owlat/mail-message",
       "version": "1.0.0",
+      "dependencies": {
+        "@owlat/mail-auth": "workspace:*",
+      },
       "devDependencies": {
         "@types/mailparser": "^3.4.5",
         "@types/node": "catalog:",
         "@types/nodemailer": "^8.0.0",
         "@vitest/coverage-v8": "catalog:",
+        "mailauth": "^4.13.3",
         "mailparser": "^3.7.0",
         "nodemailer": "^9.0.3",
         "typescript": "catalog:",
