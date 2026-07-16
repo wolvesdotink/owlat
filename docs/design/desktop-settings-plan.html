@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Desktop Settings — Implementation Plan</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1a1d21; --muted: #5c6470; --border: #e3e6ea;
+    --accent: #4f46e5; --accent-soft: #eef0fe;
+    --code-bg: #f5f6f8; --warn-bg: #fff7ed; --warn-border: #fdba74;
+    --ok-bg: #f0fdf4; --ok-border: #86efac;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c; --fg: #e8eaed; --muted: #9aa2ad; --border: #2c3038;
+      --accent: #8b85f4; --accent-soft: #23233c;
+      --code-bg: #1f2228; --warn-bg: #2c2113; --warn-border: #7c5820;
+      --ok-bg: #142418; --ok-border: #2c5f38;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.65 -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0 0 .3rem; }
+  h2 { font-size: 1.35rem; margin: 3rem 0 .8rem; padding-top: 1.2rem; border-top: 1px solid var(--border); }
+  h3 { font-size: 1.05rem; margin: 1.8rem 0 .5rem; }
+  p, li { color: var(--fg); }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  code {
+    font: 0.86em/1.5 "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 4px; padding: .08em .35em; white-space: nowrap;
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.2rem; overflow-x: auto;
+  }
+  pre code { background: none; border: none; padding: 0; white-space: pre; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93rem; }
+  th, td { text-align: left; padding: .55rem .8rem; border: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; }
+  .tag {
+    display: inline-block; font-size: .72rem; font-weight: 600; letter-spacing: .03em;
+    border-radius: 99px; padding: .12rem .6rem; vertical-align: middle;
+  }
+  .tag.global { background: var(--accent-soft); color: var(--accent); }
+  .tag.ws { background: var(--ok-bg); color: inherit; border: 1px solid var(--ok-border); }
+  .tag.os { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+  .callout { border-radius: 8px; padding: .9rem 1.2rem; margin: 1.2rem 0; }
+  .callout.warn { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+  .callout.ok { background: var(--ok-bg); border: 1px solid var(--ok-border); }
+  .phase {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 1.1rem 1.4rem; margin: 1.2rem 0;
+  }
+  .phase h3 { margin-top: 0; }
+  .phase .goal { color: var(--muted); font-size: .92rem; margin-top: -.3rem; }
+  ol.steps > li { margin-bottom: .8rem; }
+  .filepath { font-weight: 600; }
+  nav.toc { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.5rem; }
+  nav.toc ol { margin: .4rem 0; padding-left: 1.3rem; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  .arch { font-size: .85rem; line-height: 1.45; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Desktop Settings — Implementation Plan</h1>
+<p class="sub">Make the native menu&rsquo;s Settings item work everywhere — including before a workspace is connected — and introduce a settings surface split into <strong>global (device-wide)</strong> and <strong>workspace-specific</strong> settings.<br>Repo: <code>wolvesdotink/owlat</code> · Apps touched: <code>apps/desktop</code> (Tauri shell), <code>apps/web</code> (bundled Nuxt SPA) · July&nbsp;2026</p>
+
+<nav class="toc">
+  <strong>Contents</strong>
+  <ol>
+    <li><a href="#bug">Why the menu item currently does nothing</a></li>
+    <li><a href="#arch">Target architecture</a></li>
+    <li><a href="#model">Settings model &amp; storage</a></li>
+    <li><a href="#phase1">Phase 1 — Fix the dead menu item</a></li>
+    <li><a href="#phase2">Phase 2 — Global settings store &amp; page sections</a></li>
+    <li><a href="#phase3">Phase 3 — Workspace-specific settings</a></li>
+    <li><a href="#phase4">Phase 4 — Wire settings into behavior, polish, native labels</a></li>
+    <li><a href="#edge">Edge cases &amp; risks</a></li>
+    <li><a href="#test">Testing &amp; verification</a></li>
+    <li><a href="#open">Open decisions</a></li>
+  </ol>
+</nav>
+
+<h2 id="bug">1. Why the menu item currently does nothing</h2>
+
+<p>The desktop app is a Tauri shell that always loads the <em>bundled</em> Nuxt SPA (never a remote workspace URL — see <code>tauri.conf.json</code> <code>frontendDist: ../../web/.output/public</code>). The native menu&rsquo;s <em>Preferences…</em> item (<code>Cmd/Ctrl+,</code>) is wired as an event bridge:</p>
+
+<pre><code>menu.rs:208            "preferences" =&gt; { show_main_window(app); app.emit("menu://preferences", ()) }
+apps/desktop/src/menu.ts:14   onMenuAction('preferences', cb)   // listen("menu://preferences")
+useDesktopMenu.ts:20          onMenuAction('preferences', () =&gt; router.push('/dashboard/settings/desktop'))</code></pre>
+
+<p>The failure has <strong>two independent layers</strong> — both must be fixed:</p>
+
+<ol>
+  <li><strong>No listener is mounted outside the dashboard.</strong> <code>useDesktopMenu()</code> is called exactly once, from the dashboard layout (<code>apps/web/app/layouts/dashboard.vue:36</code>). When no workspace is connected, the user sits on <code>/desktop/welcome</code>, which uses <code>layout: false</code> — the composable never runs, so <code>menu://preferences</code> is emitted into the void. The click silently does nothing.</li>
+  <li><strong>The target route is unreachable without a workspace anyway.</strong> Even if navigation fired, <code>/dashboard/settings/desktop</code> is bounced by two guards:
+    <ul>
+      <li><code>app/middleware/desktop-workspace.global.ts:19-22</code> — desktop runtime + no active workspace → redirect to <code>/desktop/welcome</code> (allowed prefixes are only <code>/desktop/welcome</code>, <code>/desktop/connect</code>, <code>/desktop/setup</code>).</li>
+      <li><code>app/middleware/auth.ts:30-32</code> — the page carries <code>middleware: 'auth'</code>; unauthenticated desktop users are sent to <code>/desktop/welcome</code>.</li>
+    </ul>
+  </li>
+</ol>
+
+<p>Additionally, today&rsquo;s &ldquo;desktop settings&rdquo; page (<code>app/pages/dashboard/settings/desktop.vue</code>) contains only a <em>Launch at login</em> toggle and static <em>Default email app</em> instructions, and it is not even linked from the settings hub (<code>settings/index.vue</code>) — it is reachable exclusively through the (broken-when-disconnected) menu item.</p>
+
+<h2 id="arch">2. Target architecture</h2>
+
+<p><strong>One always-available settings surface at <code>/desktop/settings</code></strong>, living <em>outside</em> the <code>/dashboard</code> tree so it needs neither an active workspace nor authentication — the same trick <code>/desktop/welcome</code> already uses. The native menu item always opens this page, connected or not.</p>
+
+<pre class="arch"><code>            Native menu "Settings…" (Cmd/Ctrl+,)
+                          │  emits menu://preferences (Rust, unchanged)
+                          ▼
+      NEW app-level Nuxt client plugin (always registered, every route)
+                          │  router.push('/desktop/settings')
+                          ▼
+   ┌────────────────────────────────────────────────────────────────┐
+   │  /desktop/settings          (layout: false, own DesktopTitlebar)│
+   │                                                                │
+   │  ┌─ GLOBAL (device-wide) ──────────┐  ┌─ WORKSPACES ─────────┐ │
+   │  │ Appearance (theme)              │  │ per workspace card:  │ │
+   │  │ Startup (launch at login,       │  │  · label, accent     │ │
+   │  │   startup workspace)            │  │  · mute notifications│ │
+   │  │ Updates (auto-check, check now) │  │  · sign out / remove │ │
+   │  │ Notifications (enable, badge)   │  │  · "Open workspace   │ │
+   │  │ Default email app (info)        │  │     settings" →      │ │
+   │  └──────────────┬──────────────────┘  │    /dashboard/settings│ │
+   │                 │                     └──────────┬────────────┘ │
+   └─────────────────┼────────────────────────────────┼──────────────┘
+                     ▼                                ▼
+      settings.json (tauri-plugin-store,    workspaces.json (existing)
+      NEW, device-scoped) + OS-owned        + Convex backend (existing
+      state (autostart, color-mode)         /dashboard/settings hub)</code></pre>
+
+<h3>Key decisions and why</h3>
+<table>
+  <tr><th>Decision</th><th>Rationale</th></tr>
+  <tr>
+    <td>New route <code>/desktop/settings</code> instead of reusing <code>/dashboard/settings/desktop</code></td>
+    <td>The dashboard layout hard-requires an active workspace + auth. A standalone page (like <code>welcome.vue</code>) works in every state. The old route stays as a redirect so nothing that learned the old path breaks.</td>
+  </tr>
+  <tr>
+    <td>Menu listeners move from the dashboard layout into an app-level client plugin</td>
+    <td>Plugins run on every route and in every window of the SPA, so the menu works from welcome, connect, setup, dashboard — everywhere. This is the actual bug fix.</td>
+  </tr>
+  <tr>
+    <td>Keep the Rust side event-based (<code>menu://preferences</code>), don&rsquo;t hardcode navigation in <code>menu.rs</code></td>
+    <td>The JS side owns routing state and can evolve the destination without a Rust release. <code>handle_menu_event</code> already calls <code>show_main_window</code> first, which is exactly right.</td>
+  </tr>
+  <tr>
+    <td>New store file <code>settings.json</code> rather than growing <code>workspaces.json</code></td>
+    <td><code>workspaces.json</code> is identity/connection metadata consumed by the boot path; mixing mutable preferences in risks churn on a boot-critical file. <code>store:default</code> is already granted in <code>capabilities/default.json</code> — <strong>no capability/permission changes needed</strong>.</td>
+  </tr>
+  <tr>
+    <td>Two tiers of workspace settings: device-local (in <code>settings.json</code>, keyed by workspace id) and server-side (existing Convex-backed <code>/dashboard/settings</code> hub, linked out)</td>
+    <td>Device-local per-workspace prefs (e.g. mute) must work even when that workspace isn&rsquo;t the active one or is unreachable. Server settings already have a mature home; duplicating them offline would be wrong.</td>
+  </tr>
+</table>
+
+<h2 id="model">3. Settings model &amp; storage</h2>
+
+<p>Each setting has exactly one owner. Scope legend:
+<span class="tag global">GLOBAL</span> device-wide, spans all workspaces ·
+<span class="tag ws">WORKSPACE</span> per-workspace ·
+<span class="tag os">OS-OWNED</span> lives in the operating system, surfaced but not stored by us.</p>
+
+<table>
+  <tr><th>Setting</th><th>Scope</th><th>Storage</th><th>Consumed by</th></tr>
+  <tr><td>Theme (light / dark / system)</td><td><span class="tag global">GLOBAL</span></td><td>Existing <code>@nuxtjs/color-mode</code> via <code>useAppTheme()</code> (webview localStorage — effectively device-global)</td><td>Whole SPA; also <code>setWindowTheme()</code> native chrome</td></tr>
+  <tr><td>Launch at login</td><td><span class="tag os">OS-OWNED</span></td><td>OS autostart registry via existing <code>apps/desktop/src/autostart.ts</code></td><td>OS</td></tr>
+  <tr><td>Automatically check for updates</td><td><span class="tag global">GLOBAL</span></td><td><code>settings.json</code> → <code>global.autoCheckUpdates</code> (default <code>true</code>)</td><td><code>updater.client.ts</code> boot check</td></tr>
+  <tr><td>Check for updates now (button)</td><td>—</td><td>Action, not state — dispatches existing <code>owlat:check-updates</code></td><td><code>updater.client.ts</code></td></tr>
+  <tr><td>Desktop notifications enabled</td><td><span class="tag global">GLOBAL</span></td><td><code>settings.json</code> → <code>global.notificationsEnabled</code> (default <code>true</code>)</td><td><code>useDesktopNotifications</code></td></tr>
+  <tr><td>Show unread badge on app icon</td><td><span class="tag global">GLOBAL</span></td><td><code>settings.json</code> → <code>global.showUnreadBadge</code> (default <code>true</code>)</td><td><code>updateUnreadBadge()</code> call sites</td></tr>
+  <tr><td>Startup workspace (last-active / pinned)</td><td><span class="tag global">GLOBAL</span></td><td><code>settings.json</code> → <code>global.startupWorkspaceId</code> (<code>null</code> = last active)</td><td>Boot plugin <code>0.desktop-workspace.client.ts</code></td></tr>
+  <tr><td>Default email app (mailto handler)</td><td><span class="tag os">OS-OWNED</span></td><td>None — informational panel, moved from <code>desktop.vue</code></td><td>OS</td></tr>
+  <tr><td>Workspace label &amp; accent color</td><td><span class="tag ws">WORKSPACE</span> (device-local)</td><td>Existing <code>workspaces.json</code> records (accent already exists via <code>setWorkspaceAccent</code>)</td><td>Sidebar rail, native accent frame</td></tr>
+  <tr><td>Mute notifications for a workspace</td><td><span class="tag ws">WORKSPACE</span> (device-local)</td><td><code>settings.json</code> → <code>workspaces[id].muteNotifications</code></td><td><code>useDesktopNotifications</code>, badge aggregation</td></tr>
+  <tr><td>Notify-about scope, org settings, team, feature flags, …</td><td><span class="tag ws">WORKSPACE</span> (server-side)</td><td>Convex backend (unchanged) — reached via &ldquo;Open workspace settings&rdquo; → <code>/dashboard/settings</code></td><td>Existing hub</td></tr>
+</table>
+
+<h3>Store schema (<code>settings.json</code>, key <code>state</code>)</h3>
+<pre><code>{
+  "version": 1,
+  "global": {
+    "autoCheckUpdates": true,
+    "notificationsEnabled": true,
+    "showUnreadBadge": true,
+    "startupWorkspaceId": null
+  },
+  "workspaces": {
+    "&lt;workspaceId&gt;": { "muteNotifications": false }
+  }
+}</code></pre>
+<p>Missing file, unknown keys, or older <code>version</code> → merge over typed defaults (same defensive pattern as <code>loadWorkspaceStore()</code>). On the plain web build (no Tauri) the composable falls back to <code>localStorage</code> key <code>owlat:desktop-settings</code> so the page remains developable in a browser.</p>
+
+<h2 id="phase1">4. Implementation phases</h2>
+
+<div class="phase" id="phase1b">
+<h3>Phase 1 — Fix the dead menu item (menu works from any state)</h3>
+<p class="goal">Smallest shippable slice: clicking Settings always opens a page, even with zero workspaces. ~½ day.</p>
+<ol class="steps">
+  <li><span class="filepath">NEW <code>apps/web/app/plugins/1.desktop-menu.client.ts</code></span> — app-level registration of all three menu bridges (replaces the layout-scoped composable). Ordering: prefix <code>1.</code> so it runs after the <code>0.desktop-workspace</code> boot plugin. Sketch:
+<pre><code>export default defineNuxtPlugin(async () =&gt; {
+  if (!isDesktopRuntime()) return;
+  const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  if (getCurrentWebviewWindow().label !== 'main') return; // app.emit broadcasts to
+                                                          // ALL windows — the compose
+                                                          // window must not also react
+  const router = useRouter();
+  const { onMenuAction } = await import('@owlat/desktop/src/menu');
+  await onMenuAction('preferences',   () =&gt; router.push('/desktop/settings'));
+  await onMenuAction('new-workspace', () =&gt; router.push('/desktop/welcome'));
+  await onMenuAction('check-updates', () =&gt;
+    window.dispatchEvent(new Event('owlat:check-updates')));
+});</code></pre>
+  No teardown needed — plugin listeners live for the lifetime of the webview.</li>
+  <li><span class="filepath"><code>apps/web/app/layouts/dashboard.vue:36</code></span> — remove the <code>useDesktopMenu();</code> call. <span class="filepath"><code>app/composables/useDesktopMenu.ts</code></span> — delete (its one consumer is gone; keeping it invites double registration).</li>
+  <li><span class="filepath"><code>apps/web/app/middleware/desktop-workspace.global.ts:12</code></span> — add <code>'/desktop/settings'</code> to the allowed-prefix list so the global guard stops redirecting it to <code>/desktop/welcome</code>.</li>
+  <li><span class="filepath">NEW <code>apps/web/app/pages/desktop/settings.vue</code></span> — page shell in the style of <code>welcome.vue</code>: <code>definePageMeta({ layout: false })</code>, <em>no</em> <code>auth</code> middleware, renders its own <code>&lt;DesktopTitlebar /&gt;</code>, non-desktop fallback message (same pattern as <code>desktop.vue:34-39</code>). Left nav with two groups — <strong>Global</strong> and <strong>Workspaces</strong> — content sections filled in Phases 2–3. For Phase 1 it can ship with just the moved <em>Launch at login</em> + <em>Default email app</em> content so the menu item lands somewhere real immediately.</li>
+  <li><span class="filepath"><code>apps/web/app/pages/dashboard/settings/desktop.vue</code></span> — replace the body with a redirect (<code>navigateTo('/desktop/settings', { replace: true })</code>) so the old deep-link and any muscle memory keep working.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3 id="phase2">Phase 2 — Global settings store &amp; page sections</h3>
+<p class="goal">Real persisted global settings. ~1 day.</p>
+<ol class="steps">
+  <li><span class="filepath">NEW <code>apps/desktop/src/settings.ts</code></span> — store bridge, mirroring <code>workspace.ts</code> exactly: <code>FILE = 'settings.json'</code>, <code>KEY = 'state'</code>, <code>loadSettingsStore()</code> / <code>saveSettingsStore()</code>, warn-and-default on failure. Plain JSON in/out to stay decoupled from web types.</li>
+  <li><span class="filepath">NEW <code>apps/web/app/lib/desktop/settingsTypes.ts</code></span> — <code>DesktopSettings</code> / <code>GlobalSettings</code> / <code>WorkspaceLocalSettings</code> types, <code>SETTINGS_VERSION</code>, <code>defaultDesktopSettings()</code>, and <code>normalizeSettings(raw)</code> (defaults-merge + future migrations). Mirrors how <code>workspaceTypes.ts</code> pairs with <code>workspace.ts</code>.</li>
+  <li><span class="filepath">NEW <code>apps/web/app/composables/useDesktopAppSettings.ts</code></span> — module-level reactive singleton (the <code>useDesktopWorkspaces</code> pattern): hydrate once on first use, expose <code>settings</code> (reactive), <code>isReady</code>, and typed mutators (<code>setGlobal(key, value)</code>, <code>setWorkspaceLocal(id, key, value)</code>). Persistence: debounced (~300&nbsp;ms), single-flight write via the bridge; <code>localStorage</code> fallback off-desktop. Name deliberately avoids colliding with the existing <code>useDesktopSettings.ts</code> (autostart), which stays as-is.</li>
+  <li><span class="filepath"><code>apps/web/app/pages/desktop/settings.vue</code></span> + <span class="filepath">NEW <code>apps/web/app/components/desktop/settings/*.vue</code></span> — global sections:
+    <ul>
+      <li><strong>Appearance</strong> — theme picker bound to <code>useAppTheme()</code> (reuse the control already living in <code>dashboard/settings/index.vue:585-631</code>; extract it into a shared component rather than duplicating).</li>
+      <li><strong>Startup</strong> — <em>Launch at login</em> (existing <code>useDesktopSettings</code>/autostart bridge) + <em>Open at startup</em> workspace picker (<code>last active</code> or a pinned workspace from <code>useDesktopWorkspaces().workspaces</code>).</li>
+      <li><strong>Updates</strong> — current version (<code>@tauri-apps/api/app getVersion()</code>), <em>auto-check</em> toggle, <em>Check now</em> button dispatching <code>owlat:check-updates</code>.</li>
+      <li><strong>Notifications</strong> — enable toggle + unread-badge toggle.</li>
+      <li><strong>Default email app</strong> — informational panel moved verbatim from the old <code>desktop.vue</code>.</li>
+    </ul>
+  </li>
+</ol>
+</div>
+
+<div class="phase">
+<h3 id="phase3">Phase 3 — Workspace-specific settings</h3>
+<p class="goal">Per-workspace section that degrades gracefully when disconnected. ~1 day.</p>
+<ol class="steps">
+  <li><span class="filepath"><code>settings.vue</code> Workspaces section</span> — one card per entry in <code>useDesktopWorkspaces().workspaces</code> (this list is available <em>without</em> auth — it&rsquo;s local metadata):
+    <ul>
+      <li>Label + host, active indicator (<code>activeId</code>).</li>
+      <li><strong>Accent color</strong> — reuse existing <code>setWorkspaceAccent()</code>.</li>
+      <li><strong>Mute notifications</strong> — writes <code>workspaces[id].muteNotifications</code> in <code>settings.json</code>.</li>
+      <li><strong>Sign out</strong> / <strong>Remove from this device</strong> — reuse existing <code>signOutWorkspace()</code> / <code>removeWorkspace()</code> (destructive: confirm dialog).</li>
+      <li><strong>&ldquo;Open workspace settings&rdquo;</strong> → server-side settings. If the workspace is active: <code>router.push('/dashboard/settings')</code>. If not: <code>switchTo(id)</code> — note this reloads the webview by design (<code>useDesktopWorkspaces.ts:294-330</code>); pass the pending destination through the existing workspace-switch <code>sessionStorage</code> channel (<code>app/lib/desktop/workspaceSwitch.ts</code>) so the reload lands on <code>/dashboard/settings</code> instead of the inbox.</li>
+    </ul>
+  </li>
+  <li><strong>Empty state</strong> (zero workspaces) — explains that workspace settings appear once connected; CTA button → <code>/desktop/welcome</code>. This is the exact &ldquo;menu pressed while not connected&rdquo; scenario from the bug report: the user still gets a working page with all global settings plus a clear path to connect.</li>
+  <li><span class="filepath"><code>useDesktopWorkspaces.ts</code> <code>removeWorkspace()</code></span> — prune the removed id from <code>settings.json → workspaces</code> so orphaned prefs don&rsquo;t accumulate.</li>
+  <li><span class="filepath"><code>apps/web/app/pages/dashboard/settings/index.vue</code> (<code>settingsSections</code>, :289-390)</span> — add a <strong>&ldquo;Desktop app&rdquo;</strong> card (gated on <code>isDesktop</code>) linking to <code>/desktop/settings</code>, so the surface is also discoverable from inside a workspace, not only via the native menu.</li>
+</ol>
+</div>
+
+<div class="phase">
+<h3 id="phase4">Phase 4 — Wire settings into behavior, native polish</h3>
+<p class="goal">Settings actually change behavior; native labels follow platform conventions. ~½–1 day.</p>
+<ol class="steps">
+  <li><span class="filepath"><code>apps/web/app/lib/desktop/updater.client.ts</code></span> — <code>setupUpdateChecks()</code> skips the boot-time <code>runUpdateCheck()</code> when <code>global.autoCheckUpdates === false</code>. The explicit <code>owlat:check-updates</code> listener stays unconditional (a manual check must always work).</li>
+  <li><span class="filepath"><code>apps/web/app/composables/useDesktopNotifications.ts</code></span> — gate delivery on <code>global.notificationsEnabled</code> and on the active workspace&rsquo;s <code>muteNotifications</code>; gate <code>updateUnreadBadge()</code> on <code>global.showUnreadBadge</code> (emit <code>0</code>/clear when disabled so a stale badge doesn&rsquo;t linger).</li>
+  <li><span class="filepath"><code>apps/web/app/plugins/0.desktop-workspace.client.ts</code></span> — during boot, if <code>global.startupWorkspaceId</code> is set and still exists in the store, seed it as the active workspace instead of the persisted last-active id.</li>
+  <li><span class="filepath"><code>apps/desktop/src-tauri/src/menu.rs:58-64</code></span> — rename the item: macOS 13+ convention is <strong>&ldquo;Settings…&rdquo;</strong> (was &ldquo;Preferences…&rdquo;), same on Windows/Linux. Keep the menu id <code>"preferences"</code> and the <code>menu://preferences</code> event name — they&rsquo;re internal contract, renaming them buys nothing and risks a missed call site.</li>
+  <li>Update the module docs that describe the old flow (<code>menu.rs</code> header comment, <code>apps/desktop/src/menu.ts</code> header, boot-plugin comments) so they name the plugin instead of <code>useDesktopMenu</code>.</li>
+</ol>
+</div>
+
+<h2 id="edge">5. Edge cases &amp; risks</h2>
+<table>
+  <tr><th>Case</th><th>Handling</th></tr>
+  <tr><td><strong>Compose window double-handling.</strong> <code>app.emit</code> broadcasts <code>menu://…</code> to every webview window; the compose window runs the same SPA and the same plugins.</td><td>The new plugin returns early unless <code>getCurrentWebviewWindow().label === 'main'</code> (step 1.1). Without this guard the compose window would also navigate — visibly wrong.</td></tr>
+  <tr><td><strong>Menu clicked before the SPA finishes booting.</strong> Rust emits immediately; listeners register during plugin init.</td><td>Accept the tiny window (sub-second) — Tauri events are not queued, and <code>show_main_window</code> already focuses the app. Not worth a replay mechanism.</td></tr>
+  <tr><td><strong>Corrupt / missing / future-versioned <code>settings.json</code>.</strong></td><td><code>normalizeSettings()</code> always merges over defaults and never throws; unknown keys preserved on write-back where cheap, else dropped. Same resilience contract as <code>loadWorkspaceStore()</code>.</td></tr>
+  <tr><td><strong>Two windows writing settings concurrently.</strong></td><td>Only the main window renders the settings page; the compose window is read-only at boot. Debounced single-flight saves in the composable prevent self-races. Acceptable without store-change events for now.</td></tr>
+  <tr><td><strong>Plain web build (no Tauri).</strong></td><td><code>/desktop/settings</code> shows the same &ldquo;only relevant in the desktop app&rdquo; fallback the old page had; the plugin no-ops (<code>isDesktopRuntime()</code> guard). localStorage fallback keeps the page testable in browser dev.</td></tr>
+  <tr><td><strong><code>startupWorkspaceId</code> points at a removed workspace.</strong></td><td>Boot falls back to last-active; <code>removeWorkspace()</code> also nulls it when it matches (Phase 3.3).</td></tr>
+  <tr><td><strong>&ldquo;Open workspace settings&rdquo; for an inactive workspace reloads the webview.</strong></td><td>Inherent to the existing <code>switchTo()</code> design (singleton re-seeding). Route the post-reload destination through the existing <code>workspaceSwitch.ts</code> sessionStorage channel; show the existing switch skeleton.</td></tr>
+  <tr><td><strong>Auth-gated server settings.</strong></td><td>Never fetched on <code>/desktop/settings</code> itself — the page only links into <code>/dashboard/settings</code>, where the existing <code>auth</code> middleware does its job. No new auth surface.</td></tr>
+</table>
+
+<h2 id="test">6. Testing &amp; verification</h2>
+<p>All tests via <strong>vitest</strong> (never <code>bun test</code> — it skips the Nuxt auto-import polyfill setup file).</p>
+<ul>
+  <li><strong>Unit — <code>apps/desktop</code>:</strong> <code>src/__tests__/settings.test.ts</code> mirroring the existing bridge tests: load returns defaults on missing/corrupt store, round-trips state, warns without throwing on store failure.</li>
+  <li><strong>Unit — <code>apps/web</code>:</strong> <code>normalizeSettings()</code> (defaults merge, version handling); <code>useDesktopAppSettings</code> mutators + debounce (mock bridge); middleware allowlist — <code>/desktop/settings</code> passes the disconnected-desktop guard while <code>/dashboard/settings</code> still redirects.</li>
+  <li><strong>Manual matrix</strong> (<code>cd apps/desktop &amp;&amp; bun tauri dev</code>), driven per platform:
+    <ol>
+      <li>Fresh profile, zero workspaces, on <code>/desktop/welcome</code> → menu Settings / <code>Cmd+,</code> → lands on <code>/desktop/settings</code>, global sections usable, Workspaces shows empty state + connect CTA. <em>(The reported bug, verified fixed.)</em></li>
+      <li>Connected, inside dashboard → same entry points work; &ldquo;Desktop app&rdquo; card visible in the settings hub; old <code>/dashboard/settings/desktop</code> URL redirects.</li>
+      <li>Compose window open → menu Settings navigates the <em>main</em> window only.</li>
+      <li>Toggle auto-update off → relaunch → no boot toast; <em>Check now</em> still works. Toggle notifications/badge/mute → observe delivery + badge. Restart after changing startup workspace.</li>
+      <li>Delete <code>settings.json</code> from the app data dir → app boots clean on defaults.</li>
+    </ol>
+  </li>
+  <li><strong>Repo gates:</strong> <code>bun run ci:test</code>, <code>bun run lint</code> before the PR.</li>
+</ul>
+
+<h2 id="open">7. Open decisions</h2>
+<ol>
+  <li><strong>Menu label:</strong> plan says rename &ldquo;Preferences…&rdquo; → &ldquo;Settings…&rdquo; to match the user-facing wording (&ldquo;settings menu&rdquo;) and macOS 13+ / Windows convention. Trivial to keep the old label if branding prefers it.</li>
+  <li><strong>Server-side per-user notification scope</strong> (<code>notifyAbout</code> via <code>api.mail.settings</code>): currently stays in the workspace hub. It could later be surfaced read-only on the desktop page for the active workspace, but that adds an auth dependency to an intentionally auth-free page — deferred.</li>
+  <li><strong>Settings sync across devices:</strong> out of scope — <code>settings.json</code> is deliberately device-local; anything that should roam belongs in Convex per-user settings instead.</li>
+  <li><strong>Store-change events between windows</strong> (live sync to the compose window): skipped for now; revisit if a compose-relevant setting (e.g. spellcheck) is added later.</li>
+</ol>
+
+</main>
+</body>
+</html>

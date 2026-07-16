@@ -31,9 +31,10 @@ const { isFocusMode } = useFocusMode();
 // Desktop runtime — gates the workspace switcher rail + native chrome.
 const { isDesktop, isMac, isWindows } = useDesktopContext();
 
-// ⌘1–9 workspace switching + native application-menu actions (desktop only).
+// ⌘1–9 workspace switching (desktop only). Native application-menu actions are
+// bridged app-wide by plugins/1.desktop-menu.client.ts, not here — the menu
+// must also work on pre-workspace screens that never mount this layout.
 useWorkspaceHotkeys();
-useDesktopMenu();
 
 // Native window material (macOS vibrancy / Windows 11 Mica). Behind a single flag
 // so it can be killed without a config rebuild; the branded chrome and menus do
