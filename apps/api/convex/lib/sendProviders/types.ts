@@ -10,7 +10,8 @@
  * See CONTEXT.md "Send provider adapter (module)".
  */
 
-import type { SendProviderKind } from './catalog';
+import { getOptional } from '../env';
+import { isSendProviderKind, type SendProviderKind } from './catalog';
 
 /**
  * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
@@ -26,6 +27,24 @@ import type { SendProviderKind } from './catalog';
  */
 export { SEND_PROVIDER_KINDS, isSendProviderKind } from './catalog';
 export type { CoreSendProviderKind, SendProviderKind } from './catalog';
+
+/**
+ * Select the provider kind the worker will dispatch through.
+ *
+ * An explicitly supplied provider is authoritative: a stale or invalid value
+ * fails closed instead of borrowing the deployment-wide EMAIL_PROVIDER. The
+ * environment fallback is used only when the producer supplied no provider.
+ */
+export function selectSendProviderKind(
+	explicitProviderType: string | undefined
+): SendProviderKind | null {
+	if (explicitProviderType !== undefined) {
+		return isSendProviderKind(explicitProviderType) ? explicitProviderType : null;
+	}
+
+	const environmentProviderType = getOptional('EMAIL_PROVIDER');
+	return isSendProviderKind(environmentProviderType) ? environmentProviderType : null;
+}
 
 /**
  * Canonical IP-pool names the built-in MTA routes through. Single source of

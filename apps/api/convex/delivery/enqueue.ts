@@ -3,8 +3,7 @@ import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { isSuppressed } from '../lib/suppression';
-import { deliveryConfiguredFromEnv, isSendProviderReady } from '../lib/sendProviders/capability';
-import { isSendProviderKind } from '../lib/sendProviders/types';
+import { selectedSendProviderReady } from '../lib/sendProviders/capability';
 
 /**
  * Error thrown by `enqueueNonCampaignSend` when the recipient is on the
@@ -73,6 +72,13 @@ export const enqueueCampaignEmails = internalMutation({
 		listId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		// Recheck the exact provider the worker will select immediately before
+		// enqueueing. Campaign preflight and route resolution happen earlier, so a
+		// plugin flag, grant, or credential can change before this mutation runs.
+		if (!(await selectedSendProviderReady(ctx, args.providerType))) {
+			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
+		}
+
 		for (const recipient of args.emails) {
 			await campaignEmailPool.enqueueAction(
 				ctx,
@@ -168,18 +174,13 @@ export const enqueueNonCampaignSend = internalMutation({
 		convexSiteUrl: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Delivery-provider gate, matched to what the worker actually resolves for
-		// these sends (`worker.ts resolveProviderKind`): the envelope's
-		// `providerType` if set, else `EMAIL_PROVIDER` — NOT providerRoutes, which
-		// automation/agent sends don't resolve. THROW before the row insert
-		// (fail-closed) rather than queue a doomed `transactionalSends` row.
+		// Delivery-provider gate, matched to the worker's provider selection: an
+		// explicit `providerType` is authoritative, and EMAIL_PROVIDER is consulted
+		// only when it is absent. THROW before the row insert (fail-closed) rather
+		// than queue a doomed `transactionalSends` row.
 		// External-mailbox 1:1 replies use the user's own SMTP via a different path
 		// and never reach this producer.
-		const envelopeProviderOk =
-			args.providerType !== undefined &&
-			isSendProviderKind(args.providerType) &&
-			(await isSendProviderReady(ctx, args.providerType));
-		if (!envelopeProviderOk && !(await deliveryConfiguredFromEnv(ctx))) {
+		if (!(await selectedSendProviderReady(ctx, args.providerType))) {
 			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
 		}
 
