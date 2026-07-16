@@ -19,13 +19,17 @@
  */
 
 import { v } from 'convex/values';
-import { getSendPathRequiredEnv, isDeliveryProviderKind } from '@owlat/shared';
 import { adminQuery, authedAction, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
-import { getOptional, type EnvKey } from '../lib/env';
+import { getOptional, isEnvPresent } from '../lib/env';
 import { isSendProviderKind } from '../lib/sendProviders/types';
-import { providerKindConfigured, isDeliveryConfigured } from '../lib/sendProviders/capability';
+import {
+	isDeliveryConfigured,
+	isSendProviderReady,
+	providerKindConfigured,
+} from '../lib/sendProviders/capability';
+import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 
 /**
@@ -48,21 +52,23 @@ export const getStatus = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		const provider = getOptional('EMAIL_PROVIDER') ?? null;
-		const isKnownProvider = isDeliveryProviderKind(provider ?? undefined);
+		const isKnownProvider = isSendProviderKind(provider);
+		const providerEntry = isKnownProvider ? sendProviderCatalogEntry(provider) : null;
 
 		// Presence-only: the required env var NAMES are public (they're documented
 		// in the setup wizard); their VALUES never leave the backend.
-		const requiredEnv = getSendPathRequiredEnv(provider ?? undefined).map((name) => ({
+		const requiredEnv = (providerEntry?.requiredEnvVars ?? []).map((name) => ({
 			name,
-			isPresent: Boolean(getOptional(name as EnvKey)),
+			isPresent: isEnvPresent(name),
 		}));
 
-		const providerConfigured = isSendProviderKind(provider) && providerKindConfigured(provider);
+		const providerConfigured = isKnownProvider && (await isSendProviderReady(ctx, provider));
 		const canSend = await isDeliveryConfigured(ctx);
 
 		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
 		return {
 			provider,
+			providerLabel: providerEntry?.label ?? null,
 			isKnownProvider,
 			requiredEnv,
 			providerConfigured,
@@ -122,7 +128,20 @@ export const getTransportSummary = authedQuery({
 
 		// Advanced routing is "active" when any configured route enables a provider.
 		const routes = await ctx.db.query('providerRoutes').collect(); // bounded: one row per message type
-		const advancedRoutingActive = routes.some((route) => route.providers.some((p) => p.isEnabled));
+		let advancedRoutingActive = false;
+		for (const route of routes) {
+			for (const routeProvider of route.providers) {
+				if (
+					routeProvider.isEnabled &&
+					isSendProviderKind(routeProvider.providerType) &&
+					(await isSendProviderReady(ctx, routeProvider.providerType))
+				) {
+					advancedRoutingActive = true;
+					break;
+				}
+			}
+			if (advancedRoutingActive) break;
+		}
 
 		// Rolling health for the active provider kind (null before the first send).
 		// Only the two fields the transport card renders — status + last-checked.
@@ -150,6 +169,9 @@ export const getTransportSummary = authedQuery({
 
 		return {
 			provider,
+			providerLabel: isSendProviderKind(provider)
+				? sendProviderCatalogEntry(provider).label
+				: null,
 			canSend,
 			advancedRoutingActive,
 			health,

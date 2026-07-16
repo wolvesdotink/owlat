@@ -7,6 +7,7 @@ import {
 	isRetryableErrorCode,
 	type SendProviderKind,
 } from '../index';
+import { SEND_PROVIDER_CATALOG } from '../catalog';
 
 describe('Send provider registry', () => {
 	it('providerFor returns the module for each kind', () => {
@@ -23,6 +24,35 @@ describe('Send provider registry', () => {
 	it('SEND_PROVIDERS keys match the SendProviderKind union exactly', () => {
 		const keys = Object.keys(SEND_PROVIDERS).sort();
 		expect(keys).toEqual(['mta', 'resend', 'ses', 'smtp']);
+	});
+
+	it('pins built-in ordering, credentials, and retry behavior before plugin entries', () => {
+		expect(SEND_PROVIDER_CATALOG.slice(0, 4)).toEqual([
+			{
+				kind: 'mta',
+				label: 'Owlat MTA',
+				retryDelays: [1_000, 5_000],
+				requiredEnvVars: ['MTA_API_URL', 'MTA_API_KEY'],
+			},
+			{
+				kind: 'ses',
+				label: 'Amazon SES',
+				retryDelays: [1_000, 5_000, 30_000],
+				requiredEnvVars: ['AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
+			},
+			{
+				kind: 'resend',
+				label: 'Resend',
+				retryDelays: [1_000, 5_000, 30_000],
+				requiredEnvVars: ['RESEND_API_KEY'],
+			},
+			{
+				kind: 'smtp',
+				label: 'SMTP relay',
+				retryDelays: [1_000, 5_000, 30_000],
+				requiredEnvVars: ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'],
+			},
+		]);
 	});
 });
 
