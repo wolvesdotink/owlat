@@ -1,6 +1,17 @@
 export type { JsonObject, JsonPrimitive, JsonValue } from './json';
 export { isPluginId, parsePluginId, PluginIdError } from './pluginId';
 export type { PluginId } from './pluginId';
+export { PLUGIN_AGENT_STEP_CAPABILITY, pluginAgentStepKind } from './agentStep';
+export type {
+	PluginAgentLifecycleEdge,
+	PluginAgentStepCapability,
+	PluginAgentStepDefinition,
+	PluginAgentStepInput,
+	PluginAgentStepKind,
+	PluginAgentStepLocalId,
+	PluginAgentStepModule,
+	PluginAgentStepResult,
+} from './agentStep';
 export type {
 	PluginCapability,
 	PluginCapabilityGrant,

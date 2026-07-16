@@ -67,6 +67,44 @@ describe('composition rendering', () => {
 		expect(rendered.sendTransportCatalog).toContain('Object.freeze([])');
 		expect(rendered.sendTransportModules).toContain("'use node';");
 		expect(rendered.sendTransportModules).toContain('Object.freeze([])');
+		expect(rendered.agentStepCatalog).toContain('Object.freeze([] as const)');
+		expect(rendered.agentStepModules).toContain("'use node';");
+	});
+
+	it('separates agent step policy metadata from Node-only executable imports', () => {
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/policy-plugin',
+				manifest: {
+					id: 'policy-pack',
+					version: '1.0.0',
+					capabilities: ['agent:step'],
+					flag: { default: false },
+					contributes: {
+						agentSteps: [
+							{
+								id: 'spam-score',
+								after: 'security_scan',
+								module: { exportPath: './agent/spam-score' },
+								lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }],
+							},
+						],
+					},
+				},
+			},
+		]);
+		const rendered = renderPluginComposition(plugins);
+
+		expect(rendered.agentStepCatalog).toContain('plugin.policy-pack.spam-score');
+		expect(rendered.agentStepCatalog).toContain('classifying');
+		expect(rendered.agentStepCatalog).toContain('classification');
+		expect(rendered.agentStepCatalog).toContain(
+			'Object.freeze({"kind":"caution","from":"classifying","to":"archived"})'
+		);
+		expect(rendered.agentStepCatalog).not.toContain('@acme/policy-plugin');
+		expect(rendered.agentStepModules).toContain("'use node';");
+		expect(rendered.agentStepModules).toContain('satisfies PluginAgentStepModule');
+		expect(rendered.agentStepModules).toContain('from "@acme/policy-plugin/agent/spam-score"');
 	});
 
 	it('separates pure transport metadata from Node-only executable imports', () => {

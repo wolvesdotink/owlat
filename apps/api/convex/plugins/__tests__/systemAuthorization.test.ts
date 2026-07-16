@@ -7,7 +7,7 @@ vi.mock('../plugins.generated', () => ({
 			manifest: Object.freeze({
 				id: 'mail-pack',
 				version: '1.0.0',
-				capabilities: Object.freeze(['send:transport']),
+				capabilities: Object.freeze(['send:transport', 'agent:step']),
 				flag: Object.freeze({
 					default: false,
 					requiredEnvVars: Object.freeze(['POSTMARK_TOKEN']),
@@ -80,6 +80,24 @@ describe('system bundled-plugin authorization', () => {
 		).resolves.toBeNull();
 		await expect(
 			authorizeSystemBundledPlugin(ctx as never, 'mail-pack', 'mail:write')
+		).resolves.toBeNull();
+	});
+
+	it('applies the same explicit grant and environment gate to agent steps', async () => {
+		const granted = fakeContext({
+			featureFlags: { [flagKey]: true },
+			pluginCapabilityGrants: { [flagKey]: { 'agent:step': true } },
+		});
+		await expect(
+			authorizeSystemBundledPlugin(granted as never, 'mail-pack', 'agent:step')
+		).resolves.toMatchObject({ pluginId: 'mail-pack' });
+
+		const denied = fakeContext({
+			featureFlags: { [flagKey]: true },
+			pluginCapabilityGrants: { [flagKey]: { 'agent:step': false } },
+		});
+		await expect(
+			authorizeSystemBundledPlugin(denied as never, 'mail-pack', 'agent:step')
 		).resolves.toBeNull();
 	});
 });

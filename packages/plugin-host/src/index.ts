@@ -1,6 +1,19 @@
 export { orderHostedContributions } from './contributions';
 export type { HostedContribution } from './contributions';
 export {
+	AgentStepCompositionError,
+	composeAgentStepDefinitions,
+	composeBundledAgentSteps,
+	CORE_AGENT_STEP_DEFINITIONS,
+	isSafeAgentLifecycleEdge,
+} from './agentSteps';
+export type {
+	AgentStepCompositionErrorCode,
+	AgentStepPlacement,
+	CoreAgentStepKind,
+	HostedAgentStepDefinition,
+} from './agentSteps';
+export {
 	composeBundledPlugins,
 	composeValidatedBundledPlugins,
 	PluginCompositionError,

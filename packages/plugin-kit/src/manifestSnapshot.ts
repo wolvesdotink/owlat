@@ -40,14 +40,22 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 			path,
 			MAX_CONTRIBUTIONS_PER_KIND,
 			issues,
-			key === 'sendTransports'
+			key === 'sendTransports' || key === 'agentSteps'
 				? (item, index) =>
 						snapshotRecord(item, (field, fieldValue) =>
 							field === 'module'
 								? snapshotRecord(fieldValue)
 								: field === 'retryDelays'
 									? snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues)
-									: fieldValue
+									: field === 'lifecycleEdges'
+										? snapshotArray(
+												fieldValue,
+												`${path}[${index}].lifecycleEdges`,
+												12,
+												issues,
+												(edge) => snapshotRecord(edge)
+											)
+										: fieldValue
 						)
 				: undefined
 		);

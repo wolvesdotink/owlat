@@ -20,6 +20,7 @@ import {
 } from '../../lib/convexValidators';
 import { pendingClarificationValidator } from '../clarificationValidators';
 import { MAX_RETRY_ATTEMPTS } from '../../lib/constants';
+import { agentStepKindValidator, type AgentStepKind } from '../../agent/steps/catalog';
 
 // ─── Status / action literals ────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ export type ProcessingStatus =
 	| 'archived'
 	| 'failed';
 
-export type ActionType = 'security_scan' | 'context_retrieval' | 'classify' | 'draft' | 'route';
+export type ActionType = AgentStepKind;
 
 export type ActionStatus = 'pending' | 'running' | 'completed' | 'failed' | 'abandoned' | 'skipped';
 
@@ -64,14 +65,7 @@ export type Classification = Infer<typeof classificationValidator>;
 export type TokenUsage = Infer<typeof tokenUsageValidator>;
 export type PendingClarification = Infer<typeof pendingClarificationValidator>;
 
-export const actionTypeValidator = v.union(
-	v.literal('security_scan'),
-	v.literal('context_retrieval'),
-	v.literal('classify'),
-	v.literal('clarify'),
-	v.literal('draft'),
-	v.literal('route')
-);
+export const actionTypeValidator = agentStepKindValidator;
 
 // ─── TransitionInput ────────────────────────────────────────────────────────
 //
@@ -145,7 +139,8 @@ export type TransitionInput =
 				| 'classifier_spam'
 				| 'handling_rule_archive'
 				| 'coalesced'
-				| 'clarification_dismissed';
+				| 'clarification_dismissed'
+				| 'plugin_caution';
 			securityFlags?: SecurityFlags;
 			userId?: string;
 			output?: string;
@@ -263,7 +258,8 @@ export const transitionInputValidator = v.union(
 			v.literal('classifier_spam'),
 			v.literal('handling_rule_archive'),
 			v.literal('coalesced'),
-			v.literal('clarification_dismissed')
+			v.literal('clarification_dismissed'),
+			v.literal('plugin_caution')
 		),
 		securityFlags: v.optional(securityFlagsValidator),
 		userId: v.optional(v.string()),

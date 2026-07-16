@@ -228,6 +228,15 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
 - Plugin-attributed rows always carry both `organizationId` and `pluginId`.
   Admin reads scope those rows to the active organization; only legacy core
   rows may omit organization attribution under the singleton-org invariant.
+- Bundled agent steps expose one data-only descriptor and one generated Node
+  export. Derive action kinds and Convex validators from the combined catalog;
+  never repeat a literal union in the walker, lifecycle, or schema.
+- The walker owns plugin insertion and always resumes the original core
+  continuation. Recheck singleton scope, registration, flag, `agent:step`
+  declaration and grant, and required env presence immediately before invoking
+  code. A plugin may continue or request one declared host-approved caution
+  edge; it may not choose another step, approve, send, or receive a raw Convex
+  context. Invalid output and execution failure fail closed with redacted audit.
 
 ## Environment variables
 
