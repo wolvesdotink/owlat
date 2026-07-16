@@ -55,13 +55,16 @@ export interface SmtpClientTlsOptions {
  * (587/25), and `requireTls: true` makes the client fail closed rather than send
  * credentials over cleartext if STARTTLS is not offered. The TLS floor is pinned
  * at 1.2; certificate verification is left at the client's secure default
- * (`rejectUnauthorized` is never set to false). Plaintext (`tlsMode: 'none'`) is
- * permitted only for a loopback relay (Proton Bridge); a loopback host that asked
- * for a secure port still gets implicit TLS.
+ * (`rejectUnauthorized` is never set to false). For a loopback relay (Proton
+ * Bridge) TLS is not forced: an insecure loopback port uses opportunistic
+ * STARTTLS (`tlsMode: 'starttls'` + `requireTls: false`) — it upgrades when the
+ * relay advertises STARTTLS and stays cleartext only when it does not, exactly as
+ * the previous nodemailer `{ secure: false, requireTLS: false }` config did — and
+ * a loopback host that asked for a secure port still gets implicit TLS.
  */
 export function smtpTlsOptions(host: string, secure: boolean): SmtpClientTlsOptions {
 	if (isLoopbackHost(host)) {
-		return { tlsMode: secure ? 'implicit' : 'none', requireTls: false };
+		return { tlsMode: secure ? 'implicit' : 'starttls', requireTls: false };
 	}
 	return {
 		tlsMode: secure ? 'implicit' : 'starttls',

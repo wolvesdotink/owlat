@@ -13,6 +13,7 @@
 
 import os from 'node:os';
 import { sendMessage, verify as verifySmtp } from '@owlat/smtp-client';
+import type { SmtpConnectOptions } from '@owlat/smtp-client';
 import { ImapFlow } from 'imapflow';
 import type { WorkerCredentials } from './convex.js';
 import { mapFolderRole } from './folders.js';
@@ -26,12 +27,47 @@ export interface RecipientResult {
 }
 
 /**
- * The name announced in EHLO to the user's submission server. nodemailer defaulted
- * to the machine hostname; we keep that identity so no observable EHLO name changes
- * in the cutover.
+ * The name announced in EHLO to the user's submission server. This replicates
+ * nodemailer's `_getHostname()` byte-for-byte so the cutover changes no observable
+ * EHLO identity: the machine hostname when it is an FQDN, otherwise the
+ * `[127.0.0.1]` fallback (mail-sync ships in Docker, where container hostnames are
+ * dotless hex — a bare non-FQDN token would be rejected by strict submission
+ * servers, e.g. postfix `reject_non_fqdn_helo_hostname`), and a bare IPv4 literal
+ * enclosed in brackets as an address literal (RFC 5321 §4.1.3).
  */
 function ehloName(): string {
-	return os.hostname();
+	let host: string;
+	try {
+		host = os.hostname() || '';
+	} catch {
+		// os.hostname() can throw on some platforms (nodemailer guards this too).
+		host = 'localhost';
+	}
+	// Not an FQDN (no dot) → nodemailer's fallback identity.
+	if (host === '' || !host.includes('.')) {
+		host = '[127.0.0.1]';
+	}
+	// A bare IPv4 literal must be sent as a bracketed address literal.
+	if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+		host = `[${host}]`;
+	}
+	return host;
+}
+
+/**
+ * The shared `@owlat/smtp-client` connect shape for both the live send
+ * (`sendViaExternal`) and the credential probe (`testSmtp`): identical host /
+ * port / EHLO identity / TLS posture. Extracting it keeps the test path
+ * byte-identical to the live path structurally (PR-75 §6), not merely by
+ * assertion.
+ */
+function smtpConnectOptions(host: string, port: number, secure: boolean): SmtpConnectOptions {
+	return {
+		host,
+		port,
+		ehloName: ehloName(),
+		...smtpTlsOptions(host, secure),
+	};
 }
 
 export async function sendViaExternal(
@@ -43,12 +79,7 @@ export async function sendViaExternal(
 	// RCPT verdict — the authoritative accept/reject signal — and ships the exact
 	// .eml bytes Convex already built.
 	const result = await sendMessage({
-		connect: {
-			host: creds.smtpHost,
-			port: creds.smtpPort,
-			ehloName: ehloName(),
-			...smtpTlsOptions(creds.smtpHost, creds.isSmtpSecure),
-		},
+		connect: smtpConnectOptions(creds.smtpHost, creds.smtpPort, creds.isSmtpSecure),
 		auth: { credentials: { username: creds.smtpUsername, password: creds.smtpPassword } },
 		envelope: { from: params.from, to: params.recipients, data: params.raw },
 	});
@@ -127,12 +158,7 @@ async function testSmtp(c: ProtocolCreds): Promise<{ ok: boolean; error?: string
 		// verify() drives connect → EHLO → AUTH → QUIT with no message sent, on the
 		// same TLS posture as the live send path.
 		await verifySmtp({
-			connect: {
-				host: c.host,
-				port: c.port,
-				ehloName: ehloName(),
-				...smtpTlsOptions(c.host, c.secure),
-			},
+			connect: smtpConnectOptions(c.host, c.port, c.secure),
 			auth: { credentials: { username: c.username, password: c.password } },
 		});
 		return { ok: true };
