@@ -30,14 +30,26 @@ export class PluginLlmError extends Error {
 	}
 }
 
-type PluginLlmActorPolicy =
-	| Readonly<{ kind: 'authenticated_actor' }>
-	| Readonly<{ kind: 'system_actor' }>;
+interface PluginLlmActorPolicy {
+	readonly kind: 'authenticated_actor' | 'system_actor';
+	authorize(ctx: ActionCtx, pluginId: string): Promise<unknown>;
+	recordDenied(ctx: ActionCtx, pluginId: string): Promise<unknown>;
+}
 
 const AUTHENTICATED_ACTOR_POLICY: PluginLlmActorPolicy = Object.freeze({
 	kind: 'authenticated_actor',
+	authorize: (ctx: ActionCtx, pluginId: string) =>
+		ctx.runQuery(internal.plugins.llmAccounting.authorize, { pluginId }),
+	recordDenied: (ctx: ActionCtx, pluginId: string) =>
+		ctx.runMutation(internal.plugins.llmAccounting.recordDenied, { pluginId }),
 });
-const SYSTEM_ACTOR_POLICY: PluginLlmActorPolicy = Object.freeze({ kind: 'system_actor' });
+const SYSTEM_ACTOR_POLICY: PluginLlmActorPolicy = Object.freeze({
+	kind: 'system_actor',
+	authorize: (ctx: ActionCtx, pluginId: string) =>
+		ctx.runQuery(internal.plugins.llmAccounting.authorizeSystem, { pluginId }),
+	recordDenied: (ctx: ActionCtx, pluginId: string) =>
+		ctx.runMutation(internal.plugins.llmAccounting.recordDeniedSystem, { pluginId }),
+});
 
 /**
  * Bind the public plugin service to one validated plugin id. Organization,
@@ -86,7 +98,7 @@ function bindBundledPluginLlm(
 			}
 
 			try {
-				await authorizeActor(ctx, pluginId, actorPolicy);
+				await actorPolicy.authorize(ctx, pluginId);
 				assertExecutionActive(executionSignal);
 			} catch {
 				assertExecutionActive(executionSignal);
@@ -130,7 +142,7 @@ function bindBundledPluginLlm(
 					tier: request.tier,
 					modelId: resolvedModel.modelId,
 					endpointProvenance: resolvedModel.endpointProvenance,
-					...accountingActorArgs(actorPolicy),
+					actorMode: actorPolicy.kind,
 				});
 			} catch {
 				assertExecutionActive(executionSignal);
@@ -165,7 +177,7 @@ function bindBundledPluginLlm(
 					modelUsed: dispatched.result.modelUsed,
 					tokenUsage: dispatched.result.tokenUsage,
 					attempts: dispatched.attempts,
-					...accountingActorArgs(actorPolicy),
+					actorMode: actorPolicy.kind,
 				});
 				assertExecutionActive(executionSignal);
 			} catch {
@@ -187,31 +199,12 @@ function assertExecutionActive(executionSignal: AbortSignal | undefined): void {
 	if (executionSignal?.aborted) throw new PluginLlmError('access_denied');
 }
 
-async function authorizeActor(
-	ctx: ActionCtx,
-	pluginId: string,
-	actorPolicy: PluginLlmActorPolicy
-): Promise<void> {
-	if (actorPolicy.kind === 'system_actor') {
-		await ctx.runQuery(internal.plugins.llmAccounting.authorizeSystem, { pluginId });
-		return;
-	}
-	await ctx.runQuery(internal.plugins.llmAccounting.authorize, { pluginId });
-}
-
 async function recordDenied(
 	ctx: ActionCtx,
 	pluginId: string,
 	actorPolicy: PluginLlmActorPolicy
 ): Promise<void> {
-	await ctx
-		.runMutation(
-			actorPolicy.kind === 'system_actor'
-				? internal.plugins.llmAccounting.recordDeniedSystem
-				: internal.plugins.llmAccounting.recordDenied,
-			{ pluginId }
-		)
-		.catch(() => null);
+	await actorPolicy.recordDenied(ctx, pluginId).catch(() => null);
 }
 
 async function settleFailure(
@@ -222,7 +215,7 @@ async function settleFailure(
 	try {
 		await ctx.runMutation(internal.plugins.llmAccounting.settleFailure, {
 			reservationId,
-			...accountingActorArgs(actorPolicy),
+			actorMode: actorPolicy.kind,
 		});
 		return true;
 	} catch {
@@ -230,12 +223,6 @@ async function settleFailure(
 		// reopen budget headroom when terminal accounting is unavailable.
 		return false;
 	}
-}
-
-function accountingActorArgs(
-	actorPolicy: PluginLlmActorPolicy
-): Readonly<Record<never, never>> | Readonly<{ system: true }> {
-	return actorPolicy.kind === 'system_actor' ? { system: true } : {};
 }
 
 function errorMessage(code: PluginLlmErrorCode): string {
