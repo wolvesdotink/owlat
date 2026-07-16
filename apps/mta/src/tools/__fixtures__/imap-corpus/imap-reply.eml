@@ -1,6 +1,8 @@
 From: Bob <bob@example.org>
 To: Alice <alice@example.com>
 Cc: team@example.com
+Reply-To: Bob Reply <bob.reply@example.org>
+Reply-To: team-list@example.com
 Subject: Re: Project kickoff
 Date: Mon, 15 Jun 2026 09:30:00 +0000
 Message-ID: <reply-2@example.org>
