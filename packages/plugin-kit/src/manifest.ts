@@ -1,5 +1,7 @@
 import type { PluginCapability } from './capabilities';
 import { PLUGIN_AGENT_STEP_CAPABILITY } from './agentStep';
+import { PLUGIN_AUTONOMY_GATE_CAPABILITY } from './autonomyGate';
+import { validateAutonomyGateContributions } from './autonomyGateManifest';
 import { PLUGIN_DRAFT_STRATEGY_CAPABILITY } from './draftStrategy';
 import { validateDraftStrategyContributions } from './draftStrategyManifest';
 import { validateAgentStepContributions } from './agentStepManifest';
@@ -131,6 +133,9 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 	const capabilities = readDataProperty(manifest, 'capabilities', issues, true);
 	const capabilityItems =
 		capabilities.kind === 'value' ? validateCapabilities(capabilities.value, issues) : undefined;
+	const canCheckDeclaredCapabilities =
+		capabilityItems !== undefined &&
+		!issues.some((issue) => issue.path.startsWith('$.capabilities'));
 	const contributions = readDataProperty(manifest, 'contributes', issues);
 	if (contributions.kind === 'value') validateContributions(contributions.value, issues);
 	const flag = readDataProperty(manifest, 'flag', issues);
@@ -181,7 +186,10 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		}
 	}
 	if (declaresSendTransports(manifest)) {
-		if (!declaresCapability(capabilityItems, PLUGIN_SEND_TRANSPORT_CAPABILITY)) {
+		if (
+			canCheckDeclaredCapabilities &&
+			!declaresCapability(capabilityItems, PLUGIN_SEND_TRANSPORT_CAPABILITY)
+		) {
 			addManifestIssue(
 				issues,
 				'missing',
@@ -199,7 +207,10 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		}
 	}
 	if (declaresContributions(manifest, 'agentSteps')) {
-		if (!declaresCapability(capabilityItems, PLUGIN_AGENT_STEP_CAPABILITY)) {
+		if (
+			canCheckDeclaredCapabilities &&
+			!declaresCapability(capabilityItems, PLUGIN_AGENT_STEP_CAPABILITY)
+		) {
 			addManifestIssue(
 				issues,
 				'missing',
@@ -217,7 +228,10 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 		}
 	}
 	if (declaresContributions(manifest, 'draftStrategies')) {
-		if (!declaresCapability(capabilityItems, PLUGIN_DRAFT_STRATEGY_CAPABILITY)) {
+		if (
+			canCheckDeclaredCapabilities &&
+			!declaresCapability(capabilityItems, PLUGIN_DRAFT_STRATEGY_CAPABILITY)
+		) {
 			addManifestIssue(
 				issues,
 				'missing',
@@ -231,6 +245,27 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 				flag.kind === 'missing' ? 'missing' : 'invalid_type',
 				'$.flag',
 				'must be a plain object when draft strategies are contributed'
+			);
+		}
+	}
+	if (declaresContributions(manifest, 'sendGates')) {
+		if (
+			canCheckDeclaredCapabilities &&
+			!declaresCapability(capabilityItems, PLUGIN_AUTONOMY_GATE_CAPABILITY)
+		) {
+			addManifestIssue(
+				issues,
+				'missing',
+				'$.capabilities',
+				`must declare ${PLUGIN_AUTONOMY_GATE_CAPABILITY} when autonomy gates are contributed`
+			);
+		}
+		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
+			addManifestIssue(
+				issues,
+				flag.kind === 'missing' ? 'missing' : 'invalid_type',
+				'$.flag',
+				'must be a plain object when autonomy gates are contributed'
 			);
 		}
 	}
@@ -301,7 +336,7 @@ function declaresSendTransports(manifest: Record<string, unknown>): boolean {
 
 function declaresContributions(
 	manifest: Record<string, unknown>,
-	kind: 'sendTransports' | 'agentSteps' | 'draftStrategies'
+	kind: 'sendTransports' | 'agentSteps' | 'draftStrategies' | 'sendGates'
 ): boolean {
 	const contributes = Object.getOwnPropertyDescriptor(manifest, 'contributes');
 	if (!contributes || !('value' in contributes) || !isRecord(contributes.value)) return false;
@@ -341,6 +376,7 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 			if (key === 'sendTransports' && items) validateSendTransportContributions(items, issues);
 			if (key === 'agentSteps' && items) validateAgentStepContributions(items, issues);
 			if (key === 'draftStrategies' && items) validateDraftStrategyContributions(items, issues);
+			if (key === 'sendGates' && items) validateAutonomyGateContributions(items, issues);
 		}
 	}
 }
