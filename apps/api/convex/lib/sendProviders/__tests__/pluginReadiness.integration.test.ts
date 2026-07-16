@@ -318,19 +318,34 @@ describe('enqueue provider selection matches worker selection', () => {
 		expect(send?.providerType).toBeUndefined();
 	});
 
-	it('rechecks an explicit campaign plugin before queueing delayed recipients', async () => {
-		const { t, campaignId } = await seedPluginReadinessScenario({ isEnabled: false });
-		const { contactId, emailSendId } = await t.run(async (ctx) => {
-			const contactId = await ctx.db.insert(
-				'contacts',
-				createTestContact({ email: 'recipient@example.com' })
-			);
-			const emailSendId = await ctx.db.insert(
-				'emailSends',
-				createTestEmailSend({ campaignId, contactId, contactEmail: 'recipient@example.com' })
-			);
-			return { contactId, emailSendId };
+	it('terminally fails every delayed recipient when an explicit plugin loses readiness', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', pluginKind);
+		const { t, campaignId } = await seedPluginReadinessScenario({});
+		expect(await t.run(async (ctx) => resolveSendRouteFromDb(ctx, 'campaign'))).toEqual({
+			providerType: pluginKind,
+			source: 'env_fallback',
 		});
+
+		const recipients = await t.run(async (ctx) => {
+			await ctx.db.patch(campaignId, { status: 'sending' });
+			const results = [];
+			for (const email of ['first@example.com', 'second@example.com']) {
+				const contactId = await ctx.db.insert('contacts', createTestContact({ email }));
+				const emailSendId = await ctx.db.insert(
+					'emailSends',
+					createTestEmailSend({ campaignId, contactId, contactEmail: email })
+				);
+				results.push({ contactId, emailSendId, email });
+			}
+			const settings = await ctx.db.query('instanceSettings').first();
+			if (!settings) throw new Error('Expected instance settings');
+			await ctx.db.patch(settings._id, {
+				featureFlags: { [pluginFlag]: false },
+			});
+			return results;
+		});
+		// A ready fallback must not replace the explicit route selected earlier.
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
 		const { campaignEmailPool } = await import('../../../delivery/workpool');
 		const enqueueAction = vi.mocked(campaignEmailPool.enqueueAction);
 		enqueueAction.mockClear();
@@ -338,13 +353,34 @@ describe('enqueue provider selection matches worker selection', () => {
 		await expect(
 			t.mutation(internal.delivery.enqueue.enqueueCampaignEmails, {
 				campaignId,
-				emails: [{ emailSendId, contactId, email: 'recipient@example.com' }],
+				emails: recipients,
 				from: 'Owlat <sender@example.com>',
 				subject: 'Hello',
 				htmlContent: '<p>Hello</p>',
 				providerType: pluginKind,
 			})
-		).rejects.toThrow('no_delivery_provider');
+		).resolves.toEqual({ enqueued: 0 });
 		expect(enqueueAction).not.toHaveBeenCalled();
+
+		const outcome = await t.run(async (ctx) => ({
+			campaign: await ctx.db.get(campaignId),
+			sends: await ctx.db
+				.query('emailSends')
+				.withIndex('by_campaign', (q) => q.eq('campaignId', campaignId))
+				.collect(),
+		}));
+		expect(outcome.sends).toHaveLength(2);
+		expect(outcome.sends).toEqual(
+			expect.arrayContaining(
+				recipients.map((recipient) =>
+					expect.objectContaining({
+						_id: recipient.emailSendId,
+						status: 'failed',
+						errorCode: 'DELIVERY_PROVIDER_UNAVAILABLE',
+					})
+				)
+			)
+		);
+		expect(outcome.campaign?.status).toBe('sent');
 	});
 });
