@@ -38,6 +38,16 @@
  *   Public:   getSharedExternalAccount, purgeShared
  *   Internal: _connectSharedInternal, _updateCredentialsSharedInternal (both
  *             called by externalAccountsActions after encryption).
+ *
+ * NO HISTORICAL BACKFILL (deliberate scope decision — issue #234): a connected
+ * shared inbox starts empty and only receives mail that arrives from the connect
+ * onward (the forward-sync worker seeds its cursor at `uidNext-1`). The historical
+ * migration path (`mail/migration.ts`) is intentionally personal-only — it drives
+ * onboarding side effects and resolves the caller's LIVE PERSONAL account — so a
+ * team inbox never masks a user's own migration. Importing an external team
+ * inbox's existing mail (an admin-gated migration keyed by `mailboxId`) is a
+ * separate follow-up; the wizard success copy is honest about it
+ * (`add-account.vue`: "Mail already in the account isn't imported").
  */
 
 import { v } from 'convex/values';
@@ -46,7 +56,8 @@ import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
-import { connectFieldsValidator, insertExternalAccountRow } from './externalAccounts';
+import { connectFieldsValidator } from './externalAccounts';
+import { insertExternalAccountRow, applyCredentialRotation } from './externalAccountShared';
 import { seedSharedInboxRoster } from './mailboxMembers';
 import { requireMailboxAccess } from './permissions';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -201,25 +212,7 @@ export const _updateCredentialsSharedInternal = internalMutation({
 		// authz: requireSharedExternalAccount → requireMailboxAccess(owner) + shared-external gate.
 		const { account } = await requireSharedExternalAccount(ctx, args.mailboxId);
 		const now = Date.now();
-		await ctx.db.patch(account._id, {
-			imapHost: args.imapHost,
-			imapPort: args.imapPort,
-			isImapSecure: args.isImapSecure,
-			smtpHost: args.smtpHost,
-			smtpPort: args.smtpPort,
-			isSmtpSecure: args.isSmtpSecure,
-			authMethod: args.authMethod,
-			imapUsername: args.imapUsername,
-			smtpUsername: args.smtpUsername,
-			secretCiphertext: args.secretCiphertext,
-			secretIv: args.secretIv,
-			secretAuthTag: args.secretAuthTag,
-			secretEnvelopeVersion: args.secretEnvelopeVersion,
-			// Reset to pending so the worker re-validates with the new creds.
-			status: 'pending',
-			lastError: undefined,
-			updatedAt: now,
-		});
+		await applyCredentialRotation(ctx, account._id, args, now);
 		await ctx.db.insert('mailAuditLog', {
 			mailboxId: account.mailboxId,
 			event: 'external_account.credentials_updated',
