@@ -22,18 +22,13 @@ export interface MailboxConnectFormState {
 	password: string;
 }
 
-/** The credential args every connect/update backend call accepts. */
-export interface MailboxCredentialArgs {
-	emailAddress: string;
-	imapHost: string;
-	imapPort: number;
-	isImapSecure: boolean;
-	smtpHost: string;
-	smtpPort: number;
-	isSmtpSecure: boolean;
-	username: string;
-	password: string;
-}
+/**
+ * The credential args every connect/update backend call accepts. Structurally
+ * identical to the form state (the form binds exactly the fields the backend
+ * takes) — kept as a named alias so call sites read intent ("credential args"
+ * vs "form state") without maintaining two interfaces that could drift.
+ */
+export type MailboxCredentialArgs = MailboxConnectFormState;
 
 /** The extra fields `connectShared` layers on for a team inbox. */
 export interface SharedInboxFields {

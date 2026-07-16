@@ -21,7 +21,9 @@ const baseForm = {
 
 describe('buildCredentialArgs', () => {
 	it('trims fields and coerces ports to numbers', () => {
-		const args = buildCredentialArgs({ ...baseForm, imapPort: 143 as unknown as number });
+		// Pass the port as a STRING (as a raw HTML input would) so the Number()
+		// coercion is actually exercised — not a false-green on an already-number.
+		const args = buildCredentialArgs({ ...baseForm, imapPort: '143' as unknown as number });
 		expect(args.emailAddress).toBe('support@acme.test');
 		expect(args.imapHost).toBe('imap.acme.test');
 		expect(args.smtpHost).toBe('smtp.acme.test');
@@ -59,9 +61,7 @@ describe('buildSharedConnectArgs', () => {
 		expect(
 			buildSharedConnectArgs(baseForm, { displayName: '   ', memberUserIds: [] }).displayName
 		).toBeUndefined();
-		expect(
-			buildSharedConnectArgs(baseForm, { memberUserIds: [] }).displayName
-		).toBeUndefined();
+		expect(buildSharedConnectArgs(baseForm, { memberUserIds: [] }).displayName).toBeUndefined();
 	});
 
 	it('handles an empty roster', () => {

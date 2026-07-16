@@ -91,6 +91,16 @@ async function seedUsers(t: TestConvex<typeof schema>, ...authUserIds: string[])
 	});
 }
 
+/** Turn on the `mail.external` flag the sending/migration surfaces gate on. */
+async function enableExternal(t: TestConvex<typeof schema>): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			featureFlags: { 'mail.external': true },
+			createdAt: Date.now(),
+		});
+	});
+}
+
 /** Encrypted-envelope + connection fields the connect actions hand the mutation. */
 const CREDS = {
 	imapHost: 'imap.acme.test',
@@ -304,5 +314,222 @@ describe('removing a shared external inbox stops its sync worker', () => {
 		expect(account?.status).toBe('disconnected');
 		const after = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
 		expect(after.map((a) => a.accountId)).not.toContain(externalAccountId);
+	});
+});
+
+describe('a shared external account is invisible to the PERSONAL sending + migration surfaces', () => {
+	it('sendingSwitchStatus / migration.getStatus ignore a caller who owns only a shared inbox', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		await enableExternal(t);
+		// The admin has connected ONLY a shared team inbox (no personal account).
+		await t.mutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+			...CREDS,
+			emailAddress: 'support@acme.test',
+			memberUserIds: [],
+		});
+
+		// Neither personal surface may resolve the shared inbox as the caller's own.
+		const sending = await t.query(api.mail.sendingSwitch.sendingSwitchStatus, {});
+		expect(sending.configured).toBe(false);
+		expect(await t.query(api.mail.migration.getStatus, {})).toBeNull();
+	});
+
+	it('migration.start refuses when the caller owns only a shared inbox', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		await enableExternal(t);
+		await t.mutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+			...CREDS,
+			emailAddress: 'support@acme.test',
+			memberUserIds: [],
+		});
+		await expect(t.mutation(api.mail.migration.start, {})).rejects.toThrow(/connect a mailbox/i);
+	});
+});
+
+describe('shared external inbox credential rotation / repair', () => {
+	it('rotates the linked account credentials and resets it to pending', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		const { mailboxId, externalAccountId } = await t.mutation(
+			internal.mail.externalSharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
+		);
+		// Simulate the worker flagging a rotated password.
+		await t.run((ctx) =>
+			ctx.db.patch(externalAccountId, { status: 'auth_error', lastError: 'AUTHENTICATIONFAILED' })
+		);
+
+		await t.mutation(internal.mail.externalSharedInbox._updateCredentialsSharedInternal, {
+			...CREDS,
+			emailAddress: 'support@acme.test',
+			imapHost: 'imap2.acme.test',
+			secretCiphertext: 'ct2',
+			mailboxId,
+		});
+
+		const account = await t.run((ctx) => ctx.db.get(externalAccountId));
+		expect(account?.status).toBe('pending'); // worker re-validates
+		expect(account?.lastError).toBeUndefined();
+		expect(account?.imapHost).toBe('imap2.acme.test');
+		expect(account?.secretCiphertext).toBe('ct2');
+		// Back on the worker's connectable set after the repair.
+		const connectable = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
+		expect(connectable.map((a) => a.accountId)).toContain(externalAccountId);
+	});
+
+	it('surfaces the account status (never the secret) to admins via getSharedExternalAccount', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		const { mailboxId, externalAccountId } = await t.mutation(
+			internal.mail.externalSharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
+		);
+		await t.run((ctx) => ctx.db.patch(externalAccountId, { status: 'auth_error' }));
+
+		const view = await t.query(api.mail.externalSharedInbox.getSharedExternalAccount, {
+			mailboxId,
+		});
+		expect(view.configured).toBe(true);
+		if (!view.configured) return;
+		expect(view.status).toBe('auth_error');
+		expect(view.imapHost).toBe(CREDS.imapHost);
+		expect(view).not.toHaveProperty('secretCiphertext');
+	});
+
+	it('listShared surfaces the linked external account status for the admin overview', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		const { mailboxId, externalAccountId } = await t.mutation(
+			internal.mail.externalSharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
+		);
+		await t.run((ctx) =>
+			ctx.db.patch(externalAccountId, { status: 'auth_error', lastError: 'bad password' })
+		);
+		const list = await t.query(api.mail.mailboxMembers.listShared, {});
+		const row = list.find((m) => m._id === mailboxId)!;
+		expect(row.externalStatus).toBe('auth_error');
+		expect(row.externalLastError).toBe('bad password');
+	});
+
+	it('refuses a non-admin repairing the team inbox', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		const { mailboxId } = await t.mutation(
+			internal.mail.externalSharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
+		);
+		// A non-member editor has no owner access to the team inbox.
+		setSession('editor-user', 'editor');
+		await expect(
+			t.mutation(internal.mail.externalSharedInbox._updateCredentialsSharedInternal, {
+				...CREDS,
+				emailAddress: 'support@acme.test',
+				mailboxId,
+			})
+		).rejects.toThrow(/permission/i);
+	});
+});
+
+describe('purging a removed shared external inbox', () => {
+	it('cascade-deletes the account, mailbox, and roster', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		await seedUsers(t, 'user-B');
+		const { mailboxId, externalAccountId } = await t.mutation(
+			internal.mail.externalSharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: ['user-B'] }
+		);
+		// Remove (soft-delete) first, mirroring the admin flow.
+		await t.mutation(api.mail.mailbox.remove, { mailboxId });
+
+		vi.useFakeTimers();
+		try {
+			await t.mutation(api.mail.externalSharedInbox.purgeShared, { mailboxId });
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(externalAccountId)).toBeNull();
+			expect(await ctx.db.get(mailboxId)).toBeNull();
+			const roster = await ctx.db
+				.query('mailboxMembers')
+				.withIndex('by_mailbox_user', (q) => q.eq('mailboxId', mailboxId))
+				.collect();
+			expect(roster).toHaveLength(0);
+		});
+	});
+
+	it('rejects a non-admin caller', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		const { mailboxId } = await t.mutation(
+			internal.mail.externalSharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
+		);
+		setSession('editor-user', 'editor');
+		await expect(
+			t.mutation(api.mail.externalSharedInbox.purgeShared, { mailboxId })
+		).rejects.toThrow(/owners and admins/i);
+	});
+});
+
+describe('member erasure preserves a shared team inbox (org infrastructure)', () => {
+	it('keeps the shared mailbox, its credentials, and the custodian owner row', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		await seedUsers(t, 'admin-user');
+		const { mailboxId, externalAccountId } = await t.mutation(
+			internal.mail.externalSharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: [] }
+		);
+
+		const requestId = await t.run(async (ctx) => {
+			const profile = await ctx.db
+				.query('userProfiles')
+				.withIndex('by_auth_user_id', (q) => q.eq('authUserId', 'admin-user'))
+				.first();
+			const now = Date.now();
+			return await ctx.db.insert('accountDeletionRequests', {
+				userProfileId: profile!._id,
+				email: 'admin-user@hinterland.camp',
+				requestedAt: now,
+				scheduledForDeletion: now,
+				cancellationToken: 'tok',
+				status: 'pending',
+				createdAt: now,
+			});
+		});
+
+		vi.useFakeTimers();
+		try {
+			await t.mutation(internal.auth.memberErasure.eraseMemberData, {
+				authUserId: 'admin-user',
+				requestId,
+			});
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		await t.run(async (ctx) => {
+			// The team inbox, its credential row, and the custodian's owner membership
+			// all survive the erasure — they are org infrastructure, not personal data.
+			expect(await ctx.db.get(mailboxId)).not.toBeNull();
+			const account = await ctx.db.get(externalAccountId);
+			expect(account).not.toBeNull();
+			expect(account?.scope).toBe('shared');
+			const owner = await ctx.db
+				.query('mailboxMembers')
+				.withIndex('by_mailbox_user', (q) =>
+					q.eq('mailboxId', mailboxId).eq('authUserId', 'admin-user')
+				)
+				.unique();
+			expect(owner?.role).toBe('owner');
+		});
 	});
 });

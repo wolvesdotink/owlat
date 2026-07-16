@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
 
 useHead({ title: 'Team inboxes — Owlat' });
 
@@ -35,6 +36,36 @@ const { switchToMailbox } = usePostboxMailbox();
 const expandedId = ref<Id<'mailboxes'> | null>(null);
 function toggleExpanded(id: Id<'mailboxes'>) {
 	expandedId.value = expandedId.value === id ? null : id;
+	if (expandedId.value) reconnectId.value = null;
+}
+
+// An external team inbox whose credentials stopped working (a rotated app
+// password → auth_error) can be reconnected in place: the credentials live off
+// the mailbox on the shared external account, so `listShared` surfaces that
+// account's status and an admin repairs it via `updateCredentialsShared`.
+function needsReconnect(inbox: SharedInbox): boolean {
+	return (
+		inbox.kind === 'external' &&
+		(inbox.externalStatus === 'auth_error' || inbox.externalStatus === 'error')
+	);
+}
+
+// The reconnect form's non-secret prefill (servers, username) comes from the
+// linked account; only the panel that's open subscribes.
+const reconnectId = ref<Id<'mailboxes'> | null>(null);
+function toggleReconnect(id: Id<'mailboxes'>) {
+	reconnectId.value = reconnectId.value === id ? null : id;
+	if (reconnectId.value) expandedId.value = null;
+}
+const { data: reconnectAccount } = useConvexQuery(
+	api.mail.externalSharedInbox.getSharedExternalAccount,
+	() => (reconnectId.value ? { mailboxId: reconnectId.value } : 'skip')
+);
+const reconnectAccountForForm = computed(() =>
+	reconnectAccount.value?.configured ? reconnectAccount.value : null
+);
+function onReconnected() {
+	reconnectId.value = null;
 }
 
 function ownerOf(inbox: SharedInbox) {
@@ -160,11 +191,28 @@ function formatCreated(createdAt: number) {
 								Suspended
 							</span>
 							<span
+								v-if="needsReconnect(inbox)"
+								class="text-xs px-2 py-0.5 rounded bg-error/10 text-error"
+								:title="inbox.externalLastError || undefined"
+							>
+								Needs attention
+							</span>
+							<span
 								v-if="inbox.kind === 'external'"
 								class="text-xs px-2 py-0.5 rounded bg-bg-surface text-text-tertiary"
 							>
 								External
 							</span>
+							<UiButton
+								v-if="needsReconnect(inbox)"
+								variant="secondary"
+								size="sm"
+								:aria-expanded="reconnectId === inbox._id"
+								@click="toggleReconnect(inbox._id)"
+							>
+								<Icon name="lucide:refresh-cw" class="w-4 h-4 mr-1.5" />
+								{{ reconnectId === inbox._id ? 'Cancel' : 'Reconnect' }}
+							</UiButton>
 							<UiButton
 								variant="ghost"
 								size="sm"
@@ -234,6 +282,35 @@ function formatCreated(createdAt: number) {
 					class="border-t border-border-subtle bg-bg-surface/40 p-5"
 				>
 					<PostboxTeamInboxMembersPanel :mailbox-id="inbox._id" />
+				</div>
+
+				<!-- Inline credential repair: rotate the shared external account's
+				     password when its connection broke (auth_error). -->
+				<div
+					v-if="reconnectId === inbox._id"
+					class="border-t border-border-subtle bg-bg-surface/40 p-5 space-y-4"
+				>
+					<div>
+						<h3 class="font-semibold text-text-primary">Reconnect this inbox</h3>
+						<p class="text-sm text-text-secondary mt-1">
+							Its mail connection stopped working. Re-enter the mailbox password (an app
+							password if the provider requires one) to resume syncing. Your team and its mail
+							are kept.
+						</p>
+						<p v-if="inbox.externalLastError" class="text-xs text-error mt-2">
+							{{ inbox.externalLastError }}
+						</p>
+					</div>
+					<PostboxMailboxConnectForm
+						v-if="reconnectAccountForForm"
+						:provider="GENERIC_IMAP_PROVIDER"
+						mode="update"
+						shared
+						:mailbox-id="inbox._id"
+						:account="reconnectAccountForForm"
+						@submitted="onReconnected"
+						@cancel="reconnectId = null"
+					/>
 				</div>
 			</div>
 		</div>

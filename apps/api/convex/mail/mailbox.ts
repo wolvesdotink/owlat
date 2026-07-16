@@ -381,9 +381,18 @@ export const remove = authedMutation({
 			if (mailbox.externalAccountId) {
 				const account = await ctx.db.get(mailbox.externalAccountId);
 				if (account && account.status !== 'disconnected') {
+					const disconnectedAt = Date.now();
 					await ctx.db.patch(mailbox.externalAccountId, {
 						status: 'disconnected',
-						updatedAt: Date.now(),
+						updatedAt: disconnectedAt,
+					});
+					// Audit-trail parity with the soft `disconnect` mutation, which records
+					// the same event — deleting an external-backed mailbox disconnects its
+					// sync account, so the trail should show it.
+					await ctx.db.insert('mailAuditLog', {
+						mailboxId: args.mailboxId,
+						event: 'external_account.disconnected',
+						occurredAt: disconnectedAt,
 					});
 				}
 			}

@@ -9,11 +9,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
+		requireAdminContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' }),
 	};
 });
 vi.mock('../lib/posthogHelpers', async () => ({
@@ -120,7 +120,7 @@ describe('agentConfigMutations.updateConfig', () => {
 				t.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.7 })
 			).rejects.toThrow('Not authenticated');
 		} finally {
-			stub.mockResolvedValue({ userId: 'test-user', role: 'owner' });
+			stub.mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' });
 		}
 	});
 

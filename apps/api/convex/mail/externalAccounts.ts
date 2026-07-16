@@ -47,7 +47,7 @@ import {
 	throwNotFound,
 } from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 
 const PURGE_CHUNK = 200;
 
@@ -83,6 +83,76 @@ export async function getLivePersonalExternalAccountForUser(
 		.withIndex('by_user', (q) => q.eq('userId', userId))
 		.collect(); // bounded: ≤ 1 live personal + a handful of archived/shared rows per user
 	return accounts.find((a) => isPersonalAccount(a) && a.status !== 'disconnected') ?? null;
+}
+
+/**
+ * Insert one `externalMailAccounts` row from the encrypted-envelope connect
+ * fields, link it back onto the mailbox (`externalAccountId`), and emit the
+ * `external_account.connected` audit event. Shared by BOTH connect paths — the
+ * personal `_connectInternal` and the shared-team-inbox `_connectSharedInternal`
+ * — so the twin paths can never drift on the row shape, the mailbox back-link, or
+ * the audit trail. `scope` is `undefined` for a personal 1:1 account and
+ * `'shared'` for a team inbox (the discriminator that keeps a team inbox out of
+ * every personal-external surface); `auditPrefix` tags the audit detail line.
+ */
+export async function insertExternalAccountRow(
+	ctx: MutationCtx,
+	params: {
+		userId: string;
+		organizationId: string;
+		mailboxId: Id<'mailboxes'>;
+		address: string;
+		scope?: 'shared';
+		auditPrefix?: string;
+		fields: {
+			imapHost: string;
+			imapPort: number;
+			isImapSecure: boolean;
+			smtpHost: string;
+			smtpPort: number;
+			isSmtpSecure: boolean;
+			authMethod: 'password';
+			imapUsername: string;
+			smtpUsername?: string;
+			secretCiphertext: string;
+			secretIv: string;
+			secretAuthTag: string;
+			secretEnvelopeVersion: number;
+		};
+		now: number;
+	}
+): Promise<Id<'externalMailAccounts'>> {
+	const { fields, now } = params;
+	const accountId = await ctx.db.insert('externalMailAccounts', {
+		userId: params.userId,
+		organizationId: params.organizationId,
+		mailboxId: params.mailboxId,
+		...(params.scope ? { scope: params.scope } : {}),
+		imapHost: fields.imapHost,
+		imapPort: fields.imapPort,
+		isImapSecure: fields.isImapSecure,
+		smtpHost: fields.smtpHost,
+		smtpPort: fields.smtpPort,
+		isSmtpSecure: fields.isSmtpSecure,
+		authMethod: fields.authMethod,
+		imapUsername: fields.imapUsername,
+		smtpUsername: fields.smtpUsername,
+		secretCiphertext: fields.secretCiphertext,
+		secretIv: fields.secretIv,
+		secretAuthTag: fields.secretAuthTag,
+		secretEnvelopeVersion: fields.secretEnvelopeVersion,
+		status: 'pending',
+		createdAt: now,
+		updatedAt: now,
+	});
+	await ctx.db.patch(params.mailboxId, { externalAccountId: accountId, updatedAt: now });
+	await ctx.db.insert('mailAuditLog', {
+		mailboxId: params.mailboxId,
+		event: 'external_account.connected',
+		details: `${params.auditPrefix ?? ''}${params.address} (imap ${fields.imapHost}:${fields.imapPort}, smtp ${fields.smtpHost}:${fields.smtpPort})`,
+		occurredAt: now,
+	});
+	return accountId;
 }
 
 const accountStatusValidator = v.union(
@@ -198,8 +268,9 @@ export const purge = authedMutation({
 					.query('externalMailAccounts')
 					.withIndex('by_user', (q) => q.eq('userId', s.userId))
 					.order('desc')
-					.collect() // bounded: a handful of the caller's own account rows
-			).find(isPersonalAccount);
+					.collect()
+			) // bounded: a handful of the caller's own account rows
+				.find(isPersonalAccount);
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
 		// Mark disconnected first so the worker stops syncing into a draining mailbox.
@@ -344,35 +415,15 @@ export const _connectInternal = internalMutation({
 			displayName: args.emailAddress,
 			kind: 'external',
 		});
-		const accountId = await ctx.db.insert('externalMailAccounts', {
+		const accountId = await insertExternalAccountRow(ctx, {
 			userId: s.userId,
 			organizationId: s.activeOrganizationId,
 			mailboxId,
-			imapHost: args.imapHost,
-			imapPort: args.imapPort,
-			isImapSecure: args.isImapSecure,
-			smtpHost: args.smtpHost,
-			smtpPort: args.smtpPort,
-			isSmtpSecure: args.isSmtpSecure,
-			authMethod: args.authMethod,
-			imapUsername: args.imapUsername,
-			smtpUsername: args.smtpUsername,
-			secretCiphertext: args.secretCiphertext,
-			secretIv: args.secretIv,
-			secretAuthTag: args.secretAuthTag,
-			secretEnvelopeVersion: args.secretEnvelopeVersion,
-			status: 'pending',
-			createdAt: now,
-			updatedAt: now,
+			address,
+			fields: args,
+			now,
 		});
-		await ctx.db.patch(mailboxId, { externalAccountId: accountId, updatedAt: now });
 		await markOnboardingStep(ctx, s.userId, 'mailboxReady');
-		await ctx.db.insert('mailAuditLog', {
-			mailboxId,
-			event: 'external_account.connected',
-			details: `${address} (imap ${args.imapHost}:${args.imapPort}, smtp ${args.smtpHost}:${args.smtpPort})`,
-			occurredAt: now,
-		});
 		return { mailboxId, externalAccountId: accountId };
 	},
 });

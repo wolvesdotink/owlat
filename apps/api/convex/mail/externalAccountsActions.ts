@@ -9,7 +9,8 @@
  * `externalAccounts.ts`; the BetterAuth session propagates from these public
  * actions into those internal calls.
  *
- *   Public:   connect, connectShared, updateCredentials, testConnection
+ *   Public:   connect, connectShared, updateCredentials, updateCredentialsShared,
+ *             testConnection
  *   Internal: getCredentialsForWorker (the ONLY function that returns plaintext
  *             credentials — internal/admin-key only, never exposed publicly)
  *
@@ -163,6 +164,45 @@ export const connectShared = authedAction({
 			memberUserIds: args.memberUserIds,
 			...encodeEnvelope(args.password, args.smtpPassword),
 		});
+	},
+});
+
+/**
+ * Rotate / repair the credentials of an external account connected AS A SHARED
+ * TEAM INBOX (issue #234): validate → encrypt → persist against the mailbox's
+ * linked account, resetting it to `pending` so the worker re-validates. The
+ * admin-gated twin of `updateCredentials` — the personal path resolves the
+ * caller's live personal account and can never reach a team inbox, so a rotated
+ * app password would otherwise brick the shared inbox forever.
+ */
+// authz: shared external inbox credential update — authedAction + assertExternalEnabled here;
+// the ADMIN floor + shared-external scope gate + persistence live in
+// internal._updateCredentialsSharedInternal.
+export const updateCredentialsShared = authedAction({
+	args: { ...credentialArgs, mailboxId: v.id('mailboxes') },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
+		await assertExternalEnabled(ctx);
+		validateShape(args);
+		return await ctx.runMutation(
+			internal.mail.externalSharedInbox._updateCredentialsSharedInternal,
+			{
+				mailboxId: args.mailboxId,
+				emailAddress: args.emailAddress,
+				imapHost: args.imapHost,
+				imapPort: args.imapPort,
+				isImapSecure: args.isImapSecure,
+				smtpHost: args.smtpHost,
+				smtpPort: args.smtpPort,
+				isSmtpSecure: args.isSmtpSecure,
+				imapUsername: args.username,
+				smtpUsername: args.smtpUsername,
+				authMethod: 'password',
+				...encodeEnvelope(args.password, args.smtpPassword),
+			}
+		);
 	},
 });
 

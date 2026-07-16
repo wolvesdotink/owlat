@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import type { MailPreset, MailProvider } from '~/utils/mailAutodiscover';
 import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
@@ -35,16 +36,19 @@ const props = defineProps<{
 	 */
 	hideCancel?: boolean;
 	/**
-	 * Connect the account AS A SHARED TEAM INBOX (`connectShared`) instead of a
-	 * personal 1:1 mailbox (`connect`). Only meaningful in `mode="connect"`. The
-	 * connecting admin becomes the inbox owner; `memberUserIds` seed the roster
-	 * and `displayName` names the inbox. See issue #234.
+	 * Operate on a SHARED TEAM INBOX instead of a personal 1:1 mailbox. In
+	 * `mode="connect"` this provisions the inbox via `connectShared` (the admin
+	 * becomes owner; `memberUserIds` seed the roster, `displayName` names it); in
+	 * `mode="update"` it rotates the team inbox's credentials via
+	 * `updateCredentialsShared` (needs `mailboxId`). See issue #234.
 	 */
 	shared?: boolean;
 	/** Team-inbox display name (shared connect only). */
 	displayName?: string;
 	/** Initial member roster for a shared connect (org auth-user ids). */
 	memberUserIds?: string[];
+	/** The team inbox being repaired — required for a shared credential update. */
+	mailboxId?: Id<'mailboxes'>;
 }>();
 
 const emit = defineEmits<{
@@ -153,6 +157,14 @@ const updateOp = useBackendOperation(api.mail.externalAccountsActions.updateCred
 	label: 'Update mail credentials',
 	inlineTarget: formError,
 });
+const updateSharedOp = useBackendOperation(
+	api.mail.externalAccountsActions.updateCredentialsShared,
+	{
+		type: 'action',
+		label: 'Update team inbox credentials',
+		inlineTarget: formError,
+	}
+);
 
 function buildArgs() {
 	return buildCredentialArgs(form);
@@ -163,7 +175,8 @@ const busy = computed(
 		testOp.isLoading.value ||
 		connectOp.isLoading.value ||
 		connectSharedOp.isLoading.value ||
-		updateOp.isLoading.value
+		updateOp.isLoading.value ||
+		updateSharedOp.isLoading.value
 );
 const canSubmit = computed(
 	() =>
@@ -184,17 +197,23 @@ async function handleTest() {
 }
 
 async function handleSubmit() {
-	// A shared connect provisions a team inbox (connectShared) with the picked
-	// roster; every other case is the personal connect / credential update.
-	const res =
-		props.mode === 'connect' && props.shared
-			? await connectSharedOp.run(
-					buildSharedConnectArgs(form, {
-						displayName: props.displayName,
-						memberUserIds: props.memberUserIds ?? [],
-					})
-				)
-			: await (props.mode === 'update' ? updateOp : connectOp).run(buildArgs());
+	// Four cases, keyed on (mode, shared): a shared connect provisions a team
+	// inbox (connectShared) with the picked roster; a shared update rotates a team
+	// inbox's credentials (updateCredentialsShared, keyed by mailboxId); the rest
+	// are the personal connect / credential update.
+	let res: { mailboxId: string } | undefined;
+	if (props.mode === 'connect' && props.shared) {
+		res = await connectSharedOp.run(
+			buildSharedConnectArgs(form, {
+				displayName: props.displayName,
+				memberUserIds: props.memberUserIds ?? [],
+			})
+		);
+	} else if (props.mode === 'update' && props.shared && props.mailboxId) {
+		res = await updateSharedOp.run({ ...buildArgs(), mailboxId: props.mailboxId });
+	} else {
+		res = await (props.mode === 'update' ? updateOp : connectOp).run(buildArgs());
+	}
 	if (res === undefined) return;
 	form.password = '';
 	emit('submitted', { mailboxId: res.mailboxId });
