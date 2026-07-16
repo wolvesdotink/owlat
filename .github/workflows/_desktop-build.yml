@@ -178,8 +178,11 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then
             if [ -z "${APPLE_CERTIFICATE:-}" ]; then
               warn "macOS artifacts will be UNSIGNED (APPLE_CERTIFICATE secret not configured). Gatekeeper will block the app with 'Apple could not verify…' for every user. See apps/desktop/README.md → Release (CI)."
-            elif [ -z "${APPLE_ID:-}" ]; then
-              warn "macOS artifacts will be signed but NOT notarized (APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID secrets not configured). Gatekeeper still blocks non-notarized downloads. See apps/desktop/README.md → Release (CI)."
+            elif [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+              # tauri only notarizes when ALL THREE are present — a partial set
+              # (e.g. APPLE_ID configured, APPLE_PASSWORD still missing) skips
+              # notarization just like none at all.
+              warn "macOS artifacts will be signed but NOT notarized (need all of APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID; at least one is not configured). Gatekeeper still blocks non-notarized downloads. See apps/desktop/README.md → Release (CI)."
             fi
           fi
           if [ "$RUNNER_OS" = "Windows" ] && [ -z "${WINDOWS_CERTIFICATE:-}" ]; then
@@ -221,10 +224,11 @@ jobs:
           fi
           echo "Verifying $APP_PATH"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-          if [ -n "${APPLE_ID:-}" ]; then
+          if [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
             # Stapled ticket + Gatekeeper assessment == what end users' Macs check.
             xcrun stapler validate "$APP_PATH"
             spctl --assess --type execute --verbose=2 "$APP_PATH"
           else
-            echo "Notarization secrets not configured — skipped stapler/Gatekeeper assessment."
+            # Match tauri's own gate: notarization ran only if all three were set.
+            echo "Notarization secrets not (fully) configured — skipped stapler/Gatekeeper assessment."
           fi
