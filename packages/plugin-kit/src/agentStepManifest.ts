@@ -10,7 +10,6 @@ import { isSafeStaticExportPath } from './staticExportPath';
 
 const LOCAL_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const STEP_REFERENCE = /^(?:[a-z][a-z0-9_]*|plugin\.[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*)$/;
-const LIFECYCLE_STATUS = /^[a-z][a-z0-9_]*$/;
 const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
 const MAX_EDGES = 12;
 
@@ -139,11 +138,21 @@ function validateEdges(
 			addManifestIssue(issues, 'invalid_type', edgePath, 'must be a plain object');
 			continue;
 		}
-		validateKnownFields(item.value, edgePath, new Set(['from', 'to']), issues);
-		const from = readStatus(item.value, 'from', edgePath, issues);
-		const to = readStatus(item.value, 'to', edgePath, issues);
-		if (!from || !to) continue;
-		const key = `${from}->${to}`;
+		validateKnownFields(item.value, edgePath, new Set(['kind', 'from', 'to']), issues);
+		const kind = readEdgeField(item.value, 'kind', edgePath, issues);
+		const from = readEdgeField(item.value, 'from', edgePath, issues);
+		const to = readEdgeField(item.value, 'to', edgePath, issues);
+		if (!kind || !from || !to) continue;
+		if (!isRecognizedLifecycleEdge(kind, from, to)) {
+			addManifestIssue(
+				issues,
+				'invalid_format',
+				edgePath,
+				'must be a supported caution or post-draft review edge'
+			);
+			continue;
+		}
+		const key = `${kind}:${from}->${to}`;
 		if (seen.has(key)) {
 			addManifestIssue(issues, 'duplicate', edgePath, `duplicates lifecycle edge ${key}`);
 		} else {
@@ -152,26 +161,26 @@ function validateEdges(
 	}
 }
 
-function readStatus(
+function readEdgeField(
 	edge: Record<string, unknown>,
-	field: 'from' | 'to',
+	field: 'kind' | 'from' | 'to',
 	path: string,
 	issues: PluginManifestIssue[]
 ): string | undefined {
 	const value = readDataProperty(edge, field, issues, true, path);
 	if (value.kind !== 'value') return undefined;
-	if (
-		typeof value.value !== 'string' ||
-		value.value.length > 64 ||
-		!LIFECYCLE_STATUS.test(value.value)
-	) {
-		addManifestIssue(
-			issues,
-			'invalid_format',
-			`${path}.${field}`,
-			'must be a lowercase lifecycle status'
-		);
+	if (typeof value.value !== 'string') {
+		addManifestIssue(issues, 'invalid_type', `${path}.${field}`, 'must be a string');
 		return undefined;
 	}
 	return value.value;
+}
+
+function isRecognizedLifecycleEdge(kind: string, from: string, to: string): boolean {
+	if (kind === 'caution') {
+		return (
+			(from === 'classifying' || from === 'drafting') && (to === 'archived' || to === 'failed')
+		);
+	}
+	return kind === 'draft_review' && from === 'drafting' && to === 'draft_ready';
 }

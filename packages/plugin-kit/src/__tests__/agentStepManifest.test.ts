@@ -16,7 +16,7 @@ function step(overrides: Record<string, unknown> = {}) {
 		id: 'spam-score',
 		after: 'security_scan',
 		module: { exportPath: './agent/spam-score' },
-		lifecycleEdges: [{ from: 'classifying', to: 'archived' }],
+		lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }],
 		...overrides,
 	};
 }
@@ -41,8 +41,13 @@ describe('agent step manifest contributions', () => {
 		],
 		[
 			'invalid edge source',
-			{ lifecycleEdges: [{ from: 'Classifying', to: 'archived' }] },
-			'$.contributes.agentSteps[0].lifecycleEdges[0].from',
+			{ lifecycleEdges: [{ kind: 'caution', from: 'Classifying', to: 'archived' }] },
+			'$.contributes.agentSteps[0].lifecycleEdges[0]',
+		],
+		[
+			'unknown edge kind',
+			{ lifecycleEdges: [{ kind: 'approve', from: 'drafting', to: 'draft_ready' }] },
+			'$.contributes.agentSteps[0].lifecycleEdges[0]',
 		],
 		['unknown field', { handler: () => undefined }, '$.contributes.agentSteps[0].handler'],
 	] as const)('rejects %s', (_label, override, path) => {
@@ -53,8 +58,8 @@ describe('agent step manifest contributions', () => {
 		const value = manifest(
 			step({
 				lifecycleEdges: [
-					{ from: 'classifying', to: 'archived' },
-					{ from: 'classifying', to: 'archived' },
+					{ kind: 'caution', from: 'classifying', to: 'archived' },
+					{ kind: 'caution', from: 'classifying', to: 'archived' },
 				],
 			})
 		);

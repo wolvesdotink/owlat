@@ -43,7 +43,7 @@ const manifest = definePlugin({
 				id: 'spam-score',
 				after: 'security_scan',
 				module: { exportPath: './agent/spam-score' },
-				lifecycleEdges: [{ from: 'classifying', to: 'archived' }],
+				lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }],
 			},
 		],
 	},
@@ -52,9 +52,15 @@ const manifest = definePlugin({
 
 The host namespaces the stored kind as `plugin.<pluginId>.<localId>`, preserves
 the core continuation, and accepts only `continue` or a declared restrict-only
-`caution` result. Plugin modules receive a bounded message projection, never a
+`caution` result. A `draft_review` edge is valid only after the core draft has
+persisted a draft. Plugin modules receive a bounded message projection, never a
 raw Convex context, and cannot choose the next step, approve, send, or redefine
 the core lifecycle graph.
+
+The hosted input projection is truncated by Unicode code points: `from` 512,
+`to` 2,048, `subject` 1,024, and each decrypted body 65,536. A plugin's output
+and caution reason are validated at the boundary but never stored or returned;
+action history contains only a fixed host-owned result and target summary.
 
 Host-mediated storage methods never accept an organization or plugin id. A
 host-created service is already bound to both scopes. Plugins must declare and

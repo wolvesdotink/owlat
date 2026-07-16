@@ -98,55 +98,65 @@ export async function runHostedPluginStep(
 		await failStep(ctx, args.inboundMessageId, actionId, definition.pluginId, args.kind);
 		return;
 	}
+	let shouldContinue = false;
 	try {
 		const result = parsePluginAgentStepResult(moduleResult);
 		const durationMs = Date.now() - startedAt;
 		if (result.kind === 'continue') {
 			await ctx.runMutation(internal.inbox.processingLifecycle.recordStepEnd, {
 				actionId,
-				output: result.outputJson,
+				output: result.actionSummaryJson,
 				durationMs,
 			});
-			await recordOutcome(ctx, definition.pluginId, args.kind, true);
-			await continuePipeline();
-			return;
-		}
-
-		if (
-			!result.to ||
-			!isDeclaredPluginCautionEdge(definition.lifecycleEdges, message.processingStatus, result.to)
-		) {
-			throw new TypeError('Hosted agent step requested an undeclared lifecycle edge');
-		}
-		const transitionBase = {
-			at: Date.now(),
-			completedActionId: actionId,
-			output: result.outputJson,
-			durationMs,
-		};
-		const transitionOutcome =
-			result.to === 'archived'
-				? await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-						inboundMessageId: args.inboundMessageId,
-						input: { ...transitionBase, to: 'archived', reason: 'plugin_caution' },
-					})
-				: result.to === 'draft_ready'
+			shouldContinue = true;
+		} else {
+			if (
+				!result.to ||
+				!isDeclaredPluginCautionEdge(
+					definition.lifecycleEdges,
+					definition.placement,
+					message.processingStatus,
+					result.to
+				) ||
+				(result.to === 'draft_ready' &&
+					(typeof message.draftResponse !== 'string' || message.draftResponse.length === 0))
+			) {
+				throw new TypeError('Hosted agent step requested an unavailable lifecycle edge');
+			}
+			const transitionBase = {
+				at: Date.now(),
+				completedActionId: actionId,
+				output: result.actionSummaryJson,
+				durationMs,
+			};
+			const transitionOutcome =
+				result.to === 'archived'
 					? await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 							inboundMessageId: args.inboundMessageId,
-							input: { ...transitionBase, to: 'draft_ready' },
+							input: { ...transitionBase, to: 'archived', reason: 'plugin_caution' },
 						})
-					: await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-							inboundMessageId: args.inboundMessageId,
-							input: {
-								to: 'failed',
-								at: transitionBase.at,
-								errorMessage: 'Hosted agent step requested caution',
-								failingActionId: actionId,
-							},
-						});
-		if (!transitionOutcome.ok) throw new TypeError('Hosted agent step transition was rejected');
-		await recordOutcome(ctx, definition.pluginId, args.kind, true);
+					: result.to === 'draft_ready'
+						? await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+								inboundMessageId: args.inboundMessageId,
+								input: { ...transitionBase, to: 'draft_ready' },
+							})
+						: await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+								inboundMessageId: args.inboundMessageId,
+								input: {
+									to: 'failed',
+									at: transitionBase.at,
+									errorMessage: 'Hosted agent step requested caution',
+									failingActionId: actionId,
+								},
+							});
+			if (!transitionOutcome.ok) {
+				throw new TypeError('Hosted agent step transition was rejected');
+			}
+		}
 	} catch {
 		await failStep(ctx, args.inboundMessageId, actionId, definition.pluginId, args.kind);
+		return;
 	}
+	await recordOutcome(ctx, definition.pluginId, args.kind, true).catch(() => undefined);
+	if (shouldContinue) await continuePipeline();
 }

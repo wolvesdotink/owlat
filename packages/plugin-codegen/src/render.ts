@@ -58,6 +58,7 @@ function renderAgentStepCatalog(steps: readonly HostedAgentStepDefinition[]): st
 \t\tpluginId: ${JSON.stringify(step.pluginId)},
 \t\tafter: ${JSON.stringify(step.after)},
 \t\tcontinuationStatus: ${JSON.stringify(step.continuationStatus)},
+\t\tplacement: ${JSON.stringify(step.placement)},
 \t\tlifecycleEdges: Object.freeze(${JSON.stringify(step.lifecycleEdges)}),
 \t\trequiredCapability: 'agent:step',
 \t}),`

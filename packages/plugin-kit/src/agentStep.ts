@@ -9,11 +9,18 @@ export type PluginAgentStepCapability = typeof PLUGIN_AGENT_STEP_CAPABILITY;
 export type PluginAgentStepLocalId = string;
 export type PluginAgentStepKind = `plugin.${PluginId}.${PluginAgentStepLocalId}`;
 
-/** A host lifecycle edge a step may request after it runs. */
-export interface PluginAgentLifecycleEdge {
-	readonly from: string;
-	readonly to: string;
-}
+/** Finite, host-recognized lifecycle requests a step may make after it runs. */
+export type PluginAgentLifecycleEdge =
+	| {
+			readonly kind: 'caution';
+			readonly from: 'classifying' | 'drafting';
+			readonly to: 'archived' | 'failed';
+	  }
+	| {
+			readonly kind: 'draft_review';
+			readonly from: 'drafting';
+			readonly to: 'draft_ready';
+	  };
 
 /** Data-only manifest descriptor. Executable code lives at `module.exportPath`. */
 export interface PluginAgentStepDefinition {

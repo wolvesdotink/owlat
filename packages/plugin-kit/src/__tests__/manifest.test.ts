@@ -72,7 +72,9 @@ describe('plugin manifest validation', () => {
 						id: 'spam-score',
 						after: 'security_scan',
 						module: { exportPath: './agent/spam-score' },
-						lifecycleEdges: [{ from: 'classifying', to: 'archived' }],
+						lifecycleEdges: [
+							{ kind: 'caution', from: 'classifying', to: 'archived' },
+						] as const,
 					},
 				],
 			},
@@ -84,7 +86,7 @@ describe('plugin manifest validation', () => {
 			id: 'spam-score',
 			after: 'security_scan',
 			module: { exportPath: './agent/spam-score' },
-			lifecycleEdges: [{ from: 'classifying', to: 'archived' }],
+			lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }],
 		});
 	});
 

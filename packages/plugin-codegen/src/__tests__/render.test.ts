@@ -86,7 +86,7 @@ describe('composition rendering', () => {
 								id: 'spam-score',
 								after: 'security_scan',
 								module: { exportPath: './agent/spam-score' },
-								lifecycleEdges: [{ from: 'classifying', to: 'archived' }],
+								lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }],
 							},
 						],
 					},
@@ -97,6 +97,7 @@ describe('composition rendering', () => {
 
 		expect(rendered.agentStepCatalog).toContain('plugin.policy-pack.spam-score');
 		expect(rendered.agentStepCatalog).toContain('classifying');
+		expect(rendered.agentStepCatalog).toContain('classification');
 		expect(rendered.agentStepCatalog).not.toContain('@acme/policy-plugin');
 		expect(rendered.agentStepModules).toContain("'use node';");
 		expect(rendered.agentStepModules).toContain('from "@acme/policy-plugin/agent/spam-score"');
