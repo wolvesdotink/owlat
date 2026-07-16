@@ -21,8 +21,15 @@
 		"deploy": {
 			"cache": false
 		},
+		"transit": {
+			"dependsOn": ["^transit"]
+		},
 		"test": {
-			"cache": false
+			"dependsOn": ["transit"]
+		},
+		"test:coverage": {
+			"dependsOn": ["transit"],
+			"outputs": ["coverage/**"]
 		},
 		"test:watch": {
 			"cache": false,
