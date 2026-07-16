@@ -20,4 +20,13 @@ export default defineNuxtRouteMiddleware((to) => {
 	if (!active.value) {
 		return navigateTo('/desktop/welcome');
 	}
+
+	// `/` is both the packaged app's entry document (what the Tauri webview
+	// loads on every launch) and the web marketing landing. With a workspace
+	// active, the landing would render inside the desktop shell with no
+	// workspace chrome at all — no rail, no switcher, no way into the product.
+	// Desktop always enters the app itself.
+	if (to.path === '/') {
+		return navigateTo('/dashboard');
+	}
 });

@@ -41,7 +41,11 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		// intercept for intra-module calls, so mock it directly here.
 		requireAdminContext: vi.fn(async () => {
 			if (sessionMock.role === null) throw new Error('Not authenticated');
-			return { userId: sessionMock.userId, role: sessionMock.role };
+			return {
+				userId: sessionMock.userId,
+				role: sessionMock.role,
+				activeOrganizationId: sessionMock.orgId,
+			};
 		}),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getBetterAuthSessionWithRole: vi.fn(async () => {
@@ -93,6 +97,72 @@ describe('Sealed Mail revocation on address deletion', () => {
 		);
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.isActive).toBe(false);
+	});
+
+	it('purging an active shared external inbox stops publishing its E2EE key', async () => {
+		// purgeShared may be invoked directly on a LIVE team inbox (no prior remove),
+		// so it must perform the same flag-gated key revocation `mailbox.remove` does —
+		// otherwise the deleted address's key stays published and other instances keep
+		// sealing mail to a dead inbox.
+		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
+		const address = 'sharedpurge@hinterland.camp';
+		const mailboxId = await seedMailbox(t, {
+			address,
+			domain: 'hinterland.camp',
+			scope: 'shared',
+			kind: 'external',
+		});
+		const accountId = await t.run(async (ctx) => {
+			const now = Date.now();
+			const id = await ctx.db.insert('externalMailAccounts', {
+				userId: 'user-A',
+				organizationId: 'org-1',
+				mailboxId,
+				scope: 'shared',
+				imapHost: 'imap.acme.test',
+				imapPort: 993,
+				isImapSecure: true,
+				smtpHost: 'smtp.acme.test',
+				smtpPort: 465,
+				isSmtpSecure: true,
+				authMethod: 'password',
+				imapUsername: 'shared@acme.test',
+				secretCiphertext: 'ct',
+				secretIv: 'iv',
+				secretAuthTag: 'tag',
+				secretEnvelopeVersion: 1,
+				status: 'connected',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.patch(mailboxId, { externalAccountId: id });
+			return id;
+		});
+
+		await t.action(internal.e2ee.keysNode.mintForAddress, { address });
+		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).not.toBeNull();
+
+		vi.useFakeTimers();
+		try {
+			await t.mutation(api.mail.externalSharedInbox.purgeShared, { mailboxId });
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		// Key revoked (not served), its vault row retained decrypt-only...
+		expect(await t.query(api.e2ee.keys.getPublicKeyByAddress, { address })).toBeNull();
+		const rows = await t.run((ctx) =>
+			ctx.db
+				.query('keyVault')
+				.withIndex('by_address', (q) => q.eq('address', address))
+				.collect()
+		);
+		expect(rows[0]?.isActive).toBe(false);
+		// ...and the cascade purged the credential row + mailbox.
+		expect(await t.run((ctx) => ctx.db.get(accountId))).toBeNull();
+		expect(await t.run((ctx) => ctx.db.get(mailboxId))).toBeNull();
 	});
 
 	it('deleting an alias stops publishing its E2EE key', async () => {

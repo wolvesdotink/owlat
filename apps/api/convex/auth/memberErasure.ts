@@ -50,10 +50,16 @@ export const eraseMemberData = internalMutation({
 		};
 
 		// ── Phase 1: personal mailboxes ──
-		const mailbox = await ctx.db
+		// A `scope='shared'` team inbox is ORG INFRASTRUCTURE, not the member's
+		// personal data — even one they canonically own (`mailboxes.userId`) as the
+		// connecting custodian. Erasing the member must never hard-delete a team
+		// inbox and all its team mail; those are reassigned via `transferOwnership`,
+		// out-of-band from this job. Skip shared rows and drain only personal ones.
+		const ownedMailboxes = await ctx.db
 			.query('mailboxes')
 			.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
-			.first();
+			.collect(); // bounded: a user's own mailboxes (personal + any team inboxes they created)
+		const mailbox = ownedMailboxes.find((m) => m.scope !== 'shared') ?? null;
 		if (mailbox) {
 			const messages = await ctx.db
 				.query('mailMessages')
@@ -165,11 +171,17 @@ export const eraseMemberData = internalMutation({
 		}
 
 		// ── Phase 2: external account credentials + user-keyed leftovers ──
+		// A `scope='shared'` external account holds the TEAM inbox's IMAP/SMTP
+		// credentials (the member is only its custodian on `userId`); deleting it
+		// would silently brick the org's team inbox — `mailboxes.externalAccountId`
+		// dangles and sync stops with no signal. Erase only PERSONAL accounts; the
+		// shared credential row survives with its preserved mailbox for reassignment.
 		const externalAccounts = await ctx.db
 			.query('externalMailAccounts')
 			.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
 			.collect(); // bounded: a user connects a handful of accounts
 		for (const account of externalAccounts) {
+			if (account.scope === 'shared') continue; // org infrastructure — not personal data
 			const syncRows = await ctx.db
 				.query('externalMailFolderSync')
 				.withIndex('by_account', (q) => q.eq('accountId', account._id))
@@ -198,13 +210,23 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: one open request per user, rarely more
 		for (const req of mailboxRequests) await ctx.db.delete(req._id);
 
-		// Drop this user's memberships on OTHER users' shared mailboxes (their
-		// own owned mailbox's rows went in phase 1 alongside the mailbox).
+		// Drop this user's memberships on OTHER users' shared mailboxes (their own
+		// personal mailbox's rows went in phase 1 alongside the mailbox). EXCEPTION:
+		// keep the `owner` row on a team inbox they still canonically own — that
+		// inbox is org infrastructure we deliberately preserved (phase 1/2), and
+		// dropping its owner row would orphan it (no owner in `listShared`, no
+		// reassignment anchor). An admin reassigns it via `transferOwnership`.
 		const sharedMemberships = await ctx.db
 			.query('mailboxMembers')
 			.withIndex('by_user', (q) => q.eq('authUserId', args.authUserId))
 			.collect(); // bounded: shared mailboxes one user belongs to
-		for (const row of sharedMemberships) await ctx.db.delete(row._id);
+		for (const row of sharedMemberships) {
+			if (row.role === 'owner') {
+				const owned = await ctx.db.get(row.mailboxId);
+				if (owned && owned.scope === 'shared' && owned.userId === args.authUserId) continue;
+			}
+			await ctx.db.delete(row._id);
+		}
 
 		// ── Phase 3: chat — anonymize authorship page by page ──
 		const page = await ctx.db
