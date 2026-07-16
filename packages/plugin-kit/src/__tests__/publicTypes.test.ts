@@ -7,6 +7,7 @@ import {
 	type PluginLlmGenerateRequest,
 	type PluginId,
 	type PluginManifest,
+	type PluginAutonomyGateModule,
 	type PluginSendTransportModule,
 } from '../index';
 
@@ -19,7 +20,14 @@ describe('public plugin-kit types', () => {
 			flag: { default: false },
 			llmBudget: { dailyUsd: 1 },
 			contributes: {
-				sendGates: [{ id: 'policy-gate' }],
+				sendGates: [
+					{
+						id: 'policy-gate',
+						label: 'Policy gate',
+						module: { exportPath: './gates/policy' },
+						timeoutMs: 1_000,
+					},
+				],
 			},
 		} as const);
 
@@ -28,6 +36,22 @@ describe('public plugin-kit types', () => {
 		expectTypeOf<PluginManifest['id']>().toEqualTypeOf<PluginId>();
 		expectTypeOf(plugin.capabilities[0]).toEqualTypeOf<'send:gate'>();
 		expectTypeOf(plugin.contributes.sendGates[0].id).toEqualTypeOf<'policy-gate'>();
+	});
+
+	it('makes autonomy gates structurally restrict-only', () => {
+		const gate: PluginAutonomyGateModule = {
+			async evaluate(input, services) {
+				expectTypeOf(input).not.toHaveProperty('ctx');
+				expectTypeOf(services).toEqualTypeOf<{ readonly signal: AbortSignal }>();
+				return { outcome: 'objection', reason: 'Manager review required' };
+			},
+		};
+		expectTypeOf(gate.evaluate).returns.toEqualTypeOf<
+			Promise<
+				| { readonly outcome: 'no-objection' }
+				| { readonly outcome: 'objection'; readonly reason: string }
+			>
+		>();
 	});
 
 	it('exposes only host-mediated context services', () => {

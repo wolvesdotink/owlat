@@ -27,7 +27,14 @@ const validManifest = () => ({
 	flag: { default: false, requiredEnvVars: ['SEEDBOX_API_KEY'] },
 	llmBudget: { dailyUsd: 2.5 },
 	contributes: {
-		sendGates: [{ id: 'seed-list-preflight' }],
+		sendGates: [
+			{
+				id: 'seed-list-preflight',
+				label: 'Seed-list preflight',
+				module: { exportPath: './gates/seed-list' },
+				timeoutMs: 2_000,
+			},
+		],
 	},
 	component: { exportPath: './convex/convex.config' },
 });
@@ -57,6 +64,8 @@ describe('plugin manifest validation', () => {
 			expect(Object.isFrozen(result.manifest.component)).toBe(true);
 			expect(Object.isFrozen(result.manifest.contributes)).toBe(true);
 			expect(Object.isFrozen(result.manifest.contributes?.sendGates)).toBe(true);
+			expect(Object.isFrozen(result.manifest.contributes?.sendGates?.[0])).toBe(true);
+			expect(Object.isFrozen(result.manifest.contributes?.sendGates?.[0]?.module)).toBe(true);
 		}
 		expect(isPluginManifest(manifest)).toBe(true);
 	});
@@ -156,6 +165,7 @@ describe('plugin manifest validation', () => {
 			...validManifest(),
 			capabilities: ['campaigns:read'],
 			llmBudget: undefined,
+			contributes: undefined,
 		};
 		delete (withoutFlag as { flag?: unknown }).flag;
 		expect(validatePluginManifest(withoutFlag).ok).toBe(true);
@@ -390,7 +400,7 @@ describe('plugin manifest validation', () => {
 	it('validates and returns the same one-pass capability snapshot', () => {
 		let descriptorReads = 0;
 		let propertyReads = 0;
-		const capabilities = new Proxy(['mail:read'], {
+		const capabilities = new Proxy(['mail:read', 'send:gate'], {
 			get(target, key, receiver) {
 				propertyReads += 1;
 				return Reflect.get(target, key, receiver);
@@ -408,7 +418,7 @@ describe('plugin manifest validation', () => {
 
 		const parsed = parsePluginManifest({ ...validManifest(), capabilities });
 
-		expect(parsed.capabilities).toEqual(['mail:read']);
+		expect(parsed.capabilities).toEqual(['mail:read', 'send:gate']);
 		expect(descriptorReads).toBe(1);
 		expect(propertyReads).toBe(0);
 	});
@@ -595,7 +605,9 @@ describe('plugin manifest validation', () => {
 			64,
 			(count: number) => ({
 				...validManifest(),
-				capabilities: Array.from({ length: count }, (_, index) => `domain-${index}:read`),
+				capabilities: Array.from({ length: count }, (_, index) =>
+					index === 0 ? 'send:gate' : `domain-${index}:read`
+				),
 			}),
 			'$.capabilities',
 		],
@@ -616,7 +628,14 @@ describe('plugin manifest validation', () => {
 			256,
 			(count: number) => ({
 				...validManifest(),
-				contributes: { sendGates: Array.from({ length: count }, () => undefined) },
+				contributes: {
+					sendGates: Array.from({ length: count }, (_, index) => ({
+						id: `gate-${index}`,
+						label: `Gate ${index}`,
+						module: { exportPath: `./gates/gate-${index}` },
+						timeoutMs: 1_000,
+					})),
+				},
 			}),
 			'$.contributes.sendGates',
 		],

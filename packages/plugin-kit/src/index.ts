@@ -1,4 +1,18 @@
 export type { JsonObject, JsonPrimitive, JsonValue } from './json';
+export {
+	PLUGIN_AUTONOMY_GATE_CAPABILITY,
+	PLUGIN_AUTONOMY_GATE_TIMEOUT_MAX_MS,
+	pluginAutonomyGateKind,
+} from './autonomyGate';
+export type {
+	PluginAutonomyGateClassification,
+	PluginAutonomyGateDefinition,
+	PluginAutonomyGateInput,
+	PluginAutonomyGateKind,
+	PluginAutonomyGateModule,
+	PluginAutonomyGateResult,
+	PluginAutonomyGateServices,
+} from './autonomyGate';
 export { isPluginId, parsePluginId, PluginIdError } from './pluginId';
 export type { PluginId } from './pluginId';
 export { PLUGIN_AGENT_STEP_CAPABILITY, pluginAgentStepKind } from './agentStep';
