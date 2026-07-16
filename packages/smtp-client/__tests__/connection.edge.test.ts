@@ -241,7 +241,9 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		const parked = conn.readReply('mail', 1_000);
 		let caught: unknown;
 		try {
-			await conn.command('NOOP', 'rcpt');
+			// Properly framed line: the refusal must come from the busy-guard, not
+			// the framing guard, so this genuinely exercises the D5 pre-write check.
+			await conn.command('NOOP\r\n', 'rcpt');
 		} catch (err) {
 			caught = err;
 		}
@@ -350,6 +352,153 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		expect(isSmtpError(caught)).toBe(true);
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('starttls');
+			expect(caught.secured).toBe(false);
+		}
+	});
+
+	it('poisons the reader after a read timeout: a later command() throws instead of consuming a late reply', async () => {
+		// The server completes the handshake, then answers the NEXT command line
+		// late — after our short read timeout has already fired. A live reader would
+		// queue that late reply and hand it to the following read as its own answer
+		// (stale-reply desync). The wire timeout must instead poison the reader so
+		// every later read/command rejects.
+		let lateSocket: net.Socket | undefined;
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line, socket) => {
+				if (line.startsWith('EHLO')) {
+					return EHLO_REPLY;
+				}
+				// Delay the reply past the read timeout, then deliver it late. Return
+				// an empty string so the responder writes nothing now.
+				lateSocket = socket;
+				setTimeout(() => socket.write('250 late\r\n'), 120);
+				return '';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+			// Short command timeout so the first command times out well before the
+			// server's ~120ms late reply; the loopback handshake finishes in <10ms.
+			timeouts: { command: 40 },
+		});
+		cleanups.push(() => conn.close());
+		// First command times out (the reply comes at ~120ms, timeout is 40ms).
+		let timedOut: unknown;
+		try {
+			await conn.command('MAIL FROM:<a@test>\r\n', 'mail', false);
+		} catch (err) {
+			timedOut = err;
+		}
+		expect(isSmtpError(timedOut)).toBe(true);
+		if (isSmtpError(timedOut)) {
+			expect(timedOut.phase).toBe('mail');
+		}
+		// Let the late reply arrive and queue.
+		await new Promise((r) => setTimeout(r, 150));
+		expect(lateSocket).toBeDefined();
+		// A subsequent command must reject (poisoned reader), NOT resolve the late
+		// `250 late` as its own answer.
+		let caught: unknown;
+		try {
+			await conn.command('RCPT TO:<b@test>\r\n', 'rcpt', false);
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('rcpt');
+		}
+	});
+
+	it('command() rejects a line with no CRLF terminator before writing (framing guard)', async () => {
+		const received: string[] = [];
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => {
+				received.push(line);
+				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		cleanups.push(() => conn.close());
+		const receivedBeforeGuard = received.length;
+		let caught: unknown;
+		try {
+			await conn.command('NOOP', 'rcpt');
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('rcpt');
+		}
+		// The unframed line must never have reached the wire.
+		await new Promise((r) => setTimeout(r, 50));
+		expect(received.length).toBe(receivedBeforeGuard);
+	});
+
+	it('command() rejects a line carrying an interior CRLF before writing (command injection)', async () => {
+		const received: string[] = [];
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => {
+				received.push(line);
+				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		cleanups.push(() => conn.close());
+		const receivedBeforeGuard = received.length;
+		let caught: unknown;
+		try {
+			// A smuggled second command — the exact injection the framing guard exists
+			// to stop — must be refused before any byte reaches the wire.
+			await conn.command('RSET\r\nMAIL FROM:<attacker@evil>\r\n', 'rcpt');
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('rcpt');
+		}
+		await new Promise((r) => setTimeout(r, 50));
+		expect(received.length).toBe(receivedBeforeGuard);
+	});
+
+	it("fails closed when tlsMode 'none' contradicts requireTls", async () => {
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => (line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n'),
+		});
+		let caught: unknown;
+		try {
+			await SmtpConnection.connect({
+				host: '127.0.0.1',
+				port,
+				ehloName: 'client.test',
+				tlsMode: 'none',
+				requireTls: true,
+			});
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('connect');
 			expect(caught.secured).toBe(false);
 		}
 	});
