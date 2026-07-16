@@ -52,6 +52,7 @@ export {
 export type { Canonicalization } from './canon.js';
 
 export { verifyDkim } from './dkim/verify.js';
+export { isNoRecordDnsError } from './dnsErrors.js';
 export type {
 	DkimDnsResolver,
 	DkimSignatureResult,
