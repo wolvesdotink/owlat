@@ -1,0 +1,47 @@
+{
+	"name": "@owlat/mail-message",
+	"version": "0.3.0",
+	"private": true,
+	"license": "Apache-2.0",
+	"homepage": "https://owlat.app",
+	"type": "module",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		},
+		"./compose": {
+			"types": "./src/compose.ts",
+			"import": "./src/compose.ts"
+		},
+		"./headers": {
+			"types": "./src/headers.ts",
+			"import": "./src/headers.ts"
+		},
+		"./encoding": {
+			"types": "./src/encoding.ts",
+			"import": "./src/encoding.ts"
+		},
+		"./messageId": {
+			"types": "./src/messageId.ts",
+			"import": "./src/messageId.ts"
+		}
+	},
+	"scripts": {
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../oxlintrc.json src __tests__",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src __tests__ --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

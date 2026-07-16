@@ -28,6 +28,7 @@
         "@owlat/channels": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
         "@owlat/email-scanner": "workspace:*",
+        "@owlat/mail-message": "workspace:*",
         "@owlat/shared": "workspace:*",
         "ai": "catalog:ai",
         "better-auth": "catalog:convex",
@@ -344,6 +345,16 @@
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/mail-message": {
+      "name": "@owlat/mail-message",
+      "version": "0.3.0",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -963,6 +974,8 @@
     "@owlat/email-scanner": ["@owlat/email-scanner@workspace:packages/email-scanner"],
 
     "@owlat/imap": ["@owlat/imap@workspace:apps/imap"],
+
+    "@owlat/mail-message": ["@owlat/mail-message@workspace:packages/mail-message"],
 
     "@owlat/mail-sync": ["@owlat/mail-sync@workspace:apps/mail-sync"],
 
