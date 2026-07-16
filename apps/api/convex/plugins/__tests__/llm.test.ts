@@ -3,7 +3,11 @@ import { MockLanguageModelV3 } from 'ai/test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import schema from '../../schema';
-import { bindAuthenticatedBundledPluginLlm, PluginLlmError } from '../llm';
+import {
+	bindAuthenticatedBundledPluginLlm,
+	bindSystemBundledPluginLlm,
+	PluginLlmError,
+} from '../llm';
 import { resolveLanguageModelWithProvenance } from '../../lib/llmProvider';
 import { providerGenerationResult } from '../../lib/llm/__tests__/providerModel.testlib';
 
@@ -39,6 +43,7 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 			? { activeOrganizationId: auth.organizationId, userId: 'actor', role: 'owner' }
 			: null
 	),
+	getSingletonOrganizationId: vi.fn(async () => auth.organizationId),
 }));
 vi.mock('../plugins.generated', () => ({ bundledPluginComposition: registry.plugins }));
 vi.mock('../../lib/llmProvider', () => ({ resolveLanguageModelWithProvenance: vi.fn() }));
@@ -80,6 +85,33 @@ async function setup() {
 }
 
 describe('hosted plugin LLM service', () => {
+	it('supports background strategy dispatch with system attribution and the same budget gate', async () => {
+		const { t } = await setup();
+		const actionCtx = {
+			runQuery: t.query as unknown as ActionCtx['runQuery'],
+			runMutation: t.mutation as unknown as ActionCtx['runMutation'],
+		} as unknown as ActionCtx;
+		const result = await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+			tier: 'fast',
+			prompt: 'safe bounded strategy input',
+		});
+		expect(result.text).toBe('safe result');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				actorUserId: 'system:bundled_plugin',
+				status: 'completed',
+			});
+			expect(
+				await ctx.db
+					.query('auditLogs')
+					.filter((q) => q.eq(q.field('pluginId'), 'alpha'))
+					.take(5)
+			).toEqual(
+				expect.arrayContaining([expect.objectContaining({ userId: 'system:bundled_plugin' })])
+			);
+		});
+	});
+
 	it('routes bounded requests through dispatch and returns normalized attribution', async () => {
 		const { t, service } = await setup();
 		const result = await service.generate({ tier: 'fast', prompt: 'hello' });

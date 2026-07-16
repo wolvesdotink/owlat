@@ -9,9 +9,12 @@ import { tokenUsageValidator } from '../lib/convexValidators';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import {
+	authorizeSystemBundledPlugin,
 	getBundledPluginManifest,
 	requireAuthenticatedBundledPlugin,
+	SYSTEM_PLUGIN_ACTOR_ID,
 	type HostedPluginActorScope,
 } from './authorization';
 import { recordHostedPluginAudit } from './audit';
@@ -28,6 +31,15 @@ export const authorize = internalQuery({
 	},
 });
 
+export const authorizeSystem = internalQuery({
+	args: { pluginId: v.string() },
+	handler: async (ctx, args) => {
+		if (!(await authorizeSystemBundledPlugin(ctx, args.pluginId, LLM_INVOKE)))
+			throw new Error('Plugin LLM denied');
+		return null;
+	},
+});
+
 export const reserve = internalMutation({
 	args: {
 		pluginId: v.string(),
@@ -36,6 +48,7 @@ export const reserve = internalMutation({
 		tier: v.union(v.literal('fast'), v.literal('capable')),
 		modelId: v.string(),
 		endpointProvenance: languageEndpointProvenanceValidator,
+		system: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		assertReservationInput(args.reservationId, args.reservedMicrousd);
@@ -48,7 +61,10 @@ export const reserve = internalMutation({
 		) {
 			throw new Error('Plugin LLM denied');
 		}
-		const scope = await requireAuthenticatedBundledPlugin(ctx, args.pluginId, LLM_INVOKE);
+		const scope = args.system
+			? await authorizeSystemBundledPlugin(ctx, args.pluginId, LLM_INVOKE)
+			: await requireAuthenticatedBundledPlugin(ctx, args.pluginId, LLM_INVOKE);
+		if (!scope) throw new Error('Plugin LLM denied');
 		const dailyBudgetMicrousd = manifestBudgetMicrousd(scope.manifest.llmBudget?.dailyUsd);
 		if (args.reservedMicrousd > dailyBudgetMicrousd) throw new Error('Plugin LLM denied');
 		const utcDay = utcDayAt(Date.now());
@@ -124,9 +140,14 @@ export const settleSuccess = internalMutation({
 		modelUsed: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		attempts: v.number(),
+		system: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		const reservation = await pendingActorReservation(ctx, args.reservationId);
+		const reservation = await pendingActorReservation(
+			ctx,
+			args.reservationId,
+			args.system === true
+		);
 		if (reservation.status === 'completed') return settlementResult(reservation);
 		if (reservation.status !== 'pending') throw new Error('Plugin LLM settlement denied');
 		if (
@@ -180,9 +201,13 @@ export const settleSuccess = internalMutation({
 });
 
 export const settleFailure = internalMutation({
-	args: { reservationId: v.string() },
+	args: { reservationId: v.string(), system: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
-		const reservation = await pendingActorReservation(ctx, args.reservationId);
+		const reservation = await pendingActorReservation(
+			ctx,
+			args.reservationId,
+			args.system === true
+		);
 		if (reservation.status === 'failed') return null;
 		if (reservation.status !== 'pending') throw new Error('Plugin LLM settlement denied');
 		await ctx.db.patch(reservation._id, {
@@ -216,6 +241,23 @@ export const recordDenied = internalMutation({
 	},
 });
 
+export const recordDeniedSystem = internalMutation({
+	args: { pluginId: v.string() },
+	handler: async (ctx, args) => {
+		const pluginId = parsePluginId(args.pluginId);
+		getBundledPluginManifest(pluginId);
+		const organizationId = await getSingletonOrganizationId(ctx);
+		await recordHostedPluginAudit(
+			ctx,
+			{ organizationId, pluginId, userId: SYSTEM_PLUGIN_ACTOR_ID },
+			'llm.generate',
+			'denied',
+			{ reasonCode: 'access_or_budget_denied' }
+		);
+		return null;
+	},
+});
+
 function successCost(
 	reservation: Doc<'pluginLlmReservations'>,
 	modelUsed: string | undefined,
@@ -240,10 +282,18 @@ function successCost(
 	return { charged: (attempts - 1) * perAttempt + actual, actual, isUsageAccounted: true };
 }
 
-async function pendingActorReservation(ctx: MutationCtx, reservationId: string) {
+async function pendingActorReservation(ctx: MutationCtx, reservationId: string, system: boolean) {
 	if (!RESERVATION_ID.test(reservationId)) throw new Error('Plugin LLM settlement denied');
 	const reservation = await reservationById(ctx, reservationId);
 	if (!reservation) throw new Error('Plugin LLM settlement denied');
+	if (system) {
+		if (
+			reservation.actorUserId !== SYSTEM_PLUGIN_ACTOR_ID ||
+			reservation.organizationId !== (await getSingletonOrganizationId(ctx))
+		)
+			throw new Error('Plugin LLM settlement denied');
+		return reservation;
+	}
 	const session = await getBetterAuthSessionWithRole(ctx);
 	if (
 		!session?.activeOrganizationId ||
