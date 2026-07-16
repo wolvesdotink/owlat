@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/mail-message",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"private": true,
 	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
@@ -13,22 +13,38 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
 		},
+		"./compose": {
+			"types": "./src/compose.ts",
+			"import": "./src/compose.ts"
+		},
 		"./headers": {
 			"types": "./src/parse/headers.ts",
 			"import": "./src/parse/headers.ts"
+		},
+		"./encoding": {
+			"types": "./src/encoding.ts",
+			"import": "./src/encoding.ts"
+		},
+		"./messageId": {
+			"types": "./src/messageId.ts",
+			"import": "./src/messageId.ts"
 		}
 	},
 	"scripts": {
-		"lint": "oxlint --config ../../oxlintrc.json src",
-		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"lint": "oxlint --config ../../oxlintrc.json src __tests__",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src __tests__ --fix",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest run --coverage"
 	},
 	"devDependencies": {
+		"@types/mailparser": "^3.4.5",
 		"@types/node": "catalog:",
+		"@types/nodemailer": "^8.0.0",
 		"@vitest/coverage-v8": "catalog:",
+		"mailparser": "^3.7.0",
+		"nodemailer": "^9.0.3",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}
