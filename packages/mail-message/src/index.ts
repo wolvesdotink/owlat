@@ -14,4 +14,12 @@ export {
 } from './headers';
 export { randomBoundary, quotedPrintableEncode, encodeTextBody } from './encoding';
 export { buildMessageId } from './messageId';
-export { buildRfc822, stripHtml, type ComposeInput, type ComposeAttachment } from './compose';
+export {
+	buildRfc822,
+	composeMessage,
+	stripHtml,
+	type ComposeInput,
+	type ComposeAttachment,
+	type ComposeMessageInput,
+	type ComposedMessage,
+} from './compose';
