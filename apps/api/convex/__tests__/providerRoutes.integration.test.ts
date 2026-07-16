@@ -67,6 +67,20 @@ describe('providerRoutes mutation contracts', () => {
 		expect(id).toBeTruthy();
 	});
 
+	it('rejects an unknown retired transport even when the client marks it disabled', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+
+		await expect(
+			t.mutation(api.providerRoutes.setRoute, {
+				...singleMtaRoute,
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'plugin.retired-mail.postmark', isEnabled: false },
+				],
+			})
+		).rejects.toThrow('Provider route contains an unknown transport');
+	});
+
 	it('removeRoute returns a truthy value after deleting an existing route', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.mutation(api.providerRoutes.setRoute, singleMtaRoute);

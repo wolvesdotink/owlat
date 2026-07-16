@@ -24,6 +24,7 @@ export interface TransportHealthInput {
 /** Non-secret transport summary — mirrors `api.delivery.status.getTransportSummary`. */
 export interface TransportSummaryInput {
 	provider: string | null;
+	providerLabel: string | null;
 	canSend: boolean;
 	advancedRoutingActive: boolean;
 	health: TransportHealthInput | null;
@@ -90,16 +91,20 @@ export function deriveTransportDisplay(summary: TransportSummaryInput): Transpor
 	const kind = summary.provider ?? undefined;
 	const known = isDeliveryProviderKind(kind);
 
-	const label = known
-		? TRANSPORT_LABEL[kind]
-		: kind
-			? `Unrecognized transport (${kind})`
-			: 'No transport selected';
+	const label = summary.providerLabel
+		? summary.providerLabel
+		: known
+			? TRANSPORT_LABEL[kind]
+			: kind
+				? `Unrecognized transport (${kind})`
+				: 'No transport selected';
 	const description = known
 		? TRANSPORT_DESCRIPTION[kind]
-		: kind
-			? 'The EMAIL_PROVIDER value isn’t one Owlat can send through. Choose a supported transport.'
-			: 'Pick how this instance sends mail to start delivering campaigns and replies.';
+		: kind && summary.providerLabel
+			? `Mail goes out through ${summary.providerLabel}. Check that transport’s authentication setup before sending.`
+			: kind
+				? 'The EMAIL_PROVIDER value isn’t one Owlat can send through. Choose a supported transport.'
+				: 'Pick how this instance sends mail to start delivering campaigns and replies.';
 
 	const health = healthDisplay(summary.health);
 

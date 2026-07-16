@@ -30,6 +30,23 @@ export {
 	PluginManifestError,
 	validatePluginManifest,
 } from './manifest';
+export {
+	PLUGIN_SEND_FAILURE_CODES,
+	PLUGIN_SEND_TRANSPORT_CAPABILITY,
+	pluginSendTransportKind,
+} from './sendTransport';
+export type {
+	PluginSendAttachment,
+	PluginSendAttempt,
+	PluginSendFailureCode,
+	PluginSendTransportCapability,
+	PluginSendTransportDefinition,
+	PluginSendTransportKind,
+	PluginSendTransportLocalId,
+	PluginSendTransportModule,
+	PluginSendTransportParams,
+	PluginStaticModuleExport,
+} from './sendTransport';
 export type {
 	PluginComponentDefinition,
 	PluginContributionKind,

@@ -43,30 +43,31 @@ export interface ProviderRouteConfig {
  */
 export function resolveRoute(
 	routeConfig: ProviderRouteConfig | null,
-	healthStatuses?: readonly ProviderHealthStatus[]
+	healthStatuses?: readonly ProviderHealthStatus[],
+	isReady: (kind: SendProviderKind) => boolean = () => true
 ): ResolvedRoute | null {
-	if (!routeConfig) return fallback();
+	if (!routeConfig) return fallback(isReady);
 
-	if (!isSendRouteStrategyKind(routeConfig.strategy)) return fallback();
+	if (!isSendRouteStrategyKind(routeConfig.strategy)) return fallback(isReady);
 
 	const enabledEntries: ProviderEntry[] = routeConfig.providers
-		.filter((p) => p.isEnabled && isSendProviderKind(p.providerType))
+		.filter((p) => p.isEnabled && isSendProviderKind(p.providerType) && isReady(p.providerType))
 		.map((p) => ({
 			providerType: p.providerType as SendProviderKind,
 			weight: p.weight,
 			isEnabled: p.isEnabled,
 		}));
 
-	if (enabledEntries.length === 0) return fallback();
+	if (enabledEntries.length === 0) return fallback(isReady);
 
 	const strategy = strategyFor(routeConfig.strategy);
 	const selected = strategy.select(enabledEntries, routeConfig.ipPool, healthStatuses);
-	return selected ?? fallback();
+	return selected ?? fallback(isReady);
 }
 
-function fallback(): ResolvedRoute | null {
+function fallback(isReady: (kind: SendProviderKind) => boolean): ResolvedRoute | null {
 	const envProvider = getOptional('EMAIL_PROVIDER');
-	if (envProvider && isSendProviderKind(envProvider)) {
+	if (envProvider && isSendProviderKind(envProvider) && isReady(envProvider)) {
 		return { providerType: envProvider, source: 'env_fallback' };
 	}
 	return null;

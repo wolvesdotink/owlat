@@ -29,6 +29,7 @@
         "@owlat/email-renderer": "workspace:*",
         "@owlat/email-scanner": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
+        "@owlat/plugin-kit": "workspace:*",
         "@owlat/shared": "workspace:*",
         "ai": "catalog:ai",
         "better-auth": "catalog:convex",

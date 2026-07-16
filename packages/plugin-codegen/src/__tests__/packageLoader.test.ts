@@ -121,6 +121,41 @@ describe('installed plugin loading', () => {
 		}
 	});
 
+	it('verifies send transport module exports without executing them', async () => {
+		const root = await createWorkspace(
+			{ 'mail-plugin': '1.0.0' },
+			{
+				'mail-plugin': {
+					source: `export default { id: 'mail', version: '1.0.0', capabilities: ['send:transport'], flag: { default: false }, contributes: { sendTransports: [{ id: 'postmark', label: 'Postmark', module: { exportPath: './transports/postmark' }, retryDelays: [] }] } };`,
+					packageJson: {
+						exports: {
+							'.': './index.js',
+							'./transports/postmark': './transports/postmark.js',
+						},
+					},
+					files: {
+						'transports/postmark.js': `throw new Error('codegen must not execute transport modules'); export default {};`,
+					},
+				},
+			}
+		);
+
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).resolves.toHaveLength(1);
+		const packagePath = join(root, 'node_modules/mail-plugin/package.json');
+		await writeFile(
+			packagePath,
+			JSON.stringify({
+				name: 'mail-plugin',
+				version: '1.0.0',
+				type: 'module',
+				exports: { '.': './index.js' },
+			})
+		);
+		await expect(loadBundledPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
+			code: 'contribution_export_invalid',
+		});
+	});
+
 	it('rejects a component export whose target symlink escapes the package', async () => {
 		const root = await createWorkspace(
 			{ 'component-plugin': '1.0.0' },

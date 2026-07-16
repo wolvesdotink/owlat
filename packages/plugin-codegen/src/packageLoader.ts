@@ -8,7 +8,11 @@ import {
 } from '@owlat/plugin-host';
 import { parsePluginManifest } from '@owlat/plugin-kit';
 import { PluginCodegenError } from './errors';
-import { resolveVerifiedPluginEntry, verifyPluginComponentExport } from './packageProvenance';
+import {
+	resolveVerifiedPluginEntry,
+	verifyPluginComponentExport,
+	verifyPluginContributionExport,
+} from './packageProvenance';
 
 type LoadModule = (resolvedEntry: string) => Promise<unknown>;
 
@@ -63,6 +67,9 @@ export async function loadBundledPlugins(
 		}
 		if (manifest.component) {
 			await verifyPluginComponentExport(workspaceRoot, packageName, manifest.component.exportPath);
+		}
+		for (const transport of manifest.contributes?.sendTransports ?? []) {
+			await verifyPluginContributionExport(workspaceRoot, packageName, transport.module.exportPath);
 		}
 		sources.push({ packageName, manifest });
 	}

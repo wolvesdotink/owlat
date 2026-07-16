@@ -18,6 +18,9 @@ import {
 	type ProviderHealthStatus,
 	type ResolvedRoute,
 } from './routing';
+import { isSendProviderReady } from './capability';
+import { isSendProviderKind, type SendProviderKind } from './types';
+import { getOptional } from '../env';
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
@@ -50,8 +53,20 @@ export async function resolveSendRouteFromDb(
 		status: h.status,
 		successRate: h.successRate,
 	}));
+	const candidateKinds = new Set<SendProviderKind>();
+	for (const provider of routeConfig?.providers ?? []) {
+		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
+	}
+	const envProvider = getOptional('EMAIL_PROVIDER');
+	if (isSendProviderKind(envProvider)) candidateKinds.add(envProvider);
+	const readyKinds = new Set<SendProviderKind>();
+	for (const kind of candidateKinds) {
+		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
+	}
 
-	return resolveRoute(routeConfig as ProviderRouteConfig | null, healthStatuses);
+	return resolveRoute(routeConfig as ProviderRouteConfig | null, healthStatuses, (kind) =>
+		readyKinds.has(kind)
+	);
 }
 
 /**

@@ -6,7 +6,11 @@ import {
 } from '@owlat/plugin-kit';
 import { resolveFlags } from '@owlat/shared/featureFlags';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { isEnvPresent } from '../lib/env';
+import {
+	getBetterAuthSessionWithRole,
+	getSingletonOrganizationId,
+} from '../lib/sessionOrganization';
 import { FEATURE_FLAG_REGISTRY } from './featureFlagRegistry';
 import { bundledPluginComposition } from './plugins.generated';
 
@@ -26,6 +30,8 @@ export interface HostedPluginActorScope {
 export interface AuthorizedPluginScope extends HostedPluginActorScope {
 	readonly manifest: PluginManifest;
 }
+
+export const SYSTEM_PLUGIN_ACTOR_ID = 'system:bundled_plugin';
 
 export function getBundledPluginManifest(pluginId: PluginId): PluginManifest {
 	const plugin = bundledPluginComposition.find((candidate) => candidate.manifest.id === pluginId);
@@ -68,6 +74,51 @@ export async function requireAuthenticatedBundledPlugin(
 	return Object.freeze({
 		organizationId: session.activeOrganizationId,
 		userId: session.userId,
+		pluginId,
+		manifest,
+	});
+}
+
+/**
+ * Background-job authorization for a bundled plugin. This performs every
+ * mutable DB check in the caller's transaction and returns null on denial.
+ */
+export async function authorizeSystemBundledPlugin(
+	ctx: QueryCtx | MutationCtx,
+	pluginIdInput: unknown,
+	capability: PluginCapability
+): Promise<AuthorizedPluginScope | null> {
+	let pluginId: PluginId;
+	try {
+		pluginId = parsePluginId(pluginIdInput);
+	} catch {
+		return null;
+	}
+
+	let organizationId: string;
+	let manifest: PluginManifest;
+	try {
+		organizationId = await getSingletonOrganizationId(ctx);
+		manifest = getBundledPluginManifest(pluginId);
+	} catch {
+		return null;
+	}
+	if (!manifest.flag || !manifest.capabilities.includes(capability)) return null;
+
+	const flagKey = `plugin.${pluginId}` as const;
+	const settings = await ctx.db.query('instanceSettings').first();
+	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
+	if (
+		flags[flagKey] !== true ||
+		settings?.pluginCapabilityGrants?.[flagKey]?.[capability] !== true ||
+		!(manifest.flag.requiredEnvVars ?? []).every(isEnvPresent)
+	) {
+		return null;
+	}
+
+	return Object.freeze({
+		organizationId,
+		userId: SYSTEM_PLUGIN_ACTOR_ID,
 		pluginId,
 		manifest,
 	});

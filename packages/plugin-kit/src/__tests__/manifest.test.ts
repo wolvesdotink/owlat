@@ -110,6 +110,20 @@ describe('plugin manifest validation', () => {
 		if (!result.ok) expect(result.issues.map((issue) => issue.path)).toContain(expectedPath);
 	});
 
+	it.each([
+		['traversal', './convex/../config'],
+		['double slash', './convex//config'],
+		['trailing slash', './convex/'],
+		['over 256 characters', `./${'a'.repeat(255)}`],
+	] as const)('rejects a component export path with %s', (_label, exportPath) => {
+		const result = validatePluginManifest({ ...validManifest(), component: { exportPath } });
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.issues.map((issue) => issue.path)).toContain('$.component.exportPath');
+		}
+	});
+
 	it('accepts every contribution kind in the shared catalog', () => {
 		for (const kind of PLUGIN_CONTRIBUTION_KINDS) {
 			expect(

@@ -7,6 +7,7 @@ import {
 	type PluginLlmGenerateRequest,
 	type PluginId,
 	type PluginManifest,
+	type PluginSendTransportModule,
 } from '../index';
 
 describe('public plugin-kit types', () => {
@@ -67,5 +68,25 @@ describe('public plugin-kit types', () => {
 	it('uses JSON-safe values at storage and scheduling boundaries', () => {
 		expectTypeOf<PluginContext['storage']['set']>().parameter(1).toEqualTypeOf<JsonValue>();
 		expectTypeOf<PluginCapability>().toMatchTypeOf<`${string}:${string}`>();
+	});
+
+	it('keeps send transport extras local to the contributed module', () => {
+		interface PostmarkExtras {
+			readonly messageStream: string;
+		}
+		const transport: PluginSendTransportModule<PostmarkExtras> = {
+			parseExtras(input) {
+				if (typeof input !== 'object' || input === null || !('messageStream' in input)) {
+					throw new TypeError('Invalid extras');
+				}
+				return { messageStream: String(input.messageStream) };
+			},
+			async send(_params, extras) {
+				expectTypeOf(extras).toEqualTypeOf<PostmarkExtras>();
+				return { success: true, id: 'message-id' };
+			},
+		};
+
+		expectTypeOf(transport.parseExtras).returns.toEqualTypeOf<PostmarkExtras>();
 	});
 });

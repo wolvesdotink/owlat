@@ -70,4 +70,45 @@ describe('hosted plugin audit boundary', () => {
 		});
 		expect(getterReads).toBe(0);
 	});
+
+	it('accepts the bounded transport operation without provider errors or message content', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await recordHostedPluginAudit(
+				ctx,
+				{ organizationId: 'tenant', pluginId: parsePluginId('mail-pack'), userId: 'system' },
+				'transport.send',
+				'failed',
+				{ attempts: 2, reasonCode: 'provider_dispatch_failed' }
+			);
+			const row = await ctx.db.query('auditLogs').unique();
+			expect(row?.details).toEqual({
+				operation: 'transport.send',
+				outcome: 'failed',
+				attempts: 2,
+				reasonCode: 'provider_dispatch_failed',
+			});
+		});
+	});
+
+	it('records an honest transport access denial with the prior-attempt count', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await recordHostedPluginAudit(
+				ctx,
+				{ organizationId: 'tenant', pluginId: parsePluginId('mail-pack'), userId: 'system' },
+				'transport.send',
+				'denied',
+				{ attempts: 1, reasonCode: 'access_denied' }
+			);
+			const row = await ctx.db.query('auditLogs').unique();
+			expect(row?.details).toEqual({
+				operation: 'transport.send',
+				outcome: 'denied',
+				attempts: 1,
+				reasonCode: 'access_denied',
+			});
+			expect(JSON.stringify(row?.details)).not.toMatch(/payload|secret|provider error/i);
+		});
+	});
 });

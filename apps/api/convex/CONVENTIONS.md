@@ -212,6 +212,19 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
 - Plugin LLM calls use `lib/llm/dispatch.ts`, host-owned input/output bounds,
   the shared pricing catalog, and integer micro-USD reservations. Unknown
   pricing and accounting uncertainty fail closed.
+- Bundled send transports expose a data-only manifest descriptor and one
+  statically generated Node export. Their module performs one attempt only;
+  the host owns extras parsing, retries, readiness, health, and audit.
+- Before every plugin transport network attempt, recheck singleton scope,
+  registration, flag, `send:transport` declaration and grant, and required env
+  presence in a mutation. Do not treat manifest declaration as authorization or
+  pass secret values into the plugin.
+- Plugin transport audit contains only the system actor, plugin id, fixed
+  operation/outcome, and attempt count. Never record addresses, message content,
+  provider message ids, or raw provider errors. A denied attempt is audited as
+  `access_denied` in its authorization transaction with the number of completed
+  prior attempts; terminal network outcomes are scheduled after dispatch so
+  audit failure cannot cause an already-sent message to be retried.
 - Plugin-attributed rows always carry both `organizationId` and `pluginId`.
   Admin reads scope those rows to the active organization; only legacy core
   rows may omit organization attribution under the singleton-org invariant.
