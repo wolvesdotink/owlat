@@ -84,6 +84,14 @@ export class SmtpConnection {
 	}
 
 	/**
+	 * The data-phase timeout (ms) — the budget for the reply that acknowledges the
+	 * whole message. The transaction layer waits on this after streaming the body.
+	 */
+	get dataTimeoutMs(): number {
+		return this.timeouts.data;
+	}
+
+	/**
 	 * Write a command line and resolve the next complete reply. `phase` labels
 	 * any resulting timeout / disconnect error; `expectData` uses the (longer)
 	 * data-phase timeout instead of the per-command one.
