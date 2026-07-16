@@ -351,6 +351,16 @@
         "vitest": "catalog:",
       },
     },
+    "packages/mail-message": {
+      "name": "@owlat/mail-message",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/sdk-js": {
       "name": "@owlat/sdk-js",
       "version": "0.3.2",
@@ -365,6 +375,9 @@
     "packages/shared": {
       "name": "@owlat/shared",
       "version": "0.3.2",
+      "dependencies": {
+        "@owlat/mail-message": "workspace:*",
+      },
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -963,6 +976,8 @@
     "@owlat/email-scanner": ["@owlat/email-scanner@workspace:packages/email-scanner"],
 
     "@owlat/imap": ["@owlat/imap@workspace:apps/imap"],
+
+    "@owlat/mail-message": ["@owlat/mail-message@workspace:packages/mail-message"],
 
     "@owlat/mail-sync": ["@owlat/mail-sync@workspace:apps/mail-sync"],
 
