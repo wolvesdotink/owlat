@@ -162,6 +162,30 @@ jobs:
             echo "exported TAURI_SIGNING_PRIVATE_KEY_PASSWORD (empty — passwordless key)"
           fi
 
+      # Unsigned release artifacts trip Gatekeeper ("Apple could not verify…",
+      # with Move to Trash as the default) / SmartScreen for every downloader.
+      # The build is allowed to proceed (forks and PRs have no secrets), but a
+      # release cut without signing must be a loud, visible choice — not a
+      # silent one discovered by end users.
+      - name: Warn when release artifacts will be unsigned
+        shell: bash
+        run: |
+          set -euo pipefail
+          warn() {
+            echo "::warning::$1"
+            printf '> [!WARNING]\n> %s\n\n' "$1" >> "$GITHUB_STEP_SUMMARY"
+          }
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if [ -z "${APPLE_CERTIFICATE:-}" ]; then
+              warn "macOS artifacts will be UNSIGNED (APPLE_CERTIFICATE secret not configured). Gatekeeper will block the app with 'Apple could not verify…' for every user. See apps/desktop/README.md → Release (CI)."
+            elif [ -z "${APPLE_ID:-}" ]; then
+              warn "macOS artifacts will be signed but NOT notarized (APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID secrets not configured). Gatekeeper still blocks non-notarized downloads. See apps/desktop/README.md → Release (CI)."
+            fi
+          fi
+          if [ "$RUNNER_OS" = "Windows" ] && [ -z "${WINDOWS_CERTIFICATE:-}" ]; then
+            warn "Windows artifacts will be UNSIGNED (WINDOWS_CERTIFICATE secret not configured). SmartScreen will warn on first run. See apps/desktop/README.md → Release (CI)."
+          fi
+
       - name: Build, sign & upload desktop app
         uses: tauri-apps/tauri-action@v1
         env:
@@ -178,3 +202,29 @@ jobs:
           # tauri.release.conf.json enables createUpdaterArtifacts only here:
           # unsigned dev/CI builds must not require the updater signing key.
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+
+      # When signing IS configured, prove the shipped .app actually passes
+      # Gatekeeper before the caller publishes the draft Release: a bad
+      # certificate, broken entitlements, or a failed/unstapled notarization
+      # must fail the workflow here (release stays draft), not surface as
+      # "Apple could not verify Owlat.app" on a user's machine.
+      - name: Verify macOS signature & notarization
+        if: runner.os == 'macOS' && env.APPLE_SIGNING_IDENTITY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/macos \
+            -maxdepth 1 -name '*.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "::error::Signing is configured but no .app bundle was found to verify." >&2
+            exit 1
+          fi
+          echo "Verifying $APP_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          if [ -n "${APPLE_ID:-}" ]; then
+            # Stapled ticket + Gatekeeper assessment == what end users' Macs check.
+            xcrun stapler validate "$APP_PATH"
+            spctl --assess --type execute --verbose=2 "$APP_PATH"
+          else
+            echo "Notarization secrets not configured — skipped stapler/Gatekeeper assessment."
+          fi
