@@ -93,6 +93,121 @@ describe('composeMessage header safety', () => {
 	});
 });
 
+describe('composeMessage CRLF header-injection defence', () => {
+	it('strips CRLF from an attacker-controlled Message-ID (reply flows)', () => {
+		const { raw } = composeMessage({
+			...BASE,
+			messageId: '<x@y>\r\nBcc: leak@evil.test',
+		});
+		const eml = raw.toString('utf-8');
+		expect(eml).not.toMatch(/^Bcc:/im);
+		expect(eml).not.toContain('leak@evil.test');
+		expect(eml).toMatch(/^Message-ID: <x@y> Bcc: leak@evil\.test\r$/m);
+	});
+
+	it('strips CRLF from In-Reply-To and References (derived from inbound Message-IDs)', () => {
+		const { raw } = composeMessage({
+			...BASE,
+			messageId: '<id@owlat.test>',
+			inReplyTo: '<parent@x>\r\nX-Injected: a',
+			references: '<root@x>\r\nX-Injected2: b',
+		});
+		const eml = raw.toString('utf-8');
+		expect(eml).not.toMatch(/^X-Injected:/im);
+		expect(eml).not.toMatch(/^X-Injected2:/im);
+	});
+
+	it('strips CRLF from an attachment Content-Type and CRLF/brackets from its Content-ID', () => {
+		const { raw } = composeMessage({
+			...BASE,
+			messageId: '<id@owlat.test>',
+			html: '<p>x <img src="cid:logo"></p>',
+			attachments: [
+				{
+					filename: 'logo.png',
+					contentType: 'image/png\r\nX-Smuggled: evil',
+					isInline: true,
+					contentId: 'logo>\r\nX-Also: evil',
+					data: Buffer.from([1, 2, 3]),
+				},
+			],
+		});
+		const eml = raw.toString('utf-8');
+		expect(eml).not.toMatch(/^X-Smuggled:/im);
+		expect(eml).not.toMatch(/^X-Also:/im);
+		// Content-ID keeps a single, well-formed angle-bracket pair.
+		expect(eml).toMatch(/^Content-ID: <logoX-Also: evil>\r$/m);
+	});
+});
+
+describe('composeMessage envelope dedupe (nodemailer getEnvelope semantics)', () => {
+	it('dedupes a recipient listed in both To and Cc (first-seen order)', () => {
+		const { envelope } = composeMessage({
+			...BASE,
+			messageId: '<id@owlat.test>',
+			to: ['a@x.test', 'Bob <b@x.test>'],
+			cc: ['a@x.test', 'c@x.test'],
+			bcc: ['b@x.test'],
+		});
+		expect(envelope.to).toEqual(['a@x.test', 'b@x.test', 'c@x.test']);
+	});
+
+	it('strips CRLF from an explicit envelope override', () => {
+		const { envelope } = composeMessage({
+			...BASE,
+			messageId: '<id@owlat.test>',
+			envelope: { from: 'from@x.test\r\nEVIL', to: ['to@x.test\r\nEVIL'] },
+		});
+		expect(envelope.from).toBe('from@x.testEVIL');
+		expect(envelope.to).toEqual(['to@x.testEVIL']);
+	});
+});
+
+describe('composeMessage boundary safety', () => {
+	it('rejects a boundarySeed with unsafe characters', () => {
+		expect(() => composeMessage({ ...BASE, boundarySeed: 'bad seed"' })).toThrow(/boundarySeed/);
+	});
+
+	it('rejects a boundarySeed longer than the 40-char cap', () => {
+		expect(() => composeMessage({ ...BASE, boundarySeed: 'x'.repeat(41) })).toThrow(/boundarySeed/);
+	});
+
+	it('throws when a body line collides with a seeded boundary delimiter', () => {
+		expect(() =>
+			composeMessage({
+				...BASE,
+				boundarySeed: 'collide',
+				// The seeded alternative boundary VALUE is `--_owlat_collide_0`, so its
+				// on-wire delimiter line is `--` + that value.
+				text: 'harmless\r\n----_owlat_collide_0\r\nsmuggled',
+				html: '<p>x</p>',
+			})
+		).toThrow(/boundary collision/);
+	});
+});
+
+describe('composeMessage extra-header name sanitisation', () => {
+	it('restricts header names to RFC 5322 ftext (drops spaces / non-ASCII)', () => {
+		const { raw } = composeMessage({
+			...BASE,
+			messageId: '<id@owlat.test>',
+			headers: { 'X Owlat': 'a', 'X-Grüße': 'b' },
+		});
+		const eml = raw.toString('utf-8');
+		expect(eml).toMatch(/^XOwlat: a\r$/m);
+		expect(eml).toMatch(/^X-Gre: b\r$/m);
+	});
+});
+
+describe('composeMessage empty subject', () => {
+	it('emits the empty subject as-is (no invented placeholder)', () => {
+		const { raw } = composeMessage({ ...BASE, subject: '', messageId: '<id@owlat.test>' });
+		const headerBlock = raw.toString('utf-8').split('\r\n\r\n')[0]!;
+		expect(headerBlock).toMatch(/^Subject: \r$/m);
+		expect(headerBlock).not.toContain('(no subject)');
+	});
+});
+
 describe('composeMessage body structure', () => {
 	it('emits a single text/plain when only text is provided', () => {
 		const { raw } = composeMessage({ ...BASE, html: undefined, messageId: '<id@owlat.test>' });

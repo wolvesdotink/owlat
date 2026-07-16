@@ -61,11 +61,45 @@ function refsList(refs: string | string[] | undefined): string[] {
 	return Array.isArray(refs) ? refs : refs.split(/\s+/).filter((r) => r.length > 0);
 }
 
-/** Custom `X-…` headers, the effective values a downstream reader would see. */
+/**
+ * Decode any RFC 2047 encoded-words in a header value to the effective string a
+ * reader would see. mailparser does NOT decode unknown `X-*` headers, so a
+ * non-ASCII custom value arrives as raw encoded-words — and nodemailer's Q/B
+ * selection heuristic differs from ours (`=?UTF-8?Q?Gr=C3=BC=C3=9Fe?=` vs
+ * `=?UTF-8?B?...?=`). The card requires equality on EFFECTIVE (decoded) values,
+ * not on encoded-word cosmetics, so we decode BOTH sides here (choice (ii) from
+ * the review) rather than pinning one composer's Q/B heuristic on the wire.
+ */
+function decodeEncodedWords(value: string): string {
+	// Adjacent encoded-words separated only by folding white space concatenate
+	// with the whitespace dropped (RFC 2047 §6.2).
+	const collapsed = value.replace(/\?=[ \t\r\n]+=\?/g, '?==?');
+	return collapsed.replace(
+		/=\?[^?]+\?([BbQq])\?([^?]*)\?=/g,
+		(_full, enc: string, payload: string) => {
+			if (enc.toUpperCase() === 'B') return Buffer.from(payload, 'base64').toString('utf-8');
+			// Q-encoding: `_` -> space, `=XX` -> byte.
+			const bytes: number[] = [];
+			for (let i = 0; i < payload.length; i++) {
+				const c = payload[i]!;
+				if (c === '_') bytes.push(0x20);
+				else if (c === '=') {
+					bytes.push(Number.parseInt(payload.slice(i + 1, i + 3), 16));
+					i += 2;
+				} else bytes.push(c.charCodeAt(0));
+			}
+			return Buffer.from(bytes).toString('utf-8');
+		}
+	);
+}
+
+/** Custom `X-…` headers, the effective (RFC-2047-decoded) values a downstream reader would see. */
 function customHeaders(mail: ParsedMail): Record<string, string> {
 	const out: Record<string, string> = {};
 	for (const [key, value] of mail.headers) {
-		if (key.startsWith('x-')) out[key] = typeof value === 'string' ? value : String(value);
+		if (key.startsWith('x-')) {
+			out[key] = decodeEncodedWords(typeof value === 'string' ? value : String(value));
+		}
 	}
 	return out;
 }
