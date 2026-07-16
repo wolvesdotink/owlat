@@ -3,7 +3,7 @@ import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { isSuppressed } from '../lib/suppression';
-import { deliveryConfiguredFromEnv, providerKindConfigured } from '../lib/sendProviders/capability';
+import { deliveryConfiguredFromEnv, isSendProviderReady } from '../lib/sendProviders/capability';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 
 /**
@@ -19,7 +19,7 @@ export const RECIPIENT_BLOCKED_ERROR = 'recipient_blocked';
 /**
  * Error thrown by `enqueueNonCampaignSend` when no delivery provider is
  * configured for the instance. Automation steps and agent replies dispatch
- * through the provider abstraction (transactional pool → MTA/Resend/SES); with
+ * through the composed provider abstraction (transactional pool → transport); with
  * no provider there is nothing to send through, so we throw before writing a
  * `transactionalSends` row that could never deliver. Callers translate this
  * into a failed (not retried-forever) terminal outcome.
@@ -178,8 +178,8 @@ export const enqueueNonCampaignSend = internalMutation({
 		const envelopeProviderOk =
 			args.providerType !== undefined &&
 			isSendProviderKind(args.providerType) &&
-			providerKindConfigured(args.providerType);
-		if (!envelopeProviderOk && !deliveryConfiguredFromEnv()) {
+			(await isSendProviderReady(ctx, args.providerType));
+		if (!envelopeProviderOk && !(await deliveryConfiguredFromEnv(ctx))) {
 			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
 		}
 
