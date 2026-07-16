@@ -76,6 +76,17 @@ describe('canonicalizeBody — RFC 6376 §3.4.5 examples', () => {
 		const spaced = Buffer.from('Hello\r\n \r\n', 'latin1');
 		expect(canonicalizeBodySimple(spaced).toString('latin1')).toBe('Hello\r\n \r\n');
 	});
+
+	it('simple body strips a trailing run of bare LFs (matches mailauth)', () => {
+		// Inner bare LFs are preserved; only the trailing run is stripped and
+		// re-terminated with a single CRLF.
+		expect(canonicalizeBodySimple(Buffer.from('a\nb\n', 'latin1')).toString('latin1')).toBe(
+			'a\nb\r\n'
+		);
+		expect(canonicalizeBodySimple(Buffer.from('x\n\n\n', 'latin1')).toString('latin1')).toBe(
+			'x\r\n'
+		);
+	});
 });
 
 describe('parseCanonicalization', () => {
@@ -118,6 +129,14 @@ describe('byte-identity vs mailauth body canonicalization (differential)', () =>
 		{ name: 'empty body', body: '' },
 		{ name: 'only newlines', body: '\r\n\r\n' },
 		{ name: 'mixed content', body: 'Subject line\r\n\r\nParagraph  with   gaps \r\n\r\n' },
+		// Bare-LF corpus (previously all-CRLF, which hid the simple-body
+		// trailing-run divergence): mailauth strips the trailing run of ANY
+		// CR/LF bytes and re-terminates CRLF, so 'a\nb\n' -> 'a\nb\r\n' and
+		// 'x\n\n\n' -> 'x\r\n' under simple.
+		{ name: 'bare LF trailing', body: 'a\nb\n' },
+		{ name: 'bare LF only trailing blanks', body: 'x\n\n\n' },
+		{ name: 'bare LF no trailing newline', body: 'a\nb' },
+		{ name: 'mixed CRLF and bare LF', body: 'one\r\ntwo\nthree\n' },
 	];
 
 	for (const { name, body } of bodies) {

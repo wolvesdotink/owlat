@@ -12,6 +12,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { createHash, createSign, generateKeyPairSync } from 'crypto';
+import { canonicalizeBodyRelaxed, canonicalizeHeaderField } from '../../canon.js';
 import { verifyDkim, type DkimDnsResolver } from '../verify.js';
 import { isKeyRecordError, parseDkimKeyRecord } from '../keyRecord.js';
 
@@ -110,6 +112,123 @@ describe('verifyDkim — hostile input is bounded and safe (D7)', () => {
 	});
 });
 
+/* -------------------------------------------------------------------------- */
+/*  Security-relevant verify branches (l= PERMFAIL, x= expiry, key/alg edges)  */
+/* -------------------------------------------------------------------------- */
+
+const BR_DOMAIN = 'branch.example';
+const BR_SELECTOR = 'bsel';
+const BR_KEY_NAME = `${BR_SELECTOR}._domainkey.${BR_DOMAIN}`;
+const BR_HEADERS = [
+	'From: A <a@branch.example>',
+	'To: B <b@branch.example>',
+	'Subject: branch fixture',
+];
+const BR_BODY = 'branch body\r\n';
+
+const brRsa = generateKeyPairSync('rsa', {
+	modulusLength: 2048,
+	publicKeyEncoding: { type: 'spki', format: 'pem' },
+	privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+});
+const brRsaSpki = brRsa.publicKey
+	.replace(/-----BEGIN PUBLIC KEY-----/, '')
+	.replace(/-----END PUBLIC KEY-----/, '')
+	.replace(/\s+/g, '');
+const brRsaRecord = `v=DKIM1; k=rsa; p=${brRsaSpki}`;
+
+/** A resolver serving one TXT record for the branch selector. */
+function resolverServing(record: string): DkimDnsResolver {
+	return async (name, rrtype) => {
+		if (rrtype === 'TXT' && name === BR_KEY_NAME) {
+			return [[record]];
+		}
+		throw Object.assign(new Error(`ENOTFOUND ${name}`), { code: 'ENOTFOUND' });
+	};
+}
+
+/**
+ * Craft a message whose body hash is CORRECT but whose `b=` is bogus, with
+ * `extraTags` (e.g. `l=abc; `) injected before `b=`. Exercises branches reached
+ * on or before the body-hash / key checks, where the crypto is never run.
+ */
+function craft(extraTags: string): Buffer {
+	const canonBody = canonicalizeBodyRelaxed(Buffer.from(BR_BODY, 'latin1'));
+	const bh = createHash('sha256').update(canonBody).digest('base64');
+	const header =
+		`DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=${BR_DOMAIN}; s=${BR_SELECTOR};` +
+		` h=from:to:subject; bh=${bh}; ${extraTags}b=AAAA`;
+	return Buffer.from(`${header}\r\n${BR_HEADERS.join('\r\n')}\r\n\r\n${BR_BODY}`, 'latin1');
+}
+
+/** Mint a crypto-VALID rsa-sha256 signature with `extraTags` before `b=`. */
+function mintValid(extraTags: string): Buffer {
+	const canonBody = canonicalizeBodyRelaxed(Buffer.from(BR_BODY, 'latin1'));
+	const bh = createHash('sha256').update(canonBody).digest('base64');
+	const sigUnsigned =
+		`DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=${BR_DOMAIN}; s=${BR_SELECTOR};` +
+		` h=from:to:subject; bh=${bh}; ${extraTags}b=`;
+	const parts = BR_HEADERS.map((h) => `${canonicalizeHeaderField(h, 'relaxed')}\r\n`);
+	const headerInput = Buffer.from(
+		parts.join('') + canonicalizeHeaderField(sigUnsigned, 'relaxed'),
+		'latin1'
+	);
+	const b = createSign('sha256').update(headerInput).sign(brRsa.privateKey, 'base64');
+	return Buffer.from(
+		`${sigUnsigned}${b}\r\n${BR_HEADERS.join('\r\n')}\r\n\r\n${BR_BODY}`,
+		'latin1'
+	);
+}
+
+describe('verifyDkim — security-relevant verify branches', () => {
+	it('malformed l= (non-numeric) -> permerror (RFC 6376 §3.7 PERMFAIL)', async () => {
+		const outcome = await verifyDkim(craft('l=abc; '), { resolver: resolverServing(brRsaRecord) });
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it('oversized l= (larger than the canonicalized body) -> permerror', async () => {
+		const outcome = await verifyDkim(craft('l=999999; '), {
+			resolver: resolverServing(brRsaRecord),
+		});
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it('x= expired -> fail (crypto-valid but past expiry)', async () => {
+		const outcome = await verifyDkim(mintValid('x=500; '), {
+			resolver: resolverServing(brRsaRecord),
+			now: 1000,
+		});
+		expect(outcome.result).toBe('fail');
+	});
+
+	it('x= in the future -> pass (control for the expiry branch)', async () => {
+		const outcome = await verifyDkim(mintValid('x=5000; '), {
+			resolver: resolverServing(brRsaRecord),
+			now: 1000,
+		});
+		expect(outcome.result).toBe('pass');
+	});
+
+	it('key type / algorithm mismatch (ed25519 record, rsa signature) -> permerror', async () => {
+		const edRecord = `v=DKIM1; k=ed25519; p=${Buffer.alloc(32, 1).toString('base64')}`;
+		const outcome = await verifyDkim(craft(''), { resolver: resolverServing(edRecord) });
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it('key h= hash restriction excludes the signature hash -> permerror', async () => {
+		const restricted = `v=DKIM1; k=rsa; h=sha1; p=${brRsaSpki}`;
+		const outcome = await verifyDkim(craft(''), { resolver: resolverServing(restricted) });
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it('undecodable p= DER (buildPublicKey failure) -> permerror', async () => {
+		const outcome = await verifyDkim(craft(''), {
+			resolver: resolverServing('v=DKIM1; k=rsa; p=AAAA'),
+		});
+		expect(outcome.result).toBe('permerror');
+	});
+});
+
 describe('parseDkimKeyRecord — hostile TXT records never throw', () => {
 	it('parses a well-formed rsa record', () => {
 		const rec = parseDkimKeyRecord('v=DKIM1; k=rsa; p=MIIBIjANBg');
@@ -145,6 +264,17 @@ describe('parseDkimKeyRecord — hostile TXT records never throw', () => {
 			expect(rec.flags).toEqual(['y', 's']);
 			expect(rec.hashAlgorithms).toEqual(['sha256']);
 			expect(rec.serviceTypes).toEqual(['email']);
+		}
+	});
+
+	it('duplicate tags are FIRST-WINS (RFC 6376 §3.2 hostile-input pin)', () => {
+		// The shared tag-list parser (used by both key records and signatures)
+		// keeps the first occurrence so a later duplicate cannot override an
+		// earlier tag; this pins that conservative choice rather than rejecting.
+		const rec = parseDkimKeyRecord('v=DKIM1; k=rsa; p=FIRST; p=SECOND');
+		expect(isKeyRecordError(rec)).toBe(false);
+		if (!isKeyRecordError(rec)) {
+			expect(rec.publicKey).toBe('FIRST');
 		}
 	});
 

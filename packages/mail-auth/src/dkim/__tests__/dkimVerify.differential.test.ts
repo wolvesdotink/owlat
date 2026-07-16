@@ -8,18 +8,25 @@
  * production `inboundDkim.pickVerdict` uses) reach the SAME message verdict.
  *
  * Covered: rsa-sha256 + ed25519-sha256, simple/simple + relaxed/relaxed,
- * signed-by-the-oracle pass, mutated body, wrong published key, absent key,
- * revoked key, multi-signature strongest-wins, and refolded signed headers.
+ * signed-by-the-oracle pass, SIGNED-BY-US pass (a signature minted over our own
+ * public `canon` API, fed to BOTH verifiers — this is the card's "signed-by-us"
+ * differential surface, and the class of fixture that pins Blocking 1),
+ * oversigned `h=` (the standard header-addition defense — a repeated `h=` name
+ * with no second header must be SKIPPED, not synthesized), mutated body, wrong
+ * published key, absent key, revoked key, multi-signature strongest-wins, and
+ * refolded signed headers.
  *
- * The two SANCTIONED divergences (l= -> neutral, rsa-sha1 policy-fail) are NOT
- * exercised here — they have their own dedicated tests — so strict equality
- * holds across this corpus.
+ * The `l=` -> neutral divergence has its own dedicated test and is not exercised
+ * here. The rsa-sha1 policy-fail divergence IS pinned here (crypto-valid
+ * rsa-sha1: mailauth `pass`, ours `fail`) so the equality claim documents
+ * exactly where and why the two sides differ.
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateKeyPairSync, type KeyObject } from 'crypto';
+import { createHash, createSign, generateKeyPairSync, type KeyObject } from 'crypto';
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
+import { canonicalizeBodyRelaxed, canonicalizeHeaderField } from '../../canon.js';
 import { verifyDkim } from '../verify.js';
 
 type Verdict = 'pass' | 'fail' | 'neutral' | 'none' | 'temperror' | 'permerror';
@@ -165,6 +172,66 @@ async function signEd25519(message = RAW_MESSAGE): Promise<Buffer> {
 	return Buffer.from(res.signatures + message);
 }
 
+/**
+ * Mint an rsa signature over OUR public `canon` API (relaxed/relaxed), building
+ * the header hash input exactly as the verifier does — including the oversigning
+ * rule that a repeated `h=` name with no remaining header contributes NOTHING.
+ * Returns the raw message with the DKIM-Signature header prepended. Feeding this
+ * to BOTH verifiers proves signer/verifier agreement AND that our canon matches
+ * mailauth's (byte-identity), so both must reach the same verdict.
+ */
+function mintOverOurCanon(opts: {
+	readonly headers: readonly string[];
+	readonly hTag: string;
+	readonly body: string;
+	readonly hashAlg: 'sha256' | 'sha1';
+	readonly algTag: 'rsa-sha256' | 'rsa-sha1';
+}): Buffer {
+	const canonBody = canonicalizeBodyRelaxed(Buffer.from(opts.body, 'latin1'));
+	const bh = createHash(opts.hashAlg).update(canonBody).digest('base64');
+	const sigUnsigned =
+		`DKIM-Signature: v=1; a=${opts.algTag}; c=relaxed/relaxed; d=${DOMAIN}; s=${SELECTOR};` +
+		` h=${opts.hTag}; bh=${bh}; b=`;
+
+	// Bottom-up per-name stacks, consumed exactly as buildHeaderHashInput does.
+	const stacks = new Map<string, string[]>();
+	for (const h of opts.headers) {
+		const name = h.slice(0, h.indexOf(':')).trim().toLowerCase();
+		const stack = stacks.get(name);
+		if (stack) {
+			stack.push(h);
+		} else {
+			stacks.set(name, [h]);
+		}
+	}
+	const names = opts.hTag
+		.split(':')
+		.map((n) => n.trim().toLowerCase())
+		.filter((n) => n !== '');
+	const parts: string[] = [];
+	for (const name of names) {
+		const raw = stacks.get(name)?.pop();
+		if (raw === undefined) {
+			continue;
+		}
+		parts.push(`${canonicalizeHeaderField(raw, 'relaxed')}\r\n`);
+	}
+	const headerInput = Buffer.from(
+		parts.join('') + canonicalizeHeaderField(sigUnsigned, 'relaxed'),
+		'latin1'
+	);
+	const b = createSign(opts.hashAlg).update(headerInput).sign(rsa.privateKey, 'base64');
+	const message = `${opts.headers.join('\r\n')}\r\n\r\n${opts.body}`;
+	return Buffer.from(`${sigUnsigned}${b}\r\n${message}`, 'latin1');
+}
+
+const MINT_HEADERS = [
+	'From: Alice <alice@example.com>',
+	'To: Bob <bob@example.org>',
+	'Subject: signed-by-us fixture',
+];
+const MINT_BODY = 'Body signed with our own canon.\r\n';
+
 /** Assert our verdict equals mailauth's normalized verdict. */
 async function assertAgree(message: Buffer, resolver: DnsFn, expected: Verdict): Promise<void> {
 	const ours = await verifyDkim(message, { resolver });
@@ -251,5 +318,48 @@ describe('verifyDkim differential vs mailauth', () => {
 		expect(ours.result).not.toBe('pass');
 		expect(oracle).not.toBe('pass');
 		expect(oracle).not.toBe('none');
+	});
+
+	it('signed-by-us (our canon) -> pass on BOTH verifiers', async () => {
+		const msg = mintOverOurCanon({
+			headers: MINT_HEADERS,
+			hTag: 'from:to:subject',
+			body: MINT_BODY,
+			hashAlg: 'sha256',
+			algTag: 'rsa-sha256',
+		});
+		await assertAgree(msg, resolverFor(rsaTxt), 'pass');
+	});
+
+	it('oversigned h= (h=from:to:subject:from, one From) -> pass on BOTH', async () => {
+		// The standard header-addition defense: `from` is listed a second time to
+		// bind against a later-added From, but only one From exists. mailauth and
+		// OpenDKIM contribute NOTHING for the extra name; synthesizing `from:`+CRLF
+		// would false-`fail` this legitimate, extremely common shape (Blocking 1).
+		const msg = mintOverOurCanon({
+			headers: MINT_HEADERS,
+			hTag: 'from:to:subject:from',
+			body: MINT_BODY,
+			hashAlg: 'sha256',
+			algTag: 'rsa-sha256',
+		});
+		await assertAgree(msg, resolverFor(rsaTxt), 'pass');
+	});
+
+	it('crypto-valid rsa-sha1 -> mailauth pass, ours fail (RFC 8301 policy divergence)', async () => {
+		// The one algorithm divergence: rsa-sha1 verifies cryptographically but is
+		// policy-failed as deprecated. mailauth still returns `pass`; we return
+		// `fail`. Pin BOTH sides so the sanctioned divergence is enumerated (D2).
+		const msg = mintOverOurCanon({
+			headers: MINT_HEADERS,
+			hTag: 'from:to:subject',
+			body: MINT_BODY,
+			hashAlg: 'sha1',
+			algTag: 'rsa-sha1',
+		});
+		const ours = await verifyDkim(msg, { resolver: resolverFor(rsaTxt) });
+		const oracle = normalizeMailauth(await dkimVerify(msg, { resolver: resolverFor(rsaTxt) }));
+		expect(oracle).toBe('pass');
+		expect(ours.result).toBe('fail');
 	});
 });
