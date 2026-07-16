@@ -18,14 +18,25 @@ export {
 	type BudgetVerdict,
 } from './budget.js';
 export { dotDecode } from './dotDecode.js';
-export {
-	SmtpCommandReader,
-	parseCommand,
-	parseAddressCommand,
-	runCommandLoop,
-	type ResolvedListenerConfig,
-} from './commandLoop.js';
+export { SmtpCommandReader, parseCommand, parseAddressCommand } from './reader.js';
+export { runCommandLoop, type ResolvedListenerConfig } from './commandLoop.js';
 export { resolveConfig, handleConnection } from './session.js';
+export {
+	DEFAULT_SMTP_CIPHERS,
+	resolveTlsConfig,
+	upgradeTls,
+	type SmtpTlsConfig,
+	type ResolvedTlsConfig,
+	type SmtpSniCallback,
+} from './tls.js';
+export {
+	performAuth,
+	type SaslMechanism,
+	type SmtpAuthConfig,
+	type SmtpAuthCredentials,
+	type SmtpAuthOutcome,
+	type AuthExchangeResult,
+} from './auth.js';
 export type {
 	SmtpReply,
 	SmtpAddress,

@@ -9,7 +9,8 @@
 
 import type { Socket } from 'node:net';
 import { runCommandLoop, type ResolvedListenerConfig } from './commandLoop.js';
-import type { SmtpListenerOptions, SmtpSession } from './types.js';
+import { resolveTlsConfig } from './tls.js';
+import type { MutableSmtpSession, SmtpListenerOptions } from './types.js';
 
 const DEFAULT_MAX_MESSAGE_BYTES = 10 * 1024 * 1024;
 const DEFAULT_ABORT_FACTOR = 4;
@@ -21,6 +22,10 @@ const DEFAULT_DATA_MS = 600_000;
 /** Apply defaults to caller options once, at listen time. */
 export function resolveConfig<S, T>(opts: SmtpListenerOptions<S, T>): ResolvedListenerConfig<S, T> {
 	const hostname = opts.hostname;
+	const implicitTls = opts.implicitTls ?? false;
+	if (implicitTls && !opts.tls) {
+		throw new Error('smtp-listener: implicitTls requires tls material');
+	}
 	return {
 		hostname,
 		banner: opts.banner ?? `${hostname} ESMTP`,
@@ -31,6 +36,9 @@ export function resolveConfig<S, T>(opts: SmtpListenerOptions<S, T>): ResolvedLi
 		maxBadCommands: opts.maxBadCommands ?? DEFAULT_MAX_BAD_COMMANDS,
 		commandMs: opts.timeouts?.commandMs ?? DEFAULT_COMMAND_MS,
 		dataMs: opts.timeouts?.dataMs ?? DEFAULT_DATA_MS,
+		tls: opts.tls ? resolveTlsConfig(opts.tls) : undefined,
+		implicitTls,
+		auth: opts.auth,
 		opts,
 	};
 }
@@ -40,16 +48,18 @@ let connectionCounter = 0;
 /** Build the typed session object for a new connection. */
 function buildSession<S, T>(
 	socket: Socket,
-	config: ResolvedListenerConfig<S, T>
-): SmtpSession<S, T> {
+	config: ResolvedListenerConfig<S, T>,
+	initialSecure: boolean
+): MutableSmtpSession<S, T> {
 	connectionCounter = (connectionCounter + 1) >>> 0;
-	const base: SmtpSession<S, T> = {
+	const base: MutableSmtpSession<S, T> = {
 		id: `${Date.now().toString(36)}-${connectionCounter.toString(36)}`,
 		remoteAddress: socket.remoteAddress ?? '',
 		remotePort: socket.remotePort ?? 0,
 		localAddress: socket.localAddress ?? '',
 		localPort: socket.localPort ?? 0,
-		secure: false,
+		secure: initialSecure,
+		authenticated: false,
 		esmtp: false,
 		rcptTo: [],
 		state: undefined as unknown as S,
@@ -61,14 +71,20 @@ function buildSession<S, T>(
 /**
  * Handle one accepted connection end-to-end. Any error is routed to `onError`
  * and the socket is destroyed — a connection fault never takes down the server.
+ * `initialSecure` is `true` only for implicit-TLS listeners, whose socket is a
+ * `tls.TLSSocket` already handshaken by the time it is accepted.
  */
-export function handleConnection<S, T>(socket: Socket, config: ResolvedListenerConfig<S, T>): void {
+export function handleConnection<S, T>(
+	socket: Socket,
+	config: ResolvedListenerConfig<S, T>,
+	initialSecure = false
+): void {
 	socket.setNoDelay(true);
 	// A socket-level error must not become an unhandled 'error' event crash.
 	socket.on('error', (err: Error) => {
 		config.opts.onError?.(err);
 	});
-	const session = buildSession(socket, config);
+	const session = buildSession(socket, config, initialSecure);
 	runCommandLoop(socket, session, config)
 		.catch((err: unknown) => {
 			config.opts.onError?.(err instanceof Error ? err : new Error(String(err)));

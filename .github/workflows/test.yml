@@ -58,6 +58,8 @@ jobs:
             name: mail-message
           - workspace: packages/mail-auth
             name: mail-auth
+          - workspace: packages/smtp-listener
+            name: smtp-listener
 
     steps:
       - uses: step-security/harden-runner@v2

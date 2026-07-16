@@ -79,6 +79,27 @@ export const Reply = {
 		code: 354,
 		text: 'Start mail input; end with <CRLF>.<CRLF>',
 	}),
+	/** 220 acknowledging STARTTLS; the TLS handshake follows on this socket. */
+	tlsReady: (): SmtpReply => ({ code: 220, text: 'Ready to start TLS' }),
+	/** 334 SASL continuation. `challenge` is the (already base64) prompt, or ''. */
+	authContinue: (challenge: string): SmtpReply => ({ code: 334, text: challenge }),
+	/** 235 AUTH success. */
+	authOk: (): SmtpReply => ({ code: 235, enhanced: '2.7.0', text: 'Authentication successful' }),
+	/**
+	 * 535 AUTH failure. The SINGLE reply emitted for every failed AUTH regardless
+	 * of stage or cause — the no-auth-oracle invariant (D6).
+	 */
+	authFailed: (): SmtpReply => ({
+		code: 535,
+		enhanced: '5.7.8',
+		text: 'Authentication credentials invalid',
+	}),
+	/** 530 AUTH refused because the channel is not yet encrypted (RFC 4954 §4). */
+	encryptionRequired: (): SmtpReply => ({
+		code: 530,
+		enhanced: '5.7.0',
+		text: 'Must issue a STARTTLS command first',
+	}),
 	bye: (hostname: string): SmtpReply => ({
 		code: 221,
 		enhanced: '2.0.0',
