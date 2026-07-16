@@ -64,6 +64,43 @@ describe('composition rendering', () => {
 		expect(rendered.convex).not.toContain('bundledPluginManifest0');
 		expect(rendered.nuxt).toContain('void bundledPluginComposition;');
 		expect(rendered.components).toContain('void app;');
+		expect(rendered.sendTransportCatalog).toContain('Object.freeze([])');
+		expect(rendered.sendTransportModules).toContain("'use node';");
+		expect(rendered.sendTransportModules).toContain('Object.freeze([])');
+	});
+
+	it('separates pure transport metadata from Node-only executable imports', () => {
+		const [plugin] = composeBundledPlugins([
+			{
+				packageName: '@acme/mail-plugin',
+				manifest: {
+					id: 'mail-pack',
+					version: '1.0.0',
+					capabilities: ['send:transport'],
+					flag: { default: false, requiredEnvVars: ['POSTMARK_TOKEN'] },
+					contributes: {
+						sendTransports: [
+							{
+								id: 'postmark',
+								label: 'Postmark',
+								module: { exportPath: './transports/postmark' },
+								retryDelays: [1000, 5000],
+							},
+						],
+					},
+				},
+			},
+		]);
+		if (!plugin) throw new Error('Expected plugin fixture');
+		const rendered = renderPluginComposition([plugin]);
+
+		expect(rendered.sendTransportCatalog).toContain('plugin.mail-pack.postmark');
+		expect(rendered.sendTransportCatalog).toContain('POSTMARK_TOKEN');
+		expect(rendered.sendTransportCatalog).not.toContain('@acme/mail-plugin');
+		expect(rendered.sendTransportModules).toContain("'use node';");
+		expect(rendered.sendTransportModules).toContain('from "@acme/mail-plugin/transports/postmark"');
+		expect(rendered.convex).not.toContain('/transports/postmark');
+		expect(rendered.nuxt).not.toContain('/transports/postmark');
 	});
 
 	it('statically imports and installs components in deterministic isolated namespaces', () => {

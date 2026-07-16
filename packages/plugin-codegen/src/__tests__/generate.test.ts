@@ -103,9 +103,13 @@ describe('generated composition freshness', () => {
 		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
 		const componentPath = join(root, 'apps/api/convex/plugins/components.generated.ts');
 		const nuxtPath = join(root, 'apps/web/app/plugins/plugin-composition.generated.ts');
+		const catalogPath = join(root, 'apps/api/convex/plugins/sendTransportCatalog.generated.ts');
+		const modulesPath = join(root, 'apps/api/convex/plugins/sendTransportModules.generated.ts');
 		expect(await readFile(convexPath, 'utf8')).toContain('composeBundledPlugins([]);');
 		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
 		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
+		expect(await readFile(catalogPath, 'utf8')).toContain('Object.freeze([])');
+		expect(await readFile(modulesPath, 'utf8')).toContain("'use node';");
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
@@ -157,6 +161,8 @@ describe('generated composition freshness', () => {
 				'apps/api/convex/plugins/plugins.generated.ts',
 				'apps/api/convex/plugins/components.generated.ts',
 				'apps/web/app/plugins/plugin-composition.generated.ts',
+				'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
+				'apps/api/convex/plugins/sendTransportModules.generated.ts',
 			],
 		});
 		expect(await readFile(convexPath, 'utf8')).toBe('// stale and must remain unchanged\n');

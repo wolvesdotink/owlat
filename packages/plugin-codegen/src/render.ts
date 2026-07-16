@@ -7,6 +7,8 @@ export interface GeneratedPluginComposition {
 	readonly convex: string;
 	readonly components: string;
 	readonly nuxt: string;
+	readonly sendTransportCatalog: string;
+	readonly sendTransportModules: string;
 }
 
 export function renderPluginComposition(
@@ -33,7 +35,71 @@ export function renderPluginComposition(
 		convex: shared,
 		components: renderConvexComponents(plugins),
 		nuxt: `${shared}\nexport default defineNuxtPlugin({\n\tname: 'owlat:bundled-plugin-composition',\n\tsetup() {\n\t\tvoid bundledPluginComposition;\n\t},\n});\n`,
+		sendTransportCatalog: renderSendTransportCatalog(plugins),
+		sendTransportModules: renderSendTransportModules(plugins),
 	});
+}
+
+interface RenderedSendTransport {
+	readonly packageName: string;
+	readonly pluginId: string;
+	readonly localId: string;
+	readonly kind: string;
+	readonly label: string;
+	readonly exportPath: string;
+	readonly retryDelays: readonly number[];
+	readonly requiredEnvVars: readonly string[];
+}
+
+function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly RenderedSendTransport[] {
+	return plugins.flatMap((plugin) =>
+		(plugin.manifest.contributes?.sendTransports ?? []).map((transport) => ({
+			packageName: parsePluginPackageName(plugin.packageName),
+			pluginId: parsePluginId(plugin.manifest.id),
+			localId: transport.id,
+			kind: `plugin.${plugin.manifest.id}.${transport.id}`,
+			label: transport.label,
+			exportPath: transport.module.exportPath,
+			retryDelays: transport.retryDelays,
+			requiredEnvVars: plugin.manifest.flag?.requiredEnvVars ?? [],
+		}))
+	);
+}
+
+function renderSendTransportCatalog(plugins: readonly BundledPlugin[]): string {
+	const entries = sendTransportsFor(plugins)
+		.map(
+			(transport) => `\tObject.freeze({
+\t\tkind: ${JSON.stringify(transport.kind)},
+\t\tpluginId: ${JSON.stringify(transport.pluginId)},
+\t\tlocalId: ${JSON.stringify(transport.localId)},
+\t\tlabel: ${JSON.stringify(transport.label)},
+\t\tretryDelays: Object.freeze(${JSON.stringify(transport.retryDelays)}),
+\t\trequiredEnvVars: Object.freeze(${JSON.stringify(transport.requiredEnvVars)}),
+\t\trequiredCapability: 'send:transport',
+\t}),`
+		)
+		.join('\n');
+	const catalog = entries ? `Object.freeze([\n${entries}\n])` : 'Object.freeze([])';
+	return `${GENERATED_HEADER}export const BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG = ${catalog};\n`;
+}
+
+function renderSendTransportModules(plugins: readonly BundledPlugin[]): string {
+	const transports = sendTransportsFor(plugins);
+	const imports = transports
+		.map(
+			(transport, index) =>
+				`import bundledPluginSendTransport${index} from ${JSON.stringify(`${transport.packageName}${transport.exportPath.slice(1)}`)};`
+		)
+		.join('\n');
+	const entries = transports
+		.map(
+			(transport, index) =>
+				`\tObject.freeze({ kind: ${JSON.stringify(transport.kind)}, pluginId: ${JSON.stringify(transport.pluginId)}, module: bundledPluginSendTransport${index} }),`
+		)
+		.join('\n');
+	const modules = entries ? `Object.freeze([\n${entries}\n])` : 'Object.freeze([])';
+	return `'use node';\n\n${GENERATED_HEADER}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES = ${modules};\n`;
 }
 
 function renderConvexComponents(plugins: readonly BundledPlugin[]): string {

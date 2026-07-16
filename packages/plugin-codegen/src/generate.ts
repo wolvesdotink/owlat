@@ -11,6 +11,10 @@ const CONFIG_PATH = 'plugins.config.ts';
 const CONVEX_OUTPUT_PATH = 'apps/api/convex/plugins/plugins.generated.ts';
 const COMPONENT_OUTPUT_PATH = 'apps/api/convex/plugins/components.generated.ts';
 const NUXT_OUTPUT_PATH = 'apps/web/app/plugins/plugin-composition.generated.ts';
+const SEND_TRANSPORT_CATALOG_OUTPUT_PATH =
+	'apps/api/convex/plugins/sendTransportCatalog.generated.ts';
+const SEND_TRANSPORT_MODULES_OUTPUT_PATH =
+	'apps/api/convex/plugins/sendTransportModules.generated.ts';
 const MAX_GENERATED_FILE_BYTES = 4 * 1024 * 1024;
 
 export interface GeneratePluginCompositionOptions {
@@ -33,6 +37,14 @@ export async function generatePluginComposition(
 		{ path: join(workspaceRoot, CONVEX_OUTPUT_PATH), source: generated.convex },
 		{ path: join(workspaceRoot, COMPONENT_OUTPUT_PATH), source: generated.components },
 		{ path: join(workspaceRoot, NUXT_OUTPUT_PATH), source: generated.nuxt },
+		{
+			path: join(workspaceRoot, SEND_TRANSPORT_CATALOG_OUTPUT_PATH),
+			source: generated.sendTransportCatalog,
+		},
+		{
+			path: join(workspaceRoot, SEND_TRANSPORT_MODULES_OUTPUT_PATH),
+			source: generated.sendTransportModules,
+		},
 	] as const;
 
 	if (options.check) {
