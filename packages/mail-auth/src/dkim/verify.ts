@@ -27,7 +27,13 @@
  * the verifier and the outbound signer (A3) share ONE implementation.
  */
 
-import { createHash, createPublicKey, verify as cryptoVerify, type KeyObject } from 'crypto';
+import {
+	createHash,
+	createPublicKey,
+	timingSafeEqual,
+	verify as cryptoVerify,
+	type KeyObject,
+} from 'crypto';
 import { resolveTxt } from 'dns/promises';
 import {
 	canonicalizeBody,
@@ -38,6 +44,7 @@ import {
 } from '../canon.js';
 import type { DkimVerdict } from '../dmarc.js';
 import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from './keyRecord.js';
+import { parseTagList } from './tagList.js';
 
 /**
  * The DNS surface the verifier needs: a TXT lookup returning the raw
@@ -117,10 +124,18 @@ export async function verifyDkim(
 			return { result: 'none', signatures: [] };
 		}
 
+		// Cache body canon + full-body hash across the signature loop: both are
+		// O(body) and depend only on (bodyMode) / (bodyMode, hash), so a multi-sig
+		// message costs one pass per combination, not one per signature.
+		const bodyCache: BodyHashCache = {
+			canon: new Map<Canonicalization, Buffer>(),
+			hash: new Map<string, string>(),
+		};
+
 		const signatures: DkimSignatureResult[] = [];
 		for (const sigField of signatureFields.slice(0, MAX_SIGNATURES)) {
 			signatures.push(
-				await verifyOneSignature(sigField.raw, headerFields, body, resolver, nowSeconds)
+				await verifyOneSignature(sigField.raw, headerFields, body, resolver, nowSeconds, bodyCache)
 			);
 		}
 
@@ -202,25 +217,11 @@ function stripWsp(value: string): string {
 	return value.replace(/[ \t\r\n]+/g, '');
 }
 
-/** Parse the tag=value list out of a DKIM-Signature header value. */
+/** Parse the DKIM-Signature value: case-sensitive names, trimmed values, first-wins. */
 function parseSignatureTags(rawField: string): Map<string, string> {
 	const colon = rawField.indexOf(':');
 	const value = colon === -1 ? rawField : rawField.slice(colon + 1);
-	const tags = new Map<string, string>();
-	for (const segment of value.split(';')) {
-		const eq = segment.indexOf('=');
-		if (eq === -1) {
-			continue;
-		}
-		const name = segment.slice(0, eq).trim();
-		if (name === '') {
-			continue;
-		}
-		if (!tags.has(name)) {
-			tags.set(name, segment.slice(eq + 1).trim());
-		}
-	}
-	return tags;
+	return parseTagList(value, { lowercaseName: false, normalizeValue: (raw) => raw.trim() });
 }
 
 /** The parsed algorithm halves of an `a=` tag. */
@@ -242,6 +243,12 @@ function parseAlgorithm(a: string | undefined): DkimAlgorithm | undefined {
 	}
 }
 
+/** Cross-signature cache: canonicalized body by mode, full-body hash by mode+alg. */
+interface BodyHashCache {
+	readonly canon: Map<Canonicalization, Buffer>;
+	readonly hash: Map<string, string>;
+}
+
 /**
  * Verify one DKIM signature and return its verdict. Any structurally-broken
  * signature yields `permerror`; a body/crypto mismatch yields `fail`; a
@@ -252,7 +259,8 @@ async function verifyOneSignature(
 	headerFields: readonly HeaderField[],
 	body: Buffer,
 	resolver: DkimDnsResolver,
-	nowSeconds: number
+	nowSeconds: number,
+	bodyCache: BodyHashCache
 ): Promise<DkimSignatureResult> {
 	const tags = parseSignatureTags(sigField);
 	const domain = tags.get('d');
@@ -292,14 +300,34 @@ async function verifyOneSignature(
 	// --- Body hash (RFC 6376 §3.7) ---------------------------------------
 	const lTag = tags.get('l');
 	const hasLengthTag = lTag !== undefined && lTag !== '';
-	let canonBody = canonicalizeBody(body, bodyMode);
-	if (lTag !== undefined && lTag !== '') {
-		const limit = Number.parseInt(lTag, 10);
-		if (Number.isFinite(limit) && limit >= 0 && limit < canonBody.length) {
-			canonBody = canonBody.subarray(0, limit);
+
+	let canonBody = bodyCache.canon.get(bodyMode);
+	if (canonBody === undefined) {
+		canonBody = canonicalizeBody(body, bodyMode);
+		bodyCache.canon.set(bodyMode, canonBody);
+	}
+
+	let computedBodyHash: string;
+	if (hasLengthTag) {
+		const rawLimit = lTag ?? ''; // non-empty here; `?? ''` only narrows the type
+		const limit = Number.parseInt(rawLimit, 10);
+		// RFC 6376 §3.7/§6.1.1: an unparseable or over-long `l=` is a PERMFAIL —
+		// never silently hash the whole body.
+		if (!/^\d+$/.test(rawLimit) || limit > canonBody.length) {
+			return withVerdict('permerror');
+		}
+		const effectiveBody = limit < canonBody.length ? canonBody.subarray(0, limit) : canonBody;
+		computedBodyHash = createHash(algorithm.hash).update(effectiveBody).digest('base64');
+	} else {
+		const cacheKey = `${bodyMode}:${algorithm.hash}`;
+		const cached = bodyCache.hash.get(cacheKey);
+		if (cached !== undefined) {
+			computedBodyHash = cached;
+		} else {
+			computedBodyHash = createHash(algorithm.hash).update(canonBody).digest('base64');
+			bodyCache.hash.set(cacheKey, computedBodyHash);
 		}
 	}
-	const computedBodyHash = createHash(algorithm.hash).update(canonBody).digest('base64');
 	if (!timingSafeEqualStrings(computedBodyHash, stripWsp(bhTag))) {
 		// Body hash mismatch — the body changed after signing (PERMFAIL).
 		return withVerdict('fail');
@@ -418,9 +446,15 @@ function buildHeaderHashInput(
 	const parts: string[] = [];
 	for (const name of names) {
 		const raw = stacks.get(name)?.pop();
-		// A header listed in h= but not present is a null header (§3.7): it
-		// contributes an empty canonicalized field.
-		parts.push(canonicalizeHeaderField(raw ?? `${name}:`, mode));
+		// A name in h= with no (remaining) matching header contributes NOTHING —
+		// not even an empty `name:` field or a CRLF — matching mailauth
+		// (`getSigningHeaderLines`) / OpenDKIM. This is what lets the standard
+		// oversigning defense (`h=from:from`, one From header) verify; a synthetic
+		// `${name}:`+CRLF would false-`fail` that legitimate, very common mail.
+		if (raw === undefined) {
+			continue;
+		}
+		parts.push(canonicalizeHeaderField(raw, mode));
 	}
 
 	const sigCanon = canonicalizeHeaderField(stripSignatureValue(sigField), mode);
@@ -447,16 +481,17 @@ function classifyDnsError(err: unknown): DkimVerdict {
 	return PERMANENT_DNS_CODES.has(code) ? 'permerror' : 'temperror';
 }
 
-/** Constant-time-ish string compare for hash equality (length-safe). */
+/**
+ * Constant-time equality for base64 hash strings via `crypto.timingSafeEqual`,
+ * which needs equal-length buffers (hence the length short-circuit first).
+ */
 function timingSafeEqualStrings(a: string, b: string): boolean {
-	if (a.length !== b.length) {
+	const ab = Buffer.from(a, 'latin1');
+	const bb = Buffer.from(b, 'latin1');
+	if (ab.length !== bb.length) {
 		return false;
 	}
-	let diff = 0;
-	for (let i = 0; i < a.length; i++) {
-		diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-	}
-	return diff === 0;
+	return timingSafeEqual(ab, bb);
 }
 
 /** Default resolver: Node `dns/promises` resolveTxt (`string[][]`). */
