@@ -112,18 +112,41 @@ export function decodeRfc2231(v: string): string {
  * `mailMime` attachment extractor consume it, so both sides read params
  * identically by construction.
  */
+/**
+ * RFC 2231 continuation indices above this ceiling are ignored. Real generators
+ * emit only a handful of `name*0`, `name*1`… segments; any larger index is an
+ * unbounded-work attack against the continuation collector.
+ */
+const MAX_CONTINUATION_INDEX = 1024;
+
 export function getRawParam(headerValue: string | undefined, name: string): string | undefined {
 	if (!headerValue) return undefined;
-	const continued: string[] = [];
+	// Collect RFC 2231 continuation segments into a Map keyed by index, then
+	// order-and-join — NEVER a plain array keyed by the attacker-controlled
+	// index. A hostile header like `filename*4000000000=x` would otherwise force
+	// V8 to materialize/join a multi-billion-slot sparse array (~59s CPU for one
+	// ~40-byte header). Indices beyond MAX_CONTINUATION_INDEX are ignored: real
+	// generators emit a handful of segments, so a huge index is only ever an
+	// unbounded-work attack. This mirrors `parseStructuredHeader`'s collect-then-
+	// order approach so both param scanners stay bounded by construction.
+	const continued = new Map<number, string>();
 	const contRe = new RegExp(
 		`(?:^|[;\\s])${name}\\*(\\d+)\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`,
 		'gi'
 	);
 	let cm: RegExpExecArray | null;
 	while ((cm = contRe.exec(headerValue))) {
-		continued[Number.parseInt(cm[1]!, 10)] = (cm[3] ?? cm[4] ?? '').trim();
+		const idx = Number.parseInt(cm[1]!, 10);
+		if (idx > MAX_CONTINUATION_INDEX) continue;
+		continued.set(idx, (cm[3] ?? cm[4] ?? '').trim());
 	}
-	if (continued.length > 0) return decodeRfc2231(continued.join(''));
+	if (continued.size > 0) {
+		const joined = [...continued.keys()]
+			.sort((a, b) => a - b)
+			.map((i) => continued.get(i)!)
+			.join('');
+		return decodeRfc2231(joined);
+	}
 	const re = new RegExp(`(?:^|[;\\s])${name}\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`, 'i');
 	const m = headerValue.match(re);
 	const value = m ? (m[2] ?? m[3] ?? '') : undefined;
