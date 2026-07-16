@@ -422,6 +422,43 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		}
 	});
 
+	it('close() during an in-flight read rejects the parked read instead of hanging it', async () => {
+		// A caller that closes the connection on an outer deadline while a reply is
+		// awaited must see the parked promise REJECT — not hang forever. close()
+		// pauses the reader's socket listeners before destroying the socket, so the
+		// destroy can no longer settle the waiter; dispose() must reject it itself.
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => {
+				if (line.startsWith('EHLO')) {
+					return EHLO_REPLY;
+				}
+				// Park: never reply, so the read stays in flight until close().
+				return '';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		conn.write('MAIL FROM:<a@test>\r\n', 'mail');
+		const parked = conn.readReply('mail', 5_000);
+		// Close while the read is in flight; the parked promise must reject.
+		conn.close();
+		let caught: unknown;
+		try {
+			await parked;
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('mail');
+		}
+	});
+
 	it('command() rejects a line with no CRLF terminator before writing (framing guard)', async () => {
 		const received: string[] = [];
 		const port = await startRawServer({
