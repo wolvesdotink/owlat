@@ -1,14 +1,21 @@
 /**
- * `@owlat/mail-message` — the in-house RFC 5322 / MIME message parser that
- * replaces mailparser on Owlat's inbound path.
+ * `@owlat/mail-message` — the in-house RFC 5322 / MIME message library that
+ * replaces both mailparser (inbound) and nodemailer's MIME builder (outbound)
+ * on Owlat's mail path. It ships two collision-free halves behind one entry:
  *
- * P1 lands the header engine: the relocated RFC 2047 / 2231 header helpers, a
- * structured header map, structured Content-Type/Disposition parsing, RFC 5322
- * date parsing, and the AddressObject layer. P2 adds MIME part-tree assembly,
- * per-part charset decoding and document-order attachment extraction. The
- * `parseMessage` facade (P3) builds on this surface.
+ *  - parse side (`src/parse/*`): the RFC 5322 / MIME message parser — header
+ *    engine, structured Content-Type/Disposition, RFC 5322 date parsing, the
+ *    AddressObject layer, MIME part-tree assembly, per-part charset decoding
+ *    and document-order attachment extraction. The `parseMessage` facade (P3)
+ *    builds on this surface.
+ *  - compose side (`src/{compose,headers,encoding,messageId}.ts`): pure
+ *    RFC 5322 / RFC 2045 message construction with zero runtime dependencies
+ *    beyond `node:crypto`, so it stays safe to import from a Convex `'use node'`
+ *    action. nodemailer / mailparser survive only as devDependencies for
+ *    differential and golden tests.
  */
 
+// --- parse side ---
 export {
 	unfold,
 	decodeQpHexEscapes,
@@ -47,3 +54,22 @@ export {
 } from './parse/body';
 
 export { extractAttachments, type MessageAttachment } from './parse/attachments';
+
+// --- compose side ---
+export {
+	escapeHeader,
+	encodeHeaderValue,
+	encodeAddressHeader,
+	safeAttachmentFilename,
+} from './headers';
+export { randomBoundary, quotedPrintableEncode, encodeTextBody } from './encoding';
+export { buildMessageId } from './messageId';
+export {
+	buildRfc822,
+	composeMessage,
+	stripHtml,
+	type ComposeInput,
+	type ComposeAttachment,
+	type ComposeMessageInput,
+	type ComposedMessage,
+} from './compose';

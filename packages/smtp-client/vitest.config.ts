@@ -3,21 +3,15 @@ import { resolve } from 'path';
 
 export default defineConfig({
 	test: {
-		include: ['__tests__/**/*.test.ts', 'src/**/__tests__/**/*.test.ts'],
+		include: ['__tests__/**/*.test.ts'],
 		environment: 'node',
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'html'],
 			reportsDirectory: './coverage',
 			include: ['src/**/*.ts'],
-			exclude: ['src/**/__tests__/**', '__tests__/**', 'src/index.ts'],
+			exclude: ['src/**/__tests__/**', '__tests__/**'],
 			thresholds: {
-				// Parse side keeps its >=90 line gate (U0/R2 ratchet the compose
-				// side up to match; never lower these). Package-wide floor stays at
-				// the compose side's current level so the union does not regress CI.
-				'src/parse/**': {
-					lines: 90,
-				},
 				lines: 20,
 			},
 		},
