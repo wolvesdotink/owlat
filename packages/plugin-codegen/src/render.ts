@@ -74,6 +74,9 @@ function renderAgentStepCatalog(steps: readonly HostedAgentStepDefinition[]): st
 }
 
 function renderAgentStepModules(steps: readonly HostedAgentStepDefinition[]): string {
+	const contractImport = steps.length
+		? "import type { PluginAgentStepModule } from '@owlat/plugin-kit';\n"
+		: '';
 	const imports = steps
 		.map(
 			(step, index) =>
@@ -89,7 +92,7 @@ function renderAgentStepModules(steps: readonly HostedAgentStepDefinition[]): st
 	const modules = entries
 		? `Object.freeze([\n${entries}\n] as const)`
 		: 'Object.freeze([] as const)';
-	return `'use node';\n\n${GENERATED_HEADER}import type { PluginAgentStepModule } from '@owlat/plugin-kit';\n${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_AGENT_STEP_MODULES = ${modules};\n`;
+	return `'use node';\n\n${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_AGENT_STEP_MODULES = ${modules};\n`;
 }
 
 interface RenderedSendTransport {
