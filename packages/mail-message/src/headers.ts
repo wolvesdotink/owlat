@@ -13,8 +13,9 @@
  * encoded-words joined by CRLF + SP.
  */
 const MAX_HEADER_LINE_OCTETS = 998;
-// Worst-case prefix for a value passed to encodeHeaderValue (`Subject: `).
-const HEADER_PREFIX_OCTETS = 'Subject: '.length;
+// Default prefix octets assumed for a value passed to encodeHeaderValue when the
+// caller does not pass an explicit prefix length (`Subject: ` = 9 octets).
+const DEFAULT_HEADER_PREFIX_OCTETS = 'Subject: '.length;
 
 /**
  * Soft fold width for an address-list header. A `To:`/`Cc:` list of many
@@ -51,20 +52,24 @@ export function escapeHeader(value: string): string {
  *
  * A pure-ASCII value is normally left verbatim so the subject stays readable on
  * the wire, but RFC 5322 §2.1.1 still caps a physical header line at 998 octets.
- * The longest header prefix that routes through this helper is `Subject: `
- * (9 octets), so an ASCII value that — with that prefix — would exceed the cap
+ * The rendered line is `Name: value`, so the caller passes the actual
+ * `prefixOctets` (`name.length + 2` for the `: ` separator) — `Subject: ` is
+ * only the default. An ASCII value that — with its prefix — would exceed the cap
  * is routed through the same encoded-word folding as non-ASCII values. Base64
  * encoded-words are ASCII, fold with CRLF+SP, and decode back to the original
  * string, so the rendered line stays well under the limit without corrupting
- * the value (a whitespace-free 2000-char ASCII subject can't be folded on FWS).
+ * the value (a whitespace-free 2000-char ASCII value can't be folded on FWS).
  */
-export function encodeHeaderValue(value: string): string {
+export function encodeHeaderValue(
+	value: string,
+	prefixOctets: number = DEFAULT_HEADER_PREFIX_OCTETS
+): string {
 	const stripped = escapeHeader(value);
 	// eslint-disable-next-line no-control-regex
 	if (/^[\x00-\x7F]*$/.test(stripped)) {
-		// ASCII stays verbatim unless the rendered `Header: value` line would blow
-		// the 998-octet hard line limit; then fold it via encoded-words.
-		if (HEADER_PREFIX_OCTETS + stripped.length <= MAX_HEADER_LINE_OCTETS) {
+		// ASCII stays verbatim unless the rendered `Name: value` line would blow the
+		// 998-octet hard line limit; then fold it via encoded-words.
+		if (prefixOctets + stripped.length <= MAX_HEADER_LINE_OCTETS) {
 			return stripped;
 		}
 	}
