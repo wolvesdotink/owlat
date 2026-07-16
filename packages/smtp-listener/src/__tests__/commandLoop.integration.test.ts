@@ -1,12 +1,14 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import net from 'node:net';
-import { createSmtpListener, type SmtpListener } from '../server.js';
+import type { SmtpListener } from '../server.js';
 import type { SmtpListenerOptions } from '../types.js';
+import { SmtpReplyError } from '../reply.js';
+import { Client, startListener, closeAllListeners } from './tlsTestUtil.js';
 
 // ---------------------------------------------------------------------------
 // Test harness: start a real listener on an ephemeral port and drive it over a
-// raw TCP socket. No smtp-server, no mock — this exercises the actual command
-// loop, byte budget, dot decode and timeouts end-to-end.
+// raw TCP socket via the shared {@link Client}. No smtp-server, no mock — this
+// exercises the actual command loop, byte budget, dot decode and timeouts
+// end-to-end.
 // ---------------------------------------------------------------------------
 
 interface Harness {
@@ -15,102 +17,19 @@ interface Harness {
 	messages: Buffer[];
 }
 
-const active: SmtpListener[] = [];
-
 async function start(overrides: Partial<SmtpListenerOptions> = {}): Promise<Harness> {
 	const messages: Buffer[] = [];
-	const listener = createSmtpListener({
+	const { listener, port } = await startListener({
 		hostname: 'mx.test',
 		onData: (message) => {
 			messages.push(message);
 		},
 		...overrides,
 	});
-	active.push(listener);
-	await listener.listen(0, '127.0.0.1');
-	const addr = listener.address();
-	if (!addr || typeof addr === 'string') throw new Error('no address');
-	return { listener, port: addr.port, messages };
+	return { listener, port, messages };
 }
 
-afterEach(async () => {
-	while (active.length > 0) {
-		const l = active.pop();
-		try {
-			await l?.close();
-		} catch {
-			/* already closed */
-		}
-	}
-});
-
-/** Minimal line-buffering SMTP client for assertions. */
-class Client {
-	private buffer = '';
-	private waiters: Array<{ pred: (buf: string) => boolean; resolve: () => void }> = [];
-	closed = false;
-
-	private constructor(readonly socket: net.Socket) {
-		socket.setEncoding('utf8');
-		socket.on('data', (chunk: string) => {
-			this.buffer += chunk;
-			this.waiters = this.waiters.filter((w) => {
-				if (w.pred(this.buffer)) {
-					w.resolve();
-					return false;
-				}
-				return true;
-			});
-		});
-		socket.on('close', () => {
-			this.closed = true;
-			for (const w of this.waiters.splice(0)) w.resolve();
-		});
-	}
-
-	static connect(port: number): Promise<Client> {
-		return new Promise((resolve) => {
-			const socket = net.connect(port, '127.0.0.1', () => resolve(new Client(socket)));
-		});
-	}
-
-	get received(): string {
-		return this.buffer;
-	}
-
-	write(data: string): void {
-		this.socket.write(data);
-	}
-
-	waitFor(pred: (buf: string) => boolean, timeoutMs = 2000): Promise<void> {
-		if (pred(this.buffer)) return Promise.resolve();
-		return new Promise<void>((resolve, reject) => {
-			const timer = setTimeout(() => {
-				reject(new Error(`timeout waiting; buffer so far:\n${this.buffer}`));
-			}, timeoutMs);
-			this.waiters.push({
-				pred,
-				resolve: () => {
-					clearTimeout(timer);
-					resolve();
-				},
-			});
-		});
-	}
-
-	/** Wait until the reply line beginning with `code␣` (final line) appears. */
-	waitCode(code: number, timeoutMs = 2000): Promise<void> {
-		return this.waitFor((buf) => new RegExp(`(^|\\n)${code} `, 'm').test(buf), timeoutMs);
-	}
-
-	waitClose(timeoutMs = 2000): Promise<void> {
-		return this.waitFor(() => this.closed, timeoutMs);
-	}
-
-	end(): void {
-		this.socket.destroy();
-	}
-}
+afterEach(closeAllListeners);
 
 describe('command loop over a raw socket', () => {
 	it('completes a full MAIL/RCPT/DATA/QUIT transaction', async () => {
@@ -234,6 +153,54 @@ describe('command loop over a raw socket', () => {
 		expect(c.closed).toBe(true);
 	});
 
+	it('assembles a DATA body delivered across multiple TCP segments', async () => {
+		// Each segment arrives as its own chunk with NO terminator, forcing the
+		// reader's no-terminator flush/keep path (partial-terminator carry) before
+		// the final `.<CRLF>` completes the body.
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		c.write('first line of the body\r\n');
+		await new Promise((r) => setTimeout(r, 50));
+		c.write('second line of the body\r\n');
+		await new Promise((r) => setTimeout(r, 50));
+		c.write('.\r\n');
+		await c.waitCode(250);
+		expect(h.messages[0]?.toString()).toBe('first line of the body\r\nsecond line of the body\r\n');
+		c.end();
+	});
+
+	it('returns cleanly when the peer hangs up mid-DATA (no delivery)', async () => {
+		// EOF before the `<CRLF>.<CRLF>` terminator: the DATA reader must report
+		// `closed`, the loop must exit, and nothing is delivered.
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		c.write('partial body with no terminator\r\n');
+		await new Promise((r) => setTimeout(r, 50));
+		c.socket.end(); // FIN mid-DATA
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		expect(h.messages).toHaveLength(0);
+	});
+
+	it('accepts a MAIL parameter supplied as a bare flag (no value)', async () => {
+		// A tail token with no `=` exercises the value-less parameter branch of the
+		// address-command parser (`params[TOKEN] = ''`).
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test> BODY\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+		c.write('RCPT TO:<b@b.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.5/.test(b));
+		c.end();
+	});
+
 	it('refuses DATA before MAIL/RCPT and STARTTLS/AUTH are not implemented yet', async () => {
 		const h = await start();
 		const c = await Client.connect(h.port);
@@ -244,6 +211,129 @@ describe('command loop over a raw socket', () => {
 		await c.waitCode(502);
 		c.write('STARTTLS\r\n');
 		await c.waitFor((b) => (b.match(/(^|\n)502 /gm) ?? []).length >= 2);
+		c.end();
+	});
+
+	it('answers VRFY, EXPN and HELP without confirming addresses', async () => {
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('VRFY someone@x.test\r\n');
+		await c.waitCode(252);
+		c.write('EXPN a-list\r\n');
+		await c.waitFor((b) => (b.match(/(^|\n)252 /gm) ?? []).length >= 2);
+		c.write('HELP\r\n');
+		await c.waitCode(214);
+		c.end();
+	});
+
+	it('rejects a duplicate MAIL FROM with 503', async () => {
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+		c.write('MAIL FROM:<b@b.test>\r\n');
+		await c.waitCode(503);
+		expect(c.received).toMatch(/Sender already specified/);
+		c.end();
+	});
+});
+
+describe('handler rejection paths', () => {
+	it('ends the connection when onConnect rejects', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onConnect: () => ({ code: 554, text: 'go away' }),
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		await c.waitCode(554);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		c.end();
+	});
+
+	it('rejects HELO via a handler reply and counts it against the budget', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onHelo: () => ({ code: 550, text: 'bad host' }),
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO nope.test\r\n');
+		await c.waitCode(550);
+		c.end();
+	});
+
+	it('uses the reply a rejecting onMailFrom / onRcptTo returns', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onMailFrom: (addr) =>
+				addr.address === 'blocked@x.test' ? { code: 550, text: 'no' } : undefined,
+			onRcptTo: (addr) =>
+				addr.address === 'blocked@y.test' ? { code: 551, text: 'no' } : undefined,
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<blocked@x.test>\r\n');
+		await c.waitCode(550);
+		c.write('MAIL FROM:<a@a.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+		c.write('RCPT TO:<blocked@y.test>\r\n');
+		await c.waitCode(551);
+		c.end();
+	});
+
+	it('maps a thrown SmtpReplyError to its reply and a generic throw to 451', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onMailFrom: (addr) => {
+				if (addr.address === 'reply@x.test') throw new SmtpReplyError({ code: 552, text: 'quota' });
+				if (addr.address === 'boom@x.test') throw new Error('handler exploded');
+				return undefined;
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<reply@x.test>\r\n');
+		await c.waitCode(552);
+		c.write('MAIL FROM:<boom@x.test>\r\n');
+		await c.waitCode(451);
+		c.end();
+	});
+
+	it('writes the reply a rejecting onData returns and keeps the session usable', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onData: () => ({ code: 550, text: 'content rejected' }),
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		c.write('body\r\n.\r\n');
+		await c.waitCode(550);
+		// Session survives a rejected message.
+		c.write('NOOP\r\n');
+		await c.waitFor((b) => /250 2\.0\.0/.test(b));
+		c.end();
+	});
+
+	it('destroys the socket when DATA overruns the abort ceiling', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			maxMessageBytes: 64,
+			abortFactor: 2, // destroy past 128 bytes
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		// 500 bytes with no terminator blows past the 128-byte abort ceiling.
+		c.write('x'.repeat(500));
+		await c.waitClose();
+		expect(c.closed).toBe(true);
 		c.end();
 	});
 });

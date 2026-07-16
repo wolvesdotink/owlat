@@ -9,6 +9,7 @@
  */
 
 import { createServer, type Server, type Socket } from 'node:net';
+import { createServer as createTlsServer } from 'node:tls';
 import { handleConnection, resolveConfig } from './session.js';
 import type { SmtpListenerOptions } from './types.js';
 
@@ -32,9 +33,27 @@ export function createSmtpListener<S = unknown, T = unknown>(
 	opts: SmtpListenerOptions<S, T>
 ): SmtpListener {
 	const config = resolveConfig<S, T>(opts);
-	const server = createServer({ pauseOnConnect: false }, (socket: Socket) => {
-		handleConnection(socket, config);
-	});
+	// Track live connections so `close()` can tear them down deterministically
+	// instead of blocking on in-flight sessions (a stalled peer must not hold the
+	// listener — or a test's `afterEach` — open indefinitely).
+	const sockets = new Set<Socket>();
+	const accept = (socket: Socket, initialSecure: boolean): void => {
+		sockets.add(socket);
+		socket.once('close', () => sockets.delete(socket));
+		handleConnection(socket, config, initialSecure);
+	};
+	// Implicit TLS (port 465): the whole connection is wrapped in TLS before the
+	// banner, so the accepted socket is already a handshaken `tls.TLSSocket` and
+	// the session starts `secure`. Otherwise a plaintext `net` server that may
+	// upgrade later via STARTTLS.
+	const server: Server =
+		config.implicitTls && config.tls
+			? createTlsServer(config.tls.options, (socket: Socket) => {
+					accept(socket, true);
+				})
+			: createServer({ pauseOnConnect: false }, (socket: Socket) => {
+					accept(socket, false);
+				});
 	server.on('error', (err: Error) => {
 		opts.onError?.(err);
 	});
@@ -53,6 +72,11 @@ export function createSmtpListener<S = unknown, T = unknown>(
 		},
 		close(): Promise<void> {
 			return new Promise<void>((resolve, reject) => {
+				// Destroy live connections first so `server.close` (which waits for
+				// open sockets) resolves promptly rather than hanging on a peer that
+				// never QUITs.
+				for (const socket of sockets) socket.destroy();
+				sockets.clear();
 				server.close((err) => (err ? reject(err) : resolve()));
 			});
 		},
