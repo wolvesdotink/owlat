@@ -66,6 +66,8 @@ interface PerformAuthParams<S, T> {
 	write: (reply: SmtpReply) => void;
 	/** Read one command line (without CRLF) from the peer; `null` on EOF. */
 	readLine: () => Promise<string | null>;
+	/** Sink for a backend `authenticate` fault (surfaced without an oracle). */
+	onError?: (err: Error) => void;
 }
 
 /**
@@ -77,8 +79,8 @@ interface PerformAuthParams<S, T> {
 export async function performAuth<S, T>(
 	params: PerformAuthParams<S, T>
 ): Promise<AuthExchangeResult> {
-	const { mechanism, initialResponse, session, auth, write, readLine } = params;
-	if (!auth.mechanisms.includes(mechanism as SaslMechanism)) return 'fail';
+	const { mechanism, initialResponse, session, auth, write, readLine, onError } = params;
+	if (!auth.mechanisms.some((m) => m === mechanism)) return 'fail';
 
 	let credentials: SmtpAuthCredentials | null;
 	try {
@@ -93,7 +95,17 @@ export async function performAuth<S, T>(
 	}
 	if (!credentials) return 'fail';
 
-	const outcome = await auth.authenticate(credentials, session);
+	// A throwing/rejecting backend hook (throttle-store hiccup, transient fault)
+	// must NOT escape as an unhandled rejection — that would tear the connection
+	// down with no reply, a failure mode observably distinct from the generic
+	// `535` (violates D6). Route it to `onError` and fail generically.
+	let outcome: SmtpAuthOutcome;
+	try {
+		outcome = await auth.authenticate(credentials, session);
+	} catch (err) {
+		onError?.(err instanceof Error ? err : new Error(String(err)));
+		return 'fail';
+	}
 	if (!outcome.ok) return 'fail';
 	session.authenticated = true;
 	session.user = outcome.user;

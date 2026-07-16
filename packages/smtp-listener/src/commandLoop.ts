@@ -287,11 +287,12 @@ export async function runCommandLoop<S, T>(
 			// Advertised only when TLS is available and the channel is not already
 			// secure; refuse otherwise so the capability list and behavior agree.
 			if (!config.tls || session.secure) {
-				if (session.secure) {
-					write(Reply.badSequence('TLS already active'));
-				} else if (noteBadCommand(Reply.notImplemented()) === 'stop') {
-					return;
-				}
+				// Both misuse cases flow through the single bad-command choke point so
+				// a secured client cannot loop STARTTLS 503s without consuming budget.
+				const reply = session.secure
+					? Reply.badSequence('TLS already active')
+					: Reply.notImplemented();
+				if (noteBadCommand(reply) === 'stop') return;
 				continue;
 			}
 			// Capture the narrowed TLS config before any `await` so narrowing on the
@@ -360,6 +361,7 @@ export async function runCommandLoop<S, T>(
 					const l = await reader.readCommandLine(config.maxCommandBytes);
 					return l === null ? null : l.toString('utf8');
 				},
+				onError: opts.onError,
 			});
 			if (result === 'closed') return;
 			// One byte-identical reply per outcome — no auth oracle (D6).
