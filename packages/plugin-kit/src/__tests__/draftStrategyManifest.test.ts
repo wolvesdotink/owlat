@@ -26,11 +26,23 @@ describe('draft strategy manifest contract', () => {
 	it('snapshots the bounded data-only descriptor', () => {
 		const input = manifest({});
 		const parsed = parsePluginManifest(input);
+		const parsedStrategy = parsed.contributes?.draftStrategies?.[0];
 		expect(parsed.contributes?.draftStrategies?.[0]).toEqual({
 			id: 'legal',
 			label: 'Legal clauses',
 			module: { exportPath: './draft/legal' },
 			timeoutMs: 5_000,
+		});
+		expect(parsedStrategy).not.toBe(input.contributes.draftStrategies[0]);
+		expect(parsedStrategy?.module).not.toBe(input.contributes.draftStrategies[0]?.module);
+		expect(Object.isFrozen(parsedStrategy)).toBe(true);
+		expect(Object.isFrozen(parsedStrategy?.module)).toBe(true);
+
+		input.contributes.draftStrategies[0]!.label = 'Mutated after parsing';
+		input.contributes.draftStrategies[0]!.module.exportPath = './draft/mutated';
+		expect(parsedStrategy).toMatchObject({
+			label: 'Legal clauses',
+			module: { exportPath: './draft/legal' },
 		});
 	});
 
