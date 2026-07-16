@@ -80,6 +80,9 @@ export async function loadBundledPlugins(
 		for (const gate of manifest.contributes?.sendGates ?? []) {
 			await verifyPluginContributionExport(workspaceRoot, packageName, gate.module.exportPath);
 		}
+		for (const provider of manifest.contributes?.importProviders ?? []) {
+			await verifyPluginContributionExport(workspaceRoot, packageName, provider.module.exportPath);
+		}
 		sources.push({ packageName, manifest });
 	}
 

@@ -206,6 +206,18 @@ describe('generated composition freshness', () => {
 		);
 		const gateCatalogPath = join(root, 'apps/api/convex/plugins/autonomyGateCatalog.generated.ts');
 		const gateModulesPath = join(root, 'apps/api/convex/plugins/autonomyGateModules.generated.ts');
+		const webhookEventCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/webhookEventCatalog.generated.ts'
+		);
+		const importProviderCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/importProviderCatalog.generated.ts'
+		);
+		const importProviderModulesPath = join(
+			root,
+			'apps/api/convex/plugins/importProviderModules.generated.ts'
+		);
 		expect(await readFile(convexPath, 'utf8')).toContain('composeBundledPlugins([]);');
 		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
 		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
@@ -233,6 +245,14 @@ describe('generated composition freshness', () => {
 			if (registry === 'Step') expect(modulesSource).toContain("'use node';");
 			else expect(modulesSource).not.toContain("'use node';");
 		}
+		expect(await readFile(webhookEventCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(importProviderCatalogPath, 'utf8')).toContain(
+			'Object.freeze([] as const)'
+		);
+		expect(await readFile(importProviderModulesPath, 'utf8')).toContain("'use node';");
+		expect(await readFile(importProviderModulesPath, 'utf8')).toContain(
+			'Object.freeze([] as const)'
+		);
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
@@ -414,6 +434,9 @@ describe('generated composition freshness', () => {
 				'apps/api/convex/plugins/automationStepModules.generated.ts',
 				'apps/api/convex/plugins/automationConditionCatalog.generated.ts',
 				'apps/api/convex/plugins/automationConditionModules.generated.ts',
+				'apps/api/convex/plugins/webhookEventCatalog.generated.ts',
+				'apps/api/convex/plugins/importProviderCatalog.generated.ts',
+				'apps/api/convex/plugins/importProviderModules.generated.ts',
 			],
 		});
 		expect(await readFile(convexPath, 'utf8')).toBe('// stale and must remain unchanged\n');
