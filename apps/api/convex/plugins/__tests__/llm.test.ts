@@ -81,16 +81,12 @@ async function setup() {
 		runQuery: t.query as unknown as ActionCtx['runQuery'],
 		runMutation: t.mutation as unknown as ActionCtx['runMutation'],
 	} as unknown as ActionCtx;
-	return { t, service: bindAuthenticatedBundledPluginLlm(actionCtx, 'alpha') };
+	return { t, actionCtx, service: bindAuthenticatedBundledPluginLlm(actionCtx, 'alpha') };
 }
 
 describe('hosted plugin LLM service', () => {
 	it('supports background strategy dispatch with system attribution and the same budget gate', async () => {
-		const { t } = await setup();
-		const actionCtx = {
-			runQuery: t.query as unknown as ActionCtx['runQuery'],
-			runMutation: t.mutation as unknown as ActionCtx['runMutation'],
-		} as unknown as ActionCtx;
+		const { t, actionCtx } = await setup();
 		const result = await bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
 			tier: 'fast',
 			prompt: 'safe bounded strategy input',
@@ -109,6 +105,81 @@ describe('hosted plugin LLM service', () => {
 			).toEqual(
 				expect.arrayContaining([expect.objectContaining({ userId: 'system:bundled_plugin' })])
 			);
+		});
+	});
+
+	it('denies background dispatch when its execution lease is already revoked', async () => {
+		const { t, actionCtx } = await setup();
+		const controller = new AbortController();
+		controller.abort();
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha', controller.signal).generate({
+				tier: 'fast',
+				prompt: 'must not spend after timeout',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
+			expect(await ctx.db.query('pluginLlmDailyUsage').take(1)).toEqual([]);
+		});
+	});
+
+	it('aborts an admitted provider call when the host revokes its execution lease', async () => {
+		const { t, actionCtx } = await setup();
+		const controller = new AbortController();
+		providerGenerate.mockImplementationOnce(
+			async (options) =>
+				new Promise((_resolve, reject) => {
+					expect(options.abortSignal).toBe(controller.signal);
+					options.abortSignal?.addEventListener(
+						'abort',
+						() => reject(new Error('provider request aborted')),
+						{ once: true }
+					);
+				})
+		);
+		const pending = bindSystemBundledPluginLlm(actionCtx, 'alpha', controller.signal).generate({
+			tier: 'fast',
+			prompt: 'bounded request',
+		});
+		await vi.waitFor(() => expect(providerGenerate).toHaveBeenCalledTimes(1));
+		controller.abort();
+		await expect(pending).rejects.toMatchObject({ code: 'access_denied' });
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').unique()).toMatchObject({
+				status: 'failed',
+				actorUserId: 'system:bundled_plugin',
+			});
+			expect(await ctx.db.query('llmUsageEvents').take(1)).toEqual([]);
+		});
+	});
+
+	it('integrates background denial with feature and grant enforcement', async () => {
+		const { t, actionCtx } = await setup();
+		await t.run(async (ctx) => {
+			const settings = await ctx.db.query('instanceSettings').unique();
+			await ctx.db.patch(settings!._id, {
+				pluginCapabilityGrants: { 'plugin.alpha': { 'llm:invoke': false } },
+			});
+		});
+		await expect(
+			bindSystemBundledPluginLlm(actionCtx, 'alpha').generate({
+				tier: 'fast',
+				prompt: 'must be denied',
+			})
+		).rejects.toMatchObject({ code: 'access_denied' });
+		expect(resolveLanguageModelWithProvenance).not.toHaveBeenCalled();
+		expect(providerGenerate).not.toHaveBeenCalled();
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pluginLlmReservations').take(1)).toEqual([]);
+			const audit = await ctx.db.query('auditLogs').unique();
+			expect(audit).toMatchObject({
+				userId: 'system:bundled_plugin',
+				action: 'plugin.action_denied',
+			});
+			expect(audit?.details).toMatchObject({ outcome: 'denied' });
 		});
 	});
 
