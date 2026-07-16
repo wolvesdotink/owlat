@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
 
 useHead({ title: 'Add mail account — Owlat' });
 
@@ -48,6 +49,13 @@ watch(
 const { members: orgMembers, fetchMembers, isLoadingMembers } = useOrganization();
 const selectedMemberIds = ref<string[]>([]);
 const isTeam = computed(() => mode.value === 'team');
+
+// A team inbox can be hosted on a verified domain (the #232 path) OR backed by
+// an external IMAP account connected in one motion (#234). The external option
+// only appears when the instance has external mailboxes enabled.
+const teamTransport = ref<'hosted' | 'external'>('hosted');
+const canConnectExternal = computed(() => isEnabled('mail.external'));
+const isExternalTeam = computed(() => isTeam.value && teamTransport.value === 'external');
 
 // Immediate so a `?mode=team` deep link loads the roster on first paint too.
 watch(
@@ -115,6 +123,14 @@ async function handleSubmit() {
 	createdMailboxId.value = id;
 	step.value = 4;
 }
+
+// The external team flow submits through the reusable connect form, which
+// provisions the shared external mailbox and emits its id back here.
+function handleExternalConnected(result?: { mailboxId: string }) {
+	if (!result) return;
+	createdMailboxId.value = result.mailboxId as Id<'mailboxes'>;
+	step.value = 4;
+}
 </script>
 
 <template>
@@ -151,15 +167,91 @@ async function handleSubmit() {
 				</button>
 			</div>
 
+			<!-- Team transport: hosted on a verified domain (the #232 path) or an
+			     external IMAP account connected as a shared inbox in one motion (#234). -->
+			<div
+				v-if="isTeam && canConnectExternal"
+				class="flex gap-1 p-1 mb-5 rounded-md bg-bg-surface w-fit"
+			>
+				<button
+					type="button"
+					class="px-3 py-1.5 text-sm rounded transition-colors"
+					:class="
+						teamTransport === 'hosted' ? 'bg-bg-base shadow-sm font-medium' : 'text-text-secondary'
+					"
+					@click="teamTransport = 'hosted'"
+				>
+					Hosted address
+				</button>
+				<button
+					type="button"
+					class="px-3 py-1.5 text-sm rounded transition-colors"
+					:class="
+						teamTransport === 'external' ? 'bg-bg-base shadow-sm font-medium' : 'text-text-secondary'
+					"
+					@click="teamTransport = 'external'"
+				>
+					Connect existing mailbox
+				</button>
+			</div>
+
 			<h2 class="font-semibold mb-1">
-				{{ isTeam ? 'Create a team inbox' : 'Choose your email address' }}
+				{{
+					isExternalTeam
+						? 'Connect a shared mailbox'
+						: isTeam
+							? 'Create a team inbox'
+							: 'Choose your email address'
+				}}
 			</h2>
-			<p v-if="isTeam" class="text-sm text-text-secondary mb-4">
+			<p v-if="isExternalTeam" class="text-sm text-text-secondary mb-4">
+				Connect an existing IMAP mailbox (like <code>support@yourcompany.com</code>) as a shared
+				inbox your teammates read and send from together. You'll be its owner, and your team reads
+				it through the same connection.
+			</p>
+			<p v-else-if="isTeam" class="text-sm text-text-secondary mb-4">
 				A shared address your teammates can read and send from together — like
 				<code>support@</code> or <code>sales@</code>. You'll be its owner.
 			</p>
 
-			<UiQueryBoundary :loading="domainsLoading && !domainsData" :error="domainsError">
+			<!-- External team inbox: pick the roster, then connect the IMAP account.
+			     The connect form provisions the shared external mailbox and reports
+			     its id back via `@submitted`. -->
+			<div v-if="isExternalTeam" class="space-y-5">
+				<PostboxTeamMemberPicker
+					:members="addableMembers"
+					:selected-ids="selectedMemberIds"
+					:loading="isLoadingMembers"
+					@toggle="toggleMember"
+				/>
+				<div>
+					<label for="ext-team-displayname" class="text-sm font-medium block mb-1">
+						Display name (optional)
+					</label>
+					<input
+						id="ext-team-displayname"
+						v-model="displayName"
+						type="text"
+						placeholder="Support"
+						class="input w-full"
+					/>
+				</div>
+				<PostboxMailboxConnectForm
+					:provider="GENERIC_IMAP_PROVIDER"
+					mode="connect"
+					shared
+					:display-name="displayName || undefined"
+					:member-user-ids="selectedMemberIds"
+					hide-cancel
+					@submitted="handleExternalConnected"
+				/>
+			</div>
+
+			<UiQueryBoundary
+				v-else
+				:loading="domainsLoading && !domainsData"
+				:error="domainsError"
+			>
 				<template #loading>
 					<div class="flex items-center gap-2 text-text-secondary text-sm py-4">
 						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
@@ -217,41 +309,13 @@ async function handleSubmit() {
 					</div>
 
 					<!-- Team inbox: pick the members who can use it. -->
-					<div v-if="isTeam">
-						<label class="text-sm font-medium block mb-1">Members</label>
-						<p class="text-xs text-text-tertiary mb-2">
-							Choose who can read and send from this inbox. You can change this later.
-						</p>
-						<div
-							v-if="isLoadingMembers && addableMembers.length === 0"
-							class="flex items-center gap-2 text-text-secondary text-sm py-2"
-						>
-							<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin" />
-							Loading teammates…
-						</div>
-						<p v-else-if="addableMembers.length === 0" class="text-sm text-text-secondary">
-							No teammates to add yet — you can invite people and add them later.
-						</p>
-						<ul v-else class="space-y-1 max-h-56 overflow-y-auto">
-							<li v-for="m in addableMembers" :key="m.userId">
-								<label
-									class="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-bg-surface cursor-pointer"
-								>
-									<input
-										type="checkbox"
-										:checked="selectedMemberIds.includes(m.userId)"
-										@change="toggleMember(m.userId)"
-									/>
-									<span class="min-w-0">
-										<span class="text-sm block truncate">{{ m.user.name || m.user.email }}</span>
-										<span class="text-xs text-text-tertiary block truncate">{{
-											m.user.email
-										}}</span>
-									</span>
-								</label>
-							</li>
-						</ul>
-					</div>
+					<PostboxTeamMemberPicker
+						v-if="isTeam"
+						:members="addableMembers"
+						:selected-ids="selectedMemberIds"
+						:loading="isLoadingMembers"
+						@toggle="toggleMember"
+					/>
 
 					<div v-if="error" class="text-sm text-error">{{ error }}</div>
 
@@ -275,14 +339,21 @@ async function handleSubmit() {
 			>
 				<Icon name="lucide:check" class="w-6 h-6 text-success" />
 			</div>
-			<h2 class="font-semibold mt-4">{{ selectedAddress }} is ready</h2>
+			<h2 class="font-semibold mt-4">
+				{{ isExternalTeam ? 'Your team inbox is connected' : `${selectedAddress} is ready` }}
+			</h2>
 			<p class="text-text-secondary mt-2">
 				{{
 					isTeam
 						? 'Your team inbox is ready. Members can open it from their Postbox.'
 						: 'Your mailbox is connected.'
 				}}
-				Make sure your domain's MX records point to this Owlat instance so mail starts flowing.
+				<template v-if="isExternalTeam">
+					We're syncing its mail now — this keeps running in the background.
+				</template>
+				<template v-else>
+					Make sure your domain's MX records point to this Owlat instance so mail starts flowing.
+				</template>
 			</p>
 			<div class="mt-6 flex items-center justify-center gap-3">
 				<NuxtLink

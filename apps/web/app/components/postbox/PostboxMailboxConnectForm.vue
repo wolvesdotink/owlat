@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import type { MailPreset, MailProvider } from '~/utils/mailAutodiscover';
 import { presetForEmail, resolveMailPreset } from '~/utils/mailAutodiscover';
+import { buildCredentialArgs, buildSharedConnectArgs } from '~/utils/postboxConnectArgs';
 
 /**
  * The shared connect/edit form for the unified mail-import wizard. One form
@@ -33,11 +34,22 @@ const props = defineProps<{
 	 * only way forward, so a cancel action there would do nothing — hide it.
 	 */
 	hideCancel?: boolean;
+	/**
+	 * Connect the account AS A SHARED TEAM INBOX (`connectShared`) instead of a
+	 * personal 1:1 mailbox (`connect`). Only meaningful in `mode="connect"`. The
+	 * connecting admin becomes the inbox owner; `memberUserIds` seed the roster
+	 * and `displayName` names the inbox. See issue #234.
+	 */
+	shared?: boolean;
+	/** Team-inbox display name (shared connect only). */
+	displayName?: string;
+	/** Initial member roster for a shared connect (org auth-user ids). */
+	memberUserIds?: string[];
 }>();
 
 const emit = defineEmits<{
-	/** Fired after a successful connect or update. */
-	(e: 'submitted'): void;
+	/** Fired after a successful connect or update; carries the mailbox id. */
+	(e: 'submitted', result?: { mailboxId: string }): void;
 	/** Fired when the user backs out (connect mode → provider picker). */
 	(e: 'cancel'): void;
 }>();
@@ -131,6 +143,11 @@ const connectOp = useBackendOperation(api.mail.externalAccountsActions.connect, 
 	label: 'Connect mailbox',
 	inlineTarget: formError,
 });
+const connectSharedOp = useBackendOperation(api.mail.externalAccountsActions.connectShared, {
+	type: 'action',
+	label: 'Connect team inbox',
+	inlineTarget: formError,
+});
 const updateOp = useBackendOperation(api.mail.externalAccountsActions.updateCredentials, {
 	type: 'action',
 	label: 'Update mail credentials',
@@ -138,22 +155,15 @@ const updateOp = useBackendOperation(api.mail.externalAccountsActions.updateCred
 });
 
 function buildArgs() {
-	const email = form.emailAddress.trim();
-	return {
-		emailAddress: email,
-		imapHost: form.imapHost.trim(),
-		imapPort: Number(form.imapPort),
-		isImapSecure: form.isImapSecure,
-		smtpHost: form.smtpHost.trim(),
-		smtpPort: Number(form.smtpPort),
-		isSmtpSecure: form.isSmtpSecure,
-		username: (form.username || email).trim(),
-		password: form.password,
-	};
+	return buildCredentialArgs(form);
 }
 
 const busy = computed(
-	() => testOp.isLoading.value || connectOp.isLoading.value || updateOp.isLoading.value
+	() =>
+		testOp.isLoading.value ||
+		connectOp.isLoading.value ||
+		connectSharedOp.isLoading.value ||
+		updateOp.isLoading.value
 );
 const canSubmit = computed(
 	() =>
@@ -174,11 +184,20 @@ async function handleTest() {
 }
 
 async function handleSubmit() {
-	const op = props.mode === 'update' ? updateOp : connectOp;
-	const res = await op.run(buildArgs());
+	// A shared connect provisions a team inbox (connectShared) with the picked
+	// roster; every other case is the personal connect / credential update.
+	const res =
+		props.mode === 'connect' && props.shared
+			? await connectSharedOp.run(
+					buildSharedConnectArgs(form, {
+						displayName: props.displayName,
+						memberUserIds: props.memberUserIds ?? [],
+					})
+				)
+			: await (props.mode === 'update' ? updateOp : connectOp).run(buildArgs());
 	if (res === undefined) return;
 	form.password = '';
-	emit('submitted');
+	emit('submitted', { mailboxId: res.mailboxId });
 }
 
 // Sharpen the app-password callout when the mailbox is actively failing auth or
@@ -197,7 +216,11 @@ const hasAuthError = computed(() => {
 });
 
 const submitLabel = computed(() =>
-	props.mode === 'update' ? 'Save credentials' : 'Connect & import'
+	props.mode === 'update'
+		? 'Save credentials'
+		: props.shared
+			? 'Connect team inbox'
+			: 'Connect & import'
 );
 </script>
 

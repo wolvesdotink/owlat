@@ -373,6 +373,20 @@ export const remove = authedMutation({
 			await ctx.db.delete(grant._id);
 		}
 		if (mailbox) {
+			// An external-backed mailbox (personal BYO or a shared team inbox) has a
+			// live sync account; mark it `disconnected` so `listConnectableAccounts`
+			// stops the mail-sync worker from syncing into a now-deleted mailbox. The
+			// account row is retained (a re-connect can re-attach), mirroring the soft
+			// `disconnect` mutation; `purge` remains the hard cascade-delete path.
+			if (mailbox.externalAccountId) {
+				const account = await ctx.db.get(mailbox.externalAccountId);
+				if (account && account.status !== 'disconnected') {
+					await ctx.db.patch(mailbox.externalAccountId, {
+						status: 'disconnected',
+						updatedAt: Date.now(),
+					});
+				}
+			}
 			await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {
 				address: mailbox.address,
 			});

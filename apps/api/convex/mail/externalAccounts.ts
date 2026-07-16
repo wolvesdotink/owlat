@@ -10,9 +10,18 @@
  * the worker-facing internal functions. Crypto + the plaintext credential path
  * live in the sibling `'use node'` file `externalAccountsActions.ts`.
  *
+ * The same machinery also backs a SHARED team inbox — connecting an external
+ * account provisions a `kind='external', scope='shared'` mailbox (access
+ * governed by `mailboxMembers`) instead of a personal 1:1 account. That path
+ * lives in the sibling `mail/externalSharedInbox.ts` (it reuses this file's
+ * `connectFieldsValidator` + `getLivePersonalExternalAccountForUser` semantics);
+ * see the `scope` field on `externalMailAccounts` for the ownership/credential
+ * model. The `scope='shared'` discriminator is what keeps a team inbox out of
+ * the personal-external surfaces below.
+ *
  *   Public:   getForCurrentUser, disconnect, purge
  *   Internal: _connectInternal, _updateCredentialsInternal (called by the
- *             connect action after encryption), _getRowInternal,
+ *             connect actions after encryption), _getRowInternal,
  *             listConnectableAccounts, setSyncStatus
  *
  * The outbound transport decision for a mailbox (hosted MTA vs the user's own
@@ -42,25 +51,38 @@ import type { Doc } from '../_generated/dataModel';
 
 const PURGE_CHUNK = 200;
 
+/** A shared account backs a team inbox; it is never the caller's PERSONAL account. */
+function isPersonalAccount(a: Doc<'externalMailAccounts'>): boolean {
+	return a.scope !== 'shared';
+}
+
 /**
- * The user's single LIVE external account — the one still connected/syncing.
+ * The user's single LIVE *personal* external account — the one still
+ * connected/syncing that they own 1:1.
  *
- * A user has at most one non-`disconnected` account (the connect guard enforces
- * it), but a completed "move my mailbox here" leaves a `disconnected` archive
- * row behind that COEXISTS with a freshly-connected account. `by_user` +
+ * A user has at most one non-`disconnected` personal account (the connect guard
+ * enforces it), but a completed "move my mailbox here" leaves a `disconnected`
+ * archive row behind that COEXISTS with a freshly-connected account. `by_user` +
  * `.first()` returns the OLDEST row, so after a move it hands back the archive
  * and the live account is missed. Resolve by state instead: skip `disconnected`
  * rows and return the (unique) live one, or `null` when none is live.
+ *
+ * SHARED accounts (those backing a team inbox — kind='external', scope='shared')
+ * are excluded: their `userId` records the connecting admin, but they are org
+ * infrastructure governed by `mailboxMembers`, not a personal 1:1 account. This
+ * is the single choke point behind every personal-external surface
+ * (getForCurrentUser / disconnect / purge / updateCredentials / the move flow),
+ * so a team inbox can never mask, block, or be mistaken for a user's own mailbox.
  */
-export async function getLiveExternalAccountForUser(
+export async function getLivePersonalExternalAccountForUser(
 	ctx: QueryCtx | MutationCtx,
 	userId: string
 ): Promise<Doc<'externalMailAccounts'> | null> {
 	const accounts = await ctx.db
 		.query('externalMailAccounts')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
-		.collect(); // bounded: ≤ 1 live + at most a handful of archived rows per user
-	return accounts.find((a) => a.status !== 'disconnected') ?? null;
+		.collect(); // bounded: ≤ 1 live personal + a handful of archived/shared rows per user
+	return accounts.find((a) => isPersonalAccount(a) && a.status !== 'disconnected') ?? null;
 }
 
 const accountStatusValidator = v.union(
@@ -84,9 +106,10 @@ export const getForCurrentUser = publicQuery({
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) return { configured: false as const };
-		// The LIVE account, not the caller's oldest row: a completed move leaves a
-		// disconnected archive that would otherwise mask the reconnected account.
-		const account = await getLiveExternalAccountForUser(ctx, s.userId);
+		// The LIVE personal account, not the caller's oldest row: a completed move
+		// leaves a disconnected archive that would otherwise mask the reconnected
+		// account. A shared team inbox the caller connected is not their own mailbox.
+		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (!account) return { configured: false as const };
 		const mailbox = await ctx.db.get(account.mailboxId);
 		return {
@@ -123,15 +146,16 @@ export const disconnect = authedMutation({
 		// Disconnect the LIVE account, not the caller's oldest row — otherwise a
 		// completed move's disconnected archive would swallow the call while the
 		// reconnected account keeps syncing.
-		const account = await getLiveExternalAccountForUser(ctx, s.userId);
+		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (!account) {
-			// Nothing live to disconnect. Idempotent when an archived/disconnected row
-			// already exists; a genuine miss (no account at all) is a not-found.
-			const existing = await ctx.db
+			// Nothing live to disconnect. Idempotent when an archived/disconnected
+			// PERSONAL row already exists; a genuine miss (no personal account at all,
+			// even if the caller connected a shared team inbox) is a not-found.
+			const rows = await ctx.db
 				.query('externalMailAccounts')
 				.withIndex('by_user', (q) => q.eq('userId', s.userId))
-				.first();
-			if (existing) return { ok: true };
+				.collect(); // bounded: a handful of the caller's own account rows
+			if (rows.some(isPersonalAccount)) return { ok: true };
 			throwNotFound('External mail account');
 		}
 		const now = Date.now();
@@ -160,19 +184,22 @@ export const purge = authedMutation({
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
-		// Purge the LIVE account (the one the migrate page renders for), not the
-		// oldest row: after a completed move the oldest row is the read-only archive,
-		// and purging that would irreversibly delete the moved-mailbox history this
-		// piece promises to keep. Only when NO account is live (purging a lone archive)
-		// do we fall back to the newest by_user row so a deliberate archive purge stays
-		// possible.
+		// Purge the LIVE personal account (the one the migrate page renders for), not
+		// the oldest row: after a completed move the oldest row is the read-only
+		// archive, and purging that would irreversibly delete the moved-mailbox
+		// history this piece promises to keep. Only when NO personal account is live
+		// (purging a lone archive) do we fall back to the caller's newest PERSONAL
+		// row so a deliberate archive purge stays possible — a shared team inbox is
+		// org infrastructure and is never reachable through this personal path.
 		const account =
-			(await getLiveExternalAccountForUser(ctx, s.userId)) ??
-			(await ctx.db
-				.query('externalMailAccounts')
-				.withIndex('by_user', (q) => q.eq('userId', s.userId))
-				.order('desc')
-				.first());
+			(await getLivePersonalExternalAccountForUser(ctx, s.userId)) ??
+			(
+				await ctx.db
+					.query('externalMailAccounts')
+					.withIndex('by_user', (q) => q.eq('userId', s.userId))
+					.order('desc')
+					.collect() // bounded: a handful of the caller's own account rows
+			).find(isPersonalAccount);
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
 		// Mark disconnected first so the worker stops syncing into a draining mailbox.
@@ -259,7 +286,7 @@ export const _purgeChunk = internalMutation({
 
 // ── Internal: write path (called by the connect/update actions) ────────────
 
-const connectFieldsValidator = {
+export const connectFieldsValidator = {
 	emailAddress: v.string(),
 	imapHost: v.string(),
 	imapPort: v.number(),
@@ -294,7 +321,7 @@ export const _connectInternal = internalMutation({
 		// archive row doesn't count — check for a live account by state, not the
 		// oldest row, so a reconnect after a move isn't blocked by (nor slips past)
 		// the archive.
-		const liveAccount = await getLiveExternalAccountForUser(ctx, s.userId);
+		const liveAccount = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (liveAccount) {
 			throwAlreadyExists(
 				'You already have a connected external mail account. Disconnect it before connecting another.'
@@ -362,7 +389,7 @@ export const _updateCredentialsInternal = internalMutation({
 		// the demoted mailbox, cross-contaminating archived history. Re-entering
 		// credentials for an archive is meaningless (reconnect is the path), so a
 		// missing live account is a not-found.
-		const account = await getLiveExternalAccountForUser(ctx, s.userId);
+		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (!account) throwNotFound('External mail account');
 		const now = Date.now();
 		await ctx.db.patch(account._id, {

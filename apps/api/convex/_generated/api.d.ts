@@ -433,6 +433,7 @@ import type * as mail_editLearning from "../mail/editLearning.js";
 import type * as mail_editLearningValidators from "../mail/editLearningValidators.js";
 import type * as mail_externalAccounts from "../mail/externalAccounts.js";
 import type * as mail_externalAccountsActions from "../mail/externalAccountsActions.js";
+import type * as mail_externalSharedInbox from "../mail/externalSharedInbox.js";
 import type * as mail_externalDelivery from "../mail/externalDelivery.js";
 import type * as mail_filters from "../mail/filters.js";
 import type * as mail_folders from "../mail/folders.js";
@@ -1053,6 +1054,7 @@ declare const fullApi: ApiFromModules<{
   "mail/editLearningValidators": typeof mail_editLearningValidators;
   "mail/externalAccounts": typeof mail_externalAccounts;
   "mail/externalAccountsActions": typeof mail_externalAccountsActions;
+  "mail/externalSharedInbox": typeof mail_externalSharedInbox;
   "mail/externalDelivery": typeof mail_externalDelivery;
   "mail/filters": typeof mail_filters;
   "mail/folders": typeof mail_folders;

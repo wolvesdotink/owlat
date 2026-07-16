@@ -61,7 +61,7 @@ async function loadMemberProfile(
  * nonexistent id — bricking the inbox for its owner. `requireMailboxAccess`
  * already blocks cross-org READS; this blocks bogus WRITES.
  */
-async function assertOrgMemberUser(ctx: MutationCtx, authUserId: string): Promise<void> {
+export async function assertOrgMemberUser(ctx: MutationCtx, authUserId: string): Promise<void> {
 	const profile = await ctx.db
 		.query('userProfiles')
 		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', authUserId))

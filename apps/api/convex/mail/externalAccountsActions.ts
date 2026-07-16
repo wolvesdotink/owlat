@@ -9,7 +9,7 @@
  * `externalAccounts.ts`; the BetterAuth session propagates from these public
  * actions into those internal calls.
  *
- *   Public:   connect, updateCredentials, testConnection
+ *   Public:   connect, connectShared, updateCredentials, testConnection
  *   Internal: getCredentialsForWorker (the ONLY function that returns plaintext
  *             credentials — internal/admin-key only, never exposed publicly)
  *
@@ -122,6 +122,45 @@ export const connect = authedAction({
 			imapUsername: args.username,
 			smtpUsername: args.smtpUsername,
 			authMethod: 'password',
+			...encodeEnvelope(args.password, args.smtpPassword),
+		});
+	},
+});
+
+/**
+ * Connect an external account AS A SHARED TEAM INBOX: validate → encrypt →
+ * persist a `kind='external', scope='shared'` mailbox with the connecting admin
+ * as owner and `memberUserIds` seeded as members. The external-transport twin of
+ * `mailboxMembers.createShared`, reusing the same encryption path as `connect`.
+ */
+// authz: shared external inbox connect — authedAction + assertExternalEnabled here;
+// the ADMIN floor + org-member validation + persistence live in
+// internal._connectSharedInternal (a team inbox is org infrastructure).
+export const connectShared = authedAction({
+	args: {
+		...credentialArgs,
+		displayName: v.optional(v.string()),
+		memberUserIds: v.array(v.string()),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
+		await assertExternalEnabled(ctx);
+		validateShape(args);
+		return await ctx.runMutation(internal.mail.externalSharedInbox._connectSharedInternal, {
+			emailAddress: args.emailAddress,
+			imapHost: args.imapHost,
+			imapPort: args.imapPort,
+			isImapSecure: args.isImapSecure,
+			smtpHost: args.smtpHost,
+			smtpPort: args.smtpPort,
+			isSmtpSecure: args.isSmtpSecure,
+			imapUsername: args.username,
+			smtpUsername: args.smtpUsername,
+			authMethod: 'password',
+			displayName: args.displayName,
+			memberUserIds: args.memberUserIds,
 			...encodeEnvelope(args.password, args.smtpPassword),
 		});
 	},
