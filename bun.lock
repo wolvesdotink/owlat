@@ -14,7 +14,7 @@
     },
     "apps/api": {
       "name": "@owlat/api",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@ai-sdk/anthropic": "catalog:ai",
         "@ai-sdk/azure": "catalog:ai",
@@ -55,7 +55,7 @@
     },
     "apps/code-worker": {
       "name": "@owlat/code-worker",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@octokit/rest": "^22.0.1",
         "convex": "^1.34.0",
@@ -70,7 +70,7 @@
     },
     "apps/desktop": {
       "name": "@owlat/desktop",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@tauri-apps/api": "^2.11.1",
         "@tauri-apps/plugin-autostart": "^2.5.1",
@@ -91,7 +91,7 @@
     },
     "apps/docs": {
       "name": "@owlat/docs",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@takumi-rs/core": "^1.1.2",
         "nuxt": "catalog:vue",
@@ -111,7 +111,7 @@
     },
     "apps/imap": {
       "name": "@owlat/imap",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@owlat/shared": "workspace:*",
         "convex": "catalog:convex",
@@ -128,7 +128,7 @@
     },
     "apps/mail-sync": {
       "name": "@owlat/mail-sync",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@hono/node-server": "^2.0.0",
         "convex": "catalog:convex",
@@ -166,7 +166,7 @@
     },
     "apps/mta": {
       "name": "@owlat/mta",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@hono/node-server": "^2.0.0",
         "@owlat/email-scanner": "workspace:*",
@@ -195,7 +195,7 @@
     },
     "apps/setup-cli": {
       "name": "@owlat/setup-cli",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "bin": {
         "owlat-setup": "./src/index.ts",
       },
@@ -216,7 +216,7 @@
     },
     "apps/updater": {
       "name": "@owlat/updater",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "devDependencies": {
         "@types/node": "^26.0.1",
         "tsx": "^4.19.0",
@@ -226,7 +226,7 @@
     },
     "apps/web": {
       "name": "@owlat/web",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@convex-dev/better-auth": "catalog:convex",
         "@nuxtjs/color-mode": "catalog:vue",
@@ -273,7 +273,7 @@
     },
     "packages/channels": {
       "name": "@owlat/channels",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -283,7 +283,7 @@
     },
     "packages/email-builder": {
       "name": "@owlat/email-builder",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@owlat/email-previewer": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
@@ -307,7 +307,7 @@
     },
     "packages/email-previewer": {
       "name": "@owlat/email-previewer",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -325,7 +325,7 @@
     },
     "packages/email-renderer": {
       "name": "@owlat/email-renderer",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@owlat/shared": "workspace:*",
         "sanitize-html": "^2.13.0",
@@ -340,7 +340,7 @@
     },
     "packages/email-scanner": {
       "name": "@owlat/email-scanner",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "dependencies": {
         "@owlat/shared": "workspace:*",
       },
@@ -353,7 +353,7 @@
     },
     "packages/sdk-js": {
       "name": "@owlat/sdk-js",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -364,7 +364,7 @@
     },
     "packages/shared": {
       "name": "@owlat/shared",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
