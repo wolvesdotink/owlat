@@ -203,15 +203,18 @@ function createMockParsedMessage(overrides: Partial<ParsedMessage> = {}): Parsed
 describe('ParsedMessage is a drop-in for the bounce pipeline ParsedMail mocks', () => {
 	it('accepts the bounce/resolveRoute mock shapes and exposes every consumed field', () => {
 		// The exact base shape the bounce pipeline's `createMockParsedMail` helper
-		// casts to `ParsedMail` (`{ text, subject, headers, attachments }`) casts to
-		// `ParsedMessage` too, with no `as unknown` escape hatch — proving the new
-		// type is a genuine structural drop-in for those partial mocks.
-		const partialMock = {
+		// supplies (`{ text, subject, headers, attachments }`) yields a genuine
+		// `ParsedMessage`. `ParsedMail` (mailparser) declares those fields optional,
+		// so a bare literal satisfies it; `ParsedMessage` declares them required, so
+		// the mock factory below fills the remaining consumed-field keys the bounce
+		// consumers never read — no `as unknown` escape hatch, a real structural
+		// drop-in for the partial mocks at cutover.
+		const partialMock = createMockParsedMessage({
 			subject: 'x',
 			text: 't',
 			headers: new Map<string, ParsedHeaderValue>(),
 			attachments: [],
-		} as ParsedMessage;
+		});
 		expect(partialMock.subject).toBe('x');
 
 		// The resolveRoute.test mock shape (references array + attachment list),
