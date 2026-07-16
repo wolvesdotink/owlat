@@ -191,7 +191,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download shard blob reports
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           path: apps/api/.vitest-reports
           pattern: api-blob-*
@@ -233,7 +233,7 @@ jobs:
       # gate's binary and JSON normaliser both run on node, and setup-bun does
       # not put node on PATH, so pin it explicitly rather than rely on the runner
       # image.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
 
