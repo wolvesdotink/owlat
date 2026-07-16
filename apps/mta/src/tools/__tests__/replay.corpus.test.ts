@@ -2,16 +2,20 @@
  * Inbound shadow-replay harness — CI slice (piece C0).
  *
  * Runs the checked-in, non-sensitive corpus through BOTH inbound stacks — the
- * OLD oracle stack (mailparser `simpleParser` + mailauth `dkimVerify`) and the
- * NEW in-house stack ({@link owlatNewStack}: `parseMessage` + `verifyDkim`) —
- * and asserts a field-level diff of the routing / delivery drivers with a
- * categorized divergence report and ZERO unsanctioned divergence (the only
- * sanctioned inbound changes are the enumerated l= / charset / enhanced-code
- * improvements; I2).
+ * OLD oracle stack (mailparser `simpleParser` for the drivers + the ACTUAL
+ * production `verifyDkim` driver from `bounce/inboundDkim` for the DKIM verdict)
+ * and the NEW in-house stack ({@link owlatNewStack}: `parseMessage` +
+ * `@owlat/mail-auth`'s `verifyDkim`) — and asserts a field-level diff of the
+ * routing / delivery drivers with a categorized divergence report and ZERO
+ * unsanctioned divergence (the only sanctioned inbound changes are the
+ * enumerated l= / charset improvements; I2).
  *
- * The oracle stack is WIRED HERE, never imported by the shipped tool: mailparser
- * and mailauth survive only as differential oracles (I1), so the harness accepts
- * the old stack as an injected argument.
+ * The old side wires the REAL production driver, never a re-implemented copy of
+ * its verdict normalization: `bounce/inboundDkim.verifyDkim` accepts an injected
+ * resolver, so the differential compares production-old against in-house-new (a
+ * private copy could drift and mask divergence in exactly the normalization
+ * layer being replaced). mailparser / mailauth survive only as differential
+ * oracles (I1) and are wired HERE, never imported by the shipped tool.
  *
  * The final block pins the load-bearing I7 invariant — the harness NEVER writes
  * decoded body text to a log or report — by seeding a corpus message with a
@@ -20,14 +24,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { generateKeyPairSync } from 'node:crypto';
 import { simpleParser } from 'mailparser';
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
-import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
+import { verifyDkim as verifyDkimOld } from '../../bounce/inboundDkim';
 import {
 	diffAuth,
 	diffDrivers,
@@ -53,71 +57,12 @@ const CORPUS_DIR = join(
 
 const BODY_MARKER = 'SECRETBODYMARKER7f3a';
 
-/** RFC 8601 verdict vocabulary shared by both verifiers. */
-type Verdict = 'pass' | 'fail' | 'neutral' | 'none' | 'temperror' | 'permerror';
-
-const RANK: Record<Verdict, number> = {
-	pass: 6,
-	fail: 5,
-	permerror: 4,
-	temperror: 3,
-	neutral: 2,
-	none: 1,
-};
-
-/** Reduce a mailauth verify result to one verdict — mirrors inboundDkim.pickVerdict. */
-function normalizeMailauth(result: unknown): Verdict {
-	const results = ((result as { results?: unknown[] } | undefined)?.results ?? []) as Array<{
-		status?: { result?: string; comment?: string };
-	}>;
-	if (results.length === 0) return 'none';
-	let best: Verdict = 'none';
-	for (const sig of results) {
-		const raw = (sig.status?.result ?? '').toLowerCase();
-		const comment = (sig.status?.comment ?? '').toLowerCase();
-		let v: Verdict;
-		switch (raw) {
-			case 'pass':
-				v = 'pass';
-				break;
-			case 'fail':
-				v = 'fail';
-				break;
-			case 'temperror':
-			case 'temperr':
-				v = 'temperror';
-				break;
-			case 'permerror':
-				v = 'permerror';
-				break;
-			case 'neutral':
-				if (comment.includes('body hash')) v = 'fail';
-				else if (
-					comment.includes('no key') ||
-					comment.includes('invalid public key') ||
-					comment.includes('missing key') ||
-					comment.includes('unknown key')
-				)
-					v = 'permerror';
-				else v = 'neutral';
-				break;
-			case 'none':
-			case 'skipped':
-			case '':
-				v = 'none';
-				break;
-			default:
-				v = 'neutral';
-		}
-		if (RANK[v] > RANK[best]) best = v;
-	}
-	return best;
-}
-
 /**
- * The OLD (oracle) stack: mailparser for the drivers, mailauth for the DKIM
- * verdict. A message without a DKIM-Signature yields no verdict (matching the
- * new stack's early return), so unsigned corpus mail contributes no auth diff.
+ * The OLD (oracle) stack: mailparser for the drivers, and the ACTUAL production
+ * DKIM driver (`bounce/inboundDkim.verifyDkim`) — the exact code the inbound
+ * path runs today — for the verdict. Both verifiers return a verdict
+ * unconditionally (`none` for an unsigned message), so unsigned corpus mail
+ * yields matching `none` verdicts and no auth diff.
  */
 const oracleOldStack: ReplayStackSide = {
 	async project(raw: Buffer): Promise<RoutingDrivers> {
@@ -125,9 +70,9 @@ const oracleOldStack: ReplayStackSide = {
 		return projectDrivers(parsed, (name) => parsed.headers.get(name));
 	},
 	async auth(input: ReplayInput): Promise<AuthVerdicts> {
-		if (!/^dkim-signature:/im.test(input.raw.toString('latin1'))) return {};
-		const result = await dkimVerify(input.raw, { resolver: resolverFromHint(input.dkim) });
-		return { dkim: normalizeMailauth(result) };
+		const inner = resolverFromHint(input.dkim);
+		const outcome = await verifyDkimOld(input.raw, { resolver: (name) => inner(name, 'TXT') });
+		return { dkim: outcome.result };
 	},
 };
 
@@ -152,6 +97,18 @@ describe('inbound shadow-replay over the checked-in corpus slice', () => {
 		expect(report.byCategory['parse-field']).toBe(0);
 		expect(report.byCategory['dkim-verdict']).toBe(0);
 		expect(report.results.every((r) => !r.hasUnsanctioned)).toBe(true);
+	});
+
+	it('the genuine DSN exercises the delivery-status + returned-message drivers', () => {
+		const raw = readFileSync(join(CORPUS_DIR, 'dsn-report.eml'));
+		const drivers = owlatNewStack.project(raw);
+		// The bounce classifier reads the multipart/report + report-type signal …
+		expect(drivers.contentType.value).toBe('multipart/report');
+		expect(drivers.contentType.reportType).toBe('delivery-status');
+		// … and the DSN driver is the delivery-status part plus the returned message.
+		const cts = drivers.attachments.map((a) => a.contentType);
+		expect(cts).toContain('message/delivery-status');
+		expect(cts).toContain('message/rfc822');
 	});
 
 	it('actually compares bodies (digests are non-empty, not skipped)', () => {
@@ -186,7 +143,7 @@ describe('DKIM verdicts flow through the harness (feeds the A2 differential suit
 			.replace(/\s+/g, '');
 	}
 
-	it('a valid rsa-sha256 signature verifies pass on BOTH stacks (no divergence)', async () => {
+	it('a valid rsa-sha256 signature verifies pass on BOTH stacks, with dkimContext annotated', async () => {
 		const rsa = generateKeyPairSync('rsa', {
 			modulusLength: 2048,
 			publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -214,10 +171,79 @@ describe('DKIM verdicts flow through the harness (feeds the A2 differential suit
 		expect(newAuth.dkim).toBe('pass');
 		expect(oldAuth.dkim).toBe('pass');
 
+		// … and the new stack extracts the DKIM context out of the raw bytes
+		// (algorithm + the absence of an l= tag) that JUSTIFIES a sanctioned
+		// divergence — the plumbing the l= corpus case below relies on end-to-end.
+		expect(newAuth.dkimContext?.algorithm).toBe('rsa-sha256');
+		expect(newAuth.dkimContext?.hadLTag).toBe(false);
+
 		// … so the harness records no divergence for the signed message.
 		const report = await runReplay([input], { old: oracleOldStack, new: owlatNewStack });
 		expect(report.unsanctionedDivergences).toBe(0);
 		expect(report.byCategory['dkim-verdict']).toBe(0);
+	});
+
+	it('an l=-signed message diverges pass -> neutral (SANCTIONED) through loadCorpus + a DKIM sidecar', async () => {
+		const rsa = generateKeyPairSync('rsa', {
+			modulusLength: 2048,
+			publicKeyEncoding: { type: 'spki', format: 'pem' },
+			privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+		});
+		const txt = `v=DKIM1; k=rsa; p=${pemToBase64(rsa.publicKey)}`;
+		const body = 'Body fully covered by an l= tag.\r\n';
+		const lMessage = [
+			'From: Alice <alice@example.com>',
+			'To: Bob <bob@example.org>',
+			'Subject: l-tag replay fixture',
+			'Date: Tue, 17 Jun 2026 12:00:00 +0000',
+			'Message-ID: <ltag-replay-1@example.com>',
+			'MIME-Version: 1.0',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			body,
+		].join('\r\n');
+		// `maxBodyLength` makes mailauth emit an l= tag over the WHOLE body: the old
+		// stack authenticates it (pass), the new stack caps l= at neutral (I2 a).
+		const signed = await dkimSign(Buffer.from(lMessage), {
+			canonicalization: 'relaxed/relaxed',
+			algorithm: 'rsa-sha256',
+			signatureData: [
+				{
+					signingDomain: DOMAIN,
+					selector: SELECTOR,
+					privateKey: rsa.privateKey,
+					maxBodyLength: body.length,
+				},
+			],
+		});
+		const raw = Buffer.from((signed as { signatures: string }).signatures + lMessage);
+
+		// Drive it through the FULL corpus path: a real directory with an .eml plus
+		// a `.json` DKIM sidecar, loaded by loadCorpus (exercising the sidecar
+		// branch), then replayed through both stacks.
+		const dir = mkdtempSync(join(tmpdir(), 'replay-ltag-'));
+		try {
+			writeFileSync(join(dir, 'ltag.eml'), raw);
+			writeFileSync(
+				join(dir, 'ltag.json'),
+				JSON.stringify({ dkim: { records: { [KEY_NAME]: [[txt]] } } })
+			);
+			const inputs = loadCorpus(dir);
+			expect(inputs).toHaveLength(1);
+			// The sidecar branch actually ran: the DKIM DNS hint reached the input.
+			expect(inputs[0]?.dkim?.records?.[KEY_NAME]).toEqual([[txt]]);
+
+			const report = await runReplay(inputs, { old: oracleOldStack, new: owlatNewStack });
+			expect(report.byCategory['dkim-verdict']).toBe(1);
+			expect(report.unsanctionedDivergences).toBe(0);
+			expect(report.sanctionedByKind['dkim-l-neutral']).toBe(1);
+			const div = report.results[0]?.divergences.find((d) => d.category === 'dkim-verdict');
+			expect(div?.oldValue).toBe('pass');
+			expect(div?.newValue).toBe('neutral');
+			expect(div?.sanction).toBe('dkim-l-neutral');
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 
