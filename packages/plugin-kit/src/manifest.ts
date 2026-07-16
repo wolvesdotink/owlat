@@ -1,5 +1,7 @@
 import type { PluginCapability } from './capabilities';
 import { PLUGIN_AGENT_STEP_CAPABILITY } from './agentStep';
+import { PLUGIN_DRAFT_STRATEGY_CAPABILITY } from './draftStrategy';
+import { validateDraftStrategyContributions } from './draftStrategyManifest';
 import { validateAgentStepContributions } from './agentStepManifest';
 import { isPluginContributionKind, type PluginContributions } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
@@ -214,6 +216,24 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 			);
 		}
 	}
+	if (declaresContributions(manifest, 'draftStrategies')) {
+		if (!declaresCapability(capabilityItems, PLUGIN_DRAFT_STRATEGY_CAPABILITY)) {
+			addManifestIssue(
+				issues,
+				'missing',
+				'$.capabilities',
+				`must declare ${PLUGIN_DRAFT_STRATEGY_CAPABILITY} when draft strategies are contributed`
+			);
+		}
+		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
+			addManifestIssue(
+				issues,
+				flag.kind === 'missing' ? 'missing' : 'invalid_type',
+				'$.flag',
+				'must be a plain object when draft strategies are contributed'
+			);
+		}
+	}
 
 	const component = readDataProperty(manifest, 'component', issues);
 	if (component.kind === 'value') validateComponent(component.value, issues);
@@ -281,7 +301,7 @@ function declaresSendTransports(manifest: Record<string, unknown>): boolean {
 
 function declaresContributions(
 	manifest: Record<string, unknown>,
-	kind: 'sendTransports' | 'agentSteps'
+	kind: 'sendTransports' | 'agentSteps' | 'draftStrategies'
 ): boolean {
 	const contributes = Object.getOwnPropertyDescriptor(manifest, 'contributes');
 	if (!contributes || !('value' in contributes) || !isRecord(contributes.value)) return false;
@@ -320,6 +340,7 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 			const items = validateDescriptorSafeArray(contribution.value, path, issues);
 			if (key === 'sendTransports' && items) validateSendTransportContributions(items, issues);
 			if (key === 'agentSteps' && items) validateAgentStepContributions(items, issues);
+			if (key === 'draftStrategies' && items) validateDraftStrategyContributions(items, issues);
 		}
 	}
 }
