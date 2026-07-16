@@ -62,8 +62,13 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         true,
         Some("CmdOrCtrl+,"),
     )?;
+    // Manual update check. The handler emits `menu://check-updates`; the SPA
+    // re-dispatches it to the auto-updater (see apps/web updater.client.ts).
+    // Lives in the app menu on macOS (native home for it) and Help elsewhere.
+    let check_updates =
+        MenuItem::with_id(app, "check_updates", "Check for Updates…", true, None::<&str>)?;
 
-    // Edit / Window / Help are identical on every platform.
+    // Edit / Window are identical on every platform.
     let edit = SubmenuBuilder::new(app, "Edit")
         .undo()
         .redo()
@@ -76,10 +81,6 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let window_menu = SubmenuBuilder::new(app, "Window")
         .minimize()
         .maximize()
-        .build()?;
-    let help = SubmenuBuilder::new(app, "Help")
-        .item(&docs)
-        .item(&report)
         .build()?;
 
     #[cfg(target_os = "macos")]
@@ -94,6 +95,7 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 
         let app_menu = SubmenuBuilder::new(app, "Owlat")
             .item(&about)
+            .item(&check_updates)
             .separator()
             .item(&prefs)
             .separator()
@@ -118,6 +120,11 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             .separator()
             .item(&inbox)
             .item(&chat)
+            .build()?;
+        // Check-for-Updates lives in the app menu above, so Help is just links.
+        let help = SubmenuBuilder::new(app, "Help")
+            .item(&docs)
+            .item(&report)
             .build()?;
 
         Menu::with_items(app, &[&app_menu, &file, &edit, &view, &window_menu, &help])
@@ -153,6 +160,14 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             .separator()
             .item(&inbox)
             .item(&chat)
+            .build()?;
+        // No macOS app menu, so Check-for-Updates rides in Help (Windows/Linux
+        // convention) above the doc links.
+        let help = SubmenuBuilder::new(app, "Help")
+            .item(&check_updates)
+            .separator()
+            .item(&docs)
+            .item(&report)
             .build()?;
 
         Menu::with_items(app, &[&file, &edit, &view, &window_menu, &help])
@@ -193,6 +208,10 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
         "preferences" => {
             window::show_main_window(app);
             let _ = app.emit("menu://preferences", ());
+        }
+        "check_updates" => {
+            window::show_main_window(app);
+            let _ = app.emit("menu://check-updates", ());
         }
         "toggle_fullscreen" => {
             if let Some(win) = app.get_webview_window("main") {
