@@ -8,6 +8,7 @@ import {
 function summary(overrides: Partial<TransportSummaryInput> = {}): TransportSummaryInput {
 	return {
 		provider: 'mta',
+		providerLabel: null,
 		canSend: true,
 		advancedRoutingActive: false,
 		health: null,
@@ -39,6 +40,19 @@ describe('deriveTransportDisplay — labels', () => {
 	it('flags an unrecognized EMAIL_PROVIDER value', () => {
 		const d = deriveTransportDisplay(summary({ provider: 'sendgrid', canSend: false }));
 		expect(d.label).toContain('sendgrid');
+	});
+
+	it('uses the backend catalog label for a bundled plugin transport', () => {
+		const d = deriveTransportDisplay(
+			summary({
+				provider: 'plugin.mail-pack.postmark',
+				providerLabel: 'Postmark',
+				canSend: true,
+			})
+		);
+		expect(d.label).toBe('Postmark');
+		expect(d.description).toContain('Postmark');
+		expect(d.label).not.toContain('Unrecognized');
 	});
 });
 
