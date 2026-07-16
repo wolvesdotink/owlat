@@ -7,6 +7,7 @@ import {
 	getSingletonOrganizationId,
 } from '../lib/sessionOrganization';
 import { DRAFT_STRATEGY_CATALOG, isRegisteredDraftStrategy } from './draftStrategyCatalog';
+import { ALLOWED_CATEGORIES } from '../agent/steps/draft/sanitize';
 
 const scopeValidator = v.union(
 	v.object({ type: v.literal('mailbox'), id: v.id('mailboxes') }),
@@ -18,6 +19,10 @@ export interface DraftStrategySelectionScope {
 	readonly mailboxId?: string;
 	readonly contactId?: string;
 	readonly classification: string;
+}
+
+export function isDraftClassificationScope(value: string): boolean {
+	return ALLOWED_CATEGORIES.has(value);
 }
 
 /** Contact overrides mailbox, which overrides classification; absence means default. */
@@ -70,7 +75,7 @@ export const setSelection = authedMutation({
 		await requireAdminContext(ctx);
 		if (!isRegisteredDraftStrategy(args.strategyKind))
 			throw new TypeError('Unknown draft strategy');
-		if (args.scope.type === 'classification' && !/^[a-z][a-z0-9_-]{0,63}$/.test(args.scope.id))
+		if (args.scope.type === 'classification' && !isDraftClassificationScope(args.scope.id))
 			throw new TypeError('Invalid draft classification scope');
 		if (args.scope.type !== 'classification' && !(await ctx.db.get(args.scope.id)))
 			throw new TypeError('Unknown draft strategy scope');
