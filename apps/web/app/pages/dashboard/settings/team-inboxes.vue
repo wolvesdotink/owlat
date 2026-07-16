@@ -71,7 +71,7 @@ function toggleReconnect(id: Id<'mailboxes'>) {
 	reconnectId.value = reconnectId.value === id ? null : id;
 	if (reconnectId.value) expandedId.value = null;
 }
-const { data: reconnectAccount } = useConvexQuery(
+const { data: reconnectAccount, isLoading: reconnectLoading } = useConvexQuery(
 	api.mail.externalSharedInbox.getSharedExternalAccount,
 	() => (reconnectId.value ? { mailboxId: reconnectId.value } : 'skip')
 );
@@ -326,8 +326,8 @@ function formatCreated(createdAt: number) {
 					>
 						<Icon name="lucide:triangle-alert" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
 						<span>
-							This inbox's mail connection stopped working, but it's suspended — restore it
-							first to reconnect the mailbox.
+							This inbox's mail connection stopped working, but it's suspended — restore it first to
+							reconnect the mailbox.
 						</span>
 					</p>
 				</div>
@@ -349,16 +349,21 @@ function formatCreated(createdAt: number) {
 					<div>
 						<h3 class="font-semibold text-text-primary">Reconnect this inbox</h3>
 						<p class="text-sm text-text-secondary mt-1">
-							Its mail connection stopped working. Re-enter the mailbox password (an app
-							password if the provider requires one) to resume syncing. Your team and its mail
-							are kept.
+							Its mail connection stopped working. Re-enter the mailbox password (an app password if
+							the provider requires one) to resume syncing. Your team and its mail are kept.
 						</p>
 						<p v-if="inbox.externalLastError" class="text-xs text-error mt-2">
 							{{ inbox.externalLastError }}
 						</p>
 					</div>
+					<!-- The form's non-secret prefill (servers, username) comes from the
+					     getSharedExternalAccount subscription; show a pending state until it
+					     resolves so the panel isn't briefly empty and formless. -->
+					<div v-if="reconnectLoading && !reconnectAccountForForm" class="p-4 flex justify-center">
+						<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />
+					</div>
 					<PostboxMailboxConnectForm
-						v-if="reconnectAccountForForm"
+						v-else-if="reconnectAccountForForm"
 						:provider="GENERIC_IMAP_PROVIDER"
 						mode="update"
 						shared
