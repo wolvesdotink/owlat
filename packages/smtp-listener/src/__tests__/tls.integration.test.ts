@@ -12,10 +12,21 @@ import { describe, it, expect, beforeAll, afterEach } from 'vitest';
 import { createSmtpListener, type SmtpListener } from '../server.js';
 import { DEFAULT_SMTP_CIPHERS, resolveTlsConfig } from '../tls.js';
 import type { SmtpListenerOptions } from '../types.js';
-import { Client, generateCert } from './tlsTestUtil.js';
+import { Client, generateCert, startListener, closeAllListeners } from './tlsTestUtil.js';
 
+/** The six ECDHE-AEAD suites the TLS 1.2 policy advertises (the hardened list). */
 const AEAD_CIPHERS = new Set(DEFAULT_SMTP_CIPHERS.split(':'));
-const active: SmtpListener[] = [];
+/**
+ * TLS 1.3's fixed AEAD suites. TLS 1.3 does NOT honor the legacy `ciphers`
+ * string (it governs ≤ TLS 1.2 only) and reports a `TLS_*` suite name, so the
+ * TLS 1.2 policy is asserted on a version-pinned connection and TLS 1.3 gets a
+ * separate connectivity check against these names.
+ */
+const TLS13_AEAD_CIPHERS = new Set([
+	'TLS_AES_128_GCM_SHA256',
+	'TLS_AES_256_GCM_SHA384',
+	'TLS_CHACHA20_POLY1305_SHA256',
+]);
 let cert: string;
 let key: string;
 
@@ -29,7 +40,7 @@ async function start(overrides: Partial<SmtpListenerOptions> = {}): Promise<{
 	listener: SmtpListener;
 	port: number;
 }> {
-	const listener = createSmtpListener({
+	return startListener({
 		hostname: 'mx.test',
 		tls: { cert, key },
 		auth: {
@@ -42,23 +53,9 @@ async function start(overrides: Partial<SmtpListenerOptions> = {}): Promise<{
 		},
 		...overrides,
 	});
-	active.push(listener);
-	await listener.listen(0, '127.0.0.1');
-	const addr = listener.address();
-	if (!addr || typeof addr === 'string') throw new Error('no address');
-	return { listener, port: addr.port };
 }
 
-afterEach(async () => {
-	while (active.length > 0) {
-		const l = active.pop();
-		try {
-			await l?.close();
-		} catch {
-			/* already closed */
-		}
-	}
-});
+afterEach(closeAllListeners);
 
 describe('STARTTLS upgrade over a real socket', () => {
 	it('advertises STARTTLS in cleartext EHLO and drops it after the upgrade', async () => {
@@ -85,21 +82,53 @@ describe('STARTTLS upgrade over a real socket', () => {
 		c.end();
 	});
 
-	it('negotiates an AEAD ECDHE cipher at TLSv1.2 or better', async () => {
+	it('negotiates one of the hardened ECDHE-AEAD suites at TLSv1.2', async () => {
 		const { port } = await start();
 		const c = await Client.connect(port);
 		await c.waitCode(220);
 		c.write('STARTTLS\r\n');
 		await c.waitCode(220);
-		await c.startTls('mx.test');
+		// Pin to TLS 1.2 so the negotiated suite comes from the server's `ciphers`
+		// list — the only version the legacy cipher string governs.
+		await c.startTls('mx.test', 'TLSv1.2');
 		// Force a round-trip so the handshake is fully settled.
 		c.write('NOOP\r\n');
 		await c.waitCode(250);
 
 		const cipher = c.cipher;
 		expect(cipher).toBeDefined();
+		expect(cipher?.version).toBe('TLSv1.2');
 		expect(AEAD_CIPHERS.has(cipher?.name ?? '')).toBe(true);
-		expect(['TLSv1.2', 'TLSv1.3']).toContain(cipher?.version);
+		c.end();
+	});
+
+	it('also negotiates a TLS 1.3 AEAD suite when the client offers it', async () => {
+		const { port } = await start();
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('STARTTLS\r\n');
+		await c.waitCode(220);
+		await c.startTls('mx.test');
+		c.write('NOOP\r\n');
+		await c.waitCode(250);
+
+		const cipher = c.cipher;
+		expect(cipher).toBeDefined();
+		expect(cipher?.version).toBe('TLSv1.3');
+		expect(TLS13_AEAD_CIPHERS.has(cipher?.name ?? '')).toBe(true);
+		c.end();
+	});
+
+	it('rejects STARTTLS with a parameter (RFC 3207 §4) without upgrading', async () => {
+		const { port } = await start();
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('STARTTLS now\r\n');
+		await c.waitCode(501);
+		// Channel is still plaintext: a fresh EHLO still advertises STARTTLS.
+		c.write('EHLO client.test\r\n');
+		await c.waitCode(250);
+		expect(c.received).toContain('STARTTLS');
 		c.end();
 	});
 
@@ -138,7 +167,8 @@ describe('STARTTLS upgrade over a real socket', () => {
 describe('implicit TLS over a real socket', () => {
 	it('greets and advertises AUTH (never STARTTLS) from the first byte', async () => {
 		const { port } = await start({ implicitTls: true });
-		const c = await Client.connectTls(port, 'mx.test');
+		// Pin TLS 1.2 so the hardened `ciphers` list is exercised on the assertion.
+		const c = await Client.connectTls(port, 'mx.test', 'TLSv1.2');
 		await c.waitCode(220);
 		c.write('EHLO client.test\r\n');
 		await c.waitCode(250);
@@ -146,6 +176,7 @@ describe('implicit TLS over a real socket', () => {
 		expect(c.received).toMatch(/AUTH PLAIN LOGIN/);
 
 		const cipher = c.cipher;
+		expect(cipher?.version).toBe('TLSv1.2');
 		expect(AEAD_CIPHERS.has(cipher?.name ?? '')).toBe(true);
 		c.end();
 	});

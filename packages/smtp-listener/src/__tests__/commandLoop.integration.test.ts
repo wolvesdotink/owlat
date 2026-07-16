@@ -1,12 +1,13 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import net from 'node:net';
-import { createSmtpListener, type SmtpListener } from '../server.js';
+import type { SmtpListener } from '../server.js';
 import type { SmtpListenerOptions } from '../types.js';
+import { Client, startListener, closeAllListeners } from './tlsTestUtil.js';
 
 // ---------------------------------------------------------------------------
 // Test harness: start a real listener on an ephemeral port and drive it over a
-// raw TCP socket. No smtp-server, no mock — this exercises the actual command
-// loop, byte budget, dot decode and timeouts end-to-end.
+// raw TCP socket via the shared {@link Client}. No smtp-server, no mock — this
+// exercises the actual command loop, byte budget, dot decode and timeouts
+// end-to-end.
 // ---------------------------------------------------------------------------
 
 interface Harness {
@@ -15,102 +16,19 @@ interface Harness {
 	messages: Buffer[];
 }
 
-const active: SmtpListener[] = [];
-
 async function start(overrides: Partial<SmtpListenerOptions> = {}): Promise<Harness> {
 	const messages: Buffer[] = [];
-	const listener = createSmtpListener({
+	const { listener, port } = await startListener({
 		hostname: 'mx.test',
 		onData: (message) => {
 			messages.push(message);
 		},
 		...overrides,
 	});
-	active.push(listener);
-	await listener.listen(0, '127.0.0.1');
-	const addr = listener.address();
-	if (!addr || typeof addr === 'string') throw new Error('no address');
-	return { listener, port: addr.port, messages };
+	return { listener, port, messages };
 }
 
-afterEach(async () => {
-	while (active.length > 0) {
-		const l = active.pop();
-		try {
-			await l?.close();
-		} catch {
-			/* already closed */
-		}
-	}
-});
-
-/** Minimal line-buffering SMTP client for assertions. */
-class Client {
-	private buffer = '';
-	private waiters: Array<{ pred: (buf: string) => boolean; resolve: () => void }> = [];
-	closed = false;
-
-	private constructor(readonly socket: net.Socket) {
-		socket.setEncoding('utf8');
-		socket.on('data', (chunk: string) => {
-			this.buffer += chunk;
-			this.waiters = this.waiters.filter((w) => {
-				if (w.pred(this.buffer)) {
-					w.resolve();
-					return false;
-				}
-				return true;
-			});
-		});
-		socket.on('close', () => {
-			this.closed = true;
-			for (const w of this.waiters.splice(0)) w.resolve();
-		});
-	}
-
-	static connect(port: number): Promise<Client> {
-		return new Promise((resolve) => {
-			const socket = net.connect(port, '127.0.0.1', () => resolve(new Client(socket)));
-		});
-	}
-
-	get received(): string {
-		return this.buffer;
-	}
-
-	write(data: string): void {
-		this.socket.write(data);
-	}
-
-	waitFor(pred: (buf: string) => boolean, timeoutMs = 2000): Promise<void> {
-		if (pred(this.buffer)) return Promise.resolve();
-		return new Promise<void>((resolve, reject) => {
-			const timer = setTimeout(() => {
-				reject(new Error(`timeout waiting; buffer so far:\n${this.buffer}`));
-			}, timeoutMs);
-			this.waiters.push({
-				pred,
-				resolve: () => {
-					clearTimeout(timer);
-					resolve();
-				},
-			});
-		});
-	}
-
-	/** Wait until the reply line beginning with `code␣` (final line) appears. */
-	waitCode(code: number, timeoutMs = 2000): Promise<void> {
-		return this.waitFor((buf) => new RegExp(`(^|\\n)${code} `, 'm').test(buf), timeoutMs);
-	}
-
-	waitClose(timeoutMs = 2000): Promise<void> {
-		return this.waitFor(() => this.closed, timeoutMs);
-	}
-
-	end(): void {
-		this.socket.destroy();
-	}
-}
+afterEach(closeAllListeners);
 
 describe('command loop over a raw socket', () => {
 	it('completes a full MAIL/RCPT/DATA/QUIT transaction', async () => {

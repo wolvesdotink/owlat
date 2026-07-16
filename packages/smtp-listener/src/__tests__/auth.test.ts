@@ -10,13 +10,19 @@
  */
 
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
-import { createSmtpListener, type SmtpListener } from '../server.js';
+import type { SmtpListener } from '../server.js';
 import { performAuth, type SmtpAuthConfig } from '../auth.js';
-import type { SmtpReply, SmtpSession, SmtpListenerOptions } from '../types.js';
-import { Client, generateCert, plainToken, b64 } from './tlsTestUtil.js';
+import type { MutableSmtpSession, SmtpReply, SmtpListenerOptions } from '../types.js';
+import {
+	Client,
+	generateCert,
+	plainToken,
+	b64,
+	startListener,
+	closeAllListeners,
+} from './tlsTestUtil.js';
 
 const GENERIC_FAILURE = '535 5.7.8 Authentication credentials invalid';
-const active: SmtpListener[] = [];
 let cert: string;
 let key: string;
 
@@ -45,29 +51,15 @@ async function start(
 	listener: SmtpListener;
 	port: number;
 }> {
-	const listener = createSmtpListener({
+	return startListener({
 		hostname: 'mx.test',
 		tls: { cert, key },
 		auth,
 		...overrides,
 	});
-	active.push(listener);
-	await listener.listen(0, '127.0.0.1');
-	const addr = listener.address();
-	if (!addr || typeof addr === 'string') throw new Error('no address');
-	return { listener, port: addr.port };
 }
 
-afterEach(async () => {
-	while (active.length > 0) {
-		const l = active.pop();
-		try {
-			await l?.close();
-		} catch {
-			/* already closed */
-		}
-	}
-});
+afterEach(closeAllListeners);
 
 /** Open a connection and upgrade it to TLS, returning a ready secure client. */
 async function secureClient(port: number): Promise<Client> {
@@ -222,10 +214,29 @@ describe('no auth oracle — byte-identical failures', () => {
 		await c.waitCode(235);
 		c.end();
 	});
+
+	it('bounds a flood of failed AUTH attempts with 421 and closes the connection', async () => {
+		const auth = authConfig();
+		// A hostile client looping bad credentials (or unsupported mechanisms) must
+		// not hold the connection open forever — failed AUTH counts against the
+		// bad-command budget, matching `smtp-server`'s unauthenticated-command cap.
+		const { port } = await start(auth, { maxBadCommands: 3 });
+		const c = await secureClient(port);
+		for (let i = 0; i < 3; i++) {
+			c.write('AUTH CRAM-MD5\r\n'); // unsupported → generic 535, never reaches backend
+			await c.waitCode(535);
+		}
+		// The third failure exhausts the budget: 421 then socket teardown.
+		await c.waitCode(421);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		expect(auth.authenticate).not.toHaveBeenCalled();
+		c.end();
+	});
 });
 
 describe('performAuth unit — mechanism handling', () => {
-	function makeSession(): SmtpSession {
+	function makeSession(): MutableSmtpSession {
 		return {
 			id: 't',
 			remoteAddress: '127.0.0.1',

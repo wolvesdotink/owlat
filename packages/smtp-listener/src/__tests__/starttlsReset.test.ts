@@ -9,11 +9,10 @@
  */
 
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { createSmtpListener, type SmtpListener } from '../server.js';
+import type { SmtpListener } from '../server.js';
 import type { SmtpListenerOptions, SmtpSession } from '../types.js';
-import { Client, generateCert } from './tlsTestUtil.js';
+import { Client, generateCert, startListener, closeAllListeners } from './tlsTestUtil.js';
 
-const active: SmtpListener[] = [];
 let cert: string;
 let key: string;
 
@@ -27,28 +26,14 @@ async function start(overrides: Partial<SmtpListenerOptions> = {}): Promise<{
 	listener: SmtpListener;
 	port: number;
 }> {
-	const listener = createSmtpListener({
+	return startListener({
 		hostname: 'mx.test',
 		tls: { cert, key },
 		...overrides,
 	});
-	active.push(listener);
-	await listener.listen(0, '127.0.0.1');
-	const addr = listener.address();
-	if (!addr || typeof addr === 'string') throw new Error('no address');
-	return { listener, port: addr.port };
 }
 
-afterEach(async () => {
-	while (active.length > 0) {
-		const l = active.pop();
-		try {
-			await l?.close();
-		} catch {
-			/* already closed */
-		}
-	}
-});
+afterEach(closeAllListeners);
 
 describe('STARTTLS discards pre-upgrade state', () => {
 	it('a MAIL FROM issued before STARTTLS does not survive the upgrade', async () => {
@@ -69,6 +54,39 @@ describe('STARTTLS discards pre-upgrade state', () => {
 		c.write('RCPT TO:<b@b.test>\r\n');
 		await c.waitCode(503);
 		expect(c.received).toMatch(/Need MAIL command/);
+		c.end();
+	});
+
+	it('discards plaintext pipelined behind STARTTLS in one segment (injection guard)', async () => {
+		const seen: Array<SmtpSession> = [];
+		const { port } = await start({
+			onData: (_message, session) => {
+				seen.push(session);
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO client.test\r\n');
+		await c.waitCode(250);
+		// Pipeline a MAIL FROM in the SAME plaintext segment as STARTTLS: a
+		// STARTTLS-injection attacker's plaintext must be dropped with the reader,
+		// never replayed as if it arrived over the encrypted channel (RFC 3207 §6).
+		c.write('STARTTLS\r\nMAIL FROM:<evil@x.test>\r\n');
+		await c.waitCode(220);
+		await c.startTls('mx.test');
+
+		// The injected sender is gone: a bare RCPT is a bad sequence.
+		c.write('RCPT TO:<b@b.test>\r\n');
+		await c.waitCode(503);
+		expect(c.received).toMatch(/Need MAIL command/);
+
+		// A fresh transaction over TLS carries only the post-upgrade sender.
+		c.write('MAIL FROM:<real@tls.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		c.write('body\r\n.\r\n');
+		await c.waitFor((b) => /250 2\.0\.0/.test(b));
+		expect(seen).toHaveLength(1);
+		expect(seen[0]?.mailFrom?.address).toBe('real@tls.test');
 		c.end();
 	});
 
