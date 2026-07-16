@@ -111,4 +111,24 @@ describe('hosted plugin audit boundary', () => {
 			expect(JSON.stringify(row?.details)).not.toMatch(/payload|secret|provider error/i);
 		});
 	});
+
+	it('records autonomy gate outcomes without plugin-authored reasons', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await recordHostedPluginAudit(
+				ctx,
+				{ organizationId: 'tenant', pluginId: parsePluginId('policy-pack'), userId: 'system' },
+				'autonomy.gate',
+				'failed',
+				{ reasonCode: 'autonomy_gate_timeout' }
+			);
+			const row = await ctx.db.query('auditLogs').unique();
+			expect(row?.details).toEqual({
+				operation: 'autonomy.gate',
+				outcome: 'failed',
+				reasonCode: 'autonomy_gate_timeout',
+			});
+			expect(JSON.stringify(row?.details)).not.toMatch(/prompt|draft|message|plugin reason/i);
+		});
+	});
 });
