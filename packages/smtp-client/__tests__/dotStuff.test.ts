@@ -88,9 +88,13 @@ describe('dot-stuffing round trip', () => {
 		expect(big.length).toBeGreaterThan(5 * 1024 * 1024);
 
 		const whole = dotStuffMessage(big);
-		expect(referenceUnstuff(whole)).toEqual(toWireBody(big));
+		// Byte-equality via Buffer.equals: `toEqual` deep-compares multi-megabyte
+		// Buffers element-wise (~20s across these comparisons and CI-red on the 5s
+		// default timeout); `Buffer.equals` is the same assertion strength at native
+		// memcmp speed. Raising testTimeout would only bank the slow deep-compare.
+		expect(referenceUnstuff(whole).equals(toWireBody(big))).toBe(true);
 		// A large odd chunk size to exercise cross-chunk CR/dot state.
-		expect(encodeChunked(big, 4093)).toEqual(whole);
+		expect(encodeChunked(big, 4093).equals(whole)).toBe(true);
 	});
 
 	it('always terminates with <CRLF>.<CRLF> and never bare-terminates', () => {
