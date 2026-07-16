@@ -177,6 +177,39 @@ identity is treated the same way; the dispatcher never substitutes the requested
 model or the AI SDK's requested-model fallback. This availability tradeoff never
 reopens spend the provider may have billed.
 
+### Bundled send transports
+
+A bundled plugin may declare `contributes.sendTransports` only with an explicit
+feature flag and the `send:transport` capability. Each data-only descriptor has
+a local kebab-case id, label, bounded host-owned retry schedule, and one
+condition-independent package export. The stored provider kind is namespaced as
+`plugin.<pluginId>.<localId>` so plugin and core kinds cannot collide.
+
+Codegen verifies the export without executing it, emits an isolate-safe metadata
+catalog, and emits executable imports in a separate `'use node'` registry. A
+transport module exposes only `parseExtras(unknown)` and a single-attempt
+`send(params, extras)` operation. The host validates the exact module and result
+shapes, normalizes message attachments and typed failure codes, owns retries,
+and never exposes environment values, Convex contexts, routing state, health
+state, or audit writers to plugin code.
+
+Immediately before every network attempt, a mutation rechecks the singleton
+organization, bundled registration, enabled flag, manifest declaration, exact
+operator grant, and required environment-variable presence. The generic plugin
+host then mediates the call. Denial never invokes plugin code. Terminal outcomes
+schedule one health update and one audit entry containing only system
+attribution, outcome, and attempt count; message content, recipient data,
+provider ids, raw errors, and credentials are excluded.
+
+The composed provider catalog is the authority for route reads and writes.
+Reads skip unavailable or retired providers and apply the same readiness rule
+to the environment fallback. Writes reject unknown, duplicate, or enabled-but-
+unavailable providers. The operator UI reads the backend catalog, preserves
+stale route entries as unavailable, and treats unknown plugin authentication
+alignment conservatively. The built-in MTA, SES, Resend, and SMTP adapters keep
+their existing order, retry counts, routing selection, health behavior, and
+ambiguous-timeout semantics behind the same dispatch seam.
+
 ### Three execution tiers
 
 1. **Bundled plugins** are operator-installed packages composed at build time.
