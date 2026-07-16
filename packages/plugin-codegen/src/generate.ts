@@ -17,6 +17,10 @@ const SEND_TRANSPORT_MODULES_OUTPUT_PATH =
 	'apps/api/convex/plugins/sendTransportModules.generated.ts';
 const AGENT_STEP_CATALOG_OUTPUT_PATH = 'apps/api/convex/plugins/agentStepCatalog.generated.ts';
 const AGENT_STEP_MODULES_OUTPUT_PATH = 'apps/api/convex/plugins/agentStepModules.generated.ts';
+const DRAFT_STRATEGY_CATALOG_OUTPUT_PATH =
+	'apps/api/convex/plugins/draftStrategyCatalog.generated.ts';
+const DRAFT_STRATEGY_MODULES_OUTPUT_PATH =
+	'apps/api/convex/plugins/draftStrategyModules.generated.ts';
 const MAX_GENERATED_FILE_BYTES = 4 * 1024 * 1024;
 
 export interface GeneratePluginCompositionOptions {
@@ -54,6 +58,14 @@ export async function generatePluginComposition(
 		{
 			path: join(workspaceRoot, AGENT_STEP_MODULES_OUTPUT_PATH),
 			source: generated.agentStepModules,
+		},
+		{
+			path: join(workspaceRoot, DRAFT_STRATEGY_CATALOG_OUTPUT_PATH),
+			source: generated.draftStrategyCatalog,
+		},
+		{
+			path: join(workspaceRoot, DRAFT_STRATEGY_MODULES_OUTPUT_PATH),
+			source: generated.draftStrategyModules,
 		},
 	] as const;
 
