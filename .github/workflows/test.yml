@@ -3,58 +3,77 @@ name: CI
 # S10 / Phase 4.1: harden-runner gives us egress-audit + anomaly detection
 # against a compromised action. Version tags (@v5, @v3, …) are kept current
 # by Dependabot (.github/dependabot.yml, package-ecosystem: github-actions).
+#
+# Pull requests run only what they affect: the `detect` job asks Turborepo which
+# workspaces changed *through the package graph* and feeds a dynamic matrix, so a
+# docs-only PR runs one test job and one image build instead of all of them.
+# Pushes, the nightly schedule and manual dispatch run the FULL set as a safety
+# valve, so an affected-graph bug surfaces within a day rather than festering.
 
 on:
   pull_request:
     branches: [main, stage, pro, 'integration/**']
   push:
     branches: [main, stage, pro, 'integration/**']
+  schedule:
+    - cron: "0 5 * * *" # nightly full-matrix safety valve
+  workflow_dispatch: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  detect:
+    name: Detect affected
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.select.outputs.packages }}
+      api: ${{ steps.select.outputs.api }}
+      images: ${{ steps.select.outputs.images }}
+      java: ${{ steps.select.outputs.java }}
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+        with:
+          # --affected diffs HEAD against the PR base, so the base commit must
+          # be present in the checkout.
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Select affected work
+        id: select
+        env:
+          # Anything that isn't a PR (push, schedule, dispatch) runs everything.
+          RUN_ALL: ${{ github.event_name != 'pull_request' }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: bash scripts/ci-select-affected.sh
+
   test:
-    name: Test (${{ matrix.workspace }})
+    name: Test (${{ matrix.name }})
+    needs: detect
+    if: needs.detect.outputs.packages != '[]'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - workspace: apps/api
-            name: api
-          - workspace: apps/web
-            name: web
-          - workspace: packages/email-builder
-            name: email-builder
-          - workspace: packages/email-renderer
-            name: email-renderer
-          - workspace: packages/sdk-js
-            name: sdk-js
-          - workspace: packages/shared
-            name: shared
-          - workspace: packages/ui
-            name: ui
-          - workspace: apps/mta
-            name: mta
-          - workspace: packages/email-scanner
-            name: email-scanner
-          - workspace: packages/channels
-            name: channels
-          - workspace: apps/imap
-            name: imap
-          - workspace: apps/setup-cli
-            name: setup-cli
-          - workspace: apps/mail-sync
-            name: mail-sync
-          - workspace: apps/updater
-            name: updater
-          - workspace: apps/code-worker
-            name: code-worker
-          - workspace: packages/email-previewer
-            name: email-previewer
-
+        include: ${{ fromJson(needs.detect.outputs.packages) }}
     steps:
       - uses: step-security/harden-runner@v2
         with:
@@ -76,15 +95,112 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Phase 3: share Turborepo results across CI runs via the GitHub Actions
+      # cache, so a re-run / rebase-with-no-changes replays green suites in seconds.
+      - name: Turborepo remote cache
+        uses: rharkor/caching-for-turbo@v2.5.0
+
       - name: Run tests with coverage
-        run: bun run --cwd ${{ matrix.workspace }} test:coverage
+        run: bunx turbo run test:coverage --filter=${{ matrix.package }}
 
       - name: Upload coverage report
+        # Coverage thresholds are enforced during the run regardless; only keep
+        # the artifacts from canonical branches to cut PR noise (Phase 4.4).
+        if: always() && github.event_name == 'push'
         uses: actions/upload-artifact@v7
-        if: always()
         with:
           name: coverage-${{ matrix.name }}
-          path: ${{ matrix.workspace }}/coverage/
+          path: ${{ matrix.directory }}/coverage/
+          retention-days: 14
+
+  # apps/api is the long pole (3300+ tests). Shard it across 3 runners and merge
+  # the blob reports for the combined coverage/threshold check (Phase 4.1). Runs
+  # vitest directly rather than through turbo because sharding is per-invocation.
+  test-api:
+    name: Test api (shard ${{ matrix.shard }}/3)
+    needs: detect
+    if: needs.detect.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run tests (shard ${{ matrix.shard }}/3)
+        working-directory: apps/api
+        run: bunx vitest run --coverage --reporter=blob --shard=${{ matrix.shard }}/3
+
+      - name: Upload blob report
+        uses: actions/upload-artifact@v7
+        with:
+          name: api-blob-${{ matrix.shard }}
+          path: apps/api/.vitest-reports/*
+          include-hidden-files: true
+          retention-days: 1
+
+  test-api-merge:
+    name: Test api (merge + coverage)
+    needs: [detect, test-api]
+    if: needs.detect.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Cache bun dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download shard blob reports
+        uses: actions/download-artifact@v7
+        with:
+          path: apps/api/.vitest-reports
+          pattern: api-blob-*
+          merge-multiple: true
+
+      - name: Merge reports + enforce coverage
+        working-directory: apps/api
+        run: bunx vitest --merge-reports --coverage
+
+      - name: Upload coverage report
+        if: always() && github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-api
+          path: apps/api/coverage/
           retention-days: 14
 
   lint:
@@ -125,76 +241,17 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Turborepo remote cache
+        uses: rharkor/caching-for-turbo@v2.5.0
+
       - name: Lint
         run: bun run ci:lint
 
       - name: Typecheck
         run: bun run ci:typecheck
 
-  docker-build:
-    name: Docker Build (${{ matrix.name }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: web
-            dockerfile: apps/web/Dockerfile
-            context: .
-          - name: docs
-            dockerfile: apps/docs/Dockerfile
-            context: .
-          - name: marketing
-            dockerfile: apps/marketing/Dockerfile
-            context: .
-          - name: mta
-            dockerfile: apps/mta/Dockerfile
-            context: .
-          - name: updater
-            dockerfile: apps/updater/Dockerfile
-            # Monorepo-root context: catalog: versions only resolve via a bun
-            # workspace install (matches release.yml).
-            context: .
-          - name: convex-deploy
-            dockerfile: docker/convex-deploy.Dockerfile
-            context: .
-          - name: imap
-            dockerfile: apps/imap/Dockerfile
-            context: .
-          - name: mail-sync
-            dockerfile: apps/mail-sync/Dockerfile
-            context: .
-          - name: code-worker
-            dockerfile: apps/code-worker/Dockerfile
-            context: .
-          - name: setup
-            dockerfile: apps/setup-cli/Dockerfile
-            context: .
-
-    steps:
-      - uses: step-security/harden-runner@v2
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@v7
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build image
-        uses: docker/build-push-action@v7
-        with:
-          context: ${{ matrix.context }}
-          file: ${{ matrix.dockerfile }}
-          push: false
-          cache-from: type=gha,scope=${{ matrix.name }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
-
-  # E2E (Playwright) runs nightly + on manual dispatch in .github/workflows/e2e.yml
-  # — out-of-band so a failure or unset CONVEX_TEST_URL secret can't block PR merges.
-
-  # apps/docs is excluded from the root ci:* pipelines and the test matrix
-  # (it has no test suite) — without this job nothing typechecks it.
+  # apps/docs is excluded from the root ci:typecheck pipeline; its Nuxt typecheck
+  # runs here. Its vitest suite now runs through the affected `test` matrix above.
   docs-typecheck:
     name: Typecheck (apps/docs)
     runs-on: ubuntu-latest
@@ -222,10 +279,44 @@ jobs:
       - name: Typecheck
         run: bun run --cwd apps/docs typecheck
 
-  # packages/sdk-java is outside the bun workspace; its JUnit suite never ran
-  # in CI before this job.
+  docker-build:
+    name: Docker Build (${{ matrix.name }})
+    needs: detect
+    if: needs.detect.outputs.images != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.detect.outputs.images) }}
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # E2E (Playwright) runs nightly + on manual dispatch in .github/workflows/e2e.yml
+  # — out-of-band so a failure or unset CONVEX_TEST_URL secret can't block PR merges.
+
+  # packages/sdk-java is outside the bun workspace, so turbo can't track it; the
+  # detect job flags it from a Dockerfile-style path diff. Its JUnit suite never
+  # ran in CI before this job.
   sdk-java:
     name: Test (packages/sdk-java)
+    needs: detect
+    if: needs.detect.outputs.java == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: step-security/harden-runner@v2
@@ -242,3 +333,23 @@ jobs:
 
       - name: Build + test
         run: mvn -q --batch-mode --file packages/sdk-java/pom.xml verify
+
+  # Single required status check. Skipped matrix jobs (a docs-only PR skips the
+  # api shards, most images, etc.) don't count as failures — only real failures
+  # or cancellations do. Point branch protection at THIS job, not the matrices.
+  test-summary:
+    name: Test Summary
+    if: always()
+    needs: [detect, test, test-api, test-api-merge, lint, docs-typecheck, docker-build, sdk-java]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed
+        run: |
+          echo '${{ toJson(needs) }}'
+          failed=$(echo '${{ toJson(needs) }}' \
+            | jq -r 'to_entries[] | select(.value.result == "failure" or .value.result == "cancelled") | .key')
+          if [ -n "$failed" ]; then
+            echo "::error::Required jobs did not pass: $failed"
+            exit 1
+          fi
+          echo "All required jobs passed or were skipped."

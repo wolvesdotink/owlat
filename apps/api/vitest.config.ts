@@ -10,16 +10,20 @@ export default defineConfig({
 		server: { deps: { inline: ['convex-test'] } },
 		// Integration tests run the real HTTP-router graph through convex-test, which
 		// lazily transforms/imports the whole `convex/` tree on the first `t.fetch`
-		// in a worker. Under `ci:verify` the machine is over-subscribed (turbo runs
-		// every package in parallel AND vitest forks one worker per core, each with
-		// its own transform cache), so that one-time cold-start can exceed a tight
-		// timeout for whichever integration test lands first in a contended worker —
-		// a pure environmental flake, not a logic bug. Give the cold-start headroom,
-		// and retry: the re-run reuses the now-warm cache and passes in ms. Real
-		// failures still fail all attempts (retries are reported as flaky, not hidden).
-		testTimeout: 20000,
-		hookTimeout: 20000,
-		retry: 2,
+		// in a worker. That one-time cold-start can exceed a tight timeout for
+		// whichever integration test lands first in a contended worker — a pure
+		// environmental flake, not a logic bug. Give the cold-start headroom, and
+		// retry: the re-run reuses the now-warm cache and passes in ms. Real failures
+		// still fail all attempts (retries are reported as flaky, not hidden).
+		//
+		// These were 20s/retry:2 back when `ci:verify` ran every package in parallel
+		// and oversubscribed the machine. Turborepo test caching now means only the
+		// affected packages execute, so contention is far lower and the headroom was
+		// tightened to 10s/retry:1. Watch CI for cold-start flakes and raise again if
+		// they reappear.
+		testTimeout: 10000,
+		hookTimeout: 10000,
+		retry: 1,
 		// convex-test produces "Write outside of transaction" unhandled rejections
 		// when mutations call ctx.scheduler.runAfter() — this is a known limitation
 		dangerouslyIgnoreUnhandledErrors: true,

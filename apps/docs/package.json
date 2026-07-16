@@ -15,7 +15,8 @@
 		"lint:fix": "oxlint --config ../../oxlintrc.json . --fix",
 		"postinstall": "nuxt prepare",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
 	},
 	"dependencies": {
 		"@takumi-rs/core": "^1.1.2",
@@ -29,6 +30,7 @@
 		"@nuxtjs/seo": "^5.1.0",
 		"@tailwindcss/vite": "catalog:vue",
 		"@vue/server-renderer": "^3.5.30",
+		"@vitest/coverage-v8": "catalog:",
 		"better-sqlite3": "^12.8.0",
 		"tailwindcss": "catalog:vue",
 		"vitest": "catalog:"
