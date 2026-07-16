@@ -1,9 +1,9 @@
-import type { JsonValue } from "./json";
-import type { PluginId } from "./pluginId";
-import type { PluginStaticModuleExport } from "./sendTransport";
+import type { JsonValue } from './json';
+import type { PluginId } from './pluginId';
+import type { PluginStaticModuleExport } from './sendTransport';
 
 /** Capability assigned by the host to every bundled agent-pipeline step. */
-export const PLUGIN_AGENT_STEP_CAPABILITY = "agent:step" as const;
+export const PLUGIN_AGENT_STEP_CAPABILITY = 'agent:step' as const;
 
 export type PluginAgentStepCapability = typeof PLUGIN_AGENT_STEP_CAPABILITY;
 export type PluginAgentStepLocalId = string;
@@ -36,10 +36,10 @@ export interface PluginAgentStepInput {
 }
 
 export type PluginAgentStepResult =
-	| { readonly kind: "continue"; readonly output?: JsonValue }
+	| { readonly kind: 'continue'; readonly output?: JsonValue }
 	| {
-			readonly kind: "caution";
-			readonly to: "archived" | "draft_ready" | "failed";
+			readonly kind: 'caution';
+			readonly to: 'archived' | 'draft_ready' | 'failed';
 			readonly reason: string;
 			readonly output?: JsonValue;
 	  };
@@ -51,7 +51,7 @@ export interface PluginAgentStepModule {
 
 export function pluginAgentStepKind(
 	pluginId: PluginId,
-	localId: PluginAgentStepLocalId,
+	localId: PluginAgentStepLocalId
 ): PluginAgentStepKind {
 	return `plugin.${pluginId}.${localId}`;
 }

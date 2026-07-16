@@ -1,40 +1,40 @@
-import { extname, relative, sep } from "node:path";
-import { parse as parseVueSfc } from "@vue/compiler-sfc";
-import ts from "typescript";
+import { extname, relative, sep } from 'node:path';
+import { parse as parseVueSfc } from '@vue/compiler-sfc';
+import ts from 'typescript';
 import {
 	listRepositoryFiles,
 	readBoundedRepositoryUtf8File,
 	Utf8ByteBudget,
-} from "./boundedRepository";
-import { PluginCodegenError } from "./errors";
+} from './boundedRepository';
+import { PluginCodegenError } from './errors';
 import {
 	createRepositoryPackageMatcher,
 	readRepositoryModuleAliases,
 	type RepositoryModuleAlias,
 	type RepositoryPackageMatcher,
-} from "./repositoryAliases";
+} from './repositoryAliases';
 
 const SOURCE_EXTENSIONS = new Set([
-	".cjs",
-	".cts",
-	".js",
-	".jsx",
-	".mjs",
-	".mts",
-	".ts",
-	".tsx",
-	".vue",
+	'.cjs',
+	'.cts',
+	'.js',
+	'.jsx',
+	'.mjs',
+	'.mts',
+	'.ts',
+	'.tsx',
+	'.vue',
 ]);
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024;
 const GENERATED_COMPOSITION_FILES = new Set([
-	"apps/api/convex/plugins/plugins.generated.ts",
-	"apps/api/convex/plugins/components.generated.ts",
-	"apps/web/app/plugins/plugin-composition.generated.ts",
-	"apps/api/convex/plugins/sendTransportCatalog.generated.ts",
-	"apps/api/convex/plugins/sendTransportModules.generated.ts",
-	"apps/api/convex/plugins/agentStepCatalog.generated.ts",
-	"apps/api/convex/plugins/agentStepModules.generated.ts",
+	'apps/api/convex/plugins/plugins.generated.ts',
+	'apps/api/convex/plugins/components.generated.ts',
+	'apps/web/app/plugins/plugin-composition.generated.ts',
+	'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
+	'apps/api/convex/plugins/sendTransportModules.generated.ts',
+	'apps/api/convex/plugins/agentStepCatalog.generated.ts',
+	'apps/api/convex/plugins/agentStepModules.generated.ts',
 ]);
 
 export interface DirectPluginImport {
@@ -48,7 +48,7 @@ export function isPluginBoundarySourceFile(file: string): boolean {
 
 export async function checkDirectPluginImports(
 	workspaceRoot: string,
-	packageNames: readonly string[],
+	packageNames: readonly string[]
 ): Promise<void> {
 	if (packageNames.length === 0) return;
 	const repositoryFiles = await listRepositoryFiles(workspaceRoot);
@@ -57,7 +57,7 @@ export async function checkDirectPluginImports(
 	const files = repositoryFiles.filter((file) => {
 		const relativeFile = normalizePath(relative(workspaceRoot, file));
 		return (
-			(relativeFile.startsWith("apps/") || relativeFile.startsWith("packages/")) &&
+			(relativeFile.startsWith('apps/') || relativeFile.startsWith('packages/')) &&
 			isPluginBoundarySourceFile(file)
 		);
 	});
@@ -74,8 +74,8 @@ export async function checkDirectPluginImports(
 		}
 		if (!sourceBudget.consume(source)) {
 			throw new PluginCodegenError(
-				"repository_inventory_invalid",
-				`Repository source scan exceeds the ${MAX_TOTAL_SOURCE_BYTES}-byte safety limit`,
+				'repository_inventory_invalid',
+				`Repository source scan exceeds the ${MAX_TOTAL_SOURCE_BYTES}-byte safety limit`
 			);
 		}
 		findings.push(...findDirectPluginImportsWithScan(source, relativeFile, scan));
@@ -86,9 +86,9 @@ export async function checkDirectPluginImports(
 			.map((finding) => `${finding.file}: imports ${finding.packageSpecifier}`)
 			.sort();
 		throw new PluginCodegenError(
-			"direct_plugin_import",
-			"Core modules must consume bundled plugins through the generated composition point",
-			details,
+			'direct_plugin_import',
+			'Core modules must consume bundled plugins through the generated composition point',
+			details
 		);
 	}
 }
@@ -97,7 +97,7 @@ export function findDirectPluginImports(
 	source: string,
 	file: string,
 	packageNames: readonly string[],
-	aliases: readonly RepositoryModuleAlias[] = [],
+	aliases: readonly RepositoryModuleAlias[] = []
 ): readonly DirectPluginImport[] {
 	return findDirectPluginImportsWithScan(source, file, createBoundaryScan(packageNames, aliases));
 }
@@ -111,7 +111,7 @@ interface BoundaryScan {
 
 function createBoundaryScan(
 	packageNames: readonly string[],
-	aliases: readonly RepositoryModuleAlias[],
+	aliases: readonly RepositoryModuleAlias[]
 ): BoundaryScan {
 	return {
 		packageMatcher: createRepositoryPackageMatcher(packageNames, aliases),
@@ -122,10 +122,10 @@ function createBoundaryScan(
 function findDirectPluginImportsWithScan(
 	source: string,
 	file: string,
-	scan: BoundaryScan,
+	scan: BoundaryScan
 ): readonly DirectPluginImport[] {
 	const extracted =
-		extname(file) === ".vue"
+		extname(file) === '.vue'
 			? extractVueDependencies(source, file)
 			: { scripts: [source], externalSpecifiers: [] };
 	const findings: DirectPluginImport[] = [];
@@ -154,13 +154,13 @@ function addFinding(
 	scan: BoundaryScan,
 	findings: DirectPluginImport[],
 	file: string,
-	packageSpecifier: string,
+	packageSpecifier: string
 ): void {
 	if (scan.findingCount >= MAX_BOUNDARY_FINDINGS) {
 		throw new PluginCodegenError(
-			"repository_inventory_invalid",
+			'repository_inventory_invalid',
 			`Plugin boundary scan exceeds the ${MAX_BOUNDARY_FINDINGS}-finding safety limit`,
-			[file],
+			[file]
 		);
 	}
 	scan.findingCount += 1;
@@ -175,7 +175,7 @@ interface ModuleLoaderBindings {
 
 function readModuleSpecifier(
 	node: ts.Node,
-	moduleLoaders: ModuleLoaderBindings,
+	moduleLoaders: ModuleLoaderBindings
 ): string | undefined {
 	if (
 		(ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
@@ -224,7 +224,7 @@ function findModuleLoaderBindings(sourceFile: ts.SourceFile): ModuleLoaderBindin
 		}
 		if (imports.namedBindings && ts.isNamedImports(imports.namedBindings)) {
 			for (const element of imports.namedBindings.elements) {
-				if ((element.propertyName ?? element.name).text === "createRequire") {
+				if ((element.propertyName ?? element.name).text === 'createRequire') {
 					createRequireFactories.add(element.name.text);
 				}
 			}
@@ -238,7 +238,7 @@ function findModuleLoaderBindings(sourceFile: ts.SourceFile): ModuleLoaderBindin
 					for (const element of node.name.elements) {
 						if (
 							ts.isIdentifier(element.name) &&
-							readPropertyName(element.propertyName ?? element.name) === "createRequire"
+							readPropertyName(element.propertyName ?? element.name) === 'createRequire'
 						) {
 							createRequireFactories.add(element.name.text);
 						}
@@ -256,7 +256,7 @@ function findModuleLoaderBindings(sourceFile: ts.SourceFile): ModuleLoaderBindin
 	};
 	collectCommonJsBindings(sourceFile);
 
-	const requireFunctions = new Set(["require"]);
+	const requireFunctions = new Set(['require']);
 	const visit = (node: ts.Node): void => {
 		if (
 			ts.isVariableDeclaration(node) &&
@@ -283,38 +283,38 @@ function findModuleLoaderBindings(sourceFile: ts.SourceFile): ModuleLoaderBindin
 
 function isModuleLoaderCall(
 	expression: ts.LeftHandSideExpression,
-	bindings: ModuleLoaderBindings,
+	bindings: ModuleLoaderBindings
 ): boolean {
 	if (ts.isIdentifier(expression) && bindings.requireFunctions.has(expression.text)) return true;
 	if (isCommonJsModuleRequire(expression)) return true;
 	if (
 		ts.isPropertyAccessExpression(expression) &&
 		ts.isIdentifier(expression.expression) &&
-		expression.expression.text === "Bun" &&
-		expression.name.text === "require"
+		expression.expression.text === 'Bun' &&
+		expression.name.text === 'require'
 	) {
 		return true;
 	}
 	if (
 		ts.isElementAccessExpression(expression) &&
 		ts.isIdentifier(expression.expression) &&
-		expression.expression.text === "Bun" &&
+		expression.expression.text === 'Bun' &&
 		expression.argumentExpression &&
-		readStaticString(expression.argumentExpression) === "require"
+		readStaticString(expression.argumentExpression) === 'require'
 	) {
 		return true;
 	}
 	return isCreateRequireCall(
 		expression,
 		bindings.createRequireFactories,
-		bindings.moduleNamespaces,
+		bindings.moduleNamespaces
 	);
 }
 
 function isCreateRequireCall(
 	expression: ts.Expression,
 	createRequireFactories: ReadonlySet<string>,
-	moduleNamespaces: ReadonlySet<string>,
+	moduleNamespaces: ReadonlySet<string>
 ): expression is ts.CallExpression {
 	if (!ts.isCallExpression(expression)) return false;
 	const factory = expression.expression;
@@ -324,9 +324,9 @@ function isCreateRequireCall(
 
 function isCreateRequireFactoryReference(
 	expression: ts.Expression,
-	moduleNamespaces: ReadonlySet<string>,
+	moduleNamespaces: ReadonlySet<string>
 ): boolean {
-	if (ts.isPropertyAccessExpression(expression) && expression.name.text === "createRequire") {
+	if (ts.isPropertyAccessExpression(expression) && expression.name.text === 'createRequire') {
 		return (
 			(ts.isIdentifier(expression.expression) &&
 				moduleNamespaces.has(expression.expression.text)) ||
@@ -336,7 +336,7 @@ function isCreateRequireFactoryReference(
 	return (
 		ts.isElementAccessExpression(expression) &&
 		expression.argumentExpression !== undefined &&
-		readStaticString(expression.argumentExpression) === "createRequire" &&
+		readStaticString(expression.argumentExpression) === 'createRequire' &&
 		((ts.isIdentifier(expression.expression) && moduleNamespaces.has(expression.expression.text)) ||
 			isNodeModuleLoadCall(expression.expression))
 	);
@@ -352,31 +352,31 @@ function isNodeModuleLoadCall(expression: ts.Expression): boolean {
 }
 
 function isDirectRequire(expression: ts.Expression): boolean {
-	return ts.isIdentifier(expression) && expression.text === "require";
+	return ts.isIdentifier(expression) && expression.text === 'require';
 }
 
 function isCommonJsModuleRequire(expression: ts.Expression): boolean {
 	if (
 		ts.isPropertyAccessExpression(expression) &&
 		ts.isIdentifier(expression.expression) &&
-		expression.expression.text === "module" &&
-		expression.name.text === "require"
+		expression.expression.text === 'module' &&
+		expression.name.text === 'require'
 	) {
 		return true;
 	}
 	return (
 		ts.isElementAccessExpression(expression) &&
 		ts.isIdentifier(expression.expression) &&
-		expression.expression.text === "module" &&
+		expression.expression.text === 'module' &&
 		expression.argumentExpression !== undefined &&
-		readStaticString(expression.argumentExpression) === "require"
+		readStaticString(expression.argumentExpression) === 'require'
 	);
 }
 
 function isNodeModuleSpecifier(expression: ts.Expression): boolean {
 	return (
 		ts.isStringLiteral(expression) &&
-		(expression.text === "node:module" || expression.text === "module")
+		(expression.text === 'node:module' || expression.text === 'module')
 	);
 }
 
@@ -394,16 +394,16 @@ function readPropertyName(name: ts.PropertyName | ts.BindingName): string | unde
 
 function extractVueDependencies(
 	source: string,
-	file: string,
+	file: string
 ): { readonly scripts: readonly string[]; readonly externalSpecifiers: readonly string[] } {
 	const { descriptor, errors } = parseVueSfc(source, { filename: file });
 	if (errors.length > 0) throw sourceInvalid(file);
 	return {
 		scripts: [descriptor.script?.content, descriptor.scriptSetup?.content].filter(
-			(script): script is string => script !== undefined,
+			(script): script is string => script !== undefined
 		),
 		externalSpecifiers: [descriptor.script?.src, descriptor.scriptSetup?.src].filter(
-			(specifier): specifier is string => specifier !== undefined,
+			(specifier): specifier is string => specifier !== undefined
 		),
 	};
 }
@@ -417,13 +417,13 @@ function readParseDiagnostics(sourceFile: ts.SourceFile): readonly ts.Diagnostic
 
 function sourceInvalid(file: string, cause?: unknown): PluginCodegenError {
 	return new PluginCodegenError(
-		"source_invalid",
+		'source_invalid',
 		`Cannot safely scan repository source ${file}`,
 		[file],
-		cause === undefined ? undefined : { cause },
+		cause === undefined ? undefined : { cause }
 	);
 }
 
 function normalizePath(path: string): string {
-	return sep === "/" ? path : path.split(sep).join("/");
+	return sep === '/' ? path : path.split(sep).join('/');
 }
