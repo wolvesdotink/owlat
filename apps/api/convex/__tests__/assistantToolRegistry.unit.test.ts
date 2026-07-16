@@ -204,6 +204,19 @@ describe('withHostScrub', () => {
 		}
 		expect(chunks).toEqual([{ note: WITHHELD }, { note: 'safe' }]);
 	});
+
+	it('propagates the original error unchanged — the host never swallows or rewraps it', async () => {
+		const boom = new Error('tool exploded');
+		const inner = tool({
+			description: 'thrower',
+			inputSchema: z.object({}),
+			execute: async (): Promise<{ ok: boolean }> => {
+				throw boom;
+			},
+		});
+		const wrapped = withHostScrub(inner);
+		await expect(wrapped.execute?.({}, options)).rejects.toBe(boom);
+	});
 });
 
 describe('buildAssistantTools', () => {
