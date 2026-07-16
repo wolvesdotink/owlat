@@ -8,6 +8,8 @@ const classificationCaution: PluginAgentLifecycleEdge = {
 	from: 'classifying',
 	to: 'archived',
 };
+const uncheckedLifecycleEdge = (value: unknown): PluginAgentLifecycleEdge =>
+	value as PluginAgentLifecycleEdge;
 const definition = (
 	kind: string,
 	after: string,
@@ -115,6 +117,50 @@ describe('hosted agent step composition', () => {
 			expect.objectContaining<Partial<AgentStepCompositionError>>({
 				code: 'unsafe_lifecycle_edge',
 				stepKind: child.kind,
+			})
+		);
+	});
+
+	it.each([
+		['classification', 'security_scan', { kind: 'caution', from: 'classifying', to: 'sent' }],
+		['classification', 'classify', { kind: 'caution', from: 'classifying', to: 'approved' }],
+		['classification', 'security_scan', { kind: 'caution', from: 'classifying', to: 'unknown' }],
+		['classification', 'classify', { kind: 'caution', from: 'drafting', to: 'archived' }],
+		['classification', 'classify', { kind: 'draft_review', from: 'classifying', to: 'archived' }],
+		['before-draft', 'clarify', { kind: 'caution', from: 'drafting', to: 'sent' }],
+		['before-draft', 'clarify', { kind: 'caution', from: 'drafting', to: 'approved' }],
+		['before-draft', 'clarify', { kind: 'caution', from: 'drafting', to: 'unknown' }],
+		['before-draft', 'clarify', { kind: 'caution', from: 'classifying', to: 'archived' }],
+		['before-draft', 'clarify', { kind: 'draft_review', from: 'drafting', to: 'draft_ready' }],
+		['post-draft', 'draft', { kind: 'caution', from: 'drafting', to: 'sent' }],
+		['post-draft', 'draft', { kind: 'caution', from: 'drafting', to: 'approved' }],
+		['post-draft', 'draft', { kind: 'caution', from: 'drafting', to: 'unknown' }],
+		['post-draft', 'draft', { kind: 'caution', from: 'classifying', to: 'archived' }],
+		['post-draft', 'draft', { kind: 'draft_review', from: 'classifying', to: 'draft_ready' }],
+		['post-draft', 'draft', { kind: 'draft_review', from: 'drafting', to: 'archived' }],
+		['post-draft', 'draft', { kind: 'unknown', from: 'drafting', to: 'archived' }],
+	] as const)('rejects an unchecked %s lifecycle tuple after %s', (_placement, after, edge) => {
+		const step = definition('plugin.policy-pack.unchecked', after, uncheckedLifecycleEdge(edge));
+		expect(() => composeAgentStepDefinitions([step])).toThrowError(
+			expect.objectContaining<Partial<AgentStepCompositionError>>({
+				code: 'unsafe_lifecycle_edge',
+				stepKind: step.kind,
+			})
+		);
+	});
+
+	it.each([
+		null,
+		'caution',
+		{},
+		{ kind: 'caution', from: 'drafting' },
+		Object.defineProperty({}, 'kind', { enumerable: true, get: () => 'caution' }),
+	])('rejects a malformed unchecked lifecycle edge %#', (edge) => {
+		const step = definition('plugin.policy-pack.malformed', 'draft', uncheckedLifecycleEdge(edge));
+		expect(() => composeAgentStepDefinitions([step])).toThrowError(
+			expect.objectContaining<Partial<AgentStepCompositionError>>({
+				code: 'unsafe_lifecycle_edge',
+				stepKind: step.kind,
 			})
 		);
 	});

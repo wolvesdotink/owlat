@@ -54,6 +54,29 @@ interface UnresolvedAgentStepDefinition extends Omit<
 	'continuationStatus' | 'placement'
 > {}
 
+interface LifecycleEdgeTuple {
+	readonly kind: string;
+	readonly from: string;
+	readonly to: string;
+}
+
+const CAUTION_TARGETS = ['archived', 'failed'] as const;
+
+const SAFE_LIFECYCLE_EDGES_BY_PLACEMENT: Readonly<
+	Record<AgentStepPlacement, readonly LifecycleEdgeTuple[]>
+> = Object.freeze({
+	classification: Object.freeze(
+		CAUTION_TARGETS.map((to) => Object.freeze({ kind: 'caution', from: 'classifying', to }))
+	),
+	before_draft: Object.freeze(
+		CAUTION_TARGETS.map((to) => Object.freeze({ kind: 'caution', from: 'drafting', to }))
+	),
+	after_draft: Object.freeze([
+		...CAUTION_TARGETS.map((to) => Object.freeze({ kind: 'caution', from: 'drafting', to })),
+		Object.freeze({ kind: 'draft_review', from: 'drafting', to: 'draft_ready' }),
+	]),
+});
+
 /** Flatten manifest declarations and validate them against the host-owned pipeline policy. */
 export function composeBundledAgentSteps(
 	plugins: readonly BundledPlugin[]
@@ -152,17 +175,44 @@ function validateEdges(
 	definition: UnresolvedAgentStepDefinition,
 	placement: AgentStepPlacement
 ): void {
+	if (!Array.isArray(definition.lifecycleEdges)) {
+		throwUnsafeLifecycleEdge(definition.kind, undefined);
+	}
 	for (const edge of definition.lifecycleEdges) {
-		const isSafe =
-			(placement === 'classification' && edge.kind === 'caution' && edge.from === 'classifying') ||
-			(placement === 'before_draft' && edge.kind === 'caution' && edge.from === 'drafting') ||
-			(placement === 'after_draft' && edge.from === 'drafting');
-		if (!isSafe) {
-			throw new AgentStepCompositionError(
-				'unsafe_lifecycle_edge',
-				definition.kind,
-				`Agent step ${definition.kind} declares unsafe lifecycle edge ${edge.from}->${edge.to}`
-			);
+		const tuple = readLifecycleEdgeTuple(edge);
+		if (!tuple || !isSafeLifecycleEdge(placement, tuple)) {
+			throwUnsafeLifecycleEdge(definition.kind, tuple);
 		}
 	}
+}
+
+function readLifecycleEdgeTuple(value: unknown): LifecycleEdgeTuple | undefined {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+	const kind = ownStringField(value, 'kind');
+	const from = ownStringField(value, 'from');
+	const to = ownStringField(value, 'to');
+	if (kind === undefined || from === undefined || to === undefined) return undefined;
+	return { kind, from, to };
+}
+
+function ownStringField(value: object, field: keyof LifecycleEdgeTuple): string | undefined {
+	const descriptor = Object.getOwnPropertyDescriptor(value, field);
+	return descriptor && 'value' in descriptor && typeof descriptor.value === 'string'
+		? descriptor.value
+		: undefined;
+}
+
+function isSafeLifecycleEdge(placement: AgentStepPlacement, edge: LifecycleEdgeTuple): boolean {
+	return SAFE_LIFECYCLE_EDGES_BY_PLACEMENT[placement].some(
+		(allowed) => allowed.kind === edge.kind && allowed.from === edge.from && allowed.to === edge.to
+	);
+}
+
+function throwUnsafeLifecycleEdge(stepKind: string, edge: LifecycleEdgeTuple | undefined): never {
+	const description = edge ? `${edge.kind}:${edge.from}->${edge.to}` : 'malformed edge';
+	throw new AgentStepCompositionError(
+		'unsafe_lifecycle_edge',
+		stepKind,
+		`Agent step ${stepKind} declares unsafe lifecycle edge ${description}`
+	);
 }
