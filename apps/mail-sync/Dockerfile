@@ -16,9 +16,14 @@ COPY --parents apps/*/package.json packages/*/package.json ./
 RUN bun install --frozen-lockfile --filter @owlat/mail-sync
 
 # Copy mail-sync source + the workspace packages it imports (TypeScript source).
+# @owlat/mail-message is the ingest parser; it pulls in @owlat/mail-canon
+# (transitive workspace dep) for DKIM canonicalization, so both must be present
+# or tsc fails to resolve the module.
 COPY apps/mail-sync/tsconfig.json apps/mail-sync/
 COPY apps/mail-sync/src/ apps/mail-sync/src/
 COPY packages/smtp-client/ packages/smtp-client/
+COPY packages/mail-message/ packages/mail-message/
+COPY packages/mail-canon/ packages/mail-canon/
 
 RUN cd apps/mail-sync && bun run build
 

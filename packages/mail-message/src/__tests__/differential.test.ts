@@ -168,6 +168,52 @@ describe('parseMessage differential parity vs mailparser on the P2 hostile corpu
 });
 
 /**
+ * SingleKeys parity: mailparser treats `from`/`sender`/`reply-to` (and
+ * `return-path`) as `singleKeys` — a repeated occurrence collapses to the LAST
+ * instance (`mail-parser.js`: `headers.set(key, value[value.length - 1])`), never
+ * an array. `parseMessage` must mirror that so a (malformed) repeated `From:` /
+ * `Reply-To:` projects identically on both stacks — otherwise the mail-sync
+ * ingest cutover would ship an array the oracle never produced. `to`/`cc`/`bcc`
+ * are NOT singleKeys and keep accumulating; that split is unchanged.
+ */
+describe('parseMessage matches mailparser singleKeys collapse on repeated address headers', () => {
+	const build = (headers: string[]): Buffer =>
+		Buffer.from(
+			[...headers, 'Subject: dup', 'Message-ID: <dup@example.com>', '', 'Body.', ''].join('\r\n'),
+			'binary'
+		);
+
+	it('collapses a repeated From: to the last instance (vs mailparser)', async () => {
+		const raw = build([
+			'From: First <first@example.org>',
+			'From: Second <second@example.org>',
+			'To: Bob <bob@example.com>',
+		]);
+		const theirs = await simpleParser(raw);
+		const ours = parseMessage(raw);
+
+		expect(addrList(ours.from)).toEqual(addrList(theirs.from));
+		expect(addrList(ours.from)).toEqual([{ name: 'Second', address: 'second@example.org' }]);
+		expect(Array.isArray(ours.from)).toBe(false);
+	});
+
+	it('collapses a repeated Reply-To: to the last instance (vs mailparser)', async () => {
+		const raw = build([
+			'From: Alice <alice@example.com>',
+			'Reply-To: Amy <amy@example.com>',
+			'Reply-To: ben@example.org',
+			'To: Bob <bob@example.com>',
+		]);
+		const theirs = await simpleParser(raw);
+		const ours = parseMessage(raw);
+
+		expect(addrList(ours.replyTo)).toEqual(addrList(theirs.replyTo));
+		expect(addrList(ours.replyTo)).toEqual([{ name: '', address: 'ben@example.org' }]);
+		expect(Array.isArray(ours.replyTo)).toBe(false);
+	});
+});
+
+/**
  * Drop-in typecheck proof (gate (b)): the SAME partial-`ParsedMail` mock shapes
  * the bounce pipeline builds today must typecheck as `ParsedMessage`, and every
  * field the six consumers read must be readable with the exact access patterns

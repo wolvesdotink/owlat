@@ -31,17 +31,13 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { generateKeyPairSync } from 'node:crypto';
-import { simpleParser } from 'mailparser';
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
-import { verifyDkim as verifyDkimOld } from '../../bounce/inboundDkim';
 import {
 	diffAuth,
 	diffDrivers,
 	formatReport,
 	loadCorpus,
 	owlatNewStack,
-	projectDrivers,
-	resolverFromHint,
 	runReplay,
 	saveDivergent,
 	type AuthVerdicts,
@@ -49,6 +45,7 @@ import {
 	type ReplayStackSide,
 	type RoutingDrivers,
 } from '../inboundReplay';
+import { oracleOldStack } from './helpers/oracleStack';
 
 const CORPUS_DIR = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -58,25 +55,6 @@ const CORPUS_DIR = join(
 );
 
 const BODY_MARKER = 'SECRETBODYMARKER7f3a';
-
-/**
- * The OLD (oracle) stack: mailparser for the drivers, and the pinned
- * `mailauth`-backed DKIM oracle (`bounce/inboundDkim.verifyDkim`) — the library
- * verdict the in-house verifier replaced — for the verdict. Both verifiers
- * return a verdict unconditionally (`none` for an unsigned message), so unsigned
- * corpus mail yields matching `none` verdicts and no auth diff.
- */
-const oracleOldStack: ReplayStackSide = {
-	async project(raw: Buffer): Promise<RoutingDrivers> {
-		const parsed = await simpleParser(raw);
-		return projectDrivers(parsed, (name) => parsed.headers.get(name));
-	},
-	async auth(input: ReplayInput): Promise<AuthVerdicts> {
-		const inner = resolverFromHint(input.dkim);
-		const outcome = await verifyDkimOld(input.raw, { resolver: (name) => inner(name, 'TXT') });
-		return { dkim: outcome.result };
-	},
-};
 
 describe('inbound shadow-replay over the checked-in corpus slice', () => {
 	it('loads every .eml in the slice', () => {
