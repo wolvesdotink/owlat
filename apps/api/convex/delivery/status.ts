@@ -169,9 +169,7 @@ export const getTransportSummary = authedQuery({
 
 		return {
 			provider,
-			providerLabel: isSendProviderKind(provider)
-				? sendProviderCatalogEntry(provider).label
-				: null,
+			providerLabel: isSendProviderKind(provider) ? sendProviderCatalogEntry(provider).label : null,
 			canSend,
 			advancedRoutingActive,
 			health,

@@ -36,7 +36,9 @@ describe('provider routing catalog presentation', () => {
 			{ providerType: 'retired-provider', isEnabled: true },
 		]);
 		expect(
-			seedRouteProviders(options, [{ providerType: 'retired-provider', weight: 30, isEnabled: true }])
+			seedRouteProviders(options, [
+				{ providerType: 'retired-provider', weight: 30, isEnabled: true },
+			])
 		).toEqual([
 			{ providerType: 'retired-provider', weight: 30, isEnabled: false },
 			{ providerType: 'mta', weight: 100, isEnabled: false },

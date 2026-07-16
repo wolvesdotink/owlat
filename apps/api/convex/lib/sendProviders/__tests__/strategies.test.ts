@@ -17,9 +17,9 @@ describe('Send route strategy registry', () => {
 	});
 
 	it('strategyFor throws on unknown kinds', () => {
-		expect(() =>
-			strategyFor('unknown' as SendRouteStrategyKind),
-		).toThrow(/Unknown send route strategy/);
+		expect(() => strategyFor('unknown' as SendRouteStrategyKind)).toThrow(
+			/Unknown send route strategy/
+		);
 	});
 
 	it('SEND_ROUTE_STRATEGIES has exactly the three documented kinds', () => {
@@ -81,9 +81,9 @@ describe('priorityFailoverStrategy', () => {
 			{ providerType: 'mta', status: 'down', successRate: 0.1 },
 			{ providerType: 'ses', status: 'healthy', successRate: 0.99 },
 		];
-		expect(
-			strategyFor('priority_failover').select(entries, undefined, health),
-		).toMatchObject({ providerType: 'ses' });
+		expect(strategyFor('priority_failover').select(entries, undefined, health)).toMatchObject({
+			providerType: 'ses',
+		});
 	});
 
 	it('accepts "degraded" providers (only "down" is excluded)', () => {
@@ -95,9 +95,9 @@ describe('priorityFailoverStrategy', () => {
 			{ providerType: 'mta', status: 'degraded', successRate: 0.6 },
 			{ providerType: 'ses', status: 'healthy', successRate: 0.99 },
 		];
-		expect(
-			strategyFor('priority_failover').select(entries, undefined, health),
-		).toMatchObject({ providerType: 'mta' });
+		expect(strategyFor('priority_failover').select(entries, undefined, health)).toMatchObject({
+			providerType: 'mta',
+		});
 	});
 
 	it('falls through to first when all are down', () => {
@@ -109,9 +109,9 @@ describe('priorityFailoverStrategy', () => {
 			{ providerType: 'mta', status: 'down', successRate: 0.1 },
 			{ providerType: 'ses', status: 'down', successRate: 0.1 },
 		];
-		expect(
-			strategyFor('priority_failover').select(entries, undefined, health),
-		).toMatchObject({ providerType: 'mta' });
+		expect(strategyFor('priority_failover').select(entries, undefined, health)).toMatchObject({
+			providerType: 'mta',
+		});
 	});
 
 	it('returns null when entries empty', () => {
