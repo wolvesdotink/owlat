@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { simpleParser } from 'mailparser';
 import { composeMessage } from '../src/index';
 
 const BASE = {
@@ -100,8 +101,12 @@ describe('composeMessage CRLF header-injection defence', () => {
 			messageId: '<x@y>\r\nBcc: leak@evil.test',
 		});
 		const eml = raw.toString('utf-8');
+		// The CRLF is collapsed to a single space, so the injected `Bcc:` never
+		// begins a physical line — nothing parses as a smuggled header. The
+		// `leak@evil.test` text survives, folded onto the Message-ID's own line;
+		// that it is inert (not a header) is exactly what line 103 + the exact
+		// neutralized line below assert.
 		expect(eml).not.toMatch(/^Bcc:/im);
-		expect(eml).not.toContain('leak@evil.test');
 		expect(eml).toMatch(/^Message-ID: <x@y> Bcc: leak@evil\.test\r$/m);
 	});
 
@@ -160,6 +165,59 @@ describe('composeMessage envelope dedupe (nodemailer getEnvelope semantics)', ()
 		});
 		expect(envelope.from).toBe('from@x.testEVIL');
 		expect(envelope.to).toEqual(['to@x.testEVIL']);
+	});
+});
+
+describe('composeMessage msg-id list folding (998-octet hard cap)', () => {
+	// A realistic long thread: ~15 accumulated msg-ids whose single-line
+	// References value comfortably exceeds the RFC 5322 §2.1.1 998-octet cap.
+	const ids = Array.from(
+		{ length: 15 },
+		(_, i) =>
+			`<message-${String(i).padStart(4, '0')}-padding-to-widen-this-token-well-beyond-half-the-cap@thread.mail.example.test>`
+	);
+	const references = ids.join(' ');
+
+	it('folds References on the FWS between ids so no physical line exceeds 998 octets', async () => {
+		const { raw } = composeMessage({ ...BASE, messageId: '<id@owlat.test>', references });
+		const eml = raw.toString('utf-8');
+		// Sanity: the single-line form would have blown the cap.
+		expect('References: '.length + references.length).toBeGreaterThan(998);
+		for (const line of eml.split('\r\n')) {
+			expect(Buffer.byteLength(line, 'utf-8')).toBeLessThanOrEqual(998);
+		}
+		// mailparser round-trips the identical id list (folding is transparent).
+		const parsed = await simpleParser(raw);
+		const got = Array.isArray(parsed.references)
+			? parsed.references
+			: parsed.references
+				? [parsed.references]
+				: [];
+		// Normalize away any angle brackets mailparser may or may not strip, then
+		// assert the exact id list survives folding in order.
+		const strip = (s: string) => s.replace(/^<|>$/g, '');
+		expect(got.map(strip)).toEqual(ids.map(strip));
+	});
+
+	it('folds In-Reply-To against its own prefix', async () => {
+		const { raw } = composeMessage({
+			...BASE,
+			messageId: '<id@owlat.test>',
+			inReplyTo: references,
+		});
+		const eml = raw.toString('utf-8');
+		for (const line of eml.split('\r\n')) {
+			expect(Buffer.byteLength(line, 'utf-8')).toBeLessThanOrEqual(998);
+		}
+		const parsed = await simpleParser(raw);
+		const got = Array.isArray(parsed.inReplyTo)
+			? parsed.inReplyTo
+			: parsed.inReplyTo
+				? [parsed.inReplyTo]
+				: [];
+		// mailparser exposes inReplyTo as the raw folded value; assert the ids survive.
+		const joined = got.join(' ');
+		for (const id of ids) expect(joined).toContain(id);
 	});
 });
 
