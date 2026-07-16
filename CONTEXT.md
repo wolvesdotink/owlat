@@ -2727,8 +2727,9 @@ not the module).
 
 **Send provider adapter (module)**:
 The per-provider module at `convex/lib/sendProviders/<kind>/index.ts` that
-owns the Send-side surface of one email provider. Three adapters today:
-`mta`, `ses`, `resend`. Discriminated by `kind: 'mta' | 'ses' | 'resend'`.
+owns the Send-side surface of one email provider. Four core adapters today:
+`mta`, `ses`, `resend`, `smtp`. Core kinds are discriminated by those literals;
+bundled plugin kinds use `plugin.<pluginId>.<localId>`.
 Dispatched by the registry at `sendProviders/index.ts` exporting
 `providerFor(kind)`. Mirrors the **Sending domain provider adapter
 (module)** shape — one TypeScript interface, N concrete implementations,
@@ -2757,10 +2758,14 @@ different provider set (Resend ships only on this side). Exports a
   and Resend carry `{}` today. Replaces the `params as MtaSendParams`
   cast in pre-deepening call sites.
 
-Adding a fourth send provider (e.g. Postmark) is a one-folder change:
-new `sendProviders/postmark/` directory with the adapter, one new entry
-in `SEND_PROVIDERS`, one literal added to `SendProviderKind`. The
-compile-time `satisfies` check on the registry catches missing methods.
+Adding a core provider remains a one-folder change: a new
+`sendProviders/<kind>/` adapter, one `SEND_PROVIDERS` entry, and one core kind.
+An operator-installed provider instead declares a data-only
+`contributes.sendTransports` descriptor and exports a `parseExtras` plus
+single-attempt `send` module from a verified package subpath. Codegen adds its
+metadata and Node adapter to separate generated registries; the runtime host
+authorizes flag, grant, environment, and singleton scope before every attempt.
+The compile-time `satisfies` check on the core registry catches missing methods.
 The dispatch helper never branches on `kind` — provider variation lives
 entirely behind this seam.
 
