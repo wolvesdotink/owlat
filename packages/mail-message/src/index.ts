@@ -8,7 +8,7 @@
  *    AddressObject layer, MIME part-tree assembly, per-part charset decoding
  *    and document-order attachment extraction. The `parseMessage` facade (P3)
  *    builds on this surface.
- *  - compose side (`src/{compose,headers,encoding,messageId}.ts`): pure
+ *  - compose side (`src/compose/*`): pure
  *    RFC 5322 / RFC 2045 message construction with zero runtime dependencies
  *    beyond `node:crypto`, so it stays safe to import from a Convex `'use node'`
  *    action. nodemailer / mailparser survive only as devDependencies for
@@ -61,9 +61,9 @@ export {
 	encodeHeaderValue,
 	encodeAddressHeader,
 	safeAttachmentFilename,
-} from './headers';
-export { randomBoundary, quotedPrintableEncode, encodeTextBody } from './encoding';
-export { buildMessageId } from './messageId';
+} from './compose/headers';
+export { randomBoundary, quotedPrintableEncode, encodeTextBody } from './compose/encoding';
+export { buildMessageId } from './compose/messageId';
 export {
 	buildRfc822,
 	composeMessage,
@@ -72,4 +72,4 @@ export {
 	type ComposeAttachment,
 	type ComposeMessageInput,
 	type ComposedMessage,
-} from './compose';
+} from './compose/compose';
