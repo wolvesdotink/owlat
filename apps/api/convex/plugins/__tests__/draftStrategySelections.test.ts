@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDraftStrategySelection } from '../draftStrategySelections';
+import {
+	isDraftClassificationScope,
+	resolveDraftStrategySelection,
+} from '../draftStrategySelections';
 
 type Row = { strategyKind: string };
 
@@ -28,6 +31,11 @@ function fakeCtx(rows: Readonly<Record<string, Row>>) {
 }
 
 describe('draft strategy selection precedence', () => {
+	it('accepts only host classification categories', () => {
+		expect(isDraftClassificationScope('support')).toBe(true);
+		expect(isDraftClassificationScope('other')).toBe(true);
+		expect(isDraftClassificationScope('unknown_future_value')).toBe(false);
+	});
 	it('chooses contact before mailbox before classification', async () => {
 		const { ctx, reads } = fakeCtx({
 			'org:contact:contact-1': { strategyKind: 'plugin.pack.contact' },
