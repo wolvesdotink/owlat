@@ -306,9 +306,8 @@ export const resumeDraft = internalAction({
 			confidence: 0,
 		};
 
-		await ctx.scheduler.runAfter(0, internal.agent.walker.runStep, {
-			inboundMessageId: args.inboundMessageId,
-			kind: 'draft' as AgentStepKind,
+		await scheduleAfterCoreStep(ctx, args.inboundMessageId, 'clarify', {
+			kind: 'draft',
 			input: {
 				inboundMessageId: args.inboundMessageId,
 				context,
@@ -350,7 +349,7 @@ export const runStep = internalAction({
 					input: {
 						to: 'failed',
 						at: Date.now(),
-						errorMessage: 'Hosted agent step authorization failed',
+						errorMessage: 'Hosted agent step continuation failed',
 					},
 				});
 			}

@@ -3,9 +3,10 @@
 /**
  * Agent step (module) registry — see ADR-0014.
  *
- * The single place that knows the kind → module mapping. Adding a new
- * step kind means adding the module, adding the `AgentStepKind` union
- * literal, the lifecycle's `actionType` enum, and one entry here.
+ * The single place that maps core kinds to modules and composes generated
+ * plugin registrations. Adding a core step means updating the host catalog,
+ * implementing its module, and registering that module here. Plugin steps are
+ * generated from manifests.
  *
  * Node-only because LLM-based modules (`classify`, `clarify`, `draft`)
  * carry `'use node'` themselves.
