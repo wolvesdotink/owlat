@@ -1,6 +1,15 @@
 /**
  * Inbound DMARC evaluation — RFC 7489.
  *
+ * Moved verbatim (logic frozen — a move, not a rewrite) out of the MTA's
+ * `apps/mta/src/bounce/inboundDmarc.ts`. Two dependencies on MTA internals were
+ * decoupled so the package stands alone: the `logger` is now an OPTIONAL
+ * injected `DmarcLogger` (default no-op; the MTA passes its logger to preserve
+ * the transient-failure warn), and the SPF/DKIM verdict keywords are defined
+ * here (mail-auth owns SPF, and the DKIM verifier lands in a later package
+ * piece). The alignment predicate stays in `@owlat/shared/spfAlignment` so the
+ * SPF and DKIM sides never fork on the Organizational-Domain heuristic.
+ *
  * SPF and DKIM each authenticate *some* domain (the envelope MAIL FROM for
  * SPF, the `d=` tag for DKIM). Neither, on its own, says anything about the
  * domain the human reader sees — the RFC5322.From. DMARC closes that gap: it
@@ -8,17 +17,6 @@
  * SPF or DKIM result is *aligned* with the From domain, and (c) when neither
  * is aligned, applies the domain owner's published disposition
  * (`none` / `quarantine` / `reject`).
- *
- * Without this, spoofed mail claiming `From: ceo@bank.com` is accepted as long
- * as its (unrelated) envelope passes SPF — the classic display-name/header
- * spoof DMARC was designed to stop (RFC 7489 §4.1).
- *
- * What this module deliberately does NOT do:
- *   - We never *reject* the SMTP transaction on a DMARC fail. The published
- *     `p=` is recorded and surfaced (so a `quarantine`/`reject` fail routes to
- *     Spam downstream), but we always ACK accepted bytes — mirroring the
- *     fail-open posture of `inboundDkim`/`checkSpf`.
- *   - We do not implement `pct`, reporting (`rua`/`ruf`), or ARC override.
  *
  * Alignment (RFC 7489 §3.1):
  *   - strict  (`aspf=s` / `adkim=s`): the authenticated domain must equal the
@@ -29,15 +27,28 @@
  */
 
 import { isSpfAligned, type AlignmentMode } from '@owlat/shared/spfAlignment';
-import { logger } from '../monitoring/logger.js';
-import type { SpfVerdict } from './types.js';
-import type { DkimVerdict } from './inboundDkim.js';
+import type { SpfVerdict } from './spf.js';
+
+/**
+ * RFC 8601 DKIM result keyword. Defined here (rather than imported from the
+ * MTA's `inboundDkim`) so DMARC has no dependency on the DKIM verifier; the
+ * in-house verifier package reuses this same union when it lands.
+ */
+export type DkimVerdict = 'pass' | 'fail' | 'neutral' | 'none' | 'temperror' | 'permerror';
 
 /** The DMARC policy keyword published in the `p=`/`sp=` tag (RFC 7489 §6.3). */
 export type DmarcPolicy = 'none' | 'quarantine' | 'reject';
 
 /** RFC 8601 DMARC result keyword we record on the message. */
 export type DmarcVerdict = 'pass' | 'fail' | 'none' | 'temperror' | 'permerror';
+
+/**
+ * The subset of a structured logger DMARC needs. Injected so the package does
+ * not depend on the MTA's logger; a default no-op is used when none is passed.
+ */
+export interface DmarcLogger {
+	warn(obj: object, msg: string): void;
+}
 
 /** An authenticated-identity input to DMARC: a verdict + the domain it authenticated. */
 export interface AuthenticatedIdentity<V extends string> {
@@ -56,7 +67,7 @@ export interface AuthenticatedIdentity<V extends string> {
  *   - `null` when there is definitively no record (NXDOMAIN / NODATA), and
  *   - throws on a transient DNS error so the caller maps it to `temperror`.
  *
- * Injected so tests stay hermetic and so server.ts can supply a budgeted,
+ * Injected so tests stay hermetic and so the MTA can supply a budgeted,
  * cached resolver.
  */
 export type DmarcPolicyLookup = (domain: string) => Promise<string | null>;
@@ -70,6 +81,8 @@ export interface EvaluateDmarcArgs {
 	readonly dkim: AuthenticatedIdentity<DkimVerdict>;
 	/** Resolves a domain's `_dmarc` record (see DmarcPolicyLookup). */
 	readonly policyLookup: DmarcPolicyLookup;
+	/** Optional structured logger for the transient-failure warn. */
+	readonly logger?: DmarcLogger;
 }
 
 export interface DmarcOutcome {
@@ -128,7 +141,10 @@ export async function evaluateDmarc(args: EvaluateDmarcArgs): Promise<DmarcOutco
 			}
 		}
 	} catch (err) {
-		logger.warn({ err, fromDomain }, 'Inbound DMARC policy lookup failed — recording temperror');
+		args.logger?.warn(
+			{ err, fromDomain },
+			'Inbound DMARC policy lookup failed — recording temperror'
+		);
 		return { result: 'temperror' };
 	}
 
@@ -139,8 +155,7 @@ export async function evaluateDmarc(args: EvaluateDmarcArgs): Promise<DmarcOutco
 
 	// The policy that applies to *this* message: `sp=` governs subdomains when
 	// the record was found on the Organizational Domain (RFC 7489 §6.3).
-	const policy: DmarcPolicy =
-		policyAppliesToSubdomain && record.sp ? record.sp : record.p;
+	const policy: DmarcPolicy = policyAppliesToSubdomain && record.sp ? record.sp : record.p;
 
 	// 3. Alignment. DMARC passes iff a *passing* SPF or DKIM is aligned with the
 	//    From domain (RFC 7489 §4.1 / §6.6.2). A failed/absent SPF or DKIM
@@ -235,12 +250,12 @@ function parsePolicy(value: string | undefined): DmarcPolicy | undefined {
  * and joining the concatenated TXT strings. NXDOMAIN/NODATA → `null`; any other
  * DNS error is re-thrown so `evaluateDmarc` maps it to `temperror`.
  *
- * Lives here (not used by the tests, which inject their own lookup) so server.ts
+ * Lives here (not used by the tests, which inject their own lookup) so the MTA
  * has a ready production resolver.
  */
 export async function dnsDmarcLookup(
 	domain: string,
-	resolveTxt: (name: string) => Promise<string[][]>,
+	resolveTxt: (name: string) => Promise<string[][]>
 ): Promise<string | null> {
 	let records: string[][];
 	try {

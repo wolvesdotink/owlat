@@ -19,6 +19,7 @@ COPY apps/mta/tsconfig.json apps/mta/
 COPY apps/mta/src/ apps/mta/src/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/shared/ packages/shared/
+COPY packages/mail-auth/ packages/mail-auth/
 
 RUN cd apps/mta && bun run build
 

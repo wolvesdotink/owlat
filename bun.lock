@@ -170,6 +170,7 @@
       "dependencies": {
         "@hono/node-server": "^2.0.0",
         "@owlat/email-scanner": "workspace:*",
+        "@owlat/mail-auth": "workspace:*",
         "@owlat/shared": "workspace:*",
         "groupmq": "^1.1.0",
         "hono": "^4.12.25",
@@ -347,6 +348,20 @@
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/mail-auth": {
+      "name": "@owlat/mail-auth",
+      "version": "0.3.2",
+      "dependencies": {
+        "@owlat/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "ioredis-mock": "^8.9.0",
         "typescript": "catalog:",
         "vitest": "catalog:",
       },
@@ -986,6 +1001,8 @@
     "@owlat/email-scanner": ["@owlat/email-scanner@workspace:packages/email-scanner"],
 
     "@owlat/imap": ["@owlat/imap@workspace:apps/imap"],
+
+    "@owlat/mail-auth": ["@owlat/mail-auth@workspace:packages/mail-auth"],
 
     "@owlat/mail-message": ["@owlat/mail-message@workspace:packages/mail-message"],
 

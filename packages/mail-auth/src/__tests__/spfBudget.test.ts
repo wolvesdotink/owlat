@@ -1,12 +1,17 @@
+/**
+ * Moved verbatim from `apps/mta/src/bounce/__tests__/spfBudget.test.ts` when the
+ * RFC 7208 SPF evaluator relocated into `@owlat/mail-auth` (Own-the-Inbound A1).
+ * Only the import path was adjusted (`../inboundSecurity.js` → `../spf.js`) and
+ * the no-op logger mock — the SPF evaluator never imported a logger — was
+ * dropped. Every assertion is unchanged: the frozen logic must pass verbatim.
+ */
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { resolveMock } = vi.hoisted(() => ({ resolveMock: vi.fn() }));
 vi.mock('dns/promises', () => ({ resolve: resolveMock }));
-vi.mock('../../monitoring/logger.js', () => ({
-	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
 
-import { checkSpf } from '../inboundSecurity.js';
+import { checkSpf } from '../spf.js';
 
 /** Configure the fake resolver from a domain -> SPF record map. */
 function dnsWith(spfByDomain: Record<string, string>) {

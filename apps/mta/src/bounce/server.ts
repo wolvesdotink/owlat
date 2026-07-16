@@ -22,9 +22,9 @@ import { findMailboxRoute } from '../inbound/mailboxResolver.js';
 import { logger } from '../monitoring/logger.js';
 import { resolveTxt as dnsResolveTxt } from 'dns/promises';
 import { emailDomain } from '@owlat/shared/spfAlignment';
-import { checkConnectionRateLimit, releaseConnection, checkSpf } from './inboundSecurity.js';
+import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
+import { checkSpf, evaluateDmarc, dnsDmarcLookup } from '@owlat/mail-auth';
 import { verifyDkim } from './inboundDkim.js';
-import { evaluateDmarc, dnsDmarcLookup } from './inboundDmarc.js';
 import { verifyArcChain } from './inboundArc.js';
 import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
@@ -303,6 +303,7 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 								spf: { result: spfResult ?? 'none', domain: envelopeFromDomain },
 								dkim: { result: dkim?.result ?? 'none', domain: dkim?.domain },
 								policyLookup: (domain) => dnsDmarcLookup(domain, dnsResolveTxt),
+								logger,
 							})
 						: undefined;
 				const dmarcResult = dmarc?.result;
