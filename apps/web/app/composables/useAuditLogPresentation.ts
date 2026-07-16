@@ -274,6 +274,7 @@ const HOSTED_PLUGIN_OPERATION_LABELS = {
 	'automation.step': 'Automation step',
 	'autonomy.gate': 'Autonomy gate',
 	'draft.strategy': 'Draft strategy',
+	'import.provider': 'Import provider',
 	'llm.generate': 'LLM generation',
 	'storage.delete': 'Storage delete',
 	'storage.get': 'Storage read',

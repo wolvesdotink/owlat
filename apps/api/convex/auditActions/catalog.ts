@@ -201,6 +201,7 @@ export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'automation.step',
 	'autonomy.gate',
 	'draft.strategy',
+	'import.provider',
 	'llm.generate',
 	'storage.delete',
 	'storage.get',
