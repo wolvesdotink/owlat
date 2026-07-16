@@ -6,14 +6,26 @@ import {
 import type { BundledPlugin } from './composition';
 import { compareCodePoints } from './compareCodePoints';
 
-export const CORE_AGENT_STEP_DEFINITIONS = [
-	{ kind: 'security_scan', continuationStatus: 'classifying', placement: 'classification' },
-	{ kind: 'context_retrieval', continuationStatus: 'classifying', placement: 'classification' },
-	{ kind: 'classify', continuationStatus: 'classifying', placement: 'classification' },
-	{ kind: 'clarify', continuationStatus: 'drafting', placement: 'before_draft' },
-	{ kind: 'draft', continuationStatus: 'drafting', placement: 'after_draft' },
-	{ kind: 'route', continuationStatus: undefined, placement: undefined },
-] as const;
+export const CORE_AGENT_STEP_DEFINITIONS = Object.freeze([
+	Object.freeze({
+		kind: 'security_scan',
+		continuationStatus: 'classifying',
+		placement: 'classification',
+	}),
+	Object.freeze({
+		kind: 'context_retrieval',
+		continuationStatus: 'classifying',
+		placement: 'classification',
+	}),
+	Object.freeze({
+		kind: 'classify',
+		continuationStatus: 'classifying',
+		placement: 'classification',
+	}),
+	Object.freeze({ kind: 'clarify', continuationStatus: 'drafting', placement: 'before_draft' }),
+	Object.freeze({ kind: 'draft', continuationStatus: 'drafting', placement: 'after_draft' }),
+	Object.freeze({ kind: 'route', continuationStatus: undefined, placement: undefined }),
+] as const);
 
 export type CoreAgentStepKind = (typeof CORE_AGENT_STEP_DEFINITIONS)[number]['kind'];
 
@@ -32,6 +44,7 @@ export interface HostedAgentStepDefinition {
 
 export type AgentStepCompositionErrorCode =
 	| 'duplicate_step_kind'
+	| 'invalid_step_definition'
 	| 'unknown_step_anchor'
 	| 'cyclic_step_order'
 	| 'terminal_step_anchor'
@@ -53,6 +66,13 @@ interface UnresolvedAgentStepDefinition extends Omit<
 	HostedAgentStepDefinition,
 	'continuationStatus' | 'placement'
 > {}
+
+interface UnresolvedAgentStepSnapshot extends Omit<
+	UnresolvedAgentStepDefinition,
+	'lifecycleEdges'
+> {
+	readonly lifecycleEdges: readonly unknown[];
+}
 
 interface LifecycleEdgeTuple {
 	readonly kind: string;
@@ -101,8 +121,8 @@ export function composeAgentStepDefinitions(
 	const coreByKind = new Map(
 		CORE_AGENT_STEP_DEFINITIONS.map((definition) => [definition.kind, definition] as const)
 	);
-	const definitionsByKind = new Map<string, UnresolvedAgentStepDefinition>();
-	for (const definition of definitions) {
+	const definitionsByKind = new Map<string, UnresolvedAgentStepSnapshot>();
+	for (const definition of snapshotUnresolvedDefinitions(definitions)) {
 		if (
 			definitionsByKind.has(definition.kind) ||
 			coreByKind.has(definition.kind as CoreAgentStepKind)
@@ -160,9 +180,18 @@ export function composeAgentStepDefinitions(
 				`Agent step ${kind} cannot follow terminal step ${definition.after}`
 			);
 		}
-		validateEdges(definition, placement);
+		const lifecycleEdges = snapshotValidatedEdges(definition, placement);
 		resolving.delete(kind);
-		const result = Object.freeze({ ...definition, continuationStatus, placement });
+		const result = Object.freeze({
+			pluginId: definition.pluginId,
+			packageName: definition.packageName,
+			kind: definition.kind,
+			after: definition.after,
+			exportPath: definition.exportPath,
+			lifecycleEdges,
+			continuationStatus,
+			placement,
+		});
 		resolved.set(kind, result);
 		return result;
 	};
@@ -171,18 +200,94 @@ export function composeAgentStepDefinitions(
 	return Object.freeze(ordered);
 }
 
-function validateEdges(
-	definition: UnresolvedAgentStepDefinition,
+function snapshotValidatedEdges(
+	definition: UnresolvedAgentStepSnapshot,
 	placement: AgentStepPlacement
-): void {
-	if (!Array.isArray(definition.lifecycleEdges)) {
-		throwUnsafeLifecycleEdge(definition.kind, undefined);
-	}
+): readonly PluginAgentLifecycleEdge[] {
+	const snapshots: PluginAgentLifecycleEdge[] = [];
 	for (const edge of definition.lifecycleEdges) {
-		if (!isSafeAgentLifecycleEdge(placement, edge)) {
-			throwUnsafeLifecycleEdge(definition.kind, readLifecycleEdgeTuple(edge));
+		const tuple = readLifecycleEdgeTuple(edge);
+		if (!tuple || !isAllowedLifecycleEdgeTuple(placement, tuple)) {
+			throwUnsafeLifecycleEdge(definition.kind, tuple);
 		}
+		snapshots.push(
+			Object.freeze({
+				kind: tuple.kind,
+				from: tuple.from,
+				to: tuple.to,
+			}) as PluginAgentLifecycleEdge
+		);
 	}
+	return Object.freeze(snapshots);
+}
+
+function snapshotUnresolvedDefinitions(
+	definitions: readonly UnresolvedAgentStepDefinition[]
+): readonly UnresolvedAgentStepSnapshot[] {
+	if (!Array.isArray(definitions)) {
+		throwInvalidStepDefinition('<malformed>', 'Agent step definitions must be an array');
+	}
+	const snapshots: UnresolvedAgentStepSnapshot[] = [];
+	for (let index = 0; index < definitions.length; index += 1) {
+		const descriptor = Object.getOwnPropertyDescriptor(definitions, String(index));
+		if (!descriptor || !('value' in descriptor)) {
+			throwInvalidStepDefinition(
+				'<malformed>',
+				`Agent step definition at index ${index} must be an own data property`
+			);
+		}
+		snapshots.push(snapshotUnresolvedDefinition(descriptor.value));
+	}
+	return Object.freeze(snapshots);
+}
+
+function snapshotUnresolvedDefinition(value: unknown): UnresolvedAgentStepSnapshot {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+		throwInvalidStepDefinition('<malformed>', 'Agent step definition must be an object');
+	}
+	const kind = ownStringField(value, 'kind');
+	const pluginId = ownStringField(value, 'pluginId');
+	const packageName = ownStringField(value, 'packageName');
+	const after = ownStringField(value, 'after');
+	const exportPath = ownStringField(value, 'exportPath');
+	if (
+		kind === undefined ||
+		pluginId === undefined ||
+		packageName === undefined ||
+		after === undefined ||
+		exportPath === undefined
+	) {
+		throwInvalidStepDefinition(
+			kind ?? '<malformed>',
+			'Agent step definition fields must be own string data properties'
+		);
+	}
+	const lifecycleDescriptor = Object.getOwnPropertyDescriptor(value, 'lifecycleEdges');
+	if (!lifecycleDescriptor || !('value' in lifecycleDescriptor)) {
+		throwUnsafeLifecycleEdge(kind, undefined);
+	}
+	const lifecycleEdges = snapshotArrayValues(lifecycleDescriptor.value, kind);
+	return Object.freeze({
+		pluginId: pluginId as PluginId,
+		packageName,
+		kind,
+		after,
+		exportPath,
+		lifecycleEdges,
+	});
+}
+
+function snapshotArrayValues(value: unknown, stepKind: string): readonly unknown[] {
+	if (!Array.isArray(value)) throwUnsafeLifecycleEdge(stepKind, undefined);
+	const snapshots: unknown[] = [];
+	for (let index = 0; index < value.length; index += 1) {
+		const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+		if (!descriptor || !('value' in descriptor)) {
+			throwUnsafeLifecycleEdge(stepKind, undefined);
+		}
+		snapshots.push(descriptor.value);
+	}
+	return Object.freeze(snapshots);
 }
 
 function readLifecycleEdgeTuple(value: unknown): LifecycleEdgeTuple | undefined {
@@ -194,11 +299,15 @@ function readLifecycleEdgeTuple(value: unknown): LifecycleEdgeTuple | undefined 
 	return { kind, from, to };
 }
 
-function ownStringField(value: object, field: keyof LifecycleEdgeTuple): string | undefined {
+function ownStringField(value: object, field: string): string | undefined {
 	const descriptor = Object.getOwnPropertyDescriptor(value, field);
 	return descriptor && 'value' in descriptor && typeof descriptor.value === 'string'
 		? descriptor.value
 		: undefined;
+}
+
+function throwInvalidStepDefinition(stepKind: string, message: string): never {
+	throw new AgentStepCompositionError('invalid_step_definition', stepKind, message);
 }
 
 /** Runtime-check a complete edge tuple against the host-owned placement policy. */
@@ -207,7 +316,13 @@ export function isSafeAgentLifecycleEdge(
 	edge: unknown
 ): edge is PluginAgentLifecycleEdge {
 	const tuple = readLifecycleEdgeTuple(edge);
-	if (!tuple) return false;
+	return tuple !== undefined && isAllowedLifecycleEdgeTuple(placement, tuple);
+}
+
+function isAllowedLifecycleEdgeTuple(
+	placement: AgentStepPlacement,
+	tuple: LifecycleEdgeTuple
+): boolean {
 	return SAFE_LIFECYCLE_EDGES_BY_PLACEMENT[placement].some(
 		(allowed) =>
 			allowed.kind === tuple.kind && allowed.from === tuple.from && allowed.to === tuple.to
