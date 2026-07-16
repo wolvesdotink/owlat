@@ -161,7 +161,7 @@ describe('installed plugin loading', () => {
 			{ 'agent-plugin': '1.0.0' },
 			{
 				'agent-plugin': {
-					source: `export default { id: 'agent', version: '1.0.0', capabilities: ['agent:step'], flag: { default: false }, contributes: { agentSteps: [{ id: 'spam-score', after: 'security_scan', module: { exportPath: './agent/spam-score' }, lifecycleEdges: [{ from: 'classifying', to: 'archived' }] }] } };`,
+					source: `export default { id: 'agent', version: '1.0.0', capabilities: ['agent:step'], flag: { default: false }, contributes: { agentSteps: [{ id: 'spam-score', after: 'security_scan', module: { exportPath: './agent/spam-score' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }] } };`,
 					packageJson: {
 						exports: {
 							'.': './index.js',

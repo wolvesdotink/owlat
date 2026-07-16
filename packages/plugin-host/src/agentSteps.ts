@@ -7,20 +7,17 @@ import type { BundledPlugin } from './composition';
 import { compareCodePoints } from './compareCodePoints';
 
 export const CORE_AGENT_STEP_DEFINITIONS = [
-	{ kind: 'security_scan', continuationStatus: 'classifying' },
-	{ kind: 'context_retrieval', continuationStatus: 'classifying' },
-	{ kind: 'classify', continuationStatus: 'classifying' },
-	{ kind: 'clarify', continuationStatus: 'drafting' },
-	{ kind: 'draft', continuationStatus: 'drafting' },
-	{ kind: 'route', continuationStatus: undefined },
+	{ kind: 'security_scan', continuationStatus: 'classifying', placement: 'classification' },
+	{ kind: 'context_retrieval', continuationStatus: 'classifying', placement: 'classification' },
+	{ kind: 'classify', continuationStatus: 'classifying', placement: 'classification' },
+	{ kind: 'clarify', continuationStatus: 'drafting', placement: 'before_draft' },
+	{ kind: 'draft', continuationStatus: 'drafting', placement: 'after_draft' },
+	{ kind: 'route', continuationStatus: undefined, placement: undefined },
 ] as const;
 
 export type CoreAgentStepKind = (typeof CORE_AGENT_STEP_DEFINITIONS)[number]['kind'];
 
-const SAFE_CAUTION_TARGETS = Object.freeze({
-	classifying: Object.freeze(['archived', 'failed']),
-	drafting: Object.freeze(['archived', 'draft_ready', 'failed']),
-});
+export type AgentStepPlacement = 'classification' | 'before_draft' | 'after_draft';
 
 export interface HostedAgentStepDefinition {
 	readonly pluginId: PluginId;
@@ -30,6 +27,7 @@ export interface HostedAgentStepDefinition {
 	readonly exportPath: string;
 	readonly lifecycleEdges: readonly PluginAgentLifecycleEdge[];
 	readonly continuationStatus: string;
+	readonly placement: AgentStepPlacement;
 }
 
 export type AgentStepCompositionErrorCode =
@@ -53,7 +51,7 @@ export class AgentStepCompositionError extends Error {
 
 interface UnresolvedAgentStepDefinition extends Omit<
 	HostedAgentStepDefinition,
-	'continuationStatus'
+	'continuationStatus' | 'placement'
 > {}
 
 /** Flatten manifest declarations and validate them against the host-owned pipeline policy. */
@@ -118,6 +116,7 @@ export function composeAgentStepDefinitions(
 		resolving.add(kind);
 		const coreAnchor = coreByKind.get(definition.after as CoreAgentStepKind);
 		let continuationStatus: string | undefined = coreAnchor?.continuationStatus;
+		let placement: AgentStepPlacement | undefined = coreAnchor?.placement;
 		if (!coreAnchor) {
 			const pluginAnchor = definitionsByKind.get(definition.after);
 			if (!pluginAnchor) {
@@ -127,18 +126,20 @@ export function composeAgentStepDefinitions(
 					`Agent step ${kind} follows unknown step ${definition.after}`
 				);
 			}
-			continuationStatus = resolve(pluginAnchor.kind).continuationStatus;
+			const resolvedAnchor = resolve(pluginAnchor.kind);
+			continuationStatus = resolvedAnchor.continuationStatus;
+			placement = resolvedAnchor.placement;
 		}
-		if (!continuationStatus) {
+		if (!continuationStatus || !placement) {
 			throw new AgentStepCompositionError(
 				'terminal_step_anchor',
 				kind,
 				`Agent step ${kind} cannot follow terminal step ${definition.after}`
 			);
 		}
-		validateEdges(definition, continuationStatus);
+		validateEdges(definition, placement);
 		resolving.delete(kind);
-		const result = Object.freeze({ ...definition, continuationStatus });
+		const result = Object.freeze({ ...definition, continuationStatus, placement });
 		resolved.set(kind, result);
 		return result;
 	};
@@ -147,12 +148,16 @@ export function composeAgentStepDefinitions(
 	return Object.freeze(ordered);
 }
 
-function validateEdges(definition: UnresolvedAgentStepDefinition, status: string): void {
-	const safeTargets = SAFE_CAUTION_TARGETS[status as keyof typeof SAFE_CAUTION_TARGETS] as
-		| readonly string[]
-		| undefined;
+function validateEdges(
+	definition: UnresolvedAgentStepDefinition,
+	placement: AgentStepPlacement
+): void {
 	for (const edge of definition.lifecycleEdges) {
-		if (edge.from !== status || !safeTargets?.includes(edge.to)) {
+		const isSafe =
+			(placement === 'classification' && edge.kind === 'caution' && edge.from === 'classifying') ||
+			(placement === 'before_draft' && edge.kind === 'caution' && edge.from === 'drafting') ||
+			(placement === 'after_draft' && edge.from === 'drafting');
+		if (!isSafe) {
 			throw new AgentStepCompositionError(
 				'unsafe_lifecycle_edge',
 				definition.kind,

@@ -17,7 +17,12 @@ interface GeneratedPluginAgentStepDefinition {
 	readonly pluginId: string;
 	readonly after: string;
 	readonly continuationStatus: string;
-	readonly lifecycleEdges: readonly Readonly<{ from: string; to: string }>[];
+	readonly placement: 'classification' | 'before_draft' | 'after_draft';
+	readonly lifecycleEdges: readonly Readonly<{
+		kind: 'caution' | 'draft_review';
+		from: 'classifying' | 'drafting';
+		to: 'archived' | 'draft_ready' | 'failed';
+	}>[];
 	readonly requiredCapability: 'agent:step';
 }
 
