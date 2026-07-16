@@ -27,6 +27,35 @@ const manifest = {
 };
 ```
 
+Bundled agent steps are data-only manifest contributions. They require an
+explicit feature flag and the `agent:step` capability; executable code remains
+behind one condition-independent package export:
+
+```ts
+const manifest = definePlugin({
+	id: 'policy-pack',
+	version: '1.0.0',
+	capabilities: ['agent:step'],
+	flag: { default: false, requiredEnvVars: ['POLICY_KEY'] },
+	contributes: {
+		agentSteps: [
+			{
+				id: 'spam-score',
+				after: 'security_scan',
+				module: { exportPath: './agent/spam-score' },
+				lifecycleEdges: [{ from: 'classifying', to: 'archived' }],
+			},
+		],
+	},
+});
+```
+
+The host namespaces the stored kind as `plugin.<pluginId>.<localId>`, preserves
+the core continuation, and accepts only `continue` or a declared restrict-only
+`caution` result. Plugin modules receive a bounded message projection, never a
+raw Convex context, and cannot choose the next step, approve, send, or redefine
+the core lifecycle graph.
+
 Host-mediated storage methods never accept an organization or plugin id. A
 host-created service is already bound to both scopes. Plugins must declare and
 be granted `plugin-storage:read` for `get`/`list` and

@@ -16,6 +16,10 @@ This private build tool owns Owlat's single composition point for bundled plugin
   exact condition-independent package exports; the generated installer gives
   every component an injective `plugin_<id>` namespace through `app.use`.
   `--check` detects missing or stale output without writing.
+- Send transports and agent steps each generate an isolate-safe metadata catalog
+  and a separate `'use node'` executable registry. Agent-step generation also
+  rejects unknown or terminal anchors, duplicate kinds, insertion cycles, and
+  lifecycle edges outside the host's restrict-only policy.
 - Core source may not import configured plugin packages outside those generated
   files, including through Node/Bun loaders or repository aliases.
   `--boundaries-only` enforces that rule without importing plugin code.

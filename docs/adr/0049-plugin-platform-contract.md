@@ -214,6 +214,33 @@ built-in MTA, SES, Resend, and SMTP adapters keep their existing order, retry
 counts, routing selection, health behavior, and ambiguous-timeout semantics
 behind the same dispatch seam.
 
+### Bundled agent pipeline steps
+
+An agent-step contribution requires an explicit feature flag and the
+`agent:step` capability. Its manifest descriptor declares a local id, insertion
+anchor, condition-independent module export, and zero or more requested
+lifecycle edges. Codegen namespaces the kind as
+`plugin.<pluginId>.<localId>`, verifies the export without executing it, emits a
+pure catalog plus a separate Node module registry, and rejects duplicate or
+unknown kinds, terminal anchors, insertion cycles, and unsafe edges.
+
+The six built-in placements, their continuation states, and the restrict-only
+edge policy are host-owned. A plugin chained after an anchor inherits that
+anchor's continuation state. From `classifying`, it may only archive or fail;
+from `drafting`, it may also force `draft_ready` for human review. It cannot
+request `approved` or `sent`, choose the next step, run before the security
+scan, or edit the core `LEGAL_EDGES` graph.
+
+Immediately before execution, the host rechecks singleton scope, bundled
+registration, enabled flag, manifest capability, exact operator grant, and
+required environment presence. Denial skips the disabled contribution and
+resumes the unchanged core continuation without invoking plugin code. An
+authorized module receives a bounded, unsealed message projection rather than
+a Convex context. Its result is descriptor-safe bounded JSON and either
+`continue` or a declared `caution`; invalid output, an undeclared edge, or an
+exception fails the inbox lifecycle closed. Agent-action rows and redacted
+`agent.step` audit rows remain host-owned.
+
 ### Three execution tiers
 
 1. **Bundled plugins** are operator-installed packages composed at build time.
