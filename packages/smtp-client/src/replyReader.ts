@@ -78,23 +78,35 @@ export class ReplyReader {
 				})
 			);
 		}
+		// A terminal error poisons the reader: it takes precedence over anything
+		// still in the queue so a reply that arrived AFTER a wire timeout / close
+		// can never be handed out as the answer to a later read (stale-reply
+		// desync). Only a live, un-poisoned reader drains the queue.
+		if (this.terminalError !== undefined) {
+			return Promise.reject(this.wrap(phase, this.terminalError, secured));
+		}
 		const queued = this.queue.shift();
 		if (queued !== undefined) {
 			return Promise.resolve(queued);
 		}
-		if (this.terminalError !== undefined) {
-			return Promise.reject(this.wrap(phase, this.terminalError, secured));
-		}
 		return new Promise<SmtpReply>((resolve, reject) => {
 			const timer = setTimeout(() => {
 				this.waiter = undefined;
-				reject(
-					new SmtpError({
-						phase,
-						message: `timed out after ${timeoutMs}ms waiting for an SMTP reply`,
-						secured,
-					})
-				);
+				// A wire timeout is fatal: poison the reader so no late-arriving reply
+				// can be queued and consumed by the NEXT read as its own answer (the
+				// reply-stream desync class behind DATA-reply misattribution). Setting
+				// terminalError flips `failed`, so write() refuses and every later read
+				// rejects. (The concurrent-read rejection above must NOT poison — only
+				// this wire timeout does.)
+				const timeoutError = new SmtpError({
+					phase,
+					message: `timed out after ${timeoutMs}ms waiting for an SMTP reply`,
+					secured,
+				});
+				if (this.terminalError === undefined) {
+					this.terminalError = timeoutError;
+				}
+				reject(timeoutError);
 			}, timeoutMs);
 			this.waiter = {
 				resolve,
