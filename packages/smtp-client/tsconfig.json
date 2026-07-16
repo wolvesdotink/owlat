@@ -1,0 +1,15 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"importHelpers": true,
+		"types": ["node"],
+		"paths": {
+			"@/*": ["./src/*"]
+		},
+		"lib": ["ESNext"],
+		"declaration": true,
+		"declarationMap": true
+	},
+	"include": ["src/**/*.ts", "__tests__/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}
