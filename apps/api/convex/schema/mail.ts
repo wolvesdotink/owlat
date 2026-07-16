@@ -184,9 +184,22 @@ export const mailTables = {
 	// (which holds INSTANCE_SECRET) decrypts. The envelope shape is versioned by
 	// CURRENT_EXTERNAL_MAIL_CRED_VERSION in lib/constants.ts.
 	externalMailAccounts: defineTable({
-		userId: v.string(), // BetterAuth user (owner)
+		userId: v.string(), // BetterAuth user (connector / credential custodian)
 		organizationId: v.string(),
 		mailboxId: v.id('mailboxes'), // the reused inbox identity
+
+		// Sharing model, mirroring `mailboxes.scope`. undefined ⇒ 'personal' (a
+		// single user's BYO mailbox; back-compat for every pre-shared-inbox row).
+		// 'shared' ⇒ the credentials back a TEAM inbox (its mailbox is
+		// kind='external', scope='shared') whose access is governed by
+		// `mailboxMembers`, not the connecting `userId`. A shared account is org
+		// infrastructure: it is EXCLUDED from the per-user "one live personal
+		// external account" limit and from the personal-external surfaces
+		// (getForCurrentUser / disconnect / purge / the move flow), which all
+		// resolve the caller's PERSONAL account only. `userId` on a shared row is
+		// the admin who connected it (credential custodian + audit); ownership of
+		// the inbox itself follows `mailboxes.userId` via mailboxMembers.
+		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
 
 		// IMAP (receive). isImapSecure=true ⇒ implicit TLS (993); false ⇒ STARTTLS (143).
 		imapHost: v.string(),

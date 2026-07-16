@@ -135,7 +135,11 @@ artifacts + `latest.json` to a draft GitHub Release.
 
 Signing/notarization is **secret-gated** — without the secrets below the build
 still produces unsigned artifacts (so forks/PRs build), but distributables will
-trigger Gatekeeper/SmartScreen warnings.
+trigger Gatekeeper/SmartScreen warnings. Unsigned release builds emit a
+`::warning::` + job-summary notice; when the macOS secrets ARE configured, the
+workflow verifies `codesign`, the stapled notarization ticket, and a `spctl`
+Gatekeeper assessment on the built `.app` before the Release is published, so
+a broken signing setup fails in CI instead of on a user's machine.
 
 | Secret | Purpose |
 | --- | --- |
@@ -143,6 +147,39 @@ trigger Gatekeeper/SmartScreen warnings.
 | `APPLE_CERTIFICATE` / `…_PASSWORD` / `APPLE_SIGNING_IDENTITY` | macOS code-sign |
 | `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | macOS notarization |
 | `WINDOWS_CERTIFICATE` / `…_PASSWORD` | Windows Authenticode |
+
+### macOS signing + notarization setup (one-time)
+
+Both halves are required for a download that opens without the
+“Apple could not verify …” Gatekeeper block: **signing** identifies the
+developer, **notarization** is Apple's malware scan that Gatekeeper checks on
+first launch. Prerequisite: a paid [Apple Developer Program](https://developer.apple.com/programs/)
+membership (the certificate type below is not available on free accounts).
+
+1. **Developer ID Application certificate** — in Xcode (Settings → Accounts →
+   Manage Certificates) or on the [developer portal](https://developer.apple.com/account/resources/certificates/list),
+   create a **Developer ID Application** certificate (this is the
+   direct-distribution type; "Apple Development"/"Apple Distribution" won't
+   pass Gatekeeper). Export it from Keychain Access as a `.p12` with a
+   password, then:
+   ```sh
+   base64 -i DeveloperIDApplication.p12 | pbcopy
+   ```
+   - `APPLE_CERTIFICATE` = the base64 output
+   - `APPLE_CERTIFICATE_PASSWORD` = the `.p12` export password
+   - `APPLE_SIGNING_IDENTITY` = the certificate's full common name, e.g.
+     `Developer ID Application: Your Name (TEAMID1234)`
+2. **Notarization credentials** — create an [app-specific password](https://account.apple.com/account/manage)
+   for your Apple ID:
+   - `APPLE_ID` = the Apple ID email
+   - `APPLE_PASSWORD` = the app-specific password (not the account password)
+   - `APPLE_TEAM_ID` = the 10-character team id shown on the
+     [membership page](https://developer.apple.com/account#MembershipDetailsCard)
+
+Add all six as repo Actions secrets; the next `v*` / `desktop-v*` tag ships
+signed + notarized macOS builds (hardened runtime is on by default in Tauri 2,
+and `tauri-action` submits to the notary service and staples the ticket
+whenever these env vars are present). No config changes are needed.
 
 The updater endpoint is configured in `tauri.conf.json`
 (`plugins.updater.endpoints`); point it at where `latest.json` + bundles are served.
