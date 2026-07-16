@@ -1,0 +1,13 @@
+From: MAILER-DAEMON@mx.example.com
+To: sender@example.org
+Subject: Delivery Status Notification (Failure)
+Date: Fri, 20 Jun 2026 08:15:00 +0000
+Message-ID: <dsn-1@mx.example.com>
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=delivery-status; boundary="d1"
+
+--d1
+Content-Type: text/plain; charset=utf-8
+
+Your message to nobody@example.net could not be delivered (5.1.1).
+--d1--
