@@ -17,15 +17,8 @@
 import { describe, it, expect } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { simpleParser } from 'mailparser';
-import {
-	loadCorpus,
-	owlatNewStack,
-	projectDrivers,
-	runReplay,
-	type ReplayStackSide,
-	type RoutingDrivers,
-} from '../inboundReplay';
+import { loadCorpus, owlatNewStack, runReplay } from '../inboundReplay';
+import { oracleOldStack } from './helpers/oracleStack';
 
 const IMAP_CORPUS_DIR = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -33,14 +26,6 @@ const IMAP_CORPUS_DIR = join(
 	'__fixtures__',
 	'imap-corpus'
 );
-
-/** The OLD (oracle) stack: mailparser for the routing drivers ingest reads. */
-const oracleOldStack: ReplayStackSide = {
-	async project(raw: Buffer): Promise<RoutingDrivers> {
-		const parsed = await simpleParser(raw);
-		return projectDrivers(parsed, (name) => parsed.headers.get(name));
-	},
-};
 
 describe('inbound shadow-replay over the IMAP-shaped corpus slice (mail-sync ingest cutover)', () => {
 	it('loads every IMAP-shaped .eml in the slice', () => {
