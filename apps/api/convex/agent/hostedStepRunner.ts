@@ -51,7 +51,10 @@ async function failStep(
 			actionId,
 			errorMessage: 'Hosted agent step failed after lifecycle completion',
 		});
-	} catch {}
+	} catch {
+		// The lifecycle transition or cleanup mutation already failed; no safe
+		// writer remains, so retain the redacted audit as the final fallback.
+	}
 	await recordOutcome(ctx, pluginId, stepKind, false).catch(() => undefined);
 }
 
