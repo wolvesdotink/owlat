@@ -1,14 +1,17 @@
 import { v } from 'convex/values';
+import { PLUGIN_AUTOMATION_STEP_CAPABILITY } from '@owlat/plugin-kit';
 import { type MutationCtx, type QueryCtx } from '../_generated/server';
 import { authedMutation } from '../lib/authedFunctions';
 import type { Doc } from '../_generated/dataModel';
 import { requireDraftAutomation } from './guards';
+import { requireAuthenticatedBundledPlugin } from '../plugins/authorization';
 import { getOrThrow } from '../_utils/errors';
 import { stepConfigValidator } from '../lib/convexValidators';
 import { emailStepModule } from './steps/email';
 import { delayStepModule } from './steps/delay';
 import { conditionStepModule } from './steps/condition';
-import type { StepKind, StepModule } from './types';
+import { isCoreStepKind, isPluginStepKind, stepKindValidator, stepPluginId } from './steps/catalog';
+import type { CoreStepKind, StepModule } from './types';
 
 // ============== Module registry ==============
 
@@ -17,18 +20,28 @@ const STEP_MODULES = {
 	delay: delayStepModule,
 	condition: conditionStepModule,
 } as const satisfies {
-	[K in StepKind]: StepModule<K, unknown>;
+	[K in CoreStepKind]: StepModule<K, unknown>;
 };
 
-export function stepModuleFor<K extends StepKind>(kind: K): (typeof STEP_MODULES)[K] {
-	return STEP_MODULES[kind];
+/**
+ * Resolve a CORE step module. Plugin step kinds are executed by the Node-only
+ * hosted runner (`steps/pluginStep.ts`), never through this map — the walker
+ * branches on `isPluginStepKind` before reaching here, so a plugin kind arriving
+ * at this function is a programming error, not a runtime input.
+ */
+export function stepModuleFor<K extends CoreStepKind>(kind: K): (typeof STEP_MODULES)[K] {
+	const module = STEP_MODULES[kind];
+	if (!module) throw new Error(`Unknown core automation step kind: ${kind}`);
+	return module;
 }
 
 /**
  * Compute the look-ahead delay (in ms) before scheduling a step.
- * Currently only `delay` implements `entryDelay`; everyone else is 0.
+ * Only the core `delay` module implements `entryDelay`; every other core kind
+ * and all plugin kinds schedule immediately.
  */
 export function computeEntryDelay(step: Doc<'automationSteps'>): number {
+	if (!isCoreStepKind(step.stepType)) return 0;
 	const module = stepModuleFor(step.stepType);
 	if (!module.entryDelay) return 0;
 	const config = module.parseConfig(step.config);
@@ -46,6 +59,8 @@ export async function enrichStepForQuery(
 	ctx: Pick<QueryCtx, 'db'>,
 	step: Doc<'automationSteps'>
 ): Promise<Doc<'automationSteps'> & Record<string, unknown>> {
+	// Plugin steps own no host-side query join — return the raw row unchanged.
+	if (!isCoreStepKind(step.stepType)) return step;
 	const module = stepModuleFor(step.stepType);
 	if (!module.enrichForQuery) return step;
 	try {
@@ -61,6 +76,21 @@ export async function enrichStepForQuery(
 		// Malformed config — skip enrichment, return the raw row.
 		return step;
 	}
+}
+
+/**
+ * Fail closed unless a plugin step's owning plugin is enabled and has been
+ * granted `automation:step`. Core kinds pass through untouched. Reuses the host
+ * authorization gate so the flag, capability grant, and required env vars are
+ * all rechecked in the caller's transaction.
+ */
+async function requirePluginStepAuthorization(ctx: MutationCtx, stepType: string): Promise<void> {
+	if (!isPluginStepKind(stepType)) return;
+	await requireAuthenticatedBundledPlugin(
+		ctx,
+		stepPluginId(stepType),
+		PLUGIN_AUTOMATION_STEP_CAPABILITY
+	);
 }
 
 // ============== Condition branch-target remapping ==============
@@ -124,7 +154,7 @@ async function remapConditionBranches(
 export const addStep = authedMutation({
 	args: {
 		automationId: v.id('automations'),
-		stepType: v.union(v.literal('email'), v.literal('delay'), v.literal('condition')),
+		stepType: stepKindValidator,
 		config: stepConfigValidator,
 		insertAtIndex: v.optional(v.number()),
 	},
@@ -138,6 +168,11 @@ export const addStep = authedMutation({
 			'add automation steps',
 			'Steps can only be added while the automation is a draft'
 		);
+
+		// A plugin step can only be added while its plugin is enabled and its
+		// automation:step capability is granted — fail closed on a disabled flag,
+		// an ungranted capability, or a missing required env var.
+		await requirePluginStepAuthorization(ctx, args.stepType);
 
 		const existingSteps = await ctx.db
 			.query('automationSteps')
@@ -189,7 +224,7 @@ export const addStep = authedMutation({
 export const updateStep = authedMutation({
 	args: {
 		stepId: v.id('automationSteps'),
-		stepType: v.optional(v.union(v.literal('email'), v.literal('delay'), v.literal('condition'))),
+		stepType: v.optional(stepKindValidator),
 		config: v.optional(stepConfigValidator),
 	},
 	handler: async (ctx, args) => {
@@ -201,6 +236,11 @@ export const updateStep = authedMutation({
 			'update automation steps',
 			'Steps can only be edited while the automation is a draft'
 		);
+
+		// Retyping a step to a plugin kind re-checks that plugin's authorization.
+		if (args.stepType !== undefined) {
+			await requirePluginStepAuthorization(ctx, args.stepType);
+		}
 
 		const now = Date.now();
 		const updates: Partial<Doc<'automationSteps'>> = { updatedAt: now };

@@ -1,7 +1,8 @@
 import type { ActionCtx, QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
+import type { CoreStepKind } from './steps/catalog';
 
-export type StepKind = 'email' | 'delay' | 'condition';
+export type { CoreStepKind, StepKind } from './steps/catalog';
 
 export type StepOutcome =
 	| { status: 'completed'; emailSendId?: string; nextStepIndex?: number }
@@ -14,7 +15,7 @@ export interface StepExecuteArgs<C> {
 	stepRunId: Id<'automationStepRuns'>;
 }
 
-export interface StepModule<T extends StepKind, C> {
+export interface StepModule<T extends CoreStepKind, C> {
 	readonly kind: T;
 	parseConfig(raw: unknown): C;
 	entryDelay?(config: C): number;

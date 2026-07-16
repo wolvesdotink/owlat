@@ -5,6 +5,8 @@ import {
 	stepConfigValidator,
 	jsonPrimitiveRecord,
 } from '../lib/convexValidators';
+import { stepKindValidator } from '../automations/steps/catalog';
+import { triggerKindValidator } from '../automations/triggers/catalog';
 
 /**
  * Automation tables — trigger-based email workflows + per-contact runs + per-step run state.
@@ -17,12 +19,7 @@ export const automationTables = {
 		name: v.string(),
 		description: v.optional(v.string()),
 		// Trigger configuration
-		triggerType: v.union(
-			v.literal('contact_created'),
-			v.literal('contact_updated'),
-			v.literal('event_received'),
-			v.literal('topic_subscribed')
-		),
+		triggerType: triggerKindValidator,
 		// JSON config for trigger-specific settings
 		// contact_updated: { propertyKey: string }
 		// event_received: { eventName: string }
@@ -57,7 +54,7 @@ export const automationTables = {
 		// Step ordering (0-indexed)
 		stepIndex: v.number(),
 		// Step type
-		stepType: v.union(v.literal('email'), v.literal('delay'), v.literal('condition')),
+		stepType: stepKindValidator,
 		// Step configuration (JSON string)
 		// email: { emailTemplateId: Id<"emailTemplates">, subjectOverride?: string }
 		// delay: { duration: number, unit: "minutes" | "hours" | "days" | "weeks" }
@@ -115,7 +112,7 @@ export const automationTables = {
 		automationRunId: v.id('automationRuns'),
 		automationStepId: v.id('automationSteps'),
 		stepIndex: v.number(),
-		stepType: v.union(v.literal('email'), v.literal('delay'), v.literal('condition')),
+		stepType: stepKindValidator,
 		// Execution status
 		status: v.union(
 			v.literal('pending'),
