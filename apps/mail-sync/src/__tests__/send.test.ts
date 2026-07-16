@@ -1,14 +1,23 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import os from 'node:os';
 import type { WorkerCredentials } from '../convex.js';
-import type { RecipientVerdict, SendResult } from '@owlat/smtp-client';
+import type {
+	RecipientVerdict,
+	SendResult,
+	SendMessageOptions,
+	VerifyOptions,
+} from '@owlat/smtp-client';
 
 // --- Mocks ------------------------------------------------------------------
 // vi.mock factories are hoisted above the file, so the shared mock fns they
 // reference must be created via vi.hoisted (which is hoisted alongside them).
+// sendMessage / verify are typed against the real client signatures so every
+// `.mock.calls[0][0]` shape assertion is checked against @owlat/smtp-client's
+// API — a future connect/envelope/auth change breaks these tests at compile time.
 const { sendMessage, verify, imapConnect, imapList, imapAppend, imapLogout, warn } = vi.hoisted(
 	() => ({
-		sendMessage: vi.fn(),
-		verify: vi.fn(),
+		sendMessage: vi.fn<(o: SendMessageOptions) => Promise<SendResult>>(),
+		verify: vi.fn<(o: VerifyOptions) => Promise<void>>(),
 		imapConnect: vi.fn(),
 		imapList: vi.fn(),
 		imapAppend: vi.fn(),
@@ -234,6 +243,44 @@ describe('sendViaExternal', () => {
 		expect(recipients).toEqual([{ address: 'x@example.com', status: 'sent' }]);
 		// And the failure is logged at warn level rather than thrown.
 		expect(warn).toHaveBeenCalledWith({ err: boom }, expect.stringContaining('append-to-Sent'));
+	});
+});
+
+// The EHLO identity must be byte-identical to nodemailer's `_getHostname()` so the
+// cutover changes no observable HELO name. nodemailer falls back to `[127.0.0.1]`
+// for a non-FQDN (dotless) hostname — which is exactly what mail-sync's own Docker
+// container hostnames are — and brackets a bare IPv4 literal as an address literal.
+describe('ehloName (nodemailer _getHostname parity)', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	async function capturedEhloName(hostname: string): Promise<unknown> {
+		vi.spyOn(os, 'hostname').mockReturnValue(hostname);
+		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
+		imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
+		await sendViaExternal(CREDS, {
+			from: 'me@example.com',
+			recipients: ['x@example.com'],
+			raw: RAW,
+		});
+		return sendMessage.mock.calls[0]?.[0].connect.ehloName;
+	}
+
+	it('falls back to [127.0.0.1] for a non-FQDN (dotless) container hostname', async () => {
+		expect(await capturedEhloName('a1b2c3d4e5f6')).toBe('[127.0.0.1]');
+	});
+
+	it('falls back to [127.0.0.1] for an empty hostname', async () => {
+		expect(await capturedEhloName('')).toBe('[127.0.0.1]');
+	});
+
+	it('encloses a bare IPv4 literal in brackets (address literal)', async () => {
+		expect(await capturedEhloName('10.20.30.40')).toBe('[10.20.30.40]');
+	});
+
+	it('keeps an FQDN hostname unchanged', async () => {
+		expect(await capturedEhloName('mx1.relay.example.com')).toBe('mx1.relay.example.com');
 	});
 });
 

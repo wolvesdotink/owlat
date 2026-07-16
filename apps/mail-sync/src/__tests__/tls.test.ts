@@ -144,8 +144,15 @@ describe('smtpTlsOptions', () => {
 		});
 	});
 
-	it('allows plaintext to a loopback host (local relay / Proton Bridge)', () => {
-		expect(smtpTlsOptions('127.0.0.1', false)).toEqual({ tlsMode: 'none', requireTls: false });
+	// Loopback + insecure keeps nodemailer's old `{ secure:false, requireTLS:false }`
+	// posture: opportunistic STARTTLS — upgrade when the local relay (Proton Bridge)
+	// advertises it, stay cleartext only when it does not. Never forced (requireTls
+	// false), never unconditionally plaintext (`tlsMode: 'none'`).
+	it('uses opportunistic STARTTLS for a loopback host on an insecure port (Proton Bridge)', () => {
+		expect(smtpTlsOptions('127.0.0.1', false)).toEqual({
+			tlsMode: 'starttls',
+			requireTls: false,
+		});
 	});
 
 	it('uses implicit TLS (never plaintext) to a loopback host on a secure port', () => {
