@@ -156,6 +156,41 @@ describe('installed plugin loading', () => {
 		});
 	});
 
+	it('verifies agent step module exports without executing them', async () => {
+		const root = await createWorkspace(
+			{ 'agent-plugin': '1.0.0' },
+			{
+				'agent-plugin': {
+					source: `export default { id: 'agent', version: '1.0.0', capabilities: ['agent:step'], flag: { default: false }, contributes: { agentSteps: [{ id: 'spam-score', after: 'security_scan', module: { exportPath: './agent/spam-score' }, lifecycleEdges: [{ from: 'classifying', to: 'archived' }] }] } };`,
+					packageJson: {
+						exports: {
+							'.': './index.js',
+							'./agent/spam-score': './agent/spam-score.js',
+						},
+					},
+					files: {
+						'agent/spam-score.js': `throw new Error('codegen must not execute agent modules'); export default {};`,
+					},
+				},
+			}
+		);
+
+		await expect(loadBundledPlugins(root, ['agent-plugin'])).resolves.toHaveLength(1);
+		const packagePath = join(root, 'node_modules/agent-plugin/package.json');
+		await writeFile(
+			packagePath,
+			JSON.stringify({
+				name: 'agent-plugin',
+				version: '1.0.0',
+				type: 'module',
+				exports: { '.': './index.js' },
+			})
+		);
+		await expect(loadBundledPlugins(root, ['agent-plugin'])).rejects.toMatchObject({
+			code: 'contribution_export_invalid',
+		});
+	});
+
 	it('rejects a component export whose target symlink escapes the package', async () => {
 		const root = await createWorkspace(
 			{ 'component-plugin': '1.0.0' },
