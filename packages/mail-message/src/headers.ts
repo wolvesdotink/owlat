@@ -13,12 +13,102 @@
  * encoded-words joined by CRLF + SP.
  */
 const MAX_HEADER_LINE_OCTETS = 998;
-// Worst-case prefix for a value passed to encodeHeaderValue (`Subject: `).
-const HEADER_PREFIX_OCTETS = 'Subject: '.length;
+// Default prefix octets assumed for a value passed to encodeHeaderValue when the
+// caller does not pass an explicit prefix length (`Subject: ` = 9 octets).
+const DEFAULT_HEADER_PREFIX_OCTETS = 'Subject: '.length;
+
+/**
+ * Soft fold width for an address-list header. A `To:`/`Cc:` list of many
+ * recipients rendered on one physical line trivially crosses the RFC 5322
+ * §2.1.1 998-octet hard cap, so the comma-separated list is folded across
+ * CRLF + SP continuation lines once a line approaches this width. Folding is
+ * transparent to a parser (the comma stays on the current line and the receiver
+ * drops the folding white space), so the list round-trips identically.
+ */
+const ADDRESS_FOLD_WIDTH = 76;
+
+// The longest header-name prefix an address list is rendered behind
+// (`Reply-To: ` = 10 octets). Used as the reservation so a single over-long
+// display name triggers the encoded-word escape hatch before the rendered
+// `Name: phrase <addr>` line can cross the 998-octet hard cap.
+const LONGEST_ADDRESS_PREFIX_OCTETS = 'Reply-To: '.length;
 
 export function escapeHeader(value: string): string {
 	// Strip CRLF to prevent header injection
 	return value.replace(/[\r\n]+/g, ' ');
+}
+
+/**
+ * Octets on the final physical line of `s` — from the last CRLF to the end, or
+ * the whole string when it contains no fold. A token may itself carry internal
+ * CRLF + SP folds (an RFC-2047-encoded display-name phrase), so the running line
+ * budget must reset to the length past the last CRLF, not the whole token.
+ */
+function lastLineOctets(s: string): number {
+	const idx = s.lastIndexOf('\r\n');
+	return idx === -1 ? s.length : s.length - (idx + 2);
+}
+
+/**
+ * Accumulate `tokens` onto physical lines separated by `joiner`, folding to a
+ * CRLF + SP continuation line before a line would cross `maxLineOctets`.
+ *
+ * `joiner` is the separator between two tokens on the same line (`', '` for an
+ * address list, `' '` for a msg-id list). On a fold the joiner's trailing space
+ * is replaced by the CRLF + SP continuation while any leading non-space (the
+ * address comma) stays glued to the preceding token, so the value round-trips to
+ * the same list after the receiver drops the folding white space.
+ * `prefixOctets` is the `Name: ` header prefix the first line sits behind.
+ */
+function foldTokens(
+	tokens: string[],
+	joiner: string,
+	prefixOctets: number,
+	maxLineOctets: number
+): string {
+	const first = tokens[0];
+	if (first === undefined) return '';
+	const attached = joiner.replace(/\s+$/, '');
+	let out = first;
+	let lineLen = prefixOctets + lastLineOctets(first);
+	for (let i = 1; i < tokens.length; i++) {
+		const next = tokens[i]!;
+		if (lineLen + joiner.length + next.length > maxLineOctets) {
+			out += `${attached}\r\n ${next}`;
+			lineLen = 1 + lastLineOctets(next); // leading SP + token on the continuation line
+		} else {
+			out += `${joiner}${next}`;
+			lineLen += joiner.length + lastLineOctets(next);
+		}
+	}
+	return out;
+}
+
+/**
+ * Fold a msg-id-list header value (`References` / `In-Reply-To`, RFC 5322
+ * §3.6.4) so no physical line crosses the 998-octet hard cap.
+ *
+ * A long thread accumulates msg-ids and a References value of many
+ * `<id@host>` tokens on one line trivially exceeds §2.1.1's 998-octet cap.
+ * RFC 2047 encoded-words are forbidden in a `msg-id` context, so unlike a
+ * subject this value can *only* be folded on the folding white space that
+ * already separates the ids — CRLF + SP before a `<`. The receiver drops the
+ * folding white space, so the id list round-trips identically.
+ *
+ * The value is first CRLF-stripped (injection defence — the ids are routinely
+ * derived from an inbound message's Message-ID in reply flows), then the
+ * whitespace-separated tokens are re-joined, breaking to a continuation line
+ * whenever appending the next token against the actual `Name: ` prefix would
+ * cross the cap. A single token longer than the cap (a pathological msg-id) is
+ * emitted as-is — there is no interior FWS to fold on, exactly as for a
+ * whitespace-free ASCII subject.
+ */
+export function foldMsgIdList(value: string, prefixOctets: number): string {
+	const tokens = escapeHeader(value)
+		.trim()
+		.split(/\s+/)
+		.filter((t) => t.length > 0);
+	return foldTokens(tokens, ' ', prefixOctets, MAX_HEADER_LINE_OCTETS);
 }
 
 /**
@@ -41,20 +131,24 @@ export function escapeHeader(value: string): string {
  *
  * A pure-ASCII value is normally left verbatim so the subject stays readable on
  * the wire, but RFC 5322 §2.1.1 still caps a physical header line at 998 octets.
- * The longest header prefix that routes through this helper is `Subject: `
- * (9 octets), so an ASCII value that — with that prefix — would exceed the cap
+ * The rendered line is `Name: value`, so the caller passes the actual
+ * `prefixOctets` (`name.length + 2` for the `: ` separator) — `Subject: ` is
+ * only the default. An ASCII value that — with its prefix — would exceed the cap
  * is routed through the same encoded-word folding as non-ASCII values. Base64
  * encoded-words are ASCII, fold with CRLF+SP, and decode back to the original
  * string, so the rendered line stays well under the limit without corrupting
- * the value (a whitespace-free 2000-char ASCII subject can't be folded on FWS).
+ * the value (a whitespace-free 2000-char ASCII value can't be folded on FWS).
  */
-export function encodeHeaderValue(value: string): string {
+export function encodeHeaderValue(
+	value: string,
+	prefixOctets: number = DEFAULT_HEADER_PREFIX_OCTETS
+): string {
 	const stripped = escapeHeader(value);
 	// eslint-disable-next-line no-control-regex
 	if (/^[\x00-\x7F]*$/.test(stripped)) {
-		// ASCII stays verbatim unless the rendered `Header: value` line would blow
-		// the 998-octet hard line limit; then fold it via encoded-words.
-		if (HEADER_PREFIX_OCTETS + stripped.length <= MAX_HEADER_LINE_OCTETS) {
+		// ASCII stays verbatim unless the rendered `Name: value` line would blow the
+		// 998-octet hard line limit; then fold it via encoded-words.
+		if (prefixOctets + stripped.length <= MAX_HEADER_LINE_OCTETS) {
 			return stripped;
 		}
 	}
@@ -86,7 +180,11 @@ function encodeWords(text: string): string[] {
 		chunkBytes = 0;
 	};
 	// Iterate by codepoint (the spread operator splits on full Unicode chars, so
-	// surrogate pairs and combining sequences stay whole within a word).
+	// a surrogate pair is never severed mid-codepoint). A combining sequence
+	// (base char + a following combining mark) CAN still split across two
+	// encoded-words at a chunk boundary — which is RFC 2047 §5-conformant: each
+	// codepoint stays integral and each word decodes independently; a reader
+	// re-joins them into the same grapheme.
 	for (const ch of text) {
 		const chBytes = Buffer.byteLength(ch, 'utf-8');
 		if (chunkBytes + chBytes > maxSrcBytes) flush();
@@ -112,7 +210,15 @@ export function encodeAddressHeader(addresses: string[]): string {
 		const one = encodeSingleAddress(escapeHeader(raw));
 		if (one.length > 0) encoded.push(one);
 	}
-	return encoded.join(', ');
+	// Join with ", " but fold the list onto CRLF + SP continuation lines before a
+	// physical line approaches the 998-octet hard cap. A short list stays on one
+	// line (byte-identical to the un-folded join); only a long recipient list
+	// wraps. The comma is kept on the current line so the folded value round-trips
+	// to the same address list after the receiver drops the folding white space.
+	// A single address whose display name is itself over-long is RFC-2047-encoded
+	// inside encodeSingleAddress, carrying its own internal CRLF + SP folds; the
+	// fold accounting measures from the last CRLF so those reset the line budget.
+	return foldTokens(encoded, ', ', 0, ADDRESS_FOLD_WIDTH);
 }
 
 function encodeSingleAddress(addr: string): string {
@@ -126,21 +232,40 @@ function encodeSingleAddress(addr: string): string {
 	if (lt > 0 && gt > lt) {
 		const phrase = trimmed.slice(0, lt).trim();
 		const addrSpec = trimmed.slice(lt, gt + 1); // includes the angle brackets
-		const encodedPhrase = encodePhrase(phrase);
+		// Reserve octets for the longest header-name prefix, the space before the
+		// addr-spec and the addr-spec itself, so the ASCII escape hatch fires before
+		// the rendered `Name: phrase <addr>` line can cross the 998-octet hard cap.
+		const reserved = LONGEST_ADDRESS_PREFIX_OCTETS + 1 + addrSpec.length;
+		const encodedPhrase = encodePhrase(phrase, reserved);
 		return encodedPhrase ? `${encodedPhrase} ${addrSpec}` : addrSpec;
 	}
 	// Bare addr-spec (no display name) — leave literal.
 	return trimmed;
 }
 
-function encodePhrase(phrase: string): string {
+function encodePhrase(phrase: string, reservedOctets: number): string {
+	if (phrase.length === 0) return '';
 	// eslint-disable-next-line no-control-regex
-	if (/^[\x00-\x7F]*$/.test(phrase)) {
-		// ASCII phrase: keep readable. (Surrounding quotes, if any, are preserved
-		// as the composer wrote them.)
+	const isAscii = /^[\x00-\x7F]*$/.test(phrase);
+	if (isAscii && phrase.length + reservedOctets <= MAX_HEADER_LINE_OCTETS) {
+		// Short ASCII phrase: keep readable. (Surrounding quotes, if any, are
+		// preserved as the composer wrote them.)
 		return phrase;
 	}
-	return encodeWords(phrase).join('\r\n ');
+	// Non-ASCII, or an ASCII phrase long enough that the rendered address would
+	// cross the 998-octet hard cap: RFC-2047-encode it. Encoded-words are legal in
+	// a `phrase` (RFC 2047 §5) and fold on CRLF + SP, so the physical lines stay
+	// well under the cap. Surrounding quotes are dropped — an encoded-word phrase
+	// needs no quoting — and their backslash escapes undone.
+	return encodeWords(unquotePhrase(phrase)).join('\r\n ');
+}
+
+/** Strip a single layer of surrounding DQUOTEs and undo `\`-escapes (RFC 5322 quoted-string). */
+function unquotePhrase(phrase: string): string {
+	if (phrase.length >= 2 && phrase.startsWith('"') && phrase.endsWith('"')) {
+		return phrase.slice(1, -1).replace(/\\(.)/g, '$1');
+	}
+	return phrase;
 }
 
 /** Filenames in `Content-Disposition: …; filename="…"` — strip CRLF, quotes, control chars. */
