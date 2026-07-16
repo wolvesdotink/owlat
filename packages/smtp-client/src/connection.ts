@@ -8,7 +8,9 @@
  * flag, negotiated TLS protocol, and parsed EHLO `capabilities` are first-class.
  *
  * The socket mechanics live in `transport.ts` (opening + TLS + source-level
- * failure classification) and `bootReader.ts` (the handshake reply reader);
+ * failure classification) and the reply-reader mechanics in `replyReader.ts`.
+ * `connect()` builds ONE {@link ReplyReader}, drives the whole handshake through
+ * it, and hands that same instance to the {@link SmtpConnection} it constructs —
  * this file is the orchestration and the live-connection wire primitives.
  *
  * Two TLS shapes: `implicit` (TLS from byte zero, e.g. 465) and `starttls`
@@ -21,7 +23,6 @@
 import type net from 'node:net';
 import type tls from 'node:tls';
 
-import { BootReader } from './bootReader';
 import {
 	serializeEhlo,
 	serializeHelo,
@@ -29,7 +30,8 @@ import {
 	type EhloCapabilities,
 } from './commands';
 import { SmtpError, type SmtpPhase } from './errors';
-import { type ReplyParser, type SmtpReply, isPositiveCompletion } from './reply';
+import { ReplyReader } from './replyReader';
+import { type SmtpReply, isPositiveCompletion } from './reply';
 import { openPlainSocket, openTlsSocket, startTlsUpgrade } from './transport';
 import { DEFAULT_TIMEOUTS, type SmtpConnectOptions, type SmtpTimeouts } from './connectionTypes';
 
@@ -41,10 +43,10 @@ export {
 } from './connectionTypes';
 
 /**
- * A live SMTP connection, opened and past EHLO. Owns the socket and a single
- * reply reader; `command()` writes a line and resolves the next complete reply.
- * Higher layers (AUTH, the send state machine) build on this — this piece only
- * establishes it and exposes the wire primitives.
+ * A live SMTP connection, opened and past EHLO. Owns the socket (via its
+ * {@link ReplyReader}) and a single reply reader; `command()` writes a line and
+ * resolves the next complete reply. Higher layers (AUTH, the send state machine)
+ * build on this — this piece only establishes it and exposes the wire primitives.
  */
 export class SmtpConnection {
 	/** `true` iff the underlying socket is TLS (at EHLO-completion time). */
@@ -56,38 +58,29 @@ export class SmtpConnection {
 	/** The capabilities advertised in the (last) EHLO. */
 	readonly capabilities: EhloCapabilities;
 
-	private readonly socket: net.Socket;
-	private readonly parser: ReplyParser;
+	private readonly reader: ReplyReader;
 	private readonly timeouts: SmtpTimeouts;
-	private readonly queue: SmtpReply[] = [];
-	private waiter: { resolve: (reply: SmtpReply) => void; reject: (err: Error) => void } | undefined;
-	private waiterTimer: NodeJS.Timeout | undefined;
-	private waiterPhase: SmtpPhase = 'greeting';
-	private terminalError: Error | undefined;
 	private closed = false;
 
 	private constructor(init: {
-		socket: net.Socket;
-		parser: ReplyParser;
+		reader: ReplyReader;
 		timeouts: SmtpTimeouts;
 		secured: boolean;
 		tlsProtocol: string | undefined;
 		greeting: SmtpReply;
 		capabilities: EhloCapabilities;
 	}) {
-		this.socket = init.socket;
-		this.parser = init.parser;
+		this.reader = init.reader;
 		this.timeouts = init.timeouts;
 		this.secured = init.secured;
 		this.tlsProtocol = init.tlsProtocol;
 		this.greeting = init.greeting;
 		this.capabilities = init.capabilities;
-		this.attachReader(init.socket);
 	}
 
 	/** The active socket, for the layers that write the DATA payload. */
 	get rawSocket(): net.Socket {
-		return this.socket;
+		return this.reader.socket;
 	}
 
 	/**
@@ -97,46 +90,34 @@ export class SmtpConnection {
 	 */
 	async command(line: string, phase: SmtpPhase, expectData = false): Promise<SmtpReply> {
 		this.write(line, phase);
-		return this.readReply(phase, expectData ? this.timeouts.data : this.timeouts.command);
+		return this.reader.read(
+			phase,
+			expectData ? this.timeouts.data : this.timeouts.command,
+			this.secured
+		);
 	}
 
-	/** Write raw bytes to the socket, failing loudly if it has gone away. */
-	write(chunk: string | Buffer, phase: SmtpPhase): void {
-		if (this.closed || this.terminalError !== undefined) {
+	/**
+	 * Write raw bytes to the socket, failing loudly if it has gone away. Returns
+	 * `socket.write`'s backpressure boolean: `false` means the kernel buffer is
+	 * full and the caller must wait for the socket's `'drain'` event before
+	 * writing more. Command lines are tiny so `command()` ignores it, but the
+	 * DATA writer that streams a whole message body over `rawSocket` MUST honor it.
+	 */
+	write(chunk: string | Buffer, phase: SmtpPhase): boolean {
+		if (this.closed || this.reader.failed) {
 			throw new SmtpError({
 				phase,
 				message: 'attempted to write to a closed SMTP connection',
 				secured: this.secured,
-				cause: this.terminalError,
 			});
 		}
-		this.socket.write(chunk);
+		return this.reader.socket.write(chunk);
 	}
 
 	/** Read the next complete reply, or reject after `timeoutMs`. */
 	readReply(phase: SmtpPhase, timeoutMs: number): Promise<SmtpReply> {
-		const queued = this.queue.shift();
-		if (queued !== undefined) {
-			return Promise.resolve(queued);
-		}
-		if (this.terminalError !== undefined) {
-			return Promise.reject(this.wrapTerminal(phase, this.terminalError));
-		}
-		return new Promise<SmtpReply>((resolve, reject) => {
-			this.waiterPhase = phase;
-			this.waiter = { resolve, reject };
-			this.waiterTimer = setTimeout(() => {
-				this.waiter = undefined;
-				this.waiterTimer = undefined;
-				reject(
-					new SmtpError({
-						phase,
-						message: `timed out after ${timeoutMs}ms waiting for an SMTP reply`,
-						secured: this.secured,
-					})
-				);
-			}, timeoutMs);
-		});
+		return this.reader.read(phase, timeoutMs, this.secured);
 	}
 
 	/** Close the socket and release the reader. Idempotent. */
@@ -145,66 +126,8 @@ export class SmtpConnection {
 			return;
 		}
 		this.closed = true;
-		if (this.waiterTimer !== undefined) {
-			clearTimeout(this.waiterTimer);
-			this.waiterTimer = undefined;
-		}
-		this.socket.destroy();
-	}
-
-	private attachReader(socket: net.Socket): void {
-		socket.on('data', (chunk: Buffer) => this.onData(chunk));
-		socket.on('error', (err: Error) => this.onTerminal(err));
-		socket.on('close', () => this.onTerminal(this.terminalError ?? new Error('socket closed')));
-	}
-
-	private onData(chunk: Buffer): void {
-		let replies: SmtpReply[];
-		try {
-			replies = this.parser.push(chunk);
-		} catch (err) {
-			this.onTerminal(err instanceof Error ? err : new Error(String(err)));
-			return;
-		}
-		for (const reply of replies) {
-			const waiter = this.waiter;
-			if (waiter !== undefined) {
-				this.settleWaiter();
-				waiter.resolve(reply);
-			} else {
-				this.queue.push(reply);
-			}
-		}
-	}
-
-	private onTerminal(err: Error): void {
-		if (this.terminalError === undefined) {
-			this.terminalError = err;
-		}
-		this.closed = true;
-		const waiter = this.waiter;
-		if (waiter !== undefined) {
-			const phase = this.waiterPhase;
-			this.settleWaiter();
-			waiter.reject(this.wrapTerminal(phase, err));
-		}
-	}
-
-	private settleWaiter(): void {
-		if (this.waiterTimer !== undefined) {
-			clearTimeout(this.waiterTimer);
-			this.waiterTimer = undefined;
-		}
-		this.waiter = undefined;
-	}
-
-	private wrapTerminal(phase: SmtpPhase, cause: Error): SmtpError {
-		return new SmtpError({
-			phase,
-			message: `SMTP connection failed: ${cause.message}`,
-			secured: this.secured,
-			cause,
-		});
+		this.reader.dispose();
+		this.reader.socket.destroy();
 	}
 
 	/**
@@ -230,25 +153,25 @@ export class SmtpConnection {
 			secured = false;
 		}
 
-		// A bootstrap reader drives the opening handshake before the connection
-		// object (and its persistent reader) exists.
-		const boot = new BootReader(socket);
+		// One reader drives the whole handshake AND the live connection that
+		// follows — the same instance is handed to the SmtpConnection below.
+		const reader = new ReplyReader(socket);
 		try {
 			// 2) Greeting.
-			const greetingReply = await boot.read('greeting', timeouts.greeting, secured);
+			const greetingReply = await reader.read('greeting', timeouts.greeting, secured);
 			assertPositive(greetingReply, 'greeting', secured);
 
 			// 3) EHLO, with HELO fallback for pre-ESMTP servers.
-			let capabilities = await ehlo(boot, socket, options.ehloName, timeouts.command, secured);
+			let capabilities = await ehlo(reader, socket, options.ehloName, timeouts.command, secured);
 
 			// 4) STARTTLS upgrade (only when starting in cleartext and asked to).
 			if (options.tlsMode === 'starttls') {
 				if (capabilities.startTls) {
-					socket = await startTlsUpgrade(boot, socket, tlsOptions, servername, timeouts);
+					socket = await startTlsUpgrade(reader, socket, tlsOptions, servername, timeouts);
 					secured = true;
 					tlsProtocol = (socket as tls.TLSSocket).getProtocol() ?? undefined;
 					// 5) Re-EHLO over the secured channel — capabilities can change.
-					capabilities = await ehlo(boot, socket, options.ehloName, timeouts.command, true);
+					capabilities = await ehlo(reader, socket, options.ehloName, timeouts.command, true);
 				} else if (options.requireTls) {
 					// Fail closed: a required TLS floor was not offered.
 					throw new SmtpError({
@@ -260,11 +183,8 @@ export class SmtpConnection {
 				}
 			}
 
-			// Hand the socket (and any buffered bytes) to the persistent reader.
-			const parser = boot.detach();
 			return new SmtpConnection({
-				socket,
-				parser,
+				reader,
 				timeouts,
 				secured,
 				tlsProtocol,
@@ -272,7 +192,7 @@ export class SmtpConnection {
 				capabilities,
 			});
 		} catch (err) {
-			boot.dispose();
+			reader.dispose();
 			socket.destroy();
 			throw err;
 		}
@@ -282,21 +202,21 @@ export class SmtpConnection {
 // ── EHLO / HELO ───────────────────────────────────────────────────────────
 
 async function ehlo(
-	boot: BootReader,
+	reader: ReplyReader,
 	socket: net.Socket,
 	ehloName: string,
 	timeoutMs: number,
 	secured: boolean
 ): Promise<EhloCapabilities> {
 	socket.write(serializeEhlo(ehloName));
-	const reply = await boot.read('ehlo', timeoutMs, secured);
+	const reply = await reader.read('ehlo', timeoutMs, secured);
 	if (isPositiveCompletion(reply.code)) {
 		return parseEhloCapabilities(reply);
 	}
 	// Pre-ESMTP server (or EHLO refused): fall back to HELO. A HELO server
 	// advertises no capabilities, so the table is empty (no STARTTLS/AUTH).
 	socket.write(serializeHelo(ehloName));
-	const heloReply = await boot.read('ehlo', timeoutMs, secured);
+	const heloReply = await reader.read('ehlo', timeoutMs, secured);
 	assertPositive(heloReply, 'ehlo', secured);
 	return parseEhloCapabilities({
 		code: heloReply.code,

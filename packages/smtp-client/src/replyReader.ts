@@ -1,12 +1,14 @@
 /**
- * The short-lived reply reader that drives a connection's OPENING handshake —
- * greeting, EHLO, STARTTLS, re-EHLO — before the persistent {@link SmtpConnection}
- * reader takes over.
+ * The single reply reader for a connection's whole lifetime — greeting, EHLO,
+ * STARTTLS, re-EHLO, and every command issued after the connection is live.
  *
  * It owns exactly one `data` listener at a time, follows the socket across a
- * STARTTLS upgrade (via {@link BootReader.pauseSource} + {@link BootReader.rebind}),
- * and — on {@link BootReader.detach} — surrenders its {@link ReplyParser} (with any
- * buffered bytes) to the connection so no reply is dropped in the handoff.
+ * STARTTLS upgrade (via {@link ReplyReader.pauseSource} + {@link ReplyReader.rebind}),
+ * and enforces the sequential-read invariant of D5: at most one {@link
+ * ReplyReader.read} may be outstanding at once. `connect()` builds one reader for
+ * the opening handshake and hands the SAME instance to the {@link SmtpConnection}
+ * it constructs — there is no parser hand-off and no second reader, so no reply
+ * can be dropped or double-read in a transition.
  */
 
 import type net from 'node:net';
@@ -14,9 +16,9 @@ import type net from 'node:net';
 import { SmtpError, type SmtpPhase } from './errors';
 import { ReplyParser, type SmtpReply } from './reply';
 
-export class BootReader {
+export class ReplyReader {
 	private source: net.Socket;
-	private readonly parser = new ReplyParser();
+	private parser = new ReplyParser();
 	private readonly queue: SmtpReply[] = [];
 	private waiter:
 		| { resolve: (reply: SmtpReply) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }
@@ -32,7 +34,39 @@ export class BootReader {
 		this.bind(socket);
 	}
 
+	/** The socket the reader is currently bound to (the command/DATA writer's target). */
+	get socket(): net.Socket {
+		return this.source;
+	}
+
+	/** `true` once a terminal error (socket `error`/`close`) has been observed. */
+	get failed(): boolean {
+		return this.terminalError !== undefined;
+	}
+
+	/**
+	 * `true` when the reader is holding reply data the caller has not consumed —
+	 * a fully-parsed reply still queued, or bytes mid-line in the parser. The
+	 * STARTTLS upgrade asserts this is `false` after the 220 to prove the peer
+	 * injected nothing before the socket is wrapped (RFC 3207 §4.2).
+	 */
+	get hasBufferedData(): boolean {
+		return this.queue.length > 0 || this.parser.hasPending;
+	}
+
 	read(phase: SmtpPhase, timeoutMs: number, secured: boolean): Promise<SmtpReply> {
+		if (this.waiter !== undefined) {
+			// D5 is sequential command/reply: a second read while one is pending is
+			// a caller bug, never a wire condition. Reject loudly instead of
+			// clobbering the live waiter (which would hang both promises).
+			return Promise.reject(
+				new SmtpError({
+					phase,
+					message: 'concurrent SMTP read: a reply is already awaited',
+					secured,
+				})
+			);
+		}
 		const queued = this.queue.shift();
 		if (queued !== undefined) {
 			return Promise.resolve(queued);
@@ -72,17 +106,16 @@ export class BootReader {
 		this.bind(socket);
 	}
 
-	/** Surrender the ReplyParser (with buffered bytes) to the persistent reader. */
-	detach(): ReplyParser {
-		this.pauseSource();
-		if (this.waiter !== undefined) {
-			clearTimeout(this.waiter.timer);
-			this.waiter = undefined;
-		}
-		return this.parser;
+	/**
+	 * Discard the cleartext parser and start the secured leg with a fresh one so
+	 * no pre-TLS byte can be decoded as a post-TLS reply (RFC 3207 §4.2). Callers
+	 * MUST have already asserted {@link ReplyReader.hasBufferedData} is `false`.
+	 */
+	resetParser(): void {
+		this.parser = new ReplyParser();
 	}
 
-	/** Tear down without handing anything off (error path). */
+	/** Stop reading and clear any pending waiter. Idempotent teardown. */
 	dispose(): void {
 		this.pauseSource();
 		if (this.waiter !== undefined) {
