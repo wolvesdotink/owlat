@@ -158,20 +158,6 @@ const handlingRulesGate: CoreAutoSendGate = Object.freeze({
 	},
 });
 
-export const PRE_AUTONOMY_GATE_IDS = Object.freeze(['circuit_breakers'] as const);
-export const CORE_FINAL_AUTO_SEND_GATE_IDS = Object.freeze([
-	'message_exists',
-	'spend_budget',
-	'working_hours',
-	'abandoned_clarification',
-	'complaint_or_urgent',
-	'inbound_guard',
-	'recipient_lock',
-	'outbound_injection',
-	'outbound_dlp',
-	'handling_rules',
-] as const);
-
 const PRE_AUTONOMY_GATES = Object.freeze([circuitBreakersGate]);
 const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	messageExistsGate,
@@ -185,6 +171,9 @@ const CORE_FINAL_AUTO_SEND_GATES = Object.freeze([
 	outboundDlpGate,
 	handlingRulesGate,
 ]);
+
+export const PRE_AUTONOMY_GATE_IDS = gateIds(PRE_AUTONOMY_GATES);
+export const CORE_FINAL_AUTO_SEND_GATE_IDS = gateIds(CORE_FINAL_AUTO_SEND_GATES);
 
 export async function runPreAutonomyGates(
 	action: ActionCtx,
@@ -229,6 +218,10 @@ async function runOrderedGates(
 		}
 	}
 	return safe();
+}
+
+function gateIds(gates: readonly CoreAutoSendGate[]): readonly string[] {
+	return Object.freeze(gates.map((gate) => gate.id));
 }
 
 function messageGate(
