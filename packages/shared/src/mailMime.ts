@@ -18,15 +18,16 @@
 // in-house parser that replaces mailparser). This module keeps re-exporting
 // them from their new home so every existing importer of
 // `@owlat/shared/mailMime` — including `decodeEncodedWords` — keeps working
-// unchanged. We import from the `/headers` subpath (which pulls in nothing
-// else) so the web bundle that consumes this extractor is not enlarged.
+// unchanged. We import from the directional `/parse/headers` subpath (which
+// pulls in nothing else) so the web bundle that consumes this extractor is not
+// enlarged.
 import {
 	unfold,
 	decodeQpHexEscapes,
 	decodeEncodedWords,
 	decodeRfc2231,
 	getRawParam,
-} from '@owlat/mail-message/headers';
+} from '@owlat/mail-message/parse/headers';
 
 export { unfold, decodeEncodedWords, decodeRfc2231 };
 

@@ -13,21 +13,21 @@
 			"types": "./src/index.ts",
 			"import": "./src/index.ts"
 		},
-		"./compose": {
-			"types": "./src/compose.ts",
-			"import": "./src/compose.ts"
-		},
-		"./headers": {
+		"./parse/headers": {
 			"types": "./src/parse/headers.ts",
 			"import": "./src/parse/headers.ts"
 		},
-		"./encoding": {
-			"types": "./src/encoding.ts",
-			"import": "./src/encoding.ts"
+		"./compose/headers": {
+			"types": "./src/compose/headers.ts",
+			"import": "./src/compose/headers.ts"
 		},
-		"./messageId": {
-			"types": "./src/messageId.ts",
-			"import": "./src/messageId.ts"
+		"./compose/encoding": {
+			"types": "./src/compose/encoding.ts",
+			"import": "./src/compose/encoding.ts"
+		},
+		"./compose/messageId": {
+			"types": "./src/compose/messageId.ts",
+			"import": "./src/compose/messageId.ts"
 		}
 	},
 	"scripts": {
