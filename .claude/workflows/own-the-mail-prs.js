@@ -5,7 +5,8 @@ export const meta = {
 	phases: [
 		{
 			title: 'Build',
-			detail: 'Opus builders open PRs vs integration/own-the-mail from dedicated scratchpad worktrees',
+			detail:
+				'Opus builders open PRs vs integration/own-the-mail from dedicated scratchpad worktrees',
 			model: 'opus',
 		},
 		{ title: 'Verify', detail: 'wait for GitHub Actions CI (gh pr checks)' },
@@ -22,7 +23,8 @@ export const meta = {
 		},
 		{
 			title: 'Merge',
-			detail: 'APPROVE verdict + CI green -> Sonnet squash-merge into the integration branch (never main)',
+			detail:
+				'APPROVE verdict + CI green -> Sonnet squash-merge into the integration branch (never main)',
 			model: 'sonnet',
 		},
 		{
@@ -202,9 +204,11 @@ const PIECES = [
 		branch: 'oti/l2-tls-auth-session',
 		title: 'feat(smtp-listener): STARTTLS + AUTH + typed session context',
 		spec:
-			'ADOPT EXISTING PR #364 (head oti/l2-tls-auth-session, base ' + INBOUND + ') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
+			'ADOPT EXISTING PR #364 (head oti/l2-tls-auth-session, base ' +
+			INBOUND +
+			') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
 			'ADD packages/smtp-listener/src/{tls.ts, auth.ts} + make session/transaction GENERIC type params in session.ts. ' +
-			'STARTTLS upgrade with FULL STATE RESET (RFC 3207) + an implicit-TLS mode; the EXACT cipher policy of today\'s listeners (TLSv1.2 floor, AEAD-only ECDHE, honorCipherOrder, SNI). ' +
+			"STARTTLS upgrade with FULL STATE RESET (RFC 3207) + an implicit-TLS mode; the EXACT cipher policy of today's listeners (TLSv1.2 floor, AEAD-only ECDHE, honorCipherOrder, SNI). " +
 			'AUTH PLAIN/LOGIN with `requireTls`; a generic-failure rule (NO auth oracle — failures are byte-identical regardless of stage/cause). ' +
 			'The old `SessionWithSpf` cast and the `sessionAuth` WeakMap DISAPPEAR — replaced by typed generic session context. ' +
 			'ACCEPTANCE: the capability list flips correctly across the TLS upgrade; AUTH is refused pre-TLS, accepted post-upgrade; both STARTTLS and implicit-TLS work over real sockets.',
@@ -220,7 +224,9 @@ const PIECES = [
 		branch: 'oti/p2-body-charset',
 		title: 'feat(mail-message): body assembly + per-part charset decoding',
 		spec:
-			'ADOPT EXISTING PR #362 (head oti/p2-body-charset, base ' + INBOUND + ') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
+			'ADOPT EXISTING PR #362 (head oti/p2-body-charset, base ' +
+			INBOUND +
+			') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
 			'ADD packages/mail-message/src/parse/{body.ts, charset.ts, attachments.ts}. ' +
 			'Walk the MIME part tree; assemble `text` and `html` (preserve the load-bearing `false` sentinel); PER-PART charset decode via TextDecoder + a WHATWG alias table with a latin1 fallback; attachments in DOCUMENT ORDER with decoded filenames + Buffers + size + contentId; alternative/related traversal; broken-boundary tolerance (NEVER throw). ' +
 			'The corrected charset decoding is a SANCTIONED improvement (I2) — pinned in charset.matrix.test.ts.',
@@ -236,9 +242,11 @@ const PIECES = [
 		branch: 'oti/a2-canon-dkim-verify',
 		title: 'feat(mail-auth): canonicalization core + DKIM verifier (LONG POLE)',
 		spec:
-			'ADOPT EXISTING PR #363 (head oti/a2-canon-dkim-verify, base ' + INBOUND + ') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
+			'ADOPT EXISTING PR #363 (head oti/a2-canon-dkim-verify, base ' +
+			INBOUND +
+			') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
 			'ADD packages/mail-auth/src/{canon.ts, dkim/verify.ts, dkim/keyRecord.ts}. ' +
-			'canon.ts = RFC 6376 §3.4 relaxed + simple header/body canonicalization as a PUBLIC API (U4 — this becomes THE ONLY canonicalization in the repo; MD1\'s signer and a future ARC reuse it). ' +
+			"canon.ts = RFC 6376 §3.4 relaxed + simple header/body canonicalization as a PUBLIC API (U4 — this becomes THE ONLY canonicalization in the repo; MD1's signer and a future ARC reuse it). " +
 			'dkim/verify.ts = the full verifier: rsa-sha256 + ed25519-sha256 (rsa-sha1 verified-but-policy-fail), multi-signature STRONGEST-WINS matching inboundDkim.pickVerdict, `l=` IGNORED -> verdict capped NEUTRAL, and it NEVER throws (internal error -> temperror). ' +
 			'dkim/keyRecord.ts = hostile TXT parsing. REVIEWER: assume the author is wrong; try to construct a message that verifies differently under mailauth — a verifier bug AUTHENTICATES FORGED MAIL.',
 		tests:
@@ -251,9 +259,12 @@ const PIECES = [
 		dependsOn: [],
 		base: WIRE,
 		branch: 'otw/m2-compose-message',
-		title: 'feat(mail-message): composeMessage() — full nodemailer-composer parity, proven differentially',
+		title:
+			'feat(mail-message): composeMessage() — full nodemailer-composer parity, proven differentially',
 		spec:
-			'ADOPT EXISTING PR #361 (head otw/m2-compose-message, base ' + WIRE + ') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
+			'ADOPT EXISTING PR #361 (head otw/m2-compose-message, base ' +
+			WIRE +
+			') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
 			'Generalize buildRfc822 into composeMessage(input) covering everything the MTA and API paths feed nodemailer today: from/replyTo/to/cc/bcc (display-name formatting), subject, html + text (stripHtml fallback), AMP as text/x-amp-html ordered plain -> amp -> html, attachments (Buffer, contentType, inline CID), arbitrary extra headers with injection stripping, explicit-or-generated Message-ID, returned envelope. Deterministic given seeded boundary/date inputs. ' +
 			'THE DIFFERENTIAL HARNESS IS THE HEART: ~40 structured inputs composed by both nodemailer MailComposer and ours, both parsed with mailparser, asserting SEMANTIC equality (same part tree, decoded bodies, effective header values).',
 		tests:
@@ -270,7 +281,9 @@ const PIECES = [
 		branch: 'otw/s2-connection-engine',
 		title: 'feat(smtp-client): connection engine — sockets, STARTTLS, and the secured flag',
 		spec:
-			'ADOPT EXISTING PR #360 (head otw/s2-connection-engine, base ' + WIRE + ') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
+			'ADOPT EXISTING PR #360 (head otw/s2-connection-engine, base ' +
+			WIRE +
+			') — it is believed complete; do NOT rebuild from scratch. Original card: ' +
 			'packages/smtp-client/src/connection.ts — TCP connect with localAddress binding, implicit-TLS or cleartext-then-STARTTLS, greeting wait, EHLO (HELO fallback), STARTTLS honoring requireTls / rejectUnauthorized / minVersion (TLSv1.2 floor) / servername SNI, re-EHLO after upgrade, per-phase timeouts, first-class `secured` + negotiated-protocol metadata. TLS failures classified AT THE SOURCE into tlsCause from Node error codes — never from message strings.',
 		tests:
 			'NAMED TEST GATE: (a) connection.integration.test.ts against in-process smtp-server (implicit TLS, STARTTLS, STARTTLS-stripping + requireTls fails closed with tlsCause starttls-unavailable); (b) raw net-server edge tests (multiline greeting, greeting timeout, mid-handshake disconnect, self-signed / hostname-mismatch / expired certs each yield their EXACT tlsCause); (c) `secured` true iff the socket is TLS at EHLO-completion, asserted in both paths.',
@@ -283,14 +296,19 @@ const PIECES = [
 		group: 'unify',
 		dependsOn: ['L2', 'P2', 'A2', 'M2', 'S2'],
 		branch: 'otm/u0-unify-mail-message',
-		title: 'refactor(mail-message): unify parse/ + compose/ subtrees; retire the ambiguous ./headers subpath; commit the unified pipeline',
+		title:
+			'refactor(mail-message): unify parse/ + compose/ subtrees; retire the ambiguous ./headers subpath; commit the unified pipeline',
 		spec:
-			'The SEED step already merged the two old integration branches into ' + BASE + ' with a MINIMAL mechanical resolution. This piece finishes the unification (U3/U5/U6): ' +
+			'The SEED step already merged the two old integration branches into ' +
+			BASE +
+			' with a MINIMAL mechanical resolution. This piece finishes the unification (U3/U5/U6): ' +
 			'(1) RESTRUCTURE packages/mail-message: `git mv` the wire composer modules under src/compose/ — compose.ts, mime.ts, encoding.ts, messageId.ts, and headers.ts -> compose/headers.ts (the parse tree already lives at src/parse/). Update index.ts (the union stays collision-free), all internal imports, and the package.json exports map to DIRECTIONAL subpaths: ".", "./parse/headers", "./compose/headers" (plus compose/encoding/messageId as needed). RETIRE the ambiguous "./headers" subpath entirely; update its consumers (packages/shared/src/mailMime.ts imports the PARSE one; grep for every other subpath consumer, e.g. apps/api/convex/mail/rfc822.ts, and re-point them). ' +
 			'(2) ADDRESS MODEL (U5): add addressRoundTrip.test.ts pinning parseAddressObject(encodeAddressHeader(x)).text round-trips over a shared fixture set; if the two formatters are trivially unifiable, unify them (parse-side types are the shared model) — otherwise leave both with the pin. ' +
 			'(3) SCAFFOLD RECONCILIATION: one vitest.config.ts using the glob superset (both __tests__/ conventions); coverage thresholds per U6 — parse/auth-side gates stay at >=90 lines + branch coverage on the security modules; if the compose side is below the line, configure per-directory thresholds that keep the parse gates and note the R2 ratchet in the PR body (do NOT lower any existing gate). tsconfig include = union. package.json version 1.0.0, lint script covering src + __tests__. ' +
 			'(4) CI MATRIX: verify .github/workflows/test.yml has ONE mail-message entry and includes smtp-listener, mail-auth, and smtp-client entries (the seed did the union — fix anything it missed). ' +
-			'(5) PIPELINE HYGIENE: commit .claude/workflows/own-the-mail-prs.js (copy it READ-ONLY from ' + ROOT + '/.claude/workflows/own-the-mail-prs.js into the worktree) and DELETE .claude/workflows/nodemailer-removal-prs.js (and inbound-pipeline-prs.js if tracked) from the tree — one pipeline, one coordinator. ' +
+			'(5) PIPELINE HYGIENE: commit .claude/workflows/own-the-mail-prs.js (copy it READ-ONLY from ' +
+			ROOT +
+			'/.claude/workflows/own-the-mail-prs.js into the worktree) and DELETE .claude/workflows/nodemailer-removal-prs.js (and inbound-pipeline-prs.js if tracked) from the tree — one pipeline, one coordinator. ' +
 			'DONE: all five package suites compile + pass in CI on the restructured tree; no source file imports "@owlat/mail-message/headers" (the retired subpath); check-cross-package-imports green.',
 		tests:
 			'NAMED TEST GATE: (a) ALL existing suites of all five packages green in CI after the restructure (moves must not break tests — that is the proof the union is sound); (b) NEW addressRoundTrip.test.ts (U5 pin); (c) a grep-style guard test (or CI grep captured in the PR body) proving zero imports of the retired ./headers subpath and zero remaining references to the old integration branch names in package code.',
@@ -304,8 +322,7 @@ const PIECES = [
 		dependsOn: ['U0'],
 		branch: 'otm/s3-transaction-layer',
 		title: 'feat(smtp-client): transaction layer — AUTH, envelope, DATA, verify(), sendMessage()',
-		spec:
-			'packages/smtp-client/src/transaction.ts + index.ts: AUTH PLAIN and LOGIN (ONLY after `secured` unless loopback — encode the mail-sync invariant in the client itself, refusing BEFORE credentials are serialized); MAIL FROM with SIZE when advertised; RCPT TO collecting PER-RECIPIENT verdicts (proceed if >=1 accepted, report the rest with their reply codes); DATA via the S1 dot-stuffer; QUIT/destroy teardown; a verify() (connect -> EHLO -> AUTH -> QUIT) for connection testing; and the one-shot sendMessage(opts) convenience wrapper. Every failure carries its phase — the property CW2\'s retry taxonomy is rebuilt on.',
+		spec: "packages/smtp-client/src/transaction.ts + index.ts: AUTH PLAIN and LOGIN (ONLY after `secured` unless loopback — encode the mail-sync invariant in the client itself, refusing BEFORE credentials are serialized); MAIL FROM with SIZE when advertised; RCPT TO collecting PER-RECIPIENT verdicts (proceed if >=1 accepted, report the rest with their reply codes); DATA via the S1 dot-stuffer; QUIT/destroy teardown; a verify() (connect -> EHLO -> AUTH -> QUIT) for connection testing; and the one-shot sendMessage(opts) convenience wrapper. Every failure carries its phase — the property CW2's retry taxonomy is rebuilt on.",
 		tests:
 			'NAMED TEST GATE: packages/smtp-client/__tests__/transaction.integration.test.ts — (a) successful authed send against in-process smtp-server; message byte-identical after un-dot-stuffing; (b) partial RCPT acceptance (2 of 3) -> send proceeds, verdicts correct per recipient; (c) mid-DATA drop vs reject-at-MAIL distinguishable by phase (data/data-final = double-delivery-ambiguous; earlier phases safely retryable); (d) AUTH refused on an unsecured non-loopback connection BY THE CLIENT, before credentials are serialized.',
 	},
@@ -335,7 +352,7 @@ const PIECES = [
 			'ADD packages/mail-message/src/parse/index.ts (facade) + __tests__/{differential.test.ts, fuzz.test.ts, composeParse.roundtrip.test.ts}. ' +
 			'`parseMessage(raw): ParsedMessage` assembling the FULL consumed-field contract: subject, messageId/inReplyTo (angle brackets INCLUDED — consumers strip), references (string | string[] dual shape), date (invalid -> undefined, never Invalid Date), structured headers Map with {value, params} content-type, address objects with `.text`, text, html | false sentinel, attachments in document order (partIndex contract). ' +
 			'DEMOTE mailparser to a devDependency of THIS package (the differential oracle, not a runtime dep). ' +
-			'ACCEPTANCE: differential green; the bounce pipeline\'s partial-`ParsedMail` mocks typecheck against `ParsedMessage` (drop-in proof); fuzz clean.',
+			"ACCEPTANCE: differential green; the bounce pipeline's partial-`ParsedMail` mocks typecheck against `ParsedMessage` (drop-in proof); fuzz clean.",
 		tests:
 			'NAMED TEST GATE: (a) differential.test.ts — mailparser vs ours over the MTA/mail-sync inline fixtures + the P2 hostile corpus, EQUALITY OF EVERY CONSUMED FIELD (divergences = 0); (b) the typecheck proof for the bounce pipeline mocks; (c) fuzz.test.ts (10k mutations parse without throwing, within limits); (d) NEW UNIFIED-ONLY composeParse.roundtrip.test.ts — parseMessage(composeMessage(x)) over the M2 corpus asserts the consumed-field contract (our composer x our parser).',
 	},
@@ -345,11 +362,12 @@ const PIECES = [
 		group: 'composer',
 		dependsOn: ['U0'],
 		branch: 'otm/md1-signer-shared-canon',
-		title: 'feat(mail-message): DKIM signMessage(raw, key) over the SHARED canon (merged old M3 + A3)',
+		title:
+			'feat(mail-message): DKIM signMessage(raw, key) over the SHARED canon (merged old M3 + A3)',
 		spec:
-			'THE DEDUPLICATION PIECE — old wire-M3 (port the signer) and old inbound-A3 (repoint it at shared canon) collapse into one: the signer is built on the shared canon FROM THE START, so mailauth\'s internals are never ported. ' +
+			"THE DEDUPLICATION PIECE — old wire-M3 (port the signer) and old inbound-A3 (repoint it at shared canon) collapse into one: the signer is built on the shared canon FROM THE START, so mailauth's internals are never ported. " +
 			'(1) In packages/mail-auth: add a PURE "./canon" subpath export (package.json exports map) that transitively imports NO dns/Redis/node-only modules — Convex-\'use node\'-safe by construction; add a guard test that importing it pulls in no network module. ' +
-			'(2) Port the MTA\'s hardened signer (apps/mta/src/smtp/dkim.ts — oversigned From/Subject/To, t= timestamp, relaxed/relaxed, extended header field list) to packages/mail-message/src/compose/dkim.ts: signMessage(raw: Buffer, key) -> Buffer PREPENDING the DKIM-Signature to composeMessage output. ALL canonicalization comes from @owlat/mail-auth/canon (U4) — writing any canonicalization logic in this package is review-fatal. mail-message gains the workspace dep on @owlat/mail-auth (subpath only). ' +
+			"(2) Port the MTA's hardened signer (apps/mta/src/smtp/dkim.ts — oversigned From/Subject/To, t= timestamp, relaxed/relaxed, extended header field list) to packages/mail-message/src/compose/dkim.ts: signMessage(raw: Buffer, key) -> Buffer PREPENDING the DKIM-Signature to composeMessage output. ALL canonicalization comes from @owlat/mail-auth/canon (U4) — writing any canonicalization logic in this package is review-fatal. mail-message gains the workspace dep on @owlat/mail-auth (subpath only). " +
 			'(3) DELETE apps/mta/src/types/mailauth-internals.d.ts. apps/mta/src/smtp/dkim.ts itself stays UNTOUCHED until CW4 cuts it over. ' +
 			'DONE: `grep -rn "mailauth/lib" apps packages` returns TEST files only; the internals .d.ts is gone.',
 		tests:
@@ -379,8 +397,7 @@ const PIECES = [
 		dependsOn: ['S3'],
 		branch: 'otm/cw1-mailsync-send',
 		title: 'refactor(mail-sync): cut SEND over to smtp-client (pilot: protocol only, no composer)',
-		spec:
-			'The lowest-risk cutover proves the client first: apps/mail-sync/src/send.ts sendViaExternal already ships raw .eml bytes, so this swaps ONLY the transport (custom envelope, Bcc via RCPT set preserved). apps/mail-sync/src/tls.ts smtpTlsOptions maps onto client options — loopback-only plaintext exception (Proton Bridge) preserved EXACTLY; requireTls + TLSv1.2 floor otherwise. Per-recipient RCPT verdicts replace the info.rejected inference. testSmtp uses the client\'s verify(). IMAP side untouched; ingest.ts untouched (that is CI1). nodemailer removed from apps/mail-sync/package.json in this PR (regenerate bun.lock — sanctioned); the old path DELETED, no shim.',
+		spec: "The lowest-risk cutover proves the client first: apps/mail-sync/src/send.ts sendViaExternal already ships raw .eml bytes, so this swaps ONLY the transport (custom envelope, Bcc via RCPT set preserved). apps/mail-sync/src/tls.ts smtpTlsOptions maps onto client options — loopback-only plaintext exception (Proton Bridge) preserved EXACTLY; requireTls + TLSv1.2 floor otherwise. Per-recipient RCPT verdicts replace the info.rejected inference. testSmtp uses the client's verify(). IMAP side untouched; ingest.ts untouched (that is CI1). nodemailer removed from apps/mail-sync/package.json in this PR (regenerate bun.lock — sanctioned); the old path DELETED, no shim.",
 		tests:
 			'NAMED TEST GATE: (a) existing apps/mail-sync send.test.ts, tls.test.ts, connection.tls.test.ts pass, rewritten ONLY where they asserted nodemailer internals (reviewer checks assertions were not gutted); (b) Bcc semantics: the RCPT set is exactly params.recipients, independent of visible headers; (c) grep proves nodemailer gone from apps/mail-sync package.json and imports.',
 	},
@@ -390,9 +407,9 @@ const PIECES = [
 		group: 'api',
 		dependsOn: ['M2', 'S3'],
 		branch: 'otm/cw2-api-relay',
-		title: 'refactor(api): cut over the relay adapter — composer + client + error taxonomy on structured phases',
-		spec:
-			'apps/api/convex/lib/sendProviders/smtp/index.ts: sendEmail becomes composeMessage -> sendMessage with the cached-client-config pattern intact (lazy from SMTP_RELAY_* via lib/env.ts). THE CRITICAL WORK is rebuilding classifySmtpError on structured input: phase in {connect, greeting, ehlo, starttls, auth} -> retryable SERVER_ERROR/AUTH_FAILED (nothing reached the wire); phase in {data, data-final} with no reply -> AMBIGUOUS_TIMEOUT (the 250 may be lost — NEVER auto-retry); a numeric reply code stays authoritative via the existing smtpReplyCodeToErrorCode table, which survives UNCHANGED. The outer withTimeout ambiguity rule and SMTP_CONNECTION_TIMEOUT_MS pre-acceptance bound keep exact semantics. String-matching helpers (isTimeoutError, isConnectionLoss) DELETED, not adapted. Runs under \'use node\'; bun run lint:env clean; nodemailer removed from apps/api/package.json (regenerate bun.lock — sanctioned). Read apps/api/convex/CONVENTIONS.md before touching convex files.',
+		title:
+			'refactor(api): cut over the relay adapter — composer + client + error taxonomy on structured phases',
+		spec: "apps/api/convex/lib/sendProviders/smtp/index.ts: sendEmail becomes composeMessage -> sendMessage with the cached-client-config pattern intact (lazy from SMTP_RELAY_* via lib/env.ts). THE CRITICAL WORK is rebuilding classifySmtpError on structured input: phase in {connect, greeting, ehlo, starttls, auth} -> retryable SERVER_ERROR/AUTH_FAILED (nothing reached the wire); phase in {data, data-final} with no reply -> AMBIGUOUS_TIMEOUT (the 250 may be lost — NEVER auto-retry); a numeric reply code stays authoritative via the existing smtpReplyCodeToErrorCode table, which survives UNCHANGED. The outer withTimeout ambiguity rule and SMTP_CONNECTION_TIMEOUT_MS pre-acceptance bound keep exact semantics. String-matching helpers (isTimeoutError, isConnectionLoss) DELETED, not adapted. Runs under 'use node'; bun run lint:env clean; nodemailer removed from apps/api/package.json (regenerate bun.lock — sanctioned). Read apps/api/convex/CONVENTIONS.md before touching convex files.",
 		tests:
 			'NAMED TEST GATE: (a) categorizeError.test.ts — EVERY case in the existing table-driven tests has a successor asserting the SAME EmailErrorCode from structured input; the double-delivery decision table provably unchanged case-by-case (reviewer diffs old vs new); (b) requireTLS preserved fail-closed; (c) grep proves isTimeoutError/isConnectionLoss and all nodemailer imports gone from apps/api.',
 		focus:
@@ -404,9 +421,9 @@ const PIECES = [
 		group: 'mta-out',
 		dependsOn: ['S3', 'MD1'],
 		branch: 'otm/cw3-mta-pool',
-		title: 'refactor(mta): connection pool on smtp-client (keying, Redis cap, gauges preserved; DKIM plugin removed)',
-		spec:
-			'apps/mta/src/smtp/connectionPool.ts keeps its EXACT shape — key {mx, bindIp, dkimDomain, tlsProfile}, per-host LRU eviction, idle/age eviction, Redis global slot INCR/DECR with fail-open, Prometheus gauge — but entries hold smtp-client configs instead of nodemailer transports (one-connection-per-send preserved per W3; live-socket reuse is X1, NOT this piece). The use(\'stream\') DKIM plugin wiring is DELETED: signing moves to compose time (CW4), so the pool stops knowing about message transformation entirely. dkimDomain stays in the key purely as a partitioning dimension.',
+		title:
+			'refactor(mta): connection pool on smtp-client (keying, Redis cap, gauges preserved; DKIM plugin removed)',
+		spec: "apps/mta/src/smtp/connectionPool.ts keeps its EXACT shape — key {mx, bindIp, dkimDomain, tlsProfile}, per-host LRU eviction, idle/age eviction, Redis global slot INCR/DECR with fail-open, Prometheus gauge — but entries hold smtp-client configs instead of nodemailer transports (one-connection-per-send preserved per W3; live-socket reuse is X1, NOT this piece). The use('stream') DKIM plugin wiring is DELETED: signing moves to compose time (CW4), so the pool stops knowing about message transformation entirely. dkimDomain stays in the key purely as a partitioning dimension.",
 		tests:
 			'NAMED TEST GATE: (a) connectionPool.test.ts — all pool tests pass with test doubles targeting the new client interface; the TLS-profile keying test (enforce vs opportunistic NEVER share an entry) preserved verbatim; (b) global-cap reserve/release accounting identical: reuse takes no slot, every teardown path releases.',
 	},
@@ -418,9 +435,9 @@ const PIECES = [
 		group: 'mta-out',
 		dependsOn: ['CW3', 'M2', 'MD1'],
 		branch: 'otm/cw4-mta-sender',
-		title: 'refactor(mta): sender — compose-once + sign-once, structured TLS results, delete tlsSecuredCapture',
-		spec:
-			'THE OUTBOUND CENTERPIECE. apps/mta/src/smtp/sender.ts sendToMx composes ONCE per job — composeMessage (html/text/AMP/attachments/headers, From-aligned Message-ID, VERP envelope) then signMessage — and retries the SAME signed bytes across MX hosts and TLS profiles (byte-identical retries: a strict improvement over per-attempt recomposition). attemptSend reads client.secured directly for TLS-RPT result recording — apps/mta/src/smtp/tlsSecuredCapture.ts is DELETED, with its logger threading through the pool. classifyTlsFailure becomes a thin map SmtpError.tlsCause -> TlsResultType; the string-matching table goes. apps/mta/src/smtp/dkim.ts slims to key management (signing lives in mail-message now). The MTA\'s duplicated buildMessageId/stripHtml migrate to mail-message imports. Everything RFC-semantic preserved UNCHANGED: MTA-STS enforce MX filtering + testing-mode probe-then-opportunistic-retry, stsAttributedResultType escalation, 4xx/5xx/5.2.2 bounce classification, per-IP EHLO names. Remove deleted files from coverage config if referenced.',
+		title:
+			'refactor(mta): sender — compose-once + sign-once, structured TLS results, delete tlsSecuredCapture',
+		spec: "THE OUTBOUND CENTERPIECE. apps/mta/src/smtp/sender.ts sendToMx composes ONCE per job — composeMessage (html/text/AMP/attachments/headers, From-aligned Message-ID, VERP envelope) then signMessage — and retries the SAME signed bytes across MX hosts and TLS profiles (byte-identical retries: a strict improvement over per-attempt recomposition). attemptSend reads client.secured directly for TLS-RPT result recording — apps/mta/src/smtp/tlsSecuredCapture.ts is DELETED, with its logger threading through the pool. classifyTlsFailure becomes a thin map SmtpError.tlsCause -> TlsResultType; the string-matching table goes. apps/mta/src/smtp/dkim.ts slims to key management (signing lives in mail-message now). The MTA's duplicated buildMessageId/stripHtml migrate to mail-message imports. Everything RFC-semantic preserved UNCHANGED: MTA-STS enforce MX filtering + testing-mode probe-then-opportunistic-retry, stsAttributedResultType escalation, 4xx/5xx/5.2.2 bounce classification, per-IP EHLO names. Remove deleted files from coverage config if referenced.",
 		tests:
 			'NAMED TEST GATE: (a) all touched apps/mta/src/smtp/__tests__ suites green; the STARTTLS-stripping, cert-mismatch, and plaintext-delivery TLS-RPT scenarios assert IDENTICAL recorded result types; (b) NEW: composed+signed bytes byte-identical across MX retries of one job; (c) DKIM on the wire verifies with mailauth in the e2e signing test; (d) grep -ri nodemailer apps/mta/src -> only historical comments, no imports.',
 		focus:
@@ -462,7 +479,7 @@ const PIECES = [
 		branch: 'otm/ci2-submission-listener',
 		title: 'feat(mta): cut the submission listener (587 / 465) onto smtp-listener',
 		spec:
-			'apps/mta/src/smtp/submissionServer.ts + submissionSecurity.ts (hook wiring only): rebuild BOTH factories on packages/smtp-listener — STARTTLS 587 + implicit-TLS 465, the auth chain (master key / per-org credential / Postbox app password) as a TYPED auth handler, the From-forgery 553 guard, per-recipient job fan-out, `parseMessage` for the body, and the AMP `text/x-amp-html` recovery. The `sessionAuth` WeakMap becomes typed session ctx; the byte budget is now the listener\'s (I3). ' +
+			"apps/mta/src/smtp/submissionServer.ts + submissionSecurity.ts (hook wiring only): rebuild BOTH factories on packages/smtp-listener — STARTTLS 587 + implicit-TLS 465, the auth chain (master key / per-org credential / Postbox app password) as a TYPED auth handler, the From-forgery 553 guard, per-recipient job fan-out, `parseMessage` for the body, and the AMP `text/x-amp-html` recovery. The `sessionAuth` WeakMap becomes typed session ctx; the byte budget is now the listener's (I3). " +
 			'Scheduled AFTER CW4 so the two apps/mta/src/smtp rewrites never collide. ' +
 			'DONE: authenticated submission is behaviorally IDENTICAL on both ports.',
 		tests:
@@ -475,8 +492,7 @@ const PIECES = [
 		dependsOn: ['CW4'],
 		branch: 'otm/r2-quirks-goldens',
 		title: 'test: long-tail quirk suite + golden .eml corpus with mailauth re-verification in CI',
-		spec:
-			'The insurance policy. (1) packages/smtp-client/__tests__/quirks.integration.test.ts — raw-socket fake servers reproducing real-world misbehavior: reply lines split across TCP packets, multiline replies with inconsistent codes, greeting in two writes, early 421 mid-transaction, 4xx to STARTTLS, timeout-then-banner, 8-bit garbage in replies, CRLF-less final responses. Each quirk NAMED with a provenance comment. (2) GOLDEN CORPUS: checked-in .eml outputs at packages/mail-message/__tests__/golden/*.eml for the M2 fixture inputs, diffed BYTE-FOR-BYTE in CI, every golden\'s DKIM signature re-verified with mailauth on every run. Regeneration only via a dedicated `bun run goldens:update` script. (3) UNIFIED SYNERGY: the goldens double as parse fixtures — feed them through the P3 differential suite. (4) COVERAGE RATCHET: raise any per-directory thresholds U0 had to lower back to the U6 bar (>=90 package-wide).',
+		spec: "The insurance policy. (1) packages/smtp-client/__tests__/quirks.integration.test.ts — raw-socket fake servers reproducing real-world misbehavior: reply lines split across TCP packets, multiline replies with inconsistent codes, greeting in two writes, early 421 mid-transaction, 4xx to STARTTLS, timeout-then-banner, 8-bit garbage in replies, CRLF-less final responses. Each quirk NAMED with a provenance comment. (2) GOLDEN CORPUS: checked-in .eml outputs at packages/mail-message/__tests__/golden/*.eml for the M2 fixture inputs, diffed BYTE-FOR-BYTE in CI, every golden's DKIM signature re-verified with mailauth on every run. Regeneration only via a dedicated `bun run goldens:update` script. (3) UNIFIED SYNERGY: the goldens double as parse fixtures — feed them through the P3 differential suite. (4) COVERAGE RATCHET: raise any per-directory thresholds U0 had to lower back to the U6 bar (>=90 package-wide).",
 		tests:
 			'NAMED TEST GATE: (a) quirks.integration.test.ts with every listed quirk, named + provenance; (b) golden corpus + byte-diff test + mailauth DKIM re-verification; (c) goldens:update script exists and is documented; (d) goldens wired into the P3 differential suite; (e) the coverage ratchet applied.',
 	},
@@ -503,10 +519,11 @@ const PIECES = [
 		group: 'removal',
 		dependsOn: ['CW1', 'CW2', 'CW4', 'CI1', 'CI2', 'CI3', 'CI4'],
 		branch: 'otm/r1-excise-all-libraries',
-		title: 'chore: excise ALL FOUR mail libraries — nodemailer removed; smtp-server/mailparser/mailauth -> devDependencies',
+		title:
+			'chore: excise ALL FOUR mail libraries — nodemailer removed; smtp-server/mailparser/mailauth -> devDependencies',
 		spec:
 			'The combined excision (old wire-R1 + old inbound-R1 — same files, one piece): ' +
-			'(1) Remove nodemailer + @types/nodemailer from the last package.json (apps/mta) — it survives ONLY as packages/mail-message\'s differential-test devDependency. ' +
+			"(1) Remove nodemailer + @types/nodemailer from the last package.json (apps/mta) — it survives ONLY as packages/mail-message's differential-test devDependency. " +
 			'(2) Remove smtp-server, mailparser, mailauth from apps/mta RUNTIME deps (each survives as a devDependency of its differential/parity suite: smtp-server in mta tests + smtp-listener parity; mailauth in mta + mail-auth; mailparser in mail-message). ' +
 			'(3) Confirm apps/mta/src/types/mailauth-internals.d.ts is deleted (MD1 did it). Regenerate bun.lock (sanctioned). Sweep ALL stale comment references (~70 across both plans — grep -ri each library name to find them: convexRuntimeEnv.ts, externalAccountsActions.ts, mtaSts.ts, types.ts, dataStream docblock, SPF docblock, docs). knip/lint:deadcode clean. ' +
 			'DONE: the production mail path — both directions — has ZERO third-party mail libraries.',
@@ -523,8 +540,7 @@ const PIECES = [
 		dependsOn: ['R1', 'R2'],
 		branch: 'otm/x1-socket-reuse',
 		title: 'feat: true socket reuse — RSET-based multi-message connections in the MTA pool',
-		spec:
-			'Pool entries hold LIVE connected clients; consecutive jobs to the same {mx, bindIp, dkimDomain, tlsProfile} reuse the socket via RSET between transactions (packages/smtp-client/src/transaction.ts grows RSET-boundary multi-transaction support; apps/mta/src/smtp/connectionPool.ts + sender.ts adopt it). Guardrails: max-messages-per-connection cap (~100 default), max lifetime honoring today\'s maxAgeMs, unhealthy-connection detection (ANY transport error tears down the entry — never retry a poisoned socket), Redis global cap now counts live sockets. Prometheus gains reused_total.',
+		spec: "Pool entries hold LIVE connected clients; consecutive jobs to the same {mx, bindIp, dkimDomain, tlsProfile} reuse the socket via RSET between transactions (packages/smtp-client/src/transaction.ts grows RSET-boundary multi-transaction support; apps/mta/src/smtp/connectionPool.ts + sender.ts adopt it). Guardrails: max-messages-per-connection cap (~100 default), max lifetime honoring today's maxAgeMs, unhealthy-connection detection (ANY transport error tears down the entry — never retry a poisoned socket), Redis global cap now counts live sockets. Prometheus gains reused_total.",
 		tests:
 			'NAMED TEST GATE: (a) N sequential sends to one fake MX use ONE connection with RSET boundaries; message N+cap triggers clean QUIT + reconnect; (b) 421 or socket death mid-stream evicts the entry, releases the Redis slot, in-flight job retries on a fresh connection exactly once; (c) secured + TLS-RPT remain per-CONNECTION, correctly attributed to every message on it; (d) reused_total counter test.',
 		focus:
@@ -538,10 +554,9 @@ const PIECES = [
 		dependsOn: ['X1'],
 		branch: 'otm/x2-pipelining',
 		title: 'feat(smtp-client): PIPELINING (RFC 2920) — batch envelope commands when advertised',
-		spec:
-			'When EHLO advertises PIPELINING, send MAIL FROM + all RCPT TOs + DATA in one write and read replies as a batch. STRICTLY capability-gated: non-advertising servers keep the v1 sequential path unchanged. Per-recipient verdicts and the phase-based taxonomy INDISTINGUISHABLE from sequential mode — pipelining changes timing, never semantics.',
+		spec: 'When EHLO advertises PIPELINING, send MAIL FROM + all RCPT TOs + DATA in one write and read replies as a batch. STRICTLY capability-gated: non-advertising servers keep the v1 sequential path unchanged. Per-recipient verdicts and the phase-based taxonomy INDISTINGUISHABLE from sequential mode — pipelining changes timing, never semantics.',
 		tests:
-			'NAMED TEST GATE: pipelining.integration.test.ts — (a) batched replies matched to commands incl. mixed accept/reject RCPT sets and a rejected MAIL FROM aborting the batch; (b) quirk tests (advertises PIPELINING but replies one-packet-per-line; replies split mid-batch); (c) CW2\'s classification tests pass identically with pipelining forced on and off.',
+			"NAMED TEST GATE: pipelining.integration.test.ts — (a) batched replies matched to commands incl. mixed accept/reject RCPT sets and a rejected MAIL FROM aborting the batch; (b) quirk tests (advertises PIPELINING but replies one-packet-per-line; replies split mid-batch); (c) CW2's classification tests pass identically with pipelining forced on and off.",
 	},
 	{
 		id: 'X3',
@@ -550,9 +565,9 @@ const PIECES = [
 		group: 'capability',
 		dependsOn: ['X2'],
 		branch: 'otm/x3-smtputf8',
-		title: 'feat: SMTPUTF8 / EAI (RFC 6531-6532) — internationalized addresses end-to-end, fail-closed downgrade',
-		spec:
-			'UTF-8 localparts through composer and client. Composer: UTF-8 headers natively when flagged EAI (encoded-words remain for non-EAI); domains still IDN-normalized. Client: request SMTPUTF8 on MAIL FROM when advertised; when NOT advertised, FAIL CLOSED with a precise user-visible error (no punycode exists for localparts — never silently mangle). Contact import/validation surfaces stop rejecting these addresses.',
+		title:
+			'feat: SMTPUTF8 / EAI (RFC 6531-6532) — internationalized addresses end-to-end, fail-closed downgrade',
+		spec: 'UTF-8 localparts through composer and client. Composer: UTF-8 headers natively when flagged EAI (encoded-words remain for non-EAI); domains still IDN-normalized. Client: request SMTPUTF8 on MAIL FROM when advertised; when NOT advertised, FAIL CLOSED with a precise user-visible error (no punycode exists for localparts — never silently mangle). Contact import/validation surfaces stop rejecting these addresses.',
 		tests:
 			'NAMED TEST GATE: (a) EAI compose -> mailparser parse round trip byte-exact for addresses/headers; DKIM verifies with mailauth; (b) non-advertising server fails at phase mail with a distinct EmailErrorCode, recorded as hard non-retryable; (c) ASCII-only mail byte-identical to pre-X3 — the R2 golden corpus passes UNCHANGED.',
 	},
@@ -564,8 +579,7 @@ const PIECES = [
 		dependsOn: ['X3'],
 		branch: 'otm/x4-xoauth2',
 		title: 'feat: AUTH XOAUTH2 — token-based auth for external Gmail / Microsoft accounts',
-		spec:
-			'SASL XOAUTH2 (user=…\\x01auth=Bearer …\\x01\\x01) as a third auth option in packages/smtp-client; the 334 challenge-response error decoded into a structured auth-phase failure (expired token vs bad credentials DISTINGUISHABLE — refresh vs reconnect-account). apps/mail-sync/src/send.ts grows the option plumbing; token acquisition/refresh is the external-accounts OAuth feature\'s scope, NOT this piece. Like all AUTH: refused on unsecured non-loopback before anything serializes.',
+		spec: "SASL XOAUTH2 (user=…\\x01auth=Bearer …\\x01\\x01) as a third auth option in packages/smtp-client; the 334 challenge-response error decoded into a structured auth-phase failure (expired token vs bad credentials DISTINGUISHABLE — refresh vs reconnect-account). apps/mail-sync/src/send.ts grows the option plumbing; token acquisition/refresh is the external-accounts OAuth feature's scope, NOT this piece. Like all AUTH: refused on unsecured non-loopback before anything serializes.",
 		tests:
 			'NAMED TEST GATE: (a) fake server validating the EXACT XOAUTH2 initial-response encoding; success + both failure shapes; (b) expired-token 334 -> distinct retryable-after-refresh error; malformed credentials -> terminal AUTH_FAILED; (c) PLAIN/LOGIN paths byte-identical to pre-X4 (existing transaction tests unchanged).',
 	},
@@ -580,10 +594,15 @@ const PIECES = [
 		base: MAIN,
 		humanMerge: true,
 		branch: BASE, // head of the F1 PR is the integration branch itself
-		title: 'Own the Mail — in-house SMTP client + listener, MIME composer + parser, mail-auth; all four libraries removed (human-merged)',
+		title:
+			'Own the Mail — in-house SMTP client + listener, MIME composer + parser, mail-auth; all four libraries removed (human-merged)',
 		spec:
-			'NO new code. Final main-sync + the narrative PR body + whole-tree verification on the aggregate draft PR the SEED opened (main <- ' + BASE + '), then STOP for a human squash-merge. ' +
-			'STEPS: (1) merge origin/main INTO the integration branch one last time in a scratch worktree (trunk wins) and push; (2) AUDIT: every non-optional piece is merged (wave-1 five via the seed merge, then U0, S3, L3, P3, MD1, C0, CW1, CW2, CW3, CW4, CI1, CI2, CI3, CI4, R1, R2 — check `gh pr list --repo REPO --base ' + BASE + ' --state merged` plus the two old branches\' merged PR lists), NO TODO(own-the-mail|own-the-wire|own-the-inbound) markers, and BOTH removal greps clean; note any DROPPED optional X capability honestly; (3) mark the aggregate PR READY (remove draft) and rewrite its body: the unified-plan framing (one stack, both directions; the two source plans and why they merged), a PER-PIECE TABLE linking every constituent PR + review across all three branches, the enumerated sanctioned improvements, payoff table (deleted workarounds both directions), risk checklist, and the one-week post-merge watch plan (outbound soft-bounce + connection-failure Prometheus rates + reused_total if X1 landed; inbound accept/bounce/deferral + DKIM/DMARC pass rates vs baseline). End with: "HUMAN MERGE ONLY — this is the whole migration as one revertable squash-merge; Marcel reviews and merges." ' +
+			'NO new code. Final main-sync + the narrative PR body + whole-tree verification on the aggregate draft PR the SEED opened (main <- ' +
+			BASE +
+			'), then STOP for a human squash-merge. ' +
+			'STEPS: (1) merge origin/main INTO the integration branch one last time in a scratch worktree (trunk wins) and push; (2) AUDIT: every non-optional piece is merged (wave-1 five via the seed merge, then U0, S3, L3, P3, MD1, C0, CW1, CW2, CW3, CW4, CI1, CI2, CI3, CI4, R1, R2 — check `gh pr list --repo REPO --base ' +
+			BASE +
+			' --state merged` plus the two old branches\' merged PR lists), NO TODO(own-the-mail|own-the-wire|own-the-inbound) markers, and BOTH removal greps clean; note any DROPPED optional X capability honestly; (3) mark the aggregate PR READY (remove draft) and rewrite its body: the unified-plan framing (one stack, both directions; the two source plans and why they merged), a PER-PIECE TABLE linking every constituent PR + review across all three branches, the enumerated sanctioned improvements, payoff table (deleted workarounds both directions), risk checklist, and the one-week post-merge watch plan (outbound soft-bounce + connection-failure Prometheus rates + reused_total if X1 landed; inbound accept/bounce/deferral + DKIM/DMARC pass rates vs baseline). End with: "HUMAN MERGE ONLY — this is the whole migration as one revertable squash-merge; Marcel reviews and merges." ' +
 			'This piece DOES NOT MERGE — it stops at approved + green for Marcel.',
 		tests:
 			'GATE: full ci:verify GREEN on the PR head AFTER the final sync — every package suite + replay + differential + golden-corpus jobs on the MERGED TREE. `grep -ri nodemailer apps/` -> zero AND `grep -rn "smtp-server\\|mailparser\\|mailauth" apps/` -> production zero on the head.',
@@ -1187,7 +1206,9 @@ async function runPiece(p, idx, total, mergedSet) {
 					effort: 'medium',
 				});
 				if (!res || !res.pushed) {
-					mergeOut = ['conflict resolution failed: ' + ((res && res.blockReason) || 'resolver died')];
+					mergeOut = [
+						'conflict resolution failed: ' + ((res && res.blockReason) || 'resolver died'),
+					];
 					log(`${p.id} resolver did not push — leaving for human (${mergeOut[0]})`);
 					break;
 				}
@@ -1207,7 +1228,11 @@ async function runPiece(p, idx, total, mergedSet) {
 					});
 					ci = await waitForCi(build.prNumber, p.id);
 				}
-				for (let extra = 0; extra < 3 && (ci.state === 'pending' || ci.state === 'unknown'); extra++) {
+				for (
+					let extra = 0;
+					extra < 3 && (ci.state === 'pending' || ci.state === 'unknown');
+					extra++
+				) {
 					log(`${p.id} post-resolve CI still ${ci.state} — extending wait (${extra + 1}/3)`);
 					ci = await waitForCi(build.prNumber, p.id);
 				}
@@ -1345,12 +1370,7 @@ for (let w = 0; w < RUN_WAVES.length; w++) {
 	if (isF1Wave) continue;
 	const allOptional = waveIds.every((id) => byId[id] && byId[id].optional);
 
-	if (
-		ABORT_IF_WHOLE_WAVE_FAILS &&
-		!allOptional &&
-		wavePieceCount > 1 &&
-		waveMergedCount === 0
-	) {
+	if (ABORT_IF_WHOLE_WAVE_FAILS && !allOptional && wavePieceCount > 1 && waveMergedCount === 0) {
 		log(
 			`ABORT: entire wave ${w + 1} failed to merge — likely rate limit or systemic issue. Fix and resume via MERGED_IDS.`
 		);
