@@ -1,67 +1,17 @@
-import { mkdtemp, mkdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { loadBundledPlugins } from '../packageLoader';
-
-const temporaryRoots: string[] = [];
-const TEST_INTEGRITY = `sha512-${Buffer.alloc(64, 0xa5).toString('base64')}`;
-
-interface TestPackage {
-	readonly source?: string;
-	readonly packageJson?: Record<string, unknown>;
-	readonly files?: Readonly<Record<string, string>>;
-}
-
-async function createWorkspace(
-	dependencies: Record<string, string>,
-	modules: Record<string, string | TestPackage> = {},
-	lockedPackages: readonly string[] = Object.keys(modules)
-): Promise<string> {
-	const root = await mkdtemp(join(tmpdir(), 'owlat-plugin-codegen-'));
-	temporaryRoots.push(root);
-	await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module', dependencies }));
-	await mkdir(join(root, 'node_modules'), { recursive: true });
-	for (const [packageName, definition] of Object.entries(modules)) {
-		const plugin = typeof definition === 'string' ? { source: definition } : definition;
-		const packageRoot = join(root, 'node_modules', ...packageName.split('/'));
-		await mkdir(packageRoot, { recursive: true });
-		await writeFile(
-			join(packageRoot, 'package.json'),
-			JSON.stringify({
-				name: packageName,
-				version: '1.0.0',
-				type: 'module',
-				exports: './index.js',
-				...plugin.packageJson,
-			})
-		);
-		await writeFile(join(packageRoot, 'index.js'), plugin.source ?? 'export default {};');
-		for (const [path, source] of Object.entries(plugin.files ?? {})) {
-			await mkdir(dirname(join(packageRoot, path)), { recursive: true });
-			await writeFile(join(packageRoot, path), source);
-		}
-	}
-	const lockEntries = Object.fromEntries(
-		lockedPackages.map((packageName) => [
-			packageName,
-			[`${packageName}@1.0.0`, '', {}, TEST_INTEGRITY],
-		])
-	);
-	await writeFile(
-		join(root, 'bun.lock'),
-		JSON.stringify({
-			workspaces: { '': { dependencies } },
-			packages: lockEntries,
-		})
-	);
-	return root;
-}
+import {
+	cleanupPackageLoaderWorkspaces,
+	createPackageLoaderWorkspace as createWorkspace,
+	registerTemporaryRoot,
+	TEST_INTEGRITY,
+} from './packageLoaderFixtures';
 
 afterEach(async () => {
-	await Promise.all(
-		temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true }))
-	);
+	await cleanupPackageLoaderWorkspaces();
 });
 
 describe('installed plugin loading', () => {
@@ -121,76 +71,6 @@ describe('installed plugin loading', () => {
 		}
 	});
 
-	it('verifies send transport module exports without executing them', async () => {
-		const root = await createWorkspace(
-			{ 'mail-plugin': '1.0.0' },
-			{
-				'mail-plugin': {
-					source: `export default { id: 'mail', version: '1.0.0', capabilities: ['send:transport'], flag: { default: false }, contributes: { sendTransports: [{ id: 'postmark', label: 'Postmark', module: { exportPath: './transports/postmark' }, retryDelays: [] }] } };`,
-					packageJson: {
-						exports: {
-							'.': './index.js',
-							'./transports/postmark': './transports/postmark.js',
-						},
-					},
-					files: {
-						'transports/postmark.js': `throw new Error('codegen must not execute transport modules'); export default {};`,
-					},
-				},
-			}
-		);
-
-		await expect(loadBundledPlugins(root, ['mail-plugin'])).resolves.toHaveLength(1);
-		const packagePath = join(root, 'node_modules/mail-plugin/package.json');
-		await writeFile(
-			packagePath,
-			JSON.stringify({
-				name: 'mail-plugin',
-				version: '1.0.0',
-				type: 'module',
-				exports: { '.': './index.js' },
-			})
-		);
-		await expect(loadBundledPlugins(root, ['mail-plugin'])).rejects.toMatchObject({
-			code: 'contribution_export_invalid',
-		});
-	});
-
-	it('verifies agent step module exports without executing them', async () => {
-		const root = await createWorkspace(
-			{ 'agent-plugin': '1.0.0' },
-			{
-				'agent-plugin': {
-					source: `export default { id: 'agent', version: '1.0.0', capabilities: ['agent:step'], flag: { default: false }, contributes: { agentSteps: [{ id: 'spam-score', after: 'security_scan', module: { exportPath: './agent/spam-score' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }] } };`,
-					packageJson: {
-						exports: {
-							'.': './index.js',
-							'./agent/spam-score': './agent/spam-score.js',
-						},
-					},
-					files: {
-						'agent/spam-score.js': `throw new Error('codegen must not execute agent modules'); export default {};`,
-					},
-				},
-			}
-		);
-
-		await expect(loadBundledPlugins(root, ['agent-plugin'])).resolves.toHaveLength(1);
-		const packagePath = join(root, 'node_modules/agent-plugin/package.json');
-		await writeFile(
-			packagePath,
-			JSON.stringify({
-				name: 'agent-plugin',
-				version: '1.0.0',
-				type: 'module',
-				exports: { '.': './index.js' },
-			})
-		);
-		await expect(loadBundledPlugins(root, ['agent-plugin'])).rejects.toMatchObject({
-			code: 'contribution_export_invalid',
-		});
-	});
-
 	it('rejects a component export whose target symlink escapes the package', async () => {
 		const root = await createWorkspace(
 			{ 'component-plugin': '1.0.0' },
@@ -208,7 +88,7 @@ describe('installed plugin loading', () => {
 			}
 		);
 		const outside = await mkdtemp(join(tmpdir(), 'owlat-component-outside-'));
-		temporaryRoots.push(outside);
+		registerTemporaryRoot(outside);
 		const outsideTarget = join(outside, 'convex.config.js');
 		await writeFile(outsideTarget, 'export default {};');
 		const componentTarget = join(root, 'node_modules/component-plugin/convex/convex.config.js');

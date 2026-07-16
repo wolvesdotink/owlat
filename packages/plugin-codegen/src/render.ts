@@ -52,17 +52,20 @@ export function renderPluginComposition(
 
 function renderAgentStepCatalog(steps: readonly HostedAgentStepDefinition[]): string {
 	const entries = steps
-		.map(
-			(step) => `\tObject.freeze({
+		.map((step) => {
+			const lifecycleEdges = step.lifecycleEdges
+				.map((edge) => `Object.freeze(${JSON.stringify(edge)})`)
+				.join(', ');
+			return `\tObject.freeze({
 \t\tkind: ${JSON.stringify(step.kind)},
 \t\tpluginId: ${JSON.stringify(step.pluginId)},
 \t\tafter: ${JSON.stringify(step.after)},
 \t\tcontinuationStatus: ${JSON.stringify(step.continuationStatus)},
 \t\tplacement: ${JSON.stringify(step.placement)},
-\t\tlifecycleEdges: Object.freeze(${JSON.stringify(step.lifecycleEdges)}),
+\t\tlifecycleEdges: Object.freeze([${lifecycleEdges}]),
 \t\trequiredCapability: 'agent:step',
-\t}),`
-		)
+\t}),`;
+		})
 		.join('\n');
 	const catalog = entries
 		? `Object.freeze([\n${entries}\n] as const)`
@@ -80,13 +83,13 @@ function renderAgentStepModules(steps: readonly HostedAgentStepDefinition[]): st
 	const entries = steps
 		.map(
 			(step, index) =>
-				`\tObject.freeze({ kind: ${JSON.stringify(step.kind)}, pluginId: ${JSON.stringify(step.pluginId)}, module: bundledPluginAgentStep${index} }),`
+				`\tObject.freeze({ kind: ${JSON.stringify(step.kind)}, pluginId: ${JSON.stringify(step.pluginId)}, module: bundledPluginAgentStep${index} satisfies PluginAgentStepModule }),`
 		)
 		.join('\n');
 	const modules = entries
 		? `Object.freeze([\n${entries}\n] as const)`
 		: 'Object.freeze([] as const)';
-	return `'use node';\n\n${GENERATED_HEADER}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_AGENT_STEP_MODULES = ${modules};\n`;
+	return `'use node';\n\n${GENERATED_HEADER}import type { PluginAgentStepModule } from '@owlat/plugin-kit';\n${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_AGENT_STEP_MODULES = ${modules};\n`;
 }
 
 interface RenderedSendTransport {
