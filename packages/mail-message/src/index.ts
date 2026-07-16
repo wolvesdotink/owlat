@@ -40,19 +40,10 @@ export { decodeCharset, normalizeCharset } from './parse/charset';
 
 export {
 	parseMimeTree,
-	walkLeaves,
-	partFilename,
-	partDisposition,
-	isAttachmentPart,
-	transferDecode,
 	assembleBody,
 	parseBody,
 	type MimeNode,
 	type AssembledBody,
 } from './parse/body';
 
-export {
-	extractAttachments,
-	extractAttachmentsFromTree,
-	type MessageAttachment,
-} from './parse/attachments';
+export { extractAttachments, type MessageAttachment } from './parse/attachments';
