@@ -55,6 +55,8 @@ export {
 
 export { extractAttachments, type MessageAttachment } from './parse/attachments';
 
+export { parseMessage, type ParsedMessage, type ParsedHeaderValue } from './parse/index';
+
 // --- compose side ---
 export {
 	escapeHeader,
