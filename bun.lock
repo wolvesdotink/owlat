@@ -369,6 +369,7 @@
         "@vitest/coverage-v8": "catalog:",
         "convex": "catalog:convex",
         "convex-test": "^0.0.54",
+        "esbuild": "0.27.0",
         "vitest": "catalog:",
       },
     },
@@ -377,6 +378,7 @@
       "version": "0.2.1",
       "dependencies": {
         "@owlat/plugin-kit": "workspace:*",
+        "@owlat/shared": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "catalog:",
