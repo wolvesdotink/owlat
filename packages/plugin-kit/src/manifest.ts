@@ -1,8 +1,17 @@
 import type { PluginCapability } from './capabilities';
 import { isPluginContributionKind, type PluginContributions } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
-import { INVALID_SCHEMA_ARRAY, snapshotManifestInput } from './manifestSnapshot';
+import { snapshotManifestInput } from './manifestSnapshot';
 import { isPluginId, type PluginId } from './pluginId';
+import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from './sendTransport';
+import { validateSendTransportContributions } from './sendTransportManifest';
+import {
+	isRecord,
+	readDataProperty,
+	type DataProperty,
+	validateDescriptorSafeArray,
+	validateKnownFields,
+} from './manifestValue';
 
 export { PLUGIN_CONTRIBUTION_KINDS } from './contributions';
 export type { PluginContributionKind, PluginContributions } from './contributions';
@@ -166,6 +175,24 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 			);
 		}
 	}
+	if (declaresSendTransports(manifest)) {
+		if (!declaresCapability(capabilityItems, PLUGIN_SEND_TRANSPORT_CAPABILITY)) {
+			addManifestIssue(
+				issues,
+				'missing',
+				'$.capabilities',
+				`must declare ${PLUGIN_SEND_TRANSPORT_CAPABILITY} when send transports are contributed`
+			);
+		}
+		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
+			addManifestIssue(
+				issues,
+				flag.kind === 'missing' ? 'missing' : 'invalid_type',
+				'$.flag',
+				'must be a plain object when send transports are contributed'
+			);
+		}
+	}
 
 	const component = readDataProperty(manifest, 'component', issues);
 	if (component.kind === 'value') validateComponent(component.value, issues);
@@ -186,17 +213,7 @@ function validateComponent(value: unknown, issues: PluginManifestIssue[]): void 
 	validateKnownFields(value, '$.component', new Set(['exportPath']), issues);
 	const exportPath = readDataProperty(value, 'exportPath', issues, true, '$.component');
 	if (exportPath.kind !== 'value') return;
-	if (
-		typeof exportPath.value !== 'string' ||
-		exportPath.value.length > 256 ||
-		!COMPONENT_EXPORT_PATH.test(exportPath.value) ||
-		exportPath.value.endsWith('/') ||
-		exportPath.value.includes('//') ||
-		exportPath.value
-			.slice(2)
-			.split('/')
-			.some((segment) => segment === '.' || segment === '..')
-	) {
+	if (typeof exportPath.value !== 'string' || !isSafeStaticExportPath(exportPath.value)) {
 		addManifestIssue(
 			issues,
 			'invalid_format',
@@ -204,6 +221,19 @@ function validateComponent(value: unknown, issues: PluginManifestIssue[]): void 
 			'must be a safe relative package export path'
 		);
 	}
+}
+
+function isSafeStaticExportPath(value: string): boolean {
+	return (
+		value.length <= 256 &&
+		COMPONENT_EXPORT_PATH.test(value) &&
+		!value.endsWith('/') &&
+		!value.includes('//') &&
+		!value
+			.slice(2)
+			.split('/')
+			.some((segment) => segment === '.' || segment === '..')
+	);
 }
 
 function validateCapabilities(
@@ -229,7 +259,26 @@ function declaresPluginStorage(items: readonly DataProperty[] | undefined): bool
 }
 
 function declaresLlmInvoke(items: readonly DataProperty[] | undefined): boolean {
-	return items?.some((item) => item.kind === 'value' && item.value === 'llm:invoke') ?? false;
+	return declaresCapability(items, 'llm:invoke');
+}
+
+function declaresCapability(
+	items: readonly DataProperty[] | undefined,
+	capability: string
+): boolean {
+	return items?.some((item) => item.kind === 'value' && item.value === capability) ?? false;
+}
+
+function declaresSendTransports(manifest: Record<string, unknown>): boolean {
+	const contributes = Object.getOwnPropertyDescriptor(manifest, 'contributes');
+	if (!contributes || !('value' in contributes) || !isRecord(contributes.value)) return false;
+	const transports = Object.getOwnPropertyDescriptor(contributes.value, 'sendTransports');
+	return Boolean(
+		transports &&
+		'value' in transports &&
+		Array.isArray(transports.value) &&
+		transports.value.length > 0
+	);
 }
 
 function validateContributions(value: unknown, issues: PluginManifestIssue[]): void {
@@ -255,7 +304,8 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 		}
 		const contribution = readDataProperty(value, key, issues);
 		if (contribution.kind === 'value') {
-			validateDescriptorSafeArray(contribution.value, path, issues);
+			const items = validateDescriptorSafeArray(contribution.value, path, issues);
+			if (key === 'sendTransports' && items) validateSendTransportContributions(items, issues);
 		}
 	}
 }
@@ -307,50 +357,6 @@ function validateLlmBudget(value: unknown, issues: PluginManifestIssue[]): void 
 	}
 }
 
-function validateKnownFields(
-	value: Record<string, unknown>,
-	path: string,
-	knownFields: ReadonlySet<string>,
-	issues: PluginManifestIssue[]
-): void {
-	for (const key of Reflect.ownKeys(value)) {
-		if (typeof key !== 'string') {
-			addManifestIssue(
-				issues,
-				'unknown_field',
-				`${path}[${String(key)}]`,
-				'symbol fields are not supported'
-			);
-		} else if (!knownFields.has(key)) {
-			addManifestIssue(issues, 'unknown_field', `${path}.${key}`, 'is not supported');
-		}
-	}
-}
-
-type DataProperty =
-	| { readonly kind: 'missing' | 'accessor' }
-	| { readonly kind: 'value'; readonly value: unknown };
-
-function readDataProperty(
-	value: Record<string, unknown>,
-	key: string,
-	issues: PluginManifestIssue[],
-	required = false,
-	parentPath = '$'
-): DataProperty {
-	const path = /^(0|[1-9]\d*)$/.test(key) ? `${parentPath}[${key}]` : `${parentPath}.${key}`;
-	const descriptor = Object.getOwnPropertyDescriptor(value, key);
-	if (!descriptor) {
-		if (required) addManifestIssue(issues, 'missing', path, 'is required');
-		return { kind: 'missing' };
-	}
-	if (!('value' in descriptor)) {
-		addManifestIssue(issues, 'accessor_not_allowed', path, 'must be a data property');
-		return { kind: 'accessor' };
-	}
-	return { kind: 'value', value: descriptor.value };
-}
-
 interface FormattedStringArrayOptions {
 	readonly path: string;
 	readonly format: RegExp;
@@ -386,58 +392,4 @@ function validateUniqueFormattedStringArray(
 		}
 	}
 	return items;
-}
-
-function validateDescriptorSafeArray(
-	value: unknown,
-	path: string,
-	issues: PluginManifestIssue[]
-): readonly DataProperty[] | undefined {
-	if (value === INVALID_SCHEMA_ARRAY) return undefined;
-	if (!Array.isArray(value)) {
-		addManifestIssue(issues, 'invalid_type', path, 'must be an array');
-		return undefined;
-	}
-	const length = readDataProperty(
-		value as unknown as Record<string, unknown>,
-		'length',
-		issues,
-		true,
-		path
-	);
-	if (
-		length.kind !== 'value' ||
-		typeof length.value !== 'number' ||
-		!Number.isSafeInteger(length.value) ||
-		length.value < 0
-	) {
-		if (length.kind === 'value') {
-			addManifestIssue(issues, 'invalid_type', `${path}.length`, 'must be a valid array length');
-		}
-		return undefined;
-	}
-
-	const allowedKeys = new Set<string>(['length']);
-	for (let index = 0; index < length.value; index += 1) allowedKeys.add(String(index));
-	validateKnownFields(value as unknown as Record<string, unknown>, path, allowedKeys, issues);
-
-	const items: DataProperty[] = [];
-	for (let index = 0; index < length.value; index += 1) {
-		const item = readDataProperty(
-			value as unknown as Record<string, unknown>,
-			String(index),
-			issues,
-			true,
-			path
-		);
-		if (item.kind !== 'value') return undefined;
-		items.push(item);
-	}
-	return items;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
