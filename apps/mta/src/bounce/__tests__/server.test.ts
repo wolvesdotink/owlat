@@ -20,10 +20,11 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 // Spy on the SPF checker so we can both observe whether it ran and steer its
-// verdict. Only `checkSpf` is overridden; the rate-limit helpers keep their real
+// verdict. `checkSpf` now lives in `@owlat/mail-auth` (Own-the-Inbound A1);
+// only it is overridden — `evaluateDmarc`/`dnsDmarcLookup` keep their real
 // (here-unused) implementations.
-vi.mock('../inboundSecurity.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../inboundSecurity.js')>();
+vi.mock('@owlat/mail-auth', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@owlat/mail-auth')>();
 	return { ...actual, checkSpf: vi.fn() };
 });
 
@@ -48,7 +49,7 @@ vi.mock('../../inbound/inboundTlsPolicy.js', () => ({
 import type Redis from 'ioredis';
 import type { SMTPServerAddress, SMTPServerSession } from 'smtp-server';
 import { createBounceServer } from '../server.js';
-import { checkSpf } from '../inboundSecurity.js';
+import { checkSpf } from '@owlat/mail-auth';
 import type { MtaConfig } from '../../config.js';
 import { isInboundTlsRequired } from '../../inbound/inboundTlsPolicy.js';
 
