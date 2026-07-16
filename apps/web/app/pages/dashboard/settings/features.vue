@@ -138,7 +138,7 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 		missingEnv.value = {
 			flag,
 			vars: [
-				'A delivery provider — set EMAIL_PROVIDER (mta, resend, or ses) and its credentials, then restart',
+				'A delivery provider — set EMAIL_PROVIDER to a registered transport, configure its requirements, then restart',
 			],
 		};
 	}

@@ -11,10 +11,10 @@
  * can-this-instance-send status and let an admin fire a real test email.
  *
  * Secret hygiene: `getStatus` reports the *presence* of each required env var as
- * a boolean and the provider KIND name (`mta` / `resend` / `ses`) — never a
+ * a boolean and the composed provider kind — never a
  * credential value. The single per-kind requirement model is shared with the
  * setup wizard / `owlat doctor` via `getSendPathRequiredEnv` (`@owlat/shared`)
- * and the backend capability check (`providerKindConfigured`), so this page
+ * and the backend readiness check (`isSendProviderReady`), so this page
  * cannot drift from what the send path actually needs.
  */
 
@@ -24,11 +24,7 @@ import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { getOptional, isEnvPresent } from '../lib/env';
 import { isSendProviderKind } from '../lib/sendProviders/types';
-import {
-	isDeliveryConfigured,
-	isSendProviderReady,
-	providerKindConfigured,
-} from '../lib/sendProviders/capability';
+import { isDeliveryConfigured, isSendProviderReady } from '../lib/sendProviders/capability';
 import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 
@@ -39,7 +35,7 @@ import { outboundTransportFacts } from '../lib/outboundAlignment';
  *
  * Returns only:
  *  - `provider`            the `EMAIL_PROVIDER` kind name (or null) — not a secret
- *  - `isKnownProvider`     whether that names a real adapter (mta/resend/ses)
+ *  - `isKnownProvider`     whether that names a composed transport
  *  - `requiredEnv`         per required var: `{ name, isPresent }` (boolean only)
  *  - `providerConfigured`  provider known AND all its credentials present (env)
  *  - `canSend`             the real gate the send path uses (`isDeliveryConfigured`
@@ -229,11 +225,15 @@ export const sendTest = authedAction({
 		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
 
 		const provider = getOptional('EMAIL_PROVIDER');
-		if (!isSendProviderKind(provider) || !providerKindConfigured(provider)) {
+		const providerReady = await ctx.runQuery(
+			internal.lib.sendProviders.capability.environmentSendProviderReady,
+			{}
+		);
+		if (!isSendProviderKind(provider) || !providerReady) {
 			return {
 				success: false,
 				error:
-					'No delivery provider is configured. Set EMAIL_PROVIDER (mta, resend, or ses) and its credentials, then try again.',
+					'No delivery provider is configured. Set EMAIL_PROVIDER to a registered transport and configure its requirements, then try again.',
 			};
 		}
 

@@ -21,7 +21,7 @@ import { authorizeSystemBundledPlugin } from '../../plugins/authorization';
 import { isCoreSendProviderKind, sendProviderCatalogEntry } from './catalog';
 import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
-import type { MutationCtx, QueryCtx } from '../../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 
 /**
  * True iff the given provider kind has the credentials it needs in the
@@ -46,15 +46,22 @@ export async function isSendProviderReady(
 }
 
 /**
- * Env-only capability check: `EMAIL_PROVIDER` names a real kind AND its
- * credentials are present. Returns false when `EMAIL_PROVIDER` is unset or not
- * one of `mta|resend|ses|smtp` (no implicit MTA default).
+ * Environment-fallback readiness check. `EMAIL_PROVIDER` must name a composed
+ * provider kind, and that provider must pass the same credentials, flag, and
+ * capability-grant checks used by route resolution. Core providers retain
+ * their exact credential-only behavior.
  */
-export function deliveryConfiguredFromEnv(): boolean {
+export async function deliveryConfiguredFromEnv(ctx: QueryCtx | MutationCtx): Promise<boolean> {
 	const provider = getOptional('EMAIL_PROVIDER');
-	if (!isSendProviderKind(provider) || !isCoreSendProviderKind(provider)) return false;
-	return providerKindConfigured(provider);
+	if (!isSendProviderKind(provider)) return false;
+	return await isSendProviderReady(ctx, provider);
 }
+
+/** Action-callable environment readiness check with no route fallback. */
+export const environmentSendProviderReady = internalQuery({
+	args: {},
+	handler: async (ctx): Promise<boolean> => await deliveryConfiguredFromEnv(ctx),
+});
 
 /** The message types a `providerRoutes` row can target. */
 export type DeliveryMessageType = 'campaign' | 'transactional' | 'automation';
@@ -89,5 +96,5 @@ export async function isDeliveryConfigured(
 			}
 		}
 	}
-	return deliveryConfiguredFromEnv();
+	return await deliveryConfiguredFromEnv(ctx);
 }
