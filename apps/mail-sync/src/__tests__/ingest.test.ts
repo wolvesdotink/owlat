@@ -260,12 +260,13 @@ describe('ingestMessage', () => {
 		expect(attachments[0]?.partIndex).toBe('0');
 	});
 
-	// The `replyTo` wire field is mailparser's merged `.text` for the Reply-To
-	// header. A single header reads `field.text`; a REPEATED header takes the array
-	// arm of `addrText`, joining each object's `.text` with ', ' — matching the
-	// merged text mailparser exposed. Exercises both the array arm and the shipped
-	// `replyTo` field, neither of which any other test/fixture covers.
-	it('joins a repeated Reply-To header into the merged replyTo text', async () => {
+	// A REPEATED `Reply-To:` is a `singleKey` for mailparser — it keeps only the
+	// LAST instance (`mail-parser.js`: `headers.set(key, value[value.length - 1])`),
+	// so the old ingest shipped `ben@example.org`. `parseMessage` mirrors that
+	// collapse, so `replyTo` is a single object and `addrText` reads its `.text`.
+	// This pins that last-wins parity (NOT a merge — mailparser never merges
+	// repeated Reply-To) and exercises the shipped `replyTo` field.
+	it('keeps the LAST instance of a repeated Reply-To header (mailparser singleKeys parity)', async () => {
 		const { client, lastPayload } = mockConvex();
 		const raw = [
 			'From: Alice <alice@example.com>',
@@ -291,7 +292,38 @@ describe('ingestMessage', () => {
 			flags: new Set(),
 		});
 
-		expect(lastPayload().replyTo).toBe('Amy <amy@example.com>, ben@example.org');
+		expect(lastPayload().replyTo).toBe('ben@example.org');
+	});
+
+	// A REPEATED `From:` is likewise a mailparser `singleKey` — the old ingest
+	// read the first address of the LAST `From:` header. `parseMessage` collapses
+	// to that last instance, so `from` ships the last header's address.
+	it('keeps the LAST instance of a repeated From header (mailparser singleKeys parity)', async () => {
+		const { client, lastPayload } = mockConvex();
+		const raw = [
+			'From: First <first@example.org>',
+			'From: Second <second@example.org>',
+			'To: Bob <bob@example.com>',
+			'Subject: Repeated from',
+			'Message-ID: <from-1@example.com>',
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Body text.',
+			'',
+		].join('\r\n');
+
+		await ingestMessage(client, {
+			accountId: 'a',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 10,
+			remoteUidValidity: 2,
+			raw: Buffer.from(raw),
+			flags: new Set(),
+		});
+
+		expect(lastPayload().from).toBe('second@example.org');
 	});
 
 	// A single Reply-To reads the object's `.text` directly (the non-array arm).
