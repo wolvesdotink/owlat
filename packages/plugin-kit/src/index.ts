@@ -13,6 +13,35 @@ export type {
 	PluginAutonomyGateResult,
 	PluginAutonomyGateServices,
 } from './autonomyGate';
+export {
+	PLUGIN_AUTOMATION_CONDITION_CAPABILITY,
+	PLUGIN_AUTOMATION_STEP_CAPABILITY,
+	PLUGIN_AUTOMATION_TRIGGER_CAPABILITY,
+	pluginAutomationConditionKind,
+	pluginAutomationStepKind,
+	pluginAutomationTriggerKind,
+} from './automation';
+export type {
+	PluginAutomationConditionCapability,
+	PluginAutomationConditionDefinition,
+	PluginAutomationConditionInput,
+	PluginAutomationConditionKind,
+	PluginAutomationConditionModule,
+	PluginAutomationEditorMetadata,
+	PluginAutomationLocalId,
+	PluginAutomationStepCapability,
+	PluginAutomationStepDefinition,
+	PluginAutomationStepInput,
+	PluginAutomationStepKind,
+	PluginAutomationStepModule,
+	PluginAutomationStepResult,
+	PluginAutomationTriggerCapability,
+	PluginAutomationTriggerData,
+	PluginAutomationTriggerDefinition,
+	PluginAutomationTriggerInput,
+	PluginAutomationTriggerKind,
+	PluginAutomationTriggerModule,
+} from './automation';
 export { isPluginId, parsePluginId, PluginIdError } from './pluginId';
 export type { PluginId } from './pluginId';
 export { PLUGIN_AGENT_STEP_CAPABILITY, pluginAgentStepKind } from './agentStep';

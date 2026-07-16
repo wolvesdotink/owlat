@@ -36,7 +36,13 @@ export function isPluginContributionKind(value: string): value is PluginContribu
  */
 type DeferredPluginContributionKind = Exclude<
 	PluginContributionKind,
-	'sendTransports' | 'agentSteps' | 'draftStrategies' | 'sendGates'
+	| 'sendTransports'
+	| 'agentSteps'
+	| 'draftStrategies'
+	| 'sendGates'
+	| 'automationTriggers'
+	| 'automationSteps'
+	| 'automationConditions'
 >;
 
 export type PluginContributions = Readonly<
@@ -45,9 +51,17 @@ export type PluginContributions = Readonly<
 		readonly agentSteps?: readonly PluginAgentStepDefinition[];
 		readonly draftStrategies?: readonly PluginDraftStrategyDefinition[];
 		readonly sendGates?: readonly PluginAutonomyGateDefinition[];
+		readonly automationTriggers?: readonly PluginAutomationTriggerDefinition[];
+		readonly automationSteps?: readonly PluginAutomationStepDefinition[];
+		readonly automationConditions?: readonly PluginAutomationConditionDefinition[];
 	} & Partial<Record<DeferredPluginContributionKind, readonly unknown[]>>
 >;
 import type { PluginAgentStepDefinition } from './agentStep';
+import type {
+	PluginAutomationConditionDefinition,
+	PluginAutomationStepDefinition,
+	PluginAutomationTriggerDefinition,
+} from './automation';
 import type { PluginAutonomyGateDefinition } from './autonomyGate';
 import type { PluginDraftStrategyDefinition } from './draftStrategy';
 import type { PluginSendTransportDefinition } from './sendTransport';
