@@ -72,7 +72,7 @@ export async function sendProviderDispatch<K extends SendProviderKind>(
 		if (pluginId) {
 			const authorized = await ctx.runMutation(
 				internal.plugins.sendTransportAuthorization.authorizeAttempt,
-				{ pluginId, providerKind: kind }
+				{ pluginId, providerKind: kind, priorAttempts: attempts }
 			);
 			if (!authorized) {
 				return await terminalResult(ctx, kind, startTime, attempts, {

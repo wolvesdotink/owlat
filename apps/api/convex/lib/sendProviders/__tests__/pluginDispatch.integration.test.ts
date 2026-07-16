@@ -59,14 +59,16 @@ const params: EmailSendParams = {
 	html: '<p>Hello</p>',
 };
 
-function fakeContext(isAuthorized = true) {
+function fakeContext(authorization: boolean | readonly boolean[] = true) {
 	const scheduled: Array<{ name: string; args: Record<string, unknown> }> = [];
+	let authorizationIndex = 0;
 	return {
 		scheduled,
 		ctx: {
 			runMutation: vi.fn(async () => {
 				mocks.events.push('authorize');
-				return isAuthorized;
+				if (typeof authorization === 'boolean') return authorization;
+				return authorization[authorizationIndex++] ?? false;
 			}),
 			scheduler: {
 				runAfter: vi.fn(
@@ -91,6 +93,11 @@ describe('hosted send transport dispatch', () => {
 		const result = await sendProviderDispatch(ctx as never, kind, params, { stream: 'outbound' });
 
 		expect(mocks.events).toEqual(['authorize', 'send']);
+		expect(ctx.runMutation).toHaveBeenCalledWith(expect.anything(), {
+			pluginId: 'mail-pack',
+			providerKind: kind,
+			priorAttempts: 0,
+		});
 		expect(result).toMatchObject({ attempts: 1, providerType: kind, result: { success: true } });
 		expect(scheduled).toHaveLength(2);
 		expect(scheduled[0]).toMatchObject({
@@ -111,6 +118,30 @@ describe('hosted send transport dispatch', () => {
 		expect(mocks.send).not.toHaveBeenCalled();
 		expect(result.attempts).toBe(0);
 		expect(result.result).toMatchObject({ success: false, errorCode: EmailErrorCode.AUTH_FAILED });
+		expect(scheduled).toHaveLength(1);
+		expect(ctx.runMutation).toHaveBeenCalledWith(expect.anything(), {
+			pluginId: 'mail-pack',
+			providerKind: kind,
+			priorAttempts: 0,
+		});
+	});
+
+	it('reports one prior attempt when authorization is denied before a retry', async () => {
+		mocks.send.mockReset().mockResolvedValueOnce({
+			success: false,
+			code: 'temporary_failure',
+		});
+		const { ctx, scheduled } = fakeContext([true, false]);
+
+		const result = await sendProviderDispatch(ctx as never, kind, params);
+
+		expect(mocks.send).toHaveBeenCalledOnce();
+		expect(result.attempts).toBe(1);
+		expect(ctx.runMutation).toHaveBeenNthCalledWith(2, expect.anything(), {
+			pluginId: 'mail-pack',
+			providerKind: kind,
+			priorAttempts: 1,
+		});
 		expect(scheduled).toHaveLength(1);
 	});
 

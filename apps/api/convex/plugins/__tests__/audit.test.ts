@@ -90,4 +90,25 @@ describe('hosted plugin audit boundary', () => {
 			});
 		});
 	});
+
+	it('records an honest transport access denial with the prior-attempt count', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await recordHostedPluginAudit(
+				ctx,
+				{ organizationId: 'tenant', pluginId: parsePluginId('mail-pack'), userId: 'system' },
+				'transport.send',
+				'denied',
+				{ attempts: 1, reasonCode: 'access_denied' }
+			);
+			const row = await ctx.db.query('auditLogs').unique();
+			expect(row?.details).toEqual({
+				operation: 'transport.send',
+				outcome: 'denied',
+				attempts: 1,
+				reasonCode: 'access_denied',
+			});
+			expect(JSON.stringify(row?.details)).not.toMatch(/payload|secret|provider error/i);
+		});
+	});
 });
