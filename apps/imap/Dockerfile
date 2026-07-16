@@ -14,10 +14,13 @@ COPY --parents apps/*/package.json packages/*/package.json ./
 # sources-less context.
 RUN bun install --frozen-lockfile --filter @owlat/imap
 
-# Copy IMAP source + the workspace package it imports (@owlat/shared, TS source)
+# Copy IMAP source + the workspace packages it imports (@owlat/shared, TS source).
+# @owlat/shared's mailMime.ts re-exports from @owlat/mail-message/headers, so its
+# source must be present for tsc to resolve the subpath during the build.
 COPY apps/imap/tsconfig.json apps/imap/
 COPY apps/imap/src/ apps/imap/src/
 COPY packages/shared/ packages/shared/
+COPY packages/mail-message/ packages/mail-message/
 
 RUN cd apps/imap && bun run build
 
