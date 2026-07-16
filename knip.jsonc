@@ -99,6 +99,9 @@
 				"src/**/__tests__/**/*.ts"
 			]
 		},
+		// The canonicalizer leaf publishes two barrels (`.` and `./canon`); both
+		// are public surface, so declare each as entry alongside its vector suite.
+		"packages/mail-canon": { "entry": ["src/index.ts", "src/canon.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/channels": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-builder": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },
 		"packages/email-renderer": { "entry": ["src/index.ts", "src/**/__tests__/**/*.ts"] },

@@ -26,8 +26,9 @@
  *
  * EVERY byte of canonicalization — relaxed body hashing, relaxed header
  * canonicalization, and blanking the signature's own `b=` before hashing —
- * comes from `@owlat/mail-auth/canon`, the single public canonicalizer the
- * inbound `verifyDkim` also consumes. Signer and verifier therefore canonicalize
+ * comes from `@owlat/mail-canon`, the single dependency-free canonicalizer the
+ * inbound `verifyDkim` also consumes (via `@owlat/mail-auth`'s `./canon`
+ * re-export). Signer and verifier therefore canonicalize
  * by construction the same way: what we sign is exactly what a receiver (and our
  * own `verifyDkim`) recomputes. There is NO second canonicalization here.
  *
@@ -37,9 +38,11 @@
  * exactly so the emitted signature is byte-identical to the MTA signer's, pinned
  * by the bit-for-bit vector in `__tests__/dkim.test.ts`.
  *
- * Pure by construction: the only runtime imports are `node:crypto` and the pure
- * `@owlat/mail-auth/canon` subpath, so this module stays Convex-`'use node'`
- * safe (locked decision W1 / U4).
+ * Pure by construction: the only runtime imports are `node:crypto` and the
+ * dependency-free `@owlat/mail-canon` leaf, so this module stays Convex-`'use
+ * node'` safe (locked decision W1 / U4). The leaf (rather than
+ * `@owlat/mail-auth` directly) also keeps the package graph acyclic —
+ * `mail-auth → shared → mail-message` would otherwise close a build cycle.
  */
 
 import { createHash, createSign } from 'node:crypto';
@@ -47,7 +50,7 @@ import {
 	canonicalizeBodyRelaxed,
 	canonicalizeHeaderField,
 	stripSignatureValue,
-} from '@owlat/mail-auth/canon';
+} from '@owlat/mail-canon';
 
 /** Resolved per-domain signing material (shape shared with the MTA signer). */
 export interface DkimSigningKey {
@@ -231,8 +234,9 @@ function formatDkimSignatureLine(values: Record<string, string | number>, folded
 		.filter((key) => merged[key] !== undefined && DKIM_KEY_ORDERING.includes(key))
 		.sort((a, b) => DKIM_KEY_ORDERING.indexOf(a) - DKIM_KEY_ORDERING.indexOf(b))
 		.map((key) => {
-			const raw = merged[key];
-			const val = raw === undefined ? '' : String(raw);
+			// `key` survived the `merged[key] !== undefined` filter above, so the
+			// lookup is always defined here.
+			const val = String(merged[key]);
 			if (key === 'b' && folded && val) {
 				// Fold the signature value on 75-char boundaries (mailauth parity).
 				return `${key}=${val}`.replace(/.{75}/g, '$& ').trim();
