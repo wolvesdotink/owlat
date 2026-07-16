@@ -5,8 +5,11 @@ import { extractAttachments } from '../parse/attachments';
 /**
  * Hostile / malformed input must be BOUNDED and must NEVER throw: the walker is
  * depth-capped, a missing boundary yields a childless node, and every decoder
- * is total. These adversarial fixtures assert termination and boundedness, not
- * a specific decoded value.
+ * is total. These adversarial fixtures assert termination AND boundedness.
+ *
+ * `not.toThrow()` wraps ONLY the parse calls — content assertions are hoisted
+ * out so a failed expectation reports the real diff rather than an opaque
+ * "function threw".
  */
 describe('hostile MIME input', () => {
 	it('a 1000-part bomb is bounded and does not throw', () => {
@@ -50,6 +53,36 @@ describe('hostile MIME input', () => {
 			parseBody(raw);
 			extractAttachments(raw);
 		}).not.toThrow();
+		// Within the cap the inner text/plain core is still reachable.
+		expect(parseBody(raw).text).toBe('inner core');
+	});
+
+	it('120-deep nesting (beyond MAX_DEPTH=100) terminates and degrades to a leaf', () => {
+		const depth = 120;
+		let raw = 'Content-Type: text/plain\r\n\r\ninner core';
+		for (let i = 0; i < depth; i++) {
+			const boundary = `B${i}`;
+			raw = [
+				`Content-Type: multipart/mixed; boundary="${boundary}"`,
+				'',
+				`--${boundary}`,
+				raw,
+				`--${boundary}--`,
+			].join('\r\n');
+		}
+		let body: ReturnType<typeof parseBody> | undefined;
+		let attachments: ReturnType<typeof extractAttachments> = [];
+		expect(() => {
+			parseMimeTree(raw);
+			body = parseBody(raw);
+			attachments = extractAttachments(raw);
+		}).not.toThrow();
+		// The node AT the depth cap is left unsplit (a raw multipart leaf), so the
+		// text/plain core buried below the cap is never reached: it contributes
+		// nothing to the body and nothing to attachments.
+		expect(body!.text).toBeUndefined();
+		expect(body!.html).toBe(false);
+		expect(attachments).toEqual([]);
 	});
 
 	it('a boundary string appearing inside base64 content does not derail the split', () => {
@@ -79,19 +112,26 @@ describe('hostile MIME input', () => {
 
 	it('a headers-only message (no body) does not throw', () => {
 		const raw = 'Content-Type: text/plain; charset="utf-8"\r\nSubject: nothing below';
+		let body: ReturnType<typeof parseBody> | undefined;
+		let attachments: ReturnType<typeof extractAttachments> = [];
 		expect(() => {
-			const body = parseBody(raw);
-			expect(body.html).toBe(false);
-			expect(extractAttachments(raw)).toEqual([]);
+			body = parseBody(raw);
+			attachments = extractAttachments(raw);
 		}).not.toThrow();
+		expect(body!.html).toBe(false);
+		expect(attachments).toEqual([]);
 	});
 
 	it('a multipart with no boundary parameter degrades to an empty tree', () => {
 		const raw = 'Content-Type: multipart/mixed\r\n\r\nno boundary here';
+		let body: ReturnType<typeof parseBody> | undefined;
+		let attachments: ReturnType<typeof extractAttachments> = [];
 		expect(() => {
-			expect(extractAttachments(raw)).toEqual([]);
-			expect(parseBody(raw).html).toBe(false);
+			body = parseBody(raw);
+			attachments = extractAttachments(raw);
 		}).not.toThrow();
+		expect(attachments).toEqual([]);
+		expect(body!.html).toBe(false);
 	});
 
 	it('mixed CRLF / LF line endings parse without throwing', () => {
@@ -105,11 +145,13 @@ describe('hostile MIME input', () => {
 			'Content-Type: text/html\r\n\r\n' +
 			'<p>html part</p>\n' +
 			'--B--\r\n';
+		let body: ReturnType<typeof parseBody> | undefined;
 		expect(() => {
-			const body = parseBody(raw);
-			expect(typeof body.text === 'string' || body.text === undefined).toBe(true);
+			body = parseBody(raw);
 			extractAttachments(raw);
 		}).not.toThrow();
+		expect(body!.text).toContain('plain part');
+		expect(body!.html).toContain('<p>html part</p>');
 	});
 
 	it('a truncated message (dangling open boundary, no close) is bounded', () => {
