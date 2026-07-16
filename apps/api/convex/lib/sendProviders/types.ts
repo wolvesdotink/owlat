@@ -10,7 +10,8 @@
  * See CONTEXT.md "Send provider adapter (module)".
  */
 
-import { SEND_TRANSPORT_KINDS } from '@owlat/shared';
+import { getOptional } from '../env';
+import { isSendProviderKind, type SendProviderKind } from './catalog';
 
 /**
  * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
@@ -24,15 +25,25 @@ import { SEND_TRANSPORT_KINDS } from '@owlat/shared';
  * pulling the `SEND_PROVIDERS` registry (and thus `nodemailer`) into a
  * non-`'use node'` bundle.
  */
-export const SEND_PROVIDER_KINDS = SEND_TRANSPORT_KINDS;
-
-export type SendProviderKind = (typeof SEND_PROVIDER_KINDS)[number];
+export { SEND_PROVIDER_KINDS, isSendProviderKind } from './catalog';
+export type { CoreSendProviderKind, SendProviderKind } from './catalog';
 
 /**
- * Type guard: is the given string a recognized provider kind?
+ * Select the provider kind the worker will dispatch through.
+ *
+ * An explicitly supplied provider is authoritative: a stale or invalid value
+ * fails closed instead of borrowing the deployment-wide EMAIL_PROVIDER. The
+ * environment fallback is used only when the producer supplied no provider.
  */
-export function isSendProviderKind(kind: string | undefined | null): kind is SendProviderKind {
-	return kind != null && (SEND_PROVIDER_KINDS as readonly string[]).includes(kind);
+export function selectSendProviderKind(
+	explicitProviderType: string | undefined
+): SendProviderKind | null {
+	if (explicitProviderType !== undefined) {
+		return isSendProviderKind(explicitProviderType) ? explicitProviderType : null;
+	}
+
+	const environmentProviderType = getOptional('EMAIL_PROVIDER');
+	return isSendProviderKind(environmentProviderType) ? environmentProviderType : null;
 }
 
 /**
@@ -117,7 +128,7 @@ export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 			? ResendExtras
 			: K extends 'smtp'
 				? SmtpExtras
-				: never;
+				: unknown;
 
 // ─── Single-attempt result ─────────────────────────────────────────────────
 

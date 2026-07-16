@@ -202,6 +202,7 @@ export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'storage.get',
 	'storage.list',
 	'storage.set',
+	'transport.send',
 ] as const;
 export type HostedPluginOperationLiteral = (typeof HOSTED_PLUGIN_OPERATION_LITERALS)[number];
 

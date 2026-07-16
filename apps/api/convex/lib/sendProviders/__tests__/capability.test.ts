@@ -33,6 +33,11 @@ function setEnv(patch: Partial<Record<(typeof ENV_KEYS)[number], string | undefi
 	}
 }
 
+async function deliveryConfiguredFromTestEnv(): Promise<boolean> {
+	const t = convexTest(schema, modules);
+	return await t.run(async (ctx) => await deliveryConfiguredFromEnv(ctx));
+}
+
 afterEach(() => {
 	for (const k of ENV_KEYS) {
 		if (original[k] === undefined) delete process.env[k];
@@ -41,59 +46,59 @@ afterEach(() => {
 });
 
 describe('deliveryConfiguredFromEnv — fail-closed', () => {
-	it('returns false when EMAIL_PROVIDER is unset (no implicit mta default)', () => {
+	it('returns false when EMAIL_PROVIDER is unset (no implicit mta default)', async () => {
 		setEnv({});
-		expect(deliveryConfiguredFromEnv()).toBe(false);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 	});
 
-	it('returns false for an unrecognized provider kind', () => {
+	it('returns false for an unrecognized provider kind', async () => {
 		setEnv({ EMAIL_PROVIDER: 'sendgrid', RESEND_API_KEY: 're_x' });
-		expect(deliveryConfiguredFromEnv()).toBe(false);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 	});
 
-	it('mta: requires both MTA_API_URL and MTA_API_KEY', () => {
+	it('mta: requires both MTA_API_URL and MTA_API_KEY', async () => {
 		setEnv({ EMAIL_PROVIDER: 'mta' });
-		expect(deliveryConfiguredFromEnv()).toBe(false);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100' });
-		expect(deliveryConfiguredFromEnv()).toBe(false);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
-		expect(deliveryConfiguredFromEnv()).toBe(true);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
 	});
 
-	it('resend: requires RESEND_API_KEY', () => {
+	it('resend: requires RESEND_API_KEY', async () => {
 		setEnv({ EMAIL_PROVIDER: 'resend' });
-		expect(deliveryConfiguredFromEnv()).toBe(false);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 		setEnv({ EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_x' });
-		expect(deliveryConfiguredFromEnv()).toBe(true);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
 	});
 
-	it('ses: requires access key id and secret', () => {
+	it('ses: requires access key id and secret', async () => {
 		setEnv({ EMAIL_PROVIDER: 'ses', AWS_SES_ACCESS_KEY_ID: 'AKIA' });
-		expect(deliveryConfiguredFromEnv()).toBe(false);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 		setEnv({
 			EMAIL_PROVIDER: 'ses',
 			AWS_SES_ACCESS_KEY_ID: 'AKIA',
 			AWS_SES_SECRET_ACCESS_KEY: 'sk',
 		});
-		expect(deliveryConfiguredFromEnv()).toBe(true);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
 	});
 
-	it('smtp: requires host, username and password (fail-closed on any missing)', () => {
+	it('smtp: requires host, username and password (fail-closed on any missing)', async () => {
 		setEnv({ EMAIL_PROVIDER: 'smtp', SMTP_RELAY_HOST: 'smtp.mailgun.org' });
-		expect(deliveryConfiguredFromEnv()).toBe(false);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 		setEnv({
 			EMAIL_PROVIDER: 'smtp',
 			SMTP_RELAY_HOST: 'smtp.mailgun.org',
 			SMTP_RELAY_USERNAME: 'postmaster',
 		});
-		expect(deliveryConfiguredFromEnv()).toBe(false);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 		setEnv({
 			EMAIL_PROVIDER: 'smtp',
 			SMTP_RELAY_HOST: 'smtp.mailgun.org',
 			SMTP_RELAY_USERNAME: 'postmaster',
 			SMTP_RELAY_PASSWORD: 'pw',
 		});
-		expect(deliveryConfiguredFromEnv()).toBe(true);
+		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
 	});
 
 	it('providerKindConfigured is the single per-kind cred source', () => {

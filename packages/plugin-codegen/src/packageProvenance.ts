@@ -121,6 +121,24 @@ export async function verifyPluginComponentExport(
 	packageName: PluginPackageName,
 	exportPath: string
 ): Promise<void> {
+	return verifyPluginStaticExport(workspaceRoot, packageName, exportPath, 'component');
+}
+
+/** Verify one statically generated backend contribution export without executing it. */
+export async function verifyPluginContributionExport(
+	workspaceRoot: string,
+	packageName: PluginPackageName,
+	exportPath: string
+): Promise<void> {
+	return verifyPluginStaticExport(workspaceRoot, packageName, exportPath, 'contribution');
+}
+
+async function verifyPluginStaticExport(
+	workspaceRoot: string,
+	packageName: PluginPackageName,
+	exportPath: string,
+	kind: 'component' | 'contribution'
+): Promise<void> {
 	// The package loader calls this immediately after the root export passed the
 	// full direct-dependency, lock-integrity, identity, and containment checks.
 	const packageJsonPath = await resolveRequiredPath(
@@ -134,50 +152,53 @@ export async function verifyPluginComponentExport(
 		`Bundled plugin ${packageName} has unreadable package metadata`,
 		'dependency_provenance'
 	);
-	const target = readConditionIndependentComponentExport(
+	const target = readConditionIndependentStaticExport(
 		packageJson.exports,
 		packageName,
-		exportPath
+		exportPath,
+		kind
 	);
 	const declaredTarget = resolve(packageRoot, target);
 	if (!isPathInside(packageRoot, declaredTarget)) {
-		throw invalidComponentExport(packageName, exportPath);
+		throw invalidStaticExport(packageName, exportPath, kind);
 	}
 	const resolvedTarget = await resolveRequiredPath(declaredTarget, packageName).catch((cause) => {
 		throw new PluginCodegenError(
-			'component_export_invalid',
-			`Bundled plugin ${packageName} component export ${exportPath} is missing`,
+			kind === 'component' ? 'component_export_invalid' : 'contribution_export_invalid',
+			`Bundled plugin ${packageName} ${kind} export ${exportPath} is missing`,
 			[],
 			{ cause }
 		);
 	});
 	if (!isPathInside(packageRoot, resolvedTarget) || !(await stat(resolvedTarget)).isFile()) {
-		throw invalidComponentExport(packageName, exportPath);
+		throw invalidStaticExport(packageName, exportPath, kind);
 	}
 }
 
-function readConditionIndependentComponentExport(
+function readConditionIndependentStaticExport(
 	exportsField: unknown,
 	packageName: PluginPackageName,
-	exportPath: string
+	exportPath: string,
+	kind: 'component' | 'contribution'
 ): string {
 	if (!isRecord(exportsField) || !Object.hasOwn(exportsField, exportPath)) {
-		throw invalidComponentExport(packageName, exportPath);
+		throw invalidStaticExport(packageName, exportPath, kind);
 	}
 	const target = exportsField[exportPath];
 	if (typeof target !== 'string' || !target.startsWith('./') || target.includes('\0')) {
-		throw invalidComponentExport(packageName, exportPath);
+		throw invalidStaticExport(packageName, exportPath, kind);
 	}
 	return target;
 }
 
-function invalidComponentExport(
+function invalidStaticExport(
 	packageName: PluginPackageName,
-	exportPath: string
+	exportPath: string,
+	kind: 'component' | 'contribution'
 ): PluginCodegenError {
 	return new PluginCodegenError(
-		'component_export_invalid',
-		`Bundled plugin ${packageName} must expose component ${exportPath} through one condition-independent export string`
+		kind === 'component' ? 'component_export_invalid' : 'contribution_export_invalid',
+		`Bundled plugin ${packageName} must expose ${kind} ${exportPath} through one condition-independent export string`
 	);
 }
 

@@ -1,11 +1,11 @@
 'use node';
 
 import { v } from 'convex/values';
+import { internal } from './_generated/api';
 import { internalAction } from './_generated/server';
 import { getOptional } from './lib/env';
 import { isSendProviderKind } from './lib/sendProviders';
 import { sendProviderDispatch } from './lib/sendProviders/dispatch';
-import { providerKindConfigured } from './lib/sendProviders/capability';
 
 /**
  * Single transport for every system / auth / DOI email (password reset,
@@ -40,9 +40,13 @@ export const sendSystemEmail = internalAction({
 	},
 	handler: async (ctx, args): Promise<void> => {
 		const provider = getOptional('EMAIL_PROVIDER');
-		if (!isSendProviderKind(provider) || !providerKindConfigured(provider)) {
+		const providerReady = await ctx.runQuery(
+			internal.lib.sendProviders.capability.environmentSendProviderReady,
+			{}
+		);
+		if (!isSendProviderKind(provider) || !providerReady) {
 			throw new Error(
-				'No system email transport configured: set EMAIL_PROVIDER (mta, resend, or ses) and its credentials. System/auth emails (password reset, invitations, double opt-in) require a transport.',
+				'No system email transport configured: set EMAIL_PROVIDER to a registered transport and configure its requirements. System/auth emails (password reset, invitations, double opt-in) require a transport.'
 			);
 		}
 
@@ -62,12 +66,10 @@ export const sendSystemEmail = internalAction({
 					html: args.html,
 					headers: { 'Auto-Submitted': 'auto-generated' },
 				},
-				{ ipPool: 'transactional' },
+				{ ipPool: 'transactional' }
 			);
 			if (!dispatched.result.success) {
-				throw new Error(
-					`System email send failed via mta: ${dispatched.result.errorMessage}`,
-				);
+				throw new Error(`System email send failed via mta: ${dispatched.result.errorMessage}`);
 			}
 			return;
 		}
@@ -84,11 +86,11 @@ export const sendSystemEmail = internalAction({
 				html: args.html,
 				headers: { 'Auto-Submitted': 'auto-generated' },
 			},
-			{},
+			{}
 		);
 		if (!dispatched.result.success) {
 			throw new Error(
-				`System email send failed via ${provider}: ${dispatched.result.errorMessage}`,
+				`System email send failed via ${provider}: ${dispatched.result.errorMessage}`
 			);
 		}
 	},

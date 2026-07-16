@@ -8,8 +8,17 @@ import type { HostedPluginActorScope } from './authorization';
 
 export type HostedPluginAuditOutcome = 'completed' | 'denied' | 'failed';
 export type HostedPluginOperation = HostedPluginOperationLiteral;
+export const HOSTED_PLUGIN_AUDIT_REASON_CODES = Object.freeze([
+	'access_denied',
+	'access_or_budget_denied',
+	'provider_dispatch_failed',
+] as const);
+export type HostedPluginAuditReasonCode = (typeof HOSTED_PLUGIN_AUDIT_REASON_CODES)[number];
 const HOSTED_PLUGIN_OPERATION_SET: ReadonlySet<HostedPluginOperation> = new Set(
 	HOSTED_PLUGIN_OPERATION_LITERALS
+);
+const HOSTED_PLUGIN_AUDIT_REASON_CODE_SET: ReadonlySet<HostedPluginAuditReasonCode> = new Set(
+	HOSTED_PLUGIN_AUDIT_REASON_CODES
 );
 
 export interface HostedPluginAuditMetadata {
@@ -17,7 +26,7 @@ export interface HostedPluginAuditMetadata {
 	readonly usageAvailable?: boolean;
 	readonly chargedMicrousd?: number;
 	readonly actualMicrousd?: number;
-	readonly reasonCode?: 'access_or_budget_denied' | 'provider_dispatch_failed';
+	readonly reasonCode?: HostedPluginAuditReasonCode;
 }
 
 const AUDIT_METADATA_FIELDS = new Set([
@@ -93,11 +102,10 @@ function readMetadataValue(key: string, value: unknown): boolean | number | stri
 	) {
 		return value as number;
 	}
-	if (
-		key === 'reasonCode' &&
-		(value === 'access_or_budget_denied' || value === 'provider_dispatch_failed')
-	) {
-		return value;
+	if (key === 'reasonCode' && typeof value === 'string') {
+		if (HOSTED_PLUGIN_AUDIT_REASON_CODE_SET.has(value as HostedPluginAuditReasonCode)) {
+			return value;
+		}
 	}
 	throw new TypeError('Invalid hosted plugin audit metadata');
 }

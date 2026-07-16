@@ -32,11 +32,26 @@ export function snapshotManifestInput(value: unknown, issues: PluginManifestIssu
 }
 
 function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): unknown {
-	return snapshotRecord(value, (key, propertyValue) =>
-		typeof key === 'string' && isPluginContributionKind(key)
-			? snapshotArray(propertyValue, `$.contributes.${key}`, MAX_CONTRIBUTIONS_PER_KIND, issues)
-			: propertyValue
-	);
+	return snapshotRecord(value, (key, propertyValue) => {
+		if (typeof key !== 'string' || !isPluginContributionKind(key)) return propertyValue;
+		const path = `$.contributes.${key}`;
+		return snapshotArray(
+			propertyValue,
+			path,
+			MAX_CONTRIBUTIONS_PER_KIND,
+			issues,
+			key === 'sendTransports'
+				? (item, index) =>
+						snapshotRecord(item, (field, fieldValue) =>
+							field === 'module'
+								? snapshotRecord(fieldValue)
+								: field === 'retryDelays'
+									? snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues)
+									: fieldValue
+						)
+				: undefined
+		);
+	});
 }
 
 function snapshotFlag(value: unknown, issues: PluginManifestIssue[]): unknown {
@@ -68,7 +83,8 @@ function snapshotArray(
 	value: unknown,
 	path: string,
 	maximumItems: number,
-	issues: PluginManifestIssue[]
+	issues: PluginManifestIssue[],
+	snapshotItem?: (value: unknown, index: number) => unknown
 ): unknown {
 	if (!Array.isArray(value)) return value;
 
@@ -120,7 +136,14 @@ function snapshotArray(
 			}
 			continue;
 		}
-		Object.defineProperty(snapshot, key, descriptor);
+		const arrayIndex = typeof key === 'string' && /^(0|[1-9]\d*)$/.test(key) ? Number(key) : null;
+		Object.defineProperty(
+			snapshot,
+			key,
+			arrayIndex !== null && 'value' in descriptor && snapshotItem
+				? { ...descriptor, value: snapshotItem(descriptor.value, arrayIndex) }
+				: descriptor
+		);
 	}
 	return Object.freeze(snapshot);
 }
