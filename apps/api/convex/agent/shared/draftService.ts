@@ -341,8 +341,8 @@ export function buildDraftMessages(args: {
 export type SharedDraftParams = Readonly<{
 	/** Host surface identifier exposed to strategies instead of free-form audience text. */
 	surface: 'organization' | 'personal';
-	/** Capable-tier model (or fast tier for trivial classified mail) chosen by the caller. */
-	model: LanguageModel;
+	/** Resolve the host model only when the default or fallback strategy actually runs. */
+	resolveModel: () => Promise<LanguageModel>;
 	/** How the reply's audience is phrased in the system prompt ("an organization" / "the mailbox owner"). */
 	audience: string;
 	/** Whose communication style to match ("the organization's" / "the owner's"). */
@@ -455,6 +455,7 @@ export async function runSharedDraft(
 
 /** Built-in `default` strategy; kept byte-for-byte equivalent to the old primary path. */
 async function runDefaultDraftStrategy(params: SharedDraftParams) {
+	const model = await params.resolveModel();
 	const systemPrompt = buildDraftSystemPrompt({
 		audience: params.audience,
 		styleReference: params.styleReference,
@@ -473,11 +474,11 @@ async function runDefaultDraftStrategy(params: SharedDraftParams) {
 	const temperature = params.temperature ?? 0.4;
 	return params.tools && Object.keys(params.tools).length > 0
 		? await runLlmTextWithTools({
-				model: params.model,
+				model,
 				maxSteps: params.maxSteps,
 				tools: params.tools,
 				messages,
 				temperature,
 			})
-		: await runLlmText({ model: params.model, messages, temperature });
+		: await runLlmText({ model, messages, temperature });
 }

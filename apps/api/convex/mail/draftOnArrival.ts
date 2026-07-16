@@ -82,7 +82,7 @@ export async function generateDraftOnArrival(
 	try {
 		const result = await runSharedDraft(ctx, {
 			surface: 'personal',
-			model: await resolveLanguageModel(ctx, 'draft'), // capable tier
+			resolveModel: () => resolveLanguageModel(ctx, 'draft'), // capable tier, lazy for custom strategies
 			audience: 'the mailbox owner',
 			styleReference: "the owner's",
 			context: loaded.context,
