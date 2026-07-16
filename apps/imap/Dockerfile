@@ -21,6 +21,7 @@ COPY apps/imap/tsconfig.json apps/imap/
 COPY apps/imap/src/ apps/imap/src/
 COPY packages/shared/ packages/shared/
 COPY packages/mail-message/ packages/mail-message/
+COPY packages/mail-canon/ packages/mail-canon/
 
 RUN cd apps/imap && bun run build
 
