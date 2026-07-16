@@ -43,6 +43,7 @@ import {
 	type Canonicalization,
 } from '../canon.js';
 import type { DkimVerdict } from '../dmarc.js';
+import { isNoRecordDnsError } from '../dnsErrors.js';
 import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from './keyRecord.js';
 import { splitMessage, type HeaderField } from './message.js';
 import { parseTagList } from './tagList.js';
@@ -92,25 +93,6 @@ const VERDICT_RANK: Record<DkimVerdict, number> = {
 	neutral: 2,
 	none: 1,
 };
-
-/** DNS error codes that mean "no such record" — a permanent DKIM failure. */
-const PERMANENT_DNS_CODES = new Set(['ENOTFOUND', 'ENODATA', 'NXDOMAIN', 'NOTFOUND']);
-
-/**
- * True when a DNS resolver rejection means "no such record" (NXDOMAIN / NODATA)
- * rather than a transient failure (SERVFAIL, timeout). `dns/promises` rejects
- * with these codes instead of resolving an empty array. Both the DKIM verifier
- * (→ `permerror`) and the inbound-auth DNS cache layer (→ a negative-cached
- * empty answer) key off the SAME set, so it is exported as a predicate to keep
- * the two layers from drifting apart.
- */
-export function isNoRecordDnsError(err: unknown): boolean {
-	const code =
-		typeof err === 'object' && err !== null && 'code' in err
-			? String((err as { code: unknown }).code)
-			: '';
-	return PERMANENT_DNS_CODES.has(code);
-}
 
 /**
  * Upper bound on the number of DKIM-Signature headers we evaluate. Legitimate
