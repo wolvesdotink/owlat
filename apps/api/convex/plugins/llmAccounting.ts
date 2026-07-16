@@ -12,6 +12,7 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import {
 	authorizeSystemBundledPlugin,
+	type AuthorizedPluginScope,
 	getBundledPluginManifest,
 	requireAuthenticatedBundledPlugin,
 	SYSTEM_PLUGIN_ACTOR_ID,
@@ -21,6 +22,41 @@ import { recordHostedPluginAudit } from './audit';
 
 const LLM_INVOKE = 'llm:invoke' as const;
 const RESERVATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const pluginLlmActorModeValidator = v.union(
+	v.literal('authenticated_actor'),
+	v.literal('system_actor')
+);
+type PluginLlmActorMode = 'authenticated_actor' | 'system_actor';
+
+interface PluginLlmAccountingActorPolicy {
+	authorize(ctx: MutationCtx, pluginId: string): Promise<AuthorizedPluginScope | null>;
+	ownsReservation(ctx: MutationCtx, reservation: Doc<'pluginLlmReservations'>): Promise<boolean>;
+}
+
+const PLUGIN_LLM_ACCOUNTING_ACTOR_POLICIES: Readonly<
+	Record<PluginLlmActorMode, PluginLlmAccountingActorPolicy>
+> = Object.freeze({
+	authenticated_actor: Object.freeze({
+		authorize: (ctx: MutationCtx, pluginId: string) =>
+			requireAuthenticatedBundledPlugin(ctx, pluginId, LLM_INVOKE),
+		ownsReservation: async (ctx: MutationCtx, reservation: Doc<'pluginLlmReservations'>) => {
+			const session = await getBetterAuthSessionWithRole(ctx);
+			return Boolean(
+				session?.activeOrganizationId &&
+				session.role &&
+				session.activeOrganizationId === reservation.organizationId &&
+				session.userId === reservation.actorUserId
+			);
+		},
+	}),
+	system_actor: Object.freeze({
+		authorize: (ctx: MutationCtx, pluginId: string) =>
+			authorizeSystemBundledPlugin(ctx, pluginId, LLM_INVOKE),
+		ownsReservation: async (ctx: MutationCtx, reservation: Doc<'pluginLlmReservations'>) =>
+			reservation.actorUserId === SYSTEM_PLUGIN_ACTOR_ID &&
+			reservation.organizationId === (await getSingletonOrganizationId(ctx)),
+	}),
+});
 
 /** Authorization floor before tenant provider configuration is resolved. */
 export const authorize = internalQuery({
@@ -48,7 +84,7 @@ export const reserve = internalMutation({
 		tier: v.union(v.literal('fast'), v.literal('capable')),
 		modelId: v.string(),
 		endpointProvenance: languageEndpointProvenanceValidator,
-		system: v.optional(v.boolean()),
+		actorMode: pluginLlmActorModeValidator,
 	},
 	handler: async (ctx, args) => {
 		assertReservationInput(args.reservationId, args.reservedMicrousd);
@@ -61,9 +97,10 @@ export const reserve = internalMutation({
 		) {
 			throw new Error('Plugin LLM denied');
 		}
-		const scope = args.system
-			? await authorizeSystemBundledPlugin(ctx, args.pluginId, LLM_INVOKE)
-			: await requireAuthenticatedBundledPlugin(ctx, args.pluginId, LLM_INVOKE);
+		const scope = await PLUGIN_LLM_ACCOUNTING_ACTOR_POLICIES[args.actorMode].authorize(
+			ctx,
+			args.pluginId
+		);
 		if (!scope) throw new Error('Plugin LLM denied');
 		const dailyBudgetMicrousd = manifestBudgetMicrousd(scope.manifest.llmBudget?.dailyUsd);
 		if (args.reservedMicrousd > dailyBudgetMicrousd) throw new Error('Plugin LLM denied');
@@ -140,14 +177,10 @@ export const settleSuccess = internalMutation({
 		modelUsed: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		attempts: v.number(),
-		system: v.optional(v.boolean()),
+		actorMode: pluginLlmActorModeValidator,
 	},
 	handler: async (ctx, args) => {
-		const reservation = await pendingActorReservation(
-			ctx,
-			args.reservationId,
-			args.system === true
-		);
+		const reservation = await pendingActorReservation(ctx, args.reservationId, args.actorMode);
 		if (reservation.status === 'completed') return settlementResult(reservation);
 		if (reservation.status !== 'pending') throw new Error('Plugin LLM settlement denied');
 		if (
@@ -201,13 +234,9 @@ export const settleSuccess = internalMutation({
 });
 
 export const settleFailure = internalMutation({
-	args: { reservationId: v.string(), system: v.optional(v.boolean()) },
+	args: { reservationId: v.string(), actorMode: pluginLlmActorModeValidator },
 	handler: async (ctx, args) => {
-		const reservation = await pendingActorReservation(
-			ctx,
-			args.reservationId,
-			args.system === true
-		);
+		const reservation = await pendingActorReservation(ctx, args.reservationId, args.actorMode);
 		if (reservation.status === 'failed') return null;
 		if (reservation.status !== 'pending') throw new Error('Plugin LLM settlement denied');
 		await ctx.db.patch(reservation._id, {
@@ -282,25 +311,15 @@ function successCost(
 	return { charged: (attempts - 1) * perAttempt + actual, actual, isUsageAccounted: true };
 }
 
-async function pendingActorReservation(ctx: MutationCtx, reservationId: string, system: boolean) {
+async function pendingActorReservation(
+	ctx: MutationCtx,
+	reservationId: string,
+	actorMode: PluginLlmActorMode
+) {
 	if (!RESERVATION_ID.test(reservationId)) throw new Error('Plugin LLM settlement denied');
 	const reservation = await reservationById(ctx, reservationId);
 	if (!reservation) throw new Error('Plugin LLM settlement denied');
-	if (system) {
-		if (
-			reservation.actorUserId !== SYSTEM_PLUGIN_ACTOR_ID ||
-			reservation.organizationId !== (await getSingletonOrganizationId(ctx))
-		)
-			throw new Error('Plugin LLM settlement denied');
-		return reservation;
-	}
-	const session = await getBetterAuthSessionWithRole(ctx);
-	if (
-		!session?.activeOrganizationId ||
-		!session.role ||
-		session.activeOrganizationId !== reservation.organizationId ||
-		session.userId !== reservation.actorUserId
-	) {
+	if (!(await PLUGIN_LLM_ACCOUNTING_ACTOR_POLICIES[actorMode].ownsReservation(ctx, reservation))) {
 		throw new Error('Plugin LLM settlement denied');
 	}
 	return reservation;
