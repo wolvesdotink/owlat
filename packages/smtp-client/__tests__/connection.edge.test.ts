@@ -357,22 +357,27 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 	});
 
 	it('poisons the reader after a read timeout: a later command() throws instead of consuming a late reply', async () => {
-		// The server completes the handshake, then answers the NEXT command line
-		// late — after our short read timeout has already fired. A live reader would
-		// queue that late reply and hand it to the following read as its own answer
-		// (stale-reply desync). The wire timeout must instead poison the reader so
-		// every later read/command rejects.
-		let lateSocket: net.Socket | undefined;
+		// The server completes the handshake, then PARKS the next command line
+		// without ever replying. The test drives the read timeout itself with an
+		// explicit deadline and only writes the late `250 late` AFTER catching that
+		// timeout. A live reader would queue that late reply and hand it to the
+		// following read as its own answer (stale-reply desync). The wire timeout
+		// must instead poison the reader so every later read/command rejects.
+		//
+		// Determinism: nothing races a real-clock server timer against the client's
+		// timeout. The server never replies on its own, the read deadline is an
+		// explicit 100ms `readReply` argument, and the late reply is injected by the
+		// test only once the timeout has been observed.
+		let parkedSocket: net.Socket | undefined;
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',
 			handle: (line, socket) => {
 				if (line.startsWith('EHLO')) {
 					return EHLO_REPLY;
 				}
-				// Delay the reply past the read timeout, then deliver it late. Return
-				// an empty string so the responder writes nothing now.
-				lateSocket = socket;
-				setTimeout(() => socket.write('250 late\r\n'), 120);
+				// Park: capture the socket and write nothing, so the client's read
+				// deadline is the only thing that can fire.
+				parkedSocket = socket;
 				return '';
 			},
 		});
@@ -381,15 +386,16 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 			port,
 			ehloName: 'client.test',
 			tlsMode: 'none',
-			// Short command timeout so the first command times out well before the
-			// server's ~120ms late reply; the loopback handshake finishes in <10ms.
-			timeouts: { command: 40 },
+			// Default connect() timeouts — the handshake is not time-boxed tightly, so
+			// event-loop jitter cannot flake the setup.
 		});
 		cleanups.push(() => conn.close());
-		// First command times out (the reply comes at ~120ms, timeout is 40ms).
+		// Drive the timed-out hop by hand: write the command, then await a read with
+		// an explicit 100ms deadline against a server that never answers.
+		conn.write('MAIL FROM:<a@test>\r\n', 'mail');
 		let timedOut: unknown;
 		try {
-			await conn.command('MAIL FROM:<a@test>\r\n', 'mail', false);
+			await conn.readReply('mail', 100);
 		} catch (err) {
 			timedOut = err;
 		}
@@ -397,9 +403,11 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		if (isSmtpError(timedOut)) {
 			expect(timedOut.phase).toBe('mail');
 		}
-		// Let the late reply arrive and queue.
-		await new Promise((r) => setTimeout(r, 150));
-		expect(lateSocket).toBeDefined();
+		// Now — and only now — inject the late reply the parked hop never got, and
+		// let it settle so it is queued before the next read.
+		expect(parkedSocket).toBeDefined();
+		parkedSocket?.write('250 late\r\n');
+		await new Promise((r) => setTimeout(r, 50));
 		// A subsequent command must reject (poisoned reader), NOT resolve the late
 		// `250 late` as its own answer.
 		let caught: unknown;
