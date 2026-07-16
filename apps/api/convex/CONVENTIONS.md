@@ -221,9 +221,10 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   pass secret values into the plugin.
 - Plugin transport audit contains only the system actor, plugin id, fixed
   operation/outcome, and attempt count. Never record addresses, message content,
-  provider message ids, or raw provider errors. A denied attempt is audited in
-  its authorization transaction; terminal network outcomes are scheduled after
-  dispatch so audit failure cannot cause an already-sent message to be retried.
+  provider message ids, or raw provider errors. A denied attempt is audited as
+  `access_denied` in its authorization transaction with the number of completed
+  prior attempts; terminal network outcomes are scheduled after dispatch so
+  audit failure cannot cause an already-sent message to be retried.
 - Plugin-attributed rows always carry both `organizationId` and `pluginId`.
   Admin reads scope those rows to the active organization; only legacy core
   rows may omit organization attribution under the singleton-org invariant.
