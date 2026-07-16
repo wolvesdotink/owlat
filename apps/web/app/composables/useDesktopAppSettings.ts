@@ -11,7 +11,7 @@
  * Outside the Tauri runtime the same state round-trips through localStorage,
  * keeping the settings page developable in a plain browser.
  */
-import { isDesktopRuntime } from "~/lib/desktop/activeWorkspace";
+import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import {
 	defaultDesktopSettings,
 	defaultWorkspaceLocalSettings,
@@ -19,10 +19,10 @@ import {
 	type DesktopSettings,
 	type GlobalDesktopSettings,
 	type WorkspaceLocalSettings,
-} from "~/lib/desktop/settingsTypes";
+} from '~/lib/desktop/settingsTypes';
 
 /** localStorage fallback key for the non-Tauri (browser dev) runtime. */
-const WEB_FALLBACK_KEY = "owlat:desktop-settings";
+const WEB_FALLBACK_KEY = 'owlat:desktop-settings';
 
 const SAVE_DEBOUNCE_MS = 250;
 
@@ -33,10 +33,10 @@ let loadPromise: Promise<void> | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let flushOnHide = false;
 
-type SettingsBridge = typeof import("@owlat/desktop/src/settings");
+type SettingsBridge = typeof import('@owlat/desktop/src/settings');
 
 async function bridge(): Promise<SettingsBridge> {
-	return import("@owlat/desktop/src/settings");
+	return import('@owlat/desktop/src/settings');
 }
 
 async function hydrate(): Promise<void> {
@@ -47,7 +47,7 @@ async function hydrate(): Promise<void> {
 		} catch {
 			// Bridge unavailable — fall through to defaults.
 		}
-	} else if (typeof localStorage !== "undefined") {
+	} else if (typeof localStorage !== 'undefined') {
 		try {
 			const stored = localStorage.getItem(WEB_FALLBACK_KEY);
 			raw = stored ? JSON.parse(stored) : null;
@@ -82,7 +82,7 @@ async function persistNow(): Promise<void> {
 		} catch {
 			// Best-effort; the in-memory state is still authoritative this session.
 		}
-	} else if (typeof localStorage !== "undefined") {
+	} else if (typeof localStorage !== 'undefined') {
 		try {
 			localStorage.setItem(WEB_FALLBACK_KEY, JSON.stringify(snapshot));
 		} catch {
@@ -96,9 +96,9 @@ function persistSoon(): void {
 	saveTimer = setTimeout(() => void persistNow(), SAVE_DEBOUNCE_MS);
 	// A toggle followed by an immediate quit/reload would lose the debounced
 	// write — flush whatever is pending when the document goes away.
-	if (!flushOnHide && typeof window !== "undefined") {
+	if (!flushOnHide && typeof window !== 'undefined') {
 		flushOnHide = true;
-		window.addEventListener("pagehide", () => {
+		window.addEventListener('pagehide', () => {
 			if (saveTimer !== null) void persistNow();
 		});
 	}
@@ -124,7 +124,7 @@ export function useDesktopAppSettings() {
 
 	function setGlobal<K extends keyof GlobalDesktopSettings>(
 		key: K,
-		value: GlobalDesktopSettings[K],
+		value: GlobalDesktopSettings[K]
 	): void {
 		settings.value.global[key] = value;
 		persistSoon();
@@ -138,7 +138,7 @@ export function useDesktopAppSettings() {
 	function setWorkspaceLocal<K extends keyof WorkspaceLocalSettings>(
 		workspaceId: string,
 		key: K,
-		value: WorkspaceLocalSettings[K],
+		value: WorkspaceLocalSettings[K]
 	): void {
 		settings.value.workspaces = {
 			...settings.value.workspaces,

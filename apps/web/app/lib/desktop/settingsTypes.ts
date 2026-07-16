@@ -16,7 +16,7 @@
  * never throw or surface partial state.
  */
 
-export const SETTINGS_STORE_FILE = "settings.json";
+export const SETTINGS_STORE_FILE = 'settings.json';
 
 export const SETTINGS_VERSION = 1;
 
@@ -62,7 +62,7 @@ export function defaultWorkspaceLocalSettings(): WorkspaceLocalSettings {
 }
 
 function pickBoolean(value: unknown, fallback: boolean): boolean {
-	return typeof value === "boolean" ? value : fallback;
+	return typeof value === 'boolean' ? value : fallback;
 }
 
 /**
@@ -72,29 +72,29 @@ function pickBoolean(value: unknown, fallback: boolean): boolean {
  */
 export function normalizeDesktopSettings(raw: unknown): DesktopSettings {
 	const base = defaultDesktopSettings();
-	if (typeof raw !== "object" || raw === null) return base;
+	if (typeof raw !== 'object' || raw === null) return base;
 	const r = raw as Record<string, unknown>;
 
-	const g = (typeof r["global"] === "object" && r["global"] !== null ? r["global"] : {}) as Record<
+	const g = (typeof r['global'] === 'object' && r['global'] !== null ? r['global'] : {}) as Record<
 		string,
 		unknown
 	>;
-	base.global.autoCheckUpdates = pickBoolean(g["autoCheckUpdates"], base.global.autoCheckUpdates);
+	base.global.autoCheckUpdates = pickBoolean(g['autoCheckUpdates'], base.global.autoCheckUpdates);
 	base.global.notificationsEnabled = pickBoolean(
-		g["notificationsEnabled"],
-		base.global.notificationsEnabled,
+		g['notificationsEnabled'],
+		base.global.notificationsEnabled
 	);
-	base.global.showUnreadBadge = pickBoolean(g["showUnreadBadge"], base.global.showUnreadBadge);
+	base.global.showUnreadBadge = pickBoolean(g['showUnreadBadge'], base.global.showUnreadBadge);
 	base.global.startupWorkspaceId =
-		typeof g["startupWorkspaceId"] === "string" ? g["startupWorkspaceId"] : null;
+		typeof g['startupWorkspaceId'] === 'string' ? g['startupWorkspaceId'] : null;
 
-	const ws = r["workspaces"];
-	if (typeof ws === "object" && ws !== null) {
+	const ws = r['workspaces'];
+	if (typeof ws === 'object' && ws !== null) {
 		for (const [id, value] of Object.entries(ws as Record<string, unknown>)) {
-			if (typeof value !== "object" || value === null) continue;
+			if (typeof value !== 'object' || value === null) continue;
 			const v = value as Record<string, unknown>;
 			base.workspaces[id] = {
-				muteNotifications: pickBoolean(v["muteNotifications"], false),
+				muteNotifications: pickBoolean(v['muteNotifications'], false),
 			};
 		}
 	}

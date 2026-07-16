@@ -13,7 +13,9 @@ export async function runUpdateCheck(opts?: { announce?: boolean }): Promise<voi
 		if (res.updated) {
 			await sendDesktopNotification(
 				'Update ready',
-				`Owlat ${res.version ?? ''} will be applied the next time you restart.`.replace(/\s+/g, ' ').trim()
+				`Owlat ${res.version ?? ''} will be applied the next time you restart.`
+					.replace(/\s+/g, ' ')
+					.trim()
 			);
 		} else if (opts?.announce) {
 			await sendDesktopNotification('Owlat is up to date', 'You have the latest version.');
