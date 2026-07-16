@@ -29,6 +29,7 @@ import {
 	type RedisLike,
 	type SpfDnsResolver,
 } from '@owlat/mail-auth';
+import type { ArcDnsResolver } from './inboundArc.js';
 
 /**
  * Positive-answer TTL handed to the cache when the RR type cannot surface a
@@ -116,9 +117,16 @@ const nodeBaseResolver: DnsResolver = makeNodeBaseResolver();
  * ARC's `_domainkey` / ARC-seal key lookups ride the SAME shared cache instead
  * of hitting real DNS on the hot ingest path.
  */
-export function toThrowingTxtResolver(dkim: DkimDnsResolver): DkimDnsResolver {
+export function toThrowingTxtResolver(dkim: (name: string) => Promise<string[][]>): ArcDnsResolver {
 	return async (name, rrtype) => {
-		const records = await dkim(name, rrtype);
+		// mailauth's DKIM/ARC path only ever queries TXT; any other rrtype is an
+		// unsupported contract, so reject explicitly rather than silently answer.
+		if (rrtype !== 'TXT') {
+			throw new Error(
+				`unsupported rrtype '${rrtype}' for '${name}': cached ARC resolver serves TXT only`
+			);
+		}
+		const records = await dkim(name);
 		if (records.length === 0) {
 			const err = new Error(`ENOTFOUND ${name}`) as Error & { code: string };
 			err.code = 'ENOTFOUND';
@@ -140,7 +148,7 @@ export interface InboundAuthResolvers {
 	 * ARC (mailauth): the DKIM TXT resolver in the `dns/promises` throwing shape
 	 * mailauth's `dkimVerify` / `arc` need — same shared cache, no real DNS.
 	 */
-	readonly arc: DkimDnsResolver;
+	readonly arc: ArcDnsResolver;
 }
 
 /**

@@ -36,7 +36,6 @@ import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
 import { arc } from 'mailauth/lib/arc/index.js';
 import { logger } from '../monitoring/logger.js';
 import { normalizeDomain, type ArcChainResult } from '@owlat/shared/arcTrust';
-import type { DkimDnsResolver } from '@owlat/mail-auth';
 
 export {
 	DEFAULT_TRUSTED_ARC_FORWARDERS,
@@ -66,11 +65,18 @@ export interface ArcVerdict {
 
 /**
  * Injection seam for the resolver the runtime path and the hermetic tests
- * supply. Reuses the ONE `@owlat/mail-auth` `DkimDnsResolver` shape shared
- * across inbound auth — deliberately NOT imported from `inboundDkim` (that
- * pinned mailauth oracle must stay out of every MTA runtime path).
+ * supply. mailauth's `dkimVerify` / `arc` type their resolver as
+ * `(name, rrtype: string) => Promise<string[][]>` (rrtype widened to `string`),
+ * so this seam matches that shape rather than `@owlat/mail-auth`'s
+ * `DkimDnsResolver` (whose `rrtype` is the literal `'TXT'`) — under
+ * `strictFunctionTypes` the narrower parameter is not assignable at the
+ * uncast `dkimVerify(...)` call. The shared cached adapter
+ * (`toThrowingTxtResolver`) serves `'TXT'` from the shared cache and rejects
+ * every other rrtype, which is the only type mailauth's DKIM/ARC path queries.
+ * Deliberately NOT imported from `inboundDkim` (that pinned mailauth oracle
+ * must stay out of every MTA runtime path).
  */
-export type ArcDnsResolver = DkimDnsResolver;
+export type ArcDnsResolver = (name: string, rrtype: string) => Promise<string[][]>;
 
 export interface VerifyArcOptions {
 	readonly resolver?: ArcDnsResolver;
