@@ -41,24 +41,29 @@ function addrList(field: AddressObject | AddressObject[] | undefined): string[] 
 
 /**
  * The single address of a `From:`-shaped field — the first parsed mailbox, or
- * `''` when the header is absent/address-less. `From:` is a single
- * {@link AddressObject}; the array arm only fires on a (malformed) repeated
- * header, in which case we read the first object, matching the old
- * `parsed.from?.value?.[0]?.address` extraction.
+ * `''` when the header is absent/address-less. `parseMessage` collapses a
+ * repeated `From:` to the LAST instance (mailparser `singleKeys` parity), so it
+ * hands us a single {@link AddressObject}; the array arm is a defensive fallback
+ * that reads the LAST object, which stays consistent with that collapse and with
+ * the old `parsed.from?.value?.[0]?.address` extraction (mailparser also kept the
+ * last `From:`).
  */
 function primaryAddress(field: AddressObject | AddressObject[] | undefined): string {
-	const obj = Array.isArray(field) ? field[0] : field;
+	const obj = Array.isArray(field) ? field[field.length - 1] : field;
 	return obj?.value[0]?.address ?? '';
 }
 
 /**
- * The display text of a `Reply-To:`-shaped field — the formatted address list
- * mailparser exposed as `.text`. A repeated header (array arm) joins each
- * object's text; an absent header yields `undefined`.
+ * The display text of a `Reply-To:`-shaped field — the formatted address that
+ * mailparser exposed as `.text`. `parseMessage` collapses a repeated `Reply-To:`
+ * to the LAST instance (mailparser `singleKeys` parity), so it hands us a single
+ * {@link AddressObject}; the array arm is a defensive fallback that reads the
+ * LAST object's text, consistent with that collapse. An absent header yields
+ * `undefined`.
  */
 function addrText(field: AddressObject | AddressObject[] | undefined): string | undefined {
 	if (!field) return undefined;
-	return Array.isArray(field) ? field.map((o) => o.text).join(', ') : field.text;
+	return Array.isArray(field) ? field[field.length - 1]?.text : field.text;
 }
 
 /**
