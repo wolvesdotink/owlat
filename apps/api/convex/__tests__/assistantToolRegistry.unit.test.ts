@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { tool } from 'ai';
-import type { ToolExecutionOptions } from 'ai';
+import type { Tool, ToolExecuteFunction, ToolExecutionOptions } from 'ai';
 import { z } from 'zod';
 import type { ActionCtx } from '../_generated/server';
 import { TOOL_MODULES, buildAssistantTools } from '../assistant/tools';
@@ -140,6 +140,16 @@ describe('scrubToolOutput', () => {
 		expect(scrubToolOutput(WITHHELD)).toBe(WITHHELD);
 	});
 
+	it('passes a non-plain value (Date) through instead of flattening it to {}', () => {
+		const when = new Date('2026-01-01T00:00:00.000Z');
+		const out = scrubToolOutput({ when, note: INJECTION });
+		// The Date survives as the same instance; only the string field is scrubbed.
+		expect((out as { when: Date }).when).toBe(when);
+		expect(out).toMatchObject({ note: WITHHELD });
+		// And a bare non-plain value is returned untouched, not turned into {}.
+		expect(scrubToolOutput(when)).toBe(when);
+	});
+
 	it('catches injection in a field the draft tool body never scrubbed', () => {
 		// draftEmailReply returns `recipient` unscrubbed by the tool body; the host
 		// layer covers it, so a poisoned contact name cannot reach the prompt.
@@ -169,6 +179,30 @@ describe('withHostScrub', () => {
 	it('returns a tool with no execute unchanged', () => {
 		const noExec = tool({ description: 'x', inputSchema: z.object({}) });
 		expect(withHostScrub(noExec)).toBe(noExec);
+	});
+
+	it('preserves streaming (async-iterable) results, scrubbing each chunk', async () => {
+		const streamingExecute: ToolExecuteFunction<unknown, unknown> = async function* () {
+			yield { note: INJECTION };
+			yield { note: 'safe' };
+		};
+		// Built as a plain Tool: an async-generator execute is a legal AI-SDK tool
+		// result but trips `tool()`'s output inference, and withHostScrub reads only
+		// `execute`.
+		const inner = {
+			description: 'stream',
+			inputSchema: z.object({}),
+			execute: streamingExecute,
+		} as unknown as Tool;
+		const wrapped = withHostScrub(inner);
+		const result = wrapped.execute?.({}, options);
+		// Still async-iterable — the wrapper must not collapse the stream to one value.
+		expect(typeof (result as AsyncIterable<unknown>)[Symbol.asyncIterator]).toBe('function');
+		const chunks: unknown[] = [];
+		for await (const chunk of result as AsyncIterable<unknown>) {
+			chunks.push(chunk);
+		}
+		expect(chunks).toEqual([{ note: WITHHELD }, { note: 'safe' }]);
 	});
 });
 
