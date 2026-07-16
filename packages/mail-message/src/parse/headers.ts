@@ -98,6 +98,39 @@ export function decodeRfc2231(v: string): string {
 }
 
 /**
+ * Extract a structured-header param by name from a RAW header value.
+ *
+ * The `(?:^|[;\s])` anchor matches a param introduced after ANY whitespace, not
+ * only after a `;`, so real broken generators that emit
+ * `Content-Disposition: attachment filename="x"` or
+ * `Content-Type: multipart/mixed boundary="B"` (no semicolon) are read the same
+ * way here as by the current `mailMime` extractor. RFC 2231 continuations
+ * (`name*0`, `name*1*`) are reassembled and percent-decoded.
+ *
+ * This is the single home of the whitespace-anchored param scanner: both the
+ * in-house MIME walker (boundary/filename/disposition extraction) and the shared
+ * `mailMime` attachment extractor consume it, so both sides read params
+ * identically by construction.
+ */
+export function getRawParam(headerValue: string | undefined, name: string): string | undefined {
+	if (!headerValue) return undefined;
+	const continued: string[] = [];
+	const contRe = new RegExp(
+		`(?:^|[;\\s])${name}\\*(\\d+)\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`,
+		'gi'
+	);
+	let cm: RegExpExecArray | null;
+	while ((cm = contRe.exec(headerValue))) {
+		continued[Number.parseInt(cm[1]!, 10)] = (cm[3] ?? cm[4] ?? '').trim();
+	}
+	if (continued.length > 0) return decodeRfc2231(continued.join(''));
+	const re = new RegExp(`(?:^|[;\\s])${name}\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`, 'i');
+	const m = headerValue.match(re);
+	const value = m ? (m[2] ?? m[3] ?? '') : undefined;
+	return value ? decodeRfc2231(value.trim()) : undefined;
+}
+
+/**
  * Split a raw header block (everything before the blank line that separates
  * headers from body) into a case-insensitive multimap of UNFOLDED raw values,
  * preserving the order and multiplicity of repeated headers (`Received:`).

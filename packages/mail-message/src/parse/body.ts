@@ -12,9 +12,9 @@
 
 import {
 	parseHeaders,
+	getRawParam,
 	decodeQpHexEscapes,
 	decodeEncodedWords,
-	decodeRfc2231,
 	type MessageHeaders,
 } from './headers';
 import { type ContentType } from './contentType';
@@ -87,7 +87,12 @@ export function parseMimeTree(raw: string, depth = 0): MimeNode {
 	let isMultipart = false;
 
 	if (contentType.type === 'multipart' && depth < MAX_DEPTH) {
-		const boundary = contentType.params['boundary'];
+		// Read the boundary from the RAW Content-Type via the whitespace-anchored
+		// scanner, byte-for-byte as `mailMime.getBoundary` does — NOT from the
+		// semicolon-anchored `contentType.params`, so a no-semicolon
+		// `multipart/mixed boundary="B"` is a multipart with indexed parts on both
+		// sides and the stored partIndex contract is preserved.
+		const boundary = getRawParam(headers.get('content-type'), 'boundary');
 		if (boundary !== undefined && boundary !== '') {
 			isMultipart = true;
 			for (const part of splitMultipart(body, boundary)) {
@@ -110,31 +115,6 @@ export function walkLeaves(root: MimeNode, visit: (leaf: MimeNode) => void): voi
 		return;
 	}
 	visit(root);
-}
-
-/**
- * Extract a structured-header param by name from a RAW header value, byte-for-byte
- * as `mailMime.getParam` does: the `(?:^|[;\s])` anchor matches a param after ANY
- * whitespace (not only after a `;`), so real broken generators that emit
- * `Content-Disposition: attachment filename="x"` (no semicolon) are read the same
- * way on both sides. RFC 2231 continuations are reassembled and percent-decoded.
- */
-function getRawParam(headerValue: string | undefined, name: string): string | undefined {
-	if (!headerValue) return undefined;
-	const continued: string[] = [];
-	const contRe = new RegExp(
-		`(?:^|[;\\s])${name}\\*(\\d+)\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`,
-		'gi'
-	);
-	let cm: RegExpExecArray | null;
-	while ((cm = contRe.exec(headerValue))) {
-		continued[Number.parseInt(cm[1]!, 10)] = (cm[3] ?? cm[4] ?? '').trim();
-	}
-	if (continued.length > 0) return decodeRfc2231(continued.join(''));
-	const re = new RegExp(`(?:^|[;\\s])${name}\\*?\\s*=\\s*("([^"]*)"|([^;\\r\\n]+))`, 'i');
-	const m = headerValue.match(re);
-	const value = m ? (m[2] ?? m[3] ?? '') : undefined;
-	return value ? decodeRfc2231(value.trim()) : undefined;
 }
 
 /** The raw (lowercased, trimmed) `Content-Disposition` value of a part. */
