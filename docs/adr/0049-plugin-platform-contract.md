@@ -214,6 +214,38 @@ built-in MTA, SES, Resend, and SMTP adapters keep their existing order, retry
 counts, routing selection, health behavior, and ambiguous-timeout semantics
 behind the same dispatch seam.
 
+### Bundled agent pipeline steps
+
+An agent-step contribution requires an explicit feature flag and the
+`agent:step` capability. Its manifest descriptor declares a local id, insertion
+anchor, condition-independent module export, and zero or more requested
+lifecycle edges. Codegen namespaces the kind as
+`plugin.<pluginId>.<localId>`, verifies the export without executing it, emits a
+pure catalog plus a separate Node module registry, and rejects duplicate or
+unknown kinds, terminal anchors, insertion cycles, and unsafe edges.
+
+The six built-in steps map to three host-owned plugin placements with
+restrict-only edge policies. Security scan, context retrieval, and classify
+form the `classification` placement; their descendants continue from
+`classifying` and may only archive or fail. Clarify forms the `before_draft`
+placement; its descendants continue from `drafting` but may only archive or
+fail because no draft is guaranteed to exist yet. Draft forms the `after_draft`
+placement; its descendants continue from `drafting` and may archive, fail, or
+request the `drafting` to `draft_ready` review edge. A plugin chained after
+another plugin inherits its placement. No plugin may request `approved` or
+`sent`, choose the next step, run before the security scan, or edit the core
+`LEGAL_EDGES` graph.
+
+Immediately before execution, the host rechecks singleton scope, bundled
+registration, enabled flag, manifest capability, exact operator grant, and
+required environment presence. Denial skips the disabled contribution and
+resumes the unchanged core continuation without invoking plugin code. An
+authorized module receives a bounded, unsealed message projection rather than
+a Convex context. Its result is descriptor-safe bounded JSON and either
+`continue` or a declared `caution`; invalid output, an undeclared edge, or an
+exception fails the inbox lifecycle closed. Agent-action rows and redacted
+`agent.step` audit rows remain host-owned.
+
 ### Three execution tiers
 
 1. **Bundled plugins** are operator-installed packages composed at build time.

@@ -163,16 +163,26 @@ describe('central plugin host', () => {
 	it('snapshots and freezes contribution membership while preserving opaque values', () => {
 		const firstGate = { id: 'first-gate' };
 		const secondGate = { id: 'second-gate' };
-		const agentStep = { id: 'agent-step' };
+		const agentStep = {
+			id: 'agent-step',
+			after: 'security_scan',
+			module: { exportPath: './agent-step' },
+			lifecycleEdges: [],
+		};
 		const opaquePlaceholder = undefined;
 		const sendGates = [firstGate, secondGate];
 		const agentSteps = [agentStep];
 		const contributes: {
 			sendGates?: { id: string }[];
-			agentSteps?: { id: string }[];
+			agentSteps?: (typeof agentStep)[];
 			widgets?: ({ id: string } | undefined)[];
 		} = { sendGates, agentSteps, widgets: [opaquePlaceholder] };
-		const source = { ...manifest(), contributes };
+		const source = {
+			...manifest(),
+			capabilities: [...manifest().capabilities, 'agent:step'],
+			flag: { default: false },
+			contributes,
+		};
 		const host = createHost({ manifest: source });
 
 		sendGates.reverse();

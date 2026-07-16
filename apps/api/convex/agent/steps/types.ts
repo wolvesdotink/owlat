@@ -22,14 +22,9 @@ import type {
 	tokenUsageValidator,
 } from '../../lib/convexValidators';
 import type { clarificationQuestionValidator } from '../../inbox/clarificationValidators';
+import type { AgentStepKind } from './catalog';
 
-export type AgentStepKind =
-	| 'security_scan'
-	| 'context_retrieval'
-	| 'classify'
-	| 'clarify'
-	| 'draft'
-	| 'route';
+export type { AgentStepKind } from './catalog';
 
 // Derived from the canonical Convex validators in lib/validators.ts (the same
 // shapes spread into the inboundMessages / agentActions schema columns) so the

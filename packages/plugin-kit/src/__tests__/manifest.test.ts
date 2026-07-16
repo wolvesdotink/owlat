@@ -28,7 +28,6 @@ const validManifest = () => ({
 	llmBudget: { dailyUsd: 2.5 },
 	contributes: {
 		sendGates: [{ id: 'seed-list-preflight' }],
-		agentSteps: [{ id: 'spam-score', after: 'security_scan' }],
 	},
 	component: { exportPath: './convex/convex.config' },
 });
@@ -63,13 +62,29 @@ describe('plugin manifest validation', () => {
 	});
 
 	it('preserves the exact object and literal contribution types in definePlugin', () => {
-		const source = validManifest();
+		const source = {
+			...validManifest(),
+			capabilities: [...validManifest().capabilities, 'agent:step'] as const,
+			contributes: {
+				...validManifest().contributes,
+				agentSteps: [
+					{
+						id: 'spam-score',
+						after: 'security_scan',
+						module: { exportPath: './agent/spam-score' },
+						lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] as const,
+					},
+				],
+			},
+		};
 		const plugin = definePlugin(source);
 
 		expect(plugin).toBe(source);
 		expect(plugin.contributes.agentSteps[0]).toEqual({
 			id: 'spam-score',
 			after: 'security_scan',
+			module: { exportPath: './agent/spam-score' },
+			lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }],
 		});
 	});
 

@@ -1,6 +1,18 @@
 # Agent step module — uniform per-kind compute + routing surface for the agent pipeline
 
-**Status:** proposed
+**Status:** accepted
+
+**Implementation note (PP-08):** the implemented pipeline has six built-in
+kinds (`security_scan | context_retrieval | classify | clarify | draft |
+route`). `AgentStepKind`, `agentActions.actionType`, the walker argument
+validator, and the schema validator now derive from one combined catalog.
+Bundled plugin kinds are namespaced and inserted only after a declared anchor.
+The walker retains the original core continuation, authorizes immediately
+before execution, and accepts only a bounded continue/caution result. Plugin
+edge declarations are validated against a restrict-only host policy; they do
+not mutate `LEGAL_EDGES`, the twelve core states, or core module routing. The
+historical design analysis below predates the `clarify` step but remains the
+record of why the module/walker split was chosen.
 
 ## Context
 

@@ -34,11 +34,16 @@ export function isPluginContributionKind(value: string): value is PluginContribu
  * Framework-specific contribution interfaces are introduced with the seam
  * that consumes them. PP-01 only fixes their manifest buckets.
  */
-type DeferredPluginContributionKind = Exclude<PluginContributionKind, 'sendTransports'>;
+type DeferredPluginContributionKind = Exclude<
+	PluginContributionKind,
+	'sendTransports' | 'agentSteps'
+>;
 
 export type PluginContributions = Readonly<
-	{ readonly sendTransports?: readonly PluginSendTransportDefinition[] } & Partial<
-		Record<DeferredPluginContributionKind, readonly unknown[]>
-	>
+	{
+		readonly sendTransports?: readonly PluginSendTransportDefinition[];
+		readonly agentSteps?: readonly PluginAgentStepDefinition[];
+	} & Partial<Record<DeferredPluginContributionKind, readonly unknown[]>>
 >;
+import type { PluginAgentStepDefinition } from './agentStep';
 import type { PluginSendTransportDefinition } from './sendTransport';

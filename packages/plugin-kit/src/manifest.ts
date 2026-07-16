@@ -1,4 +1,6 @@
 import type { PluginCapability } from './capabilities';
+import { PLUGIN_AGENT_STEP_CAPABILITY } from './agentStep';
+import { validateAgentStepContributions } from './agentStepManifest';
 import { isPluginContributionKind, type PluginContributions } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { snapshotManifestInput } from './manifestSnapshot';
@@ -194,6 +196,24 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 			);
 		}
 	}
+	if (declaresContributions(manifest, 'agentSteps')) {
+		if (!declaresCapability(capabilityItems, PLUGIN_AGENT_STEP_CAPABILITY)) {
+			addManifestIssue(
+				issues,
+				'missing',
+				'$.capabilities',
+				`must declare ${PLUGIN_AGENT_STEP_CAPABILITY} when agent steps are contributed`
+			);
+		}
+		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
+			addManifestIssue(
+				issues,
+				flag.kind === 'missing' ? 'missing' : 'invalid_type',
+				'$.flag',
+				'must be a plain object when agent steps are contributed'
+			);
+		}
+	}
 
 	const component = readDataProperty(manifest, 'component', issues);
 	if (component.kind === 'value') validateComponent(component.value, issues);
@@ -256,14 +276,21 @@ function declaresCapability(
 }
 
 function declaresSendTransports(manifest: Record<string, unknown>): boolean {
+	return declaresContributions(manifest, 'sendTransports');
+}
+
+function declaresContributions(
+	manifest: Record<string, unknown>,
+	kind: 'sendTransports' | 'agentSteps'
+): boolean {
 	const contributes = Object.getOwnPropertyDescriptor(manifest, 'contributes');
 	if (!contributes || !('value' in contributes) || !isRecord(contributes.value)) return false;
-	const transports = Object.getOwnPropertyDescriptor(contributes.value, 'sendTransports');
+	const contributions = Object.getOwnPropertyDescriptor(contributes.value, kind);
 	return Boolean(
-		transports &&
-		'value' in transports &&
-		Array.isArray(transports.value) &&
-		transports.value.length > 0
+		contributions &&
+		'value' in contributions &&
+		Array.isArray(contributions.value) &&
+		contributions.value.length > 0
 	);
 }
 
@@ -292,6 +319,7 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 		if (contribution.kind === 'value') {
 			const items = validateDescriptorSafeArray(contribution.value, path, issues);
 			if (key === 'sendTransports' && items) validateSendTransportContributions(items, issues);
+			if (key === 'agentSteps' && items) validateAgentStepContributions(items, issues);
 		}
 	}
 }

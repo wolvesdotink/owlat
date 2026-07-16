@@ -33,6 +33,8 @@ const GENERATED_COMPOSITION_FILES = new Set([
 	'apps/web/app/plugins/plugin-composition.generated.ts',
 	'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
 	'apps/api/convex/plugins/sendTransportModules.generated.ts',
+	'apps/api/convex/plugins/agentStepCatalog.generated.ts',
+	'apps/api/convex/plugins/agentStepModules.generated.ts',
 ]);
 
 export interface DirectPluginImport {
