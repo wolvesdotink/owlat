@@ -200,6 +200,7 @@ export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'agent.step',
 	'automation.step',
 	'autonomy.gate',
+	'cron.run',
 	'draft.strategy',
 	'import.provider',
 	'llm.generate',
