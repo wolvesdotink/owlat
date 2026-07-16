@@ -9,7 +9,7 @@
  */
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-export type MenuAction = 'preferences' | 'new-workspace';
+export type MenuAction = 'preferences' | 'new-workspace' | 'check-updates';
 
 export async function onMenuAction(action: MenuAction, cb: () => void): Promise<UnlistenFn> {
 	return listen(`menu://${action}`, () => cb());
