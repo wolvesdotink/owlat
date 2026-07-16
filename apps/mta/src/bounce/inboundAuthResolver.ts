@@ -19,9 +19,10 @@
  * timeout) is re-thrown so it maps to `temperror` — never cached.
  */
 
-import { resolve as dnsResolve } from 'dns/promises';
+import { resolve as dnsResolve, resolve4, resolve6 } from 'dns/promises';
 import {
 	createCachedResolver,
+	isNoRecordDnsError,
 	toSpfResolver,
 	type DkimDnsResolver,
 	type DnsResolver,
@@ -30,45 +31,71 @@ import {
 } from '@owlat/mail-auth';
 
 /**
- * DNS error codes that mean "no such record". `dns/promises` REJECTS with these
- * rather than resolving an empty array, so the base resolver converts them into
- * an empty answer: this is what lets the cache negative-cache NXDOMAIN/NODATA
- * (an empty answer is negative-cached for 5 min by `createCachedResolver`) while
- * the engines keep their existing void-lookup / permerror / no-record semantics.
+ * Positive-answer TTL handed to the cache when the RR type cannot surface a
+ * real per-record TTL (TXT / MX — `dns/promises` does not expose it there). The
+ * cache clamps it to its 1-hour cap, the conservative bound the design allows.
  */
-const EMPTY_ANSWER_CODES = new Set(['ENOTFOUND', 'ENODATA', 'NOTFOUND', 'NXDOMAIN']);
-
-/** Positive-answer TTL floor handed to the cache; clamped to its 1-hour cap. */
 const POSITIVE_TTL_SECONDS = 3600;
 
-/** The low-level DNS query the base resolver issues (Node's `dns.resolve`). */
-export type DnsResolveFn = (name: string, type: 'A' | 'AAAA' | 'MX' | 'TXT') => Promise<unknown[]>;
+/** A low-level DNS answer: the type-specific records plus an optional TTL. */
+export interface RawDnsAnswer {
+	/** `TXT: string[][]`, `A/AAAA: string[]`, `MX: {exchange, priority}[]`. */
+	readonly records: unknown[];
+	/**
+	 * The answer's TTL in seconds when the RR type surfaces one (A/AAAA), else
+	 * `undefined` so the wrapper falls back to `POSITIVE_TTL_SECONDS`.
+	 */
+	readonly ttl?: number;
+}
+
+/** The low-level DNS query the base resolver issues (Node's `dns.resolve*`). */
+export type DnsResolveFn = (
+	name: string,
+	type: 'A' | 'AAAA' | 'MX' | 'TXT'
+) => Promise<RawDnsAnswer>;
+
+/**
+ * Production low-level resolver. A/AAAA are queried with `{ ttl: true }` so the
+ * cache can honour a short SPF `a`/`mx`-target TTL instead of pinning it at the
+ * 1-hour cap (the cache design says "respect the record TTL, capped at 1 hour").
+ * TXT/MX cannot surface a TTL in Node, so they omit it and take the cap.
+ */
+const nodeDnsResolve: DnsResolveFn = async (name, type) => {
+	switch (type) {
+		case 'A': {
+			const recs = await resolve4(name, { ttl: true });
+			return { records: recs.map((r) => r.address), ttl: minTtl(recs) };
+		}
+		case 'AAAA': {
+			const recs = await resolve6(name, { ttl: true });
+			return { records: recs.map((r) => r.address), ttl: minTtl(recs) };
+		}
+		default:
+			return { records: (await dnsResolve(name, type)) as unknown[] };
+	}
+};
+
+/** Minimum TTL across an answer's records, or `undefined` for an empty set. */
+function minTtl(recs: ReadonlyArray<{ ttl: number }>): number | undefined {
+	return recs.length > 0 ? Math.min(...recs.map((r) => r.ttl)) : undefined;
+}
 
 /**
  * Build the base resolver over a low-level `dns.resolve`-style function
  * (injectable purely so the NXDOMAIN / transient handling is hermetically
- * testable). `dnsResolveFn(name, type)` returns the type-specific payload
- * (`TXT: string[][]`, `A/AAAA: string[]`, `MX: {exchange, priority}[]`) the SPF
- * evaluator and the DKIM key parser already expect. A "no record" rejection
- * becomes an EMPTY answer (negative-cached by the wrapper) so the engines keep
- * their uncached semantics; any other rejection propagates so it becomes
- * `temperror` — never cached.
- *
- * TTL: `dns/promises` does not surface a per-record TTL for TXT/MX, so positive
- * answers are stored with a TTL that `createCachedResolver` clamps to its 1-hour
- * cap — the conservative bound the cache design specifies.
+ * testable). `dnsResolveFn(name, type)` returns the type-specific payload the
+ * SPF evaluator and the DKIM key parser already expect, plus an optional TTL. A
+ * "no record" rejection becomes an EMPTY answer (negative-cached by the wrapper)
+ * so the engines keep their uncached semantics; any other rejection propagates
+ * so it becomes `temperror` — never cached.
  */
-export function makeNodeBaseResolver(
-	dnsResolveFn: DnsResolveFn = (name, type) =>
-		dnsResolve(name, type) as unknown as Promise<unknown[]>
-): DnsResolver {
+export function makeNodeBaseResolver(dnsResolveFn: DnsResolveFn = nodeDnsResolve): DnsResolver {
 	return async (name, type) => {
 		try {
-			const records = await dnsResolveFn(name, type);
-			return { records, ttl: POSITIVE_TTL_SECONDS };
+			const { records, ttl } = await dnsResolveFn(name, type);
+			return { records, ttl: ttl ?? POSITIVE_TTL_SECONDS };
 		} catch (err: unknown) {
-			const code = (err as { code?: string }).code;
-			if (code !== undefined && EMPTY_ANSWER_CODES.has(code)) {
+			if (isNoRecordDnsError(err)) {
 				// NXDOMAIN / NODATA → an empty answer (negative-cached by the wrapper).
 				return { records: [], ttl: 0 };
 			}
@@ -81,7 +108,27 @@ export function makeNodeBaseResolver(
 /** The production base resolver: exactly one real `dns/promises` query per call. */
 const nodeBaseResolver: DnsResolver = makeNodeBaseResolver();
 
-/** The three resolver shapes the inbound auth engines consume. */
+/**
+ * Adapt a cached TXT resolver (our "no record" = an EMPTY answer) into the
+ * `dns/promises`-shaped resolver mailauth expects, where "no record" is an
+ * `ENOTFOUND`-coded REJECTION. The inbound ARC verifier (`inboundArc.ts`) still
+ * runs on mailauth, whose default DNS is uncached: threading this adapter lets
+ * ARC's `_domainkey` / ARC-seal key lookups ride the SAME shared cache instead
+ * of hitting real DNS on the hot ingest path.
+ */
+export function toThrowingTxtResolver(dkim: DkimDnsResolver): DkimDnsResolver {
+	return async (name, rrtype) => {
+		const records = await dkim(name, rrtype);
+		if (records.length === 0) {
+			const err = new Error(`ENOTFOUND ${name}`) as Error & { code: string };
+			err.code = 'ENOTFOUND';
+			throw err;
+		}
+		return records;
+	};
+}
+
+/** The resolver shapes the inbound auth engines consume, over one shared cache. */
 export interface InboundAuthResolvers {
 	/** SPF: `(name, type) => Promise<unknown[]>` (records only). */
 	readonly spf: SpfDnsResolver;
@@ -89,12 +136,17 @@ export interface InboundAuthResolvers {
 	readonly dkim: DkimDnsResolver;
 	/** DMARC: a TXT resolver for `dnsDmarcLookup` (`_dmarc.<domain>`). */
 	readonly dmarcTxt: (name: string) => Promise<string[][]>;
+	/**
+	 * ARC (mailauth): the DKIM TXT resolver in the `dns/promises` throwing shape
+	 * mailauth's `dkimVerify` / `arc` need — same shared cache, no real DNS.
+	 */
+	readonly arc: DkimDnsResolver;
 }
 
 /**
- * Build the SPF / DKIM / DMARC resolvers over ONE shared Redis-backed cache, so
- * a name resolved for one check is served from cache for the next. Pass
- * `redis = null` to disable caching (every call hits `base`). `base` is
+ * Build the SPF / DKIM / DMARC / ARC resolvers over ONE shared Redis-backed
+ * cache, so a name resolved for one check is served from cache for the next.
+ * Pass `redis = null` to disable caching (every call hits `base`). `base` is
  * injectable purely for hermetic tests — production always uses the Node
  * `dns/promises` resolver.
  */
@@ -103,9 +155,12 @@ export function createInboundAuthResolvers(
 	base: DnsResolver = nodeBaseResolver
 ): InboundAuthResolvers {
 	const cached = createCachedResolver(base, redis);
+	const txtRecords = async (name: string): Promise<string[][]> =>
+		(await cached(name, 'TXT')).records as string[][];
 	return {
 		spf: toSpfResolver(cached),
-		dkim: async (name) => (await cached(name, 'TXT')).records as string[][],
-		dmarcTxt: async (name) => (await cached(name, 'TXT')).records as string[][],
+		dkim: txtRecords,
+		dmarcTxt: txtRecords,
+		arc: toThrowingTxtResolver(txtRecords),
 	};
 }

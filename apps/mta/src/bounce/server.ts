@@ -324,10 +324,17 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SMTPServer 
 				// decision made in Convex against the operator's editable allow-list.
 				// The MTA only extracts the honest verdict here. Fail-open: a crash
 				// yields `cv: 'none'` (no rescue), never a NACK of accepted bytes.
-				// ARC verification still runs on `mailauth` (a `packages/mail-auth` ARC
-				// implementation is deferred), so it parses the ARC chain itself — the
-				// in-house DKIM verifier does not thread a mailauth-shaped seed.
-				const arcVerdict = config.inboundArcEnabled ? await verifyArcChain(rawBuffer) : undefined;
+				// COST: ARC verification still runs on `mailauth` (a `packages/mail-auth`
+				// ARC implementation is deferred), and the in-house DKIM verifier does
+				// not thread a mailauth-shaped seed — so this runs a FULL second DKIM
+				// pass (a re-parse plus body/header hashing) over the raw bytes. We at
+				// least keep its `_domainkey` / ARC-seal key lookups on the SAME shared
+				// cache by threading `authResolvers.arc` (the DKIM TXT resolver in the
+				// `dns/promises` throwing shape mailauth needs), so the second pass adds
+				// no uncached real-DNS round-trips. Verdict-equivalent (caching only).
+				const arcVerdict = config.inboundArcEnabled
+					? await verifyArcChain(rawBuffer, { resolver: authResolvers.arc })
+					: undefined;
 				const arcCv = arcVerdict?.cv;
 				const arcSealerDomain = arcVerdict?.sealerDomain;
 				const arcAttestsOriginalPass = arcVerdict?.attestsOriginalPass;

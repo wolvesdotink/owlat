@@ -36,7 +36,7 @@ import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
 import { arc } from 'mailauth/lib/arc/index.js';
 import { logger } from '../monitoring/logger.js';
 import { normalizeDomain, type ArcChainResult } from '@owlat/shared/arcTrust';
-import type { DkimDnsResolver } from './inboundDkim.js';
+import type { DkimDnsResolver } from '@owlat/mail-auth';
 
 export {
 	DEFAULT_TRUSTED_ARC_FORWARDERS,
@@ -65,9 +65,10 @@ export interface ArcVerdict {
 }
 
 /**
- * Injection seam for the hermetic DNS resolver tests supply so CI never touches
- * real DNS. Structurally identical to (and reusing) `inboundDkim`'s
- * `DkimDnsResolver` — there is exactly one resolver shape across inbound auth.
+ * Injection seam for the resolver the runtime path and the hermetic tests
+ * supply. Reuses the ONE `@owlat/mail-auth` `DkimDnsResolver` shape shared
+ * across inbound auth — deliberately NOT imported from `inboundDkim` (that
+ * pinned mailauth oracle must stay out of every MTA runtime path).
  */
 export type ArcDnsResolver = DkimDnsResolver;
 
