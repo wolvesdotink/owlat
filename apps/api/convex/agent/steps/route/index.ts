@@ -38,6 +38,7 @@ import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { runCoreFinalAutoSendGates, runPreAutonomyGates } from './autoSendGates';
+import { runHostedAutoSendGates } from './pluginAutoSendGates';
 
 /**
  * Draft-quality self-check threaded from the `draft` step. `null`/absent when
@@ -106,11 +107,12 @@ export function resolveAutoApproveScore(
  * can't contain another contact's data in the first place. Do not weaken that
  * scoping on the assumption this gate will catch a leak — it won't.
  */
-async function runFinalAutoSendGates(
+export async function runFinalAutoSendGates(
 	ctx: Parameters<AgentStepModule<'route', RouteInput, RouteOutput>['execute']>[0],
 	inboundMessageId: Id<'inboundMessages'>
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
-	return runCoreFinalAutoSendGates(ctx, inboundMessageId);
+	const coreDecision = await runCoreFinalAutoSendGates(ctx, inboundMessageId);
+	return coreDecision.safe ? runHostedAutoSendGates(ctx, inboundMessageId) : coreDecision;
 }
 
 export type RouteOutput = {
