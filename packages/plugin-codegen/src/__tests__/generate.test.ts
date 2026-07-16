@@ -174,6 +174,14 @@ describe('generated composition freshness', () => {
 		const modulesPath = join(root, 'apps/api/convex/plugins/sendTransportModules.generated.ts');
 		const agentCatalogPath = join(root, 'apps/api/convex/plugins/agentStepCatalog.generated.ts');
 		const agentModulesPath = join(root, 'apps/api/convex/plugins/agentStepModules.generated.ts');
+		const draftCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyCatalog.generated.ts'
+		);
+		const draftModulesPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyModules.generated.ts'
+		);
 		expect(await readFile(convexPath, 'utf8')).toContain('composeBundledPlugins([]);');
 		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
 		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
@@ -181,6 +189,8 @@ describe('generated composition freshness', () => {
 		expect(await readFile(modulesPath, 'utf8')).toContain("'use node';");
 		expect(await readFile(agentCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
 		expect(await readFile(agentModulesPath, 'utf8')).toContain("'use node';");
+		expect(await readFile(draftCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(draftModulesPath, 'utf8')).toContain('Object.freeze([] as const)');
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
@@ -229,6 +239,7 @@ describe('generated composition freshness', () => {
 		expect(draftCatalog).not.toContain('agent-plugin/draft/legal');
 		expect(draftModules).toContain('from "agent-plugin/draft/legal"');
 		expect(draftModules).toContain('satisfies PluginDraftStrategyModule');
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 
 		await writeFile(
 			join(root, 'tsconfig.json'),
@@ -250,7 +261,7 @@ describe('generated composition freshness', () => {
 				cwd: root,
 			}
 		);
-		for (const entryPoint of [catalogPath, modulesPath]) {
+		for (const entryPoint of [catalogPath, modulesPath, draftCatalogPath, draftModulesPath]) {
 			await build({ absWorkingDir: root, entryPoints: [entryPoint], bundle: true, write: false });
 		}
 
