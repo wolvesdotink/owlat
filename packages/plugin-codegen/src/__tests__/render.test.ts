@@ -96,6 +96,9 @@ describe('composition rendering', () => {
 		expect(rendered.importProviderCatalog).toContain('Object.freeze([] as const)');
 		expect(rendered.importProviderModules).toContain("'use node';");
 		expect(rendered.importProviderModules).toContain('Object.freeze([] as const)');
+		expect(rendered.cronCatalog).toContain('Object.freeze([] as const)');
+		expect(rendered.cronModules).toContain("'use node';");
+		expect(rendered.cronModules).toContain('Object.freeze([] as const)');
 	});
 
 	it('separates automation registry editor metadata from executable modules', () => {
@@ -398,6 +401,53 @@ describe('composition rendering', () => {
 		expect(rendered.draftStrategyCatalog).not.toContain('@acme/draft-plugin');
 		expect(rendered.draftStrategyModules).toContain('satisfies PluginDraftStrategyModule');
 		expect(rendered.draftStrategyModules).toContain('from "@acme/draft-plugin/draft/legal"');
+	});
+
+	it('orders crons deterministically and separates metadata from executable modules', () => {
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/seed-plugin',
+				manifest: {
+					id: 'seed-lab',
+					version: '1.0.0',
+					capabilities: ['scheduler:cron'],
+					flag: { default: false, requiredEnvVars: ['SEED_TOKEN'] },
+					contributes: {
+						crons: [
+							{
+								id: 'z-nightly',
+								label: 'Nightly sweep',
+								module: { exportPath: './crons/nightly' },
+								schedule: { intervalMinutes: 1440 },
+								timeoutMs: 60_000,
+							},
+							{
+								id: 'a-refresh',
+								label: 'Refresh scores',
+								module: { exportPath: './crons/refresh' },
+								schedule: { intervalMinutes: 360 },
+								timeoutMs: 30_000,
+							},
+						],
+					},
+				},
+			},
+		]);
+		const rendered = renderPluginComposition(plugins);
+		expect(rendered.cronCatalog.indexOf('a-refresh')).toBeLessThan(
+			rendered.cronCatalog.indexOf('z-nightly')
+		);
+		expect(rendered.cronCatalog).toContain('plugin.seed-lab.a-refresh');
+		expect(rendered.cronCatalog).toContain('intervalMinutes: 360');
+		expect(rendered.cronCatalog).toContain('timeoutMs: 30000');
+		expect(rendered.cronCatalog).toContain("requiredCapability: 'scheduler:cron'");
+		expect(rendered.cronCatalog).toContain('SEED_TOKEN');
+		expect(rendered.cronCatalog).not.toContain('@acme/seed-plugin');
+		expect(rendered.cronModules).toContain("'use node';");
+		expect(rendered.cronModules).toContain('satisfies PluginCronModule');
+		expect(rendered.cronModules).toContain('from "@acme/seed-plugin/crons/refresh"');
+		// executable module imports never leak into the metadata-only catalog
+		expect(rendered.cronCatalog).not.toContain('crons/refresh');
 	});
 
 	it('separates agent step policy metadata from Node-only executable imports', () => {
