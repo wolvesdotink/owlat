@@ -13,7 +13,7 @@
  * pipeline's partial `ParsedMail` mocks.
  */
 
-import { parseStructuredHeader, type StructuredHeader } from './headers';
+import { parseStructuredHeader, type StructuredHeader, type MessageHeaders } from './headers';
 import { parseDate } from './date';
 import { parseAddressObject, parseAddressObjects, type AddressObject } from './address';
 import { parseMimeTree, assembleBody } from './body';
@@ -60,7 +60,10 @@ export interface ParsedMessage {
 	references: string | string[] | undefined;
 	/** Parsed `Date:`, or `undefined` when absent/unparseable. */
 	date: Date | undefined;
-	/** Parsed `From:` (single object; an array only if `From:` is repeated). */
+	/**
+	 * Parsed `From:` — always a single object (a repeated header collapses to the
+	 * LAST instance, matching mailparser's `singleKeys`), or `undefined`.
+	 */
 	from: AddressObject | AddressObject[] | undefined;
 	/** Parsed `To:`; an array when the header is repeated. */
 	to: AddressObject | AddressObject[] | undefined;
@@ -68,7 +71,10 @@ export interface ParsedMessage {
 	cc: AddressObject | AddressObject[] | undefined;
 	/** Parsed `Bcc:`; an array when the header is repeated. */
 	bcc: AddressObject | AddressObject[] | undefined;
-	/** Parsed `Reply-To:`; an array when the header is repeated. */
+	/**
+	 * Parsed `Reply-To:` — always a single object (a repeated header collapses to
+	 * the LAST instance, matching mailparser's `singleKeys`), or `undefined`.
+	 */
 	replyTo: AddressObject | AddressObject[] | undefined;
 	/** Concatenated `text/plain` body, or `undefined` when there is none. */
 	text: string | undefined;
@@ -96,6 +102,29 @@ const ADDRESS_HEADERS = new Set([
 	'delivered-to',
 	'return-path',
 ]);
+
+/**
+ * Address headers mailparser treats as `singleKeys` — a repeated occurrence
+ * collapses to the LAST instance (`mail-parser.js`: `headers.set(key, value[value.length - 1])`).
+ * `from`/`sender`/`reply-to`/`return-path` are single-valued by RFC 5322; the
+ * remaining address headers (`to`/`cc`/`bcc`/`delivered-to`) accumulate every
+ * occurrence. We mirror that split so `parseMessage(raw)` matches `simpleParser(raw)`
+ * on a (malformed) repeated `From:`/`Reply-To:` instead of exposing an array the
+ * oracle never produced.
+ */
+const SINGLE_ADDRESS_HEADERS = new Set(['from', 'sender', 'reply-to', 'return-path']);
+
+/**
+ * The header values to parse for an address field: the LAST occurrence only for
+ * mailparser's single-valued keys, every occurrence otherwise.
+ */
+function addressValues(headers: MessageHeaders, name: string): string[] {
+	if (SINGLE_ADDRESS_HEADERS.has(name)) {
+		const last = headers.last(name);
+		return last === undefined ? [] : [last];
+	}
+	return headers.getAll(name);
+}
 
 /** Header names stored as structured `{ value, params }` in `headers`. */
 const STRUCTURED_HEADERS = new Set(['content-type', 'content-disposition']);
@@ -128,7 +157,7 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 	const structured = new Map<string, ParsedHeaderValue>();
 	for (const name of headers.names()) {
 		if (ADDRESS_HEADERS.has(name)) {
-			const value = parseAddressObjects(headers.getAll(name));
+			const value = parseAddressObjects(addressValues(headers, name));
 			if (value !== undefined) structured.set(name, value);
 			continue;
 		}
@@ -151,11 +180,11 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 		inReplyTo: inReplyToRaw,
 		references: parseReferences(refsRaw),
 		date: parseDate(headers.get('date')),
-		from: parseAddressObjects(headers.getAll('from')),
-		to: parseAddressObjects(headers.getAll('to')),
-		cc: parseAddressObjects(headers.getAll('cc')),
-		bcc: parseAddressObjects(headers.getAll('bcc')),
-		replyTo: parseAddressObjects(headers.getAll('reply-to')),
+		from: parseAddressObjects(addressValues(headers, 'from')),
+		to: parseAddressObjects(addressValues(headers, 'to')),
+		cc: parseAddressObjects(addressValues(headers, 'cc')),
+		bcc: parseAddressObjects(addressValues(headers, 'bcc')),
+		replyTo: parseAddressObjects(addressValues(headers, 'reply-to')),
 		text: body.text,
 		html: body.html,
 		headers: structured,
