@@ -378,6 +378,16 @@
         "sanitize-html",
       ],
     },
+    "packages/smtp-listener": {
+      "name": "@owlat/smtp-listener",
+      "version": "0.3.2",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/ui": {
       "name": "@owlat/ui",
       "devDependencies": {
@@ -975,6 +985,8 @@
     "@owlat/setup-cli": ["@owlat/setup-cli@workspace:apps/setup-cli"],
 
     "@owlat/shared": ["@owlat/shared@workspace:packages/shared"],
+
+    "@owlat/smtp-listener": ["@owlat/smtp-listener@workspace:packages/smtp-listener"],
 
     "@owlat/ui": ["@owlat/ui@workspace:packages/ui"],
 
