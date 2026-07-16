@@ -100,6 +100,7 @@ describe('useAuditLogPresentation presentation helpers', () => {
 	});
 
 	it.each([
+		['plugin.action_completed', 'policy-pack', 'agent.step', 'policy-pack · Agent pipeline step'],
 		['plugin.action_completed', 'policy-pack', 'storage.get', 'policy-pack · Storage read'],
 		['plugin.action_failed', 'draft-helper', 'llm.generate', 'draft-helper · LLM generation'],
 		['plugin.action_denied', 'policy-pack', 'storage.set', 'policy-pack · Storage write'],
