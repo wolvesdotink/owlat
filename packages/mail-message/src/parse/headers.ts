@@ -247,7 +247,8 @@ export class MessageHeaders {
 	 * using {@link get}/{@link getAll}.)
 	 */
 	last(name: string): string | undefined {
-		return this.map.get(name.toLowerCase())?.at(-1);
+		const values = this.map.get(name.toLowerCase());
+		return values?.[values.length - 1];
 	}
 
 	/** Every raw value for `name` in document order. */
