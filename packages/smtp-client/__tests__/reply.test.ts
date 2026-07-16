@@ -88,6 +88,22 @@ describe('parseReplyLine tolerance', () => {
 	it('returns undefined for a line without a leading 3-digit code', () => {
 		expect(parseReplyLine('not an smtp line')).toBeUndefined();
 	});
+
+	it('rejects a 4+ digit run instead of misreading it as a positive completion', () => {
+		expect(parseReplyLine('2500 broken')).toBeUndefined();
+		expect(parseReplyLine('4321 nope')).toBeUndefined();
+	});
+});
+
+describe('parseReply one-complete-reply contract', () => {
+	it('throws when a final line is followed by further parsed lines', () => {
+		const twoReplies = asWire('gmail-greeting.txt') + asWire('gmail-ehlo.txt');
+		expect(() => parseReply(twoReplies)).toThrow(/more than one complete reply/);
+	});
+
+	it('throws for two trivial complete replies concatenated', () => {
+		expect(() => parseReply('250 OK\r\n250 OK\r\n')).toThrow(/more than one complete reply/);
+	});
 });
 
 describe('ReplyParser streaming', () => {
@@ -115,5 +131,17 @@ describe('ReplyParser streaming', () => {
 		const parser = new ReplyParser();
 		parser.push('250-first\r\n');
 		expect(parser.hasPending).toBe(true);
+	});
+
+	it('frames on bytes: a multi-byte UTF-8 sequence split across chunks survives', () => {
+		const parser = new ReplyParser();
+		// "250 déjà vu\r\n" — the é (0xC3 0xA9) and à (0xC3 0xA0) are 2-byte
+		// sequences; split the buffer INSIDE the first one.
+		const full = Buffer.from('250 déjà vu\r\n', 'utf8');
+		const split = full.indexOf(0xc3); // first byte of the é sequence
+		expect(parser.push(full.subarray(0, split + 1))).toEqual([]);
+		const replies = parser.push(full.subarray(split + 1));
+		expect(replies).toHaveLength(1);
+		expect(replies[0]?.lines[0]).toBe('déjà vu');
 	});
 });

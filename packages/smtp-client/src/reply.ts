@@ -12,7 +12,7 @@
  * downstream code classifies on the STRUCTURED code — never on the raw bytes.
  */
 
-const REPLY_LINE = /^[ \t]*(\d{3})([ \t-]?)([\s\S]*)$/;
+const REPLY_LINE = /^[ \t]*(\d{3})(?!\d)([ \t-]?)([\s\S]*)$/;
 // RFC 3463 enhanced status code: class (2/4/5) "." subject "." detail.
 const ENHANCED_CODE = /^([245])\.(\d{1,3})\.(\d{1,3})(?=[ \t]|$)/;
 
@@ -113,6 +113,12 @@ export function parseReply(raw: string): SmtpReply {
 		}
 		const parsed = parseReplyLine(line);
 		if (parsed !== undefined) {
+			// A final line must be the LAST parsed line — otherwise the input
+			// holds more than one complete reply (e.g. greeting + EHLO), which
+			// silently merging would mask. Enforce the one-reply contract.
+			if (parsedLines.length > 0 && parsedLines[parsedLines.length - 1]?.final === true) {
+				throw new Error('parseReply given more than one complete reply; frame replies first');
+			}
 			parsedLines.push(parsed);
 		}
 	}
@@ -128,20 +134,31 @@ export function parseReply(raw: string): SmtpReply {
  * available (a reply completes when its final, space-separator line arrives).
  * Partial trailing data is buffered until the next chunk.
  */
+const LF_BYTE = 0x0a;
+const CR_BYTE = 0x0d;
+
 export class ReplyParser {
-	private buffer = '';
+	private buffer: Buffer = Buffer.alloc(0);
 	private pending: ParsedLine[] = [];
 
-	push(chunk: string): SmtpReply[] {
-		this.buffer += chunk;
+	/**
+	 * Feed a raw socket chunk. Framing happens on BYTES (so a multi-byte UTF-8
+	 * sequence split across TCP chunks survives), and each COMPLETE line is
+	 * decoded as UTF-8 only once its `\n` terminator has arrived. A `string` is
+	 * accepted for convenience (encoded to UTF-8 bytes first).
+	 */
+	push(chunk: Buffer | string): SmtpReply[] {
+		const bytes = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+		this.buffer = this.buffer.length === 0 ? bytes : Buffer.concat([this.buffer, bytes]);
 		const replies: SmtpReply[] = [];
-		let newlineIndex = this.buffer.indexOf('\n');
+		let newlineIndex = this.buffer.indexOf(LF_BYTE);
 		while (newlineIndex !== -1) {
-			let line = this.buffer.slice(0, newlineIndex);
-			if (line.endsWith('\r')) {
-				line = line.slice(0, -1);
+			let end = newlineIndex;
+			if (end > 0 && this.buffer[end - 1] === CR_BYTE) {
+				end -= 1;
 			}
-			this.buffer = this.buffer.slice(newlineIndex + 1);
+			const line = this.buffer.subarray(0, end).toString('utf8');
+			this.buffer = this.buffer.subarray(newlineIndex + 1);
 			if (line !== '') {
 				const parsed = parseReplyLine(line);
 				if (parsed !== undefined) {
@@ -152,7 +169,7 @@ export class ReplyParser {
 					}
 				}
 			}
-			newlineIndex = this.buffer.indexOf('\n');
+			newlineIndex = this.buffer.indexOf(LF_BYTE);
 		}
 		return replies;
 	}
