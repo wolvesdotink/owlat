@@ -25,28 +25,28 @@ import {
 	type SmtpTlsOptions,
 } from './connectionTypes';
 
-/** Open a plain TCP socket, binding `localAddress` when the caller supplied one. */
-export function openPlainSocket(
-	options: SmtpConnectOptions,
-	timeoutMs: number
-): Promise<net.Socket> {
-	return new Promise<net.Socket>((resolve, reject) => {
-		const connectOptions: net.TcpNetConnectOpts = { host: options.host, port: options.port };
-		if (options.localAddress !== undefined) {
-			connectOptions.localAddress = options.localAddress;
-		}
-		const socket = net.connect(connectOptions);
+/**
+ * Wait for a freshly-created socket to reach readiness (`connect` for a plain
+ * socket, `secureConnect` for a TLS one) with a single timer / success / error
+ * discipline shared by all three socket-opening paths below. On the success
+ * event the timer is cleared, the error listener detached, and the socket
+ * resolved; on the timeout or a wire error the socket is destroyed (so no
+ * failure mode leaks an FD or leaves a half-open wrap for Node to chase) and the
+ * caller's structured error is rejected.
+ */
+function awaitSocketReady<T extends net.Socket>(
+	socket: T,
+	successEvent: 'connect' | 'secureConnect',
+	timeoutMs: number,
+	makeTimeoutError: () => SmtpError,
+	makeWireError: (err: Error) => SmtpError
+): Promise<T> {
+	return new Promise<T>((resolve, reject) => {
 		const timer = setTimeout(() => {
 			socket.destroy();
-			reject(
-				new SmtpError({
-					phase: 'connect',
-					message: `timed out after ${timeoutMs}ms connecting to ${options.host}:${options.port}`,
-					secured: false,
-				})
-			);
+			reject(makeTimeoutError());
 		}, timeoutMs);
-		socket.once('connect', () => {
+		socket.once(successEvent, () => {
 			clearTimeout(timer);
 			socket.removeListener('error', onError);
 			resolve(socket);
@@ -54,17 +54,40 @@ export function openPlainSocket(
 		function onError(err: Error): void {
 			clearTimeout(timer);
 			socket.destroy();
-			reject(
-				new SmtpError({
-					phase: 'connect',
-					message: `failed to connect to ${options.host}:${options.port}: ${err.message}`,
-					secured: false,
-					cause: err,
-				})
-			);
+			reject(makeWireError(err));
 		}
 		socket.once('error', onError);
 	});
+}
+
+/** Open a plain TCP socket, binding `localAddress` when the caller supplied one. */
+export function openPlainSocket(
+	options: SmtpConnectOptions,
+	timeoutMs: number
+): Promise<net.Socket> {
+	const connectOptions: net.TcpNetConnectOpts = { host: options.host, port: options.port };
+	if (options.localAddress !== undefined) {
+		connectOptions.localAddress = options.localAddress;
+	}
+	const socket = net.connect(connectOptions);
+	return awaitSocketReady(
+		socket,
+		'connect',
+		timeoutMs,
+		() =>
+			new SmtpError({
+				phase: 'connect',
+				message: `timed out after ${timeoutMs}ms connecting to ${options.host}:${options.port}`,
+				secured: false,
+			}),
+		(err) =>
+			new SmtpError({
+				phase: 'connect',
+				message: `failed to connect to ${options.host}:${options.port}: ${err.message}`,
+				secured: false,
+				cause: err,
+			})
+	);
 }
 
 /** Open an implicit-TLS socket (TLS from byte zero, e.g. submission on 465). */
@@ -74,34 +97,21 @@ export function openTlsSocket(
 	servername: string,
 	timeoutMs: number
 ): Promise<tls.TLSSocket> {
-	return new Promise<tls.TLSSocket>((resolve, reject) => {
-		const connectOptions = buildTlsConnectOptions(options, tlsOptions, servername);
-		const socket = tls.connect(connectOptions);
-		const timer = setTimeout(() => {
-			socket.destroy();
-			reject(
-				new SmtpError({
-					phase: 'connect',
-					message: `timed out after ${timeoutMs}ms establishing TLS to ${options.host}:${options.port}`,
-					secured: false,
-					tlsCause: 'handshake',
-				})
-			);
-		}, timeoutMs);
-		socket.once('secureConnect', () => {
-			clearTimeout(timer);
-			socket.removeListener('error', onError);
-			resolve(socket);
-		});
-		function onError(err: Error): void {
-			clearTimeout(timer);
-			// Destroy the half-open wrap ourselves rather than leaning on Node's
-			// internal teardown, so no failure mode leaks a socket / FD.
-			socket.destroy();
-			reject(tlsError('connect', err, false));
-		}
-		socket.once('error', onError);
-	});
+	const connectOptions = buildTlsConnectOptions(options, tlsOptions, servername);
+	const socket = tls.connect(connectOptions);
+	return awaitSocketReady(
+		socket,
+		'secureConnect',
+		timeoutMs,
+		() =>
+			new SmtpError({
+				phase: 'connect',
+				message: `timed out after ${timeoutMs}ms establishing TLS to ${options.host}:${options.port}`,
+				secured: false,
+				tlsCause: 'handshake',
+			}),
+		(err) => tlsError('connect', err, false)
+	);
 }
 
 /**
@@ -201,41 +211,30 @@ export async function startTlsUpgrade(
 	// Detach the cleartext reader before wrapping the socket; any bytes the
 	// server sends after this point are TLS records, not SMTP lines.
 	reader.pauseSource();
-	return new Promise<tls.TLSSocket>((resolve, reject) => {
-		const upgradeOptions: tls.ConnectionOptions = {
-			socket,
-			...buildTlsSecurityOptions(tlsOptions, servername),
-		};
-		const secureSocket = tls.connect(upgradeOptions);
-		const timer = setTimeout(() => {
-			secureSocket.destroy();
-			reject(
-				new SmtpError({
-					phase: 'starttls',
-					message: `timed out after ${timeouts.connect}ms during STARTTLS handshake`,
-					secured: false,
-					tlsCause: 'handshake',
-				})
-			);
-		}, timeouts.connect);
-		secureSocket.once('secureConnect', () => {
-			clearTimeout(timer);
-			secureSocket.removeListener('error', onError);
-			// Start the secured leg on a fresh parser (RFC 3207 §4.2): discard all
-			// pre-TLS parser state before reading a single post-TLS byte.
-			reader.resetParser();
-			reader.rebind(secureSocket);
-			resolve(secureSocket);
-		});
-		function onError(err: Error): void {
-			clearTimeout(timer);
-			// Destroy the half-open wrap ourselves so no failure mode leaves an FD
-			// or a dangling TLS socket behind for Node's teardown to chase.
-			secureSocket.destroy();
-			reject(tlsError('starttls', err, false));
-		}
-		secureSocket.once('error', onError);
-	});
+	const upgradeOptions: tls.ConnectionOptions = {
+		socket,
+		...buildTlsSecurityOptions(tlsOptions, servername),
+	};
+	const secureSocket = await awaitSocketReady(
+		tls.connect(upgradeOptions),
+		'secureConnect',
+		timeouts.connect,
+		() =>
+			new SmtpError({
+				phase: 'starttls',
+				message: `timed out after ${timeouts.connect}ms during STARTTLS handshake`,
+				secured: false,
+				tlsCause: 'handshake',
+			}),
+		(err) => tlsError('starttls', err, false)
+	);
+	// Safe to rebind AFTER the await: the secured socket does not flow until a
+	// `data` listener attaches, so no post-handshake byte is lost in the gap.
+	// Start the secured leg on a fresh parser (RFC 3207 §4.2): discard all
+	// pre-TLS parser state before reading a single post-TLS byte.
+	reader.resetParser();
+	reader.rebind(secureSocket);
+	return secureSocket;
 }
 
 // ── TLS error classification (FROM NODE ERROR CODES, never strings) ──────────
