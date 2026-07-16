@@ -357,6 +357,7 @@
       "name": "@owlat/mail-auth",
       "version": "0.3.2",
       "dependencies": {
+        "@owlat/mail-canon": "workspace:*",
         "@owlat/shared": "workspace:*",
       },
       "devDependencies": {
@@ -368,14 +369,29 @@
         "vitest": "catalog:",
       },
     },
+    "packages/mail-canon": {
+      "name": "@owlat/mail-canon",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "mailauth": "^4.13.3",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/mail-message": {
       "name": "@owlat/mail-message",
       "version": "1.0.0",
+      "dependencies": {
+        "@owlat/mail-canon": "workspace:*",
+      },
       "devDependencies": {
         "@types/mailparser": "^3.4.5",
         "@types/node": "catalog:",
         "@types/nodemailer": "^8.0.0",
         "@vitest/coverage-v8": "catalog:",
+        "mailauth": "^4.13.3",
         "mailparser": "^3.7.0",
         "nodemailer": "^9.0.3",
         "typescript": "catalog:",
@@ -983,6 +999,8 @@
     "@owlat/imap": ["@owlat/imap@workspace:apps/imap"],
 
     "@owlat/mail-auth": ["@owlat/mail-auth@workspace:packages/mail-auth"],
+
+    "@owlat/mail-canon": ["@owlat/mail-canon@workspace:packages/mail-canon"],
 
     "@owlat/mail-message": ["@owlat/mail-message@workspace:packages/mail-message"],
 

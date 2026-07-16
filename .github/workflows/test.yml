@@ -56,6 +56,8 @@ jobs:
             name: email-previewer
           - workspace: packages/mail-message
             name: mail-message
+          - workspace: packages/mail-canon
+            name: mail-canon
           - workspace: packages/mail-auth
             name: mail-auth
           - workspace: packages/smtp-listener
