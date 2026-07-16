@@ -14,11 +14,20 @@ import { AUTONOMY_GATE_CATALOG } from '../../../plugins/autonomyGateCatalog';
 import { BUNDLED_PLUGIN_AUTONOMY_GATE_MODULES } from '../../../plugins/autonomyGateModules.generated';
 import type { AutoSendGateDecision } from './autoSendGates';
 
-const INPUT_LIMITS = Object.freeze({
+export interface HostedAutonomyGateInputLimits {
+	readonly fromCodePoints: number;
+	readonly toCodePoints: number;
+	readonly subjectCodePoints: number;
+	readonly draftCodePoints: number;
+	readonly classificationCodePoints: number;
+}
+
+export const HOSTED_AUTONOMY_GATE_INPUT_LIMITS: HostedAutonomyGateInputLimits = Object.freeze({
 	fromCodePoints: 512,
 	toCodePoints: 2_048,
 	subjectCodePoints: 1_024,
 	draftCodePoints: 64 * 1_024,
+	classificationCodePoints: 128,
 });
 const MAX_REASON_CODE_POINTS = 300;
 const MIN_GATE_TIMEOUT_MS = 100;
@@ -42,6 +51,7 @@ export async function runHostedAutoSendGates(
 	inboundMessageId: Id<'inboundMessages'>
 ): Promise<AutoSendGateDecision> {
 	if (AUTONOMY_GATE_CATALOG.length === 0) return safe();
+	if (hasDuplicateCatalogKinds()) return unavailableGate();
 
 	let input: PluginAutonomyGateInput;
 	try {
@@ -121,21 +131,43 @@ export async function runHostedAutoSendGates(
 function snapshotInput(message: Doc<'inboundMessages'>): PluginAutonomyGateInput {
 	const classification = message.classification;
 	return Object.freeze({
-		from: truncateCodePoints(message.from ?? '', INPUT_LIMITS.fromCodePoints),
-		to: truncateCodePoints(message.to ?? '', INPUT_LIMITS.toCodePoints),
-		subject: truncateCodePoints(message.subject ?? '', INPUT_LIMITS.subjectCodePoints),
-		draftBody: truncateCodePoints(message.draftResponse ?? '', INPUT_LIMITS.draftCodePoints),
+		from: truncateCodePoints(message.from ?? '', HOSTED_AUTONOMY_GATE_INPUT_LIMITS.fromCodePoints),
+		to: truncateCodePoints(message.to ?? '', HOSTED_AUTONOMY_GATE_INPUT_LIMITS.toCodePoints),
+		subject: truncateCodePoints(
+			message.subject ?? '',
+			HOSTED_AUTONOMY_GATE_INPUT_LIMITS.subjectCodePoints
+		),
+		draftBody: truncateCodePoints(
+			message.draftResponse ?? '',
+			HOSTED_AUTONOMY_GATE_INPUT_LIMITS.draftCodePoints
+		),
 		...(classification
 			? {
 					classification: Object.freeze({
-						category: classification.category,
-						intent: classification.intent,
-						sentiment: classification.sentiment,
-						priority: classification.priority,
+						category: sanitizeClassificationValue(classification.category),
+						intent: sanitizeClassificationValue(classification.intent),
+						sentiment: sanitizeClassificationValue(classification.sentiment),
+						priority: sanitizeClassificationValue(classification.priority),
 					}),
 				}
 			: {}),
 	});
+}
+
+function sanitizeClassificationValue(value: string): string {
+	return truncateCodePoints(
+		scrubForInjection(value),
+		HOSTED_AUTONOMY_GATE_INPUT_LIMITS.classificationCodePoints
+	);
+}
+
+function hasDuplicateCatalogKinds(): boolean {
+	const kinds = new Set<string>();
+	for (const definition of AUTONOMY_GATE_CATALOG) {
+		if (kinds.has(definition.kind)) return true;
+		kinds.add(definition.kind);
+	}
+	return false;
 }
 
 function snapshotGateModule(value: unknown): PluginAutonomyGateModule | null {
