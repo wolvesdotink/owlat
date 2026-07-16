@@ -122,4 +122,87 @@ describe('ingestMessage', () => {
 			syntheticMessageId({ remoteUidValidity: 1, remoteUid: 2, remoteName: 'Sent Items/2026' })
 		).toBe('<1.2.Sent_Items_2026@owlat-mail-sync>');
 	});
+
+	// NAMED TEST GATE (c): a non-UTF-8 real-shaped message ingests with the
+	// CORRECT decoded body. IMAP delivers whatever the sender wrote; a legacy
+	// ISO-8859-1 body must reach Convex decoded to Unicode, not mojibake. The
+	// bytes 0xE9/0xFB/0xA3 decode identically under the WHATWG windows-1252 map
+	// `@owlat/mail-message` resolves `iso-8859-1` to (I2 b — charset-correct).
+	it('decodes a non-UTF-8 (ISO-8859-1) body and subject to Unicode', async () => {
+		const { client, lastPayload } = mockConvex();
+		const raw = [
+			'From: =?ISO-8859-1?Q?Jos=E9?= <jose@example.com>',
+			'To: Bob <bob@example.com>',
+			'Subject: =?ISO-8859-1?Q?Caf=E9?=',
+			'Message-ID: <nonutf8-1@example.com>',
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'Content-Type: text/plain; charset=ISO-8859-1',
+			'Content-Transfer-Encoding: quoted-printable',
+			'',
+			"Caf=E9 co=FBte 5=A3 aujourd'hui.",
+			'',
+		].join('\r\n');
+
+		await ingestMessage(client, {
+			accountId: 'a',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 5,
+			remoteUidValidity: 2,
+			raw: Buffer.from(raw, 'latin1'),
+			flags: new Set(),
+		});
+
+		const payload = lastPayload();
+		expect(payload.subject).toBe('Café');
+		expect(payload.from).toBe('jose@example.com');
+		// The decoded high-bytes (é/û/£) reach Convex as Unicode, not mojibake.
+		expect(payload.textBodyInline).toContain("Café coûte 5£ aujourd'hui.");
+	});
+
+	// The attachment metadata mapping is a thin passthrough over
+	// `parseMessage`'s attachment leaves: partIndex is the document-order index
+	// (`String(i)`), and an unnamed part reports the parse layer's `attachment`
+	// default rather than a second ingest-side fallback (see PR body).
+	it('maps attachment metadata with document-order partIndex', async () => {
+		const { client, lastPayload } = mockConvex();
+		const boundary = 'b0undary';
+		const raw = [
+			'From: Alice <alice@example.com>',
+			'To: Bob <bob@example.com>',
+			'Subject: With attachment',
+			'Message-ID: <att-1@example.com>',
+			'MIME-Version: 1.0',
+			`Content-Type: multipart/mixed; boundary="${boundary}"`,
+			'',
+			`--${boundary}`,
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'Body text.',
+			`--${boundary}`,
+			'Content-Type: image/png',
+			'Content-Disposition: attachment; filename="pic.png"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			'iVBORw0KGgo=',
+			`--${boundary}--`,
+			'',
+		].join('\r\n');
+
+		await ingestMessage(client, {
+			accountId: 'a',
+			folderRole: 'inbox',
+			remoteName: 'INBOX',
+			remoteUid: 6,
+			remoteUidValidity: 2,
+			raw: Buffer.from(raw),
+			flags: new Set(),
+		});
+
+		const attachments = lastPayload().attachments as Array<Record<string, unknown>>;
+		expect(attachments).toHaveLength(1);
+		expect(attachments[0]?.filename).toBe('pic.png');
+		expect(attachments[0]?.contentType).toBe('image/png');
+		expect(attachments[0]?.partIndex).toBe('0');
+	});
 });
