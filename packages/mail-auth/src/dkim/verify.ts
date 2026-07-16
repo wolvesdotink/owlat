@@ -44,6 +44,7 @@ import {
 } from '../canon.js';
 import type { DkimVerdict } from '../dmarc.js';
 import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from './keyRecord.js';
+import { splitMessage, type HeaderField } from './message.js';
 import { parseTagList } from './tagList.js';
 
 /**
@@ -156,62 +157,6 @@ export async function verifyDkim(
 	}
 }
 
-/** A parsed raw header field: lowercased name plus verbatim bytes (no CRLF). */
-interface HeaderField {
-	readonly name: string;
-	readonly raw: string;
-}
-
-/**
- * Split a raw message into its ordered header fields and its body. The header
- * block is decoded latin1 so canonicalization stays byte-exact; the body stays
- * a Buffer. Folded continuation lines are rejoined with CRLF into one field.
- */
-function splitMessage(raw: Buffer): { headerFields: HeaderField[]; body: Buffer } {
-	const crlfIdx = raw.indexOf('\r\n\r\n');
-	const lfIdx = raw.indexOf('\n\n');
-	let boundary = -1;
-	let sepLen = 0;
-	if (crlfIdx !== -1 && (lfIdx === -1 || crlfIdx <= lfIdx)) {
-		boundary = crlfIdx;
-		sepLen = 4;
-	} else if (lfIdx !== -1) {
-		boundary = lfIdx;
-		sepLen = 2;
-	}
-
-	const headerBlock = (boundary === -1 ? raw : raw.subarray(0, boundary)).toString('latin1');
-	const body = boundary === -1 ? Buffer.alloc(0) : raw.subarray(boundary + sepLen);
-	return { headerFields: parseHeaderFields(headerBlock), body };
-}
-
-/** Parse a header block into ordered fields, rejoining folded lines. */
-function parseHeaderFields(headerBlock: string): HeaderField[] {
-	const fields: HeaderField[] = [];
-	let current: string | null = null;
-	const flush = (): void => {
-		if (current === null) {
-			return;
-		}
-		const colon = current.indexOf(':');
-		const name = (colon === -1 ? current : current.slice(0, colon)).trim().toLowerCase();
-		fields.push({ name, raw: current });
-		current = null;
-	};
-
-	for (const line of headerBlock.split('\n')) {
-		const content = line.endsWith('\r') ? line.slice(0, -1) : line;
-		if ((content.startsWith(' ') || content.startsWith('\t')) && current !== null) {
-			current += `\r\n${content}`;
-		} else {
-			flush();
-			current = content;
-		}
-	}
-	flush();
-	return fields;
-}
-
 /** Strip all whitespace — for base64 (`b=`, `bh=`) and colon lists (`h=`). */
 function stripWsp(value: string): string {
 	return value.replace(/[ \t\r\n]+/g, '');
@@ -241,6 +186,20 @@ function parseAlgorithm(a: string | undefined): DkimAlgorithm | undefined {
 		default:
 			return undefined;
 	}
+}
+
+/**
+ * True when a `c=` value names only known canonicalization halves
+ * (`header[/body]`, each `simple` or `relaxed`). An unknown or malformed `c=`
+ * is a signature the replaced mailauth path SKIPS (-> none), so the verifier
+ * rejects it rather than falling back to simple/simple and evaluating it.
+ */
+function isValidCanonicalizationTag(c: string): boolean {
+	const parts = c.split('/');
+	if (parts.length > 2) {
+		return false;
+	}
+	return parts.every((part) => part === 'simple' || part === 'relaxed');
 }
 
 /** Cross-signature cache: canonicalized body by mode, full-body hash by mode+alg. */
@@ -287,15 +246,29 @@ async function verifyOneSignature(
 		selector === undefined ||
 		hTag === undefined
 	) {
-		return withVerdict('permerror');
+		// A signature missing a required tag is UNUSABLE, not permanently broken:
+		// mailauth (and the replaced `inboundDkim.normalizeStatus`) SKIP it, so the
+		// message reduces to `none` ("not signed"). Returning `permerror` (rank 4)
+		// would outrank a sibling signature's temperror/neutral in strongest-wins
+		// and mis-record single-signature mail as a permanent error, so we match
+		// the skip -> none semantics of the path we replace.
+		return withVerdict('none');
 	}
 
 	const algorithm = parseAlgorithm(algorithmRaw);
 	if (algorithm === undefined) {
-		return withVerdict('permerror');
+		// Unknown / unsupported `a=` (e.g. rsa-sha512): mailauth skips the
+		// signature (-> none), so we do too rather than record a `permerror`.
+		return withVerdict('none');
 	}
 
-	const { header: headerMode, body: bodyMode } = parseCanonicalization(tags.get('c'));
+	const cTag = tags.get('c');
+	if (cTag !== undefined && !isValidCanonicalizationTag(cTag)) {
+		// An unrecognized `c=` canonicalization is skipped by mailauth (-> none);
+		// never silently fall back to simple/simple and evaluate the signature.
+		return withVerdict('none');
+	}
+	const { header: headerMode, body: bodyMode } = parseCanonicalization(cTag);
 
 	// --- Body hash (RFC 6376 §3.7) ---------------------------------------
 	const lTag = tags.get('l');
@@ -393,12 +366,27 @@ async function verifyOneSignature(
 
 	// Signature is cryptographically valid from here on.
 
-	// Expiry (RFC 6376 §3.5 x=): an expired-but-valid signature fails.
+	// Timestamp / expiry (RFC 6376 §3.5), matching the replaced mailauth /
+	// inboundDkim path rather than the RFC's PERMFAIL: a crypto-valid signature
+	// that is EXPIRED (x= in the past) or carries an INVALID expiration
+	// (x= < t=; §3.5 requires x= be greater than t=) is recorded `neutral`. It
+	// neither authenticates the message nor, as a `fail`, outranks a sibling
+	// neutral in strongest-wins. (mailauth: "signature expired" / "invalid
+	// expiration" -> neutral; the old path recorded neutral for both.)
 	const xTag = tags.get('x');
 	if (xTag !== undefined && xTag !== '') {
 		const expiry = Number.parseInt(xTag, 10);
-		if (Number.isFinite(expiry) && nowSeconds > expiry) {
-			return withVerdict('fail');
+		if (Number.isFinite(expiry)) {
+			if (nowSeconds > expiry) {
+				return withVerdict('neutral');
+			}
+			const tTag = tags.get('t');
+			if (tTag !== undefined && tTag !== '') {
+				const timestamp = Number.parseInt(tTag, 10);
+				if (Number.isFinite(timestamp) && expiry < timestamp) {
+					return withVerdict('neutral');
+				}
+			}
 		}
 	}
 

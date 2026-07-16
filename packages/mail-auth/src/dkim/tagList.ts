@@ -9,11 +9,13 @@
  * single implementation both consume so the parse rules never drift apart.
  *
  * FIRST-WINS on duplicate tag names: RFC 6376 §3.2 says a duplicate tag name
- * makes the list invalid, but the production `mailauth` path we replace does
- * not reject on it, so we preserve the conservative first-wins reading (a later
- * duplicate cannot override an earlier tag) rather than introduce an
- * unenumerated hostile-input divergence. Pinned by fixtures in the differential
- * and key-record suites.
+ * makes the whole list invalid. mailauth does not reject on it either, but it is
+ * LAST-wins (a later duplicate `d=`/`p=` overrides the earlier one). We instead
+ * take the more conservative FIRST-wins reading, so a later duplicate can never
+ * override an earlier tag — a DELIBERATE divergence from mailauth's last-wins,
+ * chosen because letting a trailing duplicate silently redirect a key lookup or
+ * signing domain is the more dangerous hostile-input behavior. Pinned by
+ * fixtures in the differential and key-record suites.
  */
 
 /** Options controlling how a tag list is normalized. */
