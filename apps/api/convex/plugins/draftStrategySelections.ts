@@ -40,13 +40,14 @@ export async function resolveDraftStrategySelection(
 			candidate !== undefined
 	);
 	for (const [scopeType, scopeId] of candidates) {
-		const row = await ctx.db
+		const rows = await ctx.db
 			.query('draftStrategySelections')
 			.withIndex('by_organization_scope', (q) =>
 				q.eq('organizationId', organizationId).eq('scopeType', scopeType).eq('scopeId', scopeId)
 			)
-			.unique();
-		if (row) return row.strategyKind;
+			.take(2);
+		if (rows.length > 1) return 'default';
+		if (rows[0]) return rows[0].strategyKind;
 	}
 	return 'default';
 }
@@ -77,9 +78,17 @@ export const setSelection = authedMutation({
 			throw new TypeError('Unknown draft strategy');
 		if (args.scope.type === 'classification' && !isDraftClassificationScope(args.scope.id))
 			throw new TypeError('Invalid draft classification scope');
-		if (args.scope.type !== 'classification' && !(await ctx.db.get(args.scope.id)))
-			throw new TypeError('Unknown draft strategy scope');
 		const organizationId = await getSingletonOrganizationId(ctx);
+		if (args.scope.type === 'mailbox') {
+			const mailbox = await ctx.db.get(args.scope.id);
+			if (!mailbox || mailbox.organizationId !== organizationId || mailbox.status === 'deleted')
+				throw new TypeError('Unknown draft strategy scope');
+		}
+		if (args.scope.type === 'contact') {
+			const contact = await ctx.db.get(args.scope.id);
+			if (!contact || contact.deletedAt !== undefined)
+				throw new TypeError('Unknown draft strategy scope');
+		}
 		const scopeId = String(args.scope.id);
 		const existing = await ctx.db
 			.query('draftStrategySelections')
