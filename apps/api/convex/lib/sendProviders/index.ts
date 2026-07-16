@@ -18,11 +18,7 @@ import { sesSendProvider } from './ses';
 import { resendSendProvider } from './resend';
 import { smtpSendProvider } from './smtp';
 import { BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES } from '../../plugins/sendTransportModules.generated';
-import {
-	SEND_PROVIDER_CATALOG,
-	sendProviderCatalogEntry,
-	isCoreSendProviderKind,
-} from './catalog';
+import { SEND_PROVIDER_CATALOG, sendProviderCatalogEntry, isCoreSendProviderKind } from './catalog';
 import { createHostedSendProvider, type HostedSendProviderModule } from './pluginProvider';
 import type { CoreSendProviderKind, SendProviderKind, SendProviderModule } from './types';
 

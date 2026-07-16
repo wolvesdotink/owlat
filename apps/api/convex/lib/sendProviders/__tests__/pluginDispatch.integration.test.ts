@@ -69,9 +69,11 @@ function fakeContext(isAuthorized = true) {
 				return isAuthorized;
 			}),
 			scheduler: {
-				runAfter: vi.fn(async (_delay: number, reference: unknown, args: Record<string, unknown>) => {
-					scheduled.push({ name: getFunctionName(reference as never), args });
-				}),
+				runAfter: vi.fn(
+					async (_delay: number, reference: unknown, args: Record<string, unknown>) => {
+						scheduled.push({ name: getFunctionName(reference as never), args });
+					}
+				),
 			},
 		},
 	};
