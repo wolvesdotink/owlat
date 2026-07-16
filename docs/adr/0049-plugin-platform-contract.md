@@ -199,16 +199,20 @@ operator grant, and required environment-variable presence. The generic plugin
 host then mediates the call. Denial never invokes plugin code. Terminal outcomes
 schedule one health update and one audit entry containing only system
 attribution, outcome, and attempt count; message content, recipient data,
-provider ids, raw errors, and credentials are excluded.
+provider ids, raw errors, and credentials are excluded. Authorization denial is
+recorded as `access_denied` in the authorization transaction together with the
+number of completed prior attempts.
 
 The composed provider catalog is the authority for route reads and writes.
 Reads skip unavailable or retired providers and apply the same readiness rule
 to the environment fallback. Writes reject unknown, duplicate, or enabled-but-
 unavailable providers. The operator UI reads the backend catalog, preserves
-stale route entries as unavailable, and treats unknown plugin authentication
-alignment conservatively. The built-in MTA, SES, Resend, and SMTP adapters keep
-their existing order, retry counts, routing selection, health behavior, and
-ambiguous-timeout semantics behind the same dispatch seam.
+stale route entries as unavailable for display, and omits those unregistered
+kinds from canonical write payloads without reordering or enabling surviving
+entries. It treats unknown plugin authentication alignment conservatively. The
+built-in MTA, SES, Resend, and SMTP adapters keep their existing order, retry
+counts, routing selection, health behavior, and ambiguous-timeout semantics
+behind the same dispatch seam.
 
 ### Three execution tiers
 
