@@ -1,19 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { extractAttachments } from '../parse/attachments';
-import { extractAttachments as oracleExtract } from '@owlat/shared/mailMime';
+import { extractAttachments } from '@owlat/mail-message';
+import { extractAttachments as oracleExtract } from '../mailMime';
 
 /**
  * Attachment order is the load-bearing contract shared with the read side:
  * `@owlat/shared/mailMime.extractAttachments` records `partIndex === String(i)`
- * on stored metadata, so this parser MUST emit attachment leaves in the exact
- * same document order (depth-first, children left-to-right) and with the exact
- * same "is this an attachment" predicate.
+ * on stored metadata, so the in-house `@owlat/mail-message` parser MUST emit
+ * attachment leaves in the exact same document order (depth-first, children
+ * left-to-right) and with the exact same "is this an attachment" predicate.
  *
  * This is a DIFFERENTIAL against that named oracle: every fixture is run through
  * BOTH extractors and their outputs are asserted equal on filename order,
  * contentType, disposition, contentId and decoded bytes. Hand-computed
  * expectations alone can't catch a shared misreading of the mailMime predicate;
  * pinning to the oracle can.
+ *
+ * It lives in `@owlat/shared` (which already prod-depends on
+ * `@owlat/mail-message` via the `/headers` re-export shim) rather than in
+ * `@owlat/mail-message` itself, so the live oracle is importable next to the new
+ * extractor with ZERO new package edges — a devDependency the other direction
+ * would form a `mail-message <-> shared` build cycle.
  */
 
 /** Assemble an eml with CRLF line endings from raw lines. */
@@ -150,7 +156,7 @@ describe('extractAttachments document order (differential vs mailMime)', () => {
 		// Real broken generators emit `attachment filename="x"` with no separating
 		// `;`. mailMime matches it via `startsWith('attachment')` + a whitespace-
 		// anchored param scan, so the new extractor must too or the stored
-		// partIndex contract silently drops the part. (Blocking 3.)
+		// partIndex contract silently drops the part. (Round-1 Blocking 3.)
 		const raw = eml(
 			'Content-Type: multipart/mixed; boundary="B"',
 			'',
@@ -166,6 +172,30 @@ describe('extractAttachments document order (differential vs mailMime)', () => {
 			'--B--'
 		);
 		expectParity(raw, ['broken.bin']);
+	});
+
+	it('malformed Content-Type (no semicolon before boundary) is a multipart with indexed parts on BOTH sides', () => {
+		// The same broken-generator shape on the CONTAINER: `multipart/mixed
+		// boundary="B"` with no separating `;`. mailMime's `getBoundary` reads it
+		// via the whitespace-anchored scan, so the container is a real multipart
+		// with indexed attachments — the new walker must read the boundary the same
+		// way or the WHOLE message degrades to an inert leaf with zero attachments,
+		// silently breaking the stored partIndex contract. (Round-2 Blocking 2.)
+		const raw = eml(
+			'Content-Type: multipart/mixed boundary="B"',
+			'',
+			'--B',
+			'Content-Type: text/plain',
+			'',
+			'body',
+			'--B',
+			'Content-Type: application/pdf; name="nosemi.pdf"',
+			'Content-Disposition: attachment; filename="nosemi.pdf"',
+			'',
+			'NOSEMI',
+			'--B--'
+		);
+		expectParity(raw, ['nosemi.pdf']);
 	});
 
 	it('a body-only text/plain leaf produces no attachments', () => {
