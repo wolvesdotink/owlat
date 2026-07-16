@@ -166,10 +166,6 @@ const updateSharedOp = useBackendOperation(
 	}
 );
 
-function buildArgs() {
-	return buildCredentialArgs(form);
-}
-
 const busy = computed(
 	() =>
 		testOp.isLoading.value ||
@@ -192,7 +188,7 @@ const canTest = computed(
 
 async function handleTest() {
 	testResult.value = null;
-	const res = await testOp.run(buildArgs());
+	const res = await testOp.run(buildCredentialArgs(form));
 	if (res) testResult.value = res;
 }
 
@@ -218,9 +214,9 @@ async function handleSubmit() {
 			formError.value = 'Cannot reconnect this team inbox: its mailbox is missing.';
 			return;
 		}
-		res = await updateSharedOp.run({ ...buildArgs(), mailboxId: props.mailboxId });
+		res = await updateSharedOp.run({ ...buildCredentialArgs(form), mailboxId: props.mailboxId });
 	} else {
-		res = await (props.mode === 'update' ? updateOp : connectOp).run(buildArgs());
+		res = await (props.mode === 'update' ? updateOp : connectOp).run(buildCredentialArgs(form));
 	}
 	if (res === undefined) return;
 	form.password = '';
