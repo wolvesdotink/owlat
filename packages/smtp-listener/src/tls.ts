@@ -78,14 +78,15 @@ export function resolveTlsConfig(cfg: SmtpTlsConfig): ResolvedTlsConfig {
 		ciphers: cfg.ciphers ?? DEFAULT_SMTP_CIPHERS,
 		honorCipherOrder: cfg.honorCipherOrder ?? true,
 	};
-	const options: TlsOptions = {
-		...contextOptions,
-		...(cfg.SNICallback ? { SNICallback: cfg.SNICallback } : {}),
-	};
+	// Build the optional SNI property ONCE and reuse it for both the
+	// implicit-TLS `tls.createServer` options and the resolved config's single
+	// source of truth (read by `upgradeTls` for the STARTTLS path).
+	const sniOption = cfg.SNICallback ? { SNICallback: cfg.SNICallback } : {};
+	const options: TlsOptions = { ...contextOptions, ...sniOption };
 	return {
 		options,
 		secureContext: createSecureContext(contextOptions),
-		...(cfg.SNICallback ? { SNICallback: cfg.SNICallback } : {}),
+		...sniOption,
 	};
 }
 
