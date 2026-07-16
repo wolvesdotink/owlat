@@ -91,14 +91,26 @@ describe('@owlat/mail-auth/canon subpath purity (U4)', () => {
 					queue.push(resolveRelative(file, spec));
 					continue;
 				}
+				// `src/canon.ts` re-exports the implementation from the dependency-free
+				// leaf `@owlat/mail-canon`; follow that edge INTO the leaf so the purity
+				// walk covers the real canon bytes the subpath exposes, not just the
+				// re-export shim. Anything the leaf pulls in is held to the same bar.
+				if (spec === '@owlat/mail-canon' || spec.startsWith('@owlat/mail-canon/')) {
+					const subpath =
+						spec === '@owlat/mail-canon' ? 'index' : spec.slice('@owlat/mail-canon/'.length);
+					const leafSrc = resolve(packageDir, '../mail-canon/src');
+					queue.push(resolveRelative(resolve(leafSrc, '_'), `./${subpath}`));
+					continue;
+				}
 				if (ALLOWED_PURE_SPECIFIERS.has(spec)) continue;
 				offenders.push({ file, spec });
 			}
 		}
 
-		// canon.ts today imports nothing at all, so the closure is a single file
-		// and this asserts an empty offender list — but the transitive walk keeps
-		// the guard honest if a future edit adds a relative helper.
+		// The closure spans mail-auth's `src/canon.ts` re-export and the leaf
+		// `@owlat/mail-canon` it forwards to; both must import nothing beyond
+		// relative helpers and the crypto/buffer builtins. An offender anywhere in
+		// that closure (a dns/net/tls/redis/undici or bare-npm import) fails here.
 		expect(offenders).toEqual([]);
 		expect(seen.has(entry)).toBe(true);
 	});

@@ -1,16 +1,18 @@
 /**
  * Locked decision D1 / U4 / W1: `@owlat/mail-message` stays pure and
  * Convex-`'use node'` safe — the ONLY runtime imports it may pull are
- * `node:crypto` and the pure `@owlat/mail-auth/canon` subpath (the single shared
- * DKIM canonicalizer the outbound signer consumes; that subpath transitively
+ * `node:crypto` and the dependency-free `@owlat/mail-canon` leaf (the single
+ * shared DKIM canonicalizer the outbound signer consumes; that leaf transitively
  * imports no dns/Redis/node-only module — proven by mail-auth's own
- * `canonSubpathPurity` guard). This test statically proves it by scanning every
- * `src/**` module and asserting that each import specifier is either a relative
- * path, `node:crypto`, or `@owlat/mail-auth/canon`. Any bare npm import
+ * `canonSubpathPurity` guard, which walks the same bytes through the `./canon`
+ * re-export). This test statically proves it by scanning every `src/**` module
+ * and asserting that each import specifier is either a relative path,
+ * `node:crypto`, or `@owlat/mail-canon`. Any bare npm import
  * (nodemailer/mailparser/mailauth survive only as devDependencies for tests),
- * the mail-auth package ROOT (which does import dns/Redis), or an extra `node:`
- * builtin would fail here — and would smear the boundary that lets the composer
- * be imported straight from a Convex node action.
+ * the `@owlat/mail-auth` package ROOT (which does import dns/Redis — and would
+ * close a build cycle), or an extra `node:` builtin would fail here — and would
+ * smear the boundary that lets the composer be imported straight from a Convex
+ * node action.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -70,9 +72,11 @@ function importSpecifiers(source: string): string[] {
 }
 
 // The only non-relative specifiers `src/**` may import at runtime: the crypto
-// builtin and the pure shared-canon subpath (U4). The mail-auth package ROOT
-// (`@owlat/mail-auth`) is deliberately NOT allowed — it imports dns/Redis.
-const ALLOWED_SPECIFIERS = new Set(['node:crypto', '@owlat/mail-auth/canon']);
+// builtin and the dependency-free shared canonicalizer leaf `@owlat/mail-canon`
+// (U4). The `@owlat/mail-auth` package ROOT is deliberately NOT allowed — it
+// imports dns/Redis (and depending on it would also close a build cycle
+// mail-message → mail-auth → shared → mail-message).
+const ALLOWED_SPECIFIERS = new Set(['node:crypto', '@owlat/mail-canon']);
 
 describe('@owlat/mail-message package purity (D1)', () => {
 	const files = collectTsFiles(srcDir);
@@ -94,14 +98,15 @@ describe('@owlat/mail-message package purity (D1)', () => {
 		expect(offenders).toEqual([]);
 	});
 
-	it('declares exactly the pure shared-canon package as its only runtime dependency (U4/W1)', () => {
+	it('declares exactly the pure shared-canon leaf as its only runtime dependency (U4/W1)', () => {
 		const pkg = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as {
 			dependencies?: Record<string, string>;
 		};
-		// The one sanctioned runtime dependency: the shared canonicalizer package,
-		// consumed via its pure `./canon` subpath only. nodemailer / mailparser /
-		// mailauth survive solely as devDependencies for the differential/oracle
-		// tests, so they must NOT appear here.
-		expect(pkg.dependencies).toEqual({ '@owlat/mail-auth': 'workspace:*' });
+		// The one sanctioned runtime dependency: the dependency-free shared
+		// canonicalizer leaf `@owlat/mail-canon`. nodemailer / mailparser / mailauth
+		// (and `@owlat/mail-auth` itself, used only by the three-way verify test)
+		// survive solely as devDependencies for the differential/oracle tests, so
+		// they must NOT appear here.
+		expect(pkg.dependencies).toEqual({ '@owlat/mail-canon': 'workspace:*' });
 	});
 });

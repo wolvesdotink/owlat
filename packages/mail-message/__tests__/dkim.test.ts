@@ -1,7 +1,8 @@
 /**
  * DKIM `signMessage` — the in-house outbound signer, built on the shared
- * `@owlat/mail-auth/canon` canonicalizer (unification decision U4, merged pieces
- * old wire-M3 + inbound-A3).
+ * `@owlat/mail-canon` canonicalizer (unification decision U4, merged pieces
+ * old wire-M3 + inbound-A3; `@owlat/mail-auth` re-publishes the same bytes via
+ * its `./canon` subpath for the verifier side).
  *
  * The unified repo lets us assert a THREE-WAY agreement no single-direction
  * pipeline could:
@@ -20,6 +21,18 @@
  *       ports of those (canon + our own assembly) match mailauth's, including
  *       oversigning From/Subject/To and the `t=` timestamp.
  *
+ *       The reference reproduces the MTA signer rather than exercising the live
+ *       `apps/mta/src/smtp/dkim.ts` because a `packages/*` test may not import an
+ *       app (cross-package-import boundary) and that module pulls in Redis/DNS.
+ *       To keep the reconstruction honest we ALSO anchor the emitted `h=` tag to
+ *       a hand-computed literal (`from:subject:to:from:subject:to`) — the exact
+ *       oversigned field list the real signer's `SIGNED_HEADERS` /
+ *       `OVERSIGNED_HEADERS` constants yield for a From/To/Subject message, and
+ *       the same contract `apps/mta`'s `dkimSign.e2e.test.ts` pins on the real
+ *       signer. A drift between the reconstruction and the real signer's field
+ *       list would break this literal even though the reconstruction agrees with
+ *       itself.
+ *
  *   (c) FOLD-STABLE round-trip — a composed → signed message parses cleanly with
  *       `mailparser` and its folded `DKIM-Signature` still verifies, proving the
  *       75/76-octet folding survives a real parser.
@@ -30,6 +43,12 @@ import { createSign, generateKeyPairSync } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { simpleParser } from 'mailparser';
 import { dkimVerify } from 'mailauth';
+// `@owlat/mail-auth` is a TEST-ONLY oracle here (the in-repo three-way verifier).
+// It is deliberately NOT a declared dependency of this package: `mail-auth` deps
+// `@owlat/shared`, which deps `@owlat/mail-message`, so declaring the edge would
+// close a build cycle. The workspace symlink resolves it for the test; the
+// dead-code gate excludes the "unlisted" issue type, and package purity (which
+// scans `src/**` only) is unaffected.
 import { verifyDkim } from '@owlat/mail-auth';
 import { composeMessage } from '../src/compose/compose';
 import { signMessage, buildDkimSignatureLine, type DkimSigningKey } from '../src/compose/dkim';
@@ -297,6 +316,21 @@ describe('signMessage — bit-for-bit vs the current MTA signer (old wire-M3)', 
 		// No l= (appendix-attack) tag, never rsa-sha1 (RFC 8301).
 		expect(sig).not.toMatch(/(^|;)\s*l=/);
 		expect(sig).not.toMatch(/rsa-sha1/i);
+	});
+
+	it('emits the exact oversigned h= field list the real MTA signer produces', () => {
+		// The `raw empty body` corpus message carries exactly From, To, Subject.
+		// The real signer (apps/mta/src/smtp/dkim.ts) walks SIGNED_HEADERS in order
+		// (from, …, subject, …, to, …) emitting only the present ones, then appends
+		// the OVERSIGNED slots (from, subject, to). So its h= is, lowercased, a
+		// hand-verifiable literal — pinned here independently of the reconstruction.
+		const raw = corpus().find((c) => c.name === 'raw empty body')!.raw;
+		const sig = buildDkimSignatureLine(raw, signingKey, SIGN_TIME_MS).replace(/\r\n[ \t]+/g, ' ');
+		const hList = /(?:^|;|\s)h=([^;]+)/
+			.exec(sig)![1]!
+			.split(':')
+			.map((h) => h.trim().toLowerCase());
+		expect(hList).toEqual(['from', 'subject', 'to', 'from', 'subject', 'to']);
 	});
 
 	it('the ported body hash equals mailauth relaxed dkimBody', () => {
