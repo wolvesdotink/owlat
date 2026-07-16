@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import type { SmtpListener } from '../server.js';
 import type { SmtpListenerOptions } from '../types.js';
+import { SmtpReplyError } from '../reply.js';
 import { Client, startListener, closeAllListeners } from './tlsTestUtil.js';
 
 // ---------------------------------------------------------------------------
@@ -210,6 +211,129 @@ describe('command loop over a raw socket', () => {
 		await c.waitCode(502);
 		c.write('STARTTLS\r\n');
 		await c.waitFor((b) => (b.match(/(^|\n)502 /gm) ?? []).length >= 2);
+		c.end();
+	});
+
+	it('answers VRFY, EXPN and HELP without confirming addresses', async () => {
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('VRFY someone@x.test\r\n');
+		await c.waitCode(252);
+		c.write('EXPN a-list\r\n');
+		await c.waitFor((b) => (b.match(/(^|\n)252 /gm) ?? []).length >= 2);
+		c.write('HELP\r\n');
+		await c.waitCode(214);
+		c.end();
+	});
+
+	it('rejects a duplicate MAIL FROM with 503', async () => {
+		const h = await start();
+		const c = await Client.connect(h.port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+		c.write('MAIL FROM:<b@b.test>\r\n');
+		await c.waitCode(503);
+		expect(c.received).toMatch(/Sender already specified/);
+		c.end();
+	});
+});
+
+describe('handler rejection paths', () => {
+	it('ends the connection when onConnect rejects', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onConnect: () => ({ code: 554, text: 'go away' }),
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		await c.waitCode(554);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		c.end();
+	});
+
+	it('rejects HELO via a handler reply and counts it against the budget', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onHelo: () => ({ code: 550, text: 'bad host' }),
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO nope.test\r\n');
+		await c.waitCode(550);
+		c.end();
+	});
+
+	it('uses the reply a rejecting onMailFrom / onRcptTo returns', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onMailFrom: (addr) =>
+				addr.address === 'blocked@x.test' ? { code: 550, text: 'no' } : undefined,
+			onRcptTo: (addr) =>
+				addr.address === 'blocked@y.test' ? { code: 551, text: 'no' } : undefined,
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<blocked@x.test>\r\n');
+		await c.waitCode(550);
+		c.write('MAIL FROM:<a@a.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+		c.write('RCPT TO:<blocked@y.test>\r\n');
+		await c.waitCode(551);
+		c.end();
+	});
+
+	it('maps a thrown SmtpReplyError to its reply and a generic throw to 451', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onMailFrom: (addr) => {
+				if (addr.address === 'reply@x.test') throw new SmtpReplyError({ code: 552, text: 'quota' });
+				if (addr.address === 'boom@x.test') throw new Error('handler exploded');
+				return undefined;
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<reply@x.test>\r\n');
+		await c.waitCode(552);
+		c.write('MAIL FROM:<boom@x.test>\r\n');
+		await c.waitCode(451);
+		c.end();
+	});
+
+	it('writes the reply a rejecting onData returns and keeps the session usable', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			onData: () => ({ code: 550, text: 'content rejected' }),
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		c.write('body\r\n.\r\n');
+		await c.waitCode(550);
+		// Session survives a rejected message.
+		c.write('NOOP\r\n');
+		await c.waitFor((b) => /250 2\.0\.0/.test(b));
+		c.end();
+	});
+
+	it('destroys the socket when DATA overruns the abort ceiling', async () => {
+		const { port } = await startListener({
+			hostname: 'mx.test',
+			maxMessageBytes: 64,
+			abortFactor: 2, // destroy past 128 bytes
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
+		await c.waitCode(354);
+		// 500 bytes with no terminator blows past the 128-byte abort ceiling.
+		c.write('x'.repeat(500));
+		await c.waitClose();
+		expect(c.closed).toBe(true);
 		c.end();
 	});
 });
