@@ -1,11 +1,12 @@
 /**
- * Parse a raw RFC822 message (mailparser) and hand it to Convex for storage +
- * insertion via the `ingestExternalRaw` action. The worker holds the admin key
- * but cannot mint storage upload URLs (those need a user session), so it ships
- * the raw bytes as base64 and Convex stores them server-side.
+ * Parse a raw RFC822 message (in-house `@owlat/mail-message.parseMessage`) and
+ * hand it to Convex for storage + insertion via the `ingestExternalRaw` action.
+ * The worker holds the admin key but cannot mint storage upload URLs (those need
+ * a user session), so it ships the raw bytes as base64 and Convex stores them
+ * server-side.
  */
 
-import { simpleParser, type AddressObject } from 'mailparser';
+import { parseMessage, type AddressObject } from '@owlat/mail-message';
 import type { ConvexClient } from './convex.js';
 import { fn } from './convex.js';
 import type { FolderRole } from './folders.js';
@@ -36,6 +37,28 @@ function addrList(field: AddressObject | AddressObject[] | undefined): string[] 
 		}
 	}
 	return out;
+}
+
+/**
+ * The single address of a `From:`-shaped field — the first parsed mailbox, or
+ * `''` when the header is absent/address-less. `From:` is a single
+ * {@link AddressObject}; the array arm only fires on a (malformed) repeated
+ * header, in which case we read the first object, matching the old
+ * `parsed.from?.value?.[0]?.address` extraction.
+ */
+function primaryAddress(field: AddressObject | AddressObject[] | undefined): string {
+	const obj = Array.isArray(field) ? field[0] : field;
+	return obj?.value?.[0]?.address ?? '';
+}
+
+/**
+ * The display text of a `Reply-To:`-shaped field — the formatted address list
+ * mailparser exposed as `.text`. A repeated header (array arm) joins each
+ * object's text; an absent header yields `undefined`.
+ */
+function addrText(field: AddressObject | AddressObject[] | undefined): string | undefined {
+	if (!field) return undefined;
+	return Array.isArray(field) ? field.map((o) => o.text).join(', ') : field.text;
 }
 
 /**
@@ -70,13 +93,13 @@ export interface IngestParams {
 }
 
 export async function ingestMessage(convex: ConvexClient, params: IngestParams): Promise<void> {
-	const parsed = await simpleParser(params.raw);
+	const parsed = parseMessage(params.raw);
 	const text = parsed.text ?? undefined;
 	const html = typeof parsed.html === 'string' ? parsed.html : undefined;
-	const attachments = (parsed.attachments ?? []).map((a, i) => ({
-		filename: a.filename ?? `attachment-${i + 1}`,
-		contentType: a.contentType ?? 'application/octet-stream',
-		size: a.size ?? 0,
+	const attachments = parsed.attachments.map((a, i) => ({
+		filename: a.filename,
+		contentType: a.contentType,
+		size: a.size,
 		contentId: a.contentId ?? undefined,
 		partIndex: String(i),
 	}));
@@ -93,11 +116,11 @@ export async function ingestMessage(convex: ConvexClient, params: IngestParams):
 			remoteUid: params.remoteUid,
 			remoteUidValidity: params.remoteUidValidity,
 			rawBytesBase64: params.raw.toString('base64'),
-			from: parsed.from?.value?.[0]?.address ?? '',
+			from: primaryAddress(parsed.from),
 			to: addrList(parsed.to),
 			cc: addrList(parsed.cc),
 			bcc: addrList(parsed.bcc),
-			replyTo: parsed.replyTo?.text ?? undefined,
+			replyTo: addrText(parsed.replyTo),
 			subject: parsed.subject ?? '',
 			textBodyInline: capBody(text),
 			htmlBodyInline: capBody(html),
