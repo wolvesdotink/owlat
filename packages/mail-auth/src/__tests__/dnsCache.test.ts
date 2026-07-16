@@ -13,7 +13,7 @@
  * across the SPF fixture set.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import RedisMock from 'ioredis-mock';
 import {
 	createCachedResolver,
@@ -72,6 +72,15 @@ const SPF_CASES: readonly SpfCase[] = [
 	{ name: 'ip6 cidr pass', ip: '2001:db8:1::1', from: 'u@ms.com', expected: 'pass' },
 	{ name: 'no SPF record none', ip: '5.5.5.5', from: 'u@bare.com', expected: 'none' },
 ];
+
+// ─── Isolation ──────────────────────────────────────────────────────
+// `ioredis-mock` backs every `new RedisMock()` with ONE process-global store,
+// so keys written by one test (e.g. `mailauth:dns:TXT:good.com`) would leak into
+// the next as a stale cache hit. Flush that shared store after each test so every
+// case starts cold.
+afterEach(async () => {
+	await new RedisMock().flushall();
+});
 
 // ─── TTL contract ───────────────────────────────────────────────────
 
