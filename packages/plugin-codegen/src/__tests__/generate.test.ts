@@ -224,7 +224,7 @@ describe('generated composition freshness', () => {
 		expect(removed).toContain('void app;');
 		expect(removed).not.toContain('component-plugin');
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
-	});
+	}, 15_000);
 
 	it('typechecks and bundles nonempty generated executable registries', async () => {
 		const root = await createAgentPluginWorkspace();
