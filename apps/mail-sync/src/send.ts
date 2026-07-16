@@ -11,7 +11,8 @@
  * never crosses the network in the clear regardless of the secure/STARTTLS choice.
  */
 
-import nodemailer from 'nodemailer';
+import os from 'node:os';
+import { sendMessage, verify as verifySmtp } from '@owlat/smtp-client';
 import { ImapFlow } from 'imapflow';
 import type { WorkerCredentials } from './convex.js';
 import { mapFolderRole } from './folders.js';
@@ -24,25 +25,35 @@ export interface RecipientResult {
 	error?: string;
 }
 
+/**
+ * The name announced in EHLO to the user's submission server. nodemailer defaulted
+ * to the machine hostname; we keep that identity so no observable EHLO name changes
+ * in the cutover.
+ */
+function ehloName(): string {
+	return os.hostname();
+}
+
 export async function sendViaExternal(
 	creds: WorkerCredentials,
 	params: { from: string; recipients: string[]; raw: Buffer }
 ): Promise<{ recipients: RecipientResult[] }> {
-	const transport = nodemailer.createTransport({
-		host: creds.smtpHost,
-		port: creds.smtpPort,
-		...smtpTlsOptions(creds.smtpHost, creds.isSmtpSecure),
-		auth: { user: creds.smtpUsername, pass: creds.smtpPassword },
+	// The custom envelope keeps the SMTP RCPT set exactly our recipients (including
+	// Bcc), independent of the visible headers. The client collects a per-recipient
+	// RCPT verdict — the authoritative accept/reject signal — and ships the exact
+	// .eml bytes Convex already built.
+	const result = await sendMessage({
+		connect: {
+			host: creds.smtpHost,
+			port: creds.smtpPort,
+			ehloName: ehloName(),
+			...smtpTlsOptions(creds.smtpHost, creds.isSmtpSecure),
+		},
+		auth: { credentials: { username: creds.smtpUsername, password: creds.smtpPassword } },
+		envelope: { from: params.from, to: params.recipients, data: params.raw },
 	});
 
-	const info = await transport.sendMail({
-		// Custom envelope so the SMTP RCPT set is exactly our recipients
-		// (including Bcc), independent of the visible headers.
-		envelope: { from: params.from, to: params.recipients },
-		raw: params.raw,
-	});
-
-	const rejected = new Set((info.rejected ?? []).map((a) => String(a).toLowerCase()));
+	const rejected = new Set(result.rejected.map((v) => v.recipient.toLowerCase()));
 	const recipients: RecipientResult[] = params.recipients.map((address) =>
 		rejected.has(address.toLowerCase())
 			? { address, status: 'bounced', error: 'Rejected by SMTP server' }
@@ -112,14 +123,18 @@ async function testImap(c: ProtocolCreds): Promise<{ ok: boolean; error?: string
 }
 
 async function testSmtp(c: ProtocolCreds): Promise<{ ok: boolean; error?: string }> {
-	const transport = nodemailer.createTransport({
-		host: c.host,
-		port: c.port,
-		...smtpTlsOptions(c.host, c.secure),
-		auth: { user: c.username, pass: c.password },
-	});
 	try {
-		await transport.verify();
+		// verify() drives connect → EHLO → AUTH → QUIT with no message sent, on the
+		// same TLS posture as the live send path.
+		await verifySmtp({
+			connect: {
+				host: c.host,
+				port: c.port,
+				ehloName: ehloName(),
+				...smtpTlsOptions(c.host, c.secure),
+			},
+			auth: { credentials: { username: c.username, password: c.password } },
+		});
 		return { ok: true };
 	} catch (err) {
 		return { ok: false, error: err instanceof Error ? err.message : String(err) };
