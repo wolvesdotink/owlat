@@ -25,7 +25,7 @@ import { runBootstrapOrg } from './commands/bootstrap-org';
 import { runSeed } from './commands/seed';
 import { runReset } from './commands/reset';
 
-const VERSION = '0.3.0'; // x-release-version (kept in sync by scripts/release.ts)
+const VERSION = '0.3.1'; // x-release-version (kept in sync by scripts/release.ts)
 
 function help(): void {
 	console.log(`Owlat Setup CLI v${VERSION}
