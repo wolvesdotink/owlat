@@ -1,4 +1,5 @@
 import type { PluginAgentStepInput } from '@owlat/plugin-kit';
+import { isSafeAgentLifecycleEdge, type AgentStepPlacement } from '@owlat/plugin-host';
 import type { Doc } from '../_generated/dataModel';
 import { encodePluginStorageValue } from '../plugins/storageJson';
 import { openInboundMessageBody } from '../lib/messageBody';
@@ -70,17 +71,14 @@ export function isDeclaredPluginCautionEdge(
 		from: string;
 		to: string;
 	}>[],
-	placement: 'classification' | 'before_draft' | 'after_draft',
+	placement: AgentStepPlacement,
 	from: string,
 	to: string
 ): boolean {
 	const expectedKind = to === 'draft_ready' ? 'draft_review' : 'caution';
-	const placementAllowsEdge =
-		(placement === 'classification' && from === 'classifying' && to !== 'draft_ready') ||
-		(placement === 'before_draft' && from === 'drafting' && to !== 'draft_ready') ||
-		(placement === 'after_draft' && from === 'drafting');
+	const requestedEdge = { kind: expectedKind, from, to };
 	return (
-		placementAllowsEdge &&
+		isSafeAgentLifecycleEdge(placement, requestedEdge) &&
 		edges.some((edge) => edge.kind === expectedKind && edge.from === from && edge.to === to)
 	);
 }

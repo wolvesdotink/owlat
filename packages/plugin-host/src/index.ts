@@ -5,9 +5,11 @@ export {
 	composeAgentStepDefinitions,
 	composeBundledAgentSteps,
 	CORE_AGENT_STEP_DEFINITIONS,
+	isSafeAgentLifecycleEdge,
 } from './agentSteps';
 export type {
 	AgentStepCompositionErrorCode,
+	AgentStepPlacement,
 	CoreAgentStepKind,
 	HostedAgentStepDefinition,
 } from './agentSteps';
