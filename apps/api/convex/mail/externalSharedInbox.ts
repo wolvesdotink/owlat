@@ -49,6 +49,7 @@ import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from '.
 import { connectFieldsValidator, insertExternalAccountRow } from './externalAccounts';
 import { seedSharedInboxRoster } from './mailboxMembers';
 import { requireMailboxAccess } from './permissions';
+import { isFeatureEnabled } from '../lib/featureFlags';
 import {
 	throwInvalidInput,
 	throwAlreadyExists,
@@ -252,6 +253,20 @@ export const purgeShared = authedMutation({
 			throwInvalidInput('This is not an external team inbox.');
 		}
 		const now = Date.now();
+		// A purge may be invoked directly on a still-ACTIVE inbox (the docstring
+		// promises any status), so mirror `mailbox.remove`'s address teardown that a
+		// prior `remove` would otherwise have done: evict the address from the routing
+		// cache and, when Sealed Mail is on, revoke its E2EE address key. Without this,
+		// purging a live shared inbox deletes the mailbox while other instances keep
+		// sealing mail to a now-dead published address.
+		await ctx.scheduler.runAfter(0, internal.mail.mailboxActions.removeFromCache, {
+			address: mailbox.address,
+		});
+		if (await isFeatureEnabled(ctx, 'sealedMail')) {
+			await ctx.scheduler.runAfter(0, internal.e2ee.lifecycle.deactivateAddressKeys, {
+				address: mailbox.address,
+			});
+		}
 		// Stop the worker syncing into a draining mailbox, then hide it.
 		await ctx.db.patch(mailbox.externalAccountId, { status: 'disconnected', updatedAt: now });
 		await ctx.db.patch(mailbox._id, { status: 'deleted', updatedAt: now });

@@ -376,8 +376,10 @@ export const remove = authedMutation({
 			// An external-backed mailbox (personal BYO or a shared team inbox) has a
 			// live sync account; mark it `disconnected` so `listConnectableAccounts`
 			// stops the mail-sync worker from syncing into a now-deleted mailbox. The
-			// account row is retained (a re-connect can re-attach), mirroring the soft
-			// `disconnect` mutation; `purge` remains the hard cascade-delete path.
+			// account row is retained for audit + the hard cascade-delete path (`purge`
+			// for personal, `purgeShared` for a team inbox) — NOT for re-attach: a fresh
+			// connect always provisions a new mailbox + account (the dup-check only sees
+			// active rows), mirroring the soft `disconnect` mutation.
 			if (mailbox.externalAccountId) {
 				const account = await ctx.db.get(mailbox.externalAccountId);
 				if (account && account.status !== 'disconnected') {

@@ -68,6 +68,25 @@ function onReconnected() {
 	reconnectId.value = null;
 }
 
+// Deleting an external team inbox is a hard, irreversible purge: it
+// cascade-deletes the mailbox, its synced mail, the roster, AND the encrypted
+// credential row that otherwise lingers off-mailbox forever. `purgeShared` works
+// on a live inbox directly (no prior soft-remove step), and is external-only —
+// so the affordance is scoped to `kind === 'external'` inboxes.
+const purgeTarget = ref<SharedInbox | null>(null);
+const purgeOp = useBackendOperation(api.mail.externalSharedInbox.purgeShared, {
+	label: 'Delete team inbox',
+});
+async function confirmPurge() {
+	const target = purgeTarget.value;
+	if (!target) return;
+	const res = await purgeOp.run({ mailboxId: target._id });
+	if (!res) return;
+	if (expandedId.value === target._id) expandedId.value = null;
+	if (reconnectId.value === target._id) reconnectId.value = null;
+	purgeTarget.value = null;
+}
+
 function ownerOf(inbox: SharedInbox) {
 	const owner = inbox.members.find((m) => m.role === 'owner');
 	return owner ? owner.name || owner.email || owner.authUserId : null;
@@ -234,6 +253,16 @@ function formatCreated(createdAt: number) {
 								/>
 								{{ expandedId === inbox._id ? 'Done' : 'Manage members' }}
 							</UiButton>
+							<UiButton
+								v-if="inbox.kind === 'external'"
+								variant="ghost"
+								size="sm"
+								class="text-error hover:text-error"
+								title="Delete this team inbox permanently"
+								@click="purgeTarget = inbox"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</UiButton>
 						</div>
 					</div>
 
@@ -314,5 +343,22 @@ function formatCreated(createdAt: number) {
 				</div>
 			</div>
 		</div>
+
+		<!-- Hard-delete confirmation: purges the mailbox, its mail, the roster, and
+		     the encrypted credential row. Irreversible, so gate it behind a dialog. -->
+		<UiConfirmationDialog
+			:open="purgeTarget !== null"
+			variant="danger"
+			title="Delete team inbox permanently?"
+			:description="`Delete &quot;${purgeTarget?.displayName || purgeTarget?.address}&quot;? Its synced mail, the member roster, and the stored mailbox connection are erased for everyone. This cannot be undone.`"
+			confirm-text="Delete permanently"
+			:is-loading="purgeOp.isLoading.value"
+			@update:open="
+				(v: boolean) => {
+					if (!v) purgeTarget = null;
+				}
+			"
+			@confirm="confirmPurge"
+		/>
 	</div>
 </template>

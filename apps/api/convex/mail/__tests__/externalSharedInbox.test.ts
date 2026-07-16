@@ -398,6 +398,26 @@ describe('shared external inbox credential rotation / repair', () => {
 		expect(view).not.toHaveProperty('secretCiphertext');
 	});
 
+	it('hides connection metadata from a plain member (owner floor, soft-fail)', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin-user', 'admin');
+		await seedUsers(t, 'user-B');
+		// user-B is on the roster as a plain `member`, not an owner.
+		const { mailboxId } = await t.mutation(
+			internal.mail.externalSharedInbox._connectSharedInternal,
+			{ ...CREDS, emailAddress: 'support@acme.test', memberUserIds: ['user-B'] }
+		);
+		// The member can read the inbox, but getSharedExternalAccount is gated at the
+		// `owner` floor — so its connection metadata stays invisible (soft-fail),
+		// pinning the owner-only floor against a silent regression to member-readable.
+		setSession('user-B', 'editor');
+		expect(await t.query(api.mail.mailboxMembers.myRole, { mailboxId })).toBe('member');
+		const view = await t.query(api.mail.externalSharedInbox.getSharedExternalAccount, {
+			mailboxId,
+		});
+		expect(view.configured).toBe(false);
+	});
+
 	it('listShared surfaces the linked external account status for the admin overview', async () => {
 		const t = convexTest(schema, modules);
 		setSession('admin-user', 'admin');

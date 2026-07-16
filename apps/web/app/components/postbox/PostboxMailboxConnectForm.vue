@@ -209,7 +209,15 @@ async function handleSubmit() {
 				memberUserIds: props.memberUserIds ?? [],
 			})
 		);
-	} else if (props.mode === 'update' && props.shared && props.mailboxId) {
+	} else if (props.mode === 'update' && props.shared) {
+		// A shared credential rotation is keyed by the team inbox's mailboxId. Guard
+		// its absence explicitly rather than falling through to the PERSONAL
+		// `updateCredentials` below, which would rewrite the caller's own external
+		// account with this team inbox's servers/password (a silent wrong target).
+		if (!props.mailboxId) {
+			formError.value = 'Cannot reconnect this team inbox: its mailbox is missing.';
+			return;
+		}
 		res = await updateSharedOp.run({ ...buildArgs(), mailboxId: props.mailboxId });
 	} else {
 		res = await (props.mode === 'update' ? updateOp : connectOp).run(buildArgs());

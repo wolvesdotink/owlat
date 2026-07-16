@@ -18,7 +18,7 @@
  * endpoint, so the heavy protocol libraries stay out of the Convex bundle.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { authedAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
@@ -101,6 +101,33 @@ function encodeEnvelope(password: string, smtpPassword?: string) {
 	};
 }
 
+type CredentialArgs = Infer<ReturnType<typeof v.object<typeof credentialArgs>>>;
+
+/**
+ * Map the public credential args → the internal connect-fields shape every
+ * persistence mutation takes (non-secret IMAP/SMTP settings + the encrypted
+ * password envelope). The single source of truth reused by `connect`,
+ * `connectShared`, `updateCredentials`, and `updateCredentialsShared` so the
+ * 12-field mapping (incl. `username → imapUsername` and the `authMethod`) never
+ * drifts across the four call sites — a new field (e.g. an `oauth` authMethod)
+ * is a one-line change here instead of a four-site shotgun edit.
+ */
+function toConnectFields(args: CredentialArgs) {
+	return {
+		emailAddress: args.emailAddress,
+		imapHost: args.imapHost,
+		imapPort: args.imapPort,
+		isImapSecure: args.isImapSecure,
+		smtpHost: args.smtpHost,
+		smtpPort: args.smtpPort,
+		isSmtpSecure: args.isSmtpSecure,
+		imapUsername: args.username,
+		smtpUsername: args.smtpUsername,
+		authMethod: 'password' as const,
+		...encodeEnvelope(args.password, args.smtpPassword),
+	};
+}
+
 /** Connect a new external account: validate → encrypt → persist (status pending). */
 // authz: external mailbox connect — authedAction (authenticated member) +
 // assertExternalEnabled gate; persistence in internal._connectInternal.
@@ -112,19 +139,10 @@ export const connect = authedAction({
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
-		return await ctx.runMutation(internal.mail.externalAccounts._connectInternal, {
-			emailAddress: args.emailAddress,
-			imapHost: args.imapHost,
-			imapPort: args.imapPort,
-			isImapSecure: args.isImapSecure,
-			smtpHost: args.smtpHost,
-			smtpPort: args.smtpPort,
-			isSmtpSecure: args.isSmtpSecure,
-			imapUsername: args.username,
-			smtpUsername: args.smtpUsername,
-			authMethod: 'password',
-			...encodeEnvelope(args.password, args.smtpPassword),
-		});
+		return await ctx.runMutation(
+			internal.mail.externalAccounts._connectInternal,
+			toConnectFields(args)
+		);
 	},
 });
 
@@ -150,19 +168,9 @@ export const connectShared = authedAction({
 		await assertExternalEnabled(ctx);
 		validateShape(args);
 		return await ctx.runMutation(internal.mail.externalSharedInbox._connectSharedInternal, {
-			emailAddress: args.emailAddress,
-			imapHost: args.imapHost,
-			imapPort: args.imapPort,
-			isImapSecure: args.isImapSecure,
-			smtpHost: args.smtpHost,
-			smtpPort: args.smtpPort,
-			isSmtpSecure: args.isSmtpSecure,
-			imapUsername: args.username,
-			smtpUsername: args.smtpUsername,
-			authMethod: 'password',
+			...toConnectFields(args),
 			displayName: args.displayName,
 			memberUserIds: args.memberUserIds,
-			...encodeEnvelope(args.password, args.smtpPassword),
 		});
 	},
 });
@@ -188,20 +196,7 @@ export const updateCredentialsShared = authedAction({
 		validateShape(args);
 		return await ctx.runMutation(
 			internal.mail.externalSharedInbox._updateCredentialsSharedInternal,
-			{
-				mailboxId: args.mailboxId,
-				emailAddress: args.emailAddress,
-				imapHost: args.imapHost,
-				imapPort: args.imapPort,
-				isImapSecure: args.isImapSecure,
-				smtpHost: args.smtpHost,
-				smtpPort: args.smtpPort,
-				isSmtpSecure: args.isSmtpSecure,
-				imapUsername: args.username,
-				smtpUsername: args.smtpUsername,
-				authMethod: 'password',
-				...encodeEnvelope(args.password, args.smtpPassword),
-			}
+			{ ...toConnectFields(args), mailboxId: args.mailboxId }
 		);
 	},
 });
@@ -217,19 +212,10 @@ export const updateCredentials = authedAction({
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
-		return await ctx.runMutation(internal.mail.externalAccounts._updateCredentialsInternal, {
-			emailAddress: args.emailAddress,
-			imapHost: args.imapHost,
-			imapPort: args.imapPort,
-			isImapSecure: args.isImapSecure,
-			smtpHost: args.smtpHost,
-			smtpPort: args.smtpPort,
-			isSmtpSecure: args.isSmtpSecure,
-			imapUsername: args.username,
-			smtpUsername: args.smtpUsername,
-			authMethod: 'password',
-			...encodeEnvelope(args.password, args.smtpPassword),
-		});
+		return await ctx.runMutation(
+			internal.mail.externalAccounts._updateCredentialsInternal,
+			toConnectFields(args)
+		);
 	},
 });
 
