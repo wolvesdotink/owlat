@@ -53,11 +53,16 @@ const draftInput: DraftInput = {
 /** Fake execute ctx capturing the recordDraftOutput mutation args. */
 function makeCtx() {
 	const recorded: Array<Record<string, unknown>> = [];
+	const selections: Array<Record<string, unknown>> = [];
 	const ctx = {
-		runQuery: async (ref: unknown) => {
+		runQuery: async (ref: unknown, args: Record<string, unknown>) => {
 			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 			if (name.includes('getAgentConfig')) return null;
-			if (name.includes('getMessage')) return { subject: 'Order status' }; // no `to` → skip voice
+			if (name.includes('getMessage')) return { subject: 'Order status', contactId: 'contact_1' }; // no `to` → skip voice
+			if (name.includes('resolveForDraft')) {
+				selections.push(args);
+				return 'default';
+			}
 			throw new Error(`unexpected runQuery: ${name}`);
 		},
 		runMutation: async (ref: unknown, args: Record<string, unknown>) => {
@@ -70,7 +75,7 @@ function makeCtx() {
 			throw new Error(`unexpected runMutation: ${name}`);
 		},
 	} as unknown as Parameters<typeof draftStep.execute>[0];
-	return { ctx, recorded };
+	return { ctx, recorded, selections };
 }
 
 beforeEach(() => {
@@ -103,7 +108,7 @@ describe('draftStep.execute — draft-quality self-check', () => {
 			tokenUsage: undefined,
 			modelUsed: 'mock-model',
 		});
-		const { ctx, recorded } = makeCtx();
+		const { ctx, recorded, selections } = makeCtx();
 
 		const { output } = await draftStep.execute(ctx, draftInput);
 
@@ -116,6 +121,7 @@ describe('draftStep.execute — draft-quality self-check', () => {
 			grounded: true,
 			flags: [],
 		});
+		expect(selections).toEqual([{ contactId: 'contact_1', classification: 'support' }]);
 
 		// Threaded into the step output → route input
 		expect(output.draftQuality).toEqual({
