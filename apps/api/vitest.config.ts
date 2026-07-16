@@ -37,6 +37,11 @@ export default defineConfig({
 			// few points below actual so the threshold guards real regressions
 			// without flaking on run-to-run async/retry variance. Raise as coverage
 			// climbs; never lower it without justification.
+			//
+			// CI shards this suite ×3 and disables the gate per shard with
+			// --coverage.thresholds.lines=0 (test.yml); the merged report enforces
+			// it. If you add another threshold key here (functions, branches, …),
+			// the shard jobs will fail spuriously unless it's zeroed there too.
 			thresholds: {
 				lines: 65,
 			},

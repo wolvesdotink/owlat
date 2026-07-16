@@ -53,15 +53,14 @@ PACKAGES=$(bunx turbo run test:coverage $AFFECTED_FLAG --dry=json \
 API=$(bunx turbo run test:coverage $AFFECTED_FLAG --filter='@owlat/api' --dry=json \
 	| jq -r 'if (.tasks | length) > 0 then "true" else "false" end')
 
-# Every affected workspace name — used to key the docker-image selection.
-AFFECTED_NAMES=$(bunx turbo ls $AFFECTED_FLAG --output=json \
-	| jq -c '[.packages.items[].name]')
-
 # An image rebuilds when its workspace is affected, or (turbo can't see this) its
 # Dockerfile itself changed. A full run rebuilds all of them.
 if [ "$RUN_ALL" = "true" ]; then
 	IMAGES=$(jq -c '.' .github/docker-images.json)
 else
+	# Every affected workspace name — keys the docker-image selection.
+	AFFECTED_NAMES=$(bunx turbo ls $AFFECTED_FLAG --output=json \
+		| jq -c '[.packages.items[].name]')
 	IMAGES=$(jq -c --argjson aff "$AFFECTED_NAMES" --argjson chg "$CHANGED" '
 		map(select(
 			(.package as $p | $aff | index($p)) != null

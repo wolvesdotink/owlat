@@ -98,7 +98,10 @@ jobs:
       # Phase 3: share Turborepo results across CI runs via the GitHub Actions
       # cache, so a re-run / rebase-with-no-changes replays green suites in seconds.
       - name: Turborepo remote cache
-        uses: rharkor/caching-for-turbo@v2.5.0
+        # Pinned to a commit SHA (not a mutable tag): this third-party action sits
+        # in the trust path for test results — a poisoned turbo cache replays
+        # "green" without running anything.
+        uses: rharkor/caching-for-turbo@75f8ebf4a43d2c60b23bc2a27082cfea94ffdad9 # v2.5.0
 
       - name: Run tests with coverage
         run: bunx turbo run test:coverage --filter=${{ matrix.package }}
@@ -245,7 +248,10 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Turborepo remote cache
-        uses: rharkor/caching-for-turbo@v2.5.0
+        # Pinned to a commit SHA (not a mutable tag): this third-party action sits
+        # in the trust path for test results — a poisoned turbo cache replays
+        # "green" without running anything.
+        uses: rharkor/caching-for-turbo@75f8ebf4a43d2c60b23bc2a27082cfea94ffdad9 # v2.5.0
 
       - name: Lint
         run: bun run ci:lint
