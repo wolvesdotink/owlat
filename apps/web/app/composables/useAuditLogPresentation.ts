@@ -280,6 +280,7 @@ const HOSTED_PLUGIN_OPERATION_LABELS = {
 	'storage.list': 'Storage list',
 	'storage.set': 'Storage write',
 	'transport.send': 'Email transport send',
+	'webhook.publish': 'Webhook event publish',
 } as const satisfies Record<HostedPluginOperationLiteral, string>;
 
 /** The verb of an action literal: the segment after the first `.`, or the whole

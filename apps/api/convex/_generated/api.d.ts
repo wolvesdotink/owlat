@@ -551,6 +551,9 @@ import type * as plugins_sendTransportModules_generated from "../plugins/sendTra
 import type * as plugins_storage from "../plugins/storage.js";
 import type * as plugins_storageCursor from "../plugins/storageCursor.js";
 import type * as plugins_storageJson from "../plugins/storageJson.js";
+import type * as plugins_webhookEventAuthorization from "../plugins/webhookEventAuthorization.js";
+import type * as plugins_webhookEventCatalog from "../plugins/webhookEventCatalog.js";
+import type * as plugins_webhookEventCatalog_generated from "../plugins/webhookEventCatalog.generated.js";
 import type * as providerRoutes from "../providerRoutes.js";
 import type * as publicRateLimit from "../publicRateLimit.js";
 import type * as quickQuery from "../quickQuery.js";
@@ -638,6 +641,7 @@ import type * as webhooks_deliveryQueries from "../webhooks/deliveryQueries.js";
 import type * as webhooks_dispatcher from "../webhooks/dispatcher.js";
 import type * as webhooks_endpoints from "../webhooks/endpoints.js";
 import type * as webhooks_events from "../webhooks/events.js";
+import type * as webhooks_events_catalog from "../webhooks/events/catalog.js";
 import type * as webhooks_events_contactCreated_index from "../webhooks/events/contactCreated/index.js";
 import type * as webhooks_events_emailBounced_index from "../webhooks/events/emailBounced/index.js";
 import type * as webhooks_events_emailClicked_index from "../webhooks/events/emailClicked/index.js";
@@ -1220,6 +1224,9 @@ declare const fullApi: ApiFromModules<{
   "plugins/storage": typeof plugins_storage;
   "plugins/storageCursor": typeof plugins_storageCursor;
   "plugins/storageJson": typeof plugins_storageJson;
+  "plugins/webhookEventAuthorization": typeof plugins_webhookEventAuthorization;
+  "plugins/webhookEventCatalog": typeof plugins_webhookEventCatalog;
+  "plugins/webhookEventCatalog.generated": typeof plugins_webhookEventCatalog_generated;
   providerRoutes: typeof providerRoutes;
   publicRateLimit: typeof publicRateLimit;
   quickQuery: typeof quickQuery;
@@ -1307,6 +1314,7 @@ declare const fullApi: ApiFromModules<{
   "webhooks/dispatcher": typeof webhooks_dispatcher;
   "webhooks/endpoints": typeof webhooks_endpoints;
   "webhooks/events": typeof webhooks_events;
+  "webhooks/events/catalog": typeof webhooks_events_catalog;
   "webhooks/events/contactCreated/index": typeof webhooks_events_contactCreated_index;
   "webhooks/events/emailBounced/index": typeof webhooks_events_emailBounced_index;
   "webhooks/events/emailClicked/index": typeof webhooks_events_emailClicked_index;
