@@ -7,6 +7,13 @@ const manifest = () => ({
 	capabilities: ['mail:read', 'send:gate'],
 });
 
+const gate = (id: string) => ({
+	id,
+	label: id,
+	module: { exportPath: `./gates/${id}` },
+	timeoutMs: 1_000,
+});
+
 function createHost(overrides: Partial<Parameters<typeof createPluginHost>[0]> = {}) {
 	return createPluginHost({
 		manifest: manifest(),
@@ -160,9 +167,9 @@ describe('central plugin host', () => {
 		expect(Object.isFrozen(host.manifest.component)).toBe(true);
 	});
 
-	it('snapshots and freezes contribution membership while preserving opaque values', () => {
-		const firstGate = { id: 'first-gate' };
-		const secondGate = { id: 'second-gate' };
+	it('snapshots and freezes typed contribution descriptors and opaque deferred values', () => {
+		const firstGate = gate('first-gate');
+		const secondGate = gate('second-gate');
 		const agentStep = {
 			id: 'agent-step',
 			after: 'security_scan',
@@ -173,7 +180,7 @@ describe('central plugin host', () => {
 		const sendGates = [firstGate, secondGate];
 		const agentSteps = [agentStep];
 		const contributes: {
-			sendGates?: { id: string }[];
+			sendGates?: ReturnType<typeof gate>[];
 			agentSteps?: (typeof agentStep)[];
 			widgets?: ({ id: string } | undefined)[];
 		} = { sendGates, agentSteps, widgets: [opaquePlaceholder] };
@@ -186,7 +193,7 @@ describe('central plugin host', () => {
 		const host = createHost({ manifest: source });
 
 		sendGates.reverse();
-		sendGates.push({ id: 'injected-after-validation' });
+		sendGates.push(gate('injected-after-validation'));
 		agentSteps.splice(0, agentSteps.length);
 		delete contributes.sendGates;
 		contributes.widgets = [{ id: 'late-widget' }];
@@ -197,7 +204,8 @@ describe('central plugin host', () => {
 		expect(hostedContributes.sendGates).toEqual([firstGate, secondGate]);
 		expect(hostedContributes.agentSteps).toEqual([agentStep]);
 		expect(hostedContributes.widgets).toEqual([opaquePlaceholder]);
-		expect(hostedContributes.sendGates?.[0]).toBe(firstGate);
+		expect(hostedContributes.sendGates?.[0]).not.toBe(firstGate);
+		expect(hostedContributes.sendGates?.[0]?.module).not.toBe(firstGate.module);
 		expect(Object.isFrozen(hostedContributes)).toBe(true);
 		expect(Object.isFrozen(hostedContributes.sendGates)).toBe(true);
 		expect(Object.isFrozen(hostedContributes.agentSteps)).toBe(true);
@@ -212,12 +220,14 @@ describe('central plugin host', () => {
 					return Reflect.get(target, key, receiver);
 				},
 			});
-		const sendGates = trackReads([{ id: 'safe-gate' }]);
+		const sendGates = trackReads([gate('safe-gate')]);
 		const contributes = trackReads({ sendGates });
 
-		const host = createHost({ manifest: { ...manifest(), contributes } });
+		const host = createHost({
+			manifest: { ...manifest(), flag: { default: false }, contributes },
+		});
 
-		expect(host.manifest.contributes?.sendGates).toEqual([{ id: 'safe-gate' }]);
+		expect(host.manifest.contributes?.sendGates).toEqual([gate('safe-gate')]);
 		expect(reads).toBe(0);
 	});
 
@@ -302,16 +312,18 @@ describe('central plugin host', () => {
 			}
 		);
 		const llmBudget = unstable('llmBudget', { dailyUsd: 2 }, { dailyUsd: 999 });
-		const firstGate = { id: 'first-gate' };
-		const sendGates = unstable('sendGates', [firstGate], { 0: { id: 'attacker-gate' } });
+		const firstGate = gate('first-gate');
+		const sendGates = unstable('sendGates', [firstGate], { 0: gate('attacker-gate') });
 		const contributes = unstable(
 			'contributes',
 			{ sendGates },
 			{
-				sendGates: [{ id: 'replacement-gate' }],
+				sendGates: [gate('replacement-gate')],
 			}
 		);
-		const capabilities = unstable('capabilities', ['mail:read'], { 0: 'contacts:write' });
+		const capabilities = unstable('capabilities', ['mail:read', 'send:gate'], {
+			0: 'contacts:write',
+		});
 		const source = unstable(
 			'manifest',
 			{
@@ -329,7 +341,7 @@ describe('central plugin host', () => {
 				capabilities: ['contacts:write'],
 				flag: { default: true, requiredEnvVars: ['ATTACKER_TOKEN'] },
 				llmBudget: { dailyUsd: 999 },
-				contributes: { sendGates: [{ id: 'replacement-gate' }] },
+				contributes: { sendGates: [gate('replacement-gate')] },
 				component: replacementComponent,
 			}
 		);
@@ -339,7 +351,7 @@ describe('central plugin host', () => {
 		expect(host.manifest).toMatchObject({
 			id: 'policy-pack',
 			version: '1.0.0',
-			capabilities: ['mail:read'],
+			capabilities: ['mail:read', 'send:gate'],
 			flag: { default: false, requiredEnvVars: ['POLICY_TOKEN'] },
 			llmBudget: { dailyUsd: 2 },
 		});
@@ -349,7 +361,7 @@ describe('central plugin host', () => {
 		expect([...descriptorReads.values()]).toEqual(
 			Array.from({ length: descriptorReads.size }, () => 1)
 		);
-		expect(descriptorReads.size).toBe(17);
+		expect(descriptorReads.size).toBe(18);
 		expect(propertyReads).toBe(0);
 	});
 });

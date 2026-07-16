@@ -271,6 +271,7 @@ const HOSTED_PLUGIN_ACTIONS: ReadonlySet<string> = new Set(
 );
 const HOSTED_PLUGIN_OPERATION_LABELS = {
 	'agent.step': 'Agent pipeline step',
+	'autonomy.gate': 'Autonomy gate',
 	'draft.strategy': 'Draft strategy',
 	'llm.generate': 'LLM generation',
 	'storage.delete': 'Storage delete',

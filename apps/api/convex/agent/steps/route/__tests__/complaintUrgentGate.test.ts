@@ -4,7 +4,7 @@
  * Complaint / urgent mail now flows through the drafter (via the clarify step)
  * instead of skipping straight to a blank human-review box, so it reaches the
  * `route` step's auto-send logic for the first time. The final safety gate
- * (`assertSafeToAutoSend`) must fail closed on it regardless of autonomy tier or
+ * ordered final gate registry must fail closed on it regardless of autonomy tier or
  * draft-quality score — a human always reviews it.
  *
  * The fake ctx makes autonomy tier 2 ALLOW the send and the draft quality HIGH,

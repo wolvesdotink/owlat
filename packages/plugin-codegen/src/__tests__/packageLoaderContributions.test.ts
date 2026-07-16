@@ -32,6 +32,13 @@ describe('plugin contribution export loading', () => {
 			exportPath: './draft/legal',
 			filePath: 'draft/legal.js',
 		},
+		{
+			label: 'autonomy gate',
+			packageName: 'gate-plugin',
+			manifest: `export default { id: 'gate', version: '1.0.0', capabilities: ['send:gate'], flag: { default: false }, contributes: { sendGates: [{ id: 'approval', label: 'Approval', module: { exportPath: './gates/approval' }, timeoutMs: 1000 }] } };`,
+			exportPath: './gates/approval',
+			filePath: 'gates/approval.js',
+		},
 	] as const)('verifies $label exports without executing them', async (fixture) => {
 		const root = await createPackageLoaderWorkspace(
 			{ [fixture.packageName]: '1.0.0' },

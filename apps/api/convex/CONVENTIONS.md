@@ -236,6 +236,20 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   the system-attributed budgeted host service and require their own `llm:invoke`
   grant. Timeout, denial, exception, invalid/oversized/injection-like output, or
   stale registration falls back once to the built-in `default` strategy.
+- Autonomy gates append after every immutable core final gate in generated
+  catalog order. Never add a plugin `before`, `replace`, `skip`, or approval
+  path. Preserve the working-hours config-read and handling-rules-read fail-soft
+  exceptions as two explicit core compatibility cases; plugin uncertainty is
+  always an objection.
+- Reauthorize each catalogued autonomy gate immediately before invocation.
+  Supply only a copied, frozen, bounded mail projection and `AbortSignal`, never
+  a Convex context or another host service. Clamp timeouts to the host maximum;
+  abort and drain late work. Missing, duplicate, stale, disabled, revoked,
+  environment-incomplete, failed, timed-out, or malformed gates route to human
+  review. Audit only fixed taxonomy, never mail, objection, or error text.
+- Run extensible autonomy gates once at the route-time approval boundary. Do not
+  rerun them at final dispatch; the existing reference monitor owns that later
+  boundary.
 - Bundled agent steps expose one data-only descriptor and one generated Node
   export. Derive action kinds and Convex validators from the combined catalog;
   never repeat a literal union in the walker, lifecycle, or schema.
