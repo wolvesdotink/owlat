@@ -84,8 +84,10 @@ const CHARSET_ALIASES: Record<string, string> = {
 /** Canonicalize a declared charset label; absent/blank defaults to us-ascii. */
 export function normalizeCharset(label: string | undefined): string {
 	const raw = (label ?? 'us-ascii').trim().toLowerCase();
-	if (raw === '') return 'windows-1252';
-	return CHARSET_ALIASES[raw] ?? raw;
+	// A blank label defaults to us-ascii, then resolves through the one alias
+	// table (us-ascii → windows-1252) — no hardcoded duplicate of that mapping.
+	const effective = raw === '' ? 'us-ascii' : raw;
+	return CHARSET_ALIASES[effective] ?? effective;
 }
 
 /** Byte-preserving latin1 decode: each byte 0x00–0xFF → U+0000–U+00FF. */

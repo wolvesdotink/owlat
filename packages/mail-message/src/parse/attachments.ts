@@ -36,7 +36,7 @@ export interface MessageAttachment {
 	size: number;
 }
 
-/** `Content-ID` value with a single pair of surrounding angle brackets removed. */
+/** `Content-ID` value with every angle bracket stripped anywhere (mailMime parity). */
 function stripBrackets(value: string | undefined): string | undefined {
 	if (value === undefined) return undefined;
 	const trimmed = value.replace(/[<>]/g, '').trim();
