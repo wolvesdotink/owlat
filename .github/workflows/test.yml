@@ -56,6 +56,8 @@ jobs:
             name: email-previewer
           - workspace: packages/mail-message
             name: mail-message
+          - workspace: packages/mail-auth
+            name: mail-auth
 
     steps:
       - uses: step-security/harden-runner@v2

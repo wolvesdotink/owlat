@@ -39,7 +39,6 @@ apps/docs/app/components/content/SmtpSession.vue
 apps/docs/app/pages/index.vue
 apps/mail-sync/src/connection.ts
 apps/marketing/app/components/FeatureBento.vue
-apps/mta/src/bounce/inboundSecurity.ts
 apps/mta/src/smtp/sender.ts
 apps/mta/src/smtp/submissionServer.ts
 apps/mta/src/smtp/tlsRpt.ts
