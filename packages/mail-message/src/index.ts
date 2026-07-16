@@ -4,8 +4,9 @@
  *
  * P1 lands the header engine: the relocated RFC 2047 / 2231 header helpers, a
  * structured header map, structured Content-Type/Disposition parsing, RFC 5322
- * date parsing, and the AddressObject layer. Body/charset (P2) and the
- * `parseMessage` facade (P3) build on this surface.
+ * date parsing, and the AddressObject layer. P2 adds MIME part-tree assembly,
+ * per-part charset decoding and document-order attachment extraction. The
+ * `parseMessage` facade (P3) builds on this surface.
  */
 
 export {
@@ -34,3 +35,24 @@ export {
 	type EmailAddress,
 	type AddressObject,
 } from './parse/address';
+
+export { decodeCharset, normalizeCharset } from './parse/charset';
+
+export {
+	parseMimeTree,
+	walkLeaves,
+	partFilename,
+	partDisposition,
+	isAttachmentPart,
+	transferDecode,
+	assembleBody,
+	parseBody,
+	type MimeNode,
+	type AssembledBody,
+} from './parse/body';
+
+export {
+	extractAttachments,
+	extractAttachmentsFromTree,
+	type MessageAttachment,
+} from './parse/attachments';
