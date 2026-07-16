@@ -16,10 +16,10 @@
  */
 
 import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
-import { getOptional, isEnvPresent } from '../env';
+import { isEnvPresent } from '../env';
 import { authorizeSystemBundledPlugin } from '../../plugins/authorization';
 import { isCoreSendProviderKind, sendProviderCatalogEntry } from './catalog';
-import { isSendProviderKind } from './types';
+import { isSendProviderKind, selectSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 
@@ -45,6 +45,15 @@ export async function isSendProviderReady(
 	);
 }
 
+/** Readiness of the exact provider selection the worker will use. */
+export async function selectedSendProviderReady(
+	ctx: QueryCtx | MutationCtx,
+	explicitProviderType: string | undefined
+): Promise<boolean> {
+	const provider = selectSendProviderKind(explicitProviderType);
+	return provider !== null && (await isSendProviderReady(ctx, provider));
+}
+
 /**
  * Environment-fallback readiness check. `EMAIL_PROVIDER` must name a composed
  * provider kind, and that provider must pass the same credentials, flag, and
@@ -52,9 +61,7 @@ export async function isSendProviderReady(
  * their exact credential-only behavior.
  */
 export async function deliveryConfiguredFromEnv(ctx: QueryCtx | MutationCtx): Promise<boolean> {
-	const provider = getOptional('EMAIL_PROVIDER');
-	if (!isSendProviderKind(provider)) return false;
-	return await isSendProviderReady(ctx, provider);
+	return await selectedSendProviderReady(ctx, undefined);
 }
 
 /** Action-callable environment readiness check with no route fallback. */

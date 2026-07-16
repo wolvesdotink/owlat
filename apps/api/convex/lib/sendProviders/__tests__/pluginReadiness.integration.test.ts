@@ -32,6 +32,15 @@ vi.mock('../../../plugins/plugins.generated', () => ({
 	]),
 }));
 
+vi.mock('../../../delivery/workpool', () => ({
+	transactionalEmailPool: {
+		enqueueAction: vi.fn().mockResolvedValue(undefined),
+	},
+	campaignEmailPool: {
+		enqueueAction: vi.fn().mockResolvedValue(undefined),
+	},
+}));
+
 vi.mock('../../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../../lib/sessionOrganization');
 	return {
@@ -48,7 +57,12 @@ vi.mock('../../../lib/sessionOrganization', async () => {
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
-import { createTestCampaign, createTestEmailTemplate } from '../../../__tests__/factories';
+import {
+	createTestCampaign,
+	createTestContact,
+	createTestEmailSend,
+	createTestEmailTemplate,
+} from '../../../__tests__/factories';
 import { _resetSingletonOrgCacheForTests } from '../../../lib/sessionOrganization';
 import { deliveryConfiguredFromEnv, isDeliveryConfigured } from '../capability';
 import { resolveSendRouteFromDb, type MessageType } from '../route';
@@ -221,5 +235,116 @@ describe('campaign and transactional plugin readiness gates', () => {
 	it('rejects both delivery paths for a stale plugin kind', async () => {
 		vi.stubEnv('EMAIL_PROVIDER', 'plugin.retired-mail.postmark');
 		await expectEntryPointReadiness({}, false);
+	});
+});
+
+async function expectNonCampaignEnqueueRejected(
+	fixture: ReadinessFixture,
+	providerType: string
+): Promise<void> {
+	const t = convexTest(schema, modules);
+	await t.run(async (ctx) => {
+		await ctx.db.insert('instanceSettings', {
+			featureFlags: { [pluginFlag]: fixture.isEnabled ?? true },
+			pluginCapabilityGrants: {
+				[pluginFlag]: { 'send:transport': fixture.isGranted ?? true },
+			},
+			createdAt: 0,
+			updatedAt: 0,
+		});
+	});
+
+	await expect(
+		t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			kind: 'automation',
+			email: 'recipient@example.com',
+			subject: 'Hello',
+			html: '<p>Hello</p>',
+			from: 'Owlat <sender@example.com>',
+			providerType,
+		})
+	).rejects.toThrow('no_delivery_provider');
+
+	const sends = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
+	expect(sends).toHaveLength(0);
+}
+
+describe('enqueue provider selection matches worker selection', () => {
+	beforeEach(() => {
+		_resetSingletonOrgCacheForTests();
+		vi.unstubAllEnvs();
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		vi.stubEnv('MTA_API_URL', 'http://mta:3100');
+		vi.stubEnv('MTA_API_KEY', 'mta-key');
+		vi.stubEnv('POSTMARK_TOKEN', 'present');
+	});
+
+	it.each([
+		['disabled flag', { isEnabled: false }],
+		['missing grant', { isGranted: false }],
+	] as const)(
+		'rejects an explicit plugin with a %s instead of borrowing a ready env provider',
+		async (_label, fixture) => {
+			await expectNonCampaignEnqueueRejected(fixture, pluginKind);
+		}
+	);
+
+	it('rejects an explicit plugin with missing environment instead of borrowing a ready env provider', async () => {
+		vi.stubEnv('POSTMARK_TOKEN', '');
+		await expectNonCampaignEnqueueRejected({}, pluginKind);
+	});
+
+	it('rejects an invalid explicit provider instead of borrowing a ready env provider', async () => {
+		await expectNonCampaignEnqueueRejected({}, 'plugin.retired-mail.postmark');
+	});
+
+	it('rejects an unconfigured explicit core provider instead of borrowing a ready env provider', async () => {
+		vi.stubEnv('RESEND_API_KEY', '');
+		await expectNonCampaignEnqueueRejected({}, 'resend');
+	});
+
+	it('uses the ready environment provider only when no explicit provider is supplied', async () => {
+		const t = convexTest(schema, modules);
+		const { sendId } = await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			kind: 'automation',
+			email: 'recipient@example.com',
+			subject: 'Hello',
+			html: '<p>Hello</p>',
+			from: 'Owlat <sender@example.com>',
+		});
+
+		const send = await t.run(async (ctx) => ctx.db.get(sendId));
+		expect(send).toMatchObject({ status: 'queued', email: 'recipient@example.com' });
+		expect(send?.providerType).toBeUndefined();
+	});
+
+	it('rechecks an explicit campaign plugin before queueing delayed recipients', async () => {
+		const { t, campaignId } = await seedPluginReadinessScenario({ isEnabled: false });
+		const { contactId, emailSendId } = await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'recipient@example.com' })
+			);
+			const emailSendId = await ctx.db.insert(
+				'emailSends',
+				createTestEmailSend({ campaignId, contactId, contactEmail: 'recipient@example.com' })
+			);
+			return { contactId, emailSendId };
+		});
+		const { campaignEmailPool } = await import('../../../delivery/workpool');
+		const enqueueAction = vi.mocked(campaignEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+
+		await expect(
+			t.mutation(internal.delivery.enqueue.enqueueCampaignEmails, {
+				campaignId,
+				emails: [{ emailSendId, contactId, email: 'recipient@example.com' }],
+				from: 'Owlat <sender@example.com>',
+				subject: 'Hello',
+				htmlContent: '<p>Hello</p>',
+				providerType: pluginKind,
+			})
+		).rejects.toThrow('no_delivery_provider');
+		expect(enqueueAction).not.toHaveBeenCalled();
 	});
 });
