@@ -99,6 +99,20 @@ export class SmtpConnection {
 				secured: this.secured,
 			});
 		}
+		// Final-hop framing guard: this is public package API, so enforce
+		// exactly-one-command framing here even though the S1 serializers already
+		// guard their fields. A line with an interior CR/LF would inject a second
+		// command; a line missing its CRLF terminator would silently hang until the
+		// command timeout. A future call site that hand-builds a line (skipping the
+		// serializers) is caught structurally rather than on the wire.
+		if (!line.endsWith('\r\n') || /[\r\n]/.test(line.slice(0, -2))) {
+			throw new SmtpError({
+				phase,
+				message:
+					'malformed SMTP command line: must end with exactly one CRLF and contain no interior CR/LF',
+				secured: this.secured,
+			});
+		}
 		this.write(line, phase);
 		return this.reader.read(
 			phase,
