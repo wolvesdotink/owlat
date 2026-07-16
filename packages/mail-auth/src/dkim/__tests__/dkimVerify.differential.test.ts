@@ -13,8 +13,11 @@
  * differential surface, and the class of fixture that pins Blocking 1),
  * oversigned `h=` (the standard header-addition defense — a repeated `h=` name
  * with no second header must be SKIPPED, not synthesized), mutated body, wrong
- * published key, absent key, revoked key, multi-signature strongest-wins, and
- * refolded signed headers.
+ * published key, absent key, revoked key, multi-signature strongest-wins,
+ * refolded signed headers, the `x=`/`t=` timestamp corners (expired and
+ * `x= < t=` invalid expiration both -> `neutral` on BOTH sides), and the
+ * structurally-unusable shapes mailauth SKIPS (missing `s=`, unknown `a=`,
+ * unrecognized `c=`) which are `none` on BOTH sides.
  *
  * The `l=` -> neutral divergence has its own dedicated test and is not exercised
  * here. The rsa-sha1 policy-fail divergence IS pinned here (crypto-valid
@@ -23,11 +26,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createHash, createSign, generateKeyPairSync, type KeyObject } from 'crypto';
+import { generateKeyPairSync, type KeyObject } from 'crypto';
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
-import { canonicalizeBodyRelaxed, canonicalizeHeaderField } from '../../canon.js';
 import { verifyDkim } from '../verify.js';
+import { mintSignature } from './helpers/mint.js';
 
 type Verdict = 'pass' | 'fail' | 'neutral' | 'none' | 'temperror' | 'permerror';
 
@@ -77,8 +80,7 @@ function normalizeMailauth(result: unknown): Verdict {
 					comment.includes('no key') ||
 					comment.includes('invalid public key') ||
 					comment.includes('missing key') ||
-					comment.includes('unknown key') ||
-					comment.includes('revoked')
+					comment.includes('unknown key')
 				) {
 					v = 'permerror';
 				} else {
@@ -172,65 +174,40 @@ async function signEd25519(message = RAW_MESSAGE): Promise<Buffer> {
 	return Buffer.from(res.signatures + message);
 }
 
-/**
- * Mint an rsa signature over OUR public `canon` API (relaxed/relaxed), building
- * the header hash input exactly as the verifier does — including the oversigning
- * rule that a repeated `h=` name with no remaining header contributes NOTHING.
- * Returns the raw message with the DKIM-Signature header prepended. Feeding this
- * to BOTH verifiers proves signer/verifier agreement AND that our canon matches
- * mailauth's (byte-identity), so both must reach the same verdict.
- */
-function mintOverOurCanon(opts: {
-	readonly headers: readonly string[];
-	readonly hTag: string;
-	readonly body: string;
-	readonly hashAlg: 'sha256' | 'sha1';
-	readonly algTag: 'rsa-sha256' | 'rsa-sha1';
-}): Buffer {
-	const canonBody = canonicalizeBodyRelaxed(Buffer.from(opts.body, 'latin1'));
-	const bh = createHash(opts.hashAlg).update(canonBody).digest('base64');
-	const sigUnsigned =
-		`DKIM-Signature: v=1; a=${opts.algTag}; c=relaxed/relaxed; d=${DOMAIN}; s=${SELECTOR};` +
-		` h=${opts.hTag}; bh=${bh}; b=`;
-
-	// Bottom-up per-name stacks, consumed exactly as buildHeaderHashInput does.
-	const stacks = new Map<string, string[]>();
-	for (const h of opts.headers) {
-		const name = h.slice(0, h.indexOf(':')).trim().toLowerCase();
-		const stack = stacks.get(name);
-		if (stack) {
-			stack.push(h);
-		} else {
-			stacks.set(name, [h]);
-		}
-	}
-	const names = opts.hTag
-		.split(':')
-		.map((n) => n.trim().toLowerCase())
-		.filter((n) => n !== '');
-	const parts: string[] = [];
-	for (const name of names) {
-		const raw = stacks.get(name)?.pop();
-		if (raw === undefined) {
-			continue;
-		}
-		parts.push(`${canonicalizeHeaderField(raw, 'relaxed')}\r\n`);
-	}
-	const headerInput = Buffer.from(
-		parts.join('') + canonicalizeHeaderField(sigUnsigned, 'relaxed'),
-		'latin1'
-	);
-	const b = createSign(opts.hashAlg).update(headerInput).sign(rsa.privateKey, 'base64');
-	const message = `${opts.headers.join('\r\n')}\r\n\r\n${opts.body}`;
-	return Buffer.from(`${sigUnsigned}${b}\r\n${message}`, 'latin1');
-}
-
 const MINT_HEADERS = [
 	'From: Alice <alice@example.com>',
 	'To: Bob <bob@example.org>',
 	'Subject: signed-by-us fixture',
 ];
 const MINT_BODY = 'Body signed with our own canon.\r\n';
+
+/**
+ * Mint an rsa signature over OUR public `canon` API (relaxed/relaxed) via the
+ * shared `mintSignature` helper. Feeding the result to BOTH verifiers proves
+ * signer/verifier agreement AND that our canon matches mailauth's (byte
+ * identity), so both must reach the same verdict.
+ */
+function mintOverOurCanon(opts: {
+	readonly hTag: string;
+	readonly algTag?: 'rsa-sha256' | 'rsa-sha1';
+	readonly extraTags?: string;
+}): Buffer {
+	return mintSignature({
+		privateKey: rsa.privateKey,
+		domain: DOMAIN,
+		selector: SELECTOR,
+		headers: MINT_HEADERS,
+		body: MINT_BODY,
+		hTag: opts.hTag,
+		...(opts.algTag !== undefined ? { algTag: opts.algTag } : {}),
+		...(opts.extraTags !== undefined ? { extraTags: opts.extraTags } : {}),
+	});
+}
+
+/** Prepend a raw, hand-crafted DKIM-Signature header to a message (no crypto). */
+function rawSig(tags: string, message = RAW_MESSAGE): Buffer {
+	return Buffer.from(`DKIM-Signature: ${tags}\r\n${message}`, 'latin1');
+}
 
 /** Assert our verdict equals mailauth's normalized verdict. */
 async function assertAgree(message: Buffer, resolver: DnsFn, expected: Verdict): Promise<void> {
@@ -321,13 +298,7 @@ describe('verifyDkim differential vs mailauth', () => {
 	});
 
 	it('signed-by-us (our canon) -> pass on BOTH verifiers', async () => {
-		const msg = mintOverOurCanon({
-			headers: MINT_HEADERS,
-			hTag: 'from:to:subject',
-			body: MINT_BODY,
-			hashAlg: 'sha256',
-			algTag: 'rsa-sha256',
-		});
+		const msg = mintOverOurCanon({ hTag: 'from:to:subject' });
 		await assertAgree(msg, resolverFor(rsaTxt), 'pass');
 	});
 
@@ -336,13 +307,7 @@ describe('verifyDkim differential vs mailauth', () => {
 		// bind against a later-added From, but only one From exists. mailauth and
 		// OpenDKIM contribute NOTHING for the extra name; synthesizing `from:`+CRLF
 		// would false-`fail` this legitimate, extremely common shape (Blocking 1).
-		const msg = mintOverOurCanon({
-			headers: MINT_HEADERS,
-			hTag: 'from:to:subject:from',
-			body: MINT_BODY,
-			hashAlg: 'sha256',
-			algTag: 'rsa-sha256',
-		});
+		const msg = mintOverOurCanon({ hTag: 'from:to:subject:from' });
 		await assertAgree(msg, resolverFor(rsaTxt), 'pass');
 	});
 
@@ -350,16 +315,56 @@ describe('verifyDkim differential vs mailauth', () => {
 		// The one algorithm divergence: rsa-sha1 verifies cryptographically but is
 		// policy-failed as deprecated. mailauth still returns `pass`; we return
 		// `fail`. Pin BOTH sides so the sanctioned divergence is enumerated (D2).
-		const msg = mintOverOurCanon({
-			headers: MINT_HEADERS,
-			hTag: 'from:to:subject',
-			body: MINT_BODY,
-			hashAlg: 'sha1',
-			algTag: 'rsa-sha1',
-		});
+		const msg = mintOverOurCanon({ hTag: 'from:to:subject', algTag: 'rsa-sha1' });
 		const ours = await verifyDkim(msg, { resolver: resolverFor(rsaTxt) });
 		const oracle = normalizeMailauth(await dkimVerify(msg, { resolver: resolverFor(rsaTxt) }));
 		expect(oracle).toBe('pass');
 		expect(ours.result).toBe('fail');
+	});
+
+	// --- x=/t= timestamp semantics (must MATCH the replaced mailauth path) -----
+	// A crypto-valid signature that is expired, or whose x= is not greater than
+	// t= (invalid expiration, RFC 6376 §3.5), is `neutral` on BOTH sides — it
+	// never authenticates the message, and never `fail`s above a sibling neutral.
+
+	it('x= in the past (expired) -> neutral on BOTH', async () => {
+		// t=100 < x=500, both far in the past: a valid-but-expired signature.
+		const msg = mintOverOurCanon({ hTag: 'from:to:subject', extraTags: 't=100; x=500; ' });
+		await assertAgree(msg, resolverFor(rsaTxt), 'neutral');
+	});
+
+	it('x= < t= (invalid expiration) -> neutral on BOTH', async () => {
+		// x=4000000000 < t=5000000000, both far in the FUTURE, so neither side
+		// treats it as expired — the neutral is driven purely by x= < t=.
+		const msg = mintOverOurCanon({
+			hTag: 'from:to:subject',
+			extraTags: 't=5000000000; x=4000000000; ',
+		});
+		await assertAgree(msg, resolverFor(rsaTxt), 'neutral');
+	});
+
+	// --- structurally-unusable signatures are SKIPPED (-> none) on BOTH sides --
+	// mailauth skips a signature it cannot use; the replaced normalizeStatus maps
+	// skipped -> none. Ours must not record `permerror` (rank 4) for these.
+
+	it('missing s= (no selector) -> none on BOTH', async () => {
+		const msg = rawSig(
+			'v=1; a=rsa-sha256; c=relaxed/relaxed; d=example.com; h=from:to:subject; bh=AAAA; b=AAAA'
+		);
+		await assertAgree(msg, resolverFor(rsaTxt), 'none');
+	});
+
+	it('unknown algorithm (a=rsa-sha512) -> none on BOTH', async () => {
+		const msg = rawSig(
+			'v=1; a=rsa-sha512; c=relaxed/relaxed; d=example.com; s=sel; h=from:to:subject; bh=AAAA; b=AAAA'
+		);
+		await assertAgree(msg, resolverFor(rsaTxt), 'none');
+	});
+
+	it('unrecognized c= canonicalization -> none on BOTH', async () => {
+		const msg = rawSig(
+			'v=1; a=rsa-sha256; c=frobnicate; d=example.com; s=sel; h=from:to:subject; bh=AAAA; b=AAAA'
+		);
+		await assertAgree(msg, resolverFor(rsaTxt), 'none');
 	});
 });

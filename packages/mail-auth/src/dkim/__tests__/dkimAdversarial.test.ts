@@ -12,10 +12,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createHash, createSign, generateKeyPairSync } from 'crypto';
-import { canonicalizeBodyRelaxed, canonicalizeHeaderField } from '../../canon.js';
+import { generateKeyPairSync } from 'crypto';
 import { verifyDkim, type DkimDnsResolver } from '../verify.js';
 import { isKeyRecordError, parseDkimKeyRecord } from '../keyRecord.js';
+import { mintSignature } from './helpers/mint.js';
 
 /** A resolver that never has a record — every lookup is NXDOMAIN. */
 const noKeyResolver: DkimDnsResolver = async (name) => {
@@ -41,16 +41,18 @@ describe('verifyDkim — hostile input is bounded and safe (D7)', () => {
 		expect(outcome.result).toBe('none');
 	});
 
-	it('a signature missing required tags -> permerror (never throws)', async () => {
+	it('a signature missing required tags -> none (skipped, matches mailauth)', async () => {
+		// Missing s=/h=/b=/bh=: an unusable signature is SKIPPED by mailauth and
+		// the old inboundDkim path (-> none), never recorded as a permanent error.
 		const msg = `DKIM-Signature: v=1; a=rsa-sha256; d=evil.example\r\n${BASE_MESSAGE}`;
 		const outcome = await verifyDkim(Buffer.from(msg), { resolver: noKeyResolver });
-		expect(outcome.result).toBe('permerror');
+		expect(outcome.result).toBe('none');
 	});
 
-	it('garbage in the DKIM-Signature value -> permerror, no throw', async () => {
+	it('garbage in the DKIM-Signature value -> none (no usable tags), no throw', async () => {
 		const msg = `DKIM-Signature: \x00\x01 not even tags ;;;===\r\n${BASE_MESSAGE}`;
 		const outcome = await verifyDkim(Buffer.from(msg), { resolver: noKeyResolver });
-		expect(['permerror', 'fail', 'temperror']).toContain(outcome.result);
+		expect(outcome.result).toBe('none');
 	});
 
 	it('injected bogus signature cannot forge a pass', async () => {
@@ -153,31 +155,29 @@ function resolverServing(record: string): DkimDnsResolver {
  * on or before the body-hash / key checks, where the crypto is never run.
  */
 function craft(extraTags: string): Buffer {
-	const canonBody = canonicalizeBodyRelaxed(Buffer.from(BR_BODY, 'latin1'));
-	const bh = createHash('sha256').update(canonBody).digest('base64');
-	const header =
-		`DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=${BR_DOMAIN}; s=${BR_SELECTOR};` +
-		` h=from:to:subject; bh=${bh}; ${extraTags}b=AAAA`;
-	return Buffer.from(`${header}\r\n${BR_HEADERS.join('\r\n')}\r\n\r\n${BR_BODY}`, 'latin1');
+	return mintSignature({
+		privateKey: brRsa.privateKey,
+		domain: BR_DOMAIN,
+		selector: BR_SELECTOR,
+		headers: BR_HEADERS,
+		hTag: 'from:to:subject',
+		body: BR_BODY,
+		extraTags,
+		bogusSignature: 'AAAA',
+	});
 }
 
 /** Mint a crypto-VALID rsa-sha256 signature with `extraTags` before `b=`. */
 function mintValid(extraTags: string): Buffer {
-	const canonBody = canonicalizeBodyRelaxed(Buffer.from(BR_BODY, 'latin1'));
-	const bh = createHash('sha256').update(canonBody).digest('base64');
-	const sigUnsigned =
-		`DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=${BR_DOMAIN}; s=${BR_SELECTOR};` +
-		` h=from:to:subject; bh=${bh}; ${extraTags}b=`;
-	const parts = BR_HEADERS.map((h) => `${canonicalizeHeaderField(h, 'relaxed')}\r\n`);
-	const headerInput = Buffer.from(
-		parts.join('') + canonicalizeHeaderField(sigUnsigned, 'relaxed'),
-		'latin1'
-	);
-	const b = createSign('sha256').update(headerInput).sign(brRsa.privateKey, 'base64');
-	return Buffer.from(
-		`${sigUnsigned}${b}\r\n${BR_HEADERS.join('\r\n')}\r\n\r\n${BR_BODY}`,
-		'latin1'
-	);
+	return mintSignature({
+		privateKey: brRsa.privateKey,
+		domain: BR_DOMAIN,
+		selector: BR_SELECTOR,
+		headers: BR_HEADERS,
+		hTag: 'from:to:subject',
+		body: BR_BODY,
+		extraTags,
+	});
 }
 
 describe('verifyDkim — security-relevant verify branches', () => {
@@ -193,12 +193,23 @@ describe('verifyDkim — security-relevant verify branches', () => {
 		expect(outcome.result).toBe('permerror');
 	});
 
-	it('x= expired -> fail (crypto-valid but past expiry)', async () => {
+	it('x= expired -> neutral (crypto-valid but past expiry, matches mailauth)', async () => {
+		// Expired is `neutral`, not `fail`: it must not outrank a sibling neutral.
 		const outcome = await verifyDkim(mintValid('x=500; '), {
 			resolver: resolverServing(brRsaRecord),
 			now: 1000,
 		});
-		expect(outcome.result).toBe('fail');
+		expect(outcome.result).toBe('neutral');
+	});
+
+	it('x= < t= (invalid expiration, RFC 6376 §3.5) -> neutral', async () => {
+		// x=3000 is in the future (now=1000, not expired) but is less than t=5000,
+		// so the invalid-expiration branch drives the neutral verdict.
+		const outcome = await verifyDkim(mintValid('t=5000; x=3000; '), {
+			resolver: resolverServing(brRsaRecord),
+			now: 1000,
+		});
+		expect(outcome.result).toBe('neutral');
 	});
 
 	it('x= in the future -> pass (control for the expiry branch)', async () => {

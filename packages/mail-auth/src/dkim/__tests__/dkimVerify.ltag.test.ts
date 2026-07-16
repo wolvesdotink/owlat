@@ -16,9 +16,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { createHash, createSign, generateKeyPairSync } from 'crypto';
-import { canonicalizeBodyRelaxed, canonicalizeHeaderField } from '../../canon.js';
+import { generateKeyPairSync } from 'crypto';
+import { canonicalizeBodyRelaxed } from '../../canon.js';
 import { verifyDkim, type DkimDnsResolver } from '../verify.js';
+import { mintSignature } from './helpers/mint.js';
 
 const DOMAIN = 'example.com';
 const SELECTOR = 'sel';
@@ -49,31 +50,20 @@ const SIGNED_HEADERS = [
 const H_TAG = 'from:to:subject';
 
 /**
- * Mint a relaxed/relaxed rsa-sha256 signature over `SIGNED_HEADERS` + `body`,
- * optionally with an `l=` tag limiting the signed body length. Returns the raw
- * message (DKIM-Signature header prepended).
+ * Mint a relaxed/relaxed rsa-sha256 signature over `SIGNED_HEADERS` + `body`
+ * via the shared `mintSignature` helper, optionally with an `l=` tag limiting
+ * the signed body length. Returns the raw message (DKIM-Signature prepended).
  */
 function sign(body: string, opts: { readonly l?: number } = {}): Buffer {
-	let canonBody = canonicalizeBodyRelaxed(Buffer.from(body, 'latin1'));
-	if (opts.l !== undefined) {
-		canonBody = canonBody.subarray(0, opts.l);
-	}
-	const bh = createHash('sha256').update(canonBody).digest('base64');
-
-	const lPart = opts.l !== undefined ? ` l=${opts.l};` : '';
-	const sigHeaderUnsigned =
-		`DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=${DOMAIN}; s=${SELECTOR};` +
-		` h=${H_TAG}; bh=${bh};${lPart} b=`;
-
-	const parts = SIGNED_HEADERS.map((h) => `${canonicalizeHeaderField(h, 'relaxed')}\r\n`);
-	const headerInput = Buffer.from(
-		parts.join('') + canonicalizeHeaderField(sigHeaderUnsigned, 'relaxed'),
-		'latin1'
-	);
-	const b = createSign('sha256').update(headerInput).sign(rsa.privateKey, 'base64');
-
-	const message = `${SIGNED_HEADERS.join('\r\n')}\r\n\r\n${body}`;
-	return Buffer.from(`${sigHeaderUnsigned}${b}\r\n${message}`, 'latin1');
+	return mintSignature({
+		privateKey: rsa.privateKey,
+		domain: DOMAIN,
+		selector: SELECTOR,
+		headers: SIGNED_HEADERS,
+		hTag: H_TAG,
+		body,
+		...(opts.l !== undefined ? { extraTags: `l=${opts.l}; `, bodyLimit: opts.l } : {}),
+	});
 }
 
 describe('DKIM l= body-length policy (D2 sanctioned improvement)', () => {
