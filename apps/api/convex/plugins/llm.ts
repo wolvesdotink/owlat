@@ -39,6 +39,22 @@ export function bindAuthenticatedBundledPluginLlm(
 	ctx: ActionCtx,
 	pluginIdInput: unknown
 ): PluginLlmService {
+	return bindBundledPluginLlm(ctx, pluginIdInput, false);
+}
+
+/** Background-host variant; authorization and settlement remain system-attributed. */
+export function bindSystemBundledPluginLlm(
+	ctx: ActionCtx,
+	pluginIdInput: unknown
+): PluginLlmService {
+	return bindBundledPluginLlm(ctx, pluginIdInput, true);
+}
+
+function bindBundledPluginLlm(
+	ctx: ActionCtx,
+	pluginIdInput: unknown,
+	system: boolean
+): PluginLlmService {
 	let pluginId;
 	try {
 		pluginId = parsePluginId(pluginIdInput);
@@ -52,14 +68,19 @@ export function bindAuthenticatedBundledPluginLlm(
 			try {
 				request = validatePluginLlmRequest(requestInput);
 			} catch {
-				await recordDenied(ctx, pluginId);
+				await recordDenied(ctx, pluginId, system);
 				throw new PluginLlmError('invalid_input');
 			}
 
 			try {
-				await ctx.runQuery(internal.plugins.llmAccounting.authorize, { pluginId });
+				await ctx.runQuery(
+					system
+						? internal.plugins.llmAccounting.authorizeSystem
+						: internal.plugins.llmAccounting.authorize,
+					{ pluginId }
+				);
 			} catch {
-				await recordDenied(ctx, pluginId);
+				await recordDenied(ctx, pluginId, system);
 				throw new PluginLlmError('access_denied');
 			}
 
@@ -78,14 +99,14 @@ export function bindAuthenticatedBundledPluginLlm(
 					}) ?? 0;
 				if (perAttemptMicrousd < 1) throw new Error('Unpriced model');
 			} catch {
-				await recordDenied(ctx, pluginId);
+				await recordDenied(ctx, pluginId, system);
 				throw new PluginLlmError('access_denied');
 			}
 
 			const reservationId = randomUUID();
 			const reservedMicrousd = perAttemptMicrousd * MAX_LLM_ATTEMPTS;
 			if (!Number.isSafeInteger(reservedMicrousd)) {
-				await recordDenied(ctx, pluginId);
+				await recordDenied(ctx, pluginId, system);
 				throw new PluginLlmError('access_denied');
 			}
 			try {
@@ -96,9 +117,10 @@ export function bindAuthenticatedBundledPluginLlm(
 					tier: request.tier,
 					modelId: resolvedModel.modelId,
 					endpointProvenance: resolvedModel.endpointProvenance,
+					...(system ? { system: true } : {}),
 				});
 			} catch {
-				await recordDenied(ctx, pluginId);
+				await recordDenied(ctx, pluginId, system);
 				throw new PluginLlmError('access_denied');
 			}
 
@@ -110,7 +132,7 @@ export function bindAuthenticatedBundledPluginLlm(
 					maxOutputTokens: PLUGIN_LLM_MAX_OUTPUT_TOKENS,
 				});
 			} catch {
-				const settled = await settleFailure(ctx, reservationId);
+				const settled = await settleFailure(ctx, reservationId, system);
 				if (!settled) throw new PluginLlmError('accounting_unavailable');
 				throw new PluginLlmError('provider_failure');
 			}
@@ -120,6 +142,7 @@ export function bindAuthenticatedBundledPluginLlm(
 					modelUsed: dispatched.result.modelUsed,
 					tokenUsage: dispatched.result.tokenUsage,
 					attempts: dispatched.attempts,
+					...(system ? { system: true } : {}),
 				});
 			} catch {
 				// The reservation mutation already consumed headroom. A failed
@@ -135,15 +158,27 @@ export function bindAuthenticatedBundledPluginLlm(
 	});
 }
 
-async function recordDenied(ctx: ActionCtx, pluginId: string): Promise<void> {
+async function recordDenied(ctx: ActionCtx, pluginId: string, system: boolean): Promise<void> {
 	await ctx
-		.runMutation(internal.plugins.llmAccounting.recordDenied, { pluginId })
+		.runMutation(
+			system
+				? internal.plugins.llmAccounting.recordDeniedSystem
+				: internal.plugins.llmAccounting.recordDenied,
+			{ pluginId }
+		)
 		.catch(() => null);
 }
 
-async function settleFailure(ctx: ActionCtx, reservationId: string): Promise<boolean> {
+async function settleFailure(
+	ctx: ActionCtx,
+	reservationId: string,
+	system: boolean
+): Promise<boolean> {
 	try {
-		await ctx.runMutation(internal.plugins.llmAccounting.settleFailure, { reservationId });
+		await ctx.runMutation(internal.plugins.llmAccounting.settleFailure, {
+			reservationId,
+			...(system ? { system: true } : {}),
+		});
 		return true;
 	} catch {
 		// Pending reservations remain fully charged through their UTC day. Never
