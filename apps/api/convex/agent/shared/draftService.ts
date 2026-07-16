@@ -247,12 +247,12 @@ export async function generateDraftOptions(
 // ─── Primary draft generation (the extracted core) ───────────────────────────
 
 /** Classification signals rendered into the (separate, uncached) system message. */
-export type DraftClassificationBlock = {
+export type DraftClassificationBlock = Readonly<{
 	category: string;
 	intent: string;
 	sentiment: string;
 	priority: string;
-};
+}>;
 
 /**
  * Build the STABLE system prompt (the prompt-cache prefix). Pure + exported so a
@@ -338,7 +338,7 @@ export function buildDraftMessages(args: {
 	];
 }
 
-export type SharedDraftParams = {
+export type SharedDraftParams = Readonly<{
 	/** Host surface identifier exposed to strategies instead of free-form audience text. */
 	surface: 'organization' | 'personal';
 	/** Capable-tier model (or fast tier for trivial classified mail) chosen by the caller. */
@@ -369,22 +369,22 @@ export type SharedDraftParams = {
 	maxSteps?: number;
 	temperature?: number;
 	/** Per-surface analytics labels so spend is attributable to the right surface. */
-	spendLabels: { selfCheck: string; options: string };
+	spendLabels: Readonly<{ selfCheck: string; options: string }>;
 	/** Host-only deterministic selection hints. Omit to force the default strategy. */
 	strategyScope?: {
 		readonly mailboxId?: string;
 		readonly contactId?: string;
 		readonly classification: string;
 	};
-};
+}>;
 
-export type SharedDraftResult = {
+export type SharedDraftResult = Readonly<{
 	draftBody: string;
 	draftQuality: DraftQuality | null;
 	draftOptions: string[];
 	tokenUsage: import('../../lib/llm/dispatch').LlmTextResult['tokenUsage'];
 	modelUsed: import('../../lib/llm/dispatch').LlmTextResult['modelUsed'];
-};
+}>;
 
 /**
  * THE shared draft pipeline both surfaces run: defense-in-depth injection
