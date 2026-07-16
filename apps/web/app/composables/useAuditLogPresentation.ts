@@ -275,6 +275,7 @@ const HOSTED_PLUGIN_OPERATION_LABELS = {
 	'storage.get': 'Storage read',
 	'storage.list': 'Storage list',
 	'storage.set': 'Storage write',
+	'transport.send': 'Email transport send',
 } as const satisfies Record<HostedPluginOperationLiteral, string>;
 
 /** The verb of an action literal: the segment after the first `.`, or the whole

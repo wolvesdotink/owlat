@@ -245,6 +245,22 @@ describe('resolveRoute (dispatcher + fallbacks)', () => {
 		expect(resolveRoute(config, health)).toMatchObject({ providerType: 'ses' });
 	});
 
+	it('skips stale unavailable providers and applies the same readiness rule to fallback', () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const config: ProviderRouteConfig = {
+			strategy: 'single',
+			providers: [
+				{ providerType: 'ses', isEnabled: true },
+				{ providerType: 'resend', isEnabled: true },
+			],
+		};
+		expect(resolveRoute(config, undefined, (kind) => kind === 'resend')).toEqual({
+			providerType: 'resend',
+			source: 'org_config',
+		});
+		expect(resolveRoute(config, undefined, () => false)).toBeNull();
+	});
+
 	it('unknown strategy literal falls back to env (null when no env)', () => {
 		const config = {
 			strategy: 'mystery' as 'single',

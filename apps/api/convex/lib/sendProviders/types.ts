@@ -10,7 +10,7 @@
  * See CONTEXT.md "Send provider adapter (module)".
  */
 
-import { SEND_TRANSPORT_KINDS } from '@owlat/shared';
+import type { SendProviderKind } from './catalog';
 
 /**
  * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
@@ -24,16 +24,8 @@ import { SEND_TRANSPORT_KINDS } from '@owlat/shared';
  * pulling the `SEND_PROVIDERS` registry (and thus `nodemailer`) into a
  * non-`'use node'` bundle.
  */
-export const SEND_PROVIDER_KINDS = SEND_TRANSPORT_KINDS;
-
-export type SendProviderKind = (typeof SEND_PROVIDER_KINDS)[number];
-
-/**
- * Type guard: is the given string a recognized provider kind?
- */
-export function isSendProviderKind(kind: string | undefined | null): kind is SendProviderKind {
-	return kind != null && (SEND_PROVIDER_KINDS as readonly string[]).includes(kind);
-}
+export { SEND_PROVIDER_KINDS, isSendProviderKind } from './catalog';
+export type { CoreSendProviderKind, SendProviderKind } from './catalog';
 
 /**
  * Canonical IP-pool names the built-in MTA routes through. Single source of
@@ -117,7 +109,7 @@ export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 			? ResendExtras
 			: K extends 'smtp'
 				? SmtpExtras
-				: never;
+				: unknown;
 
 // ─── Single-attempt result ─────────────────────────────────────────────────
 

@@ -17,7 +17,14 @@ import { mtaSendProvider } from './mta';
 import { sesSendProvider } from './ses';
 import { resendSendProvider } from './resend';
 import { smtpSendProvider } from './smtp';
-import type { SendProviderKind, SendProviderModule } from './types';
+import { BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES } from '../../plugins/sendTransportModules.generated';
+import {
+	SEND_PROVIDER_CATALOG,
+	sendProviderCatalogEntry,
+	isCoreSendProviderKind,
+} from './catalog';
+import { createHostedSendProvider, type HostedSendProviderModule } from './pluginProvider';
+import type { CoreSendProviderKind, SendProviderKind, SendProviderModule } from './types';
 
 export type {
 	SendProviderKind,
@@ -45,17 +52,48 @@ export const SEND_PROVIDERS = {
 
 // Compile-time guard: each registry value must satisfy the adapter shape for
 // its own kind. The mapped type pins each key to `Module<thatKey>`.
-const _typecheck: { [K in SendProviderKind]: SendProviderModule<K> } = SEND_PROVIDERS;
+const _typecheck: { [K in CoreSendProviderKind]: SendProviderModule<K> } = SEND_PROVIDERS;
 void _typecheck;
+
+interface GeneratedSendTransportModule {
+	readonly kind: SendProviderKind;
+	readonly pluginId: string;
+	readonly module: unknown;
+}
+
+const hostedProviders = new Map<SendProviderKind, HostedSendProviderModule>();
+for (const generated of BUNDLED_PLUGIN_SEND_TRANSPORT_MODULES as readonly GeneratedSendTransportModule[]) {
+	const catalogEntry = sendProviderCatalogEntry(generated.kind);
+	if (
+		isCoreSendProviderKind(generated.kind) ||
+		catalogEntry.pluginId !== generated.pluginId ||
+		hostedProviders.has(generated.kind)
+	) {
+		throw new TypeError('Invalid bundled send transport registry');
+	}
+	hostedProviders.set(
+		generated.kind,
+		createHostedSendProvider(generated.kind, catalogEntry.retryDelays, generated.module)
+	);
+}
+if (
+	SEND_PROVIDER_CATALOG.some(
+		(entry) => entry.pluginId !== undefined && !hostedProviders.has(entry.kind)
+	)
+) {
+	throw new TypeError('Bundled send transport catalog is missing an executable module');
+}
 
 /**
  * Look up the adapter for a provider kind. Throws on unknown kinds —
  * callers validate the kind as a literal union before this is called.
  */
-export function providerFor<K extends SendProviderKind>(kind: K): SendProviderModule<K> {
-	const mod = SEND_PROVIDERS[kind];
-	if (!mod) {
-		throw new Error(`Unknown send provider: ${kind}`);
-	}
-	return mod as unknown as SendProviderModule<K>;
+export function providerFor<K extends SendProviderKind>(
+	kind: K
+): K extends CoreSendProviderKind ? SendProviderModule<K> : HostedSendProviderModule {
+	const mod = isCoreSendProviderKind(kind)
+		? SEND_PROVIDERS[kind as CoreSendProviderKind]
+		: hostedProviders.get(kind);
+	if (!mod) throw new TypeError('Unknown send provider');
+	return mod as K extends CoreSendProviderKind ? SendProviderModule<K> : HostedSendProviderModule;
 }

@@ -36,7 +36,9 @@ import { isSpfAligned } from './spfAlignment';
 export const SEND_TRANSPORT_KINDS = ['mta', 'ses', 'resend', 'smtp'] as const;
 
 /** A send-transport kind (`'mta' | 'ses' | 'resend' | 'smtp'`). */
-export type SendTransportKind = (typeof SEND_TRANSPORT_KINDS)[number];
+export type CoreSendTransportKind = (typeof SEND_TRANSPORT_KINDS)[number];
+export type HostedSendTransportKind = `plugin.${string}.${string}`;
+export type SendTransportKind = CoreSendTransportKind | HostedSendTransportKind;
 
 /**
  * A single From-domain's alignment against the active transport:
