@@ -12,6 +12,8 @@
  * attachment extractor stays semantically identical.
  */
 
+import { parseContentType, type ContentType } from './contentType';
+
 /**
  * Collapse RFC 5322 folding whitespace: a CRLF (or bare LF) followed by at
  * least one space/tab is folding introduced for line-length limits and
@@ -219,11 +221,13 @@ export class MessageHeaders {
 		return [...this.map.keys()];
 	}
 
-	/** Structured `Content-Type`, defaulting to `text/plain` when absent. */
-	get contentType(): StructuredHeader {
-		const raw = this.get('content-type');
-		if (raw === undefined) return { value: 'text/plain', params: {} };
-		return parseStructuredHeader(raw);
+	/**
+	 * Structured `Content-Type`, defaulting to `text/plain` when absent. Delegates
+	 * to {@link parseContentType} so there is a single code path for the RFC 2045
+	 * default and callers also get the split `type`/`subtype`.
+	 */
+	get contentType(): ContentType {
+		return parseContentType(this.get('content-type'));
 	}
 
 	/** Structured `Content-Disposition`, or `undefined` when absent. */
