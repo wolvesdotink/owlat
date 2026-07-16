@@ -1,10 +1,10 @@
 /**
  * Shared option types and defaults for the connection engine.
  *
- * Split out from `connection.ts` so the socket layer (`transport.ts`), the
- * bootstrap reader, and the `SmtpConnection` orchestrator can all name the same
- * option shapes without a runtime import cycle (these are type-only) and so no
- * single file exceeds the size ratchet.
+ * Split out from `connection.ts` so the socket layer (`transport.ts`) and the
+ * `SmtpConnection` orchestrator (`connection.ts`) can both name the same option
+ * shapes without a runtime import cycle (these are type-only) and so no single
+ * file exceeds the size ratchet.
  */
 
 import type tls from 'node:tls';
