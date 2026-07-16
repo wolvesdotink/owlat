@@ -138,12 +138,26 @@ export class ReplyReader {
 		this.parser = new ReplyParser();
 	}
 
-	/** Stop reading and clear any pending waiter. Idempotent teardown. */
+	/**
+	 * Stop reading and settle any pending waiter. Idempotent teardown.
+	 *
+	 * `SmtpConnection.close()` calls this and then destroys the socket, but by then
+	 * {@link ReplyReader.pauseSource} has already removed the `close`/`error`
+	 * listeners, so the destroy can no longer settle an in-flight read. We must
+	 * reject the waiter here — otherwise a caller awaiting a reply when the
+	 * connection is closed (e.g. on an outer deadline) hangs forever. Poison the
+	 * reader too so any later read rejects instead of consuming a late reply.
+	 */
 	dispose(): void {
 		this.pauseSource();
-		if (this.waiter !== undefined) {
-			clearTimeout(this.waiter.timer);
+		if (this.terminalError === undefined) {
+			this.terminalError = new Error('connection closed while a reply was awaited');
+		}
+		const waiter = this.waiter;
+		if (waiter !== undefined) {
+			clearTimeout(waiter.timer);
 			this.waiter = undefined;
+			waiter.reject(this.terminalError);
 		}
 	}
 
@@ -154,6 +168,13 @@ export class ReplyReader {
 	}
 
 	private feed(chunk: Buffer): void {
+		// A poisoned reader (wire timeout / terminal error) never hands out a reply
+		// again — read() rejects on terminalError before the queue is ever drained.
+		// Discard the chunk before parsing so a still-open, chatty/hostile server
+		// cannot grow the queue without bound between the poisoning and close().
+		if (this.terminalError !== undefined) {
+			return;
+		}
 		let replies: SmtpReply[];
 		try {
 			replies = this.parser.push(chunk);
