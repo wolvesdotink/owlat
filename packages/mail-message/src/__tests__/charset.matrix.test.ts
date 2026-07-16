@@ -59,8 +59,8 @@ describe('decodeCharset matrix', () => {
 
 	it('an unknown charset falls back to a byte-preserving latin1 decode', () => {
 		// latin1 is 1:1 with bytes: 0xE9 -> U+00E9, 0xFF -> U+00FF, nothing lost.
-		expect(decodeCharset(b(0xff), 'x-not-a-real-charset')).toBe('ÿ');
-		expect(decodeCharset(b(0xe9), 'x-not-a-real-charset')).toBe('é');
+		expect(decodeCharset(b(0xff), 'x-not-a-real-charset')).toBe('\u00ff');
+		expect(decodeCharset(b(0xe9), 'x-not-a-real-charset')).toBe('\u00e9');
 	});
 
 	it('malformed bytes under a strict encoding degrade to U+FFFD, never throw', () => {
