@@ -81,6 +81,7 @@ export async function generateDraftOnArrival(
 
 	try {
 		const result = await runSharedDraft(ctx, {
+			surface: 'personal',
 			model: await resolveLanguageModel(ctx, 'draft'), // capable tier
 			audience: 'the mailbox owner',
 			styleReference: "the owner's",
@@ -105,6 +106,7 @@ export async function generateDraftOnArrival(
 				selfCheck: 'postbox_draft_selfcheck',
 				options: 'postbox_draft_options',
 			},
+			strategyScope: { mailboxId: loaded.mailboxId, classification: 'other' },
 		});
 
 		if (result.draftBody.trim().length === 0) return; // nothing usable

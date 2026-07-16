@@ -27,6 +27,8 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { generateReplyOptions, MAX_REPLY_OPTIONS } from '../../mail/replyOptions';
 import { recordLlmSpend } from '../../analytics/llmUsage';
 import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../steps/security_scan/patterns';
+import type { ActionCtx } from '../../_generated/server';
+import { runSelectedDraftStrategy } from './draftStrategyRunner';
 
 /** Ctx shape both entry points share — needs the spend-accounting surface. */
 type SpendCtx = Parameters<typeof recordLlmSpend>[0];
@@ -337,6 +339,8 @@ export function buildDraftMessages(args: {
 }
 
 export type SharedDraftParams = {
+	/** Host surface identifier exposed to strategies instead of free-form audience text. */
+	surface: 'organization' | 'personal';
 	/** Capable-tier model (or fast tier for trivial classified mail) chosen by the caller. */
 	model: LanguageModel;
 	/** How the reply's audience is phrased in the system prompt ("an organization" / "the mailbox owner"). */
@@ -366,6 +370,12 @@ export type SharedDraftParams = {
 	temperature?: number;
 	/** Per-surface analytics labels so spend is attributable to the right surface. */
 	spendLabels: { selfCheck: string; options: string };
+	/** Host-only deterministic selection hints. Omit to force the default strategy. */
+	strategyScope?: {
+		readonly mailboxId?: string;
+		readonly contactId?: string;
+		readonly classification: string;
+	};
 };
 
 export type SharedDraftResult = {
@@ -387,7 +397,7 @@ export type SharedDraftResult = {
  * context (caller's catch → human review); every AI sub-failure degrades softly.
  */
 export async function runSharedDraft(
-	ctx: SpendCtx,
+	ctx: ActionCtx,
 	params: SharedDraftParams
 ): Promise<SharedDraftResult> {
 	// Defense-in-depth: re-scan the fully-assembled context before it enters the
@@ -400,6 +410,51 @@ export async function runSharedDraft(
 		);
 	}
 
+	const primary = await runSelectedDraftStrategy(
+		ctx,
+		params.strategyScope,
+		{
+			audience: params.surface,
+			context: params.context,
+			confirmedContext: params.confirmedContext,
+			stanceGuidance: params.stanceGuidance,
+			classification: params.classification,
+			toneInstruction: params.toneInstruction,
+			signatureInstruction: params.signatureInstruction,
+			voiceSection: params.voiceSection,
+		},
+		() => runDefaultDraftStrategy(params)
+	);
+	const { draftBody } = primary;
+
+	// Everything below this point is host-owned and runs for default and plugin
+	// strategies alike. A strategy cannot skip quality review or influence send.
+	const draftQuality = await runDraftSelfCheck(ctx, {
+		context: params.context,
+		draft: draftBody,
+		spendLabel: params.spendLabels.selfCheck,
+	});
+
+	const draftOptions = shouldOfferDraftOptions(params.confidence, draftQuality)
+		? await generateDraftOptions(ctx, {
+				context: params.context,
+				voiceSection: params.voiceSection,
+				primaryDraft: draftBody,
+				spendLabel: params.spendLabels.options,
+			})
+		: [];
+
+	return {
+		draftBody,
+		draftQuality,
+		draftOptions,
+		tokenUsage: primary.tokenUsage,
+		modelUsed: primary.modelUsed,
+	};
+}
+
+/** Built-in `default` strategy; kept byte-for-byte equivalent to the old primary path. */
+async function runDefaultDraftStrategy(params: SharedDraftParams) {
 	const systemPrompt = buildDraftSystemPrompt({
 		audience: params.audience,
 		styleReference: params.styleReference,
@@ -416,43 +471,13 @@ export async function runSharedDraft(
 	});
 
 	const temperature = params.temperature ?? 0.4;
-	const generated =
-		params.tools && Object.keys(params.tools).length > 0
-			? await runLlmTextWithTools({
-					model: params.model,
-					maxSteps: params.maxSteps,
-					tools: params.tools,
-					messages,
-					temperature,
-				})
-			: await runLlmText({ model: params.model, messages, temperature });
-
-	const draftBody = generated.text;
-
-	// Draft-quality self-check — the second, cheap-tier pass the review gate
-	// gates auto-send on. FAIL-SOFT: a failed check returns null → never
-	// auto-approves.
-	const draftQuality = await runDraftSelfCheck(ctx, {
-		context: params.context,
-		draft: draftBody,
-		spendLabel: params.spendLabels.selfCheck,
-	});
-
-	// Multi-option review drafts — only when heading to human review anyway.
-	const draftOptions = shouldOfferDraftOptions(params.confidence, draftQuality)
-		? await generateDraftOptions(ctx, {
-				context: params.context,
-				voiceSection: params.voiceSection,
-				primaryDraft: draftBody,
-				spendLabel: params.spendLabels.options,
+	return params.tools && Object.keys(params.tools).length > 0
+		? await runLlmTextWithTools({
+				model: params.model,
+				maxSteps: params.maxSteps,
+				tools: params.tools,
+				messages,
+				temperature,
 			})
-		: [];
-
-	return {
-		draftBody,
-		draftQuality,
-		draftOptions,
-		tokenUsage: generated.tokenUsage,
-		modelUsed: generated.modelUsed,
-	};
+		: await runLlmText({ model: params.model, messages, temperature });
 }
