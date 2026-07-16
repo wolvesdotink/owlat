@@ -202,4 +202,131 @@ describe('extractAttachments document order (differential vs mailMime)', () => {
 		const raw = eml('Content-Type: text/plain', '', 'just a body, no parts');
 		expectParity(raw, []);
 	});
+
+	it('duplicate part Content-Type: LAST occurrence wins on BOTH sides', () => {
+		// mailMime.parseHeaders builds its map with `map.set` per line, so a repeated
+		// MIME header collapses to the LAST occurrence. The new walker reads the four
+		// MIME headers via `MessageHeaders.last`, so a part carrying two Content-Type
+		// headers resolves to the second (`application/pdf; name="x.pdf"`) on both
+		// sides — a classic duplicate-header MIME-confusion divergence, now aligned.
+		// (Round-3 Blocking 1.)
+		const raw = eml(
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: text/plain',
+			'Content-Type: application/pdf; name="x.pdf"',
+			'',
+			'DATA',
+			'--B--'
+		);
+		expectParity(raw, ['x.pdf']);
+	});
+
+	it('duplicate ROOT Content-Type: LAST occurrence wins (text/plain then multipart)', () => {
+		// The root carries text/plain THEN multipart/mixed; last-wins makes it a real
+		// container on both sides, so the nested attachment is found. (Round-3
+		// Blocking 1.)
+		const raw = eml(
+			'Content-Type: text/plain',
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: application/pdf; name="nested.pdf"',
+			'Content-Disposition: attachment; filename="nested.pdf"',
+			'',
+			'DATA',
+			'--B--'
+		);
+		expectParity(raw, ['nested.pdf']);
+	});
+
+	it('duplicate Content-Disposition: LAST occurrence wins (inline then attachment)', () => {
+		// inline THEN attachment; filename="z.bin" → last-wins yields an attachment
+		// with filename z.bin on both sides. (Round-3 Blocking 1.)
+		const raw = eml(
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: application/octet-stream',
+			'Content-Disposition: inline',
+			'Content-Disposition: attachment; filename="z.bin"',
+			'',
+			'DATA',
+			'--B--'
+		);
+		expectParity(raw, ['z.bin']);
+	});
+
+	it('slashless `multipart` with a boundary is ONE leaf attachment, not a container', () => {
+		// mailMime gates splitting on `mainType.startsWith('multipart/')`, which is
+		// FALSE for a slashless `Content-Type: multipart`. So the whole part — despite
+		// carrying a `boundary` and inner `--B` delimiters — is a single leaf
+		// attachment (`whole.eml`), never split into the inner part. The new walker
+		// gates on `value.startsWith('multipart/')` to match. (Round-3 Blocking 2.)
+		const raw = eml(
+			'Content-Type: multipart; boundary="B"',
+			'Content-Disposition: attachment; filename="whole.eml"',
+			'',
+			'--B',
+			'Content-Type: application/pdf; name="inner.pdf"',
+			'Content-Disposition: attachment; filename="inner.pdf"',
+			'',
+			'DATA',
+			'--B--'
+		);
+		expectParity(raw, ['whole.eml']);
+	});
+
+	it('slashless `multipart` with a filename and no boundary is a leaf attachment', () => {
+		// Slashless `multipart` + filename, no boundary → NOT a container (so not
+		// excluded by the multipart guard) and IS an attachment via its filename.
+		// (Round-3 Blocking 2.)
+		const raw = eml(
+			'Content-Type: multipart; name="odd.bin"',
+			'Content-Disposition: attachment; filename="odd.bin"',
+			'',
+			'ODDDATA'
+		);
+		expectParity(raw, ['odd.bin']);
+	});
+
+	it('quoted-printable and base64 attachment bytes match the oracle decoder', () => {
+		// `expectParity` compares decoded bytes, so this pins transferDecode's QP and
+		// base64 branches to mailMime's decoder byte-for-byte. (Round-3 Improvement 1.)
+		const raw = eml(
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: application/octet-stream; name="qp.bin"',
+			'Content-Disposition: attachment; filename="qp.bin"',
+			'Content-Transfer-Encoding: quoted-printable',
+			'',
+			'Hello=20World=0A',
+			'--B',
+			'Content-Type: application/octet-stream; name="b64.bin"',
+			'Content-Disposition: attachment; filename="b64.bin"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			'SGVsbG8gQmFzZTY0',
+			'--B--'
+		);
+		expectParity(raw, ['qp.bin', 'b64.bin']);
+	});
+
+	it('an RFC 2231 continued/encoded filename decodes identically on both sides', () => {
+		// `filename*0*=utf-8''na%20me; filename*1=.pdf` → "na me.pdf" — exercises the
+		// continuation path of the relocated `getRawParam`. (Round-3 Improvement 4.)
+		const raw = eml(
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: application/pdf',
+			"Content-Disposition: attachment; filename*0*=utf-8''na%20me; filename*1=.pdf",
+			'',
+			'DATA',
+			'--B--'
+		);
+		expectParity(raw, ['na me.pdf']);
+	});
 });

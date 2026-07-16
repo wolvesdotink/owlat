@@ -45,6 +45,8 @@ describe('decodeCharset matrix', () => {
 		expect(decodeCharset(b(0xef, 0xbb, 0xbf, 0x68, 0x69), 'windows-1252')).toBe('hi');
 		// A UTF-16LE BOM decodes little-endian units and is stripped.
 		expect(decodeCharset(b(0xff, 0xfe, 0x68, 0x00, 0x69, 0x00), 'iso-8859-1')).toBe('hi');
+		// A UTF-16BE BOM decodes big-endian units and is stripped.
+		expect(decodeCharset(b(0xfe, 0xff, 0x00, 0x68, 0x00, 0x69), 'iso-8859-1')).toBe('hi');
 	});
 
 	it('a lying declared charset is honored verbatim (no content sniffing)', () => {

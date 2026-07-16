@@ -154,6 +154,31 @@ describe('hostile MIME input', () => {
 		expect(body!.html).toContain('<p>html part</p>');
 	});
 
+	it('a malformed base64 body yields empty content and does not throw', () => {
+		// A single stray base64 char (`A`) cannot decode to whole bytes; `atob`
+		// throws internally and the decoder must swallow it into empty content
+		// rather than aborting extraction of the message. (mailMime parity.)
+		const raw = [
+			'Content-Type: multipart/mixed; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: application/octet-stream; name="bad.bin"',
+			'Content-Disposition: attachment; filename="bad.bin"',
+			'Content-Transfer-Encoding: base64',
+			'',
+			'A',
+			'--B--',
+		].join('\r\n');
+		let attachments: ReturnType<typeof extractAttachments> = [];
+		expect(() => {
+			attachments = extractAttachments(raw);
+			parseBody(raw);
+		}).not.toThrow();
+		expect(attachments.map((a) => a.filename)).toEqual(['bad.bin']);
+		expect(attachments[0]!.size).toBe(0);
+		expect([...attachments[0]!.content]).toEqual([]);
+	});
+
 	it('a truncated message (dangling open boundary, no close) is bounded', () => {
 		const raw = [
 			'Content-Type: multipart/mixed; boundary="B"',
