@@ -451,8 +451,10 @@ export async function sendToMx(
 		//    before the connection dropped. Retrying — on the next MX or via a
 		//    soft-bounce requeue — risks a DOUBLE DELIVERY, so this is the
 		//    AMBIGUOUS_TIMEOUT the retry taxonomy must NEVER auto-retry (W8;
-		//    smtp-client errors.ts / transaction.ts:312). Terminate the job here as a
-		//    non-retryable (hard) outcome rather than trying another MX.
+		//    smtp-client errors.ts / transaction.ts:312). Terminate the job here with
+		//    its OWN `ambiguous` bounceType — NOT `hard` — so the dispatch reducer
+		//    stays terminal (no next-MX, no requeue) WITHOUT suppressing the recipient
+		//    or fabricating a 5xx: the message may in fact have been delivered.
 		if (
 			(err.phase === 'data' || err.phase === 'data-final') &&
 			err.replyCode === undefined &&
@@ -467,7 +469,7 @@ export async function sendToMx(
 				result: {
 					success: false,
 					error: `Ambiguous delivery outcome for ${recipientDomain} (phase ${err.phase}, no server reply): message may already have been accepted — not retrying to avoid a double delivery: ${response}`,
-					bounceType: 'hard',
+					bounceType: 'ambiguous',
 				},
 			};
 		}
