@@ -19,7 +19,7 @@ import {
 	verificationResultValidator,
 	verificationResultsValidator,
 } from '../lib/convexValidators';
-import { emailDomain, extractDomainOrNull } from '@owlat/shared';
+import { emailDomain, extractDomainOrNull, asDnsName } from '@owlat/shared';
 
 // Types derived from validators for DNS records
 export type DnsRecord = Infer<typeof dnsRecordValidator>;
@@ -276,6 +276,48 @@ export const setDmarcPolicy = authedMutation({
 			if (outcome.reason === 'domain_not_found') throwNotFound('Domain');
 			if (outcome.reason === 'no_dmarc_record') {
 				throwInvalidState('This domain has no DMARC record yet. Finish registration first.');
+			}
+		}
+	},
+});
+
+// Mutation: Set (or change) the domain's per-domain VERP return-path host
+// (D1/D2). Delegates to the lifecycle's `setReturnPathHost`, which regenerates
+// the `mailFrom` SPF record on the new host, drops the domain to `pending` for
+// re-verification, and reflects the host to the MTA. Admin-gated
+// (`organization:manage`) to match the other domain-management writes.
+export const setReturnPathHost = authedMutation({
+	args: {
+		domainId: v.id('domains'),
+		returnPathHost: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can manage sending domains'
+		);
+		// Validate + normalize the host up front with the shared DNS-name
+		// primitive so a bad value is a clean 400 (`invalid_input`) rather than a
+		// lifecycle miss. The lifecycle re-validates (defense in depth).
+		const normalized = asDnsName(args.returnPathHost);
+		if (normalized === null) {
+			throwInvalidInput(
+				'Invalid return-path host. Enter a valid DNS hostname, e.g. bounce.example.com.'
+			);
+		}
+		const outcome = await ctx.runMutation(internal.domains.lifecycle.setReturnPathHost, {
+			domainId: args.domainId,
+			returnPathHost: normalized,
+			userId: LIFECYCLE_USER_PUBLIC_MUTATION,
+		});
+		if (!outcome.ok) {
+			if (outcome.reason === 'domain_not_found') throwNotFound('Domain');
+			if (outcome.reason === 'unsupported_provider') {
+				throwInvalidState('This domain is not managed by the built-in MTA provider.');
+			}
+			if (outcome.reason === 'invalid_host') {
+				throwInvalidInput('Invalid return-path host.');
 			}
 		}
 	},
