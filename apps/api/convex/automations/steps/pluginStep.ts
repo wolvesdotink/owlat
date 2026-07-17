@@ -19,10 +19,12 @@ import {
 	type PluginUntrustedTextPolicy,
 } from '@owlat/plugin-host';
 import {
+	parsePluginId,
 	PLUGIN_AUTOMATION_STEP_CAPABILITY,
 	type PluginAutomationStepInput,
 	type PluginAutomationStepModule,
 	type PluginAutomationStepResult,
+	type PluginId,
 } from '@owlat/plugin-kit';
 import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
@@ -106,7 +108,7 @@ function buildPluginStepInput(contact: Doc<'contacts'>): PluginAutomationStepInp
 	});
 }
 
-function parsePluginStepResult(value: unknown, pluginId: string): PluginAutomationStepResult {
+function parsePluginStepResult(value: unknown, pluginId: PluginId): PluginAutomationStepResult {
 	if (value === null || typeof value !== 'object') {
 		throw new TypeError('Plugin automation step returned a non-object result');
 	}
@@ -115,7 +117,7 @@ function parsePluginStepResult(value: unknown, pluginId: string): PluginAutomati
 	if (kind === 'failed') {
 		const rawReason = (value as { reason?: unknown }).reason;
 		const reason = applyPluginUntrustedTextPolicy(
-			pluginId as never,
+			pluginId,
 			typeof rawReason === 'string' ? rawReason : 'Plugin automation step reported a failure',
 			FAILURE_REASON_POLICY
 		);
@@ -137,6 +139,10 @@ export async function executePluginStep(
 	if (!entry) {
 		return { status: 'failed', error: `Unknown plugin automation step kind: ${step.stepType}` };
 	}
+	// The catalog entry's id came from a validated manifest at codegen time; parse
+	// it once into the branded `PluginId` the host services require, so no call
+	// site has to launder an unbranded string through `as never`.
+	const pluginId = parsePluginId(entry.pluginId);
 	const module = PLUGIN_STEP_MODULES.get(step.stepType);
 	if (!module) {
 		return { status: 'failed', error: 'Plugin automation step module is not registered' };
@@ -152,7 +158,7 @@ export async function executePluginStep(
 	}
 
 	const host = createPluginHost({
-		manifest: getBundledPluginManifest(entry.pluginId as never),
+		manifest: getBundledPluginManifest(pluginId),
 		capabilityGrants: [{ capability: PLUGIN_AUTOMATION_STEP_CAPABILITY, granted: true }],
 		featureFlags: { isEnabled: () => true },
 		environment: { isPresent: isEnvPresent },
@@ -169,7 +175,7 @@ export async function executePluginStep(
 		result = await host.run(PLUGIN_AUTOMATION_STEP_CAPABILITY, async () => {
 			const config = module.parseConfig(rawConfig);
 			const moduleResult = await module.execute(buildPluginStepInput(contact), config);
-			return parsePluginStepResult(moduleResult, entry.pluginId);
+			return parsePluginStepResult(moduleResult, pluginId);
 		});
 	} catch {
 		await recordOutcome(ctx, entry.pluginId, step.stepType, false);
