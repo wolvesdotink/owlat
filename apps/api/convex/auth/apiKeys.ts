@@ -3,7 +3,7 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
-import { API_SCOPES, unknownScopes } from './apiScopes';
+import { API_SCOPES, unknownScopes, tier2OnlyScopes } from './apiScopes';
 import { hashApiKey } from './apiAuth';
 import { randomToken } from '../lib/randomToken';
 import { parsePluginId } from '@owlat/plugin-kit';
@@ -141,7 +141,21 @@ export const create = authedMutation({
 		// (deriveEffectiveScopes), but rejecting at creation gives an immediate,
 		// legible error instead of minting a key that silently authorizes nothing.
 		let boundPluginId: string | undefined;
-		if (pluginIdInput !== undefined) {
+		if (pluginIdInput === undefined) {
+			// Standalone (operator-managed) key. The Tier-2-only vocabulary is the
+			// connected-app surface reachable ONLY through a plugin-bound key
+			// (manifest ceiling + operator grant); it has no standalone meaning.
+			// Reject it at mint so the plugin-binding boundary cannot be bypassed by
+			// minting an unbound key that carries a connected-app-only scope — the
+			// boundary is enforced here, not left to UI convention.
+			const tier2 = tier2OnlyScopes(resolvedScopes);
+			if (tier2.length > 0) {
+				throwInvalidInput(
+					`Scope(s) ${tier2.join(', ')} are only available on plugin-bound keys; ` +
+						'supply a pluginId to use them.'
+				);
+			}
+		} else {
 			try {
 				boundPluginId = parsePluginId(pluginIdInput);
 			} catch {
