@@ -81,7 +81,9 @@ describe('splitZone', () => {
 			'localhost', // single label
 			'co.uk', // bare public suffix
 			'com', // bare TLD
-			'127.0.0.1', // IPv4 literal
+			'127.0.0.1', // IPv4 literal (dotted-decimal)
+			'0x7f.0.0.1', // IPv4 literal (hex — URL canonicalizes to 127.0.0.1)
+			'2130706433', // IPv4 literal (integer form)
 			'mail example.com', // space
 			'a//b.com', // path characters
 			'user@example.com', // an email address, not a domain
@@ -90,6 +92,17 @@ describe('splitZone', () => {
 		]) {
 			expect(() => splitZone(bad), `expected "${bad}" to throw`).toThrow(InvalidDomainError);
 		}
+	});
+
+	it('rejects a name longer than the 253-octet DNS cap', () => {
+		// 4 × 63-octet labels + dots = 255 octets > 253, but each label is legal.
+		const overLong = ['a'.repeat(63), 'b'.repeat(63), 'c'.repeat(63), 'd'.repeat(63)].join('.');
+		expect(overLong.length).toBeGreaterThan(253);
+		expect(() => splitZone(`${overLong}.com`)).toThrow(InvalidDomainError);
+		// A name right at the cap with a real registrable suffix still splits.
+		const atCap = `${'a'.repeat(59)}.${'b'.repeat(63)}.${'c'.repeat(63)}.example.com`;
+		expect(atCap.length).toBeLessThanOrEqual(253);
+		expect(splitZone(atCap).registrable).toBe('example.com');
 	});
 
 	it('exposes the offending input on the thrown error', () => {
@@ -167,6 +180,12 @@ describe('zoneRelativeHost', () => {
 	it('throws InvalidDomainError when the record host is not a valid DNS name', () => {
 		expect(() => zoneRelativeHost('not a host', 'example.com')).toThrow(InvalidDomainError);
 	});
+
+	it('throws InvalidDomainError when the record host is an IP literal', () => {
+		// An IP is not a DNS name and must not be blessed into a relative/absolute host.
+		expect(() => zoneRelativeHost('1.2.3.4', 'example.com')).toThrow(InvalidDomainError);
+		expect(() => zoneRelativeHost('2130706433', 'example.com')).toThrow(InvalidDomainError);
+	});
 });
 
 describe('isDnsLabel', () => {
@@ -221,5 +240,23 @@ describe('asDnsName', () => {
 		]) {
 			expect(asDnsName(bad), bad).toBeNull();
 		}
+	});
+
+	it('returns null for IP literals in every spelling (not DNS names)', () => {
+		for (const ip of [
+			'127.0.0.1', // dotted-decimal
+			'1.2.3.4',
+			'0x7f.0.0.1', // hex, URL-canonicalized to 127.0.0.1
+			'0177.0.0.1', // octal
+			'2130706433', // 32-bit integer
+		]) {
+			expect(asDnsName(ip), ip).toBeNull();
+		}
+	});
+
+	it('returns null for a name past the 253-octet cap', () => {
+		const overLong = `${['a'.repeat(63), 'b'.repeat(63), 'c'.repeat(63), 'd'.repeat(63)].join('.')}.com`;
+		expect(overLong.length).toBeGreaterThan(253);
+		expect(asDnsName(overLong)).toBeNull();
 	});
 });
