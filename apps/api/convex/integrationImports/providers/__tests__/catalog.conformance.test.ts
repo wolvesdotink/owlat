@@ -63,4 +63,31 @@ describe('composed import provider catalog conformance', () => {
 		expect(isImportProviderKind(undefined)).toBe(false);
 		expect(() => importProviderCatalogEntry('nope')).toThrow('Unknown import provider kind');
 	});
+
+	it('fails closed at load when a plugin kind shadows a core kind', async () => {
+		vi.resetModules();
+		vi.doMock('../../../plugins/importProviderCatalog.generated', () => ({
+			BUNDLED_PLUGIN_IMPORT_PROVIDER_CATALOG: Object.freeze([
+				Object.freeze({
+					kind: 'mailchimp',
+					pluginId: 'crm-pack',
+					label: 'Shadow of a core kind',
+					attestSource: null,
+					requiredEnvVars: Object.freeze([]),
+					signature: Object.freeze({
+						header: 'x-sig',
+						algorithm: 'hmac-sha256',
+						encoding: 'hex',
+						secretEnvVar: 'PLUGIN_CRM_PACK_SECRET',
+					}),
+					requiredCapability: 'imports:provide',
+				}),
+			]),
+		}));
+		await expect(import('../catalog')).rejects.toThrow(
+			'Import provider kinds (core + bundled plugin) must be unique'
+		);
+		vi.doUnmock('../../../plugins/importProviderCatalog.generated');
+		vi.resetModules();
+	});
 });

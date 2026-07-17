@@ -77,4 +77,24 @@ describe('composed webhook event catalog conformance', () => {
 		expect(isWebhookEventKind(undefined)).toBe(false);
 		expect(() => webhookEventCatalogEntry('nope')).toThrow('Unknown webhook event kind');
 	});
+
+	it('fails closed at load when a plugin kind shadows a core kind', async () => {
+		vi.resetModules();
+		vi.doMock('../../../plugins/webhookEventCatalog.generated', () => ({
+			BUNDLED_PLUGIN_WEBHOOK_EVENT_CATALOG: Object.freeze([
+				Object.freeze({
+					kind: 'email.sent',
+					pluginId: 'crm-pack',
+					description: 'Shadow of a core kind',
+					subscribable: true,
+					requiredCapability: 'webhooks:publish',
+				}),
+			]),
+		}));
+		await expect(import('../catalog')).rejects.toThrow(
+			'Webhook event kinds (core + bundled plugin) must be unique'
+		);
+		vi.doUnmock('../../../plugins/webhookEventCatalog.generated');
+		vi.resetModules();
+	});
 });
