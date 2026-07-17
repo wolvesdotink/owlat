@@ -98,6 +98,27 @@ export {
 	PluginManifestError,
 	validatePluginManifest,
 } from './manifest';
+export { PLUGIN_WEBHOOK_EVENT_CAPABILITY, pluginWebhookEventKind } from './webhookEvent';
+export type {
+	PluginWebhookEventCapability,
+	PluginWebhookEventDefinition,
+	PluginWebhookEventKind,
+	PluginWebhookEventLocalId,
+} from './webhookEvent';
+export { PLUGIN_IMPORT_PROVIDER_CAPABILITY, pluginImportProviderKind } from './importProvider';
+export type {
+	PluginImportPageResult,
+	PluginImportProviderCapability,
+	PluginImportProviderDefinition,
+	PluginImportProviderInput,
+	PluginImportProviderKind,
+	PluginImportProviderLocalId,
+	PluginImportProviderModule,
+	PluginImportRow,
+	PluginInboundSignatureAlgorithm,
+	PluginInboundSignatureContract,
+	PluginInboundSignatureEncoding,
+} from './importProvider';
 export {
 	PLUGIN_SEND_FAILURE_CODES,
 	PLUGIN_SEND_TRANSPORT_CAPABILITY,

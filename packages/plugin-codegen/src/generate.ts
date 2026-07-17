@@ -37,6 +37,12 @@ const AUTOMATION_CONDITION_CATALOG_OUTPUT_PATH =
 	'apps/api/convex/plugins/automationConditionCatalog.generated.ts';
 const AUTOMATION_CONDITION_MODULES_OUTPUT_PATH =
 	'apps/api/convex/plugins/automationConditionModules.generated.ts';
+const WEBHOOK_EVENT_CATALOG_OUTPUT_PATH =
+	'apps/api/convex/plugins/webhookEventCatalog.generated.ts';
+const IMPORT_PROVIDER_CATALOG_OUTPUT_PATH =
+	'apps/api/convex/plugins/importProviderCatalog.generated.ts';
+const IMPORT_PROVIDER_MODULES_OUTPUT_PATH =
+	'apps/api/convex/plugins/importProviderModules.generated.ts';
 const MAX_GENERATED_FILE_BYTES = 4 * 1024 * 1024;
 
 export interface GeneratePluginCompositionOptions {
@@ -114,6 +120,18 @@ export async function generatePluginComposition(
 		{
 			path: join(workspaceRoot, AUTOMATION_CONDITION_MODULES_OUTPUT_PATH),
 			source: generated.automationConditionModules,
+		},
+		{
+			path: join(workspaceRoot, WEBHOOK_EVENT_CATALOG_OUTPUT_PATH),
+			source: generated.webhookEventCatalog,
+		},
+		{
+			path: join(workspaceRoot, IMPORT_PROVIDER_CATALOG_OUTPUT_PATH),
+			source: generated.importProviderCatalog,
+		},
+		{
+			path: join(workspaceRoot, IMPORT_PROVIDER_MODULES_OUTPUT_PATH),
+			source: generated.importProviderModules,
 		},
 	] as const;
 

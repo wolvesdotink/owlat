@@ -19,7 +19,9 @@ export const HOSTED_PLUGIN_AUDIT_REASON_CODES = Object.freeze([
 	'draft_strategy_failed',
 	'draft_strategy_invalid',
 	'draft_strategy_timeout',
+	'import_provider_failed',
 	'provider_dispatch_failed',
+	'webhook_publish_failed',
 ] as const);
 export type HostedPluginAuditReasonCode = (typeof HOSTED_PLUGIN_AUDIT_REASON_CODES)[number];
 const HOSTED_PLUGIN_OPERATION_SET: ReadonlySet<HostedPluginOperation> = new Set(

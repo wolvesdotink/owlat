@@ -274,12 +274,14 @@ const HOSTED_PLUGIN_OPERATION_LABELS = {
 	'automation.step': 'Automation step',
 	'autonomy.gate': 'Autonomy gate',
 	'draft.strategy': 'Draft strategy',
+	'import.provider': 'Import provider',
 	'llm.generate': 'LLM generation',
 	'storage.delete': 'Storage delete',
 	'storage.get': 'Storage read',
 	'storage.list': 'Storage list',
 	'storage.set': 'Storage write',
 	'transport.send': 'Email transport send',
+	'webhook.publish': 'Webhook event publish',
 } as const satisfies Record<HostedPluginOperationLiteral, string>;
 
 /** The verb of an action literal: the segment after the first `.`, or the whole
