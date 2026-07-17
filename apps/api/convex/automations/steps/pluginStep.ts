@@ -31,6 +31,7 @@ import type { ActionCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
 import { isEnvPresent } from '../../lib/env';
 import { getBundledPluginManifest } from '../../plugins/authorization';
+import { snapshotHostedModule } from '../../plugins/hostedModuleSnapshot';
 import { BUNDLED_PLUGIN_AUTOMATION_STEP_MODULES } from '../../plugins/automationStepModules.generated';
 import { pluginStepCatalogEntry } from './catalog';
 import type { StepOutcome } from '../types';
@@ -99,30 +100,15 @@ interface GeneratedPluginStepModule {
 const GENERATED_STEP_MODULES =
 	BUNDLED_PLUGIN_AUTOMATION_STEP_MODULES as readonly GeneratedPluginStepModule[];
 
-/** Extract `{ parseConfig, execute }` from a generated module without invoking accessors. */
-function snapshotPluginStepModule(value: unknown): PluginAutomationStepModule {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		throw new TypeError('Invalid hosted plugin automation step module');
-	}
-	const parseConfig = Object.getOwnPropertyDescriptor(value, 'parseConfig');
-	const execute = Object.getOwnPropertyDescriptor(value, 'execute');
-	if (
-		!parseConfig ||
-		!('value' in parseConfig) ||
-		typeof parseConfig.value !== 'function' ||
-		!execute ||
-		!('value' in execute) ||
-		typeof execute.value !== 'function'
-	) {
-		throw new TypeError('Invalid hosted plugin automation step module');
-	}
-	return Object.freeze({ parseConfig: parseConfig.value, execute: execute.value });
-}
-
 const PLUGIN_STEP_MODULES = new Map<string, PluginAutomationStepModule>(
 	GENERATED_STEP_MODULES.map((registration) => [
 		registration.kind,
-		snapshotPluginStepModule(registration.module),
+		snapshotHostedModule<PluginAutomationStepModule>(
+			registration.module,
+			['parseConfig', 'execute'],
+			[],
+			'Invalid hosted plugin automation step module'
+		),
 	])
 );
 

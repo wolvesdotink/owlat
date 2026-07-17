@@ -20,6 +20,7 @@ import { draftStep } from './draft';
 import { routeStep } from './route';
 import type { PluginAgentStepModule } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_AGENT_STEP_MODULES } from '../../plugins/agentStepModules.generated';
+import { snapshotHostedModule } from '../../plugins/hostedModuleSnapshot';
 import type { CoreAgentStepKind } from './catalog';
 import type { AgentStepKind, AnyAgentStepModule } from './types';
 
@@ -52,25 +53,14 @@ const PLUGIN_STEP_MODULES: readonly HostedPluginAgentStepModule[] =
 		Object.freeze({
 			kind: registration.kind,
 			pluginId: registration.pluginId,
-			module: snapshotPluginAgentStepModule(registration.module),
+			module: snapshotHostedModule<PluginAgentStepModule>(
+				registration.module,
+				['execute'],
+				[],
+				'Invalid hosted plugin agent step module'
+			),
 		})
 	);
-
-function snapshotPluginAgentStepModule(value: unknown): PluginAgentStepModule {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-		throw new TypeError('Invalid hosted plugin agent step module');
-	}
-	const execute = Object.getOwnPropertyDescriptor(value, 'execute');
-	if (
-		!execute ||
-		!('value' in execute) ||
-		!execute.enumerable ||
-		typeof execute.value !== 'function'
-	) {
-		throw new TypeError('Invalid hosted plugin agent step module');
-	}
-	return Object.freeze({ execute: execute.value });
-}
 
 export function pluginStepModuleFor(kind: AgentStepKind): PluginAgentStepModule {
 	const registration = PLUGIN_STEP_MODULES.find((candidate) => candidate.kind === kind);
