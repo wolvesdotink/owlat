@@ -145,21 +145,31 @@ function prepareEnvelope(
 }
 
 // eslint-disable-next-line no-control-regex
-const NON_ASCII_MAILBOX = /[^\x00-\x7F]/;
+const NON_ASCII = /[^\x00-\x7F]/;
+
+/** The local-part of an addr-spec: everything before the last `@` (the whole string if none). */
+function localPart(addrSpec: string): string {
+	const at = addrSpec.lastIndexOf('@');
+	return at < 0 ? addrSpec : addrSpec.slice(0, at);
+}
 
 /**
- * Does this envelope carry a non-ASCII (RFC 6531 EAI) mailbox — a return path or
- * recipient with a UTF-8 local-part or domain? Such an address has no ASCII
- * downgrade (there is no RFC 2047 for an addr-spec, and a non-ASCII local-part
- * has no punycode), so it can only be delivered over an `SMTPUTF8` transaction.
- * Read structurally from the envelope bytes — never a message-text sniff.
+ * Does this envelope carry a non-ASCII (RFC 6531 EAI) LOCAL-PART — a return path or
+ * recipient whose mailbox local-part is UTF-8? Only the local-part forces SMTPUTF8:
+ * it has no ASCII downgrade (there is no RFC 2047 for an addr-spec, and no punycode
+ * for a local-part), so such an address can only be delivered over an `SMTPUTF8`
+ * transaction. A non-ASCII DOMAIN does NOT trip this — domains are IDN-punycoded to
+ * A-labels at composition (W6, `mail-message` `idnNormalizeAddress`), so any address
+ * reaching the client already carries an ASCII domain and a U-label domain has a
+ * lossless downgrade rather than needing SMTPUTF8. Read structurally from the
+ * envelope bytes — never a message-text sniff.
  */
 export function envelopeRequiresSmtpUtf8(options: EnvelopeOptions): boolean {
-	if (NON_ASCII_MAILBOX.test(options.from)) {
+	if (NON_ASCII.test(localPart(options.from))) {
 		return true;
 	}
 	for (const recipient of options.to) {
-		if (NON_ASCII_MAILBOX.test(recipient)) {
+		if (NON_ASCII.test(localPart(recipient))) {
 			return true;
 		}
 	}
