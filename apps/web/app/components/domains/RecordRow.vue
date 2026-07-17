@@ -69,19 +69,13 @@ const mailFromHost = computed<string | null>(() => {
 // ambiguity at a glance. The sending identity IS the domain string itself.
 const sendsAsAddress = computed(() => `anyone@${props.domain.domain}`);
 
-// Best-effort website apex for the "won't affect your website at X" copy.
-// We deliberately avoid a public-suffix dependency here (piece A1 owns that,
-// and piece C1 will make this display fully zone-aware). For a sending
-// subdomain like `mail.example.com` we drop the leftmost label to name the
-// apex website; an apex / two-label domain is shown as-is.
-const websiteApex = computed(() => {
-	const labels = props.domain.domain.split('.');
-	return labels.length > 2 ? labels.slice(1).join('.') : props.domain.domain;
-});
-
 // The registrable zone the records actually go in — the DNS provider that
-// manages this name (C1 zone-framing; fail-soft to the raw domain in self-host
-// dev where a name has no registrable zone).
+// manages this name (A1 PSL split; fail-soft to the raw domain in self-host dev
+// where a name has no registrable zone). Used for both the C1 zone-framed
+// config heading AND the "won't affect your website at X" intro copy, so the
+// two can never disagree (they did while the intro used a hand-rolled slice:
+// `example.co.uk` named the public suffix `co.uk`; `a.b.example.com` named
+// `b.example.com`).
 const registrableZone = computed(
 	() => trySplitZone(props.domain.domain)?.registrable ?? props.domain.domain
 );
@@ -268,7 +262,7 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? mailFromHos
 								<span class="text-text-primary">name@{{ domain.domain }}</span
 								>. The records below prove to receiving servers that Owlat is allowed to do that —
 								nothing needs to be hosted at this name, and it won't affect your website at
-								{{ websiteApex }}.
+								{{ registrableZone }}.
 							</p>
 						</div>
 

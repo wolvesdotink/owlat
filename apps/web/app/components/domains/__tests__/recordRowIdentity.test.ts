@@ -206,7 +206,7 @@ describe('RecordRow — expanded "What this domain does" intro', () => {
 		const text = intro.text();
 		expect(text).toContain('name@mail.example.com');
 		expect(text).toContain('nothing needs to be hosted at this name');
-		// Apex reassurance is derived from existing data (leftmost label dropped).
+		// Apex reassurance names the A1-derived registrable zone.
 		expect(text).toContain("won't affect your website at example.com");
 	});
 
@@ -214,5 +214,24 @@ describe('RecordRow — expanded "What this domain does" intro', () => {
 		const intro = mountRow({ domain: 'example.com' }, true).find('[data-testid="domain-intro"]');
 		expect(intro.text()).toContain("won't affect your website at example.com");
 		expect(intro.text()).toContain('name@example.com');
+	});
+
+	// Regression: the intro apex must come from the A1 PSL zone, not a hand-rolled
+	// label slice — the two disagreed exactly where A1 matters (F1 cross-piece bug).
+	it('names the registrable zone (not the public suffix) on a multi-label suffix', () => {
+		const intro = mountRow({ domain: 'example.co.uk' }, true).find('[data-testid="domain-intro"]');
+		expect(intro.text()).toContain("won't affect your website at example.co.uk");
+		// The old slice named the bare public suffix `co.uk`.
+		expect(intro.text()).not.toContain("won't affect your website at co.uk");
+	});
+
+	it('names the registrable zone (not a mid subdomain) on a deep subdomain', () => {
+		const intro = mountRow({ domain: 'a.b.example.com' }, true).find(
+			'[data-testid="domain-intro"]'
+		);
+		expect(intro.text()).toContain("won't affect your website at example.com");
+		// The old slice dropped only the leftmost label → `b.example.com`. Anchor to
+		// the copy phrase (the sends-as line legitimately contains `a.b.example.com`).
+		expect(intro.text()).not.toContain("won't affect your website at b.example.com");
 	});
 });
