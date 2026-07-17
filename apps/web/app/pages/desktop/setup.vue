@@ -13,9 +13,11 @@ import {
 	isLoopbackUrl,
 	defaultSubdomainLabels,
 	validateSubdomainLabels,
+	SUBDOMAIN_KEYS,
 	type HostKeyPrompt,
 	type InstanceHostnames,
 	type SetupConfigInput,
+	type SubdomainKey,
 	type SubdomainLabels,
 } from '~/lib/desktop/provisioning';
 import {
@@ -209,20 +211,36 @@ watch(detectedPublicIp, (detected) => {
 // They flow through deriveHostnames() — the single place labels become
 // hostnames — so an override can't drift across the DNS records, generated
 // config and network URLs.
+//
+// The disclosure deliberately overrides the LABEL, not a full hostname: the
+// whole wizard is built around one apex domain (the domain field, the DNS
+// record table, SPF coexistence and A-record IP detection all assume it), so a
+// cross-apex hostname (e.g. app.other-domain.com) would need per-host DNS
+// guidance the wizard doesn't model. That split-apex case stays reachable by
+// hand-editing the generated config (network.*/domain.* are free strings); the
+// wizard trades it away for a UI that can't produce an unreachable host.
 const hostLabels = ref<SubdomainLabels>(defaultSubdomainLabels());
-/** Per-field label validation (charset/length + mutual distinctness). */
-const labelValidation = computed(() => validateSubdomainLabels(hostLabels.value));
+// mail/bounce are inert without the self-hosted MTA (nothing consumes those
+// hostnames), so they are disabled — not validated or gated — for other
+// providers, and only the live labels are checked for distinctness.
+const HOST_LABEL_INACTIVE_HINT = 'Only used with the self-hosted mail server.';
+const disabledLabelKeys = computed<SubdomainKey[]>(() =>
+	sendingProvider.value === 'mta' ? [] : ['mail', 'bounce'],
+);
+const activeLabelKeys = computed<SubdomainKey[]>(() =>
+	SUBDOMAIN_KEYS.filter((k) => !disabledLabelKeys.value.includes(k)),
+);
+/** Per-field label validation (charset/length + mutual distinctness) of the live labels. */
+const labelValidation = computed(() => validateSubdomainLabels(hostLabels.value, activeLabelKeys.value));
 const seedDemo = ref(false);
 const configError = ref('');
 
 /** Whether a domain has been entered (every hostname derives from it). */
-const derivedHosts = computed<InstanceHostnames | null>(() =>
-	domain.value.trim() ? deriveHostnames(domain.value) : null,
-);
+const hasDomain = computed(() => !!domain.value.trim());
 
 /** Hostnames for the entered domain with the current label overrides applied. */
 const effectiveHosts = computed<InstanceHostnames | null>(() =>
-	domain.value.trim() ? deriveHostnames(domain.value, hostLabels.value) : null,
+	hasDomain.value ? deriveHostnames(domain.value, hostLabels.value) : null,
 );
 
 function buildConfig(): SetupConfigInput {
@@ -278,7 +296,7 @@ async function onProvision() {
 	configError.value = '';
 	// A remote server needs a public domain, otherwise the install bakes a
 	// localhost URL the app can never open. Block before provisioning.
-	if (isRemoteTarget.value && !derivedHosts.value) {
+	if (isRemoteTarget.value && !hasDomain.value) {
 		configStep.value = 'domain';
 		configError.value = 'Remote servers need a public domain so you can reach the app after install. Add one under Domain & DNS.';
 		return;
@@ -800,7 +818,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 									Leave blank only when installing on this machine.
 								</template>
 							</p>
-							<p v-if="isRemoteTarget && !derivedHosts" class="mt-1.5 text-xs text-amber-300">
+							<p v-if="isRemoteTarget && !hasDomain" class="mt-1.5 text-xs text-amber-300">
 								<Icon name="lucide:triangle-alert" class="mb-0.5 mr-1 inline size-3.5" />
 								Without a domain this install is only reachable on the server itself.
 							</p>
@@ -808,7 +826,7 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							<!-- Connected by hostname → the SSH address is not an IP. The wizard
 							     auto-detects the public IP over the SSH session; this field lets
 							     the operator override it if detection failed or was wrong. -->
-							<div v-if="derivedHosts && !hostIsIp" class="mt-3">
+							<div v-if="hasDomain && !hostIsIp" class="mt-3">
 								<label :class="labelClass">Server's public IP (for the A records)</label>
 								<input v-model="publicIp" :class="[inputClass, 'font-mono text-xs']" placeholder="203.0.113.5" inputmode="decimal" />
 								<p class="mt-1 text-xs text-text-secondary">
@@ -819,11 +837,13 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							</div>
 
 							<div>
-								<div v-if="derivedHosts" class="mt-2">
+								<div v-if="hasDomain" class="mt-2">
 									<DesktopHostnameOverrides
 										v-model="hostLabels"
 										:domain="domain"
 										:errors="labelValidation.errors"
+										:disabled-keys="disabledLabelKeys"
+										:disabled-hint="HOST_LABEL_INACTIVE_HINT"
 									/>
 								</div>
 
