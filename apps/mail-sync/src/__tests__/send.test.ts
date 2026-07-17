@@ -366,6 +366,106 @@ describe('testConnection', () => {
 	});
 });
 
+// X4: the XOAUTH2 access-token plumbing. `smtpAuth()` selects the credential shape
+// handed to the smtp-client — a non-empty token → OAuth `{ username, accessToken }`,
+// an absent or empty-string token → the unchanged password `{ username, password }`.
+describe('XOAUTH2 access-token plumbing', () => {
+	describe('sendViaExternal', () => {
+		it('hands the client OAuth credentials when an access token is present', async () => {
+			const oauthCreds: WorkerCredentials = { ...CREDS, smtpAccessToken: 'ya29.TOKEN' };
+			sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
+
+			await sendViaExternal(oauthCreds, {
+				from: 'me@example.com',
+				recipients: ['x@example.com'],
+				raw: RAW,
+			});
+
+			// The bearer token replaces the password entirely — no `password` field.
+			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', accessToken: 'ya29.TOKEN' },
+			});
+		});
+
+		it('falls back to password credentials when no access token is present', async () => {
+			// CREDS carries no smtpAccessToken at all.
+			await sendViaExternal(CREDS, {
+				from: 'me@example.com',
+				recipients: ['x@example.com'],
+				raw: RAW,
+			});
+
+			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', password: 'smtp-pass' },
+			});
+		});
+
+		it('treats an empty-string access token as absent (password credentials)', async () => {
+			const emptyToken: WorkerCredentials = { ...CREDS, smtpAccessToken: '' };
+
+			await sendViaExternal(emptyToken, {
+				from: 'me@example.com',
+				recipients: ['x@example.com'],
+				raw: RAW,
+			});
+
+			// An empty string is a token-less placeholder, not a bearer token.
+			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', password: 'smtp-pass' },
+			});
+		});
+	});
+
+	describe('testConnection', () => {
+		const baseInput = {
+			imap: {
+				host: 'imap.example.com',
+				port: 993,
+				secure: true,
+				username: 'imap-user',
+				password: 'imap-pass',
+			},
+			smtp: {
+				host: 'smtp.example.com',
+				port: 587,
+				secure: false,
+				username: 'smtp-user',
+				password: 'smtp-pass',
+			},
+		};
+
+		it('verifies with OAuth credentials when the SMTP probe carries an access token', async () => {
+			await testConnection({
+				...baseInput,
+				smtp: { ...baseInput.smtp, accessToken: 'ya29.TOKEN' },
+			});
+
+			expect(verify.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', accessToken: 'ya29.TOKEN' },
+			});
+		});
+
+		it('verifies with password credentials when no access token is present', async () => {
+			await testConnection(baseInput);
+
+			expect(verify.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', password: 'smtp-pass' },
+			});
+		});
+
+		it('treats an empty-string access token as absent (password credentials)', async () => {
+			await testConnection({
+				...baseInput,
+				smtp: { ...baseInput.smtp, accessToken: '' },
+			});
+
+			expect(verify.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', password: 'smtp-pass' },
+			});
+		});
+	});
+});
+
 // Regression-lock (PR-75 §1 + §6): across EVERY smtp-client / imapflow
 // construction in the send + connection-test paths, the options handed to the
 // library must never disable certificate verification and the test path must be

@@ -13,7 +13,7 @@
 
 import os from 'node:os';
 import { sendMessage, verify as verifySmtp } from '@owlat/smtp-client';
-import type { SmtpConnectOptions } from '@owlat/smtp-client';
+import type { AuthConfig, SmtpConnectOptions } from '@owlat/smtp-client';
 import { ImapFlow } from 'imapflow';
 import type { WorkerCredentials } from './convex.js';
 import { mapFolderRole } from './folders.js';
@@ -70,6 +70,21 @@ function smtpConnectOptions(host: string, port: number, secure: boolean): SmtpCo
 	};
 }
 
+/**
+ * Build the `@owlat/smtp-client` auth config from a username plus EITHER an OAuth
+ * bearer access token (SASL XOAUTH2) OR a password (SASL PLAIN/LOGIN). When a
+ * non-empty access token is present it wins — Gmail / Microsoft submission for a
+ * modern account is token-only and the stored password is a placeholder. Token
+ * acquisition and refresh belong to the external-accounts OAuth feature; this
+ * worker only forwards whatever token the backend handed it.
+ */
+function smtpAuth(username: string, password: string, accessToken?: string): AuthConfig {
+	if (accessToken !== undefined && accessToken !== '') {
+		return { credentials: { username, accessToken } };
+	}
+	return { credentials: { username, password } };
+}
+
 export async function sendViaExternal(
 	creds: WorkerCredentials,
 	params: { from: string; recipients: string[]; raw: Buffer }
@@ -80,7 +95,7 @@ export async function sendViaExternal(
 	// .eml bytes Convex already built.
 	const result = await sendMessage({
 		connect: smtpConnectOptions(creds.smtpHost, creds.smtpPort, creds.isSmtpSecure),
-		auth: { credentials: { username: creds.smtpUsername, password: creds.smtpPassword } },
+		auth: smtpAuth(creds.smtpUsername, creds.smtpPassword, creds.smtpAccessToken),
 		envelope: { from: params.from, to: params.recipients, data: params.raw },
 	});
 
@@ -125,6 +140,12 @@ export interface ProtocolCreds {
 	secure: boolean;
 	username: string;
 	password: string;
+	/**
+	 * OAuth bearer access token for an SMTP submission probe. When present the SMTP
+	 * probe authenticates with SASL XOAUTH2 instead of the password. IMAP still uses
+	 * the password (ImapFlow's own XOAUTH2 plumbing is out of scope for this piece).
+	 */
+	accessToken?: string;
 }
 
 export async function testConnection(input: {
@@ -159,7 +180,7 @@ async function testSmtp(c: ProtocolCreds): Promise<{ ok: boolean; error?: string
 		// same TLS posture as the live send path.
 		await verifySmtp({
 			connect: smtpConnectOptions(c.host, c.port, c.secure),
-			auth: { credentials: { username: c.username, password: c.password } },
+			auth: smtpAuth(c.username, c.password, c.accessToken),
 		});
 		return { ok: true };
 	} catch (err) {
