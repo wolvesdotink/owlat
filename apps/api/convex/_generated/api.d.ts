@@ -147,6 +147,7 @@ import type * as conditions_types from "../conditions/types.js";
 import type * as confirmationEmail from "../confirmationEmail.js";
 import type * as confirmationEmailQueries from "../confirmationEmailQueries.js";
 import type * as connectedApps_actions from "../connectedApps/actions.js";
+import type * as connectedApps_connectionTest from "../connectedApps/connectionTest.js";
 import type * as connectedApps_lifecycle from "../connectedApps/lifecycle.js";
 import type * as connectedApps_model from "../connectedApps/model.js";
 import type * as connectedApps_mutations from "../connectedApps/mutations.js";
@@ -846,6 +847,7 @@ declare const fullApi: ApiFromModules<{
   confirmationEmail: typeof confirmationEmail;
   confirmationEmailQueries: typeof confirmationEmailQueries;
   "connectedApps/actions": typeof connectedApps_actions;
+  "connectedApps/connectionTest": typeof connectedApps_connectionTest;
   "connectedApps/lifecycle": typeof connectedApps_lifecycle;
   "connectedApps/model": typeof connectedApps_model;
   "connectedApps/mutations": typeof connectedApps_mutations;

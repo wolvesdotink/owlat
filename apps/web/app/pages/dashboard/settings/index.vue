@@ -304,6 +304,17 @@ const hasOrphanedPluginSettings = computed(
 	() => (pluginSettingsOverview.value?.orphaned.length ?? 0) > 0
 );
 
+// Connected apps (Tier-2 external integrations) bind to a bundled plugin, so the
+// entry shows whenever plugins are bundled. It must also stay reachable when a
+// plugin is removed from the build but connected-app records remain, so admins
+// can still revoke/delete them: mirror the orphaned-plugin probe and query the
+// (admin-gated) list only in that empty-build case.
+const { data: connectedAppsForNav } = useConvexQuery(
+	api.connectedApps.queries.listByTeam,
+	() => (isAdmin.value && bundledPluginComposition.length === 0 ? {} : 'skip')
+);
+const hasConnectedApps = computed(() => (connectedAppsForNav.value?.length ?? 0) > 0);
+
 // Main settings sections
 const settingsSections = computed(() => {
 	const sections = [
@@ -373,6 +384,19 @@ const settingsSections = computed(() => {
 						description: 'Configure installed plugins, their capabilities, and their settings',
 						href: '/dashboard/settings/plugins',
 						icon: 'lucide:puzzle',
+					},
+				]
+			: []),
+		// Connected apps — external Tier-2 integrations bound to a bundled plugin.
+		// Shown when plugins are bundled, or when connected-app records remain
+		// after a plugin was removed so admins can still revoke/delete them.
+		...(bundledPluginComposition.length > 0 || hasConnectedApps.value
+			? [
+					{
+						name: 'Connected apps',
+						description: 'Connect external apps with scoped access and signed hooks',
+						href: '/dashboard/settings/connected-apps',
+						icon: 'lucide:plug',
 					},
 				]
 			: []),
