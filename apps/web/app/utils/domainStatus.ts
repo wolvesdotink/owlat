@@ -44,6 +44,15 @@ export type DnsRecordPanelRecord = {
 	type: 'TXT' | 'CNAME' | 'MX' | 'TLSA';
 	host: string;
 	value: string;
+	/**
+	 * True when `host` is a fully-qualified absolute name rather than a name
+	 * relative to the sending domain. Only the return-path record carries an
+	 * absolute `hostname` (see the MTA provider: `hostname: returnPathDomain`);
+	 * every other record uses a relative `host`. Threading this through preserves
+	 * the host-vs-hostname distinction the panel needs to place a record in its
+	 * zone, instead of re-guessing it from the string's shape.
+	 */
+	hostIsFqdn: boolean;
 };
 
 export type DomainDnsRecords = {
@@ -60,10 +69,15 @@ export function normalizeDnsRecord(
 ): DnsRecordPanelRecord | null {
 	if (!record?.value) return null;
 
+	// The resolved host came from the absolute `hostname` field only when there is
+	// no relative `host` (mirrors the `host ?? hostname ?? '@'` precedence below).
+	const hostIsFqdn = record.host == null && record.hostname != null;
+
 	return {
 		type: record.type ?? fallbackType,
 		host: record.host ?? record.hostname ?? '@',
 		value: record.value,
+		hostIsFqdn,
 	};
 }
 

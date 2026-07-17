@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { trySplitZone } from '@owlat/shared';
 import { formatDateTime } from '~/utils/formatters';
 import { rules } from '~/composables/useFormValidation';
 
@@ -63,6 +64,11 @@ const expandedId = ref<Id<'trackingDomains'> | null>(null);
 const toggleExpansion = (id: Id<'trackingDomains'>) => {
 	expandedId.value = expandedId.value === id ? null : id;
 };
+
+// The registrable zone a tracking domain's CNAME goes in — e.g. `example.com`
+// for `track.example.com`. Fail-soft to the raw domain when it has no
+// registrable zone (self-host / internal TLD).
+const zoneFor = (domain: string) => trySplitZone(domain)?.registrable ?? domain;
 
 const handleAdd = async () => {
 	if (!hasActiveOrganization.value) return;
@@ -257,7 +263,9 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 					<div v-if="expandedId === td._id" class="border-t border-border-subtle">
 						<div class="px-6 py-4 bg-bg-surface/30">
 							<h4 class="text-sm font-medium text-text-primary mb-4">
-								Create this CNAME record with your domain provider:
+								Create this CNAME record in the DNS settings for
+								<strong>{{ zoneFor(td.domain) }}</strong
+								>:
 							</h4>
 							<DomainsDNSRecordPanel
 								:record="{ type: 'CNAME', host: '@', value: td.cnameTarget }"
