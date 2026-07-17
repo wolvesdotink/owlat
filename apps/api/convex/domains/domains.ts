@@ -313,12 +313,10 @@ export const setReturnPathHost = authedMutation({
 		});
 		if (!outcome.ok) {
 			if (outcome.reason === 'domain_not_found') throwNotFound('Domain');
-			if (outcome.reason === 'unsupported_provider') {
-				throwInvalidState('This domain is not managed by the built-in MTA provider.');
-			}
 			if (outcome.reason === 'invalid_host') {
 				throwInvalidInput('Invalid return-path host.');
 			}
+			throwInvalidState(`Cannot set return-path host: ${outcome.reason}`);
 		}
 	},
 });
