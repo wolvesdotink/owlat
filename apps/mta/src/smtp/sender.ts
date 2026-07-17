@@ -377,12 +377,42 @@ export async function sendToMx(
 				},
 			};
 		} catch (err) {
-			// ANY transport/protocol error poisons this socket — evict the entry,
-			// release its global slot, and never reuse it. The in-flight job retries on
-			// a fresh connection (next MX, or a requeue) exactly once.
-			pool.evictConnection(key, conn);
+			if (isCleanPreDataRejection(err)) {
+				// A clean pre-DATA reply rejection (every recipient refused, or MAIL FROM
+				// bounced) left the SMTP session OPEN and the socket protocol-healthy — it
+				// carries a server reply code, no TLS fault, never reached DATA, and was
+				// not a 421 channel-close. Pre-X1 a bounce left the pooled entry intact;
+				// preserve that (and its Redis slot) by parking the socket for reuse rather
+				// than evicting. The next job's RSET boundary aborts the leftover
+				// transaction before the socket carries a new one.
+				pool.storeConnection(key, conn);
+				pool.release(key);
+			} else {
+				// ANY other failure — a transport/TLS fault, a 421 channel close, or a
+				// DATA-phase ambiguity — poisons this socket: evict the entry, release its
+				// global slot, and never reuse it. The in-flight job retries on a fresh
+				// connection (next MX, or a requeue) exactly once.
+				pool.evictConnection(key, conn);
+			}
 			return classifyFailure(err, mxHost, ctx, daneRequired);
 		}
+	}
+
+	/**
+	 * True for a delivery failure that left the socket protocol-healthy and reusable:
+	 * a server reply rejection in a pre-DATA phase (`mail`/`rcpt`), carrying a reply
+	 * code, with no TLS fault and not a 421 (which signals the server is closing the
+	 * channel). Everything else — transport faults, TLS faults, DATA/DATA-final
+	 * ambiguity, 421 — leaves the socket unusable and must evict.
+	 */
+	function isCleanPreDataRejection(err: unknown): boolean {
+		return (
+			isSmtpError(err) &&
+			err.tlsCause === undefined &&
+			err.replyCode !== undefined &&
+			err.replyCode !== 421 &&
+			(err.phase === 'mail' || err.phase === 'rcpt')
+		);
 	}
 
 	/**
