@@ -204,6 +204,31 @@ describe('setPluginSettings', () => {
 		});
 	});
 
+	it('drops a stored key the current schema no longer declares on the next save', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+		// Seed a stored record carrying a key (a former secret) that the current
+		// schema does not declare — the shape after a plugin upgrade removed a field.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				pluginSettings: {
+					[FLAG_KEY]: { apiKey: 'stale-secret', legacyToken: 'orphan-plaintext' },
+				},
+				createdAt: Date.now(),
+			});
+		});
+		await t.mutation(api.plugins.settings.setPluginSettings, {
+			pluginId: 'policy-pack',
+			values: { endpoint: 'https://prod.example' },
+		});
+		const stored = await readStoredSettings(t);
+		// The schema-declared secret is preserved; the removed key is dropped.
+		expect(stored?.[FLAG_KEY]).toEqual({
+			apiKey: 'stale-secret',
+			endpoint: 'https://prod.example',
+		});
+		expect(stored?.[FLAG_KEY]).not.toHaveProperty('legacyToken');
+	});
+
 	it('rejects an unknown field and writes nothing', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await expect(
