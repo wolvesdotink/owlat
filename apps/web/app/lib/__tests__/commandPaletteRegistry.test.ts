@@ -88,7 +88,10 @@ describe('activeProviders', () => {
 	});
 
 	it('drops a route-gated provider off its route and keeps a global provider', () => {
-		const scoped = provider({ id: 's', matchRoute: (path) => path.startsWith('/dashboard/postbox') });
+		const scoped = provider({
+			id: 's',
+			matchRoute: (path) => path.startsWith('/dashboard/postbox'),
+		});
 		const global = provider({ id: 'g' });
 		expect(
 			activeProviders([global, scoped], [], gate([], '/dashboard/campaigns')).map((p) => p.id)
