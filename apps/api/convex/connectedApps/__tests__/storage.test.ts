@@ -130,6 +130,33 @@ describe('connected-app host-mediated storage', () => {
 		});
 	});
 
+	it('shares one namespace across two apps bound to the same plugin in the same tenant', async () => {
+		// Storage scope is keyed by (organizationId, pluginId), NOT connectedAppId:
+		// a connected app's KV IS its bound plugin's scoped namespace, so two apps on
+		// the same plugin+tenant deliberately read and write the SAME namespace. This
+		// pins that intended cross-app sharing so a later refactor cannot silently
+		// flip it to per-app isolation.
+		const t = convexTest(schema, modules);
+		let appA: Id<'connectedApps'>, appB: Id<'connectedApps'>;
+		await t.run(async (ctx) => {
+			await operatorGrant(ctx, 'alpha');
+			appA = await seedApp(ctx, { organizationId: 'tenant-a', pluginId: 'alpha' });
+			appB = await seedApp(ctx, { organizationId: 'tenant-a', pluginId: 'alpha' });
+			await (await bindConnectedAppStorage(ctx, appA, 'tenant-a')).set('k', { v: 'from-a' });
+		});
+		await t.run(async (ctx) => {
+			// App B reads the value app A wrote (shared plugin-scoped namespace)…
+			expect(await (await bindConnectedAppStorage(ctx, appB, 'tenant-a')).get('k')).toEqual({
+				v: 'from-a',
+			});
+			// …and app B can overwrite it, which app A then observes.
+			await (await bindConnectedAppStorage(ctx, appB, 'tenant-a')).set('k', { v: 'from-b' });
+			expect(await (await bindConnectedAppStorage(ctx, appA, 'tenant-a')).get('k')).toEqual({
+				v: 'from-b',
+			});
+		});
+	});
+
 	it('denies binding with a foreign tenant id', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
