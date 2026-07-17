@@ -26,7 +26,7 @@ import {
 	CONNECTED_APP_TEST_MAX_RESPONSE_BYTES,
 	CONNECTED_APP_TEST_TIMEOUT_MS,
 } from '../lib/constants';
-import { fetchGuarded, readCappedBytes, CappedReadOverflow } from '../lib/ssrfGuard';
+import { fetchGuarded, readCappedBytes } from '../lib/ssrfGuard';
 
 /**
  * The outcome of a connection test:
@@ -53,12 +53,9 @@ export interface ConnectedAppConnectionTestResult {
 async function drainBody(response: Response): Promise<void> {
 	try {
 		await readCappedBytes(response.body, CONNECTED_APP_TEST_MAX_RESPONSE_BYTES);
-	} catch (error) {
-		// An over-cap body is fine here — the probe only needs the status line, so
-		// we intentionally ignore both the overflow and any late stream error.
-		if (!(error instanceof CappedReadOverflow)) {
-			// Swallow: draining is best-effort cleanup, never a probe failure.
-		}
+	} catch {
+		// The probe only needs the status line. Draining is best-effort cleanup —
+		// an over-cap body or a late stream error is never a probe failure.
 	}
 }
 
