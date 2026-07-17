@@ -16,6 +16,8 @@ export {
 	getBorderRadiusTypes,
 	getBlockLabels,
 	getSlashCommands,
+	finalizeBlockDefinitionRegistry,
+	isBlockDefinitionRegistryFrozen,
 } from './blockRegistry';
 
 // New typed Editor module API. Prefer these for new code; the legacy
@@ -29,4 +31,6 @@ export {
 	editorModuleFor,
 	getAllEditorModules,
 	getRegisteredTypes,
+	finalizeEditorModuleRegistry,
+	isEditorModuleRegistryFrozen,
 } from '../blocks';

@@ -23,10 +23,7 @@ import type { BlockType, BlockContent, EmailTheme } from '../types';
 import type { SlashCommand } from '../types';
 import type { BlockAttributeSchema } from '../schema/types';
 import { defaultPadding, defaultMargin } from '../defaults';
-import {
-	getAllEditorModules,
-	editorModuleFor,
-} from '../blocks/_registry';
+import { getAllEditorModules, editorModuleFor } from '../blocks/_registry';
 import type { EditorModule } from '../blocks/_module';
 
 /**
@@ -77,7 +74,9 @@ export interface BlockDefinition {
  * universal spread by providing its own `createDefault` (button, container,
  * accordion do this).
  */
-const composeCreateDefault = <T extends BlockType>(mod: EditorModule<T>): (theme: EmailTheme) => BlockContent => {
+const composeCreateDefault = <T extends BlockType>(
+	mod: EditorModule<T>
+): ((theme: EmailTheme) => BlockContent) => {
 	if (mod.createDefault) {
 		return (theme) => mod.createDefault!(theme) as unknown as BlockContent;
 	}
@@ -97,15 +96,17 @@ const bridgeToDefinition = <T extends BlockType>(mod: EditorModule<T>): BlockDef
 	label: mod.label,
 	schema: mod.schema,
 	createDefault: composeCreateDefault(mod),
-	createDefaultColumnItem: mod.createDefaultColumnItem as ((theme: EmailTheme) => BlockContent) | undefined,
+	createDefaultColumnItem: mod.createDefaultColumnItem as
+		| ((theme: EmailTheme) => BlockContent)
+		| undefined,
 	slashCommand: mod.slashCommand
 		? {
-			name: mod.slashCommand.name,
-			description: mod.slashCommand.description,
-			icon: mod.icon,
-			category: mod.slashCommand.category,
-			aliases: mod.slashCommand.aliases,
-		}
+				name: mod.slashCommand.name,
+				description: mod.slashCommand.description,
+				icon: mod.icon,
+				category: mod.slashCommand.category,
+				aliases: mod.slashCommand.aliases,
+			}
 		: null,
 	canBeInColumn: mod.canBeInColumn ?? false,
 	canBeInContainer: mod.canBeInContainer ?? false,
@@ -118,15 +119,35 @@ const bridgeToDefinition = <T extends BlockType>(mod: EditorModule<T>): BlockDef
 // ---------------------------------------------------------------------------
 
 const thirdPartyRegistry = new Map<BlockType, BlockDefinition>();
+let frozen = false;
 
 /**
  * Register a third-party block definition. Built-in blocks should NOT use
  * this — they live as `EditorModule<T>` under
  * `packages/email-builder/src/blocks/<type>/`. Third-party / dynamic blocks
  * that don't have a type in `BlockType` still use this entry point.
+ *
+ * Must be called before `finalizeBlockDefinitionRegistry()`. The host freezes
+ * the registry after composing hosted email blocks, so a late registration
+ * fails closed rather than silently mutating the editor's block palette.
  */
 export function registerBlock(def: BlockDefinition): void {
+	if (frozen) {
+		throw new Error(
+			`Cannot register block definition "${def.type}": the block definition registry is frozen. Register blocks during setup before finalizeBlockDefinitionRegistry().`
+		);
+	}
 	thirdPartyRegistry.set(def.type, def);
+}
+
+/** Freeze the third-party block definition registry to prevent further mutation. */
+export function finalizeBlockDefinitionRegistry(): void {
+	frozen = true;
+}
+
+/** Is the third-party block definition registry currently frozen? */
+export function isBlockDefinitionRegistryFrozen(): boolean {
+	return frozen;
 }
 
 // ---------------------------------------------------------------------------
@@ -163,15 +184,21 @@ export function getBlockTypes(): BlockType[] {
 }
 
 export function getColumnItemTypes(): string[] {
-	return getAllBlocks().filter((d) => d.canBeInColumn).map((d) => d.type);
+	return getAllBlocks()
+		.filter((d) => d.canBeInColumn)
+		.map((d) => d.type);
 }
 
 export function getContainerItemTypes(): string[] {
-	return getAllBlocks().filter((d) => d.canBeInContainer).map((d) => d.type);
+	return getAllBlocks()
+		.filter((d) => d.canBeInContainer)
+		.map((d) => d.type);
 }
 
 export function getBorderRadiusTypes(): string[] {
-	return getAllBlocks().filter((d) => d.supportsBorderRadius).map((d) => d.type);
+	return getAllBlocks()
+		.filter((d) => d.supportsBorderRadius)
+		.map((d) => d.type);
 }
 
 export function getBlockLabels(): Record<string, string> {

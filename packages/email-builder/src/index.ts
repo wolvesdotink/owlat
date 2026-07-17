@@ -115,6 +115,8 @@ export {
 	getBorderRadiusTypes,
 	getBlockLabels,
 	getSlashCommands,
+	finalizeBlockDefinitionRegistry,
+	isBlockDefinitionRegistryFrozen,
 	type EditorModule,
 	type EditorModuleMap,
 	type NestedChild,
@@ -122,6 +124,8 @@ export {
 	editorModuleFor,
 	getAllEditorModules,
 	getRegisteredTypes,
+	finalizeEditorModuleRegistry,
+	isEditorModuleRegistryFrozen,
 } from './registry';
 
 // Schema

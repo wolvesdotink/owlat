@@ -14,10 +14,33 @@ import type { BlockType } from '../types';
 import type { EditorModule } from './_module';
 
 const registry = new Map<BlockType, EditorModule<BlockType>>();
+let frozen = false;
 
-/** Register an Editor module. Idempotent: re-registration overwrites. */
+/**
+ * Register an Editor module. Idempotent: re-registration overwrites.
+ *
+ * Must be called before `finalizeEditorModuleRegistry()`. Built-in modules
+ * self-register at import time; the host freezes the registry after
+ * composition, so registration attempts after that point fail closed rather
+ * than silently mutating a live registry.
+ */
 export function registerEditorModule<T extends BlockType>(mod: EditorModule<T>): void {
+	if (frozen) {
+		throw new Error(
+			`Cannot register editor module "${mod.type}": the editor module registry is frozen. Register modules during setup before finalizeEditorModuleRegistry().`
+		);
+	}
 	registry.set(mod.type, mod as unknown as EditorModule<BlockType>);
+}
+
+/** Freeze the editor module registry to prevent further mutation. */
+export function finalizeEditorModuleRegistry(): void {
+	frozen = true;
+}
+
+/** Is the editor module registry currently frozen? */
+export function isEditorModuleRegistryFrozen(): boolean {
+	return frozen;
 }
 
 /** Look up the Editor module for a block type. Returns undefined if absent. */
