@@ -15,8 +15,9 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction } from '../../_generated/server';
+import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
+import type { Doc, Id } from '../../_generated/dataModel';
 import { logError, logInfo } from '../../lib/runtimeLog';
 import { createMtaIdentityManager } from '../../lib/emailProviders/mtaIdentity';
 import { createSESIdentityManager } from '../../lib/emailProviders/sesIdentity';
@@ -87,38 +88,160 @@ export const run = internalAction({
 	},
 });
 
-// Bounded retry budget for reflecting a changed return-path host to the MTA.
+// Bounded retry budget for reflecting a changed return-path host to a provider.
 // 5 attempts over exponential backoff (30s, 60s, 120s, 240s → ~8min total)
-// rides out a transient MTA outage; exhausting it is a permanent failure that
-// is surfaced (audit + `returnPathHostSyncError` marker), never swallowed.
-const RETURN_PATH_PUSH_MAX_ATTEMPTS = 5;
-const RETURN_PATH_PUSH_BASE_DELAY_MS = 30_000;
+// rides out a transient provider outage; exhausting it is a permanent failure
+// that is surfaced (audit + `returnPathHostSyncError` marker), never swallowed.
+const RETURN_PATH_REFLECT_MAX_ATTEMPTS = 5;
+const RETURN_PATH_REFLECT_BASE_DELAY_MS = 30_000;
 const LIFECYCLE_USER_RETURN_PATH_PUSH = 'system:return_path_push';
+const LIFECYCLE_USER_SES_MAILFROM_REFLECT = 'system:ses_mailfrom_reflect';
+
+/** Args shared by every return-path reflection action. */
+interface ReflectArgs {
+	domainId: Id<'domains'>;
+	returnPathHost: string;
+	attempt?: number;
+}
+
+/**
+ * The provider-specific outcome of a single reflection attempt:
+ *   - `done`      — the provider call succeeded; `describe` is a log-friendly
+ *                   name for the reflected target.
+ *   - `permanent` — a non-transient failure (e.g. a host that is not a valid SES
+ *                   MAIL FROM subdomain): do NOT retry, record the give-up now.
+ * A thrown error is treated as transient (retry within the budget).
+ */
+type ReflectionOutcome =
+	| { kind: 'done'; describe: string }
+	| { kind: 'permanent'; message: string };
+
+/** Per-provider configuration for {@link runReturnPathReflection}. */
+interface ReflectionConfig {
+	/** Short tag for log lines (`MTA` / `SES`). */
+	readonly tag: string;
+	/** The provider this reflection is for; a mismatched domain is skipped. */
+	readonly providerType: SendingDomainProviderKind;
+	/** `userId` tag threaded into `recordReturnPathPushResult`. */
+	readonly userId: string;
+	/**
+	 * Re-enqueue this same action for the next attempt. A closure (rather than a
+	 * typed `FunctionReference` self-reference) on purpose: naming the action's own
+	 * generated reference in a field type is circular and collapses Convex's whole
+	 * `internal`/`DataModel` inference — using it only as a `scheduler.runAfter`
+	 * argument inside the closure is safe.
+	 */
+	readonly reschedule: (delayMs: number, nextAttempt: number) => Promise<unknown>;
+	/** Perform the provider-specific reflection (may throw for transient errors). */
+	readonly perform: (domain: Doc<'domains'>) => Promise<ReflectionOutcome>;
+}
+
+/**
+ * Shared retry/supersession/give-up machinery for reflecting a changed
+ * per-domain return-path host to a provider (MTA push, SES MAIL FROM). Extracted
+ * so the concurrency-sensitive loop lives in ONE place — `pushReturnPathHost`
+ * (MTA) and `reflectSesMailFrom` (SES) differ only in `config.perform` (the
+ * actual provider API call) and their identity/logging.
+ *
+ * Recovery: on a thrown (transient) failure it self-reschedules with exponential
+ * backoff up to `RETURN_PATH_REFLECT_MAX_ATTEMPTS`; on exhaustion — or a
+ * `permanent` outcome — it records a give-up via `recordReturnPathPushResult`
+ * (an audit row + the `returnPathHostSyncError` marker), so a permanent
+ * divergence is never silent.
+ *
+ * Concurrency: reflection is best-effort last-writer-wins — two edits racing can
+ * reflect in either order, and there is no generation token (return-path edits
+ * are rare, so one was deemed not worth the ceremony). The `returnPathHost`
+ * re-read below skips a chain whose target host was already superseded, which
+ * collapses the common case, but a narrow double-interleaving can still leave the
+ * provider on a superseded host; that is reconciled by the NEXT edit's
+ * reflection. Only the marker/audit path is strongly race-safe:
+ * `recordReturnPathPushResult` is a serializable mutation that re-checks the
+ * host, so a stale give-up can never mark a domain that has already moved on.
+ */
+async function runReturnPathReflection(
+	ctx: ActionCtx,
+	args: ReflectArgs,
+	config: ReflectionConfig
+): Promise<void> {
+	const attempt = args.attempt ?? 0;
+	const { tag } = config;
+
+	const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
+		domainId: args.domainId,
+	});
+	if (!domain) {
+		logError(`[${tag}] Domain ${args.domainId} not found, skipping return-path reflection`);
+		return;
+	}
+	if (domain.providerType !== config.providerType) {
+		// Should not happen — the mutation gates on providerType — but stay safe.
+		logError(
+			`[${tag}] Domain ${domain.domain} is not ${config.providerType}-provider; skipping return-path reflection`
+		);
+		return;
+	}
+	if (domain.returnPathHost !== args.returnPathHost) {
+		logInfo(
+			`[${tag}] Return-path host for ${domain.domain} changed since this reflection was queued; abandoning stale attempt`
+		);
+		return;
+	}
+
+	const recordGiveUp = (message: string, attempts: number) =>
+		ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+			domainId: args.domainId,
+			returnPathHost: args.returnPathHost,
+			error: message,
+			attempts,
+			userId: config.userId,
+		});
+
+	let outcome: ReflectionOutcome;
+	try {
+		outcome = await config.perform(domain);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : `Unknown ${tag} error`;
+		const nextAttempt = attempt + 1;
+		if (nextAttempt < RETURN_PATH_REFLECT_MAX_ATTEMPTS) {
+			const delayMs = RETURN_PATH_REFLECT_BASE_DELAY_MS * 2 ** attempt;
+			logError(
+				`[${tag}] Failed to reflect return-path host ${args.returnPathHost} for ${domain.domain} (attempt ${nextAttempt}/${RETURN_PATH_REFLECT_MAX_ATTEMPTS}), retrying in ${delayMs}ms:`,
+				message
+			);
+			await config.reschedule(delayMs, nextAttempt);
+			return;
+		}
+		// Budget exhausted — permanent divergence. Surface it.
+		logError(
+			`[${tag}] Giving up on return-path reflection ${args.returnPathHost} for ${domain.domain} after ${RETURN_PATH_REFLECT_MAX_ATTEMPTS} attempts:`,
+			message
+		);
+		await recordGiveUp(message, RETURN_PATH_REFLECT_MAX_ATTEMPTS);
+		return;
+	}
+
+	if (outcome.kind === 'permanent') {
+		// Non-transient (config) failure — no retry would ever succeed. Surface it.
+		logError(`[${tag}] ${outcome.message}; cannot reflect return-path host for ${domain.domain}`);
+		await recordGiveUp(outcome.message, attempt);
+		return;
+	}
+
+	logInfo(`[${tag}] Return-path host for ${domain.domain} reflected as ${outcome.describe}`);
+	// Success — clear any prior sync-failure marker.
+	await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+		domainId: args.domainId,
+		returnPathHost: args.returnPathHost,
+		userId: config.userId,
+	});
+}
 
 /**
  * Reflect a domain's changed per-domain VERP return-path host (D1/D2) to the
- * MTA, out-of-band from the `setReturnPathHost` mutation that regenerated the
- * Convex-side `mailFrom` record. POSTs the host to the D1 register endpoint,
- * which is idempotent for the DKIM key — so this sets ONLY the return-path host
- * and never disturbs the signing key. MTA-only: SES has no return-path host.
- *
- * Recovery: on failure it self-reschedules with exponential backoff up to
- * `RETURN_PATH_PUSH_MAX_ATTEMPTS`. If the budget is exhausted the divergence is
- * PERMANENT (Convex committed the new host; the MTA still stamps the old one),
- * so it records a give-up via `recordReturnPathPushResult` — an audit row plus
- * the `returnPathHostSyncError` marker on the domain — rather than failing
- * silently.
- *
- * Concurrency: the MTA push itself is best-effort last-writer-wins — two edits
- * racing can POST to the MTA in either order, and there is no generation token
- * (return-path edits are rare, so one was deemed not worth the ceremony). The
- * best-effort `returnPathHost` re-read below skips a chain whose target host has
- * already been superseded, which collapses the common case, but a narrow
- * double-interleaving can still leave the MTA on a superseded host; that is
- * reconciled by the NEXT edit's push (which POSTs the then-current host). Only
- * the marker/audit path is strongly race-safe: `recordReturnPathPushResult` is a
- * serializable mutation that re-checks the host, so a stale give-up can never
- * mark a domain that has already moved on.
+ * MTA. POSTs the host to the D1 register endpoint, which is idempotent for the
+ * DKIM key — so this sets ONLY the return-path host, never the signing key.
+ * All retry/supersession/give-up handling lives in {@link runReturnPathReflection}.
  */
 export const pushReturnPathHost = internalAction({
 	args: {
@@ -126,91 +249,36 @@ export const pushReturnPathHost = internalAction({
 		returnPathHost: v.string(),
 		attempt: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		const attempt = args.attempt ?? 0;
-		const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
-			domainId: args.domainId,
-		});
-		if (!domain) {
-			logError(`[MTA] Domain ${args.domainId} not found, skipping return-path host push`);
-			return;
-		}
-		if (domain.providerType !== 'mta') {
-			// Should not happen — the mutation gates on providerType — but stay safe.
-			logError(`[MTA] Domain ${domain.domain} is not MTA-provider; skipping return-path host push`);
-			return;
-		}
-		// Best-effort supersession: if a newer edit already changed the target host,
-		// abandon this chain — its own push is reflecting the current host. This is
-		// a narrowing check, not a guarantee: without a generation token a push that
-		// reads the host before a concurrent edit commits can still POST a
-		// superseded host (last-writer-wins), reconciled by that edit's own push.
-		if (domain.returnPathHost !== args.returnPathHost) {
-			logInfo(
-				`[MTA] Return-path host for ${domain.domain} changed since this push was queued; abandoning stale attempt`
-			);
-			return;
-		}
-
-		try {
-			const mta = createMtaIdentityManager();
-			await mta.registerDomain(domain.domain, args.returnPathHost);
-			logInfo(
-				`[MTA] Return-path host for ${domain.domain} set to ${args.returnPathHost} on the MTA`
-			);
-			// Success — clear any prior sync-failure marker.
-			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
-				domainId: args.domainId,
-				returnPathHost: args.returnPathHost,
-				userId: LIFECYCLE_USER_RETURN_PATH_PUSH,
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown MTA error';
-			const nextAttempt = attempt + 1;
-			if (nextAttempt < RETURN_PATH_PUSH_MAX_ATTEMPTS) {
-				const delayMs = RETURN_PATH_PUSH_BASE_DELAY_MS * 2 ** attempt;
-				logError(
-					`[MTA] Failed to push return-path host ${args.returnPathHost} for ${domain.domain} (attempt ${nextAttempt}/${RETURN_PATH_PUSH_MAX_ATTEMPTS}), retrying in ${delayMs}ms:`,
-					message
-				);
-				await ctx.scheduler.runAfter(
+	// Block-body async with an explicit `Promise<void>`: the `reschedule` closure
+	// names this action's own generated reference, so an inferred return type would
+	// be self-referential and collapse Convex's whole `internal`/`DataModel`
+	// inference. The annotation breaks that cycle.
+	handler: async (ctx, args): Promise<void> => {
+		await runReturnPathReflection(ctx, args, {
+			tag: 'MTA',
+			providerType: 'mta',
+			userId: LIFECYCLE_USER_RETURN_PATH_PUSH,
+			reschedule: (delayMs, nextAttempt) =>
+				ctx.scheduler.runAfter(
 					delayMs,
 					internal.domains.providers.registerAction.pushReturnPathHost,
 					{ domainId: args.domainId, returnPathHost: args.returnPathHost, attempt: nextAttempt }
-				);
-				return;
-			}
-
-			// Budget exhausted — permanent divergence. Surface it.
-			logError(
-				`[MTA] Giving up on return-path host push ${args.returnPathHost} for ${domain.domain} after ${RETURN_PATH_PUSH_MAX_ATTEMPTS} attempts:`,
-				message
-			);
-			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
-				domainId: args.domainId,
-				returnPathHost: args.returnPathHost,
-				error: message,
-				attempts: RETURN_PATH_PUSH_MAX_ATTEMPTS,
-				userId: LIFECYCLE_USER_RETURN_PATH_PUSH,
-			});
-		}
+				),
+			perform: async (domain) => {
+				const mta = createMtaIdentityManager();
+				await mta.registerDomain(domain.domain, args.returnPathHost);
+				return { kind: 'done', describe: args.returnPathHost };
+			},
+		});
 	},
 });
 
-const LIFECYCLE_USER_SES_MAILFROM_REFLECT = 'system:ses_mailfrom_reflect';
-
 /**
- * Reflect a domain's changed per-domain return-path host to SES (X1), out-of-band
- * from the `setReturnPathHost` mutation that regenerated the Convex-side SES MAIL
- * FROM records. Calls SES `SetIdentityMailFromDomain` with the MAIL FROM subdomain
- * derived from the host. Idempotent at SES. SES-only.
- *
- * Structurally identical to `pushReturnPathHost`: bounded self-rescheduling retry
- * on failure, a permanent give-up recorded via `recordReturnPathPushResult`
- * (audit + `returnPathHostSyncError` marker) so a permanent divergence is never
- * silent, and the same best-effort last-writer-wins supersession check (no
- * generation token — return-path edits are rare; a narrow interleaving reconciles
- * on the next edit, and only the marker/audit path is strongly race-safe).
+ * Reflect a domain's changed per-domain return-path host to SES (X1) via
+ * `SetIdentityMailFromDomain`, using the MAIL FROM subdomain derived from the
+ * host. A host that is not a subdomain of the sending domain is a permanent
+ * (non-retryable) failure. All retry/supersession/give-up handling lives in
+ * {@link runReturnPathReflection}.
  */
 export const reflectSesMailFrom = internalAction({
 	args: {
@@ -218,82 +286,31 @@ export const reflectSesMailFrom = internalAction({
 		returnPathHost: v.string(),
 		attempt: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		const attempt = args.attempt ?? 0;
-		const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
-			domainId: args.domainId,
-		});
-		if (!domain) {
-			logError(`[SES] Domain ${args.domainId} not found, skipping MAIL FROM reflection`);
-			return;
-		}
-		if (domain.providerType !== 'ses') {
-			logError(`[SES] Domain ${domain.domain} is not SES-provider; skipping MAIL FROM reflection`);
-			return;
-		}
-		// Best-effort supersession (see pushReturnPathHost): a newer edit changed
-		// the target host, so this chain is stale.
-		if (domain.returnPathHost !== args.returnPathHost) {
-			logInfo(
-				`[SES] MAIL FROM host for ${domain.domain} changed since this reflection was queued; abandoning stale attempt`
-			);
-			return;
-		}
-
-		const mailFrom = resolveSesMailFrom(domain.domain, args.returnPathHost);
-		if (!mailFrom) {
-			// The mutation validated the subdomain constraint, so this is a permanent
-			// config error rather than transient — record it and stop (no retry).
-			const message = `Return-path host ${args.returnPathHost} is not a subdomain of ${domain.domain}`;
-			logError(`[SES] ${message}; cannot set MAIL FROM`);
-			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
-				domainId: args.domainId,
-				returnPathHost: args.returnPathHost,
-				error: message,
-				attempts: attempt,
-				userId: LIFECYCLE_USER_SES_MAILFROM_REFLECT,
-			});
-			return;
-		}
-
-		try {
-			const ses = createSESIdentityManager();
-			await ses.setupMailFromDomain(domain.domain, mailFrom.host);
-			logInfo(`[SES] Custom MAIL FROM for ${domain.domain} set to ${mailFrom.mailFromDomain}`);
-			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
-				domainId: args.domainId,
-				returnPathHost: args.returnPathHost,
-				userId: LIFECYCLE_USER_SES_MAILFROM_REFLECT,
-			});
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown SES error';
-			const nextAttempt = attempt + 1;
-			if (nextAttempt < RETURN_PATH_PUSH_MAX_ATTEMPTS) {
-				const delayMs = RETURN_PATH_PUSH_BASE_DELAY_MS * 2 ** attempt;
-				logError(
-					`[SES] Failed to set MAIL FROM ${mailFrom.mailFromDomain} for ${domain.domain} (attempt ${nextAttempt}/${RETURN_PATH_PUSH_MAX_ATTEMPTS}), retrying in ${delayMs}ms:`,
-					message
-				);
-				await ctx.scheduler.runAfter(
+	// Block-body async with an explicit `Promise<void>` — see pushReturnPathHost.
+	handler: async (ctx, args): Promise<void> => {
+		await runReturnPathReflection(ctx, args, {
+			tag: 'SES',
+			providerType: 'ses',
+			userId: LIFECYCLE_USER_SES_MAILFROM_REFLECT,
+			reschedule: (delayMs, nextAttempt) =>
+				ctx.scheduler.runAfter(
 					delayMs,
 					internal.domains.providers.registerAction.reflectSesMailFrom,
 					{ domainId: args.domainId, returnPathHost: args.returnPathHost, attempt: nextAttempt }
-				);
-				return;
-			}
-
-			logError(
-				`[SES] Giving up on MAIL FROM ${mailFrom.mailFromDomain} for ${domain.domain} after ${RETURN_PATH_PUSH_MAX_ATTEMPTS} attempts:`,
-				message
-			);
-			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
-				domainId: args.domainId,
-				returnPathHost: args.returnPathHost,
-				error: message,
-				attempts: RETURN_PATH_PUSH_MAX_ATTEMPTS,
-				userId: LIFECYCLE_USER_SES_MAILFROM_REFLECT,
-			});
-		}
+				),
+			perform: async (domain) => {
+				const mailFrom = resolveSesMailFrom(domain.domain, args.returnPathHost);
+				if (!mailFrom) {
+					return {
+						kind: 'permanent',
+						message: `Return-path host ${args.returnPathHost} is not a subdomain of ${domain.domain}`,
+					};
+				}
+				const ses = createSESIdentityManager();
+				await ses.setupMailFromDomain(domain.domain, mailFrom.host);
+				return { kind: 'done', describe: mailFrom.mailFromDomain };
+			},
+		});
 	},
 });
 
