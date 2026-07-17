@@ -59,3 +59,42 @@ export type {
 } from './pluginFeatureFlags';
 export { applyPluginUntrustedTextPolicy } from './untrustedText';
 export type { PluginUntrustedTextPolicy } from './untrustedText';
+export { constantTimeEqual, hashHookBody, signHookHmac, verifyHookHmac } from './hooks/signing';
+export {
+	createInMemoryCircuitBreakerStore,
+	DEFAULT_CIRCUIT_BREAKER_CONFIG,
+	evaluateCircuit,
+	recordCircuitFailure,
+	recordCircuitSuccess,
+} from './hooks/circuitBreaker';
+export type {
+	CircuitBreakerConfig,
+	CircuitBreakerRecord,
+	CircuitBreakerStore,
+	CircuitState,
+} from './hooks/circuitBreaker';
+export {
+	DEFAULT_GATE_FALLBACK_REASON,
+	MAX_DRAFT_CODE_POINTS,
+	MAX_GATE_REASON_CODE_POINTS,
+	MAX_SCORE_LABEL_CODE_POINTS,
+	MAX_SCORE_LABELS,
+	normalizeSyncHookResult,
+	syncHookFallback,
+} from './hooks/result';
+export type {
+	DraftHookResult,
+	GateHookResult,
+	ScoreHookResult,
+	SyncHookOutcomeReason,
+	SyncHookResult,
+} from './hooks/result';
+export { createInMemorySeenNonceStore, invokeSyncHook } from './hooks/invoke';
+export type {
+	SeenNonceStore,
+	SyncHookInvokeDeps,
+	SyncHookTransport,
+	SyncHookTransportFailureReason,
+	SyncHookTransportOutcome,
+	SyncHookTransportRequest,
+} from './hooks/invoke';
