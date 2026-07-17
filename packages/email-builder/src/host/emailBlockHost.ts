@@ -84,7 +84,8 @@ export type EmailBlockCompositionErrorCode =
 	| 'editor_without_renderer'
 	| 'duplicate_block_type'
 	| 'reserved_block_type'
-	| 'unsupported_placement';
+	| 'unsupported_placement'
+	| 'mismatched_definition_type';
 
 export class EmailBlockCompositionError extends Error {
 	readonly code: EmailBlockCompositionErrorCode;
@@ -201,10 +202,10 @@ function pairContribution(
 		}
 		if (half.definition.type !== half.type) {
 			// A definition keyed under a different type would register the editor
-			// half against the wrong block — that is an editor with no renderer for
-			// its declared type.
+			// half against the wrong block — a distinct plugin-authoring defect,
+			// not an unpaired half.
 			throw new EmailBlockCompositionError(
-				'editor_without_renderer',
+				'mismatched_definition_type',
 				`Plugin ${pluginId} editor for "${half.type}" declares a mismatched definition type "${half.definition.type}"`,
 				{ pluginId, blockType: half.type }
 			);
