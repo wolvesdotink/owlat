@@ -111,15 +111,14 @@ const nodeBaseResolver: DnsResolver = makeNodeBaseResolver();
 
 /**
  * Adapt a cached TXT resolver (our "no record" = an EMPTY answer) into the
- * `dns/promises`-shaped resolver mailauth expects, where "no record" is an
- * `ENOTFOUND`-coded REJECTION. The inbound ARC verifier (`inboundArc.ts`) still
- * runs on mailauth, whose default DNS is uncached: threading this adapter lets
- * ARC's `_domainkey` / ARC-seal key lookups ride the SAME shared cache instead
- * of hitting real DNS on the hot ingest path.
+ * `dns/promises`-shaped resolver the ARC verifier expects, where "no record" is
+ * an `ENOTFOUND`-coded REJECTION. Threading this adapter lets ARC's `_domainkey`
+ * / ARC-seal key lookups ride the SAME shared cache instead of hitting real DNS
+ * on the hot ingest path.
  */
 export function toThrowingTxtResolver(dkim: (name: string) => Promise<string[][]>): ArcDnsResolver {
 	return async (name, rrtype) => {
-		// mailauth's DKIM/ARC path only ever queries TXT; any other rrtype is an
+		// The ARC/DKIM key path only ever queries TXT; any other rrtype is an
 		// unsupported contract, so reject explicitly rather than silently answer.
 		if (rrtype !== 'TXT') {
 			throw new Error(
@@ -145,8 +144,8 @@ export interface InboundAuthResolvers {
 	/** DMARC: a TXT resolver for `dnsDmarcLookup` (`_dmarc.<domain>`). */
 	readonly dmarcTxt: (name: string) => Promise<string[][]>;
 	/**
-	 * ARC (mailauth): the DKIM TXT resolver in the `dns/promises` throwing shape
-	 * mailauth's `dkimVerify` / `arc` need — same shared cache, no real DNS.
+	 * ARC: the DKIM TXT resolver in the `dns/promises` throwing shape the ARC
+	 * verifier's seal / AMS key lookups need — same shared cache, no real DNS.
 	 */
 	readonly arc: ArcDnsResolver;
 }
