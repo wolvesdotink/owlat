@@ -77,8 +77,13 @@ export interface EmailJobResult {
 	remoteMessageId?: string;
 	/** Error message on failure */
 	error?: string;
-	/** Bounce classification */
-	bounceType?: 'hard' | 'soft' | 'deferred';
+	/**
+	 * Bounce classification. `'ambiguous'` is the post-DATA drop with no server
+	 * reply (AMBIGUOUS_TIMEOUT, W8): the message may already have been accepted,
+	 * so it is TERMINAL but must NOT be treated as a hard bounce — no recipient
+	 * suppression and no bounce-reputation penalties (see `dispatch/outcome.ts`).
+	 */
+	bounceType?: 'hard' | 'soft' | 'deferred' | 'ambiguous';
 	/** SMTP response code */
 	smtpCode?: number;
 	/** Enhanced status code (e.g., 5.1.1) */

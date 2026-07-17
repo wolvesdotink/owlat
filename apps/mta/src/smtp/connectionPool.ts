@@ -1,75 +1,80 @@
 /**
  * SMTP Connection Pool
  *
- * Maintains reusable nodemailer transports keyed by
+ * Maintains reusable @owlat/smtp-client CONNECT CONFIGS keyed by
  * {mxHost}:{bindIp}:{dkimDomain}:{tlsProfile}, where tlsProfile encodes
  * requireTLS, tls.rejectUnauthorized, and any DANE policy fingerprint. The TLS
  * profile MUST be part of the key: many domains share an MX (Google/O365), so
  * without it an MTA-STS-enforce send (requireTLS + verifying) would silently
- * reuse an earlier opportunistic, non-verifying transport to the same MX — a
+ * reuse an earlier opportunistic, non-verifying entry to the same MX — a
  * STARTTLS-stripping / enforcement bypass on exactly the high-value shared-MX
  * providers (RFC 8461 §5, RFC 7435).
- * Evicts idle and aged-out connections automatically.
+ * Evicts idle and aged-out entries automatically.
  *
- * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED transport
+ * One-connection-per-send is preserved (locked decision W3): a pool entry holds
+ * only the resolved connect config — never a live socket — because the sender
+ * opens a FRESH {@link SmtpConnection} per delivery attempt and tears it down
+ * afterwards. Live-socket reuse (true RSET pipelining) is a later capability
+ * (X1), NOT this pool. The entry therefore exists purely to (a) partition the
+ * global connection-cap accounting by mx/bindIp/dkim/tls-profile and (b) keep
+ * one-connection-per-send politeness bounded per MX.
+ *
+ * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED entry
  * holds one global slot (`mta:pool:global:<host>`); the slot is reserved
  * atomically at creation (INCR-then-check, rolled back when over the global cap)
  * and released on every teardown path (per-host evict, idle/aged evict, closeAll).
- * Reuse of a pooled transport takes NO new slot. The cap is best-effort: it
+ * Reuse of a pooled entry takes NO new slot. The cap is best-effort: it
  * fail-opens (no throttle) when Redis is down or coordination is disabled.
  */
 
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
 import type { TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
+import type { SmtpConnectOptions } from '@owlat/smtp-client';
 import { Gauge } from 'prom-client';
 import { registry } from '../monitoring/collector.js';
 import { logger } from '../monitoring/logger.js';
-import { makeDkimProcessFunc } from './dkim.js';
-import { securedCaptureLogger } from './tlsSecuredCapture.js';
 
 export interface PoolConfig {
-	/** Max concurrent transports per host (default 3) */
+	/** Max concurrent entries per host (default 3) */
 	maxPerHost: number;
-	/** Close transports idle longer than this (default 30_000ms) */
+	/** Drop entries idle longer than this (default 30_000ms) */
 	idleTimeoutMs: number;
-	/** Close transports older than this regardless of activity (default 300_000ms) */
+	/** Drop entries older than this regardless of activity (default 300_000ms) */
 	maxAgeMs: number;
 }
 
 export interface AcquireOptions {
 	port?: number;
-	secure?: boolean;
 	requireTLS?: boolean;
 	tls?: {
 		rejectUnauthorized?: boolean;
 		minVersion?: 'TLSv1.2' | 'TLSv1.3';
 		/**
 		 * RFC 6066 §3 Server Name Indication. Offered in the TLS ClientHello so a
-		 * shared-hosting MX can select the right certificate. nodemailer defaults
-		 * it to the connection `host`; the pool forwards an explicit override
-		 * verbatim. Forwarded into the transport via the `...options.tls` spread.
+		 * shared-hosting MX can select the right certificate. Forwarded verbatim to
+		 * the client's TLS options; when omitted the client defaults it to `host`.
 		 */
 		servername?: string;
 		/**
 		 * Runs after STARTTLS succeeds but before SMTP resumes. It runs even with
-		 * PKIX rejection disabled, and any returned error destroys the socket before
-		 * the post-TLS EHLO.
+		 * PKIX rejection disabled (DANE-EE), and any returned error destroys the
+		 * socket before the post-TLS EHLO.
 		 */
 		verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
 		/** Pool-only identity for the exact TLSA RRset and DANE-TA reference names. */
 		danePolicyFingerprint?: string;
 	};
+	/** The EHLO/HELO name announced to the MX (the sending MTA identity). */
 	name?: string;
 	connectionTimeout?: number;
 	greetingTimeout?: number;
 	socketTimeout?: number;
-	dkim?: { domainName: string; keySelector: string; privateKey: string };
+	/** The DKIM sending domain — a KEY PARTITIONING DIMENSION ONLY (signing is sign-time). */
+	dkimDomain?: string;
 }
 
 interface PoolEntry {
-	transport: Transporter;
+	config: SmtpConnectOptions;
 	mxHost: string;
 	lastUsedAt: number;
 	inFlight: number;
@@ -138,8 +143,8 @@ export class SmtpConnectionPool {
 	 *
 	 * The TLS profile (requireTLS + rejectUnauthorized + DANE policy) is part of
 	 * the key so a verifying/enforcing connection is NEVER served an
-	 * opportunistic, non-verifying transport to the same shared MX. Defaults match
-	 * the transport factory defaults (requireTLS=false, rejectUnauthorized=false)
+	 * opportunistic, non-verifying entry to the same shared MX. Defaults match
+	 * the config-factory defaults (requireTLS=false, rejectUnauthorized=false)
 	 * so callers that omit the profile get the opportunistic bucket — the existing
 	 * behaviour.
 	 */
@@ -155,7 +160,7 @@ export class SmtpConnectionPool {
 	): string {
 		const requireTLS = tls?.requireTLS ?? false;
 		const rejectUnauthorized = tls?.rejectUnauthorized ?? false;
-		// A DANE transport must not outlive or cross recipient-specific TLSA policy.
+		// A DANE entry must not outlive or cross recipient-specific TLSA policy.
 		// The exact RRset + reference-name fingerprint therefore participates in
 		// identity; non-DANE keys remain unchanged.
 		const daneSuffix = tls?.danePolicyFingerprint ? `da${tls.danePolicyFingerprint}` : '';
@@ -164,11 +169,13 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Acquire a transport from the pool or create a new one.
+	 * Acquire a connect config from the pool or build a new one.
 	 *
 	 * Async because opening a NEW connection consults the Redis global cap when
-	 * distributed coordination is enabled. Reusing a pooled transport, and the
-	 * whole method when coordination is disabled, resolves without a round-trip.
+	 * distributed coordination is enabled. Reusing a pooled config, and the whole
+	 * method when coordination is disabled, resolves without a round-trip. The
+	 * caller opens ONE {@link SmtpConnection} from the returned config per delivery
+	 * attempt (W3 one-connection-per-send) and releases the key afterwards.
 	 *
 	 * @throws {PoolOverCapError} when a new connection would exceed the global cap.
 	 */
@@ -176,24 +183,24 @@ export class SmtpConnectionPool {
 		mxHost: string,
 		bindIp: string,
 		options: AcquireOptions
-	): Promise<{ key: string; transport: Transporter }> {
+	): Promise<{ key: string; config: SmtpConnectOptions }> {
 		if (options.tls?.verifyPeerCertificate && !options.tls.danePolicyFingerprint) {
 			throw new Error('DANE verifier requires a policy fingerprint for safe pooling');
 		}
-		const dkimDomain = options.dkim?.domainName;
+		const dkimDomain = options.dkimDomain;
 		const key = SmtpConnectionPool.buildKey(mxHost, bindIp, dkimDomain, {
 			requireTLS: options.requireTLS,
 			rejectUnauthorized: options.tls?.rejectUnauthorized,
 			danePolicyFingerprint: options.tls?.danePolicyFingerprint,
 		});
 
-		// Reuse fast-path — an already-counted transport, no new global slot.
+		// Reuse fast-path — an already-counted config, no new global slot.
 		const existing = this.pool.get(key);
 		if (existing) {
 			existing.inFlight++;
 			existing.lastUsedAt = Date.now();
 			this.updateGauge();
-			return { key, transport: existing.transport };
+			return { key, config: existing.config };
 		}
 
 		// Per-host limit (this instance): evict the LRU idle entry to make room.
@@ -219,8 +226,6 @@ export class SmtpConnectionPool {
 				}
 			}
 			if (oldestKey) {
-				const evicted = this.pool.get(oldestKey)!;
-				evicted.transport.close();
 				this.pool.delete(oldestKey);
 				this.releaseGlobalSlot(mxHost);
 				logger.debug({ key: oldestKey }, 'Evicted pool entry for host limit');
@@ -228,81 +233,15 @@ export class SmtpConnectionPool {
 		}
 
 		// Global cap (across all instances): atomically reserve a slot for the new
-		// transport. Throws when over cap so the caller can defer the job.
+		// entry. Throws when over cap so the caller can defer the job.
 		if (!(await this.tryReserveGlobalSlot(mxHost))) {
 			throw new PoolOverCapError(mxHost);
 		}
 
-		const transportTls = { ...options.tls };
-		delete transportTls.danePolicyFingerprint;
-		const transport = nodemailer.createTransport({
-			host: mxHost,
-			port: options.port ?? 25,
-			secure: options.secure ?? false,
-			requireTLS: options.requireTLS ?? false,
-			// Pin a TLSv1.2 floor on every outbound STARTTLS connection. Without an
-			// explicit minVersion the floor is Node's process default, which is
-			// env-fragile (NODE_OPTIONS=--tls-min-v1.0, or a future Node default
-			// shift) and could silently negotiate down to TLS 1.0/1.1. RFC 8996
-			// deprecates those; RFC 9325 mandates TLS 1.2+. The caller may raise the
-			// floor to TLSv1.3 but cannot lower it below 1.2.
-			// nosemgrep -- opportunistic TLS default for SMTP delivery (RFC 7435); callers (MTA-STS enforce) override via options.tls.
-			tls: {
-				rejectUnauthorized: false,
-				...transportTls,
-				minVersion: options.tls?.minVersion ?? 'TLSv1.2',
-			},
-			name: options.name,
-			localAddress: bindIp,
-			connectionTimeout: options.connectionTimeout ?? 30_000,
-			greetingTimeout: options.greetingTimeout ?? 30_000,
-			socketTimeout: options.socketTimeout ?? 60_000,
-			// Attach a logger that records, per send, whether the connection
-			// negotiated TLS (it watches for nodemailer's "Connection upgraded with
-			// STARTTLS" line). nodemailer exposes no secured flag on `info`, so this
-			// is how the sender distinguishes an encrypted delivery from a plaintext
-			// one and records the right TLS-RPT result type (RFC 8460) instead of
-			// logging every successful send as a TLS 'success'. See tlsSecuredCapture.ts.
-			logger: securedCaptureLogger,
-			// NOTE: nodemailer's built-in `dkim` transport option is deliberately NOT
-			// passed. Its signer cannot oversign (it de-dups `h=`) or emit `t=`. We
-			// sign through a `stream` plugin (below) using our hardened signer so the
-			// pool key still partitions transports by dkim domain via `options.dkim`.
-		});
-
-		// Wire the hardened DKIM signer (oversign From/Subject/To + `t=`). The
-		// transport in this pool is dedicated to one dkim domain (the pool key
-		// includes `dkimDomain`), so binding the key here is safe. Guarded for the
-		// `.use` method so test doubles that stub `createTransport` aren't required
-		// to implement the plugin API.
-		if (options.dkim && typeof (transport as { use?: unknown }).use === 'function') {
-			const dkimKey = {
-				domainName: options.dkim.domainName,
-				keySelector: options.dkim.keySelector,
-				privateKey: options.dkim.privateKey,
-			};
-			(
-				transport as unknown as {
-					use(
-						step: string,
-						plugin: (
-							mail: {
-								message?: {
-									processFunc(fn: (input: NodeJS.ReadableStream) => NodeJS.ReadableStream): void;
-								};
-							},
-							done: (err?: Error) => void
-						) => void
-					): void;
-				}
-			).use('stream', (mail, done) => {
-				mail.message?.processFunc(makeDkimProcessFunc(dkimKey));
-				done();
-			});
-		}
+		const config = SmtpConnectionPool.buildConnectConfig(mxHost, bindIp, options);
 
 		const entry: PoolEntry = {
-			transport,
+			config,
 			mxHost,
 			lastUsedAt: Date.now(),
 			inFlight: 1,
@@ -313,7 +252,56 @@ export class SmtpConnectionPool {
 		this.updateGauge();
 		logger.debug({ key }, 'Created new pool entry');
 
-		return { key, transport };
+		return { key, config };
+	}
+
+	/**
+	 * Assemble the @owlat/smtp-client connect config for one MX/bindIp/profile.
+	 *
+	 * Outbound MX delivery is always STARTTLS on port 25 (opportunistic upgrade,
+	 * escalated to a required floor by `requireTLS`). The TLSv1.2 floor is pinned
+	 * here (RFC 8996/9325) so it never rests on Node's env-fragile process default;
+	 * the caller may raise it to TLSv1.3 but cannot lower it. `danePolicyFingerprint`
+	 * is pool-only identity and is deliberately NOT forwarded to the client.
+	 */
+	static buildConnectConfig(
+		mxHost: string,
+		bindIp: string,
+		options: AcquireOptions
+	): SmtpConnectOptions {
+		const tls: SmtpConnectOptions['tls'] = {
+			// nosemgrep -- opportunistic TLS default for SMTP delivery (RFC 7435); callers (MTA-STS enforce) override via options.tls.
+			rejectUnauthorized: options.tls?.rejectUnauthorized ?? false,
+			minVersion: options.tls?.minVersion ?? 'TLSv1.2',
+		};
+		if (options.tls?.servername !== undefined) {
+			tls.servername = options.tls.servername;
+		}
+		if (options.tls?.verifyPeerCertificate !== undefined) {
+			tls.verifyPeerCertificate = options.tls.verifyPeerCertificate;
+		}
+		const config: SmtpConnectOptions = {
+			host: mxHost,
+			port: options.port ?? 25,
+			// Production always supplies `name` (the sending IP's PTR-matching FQDN).
+			// The fallback must never announce the RECEIVING server's hostname
+			// (`mxHost`) — that is our identity to the peer and would read as spoofing
+			// (RFC 5321 §4.1.1.1). Fall back to our own bind IP as an address literal
+			// (RFC 5321 §4.1.3), which is honest and syntactically valid. An IPv6 bind
+			// address MUST carry the `IPv6:` tag (RFC 5321 §4.1.3) — a bare
+			// `[2001:db8::1]` is a syntax error a strict MX may reject at EHLO.
+			ehloName: options.name ?? (bindIp.includes(':') ? `[IPv6:${bindIp}]` : `[${bindIp}]`),
+			tlsMode: 'starttls',
+			requireTls: options.requireTLS ?? false,
+			localAddress: bindIp,
+			tls,
+			timeouts: {
+				connect: options.connectionTimeout ?? 30_000,
+				greeting: options.greetingTimeout ?? 30_000,
+				command: options.socketTimeout ?? 60_000,
+			},
+		};
+		return config;
 	}
 
 	/**
@@ -332,8 +320,8 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Release a transport back to the pool after use. In-memory only — the global
-	 * slot is held for the transport's whole lifetime and released on teardown.
+	 * Release an entry back to the pool after use. In-memory only — the global
+	 * slot is held for the entry's whole lifetime and released on teardown.
 	 */
 	release(key: string): void {
 		const entry = this.pool.get(key);
@@ -345,7 +333,7 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Start periodic eviction of idle and aged-out transports
+	 * Start periodic eviction of idle and aged-out entries
 	 */
 	startEviction(intervalMs = 10_000): void {
 		if (this.evictionTimer) return;
@@ -365,7 +353,6 @@ export class SmtpConnectionPool {
 
 			for (const key of keysToEvict) {
 				const entry = this.pool.get(key)!;
-				entry.transport.close();
 				this.pool.delete(key);
 				this.releaseGlobalSlot(entry.mxHost);
 				logger.debug({ key }, 'Evicted idle/aged pool entry');
@@ -378,7 +365,7 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Close all transports, waiting for in-flight sends to complete
+	 * Close the pool, waiting for in-flight sends to complete
 	 */
 	async closeAll(drainTimeoutMs = 10_000): Promise<void> {
 		// Stop eviction
@@ -398,13 +385,8 @@ export class SmtpConnectionPool {
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}
 
-		// Close all transports, releasing each one's global slot.
-		for (const [key, entry] of this.pool.entries()) {
-			try {
-				entry.transport.close();
-			} catch {
-				logger.warn({ key }, 'Error closing pooled transport');
-			}
+		// Drop all entries, releasing each one's global slot.
+		for (const entry of this.pool.values()) {
 			this.releaseGlobalSlot(entry.mxHost);
 		}
 
@@ -436,7 +418,7 @@ export class SmtpConnectionPool {
 
 	// ── Distributed Coordination Helpers ──
 
-	/** TTL for the global/instance counters — must outlive a transport's max age
+	/** TTL for the global/instance counters — must outlive an entry's max age
 	 * so a live connection's slot never expires out from under it. The decrement
 	 * on teardown is the real cleanup; the TTL is only a crashed-instance backstop. */
 	private slotTtlSeconds(): number {
@@ -444,7 +426,7 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Atomically reserve one global slot for a NEW transport to `mxHost`. INCR is
+	 * Atomically reserve one global slot for a NEW entry to `mxHost`. INCR is
 	 * atomic, so concurrent reservers get distinct counts and only those within
 	 * the cap keep their slot; an over-cap reserver rolls its INCR back. Returns
 	 * true (allow, no tracking) when coordination is disabled, and fail-OPEN
@@ -473,7 +455,7 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Release one global slot held by a torn-down transport. Fire-and-forget;
+	 * Release one global slot held by a torn-down entry. Fire-and-forget;
 	 * paired 1:1 with a successful tryReserveGlobalSlot. The TTL backstops any
 	 * decr that is lost (e.g. instance crash).
 	 */

@@ -9,7 +9,7 @@
  * the From-domain, and DKIM alignment is the only thing carrying it.
  *
  * This test pins:
- *  1. The real envelope.from domain `sendToMx` hands nodemailer equals the
+ *  1. The real envelope.from domain `sendToMx` hands @owlat/smtp-client equals the
  *     configured return-path domain (not the From-domain).
  *  2. `isSpfAligned(envelopeFromDomain, fromDomain, 'relaxed') === false` today
  *     (shared bounce domain) — the structural gap.
@@ -22,16 +22,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
 import { isSpfAligned, emailDomain } from '@owlat/shared/spfAlignment';
 
-const { mockTransport } = vi.hoisted(() => {
-	const mockTransport = { sendMail: vi.fn() };
-	return { mockTransport };
-});
+const { connectMock, sendEnvelopeMock, quitMock, acquireMock, releaseMock } = vi.hoisted(() => ({
+	connectMock: vi.fn(),
+	sendEnvelopeMock: vi.fn(),
+	quitMock: vi.fn(),
+	acquireMock: vi.fn(),
+	releaseMock: vi.fn(),
+}));
 
+vi.mock('@owlat/smtp-client', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@owlat/smtp-client')>();
+	return {
+		...actual,
+		SmtpConnection: { connect: connectMock },
+		sendEnvelope: sendEnvelopeMock,
+		quit: quitMock,
+	};
+});
 vi.mock('../connectionPool.js', () => ({
-	pool: {
-		acquire: vi.fn().mockReturnValue({ key: 'test-key', transport: mockTransport }),
-		release: vi.fn(),
-	},
+	pool: { acquire: acquireMock, release: releaseMock },
+	PoolOverCapError: class PoolOverCapError extends Error {},
 }));
 vi.mock('../mxResolver.js', () => ({
 	getMxHostnames: vi.fn().mockResolvedValue(['mx1.acme.com']),
@@ -49,8 +59,6 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 import { sendToMx } from '../sender.js';
-import { pool } from '../connectionPool.js';
-import type { Transporter } from 'nodemailer';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 
@@ -103,10 +111,10 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 	};
 }
 
-/** Pull the `envelope.from` the sender handed nodemailer. */
+/** Pull the `envelope.from` the sender handed the SMTP client. */
 function capturedEnvelopeFrom(): string {
-	const arg = mockTransport.sendMail.mock.calls[0]![0] as { envelope: { from: string } };
-	return arg.envelope.from;
+	const options = sendEnvelopeMock.mock.calls[0]![1] as { from: string };
+	return options.from;
 }
 
 describe('envelope ↔ SPF alignment', () => {
@@ -115,11 +123,17 @@ describe('envelope ↔ SPF alignment', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		redis = new Redis();
-		vi.mocked(pool.acquire).mockReturnValue({
+		acquireMock.mockReturnValue({
 			key: 'test-key',
-			transport: mockTransport as unknown as Transporter,
+			config: { host: 'mx1.acme.com', port: 25, ehloName: 'mail.owlat.com', tlsMode: 'starttls' },
 		});
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+		connectMock.mockResolvedValue({ secured: true, close: vi.fn() });
+		sendEnvelopeMock.mockResolvedValue({
+			accepted: [],
+			rejected: [],
+			response: { code: 250, text: '2.0.0 OK', lines: ['2.0.0 OK'] },
+		});
+		quitMock.mockResolvedValue(undefined);
 	});
 
 	it('builds the envelope MAIL FROM on the return-path domain, not the From-domain', async () => {
@@ -172,7 +186,7 @@ describe('return-path SPF in the DNS guide', () => {
 		// apps/mta/src/smtp/__tests__ → repo apps/docs/content/...
 		const guidePath = resolve(
 			here,
-			'../../../../docs/content/3.developer/32.self-hosting-dns-email.md',
+			'../../../../docs/content/3.developer/32.self-hosting-dns-email.md'
 		);
 		const guide = readFileSync(guidePath, 'utf-8');
 

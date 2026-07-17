@@ -2,19 +2,19 @@
  * Regression-lock for audit item PR-24 (Outbound TLS — RFC 8460 TLS-RPT).
  *
  * The MX sender used to call `recordTlsResult(..., 'success')` UNCONDITIONALLY
- * after `transport.sendMail` resolved. A plaintext delivery — the recipient MX
- * did not advertise STARTTLS and no policy required TLS (opportunistic,
- * `requireTLS:false`) — resolves with no error, so it was being logged as a TLS
- * 'success', overstating our encryption coverage to the recipient domain owner.
+ * after the send resolved. A plaintext delivery — the recipient MX did not
+ * advertise STARTTLS and no policy required TLS (opportunistic, `requireTLS:false`)
+ * — resolves with no error, so it was being logged as a TLS 'success', overstating
+ * our encryption coverage to the recipient domain owner.
  *
- * nodemailer exposes no secured flag on `info`, so the fix wires a per-send
- * secured-state capture (see tlsSecuredCapture.ts + connectionPool's logger) and
- * records RFC 8460 `starttls-not-supported` for a cleartext session instead of
- * `success`.
+ * The sender now reads `conn.secured` directly off the live @owlat/smtp-client
+ * connection and records RFC 8460 `starttls-not-supported` for a cleartext session
+ * instead of `success`.
  *
  * Unlike sender.test.ts (which mocks the connection pool), this test drives the
- * FULL `sendToMx` through the REAL {@link SmtpConnectionPool} + real nodemailer
- * against a real loopback {@link SMTPServer} — one that hides STARTTLS and one
+ * FULL `sendToMx` through the REAL {@link SmtpConnectionPool} + real
+ * @owlat/smtp-client against a real loopback {@link SMTPServer} — one that hides
+ * STARTTLS and one
  * that advertises it — so the secured-state detection is observed against an
  * actual handshake, not a mock's say-so. The shared loopback harness
  * (loopbackMxHarness.ts) provides the server factory + job/config builders; only
@@ -25,8 +25,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 
 // Resolvers/config deps are mocked (per-test policy + MX); the connection pool,
-// nodemailer, and tlsRpt are REAL so the secured-state capture and TLS-RPT
-// recording run end-to-end.
+// @owlat/smtp-client, and tlsRpt are REAL so the `conn.secured` read and the
+// TLS-RPT recording run end-to-end.
 vi.mock('../mxResolver.js', () => ({
 	getMxHostnames: vi.fn().mockResolvedValue(['127.0.0.1']),
 }));
@@ -79,9 +79,9 @@ describe('sendToMx records the real TLS-RPT result type per session (PR-24)', ()
 		await redis.flushall();
 		config = createConfig();
 		// sendToMx hardcodes port 25, but the loopback server listens on an ephemeral
-		// port. Spy on the REAL pool and rewrite only the port, so the real transport
-		// (with the securedCaptureLogger) and the real nodemailer handshake still run.
-		// bindIp '127.0.0.1' keeps the source address on loopback.
+		// port. Spy on the REAL pool and rewrite only the port, so the real
+		// @owlat/smtp-client connection (and its `conn.secured` state) and the real
+		// SMTP handshake still run. bindIp '127.0.0.1' keeps the source on loopback.
 		const realAcquire = pool.acquire.bind(pool);
 		vi.spyOn(pool, 'acquire').mockImplementation((mxHost, bindIp, options) =>
 			realAcquire(mxHost, bindIp, { ...options, port: probe!.port })
