@@ -23,8 +23,10 @@ function mountForm() {
 	return mount(AddDomainForm, { global: { stubs } });
 }
 
-const domainInput = (w: ReturnType<typeof mountForm>) => w.get('#add-domain-name');
-const subInput = (w: ReturnType<typeof mountForm>) => w.get('#add-domain-sub');
+// The DOM ids are per-instance (useId), so query by stable test hooks and assert
+// the aria links by cross-referencing the elements' actual ids.
+const domainInput = (w: ReturnType<typeof mountForm>) => w.get('[data-testid="domain-input"]');
+const subInput = (w: ReturnType<typeof mountForm>) => w.get('[data-testid="sub-input"]');
 const preview = (w: ReturnType<typeof mountForm>) => w.find('[data-testid="address-preview"]');
 
 describe('AddDomainForm — compose + preview', () => {
@@ -65,8 +67,9 @@ describe('AddDomainForm — compose + preview', () => {
 	it('exposes the preview to the domain input via aria-describedby', async () => {
 		const w = mountForm();
 		await domainInput(w).setValue('example.com');
-		expect(domainInput(w).attributes('aria-describedby')).toBe('add-domain-preview');
-		expect(preview(w).attributes('id')).toBe('add-domain-preview');
+		const previewId = preview(w).attributes('id');
+		expect(previewId).toBeTruthy();
+		expect(domainInput(w).attributes('aria-describedby')).toBe(previewId);
 	});
 });
 
@@ -74,11 +77,11 @@ describe('AddDomainForm — error messages bound to their inputs', () => {
 	it('binds the domain error to the domain input via aria-describedby', async () => {
 		const w = mountForm();
 		await w.get('form').trigger('submit'); // empty → required error
-		const err = w.get('#add-domain-error');
+		const err = w.get('[data-testid="domain-error"]');
 		expect(err.text()).toContain('Enter your domain');
 		// The error is suppressed-with-preview, so describedby names the error id.
 		const describedBy = domainInput(w).attributes('aria-describedby') ?? '';
-		expect(describedBy.split(' ')).toContain('add-domain-error');
+		expect(describedBy.split(' ')).toContain(err.attributes('id'));
 	});
 
 	it('binds the subdomain error to the subdomain input via aria-describedby', async () => {
@@ -86,9 +89,9 @@ describe('AddDomainForm — error messages bound to their inputs', () => {
 		await domainInput(w).setValue('example.com');
 		await subInput(w).setValue('not_valid');
 		await subInput(w).trigger('blur');
-		const err = w.get('#add-domain-sub-error');
+		const err = w.get('[data-testid="sub-error"]');
 		expect(err.text().toLowerCase()).toContain('letters, digits and hyphens');
-		expect(subInput(w).attributes('aria-describedby')).toBe('add-domain-sub-error');
+		expect(subInput(w).attributes('aria-describedby')).toBe(err.attributes('id'));
 	});
 });
 

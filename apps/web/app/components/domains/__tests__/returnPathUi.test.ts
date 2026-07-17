@@ -39,7 +39,7 @@ describe('AddDomainForm — Advanced return-path disclosure', () => {
 	it('hides the return-path section by default', () => {
 		const w = mountForm();
 		expect(w.find('[data-testid="advanced-section"]').exists()).toBe(false);
-		expect(w.find('#add-returnpath').exists()).toBe(false);
+		expect(w.find('[data-testid="returnpath-input"]').exists()).toBe(false);
 		// The toggle is present and collapsed.
 		expect(w.find('[data-testid="advanced-toggle"]').attributes('aria-expanded')).toBe('false');
 	});
@@ -48,23 +48,25 @@ describe('AddDomainForm — Advanced return-path disclosure', () => {
 		const w = mountForm();
 		await w.get('[data-testid="advanced-toggle"]').trigger('click');
 		expect(w.find('[data-testid="advanced-section"]').exists()).toBe(true);
-		expect(w.find('#add-returnpath').exists()).toBe(true);
+		expect(w.find('[data-testid="returnpath-input"]').exists()).toBe(true);
 	});
 
 	it('previews the composed bounce host against the registrable zone', async () => {
 		const w = mountForm();
-		await w.get('#add-domain-name').setValue('example.com');
+		await w.get('[data-testid="domain-input"]').setValue('example.com');
 		await w.get('[data-testid="advanced-toggle"]').trigger('click');
-		await w.get('#add-returnpath').setValue('bounce');
+		await w.get('[data-testid="returnpath-input"]').setValue('bounce');
 		const preview = w.get('[data-testid="returnpath-preview"]');
 		expect(preview.text()).toContain('bounce.example.com');
 		// The input is described by its preview for AT.
-		expect(w.get('#add-returnpath').attributes('aria-describedby')).toBe('add-returnpath-preview');
+		expect(w.get('[data-testid="returnpath-input"]').attributes('aria-describedby')).toBe(
+			w.get('[data-testid="returnpath-preview"]').attributes('id')
+		);
 	});
 
 	it('frames the empty return-path state as an example, not a promise', async () => {
 		const w = mountForm();
-		await w.get('#add-domain-name').setValue('example.com');
+		await w.get('[data-testid="domain-input"]').setValue('example.com');
 		await w.get('[data-testid="advanced-toggle"]').trigger('click');
 		const preview = w.get('[data-testid="returnpath-preview"]');
 		expect(preview.text()).toContain('For example');
@@ -73,20 +75,22 @@ describe('AddDomainForm — Advanced return-path disclosure', () => {
 
 	it('rejects an invalid return-path label and suppresses the preview', async () => {
 		const w = mountForm();
-		await w.get('#add-domain-name').setValue('example.com');
+		await w.get('[data-testid="domain-input"]').setValue('example.com');
 		await w.get('[data-testid="advanced-toggle"]').trigger('click');
-		await w.get('#add-returnpath').setValue('not_valid');
-		await w.get('#add-returnpath').trigger('blur');
-		expect(w.get('#add-returnpath-error').text().toLowerCase()).toContain('single label');
+		await w.get('[data-testid="returnpath-input"]').setValue('not_valid');
+		await w.get('[data-testid="returnpath-input"]').trigger('blur');
+		expect(w.get('[data-testid="returnpath-error"]').text().toLowerCase()).toContain(
+			'single label'
+		);
 		expect(w.find('[data-testid="returnpath-preview"]').exists()).toBe(false);
 	});
 
 	it('rides the composed return-path host on the submit payload', async () => {
 		const w = mountForm();
-		await w.get('#add-domain-name').setValue('example.com');
-		await w.get('#add-domain-sub').setValue('mail');
+		await w.get('[data-testid="domain-input"]').setValue('example.com');
+		await w.get('[data-testid="sub-input"]').setValue('mail');
 		await w.get('[data-testid="advanced-toggle"]').trigger('click');
-		await w.get('#add-returnpath').setValue('bounce');
+		await w.get('[data-testid="returnpath-input"]').setValue('bounce');
 		await w.get('form').trigger('submit');
 		expect(w.emitted('submit')![0]).toEqual([
 			{ domain: 'mail.example.com', returnPathHost: 'bounce.example.com' },
@@ -95,7 +99,7 @@ describe('AddDomainForm — Advanced return-path disclosure', () => {
 
 	it('emits a null return-path host when Advanced is left untouched', async () => {
 		const w = mountForm();
-		await w.get('#add-domain-name').setValue('example.com');
+		await w.get('[data-testid="domain-input"]').setValue('example.com');
 		await w.get('form').trigger('submit');
 		expect(w.emitted('submit')![0]).toEqual([{ domain: 'mail.example.com', returnPathHost: null }]);
 	});
