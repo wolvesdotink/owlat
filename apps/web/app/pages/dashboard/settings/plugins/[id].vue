@@ -104,13 +104,22 @@ async function save() {
 	showToast('Plugin settings saved.');
 }
 
-async function reset() {
+// Both confirm paths run the same reset mutation but report different outcomes:
+// the in-form reset restores schema defaults, while the orphan path is a purge
+// (the plugin is gone — there are no defaults), matching the index page's copy.
+async function reset(successMessage: string) {
 	showResetConfirm.value = false;
 	showOrphanClearConfirm.value = false;
 	const res = await resetPluginSettings({ pluginId: pluginId.value });
 	if (res === undefined) return;
 	seedForm(res);
-	showToast('Plugin settings reset to defaults.');
+	showToast(successMessage);
+}
+function confirmReset() {
+	return reset('Plugin settings reset to defaults.');
+}
+function confirmOrphanClear() {
+	return reset(`Cleared residual settings for ${pluginId.value}.`);
 }
 </script>
 
@@ -278,7 +287,7 @@ async function reset() {
 			cancel-text="Cancel"
 			:is-loading="isResetting"
 			@update:open="(v: boolean) => (showResetConfirm = v)"
-			@confirm="reset"
+			@confirm="confirmReset"
 		/>
 
 		<UiConfirmationDialog
@@ -290,7 +299,7 @@ async function reset() {
 			cancel-text="Cancel"
 			:is-loading="isResetting"
 			@update:open="(v: boolean) => (showOrphanClearConfirm = v)"
-			@confirm="reset"
+			@confirm="confirmOrphanClear"
 		/>
 	</div>
 </template>
