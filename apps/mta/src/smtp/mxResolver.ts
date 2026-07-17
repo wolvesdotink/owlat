@@ -6,6 +6,7 @@
  */
 
 import { resolveMx } from 'dns/promises';
+import { domainToASCII } from 'node:url';
 import type Redis from 'ioredis';
 import { logger } from '../monitoring/logger.js';
 
@@ -22,7 +23,14 @@ export interface MxHost {
  * Returns MX hosts sorted by priority (lowest first = highest priority)
  */
 export async function resolveMxHosts(redis: Redis, domain: string): Promise<MxHost[]> {
-	const cacheKey = `${MX_CACHE_PREFIX}${domain.toLowerCase()}`;
+	// IDN-normalize U-labels to A-labels (RFC 6531 §3.7.1): DNS MX lookup needs
+	// punycode, so an internationalized recipient domain (`例え.test`) would
+	// otherwise resolve to `[]` and the mail would be undeliverable even to an
+	// SMTPUTF8-capable MX. `domainToASCII` returns '' for an undecodable label —
+	// fall back to the raw name so the DNS query (and its failure) is unchanged.
+	const ascii = domainToASCII(domain);
+	const resolveName = ascii === '' ? domain : ascii;
+	const cacheKey = `${MX_CACHE_PREFIX}${resolveName.toLowerCase()}`;
 
 	// Try cache first
 	try {
@@ -36,7 +44,7 @@ export async function resolveMxHosts(redis: Redis, domain: string): Promise<MxHo
 
 	// Resolve via DNS
 	try {
-		const records = await resolveMx(domain);
+		const records = await resolveMx(resolveName);
 		const sorted = records
 			.sort((a, b) => a.priority - b.priority)
 			.map((r) => ({ exchange: r.exchange, priority: r.priority }));
