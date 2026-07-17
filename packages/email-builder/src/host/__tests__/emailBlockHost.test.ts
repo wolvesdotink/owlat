@@ -284,6 +284,27 @@ describe('composeHostedEmailBlocks — late registration fails closed', () => {
 		}
 	});
 
+	it('refuses composition when only one registry was finalized out of band', async () => {
+		const { host, renderer, registry } = await loadHost();
+		// A consumer freezes just one of the four registries directly. Composition
+		// must refuse upfront rather than register renderer halves and then die
+		// mid-loop against the already-frozen editor registry.
+		registry.finalizeBlockDefinitionRegistry();
+		expect(host.areEmailBlockRegistriesFrozen()).toBe(false);
+		try {
+			host.composeHostedEmailBlocks([
+				contribution('acme', [rendererHalf('acme-badge', 'b')], [editorHalf('acme-badge', 'Badge')]),
+			]);
+			throw new Error('expected rejection');
+		} catch (err) {
+			expect((err as InstanceType<typeof host.EmailBlockCompositionError>).code).toBe(
+				'registries_frozen'
+			);
+		}
+		// No renderer half was registered before the refusal.
+		expect(renderer.getRegisteredBlocks()).not.toContain('acme-badge');
+	});
+
 	it('rejects late direct registration on both halves after freeze', async () => {
 		const { host, renderer, registry } = await loadHost();
 		host.composeHostedEmailBlocks([]);

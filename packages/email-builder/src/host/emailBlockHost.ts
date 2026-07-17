@@ -27,6 +27,7 @@ import {
 	finalizeRegistry as finalizeRendererCustomRegistry,
 	finalizeBlockRegistry as finalizeRendererModuleRegistry,
 	isRegistryFinalized as isRendererCustomRegistryFrozen,
+	isBlockRegistryFrozen as isRendererModuleRegistryFrozen,
 	getRegisteredBlocks as getRendererCustomBlockTypes,
 	registeredBlockTypes,
 	type BlockRenderer,
@@ -40,7 +41,11 @@ import {
 	getRegisteredDefinitionTypes,
 	type BlockDefinition,
 } from '../registry/blockRegistry';
-import { finalizeEditorModuleRegistry, getRegisteredTypes } from '../blocks/_registry';
+import {
+	finalizeEditorModuleRegistry,
+	isEditorModuleRegistryFrozen,
+	getRegisteredTypes,
+} from '../blocks/_registry';
 
 /** The renderer half of a hosted email block. */
 export interface HostedEmailBlockRenderer {
@@ -99,9 +104,27 @@ export class EmailBlockCompositionError extends Error {
 	}
 }
 
-/** Are all block registries frozen? True once the host has composed. */
+/** The four registries composition freezes: two renderer halves, two editor halves. */
+const registryFrozenPredicates: readonly (() => boolean)[] = [
+	isRendererModuleRegistryFrozen,
+	isRendererCustomRegistryFrozen,
+	isEditorModuleRegistryFrozen,
+	isBlockDefinitionRegistryFrozen,
+];
+
+/** Are ALL four block registries frozen? True once the host has composed. */
 export function areEmailBlockRegistriesFrozen(): boolean {
-	return isRendererCustomRegistryFrozen() && isBlockDefinitionRegistryFrozen();
+	return registryFrozenPredicates.every((isFrozen) => isFrozen());
+}
+
+/**
+ * Is ANY of the four block registries frozen? Composition refuses upfront on
+ * this so it can never register a half into one registry and then die because a
+ * DIFFERENT registry was frozen out from under it — a half-frozen state a
+ * consumer can reach by calling one of the four granular finalizers alone.
+ */
+function isAnyEmailBlockRegistryFrozen(): boolean {
+	return registryFrozenPredicates.some((isFrozen) => isFrozen());
 }
 
 /**
@@ -254,7 +277,7 @@ function pairContribution(
 export function composeHostedEmailBlocks(
 	contributions: readonly HostedEmailBlockContribution[]
 ): readonly ComposedEmailBlock[] {
-	if (areEmailBlockRegistriesFrozen()) {
+	if (isAnyEmailBlockRegistryFrozen()) {
 		throw new EmailBlockCompositionError(
 			'registries_frozen',
 			'Email block registries are already frozen; the host composes email blocks exactly once at boot'
