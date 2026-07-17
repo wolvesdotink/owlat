@@ -107,7 +107,16 @@ describe('RecordRow — collapsed header identity', () => {
 		// Sends-as, bounce host and status/date all live on one line (§3.1 mock).
 		expect(line.text()).toContain('Sends as anyone@mail.example.com');
 		expect(line.text()).toContain('bounces via bounce.example.com');
-		expect(line.text()).toContain('added');
+		// The status/date segment reads mid-sentence after the `·`, so it is
+		// lowercased — pin that casing so no branch reverts to "Added".
+		expect(line.text()).toContain('· added');
+		expect(line.text()).not.toContain('Added');
+	});
+
+	it('lowercases the registering status branch to match the sibling branches', () => {
+		const line = mountRow({ status: 'registering' }).find('[data-testid="sends-as-line"]');
+		expect(line.text()).toContain('· setting up domain…');
+		expect(line.text()).not.toContain('Setting up domain');
 	});
 
 	it('composes a relative SES-style host (host:"mail", no hostname) against the domain', () => {

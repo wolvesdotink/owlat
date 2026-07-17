@@ -121,7 +121,7 @@ const websiteApex = computed(() => {
 							· bounces via {{ mailFromHost }}</template
 						>
 						·
-						<span v-if="domain.status === 'registering'">Setting up domain…</span>
+						<span v-if="domain.status === 'registering'">setting up domain…</span>
 						<span v-else-if="domain.status === 'failed' && domain.lastRegistrationError">
 							registration failed — click Retry to try again
 						</span>
