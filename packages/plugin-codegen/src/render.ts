@@ -6,8 +6,9 @@ import {
 	type HostedAgentStepDefinition,
 } from '@owlat/plugin-host';
 import { parsePluginId } from '@owlat/plugin-kit';
-import { GENERATED_HEADER } from './renderShared';
+import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 import {
+	importProvidersFor,
 	renderImportProviderCatalog,
 	renderImportProviderModules,
 	renderWebhookEventCatalog,
@@ -40,6 +41,7 @@ export function renderPluginComposition(
 	plugins: readonly BundledPlugin[]
 ): GeneratedPluginComposition {
 	const agentSteps = composeBundledAgentSteps(plugins);
+	const importProviders = importProvidersFor(plugins);
 	const imports = plugins
 		.map((plugin, index) => {
 			const packageName = JSON.stringify(parsePluginPackageName(plugin.packageName));
@@ -76,8 +78,8 @@ export function renderPluginComposition(
 		automationConditionCatalog: renderAutomationCatalog(plugins, AUTOMATION_REGISTRIES.condition),
 		automationConditionModules: renderAutomationModules(plugins, AUTOMATION_REGISTRIES.condition),
 		webhookEventCatalog: renderWebhookEventCatalog(plugins),
-		importProviderCatalog: renderImportProviderCatalog(plugins),
-		importProviderModules: renderImportProviderModules(plugins),
+		importProviderCatalog: renderImportProviderCatalog(importProviders),
+		importProviderModules: renderImportProviderModules(importProviders),
 	});
 }
 
@@ -195,27 +197,12 @@ function renderAutomationModules(
 	plugins: readonly BundledPlugin[],
 	spec: AutomationRegistrySpec
 ): string {
-	const contributions = automationContributionsFor(plugins, spec);
-	const imports = contributions
-		.map(
-			(entry, index) =>
-				`import ${spec.varPrefix}${index} from ${JSON.stringify(`${entry.packageName}${entry.exportPath.slice(1)}`)};`
-		)
-		.join('\n');
-	const entries = contributions
-		.map(
-			(entry, index) =>
-				`\tObject.freeze({ kind: ${JSON.stringify(entry.kind)}, pluginId: ${JSON.stringify(entry.pluginId)}, module: ${spec.varPrefix}${index} satisfies ${spec.contract} }),`
-		)
-		.join('\n');
-	const modules = entries
-		? `Object.freeze([\n${entries}\n] as const)`
-		: 'Object.freeze([] as const)';
-	const contractImport = contributions.length
-		? `import type { ${spec.contract} } from '@owlat/plugin-kit';\n`
-		: '';
-	const prologue = spec.useNode ? "'use node';\n\n" : '';
-	return `${prologue}${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const ${spec.modulesConst} = ${modules};\n`;
+	return renderPluginModuleFile(automationContributionsFor(plugins, spec), {
+		varPrefix: spec.varPrefix,
+		contract: spec.contract,
+		modulesConst: spec.modulesConst,
+		useNode: spec.useNode,
+	});
 }
 
 function autonomyGatesFor(plugins: readonly BundledPlugin[]) {
