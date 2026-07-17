@@ -4,8 +4,10 @@ import type { Id } from '@owlat/api/dataModel';
 import AgentTaskFlow from '~/components/agent-tasks/AgentTaskFlow.vue';
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
+import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
 import { useOrganization } from '~/composables/useOrganization';
 import { useTaskFlow } from '~/composables/useTaskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -44,6 +46,11 @@ function orderKey(item: FlowItem): TaskFlowOrderKey {
 const flow = useTaskFlow<FlowItem>(source, { key: orderKey });
 
 const current = computed(() => flow.current.value);
+/** The current card's kind — drives native rendering vs the fallback dispatcher. */
+const currentKind = computed<TaskFlowKind | null>(() =>
+	current.value ? orderKey(current.value).kind : null
+);
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
 const peekLabel = computed(() => {
 	const n = flow.nextItem.value;
@@ -227,7 +234,7 @@ function openThread(row: FlowItem) {
 		@undo="flow.undo()"
 	>
 		<template v-if="current">
-			<TaskCardShell>
+			<TaskCardShell v-if="currentKind && isBuiltInTaskFlowKind(currentKind)">
 				<TaskContext :who="current.message.from" icon="lucide:mail">
 					<template #trailing>
 						<div v-if="current.message.classification" class="flex items-center gap-2">
@@ -330,6 +337,19 @@ function openThread(row: FlowItem) {
 					</TaskActions>
 				</template>
 			</TaskCardShell>
+
+			<!-- Unknown/disabled or plugin-contributed kind: never crash, never
+			     drop it — render (or gracefully fall back to) its card, and keep
+			     it skippable so the queue can advance. -->
+			<TaskCardRenderer
+				v-else-if="currentKind"
+				:kind="currentKind"
+				:item="current"
+				:is-flag-enabled="isFeatureEnabled"
+				:can-open="!!current.thread"
+				@skip="flow.skip(current!.id)"
+				@open="openThread(current!)"
+			/>
 		</template>
 
 		<template #done>

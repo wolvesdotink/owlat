@@ -4,8 +4,10 @@ import type { Id } from '@owlat/api/dataModel';
 import AgentTaskFlow from '~/components/agent-tasks/AgentTaskFlow.vue';
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
+import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
 import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedText';
 import { useTaskFlow } from '~/composables/useTaskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -45,6 +47,10 @@ function orderKey(item: FlowItem): TaskFlowOrderKey {
 const flow = useTaskFlow<FlowItem>(source, { key: orderKey });
 
 const current = computed(() => flow.current.value);
+/** The current card's kind — drives native rendering vs the fallback dispatcher. */
+const currentKind = computed<TaskFlowKind | null>(() =>
+	current.value ? orderKey(current.value).kind : null
+);
 const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
 const peekLabel = computed(() =>
 	flow.nextItem.value ? replyQueueHeadline(flow.nextItem.value) : ''
@@ -247,7 +253,11 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 		<template v-if="current">
 			<!-- Needs-your-input clarification -->
 			<PostboxClarificationCard
-				v-if="replyQueueSection(current) === 'needs_input'"
+				v-if="
+					currentKind &&
+					isBuiltInTaskFlowKind(currentKind) &&
+					replyQueueSection(current) === 'needs_input'
+				"
 				:item="current"
 				:submitting="busy"
 				@answer="(answers) => submitClarification(current!, answers)"
@@ -258,7 +268,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 			/>
 
 			<!-- Plain needs-you / follow-up / draft-review card -->
-			<TaskCardShell v-else>
+			<TaskCardShell v-else-if="currentKind && isBuiltInTaskFlowKind(currentKind)">
 				<TaskContext
 					:who="current.fromName || current.fromAddress"
 					:name="current.fromName"
@@ -356,6 +366,19 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 					</button>
 				</TaskActions>
 			</TaskCardShell>
+
+			<!-- Unknown/disabled or plugin-contributed kind: never crash, never
+			     drop it — render (or gracefully fall back to) its card, and keep
+			     it skippable so the queue can advance. -->
+			<TaskCardRenderer
+				v-else-if="currentKind"
+				:kind="currentKind"
+				:item="current"
+				:is-flag-enabled="isFeatureEnabled"
+				:can-open="true"
+				@skip="flow.skip(current!.id)"
+				@open="openRow(current!)"
+			/>
 		</template>
 
 		<!-- End state -->
