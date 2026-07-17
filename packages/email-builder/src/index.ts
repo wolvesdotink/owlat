@@ -152,3 +152,9 @@ export {
 	type ComposedEmailBlock,
 	type EmailBlockCompositionErrorCode,
 } from './host/emailBlockHost';
+export {
+	referenceEmailBlockContribution,
+	referenceEmailBlockPluginId,
+	REFERENCE_CALLOUT_TYPE,
+	type CalloutBlockContent,
+} from './host/referenceBlock';
