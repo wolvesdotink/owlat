@@ -21,9 +21,18 @@ const openSel = '[data-testid="task-fallback-open"]';
 
 describe('TaskCardFallback', () => {
 	it('renders the unknown-kind copy and the offending kind tag', () => {
-		const wrapper = mountFallback({ reason: 'unknown', kind: 'plugin.removed' });
+		const wrapper = mountFallback({ reason: 'unknown', kind: 'plugin.acme.removed' });
 		expect(wrapper.text()).toContain("can't be shown");
-		expect(wrapper.text()).toContain('plugin.removed');
+		expect(wrapper.text()).toContain('plugin.acme.removed');
+	});
+
+	it('length-clamps an oversized (untrusted) kind string in the tag', () => {
+		const huge = `plugin.${'x'.repeat(500)}`;
+		const wrapper = mountFallback({ reason: 'unknown', kind: huge });
+		const tag = wrapper.find('span.font-mono').text();
+		// Clamped to the 80-char cap plus a single ellipsis — never the full string.
+		expect(tag.length).toBeLessThanOrEqual(81);
+		expect(tag.endsWith('…')).toBe(true);
 	});
 
 	it('renders the disabled-kind copy with the registry label', () => {

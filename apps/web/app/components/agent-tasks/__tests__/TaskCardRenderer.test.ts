@@ -42,13 +42,13 @@ describe('TaskCardRenderer', () => {
 	it('falls back for a flag-disabled plugin kind', () => {
 		const registry = createTaskCardRegistry();
 		registry.register({
-			kind: 'plugin.gated',
+			kind: 'plugin.acme.gated',
 			label: 'Gated',
-			flag: 'plugin.gated',
+			flag: 'plugin.acme.gated',
 			load: async () => ({ default: { template: '<div />' } }),
 		});
 		const wrapper = mountRenderer({
-			kind: 'plugin.gated',
+			kind: 'plugin.acme.gated',
 			registry,
 			isFlagEnabled: () => false,
 		});
@@ -74,12 +74,12 @@ describe('TaskCardRenderer', () => {
 		});
 		const registry = createTaskCardRegistry();
 		registry.register({
-			kind: 'plugin.card',
+			kind: 'plugin.acme.card',
 			label: 'Card',
 			load: async () => ({ default: PluginCard }),
 		});
 
-		const wrapper = mountRenderer({ kind: 'plugin.card', registry, item: { id: 'x' } });
+		const wrapper = mountRenderer({ kind: 'plugin.acme.card', registry, item: { id: 'x' } });
 		await flushPromises();
 
 		expect(wrapper.find('[data-testid="plugin-card"]').exists()).toBe(true);
@@ -92,7 +92,7 @@ describe('TaskCardRenderer', () => {
 	it('collapses to the placeholder when the plugin card fails to load', async () => {
 		const registry = createTaskCardRegistry();
 		registry.register({
-			kind: 'plugin.broken',
+			kind: 'plugin.acme.broken',
 			label: 'Broken',
 			load: async () => {
 				throw new Error('bundle 500');
@@ -102,7 +102,7 @@ describe('TaskCardRenderer', () => {
 		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-		const wrapper = mountRenderer({ kind: 'plugin.broken', registry });
+		const wrapper = mountRenderer({ kind: 'plugin.acme.broken', registry });
 		await flushPromises();
 		await flushPromises();
 
@@ -119,14 +119,14 @@ describe('TaskCardRenderer', () => {
 		});
 		const registry = createTaskCardRegistry();
 		registry.register({
-			kind: 'plugin.throws',
+			kind: 'plugin.acme.throws',
 			label: 'Throws',
 			load: async () => ({ default: Throwing }),
 		});
 		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 		const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
-		const wrapper = mountRenderer({ kind: 'plugin.throws', registry });
+		const wrapper = mountRenderer({ kind: 'plugin.acme.throws', registry });
 		await flushPromises();
 		await flushPromises();
 

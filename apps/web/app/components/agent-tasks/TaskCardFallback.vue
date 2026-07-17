@@ -35,6 +35,14 @@ const emit = defineEmits<{ (e: 'skip'): void; (e: 'open'): void }>();
  * One copy table per reason (icon + title + body), so the three fragments of a
  * placeholder's message are defined together and can't drift independently.
  */
+/** Hard length clamp for the untrusted kind string shown as a mono tag. */
+const MAX_KIND_TAG_LENGTH = 80;
+const kindTag = computed(() =>
+	props.kind.length > MAX_KIND_TAG_LENGTH
+		? `${props.kind.slice(0, MAX_KIND_TAG_LENGTH)}…`
+		: props.kind
+);
+
 const copy = computed(() =>
 	props.reason === 'disabled'
 		? {
@@ -68,8 +76,8 @@ const copy = computed(() =>
 					{{ copy.body }}
 					<span
 						v-if="kind"
-						class="ml-1 font-mono text-[10px] px-1 py-px rounded bg-bg-elevated text-text-tertiary align-middle"
-						>{{ kind }}</span
+						class="ml-1 inline-block max-w-full truncate font-mono text-[10px] px-1 py-px rounded bg-bg-elevated text-text-tertiary align-middle"
+						>{{ kindTag }}</span
 					>
 				</p>
 			</div>
