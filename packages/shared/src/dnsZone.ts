@@ -24,13 +24,21 @@
  * coupling so we cannot ship "full PSL on the server, trimmed on the client".
  * `tldts` (~40 kB gzipped) carries the full compiled PSL, is pure and isomorphic
  * (no Node- or browser-only APIs), and is *already resolved in the lockfile* as a
- * transitive dependency of `mailauth@7.0.30`, so promoting it to a direct
- * dependency of `@owlat/shared` adds no new package to the tree. Correctness wins
- * the bundle-size trade-off for a one-time DNS-setup surface.
+ * transitive dependency of `mailauth` (which pins `tldts@7.0.30`), deduped to that
+ * same version — so promoting it to a direct dependency of `@owlat/shared` adds no
+ * new package to the tree. Correctness wins the bundle-size trade-off for a
+ * one-time DNS-setup surface.
  *
- * Isomorphism note: IDN → punycode normalization uses the WHATWG `URL` parser,
- * which is a global in the browser, in Convex's default runtime, and in Node
- * `"use node"` actions — no `node:punycode`, no browser-only APIs.
+ * Isomorphism note: IDN → punycode normalization uses the WHATWG `URL` parser.
+ * Full ICU-backed IDNA is verified present in browsers and in Node, which covers
+ * the two runtimes this module is actually exercised in: the Nuxt client and the
+ * Convex `"use node"` actions where DNS verification runs. Convex's default V8
+ * runtime also exposes a `URL` global, but this piece did not verify its ICU/IDNA
+ * coverage, so `asDnsName` is written to fail *closed* on any runtime lacking
+ * IDNA: a Unicode input either throws inside `URL` (caught → `null`) or survives
+ * un-encoded and is then rejected by the ASCII-only label check (→ `null`). It can
+ * never emit a mis-normalized name, so the worst case is an IDN domain being
+ * refused, never silently corrupted. No `node:punycode`, no browser-only APIs.
  */
 
 import { parse as parseTldts } from 'tldts';
@@ -92,10 +100,11 @@ const LAX_LABEL = /^_?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 /**
  * Normalize a raw domain/host string to a {@link DnsName}, or `null` if it is not
  * a usable DNS name. Normalization: trim, drop a single trailing dot, lowercase,
- * and IDNA-encode Unicode labels to punycode via the WHATWG `URL` parser. Every
- * resulting label must be a non-empty, ≤63-octet wire label; anything else
- * (empty labels from `a..b`, spaces, paths, IP literals of the wrong shape, …)
- * yields `null`.
+ * and IDNA-encode Unicode labels to punycode via the WHATWG `URL` parser. The
+ * result must be a real DNS name: ≤253 octets total, every label a non-empty
+ * ≤63-octet wire label, and **not** an IP literal. Anything else (empty labels
+ * from `a..b`, spaces, paths, an over-long name, or an IPv4/IPv6 address in any of
+ * its dotted/hex/octal/integer spellings) yields `null`.
  */
 export function asDnsName(raw: string): DnsName | null {
 	if (typeof raw !== 'string') return null;
@@ -112,15 +121,27 @@ export function asDnsName(raw: string): DnsName | null {
 		return null;
 	}
 	if (hostname === '' || hostname.includes('%')) return null;
-	// URL keeps a trailing dot and does not touch case for already-ASCII input.
+	// WHATWG URL already lowercases ASCII hostnames and IDNA-encodes Unicode to
+	// punycode; it keeps a trailing dot, which we drop. The explicit toLowerCase is
+	// a defensive no-op on that already-lowercased output.
 	if (hostname.endsWith('.')) hostname = hostname.slice(0, -1);
 	hostname = hostname.toLowerCase();
+
+	// Total name length cap (RFC 1035 §3.1): ≤253 octets in presentation form.
+	if (hostname.length === 0 || hostname.length > 253) return null;
 
 	const labels = hostname.split('.');
 	if (labels.length === 0) return null;
 	for (const label of labels) {
 		if (!LAX_LABEL.test(label)) return null;
 	}
+
+	// An IP literal is not a DNS name. URL canonicalizes IPv4 in every spelling
+	// (`0x7f.0.0.1`, `0177.0.0.1`, `2130706433` → `127.0.0.1`) to dotted-decimal,
+	// whose labels all pass the check above, so this guard is what actually rejects
+	// them; tldts flags both the v4 and v6 families.
+	if (parseTldts(hostname, { detectIp: true }).isIp) return null;
+
 	return hostname as DnsName;
 }
 
@@ -172,12 +193,13 @@ export function trySplitZone(domain: string): ZoneSplit | null {
 	const name = asDnsName(domain);
 	if (name === null) return null;
 
-	// allowPrivateDomains:false → registrable is the ICANN eTLD+1 (the zone the
-	// user actually controls at their registrar), so `foo.blogspot.com` splits at
-	// `blogspot.com`, not the PSL private entry.
-	const parsed = parseTldts(name);
+	// Registrable = ICANN eTLD+1: `allowPrivateDomains: false` (passed explicitly,
+	// not left to the default) keeps the split at the zone the user actually
+	// controls at their registrar, so `foo.blogspot.com` splits at `blogspot.com`,
+	// not the PSL *private* entry. IP literals were already excluded by asDnsName.
+	const parsed = parseTldts(name, { allowPrivateDomains: false });
 	const registrable = parsed.domain;
-	if (registrable === null || parsed.isIp) return null;
+	if (registrable === null) return null;
 
 	const registrableName = registrable as DnsName;
 	const subLabels =
