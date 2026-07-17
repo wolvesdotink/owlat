@@ -115,6 +115,8 @@ export {
 	getBorderRadiusTypes,
 	getBlockLabels,
 	getSlashCommands,
+	finalizeBlockDefinitionRegistry,
+	isBlockDefinitionRegistryFrozen,
 	type EditorModule,
 	type EditorModuleMap,
 	type NestedChild,
@@ -122,6 +124,8 @@ export {
 	editorModuleFor,
 	getAllEditorModules,
 	getRegisteredTypes,
+	finalizeEditorModuleRegistry,
+	isEditorModuleRegistryFrozen,
 } from './registry';
 
 // Schema
@@ -135,3 +139,22 @@ export {
 	getAllSchemas,
 	getToolbarFields,
 } from './schema';
+
+// Host-mediated email-block composition.
+export {
+	composeHostedEmailBlocks,
+	finalizeEmailBlockRegistries,
+	areEmailBlockRegistriesFrozen,
+	EmailBlockCompositionError,
+	type HostedEmailBlockContribution,
+	type HostedEmailBlockRenderer,
+	type HostedEmailBlockEditor,
+	type ComposedEmailBlock,
+	type EmailBlockCompositionErrorCode,
+} from './host/emailBlockHost';
+export {
+	referenceEmailBlockContribution,
+	referenceEmailBlockPluginId,
+	REFERENCE_CALLOUT_TYPE,
+	type CalloutBlockContent,
+} from './host/referenceBlock';
