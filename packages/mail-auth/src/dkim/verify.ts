@@ -134,7 +134,14 @@ export async function verifyDkim(
 		const signatures: DkimSignatureResult[] = [];
 		for (const sigField of signatureFields.slice(0, MAX_SIGNATURES)) {
 			signatures.push(
-				await verifyOneSignature(sigField.raw, headerFields, body, resolver, nowSeconds, bodyCache)
+				await verifyMessageSignature(
+					sigField.raw,
+					headerFields,
+					body,
+					resolver,
+					nowSeconds,
+					bodyCache
+				)
 			);
 		}
 
@@ -207,18 +214,26 @@ interface BodyHashCache {
 }
 
 /**
- * Verify one DKIM signature and return its verdict. Any structurally-broken
- * signature yields `permerror`; a body/crypto mismatch yields `fail`; a
- * transient DNS failure yields `temperror`. Never throws.
+ * Verify one DKIM-family signature: `permerror` if structurally broken, `fail` on
+ * a body/crypto mismatch, `temperror` on a transient DNS failure. Never throws.
+ * Shared with the ARC verifier, which passes an ARC-Message-Signature (RFC 8617
+ * §4.1.2 — a DKIM signature MINUS `v=`) with `requireVersion: false`, so signer,
+ * DKIM and ARC AMS all canonicalize/hash through this ONE core (U4). `bodyCache`
+ * is optional (a fresh one is allocated per single-signature call).
  */
-async function verifyOneSignature(
+export async function verifyMessageSignature(
 	sigField: string,
 	headerFields: readonly HeaderField[],
 	body: Buffer,
 	resolver: DkimDnsResolver,
 	nowSeconds: number,
-	bodyCache: BodyHashCache
+	bodyCache?: BodyHashCache,
+	requireVersion = true
 ): Promise<DkimSignatureResult> {
+	const cache: BodyHashCache = bodyCache ?? {
+		canon: new Map<Canonicalization, Buffer>(),
+		hash: new Map<string, string>(),
+	};
 	const tags = parseSignatureTags(sigField);
 	const domain = tags.get('d');
 	const selector = tags.get('s');
@@ -234,13 +249,14 @@ async function verifyOneSignature(
 	};
 	const withVerdict = (verdict: DkimVerdict): DkimSignatureResult => ({ ...base, verdict });
 
-	// Required tags (RFC 6376 §3.5): v a b bh d s h.
+	// Required tags (RFC 6376 §3.5): v a b bh d s h. ARC's AMS omits `v=` (RFC 8617
+	// §4.1.2), so the ARC caller drops the `v=1` gate via `requireVersion: false`.
 	const version = tags.get('v');
 	const bTag = tags.get('b');
 	const bhTag = tags.get('bh');
 	const hTag = tags.get('h');
 	if (
-		version !== '1' ||
+		(requireVersion && version !== '1') ||
 		bTag === undefined ||
 		bhTag === undefined ||
 		domain === undefined ||
@@ -275,10 +291,10 @@ async function verifyOneSignature(
 	const lTag = tags.get('l');
 	const hasLengthTag = lTag !== undefined && lTag !== '';
 
-	let canonBody = bodyCache.canon.get(bodyMode);
+	let canonBody = cache.canon.get(bodyMode);
 	if (canonBody === undefined) {
 		canonBody = canonicalizeBody(body, bodyMode);
-		bodyCache.canon.set(bodyMode, canonBody);
+		cache.canon.set(bodyMode, canonBody);
 	}
 
 	let computedBodyHash: string;
@@ -294,12 +310,12 @@ async function verifyOneSignature(
 		computedBodyHash = createHash(algorithm.hash).update(effectiveBody).digest('base64');
 	} else {
 		const cacheKey = `${bodyMode}:${algorithm.hash}`;
-		const cached = bodyCache.hash.get(cacheKey);
+		const cached = cache.hash.get(cacheKey);
 		if (cached !== undefined) {
 			computedBodyHash = cached;
 		} else {
 			computedBodyHash = createHash(algorithm.hash).update(canonBody).digest('base64');
-			bodyCache.hash.set(cacheKey, computedBodyHash);
+			cache.hash.set(cacheKey, computedBodyHash);
 		}
 	}
 	if (!timingSafeEqualStrings(computedBodyHash, stripWsp(bhTag))) {
