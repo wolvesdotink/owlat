@@ -25,6 +25,18 @@ const AUTONOMY_GATE_CATALOG_OUTPUT_PATH =
 	'apps/api/convex/plugins/autonomyGateCatalog.generated.ts';
 const AUTONOMY_GATE_MODULES_OUTPUT_PATH =
 	'apps/api/convex/plugins/autonomyGateModules.generated.ts';
+const AUTOMATION_TRIGGER_CATALOG_OUTPUT_PATH =
+	'apps/api/convex/plugins/automationTriggerCatalog.generated.ts';
+const AUTOMATION_TRIGGER_MODULES_OUTPUT_PATH =
+	'apps/api/convex/plugins/automationTriggerModules.generated.ts';
+const AUTOMATION_STEP_CATALOG_OUTPUT_PATH =
+	'apps/api/convex/plugins/automationStepCatalog.generated.ts';
+const AUTOMATION_STEP_MODULES_OUTPUT_PATH =
+	'apps/api/convex/plugins/automationStepModules.generated.ts';
+const AUTOMATION_CONDITION_CATALOG_OUTPUT_PATH =
+	'apps/api/convex/plugins/automationConditionCatalog.generated.ts';
+const AUTOMATION_CONDITION_MODULES_OUTPUT_PATH =
+	'apps/api/convex/plugins/automationConditionModules.generated.ts';
 const MAX_GENERATED_FILE_BYTES = 4 * 1024 * 1024;
 
 export interface GeneratePluginCompositionOptions {
@@ -78,6 +90,30 @@ export async function generatePluginComposition(
 		{
 			path: join(workspaceRoot, AUTONOMY_GATE_MODULES_OUTPUT_PATH),
 			source: generated.autonomyGateModules,
+		},
+		{
+			path: join(workspaceRoot, AUTOMATION_TRIGGER_CATALOG_OUTPUT_PATH),
+			source: generated.automationTriggerCatalog,
+		},
+		{
+			path: join(workspaceRoot, AUTOMATION_TRIGGER_MODULES_OUTPUT_PATH),
+			source: generated.automationTriggerModules,
+		},
+		{
+			path: join(workspaceRoot, AUTOMATION_STEP_CATALOG_OUTPUT_PATH),
+			source: generated.automationStepCatalog,
+		},
+		{
+			path: join(workspaceRoot, AUTOMATION_STEP_MODULES_OUTPUT_PATH),
+			source: generated.automationStepModules,
+		},
+		{
+			path: join(workspaceRoot, AUTOMATION_CONDITION_CATALOG_OUTPUT_PATH),
+			source: generated.automationConditionCatalog,
+		},
+		{
+			path: join(workspaceRoot, AUTOMATION_CONDITION_MODULES_OUTPUT_PATH),
+			source: generated.automationConditionModules,
 		},
 	] as const;
 

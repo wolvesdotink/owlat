@@ -39,6 +39,12 @@ const GENERATED_COMPOSITION_FILES = new Set([
 	'apps/api/convex/plugins/draftStrategyModules.generated.ts',
 	'apps/api/convex/plugins/autonomyGateCatalog.generated.ts',
 	'apps/api/convex/plugins/autonomyGateModules.generated.ts',
+	'apps/api/convex/plugins/automationTriggerCatalog.generated.ts',
+	'apps/api/convex/plugins/automationTriggerModules.generated.ts',
+	'apps/api/convex/plugins/automationStepCatalog.generated.ts',
+	'apps/api/convex/plugins/automationStepModules.generated.ts',
+	'apps/api/convex/plugins/automationConditionCatalog.generated.ts',
+	'apps/api/convex/plugins/automationConditionModules.generated.ts',
 ]);
 
 export interface DirectPluginImport {

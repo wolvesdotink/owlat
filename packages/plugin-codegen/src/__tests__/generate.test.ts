@@ -126,12 +126,15 @@ async function createAgentPluginWorkspace(): Promise<string> {
 				'./agent/check': './agent/check.ts',
 				'./draft/legal': './draft/legal.ts',
 				'./gates/approval': './gates/approval.ts',
+				'./automation/trigger': './automation/trigger.ts',
+				'./automation/step': './automation/step.ts',
+				'./automation/condition': './automation/condition.ts',
 			},
 		})
 	);
 	await writeFile(
 		join(packageRoot, 'index.js'),
-		`export default { id: 'fixture-agent', version: '1.0.0', capabilities: ['agent:step', 'draft:strategy', 'send:gate'], flag: { default: false }, contributes: { agentSteps: [{ id: 'check', after: 'security_scan', module: { exportPath: './agent/check' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }], draftStrategies: [{ id: 'legal', label: 'Legal', module: { exportPath: './draft/legal' }, timeoutMs: 1000 }], sendGates: [{ id: 'approval', label: 'Approval', module: { exportPath: './gates/approval' }, timeoutMs: 1000 }] } };\n`
+		`export default { id: 'fixture-agent', version: '1.0.0', capabilities: ['agent:step', 'draft:strategy', 'send:gate', 'automation:trigger', 'automation:step', 'automation:condition'], flag: { default: false }, contributes: { agentSteps: [{ id: 'check', after: 'security_scan', module: { exportPath: './agent/check' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }], draftStrategies: [{ id: 'legal', label: 'Legal', module: { exportPath: './draft/legal' }, timeoutMs: 1000 }], sendGates: [{ id: 'approval', label: 'Approval', module: { exportPath: './gates/approval' }, timeoutMs: 1000 }], automationTriggers: [{ id: 'ping', label: 'Ping', description: 'Fires on a ping', icon: 'bolt', module: { exportPath: './automation/trigger' } }], automationSteps: [{ id: 'notify', label: 'Notify', description: 'Sends a notification', icon: 'bell', module: { exportPath: './automation/step' } }], automationConditions: [{ id: 'vip', label: 'Is VIP', description: 'Contact is a VIP', icon: 'star', module: { exportPath: './automation/condition' } }] } };\n`
 	);
 	await writeFile(
 		join(packageRoot, 'agent/check.ts'),
@@ -146,13 +149,26 @@ async function createAgentPluginWorkspace(): Promise<string> {
 		join(packageRoot, 'gates/approval.ts'),
 		"export default { async evaluate() { return { outcome: 'no-objection' as const }; } };\n"
 	);
+	await mkdir(join(packageRoot, 'automation'), { recursive: true });
+	await writeFile(
+		join(packageRoot, 'automation/trigger.ts'),
+		'export default { parseConfig() { return {}; }, matches() { return true; } };\n'
+	);
+	await writeFile(
+		join(packageRoot, 'automation/step.ts'),
+		"export default { parseConfig() { return {}; }, async execute() { return { kind: 'completed' as const }; } };\n"
+	);
+	await writeFile(
+		join(packageRoot, 'automation/condition.ts'),
+		'export default { parseConfig() { return {}; }, evaluate() { return true; } };\n'
+	);
 	await writeFile(
 		join(root, 'node_modules/@owlat/plugin-kit/package.json'),
 		JSON.stringify({ name: '@owlat/plugin-kit', version: '1.0.0', types: './index.d.ts' })
 	);
 	await writeFile(
 		join(root, 'node_modules/@owlat/plugin-kit/index.d.ts'),
-		'export interface PluginAgentStepModule { execute(input: unknown): Promise<unknown>; }\nexport interface PluginDraftStrategyModule { generate(input: unknown, services: unknown): Promise<{ draftBody: string }>; }\nexport interface PluginAutonomyGateModule { evaluate(input: unknown, services: unknown): Promise<{ outcome: "no-objection" } | { outcome: "objection"; reason: string }>; }\n'
+		'export interface PluginAgentStepModule { execute(input: unknown): Promise<unknown>; }\nexport interface PluginDraftStrategyModule { generate(input: unknown, services: unknown): Promise<{ draftBody: string }>; }\nexport interface PluginAutonomyGateModule { evaluate(input: unknown, services: unknown): Promise<{ outcome: "no-objection" } | { outcome: "objection"; reason: string }>; }\nexport interface PluginAutomationTriggerModule { parseConfig(raw: unknown): unknown; matches(input: unknown, config: unknown): boolean; }\nexport interface PluginAutomationStepModule { parseConfig(raw: unknown): unknown; execute(input: unknown, config: unknown): Promise<unknown>; }\nexport interface PluginAutomationConditionModule { parseConfig(raw: unknown): unknown; evaluate(input: unknown, config: unknown): boolean; }\n'
 	);
 	return root;
 }
@@ -201,6 +217,22 @@ describe('generated composition freshness', () => {
 		expect(await readFile(draftModulesPath, 'utf8')).toContain('Object.freeze([] as const)');
 		expect(await readFile(gateCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
 		expect(await readFile(gateModulesPath, 'utf8')).toContain('Object.freeze([] as const)');
+		for (const registry of ['Trigger', 'Step', 'Condition']) {
+			const catalog = join(
+				root,
+				`apps/api/convex/plugins/automation${registry}Catalog.generated.ts`
+			);
+			const modules = join(
+				root,
+				`apps/api/convex/plugins/automation${registry}Modules.generated.ts`
+			);
+			expect(await readFile(catalog, 'utf8')).toContain('Object.freeze([] as const)');
+			const modulesSource = await readFile(modules, 'utf8');
+			expect(modulesSource).toContain('Object.freeze([] as const)');
+			// Only the step walker runs in a Convex action, so only step modules are Node-only.
+			if (registry === 'Step') expect(modulesSource).toContain("'use node';");
+			else expect(modulesSource).not.toContain("'use node';");
+		}
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
@@ -256,6 +288,44 @@ describe('generated composition freshness', () => {
 		expect(gateCatalog).toContain('plugin.fixture-agent.approval');
 		expect(gateModules).toContain('from "agent-plugin/gates/approval"');
 		expect(gateModules).toContain('satisfies PluginAutonomyGateModule');
+		const automationExpectations = [
+			{
+				registry: 'Trigger',
+				kind: 'plugin.fixture-agent.ping',
+				export: 'automation/trigger',
+				contract: 'PluginAutomationTriggerModule',
+				icon: 'bolt',
+			},
+			{
+				registry: 'Step',
+				kind: 'plugin.fixture-agent.notify',
+				export: 'automation/step',
+				contract: 'PluginAutomationStepModule',
+				icon: 'bell',
+			},
+			{
+				registry: 'Condition',
+				kind: 'plugin.fixture-agent.vip',
+				export: 'automation/condition',
+				contract: 'PluginAutomationConditionModule',
+				icon: 'star',
+			},
+		];
+		for (const expectation of automationExpectations) {
+			const catalog = await readFile(
+				join(root, `apps/api/convex/plugins/automation${expectation.registry}Catalog.generated.ts`),
+				'utf8'
+			);
+			const modulesSource = await readFile(
+				join(root, `apps/api/convex/plugins/automation${expectation.registry}Modules.generated.ts`),
+				'utf8'
+			);
+			expect(catalog).toContain(expectation.kind);
+			expect(catalog).toContain(`icon: ${JSON.stringify(expectation.icon)}`);
+			expect(catalog).not.toContain(`agent-plugin/${expectation.export}`);
+			expect(modulesSource).toContain(`from "agent-plugin/${expectation.export}"`);
+			expect(modulesSource).toContain(`satisfies ${expectation.contract}`);
+		}
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 
 		await writeFile(
@@ -338,6 +408,12 @@ describe('generated composition freshness', () => {
 				'apps/api/convex/plugins/draftStrategyModules.generated.ts',
 				'apps/api/convex/plugins/autonomyGateCatalog.generated.ts',
 				'apps/api/convex/plugins/autonomyGateModules.generated.ts',
+				'apps/api/convex/plugins/automationTriggerCatalog.generated.ts',
+				'apps/api/convex/plugins/automationTriggerModules.generated.ts',
+				'apps/api/convex/plugins/automationStepCatalog.generated.ts',
+				'apps/api/convex/plugins/automationStepModules.generated.ts',
+				'apps/api/convex/plugins/automationConditionCatalog.generated.ts',
+				'apps/api/convex/plugins/automationConditionModules.generated.ts',
 			],
 		});
 		expect(await readFile(convexPath, 'utf8')).toBe('// stale and must remain unchanged\n');
@@ -361,13 +437,16 @@ describe('generated composition freshness', () => {
 		});
 	});
 
+	// Each generation now writes 17 files; 20 concurrent runs (and 4 cold Bun
+	// subprocesses that compile the CLI) exceed vitest's 5s default on a loaded CI
+	// runner. These assert collision-safety, not latency, so give them headroom.
 	it('supports concurrent generation in one process without temporary-file collisions', async () => {
 		const root = await createZeroPluginWorkspace();
 
 		await Promise.all(Array.from({ length: 20 }, () => generatePluginComposition(root)));
 
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
-	});
+	}, 30_000);
 
 	it('supports concurrent generation in separate Bun processes', async () => {
 		const root = await createZeroPluginWorkspace();
@@ -377,7 +456,7 @@ describe('generated composition freshness', () => {
 		);
 
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
-	});
+	}, 30_000);
 
 	it('ignores a planted legacy temporary symlink and never overwrites its victim', async () => {
 		const root = await createZeroPluginWorkspace();

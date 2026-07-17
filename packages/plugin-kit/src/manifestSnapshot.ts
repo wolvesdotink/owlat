@@ -43,7 +43,10 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 			key === 'sendTransports' ||
 				key === 'agentSteps' ||
 				key === 'draftStrategies' ||
-				key === 'sendGates'
+				key === 'sendGates' ||
+				key === 'automationTriggers' ||
+				key === 'automationSteps' ||
+				key === 'automationConditions'
 				? (item, index) =>
 						snapshotRecord(item, (field, fieldValue) =>
 							field === 'module'

@@ -74,6 +74,189 @@ describe('composition rendering', () => {
 		expect(rendered.autonomyGateCatalog).toContain('Object.freeze([] as const)');
 		expect(rendered.autonomyGateModules).toContain("'use node';");
 		expect(rendered.autonomyGateModules).toContain('Object.freeze([] as const)');
+		for (const catalog of [
+			rendered.automationTriggerCatalog,
+			rendered.automationStepCatalog,
+			rendered.automationConditionCatalog,
+		]) {
+			expect(catalog).toContain('Object.freeze([] as const)');
+		}
+		for (const modules of [
+			rendered.automationTriggerModules,
+			rendered.automationStepModules,
+			rendered.automationConditionModules,
+		]) {
+			expect(modules).toContain('Object.freeze([] as const)');
+		}
+		// Only the step walker runs in a Convex action, so only step modules are Node-only.
+		expect(rendered.automationStepModules).toContain("'use node';");
+		expect(rendered.automationTriggerModules).not.toContain("'use node';");
+		expect(rendered.automationConditionModules).not.toContain("'use node';");
+	});
+
+	it('separates automation registry editor metadata from executable modules', () => {
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/auto-plugin',
+				manifest: {
+					id: 'auto-pack',
+					version: '1.0.0',
+					capabilities: ['automation:trigger', 'automation:step', 'automation:condition'],
+					flag: { default: false, requiredEnvVars: ['AUTO_TOKEN'] },
+					contributes: {
+						automationTriggers: [
+							{
+								id: 'ping',
+								label: 'Ping',
+								description: 'Fires on a ping',
+								icon: 'bolt',
+								module: { exportPath: './automation/trigger' },
+							},
+						],
+						automationSteps: [
+							{
+								id: 'notify',
+								label: 'Notify',
+								description: 'Sends a notification',
+								icon: 'bell',
+								module: { exportPath: './automation/step' },
+							},
+						],
+						automationConditions: [
+							{
+								id: 'vip',
+								label: 'Is VIP',
+								description: 'Contact is a VIP',
+								icon: 'star',
+								module: { exportPath: './automation/condition' },
+							},
+						],
+					},
+				},
+			},
+		]);
+		const rendered = renderPluginComposition(plugins);
+
+		expect(rendered.automationTriggerCatalog).toContain('plugin.auto-pack.ping');
+		expect(rendered.automationTriggerCatalog).toContain("requiredCapability: 'automation:trigger'");
+		expect(rendered.automationTriggerCatalog).toContain('AUTO_TOKEN');
+		expect(rendered.automationTriggerCatalog).toContain('icon: "bolt"');
+		// The catalog is metadata only — it never leaks the executable import path.
+		expect(rendered.automationTriggerCatalog).not.toContain('@acme/auto-plugin');
+		expect(rendered.automationTriggerModules).toContain(
+			'from "@acme/auto-plugin/automation/trigger"'
+		);
+		expect(rendered.automationTriggerModules).toContain('satisfies PluginAutomationTriggerModule');
+
+		expect(rendered.automationStepCatalog).toContain('plugin.auto-pack.notify');
+		expect(rendered.automationStepCatalog).toContain("requiredCapability: 'automation:step'");
+		expect(rendered.automationStepModules).toContain('satisfies PluginAutomationStepModule');
+
+		expect(rendered.automationConditionCatalog).toContain('plugin.auto-pack.vip');
+		expect(rendered.automationConditionCatalog).toContain(
+			"requiredCapability: 'automation:condition'"
+		);
+		expect(rendered.automationConditionModules).toContain(
+			'satisfies PluginAutomationConditionModule'
+		);
+	});
+
+	it('renders automation registries independent of plugin input order', () => {
+		// Two plugins that each contribute an automation kind, listed so their
+		// input order (zebra, alpha) differs from manifest-id order (alpha, zebra).
+		const zebra = {
+			packageName: '@acme/zebra-auto',
+			manifest: {
+				id: 'zebra-auto',
+				version: '1.0.0',
+				capabilities: ['automation:trigger', 'automation:step', 'automation:condition'],
+				flag: { default: false },
+				contributes: {
+					automationTriggers: [
+						{
+							id: 'z-trigger',
+							label: 'Z trigger',
+							description: 'zebra trigger',
+							icon: 'bolt',
+							module: { exportPath: './automation/z-trigger' },
+						},
+					],
+					automationSteps: [
+						{
+							id: 'z-step',
+							label: 'Z step',
+							description: 'zebra step',
+							icon: 'bell',
+							module: { exportPath: './automation/z-step' },
+						},
+					],
+					automationConditions: [
+						{
+							id: 'z-condition',
+							label: 'Z condition',
+							description: 'zebra condition',
+							icon: 'star',
+							module: { exportPath: './automation/z-condition' },
+						},
+					],
+				},
+			},
+		} as const;
+		const alpha = {
+			packageName: '@acme/alpha-auto',
+			manifest: {
+				id: 'alpha-auto',
+				version: '1.0.0',
+				capabilities: ['automation:trigger', 'automation:step', 'automation:condition'],
+				flag: { default: false },
+				contributes: {
+					automationTriggers: [
+						{
+							id: 'a-trigger',
+							label: 'A trigger',
+							description: 'alpha trigger',
+							icon: 'bolt',
+							module: { exportPath: './automation/a-trigger' },
+						},
+					],
+					automationSteps: [
+						{
+							id: 'a-step',
+							label: 'A step',
+							description: 'alpha step',
+							icon: 'bell',
+							module: { exportPath: './automation/a-step' },
+						},
+					],
+					automationConditions: [
+						{
+							id: 'a-condition',
+							label: 'A condition',
+							description: 'alpha condition',
+							icon: 'star',
+							module: { exportPath: './automation/a-condition' },
+						},
+					],
+				},
+			},
+		} as const;
+
+		const forward = renderPluginComposition(composeBundledPlugins([zebra, alpha]));
+		const reverse = renderPluginComposition(composeBundledPlugins([alpha, zebra]));
+
+		for (const key of [
+			'automationTriggerCatalog',
+			'automationTriggerModules',
+			'automationStepCatalog',
+			'automationStepModules',
+			'automationConditionCatalog',
+			'automationConditionModules',
+		] as const) {
+			// Byte-identical regardless of the order the plugins were listed in.
+			expect(reverse[key]).toBe(forward[key]);
+			// And canonically ordered: alpha's contribution precedes zebra's.
+			expect(forward[key].indexOf('alpha-auto')).toBeLessThan(forward[key].indexOf('zebra-auto'));
+		}
 	});
 
 	it('orders autonomy gates deterministically and separates metadata from executable modules', () => {

@@ -1,5 +1,11 @@
 import type { PluginCapability } from './capabilities';
 import { PLUGIN_AGENT_STEP_CAPABILITY } from './agentStep';
+import {
+	PLUGIN_AUTOMATION_CONDITION_CAPABILITY,
+	PLUGIN_AUTOMATION_STEP_CAPABILITY,
+	PLUGIN_AUTOMATION_TRIGGER_CAPABILITY,
+} from './automation';
+import { validateAutomationContributions } from './automationManifest';
 import { PLUGIN_AUTONOMY_GATE_CAPABILITY } from './autonomyGate';
 import { validateAutonomyGateContributions } from './autonomyGateManifest';
 import { PLUGIN_DRAFT_STRATEGY_CAPABILITY } from './draftStrategy';
@@ -185,16 +191,17 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 			);
 		}
 	}
-	if (declaresSendTransports(manifest)) {
+	for (const requirement of CONTRIBUTION_CAPABILITY_REQUIREMENTS) {
+		if (!declaresContributions(manifest, requirement.bucket)) continue;
 		if (
 			canCheckDeclaredCapabilities &&
-			!declaresCapability(capabilityItems, PLUGIN_SEND_TRANSPORT_CAPABILITY)
+			!declaresCapability(capabilityItems, requirement.capability)
 		) {
 			addManifestIssue(
 				issues,
 				'missing',
 				'$.capabilities',
-				`must declare ${PLUGIN_SEND_TRANSPORT_CAPABILITY} when send transports are contributed`
+				`must declare ${requirement.capability} when ${requirement.noun} are contributed`
 			);
 		}
 		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
@@ -202,70 +209,7 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 				issues,
 				flag.kind === 'missing' ? 'missing' : 'invalid_type',
 				'$.flag',
-				'must be a plain object when send transports are contributed'
-			);
-		}
-	}
-	if (declaresContributions(manifest, 'agentSteps')) {
-		if (
-			canCheckDeclaredCapabilities &&
-			!declaresCapability(capabilityItems, PLUGIN_AGENT_STEP_CAPABILITY)
-		) {
-			addManifestIssue(
-				issues,
-				'missing',
-				'$.capabilities',
-				`must declare ${PLUGIN_AGENT_STEP_CAPABILITY} when agent steps are contributed`
-			);
-		}
-		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
-			addManifestIssue(
-				issues,
-				flag.kind === 'missing' ? 'missing' : 'invalid_type',
-				'$.flag',
-				'must be a plain object when agent steps are contributed'
-			);
-		}
-	}
-	if (declaresContributions(manifest, 'draftStrategies')) {
-		if (
-			canCheckDeclaredCapabilities &&
-			!declaresCapability(capabilityItems, PLUGIN_DRAFT_STRATEGY_CAPABILITY)
-		) {
-			addManifestIssue(
-				issues,
-				'missing',
-				'$.capabilities',
-				`must declare ${PLUGIN_DRAFT_STRATEGY_CAPABILITY} when draft strategies are contributed`
-			);
-		}
-		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
-			addManifestIssue(
-				issues,
-				flag.kind === 'missing' ? 'missing' : 'invalid_type',
-				'$.flag',
-				'must be a plain object when draft strategies are contributed'
-			);
-		}
-	}
-	if (declaresContributions(manifest, 'sendGates')) {
-		if (
-			canCheckDeclaredCapabilities &&
-			!declaresCapability(capabilityItems, PLUGIN_AUTONOMY_GATE_CAPABILITY)
-		) {
-			addManifestIssue(
-				issues,
-				'missing',
-				'$.capabilities',
-				`must declare ${PLUGIN_AUTONOMY_GATE_CAPABILITY} when autonomy gates are contributed`
-			);
-		}
-		if (!hasValidFlag && !issues.some((issue) => issue.path.startsWith('$.flag'))) {
-			addManifestIssue(
-				issues,
-				flag.kind === 'missing' ? 'missing' : 'invalid_type',
-				'$.flag',
-				'must be a plain object when autonomy gates are contributed'
+				`must be a plain object when ${requirement.noun} are contributed`
 			);
 		}
 	}
@@ -330,13 +274,46 @@ function declaresCapability(
 	return items?.some((item) => item.kind === 'value' && item.value === capability) ?? false;
 }
 
-function declaresSendTransports(manifest: Record<string, unknown>): boolean {
-	return declaresContributions(manifest, 'sendTransports');
-}
+/**
+ * Every contribution bucket that requires a matching capability and a feature
+ * flag, as one data table so the checks stay identical across registries. Adding
+ * a hosted registry means adding a row here, not another copy of the two checks.
+ */
+const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
+	{
+		bucket: 'sendTransports',
+		capability: PLUGIN_SEND_TRANSPORT_CAPABILITY,
+		noun: 'send transports',
+	},
+	{ bucket: 'agentSteps', capability: PLUGIN_AGENT_STEP_CAPABILITY, noun: 'agent steps' },
+	{
+		bucket: 'draftStrategies',
+		capability: PLUGIN_DRAFT_STRATEGY_CAPABILITY,
+		noun: 'draft strategies',
+	},
+	{ bucket: 'sendGates', capability: PLUGIN_AUTONOMY_GATE_CAPABILITY, noun: 'autonomy gates' },
+	{
+		bucket: 'automationTriggers',
+		capability: PLUGIN_AUTOMATION_TRIGGER_CAPABILITY,
+		noun: 'automation triggers',
+	},
+	{
+		bucket: 'automationSteps',
+		capability: PLUGIN_AUTOMATION_STEP_CAPABILITY,
+		noun: 'automation steps',
+	},
+	{
+		bucket: 'automationConditions',
+		capability: PLUGIN_AUTOMATION_CONDITION_CAPABILITY,
+		noun: 'automation conditions',
+	},
+] as const;
+
+type ContributionBucket = (typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[number]['bucket'];
 
 function declaresContributions(
 	manifest: Record<string, unknown>,
-	kind: 'sendTransports' | 'agentSteps' | 'draftStrategies' | 'sendGates'
+	kind: ContributionBucket
 ): boolean {
 	const contributes = Object.getOwnPropertyDescriptor(manifest, 'contributes');
 	if (!contributes || !('value' in contributes) || !isRecord(contributes.value)) return false;
@@ -377,6 +354,14 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 			if (key === 'agentSteps' && items) validateAgentStepContributions(items, issues);
 			if (key === 'draftStrategies' && items) validateDraftStrategyContributions(items, issues);
 			if (key === 'sendGates' && items) validateAutonomyGateContributions(items, issues);
+			if (
+				(key === 'automationTriggers' ||
+					key === 'automationSteps' ||
+					key === 'automationConditions') &&
+				items
+			) {
+				validateAutomationContributions(key, items, issues);
+			}
 		}
 	}
 }
