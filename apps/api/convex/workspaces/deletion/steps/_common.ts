@@ -144,6 +144,7 @@ export type OrganizationDeletionTable =
 	| 'pluginLlmReservations'
 	| 'pluginLlmDailyUsage'
 	| 'draftStrategySelections'
+	| 'slackApprovalRequests'
 	| 'shareLinks'
 	| 'integrationImports'
 	| 'codeWorkTasks';
@@ -287,6 +288,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('pluginLlmReservations'),
 	v.literal('pluginLlmDailyUsage'),
 	v.literal('draftStrategySelections'),
+	v.literal('slackApprovalRequests'),
 	v.literal('shareLinks'),
 	v.literal('integrationImports'),
 	v.literal('codeWorkTasks')

@@ -39,6 +39,7 @@ import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
 import { runCoreFinalAutoSendGates, runPreAutonomyGates } from './autoSendGates';
 import { runHostedAutoSendGates } from './pluginAutoSendGates';
+import { runSlackApprovalHoldGate } from '../../../slack/approvalGate';
 
 /**
  * Draft-quality self-check threaded from the `draft` step. `null`/absent when
@@ -111,8 +112,15 @@ export async function runFinalAutoSendGates(
 	ctx: Parameters<AgentStepModule<'route', RouteInput, RouteOutput>['execute']>[0],
 	inboundMessageId: Id<'inboundMessages'>
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
+	// Restrict-only ordering: immutable core gates first, then hosted plugin
+	// gates, then the Slack approval hold LAST. Each stage can only hold a send
+	// the previous stage let through, so a later stage (a plugin, or a Slack
+	// connected app) can never override an earlier hold or bypass a core gate.
 	const coreDecision = await runCoreFinalAutoSendGates(ctx, inboundMessageId);
-	return coreDecision.safe ? runHostedAutoSendGates(ctx, inboundMessageId) : coreDecision;
+	if (!coreDecision.safe) return coreDecision;
+	const hostedDecision = await runHostedAutoSendGates(ctx, inboundMessageId);
+	if (!hostedDecision.safe) return hostedDecision;
+	return runSlackApprovalHoldGate(ctx, inboundMessageId);
 }
 
 export type RouteOutput = {

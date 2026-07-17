@@ -27,6 +27,7 @@ import { handleVerifyCredential } from './mail/authHttp';
 import { handleTlsReportWebhook } from './domains/tlsReportsHttp';
 import { handleSmsWebhook, handleWhatsAppWebhook, handleGenericWebhook } from './webhooks/channels';
 import { handleGithubWebhook } from './webhooks/githubHttp';
+import { handleSlackApprovalCallback } from './slack/approvalsHttp';
 import { verifyContactDoiToken, confirmContactDoi } from './topics/doiHttp';
 import { getCampaignArchive } from './campaigns/archiveHttp';
 import { getShareLink } from './shareLinkHttp';
@@ -275,6 +276,15 @@ http.route({
 	path: '/webhooks/mta-tls-report',
 	method: 'POST',
 	handler: handleTlsReportWebhook,
+});
+
+// POST /webhooks/slack/approvals - Slack approvals reference app (Tier-2, PP-26)
+// interaction callback. v0-signature + replay-window verified; records one
+// deduplicated approve/reject vote against a held autonomous send. Never sends.
+http.route({
+	path: '/webhooks/slack/approvals',
+	method: 'POST',
+	handler: handleSlackApprovalCallback,
 });
 
 // GET /sealed-blob - decrypt-serving proxy for sealed storage blobs (Sealed

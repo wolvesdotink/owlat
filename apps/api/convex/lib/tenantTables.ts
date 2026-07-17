@@ -178,6 +178,9 @@ export const TENANT_TABLES = [
 	'pluginLlmReservations',
 	'pluginLlmDailyUsage',
 	'draftStrategySelections',
+	// Slack approvals reference app hold records (PP-26) — per-org, deleted with
+	// the tenant so a wipe leaves no dangling approval state.
+	'slackApprovalRequests',
 	'shareLinks',
 	'integrationImports',
 	'codeWorkTasks',
