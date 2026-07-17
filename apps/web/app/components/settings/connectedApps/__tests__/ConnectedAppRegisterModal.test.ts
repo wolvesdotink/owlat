@@ -21,7 +21,10 @@ const buttonStub = {
 	emits: ['click'],
 	template: '<button :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
 };
-const emptyStub = { props: ['title', 'description', 'icon'], template: '<div class="empty">{{ title }}</div>' };
+const emptyStub = {
+	props: ['title', 'description', 'icon'],
+	template: '<div class="empty">{{ title }}</div>',
+};
 
 beforeEach(() => {
 	vi.stubGlobal('useHead', vi.fn());
