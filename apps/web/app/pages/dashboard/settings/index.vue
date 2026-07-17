@@ -4,6 +4,7 @@ import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { isValidEmail } from '~/utils/validation';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
+import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 
 useHead({ title: 'Settings — Owlat' });
 
@@ -343,6 +344,19 @@ const settingsSections = computed(() => {
 						description: 'Choose when Owlat encrypts personal mail between Owlat workspaces',
 						href: '/dashboard/settings/sealed-mail',
 						icon: 'lucide:lock',
+					},
+				]
+			: []),
+		// Bundled-plugin configuration — only shown when this deployment actually
+		// bundles plugins (the composition is empty by default, so no new entry
+		// appears until a plugin is installed into the build).
+		...(bundledPluginComposition.length > 0
+			? [
+					{
+						name: 'Plugins',
+						description: 'Configure installed plugins, their capabilities, and their settings',
+						href: '/dashboard/settings/plugins',
+						icon: 'lucide:puzzle',
 					},
 				]
 			: []),
