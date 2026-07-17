@@ -4,7 +4,7 @@ import {
 	type BundledPlugin,
 } from '@owlat/plugin-host';
 import { parsePluginId } from '@owlat/plugin-kit';
-import { GENERATED_HEADER } from './renderShared';
+import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 
 interface RenderedCron {
 	readonly packageName: string;
@@ -61,24 +61,10 @@ export function renderCronCatalog(plugins: readonly BundledPlugin[]): string {
 }
 
 export function renderCronModules(plugins: readonly BundledPlugin[]): string {
-	const crons = cronsFor(plugins);
-	const imports = crons
-		.map(
-			(cron, index) =>
-				`import bundledPluginCron${index} from ${JSON.stringify(`${cron.packageName}${cron.exportPath.slice(1)}`)};`
-		)
-		.join('\n');
-	const entries = crons
-		.map(
-			(cron, index) =>
-				`\tObject.freeze({ kind: ${JSON.stringify(cron.kind)}, pluginId: ${JSON.stringify(cron.pluginId)}, module: bundledPluginCron${index} satisfies PluginCronModule }),`
-		)
-		.join('\n');
-	const modules = entries
-		? `Object.freeze([\n${entries}\n] as const)`
-		: 'Object.freeze([] as const)';
-	const contractImport = crons.length
-		? "import type { PluginCronModule } from '@owlat/plugin-kit';\n"
-		: '';
-	return `'use node';\n\n${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_CRON_MODULES = ${modules};\n`;
+	return renderPluginModuleFile(cronsFor(plugins), {
+		varPrefix: 'bundledPluginCron',
+		contract: 'PluginCronModule',
+		modulesConst: 'BUNDLED_PLUGIN_CRON_MODULES',
+		useNode: true,
+	});
 }
