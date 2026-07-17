@@ -25,8 +25,9 @@ export const listByTeam = authedQuery({
 		const rows = await ctx.db
 			.query('connectedApps')
 			.withIndex('by_organization_id', (index) => index.eq('organizationId', activeOrganizationId))
+			.order('desc')
 			.take(MAX_CONNECTED_APPS);
-		return rows.map(toPublicConnectedApp).sort((a, b) => b.createdAt - a.createdAt);
+		return rows.map(toPublicConnectedApp);
 	},
 });
 
