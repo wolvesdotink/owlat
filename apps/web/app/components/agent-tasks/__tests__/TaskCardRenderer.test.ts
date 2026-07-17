@@ -20,7 +20,12 @@ const stubs = {
 };
 
 function mountRenderer(props: Record<string, unknown>) {
-	return mount(TaskCardRenderer, { props, global: { stubs } });
+	// isFlagEnabled is a required prop (fail-closed); default it to "on" here so
+	// each test only overrides it when exercising the gate.
+	return mount(TaskCardRenderer, {
+		props: { isFlagEnabled: () => true, ...props },
+		global: { stubs },
+	});
 }
 
 const fallbackSel = '[data-testid="task-fallback-skip"]';
