@@ -8,11 +8,21 @@
 // ============================================================================
 
 /**
- * Email validation regex
+ * Email validation regex.
+ *
  * Rejects: consecutive dots, leading/trailing dots in local/domain,
- * leading/trailing hyphens in domain labels, and requires 2+ char TLD.
+ * leading/trailing hyphens in domain labels, and requires a 2+ char TLD.
+ *
+ * Accepts internationalized (RFC 6531/6532 SMTPUTF8 / EAI) addresses: the
+ * local-part, domain labels and TLD admit any non-ASCII code point
+ * (`\u{80}`–`\u{10FFFF}`, hence the `u` flag) so a UTF-8 mailbox such as
+ * `用户@例え.test` or `Pelé@exämple.test` is no longer rejected at import /
+ * validation. ASCII structure (dot/hyphen placement, TLD length) is unchanged, so
+ * every previously-valid address stays valid and every previously-invalid ASCII
+ * address stays invalid.
  */
-export const emailRegex = /^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+export const emailRegex =
+	/^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~\u{80}-\u{10FFFF}-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~\u{80}-\u{10FFFF}-]+)*@(?:[a-zA-Z0-9\u{80}-\u{10FFFF}](?:[a-zA-Z0-9\u{80}-\u{10FFFF}-]*[a-zA-Z0-9\u{80}-\u{10FFFF}])?\.)+[a-zA-Z\u{80}-\u{10FFFF}]{2,}$/u;
 
 /**
  * Domain validation regex
