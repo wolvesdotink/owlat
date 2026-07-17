@@ -175,6 +175,15 @@ describe('createWidgetRegistry — contribution integrity', () => {
 		const module = registry.get('widget');
 		expect(module?.source).toEqual({ pluginId: 'acme' });
 	});
+
+	it('deep-freezes plugin provenance (nested source is immutable)', () => {
+		const registry = createWidgetRegistry([], [pluginContribution('acme', 'widget')]);
+		const module = registry.get('widget')!;
+		expect(Object.isFrozen(module.source)).toBe(true);
+		expect(() => {
+			(module.source as { pluginId: string }).pluginId = 'other';
+		}).toThrow();
+	});
 });
 
 describe('resolveWidget', () => {
