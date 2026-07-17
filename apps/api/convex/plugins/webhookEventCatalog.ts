@@ -1,4 +1,4 @@
-import type { PluginId } from '@owlat/plugin-kit';
+import type { PluginId, PluginWebhookEventKind } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_WEBHOOK_EVENT_CATALOG } from './webhookEventCatalog.generated';
 
 /**
@@ -9,7 +9,7 @@ import { BUNDLED_PLUGIN_WEBHOOK_EVENT_CATALOG } from './webhookEventCatalog.gene
  * env before a plugin is allowed to publish one of these kinds.
  */
 export interface HostedWebhookEventDefinition {
-	readonly kind: string;
+	readonly kind: PluginWebhookEventKind;
 	readonly pluginId: PluginId;
 	readonly description: string;
 	readonly subscribable: boolean;
