@@ -83,6 +83,9 @@ describe('PluginSettingsField emits', () => {
 		// Schema numbers permit non-integer values, so the mobile keyboard hint is
 		// decimal (a period key), not the integer-only numeric mode.
 		expect(input.attributes('inputmode')).toBe('decimal');
+		// And step="any" lifts the native step=1 constraint that would otherwise
+		// make a fractional value a stepMismatch and block form submission.
+		expect(input.attributes('step')).toBe('any');
 		await input.setValue('45');
 		const emitted = wrapper.emitted('update:modelValue');
 		expect(emitted?.at(-1)).toEqual([45]);
