@@ -283,16 +283,17 @@ function encodePhrase(phrase: string, reservedOctets: number, eai: boolean): str
 		// preserved as the composer wrote them.)
 		return phrase;
 	}
-	if (
-		eai &&
-		!isAscii &&
-		Buffer.byteLength(phrase, 'utf-8') + reservedOctets <= MAX_HEADER_LINE_OCTETS
-	) {
+	if (eai && !isAscii) {
 		// SMTPUTF8 / EAI: keep the non-ASCII phrase as native UTF-8 rather than an
 		// RFC 2047 encoded-word, as long as the rendered address stays under the
-		// 998-octet hard cap. A phrase too long to fit falls through to the
-		// encoded-word path, which folds on CRLF + SP.
-		return eaiPhrase(phrase);
+		// 998-octet hard cap. Measure the QUOTED output — eaiPhrase may add 2 DQUOTE
+		// octets plus one backslash per escaped `"`/`\`, so a near-cap phrase with
+		// specials can exceed the cap after quoting; if it would, fall through to the
+		// encoded-word path (which folds on CRLF + SP).
+		const rendered = eaiPhrase(phrase);
+		if (Buffer.byteLength(rendered, 'utf-8') + reservedOctets <= MAX_HEADER_LINE_OCTETS) {
+			return rendered;
+		}
 	}
 	// Non-ASCII, or an ASCII phrase long enough that the rendered address would
 	// cross the 998-octet hard cap: RFC-2047-encode it. Encoded-words are legal in
