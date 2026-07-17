@@ -34,9 +34,10 @@ export const domainTables = {
 		// When set, the MTA stamps `bounce+…@<returnPathHost>` for this domain's
 		// outbound mail and the generated `mailFrom` SPF record is published on
 		// this host instead of the global one. Written only by the **Sending
-		// domain lifecycle (module)** (`setReturnPathHost`) and reflected to the
-		// MTA at (re-)registration via the provider adapter. A validated DNS FQDN
-		// (packages/shared `asDnsName`).
+		// domain lifecycle (module)** (`setReturnPathHost` / `create`) and reflected
+		// to the MTA at (re-)registration via the provider adapter. A validated DNS
+		// FQDN (packages/shared `normalizeReturnPathHost` — the shared strict
+		// return-path validator, identical on the MTA side).
 		returnPathHost: v.optional(v.string()),
 		// Set when reflecting a changed `returnPathHost` to the MTA PERMANENTLY
 		// fails (after the bounded `pushReturnPathHost` retry budget is exhausted).

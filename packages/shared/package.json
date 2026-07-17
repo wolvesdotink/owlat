@@ -41,6 +41,10 @@
 			"types": "./src/setupValidators.ts",
 			"import": "./src/setupValidators.ts"
 		},
+		"./returnPathHost": {
+			"types": "./src/returnPathHost.ts",
+			"import": "./src/returnPathHost.ts"
+		},
 		"./setupSendingPresets": {
 			"types": "./src/setupSendingPresets.ts",
 			"import": "./src/setupSendingPresets.ts"

@@ -53,6 +53,13 @@ export type DnsRecordPanelRecord = {
 	 * zone, instead of re-guessing it from the string's shape.
 	 */
 	hostIsFqdn: boolean;
+	/**
+	 * MX preference. Verification enforces it EXACTLY (dnsVerification
+	 * `verifyMxRecord`), so it must be shown — a user who publishes the MX at a
+	 * different priority would otherwise fail forever with nothing on screen to
+	 * explain why. Present only on MX records.
+	 */
+	priority?: number;
 };
 
 export type DomainDnsRecords = {
@@ -78,6 +85,7 @@ export function normalizeDnsRecord(
 		host: record.host ?? record.hostname ?? '@',
 		value: record.value,
 		hostIsFqdn,
+		...(record.priority !== undefined ? { priority: record.priority } : {}),
 	};
 }
 

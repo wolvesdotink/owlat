@@ -278,7 +278,6 @@ function makeDeps(overrides: Partial<AddDomainFlowDeps> = {}): {
 	deps: AddDomainFlowDeps;
 	calls: {
 		createDomain: ReturnType<typeof vi.fn>;
-		setReturnPathHost: ReturnType<typeof vi.fn>;
 		close: ReturnType<typeof vi.fn>;
 		showToast: ReturnType<typeof vi.fn>;
 		setLoading: ReturnType<typeof vi.fn>;
@@ -286,7 +285,6 @@ function makeDeps(overrides: Partial<AddDomainFlowDeps> = {}): {
 } {
 	const calls = {
 		createDomain: vi.fn(async () => 'domain_new' as never),
-		setReturnPathHost: vi.fn(async () => null),
 		close: vi.fn(),
 		showToast: vi.fn(),
 		setLoading: vi.fn(),
@@ -294,7 +292,6 @@ function makeDeps(overrides: Partial<AddDomainFlowDeps> = {}): {
 	const deps: AddDomainFlowDeps = {
 		hasActiveOrganization: () => true,
 		createDomain: calls.createDomain,
-		setReturnPathHost: calls.setReturnPathHost,
 		setLoading: calls.setLoading,
 		close: calls.close,
 		showToast: calls.showToast,
@@ -303,16 +300,17 @@ function makeDeps(overrides: Partial<AddDomainFlowDeps> = {}): {
 	return { deps, calls };
 }
 
-describe('useAddDomain — register-then-set orchestration', () => {
-	it('registers then sets the return-path host with the returned id', async () => {
+describe('useAddDomain — atomic create-with-host orchestration (F2 finding 1)', () => {
+	it('registers WITH the return-path host in one atomic create call', async () => {
 		const { deps, calls } = makeDeps();
 		await useAddDomain(deps).handleAddDomain({
 			domain: 'mail.example.com',
 			returnPathHost: 'bounce.example.com',
 		});
-		expect(calls.createDomain).toHaveBeenCalledWith({ domain: 'mail.example.com' });
-		expect(calls.setReturnPathHost).toHaveBeenCalledWith({
-			domainId: 'domain_new',
+		// ONE write — the host is folded into create, not a second setReturnPathHost.
+		expect(calls.createDomain).toHaveBeenCalledTimes(1);
+		expect(calls.createDomain).toHaveBeenCalledWith({
+			domain: 'mail.example.com',
 			returnPathHost: 'bounce.example.com',
 		});
 		expect(calls.close).toHaveBeenCalled();
@@ -320,35 +318,19 @@ describe('useAddDomain — register-then-set orchestration', () => {
 		expect(calls.showToast.mock.calls[0]![1]).toBeUndefined(); // success (not 'error')
 	});
 
-	it('skips the return-path write when no host was supplied', async () => {
+	it('omits the host when none was supplied', async () => {
 		const { deps, calls } = makeDeps();
 		await useAddDomain(deps).handleAddDomain({ domain: 'example.com', returnPathHost: null });
-		expect(calls.setReturnPathHost).not.toHaveBeenCalled();
+		expect(calls.createDomain).toHaveBeenCalledWith({ domain: 'example.com' });
 		expect(calls.showToast.mock.calls[0]![0]).toContain('added successfully');
 	});
 
-	it('keeps the domain but tells the truth when the return-path set FAILS', async () => {
-		// `run` resolves undefined when the operation layer caught the failure.
-		const { deps, calls } = makeDeps({ setReturnPathHost: vi.fn(async () => undefined) });
-		await useAddDomain(deps).handleAddDomain({
-			domain: 'mail.example.com',
-			returnPathHost: 'bounce.example.com',
-		});
-		// No rollback — the domain still exists and the modal closes.
-		expect(calls.close).toHaveBeenCalled();
-		const [message, type] = calls.showToast.mock.calls[0]!;
-		expect(message.toLowerCase()).toContain("couldn't be set");
-		expect(message.toLowerCase()).toContain("domain's row");
-		expect(type).toBe('error');
-	});
-
-	it('does nothing on a create failure — no return-path write, no toast', async () => {
+	it('does nothing on a create failure — no close, no toast (the invalid host fails create)', async () => {
 		const { deps, calls } = makeDeps({ createDomain: vi.fn(async () => undefined) });
 		await useAddDomain(deps).handleAddDomain({
 			domain: 'mail.example.com',
 			returnPathHost: 'bounce.example.com',
 		});
-		expect(calls.setReturnPathHost).not.toHaveBeenCalled();
 		expect(calls.close).not.toHaveBeenCalled();
 		expect(calls.showToast).not.toHaveBeenCalled();
 	});

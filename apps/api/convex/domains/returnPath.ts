@@ -13,7 +13,7 @@ import { internal } from '../_generated/api';
 import { throwInvalidInput, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { asDnsName } from '@owlat/shared';
+import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
 
 // Mutation: Set (or change) the domain's per-domain VERP return-path host
@@ -32,10 +32,12 @@ export const setReturnPathHost = authedMutation({
 			'organization:manage',
 			'Only owners and admins can manage sending domains'
 		);
-		// Validate + normalize the host up front with the shared DNS-name
-		// primitive so a bad value is a clean 400 (`invalid_input`) rather than a
-		// lifecycle miss. The lifecycle re-validates (defense in depth).
-		const normalized = asDnsName(args.returnPathHost);
+		// Validate + normalize the host up front with the SHARED strict validator
+		// (the same one the MTA uses) so a bad value is a clean 400 (`invalid_input`)
+		// rather than a lifecycle miss — and so Convex never accepts a host the MTA
+		// would 400 forever. NOT `asDnsName`, which is laxer (accepts single labels
+		// / `_service` labels). The lifecycle re-validates (defense in depth).
+		const normalized = normalizeReturnPathHost(args.returnPathHost);
 		if (normalized === null) {
 			throwInvalidInput(
 				'Invalid return-path host. Enter a valid DNS hostname, e.g. bounce.example.com.'

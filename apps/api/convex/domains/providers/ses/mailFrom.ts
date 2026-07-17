@@ -44,7 +44,8 @@ export interface SesMailFrom {
  *   record outside the domain's zone would be unpublishable + break alignment.
  *
  * Inputs are assumed already normalized (lower-case, no trailing dot — the
- * lifecycle runs them through `asDnsName`); a defensive lower-case is applied.
+ * lifecycle runs them through the shared `normalizeReturnPathHost` validator); a
+ * defensive lower-case is applied.
  */
 export function resolveSesMailFrom(domain: string, returnPathHost?: string): SesMailFrom | null {
 	const base = domain.trim().toLowerCase();
