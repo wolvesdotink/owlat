@@ -39,6 +39,7 @@ import {
 	type AddressObject,
 } from '@owlat/mail-message';
 import { timingSafeStringEqual } from '../auth/timingSafe.js';
+import type { Socket } from 'node:net';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
@@ -418,9 +419,71 @@ export function buildOnMailFrom() {
 	};
 }
 
-/** Per-connection key for the in-memory held-slot registry (unique while live). */
-function connectionKey(remoteAddress: string, remotePort: number | undefined): string {
-	return `${remoteAddress}:${remotePort ?? 0}`;
+/**
+ * Per-connection key for the in-memory slot registries (unique while live).
+ *
+ * Both sides derive the key through THIS one helper so the mark side (the session,
+ * whose `remoteAddress` falls back to `''` — listener `session.ts`) and the release
+ * side (the raw socket, whose `remoteAddress` is `string | undefined`) always agree
+ * for the same TCP peer: an empty/absent address normalizes to the same token.
+ */
+function connectionKey(remoteAddress: string | undefined, remotePort: number | undefined): string {
+	return `${remoteAddress || 'unknown'}:${remotePort ?? 0}`;
+}
+
+/**
+ * Reconciles the per-IP connection counter's increments against socket lifetime.
+ *
+ * `checkConnectionRateLimit` is async, so a connection can close (client RST — port
+ * scans, LB health probes do exactly this) while its rate-limit round-trip is still
+ * in flight. Two per-connection registries reconcile the two possible orderings so
+ * every kept increment is released EXACTLY once:
+ *
+ *   - `live` — added on TCP accept, deleted on socket close. A connection is "live"
+ *     iff its close handler has not yet run.
+ *   - `held` — the connection took a slot (net +1) and still needs releasing.
+ *
+ * {@link SlotTracker.hold} (increment kept) marks `held` only if the connection is
+ * still live; if it already closed, the close handler could not have released the
+ * increment (the key was never in `held`), so it releases immediately. The close
+ * handler releases iff the slot was marked. Either ordering nets one release.
+ */
+interface SlotTracker {
+	/** Raw-accept side: register the connection and release its slot on close. */
+	track(socket: Socket): void;
+	/** Slot-kept side: mark for release, or release now if the peer already left. */
+	hold(session: Session): void;
+}
+
+export function createSlotTracker(redis: Redis): SlotTracker {
+	const live = new Set<string>();
+	const held = new Set<string>();
+	return {
+		track(socket: Socket): void {
+			const remoteIp = socket.remoteAddress ?? 'unknown';
+			const key = connectionKey(socket.remoteAddress, socket.remotePort);
+			live.add(key);
+			socket.once('close', () => {
+				live.delete(key);
+				if (!held.delete(key)) return; // this connection never took a slot
+				releaseConnection(redis, remoteIp).catch(() => {
+					// Non-critical: the Redis counter carries a TTL as a backstop.
+				});
+			});
+		},
+		hold(session: Session): void {
+			const key = connectionKey(session.remoteAddress, session.remotePort);
+			if (live.has(key)) {
+				held.add(key); // release on close
+				return;
+			}
+			// Closed during the in-flight rate-limit check: the increment happened but
+			// no close handler will release it (the key was never in `held`). Release now.
+			releaseConnection(redis, sessionRemoteIp(session)).catch(() => {
+				// Non-critical: the Redis counter carries a TTL as a backstop.
+			});
+		},
+	};
 }
 
 /**
@@ -453,12 +516,12 @@ function buildSubmissionListener(
 	// cannot be required before AUTH (RFC 8314 §3.3). Fail fast.
 	const tls = submissionTls(config);
 
-	// In-memory registry of connections that actually HOLD a per-IP slot (net +1
-	// on the Redis counter). Keyed per live connection so the socket-close release
-	// fires for — and only for — connections that incremented in `onConnect`. This
-	// is what stops the 465 raw-accept release from decrementing a slot that was
-	// never taken (cap bypass), and the 421-refused double-decrement on 587.
-	const heldSlots = new Set<string>();
+	// Reconciles per-IP slot increments against socket lifetime. It marks a slot for
+	// release only for connections that actually incremented in `onConnect`, so the
+	// 465 raw-accept never decrements a slot it never took (cap bypass) and a
+	// 421-refused connect never double-decrements (587) — and it self-heals the race
+	// where a connection RSTs while its async rate-limit check is still in flight.
+	const slots = createSlotTracker(redis);
 
 	const listener = createSmtpListener<SubmissionSessionState>({
 		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be
@@ -477,9 +540,9 @@ function buildSubmissionListener(
 		createSession: () => ({}),
 		onConnect: buildOnConnect({ redis, config }, (session) => {
 			// Mark this connection as holding a slot so — and only so — its socket
-			// close releases it. Keyed by the session's remote address:port, which
-			// equals the raw socket's below (the TLS socket wraps the same TCP peer).
-			heldSlots.add(connectionKey(session.remoteAddress, session.remotePort));
+			// close releases it. If the peer already left while the rate-limit check
+			// was in flight, `hold` releases the increment immediately instead.
+			slots.hold(session);
 		}),
 		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
 		onMailFrom: buildOnMailFrom(),
@@ -491,26 +554,17 @@ function buildSubmissionListener(
 	// node's built-in accept backpressure (`net.Server.maxConnections`).
 	listener.raw.maxConnections = config.submissionMaxClients;
 
-	// Release the per-IP connection counter when the socket closes — but ONLY for
-	// connections that actually took a slot (tracked in `heldSlots` by `onConnect`).
-	// The limiter state lives in submissionSecurity.ts (I8); the listener exposes
-	// only the socket, so the release is wired here on the raw server's `connection`
-	// event (emitted for both the plaintext 587 and implicit-TLS 465 servers). The
-	// raw event fires on TCP accept — for 465 that is BEFORE the TLS handshake, so a
-	// failed/plaintext handshake connection never reaches `onConnect`, never enters
-	// `heldSlots`, and thus never releases a slot it never incremented (cap bypass).
-	// The remote address:port is captured now (present on accept) because it may be
-	// cleared by close time.
-	listener.raw.on('connection', (socket) => {
-		const remoteIp = socket.remoteAddress ?? 'unknown';
-		const key = connectionKey(remoteIp, socket.remotePort);
-		socket.once('close', () => {
-			if (!heldSlots.delete(key)) return; // this connection never took a slot
-			releaseConnection(redis, remoteIp).catch(() => {
-				// Non-critical: the Redis counter carries a TTL as a backstop.
-			});
-		});
-	});
+	// Register every accepted connection with the slot tracker, which releases the
+	// per-IP counter on socket close — but ONLY for connections that actually took a
+	// slot. The limiter state lives in submissionSecurity.ts (I8); the listener
+	// exposes only the socket, so the release is wired here on the raw server's
+	// `connection` event (emitted for both the plaintext 587 and implicit-TLS 465
+	// servers). The raw event fires on TCP accept — for 465 that is BEFORE the TLS
+	// handshake, so a failed/plaintext handshake connection never reaches `onConnect`
+	// and thus never releases a slot it never incremented (cap bypass). Tracking the
+	// live connection at accept also lets `hold` self-heal a connection that RSTs
+	// while its async rate-limit check is still pending.
+	listener.raw.on('connection', (socket) => slots.track(socket));
 
 	return listener;
 }
