@@ -16,7 +16,10 @@ import DNSRecordPanel from '../DNSRecordPanel.vue';
 
 const baseRecord = { type: 'TXT', host: '@', value: 'v=spf1 include:_spf.owlat.test ~all' };
 
-function mountPanel(verification?: Record<string, unknown>, record: Record<string, unknown> = baseRecord) {
+function mountPanel(
+	verification?: Record<string, unknown>,
+	record: Record<string, unknown> = baseRecord
+) {
 	return mount(DNSRecordPanel, {
 		props: {
 			record,
@@ -47,9 +50,11 @@ describe('DNSRecordPanel diagnostics', () => {
 			foundValue: 'v=spf1 include:_spf.other.test -all',
 		});
 		expect(w.find('[data-testid="dns-diagnostic"]').exists()).toBe(true);
-		expect(w.find('[data-testid="dns-diagnostic-error"]').text()).toBe('No matching TXT record found');
+		expect(w.find('[data-testid="dns-diagnostic-error"]').text()).toBe(
+			'No matching TXT record found'
+		);
 		expect(w.find('[data-testid="dns-diagnostic-found"]').text()).toContain(
-			'v=spf1 include:_spf.other.test -all',
+			'v=spf1 include:_spf.other.test -all'
 		);
 	});
 
@@ -57,7 +62,7 @@ describe('DNSRecordPanel diagnostics', () => {
 		const w = mountPanel({ verified: false, error: 'No DNS record found at this hostname' });
 		expect(w.find('[data-testid="dns-diagnostic"]').exists()).toBe(true);
 		expect(w.find('[data-testid="dns-diagnostic-error"]').text()).toBe(
-			'No DNS record found at this hostname',
+			'No DNS record found at this hostname'
 		);
 		expect(w.find('[data-testid="dns-diagnostic-found"]').exists()).toBe(false);
 	});

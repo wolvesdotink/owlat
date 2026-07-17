@@ -298,7 +298,9 @@ describe('Finding 2 — bounce host MX for DSN routing', () => {
 			const mailFrom = (d!.dnsRecords as { mailFrom?: Array<{ type: string; hostname?: string }> })
 				.mailFrom;
 			// The global return-path SPF TXT is published…
-			expect(mailFrom?.some((r) => r.type === 'TXT' && r.hostname === GLOBAL_RETURN_PATH)).toBe(true);
+			expect(mailFrom?.some((r) => r.type === 'TXT' && r.hostname === GLOBAL_RETURN_PATH)).toBe(
+				true
+			);
 			// …but NO MX is emitted for the global host.
 			expect(mailFrom?.some((r) => r.type === 'MX')).toBe(false);
 		});
