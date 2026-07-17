@@ -360,7 +360,7 @@
     },
     "packages/plugin-codegen": {
       "name": "@owlat/plugin-codegen",
-      "version": "0.2.1",
+      "version": "0.3.3",
       "dependencies": {
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
@@ -378,7 +378,7 @@
     },
     "packages/plugin-host": {
       "name": "@owlat/plugin-host",
-      "version": "0.2.1",
+      "version": "0.3.3",
       "dependencies": {
         "@owlat/plugin-kit": "workspace:*",
         "@owlat/shared": "workspace:*",
@@ -392,7 +392,7 @@
     },
     "packages/plugin-kit": {
       "name": "@owlat/plugin-kit",
-      "version": "0.2.1",
+      "version": "0.3.3",
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
