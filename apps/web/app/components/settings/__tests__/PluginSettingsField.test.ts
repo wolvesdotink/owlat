@@ -111,6 +111,30 @@ describe('PluginSettingsField emits', () => {
 	});
 });
 
+describe('PluginSettingsField unset select placeholder', () => {
+	const field: Field = {
+		kind: 'select',
+		key: 'region',
+		label: 'Region',
+		options: [
+			{ value: 'eu', label: 'EU' },
+			{ value: 'us', label: 'US' },
+		],
+	};
+
+	it('shows a disabled "Select…" placeholder when no value is chosen', () => {
+		const wrapper = mountField(field, { modelValue: '' });
+		const placeholder = wrapper.get('option[value=""]');
+		expect(placeholder.text()).toBe('Select…');
+		expect(placeholder.attributes('disabled')).toBeDefined();
+	});
+
+	it('drops the placeholder once a real value is selected', () => {
+		const wrapper = mountField(field, { modelValue: 'us' });
+		expect(wrapper.find('option[value=""]').exists()).toBe(false);
+	});
+});
+
 describe('PluginSettingsField SSR', () => {
 	it('renders to a string server-side without touching the DOM', async () => {
 		const field: Field = {

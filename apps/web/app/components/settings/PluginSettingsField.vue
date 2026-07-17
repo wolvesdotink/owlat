@@ -163,6 +163,9 @@ const inputClass =
 				:class="inputClass"
 				@change="onSelect"
 			>
+				<!-- Unset select (no stored value or default): an honest, non-selectable
+				     placeholder rather than the first option masquerading as configured. -->
+				<option v-if="stringValue === ''" value="" disabled>Select…</option>
 				<option v-for="option in field.options" :key="option.value" :value="option.value">
 					{{ option.label }}
 				</option>
