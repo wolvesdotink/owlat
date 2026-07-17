@@ -271,6 +271,34 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   route-time autonomy gates stay outside tool implementations, and tool errors
   propagate to the runner's `onToolError` unchanged — the scrub wrapper never
   swallows, rewraps, or scrubs a rejection, only a fulfilled output.
+- The three automation registries (triggers, steps, conditions) split into an
+  isolate-safe metadata catalog (`automations/{triggers,steps}/catalog.ts`,
+  `conditions/catalog.ts`) and its executable module registry. Persisted-kind
+  validators and kind unions derive from the catalog; never re-declare a core
+  kind list beside it. Only automation STEP modules run inside an action (the
+  step walker), so only their generated module file carries `'use node'`;
+  trigger fanout (mutation) and condition evaluation (query) modules stay
+  non-node.
+- The step walker owns automation step retries, idempotency (the
+  `markStepExecuting` CAS claim), cancellation, and the circuit breaker. The
+  hosted `pluginStep` runner owns exactly one thing: a single authorized attempt.
+  Reauthorize (`authorizeExecution`) singleton scope, registration, flag,
+  `automation:step` grant, and required env presence immediately before invoking
+  the module; env presence is a run-time-only gate — `addStep` checks flag and
+  grant only. A denied, malformed, thrown, or deadline-exceeded module becomes a
+  `failed` StepOutcome (host-owned 30s deadline; the step contract has no
+  `AbortSignal`, so the host stops waiting). A plugin may fail a step; it can
+  never force it to complete or advance. Step failure reasons are clamped and
+  control-stripped before touching `errorMessage`; a failing audit write logs
+  fixed taxonomy and never fails the executed step.
+- `firePluginTrigger` is the gated trigger seam. Recheck the catalog entry, plugin
+  attribution, flag, and `automation:trigger` grant before fanning out; any denial
+  fans out nothing without touching the module. Plugin trigger config rides the
+  `{ pluginConfig }` arm and is unwrapped before `parseConfig`; the plugin's
+  `buildTriggerData` output is untrusted and clamped (bounded keys, code points,
+  control-stripped) before it reaches `automationRuns.triggerData`. Core and
+  plugin triggers share one fanout — one running-instance guard, one no-steps
+  guard, one stats bump, one scheduled walker.
 
 ## Environment variables
 

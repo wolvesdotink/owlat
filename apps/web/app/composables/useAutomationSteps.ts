@@ -4,6 +4,7 @@ import type { Id, Doc } from '@owlat/api/dataModel';
 import type { TriggerConfig } from '../../../api/convex/lib/automationConfigTypes';
 import { useAutomationStepConfig } from './useAutomationStepConfig';
 import { listStepEditorModules, stepEditorModuleFor, type StepKind } from './automations/steps';
+import { useAutomationPluginPalette } from './automations/pluginPalette';
 
 interface AutomationWithSteps {
 	_id: Id<'automations'>;
@@ -45,6 +46,18 @@ export function useAutomationSteps(
 			description: m.description,
 			color: m.color,
 			icon: m.icon,
+		}))
+	);
+
+	// Host-composed plugin step kinds, surfaced from the generated editor metadata
+	// catalog so the builder can list plugin contributions alongside core steps.
+	// Empty until a bundled plugin contributes an automation step.
+	const pluginStepTypes = computed(() =>
+		useAutomationPluginPalette().steps.map((entry) => ({
+			id: entry.kind,
+			label: entry.label,
+			description: entry.description,
+			icon: entry.icon,
 		}))
 	);
 
@@ -190,6 +203,7 @@ export function useAutomationSteps(
 		selectedStep,
 		mutableSteps,
 		stepTypes,
+		pluginStepTypes,
 		canActivate,
 
 		currentConfig: stepConfig.currentConfig,
