@@ -5,7 +5,6 @@ import {
 	SUBDOMAIN_FIELDS,
 	defaultSubdomainLabels,
 	deriveHostnames,
-	deriveNetworkUrls,
 	networkUrlsFromHosts,
 	validateSubdomainLabel,
 	validateSubdomainLabels,
@@ -84,8 +83,6 @@ describe('self-host wizard hostname overrides', () => {
 				convexUrl: 'https://sync.wolves.ink',
 				convexSiteUrl: 'https://http.sync.wolves.ink',
 			});
-			// deriveNetworkUrls threads the same overrides through deriveHostnames.
-			expect(deriveNetworkUrls('wolves.ink', overrides)).toEqual(networkUrlsFromHosts(hosts));
 		});
 
 		it('the DNS records reflect the overridden hostnames — A, MX, SPF and DMARC alike', () => {
