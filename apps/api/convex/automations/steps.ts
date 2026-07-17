@@ -81,8 +81,11 @@ export async function enrichStepForQuery(
 /**
  * Fail closed unless a plugin step's owning plugin is enabled and has been
  * granted `automation:step`. Core kinds pass through untouched. Reuses the host
- * authorization gate so the flag, capability grant, and required env vars are
- * all rechecked in the caller's transaction.
+ * authorization gate so the registration, flag, and capability grant are
+ * rechecked in the caller's transaction. Required env-var presence is NOT
+ * checked here — it is enforced at execution time by `authorizeSystemBundledPlugin`
+ * (the step walker's `authorizeExecution`), so a step can be authored before its
+ * secrets are configured and every firing still fails closed on a missing var.
  */
 async function requirePluginStepAuthorization(ctx: MutationCtx, stepType: string): Promise<void> {
 	if (!isPluginStepKind(stepType)) return;
@@ -171,7 +174,8 @@ export const addStep = authedMutation({
 
 		// A plugin step can only be added while its plugin is enabled and its
 		// automation:step capability is granted — fail closed on a disabled flag,
-		// an ungranted capability, or a missing required env var.
+		// or an ungranted capability. (Required env-var presence is a
+		// run-time-only gate; see `requirePluginStepAuthorization`.)
 		await requirePluginStepAuthorization(ctx, args.stepType);
 
 		const existingSteps = await ctx.db
