@@ -90,6 +90,12 @@ const addForm = reactive({
 	domain: '',
 });
 
+// Live "you@<domain>" preview for the Add-Domain modal: states the consequence
+// of the entered domain as the user types, so the field isn't a bare string box.
+// Interim UX — piece C2 replaces this modal with a two-field guided picker, so
+// we deliberately keep this to a single derived value (no picker machinery).
+const previewDomain = computed(() => addForm.domain.trim().toLowerCase());
+
 // Form validation
 const validation = useFormValidation({
 	domain: [
@@ -407,10 +413,6 @@ onBeforeUnmount(() => {
 			</div>
 		</div>
 
-		<!-- Per-transport DNS guidance: what to check depends on how this instance
-			 sends (managed MTA records vs SES/relay/Resend that sign on your behalf). -->
-		<DeliveryDomainDnsGuidance />
-
 		<!-- First-load skeleton (shaped like the domain list) -->
 		<div v-if="isLoading && !domainsData" class="card overflow-hidden">
 			<DashboardListSkeleton variant="card" leading :rows="4" />
@@ -443,6 +445,12 @@ onBeforeUnmount(() => {
 						</p>
 					</div>
 				</div>
+
+				<!-- Per-transport DNS guidance: what to check depends on how this
+					 instance sends (managed MTA records vs SES/relay/Resend that sign
+					 on your behalf). Demoted below the "why add a domain" card so the
+					 first thing under the h1 builds the mental model, not transports. -->
+				<DeliveryDomainDnsGuidance />
 			</div>
 
 			<!-- No verified domain → offer connecting an external mailbox instead -->
@@ -536,8 +544,19 @@ onBeforeUnmount(() => {
 							{{ validation.getError('domain', true) }}
 						</p>
 						<p v-else class="mt-1 text-xs text-text-tertiary">
-							Enter the domain you want to use for sending emails. We recommend using a subdomain
-							like mail.example.com.
+							We recommend a subdomain like
+							<span class="font-medium text-text-secondary">mail.example.com</span> — it keeps your
+							main domain's sending reputation separate.
+						</p>
+
+						<!-- Live consequence preview: the addresses this domain produces,
+						     updated as the user types. Empty state falls back to the
+						     example so the sentence always reads sensibly. -->
+						<p class="mt-1 text-xs text-text-secondary" data-testid="address-preview">
+							Your addresses will be
+							<strong class="text-text-primary"
+								>you@{{ previewDomain || 'mail.example.com' }}</strong
+							>
 						</p>
 
 						<!-- Blocking: freemail / public-mailbox domain the user can't publish DNS for. -->
