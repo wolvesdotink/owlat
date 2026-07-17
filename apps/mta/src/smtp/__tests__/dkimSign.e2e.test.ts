@@ -165,6 +165,7 @@ describe('DKIM end-to-end signing + verification (outbound cutover)', () => {
 
 	describe('relaxed-body canonicalization edge cases all verify (RFC 6376 §3.4.4)', () => {
 		const bodyVariants: Array<{ name: string; text: string }> = [
+			{ name: 'empty body', text: '' },
 			{ name: 'single newline only', text: '\n' },
 			{ name: 'trailing blank lines', text: 'line one\nline two\n\n\n' },
 			{ name: 'bare-LF line endings', text: 'alpha\nbeta\ngamma\n' },
@@ -262,6 +263,45 @@ describe('DKIM end-to-end signing + verification (outbound cutover)', () => {
 				expect(Number(xMatch[1])).toBeGreaterThan(t);
 			}
 		});
+	});
+
+	/**
+	 * Whitespace-only bodies now verify cleanly (pinned PR-28 improvement).
+	 *
+	 * When the production signer was nodemailer's built-in codec, a body that was
+	 * whitespace with NO real content (e.g. '   \t  ') diverged: nodemailer emitted
+	 * bh = sha256("\r\n") while mailauth's verifier canonicalized to the empty
+	 * string (bh = sha256("")), so verification came back 'neutral' ("body hash did
+	 * not verify"). The in-house signer body-hashes through the ONE mail-auth
+	 * relaxed-body canon (U4) — the very codec the verifier uses — so signer and
+	 * verifier agree and these verify 'pass'. Pinned so a future canon change that
+	 * re-introduces the divergence trips here. Signed on the composeMessage/
+	 * signMessage seam (the production structured path), not a library internal.
+	 */
+	describe('whitespace-only body now verifies (PR-28: shared mail-auth codec)', () => {
+		const whitespaceOnlyVariants: Array<{ name: string; text: string }> = [
+			{ name: 'spaces and tabs, no newline', text: '   \t  ' },
+			{ name: 'spaces then a newline', text: '   \n' },
+		];
+
+		for (const variant of whitespaceOnlyVariants) {
+			it(`signs and verifies pass for ${variant.name}`, async () => {
+				const { resolver } = await seedKeyAndResolver(redis);
+
+				const rfc822 = await signStructured(redis, {
+					from: 'a@example.com',
+					to: ['recipient@elsewhere.test'],
+					subject: `whitespace variant: ${variant.name}`,
+					text: variant.text,
+				});
+
+				expect(rfc822).toMatch(/^DKIM-Signature:/im);
+
+				const result = await dkimVerify(rfc822, { resolver });
+				expect(result.results.length).toBeGreaterThan(0);
+				expect(result.results[0]!.status.result).toBe('pass');
+			});
+		}
 	});
 
 	describe('signing invariants (RFC 6376 / 8301 / 8058)', () => {
