@@ -92,6 +92,7 @@
 		"ci:verify": "turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports",
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
+		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
 		"release:cut": "bun scripts/release.ts",
 		"changeset": "changeset",
 		"changeset:version": "changeset version",

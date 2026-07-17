@@ -40,3 +40,8 @@ apps/mta/src/tools/__fixtures__/replay-corpus/** -text
 # The IMAP-shaped replay slice (piece CI1, mail-sync ingest cutover) is the same
 # byte-exact deal: CRLF RFC 5322 messages diffed over exact bytes.
 apps/mta/src/tools/__fixtures__/imap-corpus/** -text
+# The mail-message golden corpus (piece R2) is checked in AS BYTES: each .eml is
+# the exact composeMessage+signMessage wire output, diffed byte-for-byte and
+# DKIM-re-verified over exact CRLF bytes. EOL-normalization would corrupt every
+# body hash and every byte-diff, so exempt the whole corpus.
+packages/mail-message/__tests__/golden/*.eml -text

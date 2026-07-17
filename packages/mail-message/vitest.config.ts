@@ -12,13 +12,18 @@ export default defineConfig({
 			include: ['src/**/*.ts'],
 			exclude: ['src/**/__tests__/**', '__tests__/**', 'src/index.ts'],
 			thresholds: {
-				// Parse side keeps its >=90 line gate (U0/R2 ratchet the compose
-				// side up to match; never lower these). Package-wide floor stays at
-				// the compose side's current level so the union does not regress CI.
+				// R2 ratchet (U6 doctrine): the compose side is raised to the parse
+				// side's >=90 line gate now that its differential + the golden corpus
+				// exercise it, and the package-wide floor U0 had to drop to 20 during
+				// the restructure is restored to 90. Never lower these — measured line
+				// coverage is ~99% package-wide, every compose file >=94%.
 				'src/parse/**': {
 					lines: 90,
 				},
-				lines: 20,
+				'src/compose/**': {
+					lines: 90,
+				},
+				lines: 90,
 			},
 		},
 	},

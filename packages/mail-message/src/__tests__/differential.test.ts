@@ -20,106 +20,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
+import { simpleParser } from 'mailparser';
 import { parseMessage, type ParsedMessage, type ParsedHeaderValue } from '../parse/index';
 import { RAW_FIXTURES, HOSTILE_FIXTURES } from './fixtures/rawCorpus';
-
-/** A generic address entry both mailparser and our parser expose on `.value`. */
-interface AnyAddrEntry {
-	name?: string;
-	address?: string;
-	group?: AnyAddrEntry[];
-}
-interface AnyAddrObject {
-	value?: AnyAddrEntry[];
-}
-
-/**
- * Flatten an address header (single object or array, groups recursed) into a
- * comparable, order-preserving list of `{ name, address }`. Groups are recursed
- * symmetrically on both sides so a `Team: a@x, b@y;` header compares its members.
- */
-function addrList(
-	field: AnyAddrObject | AnyAddrObject[] | AddressObject | AddressObject[] | undefined
-): Array<{ name: string; address: string }> {
-	if (field === undefined) return [];
-	const objs = (Array.isArray(field) ? field : [field]) as AnyAddrObject[];
-	const out: Array<{ name: string; address: string }> = [];
-	const visit = (entries: AnyAddrEntry[] | undefined): void => {
-		for (const entry of entries ?? []) {
-			if (entry.group !== undefined) visit(entry.group);
-			else out.push({ name: entry.name ?? '', address: (entry.address ?? '').toLowerCase() });
-		}
-	};
-	for (const obj of objs) visit(obj.value);
-	return out;
-}
-
-/** Normalize the dual `references`/`in-reply-to` shape to a comparable id list. */
-function refsList(refs: string | string[] | undefined): string[] {
-	if (refs === undefined) return [];
-	const arr = Array.isArray(refs) ? refs : refs.split(/\s+/);
-	return arr.map((r) => r.trim()).filter((r) => r !== '');
-}
-
-/** Normalize a decoded body: CRLF -> LF, drop trailing per-line and end whitespace. */
-function normBody(s: string | false | undefined): string | false {
-	if (s === false) return false;
-	return (s ?? '')
-		.replace(/\r\n/g, '\n')
-		.replace(/[ \t]+$/gm, '')
-		.replace(/\n+$/, '');
-}
-
-/** The `Content-Type` signal the FBL / bounce classifiers consume: value + report-type. */
-function contentTypeSignal(raw: unknown): { value: string; reportType: string } {
-	if (raw && typeof raw === 'object') {
-		const obj = raw as { value?: unknown; params?: Record<string, unknown> };
-		const value = typeof obj.value === 'string' ? obj.value.toLowerCase() : '';
-		const reportType = String(obj.params?.['report-type'] ?? '').toLowerCase();
-		return { value, reportType };
-	}
-	if (typeof raw === 'string') return { value: raw.toLowerCase(), reportType: '' };
-	return { value: '', reportType: '' };
-}
-
-/** The document-order attachment set, projected onto the consumed fields. */
-function attSet(
-	attachments: ParsedMail['attachments'] | ParsedMessage['attachments']
-): Array<Record<string, unknown>> {
-	return attachments.map((a) => ({
-		filename: a.filename ?? '',
-		contentType: a.contentType,
-		contentId: (a.contentId ?? '').replace(/[<>]/g, ''),
-		disposition:
-			('disposition' in a ? a.disposition : (a.contentDisposition ?? 'attachment')) ?? 'attachment',
-		size: a.size,
-		content: a.content.toString('base64'),
-	}));
-}
-
-/** The consumed-field projection two parses must agree on. */
-function project(
-	p: ParsedMail | ParsedMessage,
-	headerLookup: (name: string) => unknown
-): Record<string, unknown> {
-	return {
-		subject: p.subject ?? '',
-		messageId: p.messageId ?? '',
-		inReplyTo: p.inReplyTo ?? '',
-		references: refsList(p.references),
-		date: p.date?.toISOString() ?? '',
-		from: addrList(p.from as AnyAddrObject | AnyAddrObject[] | undefined),
-		to: addrList(p.to as AnyAddrObject | AnyAddrObject[] | undefined),
-		cc: addrList(p.cc as AnyAddrObject | AnyAddrObject[] | undefined),
-		bcc: addrList(p.bcc as AnyAddrObject | AnyAddrObject[] | undefined),
-		replyTo: addrList(p.replyTo as AnyAddrObject | AnyAddrObject[] | undefined),
-		text: normBody(p.text),
-		html: normBody(p.html),
-		attachments: attSet(p.attachments),
-		contentType: contentTypeSignal(headerLookup('content-type')),
-	};
-}
+import { addrList, project } from './helpers/projection';
 
 describe('parseMessage differential parity vs mailparser simpleParser', () => {
 	for (const fixture of RAW_FIXTURES) {

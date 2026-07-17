@@ -1,0 +1,29 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Reply-To:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=N9jmQInkqrr8EcqCtDknS3h3WWNulTLnC8ufpU3yS10=;
+ b=QdKLx2Fcf8lD0UICmRw2n1fMvrjN2OBHAfHYlSZlv8S1kFIVgjp4qWTTO3enbS2gQ36AKcTwa
+ p7LDfOMUsAONdVL1CSJytDPxCHAzFo2W8+pEK8ZEIe7dzJdKL99EhECaC90ndwU8JVEjJ7Ug5Hi
+ yKf751TnCLDLfM8R+SQd0ChjL1Wi3mkqSUl4Yp7dTfzwJQhtiRz2GE7IR6Wwwnlk1XrfTWZLz9j
+ 3tcBO5fA1CbI+Q+xoWT8QrslP46WBIaMb1BOkWSdwoneg3GtD/+ITac4z0/GSlcHUjjvnJaHD9S
+ KXaoWNQi1Vt6ZWZ/zM8AEfwVFg10MYMqFycn3ToQRKrQ==
+Message-ID: <corpus-12@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+Reply-To: Support <support@owlat.test>
+To: rcpt@example.com
+Subject: With reply-to
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_reply-to_0"
+
+----_owlat_reply-to_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+x
+----_owlat_reply-to_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>x</p>
+----_owlat_reply-to_0--
