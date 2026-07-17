@@ -131,7 +131,11 @@ describe('untrusted metadata clamping', () => {
 	it('collapses whitespace and length-clamps the label', () => {
 		const reg = createTaskCardRegistry();
 		const long = 'a'.repeat(200);
-		const def = reg.register({ kind: 'plugin.acme.long', label: `  hi\n\tthere  ${long}`, load: noop });
+		const def = reg.register({
+			kind: 'plugin.acme.long',
+			label: `  hi\n\tthere  ${long}`,
+			load: noop,
+		});
 		expect(def.label.length).toBeLessThanOrEqual(80);
 		expect(def.label.startsWith('hi there')).toBe(true);
 	});
@@ -166,20 +170,35 @@ describe('resolve() for the card dispatcher', () => {
 
 	it('resolves a flag-disabled plugin kind to a disabled fallback', () => {
 		const reg = createTaskCardRegistry();
-		reg.register({ kind: 'plugin.acme.gated', label: 'Gated', flag: 'plugin.acme.gated', load: noop });
+		reg.register({
+			kind: 'plugin.acme.gated',
+			label: 'Gated',
+			flag: 'plugin.acme.gated',
+			load: noop,
+		});
 		const r = reg.resolve('plugin.acme.gated', (f) => f !== 'plugin.acme.gated');
 		expect(r).toEqual({ status: 'disabled', kind: 'plugin.acme.gated', label: 'Gated' });
 	});
 
 	it('resolves an enabled, gated plugin kind to its card when the flag is on', () => {
 		const reg = createTaskCardRegistry();
-		reg.register({ kind: 'plugin.acme.gated', label: 'Gated', flag: 'plugin.acme.gated', load: noop });
+		reg.register({
+			kind: 'plugin.acme.gated',
+			label: 'Gated',
+			flag: 'plugin.acme.gated',
+			load: noop,
+		});
 		expect(reg.resolve('plugin.acme.gated', () => true).status).toBe('plugin');
 	});
 
 	it('fails closed: a gated plugin kind with no predicate resolves to disabled', () => {
 		const reg = createTaskCardRegistry();
-		reg.register({ kind: 'plugin.acme.gated', label: 'Gated', flag: 'plugin.acme.gated', load: noop });
+		reg.register({
+			kind: 'plugin.acme.gated',
+			label: 'Gated',
+			flag: 'plugin.acme.gated',
+			load: noop,
+		});
 		expect(reg.resolve('plugin.acme.gated')).toEqual({
 			status: 'disabled',
 			kind: 'plugin.acme.gated',
