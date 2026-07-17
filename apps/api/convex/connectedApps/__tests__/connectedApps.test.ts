@@ -285,6 +285,41 @@ describe('connected-app tenant isolation', () => {
 		const aList = await t.query(api.connectedApps.queries.listByTeam, {});
 		expect(aList.map((a) => a.name)).toEqual(['A app']);
 	});
+
+	it('returns the NEWEST page, not the oldest, above the cap', async () => {
+		const t = client();
+		// Seed 201 apps in one org (one over the 200 page cap), oldest first, so the
+		// last-inserted is the genuinely newest. An ascending index scan would yield
+		// the oldest 200 and drop the newest; the descending order must keep it.
+		const TOTAL = 201;
+		await t.run(async (ctx) => {
+			for (let i = 0; i < TOTAL; i++) {
+				const now = Date.now() + i;
+				await ctx.db.insert('connectedApps', {
+					organizationId: 'tenant-a',
+					pluginId: 'policy-pack',
+					name: `app-${String(i).padStart(3, '0')}`,
+					endpointUrl: 'https://hooks.example.com/x',
+					status: 'enabled',
+					grantedCapabilities: ['send:gate'],
+					secretCiphertext: 'c',
+					secretIv: 'i',
+					secretAuthTag: 't',
+					secretEnvelopeVersion: 1,
+					secretRotatedAt: now,
+					createdByUserId: 'user-a',
+					createdAt: now,
+					updatedAt: now,
+				});
+			}
+		});
+		const list = await t.query(api.connectedApps.queries.listByTeam, {});
+		const names = list.map((a) => a.name);
+		expect(names).toHaveLength(200);
+		// The newest app is present and first; the very oldest is omitted.
+		expect(names[0]).toBe('app-200');
+		expect(names).not.toContain('app-000');
+	});
 });
 
 describe('connected-app audit coverage', () => {
