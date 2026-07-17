@@ -105,8 +105,18 @@ const LIFECYCLE_USER_RETURN_PATH_PUSH = 'system:return_path_push';
  * PERMANENT (Convex committed the new host; the MTA still stamps the old one),
  * so it records a give-up via `recordReturnPathPushResult` — an audit row plus
  * the `returnPathHostSyncError` marker on the domain — rather than failing
- * silently. A `attempt`-stamped chain is superseded by a newer edit: the
- * terminal mutation drops a stale result whose target host no longer matches.
+ * silently.
+ *
+ * Concurrency: the MTA push itself is best-effort last-writer-wins — two edits
+ * racing can POST to the MTA in either order, and there is no generation token
+ * (return-path edits are rare, so one was deemed not worth the ceremony). The
+ * best-effort `returnPathHost` re-read below skips a chain whose target host has
+ * already been superseded, which collapses the common case, but a narrow
+ * double-interleaving can still leave the MTA on a superseded host; that is
+ * reconciled by the NEXT edit's push (which POSTs the then-current host). Only
+ * the marker/audit path is strongly race-safe: `recordReturnPathPushResult` is a
+ * serializable mutation that re-checks the host, so a stale give-up can never
+ * mark a domain that has already moved on.
  */
 export const pushReturnPathHost = internalAction({
 	args: {
@@ -128,8 +138,11 @@ export const pushReturnPathHost = internalAction({
 			logError(`[MTA] Domain ${domain.domain} is not MTA-provider; skipping return-path host push`);
 			return;
 		}
-		// A newer edit changed the target host — this chain is stale, abandon it
-		// (a fresh chain is already reflecting the current host).
+		// Best-effort supersession: if a newer edit already changed the target host,
+		// abandon this chain — its own push is reflecting the current host. This is
+		// a narrowing check, not a guarantee: without a generation token a push that
+		// reads the host before a concurrent edit commits can still POST a
+		// superseded host (last-writer-wins), reconciled by that edit's own push.
 		if (domain.returnPathHost !== args.returnPathHost) {
 			logInfo(
 				`[MTA] Return-path host for ${domain.domain} changed since this push was queued; abandoning stale attempt`
