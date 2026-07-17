@@ -8,6 +8,8 @@ import {
 import { validateAutomationContributions } from './automationManifest';
 import { PLUGIN_AUTONOMY_GATE_CAPABILITY } from './autonomyGate';
 import { validateAutonomyGateContributions } from './autonomyGateManifest';
+import { PLUGIN_CRON_CAPABILITY } from './cron';
+import { validateCronContributions } from './cronManifest';
 import { PLUGIN_DRAFT_STRATEGY_CAPABILITY } from './draftStrategy';
 import { validateDraftStrategyContributions } from './draftStrategyManifest';
 import { validateAgentStepContributions } from './agentStepManifest';
@@ -321,6 +323,7 @@ const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 		capability: PLUGIN_IMPORT_PROVIDER_CAPABILITY,
 		noun: 'import providers',
 	},
+	{ bucket: 'crons', capability: PLUGIN_CRON_CAPABILITY, noun: 'crons' },
 ] as const;
 
 type ContributionBucket = (typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[number]['bucket'];
@@ -378,6 +381,7 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 			}
 			if (key === 'webhookEvents' && items) validateWebhookEventContributions(items, issues);
 			if (key === 'importProviders' && items) validateImportProviderContributions(items, issues);
+			if (key === 'crons' && items) validateCronContributions(items, issues);
 		}
 	}
 }

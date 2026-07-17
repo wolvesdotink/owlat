@@ -45,6 +45,8 @@ const GENERATED_COMPOSITION_FILES = new Set([
 	'apps/api/convex/plugins/automationStepModules.generated.ts',
 	'apps/api/convex/plugins/automationConditionCatalog.generated.ts',
 	'apps/api/convex/plugins/automationConditionModules.generated.ts',
+	'apps/api/convex/plugins/cronCatalog.generated.ts',
+	'apps/api/convex/plugins/cronModules.generated.ts',
 ]);
 
 export interface DirectPluginImport {

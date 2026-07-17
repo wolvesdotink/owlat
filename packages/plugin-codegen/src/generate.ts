@@ -43,6 +43,8 @@ const IMPORT_PROVIDER_CATALOG_OUTPUT_PATH =
 	'apps/api/convex/plugins/importProviderCatalog.generated.ts';
 const IMPORT_PROVIDER_MODULES_OUTPUT_PATH =
 	'apps/api/convex/plugins/importProviderModules.generated.ts';
+const CRON_CATALOG_OUTPUT_PATH = 'apps/api/convex/plugins/cronCatalog.generated.ts';
+const CRON_MODULES_OUTPUT_PATH = 'apps/api/convex/plugins/cronModules.generated.ts';
 const MAX_GENERATED_FILE_BYTES = 4 * 1024 * 1024;
 
 export interface GeneratePluginCompositionOptions {
@@ -132,6 +134,14 @@ export async function generatePluginComposition(
 		{
 			path: join(workspaceRoot, IMPORT_PROVIDER_MODULES_OUTPUT_PATH),
 			source: generated.importProviderModules,
+		},
+		{
+			path: join(workspaceRoot, CRON_CATALOG_OUTPUT_PATH),
+			source: generated.cronCatalog,
+		},
+		{
+			path: join(workspaceRoot, CRON_MODULES_OUTPUT_PATH),
+			source: generated.cronModules,
 		},
 	] as const;
 

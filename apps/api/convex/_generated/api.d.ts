@@ -526,6 +526,12 @@ import type * as plugins_autonomyGateAuthorization from "../plugins/autonomyGate
 import type * as plugins_autonomyGateCatalog from "../plugins/autonomyGateCatalog.js";
 import type * as plugins_autonomyGateCatalog_generated from "../plugins/autonomyGateCatalog.generated.js";
 import type * as plugins_autonomyGateModules_generated from "../plugins/autonomyGateModules.generated.js";
+import type * as plugins_cronAuthorization from "../plugins/cronAuthorization.js";
+import type * as plugins_cronCatalog from "../plugins/cronCatalog.js";
+import type * as plugins_cronCatalog_generated from "../plugins/cronCatalog.generated.js";
+import type * as plugins_cronModules_generated from "../plugins/cronModules.generated.js";
+import type * as plugins_cronRegistration from "../plugins/cronRegistration.js";
+import type * as plugins_cronRuntime from "../plugins/cronRuntime.js";
 import type * as plugins_draftStrategyAuthorization from "../plugins/draftStrategyAuthorization.js";
 import type * as plugins_draftStrategyCatalog from "../plugins/draftStrategyCatalog.js";
 import type * as plugins_draftStrategyCatalog_generated from "../plugins/draftStrategyCatalog.generated.js";
@@ -1207,6 +1213,12 @@ declare const fullApi: ApiFromModules<{
   "plugins/autonomyGateCatalog": typeof plugins_autonomyGateCatalog;
   "plugins/autonomyGateCatalog.generated": typeof plugins_autonomyGateCatalog_generated;
   "plugins/autonomyGateModules.generated": typeof plugins_autonomyGateModules_generated;
+  "plugins/cronAuthorization": typeof plugins_cronAuthorization;
+  "plugins/cronCatalog": typeof plugins_cronCatalog;
+  "plugins/cronCatalog.generated": typeof plugins_cronCatalog_generated;
+  "plugins/cronModules.generated": typeof plugins_cronModules_generated;
+  "plugins/cronRegistration": typeof plugins_cronRegistration;
+  "plugins/cronRuntime": typeof plugins_cronRuntime;
   "plugins/draftStrategyAuthorization": typeof plugins_draftStrategyAuthorization;
   "plugins/draftStrategyCatalog": typeof plugins_draftStrategyCatalog;
   "plugins/draftStrategyCatalog.generated": typeof plugins_draftStrategyCatalog_generated;

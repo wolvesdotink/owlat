@@ -6,6 +6,7 @@ import {
 	type HostedAgentStepDefinition,
 } from '@owlat/plugin-host';
 import { parsePluginId } from '@owlat/plugin-kit';
+import { renderCronCatalog, renderCronModules } from './renderCron';
 import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 import {
 	importProvidersFor,
@@ -35,6 +36,8 @@ export interface GeneratedPluginComposition {
 	readonly webhookEventCatalog: string;
 	readonly importProviderCatalog: string;
 	readonly importProviderModules: string;
+	readonly cronCatalog: string;
+	readonly cronModules: string;
 }
 
 export function renderPluginComposition(
@@ -80,6 +83,8 @@ export function renderPluginComposition(
 		webhookEventCatalog: renderWebhookEventCatalog(plugins),
 		importProviderCatalog: renderImportProviderCatalog(importProviders),
 		importProviderModules: renderImportProviderModules(importProviders),
+		cronCatalog: renderCronCatalog(plugins),
+		cronModules: renderCronModules(plugins),
 	});
 }
 
