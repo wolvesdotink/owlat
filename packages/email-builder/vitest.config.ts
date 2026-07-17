@@ -21,6 +21,9 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@': resolve(__dirname, 'src'),
+			// @owlat/plugin-kit ships a built `dist` entry; resolve it to source in
+			// tests so the host composition can import it without a prior build.
+			'@owlat/plugin-kit': resolve(__dirname, '../plugin-kit/src/index.ts'),
 		},
 	},
 });
