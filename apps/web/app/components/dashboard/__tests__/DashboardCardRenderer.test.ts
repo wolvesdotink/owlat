@@ -15,7 +15,11 @@ beforeEach(() => {
 });
 
 const stubs = {
-	WidgetHost: { name: 'WidgetHost', props: ['module'], template: '<div data-testid="host" :data-kind="module.kind" />' },
+	WidgetHost: {
+		name: 'WidgetHost',
+		props: ['module'],
+		template: '<div data-testid="host" :data-kind="module.kind" />',
+	},
 	UiCard: { template: '<div class="ui-card"><slot /></div>' },
 	Icon: true,
 };

@@ -82,9 +82,7 @@ const CORE_DASHBOARD_WIDGETS: readonly WidgetModule[] = [
 	{
 		kind: 'knowledge_graph',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/KnowledgeCard.vue')
-		),
+		component: defineAsyncComponent(() => import('~/components/dashboard/cards/KnowledgeCard.vue')),
 	},
 	{
 		kind: 'upcoming_campaigns',
@@ -117,6 +115,4 @@ const CORE_DASHBOARD_WIDGETS: readonly WidgetModule[] = [
 export const dashboardWidgetRegistry = createWidgetRegistry(CORE_DASHBOARD_WIDGETS);
 
 /** The set of dashboard card types that have a renderer. */
-export const RENDERABLE_CARD_TYPES: ReadonlySet<string> = new Set(
-	dashboardWidgetRegistry.kinds()
-);
+export const RENDERABLE_CARD_TYPES: ReadonlySet<string> = new Set(dashboardWidgetRegistry.kinds());

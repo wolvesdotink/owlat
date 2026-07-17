@@ -11,10 +11,7 @@ function coreWidget(kind: string, flag?: WidgetModule['flag']): WidgetModule {
 	return { kind, source: 'core', component: Stub, ...(flag ? { flag } : {}) };
 }
 
-function pluginContribution(
-	pluginId: string,
-	kind: string
-): HostedContribution<WidgetModule> {
+function pluginContribution(pluginId: string, kind: string): HostedContribution<WidgetModule> {
 	return {
 		pluginId: parsePluginId(pluginId),
 		contributionId: kind,
@@ -74,13 +71,7 @@ describe('createWidgetRegistry — plugin contributions', () => {
 			]
 		);
 
-		expect(registry.kinds()).toEqual([
-			'core_a',
-			'core_b',
-			'a_widget',
-			'b_widget',
-			'z_widget',
-		]);
+		expect(registry.kinds()).toEqual(['core_a', 'core_b', 'a_widget', 'b_widget', 'z_widget']);
 	});
 
 	it('rejects a plugin widget that shadows a core kind', () => {
