@@ -22,6 +22,19 @@ export class WidgetRegistryError extends Error {
 }
 
 /**
+ * Copy a module and deep-freeze it so the composed registry is genuinely
+ * immutable. A shallow `Object.freeze` would leave the nested `source`
+ * provenance object mutable — exactly the field callers must not be able to
+ * rewrite after composition.
+ */
+function freezeModule(module: WidgetModule): WidgetModule {
+	return Object.freeze({
+		...module,
+		source: typeof module.source === 'string' ? module.source : Object.freeze({ ...module.source }),
+	});
+}
+
+/**
  * Compose a widget registry from built-in modules plus host-composed plugin
  * contributions. The ordering contract mirrors the backend registries:
  *
@@ -59,7 +72,7 @@ export function createWidgetRegistry(
 				`Core widget kind "${module.kind}" is declared more than once`
 			);
 		}
-		const frozen = Object.freeze({ ...module });
+		const frozen = freezeModule(module);
 		byKind.set(frozen.kind, frozen);
 		ordered.push(frozen);
 	}
@@ -98,7 +111,7 @@ export function createWidgetRegistry(
 					`existing widget — plugins may add widgets but never shadow one`
 			);
 		}
-		const frozen = Object.freeze({ ...module });
+		const frozen = freezeModule(module);
 		byKind.set(frozen.kind, frozen);
 		ordered.push(frozen);
 	}
