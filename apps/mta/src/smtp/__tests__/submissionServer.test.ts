@@ -24,6 +24,7 @@ import {
 	buildAuthenticate,
 	buildOnData,
 	buildOnConnect,
+	buildOnMailFrom,
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
 	type SubmissionSessionState,
@@ -306,6 +307,47 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(job.amp).toBe('café amp');
 	});
 
+	// Sanctioned divergence (enumerated in the PR body): a multi-line AMP document
+	// arrives over the wire CRLF-delimited, but `MimeNode.rawBody` CRLF→LF
+	// normalizes nested non-message/* leaves (mailMime parity), so `job.amp` carries
+	// LF line endings. This is immaterial downstream — the sender re-encodes the
+	// part with canonical CRLF on the way out — but it IS a byte change from the old
+	// mailparser path, so pin it explicitly rather than leave it silent.
+	it('recovers a MULTI-LINE AMP alternative with LF-normalized line endings', async () => {
+		const ampLines = [
+			'<!doctype html>',
+			'<html ⚡4email>',
+			'<head></head>',
+			'<body>AMP line one',
+			'line two</body>',
+			'</html>',
+		];
+		const mime = [
+			'From: sender@brand.com',
+			'To: rcpt@x.com',
+			'Subject: multiline amp',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/alternative; boundary="BOUND"',
+			'',
+			'--BOUND',
+			'Content-Type: text/plain; charset=utf-8',
+			'',
+			'plain version',
+			'--BOUND',
+			'Content-Type: text/x-amp-html; charset=utf-8',
+			'',
+			...ampLines,
+			'--BOUND--',
+			'',
+		].join('\r\n');
+
+		const { queue } = await dataCall(mime, { organizationId: 'org1', credentialName: 'cred' });
+		const job = queue.add.mock.calls[0]![0].data;
+		// LF-joined (NOT CRLF) — the enumerated normalization.
+		expect(job.amp).toBe(ampLines.join('\n'));
+		expect(job.amp).not.toContain('\r');
+	});
+
 	it('leaves job.amp unset when the message has no AMP part', async () => {
 		const { reply, queue } = await dataCall(baseMime('sender@brand.com', 'rcpt@x.com'), {
 			organizationId: 'org1',
@@ -518,6 +560,45 @@ describe('submission listener — TLS guard + connection limiting', () => {
 		// A different IP is unaffected.
 		expect(await connect('8.8.4.4')).toBeUndefined();
 	});
+
+	// The slot-taken callback is the release contract: it fires for — and ONLY for —
+	// connections that actually held a slot (net +1 on the counter). A rejected
+	// (over-cap) connection is incremented-then-decremented inside the limiter
+	// (net 0) and MUST NOT be marked, else its socket close would over-decrement
+	// (the 465 cap-bypass / 587 double-decrement class of bug).
+	it('marks the slot held only for connections that took a slot (not the rejected N+1th)', async () => {
+		const liveRedis = new Redis() as unknown as RealRedis;
+		const held: string[] = [];
+		const onConnect = buildOnConnect(
+			{ redis: liveRedis, config: tlsConfig({ submissionMaxConnectionsPerIp: 2 }) },
+			(session) => held.push(`${session.remoteAddress}:${session.remotePort}`)
+		);
+		const connect = (ip: string, port: number) =>
+			onConnect({ remoteAddress: ip, remotePort: port, state: {} } as never) as Promise<
+				SmtpReply | undefined
+			>;
+
+		expect(await connect('9.9.9.9', 1001)).toBeUndefined(); // slot 1 — held
+		expect(await connect('9.9.9.9', 1002)).toBeUndefined(); // slot 2 — held
+		const third = await connect('9.9.9.9', 1003); // over cap — rejected, NOT held
+		expect(third?.code).toBe(421);
+
+		// Only the two allowed connections were marked; the refused one was not.
+		expect(held).toEqual(['9.9.9.9:1001', '9.9.9.9:1002']);
+	});
+});
+
+describe('submission onMailFrom — require-auth-before-MAIL gate', () => {
+	it('refuses MAIL FROM with 530 5.7.0 until AUTH has succeeded, then accepts', () => {
+		const onMailFrom = buildOnMailFrom();
+		const addr = { address: 'x@y.com', params: {} };
+
+		const refused = onMailFrom(addr, { authenticated: false, state: {} } as never) as SmtpReply;
+		expect(refused).toMatchObject({ code: 530, enhanced: '5.7.0' });
+
+		const accepted = onMailFrom(addr, { authenticated: true, state: {} } as never);
+		expect(accepted).toBeUndefined();
+	});
 });
 
 // ── Wire-level TLS gate tests ───────────────────────────────────────────────
@@ -651,6 +732,52 @@ describe('submission TLS gate — wire-level', () => {
 
 			send(secure, `AUTH PLAIN ${plainAuth('master', 'master-secret-key')}`);
 			expect(await readReply(secure)).toMatch(/^235 /);
+
+			secure.destroy();
+		} finally {
+			await server.close();
+		}
+	});
+
+	// The require-auth-before-MAIL gate on the wire: over the secured channel, MAIL
+	// FROM before AUTH is refused 530 5.7.0 (submission never relays unauthenticated);
+	// after a successful 235 the very same MAIL FROM is accepted 250. Exercises the
+	// live onMailFrom hook, not buildOnData's defense-in-depth 530.
+	it('587: refuses MAIL FROM before AUTH (530), accepts it after AUTH (250)', async () => {
+		const server = createSubmissionServer(queue, new Redis() as unknown as RealRedis, tlsConfig());
+		const port = await boot(server);
+		try {
+			const sock = net.connect(port, '127.0.0.1');
+			await new Promise<void>((res) => sock.once('connect', () => res()));
+			expect(await readReply(sock)).toMatch(/^220 /);
+
+			send(sock, 'EHLO client.test');
+			expect(await readReply(sock)).toMatch(/250[ -]/);
+
+			send(sock, 'STARTTLS');
+			expect(await readReply(sock)).toMatch(/^220 /);
+
+			const secure = tls.connect({ socket: sock, rejectUnauthorized: false });
+			await new Promise<void>((res, rej) => {
+				secure.once('secureConnect', () => res());
+				secure.once('error', rej);
+			});
+
+			send(secure, 'EHLO client.test');
+			expect(await readReply(secure)).toMatch(/250[ -]/);
+
+			// Secured but NOT authenticated: MAIL FROM must be refused 530 5.7.0.
+			send(secure, 'MAIL FROM:<sender@brand.com>');
+			const preAuth = await readReply(secure);
+			expect(preAuth).toMatch(/^530 /);
+			expect(preAuth).toMatch(/5\.7\.0/);
+
+			// Authenticate, then the same MAIL FROM is accepted 250.
+			send(secure, `AUTH PLAIN ${plainAuth('master', 'master-secret-key')}`);
+			expect(await readReply(secure)).toMatch(/^235 /);
+
+			send(secure, 'MAIL FROM:<sender@brand.com>');
+			expect(await readReply(secure)).toMatch(/^250 /);
 
 			secure.destroy();
 		} finally {
