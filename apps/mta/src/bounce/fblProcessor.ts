@@ -108,9 +108,10 @@ export function tryParseARF(
 	// lost — flatten it to text including the params first.
 	const contentTypeStr = flattenContentType(parsed.headers?.get('content-type'));
 
-	const isARF =
-		contentTypeStr.includes('feedback-report') ||
-		contentTypeStr.includes('report-type=feedback-report');
+	// A `report-type=feedback-report` param already contains the `feedback-report`
+	// substring, so this single `includes` covers both the bare token and the
+	// structured `multipart/report; report-type=feedback-report` param form.
+	const isARF = contentTypeStr.includes('feedback-report');
 
 	const bodyText = parsed.text ?? '';
 
