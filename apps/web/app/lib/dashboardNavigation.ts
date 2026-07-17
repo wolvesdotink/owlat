@@ -264,14 +264,16 @@ const EMPTY_CONTRIBUTIONS: PluginNavigationContributions = Object.freeze({
 	settingsPanels: Object.freeze([]),
 });
 
-/** Strip control characters and clamp a plugin-authored label before rendering. */
+/**
+ * Strip control/format characters and clamp a plugin-authored label before
+ * rendering. Removing the Unicode `Cc` (C0 and C1 controls, DEL) and `Cf`
+ * (format) categories drops not just C0 controls but also zero-width characters
+ * and bidi overrides (U+202E) that would otherwise let a plugin visually spoof a
+ * core label. Vue escapes HTML, so this is spoofing defense, not XSS defense.
+ */
 function clampLabel(raw: string): string {
-	return Array.from(raw)
-		.filter((char) => {
-			const code = char.codePointAt(0) ?? 0;
-			return code >= 0x20 && code !== 0x7f;
-		})
-		.join('')
+	return raw
+		.replace(/\p{Cc}|\p{Cf}/gu, '')
 		.replace(/\s+/g, ' ')
 		.trim()
 		.slice(0, 64);
