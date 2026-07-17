@@ -51,6 +51,9 @@ export {
 	parseBody,
 	walkLeaves,
 	transferDecode,
+	isAttachmentPart,
+	partFilename,
+	partDisposition,
 	type MimeNode,
 	type AssembledBody,
 } from './parse/body';
