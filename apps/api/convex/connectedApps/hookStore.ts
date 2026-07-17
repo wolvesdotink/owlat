@@ -37,14 +37,26 @@ export interface HookSecretEnvelope {
 	readonly secretEnvelopeVersion: number;
 }
 
-/** Everything the Node runtime needs to attempt (or short-circuit) a hook. */
-export interface HookExecutionContext {
-	readonly found: boolean;
-	readonly status?: ConnectedAppStatus;
-	readonly pluginId?: string;
-	readonly endpointUrl?: string;
-	readonly grantedCapabilities?: readonly string[];
-	readonly secret?: HookSecretEnvelope;
+/**
+ * Everything the Node runtime needs to attempt (or short-circuit) a hook,
+ * modelled as a discriminated union on `found`: a missing / foreign-tenant app
+ * carries only the neutral circuit state, while a resolved app carries the full
+ * set of fields the runtime dereferences. Narrowing on `found` makes the
+ * "present after the short-circuit" invariant tsc-enforced — no non-null
+ * assertions, and no path can read a secret that was never loaded.
+ */
+export type HookExecutionContext =
+	| { readonly found: false; readonly circuit: HookCircuitState }
+	| LoadedHookContext;
+
+/** The resolved-app branch of {@link HookExecutionContext}. */
+export interface LoadedHookContext {
+	readonly found: true;
+	readonly status: ConnectedAppStatus;
+	readonly pluginId: string;
+	readonly endpointUrl: string;
+	readonly grantedCapabilities: readonly string[];
+	readonly secret: HookSecretEnvelope;
 	readonly circuit: HookCircuitState;
 }
 

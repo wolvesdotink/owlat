@@ -85,7 +85,7 @@ describe('_loadForHook', () => {
 		const t = convexTest(schema, modules);
 		const appId = await t.run((ctx) => seedApp(ctx, { organizationId: 'tenant-a' }));
 		const result = await loadHook(t, 'tenant-a', appId);
-		expect(result.found).toBe(true);
+		if (!result.found) throw new Error('expected the app to resolve');
 		expect(result.status).toBe('enabled');
 		expect(result.pluginId).toBe('alpha');
 		expect(result.endpointUrl).toBe('https://hooks.example.com/x');
@@ -103,10 +103,8 @@ describe('_loadForHook', () => {
 		const appId = await t.run((ctx) => seedApp(ctx, { organizationId: 'tenant-a' }));
 		const result = await loadHook(t, 'tenant-b', appId);
 		expect(result.found).toBe(false);
-		expect(result.status).toBeUndefined();
-		expect(result.secret).toBeUndefined();
-		expect(result.endpointUrl).toBeUndefined();
-		expect(result.circuit).toEqual({ consecutiveFailures: 0 });
+		// The false branch carries ONLY the neutral circuit — no status/secret/endpoint.
+		expect(result).toEqual({ found: false, circuit: { consecutiveFailures: 0 } });
 	});
 });
 
