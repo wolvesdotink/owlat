@@ -23,13 +23,9 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { SMTPServer } from 'smtp-server';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
-import { SmtpConnection, sendEnvelope, quit } from '@owlat/smtp-client';
 import { SmtpConnectionPool } from '../connectionPool.js';
 import { resolveEhloForIp } from '../../config.js';
-
-const MESSAGE = Buffer.from(
-	'From: sender@mail.test.example\r\nTo: recipient@example.test\r\nSubject: t\r\n\r\nbody\r\n'
-);
+import { deliver } from './loopbackMxHarness.js';
 
 /** Capture the EHLO name the client announced, per accepted message. */
 async function startRecordingServer(): Promise<{
@@ -89,7 +85,7 @@ describe('outbound EHLO name end-to-end (PR-64)', () => {
 		expect(ehloHostname).toBe('mail.test.example');
 
 		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
-		const { key, config } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+		const result = await deliver(pool, {
 			port: started.port,
 			tls: { rejectUnauthorized: false },
 			name: ehloHostname, // <- the value sendToMx threads through
@@ -97,19 +93,7 @@ describe('outbound EHLO name end-to-end (PR-64)', () => {
 			greetingTimeout: 5000,
 			socketTimeout: 5000,
 		});
-
-		const conn = await SmtpConnection.connect(config);
-		try {
-			const result = await sendEnvelope(conn, {
-				from: 'sender@mail.test.example',
-				to: ['recipient@example.test'],
-				data: MESSAGE,
-			});
-			expect(result.accepted.map((v) => v.recipient)).toContain('recipient@example.test');
-		} finally {
-			await quit(conn);
-			pool.release(key);
-		}
+		expect(result.accepted.map((v) => v.recipient)).toContain('recipient@example.test');
 
 		// The receiver recorded the configured FQDN verbatim…
 		expect(started.seen).toContain('mail.test.example');

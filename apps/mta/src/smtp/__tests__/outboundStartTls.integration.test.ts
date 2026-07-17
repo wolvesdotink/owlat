@@ -19,12 +19,11 @@ import type { AddressInfo } from 'node:net';
 import {
 	SmtpConnection,
 	sendEnvelope,
-	quit,
 	isSmtpError,
-	type SendResult,
 	type SmtpConnectOptions,
 } from '@owlat/smtp-client';
 import { SmtpConnectionPool, type AcquireOptions } from '../connectionPool.js';
+import { deliver, LOOPBACK_MESSAGE } from './loopbackMxHarness.js';
 import { classifyTlsFailure } from '../tlsFailureClassification.js';
 import { resolveTlsRequirements } from '../tlsPolicy.js';
 import { buildDanePeerVerifier, buildDanePolicyFingerprint } from '../daneVerify.js';
@@ -32,10 +31,6 @@ import { computeAssociation } from '@owlat/shared/dane';
 import type { TlsaRecord } from '@owlat/shared/dane';
 import { X509Certificate } from 'node:crypto';
 import { MX_CERT, MX_KEY } from './certFixture.js';
-
-const MESSAGE = Buffer.from(
-	'From: sender@owlat.test\r\nTo: recipient@example.test\r\nSubject: t\r\n\r\nbody\r\n'
-);
 
 interface ServerProbe {
 	server: SMTPServer;
@@ -101,22 +96,6 @@ function daneTlsOptions(records: TlsaRecord[], referenceIdentifiers: string[]) {
 	};
 }
 
-/** Drive a full connect → sendEnvelope → quit through a pooled config. */
-async function deliver(pool: SmtpConnectionPool, options: AcquireOptions): Promise<SendResult> {
-	const { key, config } = await pool.acquire('127.0.0.1', '127.0.0.1', options);
-	const conn = await SmtpConnection.connect(config);
-	try {
-		return await sendEnvelope(conn, {
-			from: 'sender@owlat.test',
-			to: ['recipient@example.test'],
-			data: MESSAGE,
-		});
-	} finally {
-		await quit(conn);
-		pool.release(key);
-	}
-}
-
 /** Drive a delivery expected to FAIL, returning the thrown error. */
 async function attemptExpectFailure(
 	pool: SmtpConnectionPool,
@@ -130,20 +109,29 @@ async function attemptExpectFailure(
 		pool.release(key);
 		return err;
 	}
+	// Track success separately so the unexpected-success sentinel is thrown OUTSIDE
+	// the try/catch — otherwise it would be caught by our own catch and returned as
+	// the "caught" error, masking the bug — and so close()/release() run exactly
+	// once on every path.
+	let sendError: unknown;
+	let delivered = false;
 	try {
 		await sendEnvelope(conn, {
 			from: 'sender@owlat.test',
 			to: ['recipient@example.test'],
-			data: MESSAGE,
+			data: LOOPBACK_MESSAGE,
 		});
-		conn.close();
-		pool.release(key);
-		throw new Error('expected a TLS failure but delivery succeeded');
+		delivered = true;
 	} catch (err) {
+		sendError = err;
+	} finally {
 		conn.close();
 		pool.release(key);
-		return err;
 	}
+	if (delivered) {
+		throw new Error('expected a TLS failure but delivery succeeded');
+	}
+	return sendError;
 }
 
 describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
