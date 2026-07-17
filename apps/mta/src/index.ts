@@ -304,14 +304,21 @@ async function main() {
 			bounceServer.close();
 		}
 
-		// Stop submission server
+		// Stop submission server. SmtpListener.close() REJECTS with
+		// ERR_SERVER_NOT_RUNNING when the listener never bound (a state boot
+		// tolerates when startSubmissionServer fails — e.g. the port needs root), so
+		// void + catch the promise: an un-awaited rejection would crash the drain.
 		if (submissionServer) {
-			submissionServer.close();
+			void submissionServer
+				.close()
+				.catch((err) => logger.error({ err }, 'Submission server close failed'));
 		}
 
-		// Stop implicit-TLS submission server
+		// Stop implicit-TLS submission server (same rejectable-close handling).
 		if (implicitTlsSubmissionServer) {
-			implicitTlsSubmissionServer.close();
+			void implicitTlsSubmissionServer
+				.close()
+				.catch((err) => logger.error({ err }, 'Implicit-TLS submission server close failed'));
 		}
 
 		// Drain worker (wait for in-flight jobs)

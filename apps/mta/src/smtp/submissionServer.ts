@@ -1,14 +1,45 @@
 /**
- * SMTP Submission Server (Port 587)
+ * SMTP Submission Server (587 STARTTLS + 465 implicit-TLS)
  *
- * Accepts outbound email via SMTP protocol with authentication.
- * Provides compatibility with traditional email clients and apps.
+ * Accepts authenticated outbound email for traditional mail clients and apps.
+ * Built on the in-house `@owlat/smtp-listener` (replacing `smtp-server`) and
+ * `@owlat/mail-message` (`parseMessage`, replacing `mailparser`): the byte
+ * budget, the STARTTLS / implicit-TLS transports, the no-oracle SASL exchange
+ * and the RFC 3207 state reset are the listener's; this module supplies the
+ * submission-specific policy as typed listener hooks —
+ *
+ *   - the AUTH chain (master key -> per-org credential -> Postbox app password)
+ *     as the listener's single `authenticate` hook, gated by the per-IP
+ *     failed-AUTH throttle (RFC 4954 §4, OWASP brute-force);
+ *   - a require-auth-before-MAIL gate (submission never relays unauthenticated);
+ *   - per-recipient job fan-out off the RFC5322 header recipients, the From
+ *     forgery 553 5.7.1 guard for Postbox sessions, and AMP `text/x-amp-html`
+ *     recovery, all in the DATA hook;
+ *   - the per-IP connection cap (onConnect) + counter release (socket close),
+ *     whose Redis state stays in {@link module:submissionSecurity}.
+ *
+ * The old `sessionAuth` WeakMap is gone: the authenticated identity lives in the
+ * listener's typed per-connection session state ({@link SubmissionSessionState}).
  */
 
-import { SMTPServer } from 'smtp-server';
-import { collectDataStream, messageTooLargeError } from '../lib/dataStream.js';
+import {
+	createSmtpListener,
+	type SmtpListener,
+	type SmtpSession,
+	type SmtpHandlerResult,
+	type SmtpAuthOutcome,
+	type SmtpAddress,
+	type SmtpTlsConfig,
+} from '@owlat/smtp-listener';
+import {
+	parseMessage,
+	parseMimeTree,
+	walkLeaves,
+	transferDecode,
+	type AddressObject,
+} from '@owlat/mail-message';
 import { timingSafeStringEqual } from '../auth/timingSafe.js';
-import { simpleParser } from 'mailparser';
+import type { Socket } from 'node:net';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
@@ -31,8 +62,9 @@ import {
 } from './submissionSecurity.js';
 
 /**
- * Hard cap for buffered submitted MIME (advertised AND wire-enforced). Tracks
- * the shared per-attachment cap so a message can always carry a max-size file.
+ * Hard cap for buffered submitted MIME (advertised via EHLO SIZE AND enforced by
+ * the listener's byte budget — I4). Tracks the shared per-attachment cap so a
+ * message can always carry a max-size file.
  */
 const MAX_SUBMISSION_BYTES = MAX_ATTACHMENT_BYTES;
 
@@ -41,7 +73,8 @@ function priorityToOrderMs(priority: number): number {
 	return Date.now();
 }
 
-interface AuthenticatedSession {
+/** The authenticated identity of a submission session. */
+export interface AuthenticatedSession {
 	organizationId: string;
 	credentialName: string;
 	/** Set when authenticated via a Postbox app password (per-user). */
@@ -53,9 +86,16 @@ interface AuthenticatedSession {
 	};
 }
 
-// Store authenticated session data. Exported so handler tests can seed an
-// authenticated session without driving a real SMTP dialogue.
-export const sessionAuth = new WeakMap<object, AuthenticatedSession>();
+/**
+ * Typed per-connection listener state. Replaces the old `sessionAuth` WeakMap:
+ * the `authenticate` hook writes {@link SubmissionSessionState.auth} on success
+ * and the DATA hook reads it back — no side table, no forgeable posture.
+ */
+export interface SubmissionSessionState {
+	auth?: AuthenticatedSession;
+}
+
+type Session = SmtpSession<SubmissionSessionState>;
 
 /** Dependencies for the exported handler factories (DI for tests). */
 export interface SubmissionDeps {
@@ -64,108 +104,104 @@ export interface SubmissionDeps {
 	config: MtaConfig;
 }
 
-type SmtpAuth = { username?: string; password?: string };
-type AuthCallback = (err: Error | null, response?: { user: string }) => void;
-type DataCallback = (err?: Error | null) => void;
-
 /**
- * Best-effort client identifier for the app-password "Last used" column —
- * the EHLO name the client announced (`hostNameAppearsAs`), falling back to
- * the resolved reverse-DNS hostname. Both are populated by smtp-server on
- * the session before AUTH.
+ * Best-effort client identifier for the app-password "Last used" column — the
+ * EHLO/HELO name the client announced. (The old smtp-server path also consulted
+ * a reverse-DNS `clientHostname`; the in-house listener performs no reverse DNS,
+ * so the announced EHLO name is the single source — see the PR body.)
  */
-function smtpClientName(session: object): string | undefined {
-	const s = session as { hostNameAppearsAs?: unknown; clientHostname?: unknown };
-	const ehlo = typeof s.hostNameAppearsAs === 'string' ? s.hostNameAppearsAs.trim() : '';
-	if (ehlo) return ehlo;
-	const host = typeof s.clientHostname === 'string' ? s.clientHostname.trim() : '';
-	return host || undefined;
+function clientName(session: Session): string | undefined {
+	const ehlo = typeof session.clientHostname === 'string' ? session.clientHostname.trim() : '';
+	return ehlo || undefined;
 }
 
-/** Best-effort remote IP from the smtp-server session (for throttling). */
-function sessionRemoteIp(session: object): string {
-	const ip = (session as { remoteAddress?: unknown }).remoteAddress;
-	return typeof ip === 'string' && ip ? ip : 'unknown';
+/** Best-effort remote IP from the session (for throttling / limiting). */
+function sessionRemoteIp(session: Session): string {
+	return session.remoteAddress || 'unknown';
 }
 
 /**
  * AUTH handler: master key -> per-org credential -> Postbox app password.
  * Exported (factory form) so the auth chain is unit-testable.
  *
- * Every AUTH path that fails records a per-IP failure and is gated by a
- * per-IP failed-attempt throttle, so the master key and per-org credentials
- * cannot be brute-forced by reconnecting (RFC 4954 §4, OWASP brute-force).
+ * Every path that fails records a per-IP failure and is gated by a per-IP
+ * failed-attempt throttle, so the master key and per-org credentials cannot be
+ * brute-forced by reconnecting (RFC 4954 §4). The listener collapses every
+ * failure to one `535 5.7.8` on the wire (no auth oracle — D6), so the throttle
+ * rejection is byte-identical to a wrong secret.
  */
-export function buildOnAuth(deps: Pick<SubmissionDeps, 'redis' | 'config'>) {
+export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>) {
 	const { redis, config } = deps;
-	return async function onAuth(auth: SmtpAuth, session: object, callback: AuthCallback): Promise<void> {
+	return async function authenticate(
+		credentials: { username: string; password: string },
+		session: Session
+	): Promise<SmtpAuthOutcome> {
 		const remoteIp = sessionRemoteIp(session);
-		// Record the failure + reuse the generic failure message so we never
-		// leak which AUTH path the secret was rejected by.
-		const fail = async (logCtx?: Record<string, unknown>): Promise<void> => {
+		// Record the failure and fail generically so we never leak which AUTH path
+		// the secret was rejected by.
+		const fail = async (logCtx?: Record<string, unknown>): Promise<SmtpAuthOutcome> => {
 			try {
 				await recordAuthFailure(redis, remoteIp);
 			} catch (err) {
 				logger.error({ err, remoteIp }, 'Failed to record SMTP auth failure');
 			}
 			if (logCtx) logger.warn(logCtx, 'SMTP auth failed');
-			callback(new Error('Authentication failed'));
+			return { ok: false };
 		};
 
+		// Throttle gate: refuse AUTH once an IP has burned its failure budget within
+		// the window, checked before any secret comparison so a flood of guesses is
+		// cut off rather than running the full chain each time.
+		let allowed = true;
 		try {
-			// Throttle gate: refuse AUTH once an IP has burned its failure budget
-			// within the window. Checked before any secret comparison so a flood
-			// of guesses gets cut off rather than running the full chain each time.
-			let allowed = true;
-			try {
-				allowed = await checkAuthThrottle(redis, remoteIp, config.submissionMaxAuthFailuresPerIp);
-			} catch (err) {
-				// Fail-open on throttle-store errors so Redis hiccups don't lock
-				// out legitimate clients; the master-key compare is still safe.
-				logger.error({ err, remoteIp }, 'SMTP auth throttle check failed');
-			}
-			if (!allowed) {
-				logger.warn({ remoteIp }, 'SMTP auth throttled — too many failed attempts');
-				return callback(new Error('Too many failed authentication attempts'));
-			}
+			allowed = await checkAuthThrottle(redis, remoteIp, config.submissionMaxAuthFailuresPerIp);
+		} catch (err) {
+			// Fail-open on throttle-store errors so Redis hiccups don't lock out
+			// legitimate clients; the master-key compare is still constant-time-safe.
+			logger.error({ err, remoteIp }, 'SMTP auth throttle check failed');
+		}
+		if (!allowed) {
+			logger.warn({ remoteIp }, 'SMTP auth throttled — too many failed attempts');
+			return { ok: false };
+		}
 
-			const apiKey = auth.password;
-			const username = auth.username;
-			if (!apiKey) {
-				return fail();
-			}
+		const apiKey = credentials.password;
+		const username = credentials.username;
+		if (!apiKey) {
+			return fail();
+		}
 
-			// Master key — constant-time compare like every other secret check
+		try {
+			// Master key — constant-time compare like every other secret check.
 			if (timingSafeStringEqual(apiKey, config.apiKey)) {
-				sessionAuth.set(session, { organizationId: '__master__', credentialName: 'master' });
+				session.state.auth = { organizationId: '__master__', credentialName: 'master' };
 				await clearAuthFailures(redis, remoteIp).catch(() => {});
-				return callback(null, { user: 'master' });
+				return { ok: true, user: 'master' };
 			}
 
-			// Per-org credential (existing campaigns/transactional path)
+			// Per-org credential (campaigns / transactional path).
 			const credential = await lookupCredential(redis, apiKey);
 			if (credential) {
-				sessionAuth.set(session, {
+				session.state.auth = {
 					organizationId: credential.organizationId,
 					credentialName: credential.name,
-				});
+				};
 				await clearAuthFailures(redis, remoteIp).catch(() => {});
-				return callback(null, { user: credential.name });
+				return { ok: true, user: credential.name };
 			}
 
-			// Postbox app password (per-user) — username MUST be the
-			// mailbox address. Skip the round-trip if it doesn't look
-			// like an email.
+			// Postbox app password (per-user) — username MUST be the mailbox address.
+			// Skip the round-trip if it doesn't look like an email.
 			if (username && username.includes('@')) {
 				const result = await verifyPostboxAppPassword(
 					config,
 					username,
 					apiKey,
 					'smtp',
-					smtpClientName(session)
+					clientName(session)
 				);
 				if (result) {
-					sessionAuth.set(session, {
+					session.state.auth = {
 						organizationId: result.organizationId,
 						credentialName: `postbox:${username.toLowerCase()}`,
 						postbox: {
@@ -174,101 +210,120 @@ export function buildOnAuth(deps: Pick<SubmissionDeps, 'redis' | 'config'>) {
 							appPasswordId: result.appPasswordId,
 							userId: result.userId,
 						},
-					});
+					};
 					await clearAuthFailures(redis, remoteIp).catch(() => {});
-					return callback(null, { user: username });
+					return { ok: true, user: username };
 				}
 			}
 
-			await fail({ username, remoteIp });
+			return fail({ username, remoteIp });
 		} catch (err) {
 			logger.error({ err }, 'SMTP auth error');
-			await fail();
+			return fail();
 		}
 	};
 }
 
+/** Collect the bare addresses of a parsed address header into `out`. */
+function collectAddresses(field: AddressObject | AddressObject[] | undefined, out: string[]): void {
+	if (!field) return;
+	const objs = Array.isArray(field) ? field : [field];
+	for (const obj of objs) {
+		for (const entry of obj.value) {
+			if (entry.address) out.push(entry.address);
+		}
+	}
+}
+
+/** The first From address, lowercased (identity for the forgery guard + DKIM domain). */
+function firstFrom(field: AddressObject | AddressObject[] | undefined): string {
+	if (!field) return '';
+	const obj = Array.isArray(field) ? field[0] : field;
+	return obj?.value[0]?.address?.toLowerCase() ?? '';
+}
+
 /**
- * DATA handler: bounded buffering, recipient extraction, From-forgery guard
- * for Postbox sessions, per-recipient queue fan-out. Exported for tests.
+ * Recover the AMP alternative (`text/x-amp-html`) from a raw (binary-string)
+ * message, if present. `parseMessage` neither folds a `text/x-amp-html` part
+ * into `html`/`text` nor (absent a filename/attachment disposition) surfaces it
+ * in `attachments`, so the AMP alternative is recovered by walking the MIME tree
+ * directly — preserving the behavior the old `mailparser`-attachment path
+ * provided (RFC 2046 §5.1.4).
+ *
+ * The first `text/x-amp-html` leaf in document order wins, decoded with the
+ * package's single `transferDecode` (7bit / QP / base64 — one decoder, no second
+ * copy). NOTE (sanctioned divergence, PR body): `MimeNode.rawBody` is CRLF→LF
+ * normalized for nested non-`message/*` leaves (mailMime parity), so a multi-line
+ * AMP document's `job.amp` carries LF line endings rather than the wire's CRLF.
+ * This is immaterial: the sender re-encodes the part when re-emitting it, applying
+ * canonical CRLF + transfer-encoding on the way out.
+ */
+function extractAmpHtml(binary: string): string | undefined {
+	let amp: string | undefined;
+	walkLeaves(parseMimeTree(binary), (leaf) => {
+		if (amp !== undefined) return; // first-in-document-order wins
+		if (leaf.contentType.value !== 'text/x-amp-html') return;
+		const bytes = transferDecode(leaf.rawBody, leaf.headers.last('content-transfer-encoding'));
+		amp = Buffer.from(bytes).toString('utf-8');
+	});
+	return amp;
+}
+
+/**
+ * DATA handler: parse the body, extract recipients, enforce the From-forgery
+ * guard for Postbox sessions, and fan out one queue job per recipient. Exported
+ * for tests. Returns a rejection {@link SmtpHandlerResult} to refuse, or nothing
+ * to accept with the listener's default 250.
  */
 export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
 	const { queue } = deps;
-	return async function onData(
-		stream: Parameters<typeof collectDataStream>[0],
-		session: object,
-		callback: DataCallback
-	): Promise<void> {
+	return async function onData(message: Buffer, session: Session): Promise<SmtpHandlerResult> {
 		try {
-			const authData = sessionAuth.get(session);
+			const authData = session.state.auth;
 			if (!authData) {
-				return callback(new Error('Not authenticated'));
+				return { code: 530, enhanced: '5.7.0', text: 'Authentication required' };
 			}
 
-			// Bounded buffering: smtp-server's `size` option does not enforce
-			// streamed bytes (see dataStream.ts).
-			const collected = await collectDataStream(stream, MAX_SUBMISSION_BYTES);
-			if (!collected.ok) {
-				return callback(messageTooLargeError(MAX_SUBMISSION_BYTES));
-			}
-			const parsed = await simpleParser(collected.buffer);
+			// The listener hands us the fully-buffered, byte-budget-bounded (I4),
+			// dot-decoded message. `parseMessage` reads it as a binary string.
+			const binary = message.toString('latin1');
+			const parsed = parseMessage(binary);
 
-			// Extract recipients
 			const recipients: string[] = [];
-			const addRecipients = (field: unknown) => {
-				if (!field) return;
-				const addrs = Array.isArray(field) ? field : [field];
-				for (const addr of addrs) {
-					if (addr.value) {
-						for (const v of addr.value) {
-							if (v.address) recipients.push(v.address);
-						}
-					}
-				}
-			};
-			addRecipients(parsed.to);
-			addRecipients(parsed.cc);
-			addRecipients(parsed.bcc);
+			collectAddresses(parsed.to, recipients);
+			collectAddresses(parsed.cc, recipients);
+			collectAddresses(parsed.bcc, recipients);
 
 			if (recipients.length === 0) {
-				return callback(new Error('No valid recipients'));
+				return { code: 554, enhanced: '5.5.0', text: 'No valid recipients' };
 			}
 
-			const fromAddress = parsed.from?.value?.[0]?.address?.toLowerCase() ?? '';
+			const fromAddress = firstFrom(parsed.from);
 			const fromDomain = emailDomain(fromAddress);
 
-			// RFC 2046 §5.1.4: preserve the AMP alternative. mailparser surfaces
-			// a `text/x-amp-html` part as an attachment (no `parsed.amp`), so the
-			// 587 submission path silently dropped AMP. Recover it and thread it
-			// onto the job so the sender re-emits the `text/x-amp-html` part.
-			const ampPart = parsed.attachments.find(
-				(a) => a.contentType?.toLowerCase() === 'text/x-amp-html'
-			);
-			const amp = ampPart ? ampPart.content.toString('utf-8') : undefined;
+			// RFC 2046 §5.1.4: preserve the AMP alternative so the sender re-emits the
+			// `text/x-amp-html` part (see {@link extractAmpHtml}).
+			const amp = extractAmpHtml(binary);
 
-			// Postbox sessions MUST send From: their bound mailbox. Anyone
-			// who exfiltrates an app password should not be able to forge
-			// arbitrary identities.
+			// Postbox sessions MUST send From: their bound mailbox. Anyone who
+			// exfiltrates an app password should not be able to forge identities.
 			if (authData.postbox && fromAddress !== authData.postbox.mailboxAddress) {
 				logger.warn(
-					{
-						expected: authData.postbox.mailboxAddress,
-						got: fromAddress,
-					},
+					{ expected: authData.postbox.mailboxAddress, got: fromAddress },
 					'SMTP submission rejected — From-address mismatch'
 				);
-				return callback(
-					new Error('553 5.7.1 From address must match authenticated mailbox')
-				);
+				return {
+					code: 553,
+					enhanced: '5.7.1',
+					text: 'From address must match authenticated mailbox',
+				};
 			}
 
-			// Fan out: one job per recipient
+			// Fan out: one job per recipient.
 			let queued = 0;
 			for (const to of recipients) {
-				// Postbox-prefixed messageId so the bounce/sent webhook can
-				// look the row back up — same convention as the webmail
-				// dispatch path. Without a tracking row id we use a
-				// placeholder so headers still flow through.
+				// Postbox-prefixed messageId so the bounce/sent webhook can look the
+				// row back up — same convention as the webmail dispatch path.
 				const messageId = authData.postbox
 					? `pb-smtp-${authData.postbox.mailboxId}-${randomUUID()}`
 					: `smtp-${randomUUID()}`;
@@ -298,219 +353,259 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
 				{ from: fromAddress, recipients: recipients.length, queued },
 				'SMTP submission accepted'
 			);
-
-			callback();
+			return;
 		} catch (err) {
 			logger.error({ err }, 'SMTP submission processing error');
-			callback(new Error('Processing failed'));
+			return { code: 451, enhanced: '4.3.0', text: 'Processing failed' };
 		}
 	};
 }
 
 /**
- * Hardened TLS material shared by both submission listeners — the STARTTLS
- * (587) and implicit-TLS (465) flavors present the same cert and the same
- * AEAD-only TLS 1.2+ cipher floor. Asserts the cert/key are present first so
- * neither listener can be built over plaintext (RFC 8314 §3.3).
+ * Per-IP connection cap (onConnect) — mirrors the bounce server so the AUTH
+ * paths can't be brute-forced by opening many parallel connections. Exported so
+ * the limiter is unit-testable. Returns a `421` rejection over the cap, nothing
+ * to accept; fails open on a Redis hiccup so a store fault can't lock out
+ * legitimate clients.
+ *
+ * When (and ONLY when) {@link checkConnectionRateLimit} actually holds a slot for
+ * this connection (net +1 on the Redis counter — i.e. the connection was allowed,
+ * NOT rejected over the cap), `onSlotHeld` is invoked so the caller can release
+ * exactly that slot on socket close. This is load-bearing: on 465 the raw TCP
+ * `connection` event fires before the TLS handshake, so a plaintext / aborted
+ * handshake never reaches this hook (no increment); a rejected connection is
+ * incremented-then-decremented inside `checkConnectionRateLimit` (net 0). Neither
+ * takes a slot, so neither is marked — and the close handler must not release one,
+ * else an attacker could drive a victim IP's counter down (465 cap bypass) or a
+ * 421-refused connect could double-decrement (587).
  */
-function submissionTlsOptions(config: MtaConfig): {
-	cert: string;
-	key: string;
-	minVersion: 'TLSv1.2';
-	ciphers: string;
-	honorCipherOrder: true;
-} {
-	assertSubmissionTlsConfigured(config.submissionTlsCert, config.submissionTlsKey);
-	return {
-		cert: config.submissionTlsCert!,
-		key: config.submissionTlsKey!,
-		minVersion: 'TLSv1.2',
-		ciphers: [
-			'ECDHE-ECDSA-AES128-GCM-SHA256',
-			'ECDHE-RSA-AES128-GCM-SHA256',
-			'ECDHE-ECDSA-AES256-GCM-SHA384',
-			'ECDHE-RSA-AES256-GCM-SHA384',
-			'ECDHE-ECDSA-CHACHA20-POLY1305',
-			'ECDHE-RSA-CHACHA20-POLY1305',
-		].join(':'),
-		honorCipherOrder: true,
+export function buildOnConnect(
+	deps: Pick<SubmissionDeps, 'redis' | 'config'>,
+	onSlotHeld?: (session: Session) => void
+) {
+	const { redis, config } = deps;
+	return async function onConnect(session: Session): Promise<SmtpHandlerResult> {
+		const remoteIp = sessionRemoteIp(session);
+		try {
+			const allowed = await checkConnectionRateLimit(
+				redis,
+				remoteIp,
+				config.submissionMaxConnectionsPerIp
+			);
+			if (!allowed) {
+				logger.warn({ remoteIp }, 'Submission server connection rate limited');
+				return { code: 421, enhanced: '4.7.0', text: 'Too many connections from your IP' };
+			}
+			onSlotHeld?.(session); // net +1 held — release exactly this slot on close
+			return;
+		} catch (err) {
+			logger.error({ err, remoteIp }, 'Error in submission onConnect rate limit check');
+			return; // Fail-open so a Redis hiccup doesn't block legitimate clients.
+		}
 	};
 }
 
 /**
- * Behavior shared by both submission listeners: identical AUTH chain, DATA
- * fan-out, per-IP connection cap, and connection-counter release. The only
- * difference between the 587 (STARTTLS) and 465 (implicit-TLS) flavors is
- * the transport (`secure` / `needsUpgrade`), so the handler wiring lives here
- * once to keep the two listeners behaviorally indistinguishable post-AUTH.
+ * Require-auth-before-MAIL gate: submission never relays unauthenticated, so
+ * MAIL FROM is refused with `530 5.7.0` until AUTH has succeeded on the (already
+ * TLS-secured) channel. Exported as a factory for symmetry with the other hook
+ * factories and so the gate is directly testable.
  */
-function submissionHandlers(queue: Queue<EmailJob>, redis: Redis, config: MtaConfig) {
-	return {
-		// Per-IP connection cap — mirrors the bounce server so the AUTH paths
-		// can't be brute-forced by opening many parallel connections.
-		async onConnect(
-			session: { remoteAddress: string },
-			callback: (err?: Error | null) => void,
-		): Promise<void> {
-			const remoteIp = session.remoteAddress;
-			try {
-				const allowed = await checkConnectionRateLimit(
-					redis,
-					remoteIp,
-					config.submissionMaxConnectionsPerIp
-				);
-				if (!allowed) {
-					logger.warn({ remoteIp }, 'Submission server connection rate limited');
-					return callback(new Error('Too many connections from your IP'));
-				}
-				callback();
-			} catch (err) {
-				logger.error({ err, remoteIp }, 'Error in submission onConnect rate limit check');
-				callback(); // Fail-open so a Redis hiccup doesn't block legitimate clients
-			}
-		},
+export function buildOnMailFrom() {
+	return function onMailFrom(_address: SmtpAddress, session: Session): SmtpHandlerResult {
+		return session.authenticated
+			? undefined
+			: { code: 530, enhanced: '5.7.0', text: 'Authentication required' };
+	};
+}
 
-		// Release the per-IP connection counter on disconnect.
-		onClose(session: { remoteAddress: string }): void {
-			releaseConnection(redis, session.remoteAddress).catch(() => {
-				// Non-critical
+/**
+ * Per-connection key for the in-memory slot registries (unique while live).
+ *
+ * Both sides derive the key through THIS one helper so the mark side (the session,
+ * whose `remoteAddress` falls back to `''` — listener `session.ts`) and the release
+ * side (the raw socket, whose `remoteAddress` is `string | undefined`) always agree
+ * for the same TCP peer: an empty/absent address normalizes to the same token.
+ */
+function connectionKey(remoteAddress: string | undefined, remotePort: number | undefined): string {
+	return `${remoteAddress || 'unknown'}:${remotePort ?? 0}`;
+}
+
+/**
+ * Reconciles the per-IP connection counter's increments against socket lifetime.
+ *
+ * `checkConnectionRateLimit` is async, so a connection can close (client RST — port
+ * scans, LB health probes do exactly this) while its rate-limit round-trip is still
+ * in flight. Two per-connection registries reconcile the two possible orderings so
+ * every kept increment is released EXACTLY once:
+ *
+ *   - `live` — added on TCP accept, deleted on socket close. A connection is "live"
+ *     iff its close handler has not yet run.
+ *   - `held` — the connection took a slot (net +1) and still needs releasing.
+ *
+ * {@link SlotTracker.hold} (increment kept) marks `held` only if the connection is
+ * still live; if it already closed, the close handler could not have released the
+ * increment (the key was never in `held`), so it releases immediately. The close
+ * handler releases iff the slot was marked. Either ordering nets one release.
+ */
+interface SlotTracker {
+	/** Raw-accept side: register the connection and release its slot on close. */
+	track(socket: Socket): void;
+	/** Slot-kept side: mark for release, or release now if the peer already left. */
+	hold(session: Session): void;
+}
+
+export function createSlotTracker(redis: Redis): SlotTracker {
+	const live = new Set<string>();
+	const held = new Set<string>();
+	return {
+		track(socket: Socket): void {
+			const remoteIp = socket.remoteAddress ?? 'unknown';
+			const key = connectionKey(socket.remoteAddress, socket.remotePort);
+			live.add(key);
+			socket.once('close', () => {
+				live.delete(key);
+				if (!held.delete(key)) return; // this connection never took a slot
+				releaseConnection(redis, remoteIp).catch(() => {
+					// Non-critical: the Redis counter carries a TTL as a backstop.
+				});
 			});
 		},
-
-		// Auth: master key → per-org credential → Postbox app password
-		async onAuth(
-			auth: SmtpAuth,
-			session: object,
-			callback: AuthCallback,
-		): Promise<void> {
-			await buildOnAuth({ redis, config })(
-				{ username: auth.username, password: auth.password },
-				session,
-				callback
-			);
-		},
-
-		// Process submitted emails
-		async onData(
-			stream: Parameters<typeof collectDataStream>[0],
-			session: object,
-			callback: DataCallback,
-		): Promise<void> {
-			await buildOnData({ queue })(stream, session, callback);
+		hold(session: Session): void {
+			const key = connectionKey(session.remoteAddress, session.remotePort);
+			if (live.has(key)) {
+				held.add(key); // release on close
+				return;
+			}
+			// Closed during the in-flight rate-limit check: the increment happened but
+			// no close handler will release it (the key was never in `held`). Release now.
+			releaseConnection(redis, sessionRemoteIp(session)).catch(() => {
+				// Non-critical: the Redis counter carries a TTL as a backstop.
+			});
 		},
 	};
 }
 
 /**
- * Create the SMTP submission server (port 587 — STARTTLS upgrade).
+ * Hardened TLS material shared by both submission listeners. The STARTTLS (587)
+ * and implicit-TLS (465) flavors present the same cert and inherit the listener's
+ * AEAD-only TLS 1.2+ cipher floor (copied verbatim from this file's former inline
+ * policy — see `@owlat/smtp-listener` `DEFAULT_SMTP_CIPHERS`). Asserts the
+ * cert/key are present first so neither listener can be built over plaintext
+ * (RFC 8314 §3.3).
+ */
+function submissionTls(config: MtaConfig): SmtpTlsConfig {
+	assertSubmissionTlsConfigured(config.submissionTlsCert, config.submissionTlsKey);
+	return { cert: config.submissionTlsCert!, key: config.submissionTlsKey! };
+}
+
+/**
+ * Build a submission listener. The 587 (STARTTLS) and 465 (implicit-TLS) flavors
+ * are behaviorally identical post-AUTH — only the transport differs
+ * (`implicitTls`). AUTH is refused until the channel is secure (`requireTls`),
+ * MAIL is refused until AUTH succeeds, and recipients are taken from the message
+ * headers (not the SMTP envelope) exactly as the previous listener did.
+ */
+function buildSubmissionListener(
+	queue: Queue<EmailJob>,
+	redis: Redis,
+	config: MtaConfig,
+	implicitTls: boolean
+): SmtpListener {
+	// Refuse to construct an insecure listener: without TLS material STARTTLS
+	// cannot be required before AUTH (RFC 8314 §3.3). Fail fast.
+	const tls = submissionTls(config);
+
+	// Reconciles per-IP slot increments against socket lifetime. It marks a slot for
+	// release only for connections that actually incremented in `onConnect`, so the
+	// 465 raw-accept never decrements a slot it never took (cap bypass) and a
+	// 421-refused connect never double-decrements (587) — and it self-heals the race
+	// where a connection RSTs while its async rate-limit check is still in flight.
+	const slots = createSlotTracker(redis);
+
+	const listener = createSmtpListener<SubmissionSessionState>({
+		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be
+		// the FQDN that matches the IP's reverse-DNS PTR record so the announced
+		// identity stays consistent with reverse DNS.
+		hostname: config.ehloHostname,
+		banner: `${config.ehloHostname} Owlat SMTP Submission`,
+		maxMessageBytes: MAX_SUBMISSION_BYTES, // advertised via EHLO SIZE; enforced in the loop
+		tls,
+		implicitTls,
+		auth: {
+			mechanisms: ['PLAIN', 'LOGIN'],
+			requireTls: true, // AUTH only after the channel is encrypted (RFC 4954 §4)
+			authenticate: buildAuthenticate({ redis, config }),
+		},
+		createSession: () => ({}),
+		onConnect: buildOnConnect({ redis, config }, (session) => {
+			// Mark this connection as holding a slot so — and only so — its socket
+			// close releases it. If the peer already left while the rate-limit check
+			// was in flight, `hold` releases the increment immediately instead.
+			slots.hold(session);
+		}),
+		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
+		onMailFrom: buildOnMailFrom(),
+		onData: buildOnData({ queue }),
+		onError: (err) => logger.error({ err }, 'SMTP submission listener error'),
+	});
+
+	// Global concurrent-connection cap — preserves smtp-server's `maxClients` via
+	// node's built-in accept backpressure (`net.Server.maxConnections`).
+	listener.raw.maxConnections = config.submissionMaxClients;
+
+	// Register every accepted connection with the slot tracker, which releases the
+	// per-IP counter on socket close — but ONLY for connections that actually took a
+	// slot. The limiter state lives in submissionSecurity.ts (I8); the listener
+	// exposes only the socket, so the release is wired here on the raw server's
+	// `connection` event (emitted for both the plaintext 587 and implicit-TLS 465
+	// servers). The raw event fires on TCP accept — for 465 that is BEFORE the TLS
+	// handshake, so a failed/plaintext handshake connection never reaches `onConnect`
+	// and thus never releases a slot it never incremented (cap bypass). Tracking the
+	// live connection at accept also lets `hold` self-heal a connection that RSTs
+	// while its async rate-limit check is still pending.
+	listener.raw.on('connection', (socket) => slots.track(socket));
+
+	return listener;
+}
+
+/**
+ * Create the SMTP submission listener (port 587 — STARTTLS upgrade).
  *
- * Built with `secure: false` (and crucially WITHOUT `needsUpgrade`): the
- * connection opens in plaintext, the server advertises STARTTLS, and
- * smtp-server refuses AUTH until STARTTLS has upgraded the channel (RFC 3207 /
- * RFC 4954 §4 / RFC 8314 §3.3). An `AUTH` issued before STARTTLS is rejected by
- * the library with `538 Error: Must issue a STARTTLS command first` and never
- * reaches our `onAuth`.
- *
- * NOTE: `needsUpgrade: true` is deliberately NOT set. With that flag
- * smtp-server upgrades the raw socket to TLS *before* any banner — i.e. it
- * turns 587 into an implicit-TLS port, which (a) never speaks STARTTLS and (b)
- * breaks plain SMTP clients that expect a plaintext greeting on 587. Implicit
- * TLS belongs on its own port (465) — see
- * {@link createImplicitTlsSubmissionServer}.
- *
- * Known limitation: smtp-server advertises the `AUTH` capability in the
- * pre-STARTTLS EHLO response even though it refuses the verb. This is the
- * library's behavior; the gate that matters — refusing the AUTH command
- * itself before TLS — is enforced and regression-locked in the tests.
+ * The connection opens in plaintext, the listener advertises STARTTLS, and AUTH
+ * is refused until STARTTLS has upgraded the channel (RFC 3207 / RFC 4954 §4 /
+ * RFC 8314 §3.3). Unlike the old smtp-server path, AUTH is NOT advertised in the
+ * pre-STARTTLS EHLO response (the listener gates the capability on the live TLS
+ * posture), so the capability list and the refusal agree.
  */
 export function createSubmissionServer(
 	queue: Queue<EmailJob>,
 	redis: Redis,
 	config: MtaConfig
-): SMTPServer {
-	// Refuse to construct an insecure listener: without TLS material STARTTLS
-	// cannot be required before AUTH, so credentials would be offered over
-	// plaintext (RFC 8314 §3.3). Fail fast rather than booting a broken
-	// listener. config.loadConfig() already guards this, but enforce it here
-	// too so the listener can never be built without TLS.
-	const tlsOptions = submissionTlsOptions(config);
-
-	const server = new SMTPServer({
-		secure: false, // Plaintext greeting; STARTTLS upgrade required before AUTH
-		authMethods: ['PLAIN', 'LOGIN'],
-		// The SMTP greeting + EHLO response open with this name (RFC 5321 §4.2).
-		// It MUST be the FQDN that matches the IP's reverse-DNS PTR record, NOT
-		// smtp-server's `os.hostname()` default (the container/host name has no
-		// PTR), so the announced identity stays consistent with reverse DNS.
-		name: config.ehloHostname,
-		banner: `${config.ehloHostname} Owlat SMTP Submission`,
-		size: MAX_SUBMISSION_BYTES, // advertised via EHLO SIZE; enforced in onData
-		maxClients: config.submissionMaxClients,
-		key: tlsOptions.key,
-		cert: tlsOptions.cert,
-		minVersion: tlsOptions.minVersion,
-		ciphers: tlsOptions.ciphers,
-		honorCipherOrder: tlsOptions.honorCipherOrder,
-		...submissionHandlers(queue, redis, config),
-	});
-
-	return server;
+): SmtpListener {
+	return buildSubmissionListener(queue, redis, config, false);
 }
 
 /**
- * Create the implicit-TLS SMTP submission server (port 465).
+ * Create the implicit-TLS SMTP submission listener (port 465).
  *
- * RFC 8314 §3.3 / §7.3 makes implicit TLS (the whole connection is wrapped in
- * TLS from the first byte) the PREFERRED submission transport over STARTTLS:
- * the client never speaks a plaintext byte, so there is no cleartext window in
- * which AUTH could be stripped/downgraded. Built with `secure: true` — the
- * 220 banner and every subsequent command travel over the encrypted channel.
- *
- * Shares the exact AUTH chain, DATA fan-out, per-IP connection cap and TLS
- * hardening with the 587 listener (see {@link submissionHandlers} /
- * {@link submissionTlsOptions}); only the transport differs.
+ * RFC 8314 §3.3 / §7.3 makes implicit TLS (the whole connection wrapped in TLS
+ * from the first byte) the PREFERRED submission transport: the client never
+ * speaks a plaintext byte, so there is no cleartext window in which AUTH could be
+ * stripped. Shares the exact AUTH chain, DATA fan-out, per-IP connection cap and
+ * TLS hardening with the 587 listener; only the transport differs.
  */
 export function createImplicitTlsSubmissionServer(
 	queue: Queue<EmailJob>,
 	redis: Redis,
 	config: MtaConfig
-): SMTPServer {
-	const tlsOptions = submissionTlsOptions(config);
-
-	const server = new SMTPServer({
-		secure: true, // Implicit TLS — encrypted from the first byte (RFC 8314 §3.3)
-		authMethods: ['PLAIN', 'LOGIN'],
-		// The SMTP greeting + EHLO response open with this name (RFC 5321 §4.2).
-		// It MUST be the FQDN that matches the IP's reverse-DNS PTR record, NOT
-		// smtp-server's `os.hostname()` default (the container/host name has no
-		// PTR), so the announced identity stays consistent with reverse DNS.
-		name: config.ehloHostname,
-		banner: `${config.ehloHostname} Owlat SMTP Submission`,
-		size: MAX_SUBMISSION_BYTES, // advertised via EHLO SIZE; enforced in onData
-		maxClients: config.submissionMaxClients,
-		key: tlsOptions.key,
-		cert: tlsOptions.cert,
-		minVersion: tlsOptions.minVersion,
-		ciphers: tlsOptions.ciphers,
-		honorCipherOrder: tlsOptions.honorCipherOrder,
-		...submissionHandlers(queue, redis, config),
-	});
-
-	return server;
+): SmtpListener {
+	return buildSubmissionListener(queue, redis, config, true);
 }
 
-/**
- * Start the submission server on the configured port
- */
-export function startSubmissionServer(server: SMTPServer, port: number): Promise<void> {
-	return new Promise((resolve, reject) => {
-		server.listen(port, () => {
-			logger.info({ port }, 'SMTP submission server listening');
-			resolve();
-		});
-		server.on('error', (err) => {
-			logger.error({ err, port }, 'SMTP submission server error');
-			reject(err);
-		});
+/** Start a submission listener on the configured port. */
+export function startSubmissionServer(server: SmtpListener, port: number): Promise<void> {
+	return server.listen(port).then(() => {
+		logger.info({ port }, 'SMTP submission server listening');
 	});
 }

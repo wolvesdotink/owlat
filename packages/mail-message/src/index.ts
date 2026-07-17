@@ -49,6 +49,8 @@ export {
 	parseMimeTree,
 	assembleBody,
 	parseBody,
+	walkLeaves,
+	transferDecode,
 	type MimeNode,
 	type AssembledBody,
 } from './parse/body';
