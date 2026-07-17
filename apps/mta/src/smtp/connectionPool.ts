@@ -7,32 +7,51 @@
  * profile MUST be part of the key: many domains share an MX (Google/O365), so
  * without it an MTA-STS-enforce send (requireTLS + verifying) would silently
  * reuse an earlier opportunistic, non-verifying entry to the same MX — a
- * STARTTLS-stripping / enforcement bypass on exactly the high-value shared-MX
- * providers (RFC 8461 §5, RFC 7435).
- * Evicts idle and aged-out entries automatically.
+ * STARTTLS-stripping / enforcement bypass on the high-value shared-MX providers
+ * (RFC 8461 §5, RFC 7435). Evicts idle and aged-out entries automatically.
  *
- * One-connection-per-send is preserved (locked decision W3): a pool entry holds
- * only the resolved connect config — never a live socket — because the sender
- * opens a FRESH {@link SmtpConnection} per delivery attempt and tears it down
- * afterwards. Live-socket reuse (true RSET pipelining) is a later capability
- * (X1), NOT this pool. The entry therefore exists purely to (a) partition the
- * global connection-cap accounting by mx/bindIp/dkim/tls-profile and (b) keep
- * one-connection-per-send politeness bounded per MX.
+ * TRUE SOCKET REUSE (X1): a pool entry may park ONE idle, live
+ * {@link SmtpConnection}. Consecutive jobs to the same key reuse that socket
+ * across an `RSET` boundary ({@link SmtpConnectionPool.takeConnection} → the
+ * client's `resetTransaction`, which verifies the 250 so no leftover reply leaks
+ * between transactions) instead of a fresh TCP+STARTTLS+EHLO handshake each time.
+ * Three guardrails bound reuse ({@link SmtpConnectionPool.isRetirable} +
+ * {@link SmtpConnectionPool.evictConnection}): a per-connection message cap
+ * (`maxMessagesPerConnection`, ~100) and the max-lifetime cap (`maxAgeMs`, from
+ * the socket's own open time) both `QUIT` the socket so the next job reconnects;
+ * and ANY transport error — or a failed `RSET` probe — tears the entry down and
+ * releases its slot, so a poisoned socket is NEVER retried.
  *
- * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED entry
- * holds one global slot (`mta:pool:global:<host>`); the slot is reserved
- * atomically at creation (INCR-then-check, rolled back when over the global cap)
- * and released on every teardown path (per-host evict, idle/aged evict, closeAll).
- * Reuse of a pooled entry takes NO new slot. The cap is best-effort: it
- * fail-opens (no throttle) when Redis is down or coordination is disabled.
+ * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED pool
+ * ENTRY holds one global slot (`mta:pool:global:<host>`), reserved atomically at
+ * creation (INCR-then-check, rolled back over the global cap) and released on
+ * every teardown path (per-host / idle-aged / poisoned-socket evict, closeAll). A
+ * slot counts one ENTRY — one lineage of at most one reused socket — NOT every
+ * live socket: reuse, and a cap-driven QUIT+reconnect within an entry, take no new
+ * slot, and concurrent sends to one key open their OWN uncounted one-shot sockets
+ * (the pre-X1 accounting). Best-effort: fail-opens (no throttle) when Redis is down
+ * or coordination is disabled.
  */
 
-import type { TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
-import type { SmtpConnectOptions } from '@owlat/smtp-client';
-import { Gauge } from 'prom-client';
-import { registry } from '../monitoring/collector.js';
+import {
+	quit,
+	resetTransaction,
+	type SmtpConnectOptions,
+	type SmtpConnection,
+} from '@owlat/smtp-client';
 import { logger } from '../monitoring/logger.js';
+import { PoolGlobalCap } from './poolGlobalCap.js';
+import { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
+import {
+	buildConnectConfig,
+	buildPoolKey,
+	type AcquireOptions,
+	type TlsKeyProfile,
+} from './poolConnectConfig.js';
+
+export type { AcquireOptions, TlsKeyProfile } from './poolConnectConfig.js';
+export { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
 
 export interface PoolConfig {
 	/** Max concurrent entries per host (default 3) */
@@ -41,36 +60,17 @@ export interface PoolConfig {
 	idleTimeoutMs: number;
 	/** Drop entries older than this regardless of activity (default 300_000ms) */
 	maxAgeMs: number;
+	/** Max messages over one reused socket before a clean QUIT+reconnect (default 100). */
+	maxMessagesPerConnection: number;
 }
 
-export interface AcquireOptions {
-	port?: number;
-	requireTLS?: boolean;
-	tls?: {
-		rejectUnauthorized?: boolean;
-		minVersion?: 'TLSv1.2' | 'TLSv1.3';
-		/**
-		 * RFC 6066 §3 Server Name Indication. Offered in the TLS ClientHello so a
-		 * shared-hosting MX can select the right certificate. Forwarded verbatim to
-		 * the client's TLS options; when omitted the client defaults it to `host`.
-		 */
-		servername?: string;
-		/**
-		 * Runs after STARTTLS succeeds but before SMTP resumes. It runs even with
-		 * PKIX rejection disabled (DANE-EE), and any returned error destroys the
-		 * socket before the post-TLS EHLO.
-		 */
-		verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
-		/** Pool-only identity for the exact TLSA RRset and DANE-TA reference names. */
-		danePolicyFingerprint?: string;
-	};
-	/** The EHLO/HELO name announced to the MX (the sending MTA identity). */
-	name?: string;
-	connectionTimeout?: number;
-	greetingTimeout?: number;
-	socketTimeout?: number;
-	/** The DKIM sending domain — a KEY PARTITIONING DIMENSION ONLY (signing is sign-time). */
-	dkimDomain?: string;
+/** A parked, idle, RSET-reusable live connection cached on a {@link PoolEntry}. */
+interface IdleConnection {
+	conn: SmtpConnection;
+	/** Deliveries already completed over this socket (for the per-connection cap). */
+	messagesSent: number;
+	/** When the socket was opened (for the max-lifetime cap, reusing `maxAgeMs`). */
+	openedAt: number;
 }
 
 interface PoolEntry {
@@ -79,6 +79,13 @@ interface PoolEntry {
 	lastUsedAt: number;
 	inFlight: number;
 	createdAt: number;
+	/**
+	 * A single idle, live connection parked for the next job to this key, or
+	 * undefined when none is currently available (never parked, checked out for an
+	 * in-flight send, or torn down). At most one socket is reused per entry;
+	 * concurrent sends to the same key open their own one-shot sockets.
+	 */
+	idle?: IdleConnection;
 }
 
 /**
@@ -93,27 +100,22 @@ export class PoolOverCapError extends Error {
 	}
 }
 
-// Prometheus gauge for pool connections
-export const smtpPoolConnections = new Gauge({
-	name: 'mta_smtp_pool_connections',
-	help: 'SMTP connection pool size by state',
-	labelNames: ['state'] as const,
-	registers: [registry],
-});
-
 const DEFAULT_CONFIG: PoolConfig = {
 	maxPerHost: 3,
 	idleTimeoutMs: 30_000,
 	maxAgeMs: 300_000,
+	maxMessagesPerConnection: 100,
 };
 
 export class SmtpConnectionPool {
 	private pool = new Map<string, PoolEntry>();
 	private config: PoolConfig;
 	private evictionTimer: ReturnType<typeof setInterval> | undefined;
-	private redis?: Redis;
-	private globalMaxPerHost?: number;
-	private serverId?: string;
+	private cap = new PoolGlobalCap();
+	// Message-count + open-time for a connection checked OUT of its entry (between
+	// takeConnection and storeConnection), so the caps survive the round-trip without
+	// the sender threading them. A WeakMap never pins a dropped socket.
+	private connMeta = new WeakMap<SmtpConnection, { messagesSent: number; openedAt: number }>();
 
 	constructor(config?: Partial<PoolConfig>) {
 		this.config = { ...DEFAULT_CONFIG, ...config };
@@ -133,39 +135,17 @@ export class SmtpConnectionPool {
 	 * global limit.
 	 */
 	enableDistributedCoordination(redis: Redis, globalMaxPerHost: number, serverId: string): void {
-		this.redis = redis;
-		this.globalMaxPerHost = globalMaxPerHost;
-		this.serverId = serverId;
+		this.cap.enable(redis, globalMaxPerHost, serverId);
 	}
 
-	/**
-	 * Build the pool key for a given connection.
-	 *
-	 * The TLS profile (requireTLS + rejectUnauthorized + DANE policy) is part of
-	 * the key so a verifying/enforcing connection is NEVER served an
-	 * opportunistic, non-verifying entry to the same shared MX. Defaults match
-	 * the config-factory defaults (requireTLS=false, rejectUnauthorized=false)
-	 * so callers that omit the profile get the opportunistic bucket — the existing
-	 * behaviour.
-	 */
+	/** Build the pool key for a connection (see {@link buildPoolKey}). */
 	static buildKey(
 		mxHost: string,
 		bindIp: string,
 		dkimDomain?: string,
-		tls?: {
-			requireTLS?: boolean;
-			rejectUnauthorized?: boolean;
-			danePolicyFingerprint?: string;
-		}
+		tls?: TlsKeyProfile
 	): string {
-		const requireTLS = tls?.requireTLS ?? false;
-		const rejectUnauthorized = tls?.rejectUnauthorized ?? false;
-		// A DANE entry must not outlive or cross recipient-specific TLSA policy.
-		// The exact RRset + reference-name fingerprint therefore participates in
-		// identity; non-DANE keys remain unchanged.
-		const daneSuffix = tls?.danePolicyFingerprint ? `da${tls.danePolicyFingerprint}` : '';
-		const tlsProfile = `rt${requireTLS ? 1 : 0}ru${rejectUnauthorized ? 1 : 0}${daneSuffix}`;
-		return `${mxHost}:${bindIp}:${dkimDomain ?? 'none'}:${tlsProfile}`;
+		return buildPoolKey(mxHost, bindIp, dkimDomain, tls);
 	}
 
 	/**
@@ -188,7 +168,7 @@ export class SmtpConnectionPool {
 			throw new Error('DANE verifier requires a policy fingerprint for safe pooling');
 		}
 		const dkimDomain = options.dkimDomain;
-		const key = SmtpConnectionPool.buildKey(mxHost, bindIp, dkimDomain, {
+		const key = buildPoolKey(mxHost, bindIp, dkimDomain, {
 			requireTLS: options.requireTLS,
 			rejectUnauthorized: options.tls?.rejectUnauthorized,
 			danePolicyFingerprint: options.tls?.danePolicyFingerprint,
@@ -226,19 +206,23 @@ export class SmtpConnectionPool {
 				}
 			}
 			if (oldestKey) {
+				const evicted = this.pool.get(oldestKey);
+				if (evicted) {
+					this.disposeIdle(evicted);
+				}
 				this.pool.delete(oldestKey);
-				this.releaseGlobalSlot(mxHost);
+				this.cap.release(mxHost);
 				logger.debug({ key: oldestKey }, 'Evicted pool entry for host limit');
 			}
 		}
 
 		// Global cap (across all instances): atomically reserve a slot for the new
 		// entry. Throws when over cap so the caller can defer the job.
-		if (!(await this.tryReserveGlobalSlot(mxHost))) {
+		if (!(await this.cap.tryReserve(mxHost, this.slotTtlSeconds()))) {
 			throw new PoolOverCapError(mxHost);
 		}
 
-		const config = SmtpConnectionPool.buildConnectConfig(mxHost, bindIp, options);
+		const config = buildConnectConfig(mxHost, bindIp, options);
 
 		const entry: PoolEntry = {
 			config,
@@ -256,67 +240,11 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Assemble the @owlat/smtp-client connect config for one MX/bindIp/profile.
-	 *
-	 * Outbound MX delivery is always STARTTLS on port 25 (opportunistic upgrade,
-	 * escalated to a required floor by `requireTLS`). The TLSv1.2 floor is pinned
-	 * here (RFC 8996/9325) so it never rests on Node's env-fragile process default;
-	 * the caller may raise it to TLSv1.3 but cannot lower it. `danePolicyFingerprint`
-	 * is pool-only identity and is deliberately NOT forwarded to the client.
-	 */
-	static buildConnectConfig(
-		mxHost: string,
-		bindIp: string,
-		options: AcquireOptions
-	): SmtpConnectOptions {
-		const tls: SmtpConnectOptions['tls'] = {
-			// nosemgrep -- opportunistic TLS default for SMTP delivery (RFC 7435); callers (MTA-STS enforce) override via options.tls.
-			rejectUnauthorized: options.tls?.rejectUnauthorized ?? false,
-			minVersion: options.tls?.minVersion ?? 'TLSv1.2',
-		};
-		if (options.tls?.servername !== undefined) {
-			tls.servername = options.tls.servername;
-		}
-		if (options.tls?.verifyPeerCertificate !== undefined) {
-			tls.verifyPeerCertificate = options.tls.verifyPeerCertificate;
-		}
-		const config: SmtpConnectOptions = {
-			host: mxHost,
-			port: options.port ?? 25,
-			// Production always supplies `name` (the sending IP's PTR-matching FQDN).
-			// The fallback must never announce the RECEIVING server's hostname
-			// (`mxHost`) — that is our identity to the peer and would read as spoofing
-			// (RFC 5321 §4.1.1.1). Fall back to our own bind IP as an address literal
-			// (RFC 5321 §4.1.3), which is honest and syntactically valid. An IPv6 bind
-			// address MUST carry the `IPv6:` tag (RFC 5321 §4.1.3) — a bare
-			// `[2001:db8::1]` is a syntax error a strict MX may reject at EHLO.
-			ehloName: options.name ?? (bindIp.includes(':') ? `[IPv6:${bindIp}]` : `[${bindIp}]`),
-			tlsMode: 'starttls',
-			requireTls: options.requireTLS ?? false,
-			localAddress: bindIp,
-			tls,
-			timeouts: {
-				connect: options.connectionTimeout ?? 30_000,
-				greeting: options.greetingTimeout ?? 30_000,
-				command: options.socketTimeout ?? 60_000,
-			},
-		};
-		return config;
-	}
-
-	/**
 	 * Get the global connection count for an MX host (across all instances).
 	 * Fail-open to 0. Exposed for monitoring/tests.
 	 */
-	async getGlobalConnectionCount(mxHost: string): Promise<number> {
-		if (!this.redis) return 0;
-		try {
-			const globalKey = `mta:pool:global:${mxHost}`;
-			const count = await this.redis.get(globalKey);
-			return count ? parseInt(count, 10) : 0;
-		} catch {
-			return 0;
-		}
+	getGlobalConnectionCount(mxHost: string): Promise<number> {
+		return this.cap.getCount(mxHost);
 	}
 
 	/**
@@ -330,6 +258,129 @@ export class SmtpConnectionPool {
 		entry.inFlight = Math.max(0, entry.inFlight - 1);
 		entry.lastUsedAt = Date.now();
 		this.updateGauge();
+	}
+
+	// ── Live-socket reuse (X1) ──
+
+	/**
+	 * Check out a live, RSET-cleaned connection to reuse for the next delivery to
+	 * `key`, or `undefined` when the caller must open a fresh {@link SmtpConnection}
+	 * from the entry's config — cleanly tearing the parked socket down where needed:
+	 * no socket is parked; it is {@link isRetirable} (over the message cap / past its
+	 * lifetime, `QUIT`); or its `RSET` probe fails (poisoned — discarded). A returned
+	 * connection passed the `RSET` boundary (no state leaks) and bumped the reuse
+	 * counter. The global slot is retained across all of these — a reconnect on the
+	 * SAME entry takes no new slot.
+	 */
+	async takeConnection(key: string): Promise<SmtpConnection | undefined> {
+		const entry = this.pool.get(key);
+		if (!entry || !entry.idle) {
+			return undefined;
+		}
+		const idle = entry.idle;
+		entry.idle = undefined; // check out — an in-flight send parks nothing meanwhile
+		this.updateGauge();
+
+		if (this.isRetirable(idle.messagesSent, idle.openedAt)) {
+			// Aged out while parked (the message cap is enforced before parking in
+			// storeConnection, so only the lifetime bound trips here): retire it cleanly.
+			this.quitConnection(idle.conn);
+			return undefined;
+		}
+
+		try {
+			// The RSET boundary: verified 250 → clean pre-MAIL state, no leftover
+			// reply or half-read multiline response from the prior transaction.
+			await resetTransaction(idle.conn);
+		} catch {
+			// A poisoned socket (dead peer, unexpected reply): discard, reconnect fresh.
+			idle.conn.close();
+			return undefined;
+		}
+		// Carry the caps across the send so storeConnection can apply them on return.
+		this.connMeta.set(idle.conn, { messagesSent: idle.messagesSent, openedAt: idle.openedAt });
+		smtpPoolReused.inc();
+		return idle.conn;
+	}
+
+	/**
+	 * Return a PROTOCOL-HEALTHY connection to its entry: parks it for reuse, or cleanly
+	 * `QUIT`s it when {@link isRetirable}, when its entry is gone, or when the entry
+	 * already parks a socket (a concurrent send won the slot). Call this for a socket
+	 * whose transaction completed cleanly OR that suffered a clean pre-DATA reply
+	 * rejection (a bounced MAIL/RCPT that left the SMTP session open, not a 421 channel
+	 * close) — the next job's RSET boundary aborts the leftover transaction before
+	 * reuse. A poisoned socket (transport/TLS fault, or DATA-phase ambiguity) goes to
+	 * {@link evictConnection} instead.
+	 */
+	storeConnection(key: string, conn: SmtpConnection): void {
+		// First return of a freshly-connected socket has no carried meta: seed openedAt
+		// from the connection's own open time (not `Date.now()`), so the max-lifetime cap
+		// measures from when the socket opened, not from its first park. A reused socket
+		// carries its meta forward from `takeConnection`.
+		const meta = this.connMeta.get(conn) ?? { messagesSent: 0, openedAt: conn.openedAt };
+		this.connMeta.delete(conn);
+		const messagesSent = meta.messagesSent + 1;
+
+		const entry = this.pool.get(key);
+		if (!entry || entry.idle || this.isRetirable(messagesSent, meta.openedAt)) {
+			this.quitConnection(conn);
+			return;
+		}
+		entry.idle = { conn, messagesSent, openedAt: meta.openedAt };
+		entry.lastUsedAt = Date.now();
+		this.updateGauge();
+	}
+
+	/**
+	 * Whether a socket has exhausted a reuse guardrail — the per-connection message
+	 * cap, or its max lifetime (`maxAgeMs`) from its real open time — and must be
+	 * retired (clean QUIT + reconnect) rather than reused. The single predicate both
+	 * {@link takeConnection} and {@link storeConnection} consult, so the bounds live
+	 * in one place.
+	 */
+	private isRetirable(messagesSent: number, openedAt: number): boolean {
+		return (
+			messagesSent >= this.config.maxMessagesPerConnection ||
+			Date.now() - openedAt > this.config.maxAgeMs
+		);
+	}
+
+	/**
+	 * Tear down a poisoned connection after a transport/protocol error mid-delivery
+	 * and evict its whole entry, releasing the global slot. A socket that errored once
+	 * is NEVER reused; the in-flight job retries on a fresh connection exactly once.
+	 * Idempotent with respect to a missing entry.
+	 */
+	evictConnection(key: string, conn: SmtpConnection): void {
+		conn.close();
+		this.connMeta.delete(conn);
+		const entry = this.pool.get(key);
+		if (!entry) {
+			return;
+		}
+		if (entry.idle) {
+			// Defensive: a concurrently-parked socket on a now-poisoned entry goes too.
+			entry.idle.conn.close();
+			entry.idle = undefined;
+		}
+		this.pool.delete(key);
+		this.cap.release(entry.mxHost);
+		this.updateGauge();
+		logger.debug({ key }, 'Evicted pool entry after a transport error');
+	}
+
+	/** Best-effort polite teardown: send QUIT, read the 221, then destroy. */
+	private quitConnection(conn: SmtpConnection): void {
+		void quit(conn).catch(() => {});
+	}
+
+	/** Cleanly retire an entry's parked idle socket, if any, before it is dropped. */
+	private disposeIdle(entry: PoolEntry): void {
+		if (entry.idle) {
+			this.quitConnection(entry.idle.conn);
+			entry.idle = undefined;
+		}
 	}
 
 	/**
@@ -353,8 +404,9 @@ export class SmtpConnectionPool {
 
 			for (const key of keysToEvict) {
 				const entry = this.pool.get(key)!;
+				this.disposeIdle(entry);
 				this.pool.delete(key);
-				this.releaseGlobalSlot(entry.mxHost);
+				this.cap.release(entry.mxHost);
 				logger.debug({ key }, 'Evicted idle/aged pool entry');
 			}
 
@@ -385,9 +437,11 @@ export class SmtpConnectionPool {
 			await new Promise((resolve) => setTimeout(resolve, 100));
 		}
 
-		// Drop all entries, releasing each one's global slot.
+		// Drop all entries, closing any parked live socket and releasing each one's
+		// global slot.
 		for (const entry of this.pool.values()) {
-			this.releaseGlobalSlot(entry.mxHost);
+			this.disposeIdle(entry);
+			this.cap.release(entry.mxHost);
 		}
 
 		this.pool.clear();
@@ -416,63 +470,13 @@ export class SmtpConnectionPool {
 		smtpPoolConnections.set({ state: 'active' }, active);
 	}
 
-	// ── Distributed Coordination Helpers ──
-
-	/** TTL for the global/instance counters — must outlive an entry's max age
-	 * so a live connection's slot never expires out from under it. The decrement
-	 * on teardown is the real cleanup; the TTL is only a crashed-instance backstop. */
+	/**
+	 * TTL for the global/instance counters — must outlive an entry's max age so a live
+	 * connection's slot never expires out from under it. The decrement on teardown is
+	 * the real cleanup; the TTL is only a crashed-instance backstop.
+	 */
 	private slotTtlSeconds(): number {
 		return Math.ceil(this.config.maxAgeMs / 1000) + 60;
-	}
-
-	/**
-	 * Atomically reserve one global slot for a NEW entry to `mxHost`. INCR is
-	 * atomic, so concurrent reservers get distinct counts and only those within
-	 * the cap keep their slot; an over-cap reserver rolls its INCR back. Returns
-	 * true (allow, no tracking) when coordination is disabled, and fail-OPEN
-	 * (true) on any Redis error so an outage degrades to per-host-only limiting.
-	 */
-	private async tryReserveGlobalSlot(mxHost: string): Promise<boolean> {
-		if (!this.redis || !this.serverId || !this.globalMaxPerHost) return true;
-
-		const globalKey = `mta:pool:global:${mxHost}`;
-		const instanceKey = `mta:pool:instance:${this.serverId}:${mxHost}`;
-		const ttl = this.slotTtlSeconds();
-
-		try {
-			const count = await this.redis.incr(globalKey);
-			await this.redis.expire(globalKey, ttl);
-			if (count > this.globalMaxPerHost) {
-				await this.redis.decr(globalKey); // over cap — give the slot back
-				return false;
-			}
-			await this.redis.incr(instanceKey);
-			await this.redis.expire(instanceKey, ttl);
-			return true;
-		} catch {
-			return true; // fail open
-		}
-	}
-
-	/**
-	 * Release one global slot held by a torn-down entry. Fire-and-forget;
-	 * paired 1:1 with a successful tryReserveGlobalSlot. The TTL backstops any
-	 * decr that is lost (e.g. instance crash).
-	 */
-	private releaseGlobalSlot(mxHost: string): void {
-		if (!this.redis || !this.serverId) return;
-
-		const globalKey = `mta:pool:global:${mxHost}`;
-		const instanceKey = `mta:pool:instance:${this.serverId}:${mxHost}`;
-
-		this.redis
-			.pipeline()
-			.decr(globalKey)
-			.decr(instanceKey)
-			.exec()
-			.catch(() => {
-				// Non-critical — coordination is best-effort
-			});
 	}
 }
 

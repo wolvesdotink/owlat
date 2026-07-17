@@ -57,6 +57,13 @@ export class SmtpConnection {
 	readonly greeting: SmtpReply;
 	/** The capabilities advertised in the (last) EHLO. */
 	readonly capabilities: EhloCapabilities;
+	/**
+	 * Epoch millis when the connection became ready (TCP + greeting + EHLO +
+	 * optional STARTTLS all complete). The MTA pool measures a reused socket's
+	 * max lifetime from here — the socket's real open time, not the moment it was
+	 * first parked for reuse.
+	 */
+	readonly openedAt: number;
 
 	private readonly reader: ReplyReader;
 	private readonly timeouts: SmtpTimeouts;
@@ -76,6 +83,7 @@ export class SmtpConnection {
 		this.tlsProtocol = init.tlsProtocol;
 		this.greeting = init.greeting;
 		this.capabilities = init.capabilities;
+		this.openedAt = Date.now();
 	}
 
 	/** The active socket, for the rare layer that needs the raw handle. */
@@ -98,6 +106,17 @@ export class SmtpConnection {
 	 */
 	get dataTimeoutMs(): number {
 		return this.timeouts.data;
+	}
+
+	/**
+	 * `true` when the reader is still holding reply data no command consumed — a
+	 * fully-parsed reply queued, or bytes mid-line in the parser. After a clean
+	 * transaction this is `false`; a `true` here before reusing the socket means a
+	 * leftover/unsolicited reply would desync the next command, so the reuse layer
+	 * (X1 `resetTransaction`) refuses to reuse the connection.
+	 */
+	get hasPendingData(): boolean {
+		return this.reader.hasBufferedData;
 	}
 
 	/**
