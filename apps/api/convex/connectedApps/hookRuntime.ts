@@ -44,7 +44,11 @@ import {
 } from './hookOutcome';
 import type { ConnectedAppHookKind, ConnectedAppHookResult } from './hookProtocol';
 import { isHookCircuitOpen } from './hookCircuit';
-import type { HookExecutionContext, HookSecretEnvelope } from './hookStore';
+import type {
+	HookExecutionContext,
+	HookSecretEnvelope,
+	LoadedHookContext,
+} from './hookStore';
 
 /** Coerce the internal payload arg to a plain JSON object (never trusts prototype). */
 function asPayload(value: unknown): JsonObject {
@@ -74,14 +78,15 @@ export const invokeHook = internalAction({
 			{ organizationId: args.organizationId, connectedAppId: args.connectedAppId, hookKind }
 		);
 
+		if (!context.found) return hookFallback(hookKind, 'app_not_found');
 		const shortCircuit = resolveShortCircuit(context, nowMs);
 		if (shortCircuit) return hookFallback(hookKind, shortCircuit);
 
 		let secret: string;
 		let pluginId: ReturnType<typeof parsePluginId>;
 		try {
-			pluginId = parsePluginId(context.pluginId!);
-			secret = openConnectedAppSecret(toEnvelope(context.secret!));
+			pluginId = parsePluginId(context.pluginId);
+			secret = openConnectedAppSecret(toEnvelope(context.secret));
 		} catch {
 			// An unopenable secret or unparseable plugin id is an Owlat-side data
 			// fault, not the app misbehaving — do not trip the breaker for it.
@@ -92,7 +97,7 @@ export const invokeHook = internalAction({
 		try {
 			transport = await callConnectedAppHook({
 				connectedAppId: args.connectedAppId,
-				endpointUrl: context.endpointUrl!,
+				endpointUrl: context.endpointUrl,
 				secret,
 				hookKind,
 				payload: asPayload(args.payload),
@@ -117,12 +122,15 @@ export const invokeHook = internalAction({
 	},
 });
 
-/** The fallback reason to short-circuit with, or `null` to proceed to the call. */
+/**
+ * The fallback reason to short-circuit a RESOLVED app with, or `null` to proceed
+ * to the call. The missing / foreign-tenant case is handled by the caller's
+ * `found` narrowing, so this only weighs the loaded app's lifecycle and breaker.
+ */
 function resolveShortCircuit(
-	context: HookExecutionContext,
+	context: LoadedHookContext,
 	nowMs: number
 ): HookUnavailableCode | null {
-	if (!context.found) return 'app_not_found';
 	if (context.status === 'revoked') return 'app_revoked';
 	if (context.status !== 'enabled') return 'app_disabled';
 	if (isHookCircuitOpen(context.circuit, nowMs)) return 'circuit_open';
