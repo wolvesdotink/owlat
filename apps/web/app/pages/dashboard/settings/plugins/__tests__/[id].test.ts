@@ -140,6 +140,17 @@ describe('plugin detail — orphaned clear is confirmation-gated', () => {
 		await flushPromises();
 		expect(resetPluginSettings).toHaveBeenCalledWith({ pluginId: 'removed-pack' });
 	});
+
+	it('reports a purge, not a reset-to-defaults, on the orphan path', async () => {
+		resetPluginSettings.mockResolvedValue({ values: {}, secretsSet: {} });
+		const wrapper = mountPage();
+		await clickButtonByText(wrapper, 'Clear residual settings');
+		await wrapper.find('[data-testid="confirm"]').trigger('click');
+		await flushPromises();
+		// The orphan copy matches the index page ("Cleared residual settings for X."),
+		// not the in-form "reset to defaults" (there are no defaults — the plugin is gone).
+		expect(showToast).toHaveBeenCalledWith('Cleared residual settings for removed-pack.');
+	});
 });
 
 function installedEntry(endpoint: string) {
