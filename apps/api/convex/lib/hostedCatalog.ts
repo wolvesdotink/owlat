@@ -11,7 +11,7 @@ export interface HostedCatalog<E extends { readonly kind: string }> {
 	/** Frozen core-then-plugin entry list, in composition order. */
 	readonly all: readonly E[];
 	/** Frozen list of every composed kind, in composition order. */
-	readonly kinds: readonly string[];
+	readonly kinds: readonly E['kind'][];
 	/** Whether `kind` is a known composed kind. */
 	has(kind: string | null | undefined): boolean;
 	/** The entry for `kind`, or `undefined` when unknown. */
