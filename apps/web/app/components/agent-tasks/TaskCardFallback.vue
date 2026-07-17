@@ -12,9 +12,10 @@
  *
  * Explicitly imported by TaskCardRenderer; never relied on via auto-import.
  */
+import { computed } from 'vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 
-withDefaults(
+const props = withDefaults(
 	defineProps<{
 		/** Why the card is a placeholder — drives the copy. */
 		reason: 'unknown' | 'disabled';
@@ -29,13 +30,31 @@ withDefaults(
 );
 
 const emit = defineEmits<{ (e: 'skip'): void; (e: 'open'): void }>();
+
+/**
+ * One copy table per reason (icon + title + body), so the three fragments of a
+ * placeholder's message are defined together and can't drift independently.
+ */
+const copy = computed(() =>
+	props.reason === 'disabled'
+		? {
+				icon: 'lucide:eye-off',
+				title: `${props.label || 'This task type'} is turned off`,
+				body: 'Re-enable its feature to review it in the flow, or skip it for now.',
+			}
+		: {
+				icon: 'lucide:help-circle',
+				title: "This task can't be shown here",
+				body: 'It may belong to a plugin that is no longer installed. Skip it to move on.',
+			}
+);
 </script>
 
 <template>
 	<TaskCardShell :spine="false" role="group" aria-label="Unavailable task">
 		<div class="flex items-start gap-3">
 			<UiIconBox
-				:icon="reason === 'disabled' ? 'lucide:eye-off' : 'lucide:help-circle'"
+				:icon="copy.icon"
 				size="md"
 				variant="surface"
 				rounded="lg"
@@ -43,18 +62,10 @@ const emit = defineEmits<{ (e: 'skip'): void; (e: 'open'): void }>();
 			/>
 			<div class="min-w-0">
 				<p class="text-sm font-medium text-text-primary">
-					{{
-						reason === 'disabled'
-							? `${label || 'This task type'} is turned off`
-							: "This task can't be shown here"
-					}}
+					{{ copy.title }}
 				</p>
 				<p class="mt-0.5 text-xs text-text-tertiary">
-					{{
-						reason === 'disabled'
-							? 'Re-enable its feature to review it in the flow, or skip it for now.'
-							: 'It may belong to a plugin that is no longer installed. Skip it to move on.'
-					}}
+					{{ copy.body }}
 					<span
 						v-if="kind"
 						class="ml-1 font-mono text-[10px] px-1 py-px rounded bg-bg-elevated text-text-tertiary align-middle"
