@@ -26,7 +26,16 @@ vi.mock('@owlat/smtp-client', async (importOriginal) => {
 });
 
 vi.mock('../connectionPool.js', () => ({
-	pool: { acquire: acquireMock, release: releaseMock },
+	// takeConnection returns undefined by default (no reuse), so each attempt opens a
+	// fresh SmtpConnection via connectMock — the seam these unit tests inspect. The
+	// X1 reuse guardrails themselves are covered by connectionReuse.integration.test.ts.
+	pool: {
+		acquire: acquireMock,
+		release: releaseMock,
+		takeConnection: vi.fn().mockResolvedValue(undefined),
+		storeConnection: vi.fn(),
+		evictConnection: vi.fn(),
+	},
 	PoolOverCapError: class PoolOverCapError extends Error {
 		constructor(public readonly mxHost: string) {
 			super('cap');

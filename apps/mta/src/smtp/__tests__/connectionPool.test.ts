@@ -4,6 +4,9 @@ vi.mock('prom-client', () => ({
 	Gauge: vi.fn(function () {
 		return { set: vi.fn() };
 	}),
+	Counter: vi.fn(function () {
+		return { inc: vi.fn() };
+	}),
 }));
 vi.mock('../../monitoring/collector.js', () => ({
 	registry: { registerMetric: vi.fn() },
@@ -15,10 +18,12 @@ vi.mock('../../monitoring/logger.js', () => ({
 import type Redis from 'ioredis';
 import { SmtpConnectionPool, PoolOverCapError } from '../connectionPool.js';
 
-// The pool holds @owlat/smtp-client connect CONFIGS (no live socket): one-
-// connection-per-send (W3) means the entry is slot-accounting + config, and the
-// sender opens a fresh SmtpConnection per attempt. These tests assert the config
-// shape, the TLS-profile keying, and the global-slot accounting.
+// These tests assert the pool's connect-config shape, TLS-profile keying, and
+// global-slot accounting — the acquire/release/eviction contract that X1's live-
+// socket reuse layers on top of (never opening a real socket here). The reuse
+// guardrails themselves (RSET boundary, per-connection cap, unhealthy-socket
+// eviction, the reused counter) are exercised against a real fake MX in
+// connectionReuse.integration.test.ts.
 
 describe('SmtpConnectionPool', () => {
 	let pool: SmtpConnectionPool;
