@@ -10,8 +10,18 @@
  * (`/dashboard/audience/contacts/../contacts`) and so dodge the href-based
  * first-registered-wins no-shadow dedup, and `..` would let an href climb
  * outside its apparent area (`/dashboard/../login`).
+ *
+ * Canonicality also means the exact form the core routes use: lowercase, with
+ * no trailing slash. vue-router runs with its lenient defaults here (apps/web
+ * declares no router matcher options, so `strict: false`, `sensitive: false`),
+ * so `/dashboard/audience/contacts/` and `/DASHBOARD/audience/contacts` would
+ * both resolve to the core Contacts route while being different strings from
+ * the core href — another way to dodge the href-based no-shadow dedup. Every
+ * core destination in `CORE_SECTIONS` is lowercase kebab with no trailing
+ * slash, so we require that canonical form (`/dashboard/v1.2/report` still
+ * validates — a dot inside an otherwise well-formed segment is fine).
  */
-const SAFE_INTERNAL_PATH = /^\/(?:[A-Za-z0-9\-._~]+(?:\/[A-Za-z0-9\-._~]+)*\/?)?$/;
+const SAFE_INTERNAL_PATH = /^\/(?:[a-z0-9\-._~]+(?:\/[a-z0-9\-._~]+)*)?$/;
 const DOT_ONLY_SEGMENT = /^\.+$/;
 const MAX_INTERNAL_PATH_LENGTH = 256;
 

@@ -127,6 +127,14 @@ describe('plugin nav item contributions', () => {
 		).toBe(true);
 	});
 
+	it('rejects a trailing-slash href that aliases a core destination', () => {
+		expect(
+			issuesFor(withNavItem({ href: '/dashboard/audience/contacts/' })).some((i) =>
+				i.path.endsWith('.href')
+			)
+		).toBe(true);
+	});
+
 	it('rejects a malformed icon token', () => {
 		expect(
 			issuesFor(withNavItem({ icon: 'not an icon' })).some((i) => i.path.endsWith('.icon'))
@@ -245,6 +253,13 @@ describe('isSafeInternalNavPath', () => {
 		expect(isSafeInternalNavPath('/..')).toBe(false);
 		expect(isSafeInternalNavPath('/.')).toBe(false);
 		expect(isSafeInternalNavPath('/dashboard/../login')).toBe(false);
+	});
+
+	it('rejects trailing-slash and uppercase aliases of a core destination', () => {
+		// vue-router's lenient defaults resolve both of these to the core route,
+		// but as different strings they would evade the href-based no-shadow dedup.
+		expect(isSafeInternalNavPath('/dashboard/audience/contacts/')).toBe(false);
+		expect(isSafeInternalNavPath('/DASHBOARD/audience/contacts')).toBe(false);
 	});
 
 	it('still accepts dots inside an otherwise well-formed segment', () => {
