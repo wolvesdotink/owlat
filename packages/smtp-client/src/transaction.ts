@@ -37,6 +37,7 @@ export {
 	type EnvelopeOptions,
 	type SendResult,
 	sendEnvelope,
+	envelopeRequiresSmtpUtf8,
 } from './envelope';
 
 // ── AUTH ────────────────────────────────────────────────────────────────────

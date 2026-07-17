@@ -118,7 +118,11 @@ interface PreparedEnvelope {
  * and pipelined paths serialize byte-identical commands (SIZE included) — the only
  * difference between them is write batching, never the command content.
  */
-function prepareEnvelope(conn: SmtpConnection, options: EnvelopeOptions): PreparedEnvelope {
+function prepareEnvelope(
+	conn: SmtpConnection,
+	options: EnvelopeOptions,
+	smtpUtf8: boolean
+): PreparedEnvelope {
 	const body = typeof options.data === 'string' ? Buffer.from(options.data, 'utf8') : options.data;
 	// MAIL FROM SIZE (RFC 1870) when the server advertised it. The declared size is
 	// the un-stuffed message length — what the server budgets against.
@@ -126,10 +130,40 @@ function prepareEnvelope(conn: SmtpConnection, options: EnvelopeOptions): Prepar
 	if (hasCapability(conn.capabilities, 'SIZE')) {
 		mailParams.push(`SIZE=${body.length}`);
 	}
+	// SMTPUTF8 (RFC 6531 §3.4) rides on MAIL FROM — and ONLY there — when the
+	// envelope carries a non-ASCII mailbox and the server advertised the extension.
+	// The caller-computed `smtpUtf8` gate already proved the server advertised it
+	// (the not-advertised case failed closed before we reach here), so appending the
+	// keyword can never smuggle an unsupported param past the peer.
+	if (smtpUtf8) {
+		mailParams.push('SMTPUTF8');
+	}
 	if (options.mailParams !== undefined) {
 		mailParams.push(...options.mailParams);
 	}
 	return { body, mailParams, rcptParams: options.rcptParams ?? [] };
+}
+
+// eslint-disable-next-line no-control-regex
+const NON_ASCII_MAILBOX = /[^\x00-\x7F]/;
+
+/**
+ * Does this envelope carry a non-ASCII (RFC 6531 EAI) mailbox — a return path or
+ * recipient with a UTF-8 local-part or domain? Such an address has no ASCII
+ * downgrade (there is no RFC 2047 for an addr-spec, and a non-ASCII local-part
+ * has no punycode), so it can only be delivered over an `SMTPUTF8` transaction.
+ * Read structurally from the envelope bytes — never a message-text sniff.
+ */
+export function envelopeRequiresSmtpUtf8(options: EnvelopeOptions): boolean {
+	if (NON_ASCII_MAILBOX.test(options.from)) {
+		return true;
+	}
+	for (const recipient of options.to) {
+		if (NON_ASCII_MAILBOX.test(recipient)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 function shouldPipeline(mode: PipeliningMode | undefined, advertised: boolean): boolean {
@@ -167,7 +201,24 @@ export async function sendEnvelope(
 		throw errorFromReply('rcpt', 'no recipients supplied', conn.secured);
 	}
 
-	const prepared = prepareEnvelope(conn, options);
+	// SMTPUTF8 / EAI (RFC 6531): an internationalized envelope needs the extension.
+	// If the server advertised it we tag MAIL FROM; if it did NOT, we FAIL CLOSED
+	// here — before any byte reaches the wire — because a non-ASCII local-part has
+	// no ASCII downgrade and silently mangling it would misdeliver. This is a
+	// permanent condition (`clientRefusal: 'smtputf8-unavailable'`), never retried.
+	const smtpUtf8 = envelopeRequiresSmtpUtf8(options);
+	if (smtpUtf8 && !conn.capabilities.smtpUtf8) {
+		throw new SmtpError({
+			phase: 'mail',
+			message:
+				'server does not advertise SMTPUTF8 (RFC 6531); refusing to send an internationalized ' +
+				'(non-ASCII) envelope address — there is no ASCII downgrade for a UTF-8 mailbox',
+			secured: conn.secured,
+			clientRefusal: 'smtputf8-unavailable',
+		});
+	}
+
+	const prepared = prepareEnvelope(conn, options, smtpUtf8);
 	if (shouldPipeline(options.pipelining, conn.capabilities.pipelining)) {
 		return sendEnvelopePipelined(conn, options, prepared);
 	}
