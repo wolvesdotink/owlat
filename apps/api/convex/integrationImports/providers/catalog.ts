@@ -11,6 +11,7 @@
  */
 
 import type { PluginId } from '@owlat/plugin-kit';
+import { composeHostedCatalog } from '../../lib/hostedCatalog';
 import { INTEGRATION_PROVIDER_KINDS } from '../_common';
 import { IMPORT_PROVIDER_CATALOG } from '../../plugins/importProviderCatalog';
 
@@ -32,36 +33,29 @@ const CORE_LABELS: Record<(typeof INTEGRATION_PROVIDER_KINDS)[number], string> =
 const CORE_IMPORT_PROVIDER_CATALOG: readonly ImportProviderCatalogEntry[] =
 	INTEGRATION_PROVIDER_KINDS.map((kind) => ({ kind, label: CORE_LABELS[kind] }));
 
-export const IMPORT_PROVIDER_CATALOG_ALL: readonly ImportProviderCatalogEntry[] = Object.freeze([
-	...CORE_IMPORT_PROVIDER_CATALOG,
-	...IMPORT_PROVIDER_CATALOG.map((entry) => ({
+const catalog = composeHostedCatalog<ImportProviderCatalogEntry>(
+	CORE_IMPORT_PROVIDER_CATALOG,
+	IMPORT_PROVIDER_CATALOG.map((entry) => ({
 		kind: entry.kind,
 		label: entry.label,
 		pluginId: entry.pluginId,
 		requiredCapability: entry.requiredCapability,
 	})),
-]);
-
-const catalogByKind = new Map(IMPORT_PROVIDER_CATALOG_ALL.map((entry) => [entry.kind, entry]));
-
-if (catalogByKind.size !== IMPORT_PROVIDER_CATALOG_ALL.length) {
-	throw new TypeError('Import provider kinds (core + bundled plugin) must be unique');
-}
-
-export const IMPORT_PROVIDER_KINDS = Object.freeze(
-	IMPORT_PROVIDER_CATALOG_ALL.map((entry) => entry.kind)
+	'import provider'
 );
 
+export const IMPORT_PROVIDER_CATALOG_ALL: readonly ImportProviderCatalogEntry[] = catalog.all;
+
+export const IMPORT_PROVIDER_KINDS = catalog.kinds;
+
 export function isImportProviderKind(kind: string | null | undefined): boolean {
-	return kind != null && catalogByKind.has(kind);
+	return catalog.has(kind);
 }
 
 export function isPluginImportProviderKind(kind: string | null | undefined): boolean {
-	return kind != null && catalogByKind.get(kind)?.pluginId !== undefined;
+	return catalog.get(kind)?.pluginId !== undefined;
 }
 
 export function importProviderCatalogEntry(kind: string): ImportProviderCatalogEntry {
-	const entry = catalogByKind.get(kind);
-	if (!entry) throw new TypeError('Unknown import provider kind');
-	return entry;
+	return catalog.entryFor(kind);
 }

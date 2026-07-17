@@ -10,6 +10,7 @@
  */
 
 import type { PluginId } from '@owlat/plugin-kit';
+import { composeHostedCatalog } from '../../lib/hostedCatalog';
 import { WEBHOOK_EVENT_CATALOG } from '../../plugins/webhookEventCatalog';
 import { WEBHOOK_EVENT_REGISTRY, type WebhookEventLiteral } from './registry';
 
@@ -33,42 +34,35 @@ const CORE_WEBHOOK_EVENT_CATALOG: readonly WebhookEventCatalogEntry[] = Object.v
 	subscribable: module.isSubscribable,
 }));
 
-export const WEBHOOK_EVENT_CATALOG_ALL: readonly WebhookEventCatalogEntry[] = Object.freeze([
-	...CORE_WEBHOOK_EVENT_CATALOG,
-	...WEBHOOK_EVENT_CATALOG.map((entry) => ({
+const catalog = composeHostedCatalog<WebhookEventCatalogEntry>(
+	CORE_WEBHOOK_EVENT_CATALOG,
+	WEBHOOK_EVENT_CATALOG.map((entry) => ({
 		kind: entry.kind,
 		description: entry.description,
 		subscribable: entry.subscribable,
 		pluginId: entry.pluginId,
 		requiredCapability: entry.requiredCapability,
 	})),
-]);
-
-const catalogByKind = new Map(WEBHOOK_EVENT_CATALOG_ALL.map((entry) => [entry.kind, entry]));
-
-if (catalogByKind.size !== WEBHOOK_EVENT_CATALOG_ALL.length) {
-	throw new TypeError('Webhook event kinds (core + bundled plugin) must be unique');
-}
-
-export const WEBHOOK_EVENT_KINDS = Object.freeze(
-	WEBHOOK_EVENT_CATALOG_ALL.map((entry) => entry.kind)
+	'webhook event'
 );
+
+export const WEBHOOK_EVENT_CATALOG_ALL: readonly WebhookEventCatalogEntry[] = catalog.all;
+
+export const WEBHOOK_EVENT_KINDS = catalog.kinds;
 
 /** Subscribable subset (core `test` and non-subscribable plugin events excluded). */
 export const SUBSCRIBABLE_WEBHOOK_EVENT_KINDS = Object.freeze(
-	WEBHOOK_EVENT_CATALOG_ALL.filter((entry) => entry.subscribable).map((entry) => entry.kind)
+	catalog.all.filter((entry) => entry.subscribable).map((entry) => entry.kind)
 );
 
 export function isWebhookEventKind(kind: string | null | undefined): boolean {
-	return kind != null && catalogByKind.has(kind);
+	return catalog.has(kind);
 }
 
 export function isSubscribableWebhookEventKind(kind: string | null | undefined): boolean {
-	return kind != null && (catalogByKind.get(kind)?.subscribable ?? false);
+	return catalog.get(kind)?.subscribable ?? false;
 }
 
 export function webhookEventCatalogEntry(kind: string): WebhookEventCatalogEntry {
-	const entry = catalogByKind.get(kind);
-	if (!entry) throw new TypeError('Unknown webhook event kind');
-	return entry;
+	return catalog.entryFor(kind);
 }
