@@ -27,11 +27,16 @@ describe('built-in membership and metadata', () => {
 		expect(reg.estimateSeconds('reply')).toBe(120);
 	});
 
-	it('classifies kinds by namespace', () => {
+	it('classifies kinds by namespace (two lowercase segments required)', () => {
 		expect(BUILT_IN_TASK_FLOW_KINDS.every(isBuiltInTaskFlowKind)).toBe(true);
-		expect(isBuiltInTaskFlowKind('plugin.foo')).toBe(false);
-		expect(isPluginTaskFlowKind('plugin.foo')).toBe(true);
+		expect(isBuiltInTaskFlowKind('plugin.acme.survey')).toBe(false);
+		expect(isPluginTaskFlowKind('plugin.acme.survey')).toBe(true);
+		// Rejects single-segment, empty, uppercase, and whitespace-bearing kinds.
+		expect(isPluginTaskFlowKind('plugin.acme')).toBe(false);
+		expect(isPluginTaskFlowKind('plugin.a')).toBe(false);
 		expect(isPluginTaskFlowKind('plugin.')).toBe(false);
+		expect(isPluginTaskFlowKind('plugin.A.b')).toBe(false);
+		expect(isPluginTaskFlowKind('plugin.a b')).toBe(false);
 		expect(isPluginTaskFlowKind('reply')).toBe(false);
 	});
 
@@ -59,8 +64,8 @@ describe('plugin registration guards', () => {
 
 	it('assigns plugin ranks in registration order (deterministic, plugins never jump built-ins)', () => {
 		const reg = createTaskCardRegistry();
-		const a = reg.register({ kind: 'plugin.a', label: 'A', load: noop });
-		const b = reg.register({ kind: 'plugin.b', label: 'B', load: noop });
+		const a = reg.register({ kind: 'plugin.acme.a', label: 'A', load: noop });
+		const b = reg.register({ kind: 'plugin.acme.b', label: 'B', load: noop });
 		expect(a.rank).toBeLessThan(b.rank);
 		expect(a.rank).toBeGreaterThan(reg.rank('reply'));
 	});
@@ -75,10 +80,18 @@ describe('plugin registration guards', () => {
 		expect(() => reg.register({ kind: 'survey', label: 'x', load: noop })).toThrow(/namespaced/);
 	});
 
+	it('rejects a kind that violates the two-segment namespaced grammar', () => {
+		const reg = createTaskCardRegistry();
+		// Single-segment (no owning-plugin id), uppercase, and embedded whitespace.
+		for (const bad of ['plugin.a', 'plugin.A.b', 'plugin.a b'] as const) {
+			expect(() => reg.register({ kind: bad, label: 'x', load: noop })).toThrow(/namespaced/);
+		}
+	});
+
 	it('rejects a duplicate plugin kind (late/duplicate registration)', () => {
 		const reg = createTaskCardRegistry();
-		reg.register({ kind: 'plugin.dup', label: 'x', load: noop });
-		expect(() => reg.register({ kind: 'plugin.dup', label: 'y', load: noop })).toThrow(
+		reg.register({ kind: 'plugin.acme.dup', label: 'x', load: noop });
+		expect(() => reg.register({ kind: 'plugin.acme.dup', label: 'y', load: noop })).toThrow(
 			/already registered/
 		);
 	});
@@ -86,7 +99,7 @@ describe('plugin registration guards', () => {
 	it('rejects a plugin kind with no card loader', () => {
 		const reg = createTaskCardRegistry();
 		expect(() =>
-			reg.register({ kind: 'plugin.noload', label: 'x', load: undefined as never })
+			reg.register({ kind: 'plugin.acme.noload', label: 'x', load: undefined as never })
 		).toThrow(/loader/);
 	});
 });
@@ -95,22 +108,22 @@ describe('untrusted metadata clamping', () => {
 	it('clamps an out-of-range estimate into the sane band', () => {
 		const reg = createTaskCardRegistry();
 		expect(
-			reg.register({ kind: 'plugin.slow', label: 'x', estimateSeconds: 99999, load: noop })
+			reg.register({ kind: 'plugin.acme.slow', label: 'x', estimateSeconds: 99999, load: noop })
 				.estimateSeconds
 		).toBe(600);
 		expect(
-			reg.register({ kind: 'plugin.fast', label: 'x', estimateSeconds: 0, load: noop })
+			reg.register({ kind: 'plugin.acme.fast', label: 'x', estimateSeconds: 0, load: noop })
 				.estimateSeconds
 		).toBe(5);
 	});
 
 	it('falls back to the default estimate when none/NaN is supplied', () => {
 		const reg = createTaskCardRegistry();
-		expect(reg.register({ kind: 'plugin.d', label: 'x', load: noop }).estimateSeconds).toBe(
+		expect(reg.register({ kind: 'plugin.acme.d', label: 'x', load: noop }).estimateSeconds).toBe(
 			DEFAULT_TASK_CARD_SECONDS
 		);
 		expect(
-			reg.register({ kind: 'plugin.n', label: 'x', estimateSeconds: NaN, load: noop })
+			reg.register({ kind: 'plugin.acme.n', label: 'x', estimateSeconds: NaN, load: noop })
 				.estimateSeconds
 		).toBe(DEFAULT_TASK_CARD_SECONDS);
 	});
@@ -118,15 +131,15 @@ describe('untrusted metadata clamping', () => {
 	it('collapses whitespace and length-clamps the label', () => {
 		const reg = createTaskCardRegistry();
 		const long = 'a'.repeat(200);
-		const def = reg.register({ kind: 'plugin.long', label: `  hi\n\tthere  ${long}`, load: noop });
+		const def = reg.register({ kind: 'plugin.acme.long', label: `  hi\n\tthere  ${long}`, load: noop });
 		expect(def.label.length).toBeLessThanOrEqual(80);
 		expect(def.label.startsWith('hi there')).toBe(true);
 	});
 
 	it('falls back to the kind when the label clamps to empty', () => {
 		const reg = createTaskCardRegistry();
-		expect(reg.register({ kind: 'plugin.blank', label: '   ', load: noop }).label).toBe(
-			'plugin.blank'
+		expect(reg.register({ kind: 'plugin.acme.blank', label: '   ', load: noop }).label).toBe(
+			'plugin.acme.blank'
 		);
 	});
 });
@@ -147,29 +160,29 @@ describe('unknown-kind fallbacks', () => {
 describe('resolve() for the card dispatcher', () => {
 	it('resolves an enabled plugin kind to its card', () => {
 		const reg = createTaskCardRegistry();
-		reg.register({ kind: 'plugin.ok', label: 'Ok', load: noop });
-		expect(reg.resolve('plugin.ok').status).toBe('plugin');
+		reg.register({ kind: 'plugin.acme.ok', label: 'Ok', load: noop });
+		expect(reg.resolve('plugin.acme.ok').status).toBe('plugin');
 	});
 
 	it('resolves a flag-disabled plugin kind to a disabled fallback', () => {
 		const reg = createTaskCardRegistry();
-		reg.register({ kind: 'plugin.gated', label: 'Gated', flag: 'plugin.gated', load: noop });
-		const r = reg.resolve('plugin.gated', (f) => f !== 'plugin.gated');
-		expect(r).toEqual({ status: 'disabled', kind: 'plugin.gated', label: 'Gated' });
+		reg.register({ kind: 'plugin.acme.gated', label: 'Gated', flag: 'plugin.acme.gated', load: noop });
+		const r = reg.resolve('plugin.acme.gated', (f) => f !== 'plugin.acme.gated');
+		expect(r).toEqual({ status: 'disabled', kind: 'plugin.acme.gated', label: 'Gated' });
 	});
 
 	it('resolves an enabled, gated plugin kind to its card when the flag is on', () => {
 		const reg = createTaskCardRegistry();
-		reg.register({ kind: 'plugin.gated', label: 'Gated', flag: 'plugin.gated', load: noop });
-		expect(reg.resolve('plugin.gated', () => true).status).toBe('plugin');
+		reg.register({ kind: 'plugin.acme.gated', label: 'Gated', flag: 'plugin.acme.gated', load: noop });
+		expect(reg.resolve('plugin.acme.gated', () => true).status).toBe('plugin');
 	});
 
 	it('fails closed: a gated plugin kind with no predicate resolves to disabled', () => {
 		const reg = createTaskCardRegistry();
-		reg.register({ kind: 'plugin.gated', label: 'Gated', flag: 'plugin.gated', load: noop });
-		expect(reg.resolve('plugin.gated')).toEqual({
+		reg.register({ kind: 'plugin.acme.gated', label: 'Gated', flag: 'plugin.acme.gated', load: noop });
+		expect(reg.resolve('plugin.acme.gated')).toEqual({
 			status: 'disabled',
-			kind: 'plugin.gated',
+			kind: 'plugin.acme.gated',
 			label: 'Gated',
 		});
 	});

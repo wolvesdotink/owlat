@@ -37,9 +37,16 @@ export function isBuiltInTaskFlowKind(kind: string): kind is BuiltInTaskFlowKind
 	return BUILT_IN_KIND_SET.has(kind);
 }
 
-/** True for a correctly `plugin.<id>`-namespaced task-card kind. */
+/**
+ * True for a correctly namespaced task-card kind: `plugin.<pluginId>.<localKind>`
+ * where each segment is lowercase alphanumeric-with-hyphens starting with a
+ * letter. This matches the platform's namespaced-kind grammar (plugin-kit's
+ * STEP_REFERENCE, the Convex cron prefix check) so a task-card kind can always
+ * be attributed to its owning plugin — a single-segment or mixed-case kind is
+ * rejected, not silently accepted.
+ */
 export function isPluginTaskFlowKind(kind: string): boolean {
-	return /^plugin\.[^.\s]/.test(kind);
+	return /^plugin\.[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(kind);
 }
 
 /** Lazily-loaded card component for a plugin kind (SSR-safe dynamic import). */
