@@ -76,7 +76,8 @@ export type EmailBlockCompositionErrorCode =
 	| 'renderer_without_editor'
 	| 'editor_without_renderer'
 	| 'duplicate_block_type'
-	| 'reserved_block_type';
+	| 'reserved_block_type'
+	| 'unsupported_placement';
 
 export class EmailBlockCompositionError extends Error {
 	readonly code: EmailBlockCompositionErrorCode;
@@ -165,6 +166,20 @@ function pairContribution(
 			throw new EmailBlockCompositionError(
 				'editor_without_renderer',
 				`Plugin ${pluginId} editor for "${half.type}" declares a mismatched definition type "${half.definition.type}"`,
+				{ pluginId, blockType: half.type }
+			);
+		}
+		if (half.definition.canBeInColumn || half.definition.canBeInContainer) {
+			// A hosted block's renderer half goes through the renderer's legacy
+			// custom registry, which the renderer only consults at ROOT placement
+			// (renderColumnItem / renderContainerItem dispatch solely through the
+			// Block-module registry and drop unknown types). Accepting an editor
+			// half that advertises column/container placement would let the builder
+			// offer the block inside a column while the rendered email silently
+			// omits it — content loss with no error. Reject at the front door.
+			throw new EmailBlockCompositionError(
+				'unsupported_placement',
+				`Plugin ${pluginId} editor for "${half.type}" sets canBeInColumn/canBeInContainer, but hosted blocks render only at root placement`,
 				{ pluginId, blockType: half.type }
 			);
 		}
