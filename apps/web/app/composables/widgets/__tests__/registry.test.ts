@@ -13,10 +13,11 @@ function coreWidget(kind: string, flag?: WidgetModule['flag']): WidgetModule {
 }
 
 function pluginContribution(pluginId: string, kind: string): HostedContribution<WidgetModule> {
+	const id = parsePluginId(pluginId);
 	return {
-		pluginId: parsePluginId(pluginId),
+		pluginId: id,
 		contributionId: kind,
-		value: { kind, source: { pluginId }, label: `${pluginId} ${kind}`, component: stubLoader },
+		value: { kind, source: { pluginId: id }, label: `${pluginId} ${kind}`, component: stubLoader },
 	};
 }
 
@@ -103,6 +104,76 @@ describe('createWidgetRegistry — plugin contributions', () => {
 				[pluginContribution('acme', 'dash'), pluginContribution('acme', 'dash')]
 			)
 		).toThrow();
+	});
+});
+
+describe('createWidgetRegistry — contribution integrity', () => {
+	function contribution(
+		pluginId: string,
+		contributionId: string,
+		value: WidgetModule
+	): HostedContribution<WidgetModule> {
+		return { pluginId: parsePluginId(pluginId), contributionId, value };
+	}
+
+	function expectCode(fn: () => unknown, code: string) {
+		expect(fn).toThrowError(WidgetRegistryError);
+		try {
+			fn();
+		} catch (err) {
+			expect((err as WidgetRegistryError).code).toBe(code);
+		}
+	}
+
+	it('rejects a contribution whose id does not equal its widget kind', () => {
+		expectCode(
+			() =>
+				createWidgetRegistry(
+					[],
+					[
+						contribution('acme', 'declared_id', {
+							kind: 'rendered_kind',
+							source: { pluginId: parsePluginId('acme') },
+							component: stubLoader,
+						}),
+					]
+				),
+			'contribution_id_mismatch'
+		);
+	});
+
+	it('rejects a plugin contribution that claims source "core"', () => {
+		expectCode(
+			() =>
+				createWidgetRegistry(
+					[],
+					[contribution('acme', 'w', { kind: 'w', source: 'core', component: stubLoader })]
+				),
+			'source_mismatch'
+		);
+	});
+
+	it('rejects a contribution attributed to a different plugin', () => {
+		expectCode(
+			() =>
+				createWidgetRegistry(
+					[],
+					[
+						contribution('acme', 'w', {
+							kind: 'w',
+							source: { pluginId: parsePluginId('other') },
+							component: stubLoader,
+						}),
+					]
+				),
+			'source_mismatch'
+		);
+	});
+
+	it('admits a coherent contribution and preserves its provenance', () => {
+		const registry = createWidgetRegistry([], [pluginContribution('acme', 'widget')]);
+		const module = registry.get('widget');
+		expect(module?.source).toEqual({ pluginId: 'acme' });
 	});
 });
 

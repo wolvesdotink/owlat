@@ -2,9 +2,13 @@ import { orderHostedContributions, type HostedContribution } from '@owlat/plugin
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { WidgetModule, WidgetRegistry, WidgetResolution } from './types';
 
-export type WidgetRegistryErrorCode = 'duplicate_core_kind' | 'plugin_kind_collision';
+export type WidgetRegistryErrorCode =
+	| 'duplicate_core_kind'
+	| 'plugin_kind_collision'
+	| 'contribution_id_mismatch'
+	| 'source_mismatch';
 
-/** Fail-closed composition error: two contributions claim the same `kind`. */
+/** Fail-closed composition error: a contribution violates a registry invariant. */
 export class WidgetRegistryError extends Error {
 	readonly code: WidgetRegistryErrorCode;
 	readonly kind: string;
@@ -28,8 +32,17 @@ export class WidgetRegistryError extends Error {
  *   plugin's) — a collision throws, so composition fails closed rather than
  *   silently replacing a built-in.
  *
- * The plugin contribution's `contributionId` must equal its widget `kind`; the
- * host primitive rejects duplicate contribution ids within a single plugin.
+ * Every plugin contribution is validated for host-mediation integrity before it
+ * is admitted, so a stated invariant can never silently drift:
+ *
+ * - its `contributionId` must equal the widget `kind` it renders (otherwise the
+ *   deterministic host order would run on an id unrelated to the rendered kind);
+ * - its `source` may not claim `'core'` (provenance can never be laundered into a
+ *   built-in); and
+ * - its `source.pluginId` must match the contributing plugin (no misattribution).
+ *
+ * The host primitive additionally rejects duplicate contribution ids within a
+ * single plugin.
  */
 export function createWidgetRegistry(
 	coreModules: readonly WidgetModule[],
@@ -53,6 +66,30 @@ export function createWidgetRegistry(
 
 	for (const contribution of orderHostedContributions(pluginContributions)) {
 		const module = contribution.value;
+		if (contribution.contributionId !== module.kind) {
+			throw new WidgetRegistryError(
+				'contribution_id_mismatch',
+				module.kind,
+				`Plugin ${contribution.pluginId} contribution id "${contribution.contributionId}" must ` +
+					`equal its widget kind "${module.kind}"`
+			);
+		}
+		if (module.source === 'core') {
+			throw new WidgetRegistryError(
+				'source_mismatch',
+				module.kind,
+				`Plugin ${contribution.pluginId} widget "${module.kind}" claims source "core" — a plugin ` +
+					`contribution must carry its own provenance and can never claim to be a built-in`
+			);
+		}
+		if (module.source.pluginId !== contribution.pluginId) {
+			throw new WidgetRegistryError(
+				'source_mismatch',
+				module.kind,
+				`Plugin ${contribution.pluginId} widget "${module.kind}" is attributed to ` +
+					`"${module.source.pluginId}" — provenance must match the contributing plugin`
+			);
+		}
 		if (byKind.has(module.kind)) {
 			throw new WidgetRegistryError(
 				'plugin_kind_collision',
