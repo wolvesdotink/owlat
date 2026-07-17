@@ -437,6 +437,23 @@ export async function sendToMx(
 		}
 		const response = err.message;
 
+		// 0. Client-side permanent refusal (no reply code, no TLS cause). Today the
+		//    only case is `smtputf8-unavailable`: the envelope carries a non-ASCII
+		//    (RFC 6531) mailbox but this MX did not advertise SMTPUTF8. There is no
+		//    ASCII downgrade for a UTF-8 local-part, so retrying (this MX or the next)
+		//    can never succeed — a HARD bounce, terminal like a 5xx. Read from the
+		//    structured discriminant, never a log-line string (W7).
+		if (err.clientRefusal === 'smtputf8-unavailable') {
+			return {
+				kind: 'smtp',
+				result: {
+					success: false,
+					error: response,
+					bounceType: 'hard',
+				},
+			};
+		}
+
 		// 1. TLS-phase failure (a structured tlsCause). Under DANE this is an RFC 8460
 		//    'validation-failure' attributed to the tlsa policy and never downgrades
 		//    to cleartext. Otherwise escalate to the STS-specific type under a policy.

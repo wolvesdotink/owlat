@@ -231,4 +231,24 @@ describe('classifySmtpError — structured (phase + reply code) catch-side class
 		expect(code).toBe(EmailErrorCode.SERVER_ERROR);
 		expect(isRetryableErrorCode(code)).toBe(true);
 	});
+
+	// X3 — SMTPUTF8 / EAI fail-closed. A client-side refusal (no reply code) whose
+	// `clientRefusal` discriminant is `smtputf8-unavailable` maps to its own
+	// distinct, non-retryable code rather than the phase-`mail` SERVER_ERROR default.
+	it('a phase-mail SMTPUTF8 client refusal is a distinct, non-retryable code', () => {
+		const code = classifySmtpError({
+			phase: 'mail',
+			message: 'server does not advertise SMTPUTF8',
+			clientRefusal: 'smtputf8-unavailable',
+		});
+		expect(code).toBe(EmailErrorCode.SMTPUTF8_UNSUPPORTED);
+		expect(isRetryableErrorCode(code)).toBe(false);
+	});
+
+	it('the clientRefusal discriminant overrides the phase-mail default even with no reply code', () => {
+		// Without the discriminant, a reply-less phase-mail error is a retryable
+		// SERVER_ERROR — proving the SMTPUTF8 refusal is classified by its structured
+		// cause, not by phase alone.
+		expect(classifySmtpError({ phase: 'mail', message: 'x' })).toBe(EmailErrorCode.SERVER_ERROR);
+	});
 });

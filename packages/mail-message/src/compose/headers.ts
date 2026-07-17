@@ -141,7 +141,8 @@ export function foldMsgIdList(value: string, prefixOctets: number): string {
  */
 export function encodeHeaderValue(
 	value: string,
-	prefixOctets: number = DEFAULT_HEADER_PREFIX_OCTETS
+	prefixOctets: number = DEFAULT_HEADER_PREFIX_OCTETS,
+	eai = false
 ): string {
 	const stripped = escapeHeader(value);
 	// eslint-disable-next-line no-control-regex
@@ -151,6 +152,13 @@ export function encodeHeaderValue(
 		if (prefixOctets + stripped.length <= MAX_HEADER_LINE_OCTETS) {
 			return stripped;
 		}
+	} else if (eai && prefixOctets + Buffer.byteLength(stripped, 'utf-8') <= MAX_HEADER_LINE_OCTETS) {
+		// SMTPUTF8 / EAI (RFC 6532): a non-ASCII header value may sit on the wire as
+		// native UTF-8 rather than an RFC 2047 encoded-word, as long as the rendered
+		// `Name: value` line stays under the 998-octet hard cap. A value that would
+		// cross the cap can't be folded as raw UTF-8 (there is no guaranteed FWS), so
+		// it falls through to the encoded-word path, which folds safely.
+		return stripped;
 	}
 	return encodeWords(stripped).join('\r\n ');
 }
@@ -204,10 +212,10 @@ function encodeWords(text: string): string[] {
  * RFC-2047 encoded (RFC 2047 §5 allows encoded-words in a `phrase`). ASCII
  * phrases pass through unchanged.
  */
-export function encodeAddressHeader(addresses: string[]): string {
+export function encodeAddressHeader(addresses: string[], eai = false): string {
 	const encoded: string[] = [];
 	for (const raw of addresses) {
-		const one = encodeSingleAddress(escapeHeader(raw));
+		const one = encodeSingleAddress(escapeHeader(raw), eai);
 		if (one.length > 0) encoded.push(one);
 	}
 	// Join with ", " but fold the list onto CRLF + SP continuation lines before a
@@ -221,7 +229,7 @@ export function encodeAddressHeader(addresses: string[]): string {
 	return foldTokens(encoded, ', ', 0, ADDRESS_FOLD_WIDTH);
 }
 
-function encodeSingleAddress(addr: string): string {
+function encodeSingleAddress(addr: string, eai: boolean): string {
 	const trimmed = addr.trim();
 	if (trimmed.length === 0) return '';
 	// `name-addr` form: `phrase <addr-spec>`. Split on the last '<' so a '<' in
@@ -236,14 +244,37 @@ function encodeSingleAddress(addr: string): string {
 		// addr-spec and the addr-spec itself, so the ASCII escape hatch fires before
 		// the rendered `Name: phrase <addr>` line can cross the 998-octet hard cap.
 		const reserved = LONGEST_ADDRESS_PREFIX_OCTETS + 1 + addrSpec.length;
-		const encodedPhrase = encodePhrase(phrase, reserved);
+		const encodedPhrase = encodePhrase(phrase, reserved, eai);
 		return encodedPhrase ? `${encodedPhrase} ${addrSpec}` : addrSpec;
 	}
-	// Bare addr-spec (no display name) — leave literal.
+	// Bare addr-spec (no display name) — leave literal. Under EAI (RFC 6531) the
+	// addr-spec may carry a non-ASCII local-part; it stays on the wire as native
+	// UTF-8 (there is no RFC 2047 encoding for an addr-spec — encoding it would
+	// make it unroutable), exactly as the non-EAI path already leaves it literal.
 	return trimmed;
 }
 
-function encodePhrase(phrase: string, reservedOctets: number): string {
+/** RFC 5322 `specials` that force a display-name `phrase` into a quoted-string. */
+const PHRASE_SPECIALS = /[()<>[\]:;@\\,."]/;
+
+/**
+ * Emit a native-UTF-8 (EAI) display-name phrase (RFC 6532 permits UTF-8 in a
+ * header phrase). If it already carries surrounding DQUOTEs it is returned as the
+ * composer wrote it; if it contains RFC 5322 `specials` it is wrapped in a
+ * quoted-string with `"`/`\` backslash-escaped so the recovered structure matches
+ * the input; otherwise the bare atom-run is returned verbatim.
+ */
+function eaiPhrase(phrase: string): string {
+	if (phrase.length >= 2 && phrase.startsWith('"') && phrase.endsWith('"')) {
+		return phrase;
+	}
+	if (PHRASE_SPECIALS.test(phrase)) {
+		return `"${phrase.replace(/([\\"])/g, '\\$1')}"`;
+	}
+	return phrase;
+}
+
+function encodePhrase(phrase: string, reservedOctets: number, eai: boolean): string {
 	if (phrase.length === 0) return '';
 	// eslint-disable-next-line no-control-regex
 	const isAscii = /^[\x00-\x7F]*$/.test(phrase);
@@ -251,6 +282,18 @@ function encodePhrase(phrase: string, reservedOctets: number): string {
 		// Short ASCII phrase: keep readable. (Surrounding quotes, if any, are
 		// preserved as the composer wrote them.)
 		return phrase;
+	}
+	if (eai && !isAscii) {
+		// SMTPUTF8 / EAI: keep the non-ASCII phrase as native UTF-8 rather than an
+		// RFC 2047 encoded-word, as long as the rendered address stays under the
+		// 998-octet hard cap. Measure the QUOTED output — eaiPhrase may add 2 DQUOTE
+		// octets plus one backslash per escaped `"`/`\`, so a near-cap phrase with
+		// specials can exceed the cap after quoting; if it would, fall through to the
+		// encoded-word path (which folds on CRLF + SP).
+		const rendered = eaiPhrase(phrase);
+		if (Buffer.byteLength(rendered, 'utf-8') + reservedOctets <= MAX_HEADER_LINE_OCTETS) {
+			return rendered;
+		}
 	}
 	// Non-ASCII, or an ASCII phrase long enough that the rendered address would
 	// cross the 998-octet hard cap: RFC-2047-encode it. Encoded-words are legal in
