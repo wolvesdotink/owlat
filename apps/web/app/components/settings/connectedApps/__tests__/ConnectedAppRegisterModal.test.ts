@@ -6,7 +6,7 @@
  * carries exactly the operator's choices.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import ConnectedAppRegisterModal from '../ConnectedAppRegisterModal.vue';
 
 const ONE_PLUGIN = [{ pluginId: 'policy-pack', capabilities: ['send:gate', 'mail:read'] }];
@@ -30,7 +30,7 @@ beforeEach(() => {
 	vi.stubGlobal('useHead', vi.fn());
 });
 
-function mountModal(props: Record<string, unknown> = {}) {
+function mountModal(props: Record<string, unknown> = {}, attach = false) {
 	return mount(ConnectedAppRegisterModal, {
 		props: {
 			open: false,
@@ -39,6 +39,9 @@ function mountModal(props: Record<string, unknown> = {}) {
 			errorMessage: null,
 			...props,
 		},
+		// Focus assertions need the tree connected to the document so `.focus()`
+		// updates `document.activeElement`.
+		...(attach ? { attachTo: document.body } : {}),
 		global: {
 			stubs: { UiModal: modalStub, UiButton: buttonStub, UiEmptyState: emptyStub, Icon: true },
 		},
@@ -51,11 +54,16 @@ function clickButtonByText(wrapper: ReturnType<typeof mountModal>, text: string)
 	return btn.trigger('click');
 }
 
-async function openAt(props: Record<string, unknown> = {}) {
-	const wrapper = mountModal(props);
+async function openAt(props: Record<string, unknown> = {}, attach = false) {
+	const wrapper = mountModal(props, attach);
 	// The reset/preselect watcher runs on the open transition, not immediately.
 	await wrapper.setProps({ open: true });
 	return wrapper;
+}
+
+async function fillValidDetails(wrapper: ReturnType<typeof mountModal>) {
+	await wrapper.find('#connected-app-name').setValue('My app');
+	await wrapper.find('#connected-app-endpoint').setValue('https://hooks.example.com/owlat');
 }
 
 describe('ConnectedAppRegisterModal', () => {
@@ -132,6 +140,33 @@ describe('ConnectedAppRegisterModal', () => {
 			endpointUrl: 'https://hooks.example.com/owlat',
 			grantedCapabilities: ['send:gate'],
 		});
+	});
+
+	it('moves focus onto the risk disclosure when advancing to capabilities', async () => {
+		const wrapper = await openAt({}, true);
+		await fillValidDetails(wrapper);
+		await clickButtonByText(wrapper, 'Continue');
+		await flushPromises();
+		// Focus is not left on <body> (WCAG 2.4.3); it lands on the Tier-2 risk
+		// disclosure so a screen reader announces the risk before the capabilities.
+		const active = document.activeElement;
+		expect(active).not.toBe(document.body);
+		expect(active?.getAttribute('role')).toBe('note');
+		expect(active?.getAttribute('aria-label')).toBe('Connected app risk disclosure');
+		wrapper.unmount();
+	});
+
+	it('returns focus to the details step heading when going Back', async () => {
+		const wrapper = await openAt({}, true);
+		await fillValidDetails(wrapper);
+		await clickButtonByText(wrapper, 'Continue');
+		await flushPromises();
+		await clickButtonByText(wrapper, 'Back');
+		await flushPromises();
+		const active = document.activeElement;
+		expect(active).not.toBe(document.body);
+		expect(active?.textContent).toContain('connection details');
+		wrapper.unmount();
 	});
 
 	it('drops capabilities that the reselected plugin no longer offers', async () => {

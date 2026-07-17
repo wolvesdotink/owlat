@@ -37,6 +37,20 @@ const emit = defineEmits<{
 type Step = 'details' | 'capabilities';
 const step = ref<Step>('details');
 
+// Focus targets for the two steps. Swapping the step body/footer would otherwise
+// drop keyboard/SR focus to <body> (WCAG 2.4.3); after a flip we move focus onto
+// the newly disclosed content. Entering capabilities focuses the Tier-2 risk
+// disclosure so it is announced BEFORE the capability checkboxes; going Back
+// focuses the details step heading.
+const riskRegion = ref<HTMLElement | null>(null);
+const detailsHeading = ref<HTMLElement | null>(null);
+
+async function focusStep(next: Step) {
+	await nextTick();
+	const target = next === 'capabilities' ? riskRegion.value : detailsHeading.value;
+	target?.focus();
+}
+
 const pluginId = ref('');
 const name = ref('');
 const endpointUrl = ref('');
@@ -98,6 +112,12 @@ function goToCapabilities() {
 		return;
 	}
 	step.value = 'capabilities';
+	void focusStep('capabilities');
+}
+
+function goBack() {
+	step.value = 'details';
+	void focusStep('details');
 }
 
 function toggleCapability(capability: string) {
@@ -142,6 +162,7 @@ const canSubmit = computed(
 
 		<!-- Step 1 — details -->
 		<form v-else-if="step === 'details'" @submit.prevent="goToCapabilities">
+			<h3 ref="detailsHeading" tabindex="-1" class="sr-only">Step 1 of 2: connection details</h3>
 			<div
 				v-if="detailsError"
 				role="alert"
@@ -208,7 +229,9 @@ const canSubmit = computed(
 		<!-- Step 2 — capabilities + risk disclosure -->
 		<form v-else @submit.prevent="submit">
 			<div
-				class="mb-5 p-4 rounded-lg bg-warning/10 border border-warning/20"
+				ref="riskRegion"
+				tabindex="-1"
+				class="mb-5 p-4 rounded-lg bg-warning/10 border border-warning/20 outline-none focus-visible:ring-2 focus-visible:ring-warning/50"
 				role="note"
 				aria-label="Connected app risk disclosure"
 			>
@@ -285,7 +308,7 @@ const canSubmit = computed(
 				<UiButton variant="primary" @click="goToCapabilities">Continue</UiButton>
 			</template>
 			<template v-else>
-				<UiButton variant="secondary" :disabled="isSubmitting" @click="step = 'details'">
+				<UiButton variant="secondary" :disabled="isSubmitting" @click="goBack">
 					Back
 				</UiButton>
 				<UiButton variant="primary" :loading="isSubmitting" :disabled="!canSubmit" @click="submit">
