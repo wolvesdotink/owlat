@@ -11,9 +11,9 @@ import {
 
 /**
  * Shared runtime-authorization logic for a plugin's hosted contribution kind
- * (webhook event, import provider). Both seams recheck registration, capability
+ * (webhook event, import provider, cron). Each seam rechecks registration, capability
  * declaration, feature flag, operator grant, required env, and singleton scope
- * in the caller's transaction and audit denials/outcomes under a fixed
+ * in the caller's transaction and audits denials/outcomes under a fixed
  * operation and reason taxonomy — differing only in the capability, the
  * operation and failure-reason literals, the definition lookup, and the
  * attribution error message. Each seam keeps its own thin `internalMutation`
