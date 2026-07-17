@@ -1,0 +1,30 @@
+From: fbl@isp.example
+To: abuse@example.org
+Subject: Abuse report
+Date: Sat, 21 Jun 2026 10:00:00 +0000
+Message-ID: <arf-nodisp-1@isp.example>
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=feedback-report; boundary="af1"
+
+--af1
+Content-Type: text/plain; charset=utf-8
+
+This is an email abuse report for a message received from example.org.
+--af1
+Content-Type: message/feedback-report
+
+Feedback-Type: abuse
+User-Agent: SomeGenerator/1.0
+Version: 1
+Original-Mail-From: <bounce+deadbeef@bounces.owlat.test>
+Original-Rcpt-To: <victim@example.net>
+--af1
+Content-Type: message/rfc822
+
+From: sender@example.org
+To: victim@example.net
+Subject: Marketing
+X-Owlat-Message-Id: <owlat-arf-nodisp@owlat.test>
+
+Marketing body.
+--af1--

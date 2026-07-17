@@ -10,6 +10,7 @@
 
 import { parseMessage } from '@owlat/mail-message';
 import { verifyDkim, type DkimDnsResolver } from '@owlat/mail-auth';
+import { extractReportParts } from '../../bounce/reportParts.js';
 import { projectDrivers, type RoutingDrivers } from './drivers.js';
 import type { AuthVerdicts, DkimContext, SanctionedFields } from './diff.js';
 
@@ -90,7 +91,21 @@ function dkimTag(block: string, tag: string): string | undefined {
 export const owlatNewStack = {
 	project(raw: Buffer): RoutingDrivers {
 		const parsed = parseMessage(raw);
-		return projectDrivers(parsed, (name) => parsed.headers.get(name));
+		// The bounce/FBL pipeline consumes the SCRAPER SURFACE (`extractReportParts`),
+		// not `parsed.attachments` — that is the whole point of the report-part
+		// recovery (a disposition-less `message/delivery-status` is not a
+		// `parseMessage` attachment). Project that surface so the differential
+		// compares what the cutover pipeline actually reads against mailparser's
+		// `attachments`.
+		const attachments = extractReportParts(raw).map((p) => ({
+			filename: p.filename ?? '',
+			contentType: p.contentType,
+			contentId: p.contentId,
+			disposition: p.disposition,
+			size: p.size,
+			content: p.content,
+		}));
+		return projectDrivers({ ...parsed, attachments }, (name) => parsed.headers.get(name));
 	},
 	async auth(input: ReplayInput): Promise<AuthVerdicts> {
 		const result = await verifyDkim(input.raw, { resolver: resolverFromHint(input.dkim) });

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import { forwardToEndpoint } from '../forwarder.js';
 import type { InboundAuthVerdicts } from '../../types.js';
 import type { InboundRoute } from '../router.js';
@@ -36,7 +36,7 @@ const parsed = {
 	subject: 'Hello',
 	text: 'Body',
 	attachments: [],
-} as unknown as ParsedMail;
+} as unknown as ParsedMessage;
 
 /** Capture the JSON body of the single fetch the forwarder makes. */
 function mockFetchOk(): () => Record<string, unknown> {
