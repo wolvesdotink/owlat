@@ -55,6 +55,10 @@ export async function bindConnectedAppStorage(
 	} catch {
 		throw new PluginStorageError('access_denied');
 	}
+	// The KV namespace is keyed by (organizationId, pluginId) — plugin-scoped, NOT
+	// app-scoped. Two apps bound to the same plugin in the same tenant share one
+	// namespace by design (an app's storage IS its plugin's scoped storage); the
+	// actor id below is for audit attribution only and does not partition the KV.
 	const scope: HostedPluginActorScope = Object.freeze({
 		organizationId: app.organizationId,
 		userId: connectedAppActorId(connectedAppId),
