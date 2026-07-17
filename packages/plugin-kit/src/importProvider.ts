@@ -20,12 +20,21 @@ export type PluginInboundSignatureEncoding = 'hex' | 'base64';
  * inbound request a plugin import provider receives — provider webhook
  * callbacks, paged-fetch continuation callbacks, or event notifications.
  *
- * Plugin-sourced events are untrusted until this check passes. The host reads
- * the shared secret from `secretEnvVar`, recomputes the `algorithm` HMAC over
- * the raw request body, encodes it as `encoding`, and compares it against the
- * value carried in the `header` using a constant-time comparison. Verification
- * fails closed when the secret is unset or the header is missing, malformed, or
- * does not match — a plugin can never opt out of it.
+ * The host reads the shared secret from `secretEnvVar`, recomputes the
+ * `algorithm` HMAC over the raw request body, encodes it as `encoding`, and
+ * compares it against the value carried in the `header` using a constant-time
+ * comparison. Verification fails closed when the secret is unset or the header
+ * is missing, malformed, or does not match — a plugin can never opt out of it.
+ *
+ * Scope of the guarantee: passing this check proves **origin only** — that the
+ * request was signed with the shared secret. It carries no replay resistance:
+ * the signed payload is the raw body alone, with no timestamp, tolerance, or
+ * nonce, so a captured request verifies forever. This contract does not gate
+ * any HTTP endpoint today (none exists yet). The future piece that wires the
+ * inbound HTTP surface MUST layer replay defense (a signed timestamp with a
+ * bounded tolerance, and/or a nonce) on top of this check before any endpoint
+ * accepts plugin-sourced traffic. Replay provisions can be added here later as
+ * OPTIONAL fields without breaking existing manifests.
  */
 export interface PluginInboundSignatureContract {
 	/** Lower-cased HTTP header carrying the caller-supplied signature. */
