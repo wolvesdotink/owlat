@@ -1,11 +1,12 @@
 import type { Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
+import type { CoreTriggerKind } from './catalog';
 
-export type TriggerKind =
-	| 'contact_created'
-	| 'contact_updated'
-	| 'event_received'
-	| 'topic_subscribed';
+// The core trigger-kind union lives once, in `catalog.ts` (`CORE_TRIGGER_KINDS`),
+// which also derives the persisted-kind validator and the open plugin union from
+// it. Re-export it here as `TriggerKind` so the core module registry and its
+// `FireInputFor` map stay coupled to that single list (mirrors `CoreStepKind`).
+export type TriggerKind = CoreTriggerKind;
 
 export type TriggerData = Record<string, string | number | boolean | null>;
 
@@ -47,8 +48,5 @@ export interface TriggerModule<T extends TriggerKind, C, FireInput> {
 	 * a topic_subscribed trigger references). Only kinds that own a join
 	 * implement this; the dispatcher returns `{}` for the rest.
 	 */
-	enrichForQuery?(
-		ctx: Pick<QueryCtx, 'db'>,
-		config: C | null
-	): Promise<Record<string, unknown>>;
+	enrichForQuery?(ctx: Pick<QueryCtx, 'db'>, config: C | null): Promise<Record<string, unknown>>;
 }
