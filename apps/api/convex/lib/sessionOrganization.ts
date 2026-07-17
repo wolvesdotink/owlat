@@ -27,6 +27,8 @@ export interface MutationSessionContext {
 	userId: string;
 	/** User's role in the organization */
 	role: OrganizationRole;
+	/** The caller's active organization (always present — the floor asserts it). */
+	activeOrganizationId: string;
 }
 
 /**
@@ -365,6 +367,7 @@ export async function requireOrgMember(
 	return {
 		userId: sessionWithRole.userId,
 		role: sessionWithRole.role,
+		activeOrganizationId: sessionWithRole.activeOrganizationId,
 	};
 }
 
@@ -533,5 +536,9 @@ export async function requireOrgPermission(
 		throwForbidden('You do not have access to this organization');
 	}
 	requirePermission(hasPermission(session.role, permission), message);
-	return { userId: session.userId, role: session.role };
+	return {
+		userId: session.userId,
+		role: session.role,
+		activeOrganizationId: session.activeOrganizationId,
+	};
 }
