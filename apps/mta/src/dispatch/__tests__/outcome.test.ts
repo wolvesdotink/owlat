@@ -97,6 +97,18 @@ describe('classifyResult', () => {
 		const out = classifyResult({ success: false, error: 'Connection refused' });
 		expect(out).toEqual({ kind: 'soft_bounce', error: 'Connection refused' });
 	});
+
+	// W8 AMBIGUOUS_TIMEOUT: the post-DATA drop gets its OWN discriminated arm — it
+	// must NOT collapse into hard_bounce (no fabricated smtpCode, no suppression).
+	it('bounceType=ambiguous → ambiguous (never hard_bounce)', () => {
+		const out = classifyResult({
+			success: false,
+			bounceType: 'ambiguous',
+			error: 'connection dropped after DATA',
+		});
+		expect(out).toEqual({ kind: 'ambiguous', error: 'connection dropped after DATA' });
+		expect(out.kind).not.toBe('hard_bounce');
+	});
 });
 
 describe('reduce(delivered)', () => {
@@ -339,6 +351,63 @@ describe('reduce(soft_bounce)', () => {
 		const notify = effects.find((e) => e.kind === 'notify_convex');
 		if (notify?.kind === 'notify_convex') {
 			expect(notify.event.bounceType).toBe('soft');
+		}
+	});
+});
+
+describe('reduce(ambiguous)', () => {
+	// W8/I2: the post-DATA ambiguous drop is TERMINAL (no defer, no next-MX) but
+	// must NOT be a bounce — the message may have been delivered. The reducer
+	// emits neither suppression, a synthetic 5xx smtp_response, nor any
+	// reputation penalty (circuit-breaker / throttle-reject / warming-bounce /
+	// bounced notify_convex). Only a neutral, observable terminal record.
+	const outcome: DispatchOutcome = {
+		kind: 'ambiguous',
+		error: 'Ambiguous delivery outcome (phase data-final, no server reply)',
+	};
+
+	it('is terminal (defer: undefined) — never requeued', () => {
+		const { defer } = reduce(outcome, makeCtx());
+		expect(defer).toBeUndefined();
+	});
+
+	it('emits only a neutral metric + delivery log — no bounce/suppression effects', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		expect(effects.map((e) => e.kind)).toEqual(['metrics_record', 'log_delivery_event']);
+	});
+
+	it('does NOT suppress the recipient', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		expect(effects.some((e) => e.kind === 'suppress_recipient')).toBe(false);
+	});
+
+	it('does NOT fabricate an smtp_response (no reply was received)', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		expect(effects.some((e) => e.kind === 'smtp_response')).toBe(false);
+	});
+
+	it('does NOT penalise reputation (no circuit-breaker bounce, throttle-reject, warming-bounce, or bounced notify)', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		expect(effects.some((e) => e.kind === 'circuit_breaker_outcome')).toBe(false);
+		expect(effects.some((e) => e.kind === 'domain_throttle_reject')).toBe(false);
+		expect(effects.some((e) => e.kind === 'warming_record')).toBe(false);
+		expect(effects.some((e) => e.kind === 'notify_convex')).toBe(false);
+	});
+
+	it('records the metric as a neutral error, not a bounce', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		const m = effects.find((e) => e.kind === 'metrics_record');
+		if (m?.kind === 'metrics_record') {
+			expect(m.outcome).toBe('error');
+		}
+	});
+
+	it('logs a terminal failed event tagged ambiguous_post_data', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		const log = effects.find((e) => e.kind === 'log_delivery_event');
+		if (log?.kind === 'log_delivery_event') {
+			expect(log.event.status).toBe('failed');
+			expect(log.event.reason).toBe('ambiguous_post_data');
 		}
 	});
 });
