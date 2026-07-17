@@ -46,6 +46,8 @@ type DeferredPluginContributionKind = Exclude<
 	| 'webhookEvents'
 	| 'importProviders'
 	| 'crons'
+	| 'navItems'
+	| 'settingsPanels'
 >;
 
 export type PluginContributions = Readonly<
@@ -60,6 +62,8 @@ export type PluginContributions = Readonly<
 		readonly webhookEvents?: readonly PluginWebhookEventDefinition[];
 		readonly importProviders?: readonly PluginImportProviderDefinition[];
 		readonly crons?: readonly PluginCronDefinition[];
+		readonly navItems?: readonly PluginNavItemDefinition[];
+		readonly settingsPanels?: readonly PluginSettingsPanelDefinition[];
 	} & Partial<Record<DeferredPluginContributionKind, readonly unknown[]>>
 >;
 import type { PluginAgentStepDefinition } from './agentStep';
@@ -72,5 +76,7 @@ import type { PluginAutonomyGateDefinition } from './autonomyGate';
 import type { PluginCronDefinition } from './cron';
 import type { PluginDraftStrategyDefinition } from './draftStrategy';
 import type { PluginImportProviderDefinition } from './importProvider';
+import type { PluginNavItemDefinition } from './navItem';
 import type { PluginSendTransportDefinition } from './sendTransport';
+import type { PluginSettingsPanelDefinition } from './settingsPanel';
 import type { PluginWebhookEventDefinition } from './webhookEvent';
