@@ -567,6 +567,8 @@ import type * as plugins_sendTransportModules_generated from "../plugins/sendTra
 import type * as plugins_settings from "../plugins/settings.js";
 import type * as plugins_storage from "../plugins/storage.js";
 import type * as plugins_storageCursor from "../plugins/storageCursor.js";
+import type * as plugins_hooks_hookTransport from "../plugins/hooks/hookTransport.js";
+import type * as plugins_hooks_invoker from "../plugins/hooks/invoker.js";
 import type * as plugins_storageJson from "../plugins/storageJson.js";
 import type * as plugins_webhookEventAuthorization from "../plugins/webhookEventAuthorization.js";
 import type * as plugins_webhookEventCatalog from "../plugins/webhookEventCatalog.js";
@@ -1257,6 +1259,8 @@ declare const fullApi: ApiFromModules<{
   "plugins/settings": typeof plugins_settings;
   "plugins/storage": typeof plugins_storage;
   "plugins/storageCursor": typeof plugins_storageCursor;
+  "plugins/hooks/hookTransport": typeof plugins_hooks_hookTransport;
+  "plugins/hooks/invoker": typeof plugins_hooks_invoker;
   "plugins/storageJson": typeof plugins_storageJson;
   "plugins/webhookEventAuthorization": typeof plugins_webhookEventAuthorization;
   "plugins/webhookEventCatalog": typeof plugins_webhookEventCatalog;
