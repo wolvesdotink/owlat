@@ -1,9 +1,12 @@
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
-import { type PaletteGroup, useCommandPaletteSurface } from '~/lib/commandPalette';
+import { type PaletteGroup, filterItems } from '~/lib/commandPalette';
+
+/** Priority of the Postbox surface provider — ahead of the global providers. */
+const POSTBOX_PROVIDER_PRIORITY = 15;
 
 /**
- * Registers Postbox as the app command palette's "current surface" while mounted.
+ * Registers Postbox as a command-palette provider while its layout is mounted.
  *
  * The palette (Cmd/Ctrl-K, layouts/dashboard.vue) is the shared shell; Postbox is
  * a consumer — it contributes its reader actions + the folders/searches the
@@ -11,13 +14,19 @@ import { type PaletteGroup, useCommandPaletteSurface } from '~/lib/commandPalett
  * (a no-op when no conversation is open); the sidebar nav already covers
  * Inbox/Sent/Drafts/Spam/Trash/Settings, so this only adds the rest.
  *
+ * The provider is route-gated to `/dashboard/postbox` so its groups never leak
+ * onto another surface even if the registration outlives a route change, and it
+ * filters its own items by the palette query (the shell no longer does that on
+ * a shared bucket). `build` reads the reactive mailbox sections at call time, so
+ * team-inbox entries still appear the instant a shared inbox's membership
+ * resolves — no explicit watch needed.
+ *
  * Extracted from PostboxLayout.vue to keep the layout under the file-size cap;
  * mirrors how the sidebar nav was pulled into `useDashboardNavigation`.
  */
 export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 	const composerStack = usePostboxComposerStack();
 	const { isDesktop: isDesktopSurface } = useDesktopContext();
-	const paletteSurface = useCommandPaletteSurface();
 	// Accessible mailboxes → palette "switch mailbox" entries (personal when
 	// there's a choice, plus every team inbox). Reactive so entries appear the
 	// instant a shared inbox's membership resolves.
@@ -158,9 +167,14 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 		return groups;
 	}
 
-	// Rebuild reactively so team-inbox entries appear as membership resolves.
-	watch(sections, () => (paletteSurface.value = buildSurfaceGroups()), { immediate: true });
-	onBeforeUnmount(() => {
-		paletteSurface.value = [];
+	registerCommandPaletteProvider({
+		id: 'surface:postbox',
+		priority: POSTBOX_PROVIDER_PRIORITY,
+		matchRoute: (path) => path.startsWith('/dashboard/postbox'),
+		build: ({ query }) =>
+			buildSurfaceGroups().map((group) => ({
+				...group,
+				items: filterItems(group.items, query),
+			})),
 	});
 }
