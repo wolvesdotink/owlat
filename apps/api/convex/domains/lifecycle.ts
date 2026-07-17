@@ -57,10 +57,11 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { clearReservationsForDomain } from '../mail/pendingMailbox';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
-import { getOptional } from '../lib/env';
+import { getOptional, getRequired } from '../lib/env';
 import { asDnsName } from '@owlat/shared';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
 import { buildReturnPathMailFromRecords, parsePoolIps, resolveSpfQualifier } from './spf';
+import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mailFrom';
 import {
 	isSendingDomainProviderKind,
 	providerFor,
@@ -784,7 +785,10 @@ export const setDmarcPolicy = internalMutation({
 
 export type SendingDomainReturnPathOutcome =
 	| { ok: true; returnPathHost: string; changed: boolean }
-	| { ok: false; reason: 'domain_not_found' | 'unsupported_provider' | 'invalid_host' };
+	| {
+			ok: false;
+			reason: 'domain_not_found' | 'unsupported_provider' | 'invalid_host' | 'host_not_subdomain';
+	  };
 
 /**
  * Set (or change) the domain's per-domain VERP return-path host (D1/D2).
@@ -796,17 +800,19 @@ export type SendingDomainReturnPathOutcome =
  * `→ registering` re-registration, which would needlessly reset the DKIM/DMARC
  * records (the provider rebuilds `_dmarc` at `p=none`).
  *
- * The MTA must ALSO learn the new host so its VERP MAIL FROM for this domain
- * becomes `bounce+…@<host>` (otherwise the bounce envelope would keep using the
- * global host and fail SPF against the newly-published record). We reflect it to
- * the MTA out-of-band via the scheduled `pushReturnPathHost` action — the D1
- * register endpoint is idempotent for the DKIM key, so this touches only the
- * return-path host, never the signing key.
+ * The provider must ALSO learn the new host so its bounce envelope uses it:
+ *   - MTA: reflected out-of-band via the scheduled `pushReturnPathHost` action —
+ *     the D1 register endpoint is idempotent for the DKIM key, so this touches
+ *     only the return-path host, never the signing key.
+ *   - SES (X1): reflected via `reflectSesMailFrom`, which calls SES's
+ *     `SetIdentityMailFromDomain`. SES's custom MAIL FROM must be a *subdomain of
+ *     the sending domain*, so an out-of-zone/apex host is rejected
+ *     (`host_not_subdomain`); the regenerated records are SES's MX + SPF TXT
+ *     shape, not the MTA's pool-IP SPF.
  *
- * MTA-only: SES manages its own bounce handling and has no return-path host, so
- * a non-MTA domain is rejected (`unsupported_provider`). The host is validated
- * as a DNS FQDN via the shared `asDnsName` (packages/shared) — no raw-string
- * checks. Single writer of `domains.returnPathHost`.
+ * Any other provider is `unsupported_provider`. The host is validated as a DNS
+ * FQDN via the shared `asDnsName` (packages/shared) — no raw-string checks.
+ * Single writer of `domains.returnPathHost`.
  */
 export const setReturnPathHost = internalMutation({
 	args: {
@@ -818,8 +824,10 @@ export const setReturnPathHost = internalMutation({
 		const domain = await ctx.db.get(args.domainId);
 		if (!domain) return { ok: false, reason: 'domain_not_found' };
 
-		// Return-path host is an MTA concept; SES owns its own bounce handling.
-		if (domain.providerType !== 'mta') {
+		const providerType = domain.providerType;
+		// Return-path host is honored by the built-in MTA and by SES (X1); other
+		// providers manage their own bounce path and are not supported.
+		if (providerType !== 'mta' && providerType !== 'ses') {
 			return { ok: false, reason: 'unsupported_provider' };
 		}
 
@@ -833,21 +841,32 @@ export const setReturnPathHost = internalMutation({
 			return { ok: true, returnPathHost: normalized, changed: false };
 		}
 
-		const at = Date.now();
+		// Regenerate the provider-specific `mailFrom` record(s) on the new host.
+		// MTA: a pool-IP SPF record on the standalone bounce host (via the shared
+		// `spf.ts` builder). SES: the MX + SPF TXT SES requires at a MAIL FROM
+		// subdomain (X1) — which SES constrains to be under the sending domain.
+		let mailFromRecords: DnsRecords['mailFrom'];
+		if (providerType === 'mta') {
+			const qualifier = resolveSpfQualifier(getOptional('SPF_QUALIFIER'));
+			const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
+			mailFromRecords = buildReturnPathMailFromRecords(normalized, poolIps, qualifier);
+		} else {
+			const sesMailFrom = resolveSesMailFrom(domain.domain, normalized);
+			if (!sesMailFrom) return { ok: false, reason: 'host_not_subdomain' };
+			// `getRequired` (matching the SES registration path) so the region can
+			// never be blank — a `?? ''` fallback would write a malformed MX
+			// (`feedback-smtp..amazonses.com`). An SES domain always has this set.
+			mailFromRecords = buildSesMailFromRecords(sesMailFrom.host, getRequired('AWS_SES_REGION'));
+		}
 
-		// Regenerate the mailFrom SPF record on the new host from the same env the
-		// provider's initial registration reads (pool IPs + qualifier), via the
-		// shared builder so the two paths can't drift.
-		const qualifier = resolveSpfQualifier(getOptional('SPF_QUALIFIER'));
-		const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
-		const mailFromRecords = buildReturnPathMailFromRecords(normalized, poolIps, qualifier);
+		const at = Date.now();
 
 		const dnsRecords = domain.dnsRecords as DnsRecords;
 		const nextDnsRecords: DnsRecords = { ...dnsRecords };
 		if (mailFromRecords) {
 			nextDnsRecords.mailFrom = mailFromRecords;
 		} else {
-			// No pool IPs configured → no record to publish; drop any stale entry.
+			// No records to publish (MTA with no pool IPs) → drop any stale entry.
 			delete nextDnsRecords.mailFrom;
 		}
 
@@ -894,17 +913,26 @@ export const setReturnPathHost = internalMutation({
 			args.userId
 		);
 
-		// Reflect the new host to the MTA so its VERP MAIL FROM uses it. Scheduled
-		// (not inline): the DB write above must not roll back on an MTA hiccup, and
-		// mutations cannot run the node-runtime HTTP client. `pushReturnPathHost`
-		// runs a bounded, self-rescheduling retry; if it exhausts the budget it
-		// records the failure via `recordReturnPathPushResult` (audit + the
-		// `returnPathHostSyncError` marker), so a permanent failure is never silent.
-		await ctx.scheduler.runAfter(0, internal.domains.providers.registerAction.pushReturnPathHost, {
-			domainId: args.domainId,
-			returnPathHost: normalized,
-			attempt: 0,
-		});
+		// Reflect the new host to the provider so its bounce envelope uses it.
+		// Scheduled (not inline): the DB write above must not roll back on a
+		// provider hiccup, and mutations cannot run the node-runtime API clients.
+		// Both reflection actions run a bounded, self-rescheduling retry; if the
+		// budget is exhausted they record the failure via
+		// `recordReturnPathPushResult` (audit + the `returnPathHostSyncError`
+		// marker), so a permanent failure is never silent.
+		if (providerType === 'mta') {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.domains.providers.registerAction.pushReturnPathHost,
+				{ domainId: args.domainId, returnPathHost: normalized, attempt: 0 }
+			);
+		} else {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.domains.providers.registerAction.reflectSesMailFrom,
+				{ domainId: args.domainId, returnPathHost: normalized, attempt: 0 }
+			);
+		}
 
 		return { ok: true, returnPathHost: normalized, changed: true };
 	},
