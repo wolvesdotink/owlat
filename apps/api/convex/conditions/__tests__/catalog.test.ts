@@ -33,15 +33,9 @@ describe('automation condition catalog', () => {
 		expect(catalog.isPluginConditionKind('plugin.scoring.ghost')).toBe(false);
 	});
 
-	it('exposes plugin ownership and editor metadata', () => {
-		expect(catalog.conditionPluginId('plugin.scoring.high_intent')).toBe('scoring');
-		expect(catalog.PLUGIN_CONDITION_EDITOR_CATALOG).toEqual([
-			{
-				kind: 'plugin.scoring.high_intent',
-				label: 'High intent',
-				description: 'Contact scores above the intent threshold',
-				icon: 'gauge',
-			},
-		]);
+	it('exposes the owning plugin id and gating metadata for a plugin kind', () => {
+		const entry = catalog.pluginConditionCatalogEntry('plugin.scoring.high_intent');
+		expect(entry?.pluginId).toBe('scoring');
+		expect(entry?.requiredCapability).toBe('automation:condition');
 	});
 });

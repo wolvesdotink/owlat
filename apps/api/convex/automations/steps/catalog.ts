@@ -66,15 +66,3 @@ export function pluginStepCatalogEntry(kind: string): GeneratedPluginStepCatalog
 export function stepPluginId(kind: string): PluginId | undefined {
 	return pluginStepCatalogEntry(kind)?.pluginId as PluginId | undefined;
 }
-
-/** Editor palette entries for plugin step kinds; consumed by the automation builder. */
-export const PLUGIN_STEP_EDITOR_CATALOG = Object.freeze(
-	PLUGIN_STEP_CATALOG.map((entry) =>
-		Object.freeze({
-			kind: entry.kind,
-			label: entry.label,
-			description: entry.description,
-			icon: entry.icon,
-		})
-	)
-);

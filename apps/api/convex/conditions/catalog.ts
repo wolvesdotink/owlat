@@ -1,4 +1,4 @@
-import type { PluginAutomationConditionCapability, PluginId } from '@owlat/plugin-kit';
+import type { PluginAutomationConditionCapability } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_AUTOMATION_CONDITION_CATALOG } from '../plugins/automationConditionCatalog.generated';
 
 /**
@@ -54,19 +54,3 @@ export function pluginConditionCatalogEntry(
 ): GeneratedPluginConditionCatalogEntry | undefined {
 	return PLUGIN_CONDITION_CATALOG.find((entry) => entry.kind === kind);
 }
-
-export function conditionPluginId(kind: string): PluginId | undefined {
-	return pluginConditionCatalogEntry(kind)?.pluginId as PluginId | undefined;
-}
-
-/** Editor palette entries for plugin condition kinds; consumed by the builder. */
-export const PLUGIN_CONDITION_EDITOR_CATALOG = Object.freeze(
-	PLUGIN_CONDITION_CATALOG.map((entry) =>
-		Object.freeze({
-			kind: entry.kind,
-			label: entry.label,
-			description: entry.description,
-			icon: entry.icon,
-		})
-	)
-);
