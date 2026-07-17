@@ -102,6 +102,19 @@ describe('pluginSettingsChanges', () => {
 		expect(hasPluginSettingsChanges(SCHEMA, form, baseline)).toBe(true);
 	});
 
+	it('never submits a cleared number field, so the stored value is kept', () => {
+		// The operator blanks the optional number input: it emits '' but must not
+		// reach the submitted changes (the server would reject '' as non-finite).
+		const form = { ...baseline, timeout: '' as const };
+		expect(pluginSettingsChanges(SCHEMA, form, baseline)).toEqual({});
+		expect(hasPluginSettingsChanges(SCHEMA, form, baseline)).toBe(false);
+	});
+
+	it('still submits a re-typed number after a clear', () => {
+		const form = { ...baseline, timeout: 15 };
+		expect(pluginSettingsChanges(SCHEMA, form, baseline)).toEqual({ timeout: 15 });
+	});
+
 	it('submits only the changed non-secret fields with their typed values', () => {
 		const form = { ...baseline, endpoint: 'https://new', timeout: 10, verbose: false };
 		expect(pluginSettingsChanges(SCHEMA, form, baseline)).toEqual({
