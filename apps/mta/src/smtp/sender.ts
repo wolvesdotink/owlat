@@ -50,6 +50,10 @@ import { classifyTlsFailure, stsAttributedResultType } from './tlsFailureClassif
 type AttemptOutcome =
 	| { kind: 'sent'; result: EmailJobResult }
 	| { kind: 'smtp'; result: EmailJobResult }
+	// A post-DATA drop with no server reply: the message MAY already have been
+	// accepted, so this is TERMINAL — never a next-MX attempt, never an
+	// auto-retried soft bounce (W8 AMBIGUOUS_TIMEOUT). Carries its own result.
+	| { kind: 'ambiguous'; result: EmailJobResult }
 	| { kind: 'tls-failure'; resultType: TlsResultType; response: string }
 	| { kind: 'connection'; response: string }
 	| { kind: 'over-cap' };
@@ -441,10 +445,37 @@ export async function sendToMx(
 			}
 		}
 
-		// 3. No reply, no TLS cause — a connection/greeting-level failure (or a
-		//    reply-less ambiguous drop). Try the next MX host. A required floor never
-		//    reaches here without a tlsCause, so it is never silently downgraded
-		//    (that lives in branch 1).
+		// 3. Post-DATA ambiguous drop: a `data`/`data-final` phase failure with NO
+		//    server reply and no TLS cause. The body (and possibly the terminating
+		//    dot) was already written, so the receiver may have accepted the message
+		//    before the connection dropped. Retrying — on the next MX or via a
+		//    soft-bounce requeue — risks a DOUBLE DELIVERY, so this is the
+		//    AMBIGUOUS_TIMEOUT the retry taxonomy must NEVER auto-retry (W8;
+		//    smtp-client errors.ts / transaction.ts:312). Terminate the job here as a
+		//    non-retryable (hard) outcome rather than trying another MX.
+		if (
+			(err.phase === 'data' || err.phase === 'data-final') &&
+			err.replyCode === undefined &&
+			err.tlsCause === undefined
+		) {
+			logger.warn(
+				{ mxHost, recipientDomain, phase: err.phase, error: response },
+				'Ambiguous post-DATA failure with no server reply; not retrying (message may already be delivered)'
+			);
+			return {
+				kind: 'ambiguous',
+				result: {
+					success: false,
+					error: `Ambiguous delivery outcome for ${recipientDomain} (phase ${err.phase}, no server reply): message may already have been accepted — not retrying to avoid a double delivery: ${response}`,
+					bounceType: 'hard',
+				},
+			};
+		}
+
+		// 4. No reply, no TLS cause — a connection/greeting-level failure (or a
+		//    reply-less ambiguous drop in a retry-safe phase). Try the next MX host.
+		//    A required floor never reaches here without a tlsCause, so it is never
+		//    silently downgraded (that lives in branch 1).
 		logger.warn(
 			{ mxHost, recipientDomain, error: response, phase: err.phase },
 			'Connection failed to MX host, trying next'
@@ -506,7 +537,7 @@ export async function sendToMx(
 				daneTls.rejectUnauthorized,
 				daneDecision.plan
 			);
-			if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
+			if (outcome.kind === 'sent' || outcome.kind === 'smtp' || outcome.kind === 'ambiguous') {
 				return outcome.result;
 			}
 			if (outcome.kind === 'tls-failure') {
@@ -535,7 +566,7 @@ export async function sendToMx(
 				daneTls.rejectUnauthorized,
 				daneDecision.plan
 			);
-			if (probe.kind === 'sent' || probe.kind === 'smtp') {
+			if (probe.kind === 'sent' || probe.kind === 'smtp' || probe.kind === 'ambiguous') {
 				return probe.result;
 			}
 			if (probe.kind === 'tls-failure') {
@@ -551,7 +582,7 @@ export async function sendToMx(
 					tlsRequirements.requireTLS,
 					tlsRequirements.rejectUnauthorized
 				);
-				if (retry.kind === 'sent' || retry.kind === 'smtp') {
+				if (retry.kind === 'sent' || retry.kind === 'smtp' || retry.kind === 'ambiguous') {
 					return retry.result;
 				}
 				if (retry.kind === 'tls-failure' && tlsRequirements.requireTLS) {
@@ -592,7 +623,7 @@ export async function sendToMx(
 		// still delivered.
 		if (stsOptions.policyMode === 'testing') {
 			const probe = await attemptSend(mxHost, true, true);
-			if (probe.kind === 'sent' || probe.kind === 'smtp') {
+			if (probe.kind === 'sent' || probe.kind === 'smtp' || probe.kind === 'ambiguous') {
 				return probe.result;
 			}
 			if (probe.kind === 'tls-failure') {
@@ -610,7 +641,7 @@ export async function sendToMx(
 					tlsRequirements.requireTLS,
 					tlsRequirements.rejectUnauthorized
 				);
-				if (retry.kind === 'sent' || retry.kind === 'smtp') {
+				if (retry.kind === 'sent' || retry.kind === 'smtp' || retry.kind === 'ambiguous') {
 					return retry.result;
 				}
 				if (retry.kind === 'tls-failure' && tlsRequirements.requireTLS) {
@@ -629,7 +660,7 @@ export async function sendToMx(
 			tlsRequirements.requireTLS,
 			tlsRequirements.rejectUnauthorized
 		);
-		if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
+		if (outcome.kind === 'sent' || outcome.kind === 'smtp' || outcome.kind === 'ambiguous') {
 			return outcome.result;
 		}
 		if (outcome.kind === 'tls-failure' && tlsRequirements.requireTLS) {
