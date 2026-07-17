@@ -42,6 +42,23 @@ describe('isValidEmail', () => {
 	it('rejects emails with spaces', () => {
 		expect(isValidEmail('user @example.com')).toBe(false);
 	});
+
+	// X3 — SMTPUTF8 / EAI (RFC 6531/6532). Internationalized addresses must no
+	// longer be rejected at contact import / validation.
+	it('accepts internationalized (EAI) addresses', () => {
+		expect(isValidEmail('用户@example.com')).toBe(true); // non-ASCII local-part
+		expect(isValidEmail('пользователь@example.com')).toBe(true);
+		expect(isValidEmail('Pelé@example.com')).toBe(true);
+		expect(isValidEmail('user@例え.test')).toBe(true); // non-ASCII (U-label) domain
+		expect(isValidEmail('用户@例え.テスト')).toBe(true); // non-ASCII local-part + domain + TLD
+	});
+
+	it('still enforces ASCII structural rules on internationalized addresses', () => {
+		// A non-ASCII local-part does not relax dot/hyphen/TLD structure.
+		expect(isValidEmail('用户..name@example.com')).toBe(false); // consecutive dots
+		expect(isValidEmail('用户@localhost')).toBe(false); // no TLD
+		expect(isValidEmail('用户 name@example.com')).toBe(false); // space
+	});
 });
 
 describe('isValidDomain', () => {
