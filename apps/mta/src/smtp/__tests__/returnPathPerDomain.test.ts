@@ -167,7 +167,11 @@ describe('D1 — per-domain VERP return-path host', () => {
 			// Body-less POST — exactly the historic MtaIdentityManager call shape.
 			const res = await authedRegister(app, 'acme.com');
 			expect(res.status).toBe(200);
-			const json = (await res.json()) as { success: boolean; selector: string; returnPathHost?: string };
+			const json = (await res.json()) as {
+				success: boolean;
+				selector: string;
+				returnPathHost?: string;
+			};
 			expect(json.success).toBe(true);
 			expect(json.selector).toBeTruthy();
 			// No returnPathHost echoed when none was set.

@@ -160,7 +160,9 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// key set immediately.
 	app.post('/:domain/rotate', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
-		const body = await c.req.json<{ selector?: string }>().catch(() => ({} as { selector?: string }));
+		const body = await c.req
+			.json<{ selector?: string }>()
+			.catch(() => ({}) as { selector?: string });
 
 		const existing = await dkimStore.getDkimConfig(redis, domain);
 		if (existing) {
@@ -178,7 +180,10 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 					activateAfter: result.activateAfter.toISOString(),
 				});
 			} catch (err) {
-				return c.json({ error: err instanceof Error ? err.message : 'Failed to initiate rotation' }, 409);
+				return c.json(
+					{ error: err instanceof Error ? err.message : 'Failed to initiate rotation' },
+					409
+				);
 			}
 		}
 
@@ -190,7 +195,9 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// keeps signing with the active key until the new record is published in DNS.
 	app.post('/:domain/rotation', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
-		const body = await c.req.json<{ selector?: string }>().catch(() => ({} as { selector?: string }));
+		const body = await c.req
+			.json<{ selector?: string }>()
+			.catch(() => ({}) as { selector?: string });
 		try {
 			const result = await dkimRotation.initiateRotation(redis, domain, {
 				selector: body.selector,
@@ -204,7 +211,10 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 				activateAfter: result.activateAfter.toISOString(),
 			});
 		} catch (err) {
-			return c.json({ error: err instanceof Error ? err.message : 'Failed to initiate rotation' }, 409);
+			return c.json(
+				{ error: err instanceof Error ? err.message : 'Failed to initiate rotation' },
+				409
+			);
 		}
 	});
 
@@ -213,13 +223,13 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// while the record is not yet live.
 	app.post('/:domain/rotation/activate', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
-		const body = await c.req.json<{ force?: boolean }>().catch(() => ({} as { force?: boolean }));
+		const body = await c.req.json<{ force?: boolean }>().catch(() => ({}) as { force?: boolean });
 		const result = await dkimRotation.activatePendingKey(
 			redis,
 			domain,
 			body.force === true,
 			undefined,
-			notifyRotation,
+			notifyRotation
 		);
 		return c.json({ success: true, domain, ...result });
 	});
