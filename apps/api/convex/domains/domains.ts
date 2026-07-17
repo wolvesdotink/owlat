@@ -13,6 +13,7 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOptional } from '../lib/env';
 import { dmarcPolicyValidator } from './dmarc';
+import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
 import {
 	dnsRecordValidator,
 	dnsRecordsValidator,
@@ -46,10 +47,9 @@ function serializeDomainRow(domain: DomainRow): DomainRow & {
 	};
 }
 
-// Synthetic userId tag for user-driven public-mutation transitions. Replaces
-// the implicit `system:` prefix the lifecycle's reducer recognizes —
-// user-driven calls don't have a `system:` prefix.
-const LIFECYCLE_USER_PUBLIC_MUTATION = 'user';
+// `LIFECYCLE_USER_PUBLIC_MUTATION` is the canonical user-driven transition tag,
+// exported from the lifecycle (which owns the `system:`-prefix protocol its
+// reducer keys on).
 
 // ─── Read queries ──────────────────────────────────────────────────────────
 
@@ -280,6 +280,11 @@ export const setDmarcPolicy = authedMutation({
 		}
 	},
 });
+
+// The per-domain VERP return-path host public mutation (`setReturnPathHost`)
+// lives in the sibling `domains/returnPath.ts` (reached at
+// `api.domains.returnPath.setReturnPathHost`) — split out per CONVENTIONS.md's
+// ~500 LOC feature-file cap.
 
 // ─── Read queries used by the builder UI and outbound sending paths ────────
 

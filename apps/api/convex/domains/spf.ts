@@ -118,6 +118,52 @@ export function buildReturnPathSpfRecord(
 	return buildSpfRecordValue({ ip4, qualifier });
 }
 
+/** A `mailFrom` DNS record entry — an absolute-hostname TXT record. */
+export type ReturnPathMailFromRecord = {
+	readonly type: 'TXT';
+	readonly hostname: string;
+	readonly value: string;
+};
+
+/**
+ * Build the `mailFrom` DNS record bundle for a return-path host: a single SPF
+ * TXT record published on the return-path host authorizing the pool IPs (RFC
+ * 7208 §3.1). Pure — the caller resolves `returnPathHost` (per-domain override
+ * or the global env) and the pool IPs.
+ *
+ * Returns `undefined` (record omitted) when there is no return-path host, or no
+ * pool IPs to authorize — the bounce envelope then cannot pass SPF, which the
+ * caller surfaces as an operator warning. Centralizing this keeps the provider's
+ * initial registration and the lifecycle's return-path edit emitting the exact
+ * same record for a given host, so the two can never drift.
+ */
+export function buildReturnPathMailFromRecords(
+	returnPathHost: string | undefined,
+	poolIps: readonly string[],
+	qualifier: SpfQualifier
+): ReturnPathMailFromRecord[] | undefined {
+	if (!returnPathHost || poolIps.length === 0) return undefined;
+	return [
+		{
+			type: 'TXT',
+			hostname: returnPathHost,
+			value: buildReturnPathSpfRecord(poolIps, qualifier),
+		},
+	];
+}
+
+/**
+ * Parse the operator's `MTA_IP_POOLS` env value into a clean IP list — the pool
+ * IPs authorized on the return-path SPF record. Shared by initial registration
+ * and the return-path edit so both read the env the same way.
+ */
+export function parsePoolIps(raw: string | undefined | null): string[] {
+	return (raw ?? '')
+		.split(',')
+		.map((ip) => ip.trim())
+		.filter(Boolean);
+}
+
 // ─── Duplicate / existing-record detection ──────────────────────────────────
 
 /**

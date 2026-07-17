@@ -64,8 +64,17 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * records to publish and the typed identity row to insert. Throws on
 	 * provider failure — the `register_with_provider` effect handler catches
 	 * and translates to a `→ failed` lifecycle transition.
+	 *
+	 * `options.returnPathHost` is the domain's per-domain VERP return-path host
+	 * (D1/D2). When set, the MTA adapter reflects it to the MTA and builds the
+	 * `mailFrom` SPF record on that host; when absent it falls back to the
+	 * deployment-global `MTA_RETURN_PATH_DOMAIN` env (historic behavior). SES has
+	 * no return-path concept and ignores it.
 	 */
-	registerDomain(domain: string): Promise<{
+	registerDomain(
+		domain: string,
+		options?: { returnPathHost?: string }
+	): Promise<{
 		dnsRecords: DnsRecords;
 		identity: ProviderIdentityFor<K>;
 	}>;
@@ -102,7 +111,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	writeIdentity(
 		ctx: MutationCtx,
 		domainId: Id<'domains'>,
-		identity: ProviderIdentityFor<K>,
+		identity: ProviderIdentityFor<K>
 	): Promise<void>;
 
 	/**
@@ -110,8 +119,5 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * lifecycle reducer on `→ registering` (regenerate) and `remove()`.
 	 * No-op when no row exists.
 	 */
-	clearIdentity(
-		ctx: MutationCtx,
-		domainId: Id<'domains'>,
-	): Promise<void>;
+	clearIdentity(ctx: MutationCtx, domainId: Id<'domains'>): Promise<void>;
 }
