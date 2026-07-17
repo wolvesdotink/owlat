@@ -8,6 +8,7 @@ import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
+import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
 import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedText';
 import { useTaskFlow } from '~/composables/useTaskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -71,22 +72,26 @@ watch(
 );
 
 // Keyboard: Cmd/Ctrl+Z undo (flow), plus the Postbox row conventions on the
-// focused card — Enter = reply/done, e = archive. Inert while typing.
+// focused card — Enter = reply/done, e = archive. Gated to built-in kinds: a
+// plugin/unknown card only honours `s` → skip (its native controls own
+// everything else), so the ambient shortcuts can never fire a hidden reply or
+// archive on a card that does not display them. Inert while typing.
 function onCardKeydown(event: KeyboardEvent) {
 	if (!flow.active.value || flow.isComplete.value) return;
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
 	if (isEditableTarget(event.target)) return;
 	const row = current.value;
 	if (!row) return;
-	const k = event.key.toLowerCase();
-	if (k === 'enter') {
-		event.preventDefault();
-		if (row.kind === 'followup') void markDone(row);
-		else void draftReply(row);
-	} else if (k === 'e' && row.kind !== 'followup') {
-		event.preventDefault();
-		void archiveRow(row);
-	}
+	const action = resolveReplyFocusKey(event.key, {
+		currentKind: currentKind.value,
+		isFollowup: row.kind === 'followup',
+	});
+	if (!action) return;
+	event.preventDefault();
+	if (action === 'markDone') void markDone(row);
+	else if (action === 'draftReply') void draftReply(row);
+	else if (action === 'archive') void archiveRow(row);
+	else flow.skip(row.id);
 }
 onMounted(() => {
 	window.addEventListener('keydown', flow.onWindowKeydown);

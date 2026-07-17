@@ -8,6 +8,7 @@ import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
 import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
+import { resolveReviewFocusKey } from '~/utils/taskFlowKeyboard';
 import { useOrganization } from '~/composables/useOrganization';
 import { useTaskFlow } from '~/composables/useTaskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -100,26 +101,27 @@ watch(
 );
 
 // Keyboard: Cmd/Ctrl+Z undo (flow) plus the Review vocabulary on the focused
-// card — a = approve (send), x = reject, Enter = the primary action. Inert
-// while typing a reply into the compose box (isEditableTarget).
+// card — a = approve (send), x = reject, Enter = the primary action. Gated to
+// built-in kinds: a plugin/unknown card only honours `s` → skip (its native
+// controls own everything else), so the ambient shortcuts can never fire a
+// hidden send/reject/archive on a card that does not display them. Inert while
+// typing a reply into the compose box (isEditableTarget).
 function onCardKeydown(event: KeyboardEvent) {
 	if (!flow.active.value || flow.isComplete.value) return;
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
 	if (isEditableTarget(event.target)) return;
 	const row = current.value;
 	if (!row) return;
-	const k = event.key.toLowerCase();
-	if (k === 'x') {
-		event.preventDefault();
-		void reject(row);
-	} else if (k === 'a' && !needsReply(row.message)) {
-		event.preventDefault();
-		void approve(row);
-	} else if (k === 'enter') {
-		event.preventDefault();
-		if (needsReply(row.message)) void sendReply(row);
-		else void approve(row);
-	}
+	const action = resolveReviewFocusKey(event.key, {
+		currentKind: currentKind.value,
+		needsReply: needsReply(row.message),
+	});
+	if (!action) return;
+	event.preventDefault();
+	if (action === 'reject') void reject(row);
+	else if (action === 'approve') void approve(row);
+	else if (action === 'sendReply') void sendReply(row);
+	else flow.skip(row.id);
 }
 onMounted(() => {
 	window.addEventListener('keydown', flow.onWindowKeydown);
