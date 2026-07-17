@@ -3,24 +3,32 @@ import { api } from '@owlat/api';
 import {
 	type PaletteGroup,
 	type PaletteItem,
-	filterItems,
 	flattenGroups,
 	mergeGroups,
 	moveSelection,
-	useCommandPaletteSurface,
 } from '~/lib/commandPalette';
+import { resolvePaletteGroups } from '~/lib/commandPaletteRegistry';
+import {
+	MAX_RECENT_SEARCHES,
+	SEARCH_MIN_QUERY,
+	type SearchResult,
+	type SearchResults,
+	buildCorePaletteProviders,
+} from '~/lib/commandPaletteCore';
 
 /**
  * App-wide Cmd/Ctrl-K command palette, mounted once in the dashboard layout so
- * it works on EVERY dashboard page. Assembled from ordered providers:
- *   1. current-surface actions — contributed by the active surface (e.g. the
- *      Postbox layout registers its reader actions + folders) via
- *      `useCommandPaletteSurface`; the palette is the shared shell, surfaces are
- *      consumers (no per-surface fork);
- *   2. verbs / sidebar-context switch / navigation — the static providers,
- *      built in `useCommandPaletteProviders`;
- *   3. object search — contacts / templates / campaigns via the existing
- *      `globalSearch` search index (debounced, capped per group).
+ * it works on EVERY dashboard page. Assembled from an ordered, deduplicated
+ * provider registry (`~/lib/commandPaletteRegistry`):
+ *   1. core providers, built here and consulted first — recent searches, verbs,
+ *      sidebar-context switch, object search, and navigation;
+ *   2. surface/plugin providers registered while mounted (e.g. the Postbox
+ *      layout registers its reader actions + folders, route-gated to Postbox).
+ *
+ * Providers are gated by feature flag and route, ordered by priority, and
+ * deduplicated by group key and item id (earlier providers win) before the
+ * `mergeGroups` sort/cap. The palette is the shared shell; every contributor —
+ * core or plugin — flows through the same registry, so nothing forks it.
  *
  * The Cmd+Shift+K knowledge Quick Query keeps its own shortcut; it is surfaced
  * here as the "Ask knowledge…" action (dispatches `owlat:open-knowledge-query`,
@@ -28,7 +36,9 @@ import {
  */
 
 const { verbItems, contextItems, navItems } = useCommandPaletteProviders();
-const surfaceGroups = useCommandPaletteSurface();
+const registryProviders = useCommandPaletteRegistry();
+const { isEnabled: isFlagEnabled } = useFeatureFlag();
+const route = useRoute();
 
 const open = ref(false);
 const activeIndex = ref(0);
@@ -44,7 +54,6 @@ useModalFocus(dialogRef, () => open.value);
 
 // ── Recent object-search queries (carried over from the old GlobalSearch modal)
 const RECENT_KEY = 'owlat_recent_searches';
-const MAX_RECENT = 5;
 const recentSearches = ref<string[]>([]);
 
 function loadRecent() {
@@ -62,7 +71,7 @@ function saveRecent(term: string) {
 	if (!trimmed || import.meta.server) return;
 	recentSearches.value = [trimmed, ...recentSearches.value.filter((s) => s !== trimmed)].slice(
 		0,
-		MAX_RECENT
+		MAX_RECENT_SEARCHES
 	);
 	try {
 		localStorage.setItem(RECENT_KEY, JSON.stringify(recentSearches.value));
@@ -83,20 +92,15 @@ function clearRecent() {
 }
 
 // ── Object search (contacts / templates / campaigns) via the shared index.
-type SearchResult = { id: string; type: string; title: string; subtitle: string; url: string };
-type SearchResults = {
-	contacts: SearchResult[];
-	emails: SearchResult[];
-	campaigns: SearchResult[];
-};
-
 const { data: searchData } = useOrganizationQuery(api.globalSearch.search, () =>
 	// undefined → the wrapper skips the subscription (no empty / <2-char query).
-	debouncedSearch.value.trim().length >= 2 ? { query: debouncedSearch.value, limit: 5 } : undefined
+	debouncedSearch.value.trim().length >= SEARCH_MIN_QUERY
+		? { query: debouncedSearch.value, limit: 5 }
+		: undefined
 );
 const searchResults = computed(() => searchData.value as SearchResults | undefined);
 const isSearching = computed(
-	() => searchQuery.value.trim().length >= 2 && searchResults.value === undefined
+	() => searchQuery.value.trim().length >= SEARCH_MIN_QUERY && searchResults.value === undefined
 );
 
 function iconForType(type: string): string {
@@ -118,87 +122,35 @@ function toResultItems(results: SearchResult[]): PaletteItem[] {
 	}));
 }
 
-// ── Assemble the ordered, capped group list.
-const groups = computed<PaletteGroup[]>(() => {
-	const query = searchQuery.value;
-	const idle = query.trim().length < 2;
-	const out: PaletteGroup[] = [];
-
-	// Recent searches — only in the idle state, above everything.
-	if (idle && recentSearches.value.length > 0) {
-		out.push({
-			key: 'recent',
-			heading: 'Recent searches',
-			order: -1,
-			cap: MAX_RECENT,
-			items: recentSearches.value.map((term) => ({
-				id: `recent:${term}`,
-				label: term,
-				icon: 'lucide:clock',
-				keepOpen: true,
-				run: () => setImmediate(term),
-			})),
-		});
-	}
-
-	// Current-surface actions (e.g. Postbox), filtered by the query.
-	for (const group of surfaceGroups.value) {
-		out.push({ ...group, items: filterItems(group.items, query) });
-	}
-
-	// Verbs / utilities.
-	out.push({
-		key: 'verbs',
-		heading: 'Create',
-		order: 5,
-		items: filterItems(verbItems.value, query),
-	});
-
-	// Sidebar-context switch (empty groups are dropped on merge).
-	out.push({
-		key: 'context',
-		heading: 'Context',
-		order: 6,
-		items: filterItems(contextItems.value, query),
-	});
-
-	// Object search — only once the query is meaningful.
-	const results = searchResults.value;
-	if (!idle && results) {
-		out.push({
-			key: 'contacts',
-			heading: 'Contacts',
-			order: 20,
-			cap: 5,
-			items: toResultItems(results.contacts),
-		});
-		out.push({
-			key: 'campaigns',
-			heading: 'Campaigns',
-			order: 21,
-			cap: 5,
-			items: toResultItems(results.campaigns),
-		});
-		out.push({
-			key: 'templates',
-			heading: 'Templates',
-			order: 22,
-			cap: 5,
-			items: toResultItems(results.emails),
-		});
-	}
-
-	// Navigation — every sidebar destination.
-	out.push({
-		key: 'navigation',
-		heading: 'Go to',
-		order: 40,
-		cap: 8,
-		items: filterItems(navItems.value, query),
-	});
-
-	return mergeGroups(out);
+// ── Core providers, consulted before any surface/plugin provider. Their
+// composition (ids, priorities, group keys/orders/caps, gating) lives in the
+// pure `buildCorePaletteProviders` factory and is pinned by its conformance
+// suite; here we only inject the reactive reads and item `run` closures. Each
+// getter is read inside `build`, so the assembling computed re-tracks them.
+const coreProviders = buildCorePaletteProviders({
+	recentSearches: () => recentSearches.value,
+	verbItems: () => verbItems.value,
+	contextItems: () => contextItems.value,
+	navItems: () => navItems.value,
+	searchResults: () => searchResults.value,
+	onRecentTerm: (term) => setImmediate(term),
+	buildResultItems: (results) => toResultItems(results),
 });
+
+// ── Assemble the ordered, capped group list: gate + order + dedup providers,
+// then sort/drop-empties/cap. Core providers form their own trust tier and are
+// always consulted before any registered surface/plugin provider, so a
+// registered provider can add work but never override a core group or item.
+const groups = computed<PaletteGroup[]>(() =>
+	mergeGroups(
+		resolvePaletteGroups(
+			coreProviders,
+			registryProviders.value,
+			{ path: route.path, isFlagEnabled },
+			{ query: searchQuery.value }
+		)
+	)
+);
 
 const flatItems = computed(() => flattenGroups(groups.value));
 const flatIndexById = computed(() => {
@@ -355,7 +307,9 @@ onBeforeUnmount(() => {
 						<Icon name="lucide:search" class="w-8 h-8 mx-auto mb-2 opacity-50" />
 						<p class="text-sm">
 							{{
-								searchQuery.trim().length >= 2 ? `No results for "${searchQuery}"` : 'No matches'
+								searchQuery.trim().length >= SEARCH_MIN_QUERY
+									? `No results for "${searchQuery}"`
+									: 'No matches'
 							}}
 						</p>
 					</div>
