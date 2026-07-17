@@ -143,6 +143,14 @@ export enum EmailErrorCode {
 	 * MTA/Resend instead thread an idempotency key and stay retryable).
 	 */
 	AMBIGUOUS_TIMEOUT = 'AMBIGUOUS_TIMEOUT',
+	/**
+	 * The envelope carries a non-ASCII (RFC 6531 SMTPUTF8 / EAI) mailbox but the
+	 * destination server did not advertise `SMTPUTF8`. There is no ASCII downgrade
+	 * for a UTF-8 local-part, so the client fails closed rather than mangling the
+	 * address — a permanent, NOT-retryable condition distinct from a generic
+	 * server error.
+	 */
+	SMTPUTF8_UNSUPPORTED = 'SMTPUTF8_UNSUPPORTED',
 	/** Unknown error */
 	UNKNOWN = 'UNKNOWN',
 }

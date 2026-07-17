@@ -28,6 +28,7 @@ import {
 	isSmtpError,
 	sendMessage,
 	type AuthConfig,
+	type SmtpClientRefusal,
 	type SmtpConnectOptions,
 	type SmtpPhase,
 } from '@owlat/smtp-client';
@@ -174,7 +175,15 @@ export function classifySmtpError(err: {
 	phase: SmtpPhase;
 	replyCode?: number;
 	message: string;
+	clientRefusal?: SmtpClientRefusal;
 }): EmailErrorCode {
+	// A client-side permanent refusal (no reply code) is authoritative and distinct
+	// from a server verdict: the SMTPUTF8 fail-closed can never succeed on retry, so
+	// it maps to its own non-retryable code rather than the phase-`mail` default.
+	if (err.clientRefusal === 'smtputf8-unavailable') {
+		return EmailErrorCode.SMTPUTF8_UNSUPPORTED;
+	}
+
 	if (err.replyCode !== undefined) {
 		const byCode = smtpReplyCodeToErrorCode(err.replyCode, err.message);
 		if (byCode !== undefined) return byCode;
@@ -294,6 +303,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 						phase: error.phase,
 						replyCode: error.replyCode,
 						message: errorMessage,
+						clientRefusal: error.clientRefusal,
 					}),
 				};
 			}
