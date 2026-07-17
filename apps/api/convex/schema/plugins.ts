@@ -1,6 +1,11 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { languageEndpointProvenanceValidator } from '../lib/aiProviderConfigValidators';
+import {
+	hookDeliveryKindValidator,
+	hookDeliverySourceValidator,
+	hookUnavailableCodeValidator,
+} from '../connectedApps/hookDeliveryLog';
 
 /** Host-mediated plugin data; Tier-1 component tables remain component-local. */
 export const pluginTables = {
@@ -51,6 +56,48 @@ export const pluginTables = {
 		openedUntil: v.optional(v.number()),
 		updatedAt: v.number(),
 	}).index('by_app_and_kind', ['organizationId', 'connectedAppId', 'hookKind']),
+
+	// Redacted delivery log for signed synchronous hooks (PP-25): one row per
+	// invokeHook resolution, tenant-scoped by organizationId, living alongside the
+	// outbound webhookDeliveryLogs. It records WHAT happened — the hook kind,
+	// whether a network round trip was attempted, whether the app value or the
+	// declared safe fallback won, the fixed fallback-reason code, and the network
+	// duration — and NOTHING that could leak: no payload, no app-returned text, no
+	// shared secret, no request/response signature. Retention is a weekly cron
+	// (see crons.ts) that ages rows out at AUDIT_LOG_RETENTION_MS; reads are
+	// bounded, indexed, and org-scoped. Because no request/response bytes are
+	// retained a delivery can never be replayed from the log — only re-invoked
+	// through the full fresh-signed envelope (see hookDeliveryLog.ts).
+	connectedAppHookDeliveryLogs: defineTable({
+		organizationId: v.string(),
+		connectedAppId: v.id('connectedApps'),
+		// Attribution for filtering; absent when the app could not be resolved
+		// (missing / foreign-tenant id → the delivery falls back to app_not_found).
+		pluginId: v.optional(v.string()),
+		hookKind: hookDeliveryKindValidator,
+		// Was an outbound network round trip made? false for every short-circuit
+		// (app_not_found / disabled / revoked / capability_denied / circuit_open /
+		// secret_unavailable), which never opens a secret or contacts the endpoint.
+		isAttempted: v.boolean(),
+		// Did the app's (authenticated, validated, scrubbed) value win, or did the
+		// declared safe fallback? A gate fallback is always a restrict-only caution.
+		source: hookDeliverySourceValidator,
+		// The fixed fallback-reason code; present iff source === 'fallback'. Never
+		// free text and never the app's own message — a redacted, filterable enum.
+		failureCode: v.optional(hookUnavailableCodeValidator),
+		// Network round-trip duration in ms; absent for short-circuits (no call).
+		durationMs: v.optional(v.number()),
+		// When the runtime resolved this delivery (its observed clock).
+		attemptedAt: v.number(),
+	})
+		// Org-scoped recent history, newest first — the default operator view.
+		.index('by_org_and_time', ['organizationId', 'attemptedAt'])
+		// One app's recent history — the per-connection drill-down filter.
+		.index('by_org_app_and_time', ['organizationId', 'connectedAppId', 'attemptedAt'])
+		// Org-scoped "show me only the fallbacks/failures" filter, index-backed.
+		.index('by_org_source_and_time', ['organizationId', 'source', 'attemptedAt'])
+		// Retention range-scans the oldest rows across all tenants in batches.
+		.index('by_attempted_at', ['attemptedAt']),
 
 	draftStrategySelections: defineTable({
 		organizationId: v.string(),

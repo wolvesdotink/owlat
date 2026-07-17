@@ -150,6 +150,8 @@ import type * as connectedApps_actions from "../connectedApps/actions.js";
 import type * as connectedApps_connectionTest from "../connectedApps/connectionTest.js";
 import type * as connectedApps_hookCircuit from "../connectedApps/hookCircuit.js";
 import type * as connectedApps_hookClient from "../connectedApps/hookClient.js";
+import type * as connectedApps_hookDeliveryLog from "../connectedApps/hookDeliveryLog.js";
+import type * as connectedApps_hookDeliveryLogStore from "../connectedApps/hookDeliveryLogStore.js";
 import type * as connectedApps_hookOutcome from "../connectedApps/hookOutcome.js";
 import type * as connectedApps_hookProtocol from "../connectedApps/hookProtocol.js";
 import type * as connectedApps_hookRuntime from "../connectedApps/hookRuntime.js";
@@ -857,6 +859,8 @@ declare const fullApi: ApiFromModules<{
   "connectedApps/connectionTest": typeof connectedApps_connectionTest;
   "connectedApps/hookCircuit": typeof connectedApps_hookCircuit;
   "connectedApps/hookClient": typeof connectedApps_hookClient;
+  "connectedApps/hookDeliveryLog": typeof connectedApps_hookDeliveryLog;
+  "connectedApps/hookDeliveryLogStore": typeof connectedApps_hookDeliveryLogStore;
   "connectedApps/hookOutcome": typeof connectedApps_hookOutcome;
   "connectedApps/hookProtocol": typeof connectedApps_hookProtocol;
   "connectedApps/hookRuntime": typeof connectedApps_hookRuntime;
