@@ -1,0 +1,30 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=e1Mbh/dE0re3Q5taLMcSzlnO5RR4sGseyvdqx8B4uCo=;
+ b=Hd8E34rW31yU3pc8RIytttoBLFxVARDDYTbvC9aKqFCFQGbLeDWXReYvBoXNp8OTP84LG4H7t
+ 4fuGtal59f8h6m68OnlqJbKBibZbEpHchVoLPkJJ7e5exT/Jl8JRjE0GBd5v9Euf2/a4BYUJZBL
+ 2koXrAaCBCugw4kCTkQxGZas+2Lbd+XggRIe9UBYtUw589INn8C6a3IS0BR2wNFvsTHVhHOkX9/
+ biTrM34zeU+c8tcGlMf8s2mIbBVS5mPXujCL6GkwNPU1s+bvN4N0AAVF4lnWOEKnYtsh5N+/2gm
+ Lk8PLaRWBqGMN5nuMd9AfVIEkrMbJQgAQcqW+uTvR0ow==
+Message-ID: <corpus-14@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: Tracing headers
+MIME-Version: 1.0
+X-Owlat-Message-Id: msg_abc123
+X-Owlat-Org-Id: org_def456
+Content-Type: multipart/alternative; boundary="--_owlat_custom-headers-ascii_0"
+
+----_owlat_custom-headers-ascii_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+x
+----_owlat_custom-headers-ascii_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>x</p>
+----_owlat_custom-headers-ascii_0--

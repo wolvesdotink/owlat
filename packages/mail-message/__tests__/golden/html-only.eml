@@ -1,0 +1,19 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:Content-Transfer-Encoding:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=LmTb3F/i+Y9b6so1jiVCi5fuHsM517nTk/tilt4sWNQ=;
+ b=eZmXYEXd54fR6jJv8o4+qUtW/ibKbq4q+aC3krtrFcNlT60gwtXjEnba2jD+H0c+f6RHZw3bn
+ jrjkgm/nkoIeYnywvt+xW+7BKML0bIGxkm8h0bhBCM8lMYKwbtoeFAXV9q1ngSd/PU2c3ZOaArb
+ NUSU5jIQ9KKnn8Qr+nXVHGRscaSjg3Lol11UjvB+bw1M/RFV5aqCdUbFETiO4Ts2XHpOagBH1XE
+ uDkCa794Y+eGwSyLNuNblbN0tFJXxDVGFW/r3O53ozrvZU1/pvadl1vBI5ZrsJABk95tzMv6fJC
+ 8xO/gD6K0G1M3cznND4msxS/acJyiKO906SnvD91UPyA==
+Message-ID: <corpus-2@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: HTML only
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>Hello <strong>world</strong></p>

@@ -1,0 +1,19 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:Content-Transfer-Encoding:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=Daf93luLbxldTshD+R1Jh7PAZTiBhqbh50bGK4fMXR8=;
+ b=eJ+gamZ/VRTGT7sS5QSJUjQelIrIcwWQr+VskG5GJBkLpYpZYL3BZ7QNJVS1STYWDMAmDZsY7
+ V+L1kVlbNWlIRtRJ8kKQjMG6n34Tioe54bcAaxv01pGsSzFPmC6GZ7rZnjI1JzpNWm2ALKFf5Is
+ ocQvy3pIb+7rqYuNDou7oiycDEfOxRBDPAm5f3gQvTXl2nZjudwdksn9ppllbnVrqGZ5P/0qsih
+ sKlAB6xOyzLLo3768hIfjUz74jB8hL4pE+9ZMzVj7ltD6MIcGhsBt3b2VvMsJdcYFflwd9Ed8SC
+ lirCYS+Y+YpA4ArE92YJA5oMdaxLpSSbAzGvRm3rawzA==
+Message-ID: <corpus-23@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: Empty text
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>only html survives</p>

@@ -1,0 +1,40 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=fWAwdUZqe2LV1TpmMlJAFgB8kHWmh5kQOk8/PJmzQjs=;
+ b=ihs9ROswRewRO779608g0s9mUKlipmhmNBOFSokczN2DXrrcFgLYvDsihhTuQDMovnrsbv+61
+ pyu3hUeF+nAIzY1NA7YEiUUIc4TBGI7KMFW5+OyYJmpU66MWO7omDqJjAtShjgkgqOQV04FPFaL
+ NnbNCj3aUmcu65cmPtWpHuuitDKQPW+Q6FtnkXWX0qHAh1HcEcYIXSyw7rm0stH06IzP4ZwlnwX
+ CifcnPqK0wmn01uRxvihO1E2O3y4eCidug/Uln+YEBH6Q221ecIcLz/6TbOdUwg6Ul+XBiv3P8a
+ bNoVdDOZNqORrNJNHXWeO+IPEtbouguF1sRzb8/E7fSg==
+Message-ID: <corpus-33@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: CID no text emphasis
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_html-with-cid-only_1"
+
+----_owlat_html-with-cid-only_1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+caption
+----_owlat_html-with-cid-only_1
+Content-Type: multipart/related; type="text/html"; boundary="--_owlat_html-with-cid-only_0"
+
+----_owlat_html-with-cid-only_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<div><img src="cid:pic9"><span>caption</span></div>
+----_owlat_html-with-cid-only_0
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="pic.png"
+Content-ID: <pic9>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9
+awAAAABJRU5ErkJggg==
+----_owlat_html-with-cid-only_0--
+----_owlat_html-with-cid-only_1--
