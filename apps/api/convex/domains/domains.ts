@@ -316,6 +316,10 @@ export const setReturnPathHost = authedMutation({
 			if (outcome.reason === 'invalid_host') {
 				throwInvalidInput('Invalid return-path host.');
 			}
+			if (outcome.reason === 'unsupported_provider') {
+				throwInvalidState('This domain is not managed by the built-in MTA provider.');
+			}
+			// Catch-all for any unexpected reason (keeps the human sentences above).
 			throwInvalidState(`Cannot set return-path host: ${outcome.reason}`);
 		}
 	},
