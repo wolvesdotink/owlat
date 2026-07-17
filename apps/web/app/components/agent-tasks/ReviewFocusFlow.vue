@@ -351,6 +351,7 @@ function openThread(row: FlowItem) {
 				:can-open="!!current.thread"
 				@skip="flow.skip(current!.id)"
 				@open="openThread(current!)"
+				@complete="(outcome) => flow.complete(current!.id, { outcome: outcome ?? 'completed' })"
 			/>
 		</template>
 
