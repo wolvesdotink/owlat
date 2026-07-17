@@ -28,13 +28,14 @@ import {
 	type SmtpSession,
 	type SmtpHandlerResult,
 	type SmtpAuthOutcome,
+	type SmtpAddress,
 	type SmtpTlsConfig,
 } from '@owlat/smtp-listener';
 import {
 	parseMessage,
 	parseMimeTree,
-	decodeQpHexEscapes,
-	type MimeNode,
+	walkLeaves,
+	transferDecode,
 	type AddressObject,
 } from '@owlat/mail-message';
 import { timingSafeStringEqual } from '../auth/timingSafe.js';
@@ -241,41 +242,30 @@ function firstFrom(field: AddressObject | AddressObject[] | undefined): string {
 }
 
 /**
- * Locate the first `text/x-amp-html` leaf in document order. `parseMessage`
- * neither folds a `text/x-amp-html` part into `html`/`text` nor (absent a
- * filename/attachment disposition) surfaces it in `attachments`, so the AMP
- * alternative is recovered by walking the MIME tree directly — preserving the
- * behavior the old `mailparser`-attachment path provided (RFC 2046 §5.1.4).
+ * Recover the AMP alternative (`text/x-amp-html`) from a raw (binary-string)
+ * message, if present. `parseMessage` neither folds a `text/x-amp-html` part
+ * into `html`/`text` nor (absent a filename/attachment disposition) surfaces it
+ * in `attachments`, so the AMP alternative is recovered by walking the MIME tree
+ * directly — preserving the behavior the old `mailparser`-attachment path
+ * provided (RFC 2046 §5.1.4).
+ *
+ * The first `text/x-amp-html` leaf in document order wins, decoded with the
+ * package's single `transferDecode` (7bit / QP / base64 — one decoder, no second
+ * copy). NOTE (sanctioned divergence, PR body): `MimeNode.rawBody` is CRLF→LF
+ * normalized for nested non-`message/*` leaves (mailMime parity), so a multi-line
+ * AMP document's `job.amp` carries LF line endings rather than the wire's CRLF.
+ * This is immaterial: the sender re-encodes the part when re-emitting it, applying
+ * canonical CRLF + transfer-encoding on the way out.
  */
-function findAmpNode(node: MimeNode): MimeNode | undefined {
-	if (node.isMultipart && node.children.length > 0) {
-		for (const child of node.children) {
-			const found = findAmpNode(child);
-			if (found) return found;
-		}
-		return undefined;
-	}
-	return node.contentType.value === 'text/x-amp-html' ? node : undefined;
-}
-
-/** Transfer-decode an AMP leaf body to a UTF-8 string (7bit / QP / base64). */
-function decodeAmpBody(node: MimeNode): string {
-	const enc = (node.headers.last('content-transfer-encoding') ?? '7bit').toLowerCase().trim();
-	if (enc === 'base64') {
-		const clean = node.rawBody.replace(/[^A-Za-z0-9+/=]/g, '');
-		return Buffer.from(clean, 'base64').toString('utf-8');
-	}
-	if (enc === 'quoted-printable') {
-		const unfolded = node.rawBody.replace(/=\r?\n/g, '');
-		return Buffer.from(decodeQpHexEscapes(unfolded), 'latin1').toString('utf-8');
-	}
-	return Buffer.from(node.rawBody, 'latin1').toString('utf-8');
-}
-
-/** Recover the AMP alternative from a raw (binary-string) message, if present. */
 function extractAmpHtml(binary: string): string | undefined {
-	const node = findAmpNode(parseMimeTree(binary));
-	return node ? decodeAmpBody(node) : undefined;
+	let amp: string | undefined;
+	walkLeaves(parseMimeTree(binary), (leaf) => {
+		if (amp !== undefined) return; // first-in-document-order wins
+		if (leaf.contentType.value !== 'text/x-amp-html') return;
+		const bytes = transferDecode(leaf.rawBody, leaf.headers.last('content-transfer-encoding'));
+		amp = Buffer.from(bytes).toString('utf-8');
+	});
+	return amp;
 }
 
 /**
@@ -376,8 +366,22 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
  * the limiter is unit-testable. Returns a `421` rejection over the cap, nothing
  * to accept; fails open on a Redis hiccup so a store fault can't lock out
  * legitimate clients.
+ *
+ * When (and ONLY when) {@link checkConnectionRateLimit} actually holds a slot for
+ * this connection (net +1 on the Redis counter — i.e. the connection was allowed,
+ * NOT rejected over the cap), `onSlotHeld` is invoked so the caller can release
+ * exactly that slot on socket close. This is load-bearing: on 465 the raw TCP
+ * `connection` event fires before the TLS handshake, so a plaintext / aborted
+ * handshake never reaches this hook (no increment); a rejected connection is
+ * incremented-then-decremented inside `checkConnectionRateLimit` (net 0). Neither
+ * takes a slot, so neither is marked — and the close handler must not release one,
+ * else an attacker could drive a victim IP's counter down (465 cap bypass) or a
+ * 421-refused connect could double-decrement (587).
  */
-export function buildOnConnect(deps: Pick<SubmissionDeps, 'redis' | 'config'>) {
+export function buildOnConnect(
+	deps: Pick<SubmissionDeps, 'redis' | 'config'>,
+	onSlotHeld?: (session: Session) => void
+) {
 	const { redis, config } = deps;
 	return async function onConnect(session: Session): Promise<SmtpHandlerResult> {
 		const remoteIp = sessionRemoteIp(session);
@@ -391,12 +395,32 @@ export function buildOnConnect(deps: Pick<SubmissionDeps, 'redis' | 'config'>) {
 				logger.warn({ remoteIp }, 'Submission server connection rate limited');
 				return { code: 421, enhanced: '4.7.0', text: 'Too many connections from your IP' };
 			}
+			onSlotHeld?.(session); // net +1 held — release exactly this slot on close
 			return;
 		} catch (err) {
 			logger.error({ err, remoteIp }, 'Error in submission onConnect rate limit check');
 			return; // Fail-open so a Redis hiccup doesn't block legitimate clients.
 		}
 	};
+}
+
+/**
+ * Require-auth-before-MAIL gate: submission never relays unauthenticated, so
+ * MAIL FROM is refused with `530 5.7.0` until AUTH has succeeded on the (already
+ * TLS-secured) channel. Exported as a factory for symmetry with the other hook
+ * factories and so the gate is directly testable.
+ */
+export function buildOnMailFrom() {
+	return function onMailFrom(_address: SmtpAddress, session: Session): SmtpHandlerResult {
+		return session.authenticated
+			? undefined
+			: { code: 530, enhanced: '5.7.0', text: 'Authentication required' };
+	};
+}
+
+/** Per-connection key for the in-memory held-slot registry (unique while live). */
+function connectionKey(remoteAddress: string, remotePort: number | undefined): string {
+	return `${remoteAddress}:${remotePort ?? 0}`;
 }
 
 /**
@@ -429,6 +453,13 @@ function buildSubmissionListener(
 	// cannot be required before AUTH (RFC 8314 §3.3). Fail fast.
 	const tls = submissionTls(config);
 
+	// In-memory registry of connections that actually HOLD a per-IP slot (net +1
+	// on the Redis counter). Keyed per live connection so the socket-close release
+	// fires for — and only for — connections that incremented in `onConnect`. This
+	// is what stops the 465 raw-accept release from decrementing a slot that was
+	// never taken (cap bypass), and the 421-refused double-decrement on 587.
+	const heldSlots = new Set<string>();
+
 	const listener = createSmtpListener<SubmissionSessionState>({
 		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be
 		// the FQDN that matches the IP's reverse-DNS PTR record so the announced
@@ -444,12 +475,14 @@ function buildSubmissionListener(
 			authenticate: buildAuthenticate({ redis, config }),
 		},
 		createSession: () => ({}),
-		onConnect: buildOnConnect({ redis, config }),
+		onConnect: buildOnConnect({ redis, config }, (session) => {
+			// Mark this connection as holding a slot so — and only so — its socket
+			// close releases it. Keyed by the session's remote address:port, which
+			// equals the raw socket's below (the TLS socket wraps the same TCP peer).
+			heldSlots.add(connectionKey(session.remoteAddress, session.remotePort));
+		}),
 		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
-		onMailFrom: (_address, session) =>
-			session.authenticated
-				? undefined
-				: { code: 530, enhanced: '5.7.0', text: 'Authentication required' },
+		onMailFrom: buildOnMailFrom(),
 		onData: buildOnData({ queue }),
 		onError: (err) => logger.error({ err }, 'SMTP submission listener error'),
 	});
@@ -458,13 +491,21 @@ function buildSubmissionListener(
 	// node's built-in accept backpressure (`net.Server.maxConnections`).
 	listener.raw.maxConnections = config.submissionMaxClients;
 
-	// Release the per-IP connection counter when the socket closes. The limiter
-	// state lives in submissionSecurity.ts (I8); the listener exposes only the
-	// socket, so the release is wired here on the raw server's `connection` event
-	// (emitted for both the plaintext 587 and implicit-TLS 465 servers).
+	// Release the per-IP connection counter when the socket closes — but ONLY for
+	// connections that actually took a slot (tracked in `heldSlots` by `onConnect`).
+	// The limiter state lives in submissionSecurity.ts (I8); the listener exposes
+	// only the socket, so the release is wired here on the raw server's `connection`
+	// event (emitted for both the plaintext 587 and implicit-TLS 465 servers). The
+	// raw event fires on TCP accept — for 465 that is BEFORE the TLS handshake, so a
+	// failed/plaintext handshake connection never reaches `onConnect`, never enters
+	// `heldSlots`, and thus never releases a slot it never incremented (cap bypass).
+	// The remote address:port is captured now (present on accept) because it may be
+	// cleared by close time.
 	listener.raw.on('connection', (socket) => {
 		const remoteIp = socket.remoteAddress ?? 'unknown';
+		const key = connectionKey(remoteIp, socket.remotePort);
 		socket.once('close', () => {
+			if (!heldSlots.delete(key)) return; // this connection never took a slot
 			releaseConnection(redis, remoteIp).catch(() => {
 				// Non-critical: the Redis counter carries a TTL as a backstop.
 			});
