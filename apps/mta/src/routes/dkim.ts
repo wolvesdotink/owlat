@@ -69,29 +69,44 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// pre-seeded from DKIM_KEYS), it returns the existing selector + record.
 	// Use /rotate for deliberate key rotation that replaces the active key.
 	//
-	// Optionally accepts a JSON body `{ returnPathHost?: string }` (D1): a
+	// Optionally accepts a JSON body `{ returnPathHost?: string | null }` (D1): a
 	// per-sending-domain VERP return-path / bounce host that overrides the global
-	// `RETURN_PATH_DOMAIN` for THIS domain's outbound MAIL FROM. Backward
-	// compatible in both directions:
-	//   - No body / no field (the historic call, which sends no body at all) →
-	//     the domain keeps whatever return-path config it had (none by default),
-	//     so behaviour is byte-identical to before this field existed.
-	//   - Present but not a valid DNS FQDN → 400, before anything is persisted
-	//     (input is envelope- and DNS-facing, so it is strictly validated).
-	// When a valid host is supplied it is stored EVEN IF the DKIM key already
-	// existed (registration is idempotent for the key, but the return-path host
-	// is an independent, updatable attribute of the domain).
+	// `RETURN_PATH_DOMAIN` for THIS domain's outbound MAIL FROM. The `returnPathHost`
+	// field is tri-state, and the whole contract is backward compatible:
+	//   - No body / empty body / field ABSENT (the historic call sends no body at
+	//     all) → the domain keeps whatever return-path config it had (none by
+	//     default), so behaviour is byte-identical to before this field existed.
+	//   - Field explicitly `null` → CLEAR the override, reverting the domain to the
+	//     global `RETURN_PATH_DOMAIN`. This is the revert path (there is otherwise
+	//     no way to remove an override short of deleting the domain's DKIM key).
+	//   - Field a valid DNS FQDN → set it, EVEN IF the DKIM key already existed
+	//     (registration is idempotent for the key, but the return-path host is an
+	//     independent, updatable attribute of the domain).
+	//   - Field present but not a valid FQDN → 400, before anything is persisted.
+	//   - Body present but not parseable JSON → 400 (a malformed body is a client
+	//     error, not "no override"; only an absent/empty body means that).
 	app.post('/:domain/register', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
 
-		// The legacy caller sends no body; tolerate empty/invalid JSON as "no
-		// override" rather than 400ing a request that never carried the field.
-		const body = await c.req
-			.json<{ returnPathHost?: unknown }>()
-			.catch(() => ({}) as { returnPathHost?: unknown });
+		// Distinguish "no body" (legacy call → no override) from "present but
+		// malformed JSON" (client error → 400). We read the raw text first: an
+		// empty/whitespace body is the historic body-less POST; a non-empty body
+		// that fails to parse is a 400 rather than being silently ignored.
+		const rawBody = (await c.req.text().catch(() => '')).trim();
+		let body: { returnPathHost?: unknown } = {};
+		if (rawBody.length > 0) {
+			try {
+				body = JSON.parse(rawBody) as { returnPathHost?: unknown };
+			} catch {
+				return c.json({ error: 'Request body must be valid JSON' }, 400);
+			}
+		}
 
+		// Tri-state on the `returnPathHost` key: absent | null (clear) | value (set).
+		const hasField = Object.prototype.hasOwnProperty.call(body, 'returnPathHost');
+		const clearOverride = hasField && body.returnPathHost === null;
 		let returnPathHost: string | undefined;
-		if (body.returnPathHost !== undefined && body.returnPathHost !== null) {
+		if (hasField && body.returnPathHost !== null) {
 			const normalized = normalizeReturnPathHost(body.returnPathHost);
 			if (!normalized) {
 				return c.json(
@@ -106,6 +121,8 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 
 		if (returnPathHost) {
 			await dkimStore.setReturnPathHost(redis, domain, returnPathHost);
+		} else if (clearOverride) {
+			await dkimStore.clearReturnPathHost(redis, domain);
 		}
 
 		// Echo the resolved return-path host so the caller (D2/Convex) can confirm

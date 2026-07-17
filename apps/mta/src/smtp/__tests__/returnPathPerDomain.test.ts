@@ -81,7 +81,7 @@ import { createDkimRoutes } from '../../routes/dkim.js';
 import * as dkimStore from '../dkimStore.js';
 import { buildVerpAddress, parseVerpAddress } from '../../bounce/verp.js';
 import { parseBounce } from '../../bounce/parser.js';
-import { normalizeReturnPathHost, isValidReturnPathHost } from '../../lib/returnPathHost.js';
+import { normalizeReturnPathHost } from '../../lib/returnPathHost.js';
 import type { ParsedMail } from 'mailparser';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
@@ -230,6 +230,63 @@ describe('D1 — per-domain VERP return-path host', () => {
 			expect(await dkimStore.hasDkimKey(redis, 'acme.com')).toBe(false);
 		});
 
+		it('explicit null clears an existing override (revert to global)', async () => {
+			const app = createDkimRoutes(redis, createConfig());
+
+			// Set an override first.
+			const set = await authedRegister(app, 'acme.com', { returnPathHost: 'bounce.acme.com' });
+			expect(set.status).toBe(200);
+			dkimStore.clearCache();
+			expect(await dkimStore.getReturnPathHost(redis, 'acme.com')).toBe('bounce.acme.com');
+
+			// Now clear it with an explicit null.
+			const cleared = await authedRegister(app, 'acme.com', { returnPathHost: null });
+			expect(cleared.status).toBe(200);
+			const json = (await cleared.json()) as { returnPathHost?: string };
+			// No host echoed once cleared.
+			expect(json.returnPathHost).toBeUndefined();
+
+			dkimStore.clearCache();
+			expect(await dkimStore.getReturnPathHost(redis, 'acme.com')).toBeNull();
+		});
+
+		it('null on a domain with no override is a harmless no-op (200, still no host)', async () => {
+			const app = createDkimRoutes(redis, createConfig());
+			const res = await authedRegister(app, 'acme.com', { returnPathHost: null });
+			expect(res.status).toBe(200);
+			const json = (await res.json()) as { returnPathHost?: string };
+			expect(json.returnPathHost).toBeUndefined();
+			dkimStore.clearCache();
+			expect(await dkimStore.getReturnPathHost(redis, 'acme.com')).toBeNull();
+		});
+
+		it('a body-less POST (historic call) is treated as "no override", not an error', async () => {
+			const app = createDkimRoutes(redis, createConfig());
+			const res = await authedRegister(app, 'acme.com');
+			expect(res.status).toBe(200);
+			dkimStore.clearCache();
+			expect(await dkimStore.getReturnPathHost(redis, 'acme.com')).toBeNull();
+		});
+
+		it('a malformed JSON body is a 400, not a silent "no override"', async () => {
+			const app = createDkimRoutes(redis, createConfig());
+			const res = await app.request('/acme.com/register', {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${API_KEY}`,
+					'Content-Type': 'application/json',
+				},
+				body: '{ "returnPathHost": "bounce.acme.com"', // truncated / invalid JSON
+			});
+			expect(res.status).toBe(400);
+			const json = (await res.json()) as { error: string };
+			expect(json.error).toMatch(/valid JSON/i);
+
+			// Nothing was registered on the malformed request.
+			dkimStore.clearCache();
+			expect(await dkimStore.hasDkimKey(redis, 'acme.com')).toBe(false);
+		});
+
 		it('requires the master key', async () => {
 			const app = createDkimRoutes(redis, createConfig());
 			const res = await app.request('/acme.com/register', { method: 'POST' });
@@ -359,11 +416,21 @@ describe('D1 — per-domain VERP return-path host', () => {
 			expect(normalizeReturnPathHost('a-b.example.io')).toBe('a-b.example.io');
 		});
 
+		it('accepts punycode / IDN TLDs (must not diverge from the shared validator)', () => {
+			// A host that passes the shared DNS-hostname validator (which D2 uses)
+			// must not 400 here, so an alphabetic-only TLD rule is wrong.
+			expect(normalizeReturnPathHost('bounce.example.xn--p1ai')).toBe('bounce.example.xn--p1ai');
+			expect(normalizeReturnPathHost('mail.xn--80akhbyknj4f')).toBe('mail.xn--80akhbyknj4f');
+			// Digits are allowed inside a TLD label as long as it is not ALL digits.
+			expect(normalizeReturnPathHost('bounce.example.a1')).toBe('bounce.example.a1');
+		});
+
 		it.each([
 			['empty', ''],
 			['whitespace only', '   '],
 			['single label (no TLD)', 'localhost'],
-			['numeric TLD', 'bounce.example.123'],
+			['all-numeric TLD', 'bounce.example.123'],
+			['bare IPv4 literal (all-numeric last label)', '10.0.0.5'],
 			['interior whitespace', 'bounce example.com'],
 			['contains @', 'bounce@acme.com'],
 			['contains a scheme', 'http://bounce.acme.com'],
@@ -381,7 +448,6 @@ describe('D1 — per-domain VERP return-path host', () => {
 			['label over 63 chars', `${'a'.repeat(64)}.com`],
 		])('rejects %s', (_label, value) => {
 			expect(normalizeReturnPathHost(value)).toBeNull();
-			expect(isValidReturnPathHost(value)).toBe(false);
 		});
 
 		it('rejects a host longer than 253 octets', () => {

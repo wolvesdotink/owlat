@@ -149,6 +149,20 @@ export async function setReturnPathHost(
 }
 
 /**
+ * Clear a domain's per-domain VERP return-path host, reverting it to the global
+ * `RETURN_PATH_DOMAIN` fallback (D1). Idempotent: clearing an already-unset
+ * domain is a no-op. Returns whether a value was actually removed.
+ */
+export async function clearReturnPathHost(redis: Redis, domain: string): Promise<boolean> {
+	const removed = await redis.hdel(`${DKIM_PREFIX}${domain}`, RETURN_PATH_FIELD);
+	returnPathCache.delete(domain);
+	if (removed > 0) {
+		logger.info({ domain }, 'Per-domain return-path host cleared');
+	}
+	return removed > 0;
+}
+
+/**
  * Get a domain's per-domain VERP return-path host, or `null` when the domain has
  * no override (legacy registration, or one made without the field). The sender
  * uses `null` as the signal to fall back to the global `RETURN_PATH_DOMAIN`.

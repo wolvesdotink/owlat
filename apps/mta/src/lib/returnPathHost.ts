@@ -23,15 +23,21 @@ const MAX_LABEL_LENGTH = 63;
 
 /**
  * A single DNS label: 1–63 chars of `[a-z0-9-]`, never starting or ending with
- * a hyphen. (Case is normalized to lower-case before this is applied.)
+ * a hyphen. (Case is normalized to lower-case before this is applied.) Interior
+ * hyphens are allowed, including the `xn--` ACE prefix of an IDN/punycode label.
  */
 const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /**
- * The trailing label (TLD) must be alphabetic and at least two chars, so a bare
- * IP address or a single-label host cannot masquerade as a return-path FQDN.
+ * An all-numeric last label. The trailing label (TLD) must NOT be all-digits, so
+ * a bare IPv4 literal (`10.0.0.5`) cannot masquerade as a return-path FQDN. We
+ * deliberately do NOT require the TLD to be purely alphabetic: that would reject
+ * every punycode/IDN TLD (`xn--p1ai`, `xn--80akhbyknj4f`, …). Matching an
+ * all-numeric-last-label rule keeps this in step with the shared DNS-hostname
+ * validator the Convex side (D2) validates against — a host that passes there
+ * must not 400 here.
  */
-const TLD = /^[a-z]{2,}$/;
+const ALL_NUMERIC = /^[0-9]+$/;
 
 /**
  * Validate and normalize a candidate per-domain return-path host.
@@ -62,14 +68,7 @@ export function normalizeReturnPathHost(input: unknown): string | null {
 	}
 
 	const tld = labels[labels.length - 1];
-	if (!tld || !TLD.test(tld)) return null;
+	if (!tld || ALL_NUMERIC.test(tld)) return null;
 
 	return host;
-}
-
-/**
- * Whether a candidate return-path host is a valid DNS FQDN.
- */
-export function isValidReturnPathHost(input: unknown): boolean {
-	return normalizeReturnPathHost(input) !== null;
 }
