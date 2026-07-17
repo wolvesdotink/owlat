@@ -11,7 +11,10 @@
 		"postinstall": "nuxt prepare",
 		"typecheck": "nuxt typecheck",
 		"lint": "oxlint --config ../../oxlintrc.json .",
-		"lint:fix": "oxlint --config ../../oxlintrc.json . --fix"
+		"lint:fix": "oxlint --config ../../oxlintrc.json . --fix",
+		"test": "vitest run --passWithNoTests",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage --passWithNoTests"
 	},
 	"dependencies": {
 		"@nuxtjs/color-mode": "catalog:vue",
@@ -24,7 +27,9 @@
 	},
 	"devDependencies": {
 		"@nuxt/fonts": "catalog:vue",
+		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
+		"vitest": "catalog:",
 		"vue-tsc": "catalog:"
 	}
 }

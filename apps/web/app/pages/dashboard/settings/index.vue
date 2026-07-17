@@ -21,6 +21,9 @@ const { organization, update: updateOrganization } = useOrganization();
 // Theme management
 const { themePreference, setTheme } = useAppTheme();
 
+// Desktop runtime — gates the Desktop App settings card.
+const { isDesktop } = useDesktopContext();
+
 const themeOptions: { value: ThemeOption; label: string; icon: string; description: string }[] = [
 	{
 		value: 'light',
@@ -361,6 +364,18 @@ const settingsSections = computed(() => {
 			href: '/dashboard/settings/account',
 			icon: 'lucide:user-cog',
 		},
+		// Device-scoped desktop app settings — only meaningful inside the Tauri
+		// shell. Lives outside /dashboard so it also works with no workspace.
+		...(isDesktop.value
+			? [
+					{
+						name: 'Desktop App',
+						description: 'Appearance, startup, notifications, and workspaces on this device',
+						href: '/desktop/settings',
+						icon: 'lucide:app-window',
+					},
+				]
+			: []),
 	];
 
 	// Platform-admin-only: Operator Console + System & Updates
