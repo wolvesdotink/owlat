@@ -10,6 +10,7 @@ import * as dkimRotation from '../smtp/dkimRotation.js';
 import type { DkimRotationNotifier } from '../smtp/dkimRotation.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
+import { normalizeReturnPathHost } from '../lib/returnPathHost.js';
 
 export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -67,10 +68,55 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// generation). Idempotent: never clobbers an existing key (e.g. one
 	// pre-seeded from DKIM_KEYS), it returns the existing selector + record.
 	// Use /rotate for deliberate key rotation that replaces the active key.
+	//
+	// Optionally accepts a JSON body `{ returnPathHost?: string }` (D1): a
+	// per-sending-domain VERP return-path / bounce host that overrides the global
+	// `RETURN_PATH_DOMAIN` for THIS domain's outbound MAIL FROM. Backward
+	// compatible in both directions:
+	//   - No body / no field (the historic call, which sends no body at all) →
+	//     the domain keeps whatever return-path config it had (none by default),
+	//     so behaviour is byte-identical to before this field existed.
+	//   - Present but not a valid DNS FQDN → 400, before anything is persisted
+	//     (input is envelope- and DNS-facing, so it is strictly validated).
+	// When a valid host is supplied it is stored EVEN IF the DKIM key already
+	// existed (registration is idempotent for the key, but the return-path host
+	// is an independent, updatable attribute of the domain).
 	app.post('/:domain/register', async (c) => {
-		const domain = c.req.param('domain');
-		const result = await dkimStore.registerDomainKey(redis, domain.toLowerCase());
-		return c.json({ success: true, domain: domain.toLowerCase(), ...result });
+		const domain = c.req.param('domain').toLowerCase();
+
+		// The legacy caller sends no body; tolerate empty/invalid JSON as "no
+		// override" rather than 400ing a request that never carried the field.
+		const body = await c.req
+			.json<{ returnPathHost?: unknown }>()
+			.catch(() => ({}) as { returnPathHost?: unknown });
+
+		let returnPathHost: string | undefined;
+		if (body.returnPathHost !== undefined && body.returnPathHost !== null) {
+			const normalized = normalizeReturnPathHost(body.returnPathHost);
+			if (!normalized) {
+				return c.json(
+					{ error: 'returnPathHost must be a valid DNS hostname (RFC 1123 FQDN)' },
+					400
+				);
+			}
+			returnPathHost = normalized;
+		}
+
+		const result = await dkimStore.registerDomainKey(redis, domain);
+
+		if (returnPathHost) {
+			await dkimStore.setReturnPathHost(redis, domain, returnPathHost);
+		}
+
+		// Echo the resolved return-path host so the caller (D2/Convex) can confirm
+		// what was persisted. Omitted when the domain has no override.
+		const storedReturnPathHost = await dkimStore.getReturnPathHost(redis, domain);
+		return c.json({
+			success: true,
+			domain,
+			...result,
+			...(storedReturnPathHost ? { returnPathHost: storedReturnPathHost } : {}),
+		});
 	});
 
 	// Rotate key.
