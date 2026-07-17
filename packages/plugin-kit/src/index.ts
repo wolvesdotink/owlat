@@ -122,6 +122,21 @@ export type {
 	PluginWebhookEventKind,
 	PluginWebhookEventLocalId,
 } from './webhookEvent';
+export { isSafeInternalNavPath } from './internalPath';
+export { PLUGIN_NAV_ITEM_CAPABILITY, pluginNavItemKind } from './navItem';
+export type {
+	PluginNavItemCapability,
+	PluginNavItemDefinition,
+	PluginNavItemKind,
+	PluginNavItemLocalId,
+} from './navItem';
+export { PLUGIN_SETTINGS_PANEL_CAPABILITY, pluginSettingsPanelKind } from './settingsPanel';
+export type {
+	PluginSettingsPanelCapability,
+	PluginSettingsPanelDefinition,
+	PluginSettingsPanelKind,
+	PluginSettingsPanelLocalId,
+} from './settingsPanel';
 export { PLUGIN_IMPORT_PROVIDER_CAPABILITY, pluginImportProviderKind } from './importProvider';
 export type {
 	PluginImportPageResult,
