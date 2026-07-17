@@ -80,6 +80,33 @@ export async function requireAuthenticatedBundledPlugin(
 }
 
 /**
+ * True iff the plugin's flag is enabled AND the operator has granted this exact
+ * capability AND the manifest declares it. This is the plugin-level, restrict-only
+ * operator ceiling, independent of any session or acting organization — the
+ * connected-app authenticator composes it with the app's own grant so an app can
+ * only ever narrow, never widen, what the operator allowed the plugin.
+ */
+export async function isBundledPluginCapabilityGranted(
+	ctx: QueryCtx | MutationCtx,
+	pluginId: PluginId,
+	capability: PluginCapability
+): Promise<boolean> {
+	let manifest: PluginManifest;
+	try {
+		manifest = getBundledPluginManifest(pluginId);
+	} catch {
+		return false;
+	}
+	if (!manifest.flag || !manifest.capabilities.includes(capability)) return false;
+	const flagKey = `plugin.${pluginId}` as const;
+	const settings = await ctx.db.query('instanceSettings').first();
+	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
+	return (
+		flags[flagKey] === true && settings?.pluginCapabilityGrants?.[flagKey]?.[capability] === true
+	);
+}
+
+/**
  * Background-job authorization for a bundled plugin. This performs every
  * mutable DB check in the caller's transaction and returns null on denial.
  */
