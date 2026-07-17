@@ -68,7 +68,8 @@ async function runPluginCronTick(
 	const registrations = CRON_MODULES.filter(
 		(candidate) => candidate.kind === cronKind && candidate.pluginId === definition.pluginId
 	);
-	if (registrations.length !== 1) return;
+	const [registration] = registrations;
+	if (registrations.length !== 1 || !registration) return;
 
 	let authorized: boolean;
 	try {
@@ -93,7 +94,7 @@ async function runPluginCronTick(
 		return;
 	}
 
-	const module = snapshotCronModule(registrations[0]!.module);
+	const module = snapshotCronModule(registration.module);
 	if (!module) {
 		await recordFailure(ctx, pluginId, cronKind, 'cron_invalid');
 		return;
