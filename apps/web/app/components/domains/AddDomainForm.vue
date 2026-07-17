@@ -1,11 +1,15 @@
 <script setup lang="ts">
 /**
- * Guided Add-Domain form (the body of the "Add Sending Domain" modal).
+ * Guided Add-Domain form — the shared body of BOTH the "Add Sending Domain"
+ * modal and the "Add Tracking Domain" modal. ONE component, parameterized by
+ * props (the `context` discriminator plus copy/behaviour overrides) rather than
+ * forked, so the two flows can't drift.
  *
  * Two fields instead of one free-text box: the registrable **domain** the user
- * manages at their DNS provider, and a free-form **sending subdomain** with
- * quick-pick suggestions. The submitted value is still a single domain string
- * (`mail.example.com`) — no backend change — composed from the two fields.
+ * manages at their DNS provider, and a free-form **subdomain** with quick-pick
+ * suggestions. The submitted value is still a single domain string
+ * (`mail.example.com` / `track.example.com`) — no backend change — composed from
+ * the two fields.
  *
  * Zone math (split / compose / label validation) goes through the shared
  * `@owlat/shared` PSL module so the client and the Convex verifier agree on the
@@ -13,17 +17,57 @@
  * domain into the domain field is reflowed back into domain + subdomain via
  * `trySplitZone`, so `mail.example.co.uk` round-trips to `example.co.uk` + `mail`.
  *
- * D3 will add an "Advanced" return-path section below the subdomain field — it
- * is a sibling addition to this layout, not a rework.
+ * D3 adds an "Advanced" return-path section below the subdomain field — a
+ * sibling addition, and a sending-only concern: gate it on
+ * `context === 'sending'` so the tracking context (which has no return path)
+ * suppresses it.
  */
 import { trySplitZone, isDnsLabel } from '@owlat/shared';
 import { isFreemailDomain, resolveNs } from '~/utils/domainPrecheck';
 import { useFormValidation, rules, type ValidationRule } from '~/composables/useFormValidation';
 
-const props = defineProps<{
-	/** True while the parent's create mutation is in flight. */
-	loading?: boolean;
-}>();
+const props = withDefaults(
+	defineProps<{
+		/** True while the parent's create mutation is in flight. */
+		loading?: boolean;
+		/**
+		 * Which flow this form serves. Drives the live-preview wording (sending
+		 * address vs tracking URL) and is the discriminator D3's return-path
+		 * "Advanced" section gates on (`context === 'sending'`).
+		 */
+		context?: 'sending' | 'tracking';
+		/** Quick-pick subdomain affordances (still free-form; any label is accepted). */
+		suggestions?: readonly string[];
+		/** Initial subdomain value (empty = apex). */
+		defaultSubdomain?: string;
+		/** Subdomain field label + trailing hint + placeholder. */
+		subdomainLabel?: string;
+		subdomainHint?: string;
+		subdomainPlaceholder?: string;
+		/**
+		 * Block freemail / public-mailbox zones the user can't publish DNS for.
+		 * On for sending; the tracking flow leaves it off (parity with the prior
+		 * tracking add form, which never freemail-checked).
+		 */
+		blockFreemail?: boolean;
+		/** Show the apex sending-reputation trade-off note (sending-only copy). */
+		showApexNote?: boolean;
+		/** Submit button label. */
+		submitLabel?: string;
+	}>(),
+	{
+		loading: false,
+		context: 'sending',
+		suggestions: () => ['mail', 'post', 'send'],
+		defaultSubdomain: 'mail',
+		subdomainLabel: 'Subdomain for sending',
+		subdomainHint: '— recommended, keeps your apex reputation separate',
+		subdomainPlaceholder: 'mail',
+		blockFreemail: true,
+		showApexNote: true,
+		submitLabel: 'Add Domain',
+	}
+);
 
 const emit = defineEmits<{
 	/** The composed, normalized single domain string to register. */
@@ -31,15 +75,11 @@ const emit = defineEmits<{
 	cancel: [];
 }>();
 
-// Recommended sending subdomains — affordances, not an enum: the input stays
-// free-form so "I already use mail. for webmail, give me post." is a one-click
-// change and any other label is still accepted.
-const SUBDOMAIN_SUGGESTIONS = ['mail', 'post', 'send'] as const;
-
-// Field state. `sub` defaults to the recommended `mail` (keeps apex reputation
-// separate); clearing it is the first-class "send from the apex" choice.
+// Field state. `sub` defaults to the recommended subdomain (keeps apex
+// reputation separate for sending); clearing it is the first-class "use the
+// apex" choice.
 const domain = ref('');
-const sub = ref('mail');
+const sub = ref(props.defaultSubdomain);
 const nsUnresolved = ref(false);
 
 const normalizedDomain = computed(() => domain.value.trim().toLowerCase());
@@ -60,7 +100,9 @@ const combinedDomain = computed(() => {
 // combined string isn't itself a listed freemail domain. Fall back to the raw
 // combined string while it has no registrable zone yet (mid-typing).
 const registrableZone = computed(() => trySplitZone(combinedDomain.value)?.registrable ?? null);
-const isFreemail = computed(() => isFreemailDomain(registrableZone.value ?? combinedDomain.value));
+const isFreemail = computed(
+	() => props.blockFreemail && isFreemailDomain(registrableZone.value ?? combinedDomain.value)
+);
 
 // A valid domain is one that has a registrable zone; the field also accepts a
 // pasted full domain (`mail.example.com`), which `reflowDomain` normalizes.
@@ -197,16 +239,16 @@ function onSubmit() {
 			<!-- Sending subdomain (free-form, with suggestions) -->
 			<div>
 				<label for="add-domain-sub" class="label">
-					Subdomain for sending
-					<span class="font-normal text-text-tertiary">
-						— recommended, keeps your apex reputation separate</span
+					{{ subdomainLabel }}
+					<span v-if="subdomainHint" class="font-normal text-text-tertiary">
+						{{ subdomainHint }}</span
 					>
 				</label>
 				<input
 					id="add-domain-sub"
 					v-model="sub"
 					type="text"
-					placeholder="mail"
+					:placeholder="subdomainPlaceholder"
 					autocapitalize="off"
 					autocorrect="off"
 					spellcheck="false"
@@ -219,7 +261,7 @@ function onSubmit() {
 				<div class="mt-2 flex flex-wrap items-center gap-2">
 					<span class="text-xs text-text-tertiary">Choose:</span>
 					<button
-						v-for="suggestion in SUBDOMAIN_SUGGESTIONS"
+						v-for="suggestion in suggestions"
 						:key="suggestion"
 						type="button"
 						class="rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors"
@@ -264,13 +306,27 @@ function onSubmit() {
 				class="text-xs text-text-secondary"
 				data-testid="address-preview"
 			>
-				<template v-if="combinedDomain">
-					You'll send as
-					<strong class="text-text-primary">you@{{ combinedDomain }}</strong>
+				<!-- Sending: the address you'll send as. Tracking: the branded host your
+				     links will point at. Both compose from the same two fields via A1. -->
+				<template v-if="context === 'tracking'">
+					<template v-if="combinedDomain">
+						Your tracking links will use
+						<strong class="text-text-primary">{{ combinedDomain }}</strong>
+					</template>
+					<template v-else>
+						For example, your tracking links will use
+						<span class="font-medium text-text-primary">links.example.com</span>
+					</template>
 				</template>
 				<template v-else>
-					For example, you'll send as
-					<span class="font-medium text-text-primary">you@mail.example.com</span>
+					<template v-if="combinedDomain">
+						You'll send as
+						<strong class="text-text-primary">you@{{ combinedDomain }}</strong>
+					</template>
+					<template v-else>
+						For example, you'll send as
+						<span class="font-medium text-text-primary">you@mail.example.com</span>
+					</template>
 				</template>
 			</p>
 
@@ -279,7 +335,7 @@ function onSubmit() {
 			     the trade-off here; the DNS record panel owns the actual merged-record
 			     UI (SPF coexistence), so we don't duplicate it. -->
 			<div
-				v-if="isApex && registrableZone && !isFreemail"
+				v-if="showApexNote && isApex && registrableZone && !isFreemail"
 				class="rounded-lg border border-border-subtle bg-bg-surface p-3"
 				data-testid="apex-note"
 			>
@@ -336,7 +392,7 @@ function onSubmit() {
 			<button type="submit" class="btn btn-primary gap-2" :disabled="loading || isFreemail">
 				<Icon v-if="loading" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
 				<Icon v-else name="lucide:plus" class="w-4 h-4" />
-				{{ loading ? 'Adding...' : 'Add Domain' }}
+				{{ loading ? 'Adding...' : submitLabel }}
 			</button>
 		</div>
 	</form>
