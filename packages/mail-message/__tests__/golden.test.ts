@@ -22,7 +22,7 @@
  */
 
 import { readdirSync } from 'node:fs';
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { dkimVerify } from 'mailauth';
 
 import {
@@ -97,12 +97,11 @@ describe('golden regeneration is deterministic', () => {
 	// The whole gate rests on compose+sign being a pure function of the case; prove
 	// it by regenerating each golden twice and asserting byte identity, so a hidden
 	// clock / RNG dependency (which would make the committed bytes unreproducible)
-	// is caught here rather than as a flaky diff in `goldens:update`.
-	let doubled: boolean;
-	beforeAll(() => {
-		doubled = GOLDEN_CASES.every((c) => buildGolden(c).equals(buildGolden(c)));
-	});
+	// is caught here rather than as a flaky diff in `goldens:update`. Asserted per
+	// case (not folded into one boolean) so a failure names the offending case.
 	it('produces byte-identical output across two runs of every case', () => {
-		expect(doubled).toBe(true);
+		for (const c of GOLDEN_CASES) {
+			expect(buildGolden(c).equals(buildGolden(c)), c.name).toBe(true);
+		}
 	});
 });
