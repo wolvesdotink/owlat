@@ -178,8 +178,18 @@ export const authTables = {
 		keyHash: v.string(),
 		// Prefix of the key for identification (e.g., "lm_live_abc...") - first 8 chars after prefix
 		keyPrefix: v.string(),
-		// Permissions and scope (future use)
+		// Permissions and scope. For a plugin-bound key these are the *requested*
+		// scopes; the *effective* scopes are re-derived on every request as the
+		// intersection with the plugin's declared capabilities and the operator's
+		// grants (see plugins/apiKeyBinding.ts), so a disabled plugin or revoked
+		// grant fails the key closed immediately.
 		scopes: v.optional(v.array(v.string())),
+		// Tier-2 binding: when set, this key belongs to a connected app / bundled
+		// plugin. Its effective scopes are gated by that plugin's manifest and the
+		// operator's capability grants, and it can be revoked in one shot by
+		// pluginId (auth/apiKeys.ts:revokeByPlugin). Absent ⇒ a standalone
+		// operator-managed key whose stored scopes are authoritative.
+		pluginId: v.optional(v.string()),
 		// Usage tracking
 		lastUsedAt: v.optional(v.number()),
 		// Status
@@ -193,7 +203,8 @@ export const authTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_key_hash', ['keyHash'])
-		.index('by_active', ['isActive']),
+		.index('by_active', ['isActive'])
+		.index('by_plugin_id', ['pluginId']),
 
 	// Platform Admins - super-admin accounts for platform-level abuse management
 	platformAdmins: defineTable({

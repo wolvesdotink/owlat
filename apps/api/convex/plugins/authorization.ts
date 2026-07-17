@@ -40,6 +40,33 @@ export function getBundledPluginManifest(pluginId: PluginId): PluginManifest {
 }
 
 /**
+ * The per-request runtime facts a plugin authorization decision reads from the
+ * instance settings singleton: whether the plugin's flag is enabled and the
+ * operator's capability grants for it. Read fresh in the caller's transaction so
+ * disabling the plugin or revoking a grant takes effect immediately. `manifest`
+ * must be the resolved manifest for `pluginId`; a plugin whose manifest declares
+ * no `flag` is never enabled.
+ */
+export interface PluginRuntimeFacts {
+	readonly flagEnabled: boolean;
+	readonly grants: Readonly<Record<string, boolean>> | undefined;
+}
+
+export async function loadPluginRuntimeFacts(
+	ctx: QueryCtx | MutationCtx,
+	pluginId: PluginId,
+	manifest: PluginManifest
+): Promise<PluginRuntimeFacts> {
+	const flagKey = `plugin.${pluginId}` as const;
+	const settings = await ctx.db.query('instanceSettings').first();
+	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
+	return {
+		flagEnabled: manifest.flag !== undefined && flags[flagKey] === true,
+		grants: settings?.pluginCapabilityGrants?.[flagKey],
+	};
+}
+
+/**
  * Resolve scope server-side and recheck the immutable declaration, runtime
  * enablement, and operator grant together in the caller's DB transaction.
  */
@@ -59,14 +86,11 @@ export async function requireAuthenticatedBundledPlugin(
 
 	const manifest = getBundledPluginManifest(pluginId);
 	if (!manifest.flag) throw new PluginAuthorizationError();
-	const flagKey = `plugin.${pluginId}` as const;
-	const settings = await ctx.db.query('instanceSettings').first();
-	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
-	if (flags[flagKey] !== true) throw new PluginAuthorizationError();
+	const { flagEnabled, grants } = await loadPluginRuntimeFacts(ctx, pluginId, manifest);
+	if (!flagEnabled) throw new PluginAuthorizationError();
 	if (
 		capability !== undefined &&
-		(!manifest.capabilities.includes(capability) ||
-			settings?.pluginCapabilityGrants?.[flagKey]?.[capability] !== true)
+		(!manifest.capabilities.includes(capability) || grants?.[capability] !== true)
 	) {
 		throw new PluginAuthorizationError();
 	}
@@ -105,12 +129,10 @@ export async function authorizeSystemBundledPlugin(
 	}
 	if (!manifest.flag || !manifest.capabilities.includes(capability)) return null;
 
-	const flagKey = `plugin.${pluginId}` as const;
-	const settings = await ctx.db.query('instanceSettings').first();
-	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
+	const { flagEnabled, grants } = await loadPluginRuntimeFacts(ctx, pluginId, manifest);
 	if (
-		flags[flagKey] !== true ||
-		settings?.pluginCapabilityGrants?.[flagKey]?.[capability] !== true ||
+		!flagEnabled ||
+		grants?.[capability] !== true ||
 		!(manifest.flag.requiredEnvVars ?? []).every(isEnvPresent)
 	) {
 		return null;
