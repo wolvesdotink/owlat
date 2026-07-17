@@ -24,6 +24,7 @@
 		"@owlat/mail-message": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
+		"@owlat/smtp-listener": "workspace:*",
 		"groupmq": "^1.1.0",
 		"hono": "^4.12.25",
 		"ioredis": "^5.6.0",
