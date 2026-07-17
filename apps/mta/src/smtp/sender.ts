@@ -9,13 +9,7 @@
  */
 
 import type Redis from 'ioredis';
-import {
-	SmtpConnection,
-	sendEnvelope,
-	quit,
-	isSmtpError,
-	type SendResult,
-} from '@owlat/smtp-client';
+import { SmtpConnection, sendEnvelope, isSmtpError, type SendResult } from '@owlat/smtp-client';
 import {
 	composeMessage,
 	signMessage,
@@ -315,21 +309,31 @@ export async function sendToMx(
 		}
 		const { key, config: connectConfig } = acquired;
 
-		let conn: SmtpConnection;
-		try {
-			// Connect → greeting → EHLO → (STARTTLS + re-EHLO). A TLS/handshake/
-			// connection failure throws here, classified from the structured
-			// SmtpError (phase/tlsCause/replyCode) — never a log-string match.
-			conn = await SmtpConnection.connect(connectConfig);
-		} catch (err) {
-			pool.release(key);
-			return classifyFailure(err, mxHost, ctx, daneRequired);
+		// Reuse fast-path (X1 true socket reuse): an idle, RSET-cleaned live socket to
+		// this exact {mx,bindIp,dkim,tlsProfile}. `takeConnection` returns undefined —
+		// cleanly tearing the parked socket down where needed — when none is parked,
+		// when it is over the per-connection / lifetime cap, or when its RSET probe
+		// failed (poisoned). In every such case we open a fresh socket below on the
+		// SAME pooled entry, whose global slot is retained.
+		let conn: SmtpConnection | undefined = await pool.takeConnection(key);
+		if (conn === undefined) {
+			try {
+				// Connect → greeting → EHLO → (STARTTLS + re-EHLO). A TLS/handshake/
+				// connection failure throws here, classified from the structured
+				// SmtpError (phase/tlsCause/replyCode) — never a log-string match.
+				conn = await SmtpConnection.connect(connectConfig);
+			} catch (err) {
+				pool.release(key);
+				return classifyFailure(err, mxHost, ctx, daneRequired);
+			}
 		}
 
 		try {
-			// `secured` reports whether this delivery's connection negotiated TLS
-			// (STARTTLS upgrade). A cleartext delivery to an MX that did not advertise
-			// STARTTLS (opportunistic, requireTLS:false) is NOT a TLS success.
+			// `secured` reports whether this CONNECTION negotiated TLS (STARTTLS
+			// upgrade). It is per-connection: every message carried over a reused
+			// socket is attributed to the same TLS state. A cleartext delivery to an
+			// MX that did not advertise STARTTLS (opportunistic, requireTLS:false) is
+			// NOT a TLS success.
 			const secured = conn.secured;
 
 			const result: SendResult = await sendEnvelope(conn, {
@@ -337,7 +341,6 @@ export async function sendToMx(
 				to: [job.to],
 				data: signedBytes,
 			});
-			await quit(conn);
 
 			// Record the TLS-RPT result for this successful delivery (RFC 8460 §4.3).
 			// Encrypted → 'success'; cleartext → 'starttls-not-supported' (escalated to
@@ -350,6 +353,12 @@ export async function sendToMx(
 			recordTlsResult(redis, recipientDomain, successResultType, mxHost, bindIp, ctx).catch(
 				() => {}
 			);
+
+			// Healthy delivery: park the socket for the next job to reuse across an RSET
+			// boundary (or let the pool cleanly QUIT it at the per-connection / lifetime
+			// cap), then release the entry's in-flight reservation.
+			pool.storeConnection(key, conn);
+			pool.release(key);
 
 			// Parse remote message ID from the final SMTP reply text
 			// Gmail: "250 2.0.0 OK 1234567890 abc123.google.com"
@@ -368,10 +377,11 @@ export async function sendToMx(
 				},
 			};
 		} catch (err) {
-			conn.close();
+			// ANY transport/protocol error poisons this socket — evict the entry,
+			// release its global slot, and never reuse it. The in-flight job retries on
+			// a fresh connection (next MX, or a requeue) exactly once.
+			pool.evictConnection(key, conn);
 			return classifyFailure(err, mxHost, ctx, daneRequired);
-		} finally {
-			pool.release(key);
 		}
 	}
 

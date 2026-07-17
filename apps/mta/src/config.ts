@@ -58,6 +58,8 @@ export interface MtaConfig {
 		maxPerHost: number;
 		idleTimeoutMs: number;
 		maxAgeMs: number;
+		/** Max deliveries over a single reused socket before a clean QUIT+reconnect. */
+		maxMessagesPerConnection?: number;
 	};
 	/** Per-organization send rate limits */
 	orgLimits: {
@@ -448,6 +450,10 @@ export function loadConfig(): MtaConfig {
 			maxPerHost: parseInt(optionalEnv('SMTP_POOL_MAX_PER_HOST', '3'), 10),
 			idleTimeoutMs: parseInt(optionalEnv('SMTP_POOL_IDLE_TIMEOUT_MS', '30000'), 10),
 			maxAgeMs: parseInt(optionalEnv('SMTP_POOL_MAX_AGE_MS', '300000'), 10),
+			maxMessagesPerConnection: parseInt(
+				optionalEnv('SMTP_POOL_MAX_MESSAGES_PER_CONNECTION', '100'),
+				10
+			),
 		},
 		orgLimits: {
 			defaultDailyLimit: parseInt(optionalEnv('ORG_DEFAULT_DAILY_LIMIT', '50000'), 10),
