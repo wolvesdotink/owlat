@@ -1,4 +1,5 @@
 import type { AsyncComponentLoader } from 'vue';
+import type { PluginId } from '@owlat/plugin-kit';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 
 /**
@@ -21,7 +22,7 @@ import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
  * originate in an (untrusted) plugin manifest and must only ever be rendered as
  * text — never `v-html`.
  */
-export type WidgetSource = 'core' | { readonly pluginId: string };
+export type WidgetSource = 'core' | { readonly pluginId: PluginId };
 
 export interface WidgetModule {
 	/** Stable identifier for the widget — the surface addresses widgets by this. */
