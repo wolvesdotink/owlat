@@ -73,7 +73,11 @@ watch(
 );
 
 const isDirty = computed(() => hasPluginSettingsChanges(schema.value, form.value, baseline.value));
+// Both destructive paths (in-form "Reset to defaults" and the orphaned-plugin
+// "Clear residual settings") confirm before invoking reset(), so a single
+// misclick can never wipe stored values, including saved secrets.
 const showResetConfirm = ref(false);
+const showOrphanClearConfirm = ref(false);
 
 async function save() {
 	const missing = missingRequiredPluginSettings(schema.value, form.value, state.value);
@@ -93,6 +97,7 @@ async function save() {
 
 async function reset() {
 	showResetConfirm.value = false;
+	showOrphanClearConfirm.value = false;
 	const res = await resetPluginSettings({ pluginId: pluginId.value });
 	if (res === undefined) return;
 	initializedFor = null;
@@ -118,7 +123,11 @@ async function reset() {
 					:title="`${pluginId} is no longer installed`"
 					description="This plugin was removed from the build but left stored settings behind. Clear them to remove any saved values, including secrets."
 				>
-					<UiButton variant="secondary" :loading="isResetting" @click="reset">
+					<UiButton
+						variant="secondary"
+						:loading="isResetting"
+						@click="showOrphanClearConfirm = true"
+					>
 						Clear residual settings
 					</UiButton>
 				</UiEmptyState>
@@ -260,6 +269,18 @@ async function reset() {
 			cancel-text="Cancel"
 			:is-loading="isResetting"
 			@update:open="(v: boolean) => (showResetConfirm = v)"
+			@confirm="reset"
+		/>
+
+		<UiConfirmationDialog
+			:open="showOrphanClearConfirm"
+			variant="warning"
+			title="Clear residual settings?"
+			description="This permanently removes the stored settings this uninstalled plugin left behind, including any saved secrets. This cannot be undone."
+			confirm-text="Clear settings"
+			cancel-text="Cancel"
+			:is-loading="isResetting"
+			@update:open="(v: boolean) => (showOrphanClearConfirm = v)"
 			@confirm="reset"
 		/>
 	</div>
