@@ -214,4 +214,22 @@ describe('domains are IDN-normalized at composition (W6) — no SMTPUTF8 for a d
 		// addr-spec never trips EAI.
 		expect(headerValue(raw, 'From')).toBe('Soren <soeren@xn--exmple-cua.test>');
 	});
+
+	it('leaves an undecodable non-ASCII domain untouched (URL ToASCII fallback == url.domainToASCII === "")', () => {
+		// U+FDD0 is a noncharacter: IDNA ToASCII fails on it. The WHATWG `URL`
+		// constructor THROWS where `url.domainToASCII` returns `''`; `idnToAscii`
+		// maps both to `''`, and the composer then leaves the raw address in place
+		// (validation rejects such an address upstream). This pins the equivalence
+		// of the import-free `URL` path with the old `node:url` implementation.
+		const { raw } = composeMessage({
+			from: 'user@﷐.test',
+			to: ['a@example.com'],
+			subject: 's',
+			text: 'x',
+			date: new Date('2026-06-21T12:00:00Z'),
+			boundarySeed: 'idn-bad-seed',
+			messageId: '<idn3@example.com>',
+		});
+		expect(headerValue(raw, 'From')).toBe('user@﷐.test');
+	});
 });
