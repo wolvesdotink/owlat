@@ -142,8 +142,7 @@ function automationContributionsFor(
 	spec: AutomationRegistrySpec
 ): readonly RenderedAutomationContribution[] {
 	return plugins.flatMap((plugin) => {
-		const entries = (plugin.manifest.contributes?.[spec.bucket] ??
-			[]) as readonly PluginAutomationContribution[];
+		const entries = plugin.manifest.contributes?.[spec.bucket] ?? [];
 		return entries.map((entry) => ({
 			packageName: parsePluginPackageName(plugin.packageName),
 			pluginId: parsePluginId(plugin.manifest.id),
@@ -207,14 +206,6 @@ function renderAutomationModules(
 		: '';
 	const prologue = spec.useNode ? "'use node';\n\n" : '';
 	return `${prologue}${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const ${spec.modulesConst} = ${modules};\n`;
-}
-
-interface PluginAutomationContribution {
-	readonly id: string;
-	readonly label: string;
-	readonly description: string;
-	readonly icon: string;
-	readonly module: { readonly exportPath: string };
 }
 
 function autonomyGatesFor(plugins: readonly BundledPlugin[]) {
