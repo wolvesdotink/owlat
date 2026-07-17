@@ -92,6 +92,14 @@ export const authTables = {
 		// plugin flag. The host still checks each grant at call time; disabling a
 		// plugin clears its record so re-enabling always requires fresh approval.
 		pluginCapabilityGrants: v.optional(v.record(v.string(), v.record(v.string(), v.boolean()))),
+		// Operator-configured settings values for each bundled plugin, keyed by the
+		// `plugin.<id>` flag key then by the plugin's settings-schema field key.
+		// SECRET-kind field values are stored here server-side and NEVER returned to
+		// the client — the settings overview query redacts them to a presence
+		// boolean. Cleared wholesale when a plugin's settings are reset (or when a
+		// removed plugin's residual config is purged); independent of the capability
+		// grants above. Admin-gated writes via `plugins/settings`.
+		pluginSettings: v.optional(v.record(v.string(), jsonPrimitiveRecord)),
 		// Timestamp of the last successful delivery test send (Settings → Delivery
 		// "Send test email"). Drives the send-path-verified signal on the status
 		// page and onboarding. Unset ⇒ no successful test recorded yet.
