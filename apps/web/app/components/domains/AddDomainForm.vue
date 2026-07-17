@@ -98,6 +98,18 @@ const showAddressPreview = computed(
 	() => !isFreemail.value && !validation.hasError('domain') && !validation.hasError('sub')
 );
 
+// Wire each input to the guidance that describes it, so an AT user hears *what*
+// is wrong / what they'll get — `aria-invalid` alone only says *that* something
+// is wrong. The domain input points at its error (when present) and the preview
+// (when shown); the subdomain input points at its error.
+const domainDescribedBy = computed(() => {
+	const ids: string[] = [];
+	if (domainError.value) ids.push('add-domain-error');
+	if (showAddressPreview.value) ids.push('add-domain-preview');
+	return ids.length > 0 ? ids.join(' ') : undefined;
+});
+const subDescribedBy = computed(() => (subError.value ? 'add-domain-sub-error' : undefined));
+
 // Pasting a full domain into the domain field reflows it into domain +
 // subdomain. Sub labels from the paste WIN over the current subdomain — an
 // explicit paste of `post.example.com` sets the sending subdomain to `post`.
@@ -107,6 +119,14 @@ function reflowDomain() {
 	domain.value = split.registrable;
 	if (split.sub) sub.value = split.sub;
 }
+
+// An NS verdict belongs to the exact zone it was resolved for. Clear the
+// advisory the moment the zone changes, so a live edit can't re-label the old
+// warning with the newly-typed zone before the next blur re-checks it. (The
+// in-flight lookup race is separately guarded by zone inside checkNs.)
+watch(registrableZone, () => {
+	nsUnresolved.value = false;
+});
 
 // Fail-soft NS advisory on the registrable zone (the name that actually
 // delegates NS). Never blocks; a lookup error stays silent.
@@ -166,10 +186,12 @@ function onSubmit() {
 					:class="['input', domainError && 'input-error']"
 					:disabled="loading"
 					:aria-invalid="domainError ? 'true' : undefined"
-					:aria-describedby="showAddressPreview ? 'add-domain-preview' : undefined"
+					:aria-describedby="domainDescribedBy"
 					@blur="handleDomainBlur"
 				/>
-				<p v-if="domainError" class="mt-1 text-xs text-error">{{ domainError }}</p>
+				<p v-if="domainError" id="add-domain-error" class="mt-1 text-xs text-error">
+					{{ domainError }}
+				</p>
 			</div>
 
 			<!-- Sending subdomain (free-form, with suggestions) -->
@@ -191,6 +213,7 @@ function onSubmit() {
 					:class="['input', subError && 'input-error']"
 					:disabled="loading"
 					:aria-invalid="subError ? 'true' : undefined"
+					:aria-describedby="subDescribedBy"
 					@blur="handleSubBlur"
 				/>
 				<div class="mt-2 flex flex-wrap items-center gap-2">
@@ -226,7 +249,9 @@ function onSubmit() {
 						none (use apex)
 					</button>
 				</div>
-				<p v-if="subError" class="mt-1 text-xs text-error">{{ subError }}</p>
+				<p v-if="subError" id="add-domain-sub-error" class="mt-1 text-xs text-error">
+					{{ subError }}
+				</p>
 			</div>
 
 			<!-- Live "you'll send as …" preview. Suppressed on a freemail block or a

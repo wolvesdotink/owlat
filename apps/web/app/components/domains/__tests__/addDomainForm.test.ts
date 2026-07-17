@@ -9,7 +9,7 @@
  * and gates submit.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { mount, flushPromises } from '@vue/test-utils';
 import { splitZone } from '@owlat/shared';
 
 import AddDomainForm from '../AddDomainForm.vue';
@@ -67,6 +67,28 @@ describe('AddDomainForm — compose + preview', () => {
 		await domainInput(w).setValue('example.com');
 		expect(domainInput(w).attributes('aria-describedby')).toBe('add-domain-preview');
 		expect(preview(w).attributes('id')).toBe('add-domain-preview');
+	});
+});
+
+describe('AddDomainForm — error messages bound to their inputs', () => {
+	it('binds the domain error to the domain input via aria-describedby', async () => {
+		const w = mountForm();
+		await w.get('form').trigger('submit'); // empty → required error
+		const err = w.get('#add-domain-error');
+		expect(err.text()).toContain('Enter your domain');
+		// The error is suppressed-with-preview, so describedby names the error id.
+		const describedBy = domainInput(w).attributes('aria-describedby') ?? '';
+		expect(describedBy.split(' ')).toContain('add-domain-error');
+	});
+
+	it('binds the subdomain error to the subdomain input via aria-describedby', async () => {
+		const w = mountForm();
+		await domainInput(w).setValue('example.com');
+		await subInput(w).setValue('not_valid');
+		await subInput(w).trigger('blur');
+		const err = w.get('#add-domain-sub-error');
+		expect(err.text().toLowerCase()).toContain('letters, digits and hyphens');
+		expect(subInput(w).attributes('aria-describedby')).toBe('add-domain-sub-error');
 	});
 });
 
@@ -174,6 +196,27 @@ describe('AddDomainForm — submit', () => {
 		await w.get('form').trigger('submit');
 		expect(w.emitted('submit')).toBeFalsy();
 		expect(w.text().toLowerCase()).toContain('letters, digits and hyphens');
+	});
+});
+
+describe('AddDomainForm — NS advisory', () => {
+	it('clears the stale NS warning the moment the zone changes mid-edit', async () => {
+		// DoH returns NXDOMAIN so the advisory fires for the typo'd zone.
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({ ok: true, json: async () => ({ Status: 3 }) }))
+		);
+		const w = mountForm();
+		await domainInput(w).setValue('exmaple.com'); // typo
+		await domainInput(w).trigger('blur');
+		await flushPromises();
+		const warning = w.find('[data-testid="ns-warning"]');
+		expect(warning.exists()).toBe(true);
+		expect(warning.text()).toContain('exmaple.com');
+		// Editing the domain recomputes the zone — the old verdict must not
+		// re-label onto the new zone before the next blur re-checks it.
+		await domainInput(w).setValue('example.com');
+		expect(w.find('[data-testid="ns-warning"]').exists()).toBe(false);
 	});
 });
 
