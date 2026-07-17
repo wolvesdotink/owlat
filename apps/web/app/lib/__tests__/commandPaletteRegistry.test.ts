@@ -21,6 +21,7 @@ import {
 	activeProviders,
 	collectProviderGroups,
 	resolvePaletteGroups,
+	routePrefixMatcher,
 } from '../commandPaletteRegistry';
 
 function item(id: string, label = id): PaletteItem {
@@ -105,6 +106,23 @@ describe('activeProviders', () => {
 		const isFlagEnabled = vi.fn(() => true);
 		activeProviders([provider({ id: 'x' })], [], { path: '/', isFlagEnabled });
 		expect(isFlagEnabled).not.toHaveBeenCalled();
+	});
+});
+
+describe('routePrefixMatcher', () => {
+	const match = routePrefixMatcher('/dashboard/postbox');
+
+	it('accepts the prefix exactly and any nested child path', () => {
+		expect(match('/dashboard/postbox')).toBe(true);
+		expect(match('/dashboard/postbox/inbox')).toBe(true);
+		expect(match('/dashboard/postbox/search/results')).toBe(true);
+	});
+
+	it('rejects sibling routes that merely share the textual prefix', () => {
+		expect(match('/dashboard/postbox-archive')).toBe(false);
+		expect(match('/dashboard/postboxes')).toBe(false);
+		expect(match('/dashboard/campaigns')).toBe(false);
+		expect(match('/dashboard')).toBe(false);
 	});
 });
 

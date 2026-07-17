@@ -71,6 +71,17 @@ function compareIds(left: string, right: string): number {
 }
 
 /**
+ * Build a `matchRoute` predicate that accepts `prefix` exactly or as a path
+ * segment ancestor (`prefix` followed by `/`), but rejects sibling routes that
+ * merely share a textual prefix. `routePrefixMatcher('/dashboard/postbox')`
+ * accepts `/dashboard/postbox` and `/dashboard/postbox/inbox` but rejects
+ * `/dashboard/postbox-archive`. Pure.
+ */
+export function routePrefixMatcher(prefix: string): (path: string) => boolean {
+	return (path) => path === prefix || path.startsWith(`${prefix}/`);
+}
+
+/**
  * Resolve the ordered set of providers that may contribute this frame, core
  * tier first then external tier, each ordered by `(priority, id)`.
  *

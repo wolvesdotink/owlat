@@ -1,9 +1,24 @@
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { type PaletteGroup, filterItems } from '~/lib/commandPalette';
+import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
 
-/** Priority of the Postbox surface provider — ahead of the global providers. */
-const POSTBOX_PROVIDER_PRIORITY = 15;
+/** Stable registry id (and dedup key) of the Postbox surface provider. */
+export const POSTBOX_COMMAND_PROVIDER_ID = 'surface:postbox';
+
+/**
+ * Orders Postbox only within the external provider tier — core providers are
+ * always consulted first regardless of priority, and the final render position
+ * comes from each group's `order`, not this value. It exists so a future second
+ * external/plugin provider has a defined position relative to Postbox.
+ */
+export const POSTBOX_COMMAND_PROVIDER_PRIORITY = 15;
+
+/**
+ * Route gate for the Postbox provider: the Postbox surface exactly or any nested
+ * child, but not a sibling like `/dashboard/postbox-archive`.
+ */
+export const matchPostboxRoute = routePrefixMatcher('/dashboard/postbox');
 
 /**
  * Registers Postbox as a command-palette provider while its layout is mounted.
@@ -168,9 +183,9 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 	}
 
 	registerCommandPaletteProvider({
-		id: 'surface:postbox',
-		priority: POSTBOX_PROVIDER_PRIORITY,
-		matchRoute: (path) => path.startsWith('/dashboard/postbox'),
+		id: POSTBOX_COMMAND_PROVIDER_ID,
+		priority: POSTBOX_COMMAND_PROVIDER_PRIORITY,
+		matchRoute: matchPostboxRoute,
 		build: ({ query }) =>
 			buildSurfaceGroups().map((group) => ({
 				...group,
