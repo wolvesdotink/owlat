@@ -294,6 +294,8 @@
       "dependencies": {
         "@owlat/email-previewer": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
+        "@owlat/plugin-host": "workspace:*",
+        "@owlat/plugin-kit": "workspace:*",
         "@owlat/shared": "workspace:*",
         "fast-json-patch": "^3.1.1",
       },

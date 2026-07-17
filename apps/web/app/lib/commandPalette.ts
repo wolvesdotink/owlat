@@ -1,16 +1,18 @@
 /**
  * Shared command-palette model + pure helpers for the app-wide `AppCommandPalette`.
  *
- * The palette is assembled from an ordered set of *providers*, each of which
- * contributes one or more grouped `PaletteGroup`s:
+ * The palette is assembled from an ordered set of *providers* (see
+ * `~/lib/commandPaletteRegistry`), each of which contributes one or more grouped
+ * `PaletteGroup`s:
  *   1. current-surface actions (e.g. Postbox reader actions + folders) — only
- *      while that surface is mounted, via `useCommandPaletteSurface`;
+ *      while that surface is mounted and on its route;
  *   2. navigation — every sidebar destination;
  *   3. object search — contacts / templates / campaigns (existing search index);
  *   4. verbs — New campaign, Compose, New contact…
  *
- * The merge/order/cap logic lives here as pure functions so it can be
- * unit-tested without mounting the component (see __tests__/commandPalette.test.ts).
+ * These merge/order/cap helpers live here as pure functions so they can be
+ * unit-tested without mounting the component (see __tests__/commandPalette.test.ts);
+ * the provider gating/dedup rules live alongside in `commandPaletteRegistry.ts`.
  */
 
 /** A single runnable palette entry. `run` fires when the user selects it. */
@@ -104,16 +106,4 @@ export function moveSelection(
 	if (length <= 0) return 0;
 	if (key === 'ArrowDown') return Math.min(current + 1, length - 1);
 	return Math.max(current - 1, 0);
-}
-
-/**
- * Shared registry of the *current doing-surface's* palette groups. A surface
- * (e.g. `PostboxLayout`) writes its groups on mount and clears them on unmount;
- * `AppCommandPalette` reads them reactively and merges them ahead of the global
- * navigation/verb/search providers. Groups carry `run` closures, so writes only
- * ever happen on the client (`onMounted`) — SSR keeps the empty default and
- * never tries to serialize a function. Call from component setup only.
- */
-export function useCommandPaletteSurface() {
-	return useState<PaletteGroup[]>('cmdk:surface-groups', () => []);
 }

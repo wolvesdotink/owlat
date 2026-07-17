@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RENDERABLE_CARD_TYPES } from './cardComponents';
+import { RENDERABLE_CARD_TYPES } from '~/composables/widgets';
 import {
 	type CardSize,
 	type EditableRule,
