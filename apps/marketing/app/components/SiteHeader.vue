@@ -44,6 +44,7 @@ onMounted(() => {
 			<a href="/" class="flex items-center gap-2.5 no-underline">
 				<OwlLogo size="28px" />
 				<span class="text-[0.9375rem] font-semibold tracking-tight text-text-primary">Owlat</span>
+				<UiBadge size="sm">Alpha</UiBadge>
 			</a>
 
 			<!-- Desktop nav — centered -->

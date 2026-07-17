@@ -44,6 +44,17 @@ export function useDesktopNotifications() {
 	const { notifyAbout, badgeNonPeople } = usePostboxSettings();
 	const { showToast } = useToast();
 
+	// Device-scoped gates from /desktop/settings: a global master switch, an
+	// unread-badge toggle, and a per-workspace mute — all layered on top of the
+	// server-side "Notify me about" scope handled in the rules above.
+	const { settings: appSettings, workspaceLocal } = useDesktopAppSettings();
+	const { activeId } = useDesktopWorkspaces();
+	const toastsAllowed = computed(
+		() =>
+			appSettings.value.global.notificationsEnabled &&
+			!(activeId.value ? workspaceLocal(activeId.value).muteNotifications : false)
+	);
+
 	// Route notification clicks / Archive / Mark read actions → focus + triage.
 	onMounted(() => {
 		if (isDesktop.value) void setupNotificationActionRouting(convex);
@@ -127,8 +138,14 @@ export function useDesktopNotifications() {
 			const now = Date.now();
 			try {
 				const notif = await loadDesktopNotifications();
-				await notif.updateUnreadBadge(badgeCount(total, messages, badgeNonPeople.value));
-				if (loadedOnce) await firePlanned(notif, messages, now);
+				// A disabled badge clears to 0 (not "skip the call") so a previously
+				// painted count can't linger on the dock icon.
+				await notif.updateUnreadBadge(
+					appSettings.value.global.showUnreadBadge
+						? badgeCount(total, messages, badgeNonPeople.value)
+						: 0
+				);
+				if (loadedOnce && toastsAllowed.value) await firePlanned(notif, messages, now);
 			} catch {
 				// Tauri modules unavailable — running in the browser.
 			}
@@ -138,6 +155,27 @@ export function useDesktopNotifications() {
 		{ immediate: true, deep: true }
 	);
 
+	// Repaint the badge when its toggle changes — the data watch above only
+	// fires on unread changes, which could leave a stale count (or a stale
+	// blank) on the dock icon until the next arrival.
+	watch(
+		() => appSettings.value.global.showUnreadBadge,
+		async (show) => {
+			if (!isDesktop.value) return;
+			const data = unreadData.value;
+			try {
+				const notif = await loadDesktopNotifications();
+				await notif.updateUnreadBadge(
+					show && data
+						? badgeCount(data.total, data.messages as UnreadPeekMessage[], badgeNonPeople.value)
+						: 0
+				);
+			} catch {
+				// Tauri modules unavailable.
+			}
+		}
+	);
+
 	watch(
 		() => inboundStats.value,
 		async (stats) => {
@@ -145,7 +183,11 @@ export function useDesktopNotifications() {
 			const reviewQueue = (stats as { draftReady?: number }).draftReady ?? 0;
 			try {
 				const { sendDesktopNotification } = await loadDesktopNotifications();
-				if (previousReviewQueue.value !== null && reviewQueue > previousReviewQueue.value) {
+				if (
+					toastsAllowed.value &&
+					previousReviewQueue.value !== null &&
+					reviewQueue > previousReviewQueue.value
+				) {
 					const delta = reviewQueue - previousReviewQueue.value;
 					await sendDesktopNotification(
 						'Drafts ready for review',
@@ -184,9 +226,11 @@ export function useDesktopNotifications() {
 			}
 			if (plans.length === 0) return;
 
-			// Desktop notifications honor the user's notify scope: 'nothing' mutes
-			// them (the in-app toast still shows — it's a foreground signal).
-			const notifyDesktop = isDesktop.value && notifyAbout.value !== 'nothing';
+			// Desktop notifications honor the user's notify scope ('nothing' mutes
+			// them) AND the device-scoped toggles (global switch + workspace mute).
+			// The in-app toast still shows either way — it's a foreground signal.
+			const notifyDesktop =
+				isDesktop.value && notifyAbout.value !== 'nothing' && toastsAllowed.value;
 			let notif: DesktopNotif | null = null;
 			if (notifyDesktop) {
 				try {

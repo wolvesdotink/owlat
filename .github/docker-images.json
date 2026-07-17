@@ -1,0 +1,12 @@
+[
+	{ "name": "web", "dockerfile": "apps/web/Dockerfile", "context": ".", "package": "@owlat/web" },
+	{ "name": "docs", "dockerfile": "apps/docs/Dockerfile", "context": ".", "package": "@owlat/docs" },
+	{ "name": "marketing", "dockerfile": "apps/marketing/Dockerfile", "context": ".", "package": "@owlat/marketing" },
+	{ "name": "mta", "dockerfile": "apps/mta/Dockerfile", "context": ".", "package": "@owlat/mta" },
+	{ "name": "updater", "dockerfile": "apps/updater/Dockerfile", "context": ".", "package": "@owlat/updater" },
+	{ "name": "convex-deploy", "dockerfile": "docker/convex-deploy.Dockerfile", "context": ".", "package": "@owlat/api" },
+	{ "name": "imap", "dockerfile": "apps/imap/Dockerfile", "context": ".", "package": "@owlat/imap" },
+	{ "name": "mail-sync", "dockerfile": "apps/mail-sync/Dockerfile", "context": ".", "package": "@owlat/mail-sync" },
+	{ "name": "code-worker", "dockerfile": "apps/code-worker/Dockerfile", "context": ".", "package": "@owlat/code-worker" },
+	{ "name": "setup", "dockerfile": "apps/setup-cli/Dockerfile", "context": ".", "package": "@owlat/setup-cli" }
+]

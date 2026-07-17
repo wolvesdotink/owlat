@@ -1,6 +1,6 @@
 {
 	"name": "owlat",
-	"version": "0.2.1",
+	"version": "0.3.3",
 	"private": true,
 	"description": "Owlat — self-hosted, modular email platform: marketing campaigns, team inbox, personal mailbox, and an AI agent, gated by a single feature-flag system.",
 	"keywords": [
@@ -96,6 +96,7 @@
 		"ci:lint": "bun run plugins:check && turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:plugin-imports",
 		"ci:typecheck": "turbo typecheck --filter='!@owlat/desktop'",
 		"ci:test": "turbo test --filter='!@owlat/desktop'",
+		"ci:test:coverage": "turbo test:coverage --filter='!@owlat/desktop'",
 		"ci:verify": "bun run plugins:test-api-graph && bun run plugins:check && turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:plugin-imports",
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",

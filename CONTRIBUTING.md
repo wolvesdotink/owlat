@@ -41,14 +41,24 @@ cd packages/email-renderer && npx vitest run
 cd packages/email-builder && npx vitest run
 cd packages/sdk-js && npx vitest run
 
-# Run all tests via Turbo
+# Run all tests via Turbo (result-cached; unchanged packages replay instantly)
 bun run ci:test
 ```
 
-The `ci:*` scripts run over every workspace except `docs` (Nuxt Content site)
-and `desktop` (built by its own Rust/Tauri workflow). They use a negative
-`--filter` so a newly-added package is picked up automatically — there is no
-per-workspace list to keep in sync.
+The `ci:*` scripts run over every workspace except `desktop` (built by its own
+Rust/Tauri workflow). They use a negative `--filter` so a newly-added package is
+picked up automatically — there is no per-workspace list to keep in sync.
+
+`turbo test` is dependency-aware via the `transit` node in `turbo.json`: a change
+in `packages/shared` re-runs only the packages that depend on it, and everything
+else replays from cache. Inside a single package, narrow further with vitest's
+own change detection:
+
+```bash
+cd apps/api
+npx vitest --changed              # only tests affected by uncommitted changes
+npx vitest related path/to/file.ts  # only tests that import the given file
+```
 
 ## Backend conventions
 
@@ -133,9 +143,14 @@ Write clear, concise commit messages. Use imperative mood ("Add feature" not "Ad
 
 Every PR runs these GitHub Actions:
 
-- **test.yml** — runs `vitest` (with coverage) per workspace across the full
-  matrix of tested packages, plus a combined **Lint & Typecheck** job
-  (`bun run ci:lint` + `bun run ci:typecheck`) and a **Docker Build** job.
+- **test.yml** — a `detect` job asks Turborepo which workspaces a PR affects
+  (`scripts/ci-select-affected.sh`) and feeds a dynamic matrix, so only the
+  changed packages run `vitest` (with coverage); `apps/api` is sharded ×3 and
+  merged. Docker images build only when affected. Pushes, the nightly schedule
+  and manual dispatch run the full set as a safety valve. A **Test Summary** job
+  aggregates the result — point branch protection at it, since individual matrix
+  jobs are skipped when unaffected. Also includes a **Lint & Typecheck** job
+  (`bun run ci:lint` + `bun run ci:typecheck`).
 - **security.yml** — dependency audit (fails on High/Critical) + Semgrep SAST.
 - **desktop-ci.yml** — Rust build/test + TS-bridge typecheck and tests (only
   when `apps/desktop/**` changes).

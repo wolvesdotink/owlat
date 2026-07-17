@@ -1,13 +1,19 @@
 name: E2E
 
-# Playwright e2e runs nightly + on manual dispatch, NOT on every PR: it needs the
-# CONVEX_TEST_URL secrets and a full browser install, so it executes out-of-band
-# where a failure (or unset secret) can't block PR merges. The job skips cleanly
-# when the test-deployment secret isn't configured.
+# Playwright e2e runs nightly, on merges to main that touch apps/web, and on
+# manual dispatch — NOT on every PR: it needs the CONVEX_TEST_URL secrets and a
+# full browser install, so it executes out-of-band where a failure (or unset
+# secret) can't block PR merges. The job skips cleanly when the test-deployment
+# secret isn't configured. The push-to-main trigger surfaces web regressions
+# within hours instead of waiting for the 04:00 UTC run.
 
 on:
   schedule:
     - cron: "0 4 * * *" # nightly 04:00 UTC
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
   workflow_dispatch: {}
 
 concurrency:
@@ -23,7 +29,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: "1.3.1"
+          bun-version: "1.3.11"
 
       - name: Check test deployment is configured
         id: secrets

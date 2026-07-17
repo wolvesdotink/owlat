@@ -97,7 +97,7 @@ function openForYou(): void {
 		:class="isMac ? 'pl-[88px] pr-2.5' : 'pl-2.5'"
 	>
 		<!-- LEFT — workspace chip / switcher (draggable gaps around it). -->
-		<div class="relative flex items-center min-w-0" data-tauri-drag-region>
+		<div class="relative flex items-center gap-2 min-w-0" data-tauri-drag-region>
 			<DesktopWorkspaceMenu v-if="active" />
 
 			<!-- Fallback label when no workspace is connected yet. -->
@@ -110,6 +110,8 @@ function openForYou(): void {
 					Owlat
 				</span>
 			</div>
+
+			<UiBadge size="sm" data-tauri-drag-region>Alpha</UiBadge>
 		</div>
 
 		<!-- CENTER — search pill (absolutely centered so side padding never skews it).

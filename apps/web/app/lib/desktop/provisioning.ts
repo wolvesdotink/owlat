@@ -4,14 +4,19 @@
  * Pure, framework-free building blocks the wizard composable orchestrates:
  *  - the canonical, ordered timeline (desktop SSH steps + the server-side steps
  *    that arrive as `@@OWLAT_PROGRESS@@` NDJSON from the installer);
- *  - the remote command strings driven over SSH;
  *  - `applyStepEvent`, which folds a parsed progress event into the timeline.
+ *
+ * The command strings driven over SSH live in `provisioningCommands.ts`.
  *
  * Keeping this here (no Vue, no Tauri) means the whole orchestration is unit
  * testable with a fake transport and scripted events — the SSH path itself can
  * only be exercised against a real server.
  */
 import { SetupStep, type ProgressStepEvent } from '@owlat/shared/setupProgress';
+import type { InstallSource } from './provisioningCommands';
+
+// Split to stay under the file-size cap; consumers keep importing from here.
+export * from './provisioningCommands';
 
 // ---- transport (implemented by the native bridge, faked in tests) ----------
 
@@ -48,7 +53,7 @@ export interface ProvisionTransport {
 		args: string[],
 		cwd: string,
 		env: Record<string, string>,
-		onEvent: (e: ExecEvent) => void,
+		onEvent: (e: ExecEvent) => void
 	): Promise<number>;
 	disconnect(sessionId: string): Promise<void>;
 }
@@ -87,7 +92,13 @@ export interface SetupConfigInput {
 		| { provider: 'openrouter'; apiKey: string }
 		| { provider: 'openai'; apiKey: string }
 		| { provider: 'ollama' }
-		| { provider: 'custom'; baseUrl: string; apiKey: string; modelFast: string; modelCapable: string };
+		| {
+				provider: 'custom';
+				baseUrl: string;
+				apiKey: string;
+				modelFast: string;
+				modelCapable: string;
+		  };
 	integrations?: { googleSafeBrowsingKey?: string; posthog?: { host: string; apiKey: string } };
 	admin: { email: string; name: string; password: string };
 	domain?: { ehloHostname: string; bounceDomain: string };
@@ -124,7 +135,10 @@ export interface InstanceHostnames {
 
 /** Strip scheme/trailing slashes from a user-typed apex domain. */
 export function normalizeDomain(input: string): string {
-	return input.trim().replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+	return input
+		.trim()
+		.replace(/^https?:\/\//i, '')
+		.replace(/\/+$/, '');
 }
 
 /** Expand an apex domain (`wolves.ink`) into every owlat hostname. */
@@ -141,7 +155,7 @@ export function deriveHostnames(domain: string): InstanceHostnames {
 
 /** Public HTTPS URLs from explicit hostnames (which may be user-overridden). */
 export function networkUrlsFromHosts(
-	h: Pick<InstanceHostnames, 'site' | 'convex' | 'convexSite'>,
+	h: Pick<InstanceHostnames, 'site' | 'convex' | 'convexSite'>
 ): { siteUrl: string; convexUrl: string; convexSiteUrl: string } {
 	return {
 		siteUrl: `https://${h.site}`,
@@ -156,7 +170,11 @@ export function networkUrlsFromHosts(
  * `tls` profile). The operator must point those DNS records at the server and
  * open 80/443 for TLS to be issued.
  */
-export function deriveNetworkUrls(domain: string): { siteUrl: string; convexUrl: string; convexSiteUrl: string } {
+export function deriveNetworkUrls(domain: string): {
+	siteUrl: string;
+	convexUrl: string;
+	convexSiteUrl: string;
+} {
 	return networkUrlsFromHosts(deriveHostnames(domain));
 }
 
@@ -191,7 +209,10 @@ export function isLoopbackUrl(url: string | null | undefined): boolean {
  * confirmed reachable (DNS resolved + TLS issued). Guards the "success before
  * usable" trap, where the installer finishes before the public URL works.
  */
-export function canOpenWorkspaceUrl(siteUrl: string | null | undefined, reachable: boolean): boolean {
+export function canOpenWorkspaceUrl(
+	siteUrl: string | null | undefined,
+	reachable: boolean
+): boolean {
 	if (!siteUrl) return false;
 	if (isLoopbackUrl(siteUrl)) return false;
 	return reachable;
@@ -297,10 +318,27 @@ export function createTimeline(source: InstallSource = 'git'): TimelineStep[] {
 	const inserted: TimelineStep[] =
 		source === 'local-push'
 			? [
-					{ id: 'build-images-local', title: 'Build images on this machine', group: 'connect', state: 'pending' },
-					{ id: 'push-images', title: 'Upload images to the server', group: 'connect', state: 'pending' },
+					{
+						id: 'build-images-local',
+						title: 'Build images on this machine',
+						group: 'connect',
+						state: 'pending',
+					},
+					{
+						id: 'push-images',
+						title: 'Upload images to the server',
+						group: 'connect',
+						state: 'pending',
+					},
 				]
-			: [{ id: 'build-setup-image', title: 'Build the setup image', group: 'connect', state: 'pending' }];
+			: [
+					{
+						id: 'build-setup-image',
+						title: 'Build the setup image',
+						group: 'connect',
+						state: 'pending',
+					},
+				];
 	steps.splice(at, 0, ...inserted);
 	return steps;
 }
@@ -321,176 +359,14 @@ export function applyStepEvent(steps: TimelineStep[], ev: ProgressStepEvent): vo
 }
 
 /** Mark a desktop-driven (non-NDJSON) step. */
-export function setStepState(steps: TimelineStep[], id: string, state: StepState, detail?: string): void {
+export function setStepState(
+	steps: TimelineStep[],
+	id: string,
+	state: StepState,
+	detail?: string
+): void {
 	const step = steps.find((s) => s.id === id);
 	if (!step) return;
 	step.state = state;
 	if (detail !== undefined) step.detail = detail;
-}
-
-// ---- remote commands -------------------------------------------------------
-
-export interface RemoteOptions {
-	/** Install directory on the server (default /opt/owlat). */
-	installDir: string;
-	/** Git remote to clone from. */
-	repo: string;
-	/** Branch to install. */
-	branch: string;
-	/**
-	 * Local-source dev mode: absolute path to the monorepo root on THIS machine.
-	 * When set, the working tree is uploaded over SSH instead of git-cloned, and
-	 * the Owlat images come from that source (the `dev` tag sentinel from
-	 * docker-compose.yml) — no published repo/registry needed.
-	 */
-	localSource?: string;
-	/**
-	 * With `localSource`: build the images on THIS machine (targeting the
-	 * server's architecture) and stream them over SSH instead of building on
-	 * the server — for servers without the RAM/CPU for a Nuxt build.
-	 */
-	localImages?: boolean;
-}
-
-/** How the install source reaches the server (derived from RemoteOptions). */
-export type InstallSource = 'git' | 'local-build' | 'local-push';
-
-export function installSource(o: RemoteOptions): InstallSource {
-	if (!o.localSource) return 'git';
-	return o.localImages ? 'local-push' : 'local-build';
-}
-
-export const DEFAULT_REMOTE: RemoteOptions = {
-	installDir: '/opt/owlat',
-	repo: 'https://github.com/wolvesdotink/owlat.git',
-	branch: 'main',
-};
-
-/** Host path the generated config is uploaded to (inside the install dir). */
-export function setupConfigPath(installDir: string): string {
-	return `${installDir}/.owlat-setup.json`;
-}
-
-/**
- * Path the config resolves to INSIDE the setup container. `scripts/owlat` always
- * mounts the install dir at `/opt/owlat` (and sets `OWLAT_DIR=/opt/owlat`), so
- * the container sees the uploaded file here regardless of the host install dir.
- */
-export const CONTAINER_CONFIG_PATH = '/opt/owlat/.owlat-setup.json';
-
-/** Probe the server: OS, arch, docker presence, compose v2. Output parsed for `docker=no` / `arch=`. */
-export function systemCheckCommand(): string {
-	return [
-		'echo "os=$(uname -s)"',
-		'echo "arch=$(uname -m)"',
-		'if command -v docker >/dev/null 2>&1; then echo docker=yes; else echo docker=no; fi',
-		'if docker compose version >/dev/null 2>&1; then echo compose=yes; else echo compose=no; fi',
-	].join('; ');
-}
-
-/** Map `uname -m` output to a Docker platform string. */
-export function dockerPlatform(unameArch: string): string {
-	const a = unameArch.trim();
-	if (a === 'aarch64' || a === 'arm64') return 'linux/arm64';
-	return 'linux/amd64';
-}
-
-/** Install Docker via the official convenience script (idempotent). */
-export function installDockerCommand(): string {
-	return 'if command -v docker >/dev/null 2>&1; then echo "docker already present"; else curl -fsSL https://get.docker.com | sudo sh; fi';
-}
-
-/**
- * Local-source installs build everything on the server under the `dev` tag —
- * docker-compose.yml's documented "local build, never pushed" sentinel — so
- * `image:` interpolation resolves to the locally built images instead of
- * pulling `:latest` from GHCR.
- */
-export const LOCAL_VERSION_TAG = 'dev';
-export const LOCAL_SETUP_IMAGE = `ghcr.io/wolvesdotink/setup:${LOCAL_VERSION_TAG}`;
-
-/** Create the install dir (root-owned path like /opt) and hand it to the SSH user. */
-export function prepareInstallDirCommand(o: RemoteOptions): string {
-	return `sudo mkdir -p '${o.installDir}' && sudo chown "$(id -u):$(id -g)" '${o.installDir}'`;
-}
-
-/** Clone (or fast-forward) the Owlat repo into the install dir. */
-export function fetchOwlatCommand(o: RemoteOptions): string {
-	const d = o.installDir;
-	return [
-		'set -e',
-		`if [ -d '${d}/.git' ]; then`,
-		`  cd '${d}' && git fetch --depth 1 origin '${o.branch}' && git reset --hard 'origin/${o.branch}'`,
-		'else',
-		`  ${prepareInstallDirCommand(o)}`,
-		`  && git clone --depth 1 --branch '${o.branch}' '${o.repo}' '${d}'`,
-		'fi',
-	].join('\n');
-}
-
-/** Build the setup-cli image from the uploaded source (local-source mode). */
-export function buildSetupImageCommand(o: RemoteOptions): string {
-	return `cd '${o.installDir}' && docker build -f apps/setup-cli/Dockerfile -t '${LOCAL_SETUP_IMAGE}' .`;
-}
-
-/** Every image the stack needs under the `dev` tag (push-images mode). */
-export const DEV_IMAGES = [
-	`ghcr.io/wolvesdotink/web:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/mta:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/updater:${LOCAL_VERSION_TAG}`,
-	`ghcr.io/wolvesdotink/convex-deploy:${LOCAL_VERSION_TAG}`,
-	`owlat-code-worker:${LOCAL_VERSION_TAG}`,
-	LOCAL_SETUP_IMAGE,
-] as const;
-
-/**
- * Local `docker compose build` invocation (push-images mode), targeting the
- * server's platform. All profiles so every buildable service is covered;
- * `INSTANCE_SECRET` only silences compose interpolation warnings.
- */
-export function localBuildInvocation(platform: string): {
-	program: string;
-	args: string[];
-	env: Record<string, string>;
-} {
-	return {
-		program: 'docker',
-		args: ['compose', '--profile', 'deploy', '--profile', 'ai', 'build', 'web', 'mta', 'updater', 'convex-deploy', 'code-worker'],
-		env: {
-			OWLAT_VERSION: LOCAL_VERSION_TAG,
-			DOCKER_DEFAULT_PLATFORM: platform,
-			INSTANCE_SECRET: 'build-only',
-		},
-	};
-}
-
-/** Local build of the setup-cli image (push-images mode). */
-export function localSetupImageInvocation(platform: string): {
-	program: string;
-	args: string[];
-	env: Record<string, string>;
-} {
-	return {
-		program: 'docker',
-		args: ['build', '--platform', platform, '-f', 'apps/setup-cli/Dockerfile', '-t', LOCAL_SETUP_IMAGE, '.'],
-		env: {},
-	};
-}
-
-/**
- * Drive the existing installer non-interactively with machine-readable progress.
- * `scripts/owlat` forwards `OWLAT_PROGRESS` + `--config` into the setup container.
- * Local-source modes pin the `dev` setup image and tell quickstart either to
- * `docker compose --build` from source (`OWLAT_BUILD_LOCAL`) or to use the
- * pre-pushed `dev` images as-is (`OWLAT_LOCAL_IMAGES`).
- */
-export function installerCommand(o: RemoteOptions): string {
-	const source = installSource(o);
-	const localEnv =
-		source === 'git'
-			? ''
-			: `OWLAT_VERSION=${LOCAL_VERSION_TAG} OWLAT_SETUP_IMAGE='${LOCAL_SETUP_IMAGE}' ${
-					source === 'local-push' ? 'OWLAT_LOCAL_IMAGES=1' : 'OWLAT_BUILD_LOCAL=1'
-				} `;
-	return `cd '${o.installDir}' && ${localEnv}OWLAT_PROGRESS=json OWLAT_ASSUME_YES=1 ./scripts/owlat quickstart --terminal --config '${CONTAINER_CONFIG_PATH}'`;
 }
