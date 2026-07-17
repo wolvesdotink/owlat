@@ -232,7 +232,8 @@ export function validateSubdomainLabels(
 		const value = labels[key].trim();
 		const prior = seen.get(value);
 		if (prior) {
-			errors[key] = `Same as the "${subdomainFieldLabel(prior)}" label — each hostname needs a distinct label.`;
+			errors[key] =
+				`Same as the "${subdomainFieldLabel(prior)}" label — each hostname needs a distinct label.`;
 		} else {
 			seen.set(value, key);
 		}
@@ -247,7 +248,10 @@ export function validateSubdomainLabels(
  * hostnames — the wizard's DNS instructions, generated config and network URLs
  * all flow from here, so an override cannot drift between them.
  */
-export function deriveHostnames(domain: string, overrides: Partial<SubdomainLabels> = {}): InstanceHostnames {
+export function deriveHostnames(
+	domain: string,
+	overrides: Partial<SubdomainLabels> = {}
+): InstanceHostnames {
 	const d = normalizeDomain(domain);
 	const l: SubdomainLabels = { ...SUBDOMAINS };
 	for (const key of SUBDOMAIN_KEYS) {

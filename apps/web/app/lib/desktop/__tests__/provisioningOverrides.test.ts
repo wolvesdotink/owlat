@@ -98,18 +98,36 @@ describe('self-host wizard hostname overrides', () => {
 			expect(names).toContain('http.sync.wolves.ink');
 			expect(names).toContain('smtp.wolves.ink');
 			// The bounce host carries the MX/SPF; DMARC hangs off `_dmarc.<bounce>`.
-			expect(rows.some((r) => r.name === 'return.wolves.ink' && r.type === 'MX' && r.value === 'smtp.wolves.ink')).toBe(true);
-			expect(rows.some((r) => r.name === 'return.wolves.ink' && r.type === 'TXT' && r.value.includes('a:smtp.wolves.ink'))).toBe(true);
+			expect(
+				rows.some(
+					(r) => r.name === 'return.wolves.ink' && r.type === 'MX' && r.value === 'smtp.wolves.ink'
+				)
+			).toBe(true);
+			expect(
+				rows.some(
+					(r) =>
+						r.name === 'return.wolves.ink' &&
+						r.type === 'TXT' &&
+						r.value.includes('a:smtp.wolves.ink')
+				)
+			).toBe(true);
 			expect(rows.some((r) => r.name === '_dmarc.return.wolves.ink')).toBe(true);
 
 			// None of the original default hostnames leak through once overridden.
-			for (const leaked of ['owlat.wolves.ink', 'api.wolves.ink', 'mail.wolves.ink', 'bounce.wolves.ink']) {
+			for (const leaked of [
+				'owlat.wolves.ink',
+				'api.wolves.ink',
+				'mail.wolves.ink',
+				'bounce.wolves.ink',
+			]) {
 				expect(rows.some((r) => r.name === leaked || r.value === leaked)).toBe(false);
 			}
 		});
 
 		it('dotted (`rest.api`-style) overrides expand as multi-label prefixes', () => {
-			expect(deriveHostnames('x.io', { convexSite: 'edge.http' }).convexSite).toBe('edge.http.x.io');
+			expect(deriveHostnames('x.io', { convexSite: 'edge.http' }).convexSite).toBe(
+				'edge.http.x.io'
+			);
 		});
 	});
 
@@ -175,7 +193,13 @@ describe('self-host wizard hostname overrides', () => {
 
 		it('distinct labels validate cleanly', () => {
 			const result = validateSubdomainLabels(
-				withOverrides({ site: 'app', convex: 'sync', convexSite: 'http.sync', mail: 'smtp', bounce: 'return' }),
+				withOverrides({
+					site: 'app',
+					convex: 'sync',
+					convexSite: 'http.sync',
+					mail: 'smtp',
+					bounce: 'return',
+				})
 			);
 			expect(result).toEqual({ ok: true, errors: {} });
 		});
