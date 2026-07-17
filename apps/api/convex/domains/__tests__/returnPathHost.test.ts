@@ -103,8 +103,10 @@ vi.mock('node:dns/promises', () => ({
 // Vite's `import.meta.glob` omits the directory chain it climbed to reach the
 // base, so `'../../**'` from `domains/__tests__` skips the sibling `domains/*`
 // modules under test. Merge a `domains/`-rooted glob, re-prefixed to the same
-// form, so convex-test resolves every module. Exclude the 'use node' register
-// action (needs MTA creds); we assert its scheduling via `_scheduled_functions`.
+// form, so convex-test resolves every module. `providers/registerAction` is
+// INCLUDED here (unlike the shared lifecycle suite) because this gate drives its
+// `pushReturnPathHost` action directly — the MTA HTTP client is stubbed so no
+// creds/network are needed.
 const rootGlob = import.meta.glob('../../**/*.*s');
 const domainsGlob = Object.fromEntries(
 	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
@@ -112,11 +114,7 @@ const domainsGlob = Object.fromEntries(
 		mod,
 	])
 );
-const modules = Object.fromEntries(
-	Object.entries({ ...rootGlob, ...domainsGlob }).filter(
-		([path]) => !path.includes('providers/registerAction')
-	)
-);
+const modules = { ...rootGlob, ...domainsGlob };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -424,5 +422,136 @@ describe('domains.setReturnPathHost — authorization', () => {
 				returnPathHost: 'nope; drop table',
 			})
 		).rejects.toThrow(/Invalid return-path host/i);
+	});
+});
+
+// ─── 5. pushReturnPathHost action — failure paths & recovery ──────────────────
+
+describe('pushReturnPathHost — MTA reflection with bounded retry', () => {
+	async function scheduledPushes(t: ReturnType<typeof convexTest>) {
+		return await t.run(async (ctx) => {
+			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
+			return jobs.filter((j) => j.name.includes('pushReturnPathHost'));
+		});
+	}
+
+	it('on success clears a prior sync-failure marker and pushes the host to the MTA', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedMtaDomain(t, {
+			returnPathHost: 'bounce.acme.com',
+			returnPathHostSyncError: 'previous failure',
+		});
+
+		await t.action(internal.domains.providers.registerAction.pushReturnPathHost, {
+			domainId,
+			returnPathHost: 'bounce.acme.com',
+			attempt: 0,
+		});
+
+		expect(registerDomainMock).toHaveBeenCalledWith('acme.com', 'bounce.acme.com');
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.get(domainId);
+			expect(domain!.returnPathHostSyncError).toBeUndefined();
+		});
+	});
+
+	it('on a transient MTA failure reschedules the next attempt (no marker yet)', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedMtaDomain(t, { returnPathHost: 'bounce.acme.com' });
+		registerDomainMock.mockRejectedValue(new Error('MTA 503'));
+
+		await t.action(internal.domains.providers.registerAction.pushReturnPathHost, {
+			domainId,
+			returnPathHost: 'bounce.acme.com',
+			attempt: 0,
+		});
+
+		const pushes = await scheduledPushes(t);
+		expect(pushes).toHaveLength(1);
+		expect(pushes[0]!.args[0]).toMatchObject({ returnPathHost: 'bounce.acme.com', attempt: 1 });
+
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.get(domainId);
+			// Not yet a permanent failure — no marker while retries remain.
+			expect(domain!.returnPathHostSyncError).toBeUndefined();
+		});
+	});
+
+	it('on the final attempt sets the sync-failure marker and audits the give-up (no further retry)', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedMtaDomain(t, { returnPathHost: 'bounce.acme.com' });
+		registerDomainMock.mockRejectedValue(new Error('MTA down'));
+
+		// attempt 4 → nextAttempt 5 === MAX_ATTEMPTS → give up.
+		await t.action(internal.domains.providers.registerAction.pushReturnPathHost, {
+			domainId,
+			returnPathHost: 'bounce.acme.com',
+			attempt: 4,
+		});
+
+		expect(await scheduledPushes(t)).toHaveLength(0);
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.get(domainId);
+			expect(domain!.returnPathHostSyncError).toContain('MTA down');
+
+			const audits = await ctx.db
+				.query('auditLogs')
+				.filter((q) => q.eq(q.field('resourceId'), domainId))
+				.collect();
+			const giveUp = audits.find(
+				(a) =>
+					a.action === 'sending_domain.return_path_changed' &&
+					a.details?.['applied'] === 'sync_failed'
+			);
+			expect(giveUp).toBeDefined();
+			expect(giveUp!.details).toMatchObject({ returnPathHost: 'bounce.acme.com', attempts: 5 });
+		});
+	});
+
+	it('abandons a stale chain when the host changed after the push was queued', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedMtaDomain(t, { returnPathHost: 'bounce.new.com' });
+
+		// This chain targets the OLD host — the domain has since moved on.
+		await t.action(internal.domains.providers.registerAction.pushReturnPathHost, {
+			domainId,
+			returnPathHost: 'bounce.old.com',
+			attempt: 0,
+		});
+
+		expect(registerDomainMock).not.toHaveBeenCalled();
+		expect(await scheduledPushes(t)).toHaveLength(0);
+	});
+
+	it('skips a domain that no longer exists (no throw, no MTA call)', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedMtaDomain(t, { returnPathHost: 'bounce.acme.com' });
+		await t.run(async (ctx) => {
+			await ctx.db.delete(domainId);
+		});
+
+		await t.action(internal.domains.providers.registerAction.pushReturnPathHost, {
+			domainId,
+			returnPathHost: 'bounce.acme.com',
+			attempt: 0,
+		});
+
+		expect(registerDomainMock).not.toHaveBeenCalled();
+	});
+
+	it('skips a non-MTA (SES) domain', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedMtaDomain(t, {
+			providerType: 'ses',
+			returnPathHost: 'bounce.acme.com',
+		});
+
+		await t.action(internal.domains.providers.registerAction.pushReturnPathHost, {
+			domainId,
+			returnPathHost: 'bounce.acme.com',
+			attempt: 0,
+		});
+
+		expect(registerDomainMock).not.toHaveBeenCalled();
 	});
 });
