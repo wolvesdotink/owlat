@@ -25,7 +25,7 @@
  * report, and NO divergence JSON (only in the raw `.eml` regression artifact).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -46,6 +46,23 @@ import {
 	type RoutingDrivers,
 } from '../inboundReplay';
 import { oracleOldStack } from './helpers/oracleStack';
+// The bounce/FBL scrapers are driven directly (below) to prove the report-part
+// recovery yields IDENTICAL classification outcomes across the library boundary.
+// Only the logger + VERP signing gate are stubbed (unsigned mode so the
+// header-scrape attribution fallbacks run); mailparser stays the oracle (I1).
+vi.mock('../../monitoring/logger.js', () => ({
+	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+vi.mock('../../bounce/verp.js', () => ({
+	parseVerpAddress: vi.fn().mockReturnValue(null),
+	isVerpSigningEnabled: vi.fn().mockReturnValue(false),
+}));
+import { simpleParser } from 'mailparser';
+import { parseMessage, type ParsedMessage } from '@owlat/mail-message';
+import { extractReportParts, type ReportPart } from '../../bounce/reportParts.js';
+import { parseBounce } from '../../bounce/parser.js';
+import { tryParseARF } from '../../bounce/fblProcessor.js';
+import type { BounceClassification } from '../../bounce/types.js';
 
 const CORPUS_DIR = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -68,15 +85,26 @@ describe('inbound shadow-replay over the checked-in corpus slice', () => {
 		const inputs = loadCorpus(CORPUS_DIR);
 		const report = await runReplay(inputs, { old: oracleOldStack, new: owlatNewStack });
 
-		// Categorized report over the full slice.
+		// Categorized report over the full slice: NO unsanctioned divergence.
 		expect(report.totalMessages).toBe(inputs.length);
 		expect(report.unsanctionedDivergences).toBe(0);
-		// The checked-in slice is well-behaved: the two stacks agree exactly, so
-		// there is no divergence at all (sanctioned or otherwise).
-		expect(report.totalDivergences).toBe(0);
-		expect(report.byCategory['parse-field']).toBe(0);
-		expect(report.byCategory['dkim-verdict']).toBe(0);
 		expect(report.results.every((r) => !r.hasUnsanctioned)).toBe(true);
+		expect(report.byCategory['dkim-verdict']).toBe(0);
+
+		// The ONLY divergence in the slice is the enumerated report-part-recovery
+		// (I2 #1) on the disposition-less DSN: mailparser folds a disposition-less
+		// `message/delivery-status` into `.text` and drops it from `attachments`,
+		// while `parseMessage` + `extractReportParts` keep it a distinct report part.
+		// Both driver fields (`text`, `attachments`) therefore differ and are
+		// pre-signed via the `dsn-report-nodisp.json` sidecar; every other message is
+		// byte-identical. (The disposition-less ARF surfaces `message/feedback-report`
+		// as an attachment on BOTH stacks, so it does not diverge.)
+		expect(report.sanctionedByKind['report-part-recovery']).toBe(2);
+		expect(report.totalDivergences).toBe(2);
+		expect(report.byCategory['parse-field']).toBe(2);
+		const dsnNodisp = report.results.find((r) => r.id === 'dsn-report-nodisp');
+		expect(dsnNodisp?.divergences.map((d) => d.field).sort()).toEqual(['attachments', 'text']);
+		expect(dsnNodisp?.divergences.every((d) => d.sanction === 'report-part-recovery')).toBe(true);
 	});
 
 	it('the genuine DSN exercises the delivery-status + returned-message drivers', () => {
@@ -96,6 +124,62 @@ describe('inbound shadow-replay over the checked-in corpus slice', () => {
 		const drivers = owlatNewStack.project(raw);
 		expect(drivers.text.present).toBe(true);
 		expect(drivers.text.sha256).toMatch(/^[0-9a-f]{64}$/);
+	});
+});
+
+// Gate (b) proper: the report-part recovery is behavior-preserving where it
+// MATTERS — the bounce class and the FBL complaint outcome. The raw parse
+// representation diverges (mailparser folds a disposition-less
+// `message/delivery-status` into `.text`; `parseMessage` keeps it a report part),
+// which is the sanctioned `report-part-recovery` divergence above. Here we drive
+// the ACTUAL scrapers off each stack's surface and assert the classification is
+// identical across the library boundary — the outcome that ships.
+describe('report-part recovery keeps bounce-class / FBL outcomes identical', () => {
+	/** The scraper report-parts as mailparser surfaced them (attachments). */
+	function oldReportParts(
+		atts: readonly { contentType?: string; content?: Buffer }[]
+	): ReportPart[] {
+		return atts.map((a) => ({
+			contentType: (a.contentType ?? '').toLowerCase(),
+			content: a.content ?? Buffer.alloc(0),
+		}));
+	}
+
+	it('the disposition-less DSN classifies the SAME hard bounce on old (mailparser) and new stacks', async () => {
+		const raw = readFileSync(join(CORPUS_DIR, 'dsn-report-nodisp.eml'));
+
+		const newParsed = parseMessage(raw);
+		const newResult = parseBounce(newParsed, extractReportParts(raw));
+
+		const oldParsed = (await simpleParser(raw)) as unknown as ParsedMessage;
+		const oldAtts = (await simpleParser(raw)).attachments;
+		const oldResult = parseBounce(oldParsed, oldReportParts(oldAtts));
+
+		// The new stack recovered the machine-readable delivery-status the pipeline
+		// classifies off — mailparser had it folded into `.text` instead.
+		expect(extractReportParts(raw).map((p) => p.contentType)).toContain('message/delivery-status');
+
+		// Identical outcome across the library boundary: both hard-bounce 5.1.1.
+		const norm = (r: BounceClassification | null) => ({ type: r?.type, bounceType: r?.bounceType });
+		expect(newResult?.bounceType).toBe('hard');
+		expect(norm(newResult)).toEqual(norm(oldResult));
+		expect(newResult?.originalMessageId).toBe(oldResult?.originalMessageId);
+	});
+
+	it('the disposition-less ARF yields the SAME complaint on old (mailparser) and new stacks', async () => {
+		const raw = readFileSync(join(CORPUS_DIR, 'arf-report-nodisp.eml'));
+
+		const newParsed = parseMessage(raw);
+		const newResult = tryParseARF(newParsed, extractReportParts(raw));
+
+		const oldParsed = (await simpleParser(raw)) as unknown as ParsedMessage;
+		const oldAtts = (await simpleParser(raw)).attachments;
+		const oldResult = tryParseARF(oldParsed, oldReportParts(oldAtts));
+
+		expect(newResult?.type).toBe('complained');
+		expect(newResult?.bounceType).toBe('hard');
+		expect(oldResult?.type).toBe('complained');
+		expect(oldResult?.bounceType).toBe('hard');
 	});
 });
 

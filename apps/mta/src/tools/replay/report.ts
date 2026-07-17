@@ -35,7 +35,7 @@ function emptyByCategory(): Record<DivergenceCategory, number> {
 }
 
 function emptyBySanction(): Record<SanctionKind, number> {
-	return { 'dkim-l-neutral': 0, 'rsa-sha1-policy': 0, charset: 0 };
+	return { 'dkim-l-neutral': 0, 'rsa-sha1-policy': 0, charset: 0, 'report-part-recovery': 0 };
 }
 
 /**

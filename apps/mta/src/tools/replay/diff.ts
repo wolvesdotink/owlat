@@ -35,12 +35,25 @@ export type DivergenceCategory = 'parse-field' | 'dkim-verdict' | 'spf-verdict' 
 
 /**
  * The exact, enumerated set of sanctioned inbound behaviour changes (I2) this
- * harness can classify: (a) `l=` -> neutral cap, (d) rsa-sha1 policy fail, and
- * (b) corrected per-part charset decoding. Enhanced-status-code corrections are
- * an SMTP-reply improvement produced elsewhere, not a parse field or DKIM
- * verdict, so they are not a kind this harness emits.
+ * harness can classify: (a) `l=` -> neutral cap, (d) rsa-sha1 policy fail,
+ * (b) corrected per-part charset decoding, and `report-part-recovery` — the
+ * consumer-invariant parse-representation divergence of enumerated change #1.
+ * mailparser folds a disposition-less `message/delivery-status` into the
+ * human-readable `.text` (and surfaces other `message/*` report parts as
+ * `attachments`); `parseMessage` keeps them as distinct report parts recovered
+ * by `extractReportParts`. The RAW `text` / `attachments` driver fields therefore
+ * differ, but the bounce/FBL scrapers read IDENTICAL `Status:`/feedback fields
+ * off the recovered surface (asserted at the classification level in
+ * `replay.corpus.test.ts`), so the driver-level divergence is signed off here.
+ * Enhanced-status-code corrections are an SMTP-reply improvement produced
+ * elsewhere, not a parse field or DKIM verdict, so they are not a kind this
+ * harness emits.
  */
-export type SanctionKind = 'dkim-l-neutral' | 'rsa-sha1-policy' | 'charset';
+export type SanctionKind =
+	| 'dkim-l-neutral'
+	| 'rsa-sha1-policy'
+	| 'charset'
+	| 'report-part-recovery';
 
 /** One field-level divergence between the old and new stacks for one message. */
 export interface Divergence {

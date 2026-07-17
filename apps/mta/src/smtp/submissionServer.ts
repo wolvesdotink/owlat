@@ -39,7 +39,6 @@ import {
 	type AddressObject,
 } from '@owlat/mail-message';
 import { timingSafeStringEqual } from '../auth/timingSafe.js';
-import type { Socket } from 'node:net';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
@@ -60,6 +59,7 @@ import {
 	recordAuthFailure,
 	clearAuthFailures,
 } from './submissionSecurity.js';
+import { createSlotTracker } from '../lib/connectionSlots.js';
 
 /**
  * Hard cap for buffered submitted MIME (advertised via EHLO SIZE AND enforced by
@@ -420,73 +420,6 @@ export function buildOnMailFrom() {
 }
 
 /**
- * Per-connection key for the in-memory slot registries (unique while live).
- *
- * Both sides derive the key through THIS one helper so the mark side (the session,
- * whose `remoteAddress` falls back to `''` — listener `session.ts`) and the release
- * side (the raw socket, whose `remoteAddress` is `string | undefined`) always agree
- * for the same TCP peer: an empty/absent address normalizes to the same token.
- */
-function connectionKey(remoteAddress: string | undefined, remotePort: number | undefined): string {
-	return `${remoteAddress || 'unknown'}:${remotePort ?? 0}`;
-}
-
-/**
- * Reconciles the per-IP connection counter's increments against socket lifetime.
- *
- * `checkConnectionRateLimit` is async, so a connection can close (client RST — port
- * scans, LB health probes do exactly this) while its rate-limit round-trip is still
- * in flight. Two per-connection registries reconcile the two possible orderings so
- * every kept increment is released EXACTLY once:
- *
- *   - `live` — added on TCP accept, deleted on socket close. A connection is "live"
- *     iff its close handler has not yet run.
- *   - `held` — the connection took a slot (net +1) and still needs releasing.
- *
- * {@link SlotTracker.hold} (increment kept) marks `held` only if the connection is
- * still live; if it already closed, the close handler could not have released the
- * increment (the key was never in `held`), so it releases immediately. The close
- * handler releases iff the slot was marked. Either ordering nets one release.
- */
-interface SlotTracker {
-	/** Raw-accept side: register the connection and release its slot on close. */
-	track(socket: Socket): void;
-	/** Slot-kept side: mark for release, or release now if the peer already left. */
-	hold(session: Session): void;
-}
-
-export function createSlotTracker(redis: Redis): SlotTracker {
-	const live = new Set<string>();
-	const held = new Set<string>();
-	return {
-		track(socket: Socket): void {
-			const remoteIp = socket.remoteAddress ?? 'unknown';
-			const key = connectionKey(socket.remoteAddress, socket.remotePort);
-			live.add(key);
-			socket.once('close', () => {
-				live.delete(key);
-				if (!held.delete(key)) return; // this connection never took a slot
-				releaseConnection(redis, remoteIp).catch(() => {
-					// Non-critical: the Redis counter carries a TTL as a backstop.
-				});
-			});
-		},
-		hold(session: Session): void {
-			const key = connectionKey(session.remoteAddress, session.remotePort);
-			if (live.has(key)) {
-				held.add(key); // release on close
-				return;
-			}
-			// Closed during the in-flight rate-limit check: the increment happened but
-			// no close handler will release it (the key was never in `held`). Release now.
-			releaseConnection(redis, sessionRemoteIp(session)).catch(() => {
-				// Non-critical: the Redis counter carries a TTL as a backstop.
-			});
-		},
-	};
-}
-
-/**
  * Hardened TLS material shared by both submission listeners. The STARTTLS (587)
  * and implicit-TLS (465) flavors present the same cert and inherit the listener's
  * AEAD-only TLS 1.2+ cipher floor (copied verbatim from this file's former inline
@@ -521,7 +454,7 @@ function buildSubmissionListener(
 	// 465 raw-accept never decrements a slot it never took (cap bypass) and a
 	// 421-refused connect never double-decrements (587) — and it self-heals the race
 	// where a connection RSTs while its async rate-limit check is still in flight.
-	const slots = createSlotTracker(redis);
+	const slots = createSlotTracker(redis, releaseConnection);
 
 	const listener = createSmtpListener<SubmissionSessionState>({
 		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be

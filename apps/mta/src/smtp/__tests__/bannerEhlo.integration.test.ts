@@ -10,9 +10,9 @@
  *
  * This drives each REAL server on a loopback ephemeral port and reads the actual
  * 220 greeting off the wire, asserting it starts with `220 mail.test.example `.
- * The bounce listener still runs on `smtp-server`; the submission listeners run
- * on the in-house `@owlat/smtp-listener`, so the two are normalized to a common
- * {@link Greetable} boot/close shape.
+ * Both the bounce (port-25 MX) and the submission listeners now run on the
+ * in-house `@owlat/smtp-listener`, normalized to a common {@link Greetable}
+ * boot/close shape.
  */
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { connect as netConnect } from 'node:net';
@@ -23,7 +23,6 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SMTPServer } from 'smtp-server';
 import type { SmtpListener } from '@owlat/smtp-listener';
 import { createBounceServer } from '../../bounce/server.js';
 import { createSubmissionServer, createImplicitTlsSubmissionServer } from '../submissionServer.js';
@@ -43,21 +42,6 @@ const queue = { add: vi.fn() } as unknown as Queue<EmailJob>;
 interface Greetable {
 	listen(): Promise<number>;
 	close(): Promise<void>;
-}
-
-/** Adapt an `smtp-server` SMTPServer to {@link Greetable}. */
-function fromSmtpServer(server: SMTPServer): Greetable {
-	return {
-		listen: () =>
-			new Promise<number>((resolve, reject) => {
-				server.once('error', reject);
-				server.listen(0, '127.0.0.1', () => {
-					server.removeListener('error', reject);
-					resolve((server.server.address() as AddressInfo).port);
-				});
-			}),
-		close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-	};
 }
 
 /** Adapt an `@owlat/smtp-listener` SmtpListener to {@link Greetable}. */
@@ -158,7 +142,7 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 			inboundDkimEnabled: false,
 		} as unknown as MtaConfig;
 
-		server = fromSmtpServer(createBounceServer(config, redis));
+		server = fromListener(createBounceServer(config, redis));
 		const greeting = await readGreeting(server);
 
 		expect(greeting.startsWith(`220 ${EHLO} `)).toBe(true);

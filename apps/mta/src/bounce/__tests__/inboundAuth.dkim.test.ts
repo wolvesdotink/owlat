@@ -19,6 +19,7 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { generateKeyPairSync } from 'crypto';
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
 import { verifyDkim, type DkimDnsResolver } from '../inboundDkim.js';
+import type { ParsedMessage } from '@owlat/mail-message';
 
 const DOMAIN = 'example.com';
 const SELECTOR = 'selector';
@@ -159,7 +160,13 @@ describe('integration: onData threads dkimResult into mailboxPayload', () => {
 				references: undefined,
 				dkimResult: dkim.result,
 			},
-			{ parsed, rawBuffer: signedMessage, rcptTo: 'me@example.com' },
+			// The reducer consumes the in-house `ParsedMessage`; this test parses via
+			// the mailparser oracle (I1) and casts at the ctx boundary.
+			{
+				parsed: parsed as unknown as ParsedMessage,
+				rawBuffer: signedMessage,
+				rcptTo: 'me@example.com',
+			}
 		);
 
 		const notify = reduction.effects.find((e) => e.kind === 'notify_convex');

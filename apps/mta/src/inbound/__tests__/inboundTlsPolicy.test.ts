@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type Redis from 'ioredis';
 import {
-	inboundTlsRequiredError,
+	inboundTlsRequiredReply,
 	isInboundTlsRequired,
 	setInboundTlsRequired,
 } from '../inboundTlsPolicy.js';
@@ -35,10 +35,14 @@ describe('inbound TLS policy', () => {
 		expect(set).toHaveBeenNthCalledWith(2, 'mta:inbound-tls-required', '0');
 	});
 
-	it('returns a permanent SMTP encryption-needed rejection', () => {
-		const error = inboundTlsRequiredError();
-		expect(error.responseCode).toBe(550);
-		expect(error.message).toContain('5.7.10 Encryption needed');
-		expect(error.message).toContain('STARTTLS');
+	it('returns a permanent SMTP encryption-needed rejection reply', () => {
+		// The reply `{ code: 550, enhanced: '5.7.10', text: … }` serializes to
+		// `550 5.7.10 Encryption needed: …` — byte-identical to the old smtp-server
+		// error whose message embedded the 5.7.10 code with responseCode 550.
+		const reply = inboundTlsRequiredReply();
+		expect(reply.code).toBe(550);
+		expect(reply.enhanced).toBe('5.7.10');
+		expect(reply.text).toContain('Encryption needed');
+		expect(reply.text).toContain('STARTTLS');
 	});
 });

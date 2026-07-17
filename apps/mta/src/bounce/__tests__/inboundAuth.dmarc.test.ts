@@ -12,6 +12,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { evaluateDmarc, type DmarcPolicyLookup } from '@owlat/mail-auth';
+import type { ParsedMessage } from '@owlat/mail-message';
 
 /** A `policyLookup` backed by a static domain -> `_dmarc` record map. */
 function policyMap(records: Record<string, string>): DmarcPolicyLookup {
@@ -71,7 +72,10 @@ describe('integration: a spoofed p=quarantine message is recorded dmarcResult=fa
 				dmarcPolicy: dmarc.policy,
 			},
 			{
-				parsed,
+				// The bounce reducer consumes the in-house `ParsedMessage`; this
+				// integration test parses its spoofed .eml through the mailparser oracle
+				// (I1) to feed the reducer, so it casts at the ctx boundary.
+				parsed: parsed as unknown as ParsedMessage,
 				rawBuffer,
 				rcptTo: 'me@example.com',
 				dmarcResult: dmarc.result,

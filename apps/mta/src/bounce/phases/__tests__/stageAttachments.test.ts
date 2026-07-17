@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import { stageAttachmentsPhase } from '../stageAttachments.js';
 import type { CtxWithAcceptRoute, PhaseDeps } from '../../types.js';
 import type { InboundRoute } from '../../../inbound/router.js';
@@ -15,9 +15,9 @@ function makeRoute(): InboundRoute {
 	};
 }
 
-function makeCtx(parsed: Partial<ParsedMail>): CtxWithAcceptRoute {
+function makeCtx(parsed: Record<string, unknown>): CtxWithAcceptRoute {
 	return {
-		parsed: parsed as ParsedMail,
+		parsed: parsed as unknown as ParsedMessage,
 		rawBuffer: Buffer.alloc(0),
 		rcptTo: 'inbox@org.example',
 		route: makeRoute(),
