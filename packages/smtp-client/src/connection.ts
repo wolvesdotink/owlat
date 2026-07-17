@@ -109,6 +109,15 @@ export class SmtpConnection {
 	}
 
 	/**
+	 * The per-command timeout (ms) — the budget for a single command's reply. The
+	 * pipelining path reads each batched reply on this budget, exactly as the
+	 * sequential {@link command} would have.
+	 */
+	get commandTimeoutMs(): number {
+		return this.timeouts.command;
+	}
+
+	/**
 	 * `true` when the reader is still holding reply data no command consumed — a
 	 * fully-parsed reply queued, or bytes mid-line in the parser. After a clean
 	 * transaction this is `false`; a `true` here before reusing the socket means a
@@ -155,6 +164,40 @@ export class SmtpConnection {
 			expectData ? this.timeouts.data : this.timeouts.command,
 			this.secured
 		);
+	}
+
+	/**
+	 * Write a batch of pre-serialized command lines in ONE socket write — RFC 2920
+	 * command pipelining. Every line is framing-checked exactly as {@link command}
+	 * checks a single line (exactly one trailing CRLF, no interior CR/LF), so a
+	 * hand-built or attacker-influenced line can never smuggle a second command into
+	 * the batch. The caller then reads one reply per line, in order, via
+	 * {@link readReply}: the D5 sequential-READ invariant is untouched — pipelining
+	 * batches the WRITE side only, and the reply reader still hands out exactly one
+	 * reply per read regardless of how the peer frames them on the wire.
+	 *
+	 * Refuses (before any bytes reach the wire) if a reply is already awaited, so a
+	 * batch can never be interleaved with an outstanding sequential read.
+	 */
+	writePipeline(lines: readonly string[], phase: SmtpPhase): void {
+		if (this.reader.busy) {
+			throw new SmtpError({
+				phase,
+				message: 'concurrent SMTP command: a reply is already awaited',
+				secured: this.secured,
+			});
+		}
+		for (const line of lines) {
+			if (!line.endsWith('\r\n') || /[\r\n]/.test(line.slice(0, -2))) {
+				throw new SmtpError({
+					phase,
+					message:
+						'malformed SMTP command line: must end with exactly one CRLF and contain no interior CR/LF',
+					secured: this.secured,
+				});
+			}
+		}
+		this.write(lines.join(''), phase);
 	}
 
 	/**
