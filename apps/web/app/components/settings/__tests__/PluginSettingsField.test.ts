@@ -80,6 +80,9 @@ describe('PluginSettingsField emits', () => {
 		const field: Field = { kind: 'number', key: 'timeout', label: 'Timeout', min: 1, max: 120 };
 		const wrapper = mountField(field, { modelValue: 30 });
 		const input = wrapper.get('input[type="number"]');
+		// Schema numbers permit non-integer values, so the mobile keyboard hint is
+		// decimal (a period key), not the integer-only numeric mode.
+		expect(input.attributes('inputmode')).toBe('decimal');
 		await input.setValue('45');
 		const emitted = wrapper.emitted('update:modelValue');
 		expect(emitted?.at(-1)).toEqual([45]);
