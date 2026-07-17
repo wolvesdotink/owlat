@@ -202,5 +202,15 @@ async function recordOutcome(
 			stepKind,
 			success,
 		})
-		.catch(() => undefined);
+		// The step already executed; a failing audit write must not fail it (a
+		// plugin cannot be denied a completed run by knocking over audit). But the
+		// silence still needs a signal — log fixed taxonomy only (plugin id, kind,
+		// success), never untrusted text.
+		.catch(() => {
+			console.warn('plugin automation step audit write failed', {
+				pluginId,
+				stepKind,
+				success,
+			});
+		});
 }

@@ -111,6 +111,21 @@ describe('hosted plugin automation step execution', () => {
 		expect(outcome).toEqual({ status: 'failed', error: 'Plugin automation step failed' });
 	});
 
+	it('still completes the step and logs once when the audit write fails', async () => {
+		stepExecute.mockResolvedValue({ kind: 'completed' });
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		const ctx = {
+			runMutation: vi.fn(async (_ref: unknown, args: Record<string, unknown>) => {
+				if ('success' in args) throw new Error('audit down');
+				return true; // authorized
+			}),
+		};
+		const outcome = await executePluginStep(ctx as never, step, contact);
+		expect(outcome).toEqual({ status: 'completed' });
+		expect(warn).toHaveBeenCalledOnce();
+		warn.mockRestore();
+	});
+
 	it('fails for an unknown plugin step kind without touching the module', async () => {
 		const ctx = makeCtx(true);
 		const outcome = await executePluginStep(
