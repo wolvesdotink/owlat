@@ -20,6 +20,14 @@ export const RETRY_DELAYS_MS = [1000, 5000, 30000] as const;
 export const MAX_WEBHOOK_ATTEMPTS = 3;
 export const WEBHOOK_RETRY_DELAYS_MS = [0, 60_000, 300_000] as const;
 
+// Connected-app (Tier 2) connection test — a one-shot, SSRF-guarded reachability
+// probe of an app's hook endpoint from the registration UX. It is NOT a signed
+// hook (that is PP-24): it never carries the shared secret and grants the app
+// nothing. The deadline is short and the response body is bounded so a slow or
+// oversized endpoint can neither hang the action nor exhaust memory.
+export const CONNECTED_APP_TEST_TIMEOUT_MS = 5_000;
+export const CONNECTED_APP_TEST_MAX_RESPONSE_BYTES = 64 * 1024;
+
 // Token expiry durations
 export const UNSUBSCRIBE_TOKEN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 export const AUDIT_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
