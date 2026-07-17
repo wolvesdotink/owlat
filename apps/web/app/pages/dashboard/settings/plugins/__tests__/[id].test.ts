@@ -1,9 +1,12 @@
 // @vitest-environment happy-dom
 /**
  * Plugin settings detail page ([id].vue) — page-level behaviour the pure form
- * helpers cannot cover: the orphaned-plugin "Clear residual settings" action is
- * confirmation-gated, so the destructive reset mutation never fires on a single
- * click.
+ * helpers cannot cover:
+ *
+ *  - the orphaned-plugin "Clear residual settings" action is confirmation-gated,
+ *    so the destructive reset mutation never fires on a single click; and
+ *  - a save seeds the form synchronously from the mutation's returned redacted
+ *    state, so an edit typed after the save survives a later live-query re-emit.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
@@ -136,5 +139,54 @@ describe('plugin detail — orphaned clear is confirmation-gated', () => {
 		await wrapper.find('[data-testid="confirm"]').trigger('click');
 		await flushPromises();
 		expect(resetPluginSettings).toHaveBeenCalledWith({ pluginId: 'removed-pack' });
+	});
+});
+
+function installedEntry(endpoint: string) {
+	return {
+		pluginId: 'policy-pack',
+		packageName: '@example/policy-pack',
+		version: '1.0.0',
+		flagKey: 'plugin.policy-pack',
+		enabled: true,
+		hasSettings: true,
+		capabilities: [{ capability: 'mail:read', granted: true }],
+		values: { endpoint },
+		secretsSet: {},
+	};
+}
+
+describe('plugin detail — save seeds from the returned redacted state', () => {
+	beforeEach(() => {
+		overview.value = { plugins: [installedEntry('https://api.test')], orphaned: [] };
+	});
+
+	it('keeps an edit typed after save when a stale live-query value re-emits', async () => {
+		setPluginSettings.mockResolvedValue({
+			values: { endpoint: 'https://saved.example' },
+			secretsSet: {},
+		});
+		const wrapper = mountPage();
+
+		// Edit and save.
+		await wrapper.get('input[type="text"]').setValue('https://saved.example');
+		await wrapper.get('form').trigger('submit');
+		await flushPromises();
+		expect(setPluginSettings).toHaveBeenCalledWith({
+			pluginId: 'policy-pack',
+			values: { endpoint: 'https://saved.example' },
+		});
+
+		// The operator immediately types another edit after the save resolved.
+		await wrapper.get('input[type="text"]').setValue('https://later.example');
+
+		// A stale live-query emission for the same plugin id arrives afterwards
+		// (a fresh entry object, so the watch fires). It must NOT re-seed the form.
+		overview.value = { plugins: [installedEntry('https://saved.example')], orphaned: [] };
+		await flushPromises();
+
+		expect((wrapper.get('input[type="text"]').element as HTMLInputElement).value).toBe(
+			'https://later.example'
+		);
 	});
 });

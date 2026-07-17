@@ -38,11 +38,12 @@ const isOrphaned = computed(
 		!manifest.value
 );
 
-const state = computed<PluginSettingsRedactedState>(() => ({
-	values: entry.value?.values ?? {},
-	secretsSet: entry.value?.secretsSet ?? {},
-}));
-const baseline = computed(() => pluginSettingsBaseline(schema.value, state.value));
+// The redacted server state the form is seeded and change-detected against.
+// Seeded from the live overview when the entry first appears, then updated
+// SYNCHRONOUSLY from each save/reset's returned redacted state (see below) so a
+// later live-query re-emit cannot re-seed over edits typed in the meantime.
+const serverState = ref<PluginSettingsRedactedState>({ values: {}, secretsSet: {} });
+const baseline = computed(() => pluginSettingsBaseline(schema.value, serverState.value));
 
 const { showToast } = useToast();
 const { run: setPluginSettings, isLoading: isSaving } = useBackendOperation(
@@ -54,18 +55,24 @@ const { run: resetPluginSettings, isLoading: isResetting } = useBackendOperation
 	{ label: 'Reset plugin settings' }
 );
 
-// Seed the editable form from the server baseline the first time an entry
-// appears, and again after our own save/reset lands (initializedFor is cleared
-// so the baseline watch re-seeds). Live updates that don't reset the flag leave
-// in-progress edits untouched.
+// Seed serverState + the editable form from a redacted state snapshot.
 const form = ref<PluginSettingsForm>({});
 let initializedFor: string | null = null;
+function seedForm(next: PluginSettingsRedactedState) {
+	serverState.value = { values: next.values, secretsSet: next.secretsSet };
+	form.value = { ...pluginSettingsBaseline(schema.value, serverState.value) };
+}
+
+// Seed from the live overview the first time an entry appears (or when
+// navigating to a different plugin id). A live re-emit for the SAME id does not
+// re-seed — save()/reset() already updated serverState from the mutation's
+// returned redacted state, so in-progress edits are never clobbered.
 watch(
-	[entry, baseline],
+	entry,
 	() => {
 		if (!entry.value) return;
 		if (initializedFor !== entry.value.pluginId) {
-			form.value = { ...baseline.value };
+			seedForm({ values: entry.value.values, secretsSet: entry.value.secretsSet });
 			initializedFor = entry.value.pluginId;
 		}
 	},
@@ -80,7 +87,7 @@ const showResetConfirm = ref(false);
 const showOrphanClearConfirm = ref(false);
 
 async function save() {
-	const missing = missingRequiredPluginSettings(schema.value, form.value, state.value);
+	const missing = missingRequiredPluginSettings(schema.value, form.value, serverState.value);
 	if (missing.length > 0) {
 		const labels = missing
 			.map((key) => schema.value.find((field) => field.key === key)?.label ?? key)
@@ -91,7 +98,9 @@ async function save() {
 	const changes = pluginSettingsChanges(schema.value, form.value, baseline.value);
 	const res = await setPluginSettings({ pluginId: pluginId.value, values: changes });
 	if (res === undefined) return; // failure already toasted
-	initializedFor = null; // re-seed from the refreshed server baseline
+	// Seed from the returned redacted state synchronously, not via a live-query
+	// round-trip, so edits typed before the refresh arrives are not clobbered.
+	seedForm(res);
 	showToast('Plugin settings saved.');
 }
 
@@ -100,7 +109,7 @@ async function reset() {
 	showOrphanClearConfirm.value = false;
 	const res = await resetPluginSettings({ pluginId: pluginId.value });
 	if (res === undefined) return;
-	initializedFor = null;
+	seedForm(res);
 	showToast('Plugin settings reset to defaults.');
 }
 </script>
@@ -233,7 +242,7 @@ async function reset() {
 									:key="field.key"
 									:field="field"
 									:model-value="form[field.key] ?? ''"
-									:secret-set="entry.secretsSet[field.key] === true"
+									:secret-set="serverState.secretsSet[field.key] === true"
 									:disabled="isSaving || isResetting"
 									@update:model-value="form[field.key] = $event"
 								/>
