@@ -37,6 +37,21 @@ export const pluginTables = {
 		.index('by_organization_id', ['organizationId'])
 		.index('by_organization_id_and_plugin_id', ['organizationId', 'pluginId']),
 
+	// Circuit-breaker state for signed synchronous hooks (PP-24): one row per
+	// (organizationId, connectedAppId, hookKind). A run of consecutive failures
+	// trips the breaker OPEN so the hot path short-circuits to the declared safe
+	// fallback instead of paying for a doomed guarded fetch; after a cooldown one
+	// half-open trial decides recovery. Tenant-scoped; carries no secret or
+	// request/response content — only counters and the open-until timestamp.
+	connectedAppHookCircuits: defineTable({
+		organizationId: v.string(),
+		connectedAppId: v.id('connectedApps'),
+		hookKind: v.union(v.literal('draft'), v.literal('gate'), v.literal('score')),
+		consecutiveFailures: v.number(),
+		openedUntil: v.optional(v.number()),
+		updatedAt: v.number(),
+	}).index('by_app_and_kind', ['organizationId', 'connectedAppId', 'hookKind']),
+
 	draftStrategySelections: defineTable({
 		organizationId: v.string(),
 		scopeType: v.union(v.literal('mailbox'), v.literal('contact'), v.literal('classification')),

@@ -42,6 +42,10 @@ export const CONNECTED_APP_HOOK_MAX_REQUEST_BYTES = 64 * 1024;
 export const CONNECTED_APP_HOOK_MAX_RESPONSE_BYTES = 64 * 1024;
 /** Allowed skew between now and a response's signed timestamp (replay window). */
 export const CONNECTED_APP_HOOK_RESPONSE_TOLERANCE_MS = 30_000;
+/** Consecutive hook failures that trip the per-(app,kind) circuit breaker OPEN. */
+export const CONNECTED_APP_HOOK_CIRCUIT_FAILURE_THRESHOLD = 5;
+/** How long the circuit stays open before a single half-open trial call, in ms. */
+export const CONNECTED_APP_HOOK_CIRCUIT_COOLDOWN_MS = 60_000;
 
 // Token expiry durations
 export const UNSUBSCRIBE_TOKEN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
