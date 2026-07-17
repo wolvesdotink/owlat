@@ -70,7 +70,7 @@ export function useDashboardNavigation() {
 				: []),
 			{ name: 'Account', href: '/dashboard/settings/account', icon: 'lucide:users' },
 			...(isDesktop.value
-				? [{ name: 'Desktop', href: '/dashboard/settings/desktop', icon: 'lucide:monitor' }]
+				? [{ name: 'Desktop', href: '/desktop/settings', icon: 'lucide:monitor' }]
 				: []),
 		];
 

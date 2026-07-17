@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/plugin-kit",
-	"version": "0.2.1",
+	"version": "0.3.3",
 	"description": "Public contracts for building Owlat plugins",
 	"keywords": [
 		"extensions",

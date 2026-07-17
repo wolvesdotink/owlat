@@ -71,10 +71,33 @@ export default defineNuxtPlugin({
 		else if (/Win/i.test(platform)) root.classList.add('is-win');
 		else root.classList.add('is-linux');
 
+		// "Open at startup" workspace pin (from /desktop/settings). Applied only on
+		// a COLD launch of the MAIN window: workspace switches reload this webview
+		// (re-applying the pin there would bounce every switch back to it), and
+		// secondary windows like compose have their own fresh sessionStorage, so
+		// without the label guard they'd read as "cold" and clobber the active
+		// workspace mid-session. sessionStorage survives reloads but not an app
+		// restart, so a missing marker is exactly "cold launch".
+		const BOOT_MARKER = 'owlat:booted';
+		const coldLaunch = !sessionStorage.getItem(BOOT_MARKER);
+		sessionStorage.setItem(BOOT_MARKER, '1');
+		let preferredActiveId: string | null = null;
+		if (coldLaunch) {
+			try {
+				const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+				if (getCurrentWebviewWindow().label === 'main') {
+					const { loadDesktopAppSettings } = await import('~/composables/useDesktopAppSettings');
+					preferredActiveId = (await loadDesktopAppSettings()).global.startupWorkspaceId;
+				}
+			} catch {
+				// Settings unreadable — last-active behavior.
+			}
+		}
+
 		// Dev-only auto-connect: `tauri dev` loads the local Nuxt dev server, so
 		// seed the page's own origin as a workspace instead of making the
 		// developer run the manual connect handshake on every fresh profile.
-		await loadWorkspaces({ seedLocalDev: import.meta.dev });
+		await loadWorkspaces({ seedLocalDev: import.meta.dev, preferredActiveId });
 
 		// Paint the active workspace's identity accent BEFORE first render (the
 		// switch/restart path reloads the webview, so reading it here — after the

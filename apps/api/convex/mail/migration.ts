@@ -27,6 +27,7 @@ import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
+import { getLivePersonalExternalAccountForUser } from './externalAccounts';
 
 // Chunk size for the post-import knowledge sweep (paced inside runIndexChunk).
 const INDEX_CHUNK_SIZE = 25;
@@ -53,10 +54,11 @@ export const getStatus = publicQuery({
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) return null;
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
+		// The caller's LIVE PERSONAL account, not their oldest row: a migration is a
+		// personal full-history import, so a `scope='shared'` team-inbox account the
+		// caller connected must never be resolved here, and a post-move disconnected
+		// archive must never mask their live personal account.
+		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (!account) return null;
 		const migration = await ctx.db
 			.query('mailboxMigrations')
@@ -114,11 +116,10 @@ export const start = authedMutation({
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.activeOrganizationId || !s.role) throwForbidden('Not authenticated');
 
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
-		if (!account || account.status === 'disconnected') {
+		// The caller's LIVE PERSONAL account only — a migration must never target a
+		// shared team inbox (org infrastructure) or a post-move disconnected archive.
+		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
+		if (!account) {
 			throwInvalidInput('Connect a mailbox before starting a migration.');
 		}
 		// The worker (listConnectableAccounts) deliberately excludes `auth_error`
@@ -195,10 +196,9 @@ export const cancel = authedMutation({
 		await assertFeatureEnabled(ctx, 'mail.external');
 		const s = await getBetterAuthSessionWithRole(ctx);
 		if (!s || !s.role) throwForbidden('Not authenticated');
-		const account = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
-			.first();
+		// The caller's LIVE PERSONAL account only — cancelling must never reach a
+		// shared team inbox's migration or a post-move disconnected archive.
+		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
 		if (!account) return false;
 		const migration = await ctx.db
 			.query('mailboxMigrations')
