@@ -152,6 +152,15 @@ export function isBlockDefinitionRegistryFrozen(): boolean {
 	return latch.isFrozen();
 }
 
+/**
+ * The block types already claimed by third-party definitions registered through
+ * `registerBlock()`. The composition front door reads this to refuse a plugin
+ * that would overwrite a definition a host app registered before boot.
+ */
+export function getRegisteredDefinitionTypes(): BlockType[] {
+	return [...thirdPartyRegistry.keys()];
+}
+
 // ---------------------------------------------------------------------------
 // Lookups — built-ins from Editor modules; third-party from the legacy map
 // ---------------------------------------------------------------------------
