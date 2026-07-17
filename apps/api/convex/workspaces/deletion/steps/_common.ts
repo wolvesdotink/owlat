@@ -139,6 +139,7 @@ export type OrganizationDeletionTable =
 	| 'coalesceBatches'
 	| 'visualizations'
 	| 'dashboardLayouts'
+	| 'connectedApps'
 	| 'pluginStorageEntries'
 	| 'pluginStorageUsage'
 	| 'pluginLlmReservations'
@@ -282,6 +283,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('coalesceBatches'),
 	v.literal('visualizations'),
 	v.literal('dashboardLayouts'),
+	v.literal('connectedApps'),
 	v.literal('pluginStorageEntries'),
 	v.literal('pluginStorageUsage'),
 	v.literal('pluginLlmReservations'),
