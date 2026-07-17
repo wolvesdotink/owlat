@@ -142,6 +142,13 @@ describe('plugin nav item contributions', () => {
 		).toBe(true);
 	});
 
+	it('rejects a name that is empty once control/format characters are stripped', () => {
+		// A control-only name survives trim() but renders as a blank, unlabelled link.
+		expect(
+			issuesFor(withNavItem({ name: String.fromCharCode(7) })).some((i) => i.path.endsWith('.name'))
+		).toBe(true);
+	});
+
 	it('rejects a negative or non-integer order', () => {
 		expect(issuesFor(withNavItem({ order: -1 })).some((i) => i.path.endsWith('.order'))).toBe(true);
 		expect(issuesFor(withNavItem({ order: 1.5 })).some((i) => i.path.endsWith('.order'))).toBe(
