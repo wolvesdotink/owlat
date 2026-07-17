@@ -36,8 +36,9 @@ describe('dashboard widget registry conformance', () => {
 			expect(module.source).toBe('core');
 			// Core cards are ungated: nothing is hidden, so behaviour is unchanged.
 			expect(module.flag).toBeUndefined();
-			// A lazily-loaded component object (defineAsyncComponent result).
-			expect(module.component).toBeTypeOf('object');
+			// A lazy loader function (`() => import(...)`), not an eagerly
+			// constructed component — laziness is structural, so this pins it.
+			expect(module.component).toBeTypeOf('function');
 		}
 	});
 

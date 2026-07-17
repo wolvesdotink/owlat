@@ -11,19 +11,21 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import {
-	defineComponent,
-	defineAsyncComponent,
-	h,
-	markRaw,
-	onErrorCaptured,
-	type Component,
-} from 'vue';
+import { defineComponent, h, markRaw, onErrorCaptured, type Component } from 'vue';
 import WidgetHost from '../Host.vue';
 import type { WidgetModule } from '~/composables/widgets/types';
 
-function moduleFor(component: Component, extra: Partial<WidgetModule> = {}): WidgetModule {
+/** Build a module from a raw component loader (mirrors the `() => import()` shape). */
+function moduleForLoader(
+	component: WidgetModule['component'],
+	extra: Partial<WidgetModule> = {}
+): WidgetModule {
 	return { kind: 'sample', label: 'Sample Widget', source: 'core', component, ...extra };
+}
+
+/** Build a module whose loader resolves synchronously to the given component. */
+function moduleFor(component: Component, extra: Partial<WidgetModule> = {}): WidgetModule {
+	return moduleForLoader(() => Promise.resolve(component), extra);
 }
 
 const mountOpts = { global: { stubs: { Icon: true } } };
@@ -86,12 +88,13 @@ describe('WidgetHost — typed context', () => {
 describe('WidgetHost — lazy loading', () => {
 	it('shows a busy state before the async chunk resolves, then the content', async () => {
 		let resolveChunk!: (component: Component) => void;
-		const Async = defineAsyncComponent(
-			() => new Promise<Component>((resolve) => (resolveChunk = resolve))
-		);
 		const wrapper = mount(WidgetHost, {
 			...mountOpts,
-			props: { module: moduleFor(Async) },
+			props: {
+				module: moduleForLoader(
+					() => new Promise<Component>((resolve) => (resolveChunk = resolve))
+				),
+			},
 		});
 
 		expect(wrapper.find('[aria-busy="true"]').exists()).toBe(true);
@@ -181,5 +184,36 @@ describe('WidgetHost — isolation (error boundary)', () => {
 
 		expect(wrapper.find('[role="alert"]').exists()).toBe(false);
 		expect(wrapper.find('[data-testid="recovered"]').exists()).toBe(true);
+	});
+
+	it('re-fetches a failed chunk load on retry (recovers a rejected loader)', async () => {
+		// The realistic failure: a chunk 404 after a redeploy. Vue's
+		// defineAsyncComponent caches a rejected loader promise, so recovery
+		// requires WidgetHost to build a fresh wrapper — this fails on any impl
+		// that reuses one constructed async component across retries.
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const Recovered = defineComponent({
+			template: '<div data-testid="lazy-recovered">ok</div>',
+		});
+		const loader = vi
+			.fn<[], Promise<Component>>()
+			.mockRejectedValueOnce(new Error('chunk load failed'))
+			.mockResolvedValue(Recovered);
+
+		const wrapper = mount(WidgetHost, {
+			...mountOpts,
+			props: { module: moduleForLoader(loader, { kind: 'lazy_flaky' }) },
+		});
+		await flushPromises();
+
+		expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+		expect(loader).toHaveBeenCalledTimes(1);
+
+		await wrapper.find('[role="alert"] button').trigger('click');
+		await flushPromises();
+
+		expect(loader).toHaveBeenCalledTimes(2);
+		expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+		expect(wrapper.find('[data-testid="lazy-recovered"]').exists()).toBe(true);
 	});
 });

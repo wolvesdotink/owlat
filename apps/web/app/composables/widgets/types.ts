@@ -1,4 +1,4 @@
-import type { Component } from 'vue';
+import type { AsyncComponentLoader } from 'vue';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 
 /**
@@ -42,10 +42,15 @@ export interface WidgetModule {
 	/** Provenance of the contribution. */
 	readonly source: WidgetSource;
 	/**
-	 * The lazy async component (`defineAsyncComponent(() => import(...))`). The
-	 * import is only evaluated when the widget is actually rendered.
+	 * The lazy component loader (`() => import('…Card.vue')`). Laziness is
+	 * structural, not conventional: registering a loader — rather than an
+	 * already-constructed `defineAsyncComponent` — guarantees the chunk import is
+	 * only evaluated when the widget actually renders, and lets `WidgetHost` build
+	 * a *fresh* async wrapper per mount attempt so "Try again" can genuinely
+	 * re-fetch a chunk that failed to load (a rejected loader promise is otherwise
+	 * cached by Vue's `defineAsyncComponent`).
 	 */
-	readonly component: Component;
+	readonly component: AsyncComponentLoader;
 }
 
 /**

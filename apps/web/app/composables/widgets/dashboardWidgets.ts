@@ -1,4 +1,3 @@
-import { defineAsyncComponent } from 'vue';
 import { createWidgetRegistry } from './registry';
 import type { WidgetModule } from './types';
 
@@ -14,96 +13,76 @@ import type { WidgetModule } from './types';
  * `apps/api/convex/analytics/adaptiveDashboard.ts`. Labels/descriptions for these
  * core cards are sourced from that backend catalog (surfaced via
  * `getAvailableCards`), so they are intentionally omitted here.
+ *
+ * `component` is a lazy loader (`() => import(...)`), not a constructed
+ * `defineAsyncComponent`: `WidgetHost` builds the async wrapper so laziness is
+ * structural and a failed chunk load stays retryable.
  */
 const CORE_DASHBOARD_WIDGETS: readonly WidgetModule[] = [
 	{
 		kind: 'verification_queue',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/VerificationQueueCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/VerificationQueueCard.vue'),
 	},
 	{
 		kind: 'campaign_performance',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/CampaignPerformanceCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/CampaignPerformanceCard.vue'),
 	},
 	{
 		kind: 'channel_health',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/ChannelHealthCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/ChannelHealthCard.vue'),
 	},
 	{
 		kind: 'agent_health',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/AgentHealthCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/AgentHealthCard.vue'),
 	},
 	{
 		kind: 'recent_contacts',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/RecentContactsCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/RecentContactsCard.vue'),
 	},
 	{
 		kind: 'recent_activity',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/RecentActivityCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/RecentActivityCard.vue'),
 	},
 	{
 		kind: 'queue_depth',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/QueueDepthCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/QueueDepthCard.vue'),
 	},
 	{
 		kind: 'delivery_rates',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/DeliveryRatesCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/DeliveryRatesCard.vue'),
 	},
 	{
 		kind: 'pinned_visualizations',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/PinnedVisualizationsCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/PinnedVisualizationsCard.vue'),
 	},
 	{
 		kind: 'knowledge_graph',
 		source: 'core',
-		component: defineAsyncComponent(() => import('~/components/dashboard/cards/KnowledgeCard.vue')),
+		component: () => import('~/components/dashboard/cards/KnowledgeCard.vue'),
 	},
 	{
 		kind: 'upcoming_campaigns',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/UpcomingCampaignsCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/UpcomingCampaignsCard.vue'),
 	},
 	{
 		kind: 'cost_by_step',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/CostByStepCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/CostByStepCard.vue'),
 	},
 	{
 		kind: 'accuracy_trend',
 		source: 'core',
-		component: defineAsyncComponent(
-			() => import('~/components/dashboard/cards/AccuracyTrendCard.vue')
-		),
+		component: () => import('~/components/dashboard/cards/AccuracyTrendCard.vue'),
 	},
 ];
 

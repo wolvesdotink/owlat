@@ -8,7 +8,7 @@
  *
  * States handled: loading (async chunk in flight), error (isolated), and content.
  */
-import { ref, computed, onErrorCaptured } from 'vue';
+import { ref, computed, onErrorCaptured, defineAsyncComponent } from 'vue';
 import type { WidgetModule } from '~/composables/widgets/types';
 
 const props = defineProps<{
@@ -23,6 +23,16 @@ const props = defineProps<{
 }>();
 
 const error = ref<Error | null>(null);
+// Bumped on retry. `defineAsyncComponent` caches its loader promise — including a
+// rejection — for the life of the wrapper, so recovering a failed chunk load
+// requires a *fresh* wrapper. Keying the async component on this counter builds
+// one per attempt, which re-invokes the loader and genuinely re-fetches.
+const attempt = ref(0);
+
+const asyncComponent = computed(() => {
+	void attempt.value;
+	return defineAsyncComponent(props.module.component);
+});
 
 onErrorCaptured((err) => {
 	error.value = err instanceof Error ? err : new Error(String(err));
@@ -33,12 +43,13 @@ onErrorCaptured((err) => {
 });
 
 const regionLabel = computed(() => props.module.label ?? props.module.kind);
-const boundProps = computed(() =>
-	props.context === undefined ? {} : { context: props.context }
-);
+const boundProps = computed(() => (props.context === undefined ? {} : { context: props.context }));
 
 function retry() {
 	error.value = null;
+	// New wrapper → the loader runs again, so a transient chunk-load failure or a
+	// component that has since recovered can actually re-render.
+	attempt.value += 1;
 }
 </script>
 
@@ -62,8 +73,8 @@ function retry() {
 				</button>
 			</div>
 		</div>
-		<Suspense v-else>
-			<component :is="module.component" v-bind="boundProps" />
+		<Suspense v-else :key="attempt">
+			<component :is="asyncComponent" v-bind="boundProps" />
 			<template #fallback>
 				<div class="p-4 flex items-center justify-center gap-2" aria-busy="true">
 					<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin text-text-tertiary" />

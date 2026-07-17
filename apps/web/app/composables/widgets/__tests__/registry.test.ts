@@ -6,16 +6,17 @@ import { createWidgetRegistry, resolveWidget, WidgetRegistryError } from '../reg
 import type { WidgetModule } from '../types';
 
 const Stub: Component = defineComponent({ template: '<div />' });
+const stubLoader = () => Promise.resolve(Stub);
 
 function coreWidget(kind: string, flag?: WidgetModule['flag']): WidgetModule {
-	return { kind, source: 'core', component: Stub, ...(flag ? { flag } : {}) };
+	return { kind, source: 'core', component: stubLoader, ...(flag ? { flag } : {}) };
 }
 
 function pluginContribution(pluginId: string, kind: string): HostedContribution<WidgetModule> {
 	return {
 		pluginId: parsePluginId(pluginId),
 		contributionId: kind,
-		value: { kind, source: { pluginId }, label: `${pluginId} ${kind}`, component: Stub },
+		value: { kind, source: { pluginId }, label: `${pluginId} ${kind}`, component: stubLoader },
 	};
 }
 
@@ -149,8 +150,8 @@ describe('createWidgetRegistry — surface-agnostic', () => {
 	// identically to the dashboard-card surface, proving the generalisation.
 	it('composes a thread-panel surface with the same guarantees', () => {
 		const registry = createWidgetRegistry([
-			{ kind: 'crm_context', label: 'CRM', source: 'core', component: Stub },
-			{ kind: 'related_threads', label: 'Related', source: 'core', component: Stub },
+			{ kind: 'crm_context', label: 'CRM', source: 'core', component: stubLoader },
+			{ kind: 'related_threads', label: 'Related', source: 'core', component: stubLoader },
 		]);
 		expect(registry.kinds()).toEqual(['crm_context', 'related_threads']);
 		expect(registry.get('crm_context')?.label).toBe('CRM');
