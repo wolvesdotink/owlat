@@ -32,6 +32,18 @@ vi.mock('../plugins.generated', () => ({
 				flag: Object.freeze({ default: false, requiredEnvVars: Object.freeze(['CRM_KEY']) }),
 			}),
 		}),
+		// A second, fully enabled and granted plugin. It owns no catalogued event,
+		// so the ONLY thing that can deny its claim on a `crm-pack` kind is the
+		// ownership check — this pins that check (dropping it re-authorizes below).
+		Object.freeze({
+			packageName: '@acme/other-pack',
+			manifest: Object.freeze({
+				id: 'other-pack',
+				version: '1.0.0',
+				capabilities: Object.freeze(['webhooks:publish']),
+				flag: Object.freeze({ default: false, requiredEnvVars: Object.freeze([]) }),
+			}),
+		}),
 	]),
 }));
 
@@ -65,8 +77,11 @@ function fakeContext(
 		db: {
 			query: vi.fn(() => ({
 				first: vi.fn(async () => ({
-					featureFlags: { [flagKey]: isEnabled },
-					pluginCapabilityGrants: { [flagKey]: { 'webhooks:publish': isGranted } },
+					featureFlags: { [flagKey]: isEnabled, 'plugin.other-pack': isEnabled },
+					pluginCapabilityGrants: {
+						[flagKey]: { 'webhooks:publish': isGranted },
+						'plugin.other-pack': { 'webhooks:publish': isGranted },
+					},
 				})),
 			})),
 		},
@@ -86,10 +101,13 @@ describe('hosted webhook event authorization', () => {
 		await expect(
 			authorizeHandler(ctx, { pluginId: 'crm-pack', eventKind: 'plugin.crm-pack.deal-won' })
 		).resolves.toBe(true);
-		// Cross-plugin: a different plugin claiming crm-pack's event.
+		// Cross-plugin: `other-pack` is itself registered, flag-enabled, and
+		// granted, so this denial can only come from the ownership check — not
+		// from registration. The claim must never audit under `crm-pack`.
 		await expect(
 			authorizeHandler(ctx, { pluginId: 'other-pack', eventKind: 'plugin.crm-pack.deal-won' })
 		).resolves.toBe(false);
+		expect(audit).not.toHaveBeenCalled();
 		// A core event is never a plugin-publishable kind.
 		await expect(
 			authorizeHandler(ctx, { pluginId: 'crm-pack', eventKind: 'email.sent' })
