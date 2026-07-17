@@ -172,7 +172,25 @@ export type EnvKey =
 	| 'CALENDAR_FREEBUSY_ICS_URL'
 	// IANA timezone (e.g. `America/New_York`) used to compute and label the owner's
 	// open business-hours slots. Unset ⇒ `UTC`.
-	| 'CALENDAR_TIMEZONE';
+	| 'CALENDAR_TIMEZONE'
+	// Slack approvals reference app (Tier-2 connected app, PP-26). Both must be
+	// set for the app to be ACTIVE: the signing secret authenticates Slack's
+	// interaction callbacks (v0 HMAC, replay-windowed) and the webhook URL is
+	// where approval requests are posted. When EITHER is unset the app is inert —
+	// the restrict-only hold gate returns "safe" and no autonomous send is held.
+	// The gate holds EVERY autonomous send until a Slack quorum approves once both
+	// are configured; failure to notify Slack, or any error, holds (never sends).
+	| 'SLACK_APPROVALS_SIGNING_SECRET'
+	| 'SLACK_APPROVALS_WEBHOOK_URL'
+	// Distinct Slack approvers required to release the Slack approvals hold.
+	// Optional; unset / invalid / < 1 ⇒ 1. A larger value NEVER weakens the gate
+	// (it only demands more approvers); it is clamped to a small ceiling so a
+	// typo can't create an unsatisfiable quorum that silently holds forever.
+	| 'SLACK_APPROVALS_QUORUM'
+	// Minutes an approval request stays open before it expires unapproved (and
+	// the send stays held). Optional; unset / invalid ⇒ 1440 (24h), clamped to a
+	// sane range. Expiry only ever holds — an expired request never sends.
+	| 'SLACK_APPROVALS_TTL_MINUTES';
 
 /**
  * Read a required environment variable. Throws if unset or empty.
