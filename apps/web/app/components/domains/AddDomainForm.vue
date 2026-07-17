@@ -13,8 +13,10 @@
  * domain into the domain field is reflowed back into domain + subdomain via
  * `trySplitZone`, so `mail.example.co.uk` round-trips to `example.co.uk` + `mail`.
  *
- * D3 will add an "Advanced" return-path section below the subdomain field — it
- * is a sibling addition to this layout, not a rework.
+ * An "Advanced" disclosure (collapsed by default) adds an optional custom
+ * return-path (bounce) subdomain. It composes to a sibling host of the sending
+ * name; the value rides the submit payload so the page can set it (via the D2
+ * mutation) right after registration, which is when the new domain id exists.
  */
 import { trySplitZone, isDnsLabel } from '@owlat/shared';
 import { isFreemailDomain, resolveNs } from '~/utils/domainPrecheck';
@@ -26,8 +28,13 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-	/** The composed, normalized single domain string to register. */
-	submit: [domain: string];
+	/**
+	 * The composed domain to register, plus an optional custom return-path
+	 * (bounce) host. The page registers the domain first (create returns the new
+	 * id) and then sets the return-path host via the D2 mutation, which needs
+	 * that id — so both travel together and the page orchestrates.
+	 */
+	submit: [payload: { domain: string; returnPathHost: string | null }];
 	cancel: [];
 }>();
 
@@ -41,6 +48,14 @@ const SUBDOMAIN_SUGGESTIONS = ['mail', 'post', 'send'] as const;
 const domain = ref('');
 const sub = ref('mail');
 const nsUnresolved = ref(false);
+
+// Advanced: an optional custom return-path (bounce) subdomain, collapsed by
+// default so the common path stays a two-field form. The label composes to
+// `<label>.<registrable zone>` (a sibling of the sending name), matching how the
+// MTA keys the return-path SPF record.
+const advancedOpen = ref(false);
+const returnPathSub = ref('');
+const normalizedReturnPathSub = computed(() => returnPathSub.value.trim().toLowerCase());
 
 const normalizedDomain = computed(() => domain.value.trim().toLowerCase());
 const normalizedSub = computed(() => sub.value.trim().toLowerCase());
@@ -82,13 +97,39 @@ const subRule: ValidationRule = (value) => {
 	return ok || 'Use letters, digits and hyphens (e.g. mail or post)';
 };
 
+// Return-path subdomain: optional; a single hostname label when present.
+const returnPathRule: ValidationRule = (value) => {
+	const raw = String(value ?? '').trim();
+	if (!raw) return true;
+	return (
+		isDnsLabel(raw.toLowerCase()) || 'Use a single label like bounce (letters, digits, hyphens)'
+	);
+};
+
 const validation = useFormValidation({
 	domain: [rules.required('Enter your domain'), domainRule],
 	sub: [subRule],
+	returnPath: [returnPathRule],
 });
 
 const domainError = computed(() => validation.getError('domain'));
 const subError = computed(() => validation.getError('sub'));
+const returnPathError = computed(() => validation.getError('returnPath'));
+
+// The zone the return-path host lives in (a sibling of the sending name); falls
+// back to the placeholder zone for the example preview before a domain is typed.
+const returnPathZone = computed(() => registrableZone.value ?? 'example.com');
+// The composed absolute return-path host emitted on submit — null when unset.
+const returnPathHost = computed(() =>
+	normalizedReturnPathSub.value && registrableZone.value
+		? `${normalizedReturnPathSub.value}.${registrableZone.value}`
+		: null
+);
+const showReturnPathPreview = computed(() => !validation.hasError('returnPath'));
+const returnPathDescribedBy = computed(() => {
+	if (returnPathError.value) return 'add-returnpath-error';
+	return showReturnPathPreview.value ? 'add-returnpath-preview' : undefined;
+});
 
 // Only promise "you'll send as …" when the preview would be truthful: not a
 // freemail domain (live), and no field currently carries a validation error.
@@ -151,6 +192,11 @@ function handleSubBlur() {
 	validation.validateField('sub', sub.value);
 }
 
+function handleReturnPathBlur() {
+	validation.touch('returnPath');
+	validation.validateField('returnPath', returnPathSub.value);
+}
+
 function chooseSubdomain(value: string) {
 	sub.value = value;
 	validation.touch('sub');
@@ -161,9 +207,18 @@ function onSubmit() {
 	reflowDomain();
 	validation.touch('domain');
 	validation.touch('sub');
-	if (!validation.validate({ domain: domain.value, sub: sub.value })) return;
+	validation.touch('returnPath');
+	if (
+		!validation.validate({
+			domain: domain.value,
+			sub: sub.value,
+			returnPath: returnPathSub.value,
+		})
+	) {
+		return;
+	}
 	if (isFreemail.value) return;
-	emit('submit', combinedDomain.value);
+	emit('submit', { domain: combinedDomain.value, returnPathHost: returnPathHost.value });
 }
 </script>
 
@@ -293,6 +348,75 @@ function onSubmit() {
 						to publish.
 					</span>
 				</p>
+			</div>
+
+			<!-- Advanced: optional custom return-path (bounce) host. Collapsed by
+			     default so the common two-field path stays simple. -->
+			<div>
+				<button
+					type="button"
+					class="flex items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-text-primary"
+					:aria-expanded="advancedOpen"
+					aria-controls="add-domain-advanced"
+					data-testid="advanced-toggle"
+					:disabled="loading"
+					@click="advancedOpen = !advancedOpen"
+				>
+					<Icon
+						name="lucide:chevron-right"
+						class="h-3.5 w-3.5 transition-transform"
+						:class="advancedOpen ? 'rotate-90' : ''"
+					/>
+					Advanced
+				</button>
+
+				<div
+					v-if="advancedOpen"
+					id="add-domain-advanced"
+					class="mt-3 rounded-lg border border-border-subtle bg-bg-surface p-3"
+					data-testid="advanced-section"
+				>
+					<label for="add-returnpath" class="label">
+						Bounce (return-path) subdomain
+						<span class="font-normal text-text-tertiary">— optional</span>
+					</label>
+					<input
+						id="add-returnpath"
+						v-model="returnPathSub"
+						type="text"
+						placeholder="bounce"
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+						:class="['input', returnPathError && 'input-error']"
+						:disabled="loading"
+						:aria-invalid="returnPathError ? 'true' : undefined"
+						:aria-describedby="returnPathDescribedBy"
+						@blur="handleReturnPathBlur"
+					/>
+					<p v-if="returnPathError" id="add-returnpath-error" class="mt-1 text-xs text-error">
+						{{ returnPathError }}
+					</p>
+					<!-- Live preview, same discipline as the sending address: suppressed on
+					     error, empty state framed as an example not a promise. -->
+					<p
+						v-if="showReturnPathPreview"
+						id="add-returnpath-preview"
+						class="mt-1 text-xs text-text-secondary"
+						data-testid="returnpath-preview"
+					>
+						<template v-if="normalizedReturnPathSub">
+							Bounces will come from
+							<strong class="text-text-primary"
+								>{{ normalizedReturnPathSub }}.{{ returnPathZone }}</strong
+							>
+						</template>
+						<template v-else>
+							For example, bounces would come from
+							<span class="font-medium text-text-primary">bounce.{{ returnPathZone }}</span>
+						</template>
+					</p>
+				</div>
 			</div>
 
 			<!-- Blocking: freemail / public-mailbox domain the user can't publish DNS for. -->

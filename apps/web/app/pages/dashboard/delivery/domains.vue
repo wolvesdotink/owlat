@@ -34,6 +34,9 @@ const hasVerifiedDomain = computed(() =>
 const { run: createDomain } = useBackendOperation(api.domains.domains.create, {
 	label: 'Add domain',
 });
+const { run: setReturnPathHost } = useBackendOperation(api.domains.returnPath.setReturnPathHost, {
+	label: 'Set return-path host',
+});
 const { run: removeDomain } = useBackendOperation(api.domains.domains.remove, {
 	label: 'Remove domain',
 });
@@ -111,30 +114,23 @@ watch(
 	{ immediate: true }
 );
 
-// Handle add domain. The form validates + composes the single domain string
-// (subdomain + registrable zone) and blocks freemail before emitting; this
-// handler just registers the composed value.
-const handleAddDomain = async (domain: string) => {
-	if (!hasActiveOrganization.value) return;
-
-	addModal.setLoading(true);
-	const result = await createDomain({ domain });
-	addModal.setLoading(false);
-
-	if (result === undefined) return;
-
-	addModal.close();
-	showToast('Domain added successfully. Configure your DNS records to verify.');
-};
+// Add-domain orchestration (register, then set a custom return-path host if
+// supplied) lives in a plain, directly-testable flow composable.
+const { handleAddDomain } = useAddDomain({
+	hasActiveOrganization: () => hasActiveOrganization.value,
+	createDomain,
+	setReturnPathHost,
+	setLoading: (loading) => addModal.setLoading(loading),
+	close: () => addModal.close(),
+	showToast,
+});
 
 // Handle delete domain
 const handleDeleteDomain = async () => {
 	if (!deleteModal.data.value) return;
 
 	deleteModal.setLoading(true);
-	const result = await removeDomain({
-		domainId: deleteModal.data.value._id,
-	});
+	const result = await removeDomain({ domainId: deleteModal.data.value._id });
 	deleteModal.setLoading(false);
 
 	if (result === undefined) return;
@@ -175,24 +171,22 @@ const handleRetryRegistration = async (domainId: Id<'domains'>) => {
 const canManageDomains = computed(() => role.value === 'owner' || role.value === 'admin');
 
 // Inbound/receiving DNS guidance. `getInboundMailConfig` is admin-gated
-// (organization:manage), so skip the subscription for non-admins — the read
-// would otherwise fail with `forbidden`, and the Receiving panel is an operator
-// task anyway. Returns the deployment's mail host (MTA EHLO hostname) used as
-// the MX target plus the inbound SMTP port.
+// (organization:manage), so skip the subscription for non-admins (the read
+// would 403, and the Receiving panel is an operator task anyway). Returns the
+// deployment's mail host (MX target) plus the inbound SMTP port.
 const { data: inboundMailConfig } = useConvexQuery(api.domains.domains.getInboundMailConfig, () =>
 	canManageDomains.value ? {} : 'skip'
 );
 // Show the Receiving (MX) section whenever the deployment has a mail host to
 // point at — regardless of whether an inbound feature is on yet. Gating it on
 // the flag hid the MX instructions from the very admin trying to enable inbound
-// (chicken-and-egg); instead the section renders always and shows an honest
-// "not turned on yet — here's how" state when `inboundEnabled` is false.
+// (chicken-and-egg); instead it renders always and shows an honest "not turned
+// on yet — here's how" state when `inboundEnabled` is false.
 //
 // Hold the section until the feature-flag subscription has resolved: the app is
-// `ssr: false`, so `flags` starts at the all-off defaults and `inboundEnabled`
-// would compute false during the loading window — flashing a dishonest "not
-// turned on yet" banner on an inbound-enabled install before the live flags
-// arrive. Waiting on `flagsLoading` keeps the banner truthful.
+// `ssr: false`, so `flags` starts all-off and `inboundEnabled` would compute
+// false during the loading window, flashing a dishonest "not turned on yet"
+// banner on an inbound-enabled install. Waiting on `flagsLoading` keeps it true.
 const inboundEnabled = computed(() => hasInboundFeature(flags.value));
 const showReceivingDns = computed(
 	() => Boolean(inboundMailConfig.value?.mailHost) && !flagsLoading.value

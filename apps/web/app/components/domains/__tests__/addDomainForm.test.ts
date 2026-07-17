@@ -168,7 +168,7 @@ describe('AddDomainForm — submit', () => {
 		await subInput(w).setValue('mail');
 		await w.get('form').trigger('submit');
 		expect(w.emitted('submit')).toBeTruthy();
-		expect(w.emitted('submit')![0]).toEqual(['mail.example.com']);
+		expect(w.emitted('submit')![0]).toEqual([{ domain: 'mail.example.com', returnPathHost: null }]);
 	});
 
 	it('emits the apex domain when no subdomain is set', async () => {
@@ -177,7 +177,7 @@ describe('AddDomainForm — submit', () => {
 		const apexButton = w.findAll('button').find((b) => b.text().includes('none'));
 		await apexButton!.trigger('click');
 		await w.get('form').trigger('submit');
-		expect(w.emitted('submit')![0]).toEqual(['example.com']);
+		expect(w.emitted('submit')![0]).toEqual([{ domain: 'example.com', returnPathHost: null }]);
 	});
 
 	it('rejects an empty domain (required) without emitting', async () => {

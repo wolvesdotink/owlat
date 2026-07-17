@@ -39,9 +39,12 @@ describe('Add-Domain modal — delegated to the guided form component', () => {
 		expect(pageSource).not.toContain('data-testid="address-preview"');
 	});
 
-	it('the create handler just registers the composed string the form emits', () => {
-		expect(pageSource).toMatch(/const handleAddDomain = async \(domain: string\) =>/);
-		expect(pageSource).toContain('await createDomain({ domain })');
+	it('delegates the add-domain orchestration to the useAddDomain flow', () => {
+		// The register-then-set orchestration lives in the tested composable; the
+		// page just wires its mutation runs / modal / toast into it.
+		expect(pageSource).toMatch(/const \{ handleAddDomain \} = useAddDomain\(\{/);
+		expect(pageSource).toContain('createDomain,');
+		expect(pageSource).toContain('setReturnPathHost,');
 	});
 });
 
