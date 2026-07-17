@@ -540,6 +540,7 @@ import type * as automations_triggers_catalog from "../automations/triggers/cata
 import type * as automations_triggers_pluginTriggers from "../automations/triggers/pluginTriggers.js";
 import type * as conditions_catalog from "../conditions/catalog.js";
 import type * as plugins_automationStepAuthorization from "../plugins/automationStepAuthorization.js";
+import type * as plugins_hostedModuleSnapshot from "../plugins/hostedModuleSnapshot.js";
 import type * as plugins_automationConditionCatalog_generated from "../plugins/automationConditionCatalog.generated.js";
 import type * as plugins_automationConditionModules_generated from "../plugins/automationConditionModules.generated.js";
 import type * as plugins_automationStepCatalog_generated from "../plugins/automationStepCatalog.generated.js";
@@ -1208,6 +1209,7 @@ declare const fullApi: ApiFromModules<{
   "automations/triggers/pluginTriggers": typeof automations_triggers_pluginTriggers;
   "conditions/catalog": typeof conditions_catalog;
   "plugins/automationStepAuthorization": typeof plugins_automationStepAuthorization;
+  "plugins/hostedModuleSnapshot": typeof plugins_hostedModuleSnapshot;
   "plugins/automationConditionCatalog.generated": typeof plugins_automationConditionCatalog_generated;
   "plugins/automationConditionModules.generated": typeof plugins_automationConditionModules_generated;
   "plugins/automationStepCatalog.generated": typeof plugins_automationStepCatalog_generated;
