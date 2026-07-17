@@ -122,12 +122,8 @@ export async function isBundledPluginCapabilityGranted(
 		return false;
 	}
 	if (!manifest.flag || !manifest.capabilities.includes(capability)) return false;
-	const flagKey = `plugin.${pluginId}` as const;
-	const settings = await ctx.db.query('instanceSettings').first();
-	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
-	return (
-		flags[flagKey] === true && settings?.pluginCapabilityGrants?.[flagKey]?.[capability] === true
-	);
+	const { flagEnabled, grants } = await loadPluginRuntimeFacts(ctx, pluginId, manifest);
+	return flagEnabled && grants?.[capability] === true;
 }
 
 /**
