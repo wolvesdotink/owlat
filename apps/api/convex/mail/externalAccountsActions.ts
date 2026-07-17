@@ -81,7 +81,8 @@ function validateShape(args: { emailAddress: string; imapHost: string; smtpHost:
 	if (!args.imapHost.trim()) throwInvalidInput('IMAP host is required.');
 	if (!args.smtpHost.trim()) throwInvalidInput('SMTP host is required.');
 	// NB: do NOT reject `isImapSecure/isSmtpSecure === false` here. That flag is
-	// the mail client's *implicit-TLS* switch; `false` on ports 587/143 is the
+	// imapflow's (IMAP) / the mail-sync SMTP client's (@owlat/smtp-client)
+	// *implicit-TLS* switch; `false` on ports 587/143 is the
 	// standard STARTTLS configuration (iCloud, Outlook.com, …), not cleartext.
 	// TLS is enforced where the connection is actually made: the mail-sync worker
 	// forces STARTTLS (or implicit TLS) for every non-loopback host and fails the
