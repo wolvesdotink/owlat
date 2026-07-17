@@ -381,6 +381,17 @@ export async function quit(conn: SmtpConnection): Promise<void> {
  * caller MUST discard the socket — a poisoned connection is never reused.
  */
 export async function resetTransaction(conn: SmtpConnection): Promise<void> {
+	if (conn.hasPendingData) {
+		// A reply the prior transaction left buffered — or an unsolicited line the
+		// peer injected while the socket was idle — would be consumed as the RSET's
+		// answer and desync every later read. Refuse to reuse a socket that is not
+		// drained; the caller discards it and connects fresh.
+		throw new SmtpError({
+			phase: 'mail',
+			message: 'connection has buffered data before RSET; refusing to reuse a non-drained socket',
+			secured: conn.secured,
+		});
+	}
 	const reply = await conn.command(serializeRset(), 'mail');
 	if (!isPositiveCompletion(reply.code)) {
 		throw errorFromReply('mail', `server rejected RSET with ${reply.code}`, conn.secured, reply);

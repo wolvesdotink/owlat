@@ -101,6 +101,17 @@ export class SmtpConnection {
 	}
 
 	/**
+	 * `true` when the reader is still holding reply data no command consumed — a
+	 * fully-parsed reply queued, or bytes mid-line in the parser. After a clean
+	 * transaction this is `false`; a `true` here before reusing the socket means a
+	 * leftover/unsolicited reply would desync the next command, so the reuse layer
+	 * (X1 `resetTransaction`) refuses to reuse the connection.
+	 */
+	get hasPendingData(): boolean {
+		return this.reader.hasBufferedData;
+	}
+
+	/**
 	 * Write a command line and resolve the next complete reply. `phase` labels
 	 * any resulting timeout / disconnect error; `expectData` uses the (longer)
 	 * data-phase timeout instead of the per-command one.
