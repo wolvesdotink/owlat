@@ -102,9 +102,31 @@ describe('RecordRow — collapsed header identity', () => {
 		expect(line.text()).not.toContain('bounces via');
 	});
 
-	it('keeps the existing added-date info alongside the identity line', () => {
-		const w = mountRow();
-		expect(w.text()).toContain('Added');
+	it('keeps the existing added-date info on the combined hint line', () => {
+		const line = mountRow().find('[data-testid="sends-as-line"]');
+		// Sends-as, bounce host and status/date all live on one line (§3.1 mock).
+		expect(line.text()).toContain('Sends as anyone@mail.example.com');
+		expect(line.text()).toContain('bounces via bounce.example.com');
+		expect(line.text()).toContain('added');
+	});
+
+	it('composes a relative SES-style host (host:"mail", no hostname) against the domain', () => {
+		// The SES provider emits mailFrom records with a relative `host: 'mail'`
+		// and no `hostname`; the bounce host must resolve to mail.<domain>, never
+		// a bare "mail" label.
+		const w = mountRow({
+			domain: 'example.com',
+			dnsRecords: {
+				spf: { type: 'TXT', host: '@', value: 'v=spf1 ~all' },
+				mailFrom: [
+					{ type: 'MX', host: 'mail', value: 'feedback-smtp.us-east-1.amazonses.com', priority: 10 },
+					{ type: 'TXT', host: 'mail', value: 'v=spf1 include:amazonses.com ~all' },
+				],
+			},
+		});
+		const line = w.find('[data-testid="sends-as-line"]');
+		expect(line.text()).toContain('bounces via mail.example.com');
+		expect(line.text()).not.toMatch(/bounces via mail(?![.])/);
 	});
 });
 
@@ -118,7 +140,25 @@ describe('RecordRow — MAIL FROM heading (regression: mail.mail.example.com)', 
 		expect(heading.text()).not.toContain('mail.mail.example.com');
 	});
 
-	it('drops the parenthetical when the mailFrom record carries no hostname', () => {
+	it('composes a relative SES-style host in the heading (mail.<domain>)', () => {
+		const w = mountRow(
+			{
+				domain: 'example.com',
+				dnsRecords: {
+					spf: { type: 'TXT', host: '@', value: 'v=spf1 ~all' },
+					mailFrom: [
+						{ type: 'MX', host: 'mail', value: 'feedback-smtp.us-east-1.amazonses.com', priority: 10 },
+						{ type: 'TXT', host: 'mail', value: 'v=spf1 include:amazonses.com ~all' },
+					],
+				},
+			},
+			true
+		);
+		const heading = w.find('[data-testid="mailfrom-heading"]');
+		expect(heading.text()).toContain('MAIL FROM Domain (mail.example.com)');
+	});
+
+	it('drops the parenthetical when the mailFrom record carries no host or hostname', () => {
 		const w = mountRow(
 			{
 				dnsRecords: {

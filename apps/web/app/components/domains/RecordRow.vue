@@ -46,15 +46,20 @@ const emit = defineEmits<{
 const readiness = computed(() => readinessSummary(props.domain));
 const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dmarc, 'TXT'));
 
-// The return-path (bounce / MAIL FROM) host as the backend actually keyed it —
-// an env-configured absolute hostname (see the MTA provider's `mailFrom`
-// entry), NOT a hardcoded `mail.<domain>`. Everything that names the bounce
-// host — the collapsed "bounces via …" hint and the expanded MAIL FROM
-// heading — reads from here so the label can never drift from the record.
+// The return-path (bounce / MAIL FROM) host as the backend actually keyed it.
+// This mirrors the verifier's host rule (dnsVerification.ts): a `hostname` is
+// an absolute FQDN (the MTA return-path SPF lives on a sibling domain, e.g.
+// `bounce.example.com`), whereas a `host` is relative to the From-domain — the
+// SES provider emits `host: 'mail'`, which resolves to `mail.<domain>`; `@`
+// means the domain apex itself. Both the collapsed "bounces via …" hint and
+// the expanded MAIL FROM heading read from here so the label can never drift
+// from the record — and never renders a bare relative label like "mail".
 const mailFromHost = computed<string | null>(() => {
 	for (const record of props.domain.dnsRecords.mailFrom ?? []) {
-		const host = record.hostname ?? record.host;
-		if (host) return host;
+		if (record.hostname) return record.hostname;
+		if (record.host) {
+			return record.host === '@' ? props.domain.domain : `${record.host}.${props.domain.domain}`;
+		}
 	}
 	return null;
 });
@@ -106,28 +111,27 @@ const websiteApex = computed(() => {
 							{{ capitalize(domain.status) }}
 						</span>
 					</div>
-					<p class="text-sm text-text-tertiary mt-0.5">
-						<span v-if="domain.status === 'registering'"> Setting up domain... </span>
+					<!-- Single identity + status hint line (§3.1 mock). Says what the
+					     domain is FOR — a concrete example sender address resolves the
+					     "what's this name?" ambiguity — plus the bounce host named from
+					     the actual return-path record so it can't drift, then the
+					     existing status / added-date info. -->
+					<p class="text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
+						Sends as {{ sendsAsAddress }}<template v-if="mailFromHost">
+							· bounces via {{ mailFromHost }}</template
+						>
+						·
+						<span v-if="domain.status === 'registering'">Setting up domain…</span>
 						<span v-else-if="domain.status === 'failed' && domain.lastRegistrationError">
-							Registration failed — click Retry to try again
+							registration failed — click Retry to try again
 						</span>
 						<span v-else-if="domain.status === 'verified'">
-							Verified {{ formatDateTime(domain.verifiedAt) }}
+							verified {{ formatDateTime(domain.verifiedAt) }}
 						</span>
 						<span v-else-if="domain.lastVerifiedAt">
-							Last checked {{ formatDateTime(domain.lastVerifiedAt) }}
+							last checked {{ formatDateTime(domain.lastVerifiedAt) }}
 						</span>
-						<span v-else> Added {{ formatDateTime(domain.createdAt) }} </span>
-					</p>
-					<!-- Identity sub-line: says what the domain is FOR, not just its
-					     string. A concrete example address resolves the "what's this
-					     name?" ambiguity, and the bounce host is named from the actual
-					     return-path record so it can't drift. -->
-					<p class="text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
-						Sends as {{ sendsAsAddress }}
-						<template v-if="mailFromHost">
-							· bounces via {{ mailFromHost }}
-						</template>
+						<span v-else>added {{ formatDateTime(domain.createdAt) }}</span>
 					</p>
 				</div>
 			</div>
