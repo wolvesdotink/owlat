@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { PluginSettingsSchema } from '@owlat/plugin-kit';
+import type { PluginSettingsField, PluginSettingsSchema } from '@owlat/plugin-kit';
 import {
 	baselineFieldValue,
 	hasPluginSettingsChanges,
@@ -54,7 +54,7 @@ describe('pluginSettingsBaseline', () => {
 		});
 	});
 
-	it('falls back to the first select option when there is no default or stored value', () => {
+	it('baselines an unset select to "" (the placeholder), not a fabricated first option', () => {
 		const schema: PluginSettingsSchema = [
 			{
 				kind: 'select',
@@ -66,7 +66,20 @@ describe('pluginSettingsBaseline', () => {
 				],
 			},
 		];
-		expect(baselineFieldValue(schema[0]!, EMPTY)).toBe('a');
+		expect(baselineFieldValue(schema[0]!, EMPTY)).toBe('');
+	});
+
+	it('baselines an unset number to "" (an empty input), not a fabricated min/0', () => {
+		const withMin: PluginSettingsField = {
+			kind: 'number',
+			key: 'port',
+			label: 'Port',
+			min: 1,
+			max: 65535,
+		};
+		const withoutMin: PluginSettingsField = { kind: 'number', key: 'count', label: 'Count' };
+		expect(baselineFieldValue(withMin, EMPTY)).toBe('');
+		expect(baselineFieldValue(withoutMin, EMPTY)).toBe('');
 	});
 });
 
@@ -123,5 +136,37 @@ describe('missingRequiredPluginSettings', () => {
 		const state: PluginSettingsRedactedState = { values: {}, secretsSet: {} };
 		const baseline = pluginSettingsBaseline(schema, state);
 		expect(missingRequiredPluginSettings(schema, baseline, state)).toEqual(['name']);
+	});
+
+	it('flags a required number/select that is unset with no default', () => {
+		const schema: PluginSettingsSchema = [
+			{ kind: 'number', key: 'port', label: 'Port', required: true, min: 1 },
+			{
+				kind: 'select',
+				key: 'mode',
+				label: 'Mode',
+				required: true,
+				options: [{ value: 'a', label: 'A' }],
+			},
+		];
+		const state: PluginSettingsRedactedState = { values: {}, secretsSet: {} };
+		const baseline = pluginSettingsBaseline(schema, state);
+		expect(missingRequiredPluginSettings(schema, baseline, state)).toEqual(['port', 'mode']);
+	});
+
+	it('is satisfied once the unset required number/select receive values', () => {
+		const schema: PluginSettingsSchema = [
+			{ kind: 'number', key: 'port', label: 'Port', required: true, min: 1 },
+			{
+				kind: 'select',
+				key: 'mode',
+				label: 'Mode',
+				required: true,
+				options: [{ value: 'a', label: 'A' }],
+			},
+		];
+		const state: PluginSettingsRedactedState = { values: {}, secretsSet: {} };
+		const form = { port: 8080, mode: 'a' };
+		expect(missingRequiredPluginSettings(schema, form, state)).toEqual([]);
 	});
 });

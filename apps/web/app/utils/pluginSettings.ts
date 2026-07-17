@@ -37,9 +37,13 @@ export function baselineFieldValue(
 		case 'boolean':
 			return typeof stored === 'boolean' ? stored : (field.default ?? false);
 		case 'number':
-			return typeof stored === 'number' ? stored : (field.default ?? field.min ?? 0);
+			// Unset with no default ⇒ '' (an empty input), never a fabricated min/0
+			// the server never stored — the display must mirror the effective state.
+			return typeof stored === 'number' ? stored : (field.default ?? '');
 		case 'select':
-			return typeof stored === 'string' ? stored : (field.default ?? field.options[0]?.value ?? '');
+			// Unset with no default ⇒ '' (the disabled "Select…" placeholder), not
+			// the first option pretending to be a configured choice.
+			return typeof stored === 'string' ? stored : (field.default ?? '');
 		case 'string':
 			return typeof stored === 'string' ? stored : (field.default ?? '');
 	}
@@ -105,6 +109,9 @@ export function missingRequiredPluginSettings(
 			missing.push(field.key);
 			continue;
 		}
+		// An unset number or select now baselines to '' (see baselineFieldValue),
+		// so an empty-string form value flags a required string, number, or select
+		// that has no effective value. A set number is a `number` and never matches.
 		const value = form[field.key];
 		if (typeof value === 'string' && value.trim() === '') missing.push(field.key);
 	}
