@@ -175,10 +175,14 @@ export class TaskCardRegistry {
 	 *   - a registered plugin kind whose flag is off → `disabled`;
 	 *   - a registered, enabled plugin kind → `plugin` (render its card);
 	 *   - anything unregistered → `unknown`.
+	 *
+	 * The predicate defaults to fail-closed (`() => false`): a gated kind with no
+	 * predicate resolves to `disabled`, never enabled. Ungated kinds (no `flag`)
+	 * are unaffected — the predicate is never consulted for them.
 	 */
 	resolve(
 		kind: TaskFlowKind,
-		isFlagEnabled: (flag: FeatureFlagKey) => boolean = () => true
+		isFlagEnabled: (flag: FeatureFlagKey) => boolean = () => false
 	): TaskCardResolution {
 		const definition = this.byKind.get(kind);
 		if (!definition || !definition.load) return { status: 'unknown', kind };

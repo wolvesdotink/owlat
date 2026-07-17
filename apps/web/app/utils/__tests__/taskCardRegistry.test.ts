@@ -164,6 +164,16 @@ describe('resolve() for the card dispatcher', () => {
 		expect(reg.resolve('plugin.gated', () => true).status).toBe('plugin');
 	});
 
+	it('fails closed: a gated plugin kind with no predicate resolves to disabled', () => {
+		const reg = createTaskCardRegistry();
+		reg.register({ kind: 'plugin.gated', label: 'Gated', flag: 'plugin.gated', load: noop });
+		expect(reg.resolve('plugin.gated')).toEqual({
+			status: 'disabled',
+			kind: 'plugin.gated',
+			label: 'Gated',
+		});
+	});
+
 	it('resolves an unregistered kind to an unknown fallback', () => {
 		const reg = createTaskCardRegistry();
 		expect(reg.resolve('plugin.ghost')).toEqual({ status: 'unknown', kind: 'plugin.ghost' });

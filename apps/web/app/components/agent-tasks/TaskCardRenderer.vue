@@ -40,14 +40,18 @@ const props = withDefaults(
 		kind: TaskFlowKind;
 		/** Opaque flow item handed to the plugin card component. */
 		item?: unknown;
-		/** Feature-flag predicate (from useFeatureFlag) for gating plugin kinds. */
-		isFlagEnabled?: (flag: FeatureFlagKey) => boolean;
+		/**
+		 * Feature-flag predicate (from useFeatureFlag) for gating plugin kinds.
+		 * REQUIRED so the gate fails closed: an omitted predicate must never
+		 * render a flag-disabled plugin card as enabled.
+		 */
+		isFlagEnabled: (flag: FeatureFlagKey) => boolean;
 		/** Whether an "Open" affordance makes sense (a destination exists). */
 		canOpen?: boolean;
 		/** The registry to resolve against (defaults to the app-wide singleton). */
 		registry?: TaskCardRegistry;
 	}>(),
-	{ item: undefined, isFlagEnabled: () => true, canOpen: false, registry: () => taskCardRegistry }
+	{ item: undefined, canOpen: false, registry: () => taskCardRegistry }
 );
 
 const emit = defineEmits<{
