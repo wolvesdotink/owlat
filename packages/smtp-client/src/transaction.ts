@@ -243,6 +243,13 @@ async function authLogin(
  * state, and throw carrying both the discriminant and the server's final reply code.
  */
 async function authXoauth2(conn: SmtpConnection, credentials: SmtpOAuthCredentials): Promise<void> {
+	// Fail closed BEFORE the frame serializes: a `\x01` (or any control char) in the
+	// username or token would corrupt the SASL frame or smuggle an extra `key=value`
+	// field (e.g. a second `auth=`) into the blob. base64 keeps the SMTP line clean
+	// but does NOT protect the SASL grammar, so we reject control chars in the inputs
+	// themselves, mirroring `assertNoCrlf`'s fail-closed philosophy.
+	assertXoauth2Field(conn, 'XOAUTH2 username', credentials.username);
+	assertXoauth2Field(conn, 'XOAUTH2 access token', credentials.accessToken);
 	const initialResponse = base64(
 		`user=${credentials.username}\x01auth=Bearer ${credentials.accessToken}\x01\x01`
 	);
@@ -264,16 +271,42 @@ async function authXoauth2(conn: SmtpConnection, credentials: SmtpOAuthCredentia
 			authCause,
 		});
 	}
-	// A server that rejected outright with a final code and no challenge — treat it
-	// as a terminal auth failure classified by its reply code.
+	// A server that rejected outright with a final code and no challenge. Only a
+	// permanent 5xx is a terminal account problem worth `credentials-rejected`
+	// (re-link the account); a transient 4xx (RFC 4954 `454` temporary auth failure,
+	// or a `421`) must stay retryable, so we omit `authCause` and let replyCode-based
+	// classification govern — exactly as PLAIN/LOGIN do via `assertAuthAccepted`.
 	throw new SmtpError({
 		phase: 'auth',
 		message: `XOAUTH2 rejected with ${reply.code}`,
 		replyCode: reply.code,
 		...(reply.enhancedCode !== undefined ? { enhancedCode: reply.enhancedCode } : {}),
 		secured: conn.secured,
-		authCause: 'credentials-rejected',
+		...(isPermanentNegative(reply.code) ? { authCause: 'credentials-rejected' as const } : {}),
 	});
+}
+
+/**
+ * Reject a value that cannot be safely embedded in the `\x01`-delimited SASL frame.
+ * Any ASCII control character (including the `\x01` field separator itself) fails
+ * closed with a phase-`auth` client error before the frame is built.
+ */
+function assertXoauth2Field(conn: SmtpConnection, field: string, value: string): void {
+	for (let i = 0; i < value.length; i++) {
+		const code = value.charCodeAt(i);
+		if (code < 0x20 || code === 0x7f) {
+			throw new SmtpError({
+				phase: 'auth',
+				message: `${field} contains a control character`,
+				secured: conn.secured,
+			});
+		}
+	}
+}
+
+/** `true` for a 5xx permanent-negative reply. */
+function isPermanentNegative(code: number): boolean {
+	return code >= 500 && code < 600;
 }
 
 /**
@@ -292,12 +325,9 @@ function classifyXoauth2Challenge(reply: SmtpReply): SmtpAuthCause {
 
 /** Extract the numeric `status` from an XOAUTH2 challenge line, or `undefined`. */
 function parseXoauth2Status(challenge: string): number | undefined {
-	let json: string;
-	try {
-		json = Buffer.from(challenge.trim(), 'base64').toString('utf8');
-	} catch {
-		return undefined;
-	}
+	// Node's base64 string decoder never throws (invalid characters are ignored), so
+	// decode directly — the only real failure mode is malformed JSON, caught below.
+	const json = Buffer.from(challenge.trim(), 'base64').toString('utf8');
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(json);
