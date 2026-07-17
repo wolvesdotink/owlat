@@ -175,6 +175,22 @@ describe('composeHostedEmailBlocks — rejections', () => {
 		}
 	});
 
+	it('rejects an editor half whose definition type disagrees with its declared type', async () => {
+		const { host } = await loadHost();
+		const editor = editorHalf('acme-badge', 'Badge');
+		(editor.definition as { type: string }).type = 'somewhere-else';
+		try {
+			host.composeHostedEmailBlocks([
+				contribution('acme', [rendererHalf('acme-badge', 'b')], [editor]),
+			]);
+			throw new Error('expected rejection');
+		} catch (err) {
+			expect((err as InstanceType<typeof host.EmailBlockCompositionError>).code).toBe(
+				'mismatched_definition_type'
+			);
+		}
+	});
+
 	it('rejects an editor half that advertises column or container placement', async () => {
 		const { host } = await loadHost();
 		// Hosted blocks render through the renderer's legacy custom registry, which
@@ -293,7 +309,11 @@ describe('composeHostedEmailBlocks — late registration fails closed', () => {
 		expect(host.areEmailBlockRegistriesFrozen()).toBe(false);
 		try {
 			host.composeHostedEmailBlocks([
-				contribution('acme', [rendererHalf('acme-badge', 'b')], [editorHalf('acme-badge', 'Badge')]),
+				contribution(
+					'acme',
+					[rendererHalf('acme-badge', 'b')],
+					[editorHalf('acme-badge', 'Badge')]
+				),
 			]);
 			throw new Error('expected rejection');
 		} catch (err) {
