@@ -46,6 +46,18 @@ vi.mock('../plugins.generated', () => ({
 				flag: Object.freeze({ default: false, requiredEnvVars: Object.freeze(['HUBSPOT_KEY']) }),
 			}),
 		}),
+		// A second, fully enabled and granted plugin. It owns no catalogued
+		// provider, so the ONLY thing that can deny its claim on a `crm-pack` kind
+		// is the ownership check — this pins that check (dropping it re-authorizes).
+		Object.freeze({
+			packageName: '@acme/other-pack',
+			manifest: Object.freeze({
+				id: 'other-pack',
+				version: '1.0.0',
+				capabilities: Object.freeze(['imports:provide']),
+				flag: Object.freeze({ default: false, requiredEnvVars: Object.freeze([]) }),
+			}),
+		}),
 	]),
 }));
 
@@ -79,8 +91,11 @@ function fakeContext(
 		db: {
 			query: vi.fn(() => ({
 				first: vi.fn(async () => ({
-					featureFlags: { [flagKey]: isEnabled },
-					pluginCapabilityGrants: { [flagKey]: { 'imports:provide': isGranted } },
+					featureFlags: { [flagKey]: isEnabled, 'plugin.other-pack': isEnabled },
+					pluginCapabilityGrants: {
+						[flagKey]: { 'imports:provide': isGranted },
+						'plugin.other-pack': { 'imports:provide': isGranted },
+					},
 				})),
 			})),
 		},
@@ -100,9 +115,13 @@ describe('hosted import provider authorization', () => {
 		await expect(
 			authorizeHandler(ctx, { pluginId: 'crm-pack', providerKind: 'plugin.crm-pack.hubspot' })
 		).resolves.toBe(true);
+		// Cross-plugin: `other-pack` is itself registered, flag-enabled, and
+		// granted, so this denial can only come from the ownership check — not
+		// from registration. The claim must never audit under `crm-pack`.
 		await expect(
 			authorizeHandler(ctx, { pluginId: 'other-pack', providerKind: 'plugin.crm-pack.hubspot' })
 		).resolves.toBe(false);
+		expect(audit).not.toHaveBeenCalled();
 		// A core provider is never a plugin-authorizable kind.
 		await expect(
 			authorizeHandler(ctx, { pluginId: 'crm-pack', providerKind: 'mailchimp' })
