@@ -120,6 +120,7 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bouncePort: 25,
 		redisUrl: 'redis://localhost:6379',
 		apiKey: 'test-key',
+		mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
 		ehloHostname: 'mail.owlat.com',
 		ehloHostnames: {},
 		returnPathDomain: 'bounces.owlat.com',
@@ -133,6 +134,11 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
 		submissionPort: 587,
 		submissionEnabled: false,
+		submissionImplicitTlsPort: 465,
+		submissionImplicitTlsEnabled: false,
+		submissionMaxConnectionsPerIp: 10,
+		submissionMaxClients: 200,
+		submissionMaxAuthFailuresPerIp: 10,
 		contentScreeningEnabled: true,
 		contentMaxSizeKb: 500,
 		deliveryLogMaxLen: 100000,
@@ -143,10 +149,14 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bounceTarpitEnabled: false,
 		bounceTarpitDelayMs: 5000,
 		inboundSpfEnabled: false,
+		inboundDkimEnabled: false,
+		inboundDmarcEnabled: false,
+		inboundArcEnabled: false,
 		rspamdRejectThreshold: 15,
 		smtpPoolGlobalMaxPerHost: 10,
+		maxMessageAgeMs: 432_000_000,
 		...overrides,
-	} as MtaConfig;
+	} satisfies MtaConfig;
 }
 
 describe('sendToMx', () => {
@@ -438,6 +448,71 @@ describe('sendToMx', () => {
 		expect(headerBlockOf(0)).toMatch(/^From: sender@owlat\.com\r?$/m);
 		const env = sendEnvelopeMock.mock.calls[0]![1] as { from: string; to: string[] };
 		expect(env.from).toBe('bounce+encoded@bounces.owlat.com');
+	});
+
+	it('retries the SAME composed+signed bytes across MX hosts (byte-identical — named gate b)', async () => {
+		// MX1 fails at a RETRY-SAFE phase (phase 'mail', no reply): the message was
+		// not yet transmitted, so the loop advances to MX2. Because the job is
+		// composed + signed ONCE up front, MX2 must receive byte-identical bytes.
+		sendEnvelopeMock
+			.mockRejectedValueOnce(
+				smtpError({ phase: 'mail', message: 'connection lost', secured: true })
+			)
+			.mockResolvedValue({ accepted: [], rejected: [], response: okReply() });
+
+		const result = await sendToMx(
+			createJob({ from: 'user@example.com' }),
+			config,
+			redis,
+			'10.0.0.1'
+		);
+
+		expect(result.success).toBe(true);
+		expect(sendEnvelopeMock).toHaveBeenCalledTimes(2); // MX1 failed, MX2 delivered
+		// Byte-for-byte identical wire bytes on both attempts (same Message-ID, same
+		// Date, same DKIM-Signature would ride these exact bytes) — no per-MX recompose.
+		expect(rawOf(0)).toBe(rawOf(1));
+	});
+
+	describe('ambiguous post-DATA failure is never auto-retried (W8 AMBIGUOUS_TIMEOUT)', () => {
+		for (const phase of ['data', 'data-final'] as const) {
+			it(`phase '${phase}' with no server reply → non-retryable, no next-MX attempt`, async () => {
+				// The body (and possibly the terminating dot) was already written, so the
+				// receiver MAY have accepted the message. Retrying risks a double delivery.
+				sendEnvelopeMock.mockRejectedValue(
+					smtpError({ phase, message: 'connection dropped after DATA', secured: true })
+				);
+
+				const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+				expect(result.success).toBe(false);
+				// Terminal (hard): NOT a retryable soft/deferred bounce that requeues.
+				expect(result.bounceType).toBe('hard');
+				expect(result.bounceType).not.toBe('soft');
+				expect(result.bounceType).not.toBe('deferred');
+				// Attempted on exactly ONE MX — the loop never advanced to the second.
+				expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
+				expect(connectMock).toHaveBeenCalledTimes(1);
+			});
+		}
+
+		it('a data-final failure WITH a reply code is classified by the code (deferred), not ambiguous', async () => {
+			// A real 4xx at DATA-final is a DEFINITIVE deferral (retryable), proving the
+			// ambiguous guard fires only on reply-LESS drops.
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({
+					phase: 'data-final',
+					message: '451 4.7.1 Try later',
+					replyCode: 451,
+					secured: true,
+				})
+			);
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.bounceType).toBe('deferred');
+			expect(result.smtpCode).toBe(451);
+		});
 	});
 
 	it('emits Date(+0000)/MIME-Version 1.0/From/non-empty To in the generated message', async () => {

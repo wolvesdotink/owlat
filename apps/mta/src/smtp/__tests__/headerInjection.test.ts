@@ -78,6 +78,7 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bouncePort: 25,
 		redisUrl: 'redis://localhost:6379',
 		apiKey: 'test-key',
+		mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
 		ehloHostname: 'mail.owlat.com',
 		ehloHostnames: {},
 		returnPathDomain: 'bounces.owlat.com',
@@ -91,6 +92,11 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
 		submissionPort: 587,
 		submissionEnabled: false,
+		submissionImplicitTlsPort: 465,
+		submissionImplicitTlsEnabled: false,
+		submissionMaxConnectionsPerIp: 10,
+		submissionMaxClients: 200,
+		submissionMaxAuthFailuresPerIp: 10,
 		contentScreeningEnabled: true,
 		contentMaxSizeKb: 500,
 		deliveryLogMaxLen: 100000,
@@ -101,10 +107,14 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bounceTarpitEnabled: false,
 		bounceTarpitDelayMs: 5000,
 		inboundSpfEnabled: false,
+		inboundDkimEnabled: false,
+		inboundDmarcEnabled: false,
+		inboundArcEnabled: false,
 		rspamdRejectThreshold: 15,
 		smtpPoolGlobalMaxPerHost: 10,
+		maxMessageAgeMs: 432_000_000,
 		...overrides,
-	} as MtaConfig;
+	} satisfies MtaConfig;
 }
 
 describe('sendToMx — header injection (PR-43)', () => {
