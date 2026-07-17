@@ -98,7 +98,12 @@ export async function sealHop(input: Buffer, opts: SealHopOptions): Promise<Buff
 	const headers = await sealMessage(input, {
 		signingDomain: opts.domain,
 		selector: opts.selector,
-		privateKey: opts.privateKey,
+		// `mailauth`'s `getPrivateKey` only accepts a PEM string / Buffer (or a raw
+		// 32-byte Ed25519 key), NOT a Node `KeyObject`: handed a `KeyObject` its
+		// `crypto.sign` throws internally, the AMS is silently dropped, and the
+		// emitted "chain" has no ARC-Message-Signature — which its own `arc()` then
+		// rejects. Export to pkcs8 PEM so the oracle produces a chain it validates.
+		privateKey: opts.privateKey.export({ type: 'pkcs8', format: 'pem' }),
 		algorithm: opts.algorithm ?? 'rsa-sha256',
 		cv: opts.cv,
 		i: opts.instance,
