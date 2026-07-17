@@ -338,7 +338,7 @@ export function buildNavigationSections(
 	env: NavigationEnvironment,
 	contributions: PluginNavigationContributions = EMPTY_CONTRIBUTIONS
 ): NavigationSection[] {
-	const enabledPluginNavItems = contributions.navItems.filter((item) =>
+	const sectionTargetedNavItems = contributions.navItems.filter((item) =>
 		CORE_SECTION_KEYS.has(item.section)
 	);
 
@@ -357,7 +357,7 @@ export function buildNavigationSections(
 			value: { name: item.name, href: item.href, icon: item.icon },
 		}));
 
-		const pluginItems: HostedPluginNavEntry<NavigationItem>[] = enabledPluginNavItems.filter(
+		const pluginItems: HostedPluginNavEntry<NavigationItem>[] = sectionTargetedNavItems.filter(
 			(item) => item.section === section.key
 		);
 		if (section.key === 'settings') pluginItems.push(...contributions.settingsPanels);
