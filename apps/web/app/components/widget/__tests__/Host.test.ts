@@ -217,3 +217,58 @@ describe('WidgetHost — isolation (error boundary)', () => {
 		expect(wrapper.find('[data-testid="lazy-recovered"]').exists()).toBe(true);
 	});
 });
+
+describe('WidgetHost — focus management on retry', () => {
+	it('keeps focus inside the region after a successful retry', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		let shouldThrow = true;
+		const Flaky = defineComponent({
+			setup() {
+				if (shouldThrow) throw new Error('boom');
+			},
+			template: '<div data-testid="ok">ok</div>',
+		});
+		const wrapper = mount(WidgetHost, {
+			attachTo: document.body,
+			...mountOpts,
+			props: { module: moduleFor(Flaky, { kind: 'flaky' }) },
+		});
+		await flushPromises();
+
+		shouldThrow = false;
+		await wrapper.find('[role="alert"] button').trigger('click');
+		await flushPromises();
+
+		// The button that held focus is gone; focus must not have fallen to <body>.
+		const region = wrapper.get('[role="region"]').element;
+		expect(region.contains(document.activeElement)).toBe(true);
+		expect(document.activeElement).not.toBe(document.body);
+		wrapper.unmount();
+	});
+
+	it('keeps focus inside the region when the retry fails again', async () => {
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+		const Boom = defineComponent({
+			setup() {
+				throw new Error('boom');
+			},
+			template: '<div />',
+		});
+		const wrapper = mount(WidgetHost, {
+			attachTo: document.body,
+			...mountOpts,
+			props: { module: moduleFor(Boom, { kind: 'broken' }) },
+		});
+		await flushPromises();
+
+		await wrapper.find('[role="alert"] button').trigger('click');
+		await flushPromises();
+
+		// A new alert is shown, and focus is still inside the region (not <body>).
+		expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+		const region = wrapper.get('[role="region"]').element;
+		expect(region.contains(document.activeElement)).toBe(true);
+		expect(document.activeElement).not.toBe(document.body);
+		wrapper.unmount();
+	});
+});
