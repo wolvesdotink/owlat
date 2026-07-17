@@ -57,6 +57,39 @@ const FAILURE_REASON_POLICY: PluginUntrustedTextPolicy = Object.freeze({
 	scrubPromptInjection: stripControlCharacters,
 });
 
+/**
+ * Host-owned deadline for one plugin step `execute`. A plugin step runs inside
+ * the retrying walker, so a never-resolving module would otherwise strand the
+ * step in `executing` until the platform kills the action — with no failure for
+ * the retry chain to advance on. Racing the module against this deadline yields a
+ * `failed` StepOutcome the walker retries and finally cancels; the orphaned work
+ * cannot force the run to complete. Mirrors the draft-strategy / autonomy-gate
+ * clamp (the step module contract carries no `AbortSignal`, so the host stops
+ * waiting rather than aborting the module).
+ */
+const MAX_PLUGIN_STEP_EXECUTION_MS = 30_000;
+
+class PluginStepTimeoutError extends Error {
+	constructor() {
+		super('Plugin automation step timed out');
+		this.name = 'PluginStepTimeoutError';
+	}
+}
+
+async function withExecutionDeadline<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			work,
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(() => reject(new PluginStepTimeoutError()), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
+}
+
 interface GeneratedPluginStepModule {
 	readonly kind: string;
 	readonly pluginId: string;
@@ -174,7 +207,10 @@ export async function executePluginStep(
 	try {
 		result = await host.run(PLUGIN_AUTOMATION_STEP_CAPABILITY, async () => {
 			const config = module.parseConfig(rawConfig);
-			const moduleResult = await module.execute(buildPluginStepInput(contact), config);
+			const moduleResult = await withExecutionDeadline(
+				module.execute(buildPluginStepInput(contact), config),
+				MAX_PLUGIN_STEP_EXECUTION_MS
+			);
 			return parsePluginStepResult(moduleResult, pluginId);
 		});
 	} catch {

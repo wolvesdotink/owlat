@@ -126,6 +126,22 @@ describe('hosted plugin automation step execution', () => {
 		warn.mockRestore();
 	});
 
+	it('fails a never-resolving module within the host deadline', async () => {
+		vi.useFakeTimers();
+		try {
+			stepExecute.mockImplementation(() => new Promise(() => undefined)); // never resolves
+			const ctx = makeCtx(true);
+			const pending = executePluginStep(ctx as never, step, contact);
+			await vi.advanceTimersByTimeAsync(30_000);
+			await expect(pending).resolves.toEqual({
+				status: 'failed',
+				error: 'Plugin automation step failed',
+			});
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('fails for an unknown plugin step kind without touching the module', async () => {
 		const ctx = makeCtx(true);
 		const outcome = await executePluginStep(
