@@ -11,8 +11,9 @@
  * `pending` and regenerates the MAIL FROM SPF record), so the edit affordance
  * states that plainly before the user commits. Writes go through the D2 mutation
  * `api.domains.returnPath.setReturnPathHost`; the reflect-to-MTA step can fail
- * permanently and leaves a `returnPathHostSyncError` marker on the domain, which
- * we surface as a small "retrying" indicator.
+ * permanently and — only after D2's bounded retry budget is spent — leaves a
+ * terminal `returnPathHostSyncError` marker on the domain, which we surface as a
+ * "couldn't update the bounce host — edit and retry" call to action.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -124,13 +125,16 @@ async function save() {
 				<strong class="text-text-primary">{{ currentHost ?? 'the default return-path' }}</strong
 				>.
 			</p>
+			<!-- Terminal marker: D2 sets `returnPathHostSyncError` only AFTER its
+			     bounded retry budget is exhausted, so this is a give-up the user must
+			     act on — not an in-progress retry. No spinner. -->
 			<p
 				v-if="syncError"
-				class="mt-1 inline-flex items-center gap-1.5 text-xs text-warning"
+				class="mt-1 inline-flex items-start gap-1.5 text-xs text-error"
 				data-testid="returnpath-sync-error"
 			>
-				<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin" />
-				Bounce host sync failed — retrying.
+				<Icon name="lucide:alert-triangle" class="w-3 h-3 mt-0.5 shrink-0" />
+				<span>Couldn't update the bounce host on the mail server — edit and retry.</span>
 			</p>
 		</template>
 
