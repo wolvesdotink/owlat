@@ -65,7 +65,12 @@ interface RawServerConfig {
  * spraying a reply at every body line.
  */
 function startRawServer(config: RawServerConfig): Promise<number> {
+	// Track every accepted socket so teardown can DESTROY live connections, not just
+	// stop listening — `server.close()` alone leaves a server-side socket open if a
+	// test bails between connect and its client-side close, which would hang the run.
+	const accepted: net.Socket[] = [];
 	const server = net.createServer((socket) => {
+		accepted.push(socket);
 		socket.on('error', () => {});
 		config.onConnect(socket);
 		let buffer = '';
@@ -91,9 +96,35 @@ function startRawServer(config: RawServerConfig): Promise<number> {
 		});
 	});
 	server.on('error', () => {});
-	cleanups.push(() => server.close());
+	cleanups.push(() => {
+		for (const socket of accepted) socket.destroy();
+		server.close();
+	});
 	return new Promise((resolve) => {
 		server.listen(0, '127.0.0.1', () => resolve((server.address() as AddressInfo).port));
+	});
+}
+
+/**
+ * Resolve when a socket has fully closed (or is already gone), rejecting if it
+ * stays open past `timeoutMs`. Used to PROVE the client tore a connection down —
+ * a resolved `'close'` on the server side means the peer is gone and no further
+ * server write can ever be read by the client.
+ */
+function awaitServerClose(socket: net.Socket, timeoutMs = 2_000): Promise<void> {
+	return new Promise((resolve, reject) => {
+		if (socket.destroyed) {
+			resolve();
+			return;
+		}
+		const timer = setTimeout(
+			() => reject(new Error('server-side socket did not close within the deadline')),
+			timeoutMs
+		);
+		socket.once('close', () => {
+			clearTimeout(timer);
+			resolve();
+		});
 	});
 }
 
@@ -286,11 +317,17 @@ describe('smtp-client long-tail quirks — raw-socket fake servers', () => {
 	// client's greeting deadline must fire in phase `greeting` and it must NOT
 	// later consume the late banner as if the handshake had succeeded.
 	it('times out in the greeting phase and does not consume a late banner', async () => {
+		let serverSocket: net.Socket | undefined;
+		let bannerWritten = false;
 		const port = await startRawServer({
 			onConnect: (s) => {
+				serverSocket = s;
 				// Banner arrives far AFTER the client's 150ms greeting deadline.
 				const timer = setTimeout(() => {
-					if (!s.destroyed) s.write('220 mx.test finally ready\r\n');
+					if (!s.destroyed) {
+						s.write('220 mx.test finally ready\r\n');
+						bannerWritten = true;
+					}
 				}, 1_000);
 				cleanups.push(() => clearTimeout(timer));
 			},
@@ -315,6 +352,13 @@ describe('smtp-client long-tail quirks — raw-socket fake servers', () => {
 			expect(caught.phase).toBe('greeting');
 			expect(caught.secured).toBe(false);
 		}
+		// Non-consumption proof: on the greeting timeout the client DESTROYS the
+		// connection, so the server observes 'close' well before its 1s banner timer
+		// fires. The 220 is therefore never on the wire when the client is still
+		// reading — the client cannot have consumed a banner that was never sent.
+		expect(serverSocket).toBeDefined();
+		if (serverSocket !== undefined) await awaitServerClose(serverSocket);
+		expect(bannerWritten).toBe(false);
 	});
 
 	// ── QUIRK 7: 8-bit garbage bytes in reply text ────────────────────────────
