@@ -138,8 +138,19 @@ export const setPluginSettings = authedMutation({
 		const flagKey = pluginFlagKey(pluginId);
 		const existing = await readInstanceSettings(ctx);
 		const currentAll = (existing?.pluginSettings ?? {}) as StoredPluginSettings;
+		// Carry over only stored keys the CURRENT schema still declares. A field
+		// removed from the schema in a plugin upgrade (notably a secret) would
+		// otherwise persist forever: redaction iterates the schema, so a dropped
+		// key is invisible to the overview and purgeable only by a full reset. Drop
+		// it on the next save so removed credentials do not linger as plaintext.
+		const schemaKeys = new Set(schema.map((field) => field.key));
+		const currentForPlugin = currentAll[flagKey] ?? {};
+		const carriedOver: Record<string, JsonPrimitive> = {};
+		for (const [key, value] of Object.entries(currentForPlugin)) {
+			if (schemaKeys.has(key)) carriedOver[key] = value;
+		}
 		const merged: Record<string, JsonPrimitive> = {
-			...(currentAll[flagKey] ?? {}),
+			...carriedOver,
 			...validation.values,
 		};
 		const nextAll: StoredPluginSettings = { ...currentAll, [flagKey]: merged };
