@@ -14,6 +14,7 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../_generated/api';
+import { RedirectRefusedError, SsrfBlockedError } from '../../lib/ssrfGuard';
 import schema from '../../schema';
 
 const auth = vi.hoisted(() => ({
@@ -174,6 +175,40 @@ describe('connected-app connection test', () => {
 		});
 		expect(result.outcome).toBe('unreachable');
 		expect(result.status).toBeNull();
+	});
+
+	it('maps a refused redirect to a redirect-specific message', async () => {
+		// The guard rejects a 3xx with a typed RedirectRefusedError; the probe must
+		// classify it by type, not by the (reword-prone) message text.
+		probe.fetchGuarded.mockRejectedValue(
+			new RedirectRefusedError(
+				'Blocked fetch of "https://hooks.example.com/owlat": refusing to follow redirect (to https://evil.example/) — possible SSRF'
+			)
+		);
+		const t = client();
+		const app = await register(t);
+		const result = await t.action(api.connectedApps.actions.testConnection, {
+			connectedAppId: app._id,
+		});
+		expect(result.outcome).toBe('unreachable');
+		expect(result.message.toLowerCase()).toContain('redirect');
+	});
+
+	it('maps an SSRF-blocked destination to a private/internal message', async () => {
+		// A destination that resolves to a private/internal address is rejected with
+		// a typed SsrfBlockedError; the probe surfaces the private-address reason.
+		probe.fetchGuarded.mockRejectedValue(
+			new SsrfBlockedError(
+				'Blocked fetch of "https://hooks.example.com/owlat": URL resolves to a disallowed (private/internal) IP address'
+			)
+		);
+		const t = client();
+		const app = await register(t);
+		const result = await t.action(api.connectedApps.actions.testConnection, {
+			connectedAppId: app._id,
+		});
+		expect(result.outcome).toBe('unreachable');
+		expect(result.message.toLowerCase()).toContain('private or internal');
 	});
 
 	it('reports a timeout distinctly on an AbortSignal.timeout rejection', async () => {

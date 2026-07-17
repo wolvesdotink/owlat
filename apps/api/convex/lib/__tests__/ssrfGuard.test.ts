@@ -11,9 +11,16 @@
  * resolver so no real DNS is needed.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LookupAddress, LookupAllOptions } from 'dns';
-import { isDisallowedIpAddress, ssrfLookup, type LookupFn } from '../ssrfGuard';
+import {
+	fetchGuarded,
+	isDisallowedIpAddress,
+	RedirectRefusedError,
+	SsrfBlockedError,
+	ssrfLookup,
+	type LookupFn,
+} from '../ssrfGuard';
 
 /** Build a fake `dns.lookup`-shaped resolver that always returns `addresses`. */
 function staticResolver(addresses: LookupAddress[]): LookupFn {
@@ -32,16 +39,11 @@ function failingResolver(err: NodeJS.ErrnoException): LookupFn {
 /** Invoke ssrfLookup with an injected resolver and capture the callback. */
 function runLookup(
 	hostname: string,
-	resolver: LookupFn,
+	resolver: LookupFn
 ): Promise<{ err: NodeJS.ErrnoException | null; addresses: LookupAddress[] }> {
 	const options: LookupAllOptions = { all: true };
 	return new Promise((resolve) => {
-		ssrfLookup(
-			hostname,
-			options,
-			(err, addresses) => resolve({ err, addresses }),
-			resolver,
-		);
+		ssrfLookup(hostname, options, (err, addresses) => resolve({ err, addresses }), resolver);
 	});
 }
 
@@ -71,6 +73,36 @@ describe('isDisallowedIpAddress', () => {
 	});
 });
 
+describe('fetchGuarded typed refusals', () => {
+	afterEach(() => vi.unstubAllGlobals());
+
+	it('throws a typed SsrfBlockedError for a blocked (private/internal) destination', async () => {
+		// A literal private IP is refused up front by validatePublicUrl — no DNS,
+		// no socket — so this asserts the mapped error TYPE, not just the message.
+		await expect(
+			fetchGuarded('https://127.0.0.1/hook', { protocols: ['https:'] })
+		).rejects.toBeInstanceOf(SsrfBlockedError);
+	});
+
+	it('throws a typed RedirectRefusedError when the destination answers a 3xx', async () => {
+		// A literal PUBLIC IP passes the up-front check without DNS; a stubbed fetch
+		// returns a redirect so the guard's redirect-refusal path is exercised.
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					({
+						status: 302,
+						headers: new Headers({ location: 'https://10.0.0.1/' }),
+					}) as unknown as Response
+			)
+		);
+		await expect(
+			fetchGuarded('https://8.8.8.8/hook', { protocols: ['https:'] })
+		).rejects.toBeInstanceOf(RedirectRefusedError);
+	});
+});
+
 describe('ssrfLookup (connect-time DNS-rebinding guard)', () => {
 	it('passes through public addresses unchanged', async () => {
 		const addrs: LookupAddress[] = [{ address: '93.184.216.34', family: 4 }];
@@ -84,7 +116,7 @@ describe('ssrfLookup (connect-time DNS-rebinding guard)', () => {
 		// to loopback. The hook must error so the connection is never made.
 		const { err, addresses } = await runLookup(
 			'rebind.attacker.example',
-			staticResolver([{ address: '127.0.0.1', family: 4 }]),
+			staticResolver([{ address: '127.0.0.1', family: 4 }])
 		);
 		expect(err).not.toBeNull();
 		expect(err?.message).toMatch(/disallowed \(private\/internal\)/);
@@ -94,7 +126,7 @@ describe('ssrfLookup (connect-time DNS-rebinding guard)', () => {
 	it('rejects when the socket-time resolution flips to cloud metadata', async () => {
 		const { err } = await runLookup(
 			'metadata.attacker.example',
-			staticResolver([{ address: '169.254.169.254', family: 4 }]),
+			staticResolver([{ address: '169.254.169.254', family: 4 }])
 		);
 		expect(err).not.toBeNull();
 		expect(err?.message).toContain('169.254.169.254');
@@ -108,7 +140,7 @@ describe('ssrfLookup (connect-time DNS-rebinding guard)', () => {
 			staticResolver([
 				{ address: '8.8.8.8', family: 4 },
 				{ address: '10.0.0.1', family: 4 },
-			]),
+			])
 		);
 		expect(err).not.toBeNull();
 		expect(err?.message).toContain('10.0.0.1');
@@ -117,7 +149,7 @@ describe('ssrfLookup (connect-time DNS-rebinding guard)', () => {
 	it('rejects a private IPv6 (ULA) at connect time', async () => {
 		const { err } = await runLookup(
 			'v6.attacker.example',
-			staticResolver([{ address: 'fd00::1', family: 6 }]),
+			staticResolver([{ address: 'fd00::1', family: 6 }])
 		);
 		expect(err).not.toBeNull();
 	});
@@ -143,7 +175,7 @@ describe('ssrfLookup (connect-time DNS-rebinding guard)', () => {
 				'example.com',
 				{ all: false } as unknown as LookupAllOptions,
 				() => resolve(),
-				recordingResolver,
+				recordingResolver
 			);
 		});
 		expect(seenOptions?.all).toBe(true);
