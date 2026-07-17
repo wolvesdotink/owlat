@@ -183,29 +183,27 @@ export const resetPluginSettings = authedMutation({
 		const session = await requireAdminContext(ctx);
 		const pluginId = parseBundledPluginId(args.pluginId);
 		const flagKey = pluginFlagKey(pluginId);
+		const manifest = findBundledManifest(pluginId);
 
 		const existing = await readInstanceSettings(ctx);
 		const currentAll = (existing?.pluginSettings ?? {}) as StoredPluginSettings;
-		if (!existing || !Object.prototype.hasOwnProperty.call(currentAll, flagKey)) {
-			// Nothing stored — reset is idempotent, report the schema defaults view.
-			const manifest = findBundledManifest(pluginId);
-			return redactPluginSettingsValues(manifest?.settingsSchema ?? [], {});
+		// Only delete + audit when something is actually stored; a reset with
+		// nothing stored is idempotent. Either way the return is the same schema
+		// defaults view (an orphaned plugin has no manifest ⇒ empty schema).
+		if (existing && Object.prototype.hasOwnProperty.call(currentAll, flagKey)) {
+			const nextAll: StoredPluginSettings = { ...currentAll };
+			delete nextAll[flagKey];
+			await ctx.db.patch(existing._id, { pluginSettings: nextAll, updatedAt: Date.now() });
+			await recordAuditLog(ctx, {
+				userId: session.userId,
+				pluginId,
+				action: 'settings.updated',
+				resource: 'settings',
+				resourceId: existing._id,
+				detailsBlob: JSON.stringify({ pluginId, reset: true }),
+			});
 		}
 
-		const nextAll: StoredPluginSettings = { ...currentAll };
-		delete nextAll[flagKey];
-
-		await ctx.db.patch(existing._id, { pluginSettings: nextAll, updatedAt: Date.now() });
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			pluginId,
-			action: 'settings.updated',
-			resource: 'settings',
-			resourceId: existing._id,
-			detailsBlob: JSON.stringify({ pluginId, reset: true }),
-		});
-
-		const manifest = findBundledManifest(pluginId);
 		return redactPluginSettingsValues(manifest?.settingsSchema ?? [], {});
 	},
 });
