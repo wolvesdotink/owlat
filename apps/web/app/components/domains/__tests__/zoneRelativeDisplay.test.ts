@@ -7,8 +7,8 @@
  * an absolute env hostname outside the domain's zone is shown honestly (absolute
  * name, no `host.domain` double-suffix, an "other zone" note) rather than
  * mis-relativised; and that the "Fixed by standard" pill appears on exactly the
- * RFC-mandated cards (_dmarc / _domainkey / _smtp._tls / _mta-sts) and nowhere
- * else.
+ * RFC-mandated cards (_dmarc / _domainkey / _smtp._tls / _mta-sts, plus the
+ * RFC 8461 mta-sts policy CNAME) and nowhere else.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -187,20 +187,47 @@ describe('mailFrom absolute hostname — in-zone vs out-of-zone', () => {
 });
 
 describe('the standard pill appears on exactly the mandated cards', () => {
-	// [host, domain, hostIsFqdn, expectPill]
-	const cases: Array<[string, string, boolean, boolean]> = [
-		['@', 'example.com', false, false], // SPF apex
-		['s1._domainkey', 'example.com', false, true], // DKIM
-		['_dmarc', 'example.com', false, true], // DMARC
-		['_smtp._tls', 'example.com', false, true], // TLS-RPT
-		['_mta-sts', 'example.com', false, true], // MTA-STS TXT
-		['mta-sts', 'example.com', false, true], // MTA-STS CNAME (RFC 8461: both labels)
-		['bounces.owlat.com', 'example.com', true, false], // mailFrom (out of zone)
-		['bounce.example.com', 'example.com', true, false], // mailFrom (in zone)
+	// [type, host, domain, hostIsFqdn, expectPill]
+	const cases: Array<[string, string, string, boolean, boolean]> = [
+		['TXT', '@', 'example.com', false, false], // SPF apex
+		['CNAME', 's1._domainkey', 'example.com', false, true], // DKIM
+		['TXT', '_dmarc', 'example.com', false, true], // DMARC
+		['TXT', '_smtp._tls', 'example.com', false, true], // TLS-RPT
+		['TXT', '_mta-sts', 'example.com', false, true], // MTA-STS TXT
+		['CNAME', 'mta-sts', 'example.com', false, true], // MTA-STS CNAME (RFC 8461: both labels)
+		['TXT', 'bounces.owlat.com', 'example.com', true, false], // mailFrom (out of zone)
+		['TXT', 'bounce.example.com', 'example.com', true, false], // mailFrom (in zone)
 	];
-	it.each(cases)('host %s / domain %s → pill=%s', (host, domain, hostIsFqdn, expected) => {
-		const w = mountPanel({ type: 'TXT', host, value: 'x', hostIsFqdn }, domain, 'R');
-		expect(hasPill(w)).toBe(expected);
+	it.each(cases)(
+		'type %s / host %s / domain %s → pill=%s',
+		(type, host, domain, hostIsFqdn, expected) => {
+			const w = mountPanel({ type, host, value: 'x', hostIsFqdn }, domain, 'R');
+			expect(hasPill(w)).toBe(expected);
+		}
+	);
+
+	it('does NOT pill apex records of a domain that merely begins with "mta-sts."', () => {
+		// The composed FQDN's leftmost label is `mta-sts`, but these are the domain's
+		// own apex SPF/MX — not the RFC 8461 policy CNAME — so no pill.
+		const spf = mountPanel(
+			{ type: 'TXT', host: '@', value: 'v=spf1 ~all' },
+			'mta-sts.example.com',
+			'SPF'
+		);
+		expect(hasPill(spf)).toBe(false);
+		const mx = mountPanel(
+			{ type: 'MX', host: '@', value: 'mx.owlat.test' },
+			'mta-sts.example.com',
+			'MX'
+		);
+		expect(hasPill(mx)).toBe(false);
+		// The genuine mta-sts CNAME under that same domain still pills.
+		const cname = mountPanel(
+			{ type: 'CNAME', host: 'mta-sts', value: 'mta-sts.owlat.test' },
+			'mta-sts.example.com',
+			'CNAME'
+		);
+		expect(hasPill(cname)).toBe(true);
 	});
 });
 

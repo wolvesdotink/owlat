@@ -106,21 +106,26 @@ const hostDisplay = computed<HostDisplay>(() => {
 
 /**
  * The name is fixed by an email standard (RFC-mandated label) and cannot be
- * customised — surfaced as a "Fixed by standard" pill. Deliberately keyed to the
- * underscore service labels only, so SPF / MX / CNAME (`mta-sts`) / mailFrom
- * cards never carry it.
+ * customised — surfaced as a "Fixed by standard" pill. Keyed to the RFC service
+ * labels: the underscore records (`_domainkey`, `_dmarc`, `_smtp._tls`,
+ * `_mta-sts`) plus the RFC 8461 `mta-sts` policy CNAME. SPF / MX / mailFrom and
+ * ordinary CNAMEs never carry it.
  */
 const standardMandate = computed<{ rfc: string } | null>(() => {
 	const name = recordFqdn.value.toLowerCase();
-	const labels = name.split('.');
-	const labelSet = new Set(labels);
+	const labelSet = new Set(name.split('.'));
 	if (labelSet.has('_domainkey')) return { rfc: 'RFC 6376 (DKIM)' };
 	if (labelSet.has('_dmarc')) return { rfc: 'RFC 7489 (DMARC)' };
 	if (name.includes('_smtp._tls')) return { rfc: 'RFC 8460 (TLS reporting)' };
-	// RFC 8461 mandates BOTH the `_mta-sts` TXT and the `mta-sts` policy CNAME, so
-	// both are fixed. Match `mta-sts` only as the leftmost label (an exact record
-	// name) so ordinary CNAMEs stay clean.
-	if (labelSet.has('_mta-sts') || labels[0] === 'mta-sts') return { rfc: 'RFC 8461 (MTA-STS)' };
+	if (labelSet.has('_mta-sts')) return { rfc: 'RFC 8461 (MTA-STS)' };
+	// RFC 8461 also mandates the `mta-sts` policy CNAME. Match the record's OWN
+	// leftmost host label (not the composed FQDN) and require the CNAME type, so a
+	// sending domain that merely begins with an `mta-sts.` label can't pill its
+	// apex SPF/MX records.
+	const ownLeftLabel = props.record.host.toLowerCase().split('.')[0];
+	if (props.record.type === 'CNAME' && ownLeftLabel === 'mta-sts') {
+		return { rfc: 'RFC 8461 (MTA-STS)' };
+	}
 	return null;
 });
 
