@@ -47,9 +47,7 @@ describe('dashboard widget registry conformance', () => {
 	});
 
 	it('resolves a known card type to ok', () => {
-		expect(resolveWidget(dashboardWidgetRegistry, 'delivery_rates', () => true).status).toBe(
-			'ok'
-		);
+		expect(resolveWidget(dashboardWidgetRegistry, 'delivery_rates', () => true).status).toBe('ok');
 	});
 
 	it('resolves an unknown card type to unknown (fallback affordance)', () => {
