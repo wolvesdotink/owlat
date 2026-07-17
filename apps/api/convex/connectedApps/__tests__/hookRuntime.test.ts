@@ -270,6 +270,39 @@ describe('app-returned values are scrubbed and folded into the circuit', () => {
 		expect(row?.consecutiveFailures ?? 0).toBe(0);
 	});
 
+	it('returns a live gate no-objection and closes the breaker', async () => {
+		const t = makeT();
+		const appId = await t.run((ctx) => seedApp(ctx));
+		transport.callConnectedAppHook.mockResolvedValue(
+			ok({ hookKind: 'gate', gate: { outcome: 'no-objection' } })
+		);
+		expect(await invoke(t, appId, 'gate')).toEqual({
+			hookKind: 'gate',
+			source: 'app',
+			gate: { outcome: 'no-objection' },
+		});
+		expect(transport.callConnectedAppHook).toHaveBeenCalledTimes(1);
+		const row = await circuitRow(t, appId, 'gate');
+		expect(row?.consecutiveFailures ?? 0).toBe(0);
+	});
+
+	it('returns a scrubbed score with its reason and closes the breaker', async () => {
+		const t = makeT();
+		const appId = await t.run((ctx) => seedApp(ctx));
+		transport.callConnectedAppHook.mockResolvedValue(
+			ok({ hookKind: 'score', score: 0.4, reason: 'Looks risky.' })
+		);
+		expect(await invoke(t, appId, 'score')).toEqual({
+			hookKind: 'score',
+			source: 'app',
+			score: 0.4,
+			reason: 'Looks risky.',
+		});
+		expect(transport.callConnectedAppHook).toHaveBeenCalledTimes(1);
+		const row = await circuitRow(t, appId, 'score');
+		expect(row?.consecutiveFailures ?? 0).toBe(0);
+	});
+
 	it('withholds an injection-bearing gate reason via the untrusted-text policy', async () => {
 		const t = makeT();
 		const appId = await t.run((ctx) => seedApp(ctx));
