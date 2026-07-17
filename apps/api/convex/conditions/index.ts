@@ -4,7 +4,7 @@ import { contactPropertyConditionModule } from './contact_property';
 import { emailActivityConditionModule } from './email_activity';
 import { topicMembershipConditionModule } from './topic_membership';
 import type { Condition, ConditionKind, ConditionOfKind, ConditionTypeModule } from './types';
-import { isPluginConditionKind } from './catalog';
+import { isCoreConditionKind, isPluginConditionKind } from './catalog';
 
 // ============== Module registry ==============
 
@@ -39,7 +39,7 @@ export function parseCondition(raw: unknown): Condition {
 	if (typeof kind !== 'string') {
 		throw new Error('Condition must have a string `kind` discriminator');
 	}
-	if (kind === 'contact_property' || kind === 'email_activity' || kind === 'topic_membership') {
+	if (isCoreConditionKind(kind)) {
 		return conditionTypeModuleFor(kind).parseCondition(raw) as Condition;
 	}
 	// Plugin condition kinds are namespaced and carry editor metadata through the

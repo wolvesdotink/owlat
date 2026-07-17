@@ -1,5 +1,6 @@
 import type { PluginAutomationConditionCapability } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_AUTOMATION_CONDITION_CATALOG } from '../plugins/automationConditionCatalog.generated';
+import type { ConditionKind } from './types';
 
 /**
  * Automation condition-kind catalog. Core condition kinds live in `types.ts`
@@ -13,7 +14,7 @@ export const CORE_CONDITION_KINDS = [
 	'contact_property',
 	'email_activity',
 	'topic_membership',
-] as const;
+] as const satisfies readonly ConditionKind[];
 export type CoreConditionKind = (typeof CORE_CONDITION_KINDS)[number];
 
 type GeneratedPluginConditionKind =
