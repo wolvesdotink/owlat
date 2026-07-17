@@ -7,6 +7,8 @@ import {
 	validateKnownFields,
 } from './manifestValue';
 import {
+	MAX_SETTINGS_FIELDS,
+	MAX_SETTINGS_OPTIONS,
 	MAX_TEXT_LENGTH,
 	RESERVED_FIELD_KEYS,
 	SETTINGS_FIELD_KINDS,
@@ -14,11 +16,9 @@ import {
 } from './settingsSchema';
 
 const FIELD_KEY = /^[a-zA-Z][a-zA-Z0-9]*$/;
-const MAX_FIELDS = 64;
 const MAX_KEY_LENGTH = 64;
 const MAX_LABEL_LENGTH = 80;
 const MAX_DESCRIPTION_LENGTH = 280;
-const MAX_OPTIONS = 64;
 
 const COMMON_FIELDS = new Set(['kind', 'key', 'label', 'description', 'required']);
 const KIND_EXTRA_FIELDS: Record<PluginSettingsFieldKind, readonly string[]> = {
@@ -34,12 +34,12 @@ export function validateSettingsSchema(value: unknown, issues: PluginManifestIss
 	if (value === undefined) return;
 	const items = validateDescriptorSafeArray(value, '$.settingsSchema', issues);
 	if (!items) return;
-	if (items.length > MAX_FIELDS) {
+	if (items.length > MAX_SETTINGS_FIELDS) {
 		addManifestIssue(
 			issues,
 			'too_many_items',
 			'$.settingsSchema',
-			`must contain at most ${MAX_FIELDS} fields`
+			`must contain at most ${MAX_SETTINGS_FIELDS} fields`
 		);
 		return;
 	}
@@ -277,12 +277,12 @@ function validateSelectField(
 	if (optionsValue.kind !== 'value') return;
 	const items = validateDescriptorSafeArray(optionsValue.value, `${path}.options`, issues);
 	if (!items) return;
-	if (items.length < 1 || items.length > MAX_OPTIONS) {
+	if (items.length < 1 || items.length > MAX_SETTINGS_OPTIONS) {
 		addManifestIssue(
 			issues,
 			'invalid_type',
 			`${path}.options`,
-			`must contain 1 to ${MAX_OPTIONS} options`
+			`must contain 1 to ${MAX_SETTINGS_OPTIONS} options`
 		);
 		return;
 	}
