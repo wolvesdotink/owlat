@@ -40,8 +40,10 @@ describe('Add-Domain modal — delegated to the guided form component', () => {
 	});
 
 	it('the create handler just registers the composed string the form emits', () => {
-		expect(pageSource).toMatch(/const handleAddDomain = async \(domain: string\) =>/);
-		expect(pageSource).toContain('await createDomain({ domain })');
+		expect(pageSource).toMatch(
+			/const handleAddDomain = async \(payload: \{ domain: string; returnPathHost: string \| null \}\) =>/
+		);
+		expect(pageSource).toContain('await createDomain({ domain: payload.domain })');
 	});
 });
 

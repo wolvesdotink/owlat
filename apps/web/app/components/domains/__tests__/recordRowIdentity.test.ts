@@ -27,6 +27,8 @@ const stubs = {
 		template: '<div data-testid="dns-record" />',
 	},
 	DomainsReceivingDnsSection: { template: '<div />' },
+	// Exercised by returnPathUi.test.ts; inert here (it calls a mutation on setup).
+	DomainsReturnPathEditor: { template: '<div />' },
 };
 
 type DomainOverrides = Record<string, unknown>;
