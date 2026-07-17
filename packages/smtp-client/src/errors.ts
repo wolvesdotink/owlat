@@ -52,6 +52,26 @@ export type SmtpTlsCause =
  */
 export type SmtpClientRefusal = 'smtputf8-unavailable';
 
+/**
+ * Machine-readable cause of an AUTH-phase failure that a classifier must act on
+ * DIFFERENTLY. XOAUTH2 (SASL, RFC 7628 / the Google–Microsoft profile) fails with
+ * a `334` challenge whose base64 JSON body distinguishes an expired/invalid bearer
+ * token from a structurally bad request. The account manager reads this discriminant
+ * (never a log-line string, W7) to decide between two very different remedies:
+ *
+ *  - `token-expired`: the access token was rejected as unauthorized (`401`). It is
+ *    RETRYABLE AFTER a token refresh — the OAuth feature mints a fresh access token
+ *    from the stored refresh token and the same send is re-attempted. Nothing about
+ *    the account link is broken.
+ *  - `credentials-rejected`: the request was malformed or the grant is no longer
+ *    valid (`400`, or an unparseable challenge). Refreshing the token will not help;
+ *    this is a TERMINAL `AUTH_FAILED` and the account must be re-linked by the user.
+ *
+ * Absent on PLAIN/LOGIN failures (a `535` there is an ordinary bad-password reject
+ * classified by `.replyCode`); present only on the XOAUTH2 path.
+ */
+export type SmtpAuthCause = 'token-expired' | 'credentials-rejected';
+
 export interface SmtpErrorInit {
 	/** Protocol phase the failure occurred in. */
 	phase: SmtpPhase;
@@ -67,6 +87,8 @@ export interface SmtpErrorInit {
 	tlsCause?: SmtpTlsCause;
 	/** For a client-side pre-verdict refusal (no reply code): its permanent cause. */
 	clientRefusal?: SmtpClientRefusal;
+	/** For an XOAUTH2 AUTH failure: whether a token refresh can fix it. */
+	authCause?: SmtpAuthCause;
 	/** Underlying error, if any (preserved on the standard `cause` slot). */
 	cause?: unknown;
 }
@@ -82,6 +104,7 @@ export class SmtpError extends Error {
 	readonly secured: boolean;
 	readonly tlsCause?: SmtpTlsCause;
 	readonly clientRefusal?: SmtpClientRefusal;
+	readonly authCause?: SmtpAuthCause;
 
 	constructor(init: SmtpErrorInit) {
 		super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
@@ -99,6 +122,9 @@ export class SmtpError extends Error {
 		}
 		if (init.clientRefusal !== undefined) {
 			this.clientRefusal = init.clientRefusal;
+		}
+		if (init.authCause !== undefined) {
+			this.authCause = init.authCause;
 		}
 		// Restore prototype chain for `instanceof` across transpilation targets.
 		Object.setPrototypeOf(this, SmtpError.prototype);

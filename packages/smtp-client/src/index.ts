@@ -13,6 +13,7 @@ export {
 	type SmtpPhase,
 	type SmtpTlsCause,
 	type SmtpClientRefusal,
+	type SmtpAuthCause,
 	type SmtpErrorInit,
 	SmtpError,
 	isSmtpError,
@@ -58,6 +59,8 @@ export {
 export {
 	type SmtpAuthMechanism,
 	type SmtpCredentials,
+	type SmtpPasswordCredentials,
+	type SmtpOAuthCredentials,
 	type AuthenticateOptions,
 	type RecipientVerdict,
 	type PipeliningMode,
