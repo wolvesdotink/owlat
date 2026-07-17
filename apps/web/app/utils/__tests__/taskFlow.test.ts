@@ -89,6 +89,34 @@ describe('orderTaskFlow', () => {
 	});
 });
 
+describe('open-union kinds (plugin / unknown)', () => {
+	it('sorts an unregistered plugin kind after every built-in (never ahead)', () => {
+		// The registry ranks unknown kinds last, so the open union can never let a
+		// stray kind jump the built-in ordering.
+		const result = order([
+			{ id: 'ghost', kind: 'plugin.ghost' as TaskFlowKind },
+			{ id: 'r', kind: 'reply' },
+			{ id: 'q', kind: 'question' },
+		]);
+		expect(result).toEqual(['q', 'r', 'ghost']);
+	});
+
+	it('still clusters an unknown kind by thread/contact adjacency', () => {
+		const result = order([
+			{ id: 'q-T', kind: 'question', threadId: 'T' },
+			{ id: 'x-T', kind: 'plugin.x' as TaskFlowKind, threadId: 'T' },
+			{ id: 'r-U', kind: 'reply', threadId: 'U' },
+		]);
+		expect(result.indexOf('x-T')).toBe(result.indexOf('q-T') + 1);
+	});
+
+	it('estimates an unknown kind with the default budget (no crash)', () => {
+		expect(estimateTaskFlowSeconds(['plugin.ghost' as TaskFlowKind])).toBe(60);
+		// A mixed queue still yields a stable, finite estimate.
+		expect(estimateTaskFlowSeconds(['question', 'plugin.ghost' as TaskFlowKind])).toBe(45 + 60);
+	});
+});
+
 describe('estimateTaskFlowSeconds / formatTaskFlowEstimate', () => {
 	it('sums per-kind budgets', () => {
 		const a = estimateTaskFlowSeconds(['question']);
