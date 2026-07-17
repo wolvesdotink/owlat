@@ -42,6 +42,23 @@ export type {
 	PluginAutomationTriggerKind,
 	PluginAutomationTriggerModule,
 } from './automation';
+export {
+	PLUGIN_CRON_CAPABILITY,
+	PLUGIN_CRON_MAX_INTERVAL_MINUTES,
+	PLUGIN_CRON_MIN_INTERVAL_MINUTES,
+	PLUGIN_CRON_TIMEOUT_MAX_MS,
+	PLUGIN_CRON_TIMEOUT_MIN_MS,
+	pluginCronKind,
+} from './cron';
+export type {
+	PluginCronCapability,
+	PluginCronDefinition,
+	PluginCronKind,
+	PluginCronLocalId,
+	PluginCronModule,
+	PluginCronSchedule,
+	PluginCronServices,
+} from './cron';
 export { isPluginId, parsePluginId, PluginIdError } from './pluginId';
 export type { PluginId } from './pluginId';
 export { PLUGIN_AGENT_STEP_CAPABILITY, pluginAgentStepKind } from './agentStep';

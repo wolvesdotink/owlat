@@ -1,5 +1,6 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
+import { registerBundledPluginCrons } from './plugins/cronRegistration';
 
 const crons = cronJobs();
 
@@ -404,5 +405,10 @@ crons.interval(
 	internal.contacts.identities.autoMergeDuplicates,
 	{ limit: 20 }
 );
+
+// Append every bundled plugin cron (generated catalog) after the core crons,
+// each wrapped in the host runtime so flag/grant/env are rechecked per tick and
+// every run is attributed to its plugin. No-op when no plugin contributes crons.
+registerBundledPluginCrons(crons);
 
 export default crons;

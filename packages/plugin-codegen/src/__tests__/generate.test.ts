@@ -92,6 +92,7 @@ async function createAgentPluginWorkspace(): Promise<string> {
 	const packageRoot = join(root, 'node_modules', packageName);
 	await mkdir(join(packageRoot, 'agent'), { recursive: true });
 	await mkdir(join(packageRoot, 'draft'), { recursive: true });
+	await mkdir(join(packageRoot, 'crons'), { recursive: true });
 	await mkdir(join(root, 'node_modules/@owlat/plugin-kit'), { recursive: true });
 	await writeFile(
 		join(root, 'package.json'),
@@ -129,12 +130,13 @@ async function createAgentPluginWorkspace(): Promise<string> {
 				'./automation/trigger': './automation/trigger.ts',
 				'./automation/step': './automation/step.ts',
 				'./automation/condition': './automation/condition.ts',
+				'./crons/refresh': './crons/refresh.ts',
 			},
 		})
 	);
 	await writeFile(
 		join(packageRoot, 'index.js'),
-		`export default { id: 'fixture-agent', version: '1.0.0', capabilities: ['agent:step', 'draft:strategy', 'send:gate', 'automation:trigger', 'automation:step', 'automation:condition'], flag: { default: false }, contributes: { agentSteps: [{ id: 'check', after: 'security_scan', module: { exportPath: './agent/check' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }], draftStrategies: [{ id: 'legal', label: 'Legal', module: { exportPath: './draft/legal' }, timeoutMs: 1000 }], sendGates: [{ id: 'approval', label: 'Approval', module: { exportPath: './gates/approval' }, timeoutMs: 1000 }], automationTriggers: [{ id: 'ping', label: 'Ping', description: 'Fires on a ping', icon: 'bolt', module: { exportPath: './automation/trigger' } }], automationSteps: [{ id: 'notify', label: 'Notify', description: 'Sends a notification', icon: 'bell', module: { exportPath: './automation/step' } }], automationConditions: [{ id: 'vip', label: 'Is VIP', description: 'Contact is a VIP', icon: 'star', module: { exportPath: './automation/condition' } }] } };\n`
+		`export default { id: 'fixture-agent', version: '1.0.0', capabilities: ['agent:step', 'draft:strategy', 'send:gate', 'automation:trigger', 'automation:step', 'automation:condition', 'scheduler:cron'], flag: { default: false }, contributes: { agentSteps: [{ id: 'check', after: 'security_scan', module: { exportPath: './agent/check' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }], draftStrategies: [{ id: 'legal', label: 'Legal', module: { exportPath: './draft/legal' }, timeoutMs: 1000 }], sendGates: [{ id: 'approval', label: 'Approval', module: { exportPath: './gates/approval' }, timeoutMs: 1000 }], automationTriggers: [{ id: 'ping', label: 'Ping', description: 'Fires on a ping', icon: 'bolt', module: { exportPath: './automation/trigger' } }], automationSteps: [{ id: 'notify', label: 'Notify', description: 'Sends a notification', icon: 'bell', module: { exportPath: './automation/step' } }], automationConditions: [{ id: 'vip', label: 'Is VIP', description: 'Contact is a VIP', icon: 'star', module: { exportPath: './automation/condition' } }], crons: [{ id: 'refresh', label: 'Refresh', module: { exportPath: './crons/refresh' }, schedule: { intervalMinutes: 360 }, timeoutMs: 30000 }] } };\n`
 	);
 	await writeFile(
 		join(packageRoot, 'agent/check.ts'),
@@ -162,13 +164,14 @@ async function createAgentPluginWorkspace(): Promise<string> {
 		join(packageRoot, 'automation/condition.ts'),
 		'export default { parseConfig() { return {}; }, evaluate() { return true; } };\n'
 	);
+	await writeFile(join(packageRoot, 'crons/refresh.ts'), 'export default { async run() {} };\n');
 	await writeFile(
 		join(root, 'node_modules/@owlat/plugin-kit/package.json'),
 		JSON.stringify({ name: '@owlat/plugin-kit', version: '1.0.0', types: './index.d.ts' })
 	);
 	await writeFile(
 		join(root, 'node_modules/@owlat/plugin-kit/index.d.ts'),
-		'export interface PluginAgentStepModule { execute(input: unknown): Promise<unknown>; }\nexport interface PluginDraftStrategyModule { generate(input: unknown, services: unknown): Promise<{ draftBody: string }>; }\nexport interface PluginAutonomyGateModule { evaluate(input: unknown, services: unknown): Promise<{ outcome: "no-objection" } | { outcome: "objection"; reason: string }>; }\nexport interface PluginAutomationTriggerModule { parseConfig(raw: unknown): unknown; matches(input: unknown, config: unknown): boolean; }\nexport interface PluginAutomationStepModule { parseConfig(raw: unknown): unknown; execute(input: unknown, config: unknown): Promise<unknown>; }\nexport interface PluginAutomationConditionModule { parseConfig(raw: unknown): unknown; evaluate(input: unknown, config: unknown): boolean; }\n'
+		'export interface PluginAgentStepModule { execute(input: unknown): Promise<unknown>; }\nexport interface PluginDraftStrategyModule { generate(input: unknown, services: unknown): Promise<{ draftBody: string }>; }\nexport interface PluginAutonomyGateModule { evaluate(input: unknown, services: unknown): Promise<{ outcome: "no-objection" } | { outcome: "objection"; reason: string }>; }\nexport interface PluginAutomationTriggerModule { parseConfig(raw: unknown): unknown; matches(input: unknown, config: unknown): boolean; }\nexport interface PluginAutomationStepModule { parseConfig(raw: unknown): unknown; execute(input: unknown, config: unknown): Promise<unknown>; }\nexport interface PluginAutomationConditionModule { parseConfig(raw: unknown): unknown; evaluate(input: unknown, config: unknown): boolean; }\nexport interface PluginCronModule { run(services: unknown): Promise<void>; }\n'
 	);
 	return root;
 }
@@ -218,6 +221,8 @@ describe('generated composition freshness', () => {
 			root,
 			'apps/api/convex/plugins/importProviderModules.generated.ts'
 		);
+		const cronCatalogPath = join(root, 'apps/api/convex/plugins/cronCatalog.generated.ts');
+		const cronModulesPath = join(root, 'apps/api/convex/plugins/cronModules.generated.ts');
 		expect(await readFile(convexPath, 'utf8')).toContain('composeBundledPlugins([]);');
 		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
 		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
@@ -253,6 +258,9 @@ describe('generated composition freshness', () => {
 		expect(await readFile(importProviderModulesPath, 'utf8')).toContain(
 			'Object.freeze([] as const)'
 		);
+		expect(await readFile(cronCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(cronModulesPath, 'utf8')).toContain("'use node';");
+		expect(await readFile(cronModulesPath, 'utf8')).toContain('Object.freeze([] as const)');
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 	});
 
@@ -299,6 +307,10 @@ describe('generated composition freshness', () => {
 		const gateModulesPath = join(root, 'apps/api/convex/plugins/autonomyGateModules.generated.ts');
 		const gateCatalog = await readFile(gateCatalogPath, 'utf8');
 		const gateModules = await readFile(gateModulesPath, 'utf8');
+		const cronCatalogPath = join(root, 'apps/api/convex/plugins/cronCatalog.generated.ts');
+		const cronModulesPath = join(root, 'apps/api/convex/plugins/cronModules.generated.ts');
+		const cronCatalog = await readFile(cronCatalogPath, 'utf8');
+		const cronModules = await readFile(cronModulesPath, 'utf8');
 		expect(catalog).toContain('Object.freeze({"kind":"caution"');
 		expect(modules).toContain('satisfies PluginAgentStepModule');
 		expect(draftCatalog).toContain('plugin.fixture-agent.legal');
@@ -346,6 +358,11 @@ describe('generated composition freshness', () => {
 			expect(modulesSource).toContain(`from "agent-plugin/${expectation.export}"`);
 			expect(modulesSource).toContain(`satisfies ${expectation.contract}`);
 		}
+		expect(cronCatalog).toContain('plugin.fixture-agent.refresh');
+		expect(cronCatalog).toContain('intervalMinutes: 360');
+		expect(cronCatalog).not.toContain('agent-plugin/crons/refresh');
+		expect(cronModules).toContain('from "agent-plugin/crons/refresh"');
+		expect(cronModules).toContain('satisfies PluginCronModule');
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 
 		await writeFile(
@@ -365,6 +382,8 @@ describe('generated composition freshness', () => {
 					draftModulesPath,
 					gateCatalogPath,
 					gateModulesPath,
+					cronCatalogPath,
+					cronModulesPath,
 				],
 			})
 		);
@@ -382,6 +401,8 @@ describe('generated composition freshness', () => {
 			draftModulesPath,
 			gateCatalogPath,
 			gateModulesPath,
+			cronCatalogPath,
+			cronModulesPath,
 		]) {
 			await build({ absWorkingDir: root, entryPoints: [entryPoint], bundle: true, write: false });
 		}
@@ -437,6 +458,8 @@ describe('generated composition freshness', () => {
 				'apps/api/convex/plugins/webhookEventCatalog.generated.ts',
 				'apps/api/convex/plugins/importProviderCatalog.generated.ts',
 				'apps/api/convex/plugins/importProviderModules.generated.ts',
+				'apps/api/convex/plugins/cronCatalog.generated.ts',
+				'apps/api/convex/plugins/cronModules.generated.ts',
 			],
 		});
 		expect(await readFile(convexPath, 'utf8')).toBe('// stale and must remain unchanged\n');
