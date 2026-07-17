@@ -6,6 +6,8 @@ import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/erro
 import { API_SCOPES, unknownScopes } from './apiScopes';
 import { hashApiKey } from './apiAuth';
 import { randomToken } from '../lib/randomToken';
+import { parsePluginId } from '@owlat/plugin-kit';
+import { allowedPluginBoundScopes, loadPluginBoundKeyContext } from '../plugins/apiKeyBinding';
 
 // ============ QUERIES ============
 
@@ -85,6 +87,11 @@ export const create = authedMutation({
 		// Optional hard expiry (epoch ms). Must be in the future when provided;
 		// past that instant the key is rejected at verification.
 		expiresAt: v.optional(v.number()),
+		// Tier-2 binding. When set, this key belongs to the named bundled plugin /
+		// connected app: its requested scopes must be a subset of the plugin's
+		// operator-granted, manifest-declared capabilities (grants can only
+		// restrict the manifest), and it can be revoked in one shot by pluginId.
+		pluginId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -95,7 +102,7 @@ export const create = authedMutation({
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
-		const { name, scopes, expiresAt } = args;
+		const { name, scopes, expiresAt, pluginId: pluginIdInput } = args;
 
 		// A supplied expiry must be in the future — a past (or now) expiry would
 		// mint a key that is dead on arrival.
@@ -128,6 +135,32 @@ export const create = authedMutation({
 		// De-dupe while preserving order.
 		const resolvedScopes: string[] = [...new Set(scopes)];
 
+		// Tier-2 plugin binding: the manifest is the ceiling, the operator grant
+		// restricts it. A bound key may only carry scopes the plugin *declared*
+		// AND the operator *granted*. This is enforced again on every request
+		// (deriveEffectiveScopes), but rejecting at creation gives an immediate,
+		// legible error instead of minting a key that silently authorizes nothing.
+		let boundPluginId: string | undefined;
+		if (pluginIdInput !== undefined) {
+			try {
+				boundPluginId = parsePluginId(pluginIdInput);
+			} catch {
+				throwInvalidInput('Invalid pluginId');
+			}
+			const context = await loadPluginBoundKeyContext(ctx, pluginIdInput);
+			if (context.manifest === null || !context.flagEnabled) {
+				throwInvalidState('Cannot bind an API key to a plugin that is not installed and enabled');
+			}
+			const allowed = new Set<string>(allowedPluginBoundScopes(context));
+			const disallowed = resolvedScopes.filter((s) => !allowed.has(s));
+			if (disallowed.length > 0) {
+				throwInvalidInput(
+					`Plugin-bound key requests scope(s) the plugin has not been granted: ${disallowed.join(', ')}. ` +
+						`Grantable scopes: ${[...allowed].join(', ') || '(none)'}`
+				);
+			}
+		}
+
 		// Generate the API key (format: lm_live_<32 random alphanumeric chars>)
 		const apiKey = randomToken(32, 'lm_live_');
 
@@ -145,6 +178,7 @@ export const create = authedMutation({
 			keyHash,
 			keyPrefix,
 			scopes: resolvedScopes,
+			...(boundPluginId !== undefined ? { pluginId: boundPluginId } : {}),
 			isActive: true,
 			...(expiresAt !== undefined ? { expiresAt } : {}),
 			createdAt: now,
@@ -220,6 +254,48 @@ export const revoke = authedMutation({
 		});
 
 		return { success: true };
+	},
+});
+
+/**
+ * Revoke every active API key bound to a plugin in one shot (Tier-2 "one-click
+ * revocation"). Used when an operator disconnects a connected app: all of that
+ * app's keys stop authenticating immediately. Idempotent — returns the number
+ * of keys revoked, zero when the plugin has no active keys.
+ */
+export const revokeByPlugin = authedMutation({
+	args: {
+		pluginId: v.string(),
+	},
+	handler: async (ctx, args) => {
+		await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can revoke API keys'
+		);
+
+		// Reject an unparseable id rather than scanning for a literal that can
+		// never have been stored.
+		try {
+			parsePluginId(args.pluginId);
+		} catch {
+			throwInvalidInput('Invalid pluginId');
+		}
+
+		const keys = await ctx.db
+			.query('apiKeys')
+			.withIndex('by_plugin_id', (q) => q.eq('pluginId', args.pluginId))
+			.collect(); // bounded: keys for one plugin (few)
+
+		const now = Date.now();
+		let revoked = 0;
+		for (const key of keys) {
+			if (!key.isActive) continue;
+			await ctx.db.patch(key._id, { isActive: false, revokedAt: now, updatedAt: now });
+			revoked += 1;
+		}
+
+		return { revoked };
 	},
 });
 
