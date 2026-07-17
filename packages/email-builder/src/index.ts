@@ -139,3 +139,16 @@ export {
 	getAllSchemas,
 	getToolbarFields,
 } from './schema';
+
+// Host-mediated email-block composition.
+export {
+	composeHostedEmailBlocks,
+	finalizeEmailBlockRegistries,
+	areEmailBlockRegistriesFrozen,
+	EmailBlockCompositionError,
+	type HostedEmailBlockContribution,
+	type HostedEmailBlockRenderer,
+	type HostedEmailBlockEditor,
+	type ComposedEmailBlock,
+	type EmailBlockCompositionErrorCode,
+} from './host/emailBlockHost';
