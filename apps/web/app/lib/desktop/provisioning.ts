@@ -148,6 +148,11 @@ export function defaultSubdomainLabels(): SubdomainLabels {
 	return { ...SUBDOMAINS };
 }
 
+/** The human-facing field label for a subdomain key (for user-facing copy). */
+export function subdomainFieldLabel(key: SubdomainKey): string {
+	return SUBDOMAIN_FIELDS.find((f) => f.key === key)?.label ?? key;
+}
+
 export interface InstanceHostnames {
 	/** The app (Nuxt). */
 	site: string;
@@ -202,25 +207,32 @@ export interface SubdomainLabelsValidation {
 }
 
 /**
- * Validate the full override set: every label must be DNS-safe AND the five must
- * be mutually distinct (two hostnames sharing a label would collide onto the
- * same DNS record). A collision is reported on the *later* field so the first
+ * Validate an override set: every label must be DNS-safe AND the labels must be
+ * mutually distinct (two hostnames sharing a label would collide onto the same
+ * DNS record). A collision is reported on the *later* field so the first
  * occurrence stays clean, and only labels that already pass the charset check
  * are compared so a duplicate error never masks a malformed one.
+ *
+ * `keys` scopes validation to the labels actually in play — the caller passes
+ * only the active ones (e.g. mail/bounce are inert without the self-hosted MTA),
+ * so an unused label never blocks provisioning or collides with a live one.
  */
-export function validateSubdomainLabels(labels: SubdomainLabels): SubdomainLabelsValidation {
+export function validateSubdomainLabels(
+	labels: SubdomainLabels,
+	keys: readonly SubdomainKey[] = SUBDOMAIN_KEYS
+): SubdomainLabelsValidation {
 	const errors: Partial<Record<SubdomainKey, string>> = {};
-	for (const key of SUBDOMAIN_KEYS) {
+	for (const key of keys) {
 		const err = validateSubdomainLabel(labels[key]);
 		if (err) errors[key] = err;
 	}
 	const seen = new Map<string, SubdomainKey>();
-	for (const key of SUBDOMAIN_KEYS) {
+	for (const key of keys) {
 		if (errors[key]) continue;
 		const value = labels[key].trim();
 		const prior = seen.get(value);
 		if (prior) {
-			errors[key] = `Same as "${prior}" — each hostname needs a distinct label.`;
+			errors[key] = `Same as the "${subdomainFieldLabel(prior)}" label — each hostname needs a distinct label.`;
 		} else {
 			seen.set(value, key);
 		}

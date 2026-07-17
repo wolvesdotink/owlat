@@ -9,6 +9,7 @@ import {
 	networkUrlsFromHosts,
 	validateSubdomainLabel,
 	validateSubdomainLabels,
+	subdomainFieldLabel,
 	type SubdomainLabels,
 } from '../provisioning';
 import { buildDnsRecords } from '../provisioningForm';
@@ -177,6 +178,41 @@ describe('self-host wizard hostname overrides', () => {
 				withOverrides({ site: 'app', convex: 'sync', convexSite: 'http.sync', mail: 'smtp', bounce: 'return' }),
 			);
 			expect(result).toEqual({ ok: true, errors: {} });
+		});
+
+		it('the collision message names the human field label, not the internal key', () => {
+			const result = validateSubdomainLabels(withOverrides({ site: 'api' })); // collides with convex
+			// It points at the earlier "App" (site) label — never the raw key.
+			expect(result.errors.convex).toContain(`"${subdomainFieldLabel('site')}"`);
+			expect(result.errors.convex).not.toContain('site');
+		});
+	});
+
+	describe('validation scoped to the active labels', () => {
+		it('ignores an inactive label — a clash with mail/bounce does not block a non-MTA install', () => {
+			// site="mail" collides with the default mail label, but mail is inert here.
+			const activeKeys = SUBDOMAIN_KEYS.filter((k) => k !== 'mail' && k !== 'bounce');
+			const result = validateSubdomainLabels(withOverrides({ site: 'mail' }), activeKeys);
+			expect(result.ok).toBe(true);
+			expect(result.errors).toEqual({});
+		});
+
+		it('still flags the same clash when mail IS active (MTA install)', () => {
+			const result = validateSubdomainLabels(withOverrides({ site: 'mail' }), SUBDOMAIN_KEYS);
+			expect(result.ok).toBe(false);
+			expect(result.errors.mail).toBeTruthy();
+		});
+
+		it('does not validate an inactive label that is itself malformed', () => {
+			const activeKeys = SUBDOMAIN_KEYS.filter((k) => k !== 'mail' && k !== 'bounce');
+			const result = validateSubdomainLabels(withOverrides({ mail: 'BAD_LABEL' }), activeKeys);
+			expect(result.ok).toBe(true);
+		});
+
+		it('subdomainFieldLabel maps every key to its wizard label', () => {
+			for (const f of SUBDOMAIN_FIELDS) {
+				expect(subdomainFieldLabel(f.key)).toBe(f.label);
+			}
 		});
 	});
 });
