@@ -119,6 +119,14 @@ describe('plugin nav item contributions', () => {
 		}
 	});
 
+	it('rejects a traversal href that aliases a core destination', () => {
+		expect(
+			issuesFor(withNavItem({ href: '/dashboard/audience/contacts/../contacts' })).some((i) =>
+				i.path.endsWith('.href')
+			)
+		).toBe(true);
+	});
+
 	it('rejects a malformed icon token', () => {
 		expect(
 			issuesFor(withNavItem({ icon: 'not an icon' })).some((i) => i.path.endsWith('.icon'))
@@ -222,5 +230,17 @@ describe('isSafeInternalNavPath', () => {
 		expect(isSafeInternalNavPath('javascript:alert(1)')).toBe(false);
 		expect(isSafeInternalNavPath('/a b')).toBe(false);
 		expect(isSafeInternalNavPath(`/${'x'.repeat(300)}`)).toBe(false);
+	});
+
+	it('rejects non-canonical dot-only path segments', () => {
+		expect(isSafeInternalNavPath('/a/../b')).toBe(false);
+		expect(isSafeInternalNavPath('/a/./b')).toBe(false);
+		expect(isSafeInternalNavPath('/..')).toBe(false);
+		expect(isSafeInternalNavPath('/.')).toBe(false);
+		expect(isSafeInternalNavPath('/dashboard/../login')).toBe(false);
+	});
+
+	it('still accepts dots inside an otherwise well-formed segment', () => {
+		expect(isSafeInternalNavPath('/dashboard/v1.2/report')).toBe(true);
 	});
 });
