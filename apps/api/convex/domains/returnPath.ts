@@ -14,11 +14,7 @@ import { throwInvalidInput, throwNotFound, throwInvalidState } from '../_utils/e
 import { authedMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { asDnsName } from '@owlat/shared';
-
-// Synthetic userId tag for user-driven public-mutation transitions (mirrors
-// `domains/domains.ts`) — user-driven calls carry no `system:` prefix, which the
-// lifecycle reducer keys on.
-const LIFECYCLE_USER_PUBLIC_MUTATION = 'user';
+import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
 
 // Mutation: Set (or change) the domain's per-domain VERP return-path host
 // (D1/D2). Delegates to the lifecycle's `setReturnPathHost`, which regenerates

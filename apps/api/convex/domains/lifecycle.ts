@@ -68,6 +68,15 @@ import {
 	type SendingDomainProviderKind,
 } from './providers';
 
+/**
+ * Synthetic `userId` tag for user-driven public-mutation transitions. The
+ * lifecycle reducer recognizes internal callers by a `system:` prefix on the
+ * `userId`; user-driven public mutations carry no such prefix, so they pass this
+ * tag. Exported so every thin public shell over the lifecycle (`domains.ts`,
+ * `returnPath.ts`) references one canonical value rather than re-declaring it.
+ */
+export const LIFECYCLE_USER_PUBLIC_MUTATION = 'user';
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type SendingDomainStatus = 'registering' | 'pending' | 'verified' | 'failed';
