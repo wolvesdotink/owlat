@@ -66,6 +66,7 @@ export {
 	type VerifyOptions,
 	authenticate,
 	sendEnvelope,
+	resetTransaction,
 	quit,
 	sendMessage,
 	verify,

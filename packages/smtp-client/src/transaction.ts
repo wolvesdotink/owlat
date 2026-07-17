@@ -21,6 +21,7 @@ import {
 	serializeMailFrom,
 	serializeRcptTo,
 	serializeData,
+	serializeRset,
 	serializeQuit,
 	serializeAuth,
 	serializeAuthContinuation,
@@ -357,6 +358,32 @@ export async function quit(conn: SmtpConnection): Promise<void> {
 		// missing 221 does not change that.
 	} finally {
 		conn.close();
+	}
+}
+
+// ── RSET reuse boundary (X1) ────────────────────────────────────────────────────
+
+/**
+ * Abort any in-progress mail transaction with `RSET` and confirm the server's 250,
+ * returning the connection to a clean pre-`MAIL` state so the SAME live socket can
+ * carry the NEXT MAIL/RCPT/DATA transaction (true socket reuse — the MTA pool's X1
+ * capability, W3's RSET follow-up).
+ *
+ * RSET is the reuse BOUNDARY: because {@link sendEnvelope} reads each reply to
+ * completion (the final `data-final` reply included), the {@link SmtpConnection}'s
+ * single {@link SmtpReply} reader is idle and drained before this runs, and the
+ * verified 250 proves the server has flushed the prior transaction. Together they
+ * guarantee no state — a leftover reply, a half-read multiline response — leaks
+ * from the previous transaction into the next (the classic reuse bug class).
+ *
+ * A non-250 reply, or a transport error, means the socket is unhealthy: this throws
+ * a phase-`mail` {@link SmtpError} (the safely-retryable, pre-DATA region) and the
+ * caller MUST discard the socket — a poisoned connection is never reused.
+ */
+export async function resetTransaction(conn: SmtpConnection): Promise<void> {
+	const reply = await conn.command(serializeRset(), 'mail');
+	if (!isPositiveCompletion(reply.code)) {
+		throw errorFromReply('mail', `server rejected RSET with ${reply.code}`, conn.secured, reply);
 	}
 }
 
