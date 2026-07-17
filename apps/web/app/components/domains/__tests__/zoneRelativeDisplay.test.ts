@@ -27,7 +27,7 @@ beforeAll(() => {
 import DNSRecordPanel from '../DNSRecordPanel.vue';
 
 function mountPanel(
-	record: { type: string; host: string; value: string },
+	record: { type: string; host: string; value: string; hostIsFqdn?: boolean },
 	domain: string,
 	label: string
 ) {
@@ -116,14 +116,14 @@ describe('zone-relative primary vs FQDN secondary — per record type', () => {
 		expect(hasPill(w)).toBe(true);
 	});
 
-	it('MTA-STS CNAME (mta-sts, no underscore) does NOT carry the pill', () => {
+	it('MTA-STS CNAME (mta-sts) carries the pill — RFC 8461 mandates both labels', () => {
 		const w = mountPanel(
 			{ type: 'CNAME', host: 'mta-sts', value: 'mta-sts.owlat.test' },
 			'example.com',
 			'CNAME'
 		);
 		expect(primary(w)).toBe('mta-sts');
-		expect(hasPill(w)).toBe(false);
+		expect(hasPill(w)).toBe(true);
 	});
 
 	it('inbound MX at the apex shows @ and no pill', () => {
@@ -146,9 +146,14 @@ describe('zone-relative primary vs FQDN secondary — per record type', () => {
 
 describe('mailFrom absolute hostname — in-zone vs out-of-zone', () => {
 	it('a per-domain return-path host inside the zone is relativised', () => {
-		// normalizeDnsRecord passes an absolute hostname through as `host`.
+		// normalizeDnsRecord flags an absolute hostname with hostIsFqdn:true.
 		const w = mountPanel(
-			{ type: 'TXT', host: 'bounce.example.com', value: 'v=spf1 include:_spf.owlat.test -all' },
+			{
+				type: 'TXT',
+				host: 'bounce.example.com',
+				value: 'v=spf1 include:_spf.owlat.test -all',
+				hostIsFqdn: true,
+			},
 			'mail.example.com',
 			'MAIL FROM SPF'
 		);
@@ -160,7 +165,12 @@ describe('mailFrom absolute hostname — in-zone vs out-of-zone', () => {
 
 	it('a shared return-path host OUTSIDE the zone is shown absolutely, not doubled', () => {
 		const w = mountPanel(
-			{ type: 'TXT', host: 'bounces.owlat.com', value: 'v=spf1 include:_spf.owlat.test -all' },
+			{
+				type: 'TXT',
+				host: 'bounces.owlat.com',
+				value: 'v=spf1 include:_spf.owlat.test -all',
+				hostIsFqdn: true,
+			},
 			'example.com',
 			'MAIL FROM SPF'
 		);
@@ -177,19 +187,38 @@ describe('mailFrom absolute hostname — in-zone vs out-of-zone', () => {
 });
 
 describe('the standard pill appears on exactly the mandated cards', () => {
-	const cases: Array<[string, string, boolean]> = [
-		// [host, domain, expectPill]
-		['@', 'example.com', false], // SPF apex
-		['s1._domainkey', 'example.com', true], // DKIM
-		['_dmarc', 'example.com', true], // DMARC
-		['_smtp._tls', 'example.com', true], // TLS-RPT
-		['_mta-sts', 'example.com', true], // MTA-STS TXT
-		['mta-sts', 'example.com', false], // MTA-STS CNAME
-		['bounces.owlat.com', 'example.com', false], // mailFrom (out of zone)
-		['bounce.example.com', 'example.com', false], // mailFrom (in zone)
+	// [host, domain, hostIsFqdn, expectPill]
+	const cases: Array<[string, string, boolean, boolean]> = [
+		['@', 'example.com', false, false], // SPF apex
+		['s1._domainkey', 'example.com', false, true], // DKIM
+		['_dmarc', 'example.com', false, true], // DMARC
+		['_smtp._tls', 'example.com', false, true], // TLS-RPT
+		['_mta-sts', 'example.com', false, true], // MTA-STS TXT
+		['mta-sts', 'example.com', false, true], // MTA-STS CNAME (RFC 8461: both labels)
+		['bounces.owlat.com', 'example.com', true, false], // mailFrom (out of zone)
+		['bounce.example.com', 'example.com', true, false], // mailFrom (in zone)
 	];
-	it.each(cases)('host %s / domain %s → pill=%s', (host, domain, expected) => {
-		const w = mountPanel({ type: 'TXT', host, value: 'x' }, domain, 'R');
+	it.each(cases)('host %s / domain %s → pill=%s', (host, domain, hostIsFqdn, expected) => {
+		const w = mountPanel({ type: 'TXT', host, value: 'x', hostIsFqdn }, domain, 'R');
 		expect(hasPill(w)).toBe(expected);
+	});
+});
+
+describe('fail-soft when the domain has no registrable zone', () => {
+	it('renders the plain FQDN with no secondary, note, or crash (relative host)', () => {
+		// `localhost` has no registrable zone → both fallback return points in
+		// hostDisplay: plain FQDN primary, no zone-relative rewrite.
+		const w = mountPanel({ type: 'TXT', host: '_dmarc', value: 'x' }, 'localhost', 'DMARC');
+		expect(primary(w)).toBe('_dmarc.localhost');
+		expect(fqdn(w)).toBeNull();
+		expect(w.find('[data-testid="dns-out-of-zone"]').exists()).toBe(false);
+		expect(w.find('[data-testid="dns-provider-hint"]').exists()).toBe(false);
+	});
+
+	it('renders the domain itself for an apex record with no zone', () => {
+		const w = mountPanel({ type: 'TXT', host: '@', value: 'x' }, 'localhost', 'SPF');
+		expect(primary(w)).toBe('localhost');
+		expect(fqdn(w)).toBeNull();
+		expect(w.find('[data-testid="dns-out-of-zone"]').exists()).toBe(false);
 	});
 });
