@@ -128,7 +128,12 @@ describe('RecordRow — collapsed header identity', () => {
 			dnsRecords: {
 				spf: { type: 'TXT', host: '@', value: 'v=spf1 ~all' },
 				mailFrom: [
-					{ type: 'MX', host: 'mail', value: 'feedback-smtp.us-east-1.amazonses.com', priority: 10 },
+					{
+						type: 'MX',
+						host: 'mail',
+						value: 'feedback-smtp.us-east-1.amazonses.com',
+						priority: 10,
+					},
 					{ type: 'TXT', host: 'mail', value: 'v=spf1 include:amazonses.com ~all' },
 				],
 			},
@@ -156,7 +161,12 @@ describe('RecordRow — MAIL FROM heading (regression: mail.mail.example.com)', 
 				dnsRecords: {
 					spf: { type: 'TXT', host: '@', value: 'v=spf1 ~all' },
 					mailFrom: [
-						{ type: 'MX', host: 'mail', value: 'feedback-smtp.us-east-1.amazonses.com', priority: 10 },
+						{
+							type: 'MX',
+							host: 'mail',
+							value: 'feedback-smtp.us-east-1.amazonses.com',
+							priority: 10,
+						},
 						{ type: 'TXT', host: 'mail', value: 'v=spf1 include:amazonses.com ~all' },
 					],
 				},
