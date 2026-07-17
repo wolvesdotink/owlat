@@ -49,15 +49,4 @@ describe('automation step catalog', () => {
 		expect(entry?.requiredEnvVars).toEqual(['NOTIFY_TOKEN']);
 		expect(entry?.requiredCapability).toBe('automation:step');
 	});
-
-	it('surfaces only plugin kinds in the editor palette catalog', () => {
-		expect(catalog.PLUGIN_STEP_EDITOR_CATALOG).toEqual([
-			{
-				kind: 'plugin.deliverability.notify',
-				label: 'Notify',
-				description: 'Send a notification',
-				icon: 'bell',
-			},
-		]);
-	});
 });

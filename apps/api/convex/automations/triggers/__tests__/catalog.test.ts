@@ -44,15 +44,10 @@ describe('automation trigger catalog', () => {
 		expect(catalog.isPluginTriggerKind('plugin.crm-sync.ghost')).toBe(false);
 	});
 
-	it('exposes plugin ownership and editor metadata', () => {
-		expect(catalog.triggerPluginId('plugin.crm-sync.deal_won')).toBe('crm-sync');
-		expect(catalog.PLUGIN_TRIGGER_EDITOR_CATALOG).toEqual([
-			{
-				kind: 'plugin.crm-sync.deal_won',
-				label: 'Deal won',
-				description: 'A CRM deal was marked won',
-				icon: 'trophy',
-			},
-		]);
+	it('exposes the owning plugin id and gating metadata for a plugin kind', () => {
+		const entry = catalog.pluginTriggerCatalogEntry('plugin.crm-sync.deal_won');
+		expect(entry?.pluginId).toBe('crm-sync');
+		expect(entry?.requiredEnvVars).toEqual(['CRM_TOKEN']);
+		expect(entry?.requiredCapability).toBe('automation:trigger');
 	});
 });

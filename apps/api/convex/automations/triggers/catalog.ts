@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import type { PluginAutomationTriggerCapability, PluginId } from '@owlat/plugin-kit';
+import type { PluginAutomationTriggerCapability } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_AUTOMATION_TRIGGER_CATALOG } from '../../plugins/automationTriggerCatalog.generated';
 
 /**
@@ -61,19 +61,3 @@ export function pluginTriggerCatalogEntry(
 ): GeneratedPluginTriggerCatalogEntry | undefined {
 	return PLUGIN_TRIGGER_CATALOG.find((entry) => entry.kind === kind);
 }
-
-export function triggerPluginId(kind: string): PluginId | undefined {
-	return pluginTriggerCatalogEntry(kind)?.pluginId as PluginId | undefined;
-}
-
-/** Editor palette entries for plugin trigger kinds; consumed by the automation builder. */
-export const PLUGIN_TRIGGER_EDITOR_CATALOG = Object.freeze(
-	PLUGIN_TRIGGER_CATALOG.map((entry) =>
-		Object.freeze({
-			kind: entry.kind,
-			label: entry.label,
-			description: entry.description,
-			icon: entry.icon,
-		})
-	)
-);
