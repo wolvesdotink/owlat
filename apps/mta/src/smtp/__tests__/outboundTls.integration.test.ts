@@ -12,8 +12,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { SMTPServer } from 'smtp-server';
 import type { AddressInfo } from 'node:net';
-import { SmtpConnection, sendEnvelope, quit, type SendResult } from '@owlat/smtp-client';
-import { SmtpConnectionPool, type AcquireOptions } from '../connectionPool.js';
+import { SmtpConnectionPool } from '../connectionPool.js';
+import { deliver } from './loopbackMxHarness.js';
 
 // Throwaway self-signed cert/key, used ONLY by this test's loopback server.
 const TEST_CERT = `-----BEGIN CERTIFICATE-----
@@ -65,10 +65,6 @@ gEqOIXVIiJQgm079dJerivHT0Sff3o0ong4EhDzT0I9JQmugPuwyUDYArYGYNWnX
 waiSQp1spNfmCGgw7qotcmY=
 -----END PRIVATE KEY-----`;
 
-const MESSAGE = Buffer.from(
-	'From: sender@owlat.test\r\nTo: recipient@example.test\r\nSubject: t\r\n\r\nbody\r\n'
-);
-
 async function startServer(maxVersion: 'TLSv1.1' | 'TLSv1.2' | 'TLSv1.3'): Promise<{
 	server: SMTPServer;
 	port: number;
@@ -101,21 +97,6 @@ async function startServer(maxVersion: 'TLSv1.1' | 'TLSv1.2' | 'TLSv1.3'): Promi
 
 function stopServer(server: SMTPServer): Promise<void> {
 	return new Promise((resolve) => server.close(() => resolve()));
-}
-
-async function deliver(pool: SmtpConnectionPool, options: AcquireOptions): Promise<SendResult> {
-	const { key, config } = await pool.acquire('127.0.0.1', '127.0.0.1', options);
-	const conn = await SmtpConnection.connect(config);
-	try {
-		return await sendEnvelope(conn, {
-			from: 'sender@owlat.test',
-			to: ['recipient@example.test'],
-			data: MESSAGE,
-		});
-	} finally {
-		await quit(conn);
-		pool.release(key);
-	}
 }
 
 describe('outbound STARTTLS TLS-version floor (PR-23)', () => {
