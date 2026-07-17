@@ -524,6 +524,106 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		expect(received.length).toBe(receivedBeforeGuard);
 	});
 
+	it('writePipeline() rejects a batch line with no CRLF terminator before writing (framing guard)', async () => {
+		const received: string[] = [];
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => {
+				received.push(line);
+				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		cleanups.push(() => conn.close());
+		const receivedBeforeGuard = received.length;
+		let caught: unknown;
+		try {
+			// The second line lacks its CRLF terminator — the whole batch must be
+			// refused before any byte reaches the wire.
+			conn.writePipeline(['MAIL FROM:<a@test>\r\n', 'RCPT TO:<b@test>'], 'mail');
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('mail');
+		}
+		await new Promise((r) => setTimeout(r, 50));
+		expect(received.length).toBe(receivedBeforeGuard);
+	});
+
+	it('writePipeline() rejects a batch line carrying an interior CRLF before writing (command injection)', async () => {
+		const received: string[] = [];
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => {
+				received.push(line);
+				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		cleanups.push(() => conn.close());
+		const receivedBeforeGuard = received.length;
+		let caught: unknown;
+		try {
+			// A smuggled second command inside a batched line — the write-side injection
+			// surface pipelining adds — must be refused before any byte reaches the wire.
+			conn.writePipeline(['MAIL FROM:<a@test>\r\nRSET\r\n', 'RCPT TO:<b@test>\r\n'], 'mail');
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('mail');
+		}
+		await new Promise((r) => setTimeout(r, 50));
+		expect(received.length).toBe(receivedBeforeGuard);
+	});
+
+	it('writePipeline() refuses to enqueue a batch while a reply is already awaited', async () => {
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => {
+				if (line.startsWith('EHLO')) {
+					return EHLO_REPLY;
+				}
+				// Park: never reply, so the in-flight read keeps the reader busy.
+				return '';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		conn.write('MAIL FROM:<a@test>\r\n', 'mail');
+		const parked = conn.readReply('mail', 5_000);
+		let caught: unknown;
+		try {
+			conn.writePipeline(['RCPT TO:<b@test>\r\n', 'DATA\r\n'], 'rcpt');
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('rcpt');
+		}
+		// Close resolves the parked read (as a rejection) so no promise leaks.
+		conn.close();
+		await parked.catch(() => {});
+	});
+
 	it("fails closed when tlsMode 'none' contradicts requireTls", async () => {
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',

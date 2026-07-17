@@ -2,9 +2,11 @@
  * The transaction layer of the in-house SMTP client.
  *
  * Sits on top of the {@link SmtpConnection} engine (which drives connect →
- * greeting → EHLO → optional STARTTLS): this file owns AUTH, the MAIL/RCPT/DATA
- * envelope, the QUIT teardown, and two convenience wrappers — {@link verify} for
- * connection testing and {@link sendMessage} for a one-shot send.
+ * greeting → EHLO → optional STARTTLS): this file owns AUTH, the QUIT teardown,
+ * the X1 RSET reuse boundary, and two convenience wrappers — {@link verify} for
+ * connection testing and {@link sendMessage} for a one-shot send. The MAIL/RCPT/
+ * DATA envelope itself (sequential + RFC 2920 PIPELINING) lives in `envelope.ts`;
+ * this file composes it with connection setup and AUTH.
  *
  * Every failure is a phase-tagged {@link SmtpError}: the retry taxonomy the MTA
  * builds (AMBIGUOUS_TIMEOUT never auto-retried in phase `data`/`data-final`,
@@ -18,20 +20,24 @@
  */
 
 import {
-	serializeMailFrom,
-	serializeRcptTo,
-	serializeData,
 	serializeRset,
 	serializeQuit,
 	serializeAuth,
 	serializeAuthContinuation,
-	hasCapability,
 	type EhloCapabilities,
 } from './commands';
 import { SmtpConnection, type SmtpConnectOptions } from './connection';
-import { SmtpError, type SmtpErrorInit, type SmtpPhase } from './errors';
-import { dotStuffMessage } from './dotStuff';
+import { SmtpError } from './errors';
 import { isPositiveCompletion, isPositiveIntermediate, type SmtpReply } from './reply';
+import { errorFromReply, sendEnvelope, type EnvelopeOptions, type SendResult } from './envelope';
+
+export {
+	type RecipientVerdict,
+	type PipeliningMode,
+	type EnvelopeOptions,
+	type SendResult,
+	sendEnvelope,
+} from './envelope';
 
 // ── AUTH ────────────────────────────────────────────────────────────────────
 
@@ -178,166 +184,6 @@ function assertAuthAccepted(reply: SmtpReply, secured: boolean): void {
 		return;
 	}
 	throw errorFromReply('auth', `AUTH rejected with ${reply.code}`, secured, reply);
-}
-
-/**
- * The single constructor for a phase-tagged {@link SmtpError} carrying a server
- * reply's code. Pass the `reply` (or a `{ code, enhancedCode }` view of a
- * per-recipient verdict) to copy its `replyCode`/`enhancedCode`; omit it for a
- * client-side refusal that carries no reply code.
- */
-function errorFromReply(
-	phase: SmtpPhase,
-	message: string,
-	secured: boolean,
-	reply?: { code: number; enhancedCode?: string }
-): SmtpError {
-	const init: SmtpErrorInit = { phase, message, secured };
-	if (reply !== undefined) {
-		init.replyCode = reply.code;
-		if (reply.enhancedCode !== undefined) {
-			init.enhancedCode = reply.enhancedCode;
-		}
-	}
-	return new SmtpError(init);
-}
-
-// ── Envelope + DATA ───────────────────────────────────────────────────────────
-
-/** The verdict the server returned for a single recipient's RCPT TO. */
-export interface RecipientVerdict {
-	/** The recipient mailbox exactly as offered in RCPT TO. */
-	recipient: string;
-	/** `true` iff the server returned a 2xx completion for this recipient. */
-	accepted: boolean;
-	/** The three-digit reply code the server returned. */
-	replyCode: number;
-	/** RFC 3463 enhanced status code, when the server supplied one. */
-	enhancedCode?: string;
-	/** The reply text (for logs — never classified against). */
-	message: string;
-}
-
-export interface EnvelopeOptions {
-	/** Return-path mailbox. The empty string serializes the null sender `<>`. */
-	from: string;
-	/** Recipient mailboxes. At least one must be accepted for DATA to run. */
-	to: readonly string[];
-	/** The composed message bytes (already RFC 5322; dot-stuffed on the wire). */
-	data: Buffer | string;
-	/** Extra ESMTP params on MAIL FROM, appended after an auto SIZE. */
-	mailParams?: readonly string[];
-	/** Extra ESMTP params on every RCPT TO (e.g. `NOTIFY=NEVER`). */
-	rcptParams?: readonly string[];
-}
-
-/** The outcome of a completed DATA transaction. */
-export interface SendResult {
-	/** Recipients the server accepted (RCPT 2xx). Never empty on success. */
-	accepted: RecipientVerdict[];
-	/** Recipients the server rejected, with their reply codes. */
-	rejected: RecipientVerdict[];
-	/** The final reply that acknowledged the message (2xx). */
-	response: SmtpReply;
-}
-
-/**
- * Run a MAIL/RCPT/DATA transaction on an open, authenticated (if needed)
- * connection. Collects a per-recipient RCPT verdict and proceeds to DATA as long
- * as ≥1 recipient was accepted; if none were, throws in phase `rcpt` (safely
- * retryable). A drop during or after the body surfaces in phase `data`/
- * `data-final` — the ambiguous, never-auto-retried region.
- */
-export async function sendEnvelope(
-	conn: SmtpConnection,
-	options: EnvelopeOptions
-): Promise<SendResult> {
-	if (options.to.length === 0) {
-		// Nothing to deliver to — refuse BEFORE MAIL FROM reaches the wire. A
-		// client-side refusal, so no reply code; phase `rcpt` keeps it in the safely
-		// retryable region.
-		throw errorFromReply('rcpt', 'no recipients supplied', conn.secured);
-	}
-
-	const body = typeof options.data === 'string' ? Buffer.from(options.data, 'utf8') : options.data;
-
-	// MAIL FROM, with SIZE when the server advertised it (RFC 1870). The declared
-	// size is the un-stuffed message length — what the server budgets against.
-	const mailParams: string[] = [];
-	if (hasCapability(conn.capabilities, 'SIZE')) {
-		mailParams.push(`SIZE=${body.length}`);
-	}
-	if (options.mailParams !== undefined) {
-		mailParams.push(...options.mailParams);
-	}
-	const mailReply = await conn.command(serializeMailFrom(options.from, mailParams), 'mail');
-	assertCompletion(mailReply, 'mail', conn.secured);
-
-	// RCPT TO — one per recipient, collecting verdicts.
-	const rcptParams = options.rcptParams ?? [];
-	const accepted: RecipientVerdict[] = [];
-	const rejected: RecipientVerdict[] = [];
-	for (const recipient of options.to) {
-		const reply = await conn.command(serializeRcptTo(recipient, rcptParams), 'rcpt');
-		const verdict = toVerdict(recipient, reply);
-		if (verdict.accepted) {
-			accepted.push(verdict);
-		} else {
-			rejected.push(verdict);
-		}
-	}
-	if (accepted.length === 0) {
-		// Every recipient was refused — there is nothing to deliver. Report in phase
-		// `rcpt` (pre-DATA, so safely retryable) carrying the last rejection's code.
-		const last = rejected[rejected.length - 1];
-		throw errorFromReply(
-			'rcpt',
-			'every recipient was rejected',
-			conn.secured,
-			last === undefined ? undefined : { code: last.replyCode, enhancedCode: last.enhancedCode }
-		);
-	}
-
-	// DATA — the 354 intermediate handshake (phase `data`).
-	const dataReply = await conn.command(serializeData(), 'data');
-	if (!isPositiveIntermediate(dataReply.code)) {
-		throw errorFromReply(
-			'data',
-			`server rejected data with ${dataReply.code}`,
-			conn.secured,
-			dataReply
-		);
-	}
-
-	// Stream the dot-stuffed body + terminator, then await the final reply. Both
-	// the write and the wait live in phase `data-final`: a drop here is the
-	// double-delivery-ambiguous region the retry taxonomy must never auto-retry.
-	// The socket-lifecycle mechanics live on SmtpConnection, which owns the socket.
-	await conn.writePayload(dotStuffMessage(body), 'data-final');
-	const finalReply = await conn.readReply('data-final', conn.dataTimeoutMs);
-	assertCompletion(finalReply, 'data-final', conn.secured);
-
-	return { accepted, rejected, response: finalReply };
-}
-
-function toVerdict(recipient: string, reply: SmtpReply): RecipientVerdict {
-	const verdict: RecipientVerdict = {
-		recipient,
-		accepted: isPositiveCompletion(reply.code),
-		replyCode: reply.code,
-		message: reply.text,
-	};
-	if (reply.enhancedCode !== undefined) {
-		verdict.enhancedCode = reply.enhancedCode;
-	}
-	return verdict;
-}
-
-function assertCompletion(reply: SmtpReply, phase: 'mail' | 'data-final', secured: boolean): void {
-	if (isPositiveCompletion(reply.code)) {
-		return;
-	}
-	throw errorFromReply(phase, `server rejected ${phase} with ${reply.code}`, secured, reply);
 }
 
 // ── Teardown ──────────────────────────────────────────────────────────────────

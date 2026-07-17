@@ -59,6 +59,7 @@ export {
 	type SmtpCredentials,
 	type AuthenticateOptions,
 	type RecipientVerdict,
+	type PipeliningMode,
 	type EnvelopeOptions,
 	type SendResult,
 	type AuthConfig,
