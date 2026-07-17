@@ -14,15 +14,20 @@
  * leading/trailing hyphens in domain labels, and requires a 2+ char TLD.
  *
  * Accepts internationalized (RFC 6531/6532 SMTPUTF8 / EAI) addresses: the
- * local-part, domain labels and TLD admit any non-ASCII code point
- * (`\u{80}`–`\u{10FFFF}`, hence the `u` flag) so a UTF-8 mailbox such as
- * `用户@例え.test` or `Pelé@exämple.test` is no longer rejected at import /
- * validation. ASCII structure (dot/hyphen placement, TLD length) is unchanged, so
- * every previously-valid address stays valid and every previously-invalid ASCII
- * address stays invalid.
+ * local-part, domain labels and TLD admit any non-ASCII code point in the
+ * `\u{80}`–`\u{10FFFF}` range EXCEPT the Unicode `\p{C}` (control / format /
+ * surrogate / unassigned / private-use) and `\p{Z}` (space / separator) classes —
+ * subtracted via the `v` (unicodeSets) flag. That keeps a real UTF-8 mailbox such
+ * as `用户@例え.test` or `Pelé@exämple.test` valid while rejecting the Unicode
+ * equivalents of the pinned ASCII-space rejection: U+00A0 (NBSP), U+200B (ZWSP),
+ * U+2028/U+2029 (line/paragraph separators), U+0085 (NEL), the BiDi overrides
+ * U+202A–U+202E, and lone surrogates — code points that would spoof or mangle an
+ * imported address. ASCII structure (dot/hyphen placement, TLD length) is
+ * unchanged, so every previously-valid address stays valid and every
+ * previously-invalid ASCII address stays invalid.
  */
 export const emailRegex =
-	/^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~\u{80}-\u{10FFFF}-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~\u{80}-\u{10FFFF}-]+)*@(?:[a-zA-Z0-9\u{80}-\u{10FFFF}](?:[a-zA-Z0-9\u{80}-\u{10FFFF}-]*[a-zA-Z0-9\u{80}-\u{10FFFF}])?\.)+[a-zA-Z\u{80}-\u{10FFFF}]{2,}$/u;
+	/^[[a-zA-Z0-9!#$%&'*+\/=?^_`\{\|\}~\u{80}-\u{10FFFF}\-]--[\p{C}\p{Z}]]+(?:\.[[a-zA-Z0-9!#$%&'*+\/=?^_`\{\|\}~\u{80}-\u{10FFFF}\-]--[\p{C}\p{Z}]]+)*@(?:[[a-zA-Z0-9\u{80}-\u{10FFFF}]--[\p{C}\p{Z}]](?:[[a-zA-Z0-9\u{80}-\u{10FFFF}\-]--[\p{C}\p{Z}]]*[[a-zA-Z0-9\u{80}-\u{10FFFF}]--[\p{C}\p{Z}]])?\.)+[[a-zA-Z\u{80}-\u{10FFFF}]--[\p{C}\p{Z}]]{2,}$/v;
 
 /**
  * Domain validation regex
