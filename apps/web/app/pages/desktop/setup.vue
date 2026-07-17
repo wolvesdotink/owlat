@@ -11,9 +11,12 @@ import {
 	describeHostKey,
 	isLoopbackHost,
 	isLoopbackUrl,
+	defaultSubdomainLabels,
+	validateSubdomainLabels,
 	type HostKeyPrompt,
 	type InstanceHostnames,
 	type SetupConfigInput,
+	type SubdomainLabels,
 } from '~/lib/desktop/provisioning';
 import {
 	assessPassword,
@@ -201,46 +204,26 @@ const publicIp = ref('');
 watch(detectedPublicIp, (detected) => {
 	if (detected && !publicIp.value) publicIp.value = detected;
 });
-const customizeHosts = ref(false);
-const hostOverrides = reactive<InstanceHostnames>({ site: '', convex: '', convexSite: '', mail: '', bounce: '' });
+// The five subdomain labels (owlat / api / rest.api / mail / bounce), prefilled
+// with their defaults and edited through the "customize hostnames" disclosure.
+// They flow through deriveHostnames() — the single place labels become
+// hostnames — so an override can't drift across the DNS records, generated
+// config and network URLs.
+const hostLabels = ref<SubdomainLabels>(defaultSubdomainLabels());
+/** Per-field label validation (charset/length + mutual distinctness). */
+const labelValidation = computed(() => validateSubdomainLabels(hostLabels.value));
 const seedDemo = ref(false);
 const configError = ref('');
 
-/** Hostnames derived from the apex domain, or null when none is entered. */
+/** Whether a domain has been entered (every hostname derives from it). */
 const derivedHosts = computed<InstanceHostnames | null>(() =>
 	domain.value.trim() ? deriveHostnames(domain.value) : null,
 );
 
-/** Derived hostnames with any non-empty override applied. */
-const effectiveHosts = computed<InstanceHostnames | null>(() => {
-	const base = derivedHosts.value;
-	if (!base) return null;
-	return {
-		site: hostOverrides.site.trim() || base.site,
-		convex: hostOverrides.convex.trim() || base.convex,
-		convexSite: hostOverrides.convexSite.trim() || base.convexSite,
-		mail: hostOverrides.mail.trim() || base.mail,
-		bounce: hostOverrides.bounce.trim() || base.bounce,
-	};
-});
-
-/** Rows for the optional per-host override editor (mail/bounce only with MTA). */
-const hostFields = computed(() => {
-	const base = derivedHosts.value;
-	if (!base) return [];
-	const rows: Array<{ key: keyof InstanceHostnames; label: string; placeholder: string }> = [
-		{ key: 'site', label: 'App', placeholder: base.site },
-		{ key: 'convex', label: 'API (Convex)', placeholder: base.convex },
-		{ key: 'convexSite', label: 'REST API', placeholder: base.convexSite },
-	];
-	if (sendingProvider.value === 'mta') {
-		rows.push(
-			{ key: 'mail', label: 'Mail server (EHLO)', placeholder: base.mail },
-			{ key: 'bounce', label: 'Bounce domain', placeholder: base.bounce },
-		);
-	}
-	return rows;
-});
+/** Hostnames for the entered domain with the current label overrides applied. */
+const effectiveHosts = computed<InstanceHostnames | null>(() =>
+	domain.value.trim() ? deriveHostnames(domain.value, hostLabels.value) : null,
+);
 
 function buildConfig(): SetupConfigInput {
 	const cfg: SetupConfigInput = {
@@ -298,6 +281,13 @@ async function onProvision() {
 	if (isRemoteTarget.value && !derivedHosts.value) {
 		configStep.value = 'domain';
 		configError.value = 'Remote servers need a public domain so you can reach the app after install. Add one under Domain & DNS.';
+		return;
+	}
+	// Customised hostname labels must be DNS-safe and mutually distinct, or the
+	// derived hostnames/DNS records would collide or be invalid.
+	if (!labelValidation.value.ok) {
+		configStep.value = 'domain';
+		configError.value = 'Fix the customised hostnames — each label must be a valid, distinct DNS label.';
 		return;
 	}
 	// Admin fields live on the last step; jump there if they fail validation.
@@ -829,25 +819,12 @@ const hintClass = 'mt-1.5 text-xs leading-relaxed text-text-secondary';
 							</div>
 
 							<div>
-								<button
-									v-if="derivedHosts"
-									type="button"
-									class="mt-2 text-xs text-text-secondary hover:text-text-primary"
-									@click="customizeHosts = !customizeHosts"
-								>
-									{{ customizeHosts ? '− Use derived hostnames' : '+ Customize hostnames' }}
-								</button>
-
-								<div v-if="derivedHosts && customizeHosts" class="mt-2 space-y-2">
-									<div v-for="f in hostFields" :key="f.key" class="grid grid-cols-[8rem_1fr] items-center gap-2">
-										<label class="text-xs text-text-secondary">{{ f.label }}</label>
-										<input
-											v-model="hostOverrides[f.key]"
-											:class="[inputClass, 'font-mono text-xs']"
-											:placeholder="f.placeholder"
-										/>
-									</div>
-									<p :class="hintClass">Leave a field blank to use the derived hostname shown as its placeholder.</p>
+								<div v-if="derivedHosts" class="mt-2">
+									<DesktopHostnameOverrides
+										v-model="hostLabels"
+										:domain="domain"
+										:errors="labelValidation.errors"
+									/>
 								</div>
 
 								<div class="mt-3 overflow-x-auto rounded-lg border border-border-subtle bg-bg-deep p-3">
