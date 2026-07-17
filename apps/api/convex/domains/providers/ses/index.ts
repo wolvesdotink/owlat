@@ -17,26 +17,35 @@ import { createSESIdentityManager } from '../../../lib/emailProviders/sesIdentit
 import { getOptional } from '../../../lib/env';
 import { logError } from '../../../lib/runtimeLog';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY } from '../../dmarc';
+import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
 import type { DnsRecord, DnsRecords } from '../../domains';
-import type {
-	ProviderCheckResult,
-	SendingDomainProviderModule,
-	SesIdentity,
-} from '../types';
+import type { ProviderCheckResult, SendingDomainProviderModule, SesIdentity } from '../types';
 
 export const sesProvider: SendingDomainProviderModule<'ses'> = {
 	kind: 'ses',
 
-	async registerDomain(domain) {
+	async registerDomain(domain, options) {
 		const ses = createSESIdentityManager();
+
+		// Per-domain custom MAIL FROM (X1): a `returnPathHost` set on the domain
+		// overrides the default `mail.<domain>` subdomain. SES requires the MAIL
+		// FROM to be a subdomain of the sending identity, so a non-subdomain host
+		// is a hard error (rolls into the `→ failed` transition). Absent → the
+		// historic `mail.<domain>` default, unchanged.
+		const mailFrom = resolveSesMailFrom(domain, options?.returnPathHost);
+		if (!mailFrom) {
+			throw new Error(
+				`SES custom MAIL FROM host "${options?.returnPathHost}" must be a subdomain of ${domain}`
+			);
+		}
 
 		// 1. Register domain identity + DKIM tokens.
 		const { verificationToken, dkimTokens } = await ses.registerDomain(domain);
 
-		// 2. Set up custom MAIL FROM subdomain. The setupMailFromDomain call
+		// 2. Set up the custom MAIL FROM subdomain. The setupMailFromDomain call
 		//    is part of "register" — if it throws, the whole operation
 		//    rolls into the `→ failed` transition.
-		await ses.setupMailFromDomain(domain, 'mail');
+		await ses.setupMailFromDomain(domain, mailFrom.host);
 
 		const region = ses.getRegion();
 
@@ -63,19 +72,9 @@ export const sesProvider: SendingDomainProviderModule<'ses'> = {
 					rua: getOptional('MTA_DMARC_RUA'),
 				}),
 			},
-			mailFrom: [
-				{
-					type: 'MX',
-					host: 'mail',
-					value: `feedback-smtp.${region}.amazonses.com`,
-					priority: 10,
-				},
-				{
-					type: 'TXT',
-					host: 'mail',
-					value: 'v=spf1 include:amazonses.com ~all',
-				},
-			],
+			// The MX + SPF TXT SES requires at the (default or override) MAIL FROM
+			// subdomain (see `mailFrom.ts` — SES's shape, not the MTA's).
+			mailFrom: buildSesMailFromRecords(mailFrom.host, region),
 		};
 
 		return {
