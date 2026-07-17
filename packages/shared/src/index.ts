@@ -30,6 +30,7 @@ export {
 	trySplitZone,
 	zoneRelativeHost,
 } from './dnsZone';
+export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
 export {
 	SEND_TRANSPORT_KINDS,
 	type SendTransportKind,

@@ -18,7 +18,7 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
-import { logError, logInfo } from '../../lib/runtimeLog';
+import { logError, logInfo, logWarn } from '../../lib/runtimeLog';
 import { createMtaIdentityManager } from '../../lib/emailProviders/mtaIdentity';
 import { createSESIdentityManager } from '../../lib/emailProviders/sesIdentity';
 import { providerFor } from './index';
@@ -48,6 +48,7 @@ export const run = internalAction({
 		}
 
 		const at = Date.now();
+		let registered = false;
 		try {
 			// Thread the domain's per-domain VERP return-path host (D1/D2) so the
 			// adapter reflects it to the provider and builds the `mailFrom` SPF
@@ -67,6 +68,7 @@ export const run = internalAction({
 				},
 				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
 			});
+			registered = true;
 
 			logInfo(
 				`[${tag}] Domain ${domain.domain} registered successfully with ${adapter.describeIdentity(identity)}`
@@ -82,6 +84,23 @@ export const run = internalAction({
 					at,
 					error: message,
 				},
+				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
+			});
+		}
+
+		// Reconcile a return-path edit that committed while our (slow) provider I/O
+		// ran: the `registering` guard in `setReturnPathHost` deferred its records to
+		// us, but we built `dnsRecords`/reflected for the host as read at the top. This
+		// serializable mutation regenerates the records + reflects the CURRENT host
+		// when it moved, closing the register-vs-edit window (a same-host re-save would
+		// otherwise short-circuit and never self-heal). Run OUTSIDE the try and only on
+		// success: registration itself is already committed, so an exotic reconcile
+		// throw (e.g. SES with a missing region) must not poison a registered domain
+		// back to `failed`; and on a failed registration there is nothing to reconcile.
+		if (registered) {
+			await ctx.runMutation(internal.domains.lifecycle.reconcileReturnPathAfterRegistration, {
+				domainId: args.domainId,
+				registeredReturnPathHost: domain.returnPathHost,
 				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
 			});
 		}
@@ -125,13 +144,15 @@ interface ReflectionConfig {
 	/** `userId` tag threaded into `recordReturnPathPushResult`. */
 	readonly userId: string;
 	/**
-	 * Re-enqueue this same action for the next attempt. A closure (rather than a
-	 * typed `FunctionReference` self-reference) on purpose: naming the action's own
-	 * generated reference in a field type is circular and collapses Convex's whole
-	 * `internal`/`DataModel` inference — using it only as a `scheduler.runAfter`
-	 * argument inside the closure is safe.
+	 * Re-enqueue this same action — for the next retry attempt of the same host,
+	 * or (finding 4) to converge the provider onto a host that superseded ours
+	 * mid-reflection. A closure (rather than a typed `FunctionReference`
+	 * self-reference) on purpose: naming the action's own generated reference in a
+	 * field type is circular and collapses Convex's whole `internal`/`DataModel`
+	 * inference — using it only as a `scheduler.runAfter` argument inside the
+	 * closure is safe.
 	 */
-	readonly reschedule: (delayMs: number, nextAttempt: number) => Promise<unknown>;
+	readonly reschedule: (delayMs: number, nextAttempt: number, host: string) => Promise<unknown>;
 	/** Perform the provider-specific reflection (may throw for transient errors). */
 	readonly perform: (domain: Doc<'domains'>) => Promise<ReflectionOutcome>;
 }
@@ -149,15 +170,18 @@ interface ReflectionConfig {
  * (an audit row + the `returnPathHostSyncError` marker), so a permanent
  * divergence is never silent.
  *
- * Concurrency: reflection is best-effort last-writer-wins — two edits racing can
- * reflect in either order, and there is no generation token (return-path edits
- * are rare, so one was deemed not worth the ceremony). The `returnPathHost`
- * re-read below skips a chain whose target host was already superseded, which
- * collapses the common case, but a narrow double-interleaving can still leave the
- * provider on a superseded host; that is reconciled by the NEXT edit's
- * reflection. Only the marker/audit path is strongly race-safe:
- * `recordReturnPathPushResult` is a serializable mutation that re-checks the
- * host, so a stale give-up can never mark a domain that has already moved on.
+ * Concurrency (finding 4): two edits racing can reflect out of order. Two guards
+ * keep the provider from silently diverging, without a generation token:
+ *   - BEFORE the provider call, we re-read `returnPathHost` and skip a chain
+ *     whose host was already superseded (the common case).
+ *   - AFTER a successful provider call, we re-read again: if the host changed
+ *     under us (a newer edit committed while our slow I/O ran, and we may have
+ *     finished LAST — leaving the provider on our now-stale host), we do NOT
+ *     clear the marker for the stale host; we requeue a fresh reflection for the
+ *     CURRENT host so the provider CONVERGES to the last edit rather than being
+ *     stuck on an earlier one.
+ * The marker/audit path is additionally serializable: `recordReturnPathPushResult`
+ * re-checks the host, so a stale give-up can never mark a domain that moved on.
  */
 async function runReturnPathReflection(
 	ctx: ActionCtx,
@@ -209,7 +233,7 @@ async function runReturnPathReflection(
 				`[${tag}] Failed to reflect return-path host ${args.returnPathHost} for ${domain.domain} (attempt ${nextAttempt}/${RETURN_PATH_REFLECT_MAX_ATTEMPTS}), retrying in ${delayMs}ms:`,
 				message
 			);
-			await config.reschedule(delayMs, nextAttempt);
+			await config.reschedule(delayMs, nextAttempt, args.returnPathHost);
 			return;
 		}
 		// Budget exhausted — permanent divergence. Surface it.
@@ -225,6 +249,32 @@ async function runReturnPathReflection(
 		// Non-transient (config) failure — no retry would ever succeed. Surface it.
 		logError(`[${tag}] ${outcome.message}; cannot reflect return-path host for ${domain.domain}`);
 		await recordGiveUp(outcome.message, attempt);
+		return;
+	}
+
+	// Finding 4 — post-call re-read: a newer edit may have committed a different
+	// host while our (possibly slow) provider call ran. If so, the provider is now
+	// on OUR host but the DB wants the newer one, and we may have finished last.
+	// Requeue a fresh reflection for the CURRENT host so the provider converges,
+	// and do NOT clear the marker for our now-stale host (the requeued chain owns
+	// the marker for the current host).
+	const current = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
+		domainId: args.domainId,
+	});
+	const currentHost = current?.returnPathHost;
+	if (current && currentHost !== args.returnPathHost) {
+		// A newer edit superseded our host mid-reflection. Converge the provider on
+		// the current host (requeue) rather than clearing the marker for our stale
+		// host. If a future "clear" path ever sets the host back to `undefined`,
+		// there is nothing to reflect here — leave the marker for that path to own —
+		// so requeue ONLY for a concrete host (this replaces a `!== undefined` guard
+		// that would have SILENTLY skipped convergence in the clear case).
+		if (currentHost !== undefined) {
+			logWarn(
+				`[${tag}] Return-path host for ${current.domain} changed to ${currentHost} while reflecting ${args.returnPathHost}; requeueing to converge the provider on the current host`
+			);
+			await config.reschedule(0, 0, currentHost);
+		}
 		return;
 	}
 
@@ -258,11 +308,11 @@ export const pushReturnPathHost = internalAction({
 			tag: 'MTA',
 			providerType: 'mta',
 			userId: LIFECYCLE_USER_RETURN_PATH_PUSH,
-			reschedule: (delayMs, nextAttempt) =>
+			reschedule: (delayMs, nextAttempt, host) =>
 				ctx.scheduler.runAfter(
 					delayMs,
 					internal.domains.providers.registerAction.pushReturnPathHost,
-					{ domainId: args.domainId, returnPathHost: args.returnPathHost, attempt: nextAttempt }
+					{ domainId: args.domainId, returnPathHost: host, attempt: nextAttempt }
 				),
 			perform: async (domain) => {
 				const mta = createMtaIdentityManager();
@@ -292,11 +342,11 @@ export const reflectSesMailFrom = internalAction({
 			tag: 'SES',
 			providerType: 'ses',
 			userId: LIFECYCLE_USER_SES_MAILFROM_REFLECT,
-			reschedule: (delayMs, nextAttempt) =>
+			reschedule: (delayMs, nextAttempt, host) =>
 				ctx.scheduler.runAfter(
 					delayMs,
 					internal.domains.providers.registerAction.reflectSesMailFrom,
-					{ domainId: args.domainId, returnPathHost: args.returnPathHost, attempt: nextAttempt }
+					{ domainId: args.domainId, returnPathHost: host, attempt: nextAttempt }
 				),
 			perform: async (domain) => {
 				const mailFrom = resolveSesMailFrom(domain.domain, args.returnPathHost);

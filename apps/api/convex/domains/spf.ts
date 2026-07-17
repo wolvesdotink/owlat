@@ -118,38 +118,73 @@ export function buildReturnPathSpfRecord(
 	return buildSpfRecordValue({ ip4, qualifier });
 }
 
-/** A `mailFrom` DNS record entry — an absolute-hostname TXT record. */
+/**
+ * A `mailFrom` DNS record entry for a return-path host — an absolute-hostname
+ * MX (bounce-DSN routing) or TXT (SPF) record.
+ */
 export type ReturnPathMailFromRecord = {
-	readonly type: 'TXT';
+	readonly type: 'MX' | 'TXT';
 	readonly hostname: string;
 	readonly value: string;
+	readonly priority?: number;
 };
 
 /**
- * Build the `mailFrom` DNS record bundle for a return-path host: a single SPF
- * TXT record published on the return-path host authorizing the pool IPs (RFC
- * 7208 §3.1). Pure — the caller resolves `returnPathHost` (per-domain override
- * or the global env) and the pool IPs.
+ * MX preference for the return-path bounce host. `10` matches the documented
+ * global `RETURN_PATH_DOMAIN` guidance (`bounces.<zone> MX 10 mail.<zone>`), the
+ * inbound-DNS generator (`apps/web` `INBOUND_MX_PRIORITY`), and the SES MAIL FROM
+ * MX — the codebase-wide "single inbound host" convention.
+ */
+export const RETURN_PATH_MX_PRIORITY = 10;
+
+/**
+ * Build the `mailFrom` DNS record bundle for a return-path host:
+ *   - an MX record routing bounce DSNs to the MTA's inbound listener
+ *     (`<returnPathHost> MX 10 <mailHost>`), so remote MTAs can DELIVER
+ *     `bounce+…@<host>` back — SPF alone authorizes only OUTBOUND and does
+ *     nothing for inbound DSN routing (this was the gap: a custom host had SPF
+ *     but no MX, so bounce attribution/suppression silently stopped); and
+ *   - an SPF TXT record authorizing the pool IPs on the host (RFC 7208 §3.1) so
+ *     the bounce envelope passes SPF.
  *
- * Returns `undefined` (record omitted) when there is no return-path host, or no
- * pool IPs to authorize — the bounce envelope then cannot pass SPF, which the
- * caller surfaces as an operator warning. Centralizing this keeps the provider's
- * initial registration and the lifecycle's return-path edit emitting the exact
- * same record for a given host, so the two can never drift.
+ * Pure — the caller resolves `returnPathHost` (per-domain override or the global
+ * env), the MTA inbound `mailHost` (EHLO hostname), and the pool IPs. Centralized
+ * so the provider's initial registration and the lifecycle's return-path edit
+ * emit the exact same bundle for a given host and can't drift.
+ *
+ * Returns `undefined` when there is no return-path host, or when neither record
+ * can be built (no `mailHost` AND no pool IPs). Each record is emitted only when
+ * its input is present: the MX needs `mailHost`, the SPF TXT needs pool IPs — a
+ * caller with only one still publishes what it can (and warns about the rest).
  */
 export function buildReturnPathMailFromRecords(
 	returnPathHost: string | undefined,
 	poolIps: readonly string[],
-	qualifier: SpfQualifier
+	qualifier: SpfQualifier,
+	mailHost: string | undefined
 ): ReturnPathMailFromRecord[] | undefined {
-	if (!returnPathHost || poolIps.length === 0) return undefined;
-	return [
-		{
+	if (!returnPathHost) return undefined;
+	const records: ReturnPathMailFromRecord[] = [];
+
+	const normalizedMailHost = mailHost?.trim().replace(/\.$/, '').toLowerCase();
+	if (normalizedMailHost) {
+		records.push({
+			type: 'MX',
+			hostname: returnPathHost,
+			value: normalizedMailHost,
+			priority: RETURN_PATH_MX_PRIORITY,
+		});
+	}
+
+	if (poolIps.length > 0) {
+		records.push({
 			type: 'TXT',
 			hostname: returnPathHost,
 			value: buildReturnPathSpfRecord(poolIps, qualifier),
-		},
-	];
+		});
+	}
+
+	return records.length > 0 ? records : undefined;
 }
 
 /**

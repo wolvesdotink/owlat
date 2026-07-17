@@ -99,21 +99,38 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 			};
 		}
 
-		// Return-path SPF: the bounce envelope is `bounce+…@<return-path host>`,
-		// so SPF authenticates the return-path host — NOT the From-domain apex.
-		// For DMARC SPF alignment, and so the bounce envelope passes SPF at all,
-		// the operator must publish an SPF record on that host authorizing the
-		// pool IPs (RFC 7489 §3.1). The host is the domain's per-domain override
-		// when set (D1/D2), else the deployment-global `MTA_RETURN_PATH_DOMAIN`.
-		// We emit that record into the DNS bundle as a `mailFrom` entry keyed by
-		// the absolute hostname (it lives on a sibling domain, not under the
-		// From-domain).
+		// Return-path bundle: the bounce envelope is `bounce+…@<return-path host>`,
+		// so the host needs an SPF TXT authorizing the pool IPs (so the envelope
+		// passes SPF, RFC 7489 §3.1), plus — for a CUSTOM per-domain host — an MX so
+		// remote MTAs can DELIVER DSNs back to the MTA's inbound listener
+		// (EHLO_HOSTNAME). The host is the domain's per-domain override when set
+		// (D1/D2), else the global `MTA_RETURN_PATH_DOMAIN`. Emitted as `mailFrom`
+		// entries keyed by the absolute hostname (a sibling of the From-domain).
+		//
+		// The MX is scoped to CUSTOM hosts on purpose: the global RETURN_PATH_DOMAIN
+		// MX is an operator-managed, separately-documented record that predates this
+		// bundle — emitting (and thus VERIFYING) it here would newly FAIL every
+		// existing verified MTA domain on its next regeneration for an MX it never
+		// had to publish. Custom per-domain hosts are new (D1/D2), so requiring
+		// their MX is not a regression. `mailHost` is passed only for a custom host.
 		const returnPathHost = customReturnPathHost ?? getOptional('MTA_RETURN_PATH_DOMAIN')?.trim();
 		const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
-		const mailFromRecords = buildReturnPathMailFromRecords(returnPathHost, poolIps, qualifier);
+		const mailHost = customReturnPathHost ? getOptional('EHLO_HOSTNAME')?.trim() : undefined;
+		const mailFromRecords = buildReturnPathMailFromRecords(
+			returnPathHost,
+			poolIps,
+			qualifier,
+			mailHost
+		);
 		if (mailFromRecords) {
 			dnsRecords.mailFrom = mailFromRecords;
-		} else if (returnPathHost) {
+		}
+		if (customReturnPathHost && !mailHost) {
+			logWarn(
+				`[MTA] custom return-path host ${customReturnPathHost} is set but EHLO_HOSTNAME is empty — no bounce MX emitted for ${domain}. Remote MTAs cannot deliver DSNs to bounce+…@${customReturnPathHost}.`
+			);
+		}
+		if (returnPathHost && poolIps.length === 0) {
 			logWarn(
 				`[MTA] return-path host ${returnPathHost} is set but MTA_IP_POOLS is empty — return-path SPF record omitted for ${domain}. The bounce envelope (bounce+…@${returnPathHost}) will not pass SPF.`
 			);

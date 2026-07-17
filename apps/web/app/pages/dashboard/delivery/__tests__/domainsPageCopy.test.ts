@@ -40,11 +40,12 @@ describe('Add-Domain modal — delegated to the guided form component', () => {
 	});
 
 	it('delegates the add-domain orchestration to the useAddDomain flow', () => {
-		// The register-then-set orchestration lives in the tested composable; the
-		// page just wires its mutation runs / modal / toast into it.
+		// The atomic create-with-host orchestration lives in the tested composable;
+		// the page just wires its mutation run / modal / toast into it. The
+		// return-path host is folded into `create` (F2 finding 1), so the page no
+		// longer wires a separate `setReturnPathHost` op into the add flow.
 		expect(pageSource).toMatch(/const \{ handleAddDomain \} = useAddDomain\(\{/);
 		expect(pageSource).toContain('createDomain,');
-		expect(pageSource).toContain('setReturnPathHost,');
 	});
 });
 
