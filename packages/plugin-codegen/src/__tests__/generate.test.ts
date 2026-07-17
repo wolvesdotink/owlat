@@ -437,13 +437,16 @@ describe('generated composition freshness', () => {
 		});
 	});
 
+	// Each generation now writes 17 files; 20 concurrent runs (and 4 cold Bun
+	// subprocesses that compile the CLI) exceed vitest's 5s default on a loaded CI
+	// runner. These assert collision-safety, not latency, so give them headroom.
 	it('supports concurrent generation in one process without temporary-file collisions', async () => {
 		const root = await createZeroPluginWorkspace();
 
 		await Promise.all(Array.from({ length: 20 }, () => generatePluginComposition(root)));
 
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
-	});
+	}, 30_000);
 
 	it('supports concurrent generation in separate Bun processes', async () => {
 		const root = await createZeroPluginWorkspace();
@@ -453,7 +456,7 @@ describe('generated composition freshness', () => {
 		);
 
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
-	});
+	}, 30_000);
 
 	it('ignores a planted legacy temporary symlink and never overwrites its victim', async () => {
 		const root = await createZeroPluginWorkspace();
