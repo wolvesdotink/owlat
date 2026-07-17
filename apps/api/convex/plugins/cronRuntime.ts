@@ -16,6 +16,7 @@ import { internalAction } from '../_generated/server';
 import { bindSystemBundledPluginLlm } from './llm';
 import { pluginCronDefinition } from './cronCatalog';
 import { BUNDLED_PLUGIN_CRON_MODULES } from './cronModules.generated';
+import { snapshotHostedModule } from './hostedModuleSnapshot';
 
 interface GeneratedCronModule {
 	readonly kind: string;
@@ -121,15 +122,16 @@ async function runPluginCronTick(
 	}
 }
 
+/**
+ * Freeze the generated cron module down to its `run` contract using the shared
+ * accessor-safe snapshot every hosted registry uses, so a cron module shares the
+ * same `{ run, ...inert }` author contract as agent steps and automation steps.
+ * Returns null (rather than throwing) on an invalid module so the tick records a
+ * bounded `cron_invalid` audit row instead of erroring.
+ */
 function snapshotCronModule(value: unknown): PluginCronModule | null {
 	try {
-		if (!isPlainObject(value)) return null;
-		const descriptors = Object.getOwnPropertyDescriptors(value);
-		if (Reflect.ownKeys(descriptors).length !== 1) return null;
-		const run = descriptors['run'];
-		if (!run || !run.enumerable || !('value' in run)) return null;
-		if (typeof run.value !== 'function') return null;
-		return Object.freeze({ run: run.value });
+		return snapshotHostedModule<PluginCronModule>(value, ['run'], [], 'invalid cron module');
 	} catch {
 		return null;
 	}
@@ -209,12 +211,6 @@ async function recordFailure(
 			reasonCode,
 		})
 		.catch(() => null);
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-	const prototype = Object.getPrototypeOf(value);
-	return prototype === Object.prototype || prototype === null;
 }
 
 class CronTimeoutError extends Error {}
