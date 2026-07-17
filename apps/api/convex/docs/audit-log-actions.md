@@ -56,6 +56,10 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `webhook.created` / `webhook.updated` / `webhook.deleted` | `webhook` | `{ url, name }` |
 | `webhook.secret_rotated` | `webhook` | `{ name }` (signing secret regenerated) |
 | `domain.added` / `domain.verified` / `domain.removed` | `domain` | `{ domain }` |
+| `sending_domain.created` / `registered` / `registration_failed` / `verified` / `verification_failed` / `regenerated` / `deleted` | `sending_domain` | `{ previousStatus?, newStatus?, applied, error? }` (lifecycle transitions; see ADR-0018) |
+| `sending_domain.dmarc_policy_changed` | `sending_domain` | `{ domain, previousPolicy, newPolicy, newSubdomainPolicy, newPct, applied }` |
+| `sending_domain.dkim_rotated` | `sending_domain` | `{ domain, selector, phase, applied }` |
+| `sending_domain.return_path_changed` | `sending_domain` | `{ domain, previousReturnPathHost, newReturnPathHost, applied }` on edit; `{ domain, returnPathHost, applied: 'sync_failed', attempts, error }` when the MTA push permanently fails |
 | `blocklist.added` / `blocklist.removed` | `blocklist` | `{ email, reason }` |
 | `segment.created` / `segment.updated` / `segment.deleted` | `segment` | `{ name }` |
 | `platform_admin.org_status_changed` | `platform_admin` | `{ previousStatus, newStatus, reason }` |
