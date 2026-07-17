@@ -92,6 +92,10 @@ describe('composition rendering', () => {
 		expect(rendered.automationStepModules).toContain("'use node';");
 		expect(rendered.automationTriggerModules).not.toContain("'use node';");
 		expect(rendered.automationConditionModules).not.toContain("'use node';");
+		expect(rendered.webhookEventCatalog).toContain('Object.freeze([] as const)');
+		expect(rendered.importProviderCatalog).toContain('Object.freeze([] as const)');
+		expect(rendered.importProviderModules).toContain("'use node';");
+		expect(rendered.importProviderModules).toContain('Object.freeze([] as const)');
 	});
 
 	it('separates automation registry editor metadata from executable modules', () => {
@@ -257,6 +261,74 @@ describe('composition rendering', () => {
 			// And canonically ordered: alpha's contribution precedes zebra's.
 			expect(forward[key].indexOf('alpha-auto')).toBeLessThan(forward[key].indexOf('zebra-auto'));
 		}
+	});
+
+	it('orders webhook events deterministically and carries only data metadata', () => {
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/events-plugin',
+				manifest: {
+					id: 'events-pack',
+					version: '1.0.0',
+					capabilities: ['webhooks:publish'],
+					flag: { default: false },
+					contributes: {
+						webhookEvents: [
+							{ id: 'z-last', description: 'Last', subscribable: false },
+							{ id: 'a-first', description: 'First', subscribable: true },
+						],
+					},
+				},
+			},
+		]);
+		const rendered = renderPluginComposition(plugins);
+		expect(rendered.webhookEventCatalog.indexOf('a-first')).toBeLessThan(
+			rendered.webhookEventCatalog.indexOf('z-last')
+		);
+		expect(rendered.webhookEventCatalog).toContain('plugin.events-pack.a-first');
+		expect(rendered.webhookEventCatalog).toContain("requiredCapability: 'webhooks:publish'");
+		expect(rendered.webhookEventCatalog).toContain('subscribable: true');
+		expect(rendered.webhookEventCatalog).not.toContain('@acme/events-plugin');
+	});
+
+	it('separates import provider metadata from Node-only executable modules', () => {
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/crm-plugin',
+				manifest: {
+					id: 'crm-pack',
+					version: '1.0.0',
+					capabilities: ['imports:provide'],
+					flag: { default: false, requiredEnvVars: ['HUBSPOT_KEY'] },
+					contributes: {
+						importProviders: [
+							{
+								id: 'hubspot',
+								label: 'HubSpot',
+								module: { exportPath: './providers/hubspot' },
+								signature: {
+									header: 'x-hubspot-signature',
+									algorithm: 'hmac-sha256',
+									encoding: 'hex',
+									secretEnvVar: 'PLUGIN_HUBSPOT_WEBHOOK_SECRET',
+								},
+								attestSource: 'hubspot',
+							},
+						],
+					},
+				},
+			},
+		]);
+		const rendered = renderPluginComposition(plugins);
+		expect(rendered.importProviderCatalog).toContain('plugin.crm-pack.hubspot');
+		expect(rendered.importProviderCatalog).toContain("requiredCapability: 'imports:provide'");
+		expect(rendered.importProviderCatalog).toContain('HUBSPOT_KEY');
+		expect(rendered.importProviderCatalog).toContain('x-hubspot-signature');
+		expect(rendered.importProviderCatalog).toContain('attestSource: "hubspot"');
+		expect(rendered.importProviderCatalog).not.toContain('@acme/crm-plugin');
+		expect(rendered.importProviderModules).toContain("'use node';");
+		expect(rendered.importProviderModules).toContain('satisfies PluginImportProviderModule');
+		expect(rendered.importProviderModules).toContain('from "@acme/crm-plugin/providers/hubspot"');
 	});
 
 	it('orders autonomy gates deterministically and separates metadata from executable modules', () => {

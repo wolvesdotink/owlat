@@ -201,12 +201,14 @@ export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'automation.step',
 	'autonomy.gate',
 	'draft.strategy',
+	'import.provider',
 	'llm.generate',
 	'storage.delete',
 	'storage.get',
 	'storage.list',
 	'storage.set',
 	'transport.send',
+	'webhook.publish',
 ] as const;
 export type HostedPluginOperationLiteral = (typeof HOSTED_PLUGIN_OPERATION_LITERALS)[number];
 
