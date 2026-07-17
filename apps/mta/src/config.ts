@@ -104,6 +104,8 @@ export interface MtaConfig {
 	bounceTarpitEnabled: boolean;
 	/** Tarpit delay in ms for suspicious connections */
 	bounceTarpitDelayMs: number;
+	/** Idle timeout (ms) for the bounce listener's command + DATA phases (preserves smtp-server's 60 s socketTimeout). */
+	bounceSocketTimeoutMs: number;
 	/** Enable SPF validation for inbound email */
 	inboundSpfEnabled: boolean;
 	/** Enable DKIM verification (RFC 6376) for inbound email */
@@ -477,6 +479,7 @@ export function loadConfig(): MtaConfig {
 		bounceMaxClients: parseInt(optionalEnv('BOUNCE_MAX_CLIENTS', '200'), 10),
 		bounceTarpitEnabled: optionalEnv('BOUNCE_TARPIT_ENABLED', 'true') === 'true',
 		bounceTarpitDelayMs: parseInt(optionalEnv('BOUNCE_TARPIT_DELAY_MS', '5000'), 10),
+		bounceSocketTimeoutMs: parseInt(optionalEnv('BOUNCE_SOCKET_TIMEOUT_MS', '60000'), 10),
 		inboundSpfEnabled: optionalEnv('INBOUND_SPF_ENABLED', 'true') === 'true',
 		inboundDkimEnabled: optionalEnv('INBOUND_DKIM_ENABLED', 'true') === 'true',
 		inboundDmarcEnabled: optionalEnv('INBOUND_DMARC_ENABLED', 'true') === 'true',

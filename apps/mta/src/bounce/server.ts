@@ -24,15 +24,15 @@ import {
 	type SmtpReply,
 	type SmtpTlsConfig,
 } from '@owlat/smtp-listener';
-import { parseMessage, type ParsedMessage } from '@owlat/mail-message';
+import { parseMessage } from '@owlat/mail-message';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { findRoute } from '../inbound/router.js';
 import { findMailboxRoute } from '../inbound/mailboxResolver.js';
 import { logger } from '../monitoring/logger.js';
 import { emailDomain } from '@owlat/shared/spfAlignment';
-import { checkConnectionRateLimit } from './inboundSecurity.js';
-import { createSlotTracker } from './connectionSlots.js';
+import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
+import { createSlotTracker } from '../lib/connectionSlots.js';
 import { checkSpf, evaluateDmarc, dnsDmarcLookup, verifyDkim } from '@owlat/mail-auth';
 import { createInboundAuthResolvers } from './inboundAuthResolver.js';
 import { verifyArcChain } from './inboundArc.js';
@@ -40,9 +40,10 @@ import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
 import { reduce } from './outcome.js';
 import { applyEffects } from './effects.js';
-import { addressText, firstAddress } from '../inbound/parsedAddress.js';
-import type { BounceAttempt, SpfVerdict } from './types.js';
+import { firstAddress } from '../inbound/parsedAddress.js';
+import type { SpfVerdict } from './types.js';
 import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
+import { logAttempt, isLocalAddress } from './serverHelpers.js';
 
 /** Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND wire-enforced by the listener). */
 const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
@@ -98,7 +99,15 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 	// connection (increment-then-decrement) and +1 for an allowed one, so only the
 	// allowed connections are marked for release on close; a connection that RSTs
 	// while its async rate-limit check is still in flight self-heals.
-	const slots = createSlotTracker(redis);
+	const slots = createSlotTracker(redis, releaseConnection);
+
+	// Live concurrent-connection count for the global `maxClients` cap. Every
+	// accepted socket increments it on the raw `connection` event (which fires
+	// synchronously on accept, before the post-banner `onConnect` hook runs) and
+	// decrements it on close, so `onConnect` sees an accurate count including the
+	// connection it is deciding on — matching smtp-server, which counts the socket
+	// before comparing against `maxClients`.
+	const liveConnections = { count: 0 };
 
 	const listener = createSmtpListener<unknown, BounceTransaction>({
 		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be
@@ -107,10 +116,23 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 		hostname: config.ehloHostname,
 		banner: `${config.ehloHostname} Owlat MTA Bounce Processor`,
 		maxMessageBytes: MAX_INBOUND_BYTES, // advertised via EHLO SIZE; enforced in the loop (I4)
+		// Idle timeouts preserve the pre-cutover smtp-server `socketTimeout` (60 s,
+		// one inactivity timer for the whole socket) rather than the listener's long
+		// library defaults — a stalled command / DATA phase is torn down with the
+		// listener's 421, not held for minutes.
+		timeouts: {
+			commandMs: config.bounceSocketTimeoutMs,
+			dataMs: config.bounceSocketTimeoutMs,
+		},
 		...(tls ? { tls } : {}),
 
-		// Per-IP connection cap + tarpit for non-local peers.
-		onConnect: buildOnConnect(config, redis, (session) => slots.hold(session)),
+		// Global concurrent-connection cap + per-IP connection cap + tarpit.
+		onConnect: buildOnConnect(
+			config,
+			redis,
+			(session) => slots.hold(session),
+			() => liveConnections.count > config.bounceMaxClients
+		),
 
 		// Inbound-TLS gate + SPF authentication of the envelope sender.
 		onMailFrom: buildOnMailFrom(config, redis, authResolvers),
@@ -124,32 +146,46 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 		onError: (err) => logger.error({ err }, 'Bounce SMTP listener error'),
 	});
 
-	// Global concurrent-connection cap — preserves smtp-server's `maxClients` via
-	// node's built-in accept backpressure (`net.Server.maxConnections`).
-	listener.raw.maxConnections = config.bounceMaxClients;
-
-	// Track every accepted connection so its per-IP slot is released on socket
-	// close — but ONLY for connections that actually took a slot. The limiter state
-	// lives in inboundSecurity.ts (I8); the listener exposes only the raw socket.
-	listener.raw.on('connection', (socket) => slots.track(socket));
+	// Track every accepted connection: maintain the live-connection count for the
+	// global cap, and release its per-IP slot on socket close — but ONLY for
+	// connections that actually took a slot. The limiter state lives in
+	// inboundSecurity.ts (I8); the listener exposes only the raw socket.
+	listener.raw.on('connection', (socket) => {
+		liveConnections.count += 1;
+		socket.once('close', () => {
+			liveConnections.count -= 1;
+		});
+		slots.track(socket);
+	});
 
 	return listener;
 }
 
 /**
- * Per-IP connection cap (onConnect). Over the cap the connection is refused with
- * `554` (byte-preserving the pre-cutover smtp-server connect-reject default) and
- * closed; fails open on a Redis hiccup so a store fault can't lock out senders. An
- * admitted non-local peer is tarpitted before proceeding. `onSlotHeld` runs only
- * when a slot was actually held (net +1), so close releases exactly that slot.
+ * Per-IP connection cap (onConnect). Over the GLOBAL `maxClients` cap the
+ * connection is refused with a real `421` retry-later reply (matching
+ * smtp-server's `421 … Too many connected clients` — a remote MTA re-queues on a
+ * 421 rather than treating a bare close as a hard failure); over the PER-IP cap
+ * it is refused with `554` (byte-preserving the pre-cutover smtp-server
+ * connect-reject default). Fails open on a Redis hiccup so a store fault can't
+ * lock out senders. An admitted non-local peer is tarpitted before proceeding.
+ * `onSlotHeld` runs only when a slot was actually held (net +1), so close
+ * releases exactly that slot.
  */
 export function buildOnConnect(
 	config: MtaConfig,
 	redis: Redis,
-	onSlotHeld: (session: BounceSession) => void
+	onSlotHeld: (session: BounceSession) => void,
+	isOverCapacity: () => boolean
 ) {
 	return async function onConnect(session: BounceSession): Promise<SmtpHandlerResult> {
 		const remoteIp = session.remoteAddress;
+		// Global concurrent-connection cap first (smtp-server order): a real 421 so
+		// the peer retries later instead of reading an abrupt close as a failure.
+		if (isOverCapacity()) {
+			logger.warn({ remoteIp }, 'Bounce server at max concurrent clients');
+			return { code: 421, text: 'Too many connected clients, try again in a moment' };
+		}
 		try {
 			const allowed = await checkConnectionRateLimit(
 				redis,
@@ -429,63 +465,6 @@ export function buildOnData(
 			return AckAndSwallowErrors; // Accept anyway to prevent sender retries.
 		}
 	};
-}
-
-/**
- * Per-classification log line. Replaces the inline `logger.info(...)` calls that
- * lived inside each branch of the old `onData` switch.
- */
-function logAttempt(attempt: BounceAttempt, parsed: ParsedMessage): void {
-	switch (attempt.kind) {
-		case 'fbl':
-			logger.info(
-				{ messageId: attempt.arf.originalMessageId, type: 'complaint' },
-				'FBL complaint processed'
-			);
-			return;
-		case 'dsn_attributed':
-			logger.info(
-				{
-					messageId: attempt.bounce.originalMessageId,
-					bounceType: attempt.bounce.bounceType,
-					type: 'bounce',
-				},
-				'Bounce DSN processed'
-			);
-			return;
-		case 'route_hold':
-			logger.info({ rcptTo: attempt.rcptTo, from: addressText(parsed.from) }, 'Inbound email held');
-			return;
-		case 'route_bounce':
-			logger.info({ rcptTo: attempt.rcptTo }, 'Inbound email bounced by route');
-			return;
-		case 'unrecognized':
-			logger.warn(
-				{ rcptTo: attempt.rcptTo, subject: parsed.subject },
-				'Received unrecognized inbound email'
-			);
-			return;
-		case 'dsn_unattributed':
-		case 'mailbox':
-		case 'endpoint_forward':
-		case 'inbound_accept':
-			// No top-level log line in the pre-deepening handler.
-			return;
-	}
-}
-
-/**
- * Check if an IP is a local/loopback address (skip tarpit for these).
- */
-function isLocalAddress(ip: string): boolean {
-	return (
-		ip === '127.0.0.1' ||
-		ip === '::1' ||
-		ip === '::ffff:127.0.0.1' ||
-		ip.startsWith('10.') ||
-		ip.startsWith('172.16.') ||
-		ip.startsWith('192.168.')
-	);
 }
 
 /**
