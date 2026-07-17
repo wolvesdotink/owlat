@@ -14,6 +14,7 @@
 
 import { tryParseARF, isDuplicateComplaint, generateDedupKey } from '../fblProcessor.js';
 import { parseBounce } from '../parser.js';
+import { extractReportParts } from '../reportParts.js';
 import { logger } from '../../monitoring/logger.js';
 import type { Phase } from '../pipeline.js';
 import type { BasePhaseCtx } from '../types.js';
@@ -21,18 +22,25 @@ import type { BasePhaseCtx } from '../types.js';
 export const parseFblOrDsnPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 	name: 'parse_fbl_or_dsn',
 	async run(deps, ctx) {
-		const { parsed, rcptTo } = ctx;
+		const { parsed, rcptTo, rawBuffer } = ctx;
+
+		// Recover the non-body MIME parts (message/delivery-status, feedback-report,
+		// message/rfc822, …) the scrapers read. `parseMessage` only surfaces
+		// disposition/filename parts in `parsed.attachments`, but real DSNs/ARFs set
+		// neither on their report parts — so they are walked out of the raw bytes
+		// (behavior-preserving vs. mailparser's attachment surfacing).
+		const reportParts = extractReportParts(rawBuffer);
 
 		// 1. Try ARF/FBL (complaints) first — they're the highest-signal
 		//    classification and have an authoritative duplicate-check.
-		const arfResult = tryParseARF(parsed);
+		const arfResult = tryParseARF(parsed, reportParts);
 		if (arfResult) {
 			const dedupKey = generateDedupKey(parsed, arfResult.originalMessageId);
 			const isDuplicate = await isDuplicateComplaint(deps.redis, dedupKey);
 			if (isDuplicate) {
 				logger.info(
 					{ messageId: arfResult.originalMessageId, dedupKey },
-					'Duplicate FBL complaint skipped',
+					'Duplicate FBL complaint skipped'
 				);
 				return { kind: 'dropSilently', reason: 'duplicate_fbl_complaint' };
 			}
@@ -40,7 +48,7 @@ export const parseFblOrDsnPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 		}
 
 		// 2. Try DSN bounce.
-		const bounceResult = parseBounce(parsed, rcptTo);
+		const bounceResult = parseBounce(parsed, reportParts, rcptTo);
 		if (bounceResult && bounceResult.originalMessageId) {
 			return {
 				kind: 'bounceTo',

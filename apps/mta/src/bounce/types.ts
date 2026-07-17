@@ -11,7 +11,7 @@
  */
 
 import type Redis from 'ioredis';
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import type { MtaConfig } from '../config.js';
 import type { InboundRoute } from '../inbound/router.js';
 import type { MailboxCacheEntry } from '../inbound/mailboxResolver.js';
@@ -22,7 +22,7 @@ import type { BounceClassification } from '../types.js';
  * onData handler has already buffered and parsed.
  */
 export interface BasePhaseCtx {
-	readonly parsed: ParsedMail;
+	readonly parsed: ParsedMessage;
 	readonly rawBuffer: Buffer;
 	readonly rcptTo: string | undefined;
 	/**

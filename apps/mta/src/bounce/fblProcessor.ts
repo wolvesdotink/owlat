@@ -9,11 +9,13 @@
  * counted twice in reputation metrics.
  */
 
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import type Redis from 'ioredis';
 import type { BounceClassification } from '../types.js';
 import { logger } from '../monitoring/logger.js';
 import { parseVerpAddress, isVerpSigningEnabled } from './verp.js';
+import { addressText } from '../inbound/parsedAddress.js';
+import type { ReportPart } from './reportParts.js';
 import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';
 import { createHash } from 'crypto';
 
@@ -24,12 +26,12 @@ const FBL_DEDUP_TTL = 7 * 86400; // 7 days
  * Generate a deduplication key from complaint content.
  * Uses a hash of the original message ID (if available) or content fingerprint.
  */
-export function generateDedupKey(parsed: ParsedMail, originalMessageId?: string): string {
+export function generateDedupKey(parsed: ParsedMessage, originalMessageId?: string): string {
 	if (originalMessageId) {
 		return originalMessageId;
 	}
 	// Fallback: hash subject + from + first 200 chars of body
-	const fingerprint = `${parsed.subject ?? ''}|${parsed.from?.text ?? ''}|${(parsed.text ?? '').slice(0, 200)}`;
+	const fingerprint = `${parsed.subject ?? ''}|${addressText(parsed.from) ?? ''}|${(parsed.text ?? '').slice(0, 200)}`;
 	return createHash('sha256').update(fingerprint).digest('hex').slice(0, 32);
 }
 
@@ -96,14 +98,18 @@ function flattenContentType(raw: unknown): string {
  * Attempt to parse an incoming email as an ARF feedback report.
  * Returns the classification if it's an ARF report, null otherwise.
  */
-export function tryParseARF(parsed: ParsedMail): BounceClassification | null {
+export function tryParseARF(
+	parsed: ParsedMessage,
+	reportParts: ReportPart[]
+): BounceClassification | null {
 	// Check for ARF content type indicator. mailparser returns the parsed
 	// `content-type` header as a structured object (`{ value, params }`), so a
 	// naive `String(obj)` yields `[object Object]` and the `report-type` param is
 	// lost — flatten it to text including the params first.
 	const contentTypeStr = flattenContentType(parsed.headers?.get('content-type'));
 
-	const isARF = contentTypeStr.includes('feedback-report') ||
+	const isARF =
+		contentTypeStr.includes('feedback-report') ||
 		contentTypeStr.includes('report-type=feedback-report');
 
 	const bodyText = parsed.text ?? '';
@@ -120,7 +126,7 @@ export function tryParseARF(parsed: ParsedMail): BounceClassification | null {
 
 	// Split the report into its structured feedback-report part and the
 	// original-message part so each RFC 5965 field is read from the right place.
-	const parts = splitArfParts(parsed, bodyText);
+	const parts = splitArfParts(reportParts, bodyText);
 
 	// `Feedback-Type` is the registry field that names the report class (abuse,
 	// fraud, virus, …). We surface it so downstream can distinguish a spam
@@ -182,7 +188,7 @@ export function tryParseARF(parsed: ParsedMail): BounceClassification | null {
 	// Message-ID but still emit the recipient, so this address is frequently
 	// the ONLY attribution handle on a real complaint — without it the
 	// complaint would never reach the blocklist.
-	const recipient = extractComplainedRecipient(parsed, bodyText);
+	const recipient = extractComplainedRecipient(reportParts, bodyText);
 
 	// Derive the source ISP. RFC 5965 §3.2 puts structured `Reported-Domain` /
 	// `Source-IP` fields in the feedback-report part and most ISPs brand the
@@ -197,7 +203,16 @@ export function tryParseARF(parsed: ParsedMail): BounceClassification | null {
 		extractSourceIsp(String(parsed.headers?.get('received') ?? ''));
 
 	logger.info(
-		{ feedbackType, originalMessageId, organizationId, recipient, campaignId, sourceIsp, reportedDomain, sourceIp },
+		{
+			feedbackType,
+			originalMessageId,
+			organizationId,
+			recipient,
+			campaignId,
+			sourceIsp,
+			reportedDomain,
+			sourceIp,
+		},
 		'ARF report parsed'
 	);
 
@@ -231,13 +246,13 @@ export function tryParseARF(parsed: ParsedMail): BounceClassification | null {
  * top-level body text is always folded into the feedbackReport scan so an
  * inline (non-multipart) report still parses.
  */
-function splitArfParts(parsed: ParsedMail, bodyText: string): ArfParts {
+function splitArfParts(reportParts: ReportPart[], bodyText: string): ArfParts {
 	let feedbackReport = '';
 	let originalMessage = '';
 
-	for (const attachment of parsed.attachments ?? []) {
-		const content = attachment.content.toString('utf-8');
-		const type = (attachment.contentType ?? '').toLowerCase();
+	for (const part of reportParts) {
+		const content = part.content.toString('utf-8');
+		const type = part.contentType;
 
 		if (type === 'message/feedback-report') {
 			feedbackReport += `\n${content}`;
@@ -294,14 +309,12 @@ function matchMessageId(text: string): string | undefined {
  * angle brackets or carry an `rfc822;` address-type prefix; both are stripped.
  */
 function extractComplainedRecipient(
-	parsed: ParsedMail,
-	bodyText: string,
+	reportParts: ReportPart[],
+	bodyText: string
 ): string | undefined {
 	const sources: string[] = [bodyText];
-	if (parsed.attachments) {
-		for (const attachment of parsed.attachments) {
-			sources.push(attachment.content.toString('utf-8'));
-		}
+	for (const part of reportParts) {
+		sources.push(part.content.toString('utf-8'));
 	}
 
 	for (const source of sources) {
@@ -312,8 +325,7 @@ function extractComplainedRecipient(
 	return undefined;
 }
 
-const RECIPIENT_FIELD_RE =
-	/^(?:Original-Rcpt-To|Removed-Recipient|Original-Recipient):\s*(.+)$/im;
+const RECIPIENT_FIELD_RE = /^(?:Original-Rcpt-To|Removed-Recipient|Original-Recipient):\s*(.+)$/im;
 
 function matchRecipientField(text: string): string | undefined {
 	const match = text.match(RECIPIENT_FIELD_RE);
