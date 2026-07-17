@@ -114,28 +114,16 @@ watch(
 	{ immediate: true }
 );
 
-// Handle add domain. The form composes + validates the value; this handler
-// registers it, then sets a custom return-path host if one was supplied —
-// `create` can't take the host (it needs the new id), so the page orchestrates
-// both D-piece writes. A return-path failure is surfaced by the operation layer
-// and the domain is still editable from its row, so we don't roll back create.
-const handleAddDomain = async (payload: { domain: string; returnPathHost: string | null }) => {
-	if (!hasActiveOrganization.value) return;
-
-	addModal.setLoading(true);
-	const domainId = await createDomain({ domain: payload.domain });
-	if (domainId === undefined) {
-		addModal.setLoading(false);
-		return;
-	}
-	if (payload.returnPathHost) {
-		await setReturnPathHost({ domainId, returnPathHost: payload.returnPathHost });
-	}
-	addModal.setLoading(false);
-
-	addModal.close();
-	showToast('Domain added successfully. Configure your DNS records to verify.');
-};
+// Add-domain orchestration (register, then set a custom return-path host if
+// supplied) lives in a plain, directly-testable flow composable.
+const { handleAddDomain } = useAddDomain({
+	hasActiveOrganization: () => hasActiveOrganization.value,
+	createDomain,
+	setReturnPathHost,
+	setLoading: (loading) => addModal.setLoading(loading),
+	close: () => addModal.close(),
+	showToast,
+});
 
 // Handle delete domain
 const handleDeleteDomain = async () => {
