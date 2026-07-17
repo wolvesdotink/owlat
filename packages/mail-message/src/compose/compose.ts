@@ -11,7 +11,6 @@
  * Convex adapter (`apps/api/convex/mail/rfc822.ts`) and `outbound.ts`.
  */
 
-import { domainToASCII } from 'node:url';
 import { encodeAddressHeader, encodeHeaderValue, escapeHeader, foldMsgIdList } from './headers';
 import { randomBoundary } from './encoding';
 import { buildMessageId } from './messageId';
@@ -254,6 +253,23 @@ function stripCrlf(value: string): string {
 const NON_ASCII = /[^\x00-\x7F]/;
 
 /**
+ * IDNA ToASCII (U-label → A-label / punycode) using the global WHATWG `URL`
+ * class — no `node:url` import, so mail-message keeps its pure import contract
+ * (node:crypto + @owlat/mail-auth/canon only; see packagePurity.test.ts). The
+ * `URL` constructor runs the same UAX-46 ToASCII the browser does and exposes
+ * the A-label form on `.hostname`. It THROWS on an undecodable label where
+ * `url.domainToASCII` returns `''`; we map both to the empty string so the
+ * caller's undecodable-label fallback semantics are identical (pinned by test).
+ */
+function idnToAscii(domain: string): string {
+	try {
+		return new URL(`http://${domain}`).hostname;
+	} catch {
+		return '';
+	}
+}
+
+/**
  * IDN-normalize the DOMAIN of an `addr-spec` / `name-addr` to IDNA A-labels
  * (punycode), preserving the display name and local-part exactly. A non-ASCII
  * domain has a lossless ASCII downgrade (RFC 5890 U-label → A-label), so it never
@@ -272,7 +288,7 @@ function idnNormalizeAddress(addr: string): string {
 	const local = spec.slice(0, at);
 	const domain = spec.slice(at + 1).trim();
 	if (!NON_ASCII.test(domain)) return addr; // already all-ASCII — nothing to normalize
-	const ascii = domainToASCII(domain);
+	const ascii = idnToAscii(domain);
 	if (ascii === '') return addr; // undecodable label — leave as-is (validation rejects it upstream)
 	const newSpec = `${local}@${ascii}`;
 	return hasAngle ? `${addr.slice(0, lt + 1)}${newSpec}${addr.slice(gt)}` : newSpec;
