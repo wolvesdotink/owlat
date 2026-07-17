@@ -28,7 +28,7 @@ export interface RecipientResult {
 
 /**
  * The name announced in EHLO to the user's submission server. This replicates
- * nodemailer's `_getHostname()` byte-for-byte so the cutover changes no observable
+ * the old library's `_getHostname()` byte-for-byte so the cutover changes no observable
  * EHLO identity: the machine hostname when it is an FQDN, otherwise the
  * `[127.0.0.1]` fallback (mail-sync ships in Docker, where container hostnames are
  * dotless hex — a bare non-FQDN token would be rejected by strict submission
@@ -40,10 +40,10 @@ function ehloName(): string {
 	try {
 		host = os.hostname() || '';
 	} catch {
-		// os.hostname() can throw on some platforms (nodemailer guards this too).
+		// os.hostname() can throw on some platforms (the old library guarded this too).
 		host = 'localhost';
 	}
-	// Not an FQDN (no dot) → nodemailer's fallback identity.
+	// Not an FQDN (no dot) → the old library's fallback identity.
 	if (host === '' || !host.includes('.')) {
 		host = '[127.0.0.1]';
 	}
