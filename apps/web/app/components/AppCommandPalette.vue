@@ -10,6 +10,7 @@ import {
 import { resolvePaletteGroups } from '~/lib/commandPaletteRegistry';
 import {
 	MAX_RECENT_SEARCHES,
+	SEARCH_MIN_QUERY,
 	type SearchResult,
 	type SearchResults,
 	buildCorePaletteProviders,
@@ -93,11 +94,13 @@ function clearRecent() {
 // ── Object search (contacts / templates / campaigns) via the shared index.
 const { data: searchData } = useOrganizationQuery(api.globalSearch.search, () =>
 	// undefined → the wrapper skips the subscription (no empty / <2-char query).
-	debouncedSearch.value.trim().length >= 2 ? { query: debouncedSearch.value, limit: 5 } : undefined
+	debouncedSearch.value.trim().length >= SEARCH_MIN_QUERY
+		? { query: debouncedSearch.value, limit: 5 }
+		: undefined
 );
 const searchResults = computed(() => searchData.value as SearchResults | undefined);
 const isSearching = computed(
-	() => searchQuery.value.trim().length >= 2 && searchResults.value === undefined
+	() => searchQuery.value.trim().length >= SEARCH_MIN_QUERY && searchResults.value === undefined
 );
 
 function iconForType(type: string): string {
@@ -304,7 +307,9 @@ onBeforeUnmount(() => {
 						<Icon name="lucide:search" class="w-8 h-8 mx-auto mb-2 opacity-50" />
 						<p class="text-sm">
 							{{
-								searchQuery.trim().length >= 2 ? `No results for "${searchQuery}"` : 'No matches'
+								searchQuery.trim().length >= SEARCH_MIN_QUERY
+									? `No results for "${searchQuery}"`
+									: 'No matches'
 							}}
 						</p>
 					</div>
