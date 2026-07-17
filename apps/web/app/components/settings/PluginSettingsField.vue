@@ -141,7 +141,7 @@ const inputClass =
 				v-else-if="field.kind === 'number'"
 				:id="controlId"
 				type="number"
-				inputmode="numeric"
+				inputmode="decimal"
 				:value="numberValue"
 				:required="field.required || undefined"
 				:aria-required="field.required || undefined"
