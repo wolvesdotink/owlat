@@ -26,7 +26,12 @@ import {
 	CONNECTED_APP_TEST_MAX_RESPONSE_BYTES,
 	CONNECTED_APP_TEST_TIMEOUT_MS,
 } from '../lib/constants';
-import { fetchGuarded, readCappedBytes } from '../lib/ssrfGuard';
+import {
+	fetchGuarded,
+	readCappedBytes,
+	RedirectRefusedError,
+	SsrfBlockedError,
+} from '../lib/ssrfGuard';
 
 /**
  * The outcome of a connection test:
@@ -98,16 +103,21 @@ export async function probeConnectedAppEndpoint(
 	};
 }
 
-/** Map a thrown fetch failure to a short, safe, operator-facing reason. */
+/**
+ * Map a thrown fetch failure to a short, safe, operator-facing reason. The
+ * guard's structured refusals are matched by TYPE (not by message text), so
+ * rewording {@link fetchGuarded}'s messages cannot silently degrade these
+ * classifications to the generic fallback.
+ */
 function describeProbeFailure(error: unknown): string {
 	// `AbortSignal.timeout` rejects with a DOMException whose name is 'TimeoutError'.
 	if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
 		return `Connection timed out after ${CONNECTED_APP_TEST_TIMEOUT_MS / 1000}s.`;
 	}
-	if (error instanceof Error && /refusing to follow redirect/i.test(error.message)) {
+	if (error instanceof RedirectRefusedError) {
 		return 'Endpoint attempted a redirect, which is not allowed.';
 	}
-	if (error instanceof Error && /disallowed \(private\/internal\)/i.test(error.message)) {
+	if (error instanceof SsrfBlockedError) {
 		return 'Endpoint resolves to a private or internal address and cannot be reached.';
 	}
 	return 'Could not reach the endpoint. Check the URL and that the service is online.';
