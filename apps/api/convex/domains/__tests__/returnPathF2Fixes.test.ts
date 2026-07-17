@@ -246,6 +246,72 @@ describe('Finding 1 (edit path) — setReturnPathHost during registration keeps 
 	});
 });
 
+// ─── Finding 1 (in-flight window) — edit DURING registration I/O reconciles ───
+
+describe('Finding 1 (in-flight window) — an edit during registerDomain converges', () => {
+	it('records + reflection land on the NEW host when an edit commits inside the provider call', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await t.run(async (ctx) => {
+			const now = Date.now();
+			return await ctx.db.insert('domains', {
+				domain: 'acme.com',
+				status: 'registering',
+				providerType: 'mta',
+				returnPathHost: 'bounce.old.com', // the host registration reads at the top
+				dnsRecords: {},
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		// The edit commits WHILE the provider call is in flight — after registerAction
+		// read the old host, before it transitions. The registering guard stores the
+		// new host only (defers records to registration, which is still using OLD), so
+		// without the post-registration reconcile the DB would keep OLD-host records
+		// while the row stores NEW — the linearizability hole.
+		registerDomainMock.mockImplementation(async () => {
+			await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+				domainId,
+				returnPathHost: 'bounce.new.com',
+				userId: 'user',
+			});
+			return { selector: 's1', dnsRecord: 'v=DKIM1; k=rsa; p=KEY' };
+		});
+
+		await t.action(internal.domains.providers.registerAction.run, {
+			providerType: 'mta',
+			domainId,
+		});
+
+		await t.run(async (ctx) => {
+			const d = await ctx.db.get(domainId);
+			expect(d!.returnPathHost).toBe('bounce.new.com');
+			const records = d!.dnsRecords as {
+				dkim?: unknown[];
+				mailFrom?: Array<{ type: string; hostname?: string }>;
+			};
+			// Registration's DKIM bundle survived…
+			expect(records.dkim?.length).toBeGreaterThan(0);
+			// …and the reconcile regenerated mailFrom for the NEW host, none on OLD.
+			const hosts = records.mailFrom!.map((r) => `${r.type}:${r.hostname}`);
+			expect(hosts).toContain('MX:bounce.new.com');
+			expect(hosts).toContain('TXT:bounce.new.com');
+			expect(hosts.every((h) => !h.includes('bounce.old.com'))).toBe(true);
+		});
+
+		// A reflection was scheduled to converge the PROVIDER on the new host too.
+		const scheduled = await t.run(async (ctx) => {
+			const jobs = await ctx.db.system.query('_scheduled_functions').collect();
+			return jobs.filter((j) => j.name.includes('pushReturnPathHost'));
+		});
+		expect(
+			scheduled.some(
+				(j) => (j.args[0] as { returnPathHost?: string }).returnPathHost === 'bounce.new.com'
+			)
+		).toBe(true);
+	});
+});
+
 // ─── Finding 2 — MTA return-path bundle has an MX ─────────────────────────────
 
 describe('Finding 2 — bounce host MX for DSN routing', () => {

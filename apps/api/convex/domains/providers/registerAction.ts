@@ -68,6 +68,18 @@ export const run = internalAction({
 				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
 			});
 
+			// A return-path edit may have committed while our (slow) provider I/O ran:
+			// the `registering` guard in `setReturnPathHost` deferred its records to us,
+			// but we built `dnsRecords`/reflected for the host as read at the top. This
+			// serializable mutation regenerates the records + reflects the CURRENT host
+			// when it moved, closing the register-vs-edit window (a same-host re-save
+			// would otherwise short-circuit and never self-heal).
+			await ctx.runMutation(internal.domains.lifecycle.reconcileReturnPathAfterRegistration, {
+				domainId: args.domainId,
+				registeredReturnPathHost: domain.returnPathHost,
+				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
+			});
+
 			logInfo(
 				`[${tag}] Domain ${domain.domain} registered successfully with ${adapter.describeIdentity(identity)}`
 			);
