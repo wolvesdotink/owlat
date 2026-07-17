@@ -102,11 +102,17 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 	const slots = createSlotTracker(redis, releaseConnection);
 
 	// Live concurrent-connection count for the global `maxClients` cap. Every
-	// accepted socket increments it on the raw `connection` event (which fires
-	// synchronously on accept, before the post-banner `onConnect` hook runs) and
-	// decrements it on close, so `onConnect` sees an accurate count including the
-	// connection it is deciding on — matching smtp-server, which counts the socket
-	// before comparing against `maxClients`.
+	// accepted socket increments it on the raw `connection` event and decrements
+	// it on close. `createSmtpListener` registers its OWN accept handler first
+	// (via `createServer(opts, cb)`), and that handler synchronously runs
+	// `handleConnection → runCommandLoop`, writing the banner and executing the
+	// synchronous prefix of `onConnect` — including `isOverCapacity()` — before
+	// its first `await`. So the counting handler MUST run ahead of the accept
+	// handler (`prependListener`, below) or the increment lands after the
+	// capacity check and the connection under decision is excluded from its own
+	// count (off-by-one: the cap would be `maxClients + 1`). Prepending makes
+	// `onConnect` see a count that includes the deciding connection — matching
+	// smtp-server's `connections.size > maxClients`.
 	const liveConnections = { count: 0 };
 
 	const listener = createSmtpListener<unknown, BounceTransaction>({
@@ -150,7 +156,10 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 	// global cap, and release its per-IP slot on socket close — but ONLY for
 	// connections that actually took a slot. The limiter state lives in
 	// inboundSecurity.ts (I8); the listener exposes only the raw socket.
-	listener.raw.on('connection', (socket) => {
+	// `prependListener` puts this AHEAD of the listener's internal accept handler
+	// so `count` includes the connection under decision when `onConnect` runs its
+	// synchronous `isOverCapacity()` check (see the `liveConnections` note above).
+	listener.raw.prependListener('connection', (socket) => {
 		liveConnections.count += 1;
 		socket.once('close', () => {
 			liveConnections.count -= 1;
