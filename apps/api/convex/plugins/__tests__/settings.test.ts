@@ -134,7 +134,6 @@ describe('getPluginSettingsOverview', () => {
 			packageName: '@example/policy-pack',
 			version: '1.2.0',
 			flagKey: FLAG_KEY,
-			installed: true,
 			enabled: true,
 			hasSettings: true,
 		});

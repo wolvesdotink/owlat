@@ -180,8 +180,6 @@ export type {
 	PluginManifestValidation,
 } from './manifest';
 export {
-	defaultPluginSettingsValues,
-	isSecretSettingsField,
 	redactPluginSettingsValues,
 	SETTINGS_FIELD_KINDS,
 	validatePluginSettingsInput,
