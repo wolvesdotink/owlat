@@ -31,10 +31,6 @@ const props = withDefaults(
 
 const emit = defineEmits<{ (e: 'skip'): void; (e: 'open'): void }>();
 
-/**
- * One copy table per reason (icon + title + body), so the three fragments of a
- * placeholder's message are defined together and can't drift independently.
- */
 /** Hard length clamp for the untrusted kind string shown as a mono tag. */
 const MAX_KIND_TAG_LENGTH = 80;
 const kindTag = computed(() =>
@@ -43,6 +39,10 @@ const kindTag = computed(() =>
 		: props.kind
 );
 
+/**
+ * One copy table per reason (icon + title + body), so the three fragments of a
+ * placeholder's message are defined together and can't drift independently.
+ */
 const copy = computed(() =>
 	props.reason === 'disabled'
 		? {
