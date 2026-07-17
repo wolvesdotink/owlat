@@ -19,7 +19,7 @@ import {
 	verificationResultValidator,
 	verificationResultsValidator,
 } from '../lib/convexValidators';
-import { emailDomain, extractDomainOrNull, asDnsName } from '@owlat/shared';
+import { emailDomain, extractDomainOrNull } from '@owlat/shared';
 
 // Types derived from validators for DNS records
 export type DnsRecord = Infer<typeof dnsRecordValidator>;
@@ -281,49 +281,10 @@ export const setDmarcPolicy = authedMutation({
 	},
 });
 
-// Mutation: Set (or change) the domain's per-domain VERP return-path host
-// (D1/D2). Delegates to the lifecycle's `setReturnPathHost`, which regenerates
-// the `mailFrom` SPF record on the new host, drops the domain to `pending` for
-// re-verification, and reflects the host to the MTA. Admin-gated
-// (`organization:manage`) to match the other domain-management writes.
-export const setReturnPathHost = authedMutation({
-	args: {
-		domainId: v.id('domains'),
-		returnPathHost: v.string(),
-	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
-			'Only owners and admins can manage sending domains'
-		);
-		// Validate + normalize the host up front with the shared DNS-name
-		// primitive so a bad value is a clean 400 (`invalid_input`) rather than a
-		// lifecycle miss. The lifecycle re-validates (defense in depth).
-		const normalized = asDnsName(args.returnPathHost);
-		if (normalized === null) {
-			throwInvalidInput(
-				'Invalid return-path host. Enter a valid DNS hostname, e.g. bounce.example.com.'
-			);
-		}
-		const outcome = await ctx.runMutation(internal.domains.lifecycle.setReturnPathHost, {
-			domainId: args.domainId,
-			returnPathHost: normalized,
-			userId: LIFECYCLE_USER_PUBLIC_MUTATION,
-		});
-		if (!outcome.ok) {
-			if (outcome.reason === 'domain_not_found') throwNotFound('Domain');
-			if (outcome.reason === 'invalid_host') {
-				throwInvalidInput('Invalid return-path host.');
-			}
-			if (outcome.reason === 'unsupported_provider') {
-				throwInvalidState('This domain is not managed by the built-in MTA provider.');
-			}
-			// Catch-all for any unexpected reason (keeps the human sentences above).
-			throwInvalidState(`Cannot set return-path host: ${outcome.reason}`);
-		}
-	},
-});
+// The per-domain VERP return-path host public mutation (`setReturnPathHost`)
+// lives in the sibling `domains/returnPath.ts` (reached at
+// `api.domains.returnPath.setReturnPathHost`) — split out per CONVENTIONS.md's
+// ~500 LOC feature-file cap.
 
 // ─── Read queries used by the builder UI and outbound sending paths ────────
 

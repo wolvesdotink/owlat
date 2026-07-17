@@ -374,14 +374,14 @@ describe('verifyDomain — resolves the mailFrom record on its absolute custom h
 
 // ─── 4. Authz on the public edit mutation ─────────────────────────────────────
 
-describe('domains.setReturnPathHost — authorization', () => {
+describe('returnPath.setReturnPathHost — authorization', () => {
 	it('rejects a non-admin member (editor) and writes nothing', async () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedMtaDomain(t);
 		mockRole = 'editor';
 
 		await expect(
-			t.mutation(api.domains.domains.setReturnPathHost, {
+			t.mutation(api.domains.returnPath.setReturnPathHost, {
 				domainId,
 				returnPathHost: 'bounce.acme.com',
 			})
@@ -399,7 +399,7 @@ describe('domains.setReturnPathHost — authorization', () => {
 		const domainId = await seedMtaDomain(t);
 		mockRole = 'admin';
 
-		await t.mutation(api.domains.domains.setReturnPathHost, {
+		await t.mutation(api.domains.returnPath.setReturnPathHost, {
 			domainId,
 			returnPathHost: 'bounce.acme.com',
 		});
@@ -417,7 +417,7 @@ describe('domains.setReturnPathHost — authorization', () => {
 		mockRole = 'owner';
 
 		await expect(
-			t.mutation(api.domains.domains.setReturnPathHost, {
+			t.mutation(api.domains.returnPath.setReturnPathHost, {
 				domainId,
 				returnPathHost: 'nope; drop table',
 			})
