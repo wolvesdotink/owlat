@@ -1,0 +1,139 @@
+/**
+ * RFC 8617 §5.1.1 ARC-Seal verification.
+ *
+ * Each ARC-Seal signs, under relaxed header canonicalization (the SHARED
+ * `@owlat/mail-auth` canon — U4, no second implementation), every set's
+ * AAR + AMS + AS in increasing instance order, the final AS having its `b=`
+ * emptied and no trailing CRLF. THROWS (=> `cv: 'fail'`) on the first seal that
+ * does not verify. Ed25519 seals sign the SHA-256 of the canonicalized headers
+ * (RFC 8463), unlike `mailauth` 4.13.x whose verify omits that pre-hash.
+ */
+
+import { createHash, createPublicKey, verify as cryptoVerify, type KeyObject } from 'crypto';
+import { canonicalizeHeaderField, stripSignatureValue } from '../canon.js';
+import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from '../dkim/keyRecord.js';
+import type { DkimDnsResolver } from '../dkim/verify.js';
+import { parseSealAlgorithm, type ArcSet } from './chain.js';
+
+/** DER SubjectPublicKeyInfo prefix for a raw 32-byte Ed25519 key (RFC 8410). */
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+/**
+ * Verify every ARC-Seal, outermost first — mirroring `mailauth`'s `verifyASChain`.
+ * For a healthy chain (every `cv` in {none, pass}, guaranteed by
+ * `validateChainStructure`) this validates the seal over instances `1..k` for each
+ * `k` from N down to 1, so a broken inner seal is caught and no later hop can
+ * rescue it. THROWS on the first seal that does not verify.
+ */
+export async function verifySealChain(
+	chain: readonly ArcSet[],
+	resolver: DkimDnsResolver
+): Promise<void> {
+	for (let i = chain.length - 1; i >= 0; i--) {
+		const set = chain[i];
+		if (set === undefined) {
+			throw new Error('internal: undefined ARC set');
+		}
+		const cv = (set.sealTags.get('cv') ?? '').toLowerCase();
+		if (cv !== 'none' && cv !== 'pass') {
+			// Unreachable after `validateChainStructure`, but faithful to the oracle:
+			// a broken cv marker validates only its own set, then stops.
+			await verifySeal(chain.slice(0, i + 1), resolver);
+			break;
+		}
+		await verifySeal(chain.slice(0, i + 1), resolver);
+	}
+}
+
+/** Verify the ARC-Seal of the last set in `subset` over all sets in the subset. */
+async function verifySeal(subset: readonly ArcSet[], resolver: DkimDnsResolver): Promise<void> {
+	const last = subset[subset.length - 1];
+	if (last === undefined) {
+		throw new Error('internal: empty ARC subset');
+	}
+
+	const chunks: Buffer[] = [];
+	for (let i = 0; i < subset.length; i++) {
+		const set = subset[i];
+		if (set === undefined) {
+			throw new Error('internal: undefined ARC set');
+		}
+		chunks.push(relaxedLine(set.aar.raw));
+		chunks.push(relaxedLine(set.ams.raw));
+		if (i === subset.length - 1) {
+			// The seal being verified: b= emptied, NO trailing CRLF.
+			chunks.push(
+				Buffer.from(canonicalizeHeaderField(stripSignatureValue(set.seal.raw), 'relaxed'), 'latin1')
+			);
+		} else {
+			chunks.push(relaxedLine(set.seal.raw));
+		}
+	}
+	const signingInput = Buffer.concat(chunks);
+
+	const domain = last.sealTags.get('d');
+	const selector = last.sealTags.get('s');
+	if (domain === undefined || domain === '' || selector === undefined || selector === '') {
+		throw new Error('ARC-Seal missing d= or s=');
+	}
+	const algorithm = parseSealAlgorithm((last.sealTags.get('a') ?? '').toLowerCase());
+	if (algorithm === undefined) {
+		throw new Error('ARC-Seal unsupported algorithm');
+	}
+	const signature = Buffer.from(stripWsp(last.sealTags.get('b') ?? ''), 'base64');
+	const publicKey = await fetchSealKey(selector, domain, algorithm.keyType, resolver);
+
+	const ok =
+		algorithm.keyType === 'ed25519'
+			? cryptoVerify(null, createHash('sha256').update(signingInput).digest(), publicKey, signature)
+			: cryptoVerify('sha256', signingInput, publicKey, signature);
+	if (!ok) {
+		throw new Error('ARC-Seal signature verification failed');
+	}
+}
+
+/** Relaxed-canonicalize a header field and re-terminate it with CRLF (§5.1.1). */
+function relaxedLine(raw: string): Buffer {
+	return Buffer.from(`${canonicalizeHeaderField(raw, 'relaxed')}\r\n`, 'latin1');
+}
+
+/** Strip all whitespace from a folded base64 value (`b=`). */
+function stripWsp(value: string): string {
+	return value.replace(/[ \t\r\n]+/g, '');
+}
+
+/**
+ * Fetch and build the ARC-Seal public key. THROWS on any problem — a rejected
+ * lookup, an empty/unparseable record, a revoked or type-mismatched key — so the
+ * seal is treated as unverifiable (=> `fail`), never silently accepted.
+ */
+async function fetchSealKey(
+	selector: string,
+	domain: string,
+	keyType: 'rsa' | 'ed25519',
+	resolver: DkimDnsResolver
+): Promise<KeyObject> {
+	const records = await resolver(`${selector}._domainkey.${domain}`, 'TXT');
+	const joined = records.map((chunks) => chunks.join('')).filter((r) => r !== '');
+	if (joined.length === 0) {
+		throw new Error('no ARC-Seal key record');
+	}
+	const parsed = joined.map((r) => parseDkimKeyRecord(r)).find((r) => !isKeyRecordError(r));
+	if (parsed === undefined || isKeyRecordError(parsed)) {
+		throw new Error('unparseable ARC-Seal key record');
+	}
+	if (parsed.revoked || parsed.keyType !== keyType) {
+		throw new Error('ARC-Seal key revoked or wrong type');
+	}
+	return buildPublicKey(parsed, keyType);
+}
+
+/** Construct a Node public key from a parsed DKIM/ARC key record (RFC 8410 for ed25519). */
+function buildPublicKey(record: DkimKeyRecord, keyType: 'rsa' | 'ed25519'): KeyObject {
+	const material = Buffer.from(record.publicKey, 'base64');
+	if (keyType === 'ed25519') {
+		const der = Buffer.concat([ED25519_SPKI_PREFIX, material]);
+		return createPublicKey({ key: der, format: 'der', type: 'spki' });
+	}
+	return createPublicKey({ key: material, format: 'der', type: 'spki' });
+}
