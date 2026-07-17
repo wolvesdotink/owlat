@@ -187,10 +187,11 @@ describe('WidgetHost — isolation (error boundary)', () => {
 	});
 
 	it('re-fetches a failed chunk load on retry (recovers a rejected loader)', async () => {
-		// The realistic failure: a chunk 404 after a redeploy. Vue's
-		// defineAsyncComponent caches a rejected loader promise, so recovery
-		// requires WidgetHost to build a fresh wrapper — this fails on any impl
-		// that reuses one constructed async component across retries.
+		// The realistic failure: a chunk 404 after a redeploy. WidgetHost builds a
+		// fresh async wrapper per attempt, so retry re-invokes the loader by
+		// construction and a once-rejected loader recovers — independent of Vue's
+		// internal async-wrapper caching (3.5 happens to clear `pendingRequest` on a
+		// rejected load, but that is undocumented and version-dependent).
 		vi.spyOn(console, 'error').mockImplementation(() => {});
 		const Recovered = defineComponent({
 			template: '<div data-testid="lazy-recovered">ok</div>',

@@ -31,10 +31,12 @@ const error = ref<Error | null>(null);
 // happy-dom does NOT model that, so a regression to `display: contents` here
 // would still pass every focus test in this suite — keep the target a real box.
 const regionRef = ref<HTMLElement | null>(null);
-// Bumped on retry. `defineAsyncComponent` caches its loader promise — including a
-// rejection — for the life of the wrapper, so recovering a failed chunk load
-// requires a *fresh* wrapper. Keying the async component on this counter builds
-// one per attempt, which re-invokes the loader and genuinely re-fetches.
+// Bumped on retry. Keying a *fresh* `defineAsyncComponent` on this counter builds
+// one wrapper per attempt, so retry re-invokes the loader *by construction* and a
+// chunk that failed to load can genuinely re-fetch. This makes the retry guarantee
+// self-contained rather than leaning on Vue's internal async-wrapper bookkeeping
+// (3.5 happens to clear `pendingRequest` on a rejected load, but that is
+// undocumented and version-dependent, so we do not depend on it).
 const attempt = ref(0);
 
 const asyncComponent = computed(() => {

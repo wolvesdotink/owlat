@@ -47,9 +47,10 @@ export interface WidgetModule {
 	 * structural, not conventional: registering a loader — rather than an
 	 * already-constructed `defineAsyncComponent` — guarantees the chunk import is
 	 * only evaluated when the widget actually renders, and lets `WidgetHost` build
-	 * a *fresh* async wrapper per mount attempt so "Try again" can genuinely
-	 * re-fetch a chunk that failed to load (a rejected loader promise is otherwise
-	 * cached by Vue's `defineAsyncComponent`).
+	 * a *fresh* async wrapper per mount attempt so "Try again" re-invokes the loader
+	 * by construction and can genuinely re-fetch a chunk that failed to load —
+	 * without depending on Vue's internal (undocumented, version-dependent)
+	 * async-wrapper caching.
 	 */
 	readonly component: AsyncComponentLoader;
 }
