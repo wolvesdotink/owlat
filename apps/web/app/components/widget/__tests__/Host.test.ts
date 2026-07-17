@@ -197,7 +197,7 @@ describe('WidgetHost — isolation (error boundary)', () => {
 			template: '<div data-testid="lazy-recovered">ok</div>',
 		});
 		const loader = vi
-			.fn<[], Promise<Component>>()
+			.fn<() => Promise<Component>>()
 			.mockRejectedValueOnce(new Error('chunk load failed'))
 			.mockResolvedValue(Recovered);
 
