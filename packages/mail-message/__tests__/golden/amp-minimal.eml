@@ -1,0 +1,33 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=6RNDEKy3ECI8GjqNdp91wuNl0vPwGOFp7jzLaImHQH8=;
+ b=r+xJcQpF//K7OfUtXnv3xS0PrX9vb8byAZ5U6DVElxuuaqHVHDIpabCae6w7BFntF/8XDTQth
+ HifQWJkGC1qqOuEBoLrqSdaaMQrIbbl4HgD0WJafwatYQ/uzX7Pdnoqhgmn7LnzNy+1OYh5B2mn
+ VN9xfzjs+sz0oaUSGLbLZTO+RGKLC+kZGtwlRjJ7gSJnKrpLVHNCsdQiKTEPN02GEG6Epky/ebz
+ 8Mw6X2Pz05qh7b6TkBwOF8VVKgjcMlRckNu+8L0FYC0ZKP3mfZalWHAtJrvyFx6FkmrkIAmpU0d
+ 0j0O2ajUGE57f14ySJLHWb3zYlA6TgC09+YbDLfmkO0g==
+Message-ID: <corpus-35@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: Minimal amp
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_amp-minimal_0"
+
+----_owlat_amp-minimal_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+t
+----_owlat_amp-minimal_0
+Content-Type: text/x-amp-html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<html amp4email><body>a</body></html>
+----_owlat_amp-minimal_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>h</p>
+----_owlat_amp-minimal_0--

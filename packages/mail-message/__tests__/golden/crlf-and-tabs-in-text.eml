@@ -1,0 +1,29 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=7An0hdq5pAawguawNi3Q6C81d2DJyykxPe8gIh1fOlA=;
+ b=QhfBJXRItwdcT+8TQYMO4cdY4VFrOQYdRj6urBQ8kyTq/+ejW1oX5zCSjyefXiFiyWTFFwrQb
+ 8x8VkFpRopM0dciZO74e/kPfLhUrdvXDXXo7eDrP4zkmb8uYGIOiC8V3OoFsjPkUGL8NRRqQ7eY
+ cYcnQMKdBr+Hfu6oEEV+3O8oeURdmLFNQzNd7E7it+yGQanEXs1NPCvHMm3oyByK1j0zMaVwcpw
+ 5m8TgoztQK8L4gKmitpD02RQ4Kgg7ywcPqQhd8/J2+TvE5myMAan2fNI3J9VUlOqllWeLk3G6V6
+ 505VxNSBXgu06nvvM0TVJDLsKZbMk0wMiYJiygbacyug==
+Message-ID: <corpus-39@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: Whitespace
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_crlf-and-tabs-in-text_0"
+
+----_owlat_crlf-and-tabs-in-text_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+col1	col2	col3
+row2a	row2b	row2c
+----_owlat_crlf-and-tabs-in-text_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>ws</p>
+----_owlat_crlf-and-tabs-in-text_0--

@@ -1,0 +1,38 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=lDOPnk4W2NLIMcFuC9VONIJrni+EXTM6RTqh/L/2pAE=;
+ b=Ns7BzGDXA/h9tXmoVZ2LAvpnsZWvFP1GyvcJmFNyzYljFe+9hYrw7gZGvZYRJjUDbKIaSVI9A
+ VCtf/BsGkv5ckDLUpRspxOuSvqLJsT9o9Nxoag4dOukUKXg2tF0q16pP+KNXt1crljWv1HfWRY1
+ fmMbjmxjal9VvxSFAoPl+SC3RBZ238/8CwZaENIzXLCqcID/hr2Lrql/JQtcJ8OJ44O1R8hE1Gn
+ 31c0pVATX2JC++Gc0tu0IU9W9EApIhSPTmnvXzes5yoHZbH6X4a7cTUN8MUp7DaRKMzNzSmU7sZ
+ Ogx2Mb2s6TuK7eFZ25rSI2Y611VvxExEDqFQaDnm/UQw==
+Message-ID: <corpus-30@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: Unicode attachment bytes
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="--_owlat_unicode-attachment-content_1"
+
+----_owlat_unicode-attachment-content_1
+Content-Type: multipart/alternative; boundary="--_owlat_unicode-attachment-content_0"
+
+----_owlat_unicode-attachment-content_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+attached
+----_owlat_unicode-attachment-content_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>attached</p>
+----_owlat_unicode-attachment-content_0--
+----_owlat_unicode-attachment-content_1
+Content-Type: text/plain
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="unicode.txt"
+
+R3LDvMOfZSDigJQgY2Fmw6kg4piVIPCfjok=
+----_owlat_unicode-attachment-content_1--
