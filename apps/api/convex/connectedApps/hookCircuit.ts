@@ -7,14 +7,19 @@
  * A repeatedly-failing connected app must not be probed on the hot path of every
  * decision: each failed hook still costs a full guarded fetch and its timeout.
  * The breaker short-circuits to the declared fallback while the endpoint is
- * unhealthy, then lets a single trial through to see if it recovered.
+ * unhealthy, then admits trial calls to see if it recovered.
  *
  *   CLOSED    — calls flow; each consecutive failure increments the counter.
  *   OPEN      — the counter reached the threshold; `openedUntil` is set. While
  *               `now < openedUntil`, calls are short-circuited (no fetch).
- *   HALF-OPEN — once `now >= openedUntil`, ONE trial call is allowed. A success
+ *   HALF-OPEN — once `now >= openedUntil`, trial calls are admitted. A success
  *               closes the breaker (counter resets); a failure re-opens it for a
- *               fresh cooldown.
+ *               fresh cooldown. The decision is a lock-free pure read of
+ *               persisted state, so concurrent invocations for the same
+ *               (app, hookKind) in the half-open window may each proceed as a
+ *               trial; a strictly serial caller sees exactly one. A literal
+ *               single-trial gate would need a persisted half-open claim, which
+ *               this piece does not attempt — safety does not depend on it.
  *
  * This never changes a decision's SAFETY — an open breaker means the caller
  * applies the SAME declared fallback it would apply on a live failure (a gate
@@ -44,7 +49,10 @@ export const INITIAL_HOOK_CIRCUIT_STATE: HookCircuitState = Object.freeze({
 /**
  * Whether a call must be short-circuited right now. `true` only while the
  * breaker is OPEN and the cooldown has not elapsed; at/after `openedUntil` it is
- * half-open and returns `false` so exactly the next call becomes the trial.
+ * half-open and returns `false` so the call is admitted as a trial. This is a
+ * pure read of persisted state, so concurrent callers in the half-open window
+ * each see `false` and may each proceed — a strictly serial caller admits
+ * exactly one trial.
  */
 export function isHookCircuitOpen(state: HookCircuitState, now: number): boolean {
 	return state.openedUntil !== undefined && now < state.openedUntil;
