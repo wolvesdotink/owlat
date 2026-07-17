@@ -68,7 +68,7 @@ export const invokeHook = internalAction({
 		payload: v.any(),
 	},
 	handler: async (ctx, args): Promise<ConnectedAppHookOutcome> => {
-		const hookKind = args.hookKind as ConnectedAppHookKind;
+		const hookKind = args.hookKind;
 		const nowMs = Date.now();
 
 		const context: HookExecutionContext = await ctx.runQuery(
