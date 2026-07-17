@@ -100,15 +100,22 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		}
 
 		// Return-path bundle: the bounce envelope is `bounce+…@<return-path host>`,
-		// so the host needs BOTH an MX (so remote MTAs can DELIVER DSNs back to the
-		// MTA's inbound listener at EHLO_HOSTNAME) and an SPF TXT authorizing the
-		// pool IPs (so the envelope passes SPF, RFC 7489 §3.1). The host is the
-		// domain's per-domain override when set (D1/D2), else the global
-		// `MTA_RETURN_PATH_DOMAIN`. Emitted as `mailFrom` entries keyed by the
-		// absolute hostname (a sibling of the From-domain, not under it).
+		// so the host needs an SPF TXT authorizing the pool IPs (so the envelope
+		// passes SPF, RFC 7489 §3.1), plus — for a CUSTOM per-domain host — an MX so
+		// remote MTAs can DELIVER DSNs back to the MTA's inbound listener
+		// (EHLO_HOSTNAME). The host is the domain's per-domain override when set
+		// (D1/D2), else the global `MTA_RETURN_PATH_DOMAIN`. Emitted as `mailFrom`
+		// entries keyed by the absolute hostname (a sibling of the From-domain).
+		//
+		// The MX is scoped to CUSTOM hosts on purpose: the global RETURN_PATH_DOMAIN
+		// MX is an operator-managed, separately-documented record that predates this
+		// bundle — emitting (and thus VERIFYING) it here would newly FAIL every
+		// existing verified MTA domain on its next regeneration for an MX it never
+		// had to publish. Custom per-domain hosts are new (D1/D2), so requiring
+		// their MX is not a regression. `mailHost` is passed only for a custom host.
 		const returnPathHost = customReturnPathHost ?? getOptional('MTA_RETURN_PATH_DOMAIN')?.trim();
 		const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
-		const mailHost = getOptional('EHLO_HOSTNAME')?.trim();
+		const mailHost = customReturnPathHost ? getOptional('EHLO_HOSTNAME')?.trim() : undefined;
 		const mailFromRecords = buildReturnPathMailFromRecords(
 			returnPathHost,
 			poolIps,
@@ -118,9 +125,9 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		if (mailFromRecords) {
 			dnsRecords.mailFrom = mailFromRecords;
 		}
-		if (returnPathHost && !mailHost) {
+		if (customReturnPathHost && !mailHost) {
 			logWarn(
-				`[MTA] return-path host ${returnPathHost} is set but EHLO_HOSTNAME is empty — no bounce MX emitted for ${domain}. Remote MTAs cannot deliver DSNs to bounce+…@${returnPathHost}.`
+				`[MTA] custom return-path host ${customReturnPathHost} is set but EHLO_HOSTNAME is empty — no bounce MX emitted for ${domain}. Remote MTAs cannot deliver DSNs to bounce+…@${customReturnPathHost}.`
 			);
 		}
 		if (returnPathHost && poolIps.length === 0) {

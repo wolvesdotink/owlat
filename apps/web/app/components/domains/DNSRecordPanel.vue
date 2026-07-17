@@ -13,6 +13,12 @@ interface DNSRecord {
 	 * build.
 	 */
 	hostIsFqdn?: boolean;
+	/**
+	 * MX preference. Verification enforces it exactly, so the panel shows + copies
+	 * the full `<priority> <exchange>` value. Present only on MX records (supplied
+	 * by `normalizeDnsRecord`).
+	 */
+	priority?: number;
 }
 
 interface VerificationResult {
@@ -137,8 +143,19 @@ const handleCopyFqdn = () => {
 	if (hostDisplay.value.fqdn) copy(hostDisplay.value.fqdn, `${props.label}-fqdn`);
 };
 
+/**
+ * What the user must publish in the record's value/data field. For an MX record
+ * that carries a preference, verification enforces the priority EXACTLY, so the
+ * shown + copied value is the full `<priority> <exchange>` (e.g. `10 mail.host`)
+ * — what's enforced is what's shown. Every other record shows its value verbatim.
+ */
+const valueDisplay = computed(() => {
+	const { type, value, priority } = props.record;
+	return type === 'MX' && priority !== undefined ? `${priority} ${value}` : value;
+});
+
 const handleCopyValue = () => {
-	copy(props.record.value, `${props.label}-value`);
+	copy(valueDisplay.value, `${props.label}-value`);
 };
 
 const handleCopyFound = () => {
@@ -259,8 +276,9 @@ const diagnostic = computed(() => {
 				<div class="flex items-center gap-2">
 					<code
 						class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
+						data-testid="dns-value"
 					>
-						{{ record.value }}
+						{{ valueDisplay }}
 					</code>
 					<button class="btn btn-ghost p-2" title="Copy value" @click="handleCopyValue">
 						<Icon

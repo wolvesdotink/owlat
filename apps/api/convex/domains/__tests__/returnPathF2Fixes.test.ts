@@ -177,6 +177,75 @@ describe('Finding 1 — return-path host atomic with create', () => {
 	});
 });
 
+// ─── Finding 1 (edit path) — a return-path edit that RACES a registration ─────
+
+describe('Finding 1 (edit path) — setReturnPathHost during registration keeps the bundle', () => {
+	it('storing a host while registering does NOT self-loop away the DKIM/DMARC bundle', async () => {
+		const t = convexTest(schema, modules);
+
+		// A domain mid-registration (create, or `regenerateDnsRecords` put it back to
+		// `registering`) with NO host yet.
+		const domainId = await t.run(async (ctx) => {
+			const now = Date.now();
+			return await ctx.db.insert('domains', {
+				domain: 'acme.com',
+				status: 'registering',
+				providerType: 'mta',
+				dnsRecords: {},
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		// Edit the return-path host WHILE registering. The guard must store the host
+		// only — no `status: 'pending'` patch, no record regen, no reflection — so the
+		// pending register-completion below stays a real `registering → pending` edge
+		// (not the `pending → pending` self-loop that `reduceSelfLoop` strips).
+		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
+			domainId,
+			returnPathHost: 'bounce.acme.com',
+			userId: 'user',
+		});
+		expect(outcome).toMatchObject({ ok: true, changed: true });
+
+		await t.run(async (ctx) => {
+			const d = await ctx.db.get(domainId);
+			expect(d!.returnPathHost).toBe('bounce.acme.com'); // host leads
+			expect(d!.status).toBe('registering'); // status untouched — no premature pending
+			expect(d!.dnsRecords).toEqual({}); // no records regenerated mid-registration
+		});
+
+		// Registration completes AFTER the edit — the exact ordering the review's
+		// repro used to drop the bundle.
+		await t.action(internal.domains.providers.registerAction.run, {
+			providerType: 'mta',
+			domainId,
+		});
+
+		await t.run(async (ctx) => {
+			const d = await ctx.db.get(domainId);
+			expect(d!.status).toBe('pending');
+			const records = d!.dnsRecords as {
+				dkim?: unknown[];
+				dmarc?: unknown;
+				mailFrom?: Array<{ type: string; hostname?: string }>;
+			};
+			// Full provider bundle survived — the residual edit-path self-loop is gone.
+			expect(records.dkim?.length).toBeGreaterThan(0);
+			expect(records.dmarc).toBeDefined();
+			const hosts = records.mailFrom!.map((r) => `${r.type}:${r.hostname}`);
+			expect(hosts).toContain('MX:bounce.acme.com');
+			expect(hosts).toContain('TXT:bounce.acme.com');
+			// Provider identity sibling persisted (only written on a non-self-loop).
+			const identity = await ctx.db
+				.query('sendingDomainMtaIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', domainId))
+				.first();
+			expect(identity).not.toBeNull();
+		});
+	});
+});
+
 // ─── Finding 2 — MTA return-path bundle has an MX ─────────────────────────────
 
 describe('Finding 2 — bounce host MX for DSN routing', () => {
@@ -199,6 +268,40 @@ describe('Finding 2 — bounce host MX for DSN routing', () => {
 		expect(records).toEqual([
 			{ type: 'TXT', hostname: 'bounce.acme.com', value: `v=spf1 ip4:${POOL_IP} ~all` },
 		]);
+	});
+
+	it('does NOT add an MX for the GLOBAL return-path domain (no regression on existing MTA domains)', async () => {
+		// The MX is scoped to CUSTOM per-domain hosts. Emitting it for the global
+		// MTA_RETURN_PATH_DOMAIN would newly FAIL every existing verified MTA domain
+		// (which never had to publish that MX) the next time it regenerates. So a
+		// domain on the global host regenerates to an SPF-TXT-only mailFrom bundle.
+		const t = convexTest(schema, modules);
+		const domainId = await t.run(async (ctx) => {
+			const now = Date.now();
+			return await ctx.db.insert('domains', {
+				domain: 'acme.com',
+				status: 'registering',
+				providerType: 'mta',
+				dnsRecords: {},
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		await t.action(internal.domains.providers.registerAction.run, {
+			providerType: 'mta',
+			domainId,
+		});
+
+		await t.run(async (ctx) => {
+			const d = await ctx.db.get(domainId);
+			const mailFrom = (d!.dnsRecords as { mailFrom?: Array<{ type: string; hostname?: string }> })
+				.mailFrom;
+			// The global return-path SPF TXT is published…
+			expect(mailFrom?.some((r) => r.type === 'TXT' && r.hostname === GLOBAL_RETURN_PATH)).toBe(true);
+			// …but NO MX is emitted for the global host.
+			expect(mailFrom?.some((r) => r.type === 'MX')).toBe(false);
+		});
 	});
 
 	it('verifyDomain resolves BOTH the MX and the SPF TXT at the custom host', async () => {

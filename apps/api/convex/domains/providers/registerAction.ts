@@ -242,15 +242,20 @@ async function runReturnPathReflection(
 	const current = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
 		domainId: args.domainId,
 	});
-	if (
-		current &&
-		current.returnPathHost !== undefined &&
-		current.returnPathHost !== args.returnPathHost
-	) {
-		logWarn(
-			`[${tag}] Return-path host for ${current.domain} changed to ${current.returnPathHost} while reflecting ${args.returnPathHost}; requeueing to converge the provider on the current host`
-		);
-		await config.reschedule(0, 0, current.returnPathHost);
+	const currentHost = current?.returnPathHost;
+	if (current && currentHost !== args.returnPathHost) {
+		// A newer edit superseded our host mid-reflection. Converge the provider on
+		// the current host (requeue) rather than clearing the marker for our stale
+		// host. If a future "clear" path ever sets the host back to `undefined`,
+		// there is nothing to reflect here — leave the marker for that path to own —
+		// so requeue ONLY for a concrete host (this replaces a `!== undefined` guard
+		// that would have SILENTLY skipped convergence in the clear case).
+		if (currentHost !== undefined) {
+			logWarn(
+				`[${tag}] Return-path host for ${current.domain} changed to ${currentHost} while reflecting ${args.returnPathHost}; requeueing to converge the provider on the current host`
+			);
+			await config.reschedule(0, 0, currentHost);
+		}
 		return;
 	}
 

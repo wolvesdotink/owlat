@@ -62,6 +62,7 @@ import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
 import { buildReturnPathMailFromRecords, parsePoolIps, resolveSpfQualifier } from './spf';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mailFrom';
+import { logWarn } from '../lib/runtimeLog';
 import {
 	isSendingDomainProviderKind,
 	providerFor,
@@ -875,6 +876,55 @@ export const setReturnPathHost = internalMutation({
 			return { ok: true, returnPathHost: normalized, changed: false };
 		}
 
+		// SES requires its custom MAIL FROM to be a subdomain of the sending domain.
+		// Validate that on EVERY path (including the registering short-circuit
+		// below) so a bad SES host is rejected up front, never stored + then failing
+		// registration.
+		const sesMailFrom =
+			providerType === 'ses' ? resolveSesMailFrom(domain.domain, normalized) : null;
+		if (providerType === 'ses' && sesMailFrom === null) {
+			return { ok: false, reason: 'host_not_subdomain' };
+		}
+
+		// FINDING 1 (edit path) — a registration is in flight (create or
+		// `regenerateDnsRecords` left the domain `registering`). Patching
+		// `status: 'pending'` here would turn the register-completion callback
+		// (`registering → pending`) into a `pending → pending` self-loop, which
+		// `reduceSelfLoop` strips down to `verificationResults` only — silently
+		// dropping the DKIM/DMARC bundle AND the provider identity row. So we do NOT
+		// touch status / records / verification and do NOT schedule a reflection:
+		// we only store the new host (+ clear the sync marker). The in-flight
+		// registration reads `returnPathHost` and carries the FULL bundle — with the
+		// custom mailFrom — onto the already-updated host, and reflects it to the
+		// provider itself. (A registration that had ALREADY read the old host lands
+		// consistently on it — records, DNS, and provider all agree; only the stored
+		// field leads, and the next non-registering edit reconciles it.)
+		if (domain.status === 'registering') {
+			await ctx.db.patch(args.domainId, {
+				returnPathHost: normalized,
+				returnPathHostSyncError: undefined,
+				updatedAt: Date.now(),
+			});
+			await applyEffects(
+				ctx,
+				[
+					{
+						kind: 'audit_log',
+						action: 'sending_domain.return_path_changed',
+						domainId: args.domainId,
+						details: {
+							domain: domain.domain,
+							previousReturnPathHost: domain.returnPathHost ?? null,
+							newReturnPathHost: normalized,
+							applied: 'stored_during_registration',
+						},
+					},
+				],
+				args.userId
+			);
+			return { ok: true, returnPathHost: normalized, changed: true };
+		}
+
 		// Regenerate the provider-specific `mailFrom` record(s) on the new host.
 		// MTA: the bounce-routing MX + a pool-IP SPF TXT on the standalone bounce
 		// host (via the shared `spf.ts` builder). SES: the MX + SPF TXT SES requires
@@ -885,14 +935,19 @@ export const setReturnPathHost = internalMutation({
 			const qualifier = resolveSpfQualifier(getOptional('SPF_QUALIFIER'));
 			const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
 			const mailHost = getOptional('EHLO_HOSTNAME')?.trim();
+			if (!mailHost) {
+				// Same warning the registration path emits — an edit must not silently
+				// publish an SPF-only bundle with no bounce MX (finding 2, edit path).
+				logWarn(
+					`[MTA] return-path host ${normalized} set for ${domain.domain} but EHLO_HOSTNAME is empty — no bounce MX emitted; remote MTAs cannot deliver DSNs to bounce+…@${normalized}.`
+				);
+			}
 			mailFromRecords = buildReturnPathMailFromRecords(normalized, poolIps, qualifier, mailHost);
 		} else {
-			const sesMailFrom = resolveSesMailFrom(domain.domain, normalized);
-			if (!sesMailFrom) return { ok: false, reason: 'host_not_subdomain' };
 			// `getRequired` (matching the SES registration path) so the region can
 			// never be blank — a `?? ''` fallback would write a malformed MX
 			// (`feedback-smtp..amazonses.com`). An SES domain always has this set.
-			mailFromRecords = buildSesMailFromRecords(sesMailFrom.host, getRequired('AWS_SES_REGION'));
+			mailFromRecords = buildSesMailFromRecords(sesMailFrom!.host, getRequired('AWS_SES_REGION'));
 		}
 
 		const at = Date.now();
