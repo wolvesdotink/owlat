@@ -97,7 +97,7 @@ describe('smtpSendProvider.categorizeError — string codes + reply text', () =>
 describe('classifySmtpError — structured (phase + reply code) catch-side classification', () => {
 	type Input = Parameters<typeof classifySmtpError>[0];
 
-	// Case-by-case successors to the pre-refactor nodemailer-shaped table. Each
+	// Case-by-case successors to the pre-refactor old-library-shaped table. Each
 	// row asserts the SAME EmailErrorCode the old string/command classifier
 	// produced, now driven off the structured SmtpError discriminants (phase +
 	// replyCode) with zero message-text sniffing. The decision table — and above

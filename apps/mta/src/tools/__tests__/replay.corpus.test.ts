@@ -3,7 +3,7 @@
  *
  * Runs the checked-in, non-sensitive corpus through BOTH inbound stacks — the
  * OLD oracle stack (mailparser `simpleParser` for the drivers + the pinned
- * `mailauth`-backed `verifyDkim` oracle from `bounce/inboundDkim` for the DKIM
+ * `mailauth`-backed `verifyDkim` oracle from `bounce/__tests__/helpers/inboundDkimOracle` for the DKIM
  * verdict) and the NEW in-house stack ({@link owlatNewStack}: `parseMessage` +
  * `@owlat/mail-auth`'s `verifyDkim`) — and asserts a field-level diff of the
  * routing / delivery drivers with a categorized divergence report and ZERO
@@ -11,7 +11,7 @@
  * enumerated l= / charset improvements; I2).
  *
  * The old side wires the pinned `mailauth` oracle, never a re-implemented copy
- * of its verdict normalization: `bounce/inboundDkim.verifyDkim` normalizes
+ * of its verdict normalization: `inboundDkimOracle.verifyDkim` normalizes
  * `mailauth`'s own per-signature output and accepts an injected resolver, so the
  * differential compares the library-normalized verdict against the in-house one
  * (a private copy could drift and mask divergence in exactly the normalization

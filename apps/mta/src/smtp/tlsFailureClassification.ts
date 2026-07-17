@@ -6,7 +6,7 @@
  * {@link SmtpTlsCause} on the thrown {@link SmtpError}. This module is the thin,
  * total map from that discriminant onto the TLS-RPT {@link TlsResultType} the
  * sender records (RFC 8460) — NO string-matching, NO error-message sniffing
- * (locked decision W7). The historic nodemailer-shaped classifier
+ * (locked decision W7). The historic old-library-shaped classifier
  * (`error.code === 'ETLS'`, `response`/`message` substring tables) is gone.
  */
 

@@ -268,8 +268,8 @@ describe('DKIM end-to-end signing + verification (outbound cutover)', () => {
 	/**
 	 * Whitespace-only bodies now verify cleanly (pinned PR-28 improvement).
 	 *
-	 * When the production signer was nodemailer's built-in codec, a body that was
-	 * whitespace with NO real content (e.g. '   \t  ') diverged: nodemailer emitted
+	 * When the production signer was the old library's built-in codec, a body that was
+	 * whitespace with NO real content (e.g. '   \t  ') diverged: the old library emitted
 	 * bh = sha256("\r\n") while mailauth's verifier canonicalized to the empty
 	 * string (bh = sha256("")), so verification came back 'neutral' ("body hash did
 	 * not verify"). The in-house signer body-hashes through the ONE mail-auth

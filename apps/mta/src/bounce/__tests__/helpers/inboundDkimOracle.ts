@@ -8,7 +8,8 @@
  * for the shadow-replay differential (`tools/__tests__/replay.corpus.test.ts`)
  * and the `inboundAuth.dkim` suite: per locked decision I1, `mailauth` stays a
  * test/operator differential oracle so the in-house verifier is never allowed to
- * verify itself. It MUST NOT be re-imported by any MTA runtime path.
+ * verify itself. It lives under `__tests__/` — never in a shipped MTA path — and
+ * `mailauth` survives only as a devDependency of these differential suites.
  *
  * It verifies a message's DKIM signature(s) against the signer's published
  * public key and returns a single normalized verdict suitable for
@@ -35,7 +36,7 @@
  */
 
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
-import { logger } from '../monitoring/logger.js';
+import { logger } from '../../../monitoring/logger.js';
 
 /** The RFC 8601 DKIM result vocabulary we record. */
 export type DkimVerdict = 'pass' | 'fail' | 'neutral' | 'none' | 'temperror' | 'permerror';

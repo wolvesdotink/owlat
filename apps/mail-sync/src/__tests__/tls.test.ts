@@ -144,7 +144,7 @@ describe('smtpTlsOptions', () => {
 		});
 	});
 
-	// Loopback + insecure keeps nodemailer's old `{ secure:false, requireTLS:false }`
+	// Loopback + insecure keeps the old library's `{ secure:false, requireTLS:false }`
 	// posture: opportunistic STARTTLS — upgrade when the local relay (Proton Bridge)
 	// advertises it, stay cleartext only when it does not. Never forced (requireTls
 	// false), never unconditionally plaintext (`tlsMode: 'none'`).

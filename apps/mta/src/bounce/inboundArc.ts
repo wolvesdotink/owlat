@@ -27,7 +27,7 @@
  * lives. Keeping verification here and trust there means the operator can edit
  * the allow-list without redeploying the MTA.
  *
- * Fail-open, like the sibling `inboundDkim` / `inboundDmarc` modules: `verifyArc`
+ * Fail-open, like the in-house `@owlat/mail-auth` `verifyDkim` / `evaluateDmarc`: `verifyArc`
  * never throws (a broken chain is `cv: 'fail'`, no chain is `cv: 'none'`), and
  * this adapter defends the seam with its own catch so a truly unexpected failure
  * still yields `cv: 'none'` (no rescue) and NEVER a NACK of accepted bytes.

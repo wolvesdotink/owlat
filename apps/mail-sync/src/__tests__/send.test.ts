@@ -26,7 +26,7 @@ const { sendMessage, verify, imapConnect, imapList, imapAppend, imapLogout, warn
 	})
 );
 
-// The in-house SMTP client replaces nodemailer: sendMessage does the one-shot
+// The in-house SMTP client replaces the old library: sendMessage does the one-shot
 // connect → AUTH → MAIL/RCPT/DATA → QUIT; verify does connect → AUTH → QUIT.
 vi.mock('@owlat/smtp-client', () => ({ sendMessage, verify }));
 
@@ -246,11 +246,11 @@ describe('sendViaExternal', () => {
 	});
 });
 
-// The EHLO identity must be byte-identical to nodemailer's `_getHostname()` so the
-// cutover changes no observable HELO name. nodemailer falls back to `[127.0.0.1]`
+// The EHLO identity must be byte-identical to the old library's `_getHostname()` so the
+// cutover changes no observable HELO name. The old library falls back to `[127.0.0.1]`
 // for a non-FQDN (dotless) hostname — which is exactly what mail-sync's own Docker
 // container hostnames are — and brackets a bare IPv4 literal as an address literal.
-describe('ehloName (nodemailer _getHostname parity)', () => {
+describe('ehloName (_getHostname parity)', () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});

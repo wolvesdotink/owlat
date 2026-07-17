@@ -3,16 +3,17 @@
  *
  * The differential harness compares the in-house `owlatNewStack` against the
  * library the cutover replaces: mailparser (`simpleParser`) for the routing
- * drivers, and the ACTUAL production DKIM driver (`bounce/inboundDkim.verifyDkim`
- * — the exact code the inbound path runs today, never a re-implemented copy) for
- * the auth verdict. Both replay suites (`replay.corpus.test.ts` and
+ * drivers, and the `mailauth`-backed DKIM oracle
+ * (`bounce/__tests__/helpers/inboundDkimOracle.verifyDkim` — the pinned library
+ * verdict the in-house `@owlat/mail-auth` verifier is diffed against, never a
+ * re-implemented copy) for the auth verdict. Both replay suites (`replay.corpus.test.ts` and
  * `replay.imap.test.ts`) drive the same oracle side, so it lives here once. The
  * oracle library import stays in test code (I1); this helper is test-only and is
  * never imported by the shipped tool.
  */
 
 import { simpleParser } from 'mailparser';
-import { verifyDkim as verifyDkimOld } from '../../../bounce/inboundDkim';
+import { verifyDkim as verifyDkimOld } from '../../../bounce/__tests__/helpers/inboundDkimOracle.js';
 import {
 	projectDrivers,
 	resolverFromHint,
@@ -23,8 +24,8 @@ import {
 } from '../../inboundReplay';
 
 /**
- * The OLD (oracle) stack: mailparser for the routing drivers, and the production
- * DKIM driver for the verdict. Both verifiers return a verdict unconditionally
+ * The OLD (oracle) stack: mailparser for the routing drivers, and the
+ * `mailauth`-backed DKIM oracle for the verdict. Both verifiers return a verdict unconditionally
  * (`none` for an unsigned message), so unsigned corpus mail yields matching
  * `none` verdicts and no auth diff.
  */
