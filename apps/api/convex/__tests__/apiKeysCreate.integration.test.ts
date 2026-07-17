@@ -54,6 +54,37 @@ describe('apiKeys.create — least privilege', () => {
 		).rejects.toThrow(/Unknown API scope/);
 	});
 
+	it('rejects a Tier-2-only scope on a standalone (unbound) key', async () => {
+		// mail:read (and the rest of the Tier-2-only vocabulary) is reachable ONLY
+		// through a plugin-bound key. Minting a standalone key that carries it must
+		// fail closed so the plugin-binding + operator-grant boundary cannot be
+		// bypassed by an unbound key.
+		const t = convexTest(schema, modules).withIdentity(testUser);
+		await expect(
+			t.mutation(api.auth.apiKeys.create, { name: 'tier2', scopes: ['mail:read'] })
+		).rejects.toThrow(/only available on plugin-bound keys/);
+	});
+
+	it('lists every offending Tier-2-only scope when several are requested', async () => {
+		const t = convexTest(schema, modules).withIdentity(testUser);
+		await expect(
+			t.mutation(api.auth.apiKeys.create, {
+				name: 'tier2-mix',
+				scopes: ['contacts:read', 'webhooks:manage', 'plugin-storage:write'],
+			})
+		).rejects.toThrow(/webhooks:manage, plugin-storage:write/);
+	});
+
+	it('still accepts the endpoint-backed scopes on a standalone key', async () => {
+		const t = convexTest(schema, modules).withIdentity(testUser);
+		const result = await t.mutation(api.auth.apiKeys.create, {
+			name: 'endpoint',
+			scopes: ['contacts:read', 'events:write'],
+		});
+		const stored = await t.run(async (ctx) => ctx.db.get(result.keyId));
+		expect(stored?.scopes).toEqual(['contacts:read', 'events:write']);
+	});
+
 	it('stores exactly the requested scopes', async () => {
 		const t = convexTest(schema, modules).withIdentity(testUser);
 		const result = await t.mutation(api.auth.apiKeys.create, {

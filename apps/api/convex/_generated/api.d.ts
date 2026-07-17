@@ -527,6 +527,7 @@ import type * as platformAdmin_mutations from "../platformAdmin/mutations.js";
 import type * as platformAdmin_platformAdmin from "../platformAdmin/platformAdmin.js";
 import type * as platformAdmin_queries from "../platformAdmin/queries.js";
 import type * as plugins_featureFlagRegistry from "../plugins/featureFlagRegistry.js";
+import type * as plugins_apiKeyBinding from "../plugins/apiKeyBinding.js";
 import type * as plugins_audit from "../plugins/audit.js";
 import type * as plugins_authorization from "../plugins/authorization.js";
 import type * as plugins_agentStepAuthorization from "../plugins/agentStepAuthorization.js";
@@ -1225,6 +1226,7 @@ declare const fullApi: ApiFromModules<{
   "platformAdmin/platformAdmin": typeof platformAdmin_platformAdmin;
   "platformAdmin/queries": typeof platformAdmin_queries;
   "plugins/featureFlagRegistry": typeof plugins_featureFlagRegistry;
+  "plugins/apiKeyBinding": typeof plugins_apiKeyBinding;
   "plugins/audit": typeof plugins_audit;
   "plugins/authorization": typeof plugins_authorization;
   "plugins/agentStepAuthorization": typeof plugins_agentStepAuthorization;

@@ -12,6 +12,7 @@ import {
 } from '../lib/httpResponse';
 import type { OperationErrorCategory } from '@owlat/shared/operationError';
 import type { ApiScope } from './apiScopes';
+import { deriveEffectiveScopes } from '../plugins/apiKeyBinding';
 
 // Rate limiting configuration
 const RATE_LIMIT_MAX_REQUESTS = 10; // 10 requests per second
@@ -306,10 +307,17 @@ export const validateAndCheckRateLimit = internalMutation({
 			};
 		}
 
+		// Effective scopes are re-derived every request. A standalone key returns
+		// its stored scopes; a plugin-bound key is re-checked against the live
+		// manifest, feature flag, and operator grants, so disabling or
+		// uninstalling the plugin, or revoking a grant, fails the key closed
+		// immediately without touching the key row.
+		const scopes = await deriveEffectiveScopes(ctx, key);
+
 		return {
 			success: true as const,
 			keyId: key._id,
-			scopes: key.scopes ?? [],
+			scopes,
 		};
 	},
 });
