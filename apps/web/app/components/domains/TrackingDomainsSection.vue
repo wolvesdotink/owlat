@@ -60,14 +60,15 @@ const toggleExpansion = (id: Id<'trackingDomains'>) => {
 // registrable zone (self-host / internal TLD).
 const zoneFor = (domain: string) => trySplitZone(domain)?.registrable ?? domain;
 
-// The guided form emits the composed, normalized single domain string
-// (`track.example.com`), parsed/composed via A1 — the same contract the
-// sending-domain flow uses.
-const handleAdd = async (domain: string) => {
+// The guided form emits an object payload { domain, returnPathHost } (the shared
+// contract with the sending flow). Tracking domains have no return path — the
+// Advanced section is suppressed in the tracking context — so we consume only the
+// composed, normalized domain string (`track.example.com`), parsed/composed via A1.
+const handleAdd = async (payload: { domain: string; returnPathHost: string | null }) => {
 	if (!hasActiveOrganization.value) return;
 
 	addModal.setLoading(true);
-	const result = await addTrackingDomain({ domain });
+	const result = await addTrackingDomain({ domain: payload.domain });
 	addModal.setLoading(false);
 
 	if (result === undefined) return;

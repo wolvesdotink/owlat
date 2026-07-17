@@ -155,13 +155,25 @@ describe('X2 — tracking-URL preview (composed via A1)', () => {
 });
 
 describe('X2 — submit + tracking-context behaviour', () => {
-	it('emits the composed single domain string', async () => {
+	it('emits the composed domain in the shared object payload (no return path)', async () => {
 		const w = mountTrackingForm();
 		await domainInput(w).setValue('example.com');
 		await subInput(w).setValue('track');
 		await w.get('form').trigger('submit');
 		expect(w.emitted('submit')).toBeTruthy();
-		expect(w.emitted('submit')![0]).toEqual(['track.example.com']);
+		// Same { domain, returnPathHost } shape as the sending flow; tracking has no
+		// return path (the Advanced section is suppressed), so returnPathHost is null.
+		expect(w.emitted('submit')![0]).toEqual([
+			{ domain: 'track.example.com', returnPathHost: null },
+		]);
+	});
+
+	it('suppresses the sending-only Advanced return-path section in the tracking context', () => {
+		const w = mountTrackingForm();
+		// Context-gating regression guard: neither the toggle nor the section exist.
+		expect(w.find('[data-testid="advanced"]').exists()).toBe(false);
+		expect(w.find('[data-testid="advanced-toggle"]').exists()).toBe(false);
+		expect(w.find('[data-testid="returnpath-input"]').exists()).toBe(false);
 	});
 
 	it('does not freemail-block or show the sending-apex note in the tracking context', async () => {

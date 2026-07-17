@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
+import { trySplitZone } from '@owlat/shared';
 import { formatDateTime } from '~/utils/formatters';
 import { domainReadinessMessage } from '~/utils/domainReadiness';
 import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
@@ -77,6 +78,17 @@ const websiteApex = computed(() => {
 	const labels = props.domain.domain.split('.');
 	return labels.length > 2 ? labels.slice(1).join('.') : props.domain.domain;
 });
+
+// The registrable zone the records actually go in — the DNS provider that
+// manages this name (C1 zone-framing; fail-soft to the raw domain in self-host
+// dev where a name has no registrable zone).
+const registrableZone = computed(
+	() => trySplitZone(props.domain.domain)?.registrable ?? props.domain.domain
+);
+
+// The current return-path host to seed the editor: the explicit per-domain host
+// if set, otherwise the one derived from the MAIL FROM record.
+const returnPathHost = computed(() => props.domain.returnPathHost ?? mailFromHost.value);
 </script>
 
 <template>
@@ -117,9 +129,8 @@ const websiteApex = computed(() => {
 					     the actual return-path record so it can't drift, then the
 					     existing status / added-date info. -->
 					<p class="text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
-						Sends as {{ sendsAsAddress }}<template v-if="mailFromHost">
-							· bounces via {{ mailFromHost }}</template
-						>
+						Sends as {{ sendsAsAddress
+						}}<template v-if="mailFromHost"> · bounces via {{ mailFromHost }}</template>
 						·
 						<span v-if="domain.status === 'registering'">setting up domain…</span>
 						<span v-else-if="domain.status === 'failed' && domain.lastRegistrationError">
@@ -255,15 +266,17 @@ const websiteApex = computed(() => {
 								<strong class="text-text-primary">What this domain does.</strong>
 								Mail from your team is sent as
 								<span class="text-text-primary">name@{{ domain.domain }}</span
-								>. The records below prove to receiving servers that Owlat is allowed to do
-								that — nothing needs to be hosted at this name, and it won't affect your website
-								at {{ websiteApex }}.
+								>. The records below prove to receiving servers that Owlat is allowed to do that —
+								nothing needs to be hosted at this name, and it won't affect your website at
+								{{ websiteApex }}.
 							</p>
 						</div>
 
 						<div class="flex items-center justify-between gap-3 mb-4">
 							<h4 class="text-sm font-medium text-text-primary">
-								Configure these DNS records with your domain provider:
+								Configure these DNS records in the DNS settings for
+								<strong data-testid="config-zone">{{ registrableZone }}</strong> (your registrar or
+								DNS host):
 							</h4>
 							<!-- Subtle auto-recheck indicator: we quietly re-verify while
 							     this panel is open so the user needn't keep clicking Verify. -->
@@ -396,6 +409,18 @@ const websiteApex = computed(() => {
 											:label="mailFromRecord.type === 'MX' ? 'MAIL FROM MX' : 'MAIL FROM SPF'"
 											:domain="domain.domain"
 											:verification="domain.verificationResults?.mailFrom?.[i]"
+										/>
+									</div>
+
+									<!-- Change the per-domain return-path (bounce) host. Re-verifies
+									     the domain; surfaces the MTA-sync-failure marker. -->
+									<div class="mt-4">
+										<DomainsReturnPathEditor
+											:domain-id="domain._id"
+											:current-host="returnPathHost"
+											:zone="registrableZone"
+											:sync-error="domain.returnPathHostSyncError ?? null"
+											:can-manage="canManageDomains"
 										/>
 									</div>
 								</div>

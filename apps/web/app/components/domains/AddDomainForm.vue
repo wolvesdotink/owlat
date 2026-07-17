@@ -17,207 +17,81 @@
  * domain into the domain field is reflowed back into domain + subdomain via
  * `trySplitZone`, so `mail.example.co.uk` round-trips to `example.co.uk` + `mail`.
  *
- * D3 adds an "Advanced" return-path section below the subdomain field — a
- * sibling addition, and a sending-only concern: gate it on
- * `context === 'sending'` so the tracking context (which has no return path)
- * suppresses it.
+ * An "Advanced" disclosure (collapsed by default) adds an optional custom
+ * return-path (bounce) subdomain. It composes to a sibling host of the sending
+ * name; the value rides the submit payload so the page can set it (via the D2
+ * mutation) right after registration, which is when the new domain id exists.
+ * The return path is a sending-only concern, so the whole disclosure is gated on
+ * `context === 'sending'` — the tracking context (no return path) suppresses it.
  */
-import { useId } from 'vue';
-import { trySplitZone, isDnsLabel } from '@owlat/shared';
-import { isFreemailDomain, resolveNs } from '~/utils/domainPrecheck';
-import { useFormValidation, rules, type ValidationRule } from '~/composables/useFormValidation';
+import {
+	useAddDomainForm,
+	type AddDomainFormProps,
+	type AddDomainSubmitPayload,
+} from '~/composables/useAddDomainForm';
 
-const props = withDefaults(
-	defineProps<{
-		/** True while the parent's create mutation is in flight. */
-		loading?: boolean;
-		/**
-		 * Which flow this form serves. Drives the live-preview wording (sending
-		 * address vs tracking URL) and is the discriminator D3's return-path
-		 * "Advanced" section gates on (`context === 'sending'`).
-		 */
-		context?: 'sending' | 'tracking';
-		/** Quick-pick subdomain affordances (still free-form; any label is accepted). */
-		suggestions?: readonly string[];
-		/** Initial subdomain value (empty = apex). */
-		defaultSubdomain?: string;
-		/** Subdomain field label + trailing hint + placeholder. */
-		subdomainLabel?: string;
-		subdomainHint?: string;
-		subdomainPlaceholder?: string;
-		/**
-		 * Block freemail / public-mailbox zones the user can't publish DNS for.
-		 * On for sending; the tracking flow leaves it off (parity with the prior
-		 * tracking add form, which never freemail-checked).
-		 */
-		blockFreemail?: boolean;
-		/** Show the apex sending-reputation trade-off note (sending-only copy). */
-		showApexNote?: boolean;
-		/** Submit button label. */
-		submitLabel?: string;
-	}>(),
-	{
-		loading: false,
-		context: 'sending',
-		suggestions: () => ['mail', 'post', 'send'],
-		defaultSubdomain: 'mail',
-		subdomainLabel: 'Subdomain for sending',
-		subdomainHint: '— recommended, keeps your apex reputation separate',
-		subdomainPlaceholder: 'mail',
-		blockFreemail: true,
-		showApexNote: true,
-		submitLabel: 'Add Domain',
-	}
-);
+const props = withDefaults(defineProps<AddDomainFormProps>(), {
+	loading: false,
+	context: 'sending',
+	suggestions: () => ['mail', 'post', 'send'],
+	defaultSubdomain: 'mail',
+	subdomainLabel: 'Subdomain for sending',
+	subdomainHint: '— recommended, keeps your apex reputation separate',
+	subdomainPlaceholder: 'mail',
+	blockFreemail: true,
+	showApexNote: true,
+	submitLabel: 'Add Domain',
+});
 
 const emit = defineEmits<{
-	/** The composed, normalized single domain string to register. */
-	submit: [domain: string];
+	/**
+	 * The composed domain to register, plus an optional custom return-path
+	 * (bounce) host. The page registers the domain first (create returns the new
+	 * id) and then sets the return-path host via the D2 mutation, which needs
+	 * that id — so both travel together and the page orchestrates.
+	 */
+	submit: [payload: AddDomainSubmitPayload];
 	cancel: [];
 }>();
 
-// Field state. `sub` defaults to the recommended subdomain (keeps apex
-// reputation separate for sending); clearing it is the first-class "use the
-// apex" choice.
-const domain = ref('');
-const sub = ref(props.defaultSubdomain);
-const nsUnresolved = ref(false);
-
-const normalizedDomain = computed(() => domain.value.trim().toLowerCase());
-const normalizedSub = computed(() => sub.value.trim().toLowerCase());
-const isApex = computed(() => normalizedSub.value === '');
-
-// The single domain string the two fields compose to. Empty until a domain is
-// entered, so the preview reads as an example rather than a stray `mail.`.
-const combinedDomain = computed(() => {
-	const base = normalizedDomain.value;
-	if (!base) return '';
-	return isApex.value ? base : `${normalizedSub.value}.${base}`;
-});
-
-// Freemail / NS checks apply to the registrable ZONE of the combined value —
-// that is the zone the user must control. `mail.gmail.com`'s zone is still
-// `gmail.com`, which they don't own, so the block must fire even though the
-// combined string isn't itself a listed freemail domain. Fall back to the raw
-// combined string while it has no registrable zone yet (mid-typing).
-const registrableZone = computed(() => trySplitZone(combinedDomain.value)?.registrable ?? null);
-const isFreemail = computed(
-	() => props.blockFreemail && isFreemailDomain(registrableZone.value ?? combinedDomain.value)
-);
-
-// A valid domain is one that has a registrable zone; the field also accepts a
-// pasted full domain (`mail.example.com`), which `reflowDomain` normalizes.
-const domainRule: ValidationRule = (value) => {
-	const raw = String(value ?? '').trim();
-	if (!raw) return true; // `required` owns the empty case
-	return trySplitZone(raw) !== null || 'Enter a valid domain, like example.com';
-};
-
-// Subdomain is optional (empty = apex). When present, every label must be a
-// real hostname label per the shared rule (rejects underscores, bad chars).
-const subRule: ValidationRule = (value) => {
-	const raw = String(value ?? '').trim();
-	if (!raw) return true;
-	const ok = raw
-		.toLowerCase()
-		.split('.')
-		.every((label) => isDnsLabel(label));
-	return ok || 'Use letters, digits and hyphens (e.g. mail or post)';
-};
-
-const validation = useFormValidation({
-	domain: [rules.required('Enter your domain'), domainRule],
-	sub: [subRule],
-});
-
-const domainError = computed(() => validation.getError('domain'));
-const subError = computed(() => validation.getError('sub'));
-
-// Unique, stable DOM ids per instance — this form is mounted twice on the
-// domains page (sending modal + tracking modal), so hardcoded ids would collide.
-// `useId` keeps each label↔input and aria-describedby link uniquely scoped.
-const uid = useId();
-const domainInputId = `${uid}-domain`;
-const subInputId = `${uid}-sub`;
-const domainErrorId = `${uid}-domain-error`;
-const subErrorId = `${uid}-sub-error`;
-const previewId = `${uid}-preview`;
-
-// Only promise "you'll send as …" when the preview would be truthful: not a
-// freemail domain (live), and no field currently carries a validation error.
-// `hasError` reflects the last blur/submit — mirroring the B2 preview semantics
-// — so a mid-typing value previews without a contradicting error beside it.
-const showAddressPreview = computed(
-	() => !isFreemail.value && !validation.hasError('domain') && !validation.hasError('sub')
-);
-
-// Wire each input to the guidance that describes it, so an AT user hears *what*
-// is wrong / what they'll get — `aria-invalid` alone only says *that* something
-// is wrong. The domain input points at its error (when present) and the preview
-// (when shown); the subdomain input points at its error.
-const domainDescribedBy = computed(() => {
-	const ids: string[] = [];
-	if (domainError.value) ids.push(domainErrorId);
-	if (showAddressPreview.value) ids.push(previewId);
-	return ids.length > 0 ? ids.join(' ') : undefined;
-});
-const subDescribedBy = computed(() => (subError.value ? subErrorId : undefined));
-
-// Pasting a full domain into the domain field reflows it into domain +
-// subdomain. Sub labels from the paste WIN over the current subdomain — an
-// explicit paste of `post.example.com` sets the sending subdomain to `post`.
-function reflowDomain() {
-	const split = trySplitZone(normalizedDomain.value);
-	if (!split) return; // invalid — the domain rule explains it on blur
-	domain.value = split.registrable;
-	if (split.sub) sub.value = split.sub;
-}
-
-// An NS verdict belongs to the exact zone it was resolved for. Clear the
-// advisory the moment the zone changes, so a live edit can't re-label the old
-// warning with the newly-typed zone before the next blur re-checks it. (The
-// in-flight lookup race is separately guarded by zone inside checkNs.)
-watch(registrableZone, () => {
-	nsUnresolved.value = false;
-});
-
-// Fail-soft NS advisory on the registrable zone (the name that actually
-// delegates NS). Never blocks; a lookup error stays silent.
-async function checkNs() {
-	nsUnresolved.value = false;
-	const zone = registrableZone.value;
-	if (!zone || isFreemail.value) return;
-	const resolves = await resolveNs(zone);
-	// Ignore a stale response if the zone changed while the lookup was in flight.
-	if (registrableZone.value === zone) nsUnresolved.value = resolves === false;
-}
-
-function handleDomainBlur() {
-	reflowDomain();
-	validation.touch('domain');
-	validation.validateField('domain', domain.value);
-	void checkNs();
-}
-
-function handleSubBlur() {
-	validation.touch('sub');
-	validation.validateField('sub', sub.value);
-}
-
-function chooseSubdomain(value: string) {
-	sub.value = value;
-	validation.touch('sub');
-	validation.validateField('sub', value);
-}
-
-function onSubmit() {
-	reflowDomain();
-	validation.touch('domain');
-	validation.touch('sub');
-	if (!validation.validate({ domain: domain.value, sub: sub.value })) return;
-	if (isFreemail.value) return;
-	emit('submit', combinedDomain.value);
-}
+// All the field state / zone math / validation lives in the composable so this
+// SFC stays a thin template binding (and under the file-size ratchet).
+const {
+	domain,
+	sub,
+	nsUnresolved,
+	advancedOpen,
+	returnPathSub,
+	normalizedSub,
+	normalizedReturnPathSub,
+	isApex,
+	combinedDomain,
+	registrableZone,
+	isFreemail,
+	returnPathZone,
+	domainError,
+	subError,
+	returnPathError,
+	showAddressPreview,
+	showReturnPathPreview,
+	domainInputId,
+	subInputId,
+	domainErrorId,
+	subErrorId,
+	previewId,
+	advancedPanelId,
+	returnPathInputId,
+	returnPathErrorId,
+	returnPathPreviewId,
+	domainDescribedBy,
+	subDescribedBy,
+	returnPathDescribedBy,
+	handleDomainBlur,
+	handleSubBlur,
+	handleReturnPathBlur,
+	chooseSubdomain,
+	onSubmit,
+} = useAddDomainForm(props, (payload) => emit('submit', payload));
 </script>
 
 <template>
@@ -367,6 +241,82 @@ function onSubmit() {
 						to publish.
 					</span>
 				</p>
+			</div>
+
+			<!-- Advanced: optional custom return-path (bounce) host. Collapsed by
+			     default so the common two-field path stays simple. Sending-only — the
+			     tracking context has no return path, so the whole disclosure is hidden. -->
+			<div v-if="context === 'sending'" data-testid="advanced">
+				<button
+					type="button"
+					class="flex items-center gap-1.5 text-xs font-medium text-text-secondary hover:text-text-primary"
+					:aria-expanded="advancedOpen"
+					:aria-controls="advancedPanelId"
+					data-testid="advanced-toggle"
+					:disabled="loading"
+					@click="advancedOpen = !advancedOpen"
+				>
+					<Icon
+						name="lucide:chevron-right"
+						class="h-3.5 w-3.5 transition-transform"
+						:class="advancedOpen ? 'rotate-90' : ''"
+					/>
+					Advanced
+				</button>
+
+				<div
+					v-if="advancedOpen"
+					:id="advancedPanelId"
+					class="mt-3 rounded-lg border border-border-subtle bg-bg-surface p-3"
+					data-testid="advanced-section"
+				>
+					<label :for="returnPathInputId" class="label">
+						Bounce (return-path) subdomain
+						<span class="font-normal text-text-tertiary">— optional</span>
+					</label>
+					<input
+						:id="returnPathInputId"
+						v-model="returnPathSub"
+						type="text"
+						placeholder="bounce"
+						autocapitalize="off"
+						autocorrect="off"
+						spellcheck="false"
+						:class="['input', returnPathError && 'input-error']"
+						:disabled="loading"
+						:aria-invalid="returnPathError ? 'true' : undefined"
+						:aria-describedby="returnPathDescribedBy"
+						data-testid="returnpath-input"
+						@blur="handleReturnPathBlur"
+					/>
+					<p
+						v-if="returnPathError"
+						:id="returnPathErrorId"
+						class="mt-1 text-xs text-error"
+						data-testid="returnpath-error"
+					>
+						{{ returnPathError }}
+					</p>
+					<!-- Live preview, same discipline as the sending address: suppressed on
+					     error, empty state framed as an example not a promise. -->
+					<p
+						v-if="showReturnPathPreview"
+						:id="returnPathPreviewId"
+						class="mt-1 text-xs text-text-secondary"
+						data-testid="returnpath-preview"
+					>
+						<template v-if="normalizedReturnPathSub">
+							Bounces will come from
+							<strong class="text-text-primary"
+								>{{ normalizedReturnPathSub }}.{{ returnPathZone }}</strong
+							>
+						</template>
+						<template v-else>
+							For example, bounces would come from
+							<span class="font-medium text-text-primary">bounce.{{ returnPathZone }}</span>
+						</template>
+					</p>
+				</div>
 			</div>
 
 			<!-- Blocking: freemail / public-mailbox domain the user can't publish DNS for. -->
