@@ -1,14 +1,13 @@
 // @vitest-environment happy-dom
 /**
- * Sending-domains page copy — piece B2 of the DNS Setup Revamp.
+ * Sending-domains page — pieces B2 + C2 of the DNS Setup Revamp.
  *
- * Two facts are pinned here:
- *   1. The Add-Domain modal states the CONSEQUENCE of the entered domain via a
- *      LIVE `you@<domain>` preview that updates as the user types, with a
- *      sensible empty state — not a bare "enter a domain" hint.
- *   2. The per-transport DNS guidance banner is DEMOTED below the "Why add a
- *      custom domain?" card, so the first thing under the h1 builds the mental
- *      model instead of naming transports.
+ * B2 demoted the per-transport DNS guidance banner below the "Why add a custom
+ * domain?" card. C2 extracted the Add-Domain modal body into the standalone
+ * DomainsAddDomainForm component — so the modal-copy behaviour (live preview,
+ * apex, freemail, paste round-trip) is now covered by REAL MOUNTS in
+ * addDomainForm.test.ts, and this file only pins what still lives on the page:
+ * the banner ordering and the modal's delegation to the form component.
  *
  * `domains.vue` is Convex-query driven (a dozen composables + a page-meta/head
  * call at module scope) and awkward to mount in happy-dom, so — exactly as the
@@ -27,54 +26,22 @@ import { dirname, resolve } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const pageSource = readFileSync(resolve(here, '../domains.vue'), 'utf8');
 
-describe('Add-Domain modal — live address preview', () => {
-	it('drops the bare "enter a domain" hint for a consequence-stating one', () => {
-		expect(pageSource).not.toContain('Enter the domain you want to use for sending emails');
-	});
-
-	it('renders a live you@<domain> preview bound to the typed field', () => {
-		// The preview element interpolates the reactive `previewDomain` computed
-		// into a `you@…` address — a data binding, so it is not a static string.
-		const preview = pageSource.match(
-			/data-testid="address-preview"[\s\S]*?you@\{\{\s*previewDomain[\s\S]*?<\/p>/
-		);
-		expect(preview).not.toBeNull();
-	});
-
-	it('derives the preview reactively from the v-model field, so typing updates it', () => {
-		// `previewDomain` is computed off `addForm.domain` — the same reactive
-		// target the input's v-model writes — so each keystroke re-renders it.
-		expect(pageSource).toMatch(/const previewDomain = computed\(\(\) => addForm\.domain/);
-		expect(pageSource).toContain('v-model="addForm.domain"');
-	});
-
-	it('frames the empty state as an explicit example, not an outcome promise', () => {
-		// Empty field: `<template v-else>` reads "For example … would be" with a
-		// plain <span> (not a bold "will be" promise), so it can't be mistaken for
-		// the real address before anything is typed.
+describe('Add-Domain modal — delegated to the guided form component', () => {
+	it('renders the extracted form inside the modal, passing loading + wiring submit/cancel', () => {
 		expect(pageSource).toMatch(
-			/<template v-else>[\s\S]*?For example[\s\S]*?you@mail\.example\.com[\s\S]*?<\/template>/
-		);
-		// The "will be" promise is reserved for a non-empty entry.
-		expect(pageSource).toMatch(
-			/<template v-if="previewDomain">[\s\S]*?Your addresses will be[\s\S]*?you@\{\{ previewDomain \}\}/
+			/<UiModal[\s\S]*?<DomainsAddDomainForm[\s\S]*?:loading="addModal\.isLoading\.value"[\s\S]*?@submit="handleAddDomain"[\s\S]*?@cancel="addModal\.close\(\)"/
 		);
 	});
 
-	it('suppresses the preview when a validation error or freemail block owns the field', () => {
-		// The preview element is gated on `showAddressPreview`…
-		expect(pageSource).toMatch(/v-if="showAddressPreview"[\s\S]*?data-testid="address-preview"/);
-		// …which is false when the domain is freemail (live) or failed validation.
-		expect(pageSource).toMatch(
-			/const showAddressPreview = computed\(\(\) => !isFreemail\.value && !validation\.hasError\('domain'\)\)/
-		);
+	it('no longer inlines the old single free-text modal body', () => {
+		// The bare inline field + its state left with the extraction.
+		expect(pageSource).not.toContain('v-model="addForm.domain"');
+		expect(pageSource).not.toContain('data-testid="address-preview"');
 	});
 
-	it('wires the preview to the input via aria-describedby for announcement', () => {
-		expect(pageSource).toContain(
-			':aria-describedby="showAddressPreview ? \'domain-name-preview\' : undefined"'
-		);
-		expect(pageSource).toContain('id="domain-name-preview"');
+	it('the create handler just registers the composed string the form emits', () => {
+		expect(pageSource).toMatch(/const handleAddDomain = async \(domain: string\) =>/);
+		expect(pageSource).toContain('await createDomain({ domain })');
 	});
 });
 
