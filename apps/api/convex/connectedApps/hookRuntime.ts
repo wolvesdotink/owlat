@@ -46,11 +46,7 @@ import {
 } from './hookOutcome';
 import type { ConnectedAppHookKind, ConnectedAppHookResult } from './hookProtocol';
 import { isHookCircuitOpen } from './hookCircuit';
-import type {
-	HookExecutionContext,
-	HookSecretEnvelope,
-	LoadedHookContext,
-} from './hookStore';
+import type { HookExecutionContext, HookSecretEnvelope, LoadedHookContext } from './hookStore';
 
 /** Coerce the internal payload arg to a plain JSON object (never trusts prototype). */
 function asPayload(value: unknown): JsonObject {
