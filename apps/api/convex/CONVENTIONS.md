@@ -259,6 +259,18 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   code. A plugin may continue or request one declared host-approved caution
   edge; it may not choose another step, approve, send, or receive a raw Convex
   context. Invalid output and execution failure fail closed with redacted audit.
+- Assistant tools are hosted modules (`assistant/toolRegistry.ts`) carrying flag,
+  scope, spend, and scrub metadata; `buildAssistantTools` assembles the AI-SDK
+  `ToolSet`. The host injection-scrubs every tool output — synchronous, promised,
+  or streamed chunk-by-chunk — before it can reach a prompt; a tool is untrusted
+  text regardless of what it scrubs internally. A declared flag that is OFF or
+  absent from the resolved map omits the tool (feature-off ⇒ it does not exist for
+  the model); when no module is flagged the assembler does zero flag I/O.
+- The assistant-tool scope union has no write or send member: no tool mutates
+  workspace state or sends mail. Host-side assembled-context re-scan and the
+  route-time autonomy gates stay outside tool implementations, and tool errors
+  propagate to the runner's `onToolError` unchanged — the scrub wrapper never
+  swallows, rewraps, or scrubs a rejection, only a fulfilled output.
 
 ## Environment variables
 
