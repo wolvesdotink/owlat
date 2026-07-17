@@ -22,6 +22,7 @@
  * `context === 'sending'` so the tracking context (which has no return path)
  * suppresses it.
  */
+import { useId } from 'vue';
 import { trySplitZone, isDnsLabel } from '@owlat/shared';
 import { isFreemailDomain, resolveNs } from '~/utils/domainPrecheck';
 import { useFormValidation, rules, type ValidationRule } from '~/composables/useFormValidation';
@@ -132,6 +133,16 @@ const validation = useFormValidation({
 const domainError = computed(() => validation.getError('domain'));
 const subError = computed(() => validation.getError('sub'));
 
+// Unique, stable DOM ids per instance — this form is mounted twice on the
+// domains page (sending modal + tracking modal), so hardcoded ids would collide.
+// `useId` keeps each label↔input and aria-describedby link uniquely scoped.
+const uid = useId();
+const domainInputId = `${uid}-domain`;
+const subInputId = `${uid}-sub`;
+const domainErrorId = `${uid}-domain-error`;
+const subErrorId = `${uid}-sub-error`;
+const previewId = `${uid}-preview`;
+
 // Only promise "you'll send as …" when the preview would be truthful: not a
 // freemail domain (live), and no field currently carries a validation error.
 // `hasError` reflects the last blur/submit — mirroring the B2 preview semantics
@@ -146,11 +157,11 @@ const showAddressPreview = computed(
 // (when shown); the subdomain input points at its error.
 const domainDescribedBy = computed(() => {
 	const ids: string[] = [];
-	if (domainError.value) ids.push('add-domain-error');
-	if (showAddressPreview.value) ids.push('add-domain-preview');
+	if (domainError.value) ids.push(domainErrorId);
+	if (showAddressPreview.value) ids.push(previewId);
 	return ids.length > 0 ? ids.join(' ') : undefined;
 });
-const subDescribedBy = computed(() => (subError.value ? 'add-domain-sub-error' : undefined));
+const subDescribedBy = computed(() => (subError.value ? subErrorId : undefined));
 
 // Pasting a full domain into the domain field reflows it into domain +
 // subdomain. Sub labels from the paste WIN over the current subdomain — an
@@ -214,11 +225,11 @@ function onSubmit() {
 		<div class="space-y-4">
 			<!-- Your domain (registrable zone) -->
 			<div>
-				<label for="add-domain-name" class="label">
+				<label :for="domainInputId" class="label">
 					Your domain <span class="text-error">*</span>
 				</label>
 				<input
-					id="add-domain-name"
+					:id="domainInputId"
 					v-model="domain"
 					type="text"
 					placeholder="example.com"
@@ -229,23 +240,29 @@ function onSubmit() {
 					:disabled="loading"
 					:aria-invalid="domainError ? 'true' : undefined"
 					:aria-describedby="domainDescribedBy"
+					data-testid="domain-input"
 					@blur="handleDomainBlur"
 				/>
-				<p v-if="domainError" id="add-domain-error" class="mt-1 text-xs text-error">
+				<p
+					v-if="domainError"
+					:id="domainErrorId"
+					class="mt-1 text-xs text-error"
+					data-testid="domain-error"
+				>
 					{{ domainError }}
 				</p>
 			</div>
 
 			<!-- Sending subdomain (free-form, with suggestions) -->
 			<div>
-				<label for="add-domain-sub" class="label">
+				<label :for="subInputId" class="label">
 					{{ subdomainLabel }}
 					<span v-if="subdomainHint" class="font-normal text-text-tertiary">
 						{{ subdomainHint }}</span
 					>
 				</label>
 				<input
-					id="add-domain-sub"
+					:id="subInputId"
 					v-model="sub"
 					type="text"
 					:placeholder="subdomainPlaceholder"
@@ -256,6 +273,7 @@ function onSubmit() {
 					:disabled="loading"
 					:aria-invalid="subError ? 'true' : undefined"
 					:aria-describedby="subDescribedBy"
+					data-testid="sub-input"
 					@blur="handleSubBlur"
 				/>
 				<div class="mt-2 flex flex-wrap items-center gap-2">
@@ -291,7 +309,7 @@ function onSubmit() {
 						none (use apex)
 					</button>
 				</div>
-				<p v-if="subError" id="add-domain-sub-error" class="mt-1 text-xs text-error">
+				<p v-if="subError" :id="subErrorId" class="mt-1 text-xs text-error" data-testid="sub-error">
 					{{ subError }}
 				</p>
 			</div>
@@ -302,7 +320,7 @@ function onSubmit() {
 			     Wired to the domain input via aria-describedby so it is announced. -->
 			<p
 				v-if="showAddressPreview"
-				id="add-domain-preview"
+				:id="previewId"
 				class="text-xs text-text-secondary"
 				data-testid="address-preview"
 			>

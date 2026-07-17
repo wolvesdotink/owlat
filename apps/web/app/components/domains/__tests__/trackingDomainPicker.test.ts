@@ -64,8 +64,9 @@ function mountTrackingForm() {
 	});
 }
 
-const domainInput = (w: ReturnType<typeof mountTrackingForm>) => w.get('#add-domain-name');
-const subInput = (w: ReturnType<typeof mountTrackingForm>) => w.get('#add-domain-sub');
+const domainInput = (w: ReturnType<typeof mountTrackingForm>) =>
+	w.get('[data-testid="domain-input"]');
+const subInput = (w: ReturnType<typeof mountTrackingForm>) => w.get('[data-testid="sub-input"]');
 const preview = (w: ReturnType<typeof mountTrackingForm>) =>
 	w.find('[data-testid="address-preview"]');
 
