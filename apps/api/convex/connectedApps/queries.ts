@@ -5,9 +5,11 @@
  */
 
 import { v } from 'convex/values';
+import { internalQuery } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { toPublicConnectedApp, type PublicConnectedApp } from './model';
+import type { ConnectedAppStatus } from './lifecycle';
 import { loadConnectedAppInOrg } from './repository';
 
 /** Max connected apps returned in one list page — the table is tiny per org. */
@@ -42,5 +44,25 @@ export const get = authedQuery({
 		);
 		const row = await loadConnectedAppInOrg(ctx, args.connectedAppId, activeOrganizationId);
 		return toPublicConnectedApp(row);
+	},
+});
+
+/**
+ * Load the tenant-scoped endpoint + status for the connection-test action.
+ * Internal-only: the Node action (`connectedApps/actions.testConnection`) runs
+ * this in the caller's propagated session to re-gate owner/admin and resolve the
+ * endpoint without exposing any secret material. Returns only what the probe
+ * needs — never the sealed secret columns.
+ */
+export const _loadEndpointForTest = internalQuery({
+	args: { connectedAppId: v.id('connectedApps') },
+	handler: async (ctx, args): Promise<{ endpointUrl: string; status: ConnectedAppStatus }> => {
+		const { activeOrganizationId } = await requireOrgPermission(
+			ctx,
+			'organization:manage',
+			'Only owners and admins can test connected apps'
+		);
+		const row = await loadConnectedAppInOrg(ctx, args.connectedAppId, activeOrganizationId);
+		return { endpointUrl: row.endpointUrl, status: row.status };
 	},
 });

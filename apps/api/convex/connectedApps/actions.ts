@@ -10,11 +10,11 @@
  * plaintext is returned to the caller EXACTLY ONCE — at register or rotate — and
  * is never stored, never logged, and never returned by any query.
  *
- *   Public: register, rotateSecret
+ *   Public: register, rotateSecret, testConnection
  *
- * Both are `authedAction` (authenticated-member floor); the owner/admin
+ * All three are `authedAction` (authenticated-member floor); the owner/admin
  * authorization, input validation, and persistence live in the internal
- * mutations these actions delegate to, in the caller's propagated session.
+ * functions these actions delegate to, in the caller's propagated session.
  */
 
 import { v } from 'convex/values';
@@ -22,6 +22,7 @@ import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import { generateConnectedAppSecret, sealConnectedAppSecret } from './secretBox';
+import { probeConnectedAppEndpoint, type ConnectedAppConnectionTestResult } from './connectionTest';
 import type { PublicConnectedApp } from './model';
 
 /** A sealed envelope ready for an internal mutation, plus the one-time plaintext. */
@@ -90,5 +91,32 @@ export const rotateSecret = authedAction({
 			...envelope,
 		});
 		return { connectedAppId: args.connectedAppId, secret };
+	},
+});
+
+/**
+ * Test whether a connected app's hook endpoint is reachable. Resolves the
+ * tenant-scoped endpoint via an owner/admin-gated internal query, then runs a
+ * single SSRF-guarded, deadline-bounded probe (see `connectionTest.ts`). This is
+ * NOT a signed hook: it carries no secret and grants the app nothing. A revoked
+ * app is refused without any network request — its endpoint is dead. The probe
+ * never throws, so the result always fails closed to a clear outcome.
+ */
+// authz: owner/admin gate lives in the delegated internal query
+// connectedApps.queries._loadEndpointForTest (requireOrgPermission).
+export const testConnection = authedAction({
+	args: { connectedAppId: v.id('connectedApps') },
+	handler: async (ctx, args): Promise<ConnectedAppConnectionTestResult> => {
+		const target = await ctx.runQuery(internal.connectedApps.queries._loadEndpointForTest, {
+			connectedAppId: args.connectedAppId,
+		});
+		if (target.status === 'revoked') {
+			return {
+				outcome: 'blocked',
+				status: null,
+				message: 'This app is revoked. Register a new app to test a fresh connection.',
+			};
+		}
+		return probeConnectedAppEndpoint(target.endpointUrl);
 	},
 });

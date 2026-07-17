@@ -28,7 +28,28 @@ import { readStreamBytes, StreamByteLimitExceeded } from '@owlat/shared';
 import { isDisallowedIpAddress } from './ipBlocklist';
 export { isDisallowedIpAddress } from './ipBlocklist';
 
-export type ValidatedUrl = { ok: true; url: URL } | { ok: false; error: string };
+/**
+ * Why {@link validatePublicUrl} rejected a URL. A machine-readable discriminant
+ * so callers switch on the REASON rather than matching the operator-facing
+ * `error` text (which is free to be reworded).
+ *   - `invalid_format` — not a parseable URL.
+ *   - `protocol`       — the scheme is not in the allowed set.
+ *   - `missing_host`   — no hostname.
+ *   - `blocked_address`— resolves to a private/internal/loopback address (SSRF).
+ *   - `resolve_failed` — DNS resolution errored.
+ *   - `no_address`     — DNS resolved to no addresses.
+ */
+export type UrlRejectionCode =
+	| 'invalid_format'
+	| 'protocol'
+	| 'missing_host'
+	| 'blocked_address'
+	| 'resolve_failed'
+	| 'no_address';
+
+export type ValidatedUrl =
+	| { ok: true; url: URL }
+	| { ok: false; error: string; code: UrlRejectionCode };
 
 /**
  * Parse + validate a user-supplied URL for safe server-side fetching: enforces
@@ -48,21 +69,29 @@ export async function validatePublicUrl(
 	try {
 		parsed = new URL(urlStr);
 	} catch {
-		return { ok: false, error: 'Invalid URL format' };
+		return { ok: false, error: 'Invalid URL format', code: 'invalid_format' };
 	}
 
 	if (!protocols.includes(parsed.protocol)) {
-		return { ok: false, error: `URL must use ${protocols.join('/')} protocol` };
+		return {
+			ok: false,
+			error: `URL must use ${protocols.join('/')} protocol`,
+			code: 'protocol',
+		};
 	}
 
 	const hostname = parsed.hostname;
 	if (!hostname) {
-		return { ok: false, error: 'URL hostname is missing' };
+		return { ok: false, error: 'URL hostname is missing', code: 'missing_host' };
 	}
 
 	if (isIP(hostname)) {
 		if (isDisallowedIpAddress(hostname)) {
-			return { ok: false, error: 'URL resolves to a disallowed (private/internal) IP address' };
+			return {
+				ok: false,
+				error: 'URL resolves to a disallowed (private/internal) IP address',
+				code: 'blocked_address',
+			};
 		}
 		return { ok: true, url: parsed };
 	}
@@ -71,16 +100,24 @@ export async function validatePublicUrl(
 	try {
 		records = await dns.lookup(hostname, { all: true, verbatim: true });
 	} catch {
-		return { ok: false, error: 'Failed to resolve URL hostname' };
+		return { ok: false, error: 'Failed to resolve URL hostname', code: 'resolve_failed' };
 	}
 
 	if (records.length === 0) {
-		return { ok: false, error: 'URL hostname did not resolve to any address' };
+		return {
+			ok: false,
+			error: 'URL hostname did not resolve to any address',
+			code: 'no_address',
+		};
 	}
 
 	for (const record of records) {
 		if (isDisallowedIpAddress(record.address)) {
-			return { ok: false, error: 'URL resolves to a disallowed (private/internal) IP address' };
+			return {
+				ok: false,
+				error: 'URL resolves to a disallowed (private/internal) IP address',
+				code: 'blocked_address',
+			};
 		}
 	}
 
@@ -183,6 +220,25 @@ export async function readCappedBytes(
 }
 
 /**
+ * Base class for {@link fetchGuarded}'s own refusals. Lets a caller classify a
+ * blocked fetch by TYPE (`instanceof`) instead of matching the thrown message
+ * text — the message is operator-facing wording and free to change, whereas the
+ * type is a stable contract. A plain network error (DNS/socket failure) is NOT
+ * an instance of this class, so `unreachable`-style fallbacks still catch it.
+ */
+export class FetchGuardError extends Error {}
+
+/**
+ * The destination is on the SSRF blocklist — it resolved to a private, internal,
+ * loopback or link-local address. Thrown from the up-front {@link validatePublicUrl}
+ * check (the connect-time re-resolution surfaces as a plain network error).
+ */
+export class SsrfBlockedError extends FetchGuardError {}
+
+/** The destination answered with a 3xx redirect, which the guard refuses to follow. */
+export class RedirectRefusedError extends FetchGuardError {}
+
+/**
  * Fetch a user-supplied URL with SSRF protection:
  *   1. validate the destination against the private/internal blocklist;
  *   2. re-validate the resolved address(es) at CONNECT time via a custom
@@ -202,7 +258,10 @@ export async function fetchGuarded(
 	const { protocols, ...requestInit } = init;
 	const check = await validatePublicUrl(urlStr, { protocols });
 	if (!check.ok) {
-		throw new Error(`Blocked fetch of "${urlStr}": ${check.error}`);
+		const message = `Blocked fetch of "${urlStr}": ${check.error}`;
+		throw check.code === 'blocked_address'
+			? new SsrfBlockedError(message)
+			: new FetchGuardError(message);
 	}
 	const res = await fetch(urlStr, {
 		...requestInit,
@@ -212,7 +271,7 @@ export async function fetchGuarded(
 		dispatcher: guardedDispatcher(),
 	});
 	if (res.status >= 300 && res.status < 400) {
-		throw new Error(
+		throw new RedirectRefusedError(
 			`Blocked fetch of "${urlStr}": refusing to follow redirect (to ${res.headers.get('location') ?? 'unknown'}) — possible SSRF`
 		);
 	}
