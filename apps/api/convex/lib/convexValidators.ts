@@ -147,11 +147,11 @@ export const abTestConfigValidator = v.object({
 	testDuration: v.optional(v.number()),
 });
 
-// Automation trigger config
 export const triggerConfigValidator = v.union(
 	v.object({ propertyKey: v.string() }),
 	v.object({ eventName: v.string() }),
-	v.object({ topicId: v.string() })
+	v.object({ topicId: v.string() }),
+	v.object({ pluginConfig: jsonPrimitiveRecord }) // plugin trigger config: opaque flat record, plugin-validated
 );
 
 // Automation step config. Condition step: `{ condition, yesBranchStepIndex?, noBranchStepIndex? }` (ADR-0004).

@@ -165,6 +165,19 @@ async function fanoutTrigger(
 // ============== Host-composed plugin trigger firing ==============
 
 /**
+ * Unwrap a plugin trigger's persisted config. Plugin automations store their
+ * trigger config under the `{ pluginConfig }` arm of `triggerConfigValidator`
+ * (mirroring `pluginConfig` on step config), so the plugin's `parseConfig` sees
+ * its own opaque record — never the host's core config shapes. A row without the
+ * arm yields `{}` so a config-less plugin trigger still parses.
+ */
+function unwrapPluginTriggerConfig(raw: unknown): unknown {
+	return raw && typeof raw === 'object' && 'pluginConfig' in raw
+		? (raw as { pluginConfig: unknown }).pluginConfig
+		: {};
+}
+
+/**
  * Fire a bundled plugin trigger. This is the host seam a plugin's own code
  * (e.g. a future webhook-event source) calls to fan a contact into automations
  * that subscribe to its namespaced trigger kind. Fails closed: an unknown kind,
@@ -196,7 +209,7 @@ export const firePluginTrigger = internalMutation({
 
 		const input = { contactId: args.contactId, payload: args.payload ?? {} };
 		const erased: ErasedTriggerModule = {
-			parseConfig: (raw) => module.parseConfig(raw),
+			parseConfig: (raw) => module.parseConfig(unwrapPluginTriggerConfig(raw)),
 			matches: (fireInput, config) => module.matches(fireInput as typeof input, config),
 			...(module.buildTriggerData
 				? {
