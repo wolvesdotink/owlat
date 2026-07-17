@@ -25,7 +25,7 @@ import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import Redis from 'ioredis-mock';
 import type IORedis from 'ioredis';
-import { SmtpConnection, sendEnvelope } from '@owlat/smtp-client';
+import { SmtpConnection, sendEnvelope, isSmtpError } from '@owlat/smtp-client';
 import {
 	SmtpConnectionPool,
 	smtpPoolReused,
@@ -37,20 +37,35 @@ import { MX_CERT, MX_KEY } from './certFixture.js';
 const cleanups: Array<() => Promise<void> | void> = [];
 
 afterEach(async () => {
-	for (const fn of cleanups.splice(0)) {
+	// LIFO: close the pool (which may park a live idle socket) BEFORE the fake MX
+	// it connected to. `server.close()` waits for every open connection to end, so
+	// tearing the MX down while the pool still holds a socket hangs the hook — run
+	// cleanups in reverse insertion order (the pool is pushed after its MX).
+	for (const fn of cleanups.splice(0).reverse()) {
 		await fn();
 	}
 });
 
+/** Poll `pred` until it holds or the deadline elapses (for fire-and-forget QUITs). */
+async function waitUntil(pred: () => boolean, timeoutMs = 1_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!pred() && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+}
+
 interface FakeMx {
 	port: number;
 	connections(): number;
+	/** Cleartext QUIT commands observed across all sessions (proves a clean QUIT teardown). */
+	quits(): number;
 	messages(): Array<{ to: string[]; body: string; secure: boolean }>;
 }
 
 /** A loopback fake MX. `starttls: true` advertises + accepts STARTTLS (self-signed). */
 async function startFakeMx(opts: { starttls?: boolean } = {}): Promise<FakeMx> {
 	let connections = 0;
+	let quits = 0;
 	const messages: Array<{ to: string[]; body: string; secure: boolean }> = [];
 	const server = new SMTPServer({
 		secure: false,
@@ -77,6 +92,17 @@ async function startFakeMx(opts: { starttls?: boolean } = {}): Promise<FakeMx> {
 		},
 	});
 	server.on('error', () => {});
+	// Sniff cleartext client→server bytes in parallel with smtp-server's own parser
+	// (a `.pipe()` is non-exclusive, so an extra 'data' listener sees the same
+	// chunks) to observe a graceful QUIT. This distinguishes a clean QUIT teardown
+	// from a destroyed socket, which `connections()` alone cannot. Post-STARTTLS
+	// traffic is encrypted on a different socket, so QUIT sniffing covers the
+	// cleartext sessions the QUIT assertions use.
+	server.server.on('connection', (socket) => {
+		socket.on('data', (chunk: Buffer) => {
+			if (/^QUIT\b/im.test(chunk.toString('utf8'))) quits += 1;
+		});
+	});
 	await new Promise<void>((resolve, reject) => {
 		server.once('error', reject);
 		server.listen(0, '127.0.0.1', () => {
@@ -86,19 +112,40 @@ async function startFakeMx(opts: { starttls?: boolean } = {}): Promise<FakeMx> {
 	});
 	const port = (server.server.address() as AddressInfo).port;
 	cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
-	return { port, connections: () => connections, messages: () => messages };
+	return {
+		port,
+		connections: () => connections,
+		quits: () => quits,
+		messages: () => messages,
+	};
+}
+
+/** Per-connection misbehaviour a {@link startRawMx} peer injects, keyed by connection index. */
+interface RawConnBehavior {
+	/** Override the MAIL FROM reply (e.g. a `421` channel close) instead of the default 250. */
+	mailReply?: string;
+	/** Destroy the socket immediately after answering MAIL FROM (a poisoned pre-DATA session). */
+	destroyOnMail?: boolean;
+	/** Destroy the socket after the body but BEFORE the final reply (socket death mid-stream). */
+	destroyMidData?: boolean;
+	/** After the final 250, destroy the (now idle, parked) socket this many ms later. */
+	destroyWhenIdleMs?: number;
 }
 
 /**
- * A raw loopback SMTP peer that DESTROYS the socket mid-DATA on its first
- * connection and behaves normally on every later connection. Reproduces a socket
- * death mid-stream without smtp-server's graceful handling.
+ * A raw loopback SMTP peer whose behaviour per connection is scripted by
+ * `behavior(connIndex)`. Speaks enough SMTP (EHLO/MAIL/RCPT/DATA/QUIT) to drive
+ * the pool's reuse lifecycle without smtp-server's graceful handling, so the
+ * guardrail tests can inject a mid-stream death, a 421 channel close, or an
+ * idle-socket close. One faithful read loop shared by every guardrail case.
  */
-async function startFlakyRawMx(): Promise<{ port: number; connections(): number }> {
+async function startRawMx(
+	behavior: (connIndex: number) => RawConnBehavior = () => ({})
+): Promise<{ port: number; connections(): number }> {
 	let connIndex = 0;
 	const server = net.createServer((socket) => {
 		connIndex += 1;
-		const dropThisConnection = connIndex === 1;
+		const b = behavior(connIndex);
 		socket.on('error', () => {});
 		socket.write('220 raw.test ESMTP\r\n');
 		let buffer = '';
@@ -110,10 +157,13 @@ async function startFlakyRawMx(): Promise<{ port: number; connections(): number 
 				if (dotIdx !== -1) {
 					inData = false;
 					buffer = buffer.slice(dotIdx + 5);
-					if (dropThisConnection) {
+					if (b.destroyMidData) {
 						socket.destroy(); // die AFTER the body, before the final reply
-					} else {
-						socket.write('250 2.0.0 queued\r\n');
+						return;
+					}
+					socket.write('250 2.0.0 queued\r\n');
+					if (b.destroyWhenIdleMs !== undefined) {
+						setTimeout(() => socket.destroy(), b.destroyWhenIdleMs);
 					}
 				}
 				return;
@@ -123,7 +173,15 @@ async function startFlakyRawMx(): Promise<{ port: number; connections(): number 
 				const line = buffer.slice(0, nl).replace(/\r$/, '');
 				buffer = buffer.slice(nl + 1);
 				if (/^EHLO/i.test(line)) socket.write('250 raw.test\r\n');
-				else if (/^DATA$/i.test(line)) {
+				else if (/^MAIL FROM/i.test(line) && b.mailReply !== undefined) {
+					socket.write(b.mailReply);
+					if (b.destroyOnMail) {
+						// Defer the destroy one tick so the reply flushes to the client first
+						// (a 421 the client must classify before the channel drops).
+						setImmediate(() => socket.destroy());
+						return;
+					}
+				} else if (/^DATA$/i.test(line)) {
 					inData = true;
 					socket.write('354 go ahead\r\n');
 				} else if (/^QUIT$/i.test(line)) socket.write('221 bye\r\n');
@@ -173,9 +231,29 @@ async function deliverOnce(
 		pool.release(key);
 		return { reused, secured };
 	} catch (err) {
-		pool.evictConnection(key, conn);
+		// Mirror the real sender: a clean pre-DATA reply rejection leaves the socket
+		// healthy → park it (the next job's RSET clears the aborted transaction); any
+		// other fault (transport death, 421 channel close, DATA-phase ambiguity)
+		// poisons the socket → evict the entry and release its slot.
+		if (isHealthyPreDataRejection(err)) {
+			pool.storeConnection(key, conn);
+			pool.release(key);
+		} else {
+			pool.evictConnection(key, conn);
+		}
 		throw err;
 	}
+}
+
+/** The sender's park-vs-evict predicate (mirrored so this suite exercises the real policy). */
+function isHealthyPreDataRejection(err: unknown): boolean {
+	return (
+		isSmtpError(err) &&
+		err.tlsCause === undefined &&
+		err.replyCode !== undefined &&
+		err.replyCode !== 421 &&
+		(err.phase === 'mail' || err.phase === 'rcpt')
+	);
 }
 
 async function reusedTotal(): Promise<number> {
@@ -209,6 +287,10 @@ describe('SmtpConnectionPool — true socket reuse (X1)', () => {
 		expect(next.reused).toBe(false);
 		expect(mx.connections()).toBe(2); // exactly one reconnect
 		expect(mx.messages()).toHaveLength(cap + 1);
+		// The capped socket was retired with a graceful QUIT (observed on the wire), not
+		// destroyed — connections()===2 alone would also hold for a destroyed socket.
+		await waitUntil(() => mx.quits() >= 1);
+		expect(mx.quits()).toBe(1);
 		// No state leaked between transactions: every message carried its OWN recipient.
 		expect(mx.messages().map((m) => m.to[0])).toEqual([
 			'r1@rcpt.test',
@@ -219,7 +301,7 @@ describe('SmtpConnectionPool — true socket reuse (X1)', () => {
 	});
 
 	it('(b) a socket death mid-stream evicts the entry, releases the Redis slot, and the retry uses a fresh connection exactly once', async () => {
-		const mx = await startFlakyRawMx();
+		const mx = await startRawMx((i) => (i === 1 ? { destroyMidData: true } : {}));
 		const pool = makePool(mx.port);
 		const redis = new Redis();
 		pool.enableDistributedCoordination(redis as unknown as IORedis, 10, 'srv-reuse');
@@ -271,5 +353,68 @@ describe('SmtpConnectionPool — true socket reuse (X1)', () => {
 		const after = await reusedTotal();
 
 		expect(after - before).toBe(2);
+	});
+
+	it('(guardrail) an idle socket past maxAgeMs is retired with a clean QUIT and the next job reconnects', async () => {
+		const mx = await startFakeMx();
+		// A lifetime long enough to park the first socket, short enough to age it out
+		// before the second delivery (which waits well past it).
+		const pool = makePool(mx.port, { maxAgeMs: 120, maxMessagesPerConnection: 100 });
+
+		const first = await deliverOnce(pool, mx.port, { to: ['r1@rcpt.test'], body: body(1) });
+		expect(first.reused).toBe(false); // opened + parked
+
+		// Let the parked socket age past maxAgeMs while idle.
+		await new Promise((resolve) => setTimeout(resolve, 220));
+
+		const second = await deliverOnce(pool, mx.port, { to: ['r2@rcpt.test'], body: body(2) });
+		// takeConnection saw the aged socket, QUIT it cleanly, and the caller reconnected.
+		expect(second.reused).toBe(false);
+		expect(mx.connections()).toBe(2);
+		await waitUntil(() => mx.quits() >= 1);
+		expect(mx.quits()).toBe(1);
+	});
+
+	it('(guardrail) a parked socket the MX closed while idle fails its RSET probe → the caller connects fresh', async () => {
+		// Connection 1 serves one delivery, then (40 ms after the final 250) the MX
+		// destroys the now-idle parked socket. The next takeConnection finds a dead
+		// socket, its RSET probe throws, and the pool discards it and returns undefined.
+		const mx = await startRawMx((i) => (i === 1 ? { destroyWhenIdleMs: 40 } : {}));
+		const pool = makePool(mx.port);
+
+		const first = await deliverOnce(pool, mx.port, { to: ['r1@rcpt.test'], body: body(1) });
+		expect(first.reused).toBe(false); // opened + parked
+
+		// Wait for the MX to kill the parked socket (the client observes the close,
+		// flipping the reader to failed) before the next delivery probes it.
+		await new Promise((resolve) => setTimeout(resolve, 120));
+
+		const second = await deliverOnce(pool, mx.port, { to: ['r2@rcpt.test'], body: body(2) });
+		expect(second.reused).toBe(false); // RSET probe failed → fresh connect
+		expect(mx.connections()).toBe(2);
+	});
+
+	it('(guardrail, b/421) a 421 mid-session evicts the entry, releases the slot, and the retry uses a fresh connection', async () => {
+		// Connection 1 answers MAIL FROM with 421 (service closing) then drops the
+		// socket — a channel close, NOT a reusable bounce. The pool must evict and
+		// release the slot; connection 2 (the retry) is served normally.
+		const mx = await startRawMx((i) =>
+			i === 1 ? { mailReply: '421 4.7.0 service closing\r\n', destroyOnMail: true } : {}
+		);
+		const pool = makePool(mx.port);
+		const redis = new Redis();
+		pool.enableDistributedCoordination(redis as unknown as IORedis, 10, 'srv-421');
+
+		await expect(
+			deliverOnce(pool, mx.port, { to: ['r1@rcpt.test'], body: body(1) })
+		).rejects.toThrow();
+
+		expect(pool.size).toBe(0); // 421 is not a healthy pre-DATA bounce → entry evicted
+		expect(await pool.getGlobalConnectionCount('127.0.0.1')).toBe(0); // slot released
+
+		const retry = await deliverOnce(pool, mx.port, { to: ['r1@rcpt.test'], body: body(1) });
+		expect(retry.reused).toBe(false);
+		expect(mx.connections()).toBe(2); // one 421'd + one fresh
+		expect(await pool.getGlobalConnectionCount('127.0.0.1')).toBe(1);
 	});
 });

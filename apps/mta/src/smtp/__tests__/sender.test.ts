@@ -80,8 +80,9 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { SmtpError, type SmtpErrorInit } from '@owlat/smtp-client';
+import { SmtpError, type SmtpErrorInit, type SmtpConnection } from '@owlat/smtp-client';
 import { sendToMx } from '../sender.js';
+import { pool } from '../connectionPool.js';
 import { getStsTlsOptions } from '../mtaSts.js';
 import { getMxHostnames } from '../mxResolver.js';
 import { generateReport } from '../tlsRpt.js';
@@ -139,7 +140,12 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		dkimKeys: {},
 		workerConcurrency: 50,
 		serverId: 'test-server',
-		smtpPool: { maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 },
+		smtpPool: {
+			maxPerHost: 3,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+			maxMessagesPerConnection: 100,
+		},
 		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
 		submissionPort: 587,
 		submissionEnabled: false,
@@ -936,6 +942,75 @@ describe('sendToMx', () => {
 			const policy = report.policies[0]!;
 			expect(policy.summary['total-successful-session-count']).toBe(1);
 			expect(policy.summary['total-failure-session-count']).toBe(0);
+		});
+
+		it('records the per-message TLS success on a REUSED (checked-out) secured connection', async () => {
+			// The reuse path: takeConnection returns a live, secured socket, so the sender
+			// never calls connect — but the TLS-RPT result must still be recorded from the
+			// reused connection's own `secured` state (attribution is per-connection, and
+			// every message carried over it inherits that state).
+			const reused = liveConn(true);
+			vi.mocked(pool.takeConnection).mockResolvedValueOnce(reused as unknown as SmtpConnection);
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+			expect(result.success).toBe(true);
+			expect(connectMock).not.toHaveBeenCalled(); // reused, not reconnected
+
+			const report = await reportFor();
+			const policy = report.policies[0]!;
+			expect(policy.summary['total-successful-session-count']).toBe(1);
+			expect(policy.summary['total-failure-session-count']).toBe(0);
+		});
+	});
+
+	describe('reused-socket disposition on a delivery failure (X1 park vs evict)', () => {
+		it('parks the reused socket (entry survives) on a clean pre-DATA reply rejection', async () => {
+			// A 550 all-recipients bounce is a clean reply on a protocol-healthy socket:
+			// pre-X1 the pooled entry survived a bounce, so the socket is parked for reuse
+			// (the next job's RSET clears the aborted transaction), never evicted.
+			const reused = liveConn(true);
+			vi.mocked(pool.takeConnection).mockResolvedValueOnce(reused as unknown as SmtpConnection);
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({
+					phase: 'rcpt',
+					message: '550 5.1.1 User unknown',
+					replyCode: 550,
+					secured: true,
+				})
+			);
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+			expect(result.success).toBe(false); // still a bounce for THIS message
+			expect(pool.storeConnection).toHaveBeenCalledWith(expect.any(String), reused);
+			expect(pool.evictConnection).not.toHaveBeenCalled();
+		});
+
+		it('evicts the reused socket on a 421 channel-close reply', async () => {
+			// 421 = the server is closing the transmission channel: the socket is gone,
+			// so it must be evicted (never parked) even though it carried a reply code.
+			const reused = liveConn(true);
+			vi.mocked(pool.takeConnection).mockResolvedValueOnce(reused as unknown as SmtpConnection);
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({ phase: 'mail', message: '421 service closing', replyCode: 421, secured: true })
+			);
+
+			await sendToMx(createJob(), config, redis, '10.0.0.1');
+			expect(pool.evictConnection).toHaveBeenCalledWith(expect.any(String), reused);
+			expect(pool.storeConnection).not.toHaveBeenCalled();
+		});
+
+		it('evicts the reused socket on a DATA-phase ambiguity (no reply)', async () => {
+			// A drop during/after DATA is the never-auto-retried ambiguous region: the
+			// socket is poisoned and must be evicted, never reused.
+			const reused = liveConn(true);
+			vi.mocked(pool.takeConnection).mockResolvedValueOnce(reused as unknown as SmtpConnection);
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({ phase: 'data-final', message: 'connection dropped after DATA', secured: true })
+			);
+
+			await sendToMx(createJob(), config, redis, '10.0.0.1');
+			expect(pool.evictConnection).toHaveBeenCalledWith(expect.any(String), reused);
+			expect(pool.storeConnection).not.toHaveBeenCalled();
 		});
 	});
 
