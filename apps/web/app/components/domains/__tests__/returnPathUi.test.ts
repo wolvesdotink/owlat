@@ -11,11 +11,13 @@
  *     state, and surfaces the MTA sync-error marker when present.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ref, type Ref } from 'vue';
+import { ref, capitalize, type Ref } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 
 import AddDomainForm from '../AddDomainForm.vue';
 import ReturnPathEditor from '../ReturnPathEditor.vue';
+import RecordRow from '../RecordRow.vue';
+import { useAddDomain, type AddDomainFlowDeps } from '~/composables/useAddDomain';
 
 const formStubs = {
 	Icon: { template: '<i />' },
@@ -181,16 +183,169 @@ describe('ReturnPathEditor — edit affordance', () => {
 		expect(save.attributes('disabled')).toBeDefined();
 	});
 
-	it('renders the sync-error marker when the MTA reflect failed', () => {
+	it('renders a terminal (non-retrying) sync-error marker when the MTA reflect gave up', () => {
 		const w = mountEditor({ syncError: 'permanent MTA failure' });
-		expect(w.find('[data-testid="returnpath-sync-error"]').exists()).toBe(true);
-		expect(w.get('[data-testid="returnpath-sync-error"]').text().toLowerCase()).toContain(
-			'sync failed'
-		);
+		const marker = w.get('[data-testid="returnpath-sync-error"]');
+		expect(marker.exists()).toBe(true);
+		// The D2 marker is TERMINAL (set only after the retry budget is spent), so
+		// the copy is a call-to-action, not an in-progress "retrying" spinner.
+		expect(marker.text().toLowerCase()).toContain("couldn't update the bounce host");
+		expect(marker.text().toLowerCase()).not.toContain('retrying');
+		expect(marker.find('.animate-spin').exists()).toBe(false);
 	});
 
 	it('does not render the sync-error marker when there is none', () => {
 		const w = mountEditor({ syncError: null });
 		expect(w.find('[data-testid="returnpath-sync-error"]').exists()).toBe(false);
+	});
+});
+
+// ── C1 carry-forward: zone-framed "Configure these DNS records" heading ─────
+
+const rowStubs = {
+	Icon: { template: '<i />' },
+	UiIconBox: { template: '<i />' },
+	DomainsDNSRecordPanel: { template: '<div />' },
+	DomainsReceivingDnsSection: { template: '<div />' },
+	// Exercised above; inert here (it calls a mutation on setup).
+	DomainsReturnPathEditor: { template: '<div />' },
+};
+
+function makeRowDomain(domainName: string) {
+	return {
+		_id: 'domain_row',
+		domain: domainName,
+		status: 'pending',
+		createdAt: Date.now(),
+		verifiedAt: null,
+		lastVerifiedAt: null,
+		lastRegistrationError: null,
+		dmarcPolicy: 'none',
+		returnPathHost: null,
+		returnPathHostSyncError: null,
+		dnsRecords: {
+			spf: { type: 'TXT', host: '@', value: 'v=spf1 ~all' },
+			dkim: [],
+			dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=none' },
+			mailFrom: [{ type: 'TXT', hostname: 'bounce.example.com', value: 'v=spf1 -all' }],
+		},
+		verificationResults: undefined,
+	};
+}
+
+function mountRow(domainName: string) {
+	return mount(RecordRow, {
+		props: {
+			domain: makeRowDomain(domainName),
+			isExpanded: true,
+			canForceVerify: false,
+			canManageDomains: true,
+			isForcing: false,
+			isVerifying: false,
+			isUpdatingDmarc: false,
+			autoRecheckActive: false,
+			spfCoexistence: null,
+			dmarcPolicyOptions: [{ value: 'none', label: 'None', hint: '' }],
+			showReceivingDns: false,
+			inboundMailHost: null,
+			inboundPort: 25,
+			inboundEnabled: false,
+		} as never,
+		global: { stubs: rowStubs, mocks: { capitalize } },
+	});
+}
+
+describe('RecordRow — zone-framed DNS config heading (C1 carry-forward)', () => {
+	it('names the registrable zone, not the full sending subdomain', () => {
+		const heading = mountRow('mail.example.com').get('[data-testid="config-zone"]');
+		expect(heading.text()).toBe('example.com');
+	});
+
+	it('handles multi-label + co.uk zones', () => {
+		expect(mountRow('a.b.example.co.uk').get('[data-testid="config-zone"]').text()).toBe(
+			'example.co.uk'
+		);
+	});
+});
+
+// ── Page orchestration: register-then-set (useAddDomain flow) ────────────────
+
+function makeDeps(overrides: Partial<AddDomainFlowDeps> = {}): {
+	deps: AddDomainFlowDeps;
+	calls: {
+		createDomain: ReturnType<typeof vi.fn>;
+		setReturnPathHost: ReturnType<typeof vi.fn>;
+		close: ReturnType<typeof vi.fn>;
+		showToast: ReturnType<typeof vi.fn>;
+		setLoading: ReturnType<typeof vi.fn>;
+	};
+} {
+	const calls = {
+		createDomain: vi.fn(async () => 'domain_new' as never),
+		setReturnPathHost: vi.fn(async () => null),
+		close: vi.fn(),
+		showToast: vi.fn(),
+		setLoading: vi.fn(),
+	};
+	const deps: AddDomainFlowDeps = {
+		hasActiveOrganization: () => true,
+		createDomain: calls.createDomain,
+		setReturnPathHost: calls.setReturnPathHost,
+		setLoading: calls.setLoading,
+		close: calls.close,
+		showToast: calls.showToast,
+		...overrides,
+	};
+	return { deps, calls };
+}
+
+describe('useAddDomain — register-then-set orchestration', () => {
+	it('registers then sets the return-path host with the returned id', async () => {
+		const { deps, calls } = makeDeps();
+		await useAddDomain(deps).handleAddDomain({
+			domain: 'mail.example.com',
+			returnPathHost: 'bounce.example.com',
+		});
+		expect(calls.createDomain).toHaveBeenCalledWith({ domain: 'mail.example.com' });
+		expect(calls.setReturnPathHost).toHaveBeenCalledWith({
+			domainId: 'domain_new',
+			returnPathHost: 'bounce.example.com',
+		});
+		expect(calls.close).toHaveBeenCalled();
+		expect(calls.showToast.mock.calls[0]![0]).toContain('added successfully');
+		expect(calls.showToast.mock.calls[0]![1]).toBeUndefined(); // success (not 'error')
+	});
+
+	it('skips the return-path write when no host was supplied', async () => {
+		const { deps, calls } = makeDeps();
+		await useAddDomain(deps).handleAddDomain({ domain: 'example.com', returnPathHost: null });
+		expect(calls.setReturnPathHost).not.toHaveBeenCalled();
+		expect(calls.showToast.mock.calls[0]![0]).toContain('added successfully');
+	});
+
+	it('keeps the domain but tells the truth when the return-path set FAILS', async () => {
+		// `run` resolves undefined when the operation layer caught the failure.
+		const { deps, calls } = makeDeps({ setReturnPathHost: vi.fn(async () => undefined) });
+		await useAddDomain(deps).handleAddDomain({
+			domain: 'mail.example.com',
+			returnPathHost: 'bounce.example.com',
+		});
+		// No rollback — the domain still exists and the modal closes.
+		expect(calls.close).toHaveBeenCalled();
+		const [message, type] = calls.showToast.mock.calls[0]!;
+		expect(message.toLowerCase()).toContain("couldn't be set");
+		expect(message.toLowerCase()).toContain("domain's row");
+		expect(type).toBe('error');
+	});
+
+	it('does nothing on a create failure — no return-path write, no toast', async () => {
+		const { deps, calls } = makeDeps({ createDomain: vi.fn(async () => undefined) });
+		await useAddDomain(deps).handleAddDomain({
+			domain: 'mail.example.com',
+			returnPathHost: 'bounce.example.com',
+		});
+		expect(calls.setReturnPathHost).not.toHaveBeenCalled();
+		expect(calls.close).not.toHaveBeenCalled();
+		expect(calls.showToast).not.toHaveBeenCalled();
 	});
 });
