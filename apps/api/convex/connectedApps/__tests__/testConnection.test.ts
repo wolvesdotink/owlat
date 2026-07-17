@@ -90,6 +90,18 @@ function fakeResponse(status: number): Response {
 	return { status, body: null, headers: new Headers() } as unknown as Response;
 }
 
+// A response whose body streams `byteLength` octets in one chunk — used to drive
+// the capped drain past its 64 KiB budget.
+function fakeResponseWithBody(status: number, byteLength: number): Response {
+	const body = new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new Uint8Array(byteLength));
+			controller.close();
+		},
+	});
+	return { status, body, headers: new Headers() } as unknown as Response;
+}
+
 beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', 'connected-app-connection-test-secret');
 	auth.role = 'owner';
@@ -127,6 +139,19 @@ describe('connected-app connection test', () => {
 		expect(init.protocols).toEqual(['https:']);
 		expect(init.method).toBe('POST');
 		expect((init.headers as Record<string, string>)['x-owlat-connection-test']).toBe('1');
+	});
+
+	it('reports ok even when the response body exceeds the drain cap', async () => {
+		// 64 KiB + 1 octet — one byte past CONNECTED_APP_TEST_MAX_RESPONSE_BYTES, so
+		// the best-effort drain overflows. The probe swallows it and still reports ok.
+		probe.fetchGuarded.mockResolvedValue(fakeResponseWithBody(200, 64 * 1024 + 1));
+		const t = client();
+		const app = await register(t);
+		const result = await t.action(api.connectedApps.actions.testConnection, {
+			connectedAppId: app._id,
+		});
+		expect(result.outcome).toBe('ok');
+		expect(result.status).toBe(200);
 	});
 
 	it('reports error_status when the endpoint answers non-2xx', async () => {
