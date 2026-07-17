@@ -188,17 +188,25 @@ function envFor(mask: number, isDesktop: boolean) {
 }
 
 describe('buildNavigationSections — core conformance', () => {
-	it('matches the pre-conversion builder for every flag combination (desktop and web)', () => {
-		const total = 1 << FLAGS.length;
-		for (let mask = 0; mask < total; mask += 1) {
-			for (const isDesktop of [false, true]) {
-				const { on, isFeatureEnabled } = envFor(mask, isDesktop);
-				const actual = buildNavigationSections({ isFeatureEnabled, isDesktop });
-				const expected = referenceSections(on, isDesktop);
-				expect(actual, `mask=${mask} desktop=${isDesktop}`).toEqual(expected);
+	// This loop is deliberately exhaustive: 2^13 flag masks x 2 contexts = 32,768
+	// deep toEqual comparisons. It sits near vitest's default 5s timeout under
+	// coverage on slower CI runners, so pin a generous explicit timeout to keep it
+	// green and non-flaky rather than trading away the exhaustiveness.
+	it(
+		'matches the pre-conversion builder for every flag combination (desktop and web)',
+		{ timeout: 30_000 },
+		() => {
+			const total = 1 << FLAGS.length;
+			for (let mask = 0; mask < total; mask += 1) {
+				for (const isDesktop of [false, true]) {
+					const { on, isFeatureEnabled } = envFor(mask, isDesktop);
+					const actual = buildNavigationSections({ isFeatureEnabled, isDesktop });
+					const expected = referenceSections(on, isDesktop);
+					expect(actual, `mask=${mask} desktop=${isDesktop}`).toEqual(expected);
+				}
 			}
 		}
-	});
+	);
 
 	it('registers the full core section order when every flag is on', () => {
 		const { isFeatureEnabled } = envFor((1 << FLAGS.length) - 1, true);
