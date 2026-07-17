@@ -486,10 +486,14 @@ describe('sendToMx', () => {
 				const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 				expect(result.success).toBe(false);
-				// Terminal (hard): NOT a retryable soft/deferred bounce that requeues.
-				expect(result.bounceType).toBe('hard');
+				// Its OWN terminal `ambiguous` classification — NOT a `hard` bounce (which
+				// would suppress the recipient + fabricate a 550) and NOT a retryable
+				// soft/deferred bounce that requeues. No smtpCode: there was no reply.
+				expect(result.bounceType).toBe('ambiguous');
+				expect(result.bounceType).not.toBe('hard');
 				expect(result.bounceType).not.toBe('soft');
 				expect(result.bounceType).not.toBe('deferred');
+				expect(result.smtpCode).toBeUndefined();
 				// Attempted on exactly ONE MX — the loop never advanced to the second.
 				expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
 				expect(connectMock).toHaveBeenCalledTimes(1);
