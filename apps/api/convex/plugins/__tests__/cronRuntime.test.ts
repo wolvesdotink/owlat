@@ -206,6 +206,34 @@ describe('hosted plugin cron runtime', () => {
 		expect(outcomeCalls(calls)).toEqual([{ outcome: 'failed', reasonCode: 'cron_invalid' }]);
 	});
 
+	it('runs a module that ships run alongside inert extra exports', async () => {
+		const run = vi.fn(async () => undefined);
+		registry.catalog.push({
+			kind: 'plugin.seed-lab.refresh',
+			pluginId: 'seed-lab',
+			label: 'Refresh',
+			intervalMinutes: 360,
+			timeoutMs: 30_000,
+			requiredEnvVars: [],
+			requiredCapability: 'scheduler:cron',
+		});
+		// A `{ run, helper, version }`-shaped module is legal for every other hosted
+		// contribution kind; the cron snapshot copies only the run contract.
+		registry.modules.push({
+			kind: 'plugin.seed-lab.refresh',
+			pluginId: 'seed-lab',
+			module: { run, helper: () => undefined, version: 2 },
+		});
+		const { ctx, calls } = fixture({ authorized: true });
+
+		await expect(
+			handler(ctx, { pluginId: 'seed-lab', cronKind: 'plugin.seed-lab.refresh' })
+		).resolves.toBeUndefined();
+
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(outcomeCalls(calls)).toEqual([{ outcome: 'completed' }]);
+	});
+
 	it('records cron_failed when the handler throws and never rethrows', async () => {
 		addCron('plugin.seed-lab.refresh', async () => {
 			throw new Error('boom');
