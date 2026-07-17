@@ -93,6 +93,23 @@ describe('settingsSchema manifest validation', () => {
 		).toBe('$.settingsSchema[0].default');
 	});
 
+	it('rejects a string default longer than the field maxLength', () => {
+		expect(
+			firstIssuePath(
+				manifestWithSchema([
+					{ kind: 'string', key: 's', label: 'S', maxLength: 10, default: 'far-too-long-a-default' },
+				])
+			)
+		).toBe('$.settingsSchema[0].default');
+	});
+
+	it('accepts a string default within the field maxLength', () => {
+		const result = validatePluginManifest(
+			manifestWithSchema([{ kind: 'string', key: 's', label: 'S', maxLength: 10, default: 'ok' }])
+		);
+		expect(result.ok).toBe(true);
+	});
+
 	it('rejects min greater than max', () => {
 		expect(
 			firstIssuePath(

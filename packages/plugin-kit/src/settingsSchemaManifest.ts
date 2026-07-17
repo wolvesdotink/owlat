@@ -218,6 +218,25 @@ function validateStringDefault(
 			`${path}.default`,
 			`must be a string of at most ${MAX_TEXT_LENGTH} characters`
 		);
+		return;
+	}
+	// Mirror validateNumberField's min/max default check: the default must also
+	// satisfy the field's own declared maxLength (already validated by
+	// validateMaxLength), otherwise the field ships a default that its own
+	// `:maxlength` input constraint and any re-save could never reproduce.
+	const maxLength = readDataProperty(field, 'maxLength', issues, false, path);
+	if (
+		maxLength.kind === 'value' &&
+		typeof maxLength.value === 'number' &&
+		Number.isSafeInteger(maxLength.value) &&
+		value.value.length > maxLength.value
+	) {
+		addManifestIssue(
+			issues,
+			'invalid_type',
+			`${path}.default`,
+			`must be at most ${maxLength.value} characters (the field's maxLength)`
+		);
 	}
 }
 
