@@ -24,7 +24,7 @@ import { classifyBounce } from '../classifier.js';
 import { logger } from '../../monitoring/logger.js';
 import { parseFblOrDsnPhase } from '../phases/parseFblOrDsn.js';
 import { reduce } from '../outcome.js';
-import type { ReportPart } from '../reportParts.js';
+import { reportPartsOf } from './helpers/reportParts.js';
 import type { BasePhaseCtx, BounceAttempt, PhaseDeps } from '../types.js';
 
 function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMessage {
@@ -35,21 +35,6 @@ function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMe
 		attachments: [],
 		...overrides,
 	} as unknown as ParsedMessage;
-}
-
-/**
- * The report parts a scraper reads. In production these are walked out of the raw
- * MIME (`extractReportParts`); these unit tests fabricate them from the mock's
- * `attachments` so the existing `{ content, contentType }` fixtures still drive
- * the delivery-status / header-scrape paths.
- */
-function reportPartsOf(parsed: ParsedMessage): ReportPart[] {
-	const atts = (parsed as unknown as { attachments?: ReadonlyArray<Partial<MessageAttachment>> })
-		.attachments;
-	return (atts ?? []).map((a) => ({
-		contentType: (a.contentType ?? '').toLowerCase(),
-		content: a.content ?? Buffer.alloc(0),
-	}));
 }
 
 /** `parseBounce` with the report parts derived from the mock (see {@link reportPartsOf}). */

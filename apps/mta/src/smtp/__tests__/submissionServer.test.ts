@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as net from 'node:net';
 import * as tls from 'node:tls';
-import { EventEmitter } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import type { SmtpListener, SmtpReply } from '@owlat/smtp-listener';
 import Redis from 'ioredis-mock';
@@ -26,7 +25,6 @@ import {
 	buildOnData,
 	buildOnConnect,
 	buildOnMailFrom,
-	createSlotTracker,
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
 	type SubmissionSessionState,
@@ -587,64 +585,6 @@ describe('submission listener — TLS guard + connection limiting', () => {
 
 		// Only the two allowed connections were marked; the refused one was not.
 		expect(held).toEqual(['9.9.9.9:1001', '9.9.9.9:1002']);
-	});
-});
-
-// The slot tracker reconciles the per-IP counter's increments against socket
-// lifetime. `checkConnectionRateLimit` is async, so a connection can close while
-// its rate-limit round-trip is still pending (immediate-RST connects — port scans
-// / LB health probes). Every KEPT increment must be released EXACTLY once, in
-// whichever order the socket-close and the slot-held callback fire.
-describe('submission slot tracker — increment/lifetime reconciliation', () => {
-	const connKey = (ip: string) => `mta:submission:conn:${ip}`;
-	// Let the async releaseConnection (decr + possibly del) settle.
-	const flush = () => new Promise((resolve) => setTimeout(resolve, 10));
-
-	function fakeSocket(remoteAddress: string, remotePort: number): net.Socket {
-		const sock = new EventEmitter() as unknown as net.Socket;
-		(sock as { remoteAddress?: string }).remoteAddress = remoteAddress;
-		(sock as { remotePort?: number }).remotePort = remotePort;
-		return sock;
-	}
-	const session = (remoteAddress: string, remotePort: number) =>
-		({ remoteAddress, remotePort, state: {} }) as never;
-
-	it('releases a held slot exactly once when the socket closes after hold()', async () => {
-		const r = new Redis() as unknown as RealRedis;
-		const tracker = createSlotTracker(r);
-		const sock = fakeSocket('7.7.7.7', 2001);
-		tracker.track(sock); // TCP accept — live
-		await r.incr(connKey('7.7.7.7')); // onConnect kept a slot (net +1)
-		tracker.hold(session('7.7.7.7', 2001)); // still live → mark for release on close
-		expect(await r.get(connKey('7.7.7.7'))).toBe('1'); // not released yet
-		sock.emit('close');
-		await flush();
-		expect(await r.get(connKey('7.7.7.7'))).toBeNull(); // released, key cleaned up
-	});
-
-	it('self-heals the race: a connection that closes BEFORE hold() still releases its slot', async () => {
-		const r = new Redis() as unknown as RealRedis;
-		const tracker = createSlotTracker(r);
-		const sock = fakeSocket('6.6.6.6', 3003);
-		tracker.track(sock); // accept — live
-		await r.incr(connKey('6.6.6.6')); // rate-limit check kept the increment (in flight)
-		sock.emit('close'); // client RST before hold(): live deleted, held miss → no release
-		await flush();
-		expect(await r.get(connKey('6.6.6.6'))).toBe('1'); // the leak-prone window
-		tracker.hold(session('6.6.6.6', 3003)); // reconciles: no longer live → release now
-		await flush();
-		expect(await r.get(connKey('6.6.6.6'))).toBeNull(); // released exactly once
-	});
-
-	it('never releases a slot for a connection that never took one', async () => {
-		const r = new Redis() as unknown as RealRedis;
-		const tracker = createSlotTracker(r);
-		const sock = fakeSocket('5.5.5.5', 4004);
-		tracker.track(sock);
-		await r.incr(connKey('5.5.5.5')); // a different connection's live slot
-		sock.emit('close'); // this socket never called hold() → must not decrement
-		await flush();
-		expect(await r.get(connKey('5.5.5.5'))).toBe('1'); // untouched
 	});
 });
 

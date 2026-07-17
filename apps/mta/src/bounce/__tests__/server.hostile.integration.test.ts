@@ -11,13 +11,20 @@
  * MX-specific policy layered on the listener (SPF/TLS/RCPT hooks, the bounce
  * intake pipeline in `onData`) does not weaken the listener's hardening.
  *
- * Connection-count limiting is out of scope here (I8: it lives in
- * inboundSecurity.ts); this suite pins the per-connection command-loop bounds.
+ * Per-IP connection RATE limiting is out of scope here (I8: it lives in
+ * inboundSecurity.ts, unit-tested separately). This suite pins the
+ * per-connection command-loop bounds, the DATA byte budget, the idle timers, the
+ * global `bounceMaxClients` concurrency cap, and STARTTLS-handshake abandonment
+ * against the real production factory.
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import net from 'node:net';
 import Redis from 'ioredis-mock';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { SmtpListener } from '@owlat/smtp-listener';
 import { createBounceServer } from '../server.js';
@@ -27,29 +34,43 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-/** The production-shaped MX config: real hostname/banner + the real byte budget. */
-function makeConfig(): MtaConfig {
+/** The production 10 MiB DATA byte budget (mirrors `server.ts` `MAX_INBOUND_BYTES`). */
+const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
+
+/**
+ * The production-shaped MX config: real hostname/banner + the real byte budget.
+ * `overrides` tune the load-bearing knobs a given adversarial case needs (idle
+ * timeouts, the global client cap, STARTTLS material) without changing the
+ * production factory / hooks under test.
+ */
+function makeConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 	return {
 		ehloHostname: 'mx.owlat.test',
 		bounceMaxClients: 200,
 		bounceMaxConnectionsPerIp: 50,
 		bounceTarpitEnabled: false,
 		bounceTarpitDelayMs: 0,
+		// Production defaults preserve smtp-server's 60 s socketTimeout; individual
+		// idle-timer cases turn these down so the teardown is observable in-test.
+		bounceSocketTimeoutMs: 60000,
 		inboundSpfEnabled: false,
 		inboundDkimEnabled: false,
 		inboundDmarcEnabled: false,
 		inboundArcEnabled: false,
+		...overrides,
 	} as unknown as MtaConfig;
 }
 
 const listeners: SmtpListener[] = [];
 
-async function start(): Promise<{ port: number; redis: InstanceType<typeof Redis> }> {
+async function start(
+	overrides: Partial<MtaConfig> = {}
+): Promise<{ port: number; redis: InstanceType<typeof Redis> }> {
 	const redis = new Redis();
 	// Disable the dynamic inbound-TLS requirement so a clean plaintext transaction
 	// can complete in the "still serves" probe (the gate itself is unit-tested).
 	await redis.set('mta:inbound-tls-required', '0');
-	const listener = createBounceServer(makeConfig(), redis as never);
+	const listener = createBounceServer(makeConfig(overrides), redis as never);
 	await listener.listen(0, '127.0.0.1');
 	listeners.push(listener);
 	return { port: (listener.address() as AddressInfo).port, redis };
@@ -214,5 +235,179 @@ describe('MX listener hostile input is bounded (production config)', () => {
 		// The bounce intake pipeline classifies and ACKs the message (250).
 		await c.waitFor((b) => /250 2\.0\.0/.test(b));
 		c.end();
+	});
+});
+
+// The DATA-phase byte budget is the load-bearing hardening whose MTA-level test
+// this piece deleted with `lib/__tests__/dataStream.test.ts`: advertising `SIZE`
+// in EHLO is only a hint, so the listener MUST enforce the streamed byte count.
+// These drive the REAL 10 MiB production budget (`MAX_INBOUND_BYTES`) end-to-end.
+describe('MX listener enforces the 10 MiB DATA byte budget (production config)', () => {
+	/** Establish an envelope and enter the DATA phase (354). */
+	async function enterData(port: number): Promise<Client> {
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO probe.test\r\n');
+		await c.waitCode(250);
+		c.write('MAIL FROM:<>\r\n');
+		await c.waitCode(250);
+		c.write('RCPT TO:<bounce+abc@bounces.owlat.test>\r\n');
+		await c.waitCode(250);
+		c.write('DATA\r\n');
+		await c.waitCode(354);
+		return c;
+	}
+
+	it('refuses a message just over the 10 MiB budget with 552, drains it, and keeps the session usable', async () => {
+		const { port } = await start();
+		const c = await enterData(port);
+		// One byte over the budget → the drain-past-limit path: buffer released,
+		// bytes kept draining to the terminating dot, answered with a clean 552.
+		c.write('x'.repeat(MAX_INBOUND_BYTES + 1024) + '\r\n.\r\n');
+		await c.waitCode(552);
+		// The transaction reset: the session is still usable for the next command.
+		c.write('NOOP\r\n');
+		await c.waitFor((b) => /250 2\.0\.0/.test(b));
+		c.end();
+	});
+
+	it('destroys the socket once DATA crosses the 4× abort ceiling (bandwidth bound)', async () => {
+		const { port } = await start();
+		const c = await enterData(port);
+		// Stream past maxBytes*4 (40 MiB) with no terminator: the budget aborts and
+		// the listener destroys the socket rather than draining unbounded bandwidth.
+		c.write('x'.repeat(MAX_INBOUND_BYTES * 4 + 64 * 1024));
+		await c.waitClose(10000);
+		expect(c.closed).toBe(true);
+	});
+});
+
+// Slowloris: a peer that opens a connection (or a DATA phase) and then stalls
+// must be torn down by the RIGHT idle timer, never held open indefinitely. The
+// production timeouts are 60 s; these turn them down so the teardown is
+// observable, but exercise the same real factory + command loop.
+describe('MX listener idle timers tear down stalled peers (production config)', () => {
+	it('closes a silent connection with 421 4.4.2 (command idle timer)', async () => {
+		const { port } = await start({ bounceSocketTimeoutMs: 500 });
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		// Say nothing: the command idle timer must fire a 421 4.4.2 and close.
+		await c.waitFor((b) => /421 4\.4\.2/.test(b), 3000);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+	});
+
+	it('closes a stalled DATA phase with 421 (DATA idle timer)', async () => {
+		const { port } = await start({ bounceSocketTimeoutMs: 500 });
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO probe.test\r\n');
+		await c.waitCode(250);
+		c.write('MAIL FROM:<>\r\n');
+		await c.waitCode(250);
+		c.write('RCPT TO:<bounce+abc@bounces.owlat.test>\r\n');
+		await c.waitCode(250);
+		c.write('DATA\r\n');
+		await c.waitCode(354);
+		// Send no body: the DATA idle timer must fire a 421 and tear down.
+		await c.waitFor((b) => /(^|\n)421 /m.test(b), 3000);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+	});
+});
+
+// Global concurrent-connection cap (`bounceMaxClients`): over the cap the
+// listener answers a real 421 retry-later (a remote MTA re-queues on 421), NOT an
+// abrupt accept-and-destroy — the divergence fixed in this round.
+describe('MX listener bounds a connection flood with 421 (production config)', () => {
+	it('refuses the over-cap connection with 421 while the in-cap ones keep serving', async () => {
+		const { port } = await start({ bounceMaxClients: 2 });
+		const held: Client[] = [];
+		// Fill the 2 slots and keep them open (no QUIT) so the counter stays at cap.
+		for (let i = 0; i < 2; i++) {
+			const c = await Client.connect(port);
+			await c.waitCode(220);
+			held.push(c);
+		}
+		// The 3rd connection is over the cap: a 421, not a bare close.
+		const over = await Client.connect(port);
+		await over.waitCode(421);
+		await over.waitFor((b) => /Too many connected clients/.test(b));
+		await over.waitClose();
+		expect(over.closed).toBe(true);
+		for (const c of held) c.end();
+	});
+});
+
+// TLS-handshake abandonment: production offers STARTTLS, so the listener must
+// survive a peer that begins STARTTLS and then never completes (or feeds garbage
+// into) the handshake — the socket dies, the listener keeps serving.
+describe('MX listener survives STARTTLS abandonment (production config + real certs)', () => {
+	let certPem: string;
+	let keyPem: string;
+
+	beforeAll(() => {
+		const dir = mkdtempSync(join(tmpdir(), 'owlat-mx-tls-test-'));
+		try {
+			execFileSync('openssl', [
+				'req',
+				'-x509',
+				'-newkey',
+				'rsa:2048',
+				'-keyout',
+				join(dir, 'key.pem'),
+				'-out',
+				join(dir, 'cert.pem'),
+				'-days',
+				'1',
+				'-nodes',
+				'-subj',
+				'/CN=mx.owlat.test',
+			]);
+			certPem = readFileSync(join(dir, 'cert.pem'), 'utf8');
+			keyPem = readFileSync(join(dir, 'key.pem'), 'utf8');
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	const tlsConfig = (): Partial<MtaConfig> =>
+		({ bounceServerTlsCert: certPem, bounceServerTlsKey: keyPem }) as Partial<MtaConfig>;
+
+	it('advertises STARTTLS when cert+key are configured', async () => {
+		const { port } = await start(tlsConfig());
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO probe.test\r\n');
+		await c.waitFor((b) => /STARTTLS/.test(b));
+		c.end();
+	});
+
+	it('STARTTLS then plaintext garbage: the handshake errors and the socket dies', async () => {
+		const { port } = await start(tlsConfig());
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO probe.test\r\n');
+		await c.waitFor((b) => /STARTTLS/.test(b));
+		c.write('STARTTLS\r\n');
+		await c.waitCode(220);
+		// Not a ClientHello — the TLS upgrade errors and the socket is destroyed.
+		c.write('this is not a tls client hello\r\n');
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+	});
+
+	it('STARTTLS then total silence: the command idle timer tears it down with 421 4.4.2', async () => {
+		const { port } = await start({ ...tlsConfig(), bounceSocketTimeoutMs: 500 });
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO probe.test\r\n');
+		await c.waitFor((b) => /STARTTLS/.test(b));
+		c.write('STARTTLS\r\n');
+		await c.waitCode(220);
+		// Read the 220 Ready but send no ClientHello: the idle timer fires 421 4.4.2.
+		await c.waitFor((b) => /421 4\.4\.2/.test(b), 3000);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
 	});
 });

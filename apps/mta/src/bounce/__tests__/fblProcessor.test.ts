@@ -10,6 +10,7 @@ import { parseMessage, type ParsedMessage, type MessageAttachment } from '@owlat
 import { tryParseARF, isDuplicateComplaint, generateDedupKey } from '../fblProcessor.js';
 import { buildVerpAddress } from '../verp.js';
 import { extractReportParts, type ReportPart } from '../reportParts.js';
+import { reportPartsOf } from './helpers/reportParts.js';
 
 function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMessage {
 	return {
@@ -19,22 +20,6 @@ function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMe
 		attachments: [],
 		...overrides,
 	} as unknown as ParsedMessage;
-}
-
-/**
- * The report parts a scraper reads. In production these are walked out of the raw
- * MIME (`extractReportParts`); the fabricated-mock tests derive them from the
- * mock's `attachments` so the existing `{ content, contentType }` fixtures still
- * drive the feedback-report / rfc822 split. The real-MIME `buildArf` tests instead
- * use `extractReportParts` on the raw bytes (see {@link buildArf}).
- */
-function reportPartsOf(parsed: ParsedMessage): ReportPart[] {
-	const atts = (parsed as unknown as { attachments?: ReadonlyArray<Partial<MessageAttachment>> })
-		.attachments;
-	return (atts ?? []).map((a) => ({
-		contentType: (a.contentType ?? '').toLowerCase(),
-		content: a.content ?? Buffer.alloc(0),
-	}));
 }
 
 /** `tryParseARF` with the report parts derived from a fabricated mock. */

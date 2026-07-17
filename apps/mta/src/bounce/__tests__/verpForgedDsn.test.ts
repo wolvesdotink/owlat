@@ -26,26 +26,12 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import type { ParsedMessage } from '@owlat/mail-message';
 import { parseBounce, getUnattributedBounceCount } from '../parser.js';
-import type { ReportPart } from '../reportParts.js';
+import { reportPartsOf } from './helpers/reportParts.js';
 import { buildVerpAddress } from '../verp.js';
 import { parseFblOrDsnPhase } from '../phases/parseFblOrDsn.js';
 import { reduce } from '../outcome.js';
 import type { BasePhaseCtx, PhaseDeps } from '../types.js';
 import type { BounceAttempt } from '../types.js';
-
-/**
- * The report parts a scraper reads — fabricated from a fixture's attachments the
- * same way `extractReportParts` walks them out of the raw MIME in production.
- */
-function reportPartsOf(parsed: ParsedMessage): ReportPart[] {
-	const atts = (
-		parsed as unknown as { attachments?: ReadonlyArray<{ contentType?: string; content?: Buffer }> }
-	).attachments;
-	return (atts ?? []).map((a) => ({
-		contentType: (a.contentType ?? '').toLowerCase(),
-		content: a.content ?? Buffer.alloc(0),
-	}));
-}
 
 /** `parseBounce` with the report parts derived from the fixture (see {@link reportPartsOf}). */
 function pb(parsed: ParsedMessage, envelopeRcptTo?: string) {
