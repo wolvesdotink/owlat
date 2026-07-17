@@ -85,7 +85,7 @@ jobs:
         with:
           bun-version: "1.3.11"
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         if: matrix.name == 'plugin-kit'
         with:
           node-version: "22"
