@@ -59,6 +59,20 @@ describe('isValidEmail', () => {
 		expect(isValidEmail('用户@localhost')).toBe(false); // no TLD
 		expect(isValidEmail('用户 name@example.com')).toBe(false); // space
 	});
+
+	it('rejects invisible / control / separator code points (the Unicode analogue of the space rule)', () => {
+		// The \p{C} (control/format/surrogate/…) and \p{Z} (space/separator) classes are
+		// subtracted from the accepted non-ASCII range, so these spoof/mangle vectors —
+		// the Unicode equivalents of the pinned ASCII-space rejection — do NOT pass.
+		const cp = (c: number): string => String.fromCodePoint(c);
+		expect(isValidEmail(`user${cp(0xa0)}name@example.com`)).toBe(false); // U+00A0 NBSP
+		expect(isValidEmail(`user${cp(0x200b)}name@example.com`)).toBe(false); // U+200B ZWSP
+		expect(isValidEmail(`user@ex${cp(0x2028)}ample.com`)).toBe(false); // U+2028 line separator
+		expect(isValidEmail(`user@ex${cp(0x2029)}ample.com`)).toBe(false); // U+2029 paragraph separator
+		expect(isValidEmail(`user@x${cp(0x85)}.com`)).toBe(false); // U+0085 NEL (control)
+		expect(isValidEmail(`user@ex${cp(0x202e)}ample.com`)).toBe(false); // U+202E RLO (BiDi override)
+		expect(isValidEmail(`us${cp(0x202a)}er@example.com`)).toBe(false); // U+202A LRE (BiDi override)
+	});
 });
 
 describe('isValidDomain', () => {

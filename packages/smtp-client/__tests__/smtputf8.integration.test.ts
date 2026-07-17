@@ -126,9 +126,16 @@ describe('envelopeRequiresSmtpUtf8 — structural detection', () => {
 		).toBe(true);
 	});
 
-	it('flags a non-ASCII (U-label) domain', () => {
+	it('does NOT flag a domain-only IDN (ASCII local-part) — domains are punycoded at composition (W6)', () => {
+		// A non-ASCII DOMAIN has a lossless ASCII downgrade (punycode) and is
+		// IDN-normalized to A-labels before the envelope reaches the client, so it
+		// never requires SMTPUTF8. Keying on the local-part is what stops a
+		// domain-only IDN from failing closed against every non-SMTPUTF8 server.
 		expect(envelopeRequiresSmtpUtf8({ from: 'a@例え.test', to: ['b@example.net'], data: '' })).toBe(
-			true
+			false
+		);
+		expect(envelopeRequiresSmtpUtf8({ from: 'a@example.com', to: ['b@例え.test'], data: '' })).toBe(
+			false
 		);
 	});
 

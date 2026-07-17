@@ -22,7 +22,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { simpleParser } from 'mailparser';
 import { dkimVerify } from 'mailauth';
 
-import { composeMessage } from '../src/compose/compose';
+import { composeMessage, type ComposeMessageInput } from '../src/compose/compose';
 import { signMessage, type DkimSigningKey } from '../src/compose/dkim';
 
 const DOMAIN = 'example.com';
@@ -65,7 +65,7 @@ function headerValue(raw: Buffer, name: string): string {
 
 describe('EAI compose — native UTF-8 headers, mailparser round-trip, mailauth verify', () => {
 	// A non-ASCII local-part (`用户`) AND non-ASCII display names, ASCII domains.
-	const input = {
+	const input: ComposeMessageInput = {
 		from: '发件人 <用户@example.com>',
 		to: ['收件人 <收件@example.com>'],
 		subject: 'Grüße 世界 — EAI subject',
@@ -73,7 +73,7 @@ describe('EAI compose — native UTF-8 headers, mailparser round-trip, mailauth 
 		date: new Date('2026-06-21T12:00:00Z'),
 		boundarySeed: 'eai-seed',
 		messageId: '<eai@example.com>',
-	} as const;
+	};
 
 	it('auto-enables EAI on a non-ASCII local-part and emits native UTF-8 (no encoded-words) in address + subject headers', () => {
 		const { raw } = composeMessage(input);
@@ -108,7 +108,11 @@ describe('EAI compose — native UTF-8 headers, mailparser round-trip, mailauth 
 	it('the signed EAI message verifies DKIM pass under mailauth', async () => {
 		const composed = composeMessage(input).raw;
 		const signed = signMessage(composed, signingKey, SIGN_TIME_MS);
-		const result = (await dkimVerify(signed.toString('binary'), { resolver })) as unknown as {
+		// Feed the signed Buffer straight to mailauth: a `.toString('binary')` (latin1)
+		// projection would be re-encoded as UTF-8 by mailauth's `Buffer.from(input)`,
+		// mangling every 0x80–0xFF octet of a non-ASCII header so the verified bytes
+		// would differ from the signed bytes. Buffers are consumed byte-faithfully.
+		const result = (await dkimVerify(signed, { resolver })) as unknown as {
 			results: Array<{ status: { result: string }; signingDomain?: string }>;
 		};
 		expect(result.results.length).toBeGreaterThan(0);
@@ -167,5 +171,47 @@ describe('non-EAI is preserved (R2 golden path unchanged)', () => {
 		expect(headerValue(raw, 'From')).toBe('Alice <alice@example.com>');
 		const parsed = await simpleParser(raw);
 		expect(parsed.subject).toBe('Plain subject');
+	});
+});
+
+describe('domains are IDN-normalized at composition (W6) — no SMTPUTF8 for a domain-only IDN', () => {
+	it('punycodes a U-label domain in header + envelope and keeps the message ASCII (no native UTF-8)', () => {
+		// ASCII local-part, non-ASCII (U-label) domain: there IS an ASCII downgrade
+		// (punycode) for the domain, so the composer normalizes it to A-labels and the
+		// message never needs SMTPUTF8 — the EAI/native-UTF-8 path is NOT tripped.
+		const { raw, envelope } = composeMessage({
+			from: 'user@例え.test',
+			to: ['dest@例え.テスト'],
+			subject: 's',
+			text: 'x',
+			date: new Date('2026-06-21T12:00:00Z'),
+			boundarySeed: 'idn-seed',
+			messageId: '<idn@example.com>',
+		});
+		const from = headerValue(raw, 'From');
+		const to = headerValue(raw, 'To');
+		expect(from).toBe('user@xn--r8jz45g.test');
+		expect(to).toBe('dest@xn--r8jz45g.xn--zckzah');
+		// The whole rendered header block is pure ASCII — no native UTF-8 leaked.
+		// eslint-disable-next-line no-control-regex
+		expect(/[^\x00-\x7F]/.test(headerBlock(raw))).toBe(false);
+		// The envelope handed downstream (MAIL FROM / RCPT TO, MX resolution) is A-label.
+		expect(envelope.from).toBe('user@xn--r8jz45g.test');
+		expect(envelope.to).toEqual(['dest@xn--r8jz45g.xn--zckzah']);
+	});
+
+	it('preserves the display name while punycoding the domain of a name-addr', () => {
+		const { raw } = composeMessage({
+			from: 'Soren <soeren@exämple.test>',
+			to: ['a@example.com'],
+			subject: 's',
+			text: 'x',
+			date: new Date('2026-06-21T12:00:00Z'),
+			boundarySeed: 'idn-name-seed',
+			messageId: '<idn2@example.com>',
+		});
+		// Domain punycoded; the ASCII local-part and display name are untouched, so the
+		// addr-spec never trips EAI.
+		expect(headerValue(raw, 'From')).toBe('Soren <soeren@xn--exmple-cua.test>');
 	});
 });
