@@ -18,7 +18,7 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { generateKeyPairSync } from 'crypto';
 import { dkimSign } from 'mailauth/lib/dkim/sign.js';
-import { verifyDkim, type DkimDnsResolver } from '../inboundDkim.js';
+import { verifyDkim, type DkimDnsResolver } from './helpers/inboundDkimOracle.js';
 import type { ParsedMessage } from '@owlat/mail-message';
 
 const DOMAIN = 'example.com';
