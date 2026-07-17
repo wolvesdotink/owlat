@@ -3,13 +3,16 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { trySplitZone } from '@owlat/shared';
 import { formatDateTime } from '~/utils/formatters';
-import { rules } from '~/composables/useFormValidation';
 
 // Tracking domains let an org serve open/click tracking from its own branded
 // host (CNAME → the shared tracking endpoint) instead of the platform domain,
 // which keeps links on-brand and avoids reputation cross-contamination. The
 // backend (api.domains.trackingDomains.*) is already fully wired; this section
 // is the admin UI for it and mirrors the Sending Domains section above.
+
+// Recommended tracking subdomains (affordances, not an enum — the field stays
+// free-form). Distinct from the sending flow's mail/post/send.
+const TRACKING_SUGGESTIONS = ['track', 'links', 'click'] as const;
 
 const { hasActiveOrganization } = useOrganizationContext();
 
@@ -35,24 +38,11 @@ const { run: verifyTrackingDomain } = useBackendOperation(
 
 const { showToast } = useToast();
 
-// Add modal
-const addModal = useModal({
-	onClose: () => {
-		addForm.domain = '';
-		validation.reset();
-	},
-});
-
-const addForm = reactive({
-	domain: '',
-});
-
-const validation = useFormValidation({
-	domain: [
-		rules.required('Domain is required'),
-		rules.domain('Please enter a valid domain name (e.g., track.example.com)'),
-	],
-});
+// Add modal. The body is the shared DomainsAddDomainForm (the same component the
+// sending-domain flow uses) parameterized for tracking; it owns its own field
+// state and re-initializes each time the modal opens (UiModal v-if's its slot),
+// so there is nothing to reset here.
+const addModal = useModal();
 
 // Delete confirmation
 const deleteModal = useConfirmModal<{ _id: Id<'trackingDomains'>; domain: string }>();
@@ -70,14 +60,14 @@ const toggleExpansion = (id: Id<'trackingDomains'>) => {
 // registrable zone (self-host / internal TLD).
 const zoneFor = (domain: string) => trySplitZone(domain)?.registrable ?? domain;
 
-const handleAdd = async () => {
+// The guided form emits the composed, normalized single domain string
+// (`track.example.com`), parsed/composed via A1 — the same contract the
+// sending-domain flow uses.
+const handleAdd = async (domain: string) => {
 	if (!hasActiveOrganization.value) return;
-	if (!validation.validate(addForm)) return;
 
 	addModal.setLoading(true);
-	const result = await addTrackingDomain({
-		domain: addForm.domain.trim().toLowerCase(),
-	});
+	const result = await addTrackingDomain({ domain });
 	addModal.setLoading(false);
 
 	if (result === undefined) return;
@@ -286,52 +276,25 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 			</div>
 		</div>
 
-		<!-- Add modal -->
+		<!-- Add modal — the SAME guided two-field picker the sending-domain flow
+		     uses (DomainsAddDomainForm), parameterized for tracking: track/links/
+		     click suggestions, a tracking-URL preview, no freemail block, and no
+		     sending-apex note. One component, no fork. -->
 		<UiModal v-model:open="addModal.isOpen.value" title="Add Tracking Domain">
-			<form @submit.prevent="handleAdd">
-				<div class="space-y-4">
-					<div>
-						<label for="tracking-domain-name" class="label">
-							Domain Name <span class="text-error">*</span>
-						</label>
-						<input
-							id="tracking-domain-name"
-							v-model="addForm.domain"
-							type="text"
-							placeholder="track.example.com"
-							:class="['input', validation.hasError('domain') && 'input-error']"
-							:disabled="addModal.isLoading.value"
-							@blur="validation.touch('domain')"
-						/>
-						<p v-if="validation.getError('domain', true)" class="mt-1 text-xs text-error">
-							{{ validation.getError('domain', true) }}
-						</p>
-						<p v-else class="mt-1 text-xs text-text-tertiary">
-							Enter a subdomain to use for click/open tracking, e.g. track.example.com.
-						</p>
-					</div>
-				</div>
-
-				<div class="flex justify-end gap-3 mt-6">
-					<button
-						type="button"
-						class="btn btn-secondary"
-						:disabled="addModal.isLoading.value"
-						@click="addModal.close()"
-					>
-						Cancel
-					</button>
-					<button type="submit" class="btn btn-primary gap-2" :disabled="addModal.isLoading.value">
-						<Icon
-							v-if="addModal.isLoading.value"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin"
-						/>
-						<Icon v-else name="lucide:plus" class="w-4 h-4" />
-						{{ addModal.isLoading.value ? 'Adding...' : 'Add Tracking Domain' }}
-					</button>
-				</div>
-			</form>
+			<DomainsAddDomainForm
+				context="tracking"
+				:loading="addModal.isLoading.value"
+				:suggestions="TRACKING_SUGGESTIONS"
+				default-subdomain="track"
+				subdomain-label="Subdomain for tracking"
+				subdomain-hint="— the branded host your links point at"
+				subdomain-placeholder="track"
+				:block-freemail="false"
+				:show-apex-note="false"
+				submit-label="Add Tracking Domain"
+				@submit="handleAdd"
+				@cancel="addModal.close()"
+			/>
 		</UiModal>
 
 		<!-- Delete confirmation -->
