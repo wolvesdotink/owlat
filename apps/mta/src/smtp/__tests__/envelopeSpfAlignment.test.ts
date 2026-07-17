@@ -40,7 +40,13 @@ vi.mock('@owlat/smtp-client', async (importOriginal) => {
 	};
 });
 vi.mock('../connectionPool.js', () => ({
-	pool: { acquire: acquireMock, release: releaseMock },
+	pool: {
+		acquire: acquireMock,
+		release: releaseMock,
+		takeConnection: vi.fn().mockResolvedValue(undefined),
+		storeConnection: vi.fn(),
+		evictConnection: vi.fn(),
+	},
 	PoolOverCapError: class PoolOverCapError extends Error {},
 }));
 vi.mock('../mxResolver.js', () => ({
@@ -91,7 +97,12 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		dkimKeys: {},
 		workerConcurrency: 50,
 		serverId: 'test-server',
-		smtpPool: { maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 },
+		smtpPool: {
+			maxPerHost: 3,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+			maxMessagesPerConnection: 100,
+		},
 		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
 		submissionPort: 587,
 		submissionEnabled: false,

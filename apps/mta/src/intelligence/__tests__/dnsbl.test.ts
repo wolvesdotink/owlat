@@ -31,7 +31,12 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		dkimKeys: {},
 		workerConcurrency: 50,
 		serverId: 'test-server',
-		smtpPool: { maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 },
+		smtpPool: {
+			maxPerHost: 3,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+			maxMessagesPerConnection: 100,
+		},
 		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
 		submissionPort: 587,
 		submissionEnabled: false,
@@ -64,7 +69,9 @@ describe('DNSBL checking', () => {
 	describe('runDnsblCheck', () => {
 		it('keeps status clean when all lookups return NXDOMAIN', async () => {
 			// NXDOMAIN = not listed — resolve4 throws ENOTFOUND
-			vi.mocked(resolve4).mockRejectedValue(Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }));
+			vi.mocked(resolve4).mockRejectedValue(
+				Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
+			);
 
 			await runDnsblCheck(redis, config);
 
@@ -99,7 +106,7 @@ describe('DNSBL checking', () => {
 			expect(notifyConvex).toHaveBeenCalledWith(
 				expect.objectContaining({ event: 'ip.blocklisted', severity: 'critical' }),
 				config,
-				redis,
+				redis
 			);
 		});
 
@@ -111,7 +118,9 @@ describe('DNSBL checking', () => {
 			await redis.hset('mta:dnsbl:10.0.0.2', 'overallStatus', 'clean');
 
 			// All clean now
-			vi.mocked(resolve4).mockRejectedValue(Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }));
+			vi.mocked(resolve4).mockRejectedValue(
+				Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
+			);
 
 			await runDnsblCheck(redis, config);
 
@@ -125,7 +134,7 @@ describe('DNSBL checking', () => {
 			expect(notifyConvex).toHaveBeenCalledWith(
 				expect.objectContaining({ event: 'ip.delisted' }),
 				config,
-				redis,
+				redis
 			);
 		});
 
@@ -146,7 +155,7 @@ describe('DNSBL checking', () => {
 			expect(notifyConvex).toHaveBeenCalledWith(
 				expect.objectContaining({ event: 'all_ips_blocked', severity: 'critical' }),
 				config,
-				redis,
+				redis
 			);
 		});
 	});
@@ -159,7 +168,9 @@ describe('DNSBL checking', () => {
 
 		it('returns status hash after check', async () => {
 			// Run a check so data exists
-			vi.mocked(resolve4).mockRejectedValue(Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }));
+			vi.mocked(resolve4).mockRejectedValue(
+				Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
+			);
 
 			await runDnsblCheck(redis, config);
 
