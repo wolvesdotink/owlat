@@ -78,6 +78,11 @@ export function pluginSettingsChanges(
 			if (typeof next === 'string' && next !== '') changes[field.key] = next;
 			continue;
 		}
+		// A blanked number input emits '' (see PluginSettingsField.onNumber). Never
+		// submit it: the server would reject the whole save with "must be a finite
+		// number", so treat a cleared number as "unchanged" — the stored value
+		// (or absence) is kept. Required-empty is caught by missingRequiredPluginSettings.
+		if (field.kind === 'number' && next === '') continue;
 		if (next !== baseline[field.key]) changes[field.key] = next;
 	}
 	return changes;
