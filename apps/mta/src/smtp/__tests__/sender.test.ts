@@ -324,6 +324,30 @@ describe('sendToMx', () => {
 		expect(result.enhancedCode).toBe('5.2.2');
 	});
 
+	it('returns hard bounce on an SMTPUTF8 client refusal and stops trying (X3)', async () => {
+		// The envelope is internationalized but the MX did not advertise SMTPUTF8, so
+		// the client fails closed with a phase-`mail` refusal carrying no reply code.
+		// There is no ASCII downgrade for a UTF-8 local-part, so this is permanent —
+		// a HARD bounce, and the next MX is never tried.
+		sendEnvelopeMock.mockRejectedValue(
+			smtpError({
+				phase: 'mail',
+				message:
+					'server does not advertise SMTPUTF8 (RFC 6531); refusing to send an internationalized envelope address',
+				secured: true,
+				clientRefusal: 'smtputf8-unavailable',
+			})
+		);
+
+		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+		expect(result.success).toBe(false);
+		expect(result.bounceType).toBe('hard');
+		// A reply-less client refusal carries no SMTP code — but is still terminal.
+		expect(result.smtpCode).toBeUndefined();
+		expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
+	});
+
 	it('returns deferred on 4xx SMTP error', async () => {
 		sendEnvelopeMock.mockRejectedValue(
 			smtpError({ phase: 'mail', message: '451 4.7.1 Try later', replyCode: 451, secured: true })

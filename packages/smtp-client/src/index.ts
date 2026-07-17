@@ -12,6 +12,7 @@
 export {
 	type SmtpPhase,
 	type SmtpTlsCause,
+	type SmtpClientRefusal,
 	type SmtpErrorInit,
 	SmtpError,
 	isSmtpError,
@@ -67,6 +68,7 @@ export {
 	type VerifyOptions,
 	authenticate,
 	sendEnvelope,
+	envelopeRequiresSmtpUtf8,
 	resetTransaction,
 	quit,
 	sendMessage,

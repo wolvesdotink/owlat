@@ -39,6 +39,19 @@ export type SmtpTlsCause =
 	| 'starttls-unavailable'
 	| 'handshake';
 
+/**
+ * Machine-readable cause of a client-side refusal — a failure the client raises
+ * BEFORE (or instead of) trusting a server verdict, so it carries no reply code.
+ * Classifiers read this discriminant (never a log-line string, W7) to keep the
+ * outcome permanent instead of treating a reply-less pre-DATA phase as retryable.
+ *
+ *  - `smtputf8-unavailable`: the envelope carries a non-ASCII (RFC 6531 EAI)
+ *    mailbox but the server did not advertise `SMTPUTF8`. There is no ASCII
+ *    downgrade for a non-ASCII local-part, so the client fails CLOSED rather than
+ *    silently mangling the address — a permanent, non-retryable condition.
+ */
+export type SmtpClientRefusal = 'smtputf8-unavailable';
+
 export interface SmtpErrorInit {
 	/** Protocol phase the failure occurred in. */
 	phase: SmtpPhase;
@@ -52,6 +65,8 @@ export interface SmtpErrorInit {
 	secured: boolean;
 	/** For `starttls`/handshake failures: the machine-readable TLS cause. */
 	tlsCause?: SmtpTlsCause;
+	/** For a client-side pre-verdict refusal (no reply code): its permanent cause. */
+	clientRefusal?: SmtpClientRefusal;
 	/** Underlying error, if any (preserved on the standard `cause` slot). */
 	cause?: unknown;
 }
@@ -66,6 +81,7 @@ export class SmtpError extends Error {
 	readonly enhancedCode?: string;
 	readonly secured: boolean;
 	readonly tlsCause?: SmtpTlsCause;
+	readonly clientRefusal?: SmtpClientRefusal;
 
 	constructor(init: SmtpErrorInit) {
 		super(init.message, init.cause === undefined ? undefined : { cause: init.cause });
@@ -80,6 +96,9 @@ export class SmtpError extends Error {
 		}
 		if (init.tlsCause !== undefined) {
 			this.tlsCause = init.tlsCause;
+		}
+		if (init.clientRefusal !== undefined) {
+			this.clientRefusal = init.clientRefusal;
 		}
 		// Restore prototype chain for `instanceof` across transpilation targets.
 		Object.setPrototypeOf(this, SmtpError.prototype);

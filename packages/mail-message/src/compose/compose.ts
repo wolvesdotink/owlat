@@ -141,6 +141,19 @@ export interface ComposeMessageInput {
 	date?: Date;
 	boundarySeed?: string;
 	/**
+	 * SMTPUTF8 / EAI (RFC 6531/6532) — emit non-ASCII header values (addresses and
+	 * subject) as native UTF-8 instead of RFC 2047 encoded-words. When omitted the
+	 * composer auto-enables it iff an addr-spec carries a non-ASCII LOCAL-PART (which
+	 * has no encoded-word or punycode form, so native UTF-8 is the only faithful wire
+	 * form). A non-ASCII DOMAIN does NOT trip it — domains are IDN-punycoded to
+	 * A-labels at composition (W6), so a domain-only-IDN address rides as pure ASCII.
+	 * Leaving it `false`/absent for an all-ASCII-addr-spec message keeps the exact
+	 * pre-X3 output (encoded-words for non-ASCII display names / subjects) — the
+	 * property the R2 golden corpus pins. Set it explicitly to force native UTF-8
+	 * even when only a display name / subject is non-ASCII.
+	 */
+	eai?: boolean;
+	/**
 	 * Explicit SMTP envelope override. When absent the envelope is derived from
 	 * the header addresses: `from` = the From addr-spec, `to` = every To/Cc/Bcc
 	 * addr-spec (nodemailer `getEnvelope()` semantics).
@@ -236,6 +249,68 @@ function stripCrlf(value: string): string {
 	return value.replace(/[\r\n]/g, '');
 }
 
+// eslint-disable-next-line no-control-regex
+const NON_ASCII = /[^\x00-\x7F]/;
+
+/**
+ * IDNA ToASCII (U-label → A-label / punycode) using the global WHATWG `URL`
+ * class — no `node:url` import, so mail-message keeps its pure import contract
+ * (node:crypto + @owlat/mail-auth/canon only; see packagePurity.test.ts). The
+ * `URL` constructor runs the same UAX-46 ToASCII the browser does and exposes
+ * the A-label form on `.hostname`. It THROWS on an undecodable label where
+ * `url.domainToASCII` returns `''`; we map both to the empty string so the
+ * caller's undecodable-label fallback semantics are identical (pinned by test).
+ */
+function idnToAscii(domain: string): string {
+	try {
+		return new URL(`http://${domain}`).hostname;
+	} catch {
+		return '';
+	}
+}
+
+/**
+ * IDN-normalize the DOMAIN of an `addr-spec` / `name-addr` to IDNA A-labels
+ * (punycode), preserving the display name and local-part exactly. A non-ASCII
+ * domain has a lossless ASCII downgrade (RFC 5890 U-label → A-label), so it never
+ * requires SMTPUTF8: `user@例え.test` becomes `user@xn--r8jz45g.test` (W6 —
+ * "envelope domains IDN-punycoded at composition"), which also lets DNS MX
+ * resolution find it (RFC 6531 §3.7.1 needs A-labels). A non-ASCII LOCAL-PART is
+ * left untouched: no ASCII form exists for it, so it can only ride SMTPUTF8/EAI.
+ */
+function idnNormalizeAddress(addr: string): string {
+	const lt = addr.lastIndexOf('<');
+	const gt = addr.lastIndexOf('>');
+	const hasAngle = lt >= 0 && gt > lt;
+	const spec = hasAngle ? addr.slice(lt + 1, gt) : addr;
+	const at = spec.lastIndexOf('@');
+	if (at < 0) return addr;
+	const local = spec.slice(0, at);
+	const domain = spec.slice(at + 1).trim();
+	if (!NON_ASCII.test(domain)) return addr; // already all-ASCII — nothing to normalize
+	const ascii = idnToAscii(domain);
+	if (ascii === '') return addr; // undecodable label — leave as-is (validation rejects it upstream)
+	const newSpec = `${local}@${ascii}`;
+	return hasAngle ? `${addr.slice(0, lt + 1)}${newSpec}${addr.slice(gt)}` : newSpec;
+}
+
+/**
+ * Does any addr-spec carry a non-ASCII LOCAL-PART? Such a local-part has no RFC
+ * 2047 / punycode fallback the composer can apply itself, so the message MUST ride
+ * as SMTPUTF8 / EAI (native UTF-8 headers). Domains are IDN-punycoded before this
+ * check (`idnNormalizeAddress`), so a domain-only-IDN address is all-ASCII here and
+ * does NOT trip EAI. A message whose only non-ASCII text is a display name or
+ * subject does NOT trip this either — those round-trip losslessly through RFC 2047
+ * encoded-words, so the pre-X3 output is preserved and the R2 golden corpus is
+ * unchanged. Callers pass the already-domain-normalized address list.
+ */
+function messageRequiresEai(addresses: string[]): boolean {
+	for (const addr of addresses) {
+		if (NON_ASCII.test(addrSpec(addr))) return true;
+	}
+	return false;
+}
+
 /**
  * Derive the SMTP envelope from typed input (nodemailer `getEnvelope()`
  * semantics): From addr-spec, and every To/Cc/Bcc addr-spec deduped in
@@ -278,30 +353,56 @@ function deriveEnvelope(input: ComposeMessageInput): { from: string; to: string[
  * and golden tests possible.
  */
 export function composeMessage(input: ComposeMessageInput): ComposedMessage {
+	// IDN-normalize every address domain to A-labels up front (W6): the header
+	// forms, the derived envelope, the Message-ID domain and the EAI decision all
+	// key off the SAME normalized addresses, so a domain-only-IDN address renders
+	// pure ASCII and never needs SMTPUTF8, while a non-ASCII local-part still does.
+	const from = idnNormalizeAddress(input.from);
+	const replyTo = input.replyTo === undefined ? undefined : idnNormalizeAddress(input.replyTo);
+	const to = input.to.map(idnNormalizeAddress);
+	const cc = input.cc?.map(idnNormalizeAddress);
+	const bcc = input.bcc?.map(idnNormalizeAddress);
+	const envelope = input.envelope
+		? {
+				from: idnNormalizeAddress(input.envelope.from),
+				to: input.envelope.to.map(idnNormalizeAddress),
+			}
+		: undefined;
+	const normalized: ComposeMessageInput = { ...input, from, replyTo, to, cc, bcc, envelope };
+
 	// `input.messageId` / `inReplyTo` / `references` are routinely derived from an
 	// inbound message's Message-ID in reply flows (attacker-controlled), so strip
 	// CRLF before serialization — a value like `<x@y>\r\nBcc: leak@evil.test`
 	// would otherwise smuggle a header (nodemailer sanitizes these too).
 	const messageId = escapeHeader(
 		input.messageId ??
-			buildMessageId(input.messageIdDomain ?? addrSpec(input.from).split('@')[1] ?? 'localhost')
+			buildMessageId(input.messageIdDomain ?? addrSpec(from).split('@')[1] ?? 'localhost')
 	);
 	const date = input.date ?? new Date();
 	const nextBoundary = boundaryAllocator(input.boundarySeed);
+	const eai =
+		input.eai ??
+		messageRequiresEai([
+			from,
+			...(replyTo === undefined ? [] : [replyTo]),
+			...to,
+			...(cc ?? []),
+			...(bcc ?? []),
+		]);
 
 	const headers: string[] = [];
 	headers.push(`Message-ID: ${messageId}`);
 	headers.push(`Date: ${formatRfc5322Date(date)}`);
-	headers.push(`From: ${encodeAddressHeader([input.from])}`);
-	if (input.replyTo) headers.push(`Reply-To: ${encodeAddressHeader([input.replyTo])}`);
-	headers.push(`To: ${encodeAddressHeader(input.to)}`);
-	if (input.cc && input.cc.length > 0) {
-		headers.push(`Cc: ${encodeAddressHeader(input.cc)}`);
+	headers.push(`From: ${encodeAddressHeader([from], eai)}`);
+	if (replyTo) headers.push(`Reply-To: ${encodeAddressHeader([replyTo], eai)}`);
+	headers.push(`To: ${encodeAddressHeader(to, eai)}`);
+	if (cc && cc.length > 0) {
+		headers.push(`Cc: ${encodeAddressHeader(cc, eai)}`);
 	}
 	// Bcc is envelope-only; deliberately never emitted as a header. The empty
 	// subject is emitted as-is (nodemailer parity — the composer invents no
 	// placeholder; a placeholder subject is the caller's decision).
-	headers.push(`Subject: ${encodeHeaderValue(input.subject)}`);
+	headers.push(`Subject: ${encodeHeaderValue(input.subject, undefined, eai)}`);
 	// msg-id lists cannot carry RFC 2047 encoded-words, so they fold only on the
 	// FWS between ids (CRLF + SP before a `<`) against their real prefix so a long
 	// thread's value never crosses the 998-octet hard cap. foldMsgIdList also
@@ -322,7 +423,7 @@ export function composeMessage(input: ComposeMessageInput): ComposedMessage {
 			const name = sanitizeHeaderName(rawName);
 			if (name.length === 0) continue;
 			if (STRUCTURAL_HEADERS.has(name.toLowerCase())) continue;
-			headers.push(`${name}: ${encodeHeaderValue(rawValue, name.length + 2)}`);
+			headers.push(`${name}: ${encodeHeaderValue(rawValue, name.length + 2, eai)}`);
 		}
 	}
 
@@ -332,7 +433,7 @@ export function composeMessage(input: ComposeMessageInput): ComposedMessage {
 		`${headers.join('\r\n')}\r\n${content.headerLines.join('\r\n')}\r\n\r\n${content.body}\r\n`,
 		'utf-8'
 	);
-	return { raw, messageId, envelope: deriveEnvelope(input) };
+	return { raw, messageId, envelope: deriveEnvelope(normalized) };
 }
 
 /**
