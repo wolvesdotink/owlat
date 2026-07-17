@@ -153,6 +153,7 @@ import type * as connectedApps_mutations from "../connectedApps/mutations.js";
 import type * as connectedApps_queries from "../connectedApps/queries.js";
 import type * as connectedApps_repository from "../connectedApps/repository.js";
 import type * as connectedApps_secretBox from "../connectedApps/secretBox.js";
+import type * as connectedApps_storage from "../connectedApps/storage.js";
 import type * as contactActivities_catalog from "../contactActivities/catalog.js";
 import type * as contactActivities_created_index from "../contactActivities/created/index.js";
 import type * as contactActivities_doi_attested_index from "../contactActivities/doi_attested/index.js";
@@ -850,6 +851,7 @@ declare const fullApi: ApiFromModules<{
   "connectedApps/queries": typeof connectedApps_queries;
   "connectedApps/repository": typeof connectedApps_repository;
   "connectedApps/secretBox": typeof connectedApps_secretBox;
+  "connectedApps/storage": typeof connectedApps_storage;
   "contactActivities/catalog": typeof contactActivities_catalog;
   "contactActivities/created/index": typeof contactActivities_created_index;
   "contactActivities/doi_attested/index": typeof contactActivities_doi_attested_index;
