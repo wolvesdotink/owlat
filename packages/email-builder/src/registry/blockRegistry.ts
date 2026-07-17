@@ -25,6 +25,7 @@ import type { BlockAttributeSchema } from '../schema/types';
 import { defaultPadding, defaultMargin } from '../defaults';
 import { getAllEditorModules, editorModuleFor } from '../blocks/_registry';
 import type { EditorModule } from '../blocks/_module';
+import { createFreezeLatch } from './freezeLatch';
 
 /**
  * Block definition — type-erased view of a block's editor surface. Built-in
@@ -119,7 +120,12 @@ const bridgeToDefinition = <T extends BlockType>(mod: EditorModule<T>): BlockDef
 // ---------------------------------------------------------------------------
 
 const thirdPartyRegistry = new Map<BlockType, BlockDefinition>();
-let frozen = false;
+const latch = createFreezeLatch({
+	noun: 'block definition',
+	registryName: 'block definition registry',
+	plural: 'blocks',
+	finalizeFn: 'finalizeBlockDefinitionRegistry',
+});
 
 /**
  * Register a third-party block definition. Built-in blocks should NOT use
@@ -132,22 +138,18 @@ let frozen = false;
  * fails closed rather than silently mutating the editor's block palette.
  */
 export function registerBlock(def: BlockDefinition): void {
-	if (frozen) {
-		throw new Error(
-			`Cannot register block definition "${def.type}": the block definition registry is frozen. Register blocks during setup before finalizeBlockDefinitionRegistry().`
-		);
-	}
+	latch.assertMutable(def.type);
 	thirdPartyRegistry.set(def.type, def);
 }
 
 /** Freeze the third-party block definition registry to prevent further mutation. */
 export function finalizeBlockDefinitionRegistry(): void {
-	frozen = true;
+	latch.finalize();
 }
 
 /** Is the third-party block definition registry currently frozen? */
 export function isBlockDefinitionRegistryFrozen(): boolean {
-	return frozen;
+	return latch.isFrozen();
 }
 
 // ---------------------------------------------------------------------------
