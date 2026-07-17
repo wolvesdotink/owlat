@@ -72,11 +72,16 @@ export async function bindAuthenticatedBundledPluginStorage(
 	);
 }
 
-/** Internal host primitive; callers must authenticate before constructing scope. */
-// Deliberately private: PP-21 may add a connected-app authenticator that calls
-// this core, but no production caller can manufacture an organization/plugin
-// scope without first passing an authenticator owned by this module.
-function createScopedPluginStorageService(
+/**
+ * Host primitive: build a scoped KV service over a caller-supplied
+ * {@link HostedPluginActorScope} and capability `authorize` gate. Exported for
+ * host-owned authenticators ONLY — the bundled-plugin authenticator above and
+ * the connected-app authenticator in `connectedApps/storage.ts`. No production
+ * caller may manufacture an organization/plugin scope without first passing an
+ * authenticator that reloads enablement and grants; the returned service carries
+ * no caller-selectable scope, so tenant/plugin isolation is structural.
+ */
+export function createScopedPluginStorageService(
 	ctx: MutationCtx,
 	scope: HostedPluginActorScope,
 	authorize: StorageAuthorization

@@ -79,6 +79,7 @@ export const RESOURCE_FILTER_OPTIONS: ResourceFilterOption[] = [
 	{ value: 'segment', label: 'Segments' },
 	{ value: 'ai_provider_config', label: 'AI Providers' },
 	{ value: 'plugin', label: 'Plugins' },
+	{ value: 'connected_app', label: 'Connected Apps' },
 ];
 
 /** A group of action literals shown as an `<optgroup>` in the action filter. */
@@ -122,6 +123,7 @@ const ACTION_GROUP_SPECS: readonly ActionGroupSpec[] = [
 	{ label: 'Abuse', prefixes: ['abuse_status_changed'] },
 	{ label: 'AI Providers', prefixes: ['ai_provider_config'] },
 	{ label: 'Plugins', prefixes: ['plugin'] },
+	{ label: 'Connected Apps', prefixes: ['connected_app'] },
 ];
 
 /** The prefix of an action literal: everything before the first `.`, or the
@@ -181,6 +183,7 @@ const RESOURCE_ICONS: Record<string, string> = {
 	segment: 'lucide:target',
 	ai_provider_config: 'lucide:sparkles',
 	plugin: 'lucide:blocks',
+	connected_app: 'lucide:plug',
 };
 
 const RESOURCE_LABELS: Record<string, string> = {
@@ -198,6 +201,7 @@ const RESOURCE_LABELS: Record<string, string> = {
 	segment: 'Segment',
 	ai_provider_config: 'AI Provider',
 	plugin: 'Plugin',
+	connected_app: 'Connected App',
 };
 
 const ACTION_VERB_LABELS: Record<string, string> = {

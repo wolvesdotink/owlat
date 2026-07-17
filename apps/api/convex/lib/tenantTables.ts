@@ -173,6 +173,7 @@ export const TENANT_TABLES = [
 	'semanticFiles',
 
 	// ── Misc tenant data ──
+	'connectedApps',
 	'pluginStorageEntries',
 	'pluginStorageUsage',
 	'pluginLlmReservations',
