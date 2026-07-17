@@ -41,9 +41,15 @@ export function baselineFieldValue(
 			// the server never stored — the display must mirror the effective state.
 			return typeof stored === 'number' ? stored : (field.default ?? '');
 		case 'select':
-			// Unset with no default ⇒ '' (the disabled "Select…" placeholder), not
-			// the first option pretending to be a configured choice.
-			return typeof stored === 'string' ? stored : (field.default ?? '');
+			// Only a stored value still present in the current options is honoured. A
+			// value dropped from `options` in a newer plugin version is treated as
+			// unset ⇒ '' (the disabled "Select…" placeholder) or the field default, so
+			// a choice the plugin can no longer act on is never shown as configured (it
+			// is also then flagged by missingRequiredPluginSettings). Unset with no
+			// default ⇒ '', not the first option pretending to be a configured choice.
+			return typeof stored === 'string' && field.options.some((option) => option.value === stored)
+				? stored
+				: (field.default ?? '');
 		case 'string':
 			return typeof stored === 'string' ? stored : (field.default ?? '');
 	}
