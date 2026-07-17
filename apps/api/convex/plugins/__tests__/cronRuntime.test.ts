@@ -269,6 +269,34 @@ describe('hosted plugin cron runtime', () => {
 		).resolves.toBeUndefined();
 	});
 
+	it('clamps a below-floor catalog timeout up and still runs the cron', async () => {
+		const run = vi.fn(async () => undefined);
+		// 500ms is below PLUGIN_CRON_TIMEOUT_MIN_MS; a stale catalog entry must not
+		// silently disable the cron — it is clamped up to the floor and runs.
+		addCron('plugin.seed-lab.refresh', run, { timeoutMs: 500 });
+		const { ctx, calls } = fixture({ authorized: true });
+
+		await expect(
+			handler(ctx, { pluginId: 'seed-lab', cronKind: 'plugin.seed-lab.refresh' })
+		).resolves.toBeUndefined();
+
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(outcomeCalls(calls)).toEqual([{ outcome: 'completed' }]);
+	});
+
+	it('records cron_invalid for an uninterpretable catalog timeout instead of a silent no-op', async () => {
+		const run = vi.fn(async () => undefined);
+		addCron('plugin.seed-lab.refresh', run, { timeoutMs: Number.NaN });
+		const { ctx, calls } = fixture({ authorized: true });
+
+		await expect(
+			handler(ctx, { pluginId: 'seed-lab', cronKind: 'plugin.seed-lab.refresh' })
+		).resolves.toBeUndefined();
+
+		expect(run).not.toHaveBeenCalled();
+		expect(outcomeCalls(calls)).toEqual([{ outcome: 'failed', reasonCode: 'cron_invalid' }]);
+	});
+
 	it('records cron_timeout and aborts the handler when it exceeds its wall-clock limit', async () => {
 		vi.useFakeTimers();
 		let observed: AbortSignal | undefined;

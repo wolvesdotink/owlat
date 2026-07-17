@@ -70,9 +70,6 @@ async function runPluginCronTick(
 	);
 	if (registrations.length !== 1) return;
 
-	const timeoutMs = boundedTimeout(definition.timeoutMs);
-	if (timeoutMs === null) return;
-
 	let authorized: boolean;
 	try {
 		authorized = await ctx.runMutation(internal.plugins.cronAuthorization.authorizeExecution, {
@@ -84,6 +81,17 @@ async function runPluginCronTick(
 		return;
 	}
 	if (!authorized) return;
+
+	// An out-of-range timeout is clamped in both directions (mirroring the
+	// interval clamp), so a stale catalog can never register a run that is
+	// effectively unbounded OR one starved below the floor. A value that cannot
+	// be interpreted as a bounded timeout at all records cron_invalid rather than
+	// disabling the cron with no trail — like the invalid-module path below.
+	const timeoutMs = boundedTimeout(definition.timeoutMs);
+	if (timeoutMs === null) {
+		await recordFailure(ctx, pluginId, cronKind, 'cron_invalid');
+		return;
+	}
 
 	const module = snapshotCronModule(registrations[0]!.module);
 	if (!module) {
@@ -172,8 +180,8 @@ function truncate(value: string, maxCodePoints: number): string {
 }
 
 function boundedTimeout(value: number): number | null {
-	if (!Number.isSafeInteger(value) || value < PLUGIN_CRON_TIMEOUT_MIN_MS) return null;
-	return Math.min(value, PLUGIN_CRON_TIMEOUT_MAX_MS);
+	if (!Number.isSafeInteger(value)) return null;
+	return Math.min(Math.max(value, PLUGIN_CRON_TIMEOUT_MIN_MS), PLUGIN_CRON_TIMEOUT_MAX_MS);
 }
 
 async function withTimeout<T>(
