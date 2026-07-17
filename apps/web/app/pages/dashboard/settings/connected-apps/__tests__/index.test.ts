@@ -192,6 +192,29 @@ describe('Connected apps — connection test', () => {
 		expect(status.exists()).toBe(true);
 		expect(status.text()).toContain('Endpoint responded successfully');
 	});
+
+	it('renders a persistent live region that pre-exists its content', async () => {
+		apps.value = [seedApp()];
+		const wrapper = mountPage();
+		// The live region is present and empty BEFORE any test runs, so a later
+		// mutation to it is announced (a region inserted together with its text is
+		// not reliably announced). This is the a11y guarantee.
+		const before = wrapper.find('[role="status"]');
+		expect(before.exists()).toBe(true);
+		expect(before.text()).toBe('');
+
+		runByLabel['Test connected-app connection']!.mockResolvedValue({
+			outcome: 'error_status',
+			status: 503,
+			message: 'Endpoint is reachable but returned HTTP 503.',
+		});
+		await clickButtonByText(wrapper, 'Test connection');
+		await flushPromises();
+		// Same element, now carrying the outcome text.
+		const after = wrapper.find('[role="status"]');
+		expect(after.exists()).toBe(true);
+		expect(after.text()).toContain('returned HTTP 503');
+	});
 });
 
 describe('Connected apps — register + one-time secret reveal', () => {

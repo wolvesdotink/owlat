@@ -240,16 +240,35 @@ function testIcon(outcome: NonNullable<TestResult>['outcome']): string {
 							</span>
 						</div>
 
-						<!-- Connection test result -->
+						<!--
+							Connection test result. The role="status" live region is rendered
+							persistently (only its inner content toggles) so screen readers
+							reliably announce the outcome — a live region announces a mutation
+							only if it already existed in the DOM before the change. It is
+							visually collapsed (sr-only) until there is something to show.
+						-->
 						<p
-							v-if="testResults[app._id]"
 							role="status"
 							aria-live="polite"
 							class="flex items-start gap-2 text-sm"
-							:class="testTone(testResults[app._id]!.outcome)"
+							:class="[
+								testResults[app._id]
+									? testTone(testResults[app._id]!.outcome)
+									: 'text-text-secondary',
+								!testResults[app._id] && testingId !== app._id ? 'sr-only' : '',
+							]"
 						>
-							<Icon :name="testIcon(testResults[app._id]!.outcome)" class="w-4 h-4 shrink-0 mt-0.5" />
-							<span>{{ testResults[app._id]!.message }}</span>
+							<template v-if="testingId === app._id">
+								<Icon name="lucide:loader-2" class="w-4 h-4 shrink-0 mt-0.5 animate-spin" />
+								<span>Testing connection…</span>
+							</template>
+							<template v-else-if="testResults[app._id]">
+								<Icon
+									:name="testIcon(testResults[app._id]!.outcome)"
+									class="w-4 h-4 shrink-0 mt-0.5"
+								/>
+								<span>{{ testResults[app._id]!.message }}</span>
+							</template>
 						</p>
 
 						<!-- Actions -->
