@@ -5,10 +5,18 @@
 
 import './_builtin-modules';
 
-export type { EditorModule, EditorModuleMap, NestedChild, SlashCommandMeta, BlockOf } from './_module';
+export type {
+	EditorModule,
+	EditorModuleMap,
+	NestedChild,
+	SlashCommandMeta,
+	BlockOf,
+} from './_module';
 export {
 	registerEditorModule,
 	editorModuleFor,
 	getAllEditorModules,
 	getRegisteredTypes,
+	finalizeEditorModuleRegistry,
+	isEditorModuleRegistryFrozen,
 } from './_registry';
