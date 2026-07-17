@@ -7,37 +7,30 @@
  * profile MUST be part of the key: many domains share an MX (Google/O365), so
  * without it an MTA-STS-enforce send (requireTLS + verifying) would silently
  * reuse an earlier opportunistic, non-verifying entry to the same MX — a
- * STARTTLS-stripping / enforcement bypass on exactly the high-value shared-MX
- * providers (RFC 8461 §5, RFC 7435).
- * Evicts idle and aged-out entries automatically.
+ * STARTTLS-stripping / enforcement bypass on the high-value shared-MX providers
+ * (RFC 8461 §5, RFC 7435). Evicts idle and aged-out entries automatically.
  *
  * TRUE SOCKET REUSE (X1): a pool entry may park ONE idle, live
- * {@link SmtpConnection}. Consecutive jobs to the same
- * {mx, bindIp, dkimDomain, tlsProfile} reuse that socket across an `RSET`
- * boundary ({@link SmtpConnectionPool.takeConnection} → the client's
- * `resetTransaction` returns the connection to a clean pre-`MAIL` state before
- * the next transaction) instead of opening a fresh TCP+STARTTLS+EHLO handshake
- * every time. Three guardrails bound reuse:
- *   - a per-connection message cap (`maxMessagesPerConnection`, ~100): the
- *     `cap`-th delivery cleanly `QUIT`s the socket so the next job reconnects;
- *   - the max-lifetime cap (`maxAgeMs`, unchanged) applied to the socket's own
- *     open time — an aged socket is `QUIT` rather than reused;
- *   - unhealthy-connection detection: ANY transport error on a send
- *     ({@link SmtpConnectionPool.evictConnection}) tears the entry down and
- *     releases its slot — a poisoned socket is NEVER retried. A failed `RSET`
- *     probe likewise discards the socket and the next job connects fresh.
- * The reuse boundary itself lives in the client's `resetTransaction`, which
- * verifies the 250 so no leftover reply or half-read multiline response leaks
- * between transactions on a reused socket.
+ * {@link SmtpConnection}. Consecutive jobs to the same key reuse that socket
+ * across an `RSET` boundary ({@link SmtpConnectionPool.takeConnection} → the
+ * client's `resetTransaction`, which verifies the 250 so no leftover reply leaks
+ * between transactions) instead of a fresh TCP+STARTTLS+EHLO handshake each time.
+ * Three guardrails bound reuse ({@link SmtpConnectionPool.isRetirable} +
+ * {@link SmtpConnectionPool.evictConnection}): a per-connection message cap
+ * (`maxMessagesPerConnection`, ~100) and the max-lifetime cap (`maxAgeMs`, from
+ * the socket's own open time) both `QUIT` the socket so the next job reconnects;
+ * and ANY transport error — or a failed `RSET` probe — tears the entry down and
+ * releases its slot, so a poisoned socket is NEVER retried.
  *
- * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED entry
- * holds one global slot (`mta:pool:global:<host>`) that now counts a LIVE socket
- * lineage; the slot is reserved atomically at creation (INCR-then-check, rolled
- * back when over the global cap) and released on every teardown path (per-host
- * evict, idle/aged evict, poisoned-socket evict, closeAll). Reuse of a pooled
- * entry — and a cap-driven QUIT+reconnect within the same entry — takes NO new
- * slot. The cap is best-effort: it fail-opens (no throttle) when Redis is down or
- * coordination is disabled.
+ * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED pool
+ * ENTRY holds one global slot (`mta:pool:global:<host>`), reserved atomically at
+ * creation (INCR-then-check, rolled back over the global cap) and released on
+ * every teardown path (per-host / idle-aged / poisoned-socket evict, closeAll). A
+ * slot counts one ENTRY — one lineage of at most one reused socket — NOT every
+ * live socket: reuse, and a cap-driven QUIT+reconnect within an entry, take no new
+ * slot, and concurrent sends to one key open their OWN uncounted one-shot sockets
+ * (the pre-X1 accounting). Best-effort: fail-opens (no throttle) when Redis is down
+ * or coordination is disabled.
  */
 
 import type Redis from 'ioredis';
@@ -47,10 +40,9 @@ import {
 	type SmtpConnectOptions,
 	type SmtpConnection,
 } from '@owlat/smtp-client';
-import { Counter, Gauge } from 'prom-client';
-import { registry } from '../monitoring/collector.js';
 import { logger } from '../monitoring/logger.js';
 import { PoolGlobalCap } from './poolGlobalCap.js';
+import { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
 import {
 	buildConnectConfig,
 	buildPoolKey,
@@ -59,6 +51,7 @@ import {
 } from './poolConnectConfig.js';
 
 export type { AcquireOptions, TlsKeyProfile } from './poolConnectConfig.js';
+export { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
 
 export interface PoolConfig {
 	/** Max concurrent entries per host (default 3) */
@@ -107,25 +100,6 @@ export class PoolOverCapError extends Error {
 	}
 }
 
-// Prometheus gauge for pool connections
-export const smtpPoolConnections = new Gauge({
-	name: 'mta_smtp_pool_connections',
-	help: 'SMTP connection pool size by state',
-	labelNames: ['state'] as const,
-	registers: [registry],
-});
-
-/**
- * Deliveries that reused an already-open pooled socket via RSET rather than
- * opening a fresh TCP+STARTTLS+EHLO handshake (X1). A monotonically rising
- * counter — every successful RSET-boundary reuse increments it exactly once.
- */
-export const smtpPoolReused = new Counter({
-	name: 'mta_smtp_pool_reused_total',
-	help: 'Total SMTP deliveries that reused a live pooled connection via RSET',
-	registers: [registry],
-});
-
 const DEFAULT_CONFIG: PoolConfig = {
 	maxPerHost: 3,
 	idleTimeoutMs: 30_000,
@@ -139,8 +113,8 @@ export class SmtpConnectionPool {
 	private evictionTimer: ReturnType<typeof setInterval> | undefined;
 	private cap = new PoolGlobalCap();
 	// Message-count + open-time for a connection checked OUT of its entry (between
-	// takeConnection and storeConnection), so the caps survive the round-trip
-	// without the sender threading them. A WeakMap never pins a dropped socket.
+	// takeConnection and storeConnection), so the caps survive the round-trip without
+	// the sender threading them. A WeakMap never pins a dropped socket.
 	private connMeta = new WeakMap<SmtpConnection, { messagesSent: number; openedAt: number }>();
 
 	constructor(config?: Partial<PoolConfig>) {
@@ -291,13 +265,12 @@ export class SmtpConnectionPool {
 	/**
 	 * Check out a live, RSET-cleaned connection to reuse for the next delivery to
 	 * `key`, or `undefined` when the caller must open a fresh {@link SmtpConnection}
-	 * from the entry's config. Returns `undefined` (cleanly tearing the parked
-	 * socket down where needed) when: no socket is parked; the parked socket is over
-	 * the per-connection message cap or past its max lifetime (cleanly `QUIT`); or
-	 * its `RSET` reuse probe fails (poisoned — discarded). A returned connection has
-	 * passed the `RSET` boundary, so no state leaks from the prior transaction, and
-	 * the reuse counter has been incremented. The global slot is retained across all
-	 * of these — a reconnect on the SAME entry takes no new slot.
+	 * from the entry's config — cleanly tearing the parked socket down where needed:
+	 * no socket is parked; it is {@link isRetirable} (over the message cap / past its
+	 * lifetime, `QUIT`); or its `RSET` probe fails (poisoned — discarded). A returned
+	 * connection passed the `RSET` boundary (no state leaks) and bumped the reuse
+	 * counter. The global slot is retained across all of these — a reconnect on the
+	 * SAME entry takes no new slot.
 	 */
 	async takeConnection(key: string): Promise<SmtpConnection | undefined> {
 		const entry = this.pool.get(key);
@@ -308,11 +281,9 @@ export class SmtpConnectionPool {
 		entry.idle = undefined; // check out — an in-flight send parks nothing meanwhile
 		this.updateGauge();
 
-		const now = Date.now();
-		const overCap = idle.messagesSent >= this.config.maxMessagesPerConnection;
-		const aged = now - idle.openedAt > this.config.maxAgeMs;
-		if (overCap || aged) {
-			// Bounded socket: retire it cleanly so the caller reconnects fresh.
+		if (this.isRetirable(idle.messagesSent, idle.openedAt)) {
+			// Aged out while parked (the message cap is enforced before parking in
+			// storeConnection, so only the lifetime bound trips here): retire it cleanly.
 			this.quitConnection(idle.conn);
 			return undefined;
 		}
@@ -333,37 +304,53 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Return a healthy connection after a SUCCESSFUL delivery. Parks it on its entry
-	 * for the next job to reuse, or cleanly `QUIT`s it when it has hit the
-	 * per-connection message cap or its max lifetime (the next job then reconnects),
-	 * when its entry is gone (evicted underneath it), or when the entry already has a
-	 * parked socket (a concurrent send won the slot). Only ever call this for a
-	 * connection whose transaction completed cleanly — a failed send goes to
-	 * {@link evictConnection}.
+	 * Return a PROTOCOL-HEALTHY connection to its entry: parks it for reuse, or cleanly
+	 * `QUIT`s it when {@link isRetirable}, when its entry is gone, or when the entry
+	 * already parks a socket (a concurrent send won the slot). Call this for a socket
+	 * whose transaction completed cleanly OR that suffered a clean pre-DATA reply
+	 * rejection (a bounced MAIL/RCPT that left the SMTP session open, not a 421 channel
+	 * close) — the next job's RSET boundary aborts the leftover transaction before
+	 * reuse. A poisoned socket (transport/TLS fault, or DATA-phase ambiguity) goes to
+	 * {@link evictConnection} instead.
 	 */
 	storeConnection(key: string, conn: SmtpConnection): void {
-		const meta = this.connMeta.get(conn) ?? { messagesSent: 0, openedAt: Date.now() };
+		// First return of a freshly-connected socket has no carried meta: seed openedAt
+		// from the connection's own open time (not `Date.now()`), so the max-lifetime cap
+		// measures from when the socket opened, not from its first park. A reused socket
+		// carries its meta forward from `takeConnection`.
+		const meta = this.connMeta.get(conn) ?? { messagesSent: 0, openedAt: conn.openedAt };
 		this.connMeta.delete(conn);
 		const messagesSent = meta.messagesSent + 1;
-		const now = Date.now();
 
 		const entry = this.pool.get(key);
-		const overCap = messagesSent >= this.config.maxMessagesPerConnection;
-		const aged = now - meta.openedAt > this.config.maxAgeMs;
-		if (!entry || entry.idle || overCap || aged) {
+		if (!entry || entry.idle || this.isRetirable(messagesSent, meta.openedAt)) {
 			this.quitConnection(conn);
 			return;
 		}
 		entry.idle = { conn, messagesSent, openedAt: meta.openedAt };
-		entry.lastUsedAt = now;
+		entry.lastUsedAt = Date.now();
 		this.updateGauge();
 	}
 
 	/**
+	 * Whether a socket has exhausted a reuse guardrail — the per-connection message
+	 * cap, or its max lifetime (`maxAgeMs`) from its real open time — and must be
+	 * retired (clean QUIT + reconnect) rather than reused. The single predicate both
+	 * {@link takeConnection} and {@link storeConnection} consult, so the bounds live
+	 * in one place.
+	 */
+	private isRetirable(messagesSent: number, openedAt: number): boolean {
+		return (
+			messagesSent >= this.config.maxMessagesPerConnection ||
+			Date.now() - openedAt > this.config.maxAgeMs
+		);
+	}
+
+	/**
 	 * Tear down a poisoned connection after a transport/protocol error mid-delivery
-	 * and evict its whole entry, releasing the global slot. A socket that errored
-	 * once is NEVER reused; the in-flight job retries on a fresh connection (next MX
-	 * or a requeue) exactly once. Idempotent with respect to a missing entry.
+	 * and evict its whole entry, releasing the global slot. A socket that errored once
+	 * is NEVER reused; the in-flight job retries on a fresh connection exactly once.
+	 * Idempotent with respect to a missing entry.
 	 */
 	evictConnection(key: string, conn: SmtpConnection): void {
 		conn.close();
@@ -484,9 +471,9 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * TTL for the global/instance counters — must outlive an entry's max age so a
-	 * live connection's slot never expires out from under it. The decrement on
-	 * teardown is the real cleanup; the TTL is only a crashed-instance backstop.
+	 * TTL for the global/instance counters — must outlive an entry's max age so a live
+	 * connection's slot never expires out from under it. The decrement on teardown is
+	 * the real cleanup; the TTL is only a crashed-instance backstop.
 	 */
 	private slotTtlSeconds(): number {
 		return Math.ceil(this.config.maxAgeMs / 1000) + 60;
