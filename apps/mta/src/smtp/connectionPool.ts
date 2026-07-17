@@ -287,8 +287,10 @@ export class SmtpConnectionPool {
 			// The fallback must never announce the RECEIVING server's hostname
 			// (`mxHost`) — that is our identity to the peer and would read as spoofing
 			// (RFC 5321 §4.1.1.1). Fall back to our own bind IP as an address literal
-			// (RFC 5321 §4.1.3), which is honest and syntactically valid.
-			ehloName: options.name ?? `[${bindIp}]`,
+			// (RFC 5321 §4.1.3), which is honest and syntactically valid. An IPv6 bind
+			// address MUST carry the `IPv6:` tag (RFC 5321 §4.1.3) — a bare
+			// `[2001:db8::1]` is a syntax error a strict MX may reject at EHLO.
+			ehloName: options.name ?? (bindIp.includes(':') ? `[IPv6:${bindIp}]` : `[${bindIp}]`),
 			tlsMode: 'starttls',
 			requireTls: options.requireTLS ?? false,
 			localAddress: bindIp,
