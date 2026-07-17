@@ -6,14 +6,20 @@
  * Review Queue stay separate flows over the same helpers).
  */
 
+import { type BuiltInTaskFlowKind, taskCardRegistry } from './taskCardRegistry';
+
 /**
- * The three shapes a task can take, in the order the flow prefers them:
+ * The shapes a task can take. Owlat ships three built-in kinds, in the order the
+ * flow prefers them:
  *   - 'question'     — the agent needs a fact only the owner can supply
  *                      (a clarification card). Cheapest to clear, so first.
  *   - 'draft_review' — a pre-generated reply the owner reviews & sends.
  *   - 'reply'        — a plain "needs a reply from you" item with no draft.
+ * The set is OPEN: a statically-composed plugin may contribute a `plugin.*`
+ * kind through the task-card registry (see `taskCardRegistry`), which owns the
+ * membership, ordering rank, and time budget for every kind.
  */
-export type TaskFlowKind = 'question' | 'draft_review' | 'reply';
+export type TaskFlowKind = BuiltInTaskFlowKind | `plugin.${string}`;
 
 /** The ordering-relevant projection of a task, extracted by the caller. */
 export interface TaskFlowOrderKey {
@@ -25,15 +31,13 @@ export interface TaskFlowOrderKey {
 	contactKey?: string;
 }
 
-const KIND_RANK: Record<TaskFlowKind, number> = {
-	question: 0,
-	draft_review: 1,
-	reply: 2,
-};
-
-/** Sort weight for a task kind (questions first, plain replies last). */
+/**
+ * Sort weight for a task kind (questions first, plain replies last). Delegates
+ * to the task-card registry so a plugin kind sorts after every built-in and an
+ * unknown kind sorts last — the built-in ranks (0/1/2) are unchanged.
+ */
 export function taskFlowKindRank(kind: TaskFlowKind): number {
-	return KIND_RANK[kind];
+	return taskCardRegistry.rank(kind);
 }
 
 /**
@@ -95,16 +99,14 @@ export function orderTaskFlow<T>(items: readonly T[], key: (item: T) => TaskFlow
 	return result.map((e) => e.item);
 }
 
-/** Rough per-kind time budget (seconds) used only for the "about N min" hint. */
-const KIND_SECONDS: Record<TaskFlowKind, number> = {
-	question: 45,
-	draft_review: 60,
-	reply: 120,
-};
-
-/** Sum a rough time budget for the still-pending tasks (seconds). */
+/**
+ * Sum a rough time budget for the still-pending tasks (seconds). Per-kind
+ * budgets come from the task-card registry (built-ins: 45/60/120s; plugin kinds
+ * their clamped estimate; unknown kinds a default), so a mixed queue still
+ * yields a stable estimate.
+ */
 export function estimateTaskFlowSeconds(kinds: readonly TaskFlowKind[]): number {
-	return kinds.reduce((total, kind) => total + KIND_SECONDS[kind], 0);
+	return kinds.reduce((total, kind) => total + taskCardRegistry.estimateSeconds(kind), 0);
 }
 
 /** Human "about 4 min" / "about 40 sec" label for a remaining-seconds budget. */
