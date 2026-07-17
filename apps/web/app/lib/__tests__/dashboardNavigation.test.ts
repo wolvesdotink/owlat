@@ -465,6 +465,31 @@ describe('derivePluginNavigation', () => {
 		);
 	});
 
+	it('strips bidi-override and zero-width format characters from a label', () => {
+		// U+202E (RLO, a bidi override) and U+200B (zero-width space), built
+		// programmatically so no invisible byte lands in source.
+		const spoof = `Sett${String.fromCharCode(0x202e)}i${String.fromCharCode(0x200b)}ngs`;
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/spoof',
+				manifest: definePlugin({
+					id: 'spoof',
+					version: '1.0.0',
+					capabilities: ['ui:settings'],
+					flag: { default: false },
+					contributes: {
+						settingsPanels: [
+							{ id: 'x', name: spoof, href: '/dashboard/settings/spoof', icon: 'lucide:x' },
+						],
+					},
+				}),
+			},
+		]);
+		expect(derivePluginNavigation(plugins, () => true).settingsPanels[0]?.value.name).toBe(
+			'Settings'
+		);
+	});
+
 	it('returns empty contributions when no plugins contribute navigation', () => {
 		expect(derivePluginNavigation([], () => true)).toEqual({ navItems: [], settingsPanels: [] });
 	});
