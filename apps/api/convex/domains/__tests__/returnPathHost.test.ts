@@ -299,9 +299,11 @@ describe('lifecycle.setReturnPathHost — record regeneration + status', () => {
 		});
 	});
 
-	it('rejects a non-MTA (SES) domain', async () => {
+	it('rejects a domain on an unsupported provider (neither mta nor ses)', async () => {
+		// SES is a supported case since X1; only a genuinely unknown provider is
+		// rejected with unsupported_provider.
 		const t = convexTest(schema, modules);
-		const domainId = await seedMtaDomain(t, { providerType: 'ses' });
+		const domainId = await seedMtaDomain(t, { providerType: 'sendgrid' });
 
 		const outcome = await t.mutation(internal.domains.lifecycle.setReturnPathHost, {
 			domainId,
