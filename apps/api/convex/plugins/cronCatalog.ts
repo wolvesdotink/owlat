@@ -1,8 +1,9 @@
+import type { PluginId } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_CRON_CATALOG } from './cronCatalog.generated';
 
 export interface HostedCronDefinition {
 	readonly kind: string;
-	readonly pluginId: string;
+	readonly pluginId: PluginId;
 	readonly label: string;
 	readonly intervalMinutes: number;
 	readonly timeoutMs: number;
