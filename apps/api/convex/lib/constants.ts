@@ -46,6 +46,10 @@ export const CONNECTED_APP_HOOK_RESPONSE_TOLERANCE_MS = 30_000;
 export const CONNECTED_APP_HOOK_CIRCUIT_FAILURE_THRESHOLD = 5;
 /** How long the circuit stays open before a single half-open trial call, in ms. */
 export const CONNECTED_APP_HOOK_CIRCUIT_COOLDOWN_MS = 60_000;
+/** Code-point clamp for an accepted (untrusted) draft-hook body. */
+export const CONNECTED_APP_HOOK_MAX_DRAFT_CODE_POINTS = 64 * 1024;
+/** Code-point clamp for an accepted (untrusted) gate/score reason string. */
+export const CONNECTED_APP_HOOK_MAX_REASON_CODE_POINTS = 300;
 
 // Token expiry durations
 export const UNSUBSCRIBE_TOKEN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
