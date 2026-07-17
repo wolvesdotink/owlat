@@ -221,6 +221,65 @@ describe('resetTransaction — RSET reuse boundary (X1)', () => {
 		}
 	});
 
+	it('refuses to reuse a socket that has buffered/unsolicited data (leak guard)', async () => {
+		// A peer that appends an UNSOLICITED line after the final 250 leaves a reply
+		// buffered on the reader; reusing the socket would consume it as the RSET's
+		// answer and desync every later read. resetTransaction refuses BEFORE sending
+		// RSET.
+		const server = net.createServer((socket) => {
+			socket.on('error', () => {});
+			socket.write('220 chatty.test ESMTP\r\n');
+			let buffer = '';
+			let inData = false;
+			socket.on('data', (chunk) => {
+				buffer += chunk.toString('utf8');
+				if (inData) {
+					const dotIdx = buffer.indexOf('\r\n.\r\n');
+					if (dotIdx !== -1) {
+						inData = false;
+						buffer = buffer.slice(dotIdx + 5);
+						// Final reply + an unsolicited extra line in the SAME write.
+						socket.write('250 2.0.0 queued\r\n250 2.0.0 surprise\r\n');
+					}
+					return;
+				}
+				let nl = buffer.indexOf('\n');
+				while (nl !== -1) {
+					const line = buffer.slice(0, nl).replace(/\r$/, '');
+					buffer = buffer.slice(nl + 1);
+					if (/^EHLO/i.test(line)) socket.write('250 chatty.test\r\n');
+					else if (/^DATA$/i.test(line)) {
+						inData = true;
+						socket.write('354 go ahead\r\n');
+					} else socket.write('250 ok\r\n');
+					nl = buffer.indexOf('\n');
+				}
+			});
+		});
+		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+		const port = (server.address() as AddressInfo).port;
+		cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+
+		const conn = await connect(port);
+		await sendEnvelope(conn, {
+			from: 'a@sender.test',
+			to: ['one@rcpt.test'],
+			data: 'Subject: m\r\n\r\nb\r\n',
+		});
+		// Let the unsolicited line arrive and buffer on the reader.
+		await new Promise((resolve) => setTimeout(resolve, 30));
+
+		const err = await resetTransaction(conn).then(
+			() => null,
+			(e: unknown) => e
+		);
+		expect(isSmtpError(err)).toBe(true);
+		if (isSmtpError(err)) {
+			expect(err.phase).toBe('mail');
+			expect(err.message).toContain('buffered data');
+		}
+	});
+
 	it('rejects when RSET runs over a socket the peer already closed (poisoned)', async () => {
 		const messages: CapturedMessage[] = [];
 		const port = await startServer({}, messages);
