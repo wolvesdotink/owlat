@@ -97,7 +97,13 @@ describe('settingsSchema manifest validation', () => {
 		expect(
 			firstIssuePath(
 				manifestWithSchema([
-					{ kind: 'string', key: 's', label: 'S', maxLength: 10, default: 'far-too-long-a-default' },
+					{
+						kind: 'string',
+						key: 's',
+						label: 'S',
+						maxLength: 10,
+						default: 'far-too-long-a-default',
+					},
 				])
 			)
 		).toBe('$.settingsSchema[0].default');
