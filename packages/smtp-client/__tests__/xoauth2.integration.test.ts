@@ -26,6 +26,18 @@ import { isSmtpError } from '../src/errors';
 
 const cleanups: Array<() => void> = [];
 
+// A single module-level teardown vitest applies to every test in the file — the
+// per-describe copies were byte-identical, so one hoisted hook replaces both.
+afterEach(() => {
+	while (cleanups.length > 0) {
+		try {
+			cleanups.pop()?.();
+		} catch {
+			// best-effort teardown
+		}
+	}
+});
+
 /** A raw cleartext SMTP peer answering each command line from `handle`. */
 function startRawServer(
 	greeting: string,
@@ -82,16 +94,6 @@ function challenge(status: number): string {
 }
 
 describe('transaction layer — SASL XOAUTH2 (X4)', () => {
-	afterEach(() => {
-		while (cleanups.length > 0) {
-			try {
-				cleanups.pop()?.();
-			} catch {
-				// best-effort teardown
-			}
-		}
-	});
-
 	// (a) ── exact initial-response encoding, success ──────────────────────────────
 	it('serializes the exact XOAUTH2 initial response and completes on 235', async () => {
 		const received: string[] = [];
@@ -150,6 +152,39 @@ describe('transaction layer — SASL XOAUTH2 (X4)', () => {
 			expect(caught.replyCode).toBe(535);
 			expect(caught.enhancedCode).toBe('5.7.8');
 			expect(caught.authCause).toBe('credentials-rejected');
+		}
+	});
+
+	// (a) ── failure shape: transient 4xx reject stays retryable (no authCause) ──────
+	it('leaves authCause absent on a transient 454 XOAUTH2 reject so it stays retryable', async () => {
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			if (/^EHLO/i.test(line)) {
+				return '250-raw greets you\r\n250 AUTH XOAUTH2\r\n';
+			}
+			if (/^AUTH XOAUTH2/i.test(line)) {
+				// RFC 4954 §6: 454 is a TEMPORARY authentication failure, not a permanent
+				// account problem — it must not be misfiled as `credentials-rejected`.
+				return '454 4.7.0 temporary authentication failure\r\n';
+			}
+			return '250 OK\r\n';
+		});
+
+		const conn = await connectPlain(port);
+		let caught: unknown;
+		try {
+			await authenticate(conn, { username: 'user@gmail.com', accessToken: 'ya29.TOKEN' });
+		} catch (err) {
+			caught = err;
+		}
+		conn.close();
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('auth');
+			expect(caught.replyCode).toBe(454);
+			// A transient failure carries no terminal-account discriminant; replyCode-based
+			// classification governs retryability, exactly as PLAIN/LOGIN do.
+			expect(caught.authCause).toBeUndefined();
 		}
 	});
 
@@ -332,20 +367,113 @@ describe('transaction layer — SASL XOAUTH2 (X4)', () => {
 		}
 		expect(received.some((l) => /^AUTH/i.test(l))).toBe(false);
 	});
+
+	// The reverse mismatch: a password-only mechanism forced while OAuth creds supplied.
+	it('refuses a password-only mechanism forced with OAuth credentials, before serializing', async () => {
+		const received: string[] = [];
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			received.push(line);
+			if (/^EHLO/i.test(line)) {
+				return '250-raw greets you\r\n250 AUTH PLAIN LOGIN XOAUTH2\r\n';
+			}
+			return '250 OK\r\n';
+		});
+
+		const conn = await connectPlain(port);
+		let caught: unknown;
+		try {
+			// OAuth credentials, but the caller forces PLAIN — a password-only mechanism
+			// has no way to carry a bearer token, so it fails closed before the wire.
+			await authenticate(
+				conn,
+				{ username: 'user@gmail.com', accessToken: 'ya29.TOKEN' },
+				{ mechanisms: ['PLAIN'] }
+			);
+		} catch (err) {
+			caught = err;
+		}
+		conn.close();
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('auth');
+		}
+		expect(received.some((l) => /^AUTH/i.test(l))).toBe(false);
+	});
+
+	// A `\x01` in the token would smuggle an extra SASL field; reject it pre-wire.
+	it('rejects a control character in the access token before serializing the SASL frame', async () => {
+		const received: string[] = [];
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			received.push(line);
+			if (/^EHLO/i.test(line)) {
+				return '250-raw greets you\r\n250 AUTH XOAUTH2\r\n';
+			}
+			if (/^AUTH XOAUTH2/i.test(line)) {
+				return '235 2.7.0 authenticated\r\n';
+			}
+			return '250 OK\r\n';
+		});
+
+		const conn = await connectPlain(port);
+		let caught: unknown;
+		try {
+			// A `\x01` would inject a second `auth=` field into the SASL blob.
+			await authenticate(conn, {
+				username: 'user@gmail.com',
+				accessToken: 'ya29.TOKEN\x01auth=Bearer evil',
+			});
+		} catch (err) {
+			caught = err;
+		}
+		conn.close();
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('auth');
+			expect(caught.replyCode).toBeUndefined();
+		}
+		// The corrupt frame never reached the wire.
+		expect(received.some((l) => /^AUTH/i.test(l))).toBe(false);
+	});
+
+	// The same guard covers the username field.
+	it('rejects a control character in the username before serializing the SASL frame', async () => {
+		const received: string[] = [];
+		const port = await startRawServer('220 raw ready\r\n', (line) => {
+			received.push(line);
+			if (/^EHLO/i.test(line)) {
+				return '250-raw greets you\r\n250 AUTH XOAUTH2\r\n';
+			}
+			if (/^AUTH XOAUTH2/i.test(line)) {
+				return '235 2.7.0 authenticated\r\n';
+			}
+			return '250 OK\r\n';
+		});
+
+		const conn = await connectPlain(port);
+		let caught: unknown;
+		try {
+			await authenticate(conn, {
+				username: 'user@gmail.com\x01auth=Bearer evil',
+				accessToken: 'ya29.TOKEN',
+			});
+		} catch (err) {
+			caught = err;
+		}
+		conn.close();
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('auth');
+			expect(caught.replyCode).toBeUndefined();
+		}
+		expect(received.some((l) => /^AUTH/i.test(l))).toBe(false);
+	});
 });
 
 // (c) ── PLAIN remains byte-identical to pre-X4 ────────────────────────────────────
 describe('transaction layer — PLAIN unchanged by X4', () => {
-	afterEach(() => {
-		while (cleanups.length > 0) {
-			try {
-				cleanups.pop()?.();
-			} catch {
-				// best-effort teardown
-			}
-		}
-	});
-
 	it('serializes SASL PLAIN exactly as before when a password is supplied', async () => {
 		const received: string[] = [];
 		const port = await startRawServer('220 raw ready\r\n', (line) => {
