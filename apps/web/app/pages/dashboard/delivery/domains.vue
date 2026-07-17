@@ -90,6 +90,12 @@ const addForm = reactive({
 	domain: '',
 });
 
+// Live "you@<domain>" preview for the Add-Domain modal: states the consequence
+// of the entered domain as the user types, so the field isn't a bare string box.
+// Interim UX — piece C2 replaces this modal with a two-field guided picker, so
+// we deliberately keep this to a single derived value (no picker machinery).
+const previewDomain = computed(() => addForm.domain.trim().toLowerCase());
+
 // Form validation
 const validation = useFormValidation({
 	domain: [
@@ -107,6 +113,15 @@ const validation = useFormValidation({
 //     fail-soft DoH lookup; submit is still allowed (DNS may be provisioning).
 const isFreemail = computed(() => isFreemailDomain(addForm.domain));
 const nsUnresolved = ref(false);
+
+// Only make the "your addresses will be …" promise when the preview would be
+// truthful. A freemail domain (live) is blocked below, and a field that failed
+// validation on blur/submit shows an error — in both cases a preview would
+// contradict the message that owns the field, so suppress it. `hasError` only
+// reflects the last blur/submit (not each keystroke), so a mid-typing invalid
+// value still previews harmlessly; the error + preview only ever co-occur after
+// blur, which this gate resolves.
+const showAddressPreview = computed(() => !isFreemail.value && !validation.hasError('domain'));
 
 // Run the fail-soft NS lookup on blur (not per-keystroke). Any lookup error
 // resolves to null and leaves nsUnresolved false — the check never blocks.
@@ -407,10 +422,6 @@ onBeforeUnmount(() => {
 			</div>
 		</div>
 
-		<!-- Per-transport DNS guidance: what to check depends on how this instance
-			 sends (managed MTA records vs SES/relay/Resend that sign on your behalf). -->
-		<DeliveryDomainDnsGuidance />
-
 		<!-- First-load skeleton (shaped like the domain list) -->
 		<div v-if="isLoading && !domainsData" class="card overflow-hidden">
 			<DashboardListSkeleton variant="card" leading :rows="4" />
@@ -444,6 +455,13 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 			</div>
+
+			<!-- Per-transport DNS guidance: what to check depends on how this
+				 instance sends (managed MTA records vs SES/relay/Resend that sign on
+				 your behalf). A sibling of — and demoted below — the "why add a
+				 domain" card, so the first thing under the h1 builds the mental model,
+				 not transports. The space-y-8 wrapper handles the spacing. -->
+			<DeliveryDomainDnsGuidance />
 
 			<!-- No verified domain → offer connecting an external mailbox instead -->
 			<div
@@ -530,14 +548,37 @@ onBeforeUnmount(() => {
 							placeholder="mail.example.com"
 							:class="['input', validation.hasError('domain') && 'input-error']"
 							:disabled="addModal.isLoading.value"
+							:aria-describedby="showAddressPreview ? 'domain-name-preview' : undefined"
 							@blur="handleDomainBlur"
 						/>
 						<p v-if="validation.getError('domain', true)" class="mt-1 text-xs text-error">
 							{{ validation.getError('domain', true) }}
 						</p>
 						<p v-else class="mt-1 text-xs text-text-tertiary">
-							Enter the domain you want to use for sending emails. We recommend using a subdomain
-							like mail.example.com.
+							We recommend a subdomain like
+							<span class="font-medium text-text-secondary">mail.example.com</span> — it keeps your
+							main domain's sending reputation separate.
+						</p>
+
+						<!-- Live consequence preview: the addresses this domain produces,
+						     updated as the user types. Suppressed when a freemail block or
+						     a validation error owns the field (a preview would contradict
+						     it); an empty field reads as an explicit example, not a promise.
+						     Wired to the input via aria-describedby so it's announced. -->
+						<p
+							v-if="showAddressPreview"
+							id="domain-name-preview"
+							class="mt-1 text-xs text-text-secondary"
+							data-testid="address-preview"
+						>
+							<template v-if="previewDomain">
+								Your addresses will be
+								<strong class="text-text-primary">you@{{ previewDomain }}</strong>
+							</template>
+							<template v-else>
+								For example, your addresses would be
+								<span class="font-medium text-text-primary">you@mail.example.com</span>
+							</template>
 						</p>
 
 						<!-- Blocking: freemail / public-mailbox domain the user can't publish DNS for. -->
