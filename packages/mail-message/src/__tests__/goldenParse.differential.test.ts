@@ -83,11 +83,15 @@ describe('parseMessage differential parity vs mailparser on the compose-side gol
 
 			// Enrichment (ii): mailparser synthesizes `.text` from `.html` when the
 			// message carries NO `text/plain` part; our parser returns empty `.text`.
-			// Gate the drop on GROUND TRUTH — whether a text part is on the wire
-			// (`testCase.text === undefined`) — NOT on our own output, so a regression
-			// that empties `.text` for a case that HAS a text part still fails.
-			if (testCase.text === undefined) {
-				theirProjection['text'] = ourProjection['text'];
+			// Gate the drop on GROUND TRUTH — the two corpus input shapes for which
+			// `composeMessage` emits NO `text/plain` part (`text` absent OR the empty
+			// string) — NOT on our own output, so a regression that empties `.text`
+			// for a case that HAS a text part still fails. Assert the documented claim
+			// (empty `.text` for a message with no text part) instead of copying the
+			// SUT onto the oracle, so a fabricated non-empty `.text` cannot pass here.
+			if (testCase.text === undefined || testCase.text === '') {
+				expect(ourProjection['text'], 'no text/plain part on the wire').toBe('');
+				theirProjection['text'] = '';
 			}
 
 			expect(ourProjection).toEqual(theirProjection);
