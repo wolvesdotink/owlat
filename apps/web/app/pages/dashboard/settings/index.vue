@@ -4,6 +4,7 @@ import { api } from '@owlat/api';
 import { UnsavedChangesDialog } from '@owlat/email-builder';
 import { isValidEmail } from '~/utils/validation';
 import { unverifiedFromDomainWarning } from '~/utils/fromEmailDomain';
+import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 
 useHead({ title: 'Settings — Owlat' });
 
@@ -288,6 +289,21 @@ const { data: isPlatformAdmin } = useConvexQuery(
 	() => ({})
 );
 
+// Residual plugin settings can outlive their plugin: when the last plugin is
+// removed from the build the composition is empty, yet stored settings (incl.
+// secrets) may remain and are purgeable on the Plugins page. Detect that so the
+// nav entry stays reachable exactly then. The query is admin-gated, so skip it
+// for non-admins and skip it entirely while plugins are bundled (the entry
+// already shows) — it only runs in the orphaned-with-empty-build case.
+const { isAdmin } = usePermissions();
+const { data: pluginSettingsOverview } = useConvexQuery(
+	api.plugins.settings.getPluginSettingsOverview,
+	() => (isAdmin.value && bundledPluginComposition.length === 0 ? {} : 'skip')
+);
+const hasOrphanedPluginSettings = computed(
+	() => (pluginSettingsOverview.value?.orphaned.length ?? 0) > 0
+);
+
 // Main settings sections
 const settingsSections = computed(() => {
 	const sections = [
@@ -343,6 +359,20 @@ const settingsSections = computed(() => {
 						description: 'Choose when Owlat encrypts personal mail between Owlat workspaces',
 						href: '/dashboard/settings/sealed-mail',
 						icon: 'lucide:lock',
+					},
+				]
+			: []),
+		// Bundled-plugin configuration — shown when this deployment bundles plugins
+		// (the composition is empty by default, so no entry appears until a plugin
+		// is built in) OR when a removed plugin left residual settings behind, so
+		// the orphan-purge UX stays reachable via the nav.
+		...(bundledPluginComposition.length > 0 || hasOrphanedPluginSettings.value
+			? [
+					{
+						name: 'Plugins',
+						description: 'Configure installed plugins, their capabilities, and their settings',
+						href: '/dashboard/settings/plugins',
+						icon: 'lucide:puzzle',
 					},
 				]
 			: []),
