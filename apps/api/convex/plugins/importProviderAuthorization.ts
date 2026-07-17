@@ -1,13 +1,11 @@
-import { parsePluginId, PLUGIN_IMPORT_PROVIDER_CAPABILITY } from '@owlat/plugin-kit';
+import { PLUGIN_IMPORT_PROVIDER_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import { recordHostedPluginAudit } from './audit';
 import {
-	authorizeSystemBundledPlugin,
-	SYSTEM_PLUGIN_ACTOR_ID,
-	type HostedPluginActorScope,
-} from './authorization';
+	authorizeHostedContribution,
+	recordHostedContributionOutcome,
+	type HostedContributionAuthorizationSpec,
+} from './hostedContributionAuthorization';
 import { pluginImportProviderDefinition } from './importProviderCatalog';
 
 /**
@@ -16,44 +14,19 @@ import { pluginImportProviderDefinition } from './importProviderCatalog';
  * `authorizeStart` before opening a run; the provider's paged fetch runs only
  * while flag, grant, env and singleton scope hold.
  */
-function matchingScope(
-	organizationId: string,
-	pluginIdInput: string,
-	providerKind: string
-): HostedPluginActorScope | null {
-	let pluginId;
-	try {
-		pluginId = parsePluginId(pluginIdInput);
-	} catch {
-		return null;
-	}
-	const definition = pluginImportProviderDefinition(providerKind);
-	if (!definition || definition.pluginId !== pluginId) return null;
-	return Object.freeze({ organizationId, userId: SYSTEM_PLUGIN_ACTOR_ID, pluginId });
-}
+const SPEC: HostedContributionAuthorizationSpec = {
+	capability: PLUGIN_IMPORT_PROVIDER_CAPABILITY,
+	operation: 'import.provider',
+	failureReasonCode: 'import_provider_failed',
+	attributionErrorMessage: 'Invalid bundled import provider attribution',
+	definitionFor: pluginImportProviderDefinition,
+};
 
 /** Rechecks registration, flag, grant, env, and singleton scope before a run. */
 export const authorizeStart = internalMutation({
 	args: { pluginId: v.string(), providerKind: v.string() },
-	handler: async (ctx, args): Promise<boolean> => {
-		const organizationId = await getSingletonOrganizationId(ctx).catch(() => null);
-		if (!organizationId) return false;
-		const auditScope = matchingScope(organizationId, args.pluginId, args.providerKind);
-		if (!auditScope) return false;
-		if (
-			await authorizeSystemBundledPlugin(
-				ctx,
-				auditScope.pluginId,
-				PLUGIN_IMPORT_PROVIDER_CAPABILITY
-			)
-		) {
-			return true;
-		}
-		await recordHostedPluginAudit(ctx, auditScope, 'import.provider', 'denied', {
-			reasonCode: 'access_denied',
-		});
-		return false;
-	},
+	handler: (ctx, args): Promise<boolean> =>
+		authorizeHostedContribution(ctx, SPEC, args.pluginId, args.providerKind),
 });
 
 export const recordOutcome = internalMutation({
@@ -62,19 +35,6 @@ export const recordOutcome = internalMutation({
 		providerKind: v.string(),
 		outcome: v.union(v.literal('completed'), v.literal('failed')),
 	},
-	handler: async (ctx, args): Promise<void> => {
-		const scope = matchingScope(
-			await getSingletonOrganizationId(ctx),
-			args.pluginId,
-			args.providerKind
-		);
-		if (!scope) throw new TypeError('Invalid bundled import provider attribution');
-		await recordHostedPluginAudit(
-			ctx,
-			scope,
-			'import.provider',
-			args.outcome,
-			args.outcome === 'failed' ? { reasonCode: 'import_provider_failed' } : {}
-		);
-	},
+	handler: (ctx, args): Promise<void> =>
+		recordHostedContributionOutcome(ctx, SPEC, args.pluginId, args.providerKind, args.outcome),
 });
