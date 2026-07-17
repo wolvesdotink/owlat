@@ -59,7 +59,7 @@ export interface SmtpClientTlsOptions {
  * Bridge) TLS is not forced: an insecure loopback port uses opportunistic
  * STARTTLS (`tlsMode: 'starttls'` + `requireTls: false`) — it upgrades when the
  * relay advertises STARTTLS and stays cleartext only when it does not, exactly as
- * the previous nodemailer `{ secure: false, requireTLS: false }` config did — and
+ * the previous library's `{ secure: false, requireTLS: false }` config did — and
  * a loopback host that asked for a secure port still gets implicit TLS.
  */
 export function smtpTlsOptions(host: string, secure: boolean): SmtpClientTlsOptions {
