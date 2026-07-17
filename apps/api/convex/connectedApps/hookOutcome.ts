@@ -35,6 +35,7 @@ export type HookUnavailableCode =
 	| 'app_not_found'
 	| 'app_disabled'
 	| 'app_revoked'
+	| 'capability_denied'
 	| 'circuit_open'
 	| 'secret_unavailable'
 	| 'output_rejected'

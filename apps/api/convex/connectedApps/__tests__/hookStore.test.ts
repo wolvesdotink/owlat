@@ -89,6 +89,8 @@ describe('_loadForHook', () => {
 		expect(result.status).toBe('enabled');
 		expect(result.pluginId).toBe('alpha');
 		expect(result.endpointUrl).toBe('https://hooks.example.com/x');
+		// No operator grant seeded → the restrict-only ceiling defaults CLOSED.
+		expect(result.capabilityGranted).toBe(false);
 		expect(result.secret).toEqual({
 			secretCiphertext: 'cipher',
 			secretIv: 'iv',

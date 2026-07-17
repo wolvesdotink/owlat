@@ -11,13 +11,21 @@
  */
 
 import { v } from 'convex/values';
+import {
+	parsePluginId,
+	PLUGIN_AGENT_STEP_CAPABILITY,
+	PLUGIN_AUTONOMY_GATE_CAPABILITY,
+	PLUGIN_DRAFT_STRATEGY_CAPABILITY,
+	type PluginCapability,
+} from '@owlat/plugin-kit';
 import { internalMutation, internalQuery } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import {
 	CONNECTED_APP_HOOK_CIRCUIT_COOLDOWN_MS,
 	CONNECTED_APP_HOOK_CIRCUIT_FAILURE_THRESHOLD,
 } from '../lib/constants';
+import { isBundledPluginCapabilityGranted } from '../plugins/authorization';
 import {
 	INITIAL_HOOK_CIRCUIT_STATE,
 	recordHookFailure,
@@ -26,6 +34,18 @@ import {
 } from './hookCircuit';
 import type { ConnectedAppHookKind } from './hookProtocol';
 import type { ConnectedAppStatus } from './lifecycle';
+
+/**
+ * The operator capability each hook kind consumes. A connected-app hook is the
+ * external half of a bundled-plugin contribution point, so the same capability
+ * that gates the in-process contribution gates the hook: draft ↔ the draft
+ * strategy, gate ↔ the autonomy send gate, score ↔ the agent (scoring) step.
+ */
+const HOOK_KIND_CAPABILITY: Readonly<Record<ConnectedAppHookKind, PluginCapability>> = {
+	draft: PLUGIN_DRAFT_STRATEGY_CAPABILITY,
+	gate: PLUGIN_AUTONOMY_GATE_CAPABILITY,
+	score: PLUGIN_AGENT_STEP_CAPABILITY,
+};
 
 const hookKindValidator = v.union(v.literal('draft'), v.literal('gate'), v.literal('score'));
 
@@ -55,7 +75,14 @@ export interface LoadedHookContext {
 	readonly status: ConnectedAppStatus;
 	readonly pluginId: string;
 	readonly endpointUrl: string;
-	readonly grantedCapabilities: readonly string[];
+	/**
+	 * The restrict-only capability ceiling for THIS hook kind, recomputed on this
+	 * load: `true` iff BOTH the app's own grant and the operator's plugin-level
+	 * grant include the hook kind's capability. The runtime short-circuits to the
+	 * declared fallback when this is `false`, so a mid-session disable, revoke, or
+	 * grant removal fails closed — mirroring `authorizeConnectedAppStorage`.
+	 */
+	readonly capabilityGranted: boolean;
 	readonly secret: HookSecretEnvelope;
 	readonly circuit: HookCircuitState;
 }
@@ -83,7 +110,7 @@ export const _loadForHook = internalQuery({
 			status: app.status,
 			pluginId: app.pluginId,
 			endpointUrl: app.endpointUrl,
-			grantedCapabilities: app.grantedCapabilities,
+			capabilityGranted: await isHookCapabilityGranted(ctx, app, args.hookKind),
 			secret: {
 				secretCiphertext: app.secretCiphertext,
 				secretIv: app.secretIv,
@@ -94,6 +121,30 @@ export const _loadForHook = internalQuery({
 		};
 	},
 });
+
+/**
+ * The restrict-only ceiling for one hook kind, recomputed on every load: BOTH
+ * the app's own grant AND the operator's plugin-level grant must include the
+ * hook kind's capability. Either missing (or an unparseable bound plugin id)
+ * denies, so the runtime fails closed. This composes the same two checks as
+ * `authorizeConnectedAppStorage` — an app can only ever narrow, never widen,
+ * what the operator allowed the bound plugin.
+ */
+async function isHookCapabilityGranted(
+	ctx: QueryCtx,
+	app: Doc<'connectedApps'>,
+	hookKind: ConnectedAppHookKind
+): Promise<boolean> {
+	const capability = HOOK_KIND_CAPABILITY[hookKind];
+	if (!app.grantedCapabilities.includes(capability)) return false;
+	let pluginId;
+	try {
+		pluginId = parsePluginId(app.pluginId);
+	} catch {
+		return false;
+	}
+	return isBundledPluginCapabilityGranted(ctx, pluginId, capability);
+}
 
 /**
  * Fold a hook call's outcome into the (app, kind) breaker. A `success` fully

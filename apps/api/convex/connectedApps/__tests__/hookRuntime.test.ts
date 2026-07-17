@@ -24,6 +24,23 @@ import type { HookTransportOutcome } from '../hookClient';
 const transport = vi.hoisted(() => ({ callConnectedAppHook: vi.fn() }));
 vi.mock('../hookClient', () => ({ callConnectedAppHook: transport.callConnectedAppHook }));
 
+// The connected app is bound to a bundled plugin whose manifest declares the
+// three hook capabilities; the operator grant is seeded per test below. Without
+// both, the runtime's restrict-only ceiling fails the hook closed.
+vi.mock('../../plugins/plugins.generated', () => ({
+	bundledPluginComposition: [
+		{
+			packageName: '@example/alpha',
+			manifest: {
+				id: 'alpha',
+				version: '1.0.0',
+				capabilities: ['draft:strategy', 'send:gate', 'agent:step'],
+				flag: { default: false },
+			},
+		},
+	],
+}));
+
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -47,6 +64,8 @@ type Ctx = Parameters<Parameters<TestConvex['run']>[0]>[0];
 
 const ORG = 'tenant-a';
 const SECRET = 'cah_runtime-secret';
+/** Every hook kind's capability, so a seeded app can reach any kind by default. */
+const ALL_HOOK_CAPS = ['draft:strategy', 'send:gate', 'agent:step'];
 
 beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', 'hook-runtime-test-instance-secret');
@@ -54,10 +73,32 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
+/** Enable the bound plugin's flag and grant it the operator plugin-level caps. */
+async function operatorGrant(ctx: Ctx, allowed: readonly string[] = ALL_HOOK_CAPS): Promise<void> {
+	const flag = 'plugin.alpha';
+	const existing = await ctx.db.query('instanceSettings').first();
+	const next = {
+		featureFlags: { ...existing?.featureFlags, [flag]: true },
+		pluginCapabilityGrants: {
+			...existing?.pluginCapabilityGrants,
+			[flag]: Object.fromEntries(allowed.map((capability) => [capability, true])),
+		},
+		updatedAt: Date.now(),
+	};
+	if (existing) await ctx.db.patch(existing._id, next);
+	else await ctx.db.insert('instanceSettings', { ...next, createdAt: Date.now() });
+}
+
 async function seedApp(
 	ctx: Ctx,
-	opts: { organizationId?: string; status?: 'enabled' | 'disabled' | 'revoked' } = {}
+	opts: {
+		organizationId?: string;
+		status?: 'enabled' | 'disabled' | 'revoked';
+		grants?: readonly string[];
+		operatorGrants?: readonly string[];
+	} = {}
 ): Promise<Id<'connectedApps'>> {
+	await operatorGrant(ctx, opts.operatorGrants ?? ALL_HOOK_CAPS);
 	const now = Date.now();
 	const sealed = sealConnectedAppSecret(SECRET);
 	return ctx.db.insert('connectedApps', {
@@ -66,7 +107,7 @@ async function seedApp(
 		name: 'alpha app',
 		endpointUrl: 'https://hooks.example.com/x',
 		status: opts.status ?? 'enabled',
-		grantedCapabilities: ['send:gate'],
+		grantedCapabilities: (opts.grants ?? ALL_HOOK_CAPS) as string[],
 		secretCiphertext: sealed.ciphertext,
 		secretIv: sealed.iv,
 		secretAuthTag: sealed.authTag,
@@ -165,6 +206,49 @@ describe('short-circuit fallbacks (no network call)', () => {
 			failureCode: 'circuit_open',
 		});
 		expect(transport.callConnectedAppHook).not.toHaveBeenCalled();
+	});
+
+	it('fails a gate CLOSED when the operator never granted this app the gate capability', async () => {
+		const t = makeT();
+		// The app is enabled and holds a DIFFERENT capability, but not send:gate;
+		// the operator plugin-level grant likewise omits it. The ceiling denies.
+		const appId = await t.run((ctx) =>
+			seedApp(ctx, { grants: ['draft:strategy'], operatorGrants: ['draft:strategy'] })
+		);
+		expect(await invoke(t, appId, 'gate')).toEqual({
+			hookKind: 'gate',
+			source: 'fallback',
+			gate: { outcome: 'objection', reason: GATE_FALLBACK_OBJECTION },
+			failureCode: 'capability_denied',
+		});
+		// No secret opened, no endpoint contacted.
+		expect(transport.callConnectedAppHook).not.toHaveBeenCalled();
+	});
+
+	it('fails a gate CLOSED when the app grants it but the operator plugin grant does not', async () => {
+		const t = makeT();
+		// The app requested send:gate, but the operator only granted the plugin
+		// draft:strategy — either half missing denies (mirrors storage.ts).
+		const appId = await t.run((ctx) =>
+			seedApp(ctx, { grants: ['send:gate'], operatorGrants: ['draft:strategy'] })
+		);
+		expect(await invoke(t, appId, 'gate')).toMatchObject({
+			source: 'fallback',
+			failureCode: 'capability_denied',
+		});
+		expect(transport.callConnectedAppHook).not.toHaveBeenCalled();
+	});
+
+	it('reaches the transport when the app AND the operator both grant the gate capability', async () => {
+		const t = makeT();
+		const appId = await t.run((ctx) =>
+			seedApp(ctx, { grants: ['send:gate'], operatorGrants: ['send:gate'] })
+		);
+		transport.callConnectedAppHook.mockResolvedValue(
+			ok({ hookKind: 'gate', gate: { outcome: 'no-objection' } })
+		);
+		await invoke(t, appId, 'gate');
+		expect(transport.callConnectedAppHook).toHaveBeenCalledTimes(1);
 	});
 });
 
