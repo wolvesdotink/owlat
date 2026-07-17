@@ -1,4 +1,8 @@
-import type { PluginId, PluginInboundSignatureContract } from '@owlat/plugin-kit';
+import type {
+	PluginId,
+	PluginImportProviderKind,
+	PluginInboundSignatureContract,
+} from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_IMPORT_PROVIDER_CATALOG } from './importProviderCatalog.generated';
 
 /**
@@ -8,7 +12,7 @@ import { BUNDLED_PLUGIN_IMPORT_PROVIDER_CATALOG } from './importProviderCatalog.
  * the host can authenticate any plugin-sourced request before trusting it.
  */
 export interface HostedImportProviderDefinition {
-	readonly kind: string;
+	readonly kind: PluginImportProviderKind;
 	readonly pluginId: PluginId;
 	readonly label: string;
 	readonly attestSource: string | null;

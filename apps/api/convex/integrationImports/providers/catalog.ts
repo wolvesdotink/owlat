@@ -10,12 +10,12 @@
  * resolution and ownership through the host.
  */
 
-import type { PluginId } from '@owlat/plugin-kit';
+import type { PluginId, PluginImportProviderKind } from '@owlat/plugin-kit';
 import { composeHostedCatalog } from '../../lib/hostedCatalog';
-import { INTEGRATION_PROVIDER_KINDS } from '../_common';
+import { INTEGRATION_PROVIDER_KINDS, type IntegrationProviderKind } from '../_common';
 import { IMPORT_PROVIDER_CATALOG } from '../../plugins/importProviderCatalog';
 
-export type ImportProviderKind = string;
+export type ImportProviderKind = IntegrationProviderKind | PluginImportProviderKind;
 
 export interface ImportProviderCatalogEntry {
 	readonly kind: ImportProviderKind;
@@ -48,11 +48,13 @@ export const IMPORT_PROVIDER_CATALOG_ALL: readonly ImportProviderCatalogEntry[] 
 
 export const IMPORT_PROVIDER_KINDS = catalog.kinds;
 
-export function isImportProviderKind(kind: string | null | undefined): boolean {
+export function isImportProviderKind(kind: string | null | undefined): kind is ImportProviderKind {
 	return catalog.has(kind);
 }
 
-export function isPluginImportProviderKind(kind: string | null | undefined): boolean {
+export function isPluginImportProviderKind(
+	kind: string | null | undefined
+): kind is PluginImportProviderKind {
 	return catalog.get(kind)?.pluginId !== undefined;
 }
 

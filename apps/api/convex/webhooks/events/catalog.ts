@@ -9,13 +9,13 @@
  * are unchanged — only kind resolution is routed through the host here.
  */
 
-import type { PluginId } from '@owlat/plugin-kit';
+import type { PluginId, PluginWebhookEventKind } from '@owlat/plugin-kit';
 import { composeHostedCatalog } from '../../lib/hostedCatalog';
 import { WEBHOOK_EVENT_CATALOG } from '../../plugins/webhookEventCatalog';
 import { WEBHOOK_EVENT_REGISTRY, type WebhookEventLiteral } from './registry';
 
 export type CoreWebhookEventKind = WebhookEventLiteral;
-export type WebhookEventKind = string;
+export type WebhookEventKind = CoreWebhookEventKind | PluginWebhookEventKind;
 
 export interface WebhookEventCatalogEntry {
 	readonly kind: WebhookEventKind;
@@ -55,11 +55,13 @@ export const SUBSCRIBABLE_WEBHOOK_EVENT_KINDS = Object.freeze(
 	catalog.all.filter((entry) => entry.subscribable).map((entry) => entry.kind)
 );
 
-export function isWebhookEventKind(kind: string | null | undefined): boolean {
+export function isWebhookEventKind(kind: string | null | undefined): kind is WebhookEventKind {
 	return catalog.has(kind);
 }
 
-export function isSubscribableWebhookEventKind(kind: string | null | undefined): boolean {
+export function isSubscribableWebhookEventKind(
+	kind: string | null | undefined
+): kind is WebhookEventKind {
 	return catalog.get(kind)?.subscribable ?? false;
 }
 
