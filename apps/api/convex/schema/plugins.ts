@@ -4,6 +4,39 @@ import { languageEndpointProvenanceValidator } from '../lib/aiProviderConfigVali
 
 /** Host-mediated plugin data; Tier-1 component tables remain component-local. */
 export const pluginTables = {
+	// Tier-2 connected apps: external services bound to one bundled plugin,
+	// reachable at a signed endpoint. One row per registered app, tenant-scoped
+	// by organizationId. The shared hook-signing secret lives ONLY as an
+	// AES-256-GCM envelope (see connectedApps/secretBox.ts) — never in plaintext,
+	// never returned after the one-time reveal at register/rotate.
+	connectedApps: defineTable({
+		organizationId: v.string(),
+		// The bundled plugin this app is the external half of. Its manifest bounds
+		// the capabilities the app may be granted; runtime authorizers re-check the
+		// operator grant so the grant here can only ever RESTRICT, never widen.
+		pluginId: v.string(),
+		name: v.string(),
+		// HTTPS endpoint that receives signed synchronous hooks (PP-24). Validated
+		// at write time; network-level SSRF enforcement lands with the hook fetch.
+		endpointUrl: v.string(),
+		status: v.union(v.literal('enabled'), v.literal('disabled'), v.literal('revoked')),
+		// Restrict-only subset of the plugin manifest capabilities this app requests.
+		grantedCapabilities: v.array(v.string()),
+		// Sealed hook-signing secret (AES-256-GCM). Retained after revoke for audit
+		// history but cryptographically dead — a revoked app can never re-enable.
+		secretCiphertext: v.string(),
+		secretIv: v.string(),
+		secretAuthTag: v.string(),
+		secretEnvelopeVersion: v.number(),
+		secretRotatedAt: v.number(),
+		createdByUserId: v.string(),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+		revokedAt: v.optional(v.number()),
+	})
+		.index('by_organization_id', ['organizationId'])
+		.index('by_organization_id_and_plugin_id', ['organizationId', 'pluginId']),
+
 	draftStrategySelections: defineTable({
 		organizationId: v.string(),
 		scopeType: v.union(v.literal('mailbox'), v.literal('contact'), v.literal('classification')),
