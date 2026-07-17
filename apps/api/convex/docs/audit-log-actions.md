@@ -47,7 +47,7 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `transactional_email.duplicated` | `transactional_email` | `{ sourceEmailId, name, slug }` |
 | `automation.created` / `automation.updated` / `automation.deleted` | `automation` | `{ name }` |
 | `automation.activated` / `automation.paused` | `automation` | `{ name }` |
-| `settings.updated` | `settings` | `detailsBlob: { changes: {...} }` |
+| `settings.updated` | `settings` | Workspace settings: `detailsBlob: { changes: {...} }`. Plugin settings (`plugins/settings.ts`, carrying the plugin id): a partial update emits `{ pluginId, changedFields }` (changed field keys only, never their values, so a secret can never enter the trail); a reset emits `{ pluginId, reset: true }`. |
 | `ai_provider_config.updated` | `ai_provider_config` | `detailsBlob: { languageProviderKind, modelFast, modelCapable, embeddingProviderKind, embeddingModel, embeddingModelVersion, isLanguageKeySet, isEmbeddingKeySet }` (never the key) |
 | `team_member.invited` | `team_member` | `{ email, role }` |
 | `team_member.removed` | `team_member` | `{ email }` |

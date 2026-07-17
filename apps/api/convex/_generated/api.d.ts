@@ -564,6 +564,7 @@ import type * as plugins_automationStepModules_generated from "../plugins/automa
 import type * as plugins_automationTriggerCatalog_generated from "../plugins/automationTriggerCatalog.generated.js";
 import type * as plugins_automationTriggerModules_generated from "../plugins/automationTriggerModules.generated.js";
 import type * as plugins_sendTransportModules_generated from "../plugins/sendTransportModules.generated.js";
+import type * as plugins_settings from "../plugins/settings.js";
 import type * as plugins_storage from "../plugins/storage.js";
 import type * as plugins_storageCursor from "../plugins/storageCursor.js";
 import type * as plugins_storageJson from "../plugins/storageJson.js";
@@ -1253,6 +1254,7 @@ declare const fullApi: ApiFromModules<{
   "plugins/automationTriggerCatalog.generated": typeof plugins_automationTriggerCatalog_generated;
   "plugins/automationTriggerModules.generated": typeof plugins_automationTriggerModules_generated;
   "plugins/sendTransportModules.generated": typeof plugins_sendTransportModules_generated;
+  "plugins/settings": typeof plugins_settings;
   "plugins/storage": typeof plugins_storage;
   "plugins/storageCursor": typeof plugins_storageCursor;
   "plugins/storageJson": typeof plugins_storageJson;
