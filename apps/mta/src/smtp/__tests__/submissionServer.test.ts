@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
-import { PassThrough } from 'node:stream';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -7,7 +6,7 @@ import { join } from 'node:path';
 import * as net from 'node:net';
 import * as tls from 'node:tls';
 import type { AddressInfo } from 'node:net';
-import type { SMTPServer } from 'smtp-server';
+import type { SmtpListener, SmtpReply } from '@owlat/smtp-listener';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 
@@ -22,11 +21,13 @@ vi.mock('../../auth/credentials.js', () => ({ lookupCredential: lookupCredential
 vi.mock('../../auth/postboxAuth.js', () => ({ verifyPostboxAppPassword: verifyAppPasswordMock }));
 
 import {
-	buildOnAuth,
+	buildAuthenticate,
 	buildOnData,
+	buildOnConnect,
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
-	sessionAuth,
+	type SubmissionSessionState,
+	type AuthenticatedSession,
 } from '../submissionServer.js';
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
@@ -38,28 +39,39 @@ const config = {
 } as MtaConfig;
 const redis = {} as never;
 
-function authCall(auth: { username?: string; password?: string }, session: object = {}) {
-	return new Promise<{ err: Error | null; user?: string; session: object }>((resolve) => {
-		void buildOnAuth({ redis, config })(auth, session, (err, response) => {
-			resolve({ err, user: response?.user, session });
-		});
-	});
+// A minimal listener session for driving the exported hooks directly. The hooks
+// read only `remoteAddress`, `clientHostname`, `authenticated` and mutate/read
+// the typed `state` (which replaces the old `sessionAuth` WeakMap).
+interface TestSession {
+	remoteAddress: string;
+	clientHostname?: string;
+	authenticated?: boolean;
+	state: SubmissionSessionState;
 }
 
-function mimeStream(raw: string) {
-	const s = new PassThrough() as PassThrough & { sizeExceeded?: boolean };
-	s.sizeExceeded = false;
-	s.end(raw);
-	return s;
+function makeSession(overrides: Partial<TestSession> = {}): TestSession {
+	return { remoteAddress: '', state: {}, ...overrides };
 }
 
-function dataCall(raw: string, session: object) {
+async function authCall(
+	auth: { username?: string; password?: string },
+	sessionOverrides: Partial<TestSession> = {},
+	r: RealRedis | typeof redis = redis,
+	cfg: MtaConfig = config
+) {
+	const session = makeSession(sessionOverrides);
+	const outcome = await buildAuthenticate({ redis: r as never, config: cfg })(
+		{ username: auth.username ?? '', password: auth.password ?? '' },
+		session as never
+	);
+	return { outcome, session };
+}
+
+async function dataCall(raw: string, auth: AuthenticatedSession | undefined) {
 	const queue = { add: vi.fn().mockResolvedValue(undefined) };
-	return new Promise<{ err?: Error | null; queue: typeof queue }>((resolve) => {
-		void buildOnData({ queue: queue as never })(mimeStream(raw), session, (err) => {
-			resolve({ err, queue });
-		});
-	});
+	const session = makeSession({ authenticated: auth !== undefined, state: { auth } });
+	const reply = await buildOnData({ queue: queue as never })(Buffer.from(raw), session as never);
+	return { reply: reply as SmtpReply | undefined, queue };
 }
 
 beforeEach(() => {
@@ -67,32 +79,31 @@ beforeEach(() => {
 	verifyAppPasswordMock.mockReset().mockResolvedValue(null);
 });
 
-describe('submission onAuth — auth chain', () => {
+describe('submission authenticate — auth chain', () => {
 	it('accepts the master key and binds a master session', async () => {
-		const { err, user, session } = await authCall({ username: 'x', password: 'master-secret-key' });
-		expect(err).toBeNull();
-		expect(user).toBe('master');
-		expect(sessionAuth.get(session)).toMatchObject({ organizationId: '__master__' });
+		const { outcome, session } = await authCall({ username: 'x', password: 'master-secret-key' });
+		expect(outcome).toEqual({ ok: true, user: 'master' });
+		expect(session.state.auth).toMatchObject({ organizationId: '__master__' });
 	});
 
 	it('rejects a wrong key when no credential matches', async () => {
-		const { err } = await authCall({ username: 'x', password: 'wrong' });
-		expect(err?.message).toBe('Authentication failed');
+		const { outcome, session } = await authCall({ username: 'x', password: 'wrong' });
+		expect(outcome.ok).toBe(false);
+		expect(session.state.auth).toBeUndefined();
 	});
 
 	it('rejects an empty password without hitting any backend', async () => {
-		const { err } = await authCall({ username: 'x', password: '' });
-		expect(err?.message).toBe('Authentication failed');
+		const { outcome } = await authCall({ username: 'x', password: '' });
+		expect(outcome.ok).toBe(false);
 		expect(lookupCredentialMock).not.toHaveBeenCalled();
 		expect(verifyAppPasswordMock).not.toHaveBeenCalled();
 	});
 
 	it('accepts a per-org credential', async () => {
 		lookupCredentialMock.mockResolvedValue({ organizationId: 'org1', name: 'ci-cred' });
-		const { err, user, session } = await authCall({ username: 'x', password: 'org-key' });
-		expect(err).toBeNull();
-		expect(user).toBe('ci-cred');
-		expect(sessionAuth.get(session)).toMatchObject({ organizationId: 'org1', credentialName: 'ci-cred' });
+		const { outcome, session } = await authCall({ username: 'x', password: 'org-key' });
+		expect(outcome).toEqual({ ok: true, user: 'ci-cred' });
+		expect(session.state.auth).toMatchObject({ organizationId: 'org1', credentialName: 'ci-cred' });
 	});
 
 	it('accepts a Postbox app password and binds the mailbox identity', async () => {
@@ -102,21 +113,23 @@ describe('submission onAuth — auth chain', () => {
 			appPasswordId: 'ap1',
 			userId: 'u1',
 		});
-		const { err, user, session } = await authCall({ username: 'Jane@Example.com', password: 'app-pass' });
-		expect(err).toBeNull();
-		expect(user).toBe('Jane@Example.com');
-		expect(sessionAuth.get(session)).toMatchObject({
+		const { outcome, session } = await authCall({
+			username: 'Jane@Example.com',
+			password: 'app-pass',
+		});
+		expect(outcome).toEqual({ ok: true, user: 'Jane@Example.com' });
+		expect(session.state.auth).toMatchObject({
 			postbox: { mailboxAddress: 'jane@example.com', mailboxId: 'mb1' },
 		});
 	});
 
 	it('skips the app-password round-trip when the username is not an email', async () => {
-		const { err } = await authCall({ username: 'not-an-email', password: 'whatever' });
-		expect(err?.message).toBe('Authentication failed');
+		const { outcome } = await authCall({ username: 'not-an-email', password: 'whatever' });
+		expect(outcome.ok).toBe(false);
 		expect(verifyAppPasswordMock).not.toHaveBeenCalled();
 	});
 
-	it('forwards the EHLO client name so the server can record lastUsedUa', async () => {
+	it('forwards the announced EHLO client name so the server can record lastUsedUa', async () => {
 		verifyAppPasswordMock.mockResolvedValue({
 			organizationId: 'org1',
 			mailboxId: 'mb1',
@@ -125,38 +138,18 @@ describe('submission onAuth — auth chain', () => {
 		});
 		await authCall(
 			{ username: 'jane@example.com', password: 'app-pass' },
-			{ hostNameAppearsAs: 'thunderbird.local' },
+			{ clientHostname: 'thunderbird.local' }
 		);
 		expect(verifyAppPasswordMock).toHaveBeenCalledWith(
 			config,
 			'jane@example.com',
 			'app-pass',
 			'smtp',
-			'thunderbird.local',
+			'thunderbird.local'
 		);
 	});
 
-	it('falls back to the resolved client hostname when no EHLO name is set', async () => {
-		verifyAppPasswordMock.mockResolvedValue({
-			organizationId: 'org1',
-			mailboxId: 'mb1',
-			appPasswordId: 'ap1',
-			userId: 'u1',
-		});
-		await authCall(
-			{ username: 'jane@example.com', password: 'app-pass' },
-			{ clientHostname: 'mail.client.example' },
-		);
-		expect(verifyAppPasswordMock).toHaveBeenCalledWith(
-			config,
-			'jane@example.com',
-			'app-pass',
-			'smtp',
-			'mail.client.example',
-		);
-	});
-
-	it('forwards undefined when neither EHLO nor hostname is available', async () => {
+	it('forwards undefined when no EHLO client name is available', async () => {
 		verifyAppPasswordMock.mockResolvedValue({
 			organizationId: 'org1',
 			mailboxId: 'mb1',
@@ -169,14 +162,14 @@ describe('submission onAuth — auth chain', () => {
 			'jane@example.com',
 			'app-pass',
 			'smtp',
-			undefined,
+			undefined
 		);
 	});
 
 	it('fails closed when the credential backend throws', async () => {
 		lookupCredentialMock.mockRejectedValue(new Error('redis down'));
-		const { err } = await authCall({ username: 'x', password: 'org-key' });
-		expect(err?.message).toBe('Authentication failed');
+		const { outcome } = await authCall({ username: 'x', password: 'org-key' });
+		expect(outcome.ok).toBe(false);
 	});
 });
 
@@ -185,39 +178,47 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		`From: ${from}\r\nTo: ${to}\r\nSubject: hello\r\n\r\nbody text\r\n`;
 
 	it('rejects an unauthenticated session', async () => {
-		const { err, queue } = await dataCall(baseMime('a@b.com', 'c@d.com'), {});
-		expect(err?.message).toBe('Not authenticated');
+		const { reply, queue } = await dataCall(baseMime('a@b.com', 'c@d.com'), undefined);
+		expect(reply?.code).toBe(530);
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
 	it('rejects a message with no recipients', async () => {
-		const session = {};
-		sessionAuth.set(session, { organizationId: 'org1', credentialName: 'cred' });
-		const { err } = await dataCall('From: a@b.com\r\nSubject: x\r\n\r\nhi\r\n', session);
-		expect(err?.message).toBe('No valid recipients');
+		const { reply } = await dataCall('From: a@b.com\r\nSubject: x\r\n\r\nhi\r\n', {
+			organizationId: 'org1',
+			credentialName: 'cred',
+		});
+		expect(reply?.code).toBe(554);
 	});
 
-	it('rejects a Postbox session forging a different From identity', async () => {
-		const session = {};
-		sessionAuth.set(session, {
+	it('rejects a Postbox session forging a different From identity (553 5.7.1)', async () => {
+		const { reply, queue } = await dataCall(baseMime('ceo@example.com', 'victim@x.com'), {
 			organizationId: 'org1',
 			credentialName: 'postbox:jane@example.com',
-			postbox: { mailboxId: 'mb1', mailboxAddress: 'jane@example.com', appPasswordId: 'ap1', userId: 'u1' },
+			postbox: {
+				mailboxId: 'mb1',
+				mailboxAddress: 'jane@example.com',
+				appPasswordId: 'ap1',
+				userId: 'u1',
+			},
 		});
-		const { err, queue } = await dataCall(baseMime('ceo@example.com', 'victim@x.com'), session);
-		expect(err?.message).toContain('553 5.7.1');
+		expect(reply?.code).toBe(553);
+		expect(reply?.enhanced).toBe('5.7.1');
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
 	it('accepts a Postbox session sending as its own mailbox (case-insensitive)', async () => {
-		const session = {};
-		sessionAuth.set(session, {
+		const { reply, queue } = await dataCall(baseMime('Jane@Example.com', 'friend@x.com'), {
 			organizationId: 'org1',
 			credentialName: 'postbox:jane@example.com',
-			postbox: { mailboxId: 'mb1', mailboxAddress: 'jane@example.com', appPasswordId: 'ap1', userId: 'u1' },
+			postbox: {
+				mailboxId: 'mb1',
+				mailboxAddress: 'jane@example.com',
+				appPasswordId: 'ap1',
+				userId: 'u1',
+			},
 		});
-		const { err, queue } = await dataCall(baseMime('Jane@Example.com', 'friend@x.com'), session);
-		expect(err).toBeUndefined();
+		expect(reply).toBeUndefined();
 		expect(queue.add).toHaveBeenCalledTimes(1);
 		const job = queue.add.mock.calls[0]![0].data;
 		expect(job.messageId).toMatch(/^pb-smtp-mb1-/);
@@ -225,12 +226,13 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 	});
 
 	it('allows master/credential sessions to send any From and fans out per recipient', async () => {
-		const session = {};
-		sessionAuth.set(session, { organizationId: 'org1', credentialName: 'cred' });
 		const mime =
 			'From: anyone@brand.com\r\nTo: a@x.com, b@y.com\r\nCc: c@z.com\r\nSubject: s\r\n\r\nhi\r\n';
-		const { err, queue } = await dataCall(mime, session);
-		expect(err).toBeUndefined();
+		const { reply, queue } = await dataCall(mime, {
+			organizationId: 'org1',
+			credentialName: 'cred',
+		});
+		expect(reply).toBeUndefined();
 		expect(queue.add).toHaveBeenCalledTimes(3);
 		const jobs = queue.add.mock.calls.map((c) => c[0].data);
 		expect(jobs.map((j) => j.to).sort()).toEqual(['a@x.com', 'b@y.com', 'c@z.com']);
@@ -241,15 +243,12 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		}
 	});
 
-	// PR-51 (RFC 2046 §5.1.4): the 587 submission path parsed but DROPPED the
-	// AMP alternative — mailparser surfaces `text/x-amp-html` as an attachment
-	// (no `parsed.amp`), so it never reached the EmailJob. The handler now
-	// recovers it and sets `job.amp`.
+	// RFC 2046 §5.1.4: the AMP alternative must survive submission. `parseMessage`
+	// neither folds a `text/x-amp-html` part into html/text nor surfaces it as an
+	// attachment, so the handler recovers it by walking the MIME tree and sets
+	// `job.amp` — preserving the behavior the old mailparser path provided.
 	it('recovers the AMP alternative and sets job.amp', async () => {
-		const session = {};
-		sessionAuth.set(session, { organizationId: 'org1', credentialName: 'cred' });
-		const ampBody =
-			'<!doctype html><html ⚡4email><head></head><body>AMP version</body></html>';
+		const ampBody = '<!doctype html><html ⚡4email><head></head><body>AMP version</body></html>';
 		const mime = [
 			'From: sender@brand.com',
 			'To: rcpt@x.com',
@@ -273,8 +272,11 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 			'',
 		].join('\r\n');
 
-		const { err, queue } = await dataCall(mime, session);
-		expect(err).toBeUndefined();
+		const { reply, queue } = await dataCall(mime, {
+			organizationId: 'org1',
+			credentialName: 'cred',
+		});
+		expect(reply).toBeUndefined();
 		expect(queue.add).toHaveBeenCalledTimes(1);
 		const job = queue.add.mock.calls[0]![0].data;
 		expect(job.amp).toBe(ampBody);
@@ -283,53 +285,67 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(job.text).toBe('plain version');
 	});
 
+	it('recovers a quoted-printable AMP alternative', async () => {
+		const mime = [
+			'From: sender@brand.com',
+			'To: rcpt@x.com',
+			'Subject: amp',
+			'MIME-Version: 1.0',
+			'Content-Type: multipart/alternative; boundary="B"',
+			'',
+			'--B',
+			'Content-Type: text/x-amp-html; charset=utf-8',
+			'Content-Transfer-Encoding: quoted-printable',
+			'',
+			'caf=C3=A9 amp',
+			'--B--',
+			'',
+		].join('\r\n');
+		const { queue } = await dataCall(mime, { organizationId: 'org1', credentialName: 'cred' });
+		const job = queue.add.mock.calls[0]![0].data;
+		expect(job.amp).toBe('café amp');
+	});
+
 	it('leaves job.amp unset when the message has no AMP part', async () => {
-		const session = {};
-		sessionAuth.set(session, { organizationId: 'org1', credentialName: 'cred' });
-		const { err, queue } = await dataCall(baseMime('sender@brand.com', 'rcpt@x.com'), session);
-		expect(err).toBeUndefined();
+		const { reply, queue } = await dataCall(baseMime('sender@brand.com', 'rcpt@x.com'), {
+			organizationId: 'org1',
+			credentialName: 'cred',
+		});
+		expect(reply).toBeUndefined();
 		const job = queue.add.mock.calls[0]![0].data;
 		expect(job.amp).toBeUndefined();
 	});
 
-	// PR-27 — Regression-lock the DKIM identifier-alignment invariant for the 587
-	// submission path: the queued job's dkimDomain MUST equal the RFC5322.From
-	// domain (never the recipient domain, never the EHLO host), because the worker
-	// signs with the dkimDomain key and DMARC (RFC 7489 §3.1.1) only passes when
-	// the DKIM d= aligns with From. The From domain here is deliberately distinct
-	// from both the recipient domain and any local part so a wrong derivation
-	// (e.g. recipient-domain) would visibly fail.
+	// Regression-lock the DKIM identifier-alignment invariant for the submission
+	// path: the queued job's dkimDomain MUST equal the RFC5322.From domain (never
+	// the recipient domain), because the worker signs with the dkimDomain key and
+	// DMARC (RFC 7489 §3.1.1) only passes when the DKIM d= aligns with From.
 	it('sets queued dkimDomain to the From domain (DKIM alignment, RFC 7489 §3.1.1)', async () => {
-		const session = {};
-		sessionAuth.set(session, { organizationId: 'org1', credentialName: 'cred' });
-		const { err, queue } = await dataCall(
+		const { reply, queue } = await dataCall(
 			baseMime('Sales <sales@SenderBrand.com>', 'rcpt@recipientdomain.net'),
-			session,
+			{ organizationId: 'org1', credentialName: 'cred' }
 		);
-		expect(err).toBeUndefined();
+		expect(reply).toBeUndefined();
 		const job = queue.add.mock.calls[0]![0].data;
-		// Lowercased From domain — not the recipient domain.
 		expect(job.dkimDomain).toBe('senderbrand.com');
 		expect(job.dkimDomain).toBe((job.from as string).split('@')[1]);
 		expect(job.dkimDomain).not.toBe('recipientdomain.net');
 	});
 });
 
-describe('submission onAuth — per-IP brute-force throttle', () => {
+describe('submission authenticate — per-IP brute-force throttle', () => {
 	let liveRedis: RealRedis;
-	const throttleConfig = { apiKey: 'master-secret-key', submissionMaxAuthFailuresPerIp: 3 } as MtaConfig;
+	const throttleConfig = {
+		apiKey: 'master-secret-key',
+		submissionMaxAuthFailuresPerIp: 3,
+	} as MtaConfig;
 
 	function authCallIp(
 		auth: { username?: string; password?: string },
 		remoteIp: string,
-		r: RealRedis,
+		r: RealRedis
 	) {
-		const session = { remoteAddress: remoteIp };
-		return new Promise<{ err: Error | null; user?: string }>((resolve) => {
-			void buildOnAuth({ redis: r, config: throttleConfig })(auth, session, (err, response) => {
-				resolve({ err, user: response?.user });
-			});
-		});
+		return authCall(auth, { remoteAddress: remoteIp }, r, throttleConfig);
 	}
 
 	const authKey = (ip: string) => `mta:submission:authfail:${ip}`;
@@ -340,47 +356,56 @@ describe('submission onAuth — per-IP brute-force throttle', () => {
 
 	it('records a failure when the MASTER key is wrong', async () => {
 		expect(await liveRedis.get(authKey('1.2.3.4'))).toBeNull();
-		const { err } = await authCallIp({ username: 'x', password: 'not-the-master' }, '1.2.3.4', liveRedis);
-		expect(err?.message).toBe('Authentication failed');
+		const { outcome } = await authCallIp(
+			{ username: 'x', password: 'not-the-master' },
+			'1.2.3.4',
+			liveRedis
+		);
+		expect(outcome.ok).toBe(false);
 		expect(await liveRedis.get(authKey('1.2.3.4'))).toBe('1');
 	});
 
 	it('records a failure when an org credential lookup misses', async () => {
 		lookupCredentialMock.mockResolvedValue(null);
-		const { err } = await authCallIp({ username: 'x', password: 'wrong-org-key' }, '9.9.9.9', liveRedis);
-		expect(err?.message).toBe('Authentication failed');
-		// A wrong org credential is just another rejected secret → it MUST be
-		// counted (before this fix the auth path recorded nothing).
+		const { outcome } = await authCallIp(
+			{ username: 'x', password: 'wrong-org-key' },
+			'9.9.9.9',
+			liveRedis
+		);
+		expect(outcome.ok).toBe(false);
 		expect(await liveRedis.get(authKey('9.9.9.9'))).toBe('1');
 	});
 
-	it('throttles AUTH once the per-IP failure budget is exhausted', async () => {
-		// Burn the budget (3 failures) — each is a normal "Authentication failed".
+	it('throttles AUTH once the per-IP failure budget is exhausted — reply-identical to a wrong secret', async () => {
+		// Burn the budget (3 failures).
 		for (let i = 0; i < 3; i++) {
-			const { err } = await authCallIp({ username: 'x', password: 'nope' }, '5.5.5.5', liveRedis);
-			expect(err?.message).toBe('Authentication failed');
+			const { outcome } = await authCallIp(
+				{ username: 'x', password: 'nope' },
+				'5.5.5.5',
+				liveRedis
+			);
+			expect(outcome.ok).toBe(false);
 		}
 		// The 4th attempt is refused by the throttle BEFORE comparing the secret —
-		// even the correct master key is rejected while locked out.
-		const { err, user } = await authCallIp(
+		// even the correct master key is rejected while locked out, and the outcome
+		// is byte-identical to a normal rejection (no auth oracle — D6).
+		const { outcome } = await authCallIp(
 			{ username: 'x', password: 'master-secret-key' },
 			'5.5.5.5',
-			liveRedis,
+			liveRedis
 		);
-		expect(user).toBeUndefined();
-		expect(err?.message).toMatch(/Too many failed authentication attempts/);
+		expect(outcome).toEqual({ ok: false });
 	});
 
 	it('clears the failure counter after a successful auth', async () => {
 		await authCallIp({ username: 'x', password: 'nope' }, '7.7.7.7', liveRedis);
 		expect(await liveRedis.get(authKey('7.7.7.7'))).toBe('1');
-		const { err, user } = await authCallIp(
+		const { outcome } = await authCallIp(
 			{ username: 'x', password: 'master-secret-key' },
 			'7.7.7.7',
-			liveRedis,
+			liveRedis
 		);
-		expect(err).toBeNull();
-		expect(user).toBe('master');
+		expect(outcome).toEqual({ ok: true, user: 'master' });
 		expect(await liveRedis.get(authKey('7.7.7.7'))).toBeNull();
 	});
 
@@ -389,22 +414,20 @@ describe('submission onAuth — per-IP brute-force throttle', () => {
 			await authCallIp({ username: 'x', password: 'nope' }, '1.1.1.1', liveRedis);
 		}
 		// A different IP is still allowed to attempt (and succeed).
-		const { err, user } = await authCallIp(
+		const { outcome } = await authCallIp(
 			{ username: 'x', password: 'master-secret-key' },
 			'2.2.2.2',
-			liveRedis,
+			liveRedis
 		);
-		expect(err).toBeNull();
-		expect(user).toBe('master');
+		expect(outcome).toEqual({ ok: true, user: 'master' });
 	});
 });
 
-describe('createSubmissionServer — TLS guard + connection limiting', () => {
+describe('submission listener — TLS guard + connection limiting', () => {
 	const queue = { add: vi.fn() } as unknown as Queue<EmailJob>;
 
-	// SMTPServer validates the PEM at construction (tls.createSecureContext), so
-	// the happy-path tests need real TLS material. Generate a throwaway
-	// self-signed pair once.
+	// The listener validates the PEM when it builds its secure context, so the
+	// happy-path tests need real TLS material. Generate a throwaway pair once.
 	let certPem: string;
 	let keyPem: string;
 
@@ -412,10 +435,19 @@ describe('createSubmissionServer — TLS guard + connection limiting', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'owlat-submission-test-'));
 		try {
 			execFileSync('openssl', [
-				'req', '-x509', '-newkey', 'rsa:2048',
-				'-keyout', join(dir, 'key.pem'),
-				'-out', join(dir, 'cert.pem'),
-				'-days', '1', '-nodes', '-subj', '/CN=mta.test',
+				'req',
+				'-x509',
+				'-newkey',
+				'rsa:2048',
+				'-keyout',
+				join(dir, 'key.pem'),
+				'-out',
+				join(dir, 'cert.pem'),
+				'-days',
+				'1',
+				'-nodes',
+				'-subj',
+				'/CN=mta.test',
 			]);
 			certPem = readFileSync(join(dir, 'cert.pem'), 'utf8');
 			keyPem = readFileSync(join(dir, 'key.pem'), 'utf8');
@@ -438,13 +470,13 @@ describe('createSubmissionServer — TLS guard + connection limiting', () => {
 
 	it('THROWS when the TLS cert is undefined', () => {
 		expect(() =>
-			createSubmissionServer(queue, redis, tlsConfig({ submissionTlsCert: undefined })),
+			createSubmissionServer(queue, redis, tlsConfig({ submissionTlsCert: undefined }))
 		).toThrow(/SUBMISSION_TLS_CERT/);
 	});
 
 	it('THROWS when the TLS key is undefined', () => {
 		expect(() =>
-			createSubmissionServer(queue, redis, tlsConfig({ submissionTlsKey: undefined })),
+			createSubmissionServer(queue, redis, tlsConfig({ submissionTlsKey: undefined }))
 		).toThrow(/SUBMISSION_TLS_KEY/);
 	});
 
@@ -453,56 +485,51 @@ describe('createSubmissionServer — TLS guard + connection limiting', () => {
 			createSubmissionServer(
 				queue,
 				redis,
-				tlsConfig({ submissionTlsCert: undefined, submissionTlsKey: undefined }),
-			),
+				tlsConfig({ submissionTlsCert: undefined, submissionTlsKey: undefined })
+			)
 		).toThrow(/Refusing to start an insecure submission listener/);
 	});
 
-	it('is constructed with maxClients set from config', () => {
+	it('applies the global maxClients cap via the raw server backpressure', () => {
+		// The listener is not bound here (no listen()), so its net.Server holds no
+		// FD — only the accept-backpressure cap is asserted.
 		const server = createSubmissionServer(queue, redis, tlsConfig());
-		expect((server.options as { maxClients?: number }).maxClients).toBe(200);
+		expect(server.raw.maxConnections).toBe(200);
 	});
 
-	it('installs an onConnect per-IP limiter that rejects the N+1th connection', async () => {
+	it('the per-IP onConnect limiter rejects the N+1th connection', async () => {
 		const liveRedis = new Redis() as unknown as RealRedis;
-		const server = createSubmissionServer(
-			queue,
-			liveRedis,
-			tlsConfig({ submissionMaxConnectionsPerIp: 3 }),
-		);
-		const onConnect = (server as unknown as {
-			onConnect: (s: object, cb: (err?: Error | null) => void) => void;
-		}).onConnect;
-		expect(typeof onConnect).toBe('function');
+		const onConnect = buildOnConnect({
+			redis: liveRedis,
+			config: tlsConfig({ submissionMaxConnectionsPerIp: 3 }),
+		});
 
 		const connect = (ip: string) =>
-			new Promise<Error | null | undefined>((resolve) => {
-				onConnect({ remoteAddress: ip }, (err) => resolve(err));
-			});
+			onConnect({ remoteAddress: ip, state: {} } as never) as Promise<SmtpReply | undefined>;
 
 		// First 3 from the same IP are allowed…
-		expect(await connect('8.8.8.8')).toBeFalsy();
-		expect(await connect('8.8.8.8')).toBeFalsy();
-		expect(await connect('8.8.8.8')).toBeFalsy();
-		// …the 4th is rejected by the per-IP cap.
+		expect(await connect('8.8.8.8')).toBeUndefined();
+		expect(await connect('8.8.8.8')).toBeUndefined();
+		expect(await connect('8.8.8.8')).toBeUndefined();
+		// …the 4th is rejected by the per-IP cap with a 421.
 		const fourth = await connect('8.8.8.8');
-		expect(fourth).toBeInstanceOf(Error);
-		expect(fourth?.message).toMatch(/Too many connections/);
+		expect(fourth?.code).toBe(421);
+		expect(String(fourth?.text)).toMatch(/Too many connections/);
 		// A different IP is unaffected.
-		expect(await connect('8.8.4.4')).toBeFalsy();
+		expect(await connect('8.8.4.4')).toBeUndefined();
 	});
 });
 
-// ── Wire-level TLS gate tests (PR-54) ──────────────────────────────────────
+// ── Wire-level TLS gate tests ───────────────────────────────────────────────
 //
-// (1) Regression-lock the (smtp-server-provided) STARTTLS-before-AUTH gate on
-//     the 587 listener: an AUTH issued before STARTTLS MUST be refused with a
-//     530/538 and must never reach our onAuth (RFC 3207 / RFC 4954 §4 / RFC 8314
-//     §3.3). After STARTTLS the master key authenticates (235).
-// (2) Lock the implicit-TLS (465) listener: it is encrypted from the first byte
-//     (RFC 8314 §3.3/§7.3 preferred), serves its 220 banner + AUTH over TLS, and
-//     a plaintext client cannot complete the handshake.
-describe('submission TLS gate — wire-level (PR-54)', () => {
+// (1) The 587 listener refuses AUTH before STARTTLS (530) and never reaches the
+//     credential check (RFC 3207 / RFC 4954 §4 / RFC 8314 §3.3); after STARTTLS
+//     the master key authenticates (235). A CORRECT master key rejected with 530
+//     (not 235) proves the credential path was never entered.
+// (2) The implicit-TLS (465) listener is encrypted from the first byte (RFC 8314
+//     §3.3/§7.3 preferred), serves its 220 banner + AUTH over TLS, and a plaintext
+//     client cannot complete the handshake.
+describe('submission TLS gate — wire-level', () => {
 	const queue = { add: vi.fn() } as unknown as Queue<EmailJob>;
 	let certPem: string;
 	let keyPem: string;
@@ -511,10 +538,19 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'owlat-submission-tls-test-'));
 		try {
 			execFileSync('openssl', [
-				'req', '-x509', '-newkey', 'rsa:2048',
-				'-keyout', join(dir, 'key.pem'),
-				'-out', join(dir, 'cert.pem'),
-				'-days', '1', '-nodes', '-subj', '/CN=mta.test',
+				'req',
+				'-x509',
+				'-newkey',
+				'rsa:2048',
+				'-keyout',
+				join(dir, 'key.pem'),
+				'-out',
+				join(dir, 'cert.pem'),
+				'-days',
+				'1',
+				'-nodes',
+				'-subj',
+				'/CN=mta.test',
 			]);
 			certPem = readFileSync(join(dir, 'cert.pem'), 'utf8');
 			keyPem = readFileSync(join(dir, 'key.pem'), 'utf8');
@@ -535,18 +571,9 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 			...overrides,
 		}) as MtaConfig;
 
-	// Boot a server on an ephemeral port (uses ioredis-mock for the limiter).
-	function boot(server: SMTPServer): Promise<number> {
-		return new Promise((resolve, reject) => {
-			server.on('error', reject);
-			server.listen(0, '127.0.0.1', () => {
-				resolve((server.server.address() as AddressInfo).port);
-			});
-		});
-	}
-
-	function closeServer(server: SMTPServer): Promise<void> {
-		return new Promise((resolve) => server.close(() => resolve()));
+	async function boot(listener: SmtpListener): Promise<number> {
+		await listener.listen(0, '127.0.0.1');
+		return (listener.address() as AddressInfo).port;
 	}
 
 	type Conn = net.Socket | tls.TLSSocket;
@@ -557,7 +584,6 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 			let buf = '';
 			const onData = (chunk: Buffer) => {
 				buf += chunk.toString('utf8');
-				// A multi-line reply uses `NNN-...`; the terminal line is `NNN ...`.
 				const lines = buf.split('\r\n').filter(Boolean);
 				const last = lines[lines.length - 1];
 				if (last && /^\d{3} /.test(last)) {
@@ -583,14 +609,10 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 	}
 
 	const plainAuth = (user: string, pass: string): string =>
-		Buffer.from(` ${user} ${pass}`, 'utf8').toString('base64');
+		Buffer.from(`\0${user}\0${pass}`, 'utf8').toString('base64');
 
-	it('587: refuses AUTH before STARTTLS (530/538) without invoking onAuth, then authenticates after STARTTLS', async () => {
+	it('587: refuses AUTH before STARTTLS (530) without reaching the credential check, then authenticates after STARTTLS', async () => {
 		const server = createSubmissionServer(queue, new Redis() as unknown as RealRedis, tlsConfig());
-		// Spy on the bound handler smtp-server actually invokes (this._server.onAuth).
-		const onAuthSpy = vi.fn(server.onAuth.bind(server));
-		(server as unknown as { onAuth: typeof server.onAuth }).onAuth = onAuthSpy;
-
 		const port = await boot(server);
 		try {
 			const sock = net.connect(port, '127.0.0.1');
@@ -605,14 +627,13 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 			// STARTTLS must be advertised since we connect over plaintext.
 			expect(ehlo).toMatch(/STARTTLS/);
 
-			// AUTH PLAIN with the correct master key — but BEFORE STARTTLS. The
-			// library must refuse it (530 "Must issue a STARTTLS command first";
-			// some versions use 538) and our onAuth must never run.
+			// AUTH PLAIN with the CORRECT master key — but BEFORE STARTTLS. The
+			// listener must refuse it with 530 (encryption required) and never run
+			// the credential check (a reached-and-correct key would be 235).
 			send(sock, `AUTH PLAIN ${plainAuth('master', 'master-secret-key')}`);
 			const preAuthReply = await readReply(sock);
-			expect(preAuthReply).toMatch(/^(530|538) /);
+			expect(preAuthReply).toMatch(/^530 /);
 			expect(preAuthReply).toMatch(/Must issue a STARTTLS command first/i);
-			expect(onAuthSpy).not.toHaveBeenCalled();
 
 			// Upgrade the channel: STARTTLS → 220, then wrap the socket in TLS.
 			send(sock, 'STARTTLS');
@@ -630,11 +651,10 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 
 			send(secure, `AUTH PLAIN ${plainAuth('master', 'master-secret-key')}`);
 			expect(await readReply(secure)).toMatch(/^235 /);
-			expect(onAuthSpy).toHaveBeenCalledTimes(1);
 
 			secure.destroy();
 		} finally {
-			await closeServer(server);
+			await server.close();
 		}
 	});
 
@@ -642,7 +662,7 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 		const server = createImplicitTlsSubmissionServer(
 			queue,
 			new Redis() as unknown as RealRedis,
-			tlsConfig(),
+			tlsConfig()
 		);
 		const port = await boot(server);
 		try {
@@ -663,7 +683,7 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 
 			secure.destroy();
 		} finally {
-			await closeServer(server);
+			await server.close();
 		}
 	});
 
@@ -671,13 +691,13 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 		const server = createImplicitTlsSubmissionServer(
 			queue,
 			new Redis() as unknown as RealRedis,
-			tlsConfig(),
+			tlsConfig()
 		);
 		const port = await boot(server);
 		try {
 			// Plaintext connect: the server speaks TLS from the first byte, so it
-			// never emits a 220 SMTP banner. A plaintext EHLO is interpreted as a
-			// malformed ClientHello and the connection is torn down — no greeting.
+			// never emits a 220 SMTP banner. A plaintext EHLO is a malformed
+			// ClientHello and the connection is torn down — no greeting.
 			const result = await new Promise<'no-banner' | 'banner'>((resolve, reject) => {
 				const sock = net.connect(port, '127.0.0.1');
 				let sawBanner = false;
@@ -687,9 +707,8 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 				}, 500);
 				sock.on('connect', () => send(sock, 'EHLO client.test'));
 				sock.on('data', (chunk: Buffer) => {
-					if (/^220 /.test(chunk.toString('utf8'))) sawBanner = true;
+					if (chunk.toString('utf8').startsWith('220 ')) sawBanner = true;
 				});
-				// A handshake-rejection error / EOF is the expected outcome.
 				sock.on('error', () => {
 					clearTimeout(timer);
 					resolve('no-banner');
@@ -702,7 +721,7 @@ describe('submission TLS gate — wire-level (PR-54)', () => {
 			});
 			expect(result).toBe('no-banner');
 		} finally {
-			await closeServer(server);
+			await server.close();
 		}
 	});
 });
