@@ -15,6 +15,12 @@ import { validateDraftStrategyContributions } from './draftStrategyManifest';
 import { validateAgentStepContributions } from './agentStepManifest';
 import { PLUGIN_IMPORT_PROVIDER_CAPABILITY } from './importProvider';
 import { validateImportProviderContributions } from './importProviderManifest';
+import { PLUGIN_NAV_ITEM_CAPABILITY } from './navItem';
+import { PLUGIN_SETTINGS_PANEL_CAPABILITY } from './settingsPanel';
+import {
+	validateNavItemContributions,
+	validateSettingsPanelContributions,
+} from './navContributionManifest';
 import { PLUGIN_WEBHOOK_EVENT_CAPABILITY } from './webhookEvent';
 import { validateWebhookEventContributions } from './webhookEventManifest';
 import { isPluginContributionKind, type PluginContributions } from './contributions';
@@ -324,6 +330,12 @@ const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
 		noun: 'import providers',
 	},
 	{ bucket: 'crons', capability: PLUGIN_CRON_CAPABILITY, noun: 'crons' },
+	{ bucket: 'navItems', capability: PLUGIN_NAV_ITEM_CAPABILITY, noun: 'navigation items' },
+	{
+		bucket: 'settingsPanels',
+		capability: PLUGIN_SETTINGS_PANEL_CAPABILITY,
+		noun: 'settings panels',
+	},
 ] as const;
 
 type ContributionBucket = (typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[number]['bucket'];
@@ -382,6 +394,8 @@ function validateContributions(value: unknown, issues: PluginManifestIssue[]): v
 			if (key === 'webhookEvents' && items) validateWebhookEventContributions(items, issues);
 			if (key === 'importProviders' && items) validateImportProviderContributions(items, issues);
 			if (key === 'crons' && items) validateCronContributions(items, issues);
+			if (key === 'navItems' && items) validateNavItemContributions(items, issues);
+			if (key === 'settingsPanels' && items) validateSettingsPanelContributions(items, issues);
 		}
 	}
 }
