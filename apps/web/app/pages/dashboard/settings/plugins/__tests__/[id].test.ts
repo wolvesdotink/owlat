@@ -10,9 +10,10 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 const routeId = ref('policy-pack');
+const role = ref<'owner' | 'editor'>('owner');
 
 vi.mock('~/plugins/plugin-composition.generated', () => ({
 	bundledPluginComposition: Object.freeze([
@@ -47,16 +48,25 @@ const setPluginSettings = vi.fn();
 const resetPluginSettings = vi.fn();
 const showToast = vi.fn();
 let operationCall = 0;
+// The reactive args factory the page passes to the overview query: `{}` for an
+// admin, `'skip'` for an editor. Captured so tests can prove the query is skipped.
+let overviewQueryArgs: (() => unknown) | undefined;
 
 beforeEach(() => {
 	routeId.value = 'policy-pack';
+	role.value = 'owner';
 	overview.value = { plugins: [], orphaned: [] };
 	operationCall = 0;
+	overviewQueryArgs = undefined;
 	setPluginSettings.mockReset();
 	resetPluginSettings.mockReset();
 	showToast.mockReset();
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
+	vi.stubGlobal('usePermissions', () => ({
+		isAdmin: computed(() => role.value !== 'editor'),
+		showAdminGate: computed(() => role.value === 'editor'),
+	}));
 	vi.stubGlobal('useRoute', () => ({
 		params: {
 			get id() {
@@ -65,12 +75,15 @@ beforeEach(() => {
 		},
 	}));
 	vi.stubGlobal('useToast', () => ({ showToast }));
-	vi.stubGlobal('useConvexQuery', () => ({
-		data: overview,
-		isLoading: ref(false),
-		error: ref(null),
-		refetch: vi.fn(),
-	}));
+	vi.stubGlobal('useConvexQuery', (_fn: unknown, args: (() => unknown) | undefined) => {
+		overviewQueryArgs = typeof args === 'function' ? args : undefined;
+		return {
+			data: overview,
+			isLoading: ref(false),
+			error: ref(null),
+			refetch: vi.fn(),
+		};
+	});
 	// Two operations are set up in declaration order: setPluginSettings, then
 	// resetPluginSettings.
 	vi.stubGlobal('useBackendOperation', () => {
@@ -199,5 +212,29 @@ describe('plugin detail — save seeds from the returned redacted state', () => 
 		expect((wrapper.get('input[type="text"]').element as HTMLInputElement).value).toBe(
 			'https://later.example'
 		);
+	});
+});
+
+describe('plugin detail — admins-only gate', () => {
+	beforeEach(() => {
+		overview.value = { plugins: [installedEntry('https://api.test')], orphaned: [] };
+	});
+
+	it('renders the gate and skips the query for an editor', () => {
+		role.value = 'editor';
+		const wrapper = mountPage();
+		expect(wrapper.text()).toContain('Admins only');
+		// The settings form (an admin surface) is not rendered.
+		expect(wrapper.find('input[type="text"]').exists()).toBe(false);
+		// The overview query is skipped for the non-admin, so no gated `forbidden`
+		// throw can render as a "Failed to load" error.
+		expect(overviewQueryArgs?.()).toBe('skip');
+	});
+
+	it('runs the query and renders the surface for an admin', () => {
+		role.value = 'owner';
+		const wrapper = mountPage();
+		expect(wrapper.text()).not.toContain('Admins only');
+		expect(overviewQueryArgs?.()).toEqual({});
 	});
 });
