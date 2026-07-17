@@ -7,10 +7,17 @@ export type PluginSettingsPanelCapability = typeof PLUGIN_SETTINGS_PANEL_CAPABIL
 export type PluginSettingsPanelLocalId = string;
 
 /**
- * Namespaced identity for a plugin-contributed settings entry. Core entries
- * keep their flat hrefs as identity; every plugin entry is
- * `plugin.<pluginId>.<localId>` so a plugin can never shadow or collide with a
- * core settings entry or another plugin's entry.
+ * Plugin-scoped identity for a plugin-contributed settings entry,
+ * `plugin.<pluginId>.<localId>`. This is the stable handle for flags,
+ * telemetry and settings surfaces — it is NOT what the settings registry
+ * deduplicates on. Registry dedup is by destination href
+ * (`derivePluginNavigation` sets each entry's id to its href), which is what
+ * prevents a plugin from shadowing a core settings entry: two entries at the
+ * same href collapse first-registered-wins, and core is always registered
+ * first.
+ *
+ * Intended consumer: the plugin-scoped settings index landing in PP-20; until
+ * that lands `pluginSettingsPanelKind` is exercised only by its own unit tests.
  */
 export type PluginSettingsPanelKind = `plugin.${PluginId}.${PluginSettingsPanelLocalId}`;
 
