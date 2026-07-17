@@ -114,6 +114,15 @@ const validation = useFormValidation({
 const isFreemail = computed(() => isFreemailDomain(addForm.domain));
 const nsUnresolved = ref(false);
 
+// Only make the "your addresses will be …" promise when the preview would be
+// truthful. A freemail domain (live) is blocked below, and a field that failed
+// validation on blur/submit shows an error — in both cases a preview would
+// contradict the message that owns the field, so suppress it. `hasError` only
+// reflects the last blur/submit (not each keystroke), so a mid-typing invalid
+// value still previews harmlessly; the error + preview only ever co-occur after
+// blur, which this gate resolves.
+const showAddressPreview = computed(() => !isFreemail.value && !validation.hasError('domain'));
+
 // Run the fail-soft NS lookup on blur (not per-keystroke). Any lookup error
 // resolves to null and leaves nsUnresolved false — the check never blocks.
 const checkNs = async () => {
@@ -445,13 +454,14 @@ onBeforeUnmount(() => {
 						</p>
 					</div>
 				</div>
-
-				<!-- Per-transport DNS guidance: what to check depends on how this
-					 instance sends (managed MTA records vs SES/relay/Resend that sign
-					 on your behalf). Demoted below the "why add a domain" card so the
-					 first thing under the h1 builds the mental model, not transports. -->
-				<DeliveryDomainDnsGuidance />
 			</div>
+
+			<!-- Per-transport DNS guidance: what to check depends on how this
+				 instance sends (managed MTA records vs SES/relay/Resend that sign on
+				 your behalf). A sibling of — and demoted below — the "why add a
+				 domain" card, so the first thing under the h1 builds the mental model,
+				 not transports. The space-y-8 wrapper handles the spacing. -->
+			<DeliveryDomainDnsGuidance />
 
 			<!-- No verified domain → offer connecting an external mailbox instead -->
 			<div
@@ -538,6 +548,7 @@ onBeforeUnmount(() => {
 							placeholder="mail.example.com"
 							:class="['input', validation.hasError('domain') && 'input-error']"
 							:disabled="addModal.isLoading.value"
+							:aria-describedby="showAddressPreview ? 'domain-name-preview' : undefined"
 							@blur="handleDomainBlur"
 						/>
 						<p v-if="validation.getError('domain', true)" class="mt-1 text-xs text-error">
@@ -550,13 +561,24 @@ onBeforeUnmount(() => {
 						</p>
 
 						<!-- Live consequence preview: the addresses this domain produces,
-						     updated as the user types. Empty state falls back to the
-						     example so the sentence always reads sensibly. -->
-						<p class="mt-1 text-xs text-text-secondary" data-testid="address-preview">
-							Your addresses will be
-							<strong class="text-text-primary"
-								>you@{{ previewDomain || 'mail.example.com' }}</strong
-							>
+						     updated as the user types. Suppressed when a freemail block or
+						     a validation error owns the field (a preview would contradict
+						     it); an empty field reads as an explicit example, not a promise.
+						     Wired to the input via aria-describedby so it's announced. -->
+						<p
+							v-if="showAddressPreview"
+							id="domain-name-preview"
+							class="mt-1 text-xs text-text-secondary"
+							data-testid="address-preview"
+						>
+							<template v-if="previewDomain">
+								Your addresses will be
+								<strong class="text-text-primary">you@{{ previewDomain }}</strong>
+							</template>
+							<template v-else>
+								For example, your addresses would be
+								<span class="font-medium text-text-primary">you@mail.example.com</span>
+							</template>
 						</p>
 
 						<!-- Blocking: freemail / public-mailbox domain the user can't publish DNS for. -->

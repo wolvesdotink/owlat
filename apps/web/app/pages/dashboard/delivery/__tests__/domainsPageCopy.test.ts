@@ -48,8 +48,33 @@ describe('Add-Domain modal — live address preview', () => {
 		expect(pageSource).toContain('v-model="addForm.domain"');
 	});
 
-	it('falls back to the example domain when the field is empty (sensible empty state)', () => {
-		expect(pageSource).toContain("previewDomain || 'mail.example.com'");
+	it('frames the empty state as an explicit example, not an outcome promise', () => {
+		// Empty field: `<template v-else>` reads "For example … would be" with a
+		// plain <span> (not a bold "will be" promise), so it can't be mistaken for
+		// the real address before anything is typed.
+		expect(pageSource).toMatch(
+			/<template v-else>[\s\S]*?For example[\s\S]*?you@mail\.example\.com[\s\S]*?<\/template>/
+		);
+		// The "will be" promise is reserved for a non-empty entry.
+		expect(pageSource).toMatch(
+			/<template v-if="previewDomain">[\s\S]*?Your addresses will be[\s\S]*?you@\{\{ previewDomain \}\}/
+		);
+	});
+
+	it('suppresses the preview when a validation error or freemail block owns the field', () => {
+		// The preview element is gated on `showAddressPreview`…
+		expect(pageSource).toMatch(/v-if="showAddressPreview"[\s\S]*?data-testid="address-preview"/);
+		// …which is false when the domain is freemail (live) or failed validation.
+		expect(pageSource).toMatch(
+			/const showAddressPreview = computed\(\(\) => !isFreemail\.value && !validation\.hasError\('domain'\)\)/
+		);
+	});
+
+	it('wires the preview to the input via aria-describedby for announcement', () => {
+		expect(pageSource).toContain(
+			':aria-describedby="showAddressPreview ? \'domain-name-preview\' : undefined"'
+		);
+		expect(pageSource).toContain('id="domain-name-preview"');
 	});
 });
 
@@ -69,6 +94,20 @@ describe('Page ordering — mental model before transports', () => {
 	it('renders the guidance banner exactly once (moved, not duplicated)', () => {
 		const matches = pageSource.match(/<DeliveryDomainDnsGuidance/g) ?? [];
 		expect(matches).toHaveLength(1);
+	});
+
+	it('places the banner as a SIBLING of the info card, not nested inside it', () => {
+		// The banner sits at the content wrapper's indentation (3 tabs), the same
+		// level as the tinted info card — not one deeper (4 tabs), which would be
+		// the card-inside-card on a tinted background the reviewer flagged.
+		expect(pageSource).toMatch(/\n\t\t\t<DeliveryDomainDnsGuidance \/>/);
+		expect(pageSource).not.toMatch(/\n\t\t\t\t<DeliveryDomainDnsGuidance/);
+		// And it lands after the info card's tinted wrapper has closed.
+		const infoCard = pageSource.indexOf('card p-6 bg-brand/5');
+		const guidance = pageSource.indexOf('<DeliveryDomainDnsGuidance');
+		const cardClose = pageSource.indexOf('</div>\n\n\t\t\t<!-- Per-transport DNS guidance');
+		expect(cardClose).toBeGreaterThan(infoCard);
+		expect(guidance).toBeGreaterThan(cardClose);
 	});
 });
 
