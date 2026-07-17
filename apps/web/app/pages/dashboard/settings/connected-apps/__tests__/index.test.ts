@@ -110,7 +110,7 @@ const registerModalStub = {
 	props: ['open', 'plugins', 'isSubmitting', 'errorMessage'],
 	emits: ['close', 'submit'],
 	template:
-		'<div v-if="open" class="register-modal"><button class="register-submit" @click="$emit(\'submit\', { pluginId: \'policy-pack\', name: \'New app\', endpointUrl: \'https://e.example.com\', grantedCapabilities: [\'send:gate\'] })">submit</button></div>',
+		"<div v-if=\"open\" class=\"register-modal\"><button class=\"register-submit\" @click=\"$emit('submit', { pluginId: 'policy-pack', name: 'New app', endpointUrl: 'https://e.example.com', grantedCapabilities: ['send:gate'] })\">submit</button></div>",
 };
 const revealStub = {
 	props: ['open', 'secret', 'appName', 'context'],

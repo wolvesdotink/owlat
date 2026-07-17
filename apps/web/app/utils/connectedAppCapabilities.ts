@@ -31,7 +31,10 @@ export function connectedAppCapabilityLabel(capability: string): string {
 	const colon = trimmed.indexOf(':');
 	if (colon === -1) return humanizeSegment(trimmed);
 	const scope = humanizeSegment(trimmed.slice(0, colon));
-	const verb = trimmed.slice(colon + 1).replace(/[-_]+/g, ' ').trim();
+	const verb = trimmed
+		.slice(colon + 1)
+		.replace(/[-_]+/g, ' ')
+		.trim();
 	if (!scope) return trimmed;
 	if (!verb) return scope;
 	return `${scope} · ${verb}`;

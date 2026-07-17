@@ -56,10 +56,7 @@ export const get = authedQuery({
  */
 export const _loadEndpointForTest = internalQuery({
 	args: { connectedAppId: v.id('connectedApps') },
-	handler: async (
-		ctx,
-		args
-	): Promise<{ endpointUrl: string; status: ConnectedAppStatus }> => {
+	handler: async (ctx, args): Promise<{ endpointUrl: string; status: ConnectedAppStatus }> => {
 		const { activeOrganizationId } = await requireOrgPermission(
 			ctx,
 			'organization:manage',
