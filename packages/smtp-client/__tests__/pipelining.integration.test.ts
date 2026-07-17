@@ -25,7 +25,7 @@ import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 
 import { SmtpConnection } from '../src/connection';
-import { sendEnvelope, type PipeliningMode } from '../src/transaction';
+import { sendEnvelope, type PipeliningMode, type SendResult } from '../src/transaction';
 import { isSmtpError } from '../src/errors';
 
 const MESSAGE = [
@@ -273,6 +273,72 @@ describe('PIPELINING — batched replies matched to commands', () => {
 	});
 });
 
+// ── (a′) desynced-socket hardening: a 354 to an aborted batch's DATA ──────────
+describe('PIPELINING — a 354 answer to an aborted batch closes the desynced socket', () => {
+	// A non-compliant server that, instead of a 503, actually enters DATA state on
+	// the pipelined DATA after the batch was already logically aborted (rejected
+	// MAIL FROM, or every RCPT refused). The client throws its clean pre-DATA
+	// rejection, but the socket is now desynced — its next read would be message
+	// body — so the client MUST close it rather than leave it parkable for reuse.
+	it('closes the socket when a rejected-MAIL batch still gets a 354 for DATA', async () => {
+		const peer = await startPipeServer({
+			ehloReply: PIPELINING_EHLO,
+			framing: 'batched',
+			mailReply: '550 5.7.1 sender rejected\r\n',
+			rcptReply: () => '503 5.5.1 bad sequence of commands\r\n',
+			// The non-compliant part: DATA is answered 354, so the peer enters DATA state.
+			dataReply: '354 go ahead\r\n',
+		});
+		const conn = await connectPlain(peer.port);
+		let caught: unknown;
+		try {
+			await sendEnvelope(conn, {
+				from: 'sender@example.com',
+				to: ['rcpt@example.net'],
+				data: MESSAGE,
+			});
+		} catch (err) {
+			caught = err;
+		}
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('mail');
+			expect(caught.replyCode).toBe(550);
+		}
+		// The desynced socket was closed by sendEnvelope — never left for the reuse
+		// layer to park (which would burn the next job's RSET as swallowed body).
+		expect(conn.rawSocket.destroyed).toBe(true);
+	});
+
+	it('closes the socket when an all-rejected batch still gets a 354 for DATA', async () => {
+		const peer = await startPipeServer({
+			ehloReply: PIPELINING_EHLO,
+			framing: 'batched',
+			rcptReply: () => '550 5.1.1 no such user\r\n',
+			dataReply: '354 go ahead\r\n',
+		});
+		const conn = await connectPlain(peer.port);
+		let caught: unknown;
+		try {
+			await sendEnvelope(conn, {
+				from: 'sender@example.com',
+				to: ['a@example.net', 'b@example.net'],
+				data: MESSAGE,
+			});
+		} catch (err) {
+			caught = err;
+		}
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('rcpt');
+			expect(caught.replyCode).toBe(550);
+		}
+		expect(conn.rawSocket.destroyed).toBe(true);
+	});
+});
+
 // ── (b) quirk framing ────────────────────────────────────────────────────────
 describe('PIPELINING — reply framing quirks', () => {
 	it('handles a server that advertises PIPELINING but writes one packet per reply line', async () => {
@@ -322,7 +388,7 @@ describe('PIPELINING — classification is identical forced on and off', () => {
 		mode: PipeliningMode,
 		server: PipeServerOptions,
 		to: readonly string[]
-	): Promise<{ result?: unknown; error?: unknown; batched: boolean }> {
+	): Promise<{ result?: SendResult; error?: unknown; batched: boolean }> {
 		const peer = await startPipeServer(server);
 		const conn = await connectPlain(peer.port);
 		try {
@@ -386,11 +452,15 @@ describe('PIPELINING — classification is identical forced on and off', () => {
 		const on = await run('always', server, ['rcpt@example.net']);
 		const off = await run('never', server, ['rcpt@example.net']);
 
-		for (const outcome of [on, off]) {
-			expect(isSmtpError(outcome.error)).toBe(true);
-			if (isSmtpError(outcome.error)) {
-				expect(['data', 'data-final']).toContain(outcome.error.phase);
-			}
+		// Phase is deterministic: DATA's 354 is fully read before the body write in
+		// BOTH paths, so the drop always surfaces in `data-final`. A parity gate must
+		// pin them equal (not independent set-membership, which would let on=`data`
+		// pass against off=`data-final` — the exact divergence this test guards).
+		expect(isSmtpError(on.error)).toBe(true);
+		expect(isSmtpError(off.error)).toBe(true);
+		if (isSmtpError(on.error) && isSmtpError(off.error)) {
+			expect(on.error.phase).toBe(off.error.phase);
+			expect(on.error.phase).toBe('data-final');
 		}
 	});
 
@@ -407,14 +477,11 @@ describe('PIPELINING — classification is identical forced on and off', () => {
 		expect(on.batched).toBe(true);
 		expect(off.batched).toBe(false);
 		// Serialise the SendResult verdicts and compare — no field may differ.
-		const shape = (r: unknown): unknown => {
-			const res = r as { accepted: unknown[]; rejected: unknown[]; response: { code: number } };
-			return {
-				accepted: res.accepted,
-				rejected: res.rejected,
-				responseCode: res.response.code,
-			};
-		};
+		const shape = (r: SendResult | undefined): unknown => ({
+			accepted: r?.accepted,
+			rejected: r?.rejected,
+			responseCode: r?.response.code,
+		});
 		expect(shape(on.result)).toEqual(shape(off.result));
 	});
 });
