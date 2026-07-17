@@ -4,8 +4,8 @@
  * Split out of `domains/domains.ts` (CONVENTIONS.md: split a feature file once it
  * grows past ~500 LOC). This is the thin, admin-gated public shell over the
  * **Sending domain lifecycle (module)**'s `setReturnPathHost` — validation +
- * authz only; the record regeneration, status drop, MTA reflection, and audit
- * all live in `domains/lifecycle.ts`.
+ * authz only; the record regeneration, status drop, provider reflection (MTA or
+ * SES, X1), and audit all live in `domains/lifecycle.ts`.
  */
 
 import { v } from 'convex/values';
@@ -51,8 +51,14 @@ export const setReturnPathHost = authedMutation({
 			if (outcome.reason === 'invalid_host') {
 				throwInvalidInput('Invalid return-path host.');
 			}
+			if (outcome.reason === 'host_not_subdomain') {
+				// SES requires its custom MAIL FROM to be a subdomain of the domain.
+				throwInvalidInput(
+					'For an SES domain the return-path host must be a subdomain of the sending domain, e.g. bounce.example.com.'
+				);
+			}
 			if (outcome.reason === 'unsupported_provider') {
-				throwInvalidState('This domain is not managed by the built-in MTA provider.');
+				throwInvalidState('This domain does not support a custom return-path host.');
 			}
 			// Catch-all for any unexpected reason (keeps the human sentences above).
 			throwInvalidState(`Cannot set return-path host: ${outcome.reason}`);

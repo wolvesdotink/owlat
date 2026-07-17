@@ -19,7 +19,9 @@ import { internalAction } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import { logError, logInfo } from '../../lib/runtimeLog';
 import { createMtaIdentityManager } from '../../lib/emailProviders/mtaIdentity';
+import { createSESIdentityManager } from '../../lib/emailProviders/sesIdentity';
 import { providerFor } from './index';
+import { resolveSesMailFrom } from './ses/mailFrom';
 import type { SendingDomainProviderKind } from './types';
 
 const LIFECYCLE_USER_PROVIDER_REGISTER = 'system:provider_register';
@@ -190,6 +192,106 @@ export const pushReturnPathHost = internalAction({
 				error: message,
 				attempts: RETURN_PATH_PUSH_MAX_ATTEMPTS,
 				userId: LIFECYCLE_USER_RETURN_PATH_PUSH,
+			});
+		}
+	},
+});
+
+const LIFECYCLE_USER_SES_MAILFROM_REFLECT = 'system:ses_mailfrom_reflect';
+
+/**
+ * Reflect a domain's changed per-domain return-path host to SES (X1), out-of-band
+ * from the `setReturnPathHost` mutation that regenerated the Convex-side SES MAIL
+ * FROM records. Calls SES `SetIdentityMailFromDomain` with the MAIL FROM subdomain
+ * derived from the host. Idempotent at SES. SES-only.
+ *
+ * Structurally identical to `pushReturnPathHost`: bounded self-rescheduling retry
+ * on failure, a permanent give-up recorded via `recordReturnPathPushResult`
+ * (audit + `returnPathHostSyncError` marker) so a permanent divergence is never
+ * silent, and the same best-effort last-writer-wins supersession check (no
+ * generation token — return-path edits are rare; a narrow interleaving reconciles
+ * on the next edit, and only the marker/audit path is strongly race-safe).
+ */
+export const reflectSesMailFrom = internalAction({
+	args: {
+		domainId: v.id('domains'),
+		returnPathHost: v.string(),
+		attempt: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const attempt = args.attempt ?? 0;
+		const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
+			domainId: args.domainId,
+		});
+		if (!domain) {
+			logError(`[SES] Domain ${args.domainId} not found, skipping MAIL FROM reflection`);
+			return;
+		}
+		if (domain.providerType !== 'ses') {
+			logError(`[SES] Domain ${domain.domain} is not SES-provider; skipping MAIL FROM reflection`);
+			return;
+		}
+		// Best-effort supersession (see pushReturnPathHost): a newer edit changed
+		// the target host, so this chain is stale.
+		if (domain.returnPathHost !== args.returnPathHost) {
+			logInfo(
+				`[SES] MAIL FROM host for ${domain.domain} changed since this reflection was queued; abandoning stale attempt`
+			);
+			return;
+		}
+
+		const mailFrom = resolveSesMailFrom(domain.domain, args.returnPathHost);
+		if (!mailFrom) {
+			// The mutation validated the subdomain constraint, so this is a permanent
+			// config error rather than transient — record it and stop (no retry).
+			const message = `Return-path host ${args.returnPathHost} is not a subdomain of ${domain.domain}`;
+			logError(`[SES] ${message}; cannot set MAIL FROM`);
+			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+				domainId: args.domainId,
+				returnPathHost: args.returnPathHost,
+				error: message,
+				attempts: attempt,
+				userId: LIFECYCLE_USER_SES_MAILFROM_REFLECT,
+			});
+			return;
+		}
+
+		try {
+			const ses = createSESIdentityManager();
+			await ses.setupMailFromDomain(domain.domain, mailFrom.host);
+			logInfo(`[SES] Custom MAIL FROM for ${domain.domain} set to ${mailFrom.mailFromDomain}`);
+			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+				domainId: args.domainId,
+				returnPathHost: args.returnPathHost,
+				userId: LIFECYCLE_USER_SES_MAILFROM_REFLECT,
+			});
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown SES error';
+			const nextAttempt = attempt + 1;
+			if (nextAttempt < RETURN_PATH_PUSH_MAX_ATTEMPTS) {
+				const delayMs = RETURN_PATH_PUSH_BASE_DELAY_MS * 2 ** attempt;
+				logError(
+					`[SES] Failed to set MAIL FROM ${mailFrom.mailFromDomain} for ${domain.domain} (attempt ${nextAttempt}/${RETURN_PATH_PUSH_MAX_ATTEMPTS}), retrying in ${delayMs}ms:`,
+					message
+				);
+				await ctx.scheduler.runAfter(
+					delayMs,
+					internal.domains.providers.registerAction.reflectSesMailFrom,
+					{ domainId: args.domainId, returnPathHost: args.returnPathHost, attempt: nextAttempt }
+				);
+				return;
+			}
+
+			logError(
+				`[SES] Giving up on MAIL FROM ${mailFrom.mailFromDomain} for ${domain.domain} after ${RETURN_PATH_PUSH_MAX_ATTEMPTS} attempts:`,
+				message
+			);
+			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+				domainId: args.domainId,
+				returnPathHost: args.returnPathHost,
+				error: message,
+				attempts: RETURN_PATH_PUSH_MAX_ATTEMPTS,
+				userId: LIFECYCLE_USER_SES_MAILFROM_REFLECT,
 			});
 		}
 	},
