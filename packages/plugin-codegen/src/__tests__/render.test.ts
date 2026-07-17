@@ -159,11 +159,104 @@ describe('composition rendering', () => {
 		expect(rendered.automationConditionModules).toContain(
 			'satisfies PluginAutomationConditionModule'
 		);
+	});
 
-		// Deterministic: re-rendering the reversed composition is byte-identical.
-		expect(renderPluginComposition(composeBundledPlugins([...plugins].reverse()))).toEqual(
-			rendered
-		);
+	it('renders automation registries independent of plugin input order', () => {
+		// Two plugins that each contribute an automation kind, listed so their
+		// input order (zebra, alpha) differs from manifest-id order (alpha, zebra).
+		const zebra = {
+			packageName: '@acme/zebra-auto',
+			manifest: {
+				id: 'zebra-auto',
+				version: '1.0.0',
+				capabilities: ['automation:trigger', 'automation:step', 'automation:condition'],
+				flag: { default: false },
+				contributes: {
+					automationTriggers: [
+						{
+							id: 'z-trigger',
+							label: 'Z trigger',
+							description: 'zebra trigger',
+							icon: 'bolt',
+							module: { exportPath: './automation/z-trigger' },
+						},
+					],
+					automationSteps: [
+						{
+							id: 'z-step',
+							label: 'Z step',
+							description: 'zebra step',
+							icon: 'bell',
+							module: { exportPath: './automation/z-step' },
+						},
+					],
+					automationConditions: [
+						{
+							id: 'z-condition',
+							label: 'Z condition',
+							description: 'zebra condition',
+							icon: 'star',
+							module: { exportPath: './automation/z-condition' },
+						},
+					],
+				},
+			},
+		} as const;
+		const alpha = {
+			packageName: '@acme/alpha-auto',
+			manifest: {
+				id: 'alpha-auto',
+				version: '1.0.0',
+				capabilities: ['automation:trigger', 'automation:step', 'automation:condition'],
+				flag: { default: false },
+				contributes: {
+					automationTriggers: [
+						{
+							id: 'a-trigger',
+							label: 'A trigger',
+							description: 'alpha trigger',
+							icon: 'bolt',
+							module: { exportPath: './automation/a-trigger' },
+						},
+					],
+					automationSteps: [
+						{
+							id: 'a-step',
+							label: 'A step',
+							description: 'alpha step',
+							icon: 'bell',
+							module: { exportPath: './automation/a-step' },
+						},
+					],
+					automationConditions: [
+						{
+							id: 'a-condition',
+							label: 'A condition',
+							description: 'alpha condition',
+							icon: 'star',
+							module: { exportPath: './automation/a-condition' },
+						},
+					],
+				},
+			},
+		} as const;
+
+		const forward = renderPluginComposition(composeBundledPlugins([zebra, alpha]));
+		const reverse = renderPluginComposition(composeBundledPlugins([alpha, zebra]));
+
+		for (const key of [
+			'automationTriggerCatalog',
+			'automationTriggerModules',
+			'automationStepCatalog',
+			'automationStepModules',
+			'automationConditionCatalog',
+			'automationConditionModules',
+		] as const) {
+			// Byte-identical regardless of the order the plugins were listed in.
+			expect(reverse[key]).toBe(forward[key]);
+			// And canonically ordered: alpha's contribution precedes zebra's.
+			expect(forward[key].indexOf('alpha-auto')).toBeLessThan(forward[key].indexOf('zebra-auto'));
+		}
 	});
 
 	it('orders autonomy gates deterministically and separates metadata from executable modules', () => {
