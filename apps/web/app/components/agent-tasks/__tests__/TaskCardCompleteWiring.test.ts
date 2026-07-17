@@ -41,7 +41,11 @@ const key = (i: Item): TaskFlowOrderKey => i;
 
 function mountWired(source: Item[]) {
 	const registry = createTaskCardRegistry();
-	registry.register({ kind: 'plugin.acme.card', label: 'Card', load: async () => ({ default: PluginCard }) });
+	registry.register({
+		kind: 'plugin.acme.card',
+		label: 'Card',
+		load: async () => ({ default: PluginCard }),
+	});
 
 	const Harness = defineComponent({
 		components: { TaskCardRenderer },
