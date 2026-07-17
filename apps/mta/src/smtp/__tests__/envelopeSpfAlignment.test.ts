@@ -9,7 +9,7 @@
  * the From-domain, and DKIM alignment is the only thing carrying it.
  *
  * This test pins:
- *  1. The real envelope.from domain `sendToMx` hands nodemailer equals the
+ *  1. The real envelope.from domain `sendToMx` hands @owlat/smtp-client equals the
  *     configured return-path domain (not the From-domain).
  *  2. `isSpfAligned(envelopeFromDomain, fromDomain, 'relaxed') === false` today
  *     (shared bounce domain) — the structural gap.
