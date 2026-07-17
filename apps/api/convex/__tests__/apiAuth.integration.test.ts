@@ -484,4 +484,17 @@ describe('apiScopes vocabulary', () => {
 		expect(unknownScopes(['contacts:read', 'bogus:scope'])).toEqual(['bogus:scope']);
 		expect(unknownScopes([...API_SCOPES])).toEqual([]);
 	});
+
+	it('includes the expanded Tier-2 connected-app vocabulary (roadmap break 06)', () => {
+		for (const scope of [
+			'campaigns:read',
+			'mail:read',
+			'knowledge:read',
+			'webhooks:manage',
+			'plugin-storage:read',
+			'plugin-storage:write',
+		]) {
+			expect(isApiScope(scope)).toBe(true);
+		}
+	});
 });

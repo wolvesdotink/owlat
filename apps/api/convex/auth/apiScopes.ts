@@ -1,5 +1,6 @@
 /**
- * API-key scopes — the permission vocabulary for the public v1 HTTP API.
+ * API-key scopes — the permission vocabulary for the public v1 HTTP API and
+ * (Tier 2) for plugin-bound connected-app keys.
  *
  * Each scope gates one resource × action. A key carries a subset of these in
  * its `scopes` column; the v1 handlers call `requireScope` to enforce them.
@@ -8,16 +9,33 @@
  * all-access by default. Legacy rows with an absent `scopes` field are deny-all
  * at enforcement (`key.scopes ?? []`).
  *
- * This is intentionally small — one scope per real v1 endpoint, no speculative
- * scopes. Add a scope only when a new key-authed endpoint needs one.
+ * The scope string doubles as the plugin-capability string for API access: a
+ * key bound to a plugin (`apiKeys.pluginId`) may only carry a scope the plugin
+ * *declared* in its manifest capabilities AND the operator *granted*. Grants
+ * can only restrict the manifest, never widen it, and the effective scope set
+ * is re-derived on every request so disabling the plugin or revoking the grant
+ * takes effect immediately (see `plugins/apiKeyBinding.ts`).
+ *
+ * The first block is one scope per real v1 endpoint. The second block is the
+ * expanded Tier-2 vocabulary from the plugin-platform roadmap (break 06): the
+ * capability surface connected apps request via plugin-bound keys. `contacts:*`
+ * and `topics:write` also serve as connected-app capabilities.
  */
 
 export const API_SCOPES = [
+	// v1 HTTP endpoints
 	'contacts:read',
 	'contacts:write',
 	'events:write',
 	'transactional:send',
 	'topics:write',
+	// Tier-2 connected-app capability vocabulary (plugin-bound keys)
+	'campaigns:read',
+	'mail:read',
+	'knowledge:read',
+	'webhooks:manage',
+	'plugin-storage:read',
+	'plugin-storage:write',
 ] as const;
 
 export type ApiScope = (typeof API_SCOPES)[number];
