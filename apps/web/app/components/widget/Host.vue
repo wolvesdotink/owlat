@@ -25,6 +25,11 @@ const props = defineProps<{
 const error = ref<Error | null>(null);
 // The labelled region wrapper. Activating "Try again" unmounts the button that
 // held focus, so focus must be moved somewhere sensible or it falls to <body>.
+// The <section> that carries this ref must stay a box-generating element: a
+// `display: contents` element (e.g. Tailwind's `contents` utility) generates no
+// box and cannot be focused in real browsers, so `focus()` would silently no-op.
+// happy-dom does NOT model that, so a regression to `display: contents` here
+// would still pass every focus test in this suite — keep the target a real box.
 const regionRef = ref<HTMLElement | null>(null);
 // Bumped on retry. `defineAsyncComponent` caches its loader promise — including a
 // rejection — for the life of the wrapper, so recovering a failed chunk load
@@ -62,7 +67,7 @@ function retry() {
 </script>
 
 <template>
-	<section ref="regionRef" class="contents" role="region" tabindex="-1" :aria-label="regionLabel">
+	<section ref="regionRef" role="region" tabindex="-1" :aria-label="regionLabel">
 		<div
 			v-if="error"
 			role="alert"
