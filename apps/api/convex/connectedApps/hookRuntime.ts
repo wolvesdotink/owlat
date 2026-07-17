@@ -9,7 +9,9 @@
  *
  *   1. resolve the tenant-scoped app + circuit state (internal query);
  *   2. short-circuit to the declared fallback for a missing / disabled / revoked
- *      app or an OPEN breaker — no network call, no secret opened;
+ *      app, a hook kind the operator has not granted this app (restrict-only
+ *      capability ceiling), or an OPEN breaker — no network call, no secret
+ *      opened;
  *   3. open the sealed shared secret (Node crypto) and run the signed,
  *      SSRF-guarded, deadline-bounded, size-capped transport call;
  *   4. SCRUB + CLAMP every app-returned string through the host untrusted-text
@@ -133,6 +135,10 @@ function resolveShortCircuit(
 ): HookUnavailableCode | null {
 	if (context.status === 'revoked') return 'app_revoked';
 	if (context.status !== 'enabled') return 'app_disabled';
+	// Restrict-only ceiling: the operator must have granted this app AND its bound
+	// plugin the hook kind's capability. A missing grant fails closed before any
+	// secret is opened or endpoint contacted — no network call, no breaker trip.
+	if (!context.capabilityGranted) return 'capability_denied';
 	if (isHookCircuitOpen(context.circuit, nowMs)) return 'circuit_open';
 	return null;
 }
