@@ -10,7 +10,15 @@ import {
 	requireScope,
 	type AuthenticatedContext,
 } from '../auth/apiAuth';
-import { API_SCOPES, isApiScope, unknownScopes } from '../auth/apiScopes';
+import {
+	API_SCOPES,
+	ENDPOINT_SCOPES,
+	TIER2_ONLY_SCOPES,
+	isApiScope,
+	isTier2OnlyScope,
+	tier2OnlyScopes,
+	unknownScopes,
+} from '../auth/apiScopes';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -496,5 +504,19 @@ describe('apiScopes vocabulary', () => {
 		]) {
 			expect(isApiScope(scope)).toBe(true);
 		}
+	});
+
+	it('partitions the vocabulary into endpoint-backed and Tier-2-only halves', () => {
+		// The two partitions are disjoint and together are the whole vocabulary.
+		expect([...ENDPOINT_SCOPES, ...TIER2_ONLY_SCOPES].sort()).toEqual([...API_SCOPES].sort());
+		for (const scope of ENDPOINT_SCOPES) expect(isTier2OnlyScope(scope)).toBe(false);
+		for (const scope of TIER2_ONLY_SCOPES) expect(isTier2OnlyScope(scope)).toBe(true);
+	});
+
+	it('flags only the Tier-2-only scopes in a mixed request', () => {
+		expect(
+			tier2OnlyScopes(['contacts:read', 'mail:read', 'events:write', 'webhooks:manage'])
+		).toEqual(['mail:read', 'webhooks:manage']);
+		expect(tier2OnlyScopes([...ENDPOINT_SCOPES])).toEqual([]);
 	});
 });
