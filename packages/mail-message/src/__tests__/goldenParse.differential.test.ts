@@ -36,117 +36,32 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { simpleParser, type AddressObject, type ParsedMail } from 'mailparser';
-import { parseMessage, type ParsedMessage, type ParsedHeaderValue } from '../parse/index';
+import { simpleParser } from 'mailparser';
+import { parseMessage, type ParsedHeaderValue } from '../parse/index';
 import { GOLDEN_CASES, readGolden } from '../../__tests__/golden/goldens';
+import { normBody, project, type ProjectOptions } from './helpers/projection';
 
-interface AnyAddrEntry {
-	name?: string;
-	address?: string;
-	group?: AnyAddrEntry[];
-}
-interface AnyAddrObject {
-	value?: AnyAddrEntry[];
-}
-
-/** Flatten an address header (single/array, groups recursed) to `{name,address}`. */
-function addrList(
-	field: AnyAddrObject | AnyAddrObject[] | AddressObject | AddressObject[] | undefined
-): Array<{ name: string; address: string }> {
-	if (field === undefined) return [];
-	const objs = (Array.isArray(field) ? field : [field]) as AnyAddrObject[];
-	const out: Array<{ name: string; address: string }> = [];
-	const visit = (entries: AnyAddrEntry[] | undefined): void => {
-		for (const entry of entries ?? []) {
-			if (entry.group !== undefined) visit(entry.group);
-			else out.push({ name: entry.name ?? '', address: (entry.address ?? '').toLowerCase() });
-		}
-	};
-	for (const obj of objs) visit(obj.value);
-	return out;
-}
-
-function refsList(refs: string | string[] | undefined): string[] {
-	if (refs === undefined) return [];
-	const arr = Array.isArray(refs) ? refs : refs.split(/\s+/);
-	return arr.map((r) => r.trim()).filter((r) => r !== '');
-}
-
-/** CRLF -> LF, drop trailing per-line and end whitespace. */
-function normBody(s: string | false | undefined): string | false {
-	if (s === false) return false;
-	return (s ?? '')
-		.replace(/\r\n/g, '\n')
-		.replace(/[ \t]+$/gm, '')
-		.replace(/\n+$/, '');
-}
-
-/** Body normalizer that also collapses inline-image `src` (enrichment (i)). */
-function normHtml(s: string | false | undefined): string | false {
+/**
+ * Enrichment (i): mailparser rewrites inline `<img src="cid:...">` in `.html` to
+ * an embedded `data:` URI while `parseMessage` preserves the original `cid:`
+ * reference. Collapse both forms to a placeholder so the `.html` bodies compare.
+ * Layered on the shared P3 projection through the {@link ProjectOptions} hook so
+ * this delta from the base differential is explicit and single-sourced.
+ */
+function collapseInlineImgSrc(s: string | false | undefined): string | false {
 	if (s === false) return false;
 	const collapsed = (s ?? '').replace(/src="(?:cid:|data:)[^"]*"/g, 'src="#img"');
 	return normBody(collapsed);
 }
 
-function contentTypeSignal(raw: unknown): { value: string; reportType: string } {
-	if (raw && typeof raw === 'object') {
-		const obj = raw as { value?: unknown; params?: Record<string, unknown> };
-		const value = typeof obj.value === 'string' ? obj.value.toLowerCase() : '';
-		const reportType = String(obj.params?.['report-type'] ?? '').toLowerCase();
-		return { value, reportType };
-	}
-	if (typeof raw === 'string') return { value: raw.toLowerCase(), reportType: '' };
-	return { value: '', reportType: '' };
-}
-
+/** `text/x-amp-html` is outbound-only with no inbound consumer — excluded both sides. */
 const AMP_CONTENT_TYPE = 'text/x-amp-html';
 
-/** Document-order real attachments, projected on the consumed fields (amp excluded). */
-function attSet(
-	attachments: ParsedMail['attachments'] | ParsedMessage['attachments']
-): Array<Record<string, unknown>> {
-	return attachments
-		.map((a) => ({
-			filename: a.filename ?? '',
-			contentType: a.contentType,
-			contentId: (a.contentId ?? '').replace(/[<>]/g, ''),
-			disposition:
-				('disposition' in a ? a.disposition : (a.contentDisposition ?? 'attachment')) ??
-				'attachment',
-			size: a.size,
-			content: a.content.toString('base64'),
-		}))
-		// AMP alternative parts are outbound-only (no inbound consumer) and mailparser
-		// vs our parser expose them differently — drop them from BOTH sides.
-		.filter((a) => a.contentType !== AMP_CONTENT_TYPE)
-		.sort((x, y) =>
-			`${String(x['filename'])}|${String(x['contentId'])}|${String(x['content'])}`.localeCompare(
-				`${String(y['filename'])}|${String(y['contentId'])}|${String(y['content'])}`
-			)
-		);
-}
-
-function project(
-	p: ParsedMail | ParsedMessage,
-	headerLookup: (name: string) => unknown
-): Record<string, unknown> {
-	return {
-		subject: p.subject ?? '',
-		messageId: p.messageId ?? '',
-		inReplyTo: p.inReplyTo ?? '',
-		references: refsList(p.references),
-		date: p.date?.toISOString() ?? '',
-		from: addrList(p.from as AnyAddrObject | AnyAddrObject[] | undefined),
-		to: addrList(p.to as AnyAddrObject | AnyAddrObject[] | undefined),
-		cc: addrList(p.cc as AnyAddrObject | AnyAddrObject[] | undefined),
-		bcc: addrList(p.bcc as AnyAddrObject | AnyAddrObject[] | undefined),
-		replyTo: addrList(p.replyTo as AnyAddrObject | AnyAddrObject[] | undefined),
-		text: normBody(p.text),
-		html: normHtml(p.html),
-		attachments: attSet(p.attachments),
-		contentType: contentTypeSignal(headerLookup('content-type')),
-	};
-}
+/** The golden suite's sanctioned deltas over the base P3 projection (enrichment (i) + AMP). */
+const GOLDEN_PROJECT_OPTIONS: ProjectOptions = {
+	htmlNormalizer: collapseInlineImgSrc,
+	excludeAttachmentContentTypes: [AMP_CONTENT_TYPE],
+};
 
 describe('parseMessage differential parity vs mailparser on the compose-side golden corpus', () => {
 	for (const testCase of GOLDEN_CASES) {
@@ -155,15 +70,24 @@ describe('parseMessage differential parity vs mailparser on the compose-side gol
 			const theirs = await simpleParser(raw);
 			const ours = parseMessage(raw);
 
-			const theirProjection = project(theirs, (name) => theirs.headers.get(name));
-			const ourProjection = project(ours, (name: string): ParsedHeaderValue | undefined =>
-				ours.headers.get(name)
+			const theirProjection = project(
+				theirs,
+				(name) => theirs.headers.get(name),
+				GOLDEN_PROJECT_OPTIONS
+			);
+			const ourProjection = project(
+				ours,
+				(name: string): ParsedHeaderValue | undefined => ours.headers.get(name),
+				GOLDEN_PROJECT_OPTIONS
 			);
 
-			// Enrichment (ii): when our parser found NO text part, drop mailparser's
-			// synthesized `.text` rendering from the comparison on both sides.
-			if (ourProjection['text'] === '') {
-				theirProjection['text'] = '';
+			// Enrichment (ii): mailparser synthesizes `.text` from `.html` when the
+			// message carries NO `text/plain` part; our parser returns empty `.text`.
+			// Gate the drop on GROUND TRUTH — whether a text part is on the wire
+			// (`testCase.text === undefined`) — NOT on our own output, so a regression
+			// that empties `.text` for a case that HAS a text part still fails.
+			if (testCase.text === undefined) {
+				theirProjection['text'] = ourProjection['text'];
 			}
 
 			expect(ourProjection).toEqual(theirProjection);
