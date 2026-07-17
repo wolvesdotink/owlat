@@ -383,6 +383,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 				:can-open="true"
 				@skip="flow.skip(current!.id)"
 				@open="openRow(current!)"
+				@complete="(outcome) => flow.complete(current!.id, { outcome: outcome ?? 'completed' })"
 			/>
 		</template>
 
