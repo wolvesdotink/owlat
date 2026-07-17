@@ -109,6 +109,15 @@ export class SmtpConnection {
 	}
 
 	/**
+	 * The per-command timeout (ms) — the budget for a single command's reply. The
+	 * pipelining path reads each batched reply on this budget, exactly as the
+	 * sequential {@link command} would have.
+	 */
+	get commandTimeoutMs(): number {
+		return this.timeouts.command;
+	}
+
+	/**
 	 * `true` when the reader is still holding reply data no command consumed — a
 	 * fully-parsed reply queued, or bytes mid-line in the parser. After a clean
 	 * transaction this is `false`; a `true` here before reusing the socket means a
@@ -125,22 +134,65 @@ export class SmtpConnection {
 	 * data-phase timeout instead of the per-command one.
 	 */
 	async command(line: string, phase: SmtpPhase, expectData = false): Promise<SmtpReply> {
+		this.assertReaderIdle(phase);
+		this.assertSingleCommandLine(line, phase);
+		this.write(line, phase);
+		return this.reader.read(
+			phase,
+			expectData ? this.timeouts.data : this.timeouts.command,
+			this.secured
+		);
+	}
+
+	/**
+	 * Write a batch of pre-serialized command lines in ONE socket write — RFC 2920
+	 * command pipelining. Every line is framing-checked exactly as {@link command}
+	 * checks a single line (exactly one trailing CRLF, no interior CR/LF), so a
+	 * hand-built or attacker-influenced line can never smuggle a second command into
+	 * the batch. The caller then reads one reply per line, in order, via
+	 * {@link readReply}: the D5 sequential-READ invariant is untouched — pipelining
+	 * batches the WRITE side only, and the reply reader still hands out exactly one
+	 * reply per read regardless of how the peer frames them on the wire.
+	 *
+	 * Refuses (before any bytes reach the wire) if a reply is already awaited, so a
+	 * batch can never be interleaved with an outstanding sequential read.
+	 */
+	writePipeline(lines: readonly string[], phase: SmtpPhase): void {
+		this.assertReaderIdle(phase);
+		for (const line of lines) {
+			this.assertSingleCommandLine(line, phase);
+		}
+		this.write(lines.join(''), phase);
+	}
+
+	/**
+	 * Refuse to enqueue a command (or batch) while a reply is still awaited, BEFORE
+	 * any bytes reach the wire — writing first (then letting `reader.read` reject)
+	 * would leave an orphan line whose reply desyncs the next read. D5 is sequential
+	 * command/reply, and a batch can never be interleaved with an outstanding read.
+	 * The single implementation shared by {@link command} and {@link writePipeline}.
+	 */
+	private assertReaderIdle(phase: SmtpPhase): void {
 		if (this.reader.busy) {
-			// D5 is sequential command/reply. Refuse a second command BEFORE its
-			// bytes reach the wire — writing first (then letting reader.read reject)
-			// would leave an orphan line whose reply desyncs the next read.
 			throw new SmtpError({
 				phase,
 				message: 'concurrent SMTP command: a reply is already awaited',
 				secured: this.secured,
 			});
 		}
-		// Final-hop framing guard: this is public package API, so enforce
-		// exactly-one-command framing here even though the S1 serializers already
-		// guard their fields. A line with an interior CR/LF would inject a second
-		// command; a line missing its CRLF terminator would silently hang until the
-		// command timeout. A future call site that hand-builds a line (skipping the
-		// serializers) is caught structurally rather than on the wire.
+	}
+
+	/**
+	 * Enforce exactly-one-command framing on a command line — one trailing CRLF, no
+	 * interior CR/LF — even though the S1 serializers already guard their fields.
+	 * This is public package API: a line with an interior CR/LF would inject a second
+	 * command (batch command smuggling on {@link writePipeline}), and a line missing
+	 * its CRLF terminator would silently hang until the command timeout. A future call
+	 * site that hand-builds a line (skipping the serializers) is caught structurally
+	 * rather than on the wire. The single implementation shared by {@link command}
+	 * and {@link writePipeline}.
+	 */
+	private assertSingleCommandLine(line: string, phase: SmtpPhase): void {
 		if (!line.endsWith('\r\n') || /[\r\n]/.test(line.slice(0, -2))) {
 			throw new SmtpError({
 				phase,
@@ -149,12 +201,6 @@ export class SmtpConnection {
 				secured: this.secured,
 			});
 		}
-		this.write(line, phase);
-		return this.reader.read(
-			phase,
-			expectData ? this.timeouts.data : this.timeouts.command,
-			this.secured
-		);
 	}
 
 	/**
