@@ -27,7 +27,11 @@ import { isSmtpError } from '../src/errors';
 const cleanups: Array<() => Promise<void> | void> = [];
 
 afterEach(async () => {
-	for (const fn of cleanups.splice(0)) {
+	// LIFO: close CLIENT connections before the servers that accepted them.
+	// `server.close()` waits for every open connection to end, so tearing a server
+	// down before its still-connected client hangs the hook — close in reverse
+	// insertion order (client pushed after its server) instead.
+	for (const fn of cleanups.splice(0).reverse()) {
 		await fn();
 	}
 });
@@ -75,9 +79,15 @@ async function startServer(
 	return port;
 }
 
-/** A raw cleartext SMTP peer whose per-line replies are scripted by `handle`. */
+/**
+ * A raw cleartext SMTP peer whose per-line replies are scripted by `handle`.
+ * `dataReply` is what the server writes once the DATA body terminator arrives
+ * (default a single `250`); the leak-guard test overrides it to append an
+ * unsolicited extra line in the SAME write.
+ */
 async function startRawServer(
-	handle: (line: string, socket: net.Socket) => string | null
+	handle: (line: string, socket: net.Socket) => string | null,
+	dataReply = '250 2.0.0 queued\r\n'
 ): Promise<number> {
 	const server = net.createServer((socket) => {
 		socket.on('error', () => {});
@@ -91,7 +101,7 @@ async function startRawServer(
 				if (dotIdx !== -1) {
 					inData = false;
 					buffer = buffer.slice(dotIdx + 5);
-					socket.write('250 2.0.0 queued\r\n');
+					socket.write(dataReply);
 				}
 				return;
 			}
@@ -193,7 +203,6 @@ describe('resetTransaction — RSET reuse boundary (X1)', () => {
 	});
 
 	it('throws a phase-`mail` SmtpError when the server rejects RSET (caller must discard)', async () => {
-		let sawData = false;
 		const port = await startRawServer((line) => {
 			if (/^EHLO/i.test(line)) return '250-raw.test\r\n250 SIZE 0\r\n';
 			if (/^MAIL FROM/i.test(line)) return '250 2.1.0 ok\r\n';
@@ -208,7 +217,6 @@ describe('resetTransaction — RSET reuse boundary (X1)', () => {
 			data: 'Subject: m\r\n\r\nb\r\n',
 		});
 		expect(first.response.code).toBe(250);
-		void sawData;
 
 		const err = await resetTransaction(conn).then(
 			() => null,
@@ -225,40 +233,12 @@ describe('resetTransaction — RSET reuse boundary (X1)', () => {
 		// A peer that appends an UNSOLICITED line after the final 250 leaves a reply
 		// buffered on the reader; reusing the socket would consume it as the RSET's
 		// answer and desync every later read. resetTransaction refuses BEFORE sending
-		// RSET.
-		const server = net.createServer((socket) => {
-			socket.on('error', () => {});
-			socket.write('220 chatty.test ESMTP\r\n');
-			let buffer = '';
-			let inData = false;
-			socket.on('data', (chunk) => {
-				buffer += chunk.toString('utf8');
-				if (inData) {
-					const dotIdx = buffer.indexOf('\r\n.\r\n');
-					if (dotIdx !== -1) {
-						inData = false;
-						buffer = buffer.slice(dotIdx + 5);
-						// Final reply + an unsolicited extra line in the SAME write.
-						socket.write('250 2.0.0 queued\r\n250 2.0.0 surprise\r\n');
-					}
-					return;
-				}
-				let nl = buffer.indexOf('\n');
-				while (nl !== -1) {
-					const line = buffer.slice(0, nl).replace(/\r$/, '');
-					buffer = buffer.slice(nl + 1);
-					if (/^EHLO/i.test(line)) socket.write('250 chatty.test\r\n');
-					else if (/^DATA$/i.test(line)) {
-						inData = true;
-						socket.write('354 go ahead\r\n');
-					} else socket.write('250 ok\r\n');
-					nl = buffer.indexOf('\n');
-				}
-			});
-		});
-		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
-		const port = (server.address() as AddressInfo).port;
-		cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+		// RSET. The `dataReply` override writes the final 250 + the surprise line in
+		// the SAME write; every other verb answers 250.
+		const port = await startRawServer(
+			(line) => (/^EHLO/i.test(line) ? '250 chatty.test\r\n' : '250 ok\r\n'),
+			'250 2.0.0 queued\r\n250 2.0.0 surprise\r\n'
+		);
 
 		const conn = await connect(port);
 		await sendEnvelope(conn, {
