@@ -22,11 +22,9 @@
  */
 
 import { parsePluginId, type PluginId, type PluginManifest } from '@owlat/plugin-kit';
-import { resolveFlags } from '@owlat/shared/featureFlags';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { isApiScope, type ApiScope } from '../auth/apiScopes';
-import { getBundledPluginManifest } from './authorization';
-import { FEATURE_FLAG_REGISTRY } from './featureFlagRegistry';
+import { getBundledPluginManifest, loadPluginRuntimeFacts } from './authorization';
 
 /**
  * The plugin-side facts an effective-scope decision depends on. `manifest` is
@@ -103,15 +101,8 @@ export async function loadPluginBoundKeyContext(
 		return { manifest: null, flagEnabled: false, grantedCapabilities: undefined };
 	}
 
-	const flagKey = `plugin.${pluginId}` as const;
-	const settings = await ctx.db.query('instanceSettings').first();
-	const flags = resolveFlags(settings?.featureFlags ?? {}, { registry: FEATURE_FLAG_REGISTRY });
-	const flagEnabled = manifest.flag !== undefined && flags[flagKey] === true;
-	return {
-		manifest,
-		flagEnabled,
-		grantedCapabilities: settings?.pluginCapabilityGrants?.[flagKey],
-	};
+	const { flagEnabled, grants } = await loadPluginRuntimeFacts(ctx, pluginId, manifest);
+	return { manifest, flagEnabled, grantedCapabilities: grants };
 }
 
 /**
