@@ -1,14 +1,22 @@
 /**
  * Host enforcement of a plugin import provider's inbound signature-verification
- * contract. Plugin-sourced events are untrusted until this check passes: the
- * host recomputes the declared HMAC over the raw request body with the secret
- * named by the contract and compares it to the caller-supplied header value in
- * constant time.
+ * contract. The host recomputes the declared HMAC over the raw request body
+ * with the secret named by the contract and compares it to the caller-supplied
+ * header value in constant time.
  *
  * Fails closed:
  *   - secret unset/empty     → 503 (retryable once the operator configures it)
  *   - header missing/empty   → 401
  *   - signature mismatch     → 401
+ *
+ * A passing check proves ORIGIN ONLY — that the caller holds the shared secret.
+ * It is NOT replay-resistant: the signed payload is the raw body alone (no
+ * timestamp, tolerance, or nonce), so a captured request verifies forever.
+ * Nothing calls this yet; the future piece that wires the inbound HTTP surface
+ * must layer replay defense (a signed timestamp with a bounded tolerance and/or
+ * a nonce) on top of this verification before any endpoint accepts
+ * plugin-sourced traffic. See `PluginInboundSignatureContract` in
+ * `@owlat/plugin-kit`.
  *
  * Uses Web Crypto so this module stays V8-isolate-safe (no 'use node').
  */
