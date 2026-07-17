@@ -27,6 +27,7 @@ import {
 	finalizeRegistry as finalizeRendererCustomRegistry,
 	finalizeBlockRegistry as finalizeRendererModuleRegistry,
 	isRegistryFinalized as isRendererCustomRegistryFrozen,
+	getRegisteredBlocks as getRendererCustomBlockTypes,
 	registeredBlockTypes,
 	type BlockRenderer,
 } from '@owlat/email-renderer';
@@ -36,6 +37,7 @@ import {
 	registerBlock as registerEditorBlock,
 	finalizeBlockDefinitionRegistry,
 	isBlockDefinitionRegistryFrozen,
+	getRegisteredDefinitionTypes,
 	type BlockDefinition,
 } from '../registry/blockRegistry';
 import { finalizeEditorModuleRegistry, getRegisteredTypes } from '../blocks/_registry';
@@ -118,7 +120,7 @@ export function finalizeEmailBlockRegistries(): void {
 }
 
 /**
- * The set of block types a plugin may not claim: every type that already has a
+ * Built-in block types a plugin may not claim: every type that already has a
  * built-in renderer module or editor module. Computed at call time so it always
  * reflects the shipped built-ins rather than a hand-maintained list.
  */
@@ -129,13 +131,28 @@ function reservedBlockTypes(): ReadonlySet<string> {
 }
 
 /**
+ * Block types already present in a target registry before composition: the
+ * renderer's legacy custom registry and the editor's third-party definition
+ * registry. Both are `Map.set` on registration, so composing a plugin that
+ * claims one of these types would silently overwrite a block a host app
+ * registered before boot — exactly the silent-mutation window the front door
+ * exists to close. Composition rejects such a claim instead.
+ */
+function preRegisteredBlockTypes(): ReadonlySet<string> {
+	const claimed = new Set<string>(getRendererCustomBlockTypes());
+	for (const type of getRegisteredDefinitionTypes()) claimed.add(type);
+	return claimed;
+}
+
+/**
  * Pair a single plugin's renderer and editor halves by type, rejecting any
  * half that has no partner. Returns the paired blocks; throws on the first
  * defect so a malformed plugin cannot be partially registered.
  */
 function pairContribution(
 	contribution: HostedEmailBlockContribution,
-	reserved: ReadonlySet<string>
+	reserved: ReadonlySet<string>,
+	preRegistered: ReadonlySet<string>
 ): readonly ComposedEmailBlock[] {
 	const { pluginId } = contribution;
 	const renderers = new Map<string, BlockRenderer>();
@@ -195,6 +212,13 @@ function pairContribution(
 				{ pluginId, blockType: type }
 			);
 		}
+		if (preRegistered.has(type)) {
+			throw new EmailBlockCompositionError(
+				'duplicate_block_type',
+				`Plugin ${pluginId} cannot claim block type "${type}": it is already registered before composition`,
+				{ pluginId, blockType: type }
+			);
+		}
 		const definition = editors.get(type);
 		if (!definition) {
 			throw new EmailBlockCompositionError(
@@ -238,13 +262,14 @@ export function composeHostedEmailBlocks(
 	}
 
 	const reserved = reservedBlockTypes();
+	const preRegistered = preRegisteredBlockTypes();
 
 	// Pair each plugin's halves, then order the whole set deterministically via
 	// the host before any registration happens.
 	const hosted: HostedContribution<ComposedEmailBlock>[] = [];
 	const claimedTypes = new Map<string, PluginId>();
 	for (const contribution of contributions) {
-		for (const block of pairContribution(contribution, reserved)) {
+		for (const block of pairContribution(contribution, reserved, preRegistered)) {
 			const owner = claimedTypes.get(block.type);
 			if (owner) {
 				throw new EmailBlockCompositionError(

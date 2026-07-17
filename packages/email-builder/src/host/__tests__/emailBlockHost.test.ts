@@ -208,6 +208,45 @@ describe('composeHostedEmailBlocks — rejections', () => {
 		}
 	});
 
+	it('rejects a type already registered in the renderer custom registry before boot', async () => {
+		const { host, renderer } = await loadHost();
+		// A host app registers a custom renderer at import time, before the host
+		// composes. Composition must not silently overwrite it.
+		renderer.registerBlock('taken', () => '<div class="host-owned"></div>');
+		try {
+			host.composeHostedEmailBlocks([
+				contribution('acme', [rendererHalf('taken', 'x')], [editorHalf('taken', 'Taken')]),
+			]);
+			throw new Error('expected rejection');
+		} catch (err) {
+			expect((err as InstanceType<typeof host.EmailBlockCompositionError>).code).toBe(
+				'duplicate_block_type'
+			);
+		}
+		// The pre-registered renderer survives: rejection happened before any
+		// registration or freeze, so the registry is untouched and still mutable.
+		expect(renderer.getRegisteredBlocks()).toContain('taken');
+		expect(host.areEmailBlockRegistriesFrozen()).toBe(false);
+	});
+
+	it('rejects a type already registered in the third-party definition registry before boot', async () => {
+		const { host, registry } = await loadHost();
+		registry.registerBlock({ type: 'taken', label: 'Host owned' } as unknown as BlockDefinition);
+		try {
+			host.composeHostedEmailBlocks([
+				contribution('acme', [rendererHalf('taken', 'x')], [editorHalf('taken', 'Taken')]),
+			]);
+			throw new Error('expected rejection');
+		} catch (err) {
+			expect((err as InstanceType<typeof host.EmailBlockCompositionError>).code).toBe(
+				'duplicate_block_type'
+			);
+		}
+		// The pre-registered definition survives with its own label, not the plugin's.
+		expect(registry.getBlock('taken' as never)?.label).toBe('Host owned');
+		expect(host.areEmailBlockRegistriesFrozen()).toBe(false);
+	});
+
 	it('rejects a duplicate renderer type within one plugin', async () => {
 		const { host } = await loadHost();
 		try {
