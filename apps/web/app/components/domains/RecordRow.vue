@@ -45,6 +45,33 @@ const emit = defineEmits<{
 // reads — rows re-render on the open-panel auto-recheck poll.
 const readiness = computed(() => readinessSummary(props.domain));
 const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dmarc, 'TXT'));
+
+// The return-path (bounce / MAIL FROM) host as the backend actually keyed it —
+// an env-configured absolute hostname (see the MTA provider's `mailFrom`
+// entry), NOT a hardcoded `mail.<domain>`. Everything that names the bounce
+// host — the collapsed "bounces via …" hint and the expanded MAIL FROM
+// heading — reads from here so the label can never drift from the record.
+const mailFromHost = computed<string | null>(() => {
+	for (const record of props.domain.dnsRecords.mailFrom ?? []) {
+		const host = record.hostname ?? record.host;
+		if (host) return host;
+	}
+	return null;
+});
+
+// Concrete example sender address — resolves the "what is this name for?"
+// ambiguity at a glance. The sending identity IS the domain string itself.
+const sendsAsAddress = computed(() => `anyone@${props.domain.domain}`);
+
+// Best-effort website apex for the "won't affect your website at X" copy.
+// We deliberately avoid a public-suffix dependency here (piece A1 owns that,
+// and piece C1 will make this display fully zone-aware). For a sending
+// subdomain like `mail.example.com` we drop the leftmost label to name the
+// apex website; an apex / two-label domain is shown as-is.
+const websiteApex = computed(() => {
+	const labels = props.domain.domain.split('.');
+	return labels.length > 2 ? labels.slice(1).join('.') : props.domain.domain;
+});
 </script>
 
 <template>
@@ -91,6 +118,16 @@ const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dm
 							Last checked {{ formatDateTime(domain.lastVerifiedAt) }}
 						</span>
 						<span v-else> Added {{ formatDateTime(domain.createdAt) }} </span>
+					</p>
+					<!-- Identity sub-line: says what the domain is FOR, not just its
+					     string. A concrete example address resolves the "what's this
+					     name?" ambiguity, and the bounce host is named from the actual
+					     return-path record so it can't drift. -->
+					<p class="text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
+						Sends as {{ sendsAsAddress }}
+						<template v-if="mailFromHost">
+							· bounces via {{ mailFromHost }}
+						</template>
 					</p>
 				</div>
 			</div>
@@ -202,6 +239,24 @@ const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dm
 
 					<!-- DNS records (normal state) -->
 					<template v-else-if="hasDnsRecords(domain.dnsRecords)">
+						<!-- What this domain does: an up-front job description for the
+						     records below. The "not a website / won't affect your site"
+						     sentence is load-bearing copy — it defuses the #1 concern
+						     (that this name needs hosting or breaks the apex website). -->
+						<div
+							class="mb-4 p-4 bg-bg-surface rounded-xl border border-border-subtle"
+							data-testid="domain-intro"
+						>
+							<p class="text-sm text-text-secondary">
+								<strong class="text-text-primary">What this domain does.</strong>
+								Mail from your team is sent as
+								<span class="text-text-primary">name@{{ domain.domain }}</span
+								>. The records below prove to receiving servers that Owlat is allowed to do
+								that — nothing needs to be hosted at this name, and it won't affect your website
+								at {{ websiteApex }}.
+							</p>
+						</div>
+
 						<div class="flex items-center justify-between gap-3 mb-4">
 							<h4 class="text-sm font-medium text-text-primary">
 								Configure these DNS records with your domain provider:
@@ -318,8 +373,11 @@ const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dm
 							<!-- MAIL FROM records -->
 							<template v-if="domain.dnsRecords.mailFrom && domain.dnsRecords.mailFrom.length > 0">
 								<div class="pt-2">
-									<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
-										MAIL FROM Domain (mail.{{ domain.domain }})
+									<p
+										class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3"
+										data-testid="mailfrom-heading"
+									>
+										MAIL FROM Domain<template v-if="mailFromHost"> ({{ mailFromHost }})</template>
 									</p>
 									<div class="space-y-4">
 										<DomainsDNSRecordPanel
