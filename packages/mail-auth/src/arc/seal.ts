@@ -20,27 +20,17 @@ const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 /**
  * Verify every ARC-Seal, outermost first — mirroring `mailauth`'s `verifyASChain`.
- * For a healthy chain (every `cv` in {none, pass}, guaranteed by
- * `validateChainStructure`) this validates the seal over instances `1..k` for each
- * `k` from N down to 1, so a broken inner seal is caught and no later hop can
- * rescue it. THROWS on the first seal that does not verify.
+ * The chain has already passed `validateChainStructure` (called first in
+ * `verifyArc`), so every `cv` is in {none, pass} and the instances are contiguous;
+ * this validates the seal over instances `1..k` for each `k` from N down to 1, so a
+ * broken inner seal is caught and no later hop can rescue it. THROWS on the first
+ * seal that does not verify.
  */
 export async function verifySealChain(
 	chain: readonly ArcSet[],
 	resolver: DkimDnsResolver
 ): Promise<void> {
 	for (let i = chain.length - 1; i >= 0; i--) {
-		const set = chain[i];
-		if (set === undefined) {
-			throw new Error('internal: undefined ARC set');
-		}
-		const cv = (set.sealTags.get('cv') ?? '').toLowerCase();
-		if (cv !== 'none' && cv !== 'pass') {
-			// Unreachable after `validateChainStructure`, but faithful to the oracle:
-			// a broken cv marker validates only its own set, then stops.
-			await verifySeal(chain.slice(0, i + 1), resolver);
-			break;
-		}
 		await verifySeal(chain.slice(0, i + 1), resolver);
 	}
 }

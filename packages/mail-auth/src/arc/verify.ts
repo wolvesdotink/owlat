@@ -93,8 +93,9 @@ export async function verifyArc(
 			body,
 			resolver,
 			nowSeconds,
-			undefined,
-			false
+			{
+				requireVersion: false,
+			}
 		);
 		if (ams.verdict !== 'pass') {
 			// No valid outermost AMS — the sealed content is unauthenticated, so the

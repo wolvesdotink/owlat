@@ -134,14 +134,9 @@ export async function verifyDkim(
 		const signatures: DkimSignatureResult[] = [];
 		for (const sigField of signatureFields.slice(0, MAX_SIGNATURES)) {
 			signatures.push(
-				await verifyMessageSignature(
-					sigField.raw,
-					headerFields,
-					body,
-					resolver,
-					nowSeconds,
-					bodyCache
-				)
+				await verifyMessageSignature(sigField.raw, headerFields, body, resolver, nowSeconds, {
+					bodyCache,
+				})
 			);
 		}
 
@@ -208,9 +203,23 @@ function isValidCanonicalizationTag(c: string): boolean {
 }
 
 /** Cross-signature cache: canonicalized body by mode, full-body hash by mode+alg. */
-interface BodyHashCache {
+export interface BodyHashCache {
 	readonly canon: Map<Canonicalization, Buffer>;
 	readonly hash: Map<string, string>;
+}
+
+/** Options for {@link verifyMessageSignature}; both default to the DKIM behaviour. */
+export interface MessageSignatureOptions {
+	/**
+	 * Cross-signature body-hash cache to reuse across a multi-signature message; a
+	 * fresh one is allocated when omitted (the single-signature / ARC-AMS case).
+	 */
+	readonly bodyCache?: BodyHashCache;
+	/**
+	 * Require the `v=1` tag. DKIM mandates it; ARC's AMS omits it (RFC 8617 §4.1.2),
+	 * so the ARC verifier passes `false`.
+	 */
+	readonly requireVersion?: boolean;
 }
 
 /**
@@ -218,8 +227,7 @@ interface BodyHashCache {
  * a body/crypto mismatch, `temperror` on a transient DNS failure. Never throws.
  * Shared with the ARC verifier, which passes an ARC-Message-Signature (RFC 8617
  * §4.1.2 — a DKIM signature MINUS `v=`) with `requireVersion: false`, so signer,
- * DKIM and ARC AMS all canonicalize/hash through this ONE core (U4). `bodyCache`
- * is optional (a fresh one is allocated per single-signature call).
+ * DKIM and ARC AMS all canonicalize/hash through this ONE core (U4).
  */
 export async function verifyMessageSignature(
 	sigField: string,
@@ -227,10 +235,10 @@ export async function verifyMessageSignature(
 	body: Buffer,
 	resolver: DkimDnsResolver,
 	nowSeconds: number,
-	bodyCache?: BodyHashCache,
-	requireVersion = true
+	options: MessageSignatureOptions = {}
 ): Promise<DkimSignatureResult> {
-	const cache: BodyHashCache = bodyCache ?? {
+	const requireVersion = options.requireVersion ?? true;
+	const cache: BodyHashCache = options.bodyCache ?? {
 		canon: new Map<Canonicalization, Buffer>(),
 		hash: new Map<string, string>(),
 	};
