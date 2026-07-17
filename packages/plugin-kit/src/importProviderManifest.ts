@@ -8,7 +8,15 @@ import {
 import { isSafeStaticExportPath } from './staticExportPath';
 
 const ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const ENV_VAR = /^[A-Z][A-Z0-9_]*$/;
+/**
+ * The HMAC signing secret must live in a plugin-scoped `PLUGIN_`-prefixed env
+ * var so a manifest can never designate an unrelated host secret (e.g.
+ * `DATABASE_URL`, an admin token) as its signing key — which, once an HTTP
+ * surface exists, would turn signature verification into an HMAC oracle over
+ * that secret. `getPluginSecret` reads arbitrary keys, so this namespace is the
+ * only barrier.
+ */
+const SECRET_ENV_VAR = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
 const HEADER = /^[a-z0-9][a-z0-9-]*$/;
 const FIELDS = new Set(['id', 'label', 'module', 'signature', 'attestSource']);
 const SIGNATURE_FIELDS = new Set(['header', 'algorithm', 'encoding', 'secretEnvVar']);
@@ -178,13 +186,13 @@ function validateSignature(
 		secretEnvVar.kind === 'value' &&
 		(typeof secretEnvVar.value !== 'string' ||
 			secretEnvVar.value.length > 128 ||
-			!ENV_VAR.test(secretEnvVar.value))
+			!SECRET_ENV_VAR.test(secretEnvVar.value))
 	) {
 		addManifestIssue(
 			issues,
 			'invalid_format',
 			`${signaturePath}.secretEnvVar`,
-			'must be an uppercase environment variable name'
+			'must be a PLUGIN_-prefixed uppercase environment variable name'
 		);
 	}
 }

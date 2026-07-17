@@ -17,7 +17,7 @@ function validProvider(): PluginImportProviderDefinition {
 			header: 'x-hubspot-signature',
 			algorithm: 'hmac-sha256',
 			encoding: 'hex',
-			secretEnvVar: 'HUBSPOT_WEBHOOK_SECRET',
+			secretEnvVar: 'PLUGIN_HUBSPOT_WEBHOOK_SECRET',
 		},
 		attestSource: 'hubspot',
 	};
@@ -81,8 +81,18 @@ describe('plugin import provider contributions', () => {
 			'$.contributes.importProviders[0].signature.encoding',
 		],
 		[
-			'bad secret env var',
+			'a lower-case secret env var',
 			{ secretEnvVar: 'lower_case' },
+			'$.contributes.importProviders[0].signature.secretEnvVar',
+		],
+		[
+			'a non-namespaced host secret as its signing key',
+			{ secretEnvVar: 'DATABASE_URL' },
+			'$.contributes.importProviders[0].signature.secretEnvVar',
+		],
+		[
+			'a bare PLUGIN_ prefix with no name',
+			{ secretEnvVar: 'PLUGIN_' },
 			'$.contributes.importProviders[0].signature.secretEnvVar',
 		],
 	] as const)('rejects a signature contract with %s', (_label, override, path) => {
@@ -91,6 +101,23 @@ describe('plugin import provider contributions', () => {
 			base([{ ...provider, signature: { ...provider.signature, ...override } }])
 		);
 		expect(issues.some((issue) => issue.path === path)).toBe(true);
+	});
+
+	it('accepts a PLUGIN_-namespaced signing secret', () => {
+		const provider = validProvider();
+		const issues = issuesFor(
+			base([
+				{
+					...provider,
+					signature: { ...provider.signature, secretEnvVar: 'PLUGIN_HUBSPOT_WEBHOOK_SECRET' },
+				},
+			])
+		);
+		expect(
+			issues.some(
+				(issue) => issue.path === '$.contributes.importProviders[0].signature.secretEnvVar'
+			)
+		).toBe(false);
 	});
 
 	it('rejects an unsafe module export path', () => {

@@ -310,7 +310,7 @@ describe('composition rendering', () => {
 									header: 'x-hubspot-signature',
 									algorithm: 'hmac-sha256',
 									encoding: 'hex',
-									secretEnvVar: 'HUBSPOT_WEBHOOK_SECRET',
+									secretEnvVar: 'PLUGIN_HUBSPOT_WEBHOOK_SECRET',
 								},
 								attestSource: 'hubspot',
 							},
