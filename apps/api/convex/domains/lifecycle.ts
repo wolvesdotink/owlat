@@ -57,7 +57,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { clearReservationsForDomain } from '../mail/pendingMailbox';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
-import { getOptional } from '../lib/env';
+import { getOptional, getRequired } from '../lib/env';
 import { asDnsName } from '@owlat/shared';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
 import { buildReturnPathMailFromRecords, parsePoolIps, resolveSpfQualifier } from './spf';
@@ -853,10 +853,10 @@ export const setReturnPathHost = internalMutation({
 		} else {
 			const sesMailFrom = resolveSesMailFrom(domain.domain, normalized);
 			if (!sesMailFrom) return { ok: false, reason: 'host_not_subdomain' };
-			mailFromRecords = buildSesMailFromRecords(
-				sesMailFrom.host,
-				getOptional('AWS_SES_REGION') ?? ''
-			);
+			// `getRequired` (matching the SES registration path) so the region can
+			// never be blank — a `?? ''` fallback would write a malformed MX
+			// (`feedback-smtp..amazonses.com`). An SES domain always has this set.
+			mailFromRecords = buildSesMailFromRecords(sesMailFrom.host, getRequired('AWS_SES_REGION'));
 		}
 
 		const at = Date.now();
