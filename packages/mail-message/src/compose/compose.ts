@@ -141,6 +141,17 @@ export interface ComposeMessageInput {
 	date?: Date;
 	boundarySeed?: string;
 	/**
+	 * SMTPUTF8 / EAI (RFC 6531/6532) — emit non-ASCII header values (addresses and
+	 * subject) as native UTF-8 instead of RFC 2047 encoded-words. When omitted the
+	 * composer auto-enables it iff an addr-spec carries a non-ASCII local-part or
+	 * domain (which CANNOT be encoded, so native UTF-8 is the only faithful wire
+	 * form). Leaving it `false`/absent for an all-ASCII-addr-spec message keeps the
+	 * exact pre-X3 output (encoded-words for non-ASCII display names / subjects) —
+	 * the property the R2 golden corpus pins. Set it explicitly to force native
+	 * UTF-8 even when only a display name / subject is non-ASCII.
+	 */
+	eai?: boolean;
+	/**
 	 * Explicit SMTP envelope override. When absent the envelope is derived from
 	 * the header addresses: `from` = the From addr-spec, `to` = every To/Cc/Bcc
 	 * addr-spec (nodemailer `getEnvelope()` semantics).
@@ -236,6 +247,31 @@ function stripCrlf(value: string): string {
 	return value.replace(/[\r\n]/g, '');
 }
 
+// eslint-disable-next-line no-control-regex
+const NON_ASCII = /[^\x00-\x7F]/;
+
+/**
+ * Does any address's addr-spec (local-part or domain) carry a non-ASCII octet?
+ * Such an addr-spec has no RFC 2047 / punycode fallback the composer can apply
+ * itself, so the message MUST ride as SMTPUTF8 / EAI (native UTF-8 headers). A
+ * message whose only non-ASCII text is a display name or subject does NOT trip
+ * this — those still round-trip losslessly through RFC 2047 encoded-words, so the
+ * pre-X3 (encoded-word) output is preserved and the R2 golden corpus is unchanged.
+ */
+function messageRequiresEai(input: ComposeMessageInput): boolean {
+	const all = [
+		input.from,
+		...(input.replyTo === undefined ? [] : [input.replyTo]),
+		...input.to,
+		...(input.cc ?? []),
+		...(input.bcc ?? []),
+	];
+	for (const addr of all) {
+		if (NON_ASCII.test(addrSpec(addr))) return true;
+	}
+	return false;
+}
+
 /**
  * Derive the SMTP envelope from typed input (nodemailer `getEnvelope()`
  * semantics): From addr-spec, and every To/Cc/Bcc addr-spec deduped in
@@ -288,20 +324,21 @@ export function composeMessage(input: ComposeMessageInput): ComposedMessage {
 	);
 	const date = input.date ?? new Date();
 	const nextBoundary = boundaryAllocator(input.boundarySeed);
+	const eai = input.eai ?? messageRequiresEai(input);
 
 	const headers: string[] = [];
 	headers.push(`Message-ID: ${messageId}`);
 	headers.push(`Date: ${formatRfc5322Date(date)}`);
-	headers.push(`From: ${encodeAddressHeader([input.from])}`);
-	if (input.replyTo) headers.push(`Reply-To: ${encodeAddressHeader([input.replyTo])}`);
-	headers.push(`To: ${encodeAddressHeader(input.to)}`);
+	headers.push(`From: ${encodeAddressHeader([input.from], eai)}`);
+	if (input.replyTo) headers.push(`Reply-To: ${encodeAddressHeader([input.replyTo], eai)}`);
+	headers.push(`To: ${encodeAddressHeader(input.to, eai)}`);
 	if (input.cc && input.cc.length > 0) {
-		headers.push(`Cc: ${encodeAddressHeader(input.cc)}`);
+		headers.push(`Cc: ${encodeAddressHeader(input.cc, eai)}`);
 	}
 	// Bcc is envelope-only; deliberately never emitted as a header. The empty
 	// subject is emitted as-is (nodemailer parity — the composer invents no
 	// placeholder; a placeholder subject is the caller's decision).
-	headers.push(`Subject: ${encodeHeaderValue(input.subject)}`);
+	headers.push(`Subject: ${encodeHeaderValue(input.subject, undefined, eai)}`);
 	// msg-id lists cannot carry RFC 2047 encoded-words, so they fold only on the
 	// FWS between ids (CRLF + SP before a `<`) against their real prefix so a long
 	// thread's value never crosses the 998-octet hard cap. foldMsgIdList also
@@ -322,7 +359,7 @@ export function composeMessage(input: ComposeMessageInput): ComposedMessage {
 			const name = sanitizeHeaderName(rawName);
 			if (name.length === 0) continue;
 			if (STRUCTURAL_HEADERS.has(name.toLowerCase())) continue;
-			headers.push(`${name}: ${encodeHeaderValue(rawValue, name.length + 2)}`);
+			headers.push(`${name}: ${encodeHeaderValue(rawValue, name.length + 2, eai)}`);
 		}
 	}
 
