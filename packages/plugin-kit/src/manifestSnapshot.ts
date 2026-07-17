@@ -1,13 +1,14 @@
 import { isPluginContributionKind } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
+import { MAX_SETTINGS_FIELDS, MAX_SETTINGS_OPTIONS } from './settingsSchema';
 
 // Manifests are static declarations: these limits leave ample composition room
-// while bounding validation work at the public `unknown` input boundary.
+// while bounding validation work at the public `unknown` input boundary. The
+// settings-field/option bounds are shared with the manifest-time validator via
+// `settingsSchema` so the two layers cannot drift.
 const MAX_CAPABILITIES = 64;
 const MAX_REQUIRED_ENV_VARS = 64;
 const MAX_CONTRIBUTIONS_PER_KIND = 256;
-const MAX_SETTINGS_FIELDS = 64;
-const MAX_SETTINGS_OPTIONS = 64;
 const MAX_ARRAY_LENGTH = 0xffff_ffff;
 export const INVALID_SCHEMA_ARRAY = Object.freeze({ invalidSchemaArray: true });
 
