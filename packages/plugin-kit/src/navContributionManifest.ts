@@ -21,6 +21,13 @@ const SECTION_KEY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ICON = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
 const MAX_NAME_LENGTH = 64;
+/**
+ * Control (`Cc`) and format (`Cf`) code points the render-side `clampLabel`
+ * strips. A name made only of these survives `trim()` (which strips whitespace
+ * only) but renders as an empty, unlabelled link, so validation must mirror the
+ * clamp and require a name that is non-empty after they are removed.
+ */
+const CONTROL_OR_FORMAT = /\p{Cc}|\p{Cf}/gu;
 const MAX_ORDER = 100_000;
 
 const NAV_ITEM_FIELDS = new Set(['id', 'section', 'name', 'href', 'icon', 'order']);
@@ -123,7 +130,7 @@ function validateName(
 	if (
 		name.kind === 'value' &&
 		(typeof name.value !== 'string' ||
-			name.value.trim().length < 1 ||
+			name.value.replace(CONTROL_OR_FORMAT, '').trim().length < 1 ||
 			name.value.length > MAX_NAME_LENGTH)
 	) {
 		addManifestIssue(
