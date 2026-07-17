@@ -13,6 +13,7 @@ import { describe, it, expect } from 'vitest';
 import { verifyArc } from '../verify.js';
 import {
 	BASE_MESSAGE,
+	makeEd25519Key,
 	makeRsaKey,
 	resolverFor,
 	sealHop,
@@ -151,6 +152,80 @@ describe('verifyArc adversarial — bounded, never throws', () => {
 			throw new Error('kaboom — DNS layer blew up');
 		};
 		const verdict = await verifyArc(message, { resolver: exploding });
+		expect(verdict.cv).toBe('fail');
+		expectRescueFree(verdict);
+	});
+});
+
+describe('verifyArc adversarial — malformed chain structure -> fail, never throws', () => {
+	it('an ARC-Seal with a non-relaxed c= -> fail', async () => {
+		const lines = [
+			'ARC-Seal: i=1; a=rsa-sha256; c=simple/simple; cv=none; d=x.example; s=s; b=AAAA',
+			'ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=x.example; s=s; h=from; bh=AAAA; b=AAAA',
+			'ARC-Authentication-Results: i=1; x.example; dmarc=pass header.from=author.example',
+		];
+		const verdict = await verifyArc(assemble(lines), { resolver: emptyResolver });
+		expect(verdict.cv).toBe('fail');
+		expectRescueFree(verdict);
+	});
+
+	it('an ARC-Seal with an unsupported a= (rsa-sha1) -> fail', async () => {
+		const lines = [
+			'ARC-Seal: i=1; a=rsa-sha1; cv=none; d=x.example; s=s; b=AAAA',
+			'ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=x.example; s=s; h=from; bh=AAAA; b=AAAA',
+			'ARC-Authentication-Results: i=1; x.example; dmarc=pass header.from=author.example',
+		];
+		const verdict = await verifyArc(assemble(lines), { resolver: emptyResolver });
+		expect(verdict.cv).toBe('fail');
+		expectRescueFree(verdict);
+	});
+
+	it('an ARC-Message-Signature with an unsupported a= -> fail', async () => {
+		const lines = [
+			'ARC-Seal: i=1; a=rsa-sha256; cv=none; d=x.example; s=s; b=AAAA',
+			'ARC-Message-Signature: i=1; a=rsa-md5; c=relaxed/relaxed; d=x.example; s=s; h=from; bh=AAAA; b=AAAA',
+			'ARC-Authentication-Results: i=1; x.example; dmarc=pass header.from=author.example',
+		];
+		const verdict = await verifyArc(assemble(lines), { resolver: emptyResolver });
+		expect(verdict.cv).toBe('fail');
+		expectRescueFree(verdict);
+	});
+
+	it('an ARC-Message-Signature that over-signs the ARC-Seal -> fail (§5.1.1)', async () => {
+		const lines = [
+			'ARC-Seal: i=1; a=rsa-sha256; cv=none; d=x.example; s=s; b=AAAA',
+			'ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=x.example; s=s; h=from:arc-seal; bh=AAAA; b=AAAA',
+			'ARC-Authentication-Results: i=1; x.example; dmarc=pass header.from=author.example',
+		];
+		const verdict = await verifyArc(assemble(lines), { resolver: emptyResolver });
+		expect(verdict.cv).toBe('fail');
+		expectRescueFree(verdict);
+	});
+
+	it('an ARC-Seal missing its d= -> fail (cannot locate the sealer key)', async () => {
+		const key = makeRsaKey();
+		const lines = [
+			'ARC-Seal: i=1; a=rsa-sha256; cv=none; s=arc1; b=AAAA',
+			'ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=x.example; s=s; h=from; bh=AAAA; b=AAAA',
+			'ARC-Authentication-Results: i=1; x.example; dmarc=pass header.from=author.example',
+		];
+		const resolver = resolverFor({ 'arc1._domainkey.x.example': key.txt });
+		const verdict = await verifyArc(assemble(lines), { resolver });
+		expect(verdict.cv).toBe('fail');
+		expectRescueFree(verdict);
+	});
+
+	it('a key record whose type mismatches the ARC-Seal a= -> fail', async () => {
+		// The seal claims rsa-sha256 but the published record is an ed25519 key: the
+		// verifier refuses the mismatched key rather than coercing it.
+		const ed = makeEd25519Key();
+		const lines = [
+			'ARC-Seal: i=1; a=rsa-sha256; cv=none; d=x.example; s=arc1; b=AAAA',
+			'ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=x.example; s=arc1; h=from; bh=AAAA; b=AAAA',
+			'ARC-Authentication-Results: i=1; x.example; dmarc=pass header.from=author.example',
+		];
+		const resolver = resolverFor({ 'arc1._domainkey.x.example': ed.txt });
+		const verdict = await verifyArc(assemble(lines), { resolver });
 		expect(verdict.cv).toBe('fail');
 		expectRescueFree(verdict);
 	});
