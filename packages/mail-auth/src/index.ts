@@ -10,6 +10,7 @@
  *   - Canonicalization (RFC 6376 §3.4): the shared `canon` public API (D4),
  *     consumed by both the DKIM verifier and the outbound signer.
  *   - DKIM (RFC 6376 / 8463 / 8601): `verifyDkim` plus the key-record parser.
+ *   - ARC (RFC 8617): `verifyArc` — chain verification over the shared canon.
  */
 
 export { checkSpf } from './spf.js';
@@ -62,3 +63,6 @@ export type {
 
 export { isKeyRecordError, parseDkimKeyRecord } from './dkim/keyRecord.js';
 export type { DkimKeyRecord, DkimKeyRecordError, ParsedKeyRecord } from './dkim/keyRecord.js';
+
+export { verifyArc } from './arc/verify.js';
+export type { ArcChainState, ArcVerifyResult, VerifyArcOptions } from './arc/verify.js';
