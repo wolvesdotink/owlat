@@ -58,7 +58,7 @@ import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { clearReservationsForDomain } from '../mail/pendingMailbox';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
 import { getOptional, getRequired } from '../lib/env';
-import { asDnsName } from '@owlat/shared';
+import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
 import { buildReturnPathMailFromRecords, parsePoolIps, resolveSpfQualifier } from './spf';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mailFrom';
@@ -132,7 +132,15 @@ export type SendingDomainTransitionOutcome =
 
 export type SendingDomainCreateOutcome =
 	| { ok: true; domainId: Id<'domains'> }
-	| { ok: false; reason: 'invalid_format' | 'already_exists' };
+	| {
+			ok: false;
+			reason:
+				| 'invalid_format'
+				| 'already_exists'
+				| 'invalid_return_path_host'
+				| 'return_path_unsupported'
+				| 'return_path_not_subdomain';
+	  };
 
 export type SendingDomainRemoveOutcome = { ok: true } | { ok: false; reason: 'domain_not_found' };
 
@@ -566,6 +574,13 @@ export const create = internalMutation({
 	args: {
 		domain: v.string(),
 		userId: v.string(),
+		// Optional per-domain VERP return-path host, set ATOMICALLY with creation
+		// (F2 finding 1). Threading it here — rather than a second `setReturnPathHost`
+		// write after `create` — means the row already carries the host when the
+		// register-completion `→ pending` transition lands, so that transition is a
+		// real edge (not a `pending → pending` self-loop that would drop the DKIM/
+		// DMARC bundle + provider identity if it raced a separate status patch).
+		returnPathHost: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<SendingDomainCreateOutcome> => {
 		const domainRegex = /^(?!-)[A-Za-z0-9-]+([-.][A-Za-z0-9]+)*\.[A-Za-z]{2,}$/;
@@ -589,11 +604,29 @@ export const create = internalMutation({
 			? envProvider
 			: 'mta';
 
+		// Validate the optional return-path host up front, mirroring
+		// `setReturnPathHost` exactly (shared strict validator; MTA/SES only; SES
+		// requires a subdomain of the sending domain) so a bad host fails create
+		// cleanly rather than after the row + registration are scheduled.
+		let returnPathHost: string | undefined;
+		if (args.returnPathHost !== undefined) {
+			const host = normalizeReturnPathHost(args.returnPathHost);
+			if (host === null) return { ok: false, reason: 'invalid_return_path_host' };
+			if (providerKind !== 'mta' && providerKind !== 'ses') {
+				return { ok: false, reason: 'return_path_unsupported' };
+			}
+			if (providerKind === 'ses' && resolveSesMailFrom(normalized, host) === null) {
+				return { ok: false, reason: 'return_path_not_subdomain' };
+			}
+			returnPathHost = host;
+		}
+
 		const domainId = await ctx.db.insert('domains', {
 			domain: normalized,
 			status: 'registering',
 			dnsRecords: {},
 			providerType: providerKind,
+			...(returnPathHost ? { returnPathHost } : {}),
 			createdAt: now,
 			updatedAt: now,
 		});
@@ -810,9 +843,11 @@ export type SendingDomainReturnPathOutcome =
  *     (`host_not_subdomain`); the regenerated records are SES's MX + SPF TXT
  *     shape, not the MTA's pool-IP SPF.
  *
- * Any other provider is `unsupported_provider`. The host is validated as a DNS
- * FQDN via the shared `asDnsName` (packages/shared) — no raw-string checks.
- * Single writer of `domains.returnPathHost`.
+ * Any other provider is `unsupported_provider`. The host is validated by the
+ * SHARED strict return-path validator (packages/shared `normalizeReturnPathHost`,
+ * the exact validator the MTA applies) — NOT `asDnsName`, which is laxer and
+ * would let Convex commit a host (single label, `_service` label) the MTA then
+ * 400s forever. Single writer of `domains.returnPathHost`.
  */
 export const setReturnPathHost = internalMutation({
 	args: {
@@ -831,10 +866,9 @@ export const setReturnPathHost = internalMutation({
 			return { ok: false, reason: 'unsupported_provider' };
 		}
 
-		// Validate + normalize via the shared DNS-name primitive (branded DnsName)
-		// rather than a bespoke regex — one definition, shared with the client and
-		// the MTA-side validator.
-		const normalized = asDnsName(args.returnPathHost);
+		// Validate + normalize via the SHARED strict validator (identical to the
+		// MTA's acceptance gate) so Convex never persists a host the MTA rejects.
+		const normalized = normalizeReturnPathHost(args.returnPathHost);
 		if (normalized === null) return { ok: false, reason: 'invalid_host' };
 
 		if (domain.returnPathHost === normalized) {
@@ -842,14 +876,16 @@ export const setReturnPathHost = internalMutation({
 		}
 
 		// Regenerate the provider-specific `mailFrom` record(s) on the new host.
-		// MTA: a pool-IP SPF record on the standalone bounce host (via the shared
-		// `spf.ts` builder). SES: the MX + SPF TXT SES requires at a MAIL FROM
-		// subdomain (X1) — which SES constrains to be under the sending domain.
+		// MTA: the bounce-routing MX + a pool-IP SPF TXT on the standalone bounce
+		// host (via the shared `spf.ts` builder). SES: the MX + SPF TXT SES requires
+		// at a MAIL FROM subdomain (X1) — which SES constrains to be under the
+		// sending domain.
 		let mailFromRecords: DnsRecords['mailFrom'];
 		if (providerType === 'mta') {
 			const qualifier = resolveSpfQualifier(getOptional('SPF_QUALIFIER'));
 			const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
-			mailFromRecords = buildReturnPathMailFromRecords(normalized, poolIps, qualifier);
+			const mailHost = getOptional('EHLO_HOSTNAME')?.trim();
+			mailFromRecords = buildReturnPathMailFromRecords(normalized, poolIps, qualifier, mailHost);
 		} else {
 			const sesMailFrom = resolveSesMailFrom(domain.domain, normalized);
 			if (!sesMailFrom) return { ok: false, reason: 'host_not_subdomain' };

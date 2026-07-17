@@ -168,9 +168,15 @@ export const listVerified = authedQuery({
 
 // Mutation: Add a new domain. Delegates to the lifecycle's `create()`
 // entry point, which inserts the row and fires `register_with_provider`.
+//
+// An optional `returnPathHost` is set ATOMICALLY with creation (F2 finding 1):
+// the register-completion transition then carries the full DKIM/DMARC bundle +
+// provider identity onto a domain whose return-path host is already stored,
+// avoiding the create→setReturnPathHost race that could drop the bundle.
 export const create = authedMutation({
 	args: {
 		domain: v.string(),
+		returnPathHost: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<Id<'domains'>> => {
 		await requireOrgPermission(
@@ -181,6 +187,7 @@ export const create = authedMutation({
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.create, {
 			domain: args.domain,
 			userId: LIFECYCLE_USER_PUBLIC_MUTATION,
+			...(args.returnPathHost !== undefined ? { returnPathHost: args.returnPathHost } : {}),
 		});
 		if (!outcome.ok) {
 			if (outcome.reason === 'invalid_format') {
@@ -188,6 +195,19 @@ export const create = authedMutation({
 			}
 			if (outcome.reason === 'already_exists') {
 				throwAlreadyExists('This domain has already been added.');
+			}
+			if (outcome.reason === 'invalid_return_path_host') {
+				throwInvalidInput(
+					'Invalid return-path host. Enter a valid DNS hostname, e.g. bounce.example.com.'
+				);
+			}
+			if (outcome.reason === 'return_path_not_subdomain') {
+				throwInvalidInput(
+					'For an SES domain the return-path host must be a subdomain of the sending domain, e.g. bounce.example.com.'
+				);
+			}
+			if (outcome.reason === 'return_path_unsupported') {
+				throwInvalidInput('This domain does not support a custom return-path host.');
 			}
 		}
 		// Narrowing: ok is true at this point.

@@ -34,9 +34,6 @@ const hasVerifiedDomain = computed(() =>
 const { run: createDomain } = useBackendOperation(api.domains.domains.create, {
 	label: 'Add domain',
 });
-const { run: setReturnPathHost } = useBackendOperation(api.domains.returnPath.setReturnPathHost, {
-	label: 'Set return-path host',
-});
 const { run: removeDomain } = useBackendOperation(api.domains.domains.remove, {
 	label: 'Remove domain',
 });
@@ -114,12 +111,11 @@ watch(
 	{ immediate: true }
 );
 
-// Add-domain orchestration (register, then set a custom return-path host if
-// supplied) lives in a plain, directly-testable flow composable.
+// Add-domain orchestration (register with an optional custom return-path host,
+// set atomically in one write) lives in a plain, directly-testable flow composable.
 const { handleAddDomain } = useAddDomain({
 	hasActiveOrganization: () => hasActiveOrganization.value,
 	createDomain,
-	setReturnPathHost,
 	setLoading: (loading) => addModal.setLoading(loading),
 	close: () => addModal.close(),
 	showToast,
