@@ -12,7 +12,7 @@
 import { createHash, createPublicKey, verify as cryptoVerify, type KeyObject } from 'crypto';
 import { canonicalizeHeaderField, stripSignatureValue } from '../canon.js';
 import { isKeyRecordError, parseDkimKeyRecord, type DkimKeyRecord } from '../dkim/keyRecord.js';
-import type { DkimDnsResolver } from '../dkim/verify.js';
+import type { DkimDnsResolver } from '../dkim/messageSignature.js';
 import { parseSealAlgorithm, type ArcSet } from './chain.js';
 
 /** DER SubjectPublicKeyInfo prefix for a raw 32-byte Ed25519 key (RFC 8410). */
