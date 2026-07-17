@@ -69,6 +69,30 @@ describe('pluginSettingsBaseline', () => {
 		expect(baselineFieldValue(schema[0]!, EMPTY)).toBe('');
 	});
 
+	it('treats a stored select value dropped from the options as unset', () => {
+		// A newer plugin version removed the 'legacy' option; the stored value must
+		// not render as configured. With a default it falls back to the default,
+		// without one it falls back to '' (the placeholder).
+		const stale: PluginSettingsRedactedState = { values: { region: 'legacy' }, secretsSet: {} };
+		const regionField = SCHEMA.find((field) => field.key === 'region')!;
+		expect(baselineFieldValue(regionField, stale)).toBe('eu');
+
+		const noDefault: PluginSettingsField = {
+			kind: 'select',
+			key: 'mode',
+			label: 'Mode',
+			options: [
+				{ value: 'a', label: 'A' },
+				{ value: 'b', label: 'B' },
+			],
+		};
+		const staleNoDefault: PluginSettingsRedactedState = {
+			values: { mode: 'legacy' },
+			secretsSet: {},
+		};
+		expect(baselineFieldValue(noDefault, staleNoDefault)).toBe('');
+	});
+
 	it('baselines an unset number to "" (an empty input), not a fabricated min/0', () => {
 		const withMin: PluginSettingsField = {
 			kind: 'number',
@@ -165,6 +189,23 @@ describe('missingRequiredPluginSettings', () => {
 		const state: PluginSettingsRedactedState = { values: {}, secretsSet: {} };
 		const baseline = pluginSettingsBaseline(schema, state);
 		expect(missingRequiredPluginSettings(schema, baseline, state)).toEqual(['port', 'mode']);
+	});
+
+	it('flags a required select whose stored value is no longer an option', () => {
+		const schema: PluginSettingsSchema = [
+			{
+				kind: 'select',
+				key: 'mode',
+				label: 'Mode',
+				required: true,
+				options: [{ value: 'a', label: 'A' }],
+			},
+		];
+		// The plugin upgrade dropped 'legacy'; the baseline is now '' so the required
+		// select is flagged rather than silently accepted as a stale, unusable value.
+		const state: PluginSettingsRedactedState = { values: { mode: 'legacy' }, secretsSet: {} };
+		const baseline = pluginSettingsBaseline(schema, state);
+		expect(missingRequiredPluginSettings(schema, baseline, state)).toEqual(['mode']);
 	});
 
 	it('is satisfied once the unset required number/select receive values', () => {
