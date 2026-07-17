@@ -3,15 +3,17 @@ import { api } from '@owlat/api';
 import {
 	type PaletteGroup,
 	type PaletteItem,
-	filterItems,
 	flattenGroups,
 	mergeGroups,
 	moveSelection,
 } from '~/lib/commandPalette';
+import { resolvePaletteGroups } from '~/lib/commandPaletteRegistry';
 import {
-	type CommandPaletteProvider,
-	resolvePaletteGroups,
-} from '~/lib/commandPaletteRegistry';
+	MAX_RECENT_SEARCHES,
+	type SearchResult,
+	type SearchResults,
+	buildCorePaletteProviders,
+} from '~/lib/commandPaletteCore';
 
 /**
  * App-wide Cmd/Ctrl-K command palette, mounted once in the dashboard layout so
@@ -51,7 +53,6 @@ useModalFocus(dialogRef, () => open.value);
 
 // ── Recent object-search queries (carried over from the old GlobalSearch modal)
 const RECENT_KEY = 'owlat_recent_searches';
-const MAX_RECENT = 5;
 const recentSearches = ref<string[]>([]);
 
 function loadRecent() {
@@ -69,7 +70,7 @@ function saveRecent(term: string) {
 	if (!trimmed || import.meta.server) return;
 	recentSearches.value = [trimmed, ...recentSearches.value.filter((s) => s !== trimmed)].slice(
 		0,
-		MAX_RECENT
+		MAX_RECENT_SEARCHES
 	);
 	try {
 		localStorage.setItem(RECENT_KEY, JSON.stringify(recentSearches.value));
@@ -90,13 +91,6 @@ function clearRecent() {
 }
 
 // ── Object search (contacts / templates / campaigns) via the shared index.
-type SearchResult = { id: string; type: string; title: string; subtitle: string; url: string };
-type SearchResults = {
-	contacts: SearchResult[];
-	emails: SearchResult[];
-	campaigns: SearchResult[];
-};
-
 const { data: searchData } = useOrganizationQuery(api.globalSearch.search, () =>
 	// undefined → the wrapper skips the subscription (no empty / <2-char query).
 	debouncedSearch.value.trim().length >= 2 ? { query: debouncedSearch.value, limit: 5 } : undefined
@@ -125,73 +119,20 @@ function toResultItems(results: SearchResult[]): PaletteItem[] {
 	}));
 }
 
-// ── Core providers, consulted before any surface/plugin provider. Each reads
-// its reactive inputs inside `build`, so the assembling computed re-tracks them.
-// Priorities fix the consult/dedup order; per-group `order` still drives the
-// final render sort in `mergeGroups`.
-const coreProviders: CommandPaletteProvider[] = [
-	{
-		// Recent searches — only in the idle state, above everything.
-		id: 'core:recent',
-		priority: 10,
-		build: ({ query }) => {
-			if (query.trim().length >= 2 || recentSearches.value.length === 0) return [];
-			return [
-				{
-					key: 'recent',
-					heading: 'Recent searches',
-					order: -1,
-					cap: MAX_RECENT,
-					items: recentSearches.value.map((term) => ({
-						id: `recent:${term}`,
-						label: term,
-						icon: 'lucide:clock',
-						keepOpen: true,
-						run: () => setImmediate(term),
-					})),
-				},
-			];
-		},
-	},
-	{
-		// Verbs / utilities.
-		id: 'core:verbs',
-		priority: 20,
-		build: ({ query }) => [
-			{ key: 'verbs', heading: 'Create', order: 5, items: filterItems(verbItems.value, query) },
-		],
-	},
-	{
-		// Sidebar-context switch (empty groups are dropped on merge).
-		id: 'core:context',
-		priority: 30,
-		build: ({ query }) => [
-			{ key: 'context', heading: 'Context', order: 6, items: filterItems(contextItems.value, query) },
-		],
-	},
-	{
-		// Object search — only once the query is meaningful and results arrived.
-		id: 'core:search',
-		priority: 40,
-		build: ({ query }) => {
-			const results = searchResults.value;
-			if (query.trim().length < 2 || !results) return [];
-			return [
-				{ key: 'contacts', heading: 'Contacts', order: 20, cap: 5, items: toResultItems(results.contacts) },
-				{ key: 'campaigns', heading: 'Campaigns', order: 21, cap: 5, items: toResultItems(results.campaigns) },
-				{ key: 'templates', heading: 'Templates', order: 22, cap: 5, items: toResultItems(results.emails) },
-			];
-		},
-	},
-	{
-		// Navigation — every sidebar destination.
-		id: 'core:navigation',
-		priority: 50,
-		build: ({ query }) => [
-			{ key: 'navigation', heading: 'Go to', order: 40, cap: 8, items: filterItems(navItems.value, query) },
-		],
-	},
-];
+// ── Core providers, consulted before any surface/plugin provider. Their
+// composition (ids, priorities, group keys/orders/caps, gating) lives in the
+// pure `buildCorePaletteProviders` factory and is pinned by its conformance
+// suite; here we only inject the reactive reads and item `run` closures. Each
+// getter is read inside `build`, so the assembling computed re-tracks them.
+const coreProviders = buildCorePaletteProviders({
+	recentSearches: () => recentSearches.value,
+	verbItems: () => verbItems.value,
+	contextItems: () => contextItems.value,
+	navItems: () => navItems.value,
+	searchResults: () => searchResults.value,
+	onRecentTerm: (term) => setImmediate(term),
+	buildResultItems: (results) => toResultItems(results),
+});
 
 // ── Assemble the ordered, capped group list: gate + order + dedup providers,
 // then sort/drop-empties/cap. Core providers form their own trust tier and are
