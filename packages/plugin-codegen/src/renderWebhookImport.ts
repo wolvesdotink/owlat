@@ -4,7 +4,7 @@ import {
 	type BundledPlugin,
 } from '@owlat/plugin-host';
 import { parsePluginId } from '@owlat/plugin-kit';
-import { GENERATED_HEADER } from './renderShared';
+import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 
 interface RenderedWebhookEvent {
 	readonly pluginId: string;
@@ -64,7 +64,9 @@ interface RenderedImportProvider {
 	};
 }
 
-function importProvidersFor(plugins: readonly BundledPlugin[]): readonly RenderedImportProvider[] {
+export function importProvidersFor(
+	plugins: readonly BundledPlugin[]
+): readonly RenderedImportProvider[] {
 	return orderHostedContributions(
 		plugins.flatMap((plugin) =>
 			(plugin.manifest.contributes?.importProviders ?? []).map((provider) => ({
@@ -87,8 +89,8 @@ function importProvidersFor(plugins: readonly BundledPlugin[]): readonly Rendere
 	}));
 }
 
-export function renderImportProviderCatalog(plugins: readonly BundledPlugin[]): string {
-	const entries = importProvidersFor(plugins)
+export function renderImportProviderCatalog(providers: readonly RenderedImportProvider[]): string {
+	const entries = providers
 		.map(
 			(provider) => `\tObject.freeze({
 \t\tkind: ${JSON.stringify(provider.kind)},
@@ -107,25 +109,11 @@ export function renderImportProviderCatalog(plugins: readonly BundledPlugin[]): 
 	return `${GENERATED_HEADER}export const BUNDLED_PLUGIN_IMPORT_PROVIDER_CATALOG = ${catalog};\n`;
 }
 
-export function renderImportProviderModules(plugins: readonly BundledPlugin[]): string {
-	const providers = importProvidersFor(plugins);
-	const imports = providers
-		.map(
-			(provider, index) =>
-				`import bundledPluginImportProvider${index} from ${JSON.stringify(`${provider.packageName}${provider.exportPath.slice(1)}`)};`
-		)
-		.join('\n');
-	const entries = providers
-		.map(
-			(provider, index) =>
-				`\tObject.freeze({ kind: ${JSON.stringify(provider.kind)}, pluginId: ${JSON.stringify(provider.pluginId)}, module: bundledPluginImportProvider${index} satisfies PluginImportProviderModule }),`
-		)
-		.join('\n');
-	const modules = entries
-		? `Object.freeze([\n${entries}\n] as const)`
-		: 'Object.freeze([] as const)';
-	const contractImport = providers.length
-		? "import type { PluginImportProviderModule } from '@owlat/plugin-kit';\n"
-		: '';
-	return `'use node';\n\n${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_IMPORT_PROVIDER_MODULES = ${modules};\n`;
+export function renderImportProviderModules(providers: readonly RenderedImportProvider[]): string {
+	return renderPluginModuleFile(providers, {
+		varPrefix: 'bundledPluginImportProvider',
+		contract: 'PluginImportProviderModule',
+		modulesConst: 'BUNDLED_PLUGIN_IMPORT_PROVIDER_MODULES',
+		useNode: true,
+	});
 }
