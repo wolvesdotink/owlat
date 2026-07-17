@@ -142,6 +142,7 @@ const inputClass =
 				:id="controlId"
 				type="number"
 				inputmode="decimal"
+				step="any"
 				:value="numberValue"
 				:required="field.required || undefined"
 				:aria-required="field.required || undefined"
