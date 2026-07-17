@@ -61,6 +61,31 @@ export type {
 } from './cron';
 export { isPluginId, parsePluginId, PluginIdError } from './pluginId';
 export type { PluginId } from './pluginId';
+export {
+	buildCanonicalHookRequest,
+	buildCanonicalHookResponse,
+	canonicalizeJson,
+	clampSyncHookDeadline,
+	PLUGIN_SYNC_HOOK_CAPABILITY,
+	serializeHookRequestBody,
+	SYNC_HOOK_DEFAULT_DEADLINE_MS,
+	SYNC_HOOK_HEADERS,
+	SYNC_HOOK_KINDS,
+	SYNC_HOOK_MAX_DEADLINE_MS,
+	SYNC_HOOK_MAX_REQUEST_BYTES,
+	SYNC_HOOK_MAX_RESPONSE_BYTES,
+	SYNC_HOOK_MIN_DEADLINE_MS,
+	SYNC_HOOK_SIGNATURE_SCHEME,
+	SYNC_HOOK_TIMESTAMP_TOLERANCE_MS,
+	SyncHookContractError,
+	utf8ByteLength,
+} from './syncHook';
+export type {
+	SyncHookDescriptor,
+	SyncHookKind,
+	SyncHookRequestEnvelope,
+	SyncHookResponseEnvelope,
+} from './syncHook';
 export { PLUGIN_AGENT_STEP_CAPABILITY, pluginAgentStepKind } from './agentStep';
 export type {
 	PluginAgentLifecycleEdge,
