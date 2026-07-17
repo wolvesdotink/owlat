@@ -3,7 +3,7 @@
  *
  * Both senderPlaintextTlsRpt.integration.test.ts (PR-24) and
  * senderOutboundTlsFloor.integration.test.ts (T1) drive the FULL {@link sendToMx}
- * through the REAL connection pool + real nodemailer + real tlsRpt against a
+ * through the REAL connection pool + real @owlat/smtp-client + real tlsRpt against a
  * loopback {@link SMTPServer}. Only the destination port is rewritten (sendToMx
  * hardcodes 25). This module factors out the server factory, the job/config
  * builders and the microtask flush so each suite carries only its own assertions.
@@ -13,9 +13,44 @@
  */
 import { SMTPServer } from 'smtp-server';
 import type { AddressInfo } from 'node:net';
+import { SmtpConnection, sendEnvelope, quit, type SendResult } from '@owlat/smtp-client';
 import { MX_CERT, MX_KEY } from './certFixture.js';
+import { SmtpConnectionPool, type AcquireOptions } from '../connectionPool.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+
+/**
+ * The canonical loopback message the pool-level integration suites deliver. A
+ * fixed, minimal RFC 822 blob so a byte-for-byte comparison across suites is
+ * meaningful and there is exactly one copy to maintain.
+ */
+export const LOOPBACK_MESSAGE = Buffer.from(
+	'From: sender@owlat.test\r\nTo: recipient@example.test\r\nSubject: t\r\n\r\nbody\r\n'
+);
+
+/**
+ * Drive a full acquire → connect → sendEnvelope → quit → release through the REAL
+ * pool + @owlat/smtp-client, returning the {@link SendResult}. The single shared
+ * helper for the pool-level TLS suites (outboundTls, outboundStartTls, senderEhlo)
+ * so the connect/send/quit dance lives in one place, not copy-pasted three times.
+ */
+export async function deliver(
+	pool: SmtpConnectionPool,
+	options: AcquireOptions
+): Promise<SendResult> {
+	const { key, config } = await pool.acquire('127.0.0.1', '127.0.0.1', options);
+	const conn = await SmtpConnection.connect(config);
+	try {
+		return await sendEnvelope(conn, {
+			from: 'sender@owlat.test',
+			to: ['recipient@example.test'],
+			data: LOOPBACK_MESSAGE,
+		});
+	} finally {
+		await quit(conn);
+		pool.release(key);
+	}
+}
 
 export interface ServerProbe {
 	server: SMTPServer;

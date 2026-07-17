@@ -5,28 +5,37 @@ import Redis from 'ioredis-mock';
  * Regression-lock for audit item PR-43 (Header-injection, RFC 5322 §2.2).
  *
  * The MTA `sendToMx` path hands `job.subject` / `job.from` / `job.replyTo` and
- * the `job.headers` map straight to nodemailer's `transport.sendMail`. This
- * test swaps in a REAL nodemailer stream transport (the same idiom as the
- * PR-52 regression-lock in sender.test.ts), feeds those fields values that
- * contain a bare CRLF + a smuggled `Bcc:` header, and asserts the actual RFC
- * 5322 bytes nodemailer emits contain NO injected `Bcc:` header line.
+ * the `job.headers` map to the in-house composer (@owlat/mail-message). This
+ * test feeds those fields values that contain a bare CRLF + a smuggled `Bcc:`
+ * header, captures the actual RFC 5322 bytes the composer emits (handed to the
+ * SMTP client's sendEnvelope), and asserts they contain NO injected `Bcc:`
+ * header line.
  *
  * This locks the transport-side guarantee in place. The Convex producer also
- * strips CR/LF before the job is ever built (personalization `header` escape
- * policy), so the two layers together are defense-in-depth: a CRLF would have
- * to survive BOTH to reach the wire.
+ * strips CR/LF before the job is ever built, so the two layers together are
+ * defense-in-depth: a CRLF would have to survive BOTH to reach the wire.
  */
 
-const { mockTransport } = vi.hoisted(() => {
-	const mockTransport = { sendMail: vi.fn() };
-	return { mockTransport };
-});
+const { connectMock, sendEnvelopeMock, quitMock, acquireMock, releaseMock } = vi.hoisted(() => ({
+	connectMock: vi.fn(),
+	sendEnvelopeMock: vi.fn(),
+	quitMock: vi.fn(),
+	acquireMock: vi.fn(),
+	releaseMock: vi.fn(),
+}));
 
+vi.mock('@owlat/smtp-client', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@owlat/smtp-client')>();
+	return {
+		...actual,
+		SmtpConnection: { connect: connectMock },
+		sendEnvelope: sendEnvelopeMock,
+		quit: quitMock,
+	};
+});
 vi.mock('../connectionPool.js', () => ({
-	pool: {
-		acquire: vi.fn().mockReturnValue({ key: 'test-key', transport: mockTransport }),
-		release: vi.fn(),
-	},
+	pool: { acquire: acquireMock, release: releaseMock },
+	PoolOverCapError: class PoolOverCapError extends Error {},
 }));
 vi.mock('../mxResolver.js', () => ({
 	getMxHostnames: vi.fn().mockResolvedValue(['mx1.example.com']),
@@ -46,9 +55,6 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import { sendToMx } from '../sender.js';
 import { getMxHostnames } from '../mxResolver.js';
-import { pool } from '../connectionPool.js';
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 
@@ -72,6 +78,7 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bouncePort: 25,
 		redisUrl: 'redis://localhost:6379',
 		apiKey: 'test-key',
+		mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
 		ehloHostname: 'mail.owlat.com',
 		ehloHostnames: {},
 		returnPathDomain: 'bounces.owlat.com',
@@ -85,6 +92,11 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
 		submissionPort: 587,
 		submissionEnabled: false,
+		submissionImplicitTlsPort: 465,
+		submissionImplicitTlsEnabled: false,
+		submissionMaxConnectionsPerIp: 10,
+		submissionMaxClients: 200,
+		submissionMaxAuthFailuresPerIp: 10,
 		contentScreeningEnabled: true,
 		contentMaxSizeKb: 500,
 		deliveryLogMaxLen: 100000,
@@ -95,10 +107,14 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bounceTarpitEnabled: false,
 		bounceTarpitDelayMs: 5000,
 		inboundSpfEnabled: false,
+		inboundDkimEnabled: false,
+		inboundDmarcEnabled: false,
+		inboundArcEnabled: false,
 		rspamdRejectThreshold: 15,
 		smtpPoolGlobalMaxPerHost: 10,
+		maxMessageAgeMs: 432_000_000,
 		...overrides,
-	};
+	} satisfies MtaConfig;
 }
 
 describe('sendToMx — header injection (PR-43)', () => {
@@ -110,38 +126,30 @@ describe('sendToMx — header injection (PR-43)', () => {
 		redis = new Redis();
 		config = createConfig();
 		vi.mocked(getMxHostnames).mockResolvedValue(['mx1.example.com']);
-		vi.mocked(pool.acquire).mockReturnValue({
+		acquireMock.mockReturnValue({
 			key: 'test-key',
-			transport: mockTransport as unknown as Transporter,
+			config: {
+				host: 'mx1.example.com',
+				port: 25,
+				ehloName: 'mail.owlat.com',
+				tlsMode: 'starttls',
+			},
 		});
+		connectMock.mockResolvedValue({ secured: true, close: vi.fn() });
+		sendEnvelopeMock.mockResolvedValue({
+			accepted: [],
+			rejected: [],
+			response: { code: 250, text: '2.0.0 OK', lines: ['2.0.0 OK'] },
+		});
+		quitMock.mockResolvedValue(undefined);
 	});
 
-	/**
-	 * Build the actual MIME bytes nodemailer would emit for a job, by swapping
-	 * a real stream transport in for the mocked one and capturing the message.
-	 */
+	/** The RFC 5322 bytes the composer emitted for a job. */
 	async function captureMessage(job: EmailJob): Promise<string> {
-		const streamTransport = nodemailer.createTransport({
-			streamTransport: true,
-			buffer: true,
-			newline: 'windows',
-		});
-		let captured = '';
-		const capturingTransport = {
-			sendMail: async (opts: Parameters<Transporter['sendMail']>[0]) => {
-				const info = await streamTransport.sendMail(opts);
-				captured = (info.message as Buffer).toString('utf-8');
-				return info;
-			},
-		};
-		vi.mocked(pool.acquire).mockReturnValue({
-			key: 'stream-key',
-			transport: capturingTransport as unknown as Transporter,
-		});
-
 		const result = await sendToMx(job, config, redis, '10.0.0.1');
 		expect(result.success).toBe(true);
-		return captured;
+		const options = sendEnvelopeMock.mock.calls[0]![1] as { data: Buffer };
+		return options.data.toString('utf-8');
 	}
 
 	function headerBlockOf(message: string): string {
@@ -149,35 +157,29 @@ describe('sendToMx — header injection (PR-43)', () => {
 	}
 
 	it('a CRLF + Bcc smuggled into the SUBJECT does not emit a Bcc header line', async () => {
-		const message = await captureMessage(
-			createJob({ subject: 'Hi there\r\nBcc: x@evil.com' }),
-		);
-		const headers = headerBlockOf(message);
-		expect(headers).not.toMatch(/^Bcc:/im);
+		const message = await captureMessage(createJob({ subject: 'Hi there\r\nBcc: x@evil.com' }));
+		expect(headerBlockOf(message)).not.toMatch(/^Bcc:/im);
 	});
 
 	it('a CRLF + Bcc smuggled into the FROM does not emit a Bcc header line', async () => {
 		const message = await captureMessage(
-			createJob({ from: 'sender@owlat.com\r\nBcc: x@evil.com' }),
+			createJob({ from: 'sender@owlat.com\r\nBcc: x@evil.com' })
 		);
-		const headers = headerBlockOf(message);
-		expect(headers).not.toMatch(/^Bcc:/im);
+		expect(headerBlockOf(message)).not.toMatch(/^Bcc:/im);
 	});
 
 	it('a CRLF + Bcc smuggled into the REPLY-TO does not emit a Bcc header line', async () => {
 		const message = await captureMessage(
-			createJob({ replyTo: 'reply@owlat.com\r\nBcc: x@evil.com' }),
+			createJob({ replyTo: 'reply@owlat.com\r\nBcc: x@evil.com' })
 		);
-		const headers = headerBlockOf(message);
-		expect(headers).not.toMatch(/^Bcc:/im);
+		expect(headerBlockOf(message)).not.toMatch(/^Bcc:/im);
 	});
 
 	it('a CRLF + Bcc smuggled into a custom header VALUE does not emit a Bcc header line', async () => {
 		const message = await captureMessage(
-			createJob({ headers: { 'X-Custom': 'value\r\nBcc: x@evil.com' } }),
+			createJob({ headers: { 'X-Custom': 'value\r\nBcc: x@evil.com' } })
 		);
-		const headers = headerBlockOf(message);
-		expect(headers).not.toMatch(/^Bcc:/im);
+		expect(headerBlockOf(message)).not.toMatch(/^Bcc:/im);
 	});
 
 	it('all injection vectors at once still emit no Bcc header line', async () => {
@@ -187,9 +189,8 @@ describe('sendToMx — header injection (PR-43)', () => {
 				from: 'sender@owlat.com\r\nBcc: b@evil.com',
 				replyTo: 'reply@owlat.com\r\nBcc: c@evil.com',
 				headers: { 'X-Custom': 'v\r\nBcc: d@evil.com' },
-			}),
+			})
 		);
-		const headers = headerBlockOf(message);
-		expect(headers).not.toMatch(/^Bcc:/im);
+		expect(headerBlockOf(message)).not.toMatch(/^Bcc:/im);
 	});
 });
