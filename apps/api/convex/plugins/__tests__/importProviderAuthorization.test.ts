@@ -185,4 +185,18 @@ describe('hosted import provider authorization', () => {
 			{ reasonCode: 'import_provider_failed' }
 		);
 	});
+
+	it('throws and never audits when recording a cross-plugin outcome', async () => {
+		// `other-pack` is registered, flag-enabled and granted, yet claims a
+		// `crm-pack` provider: the outcome recorder must fail loud rather than
+		// misattribute the audit, and must write nothing.
+		await expect(
+			outcomeHandler(fakeContext(true, true), {
+				pluginId: 'other-pack',
+				providerKind: 'plugin.crm-pack.hubspot',
+				outcome: 'completed',
+			})
+		).rejects.toThrow('Invalid bundled import provider attribution');
+		expect(audit).not.toHaveBeenCalled();
+	});
 });

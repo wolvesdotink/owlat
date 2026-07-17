@@ -171,4 +171,18 @@ describe('hosted webhook event authorization', () => {
 			{ reasonCode: 'webhook_publish_failed' }
 		);
 	});
+
+	it('throws and never audits when recording a cross-plugin outcome', async () => {
+		// `other-pack` is registered, flag-enabled and granted, yet claims a
+		// `crm-pack` event: the outcome recorder must fail loud rather than
+		// misattribute the audit, and must write nothing.
+		await expect(
+			outcomeHandler(fakeContext(true, true), {
+				pluginId: 'other-pack',
+				eventKind: 'plugin.crm-pack.deal-won',
+				outcome: 'completed',
+			})
+		).rejects.toThrow('Invalid bundled webhook event attribution');
+		expect(audit).not.toHaveBeenCalled();
+	});
 });
