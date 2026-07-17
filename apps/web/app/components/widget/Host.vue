@@ -8,7 +8,7 @@
  *
  * States handled: loading (async chunk in flight), error (isolated), and content.
  */
-import { ref, computed, onErrorCaptured, defineAsyncComponent } from 'vue';
+import { ref, computed, nextTick, onErrorCaptured, defineAsyncComponent } from 'vue';
 import type { WidgetModule } from '~/composables/widgets/types';
 
 const props = defineProps<{
@@ -23,6 +23,9 @@ const props = defineProps<{
 }>();
 
 const error = ref<Error | null>(null);
+// The labelled region wrapper. Activating "Try again" unmounts the button that
+// held focus, so focus must be moved somewhere sensible or it falls to <body>.
+const regionRef = ref<HTMLElement | null>(null);
 // Bumped on retry. `defineAsyncComponent` caches its loader promise — including a
 // rejection — for the life of the wrapper, so recovering a failed chunk load
 // requires a *fresh* wrapper. Keying the async component on this counter builds
@@ -50,11 +53,16 @@ function retry() {
 	// New wrapper → the loader runs again, so a transient chunk-load failure or a
 	// component that has since recovered can actually re-render.
 	attempt.value += 1;
+	// Keep keyboard/screen-reader focus inside the widget across the transition:
+	// the retry button has just unmounted. On a re-failure the freshly-rendered
+	// alert is inside this region, so focus lands next to it (and the role=alert
+	// is announced); on success focus rests at the top of the recovered widget.
+	void nextTick(() => regionRef.value?.focus());
 }
 </script>
 
 <template>
-	<section class="contents" role="region" :aria-label="regionLabel">
+	<section ref="regionRef" class="contents" role="region" tabindex="-1" :aria-label="regionLabel">
 		<div
 			v-if="error"
 			role="alert"
