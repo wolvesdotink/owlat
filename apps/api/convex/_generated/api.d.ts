@@ -343,6 +343,7 @@ import type * as lib_featureFlags from "../lib/featureFlags.js";
 import type * as lib_graphAnalyticsCompute from "../lib/graphAnalyticsCompute.js";
 import type * as lib_graphRank from "../lib/graphRank.js";
 import type * as lib_httpResponse from "../lib/httpResponse.js";
+import type * as lib_hostedCatalog from "../lib/hostedCatalog.js";
 import type * as lib_inboundClassification from "../lib/inboundClassification.js";
 import type * as lib_inboxStats from "../lib/inboxStats.js";
 import type * as lib_inputGuards from "../lib/inputGuards.js";
@@ -1022,6 +1023,7 @@ declare const fullApi: ApiFromModules<{
   "lib/graphAnalyticsCompute": typeof lib_graphAnalyticsCompute;
   "lib/graphRank": typeof lib_graphRank;
   "lib/httpResponse": typeof lib_httpResponse;
+  "lib/hostedCatalog": typeof lib_hostedCatalog;
   "lib/inboundClassification": typeof lib_inboundClassification;
   "lib/inboxStats": typeof lib_inboxStats;
   "lib/inputGuards": typeof lib_inputGuards;
