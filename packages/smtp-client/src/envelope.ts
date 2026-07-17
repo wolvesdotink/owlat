@@ -231,7 +231,14 @@ async function sendEnvelopePipelined(
 		// wire, so drain their replies (a compliant server answers each with a 503)
 		// to leave the reply stream aligned, then throw in phase `mail` — the exact
 		// verdict the sequential path returns for a reject-at-MAIL.
-		await drainPipelinedReplies(conn, options.to.length + 1);
+		const desynced = await drainPipelinedReplies(conn, options.to.length + 1);
+		if (desynced) {
+			// A non-compliant server answered the aborted batch's DATA with 354 and
+			// is now in DATA state: its next read is message body, not a command
+			// reply. Close the socket so the reuse layer (X1) can never park a
+			// desynced connection whose next job's RSET is swallowed as body.
+			conn.close();
+		}
 		throw errorFromReply(
 			'mail',
 			`server rejected mail with ${mailReply.code}`,
@@ -252,6 +259,13 @@ async function sendEnvelopePipelined(
 	const dataReply = await conn.readReply('data', conn.commandTimeoutMs);
 
 	if (accepted.length === 0) {
+		if (isPositiveIntermediate(dataReply.code)) {
+			// Every recipient was rejected, yet a non-compliant server still answered
+			// the pipelined DATA with 354 and entered DATA state. The client is about
+			// to throw a clean pre-DATA rejection; close the desynced socket so the
+			// reuse layer can never park it (its next read is body, not a reply).
+			conn.close();
+		}
 		throw everyRecipientRejected(conn, rejected);
 	}
 
@@ -319,15 +333,24 @@ async function completeData(
  * a server that closes the socket instead simply ends the drain early. The caller
  * is about to throw and the socket will be discarded, so a swallowed error here is
  * benign — the drain only tidies a socket that MIGHT still be reusable.
+ *
+ * Returns `true` iff any drained reply was a positive intermediate (354): a
+ * non-compliant server answered the aborted batch's DATA and is now in DATA state,
+ * so the socket is desynced and the caller must close it rather than park it.
  */
-async function drainPipelinedReplies(conn: SmtpConnection, count: number): Promise<void> {
+async function drainPipelinedReplies(conn: SmtpConnection, count: number): Promise<boolean> {
+	let desynced = false;
 	for (let i = 0; i < count; i++) {
 		try {
-			await conn.readReply('mail', conn.commandTimeoutMs);
+			const reply = await conn.readReply('mail', conn.commandTimeoutMs);
+			if (isPositiveIntermediate(reply.code)) {
+				desynced = true;
+			}
 		} catch {
-			return;
+			return desynced;
 		}
 	}
+	return desynced;
 }
 
 function toVerdict(recipient: string, reply: SmtpReply): RecipientVerdict {
