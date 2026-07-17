@@ -177,6 +177,42 @@ function unwrapPluginTriggerConfig(raw: unknown): unknown {
 		: {};
 }
 
+// A plugin's `buildTriggerData` output is untrusted text that lands verbatim on
+// the host-owned `automationRuns.triggerData`, so it is clamped at the host
+// boundary exactly like the step failure reason: bounded key count, bounded code
+// points per key and per string value, and control characters replaced with a
+// space. Non-string primitives (number/boolean/null) are size-bounded already.
+const MAX_TRIGGER_DATA_KEYS = 32;
+const MAX_TRIGGER_DATA_KEY_CODE_POINTS = 128;
+const MAX_TRIGGER_DATA_VALUE_CODE_POINTS = 1024;
+
+function clampTriggerText(text: string, maxCodePoints: number): string {
+	let out = '';
+	let count = 0;
+	for (const character of text) {
+		if (count >= maxCodePoints) break;
+		const codePoint = character.codePointAt(0) ?? 0;
+		out += codePoint < 0x20 || codePoint === 0x7f ? ' ' : character;
+		count += 1;
+	}
+	return out;
+}
+
+function clampTriggerData(data: TriggerData): TriggerData {
+	const clamped: TriggerData = {};
+	let keys = 0;
+	for (const [key, value] of Object.entries(data)) {
+		if (keys >= MAX_TRIGGER_DATA_KEYS) break;
+		const clampedKey = clampTriggerText(key, MAX_TRIGGER_DATA_KEY_CODE_POINTS);
+		clamped[clampedKey] =
+			typeof value === 'string'
+				? clampTriggerText(value, MAX_TRIGGER_DATA_VALUE_CODE_POINTS)
+				: value;
+		keys += 1;
+	}
+	return clamped;
+}
+
 /**
  * Fire a bundled plugin trigger. This is the host seam a plugin's own code
  * (e.g. a future webhook-event source) calls to fan a contact into automations
@@ -214,7 +250,7 @@ export const firePluginTrigger = internalMutation({
 			...(module.buildTriggerData
 				? {
 						buildTriggerData: (fireInput, config) =>
-							module.buildTriggerData!(fireInput as typeof input, config),
+							clampTriggerData(module.buildTriggerData!(fireInput as typeof input, config)),
 					}
 				: {}),
 		};
