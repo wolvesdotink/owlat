@@ -267,7 +267,13 @@ export function deriveHostnames(
 	};
 }
 
-/** Public HTTPS URLs from explicit hostnames (which may be user-overridden). */
+/**
+ * Public HTTPS URLs from explicit hostnames (which may be user-overridden),
+ * following the `Caddyfile.example` convention (the `owlat.` / `api.` /
+ * `rest.api.` subdomains served behind the `tls` profile). Callers pair it with
+ * {@link deriveHostnames} to go from an apex domain to URLs; the operator must
+ * point those DNS records at the server and open 80/443 for TLS to be issued.
+ */
 export function networkUrlsFromHosts(
 	h: Pick<InstanceHostnames, 'site' | 'convex' | 'convexSite'>
 ): { siteUrl: string; convexUrl: string; convexSiteUrl: string } {
@@ -276,23 +282,6 @@ export function networkUrlsFromHosts(
 		convexUrl: `https://${h.convex}`,
 		convexSiteUrl: `https://${h.convexSite}`,
 	};
-}
-
-/**
- * Public URLs for a domain-based install, following the `Caddyfile.example`
- * convention (`owlat.` / `api.` / `rest.api.` subdomains served behind the
- * `tls` profile). The operator must point those DNS records at the server and
- * open 80/443 for TLS to be issued.
- */
-export function deriveNetworkUrls(
-	domain: string,
-	overrides: Partial<SubdomainLabels> = {}
-): {
-	siteUrl: string;
-	convexUrl: string;
-	convexSiteUrl: string;
-} {
-	return networkUrlsFromHosts(deriveHostnames(domain, overrides));
 }
 
 // ---- reachability + host-key guards (UX traps) -----------------------------
