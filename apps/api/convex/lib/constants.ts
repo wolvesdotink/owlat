@@ -28,6 +28,21 @@ export const WEBHOOK_RETRY_DELAYS_MS = [0, 60_000, 300_000] as const;
 export const CONNECTED_APP_TEST_TIMEOUT_MS = 5_000;
 export const CONNECTED_APP_TEST_MAX_RESPONSE_BYTES = 64 * 1024;
 
+// Connected-app (Tier 2) SIGNED SYNCHRONOUS HOOKS (PP-24) — the outbound
+// draft/gate/score calls Owlat makes to a connected app's endpoint. Unlike the
+// unsigned connection probe above, these carry a per-request HMAC signature over
+// the body and are bounded on every axis so a hostile or broken endpoint can
+// neither stall the pipeline nor exhaust memory:
+//   - a hard per-call deadline (the guarded fetch is aborted at it);
+//   - a request-body byte cap (defense-in-depth; the payload is bounded upstream);
+//   - a response-body byte cap (drained under the cap; over-cap → fail closed);
+//   - a response-timestamp tolerance for the response-side replay defense.
+export const CONNECTED_APP_HOOK_TIMEOUT_MS = 5_000;
+export const CONNECTED_APP_HOOK_MAX_REQUEST_BYTES = 64 * 1024;
+export const CONNECTED_APP_HOOK_MAX_RESPONSE_BYTES = 64 * 1024;
+/** Allowed skew between now and a response's signed timestamp (replay window). */
+export const CONNECTED_APP_HOOK_RESPONSE_TOLERANCE_MS = 30_000;
+
 // Token expiry durations
 export const UNSUBSCRIBE_TOKEN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 export const AUDIT_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
