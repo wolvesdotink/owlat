@@ -48,6 +48,7 @@ export const run = internalAction({
 		}
 
 		const at = Date.now();
+		let registered = false;
 		try {
 			// Thread the domain's per-domain VERP return-path host (D1/D2) so the
 			// adapter reflects it to the provider and builds the `mailFrom` SPF
@@ -67,18 +68,7 @@ export const run = internalAction({
 				},
 				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
 			});
-
-			// A return-path edit may have committed while our (slow) provider I/O ran:
-			// the `registering` guard in `setReturnPathHost` deferred its records to us,
-			// but we built `dnsRecords`/reflected for the host as read at the top. This
-			// serializable mutation regenerates the records + reflects the CURRENT host
-			// when it moved, closing the register-vs-edit window (a same-host re-save
-			// would otherwise short-circuit and never self-heal).
-			await ctx.runMutation(internal.domains.lifecycle.reconcileReturnPathAfterRegistration, {
-				domainId: args.domainId,
-				registeredReturnPathHost: domain.returnPathHost,
-				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
-			});
+			registered = true;
 
 			logInfo(
 				`[${tag}] Domain ${domain.domain} registered successfully with ${adapter.describeIdentity(identity)}`
@@ -94,6 +84,23 @@ export const run = internalAction({
 					at,
 					error: message,
 				},
+				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
+			});
+		}
+
+		// Reconcile a return-path edit that committed while our (slow) provider I/O
+		// ran: the `registering` guard in `setReturnPathHost` deferred its records to
+		// us, but we built `dnsRecords`/reflected for the host as read at the top. This
+		// serializable mutation regenerates the records + reflects the CURRENT host
+		// when it moved, closing the register-vs-edit window (a same-host re-save would
+		// otherwise short-circuit and never self-heal). Run OUTSIDE the try and only on
+		// success: registration itself is already committed, so an exotic reconcile
+		// throw (e.g. SES with a missing region) must not poison a registered domain
+		// back to `failed`; and on a failed registration there is nothing to reconcile.
+		if (registered) {
+			await ctx.runMutation(internal.domains.lifecycle.reconcileReturnPathAfterRegistration, {
+				domainId: args.domainId,
+				registeredReturnPathHost: domain.returnPathHost,
 				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
 			});
 		}
