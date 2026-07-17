@@ -6,6 +6,13 @@ interface DNSRecord {
 	type: string;
 	host: string;
 	value: string;
+	/**
+	 * True when `host` is an absolute FQDN (the return-path record's env hostname)
+	 * rather than a name relative to `domain`. Supplied by `normalizeDnsRecord`;
+	 * absent (→ relative) for the inline records the receiving / tracking sections
+	 * build.
+	 */
+	hostIsFqdn?: boolean;
 }
 
 interface VerificationResult {
@@ -39,28 +46,17 @@ const handleCopyMerged = () => {
 };
 
 /**
- * Does `record.host` already name a full FQDN, rather than a name relative to
- * `domain`? Only mailFrom records carry an absolute `hostname` (see
- * `normalizeDnsRecord`), and it always sits under a real registrable domain
- * (`bounce.example.com`, `bounces.owlat.com`). tldts — via A1's `trySplitZone` —
- * also hands back a "registrable" for the RFC underscore service labels
- * (`s171._domainkey`, `_smtp._tls`) because their trailing label isn't a real
- * public suffix, so we additionally require that trailing label to be a real one:
- * a service suffix starts with `_` and can never be a TLD. This is what stops the
- * old `${host}.${domain}` rule from doubling an absolute host into the classic
- * `bounces.owlat.com.example.com`.
+ * The record's fully-qualified name. `record.host` (see `normalizeDnsRecord`) is
+ * either the apex marker `@`, a name RELATIVE to `domain`, or — when
+ * `hostIsFqdn` is set — an absolute return-path `hostname` that may sit OUTSIDE
+ * this domain's zone (a shared `bounces.owlat.com`). Honouring that flag instead
+ * of guessing from the string is what stops the old `${host}.${domain}` rule from
+ * doubling an absolute host into the classic `bounces.owlat.com.example.com`.
  */
-const hostIsAbsolute = (host: string): boolean => {
-	if (host === '@' || !trySplitZone(host)) return false;
-	const trailingLabel = host.slice(host.lastIndexOf('.') + 1);
-	return !trailingLabel.startsWith('_');
-};
-
-/** The record's fully-qualified name (apex → the domain itself). */
 const recordFqdn = computed<string>(() => {
 	const host = props.record.host;
 	if (host === '@') return props.domain;
-	return hostIsAbsolute(host) ? host : `${host}.${props.domain}`;
+	return props.record.hostIsFqdn ? host : `${host}.${props.domain}`;
 });
 
 interface HostDisplay {
@@ -116,11 +112,15 @@ const hostDisplay = computed<HostDisplay>(() => {
  */
 const standardMandate = computed<{ rfc: string } | null>(() => {
 	const name = recordFqdn.value.toLowerCase();
-	const labels = new Set(name.split('.'));
-	if (labels.has('_domainkey')) return { rfc: 'RFC 6376 (DKIM)' };
-	if (labels.has('_dmarc')) return { rfc: 'RFC 7489 (DMARC)' };
+	const labels = name.split('.');
+	const labelSet = new Set(labels);
+	if (labelSet.has('_domainkey')) return { rfc: 'RFC 6376 (DKIM)' };
+	if (labelSet.has('_dmarc')) return { rfc: 'RFC 7489 (DMARC)' };
 	if (name.includes('_smtp._tls')) return { rfc: 'RFC 8460 (TLS reporting)' };
-	if (labels.has('_mta-sts')) return { rfc: 'RFC 8461 (MTA-STS)' };
+	// RFC 8461 mandates BOTH the `_mta-sts` TXT and the `mta-sts` policy CNAME, so
+	// both are fixed. Match `mta-sts` only as the leftmost label (an exact record
+	// name) so ordinary CNAMEs stay clean.
+	if (labelSet.has('_mta-sts') || labels[0] === 'mta-sts') return { rfc: 'RFC 8461 (MTA-STS)' };
 	return null;
 });
 

@@ -43,13 +43,21 @@ describe('normalizeDnsRecord', () => {
 			type: 'TXT',
 			host: '@',
 			value: 'v=spf1 -all',
+			hostIsFqdn: false,
 		});
 	});
 
-	it('prefers the record type and host/hostname when present', () => {
+	it('prefers a relative host and marks it not-FQDN', () => {
+		expect(normalizeDnsRecord({ type: 'CNAME', host: 's1._domainkey', value: 'x' }, 'TXT')).toEqual(
+			{ type: 'CNAME', host: 's1._domainkey', value: 'x', hostIsFqdn: false }
+		);
+	});
+
+	it('flags an absolute hostname (no relative host) as FQDN', () => {
+		// The MTA return-path record carries `hostname` and no `host`.
 		expect(
-			normalizeDnsRecord({ type: 'CNAME', hostname: 's1._domainkey', value: 'x' }, 'TXT')
-		).toEqual({ type: 'CNAME', host: 's1._domainkey', value: 'x' });
+			normalizeDnsRecord({ type: 'TXT', hostname: 'bounces.owlat.com', value: 'x' }, 'TXT')
+		).toEqual({ type: 'TXT', host: 'bounces.owlat.com', value: 'x', hostIsFqdn: true });
 	});
 });
 
