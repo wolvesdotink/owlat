@@ -94,26 +94,6 @@ export const MAX_SETTINGS_OPTIONS = 64;
 
 // ─── Runtime helpers (host + client safe; operate on validated schemas) ──────
 
-/** Whether a field holds a sensitive value that must never reach the client. */
-export function isSecretSettingsField(field: PluginSettingsField): boolean {
-	return field.kind === 'secret';
-}
-
-/**
- * The compiled-in defaults for a schema, keyed by field. Secret fields never
- * carry a default, and fields without one are omitted.
- */
-export function defaultPluginSettingsValues(
-	schema: PluginSettingsSchema
-): Record<string, JsonValue> {
-	const defaults: Record<string, JsonValue> = {};
-	for (const field of schema) {
-		if (field.kind === 'secret') continue;
-		if (field.default !== undefined) defaults[field.key] = field.default;
-	}
-	return defaults;
-}
-
 export interface RedactedPluginSettings {
 	/** Every non-secret value known for the plugin. Secret plaintext is dropped. */
 	readonly values: Record<string, JsonValue>;

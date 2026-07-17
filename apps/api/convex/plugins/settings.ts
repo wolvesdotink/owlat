@@ -93,7 +93,6 @@ export const getPluginSettingsOverview = adminQuery({
 				packageName,
 				version: manifest.version,
 				flagKey,
-				installed: true,
 				enabled: resolved[flagKey] === true,
 				hasSettings: (manifest.settingsSchema?.length ?? 0) > 0,
 				capabilities: manifest.capabilities.map((capability) => ({

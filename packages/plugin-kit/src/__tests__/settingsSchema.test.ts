@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validatePluginManifest, type PluginManifest } from '../manifest';
 import {
-	defaultPluginSettingsValues,
-	isSecretSettingsField,
 	redactPluginSettingsValues,
 	validatePluginSettingsInput,
 	type PluginSettingsSchema,
@@ -150,17 +148,6 @@ describe('settingsSchema manifest validation', () => {
 	});
 });
 
-describe('defaultPluginSettingsValues', () => {
-	it('returns non-secret defaults only', () => {
-		expect(defaultPluginSettingsValues(EXAMPLE_SCHEMA)).toEqual({
-			endpoint: 'https://api.test',
-			timeout: 30,
-			verbose: false,
-			region: 'eu',
-		});
-	});
-});
-
 describe('redactPluginSettingsValues', () => {
 	it('drops secret plaintext and reports only whether each secret is set', () => {
 		const redacted = redactPluginSettingsValues(EXAMPLE_SCHEMA, {
@@ -229,15 +216,6 @@ describe('validatePluginSettingsInput', () => {
 	it('rejects a non-object input', () => {
 		expect(validatePluginSettingsInput(EXAMPLE_SCHEMA, null).ok).toBe(false);
 		expect(validatePluginSettingsInput(EXAMPLE_SCHEMA, []).ok).toBe(false);
-	});
-});
-
-describe('isSecretSettingsField', () => {
-	it('identifies secret fields', () => {
-		const secret = EXAMPLE_SCHEMA.find((field) => field.key === 'apiKey');
-		const plain = EXAMPLE_SCHEMA.find((field) => field.key === 'endpoint');
-		expect(secret && isSecretSettingsField(secret)).toBe(true);
-		expect(plain && isSecretSettingsField(plain)).toBe(false);
 	});
 });
 
