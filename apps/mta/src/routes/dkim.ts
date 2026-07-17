@@ -95,11 +95,21 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 		const rawBody = (await c.req.text().catch(() => '')).trim();
 		let body: { returnPathHost?: unknown } = {};
 		if (rawBody.length > 0) {
+			let parsed: unknown;
 			try {
-				body = JSON.parse(rawBody) as { returnPathHost?: unknown };
+				parsed = JSON.parse(rawBody);
 			} catch {
 				return c.json({ error: 'Request body must be valid JSON' }, 400);
 			}
+			// A well-formed JSON scalar / array / `null` is still not a valid request
+			// body here — only a JSON object carries `returnPathHost`. Reject them with
+			// 400 rather than let a bare `null` crash the hasOwnProperty check below.
+			// (Note: `{ "returnPathHost": null }` — an OBJECT with a null field — is the
+			// documented clear path and is handled downstream, not here.)
+			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+				return c.json({ error: 'Request body must be a JSON object' }, 400);
+			}
+			body = parsed as { returnPathHost?: unknown };
 		}
 
 		// Tri-state on the `returnPathHost` key: absent | null (clear) | value (set).

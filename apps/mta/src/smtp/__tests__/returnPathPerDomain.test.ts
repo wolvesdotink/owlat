@@ -287,6 +287,30 @@ describe('D1 — per-domain VERP return-path host', () => {
 			expect(await dkimStore.hasDkimKey(redis, 'acme.com')).toBe(false);
 		});
 
+		it.each([
+			['bare null', 'null'],
+			['scalar number', '42'],
+			['scalar string', '"bounce.acme.com"'],
+			['array', '["bounce.acme.com"]'],
+		])('rejects a well-formed but non-object JSON body (%s) with 400', async (_label, rawBody) => {
+			const app = createDkimRoutes(redis, createConfig());
+			const res = await app.request('/acme.com/register', {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${API_KEY}`,
+					'Content-Type': 'application/json',
+				},
+				body: rawBody,
+			});
+			expect(res.status).toBe(400);
+			const json = (await res.json()) as { error: string };
+			expect(json.error).toMatch(/JSON object/i);
+
+			// Nothing was registered on the rejected request.
+			dkimStore.clearCache();
+			expect(await dkimStore.hasDkimKey(redis, 'acme.com')).toBe(false);
+		});
+
 		it('requires the master key', async () => {
 			const app = createDkimRoutes(redis, createConfig());
 			const res = await app.request('/acme.com/register', { method: 'POST' });
