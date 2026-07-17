@@ -7,20 +7,25 @@ import {
 	flattenGroups,
 	mergeGroups,
 	moveSelection,
-	useCommandPaletteSurface,
 } from '~/lib/commandPalette';
+import {
+	type CommandPaletteProvider,
+	resolvePaletteGroups,
+} from '~/lib/commandPaletteRegistry';
 
 /**
  * App-wide Cmd/Ctrl-K command palette, mounted once in the dashboard layout so
- * it works on EVERY dashboard page. Assembled from ordered providers:
- *   1. current-surface actions — contributed by the active surface (e.g. the
- *      Postbox layout registers its reader actions + folders) via
- *      `useCommandPaletteSurface`; the palette is the shared shell, surfaces are
- *      consumers (no per-surface fork);
- *   2. verbs / sidebar-context switch / navigation — the static providers,
- *      built in `useCommandPaletteProviders`;
- *   3. object search — contacts / templates / campaigns via the existing
- *      `globalSearch` search index (debounced, capped per group).
+ * it works on EVERY dashboard page. Assembled from an ordered, deduplicated
+ * provider registry (`~/lib/commandPaletteRegistry`):
+ *   1. core providers, built here and consulted first — recent searches, verbs,
+ *      sidebar-context switch, object search, and navigation;
+ *   2. surface/plugin providers registered while mounted (e.g. the Postbox
+ *      layout registers its reader actions + folders, route-gated to Postbox).
+ *
+ * Providers are gated by feature flag and route, ordered by priority, and
+ * deduplicated by group key and item id (earlier providers win) before the
+ * `mergeGroups` sort/cap. The palette is the shared shell; every contributor —
+ * core or plugin — flows through the same registry, so nothing forks it.
  *
  * The Cmd+Shift+K knowledge Quick Query keeps its own shortcut; it is surfaced
  * here as the "Ask knowledge…" action (dispatches `owlat:open-knowledge-query`,
@@ -28,7 +33,9 @@ import {
  */
 
 const { verbItems, contextItems, navItems } = useCommandPaletteProviders();
-const surfaceGroups = useCommandPaletteSurface();
+const registryProviders = useCommandPaletteRegistry();
+const { isEnabled: isFlagEnabled } = useFeatureFlag();
+const route = useRoute();
 
 const open = ref(false);
 const activeIndex = ref(0);
@@ -118,87 +125,88 @@ function toResultItems(results: SearchResult[]): PaletteItem[] {
 	}));
 }
 
-// ── Assemble the ordered, capped group list.
-const groups = computed<PaletteGroup[]>(() => {
-	const query = searchQuery.value;
-	const idle = query.trim().length < 2;
-	const out: PaletteGroup[] = [];
+// ── Core providers, consulted before any surface/plugin provider. Each reads
+// its reactive inputs inside `build`, so the assembling computed re-tracks them.
+// Priorities fix the consult/dedup order; per-group `order` still drives the
+// final render sort in `mergeGroups`.
+const coreProviders: CommandPaletteProvider[] = [
+	{
+		// Recent searches — only in the idle state, above everything.
+		id: 'core:recent',
+		priority: 10,
+		build: ({ query }) => {
+			if (query.trim().length >= 2 || recentSearches.value.length === 0) return [];
+			return [
+				{
+					key: 'recent',
+					heading: 'Recent searches',
+					order: -1,
+					cap: MAX_RECENT,
+					items: recentSearches.value.map((term) => ({
+						id: `recent:${term}`,
+						label: term,
+						icon: 'lucide:clock',
+						keepOpen: true,
+						run: () => setImmediate(term),
+					})),
+				},
+			];
+		},
+	},
+	{
+		// Verbs / utilities.
+		id: 'core:verbs',
+		priority: 20,
+		build: ({ query }) => [
+			{ key: 'verbs', heading: 'Create', order: 5, items: filterItems(verbItems.value, query) },
+		],
+	},
+	{
+		// Sidebar-context switch (empty groups are dropped on merge).
+		id: 'core:context',
+		priority: 30,
+		build: ({ query }) => [
+			{ key: 'context', heading: 'Context', order: 6, items: filterItems(contextItems.value, query) },
+		],
+	},
+	{
+		// Object search — only once the query is meaningful and results arrived.
+		id: 'core:search',
+		priority: 40,
+		build: ({ query }) => {
+			const results = searchResults.value;
+			if (query.trim().length < 2 || !results) return [];
+			return [
+				{ key: 'contacts', heading: 'Contacts', order: 20, cap: 5, items: toResultItems(results.contacts) },
+				{ key: 'campaigns', heading: 'Campaigns', order: 21, cap: 5, items: toResultItems(results.campaigns) },
+				{ key: 'templates', heading: 'Templates', order: 22, cap: 5, items: toResultItems(results.emails) },
+			];
+		},
+	},
+	{
+		// Navigation — every sidebar destination.
+		id: 'core:navigation',
+		priority: 50,
+		build: ({ query }) => [
+			{ key: 'navigation', heading: 'Go to', order: 40, cap: 8, items: filterItems(navItems.value, query) },
+		],
+	},
+];
 
-	// Recent searches — only in the idle state, above everything.
-	if (idle && recentSearches.value.length > 0) {
-		out.push({
-			key: 'recent',
-			heading: 'Recent searches',
-			order: -1,
-			cap: MAX_RECENT,
-			items: recentSearches.value.map((term) => ({
-				id: `recent:${term}`,
-				label: term,
-				icon: 'lucide:clock',
-				keepOpen: true,
-				run: () => setImmediate(term),
-			})),
-		});
-	}
-
-	// Current-surface actions (e.g. Postbox), filtered by the query.
-	for (const group of surfaceGroups.value) {
-		out.push({ ...group, items: filterItems(group.items, query) });
-	}
-
-	// Verbs / utilities.
-	out.push({
-		key: 'verbs',
-		heading: 'Create',
-		order: 5,
-		items: filterItems(verbItems.value, query),
-	});
-
-	// Sidebar-context switch (empty groups are dropped on merge).
-	out.push({
-		key: 'context',
-		heading: 'Context',
-		order: 6,
-		items: filterItems(contextItems.value, query),
-	});
-
-	// Object search — only once the query is meaningful.
-	const results = searchResults.value;
-	if (!idle && results) {
-		out.push({
-			key: 'contacts',
-			heading: 'Contacts',
-			order: 20,
-			cap: 5,
-			items: toResultItems(results.contacts),
-		});
-		out.push({
-			key: 'campaigns',
-			heading: 'Campaigns',
-			order: 21,
-			cap: 5,
-			items: toResultItems(results.campaigns),
-		});
-		out.push({
-			key: 'templates',
-			heading: 'Templates',
-			order: 22,
-			cap: 5,
-			items: toResultItems(results.emails),
-		});
-	}
-
-	// Navigation — every sidebar destination.
-	out.push({
-		key: 'navigation',
-		heading: 'Go to',
-		order: 40,
-		cap: 8,
-		items: filterItems(navItems.value, query),
-	});
-
-	return mergeGroups(out);
-});
+// ── Assemble the ordered, capped group list: gate + order + dedup providers,
+// then sort/drop-empties/cap. Core providers form their own trust tier and are
+// always consulted before any registered surface/plugin provider, so a
+// registered provider can add work but never override a core group or item.
+const groups = computed<PaletteGroup[]>(() =>
+	mergeGroups(
+		resolvePaletteGroups(
+			coreProviders,
+			registryProviders.value,
+			{ path: route.path, isFlagEnabled },
+			{ query: searchQuery.value }
+		)
+	)
+);
 
 const flatItems = computed(() => flattenGroups(groups.value));
 const flatIndexById = computed(() => {
