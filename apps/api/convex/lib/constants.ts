@@ -60,6 +60,13 @@ export const CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION = 1;
 /** pluginStorageEntries.valueJson canonical JSON shape. */
 export const CURRENT_PLUGIN_STORAGE_VALUE_JSON_VERSION = 1;
 
+/**
+ * connectedApps sealed hook-signing secret envelope (AES-256-GCM blob) shape.
+ * Bump alongside a one-shot re-seal migration if the KDF/cipher context in
+ * `connectedApps/secretBox.ts` changes.
+ */
+export const CURRENT_CONNECTED_APP_SECRET_VERSION = 1;
+
 /** Embedding model identifier stored on knowledgeEntries / semanticFiles rows. */
 export const CURRENT_EMBEDDING_MODEL = 'text-embedding-3-small';
 
