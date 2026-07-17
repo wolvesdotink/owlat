@@ -368,6 +368,9 @@
     "packages/shared": {
       "name": "@owlat/shared",
       "version": "0.3.3",
+      "dependencies": {
+        "tldts": "^7.0.30",
+      },
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
