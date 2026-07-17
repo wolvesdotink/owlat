@@ -858,6 +858,9 @@ export const setReturnPathHost = internalMutation({
 			// A changed return-path host means the domain is no longer fully
 			// verified until the new record is published + checked.
 			status: 'pending',
+			// Clear any stale sync-failure marker from a previous host: this edit
+			// schedules a fresh push, so the prior divergence is being resolved.
+			returnPathHostSyncError: undefined,
 			...(nextVerificationResults !== undefined
 				? { verificationResults: nextVerificationResults }
 				: {}),
@@ -884,14 +887,81 @@ export const setReturnPathHost = internalMutation({
 
 		// Reflect the new host to the MTA so its VERP MAIL FROM uses it. Scheduled
 		// (not inline): the DB write above must not roll back on an MTA hiccup, and
-		// mutations cannot run the node-runtime HTTP client. Best-effort with retry
-		// semantics owned by the action.
+		// mutations cannot run the node-runtime HTTP client. `pushReturnPathHost`
+		// runs a bounded, self-rescheduling retry; if it exhausts the budget it
+		// records the failure via `recordReturnPathPushResult` (audit + the
+		// `returnPathHostSyncError` marker), so a permanent failure is never silent.
 		await ctx.scheduler.runAfter(0, internal.domains.providers.registerAction.pushReturnPathHost, {
 			domainId: args.domainId,
 			returnPathHost: normalized,
+			attempt: 0,
 		});
 
 		return { ok: true, returnPathHost: normalized, changed: true };
+	},
+});
+
+/**
+ * Record the terminal outcome of a `pushReturnPathHost` attempt chain.
+ *
+ * Called by the push action (which, as a node action, cannot touch the DB):
+ *   - success → clears any `returnPathHostSyncError` marker (idempotent).
+ *   - give-up (retry budget exhausted) → sets the marker to the last error AND
+ *     audits the give-up, so the Convex↔MTA divergence is visible rather than
+ *     silent.
+ *
+ * Guards against a stale write: if the domain's `returnPathHost` has since
+ * changed (a newer edit superseded this chain), the result is dropped so an old
+ * failure cannot mark a domain that has already moved on.
+ */
+export const recordReturnPathPushResult = internalMutation({
+	args: {
+		domainId: v.id('domains'),
+		returnPathHost: v.string(),
+		error: v.optional(v.string()),
+		attempts: v.optional(v.number()),
+		userId: v.string(),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		const domain = await ctx.db.get(args.domainId);
+		if (!domain) return;
+		// A newer edit changed the target host — this result is stale, ignore it.
+		if (domain.returnPathHost !== args.returnPathHost) return;
+
+		if (args.error === undefined) {
+			// Success: clear the marker if one was set. No-op / no audit otherwise.
+			if (domain.returnPathHostSyncError !== undefined) {
+				await ctx.db.patch(args.domainId, {
+					returnPathHostSyncError: undefined,
+					updatedAt: Date.now(),
+				});
+			}
+			return;
+		}
+
+		await ctx.db.patch(args.domainId, {
+			returnPathHostSyncError: args.error,
+			updatedAt: Date.now(),
+		});
+
+		await applyEffects(
+			ctx,
+			[
+				{
+					kind: 'audit_log',
+					action: 'sending_domain.return_path_changed',
+					domainId: args.domainId,
+					details: {
+						domain: domain.domain,
+						returnPathHost: args.returnPathHost,
+						applied: 'sync_failed',
+						attempts: args.attempts ?? 0,
+						error: args.error,
+					},
+				},
+			],
+			args.userId
+		);
 	},
 });
 

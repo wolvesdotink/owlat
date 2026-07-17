@@ -38,6 +38,14 @@ export const domainTables = {
 		// MTA at (re-)registration via the provider adapter. A validated DNS FQDN
 		// (packages/shared `asDnsName`).
 		returnPathHost: v.optional(v.string()),
+		// Set when reflecting a changed `returnPathHost` to the MTA PERMANENTLY
+		// fails (after the bounded `pushReturnPathHost` retry budget is exhausted).
+		// Surfaces the Convex↔MTA divergence — Convex has committed the new host +
+		// records but the MTA is still stamping the OLD bounce host, so the
+		// published SPF record can never match — rather than letting it hide.
+		// Cleared on a successful push or a fresh return-path edit. Written only by
+		// the **Sending domain lifecycle (module)**.
+		returnPathHostSyncError: v.optional(v.string()),
 		// DMARC enforcement policy reflected in the generated `_dmarc` record.
 		// Absent (legacy rows) and `'none'` both mean monitor-only; the
 		// customer raises it to `'quarantine'`/`'reject'` via the lifecycle's

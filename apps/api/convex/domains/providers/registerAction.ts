@@ -85,6 +85,14 @@ export const run = internalAction({
 	},
 });
 
+// Bounded retry budget for reflecting a changed return-path host to the MTA.
+// 5 attempts over exponential backoff (30s, 60s, 120s, 240s → ~8min total)
+// rides out a transient MTA outage; exhausting it is a permanent failure that
+// is surfaced (audit + `returnPathHostSyncError` marker), never swallowed.
+const RETURN_PATH_PUSH_MAX_ATTEMPTS = 5;
+const RETURN_PATH_PUSH_BASE_DELAY_MS = 30_000;
+const LIFECYCLE_USER_RETURN_PATH_PUSH = 'system:return_path_push';
+
 /**
  * Reflect a domain's changed per-domain VERP return-path host (D1/D2) to the
  * MTA, out-of-band from the `setReturnPathHost` mutation that regenerated the
@@ -92,16 +100,22 @@ export const run = internalAction({
  * which is idempotent for the DKIM key — so this sets ONLY the return-path host
  * and never disturbs the signing key. MTA-only: SES has no return-path host.
  *
- * Best-effort (no lifecycle transition): the Convex-side record + status were
- * already committed by the mutation; a transient MTA failure is logged and left
- * for the next re-registration to reconcile, rather than rolling back the edit.
+ * Recovery: on failure it self-reschedules with exponential backoff up to
+ * `RETURN_PATH_PUSH_MAX_ATTEMPTS`. If the budget is exhausted the divergence is
+ * PERMANENT (Convex committed the new host; the MTA still stamps the old one),
+ * so it records a give-up via `recordReturnPathPushResult` — an audit row plus
+ * the `returnPathHostSyncError` marker on the domain — rather than failing
+ * silently. A `attempt`-stamped chain is superseded by a newer edit: the
+ * terminal mutation drops a stale result whose target host no longer matches.
  */
 export const pushReturnPathHost = internalAction({
 	args: {
 		domainId: v.id('domains'),
 		returnPathHost: v.string(),
+		attempt: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		const attempt = args.attempt ?? 0;
 		const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, {
 			domainId: args.domainId,
 		});
@@ -114,6 +128,14 @@ export const pushReturnPathHost = internalAction({
 			logError(`[MTA] Domain ${domain.domain} is not MTA-provider; skipping return-path host push`);
 			return;
 		}
+		// A newer edit changed the target host — this chain is stale, abandon it
+		// (a fresh chain is already reflecting the current host).
+		if (domain.returnPathHost !== args.returnPathHost) {
+			logInfo(
+				`[MTA] Return-path host for ${domain.domain} changed since this push was queued; abandoning stale attempt`
+			);
+			return;
+		}
 
 		try {
 			const mta = createMtaIdentityManager();
@@ -121,12 +143,41 @@ export const pushReturnPathHost = internalAction({
 			logInfo(
 				`[MTA] Return-path host for ${domain.domain} set to ${args.returnPathHost} on the MTA`
 			);
+			// Success — clear any prior sync-failure marker.
+			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+				domainId: args.domainId,
+				returnPathHost: args.returnPathHost,
+				userId: LIFECYCLE_USER_RETURN_PATH_PUSH,
+			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : 'Unknown MTA error';
+			const nextAttempt = attempt + 1;
+			if (nextAttempt < RETURN_PATH_PUSH_MAX_ATTEMPTS) {
+				const delayMs = RETURN_PATH_PUSH_BASE_DELAY_MS * 2 ** attempt;
+				logError(
+					`[MTA] Failed to push return-path host ${args.returnPathHost} for ${domain.domain} (attempt ${nextAttempt}/${RETURN_PATH_PUSH_MAX_ATTEMPTS}), retrying in ${delayMs}ms:`,
+					message
+				);
+				await ctx.scheduler.runAfter(
+					delayMs,
+					internal.domains.providers.registerAction.pushReturnPathHost,
+					{ domainId: args.domainId, returnPathHost: args.returnPathHost, attempt: nextAttempt }
+				);
+				return;
+			}
+
+			// Budget exhausted — permanent divergence. Surface it.
 			logError(
-				`[MTA] Failed to push return-path host ${args.returnPathHost} for ${domain.domain}:`,
+				`[MTA] Giving up on return-path host push ${args.returnPathHost} for ${domain.domain} after ${RETURN_PATH_PUSH_MAX_ATTEMPTS} attempts:`,
 				message
 			);
+			await ctx.runMutation(internal.domains.lifecycle.recordReturnPathPushResult, {
+				domainId: args.domainId,
+				returnPathHost: args.returnPathHost,
+				error: message,
+				attempts: RETURN_PATH_PUSH_MAX_ATTEMPTS,
+				userId: LIFECYCLE_USER_RETURN_PATH_PUSH,
+			});
 		}
 	},
 });
