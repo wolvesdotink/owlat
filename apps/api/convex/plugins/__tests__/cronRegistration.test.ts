@@ -31,7 +31,12 @@ vi.mock('../cronCatalog.generated', () => ({
 import { CRON_CATALOG, type HostedCronDefinition } from '../cronCatalog';
 import { planPluginCronRegistrations, registerBundledPluginCrons } from '../cronRegistration';
 
-function definition(overrides: Partial<HostedCronDefinition>): HostedCronDefinition {
+// The planner treats the catalog as untrusted (a hand-edited or stale generated
+// file), so these fixtures deliberately supply raw string pluginIds — including
+// malformed ones — that the runtime guard, not the branded type, must reject.
+type RawCronDefinition = Omit<HostedCronDefinition, 'pluginId'> & { readonly pluginId: string };
+
+function definition(overrides: Partial<RawCronDefinition>): HostedCronDefinition {
 	return {
 		kind: 'plugin.seed-lab.refresh-scores',
 		pluginId: 'seed-lab',
@@ -41,7 +46,7 @@ function definition(overrides: Partial<HostedCronDefinition>): HostedCronDefinit
 		requiredEnvVars: [],
 		requiredCapability: 'scheduler:cron',
 		...overrides,
-	};
+	} as HostedCronDefinition;
 }
 
 describe('plugin cron registration planning', () => {

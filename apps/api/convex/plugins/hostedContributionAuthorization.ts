@@ -72,13 +72,20 @@ export async function authorizeHostedContribution(
 	return false;
 }
 
-/** Persists only trusted attribution, the outcome, and a bounded failure reason. */
+/**
+ * Persists only trusted attribution, the outcome, and a bounded failure reason.
+ * A failed outcome is tagged with `reasonCode` when the caller supplies one
+ * (validator-checked at the seam's own mutation boundary) so a kind with several
+ * distinct failure causes — e.g. a cron's failed/invalid/timeout — records the
+ * precise cause; otherwise it falls back to the spec's single failure reason.
+ */
 export async function recordHostedContributionOutcome(
 	ctx: MutationCtx,
 	spec: HostedContributionAuthorizationSpec,
 	pluginId: string,
 	kind: string,
-	outcome: 'completed' | 'failed'
+	outcome: 'completed' | 'failed',
+	reasonCode?: HostedPluginAuditReasonCode
 ): Promise<void> {
 	const scope = matchingScope(spec, await getSingletonOrganizationId(ctx), pluginId, kind);
 	if (!scope) throw new TypeError(spec.attributionErrorMessage);
@@ -87,6 +94,6 @@ export async function recordHostedContributionOutcome(
 		scope,
 		spec.operation,
 		outcome,
-		outcome === 'failed' ? { reasonCode: spec.failureReasonCode } : {}
+		outcome === 'failed' ? { reasonCode: reasonCode ?? spec.failureReasonCode } : {}
 	);
 }
