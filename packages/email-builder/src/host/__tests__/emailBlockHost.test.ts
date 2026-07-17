@@ -175,6 +175,39 @@ describe('composeHostedEmailBlocks — rejections', () => {
 		}
 	});
 
+	it('rejects an editor half that advertises column or container placement', async () => {
+		const { host } = await loadHost();
+		// Hosted blocks render through the renderer's legacy custom registry, which
+		// only fires at root placement; a column/container-capable editor half
+		// would be offered in the builder but silently dropped from the email.
+		const columnCapable = editorHalf('acme-badge', 'Badge');
+		(columnCapable.definition as { canBeInColumn: boolean }).canBeInColumn = true;
+		try {
+			host.composeHostedEmailBlocks([
+				contribution('acme', [rendererHalf('acme-badge', 'badge')], [columnCapable]),
+			]);
+			throw new Error('expected rejection');
+		} catch (err) {
+			expect((err as InstanceType<typeof host.EmailBlockCompositionError>).code).toBe(
+				'unsupported_placement'
+			);
+		}
+		expect(host.areEmailBlockRegistriesFrozen()).toBe(false);
+
+		const containerCapable = editorHalf('acme-card', 'Card');
+		(containerCapable.definition as { canBeInContainer: boolean }).canBeInContainer = true;
+		try {
+			host.composeHostedEmailBlocks([
+				contribution('acme', [rendererHalf('acme-card', 'card')], [containerCapable]),
+			]);
+			throw new Error('expected rejection');
+		} catch (err) {
+			expect((err as InstanceType<typeof host.EmailBlockCompositionError>).code).toBe(
+				'unsupported_placement'
+			);
+		}
+	});
+
 	it('rejects a duplicate renderer type within one plugin', async () => {
 		const { host } = await loadHost();
 		try {
