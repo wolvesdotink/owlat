@@ -6,39 +6,60 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import type { ParsedMail } from 'mailparser';
-import { simpleParser } from 'mailparser';
+import { parseMessage, type ParsedMessage, type MessageAttachment } from '@owlat/mail-message';
 import { tryParseARF, isDuplicateComplaint, generateDedupKey } from '../fblProcessor.js';
 import { buildVerpAddress } from '../verp.js';
+import { extractReportParts, type ReportPart } from '../reportParts.js';
 
-function createMockParsedMail(overrides: Partial<ParsedMail> = {}): ParsedMail {
+function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMessage {
 	return {
 		text: '',
 		subject: '',
 		headers: new Map(),
 		attachments: [],
 		...overrides,
-	} as ParsedMail;
+	} as unknown as ParsedMessage;
+}
+
+/**
+ * The report parts a scraper reads. In production these are walked out of the raw
+ * MIME (`extractReportParts`); the fabricated-mock tests derive them from the
+ * mock's `attachments` so the existing `{ content, contentType }` fixtures still
+ * drive the feedback-report / rfc822 split. The real-MIME `buildArf` tests instead
+ * use `extractReportParts` on the raw bytes (see {@link buildArf}).
+ */
+function reportPartsOf(parsed: ParsedMessage): ReportPart[] {
+	const atts = (parsed as unknown as { attachments?: ReadonlyArray<Partial<MessageAttachment>> })
+		.attachments;
+	return (atts ?? []).map((a) => ({
+		contentType: (a.contentType ?? '').toLowerCase(),
+		content: a.content ?? Buffer.alloc(0),
+	}));
+}
+
+/** `tryParseARF` with the report parts derived from a fabricated mock. */
+function arfOf(parsed: ParsedMessage) {
+	return tryParseARF(parsed, reportPartsOf(parsed));
 }
 
 describe('tryParseARF', () => {
 	it('returns null for non-ARF message', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Hello, this is a regular email.',
 				headers: new Map([['content-type', 'text/plain']]),
-			}),
+			})
 		);
 
 		expect(result).toBeNull();
 	});
 
 	it('identifies ARF from content-type containing feedback-report', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Some abuse report body',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -47,11 +68,11 @@ describe('tryParseARF', () => {
 	});
 
 	it('identifies ARF from body text containing feedback-type and abuse', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse\nUser-Agent: FBL/1.0\nOriginal-Mail-From: test@example.com',
 				headers: new Map([['content-type', 'text/plain']]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -59,16 +80,18 @@ describe('tryParseARF', () => {
 	});
 
 	it('extracts originalMessageId from X-Owlat-Message-Id in attachments', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse\nSome report',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
 				attachments: [
 					{
-						content: Buffer.from('X-Owlat-Message-Id: msg-complaint-001\r\nSubject: Original email'),
+						content: Buffer.from(
+							'X-Owlat-Message-Id: msg-complaint-001\r\nSubject: Original email'
+						),
 					},
 				],
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -81,7 +104,7 @@ describe('tryParseARF', () => {
 	// complaint can only be counted as a metric — it never reaches the
 	// blocklist, silently inflating the complaint rate past Gmail's <0.3%.
 	it('surfaces the recipient from Original-Rcpt-To when no Message-ID is recoverable', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
 				text: 'Feedback-Type: abuse',
@@ -91,11 +114,11 @@ describe('tryParseARF', () => {
 							'Feedback-Type: abuse\r\n' +
 								'User-Agent: Google-Mail-Feedback/1.0\r\n' +
 								'Version: 1\r\n' +
-								'Original-Rcpt-To: victim@example.com\r\n',
+								'Original-Rcpt-To: victim@example.com\r\n'
 						),
 					},
 				],
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -105,11 +128,11 @@ describe('tryParseARF', () => {
 	});
 
 	it('extracts the recipient from an inline feedback-report body (no attachment)', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				headers: new Map([['content-type', 'text/plain']]),
 				text: 'Feedback-Type: abuse\nUser-Agent: FBL/1.0\nOriginal-Rcpt-To: <inline@example.com>',
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -117,38 +140,38 @@ describe('tryParseARF', () => {
 	});
 
 	it('falls back to Removed-Recipient / Original-Recipient (rfc822; prefix stripped)', () => {
-		const removed = tryParseARF(
+		const removed = arfOf(
 			createMockParsedMail({
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
 				text: 'Feedback-Type: abuse',
 				attachments: [{ content: Buffer.from('Removed-Recipient: removed@example.com') }],
-			}),
+			})
 		);
 		expect(removed!.recipient).toBe('removed@example.com');
 
-		const original = tryParseARF(
+		const original = arfOf(
 			createMockParsedMail({
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
 				text: 'Feedback-Type: abuse',
 				attachments: [{ content: Buffer.from('Original-Recipient: rfc822; rfc@example.com') }],
-			}),
+			})
 		);
 		expect(original!.recipient).toBe('rfc@example.com');
 	});
 
 	it('leaves recipient undefined when no recipient field is present', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
 				text: 'Feedback-Type: abuse\nNo recipient anywhere here',
-			}),
+			})
 		);
 		expect(result).not.toBeNull();
 		expect(result!.recipient).toBeUndefined();
 	});
 
 	it('extracts organizationId from X-Owlat-Org-Id in attachments', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
@@ -157,7 +180,7 @@ describe('tryParseARF', () => {
 						content: Buffer.from('X-Owlat-Org-Id: org-99\r\nX-Owlat-Message-Id: msg-001'),
 					},
 				],
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -166,18 +189,18 @@ describe('tryParseARF', () => {
 
 	// PR-15: per-campaign attribution from the original message's Feedback-ID.
 	it('extracts campaignId from a campaign-stream Feedback-ID in attachments', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
 				attachments: [
 					{
 						content: Buffer.from(
-							'Feedback-ID: campaign:jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4:topic:ab12cd\r\nSubject: Original email',
+							'Feedback-ID: campaign:jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4:topic:ab12cd\r\nSubject: Original email'
 						),
 					},
-				] as ParsedMail['attachments'],
-			}),
+				] as unknown as MessageAttachment[],
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -185,7 +208,7 @@ describe('tryParseARF', () => {
 	});
 
 	it('leaves campaignId undefined for a transactional (txn) Feedback-ID', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
@@ -193,8 +216,8 @@ describe('tryParseARF', () => {
 					{
 						content: Buffer.from('Feedback-ID: txn:none:none:ab12cd\r\nSubject: Original'),
 					},
-				] as ParsedMail['attachments'],
-			}),
+				] as unknown as MessageAttachment[],
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -202,11 +225,11 @@ describe('tryParseARF', () => {
 	});
 
 	it('extracts campaignId from a Feedback-ID surfaced in the report body', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse\nFeedback-ID: campaign:bodyc4mp41gn0123456789abcdefghij:segment:zz99\nMore',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -219,11 +242,11 @@ describe('tryParseARF', () => {
 	// cardinality → memory DoS).
 	it('drops a forged/oversized field-2 campaignId rather than attributing it', () => {
 		const oversized = 'z'.repeat(200);
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: `Feedback-Type: abuse\nFeedback-ID: campaign:${oversized}:topic:ab12cd\nMore`,
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -231,11 +254,11 @@ describe('tryParseARF', () => {
 	});
 
 	it('returns complained/hard classification', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse\nReport',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -244,14 +267,14 @@ describe('tryParseARF', () => {
 	});
 
 	it('identifies source ISP from received headers (microsoft)', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
 				headers: new Map([
 					['content-type', 'multipart/report; report-type=feedback-report'],
 					['received', 'from outlook-com.olc.protection.microsoft.com'],
 				]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -259,14 +282,14 @@ describe('tryParseARF', () => {
 	});
 
 	it('identifies source ISP from received headers (yahoo)', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
 				headers: new Map([
 					['content-type', 'multipart/report; report-type=feedback-report'],
 					['received', 'from sonic308-4.consmr.mail.yahoo.com'],
 				]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -274,14 +297,14 @@ describe('tryParseARF', () => {
 	});
 
 	it('identifies source ISP from received headers (google)', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
 				headers: new Map([
 					['content-type', 'multipart/report; report-type=feedback-report'],
 					['received', 'from mail-wr1-f41.google.com'],
 				]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -309,7 +332,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 		feedbackReport: string;
 		originalMessage: string;
 		humanText?: string;
-	}): Promise<ParsedMail> {
+	}): Promise<{ parsed: ParsedMessage; parts: ReportPart[] }> {
 		const human = opts.humanText ?? 'This is an abuse report for a message from your network.';
 		const raw = [
 			'From: feedbackloop@isp.example',
@@ -335,11 +358,12 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 			'--b=_arf--',
 			'',
 		].join('\r\n');
-		return simpleParser(Buffer.from(raw));
+		const buf = Buffer.from(raw);
+		return { parsed: parseMessage(buf), parts: extractReportParts(buf) };
 	}
 
 	it('extracts feedbackType/recipient/sourceIsp from a Comcast ARF report', async () => {
-		const parsed = await buildArf({
+		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
 				'User-Agent: Comcast-Feedback-Loop/1.0',
@@ -358,7 +382,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 			].join('\r\n'),
 		});
 
-		const result = tryParseARF(parsed);
+		const result = tryParseARF(parsed, parts);
 		expect(result).not.toBeNull();
 		expect(result!.type).toBe('complained');
 		expect(result!.feedbackType).toBe('abuse');
@@ -371,7 +395,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 	});
 
 	it('extracts feedbackType/recipient/sourceIsp from a Yahoo ARF report', async () => {
-		const parsed = await buildArf({
+		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
 				'User-Agent: Yahoo!-Mail-Feedback/2.0',
@@ -389,7 +413,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 			].join('\r\n'),
 		});
 
-		const result = tryParseARF(parsed);
+		const result = tryParseARF(parsed, parts);
 		expect(result).not.toBeNull();
 		expect(result!.feedbackType).toBe('abuse');
 		expect(result!.recipient).toBe('someone@yahoo.com');
@@ -398,7 +422,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 	});
 
 	it('extracts feedbackType/recipient/sourceIsp from a Microsoft (Outlook) ARF report', async () => {
-		const parsed = await buildArf({
+		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
 				'User-Agent: Microsoft Junk Email Reporting Program (JMRP)',
@@ -416,7 +440,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 			].join('\r\n'),
 		});
 
-		const result = tryParseARF(parsed);
+		const result = tryParseARF(parsed, parts);
 		expect(result).not.toBeNull();
 		expect(result!.feedbackType).toBe('abuse');
 		expect(result!.recipient).toBe('user@outlook.com');
@@ -428,7 +452,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 	// feedback-report part. Now that it lands outbound (sendComposition), read it
 	// back from the original-message part so per-campaign attribution works.
 	it('reads the campaign Feedback-ID from the message/rfc822 original-message part', async () => {
-		const parsed = await buildArf({
+		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
 				'User-Agent: Google-Mail-Feedback/1.0',
@@ -444,7 +468,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 			].join('\r\n'),
 		});
 
-		const result = tryParseARF(parsed);
+		const result = tryParseARF(parsed, parts);
 		expect(result).not.toBeNull();
 		expect(result!.feedbackType).toBe('abuse');
 		expect(result!.recipient).toBe('clicker@gmail.com');
@@ -456,7 +480,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 	// original-message copy is ours. (This guards the part-routing: pre-fix the
 	// blind scan would pick up a Feedback-ID from anywhere.)
 	it('does not read a campaignId from a Feedback-ID placed in the feedback-report part only', async () => {
-		const parsed = await buildArf({
+		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
 				'User-Agent: Comcast-Feedback-Loop/1.0',
@@ -473,7 +497,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 			].join('\r\n'),
 		});
 
-		const result = tryParseARF(parsed);
+		const result = tryParseARF(parsed, parts);
 		expect(result).not.toBeNull();
 		expect(result!.campaignId).toBeUndefined();
 	});
@@ -481,7 +505,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 	// X-Owlat-Message-Id is echoed in the original message; attribution must read
 	// it from the message/rfc822 part (when VERP signing is not configured).
 	it('reads X-Owlat-Message-Id back from the message/rfc822 original-message part', async () => {
-		const parsed = await buildArf({
+		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
 				'User-Agent: Yahoo!-Mail-Feedback/2.0',
@@ -497,7 +521,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 			].join('\r\n'),
 		});
 
-		const result = tryParseARF(parsed);
+		const result = tryParseARF(parsed, parts);
 		expect(result).not.toBeNull();
 		expect(result!.originalMessageId).toBe('send_abc123');
 		expect(result!.organizationId).toBe('org-7');
@@ -518,7 +542,7 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 	});
 
 	it('does NOT attribute from the unauthenticated X-Owlat-Message-Id header when a key is set', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse\nSome report',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
@@ -527,7 +551,7 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 						content: Buffer.from(`X-Owlat-Message-Id: ${realId}\r\nSubject: Original email`),
 					} as never,
 				],
-			}),
+			})
 		);
 
 		// Still recognized as a complaint, but with no attributable messageId — so
@@ -539,11 +563,11 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 
 	it('does NOT attribute from a forged Original-Mail-From VERP token with no/invalid MAC when a key is set', () => {
 		const forgedVerp = `bounce+${Buffer.from(realId).toString('base64url')}@${RPD}`;
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: `Feedback-Type: abuse\nOriginal-Mail-From: ${forgedVerp}`,
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -552,11 +576,11 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 
 	it('DOES attribute from a correctly-signed Original-Mail-From VERP token', () => {
 		const signedVerp = buildVerpAddress(realId, RPD, KEY);
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: `Feedback-Type: abuse\nOriginal-Mail-From: ${signedVerp}`,
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -564,7 +588,7 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 	});
 
 	it('still extracts organizationId (non-attribution metadata) even when key is set', () => {
-		const result = tryParseARF(
+		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
 				headers: new Map([['content-type', 'multipart/report; report-type=feedback-report']]),
@@ -573,7 +597,7 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 						content: Buffer.from(`X-Owlat-Org-Id: org-99\r\nX-Owlat-Message-Id: ${realId}`),
 					} as never,
 				],
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -584,10 +608,7 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 
 describe('generateDedupKey', () => {
 	it('returns originalMessageId directly when available', () => {
-		const key = generateDedupKey(
-			createMockParsedMail({ text: 'Some complaint' }),
-			'msg-123',
-		);
+		const key = generateDedupKey(createMockParsedMail({ text: 'Some complaint' }), 'msg-123');
 		expect(key).toBe('msg-123');
 	});
 
@@ -597,7 +618,7 @@ describe('generateDedupKey', () => {
 				subject: 'Spam complaint',
 				from: { text: 'fbl@isp.com' },
 				text: 'Feedback-Type: abuse',
-			}),
+			})
 		);
 
 		// Should be a 32-char hex string
@@ -617,12 +638,8 @@ describe('generateDedupKey', () => {
 	});
 
 	it('generates different keys for different content', () => {
-		const key1 = generateDedupKey(
-			createMockParsedMail({ subject: 'Complaint A', text: 'abc' }),
-		);
-		const key2 = generateDedupKey(
-			createMockParsedMail({ subject: 'Complaint B', text: 'xyz' }),
-		);
+		const key1 = generateDedupKey(createMockParsedMail({ subject: 'Complaint A', text: 'abc' }));
+		const key2 = generateDedupKey(createMockParsedMail({ subject: 'Complaint B', text: 'xyz' }));
 		expect(key1).not.toBe(key2);
 	});
 });

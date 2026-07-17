@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 
 vi.mock('../../intelligence/circuitBreaker.js', () => ({
 	recordOutcome: vi.fn().mockResolvedValue(undefined),
@@ -132,7 +132,7 @@ describe('applyEffects — per-effect dispatch', () => {
 			endpointUrl: 'https://hook.example',
 			createdAt: 0,
 		};
-		const parsed = { subject: 'x' } as unknown as ParsedMail;
+		const parsed = { subject: 'x' } as unknown as ParsedMessage;
 		const auth = { spfResult: 'pass', dkimResult: 'pass' };
 		await applyEffects(
 			[{ kind: 'forward_to_endpoint', route, parsed, rcptTo: 'me@org.example', auth }],

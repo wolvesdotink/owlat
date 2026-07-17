@@ -17,33 +17,51 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage, MessageAttachment } from '@owlat/mail-message';
 import { parseBounce, getUnattributedBounceCount } from '../parser.js';
 import { parseVerpAddress } from '../verp.js';
 import { classifyBounce } from '../classifier.js';
 import { logger } from '../../monitoring/logger.js';
 import { parseFblOrDsnPhase } from '../phases/parseFblOrDsn.js';
 import { reduce } from '../outcome.js';
+import type { ReportPart } from '../reportParts.js';
 import type { BasePhaseCtx, BounceAttempt, PhaseDeps } from '../types.js';
 
-function createMockParsedMail(overrides: Partial<ParsedMail> = {}): ParsedMail {
+function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMessage {
 	return {
 		text: '',
 		subject: '',
 		headers: new Map(),
 		attachments: [],
 		...overrides,
-	} as ParsedMail;
+	} as unknown as ParsedMessage;
+}
+
+/**
+ * The report parts a scraper reads. In production these are walked out of the raw
+ * MIME (`extractReportParts`); these unit tests fabricate them from the mock's
+ * `attachments` so the existing `{ content, contentType }` fixtures still drive
+ * the delivery-status / header-scrape paths.
+ */
+function reportPartsOf(parsed: ParsedMessage): ReportPart[] {
+	const atts = (parsed as unknown as { attachments?: ReadonlyArray<Partial<MessageAttachment>> })
+		.attachments;
+	return (atts ?? []).map((a) => ({
+		contentType: (a.contentType ?? '').toLowerCase(),
+		content: a.content ?? Buffer.alloc(0),
+	}));
+}
+
+/** `parseBounce` with the report parts derived from the mock (see {@link reportPartsOf}). */
+function pb(parsed: ParsedMessage, envelopeRcptTo?: string) {
+	return parseBounce(parsed, reportPartsOf(parsed), envelopeRcptTo);
 }
 
 describe('parseBounce', () => {
 	it('extracts messageId from VERP envelope recipient', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue('msg-001');
 
-		const result = parseBounce(
-			createMockParsedMail(),
-			'bounce+bXNnLTAwMQ@bounces.owlat.com',
-		);
+		const result = pb(createMockParsedMail(), 'bounce+bXNnLTAwMQ@bounces.owlat.com');
 
 		expect(result).not.toBeNull();
 		expect(result!.originalMessageId).toBe('msg-001');
@@ -53,14 +71,14 @@ describe('parseBounce', () => {
 	it('falls back to X-Owlat-Message-Id in attachments', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue(null);
 
-		const result = parseBounce(
+		const result = pb(
 			createMockParsedMail({
 				attachments: [
 					{
 						content: Buffer.from('X-Owlat-Message-Id: msg-from-attachment\r\nOther: header'),
 					},
 				],
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -70,11 +88,11 @@ describe('parseBounce', () => {
 	it('falls back to X-Owlat-Message-Id in body text', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue(null);
 
-		const result = parseBounce(
+		const result = pb(
 			createMockParsedMail({
 				text: 'Some bounce text\nX-Owlat-Message-Id: msg-from-body\nMore text',
 				attachments: [],
-			}),
+			})
 		);
 
 		expect(result).not.toBeNull();
@@ -84,11 +102,11 @@ describe('parseBounce', () => {
 	it('returns null when no messageId is extractable', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue(null);
 
-		const result = parseBounce(
+		const result = pb(
 			createMockParsedMail({
 				text: 'Some bounce message with no useful headers',
 				attachments: [],
-			}),
+			})
 		);
 
 		expect(result).toBeNull();
@@ -97,14 +115,14 @@ describe('parseBounce', () => {
 	it('logs detailed context when bounce is unattributed', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue(null);
 
-		parseBounce(
+		pb(
 			createMockParsedMail({
 				text: 'Delivery failure for user@example.com',
 				subject: 'Mail delivery failed',
 				from: { text: 'mailer-daemon@mx.example.com' },
 				attachments: [],
 			}),
-			'bounce+invalid@bounces.owlat.com',
+			'bounce+invalid@bounces.owlat.com'
 		);
 
 		expect(logger.warn).toHaveBeenCalledWith(
@@ -114,7 +132,7 @@ describe('parseBounce', () => {
 				hasAttachments: false,
 				textPreview: expect.stringContaining('Delivery failure'),
 			}),
-			expect.stringContaining('Unattributed bounce'),
+			expect.stringContaining('Unattributed bounce')
 		);
 	});
 
@@ -122,12 +140,8 @@ describe('parseBounce', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue(null);
 		const countBefore = getUnattributedBounceCount();
 
-		parseBounce(
-			createMockParsedMail({ text: 'No useful headers', attachments: [] }),
-		);
-		parseBounce(
-			createMockParsedMail({ text: 'Another unattributed bounce', attachments: [] }),
-		);
+		pb(createMockParsedMail({ text: 'No useful headers', attachments: [] }));
+		pb(createMockParsedMail({ text: 'Another unattributed bounce', attachments: [] }));
 
 		expect(getUnattributedBounceCount()).toBe(countBefore + 2);
 	});
@@ -135,11 +149,11 @@ describe('parseBounce', () => {
 	it('extracts organizationId from X-Owlat-Org-Id', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue('msg-001');
 
-		const result = parseBounce(
+		const result = pb(
 			createMockParsedMail({
 				text: 'X-Owlat-Org-Id: org-42\nSome bounce text',
 			}),
-			'bounce+bXNnLTAwMQ@bounces.owlat.com',
+			'bounce+bXNnLTAwMQ@bounces.owlat.com'
 		);
 
 		expect(result).not.toBeNull();
@@ -154,9 +168,9 @@ describe('parseBounce', () => {
 			message: '450 4.2.1 Mailbox temporarily unavailable',
 		});
 
-		const result = parseBounce(
+		const result = pb(
 			createMockParsedMail({ text: 'Mailbox temporarily unavailable' }),
-			'bounce+bXNnLTAwMQ@bounces.owlat.com',
+			'bounce+bXNnLTAwMQ@bounces.owlat.com'
 		);
 
 		expect(result).not.toBeNull();
@@ -196,7 +210,7 @@ describe('parseBounce', () => {
 			const before = getUnattributedBounceCount();
 
 			const ctx = unattributableDsnCtx();
-			const result = parseBounce(ctx.parsed, ctx.rcptTo);
+			const result = pb(ctx.parsed, ctx.rcptTo);
 
 			expect(result).toBeNull();
 			expect(getUnattributedBounceCount()).toBe(before + 1);
@@ -205,7 +219,7 @@ describe('parseBounce', () => {
 					envelopeRcptTo: 'bounce+notavalidtoken@bounces.owlat.com',
 					unattributedTotal: before + 1,
 				}),
-				expect.stringContaining('Unattributed bounce'),
+				expect.stringContaining('Unattributed bounce')
 			);
 		});
 
@@ -233,7 +247,7 @@ describe('parseBounce', () => {
 			message: '5.1.1',
 		});
 
-		parseBounce(
+		pb(
 			createMockParsedMail({
 				// Human-readable text carries no enhanced code.
 				text: 'Your message could not be delivered.',
@@ -241,12 +255,12 @@ describe('parseBounce', () => {
 					{
 						contentType: 'message/delivery-status',
 						content: Buffer.from(
-							'Final-Recipient: rfc822; user@example.com\r\nAction: failed\r\nStatus: 5.1.1',
+							'Final-Recipient: rfc822; user@example.com\r\nAction: failed\r\nStatus: 5.1.1'
 						),
 					},
-				] as unknown as ParsedMail['attachments'],
+				] as unknown as MessageAttachment[],
 			}),
-			'bounce+bXNnLTAwMQ@bounces.owlat.com',
+			'bounce+bXNnLTAwMQ@bounces.owlat.com'
 		);
 
 		expect(classifyBounce).toHaveBeenCalled();
