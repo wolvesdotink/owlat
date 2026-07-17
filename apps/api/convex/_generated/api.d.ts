@@ -228,6 +228,7 @@ import type * as domains_providers_registerAction from "../domains/providers/reg
 import type * as domains_providers_ses_index from "../domains/providers/ses/index.js";
 import type * as domains_providers_types from "../domains/providers/types.js";
 import type * as domains_queries from "../domains/queries.js";
+import type * as domains_returnPath from "../domains/returnPath.js";
 import type * as domains_reverseDns from "../domains/reverseDns.js";
 import type * as domains_spf from "../domains/spf.js";
 import type * as domains_tlsReports from "../domains/tlsReports.js";
@@ -850,6 +851,7 @@ declare const fullApi: ApiFromModules<{
   "domains/providers/ses/index": typeof domains_providers_ses_index;
   "domains/providers/types": typeof domains_providers_types;
   "domains/queries": typeof domains_queries;
+  "domains/returnPath": typeof domains_returnPath;
   "domains/reverseDns": typeof domains_reverseDns;
   "domains/spf": typeof domains_spf;
   "domains/tlsReports": typeof domains_tlsReports;

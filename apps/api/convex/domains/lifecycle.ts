@@ -58,13 +58,24 @@ import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { clearReservationsForDomain } from '../mail/pendingMailbox';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
+import { asDnsName } from '@owlat/shared';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
+import { buildReturnPathMailFromRecords, parsePoolIps, resolveSpfQualifier } from './spf';
 import {
 	isSendingDomainProviderKind,
 	providerFor,
 	type ProviderIdentity,
 	type SendingDomainProviderKind,
 } from './providers';
+
+/**
+ * Synthetic `userId` tag for user-driven public-mutation transitions. The
+ * lifecycle reducer recognizes internal callers by a `system:` prefix on the
+ * `userId`; user-driven public mutations carry no such prefix, so they pass this
+ * tag. Exported so every thin public shell over the lifecycle (`domains.ts`,
+ * `returnPath.ts`) references one canonical value rather than re-declaring it.
+ */
+export const LIFECYCLE_USER_PUBLIC_MUTATION = 'user';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -768,6 +779,198 @@ export const setDmarcPolicy = internalMutation({
 		);
 
 		return { ok: true, policy: args.policy, changed: true };
+	},
+});
+
+export type SendingDomainReturnPathOutcome =
+	| { ok: true; returnPathHost: string; changed: boolean }
+	| { ok: false; reason: 'domain_not_found' | 'unsupported_provider' | 'invalid_host' };
+
+/**
+ * Set (or change) the domain's per-domain VERP return-path host (D1/D2).
+ *
+ * Regenerates the `mailFrom` SPF record on the new host and clears the stale
+ * MAIL FROM verification result — the customer must publish the record at the
+ * new host, so the domain drops to `pending` awaiting a re-verify. Mirrors
+ * `setDmarcPolicy`'s surgical single-record regeneration rather than a full
+ * `→ registering` re-registration, which would needlessly reset the DKIM/DMARC
+ * records (the provider rebuilds `_dmarc` at `p=none`).
+ *
+ * The MTA must ALSO learn the new host so its VERP MAIL FROM for this domain
+ * becomes `bounce+…@<host>` (otherwise the bounce envelope would keep using the
+ * global host and fail SPF against the newly-published record). We reflect it to
+ * the MTA out-of-band via the scheduled `pushReturnPathHost` action — the D1
+ * register endpoint is idempotent for the DKIM key, so this touches only the
+ * return-path host, never the signing key.
+ *
+ * MTA-only: SES manages its own bounce handling and has no return-path host, so
+ * a non-MTA domain is rejected (`unsupported_provider`). The host is validated
+ * as a DNS FQDN via the shared `asDnsName` (packages/shared) — no raw-string
+ * checks. Single writer of `domains.returnPathHost`.
+ */
+export const setReturnPathHost = internalMutation({
+	args: {
+		domainId: v.id('domains'),
+		returnPathHost: v.string(),
+		userId: v.string(),
+	},
+	handler: async (ctx, args): Promise<SendingDomainReturnPathOutcome> => {
+		const domain = await ctx.db.get(args.domainId);
+		if (!domain) return { ok: false, reason: 'domain_not_found' };
+
+		// Return-path host is an MTA concept; SES owns its own bounce handling.
+		if (domain.providerType !== 'mta') {
+			return { ok: false, reason: 'unsupported_provider' };
+		}
+
+		// Validate + normalize via the shared DNS-name primitive (branded DnsName)
+		// rather than a bespoke regex — one definition, shared with the client and
+		// the MTA-side validator.
+		const normalized = asDnsName(args.returnPathHost);
+		if (normalized === null) return { ok: false, reason: 'invalid_host' };
+
+		if (domain.returnPathHost === normalized) {
+			return { ok: true, returnPathHost: normalized, changed: false };
+		}
+
+		const at = Date.now();
+
+		// Regenerate the mailFrom SPF record on the new host from the same env the
+		// provider's initial registration reads (pool IPs + qualifier), via the
+		// shared builder so the two paths can't drift.
+		const qualifier = resolveSpfQualifier(getOptional('SPF_QUALIFIER'));
+		const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
+		const mailFromRecords = buildReturnPathMailFromRecords(normalized, poolIps, qualifier);
+
+		const dnsRecords = domain.dnsRecords as DnsRecords;
+		const nextDnsRecords: DnsRecords = { ...dnsRecords };
+		if (mailFromRecords) {
+			nextDnsRecords.mailFrom = mailFromRecords;
+		} else {
+			// No pool IPs configured → no record to publish; drop any stale entry.
+			delete nextDnsRecords.mailFrom;
+		}
+
+		// The published MAIL FROM record now differs from what the customer has in
+		// DNS — drop the stale MAIL FROM verification result so the UI prompts a
+		// re-publish + re-verify of just that record (mirrors setDmarcPolicy).
+		const verificationResults = domain.verificationResults as VerificationResults | undefined;
+		const nextVerificationResults: VerificationResults | undefined = verificationResults
+			? { ...verificationResults, mailFrom: undefined }
+			: undefined;
+
+		const previousReturnPathHost = domain.returnPathHost ?? null;
+
+		await ctx.db.patch(args.domainId, {
+			returnPathHost: normalized,
+			dnsRecords: nextDnsRecords,
+			// A changed return-path host means the domain is no longer fully
+			// verified until the new record is published + checked.
+			status: 'pending',
+			// Clear any stale sync-failure marker from a previous host: this edit
+			// schedules a fresh push, so the prior divergence is being resolved.
+			returnPathHostSyncError: undefined,
+			...(nextVerificationResults !== undefined
+				? { verificationResults: nextVerificationResults }
+				: {}),
+			updatedAt: at,
+		});
+
+		await applyEffects(
+			ctx,
+			[
+				{
+					kind: 'audit_log',
+					action: 'sending_domain.return_path_changed',
+					domainId: args.domainId,
+					details: {
+						domain: domain.domain,
+						previousReturnPathHost,
+						newReturnPathHost: normalized,
+						applied: 'transitioned',
+					},
+				},
+			],
+			args.userId
+		);
+
+		// Reflect the new host to the MTA so its VERP MAIL FROM uses it. Scheduled
+		// (not inline): the DB write above must not roll back on an MTA hiccup, and
+		// mutations cannot run the node-runtime HTTP client. `pushReturnPathHost`
+		// runs a bounded, self-rescheduling retry; if it exhausts the budget it
+		// records the failure via `recordReturnPathPushResult` (audit + the
+		// `returnPathHostSyncError` marker), so a permanent failure is never silent.
+		await ctx.scheduler.runAfter(0, internal.domains.providers.registerAction.pushReturnPathHost, {
+			domainId: args.domainId,
+			returnPathHost: normalized,
+			attempt: 0,
+		});
+
+		return { ok: true, returnPathHost: normalized, changed: true };
+	},
+});
+
+/**
+ * Record the terminal outcome of a `pushReturnPathHost` attempt chain.
+ *
+ * Called by the push action (which, as a node action, cannot touch the DB):
+ *   - success → clears any `returnPathHostSyncError` marker (idempotent).
+ *   - give-up (retry budget exhausted) → sets the marker to the last error AND
+ *     audits the give-up, so the Convex↔MTA divergence is visible rather than
+ *     silent.
+ *
+ * Guards against a stale write: if the domain's `returnPathHost` has since
+ * changed (a newer edit superseded this chain), the result is dropped so an old
+ * failure cannot mark a domain that has already moved on.
+ */
+export const recordReturnPathPushResult = internalMutation({
+	args: {
+		domainId: v.id('domains'),
+		returnPathHost: v.string(),
+		error: v.optional(v.string()),
+		attempts: v.optional(v.number()),
+		userId: v.string(),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		const domain = await ctx.db.get(args.domainId);
+		if (!domain) return;
+		// A newer edit changed the target host — this result is stale, ignore it.
+		if (domain.returnPathHost !== args.returnPathHost) return;
+
+		if (args.error === undefined) {
+			// Success: clear the marker if one was set. No-op / no audit otherwise.
+			if (domain.returnPathHostSyncError !== undefined) {
+				await ctx.db.patch(args.domainId, {
+					returnPathHostSyncError: undefined,
+					updatedAt: Date.now(),
+				});
+			}
+			return;
+		}
+
+		await ctx.db.patch(args.domainId, {
+			returnPathHostSyncError: args.error,
+			updatedAt: Date.now(),
+		});
+
+		await applyEffects(
+			ctx,
+			[
+				{
+					kind: 'audit_log',
+					action: 'sending_domain.return_path_changed',
+					domainId: args.domainId,
+					details: {
+						domain: domain.domain,
+						returnPathHost: args.returnPathHost,
+						applied: 'sync_failed',
+						attempts: args.attempts ?? 0,
+						error: args.error,
+					},
+				},
+			],
+			args.userId
+		);
 	},
 });
 

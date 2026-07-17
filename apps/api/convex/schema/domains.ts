@@ -28,6 +28,24 @@ export const domainTables = {
 		),
 		// DNS records the customer must publish (SPF, DKIM, DMARC, MAIL-FROM).
 		dnsRecords: dnsRecordsValidator,
+		// Per-domain VERP return-path host (D1/D2). Absent ⇒ the domain uses the
+		// deployment-global `MTA_RETURN_PATH_DOMAIN` env for its bounce envelope /
+		// MAIL FROM — the historic behavior — so existing rows need no backfill.
+		// When set, the MTA stamps `bounce+…@<returnPathHost>` for this domain's
+		// outbound mail and the generated `mailFrom` SPF record is published on
+		// this host instead of the global one. Written only by the **Sending
+		// domain lifecycle (module)** (`setReturnPathHost`) and reflected to the
+		// MTA at (re-)registration via the provider adapter. A validated DNS FQDN
+		// (packages/shared `asDnsName`).
+		returnPathHost: v.optional(v.string()),
+		// Set when reflecting a changed `returnPathHost` to the MTA PERMANENTLY
+		// fails (after the bounded `pushReturnPathHost` retry budget is exhausted).
+		// Surfaces the Convex↔MTA divergence — Convex has committed the new host +
+		// records but the MTA is still stamping the OLD bounce host, so the
+		// published SPF record can never match — rather than letting it hide.
+		// Cleared on a successful push or a fresh return-path edit. Written only by
+		// the **Sending domain lifecycle (module)**.
+		returnPathHostSyncError: v.optional(v.string()),
 		// DMARC enforcement policy reflected in the generated `_dmarc` record.
 		// Absent (legacy rows) and `'none'` both mean monitor-only; the
 		// customer raises it to `'quarantine'`/`'reject'` via the lifecycle's
