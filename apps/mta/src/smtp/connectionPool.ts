@@ -283,7 +283,12 @@ export class SmtpConnectionPool {
 		const config: SmtpConnectOptions = {
 			host: mxHost,
 			port: options.port ?? 25,
-			ehloName: options.name ?? mxHost,
+			// Production always supplies `name` (the sending IP's PTR-matching FQDN).
+			// The fallback must never announce the RECEIVING server's hostname
+			// (`mxHost`) — that is our identity to the peer and would read as spoofing
+			// (RFC 5321 §4.1.1.1). Fall back to our own bind IP as an address literal
+			// (RFC 5321 §4.1.3), which is honest and syntactically valid.
+			ehloName: options.name ?? `[${bindIp}]`,
 			tlsMode: 'starttls',
 			requireTls: options.requireTLS ?? false,
 			localAddress: bindIp,
