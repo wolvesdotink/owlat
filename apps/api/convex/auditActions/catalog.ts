@@ -191,6 +191,15 @@ export const AUDIT_ACTION_LITERALS = [
 	action('plugin.action_completed'),
 	action('plugin.action_failed'),
 	action('plugin.action_denied'),
+	// Tier-2 connected-app lifecycle. Fired from connectedApps/* on every
+	// register/enable/disable/revoke/delete and secret rotation. Details carry a
+	// redacted scalar summary (pluginId, capability count) — never the secret.
+	action('connected_app.registered'),
+	action('connected_app.enabled'),
+	action('connected_app.disabled'),
+	action('connected_app.revoked'),
+	action('connected_app.deleted'),
+	action('connected_app.secret_rotated'),
 ] as const;
 
 export type AuditActionLiteral = (typeof AUDIT_ACTION_LITERALS)[number];
@@ -242,6 +251,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'mail_message',
 	'conversation_thread',
 	'plugin',
+	'connected_app',
 ] as const;
 
 export type AuditResourceLiteral = (typeof AUDIT_RESOURCE_LITERALS)[number];
