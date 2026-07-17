@@ -1,5 +1,11 @@
 export { orderHostedContributions } from './contributions';
 export type { HostedContribution } from './contributions';
+export { mergeHostedNavigation } from './navigation';
+export type {
+	HostedNavEntry,
+	HostedPluginNavEntry,
+	MergeHostedNavigationInput,
+} from './navigation';
 export {
 	AgentStepCompositionError,
 	composeAgentStepDefinitions,
