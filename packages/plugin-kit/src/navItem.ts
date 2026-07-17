@@ -7,10 +7,16 @@ export type PluginNavItemCapability = typeof PLUGIN_NAV_ITEM_CAPABILITY;
 export type PluginNavItemLocalId = string;
 
 /**
- * Namespaced identity for a plugin-contributed navigation destination. Core
- * items keep their flat hrefs as identity; every plugin item is
- * `plugin.<pluginId>.<localId>` so a plugin can never shadow or collide with a
- * core destination or another plugin's destination.
+ * Plugin-scoped identity for a plugin-contributed navigation destination,
+ * `plugin.<pluginId>.<localId>`. This is the stable handle for flags,
+ * telemetry and settings surfaces — it is NOT what the sidebar registry
+ * deduplicates on. Registry dedup is by destination href
+ * (`derivePluginNavigation` sets each entry's id to its href), which is what
+ * prevents a plugin from shadowing a core destination: two entries at the same
+ * href collapse first-registered-wins, and core is always registered first.
+ *
+ * Intended consumer: the plugin-scoped settings index landing in PP-20; until
+ * that lands `pluginNavItemKind` is exercised only by its own unit tests.
  */
 export type PluginNavItemKind = `plugin.${PluginId}.${PluginNavItemLocalId}`;
 
