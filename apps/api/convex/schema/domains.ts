@@ -28,6 +28,16 @@ export const domainTables = {
 		),
 		// DNS records the customer must publish (SPF, DKIM, DMARC, MAIL-FROM).
 		dnsRecords: dnsRecordsValidator,
+		// Per-domain VERP return-path host (D1/D2). Absent ⇒ the domain uses the
+		// deployment-global `MTA_RETURN_PATH_DOMAIN` env for its bounce envelope /
+		// MAIL FROM — the historic behavior — so existing rows need no backfill.
+		// When set, the MTA stamps `bounce+…@<returnPathHost>` for this domain's
+		// outbound mail and the generated `mailFrom` SPF record is published on
+		// this host instead of the global one. Written only by the **Sending
+		// domain lifecycle (module)** (`setReturnPathHost`) and reflected to the
+		// MTA at (re-)registration via the provider adapter. A validated DNS FQDN
+		// (packages/shared `asDnsName`).
+		returnPathHost: v.optional(v.string()),
 		// DMARC enforcement policy reflected in the generated `_dmarc` record.
 		// Absent (legacy rows) and `'none'` both mean monitor-only; the
 		// customer raises it to `'quarantine'`/`'reject'` via the lifecycle's
