@@ -6,6 +6,8 @@ import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 const MAX_CAPABILITIES = 64;
 const MAX_REQUIRED_ENV_VARS = 64;
 const MAX_CONTRIBUTIONS_PER_KIND = 256;
+const MAX_SETTINGS_FIELDS = 64;
+const MAX_SETTINGS_OPTIONS = 64;
 const MAX_ARRAY_LENGTH = 0xffff_ffff;
 export const INVALID_SCHEMA_ARRAY = Object.freeze({ invalidSchemaArray: true });
 
@@ -25,10 +27,28 @@ export function snapshotManifestInput(value: unknown, issues: PluginManifestIssu
 				return snapshotRecord(propertyValue);
 			case 'component':
 				return snapshotRecord(propertyValue);
+			case 'settingsSchema':
+				return snapshotSettingsSchema(propertyValue, issues);
 			default:
 				return propertyValue;
 		}
 	});
+}
+
+function snapshotSettingsSchema(value: unknown, issues: PluginManifestIssue[]): unknown {
+	return snapshotArray(value, '$.settingsSchema', MAX_SETTINGS_FIELDS, issues, (field, index) =>
+		snapshotRecord(field, (key, fieldValue) =>
+			key === 'options'
+				? snapshotArray(
+						fieldValue,
+						`$.settingsSchema[${index}].options`,
+						MAX_SETTINGS_OPTIONS,
+						issues,
+						(option) => snapshotRecord(option)
+					)
+				: fieldValue
+		)
+	);
 }
 
 function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): unknown {

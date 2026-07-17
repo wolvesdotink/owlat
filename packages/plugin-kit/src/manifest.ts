@@ -23,6 +23,8 @@ import { snapshotManifestInput } from './manifestSnapshot';
 import { isPluginId, type PluginId } from './pluginId';
 import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from './sendTransport';
 import { validateSendTransportContributions } from './sendTransportManifest';
+import type { PluginSettingsSchema } from './settingsSchema';
+import { validateSettingsSchema } from './settingsSchemaManifest';
 import { isSafeStaticExportPath } from './staticExportPath';
 import {
 	isRecord,
@@ -59,6 +61,7 @@ export interface PluginManifest {
 	readonly flag?: PluginFeatureFlagDefinition;
 	readonly llmBudget?: PluginLlmBudget;
 	readonly component?: PluginComponentDefinition;
+	readonly settingsSchema?: PluginSettingsSchema;
 }
 
 export type PluginManifestValidation =
@@ -77,6 +80,7 @@ const TOP_LEVEL_FIELDS = new Set([
 	'flag',
 	'llmBudget',
 	'component',
+	'settingsSchema',
 ]);
 
 export class PluginManifestError extends Error {
@@ -222,6 +226,9 @@ export function validatePluginManifest(value: unknown): PluginManifestValidation
 
 	const component = readDataProperty(manifest, 'component', issues);
 	if (component.kind === 'value') validateComponent(component.value, issues);
+
+	const settingsSchema = readDataProperty(manifest, 'settingsSchema', issues);
+	if (settingsSchema.kind === 'value') validateSettingsSchema(settingsSchema.value, issues);
 
 	return issues.length === 0
 		? { ok: true, manifest: manifest as unknown as PluginManifest }

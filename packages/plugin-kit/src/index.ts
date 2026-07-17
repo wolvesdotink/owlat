@@ -164,3 +164,25 @@ export type {
 	PluginManifestIssueCode,
 	PluginManifestValidation,
 } from './manifest';
+export {
+	defaultPluginSettingsValues,
+	isSecretSettingsField,
+	redactPluginSettingsValues,
+	SETTINGS_FIELD_KINDS,
+	validatePluginSettingsInput,
+} from './settingsSchema';
+export { validateSettingsSchema } from './settingsSchemaManifest';
+export type {
+	PluginSettingsBooleanField,
+	PluginSettingsField,
+	PluginSettingsFieldKind,
+	PluginSettingsInputIssue,
+	PluginSettingsInputValidation,
+	PluginSettingsNumberField,
+	PluginSettingsSchema,
+	PluginSettingsSecretField,
+	PluginSettingsSelectField,
+	PluginSettingsSelectOption,
+	PluginSettingsStringField,
+	RedactedPluginSettings,
+} from './settingsSchema';
