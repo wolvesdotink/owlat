@@ -13,6 +13,7 @@ import { resolveEhloForIp } from '../config.js';
 import { getMxHostnames } from './mxResolver.js';
 import { resolveDaneMxDestinations, type DaneMxDestination } from './daneMxResolver.js';
 import { getDkimOptions } from './dkim.js';
+import { getReturnPathHost } from './dkimStore.js';
 import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
 import { resolveTlsRequirements } from './tlsPolicy.js';
 import { resolveOutboundTlsMode } from './outboundTlsOverrides.js';
@@ -96,7 +97,21 @@ export async function sendToMx(
 	}
 
 	const dkimConfig = await getDkimOptions(redis, job.dkimDomain);
-	const verpAddress = buildVerpAddress(job.messageId, config.returnPathDomain);
+
+	// VERP return-path host (D1): a sending domain may register its own
+	// bounce/return-path host, making the MAIL FROM domain per-sending-domain
+	// instead of the single global `RETURN_PATH_DOMAIN`. Keyed by the DKIM
+	// signing domain (the sender's own domain). Absent → global fallback, so a
+	// domain with no override behaves exactly as before. Attribution stays
+	// domain-agnostic: the VERP token's HMAC is computed over the message id +
+	// time window (never the host), and the bounce server accepts `bounce+…` at
+	// ANY host — so a DSN arriving at the per-domain host still verifies and
+	// suppresses the right recipient (see bounce/verp.ts, bounce/server.ts).
+	const perDomainReturnPath = await getReturnPathHost(redis, job.dkimDomain.toLowerCase());
+	const verpAddress = buildVerpAddress(
+		job.messageId,
+		perDomainReturnPath ?? config.returnPathDomain
+	);
 
 	// RFC 5322 §3.6.4: stamp an explicit From-aligned Message-ID so nodemailer
 	// does not auto-generate one scoped to the VERP return-path domain

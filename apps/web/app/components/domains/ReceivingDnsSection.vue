@@ -26,6 +26,7 @@
  * reachability isn't testable from the backend, so that stays advisory text.
  */
 import { api } from '@owlat/api';
+import { trySplitZone } from '@owlat/shared';
 import { buildInboundMxRecords, buildMtaStsDnsRecords } from '~/utils/inboundDns';
 
 const props = defineProps<{
@@ -45,6 +46,11 @@ const props = defineProps<{
 }>();
 
 const mxRecords = computed(() => buildInboundMxRecords(props.domain, props.mailHost));
+
+// The registrable zone the records actually go in — the DNS provider that
+// manages this (e.g. `example.com` for a sending domain `mail.example.com`).
+// Fail-soft to the raw domain when there is no registrable zone (self-host dev).
+const registrableZone = computed(() => trySplitZone(props.domain)?.registrable ?? props.domain);
 
 // MTA-STS publishing (RFC 8461): when the operator has turned on a policy
 // (`mtaStsMode` testing/enforce) the admin-gated guidance carries the current
@@ -140,8 +146,11 @@ watch(
 
 		<p class="text-sm text-text-secondary mb-3">
 			To receive mail for <strong class="text-text-primary">{{ domain }}</strong> through this Owlat
-			instance, publish the MX record below. Inbound mail is delivered to this deployment's mail
-			host (<code class="bg-bg-surface px-1.5 py-0.5 rounded text-xs">{{ mailHost }}</code
+			instance, publish the MX record below in the DNS settings for
+			<strong class="text-text-primary" data-testid="receiving-zone">{{ registrableZone }}</strong
+			>. Inbound mail is delivered to this deployment's mail host (<code
+				class="bg-bg-surface px-1.5 py-0.5 rounded text-xs"
+				>{{ mailHost }}</code
 			>).
 		</p>
 
@@ -169,8 +178,9 @@ watch(
 			<p class="text-sm text-text-secondary mb-3">
 				You've turned on a mail-encryption policy for
 				<strong class="text-text-primary">{{ domain }}</strong
-				>. Publish both records below so other mail servers can find it and require an encrypted,
-				verified connection when they deliver to you.
+				>. Publish both records below in the DNS settings for
+				<strong class="text-text-primary">{{ registrableZone }}</strong> so other mail servers can
+				find it and require an encrypted, verified connection when they deliver to you.
 			</p>
 			<div class="space-y-3">
 				<DomainsDNSRecordPanel

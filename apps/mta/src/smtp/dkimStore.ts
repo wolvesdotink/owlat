@@ -15,6 +15,16 @@ const DKIM_PREFIX = 'mta:dkim:';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * Hash field on `mta:dkim:{domain}` holding that domain's per-domain VERP
+ * return-path host (D1). Co-located with the DKIM material so it shares the
+ * domain's lifecycle: registration writes it, `removeDkimKey` (whole-hash DEL)
+ * clears it. Absent field → the domain has no override and the sender falls back
+ * to the global `RETURN_PATH_DOMAIN` (backward-compatible with every legacy
+ * registration written before this field existed).
+ */
+const RETURN_PATH_FIELD = 'returnPathHost';
+
+/**
  * Unseal a stored DKIM private-key value, migrating a legacy plaintext value in
  * place. Private keys are sealed at rest (secretBox) so a Redis dump never
  * exposes a PEM. Pre-sealing installs — and keys written by an older MTA — hold
@@ -49,6 +59,17 @@ interface CachedKey {
 
 // In-memory cache
 const cache = new Map<string, CachedKey>();
+
+interface CachedReturnPathHost {
+	host: string | null;
+	cachedAt: number;
+}
+
+// Separate small cache for the per-domain return-path host so the hot send path
+// (one lookup per outbound message) does not hit Redis every time. Negative
+// results (`null` — no override) are cached too, so the common "no per-domain
+// host" case is a single cache hit rather than a Redis round-trip per send.
+const returnPathCache = new Map<string, CachedReturnPathHost>();
 
 /**
  * Get DKIM config for a domain (cache-first, then Redis)
@@ -104,7 +125,61 @@ export async function setDkimKey(
 export async function removeDkimKey(redis: Redis, domain: string): Promise<boolean> {
 	const result = await redis.del(`${DKIM_PREFIX}${domain}`);
 	cache.delete(domain);
+	returnPathCache.delete(domain);
 	return result > 0;
+}
+
+/**
+ * Store a domain's per-domain VERP return-path host (D1).
+ *
+ * The value MUST already be a validated, normalized DNS FQDN (see
+ * `lib/returnPathHost.normalizeReturnPathHost`) — this function does no
+ * validation of its own. Persisted as a plaintext field on the domain's
+ * `mta:dkim:{domain}` hash, so it survives alongside the DKIM key and is dropped
+ * when the domain is removed.
+ */
+export async function setReturnPathHost(
+	redis: Redis,
+	domain: string,
+	returnPathHost: string
+): Promise<void> {
+	await redis.hset(`${DKIM_PREFIX}${domain}`, { [RETURN_PATH_FIELD]: returnPathHost });
+	returnPathCache.delete(domain);
+	logger.info({ domain, returnPathHost }, 'Per-domain return-path host stored');
+}
+
+/**
+ * Clear a domain's per-domain VERP return-path host, reverting it to the global
+ * `RETURN_PATH_DOMAIN` fallback (D1). Idempotent: clearing an already-unset
+ * domain is a no-op. Returns whether a value was actually removed.
+ */
+export async function clearReturnPathHost(redis: Redis, domain: string): Promise<boolean> {
+	const removed = await redis.hdel(`${DKIM_PREFIX}${domain}`, RETURN_PATH_FIELD);
+	returnPathCache.delete(domain);
+	if (removed > 0) {
+		logger.info({ domain }, 'Per-domain return-path host cleared');
+	}
+	return removed > 0;
+}
+
+/**
+ * Get a domain's per-domain VERP return-path host, or `null` when the domain has
+ * no override (legacy registration, or one made without the field). The sender
+ * uses `null` as the signal to fall back to the global `RETURN_PATH_DOMAIN`.
+ *
+ * Cache-first (including negative results) so the outbound hot path costs at
+ * most one Redis `HGET` per cache-TTL window per domain.
+ */
+export async function getReturnPathHost(redis: Redis, domain: string): Promise<string | null> {
+	const cached = returnPathCache.get(domain);
+	if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) {
+		return cached.host;
+	}
+
+	const stored = await redis.hget(`${DKIM_PREFIX}${domain}`, RETURN_PATH_FIELD);
+	const host = stored && stored.length > 0 ? stored : null;
+	returnPathCache.set(domain, { host, cachedAt: Date.now() });
+	return host;
 }
 
 /**
@@ -253,4 +328,5 @@ export async function seedFromConfig(
  */
 export function clearCache(): void {
 	cache.clear();
+	returnPathCache.clear();
 }
