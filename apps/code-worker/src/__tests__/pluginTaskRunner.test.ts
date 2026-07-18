@@ -274,6 +274,44 @@ describe('runPluginJob — sandbox wiring', () => {
 		});
 		expect(cleanupDir).toHaveBeenCalled();
 	});
+
+	it('slices a failing job’s error snippet by whole code points (never a split surrogate)', async () => {
+		// A non-zero exit reports the TAIL of stdout/stderr. If that tail is sliced by
+		// UTF-16 code unit, the 500-unit boundary can fall mid-surrogate and emit a
+		// lone surrogate half; the worker must slice by whole code points instead.
+		const child = openChild();
+		const spawnSpy = vi.fn(() => {
+			setImmediate(() => {
+				// 600 four-byte code points then a 1-unit char: a naive slice(-500)
+				// would start inside a surrogate pair (odd offset from the end).
+				child.stdout.emit('data', Buffer.from(`${'😀'.repeat(600)}x`));
+				child.emit('close', 1); // non-zero exit -> fail path
+			});
+			return child;
+		}) as unknown as typeof spawn;
+		const client = fakeClient();
+
+		await runPluginJob(task, {
+			client: client as never,
+			spawnFn: spawnSpy,
+			prepareDir: () => {},
+			cleanupDir: () => {},
+			heartbeatIntervalMs: 10_000,
+		});
+
+		const failCall = client.calls.find((c) => c.name === 'fail');
+		const message = (failCall?.args as { errorMessage: string }).errorMessage;
+		const codePoints = [...message];
+		expect(codePoints).toHaveLength(500); // clamped to the code-point cap
+		// No retained unit is a lone surrogate (a split '😀' half would be).
+		expect(
+			codePoints.every((cp) => {
+				const code = cp.codePointAt(0) ?? 0;
+				return code < 0xd800 || code > 0xdfff;
+			})
+		).toBe(true);
+		expect(message.endsWith('x')).toBe(true); // kept the tail
+	});
 });
 
 /**

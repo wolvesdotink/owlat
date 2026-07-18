@@ -115,6 +115,25 @@ function clampResult(text: string): string {
 	return out;
 }
 
+/** Longest error snippet the worker sends; the host re-clamps by bytes + strips control chars. */
+const MAX_ERROR_SNIPPET_CODE_POINTS = 500;
+
+/**
+ * Take a short, code-point-safe slice of an untrusted error message. Plain
+ * `String.prototype.slice` counts UTF-16 code units and can split a surrogate
+ * pair mid-character; iterating with the spread operator counts whole code
+ * points, so — like `clampResult` — the worker never emits a truncated surrogate.
+ * `fromEnd` keeps the TAIL (the freshest stdout/stderr) rather than the head.
+ */
+function clampErrorSnippet(text: string, fromEnd = false): string {
+	const codePoints = [...text];
+	if (codePoints.length <= MAX_ERROR_SNIPPET_CODE_POINTS) return text;
+	const slice = fromEnd
+		? codePoints.slice(-MAX_ERROR_SNIPPET_CODE_POINTS)
+		: codePoints.slice(0, MAX_ERROR_SNIPPET_CODE_POINTS);
+	return slice.join('');
+}
+
 export interface RunPluginJobDeps {
 	readonly client?: ReturnType<typeof getConvexClient>;
 	readonly spawnFn?: typeof spawn;
@@ -218,13 +237,14 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 		await client.mutation(pluginFn.fail, {
 			taskId: task.taskId,
 			errorMessage:
-				(result.stdout + result.stderr).slice(-500) || `Job exited with code ${result.code}`,
+				clampErrorSnippet(result.stdout + result.stderr, true) ||
+				`Job exited with code ${result.code}`,
 			reasonCode: 'worker_failed',
 		});
 	} catch (error) {
 		await client.mutation(pluginFn.fail, {
 			taskId: task.taskId,
-			errorMessage: error instanceof Error ? error.message.slice(0, 500) : String(error),
+			errorMessage: error instanceof Error ? clampErrorSnippet(error.message) : String(error),
 			reasonCode: 'worker_failed',
 		});
 	} finally {
