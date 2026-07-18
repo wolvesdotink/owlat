@@ -31,6 +31,7 @@ export interface ResolvedListenerConfig<S, T> {
 	banner: string;
 	extensions: string[];
 	maxMessageBytes: number;
+	maxRecipients: number;
 	abortFactor: number;
 	maxCommandBytes: number;
 	maxBadCommands: number;
@@ -248,6 +249,14 @@ export async function runCommandLoop<S, T>(
 			const parsed = parseAddressCommand(rest, 'TO');
 			if (!parsed) {
 				if (noteBadCommand(Reply.paramError()) === 'stop') return;
+				continue;
+			}
+			if (session.rcptTo.length >= config.maxRecipients) {
+				// Bound per-transaction state before invoking application policy: a
+				// hostile valid-command flood cannot grow the recipient array or force
+				// unbounded route/auth lookups. Already-accepted recipients remain valid
+				// and the peer may proceed to DATA (RFC 5321 §4.5.3.1.8).
+				write(Reply.tooManyRecipients(config.maxRecipients));
 				continue;
 			}
 			const res = await invokeHandler(opts.onRcptTo, parsed, session, opts.onError);

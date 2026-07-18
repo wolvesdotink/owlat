@@ -236,6 +236,25 @@ describe('MX listener hostile input is bounded (production config)', () => {
 		await c.waitFor((b) => /250 2\.0\.0/.test(b));
 		c.end();
 	});
+
+	it('caps the production MX transaction at its single consumed recipient', async () => {
+		const { port } = await start();
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('EHLO probe.test\r\n');
+		await c.waitCode(250);
+		c.write('MAIL FROM:<>\r\n');
+		await c.waitCode(250);
+		c.write('RCPT TO:<bounce+first@bounces.owlat.test>\r\n');
+		await c.waitCode(250);
+		c.write('RCPT TO:<bounce+ignored@bounces.owlat.test>\r\n');
+		await c.waitCode(452);
+		c.write('DATA\r\n');
+		await c.waitCode(354);
+		c.write('Subject: bounded recipient state\r\n\r\nbody\r\n.\r\n');
+		await c.waitFor((b) => /250 2\.0\.0/.test(b));
+		c.end();
+	});
 });
 
 // The DATA-phase byte budget is the load-bearing hardening whose MTA-level test

@@ -46,6 +46,7 @@ export {
 export { decodeCharset, normalizeCharset } from './parse/charset';
 
 export {
+	MAX_MIME_PARTS,
 	parseMimeTree,
 	assembleBody,
 	parseBody,

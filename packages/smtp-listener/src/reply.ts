@@ -70,6 +70,11 @@ export const Reply = {
 	ok: (text = 'OK'): SmtpReply => ({ code: 250, enhanced: '2.0.0', text }),
 	senderOk: (): SmtpReply => ({ code: 250, enhanced: '2.1.0', text: 'OK' }),
 	recipientOk: (): SmtpReply => ({ code: 250, enhanced: '2.1.5', text: 'OK' }),
+	tooManyRecipients: (maxRecipients: number): SmtpReply => ({
+		code: 452,
+		enhanced: '4.5.3',
+		text: `Too many recipients; maximum is ${maxRecipients}`,
+	}),
 	dataAccepted: (text = 'OK: message accepted'): SmtpReply => ({
 		code: 250,
 		enhanced: '2.0.0',

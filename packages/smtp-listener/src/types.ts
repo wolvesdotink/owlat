@@ -120,6 +120,11 @@ export interface SmtpListenerOptions<S = unknown, T = unknown> {
 	/** Hard byte budget for buffered DATA (advertised via SIZE + enforced). */
 	maxMessageBytes?: number;
 	/**
+	 * Maximum accepted RCPT TO commands in one transaction. Excess recipients
+	 * receive 452 without growing session state. Default 100 (RFC 5321 §4.5.3.1.8).
+	 */
+	maxRecipients?: number;
+	/**
 	 * Multiple of `maxMessageBytes` past which the socket is destroyed outright
 	 * rather than merely refused (bandwidth bound). Default 4 — matches
 	 * `apps/mta/src/lib/dataStream.ts`.

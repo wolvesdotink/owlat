@@ -13,6 +13,7 @@ import { resolveTlsConfig } from './tls.js';
 import type { MutableSmtpSession, SmtpListenerOptions } from './types.js';
 
 const DEFAULT_MAX_MESSAGE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_MAX_RECIPIENTS = 100;
 const DEFAULT_ABORT_FACTOR = 4;
 const DEFAULT_MAX_COMMAND_BYTES = 4096;
 const DEFAULT_MAX_BAD_COMMANDS = 25;
@@ -31,6 +32,7 @@ export function resolveConfig<S, T>(opts: SmtpListenerOptions<S, T>): ResolvedLi
 		banner: opts.banner ?? `${hostname} ESMTP`,
 		extensions: opts.extensions ?? [],
 		maxMessageBytes: opts.maxMessageBytes ?? DEFAULT_MAX_MESSAGE_BYTES,
+		maxRecipients: opts.maxRecipients ?? DEFAULT_MAX_RECIPIENTS,
 		abortFactor: opts.abortFactor ?? DEFAULT_ABORT_FACTOR,
 		maxCommandBytes: opts.maxCommandBytes ?? DEFAULT_MAX_COMMAND_BYTES,
 		maxBadCommands: opts.maxBadCommands ?? DEFAULT_MAX_BAD_COMMANDS,

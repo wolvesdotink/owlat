@@ -378,3 +378,48 @@ describe('pipelining desync', () => {
 		expect(c.closed).toBe(true);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Valid RCPT flood. Bounded by the per-transaction recipient cap rather than
+// the bad-command counter (every command is syntactically valid).
+// ---------------------------------------------------------------------------
+
+describe('recipient flood', () => {
+	it('caps accepted recipients, skips excess handler work, and still accepts DATA', async () => {
+		const acceptedByHandler: string[] = [];
+		let deliveredRecipients: string[] = [];
+		const { port } = await start({
+			maxRecipients: 5,
+			onRcptTo: (address) => {
+				acceptedByHandler.push(address.address);
+			},
+			onData: (_message, session) => {
+				deliveredRecipients = session.rcptTo.map((recipient) => recipient.address);
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+
+		let flood = '';
+		for (let i = 0; i < 100; i++) flood += `RCPT TO:<u${i}@b.test>\r\n`;
+		c.write(flood);
+		await c.waitFor((b) => (b.match(/250 2\.1\.5/g) ?? []).length === 5);
+		await c.waitFor((b) => (b.match(/452 4\.5\.3/g) ?? []).length === 95);
+
+		expect(acceptedByHandler).toHaveLength(5);
+		c.write('DATA\r\n');
+		await c.waitCode(354);
+		c.write('bounded\r\n.\r\n');
+		await c.waitFor((b) => /250 2\.0\.0/.test(b));
+		expect(deliveredRecipients).toEqual([
+			'u0@b.test',
+			'u1@b.test',
+			'u2@b.test',
+			'u3@b.test',
+			'u4@b.test',
+		]);
+		c.end();
+	});
+});
