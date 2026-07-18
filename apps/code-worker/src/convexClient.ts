@@ -47,25 +47,74 @@ export interface CodeWorkTask {
  */
 export const fn = {
 	getNextQueued: makeFunctionReference<'query', Record<string, never>, CodeWorkTask | null>(
-		'codeWorkTasks:getNextQueued',
+		'codeWorkTasks:getNextQueued'
 	),
 	claim: makeFunctionReference<'mutation', { taskId: string }, { claimed: boolean } | null>(
-		'codeWorkTasks:claim',
+		'codeWorkTasks:claim'
 	),
 	updateBranch: makeFunctionReference<'mutation', { taskId: string; branch: string }, null>(
-		'codeWorkTasks:updateBranch',
+		'codeWorkTasks:updateBranch'
 	),
 	markTesting: makeFunctionReference<'mutation', { taskId: string }, null>(
-		'codeWorkTasks:markTesting',
+		'codeWorkTasks:markTesting'
 	),
-	markFailed: makeFunctionReference<
-		'mutation',
-		{ taskId: string; errorMessage: string },
-		null
-	>('codeWorkTasks:markFailed'),
+	markFailed: makeFunctionReference<'mutation', { taskId: string; errorMessage: string }, null>(
+		'codeWorkTasks:markFailed'
+	),
 	completeWithPR: makeFunctionReference<
 		'mutation',
 		{ taskId: string; prUrl: string; testResults: string },
 		null
 	>('codeWorkTasks:completeWithPR'),
+};
+
+/**
+ * A claimed Tier-3 plugin job, as returned by `plugins/workerTasks:claim`. The
+ * worker gets only what it needs to run the job — never the org id, secrets, or
+ * host bookkeeping. `payload` is untrusted plugin input; `jobKind` routes to a
+ * host-controlled command.
+ */
+export interface PluginTask {
+	_id: string;
+	pluginId: string;
+	jobKind: string;
+	payload: string;
+	timeoutMs: number;
+	attempts: number;
+	maxAttempts: number;
+}
+
+/** `plugins/workerTasks:claim` result: the claimed job, or why it was not claimed. */
+export type PluginClaimResult =
+	| { claimed: false; cancelled?: boolean }
+	| { claimed: true; job: PluginTask };
+
+/**
+ * Typed references to the generalized worker-queue functions. Same call-boundary
+ * discipline as `fn` above: the worker does not import apps/api's generated
+ * types, so the argument/return shapes are declared here.
+ */
+export const pluginFn = {
+	getNextQueued: makeFunctionReference<'query', Record<string, never>, PluginTask | null>(
+		'plugins/workerTasks:getNextQueued'
+	),
+	claim: makeFunctionReference<'mutation', { taskId: string }, PluginClaimResult>(
+		'plugins/workerTasks:claim'
+	),
+	heartbeat: makeFunctionReference<
+		'mutation',
+		{ taskId: string },
+		{ alive: boolean; cancelRequested: boolean }
+	>('plugins/workerTasks:heartbeat'),
+	complete: makeFunctionReference<'mutation', { taskId: string; result?: string }, { ok: boolean }>(
+		'plugins/workerTasks:complete'
+	),
+	fail: makeFunctionReference<
+		'mutation',
+		{ taskId: string; errorMessage: string; reasonCode?: 'worker_failed' | 'worker_timeout' },
+		{ status: string; retried: boolean }
+	>('plugins/workerTasks:fail'),
+	reclaimStale: makeFunctionReference<'mutation', Record<string, never>, { reclaimed: number }>(
+		'plugins/workerTasks:reclaimStale'
+	),
 };

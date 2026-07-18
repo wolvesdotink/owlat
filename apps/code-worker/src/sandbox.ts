@@ -55,6 +55,26 @@ export interface DetachedRunResult {
 	stdout: string;
 	stderr: string;
 	timedOut: boolean;
+	/** True when an external cancellation (AbortSignal) reaped the process group. */
+	killed: boolean;
+}
+
+/** Options shared by every sandboxed run. */
+export interface SandboxRunOptions {
+	cwd: string;
+	env: NodeJS.ProcessEnv;
+	timeoutMs: number;
+	/**
+	 * Cooperative cancellation. When it aborts, the WHOLE process group is reaped
+	 * (negative pid) exactly like a timeout — so a plugin job cannot escape an
+	 * operator cancellation by spawning detached grandchildren.
+	 */
+	signal?: AbortSignal;
+	/**
+	 * Injectable group-kill (defaults to `process.kill`). Exists so the
+	 * timeout/cancel reaping can be unit-tested without signalling real pids.
+	 */
+	kill?: (targetPid: number, signal: NodeJS.Signals) => void;
 }
 
 /**
@@ -72,7 +92,7 @@ export interface DetachedRunResult {
 function runDetached(
 	command: string,
 	args: string[],
-	opts: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; uid?: number; gid?: number },
+	opts: SandboxRunOptions & { uid?: number; gid?: number },
 	spawnFn: typeof spawn = spawn
 ): Promise<DetachedRunResult> {
 	return new Promise((resolve, reject) => {
@@ -92,6 +112,7 @@ function runDetached(
 		let stdout = '';
 		let stderr = '';
 		let timedOut = false;
+		let killed = false;
 
 		child.stdout?.on('data', (chunk: Buffer) => {
 			stdout += chunk.toString();
@@ -102,16 +123,32 @@ function runDetached(
 
 		const timer = setTimeout(() => {
 			timedOut = true;
-			killProcessGroup(child.pid);
+			killProcessGroup(child.pid, opts.kill);
 		}, opts.timeoutMs);
 
-		child.once('error', (err) => {
+		// Operator cancellation: reap the WHOLE group, same as a timeout. A job
+		// cannot dodge cancellation by detaching workers — signalling the negative
+		// pid takes the entire tree down.
+		const onAbort = () => {
+			killed = true;
+			killProcessGroup(child.pid, opts.kill);
+		};
+		if (opts.signal) {
+			if (opts.signal.aborted) onAbort();
+			else opts.signal.addEventListener('abort', onAbort, { once: true });
+		}
+		const cleanup = () => {
 			clearTimeout(timer);
+			opts.signal?.removeEventListener('abort', onAbort);
+		};
+
+		child.once('error', (err) => {
+			cleanup();
 			reject(err);
 		});
 		child.once('close', (code) => {
-			clearTimeout(timer);
-			resolve({ code, stdout, stderr, timedOut });
+			cleanup();
+			resolve({ code, stdout, stderr, timedOut, killed });
 		});
 	});
 }
@@ -131,7 +168,7 @@ function runDetached(
 export function runUntrusted(
 	command: string,
 	args: string[],
-	opts: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number },
+	opts: SandboxRunOptions,
 	spawnFn: typeof spawn = spawn
 ): Promise<DetachedRunResult> {
 	return runDetached(command, args, { ...opts, uid: SANDBOX_UID, gid: SANDBOX_GID }, spawnFn);
@@ -164,6 +201,17 @@ export function runGit(
 export function handOffWorkspaceToSandbox(workDir: string): void {
 	execFileSync('chown', ['-R', `${SANDBOX_UID}:${SANDBOX_GID}`, workDir], { stdio: 'inherit' });
 	execFileSync('chown', ['-R', '0:0', path.join(workDir, '.git')], { stdio: 'inherit' });
+}
+
+/**
+ * Hand a plugin-job scratch directory to the sandbox uid so the untrusted job
+ * (which runs as uid 10001) can write to it, while the directory itself stays
+ * under the orchestrator's `/workspace`. Unlike `handOffWorkspaceToSandbox` this
+ * has no `.git` to keep root-owned — a plugin job carries no repository and no
+ * out-of-band token. Runs as root BEFORE the job; needs only CAP_CHOWN.
+ */
+export function chownDirToSandbox(dir: string): void {
+	execFileSync('chown', ['-R', `${SANDBOX_UID}:${SANDBOX_GID}`, dir], { stdio: 'inherit' });
 }
 
 /**
