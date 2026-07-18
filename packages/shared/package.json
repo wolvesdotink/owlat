@@ -41,6 +41,10 @@
 			"types": "./src/setupValidators.ts",
 			"import": "./src/setupValidators.ts"
 		},
+		"./returnPathHost": {
+			"types": "./src/returnPathHost.ts",
+			"import": "./src/returnPathHost.ts"
+		},
 		"./setupSendingPresets": {
 			"types": "./src/setupSendingPresets.ts",
 			"import": "./src/setupSendingPresets.ts"
@@ -172,10 +176,15 @@
 		"./composeVerify": {
 			"types": "./src/composeVerify.ts",
 			"import": "./src/composeVerify.ts"
+		},
+		"./dnsZone": {
+			"types": "./src/dnsZone.ts",
+			"import": "./src/dnsZone.ts"
 		}
 	},
 	"dependencies": {
-		"@owlat/mail-message": "workspace:*"
+		"@owlat/mail-message": "workspace:*",
+		"tldts": "^7.0.30"
 	},
 	"peerDependencies": {
 		"sanitize-html": "^2.13.0"

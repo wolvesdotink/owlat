@@ -414,6 +414,7 @@
       "version": "0.3.3",
       "dependencies": {
         "@owlat/mail-message": "workspace:*",
+        "tldts": "^7.0.30",
       },
       "devDependencies": {
         "@types/node": "catalog:",
