@@ -373,6 +373,19 @@ describe('listHookDeliveryLogs (operator read)', () => {
 		);
 		expect(bySource.every((r) => r.source === 'fallback')).toBe(true);
 		expect(bySource).toHaveLength(1);
+
+		// Combined (app + source): the app index takes priority, so `source` is
+		// re-checked in JS. appA has an 'app' row (@10) and a 'fallback' row (@20);
+		// only the fallback must survive — this fails if the in-loop source re-check
+		// is dropped (both appA rows would leak through).
+		const byAppAndSource = await client.query(
+			api.connectedApps.hookDeliveryLogStore.listHookDeliveryLogs,
+			{ connectedAppId: appA, source: 'fallback' }
+		);
+		expect(byAppAndSource).toHaveLength(1);
+		expect(byAppAndSource.every((r) => r.connectedAppId === appA && r.source === 'fallback')).toBe(
+			true
+		);
 	});
 
 	it('finds a sparse kind behind more than SCAN_CAP newer rows (index-complete)', async () => {
