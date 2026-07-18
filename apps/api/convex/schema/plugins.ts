@@ -177,4 +177,59 @@ export const pluginTables = {
 			'pluginId',
 			'utcDay',
 		]),
+
+	// Tier-3 sandboxed worker queue (PP-27). One row per enqueued plugin job.
+	// The generalized code-worker polls `queued` rows, runs the job as the
+	// unprivileged sandbox uid under the confined-root orchestrator, and reports
+	// the outcome back. Every row carries `pluginId` + `organizationId` so a job's
+	// entire lifecycle is attributable to its owning plugin and tenant (audit).
+	pluginTasks: defineTable({
+		organizationId: v.string(),
+		// Owning plugin. Enqueue rechecks manifest declaration + flag + operator
+		// grant of `worker:enqueue` for this id, and that `jobKind` is namespaced to
+		// it — a plugin can never enqueue another plugin's job kind.
+		pluginId: v.string(),
+		// Namespaced routing key `plugin.<pluginId>.<localId>`; the worker maps it to
+		// a host-controlled job command. Untrusted only in that a plugin picks which
+		// of ITS OWN kinds to run — cross-plugin kinds are rejected at enqueue.
+		jobKind: v.string(),
+		// Untrusted, plugin-produced job input. Size-clamped at enqueue and passed to
+		// the sandboxed child as opaque data (never interpolated into a shell).
+		payload: v.string(),
+		// Host-clamped wall-clock budget for a single execution; the worker kills the
+		// job's whole process group when it is exceeded (fail-closed).
+		timeoutMs: v.number(),
+		status: v.union(
+			v.literal('queued'),
+			v.literal('running'),
+			v.literal('succeeded'),
+			v.literal('failed'),
+			v.literal('cancelled')
+		),
+		// Completed execution attempts. Incremented on claim; retries requeue until
+		// `attempts` reaches `maxAttempts`, after which a failure is terminal.
+		attempts: v.number(),
+		maxAttempts: v.number(),
+		// Set by an operator via requestCancel. A queued+cancelled job is marked
+		// cancelled at claim time (never runs); a running+cancelled job is killed by
+		// the worker's heartbeat check. A cancelled job is never retried.
+		isCancelRequested: v.boolean(),
+		// Untrusted, size-clamped job result (success) — opaque text for the UI only.
+		result: v.optional(v.string()),
+		// Clamped, control-stripped failure reason — never a raw provider/system error.
+		errorMessage: v.optional(v.string()),
+		// Lease bookkeeping: when the worker claimed the job and last proved liveness.
+		// A running row whose heartbeat is older than the lease is reclaimed (a
+		// crashed worker's job is requeued or failed).
+		claimedAt: v.optional(v.number()),
+		heartbeatAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		// FIFO pickup + lease reclaim both scan by status, oldest first.
+		.index('by_status', ['status'])
+		// Admin/dashboard reads scope to the tenant.
+		.index('by_organization', ['organizationId'])
+		// Per-plugin audit/inspection.
+		.index('by_plugin', ['pluginId']),
 };
