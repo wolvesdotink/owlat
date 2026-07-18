@@ -26,7 +26,8 @@
 		"packages": [
 			"apps/*",
 			"packages/*",
-			"!packages/sdk-java"
+			"!packages/sdk-java",
+			"examples/plugins/*"
 		],
 		"catalog": {
 			"typescript": "^6.0.3",
