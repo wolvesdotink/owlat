@@ -13,7 +13,15 @@ COPY patches/ patches/
 # ALL workspace manifests — bun validates the frozen lockfile against the full
 # workspace shape (same idiom as apps/web/Dockerfile).
 COPY --parents apps/*/package.json packages/*/package.json ./
-RUN bun install --frozen-lockfile --filter @owlat/code-worker
+# The worker imports the dist-shipping @owlat/plugin-kit workspace package, so it
+# is filtered in as well — that pulls in plugin-kit's build toolchain so we can
+# emit its dist before compiling the worker (tsc needs its types; the runtime
+# needs its JS).
+RUN bun install --frozen-lockfile --filter @owlat/code-worker --filter @owlat/plugin-kit
+
+# Build @owlat/plugin-kit first: the worker's tsc build resolves it to dist/.
+COPY packages/plugin-kit/ packages/plugin-kit/
+RUN cd packages/plugin-kit && bun run build
 
 COPY apps/code-worker/tsconfig.json apps/code-worker/
 COPY apps/code-worker/src/ apps/code-worker/src/
@@ -46,6 +54,12 @@ RUN npm install -g opencode 2>/dev/null || echo "OpenCode not available, using f
 COPY --from=builder /build/apps/code-worker/dist ./dist
 COPY --from=proddeps /build/node_modules ./node_modules
 COPY apps/code-worker/package.json ./
+# node_modules/@owlat/plugin-kit is a workspace symlink pointing back at
+# packages/plugin-kit; ship that package's built dist (+ manifest) at the path
+# the symlink resolves to so the worker's `import '@owlat/plugin-kit'` loads at
+# runtime.
+COPY --from=builder /build/packages/plugin-kit/package.json ./packages/plugin-kit/package.json
+COPY --from=builder /build/packages/plugin-kit/dist ./packages/plugin-kit/dist
 
 # UID isolation for untrusted execution.
 #
