@@ -53,8 +53,9 @@ export const CONNECTED_APP_HOOK_MAX_REASON_CODE_POINTS = 300;
 
 // Redacted hook DELIVERY LOG reads (PP-25). The log is a per-org diagnostic
 // table; every read is bounded and org-scoped. A read scans at most SCAN_CAP
-// recent rows off an index, JS-filters the requested kind/source, and returns up
-// to the (clamped) page limit — so combined filters stay indexed and bounded.
+// recent rows off the most selective index (app / source / kind each have one, so
+// a sole/primary filter is index-complete), JS-re-checks any remaining filter
+// dimension, and returns up to the (clamped) page limit.
 export const CONNECTED_APP_HOOK_LOG_DEFAULT_LIMIT = 50;
 export const CONNECTED_APP_HOOK_LOG_MAX_LIMIT = 200;
 export const CONNECTED_APP_HOOK_LOG_SCAN_CAP = 500;

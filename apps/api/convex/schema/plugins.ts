@@ -96,6 +96,9 @@ export const pluginTables = {
 		.index('by_org_app_and_time', ['organizationId', 'connectedAppId', 'attemptedAt'])
 		// Org-scoped "show me only the fallbacks/failures" filter, index-backed.
 		.index('by_org_source_and_time', ['organizationId', 'source', 'attemptedAt'])
+		// Org-scoped "show me only one hook kind" filter, index-backed for parity
+		// with the source filter so a sparse kind is never scan-cap-lossy.
+		.index('by_org_kind_and_time', ['organizationId', 'hookKind', 'attemptedAt'])
 		// Retention range-scans the oldest rows across all tenants in batches.
 		.index('by_attempted_at', ['attemptedAt']),
 
