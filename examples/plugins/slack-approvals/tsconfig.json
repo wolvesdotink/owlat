@@ -1,0 +1,16 @@
+{
+	"extends": "../../../tsconfig.base.json",
+	"compilerOptions": {
+		"importHelpers": false,
+		"types": ["node"],
+		"lib": ["ES2023", "DOM"],
+		"noEmit": true,
+		"paths": {
+			"@owlat/plugin-kit": ["../../../packages/plugin-kit/src/index.ts"],
+			"@owlat/plugin-host": ["../../../packages/plugin-host/src/index.ts"],
+			"@owlat/shared": ["../../../packages/shared/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}

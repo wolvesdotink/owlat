@@ -278,6 +278,20 @@
         "vue-tsc": "catalog:",
       },
     },
+    "examples/plugins/slack-approvals": {
+      "name": "@owlat/example-slack-approvals",
+      "version": "0.0.0",
+      "dependencies": {
+        "@owlat/plugin-host": "workspace:*",
+        "@owlat/plugin-kit": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/channels": {
       "name": "@owlat/channels",
       "version": "0.3.3",
@@ -1013,6 +1027,8 @@
     "@owlat/email-renderer": ["@owlat/email-renderer@workspace:packages/email-renderer"],
 
     "@owlat/email-scanner": ["@owlat/email-scanner@workspace:packages/email-scanner"],
+
+    "@owlat/example-slack-approvals": ["@owlat/example-slack-approvals@workspace:examples/plugins/slack-approvals"],
 
     "@owlat/imap": ["@owlat/imap@workspace:apps/imap"],
 
