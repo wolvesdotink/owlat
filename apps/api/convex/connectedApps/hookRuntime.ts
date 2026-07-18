@@ -17,7 +17,10 @@
  *   4. SCRUB + CLAMP every app-returned string through the host untrusted-text
  *      policy (bound to the app's plugin) before it can reach any consumer;
  *   5. fold the outcome into the circuit breaker;
- *   6. return the app value, or the kind's declared safe fallback.
+ *   6. record a redacted, tenant-scoped delivery-log row (PP-25) — the kind,
+ *      whether a call was attempted, which side won, the fallback reason, and the
+ *      network duration, and NOTHING sensitive;
+ *   7. return the app value, or the kind's declared safe fallback.
  *
  * The fail direction is fixed by `hookOutcome`: gate fails CLOSED to caution,
  * draft/score fail OPEN. A hook can only ever add work or caution.
@@ -48,6 +51,37 @@ import type { ConnectedAppHookKind, ConnectedAppHookResult } from './hookProtoco
 import { isHookCircuitOpen } from './hookCircuit';
 import type { HookExecutionContext, HookSecretEnvelope, LoadedHookContext } from './hookStore';
 
+/**
+ * How one hook resolved, for the circuit breaker AND the delivery log. `attempted`
+ * is true iff an outbound network round trip was made; `circuit` is the outcome to
+ * fold into the breaker, or `null` when the resolution never touched the endpoint
+ * (a short-circuit or an Owlat-side data fault must not trip it); `durationMs` is
+ * the round-trip time when a call was made.
+ */
+interface HookResolution {
+	readonly outcome: ConnectedAppHookOutcome;
+	readonly attempted: boolean;
+	readonly circuit: 'success' | 'failure' | null;
+	readonly durationMs?: number;
+}
+
+function shortCircuited(outcome: ConnectedAppHookOutcome): HookResolution {
+	return { outcome, attempted: false, circuit: null };
+}
+
+function attempted(
+	outcome: ConnectedAppHookOutcome,
+	circuit: 'success' | 'failure',
+	durationMs: number
+): HookResolution {
+	return { outcome, attempted: true, circuit, durationMs };
+}
+
+/** The fixed fallback reason a fallback outcome carries; `undefined` for app values. */
+function deliveryFailureCode(outcome: ConnectedAppHookOutcome): HookUnavailableCode | undefined {
+	return outcome.source === 'fallback' ? outcome.failureCode : undefined;
+}
+
 /** Coerce the internal payload arg to a plain JSON object (never trusts prototype). */
 function asPayload(value: unknown): JsonObject {
 	if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -76,49 +110,111 @@ export const invokeHook = internalAction({
 			{ organizationId: args.organizationId, connectedAppId: args.connectedAppId, hookKind }
 		);
 
-		if (!context.found) return hookFallback(hookKind, 'app_not_found');
-		const shortCircuit = resolveShortCircuit(context, nowMs);
-		if (shortCircuit) return hookFallback(hookKind, shortCircuit);
+		const resolution = await resolveHook(
+			context,
+			hookKind,
+			args.connectedAppId,
+			asPayload(args.payload)
+		);
 
-		let secret: string;
-		let pluginId: ReturnType<typeof parsePluginId>;
-		try {
-			pluginId = parsePluginId(context.pluginId);
-			secret = openConnectedAppSecret(toEnvelope(context.secret));
-		} catch {
-			// An unopenable secret or unparseable plugin id is an Owlat-side data
-			// fault, not the app misbehaving — do not trip the breaker for it.
-			return hookFallback(hookKind, 'secret_unavailable');
+		// Fold a network outcome into the breaker (never a short-circuit / data fault).
+		if (resolution.circuit) {
+			await recordOutcome(ctx, args, hookKind, nowMs, resolution.circuit);
 		}
-
-		let transport: HookTransportOutcome;
-		try {
-			transport = await callConnectedAppHook({
-				connectedAppId: args.connectedAppId,
-				endpointUrl: context.endpointUrl,
-				secret,
-				hookKind,
-				payload: asPayload(args.payload),
-			});
-		} catch {
-			await recordOutcome(ctx, args, hookKind, nowMs, 'failure');
-			return hookFallback(hookKind, 'unexpected_error');
-		}
-
-		if (transport.status === 'error') {
-			await recordOutcome(ctx, args, hookKind, nowMs, 'failure');
-			return hookFallback(hookKind, transport.code);
-		}
-
-		const finalized = finalizeResult(pluginId, transport.result);
-		if (finalized === null) {
-			await recordOutcome(ctx, args, hookKind, nowMs, 'failure');
-			return hookFallback(hookKind, 'output_rejected');
-		}
-		await recordOutcome(ctx, args, hookKind, nowMs, 'success');
-		return finalized;
+		// Record the redacted delivery log. Best-effort: a logging fault must never
+		// change the hook's outcome, so it is swallowed inside recordDelivery.
+		await recordDelivery(ctx, args, hookKind, nowMs, context, resolution);
+		return resolution.outcome;
 	},
 });
+
+/**
+ * Run one hook to a {@link HookResolution} without touching persistence. Mirrors
+ * the security envelope: missing / disabled / revoked / ungranted / open-breaker
+ * short-circuits to the declared fallback with no call; an Owlat-side secret
+ * fault falls back WITHOUT tripping the breaker; a network error, a rejected
+ * output, or a thrown transport folds a failure into the breaker; a validated,
+ * scrubbed app value folds a success.
+ */
+async function resolveHook(
+	context: HookExecutionContext,
+	hookKind: ConnectedAppHookKind,
+	connectedAppId: Id<'connectedApps'>,
+	payload: JsonObject
+): Promise<HookResolution> {
+	if (!context.found) return shortCircuited(hookFallback(hookKind, 'app_not_found'));
+	const shortCircuit = resolveShortCircuit(context, Date.now());
+	if (shortCircuit) return shortCircuited(hookFallback(hookKind, shortCircuit));
+
+	let secret: string;
+	let pluginId: ReturnType<typeof parsePluginId>;
+	try {
+		pluginId = parsePluginId(context.pluginId);
+		secret = openConnectedAppSecret(toEnvelope(context.secret));
+	} catch {
+		// An unopenable secret or unparseable plugin id is an Owlat-side data
+		// fault, not the app misbehaving — do not trip the breaker for it.
+		return shortCircuited(hookFallback(hookKind, 'secret_unavailable'));
+	}
+
+	const callStartedAt = Date.now();
+	let transport: HookTransportOutcome;
+	try {
+		transport = await callConnectedAppHook({
+			connectedAppId,
+			endpointUrl: context.endpointUrl,
+			secret,
+			hookKind,
+			payload,
+		});
+	} catch {
+		return attempted(
+			hookFallback(hookKind, 'unexpected_error'),
+			'failure',
+			Date.now() - callStartedAt
+		);
+	}
+	const durationMs = Date.now() - callStartedAt;
+
+	if (transport.status === 'error') {
+		return attempted(hookFallback(hookKind, transport.code), 'failure', durationMs);
+	}
+	const finalized = finalizeResult(pluginId, transport.result);
+	if (finalized === null) {
+		return attempted(hookFallback(hookKind, 'output_rejected'), 'failure', durationMs);
+	}
+	return attempted(finalized, 'success', durationMs);
+}
+
+/**
+ * Persist the redacted delivery-log row for one resolution. Best-effort — a
+ * failed write is swallowed so it can never change the hook's outcome — and
+ * carries only non-sensitive metadata (no payload, app text, secret, or
+ * signature). `pluginId` is included only when the app resolved.
+ */
+async function recordDelivery(
+	ctx: ActionCtx,
+	args: { organizationId: string; connectedAppId: Id<'connectedApps'> },
+	hookKind: ConnectedAppHookKind,
+	nowMs: number,
+	context: HookExecutionContext,
+	resolution: HookResolution
+): Promise<void> {
+	const failureCode = deliveryFailureCode(resolution.outcome);
+	await ctx
+		.runMutation(internal.connectedApps.hookDeliveryLogStore._recordHookDelivery, {
+			organizationId: args.organizationId,
+			connectedAppId: args.connectedAppId,
+			...(context.found ? { pluginId: context.pluginId } : {}),
+			hookKind,
+			isAttempted: resolution.attempted,
+			source: resolution.outcome.source,
+			...(failureCode === undefined ? {} : { failureCode }),
+			...(resolution.durationMs === undefined ? {} : { durationMs: resolution.durationMs }),
+			attemptedAt: nowMs,
+		})
+		.catch(() => undefined);
+}
 
 /**
  * The fallback reason to short-circuit a RESOLVED app with, or `null` to proceed
