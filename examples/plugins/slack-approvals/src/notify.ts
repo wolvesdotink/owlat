@@ -12,6 +12,7 @@
  */
 
 import type { ApprovalRequest } from './approvalStore';
+import { readOwnString } from './objectAccess';
 import { SLACK_APPROVE_ACTION_ID, SLACK_REJECT_ACTION_ID } from './slackCallback';
 
 /** What the gate calls when a hold opens. */
@@ -43,13 +44,6 @@ function clampCodePoints(value: string, maximum: number): string {
 	return points.length <= maximum ? value : `${points.slice(0, maximum).join('')}…`;
 }
 
-function readOwnString(value: unknown, key: string): string | undefined {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
-	const descriptor = Object.getOwnPropertyDescriptor(value, key);
-	if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) return undefined;
-	return typeof descriptor.value === 'string' ? descriptor.value : undefined;
-}
-
 /**
  * Build the Slack message for a held draft. The Approve / Reject buttons encode
  * the vote (`action_id`) and the request id (`value`) the callback endpoint
@@ -63,7 +57,10 @@ export function buildApprovalMessage(
 	config: { readonly channel: string; readonly maxSubjectCodePoints?: number }
 ): SlackMessage {
 	const max = config.maxSubjectCodePoints ?? DEFAULT_MAX_SUBJECT_CODE_POINTS;
-	const subject = clampCodePoints(readOwnString(payload, 'subject') ?? '(no subject)', max);
+	const subject = clampCodePoints(
+		readOwnString(payload, 'subject', { allowEmpty: true }) ?? '(no subject)',
+		max
+	);
 	const summary = `Approval needed before auto-sending a reply (${request.requiredApprovals} approval(s) required).`;
 	return {
 		channel: config.channel,
