@@ -115,6 +115,10 @@ export function buildConnectConfig(
 			connect: options.connectionTimeout ?? 30_000,
 			greeting: options.greetingTimeout ?? 30_000,
 			command: options.socketTimeout ?? 60_000,
+			// Preserve the legacy socketTimeout for the whole DATA phase too. The
+			// client default is intentionally much longer and would otherwise turn
+			// this migration into a ten-minute stalled-send window.
+			data: options.socketTimeout ?? 60_000,
 		},
 	};
 	return config;

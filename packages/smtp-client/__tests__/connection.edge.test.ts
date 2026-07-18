@@ -191,6 +191,60 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		}
 	});
 
+	it('bounds an unsolicited-reply flood and poisons the connection', async () => {
+		const flood = '250 unsolicited\r\n'.repeat(300);
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line) => (line.startsWith('EHLO') ? EHLO_REPLY + flood : '250 OK\r\n'),
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+		});
+		cleanups.push(() => conn.close());
+
+		await expect(conn.readReply('mail', 100)).rejects.toThrow(/unsolicited replies/);
+		expect(conn.rawSocket.destroyed).toBe(true);
+	});
+
+	it('times out a backpressured payload write and destroys the socket', async () => {
+		const port = await startRawServer({
+			greeting: '220 mx.test ready\r\n',
+			handle: (line, socket) => {
+				if (line.startsWith('EHLO')) return EHLO_REPLY;
+				if (line === 'DATA') {
+					socket.pause();
+					return '354 continue\r\n';
+				}
+				return '250 OK\r\n';
+			},
+		});
+		const conn = await SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+			timeouts: { data: 100 },
+		});
+		cleanups.push(() => conn.close());
+		expect((await conn.command('DATA\r\n', 'data')).code).toBe(354);
+
+		let caught: unknown;
+		try {
+			await conn.writePayload(Buffer.alloc(32 * 1024 * 1024, 0x78), 'data-final');
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('data-final');
+			expect(caught.message).toMatch(/timed out .* writing/);
+		}
+		expect(conn.rawSocket.destroyed).toBe(true);
+	});
+
 	it('rejects a concurrent read while one is already pending (D5 invariant)', async () => {
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',

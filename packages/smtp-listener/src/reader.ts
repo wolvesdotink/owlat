@@ -84,11 +84,19 @@ export class SmtpCommandReader {
 			if (lf !== -1) {
 				const hasCr = lf > 0 && this.buf[lf - 1] === CR;
 				const end = hasCr ? lf - 1 : lf;
+				if (end > maxBytes) {
+					throw new LineTooLongError();
+				}
 				const line = this.buf.subarray(0, end);
 				this.buf = this.buf.subarray(lf + 1);
 				return line;
 			}
-			if (this.buf.length > maxBytes) {
+			// Permit one trailing CR beyond the content cap while waiting for its LF;
+			// every other byte beyond maxBytes is already an oversized command.
+			if (
+				this.buf.length > maxBytes &&
+				!(this.buf.length === maxBytes + 1 && this.buf[this.buf.length - 1] === CR)
+			) {
 				throw new LineTooLongError();
 			}
 			if (!(await this.pull())) {

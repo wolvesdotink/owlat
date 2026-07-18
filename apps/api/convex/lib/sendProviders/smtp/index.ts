@@ -274,11 +274,13 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 			};
 		}
 
+		const sendAbort = new AbortController();
 		try {
 			await withTimeout(
 				sendMessage({
 					connect: config.connect,
 					auth: config.auth,
+					signal: sendAbort.signal,
 					envelope: {
 						from: composed.envelope.from,
 						to: composed.envelope.to,
@@ -317,6 +319,11 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 				errorMessage,
 				errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
 			};
+		} finally {
+			// Promise.race cannot cancel its losing branch. Close any live SMTP
+			// socket when the outer deadline wins so the send does not continue in
+			// the background and later deliver after we reported a timeout.
+			sendAbort.abort();
 		}
 	},
 

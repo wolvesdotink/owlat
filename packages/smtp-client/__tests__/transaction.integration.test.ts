@@ -181,6 +181,44 @@ describe('transaction layer — smtp-server integration', () => {
 		expect(received).not.toContain('..leading');
 	});
 
+	it('cancels a stalled send by destroying the live SMTP socket', async () => {
+		let peerClosed!: () => void;
+		let watchingClose = false;
+		const closed = new Promise<void>((resolve) => {
+			peerClosed = resolve;
+		});
+		const port = await startRawServer('220 mx.test ready\r\n', (line, socket) => {
+			if (!watchingClose) {
+				watchingClose = true;
+				socket.once('close', peerClosed);
+			}
+			if (line.startsWith('EHLO')) return '250 mx.test\r\n';
+			if (line === 'DATA') return '354 continue\r\n';
+			if (line === '__DATA__') return '';
+			return '250 OK\r\n';
+		});
+		const controller = new AbortController();
+		const send = sendMessage({
+			connect: {
+				host: '127.0.0.1',
+				port,
+				ehloName: 'client.test',
+				tlsMode: 'none',
+				timeouts: { data: 5_000 },
+			},
+			envelope: {
+				from: 'sender@example.com',
+				to: ['rcpt@example.net'],
+				data: MESSAGE,
+			},
+			signal: controller.signal,
+		});
+		setTimeout(() => controller.abort(), 50);
+
+		await expect(send).rejects.toThrow(/connection closed/);
+		await closed;
+	});
+
 	// (b) ── partial RCPT acceptance: 2 of 3, verdicts correct per recipient ──
 	it('proceeds on partial RCPT acceptance and reports per-recipient verdicts', async () => {
 		running = await startServer({

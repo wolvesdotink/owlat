@@ -381,8 +381,13 @@ async function completeData(
 		);
 	}
 	// The socket-lifecycle mechanics live on SmtpConnection, which owns the socket.
-	await conn.writePayload(dotStuffMessage(prepared.body), 'data-final');
-	const finalReply = await conn.readReply('data-final', conn.dataTimeoutMs);
+	const dataDeadline = Date.now() + conn.dataTimeoutMs;
+	await conn.writePayload(dotStuffMessage(prepared.body), 'data-final', conn.dataTimeoutMs);
+	// Writing and awaiting the acknowledgement share one DATA-phase budget. A
+	// peer cannot consume the full timeout with backpressure and then receive a
+	// fresh full timeout for its final reply.
+	const replyBudget = Math.max(1, dataDeadline - Date.now());
+	const finalReply = await conn.readReply('data-final', replyBudget);
 	assertCompletion(finalReply, 'data-final', conn.secured);
 
 	return { accepted, rejected, response: finalReply };

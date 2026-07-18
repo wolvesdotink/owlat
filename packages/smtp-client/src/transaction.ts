@@ -435,6 +435,8 @@ export interface SendMessageOptions {
 	auth?: AuthConfig;
 	/** The envelope + body to deliver. */
 	envelope: EnvelopeOptions;
+	/** Optional cancellation; aborting destroys the live socket immediately. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -444,7 +446,13 @@ export interface SendMessageOptions {
  */
 export async function sendMessage(options: SendMessageOptions): Promise<SendResult> {
 	const conn = await SmtpConnection.connect(options.connect);
+	const abort = (): void => conn.close();
+	options.signal?.addEventListener('abort', abort, { once: true });
 	try {
+		if (options.signal?.aborted === true) {
+			conn.close();
+			throw new Error('SMTP send aborted');
+		}
 		if (options.auth !== undefined) {
 			await authenticate(conn, options.auth.credentials, authOptions(options.auth));
 		}
@@ -454,6 +462,8 @@ export async function sendMessage(options: SendMessageOptions): Promise<SendResu
 	} catch (err) {
 		conn.close();
 		throw err;
+	} finally {
+		options.signal?.removeEventListener('abort', abort);
 	}
 }
 
