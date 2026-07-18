@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { pluginWorkerJobKind, isPluginWorkerJobKindOwnedBy, parsePluginId } from '@owlat/plugin-kit';
+import {
+	pluginWorkerJobKind,
+	isPluginWorkerJobKindOwnedBy,
+	parsePluginId,
+} from '@owlat/plugin-kit';
 import { describe, expect, it } from 'vitest';
 import {
 	buildSeedTestPayload,
@@ -33,13 +37,17 @@ describe('buildSeedTestPayload', () => {
 			pluginWorkerJobKind(DELIVERABILITY_LAB_PLUGIN_ID, SEED_TEST_LOCAL_ID)
 		);
 		expect(isPluginWorkerJobKindOwnedBy(request.jobKind, DELIVERABILITY_LAB_PLUGIN_ID)).toBe(true);
-		expect(
-			isPluginWorkerJobKindOwnedBy(request.jobKind, parsePluginId('other-plugin'))
-		).toBe(false);
+		expect(isPluginWorkerJobKindOwnedBy(request.jobKind, parsePluginId('other-plugin'))).toBe(
+			false
+		);
 	});
 
 	it('de-duplicates and lowercases seed addresses', () => {
-		const request = buildSeedTestPayload(CLEAN_EMAIL, ['A@X.example', 'a@x.example', 'b@x.example']);
+		const request = buildSeedTestPayload(CLEAN_EMAIL, [
+			'A@X.example',
+			'a@x.example',
+			'b@x.example',
+		]);
 		const payload = JSON.parse(request.payload) as SeedTestPayload;
 		expect(payload.seeds).toEqual(['a@x.example', 'b@x.example']);
 	});
@@ -47,7 +55,10 @@ describe('buildSeedTestPayload', () => {
 	it.each([
 		['no seeds', [] as string[]],
 		['a malformed address', ['not-an-email']],
-		['too many seeds', Array.from({ length: SEED_TEST_MAX_SEEDS + 1 }, (_v, i) => `s${i}@x.example`)],
+		[
+			'too many seeds',
+			Array.from({ length: SEED_TEST_MAX_SEEDS + 1 }, (_v, i) => `s${i}@x.example`),
+		],
 	])('rejects %s with a typed error before enqueue', (_label, seeds) => {
 		expect(() => buildSeedTestPayload(CLEAN_EMAIL, seeds)).toThrow(SeedTestPayloadError);
 	});
@@ -68,10 +79,7 @@ describe('parseSeedTestResult', () => {
 		['a JSON array', '[]'],
 		['counts that do not sum to seeds', JSON.stringify({ ...validResult(2), inbox: 5 })],
 		['a placements length mismatch', JSON.stringify({ ...validResult(2), placements: [] })],
-		[
-			'an out-of-range placement rate',
-			JSON.stringify({ ...validResult(1), placementRate: 2 }),
-		],
+		['an out-of-range placement rate', JSON.stringify({ ...validResult(1), placementRate: 2 })],
 		[
 			'an unknown folder',
 			JSON.stringify({

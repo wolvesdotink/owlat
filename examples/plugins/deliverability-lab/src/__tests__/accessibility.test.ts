@@ -37,8 +37,8 @@ describe('auditAccessibility', () => {
 	});
 
 	it('treats a message with no HTML as clean', () => {
-		expect(
-			auditAccessibility({ from: 'a@b.example', subject: 'hi', text: 'plain' }).verdict
-		).toBe('pass');
+		expect(auditAccessibility({ from: 'a@b.example', subject: 'hi', text: 'plain' }).verdict).toBe(
+			'pass'
+		);
 	});
 });

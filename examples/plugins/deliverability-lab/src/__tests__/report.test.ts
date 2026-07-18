@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeEmail, summarizeFailure } from '../engine/report';
-import {
-	BROKEN_LINKS_EMAIL,
-	CLEAN_EMAIL,
-	INACCESSIBLE_EMAIL,
-	SPAMMY_EMAIL,
-} from './fixtures';
+import { BROKEN_LINKS_EMAIL, CLEAN_EMAIL, INACCESSIBLE_EMAIL, SPAMMY_EMAIL } from './fixtures';
 
 describe('analyzeEmail', () => {
 	it('reports an overall pass only when every analyzer passes', () => {

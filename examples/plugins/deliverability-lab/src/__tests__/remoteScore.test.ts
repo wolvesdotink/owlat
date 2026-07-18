@@ -64,7 +64,10 @@ describe('scoreDeliverability', () => {
 	): ScoreDeliverabilityOptions => ({ hook, deadlineMs: 5_000, signal, ...NEVER_TIMER });
 
 	it('uses the local engine when no hook is configured', async () => {
-		const result = await scoreDeliverability(SPAMMY_EMAIL, options(undefined, new AbortController().signal));
+		const result = await scoreDeliverability(
+			SPAMMY_EMAIL,
+			options(undefined, new AbortController().signal)
+		);
 		expect(result.source).toBe('fallback');
 		expect(result).toEqual(localFallbackScore(SPAMMY_EMAIL));
 	});
@@ -79,13 +82,19 @@ describe('scoreDeliverability', () => {
 
 	it('prefers a valid remote score', async () => {
 		const hook: RemoteScoreHook = async () => ({ score: 0.73, reason: 'vendor flagged' });
-		const result = await scoreDeliverability(CLEAN_EMAIL, options(hook, new AbortController().signal));
+		const result = await scoreDeliverability(
+			CLEAN_EMAIL,
+			options(hook, new AbortController().signal)
+		);
 		expect(result).toEqual({ score: 0.73, source: 'remote', reason: 'vendor flagged' });
 	});
 
 	it('falls back to the local score when the remote response is malformed', async () => {
 		const hook: RemoteScoreHook = async () => ({ score: 'not a number' });
-		const result = await scoreDeliverability(SPAMMY_EMAIL, options(hook, new AbortController().signal));
+		const result = await scoreDeliverability(
+			SPAMMY_EMAIL,
+			options(hook, new AbortController().signal)
+		);
 		expect(result.source).toBe('fallback');
 	});
 
@@ -93,7 +102,10 @@ describe('scoreDeliverability', () => {
 		const hook: RemoteScoreHook = async () => {
 			throw new Error('vendor down');
 		};
-		const result = await scoreDeliverability(CLEAN_EMAIL, options(hook, new AbortController().signal));
+		const result = await scoreDeliverability(
+			CLEAN_EMAIL,
+			options(hook, new AbortController().signal)
+		);
 		expect(result.source).toBe('fallback');
 	});
 
