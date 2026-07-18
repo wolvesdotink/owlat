@@ -63,6 +63,7 @@ export { isPluginId, parsePluginId, PluginIdError } from './pluginId';
 export type { PluginId } from './pluginId';
 export {
 	PLUGIN_WORKER_CAPABILITY,
+	PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES,
 	PLUGIN_WORKER_MAX_ATTEMPTS,
 	PLUGIN_WORKER_MIN_ATTEMPTS,
 	PLUGIN_WORKER_PAYLOAD_MAX_BYTES,
@@ -74,6 +75,7 @@ export {
 	isPluginWorkerJobKindOwnedBy,
 	isPluginWorkerJobLocalId,
 	pluginWorkerJobKind,
+	pluginWorkerJobLocalIdOf,
 } from './workerTask';
 export type {
 	PluginWorkerCapability,

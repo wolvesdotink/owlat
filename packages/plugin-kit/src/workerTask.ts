@@ -1,4 +1,4 @@
-import type { PluginId } from './pluginId';
+import { isPluginId, type PluginId } from './pluginId';
 
 /**
  * Capability a plugin must declare (and the operator must grant) to enqueue work
@@ -84,6 +84,51 @@ export function isPluginWorkerJobKindOwnedBy(
 	if (!kind.startsWith(prefix)) return false;
 	return isPluginWorkerJobLocalId(kind.slice(prefix.length));
 }
+
+/**
+ * Extract the local job id from a namespaced worker job kind, or null when the
+ * kind is not exactly `plugin.<pluginId>.<localId>` with a well-formed plugin id
+ * and local id. This is the SINGLE authority for parsing a job kind: the host
+ * uses `isPluginWorkerJobKindOwnedBy` at enqueue and the sandbox worker uses this
+ * to route a claimed job, so the two can never disagree on which kinds are
+ * well-formed (both reuse `isPluginId` / `isPluginWorkerJobLocalId`).
+ */
+export function pluginWorkerJobLocalIdOf(kind: unknown): PluginWorkerJobLocalId | null {
+	if (typeof kind !== 'string') return null;
+	// A plugin id and a local id both forbid `.`, so a well-formed kind splits
+	// into exactly three segments: the `plugin` tag, the plugin id, the local id.
+	const parts = kind.split('.');
+	if (parts.length !== 3 || parts[0] !== 'plugin') return null;
+	const [, pluginId, localId] = parts;
+	if (!isPluginId(pluginId)) return null;
+	if (!isPluginWorkerJobLocalId(localId)) return null;
+	return localId;
+}
+
+/**
+ * Conformance vectors shared by the plugin-kit and code-worker test suites: a
+ * job kind mapped to the local id `pluginWorkerJobLocalIdOf` must return (or null
+ * when the kind is malformed). Exported so both sides assert the SAME grammar
+ * against the SAME function and cannot drift apart.
+ */
+export const PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES: ReadonlyArray<{
+	readonly kind: string;
+	readonly localId: PluginWorkerJobLocalId | null;
+}> = Object.freeze([
+	{ kind: 'plugin.deliverability-lab.spam-score', localId: 'spam-score' },
+	{ kind: 'plugin.lab.selftest', localId: 'selftest' },
+	{ kind: 'plugin.a.b', localId: 'b' },
+	{ kind: 'plugin.x9-y.z9-w', localId: 'z9-w' },
+	{ kind: 'plugin.lab.Bad', localId: null },
+	{ kind: 'plugin.lab.', localId: null },
+	{ kind: 'plugin.lab.a.b', localId: null },
+	{ kind: 'plugin.Lab.job', localId: null },
+	{ kind: 'plugin.lab.has_underscore', localId: null },
+	{ kind: 'plugin..job', localId: null },
+	{ kind: 'deliverability-lab.seed-test', localId: null },
+	{ kind: 'notplugin.lab.job', localId: null },
+	{ kind: 'nope', localId: null },
+]);
 
 /** Clamp a requested attempt budget into the host's closed retry range. */
 export function clampWorkerAttempts(requested: number | undefined): number {
