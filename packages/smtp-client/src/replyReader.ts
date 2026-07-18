@@ -118,6 +118,22 @@ export class ReplyReader {
 		});
 	}
 
+	/**
+	 * Remove and return the oldest COMPLETE reply the peer already sent that no read
+	 * has consumed, or `undefined` if none is buffered. This is the escape hatch for
+	 * the DATA tail: a hostile/abrupt server can write a definitive final verdict
+	 * (e.g. `554 5.7.1 …`) DURING the body stream and immediately slam the socket, so
+	 * the reply lands in this queue and THEN the FIN poisons the reader. A plain
+	 * {@link ReplyReader.read} rejects on the terminal error first (the anti-desync
+	 * rule), which would surface a generic close error and LOSE the permanent 5xx.
+	 * The caller reaches for this only after a data-phase wire failure to recover the
+	 * verdict the peer already committed — the normal path never touches it, so the
+	 * anti-desync posture for a late reply after a timeout is unchanged.
+	 */
+	takeQueuedReply(): SmtpReply | undefined {
+		return this.queue.shift();
+	}
+
 	/** Stop listening on the current source (before a socket swap). */
 	pauseSource(): void {
 		this.source.removeListener('data', this.onData);

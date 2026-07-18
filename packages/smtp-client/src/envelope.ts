@@ -147,29 +147,29 @@ function prepareEnvelope(
 // eslint-disable-next-line no-control-regex
 const NON_ASCII = /[^\x00-\x7F]/;
 
-/** The local-part of an addr-spec: everything before the last `@` (the whole string if none). */
-function localPart(addrSpec: string): string {
-	const at = addrSpec.lastIndexOf('@');
-	return at < 0 ? addrSpec : addrSpec.slice(0, at);
-}
-
 /**
- * Does this envelope carry a non-ASCII (RFC 6531 EAI) LOCAL-PART — a return path or
- * recipient whose mailbox local-part is UTF-8? Only the local-part forces SMTPUTF8:
- * it has no ASCII downgrade (there is no RFC 2047 for an addr-spec, and no punycode
- * for a local-part), so such an address can only be delivered over an `SMTPUTF8`
- * transaction. A non-ASCII DOMAIN does NOT trip this — domains are IDN-punycoded to
- * A-labels at composition (W6, `mail-message` `idnNormalizeAddress`), so any address
- * reaching the client already carries an ASCII domain and a U-label domain has a
- * lossless downgrade rather than needing SMTPUTF8. Read structurally from the
- * envelope bytes — never a message-text sniff.
+ * Does this envelope carry a non-ASCII (RFC 6531 EAI) address — a return path or
+ * recipient with ANY non-ASCII byte, whether in the local-part OR the domain? Such
+ * an address can only cross the wire over an `SMTPUTF8` transaction, so it is the
+ * fail-closed gate: if the server did not advertise SMTPUTF8, {@link sendEnvelope}
+ * refuses rather than emitting raw UTF-8 with no keyword (an RFC 6531 violation and
+ * a mojibake/misdelivery vector against a non-SMTPUTF8 peer).
+ *
+ * The check spans the WHOLE address on purpose. A non-ASCII local-part has no ASCII
+ * downgrade at all; a non-ASCII (U-label) domain has a lossless punycode downgrade,
+ * but this package does NOT perform that downgrade — so a domain still carrying
+ * U-labels when it reaches the client genuinely needs SMTPUTF8, and keying only on
+ * the local-part would fail OPEN (write the raw UTF-8 domain with no keyword). An
+ * already-punycoded domain is pure ASCII (`xn--…`), so it never trips this and keeps
+ * sending normally. Read structurally from the envelope bytes — never a message-text
+ * sniff.
  */
 export function envelopeRequiresSmtpUtf8(options: EnvelopeOptions): boolean {
-	if (NON_ASCII.test(localPart(options.from))) {
+	if (NON_ASCII.test(options.from)) {
 		return true;
 	}
 	for (const recipient of options.to) {
-		if (NON_ASCII.test(localPart(recipient))) {
+		if (NON_ASCII.test(recipient)) {
 			return true;
 		}
 	}
@@ -213,16 +213,17 @@ export async function sendEnvelope(
 
 	// SMTPUTF8 / EAI (RFC 6531): an internationalized envelope needs the extension.
 	// If the server advertised it we tag MAIL FROM; if it did NOT, we FAIL CLOSED
-	// here — before any byte reaches the wire — because a non-ASCII local-part has
-	// no ASCII downgrade and silently mangling it would misdeliver. This is a
-	// permanent condition (`clientRefusal: 'smtputf8-unavailable'`), never retried.
+	// here — before any byte reaches the wire — because a non-ASCII address (local-part
+	// OR an un-punycoded U-label domain) cannot be safely emitted without the keyword,
+	// and silently writing raw UTF-8 would misdeliver/mojibake. This is a permanent
+	// condition (`clientRefusal: 'smtputf8-unavailable'`), never retried.
 	const smtpUtf8 = envelopeRequiresSmtpUtf8(options);
 	if (smtpUtf8 && !conn.capabilities.smtpUtf8) {
 		throw new SmtpError({
 			phase: 'mail',
 			message:
 				'server does not advertise SMTPUTF8 (RFC 6531); refusing to send an internationalized ' +
-				'(non-ASCII) envelope address — there is no ASCII downgrade for a UTF-8 mailbox',
+				'(non-ASCII) envelope address — there is no safe ASCII form for a UTF-8 mailbox or domain',
 			secured: conn.secured,
 			clientRefusal: 'smtputf8-unavailable',
 		});
@@ -382,15 +383,48 @@ async function completeData(
 	}
 	// The socket-lifecycle mechanics live on SmtpConnection, which owns the socket.
 	const dataDeadline = Date.now() + conn.dataTimeoutMs;
-	await conn.writePayload(dotStuffMessage(prepared.body), 'data-final', conn.dataTimeoutMs);
-	// Writing and awaiting the acknowledgement share one DATA-phase budget. A
-	// peer cannot consume the full timeout with backpressure and then receive a
-	// fresh full timeout for its final reply.
-	const replyBudget = Math.max(1, dataDeadline - Date.now());
-	const finalReply = await conn.readReply('data-final', replyBudget);
-	assertCompletion(finalReply, 'data-final', conn.secured);
+	try {
+		await conn.writePayload(dotStuffMessage(prepared.body), 'data-final', conn.dataTimeoutMs);
+		// Writing and awaiting the acknowledgement share one DATA-phase budget. A
+		// peer cannot consume the full timeout with backpressure and then receive a
+		// fresh full timeout for its final reply.
+		const replyBudget = Math.max(1, dataDeadline - Date.now());
+		const finalReply = await conn.readReply('data-final', replyBudget);
+		assertCompletion(finalReply, 'data-final', conn.secured);
+		return { accepted, rejected, response: finalReply };
+	} catch (err) {
+		// A server can write a definitive final verdict (e.g. `554 5.7.1 …`) DURING the
+		// body stream and immediately slam the socket: the reply lands in the reader's
+		// queue, then the FIN poisons the reader, so writePayload/readReply reject with
+		// a generic close error carrying NO replyCode — the permanent 5xx would be lost
+		// and a hard bounce misclassified as an ambiguous data-phase failure. Only when
+		// the failure is such a reply-less wire error do we look for a complete reply the
+		// peer already committed and surface THAT verdict instead. A failure that already
+		// carries a replyCode (a real 5xx we read cleanly) is left untouched, and the
+		// anti-desync posture for the normal case is unchanged.
+		const buffered = isReplylessWireError(err) ? conn.takeBufferedReply() : undefined;
+		if (buffered !== undefined) {
+			if (isPositiveCompletion(buffered.code)) {
+				return { accepted, rejected, response: buffered };
+			}
+			throw errorFromReply(
+				'data-final',
+				`server rejected data with ${buffered.code}`,
+				conn.secured,
+				buffered
+			);
+		}
+		throw err;
+	}
+}
 
-	return { accepted, rejected, response: finalReply };
+/**
+ * `true` for a data-phase failure that carries no server reply code — a socket
+ * close/error/timeout surfaced as a generic {@link SmtpError}. Such a failure is the
+ * only case where a queued-but-unread final reply may still hold the real verdict.
+ */
+function isReplylessWireError(err: unknown): boolean {
+	return err instanceof SmtpError && err.replyCode === undefined;
 }
 
 /**

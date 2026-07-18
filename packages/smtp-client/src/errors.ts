@@ -135,3 +135,27 @@ export class SmtpError extends Error {
 export function isSmtpError(value: unknown): value is SmtpError {
 	return value instanceof SmtpError;
 }
+
+/**
+ * A user/caller cancellation of a send via its {@link AbortSignal} — distinct from
+ * any wire failure. Both abort paths in `sendMessage` (a pre-flight abort before the
+ * connection opens, and a mid-flight abort that closes the live socket and makes the
+ * in-flight read reject) surface as THIS type, so the MTA retry classifier can tell a
+ * deliberate cancellation from a genuine transient error and never re-enqueue a send
+ * the caller cancelled. Carries the `aborted: true` marker and, for a mid-flight
+ * abort, the wire error it replaced on the standard `cause` slot (for logs only).
+ */
+export class SmtpAbortError extends Error {
+	readonly aborted = true as const;
+
+	constructor(message = 'SMTP send aborted', options?: { cause?: unknown }) {
+		super(message, options?.cause === undefined ? undefined : { cause: options.cause });
+		this.name = 'SmtpAbortError';
+		Object.setPrototypeOf(this, SmtpAbortError.prototype);
+	}
+}
+
+/** Narrowing type guard for `SmtpAbortError` (a cancelled send, not a wire failure). */
+export function isSmtpAbortError(value: unknown): value is SmtpAbortError {
+	return value instanceof SmtpAbortError;
+}
