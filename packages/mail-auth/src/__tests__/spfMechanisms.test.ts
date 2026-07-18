@@ -102,3 +102,58 @@ describe('checkSpf — top-level lookup outcomes', () => {
 		expect(result.result).toBe('none');
 	});
 });
+
+describe('checkSpf — RFC 7208 §4.5 record selection', () => {
+	it('returns permerror when more than one v=spf1 record is published', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'dup.com') {
+				return [['v=spf1 ip4:1.2.3.4 -all'], ['v=spf1 include:other.com -all']] as unknown[];
+			}
+			return notFound();
+		};
+		const result = await checkSpf('1.2.3.4', 'user@dup.com', 'ehlo.host', resolver);
+		expect(result.result).toBe('permerror');
+	});
+
+	it('recognizes a bare, mechanism-less `v=spf1` record (not "no record")', async () => {
+		// The trailing-space prefix bug read a record with no terms as absent → none.
+		// A bare `v=spf1` is a valid record; with no mechanism it yields neutral.
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'bare.com') return [['v=spf1']] as unknown[];
+			return notFound();
+		};
+		const result = await checkSpf('1.2.3.4', 'user@bare.com', 'ehlo.host', resolver);
+		expect(result.result).not.toBe('none');
+		expect(result.result).toBe('neutral');
+	});
+});
+
+describe('checkSpf — a:/mx: macro expansion (RFC 7208 §7)', () => {
+	it('expands a macro in an `a:` domain-spec (`a:%{d}`) before the A lookup', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'macro.com') {
+				return [['v=spf1 a:%{d} -all']] as unknown[];
+			}
+			// Only the EXPANDED target resolves; a literal `%{d}` would not match.
+			if (type === 'A' && name === 'macro.com') return ['1.2.3.4'];
+			return [] as unknown[];
+		};
+		const result = await checkSpf('1.2.3.4', 'user@macro.com', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('expands a macro in an `mx:` domain-spec (`mx:%{d}`) before the MX lookup', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'mxmacro.com') {
+				return [['v=spf1 mx:%{d} -all']] as unknown[];
+			}
+			if (type === 'MX' && name === 'mxmacro.com') {
+				return [{ exchange: 'mail.mxmacro.com', priority: 10 }];
+			}
+			if (type === 'A' && name === 'mail.mxmacro.com') return ['5.6.7.8'];
+			return [] as unknown[];
+		};
+		const result = await checkSpf('5.6.7.8', 'user@mxmacro.com', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+});
