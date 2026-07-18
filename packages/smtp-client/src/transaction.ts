@@ -27,7 +27,7 @@ import {
 	type EhloCapabilities,
 } from './commands';
 import { SmtpConnection, type SmtpConnectOptions } from './connection';
-import { SmtpError, type SmtpAuthCause } from './errors';
+import { SmtpError, SmtpAbortError, type SmtpAuthCause } from './errors';
 import { isPositiveCompletion, isPositiveIntermediate, type SmtpReply } from './reply';
 import { errorFromReply, sendEnvelope, type EnvelopeOptions, type SendResult } from './envelope';
 
@@ -447,7 +447,7 @@ export async function sendMessage(options: SendMessageOptions): Promise<SendResu
 	try {
 		if (options.signal?.aborted === true) {
 			conn.close();
-			throw new Error('SMTP send aborted');
+			throw new SmtpAbortError();
 		}
 		if (options.auth !== undefined) {
 			await authenticate(conn, options.auth.credentials, authOptions(options.auth));
@@ -457,6 +457,16 @@ export async function sendMessage(options: SendMessageOptions): Promise<SendResu
 		return result;
 	} catch (err) {
 		conn.close();
+		// A mid-flight abort fires `abort` → `conn.close()`, so the in-flight read
+		// rejects with a phase-tagged wire SmtpError indistinguishable from a genuine
+		// transient failure. When the signal is aborted, normalize BOTH abort paths to
+		// a single recognizable SmtpAbortError so the retry classifier never re-enqueues
+		// a cancelled send. The original wire error is kept on `cause` for logs.
+		if (options.signal?.aborted === true) {
+			throw err instanceof SmtpAbortError
+				? err
+				: new SmtpAbortError('SMTP send aborted', { cause: err });
+		}
 		throw err;
 	} finally {
 		options.signal?.removeEventListener('abort', abort);

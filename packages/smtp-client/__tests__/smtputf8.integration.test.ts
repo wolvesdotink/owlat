@@ -126,17 +126,28 @@ describe('envelopeRequiresSmtpUtf8 — structural detection', () => {
 		).toBe(true);
 	});
 
-	it('does NOT flag a domain-only IDN (ASCII local-part) — domains are punycoded at composition (W6)', () => {
-		// A non-ASCII DOMAIN has a lossless ASCII downgrade (punycode) and is
-		// IDN-normalized to A-labels before the envelope reaches the client, so it
-		// never requires SMTPUTF8. Keying on the local-part is what stops a
-		// domain-only IDN from failing closed against every non-SMTPUTF8 server.
+	it('FLAGS a non-ASCII (U-label) DOMAIN — this package does not punycode, so it must not fail open', () => {
+		// A U-label domain still carrying non-ASCII bytes when it reaches the client
+		// genuinely needs SMTPUTF8: writing it raw to a non-SMTPUTF8 peer is an RFC 6531
+		// violation and a mojibake/misdelivery vector. The detection spans the WHOLE
+		// address so a domain-only IDN fails CLOSED rather than hitting the wire raw.
 		expect(envelopeRequiresSmtpUtf8({ from: 'a@例え.test', to: ['b@example.net'], data: '' })).toBe(
-			false
+			true
 		);
 		expect(envelopeRequiresSmtpUtf8({ from: 'a@example.com', to: ['b@例え.test'], data: '' })).toBe(
-			false
+			true
 		);
+	});
+
+	it('does NOT flag an already-punycoded (xn--) ASCII domain — it keeps sending normally', () => {
+		// A domain punycoded to A-labels is pure ASCII, so it never trips the gate and
+		// sends without SMTPUTF8 against any server, SMTPUTF8-capable or not.
+		expect(
+			envelopeRequiresSmtpUtf8({ from: 'a@xn--r8jz45g.test', to: ['b@example.net'], data: '' })
+		).toBe(false);
+		expect(
+			envelopeRequiresSmtpUtf8({ from: 'a@example.com', to: ['b@xn--r8jz45g.test'], data: '' })
+		).toBe(false);
 	});
 
 	it('leaves a fully ASCII envelope alone', () => {
@@ -214,6 +225,56 @@ describe('fail-closed when SMTPUTF8 is NOT advertised', () => {
 		}
 		// Fail-closed: MAIL FROM never reached the wire (only EHLO did).
 		expect(received(peer.chunks)).not.toContain('MAIL FROM');
+	});
+
+	it('refuses a non-ASCII DOMAIN envelope before any byte reaches the wire (no raw UTF-8 domain)', async () => {
+		// The fail-open this replaces: a U-label domain used to slip past the local-part
+		// gate and get written to the socket as raw UTF-8 with NO SMTPUTF8 keyword. Now
+		// the whole address is scanned, so a non-ASCII domain fails CLOSED identically to
+		// a non-ASCII local-part.
+		const peer = await startPeer({ ehloReply: NO_SMTPUTF8_EHLO });
+		const conn = await connectPlain(peer.port);
+		expect(conn.capabilities.smtpUtf8).toBe(false);
+
+		let caught: unknown;
+		try {
+			await sendEnvelope(conn, {
+				from: 'sender@münchen.de',
+				to: ['rcpt@example.net'],
+				data: MESSAGE,
+			});
+		} catch (err) {
+			caught = err;
+		}
+		conn.close();
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('mail');
+			expect(caught.clientRefusal).toBe('smtputf8-unavailable');
+			expect(caught.replyCode).toBeUndefined();
+		}
+		// Fail-closed: neither MAIL FROM nor the raw UTF-8 domain reached the wire.
+		const wire = received(peer.chunks);
+		expect(wire).not.toContain('MAIL FROM');
+		expect(wire).not.toContain('münchen');
+	});
+
+	it('still delivers a punycode (xn--) ASCII-domain envelope against a non-SMTPUTF8 server', async () => {
+		// An A-label (punycoded) domain is pure ASCII, so it sends fine with no SMTPUTF8
+		// keyword — the fail-closed check only trips on genuine non-ASCII bytes.
+		const peer = await startPeer({ ehloReply: NO_SMTPUTF8_EHLO });
+		const conn = await connectPlain(peer.port);
+		const result = await sendEnvelope(conn, {
+			from: 'sender@xn--mnchen-3ya.de',
+			to: ['rcpt@example.net'],
+			data: MESSAGE,
+		});
+		conn.close();
+		expect(result.response.code).toBe(250);
+		const wire = received(peer.chunks);
+		expect(wire).toContain('MAIL FROM:<sender@xn--mnchen-3ya.de>');
+		expect(wire).not.toContain('SMTPUTF8');
 	});
 
 	it('still delivers an all-ASCII envelope against a non-SMTPUTF8 server (no regression)', async () => {

@@ -227,6 +227,16 @@ export class SmtpConnection {
 	}
 
 	/**
+	 * Recover a COMPLETE reply the peer buffered before a wire failure — the DATA
+	 * tail's escape hatch when a server writes a definitive verdict (e.g. `554`) and
+	 * immediately closes the socket, poisoning the reader before the reply is read.
+	 * Returns `undefined` when nothing is buffered. See {@link ReplyReader.takeQueuedReply}.
+	 */
+	takeBufferedReply(): SmtpReply | undefined {
+		return this.reader.takeQueuedReply();
+	}
+
+	/**
 	 * Write a payload buffer (the dot-stuffed DATA body) to the socket, honoring
 	 * backpressure: a `false` from `write()` means the kernel buffer is full, so
 	 * this resolves only after the socket's `'drain'`. A socket `error`/`close`

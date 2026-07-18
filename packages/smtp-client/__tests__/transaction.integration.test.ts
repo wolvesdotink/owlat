@@ -23,7 +23,7 @@ import type { AddressInfo } from 'node:net';
 
 import { SmtpConnection } from '../src/connection';
 import { authenticate, sendEnvelope, sendMessage, verify } from '../src/transaction';
-import { isSmtpError } from '../src/errors';
+import { isSmtpError, isSmtpAbortError } from '../src/errors';
 import { VALID_CERT, VALID_KEY } from './certFixtures';
 
 interface RunningServer {
@@ -181,7 +181,12 @@ describe('transaction layer — smtp-server integration', () => {
 		expect(received).not.toContain('..leading');
 	});
 
-	it('cancels a stalled send by destroying the live SMTP socket', async () => {
+	it('cancels a stalled send by destroying the live SMTP socket, surfacing a distinct SmtpAbortError', async () => {
+		// Previously this asserted only a generic `/connection closed/` wire error — the
+		// exact fail-open Finding 3 fixes: a mid-flight abort closes the socket, so the
+		// in-flight read rejected with a wrapped wire SmtpError indistinguishable from a
+		// genuine transient failure, letting the retry classifier re-enqueue a cancelled
+		// send. It now must surface a recognizable SmtpAbortError instead.
 		let peerClosed!: () => void;
 		let watchingClose = false;
 		const closed = new Promise<void>((resolve) => {
@@ -194,6 +199,8 @@ describe('transaction layer — smtp-server integration', () => {
 			}
 			if (line.startsWith('EHLO')) return '250 mx.test\r\n';
 			if (line === 'DATA') return '354 continue\r\n';
+			// Never send the final reply: the client stalls in the data-final read until
+			// the abort tears the socket down mid-flight.
 			if (line === '__DATA__') return '';
 			return '250 OK\r\n';
 		});
@@ -215,8 +222,51 @@ describe('transaction layer — smtp-server integration', () => {
 		});
 		setTimeout(() => controller.abort(), 50);
 
-		await expect(send).rejects.toThrow(/connection closed/);
+		let caught: unknown;
+		try {
+			await send;
+		} catch (err) {
+			caught = err;
+		}
 		await closed;
+
+		// The load-bearing assertion: a mid-flight abort is an identifiable abort, NOT a
+		// generic phase SmtpError. SmtpAbortError does not extend SmtpError, carries the
+		// `aborted: true` marker, and preserves the underlying wire error on `cause`.
+		expect(isSmtpAbortError(caught)).toBe(true);
+		expect(isSmtpError(caught)).toBe(false);
+		if (isSmtpAbortError(caught)) {
+			expect(caught.aborted).toBe(true);
+			expect(isSmtpError(caught.cause)).toBe(true);
+		}
+	});
+
+	it('surfaces a pre-flight abort (signal already aborted) as the same SmtpAbortError', async () => {
+		// The other abort path: the signal is already aborted before the transaction
+		// runs. It must be the SAME recognizable type as the mid-flight abort so a caller
+		// can classify both identically.
+		const port = await startRawServer('220 mx.test ready\r\n', (line) => {
+			if (line.startsWith('EHLO')) return '250 mx.test\r\n';
+			if (line === 'DATA') return '354 continue\r\n';
+			if (line === '__DATA__') return '';
+			return '250 OK\r\n';
+		});
+		const controller = new AbortController();
+		controller.abort();
+		let caught: unknown;
+		try {
+			await sendMessage({
+				connect: { host: '127.0.0.1', port, ehloName: 'client.test', tlsMode: 'none' },
+				envelope: { from: 'sender@example.com', to: ['rcpt@example.net'], data: MESSAGE },
+				signal: controller.signal,
+			});
+		} catch (err) {
+			caught = err;
+		}
+		expect(isSmtpAbortError(caught)).toBe(true);
+		if (isSmtpAbortError(caught)) {
+			expect(caught.aborted).toBe(true);
+		}
 	});
 
 	// (b) ── partial RCPT acceptance: 2 of 3, verdicts correct per recipient ──
@@ -409,6 +459,87 @@ describe('transaction layer — phase-tagged failures against raw peers', () => 
 		if (isSmtpError(caught)) {
 			// data / data-final = the never-auto-retried region. Distinguishable from
 			// the phase `mail` reject above purely by the discriminant.
+			expect(['data', 'data-final']).toContain(caught.phase);
+		}
+	});
+
+	it('preserves a complete 554 written mid-DATA before the server slams the socket', async () => {
+		// A hostile server emits a COMPLETE permanent verdict DURING the body stream and
+		// immediately closes: the 554 lands in the reader's queue, then the FIN poisons
+		// the reader. Previously the client rejected with a generic "socket closed" error
+		// carrying NO replyCode — the definitive 5xx verdict was lost and the hard bounce
+		// misclassified as an ambiguous data-phase failure. The client must now surface
+		// the buffered 554 (with its enhanced code), not the generic close error.
+		//
+		// To land the reply in the queue-then-poisoned recovery path DETERMINISTICALLY
+		// (not the incidental clean-read path), the peer STOPS reading after 354 so the
+		// client's large body write backpressures — writePayload is left awaiting `drain`
+		// when the peer writes the 554 (queued at the client, no read outstanding) and
+		// then destroys the socket, poisoning the reader before any clean read occurs.
+		const bigBody = [
+			'From: s@example.com',
+			'To: r@example.net',
+			'',
+			'X'.repeat(4 * 1024 * 1024),
+		].join('\r\n');
+		const server = net.createServer((socket) => {
+			socket.on('error', () => {});
+			socket.write('220 raw ready\r\n');
+			let buffer = '';
+			let inData = false;
+			socket.on('data', (chunk) => {
+				if (inData) {
+					return; // body bytes: ignored (see the pause() below)
+				}
+				buffer += chunk.toString('utf8');
+				let nl = buffer.indexOf('\n');
+				while (nl !== -1) {
+					const line = buffer.slice(0, nl).replace(/\r$/, '');
+					buffer = buffer.slice(nl + 1);
+					if (/^EHLO/i.test(line)) {
+						socket.write('250-raw\r\n250 SIZE 104857600\r\n');
+					} else if (/^DATA/i.test(line)) {
+						socket.write('354 go ahead\r\n');
+						inData = true;
+						// Stop consuming the body so the client's write backpressures, then
+						// commit the verdict and slam the socket while writePayload is stalled.
+						socket.pause();
+						setTimeout(() => {
+							socket.write('554 5.7.1 message content rejected\r\n');
+							setTimeout(() => socket.destroy(), 20);
+						}, 40);
+						break;
+					} else {
+						socket.write('250 OK\r\n');
+					}
+					nl = buffer.indexOf('\n');
+				}
+			});
+		});
+		server.on('error', () => {});
+		cleanups.push(() => server.close());
+		const port = await new Promise<number>((resolve) => {
+			server.listen(0, '127.0.0.1', () => resolve((server.address() as AddressInfo).port));
+		});
+
+		const conn = await connectPlain(port);
+		let caught: unknown;
+		try {
+			await sendEnvelope(conn, {
+				from: 'sender@example.com',
+				to: ['rcpt@example.net'],
+				data: bigBody,
+			});
+		} catch (err) {
+			caught = err;
+		}
+		conn.close();
+
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			// The load-bearing assertion: the permanent 5xx verdict survived the close.
+			expect(caught.replyCode).toBe(554);
+			expect(caught.enhancedCode).toBe('5.7.1');
 			expect(['data', 'data-final']).toContain(caught.phase);
 		}
 	});

@@ -17,6 +17,8 @@ export {
 	type SmtpErrorInit,
 	SmtpError,
 	isSmtpError,
+	SmtpAbortError,
+	isSmtpAbortError,
 } from './errors';
 
 export {
