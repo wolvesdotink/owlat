@@ -24,6 +24,7 @@ import {
 } from '@owlat/plugin-host';
 import type { ApprovalRepository } from './approvalRepository';
 import { createApprovalRequest, evaluateApproval } from './approvalStore';
+import { readOwnProperty, readOwnString } from './objectAccess';
 import type { ApprovalNotifier } from './notify';
 import {
 	OWLAT_HOOK_HEADERS,
@@ -56,15 +57,6 @@ const HOLD_REASONS = Object.freeze({
 	expired: 'The Slack approval window expired before quorum; holding for human review.',
 	error: 'The Slack approvals gate could not be evaluated; holding for human review.',
 });
-
-function readOwnString(value: unknown, key: string): string | undefined {
-	if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
-	const descriptor = Object.getOwnPropertyDescriptor(value, key);
-	if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) return undefined;
-	return typeof descriptor.value === 'string' && descriptor.value.length > 0
-		? descriptor.value
-		: undefined;
-}
 
 /**
  * Decide the gate for one draft. Always resolves to a restrict-only verdict and
@@ -199,9 +191,8 @@ export async function serveGateHook(input: ServeGateHookInput): Promise<GateHook
 
 /** Owlat wraps the hook payload as `{ ..., payload: {...} }`; unwrap it defensively. */
 function extractPayload(envelope: unknown): unknown {
-	if (envelope === null || typeof envelope !== 'object' || Array.isArray(envelope)) return {};
-	const descriptor = Object.getOwnPropertyDescriptor(envelope, 'payload');
-	return descriptor && 'value' in descriptor ? descriptor.value : {};
+	const payload = readOwnProperty(envelope, 'payload');
+	return payload === undefined ? {} : payload;
 }
 
 export { OWLAT_HOOK_HEADERS };
