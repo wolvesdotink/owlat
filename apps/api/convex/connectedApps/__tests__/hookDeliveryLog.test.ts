@@ -67,6 +67,7 @@ import {
 	AUDIT_LOG_RETENTION_MS,
 	CONNECTED_APP_HOOK_LOG_CLEANUP_BATCH_SIZE,
 	CONNECTED_APP_HOOK_LOG_MAX_LIMIT,
+	CONNECTED_APP_HOOK_LOG_SCAN_CAP,
 } from '../../lib/constants';
 
 const rootGlob = import.meta.glob('../../**/*.*s');
@@ -372,6 +373,32 @@ describe('listHookDeliveryLogs (operator read)', () => {
 		);
 		expect(bySource.every((r) => r.source === 'fallback')).toBe(true);
 		expect(bySource).toHaveLength(1);
+	});
+
+	it('finds a sparse kind behind more than SCAN_CAP newer rows (index-complete)', async () => {
+		const t = makeT();
+		const appId = await t.run((ctx) => seedApp(ctx));
+		// A handful of old 'draft' rows, then SCAN_CAP + N newer 'gate' rows. A
+		// kind-only filter that fell back to the org-wide index would take only the
+		// 500 newest (all gate) rows and JS-filter the drafts out; the dedicated
+		// by_org_kind_and_time index makes the draft filter complete regardless.
+		const draftCount = 3;
+		for (let i = 0; i < draftCount; i++) {
+			await seedLog(t, { connectedAppId: appId, hookKind: 'draft', source: 'app', attemptedAt: i });
+		}
+		for (let i = 0; i < CONNECTED_APP_HOOK_LOG_SCAN_CAP + 10; i++) {
+			await seedLog(t, {
+				connectedAppId: appId,
+				hookKind: 'gate',
+				source: 'app',
+				attemptedAt: 1_000 + i,
+			});
+		}
+		const byKind = await t
+			.withIdentity(IDENTITY)
+			.query(api.connectedApps.hookDeliveryLogStore.listHookDeliveryLogs, { hookKind: 'draft' });
+		expect(byKind.every((r) => r.hookKind === 'draft')).toBe(true);
+		expect(byKind).toHaveLength(draftCount);
 	});
 
 	it('rejects a non-admin caller and an anonymous caller', async () => {

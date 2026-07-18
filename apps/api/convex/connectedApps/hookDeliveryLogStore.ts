@@ -123,9 +123,12 @@ interface LogFilters {
 }
 
 /**
- * Scan the most selective index for the given filters — one app, one source, or
- * the whole org — newest first, up to SCAN_CAP rows. All three index arms fix
- * `organizationId`, so a read can only ever see the caller's own tenant.
+ * Scan the most selective index for the given filters — one app, one source, one
+ * kind, or the whole org — newest first, up to SCAN_CAP rows. Every index arm
+ * fixes `organizationId`, so a read can only ever see the caller's own tenant.
+ * The app filter wins when combined (its index is the most selective); source and
+ * kind each have a dedicated index so a sole/primary filter of either is
+ * index-complete, never scan-cap-lossy.
  */
 async function scanRecentLogs(
 	ctx: QueryCtx,
@@ -148,6 +151,16 @@ async function scanRecentLogs(
 			.query('connectedAppHookDeliveryLogs')
 			.withIndex('by_org_source_and_time', (index) =>
 				index.eq('organizationId', organizationId).eq('source', source)
+			)
+			.order('desc')
+			.take(CONNECTED_APP_HOOK_LOG_SCAN_CAP);
+	}
+	if (filters.hookKind !== undefined) {
+		const hookKind = filters.hookKind;
+		return ctx.db
+			.query('connectedAppHookDeliveryLogs')
+			.withIndex('by_org_kind_and_time', (index) =>
+				index.eq('organizationId', organizationId).eq('hookKind', hookKind)
 			)
 			.order('desc')
 			.take(CONNECTED_APP_HOOK_LOG_SCAN_CAP);
@@ -186,9 +199,11 @@ export const listHookDeliveryLogs = authedQuery({
 		const recent = await scanRecentLogs(ctx, activeOrganizationId, filters);
 		const matched: PublicHookDeliveryLog[] = [];
 		for (const row of recent) {
+			// Whichever single index `scanRecentLogs` chose already narrows one
+			// dimension; re-check the other two in JS so a combined filter (e.g. app +
+			// source, or app + kind) still narrows. Each re-check is a no-op for the
+			// dimension its own index already backed.
 			if (filters.hookKind !== undefined && row.hookKind !== filters.hookKind) continue;
-			// The source filter is index-backed unless an app filter took priority;
-			// re-check it here so an (app + source) combination still narrows.
 			if (filters.source !== undefined && row.source !== filters.source) continue;
 			matched.push(toPublicHookDeliveryLog(row));
 			if (matched.length >= limit) break;
