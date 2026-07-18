@@ -10,8 +10,9 @@ WORKDIR /build
 COPY package.json bun.lock* ./
 COPY patches/ patches/
 # ALL workspace manifests — bun validates the frozen lockfile against the full
-# workspace shape (same idiom as apps/web/Dockerfile).
-COPY --parents apps/*/package.json packages/*/package.json ./
+# workspace shape (same idiom as apps/web/Dockerfile), examples/plugins/*
+# included.
+COPY --parents apps/*/package.json packages/*/package.json examples/plugins/*/package.json ./
 RUN bun install --frozen-lockfile --filter @owlat/updater
 
 COPY apps/updater/tsconfig.json apps/updater/
