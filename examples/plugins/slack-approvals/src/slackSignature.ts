@@ -16,6 +16,7 @@
  */
 
 import { constantTimeEqual, hmacSha256Hex } from './crypto';
+import { parseUnixSecondsHeader } from './timestampHeader';
 
 /** Slack's documented replay tolerance: reject timestamps older/newer than 5 min. */
 export const SLACK_SIGNATURE_TOLERANCE_SECONDS = 60 * 5;
@@ -44,12 +45,6 @@ export type SlackSignatureResult =
 	| { readonly valid: true }
 	| { readonly valid: false; readonly reason: SlackSignatureFailure };
 
-function parseTimestampSeconds(value: string | null | undefined): number | null {
-	if (typeof value !== 'string' || !/^\d+$/.test(value.trim())) return null;
-	const parsed = Number(value.trim());
-	return Number.isSafeInteger(parsed) ? parsed : null;
-}
-
 /**
  * Verify one Slack interaction request. Returns `{ valid: true }` only when the
  * signing secret reproduces the presented signature over the raw body and the
@@ -62,7 +57,7 @@ export async function verifySlackSignature(
 	if (typeof input.signatureHeader !== 'string' || input.signatureHeader.length === 0) {
 		return { valid: false, reason: 'missing_signature' };
 	}
-	const timestampSeconds = parseTimestampSeconds(input.timestampHeader);
+	const timestampSeconds = parseUnixSecondsHeader(input.timestampHeader);
 	if (timestampSeconds === null) {
 		return { valid: false, reason: 'missing_timestamp' };
 	}
