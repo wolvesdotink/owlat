@@ -171,8 +171,13 @@ export async function runCommandLoop<S, T>(
 	// budget is exhausted — send 421 and tear the socket down. Returns `'stop'`
 	// when the caller must return from the loop, `'continue'` otherwise. This is
 	// the single choke point that bounds every hostile command stream (unknown
-	// verbs, malformed MAIL/RCPT, STARTTLS/AUTH misuse, and failed AUTH attempts
-	// — matching `smtp-server`'s unauthenticated-command cap, D2).
+	// verbs, malformed MAIL/RCPT, STARTTLS/AUTH misuse, failed AUTH attempts, AND
+	// application policy rejections of MAIL FROM / RCPT TO — matching
+	// `smtp-server`'s unauthenticated-command cap, D2). Because every MAIL/RCPT
+	// rejection is a bad command, a peer cannot loop rejected envelope commands to
+	// drive unbounded SPF/route/auth lookups or to hold the connection open: each
+	// rejection advances the monotonic budget, and any ACCEPTED command resets it
+	// (below) so an occasional reject in a healthy session never accumulates.
 	const noteBadCommand = (reply: SmtpReply): 'continue' | 'stop' => {
 		write(reply);
 		badCommands++;
@@ -261,7 +266,12 @@ export async function runCommandLoop<S, T>(
 			}
 			const res = await invokeHandler(opts.onMailFrom, parsed, session, opts.onError);
 			if (!res.accept) {
-				write(res.reply ?? Reply.localError());
+				// A rejected sender leaves `session.mailFrom` unset, so the "already
+				// specified" guard above can never bound a stream of rejected MAIL FROMs.
+				// Count each rejection against the bad-command budget instead: a peer
+				// looping rejected senders (each triggering a full checkSpf ~ 10 DNS
+				// lookups on the port-25 MX) is torn down with 421 after the cap.
+				if (noteBadCommand(res.reply ?? Reply.localError()) === 'stop') return;
 				continue;
 			}
 			badCommands = 0;
@@ -280,16 +290,25 @@ export async function runCommandLoop<S, T>(
 				continue;
 			}
 			if (session.rcptTo.length >= config.maxRecipients) {
-				// Bound per-transaction state before invoking application policy: a
-				// hostile valid-command flood cannot grow the recipient array or force
-				// unbounded route/auth lookups. Already-accepted recipients remain valid
-				// and the peer may proceed to DATA (RFC 5321 §4.5.3.1.8).
+				// Bound ACCEPTED per-transaction state before invoking application
+				// policy: once `maxRecipients` recipients have been accepted, further
+				// RCPTs are refused 452 WITHOUT invoking the handler, so the recipient
+				// array cannot grow past the cap. Already-accepted recipients remain
+				// valid and the peer may proceed to DATA (RFC 5321 §4.5.3.1.8). This
+				// gate keys on `rcptTo.length`, which only grows on ACCEPTED recipients;
+				// REJECTED recipients never reach it, so they are bounded separately by
+				// the bad-command budget below (a rejected RCPT triggers a route lookup).
 				write(Reply.tooManyRecipients(config.maxRecipients));
 				continue;
 			}
 			const res = await invokeHandler(opts.onRcptTo, parsed, session, opts.onError);
 			if (!res.accept) {
-				write(res.reply ?? Reply.localError());
+				// Rejected recipients never grow `rcptTo`, so the `maxRecipients` gate
+				// above can never trip on them. Count each rejection against the
+				// bad-command budget so a peer flooding rejected RCPTs (each a Redis
+				// route lookup on the port-25 MX) is torn down with 421 after the cap
+				// rather than amplifying lookups without bound.
+				if (noteBadCommand(res.reply ?? Reply.localError()) === 'stop') return;
 				continue;
 			}
 			badCommands = 0;
