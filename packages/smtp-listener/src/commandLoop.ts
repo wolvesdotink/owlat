@@ -10,20 +10,20 @@
  * closed by the socket idle timeout.
  */
 
-import type { Socket } from "node:net";
-import { ByteBudget } from "./budget.js";
-import { dotDecode } from "./dotDecode.js";
-import { Reply, replyBytes, SmtpReplyError } from "./reply.js";
-import { performAuth, type SmtpAuthConfig } from "./auth.js";
-import { upgradeTls, type ResolvedTlsConfig } from "./tls.js";
-import { SmtpCommandReader, parseAddressCommand, parseCommand } from "./reader.js";
+import type { Socket } from 'node:net';
+import { ByteBudget } from './budget.js';
+import { dotDecode } from './dotDecode.js';
+import { Reply, replyBytes, SmtpReplyError } from './reply.js';
+import { performAuth, type SmtpAuthConfig } from './auth.js';
+import { upgradeTls, type ResolvedTlsConfig } from './tls.js';
+import { SmtpCommandReader, parseAddressCommand, parseCommand } from './reader.js';
 import type {
 	MutableSmtpSession,
 	SmtpHandlerResult,
 	SmtpListenerOptions,
 	SmtpReply,
 	SmtpSession,
-} from "./types.js";
+} from './types.js';
 
 /** Fully-resolved listener configuration (defaults applied). */
 export interface ResolvedListenerConfig<S, T> {
@@ -66,7 +66,7 @@ export function writeReplyWithinBudget(
 	socket: ReplyWriteSocket,
 	reply: SmtpReply,
 	maxPendingBytes: number,
-	onFlushed?: () => void,
+	onFlushed?: () => void
 ): boolean {
 	if (socket.writableEnded || socket.destroyed) return false;
 	const bytes = replyBytes(reply);
@@ -85,7 +85,7 @@ async function invokeHandler<S, T, A>(
 		| undefined,
 	arg: A,
 	session: SmtpSession<S, T>,
-	onError: ((err: Error) => void) | undefined,
+	onError: ((err: Error) => void) | undefined
 ): Promise<{ accept: boolean; reply?: SmtpReply }> {
 	if (!handler) return { accept: true };
 	try {
@@ -106,7 +106,7 @@ async function invokeHandler<S, T, A>(
 export async function runCommandLoop<S, T>(
 	socket: Socket,
 	session: MutableSmtpSession<S, T>,
-	config: ResolvedListenerConfig<S, T>,
+	config: ResolvedListenerConfig<S, T>
 ): Promise<void> {
 	const { opts } = config;
 	// `activeSocket` and `reader` are reassigned by a STARTTLS upgrade: after the
@@ -156,10 +156,10 @@ export async function runCommandLoop<S, T>(
 			writeThenDestroy(Reply.shuttingDown(config.hostname));
 		};
 		sock.setTimeout(config.commandMs);
-		sock.on("timeout", onTimeout);
+		sock.on('timeout', onTimeout);
 		return (): void => {
 			sock.setTimeout(0);
-			sock.removeListener("timeout", onTimeout);
+			sock.removeListener('timeout', onTimeout);
 		};
 	};
 	let disarmTimeout = armTimeout(activeSocket);
@@ -173,14 +173,14 @@ export async function runCommandLoop<S, T>(
 	// the single choke point that bounds every hostile command stream (unknown
 	// verbs, malformed MAIL/RCPT, STARTTLS/AUTH misuse, and failed AUTH attempts
 	// — matching `smtp-server`'s unauthenticated-command cap, D2).
-	const noteBadCommand = (reply: SmtpReply): "continue" | "stop" => {
+	const noteBadCommand = (reply: SmtpReply): 'continue' | 'stop' => {
 		write(reply);
 		badCommands++;
 		if (badCommands >= config.maxBadCommands) {
 			writeThenDestroy(Reply.tooManyErrors());
-			return "stop";
+			return 'stop';
 		}
-		return "continue";
+		return 'continue';
 	};
 
 	// Greeting + optional connect hook. onConnect takes only the session, so it
@@ -202,46 +202,46 @@ export async function runCommandLoop<S, T>(
 		try {
 			line = await reader.readCommandLine(config.maxCommandBytes);
 		} catch {
-			writeThenDestroy(Reply.syntaxError("Line too long"));
+			writeThenDestroy(Reply.syntaxError('Line too long'));
 			return;
 		}
 		if (line === null) return; // EOF / socket gone
 
-		const { verb, rest } = parseCommand(line.toString("utf8"));
+		const { verb, rest } = parseCommand(line.toString('utf8'));
 
-		if (verb === "QUIT") {
+		if (verb === 'QUIT') {
 			write(Reply.bye(config.hostname));
 			activeSocket.end();
 			return;
 		}
-		if (verb === "NOOP") {
+		if (verb === 'NOOP') {
 			badCommands = 0;
 			write(Reply.ok());
 			continue;
 		}
-		if (verb === "RSET") {
+		if (verb === 'RSET') {
 			badCommands = 0;
 			resetTransaction();
 			write(Reply.ok());
 			continue;
 		}
-		if (verb === "HELO" || verb === "EHLO") {
-			session.esmtp = verb === "EHLO";
+		if (verb === 'HELO' || verb === 'EHLO') {
+			session.esmtp = verb === 'EHLO';
 			session.clientHostname = rest || undefined;
 			resetTransaction();
 			const hello = await invokeHandler(opts.onHelo, rest, session, opts.onError);
 			if (!hello.accept) {
-				if (noteBadCommand(hello.reply ?? Reply.paramError()) === "stop") return;
+				if (noteBadCommand(hello.reply ?? Reply.paramError()) === 'stop') return;
 			} else {
 				badCommands = 0;
 				if (hello.reply) {
 					write(hello.reply);
-				} else if (verb === "EHLO") {
+				} else if (verb === 'EHLO') {
 					write(
 						Reply.helloOk([
-							`${config.hostname} greets ${rest || "you"}`,
+							`${config.hostname} greets ${rest || 'you'}`,
 							...ehloLines(config, session),
-						]),
+						])
 					);
 				} else {
 					write(Reply.helloOk([`${config.hostname} at your service`]));
@@ -249,14 +249,14 @@ export async function runCommandLoop<S, T>(
 			}
 			continue;
 		}
-		if (verb === "MAIL") {
+		if (verb === 'MAIL') {
 			if (session.mailFrom) {
-				write(Reply.badSequence("Sender already specified"));
+				write(Reply.badSequence('Sender already specified'));
 				continue;
 			}
-			const parsed = parseAddressCommand(rest, "FROM");
+			const parsed = parseAddressCommand(rest, 'FROM');
 			if (!parsed) {
-				if (noteBadCommand(Reply.paramError()) === "stop") return;
+				if (noteBadCommand(Reply.paramError()) === 'stop') return;
 				continue;
 			}
 			const res = await invokeHandler(opts.onMailFrom, parsed, session, opts.onError);
@@ -269,14 +269,14 @@ export async function runCommandLoop<S, T>(
 			write(res.reply ?? Reply.senderOk());
 			continue;
 		}
-		if (verb === "RCPT") {
+		if (verb === 'RCPT') {
 			if (!session.mailFrom) {
-				write(Reply.badSequence("Need MAIL command"));
+				write(Reply.badSequence('Need MAIL command'));
 				continue;
 			}
-			const parsed = parseAddressCommand(rest, "TO");
+			const parsed = parseAddressCommand(rest, 'TO');
 			if (!parsed) {
-				if (noteBadCommand(Reply.paramError()) === "stop") return;
+				if (noteBadCommand(Reply.paramError()) === 'stop') return;
 				continue;
 			}
 			if (session.rcptTo.length >= config.maxRecipients) {
@@ -297,9 +297,9 @@ export async function runCommandLoop<S, T>(
 			write(res.reply ?? Reply.recipientOk());
 			continue;
 		}
-		if (verb === "DATA") {
+		if (verb === 'DATA') {
 			if (!session.mailFrom || session.rcptTo.length === 0) {
-				write(Reply.badSequence("Need MAIL and RCPT before DATA"));
+				write(Reply.badSequence('Need MAIL and RCPT before DATA'));
 				continue;
 			}
 			write(Reply.startMailInput());
@@ -307,12 +307,12 @@ export async function runCommandLoop<S, T>(
 			const budget = new ByteBudget(config.maxMessageBytes, config.abortFactor);
 			const outcome = await reader.readDataBody(budget);
 			activeSocket.setTimeout(config.commandMs);
-			if (outcome === "closed") return;
-			if (outcome === "abort") {
+			if (outcome === 'closed') return;
+			if (outcome === 'abort') {
 				activeSocket.destroy();
 				return;
 			}
-			if (outcome === "over") {
+			if (outcome === 'over') {
 				write(Reply.messageTooLarge(config.maxMessageBytes));
 				resetTransaction();
 				continue;
@@ -324,22 +324,22 @@ export async function runCommandLoop<S, T>(
 			resetTransaction();
 			continue;
 		}
-		if (verb === "VRFY" || verb === "EXPN") {
+		if (verb === 'VRFY' || verb === 'EXPN') {
 			// Do not confirm or deny address existence (no enumeration oracle).
 			badCommands = 0;
-			write({ code: 252, enhanced: "2.5.2", text: "Cannot VRFY user" });
+			write({ code: 252, enhanced: '2.5.2', text: 'Cannot VRFY user' });
 			continue;
 		}
-		if (verb === "HELP") {
+		if (verb === 'HELP') {
 			badCommands = 0;
-			write({ code: 214, enhanced: "2.0.0", text: "See RFC 5321" });
+			write({ code: 214, enhanced: '2.0.0', text: 'See RFC 5321' });
 			continue;
 		}
-		if (verb === "STARTTLS") {
+		if (verb === 'STARTTLS') {
 			// RFC 3207 §4: STARTTLS takes NO parameter; reject any argument with
 			// 501 (matches `smtp-server`) without upgrading.
 			if (rest.length > 0) {
-				if (noteBadCommand(Reply.paramError()) === "stop") return;
+				if (noteBadCommand(Reply.paramError()) === 'stop') return;
 				continue;
 			}
 			// Advertised only when TLS is available and the channel is not already
@@ -348,9 +348,9 @@ export async function runCommandLoop<S, T>(
 				// Both misuse cases flow through the single bad-command choke point so
 				// a secured client cannot loop STARTTLS 503s without consuming budget.
 				const reply = session.secure
-					? Reply.badSequence("TLS already active")
+					? Reply.badSequence('TLS already active')
 					: Reply.notImplemented();
-				if (noteBadCommand(reply) === "stop") return;
+				if (noteBadCommand(reply) === 'stop') return;
 				continue;
 			}
 			// Capture the narrowed TLS config before any `await` so narrowing on the
@@ -382,15 +382,15 @@ export async function runCommandLoop<S, T>(
 			disarmTimeout();
 			activeSocket = tlsSocket;
 			activeSocket.setNoDelay(true);
-			activeSocket.on("error", (e: Error) => opts.onError?.(e));
+			activeSocket.on('error', (e: Error) => opts.onError?.(e));
 			disarmTimeout = armTimeout(activeSocket);
 			reader = new SmtpCommandReader(activeSocket);
 			badCommands = 0;
 			continue;
 		}
-		if (verb === "AUTH") {
+		if (verb === 'AUTH') {
 			if (!config.auth) {
-				if (noteBadCommand(Reply.notImplemented()) === "stop") return;
+				if (noteBadCommand(Reply.notImplemented()) === 'stop') return;
 				continue;
 			}
 			if (config.auth.requireTls && !session.secure) {
@@ -398,14 +398,14 @@ export async function runCommandLoop<S, T>(
 				// reply — this is not an auth oracle (it reveals nothing about any
 				// credential), it enforces RFC 4954 §4. Counted against the
 				// bad-command budget so a pre-TLS AUTH flood cannot loop forever.
-				if (noteBadCommand(Reply.encryptionRequired()) === "stop") return;
+				if (noteBadCommand(Reply.encryptionRequired()) === 'stop') return;
 				continue;
 			}
 			if (session.authenticated) {
-				if (noteBadCommand(Reply.badSequence("Already authenticated")) === "stop") return;
+				if (noteBadCommand(Reply.badSequence('Already authenticated')) === 'stop') return;
 				continue;
 			}
-			const sp = rest.indexOf(" ");
+			const sp = rest.indexOf(' ');
 			const mechanism = (sp === -1 ? rest : rest.slice(0, sp)).toUpperCase();
 			const initialResponse = sp === -1 ? null : rest.slice(sp + 1).trim();
 			const result = await performAuth({
@@ -416,13 +416,13 @@ export async function runCommandLoop<S, T>(
 				write,
 				readLine: async () => {
 					const l = await reader.readCommandLine(config.maxCommandBytes);
-					return l === null ? null : l.toString("utf8");
+					return l === null ? null : l.toString('utf8');
 				},
 				onError: opts.onError,
 			});
-			if (result === "closed") return;
+			if (result === 'closed') return;
 			// One byte-identical reply per outcome — no auth oracle (D6).
-			if (result === "ok") {
+			if (result === 'ok') {
 				badCommands = 0;
 				write(Reply.authOk());
 				continue;
@@ -432,11 +432,11 @@ export async function runCommandLoop<S, T>(
 			// hostile client looping AUTH cannot hold the connection open forever —
 			// the cap `smtp-server` enforces via `_maxAllowedUnauthenticatedCommands`
 			// (D2). The 535 bytes are unchanged (no oracle).
-			if (noteBadCommand(Reply.authFailed()) === "stop") return;
+			if (noteBadCommand(Reply.authFailed()) === 'stop') return;
 			continue;
 		}
 		// Everything else is unimplemented.
-		if (noteBadCommand(Reply.notImplemented()) === "stop") return;
+		if (noteBadCommand(Reply.notImplemented()) === 'stop') return;
 	}
 }
 
@@ -452,12 +452,12 @@ export async function runCommandLoop<S, T>(
  */
 function ehloLines<S, T>(
 	config: ResolvedListenerConfig<S, T>,
-	session: SmtpSession<S, T>,
+	session: SmtpSession<S, T>
 ): string[] {
 	const lines = [...config.extensions];
-	if (config.tls && !session.secure) lines.push("STARTTLS");
+	if (config.tls && !session.secure) lines.push('STARTTLS');
 	if (config.auth && (session.secure || !config.auth.requireTls)) {
-		lines.push(`AUTH ${config.auth.mechanisms.join(" ")}`);
+		lines.push(`AUTH ${config.auth.mechanisms.join(' ')}`);
 	}
 	lines.push(`SIZE ${config.maxMessageBytes}`);
 	return lines;
