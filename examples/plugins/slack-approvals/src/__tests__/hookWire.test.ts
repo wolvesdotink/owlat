@@ -133,6 +133,19 @@ describe('verifyOwlatHookRequest', () => {
 		expect(result).toEqual({ valid: false, reason: 'missing_timestamp' });
 	});
 
+	it('reports a WHITESPACE-only timestamp header as missing_timestamp (mirrors Slack)', async () => {
+		const req = await owlatSignedRequest();
+		const headers = { ...req.headers, [OWLAT_HOOK_HEADERS.timestamp]: '   ' };
+		const result = await verifyOwlatHookRequest({
+			secret: SECRET,
+			expectedAppId: APP_ID,
+			headers,
+			rawBody: req.rawBody,
+			nowMs: NOW_MS,
+		});
+		expect(result).toEqual({ valid: false, reason: 'missing_timestamp' });
+	});
+
 	it('reports a PRESENT-but-garbage timestamp header as malformed_timestamp', async () => {
 		const req = await owlatSignedRequest();
 		const headers = { ...req.headers, [OWLAT_HOOK_HEADERS.timestamp]: 'not-a-number' };

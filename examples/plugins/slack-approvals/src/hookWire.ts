@@ -156,11 +156,12 @@ export async function verifyOwlatHookRequest(
 		return { valid: false, reason: 'foreign_app' };
 	}
 	// Distinguish an ABSENT header from a PRESENT-but-garbage one so operator logs
-	// are honest (mirrors `verifySlackSignature`): `missing_timestamp` means the
-	// header was absent/empty, `malformed_timestamp` means it carried a value that
-	// is not unix-seconds (e.g. `not-a-number`). Both still fail closed.
+	// are honest (mirrors `verifySlackSignature`, including its `.trim()` on the
+	// empty check): `missing_timestamp` means the header was absent/empty/blank,
+	// `malformed_timestamp` means it carried a real value that is not unix-seconds
+	// (e.g. `not-a-number`). Both still fail closed.
 	const timestampHeader = header(input.headers, OWLAT_HOOK_HEADERS.timestamp);
-	if (timestampHeader === null) {
+	if (timestampHeader === null || timestampHeader.trim().length === 0) {
 		return { valid: false, reason: 'missing_timestamp' };
 	}
 	const timestampSeconds = parseUnixSecondsHeader(timestampHeader);
