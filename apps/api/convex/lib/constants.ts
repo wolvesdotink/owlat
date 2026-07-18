@@ -51,6 +51,17 @@ export const CONNECTED_APP_HOOK_MAX_DRAFT_CODE_POINTS = 64 * 1024;
 /** Code-point clamp for an accepted (untrusted) gate/score reason string. */
 export const CONNECTED_APP_HOOK_MAX_REASON_CODE_POINTS = 300;
 
+// Redacted hook DELIVERY LOG reads (PP-25). The log is a per-org diagnostic
+// table; every read is bounded and org-scoped. A read scans at most SCAN_CAP
+// recent rows off the most selective index (app / source / kind each have one, so
+// a sole/primary filter is index-complete), JS-re-checks any remaining filter
+// dimension, and returns up to the (clamped) page limit.
+export const CONNECTED_APP_HOOK_LOG_DEFAULT_LIMIT = 50;
+export const CONNECTED_APP_HOOK_LOG_MAX_LIMIT = 200;
+export const CONNECTED_APP_HOOK_LOG_SCAN_CAP = 500;
+/** Rows deleted per retention batch before the cleanup mutation reschedules. */
+export const CONNECTED_APP_HOOK_LOG_CLEANUP_BATCH_SIZE = 100;
+
 // Token expiry durations
 export const UNSUBSCRIBE_TOKEN_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 export const AUDIT_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days

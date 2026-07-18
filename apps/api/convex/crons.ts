@@ -74,6 +74,16 @@ crons.interval(
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
 
+// Clean up old connected-app hook delivery logs weekly. connectedAppHookDeliveryLogs
+// is written on every signed-hook invocation; without this cron its retention
+// never runs and the table grows unbounded. Ages rows out at AUDIT_LOG_RETENTION_MS.
+crons.interval(
+	'cleanup connected-app hook delivery logs',
+	{ hours: 168 },
+	internal.connectedApps.hookDeliveryLogStore._cleanupHookDeliveryLogs,
+	{}
+);
+
 // Clean up old raw webhook payloads weekly. webhookPayloads is written on every
 // webhook ingest; without this cron its retention never runs and the table
 // grows unbounded (only purged on full org deletion).

@@ -141,6 +141,7 @@ export type OrganizationDeletionTable =
 	| 'dashboardLayouts'
 	| 'connectedApps'
 	| 'connectedAppHookCircuits'
+	| 'connectedAppHookDeliveryLogs'
 	| 'pluginStorageEntries'
 	| 'pluginStorageUsage'
 	| 'pluginLlmReservations'
@@ -286,6 +287,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('dashboardLayouts'),
 	v.literal('connectedApps'),
 	v.literal('connectedAppHookCircuits'),
+	v.literal('connectedAppHookDeliveryLogs'),
 	v.literal('pluginStorageEntries'),
 	v.literal('pluginStorageUsage'),
 	v.literal('pluginLlmReservations'),
