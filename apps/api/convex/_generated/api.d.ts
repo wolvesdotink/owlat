@@ -590,6 +590,7 @@ import type * as plugins_storageJson from "../plugins/storageJson.js";
 import type * as plugins_webhookEventAuthorization from "../plugins/webhookEventAuthorization.js";
 import type * as plugins_webhookEventCatalog from "../plugins/webhookEventCatalog.js";
 import type * as plugins_webhookEventCatalog_generated from "../plugins/webhookEventCatalog.generated.js";
+import type * as plugins_workerTasks from "../plugins/workerTasks.js";
 import type * as providerRoutes from "../providerRoutes.js";
 import type * as publicRateLimit from "../publicRateLimit.js";
 import type * as quickQuery from "../quickQuery.js";
@@ -1299,6 +1300,7 @@ declare const fullApi: ApiFromModules<{
   "plugins/webhookEventAuthorization": typeof plugins_webhookEventAuthorization;
   "plugins/webhookEventCatalog": typeof plugins_webhookEventCatalog;
   "plugins/webhookEventCatalog.generated": typeof plugins_webhookEventCatalog_generated;
+  "plugins/workerTasks": typeof plugins_workerTasks;
   providerRoutes: typeof providerRoutes;
   publicRateLimit: typeof publicRateLimit;
   quickQuery: typeof quickQuery;

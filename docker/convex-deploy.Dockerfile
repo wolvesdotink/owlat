@@ -18,9 +18,10 @@ COPY patches/ patches/
 
 # Copy all workspace package.json files for dependency resolution.
 # Bun's `--frozen-lockfile` reconciliation walks the entire workspace graph
-# (root package.json's `apps/*` glob), so all apps/*/package.json must be
-# present even though only apps/api is actually built.
-COPY --parents apps/*/package.json packages/*/package.json ./
+# (root package.json's `apps/*`, `packages/*` AND `examples/plugins/*` globs),
+# so every workspace manifest must be present even though only apps/api is
+# actually built.
+COPY --parents apps/*/package.json packages/*/package.json examples/plugins/*/package.json ./
 
 RUN bun install --frozen-lockfile
 
