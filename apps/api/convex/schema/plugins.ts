@@ -229,7 +229,5 @@ export const pluginTables = {
 		// FIFO pickup + lease reclaim both scan by status, oldest first.
 		.index('by_status', ['status'])
 		// Admin/dashboard reads scope to the tenant.
-		.index('by_organization', ['organizationId'])
-		// Per-plugin audit/inspection.
-		.index('by_plugin', ['pluginId']),
+		.index('by_organization', ['organizationId']),
 };
