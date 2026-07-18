@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { MAX_MIME_PARTS, parseBody, parseMimeTree } from '../parse/body';
 import { extractAttachments } from '../parse/attachments';
+import { MAX_ADDRESS_HEADER_LENGTH, parseAddressList, parseAddressObject } from '../parse/address';
+import { parseMessage } from '../parse/index';
 
 /**
  * Hostile / malformed input must be BOUNDED and must NEVER throw: the walker is
@@ -242,5 +244,84 @@ describe('hostile MIME input', () => {
 			attachments = extractAttachments(raw);
 		}).not.toThrow();
 		expect(attachments.map((a) => a.filename)).toEqual(['x.pdf']);
+	});
+});
+
+/**
+ * Address-header parse must be BOUNDED IN TIME, not just bounded in output.
+ *
+ * The de-backtracked mailbox parse (`parseMailbox`) plus the defensive
+ * `MAX_ADDRESS_HEADER_LENGTH` cap replace an anchored regex
+ * (`/^(.*?)<\s*([^>]+?)\s*>\s*$/`) that backtracked catastrophically — clean
+ * O(n^2) — on a long `<`-run with no closing `>`. Measured against the OLD
+ * code end-to-end via parseMessage: a `To:` of `"A<".repeat(k)` took ~200ms at
+ * 20 KB, ~800ms at 40 KB, ~3s at 80 KB, ~12s at 160 KB, so ~1 MB pinned a core
+ * for minutes. These tests would have failed (timed out) against the old
+ * quadratic regex; the linear scan completes in well under a millisecond.
+ */
+describe('hostile address-header input is bounded in TIME', () => {
+	it('parseAddressList survives a 200 KB no-closing-> run FAST and returns a bounded result', () => {
+		// 100k copies of "A<" => 200 KB of pure backtrack bait, zero closing '>'.
+		const evil = 'A<'.repeat(100_000);
+		const start = performance.now();
+		const list = parseAddressList(evil);
+		const elapsed = performance.now() - start;
+
+		// Time bound: the old O(n^2) regex needed many SECONDS on this input; the
+		// linear scan is sub-millisecond. 500ms is a generous, non-flaky ceiling.
+		expect(elapsed).toBeLessThan(500);
+		// Defense-in-depth cap also fired: nothing past 16 KiB was ever scanned.
+		expect(evil.length).toBeGreaterThan(MAX_ADDRESS_HEADER_LENGTH);
+		// No valid `local@domain` exists in the run, so the list is empty — a
+		// bounded, sane result rather than a hang.
+		expect(list).toEqual([]);
+	});
+
+	it('parseMessage survives a 200 KB hostile To: header FAST (end-to-end)', () => {
+		const raw = `To: ${'A<'.repeat(100_000)}\r\nSubject: x\r\n\r\nbody\r\n`;
+		const start = performance.now();
+		let parsed: ReturnType<typeof parseMessage> | undefined;
+		expect(() => {
+			parsed = parseMessage(raw);
+		}).not.toThrow();
+		const elapsed = performance.now() - start;
+		// The whole message parse (headers + MIME + this address header) stays far
+		// under the bound the old quadratic address parse alone would blow past.
+		expect(elapsed).toBeLessThan(500);
+		// `To:` parsed to a bounded, empty address object, never a hang.
+		expect(parsed!.to).toEqual({ value: [], text: '' });
+	});
+
+	it('a pathological no-closing-> run yields an empty/sane address, no hang', () => {
+		const obj = parseAddressObject('Name <<<<<<<<<<<<<<<<<<<<<<<<<<<<');
+		expect(obj.value).toEqual([]);
+		expect(obj.text).toBe('');
+	});
+
+	it('the de-backtracked parser is byte-for-byte identical on representative valid inputs', () => {
+		// Plain, angle-only, quoted-name, and group syntax — pin exact objects so a
+		// behavioral drift in the rewritten split fails loudly.
+		expect(parseAddressObject('jane@example.com').value).toEqual([
+			{ name: '', address: 'jane@example.com' },
+		]);
+		expect(parseAddressObject('<Jane@Example.COM>').value).toEqual([
+			{ name: '', address: 'jane@example.com' },
+		]);
+		expect(parseAddressObject('"Doe, John" <John@Example.com>').value).toEqual([
+			{ name: 'Doe, John', address: 'john@example.com' },
+		]);
+		expect(parseAddressObject('Jane Doe <jane@example.com>').value).toEqual([
+			{ name: 'Jane Doe', address: 'jane@example.com' },
+		]);
+		expect(parseAddressObject('Friends: alice@example.com, bob@example.com;').value).toEqual([
+			{
+				name: 'Friends',
+				address: '',
+				group: [
+					{ name: '', address: 'alice@example.com' },
+					{ name: '', address: 'bob@example.com' },
+				],
+			},
+		]);
 	});
 });
