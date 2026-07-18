@@ -219,6 +219,8 @@ export const HOSTED_PLUGIN_OPERATION_LITERALS = [
 	'storage.set',
 	'transport.send',
 	'webhook.publish',
+	'worker.enqueue',
+	'worker.run',
 ] as const;
 export type HostedPluginOperationLiteral = (typeof HOSTED_PLUGIN_OPERATION_LITERALS)[number];
 

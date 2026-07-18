@@ -41,7 +41,7 @@ describe('docker-compose.yml — image registry', () => {
 	it('points every Owlat image at ghcr.io/wolvesdotink', () => {
 		for (const svc of OWLAT_IMAGE_SERVICES) {
 			expect(serviceBlock(svc), `${svc} image`).toMatch(
-				new RegExp(`image:\\s*ghcr\\.io/wolvesdotink/${svc}:`),
+				new RegExp(`image:\\s*ghcr\\.io/wolvesdotink/${svc}:`)
 			);
 		}
 	});
@@ -54,7 +54,7 @@ describe('docker-compose.yml — image registry', () => {
 		// …and each registry image resolves through an OWLAT_VERSION env default.
 		for (const svc of OWLAT_IMAGE_SERVICES) {
 			expect(serviceBlock(svc), `${svc} pin`).toMatch(
-				new RegExp(`image:\\s*ghcr\\.io/wolvesdotink/${svc}:\\$\\{OWLAT_VERSION:-dev\\}`),
+				new RegExp(`image:\\s*ghcr\\.io/wolvesdotink/${svc}:\\$\\{OWLAT_VERSION:-dev\\}`)
 			);
 		}
 	});
@@ -117,6 +117,49 @@ describe('docker-compose.yml — ClamAV profile gate', () => {
 		const clamavDep = mta.slice(mta.indexOf('clamav:'));
 		expect(mta).toMatch(/clamav:/);
 		expect(clamavDep).toMatch(/required:\s*false/);
+	});
+});
+
+describe('docker-compose.yml — Tier-3 worker sandbox (code + plugin jobs)', () => {
+	// The one worker runs untrusted compute from BOTH queues. These pin the
+	// compose-level half of the sandbox so a refactor can't quietly widen it.
+	const worker = () => serviceBlock('code-worker');
+
+	it('runs read-only with only a size-capped tmpfs scratch', () => {
+		expect(worker()).toMatch(/read_only:\s*true/);
+		expect(worker()).toMatch(/tmpfs:\s*\n\s*-\s*\/tmp:size=/);
+	});
+
+	it('drops every capability and adds back ONLY setuid/setgid/chown', () => {
+		const block = worker();
+		expect(block).toMatch(/cap_drop:\s*\n\s*-\s*ALL/);
+		// The confined-root model needs exactly these three and no others.
+		const added = [...block.matchAll(/cap_add:\s*\n((?:\s*-\s*\w+\n)+)/g)][0]?.[1] ?? '';
+		const caps = [...added.matchAll(/-\s*(\w+)/g)].map((m) => m[1]).sort();
+		expect(caps).toEqual(['CHOWN', 'SETGID', 'SETUID']);
+		expect(block).toMatch(/no-new-privileges:true/);
+	});
+
+	it('caps memory, CPU, and process count so a runaway job is contained', () => {
+		const block = worker();
+		expect(block).toMatch(/mem_limit:\s*\$\{CODE_WORKER_MEM_LIMIT/);
+		expect(block).toMatch(/cpus:\s*\$\{CODE_WORKER_CPUS/);
+		expect(block).toMatch(/pids_limit:\s*\$\{CODE_WORKER_PIDS_LIMIT/);
+	});
+
+	it('is pinned to the isolated code-worker network, never the shared default bridge', () => {
+		const block = worker();
+		expect(block).toMatch(/networks:\s*\n\s*-\s*code-worker\s*\n/);
+		expect(block).not.toMatch(/-\s*default\b/);
+		// Only convex and the worker share that isolated bridge.
+		const members = (compose.match(/^\s*-\s*code-worker\s*$/gm) ?? []).length;
+		expect(members).toBe(2);
+	});
+
+	it('activates for both the coding-agent and the Tier-3 plugin-task profile', () => {
+		const block = worker();
+		expect(block).toMatch(/-\s*inbox-codetasks/);
+		expect(block).toMatch(/-\s*plugin-tasks/);
 	});
 });
 
