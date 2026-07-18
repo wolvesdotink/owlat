@@ -120,6 +120,32 @@ describe('verifyOwlatHookRequest', () => {
 		expect(result).toEqual({ valid: false, reason: 'stale_timestamp' });
 	});
 
+	it('reports an ABSENT timestamp header as missing_timestamp', async () => {
+		const req = await owlatSignedRequest();
+		const headers = { ...req.headers, [OWLAT_HOOK_HEADERS.timestamp]: '' };
+		const result = await verifyOwlatHookRequest({
+			secret: SECRET,
+			expectedAppId: APP_ID,
+			headers,
+			rawBody: req.rawBody,
+			nowMs: NOW_MS,
+		});
+		expect(result).toEqual({ valid: false, reason: 'missing_timestamp' });
+	});
+
+	it('reports a PRESENT-but-garbage timestamp header as malformed_timestamp', async () => {
+		const req = await owlatSignedRequest();
+		const headers = { ...req.headers, [OWLAT_HOOK_HEADERS.timestamp]: 'not-a-number' };
+		const result = await verifyOwlatHookRequest({
+			secret: SECRET,
+			expectedAppId: APP_ID,
+			headers,
+			rawBody: req.rawBody,
+			nowMs: NOW_MS,
+		});
+		expect(result).toEqual({ valid: false, reason: 'malformed_timestamp' });
+	});
+
 	it('rejects a tampered body (signature no longer covers it)', async () => {
 		const req = await owlatSignedRequest();
 		const result = await verifyOwlatHookRequest({
