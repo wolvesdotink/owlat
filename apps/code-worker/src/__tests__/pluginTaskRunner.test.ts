@@ -3,6 +3,7 @@ import type { spawn } from 'node:child_process';
 import { getFunctionName } from 'convex/server';
 import {
 	PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES,
+	PLUGIN_WORKER_RESULT_MAX_BYTES,
 	pluginWorkerJobLocalIdOf,
 } from '@owlat/plugin-kit';
 import { describe, it, expect, vi } from 'vitest';
@@ -143,6 +144,36 @@ describe('runPluginJob — sandbox wiring', () => {
 		// A clean exit reports completion, never failure.
 		expect(client.calls.some((c) => c.name === 'complete')).toBe(true);
 		expect(client.calls.some((c) => c.name === 'fail')).toBe(false);
+	});
+
+	it('byte-clamps a multibyte result to the host result ceiling (no ~4x overshoot)', async () => {
+		// A hostile/verbose job emits far more than the byte budget in 4-byte code
+		// points. Clamping by CHARACTER count would let ~4x the byte budget through;
+		// the worker must clamp by BYTES and never split a code point.
+		const child = openChild();
+		const spawnSpy = vi.fn(() => {
+			setImmediate(() => {
+				child.stdout.emit('data', Buffer.from('😀'.repeat(20_000))); // 80000 bytes
+				child.emit('close', 0);
+			});
+			return child;
+		}) as unknown as typeof spawn;
+		const client = fakeClient();
+
+		await runPluginJob(task, {
+			client: client as never,
+			spawnFn: spawnSpy,
+			prepareDir: () => {},
+			cleanupDir: () => {},
+			heartbeatIntervalMs: 10_000,
+		});
+
+		const completeCall = client.calls.find((c) => c.name === 'complete');
+		const result = (completeCall?.args as { result: string }).result;
+		expect(Buffer.byteLength(result)).toBeLessThanOrEqual(PLUGIN_WORKER_RESULT_MAX_BYTES);
+		// Every retained code point is a whole '😀' — no truncated surrogate half.
+		expect([...result].every((codePoint) => codePoint === '😀')).toBe(true);
+		expect(result.length).toBeGreaterThan(0);
 	});
 
 	it('fails an unknown job kind closed — nothing is ever spawned', async () => {
