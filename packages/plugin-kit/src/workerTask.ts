@@ -142,6 +142,65 @@ export const PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES: ReadonlyArray<{
 	{ kind: 'nope', localId: null },
 ]);
 
+/**
+ * The wire shape a claimed Tier-3 job takes as it crosses from the host queue to
+ * the sandbox worker. It is defined HERE — in the package both the Convex host
+ * (`plugins/workerTasks`) and the code-worker import — so the two sides can never
+ * disagree on its field names: the host projects a claimed row INTO this shape
+ * (`pluginWorkerClaimedJobOf`) and the worker reads OUT of it, both against this
+ * single type, so a rename fails to compile on whichever side did not follow.
+ * It carries only what the worker needs to run a job — never the org id, secrets,
+ * or host bookkeeping. `payload` is untrusted plugin input; `jobKind` routes to a
+ * host-controlled command. `taskId` is the opaque queue-row id the worker echoes
+ * back on every `claim`/`heartbeat`/`complete`/`fail` call.
+ */
+export interface PluginWorkerClaimedJob {
+	readonly taskId: string;
+	readonly pluginId: string;
+	readonly jobKind: string;
+	readonly payload: string;
+	readonly timeoutMs: number;
+	readonly attempts: number;
+	readonly maxAttempts: number;
+}
+
+/**
+ * The minimum of a persisted queue row the projection needs. The host's
+ * `Doc<'pluginTasks'>` (whose id field is `_id`, per Convex convention) is
+ * structurally a superset of this, so `pluginWorkerClaimedJobOf` accepts it
+ * directly without the host importing a worker-specific type.
+ */
+export interface PluginWorkerClaimedJobSource {
+	readonly _id: string;
+	readonly pluginId: string;
+	readonly jobKind: string;
+	readonly payload: string;
+	readonly timeoutMs: number;
+	readonly attempts: number;
+	readonly maxAttempts: number;
+}
+
+/**
+ * Project a persisted queue row into the host->worker wire shape. This is the
+ * SINGLE place the `_id`-to-`taskId` field mapping lives, so the host and the
+ * worker (and its boundary test) all agree on the exact object shape by
+ * construction — the drift where the host emitted one field name and the worker
+ * read another cannot recur silently.
+ */
+export function pluginWorkerClaimedJobOf(
+	source: PluginWorkerClaimedJobSource
+): PluginWorkerClaimedJob {
+	return {
+		taskId: source._id,
+		pluginId: source.pluginId,
+		jobKind: source.jobKind,
+		payload: source.payload,
+		timeoutMs: source.timeoutMs,
+		attempts: source.attempts,
+		maxAttempts: source.maxAttempts,
+	};
+}
+
 /** Clamp a requested attempt budget into the host's closed retry range. */
 export function clampWorkerAttempts(requested: number | undefined): number {
 	if (requested === undefined || !Number.isFinite(requested)) return PLUGIN_WORKER_MIN_ATTEMPTS;

@@ -75,11 +75,14 @@ export {
 	clampWorkerTimeoutMs,
 	isPluginWorkerJobKindOwnedBy,
 	isPluginWorkerJobLocalId,
+	pluginWorkerClaimedJobOf,
 	pluginWorkerJobKind,
 	pluginWorkerJobLocalIdOf,
 } from './workerTask';
 export type {
 	PluginWorkerCapability,
+	PluginWorkerClaimedJob,
+	PluginWorkerClaimedJobSource,
 	PluginWorkerJobKind,
 	PluginWorkerJobLocalId,
 } from './workerTask';

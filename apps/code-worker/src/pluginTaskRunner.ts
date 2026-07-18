@@ -146,13 +146,13 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 	const heartbeatIntervalMs = deps.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
 	const prepareDir = deps.prepareDir ?? defaultPrepareDir;
 	const cleanupDir = deps.cleanupDir ?? removeWorkspace;
-	const workDir = path.join(WORKSPACE_ROOT, `plugin-${task._id}`);
+	const workDir = path.join(WORKSPACE_ROOT, `plugin-${task.taskId}`);
 
 	const spec = resolveJobCommand(task.jobKind, task.payload);
 	if (!spec) {
 		// Unknown / malformed job kind: fail closed. Nothing is ever spawned.
 		await client.mutation(pluginFn.fail, {
-			taskId: task._id,
+			taskId: task.taskId,
 			errorMessage: `Unknown or unregistered job kind: ${task.jobKind}`,
 			reasonCode: 'worker_failed',
 		});
@@ -164,13 +164,13 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 	const heartbeat = setInterval(() => {
 		void (async () => {
 			try {
-				const beat = await client.mutation(pluginFn.heartbeat, { taskId: task._id });
+				const beat = await client.mutation(pluginFn.heartbeat, { taskId: task.taskId });
 				if (beat.cancelRequested && !cancelled) {
 					cancelled = true;
 					controller.abort();
 				}
 			} catch (error) {
-				log(`Heartbeat failed for ${task._id}: ${String(error)}`);
+				log(`Heartbeat failed for ${task.taskId}: ${String(error)}`);
 			}
 		})();
 	}, heartbeatIntervalMs);
@@ -194,7 +194,7 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 			// The host sees isCancelRequested and records the cancelled terminal state
 			// (cancelled jobs are never retried).
 			await client.mutation(pluginFn.fail, {
-				taskId: task._id,
+				taskId: task.taskId,
 				errorMessage: 'Job cancelled by operator',
 				reasonCode: 'worker_failed',
 			});
@@ -202,7 +202,7 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 		}
 		if (result.timedOut) {
 			await client.mutation(pluginFn.fail, {
-				taskId: task._id,
+				taskId: task.taskId,
 				errorMessage: `Job exceeded its ${task.timeoutMs}ms budget; process group killed`,
 				reasonCode: 'worker_timeout',
 			});
@@ -210,20 +210,20 @@ export async function runPluginJob(task: PluginTask, deps: RunPluginJobDeps = {}
 		}
 		if (result.code === 0) {
 			await client.mutation(pluginFn.complete, {
-				taskId: task._id,
+				taskId: task.taskId,
 				result: clampResult((result.stdout + result.stderr).trim()),
 			});
 			return;
 		}
 		await client.mutation(pluginFn.fail, {
-			taskId: task._id,
+			taskId: task.taskId,
 			errorMessage:
 				(result.stdout + result.stderr).slice(-500) || `Job exited with code ${result.code}`,
 			reasonCode: 'worker_failed',
 		});
 	} catch (error) {
 		await client.mutation(pluginFn.fail, {
-			taskId: task._id,
+			taskId: task.taskId,
 			errorMessage: error instanceof Error ? error.message.slice(0, 500) : String(error),
 			reasonCode: 'worker_failed',
 		});
@@ -239,9 +239,9 @@ export async function pollForPluginTask(deps: RunPluginJobDeps = {}): Promise<vo
 	const next = await client.query(pluginFn.getNextQueued, {});
 	if (!next) return;
 
-	const claim = await client.mutation(pluginFn.claim, { taskId: next._id });
+	const claim = await client.mutation(pluginFn.claim, { taskId: next.taskId });
 	if (!claim.claimed) return;
 
-	log(`Running plugin job ${claim.job._id} (${claim.job.jobKind})`);
+	log(`Running plugin job ${claim.job.taskId} (${claim.job.jobKind})`);
 	await runPluginJob(claim.job, deps);
 }
