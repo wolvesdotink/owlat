@@ -21,6 +21,7 @@
  * the RESPONSE signing string so Owlat can bind our answer to its exact call.
  */
 
+import { isRawBodyWithinLimit } from './bodyLimit';
 import { constantTimeEqual, hmacSha256Hex, sha256Hex } from './crypto';
 import { parseUnixSecondsHeader } from './timestampHeader';
 
@@ -62,6 +63,7 @@ export interface VerifyHookRequestInput {
 }
 
 export type HookRequestFailure =
+	| 'body_too_large'
 	| 'bad_version'
 	| 'bad_kind'
 	| 'foreign_app'
@@ -136,6 +138,11 @@ async function responseSigningString(
 export async function verifyOwlatHookRequest(
 	input: VerifyHookRequestInput
 ): Promise<VerifyHookRequestResult> {
+	// Cap the body BEFORE hashing so a forged request cannot make us SHA-256/HMAC
+	// an attacker-sized payload (fail closed: the caller answers with a hold).
+	if (!isRawBodyWithinLimit(input.rawBody)) {
+		return { valid: false, reason: 'body_too_large' };
+	}
 	if (header(input.headers, OWLAT_HOOK_HEADERS.version) !== OWLAT_HOOK_PROTOCOL_VERSION) {
 		return { valid: false, reason: 'bad_version' };
 	}
