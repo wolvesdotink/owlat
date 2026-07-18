@@ -22,6 +22,7 @@
  */
 
 import { constantTimeEqual, hmacSha256Hex, sha256Hex } from './crypto';
+import { parseUnixSecondsHeader } from './timestampHeader';
 
 /** Header names — identical to Owlat's `CONNECTED_APP_HOOK_HEADERS`. */
 export const OWLAT_HOOK_HEADERS = Object.freeze({
@@ -92,12 +93,6 @@ function header(
 	return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-function parseTimestampSeconds(value: string | null): number | null {
-	if (value === null || !/^-?\d+$/.test(value.trim())) return null;
-	const parsed = Number(value.trim());
-	return Number.isSafeInteger(parsed) ? parsed : null;
-}
-
 async function requestSigningString(
 	hookKind: string,
 	connectedAppId: string,
@@ -152,7 +147,7 @@ export async function verifyOwlatHookRequest(
 	if (appId !== input.expectedAppId) {
 		return { valid: false, reason: 'foreign_app' };
 	}
-	const timestampSeconds = parseTimestampSeconds(
+	const timestampSeconds = parseUnixSecondsHeader(
 		header(input.headers, OWLAT_HOOK_HEADERS.timestamp)
 	);
 	if (timestampSeconds === null) {
