@@ -423,3 +423,122 @@ describe('recipient flood', () => {
 		c.end();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Rejected-envelope flood (P2 pre-auth resource exhaustion). A REJECTED RCPT
+// never grows `session.rcptTo`, and a REJECTED MAIL FROM never sets
+// `session.mailFrom`, so neither the `maxRecipients` gate nor the "sender
+// already specified" guard can ever bound a stream of rejected envelope
+// commands. Each such command invokes application policy (an SPF lookup ~10 DNS
+// for MAIL, a Redis route lookup for RCPT), so an unbounded loop of rejected
+// commands is a one-connection DNS/Redis amplification primitive. Policy
+// rejections now count against the bad-command budget: the handler runs at most
+// `maxBadCommands` times before the 421 teardown — a hard, provable ceiling.
+// ---------------------------------------------------------------------------
+
+describe('rejected-envelope flood', () => {
+	it('caps onRcptTo invocations at the bad-command budget, then tears down (421)', async () => {
+		const MAX = 4;
+		const rcptCalls: string[] = [];
+		const { port } = await start({
+			maxBadCommands: MAX,
+			onRcptTo: (address) => {
+				rcptCalls.push(address.address);
+				return { code: 550, enhanced: '5.7.1', text: 'relay access denied' };
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+		// Flood far more rejected RCPTs than the budget allows, in one segment.
+		let flood = '';
+		for (let i = 0; i < 100; i++) flood += `RCPT TO:<u${i}@b.test>\r\n`;
+		c.write(flood);
+		await c.waitCode(421);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		// The exact bound: the application handler ran at most MAX times, NOT once
+		// per flooded recipient (which was the unbounded route-lookup amplification).
+		expect(rcptCalls).toHaveLength(MAX);
+		// The listener survives (a fresh connection is greeted and greets back).
+		// `expectStillServes` cannot be used here: this handler rejects EVERY
+		// recipient, so no transaction could complete.
+		const fresh = await Client.connect(port);
+		await fresh.waitCode(220);
+		fresh.write('EHLO ok.test\r\n');
+		await fresh.waitCode(250);
+		fresh.end();
+	});
+
+	it('caps onMailFrom invocations at the bad-command budget, then tears down (421)', async () => {
+		const MAX = 4;
+		const mailCalls: string[] = [];
+		const { port } = await start({
+			maxBadCommands: MAX,
+			onMailFrom: (address) => {
+				mailCalls.push(address.address);
+				return { code: 550, enhanced: '5.7.1', text: 'sender rejected' };
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		// Every rejected MAIL FROM leaves session.mailFrom unset, so the "already
+		// specified" 503 guard can never fire — without the budget this loops forever.
+		let flood = '';
+		for (let i = 0; i < 100; i++) flood += `MAIL FROM:<s${i}@a.test>\r\n`;
+		c.write(flood);
+		await c.waitCode(421);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		// Exact bound: at most MAX full checkSpf-triggering handler invocations.
+		expect(mailCalls).toHaveLength(MAX);
+		// The listener survives; a fresh connection is greeted and greets back.
+		const fresh = await Client.connect(port);
+		await fresh.waitCode(220);
+		fresh.write('EHLO ok.test\r\n');
+		await fresh.waitCode(250);
+		fresh.end();
+	});
+
+	it('a normal mixed accept/reject recipient flow within limits still delivers', async () => {
+		const rcptCalls: string[] = [];
+		let deliveredRecipients: string[] = [];
+		const { port } = await start({
+			maxBadCommands: 5,
+			onRcptTo: (address) => {
+				rcptCalls.push(address.address);
+				if (address.address.startsWith('bad')) return { code: 550, text: 'no such user' };
+			},
+			onData: (_message, session) => {
+				deliveredRecipients = session.rcptTo.map((recipient) => recipient.address);
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write('MAIL FROM:<a@a.test>\r\n');
+		await c.waitFor((b) => /250 2\.1\.0/.test(b));
+		// A handful of recipients, a couple invalid, interleaved with valid ones:
+		// each ACCEPTED recipient resets the budget, so an occasional reject must
+		// NOT accumulate into a teardown (proves the fix does not over-tighten).
+		c.write(
+			'RCPT TO:<good1@b.test>\r\nRCPT TO:<bad1@b.test>\r\n' +
+				'RCPT TO:<good2@b.test>\r\nRCPT TO:<bad2@b.test>\r\nRCPT TO:<good3@b.test>\r\n'
+		);
+		await c.waitFor((b) => (b.match(/250 2\.1\.5/g) ?? []).length === 3);
+		await c.waitFor((b) => (b.match(/550 /g) ?? []).length === 2);
+		c.write('DATA\r\n');
+		await c.waitCode(354);
+		c.write('healthy\r\n.\r\n');
+		await c.waitFor((b) => /250 2\.0\.0/.test(b));
+		expect(rcptCalls).toEqual([
+			'good1@b.test',
+			'bad1@b.test',
+			'good2@b.test',
+			'bad2@b.test',
+			'good3@b.test',
+		]);
+		expect(deliveredRecipients).toEqual(['good1@b.test', 'good2@b.test', 'good3@b.test']);
+		c.end();
+	});
+});
