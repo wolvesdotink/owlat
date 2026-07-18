@@ -323,8 +323,14 @@ export const fail = internalMutation({
 /**
  * Reclaim jobs abandoned by a crashed/restarted worker: a `running` row whose
  * heartbeat predates the lease is failed-with-retry (requeued if attempts
- * remain, else terminal `failed`). Idempotent and bounded. The worker calls it
- * on startup so a mid-flight job is never stranded `running` forever.
+ * remain, else terminal `failed`). Idempotent and bounded.
+ *
+ * The single code-worker calls this on startup with `leaseMs: 0`: a fresh worker
+ * provably holds no running jobs, so on that topology EVERY `running` row is
+ * abandoned regardless of how recent its heartbeat is — reclaiming with a lease
+ * longer than the max job budget would skip (and permanently strand) a job whose
+ * worker crashed and restarted within seconds. `leaseMs` remains parametrized so
+ * a future multi-worker or periodic sweep can pass a real lease window.
  */
 export const reclaimStale = internalMutation({
 	args: { now: v.optional(v.number()), leaseMs: v.optional(v.number()) },

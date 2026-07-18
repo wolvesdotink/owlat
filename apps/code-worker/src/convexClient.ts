@@ -114,7 +114,9 @@ export const pluginFn = {
 		{ taskId: string; errorMessage: string; reasonCode?: 'worker_failed' | 'worker_timeout' },
 		{ status: string; retried: boolean }
 	>('plugins/workerTasks:fail'),
-	reclaimStale: makeFunctionReference<'mutation', Record<string, never>, { reclaimed: number }>(
-		'plugins/workerTasks:reclaimStale'
-	),
+	reclaimStale: makeFunctionReference<
+		'mutation',
+		{ now?: number; leaseMs?: number },
+		{ reclaimed: number }
+	>('plugins/workerTasks:reclaimStale'),
 };
