@@ -35,6 +35,7 @@ export interface ResolvedListenerConfig<S, T> {
 	abortFactor: number;
 	maxCommandBytes: number;
 	maxBadCommands: number;
+	maxPendingReplyBytes: number;
 	commandMs: number;
 	dataMs: number;
 	/** Resolved TLS material, present when the listener can speak TLS. */
@@ -44,6 +45,37 @@ export interface ResolvedListenerConfig<S, T> {
 	/** SASL AUTH configuration, present when the listener advertises AUTH. */
 	auth?: SmtpAuthConfig<S, T>;
 	opts: SmtpListenerOptions<S, T>;
+}
+
+/** Minimal socket surface used by the bounded reply writer (also fakeable in tests). */
+export interface ReplyWriteSocket {
+	readonly writableEnded: boolean;
+	readonly destroyed: boolean;
+	readonly writableLength: number;
+	write(bytes: Buffer, callback?: () => void): boolean;
+	destroy(): void;
+}
+
+/**
+ * Queue one reply without allowing Node's user-space socket buffer to grow past
+ * `maxPendingBytes`. A peer can send commands without reading replies because
+ * TCP is full-duplex; destroying at this boundary prevents that valid-command
+ * pattern from becoming a one-connection memory-exhaustion primitive.
+ */
+export function writeReplyWithinBudget(
+	socket: ReplyWriteSocket,
+	reply: SmtpReply,
+	maxPendingBytes: number,
+	onFlushed?: () => void
+): boolean {
+	if (socket.writableEnded || socket.destroyed) return false;
+	const bytes = replyBytes(reply);
+	if (socket.writableLength + bytes.length > maxPendingBytes) {
+		socket.destroy();
+		return false;
+	}
+	socket.write(bytes, onFlushed);
+	return true;
 }
 
 /** Invoke a handler, normalizing its accept/reject outcome. */
@@ -82,21 +114,22 @@ export async function runCommandLoop<S, T>(
 	// bytes buffered on the plaintext socket are discarded — RFC 3207).
 	let activeSocket: Socket = socket;
 	const write = (reply: SmtpReply): void => {
-		if (!activeSocket.writableEnded && !activeSocket.destroyed) {
-			activeSocket.write(replyBytes(reply));
-		}
+		writeReplyWithinBudget(activeSocket, reply, config.maxPendingReplyBytes);
 	};
 	// Emit one final reply and tear the socket down, but only AFTER the reply has
 	// flushed to the kernel — a bare `destroy()` right after `write()` can drop
 	// the reply. Destroying also ends the read side, unblocking the command loop.
 	const writeThenDestroy = (reply: SmtpReply): void => {
-		if (activeSocket.destroyed || activeSocket.writableEnded) {
-			if (!activeSocket.destroyed) activeSocket.destroy();
-			return;
-		}
-		activeSocket.write(replyBytes(reply), () => {
-			if (!activeSocket.destroyed) activeSocket.destroy();
-		});
+		const target = activeSocket;
+		const queued = writeReplyWithinBudget(
+			target,
+			reply,
+			config.maxPendingReplyBytes,
+			() => {
+				if (!target.destroyed) target.destroy();
+			}
+		);
+		if (!queued && !target.destroyed) target.destroy();
 	};
 	const resetTransaction = (): void => {
 		session.mailFrom = undefined;
