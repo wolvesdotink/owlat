@@ -110,7 +110,8 @@ export interface SetupConfigInput {
  * The subdomain prefixes a single apex domain expands into. One source of
  * truth for the wizard, the DNS instructions, and `Caddyfile.example`'s
  * convention. `convexSite` is `rest.api` (two labels) — the only multi-label
- * prefix.
+ * prefix. The wizard lets the operator override any of these (see
+ * {@link deriveHostnames}); this map is the default when they don't.
  */
 export const SUBDOMAINS = {
 	site: 'owlat',
@@ -119,6 +120,38 @@ export const SUBDOMAINS = {
 	mail: 'mail',
 	bounce: 'bounce',
 } as const;
+
+/** The identity of each overridable subdomain label. */
+export type SubdomainKey = keyof typeof SUBDOMAINS;
+
+/** A full set of subdomain labels (the shape of {@link SUBDOMAINS}). */
+export type SubdomainLabels = Record<SubdomainKey, string>;
+
+/** The subdomain keys in a stable iteration order. */
+export const SUBDOMAIN_KEYS = Object.keys(SUBDOMAINS) as SubdomainKey[];
+
+/**
+ * The five overridable labels with UI copy, in wizard order. Lives here (not in
+ * the component) so the fields, their defaults and this metadata cannot drift
+ * from the {@link SUBDOMAINS} map they describe.
+ */
+export const SUBDOMAIN_FIELDS: ReadonlyArray<{ key: SubdomainKey; label: string; hint: string }> = [
+	{ key: 'site', label: 'App', hint: 'The web app.' },
+	{ key: 'convex', label: 'API (Convex)', hint: 'Sync backend.' },
+	{ key: 'convexSite', label: 'REST API', hint: 'HTTP actions (auth, webhooks, tracking).' },
+	{ key: 'mail', label: 'Mail server (EHLO)', hint: 'Outbound SMTP identity.' },
+	{ key: 'bounce', label: 'Bounce domain', hint: 'Return-Path / bounces.' },
+] as const;
+
+/** A fresh copy of the default labels — for prefilling the override inputs. */
+export function defaultSubdomainLabels(): SubdomainLabels {
+	return { ...SUBDOMAINS };
+}
+
+/** The human-facing field label for a subdomain key (for user-facing copy). */
+export function subdomainFieldLabel(key: SubdomainKey): string {
+	return SUBDOMAIN_FIELDS.find((f) => f.key === key)?.label ?? key;
+}
 
 export interface InstanceHostnames {
 	/** The app (Nuxt). */
@@ -141,19 +174,106 @@ export function normalizeDomain(input: string): string {
 		.replace(/\/+$/, '');
 }
 
-/** Expand an apex domain (`wolves.ink`) into every owlat hostname. */
-export function deriveHostnames(domain: string): InstanceHostnames {
+/**
+ * One DNS label segment (RFC 1035): 1–63 chars, lowercase letters/digits/hyphen,
+ * no leading or trailing hyphen. A `rest.api`-style dotted prefix is several of
+ * these joined by dots, each validated in turn.
+ */
+const DNS_LABEL_SEGMENT = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/**
+ * Validate a single overridable subdomain label, allowing the dotted
+ * (`rest.api`) form. Returns a human error string, or null when the label is
+ * DNS-safe. Case-sensitive on purpose: hostnames are lowercase by convention
+ * and the derived config/DNS records must be reproducible, so an uppercase or
+ * otherwise off-charset label is rejected rather than silently normalised.
+ */
+export function validateSubdomainLabel(label: string): string | null {
+	const l = label.trim();
+	if (!l) return 'Enter a subdomain label.';
+	for (const segment of l.split('.')) {
+		if (!DNS_LABEL_SEGMENT.test(segment)) {
+			return 'Use lowercase letters, digits and hyphens (1–63 per label, no leading or trailing hyphen).';
+		}
+	}
+	return null;
+}
+
+/** Per-field validation result for the whole override set. */
+export interface SubdomainLabelsValidation {
+	ok: boolean;
+	/** Inline error keyed by field; absent keys are valid. */
+	errors: Partial<Record<SubdomainKey, string>>;
+}
+
+/**
+ * Validate an override set: every label must be DNS-safe AND the labels must be
+ * mutually distinct (two hostnames sharing a label would collide onto the same
+ * DNS record). A collision is reported on the *later* field so the first
+ * occurrence stays clean, and only labels that already pass the charset check
+ * are compared so a duplicate error never masks a malformed one.
+ *
+ * `keys` scopes validation to the labels actually in play — the caller passes
+ * only the active ones (e.g. mail/bounce are inert without the self-hosted MTA),
+ * so an unused label never blocks provisioning or collides with a live one.
+ */
+export function validateSubdomainLabels(
+	labels: SubdomainLabels,
+	keys: readonly SubdomainKey[] = SUBDOMAIN_KEYS
+): SubdomainLabelsValidation {
+	const errors: Partial<Record<SubdomainKey, string>> = {};
+	for (const key of keys) {
+		const err = validateSubdomainLabel(labels[key]);
+		if (err) errors[key] = err;
+	}
+	const seen = new Map<string, SubdomainKey>();
+	for (const key of keys) {
+		if (errors[key]) continue;
+		const value = labels[key].trim();
+		const prior = seen.get(value);
+		if (prior) {
+			errors[key] =
+				`Same as the "${subdomainFieldLabel(prior)}" label — each hostname needs a distinct label.`;
+		} else {
+			seen.set(value, key);
+		}
+	}
+	return { ok: Object.keys(errors).length === 0, errors };
+}
+
+/**
+ * Expand an apex domain (`wolves.ink`) into every owlat hostname. Any non-empty
+ * label override replaces its default; blank/whitespace overrides fall back to
+ * {@link SUBDOMAINS}. This is the ONE place subdomain labels turn into
+ * hostnames — the wizard's DNS instructions, generated config and network URLs
+ * all flow from here, so an override cannot drift between them.
+ */
+export function deriveHostnames(
+	domain: string,
+	overrides: Partial<SubdomainLabels> = {}
+): InstanceHostnames {
 	const d = normalizeDomain(domain);
+	const l: SubdomainLabels = { ...SUBDOMAINS };
+	for (const key of SUBDOMAIN_KEYS) {
+		const value = overrides[key]?.trim();
+		if (value) l[key] = value;
+	}
 	return {
-		site: `${SUBDOMAINS.site}.${d}`,
-		convex: `${SUBDOMAINS.convex}.${d}`,
-		convexSite: `${SUBDOMAINS.convexSite}.${d}`,
-		mail: `${SUBDOMAINS.mail}.${d}`,
-		bounce: `${SUBDOMAINS.bounce}.${d}`,
+		site: `${l.site}.${d}`,
+		convex: `${l.convex}.${d}`,
+		convexSite: `${l.convexSite}.${d}`,
+		mail: `${l.mail}.${d}`,
+		bounce: `${l.bounce}.${d}`,
 	};
 }
 
-/** Public HTTPS URLs from explicit hostnames (which may be user-overridden). */
+/**
+ * Public HTTPS URLs from explicit hostnames (which may be user-overridden),
+ * following the `Caddyfile.example` convention (the `owlat.` / `api.` /
+ * `rest.api.` subdomains served behind the `tls` profile). Callers pair it with
+ * {@link deriveHostnames} to go from an apex domain to URLs; the operator must
+ * point those DNS records at the server and open 80/443 for TLS to be issued.
+ */
 export function networkUrlsFromHosts(
 	h: Pick<InstanceHostnames, 'site' | 'convex' | 'convexSite'>
 ): { siteUrl: string; convexUrl: string; convexSiteUrl: string } {
@@ -162,20 +282,6 @@ export function networkUrlsFromHosts(
 		convexUrl: `https://${h.convex}`,
 		convexSiteUrl: `https://${h.convexSite}`,
 	};
-}
-
-/**
- * Public URLs for a domain-based install, following the `Caddyfile.example`
- * convention (`owlat.` / `api.` / `rest.api.` subdomains served behind the
- * `tls` profile). The operator must point those DNS records at the server and
- * open 80/443 for TLS to be issued.
- */
-export function deriveNetworkUrls(domain: string): {
-	siteUrl: string;
-	convexUrl: string;
-	convexSiteUrl: string;
-} {
-	return networkUrlsFromHosts(deriveHostnames(domain));
 }
 
 // ---- reachability + host-key guards (UX traps) -----------------------------
