@@ -315,7 +315,12 @@ describe('listHookDeliveryLogs (operator read)', () => {
 		const appA = await t.run((ctx) => seedApp(ctx));
 		const appB = await t.run((ctx) => seedApp(ctx, { organizationId: 'tenant-b' }));
 		await seedLog(t, { connectedAppId: appA, hookKind: 'gate', source: 'app', attemptedAt: 100 });
-		await seedLog(t, { connectedAppId: appA, hookKind: 'draft', source: 'fallback', attemptedAt: 200 });
+		await seedLog(t, {
+			connectedAppId: appA,
+			hookKind: 'draft',
+			source: 'fallback',
+			attemptedAt: 200,
+		});
 		await seedLog(t, {
 			organizationId: 'tenant-b',
 			connectedAppId: appB,
@@ -335,8 +340,18 @@ describe('listHookDeliveryLogs (operator read)', () => {
 		const appA = await t.run((ctx) => seedApp(ctx));
 		const appOther = await t.run((ctx) => seedApp(ctx));
 		await seedLog(t, { connectedAppId: appA, hookKind: 'gate', source: 'app', attemptedAt: 10 });
-		await seedLog(t, { connectedAppId: appA, hookKind: 'draft', source: 'fallback', attemptedAt: 20 });
-		await seedLog(t, { connectedAppId: appOther, hookKind: 'gate', source: 'app', attemptedAt: 30 });
+		await seedLog(t, {
+			connectedAppId: appA,
+			hookKind: 'draft',
+			source: 'fallback',
+			attemptedAt: 20,
+		});
+		await seedLog(t, {
+			connectedAppId: appOther,
+			hookKind: 'gate',
+			source: 'app',
+			attemptedAt: 30,
+		});
 
 		const client = t.withIdentity(IDENTITY);
 		const byApp = await client.query(api.connectedApps.hookDeliveryLogStore.listHookDeliveryLogs, {
@@ -363,7 +378,9 @@ describe('listHookDeliveryLogs (operator read)', () => {
 		const t = makeT();
 		auth.role = 'editor';
 		await expect(
-			t.withIdentity(IDENTITY).query(api.connectedApps.hookDeliveryLogStore.listHookDeliveryLogs, {})
+			t
+				.withIdentity(IDENTITY)
+				.query(api.connectedApps.hookDeliveryLogStore.listHookDeliveryLogs, {})
 		).rejects.toThrow();
 		auth.role = 'owner';
 		await expect(
