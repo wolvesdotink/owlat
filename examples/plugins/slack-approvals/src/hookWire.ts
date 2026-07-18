@@ -68,6 +68,7 @@ export type HookRequestFailure =
 	| 'bad_kind'
 	| 'foreign_app'
 	| 'missing_timestamp'
+	| 'malformed_timestamp'
 	| 'stale_timestamp'
 	| 'missing_nonce'
 	| 'replayed_nonce'
@@ -154,11 +155,17 @@ export async function verifyOwlatHookRequest(
 	if (appId !== input.expectedAppId) {
 		return { valid: false, reason: 'foreign_app' };
 	}
-	const timestampSeconds = parseUnixSecondsHeader(
-		header(input.headers, OWLAT_HOOK_HEADERS.timestamp)
-	);
-	if (timestampSeconds === null) {
+	// Distinguish an ABSENT header from a PRESENT-but-garbage one so operator logs
+	// are honest (mirrors `verifySlackSignature`): `missing_timestamp` means the
+	// header was absent/empty, `malformed_timestamp` means it carried a value that
+	// is not unix-seconds (e.g. `not-a-number`). Both still fail closed.
+	const timestampHeader = header(input.headers, OWLAT_HOOK_HEADERS.timestamp);
+	if (timestampHeader === null) {
 		return { valid: false, reason: 'missing_timestamp' };
+	}
+	const timestampSeconds = parseUnixSecondsHeader(timestampHeader);
+	if (timestampSeconds === null) {
+		return { valid: false, reason: 'malformed_timestamp' };
 	}
 	const tolerance = input.toleranceSeconds ?? OWLAT_HOOK_REQUEST_TOLERANCE_SECONDS;
 	if (Math.abs(Math.floor(input.nowMs / 1000) - timestampSeconds) > tolerance) {
