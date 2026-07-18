@@ -60,8 +60,17 @@ async function main(): Promise<void> {
 
 	// Reclaim plugin jobs a previous run left `running` (crashed mid-job) so they
 	// are requeued or failed instead of stranded — the queue-side lease recovery.
+	//
+	// This is a SINGLE-worker deployment (one code-worker drains the queue), so a
+	// freshly-started process provably holds no running jobs: every `running` row
+	// is the residue of the crashed predecessor, no matter how recent its last
+	// heartbeat. We therefore reclaim with `leaseMs: 0` (treat all as abandoned)
+	// rather than a lease window — a lease longer than the max job budget would
+	// skip a job whose worker crashed and restarted within seconds, stranding it
+	// `running` forever. The host still enforces the retry ceiling / never-retry-
+	// cancelled rules during reclaim.
 	try {
-		const { reclaimed } = await getConvexClient().mutation(pluginFn.reclaimStale, {});
+		const { reclaimed } = await getConvexClient().mutation(pluginFn.reclaimStale, { leaseMs: 0 });
 		log(`Reclaimed ${reclaimed} stale plugin job(s)`);
 	} catch (error) {
 		log(`Failed to reclaim stale plugin jobs: ${error}`);

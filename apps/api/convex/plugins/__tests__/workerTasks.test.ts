@@ -375,6 +375,28 @@ describe('reclaimStale — crashed worker lease recovery', () => {
 		});
 	});
 
+	it('startup path (leaseMs: 0) reclaims a running job even with a fresh heartbeat', async () => {
+		// The realistic crash-then-quick-restart case: the worker was seconds into a
+		// job (recent heartbeat) when it crashed; `restart: unless-stopped` restarts
+		// it immediately. A fresh single worker holds no running jobs, so startup
+		// reclaim with leaseMs:0 must requeue this job — a lease window longer than
+		// the job budget would skip it and strand it `running` forever.
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			const now = 10_000_000;
+			const recent = await seedTask(ctx, {
+				status: 'running',
+				attempts: 1,
+				maxAttempts: 3,
+				claimedAt: now - 120_000, // claimed 2 min ago
+				heartbeatAt: now - 2_000, // heartbeat 2s ago — well inside any lease
+			});
+			const result = (await reclaimH(ctx, { now, leaseMs: 0 })) as { reclaimed: number };
+			expect(result.reclaimed).toBe(1);
+			expect((await ctx.db.get(recent))!.status).toBe('queued');
+		});
+	});
+
 	it('terminally fails a reclaimed job with no retries left', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
