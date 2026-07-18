@@ -38,6 +38,7 @@ export interface SlackSignatureInput {
 export type SlackSignatureFailure =
 	| 'missing_signature'
 	| 'missing_timestamp'
+	| 'malformed_timestamp'
 	| 'stale_timestamp'
 	| 'signature_mismatch';
 
@@ -57,9 +58,16 @@ export async function verifySlackSignature(
 	if (typeof input.signatureHeader !== 'string' || input.signatureHeader.length === 0) {
 		return { valid: false, reason: 'missing_signature' };
 	}
+	// Distinguish an ABSENT timestamp from a PRESENT-but-garbage one so operator
+	// logs are honest: `missing_timestamp` means Slack sent no value,
+	// `malformed_timestamp` means it sent something that is not a unix-seconds
+	// integer (e.g. `not-a-number`). Both still fail closed.
+	if (typeof input.timestampHeader !== 'string' || input.timestampHeader.trim().length === 0) {
+		return { valid: false, reason: 'missing_timestamp' };
+	}
 	const timestampSeconds = parseUnixSecondsHeader(input.timestampHeader);
 	if (timestampSeconds === null) {
-		return { valid: false, reason: 'missing_timestamp' };
+		return { valid: false, reason: 'malformed_timestamp' };
 	}
 	const tolerance = input.toleranceSeconds ?? SLACK_SIGNATURE_TOLERANCE_SECONDS;
 	const skewSeconds = Math.abs(Math.floor(input.nowMs / 1000) - timestampSeconds);

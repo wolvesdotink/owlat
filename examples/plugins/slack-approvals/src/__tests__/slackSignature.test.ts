@@ -82,7 +82,19 @@ describe('verifySlackSignature', () => {
 		expect(result).toEqual({ valid: false, reason: 'missing_signature' });
 	});
 
-	it('rejects a non-numeric timestamp header', async () => {
+	it('reports an ABSENT timestamp header as missing_timestamp', async () => {
+		const headers = await validHeaders();
+		const result = await verifySlackSignature({
+			signingSecret: SECRET,
+			signatureHeader: headers.signatureHeader,
+			timestampHeader: null,
+			rawBody: headers.rawBody,
+			nowMs: NOW_MS,
+		});
+		expect(result).toEqual({ valid: false, reason: 'missing_timestamp' });
+	});
+
+	it('reports a PRESENT-but-garbage timestamp header as malformed_timestamp', async () => {
 		const headers = await validHeaders();
 		const result = await verifySlackSignature({
 			signingSecret: SECRET,
@@ -91,7 +103,7 @@ describe('verifySlackSignature', () => {
 			rawBody: headers.rawBody,
 			nowMs: NOW_MS,
 		});
-		expect(result).toEqual({ valid: false, reason: 'missing_timestamp' });
+		expect(result).toEqual({ valid: false, reason: 'malformed_timestamp' });
 	});
 
 	it('does not accept a signature that differs only in the last byte', async () => {
