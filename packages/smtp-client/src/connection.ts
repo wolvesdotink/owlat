@@ -233,21 +233,33 @@ export class SmtpConnection {
 	 * mid-write rejects with a phase-tagged {@link SmtpError}. This method owns the
 	 * socket lifecycle so higher layers never touch {@link rawSocket} directly.
 	 */
-	writePayload(payload: Buffer, phase: SmtpPhase): Promise<void> {
+	writePayload(payload: Buffer, phase: SmtpPhase, timeoutMs = this.timeouts.data): Promise<void> {
 		const socket = this.reader.socket;
 		return new Promise<void>((resolve, reject) => {
+			let settled = false;
+			const timer = setTimeout(() => {
+				fail(undefined, `timed out after ${timeoutMs}ms writing the SMTP payload`);
+				// A timed-out write leaves the wire state unknowable. Tear down the
+				// connection so neither a late drain nor a late reply can be reused.
+				this.close();
+			}, timeoutMs);
 			const cleanup = (): void => {
+				clearTimeout(timer);
 				socket.removeListener('error', onError);
 				socket.removeListener('close', onClose);
 				socket.removeListener('drain', onDrain);
 			};
 			const fail = (cause: unknown, message: string): void => {
+				if (settled) return;
+				settled = true;
 				cleanup();
 				reject(new SmtpError({ phase, message, secured: this.secured, cause }));
 			};
 			const onError = (err: Error): void => fail(err, 'socket error while writing the payload');
 			const onClose = (): void => fail(undefined, 'socket closed while writing the payload');
 			const onDrain = (): void => {
+				if (settled) return;
+				settled = true;
 				cleanup();
 				resolve();
 			};
@@ -257,11 +269,13 @@ export class SmtpConnection {
 			try {
 				drained = this.write(payload, phase);
 			} catch (err) {
+				settled = true;
 				cleanup();
 				reject(err);
 				return;
 			}
 			if (drained) {
+				settled = true;
 				cleanup();
 				resolve();
 				return;

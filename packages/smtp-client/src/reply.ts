@@ -137,9 +137,15 @@ export function parseReply(raw: string): SmtpReply {
 const LF_BYTE = 0x0a;
 const CR_BYTE = 0x0d;
 
+/** Defensive wire bounds for replies from an untrusted SMTP peer. */
+export const MAX_REPLY_LINE_BYTES = 4 * 1024;
+export const MAX_REPLY_BYTES = 64 * 1024;
+export const MAX_REPLY_LINES = 100;
+
 export class ReplyParser {
 	private buffer: Buffer = Buffer.alloc(0);
 	private pending: ParsedLine[] = [];
+	private pendingBytes = 0;
 
 	/**
 	 * Feed a raw socket chunk. Framing happens on BYTES (so a multi-byte UTF-8
@@ -149,27 +155,50 @@ export class ReplyParser {
 	 */
 	push(chunk: Buffer | string): SmtpReply[] {
 		const bytes = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
-		this.buffer = this.buffer.length === 0 ? bytes : Buffer.concat([this.buffer, bytes]);
 		const replies: SmtpReply[] = [];
-		let newlineIndex = this.buffer.indexOf(LF_BYTE);
-		while (newlineIndex !== -1) {
-			let end = newlineIndex;
-			if (end > 0 && this.buffer[end - 1] === CR_BYTE) {
-				end -= 1;
+		let offset = 0;
+		while (offset < bytes.length) {
+			const newlineIndex = bytes.indexOf(LF_BYTE, offset);
+			if (newlineIndex === -1) {
+				const tail = bytes.subarray(offset);
+				if (this.buffer.length + tail.length > MAX_REPLY_LINE_BYTES) {
+					throw new Error(`SMTP reply line exceeds ${MAX_REPLY_LINE_BYTES} bytes`);
+				}
+				this.buffer =
+					this.buffer.length === 0 ? Buffer.from(tail) : Buffer.concat([this.buffer, tail]);
+				break;
 			}
-			const line = this.buffer.subarray(0, end).toString('utf8');
-			this.buffer = this.buffer.subarray(newlineIndex + 1);
+
+			const segment = bytes.subarray(offset, newlineIndex);
+			if (this.buffer.length + segment.length > MAX_REPLY_LINE_BYTES) {
+				throw new Error(`SMTP reply line exceeds ${MAX_REPLY_LINE_BYTES} bytes`);
+			}
+			const framed = this.buffer.length === 0 ? segment : Buffer.concat([this.buffer, segment]);
+			this.buffer = Buffer.alloc(0);
+			const end =
+				framed.length > 0 && framed[framed.length - 1] === CR_BYTE
+					? framed.length - 1
+					: framed.length;
+			const line = framed.subarray(0, end).toString('utf8');
 			if (line !== '') {
 				const parsed = parseReplyLine(line);
 				if (parsed !== undefined) {
+					if (this.pending.length + 1 > MAX_REPLY_LINES) {
+						throw new Error(`SMTP reply exceeds ${MAX_REPLY_LINES} lines`);
+					}
+					this.pendingBytes += framed.length + 1;
+					if (this.pendingBytes > MAX_REPLY_BYTES) {
+						throw new Error(`SMTP reply exceeds ${MAX_REPLY_BYTES} bytes`);
+					}
 					this.pending.push(parsed);
 					if (parsed.final) {
 						replies.push(buildReply(this.pending));
 						this.pending = [];
+						this.pendingBytes = 0;
 					}
 				}
 			}
-			newlineIndex = this.buffer.indexOf(LF_BYTE);
+			offset = newlineIndex + 1;
 		}
 		return replies;
 	}

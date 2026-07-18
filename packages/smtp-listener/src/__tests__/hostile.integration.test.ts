@@ -111,6 +111,30 @@ describe('oversized command line', () => {
 		await c.waitClose();
 		expect(c.closed).toBe(true);
 	});
+
+	it('rejects an oversized CRLF-terminated line delivered in one chunk', async () => {
+		const { port } = await start({ maxCommandBytes: 64 });
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write(`EHLO ${'x'.repeat(100)}\r\n`);
+		await c.waitCode(500);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		await expectStillServes(port);
+	});
+
+	it('rejects an oversized CRLF-terminated line assembled from fragments', async () => {
+		const { port } = await start({ maxCommandBytes: 64 });
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		c.write(`EHLO ${'x'.repeat(40)}`);
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		c.write(`${'x'.repeat(40)}\r\n`);
+		await c.waitCode(500);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		await expectStillServes(port);
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -16,6 +16,8 @@ import type net from 'node:net';
 import { SmtpError, type SmtpPhase } from './errors';
 import { ReplyParser, type SmtpReply } from './reply';
 
+const MAX_QUEUED_REPLIES = 256;
+
 export class ReplyReader {
 	private source: net.Socket;
 	private parser = new ReplyParser();
@@ -179,7 +181,7 @@ export class ReplyReader {
 		try {
 			replies = this.parser.push(chunk);
 		} catch (err) {
-			this.fail(err instanceof Error ? err : new Error(String(err)));
+			this.failAndDestroy(err instanceof Error ? err : new Error(String(err)));
 			return;
 		}
 		for (const reply of replies) {
@@ -189,6 +191,12 @@ export class ReplyReader {
 				this.waiter = undefined;
 				waiter.resolve(reply);
 			} else {
+				if (this.queue.length >= MAX_QUEUED_REPLIES) {
+					this.failAndDestroy(
+						new Error(`SMTP peer sent more than ${MAX_QUEUED_REPLIES} unsolicited replies`)
+					);
+					return;
+				}
 				this.queue.push(reply);
 			}
 		}
@@ -204,6 +212,11 @@ export class ReplyReader {
 			this.waiter = undefined;
 			waiter.reject(err);
 		}
+	}
+
+	private failAndDestroy(err: Error): void {
+		this.fail(err);
+		this.source.destroy();
 	}
 
 	private wrap(phase: SmtpPhase, cause: Error, secured: boolean): SmtpError {

@@ -2,7 +2,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseReply, parseReplyLine, ReplyParser } from '../src/reply';
+import {
+	MAX_REPLY_BYTES,
+	MAX_REPLY_LINE_BYTES,
+	MAX_REPLY_LINES,
+	parseReply,
+	parseReplyLine,
+	ReplyParser,
+} from '../src/reply';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(here, 'fixtures');
@@ -143,5 +150,32 @@ describe('ReplyParser streaming', () => {
 		const replies = parser.push(full.subarray(split + 1));
 		expect(replies).toHaveLength(1);
 		expect(replies[0]?.lines[0]).toBe('déjà vu');
+	});
+
+	it('rejects an oversized unterminated reply line before retaining it', () => {
+		const parser = new ReplyParser();
+		expect(() => parser.push(Buffer.alloc(MAX_REPLY_LINE_BYTES + 1, 0x78))).toThrow(
+			/reply line exceeds/
+		);
+	});
+
+	it('rejects a reply line that crosses the cap across fragmented chunks', () => {
+		const parser = new ReplyParser();
+		expect(parser.push(Buffer.alloc(MAX_REPLY_LINE_BYTES, 0x78))).toEqual([]);
+		expect(() => parser.push('x\r\n')).toThrow(/reply line exceeds/);
+	});
+
+	it('rejects a multiline reply with too many continuation lines', () => {
+		const parser = new ReplyParser();
+		const attack = '250-x\r\n'.repeat(MAX_REPLY_LINES + 1);
+		expect(() => parser.push(attack)).toThrow(/reply exceeds .* lines/);
+	});
+
+	it('rejects a multiline reply whose aggregate bytes exceed the reply cap', () => {
+		const parser = new ReplyParser();
+		const text = 'x'.repeat(MAX_REPLY_LINE_BYTES - 6);
+		const line = `250-${text}\r\n`;
+		const attack = line.repeat(Math.ceil(MAX_REPLY_BYTES / Buffer.byteLength(line)) + 1);
+		expect(() => parser.push(attack)).toThrow(/reply exceeds .* bytes/);
 	});
 });

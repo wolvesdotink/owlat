@@ -34,12 +34,17 @@ describe('SmtpConnectionPool', () => {
 	});
 
 	it('builds a connect config on first acquire', async () => {
-		const result = await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
+		const result = await pool.acquire('mx1.example.com', '10.0.0.1', {
+			port: 25,
+			socketTimeout: 12_345,
+		});
 
 		expect(result.key).toBe('mx1.example.com:10.0.0.1:none:rt0ru0');
 		expect(result.config.host).toBe('mx1.example.com');
 		expect(result.config.tlsMode).toBe('starttls');
 		expect(result.config.localAddress).toBe('10.0.0.1');
+		expect(result.config.timeouts?.command).toBe(12_345);
+		expect(result.config.timeouts?.data).toBe(12_345);
 	});
 
 	it('reuses the existing config for the same key', async () => {
