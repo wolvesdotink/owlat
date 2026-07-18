@@ -229,5 +229,9 @@ export const pluginTables = {
 		// FIFO pickup + lease reclaim both scan by status, oldest first.
 		.index('by_status', ['status'])
 		// Admin/dashboard reads scope to the tenant.
-		.index('by_organization', ['organizationId']),
+		.index('by_organization', ['organizationId'])
+		// In-flight depth cap: enqueue counts a plugin's `queued` + `running` jobs
+		// for the tenant against PLUGIN_WORKER_MAX_PENDING_JOBS without scanning the
+		// plugin's terminal (`succeeded`/`failed`/`cancelled`) history.
+		.index('by_organization_plugin_status', ['organizationId', 'pluginId', 'status']),
 };

@@ -24,6 +24,7 @@
 
 import {
 	PLUGIN_WORKER_CAPABILITY,
+	PLUGIN_WORKER_MAX_PENDING_JOBS,
 	PLUGIN_WORKER_PAYLOAD_MAX_BYTES,
 	PLUGIN_WORKER_RESULT_MAX_BYTES,
 	PLUGIN_WORKER_TIMEOUT_MAX_MS,
@@ -119,6 +120,31 @@ function scopeOf(task: Doc<'pluginTasks'>): HostedPluginActorScope {
 // ============================================================
 
 /**
+ * Count a plugin's in-flight jobs (`queued` + `running`) for a tenant, bounded
+ * by the cap. The `by_organization_plugin_status` index means only unfinished
+ * rows are scanned — a plugin's terminal history never inflates the count — and
+ * `.take(cap)` keeps each status scan bounded even if the invariant is violated.
+ */
+async function countPendingJobs(
+	ctx: MutationCtx,
+	organizationId: string,
+	pluginId: string
+): Promise<number> {
+	let count = 0;
+	for (const status of ['queued', 'running'] as const) {
+		const rows = await ctx.db
+			.query('pluginTasks')
+			.withIndex('by_organization_plugin_status', (q) =>
+				q.eq('organizationId', organizationId).eq('pluginId', pluginId).eq('status', status)
+			)
+			.take(PLUGIN_WORKER_MAX_PENDING_JOBS);
+		count += rows.length;
+		if (count >= PLUGIN_WORKER_MAX_PENDING_JOBS) break;
+	}
+	return count;
+}
+
+/**
  * Enqueue a job for the sandboxed worker. An `internalMutation` because only
  * host code (never a public client) may call it; it re-authorizes the plugin in
  * this transaction, so passing a mismatched `pluginId` cannot spoof another
@@ -153,6 +179,19 @@ export const enqueue = internalMutation({
 		if (Buffer.byteLength(args.payload) > PLUGIN_WORKER_PAYLOAD_MAX_BYTES) {
 			await recordHostedPluginAudit(ctx, scope, 'worker.enqueue', 'denied', {
 				reasonCode: 'access_denied',
+			});
+			return null;
+		}
+
+		// The queue is a bounded hosted resource like storage and the LLM budget: a
+		// plugin may only hold PLUGIN_WORKER_MAX_PENDING_JOBS unfinished jobs (queued
+		// + running) at once. At the cap, enqueue fails closed and audits the denial
+		// so one plugin can neither exhaust the queue's storage nor monopolize the
+		// single worker — independent of any cadence limit its caller applies.
+		const pending = await countPendingJobs(ctx, scope.organizationId, scope.pluginId);
+		if (pending >= PLUGIN_WORKER_MAX_PENDING_JOBS) {
+			await recordHostedPluginAudit(ctx, scope, 'worker.enqueue', 'denied', {
+				reasonCode: 'access_or_budget_denied',
 			});
 			return null;
 		}

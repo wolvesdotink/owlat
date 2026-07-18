@@ -40,6 +40,18 @@ export const PLUGIN_WORKER_TIMEOUT_MAX_MS = 15 * 60_000; // 900000 (fifteen minu
 export const PLUGIN_WORKER_PAYLOAD_MAX_BYTES = 64 * 1024; // 65536
 export const PLUGIN_WORKER_RESULT_MAX_BYTES = 64 * 1024; // 65536
 
+/**
+ * Per-(organization, plugin) ceiling on jobs still occupying the queue —
+ * `queued` plus `running`, i.e. work the single worker has not yet finished.
+ * The worker queue is a bounded hosted resource like storage bytes and the LLM
+ * daily budget, so the host caps a plugin's in-flight depth at enqueue: once a
+ * plugin already holds this many unfinished jobs, further enqueues fail closed.
+ * This keeps one plugin from exhausting the queue's storage or monopolizing the
+ * single worker's attention, independent of any cadence limit its caller adds.
+ * Terminal jobs (`succeeded`/`failed`/`cancelled`) do not count.
+ */
+export const PLUGIN_WORKER_MAX_PENDING_JOBS = 100;
+
 /** Local job identity within a plugin. The host namespaces it with the plugin id. */
 export type PluginWorkerJobLocalId = string;
 
