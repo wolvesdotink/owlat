@@ -15,6 +15,7 @@
  * exact bytes it sent.
  */
 
+import { isRawBodyWithinLimit } from './bodyLimit';
 import { constantTimeEqual, hmacSha256Hex } from './crypto';
 import { parseUnixSecondsHeader } from './timestampHeader';
 
@@ -36,6 +37,7 @@ export interface SlackSignatureInput {
 }
 
 export type SlackSignatureFailure =
+	| 'body_too_large'
 	| 'missing_signature'
 	| 'missing_timestamp'
 	| 'malformed_timestamp'
@@ -55,6 +57,11 @@ export type SlackSignatureResult =
 export async function verifySlackSignature(
 	input: SlackSignatureInput
 ): Promise<SlackSignatureResult> {
+	// Cap the body BEFORE hashing so a forged request cannot make us HMAC an
+	// attacker-sized payload (fail closed: no vote is ever recorded).
+	if (!isRawBodyWithinLimit(input.rawBody)) {
+		return { valid: false, reason: 'body_too_large' };
+	}
 	if (typeof input.signatureHeader !== 'string' || input.signatureHeader.length === 0) {
 		return { valid: false, reason: 'missing_signature' };
 	}

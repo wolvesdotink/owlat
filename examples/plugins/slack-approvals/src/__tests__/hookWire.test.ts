@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_RAW_BODY_BYTES } from '../bodyLimit';
 import { hmacSha256Hex, sha256Hex } from '../crypto';
 import {
 	createNonceGuard,
@@ -154,6 +155,22 @@ describe('verifyOwlatHookRequest', () => {
 			nowMs: NOW_MS,
 		});
 		expect(result).toEqual({ valid: false, reason: 'missing_signature' });
+	});
+
+	it('rejects an over-cap body before any signature work runs', async () => {
+		// A body signed exactly the way Owlat would, but over the cap: it would
+		// otherwise verify, so a body_too_large result proves the length guard runs
+		// ahead of the SHA-256/HMAC.
+		const huge = 'x'.repeat(MAX_RAW_BODY_BYTES + 1);
+		const req = await owlatSignedRequest({ rawBody: huge });
+		const result = await verifyOwlatHookRequest({
+			secret: SECRET,
+			expectedAppId: APP_ID,
+			headers: req.headers,
+			rawBody: req.rawBody,
+			nowMs: NOW_MS,
+		});
+		expect(result).toEqual({ valid: false, reason: 'body_too_large' });
 	});
 
 	it('rejects a replayed nonce when a nonce guard is supplied', async () => {

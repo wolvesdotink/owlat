@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { MAX_RAW_BODY_BYTES } from '../bodyLimit';
 import {
 	SLACK_SIGNATURE_TOLERANCE_SECONDS,
 	signSlackRequest,
@@ -104,6 +105,21 @@ describe('verifySlackSignature', () => {
 			nowMs: NOW_MS,
 		});
 		expect(result).toEqual({ valid: false, reason: 'malformed_timestamp' });
+	});
+
+	it('rejects an over-cap body before any signature work runs', async () => {
+		// Sign the oversized body CORRECTLY: were the length guard not ahead of the
+		// HMAC, this request would verify. It must still be rejected as
+		// body_too_large, proving the cap short-circuits before hashing.
+		const huge = 'x'.repeat(MAX_RAW_BODY_BYTES + 1);
+		const result = await verifySlackSignature({
+			signingSecret: SECRET,
+			signatureHeader: await signSlackRequest(SECRET, TS, huge),
+			timestampHeader: String(TS),
+			rawBody: huge,
+			nowMs: NOW_MS,
+		});
+		expect(result).toEqual({ valid: false, reason: 'body_too_large' });
 	});
 
 	it('does not accept a signature that differs only in the last byte', async () => {

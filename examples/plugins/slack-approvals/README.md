@@ -38,6 +38,11 @@ app:
   nonce replay guard. Anything that does not verify records no vote.
 - **Tenants are isolated.** Approvals are keyed by `(organizationId, id)`, so
   one Owlat tenant's holds are never reachable through another tenant's ids.
+- **Request bodies are capped.** Both inbound surfaces reject a raw body larger
+  than 64 KiB (`body_too_large` → 401 / held gate) _before_ any HMAC or
+  `JSON.parse` runs, so a forged request cannot make the app hash an
+  attacker-sized payload. This is defence in depth — the HTTP host in front of
+  the app must also cap the request body.
 
 ## Wiring it up (operator)
 
