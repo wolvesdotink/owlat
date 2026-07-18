@@ -23,6 +23,14 @@ import { decodeCharset } from './charset';
 /** Hard ceiling on multipart nesting depth; beyond it a node is left as a leaf. */
 const MAX_DEPTH = 100;
 
+/**
+ * Hard ceiling on descendant MIME parts in one message. The top-level RFC 822
+ * message is not counted; every child node, including multipart containers, is.
+ * RFC mail in normal use stays far below this, while a flat boundary bomb can
+ * otherwise turn a small wire message into hundreds of thousands of objects.
+ */
+export const MAX_MIME_PARTS = 1000;
+
 /** One node of the MIME part tree. */
 export interface MimeNode {
 	/** Parsed headers of this part. */
@@ -59,10 +67,9 @@ function splitHeadersAndBody(raw: string): { headerText: string; body: string } 
  * verbatim so DSN scraping and message re-verification see the exact original
  * bytes — byte-for-byte with mailparser.
  */
-function splitMultipart(body: string, boundary: string): string[] {
+function* splitMultipart(body: string, boundary: string): Generator<string, void, void> {
 	const open = `--${boundary}`;
 	const close = `${open}--`;
-	const parts: string[] = [];
 	let partStart = -1; // offset where the current part's content begins, -1 = idle
 	let prevLineEnd = -1; // end offset (exclusive) of the last content line seen
 	const n = body.length;
@@ -75,7 +82,7 @@ function splitMultipart(body: string, boundary: string): string[] {
 		const t = body.slice(pos, lineEnd).replace(/[ \t]+$/, '');
 		if (t === open || t === close) {
 			if (partStart !== -1) {
-				parts.push(body.slice(partStart, prevLineEnd === -1 ? partStart : prevLineEnd));
+				yield body.slice(partStart, prevLineEnd === -1 ? partStart : prevLineEnd);
 			}
 			if (t === close) {
 				partStart = -1;
@@ -90,9 +97,13 @@ function splitMultipart(body: string, boundary: string): string[] {
 		if (atEnd) break;
 	}
 	if (partStart !== -1) {
-		parts.push(body.slice(partStart, prevLineEnd === -1 ? partStart : prevLineEnd));
+		yield body.slice(partStart, prevLineEnd === -1 ? partStart : prevLineEnd);
 	}
-	return parts;
+}
+
+/** Shared breadth budget threaded through every recursive branch. */
+interface MimeParseBudget {
+	remainingParts: number;
 }
 
 /**
@@ -111,11 +122,17 @@ function leafRawBody(contentType: ContentType, body: string, nested: boolean): s
 
 /**
  * Parse a raw message/part (binary string) into a {@link MimeNode} tree.
- * Recursion is bounded by {@link MAX_DEPTH} and a missing multipart boundary
- * simply yields a childless node, so hostile input can never overflow the stack
- * or throw.
+ * Recursion is bounded by {@link MAX_DEPTH}, total breadth by
+ * {@link MAX_MIME_PARTS}, and a missing multipart boundary simply yields a
+ * childless node, so hostile input can never overflow the stack, allocate an
+ * unbounded node tree, or throw.
  */
-export function parseMimeTree(raw: string, depth = 0, nested = false): MimeNode {
+function parseMimeNode(
+	raw: string,
+	depth: number,
+	nested: boolean,
+	budget: MimeParseBudget
+): MimeNode {
 	const { headerText, body } = splitHeadersAndBody(raw);
 	const headers = parseHeaders(headerText);
 	const contentType = headers.contentType;
@@ -137,8 +154,14 @@ export function parseMimeTree(raw: string, depth = 0, nested = false): MimeNode 
 		const boundary = getRawParam(headers.last('content-type'), 'boundary');
 		if (boundary !== undefined && boundary !== '') {
 			isMultipart = true;
-			for (const part of splitMultipart(body, boundary)) {
-				children.push(parseMimeTree(part, depth + 1, true));
+			const parts = splitMultipart(body, boundary);
+			while (budget.remainingParts > 0) {
+				// Pull lazily only while budget remains, so the unsplit remainder is never
+				// scanned or collected into an intermediate parts array.
+				const next = parts.next();
+				if (next.done) break;
+				budget.remainingParts--;
+				children.push(parseMimeNode(next.value, depth + 1, true, budget));
 			}
 		}
 	}
@@ -150,6 +173,15 @@ export function parseMimeTree(raw: string, depth = 0, nested = false): MimeNode 
 		children,
 		rawBody: isMultipart ? '' : leafRawBody(contentType, body, nested),
 	};
+}
+
+/**
+ * Parse a raw message into a bounded MIME tree. The optional depth/nested
+ * parameters remain for the existing low-level test/API surface; every call
+ * starts one fresh global part budget shared by all recursive branches.
+ */
+export function parseMimeTree(raw: string, depth = 0, nested = false): MimeNode {
+	return parseMimeNode(raw, depth, nested, { remainingParts: MAX_MIME_PARTS });
 }
 
 /**

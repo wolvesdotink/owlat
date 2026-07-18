@@ -122,6 +122,10 @@ export function createBounceServer(config: MtaConfig, redis: Redis): SmtpListene
 		hostname: config.ehloHostname,
 		banner: `${config.ehloHostname} Owlat MTA Bounce Processor`,
 		maxMessageBytes: MAX_INBOUND_BYTES, // advertised via EHLO SIZE; enforced in the loop (I4)
+		// Bounce/inbound intake is intentionally single-recipient: onData routes the
+		// message using rcptTo[0]. Refuse any extra envelope recipient instead of
+		// accepting and silently ignoring it, and keep hostile transaction state O(1).
+		maxRecipients: 1,
 		// Idle timeouts preserve the pre-cutover smtp-server `socketTimeout` (60 s,
 		// one inactivity timer for the whole socket) rather than the listener's long
 		// library defaults — a stalled command / DATA phase is torn down with the

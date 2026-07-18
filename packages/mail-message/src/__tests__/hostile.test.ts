@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBody, parseMimeTree } from '../parse/body';
+import { MAX_MIME_PARTS, parseBody, parseMimeTree } from '../parse/body';
 import { extractAttachments } from '../parse/attachments';
 
 /**
@@ -12,7 +12,7 @@ import { extractAttachments } from '../parse/attachments';
  * "function threw".
  */
 describe('hostile MIME input', () => {
-	it('a 1000-part bomb is bounded and does not throw', () => {
+	it('accepts a 1000-part message at the exact global part ceiling', () => {
 		const parts: string[] = ['Content-Type: multipart/mixed; boundary="B"', ''];
 		for (let i = 0; i < 1000; i++) {
 			parts.push(
@@ -33,6 +33,54 @@ describe('hostile MIME input', () => {
 		expect(attachments).toHaveLength(1000);
 		expect(attachments[0]!.filename).toBe('f0.bin');
 		expect(attachments[999]!.filename).toBe('f999.bin');
+	});
+
+	it('stops a 100,000-part flat bomb at the global part ceiling', () => {
+		const partCount = 100_000;
+		const parts: string[] = ['Content-Type: multipart/mixed; boundary="B"', ''];
+		for (let i = 0; i < partCount; i++) parts.push('--B', '', 'x');
+		parts.push('--B--');
+		const raw = parts.join('\r\n');
+
+		let tree: ReturnType<typeof parseMimeTree> | undefined;
+		expect(() => {
+			tree = parseMimeTree(raw);
+		}).not.toThrow();
+
+		// This is a breadth bound, not merely a termination assertion: the parser
+		// must allocate no more than the explicit global budget even though the
+		// small wire message contains two orders of magnitude more delimiters.
+		expect(Buffer.byteLength(raw)).toBeLessThan(2 * 1024 * 1024);
+		expect(tree!.children).toHaveLength(MAX_MIME_PARTS);
+		expect(tree!.children[MAX_MIME_PARTS - 1]).toBeDefined();
+	});
+
+	it('shares one part budget across sibling multipart branches', () => {
+		const branch = (boundary: string, count: number): string => {
+			const lines = [`Content-Type: multipart/mixed; boundary="${boundary}"`, ''];
+			for (let i = 0; i < count; i++) lines.push(`--${boundary}`, '', 'x');
+			lines.push(`--${boundary}--`);
+			return lines.join('\r\n');
+		};
+		const raw = [
+			'Content-Type: multipart/mixed; boundary="ROOT"',
+			'',
+			'--ROOT',
+			branch('LEFT', 750),
+			'--ROOT',
+			branch('RIGHT', 750),
+			'--ROOT--',
+		].join('\r\n');
+		const tree = parseMimeTree(raw);
+
+		const countDescendants = (node: typeof tree): number =>
+			node.children.reduce((count, child) => count + 1 + countDescendants(child), 0);
+		expect(countDescendants(tree)).toBe(MAX_MIME_PARTS);
+		expect(tree.children).toHaveLength(2);
+		// LEFT consumes one container + 750 leaves. RIGHT consumes the second
+		// container and only the 248 leaves left in the shared 1,000-part budget.
+		expect(tree.children[0]!.children).toHaveLength(750);
+		expect(tree.children[1]!.children).toHaveLength(248);
 	});
 
 	it('64-deep multipart nesting is bounded and does not throw', () => {
