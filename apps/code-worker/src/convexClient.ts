@@ -1,3 +1,4 @@
+import type { PluginWorkerClaimedJob } from '@owlat/plugin-kit';
 import { ConvexHttpClient } from 'convex/browser';
 import { makeFunctionReference } from 'convex/server';
 
@@ -69,20 +70,16 @@ export const fn = {
 };
 
 /**
- * A claimed Tier-3 plugin job, as returned by `plugins/workerTasks:claim`. The
- * worker gets only what it needs to run the job — never the org id, secrets, or
- * host bookkeeping. `payload` is untrusted plugin input; `jobKind` routes to a
- * host-controlled command.
+ * A claimed Tier-3 plugin job, as returned by `plugins/workerTasks:getNextQueued`
+ * and `:claim`. This is the shared `PluginWorkerClaimedJob` wire contract from
+ * `@owlat/plugin-kit` — the SAME type the Convex host projects each row into
+ * (`pluginWorkerClaimedJobOf`) — so the worker can never read a field name the
+ * host does not emit. The worker gets only what it needs to run the job: never
+ * the org id, secrets, or host bookkeeping. `payload` is untrusted plugin input;
+ * `jobKind` routes to a host-controlled command; `taskId` is echoed back on
+ * every follow-up mutation.
  */
-export interface PluginTask {
-	_id: string;
-	pluginId: string;
-	jobKind: string;
-	payload: string;
-	timeoutMs: number;
-	attempts: number;
-	maxAttempts: number;
-}
+export type PluginTask = PluginWorkerClaimedJob;
 
 /** `plugins/workerTasks:claim` result: the claimed job, or why it was not claimed. */
 export type PluginClaimResult =

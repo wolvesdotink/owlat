@@ -4,12 +4,14 @@ import { getFunctionName } from 'convex/server';
 import {
 	PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES,
 	PLUGIN_WORKER_RESULT_MAX_BYTES,
+	pluginWorkerClaimedJobOf,
 	pluginWorkerJobLocalIdOf,
 } from '@owlat/plugin-kit';
 import { describe, it, expect, vi } from 'vitest';
 import {
 	BUILTIN_JOB_COMMANDS,
 	buildJobEnv,
+	pollForPluginTask,
 	resolveJobCommand,
 	runPluginJob,
 } from '../pluginTaskRunner.js';
@@ -66,7 +68,7 @@ function fakeClient(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 const task: PluginTask = {
-	_id: 'job-1',
+	taskId: 'job-1',
 	pluginId: 'lab',
 	jobKind: 'plugin.lab.selftest',
 	payload: '{}',
@@ -271,5 +273,141 @@ describe('runPluginJob — sandbox wiring', () => {
 			heartbeatIntervalMs: 10_000,
 		});
 		expect(cleanupDir).toHaveBeenCalled();
+	});
+});
+
+/**
+ * A faithful in-memory stand-in for the Convex host queue. It projects each
+ * persisted row through the REAL shared `pluginWorkerClaimedJobOf` — the exact
+ * projection `plugins/workerTasks` uses over the wire — and keys every follow-up
+ * mutation on the echoed `taskId`, mirroring the host's `v.id('pluginTasks')`
+ * validator (a missing id is rejected, not silently accepted). This is the
+ * host->worker WIRE boundary: if the two sides ever drift on the claimed-job
+ * field name again, `next.taskId` arrives `undefined`, the id never threads
+ * through claim/complete, and the seeded job never reaches a terminal state — so
+ * the drift fails THIS test closed instead of hiding behind two green same-side
+ * suites (the failure the reviewer's F1/F2 called out).
+ */
+interface HostRow {
+	_id: string;
+	pluginId: string;
+	jobKind: string;
+	payload: string;
+	timeoutMs: number;
+	attempts: number;
+	maxAttempts: number;
+	status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+	createdAt: number;
+	result?: string;
+	errorMessage?: string;
+}
+
+function hostQueueStub(seed: HostRow[]) {
+	const rows = new Map<string, HostRow>(seed.map((row) => [row._id, { ...row }]));
+	// Mirror the host's v.id('pluginTasks') arg validator: a missing/undefined id
+	// is rejected outright — exactly the throw the drift produced in production.
+	const requireId = (taskId: unknown): string => {
+		if (typeof taskId !== 'string') {
+			throw new Error(`ArgumentValidationError: taskId is not an Id (${String(taskId)})`);
+		}
+		return taskId;
+	};
+	const handlers: Record<string, (args: Record<string, unknown>) => unknown> = {
+		getNextQueued: () => {
+			const queued = [...rows.values()]
+				.filter((r) => r.status === 'queued')
+				.sort((a, b) => a.createdAt - b.createdAt)[0];
+			return queued ? pluginWorkerClaimedJobOf(queued) : null;
+		},
+		claim: (args) => {
+			const row = rows.get(requireId(args['taskId']));
+			if (!row || row.status !== 'queued') return { claimed: false };
+			row.status = 'running';
+			row.attempts += 1;
+			return { claimed: true, job: pluginWorkerClaimedJobOf(row) };
+		},
+		heartbeat: (args) => {
+			const row = rows.get(requireId(args['taskId']));
+			return { alive: row?.status === 'running', cancelRequested: false };
+		},
+		complete: (args) => {
+			const row = rows.get(requireId(args['taskId']));
+			if (!row || row.status !== 'running') return { ok: false };
+			row.status = 'succeeded';
+			row.result = args['result'] as string | undefined;
+			return { ok: true };
+		},
+		fail: (args) => {
+			const row = rows.get(requireId(args['taskId']));
+			if (!row || row.status !== 'running') return { status: 'failed', retried: false };
+			row.status = 'failed';
+			row.errorMessage = args['errorMessage'] as string;
+			return { status: 'failed', retried: false };
+		},
+	};
+	const dispatch = (reference: unknown, args: unknown) => {
+		const name =
+			getFunctionName(reference as never)
+				.split(':')
+				.pop() ?? '';
+		return handlers[name]!((args ?? {}) as Record<string, unknown>);
+	};
+	return {
+		rows,
+		query: vi.fn(async (reference: unknown, args: unknown) => dispatch(reference, args)),
+		mutation: vi.fn(async (reference: unknown, args: unknown) => dispatch(reference, args)),
+	};
+}
+
+describe('pollForPluginTask — the real host->worker wire boundary', () => {
+	function seededRow(overrides: Partial<HostRow> = {}): HostRow {
+		return {
+			_id: 'row-1',
+			pluginId: 'lab',
+			jobKind: 'plugin.lab.selftest',
+			payload: '{}',
+			timeoutMs: 50,
+			attempts: 0,
+			maxAttempts: 3,
+			status: 'queued',
+			createdAt: 1,
+			...overrides,
+		};
+	}
+
+	it('claims and runs a seeded queued job through to a terminal succeeded state', async () => {
+		const host = hostQueueStub([seededRow()]);
+		const spawnSpy = vi.fn(() => closingChild(0)) as unknown as typeof spawn;
+
+		await pollForPluginTask({
+			client: host as never,
+			spawnFn: spawnSpy,
+			prepareDir: () => {},
+			cleanupDir: () => {},
+			heartbeatIntervalMs: 10_000,
+		});
+
+		// The job actually ran (poll -> claim -> spawn) and completed. This only holds
+		// if `pollForPluginTask` read the host's `taskId` off `getNextQueued`/`claim`
+		// and echoed it back on `complete`; a field-name drift makes the id undefined,
+		// claim never matches the row, nothing spawns, and the row stays `queued`.
+		expect(spawnSpy).toHaveBeenCalledTimes(1);
+		expect(host.rows.get('row-1')!.status).toBe('succeeded');
+	});
+
+	it('is a no-op on an empty queue (never claims or spawns)', async () => {
+		const host = hostQueueStub([]);
+		const spawnSpy = vi.fn(() => closingChild(0)) as unknown as typeof spawn;
+
+		await pollForPluginTask({
+			client: host as never,
+			spawnFn: spawnSpy,
+			prepareDir: () => {},
+			cleanupDir: () => {},
+		});
+
+		expect(host.query).toHaveBeenCalledTimes(1);
+		expect(host.mutation).not.toHaveBeenCalled();
+		expect(spawnSpy).not.toHaveBeenCalled();
 	});
 });

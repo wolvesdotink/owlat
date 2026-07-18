@@ -28,9 +28,11 @@ import {
 	PLUGIN_WORKER_PAYLOAD_MAX_BYTES,
 	PLUGIN_WORKER_RESULT_MAX_BYTES,
 	PLUGIN_WORKER_TIMEOUT_MAX_MS,
+	type PluginWorkerClaimedJob,
 	clampWorkerAttempts,
 	clampWorkerTimeoutMs,
 	isPluginWorkerJobKindOwnedBy,
+	pluginWorkerClaimedJobOf,
 } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -84,27 +86,17 @@ function clampErrorMessage(text: string): string {
 		: `${[...stripped].slice(0, MAX_ERROR_MESSAGE_CODE_POINTS).join('')}`;
 }
 
-/** The row shape the worker needs to run a job; excludes host bookkeeping. */
-interface ClaimedJob {
-	readonly taskId: Id<'pluginTasks'>;
-	readonly pluginId: string;
-	readonly jobKind: string;
-	readonly payload: string;
-	readonly timeoutMs: number;
-	readonly attempts: number;
-	readonly maxAttempts: number;
-}
+/**
+ * The row shape the worker needs to run a job; excludes host bookkeeping. This is
+ * the shared `PluginWorkerClaimedJob` wire contract from `@owlat/plugin-kit` —
+ * the same type the code-worker reads — so the host and worker cannot drift on
+ * the field names (notably the `_id` -> `taskId` projection).
+ */
+type ClaimedJob = PluginWorkerClaimedJob;
 
+/** Project a persisted row into the shared wire shape (host `_id` -> `taskId`). */
 function claimedJobOf(task: Doc<'pluginTasks'>): ClaimedJob {
-	return {
-		taskId: task._id,
-		pluginId: task.pluginId,
-		jobKind: task.jobKind,
-		payload: task.payload,
-		timeoutMs: task.timeoutMs,
-		attempts: task.attempts,
-		maxAttempts: task.maxAttempts,
-	};
+	return pluginWorkerClaimedJobOf(task);
 }
 
 function scopeOf(task: Doc<'pluginTasks'>): HostedPluginActorScope {
