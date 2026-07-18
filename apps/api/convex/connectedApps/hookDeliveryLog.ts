@@ -73,7 +73,10 @@ type ValidatorUnavailableCode = Infer<typeof hookUnavailableCodeValidator>;
 // cover exactly the codes the runtime can produce.
 type _MissingFromValidator = Exclude<HookUnavailableCode, ValidatorUnavailableCode>;
 type _ExtraInValidator = Exclude<ValidatorUnavailableCode, HookUnavailableCode>;
-const _hookCodeTaxonomyIsExhaustive: [_MissingFromValidator, _ExtraInValidator] extends [never, never]
+const _hookCodeTaxonomyIsExhaustive: [_MissingFromValidator, _ExtraInValidator] extends [
+	never,
+	never,
+]
 	? true
 	: false = true;
 void _hookCodeTaxonomyIsExhaustive;
