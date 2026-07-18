@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { pluginWorkerJobLocalIdOf } from '@owlat/plugin-kit';
+import { PLUGIN_WORKER_RESULT_MAX_BYTES, pluginWorkerJobLocalIdOf } from '@owlat/plugin-kit';
 import { getConvexClient, pluginFn, type PluginTask } from './convexClient.js';
 import { chownDirToSandbox, runUntrusted } from './sandbox.js';
 import { removeWorkspace } from './taskRunner.js';
@@ -25,7 +25,6 @@ import { removeWorkspace } from './taskRunner.js';
 
 const WORKSPACE_ROOT = process.env['WORKSPACE_ROOT'] ?? '/workspace';
 const DEFAULT_HEARTBEAT_INTERVAL_MS = Number(process.env['PLUGIN_JOB_HEARTBEAT_MS'] ?? 5_000);
-const MAX_RESULT_CHARS = 64 * 1024;
 
 function log(msg: string) {
 	console.info(`[code-worker] ${new Date().toISOString()} ${msg}`);
@@ -95,8 +94,25 @@ export function buildJobEnv(
 	};
 }
 
+/**
+ * Byte-bound a job's untrusted result to the SAME `PLUGIN_WORKER_RESULT_MAX_BYTES`
+ * ceiling the host clamps to (the host's `clampUntrustedText` is the authoritative
+ * bound; this just avoids shipping a needlessly oversized payload over the wire).
+ * Clamping by BYTES — not characters — keeps a multibyte result from arriving at
+ * up to ~4x the byte budget; whole code points are preserved so the worker never
+ * emits a truncated surrogate.
+ */
 function clampResult(text: string): string {
-	return text.length <= MAX_RESULT_CHARS ? text : text.slice(0, MAX_RESULT_CHARS);
+	if (Buffer.byteLength(text) <= PLUGIN_WORKER_RESULT_MAX_BYTES) return text;
+	let out = '';
+	let bytes = 0;
+	for (const character of text) {
+		const width = Buffer.byteLength(character);
+		if (bytes + width > PLUGIN_WORKER_RESULT_MAX_BYTES) break;
+		out += character;
+		bytes += width;
+	}
+	return out;
 }
 
 export interface RunPluginJobDeps {
