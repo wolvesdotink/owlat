@@ -439,11 +439,7 @@ export interface SendMessageOptions {
 	signal?: AbortSignal;
 }
 
-/**
- * One-shot convenience: connect → (AUTH) → MAIL/RCPT/DATA → QUIT, tearing the
- * connection down on every exit. Preserves the one-connection-per-send semantics
- * of the migration (W3) — RSET socket reuse is a later capability (X1).
- */
+/** One-shot connect → (AUTH) → MAIL/RCPT/DATA → QUIT; tears down on every exit. */
 export async function sendMessage(options: SendMessageOptions): Promise<SendResult> {
 	const conn = await SmtpConnection.connect(options.connect);
 	const abort = (): void => conn.close();
