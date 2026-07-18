@@ -51,9 +51,7 @@ describe('verifyMtaHeaders', () => {
 
 	it('rejects unparseable timestamp', async () => {
 		const sig = await signMta('not-a-number', body);
-		expect(
-			await verifyMtaHeaders(body, sig, 'not-a-number', SECRET, now)
-		).toBe(false);
+		expect(await verifyMtaHeaders(body, sig, 'not-a-number', SECRET, now)).toBe(false);
 	});
 });
 
@@ -91,6 +89,48 @@ describe('mtaAdapter.parseEvent', () => {
 	it('returns null for bounced without messageId', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({ event: 'bounced', timestamp: 1700000000000 })
+		);
+		expect(event).toBeNull();
+	});
+
+	// Fix 2 (P2): the MTA post-DATA ambiguous drop emits a terminal, NON-bounce
+	// `failed` event so the send row leaves "sending". It maps to `email.failed`
+	// (NOT `email.bounced`), which the dispatcher transitions to the `failed`
+	// status WITHOUT recipient suppression.
+	it('parses failed into a terminal email.failed (never email.bounced)', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'failed',
+				messageId: 'msg_amb',
+				message: 'Ambiguous post-DATA drop: connection reset',
+				severity: 'warning',
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toEqual({
+			kind: 'email.failed',
+			providerMessageId: 'msg_amb',
+			at: 1700000000000,
+			errorMessage: 'Ambiguous post-DATA drop: connection reset',
+			errorCode: 'ambiguous_post_data',
+		});
+		expect(event?.kind).not.toBe('email.bounced');
+	});
+
+	it('defaults the failed errorMessage when the message is absent', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({ event: 'failed', messageId: 'msg_amb', timestamp: 1700000000000 })
+		);
+		expect(event).toMatchObject({
+			kind: 'email.failed',
+			errorMessage: 'Delivery failed (ambiguous post-DATA drop)',
+			errorCode: 'ambiguous_post_data',
+		});
+	});
+
+	it('returns null for failed without messageId', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({ event: 'failed', timestamp: 1700000000000 })
 		);
 		expect(event).toBeNull();
 	});
@@ -265,28 +305,25 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
-	it.each(['pending', 'activated'] as const)(
-		'parses dkim.rotated (phase=%s)',
-		(phase) => {
-			const event = mtaAdapter.parseEvent(
-				JSON.stringify({
-					event: 'dkim.rotated',
-					domain: 'rotate.com',
-					selector: 's2',
-					dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
-					phase,
-					timestamp: 1700000000000,
-				})
-			);
-			expect(event).toEqual({
-				kind: 'internal.dkim_rotated',
+	it.each(['pending', 'activated'] as const)('parses dkim.rotated (phase=%s)', (phase) => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'dkim.rotated',
 				domain: 'rotate.com',
 				selector: 's2',
 				dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
 				phase,
-			});
-		}
-	);
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toEqual({
+			kind: 'internal.dkim_rotated',
+			domain: 'rotate.com',
+			selector: 's2',
+			dnsRecord: 'v=DKIM1; k=rsa; p=NEWKEY',
+			phase,
+		});
+	});
 
 	it('returns null for dkim.rotated missing required fields', () => {
 		expect(

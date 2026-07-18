@@ -95,6 +95,7 @@ export interface EmailJobResult {
 export type MtaWebhookEventType =
 	| 'sent'
 	| 'bounced'
+	| 'failed'
 	| 'complained'
 	| 'org.circuit_breaker'
 	| 'campaign.complaint_rate'

@@ -532,11 +532,40 @@ describe('submission listener — TLS guard + connection limiting', () => {
 		).toThrow(/Refusing to start an insecure submission listener/);
 	});
 
-	it('applies the global maxClients cap via the raw server backpressure', () => {
-		// The listener is not bound here (no listen()), so its net.Server holds no
-		// FD — only the accept-backpressure cap is asserted.
+	it('does NOT silently cap via net.Server.maxConnections (over-cap must get a 421, not a socket destroy)', () => {
+		// The old implementation set `raw.maxConnections`, which makes node destroy an
+		// over-cap socket with NO banner — the client sees an abrupt TCP close instead
+		// of smtp-server's `421 Too many connected clients`. The global cap now lives in
+		// onConnect (see the 421 test below), so the raw silent cap must be unset.
 		const server = createSubmissionServer(queue, redis, tlsConfig());
-		expect(server.raw.maxConnections).toBe(200);
+		expect(server.raw.maxConnections).not.toBe(200);
+	});
+
+	it('rejects an over-cap connection with a real 421 (global maxClients gate)', async () => {
+		const liveRedis = new Redis() as unknown as RealRedis;
+		// isOverCapacity latched true → the global gate fires before any per-IP check.
+		const onConnect = buildOnConnect(
+			{ redis: liveRedis, config: tlsConfig({ submissionMaxConnectionsPerIp: 100 }) },
+			undefined,
+			() => true
+		);
+		const reply = (await onConnect({ remoteAddress: '7.7.7.7', state: {} } as never)) as SmtpReply;
+		expect(reply?.code).toBe(421);
+		expect(String(reply?.text)).toMatch(/Too many connected clients/);
+	});
+
+	it('the global gate is checked BEFORE the per-IP limiter (no slot taken when over cap)', async () => {
+		const liveRedis = new Redis() as unknown as RealRedis;
+		const held: string[] = [];
+		const onConnect = buildOnConnect(
+			{ redis: liveRedis, config: tlsConfig({ submissionMaxConnectionsPerIp: 3 }) },
+			(session) => held.push(`${session.remoteAddress}`),
+			() => true
+		);
+		const reply = (await onConnect({ remoteAddress: '7.7.7.8', state: {} } as never)) as SmtpReply;
+		expect(reply?.code).toBe(421);
+		// The over-cap connection never reached the per-IP limiter, so it took no slot.
+		expect(held).toEqual([]);
 	});
 
 	it('the per-IP onConnect limiter rejects the N+1th connection', async () => {

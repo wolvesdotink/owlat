@@ -41,3 +41,16 @@ export function addressText(
 ): string | undefined {
 	return collapse(field)?.text;
 }
+
+/**
+ * True when an address field is RFC 7489 §6.6.1 "ambiguous" for DMARC: the
+ * message carries more than one occurrence of the header (the array arm), or a
+ * single occurrence naming more than one top-level mailbox/group. DMARC must not
+ * return `pass` for such a message — the recipient cannot know which From domain
+ * the authentication result binds to. Passed to `evaluateDmarc` as `fromAmbiguous`.
+ */
+export function isFromAmbiguous(field: AddressObject | AddressObject[] | undefined): boolean {
+	if (Array.isArray(field)) return true;
+	if (!field) return false;
+	return field.value.length > 1;
+}
