@@ -1,6 +1,15 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+	// The worker consumes plugin-kit's packaged dist in production; tests run from
+	// a frozen clean checkout, so resolve the workspace package to source (same
+	// source alias apps/api uses) to avoid a build step before the suite.
+	resolve: {
+		alias: {
+			'@owlat/plugin-kit': resolve(__dirname, '../../packages/plugin-kit/src/index.ts'),
+		},
+	},
 	test: {
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',

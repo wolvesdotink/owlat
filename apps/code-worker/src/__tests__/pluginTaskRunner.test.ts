@@ -1,11 +1,14 @@
 import { EventEmitter } from 'node:events';
 import type { spawn } from 'node:child_process';
 import { getFunctionName } from 'convex/server';
+import {
+	PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES,
+	pluginWorkerJobLocalIdOf,
+} from '@owlat/plugin-kit';
 import { describe, it, expect, vi } from 'vitest';
 import {
 	BUILTIN_JOB_COMMANDS,
 	buildJobEnv,
-	jobLocalId,
 	resolveJobCommand,
 	runPluginJob,
 } from '../pluginTaskRunner.js';
@@ -91,10 +94,15 @@ describe('resolveJobCommand — only host-registered, well-formed kinds run', ()
 		expect(resolveJobCommand(kind, '{}')).toBeNull();
 	});
 
-	it('extracts the local id only from a well-formed kind', () => {
-		expect(jobLocalId('plugin.deliverability-lab.spam-score')).toBe('spam-score');
-		expect(jobLocalId('nope')).toBeNull();
-	});
+	// The worker parses a job kind with the SAME @owlat/plugin-kit authority the
+	// host enqueue path uses; this shared conformance table (imported from
+	// plugin-kit) makes a grammar drift between the two impossible to miss.
+	it.each(PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES)(
+		'parses $kind → $localId via the shared plugin-kit grammar',
+		({ kind, localId }) => {
+			expect(pluginWorkerJobLocalIdOf(kind)).toBe(localId);
+		}
+	);
 });
 
 describe('buildJobEnv — a sandboxed job gets NO ambient credentials', () => {

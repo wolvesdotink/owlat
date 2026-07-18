@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { pluginWorkerJobLocalIdOf } from '@owlat/plugin-kit';
 import { getConvexClient, pluginFn, type PluginTask } from './convexClient.js';
 import { chownDirToSandbox, runUntrusted } from './sandbox.js';
 import { removeWorkspace } from './taskRunner.js';
@@ -58,24 +59,20 @@ export const BUILTIN_JOB_COMMANDS: Readonly<Record<string, JobCommandFactory>> =
 	selftest: (): JobCommandSpec => ({ command: 'node', args: ['-e', 'process.exit(0)'] }),
 });
 
-const JOB_KIND = /^plugin\.[a-z][a-z0-9]*(?:-[a-z0-9]+)*\.([a-z][a-z0-9]*(?:-[a-z0-9]+)*)$/;
-
-/** The local job id of a well-formed namespaced kind, else null. */
-export function jobLocalId(jobKind: string): string | null {
-	return JOB_KIND.exec(jobKind)?.[1] ?? null;
-}
-
 /**
  * Resolve a namespaced job kind + payload to its host command, or null when the
  * kind is malformed or unregistered — the worker fails such a job closed rather
- * than guessing a command.
+ * than guessing a command. Job-kind parsing is delegated to
+ * `pluginWorkerJobLocalIdOf` in @owlat/plugin-kit — the SAME authority the host
+ * uses at enqueue — so the worker can never accept a kind the host rejects (or
+ * vice-versa).
  */
 export function resolveJobCommand(
 	jobKind: string,
 	payload: string,
 	registry: Readonly<Record<string, JobCommandFactory>> = BUILTIN_JOB_COMMANDS
 ): JobCommandSpec | null {
-	const local = jobLocalId(jobKind);
+	const local = pluginWorkerJobLocalIdOf(jobKind);
 	if (!local) return null;
 	const factory = registry[local];
 	return factory ? factory(payload) : null;

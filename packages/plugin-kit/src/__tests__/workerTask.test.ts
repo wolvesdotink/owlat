@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	PLUGIN_WORKER_CAPABILITY,
+	PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES,
 	PLUGIN_WORKER_MAX_ATTEMPTS,
 	PLUGIN_WORKER_MIN_ATTEMPTS,
 	PLUGIN_WORKER_TIMEOUT_MAX_MS,
@@ -11,6 +12,7 @@ import {
 	isPluginWorkerJobLocalId,
 	parsePluginId,
 	pluginWorkerJobKind,
+	pluginWorkerJobLocalIdOf,
 } from '../index';
 
 const plugin = parsePluginId('deliverability-lab');
@@ -74,6 +76,27 @@ describe('isPluginWorkerJobKindOwnedBy', () => {
 		undefined,
 	])('rejects malformed kind %s', (kind) => {
 		expect(isPluginWorkerJobKindOwnedBy(kind, plugin)).toBe(false);
+	});
+});
+
+describe('pluginWorkerJobLocalIdOf — the single job-kind parser the worker also consumes', () => {
+	it.each(PLUGIN_WORKER_JOB_KIND_LOCAL_ID_CASES)('maps $kind → $localId', ({ kind, localId }) => {
+		expect(pluginWorkerJobLocalIdOf(kind)).toBe(localId);
+	});
+
+	it('rejects non-string kinds', () => {
+		expect(pluginWorkerJobLocalIdOf(42)).toBeNull();
+		expect(pluginWorkerJobLocalIdOf(null)).toBeNull();
+		expect(pluginWorkerJobLocalIdOf(undefined)).toBeNull();
+	});
+
+	it('agrees with isPluginWorkerJobKindOwnedBy for the plugin that owns a kind', () => {
+		// A kind parses to a local id iff it is owned by SOME plugin; when it does,
+		// the owning plugin's ownership check must accept it. Guards against the two
+		// helpers drifting apart.
+		const owned = pluginWorkerJobKind(plugin, 'seed-test');
+		expect(pluginWorkerJobLocalIdOf(owned)).toBe('seed-test');
+		expect(isPluginWorkerJobKindOwnedBy(owned, plugin)).toBe(true);
 	});
 });
 
