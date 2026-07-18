@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
+import { trySplitZone } from '@owlat/shared';
 import { formatDateTime } from '~/utils/formatters';
 import { domainReadinessMessage } from '~/utils/domainReadiness';
 import type { SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
@@ -45,6 +46,43 @@ const emit = defineEmits<{
 // reads — rows re-render on the open-panel auto-recheck poll.
 const readiness = computed(() => readinessSummary(props.domain));
 const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dmarc, 'TXT'));
+
+// The return-path (bounce / MAIL FROM) host as the backend actually keyed it.
+// This mirrors the verifier's host rule (dnsVerification.ts): a `hostname` is
+// an absolute FQDN (the MTA return-path SPF lives on a sibling domain, e.g.
+// `bounce.example.com`), whereas a `host` is relative to the From-domain — the
+// SES provider emits `host: 'mail'`, which resolves to `mail.<domain>`; `@`
+// means the domain apex itself. Both the collapsed "bounces via …" hint and
+// the expanded MAIL FROM heading read from here so the label can never drift
+// from the record — and never renders a bare relative label like "mail".
+const mailFromHost = computed<string | null>(() => {
+	for (const record of props.domain.dnsRecords.mailFrom ?? []) {
+		if (record.hostname) return record.hostname;
+		if (record.host) {
+			return record.host === '@' ? props.domain.domain : `${record.host}.${props.domain.domain}`;
+		}
+	}
+	return null;
+});
+
+// Concrete example sender address — resolves the "what is this name for?"
+// ambiguity at a glance. The sending identity IS the domain string itself.
+const sendsAsAddress = computed(() => `anyone@${props.domain.domain}`);
+
+// The registrable zone the records actually go in — the DNS provider that
+// manages this name (A1 PSL split; fail-soft to the raw domain in self-host dev
+// where a name has no registrable zone). Used for both the C1 zone-framed
+// config heading AND the "won't affect your website at X" intro copy, so the
+// two can never disagree (they did while the intro used a hand-rolled slice:
+// `example.co.uk` named the public suffix `co.uk`; `a.b.example.com` named
+// `b.example.com`).
+const registrableZone = computed(
+	() => trySplitZone(props.domain.domain)?.registrable ?? props.domain.domain
+);
+
+// The current return-path host to seed the editor: the explicit per-domain host
+// if set, otherwise the one derived from the MAIL FROM record.
+const returnPathHost = computed(() => props.domain.returnPathHost ?? mailFromHost.value);
 </script>
 
 <template>
@@ -79,18 +117,26 @@ const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dm
 							{{ capitalize(domain.status) }}
 						</span>
 					</div>
-					<p class="text-sm text-text-tertiary mt-0.5">
-						<span v-if="domain.status === 'registering'"> Setting up domain... </span>
+					<!-- Single identity + status hint line (§3.1 mock). Says what the
+					     domain is FOR — a concrete example sender address resolves the
+					     "what's this name?" ambiguity — plus the bounce host named from
+					     the actual return-path record so it can't drift, then the
+					     existing status / added-date info. -->
+					<p class="text-sm text-text-tertiary mt-0.5" data-testid="sends-as-line">
+						Sends as {{ sendsAsAddress
+						}}<template v-if="mailFromHost"> · bounces via {{ mailFromHost }}</template>
+						·
+						<span v-if="domain.status === 'registering'">setting up domain…</span>
 						<span v-else-if="domain.status === 'failed' && domain.lastRegistrationError">
-							Registration failed — click Retry to try again
+							registration failed — click Retry to try again
 						</span>
 						<span v-else-if="domain.status === 'verified'">
-							Verified {{ formatDateTime(domain.verifiedAt) }}
+							verified {{ formatDateTime(domain.verifiedAt) }}
 						</span>
 						<span v-else-if="domain.lastVerifiedAt">
-							Last checked {{ formatDateTime(domain.lastVerifiedAt) }}
+							last checked {{ formatDateTime(domain.lastVerifiedAt) }}
 						</span>
-						<span v-else> Added {{ formatDateTime(domain.createdAt) }} </span>
+						<span v-else>added {{ formatDateTime(domain.createdAt) }}</span>
 					</p>
 				</div>
 			</div>
@@ -202,9 +248,29 @@ const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dm
 
 					<!-- DNS records (normal state) -->
 					<template v-else-if="hasDnsRecords(domain.dnsRecords)">
+						<!-- What this domain does: an up-front job description for the
+						     records below. The "not a website / won't affect your site"
+						     sentence is load-bearing copy — it defuses the #1 concern
+						     (that this name needs hosting or breaks the apex website). -->
+						<div
+							class="mb-4 p-4 bg-bg-surface rounded-xl border border-border-subtle"
+							data-testid="domain-intro"
+						>
+							<p class="text-sm text-text-secondary">
+								<strong class="text-text-primary">What this domain does.</strong>
+								Mail from your team is sent as
+								<span class="text-text-primary">name@{{ domain.domain }}</span
+								>. The records below prove to receiving servers that Owlat is allowed to do that —
+								nothing needs to be hosted at this name, and it won't affect your website at
+								{{ registrableZone }}.
+							</p>
+						</div>
+
 						<div class="flex items-center justify-between gap-3 mb-4">
 							<h4 class="text-sm font-medium text-text-primary">
-								Configure these DNS records with your domain provider:
+								Configure these DNS records in the DNS settings for
+								<strong data-testid="config-zone">{{ registrableZone }}</strong> (your registrar or
+								DNS host):
 							</h4>
 							<!-- Subtle auto-recheck indicator: we quietly re-verify while
 							     this panel is open so the user needn't keep clicking Verify. -->
@@ -318,8 +384,11 @@ const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dm
 							<!-- MAIL FROM records -->
 							<template v-if="domain.dnsRecords.mailFrom && domain.dnsRecords.mailFrom.length > 0">
 								<div class="pt-2">
-									<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3">
-										MAIL FROM Domain (mail.{{ domain.domain }})
+									<p
+										class="text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3"
+										data-testid="mailfrom-heading"
+									>
+										MAIL FROM Domain<template v-if="mailFromHost"> ({{ mailFromHost }})</template>
 									</p>
 									<div class="space-y-4">
 										<DomainsDNSRecordPanel
@@ -334,6 +403,18 @@ const dmarcRecord = computed(() => normalizeDnsRecord(props.domain.dnsRecords.dm
 											:label="mailFromRecord.type === 'MX' ? 'MAIL FROM MX' : 'MAIL FROM SPF'"
 											:domain="domain.domain"
 											:verification="domain.verificationResults?.mailFrom?.[i]"
+										/>
+									</div>
+
+									<!-- Change the per-domain return-path (bounce) host. Re-verifies
+									     the domain; surfaces the MTA-sync-failure marker. -->
+									<div class="mt-4">
+										<DomainsReturnPathEditor
+											:domain-id="domain._id"
+											:current-host="returnPathHost"
+											:zone="registrableZone"
+											:sync-error="domain.returnPathHostSyncError ?? null"
+											:can-manage="canManageDomains"
 										/>
 									</div>
 								</div>
