@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import type { ReplyWriteSocket } from '../commandLoop.js';
+import { writeReplyWithinBudget } from '../commandLoop.js';
 import { serializeReply, replyBytes, Reply, SmtpReplyError } from '../reply.js';
 
 describe('serializeReply', () => {
@@ -91,5 +93,49 @@ describe('SmtpReplyError', () => {
 	it('joins multiline reply text for the Error message', () => {
 		const err = new SmtpReplyError({ code: 550, text: ['a', 'b'] });
 		expect(err.message).toBe('a b');
+	});
+});
+
+describe('bounded socket reply writes', () => {
+	function fakeSocket(writableLength: number): {
+		socket: ReplyWriteSocket;
+		writes: Buffer[];
+		wasDestroyed: () => boolean;
+	} {
+		const writes: Buffer[] = [];
+		let destroyed = false;
+		return {
+			socket: {
+				writableEnded: false,
+				get destroyed() {
+					return destroyed;
+				},
+				writableLength,
+				write: (bytes) => {
+					writes.push(bytes);
+					return false;
+				},
+				destroy: () => {
+					destroyed = true;
+				},
+			},
+			writes,
+			wasDestroyed: () => destroyed,
+		};
+	}
+
+	it('destroys instead of crossing the pending-reply byte ceiling', () => {
+		const { socket, writes, wasDestroyed } = fakeSocket(64);
+		expect(writeReplyWithinBudget(socket, Reply.ok(), 64)).toBe(false);
+		expect(writes).toHaveLength(0);
+		expect(wasDestroyed()).toBe(true);
+	});
+
+	it('allows a reply that fits exactly at the ceiling', () => {
+		const { socket, writes, wasDestroyed } = fakeSocket(10);
+		const serializedBytes = Buffer.byteLength(serializeReply(Reply.ok()));
+		expect(writeReplyWithinBudget(socket, Reply.ok(), 10 + serializedBytes)).toBe(true);
+		expect(writes).toHaveLength(1);
+		expect(wasDestroyed()).toBe(false);
 	});
 });

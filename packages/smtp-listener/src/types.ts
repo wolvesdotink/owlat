@@ -134,6 +134,11 @@ export interface SmtpListenerOptions<S = unknown, T = unknown> {
 	maxCommandBytes?: number;
 	/** Consecutive unrecognized/erroring commands tolerated before 421 + close. Default 25. */
 	maxBadCommands?: number;
+	/**
+	 * Maximum reply bytes waiting in Node's socket write queue. The connection is
+	 * destroyed before this bound is crossed. Default 65,536.
+	 */
+	maxPendingReplyBytes?: number;
 	timeouts?: Partial<SmtpTimeouts>;
 	/**
 	 * TLS material. When present the listener advertises STARTTLS and upgrades on
