@@ -368,6 +368,14 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
  * to accept; fails open on a Redis hiccup so a store fault can't lock out
  * legitimate clients.
  *
+ * The GLOBAL `maxClients` cap is enforced first (smtp-server order) with a real
+ * `421` retry-later reply — NOT a silent socket destroy. `net.Server.maxConnections`
+ * would drop an over-cap connection with no banner, so a client sees an abrupt TCP
+ * close instead of the `421 Too many connected clients` smtp-server sent (and that a
+ * well-behaved client re-queues on). `isOverCapacity` reads the listener's live
+ * connection count (wired in {@link buildSubmissionListener}); it is omitted in the
+ * direct per-IP unit tests, where the global gate is a no-op.
+ *
  * When (and ONLY when) {@link checkConnectionRateLimit} actually holds a slot for
  * this connection (net +1 on the Redis counter — i.e. the connection was allowed,
  * NOT rejected over the cap), `onSlotHeld` is invoked so the caller can release
@@ -381,11 +389,22 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
  */
 export function buildOnConnect(
 	deps: Pick<SubmissionDeps, 'redis' | 'config'>,
-	onSlotHeld?: (session: Session) => void
+	onSlotHeld?: (session: Session) => void,
+	isOverCapacity?: () => boolean
 ) {
 	const { redis, config } = deps;
 	return async function onConnect(session: Session): Promise<SmtpHandlerResult> {
 		const remoteIp = sessionRemoteIp(session);
+		// Global concurrent-connection cap first (smtp-server order): a real 421 so
+		// the client retries later instead of reading an abrupt close as a failure.
+		if (isOverCapacity?.()) {
+			logger.warn({ remoteIp }, 'Submission server at max concurrent clients');
+			return {
+				code: 421,
+				enhanced: '4.7.0',
+				text: 'Too many connected clients, try again in a moment',
+			};
+		}
 		try {
 			const allowed = await checkConnectionRateLimit(
 				redis,
@@ -456,6 +475,17 @@ function buildSubmissionListener(
 	// where a connection RSTs while its async rate-limit check is still in flight.
 	const slots = createSlotTracker(redis, releaseConnection);
 
+	// Live concurrent-connection count for the global `maxClients` cap. Every
+	// accepted socket increments it on the raw `connection` event and decrements it
+	// on close. `createSmtpListener` registers its OWN accept handler first, and that
+	// handler synchronously runs the synchronous prefix of `onConnect` — including
+	// `isOverCapacity()` — before its first `await`. So the counting handler MUST run
+	// ahead of the accept handler (`prependListener`, below) or the increment lands
+	// after the capacity check and the connection under decision is excluded from its
+	// own count (off-by-one). Prepending makes `onConnect` see a count that includes
+	// the deciding connection — matching smtp-server's `connections.size > maxClients`.
+	const liveConnections = { count: 0 };
+
 	const listener = createSmtpListener<SubmissionSessionState>({
 		// The 220 greeting + EHLO open with this name (RFC 5321 §4.2). It MUST be
 		// the FQDN that matches the IP's reverse-DNS PTR record so the announced
@@ -471,33 +501,45 @@ function buildSubmissionListener(
 			authenticate: buildAuthenticate({ redis, config }),
 		},
 		createSession: () => ({}),
-		onConnect: buildOnConnect({ redis, config }, (session) => {
-			// Mark this connection as holding a slot so — and only so — its socket
-			// close releases it. If the peer already left while the rate-limit check
-			// was in flight, `hold` releases the increment immediately instead.
-			slots.hold(session);
-		}),
+		onConnect: buildOnConnect(
+			{ redis, config },
+			(session) => {
+				// Mark this connection as holding a slot so — and only so — its socket
+				// close releases it. If the peer already left while the rate-limit check
+				// was in flight, `hold` releases the increment immediately instead.
+				slots.hold(session);
+			},
+			() => liveConnections.count > config.submissionMaxClients
+		),
 		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
 		onMailFrom: buildOnMailFrom(),
 		onData: buildOnData({ queue }),
 		onError: (err) => logger.error({ err }, 'SMTP submission listener error'),
 	});
 
-	// Global concurrent-connection cap — preserves smtp-server's `maxClients` via
-	// node's built-in accept backpressure (`net.Server.maxConnections`).
-	listener.raw.maxConnections = config.submissionMaxClients;
-
-	// Register every accepted connection with the slot tracker, which releases the
-	// per-IP counter on socket close — but ONLY for connections that actually took a
-	// slot. The limiter state lives in submissionSecurity.ts (I8); the listener
-	// exposes only the socket, so the release is wired here on the raw server's
-	// `connection` event (emitted for both the plaintext 587 and implicit-TLS 465
-	// servers). The raw event fires on TCP accept — for 465 that is BEFORE the TLS
-	// handshake, so a failed/plaintext handshake connection never reaches `onConnect`
-	// and thus never releases a slot it never incremented (cap bypass). Tracking the
-	// live connection at accept also lets `hold` self-heal a connection that RSTs
-	// while its async rate-limit check is still pending.
-	listener.raw.on('connection', (socket) => slots.track(socket));
+	// Global concurrent-connection cap — preserves smtp-server's `maxClients`, but as
+	// a REAL `421 Too many connected clients` reply (see `buildOnConnect`), not node's
+	// silent `net.Server.maxConnections` socket destroy which drops an over-cap client
+	// with no banner. Maintain the live-connection count here and register every
+	// accepted connection with the slot tracker, which releases the per-IP counter on
+	// socket close — but ONLY for connections that actually took a slot. The limiter
+	// state lives in submissionSecurity.ts (I8); the listener exposes only the socket,
+	// so the release is wired here on the raw server's `connection` event (emitted for
+	// both the plaintext 587 and implicit-TLS 465 servers). The raw event fires on TCP
+	// accept — for 465 that is BEFORE the TLS handshake, so a failed/plaintext
+	// handshake connection never reaches `onConnect` and thus never releases a slot it
+	// never incremented (cap bypass). Tracking the live connection at accept also lets
+	// `hold` self-heal a connection that RSTs while its async rate-limit check is still
+	// pending. `prependListener` runs this AHEAD of the listener's internal accept
+	// handler so `count` includes the connection under decision when `onConnect` runs
+	// its synchronous `isOverCapacity()` check (see the `liveConnections` note above).
+	listener.raw.prependListener('connection', (socket) => {
+		liveConnections.count += 1;
+		socket.once('close', () => {
+			liveConnections.count -= 1;
+		});
+		slots.track(socket);
+	});
 
 	return listener;
 }

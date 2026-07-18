@@ -47,6 +47,18 @@ export type InboundEvent =
 	  }
 	| { kind: 'email.delivered'; providerMessageId: string; at: number }
 	| {
+			// Terminal, NON-bounce delivery failure. Emitted by the MTA for the
+			// post-DATA ambiguous drop (AMBIGUOUS_TIMEOUT, W8): the receiver MAY have
+			// accepted the message, so it is terminal but carries NO bounce semantics
+			// — the dispatcher transitions the send row to `failed` WITHOUT recipient
+			// suppression or any reputation penalty.
+			kind: 'email.failed';
+			providerMessageId: string;
+			at: number;
+			errorMessage: string;
+			errorCode: string;
+	  }
+	| {
 			kind: 'email.bounced';
 			providerMessageId: string;
 			at: number;

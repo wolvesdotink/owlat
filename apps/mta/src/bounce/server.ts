@@ -40,7 +40,7 @@ import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
 import { reduce } from './outcome.js';
 import { applyEffects } from './effects.js';
-import { firstAddress } from '../inbound/parsedAddress.js';
+import { firstAddress, isFromAmbiguous } from '../inbound/parsedAddress.js';
 import type { SpfVerdict } from './types.js';
 import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
 import { logAttempt, isLocalAddress } from './serverHelpers.js';
@@ -403,6 +403,7 @@ export function buildOnData(
 				config.inboundDmarcEnabled && fromDomain
 					? await evaluateDmarc({
 							fromDomain,
+							fromAmbiguous: isFromAmbiguous(parsed.from),
 							spf: { result: spfResult ?? 'none', domain: envelopeFromDomain },
 							dkim: { result: dkim?.result ?? 'none', domain: dkim?.domain },
 							policyLookup: (domain) => dnsDmarcLookup(domain, authResolvers.dmarcTxt),

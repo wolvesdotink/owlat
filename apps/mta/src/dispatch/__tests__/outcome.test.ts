@@ -360,7 +360,8 @@ describe('reduce(ambiguous)', () => {
 	// must NOT be a bounce — the message may have been delivered. The reducer
 	// emits neither suppression, a synthetic 5xx smtp_response, nor any
 	// reputation penalty (circuit-breaker / throttle-reject / warming-bounce /
-	// bounced notify_convex). Only a neutral, observable terminal record.
+	// bounced notify_convex). It DOES notify Convex with a terminal, non-bounce
+	// `failed` event so the message row leaves "sending".
 	const outcome: DispatchOutcome = {
 		kind: 'ambiguous',
 		error: 'Ambiguous delivery outcome (phase data-final, no server reply)',
@@ -371,9 +372,13 @@ describe('reduce(ambiguous)', () => {
 		expect(defer).toBeUndefined();
 	});
 
-	it('emits only a neutral metric + delivery log — no bounce/suppression effects', () => {
+	it('emits a neutral metric + delivery log + a terminal failed notify — no suppression', () => {
 		const { effects } = reduce(outcome, makeCtx());
-		expect(effects.map((e) => e.kind)).toEqual(['metrics_record', 'log_delivery_event']);
+		expect(effects.map((e) => e.kind)).toEqual([
+			'metrics_record',
+			'log_delivery_event',
+			'notify_convex',
+		]);
 	});
 
 	it('does NOT suppress the recipient', () => {
@@ -386,12 +391,25 @@ describe('reduce(ambiguous)', () => {
 		expect(effects.some((e) => e.kind === 'smtp_response')).toBe(false);
 	});
 
-	it('does NOT penalise reputation (no circuit-breaker bounce, throttle-reject, warming-bounce, or bounced notify)', () => {
+	it('does NOT penalise reputation (no circuit-breaker bounce, throttle-reject, or warming-bounce)', () => {
 		const { effects } = reduce(outcome, makeCtx());
 		expect(effects.some((e) => e.kind === 'circuit_breaker_outcome')).toBe(false);
 		expect(effects.some((e) => e.kind === 'domain_throttle_reject')).toBe(false);
 		expect(effects.some((e) => e.kind === 'warming_record')).toBe(false);
-		expect(effects.some((e) => e.kind === 'notify_convex')).toBe(false);
+	});
+
+	it('notifies Convex with a terminal `failed` event — NOT `bounced`, and no bounceType', () => {
+		const { effects } = reduce(outcome, makeCtx());
+		const notify = effects.find((e) => e.kind === 'notify_convex');
+		expect(notify).toBeDefined();
+		if (notify?.kind === 'notify_convex') {
+			expect(notify.event.event).toBe('failed');
+			expect(notify.event.event).not.toBe('bounced');
+			expect(notify.event.bounceType).toBeUndefined();
+			expect(notify.event.messageId).toBe(makeJob().messageId);
+			expect(notify.event.organizationId).toBe(makeJob().organizationId);
+			expect(notify.event.severity).toBe('warning');
+		}
 	});
 
 	it('records the metric as a neutral error, not a bounce', () => {

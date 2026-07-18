@@ -139,6 +139,19 @@ export const mtaAdapter: InboundAdapter = {
 					...(payload.message ? { bounceMessage: payload.message } : {}),
 				};
 			}
+			case 'failed': {
+				// Terminal, NON-bounce failure (MTA post-DATA ambiguous drop). Map to
+				// the `failed` send status — distinct from `bounced`, so the dispatcher
+				// applies NO recipient suppression and NO reputation penalty.
+				if (!payload.messageId) return null;
+				return {
+					kind: 'email.failed',
+					providerMessageId: payload.messageId,
+					at: payload.timestamp ?? Date.now(),
+					errorMessage: payload.message ?? 'Delivery failed (ambiguous post-DATA drop)',
+					errorCode: 'ambiguous_post_data',
+				};
+			}
 			case 'complained': {
 				// Prefer Message-ID attribution; fall back to the recipient
 				// address (RFC 5965 §3.2) so a Gmail-redacted FBL still

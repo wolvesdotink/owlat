@@ -422,9 +422,12 @@ function reduceSoftBounce(
  *    notification. A transient TCP reset is not evidence of a bad recipient.
  *
  * We record a neutral, observable terminal event (delivery log + an `error`
- * metric) so operators can see the ambiguity without it masquerading as a
- * bounce. This mirrors the API's terminal-without-suppression handling of the
- * same situation (`apps/api/convex/lib/sendProviders/ses/index.ts`).
+ * metric) AND notify Convex with a terminal, non-bounce `failed` status so the
+ * message row leaves "sending" and reaches a terminal state (there is no
+ * per-message reconciliation cron to sweep it otherwise). The `failed` event is
+ * distinct from `bounced`: Convex maps it to the terminal `failed` send status
+ * WITHOUT recipient suppression, so a transient TCP reset after the terminating
+ * dot never lands a likely-valid address on the blocklist.
  */
 function reduceAmbiguous(
 	outcome: Extract<DispatchOutcome, { kind: 'ambiguous' }>,
@@ -448,6 +451,21 @@ function reduceAmbiguous(
 					pool,
 					domain,
 					durationMs,
+				},
+			},
+			// Terminal, non-bounce notification: moves the message row out of
+			// "sending" to the terminal `failed` status. Deliberately NOT `bounced`
+			// (no suppress_recipient, no reputation penalty) — the receiver may have
+			// accepted the message and the address is very likely valid.
+			{
+				kind: 'notify_convex',
+				event: {
+					event: 'failed',
+					messageId: job.messageId,
+					organizationId: job.organizationId,
+					message: `Ambiguous post-DATA drop: ${outcome.error}`,
+					severity: 'warning',
+					timestamp: Date.now(),
 				},
 			},
 		],

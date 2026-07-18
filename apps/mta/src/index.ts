@@ -32,6 +32,7 @@ import type { DkimRotationNotifier } from './smtp/dkimRotation.js';
 import { generateAndSendReports as sendTlsReports } from './smtp/tlsRpt.js';
 import { notifyConvex } from './webhooks/convexNotifier.js';
 import { logger } from './monitoring/logger.js';
+import { closeListenerSafely } from './lib/closeListenerSafely.js';
 
 async function main() {
 	logger.info('Starting owlat-mta...');
@@ -299,26 +300,27 @@ async function main() {
 			server.close();
 		}
 
-		// Stop bounce server
+		// Stop the SMTP listeners. SmtpListener.close() REJECTS with
+		// ERR_SERVER_NOT_RUNNING when a listener never bound — a state boot tolerates
+		// when startBounceServer/startSubmissionServer fails (port 25 / 587 / 465 may
+		// need root; see the warn-and-continue at boot). `closeListenerSafely` voids +
+		// logs each rejection so an un-awaited rejection can't crash the drain.
 		if (bounceServer) {
-			bounceServer.close();
+			closeListenerSafely(() => bounceServer!.close(), 'Bounce server close failed', logger);
 		}
-
-		// Stop submission server. SmtpListener.close() REJECTS with
-		// ERR_SERVER_NOT_RUNNING when the listener never bound (a state boot
-		// tolerates when startSubmissionServer fails — e.g. the port needs root), so
-		// void + catch the promise: an un-awaited rejection would crash the drain.
 		if (submissionServer) {
-			void submissionServer
-				.close()
-				.catch((err) => logger.error({ err }, 'Submission server close failed'));
+			closeListenerSafely(
+				() => submissionServer!.close(),
+				'Submission server close failed',
+				logger
+			);
 		}
-
-		// Stop implicit-TLS submission server (same rejectable-close handling).
 		if (implicitTlsSubmissionServer) {
-			void implicitTlsSubmissionServer
-				.close()
-				.catch((err) => logger.error({ err }, 'Implicit-TLS submission server close failed'));
+			closeListenerSafely(
+				() => implicitTlsSubmissionServer!.close(),
+				'Implicit-TLS submission server close failed',
+				logger
+			);
 		}
 
 		// Drain worker (wait for in-flight jobs)
