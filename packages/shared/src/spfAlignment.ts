@@ -28,16 +28,34 @@ function normalizeDomain(domain: string): string {
 }
 
 /**
- * Organizational-Domain approximation used for `relaxed` alignment: the last
- * two labels. Deliberately simple — it does NOT consult the Public Suffix List,
- * so multi-label public suffixes (e.g. `co.uk`) are not special-cased. This is
- * sufficient for the single-deployment self-host model where the return-path and
- * From-domain share a parent domain.
+ * Second-level labels that act as public suffixes under a two-letter country
+ * TLD, so `victim.co.uk` is the registrable domain (not `co.uk`). A curated
+ * embedded set — matching `email-scanner`'s `senderImpersonation` convention —
+ * rather than a full Public Suffix List dependency: it covers the common
+ * `co.uk` / `com.au` / `org.uk` / `co.jp` style suffixes that would otherwise
+ * fold distinct organisations together. Missing an exotic suffix errs toward
+ * over-folding, so extend deliberately; a full PSL remains a future option.
  */
-function organizationalDomain(domain: string): string {
+const SECOND_LEVEL_PUBLIC_SUFFIXES = new Set(['co', 'com', 'net', 'org', 'ac', 'gov', 'edu']);
+
+/**
+ * Organizational-Domain approximation used for `relaxed` alignment (RFC 7489
+ * §3.2). A curated eTLD+1 heuristic that does NOT vendor the full Public Suffix
+ * List: when the last label is a two-letter ccTLD and the second-to-last is a
+ * known public second-level suffix (`co`, `com`, …), it keeps the last THREE
+ * labels so distinct orgs on the same ccTLD stay distinct (`attacker.co.uk` ≠
+ * `victim.co.uk`); otherwise it keeps the last two. This closes the co.uk-class
+ * relaxed-alignment bypass (where a full PSL is not vendored) — matching the
+ * `senderImpersonation.registrableDomain` pattern. A full PSL remains a future
+ * option.
+ */
+export function organizationalDomain(domain: string): string {
 	const labels = normalizeDomain(domain).split('.').filter(Boolean);
 	if (labels.length <= 2) return labels.join('.');
-	return labels.slice(-2).join('.');
+	const tld = labels[labels.length - 1]!;
+	const sld = labels[labels.length - 2]!;
+	const keep = tld.length === 2 && SECOND_LEVEL_PUBLIC_SUFFIXES.has(sld) ? 3 : 2;
+	return labels.slice(-keep).join('.');
 }
 
 /**
@@ -47,7 +65,7 @@ function organizationalDomain(domain: string): string {
 export function isSpfAligned(
 	envelopeFromDomain: string,
 	fromDomain: string,
-	mode: AlignmentMode = 'relaxed',
+	mode: AlignmentMode = 'relaxed'
 ): boolean {
 	const envelope = normalizeDomain(envelopeFromDomain);
 	const from = normalizeDomain(fromDomain);

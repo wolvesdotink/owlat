@@ -67,6 +67,21 @@ export interface MessageSignatureOptions {
 /** DER SubjectPublicKeyInfo prefix for a raw 32-byte Ed25519 key (RFC 8410). */
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
+/**
+ * RFC 8301 §3.2: verifiers MUST NOT treat an RSA public key shorter than 1024
+ * bits as valid. Below this a signature is trivially forgeable (a sub-1024-bit
+ * modulus is factorable), so a "valid" signature from such a key must never
+ * authenticate a message. mailauth (the differential oracle) enforces the same
+ * `minBitLength: 1024` with a policy/weak-key result — never `pass`.
+ */
+const MIN_RSA_KEY_BITS = 1024;
+
+/** True for an RSA key whose modulus is below the RFC 8301 §3.2 floor. */
+function isWeakRsaKey(key: KeyObject): boolean {
+	const modulusLength = key.asymmetricKeyDetails?.modulusLength;
+	return modulusLength !== undefined && modulusLength < MIN_RSA_KEY_BITS;
+}
+
 /** Strip all whitespace — for base64 (`b=`, `bh=`) and colon lists (`h=`). */
 function stripWsp(value: string): string {
 	return value.replace(/[ \t\r\n]+/g, '');
@@ -256,6 +271,16 @@ export async function verifyMessageSignature(
 		publicKey = buildPublicKey(keyRecord, algorithm.keyType);
 	} catch {
 		return withVerdict('permerror');
+	}
+
+	// RFC 8301 §3.2: an RSA key shorter than 1024 bits is a policy failure, not a
+	// pass — a factorable modulus makes the signature forgeable. mailauth records
+	// a policy/weak-key result; we mirror the same permanent non-pass verdict the
+	// rsa-sha1 deprecation uses below (`fail`), NOT a throw (=> `permerror`) and
+	// NOT `temperror`. Checked BEFORE the crypto verify so a valid signature over
+	// a weak key can never reach `pass`.
+	if (algorithm.keyType === 'rsa' && isWeakRsaKey(publicKey)) {
+		return withVerdict('fail');
 	}
 
 	const headerInput = buildHeaderHashInput(headerFields, hTag, sigField, headerMode);

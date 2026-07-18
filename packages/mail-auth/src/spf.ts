@@ -83,6 +83,27 @@ function consumeLookup(budget: SpfBudget): boolean {
 	return true;
 }
 
+/**
+ * RFC 7208 §4.5: recognize an SPF record. `v=spf1` EXACTLY is a valid
+ * mechanism-less record; `v=spf1 …` carries terms. Matching the token (not a
+ * space-suffixed `'v=spf1 '` prefix) means a bare `v=spf1` is no longer
+ * mis-read as "no record".
+ */
+function isSpfRecord(record: string): boolean {
+	return record === 'v=spf1' || record.startsWith('v=spf1 ');
+}
+
+/**
+ * Select the single SPF record from a domain's TXT set. RFC 7208 §4.5: MORE
+ * THAN ONE `v=spf1` record is a permerror — `multiple` signals that so the
+ * caller returns permerror instead of silently taking the first record.
+ */
+function selectSpfRecord(records: readonly string[]): { record?: string; multiple: boolean } {
+	const matches = records.filter(isSpfRecord);
+	if (matches.length > 1) return { multiple: true };
+	return { record: matches[0], multiple: false };
+}
+
 /** Sentinel thrown to abort evaluation with a definite SPF result. */
 class SpfAbort {
 	constructor(public readonly result: SpfResult) {}
@@ -159,8 +180,12 @@ export async function checkSpf(
 
 	try {
 		const records = (await resolver(domain, 'TXT')) as string[][];
-		const spfRecord = records.flat().find((r) => r.startsWith('v=spf1 '));
+		const { record: spfRecord, multiple } = selectSpfRecord(records.flat());
 
+		if (multiple) {
+			// RFC 7208 §4.5: more than one v=spf1 record → permerror.
+			return { result: 'permerror', explanation: 'Multiple SPF records published' };
+		}
 		if (!spfRecord) {
 			return { result: 'none', explanation: 'No SPF record found' };
 		}
@@ -256,7 +281,9 @@ async function evaluateSpf(
 
 		// a mechanism (check domain's A records)
 		if (mech === 'a' || mech.startsWith('a:')) {
-			const targetDomain = mech === 'a' ? domain : mech.slice(2);
+			// RFC 7208 §5.3/§7: the a: domain-spec may contain macros (`a:%{d}`).
+			const targetDomain =
+				mech === 'a' ? domain : expandMacros(mech.slice(2), normalizedIp, domain);
 			if (!consumeLookup(budget)) {
 				return { result: 'permerror', explanation: 'SPF DNS lookup limit exceeded' };
 			}
@@ -274,7 +301,9 @@ async function evaluateSpf(
 
 		// mx mechanism (check domain's MX records' A records)
 		if (mech === 'mx' || mech.startsWith('mx:')) {
-			const targetDomain = mech === 'mx' ? domain : mech.slice(3);
+			// RFC 7208 §5.4/§7: the mx: domain-spec may contain macros (`mx:%{d}`).
+			const targetDomain =
+				mech === 'mx' ? domain : expandMacros(mech.slice(3), normalizedIp, domain);
 			if (!consumeLookup(budget)) {
 				return { result: 'permerror', explanation: 'SPF DNS lookup limit exceeded' };
 			}
@@ -331,7 +360,16 @@ async function evaluateSpf(
 					explanation: `SPF include TXT lookup failed for ${includeDomain}: ${(err as { code?: string }).code ?? 'error'}`,
 				};
 			}
-			const includeSpf = includeRecords.flat().find((r) => r.startsWith('v=spf1 '));
+			const { record: includeSpf, multiple: includeMultiple } = selectSpfRecord(
+				includeRecords.flat()
+			);
+			// §4.5: more than one v=spf1 record at the included domain → permerror.
+			if (includeMultiple) {
+				return {
+					result: 'permerror',
+					explanation: `Included domain ${includeDomain} has multiple SPF records`,
+				};
+			}
 			// §5.2 result table: a "none" from the included record (missing/invalid
 			// SPF) is a permerror for the including record.
 			if (!includeSpf) {
@@ -413,7 +451,16 @@ async function evaluateSpf(
 				explanation: `SPF redirect TXT lookup failed for ${target}: ${(err as { code?: string }).code ?? 'error'}`,
 			};
 		}
-		const redirectSpf = redirectRecords.flat().find((r) => r.startsWith('v=spf1 '));
+		const { record: redirectSpf, multiple: redirectMultiple } = selectSpfRecord(
+			redirectRecords.flat()
+		);
+		// §4.5: more than one v=spf1 record at the redirect target → permerror.
+		if (redirectMultiple) {
+			return {
+				result: 'permerror',
+				explanation: `SPF redirect target ${target} has multiple SPF records`,
+			};
+		}
 		// §6.1: a redirect to a domain with no usable SPF record is a permerror.
 		if (!redirectSpf) {
 			return {

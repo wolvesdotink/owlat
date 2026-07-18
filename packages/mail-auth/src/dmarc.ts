@@ -26,7 +26,7 @@
  *     aligned with its parent.
  */
 
-import { isSpfAligned, type AlignmentMode } from '@owlat/shared/spfAlignment';
+import { isSpfAligned, organizationalDomain, type AlignmentMode } from '@owlat/shared/spfAlignment';
 import type { SpfVerdict } from './spf.js';
 
 /**
@@ -83,6 +83,15 @@ export interface EvaluateDmarcArgs {
 	readonly policyLookup: DmarcPolicyLookup;
 	/** Optional structured logger for the transient-failure warn. */
 	readonly logger?: DmarcLogger;
+	/**
+	 * RFC 7489 §6.6.1: set when the message carries MULTIPLE `From:` header
+	 * fields, or a single `From:` with MORE THAN ONE mailbox address. There is
+	 * then no single RFC5322.From identifier to bind a policy to, so DMARC cannot
+	 * pass — the evaluator reports `permerror`. The caller (which parses the
+	 * headers) detects the ambiguity and passes this flag; `fromDomain` should be
+	 * the first/any address's domain and is otherwise unused when this is set.
+	 */
+	readonly fromAmbiguous?: boolean;
 }
 
 export interface DmarcOutcome {
@@ -118,6 +127,14 @@ interface DmarcRecord {
  */
 export async function evaluateDmarc(args: EvaluateDmarcArgs): Promise<DmarcOutcome> {
 	const { spf, dkim, policyLookup } = args;
+
+	if (args.fromAmbiguous) {
+		// RFC 7489 §6.6.1: multiple From header fields (or multiple mailbox
+		// addresses in one From) give the evaluator no single identifier to bind a
+		// policy to — DMARC MUST NOT pass. Report a permanent evaluation failure.
+		return { result: 'permerror' };
+	}
+
 	const fromDomain = normalizeDomain(args.fromDomain);
 
 	if (!fromDomain) {
@@ -189,18 +206,6 @@ function alignmentMode(tag: 'r' | 's'): AlignmentMode {
 /** Lowercase + strip a trailing dot from a domain; '' for nullish/blank. */
 function normalizeDomain(domain: string): string {
 	return domain.trim().toLowerCase().replace(/\.$/, '');
-}
-
-/**
- * Approximate the Organizational Domain (RFC 7489 §3.2) as the registrable
- * domain: the last two labels. Used only for the From-domain → policy-domain
- * fallback lookup; relaxed alignment itself defers to the shared
- * `isSpfAligned` heuristic so the two sides never fork.
- */
-function organizationalDomain(domain: string): string {
-	const labels = normalizeDomain(domain).split('.').filter(Boolean);
-	if (labels.length <= 2) return labels.join('.');
-	return labels.slice(-2).join('.');
 }
 
 /**

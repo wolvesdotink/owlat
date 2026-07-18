@@ -6,7 +6,8 @@
  * AAR + AMS + AS in increasing instance order, the final AS having its `b=`
  * emptied and no trailing CRLF. THROWS (=> `cv: 'fail'`) on the first seal that
  * does not verify. Ed25519 seals sign the SHA-256 of the canonicalized headers
- * (RFC 8463), unlike `mailauth` 4.13.x whose verify omits that pre-hash.
+ * (RFC 8463) — this pre-hash matches the pinned `mailauth` 4.13.3, whose verify
+ * also pre-hashes the ed25519 signing input.
  */
 
 import { createHash, createPublicKey, verify as cryptoVerify, type KeyObject } from 'crypto';
@@ -17,6 +18,14 @@ import { parseSealAlgorithm, type ArcSet } from './chain.js';
 
 /** DER SubjectPublicKeyInfo prefix for a raw 32-byte Ed25519 key (RFC 8410). */
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+
+/**
+ * RFC 8301 §3.2: an RSA key shorter than 1024 bits MUST NOT be treated as valid
+ * — a factorable modulus makes the seal forgeable. mailauth enforces the same
+ * `minBitLength: 1024`. A weak seal key throws here (=> the seal is unverifiable
+ * => `cv: 'fail'`), exactly like every other seal failure in this module.
+ */
+const MIN_RSA_KEY_BITS = 1024;
 
 /**
  * Verify every ARC-Seal, outermost first — mirroring `mailauth`'s `verifyASChain`.
@@ -125,5 +134,11 @@ function buildPublicKey(record: DkimKeyRecord, keyType: 'rsa' | 'ed25519'): KeyO
 		const der = Buffer.concat([ED25519_SPKI_PREFIX, material]);
 		return createPublicKey({ key: der, format: 'der', type: 'spki' });
 	}
-	return createPublicKey({ key: material, format: 'der', type: 'spki' });
+	const key = createPublicKey({ key: material, format: 'der', type: 'spki' });
+	// RFC 8301 §3.2: reject sub-1024-bit RSA seal keys (never treat as valid).
+	const modulusLength = key.asymmetricKeyDetails?.modulusLength;
+	if (modulusLength !== undefined && modulusLength < MIN_RSA_KEY_BITS) {
+		throw new Error('ARC-Seal RSA key below 1024-bit minimum (RFC 8301)');
+	}
+	return key;
 }

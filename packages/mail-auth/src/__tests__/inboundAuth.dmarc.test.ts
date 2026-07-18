@@ -126,4 +126,48 @@ describe('evaluateDmarc (RFC 7489)', () => {
 		expect(outcome.result).toBe('pass');
 		expect(outcome.spfAligned).toBe(true);
 	});
+
+	it('multi-label public suffix: From ceo@victim.co.uk aligned only to attacker.co.uk -> fail (bypass closed)', async () => {
+		// Previously the org-domain heuristic folded both attacker.co.uk and
+		// victim.co.uk to `co.uk`, so a DKIM/SPF pass for the attacker domain
+		// looked "aligned" with the victim From — a DMARC bypass. It must now fail.
+		const outcome = await evaluateDmarc({
+			fromDomain: 'victim.co.uk',
+			spf: { result: 'pass', domain: 'attacker.co.uk' },
+			dkim: { result: 'pass', domain: 'attacker.co.uk' },
+			policyLookup: policyMap({ 'victim.co.uk': 'v=DMARC1; p=reject' }),
+		});
+		expect(outcome.result).toBe('fail');
+		expect(outcome.spfAligned).toBe(false);
+		expect(outcome.dkimAligned).toBe(false);
+	});
+
+	it('multi-label public suffix: legitimate subdomain mail.victim.co.uk finds the victim.co.uk policy', async () => {
+		// The From-domain → policy-domain fallback must still climb from a real
+		// subdomain to its registrable parent under a ccTLD second-level suffix.
+		const outcome = await evaluateDmarc({
+			fromDomain: 'mail.victim.co.uk',
+			spf: { result: 'none' },
+			dkim: { result: 'pass', domain: 'victim.co.uk' },
+			// No record on the subdomain; only the org domain publishes one.
+			policyLookup: policyMap({ 'victim.co.uk': 'v=DMARC1; p=reject; sp=quarantine' }),
+		});
+		expect(outcome.result).toBe('pass');
+		expect(outcome.dkimAligned).toBe(true);
+		// `sp=` applies because the record was found on the org domain.
+		expect(outcome.policy).toBe('quarantine');
+	});
+
+	it('ambiguous From (multiple From headers / addresses) -> permerror, never pass (RFC 7489 §6.6.1)', async () => {
+		const outcome = await evaluateDmarc({
+			fromDomain: 'example.com',
+			fromAmbiguous: true,
+			// Even a perfectly aligned DKIM pass must not rescue an ambiguous From.
+			spf: { result: 'pass', domain: 'example.com' },
+			dkim: { result: 'pass', domain: 'example.com' },
+			policyLookup: policyMap({ 'example.com': 'v=DMARC1; p=reject' }),
+		});
+		expect(outcome.result).toBe('permerror');
+		expect(outcome.result).not.toBe('pass');
+	});
 });
