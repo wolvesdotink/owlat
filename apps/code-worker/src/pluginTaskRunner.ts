@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PLUGIN_WORKER_RESULT_MAX_BYTES, pluginWorkerJobLocalIdOf } from '@owlat/plugin-kit';
 import { getConvexClient, pluginFn, type PluginTask } from './convexClient.js';
 import { chownDirToSandbox, runUntrusted } from './sandbox.js';
@@ -52,10 +53,28 @@ export type JobCommandFactory = (payload: string) => JobCommandSpec;
  * without any plugin code in the worker image; reference plugins (PP-28+) add
  * their real job commands here.
  */
+/**
+ * Absolute path to a compiled sandbox job entrypoint sibling of this module. In
+ * production the worker runs from `dist/`, so `./jobs/<name>.js` resolves to the
+ * compiled shim; the untrusted payload is always passed to it as a discrete argv
+ * element, never interpolated into the command.
+ */
+function jobEntry(name: string): string {
+	return fileURLToPath(new URL(`./jobs/${name}.js`, import.meta.url));
+}
+
 export const BUILTIN_JOB_COMMANDS: Readonly<Record<string, JobCommandFactory>> = Object.freeze({
 	// A no-op that exits 0 — proves the uid drop, env stripping, timeout, and
 	// cancellation wiring without doing anything a hostile payload could subvert.
 	selftest: (): JobCommandSpec => ({ command: 'node', args: ['-e', 'process.exit(0)'] }),
+
+	// Deliverability Lab (PP-28) seed-list placement test. The host controls the
+	// command (the compiled `seedTestMain` shim); the plugin only chooses to run
+	// this kind and supplies the payload, which arrives as a discrete argv element.
+	'seed-test': (payload: string): JobCommandSpec => ({
+		command: 'node',
+		args: [jobEntry('seedTestMain'), payload],
+	}),
 });
 
 /**
