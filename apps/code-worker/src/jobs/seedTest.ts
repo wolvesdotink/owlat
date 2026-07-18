@@ -69,7 +69,10 @@ function bucketOf(value: string): number {
 
 function spamSignal(subject: string, body: string): number {
 	const haystack = `${subject}\n${body}`.toLowerCase();
-	let hits = TRIGGER_PHRASES.reduce((count, phrase) => count + (haystack.includes(phrase) ? 1 : 0), 0);
+	let hits = TRIGGER_PHRASES.reduce(
+		(count, phrase) => count + (haystack.includes(phrase) ? 1 : 0),
+		0
+	);
 	const letters = subject.replace(/[^A-Za-z]/g, '');
 	if (letters.length >= 4 && letters === letters.toUpperCase()) hits += 2;
 	return hits;

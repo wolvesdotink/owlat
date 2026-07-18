@@ -41,7 +41,9 @@ describe('deliverability-lab manifest', () => {
 
 	it('is off by default and requires the seedbox env var before it can be enabled', () => {
 		expect(deliverabilityLabPlugin.flag?.default).toBe(false);
-		expect(deliverabilityLabPlugin.flag?.requiredEnvVars).toContain('DELIVERABILITY_LAB_SEEDBOX_URL');
+		expect(deliverabilityLabPlugin.flag?.requiredEnvVars).toContain(
+			'DELIVERABILITY_LAB_SEEDBOX_URL'
+		);
 	});
 
 	it('caps its attributed LLM spend with a hard positive daily budget', () => {

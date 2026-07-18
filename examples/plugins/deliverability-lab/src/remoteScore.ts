@@ -37,10 +37,7 @@ export interface ScoreHookResult {
  * the signed hook; tests provide a fake. It receives the abort signal so a
  * host-cancelled gate cancels the vendor call too.
  */
-export type RemoteScoreHook = (
-	email: DeliverabilityEmail,
-	signal: AbortSignal
-) => Promise<unknown>;
+export type RemoteScoreHook = (email: DeliverabilityEmail, signal: AbortSignal) => Promise<unknown>;
 
 /** Where a delivered score came from — used by the gate for an honest reason line. */
 export type ScoreSource = 'remote' | 'fallback';

@@ -1,11 +1,6 @@
 /** The Deliverability Lab analysis engine: pure, deterministic, runtime-neutral. */
 
-export type {
-	DeliverabilityEmail,
-	Finding,
-	FindingSeverity,
-	Verdict,
-} from './types';
+export type { DeliverabilityEmail, Finding, FindingSeverity, Verdict } from './types';
 export { verdictOf, worstVerdict } from './types';
 export {
 	normalizeSpamScore,

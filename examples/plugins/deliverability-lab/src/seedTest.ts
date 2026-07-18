@@ -120,7 +120,10 @@ export function buildSeedTestPayload(
 		);
 	}
 
-	return { jobKind: pluginWorkerJobKind(DELIVERABILITY_LAB_PLUGIN_ID, SEED_TEST_LOCAL_ID), payload };
+	return {
+		jobKind: pluginWorkerJobKind(DELIVERABILITY_LAB_PLUGIN_ID, SEED_TEST_LOCAL_ID),
+		payload,
+	};
 }
 
 function readFolder(value: unknown): SeedFolder | null {
