@@ -72,6 +72,7 @@ export const getStatus = adminQuery({
 			// resets a previously-chosen floor to `opportunistic`. Unset ⇒ null.
 			outboundTlsMode: getOptional('OUTBOUND_TLS_MODE') ?? null,
 			lastTestSucceededAt: settings?.deliveryTestLastSucceededAt ?? null,
+			mtaHealth: provider === 'mta' ? (settings?.mtaHealth ?? null) : null,
 		};
 	},
 });
@@ -147,12 +148,14 @@ export const getTransportSummary = authedQuery({
 		// sender-alignment gate: the transport's normalized kind plus the effective
 		// DKIM `d=` / return-path domains (DNS-facing values, never credentials).
 		const facts = outboundTransportFacts();
+		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
 
 		return {
 			provider,
 			canSend,
 			advancedRoutingActive,
 			health,
+			infrastructure: provider === 'mta' ? (settings?.mtaHealth ?? null) : null,
 			alignment: {
 				kind: facts.kind,
 				returnPathDomain: facts.returnPathDomain,
