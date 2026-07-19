@@ -279,6 +279,19 @@
         "vue-tsc": "catalog:",
       },
     },
+    "examples/plugins/deliverability-lab": {
+      "name": "@owlat/example-deliverability-lab",
+      "version": "0.0.0",
+      "dependencies": {
+        "@owlat/plugin-kit": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "examples/plugins/slack-approvals": {
       "name": "@owlat/example-slack-approvals",
       "version": "0.0.0",
@@ -1028,6 +1041,8 @@
     "@owlat/email-renderer": ["@owlat/email-renderer@workspace:packages/email-renderer"],
 
     "@owlat/email-scanner": ["@owlat/email-scanner@workspace:packages/email-scanner"],
+
+    "@owlat/example-deliverability-lab": ["@owlat/example-deliverability-lab@workspace:examples/plugins/deliverability-lab"],
 
     "@owlat/example-slack-approvals": ["@owlat/example-slack-approvals@workspace:examples/plugins/slack-approvals"],
 

@@ -1,0 +1,12 @@
+{
+	"subject": "Your April product update",
+	"from": "Aster Team <team@aster.example>",
+	"html": "<html lang=\"en\"><body><p>Hi there, here is what shipped this month.</p><p><a href=\"https://aster.example/changelog?utm_source=newsletter\">Read the changelog</a></p></body></html>",
+	"text": "Hi there, here is what shipped this month.",
+	"seeds": [
+		"seed1@gmail.example",
+		"seed2@outlook.example",
+		"seed3@yahoo.example",
+		"seed4@aster.example"
+	]
+}
