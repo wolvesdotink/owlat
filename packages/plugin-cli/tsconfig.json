@@ -1,0 +1,16 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"importHelpers": true,
+		"types": ["node"],
+		"lib": ["ESNext"],
+		"noEmit": true,
+		"paths": {
+			"@owlat/plugin-codegen": ["../plugin-codegen/src/index.ts"],
+			"@owlat/plugin-host": ["../plugin-host/src/index.ts"],
+			"@owlat/plugin-kit": ["../plugin-kit/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}
