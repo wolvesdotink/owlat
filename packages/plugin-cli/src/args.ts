@@ -44,9 +44,20 @@ export function parseArgs(argv: readonly string[], spec: ArgSpec): ParsedArgs {
 			continue;
 		}
 		if (valueFlags.has(name)) {
-			const value = inlineValue ?? argv[(index += 1)];
-			if (value === undefined) throw new PluginCliError(`--${name} requires a value`);
-			values.set(name, value);
+			if (inlineValue !== undefined) {
+				values.set(name, inlineValue);
+				continue;
+			}
+			// Take the value from the following token, but refuse a flag-shaped
+			// token: `--dir --dry-run` must fail loudly rather than silently
+			// swallow `--dry-run` as the `--dir` value. The `--opt=value` inline
+			// form above stays the escape hatch for a value that starts with `--`.
+			const next = argv[index + 1];
+			if (next === undefined || next.startsWith('--')) {
+				throw new PluginCliError(`--${name} requires a value`);
+			}
+			index += 1;
+			values.set(name, next);
 			continue;
 		}
 		throw new PluginCliError(`Unknown option: --${name}`);

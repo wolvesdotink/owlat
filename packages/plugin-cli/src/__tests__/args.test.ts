@@ -25,6 +25,17 @@ describe('parseArgs', () => {
 		expect(() => parseArgs(['--dir'], spec)).toThrow(/requires a value/);
 	});
 
+	it('refuses to swallow a following flag as a value', () => {
+		// `--dir --dry-run` must not consume `--dry-run` as the `--dir` value and
+		// silently defeat the switch; it fails loudly instead.
+		expect(() => parseArgs(['--dir', '--dry-run'], spec)).toThrow(/requires a value/);
+	});
+
+	it('still allows a --opt=value that starts with -- as the escape hatch', () => {
+		const parsed = parseArgs(['--dir=--weird'], spec);
+		expect(parsed.values.get('dir')).toBe('--weird');
+	});
+
 	it('rejects a boolean flag given a value', () => {
 		expect(() => parseArgs(['--dry-run=1'], spec)).toThrow(/does not take a value/);
 	});
