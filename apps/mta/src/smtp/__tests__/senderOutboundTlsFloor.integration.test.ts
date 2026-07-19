@@ -7,7 +7,7 @@
  * Unlike the pool-level extension in outboundStartTls.integration.test.ts (which
  * proves the resolver → classification mapping in isolation), this drives the
  * FULL {@link sendToMx} through the REAL {@link SmtpConnectionPool} + real
- * nodemailer + real tlsRpt (over ioredis-mock) against a loopback
+ * @owlat/smtp-client + real tlsRpt (over ioredis-mock) against a loopback
  * {@link SMTPServer}, exactly like senderPlaintextTlsRpt.integration.test.ts.
  * Both suites share the loopback harness (loopbackMxHarness.ts); only the
  * destination port is rewritten (sendToMx hardcodes 25).

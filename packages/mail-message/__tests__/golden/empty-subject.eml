@@ -1,0 +1,28 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=aNKfJTn0xrbaIOdoKMeXBjbMclA9ULToYP4Gu8+OmDI=;
+ b=SQkAsNXlVq7pZCQP2WAF7CzZ7cRkaIGXIUQoqRF9WmhB1zDmb2BU3gtP44dn2nWu1Liub4VGj
+ Vg0cLekHSn7dM1WCod+z+Pj8Js/bZpyfQ4m16GgUkJyDyrfF1AyW2hiZ0wC5QiYppPtglZ5yN+D
+ fGSB/pCbI1lnOxqdIcSAAPfmEZmcr/qSnaR1n4tcoYD4+P2Anyvr/k8EmYt8moSaIe/tGNmRnV3
+ 2+K7uHMLOyIzpHjUN03dixUt3xcT+jXHSxDLgyaQQsRXz+4qKKL/bGy8lKmm52P9lVnwjSdPnSd
+ jbj0pgD152QNGSdTqznmbrqnMp4xABN453cC5YdE+OCw==
+Message-ID: <corpus-7@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: 
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_empty-subject_0"
+
+----_owlat_empty-subject_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+no subject
+----_owlat_empty-subject_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>no subject</p>
+----_owlat_empty-subject_0--

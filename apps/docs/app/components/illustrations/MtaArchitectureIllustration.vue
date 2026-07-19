@@ -311,7 +311,7 @@ const props = withDefaults(defineProps<{ class?: string }>(), { class: '' })
 					<text x="6" y="11" fill="var(--color-success)" font-size="7" font-family="var(--font-mono, monospace)">Port 25 direct</text>
 				</g>
 
-				<text x="683" y="260" fill="var(--color-text-tertiary)" font-size="7" font-family="var(--font-mono, monospace)" text-anchor="middle">nodemailer</text>
+				<text x="683" y="260" fill="var(--color-text-tertiary)" font-size="7" font-family="var(--font-mono, monospace)" text-anchor="middle">smtp-client</text>
 			</g>
 
 			<!-- ═══ Outcome Nodes ═══ -->

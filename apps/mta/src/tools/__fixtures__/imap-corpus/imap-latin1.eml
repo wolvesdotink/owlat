@@ -1,0 +1,10 @@
+From: =?ISO-8859-1?Q?Jos=E9?= <jose@example.com>
+To: Bob <bob@example.org>
+Subject: =?ISO-8859-1?Q?Caf=E9_r=E9union?=
+Date: Wed, 17 Jun 2026 10:00:00 +0000
+Message-ID: <latin1-3@example.com>
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1
+Content-Transfer-Encoding: quoted-printable
+
+Caf=E9 co=FBte 5=A3 aujourd'hui.
