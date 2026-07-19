@@ -31,34 +31,41 @@ export async function checkConnectionRateLimit(
 	const key = `${CONNECTION_PREFIX}${normalizeIp(remoteIp)}`;
 
 	const count = await redis.incr(key);
-	// From here the increment has already landed. If any following step throws,
-	// undo it before propagating: the caller (onConnect) fails open on error and
-	// accepts the connection WITHOUT registering a slot release, so a surviving
+	// From here the increment has already landed. If setting the TTL throws, undo
+	// the increment before propagating: the caller (onConnect) fails open on error
+	// and accepts the connection WITHOUT registering a slot release, so a surviving
 	// increment would leak a per-IP slot until CONNECTION_TTL. Either this returns
 	// (the increment stands, to be released on close) or it throws with the
-	// increment undone — never both.
+	// increment undone — never both. The reject-path decr lives OUTSIDE this try so
+	// a fault there can never trigger a SECOND compensating decr (double-decrement).
 	try {
 		// Set TTL only on first increment (key creation)
 		if (count === 1) {
 			await redis.expire(key, CONNECTION_TTL);
 		}
-
-		if (count > maxConnectionsPerIp) {
-			// Decrement back since we're rejecting
-			await redis.decr(key);
-			return false;
-		}
-
-		return true;
 	} catch (err) {
-		// Best-effort compensation; if the decr also fails, CONNECTION_TTL reclaims it.
 		try {
 			await redis.decr(key);
 		} catch {
-			// swallow — the TTL is the backstop
+			// swallow — CONNECTION_TTL is the backstop
 		}
 		throw err;
 	}
+
+	if (count > maxConnectionsPerIp) {
+		// Over the limit: undo our own increment and reject. Rejecting is the correct
+		// verdict regardless, so a decr fault is swallowed (over-count self-heals via
+		// the TTL) rather than propagated — propagating would fail the caller OPEN and
+		// admit the very connection we are rejecting.
+		try {
+			await redis.decr(key);
+		} catch {
+			// swallow — the TTL reclaims the over-count
+		}
+		return false;
+	}
+
+	return true;
 }
 
 /**
