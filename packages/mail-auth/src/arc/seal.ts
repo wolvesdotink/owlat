@@ -124,6 +124,21 @@ async function fetchSealKey(
 	if (parsed.revoked || parsed.keyType !== keyType) {
 		throw new Error('ARC-Seal key revoked or wrong type');
 	}
+	// Enforce the SAME key-record restrictions the DKIM verifier applies (RFC 6376
+	// §3.6.1), so a `_domainkey` record the DKIM path would reject cannot be
+	// accepted here as an ARC-Seal key. ARC-Seal is always *-sha256 (RFC 8617
+	// §4.1.3), so a key that forbids sha256 via `h=` is unusable; an explicit `s=`
+	// service list must authorize `email` or `*`.
+	if (parsed.hashAlgorithms !== undefined && !parsed.hashAlgorithms.includes('sha256')) {
+		throw new Error('ARC-Seal key forbids sha256 (h=)');
+	}
+	if (
+		parsed.serviceTypes.length > 0 &&
+		!parsed.serviceTypes.includes('email') &&
+		!parsed.serviceTypes.includes('*')
+	) {
+		throw new Error('ARC-Seal key does not authorize email (s=)');
+	}
 	return buildPublicKey(parsed, keyType);
 }
 

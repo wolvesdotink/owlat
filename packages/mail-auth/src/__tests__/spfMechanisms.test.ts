@@ -337,3 +337,31 @@ describe('checkSpf — a:/mx: macro expansion (RFC 7208 §7)', () => {
 		expect(result.result).toBe('pass');
 	});
 });
+
+describe('checkSpf — ptr mechanism (RFC 7208 §5.5, deprecated)', () => {
+	it('treats `ptr` as a non-match and continues — never an unknown-mechanism permerror', async () => {
+		// A domain that still publishes `ptr ~all` must not have its whole record
+		// discarded as permerror: `ptr` is a recognized (if deprecated) mechanism.
+		// We do not evaluate it, so it is a non-match and evaluation falls through
+		// to the `-all`, yielding `fail` — exactly what a resolver that ignores the
+		// deprecated ptr result would produce, and NOT `permerror`.
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'ptr.com') return [['v=spf1 ptr -all']] as unknown[];
+			return [] as unknown[];
+		};
+		const result = await checkSpf('1.2.3.4', 'user@ptr.com', 'ehlo.host', resolver);
+		expect(result.result).toBe('fail');
+		expect(result.result).not.toBe('permerror');
+	});
+
+	it('accepts the `ptr:domain` form without permerror', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'ptrd.com') {
+				return [['v=spf1 ptr:ptrd.com ~all']] as unknown[];
+			}
+			return [] as unknown[];
+		};
+		const result = await checkSpf('1.2.3.4', 'user@ptrd.com', 'ehlo.host', resolver);
+		expect(result.result).toBe('softfail');
+	});
+});

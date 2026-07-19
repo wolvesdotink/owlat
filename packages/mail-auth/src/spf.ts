@@ -238,6 +238,20 @@ async function evaluateSpf(
 			continue;
 		}
 
+		// ptr mechanism (RFC 7208 §5.5). Implementations MUST recognize it, but its
+		// use is deprecated (SHOULD NOT). We do not perform the reverse-DNS +
+		// forward-confirmation lookup, so we treat it as a NON-MATCH and continue to
+		// the next mechanism — never as an unknown-mechanism permerror, which would
+		// discard the whole (otherwise valid) record and fail a `ptr ~all` sender.
+		// One DNS lookup is still consumed so the §4.6.4 lookup budget stays aligned
+		// with a resolver that would have performed the PTR query.
+		if (lowerMech === 'ptr' || lowerMech.startsWith('ptr:')) {
+			if (!consumeLookup(budget)) {
+				return { result: 'permerror', explanation: 'SPF DNS lookup limit exceeded' };
+			}
+			continue;
+		}
+
 		const addressMechanism = parseAddressMechanism(mech);
 		if (addressMechanism === null) {
 			return { result: 'permerror', explanation: `Invalid SPF address mechanism: ${mech}` };
