@@ -250,6 +250,40 @@ describe('checkSpf — top-level lookup outcomes', () => {
 });
 
 describe('checkSpf — RFC 7208 §4.5 record selection', () => {
+	it('joins all character-strings in one TXT RR before evaluating it', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'split.com') {
+				return [['v=spf1 ip4:', '1.2.3.4', ' -all']] as unknown[];
+			}
+			return notFound();
+		};
+		const result = await checkSpf('1.2.3.4', 'user@split.com', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('joins split TXT character-strings for include and redirect targets', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type !== 'TXT') return [];
+			if (name === 'include-source.com') {
+				return [['v=spf1 include:split-policy.com -all']] as unknown[];
+			}
+			if (name === 'redirect-source.com') {
+				return [['v=spf1 redirect=split-policy.com']] as unknown[];
+			}
+			if (name === 'split-policy.com') {
+				return [['v=spf1 ip4:', '1.2.3.4', ' -all']] as unknown[];
+			}
+			return notFound();
+		};
+
+		await expect(
+			checkSpf('1.2.3.4', 'user@include-source.com', 'ehlo.host', resolver)
+		).resolves.toMatchObject({ result: 'pass' });
+		await expect(
+			checkSpf('1.2.3.4', 'user@redirect-source.com', 'ehlo.host', resolver)
+		).resolves.toMatchObject({ result: 'pass' });
+	});
+
 	it('returns permerror when more than one v=spf1 record is published', async () => {
 		const resolver: SpfDnsResolver = async (name, type) => {
 			if (type === 'TXT' && name === 'dup.com') {

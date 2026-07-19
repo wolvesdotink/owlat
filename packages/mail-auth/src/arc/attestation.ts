@@ -8,6 +8,7 @@
  * attests, and a bare SPF/DKIM pass counts only when it ALIGNS with the From.
  */
 
+import { isSpfAligned } from '@owlat/shared/spfAlignment';
 import type { HeaderField } from '../dkim/message.js';
 
 /** The authentication methods parsed out of a sealed ARC-Authentication-Results. */
@@ -107,18 +108,13 @@ export function aarAttestsPass(aar: HeaderField): boolean {
 }
 
 /**
- * Relaxed DMARC alignment (RFC 7489 §3.1.1): an authenticated domain aligns with
- * the From domain when they are equal or one is a sub-domain of the other.
+ * Relaxed DMARC alignment (RFC 7489 §3.1.1): authenticated and From domains
+ * align only when they share the same PSL-derived Organizational Domain.
+ * Reuse the DMARC predicate so public/private suffixes such as `co.uk` and
+ * `github.io` cannot become cross-tenant ARC rescue boundaries.
  */
 function domainsAlign(authDomain: string, fromDomain: string): boolean {
-	if (authDomain === '' || fromDomain === '') {
-		return false;
-	}
-	return (
-		authDomain === fromDomain ||
-		authDomain.endsWith(`.${fromDomain}`) ||
-		fromDomain.endsWith(`.${authDomain}`)
-	);
+	return isSpfAligned(authDomain, fromDomain, 'relaxed');
 }
 
 /** Lowercase, trim, and drop a trailing root dot from a domain. */
