@@ -43,6 +43,29 @@ describe('submissionSecurity', () => {
 			expect(await checkConnectionRateLimit(redis, '5.6.7.8', 3)).toBe(true);
 		});
 
+		it('undoes its increment when a post-incr step throws (no leaked slot)', async () => {
+			// The caller fails open on error and accepts the connection WITHOUT
+			// registering a slot release, so a partial Redis failure after the incr
+			// must not leave a dangling increment that leaks a slot until the TTL.
+			const realExpire = redis.expire.bind(redis);
+			let boom = true;
+			// Fail the first-increment `expire` exactly once (the partial-failure race).
+			(redis as unknown as { expire: RealRedis['expire'] }).expire = (async (...args) => {
+				if (boom) {
+					boom = false;
+					throw new Error('redis expire failed');
+				}
+				return realExpire(...(args as Parameters<RealRedis['expire']>));
+			}) as RealRedis['expire'];
+
+			await expect(checkConnectionRateLimit(redis, '9.9.9.9', 1)).rejects.toThrow();
+
+			// The increment was compensated: a fresh connection at max=1 is still
+			// allowed. Without the fix the counter would already sit at 1 and this
+			// would reject.
+			expect(await checkConnectionRateLimit(redis, '9.9.9.9', 1)).toBe(true);
+		});
+
 		it('does not collide with the bounce server connection counter', async () => {
 			// Bounce uses mta:bounce:conn: — submission must use its own prefix.
 			await checkConnectionRateLimit(redis, '1.2.3.4', 1);

@@ -43,18 +43,34 @@ export async function checkConnectionRateLimit(
 	const key = `${CONNECTION_PREFIX}${normalizeIp(remoteIp)}`;
 
 	const count = await redis.incr(key);
-	// Set TTL only on first increment (key creation)
-	if (count === 1) {
-		await redis.expire(key, CONNECTION_TTL);
-	}
+	// From here the increment has already landed. If any following step throws,
+	// undo it before propagating: the caller (onConnect) fails open on error and
+	// accepts the connection WITHOUT registering a slot release, so a surviving
+	// increment would leak a per-IP slot until CONNECTION_TTL. Either this returns
+	// (the increment stands, to be released on close) or it throws with the
+	// increment undone — never both.
+	try {
+		// Set TTL only on first increment (key creation)
+		if (count === 1) {
+			await redis.expire(key, CONNECTION_TTL);
+		}
 
-	if (count > maxConnectionsPerIp) {
-		// Decrement back since we're rejecting
-		await redis.decr(key);
-		return false;
-	}
+		if (count > maxConnectionsPerIp) {
+			// Decrement back since we're rejecting
+			await redis.decr(key);
+			return false;
+		}
 
-	return true;
+		return true;
+	} catch (err) {
+		// Best-effort compensation; if the decr also fails, CONNECTION_TTL reclaims it.
+		try {
+			await redis.decr(key);
+		} catch {
+			// swallow — the TTL is the backstop
+		}
+		throw err;
+	}
 }
 
 /**
