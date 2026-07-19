@@ -25,13 +25,20 @@ COPY packages/smtp-client/ packages/smtp-client/
 COPY packages/mail-message/ packages/mail-message/
 COPY packages/mail-canon/ packages/mail-canon/
 
+# Typecheck first, then bundle the full runtime dependency graph. Bun workspace
+# node_modules entries are symlinks into the root install/package tree; copying
+# only apps/mail-sync/node_modules into a different runner path breaks every
+# target (including @owlat/smtp-client).
 RUN cd apps/mail-sync && bun run build
+RUN bun build apps/mail-sync/src/index.ts \
+	--target=node \
+	--outdir=apps/mail-sync/runtime \
+	--sourcemap=external
 
 FROM node:26-alpine AS runner
 
 WORKDIR /app
-COPY --from=builder /app/apps/mail-sync/dist ./dist
-COPY --from=builder /app/apps/mail-sync/node_modules ./node_modules
+COPY --from=builder /app/apps/mail-sync/runtime ./dist
 COPY apps/mail-sync/package.json ./
 
 ARG OWLAT_VERSION=dev

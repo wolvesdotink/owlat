@@ -23,13 +23,19 @@ COPY packages/shared/ packages/shared/
 COPY packages/mail-message/ packages/mail-message/
 COPY packages/mail-canon/ packages/mail-canon/
 
+# Typecheck first, then bundle the complete runtime graph. App-local Bun
+# workspace node_modules entries are symlinks into root-owned paths and cannot
+# be relocated into the runner independently.
 RUN cd apps/imap && bun run build
+RUN bun build apps/imap/src/index.ts \
+	--target=node \
+	--outdir=apps/imap/runtime \
+	--sourcemap=external
 
 FROM node:26-alpine AS runner
 
 WORKDIR /app
-COPY --from=builder /app/apps/imap/dist ./dist
-COPY --from=builder /app/apps/imap/node_modules ./node_modules
+COPY --from=builder /app/apps/imap/runtime ./dist
 COPY apps/imap/package.json ./
 
 ARG OWLAT_VERSION=dev

@@ -11,8 +11,9 @@ import { createConvexClient } from './convex.js';
 import { AccountManager } from './accountManager.js';
 import { startServer } from './server.js';
 import { logger } from './logger.js';
+import { pathToFileURL } from 'node:url';
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
 	const config = loadConfig();
 	const convex = createConvexClient(config);
 
@@ -31,7 +32,10 @@ async function main(): Promise<void> {
 	process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-main().catch((err) => {
-	logger.error({ err }, 'fatal startup error');
-	process.exit(1);
-});
+const entryPath = process.argv[1];
+if (entryPath && import.meta.url === pathToFileURL(entryPath).href) {
+	void main().catch((err) => {
+		logger.error({ err }, 'fatal startup error');
+		process.exit(1);
+	});
+}
