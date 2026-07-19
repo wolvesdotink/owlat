@@ -1,8 +1,8 @@
 import { watch } from 'node:fs';
-import { generatePluginComposition, PluginCodegenError } from '@owlat/plugin-codegen';
+import { generatePluginComposition } from '@owlat/plugin-codegen';
 import { type ChangeSignal, createChangeSignal } from '../changeSignal';
 import { CONFIG_PATH } from '../config';
-import { PluginCliError } from '../errors';
+import { reportCliFailure } from '../errors';
 import type { CliIo } from '../io';
 
 export interface RunDevOptions {
@@ -41,16 +41,7 @@ async function runOnce(
 		await runCodegen();
 		io.log(successMessage);
 	} catch (cause) {
-		const error =
-			cause instanceof PluginCodegenError
-				? new PluginCliError(cause.message, cause.details, { cause })
-				: cause;
-		if (error instanceof PluginCliError) {
-			io.error(error.message);
-			for (const detail of error.details) io.error(`  ${detail}`);
-		} else {
-			io.error('Plugin codegen failed unexpectedly.');
-		}
+		reportCliFailure(io, cause, 'Plugin codegen failed unexpectedly.');
 		io.error('Waiting for the next change...');
 	}
 }
