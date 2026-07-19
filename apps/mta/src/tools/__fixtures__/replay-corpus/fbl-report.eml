@@ -1,0 +1,13 @@
+From: fbl@isp.example
+To: abuse@example.org
+Subject: Abuse report
+Date: Sat, 21 Jun 2026 10:00:00 +0000
+Message-ID: <fbl-1@isp.example>
+MIME-Version: 1.0
+Content-Type: multipart/report; report-type=feedback-report; boundary="f1"
+
+--f1
+Content-Type: text/plain; charset=utf-8
+
+This is an email abuse report summary for the routing classifier.
+--f1--

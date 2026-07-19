@@ -20,18 +20,18 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import { parseBounce } from '../parser.js';
 import { buildVerpAddress } from '../verp.js';
 
-function createMockParsedMail(overrides: Partial<ParsedMail> = {}): ParsedMail {
+function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMessage {
 	return {
 		text: '',
 		subject: '',
 		headers: new Map(),
 		attachments: [],
 		...overrides,
-	} as ParsedMail;
+	} as unknown as ParsedMessage;
 }
 
 describe('VERP round-trip — bounce attribution (PR-01)', () => {
@@ -59,7 +59,8 @@ describe('VERP round-trip — bounce attribution (PR-01)', () => {
 			].join('\n'),
 		});
 
-		const result = parseBounce(dsn, verp);
+		// The DSN attributes via its VERP envelope token, not a report part.
+		const result = parseBounce(dsn, [], verp);
 
 		expect(result).not.toBeNull();
 		// The decoded token equals the stored providerMessageId — this is the key

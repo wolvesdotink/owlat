@@ -22,14 +22,27 @@ COPY apps/mta/tsconfig.json apps/mta/
 COPY apps/mta/src/ apps/mta/src/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/shared/ packages/shared/
+COPY packages/mail-auth/ packages/mail-auth/
+COPY packages/mail-canon/ packages/mail-canon/
+COPY packages/mail-message/ packages/mail-message/
+COPY packages/smtp-client/ packages/smtp-client/
+COPY packages/smtp-listener/ packages/smtp-listener/
 
+# Keep the TypeScript build as the container-local type/declaration check, then
+# produce one self-contained Node bundle for the runtime stage. Copying an
+# app-local node_modules directory is unsafe with Bun workspaces: its entries are
+# symlinks into the root .bun store and packages/ tree, and relocating only the
+# links leaves a release image full of dangling dependencies.
 RUN cd apps/mta && bun run build
+RUN bun build apps/mta/src/index.ts \
+	--target=node \
+	--outdir=apps/mta/runtime \
+	--sourcemap=external
 
 FROM node:26-alpine AS runner
 
 WORKDIR /app
-COPY --from=builder /app/apps/mta/dist ./dist
-COPY --from=builder /app/apps/mta/node_modules ./node_modules
+COPY --from=builder /app/apps/mta/runtime ./dist
 COPY apps/mta/package.json ./
 
 # Version metadata — injected by CI on release

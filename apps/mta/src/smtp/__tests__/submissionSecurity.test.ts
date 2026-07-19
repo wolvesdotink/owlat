@@ -43,6 +43,52 @@ describe('submissionSecurity', () => {
 			expect(await checkConnectionRateLimit(redis, '5.6.7.8', 3)).toBe(true);
 		});
 
+		it('undoes its increment when a post-incr step throws (no leaked slot)', async () => {
+			// The caller fails open on error and accepts the connection WITHOUT
+			// registering a slot release, so a partial Redis failure after the incr
+			// must not leave a dangling increment that leaks a slot until the TTL.
+			const realExpire = redis.expire.bind(redis);
+			let boom = true;
+			// Fail the first-increment `expire` exactly once (the partial-failure race).
+			(redis as unknown as { expire: RealRedis['expire'] }).expire = (async (...args) => {
+				if (boom) {
+					boom = false;
+					throw new Error('redis expire failed');
+				}
+				return realExpire(...(args as Parameters<RealRedis['expire']>));
+			}) as RealRedis['expire'];
+
+			await expect(checkConnectionRateLimit(redis, '9.9.9.9', 1)).rejects.toThrow();
+
+			// The increment was compensated: a fresh connection at max=1 is still
+			// allowed. Without the fix the counter would already sit at 1 and this
+			// would reject.
+			expect(await checkConnectionRateLimit(redis, '9.9.9.9', 1)).toBe(true);
+		});
+
+		it('rejects (never double-decrements or throws) when the reject-path decr faults', async () => {
+			// At/over the limit the reject branch decrements its own increment. If that
+			// decr faults, the call must still REJECT (returning false, never throwing —
+			// throwing would fail the caller open and admit the connection) and must not
+			// trigger a second compensating decr that under-counts live connections.
+			await checkConnectionRateLimit(redis, '8.8.8.8', 1); // count -> 1 (allowed)
+			const realDecr = redis.decr.bind(redis);
+			let boom = true;
+			(redis as unknown as { decr: RealRedis['decr'] }).decr = (async (...args) => {
+				if (boom) {
+					boom = false;
+					throw new Error('redis decr failed');
+				}
+				return realDecr(...(args as Parameters<RealRedis['decr']>));
+			}) as RealRedis['decr'];
+
+			// count -> 2 > 1: reject path runs decr, which faults once.
+			await expect(checkConnectionRateLimit(redis, '8.8.8.8', 1)).resolves.toBe(false);
+			// The over-count self-heals but is never driven BELOW the live count: the
+			// counter is still >= 1, so the IP stays limited (no extra slot handed out).
+			expect(Number(await redis.get('mta:submission:conn:8.8.8.8'))).toBeGreaterThanOrEqual(1);
+		});
+
 		it('does not collide with the bounce server connection counter', async () => {
 			// Bounce uses mta:bounce:conn: — submission must use its own prefix.
 			await checkConnectionRateLimit(redis, '1.2.3.4', 1);

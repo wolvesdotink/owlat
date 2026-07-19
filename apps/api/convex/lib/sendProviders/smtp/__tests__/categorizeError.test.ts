@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { smtpSendProvider, smtpReplyCodeToErrorCode, classifySmtpError } from '../index';
 import { EmailErrorCode, isRetryableErrorCode } from '../../types';
+import type { SmtpPhase } from '@owlat/smtp-client';
 
 describe('smtpReplyCodeToErrorCode — SMTP reply code taxonomy (RFC 5321 §4.2)', () => {
 	const cases: Array<[number, string, EmailErrorCode]> = [
@@ -39,7 +40,7 @@ describe('smtpReplyCodeToErrorCode — SMTP reply code taxonomy (RFC 5321 §4.2)
 	});
 });
 
-describe('smtpSendProvider.categorizeError — nodemailer string codes + text', () => {
+describe('smtpSendProvider.categorizeError — string codes + reply text', () => {
 	const provider = smtpSendProvider;
 
 	it('maps the numeric reply code when present (authoritative)', () => {
@@ -93,81 +94,161 @@ describe('smtpSendProvider.categorizeError — nodemailer string codes + text', 
 	});
 });
 
-describe('classifySmtpError — catch-side classification (retry vs. terminal)', () => {
+describe('classifySmtpError — structured (phase + reply code) catch-side classification', () => {
 	type Input = Parameters<typeof classifySmtpError>[0];
+
+	// Case-by-case successors to the pre-refactor old-library-shaped table. Each
+	// row asserts the SAME EmailErrorCode the old string/command classifier
+	// produced, now driven off the structured SmtpError discriminants (phase +
+	// replyCode) with zero message-text sniffing. The decision table — and above
+	// all the double-delivery boundary — is provably unchanged.
 	const cases: Array<[string, Input, EmailErrorCode]> = [
-		// A definitive 4xx reply that merely mentions "timeout" (e.g. Postfix's
-		// "421 4.4.2 Error: timeout exceeded") is the server's verdict — the
-		// message was NOT accepted, so there is no double-delivery ambiguity. It
-		// must be a retryable SERVER_ERROR, never terminal AMBIGUOUS_TIMEOUT.
+		// (old: 421/DATA "timeout exceeded" → SERVER_ERROR). A definitive 4xx reply
+		// is the server's verdict — the message was NOT accepted, so there is no
+		// double-delivery ambiguity. The reply code is authoritative even at
+		// data-final, giving a retryable SERVER_ERROR, never AMBIGUOUS_TIMEOUT.
 		[
-			'421 reply mentioning "timeout" is a retryable server error, not ambiguous',
-			{ responseCode: 421, message: '4.4.2 Error: timeout exceeded', command: 'DATA' },
+			'421 reply at data-final is a retryable server error, not ambiguous',
+			{ phase: 'data-final', replyCode: 421, message: '4.4.2 Error: timeout exceeded' },
 			EmailErrorCode.SERVER_ERROR,
 		],
-		// No reply code arrived (the outer withTimeout sentinel) → genuinely
-		// ambiguous: the relay may already have accepted the message.
+		// (old: withTimeout sentinel, no reply → AMBIGUOUS). A data-final failure
+		// with no reply is the genuinely ambiguous region — the 250 may be lost.
 		[
-			'withTimeout sentinel with no reply code is AMBIGUOUS_TIMEOUT',
-			{ message: 'SMTP relay send timed out' },
+			'data-final failure with no reply code is AMBIGUOUS_TIMEOUT',
+			{ phase: 'data-final', message: 'SMTP relay send timed out' },
 			EmailErrorCode.AMBIGUOUS_TIMEOUT,
 		],
-		// Socket-level ETIMEDOUT with no reply code is likewise ambiguous.
+		// (old: socket ETIMEDOUT, no reply → AMBIGUOUS). A read timeout awaiting the
+		// message acknowledgement is ambiguous for the same reason.
 		[
-			'socket ETIMEDOUT with no reply code is AMBIGUOUS_TIMEOUT',
-			{ code: 'ETIMEDOUT', message: 'Connection timed out' },
+			'data-final read timeout with no reply code is AMBIGUOUS_TIMEOUT',
+			{ phase: 'data-final', message: 'Connection timed out' },
 			EmailErrorCode.AMBIGUOUS_TIMEOUT,
 		],
-		// A pre-acceptance connection/greeting failure (command CONN) never
+		// (old: CONN ETIMEDOUT → SERVER_ERROR). A connect-phase failure never
 		// reached the wire, so it is always retryable — even a connect timeout.
+		// The structured phase now tells connect-timeout from data-timeout apart,
+		// so a connect timeout is correctly retryable rather than lumped ambiguous.
 		[
-			'CONN-phase ETIMEDOUT (connection timeout) is a retryable server error',
-			{ command: 'CONN', code: 'ETIMEDOUT', message: 'Connection timeout' },
+			'connect-phase timeout is a retryable server error',
+			{ phase: 'connect', message: 'Connection timeout' },
 			EmailErrorCode.SERVER_ERROR,
 		],
+		// (old: CONN "Greeting never received" → SERVER_ERROR).
 		[
-			'CONN-phase greeting failure is a retryable server error',
-			{ command: 'CONN', code: 'ETIMEDOUT', message: 'Greeting never received' },
+			'greeting-phase failure is a retryable server error',
+			{ phase: 'greeting', message: 'greeting never received' },
 			EmailErrorCode.SERVER_ERROR,
 		],
-		// A connection loss during DATA may mean the final dot was sent and the
-		// 250 lost — the same on-the-wire ambiguity a timeout carries ⇒ terminal.
+		// (old: DATA connection loss → AMBIGUOUS). A drop during DATA may mean the
+		// final dot was sent and the 250 lost — the ambiguous, never-retried region.
 		[
-			'DATA-phase connection loss is AMBIGUOUS_TIMEOUT (final dot may be on the wire)',
-			{ command: 'DATA', code: 'ESOCKET', message: 'Connection closed unexpectedly' },
+			'data-phase connection loss is AMBIGUOUS_TIMEOUT (final dot may be on the wire)',
+			{ phase: 'data', message: 'Connection closed unexpectedly' },
 			EmailErrorCode.AMBIGUOUS_TIMEOUT,
 		],
+		// (old: DATA socket hang up → AMBIGUOUS).
 		[
-			'DATA-phase socket hang up is AMBIGUOUS_TIMEOUT',
-			{ command: 'DATA', message: 'socket hang up' },
+			'data-final socket hang up is AMBIGUOUS_TIMEOUT',
+			{ phase: 'data-final', message: 'socket hang up' },
 			EmailErrorCode.AMBIGUOUS_TIMEOUT,
 		],
-		// Connection losses BEFORE data — EHLO/MAIL/RCPT — leave the server with
-		// an incomplete transaction it discards, so they stay retryable.
+		// (old: RCPT connection loss → SERVER_ERROR). Pre-DATA drops leave the
+		// server with an incomplete transaction it discards, so they stay retryable.
 		[
-			'RCPT-phase connection loss stays a retryable server error',
-			{ command: 'RCPT', code: 'ESOCKET', message: 'Connection closed unexpectedly' },
+			'rcpt-phase failure stays a retryable server error',
+			{ phase: 'rcpt', message: 'Connection closed unexpectedly' },
+			EmailErrorCode.SERVER_ERROR,
+		],
+		// (old: MAIL connection loss → SERVER_ERROR).
+		[
+			'mail-phase failure stays a retryable server error',
+			{ phase: 'mail', message: 'Connection closed' },
+			EmailErrorCode.SERVER_ERROR,
+		],
+		// Newly-distinguishable pre-DATA phases the string classifier could not
+		// name — both pre-acceptance, so retryable server errors.
+		[
+			'ehlo-phase failure is a retryable server error',
+			{ phase: 'ehlo', message: 'EHLO rejected' },
 			EmailErrorCode.SERVER_ERROR,
 		],
 		[
-			'MAIL-phase connection loss stays a retryable server error',
-			{ command: 'MAIL', code: 'ECONNECTION', message: 'Connection closed' },
+			'starttls-phase failure is a retryable server error',
+			{ phase: 'starttls', message: 'STARTTLS not offered' },
 			EmailErrorCode.SERVER_ERROR,
 		],
-		// Reply-code path still authoritative through the classifier.
+		// An AUTH rejection with no reply code is a credential/handshake problem.
+		[
+			'auth-phase failure with no reply code is AUTH_FAILED',
+			{ phase: 'auth', message: 'authentication refused' },
+			EmailErrorCode.AUTH_FAILED,
+		],
+		// (old: 550/RCPT reply → INVALID_RECIPIENT). Reply-code path still
+		// authoritative through the classifier.
 		[
 			'550 reply → permanent INVALID_RECIPIENT',
-			{ responseCode: 550, code: 'EENVELOPE', message: '5.1.1 User unknown', command: 'RCPT' },
+			{ phase: 'rcpt', replyCode: 550, message: '5.1.1 User unknown' },
 			EmailErrorCode.INVALID_RECIPIENT,
 		],
+		// (old: 535 reply → AUTH_FAILED).
 		[
 			'535 reply → permanent AUTH_FAILED',
-			{ responseCode: 535, code: 'EAUTH', message: '5.7.8 auth failed' },
+			{ phase: 'auth', replyCode: 535, message: '5.7.8 auth failed' },
 			EmailErrorCode.AUTH_FAILED,
 		],
 	];
 
 	it.each(cases)('%s', (_name, input, expected) => {
 		expect(classifySmtpError(input)).toBe(expected);
+	});
+
+	// The double-delivery invariant, asserted directly (the reviewer's focus): a
+	// post-DATA failure is auto-retried ONLY when the server itself returned a
+	// reply code (an explicit verdict that the message was rejected, not
+	// accepted). With NO reply, every data/data-final phase is terminal.
+	const postDataPhases: SmtpPhase[] = ['data', 'data-final'];
+	it.each(postDataPhases)(
+		'phase %s with no reply is AMBIGUOUS_TIMEOUT and never retryable',
+		(phase) => {
+			const code = classifySmtpError({ phase, message: 'dropped' });
+			expect(code).toBe(EmailErrorCode.AMBIGUOUS_TIMEOUT);
+			expect(isRetryableErrorCode(code)).toBe(false);
+		}
+	);
+
+	it('a post-DATA 5xx reply is a permanent (non-retryable) reject, not a retry', () => {
+		const code = classifySmtpError({ phase: 'data-final', replyCode: 554, message: 'rejected' });
+		expect(code).toBe(EmailErrorCode.CONTENT_REJECTED);
+		expect(isRetryableErrorCode(code)).toBe(false);
+	});
+
+	it('a post-DATA 4xx reply is a retryable server verdict (message provably not accepted)', () => {
+		// Safe to retry: a 4xx acknowledging the body means the server explicitly
+		// declined it, so no message was delivered and no double-send can occur.
+		const code = classifySmtpError({ phase: 'data-final', replyCode: 451, message: 'try later' });
+		expect(code).toBe(EmailErrorCode.SERVER_ERROR);
+		expect(isRetryableErrorCode(code)).toBe(true);
+	});
+
+	// X3 — SMTPUTF8 / EAI fail-closed. A client-side refusal (no reply code) whose
+	// `clientRefusal` discriminant is `smtputf8-unavailable` maps to its own
+	// distinct, non-retryable code rather than the phase-`mail` SERVER_ERROR default.
+	it('a phase-mail SMTPUTF8 client refusal is a distinct, non-retryable code', () => {
+		const code = classifySmtpError({
+			phase: 'mail',
+			message: 'server does not advertise SMTPUTF8',
+			clientRefusal: 'smtputf8-unavailable',
+		});
+		expect(code).toBe(EmailErrorCode.SMTPUTF8_UNSUPPORTED);
+		expect(isRetryableErrorCode(code)).toBe(false);
+	});
+
+	it('the clientRefusal discriminant overrides the phase-mail default even with no reply code', () => {
+		// Without the discriminant, a reply-less phase-mail error is a retryable
+		// SERVER_ERROR — proving the SMTPUTF8 refusal is classified by its structured
+		// cause, not by phase alone.
+		expect(classifySmtpError({ phase: 'mail', message: 'x' })).toBe(EmailErrorCode.SERVER_ERROR);
 	});
 });

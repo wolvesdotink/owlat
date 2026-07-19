@@ -20,7 +20,7 @@
  * See ADR-0007 follow-up #4 and CONTEXT.md's MTA dispatch section.
  */
 
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import * as circuitBreaker from '../intelligence/circuitBreaker.js';
 import * as campaignComplaintRate from '../intelligence/campaignComplaintRate.js';
 import * as metrics from '../monitoring/collector.js';
@@ -94,7 +94,7 @@ export type BounceEffect =
 	| {
 			kind: 'forward_to_endpoint';
 			route: InboundRoute;
-			parsed: ParsedMail;
+			parsed: ParsedMessage;
 			rcptTo: string;
 			/** RFC 8601 inbound auth verdicts + DMARC alignment inputs. */
 			auth?: InboundAuthVerdicts;

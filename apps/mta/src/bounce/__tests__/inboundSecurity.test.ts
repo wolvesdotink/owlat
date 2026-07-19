@@ -61,6 +61,45 @@ describe('inboundSecurity', () => {
 			const count = await getConnectionCount(redis, '1.2.3.4');
 			expect(count).toBe(1);
 		});
+
+		it('undoes its increment when a post-incr step throws (no leaked slot)', async () => {
+			// onConnect fails open on a Redis error and accepts the connection without
+			// registering a slot release, so a partial failure after the incr must not
+			// leave a dangling increment leaking a slot until the TTL.
+			const realExpire = redis.expire.bind(redis);
+			let boom = true;
+			(redis as unknown as { expire: RealRedis['expire'] }).expire = (async (...args) => {
+				if (boom) {
+					boom = false;
+					throw new Error('redis expire failed');
+				}
+				return realExpire(...(args as Parameters<RealRedis['expire']>));
+			}) as RealRedis['expire'];
+
+			await expect(checkConnectionRateLimit(redis, '9.9.9.9', 1)).rejects.toThrow();
+
+			// Compensated: a fresh connection at max=1 is still allowed.
+			expect(await checkConnectionRateLimit(redis, '9.9.9.9', 1)).toBe(true);
+		});
+
+		it('rejects (never double-decrements or throws) when the reject-path decr faults', async () => {
+			// At/over the limit the reject branch decrements its own increment. If that
+			// decr faults, the call must still REJECT (returning false, never throwing)
+			// and must not trigger a second compensating decr that under-counts.
+			await checkConnectionRateLimit(redis, '8.8.8.8', 1); // count -> 1 (allowed)
+			const realDecr = redis.decr.bind(redis);
+			let boom = true;
+			(redis as unknown as { decr: RealRedis['decr'] }).decr = (async (...args) => {
+				if (boom) {
+					boom = false;
+					throw new Error('redis decr failed');
+				}
+				return realDecr(...(args as Parameters<RealRedis['decr']>));
+			}) as RealRedis['decr'];
+
+			await expect(checkConnectionRateLimit(redis, '8.8.8.8', 1)).resolves.toBe(false);
+			expect(await getConnectionCount(redis, '8.8.8.8')).toBeGreaterThanOrEqual(1);
+		});
 	});
 
 	describe('releaseConnection', () => {

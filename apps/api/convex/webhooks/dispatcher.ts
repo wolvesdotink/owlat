@@ -94,6 +94,34 @@ const DISPATCH: DispatchTable = {
 			transition: { to: 'delivered', at: e.at },
 		});
 	},
+	'email.failed': async (ctx, e) => {
+		// Terminal, NON-bounce failure (MTA post-DATA ambiguous drop). Transition the
+		// send row to `failed` so it leaves "sending" — deliberately NOT `bounced`:
+		// `reduceFailed` applies no recipient suppression and no reputation penalty,
+		// because the receiver may have accepted the message and the address is very
+		// likely valid.
+		if (isPostboxMessageId(e.providerMessageId)) {
+			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId, {
+				rawProviderMessageId: e.providerMessageId,
+				input: {
+					to: 'failed',
+					at: e.at,
+					errorMessage: e.errorMessage,
+					errorCode: e.errorCode,
+				},
+			});
+			return;
+		}
+		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: e.providerMessageId,
+			transition: {
+				to: 'failed',
+				at: e.at,
+				errorMessage: e.errorMessage,
+				errorCode: e.errorCode,
+			},
+		});
+	},
 	'email.bounced': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) {
 			// Postbox does not distinguish hard/soft at the per-recipient level —

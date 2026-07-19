@@ -5,7 +5,6 @@ import {
 	applyStepEvent,
 	setStepState,
 	PROVISION_TIMELINE,
-	deriveNetworkUrls,
 	deriveHostnames,
 	networkUrlsFromHosts,
 	isLoopbackHost,
@@ -222,20 +221,6 @@ describe('remote commands', () => {
 	});
 });
 
-describe('deriveNetworkUrls', () => {
-	it('builds the owlat/api/rest.api subdomains for a domain', () => {
-		expect(deriveNetworkUrls('example.com')).toEqual({
-			siteUrl: 'https://owlat.example.com',
-			convexUrl: 'https://api.example.com',
-			convexSiteUrl: 'https://rest.api.example.com',
-		});
-	});
-
-	it('strips a scheme and trailing slashes from the input', () => {
-		expect(deriveNetworkUrls('https://example.com/').siteUrl).toBe('https://owlat.example.com');
-	});
-});
-
 describe('deriveHostnames', () => {
 	it('expands an apex domain into every owlat hostname', () => {
 		expect(deriveHostnames('wolves.ink')).toEqual({
@@ -247,6 +232,10 @@ describe('deriveHostnames', () => {
 		});
 	});
 
+	it('strips a scheme and trailing slashes from the input', () => {
+		expect(deriveHostnames('https://example.com/').site).toBe('owlat.example.com');
+	});
+
 	it('builds network URLs from explicit (possibly overridden) hostnames', () => {
 		expect(
 			networkUrlsFromHosts({ site: 'app.x.com', convex: 'cx.x.com', convexSite: 'http.x.com' })
@@ -254,6 +243,14 @@ describe('deriveHostnames', () => {
 			siteUrl: 'https://app.x.com',
 			convexUrl: 'https://cx.x.com',
 			convexSiteUrl: 'https://http.x.com',
+		});
+	});
+
+	it('pairs with networkUrlsFromHosts to build the owlat/api/rest.api URLs for a domain', () => {
+		expect(networkUrlsFromHosts(deriveHostnames('example.com'))).toEqual({
+			siteUrl: 'https://owlat.example.com',
+			convexUrl: 'https://api.example.com',
+			convexSiteUrl: 'https://rest.api.example.com',
 		});
 	});
 });

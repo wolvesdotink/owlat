@@ -12,6 +12,7 @@
 
 import type { BounceEffect } from './effects.js';
 import type { BasePhaseCtx, BounceAttempt } from './types.js';
+import { addressText, firstAddress } from '../inbound/parsedAddress.js';
 
 /**
  * The reducer's return type. `effects` runs through `applyEffects` in the
@@ -173,16 +174,16 @@ function reduceMailbox(
 					event: 'inbound.mailbox.received',
 					messageId: parsed.messageId,
 					organizationId: mailbox.organizationId,
-					message: `Postbox delivery from ${parsed.from?.text} to ${rcptTo}`,
+					message: `Postbox delivery from ${addressText(parsed.from)} to ${rcptTo}`,
 					mailboxPayload: {
 						deliveryId,
 						recipientAddress: rcptTo,
 						rawBytesBase64: rawBuffer.toString('base64'),
-						from: parsed.from?.value?.[0]?.address ?? '',
+						from: firstAddress(parsed.from) ?? '',
 						to: [...toAddrs],
 						cc: [...ccAddrs],
 						bcc: [...bccAddrs],
-						replyTo: parsed.replyTo?.value?.[0]?.address,
+						replyTo: firstAddress(parsed.replyTo),
 						// SMTP envelope sender (RFC 5321 MAIL FROM). `''` for the
 						// null sender (`<>`) of a DSN/bounce — the Convex vacation
 						// hook keys its RFC 3834 §2 anti-backscatter skip off this,
@@ -310,9 +311,9 @@ function reduceInboundAccept(
 			event: 'inbound.received',
 			messageId: parsed.messageId,
 			organizationId: route.organizationId,
-			message: `Inbound from ${parsed.from?.text} to ${rcptTo}`,
+			message: `Inbound from ${addressText(parsed.from)} to ${rcptTo}`,
 			inboundPayload: {
-				from: parsed.from?.value?.[0]?.address ?? '',
+				from: firstAddress(parsed.from) ?? '',
 				to: rcptTo,
 				subject: parsed.subject ?? '(no subject)',
 				textBody: parsed.text ?? undefined,

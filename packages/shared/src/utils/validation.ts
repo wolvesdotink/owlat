@@ -8,11 +8,30 @@
 // ============================================================================
 
 /**
- * Email validation regex
+ * Email validation regex.
+ *
  * Rejects: consecutive dots, leading/trailing dots in local/domain,
- * leading/trailing hyphens in domain labels, and requires 2+ char TLD.
+ * leading/trailing hyphens in domain labels, and requires a 2+ char TLD.
+ *
+ * Accepts internationalized (RFC 6531/6532 SMTPUTF8 / EAI) addresses: the
+ * local-part, domain labels and TLD admit any non-ASCII code point in the
+ * `\u{80}`–`\u{10FFFF}` range EXCEPT the Unicode `\p{C}` (control / format /
+ * surrogate / unassigned / private-use) and `\p{Z}` (space / separator) classes.
+ * The subtraction is expressed in `u`-flag syntax — a per-character negative
+ * lookahead `(?:(?![\p{C}\p{Z}])[…])` — rather than the `v`-flag `[X--[…]]` set
+ * subtraction, because `tsc` only accepts the `v` (unicodeSets) flag when
+ * targeting es2024+ and several consumers target lower (TS1501/TS1508). The
+ * accept/reject set is identical. That keeps a real UTF-8 mailbox such as
+ * `用户@例え.test` or `Pelé@exämple.test` valid while rejecting the Unicode
+ * equivalents of the pinned ASCII-space rejection: U+00A0 (NBSP), U+200B (ZWSP),
+ * U+2028/U+2029 (line/paragraph separators), U+0085 (NEL), the BiDi overrides
+ * U+202A–U+202E, and lone surrogates — code points that would spoof or mangle an
+ * imported address. ASCII structure (dot/hyphen placement, TLD length) is
+ * unchanged, so every previously-valid address stays valid and every
+ * previously-invalid ASCII address stays invalid.
  */
-export const emailRegex = /^[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
+export const emailRegex =
+	/^(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+\/=?^_`{|}~\u{80}-\u{10FFFF}\-])+(?:\.(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+\/=?^_`{|}~\u{80}-\u{10FFFF}\-])+)*@(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}])(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}\-])*(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}]))?\.)+(?:(?![\p{C}\p{Z}])[a-zA-Z\u{80}-\u{10FFFF}]){2,}$/u;
 
 /**
  * Domain validation regex
