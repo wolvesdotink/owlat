@@ -474,6 +474,9 @@ function buildPublicKey(record: DkimKeyRecord, keyType: 'rsa' | 'ed25519'): KeyO
 		const der = Buffer.concat([ED25519_SPKI_PREFIX, material]);
 		return createPublicKey({ key: der, format: 'der', type: 'spki' });
 	}
+	// DKIM RSA keys are published as an SPKI SubjectPublicKeyInfo (RFC 6376 §3.6.1),
+	// which is also what the mailauth oracle accepts — do NOT fall back to bare
+	// PKCS#1, or we would verdict-diverge by accepting a key the oracle rejects.
 	return createPublicKey({ key: material, format: 'der', type: 'spki' });
 }
 

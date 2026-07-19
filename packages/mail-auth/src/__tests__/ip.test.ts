@@ -60,6 +60,17 @@ describe('expandMacros (RFC 7208 §7)', () => {
 		expect(expandMacros('%{o}', '1.2.3.4', 'd.com')).toBe('d.com');
 	});
 
+	it('expands %{p} to the literal "unknown" (RFC 7208 §7.3, no PTR validation)', () => {
+		// %{p} is the PTR-VALIDATED domain of the connecting IP. We do not perform
+		// that reverse-DNS validation, and the RFC mandates the literal "unknown"
+		// when it is not done — it must NOT expand to the sender domain, or an
+		// `exists:%{p}...` record could match without any reverse-DNS check.
+		expect(expandMacros('%{p}', '1.2.3.4', 'd.com')).toBe('unknown');
+		expect(expandMacros('%{p}._ok.%{d}', '1.2.3.4', 'victim.com', { sender: 's@victim.com' })).toBe(
+			'unknown._ok.victim.com'
+		);
+	});
+
 	it('applies reverse and digit/delimiter transformers', () => {
 		expect(expandMacros('%{ir}', '1.2.3.4', 'd.com')).toBe('4.3.2.1');
 		expect(expandMacros('%{d2}', '1.2.3.4', 'mail.example.com')).toBe('example.com');

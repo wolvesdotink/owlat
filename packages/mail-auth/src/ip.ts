@@ -69,8 +69,15 @@ export function expandMacros(
 				value = senderLocal;
 				break;
 			case 'o':
-			case 'p':
 				value = senderDomain;
+				break;
+			case 'p':
+				// The PTR-validated domain of the connecting IP (RFC 7208 §7.3). We do
+				// NOT perform the reverse-DNS validation `%{p}` requires, and the RFC
+				// mandates the literal "unknown" whenever validation is not done —
+				// expanding to the sender domain instead would let a crafted
+				// `exists:%{p}...` record match without any reverse-DNS check.
+				value = 'unknown';
 				break;
 			case 'd':
 				value = domain;
