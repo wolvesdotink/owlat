@@ -135,6 +135,14 @@ export interface SmtpListenerOptions<S = unknown, T = unknown> {
 	/** Consecutive unrecognized/erroring commands tolerated before 421 + close. Default 25. */
 	maxBadCommands?: number;
 	/**
+	 * Maximum syntactically valid MAIL FROM commands whose application policy
+	 * handler may run over one connection, whether accepted or rejected. This
+	 * lifetime budget is never reset by EHLO, RSET, STARTTLS, AUTH, or a completed
+	 * message, preventing one long-lived peer from driving unbounded sender-policy
+	 * work. Default 25.
+	 */
+	maxMailCommands?: number;
+	/**
 	 * Maximum reply bytes waiting in Node's socket write queue. The connection is
 	 * destroyed before this bound is crossed. Default 65,536.
 	 */

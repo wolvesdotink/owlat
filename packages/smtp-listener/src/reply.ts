@@ -145,6 +145,11 @@ export const Reply = {
 		enhanced: '4.7.0',
 		text: 'Too many errors, closing connection',
 	}),
+	tooManyMailCommands: (): SmtpReply => ({
+		code: 421,
+		enhanced: '4.7.0',
+		text: 'Too many MAIL commands, closing connection',
+	}),
 	shuttingDown: (hostname: string): SmtpReply => ({
 		code: 421,
 		enhanced: '4.4.2',

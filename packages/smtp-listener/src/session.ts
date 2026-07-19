@@ -17,6 +17,7 @@ const DEFAULT_MAX_RECIPIENTS = 100;
 const DEFAULT_ABORT_FACTOR = 4;
 const DEFAULT_MAX_COMMAND_BYTES = 4096;
 const DEFAULT_MAX_BAD_COMMANDS = 25;
+const DEFAULT_MAX_MAIL_COMMANDS = 25;
 const DEFAULT_MAX_PENDING_REPLY_BYTES = 64 * 1024;
 const DEFAULT_COMMAND_MS = 300_000;
 const DEFAULT_DATA_MS = 600_000;
@@ -37,6 +38,7 @@ export function resolveConfig<S, T>(opts: SmtpListenerOptions<S, T>): ResolvedLi
 		abortFactor: opts.abortFactor ?? DEFAULT_ABORT_FACTOR,
 		maxCommandBytes: opts.maxCommandBytes ?? DEFAULT_MAX_COMMAND_BYTES,
 		maxBadCommands: opts.maxBadCommands ?? DEFAULT_MAX_BAD_COMMANDS,
+		maxMailCommands: opts.maxMailCommands ?? DEFAULT_MAX_MAIL_COMMANDS,
 		maxPendingReplyBytes: opts.maxPendingReplyBytes ?? DEFAULT_MAX_PENDING_REPLY_BYTES,
 		commandMs: opts.timeouts?.commandMs ?? DEFAULT_COMMAND_MS,
 		dataMs: opts.timeouts?.dataMs ?? DEFAULT_DATA_MS,

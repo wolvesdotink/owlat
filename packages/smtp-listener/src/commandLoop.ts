@@ -35,6 +35,7 @@ export interface ResolvedListenerConfig<S, T> {
 	abortFactor: number;
 	maxCommandBytes: number;
 	maxBadCommands: number;
+	maxMailCommands: number;
 	maxPendingReplyBytes: number;
 	commandMs: number;
 	dataMs: number;
@@ -166,11 +167,14 @@ export async function runCommandLoop<S, T>(
 
 	let reader = new SmtpCommandReader(activeSocket);
 	let badCommands = 0;
+	// Monotonic lifetime budget: valid MAIL FROM invokes application policy (SPF
+	// on the MX), so EHLO/RSET/STARTTLS/AUTH/DATA must never replenish the cap.
+	let mailCommands = 0;
 
 	// Emit `reply`, count it against the bad-command budget, and — once the
 	// budget is exhausted — send 421 and tear the socket down. Returns `'stop'`
 	// when the caller must return from the loop, `'continue'` otherwise. This is
-	// the single choke point that bounds every hostile command stream (unknown
+	// the single choke point for error streams (unknown
 	// verbs, malformed MAIL/RCPT, STARTTLS/AUTH misuse, failed AUTH attempts, AND
 	// application policy rejections of MAIL FROM / RCPT TO — matching
 	// `smtp-server`'s unauthenticated-command cap, D2). Because every MAIL/RCPT
@@ -181,7 +185,8 @@ export async function runCommandLoop<S, T>(
 	// AUTH. The free, stateless commands (NOOP/RSET/VRFY/EXPN/HELP) deliberately
 	// do NOT reset the budget: they need no valid state and always "succeed", so
 	// resetting on them would let a peer launder the amplification bound by
-	// interleaving a free command between each rejected envelope command.
+	// interleaving a free command between each rejected envelope command. The
+	// monotonic MAIL budget above separately caps laundering through real progress.
 	const noteBadCommand = (reply: SmtpReply): 'continue' | 'stop' => {
 		write(reply);
 		badCommands++;
@@ -270,6 +275,11 @@ export async function runCommandLoop<S, T>(
 				if (noteBadCommand(Reply.paramError()) === 'stop') return;
 				continue;
 			}
+			if (mailCommands >= config.maxMailCommands) {
+				writeThenDestroy(Reply.tooManyMailCommands());
+				return;
+			}
+			mailCommands++;
 			const res = await invokeHandler(opts.onMailFrom, parsed, session, opts.onError);
 			if (!res.accept) {
 				// A rejected sender leaves `session.mailFrom` unset, so the "already
