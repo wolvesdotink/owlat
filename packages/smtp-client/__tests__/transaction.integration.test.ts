@@ -543,6 +543,84 @@ describe('transaction layer — phase-tagged failures against raw peers', () => 
 			expect(['data', 'data-final']).toContain(caught.phase);
 		}
 	});
+
+	it('does NOT report delivery for a 2xx that predates end-of-data (write never finished)', async () => {
+		// A misbehaving/hostile server emits a POSITIVE completion DURING the body stream,
+		// before it has received <CRLF>.<CRLF>, then slams the socket while the client's
+		// large body write is still backpressured. RFC 5321 forbids committing 2xx before
+		// end-of-data, so this 250 provably predates the terminator the client never got to
+		// flush. The client must NOT treat it as delivered — that would turn a message that
+		// was never fully transmitted into a silent "sent" with no bounce. It must instead
+		// surface the ambiguous data-phase failure.
+		const bigBody = [
+			'From: s@example.com',
+			'To: r@example.net',
+			'',
+			'X'.repeat(4 * 1024 * 1024),
+		].join('\r\n');
+		const server = net.createServer((socket) => {
+			socket.on('error', () => {});
+			socket.write('220 raw ready\r\n');
+			let buffer = '';
+			let inData = false;
+			socket.on('data', (chunk) => {
+				if (inData) {
+					return; // body bytes: ignored (see the pause() below)
+				}
+				buffer += chunk.toString('utf8');
+				let nl = buffer.indexOf('\n');
+				while (nl !== -1) {
+					const line = buffer.slice(0, nl).replace(/\r$/, '');
+					buffer = buffer.slice(nl + 1);
+					if (/^EHLO/i.test(line)) {
+						socket.write('250-raw\r\n250 SIZE 104857600\r\n');
+					} else if (/^DATA/i.test(line)) {
+						socket.write('354 go ahead\r\n');
+						inData = true;
+						// Stop consuming the body so the client's write backpressures, then
+						// emit a premature 250 and slam the socket before end-of-data arrives.
+						socket.pause();
+						setTimeout(() => {
+							socket.write('250 2.0.0 queued\r\n');
+							setTimeout(() => socket.destroy(), 20);
+						}, 40);
+						break;
+					} else {
+						socket.write('250 OK\r\n');
+					}
+					nl = buffer.indexOf('\n');
+				}
+			});
+		});
+		server.on('error', () => {});
+		cleanups.push(() => server.close());
+		const port = await new Promise<number>((resolve) => {
+			server.listen(0, '127.0.0.1', () => resolve((server.address() as AddressInfo).port));
+		});
+
+		const conn = await connectPlain(port);
+		let result: unknown;
+		let caught: unknown;
+		try {
+			result = await sendEnvelope(conn, {
+				from: 'sender@example.com',
+				to: ['rcpt@example.net'],
+				data: bigBody,
+			});
+		} catch (err) {
+			caught = err;
+		}
+		conn.close();
+
+		// It must NOT resolve as a delivered send; it must throw the ambiguous failure.
+		expect(result).toBeUndefined();
+		expect(isSmtpError(caught)).toBe(true);
+		if (isSmtpError(caught)) {
+			expect(caught.phase).toBe('data-final');
+			// The premature 250 was NOT laundered into a success verdict.
+			expect(caught.replyCode).toBeUndefined();
+		}
+	});
 });
 
 // ── verify() and the AUTH LOGIN path, against raw loopback peers ──

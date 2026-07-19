@@ -383,8 +383,13 @@ async function completeData(
 	}
 	// The socket-lifecycle mechanics live on SmtpConnection, which owns the socket.
 	const dataDeadline = Date.now() + conn.dataTimeoutMs;
+	// Did the full dot-stuffed body AND the <CRLF>.<CRLF> terminator reach the
+	// socket? A positive final verdict is only meaningful once end-of-data has
+	// been transmitted — see the buffered-reply recovery below.
+	let payloadWritten = false;
 	try {
 		await conn.writePayload(dotStuffMessage(prepared.body), 'data-final', conn.dataTimeoutMs);
+		payloadWritten = true;
 		// Writing and awaiting the acknowledgement share one DATA-phase budget. A
 		// peer cannot consume the full timeout with backpressure and then receive a
 		// fresh full timeout for its final reply.
@@ -404,15 +409,26 @@ async function completeData(
 		// anti-desync posture for the normal case is unchanged.
 		const buffered = isReplylessWireError(err) ? conn.takeBufferedReply() : undefined;
 		if (buffered !== undefined) {
+			// A POSITIVE completion is trustworthy only when the write finished: RFC 5321
+			// forbids the server from committing 2xx before it receives end-of-data, so a
+			// queued 2xx after a failed `writePayload` (terminator never flushed) provably
+			// predates end-of-data and must NOT be reported as delivered — that would turn
+			// a never-transmitted message into a silent "sent" with no bounce. Fall through
+			// to the ambiguous data-phase error instead. A NEGATIVE verdict is a definitive
+			// rejection the peer committed regardless of how far our write got, so it is
+			// always recoverable.
 			if (isPositiveCompletion(buffered.code)) {
-				return { accepted, rejected, response: buffered };
+				if (payloadWritten) {
+					return { accepted, rejected, response: buffered };
+				}
+			} else {
+				throw errorFromReply(
+					'data-final',
+					`server rejected data with ${buffered.code}`,
+					conn.secured,
+					buffered
+				);
 			}
-			throw errorFromReply(
-				'data-final',
-				`server rejected data with ${buffered.code}`,
-				conn.secured,
-				buffered
-			);
 		}
 		throw err;
 	}

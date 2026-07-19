@@ -541,4 +541,33 @@ describe('rejected-envelope flood', () => {
 		expect(deliveredRecipients).toEqual(['good1@b.test', 'good2@b.test', 'good3@b.test']);
 		c.end();
 	});
+
+	it('a free command (NOOP/RSET) interleaved between rejects cannot launder the budget', async () => {
+		const MAX = 4;
+		const mailCalls: string[] = [];
+		const { port } = await start({
+			maxBadCommands: MAX,
+			onMailFrom: (address) => {
+				mailCalls.push(address.address);
+				return { code: 550, enhanced: '5.7.1', text: 'sender rejected' };
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		// Interleave a free, always-succeeding command between every rejected MAIL
+		// FROM. If a NOOP/RSET reset the bad-command budget, the handler would run
+		// unbounded (the pre-auth SPF/DNS amplification primitive); it must not.
+		let flood = '';
+		for (let i = 0; i < 100; i++) {
+			flood += `MAIL FROM:<s${i}@a.test>\r\n`;
+			flood += i % 2 === 0 ? 'NOOP\r\n' : 'RSET\r\n';
+		}
+		c.write(flood);
+		await c.waitCode(421);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		// The handler still ran at most MAX times despite the interleaved free
+		// commands — the amplification bound holds.
+		expect(mailCalls).toHaveLength(MAX);
+	});
 });
