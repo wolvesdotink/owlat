@@ -57,6 +57,8 @@ export interface DkimVerifyResult {
 	readonly result: DkimVerdict;
 	/** Signing domain (`d=`) of the verdict-deciding signature, if any. */
 	readonly domain?: string;
+	/** Every cryptographically passing signature's `d=` domain, in document order. */
+	readonly passingDomains: readonly string[];
 	/** Every signature's individual verdict, in document order. */
 	readonly signatures: readonly DkimSignatureResult[];
 }
@@ -97,7 +99,7 @@ export async function verifyDkim(
 		const { headerFields, body } = splitMessage(raw);
 		const signatureFields = headerFields.filter((f) => f.name === 'dkim-signature');
 		if (signatureFields.length === 0) {
-			return { result: 'none', signatures: [] };
+			return { result: 'none', passingDomains: [], signatures: [] };
 		}
 
 		// Cache body canon + full-body hash across the signature loop: both are
@@ -125,12 +127,15 @@ export async function verifyDkim(
 			}
 		}
 
+		const passingDomains = signatures.flatMap((sig) =>
+			sig.verdict === 'pass' && sig.domain !== undefined ? [sig.domain] : []
+		);
 		return best.domain !== undefined
-			? { result: best.verdict, domain: best.domain, signatures }
-			: { result: best.verdict, signatures };
+			? { result: best.verdict, domain: best.domain, passingDomains, signatures }
+			: { result: best.verdict, passingDomains, signatures };
 	} catch {
 		// D7: an unexpected internal error is a transient result, never a throw.
-		return { result: 'temperror', signatures: [] };
+		return { result: 'temperror', passingDomains: [], signatures: [] };
 	}
 }
 

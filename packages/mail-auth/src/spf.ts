@@ -12,13 +12,8 @@
 
 import { resolve as dnsResolve } from 'dns/promises';
 import { emailDomain } from '@owlat/shared/spfAlignment';
-import {
-	normalizeIp,
-	stripIpv4Prefix,
-	ipMatchesCidr,
-	ipv6MatchesCidr,
-	expandMacros,
-} from './ip.js';
+import { normalizeIp, ipMatchesCidr, ipv6MatchesCidr, expandMacros } from './ip.js';
+import { addressMatchesSender, dnsTemperror, senderAddressType } from './spfMechanism.js';
 
 /** RFC 7208 §2.6 / RFC 8601 SPF result keyword. */
 export type SpfVerdict =
@@ -279,7 +274,7 @@ async function evaluateSpf(
 			continue;
 		}
 
-		// a mechanism (check domain's A records)
+		// a mechanism (check the domain's sender-address-family records)
 		if (mech === 'a' || mech.startsWith('a:')) {
 			// RFC 7208 §5.3/§7: the a: domain-spec may contain macros (`a:%{d}`).
 			const targetDomain =
@@ -288,18 +283,19 @@ async function evaluateSpf(
 				return { result: 'permerror', explanation: 'SPF DNS lookup limit exceeded' };
 			}
 			try {
-				const aRecords = await resolveCounted<string>(targetDomain, 'A', budget, resolver);
-				if (aRecords.includes(normalizedIp) || aRecords.includes(stripIpv4Prefix(normalizedIp))) {
+				const addressType = senderAddressType(normalizedIp);
+				const addresses = await resolveCounted<string>(targetDomain, addressType, budget, resolver);
+				if (addresses.some((address) => addressMatchesSender(normalizedIp, address))) {
 					return { result: qualifierResult };
 				}
-			} catch (err) {
+			} catch (err: unknown) {
 				rethrowAbort(err);
-				// Non-void DNS error (e.g. SERVFAIL) — continue to next mechanism.
+				return dnsTemperror('a', targetDomain, err);
 			}
 			continue;
 		}
 
-		// mx mechanism (check domain's MX records' A records)
+		// mx mechanism (check each MX host's sender-address-family records)
 		if (mech === 'mx' || mech.startsWith('mx:')) {
 			// RFC 7208 §5.4/§7: the mx: domain-spec may contain macros (`mx:%{d}`).
 			const targetDomain =
@@ -317,21 +313,20 @@ async function evaluateSpf(
 				for (const mx of mxRecords.slice(0, MAX_SPF_MX_HOSTS)) {
 					try {
 						const mxHost = typeof mx === 'string' ? mx : mx.exchange;
-						const mxARecords = await resolveCounted<string>(mxHost, 'A', budget, resolver);
-						if (
-							mxARecords.includes(normalizedIp) ||
-							mxARecords.includes(stripIpv4Prefix(normalizedIp))
-						) {
+						const addressType = senderAddressType(normalizedIp);
+						const addresses = await resolveCounted<string>(mxHost, addressType, budget, resolver);
+						if (addresses.some((address) => addressMatchesSender(normalizedIp, address))) {
 							return { result: qualifierResult };
 						}
-					} catch (err) {
+					} catch (err: unknown) {
 						rethrowAbort(err);
-						// Individual MX host A lookup failure — continue
+						const mxHost = typeof mx === 'string' ? mx : mx.exchange;
+						return dnsTemperror('mx address', mxHost, err);
 					}
 				}
-			} catch (err) {
+			} catch (err: unknown) {
 				rethrowAbort(err);
-				// Non-void DNS error (e.g. SERVFAIL) — continue
+				return dnsTemperror('mx', targetDomain, err);
 			}
 			continue;
 		}
@@ -415,9 +410,9 @@ async function evaluateSpf(
 				if (aRecords.length > 0) {
 					return { result: qualifierResult };
 				}
-			} catch (err) {
+			} catch (err: unknown) {
 				rethrowAbort(err);
-				// Non-void DNS error (e.g. SERVFAIL) — continue
+				return dnsTemperror('exists', target, err);
 			}
 			continue;
 		}

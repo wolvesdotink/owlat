@@ -405,7 +405,11 @@ export function buildOnData(
 							fromDomain,
 							fromAmbiguous: isFromAmbiguous(parsed.from, parsed.headerCounts.get('from')),
 							spf: { result: spfResult ?? 'none', domain: envelopeFromDomain },
-							dkim: { result: dkim?.result ?? 'none', domain: dkim?.domain },
+							dkim: {
+								result: dkim?.result ?? 'none',
+								domain: dkim?.domain,
+								passingDomains: dkim?.passingDomains,
+							},
 							policyLookup: (domain) => dnsDmarcLookup(domain, authResolvers.dmarcTxt),
 							logger,
 						})

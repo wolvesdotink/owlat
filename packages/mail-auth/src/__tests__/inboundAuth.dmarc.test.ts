@@ -77,6 +77,32 @@ describe('evaluateDmarc (RFC 7489)', () => {
 		expect(outcome.dkimAligned).toBe(false);
 	});
 
+	it('relaxed alignment does not cross private Public Suffix List tenant boundaries', async () => {
+		const outcome = await evaluateDmarc({
+			fromDomain: 'victim.uk.com',
+			spf: { result: 'none' },
+			dkim: { result: 'pass', domain: 'attacker.uk.com' },
+			policyLookup: policyMap({ 'victim.uk.com': 'v=DMARC1; p=reject' }),
+		});
+		expect(outcome.result).toBe('fail');
+		expect(outcome.dkimAligned).toBe(false);
+	});
+
+	it('passes when any passing DKIM signature is aligned, not only the first', async () => {
+		const outcome = await evaluateDmarc({
+			fromDomain: 'victim.example',
+			spf: { result: 'none' },
+			dkim: {
+				result: 'pass',
+				domain: 'unaligned.example',
+				passingDomains: ['unaligned.example', 'victim.example'],
+			},
+			policyLookup: policyMap({ 'victim.example': 'v=DMARC1; p=reject; adkim=s' }),
+		});
+		expect(outcome.result).toBe('pass');
+		expect(outcome.dkimAligned).toBe(true);
+	});
+
 	it('(5) forwarded message: envelope-SPF fail but aligned DKIM pass -> pass (no over-reject)', async () => {
 		// A mailing-list / forwarder rewrites the envelope so SPF fails, but the
 		// original DKIM signature survives and is aligned with the From domain.

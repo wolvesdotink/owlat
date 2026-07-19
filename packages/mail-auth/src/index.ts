@@ -23,6 +23,7 @@ export type {
 	DmarcVerdict,
 	DmarcLogger,
 	AuthenticatedIdentity,
+	DkimAuthenticatedIdentity,
 	DmarcPolicyLookup,
 	EvaluateDmarcArgs,
 	DmarcOutcome,
