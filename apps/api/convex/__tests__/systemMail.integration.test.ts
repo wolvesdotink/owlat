@@ -39,11 +39,11 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 			new Response(JSON.stringify({ success: true, id: 'mta-sys-1' }), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}),
+			})
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
-		await t.action(internal.systemMail.sendSystemEmail, {
+		const result = await t.action(internal.systemMail.sendSystemEmail, {
 			to: 'user@example.com',
 			from: 'Owlat <noreply@mail.example.com>',
 			subject: 'Reset your password',
@@ -66,6 +66,12 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 		expect(body.messageId.length).toBeGreaterThan(0);
 		// RFC 3834 §5 anti-loop header.
 		expect(body.headers).toMatchObject({ 'Auto-Submitted': 'auto-generated' });
+		expect(result).toMatchObject({
+			provider: 'mta',
+			providerMessageId: 'mta-sys-1',
+			attempts: 1,
+		});
+		expect(result.latencyMs).toBeGreaterThanOrEqual(0);
 	});
 
 	// The provider-health recording path is now shared with resend/ses: the MTA
@@ -80,7 +86,9 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 
 		global.fetch = vi
 			.fn()
-			.mockResolvedValue(new Response('Invalid recipient address', { status: 400 })) as unknown as typeof fetch;
+			.mockResolvedValue(
+				new Response('Invalid recipient address', { status: 400 })
+			) as unknown as typeof fetch;
 
 		await expect(
 			t.action(internal.systemMail.sendSystemEmail, {
@@ -88,7 +96,7 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 				from: 'noreply@mail.example.com',
 				subject: 's',
 				html: '<p>x</p>',
-			}),
+			})
 		).rejects.toThrow(/System email send failed via mta/);
 	});
 
@@ -102,7 +110,7 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 				from: 'noreply@mail.example.com',
 				subject: 's',
 				html: '<p>x</p>',
-			}),
+			})
 		).rejects.toThrow(/No system email transport configured/);
 	});
 });
