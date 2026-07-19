@@ -45,11 +45,76 @@ interface RawMailbox {
 export const MAX_ADDRESS_HEADER_LENGTH = 16 * 1024;
 
 /**
+ * Strip RFC 5322 CFWS comments (`(...)`, nesting- and quoted-pair-aware) from a
+ * mailbox token, returning the comment-free text and the comment contents in
+ * order. Parentheses inside a quoted string are literal and are NOT treated as
+ * comment delimiters, so a quoted local-part (`"a(b"@x`) or quoted display name
+ * (`"Foo (Bar)"`) survives intact. An unterminated comment consumes the rest of
+ * the token (matching a lenient real-world parser). The scan is a single O(n)
+ * pass with no backtracking, preserving the module's bounded-work contract.
+ */
+function stripComments(input: string): { stripped: string; comments: string[] } {
+	let stripped = '';
+	const comments: string[] = [];
+	let inQuote = false;
+	let depth = 0;
+	let comment = '';
+	for (let i = 0; i < input.length; i++) {
+		const ch = input[i]!;
+		if (depth > 0) {
+			if (ch === '\\' && i + 1 < input.length) {
+				comment += input[++i]!;
+			} else if (ch === '(') {
+				depth += 1;
+				comment += ch;
+			} else if (ch === ')') {
+				depth -= 1;
+				if (depth === 0) {
+					comments.push(comment);
+					comment = '';
+				} else {
+					comment += ch;
+				}
+			} else {
+				comment += ch;
+			}
+			continue;
+		}
+		if (inQuote) {
+			stripped += ch;
+			if (ch === '\\' && i + 1 < input.length) {
+				stripped += input[++i]!;
+			} else if (ch === '"') {
+				inQuote = false;
+			}
+			continue;
+		}
+		if (ch === '"') {
+			inQuote = true;
+			stripped += ch;
+		} else if (ch === '(') {
+			depth = 1;
+			comment = '';
+		} else {
+			stripped += ch;
+		}
+	}
+	if (depth > 0) comments.push(comment); // unterminated comment
+	return { stripped, comments };
+}
+
+/**
  * Parse one mailbox token. Accepts `email@host`, `<email@host>`, or
  * `"Name" <email@host>` / `Name <email@host>`; returns `null` when no
  * `local@domain` can be extracted. Address is lowercased; a surrounding pair
  * of quotes is stripped from the display name (RFC 2047 decoding happens in
  * {@link toEmailAddress}).
+ *
+ * RFC 5322 CFWS comments (`(...)`) are removed before address extraction so a
+ * leading/trailing comment cannot be mistaken for the address itself (mailparser
+ * parity: `(x@y) real@z` → address `real@z`, not `(x@y)`); when the token carries
+ * no display phrase, the comment text becomes the display name, matching the
+ * oracle.
  *
  * The display-name / angle-addr split is performed with plain index scans
  * (`lastIndexOf`/`indexOf`) rather than a regex: the previous anchored pattern
@@ -59,8 +124,11 @@ export const MAX_ADDRESS_HEADER_LENGTH = 16 * 1024;
  * valid input (verified against the differential mailparser oracle).
  */
 function parseMailbox(input: string): RawMailbox | null {
-	const trimmed = input.trim();
+	const { stripped, comments } = stripComments(input);
+	const trimmed = stripped.trim();
 	if (!trimmed) return null;
+	// A comment stands in as the display name only when no explicit phrase exists.
+	const commentName = comments.length > 0 ? comments.join(' ').trim() || undefined : undefined;
 	// Angle-addr form: `[display] <addr>`. The old lazy regex chose the LEFTMOST
 	// `<` whose content reached a trailing `>` at end-of-string with no `>` in
 	// between. Reproduce that in linear time: the terminal `>` is the last char
@@ -74,10 +142,11 @@ function parseMailbox(input: string): RawMailbox | null {
 		if (openLt !== -1 && openLt < finalGt) {
 			const content = trimmed.slice(openLt + 1, finalGt).trim();
 			if (content !== '') {
-				const rawName = trimmed
-					.slice(0, openLt)
-					.trim()
-					.replace(/^"(.*)"$/, '$1');
+				const rawName =
+					trimmed
+						.slice(0, openLt)
+						.trim()
+						.replace(/^"(.*)"$/, '$1') || commentName;
 				const address = content.toLowerCase();
 				if (!address.includes('@')) return null;
 				return { name: rawName || undefined, address };
@@ -86,7 +155,7 @@ function parseMailbox(input: string): RawMailbox | null {
 	}
 	const bareMatch = trimmed.match(/([^\s<>]+@[^\s<>]+)/);
 	if (!bareMatch || bareMatch[1] === undefined) return null;
-	return { address: bareMatch[1].toLowerCase() };
+	return { name: commentName, address: bareMatch[1].toLowerCase() };
 }
 
 /** The parsed contents of one address header. */
@@ -127,6 +196,7 @@ export function parseAddressList(input: string): EmailAddress[] {
 	let buf = '';
 	let inQuote = false;
 	let angle = 0;
+	let comment = 0;
 
 	const flushInto = (target: EmailAddress[]): void => {
 		if (buf.trim() === '') {
@@ -140,12 +210,31 @@ export function parseAddressList(input: string): EmailAddress[] {
 
 	for (let i = 0; i < input.length; i++) {
 		const ch = input[i]!;
+		// Inside an RFC 5322 comment: buffer bytes verbatim (parseMailbox strips the
+		// comment later) so an inner `,` / `:` / `;` / `<` / `>` cannot split the list
+		// or open a spurious group. Comments never start inside a quoted string.
+		if (comment > 0) {
+			buf += ch;
+			if (ch === '\\' && i + 1 < input.length) {
+				buf += input[++i]!;
+			} else if (ch === '(') {
+				comment += 1;
+			} else if (ch === ')') {
+				comment -= 1;
+			}
+			continue;
+		}
 		if (ch === '"') {
 			inQuote = !inQuote;
 			buf += ch;
 			continue;
 		}
 		if (inQuote) {
+			buf += ch;
+			continue;
+		}
+		if (ch === '(') {
+			comment = 1;
 			buf += ch;
 			continue;
 		}

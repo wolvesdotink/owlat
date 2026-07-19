@@ -164,7 +164,10 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 	const body = assembleBody(tree);
 
 	const refsRaw = headers.getAll('references').join(' ');
-	const inReplyToRaw = headers.get('in-reply-to');
+	// mailparser collapses these single-valued display headers to the LAST
+	// occurrence (its `singleKeys` + `map.set`); a header-shadowing message must
+	// resolve identically here, mirroring the address-header split above.
+	const inReplyToRaw = headers.last('in-reply-to');
 
 	const structured = new Map<string, ParsedHeaderValue>();
 	const headerCounts = new Map<string, number>();
@@ -180,7 +183,8 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 			continue;
 		}
 		if (name === 'date') {
-			const raw = headers.get(name);
+			// Single-valued: mailparser collapses a duplicated Date to the last.
+			const raw = headers.last(name);
 			structured.set(name, parseDate(raw) ?? raw ?? '');
 			continue;
 		}
@@ -189,11 +193,11 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 	}
 
 	return {
-		subject: headers.getDecoded('subject'),
-		messageId: headers.get('message-id'),
+		subject: headers.lastDecoded('subject'),
+		messageId: headers.last('message-id'),
 		inReplyTo: inReplyToRaw,
 		references: parseReferences(refsRaw),
-		date: parseDate(headers.get('date')),
+		date: parseDate(headers.last('date')),
 		from: parseAddressObjects(addressValues(headers, 'from')),
 		rawFrom: headers.getAll('from'),
 		to: parseAddressObjects(addressValues(headers, 'to')),

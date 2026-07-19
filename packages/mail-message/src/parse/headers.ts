@@ -262,6 +262,17 @@ export class MessageHeaders {
 		return raw === undefined ? undefined : decodeHeaderValue(raw);
 	}
 
+	/**
+	 * LAST value decoded through RFC 2047. mailparser treats `subject` (and the
+	 * other single-valued display headers) as `singleKeys` and collapses a
+	 * duplicated header to the LAST occurrence via `map.set`, so a header-shadowing
+	 * message must resolve to the same value on both sides.
+	 */
+	lastDecoded(name: string): string | undefined {
+		const raw = this.last(name);
+		return raw === undefined ? undefined : decodeHeaderValue(raw);
+	}
+
 	has(name: string): boolean {
 		return this.map.has(name.toLowerCase());
 	}

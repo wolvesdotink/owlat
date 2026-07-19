@@ -461,6 +461,55 @@ export const RAW_FIXTURES: RawFixture[] = [
 			'--d1--'
 		),
 	},
+	{
+		// Header-shadowing: mailparser collapses repeated single-valued headers to
+		// the LAST occurrence. parseMessage must match, or a stored/threaded value
+		// disagrees with every MUA and mailparser-based tool.
+		name: 'repeated-singleton-headers-last-wins',
+		raw: eml(
+			'From: a@example.com',
+			'To: b@example.com',
+			'Subject: first subject',
+			'Subject: second subject',
+			'Message-ID: <first@example.com>',
+			'Message-ID: <second@example.com>',
+			'In-Reply-To: <parent-a@example.com>',
+			'In-Reply-To: <parent-b@example.com>',
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'Date: Thu, 04 Jun 2026 11:00:00 +0000',
+			'Content-Type: text/plain',
+			'',
+			'shadowed headers'
+		),
+	},
+	{
+		// A leading RFC 5322 comment must NOT be extracted as the address; mailparser
+		// yields address `real@good.example` with the comment as the display name.
+		name: 'address-leading-comment',
+		raw: eml(
+			'From: (evil@bad.example) real@good.example',
+			'To: b@example.com',
+			'Subject: comment before addr',
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'Content-Type: text/plain',
+			'',
+			'body'
+		),
+	},
+	{
+		// A trailing comment alongside a real display phrase: the phrase wins as the
+		// name, the comment is dropped, and the address is intact.
+		name: 'address-trailing-comment-with-phrase',
+		raw: eml(
+			'From: Jane Doe (Sales) <jane@example.com>',
+			'To: real@good.example (Recipient Comment)',
+			'Subject: comment after addr',
+			'Date: Wed, 03 Jun 2026 10:00:00 +0000',
+			'Content-Type: text/plain',
+			'',
+			'body'
+		),
+	},
 ];
 
 /**

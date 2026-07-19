@@ -176,8 +176,12 @@ export async function runCommandLoop<S, T>(
 	// `smtp-server`'s unauthenticated-command cap, D2). Because every MAIL/RCPT
 	// rejection is a bad command, a peer cannot loop rejected envelope commands to
 	// drive unbounded SPF/route/auth lookups or to hold the connection open: each
-	// rejection advances the monotonic budget, and any ACCEPTED command resets it
-	// (below) so an occasional reject in a healthy session never accumulates.
+	// rejection advances the budget, and only a command that makes real FORWARD
+	// PROGRESS resets it — an ACCEPTED HELO/EHLO/MAIL/RCPT/DATA or a successful
+	// AUTH. The free, stateless commands (NOOP/RSET/VRFY/EXPN/HELP) deliberately
+	// do NOT reset the budget: they need no valid state and always "succeed", so
+	// resetting on them would let a peer launder the amplification bound by
+	// interleaving a free command between each rejected envelope command.
 	const noteBadCommand = (reply: SmtpReply): 'continue' | 'stop' => {
 		write(reply);
 		badCommands++;
@@ -220,12 +224,14 @@ export async function runCommandLoop<S, T>(
 			return;
 		}
 		if (verb === 'NOOP') {
-			badCommands = 0;
+			// Free, stateless command: never resets the bad-command budget (see the
+			// `noteBadCommand` rationale) so it cannot launder the amplification bound.
 			write(Reply.ok());
 			continue;
 		}
 		if (verb === 'RSET') {
-			badCommands = 0;
+			// Resets the TRANSACTION per RFC 5321, but not the bad-command budget: a
+			// bare RSET is free and makes no forward progress.
 			resetTransaction();
 			write(Reply.ok());
 			continue;
@@ -344,13 +350,13 @@ export async function runCommandLoop<S, T>(
 			continue;
 		}
 		if (verb === 'VRFY' || verb === 'EXPN') {
-			// Do not confirm or deny address existence (no enumeration oracle).
-			badCommands = 0;
+			// Do not confirm or deny address existence (no enumeration oracle). Free
+			// and stateless: does not reset the bad-command budget.
 			write({ code: 252, enhanced: '2.5.2', text: 'Cannot VRFY user' });
 			continue;
 		}
 		if (verb === 'HELP') {
-			badCommands = 0;
+			// Free and stateless: does not reset the bad-command budget.
 			write({ code: 214, enhanced: '2.0.0', text: 'See RFC 5321' });
 			continue;
 		}
