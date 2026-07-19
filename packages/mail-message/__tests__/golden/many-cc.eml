@@ -1,0 +1,43 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:Cc:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=TKRmrA7H+q/VoSOASlD1TV+f7OdzSgRMQ6HYsEAbndY=;
+ b=N8B/+J7m6NLFI/L1BM78mcxOTDtogW18ySypuloQewl9LRe/aXMHX+6E1FBKbX3ULWqz9h3yP
+ Grh9QV0rpfAG6vwO/6ftbEqeceCe15ekpEEp9rbSGraqdbkbnDlG4JlsmHULWXZ+gCrljk24zYG
+ DwZT372n3JK4v/oaSJz1v5AJ3KiF5XcR8WEYs51DNZ3+VQeLhs1iPPSfaiEY8iecENs7khmQ/4A
+ kOF8OGHjMBjg4ONSLSNfItrkrm+81l03nOlQ1ty9gWtOodN0Mfk4z4m9WlM5V2z0c5gmrVmH4i+
+ uFNSv9Q99hcBdgiNViJqkuPrkyrYl2BwC/Ci9XZKGHDQ==
+Message-ID: <corpus-29@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: primary@example.com
+Cc: Recipient Number 1 <user1@cc.example.com>,
+ Recipient Number 2 <user2@cc.example.com>,
+ Recipient Number 3 <user3@cc.example.com>,
+ Recipient Number 4 <user4@cc.example.com>,
+ Recipient Number 5 <user5@cc.example.com>,
+ Recipient Number 6 <user6@cc.example.com>,
+ Recipient Number 7 <user7@cc.example.com>,
+ Recipient Number 8 <user8@cc.example.com>,
+ Recipient Number 9 <user9@cc.example.com>,
+ Recipient Number 10 <user10@cc.example.com>,
+ Recipient Number 11 <user11@cc.example.com>,
+ Recipient Number 12 <user12@cc.example.com>,
+ Recipient Number 13 <user13@cc.example.com>,
+ Recipient Number 14 <user14@cc.example.com>,
+ Recipient Number 15 <user15@cc.example.com>
+Subject: Many cc
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_many-cc_0"
+
+----_owlat_many-cc_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+cc storm
+----_owlat_many-cc_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>cc storm</p>
+----_owlat_many-cc_0--

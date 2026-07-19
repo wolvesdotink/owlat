@@ -5,10 +5,12 @@
  * Extracts the original message ID and bounce classification.
  */
 
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import type { BounceClassification } from '../types.js';
 import { classifyBounce } from './classifier.js';
 import { parseVerpAddress, isVerpSigningEnabled } from './verp.js';
+import { addressText } from '../inbound/parsedAddress.js';
+import type { ReportPart } from './reportParts.js';
 import { logger } from '../monitoring/logger.js';
 
 // Track unattributed bounce counts for monitoring
@@ -22,26 +24,34 @@ export function getUnattributedBounceCount(): number {
 }
 
 /**
- * Pull the text of the RFC 3464 message/delivery-status MIME part out of a
- * parsed DSN. mailparser exposes non-text parts (including delivery-status) as
- * attachments, so the authoritative Status:/Action:/Diagnostic-Code: fields are
- * never in `parsed.text`. Concatenates all delivery-status parts found.
+ * Pull the text of the RFC 3464 message/delivery-status MIME part out of a DSN's
+ * recovered report parts. The authoritative Status:/Action:/Diagnostic-Code:
+ * fields live in that machine-readable part — never in `parsed.text` — and it
+ * routinely carries no Content-Disposition, so it is recovered from the MIME tree
+ * ({@link ReportPart}) rather than `parsed.attachments`. Concatenates all
+ * delivery-status parts found.
  */
-function extractDeliveryStatusPart(parsed: ParsedMail): string | undefined {
+function extractDeliveryStatusPart(reportParts: ReportPart[]): string | undefined {
 	const parts: string[] = [];
-	for (const attachment of parsed.attachments ?? []) {
-		if (attachment.contentType?.toLowerCase() === 'message/delivery-status') {
-			parts.push(attachment.content.toString('utf-8'));
+	for (const part of reportParts) {
+		if (part.contentType === 'message/delivery-status') {
+			parts.push(part.content.toString('utf-8'));
 		}
 	}
 	return parts.length > 0 ? parts.join('\n') : undefined;
 }
 
 /**
- * Parse a bounce DSN message and extract classification details
+ * Parse a bounce DSN message and extract classification details.
+ *
+ * `reportParts` are the message's recovered non-body MIME parts (the
+ * `message/delivery-status` / `message/rfc822` parts mailparser used to surface
+ * as `attachments`; see {@link extractReportParts}) — the header-scrape fallbacks
+ * and the delivery-status classifier read them.
  */
 export function parseBounce(
-	parsed: ParsedMail,
+	parsed: ParsedMessage,
+	reportParts: ReportPart[],
 	envelopeRcptTo?: string
 ): BounceClassification | null {
 	// 1. Try to extract messageId from VERP envelope recipient
@@ -61,10 +71,10 @@ export function parseBounce(
 	// unattributed below.
 	const headerFallbackAllowed = !isVerpSigningEnabled();
 
-	// 2. If no VERP, try to find our custom header in the original message
-	if (headerFallbackAllowed && !messageId && parsed.attachments) {
-		for (const attachment of parsed.attachments) {
-			const content = attachment.content.toString('utf-8');
+	// 2. If no VERP, try to find our custom header in the returned original message
+	if (headerFallbackAllowed && !messageId) {
+		for (const part of reportParts) {
+			const content = part.content.toString('utf-8');
 			const match = content.match(/X-Owlat-Message-Id:\s*(.+)/i);
 			if (match?.[1]) {
 				messageId = match[1].trim();
@@ -89,9 +99,9 @@ export function parseBounce(
 		logger.warn(
 			{
 				subject: parsed.subject,
-				from: parsed.from?.text,
+				from: addressText(parsed.from),
 				envelopeRcptTo,
-				hasAttachments: (parsed.attachments?.length ?? 0) > 0,
+				hasAttachments: reportParts.length > 0,
 				textPreview: parsed.text?.slice(0, 500),
 				unattributedTotal: unattributedBounceCount,
 			},
@@ -102,7 +112,7 @@ export function parseBounce(
 
 	// 4. Extract organization ID if available
 	let organizationId: string | undefined;
-	const fullText = `${parsed.text ?? ''} ${parsed.attachments?.map((a) => a.content.toString('utf-8')).join(' ') ?? ''}`;
+	const fullText = `${parsed.text ?? ''} ${reportParts.map((p) => p.content.toString('utf-8')).join(' ')}`;
 	const orgMatch = fullText.match(/X-Owlat-Org-Id:\s*(.+)/i);
 	if (orgMatch?.[1]) {
 		organizationId = orgMatch[1].trim();
@@ -112,11 +122,10 @@ export function parseBounce(
 	//
 	// The authoritative RFC 3464 per-recipient fields (Status:/Action:/
 	// Diagnostic-Code:) live in the machine-readable message/delivery-status
-	// MIME part, which mailparser surfaces as an attachment — not in
-	// `parsed.text`. A minimal standards DSN may carry the only enhanced code
-	// there, so feed that part to the classifier (ahead of the human-readable
-	// text) and let it parse the structured fields first.
-	const deliveryStatus = extractDeliveryStatusPart(parsed);
+	// MIME part — not in `parsed.text`. A minimal standards DSN may carry the only
+	// enhanced code there, so feed that part to the classifier (ahead of the
+	// human-readable text) and let it parse the structured fields first.
+	const deliveryStatus = extractDeliveryStatusPart(reportParts);
 	const humanReadable = parsed.text ?? parsed.subject ?? '';
 	const bodyText = deliveryStatus ? `${deliveryStatus}\n${humanReadable}` : humanReadable;
 	const contentType = parsed.headers?.get('content-type');

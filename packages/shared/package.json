@@ -183,6 +183,7 @@
 		}
 	},
 	"dependencies": {
+		"@owlat/mail-message": "workspace:*",
 		"tldts": "^7.0.30"
 	},
 	"peerDependencies": {

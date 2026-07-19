@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import { reduce } from '../outcome.js';
 import type { BasePhaseCtx, BounceAttempt } from '../types.js';
 import type { InboundRoute } from '../../inbound/router.js';
 import type { MailboxCacheEntry } from '../../inbound/mailboxResolver.js';
 import type { BounceClassification } from '../../types.js';
 
-function makeParsed(overrides: Partial<ParsedMail> = {}): ParsedMail {
+function makeParsed(overrides: Partial<ParsedMessage> = {}): ParsedMessage {
 	return {
 		from: { text: 'bob@isp.example', value: [{ address: 'bob@isp.example', name: '' }], html: '' },
 		subject: 'hi there',
@@ -17,7 +17,7 @@ function makeParsed(overrides: Partial<ParsedMail> = {}): ParsedMail {
 		headers: new Map<string, string>([['from', 'bob@isp.example']]),
 		attachments: [],
 		...overrides,
-	} as unknown as ParsedMail;
+	} as unknown as ParsedMessage;
 }
 
 function makeCtx(overrides: Partial<BasePhaseCtx> = {}): BasePhaseCtx {
@@ -381,7 +381,7 @@ describe('reduce(mailbox)', () => {
 				value: [{ address: 'MAILER-DAEMON@mx.isp.example', name: 'Mail Delivery System' }],
 				html: '',
 			},
-		} as Partial<ParsedMail>);
+		} as Partial<ParsedMessage>);
 		const { effects } = reduce(
 			mailboxAttempt(),
 			makeCtx({ parsed, rcptTo: 'me@org.example', returnPath })

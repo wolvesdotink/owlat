@@ -27,9 +27,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 
-const { mockTransport } = vi.hoisted(() => {
-	const mockTransport = { sendMail: vi.fn() };
-	return { mockTransport };
+const { connectMock, sendEnvelopeMock } = vi.hoisted(() => ({
+	connectMock: vi.fn(),
+	sendEnvelopeMock: vi.fn(),
+}));
+
+vi.mock('@owlat/smtp-client', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@owlat/smtp-client')>();
+	return {
+		...actual,
+		SmtpConnection: { connect: connectMock },
+		sendEnvelope: sendEnvelopeMock,
+	};
 });
 
 // Transport/MX/DANE/STS seams stubbed exactly like sender.test.ts, so a single
@@ -38,8 +47,11 @@ const { mockTransport } = vi.hoisted(() => {
 // to exercise the REAL VERP host stamping and the REAL bounce round-trip.
 vi.mock('../connectionPool.js', () => ({
 	pool: {
-		acquire: vi.fn().mockReturnValue({ key: 'test-key', transport: mockTransport }),
+		acquire: vi.fn().mockReturnValue({ key: 'test-key', config: {} }),
 		release: vi.fn(),
+		takeConnection: vi.fn().mockResolvedValue(undefined),
+		storeConnection: vi.fn(),
+		evictConnection: vi.fn(),
 	},
 	PoolOverCapError: class PoolOverCapError extends Error {},
 }));
@@ -82,7 +94,7 @@ import * as dkimStore from '../dkimStore.js';
 import { buildVerpAddress, parseVerpAddress } from '../../bounce/verp.js';
 import { parseBounce } from '../../bounce/parser.js';
 import { normalizeReturnPathHost } from '../../lib/returnPathHost.js';
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 
@@ -129,14 +141,14 @@ function authedRegister(
 	});
 }
 
-function createMockDsn(overrides: Partial<ParsedMail> = {}): ParsedMail {
+function createMockDsn(overrides: Partial<ParsedMessage> = {}): ParsedMessage {
 	return {
 		text: '',
 		subject: '',
 		headers: new Map(),
 		attachments: [],
 		...overrides,
-	} as ParsedMail;
+	} as ParsedMessage;
 }
 
 describe('D1 — per-domain VERP return-path host', () => {
@@ -145,8 +157,14 @@ describe('D1 — per-domain VERP return-path host', () => {
 	beforeEach(() => {
 		redis = new Redis() as unknown as RealRedis;
 		dkimStore.clearCache();
-		mockTransport.sendMail.mockReset();
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK', messageId: '<remote@mx>' });
+		connectMock.mockReset();
+		connectMock.mockResolvedValue({ secured: true });
+		sendEnvelopeMock.mockReset();
+		sendEnvelopeMock.mockResolvedValue({
+			accepted: [],
+			rejected: [],
+			response: { code: 250, text: '2.0.0 OK <remote@mx>', lines: ['2.0.0 OK <remote@mx>'] },
+		});
 		delete process.env['BOUNCE_VERP_KEY'];
 	});
 
@@ -327,8 +345,8 @@ describe('D1 — per-domain VERP return-path host', () => {
 	// ------------------------------------------------------------------
 	describe('send path stamps the per-domain host into MAIL FROM', () => {
 		function envelopeFrom(): string {
-			const payload = mockTransport.sendMail.mock.calls[0]?.[0] as { envelope: { from: string } };
-			return payload.envelope.from;
+			const envelope = sendEnvelopeMock.mock.calls[0]?.[1] as { from: string };
+			return envelope.from;
 		}
 
 		it('uses the per-domain host for the VERP MAIL FROM when one is registered', async () => {
@@ -366,7 +384,7 @@ describe('D1 — per-domain VERP return-path host', () => {
 			// host-agnostic.
 			const dsn = createMockDsn({
 				subject: 'Delivery Status Notification (Failure)',
-				from: { text: 'MAILER-DAEMON@mx1.example.com' } as ParsedMail['from'],
+				from: { text: 'MAILER-DAEMON@mx1.example.com' } as ParsedMessage['from'],
 				text: [
 					'Final-Recipient: rfc822; user@remote.test',
 					'Action: failed',
@@ -374,7 +392,7 @@ describe('D1 — per-domain VERP return-path host', () => {
 					'Diagnostic-Code: smtp; 550 5.1.1 User unknown',
 				].join('\n'),
 			});
-			const classification = parseBounce(dsn, verpRecipient);
+			const classification = parseBounce(dsn, [], verpRecipient);
 			expect(classification?.originalMessageId).toBe('send_xyz789');
 		});
 

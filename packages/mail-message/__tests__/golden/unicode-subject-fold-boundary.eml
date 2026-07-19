@@ -1,0 +1,33 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=FdOJA6owoYyUMCe9UC4q+TbWtUZTvLxTKGcfmGXvar4=;
+ b=VjEDD712xbJmFl2GR3MD82JM5R7FYhKos1h09r92tzMpX2wPFrHA2GmbVMrcsEikFGT9/P7Xe
+ y9/Up8F5nRgho2WJyD70/wrCGizOcQh4boqloRISp2apKrqjvkxqpw4oS6VJDfulH8JfgxCbmc9
+ n8fCr1O7hCvneQngM5IK8S23+NMJSuykAXAbd+uNJCDkEnsJqnNnItC21YJADe+s4eGnhc6TF85
+ QwyFdCpSf90zQs6KJrQQvHh/oR7v4htjgmnuUukyWQz/MKKm2Y0kjUvQObKS7HxS0tGzdp/j2wA
+ cpvfliVIiqR2fkm7I9e65+6E7ToBWSme+hCF5H01Nevw==
+Message-ID: <corpus-5@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: =?UTF-8?B?w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7w=?=
+ =?UTF-8?B?w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7w=?=
+ =?UTF-8?B?w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7w=?=
+ =?UTF-8?B?w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7w=?=
+ =?UTF-8?B?w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7zDvMO8w7w=?=
+ =?UTF-8?B?w7zDvMO8w7zDvMO8w7zDvMO8w7w=?=
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_unicode-subject-fold-boundary_0"
+
+----_owlat_unicode-subject-fold-boundary_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+long subject
+----_owlat_unicode-subject-fold-boundary_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>long subject</p>
+----_owlat_unicode-subject-fold-boundary_0--

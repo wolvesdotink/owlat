@@ -1,37 +1,34 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import os from 'node:os';
 import type { WorkerCredentials } from '../convex.js';
+import type {
+	RecipientVerdict,
+	SendResult,
+	SendMessageOptions,
+	VerifyOptions,
+} from '@owlat/smtp-client';
 
 // --- Mocks ------------------------------------------------------------------
 // vi.mock factories are hoisted above the file, so the shared mock fns they
 // reference must be created via vi.hoisted (which is hoisted alongside them).
-const {
-	sendMail,
-	verify,
-	createTransport,
-	imapConnect,
-	imapList,
-	imapAppend,
-	imapLogout,
-	warn,
-} = vi.hoisted(() => {
-	const sendMail = vi.fn();
-	const verify = vi.fn();
-	return {
-		sendMail,
-		verify,
-		createTransport: vi.fn(() => ({ sendMail, verify })),
+// sendMessage / verify are typed against the real client signatures so every
+// `.mock.calls[0][0]` shape assertion is checked against @owlat/smtp-client's
+// API — a future connect/envelope/auth change breaks these tests at compile time.
+const { sendMessage, verify, imapConnect, imapList, imapAppend, imapLogout, warn } = vi.hoisted(
+	() => ({
+		sendMessage: vi.fn<(o: SendMessageOptions) => Promise<SendResult>>(),
+		verify: vi.fn<(o: VerifyOptions) => Promise<void>>(),
 		imapConnect: vi.fn(),
 		imapList: vi.fn(),
 		imapAppend: vi.fn(),
 		imapLogout: vi.fn(),
 		warn: vi.fn(),
-	};
-});
+	})
+);
 
-// nodemailer is imported as the default export; expose createTransport on it.
-vi.mock('nodemailer', () => ({
-	default: { createTransport },
-}));
+// The in-house SMTP client replaces the old library: sendMessage does the one-shot
+// connect → AUTH → MAIL/RCPT/DATA → QUIT; verify does connect → AUTH → QUIT.
+vi.mock('@owlat/smtp-client', () => ({ sendMessage, verify }));
 
 // ImapFlow is a named export used with `new`; the mock must be constructible,
 // so use a `function` (not an arrow) and assign the shared spies onto `this`.
@@ -50,7 +47,7 @@ vi.mock('../logger.js', () => ({
 }));
 
 // Imported after mocks so the module picks up the mocked deps.
-import nodemailer from 'nodemailer';
+import { sendMessage as clientSendMessage, verify as clientVerify } from '@owlat/smtp-client';
 import { ImapFlow } from 'imapflow';
 import { sendViaExternal, testConnection } from '../send.js';
 
@@ -69,10 +66,29 @@ const CREDS: WorkerCredentials = {
 
 const RAW = Buffer.from('From: a@example.com\r\nSubject: hi\r\n\r\nbody');
 
+/** A per-recipient verdict, minimal but structurally faithful. */
+function verdict(recipient: string, accepted: boolean): RecipientVerdict {
+	return {
+		recipient,
+		accepted,
+		replyCode: accepted ? 250 : 550,
+		message: accepted ? 'OK' : 'no such user',
+	};
+}
+
+/** A SendResult with the given accepted / rejected recipient partition. */
+function sendResult(accepted: string[], rejected: string[]): SendResult {
+	return {
+		accepted: accepted.map((r) => verdict(r, true)),
+		rejected: rejected.map((r) => verdict(r, false)),
+		response: { code: 250, text: 'queued', lines: ['250 queued'] },
+	};
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	// Sensible defaults; individual tests override as needed.
-	sendMail.mockResolvedValue({ rejected: [] });
+	sendMessage.mockResolvedValue(sendResult(['x@example.com', 'y@example.com'], []));
 	imapConnect.mockResolvedValue(undefined);
 	imapList.mockResolvedValue([
 		{ path: 'INBOX', specialUse: '\\Inbox' },
@@ -80,37 +96,62 @@ beforeEach(() => {
 	]);
 	imapAppend.mockResolvedValue(undefined);
 	imapLogout.mockResolvedValue(undefined);
-	verify.mockResolvedValue(true);
+	verify.mockResolvedValue(undefined);
 });
 
 describe('sendViaExternal', () => {
-	it('builds the transport + envelope from the SMTP creds and recipients', async () => {
+	it('builds the client connect + envelope from the SMTP creds and recipients', async () => {
+		sendMessage.mockResolvedValue(sendResult(['x@example.com', 'y@example.com'], []));
+
 		await sendViaExternal(CREDS, {
 			from: 'me@example.com',
 			recipients: ['x@example.com', 'y@example.com'],
 			raw: RAW,
 		});
 
-		expect(nodemailer.createTransport).toHaveBeenCalledWith({
+		expect(clientSendMessage).toHaveBeenCalledTimes(1);
+		const arg = sendMessage.mock.calls[0][0];
+		// Implicit TLS (secure=true) to a remote host, pinned at the 1.2 floor, with
+		// requireTls fail-closed. ehloName is the machine hostname.
+		expect(arg.connect).toMatchObject({
 			host: 'smtp.example.com',
 			port: 465,
-			secure: true,
-			requireTLS: true,
+			tlsMode: 'implicit',
+			requireTls: true,
 			tls: { minVersion: 'TLSv1.2' },
-			auth: { user: 'smtp-user', pass: 'smtp-pass' },
 		});
-
-		expect(sendMail).toHaveBeenCalledTimes(1);
-		const arg = sendMail.mock.calls[0][0];
+		expect(typeof arg.connect.ehloName).toBe('string');
+		expect(arg.auth).toEqual({ credentials: { username: 'smtp-user', password: 'smtp-pass' } });
+		// Custom envelope: RCPT set is exactly our recipients; raw bytes shipped as-is.
 		expect(arg.envelope).toEqual({
 			from: 'me@example.com',
 			to: ['x@example.com', 'y@example.com'],
+			data: RAW,
 		});
-		expect(arg.raw).toBe(RAW);
+	});
+
+	// NAMED GATE (b): the SMTP RCPT set is exactly params.recipients — including a
+	// Bcc that is NOT in the visible headers — proving envelope-driven delivery.
+	it('sends to the exact recipient set (Bcc) regardless of the visible headers', async () => {
+		const headerlessBcc = 'secret@example.com';
+		// The raw bytes carry only To: visible@example.com; the Bcc is envelope-only.
+		const withBcc = Buffer.from('To: visible@example.com\r\nSubject: hi\r\n\r\nbody');
+		sendMessage.mockResolvedValue(sendResult(['visible@example.com', headerlessBcc], []));
+
+		await sendViaExternal(CREDS, {
+			from: 'me@example.com',
+			recipients: ['visible@example.com', headerlessBcc],
+			raw: withBcc,
+		});
+
+		const arg = sendMessage.mock.calls[0][0];
+		// RCPT set == params.recipients, verbatim and independent of the headers.
+		expect(arg.envelope.to).toEqual(['visible@example.com', headerlessBcc]);
+		expect(arg.envelope.data).toBe(withBcc);
 	});
 
 	it('marks every recipient sent when none are rejected', async () => {
-		sendMail.mockResolvedValue({ rejected: [] });
+		sendMessage.mockResolvedValue(sendResult(['x@example.com', 'y@example.com'], []));
 
 		const { recipients } = await sendViaExternal(CREDS, {
 			from: 'me@example.com',
@@ -125,8 +166,8 @@ describe('sendViaExternal', () => {
 	});
 
 	it('marks rejected recipients as bounced (case-insensitive match)', async () => {
-		// SMTP reports the rejection in a different case than our recipient list.
-		sendMail.mockResolvedValue({ rejected: ['X@EXAMPLE.COM'] });
+		// The RCPT verdict reports the rejection in a different case than our list.
+		sendMessage.mockResolvedValue(sendResult(['y@example.com'], ['X@EXAMPLE.COM']));
 
 		const { recipients } = await sendViaExternal(CREDS, {
 			from: 'me@example.com',
@@ -140,8 +181,8 @@ describe('sendViaExternal', () => {
 		]);
 	});
 
-	it('tolerates a missing rejected array from the transport', async () => {
-		sendMail.mockResolvedValue({});
+	it('marks every recipient sent when the verdict lists no rejections', async () => {
+		sendMessage.mockResolvedValue(sendResult(['only@example.com'], []));
 
 		const { recipients } = await sendViaExternal(CREDS, {
 			from: 'me@example.com',
@@ -166,7 +207,7 @@ describe('sendViaExternal', () => {
 				port: 993,
 				secure: true,
 				auth: { user: 'imap-user', pass: 'imap-pass' },
-			}),
+			})
 		);
 		expect(imapAppend).toHaveBeenCalledWith('Sent', RAW, ['\\Seen']);
 		expect(imapLogout).toHaveBeenCalled();
@@ -174,6 +215,7 @@ describe('sendViaExternal', () => {
 
 	it('skips the append when no Sent folder is found, without throwing', async () => {
 		imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
+		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
 
 		const { recipients } = await sendViaExternal(CREDS, {
 			from: 'me@example.com',
@@ -189,6 +231,7 @@ describe('sendViaExternal', () => {
 	it('treats a Sent-append failure as non-fatal and still reports the send result', async () => {
 		const boom = new Error('IMAP append failed');
 		imapAppend.mockRejectedValue(boom);
+		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
 
 		const { recipients } = await sendViaExternal(CREDS, {
 			from: 'me@example.com',
@@ -200,6 +243,44 @@ describe('sendViaExternal', () => {
 		expect(recipients).toEqual([{ address: 'x@example.com', status: 'sent' }]);
 		// And the failure is logged at warn level rather than thrown.
 		expect(warn).toHaveBeenCalledWith({ err: boom }, expect.stringContaining('append-to-Sent'));
+	});
+});
+
+// The EHLO identity must be byte-identical to the old library's `_getHostname()` so the
+// cutover changes no observable HELO name. The old library falls back to `[127.0.0.1]`
+// for a non-FQDN (dotless) hostname — which is exactly what mail-sync's own Docker
+// container hostnames are — and brackets a bare IPv4 literal as an address literal.
+describe('ehloName (_getHostname parity)', () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	async function capturedEhloName(hostname: string): Promise<unknown> {
+		vi.spyOn(os, 'hostname').mockReturnValue(hostname);
+		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
+		imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
+		await sendViaExternal(CREDS, {
+			from: 'me@example.com',
+			recipients: ['x@example.com'],
+			raw: RAW,
+		});
+		return sendMessage.mock.calls[0]?.[0].connect.ehloName;
+	}
+
+	it('falls back to [127.0.0.1] for a non-FQDN (dotless) container hostname', async () => {
+		expect(await capturedEhloName('a1b2c3d4e5f6')).toBe('[127.0.0.1]');
+	});
+
+	it('falls back to [127.0.0.1] for an empty hostname', async () => {
+		expect(await capturedEhloName('')).toBe('[127.0.0.1]');
+	});
+
+	it('encloses a bare IPv4 literal in brackets (address literal)', async () => {
+		expect(await capturedEhloName('10.20.30.40')).toBe('[10.20.30.40]');
+	});
+
+	it('keeps an FQDN hostname unchanged', async () => {
+		expect(await capturedEhloName('mx1.relay.example.com')).toBe('mx1.relay.example.com');
 	});
 });
 
@@ -223,7 +304,7 @@ describe('testConnection', () => {
 
 	it('reports ok for both when IMAP connects and SMTP verifies', async () => {
 		imapConnect.mockResolvedValue(undefined);
-		verify.mockResolvedValue(true);
+		verify.mockResolvedValue(undefined);
 
 		const result = await testConnection(input);
 
@@ -231,12 +312,12 @@ describe('testConnection', () => {
 		// IMAP probe connects and logs out cleanly.
 		expect(imapConnect).toHaveBeenCalled();
 		expect(imapLogout).toHaveBeenCalled();
-		expect(verify).toHaveBeenCalled();
+		expect(clientVerify).toHaveBeenCalled();
 	});
 
 	it('reports the IMAP error message on auth rejection while SMTP stays ok', async () => {
 		imapConnect.mockRejectedValue(new Error('Invalid credentials'));
-		verify.mockResolvedValue(true);
+		verify.mockResolvedValue(undefined);
 
 		const result = await testConnection(input);
 
@@ -266,22 +347,126 @@ describe('testConnection', () => {
 		});
 	});
 
-	it('builds the SMTP transport with verify-only (no send)', async () => {
+	it('verifies the SMTP endpoint without sending a message', async () => {
 		await testConnection(input);
 
-		expect(nodemailer.createTransport).toHaveBeenCalledWith({
+		expect(clientVerify).toHaveBeenCalledTimes(1);
+		const arg = verify.mock.calls[0][0];
+		// STARTTLS (secure=false) to a remote host, forced + pinned at the 1.2 floor.
+		expect(arg.connect).toMatchObject({
 			host: 'smtp.example.com',
 			port: 587,
-			secure: false,
-			requireTLS: true,
+			tlsMode: 'starttls',
+			requireTls: true,
 			tls: { minVersion: 'TLSv1.2' },
-			auth: { user: 'smtp-user', pass: 'smtp-pass' },
 		});
-		expect(sendMail).not.toHaveBeenCalled();
+		expect(arg.auth).toEqual({ credentials: { username: 'smtp-user', password: 'smtp-pass' } });
+		// verify() never sends a message.
+		expect(clientSendMessage).not.toHaveBeenCalled();
 	});
 });
 
-// Regression-lock (PR-75 §1 + §6): across EVERY nodemailer / imapflow
+// X4: the XOAUTH2 access-token plumbing. `smtpAuth()` selects the credential shape
+// handed to the smtp-client — a non-empty token → OAuth `{ username, accessToken }`,
+// an absent or empty-string token → the unchanged password `{ username, password }`.
+describe('XOAUTH2 access-token plumbing', () => {
+	describe('sendViaExternal', () => {
+		it('hands the client OAuth credentials when an access token is present', async () => {
+			const oauthCreds: WorkerCredentials = { ...CREDS, smtpAccessToken: 'ya29.TOKEN' };
+			sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
+
+			await sendViaExternal(oauthCreds, {
+				from: 'me@example.com',
+				recipients: ['x@example.com'],
+				raw: RAW,
+			});
+
+			// The bearer token replaces the password entirely — no `password` field.
+			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', accessToken: 'ya29.TOKEN' },
+			});
+		});
+
+		it('falls back to password credentials when no access token is present', async () => {
+			// CREDS carries no smtpAccessToken at all.
+			await sendViaExternal(CREDS, {
+				from: 'me@example.com',
+				recipients: ['x@example.com'],
+				raw: RAW,
+			});
+
+			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', password: 'smtp-pass' },
+			});
+		});
+
+		it('treats an empty-string access token as absent (password credentials)', async () => {
+			const emptyToken: WorkerCredentials = { ...CREDS, smtpAccessToken: '' };
+
+			await sendViaExternal(emptyToken, {
+				from: 'me@example.com',
+				recipients: ['x@example.com'],
+				raw: RAW,
+			});
+
+			// An empty string is a token-less placeholder, not a bearer token.
+			expect(sendMessage.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', password: 'smtp-pass' },
+			});
+		});
+	});
+
+	describe('testConnection', () => {
+		const baseInput = {
+			imap: {
+				host: 'imap.example.com',
+				port: 993,
+				secure: true,
+				username: 'imap-user',
+				password: 'imap-pass',
+			},
+			smtp: {
+				host: 'smtp.example.com',
+				port: 587,
+				secure: false,
+				username: 'smtp-user',
+				password: 'smtp-pass',
+			},
+		};
+
+		it('verifies with OAuth credentials when the SMTP probe carries an access token', async () => {
+			await testConnection({
+				...baseInput,
+				smtp: { ...baseInput.smtp, accessToken: 'ya29.TOKEN' },
+			});
+
+			expect(verify.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', accessToken: 'ya29.TOKEN' },
+			});
+		});
+
+		it('verifies with password credentials when no access token is present', async () => {
+			await testConnection(baseInput);
+
+			expect(verify.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', password: 'smtp-pass' },
+			});
+		});
+
+		it('treats an empty-string access token as absent (password credentials)', async () => {
+			await testConnection({
+				...baseInput,
+				smtp: { ...baseInput.smtp, accessToken: '' },
+			});
+
+			expect(verify.mock.calls[0][0].auth).toEqual({
+				credentials: { username: 'smtp-user', password: 'smtp-pass' },
+			});
+		});
+	});
+});
+
+// Regression-lock (PR-75 §1 + §6): across EVERY smtp-client / imapflow
 // construction in the send + connection-test paths, the options handed to the
 // library must never disable certificate verification and the test path must be
 // byte-identical to the live path.
@@ -313,21 +498,23 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 		expect(JSON.stringify(opts)).not.toMatch(/"rejectUnauthorized"\s*:\s*false/);
 	}
 
-	it('sendViaExternal: nodemailer transport + appendToSent ImapFlow keep verification on', async () => {
+	it('sendViaExternal: smtp-client connect + appendToSent ImapFlow keep verification on', async () => {
+		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
+		imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
 		await sendViaExternal(REMOTE, {
 			from: 'me@gmail.com',
 			recipients: ['x@example.com'],
 			raw: RAW,
 		});
-		// Construction 1: nodemailer.createTransport (the actual send).
-		expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
-		assertNoVerifyDisable((nodemailer.createTransport as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+		// Construction 1: the smtp-client connect options (the actual send).
+		expect(clientSendMessage).toHaveBeenCalledTimes(1);
+		assertNoVerifyDisable(sendMessage.mock.calls[0][0].connect);
 		// Construction 2: ImapFlow for the best-effort Sent append.
 		expect(ImapFlow).toHaveBeenCalledTimes(1);
 		assertNoVerifyDisable((ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]);
 	});
 
-	it('testConnection: testImap ImapFlow + testSmtp transport keep verification on', async () => {
+	it('testConnection: testImap ImapFlow + testSmtp connect keep verification on', async () => {
 		await testConnection({
 			imap: {
 				host: 'imap.gmail.com',
@@ -347,27 +534,27 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 		// Construction 3: ImapFlow (testImap).
 		expect(ImapFlow).toHaveBeenCalledTimes(1);
 		assertNoVerifyDisable((ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]);
-		// Construction 4: nodemailer.createTransport (testSmtp).
-		expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
-		assertNoVerifyDisable((nodemailer.createTransport as ReturnType<typeof vi.fn>).mock.calls[0][0]);
+		// Construction 4: the smtp-client verify connect options (testSmtp).
+		expect(clientVerify).toHaveBeenCalledTimes(1);
+		assertNoVerifyDisable(verify.mock.calls[0][0].connect);
 	});
 
 	it('test path passes byte-identical TLS options to the live path (PR-75 §6)', async () => {
 		// Live SMTP construction.
+		sendMessage.mockResolvedValue(sendResult(['x@example.com'], []));
+		imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
 		await sendViaExternal(REMOTE, {
 			from: 'me@gmail.com',
 			recipients: ['x@example.com'],
 			raw: RAW,
 		});
-		const liveSmtp = (nodemailer.createTransport as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		const liveSmtp = sendMessage.mock.calls[0][0].connect;
 		const liveImap = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
 
 		vi.clearAllMocks();
-		sendMail.mockResolvedValue({ rejected: [] });
 		imapConnect.mockResolvedValue(undefined);
-		imapList.mockResolvedValue([{ path: 'INBOX', specialUse: '\\Inbox' }]);
 		imapLogout.mockResolvedValue(undefined);
-		verify.mockResolvedValue(true);
+		verify.mockResolvedValue(undefined);
 
 		// Test path uses the same host/port/secure values.
 		await testConnection({
@@ -386,13 +573,13 @@ describe('outbound TLS posture is locked (no rejectUnauthorized:false anywhere)'
 				password: REMOTE.smtpPassword,
 			},
 		});
-		const testSmtp = (nodemailer.createTransport as ReturnType<typeof vi.fn>).mock.calls[0][0];
+		const testSmtp = verify.mock.calls[0][0].connect;
 		const testImap = (ImapFlow as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
 
 		// Only auth differs by design (creds vs ProtocolCreds) — the TLS-bearing
-		// fields (secure / requireTLS / doSTARTTLS / tls) must be identical.
-		expect(testSmtp.secure).toBe(liveSmtp.secure);
-		expect(testSmtp.requireTLS).toBe(liveSmtp.requireTLS);
+		// fields (tlsMode / requireTls / tls) must be identical.
+		expect(testSmtp.tlsMode).toBe(liveSmtp.tlsMode);
+		expect(testSmtp.requireTls).toBe(liveSmtp.requireTls);
 		expect(testSmtp.tls).toEqual(liveSmtp.tls);
 		expect(testImap.secure).toBe(liveImap.secure);
 		expect(testImap.doSTARTTLS).toBe(liveImap.doSTARTTLS);

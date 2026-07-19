@@ -2,17 +2,26 @@
  * Direct MX SMTP sender
  *
  * Delivers emails directly to recipient mail servers by resolving MX records,
- * connecting via SMTP port 25, and sending with DKIM signing.
+ * connecting via SMTP port 25 with the in-house @owlat/smtp-client, and sending
+ * with DKIM signing. The message is composed and signed ONCE per job (locked
+ * decisions W2/W3) and the SAME signed bytes are retried across every MX host
+ * and TLS profile — byte-identical, DKIM-stable retries.
  */
 
-import type { TLSSocket } from 'node:tls';
 import type Redis from 'ioredis';
+import { SmtpConnection, sendEnvelope, isSmtpError, type SendResult } from '@owlat/smtp-client';
+import {
+	composeMessage,
+	signMessage,
+	stripHtml,
+	type ComposeAttachment,
+} from '@owlat/mail-message';
 import type { EmailJob, EmailJobResult } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
 import { getMxHostnames } from './mxResolver.js';
 import { resolveDaneMxDestinations, type DaneMxDestination } from './daneMxResolver.js';
-import { getDkimOptions } from './dkim.js';
+import { getDkimOptions, type DkimSigningKey } from './dkim.js';
 import { getReturnPathHost } from './dkimStore.js';
 import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
 import { resolveTlsRequirements } from './tlsPolicy.js';
@@ -22,8 +31,7 @@ import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
 import { pool, PoolOverCapError } from './connectionPool.js';
-import { prepareDaneAttempt } from './daneVerify.js';
-import { buildMessageId, buildSendMailPayload } from './messageBuild.js';
+import { prepareDaneAttempt, type DanePlan } from './daneVerify.js';
 import { buildAllMxFailedResult } from './mxBounce.js';
 import {
 	recordTlsResult,
@@ -31,12 +39,101 @@ import {
 	type TlsPolicyContext,
 	type TlsResultType,
 } from './tlsRpt.js';
-import {
-	classifyTlsFailure,
-	parseEnhancedCode,
-	stsAttributedResultType,
-} from './tlsFailureClassification.js';
-import { withSecuredCapture } from './tlsSecuredCapture.js';
+import { classifyTlsFailure, stsAttributedResultType } from './tlsFailureClassification.js';
+
+/** The discriminated outcome of one delivery attempt to a single MX host. */
+type AttemptOutcome =
+	| { kind: 'sent'; result: EmailJobResult }
+	| { kind: 'smtp'; result: EmailJobResult }
+	// A post-DATA drop with no server reply: the message MAY already have been
+	// accepted, so this is TERMINAL — never a next-MX attempt, never an
+	// auto-retried soft bounce (W8 AMBIGUOUS_TIMEOUT). Carries its own result.
+	| { kind: 'ambiguous'; result: EmailJobResult }
+	| { kind: 'tls-failure'; resultType: TlsResultType; response: string }
+	| { kind: 'connection'; response: string }
+	| { kind: 'over-cap' };
+
+/**
+ * Build the exact wire bytes for a job ONCE: compose the structured message (or
+ * take the sealed-mail raw MIME verbatim), then DKIM-sign over those bytes. The
+ * returned buffer is retried byte-identically across MX hosts.
+ *
+ * A missing DKIM key ships the message UNSIGNED (recoverable), and a signing
+ * failure falls back to the unsigned bytes rather than a corrupt signature —
+ * exactly the historic `stream`-plugin posture.
+ */
+function buildSignedBytes(
+	job: EmailJob,
+	dkimConfig: DkimSigningKey | undefined,
+	verpAddress: string
+): Buffer {
+	const raw = job.sealedMimeBase64
+		? Buffer.from(job.sealedMimeBase64, 'base64')
+		: composeStructured(job, verpAddress).raw;
+	if (!dkimConfig) return raw;
+	try {
+		return signMessage(raw, dkimConfig);
+	} catch (err) {
+		logger.error(
+			{ err, domain: dkimConfig.domainName, selector: dkimConfig.keySelector },
+			'DKIM signing failed; shipping message unsigned'
+		);
+		return raw;
+	}
+}
+
+/**
+ * Compose a structured (non-sealed) job into RFC 822 bytes via
+ * `@owlat/mail-message`. Preserves the historic payload: html/text (with an
+ * HTML-derived fallback), the AMP alternative, decoded attachments, the tracing
+ * headers, the VERP envelope, and a From-aligned Message-ID (a caller-supplied
+ * Message-ID header wins).
+ */
+function composeStructured(job: EmailJob, verpAddress: string): { raw: Buffer } {
+	const suppliedMessageIdKey = job.headers
+		? Object.keys(job.headers).find((h) => h.toLowerCase() === 'message-id')
+		: undefined;
+	const suppliedMessageId =
+		suppliedMessageIdKey && job.headers ? job.headers[suppliedMessageIdKey] : undefined;
+	const fromDomain = extractDomainOrNull(job.from) ?? '';
+
+	const attachments: ComposeAttachment[] | undefined =
+		job.attachments && job.attachments.length > 0
+			? job.attachments.map((a) => ({
+					filename: a.filename,
+					contentType: a.contentType,
+					isInline: false,
+					data: Buffer.from(a.contentBase64, 'base64'),
+				}))
+			: undefined;
+
+	return composeMessage({
+		from: job.from,
+		to: [job.to],
+		subject: job.subject,
+		html: job.html,
+		// Always ship a non-empty text part (multipart/alternative deliverability,
+		// RFC 8058 §4): the explicit text when supplied, else an HTML-derived
+		// fallback — the historic behaviour.
+		text: job.text || stripHtml(job.html),
+		...(job.amp ? { amp: job.amp } : {}),
+		...(job.replyTo ? { replyTo: job.replyTo } : {}),
+		...(attachments ? { attachments } : {}),
+		headers: {
+			...job.headers,
+			'X-Owlat-Message-Id': job.messageId,
+			'X-Owlat-Org-Id': job.organizationId,
+		},
+		// A caller-supplied Message-ID wins; otherwise From-align it (only when the
+		// From carries a domain — else the composer derives it from the From addr-spec).
+		...(suppliedMessageId !== undefined
+			? { messageId: suppliedMessageId }
+			: fromDomain
+				? { messageIdDomain: fromDomain }
+				: {}),
+		envelope: { from: verpAddress, to: [job.to] },
+	});
+}
 
 /**
  * Send an email directly to the recipient's MX server
@@ -113,17 +210,12 @@ export async function sendToMx(
 		perDomainReturnPath ?? config.returnPathDomain
 	);
 
-	// RFC 5322 §3.6.4: stamp an explicit From-aligned Message-ID so nodemailer
-	// does not auto-generate one scoped to the VERP return-path domain
-	// (`envelope.from` = bounces.<domain>). A caller-supplied Message-ID header
-	// wins (e.g. agent replies that already carry one). Computed once per send
-	// so a retry across MX hosts ships the same id.
-	const hasMessageIdHeader = Object.keys(job.headers ?? {}).some(
-		(h) => h.toLowerCase() === 'message-id'
-	);
-	const fromDomain = extractDomainOrNull(job.from) ?? '';
-	const messageIdHeader =
-		!hasMessageIdHeader && fromDomain ? buildMessageId(fromDomain) : undefined;
+	// Compose + sign ONCE per job (W2/W3). The exact wire bytes are built a single
+	// time and the SAME signed bytes are retried across every MX host and TLS
+	// profile — byte-identical, DKIM-stable retries (a strict improvement over the
+	// historic per-attempt recomposition). Both the structured-compose path and
+	// the sealed-mail raw path flow through the one signer.
+	const signedBytes = buildSignedBytes(job, dkimConfig, verpAddress);
 
 	// Announce the EHLO name that matches THIS bind IP's PTR record. In a
 	// multi-IP deployment each IP has its own reverse DNS, so a single static
@@ -177,58 +269,45 @@ export async function sendToMx(
 
 	/**
 	 * Attempt delivery to one MX host with a specific TLS profile and classify
-	 * the outcome. Records the TLS result (success or, on a TLS negotiation
-	 * failure, the STS-attributed failure type) under the day's policy context.
-	 * Returns a discriminated outcome so the caller decides whether to return,
-	 * try the next MX, or (testing mode) retry the same MX opportunistically.
+	 * the outcome. Opens ONE fresh {@link SmtpConnection} (W3 one-connection-per-
+	 * send) from the pooled connect config, sends the pre-signed bytes, and reads
+	 * `conn.secured` directly to record the TLS-RPT result (success, or — on a TLS
+	 * negotiation failure — the STS-attributed failure type). Returns a
+	 * discriminated outcome so the caller decides whether to return, try the next
+	 * MX, or (testing mode) retry the same MX opportunistically.
 	 */
 	async function attemptSend(
 		mxHost: string,
 		requireTLS: boolean,
 		rejectUnauthorized: boolean,
-		opts: {
-			/** DANE post-handshake verifier; runs before SMTP resumes. */
-			verifyPeerCertificate?: (socket: TLSSocket) => Error | undefined;
-			/** Exact DANE policy identity used to isolate reusable transports. */
-			policyFingerprint?: string;
-			/** Override the recorded TLS-RPT policy context (e.g. the tlsa policy). */
-			policyContext?: TlsPolicyContext;
-		} = {}
-	): Promise<
-		| { kind: 'sent'; result: EmailJobResult }
-		| { kind: 'smtp'; result: EmailJobResult }
-		| { kind: 'tls-failure'; resultType: TlsResultType; response: string }
-		| { kind: 'connection'; response: string }
-		| { kind: 'over-cap' }
-	> {
-		const ctx = opts.policyContext ?? policyContext;
-		const daneRequired = opts.verifyPeerCertificate !== undefined;
+		danePlan?: DanePlan
+	): Promise<AttemptOutcome> {
+		const ctx = danePlan?.policyContext ?? policyContext;
+		const daneRequired = danePlan !== undefined;
+
 		let acquired: Awaited<ReturnType<typeof pool.acquire>>;
 		try {
 			acquired = await pool.acquire(mxHost, bindIp, {
 				port: 25,
-				secure: false, // Use STARTTLS opportunistically
 				requireTLS,
 				// Pin a TLSv1.2 floor: RFC 8996 deprecates TLS 1.0/1.1 and RFC 9325
-				// mandates 1.2+. Inbound submission/bounce servers already pin this;
-				// without it the outbound floor is Node's env-fragile process default.
+				// mandates 1.2+. The pool pins this on every outbound connection so the
+				// floor is never Node's env-fragile process default.
 				tls: {
 					rejectUnauthorized,
 					minVersion: 'TLSv1.2',
 					// DANE (RFC 7672): authenticate the MX certificate against its TLSA
-					// RRset during the handshake. A mismatch returns an Error and aborts
-					// the connection (caught below as a validation-failure — never a
-					// cleartext fallback). Absent for non-DANE sends.
-					...(opts.verifyPeerCertificate
-						? { verifyPeerCertificate: opts.verifyPeerCertificate }
-						: {}),
-					...(opts.policyFingerprint ? { danePolicyFingerprint: opts.policyFingerprint } : {}),
+					// RRset AFTER STARTTLS but before SMTP resumes. It runs even under
+					// rejectUnauthorized:false (DANE-EE); a mismatch fails the connection
+					// closed (never a cleartext fallback). Absent for non-DANE sends.
+					...(danePlan ? { verifyPeerCertificate: danePlan.verifyPeerCertificate } : {}),
+					...(danePlan ? { danePolicyFingerprint: danePlan.policyFingerprint } : {}),
 				},
 				name: ehloHostname,
 				connectionTimeout: 30_000,
 				greetingTimeout: 30_000,
 				socketTimeout: 60_000,
-				dkim: dkimConfig,
+				dkimDomain: dkimConfig?.domainName,
 			});
 		} catch (err) {
 			// Over the global per-host connection cap — treat like a connection
@@ -243,27 +322,46 @@ export async function sendToMx(
 			}
 			throw err;
 		}
-		const { key, transport } = acquired;
+		const { key, config: connectConfig } = acquired;
+
+		// Reuse fast-path (X1 true socket reuse): an idle, RSET-cleaned live socket to
+		// this exact {mx,bindIp,dkim,tlsProfile}. `takeConnection` returns undefined —
+		// cleanly tearing the parked socket down where needed — when none is parked,
+		// when it is over the per-connection / lifetime cap, or when its RSET probe
+		// failed (poisoned). In every such case we open a fresh socket below on the
+		// SAME pooled entry, whose global slot is retained.
+		let conn: SmtpConnection | undefined = await pool.takeConnection(key);
+		if (conn === undefined) {
+			try {
+				// Connect → greeting → EHLO → (STARTTLS + re-EHLO). A TLS/handshake/
+				// connection failure throws here, classified from the structured
+				// SmtpError (phase/tlsCause/replyCode) — never a log-string match.
+				conn = await SmtpConnection.connect(connectConfig);
+			} catch (err) {
+				pool.release(key);
+				return classifyFailure(err, mxHost, ctx, daneRequired);
+			}
+		}
 
 		try {
-			// `secured` reports whether this delivery's connection negotiated TLS.
-			// nodemailer surfaces no secured flag on `info`, so we run the send inside
-			// a per-call capture scope (see tlsSecuredCapture.ts) and read it back to
-			// record the right TLS-RPT result type below.
-			const { result: info, secured } = await withSecuredCapture(false, () =>
-				transport.sendMail(buildSendMailPayload(job, verpAddress, messageIdHeader))
-			);
+			// `secured` reports whether this CONNECTION negotiated TLS (STARTTLS
+			// upgrade). It is per-connection: every message carried over a reused
+			// socket is attributed to the same TLS state. A cleartext delivery to an
+			// MX that did not advertise STARTTLS (opportunistic, requireTLS:false) is
+			// NOT a TLS success.
+			const secured = conn.secured;
+
+			const result: SendResult = await sendEnvelope(conn, {
+				from: verpAddress,
+				to: [job.to],
+				data: signedBytes,
+			});
 
 			// Record the TLS-RPT result for this successful delivery (RFC 8460 §4.3).
-			// A delivery that negotiated TLS is a genuine 'success'; a delivery that
-			// went out in cleartext — the MX did not advertise STARTTLS and no policy
-			// required it (opportunistic TLS, requireTLS:false) — is NOT a success.
-			// Recording it as success would overstate our TLS coverage to the recipient
-			// domain owner. Without an STS policy a cleartext delivery is
-			// 'starttls-not-supported'; under a testing/enforce policy it is escalated
-			// to the STS-specific type (RFC 8460 §4.4), mirroring the failure path.
-			// (A requireTLS / enforce send can never reach here in cleartext: nodemailer
-			// errors out instead, which is handled on the failure path below.)
+			// Encrypted → 'success'; cleartext → 'starttls-not-supported' (escalated to
+			// the STS-specific type under a testing/enforce policy). Recording a
+			// cleartext send as success would overstate our TLS coverage to the domain
+			// owner.
 			const successResultType: TlsResultType = secured
 				? 'success'
 				: stsAttributedResultType('starttls-not-supported', stsOptions.policyMode);
@@ -271,87 +369,129 @@ export async function sendToMx(
 				() => {}
 			);
 
-			// Parse remote message ID from SMTP response
+			// Healthy delivery: park the socket for the next job to reuse across an RSET
+			// boundary (or let the pool cleanly QUIT it at the per-connection / lifetime
+			// cap), then release the entry's in-flight reservation.
+			pool.storeConnection(key, conn);
+			pool.release(key);
+
+			// Parse remote message ID from the final SMTP reply text
 			// Gmail: "250 2.0.0 OK 1234567890 abc123.google.com"
 			// Outlook: "250 2.6.0 <msgid@outlook.com> [Hostname=...]"
-			const remoteIdMatch = info.response?.match(/<([^>]+)>/);
+			const responseText = `${result.response.code} ${result.response.text}`.trim();
+			const remoteIdMatch = result.response.text.match(/<([^>]+)>/);
 			const remoteMessageId = remoteIdMatch?.[1];
 
 			return {
 				kind: 'sent',
 				result: {
 					success: true,
-					smtpResponse: info.response,
+					smtpResponse: responseText,
 					remoteMessageId,
-					smtpCode: 250,
+					smtpCode: result.response.code,
 				},
 			};
-		} catch (err: unknown) {
-			const error = err as {
-				responseCode?: number;
-				response?: string;
-				message?: string;
-				code?: string;
+		} catch (err) {
+			if (isCleanPreDataRejection(err)) {
+				// A clean pre-DATA reply rejection (every recipient refused, or MAIL FROM
+				// bounced) left the SMTP session OPEN and the socket protocol-healthy — it
+				// carries a server reply code, no TLS fault, never reached DATA, and was
+				// not a 421 channel-close. Pre-X1 a bounce left the pooled entry intact;
+				// preserve that (and its Redis slot) by parking the socket for reuse rather
+				// than evicting. The next job's RSET boundary aborts the leftover
+				// transaction before the socket carries a new one.
+				pool.storeConnection(key, conn);
+				pool.release(key);
+			} else {
+				// ANY other failure — a transport/TLS fault, a 421 channel close, or a
+				// DATA-phase ambiguity — poisons this socket: evict the entry, release its
+				// global slot, and never reuse it. The in-flight job retries on a fresh
+				// connection (next MX, or a requeue) exactly once.
+				pool.evictConnection(key, conn);
+			}
+			return classifyFailure(err, mxHost, ctx, daneRequired);
+		}
+	}
+
+	/**
+	 * True for a delivery failure that left the socket protocol-healthy and reusable:
+	 * a server reply rejection in a pre-DATA phase (`mail`/`rcpt`), carrying a reply
+	 * code, with no TLS fault and not a 421 (which signals the server is closing the
+	 * channel). Everything else — transport faults, TLS faults, DATA/DATA-final
+	 * ambiguity, 421 — leaves the socket unusable and must evict.
+	 */
+	function isCleanPreDataRejection(err: unknown): boolean {
+		return (
+			isSmtpError(err) &&
+			err.tlsCause === undefined &&
+			err.replyCode !== undefined &&
+			err.replyCode !== 421 &&
+			(err.phase === 'mail' || err.phase === 'rcpt')
+		);
+	}
+
+	/**
+	 * Classify a structured {@link SmtpError} from a connect or send attempt into a
+	 * delivery outcome, recording TLS-RPT along the way. Reads only the
+	 * discriminants — `tlsCause`, `replyCode`, `enhancedCode`, `phase` — never a
+	 * log-line string (locked decision W7).
+	 */
+	function classifyFailure(
+		err: unknown,
+		mxHost: string,
+		ctx: TlsPolicyContext,
+		daneRequired: boolean
+	): AttemptOutcome {
+		if (!isSmtpError(err)) {
+			const response = err instanceof Error ? err.message : String(err);
+			logger.warn(
+				{ mxHost, recipientDomain, error: response },
+				'Unexpected non-SMTP error during delivery, trying next MX'
+			);
+			return { kind: 'connection', response };
+		}
+		const response = err.message;
+
+		// 0. Client-side permanent refusal (no reply code, no TLS cause). Today the
+		//    only case is `smtputf8-unavailable`: the envelope carries a non-ASCII
+		//    (RFC 6531) mailbox but this MX did not advertise SMTPUTF8. There is no
+		//    ASCII downgrade for a UTF-8 local-part, so retrying (this MX or the next)
+		//    can never succeed — a HARD bounce, terminal like a 5xx. Read from the
+		//    structured discriminant, never a log-line string (W7).
+		if (err.clientRefusal === 'smtputf8-unavailable') {
+			return {
+				kind: 'smtp',
+				result: {
+					success: false,
+					error: response,
+					bounceType: 'hard',
+				},
 			};
-			const smtpCode = error.responseCode;
-			const response = error.response ?? error.message ?? 'Unknown error';
-			const enhancedCode = parseEnhancedCode(response);
+		}
 
-			// Record TLS failures for TLS-RPT. Under an MTA-STS policy a generic TLS
-			// failure is escalated to the STS-specific result type (RFC 8460 §4.4):
-			// a cert/WebPKI problem becomes 'sts-webpki-invalid', a STARTTLS-
-			// stripping/other TLS failure becomes 'sts-policy-invalid'.
-			const baseType = classifyTlsFailure(error);
-
-			// DANE (RFC 7672): a TLS/handshake failure on a DANE-authenticated attempt
-			// — a TLSA mismatch (our peer-verifier Error), a STARTTLS strip, or
-			// a cert error — is an RFC 8460 'validation-failure' attributed to the tlsa
-			// policy, and never downgrades to cleartext. A pure connection failure (no
-			// TLS reached) is left to the normal connection path so the next MX is tried.
+		// 1. TLS-phase failure (a structured tlsCause). Under DANE this is an RFC 8460
+		//    'validation-failure' attributed to the tlsa policy and never downgrades
+		//    to cleartext. Otherwise escalate to the STS-specific type under a policy.
+		if (err.tlsCause !== undefined) {
 			if (daneRequired) {
-				const daneTlsFailure =
-					Boolean(baseType) ||
-					error.code === 'ETLS' ||
-					(typeof error.message === 'string' && error.message.includes('DANE'));
-				if (daneTlsFailure) {
-					recordTlsResult(redis, recipientDomain, 'validation-failure', mxHost, bindIp, ctx).catch(
-						() => {}
-					);
-					return { kind: 'tls-failure', resultType: 'validation-failure', response };
-				}
+				recordTlsResult(redis, recipientDomain, 'validation-failure', mxHost, bindIp, ctx).catch(
+					() => {}
+				);
+				return { kind: 'tls-failure', resultType: 'validation-failure', response };
 			}
+			const baseType = classifyTlsFailure(err.tlsCause);
+			const stsResultType = stsAttributedResultType(baseType, stsOptions.policyMode);
+			recordTlsResult(redis, recipientDomain, stsResultType, mxHost, bindIp, ctx).catch(() => {});
+			return { kind: 'tls-failure', resultType: stsResultType, response };
+		}
 
-			let stsResultType: TlsResultType | null = null;
-			if (baseType) {
-				stsResultType = stsAttributedResultType(baseType, stsOptions.policyMode);
-				recordTlsResult(redis, recipientDomain, stsResultType, mxHost, bindIp, ctx).catch(() => {});
-			}
-
-			// A TLS-negotiation failure UNDER A REQUIRED TLS FLOOR must be classified
-			// as a TLS failure BEFORE the SMTP-code branches below. When we demand
-			// STARTTLS (`require` / `require-verified`) against a receiver that does
-			// not advertise it, nodemailer sends STARTTLS anyway; the server replies
-			// 5xx to that command and nodemailer raises `code: 'ETLS'` with a
-			// `responseCode` parsed from the 5xx reply ("Error upgrading connection
-			// with STARTTLS: 5xx …"). That 5xx is a verdict on the STARTTLS command,
-			// NOT a permanent verdict on the recipient — so it must NOT fall into the
-			// `smtpCode >= 500` hard-bounce branch. Instead surface it as a TLS
-			// failure so the caller takes the soft/deferred retry path (we never fall
-			// back to cleartext under a required floor). Only applies when a floor was
-			// actually required, so the historic opportunistic behaviour is unchanged.
-			if (requireTLS && (stsResultType || error.code === 'ETLS')) {
-				return {
-					kind: 'tls-failure',
-					resultType: stsResultType ?? 'starttls-not-supported',
-					response,
-				};
-			}
-
-			// 5xx = permanent failure (hard bounce) — don't try next MX
-			if (smtpCode && smtpCode >= 500 && smtpCode < 600) {
-				// Special case: 5.2.2 is "mailbox full" — soft bounce despite 5xx
+		// 2. A server reply code is the DEFINITIVE verdict. 5xx = permanent (hard
+		//    bounce) unless 5.2.2 "mailbox full" (soft); 4xx = temporary (deferred).
+		if (err.replyCode !== undefined) {
+			const smtpCode = err.replyCode;
+			const enhancedCode = err.enhancedCode;
+			if (smtpCode >= 500 && smtpCode < 600) {
 				const isSoftDespite5xx = enhancedCode === '5.2.2';
-
 				return {
 					kind: 'smtp',
 					result: {
@@ -359,13 +499,11 @@ export async function sendToMx(
 						error: response,
 						bounceType: isSoftDespite5xx ? 'soft' : 'hard',
 						smtpCode,
-						enhancedCode,
+						...(enhancedCode !== undefined ? { enhancedCode } : {}),
 					},
 				};
 			}
-
-			// 4xx = temporary failure — don't try next MX, return for retry
-			if (smtpCode && smtpCode >= 400 && smtpCode < 500) {
+			if (smtpCode >= 400 && smtpCode < 500) {
 				return {
 					kind: 'smtp',
 					result: {
@@ -373,26 +511,50 @@ export async function sendToMx(
 						error: response,
 						bounceType: 'deferred',
 						smtpCode,
-						enhancedCode,
+						...(enhancedCode !== undefined ? { enhancedCode } : {}),
 					},
 				};
 			}
-
-			// A TLS negotiation failure with no SMTP status: surface it so testing
-			// mode can record-then-retry opportunistically (delivery must proceed).
-			if (stsResultType) {
-				return { kind: 'tls-failure', resultType: stsResultType, response };
-			}
-
-			// Connection error (no SMTP code) — try next MX host
-			logger.warn(
-				{ mxHost, recipientDomain, error: response },
-				'Connection failed to MX host, trying next'
-			);
-			return { kind: 'connection', response };
-		} finally {
-			pool.release(key);
 		}
+
+		// 3. Post-DATA ambiguous drop: a `data`/`data-final` phase failure with NO
+		//    server reply and no TLS cause. The body (and possibly the terminating
+		//    dot) was already written, so the receiver may have accepted the message
+		//    before the connection dropped. Retrying — on the next MX or via a
+		//    soft-bounce requeue — risks a DOUBLE DELIVERY, so this is the
+		//    AMBIGUOUS_TIMEOUT the retry taxonomy must NEVER auto-retry (W8;
+		//    smtp-client errors.ts / transaction.ts:312). Terminate the job here with
+		//    its OWN `ambiguous` bounceType — NOT `hard` — so the dispatch reducer
+		//    stays terminal (no next-MX, no requeue) WITHOUT suppressing the recipient
+		//    or fabricating a 5xx: the message may in fact have been delivered.
+		if (
+			(err.phase === 'data' || err.phase === 'data-final') &&
+			err.replyCode === undefined &&
+			err.tlsCause === undefined
+		) {
+			logger.warn(
+				{ mxHost, recipientDomain, phase: err.phase, error: response },
+				'Ambiguous post-DATA failure with no server reply; not retrying (message may already be delivered)'
+			);
+			return {
+				kind: 'ambiguous',
+				result: {
+					success: false,
+					error: `Ambiguous delivery outcome for ${recipientDomain} (phase ${err.phase}, no server reply): message may already have been accepted — not retrying to avoid a double delivery: ${response}`,
+					bounceType: 'ambiguous',
+				},
+			};
+		}
+
+		// 4. No reply, no TLS cause — a connection/greeting-level failure (or a
+		//    reply-less ambiguous drop in a retry-safe phase). Try the next MX host.
+		//    A required floor never reaches here without a tlsCause, so it is never
+		//    silently downgraded (that lives in branch 1).
+		logger.warn(
+			{ mxHost, recipientDomain, error: response, phase: err.phase },
+			'Connection failed to MX host, trying next'
+		);
+		return { kind: 'connection', response };
 	}
 
 	// Remember the last TLS-negotiation failure (no SMTP status) so that, when a
@@ -449,7 +611,7 @@ export async function sendToMx(
 				daneTls.rejectUnauthorized,
 				daneDecision.plan
 			);
-			if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
+			if (outcome.kind === 'sent' || outcome.kind === 'smtp' || outcome.kind === 'ambiguous') {
 				return outcome.result;
 			}
 			if (outcome.kind === 'tls-failure') {
@@ -478,7 +640,7 @@ export async function sendToMx(
 				daneTls.rejectUnauthorized,
 				daneDecision.plan
 			);
-			if (probe.kind === 'sent' || probe.kind === 'smtp') {
+			if (probe.kind === 'sent' || probe.kind === 'smtp' || probe.kind === 'ambiguous') {
 				return probe.result;
 			}
 			if (probe.kind === 'tls-failure') {
@@ -494,7 +656,7 @@ export async function sendToMx(
 					tlsRequirements.requireTLS,
 					tlsRequirements.rejectUnauthorized
 				);
-				if (retry.kind === 'sent' || retry.kind === 'smtp') {
+				if (retry.kind === 'sent' || retry.kind === 'smtp' || retry.kind === 'ambiguous') {
 					return retry.result;
 				}
 				if (retry.kind === 'tls-failure' && tlsRequirements.requireTLS) {
@@ -535,7 +697,7 @@ export async function sendToMx(
 		// still delivered.
 		if (stsOptions.policyMode === 'testing') {
 			const probe = await attemptSend(mxHost, true, true);
-			if (probe.kind === 'sent' || probe.kind === 'smtp') {
+			if (probe.kind === 'sent' || probe.kind === 'smtp' || probe.kind === 'ambiguous') {
 				return probe.result;
 			}
 			if (probe.kind === 'tls-failure') {
@@ -553,7 +715,7 @@ export async function sendToMx(
 					tlsRequirements.requireTLS,
 					tlsRequirements.rejectUnauthorized
 				);
-				if (retry.kind === 'sent' || retry.kind === 'smtp') {
+				if (retry.kind === 'sent' || retry.kind === 'smtp' || retry.kind === 'ambiguous') {
 					return retry.result;
 				}
 				if (retry.kind === 'tls-failure' && tlsRequirements.requireTLS) {
@@ -572,7 +734,7 @@ export async function sendToMx(
 			tlsRequirements.requireTLS,
 			tlsRequirements.rejectUnauthorized
 		);
-		if (outcome.kind === 'sent' || outcome.kind === 'smtp') {
+		if (outcome.kind === 'sent' || outcome.kind === 'smtp' || outcome.kind === 'ambiguous') {
 			return outcome.result;
 		}
 		if (outcome.kind === 'tls-failure' && tlsRequirements.requireTLS) {

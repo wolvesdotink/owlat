@@ -81,7 +81,10 @@ function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
  * Wrap an EmailJob in the GroupMQ ReservedJob envelope the worker hands the
  * handler. `attempts` / `maxAttempts` / `timestamp` mirror the real reserve.
  */
-function reserve(data: EmailJob, envelope: Partial<ReservedJob<EmailJob>> = {}): ReservedJob<EmailJob> {
+function reserve(
+	data: EmailJob,
+	envelope: Partial<ReservedJob<EmailJob>> = {}
+): ReservedJob<EmailJob> {
 	return {
 		id: 'job-1',
 		groupId: 'transactional:example.com',
@@ -122,7 +125,12 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		dkimKeys: {},
 		workerConcurrency: 50,
 		serverId: 'test-server',
-		smtpPool: { maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 },
+		smtpPool: {
+			maxPerHost: 3,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+			maxMessagesPerConnection: 100,
+		},
 		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
 		submissionPort: 587,
 		submissionEnabled: false,
@@ -230,7 +238,7 @@ describe('handleEmailJob', () => {
 			reserve(data, envelope),
 			queue as unknown as Queue<EmailJob>,
 			redis,
-			config,
+			config
 		);
 	}
 
@@ -259,7 +267,7 @@ describe('handleEmailJob', () => {
 		expect(notifyConvex).toHaveBeenCalledWith(
 			expect.objectContaining({ event: 'sent', messageId: 'msg-001' }),
 			config,
-			redis,
+			redis
 		);
 		// A delivered job is never re-enqueued.
 		expect(queue.add).not.toHaveBeenCalled();
@@ -307,7 +315,7 @@ describe('handleEmailJob', () => {
 		expect(notifyConvex).toHaveBeenCalledWith(
 			expect.objectContaining({ event: 'bounced', bounceType: 'hard' }),
 			config,
-			redis,
+			redis
 		);
 		expect(queue.add).not.toHaveBeenCalled();
 	});
@@ -452,13 +460,13 @@ describe('handleEmailJob', () => {
 		expect(notifyConvex).toHaveBeenCalledWith(
 			expect.objectContaining({ event: 'bounced' }),
 			config,
-			redis,
+			redis
 		);
 		// Delivery log records status 'expired'.
 		expect(logDeliveryEvent).toHaveBeenCalledWith(
 			redis,
 			expect.objectContaining({ status: 'expired', messageId: 'msg-001' }),
-			config,
+			config
 		);
 	});
 
@@ -481,7 +489,7 @@ describe('handleEmailJob', () => {
 		expect(notifyConvex).not.toHaveBeenCalledWith(
 			expect.objectContaining({ event: 'bounced' }),
 			config,
-			redis,
+			redis
 		);
 	});
 
@@ -497,7 +505,7 @@ describe('handleEmailJob', () => {
 		expect(logDeliveryEvent).toHaveBeenCalledWith(
 			redis,
 			expect.objectContaining({ status: 'expired' }),
-			config,
+			config
 		);
 	});
 
@@ -522,7 +530,7 @@ describe('handleEmailJob', () => {
 		expect(logDeliveryEvent).toHaveBeenCalledWith(
 			redis,
 			expect.objectContaining({ status: 'expired' }),
-			config,
+			config
 		);
 	});
 });

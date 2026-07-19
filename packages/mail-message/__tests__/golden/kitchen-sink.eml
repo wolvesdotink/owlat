@@ -1,0 +1,62 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Reply-To:Subject:Date:Message-ID:To:Cc:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=4FM3L8UpCyKT4AwROqgcvj0g1Zixq/hDrR36mZaN/Uk=;
+ b=DxUBB9n9grUZY/OUtaoeu4Q2tVFV5bCqMWSMyOL7T7nmvnBkyFFrb1/KHlM5k+6W9esEi1uPF
+ wKCK7md+2nJpzKpuev8fyGBJoEExPuX9mOtNNJup7T8CfX2KHSheO7NF8wBKLs1Ax41mPIjnXqg
+ KE5xtGp4WqQOxCMuZS5IdJl6DtQLmbIh2suNit9EnhkwXlLq5LfYDgNwlNy/pG/n0Z5QXzxY+zb
+ ujW7LgmykI0Jn7SgYqGUnyoslWfRmgoOVPycn34zX+WOyg4hQYPSrtmANcm/zw8SHPh9mcM/ioR
+ co58QinpvbYOhDHeu61RZHcN769WF59B7WDbDC5KsqVQ==
+Message-ID: <corpus-40@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: Owlat Team <team@owlat.test>
+Reply-To: Reply Desk <reply@owlat.test>
+To: =?UTF-8?B?UmVuw6llIER1cG9udA==?= <renee@example.com>, bob@example.com
+Cc: Carol <carol@example.com>
+Subject: =?UTF-8?B?R3LDvMOfZSDigJQgeW91ciBtb250aGx5IGRpZ2VzdCDimJU=?=
+In-Reply-To: <prev@example.com>
+References: <root@example.com> <prev@example.com>
+MIME-Version: 1.0
+X-Owlat-Message-Id: msg_kitchen
+X-Owlat-Org-Id: org_sink
+Content-Type: multipart/mixed; boundary="--_owlat_kitchen-sink_2"
+
+----_owlat_kitchen-sink_2
+Content-Type: multipart/alternative; boundary="--_owlat_kitchen-sink_1"
+
+----_owlat_kitchen-sink_1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Hi =E2=80=94 see attached r=C3=A9sum=C3=A9
+----_owlat_kitchen-sink_1
+Content-Type: text/x-amp-html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<!doctype html><html amp4email><body>Interactive digest</body></html>
+----_owlat_kitchen-sink_1
+Content-Type: multipart/related; type="text/html"; boundary="--_owlat_kitchen-sink_0"
+
+----_owlat_kitchen-sink_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<p>Hi <img src=3D"cid:brand7"> =E2=80=94 see attached r=C3=A9sum=C3=A9</p=
+>
+----_owlat_kitchen-sink_0
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="brand.png"
+Content-ID: <brand7>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9
+awAAAABJRU5ErkJggg==
+----_owlat_kitchen-sink_0--
+----_owlat_kitchen-sink_1--
+----_owlat_kitchen-sink_2
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="resume.pdf"
+
+JVBERi0xLjQgcmVzdW1l
+----_owlat_kitchen-sink_2--
