@@ -9,7 +9,6 @@ export default defineConfig({
 	resolve: {
 		alias: {
 			'@owlat/plugin-kit': resolve(__dirname, '../../../packages/plugin-kit/src/index.ts'),
-			'@owlat/shared': resolve(__dirname, '../../../packages/shared/src/index.ts'),
 		},
 	},
 });

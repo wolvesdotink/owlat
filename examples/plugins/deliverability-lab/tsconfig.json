@@ -6,8 +6,7 @@
 		"lib": ["ES2023", "DOM"],
 		"noEmit": true,
 		"paths": {
-			"@owlat/plugin-kit": ["../../../packages/plugin-kit/src/index.ts"],
-			"@owlat/shared": ["../../../packages/shared/src/index.ts"]
+			"@owlat/plugin-kit": ["../../../packages/plugin-kit/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*.ts"],
