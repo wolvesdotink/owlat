@@ -87,6 +87,13 @@ export interface ParsedMessage {
 	 * header repeats).
 	 */
 	headers: Map<string, ParsedHeaderValue>;
+	/**
+	 * Raw top-level header occurrence counts before mailparser-compatible
+	 * single-value collapsing. Security consumers use this to reject malformed
+	 * repeated singleton headers (notably DMARC's RFC5322.From identifier) while
+	 * display/ingest consumers retain the legacy collapsed field shape.
+	 */
+	headerCounts: ReadonlyMap<string, number>;
 	/** Attachment leaves in DOCUMENT ORDER (the `partIndex === String(i)` contract). */
 	attachments: MessageAttachment[];
 }
@@ -155,7 +162,9 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 	const inReplyToRaw = headers.get('in-reply-to');
 
 	const structured = new Map<string, ParsedHeaderValue>();
+	const headerCounts = new Map<string, number>();
 	for (const name of headers.names()) {
+		headerCounts.set(name, headers.getAll(name).length);
 		if (ADDRESS_HEADERS.has(name)) {
 			const value = parseAddressObjects(addressValues(headers, name));
 			if (value !== undefined) structured.set(name, value);
@@ -188,6 +197,7 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 		text: body.text,
 		html: body.html,
 		headers: structured,
+		headerCounts,
 		attachments: extractAttachmentsFromTree(tree),
 	};
 }

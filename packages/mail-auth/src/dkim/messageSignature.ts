@@ -87,6 +87,43 @@ function stripWsp(value: string): string {
 	return value.replace(/[ \t\r\n]+/g, '');
 }
 
+/** Header names carried by `h=`, normalized for RFC 6376 case-insensitive matching. */
+function signedHeaderNames(hTag: string): string[] {
+	return hTag
+		.split(':')
+		.map((name) => name.toLowerCase())
+		.map((name) => name.trim())
+		.filter((name) => name !== '');
+}
+
+/** Lowercase a DKIM domain for identity comparisons. */
+function normalizeDkimDomain(domain: string): string {
+	return stripWsp(domain).toLowerCase();
+}
+
+/**
+ * Resolve the AUID (`i=`) domain, defaulting to the SDID (`d=`), and enforce
+ * RFC 6376 §6.1.1's same-domain-or-subdomain relationship. `i=` uses a literal
+ * final `@` separator; any `@` belonging to the local-part must be DKIM-QP
+ * encoded, so `lastIndexOf` safely finds the domain boundary.
+ */
+function signatureIdentityDomain(
+	identity: string | undefined,
+	signingDomain: string
+): string | null {
+	const sdid = normalizeDkimDomain(signingDomain);
+	if (sdid === '') return null;
+	if (identity === undefined) return sdid;
+
+	const compact = stripWsp(identity);
+	const at = compact.lastIndexOf('@');
+	if (at < 0 || at === compact.length - 1) return null;
+	const auidDomain = normalizeDkimDomain(compact.slice(at + 1));
+	if (auidDomain === '') return null;
+	if (auidDomain !== sdid && !auidDomain.endsWith(`.${sdid}`)) return null;
+	return auidDomain;
+}
+
 /** Parse the DKIM-Signature value: case-sensitive names, trimmed values, first-wins. */
 function parseSignatureTags(rawField: string): Map<string, string> {
 	const colon = rawField.indexOf(':');
@@ -185,6 +222,26 @@ export async function verifyMessageSignature(
 		return withVerdict('none');
 	}
 
+	// RFC 6376 §6.1.1: From MUST be signed. Merely requiring a non-empty `h=`
+	// lets a cryptographically valid signature authenticate only attacker-chosen
+	// headers/body while leaving the author identity replaceable, which must never
+	// feed a `pass` into DMARC.
+	if (!signedHeaderNames(hTag).includes('from')) {
+		return withVerdict('permerror');
+	}
+
+	// DKIM's AUID defaults to `@d`. When explicit, its domain must equal `d=` or
+	// be a subdomain; an unrelated identity is malformed (RFC 6376 §6.1.1).
+	// ARC-Message-Signature replaces the AUID with its numeric instance `i=`
+	// (RFC 8617 §4.1.2), so the ARC caller's `requireVersion: false` deliberately
+	// bypasses AUID semantics while retaining the shared From/service/crypto gates.
+	const identityDomain = requireVersion
+		? signatureIdentityDomain(tags.get('i'), domain)
+		: normalizeDkimDomain(domain);
+	if (identityDomain === null) {
+		return withVerdict('permerror');
+	}
+
 	const algorithm = parseAlgorithm(algorithmRaw);
 	if (algorithm === undefined) {
 		// Unknown / unsupported `a=` (e.g. rsa-sha512): mailauth skips the
@@ -254,13 +311,32 @@ export async function verifyMessageSignature(
 		return withVerdict(classifyDnsError(err));
 	}
 
-	// Revoked (empty p=), key/alg mismatch, or a hash the key forbids: PERMFAIL.
+	// Revoked (empty p=), key/alg mismatch, a hash the key forbids, or a key whose
+	// explicit service list does not authorize email: PERMFAIL. `s=` is optional
+	// and defaults to `*`, represented by an empty parsed list; when present it
+	// must name either `email` or `*` (RFC 6376 §3.6.1).
 	if (keyRecord.revoked || keyRecord.keyType !== algorithm.keyType) {
 		return withVerdict('permerror');
 	}
 	if (
 		keyRecord.hashAlgorithms !== undefined &&
 		!keyRecord.hashAlgorithms.includes(algorithm.hash)
+	) {
+		return withVerdict('permerror');
+	}
+	if (
+		keyRecord.serviceTypes.length > 0 &&
+		!keyRecord.serviceTypes.includes('email') &&
+		!keyRecord.serviceTypes.includes('*')
+	) {
+		return withVerdict('permerror');
+	}
+	// `t=s` prohibits subdomain AUIDs even though the general i=/d= relationship
+	// allows them (RFC 6376 §3.6.1).
+	if (
+		requireVersion &&
+		keyRecord.flags.includes('s') &&
+		identityDomain !== normalizeDkimDomain(domain)
 	) {
 		return withVerdict('permerror');
 	}

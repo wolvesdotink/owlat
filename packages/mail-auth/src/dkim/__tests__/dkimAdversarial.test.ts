@@ -181,6 +181,67 @@ function mintValid(extraTags: string): Buffer {
 }
 
 describe('verifyDkim — security-relevant verify branches', () => {
+	it('crypto-valid signature whose h= omits From -> permerror (RFC 6376 §6.1.1)', async () => {
+		const message = mintSignature({
+			privateKey: brRsa.privateKey,
+			domain: BR_DOMAIN,
+			selector: BR_SELECTOR,
+			headers: BR_HEADERS,
+			hTag: 'to:subject',
+			body: BR_BODY,
+		});
+		const outcome = await verifyDkim(message, { resolver: resolverServing(brRsaRecord) });
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it('invalid internal whitespace in an h= name cannot impersonate From', async () => {
+		const message = mintSignature({
+			privateKey: brRsa.privateKey,
+			domain: BR_DOMAIN,
+			selector: BR_SELECTOR,
+			headers: BR_HEADERS,
+			hTag: 'fr om:to:subject',
+			body: BR_BODY,
+		});
+		const outcome = await verifyDkim(message, { resolver: resolverServing(brRsaRecord) });
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it('key s= service list that excludes email -> permerror', async () => {
+		const restricted = `v=DKIM1; k=rsa; s=other; p=${brRsaSpki}`;
+		const outcome = await verifyDkim(mintValid(''), { resolver: resolverServing(restricted) });
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it.each(['email', '*'] as const)('key s=%s authorizes email -> pass', async (service) => {
+		const allowed = `v=DKIM1; k=rsa; s=${service}; p=${brRsaSpki}`;
+		const outcome = await verifyDkim(mintValid(''), { resolver: resolverServing(allowed) });
+		expect(outcome.result).toBe('pass');
+	});
+
+	it('AUID i= outside the d= signing domain -> permerror', async () => {
+		const outcome = await verifyDkim(mintValid('i=user@unrelated.example; '), {
+			resolver: resolverServing(brRsaRecord),
+		});
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it('key t=s refuses a subdomain AUID -> permerror', async () => {
+		const strictIdentity = `v=DKIM1; k=rsa; t=s; p=${brRsaSpki}`;
+		const outcome = await verifyDkim(mintValid(`i=user@sub.${BR_DOMAIN}; `), {
+			resolver: resolverServing(strictIdentity),
+		});
+		expect(outcome.result).toBe('permerror');
+	});
+
+	it('key t=s allows the default same-domain AUID -> pass', async () => {
+		const strictIdentity = `v=DKIM1; k=rsa; t=s; p=${brRsaSpki}`;
+		const outcome = await verifyDkim(mintValid(''), {
+			resolver: resolverServing(strictIdentity),
+		});
+		expect(outcome.result).toBe('pass');
+	});
+
 	it('malformed l= (non-numeric) -> permerror (RFC 6376 §3.7 PERMFAIL)', async () => {
 		const outcome = await verifyDkim(craft('l=abc; '), { resolver: resolverServing(brRsaRecord) });
 		expect(outcome.result).toBe('permerror');

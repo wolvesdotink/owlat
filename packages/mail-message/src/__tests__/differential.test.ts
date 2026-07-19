@@ -99,6 +99,9 @@ describe('parseMessage matches mailparser singleKeys collapse on repeated addres
 		expect(addrList(ours.from)).toEqual(addrList(theirs.from));
 		expect(addrList(ours.from)).toEqual([{ name: 'Second', address: 'second@example.org' }]);
 		expect(Array.isArray(ours.from)).toBe(false);
+		// Preserve multiplicity separately so security consumers (DMARC) can reject
+		// the malformed repeated singleton even though the compatibility field is collapsed.
+		expect(ours.headerCounts.get('from')).toBe(2);
 	});
 
 	it('collapses a repeated Reply-To: to the last instance (vs mailparser)', async () => {
@@ -136,6 +139,7 @@ function createMockParsedMessage(overrides: Partial<ParsedMessage> = {}): Parsed
 		text: 'body',
 		html: false,
 		headers: new Map([['content-type', 'text/plain']]),
+		headerCounts: new Map([['content-type', 1]]),
 		attachments: [],
 		messageId: undefined,
 		inReplyTo: undefined,
