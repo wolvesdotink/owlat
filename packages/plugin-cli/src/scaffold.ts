@@ -1,6 +1,7 @@
-import { relative, sep } from 'node:path';
+import { relative } from 'node:path';
 import type { PluginId } from '@owlat/plugin-kit';
 import type { PluginPackageName } from '@owlat/plugin-host';
+import { toPosix } from './paths';
 
 /** One scaffolded file, keyed by its POSIX path relative to the plugin directory. */
 export type ScaffoldFiles = ReadonlyMap<string, string>;
@@ -151,8 +152,4 @@ To bundle this plugin into a deployment, publish it and add its package name to
 the workspace \`plugins.config.ts\` with \`owlat plugins add ${packageName}\`,
 then regenerate the composition with \`owlat plugins codegen\`.
 `;
-}
-
-function toPosix(path: string): string {
-	return sep === '/' ? path : path.split(sep).join('/');
 }

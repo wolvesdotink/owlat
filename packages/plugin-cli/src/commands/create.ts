@@ -4,6 +4,7 @@ import { parsePluginId, PluginIdError } from '@owlat/plugin-kit';
 import { parsePackageArgument } from '../config';
 import { PluginCliError } from '../errors';
 import type { CliIo } from '../io';
+import { toPosix } from '../paths';
 import { buildScaffold, type ScaffoldFiles } from '../scaffold';
 
 export interface CreateArgs {
@@ -187,8 +188,4 @@ function isExistingDirectoryError(error: unknown): boolean {
 
 function isFileSystemError(error: unknown, code: string): boolean {
 	return error instanceof Error && 'code' in error && error.code === code;
-}
-
-function toPosix(path: string): string {
-	return sep === '/' ? path : path.split(sep).join('/');
 }
