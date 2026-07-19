@@ -14,7 +14,14 @@ export interface HtmlTag {
 	readonly attributes: Readonly<Record<string, string>>;
 }
 
+/** One `<a>…</a>` element: its raw (undecoded) attribute string and inner HTML. */
+export interface HtmlAnchor {
+	readonly attributes: string;
+	readonly inner: string;
+}
+
 const TAG_RE = /<([a-zA-Z][a-zA-Z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi;
 const ATTR_RE = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*(?:=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g;
 
 /** Decode the small set of HTML entities that matter for text comparisons. */
@@ -60,6 +67,20 @@ export function scanTags(html: string): HtmlTag[] {
 /** All `<img>` element openers. */
 export function scanImages(html: string): HtmlTag[] {
 	return scanTags(html).filter((tag) => tag.name === 'img');
+}
+
+/**
+ * Every `<a>…</a>` element in document order, exposing its raw attribute string
+ * and inner HTML. Callers decide what to read — the link auditor parses the
+ * `href` out of `attributes`, the accessibility auditor measures `inner` — so the
+ * one anchor tokenizer lives here rather than being re-implemented per analyzer.
+ */
+export function scanAnchors(html: string): HtmlAnchor[] {
+	const anchors: HtmlAnchor[] = [];
+	for (const match of html.matchAll(ANCHOR_RE)) {
+		anchors.push({ attributes: match[1] ?? '', inner: match[2] ?? '' });
+	}
+	return anchors;
 }
 
 /** Strip tags and collapse whitespace so text content can be measured/compared. */
