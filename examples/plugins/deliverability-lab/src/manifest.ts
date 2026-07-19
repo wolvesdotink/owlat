@@ -90,26 +90,36 @@ export const deliverabilityLabPlugin = definePlugin({
 			},
 		],
 	},
+	// Declaration-only settings schema: it shows how a plugin describes the
+	// operator-facing controls its settings panel will render, and the host
+	// validates and persists these fields. It is NOT yet consumed at runtime —
+	// the merged gate/cron `services` contracts expose no settings channel, so
+	// no shipped module here reads a setting value. The wiring that threads
+	// persisted settings into the gate/cron tiers lands with PP-31; until then
+	// each description states the intended effect without claiming it is live.
 	settingsSchema: [
 		{
 			kind: 'boolean',
 			key: 'holdOnFail',
 			label: 'Hold sends that fail preflight',
-			description: 'When on, a failing deliverability report objects to the autonomous send.',
+			description:
+				'Intended to let operators choose whether a failing preflight objects to the autonomous send. Not yet wired: the bundled gate always objects on a fail verdict until settings reach the gate tier (PP-31).',
 			default: true,
 		},
 		{
 			kind: 'secret',
 			key: 'seedboxApiKey',
 			label: 'Seedbox API key',
-			description: 'Authenticates the optional Tier-2 seedbox score hook. Stored server-side.',
+			description:
+				'Intended to authenticate the optional Tier-2 seedbox score hook. Stored server-side; the bundled gate ships without a remote score hook, so no shipped module reads this yet (PP-31).',
 			required: false,
 		},
 		{
 			kind: 'number',
 			key: 'seedboxDeadlineMs',
 			label: 'Seedbox timeout (ms)',
-			description: 'How long to wait for the seedbox score before falling back to local scoring.',
+			description:
+				'Intended deadline, in ms, to wait for a seedbox score before falling back to local scoring. Not yet wired: the bundled gate uses its hardcoded default deadline until settings reach the gate tier (PP-31).',
 			default: 5000,
 			min: 500,
 			max: 15000,
