@@ -6,7 +6,7 @@
  * Pure and deterministic.
  */
 
-import { scanImages, scanTags, textContent } from './html';
+import { scanAnchors, scanImages, scanTags, textContent } from './html';
 import type { DeliverabilityEmail, Finding, Verdict } from './types';
 import { verdictOf } from './types';
 
@@ -14,8 +14,6 @@ export interface AccessibilityReport {
 	readonly verdict: Verdict;
 	readonly findings: readonly Finding[];
 }
-
-const ANCHOR_RE = /<a\b[^>]*>([\s\S]*?)<\/a\s*>/gi;
 
 function hasLangAttribute(html: string): boolean {
 	return scanTags(html).some(
@@ -25,8 +23,7 @@ function hasLangAttribute(html: string): boolean {
 
 function emptyAnchorCount(html: string): number {
 	let count = 0;
-	for (const match of html.matchAll(ANCHOR_RE)) {
-		const inner = match[1] ?? '';
+	for (const { inner } of scanAnchors(html)) {
 		// An anchor is discernible if it has visible text OR wraps an image with alt.
 		if (textContent(inner).length > 0) continue;
 		const wrapsLabelledImage = scanImages(inner).some(

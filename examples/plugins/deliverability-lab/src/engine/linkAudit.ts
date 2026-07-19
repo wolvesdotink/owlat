@@ -6,7 +6,7 @@
  * deterministic — identical HTML always yields the identical report.
  */
 
-import { textContent } from './html';
+import { scanAnchors, textContent } from './html';
 import type { DeliverabilityEmail, Finding, Verdict } from './types';
 import { verdictOf } from './types';
 
@@ -22,7 +22,6 @@ interface Anchor {
 	readonly text: string;
 }
 
-const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi;
 const HREF_RE = /\bhref\s*=\s*("[^"]*"|'[^']*'|[^\s"'=<>`]+)/i;
 
 function readHref(rawAttributes: string): string {
@@ -39,11 +38,10 @@ function readHref(rawAttributes: string): string {
 }
 
 function parseAnchors(html: string): Anchor[] {
-	const anchors: Anchor[] = [];
-	for (const match of html.matchAll(ANCHOR_RE)) {
-		anchors.push({ href: readHref(match[1] ?? ''), text: textContent(match[2] ?? '') });
-	}
-	return anchors;
+	return scanAnchors(html).map((anchor) => ({
+		href: readHref(anchor.attributes),
+		text: textContent(anchor.inner),
+	}));
 }
 
 /** Extract the host of an href, or null when it is not an absolute http(s) URL. */
