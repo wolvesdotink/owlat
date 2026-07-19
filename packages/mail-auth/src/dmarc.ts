@@ -58,6 +58,16 @@ export interface AuthenticatedIdentity<V extends string> {
 	readonly domain?: string;
 }
 
+/** DKIM identities supplied to DMARC, including every passing signature. */
+export interface DkimAuthenticatedIdentity extends AuthenticatedIdentity<DkimVerdict> {
+	/**
+	 * All passing DKIM `d=` domains. DMARC succeeds when any one aligns; `domain`
+	 * remains the message-level verifier's representative result for RFC 8601
+	 * storage and backwards compatibility.
+	 */
+	readonly passingDomains?: readonly string[];
+}
+
 /**
  * Resolve the From-domain's `_dmarc` TXT record body (the part after
  * `_dmarc.`), e.g. `v=DMARC1; p=reject; sp=quarantine; adkim=s`.
@@ -77,8 +87,8 @@ export interface EvaluateDmarcArgs {
 	readonly fromDomain: string;
 	/** SPF verdict + the envelope MAIL FROM domain it authenticated. */
 	readonly spf: AuthenticatedIdentity<SpfVerdict>;
-	/** DKIM verdict + the `d=` domain it authenticated. */
-	readonly dkim: AuthenticatedIdentity<DkimVerdict>;
+	/** DKIM verdict + every passing `d=` domain it authenticated. */
+	readonly dkim: DkimAuthenticatedIdentity;
 	/** Resolves a domain's `_dmarc` record (see DmarcPolicyLookup). */
 	readonly policyLookup: DmarcPolicyLookup;
 	/** Optional structured logger for the transient-failure warn. */
@@ -186,10 +196,13 @@ export async function evaluateDmarc(args: EvaluateDmarcArgs): Promise<DmarcOutco
 		spf.result === 'pass' &&
 		!!spf.domain &&
 		isSpfAligned(spf.domain, fromDomain, alignmentMode(record.aspf));
+	const passingDkimDomains =
+		dkim.passingDomains ?? (dkim.domain !== undefined ? [dkim.domain] : []);
 	const dkimAligned =
 		dkim.result === 'pass' &&
-		!!dkim.domain &&
-		isSpfAligned(dkim.domain, fromDomain, alignmentMode(record.adkim));
+		passingDkimDomains.some((domain) =>
+			isSpfAligned(domain, fromDomain, alignmentMode(record.adkim))
+		);
 
 	if (spfAligned || dkimAligned) {
 		return { result: 'pass', policy, spfAligned, dkimAligned };

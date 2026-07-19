@@ -34,7 +34,7 @@ describe('isSpfAligned', () => {
 	});
 });
 
-describe('organizationalDomain — multi-label public suffixes (RFC 8301-class fix)', () => {
+describe('organizationalDomain — Public Suffix List boundaries', () => {
 	it('keeps eTLD+1 under a ccTLD second-level suffix so different orgs stay distinct', () => {
 		// The bug: `slice(-2)` folded both to `co.uk` → any two .co.uk domains
 		// looked aligned. They must now differ.
@@ -67,6 +67,20 @@ describe('organizationalDomain — multi-label public suffixes (RFC 8301-class f
 		expect(isSpfAligned('attacker.co.uk', 'victim.co.uk', 'relaxed')).toBe(false);
 		// A genuine subdomain of the same org still aligns.
 		expect(isSpfAligned('mail.victim.co.uk', 'victim.co.uk', 'relaxed')).toBe(true);
+	});
+
+	it('does not align independent tenants beneath a private multi-label suffix', () => {
+		// `uk.com` is a PSL private suffix. A last-two-label heuristic folds both
+		// identities to uk.com and lets one registrant authenticate as the other.
+		expect(organizationalDomain('attacker.uk.com')).toBe('attacker.uk.com');
+		expect(organizationalDomain('victim.uk.com')).toBe('victim.uk.com');
+		expect(isSpfAligned('attacker.uk.com', 'victim.uk.com', 'relaxed')).toBe(false);
+		expect(isSpfAligned('mail.victim.uk.com', 'victim.uk.com', 'relaxed')).toBe(true);
+	});
+
+	it('fails closed to exact matching when no registrable domain exists', () => {
+		expect(organizationalDomain('internal')).toBe('internal');
+		expect(isSpfAligned('mail.internal', 'internal', 'relaxed')).toBe(false);
 	});
 });
 

@@ -20,6 +20,8 @@
  * it. A per-customer return-path subdomain makes SPF align too.
  */
 
+import { getDomain } from 'tldts';
+
 export type AlignmentMode = 'strict' | 'relaxed';
 
 /** Lowercase + strip a single trailing dot for comparison. */
@@ -28,34 +30,17 @@ function normalizeDomain(domain: string): string {
 }
 
 /**
- * Second-level labels that act as public suffixes under a two-letter country
- * TLD, so `victim.co.uk` is the registrable domain (not `co.uk`). A curated
- * embedded set — matching `email-scanner`'s `senderImpersonation` convention —
- * rather than a full Public Suffix List dependency: it covers the common
- * `co.uk` / `com.au` / `org.uk` / `co.jp` style suffixes that would otherwise
- * fold distinct organisations together. Missing an exotic suffix errs toward
- * over-folding, so extend deliberately; a full PSL remains a future option.
- */
-const SECOND_LEVEL_PUBLIC_SUFFIXES = new Set(['co', 'com', 'net', 'org', 'ac', 'gov', 'edu']);
-
-/**
- * Organizational-Domain approximation used for `relaxed` alignment (RFC 7489
- * §3.2). A curated eTLD+1 heuristic that does NOT vendor the full Public Suffix
- * List: when the last label is a two-letter ccTLD and the second-to-last is a
- * known public second-level suffix (`co`, `com`, …), it keeps the last THREE
- * labels so distinct orgs on the same ccTLD stay distinct (`attacker.co.uk` ≠
- * `victim.co.uk`); otherwise it keeps the last two. This closes the co.uk-class
- * relaxed-alignment bypass (where a full PSL is not vendored) — matching the
- * `senderImpersonation.registrableDomain` pattern. A full PSL remains a future
- * option.
+ * Organizational Domain used for relaxed alignment (RFC 7489 §3.2): the
+ * registrable eTLD+1 from the Public Suffix List. Private suffixes are enabled
+ * because independently controlled tenants beneath entries such as `uk.com`
+ * or `github.io` must never authenticate one another. If the PSL cannot derive
+ * an eTLD+1 (single-label/internal or malformed input), fall back to the exact
+ * normalized domain; exact comparison is the fail-closed alignment behavior.
  */
 export function organizationalDomain(domain: string): string {
-	const labels = normalizeDomain(domain).split('.').filter(Boolean);
-	if (labels.length <= 2) return labels.join('.');
-	const tld = labels[labels.length - 1]!;
-	const sld = labels[labels.length - 2]!;
-	const keep = tld.length === 2 && SECOND_LEVEL_PUBLIC_SUFFIXES.has(sld) ? 3 : 2;
-	return labels.slice(-keep).join('.');
+	const normalized = normalizeDomain(domain);
+	if (!normalized) return '';
+	return getDomain(normalized, { allowPrivateDomains: true }) ?? normalized;
 }
 
 /**

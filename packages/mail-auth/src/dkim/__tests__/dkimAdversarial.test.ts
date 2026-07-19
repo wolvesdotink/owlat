@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { generateKeyPairSync } from 'crypto';
+import { evaluateDmarc } from '../../dmarc.js';
 import { verifyDkim, type DkimDnsResolver } from '../verify.js';
 import { isKeyRecordError, parseDkimKeyRecord } from '../keyRecord.js';
 import { mintSignature } from './helpers/mint.js';
@@ -180,7 +181,61 @@ function mintValid(extraTags: string): Buffer {
 	});
 }
 
+/** Extract the minted signature field so several independent signatures can share one message. */
+function mintedSignatureField(domain: string): string {
+	const signed = mintSignature({
+		privateKey: brRsa.privateKey,
+		domain,
+		selector: BR_SELECTOR,
+		headers: BR_HEADERS,
+		hTag: 'from:to:subject',
+		body: BR_BODY,
+	}).toString('latin1');
+	return signed.slice(0, signed.indexOf('\r\n'));
+}
+
 describe('verifyDkim — security-relevant verify branches', () => {
+	it('preserves every passing domain so a later aligned signature can satisfy DMARC', async () => {
+		const unalignedDomain = 'unaligned.example';
+		const message = Buffer.from(
+			[
+				mintedSignatureField(unalignedDomain),
+				mintedSignatureField(BR_DOMAIN),
+				...BR_HEADERS,
+				'',
+				BR_BODY,
+			].join('\r\n'),
+			'latin1'
+		);
+		const resolver: DkimDnsResolver = async (name, rrtype) => {
+			if (
+				rrtype === 'TXT' &&
+				(name === `${BR_SELECTOR}._domainkey.${unalignedDomain}` || name === BR_KEY_NAME)
+			) {
+				return [[brRsaRecord]];
+			}
+			throw Object.assign(new Error(`ENOTFOUND ${name}`), { code: 'ENOTFOUND' });
+		};
+
+		const dkim = await verifyDkim(message, { resolver });
+		expect(dkim.result).toBe('pass');
+		expect(dkim.domain).toBe(unalignedDomain);
+		expect(dkim.passingDomains).toEqual([unalignedDomain, BR_DOMAIN]);
+
+		const dmarc = await evaluateDmarc({
+			fromDomain: BR_DOMAIN,
+			spf: { result: 'none' },
+			dkim: {
+				result: dkim.result,
+				domain: dkim.domain,
+				passingDomains: dkim.passingDomains,
+			},
+			policyLookup: async () => 'v=DMARC1; p=reject; adkim=s',
+		});
+		expect(dmarc.result).toBe('pass');
+		expect(dmarc.dkimAligned).toBe(true);
+	});
+
 	it('crypto-valid signature whose h= omits From -> permerror (RFC 6376 §6.1.1)', async () => {
 		const message = mintSignature({
 			privateKey: brRsa.privateKey,

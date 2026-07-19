@@ -14,6 +14,10 @@ const notFound = (): never => {
 	throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
 };
 
+const servfail = (): never => {
+	throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
+};
+
 describe('checkSpf — mx / a mechanisms', () => {
 	it('passes when a resolved MX host A record matches the sender (object MX form)', async () => {
 		const resolver: SpfDnsResolver = async (name, type) => {
@@ -69,6 +73,73 @@ describe('checkSpf — mx / a mechanisms', () => {
 		};
 		const result = await checkSpf('9.8.7.6', 'user@apass.com', 'ehlo.host', resolver);
 		expect(result.result).toBe('pass');
+	});
+
+	it('passes an IPv6 sender authorized by the a mechanism through AAAA', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'a6.example') return [['v=spf1 a -all']];
+			if (type === 'AAAA' && name === 'a6.example') return ['2001:db8:0:0::5'];
+			if (type === 'A') throw new Error('IPv6 a mechanism must not query A');
+			return [];
+		};
+		const result = await checkSpf('2001:db8::5', 'user@a6.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('passes an IPv6 sender authorized by an MX host AAAA record', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'mx6.example') return [['v=spf1 mx -all']];
+			if (type === 'MX' && name === 'mx6.example') {
+				return [{ exchange: 'mail.mx6.example', priority: 10 }];
+			}
+			if (type === 'AAAA' && name === 'mail.mx6.example') return ['2001:db8::9'];
+			if (type === 'A') throw new Error('IPv6 mx mechanism must not query A');
+			return [];
+		};
+		const result = await checkSpf('2001:db8::9', 'user@mx6.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it.each([
+		{
+			name: 'a address lookup',
+			record: 'v=spf1 a -all',
+			failType: 'A' as const,
+			failName: 'temp.example',
+		},
+		{
+			name: 'mx lookup',
+			record: 'v=spf1 mx -all',
+			failType: 'MX' as const,
+			failName: 'temp.example',
+		},
+		{
+			name: 'exists lookup',
+			record: 'v=spf1 exists:probe.temp.example -all',
+			failType: 'A' as const,
+			failName: 'probe.temp.example',
+		},
+	])('maps a transient $name failure to temperror', async ({ record, failType, failName }) => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'temp.example') return [[record]];
+			if (type === failType && name === failName) return servfail();
+			return [];
+		};
+		const result = await checkSpf('192.0.2.1', 'user@temp.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('temperror');
+	});
+
+	it('maps a transient MX host address failure to temperror', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'mx-temp.example') return [['v=spf1 mx -all']];
+			if (type === 'MX' && name === 'mx-temp.example') {
+				return [{ exchange: 'mail.mx-temp.example', priority: 10 }];
+			}
+			if (type === 'A' && name === 'mail.mx-temp.example') return servfail();
+			return [];
+		};
+		const result = await checkSpf('192.0.2.1', 'user@mx-temp.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('temperror');
 	});
 });
 
