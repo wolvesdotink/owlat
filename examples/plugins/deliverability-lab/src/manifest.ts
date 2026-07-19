@@ -10,7 +10,9 @@
  *     `navItems` / `settingsPanels` UI and the budgeted `crons` job;
  *   - Tier 2 (connected hook): the `llm:invoke` + seedbox usage the gate layers
  *     on (the vendor score hook is host-mediated, so it needs no contribution
- *     bucket — only the capability and the required env var);
+ *     bucket — only the capability; the seedbox endpoint env var is declared as a
+ *     forward-looking constant but is NOT a required-env enablement gate yet,
+ *     because no shipped module reads it until PP-31 wires the remote hook);
  *   - Tier 3 (sandboxed worker): the `worker:enqueue` capability the seed-list
  *     job is enqueued under (`plugin.deliverability-lab.seed-test`).
  *
@@ -30,7 +32,15 @@ import {
 } from '@owlat/plugin-kit';
 import { DELIVERABILITY_LAB_PLUGIN_ID } from './constants';
 
-/** Env var the operator sets to point the plugin at a seedbox vendor endpoint. */
+/**
+ * Env var the operator will set to point the plugin at a seedbox vendor endpoint.
+ * Exported as the forward-looking declaration of that contract, but deliberately
+ * NOT listed in `flag.requiredEnvVars`: the host treats a missing required env var
+ * as an enablement blocker, and nothing shipped at this stage reads the seedbox
+ * (the bundled gate is `createDeliverabilityGate()` with no remote hook). Adding
+ * it to `requiredEnvVars` now would force operators to provision an endpoint that
+ * does nothing. PP-31 wires the remote hook and promotes this to a real requirement.
+ */
 export const DELIVERABILITY_LAB_SEEDBOX_URL_ENV = 'DELIVERABILITY_LAB_SEEDBOX_URL';
 
 /** Hard daily LLM budget, in USD, attributed to this plugin by the host dispatch. */
@@ -49,7 +59,6 @@ export const deliverabilityLabPlugin = definePlugin({
 	],
 	flag: {
 		default: false,
-		requiredEnvVars: [DELIVERABILITY_LAB_SEEDBOX_URL_ENV],
 	},
 	llmBudget: { dailyUsd: DELIVERABILITY_LAB_DAILY_LLM_BUDGET_USD },
 	contributes: {
