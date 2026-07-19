@@ -1,88 +1,63 @@
 import { describe, it, expect } from 'vitest';
-import { parseMessage, type AddressObject } from '@owlat/mail-message';
+import { parseMessage } from '@owlat/mail-message';
 import { evaluateDmarc } from '@owlat/mail-auth';
-import { emailDomain } from '@owlat/shared/spfAlignment';
-import { isFromAmbiguous, firstAddress } from '../parsedAddress.js';
+import { dmarcFromIdentity } from '../parsedAddress.js';
 
-const one: AddressObject = {
-	value: [{ name: 'A', address: 'a@x.test' }],
-	text: 'A <a@x.test>',
-};
-const twoMailboxes: AddressObject = {
-	value: [
-		{ name: '', address: 'a@evil.test' },
-		{ name: '', address: 'b@bank.test' },
-	],
-	text: 'a@evil.test, b@bank.test',
-};
-
-describe('isFromAmbiguous (RFC 7489 §6.6.1)', () => {
-	it('is false for an absent From', () => {
-		expect(isFromAmbiguous(undefined)).toBe(false);
+describe('dmarcFromIdentity — strict trust-boundary extraction', () => {
+	it('accepts exactly one valid mailbox, including a quoted local-part', () => {
+		for (const raw of [
+			'From: CEO <ceo@victim.example>\r\n\r\nbody\r\n',
+			'From: <ceo@victim.example>\r\n\r\nbody\r\n',
+			'From: CEO (Accounts) <ceo@victim.example>\r\n\r\nbody\r\n',
+			'From: "sales,@ops"@victim.example\r\n\r\nbody\r\n',
+		]) {
+			const parsed = parseMessage(Buffer.from(raw));
+			expect(dmarcFromIdentity(parsed.from, parsed.rawFrom)).toEqual({
+				domain: 'victim.example',
+				invalid: false,
+			});
+		}
 	});
 
-	it('is false for a single From with one mailbox', () => {
-		expect(isFromAmbiguous(one)).toBe(false);
-		// sanity: the single, unambiguous case is exactly what DMARC binds to
-		expect(firstAddress(one)).toBe('a@x.test');
-	});
-
-	it('is true for a single From naming more than one mailbox', () => {
-		expect(isFromAmbiguous(twoMailboxes)).toBe(true);
-	});
-
-	it('is true when the From header occurs more than once (array arm)', () => {
-		expect(isFromAmbiguous([one, twoMailboxes])).toBe(true);
-	});
-
-	it('preserves raw duplicate From evidence and prevents an aligned DMARC pass', async () => {
-		const parsed = parseMessage(
-			Buffer.from(
-				[
-					'From: CEO <ceo@victim.example>',
-					'From: attacker@attacker.example',
-					'To: user@example.org',
-					'',
-					'body',
-					'',
-				].join('\r\n')
-			)
-		);
-
-		// The consumed display field remains mailparser-compatible (last wins),
-		// while the raw count retains the trust-boundary evidence DMARC needs.
-		expect(firstAddress(parsed.from)).toBe('attacker@attacker.example');
-		expect(parsed.headerCounts.get('from')).toBe(2);
-		const fromAmbiguous = isFromAmbiguous(parsed.from, parsed.headerCounts.get('from'));
-		expect(fromAmbiguous).toBe(true);
+	it.each([
+		{
+			name: 'two mailboxes hidden inside angle brackets',
+			raw: 'From: <ceo@victim.example, attacker@attacker.example>\r\n\r\nbody\r\n',
+		},
+		{
+			name: 'two whitespace-separated mailbox tokens',
+			raw: 'From: attacker@attacker.example ceo@victim.example\r\n\r\nbody\r\n',
+		},
+		{
+			name: 'trailing garbage after a mailbox',
+			raw: 'From: attacker@attacker.example ignored-text\r\n\r\nbody\r\n',
+		},
+		{
+			name: 'a normal two-mailbox list',
+			raw: 'From: attacker@attacker.example, ceo@victim.example\r\n\r\nbody\r\n',
+		},
+		{
+			name: 'repeated From fields',
+			raw: 'From: ceo@victim.example\r\nFrom: attacker@attacker.example\r\n\r\nbody\r\n',
+		},
+		{
+			name: 'group syntax',
+			raw: 'From: Team: ceo@victim.example;\r\n\r\nbody\r\n',
+		},
+		{ name: 'unparseable value', raw: 'From: not-an-address\r\n\r\nbody\r\n' },
+		{ name: 'empty value', raw: 'From:\r\n\r\nbody\r\n' },
+		{ name: 'missing field', raw: 'To: user@example.org\r\n\r\nbody\r\n' },
+	])('permerrors $name instead of aligning an attacker identity', async ({ raw }) => {
+		const parsed = parseMessage(Buffer.from(raw));
+		const identity = dmarcFromIdentity(parsed.from, parsed.rawFrom);
+		expect(identity).toEqual({ domain: '', invalid: true });
 
 		const outcome = await evaluateDmarc({
-			fromDomain: emailDomain(firstAddress(parsed.from) ?? ''),
-			fromAmbiguous,
+			fromDomain: identity.domain,
+			fromAmbiguous: identity.invalid,
 			spf: { result: 'none' },
 			dkim: { result: 'pass', domain: 'attacker.example' },
 			policyLookup: async () => 'v=DMARC1; p=reject',
-		});
-		expect(outcome.result).toBe('permerror');
-	});
-
-	it('keeps duplicate-From ambiguity actionable when the collapsed value has no domain', async () => {
-		const parsed = parseMessage(
-			Buffer.from(
-				'From: victim@example.com\r\nFrom: invalid\r\nTo: user@example.org\r\n\r\nbody\r\n'
-			)
-		);
-		const fromDomain = emailDomain(firstAddress(parsed.from) ?? '');
-		const fromAmbiguous = isFromAmbiguous(parsed.from, parsed.headerCounts.get('from'));
-		expect(fromDomain).toBe('');
-		expect(fromAmbiguous).toBe(true);
-
-		const outcome = await evaluateDmarc({
-			fromDomain,
-			fromAmbiguous,
-			spf: { result: 'none' },
-			dkim: { result: 'none' },
-			policyLookup: async () => null,
 		});
 		expect(outcome.result).toBe('permerror');
 	});
