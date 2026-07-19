@@ -13,3 +13,4 @@ export {
 export { auditLinks, type LinkAuditReport } from './linkAudit';
 export { auditAccessibility, type AccessibilityReport } from './accessibility';
 export { analyzeEmail, summarizeFailure, type DeliverabilityReport } from './report';
+export { MAX_SCAN_LENGTH } from './html';

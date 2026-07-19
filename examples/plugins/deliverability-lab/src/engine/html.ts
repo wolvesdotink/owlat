@@ -3,10 +3,31 @@
  * accessibility analyzers. This deliberately does NOT build a DOM: a
  * deliverability linter only needs to find tags and read a few attributes, and a
  * regex scan is deterministic, allocation-cheap, and safe to run on the untrusted
- * body of an email inside a synchronous send gate. The scanners are bounded — an
- * adversarial body cannot make them do super-linear work — because each regex is
- * linear and anchored to a tag opener.
+ * body of an email inside a synchronous send gate.
+ *
+ * These regexes can backtrack super-linearly on adversarial input (e.g. a tag
+ * opener that is never closed — `'<a "'.repeat(n)`), so the scanners do NOT run
+ * over an unbounded body: every entry point clamps its input to the first
+ * `MAX_SCAN_LENGTH` characters via `boundedInput`. That makes the worst case a
+ * constant regardless of how large a hostile body is, so an adversarial email
+ * cannot pin a CPU inside the send gate. `MAX_SCAN_LENGTH` is far larger than any
+ * realistic email body, so genuine content is never truncated in practice; a
+ * deliverability lint of the first 32 KB is more than enough signal.
  */
+
+/**
+ * Upper bound, in characters, on how much of a body the scanners inspect. `report`
+ * runs several of these scanners over the same body, so this is sized so that even
+ * their combined worst-case quadratic cost on a fully adversarial body stays well
+ * under the host's fail-closed gate timeout on slow hardware, while comfortably
+ * exceeding any realistic email body.
+ */
+export const MAX_SCAN_LENGTH = 32 * 1024;
+
+/** Clamp untrusted HTML to the scan ceiling so worst-case cost is a constant. */
+function boundedInput(html: string): string {
+	return html.length > MAX_SCAN_LENGTH ? html.slice(0, MAX_SCAN_LENGTH) : html;
+}
 
 /** One parsed HTML element opener: its lowercased tag name and raw attributes. */
 export interface HtmlTag {
@@ -56,7 +77,7 @@ function parseAttributes(raw: string): Record<string, string> {
 /** Every element opener in `html`, in document order. Self-closing tags included. */
 export function scanTags(html: string): HtmlTag[] {
 	const tags: HtmlTag[] = [];
-	for (const match of html.matchAll(TAG_RE)) {
+	for (const match of boundedInput(html).matchAll(TAG_RE)) {
 		const name = match[1]?.toLowerCase();
 		if (!name) continue;
 		tags.push({ name, attributes: parseAttributes(match[2] ?? '') });
@@ -77,7 +98,7 @@ export function scanImages(html: string): HtmlTag[] {
  */
 export function scanAnchors(html: string): HtmlAnchor[] {
 	const anchors: HtmlAnchor[] = [];
-	for (const match of html.matchAll(ANCHOR_RE)) {
+	for (const match of boundedInput(html).matchAll(ANCHOR_RE)) {
 		anchors.push({ attributes: match[1] ?? '', inner: match[2] ?? '' });
 	}
 	return anchors;
@@ -85,7 +106,7 @@ export function scanAnchors(html: string): HtmlAnchor[] {
 
 /** Strip tags and collapse whitespace so text content can be measured/compared. */
 export function textContent(html: string): string {
-	return decodeEntities(html.replace(/<[^>]*>/g, ' '))
+	return decodeEntities(boundedInput(html).replace(/<[^>]*>/g, ' '))
 		.replace(/\s+/g, ' ')
 		.trim();
 }
