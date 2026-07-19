@@ -141,6 +141,81 @@ describe('checkSpf — mx / a mechanisms', () => {
 		const result = await checkSpf('192.0.2.1', 'user@mx-temp.example', 'ehlo.host', resolver);
 		expect(result.result).toBe('temperror');
 	});
+
+	it.each([
+		{ record: 'v=spf1 a/24 -all', lookup: 'cidr.example' },
+		{ record: 'v=spf1 a:mail.cidr.example/24 -all', lookup: 'mail.cidr.example' },
+	])('honors an IPv4 CIDR on $record', async ({ record, lookup }) => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'cidr.example') return [[record]];
+			if (type === 'A' && name === lookup) return ['192.0.2.200'];
+			return [];
+		};
+		const result = await checkSpf('192.0.2.1', 'user@cidr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('honors dual CIDR syntax for an IPv6 a mechanism', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'cidr6.example') return [['v=spf1 a//64 -all']];
+			if (type === 'AAAA' && name === 'cidr6.example') return ['2001:db8:abcd::1'];
+			return [];
+		};
+		const result = await checkSpf(
+			'2001:db8:abcd::ffff',
+			'user@cidr6.example',
+			'ehlo.host',
+			resolver
+		);
+		expect(result.result).toBe('pass');
+	});
+
+	it('honors an IPv4 CIDR on an mx mechanism', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'mxcidr.example') return [['v=spf1 mx/24 -all']];
+			if (type === 'MX' && name === 'mxcidr.example') {
+				return [{ exchange: 'mail.mxcidr.example', priority: 10 }];
+			}
+			if (type === 'A' && name === 'mail.mxcidr.example') return ['198.51.100.200'];
+			return [];
+		};
+		const result = await checkSpf('198.51.100.1', 'user@mxcidr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('permerrors an out-of-range ip4 prefix instead of authenticating it', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'badcidr.example') {
+				return [['v=spf1 ip4:0.0.0.0/33 -all']];
+			}
+			return [];
+		};
+		const result = await checkSpf('1.2.3.4', 'user@badcidr.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('permerror');
+	});
+
+	it('expands a reversed-IP transformer in an exists mechanism', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'macro-transform.example') {
+				return [['v=spf1 exists:%{ir}.auth.example -all']];
+			}
+			if (type === 'A' && name === '4.3.2.1.auth.example') return ['127.0.0.2'];
+			return [];
+		};
+		const result = await checkSpf('1.2.3.4', 'user@macro-transform.example', 'ehlo.host', resolver);
+		expect(result.result).toBe('pass');
+	});
+
+	it('evaluates the HELO identity when MAIL FROM is null', async () => {
+		const resolver: SpfDnsResolver = async (name, type) => {
+			if (type === 'TXT' && name === 'helo.example') {
+				return [['v=spf1 ip4:203.0.113.10 -all']];
+			}
+			return [];
+		};
+		const result = await checkSpf('203.0.113.10', '', 'helo.example', resolver);
+		expect(result.result).toBe('pass');
+	});
 });
 
 describe('checkSpf — top-level lookup outcomes', () => {

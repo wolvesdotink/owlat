@@ -65,4 +65,25 @@ describe('isFromAmbiguous (RFC 7489 §6.6.1)', () => {
 		});
 		expect(outcome.result).toBe('permerror');
 	});
+
+	it('keeps duplicate-From ambiguity actionable when the collapsed value has no domain', async () => {
+		const parsed = parseMessage(
+			Buffer.from(
+				'From: victim@example.com\r\nFrom: invalid\r\nTo: user@example.org\r\n\r\nbody\r\n'
+			)
+		);
+		const fromDomain = emailDomain(firstAddress(parsed.from) ?? '');
+		const fromAmbiguous = isFromAmbiguous(parsed.from, parsed.headerCounts.get('from'));
+		expect(fromDomain).toBe('');
+		expect(fromAmbiguous).toBe(true);
+
+		const outcome = await evaluateDmarc({
+			fromDomain,
+			fromAmbiguous,
+			spf: { result: 'none' },
+			dkim: { result: 'none' },
+			policyLookup: async () => null,
+		});
+		expect(outcome.result).toBe('permerror');
+	});
 });

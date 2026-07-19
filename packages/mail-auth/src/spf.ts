@@ -12,8 +12,29 @@
 
 import { resolve as dnsResolve } from 'dns/promises';
 import { emailDomain } from '@owlat/shared/spfAlignment';
-import { normalizeIp, ipMatchesCidr, ipv6MatchesCidr, expandMacros } from './ip.js';
-import { addressMatchesSender, dnsTemperror, senderAddressType } from './spfMechanism.js';
+import {
+	normalizeIp,
+	ipMatchesCidr,
+	ipv6MatchesCidr,
+	expandMacros,
+	isValidIpv4Cidr,
+	isValidIpv6Cidr,
+	SpfMacroError,
+	type SpfMacroContext,
+} from './ip.js';
+import {
+	addressMatchesSender,
+	dnsTemperror,
+	parseAddressMechanism,
+	senderAddressType,
+} from './spfMechanism.js';
+import {
+	consumeLookup,
+	resolveCounted,
+	rethrowAbort,
+	SpfAbort,
+	type SpfBudget,
+} from './spfBudget.js';
 
 /** RFC 7208 §2.6 / RFC 8601 SPF result keyword. */
 export type SpfVerdict =
@@ -46,37 +67,8 @@ export type SpfDnsResolver = (
 const defaultResolver: SpfDnsResolver = (name, type) =>
 	dnsResolve(name, type) as unknown as Promise<unknown[]>;
 
-/**
- * RFC 7208 §4.6.4: an SPF evaluation may cause at most 10 DNS lookups via
- * a/mx/include/redirect/exists (and §4.6.4 para 3: at most 10 MX host lookups
- * per mx term). Without this budget — and without include-cycle detection —
- * two mutually including TXT records turn every MAIL FROM into an unbounded
- * pre-auth DNS/CPU loop on the public listener.
- */
-const MAX_SPF_DNS_LOOKUPS = 10;
 const MAX_SPF_MX_HOSTS = 10;
-/**
- * RFC 7208 §4.6.4: an SPF evaluation must produce a permerror once it has seen
- * more than two "void lookups" — DNS queries that return NXDOMAIN (RCODE 3) or
- * a positive answer with zero records (NODATA). This caps the amplification a
- * misconfigured/abusive record can extract from us via a/mx/exists/include
- * terms that each resolve to nothing.
- */
-const MAX_SPF_VOID_LOOKUPS = 2;
 const SPF_OVERALL_TIMEOUT_MS = 20_000;
-
-interface SpfBudget {
-	lookups: number;
-	voids: number;
-	visited: Set<string>;
-}
-
-/** Returns false when the RFC 7208 lookup budget is exhausted. */
-function consumeLookup(budget: SpfBudget): boolean {
-	if (budget.lookups >= MAX_SPF_DNS_LOOKUPS) return false;
-	budget.lookups += 1;
-	return true;
-}
 
 /**
  * RFC 7208 §4.5: recognize an SPF record. `v=spf1` EXACTLY is a valid
@@ -99,59 +91,6 @@ function selectSpfRecord(records: readonly string[]): { record?: string; multipl
 	return { record: matches[0], multiple: false };
 }
 
-/** Sentinel thrown to abort evaluation with a definite SPF result. */
-class SpfAbort {
-	constructor(public readonly result: SpfResult) {}
-}
-
-/** Re-throw an SpfAbort so per-mechanism catch blocks can't swallow it. */
-function rethrowAbort(err: unknown): void {
-	if (err instanceof SpfAbort) throw err;
-}
-
-/**
- * Resolve a DNS record while enforcing the §4.6.4 void-lookup cap.
- *
- * A query that returns nothing (NXDOMAIN/NODATA, surfaced as ENOTFOUND/ENODATA
- * or an empty answer) is a "void lookup". The third such lookup aborts the whole
- * evaluation with a permerror — note this means we stop issuing further DNS
- * queries for the term that tripped the cap. Any other DNS error (e.g. SERVFAIL)
- * is a temporary failure and is re-thrown so the caller can map it per §5.2.
- */
-async function resolveCounted<T>(
-	domain: string,
-	type: 'A' | 'AAAA' | 'MX' | 'TXT',
-	budget: SpfBudget,
-	resolver: SpfDnsResolver
-): Promise<T[]> {
-	let records: T[];
-	try {
-		records = (await resolver(domain, type)) as unknown as T[];
-	} catch (err: unknown) {
-		const code = (err as { code?: string }).code;
-		if (code === 'ENOTFOUND' || code === 'ENODATA') {
-			countVoid(budget);
-			return [];
-		}
-		throw err;
-	}
-	if (records.length === 0) {
-		countVoid(budget);
-	}
-	return records;
-}
-
-/** Record one void lookup; abort with permerror once the §4.6.4 cap is passed. */
-function countVoid(budget: SpfBudget): void {
-	budget.voids += 1;
-	if (budget.voids > MAX_SPF_VOID_LOOKUPS) {
-		throw new SpfAbort({
-			result: 'permerror',
-			explanation: 'SPF void DNS lookup limit exceeded',
-		});
-	}
-}
-
 /**
  * Perform SPF validation for an inbound email.
  *
@@ -165,13 +104,20 @@ function countVoid(budget: SpfBudget): void {
 export async function checkSpf(
 	senderIp: string,
 	mailFrom: string,
-	_ehloHostname: string,
+	ehloHostname: string,
 	resolver: SpfDnsResolver = defaultResolver
 ): Promise<SpfResult> {
-	const domain = emailDomain(mailFrom);
+	const nullSender = mailFrom === '' || mailFrom === '<>';
+	const domain =
+		emailDomain(mailFrom) ||
+		(nullSender ? ehloHostname.trim().toLowerCase().replace(/\.$/, '') : '');
 	if (!domain) {
-		return { result: 'none', explanation: 'No domain in MAIL FROM' };
+		return { result: 'none', explanation: 'No SPF identity domain' };
 	}
+	const macroContext: SpfMacroContext = {
+		sender: nullSender ? `postmaster@${domain}` : mailFrom,
+		helo: ehloHostname,
+	};
 
 	try {
 		const records = (await resolver(domain, 'TXT')) as string[][];
@@ -192,11 +138,16 @@ export async function checkSpf(
 		let timer: NodeJS.Timeout | undefined;
 		try {
 			return await Promise.race([
-				evaluateSpf(spfRecord, senderIp, domain, budget, resolver).catch((err: unknown) => {
-					// A void-lookup-cap breach unwinds the recursion as an SpfAbort.
-					if (err instanceof SpfAbort) return err.result;
-					throw err;
-				}),
+				evaluateSpf(spfRecord, senderIp, domain, budget, resolver, macroContext).catch(
+					(err: unknown): SpfResult => {
+						// A void-lookup-cap breach unwinds the recursion as an SpfAbort.
+						if (err instanceof SpfAbort) return err.result;
+						if (err instanceof SpfMacroError) {
+							return { result: 'permerror', explanation: err.message };
+						}
+						throw err;
+					}
+				),
 				new Promise<SpfResult>((resolveTimeout) => {
 					timer = setTimeout(
 						() => resolveTimeout({ result: 'temperror', explanation: 'SPF evaluation timed out' }),
@@ -224,7 +175,8 @@ async function evaluateSpf(
 	senderIp: string,
 	domain: string,
 	budget: SpfBudget,
-	resolver: SpfDnsResolver
+	resolver: SpfDnsResolver,
+	macroContext: SpfMacroContext
 ): Promise<SpfResult> {
 	const normalizedIp = normalizeIp(senderIp);
 	const terms = spfRecord.split(/\s+/).slice(1); // Skip "v=spf1"
@@ -255,10 +207,14 @@ async function evaluateSpf(
 		}
 
 		const qualifierResult = mapQualifier(qualifier);
+		const lowerMech = mech.toLowerCase();
 
 		// ip4:
-		if (mech.startsWith('ip4:')) {
+		if (lowerMech.startsWith('ip4:')) {
 			const cidr = mech.slice(4);
+			if (!isValidIpv4Cidr(cidr)) {
+				return { result: 'permerror', explanation: `Invalid SPF ip4 mechanism: ${cidr}` };
+			}
 			if (ipMatchesCidr(normalizedIp, cidr)) {
 				return { result: qualifierResult };
 			}
@@ -266,26 +222,41 @@ async function evaluateSpf(
 		}
 
 		// ip6: — RFC 7208 §5.6, with prefix-length (CIDR) support.
-		if (mech.startsWith('ip6:')) {
+		if (lowerMech.startsWith('ip6:')) {
 			const ip6 = mech.slice(4);
+			if (!isValidIpv6Cidr(ip6)) {
+				return { result: 'permerror', explanation: `Invalid SPF ip6 mechanism: ${ip6}` };
+			}
 			if (ipv6MatchesCidr(normalizedIp, ip6)) {
 				return { result: qualifierResult };
 			}
 			continue;
 		}
 
+		const addressMechanism = parseAddressMechanism(mech);
+		if (addressMechanism === null) {
+			return { result: 'permerror', explanation: `Invalid SPF address mechanism: ${mech}` };
+		}
+
 		// a mechanism (check the domain's sender-address-family records)
-		if (mech === 'a' || mech.startsWith('a:')) {
+		if (addressMechanism?.kind === 'a') {
 			// RFC 7208 §5.3/§7: the a: domain-spec may contain macros (`a:%{d}`).
-			const targetDomain =
-				mech === 'a' ? domain : expandMacros(mech.slice(2), normalizedIp, domain);
+			const targetDomain = expandMacros(
+				addressMechanism.domainSpec ?? domain,
+				normalizedIp,
+				domain,
+				macroContext
+			);
 			if (!consumeLookup(budget)) {
 				return { result: 'permerror', explanation: 'SPF DNS lookup limit exceeded' };
 			}
 			try {
 				const addressType = senderAddressType(normalizedIp);
 				const addresses = await resolveCounted<string>(targetDomain, addressType, budget, resolver);
-				if (addresses.some((address) => addressMatchesSender(normalizedIp, address))) {
+				const prefix = normalizedIp.includes(':')
+					? addressMechanism.ipv6Cidr
+					: addressMechanism.ipv4Cidr;
+				if (addresses.some((address) => addressMatchesSender(normalizedIp, address, prefix))) {
 					return { result: qualifierResult };
 				}
 			} catch (err: unknown) {
@@ -296,10 +267,14 @@ async function evaluateSpf(
 		}
 
 		// mx mechanism (check each MX host's sender-address-family records)
-		if (mech === 'mx' || mech.startsWith('mx:')) {
+		if (addressMechanism?.kind === 'mx') {
 			// RFC 7208 §5.4/§7: the mx: domain-spec may contain macros (`mx:%{d}`).
-			const targetDomain =
-				mech === 'mx' ? domain : expandMacros(mech.slice(3), normalizedIp, domain);
+			const targetDomain = expandMacros(
+				addressMechanism.domainSpec ?? domain,
+				normalizedIp,
+				domain,
+				macroContext
+			);
 			if (!consumeLookup(budget)) {
 				return { result: 'permerror', explanation: 'SPF DNS lookup limit exceeded' };
 			}
@@ -315,7 +290,10 @@ async function evaluateSpf(
 						const mxHost = typeof mx === 'string' ? mx : mx.exchange;
 						const addressType = senderAddressType(normalizedIp);
 						const addresses = await resolveCounted<string>(mxHost, addressType, budget, resolver);
-						if (addresses.some((address) => addressMatchesSender(normalizedIp, address))) {
+						const prefix = normalizedIp.includes(':')
+							? addressMechanism.ipv6Cidr
+							: addressMechanism.ipv4Cidr;
+						if (addresses.some((address) => addressMatchesSender(normalizedIp, address, prefix))) {
 							return { result: qualifierResult };
 						}
 					} catch (err: unknown) {
@@ -332,8 +310,8 @@ async function evaluateSpf(
 		}
 
 		// include: (recursive SPF lookup, one level deep)
-		if (mech.startsWith('include:')) {
-			const includeDomain = expandMacros(mech.slice(8), normalizedIp, domain);
+		if (lowerMech.startsWith('include:')) {
+			const includeDomain = expandMacros(mech.slice(8), normalizedIp, domain, macroContext);
 			if (budget.visited.has(includeDomain.toLowerCase())) {
 				return { result: 'permerror', explanation: `SPF include cycle via ${includeDomain}` };
 			}
@@ -378,7 +356,8 @@ async function evaluateSpf(
 				senderIp,
 				includeDomain,
 				budget,
-				resolver
+				resolver,
+				macroContext
 			);
 			switch (includeResult.result) {
 				case 'pass':
@@ -400,8 +379,8 @@ async function evaluateSpf(
 
 		// exists: (RFC 7208 §5.7) — macro-expand the target, then a single A lookup;
 		// the mechanism matches iff *any* A record exists (the IP is irrelevant).
-		if (mech.startsWith('exists:')) {
-			const target = expandMacros(mech.slice(7), normalizedIp, domain);
+		if (lowerMech.startsWith('exists:')) {
+			const target = expandMacros(mech.slice(7), normalizedIp, domain, macroContext);
 			if (!consumeLookup(budget)) {
 				return { result: 'permerror', explanation: 'SPF DNS lookup limit exceeded' };
 			}
@@ -418,9 +397,13 @@ async function evaluateSpf(
 		}
 
 		// all mechanism (catch-all)
-		if (mech === 'all') {
+		if (lowerMech === 'all') {
 			return { result: qualifierResult };
 		}
+
+		// RFC 7208 §6: an unknown or malformed mechanism is a permanent error;
+		// silently skipping it can turn a broken authorization policy into `pass`.
+		return { result: 'permerror', explanation: `Unknown SPF mechanism: ${mech}` };
 	}
 
 	// RFC 7208 §6.1: a redirect= modifier is only applied once all mechanisms
@@ -428,7 +411,7 @@ async function evaluateSpf(
 	// redirected record's result IS the result — there is no qualifier and no
 	// fallback to neutral on a sub-error.
 	if (redirectTarget) {
-		const target = expandMacros(redirectTarget, normalizedIp, domain);
+		const target = expandMacros(redirectTarget, normalizedIp, domain, macroContext);
 		if (budget.visited.has(target.toLowerCase())) {
 			return { result: 'permerror', explanation: `SPF redirect cycle via ${target}` };
 		}
@@ -463,7 +446,7 @@ async function evaluateSpf(
 				explanation: `SPF redirect target ${target} has no SPF record`,
 			};
 		}
-		return evaluateSpf(redirectSpf, senderIp, target, budget, resolver);
+		return evaluateSpf(redirectSpf, senderIp, target, budget, resolver, macroContext);
 	}
 
 	// No mechanism matched and no redirect — neutral
