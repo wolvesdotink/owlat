@@ -33,8 +33,9 @@ import { generateAndSendReports as sendTlsReports } from './smtp/tlsRpt.js';
 import { notifyConvex } from './webhooks/convexNotifier.js';
 import { logger } from './monitoring/logger.js';
 import { closeListenerSafely } from './lib/closeListenerSafely.js';
+import { pathToFileURL } from 'node:url';
 
-async function main() {
+export async function main() {
 	logger.info('Starting owlat-mta...');
 
 	// ── 1. Load configuration ──
@@ -350,7 +351,10 @@ async function main() {
 	logger.info('owlat-mta fully started and ready');
 }
 
-main().catch((err) => {
-	logger.fatal({ err }, 'Fatal startup error');
-	process.exit(1);
-});
+const entryPath = process.argv[1];
+if (entryPath && import.meta.url === pathToFileURL(entryPath).href) {
+	void main().catch((err) => {
+		logger.fatal({ err }, 'Fatal startup error');
+		process.exit(1);
+	});
+}
