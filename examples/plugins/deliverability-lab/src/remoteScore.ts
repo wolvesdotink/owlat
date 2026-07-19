@@ -21,6 +21,7 @@
 
 import { analyzeEmail, normalizeSpamScore } from './engine';
 import type { DeliverabilityEmail } from './engine';
+import { clampUntrustedText } from './untrustedText';
 
 /** Largest reason string kept from an untrusted score-hook response. */
 export const SCORE_HOOK_REASON_MAX_LENGTH = 200;
@@ -48,16 +49,6 @@ export interface DeliverabilityScore {
 	readonly reason?: string;
 }
 
-// eslint-disable-next-line no-control-regex -- deliberately stripping C0/C7F control chars.
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
-
-/** Strip control characters and clamp an untrusted reason to a safe length. */
-function clampReason(reason: string): string {
-	const sanitized = reason.replace(CONTROL_CHARS, ' ');
-	// Slice by CODE POINTS so a multibyte character is never split mid-surrogate.
-	return [...sanitized].slice(0, SCORE_HOOK_REASON_MAX_LENGTH).join('').trim();
-}
-
 /**
  * Strictly validate an untrusted score-hook response. Accepts ONLY a plain object
  * with a finite numeric `score` in [0,1] and, optionally, a string `reason`.
@@ -78,7 +69,7 @@ export function parseScoreHookResult(value: unknown): ScoreHookResult | null {
 	if (reasonDescriptor && 'value' in reasonDescriptor) {
 		const reason = reasonDescriptor.value;
 		if (typeof reason !== 'string') return null;
-		const clamped = clampReason(reason);
+		const clamped = clampUntrustedText(reason, SCORE_HOOK_REASON_MAX_LENGTH);
 		return clamped.length > 0 ? { score, reason: clamped } : { score };
 	}
 	return { score };
