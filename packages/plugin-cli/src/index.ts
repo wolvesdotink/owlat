@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { findWorkspaceRoot, PluginCodegenError } from '@owlat/plugin-codegen';
+import { findWorkspaceRoot } from '@owlat/plugin-codegen';
 import { runDev, watchPluginsConfig } from './commands/dev';
-import { PluginCliError } from './errors';
+import { PluginCliError, reportCliFailure } from './errors';
 import type { CliIo } from './io';
 import { dispatchFinite, USAGE } from './run';
 
@@ -38,11 +38,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-	if (error instanceof PluginCliError || error instanceof PluginCodegenError) {
-		consoleIo.error(error.message);
-		for (const detail of error.details) consoleIo.error(`  ${detail}`);
-	} else {
-		consoleIo.error('owlat plugins failed unexpectedly.');
-	}
+	reportCliFailure(consoleIo, error, 'owlat plugins failed unexpectedly.');
 	process.exitCode = 1;
 });
