@@ -8,7 +8,7 @@ import {
 	validatePluginManifest,
 } from '@owlat/plugin-kit';
 import { describe, expect, it } from 'vitest';
-import { deliverabilityLabPlugin } from '../manifest';
+import { deliverabilityLabPlugin, DELIVERABILITY_LAB_SEEDBOX_URL_ENV } from '../manifest';
 
 describe('deliverability-lab manifest', () => {
 	it('is a valid plugin manifest that survives a round trip through the kernel validator', () => {
@@ -39,11 +39,17 @@ describe('deliverability-lab manifest', () => {
 		expect(gates[0]?.timeoutMs).toBeLessThanOrEqual(30_000);
 	});
 
-	it('is off by default and requires the seedbox env var before it can be enabled', () => {
+	it('is off by default and does not gate enablement on the not-yet-wired seedbox env var', () => {
 		expect(deliverabilityLabPlugin.flag?.default).toBe(false);
-		expect(deliverabilityLabPlugin.flag?.requiredEnvVars).toContain(
+		// The seedbox endpoint is declared as a forward-looking constant, but nothing
+		// shipped here reads it (the bundled gate has no remote hook), so it must NOT
+		// be a `requiredEnvVars` enablement blocker — otherwise an operator would have
+		// to provision an endpoint that does nothing. PP-31 promotes it once wired.
+		expect(deliverabilityLabPlugin.flag?.requiredEnvVars ?? []).not.toContain(
 			'DELIVERABILITY_LAB_SEEDBOX_URL'
 		);
+		// It stays exported as the contract other tiers will consume.
+		expect(DELIVERABILITY_LAB_SEEDBOX_URL_ENV).toBe('DELIVERABILITY_LAB_SEEDBOX_URL');
 	});
 
 	it('caps its attributed LLM spend with a hard positive daily budget', () => {
