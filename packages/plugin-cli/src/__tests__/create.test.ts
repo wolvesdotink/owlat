@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runCreate } from '../commands/create';
@@ -67,6 +67,53 @@ describe('runCreate', () => {
 		await expect(runCreate(root, { idInput: 'Not Valid', dryRun: false }, io)).rejects.toThrow(
 			/not a valid plugin id/
 		);
+	});
+
+	it('rolls back files already written when a mid-scaffold write fails', async () => {
+		const root = await createCliWorkspace();
+		const target = join(root, scaffoldDir);
+		await mkdir(join(target, 'src'), { recursive: true });
+		// A read-only src/ passes the pre-write inspect (its missing files read as
+		// ENOENT, not a hard error) yet makes the first write *into* it — creating
+		// src/__tests__/ — fail with EACCES, so the failure lands inside
+		// writeScaffold *after* the top-level files (README.md, package.json, …)
+		// are already on disk. That is the partial-write the rollback must undo.
+		// (Pre-creating src as a *file* instead would trip the earlier inspect
+		// guard with ENOTDIR and never reach writeScaffold at all.)
+		await chmod(join(target, 'src'), 0o555);
+
+		const { io } = captureIo();
+		try {
+			await expect(runCreate(root, { idInput: 'my-plugin', dryRun: false }, io)).rejects.toThrow(
+				PluginCliError
+			);
+			// Every file this run wrote is gone; only the pre-existing src/ remains,
+			// so a failed run never leaves a half-written package behind.
+			expect((await readdir(target)).sort()).toEqual(['src']);
+		} finally {
+			await chmod(join(target, 'src'), 0o755);
+		}
+	});
+
+	it('rolls back an outer directory it created when a deeper mkdir fails mid-chain', async () => {
+		const root = await createCliWorkspace();
+		// A umask stripping every permission bit makes the first (outer) directory
+		// this run creates unwritable, so creating the directory *below* it fails
+		// EACCES — a non-EEXIST mkdir failure partway up a fresh multi-level chain,
+		// the same class as ENOSPC/EDQUOT. The outer directory was created by this
+		// run and must be rolled back, not orphaned.
+		const previousUmask = process.umask(0o777);
+		const { io } = captureIo();
+		try {
+			await expect(
+				runCreate(root, { idInput: 'my-plugin', dir: join('leaked', 'nested'), dryRun: false }, io)
+			).rejects.toThrow(PluginCliError);
+		} finally {
+			process.umask(previousUmask);
+		}
+		// The outer leaked/ directory this run created before the failing mkdir was
+		// removed by rollback (its child was never created).
+		await expect(stat(join(root, 'leaked'))).rejects.toMatchObject({ code: 'ENOENT' });
 	});
 
 	it('refuses a target directory that escapes the workspace', async () => {
