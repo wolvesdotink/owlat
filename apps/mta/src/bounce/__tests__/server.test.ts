@@ -251,4 +251,14 @@ describe('bounce onRcptTo — mailbox quota (structured 552 5.2.2, sanctioned)',
 		expect(reply).toBeUndefined();
 		expect(spy).not.toHaveBeenCalled();
 	});
+
+	it('defers with 451 (not a permanent 550) when the mailbox lookup faults transiently', async () => {
+		// A Redis blip is transient: a permanent 550 would turn re-queueable inbound
+		// mail into a hard bounce. The remote MTA must be told to retry (4xx).
+		vi.mocked(findMailboxRoute).mockRejectedValue(new Error('redis unavailable'));
+		const reply = await runRcptTo(makeConfig(), 'someone@org.example');
+		expect(reply?.code).toBe(451);
+		expect(reply?.enhanced).toBe('4.3.0');
+		expect(reply?.code).not.toBe(550);
+	});
 });

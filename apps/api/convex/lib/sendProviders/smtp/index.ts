@@ -126,6 +126,30 @@ export function buildRelayClientConfig(input: RelayClientInput): RelayClientConf
 }
 
 /**
+ * The name announced in EHLO to the relay when `EHLO_HOSTNAME` is unset. A bare
+ * `os.hostname()` is a dotless hex token in a container, which strict relays
+ * reject (`reject_non_fqdn_helo_hostname`), so fall back to the RFC 5321 §4.1.3
+ * address literal `[127.0.0.1]` when the hostname is not an FQDN, and bracket a
+ * bare IPv4 hostname. This mirrors mail-sync's `ehloName()` and the old
+ * nodemailer `_getHostname()` fallback the outbound path preserved.
+ */
+export function relayEhloName(): string {
+	let host: string;
+	try {
+		host = os.hostname() || '';
+	} catch {
+		host = '';
+	}
+	if (host === '' || !host.includes('.')) {
+		return '[127.0.0.1]';
+	}
+	if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
+		return `[${host}]`;
+	}
+	return host;
+}
+
+/**
  * Resolve (once) the relay client config from the instance-level env.
  * `SMTP_RELAY_SECURE=true` opens an implicit-TLS connection (typically 465);
  * unset/false connects cleartext and upgrades via STARTTLS (587). Auth
@@ -146,7 +170,7 @@ function getClientConfig(): RelayClientConfig {
 		secure,
 		user: getRequired('SMTP_RELAY_USERNAME'),
 		pass: getRequired('SMTP_RELAY_PASSWORD'),
-		ehloName: getOptional('EHLO_HOSTNAME') ?? os.hostname(),
+		ehloName: getOptional('EHLO_HOSTNAME') ?? relayEhloName(),
 	});
 	return cachedConfig;
 }

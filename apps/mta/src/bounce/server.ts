@@ -346,9 +346,9 @@ export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
 						}
 						return { code: 550, text: 'Mailbox not found' };
 					})
-					.catch((): SmtpReply => ({ code: 550, text: 'Temporary error' }));
+					.catch((): SmtpReply => ({ code: 451, enhanced: '4.3.0', text: 'Temporary error' }));
 			})
-			.catch((): SmtpReply => ({ code: 550, text: 'Temporary error' }));
+			.catch((): SmtpReply => ({ code: 451, enhanced: '4.3.0', text: 'Temporary error' }));
 	};
 }
 

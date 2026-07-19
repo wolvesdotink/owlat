@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { buildRelayClientConfig } from '../index';
+import os from 'node:os';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { buildRelayClientConfig, relayEhloName } from '../index';
 
 /**
  * T1 — the generic SMTP-relay client must pin a TLSv1.2 floor (RFC 8996/9325)
@@ -59,5 +60,37 @@ describe('buildRelayClientConfig — TLS floor + STARTTLS enforcement', () => {
 		});
 		expect(connect.timeouts?.connect).toBe(15_000);
 		expect(connect.timeouts?.greeting).toBe(15_000);
+	});
+});
+
+/**
+ * The default EHLO identity when `EHLO_HOSTNAME` is unset. A container hostname is
+ * a dotless hex token that strict relays reject (`reject_non_fqdn_helo_hostname`),
+ * so the fallback must be the RFC 5321 §4.1.3 address literal — matching the
+ * outbound path's preserved nodemailer `_getHostname()` behavior.
+ */
+describe('relayEhloName — non-FQDN fallback', () => {
+	afterEach(() => vi.restoreAllMocks());
+
+	it('falls back to [127.0.0.1] for a dotless (container) hostname', () => {
+		vi.spyOn(os, 'hostname').mockReturnValue('a1b2c3d4e5f6');
+		expect(relayEhloName()).toBe('[127.0.0.1]');
+	});
+
+	it('brackets a bare IPv4 hostname as an address literal', () => {
+		vi.spyOn(os, 'hostname').mockReturnValue('10.0.0.5');
+		expect(relayEhloName()).toBe('[10.0.0.5]');
+	});
+
+	it('passes a real FQDN through unchanged', () => {
+		vi.spyOn(os, 'hostname').mockReturnValue('mail.relay.example.com');
+		expect(relayEhloName()).toBe('mail.relay.example.com');
+	});
+
+	it('falls back when os.hostname() throws', () => {
+		vi.spyOn(os, 'hostname').mockImplementation(() => {
+			throw new Error('no hostname');
+		});
+		expect(relayEhloName()).toBe('[127.0.0.1]');
 	});
 });
