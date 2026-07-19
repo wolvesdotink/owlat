@@ -17,7 +17,7 @@
  *     hostile dependency can only ever make Owlat MORE cautious, never less.
  */
 
-import { analyzeEmail, summarizeFailure } from './engine';
+import { analyzeEmail, MAX_SCAN_LENGTH, summarizeFailure } from './engine';
 import type { DeliverabilityEmail } from './engine';
 import { scoreDeliverability, type RemoteScoreHook } from './remoteScore';
 import type {
@@ -42,7 +42,10 @@ export interface DeliverabilityGateConfig {
 
 /** Treat a body that contains a tag as HTML so the link/accessibility checks run. */
 function toEmail(input: PluginAutonomyGateInput): DeliverabilityEmail {
-	const looksLikeHtml = /<[a-z!/][\s\S]*>/i.test(input.draftBody);
+	// Sniff over a bounded prefix only: the same `MAX_SCAN_LENGTH` cap the engine
+	// scanners use, so an unclosed-tag body cannot make this `.test()` backtrack
+	// super-linearly. A real tag opener always appears well within the prefix.
+	const looksLikeHtml = /<[a-z!/][\s\S]*>/i.test(input.draftBody.slice(0, MAX_SCAN_LENGTH));
 	return {
 		from: input.from,
 		subject: input.subject,
