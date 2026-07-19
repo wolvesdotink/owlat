@@ -1,7 +1,6 @@
-import { access } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
 import { generatePluginComposition } from './generate';
 import { PluginCodegenError } from './errors';
+import { findWorkspaceRoot } from './workspaceRoot';
 
 const allowedArguments = new Set(['--check', '--boundaries-only']);
 
@@ -29,29 +28,6 @@ async function main(): Promise<void> {
 				? 'Bundled plugin composition is current.'
 				: 'Generated bundled plugin composition.'
 	);
-}
-
-async function findWorkspaceRoot(start: string): Promise<string> {
-	let current = resolve(start);
-	while (true) {
-		try {
-			await Promise.all([
-				access(join(current, 'package.json')),
-				access(join(current, 'plugins.config.ts')),
-				access(join(current, 'packages', 'plugin-codegen')),
-			]);
-			return current;
-		} catch {
-			const parent = dirname(current);
-			if (parent === current) {
-				throw new PluginCodegenError(
-					'workspace_not_found',
-					'Run plugin codegen from inside the Owlat workspace'
-				);
-			}
-			current = parent;
-		}
-	}
 }
 
 main().catch((error: unknown) => {
