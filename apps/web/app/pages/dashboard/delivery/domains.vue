@@ -3,9 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
-import { isFreemailDomain, resolveNs } from '~/utils/domainPrecheck';
 import { createAutoRecheckPoller, type AutoRecheckPoller } from '~/utils/domainAutoRecheck';
-import { rules } from '~/composables/useFormValidation';
 import type { DmarcPolicy } from '~/utils/domainStatus';
 
 useHead({ title: 'Sending Domains — Owlat' });
@@ -73,56 +71,13 @@ const forcingDomainId = ref<Id<'domains'> | null>(null);
 // Toast notifications
 const { showToast } = useToast();
 
-// Add domain modal
-const addModal = useModal({
-	onClose: () => {
-		addForm.domain = '';
-		validation.reset();
-		nsUnresolved.value = false;
-	},
-});
+// Add domain modal. The form body lives in DomainsAddDomainForm, which owns its
+// own field state and re-initializes each time the modal opens (UiModal v-if's
+// its slot), so there is nothing to reset here.
+const addModal = useModal();
 
 // Delete confirmation modal
 const deleteModal = useConfirmModal<{ _id: Id<'domains'>; domain: string }>();
-
-// Form state
-const addForm = reactive({
-	domain: '',
-});
-
-// Form validation
-const validation = useFormValidation({
-	domain: [
-		rules.required('Domain is required'),
-		rules.domain('Please enter a valid domain name (e.g., mail.example.com)'),
-	],
-});
-
-// Add-domain pre-checks: catch two mistakes before the user configures DNS
-// records they can never publish.
-//  1. Freemail / public-mailbox domain they don't control — a *blocking* warn
-//     that steers them to the connect-an-external-mailbox path. Computed live so
-//     it updates as they type.
-//  2. A domain that doesn't resolve (NXDOMAIN) — an *advisory* warn via a
-//     fail-soft DoH lookup; submit is still allowed (DNS may be provisioning).
-const isFreemail = computed(() => isFreemailDomain(addForm.domain));
-const nsUnresolved = ref(false);
-
-// Run the fail-soft NS lookup on blur (not per-keystroke). Any lookup error
-// resolves to null and leaves nsUnresolved false — the check never blocks.
-const checkNs = async () => {
-	nsUnresolved.value = false;
-	const domain = addForm.domain.trim().toLowerCase();
-	if (!domain || isFreemailDomain(domain) || !validation.validate(addForm)) return;
-	const resolves = await resolveNs(domain);
-	// Ignore a slow response if the field changed while it was in flight.
-	if (addForm.domain.trim().toLowerCase() === domain) nsUnresolved.value = resolves === false;
-};
-
-const handleDomainBlur = () => {
-	validation.touch('domain');
-	void checkNs();
-};
 
 // Verification state
 const verifyingDomainId = ref<Id<'domains'> | null>(null);
@@ -156,33 +111,22 @@ watch(
 	{ immediate: true }
 );
 
-// Handle add domain
-const handleAddDomain = async () => {
-	if (!hasActiveOrganization.value) return;
-	if (!validation.validate(addForm)) return;
-	// Freemail domains can never be verified — block and steer to external mailbox.
-	if (isFreemail.value) return;
-
-	addModal.setLoading(true);
-	const result = await createDomain({
-		domain: addForm.domain.trim().toLowerCase(),
-	});
-	addModal.setLoading(false);
-
-	if (result === undefined) return;
-
-	addModal.close();
-	showToast('Domain added successfully. Configure your DNS records to verify.');
-};
+// Add-domain orchestration (register with an optional custom return-path host,
+// set atomically in one write) lives in a plain, directly-testable flow composable.
+const { handleAddDomain } = useAddDomain({
+	hasActiveOrganization: () => hasActiveOrganization.value,
+	createDomain,
+	setLoading: (loading) => addModal.setLoading(loading),
+	close: () => addModal.close(),
+	showToast,
+});
 
 // Handle delete domain
 const handleDeleteDomain = async () => {
 	if (!deleteModal.data.value) return;
 
 	deleteModal.setLoading(true);
-	const result = await removeDomain({
-		domainId: deleteModal.data.value._id,
-	});
+	const result = await removeDomain({ domainId: deleteModal.data.value._id });
 	deleteModal.setLoading(false);
 
 	if (result === undefined) return;
@@ -223,24 +167,22 @@ const handleRetryRegistration = async (domainId: Id<'domains'>) => {
 const canManageDomains = computed(() => role.value === 'owner' || role.value === 'admin');
 
 // Inbound/receiving DNS guidance. `getInboundMailConfig` is admin-gated
-// (organization:manage), so skip the subscription for non-admins — the read
-// would otherwise fail with `forbidden`, and the Receiving panel is an operator
-// task anyway. Returns the deployment's mail host (MTA EHLO hostname) used as
-// the MX target plus the inbound SMTP port.
+// (organization:manage), so skip the subscription for non-admins (the read
+// would 403, and the Receiving panel is an operator task anyway). Returns the
+// deployment's mail host (MX target) plus the inbound SMTP port.
 const { data: inboundMailConfig } = useConvexQuery(api.domains.domains.getInboundMailConfig, () =>
 	canManageDomains.value ? {} : 'skip'
 );
 // Show the Receiving (MX) section whenever the deployment has a mail host to
 // point at — regardless of whether an inbound feature is on yet. Gating it on
 // the flag hid the MX instructions from the very admin trying to enable inbound
-// (chicken-and-egg); instead the section renders always and shows an honest
-// "not turned on yet — here's how" state when `inboundEnabled` is false.
+// (chicken-and-egg); instead it renders always and shows an honest "not turned
+// on yet — here's how" state when `inboundEnabled` is false.
 //
 // Hold the section until the feature-flag subscription has resolved: the app is
-// `ssr: false`, so `flags` starts at the all-off defaults and `inboundEnabled`
-// would compute false during the loading window — flashing a dishonest "not
-// turned on yet" banner on an inbound-enabled install before the live flags
-// arrive. Waiting on `flagsLoading` keeps the banner truthful.
+// `ssr: false`, so `flags` starts all-off and `inboundEnabled` would compute
+// false during the loading window, flashing a dishonest "not turned on yet"
+// banner on an inbound-enabled install. Waiting on `flagsLoading` keeps it true.
 const inboundEnabled = computed(() => hasInboundFeature(flags.value));
 const showReceivingDns = computed(
 	() => Boolean(inboundMailConfig.value?.mailHost) && !flagsLoading.value
@@ -407,10 +349,6 @@ onBeforeUnmount(() => {
 			</div>
 		</div>
 
-		<!-- Per-transport DNS guidance: what to check depends on how this instance
-			 sends (managed MTA records vs SES/relay/Resend that sign on your behalf). -->
-		<DeliveryDomainDnsGuidance />
-
 		<!-- First-load skeleton (shaped like the domain list) -->
 		<div v-if="isLoading && !domainsData" class="card overflow-hidden">
 			<DashboardListSkeleton variant="card" leading :rows="4" />
@@ -444,6 +382,13 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 			</div>
+
+			<!-- Per-transport DNS guidance: what to check depends on how this
+				 instance sends (managed MTA records vs SES/relay/Resend that sign on
+				 your behalf). A sibling of — and demoted below — the "why add a
+				 domain" card, so the first thing under the h1 builds the mental model,
+				 not transports. The space-y-8 wrapper handles the spacing. -->
+			<DeliveryDomainDnsGuidance />
 
 			<!-- No verified domain → offer connecting an external mailbox instead -->
 			<div
@@ -515,90 +460,14 @@ onBeforeUnmount(() => {
 			</div>
 		</div>
 
-		<!-- Add Domain Modal -->
+		<!-- Add Domain Modal — the guided two-field picker lives in the form
+			 component, which composes the single domain string it emits. -->
 		<UiModal v-model:open="addModal.isOpen.value" title="Add Sending Domain">
-			<form @submit.prevent="handleAddDomain">
-				<div class="space-y-4">
-					<div>
-						<label for="domain-name" class="label">
-							Domain Name <span class="text-error">*</span>
-						</label>
-						<input
-							id="domain-name"
-							v-model="addForm.domain"
-							type="text"
-							placeholder="mail.example.com"
-							:class="['input', validation.hasError('domain') && 'input-error']"
-							:disabled="addModal.isLoading.value"
-							@blur="handleDomainBlur"
-						/>
-						<p v-if="validation.getError('domain', true)" class="mt-1 text-xs text-error">
-							{{ validation.getError('domain', true) }}
-						</p>
-						<p v-else class="mt-1 text-xs text-text-tertiary">
-							Enter the domain you want to use for sending emails. We recommend using a subdomain
-							like mail.example.com.
-						</p>
-
-						<!-- Blocking: freemail / public-mailbox domain the user can't publish DNS for. -->
-						<div
-							v-if="isFreemail"
-							class="mt-3 p-3 rounded-lg bg-error/5 border border-error/20 flex items-start gap-2.5"
-						>
-							<Icon name="lucide:shield-alert" class="w-4 h-4 text-error shrink-0 mt-0.5" />
-							<p class="text-xs text-text-secondary">
-								You can't publish DNS records for
-								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong>
-								— it's a shared mailbox provider you don't control. Use a domain you own, or
-								<NuxtLink
-									to="/dashboard/postbox/migrate"
-									class="text-brand hover:underline font-medium"
-									>connect an external mailbox</NuxtLink
-								>
-								instead.
-							</p>
-						</div>
-
-						<!-- Advisory: the domain doesn't resolve (likely a typo). Submit still allowed. -->
-						<div
-							v-else-if="nsUnresolved"
-							class="mt-3 p-3 rounded-lg bg-warning/5 border border-warning/20 flex items-start gap-2.5"
-						>
-							<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning shrink-0 mt-0.5" />
-							<p class="text-xs text-text-secondary">
-								We couldn't find any nameservers for
-								<strong class="text-text-primary">{{ addForm.domain.trim().toLowerCase() }}</strong>
-								— double-check the spelling. You can still add it if the domain is brand new and its
-								DNS is still being set up.
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<div class="flex justify-end gap-3 mt-6">
-					<button
-						type="button"
-						class="btn btn-secondary"
-						:disabled="addModal.isLoading.value"
-						@click="addModal.close()"
-					>
-						Cancel
-					</button>
-					<button
-						type="submit"
-						class="btn btn-primary gap-2"
-						:disabled="addModal.isLoading.value || isFreemail"
-					>
-						<Icon
-							v-if="addModal.isLoading.value"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin"
-						/>
-						<Icon v-else name="lucide:plus" class="w-4 h-4" />
-						{{ addModal.isLoading.value ? 'Adding...' : 'Add Domain' }}
-					</button>
-				</div>
-			</form>
+			<DomainsAddDomainForm
+				:loading="addModal.isLoading.value"
+				@submit="handleAddDomain"
+				@cancel="addModal.close()"
+			/>
 		</UiModal>
 
 		<!-- Delete Domain Confirmation Modal -->

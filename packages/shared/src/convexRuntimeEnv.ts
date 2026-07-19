@@ -103,9 +103,9 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'SES_SNS_TOPIC_ARN',
 	// Provider: generic SMTP relay (Mailgun/Postmark/SendGrid/Brevo/custom).
 	// The instance-level outbound transport when EMAIL_PROVIDER=smtp — the
-	// nodemailer adapter reads these at Convex function runtime, so they must be
-	// pushed into the deployment (not just left in the compose .env) or a relay
-	// configured via setup could never send.
+	// in-house SMTP relay adapter reads these at Convex function runtime, so they
+	// must be pushed into the deployment (not just left in the compose .env) or a
+	// relay configured via setup could never send.
 	'SMTP_RELAY_HOST',
 	'SMTP_RELAY_PORT',
 	'SMTP_RELAY_SECURE',

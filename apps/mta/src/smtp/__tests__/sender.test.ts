@@ -2,40 +2,52 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { hostname as osHostname } from 'node:os';
 import Redis from 'ioredis-mock';
 
-const { mockTransport } = vi.hoisted(() => {
-	const mockTransport = { sendMail: vi.fn() };
-	return { mockTransport };
+// The outbound path now drives @owlat/smtp-client: sendToMx acquires a connect
+// config from the pool, opens ONE SmtpConnection per attempt, sends the
+// pre-composed+signed bytes, and classifies on the structured SmtpError. These
+// unit tests mock the client's connect/sendEnvelope/quit seam and the pool, and
+// inspect the REAL composed bytes (@owlat/mail-message) handed to sendEnvelope.
+const { connectMock, sendEnvelopeMock, quitMock, acquireMock, releaseMock } = vi.hoisted(() => ({
+	connectMock: vi.fn(),
+	sendEnvelopeMock: vi.fn(),
+	quitMock: vi.fn(),
+	acquireMock: vi.fn(),
+	releaseMock: vi.fn(),
+}));
+
+vi.mock('@owlat/smtp-client', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('@owlat/smtp-client')>();
+	return {
+		...actual,
+		SmtpConnection: { connect: connectMock },
+		sendEnvelope: sendEnvelopeMock,
+		quit: quitMock,
+	};
 });
 
 vi.mock('../connectionPool.js', () => ({
+	// takeConnection returns undefined by default (no reuse), so each attempt opens a
+	// fresh SmtpConnection via connectMock — the seam these unit tests inspect. The
+	// X1 reuse guardrails themselves are covered by connectionReuse.integration.test.ts.
 	pool: {
-		acquire: vi.fn().mockReturnValue({ key: 'test-key', transport: mockTransport }),
-		release: vi.fn(),
+		acquire: acquireMock,
+		release: releaseMock,
+		takeConnection: vi.fn().mockResolvedValue(undefined),
+		storeConnection: vi.fn(),
+		evictConnection: vi.fn(),
+	},
+	PoolOverCapError: class PoolOverCapError extends Error {
+		constructor(public readonly mxHost: string) {
+			super('cap');
+			this.name = 'PoolOverCapError';
+		}
 	},
 }));
 vi.mock('../mxResolver.js', () => ({
 	getMxHostnames: vi.fn().mockResolvedValue(['mx1.example.com', 'mx2.example.com']),
 }));
 vi.mock('../daneMxResolver.js', () => ({
-	resolveDaneMxDestinations: vi.fn().mockResolvedValue({
-		status: 'destinations',
-		destinations: [
-			{
-				mxHostname: 'mx1.example.com',
-				preference: 10,
-				mxSecurity: 'secure',
-				addressSecurity: 'secure',
-				addresses: ['192.0.2.1'],
-			},
-			{
-				mxHostname: 'mx2.example.com',
-				preference: 20,
-				mxSecurity: 'secure',
-				addressSecurity: 'secure',
-				addresses: ['192.0.2.2'],
-			},
-		],
-	}),
+	resolveDaneMxDestinations: vi.fn(),
 }));
 // Only the MTA-STS policy lookup is stubbed (per-test policy mode); `isMxAllowed`
 // keeps its real RFC 8461 §4.1 wildcard/empty-list semantics so the enforce skip
@@ -47,12 +59,7 @@ vi.mock('../mtaSts.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../mtaSts.js')>();
 	return {
 		...actual,
-		getStsTlsOptions: vi.fn().mockResolvedValue({
-			requireTLS: false,
-			rejectUnauthorized: false,
-			allowedMxHosts: [],
-			policyMode: 'none',
-		}),
+		getStsTlsOptions: vi.fn(),
 	};
 });
 vi.mock('../dkim.js', () => ({
@@ -73,22 +80,35 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+import { SmtpError, type SmtpErrorInit, type SmtpConnection } from '@owlat/smtp-client';
 import { sendToMx } from '../sender.js';
-import { securedCaptureLogger } from '../tlsSecuredCapture.js';
+import { pool } from '../connectionPool.js';
 import { getStsTlsOptions } from '../mtaSts.js';
 import { getMxHostnames } from '../mxResolver.js';
 import { generateReport } from '../tlsRpt.js';
-import { pool } from '../connectionPool.js';
 import { lookupTlsaRecords } from '../daneResolver.js';
 import { resolveDaneMxDestinations } from '../daneMxResolver.js';
 import { logger } from '../../monitoring/logger.js';
 import { X509Certificate } from 'node:crypto';
 import type { PeerCertificate, TLSSocket } from 'node:tls';
 import { MX_CERT } from './certFixture.js';
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+
+// A fresh live-connection stub whose `secured` flag the test controls.
+function liveConn(secured = true): { secured: boolean; close: ReturnType<typeof vi.fn> } {
+	return { secured, close: vi.fn() };
+}
+
+/** A real SmtpReply-shaped final response for a successful send. */
+function okReply(text = '2.0.0 OK'): { code: number; text: string; lines: string[] } {
+	return { code: 250, text, lines: [text] };
+}
+
+/** A structured SmtpError, exactly as the client throws. */
+function smtpError(init: SmtpErrorInit): SmtpError {
+	return new SmtpError(init);
+}
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {
@@ -110,6 +130,7 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bouncePort: 25,
 		redisUrl: 'redis://localhost:6379',
 		apiKey: 'test-key',
+		mtaSecret: 'test-mta-secret-at-least-32-bytes-long!!',
 		ehloHostname: 'mail.owlat.com',
 		ehloHostnames: {},
 		returnPathDomain: 'bounces.owlat.com',
@@ -119,10 +140,20 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		dkimKeys: {},
 		workerConcurrency: 50,
 		serverId: 'test-server',
-		smtpPool: { maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 },
+		smtpPool: {
+			maxPerHost: 3,
+			idleTimeoutMs: 30000,
+			maxAgeMs: 300000,
+			maxMessagesPerConnection: 100,
+		},
 		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
 		submissionPort: 587,
 		submissionEnabled: false,
+		submissionImplicitTlsPort: 465,
+		submissionImplicitTlsEnabled: false,
+		submissionMaxConnectionsPerIp: 10,
+		submissionMaxClients: 200,
+		submissionMaxAuthFailuresPerIp: 10,
 		contentScreeningEnabled: true,
 		contentMaxSizeKb: 500,
 		deliveryLogMaxLen: 100000,
@@ -133,10 +164,14 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bounceTarpitEnabled: false,
 		bounceTarpitDelayMs: 5000,
 		inboundSpfEnabled: false,
+		inboundDkimEnabled: false,
+		inboundDmarcEnabled: false,
+		inboundArcEnabled: false,
 		rspamdRejectThreshold: 15,
 		smtpPoolGlobalMaxPerHost: 10,
+		maxMessageAgeMs: 432_000_000,
 		...overrides,
-	};
+	} satisfies MtaConfig;
 }
 
 describe('sendToMx', () => {
@@ -146,13 +181,9 @@ describe('sendToMx', () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		redis = new Redis();
-		// ioredis-mock shares one in-memory keyspace across instances, so clear it
-		// between tests — otherwise TLS-RPT aggregates (and the persisted policy
-		// context) from one test leak into the next under the same domain/day key.
 		await redis.flushall();
 		config = createConfig();
 
-		// Re-establish default mock return values (clearAllMocks doesn't reset these)
 		vi.mocked(getMxHostnames).mockResolvedValue(['mx1.example.com', 'mx2.example.com']);
 		vi.mocked(resolveDaneMxDestinations).mockResolvedValue({
 			status: 'destinations',
@@ -173,11 +204,31 @@ describe('sendToMx', () => {
 				},
 			],
 		});
-		vi.mocked(pool.acquire).mockReturnValue({
-			key: 'test-key',
-			transport: mockTransport as unknown as Transporter,
-		});
-		// Default: no MTA-STS policy (opportunistic TLS). Enforce tests override.
+		vi.mocked(lookupTlsaRecords).mockResolvedValue({ status: 'no-tlsa' });
+		// Default acquire echoes the resolved connect config so assertions can read
+		// it back; no live socket is ever opened.
+		acquireMock.mockImplementation(
+			(
+				mxHost: string,
+				bindIp: string,
+				options: { name?: string; requireTLS?: boolean; tls?: unknown }
+			) => ({
+				key: `${mxHost}:${bindIp}`,
+				config: {
+					host: mxHost,
+					port: 25,
+					ehloName: options.name,
+					tlsMode: 'starttls',
+					requireTls: options.requireTLS ?? false,
+					localAddress: bindIp,
+					tls: options.tls,
+				},
+			})
+		);
+		// Default happy path: secured connection, accepted send, clean quit.
+		connectMock.mockResolvedValue(liveConn(true));
+		sendEnvelopeMock.mockResolvedValue({ accepted: [], rejected: [], response: okReply() });
+		quitMock.mockResolvedValue(undefined);
 		vi.mocked(getStsTlsOptions).mockResolvedValue({
 			requireTLS: false,
 			rejectUnauthorized: false,
@@ -185,6 +236,36 @@ describe('sendToMx', () => {
 			policyMode: 'none',
 		});
 	});
+
+	// ── seam-inspection helpers ──
+	/** The raw wire bytes handed to sendEnvelope on the given attempt. */
+	function rawOf(call = 0): string {
+		const options = sendEnvelopeMock.mock.calls[call]?.[1] as { data: Buffer } | undefined;
+		if (!options) throw new Error(`sendEnvelope was not called ${call + 1} time(s)`);
+		return options.data.toString('utf8');
+	}
+	function headerBlockOf(call = 0): string {
+		return rawOf(call).split('\r\n\r\n')[0]!;
+	}
+	function headerValueOf(call: number, name: string): string | undefined {
+		const re = new RegExp(`^${name}:([\\s\\S]*?)(?:\\r?\\n(?![ \\t]))`, 'im');
+		const m = re.exec(rawOf(call) + '\r\n');
+		return m ? m[1]!.replace(/\r?\n[ \t]+/g, ' ').trim() : undefined;
+	}
+	/** The acquire options (3rd arg) for a given acquire call. */
+	function acquireOpts(call = 0): {
+		name?: string;
+		requireTLS?: boolean;
+		tls?: {
+			rejectUnauthorized?: boolean;
+			minVersion?: string;
+			verifyPeerCertificate?: (s: TLSSocket) => Error | undefined;
+			danePolicyFingerprint?: string;
+			checkServerIdentity?: unknown;
+		};
+	} {
+		return acquireMock.mock.calls[call]![2];
+	}
 
 	it('returns hard bounce when no MX records found', async () => {
 		vi.mocked(getMxHostnames).mockResolvedValue([]);
@@ -197,8 +278,10 @@ describe('sendToMx', () => {
 	});
 
 	it('returns success with remoteMessageId parsed from response', async () => {
-		mockTransport.sendMail.mockResolvedValue({
-			response: '250 2.0.0 OK <remote-id@mx.example.com>',
+		sendEnvelopeMock.mockResolvedValue({
+			accepted: [],
+			rejected: [],
+			response: okReply('2.0.0 OK <remote-id@mx.example.com>'),
 		});
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
@@ -209,100 +292,116 @@ describe('sendToMx', () => {
 	});
 
 	it('returns hard bounce on 5xx SMTP error and stops trying', async () => {
-		mockTransport.sendMail.mockRejectedValue({
-			responseCode: 550,
-			response: '550 5.1.1 User unknown',
-		});
+		sendEnvelopeMock.mockRejectedValue(
+			smtpError({ phase: 'rcpt', message: '550 5.1.1 User unknown', replyCode: 550, secured: true })
+		);
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 		expect(result.success).toBe(false);
 		expect(result.bounceType).toBe('hard');
 		expect(result.smtpCode).toBe(550);
-		// Should only try the first MX, not continue to the second
-		expect(mockTransport.sendMail).toHaveBeenCalledTimes(1);
+		// A 5xx is a permanent verdict on the recipient — never retry the next MX.
+		expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
 	});
 
 	it('returns soft bounce for 5.2.2 (mailbox full) despite 5xx code', async () => {
-		mockTransport.sendMail.mockRejectedValue({
-			responseCode: 552,
-			response: '552 5.2.2 Mailbox full',
-		});
+		sendEnvelopeMock.mockRejectedValue(
+			smtpError({
+				phase: 'rcpt',
+				message: '552 5.2.2 Mailbox full',
+				replyCode: 552,
+				enhancedCode: '5.2.2',
+				secured: true,
+			})
+		);
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 		expect(result.success).toBe(false);
 		expect(result.bounceType).toBe('soft');
+		expect(result.smtpCode).toBe(552);
 		expect(result.enhancedCode).toBe('5.2.2');
 	});
 
+	it('returns hard bounce on an SMTPUTF8 client refusal and stops trying (X3)', async () => {
+		// The envelope is internationalized but the MX did not advertise SMTPUTF8, so
+		// the client fails closed with a phase-`mail` refusal carrying no reply code.
+		// There is no ASCII downgrade for a UTF-8 local-part, so this is permanent —
+		// a HARD bounce, and the next MX is never tried.
+		sendEnvelopeMock.mockRejectedValue(
+			smtpError({
+				phase: 'mail',
+				message:
+					'server does not advertise SMTPUTF8 (RFC 6531); refusing to send an internationalized envelope address',
+				secured: true,
+				clientRefusal: 'smtputf8-unavailable',
+			})
+		);
+
+		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+		expect(result.success).toBe(false);
+		expect(result.bounceType).toBe('hard');
+		// A reply-less client refusal carries no SMTP code — but is still terminal.
+		expect(result.smtpCode).toBeUndefined();
+		expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
+	});
+
 	it('returns deferred on 4xx SMTP error', async () => {
-		mockTransport.sendMail.mockRejectedValue({
-			responseCode: 450,
-			response: '450 4.7.1 Try again later',
-		});
+		sendEnvelopeMock.mockRejectedValue(
+			smtpError({ phase: 'mail', message: '451 4.7.1 Try later', replyCode: 451, secured: true })
+		);
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 		expect(result.success).toBe(false);
 		expect(result.bounceType).toBe('deferred');
-		expect(result.smtpCode).toBe(450);
+		expect(result.smtpCode).toBe(451);
 	});
 
 	it('tries next MX host on connection error', async () => {
-		// First call: connection error (no responseCode), second call: success
-		mockTransport.sendMail
-			.mockRejectedValueOnce({ message: 'ECONNREFUSED' })
-			.mockResolvedValueOnce({ response: '250 OK' });
+		// A reply-less, tls-less connect failure is a connection-level error.
+		connectMock
+			.mockRejectedValueOnce(
+				smtpError({ phase: 'connect', message: 'ECONNREFUSED', secured: false })
+			)
+			.mockResolvedValue(liveConn(true));
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 		expect(result.success).toBe(true);
-		expect(mockTransport.sendMail).toHaveBeenCalledTimes(2);
+		expect(connectMock).toHaveBeenCalledTimes(2); // tried both MX
+		expect(sendEnvelopeMock).toHaveBeenCalledTimes(1); // only the second delivered
 	});
 
 	it('returns soft bounce when all MX hosts fail with connection errors', async () => {
-		mockTransport.sendMail.mockRejectedValue({ message: 'ECONNREFUSED' });
+		connectMock.mockRejectedValue(
+			smtpError({ phase: 'connect', message: 'ECONNREFUSED', secured: false })
+		);
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 		expect(result.success).toBe(false);
 		expect(result.bounceType).toBe('soft');
-		expect(mockTransport.sendMail).toHaveBeenCalledTimes(2); // Tried both MX hosts
+		expect(connectMock).toHaveBeenCalledTimes(2);
 	});
 
-	it('forwards an AMP body to nodemailer as the amp option', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+	it('forwards an AMP body to the composer as a text/x-amp-html alternative', async () => {
 		const amp = '<!doctype html><html ⚡4email><head></head><body>amp</body></html>';
 
 		await sendToMx(createJob({ amp }), config, redis, '10.0.0.1');
 
-		expect(mockTransport.sendMail).toHaveBeenCalledWith(expect.objectContaining({ amp }));
+		expect(rawOf()).toContain('text/x-amp-html');
 	});
 
-	it('omits the amp option when the job has no AMP body', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
+	it('omits the amp alternative when the job has no AMP body', async () => {
 		await sendToMx(createJob(), config, redis, '10.0.0.1');
 
-		const arg = mockTransport.sendMail.mock.calls[0]![0] as Record<string, unknown>;
-		expect('amp' in arg).toBe(false);
+		expect(rawOf()).not.toContain('x-amp-html');
 	});
 
-	// ── RFC 8058 / RFC 2369 List-Unsubscribe passthrough (audit PR-20) ──────────
-	//
-	// A campaign EmailJob carries the one-click unsubscribe header assembled on
-	// the Convex side (delivery/unsubscribe.ts getListUnsubscribeHeader). The MTA
-	// sender must pass it through to nodemailer verbatim — a single HTTPS URL in
-	// RFC 2369 angle brackets — alongside the `List-Unsubscribe-Post:
-	// List-Unsubscribe=One-Click` companion. Stripping or reformatting it would
-	// break the mail client's one-click button. The sender must also always emit
-	// a non-empty text part (RFC 8058 §4 / multipart deliverability) — it falls
-	// back to a stripped-HTML body when the job supplies no explicit text.
-
-	it('forwards the campaign List-Unsubscribe headers to nodemailer verbatim (angle brackets, single URL)', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
+	it('forwards the campaign List-Unsubscribe headers verbatim (angle brackets, single URL)', async () => {
 		const listUnsubscribe = '<https://test.convex.site/unsub/contact-123:1700000000000:sigabc>';
 		const job = createJob({
 			ipPool: 'campaign',
@@ -314,23 +413,11 @@ describe('sendToMx', () => {
 
 		await sendToMx(job, config, redis, '10.0.0.2');
 
-		const arg = mockTransport.sendMail.mock.calls[0]![0] as {
-			headers: Record<string, string>;
-		};
-		// Exact passthrough — single URL, RFC 2369 angle brackets, no extra
-		// mailto/comma entries injected.
-		expect(arg.headers['List-Unsubscribe']).toBe(listUnsubscribe);
-		expect(arg.headers['List-Unsubscribe']).toMatch(/^<https:\/\/[^,<>]+>$/);
-		expect(arg.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
+		expect(headerValueOf(0, 'List-Unsubscribe')).toBe(listUnsubscribe);
+		expect(headerValueOf(0, 'List-Unsubscribe-Post')).toBe('List-Unsubscribe=One-Click');
 	});
 
 	it('spreads job.headers onto the wire (RFC 3834 vacation auto-reply stamps)', async () => {
-		// The vacation hook (deliveryHooks.runPostDelivery) hands /send the
-		// anti-loop headers, /send copies them onto the EmailJob, and the SMTP
-		// sender must spread them into the outgoing message so they actually
-		// reach the recipient — that's the only thing that stops a remote
-		// auto-responder from replying back into a loop.
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 		const headers = {
 			'Auto-Submitted': 'auto-replied',
 			'X-Auto-Response-Suppress': 'All',
@@ -339,45 +426,34 @@ describe('sendToMx', () => {
 
 		await sendToMx(createJob({ headers }), config, redis, '10.0.0.1');
 
-		const arg = mockTransport.sendMail.mock.calls[0]![0] as {
-			headers: Record<string, string>;
-		};
-		expect(arg.headers['Auto-Submitted']).toBe('auto-replied');
-		expect(arg.headers['X-Auto-Response-Suppress']).toBe('All');
-		expect(arg.headers['Precedence']).toBe('auto_reply');
+		expect(headerValueOf(0, 'Auto-Submitted')).toBe('auto-replied');
+		expect(headerValueOf(0, 'X-Auto-Response-Suppress')).toBe('All');
+		expect(headerValueOf(0, 'Precedence')).toBe('auto_reply');
 		// The MTA's own tracing headers are added alongside, not replaced.
-		expect(arg.headers['X-Owlat-Message-Id']).toBe('msg-001');
-		expect(arg.headers['X-Owlat-Org-Id']).toBe('org-1');
+		expect(headerValueOf(0, 'X-Owlat-Message-Id')).toBe('msg-001');
+		expect(headerValueOf(0, 'X-Owlat-Org-Id')).toBe('org-1');
 	});
 
 	it('always supplies a non-empty text part (falls back to stripped HTML when the job has no text)', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
 		const job = createJob({ html: '<p>Hello there</p>', text: undefined });
 
 		await sendToMx(job, config, redis, '10.0.0.1');
 
-		const arg = mockTransport.sendMail.mock.calls[0]![0] as { text?: string };
-		expect(typeof arg.text).toBe('string');
-		expect(arg.text!.length).toBeGreaterThan(0);
-		expect(arg.text).toContain('Hello there');
+		expect(rawOf()).toContain('Hello there');
+		expect(rawOf()).toContain('text/plain');
 	});
 
 	it('uses the explicit text part when the job provides one', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
 		const job = createJob({ html: '<p>HTML body</p>', text: 'Plain text body' });
 
 		await sendToMx(job, config, redis, '10.0.0.1');
 
-		const arg = mockTransport.sendMail.mock.calls[0]![0] as { text?: string };
-		expect(arg.text).toBe('Plain text body');
+		expect(rawOf()).toContain('Plain text body');
 	});
 
-	it('hands sealed Postbox PGP/MIME to nodemailer as exact raw bytes', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+	it('hands sealed Postbox PGP/MIME to the client as exact raw bytes', async () => {
 		const mime =
-			'From: sender@owlat.com\r\nSubject: ...\r\nContent-Type: multipart/encrypted; protocol="application/pgp-encrypted"\r\n\r\nciphertext';
+			'From: sender@owlat.com\r\nSubject: sealed\r\nContent-Type: multipart/encrypted; protocol="application/pgp-encrypted"\r\n\r\nciphertext';
 
 		await sendToMx(
 			createJob({ sealedMimeBase64: Buffer.from(mime).toString('base64') }),
@@ -386,59 +462,103 @@ describe('sendToMx', () => {
 			'10.0.0.1'
 		);
 
-		const arg = mockTransport.sendMail.mock.calls[0]![0] as {
-			raw?: Buffer;
-			text?: string;
-			html?: string;
-		};
-		expect(arg.raw?.toString('utf8')).toBe(mime);
-		expect(arg.text).toBeUndefined();
-		expect(arg.html).toBeUndefined();
+		// No DKIM key configured (default) → the sealed bytes go on the wire verbatim.
+		expect(rawOf()).toBe(mime);
+		// The envelope still carries the VERP return-path.
+		const env = sendEnvelopeMock.mock.calls[0]![1] as { from: string; to: string[] };
+		expect(env.from).toBe('bounce+encoded@bounces.owlat.com');
+		expect(env.to).toEqual(['user@example.com']);
 	});
 
 	it('pins tls.minVersion TLSv1.2 when acquiring an outbound connection (RFC 8996/9325)', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
 		await sendToMx(createJob(), config, redis, '10.0.0.1');
 
-		expect(pool.acquire).toHaveBeenCalledWith(
+		expect(acquireMock).toHaveBeenCalledWith(
 			expect.any(String),
 			expect.any(String),
-			expect.objectContaining({
-				tls: expect.objectContaining({ minVersion: 'TLSv1.2' }),
-			})
+			expect.objectContaining({ tls: expect.objectContaining({ minVersion: 'TLSv1.2' }) })
 		);
 	});
 
-	// Regression-lock for audit item PR-52 (Headers/MIME). The bulk MX path
-	// hands its mail options to nodemailer; this captures the actual RFC 5322
-	// bytes nodemailer emits and asserts the header invariants:
-	//   - Date carries a NUMERIC zone (+0000), not the obsolete "GMT" form
-	//     (RFC 5322 §3.3 / §3.6.1).
-	//   - MIME-Version is exactly "1.0" (RFC 2045 §4).
-	//   - From reflects the job's From address (RFC 5322 §3.6.2).
-	//   - To is non-empty (RFC 5322 §3.6.3).
-	it('emits Date(+0000)/MIME-Version 1.0/From/non-empty To in the generated message', async () => {
-		// Swap the mocked transport for a real nodemailer stream transport that
-		// actually builds the MIME message, then capture the raw bytes.
-		const streamTransport = nodemailer.createTransport({
-			streamTransport: true,
-			buffer: true,
-			newline: 'windows',
-		});
-		let captured = '';
-		const capturingTransport = {
-			sendMail: async (opts: Parameters<Transporter['sendMail']>[0]) => {
-				const info = await streamTransport.sendMail(opts);
-				captured = (info.message as Buffer).toString('utf-8');
-				return info;
-			},
-		};
-		vi.mocked(pool.acquire).mockReturnValue({
-			key: 'stream-key',
-			transport: capturingTransport as unknown as Transporter,
-		});
+	it('composes deterministic bytes for the send (From-aligned, VERP envelope)', async () => {
+		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+		expect(result.success).toBe(true);
+		expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
+		expect(headerBlockOf(0)).toMatch(/^From: sender@owlat\.com\r?$/m);
+		const env = sendEnvelopeMock.mock.calls[0]![1] as { from: string; to: string[] };
+		expect(env.from).toBe('bounce+encoded@bounces.owlat.com');
+	});
 
+	it('retries the SAME composed+signed bytes across MX hosts (byte-identical — named gate b)', async () => {
+		// MX1 fails at a RETRY-SAFE phase (phase 'mail', no reply): the message was
+		// not yet transmitted, so the loop advances to MX2. Because the job is
+		// composed + signed ONCE up front, MX2 must receive byte-identical bytes.
+		sendEnvelopeMock
+			.mockRejectedValueOnce(
+				smtpError({ phase: 'mail', message: 'connection lost', secured: true })
+			)
+			.mockResolvedValue({ accepted: [], rejected: [], response: okReply() });
+
+		const result = await sendToMx(
+			createJob({ from: 'user@example.com' }),
+			config,
+			redis,
+			'10.0.0.1'
+		);
+
+		expect(result.success).toBe(true);
+		expect(sendEnvelopeMock).toHaveBeenCalledTimes(2); // MX1 failed, MX2 delivered
+		// Byte-for-byte identical wire bytes on both attempts (same Message-ID, same
+		// Date, same DKIM-Signature would ride these exact bytes) — no per-MX recompose.
+		expect(rawOf(0)).toBe(rawOf(1));
+	});
+
+	describe('ambiguous post-DATA failure is never auto-retried (W8 AMBIGUOUS_TIMEOUT)', () => {
+		for (const phase of ['data', 'data-final'] as const) {
+			it(`phase '${phase}' with no server reply → non-retryable, no next-MX attempt`, async () => {
+				// The body (and possibly the terminating dot) was already written, so the
+				// receiver MAY have accepted the message. Retrying risks a double delivery.
+				sendEnvelopeMock.mockRejectedValue(
+					smtpError({ phase, message: 'connection dropped after DATA', secured: true })
+				);
+
+				const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+				expect(result.success).toBe(false);
+				// Its OWN terminal `ambiguous` classification — NOT a `hard` bounce (which
+				// would suppress the recipient + fabricate a 550) and NOT a retryable
+				// soft/deferred bounce that requeues. No smtpCode: there was no reply.
+				expect(result.bounceType).toBe('ambiguous');
+				expect(result.bounceType).not.toBe('hard');
+				expect(result.bounceType).not.toBe('soft');
+				expect(result.bounceType).not.toBe('deferred');
+				expect(result.smtpCode).toBeUndefined();
+				// Attempted on exactly ONE MX — the loop never advanced to the second.
+				expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
+				expect(connectMock).toHaveBeenCalledTimes(1);
+			});
+		}
+
+		it('a data-final failure WITH a reply code is classified by the code (deferred), not ambiguous', async () => {
+			// A real 4xx at DATA-final is a DEFINITIVE deferral (retryable), proving the
+			// ambiguous guard fires only on reply-LESS drops.
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({
+					phase: 'data-final',
+					message: '451 4.7.1 Try later',
+					replyCode: 451,
+					secured: true,
+				})
+			);
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+			expect(result.bounceType).toBe('deferred');
+			expect(result.smtpCode).toBe(451);
+		});
+	});
+
+	it('emits Date(+0000)/MIME-Version 1.0/From/non-empty To in the generated message', async () => {
 		const result = await sendToMx(
 			createJob({ from: 'sender@owlat.com', to: 'user@example.com' }),
 			config,
@@ -447,72 +567,45 @@ describe('sendToMx', () => {
 		);
 		expect(result.success).toBe(true);
 
-		const headers = captured.split('\r\n\r\n')[0]!;
-
-		// Date: numeric +0000 offset, never the obsolete "GMT" zone name.
+		const headers = headerBlockOf(0);
 		expect(headers).toMatch(/^Date: .+\+0000$/m);
 		expect(headers).not.toMatch(/^Date: .+GMT$/m);
-
-		// MIME-Version is exactly "1.0".
 		expect(headers).toMatch(/^MIME-Version: 1\.0\r?$/m);
-
-		// From reflects the job's From; To is present and non-empty.
 		expect(headers).toMatch(/^From: sender@owlat\.com\r?$/m);
-		const toMatch = headers.match(/^To: (.+)$/m);
-		expect(toMatch).not.toBeNull();
-		expect(toMatch![1]!.trim().length).toBeGreaterThan(0);
-		expect(toMatch![1]).toContain('user@example.com');
+		const toValue = headerValueOf(0, 'To');
+		expect(toValue).toBeDefined();
+		expect(toValue).toContain('user@example.com');
 	});
 
-	// PR-51 (RFC 5322 §3.6.4): the bulk path never set a Message-ID, so
-	// nodemailer auto-derived it from envelope.from = the VERP return-path
-	// (bounces.example.com), unaligned with the From sending domain. The sender
-	// now stamps an explicit From-aligned Message-ID so nodemailer's
-	// getHeader('Message-ID') short-circuits the VERP default.
-	function headersOf(call: number): Record<string, string> {
-		const arg = mockTransport.sendMail.mock.calls[call]![0] as {
-			headers: Record<string, string>;
-		};
-		return arg.headers;
-	}
-
 	it('stamps a From-domain-aligned Message-ID (not the VERP bounce domain)', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-		// returnPathDomain (VERP) intentionally DIFFERS from the From domain.
 		config = createConfig({ returnPathDomain: 'bounces.example.com' });
 
 		await sendToMx(createJob({ from: 'user@example.com' }), config, redis, '10.0.0.1');
 
-		const headers = headersOf(0);
-		expect(headers['Message-ID']).toMatch(/^<[^@>]+@example\.com>$/);
-		// Must NOT be scoped to the VERP / bounce domain.
-		expect(headers['Message-ID']).not.toContain('bounces.example.com');
+		const messageId = headerValueOf(0, 'Message-ID');
+		expect(messageId).toMatch(/^<[^@>]+@example\.com>$/);
+		expect(messageId).not.toContain('bounces.example.com');
 	});
 
 	it('sets the Message-ID header exactly once', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
 		await sendToMx(createJob({ from: 'user@example.com' }), config, redis, '10.0.0.1');
 
-		const headerKeys = Object.keys(headersOf(0)).filter((k) => k.toLowerCase() === 'message-id');
-		expect(headerKeys).toHaveLength(1);
+		const count = (headerBlockOf(0).match(/^Message-ID:/gim) ?? []).length;
+		expect(count).toBe(1);
 	});
 
 	it('generates a distinct Message-ID for each send', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
 		await sendToMx(createJob({ from: 'user@example.com' }), config, redis, '10.0.0.1');
 		await sendToMx(createJob({ from: 'user@example.com' }), config, redis, '10.0.0.1');
 
-		const first = headersOf(0)['Message-ID'];
-		const second = headersOf(1)['Message-ID'];
+		const first = headerValueOf(0, 'Message-ID');
+		const second = headerValueOf(1, 'Message-ID');
 		expect(first).toBeDefined();
 		expect(second).toBeDefined();
 		expect(first).not.toBe(second);
 	});
 
 	it('respects a caller-supplied Message-ID header (does not override)', async () => {
-		mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 		const supplied = '<agent-reply-123@example.com>';
 
 		await sendToMx(
@@ -522,13 +615,11 @@ describe('sendToMx', () => {
 			'10.0.0.1'
 		);
 
-		expect(headersOf(0)['Message-ID']).toBe(supplied);
+		expect(headerValueOf(0, 'Message-ID')).toBe(supplied);
 	});
 
-	// ── PR-63 item 1: per-IP EHLO hostname ──
 	describe('per-IP EHLO hostname', () => {
 		it('announces the mapped EHLO name for the bind IP', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 			const mapped = createConfig({
 				ehloHostname: 'fallback.owlat.com',
 				ehloHostnames: { '10.0.0.1': 'mail1.owlat.com', '10.0.0.2': 'mail2.owlat.com' },
@@ -536,7 +627,7 @@ describe('sendToMx', () => {
 
 			await sendToMx(createJob(), mapped, redis, '10.0.0.1');
 
-			expect(pool.acquire).toHaveBeenCalledWith(
+			expect(acquireMock).toHaveBeenCalledWith(
 				expect.any(String),
 				'10.0.0.1',
 				expect.objectContaining({ name: 'mail1.owlat.com' })
@@ -544,7 +635,6 @@ describe('sendToMx', () => {
 		});
 
 		it('falls back to the global EHLO name for an unmapped bind IP', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 			const mapped = createConfig({
 				ehloHostname: 'fallback.owlat.com',
 				ehloHostnames: { '10.0.0.1': 'mail1.owlat.com' },
@@ -552,7 +642,7 @@ describe('sendToMx', () => {
 
 			await sendToMx(createJob(), mapped, redis, '10.0.0.9');
 
-			expect(pool.acquire).toHaveBeenCalledWith(
+			expect(acquireMock).toHaveBeenCalledWith(
 				expect.any(String),
 				'10.0.0.9',
 				expect.objectContaining({ name: 'fallback.owlat.com' })
@@ -560,7 +650,6 @@ describe('sendToMx', () => {
 		});
 
 		it('two bind IPs each announce their own distinct EHLO name', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 			const mapped = createConfig({
 				ehloHostname: 'fallback.owlat.com',
 				ehloHostnames: { '10.0.0.1': 'mail1.owlat.com', '10.0.0.2': 'mail2.owlat.com' },
@@ -570,7 +659,7 @@ describe('sendToMx', () => {
 			await sendToMx(createJob(), mapped, redis, '10.0.0.2');
 
 			const namesByBindIp = new Map<string, string>();
-			for (const call of vi.mocked(pool.acquire).mock.calls) {
+			for (const call of acquireMock.mock.calls) {
 				const bindIp = call[1] as string;
 				const opts = call[2] as { name?: string };
 				if (opts.name) namesByBindIp.set(bindIp, opts.name);
@@ -579,28 +668,17 @@ describe('sendToMx', () => {
 			expect(namesByBindIp.get('10.0.0.2')).toBe('mail2.owlat.com');
 		});
 
-		// ── PR-64: single-IP posture (RFC 5321 §4.1.1.1, Gmail/Yahoo 2024) ──
-		// With NO per-IP overrides, sendToMx must announce the global
-		// config.ehloHostname for the bind IP — the FQDN that matches that IP's
-		// reverse-DNS PTR record — and never an os.hostname()-derived name (the
-		// container/host name has no PTR, so FCrDNS would fail).
 		it('announces config.ehloHostname for the bind IP when there is no per-IP override', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-			const single = createConfig({
-				ehloHostname: 'mail.test.example',
-				ehloHostnames: {},
-			});
+			const single = createConfig({ ehloHostname: 'mail.test.example', ehloHostnames: {} });
 
 			await sendToMx(createJob(), single, redis, '10.0.0.1');
 
-			expect(pool.acquire).toHaveBeenCalledWith(
+			expect(acquireMock).toHaveBeenCalledWith(
 				expect.any(String),
 				'10.0.0.1',
 				expect.objectContaining({ name: 'mail.test.example' })
 			);
-			// Never the OS/container hostname — it has no matching PTR record.
-			const opts = vi.mocked(pool.acquire).mock.calls[0]![2] as { name?: string };
-			expect(opts.name).not.toBe(osHostname());
+			expect(acquireOpts(0).name).not.toBe(osHostname());
 		});
 	});
 
@@ -623,17 +701,8 @@ describe('sendToMx', () => {
 		return report!;
 	}
 
-	// ── PR-25: MTA-STS enforce + multi-MX TLS failover (RFC 8461, RFC 7435) ──
-	//
-	// Regression-lock for the sender LOOP's TLS-policy handling, complementing
-	// the transport-level handshake locks in outboundStartTls.integration.test.ts:
-	//  (2) an enforce policy carries requireTLS+rejectUnauthorized into the
-	//      acquire AND skips/logs an MX not named in the policy (RFC 8461 §5);
-	//  (5) the loop fails over across MX hosts on a transient TLS error (ETLS),
-	//      and records a TLS-RPT validation-failure when every MX fails.
 	describe('MTA-STS enforce policy is carried into the acquire (PR-25 item 2)', () => {
 		it('passes requireTLS:true + tls.rejectUnauthorized:true when the policy enforces', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 			vi.mocked(getStsTlsOptions).mockResolvedValue({
 				requireTLS: true,
 				rejectUnauthorized: true,
@@ -643,7 +712,7 @@ describe('sendToMx', () => {
 
 			await sendToMx(createJob(), config, redis, '10.0.0.1');
 
-			expect(pool.acquire).toHaveBeenCalledWith(
+			expect(acquireMock).toHaveBeenCalledWith(
 				'mx1.example.com',
 				'10.0.0.1',
 				expect.objectContaining({
@@ -654,8 +723,6 @@ describe('sendToMx', () => {
 		});
 
 		it('skips (and logs) an MX host not listed in the enforce policy, delivering via the permitted one', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-			// mx1 is NOT in the policy; only mx2 is permitted.
 			vi.mocked(getStsTlsOptions).mockResolvedValue({
 				requireTLS: true,
 				rejectUnauthorized: true,
@@ -666,11 +733,9 @@ describe('sendToMx', () => {
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 			expect(result.success).toBe(true);
-			// The disallowed mx1 was never connected to…
-			const acquiredHosts = vi.mocked(pool.acquire).mock.calls.map((c) => c[0]);
+			const acquiredHosts = acquireMock.mock.calls.map((c) => c[0]);
 			expect(acquiredHosts).not.toContain('mx1.example.com');
 			expect(acquiredHosts).toContain('mx2.example.com');
-			// …and the skip was logged (RFC 8461 §5 — never deliver outside policy).
 			expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
 				expect.objectContaining({ mxHost: 'mx1.example.com' }),
 				expect.stringContaining('not permitted by MTA-STS policy')
@@ -678,8 +743,6 @@ describe('sendToMx', () => {
 		});
 
 		it('all MX hosts excluded by the policy => no acquire, soft bounce (retryable)', async () => {
-			// Neither advertised MX is in the policy: every host is skipped, so the
-			// loop falls through to a soft bounce rather than delivering off-policy.
 			vi.mocked(getStsTlsOptions).mockResolvedValue({
 				requireTLS: true,
 				rejectUnauthorized: true,
@@ -690,40 +753,42 @@ describe('sendToMx', () => {
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 			expect(result.success).toBe(false);
-			expect(result.bounceType).toBe('soft'); // retryable, not a hard bounce
-			expect(pool.acquire).not.toHaveBeenCalled();
+			expect(result.bounceType).toBe('soft');
+			expect(acquireMock).not.toHaveBeenCalled();
 		});
 	});
 
 	describe('multi-MX TLS failover (PR-25 item 5)', () => {
-		// nodemailer raises a STARTTLS upgrade failure as code:'ETLS' with no
-		// responseCode — a transient, connection-level error the loop treats as
-		// "try the next MX" (RFC 5321 §4.5.4.1).
-		const etlsError = { code: 'ETLS', message: 'Error initiating TLS - handshake failure' };
+		// A STARTTLS handshake failure surfaces as an SmtpError with a structured
+		// tlsCause and no reply code — a transient error the loop treats as "try
+		// the next MX" (RFC 5321 §4.5.4.1), never a hard bounce.
+		const tlsHandshakeError = () =>
+			smtpError({
+				phase: 'starttls',
+				message: 'handshake failure',
+				tlsCause: 'handshake',
+				secured: false,
+			});
 
-		it('first MX fails with ETLS, second MX resolves => success', async () => {
-			mockTransport.sendMail
-				.mockRejectedValueOnce(etlsError)
-				.mockResolvedValueOnce({ response: '250 OK' });
+		it('first MX fails on TLS, second MX resolves => success', async () => {
+			connectMock.mockRejectedValueOnce(tlsHandshakeError()).mockResolvedValue(liveConn(true));
 
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 			expect(result.success).toBe(true);
-			expect(mockTransport.sendMail).toHaveBeenCalledTimes(2); // tried both MX
+			expect(connectMock).toHaveBeenCalledTimes(2); // tried both MX
+			expect(sendEnvelopeMock).toHaveBeenCalledTimes(1);
 		});
 
-		it('every MX fails with ETLS => soft bounce (retryable) + TLS-RPT validation-failure recorded', async () => {
-			mockTransport.sendMail.mockRejectedValue(etlsError);
+		it('every MX fails on TLS => soft bounce (retryable) + TLS-RPT validation-failure recorded', async () => {
+			connectMock.mockRejectedValue(tlsHandshakeError());
 
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 			expect(result.success).toBe(false);
-			expect(result.bounceType).toBe('soft'); // retryable — the job is re-queued
-			expect(mockTransport.sendMail).toHaveBeenCalledTimes(2); // both MX attempted
+			expect(result.bounceType).toBe('soft');
+			expect(connectMock).toHaveBeenCalledTimes(2);
 
-			// Each ETLS attempt records a TLS-RPT validation-failure (RFC 8460 §4)
-			// against the recipient domain — not a success, not dropped. With no STS
-			// policy in force the result stays the generic 'validation-failure'.
 			const report = await reportFor();
 			const policy = report.policies[0]!;
 			expect(policy.summary['total-successful-session-count']).toBe(0);
@@ -731,19 +796,14 @@ describe('sendToMx', () => {
 			const details = policy['failure-details']!;
 			const validationFailures = details.filter((d) => d['result-type'] === 'validation-failure');
 			expect(validationFailures.length).toBe(2);
-			// Recorded per MX host, never as 'success'.
 			const recordedHosts = validationFailures.map((d) => d['receiving-mx-hostname']);
 			expect(recordedHosts).toContain('mx1.example.com');
 			expect(recordedHosts).toContain('mx2.example.com');
 		});
 	});
 
-	// ── PR-35 item 4: MTA-STS enforce flags reach pool.acquire unchanged, an
-	// enforce policy skips disallowed MX hosts (RFC 8461 §5), and a requireTLS
-	// send with no STARTTLS available soft-bounces rather than failing hard.
 	describe('MTA-STS enforce wiring (PR-35)', () => {
-		it('forwards enforce requireTLS + rejectUnauthorized to pool.acquire unchanged', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
+		it('forwards enforce requireTLS + rejectUnauthorized to acquire unchanged', async () => {
 			vi.mocked(getStsTlsOptions).mockResolvedValue({
 				requireTLS: true,
 				rejectUnauthorized: true,
@@ -753,97 +813,43 @@ describe('sendToMx', () => {
 
 			await sendToMx(createJob(), config, redis, '10.0.0.1');
 
-			expect(pool.acquire).toHaveBeenCalledWith(
-				expect.any(String),
-				expect.any(String),
-				expect.objectContaining({
-					requireTLS: true,
-					// rejectUnauthorized + the pinned TLSv1.2 floor both ride in tls.
-					tls: expect.objectContaining({ rejectUnauthorized: true, minVersion: 'TLSv1.2' }),
-				})
-			);
+			expect(acquireOpts(0).requireTLS).toBe(true);
+			expect(acquireOpts(0).tls?.rejectUnauthorized).toBe(true);
 		});
 
 		it('an opportunistic (none) policy forwards requireTLS:false / rejectUnauthorized:false', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-			// default mock = policyMode none
-
 			await sendToMx(createJob(), config, redis, '10.0.0.1');
 
-			expect(pool.acquire).toHaveBeenCalledWith(
-				expect.any(String),
-				expect.any(String),
-				expect.objectContaining({
-					requireTLS: false,
-					tls: expect.objectContaining({ rejectUnauthorized: false }),
-				})
-			);
-		});
-
-		it('under enforce, skips an MX host not permitted by the policy and uses the allowed one', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-			// mx1 is OFF the allow-list, mx2 (the allowed host) is on it.
-			vi.mocked(getMxHostnames).mockResolvedValue(['mx1.attacker.net', 'mx2.example.com']);
-			vi.mocked(getStsTlsOptions).mockResolvedValue({
-				requireTLS: true,
-				rejectUnauthorized: true,
-				allowedMxHosts: ['mx2.example.com'],
-				policyMode: 'enforce',
-			});
-
-			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
-
-			expect(result.success).toBe(true);
-			// The disallowed MX was never acquired — only the allowed one.
-			const acquiredHosts = vi.mocked(pool.acquire).mock.calls.map((c) => c[0]);
-			expect(acquiredHosts).not.toContain('mx1.attacker.net');
-			expect(acquiredHosts).toContain('mx2.example.com');
-		});
-
-		it('under enforce, when ALL MX hosts are disallowed, nothing is acquired and the job soft-bounces for retry', async () => {
-			vi.mocked(getMxHostnames).mockResolvedValue(['mx1.attacker.net', 'mx2.attacker.net']);
-			vi.mocked(getStsTlsOptions).mockResolvedValue({
-				requireTLS: true,
-				rejectUnauthorized: true,
-				allowedMxHosts: ['mail.example.com'],
-				policyMode: 'enforce',
-			});
-
-			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
-
-			expect(pool.acquire).not.toHaveBeenCalled();
-			expect(result.success).toBe(false);
-			expect(result.bounceType).toBe('soft');
+			expect(acquireOpts(0).requireTLS).toBe(false);
+			expect(acquireOpts(0).tls?.rejectUnauthorized).toBe(false);
 		});
 
 		it('a requireTLS send to a server with no STARTTLS soft/deferred-bounces (not a hard bounce)', async () => {
-			// nodemailer raises a connection-level error (no SMTP responseCode) when a
-			// requireTLS transport can't upgrade — the sender treats it as a transient
-			// failure: try the next MX, then soft-bounce so the job is re-queued.
 			vi.mocked(getStsTlsOptions).mockResolvedValue({
 				requireTLS: true,
 				rejectUnauthorized: true,
 				allowedMxHosts: ['*.example.com'],
 				policyMode: 'enforce',
 			});
-			mockTransport.sendMail.mockRejectedValue({
-				code: 'ESOCKET',
-				message: 'STARTTLS not advertised by server but requireTLS=true',
-			});
+			connectMock.mockRejectedValue(
+				smtpError({
+					phase: 'starttls',
+					message: 'server does not advertise STARTTLS but TLS is required',
+					tlsCause: 'starttls-unavailable',
+					secured: false,
+				})
+			);
 
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 			expect(result.success).toBe(false);
-			// Transient — must be retryable, never a hard (permanent) bounce.
 			expect(['soft', 'deferred']).toContain(result.bounceType);
 			expect(result.bounceType).not.toBe('hard');
 		});
 	});
 
-	// ── PR-31: MTA-STS policy context recorded for TLS-RPT (RFC 8460 §3/§4.3/§4.4) ──
 	describe('MTA-STS TLS-RPT recording', () => {
 		it('records sts-policy-invalid for an enforce policy MX not in the policy (was previously inert)', async () => {
-			// Enforce policy whose MX list matches neither mx1 nor mx2 — both are skipped.
 			vi.mocked(getStsTlsOptions).mockResolvedValue({
 				requireTLS: true,
 				rejectUnauthorized: true,
@@ -853,20 +859,18 @@ describe('sendToMx', () => {
 
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
-			// No allowed MX → delivery cannot proceed (soft bounce), but the policy
-			// failure must be reported (this is the bug PR-31 fixes).
 			expect(result.success).toBe(false);
-			expect(mockTransport.sendMail).not.toHaveBeenCalled();
+			expect(acquireMock).not.toHaveBeenCalled();
 
 			const report = await reportFor();
 			const policy = report.policies[0]!;
 			expect(policy.policy['policy-type']).toBe('sts');
 			expect(policy.policy['policy-string']).toContain('mode: enforce');
 			expect(policy.policy['mx-host']).toEqual(['aspmx.l.google.com']);
-
 			const details = policy['failure-details']!;
-			const invalid = details.filter((d) => d['result-type'] === 'sts-policy-invalid');
-			expect(invalid.length).toBeGreaterThanOrEqual(1);
+			expect(
+				details.filter((d) => d['result-type'] === 'sts-policy-invalid').length
+			).toBeGreaterThanOrEqual(1);
 			expect(policy.summary['total-failure-session-count']).toBeGreaterThanOrEqual(1);
 		});
 
@@ -874,14 +878,17 @@ describe('sendToMx', () => {
 			vi.mocked(getStsTlsOptions).mockResolvedValue({
 				requireTLS: true,
 				rejectUnauthorized: true,
-				allowedMxHosts: ['*.example.com'], // mx1/mx2.example.com ARE allowed
+				allowedMxHosts: ['*.example.com'],
 				policyMode: 'enforce',
 			});
-			// The verifying connection fails the WebPKI check (no SMTP status code).
-			mockTransport.sendMail.mockRejectedValue({
-				code: 'ERR_TLS_CERT_ALTNAME_INVALID',
-				message: 'Hostname/IP does not match certificate altname',
-			});
+			connectMock.mockRejectedValue(
+				smtpError({
+					phase: 'starttls',
+					message: 'Hostname/IP does not match certificate altname',
+					tlsCause: 'cert-host-mismatch',
+					secured: false,
+				})
+			);
 
 			await sendToMx(createJob(), config, redis, '10.0.0.1');
 
@@ -890,7 +897,6 @@ describe('sendToMx', () => {
 			expect(policy.policy['policy-type']).toBe('sts');
 			const details = policy['failure-details']!;
 			expect(details.find((d) => d['result-type'] === 'sts-webpki-invalid')).toBeDefined();
-			// And NOT the generic certificate-host-mismatch type under enforce.
 			expect(details.find((d) => d['result-type'] === 'certificate-host-mismatch')).toBeUndefined();
 		});
 
@@ -901,49 +907,48 @@ describe('sendToMx', () => {
 				allowedMxHosts: ['*.example.com'],
 				policyMode: 'testing',
 			});
-			// First (verifying probe) attempt fails because STARTTLS is stripped;
-			// the opportunistic retry on the same MX then succeeds (delivery proceeds).
-			mockTransport.sendMail
-				.mockRejectedValueOnce({ message: 'STARTTLS not advertised by server' })
-				.mockResolvedValueOnce({ response: '250 OK delivered in plaintext' });
+			// The verifying probe (requireTLS:true) fails because STARTTLS is stripped;
+			// the opportunistic retry on the same MX then delivers in cleartext.
+			connectMock
+				.mockRejectedValueOnce(
+					smtpError({
+						phase: 'starttls',
+						message: 'server does not advertise STARTTLS but TLS is required',
+						tlsCause: 'starttls-unavailable',
+						secured: false,
+					})
+				)
+				.mockResolvedValue(liveConn(false));
 
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
-			// Delivery proceeded despite the TLS problem (report-only testing mode).
 			expect(result.success).toBe(true);
-			expect(mockTransport.sendMail).toHaveBeenCalledTimes(2);
+			// probe + opportunistic retry on the same MX.
+			expect(connectMock).toHaveBeenCalledTimes(2);
 
 			const report = await reportFor();
 			const policy = report.policies[0]!;
 			expect(policy.policy['policy-type']).toBe('sts');
-			// A failure was recorded though delivery proceeded. The cleartext retry is
-			// NOT a TLS success (PR-24): the STARTTLS-stripping probe and the cleartext
-			// retry are BOTH STS-attributed sts-policy-invalid, so no session counts as
-			// a TLS success even though the mail was delivered.
-			expect(policy.summary['total-failure-session-count']).toBeGreaterThanOrEqual(1);
+			// The cleartext retry is NOT a TLS success (PR-24): both the stripped probe
+			// and the cleartext retry are STS-attributed sts-policy-invalid.
 			expect(policy.summary['total-successful-session-count']).toBe(0);
+			expect(policy.summary['total-failure-session-count']).toBeGreaterThanOrEqual(1);
 			const details = policy['failure-details']!;
 			expect(details.find((d) => d['result-type'] === 'sts-policy-invalid')).toBeDefined();
 		});
 	});
 
-	// ── PR-24: a plaintext delivery is recorded as starttls-not-supported, an
-	// encrypted one as success. These sender-level tests drive the secured-state
-	// capture by simulating nodemailer's STARTTLS upgrade log on the mock
-	// transport; senderPlaintextTlsRpt.integration.test.ts proves the same against
-	// a real loopback handshake.
 	describe('TLS-RPT records the real session result type per delivery (PR-24)', () => {
 		it('records starttls-not-supported (not success) for a cleartext delivery with no policy', async () => {
-			// The mock transport never reports a STARTTLS upgrade, so the captured
-			// secured state stays false — exactly a plaintext session.
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK in cleartext' });
+			// The connection never negotiated STARTTLS → secured stays false → a
+			// plaintext session, recorded as starttls-not-supported (never success).
+			connectMock.mockResolvedValue(liveConn(false));
 
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
-			expect(result.success).toBe(true); // delivery still proceeds
+			expect(result.success).toBe(true);
 
 			const report = await reportFor();
 			const policy = report.policies[0]!;
-			// Not counted as a TLS success — overstating coverage is the bug PR-24 fixes.
 			expect(policy.summary['total-successful-session-count']).toBe(0);
 			expect(policy.summary['total-failure-session-count']).toBe(1);
 			const details = policy['failure-details']!;
@@ -952,12 +957,7 @@ describe('sendToMx', () => {
 		});
 
 		it('records a TLS success when the connection negotiated STARTTLS', async () => {
-			// Simulate nodemailer's connect-time STARTTLS upgrade log from inside the
-			// send so the per-send capture flips to secured.
-			mockTransport.sendMail.mockImplementation(async () => {
-				securedCaptureLogger.info({ tnx: 'smtp' }, 'Connection upgraded with STARTTLS');
-				return { response: '250 OK over TLS' };
-			});
+			connectMock.mockResolvedValue(liveConn(true));
 
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 			expect(result.success).toBe(true);
@@ -967,48 +967,99 @@ describe('sendToMx', () => {
 			expect(policy.summary['total-successful-session-count']).toBe(1);
 			expect(policy.summary['total-failure-session-count']).toBe(0);
 		});
+
+		it('records the per-message TLS success on a REUSED (checked-out) secured connection', async () => {
+			// The reuse path: takeConnection returns a live, secured socket, so the sender
+			// never calls connect — but the TLS-RPT result must still be recorded from the
+			// reused connection's own `secured` state (attribution is per-connection, and
+			// every message carried over it inherits that state).
+			const reused = liveConn(true);
+			vi.mocked(pool.takeConnection).mockResolvedValueOnce(reused as unknown as SmtpConnection);
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+			expect(result.success).toBe(true);
+			expect(connectMock).not.toHaveBeenCalled(); // reused, not reconnected
+
+			const report = await reportFor();
+			const policy = report.policies[0]!;
+			expect(policy.summary['total-successful-session-count']).toBe(1);
+			expect(policy.summary['total-failure-session-count']).toBe(0);
+		});
+	});
+
+	describe('reused-socket disposition on a delivery failure (X1 park vs evict)', () => {
+		it('parks the reused socket (entry survives) on a clean pre-DATA reply rejection', async () => {
+			// A 550 all-recipients bounce is a clean reply on a protocol-healthy socket:
+			// pre-X1 the pooled entry survived a bounce, so the socket is parked for reuse
+			// (the next job's RSET clears the aborted transaction), never evicted.
+			const reused = liveConn(true);
+			vi.mocked(pool.takeConnection).mockResolvedValueOnce(reused as unknown as SmtpConnection);
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({
+					phase: 'rcpt',
+					message: '550 5.1.1 User unknown',
+					replyCode: 550,
+					secured: true,
+				})
+			);
+
+			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+			expect(result.success).toBe(false); // still a bounce for THIS message
+			expect(pool.storeConnection).toHaveBeenCalledWith(expect.any(String), reused);
+			expect(pool.evictConnection).not.toHaveBeenCalled();
+		});
+
+		it('evicts the reused socket on a 421 channel-close reply', async () => {
+			// 421 = the server is closing the transmission channel: the socket is gone,
+			// so it must be evicted (never parked) even though it carried a reply code.
+			const reused = liveConn(true);
+			vi.mocked(pool.takeConnection).mockResolvedValueOnce(reused as unknown as SmtpConnection);
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({ phase: 'mail', message: '421 service closing', replyCode: 421, secured: true })
+			);
+
+			await sendToMx(createJob(), config, redis, '10.0.0.1');
+			expect(pool.evictConnection).toHaveBeenCalledWith(expect.any(String), reused);
+			expect(pool.storeConnection).not.toHaveBeenCalled();
+		});
+
+		it('evicts the reused socket on a DATA-phase ambiguity (no reply)', async () => {
+			// A drop during/after DATA is the never-auto-retried ambiguous region: the
+			// socket is poisoned and must be evicted, never reused.
+			const reused = liveConn(true);
+			vi.mocked(pool.takeConnection).mockResolvedValueOnce(reused as unknown as SmtpConnection);
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({ phase: 'data-final', message: 'connection dropped after DATA', secured: true })
+			);
+
+			await sendToMx(createJob(), config, redis, '10.0.0.1');
+			expect(pool.evictConnection).toHaveBeenCalledWith(expect.any(String), reused);
+			expect(pool.storeConnection).not.toHaveBeenCalled();
+		});
 	});
 
 	// ── T3: DANE at send time (RFC 7672), DANE_MODE off/report/enforce ───────
-	//
-	// The sender matrix for DANE. `off` is byte-identical to T1 (resolver never
-	// consulted, no peer verifier on the acquire). `enforce`: a usable TLSA
-	// RRset makes the acquire require authenticated TLS and carry the DANE
-	// cert-authentication hook; a TLSA mismatch defers (soft bounce) and records a
-	// TLS-RPT validation-failure attributed to the tlsa policy. `report`: same
-	// lookup + evaluation and the SAME TLS-RPT result is emitted, but DANE never
-	// requires TLS or bounces — a probe failure falls back to the normal floor and
-	// the mail is still delivered (observability only, zero delivery impact).
 	describe('DANE at send time (T3)', () => {
-		// The DANE-EE(3) SPKI SHA-256 of the fixture MX certificate — the record the
-		// MX would publish at _25._tcp.<mx>.
 		const CERT_SPKI_SHA256 = '49fc4a5424807bbbde5617d8b4bb563a79f4566c28d4d9b2e917dddcc7bac89c';
 		const MATCHING_TLSA = { usage: 3, selector: 1, matchingType: 1, data: CERT_SPKI_SHA256 };
 		const MISMATCH_TLSA = { usage: 3, selector: 1, matchingType: 1, data: 'deadbeef'.repeat(8) };
 
-		/** A minimal PeerCertificate carrying the fixture cert's DER. */
 		function fixturePeerCert(): PeerCertificate {
 			return { raw: new X509Certificate(MX_CERT).raw } as unknown as PeerCertificate;
 		}
-
 		function fixtureTlsSocket(): TLSSocket {
-			return {
-				getPeerCertificate: () => fixturePeerCert(),
-			} as unknown as TLSSocket;
+			return { getPeerCertificate: () => fixturePeerCert() } as unknown as TLSSocket;
 		}
-
 		function daneConfig(mode: 'report' | 'enforce' = 'enforce'): MtaConfig {
 			return createConfig({ daneMode: mode, daneResolverUrl: 'https://doh.example/dns-query' });
 		}
 
 		it('mode OFF => resolver never consulted; acquire has no DANE hook (byte-identical to T1)', async () => {
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
 			const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 			expect(result.success).toBe(true);
 			expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
-			const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
+			const tlsOpts = acquireOpts(0).tls ?? {};
 			expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
 			expect(tlsOpts).not.toHaveProperty('verifyPeerCertificate');
 		});
@@ -1016,11 +1067,6 @@ describe('sendToMx', () => {
 		it.each(['report', 'enforce'] as const)(
 			'mode %s with NO resolver => inert (resolver never consulted, no DANE hook)',
 			async (mode) => {
-				mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
-
-				// A mode is set but DANE_RESOLVER_URL is unset → DANE is a graceful no-op
-				// in every mode, byte-identical to the historic path (a fresh install with
-				// no resolver behaves exactly as before).
 				const result = await sendToMx(
 					createJob(),
 					createConfig({ daneMode: mode }),
@@ -1030,41 +1076,32 @@ describe('sendToMx', () => {
 
 				expect(result.success).toBe(true);
 				expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
-				const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
-				expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
+				const tlsOpts = acquireOpts(0).tls ?? {};
 				expect(tlsOpts).not.toHaveProperty('verifyPeerCertificate');
 			}
 		);
 
 		it('DANE enabled but no usable TLSA => falls through to the non-DANE path', async () => {
 			vi.mocked(lookupTlsaRecords).mockResolvedValue({ status: 'no-tlsa' });
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 
 			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
 
 			expect(result.success).toBe(true);
 			expect(vi.mocked(lookupTlsaRecords)).toHaveBeenCalled();
-			const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
-			expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
-			expect(tlsOpts).not.toHaveProperty('verifyPeerCertificate');
+			expect(acquireOpts(0).tls ?? {}).not.toHaveProperty('verifyPeerCertificate');
 		});
 
 		it('a TLSA lookup FAILURE (SERVFAIL/outage) defers — never downgrades to non-DANE', async () => {
-			// RFC 7672 §2.1: a lookup that could not be completed is not a denial of
-			// existence. The sender must defer, not fall through to a (possibly
-			// cleartext) non-DANE delivery.
 			vi.mocked(lookupTlsaRecords).mockResolvedValue({
 				status: 'lookup-failed',
 				reason: 'DNS RCODE 2',
 			});
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 
 			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
 
 			expect(result.success).toBe(false);
 			expect(result.bounceType).toBe('soft');
-			// No delivery attempt at all: we never opened a connection for this MX.
-			expect(vi.mocked(pool.acquire)).not.toHaveBeenCalled();
+			expect(acquireMock).not.toHaveBeenCalled();
 		});
 
 		it('an enforce-mode DNSSEC MX discovery failure defers before TLSA lookup', async () => {
@@ -1078,7 +1115,7 @@ describe('sendToMx', () => {
 			expect(result).toMatchObject({ success: false, bounceType: 'soft' });
 			expect(result.error).toContain('DANE MX discovery failed');
 			expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
-			expect(vi.mocked(pool.acquire)).not.toHaveBeenCalled();
+			expect(acquireMock).not.toHaveBeenCalled();
 		});
 
 		it('an indeterminate address lookup defers in enforce mode instead of downgrading', async () => {
@@ -1099,8 +1136,7 @@ describe('sendToMx', () => {
 
 			expect(result).toMatchObject({ success: false, bounceType: 'soft' });
 			expect(result.error).toContain('address discovery indeterminate');
-			expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
-			expect(vi.mocked(pool.acquire)).not.toHaveBeenCalled();
+			expect(acquireMock).not.toHaveBeenCalled();
 		});
 
 		it('a report-mode MX discovery failure delivers normally without a misleading DANE probe', async () => {
@@ -1108,15 +1144,12 @@ describe('sendToMx', () => {
 				status: 'lookup-failed',
 				reason: 'MX DNS RCODE 2',
 			});
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 
 			const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
 
 			expect(result.success).toBe(true);
 			expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
-			expect(vi.mocked(pool.acquire).mock.calls[0]![2].tls).not.toHaveProperty(
-				'verifyPeerCertificate'
-			);
+			expect(acquireOpts(0).tls ?? {}).not.toHaveProperty('verifyPeerCertificate');
 		});
 
 		it('DANE-EE uses the post-handshake verifier without requiring WebPKI', async () => {
@@ -1124,15 +1157,12 @@ describe('sendToMx', () => {
 				status: 'records',
 				records: [MATCHING_TLSA],
 			});
-			mockTransport.sendMail.mockImplementation(async () => {
-				securedCaptureLogger.info({ tnx: 'smtp' }, 'Connection upgraded with STARTTLS');
-				return { response: '250 OK over DANE TLS' };
-			});
+			connectMock.mockResolvedValue(liveConn(true));
 
 			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
 
 			expect(result.success).toBe(true);
-			const opts = vi.mocked(pool.acquire).mock.calls[0]![2];
+			const opts = acquireOpts(0);
 			expect(opts.requireTLS).toBe(true);
 			expect(opts.tls?.rejectUnauthorized).toBe(false);
 			expect(typeof opts.tls?.verifyPeerCertificate).toBe('function');
@@ -1145,21 +1175,17 @@ describe('sendToMx', () => {
 				status: 'records',
 				records: [MATCHING_TLSA],
 			});
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 			await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
 
-			const check = vi.mocked(pool.acquire).mock.calls[0]![2].tls!.verifyPeerCertificate!;
-			// Matching cert → accept (undefined).
+			const check = acquireOpts(0).tls!.verifyPeerCertificate!;
 			expect(check(fixtureTlsSocket())).toBeUndefined();
 
-			// A wrong TLSA record → the hook returns an Error (aborts the handshake).
 			vi.mocked(lookupTlsaRecords).mockResolvedValue({
 				status: 'records',
 				records: [MISMATCH_TLSA],
 			});
 			await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
-			const mismatchCheck = vi.mocked(pool.acquire).mock.calls.at(-1)![2]
-				.tls!.verifyPeerCertificate!;
+			const mismatchCheck = acquireMock.mock.calls.at(-1)![2].tls.verifyPeerCertificate!;
 			const verdict = mismatchCheck(fixtureTlsSocket());
 			expect(verdict).toBeInstanceOf(Error);
 			expect((verdict as Error).message).toContain('DANE TLSA mismatch');
@@ -1170,17 +1196,19 @@ describe('sendToMx', () => {
 				status: 'records',
 				records: [MISMATCH_TLSA],
 			});
-			// Simulate nodemailer aborting the handshake because our peer verifier
-			// returned an Error: a TLS-level failure with no SMTP status code.
-			mockTransport.sendMail.mockRejectedValue(
-				Object.assign(new Error('DANE TLSA mismatch: MX certificate did not match'), {
-					code: 'ERR_TLS_CERT_ALTNAME_INVALID',
+			// The post-handshake verifier rejects → the client fails the connection
+			// closed with tlsCause 'handshake' (a TLS failure with no reply code).
+			connectMock.mockRejectedValue(
+				smtpError({
+					phase: 'starttls',
+					message: 'peer certificate verification failed: DANE TLSA mismatch',
+					tlsCause: 'handshake',
+					secured: false,
 				})
 			);
 
 			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
 
-			// No cleartext fallback: the message is deferred for retry.
 			expect(result.success).toBe(false);
 			expect(result.bounceType).toBe('soft');
 
@@ -1192,26 +1220,19 @@ describe('sendToMx', () => {
 			expect(details.find((d) => d['result-type'] === 'validation-failure')).toBeDefined();
 		});
 
-		// ── report mode: observability only, zero delivery impact ────────────
 		it('report + matching TLSA => delivers and emits a TLS-RPT success under the tlsa policy', async () => {
 			vi.mocked(lookupTlsaRecords).mockResolvedValue({
 				status: 'records',
 				records: [MATCHING_TLSA],
 			});
-			mockTransport.sendMail.mockImplementation(async () => {
-				securedCaptureLogger.info({ tnx: 'smtp' }, 'Connection upgraded with STARTTLS');
-				return { response: '250 OK over DANE TLS' };
-			});
+			connectMock.mockResolvedValue(liveConn(true));
 
 			const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
 
-			// The single probe delivered; report-only never needs the fallback here.
 			expect(result.success).toBe(true);
-			expect(vi.mocked(pool.acquire)).toHaveBeenCalledTimes(1);
-			const opts = vi.mocked(pool.acquire).mock.calls[0]![2];
-			expect(typeof opts.tls?.verifyPeerCertificate).toBe('function');
+			expect(acquireMock).toHaveBeenCalledTimes(1);
+			expect(typeof acquireOpts(0).tls?.verifyPeerCertificate).toBe('function');
 
-			// The TLS-RPT result is still emitted, attributed to the tlsa policy.
 			const report = await reportFor();
 			const policy = report.policies[0]!;
 			expect(policy.policy['policy-type']).toBe('tlsa');
@@ -1225,35 +1246,30 @@ describe('sendToMx', () => {
 			});
 			// Probe (call 0) aborts on the TLSA mismatch; the report-only fallback
 			// (call 1) delivers over the normal opportunistic floor.
-			mockTransport.sendMail
-				.mockImplementationOnce(async () => {
-					throw Object.assign(new Error('DANE TLSA mismatch: MX certificate did not match'), {
-						code: 'ERR_TLS_CERT_ALTNAME_INVALID',
-					});
-				})
-				.mockImplementation(async () => {
-					securedCaptureLogger.info({ tnx: 'smtp' }, 'Connection upgraded with STARTTLS');
-					return { response: '250 OK over opportunistic TLS (report-only fallback)' };
-				});
+			connectMock
+				.mockRejectedValueOnce(
+					smtpError({
+						phase: 'starttls',
+						message: 'peer certificate verification failed: DANE TLSA mismatch',
+						tlsCause: 'handshake',
+						secured: false,
+					})
+				)
+				.mockResolvedValue(liveConn(true));
 
 			const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
 
-			// Report-only never bounces: the mail is delivered by the fallback attempt.
 			expect(result.success).toBe(true);
-			expect(vi.mocked(pool.acquire)).toHaveBeenCalledTimes(2);
+			expect(acquireMock).toHaveBeenCalledTimes(2);
 
-			// The probe carried the DANE hook + verified TLS (to observe the match).
-			const probeOpts = vi.mocked(pool.acquire).mock.calls[0]![2];
+			const probeOpts = acquireOpts(0);
 			expect(probeOpts.requireTLS).toBe(true);
 			expect(typeof probeOpts.tls?.verifyPeerCertificate).toBe('function');
 
-			// The actual delivery imposes NO DANE requirement: normal opportunistic
-			// floor (requireTLS false), and no DANE cert-authentication hook.
-			const deliverOpts = vi.mocked(pool.acquire).mock.calls[1]![2];
+			const deliverOpts = acquireOpts(1);
 			expect(deliverOpts.requireTLS).toBe(false);
-			expect(deliverOpts.tls ?? {}).not.toHaveProperty('checkServerIdentity');
+			expect(deliverOpts.tls ?? {}).not.toHaveProperty('verifyPeerCertificate');
 
-			// The TLS-RPT validation-failure is still emitted under the tlsa policy.
 			const report = await reportFor();
 			const policy = report.policies[0]!;
 			expect(policy.policy['policy-type']).toBe('tlsa');
@@ -1267,14 +1283,11 @@ describe('sendToMx', () => {
 				status: 'lookup-failed',
 				reason: 'DNS RCODE 2',
 			});
-			mockTransport.sendMail.mockResolvedValue({ response: '250 OK' });
 
 			const result = await sendToMx(createJob(), daneConfig('report'), redis, '10.0.0.1');
 
-			// Unlike enforce (which defers), report-only has zero delivery impact.
 			expect(result.success).toBe(true);
-			const tlsOpts = vi.mocked(pool.acquire).mock.calls[0]![2].tls ?? {};
-			expect(tlsOpts).not.toHaveProperty('checkServerIdentity');
+			expect(acquireOpts(0).tls ?? {}).not.toHaveProperty('verifyPeerCertificate');
 		});
 	});
 });

@@ -165,8 +165,8 @@ describe('POST /send — request validation', () => {
 
 		expect(res.status).toBe(200);
 		expect(queue.add).toHaveBeenCalledTimes(1);
-		// The full display-name header is preserved on the job (nodemailer
-		// re-encodes the From header from this value downstream).
+		// The full display-name header is preserved on the job (the compose
+		// path re-encodes the From header from this value downstream).
 		const arg = queue.add.mock.calls[0]![0] as { data: Record<string, unknown> };
 		expect(arg.data.from).toBe('Owlat <noreply@mail.example.com>');
 	});

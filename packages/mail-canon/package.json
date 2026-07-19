@@ -1,0 +1,33 @@
+{
+	"name": "@owlat/mail-canon",
+	"version": "0.1.0",
+	"private": true,
+	"license": "Apache-2.0",
+	"homepage": "https://owlat.app",
+	"description": "RFC 6376 §3.4 DKIM canonicalization — the ONE shared canonicalizer (U4). A dependency-free leaf: node:crypto/node:buffer only, so both the inbound verifier (@owlat/mail-auth) and the outbound signer (@owlat/mail-message) consume it without a build cycle and stay Convex-'use node' safe.",
+	"type": "module",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		}
+	},
+	"scripts": {
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"mailauth": "^4.13.3",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

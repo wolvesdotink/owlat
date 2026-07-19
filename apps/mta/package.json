@@ -20,26 +20,27 @@
 	"dependencies": {
 		"@hono/node-server": "^2.0.0",
 		"@owlat/email-scanner": "workspace:*",
+		"@owlat/mail-auth": "workspace:*",
+		"@owlat/mail-message": "workspace:*",
 		"@owlat/shared": "workspace:*",
+		"@owlat/smtp-client": "workspace:*",
+		"@owlat/smtp-listener": "workspace:*",
 		"groupmq": "^1.1.0",
 		"hono": "^4.12.25",
 		"ioredis": "^5.6.0",
-		"mailauth": "^4.13.3",
-		"mailparser": "^3.7.0",
-		"nodemailer": "^9.0.3",
 		"pino": "^10.3.1",
-		"prom-client": "^15.1.0",
-		"smtp-server": "^3.13.0"
+		"prom-client": "^15.1.0"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",
-		"@types/nodemailer": "^8.0.0",
 		"@types/smtp-server": "^3.5.10",
 		"@types/mailparser": "^3.4.5",
 		"typescript": "catalog:",
 		"tsx": "^4.19.0",
 		"vitest": "catalog:",
 		"ioredis-mock": "^8.9.0",
-		"mailauth": "^4.13.3"
+		"mailauth": "^4.13.3",
+		"mailparser": "^3.7.0",
+		"smtp-server": "^3.13.0"
 	}
 }

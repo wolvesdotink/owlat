@@ -2,9 +2,9 @@
  * Integration regression-lock for the outbound client TLS posture (audit PR-75).
  *
  * These tests stand up REAL TLS / TCP servers and drive the REAL imapflow +
- * nodemailer code paths (via sendViaExternal and direct ImapFlow construction
- * with the production imapTlsOptions/smtpTlsOptions). They prove the wire
- * behaviour, not just the option shape:
+ * @owlat/smtp-client code paths (via sendViaExternal and direct ImapFlow
+ * construction with the production imapTlsOptions/smtpTlsOptions). They prove the
+ * wire behaviour, not just the option shape:
  *
  *  §1 cert-verify ON  — a self-signed cert on a non-loopback host is rejected
  *                       (DEPTH_ZERO_SELF_SIGNED_CERT / "self-signed certificate").
@@ -61,7 +61,7 @@ beforeAll(() => {
 			'-subj',
 			`/CN=${IMAP_HOST}`,
 		],
-		{ stdio: 'ignore' },
+		{ stdio: 'ignore' }
 	);
 	key = readFileSync(join(certDir, 'key.pem'));
 	cert = readFileSync(join(certDir, 'cert.pem'));
@@ -85,7 +85,7 @@ function installDnsShim(): void {
 		const callback = (typeof options === 'function' ? options : cb) as (
 			err: NodeJS.ErrnoException | null,
 			address: unknown,
-			family?: number,
+			family?: number
 		) => void;
 		const opts = (typeof options === 'function' ? {} : options) as { all?: boolean };
 		if (hostname === IMAP_HOST || hostname === SMTP_HOST) {
@@ -110,7 +110,7 @@ function loopbackLookup(hostname: string, options: unknown, cb: unknown): void {
 	const callback = (typeof options === 'function' ? options : cb) as (
 		err: NodeJS.ErrnoException | null,
 		address: unknown,
-		family?: number,
+		family?: number
 	) => void;
 	const opts = (typeof options === 'function' ? {} : options) as { all?: boolean };
 	const rec = { address: '127.0.0.1', family: 4 };
@@ -178,13 +178,19 @@ describe('PR-75 §1 — certificate verification is enforced (self-signed reject
 		const port = await listenOnLoopback(server);
 		installDnsShim();
 		try {
+			// The in-house client classifies the handshake failure from Node's error
+			// CODE (DEPTH_ZERO_SELF_SIGNED_CERT → tlsCause 'cert-untrusted'), never a
+			// string sniff; the message still names the code for the human reading it.
 			await expect(
 				sendViaExternal(smtpCreds(port, true), {
 					from: 'me@regress.invalid',
 					recipients: ['x@example.com'],
 					raw: RAW,
-				}),
-			).rejects.toThrow(/self-signed certificate|DEPTH_ZERO_SELF_SIGNED_CERT/i);
+				})
+			).rejects.toMatchObject({
+				tlsCause: 'cert-untrusted',
+				secured: false,
+			});
 		} finally {
 			server.close();
 		}
@@ -211,7 +217,7 @@ describe('PR-75 §2 — no-downgrade: a server without STARTTLS is rejected (no 
 		const port = await listenOnLoopback(server);
 		installDnsShim();
 		try {
-			let err: { code?: string; message?: string } | undefined;
+			let err: { phase?: string; tlsCause?: string; message?: string } | undefined;
 			try {
 				await sendViaExternal(smtpCreds(port, false), {
 					from: 'me@regress.invalid',
@@ -219,12 +225,13 @@ describe('PR-75 §2 — no-downgrade: a server without STARTTLS is rejected (no 
 					raw: RAW,
 				});
 			} catch (e) {
-				err = e as { code?: string; message?: string };
+				err = e as { phase?: string; tlsCause?: string; message?: string };
 			}
 			expect(err, 'send should reject when STARTTLS is unavailable').toBeDefined();
-			// nodemailer surfaces a connection/TLS error mentioning STARTTLS.
-			expect(err?.code).toMatch(/^(ETLS|ECONNECTION|ESOCKET)$/);
-			expect(err?.message ?? '').toMatch(/STARTTLS/i);
+			// The in-house client fails closed in the STARTTLS phase with a structured
+			// tlsCause — the fail-open trap (proceeding in cleartext) never happens.
+			expect(err?.phase).toBe('starttls');
+			expect(err?.tlsCause).toBe('starttls-unavailable');
 			// The mailbox password and envelope were NEVER sent in the clear.
 			const wire = captured.join('');
 			expect(wire).not.toMatch(/AUTH/i);

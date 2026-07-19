@@ -1,0 +1,28 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=efqqXtJZLamfcLKZpWFpAgRvu6bWaebJahYbs90TJHA=;
+ b=xC1wY0gd6KihPaBK8Nsuo9E9+BdrrZ8F577Pz4QKSPkcvKh8zqLj9jdEeWVVwgIHDXzEjBbx9
+ N08TyQS2wiLmZIK7WctMfbhMZiuI238aUrEjjRQAc5Zt96ztatl+l7W7ubnnn6TmeupPJzQjXmQ
+ WVi7RpbhjOEgVWVGWZgtknI65wktTvrdYm9VBXjwvF/RlcVtzm7+LuUhk/vMopozsY3YWaniAPl
+ jk2K27mIt0GAp5xxQIMmaXPAjWg/yxQCuTaFTFowQruK4CnUlETdXsbmYTdgvw/z3MFH2z61pON
+ 9R7FDpcP/qTDQDIg1V3/9Ka6sTmvaaqdL2bkmHN+k1TQ==
+Message-ID: <corpus-36@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: visible@example.com
+Subject: Bcc handling
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_bcc-only-recipient_0"
+
+----_owlat_bcc-only-recipient_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+x
+----_owlat_bcc-only-recipient_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>x</p>
+----_owlat_bcc-only-recipient_0--

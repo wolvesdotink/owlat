@@ -7,12 +7,12 @@
  * NEVER `os.hostname()` (the container/host name, which has no PTR).
  *
  * `sendToMx` computes that name via `resolveEhloForIp(config, bindIp)` and threads
- * it to `pool.acquire(..., { name })`. The pool hands `name` to nodemailer, which
- * announces it in the SMTP `EHLO`/`HELO` command. The receiving MTA records it as
- * `session.hostNameAppearsAs`.
+ * it to `pool.acquire(..., { name })`. The pool sets it as the connect config's
+ * `ehloName`, which @owlat/smtp-client announces in the SMTP `EHLO`/`HELO`
+ * command. The receiving MTA records it as `session.hostNameAppearsAs`.
  *
- * This test drives the REAL {@link SmtpConnectionPool} + nodemailer against a real
- * loopback smtp-server and asserts the server saw exactly `config.ehloHostname`
+ * This test drives the REAL {@link SmtpConnectionPool} + @owlat/smtp-client against
+ * a real loopback smtp-server and asserts the server saw exactly `config.ehloHostname`
  * (`mail.test.example`) — proving the `name → hostNameAppearsAs` contract that
  * `sendToMx` depends on, and that no `os.hostname()` value leaks onto the wire.
  * The unit test in `sender.test.ts` ("per-IP EHLO hostname" + the single-IP case)
@@ -25,6 +25,7 @@ import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import { SmtpConnectionPool } from '../connectionPool.js';
 import { resolveEhloForIp } from '../../config.js';
+import { deliver } from './loopbackMxHarness.js';
 
 /** Capture the EHLO name the client announced, per accepted message. */
 async function startRecordingServer(): Promise<{
@@ -79,32 +80,20 @@ describe('outbound EHLO name end-to-end (PR-64)', () => {
 		// global config.ehloHostname — exactly what sendToMx passes to pool.acquire.
 		const ehloHostname = resolveEhloForIp(
 			{ ehloHostname: 'mail.test.example', ehloHostnames: {} },
-			'127.0.0.1',
+			'127.0.0.1'
 		);
 		expect(ehloHostname).toBe('mail.test.example');
 
 		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
-		const { key, transport } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+		const result = await deliver(pool, {
 			port: started.port,
-			secure: false,
 			tls: { rejectUnauthorized: false },
 			name: ehloHostname, // <- the value sendToMx threads through
 			connectionTimeout: 5000,
 			greetingTimeout: 5000,
 			socketTimeout: 5000,
 		});
-
-		try {
-			const info = await transport.sendMail({
-				from: 'sender@mail.test.example',
-				to: 'recipient@example.test',
-				subject: 'ehlo name lock',
-				text: 'body',
-			});
-			expect(info.accepted).toContain('recipient@example.test');
-		} finally {
-			pool.release(key);
-		}
+		expect(result.accepted.map((v) => v.recipient)).toContain('recipient@example.test');
 
 		// The receiver recorded the configured FQDN verbatim…
 		expect(started.seen).toContain('mail.test.example');
