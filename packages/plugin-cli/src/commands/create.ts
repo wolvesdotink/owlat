@@ -4,7 +4,7 @@ import { parsePluginId, PluginIdError } from '@owlat/plugin-kit';
 import { parsePackageArgument } from '../config';
 import { PluginCliError } from '../errors';
 import type { CliIo } from '../io';
-import { toPosix } from '../paths';
+import { compareStrings, toPosix } from '../paths';
 import { buildScaffold, type ScaffoldFiles } from '../scaffold';
 
 export interface CreateArgs {
@@ -183,7 +183,7 @@ async function rollback(
 }
 
 function sortedPaths(files: ScaffoldFiles): readonly string[] {
-	return [...files.keys()].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+	return [...files.keys()].sort(compareStrings);
 }
 
 function isMissingFileError(error: unknown): boolean {
