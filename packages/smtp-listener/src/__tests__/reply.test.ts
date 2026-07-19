@@ -62,6 +62,10 @@ describe('Reply table (real RFC 3463 enhanced codes)', () => {
 		[serializeReply(Reply.localError()), '451 4.3.0 Local error in processing\r\n'],
 		[serializeReply(Reply.tooManyErrors()), '421 4.7.0 Too many errors, closing connection\r\n'],
 		[
+			serializeReply(Reply.tooManyMailCommands()),
+			'421 4.7.0 Too many MAIL commands, closing connection\r\n',
+		],
+		[
 			serializeReply(Reply.shuttingDown('mx.owlat.app')),
 			'421 4.4.2 mx.owlat.app timeout, closing connection\r\n',
 		],

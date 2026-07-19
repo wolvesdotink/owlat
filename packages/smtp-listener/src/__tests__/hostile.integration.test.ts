@@ -8,9 +8,10 @@
  *   - the right TIMEOUT fires (a 421 4.4.2 close on the command / DATA idle
  *     timer), or
  *   - a COUNTER caps it: the per-command byte cap (500 + destroy), the
- *     bad-command budget (421 4.7.0 after N), or the DATA-phase byte budget's
- *     drain-past-limit / destroy-at-abort ceiling (the `ByteBudget` core is
- *     pinned directly in `budget.test.ts`).
+ *     bad-command budget (421 4.7.0 after N), the connection-lifetime MAIL
+ *     policy budget, or the DATA-phase byte budget's drain-past-limit /
+ *     destroy-at-abort ceiling (the `ByteBudget` core is pinned directly in
+ *     `budget.test.ts`).
  *
  * Each attack also asserts the listener SURVIVES — a fresh, well-behaved
  * connection completes a transaction afterward — so a bounded attack never
@@ -568,6 +569,56 @@ describe('rejected-envelope flood', () => {
 		expect(c.closed).toBe(true);
 		// The handler still ran at most MAX times despite the interleaved free
 		// commands — the amplification bound holds.
+		expect(mailCalls).toHaveLength(MAX);
+	});
+
+	it('accepted EHLO cannot launder rejected MAIL policy calls', async () => {
+		const MAX = 4;
+		const mailCalls: string[] = [];
+		const { port } = await start({
+			maxBadCommands: MAX,
+			maxMailCommands: MAX,
+			onMailFrom: (address) => {
+				mailCalls.push(address.address);
+				return { code: 550, enhanced: '5.7.1', text: 'sender rejected' };
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		// EHLO makes protocol progress and resets the consecutive-error budget, but
+		// it must not replenish the connection-lifetime sender-policy budget.
+		let flood = '';
+		for (let i = 0; i < 100; i++) {
+			flood += `EHLO h${i}.test\r\nMAIL FROM:<s${i}@a.test>\r\n`;
+		}
+		c.write(flood);
+		await c.waitCode(421);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
+		expect(mailCalls).toHaveLength(MAX);
+	});
+
+	it('accepted MAIL followed by RSET cannot launder sender-policy calls', async () => {
+		const MAX = 4;
+		const mailCalls: string[] = [];
+		const { port } = await start({
+			maxMailCommands: MAX,
+			onMailFrom: (address) => {
+				mailCalls.push(address.address);
+			},
+		});
+		const c = await Client.connect(port);
+		await c.waitCode(220);
+		// Each MAIL is accepted and RSET clears its transaction, so neither the bad-
+		// command counter nor transaction state can provide this lifetime bound.
+		let flood = '';
+		for (let i = 0; i < 100; i++) {
+			flood += `MAIL FROM:<s${i}@a.test>\r\nRSET\r\n`;
+		}
+		c.write(flood);
+		await c.waitCode(421);
+		await c.waitClose();
+		expect(c.closed).toBe(true);
 		expect(mailCalls).toHaveLength(MAX);
 	});
 });
