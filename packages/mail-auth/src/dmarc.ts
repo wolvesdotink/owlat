@@ -139,9 +139,9 @@ export async function evaluateDmarc(args: EvaluateDmarcArgs): Promise<DmarcOutco
 	const { spf, dkim, policyLookup } = args;
 
 	if (args.fromAmbiguous) {
-		// RFC 7489 §6.6.1: multiple From header fields (or multiple mailbox
-		// addresses in one From) give the evaluator no single identifier to bind a
-		// policy to — DMARC MUST NOT pass. Report a permanent evaluation failure.
+		// RFC 7489 §6.6.1: a missing, malformed, repeated, grouped, or multi-mailbox
+		// From gives the evaluator no single identifier to bind a policy to — DMARC
+		// MUST NOT pass. Report a permanent evaluation failure.
 		return { result: 'permerror' };
 	}
 

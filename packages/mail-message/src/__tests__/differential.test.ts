@@ -146,6 +146,7 @@ function createMockParsedMessage(overrides: Partial<ParsedMessage> = {}): Parsed
 		references: undefined,
 		date: undefined,
 		from: undefined,
+		rawFrom: [],
 		to: undefined,
 		cc: undefined,
 		bcc: undefined,

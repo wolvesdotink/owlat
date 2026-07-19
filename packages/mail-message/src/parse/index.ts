@@ -65,6 +65,11 @@ export interface ParsedMessage {
 	 * LAST instance, matching mailparser's `singleKeys`), or `undefined`.
 	 */
 	from: AddressObject | AddressObject[] | undefined;
+	/**
+	 * Unfolded raw RFC5322.From values before permissive address recovery. DMARC
+	 * uses these to require one syntactically valid mailbox identity.
+	 */
+	rawFrom: readonly string[];
 	/** Parsed `To:`; an array when the header is repeated. */
 	to: AddressObject | AddressObject[] | undefined;
 	/** Parsed `Cc:`; an array when the header is repeated. */
@@ -190,6 +195,7 @@ export function parseMessage(raw: string | Buffer): ParsedMessage {
 		references: parseReferences(refsRaw),
 		date: parseDate(headers.get('date')),
 		from: parseAddressObjects(addressValues(headers, 'from')),
+		rawFrom: headers.getAll('from'),
 		to: parseAddressObjects(addressValues(headers, 'to')),
 		cc: parseAddressObjects(addressValues(headers, 'cc')),
 		bcc: parseAddressObjects(addressValues(headers, 'bcc')),

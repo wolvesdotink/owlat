@@ -40,7 +40,7 @@ import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
 import { reduce } from './outcome.js';
 import { applyEffects } from './effects.js';
-import { firstAddress, isFromAmbiguous } from '../inbound/parsedAddress.js';
+import { dmarcFromIdentity } from '../inbound/parsedAddress.js';
 import type { SpfVerdict } from './types.js';
 import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
 import { logAttempt, isLocalAddress } from './serverHelpers.js';
@@ -394,23 +394,21 @@ export function buildOnData(
 
 			// Evaluate DMARC (RFC 7489): bind SPF + DKIM to the RFC5322.From domain via
 			// alignment + the From-domain policy. Fail-open on a crash.
-			const fromDomain = emailDomain(firstAddress(parsed.from) ?? '');
-			const fromAmbiguous = isFromAmbiguous(parsed.from, parsed.headerCounts.get('from'));
-			const dmarc =
-				config.inboundDmarcEnabled && (fromDomain || fromAmbiguous)
-					? await evaluateDmarc({
-							fromDomain,
-							fromAmbiguous,
-							spf: { result: spfResult ?? 'none', domain: envelopeFromDomain },
-							dkim: {
-								result: dkim?.result ?? 'none',
-								domain: dkim?.domain,
-								passingDomains: dkim?.passingDomains,
-							},
-							policyLookup: (domain) => dnsDmarcLookup(domain, authResolvers.dmarcTxt),
-							logger,
-						})
-					: undefined;
+			const fromIdentity = dmarcFromIdentity(parsed.from, parsed.rawFrom);
+			const dmarc = config.inboundDmarcEnabled
+				? await evaluateDmarc({
+						fromDomain: fromIdentity.domain,
+						fromAmbiguous: fromIdentity.invalid,
+						spf: { result: spfResult ?? 'none', domain: envelopeFromDomain },
+						dkim: {
+							result: dkim?.result ?? 'none',
+							domain: dkim?.domain,
+							passingDomains: dkim?.passingDomains,
+						},
+						policyLookup: (domain) => dnsDmarcLookup(domain, authResolvers.dmarcTxt),
+						logger,
+					})
+				: undefined;
 			const dmarcResult = dmarc?.result;
 			const dmarcPolicy = dmarc?.policy;
 
