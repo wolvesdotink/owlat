@@ -8,8 +8,7 @@
  * `undefined` accepts, a `>= 400` reply rejects.
  *
  * Covered:
- *   - RFC 5321 §4.5.5 / RFC 3464: a genuine DSN uses the NULL reverse-path
- *     (`MAIL FROM:<>`, surfaced as the empty address) — SPF is NOT consulted.
+ *   - RFC 7208 §2.4: a NULL reverse-path authenticates the HELO identity.
  *   - RFC 7208 §8.4: a non-empty MAIL FROM that SPF-fails is rejected.
  *   - The dynamic inbound-TLS gate rejects a plaintext transaction.
  *   - The RCPT gate accepts the TLS-RPT rua system route and refuses an unrouted
@@ -141,16 +140,23 @@ describe('bounce onMailFrom SPF gate (PR-74)', () => {
 		vi.mocked(isInboundTlsRequired).mockReset().mockResolvedValue(true);
 	});
 
-	it('accepts an empty MAIL FROM ("") without consulting SPF (null sender)', async () => {
+	it('authenticates the HELO identity for an empty MAIL FROM (null sender)', async () => {
+		vi.mocked(checkSpf).mockResolvedValue({ result: 'pass' });
 		const reply = await runMailFrom(makeConfig(), '');
 		expect(reply).toBeUndefined();
-		expect(checkSpf).not.toHaveBeenCalled();
+		expect(checkSpf).toHaveBeenCalledWith(
+			'203.0.113.10',
+			'',
+			'sender.example.com',
+			authResolvers.spf
+		);
 	});
 
-	it('accepts an explicit "<>" MAIL FROM without consulting SPF (null sender)', async () => {
+	it('rejects an explicit null sender when its HELO identity SPF fails', async () => {
+		vi.mocked(checkSpf).mockResolvedValue({ result: 'fail' });
 		const reply = await runMailFrom(makeConfig(), '<>');
-		expect(reply).toBeUndefined();
-		expect(checkSpf).not.toHaveBeenCalled();
+		expect(reply?.code).toBe(550);
+		expect(checkSpf).toHaveBeenCalledTimes(1);
 	});
 
 	it('rejects a non-empty MAIL FROM that SPF-fails (RFC 7208 §8.4)', async () => {

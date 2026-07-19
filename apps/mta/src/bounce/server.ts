@@ -227,11 +227,10 @@ export function buildOnConnect(
  * Inbound-TLS gate + SPF authentication of the envelope sender (onMailFrom).
  *
  * A plaintext transaction is refused when the dynamic inbound-TLS policy requires
- * encryption (RFC 3207). A genuine DSN uses the null reverse-path (`MAIL FROM:<>`,
- * surfaced by the listener as the empty address), which SPF cannot authenticate —
- * so it is accepted without an SPF lookup. A non-empty MAIL FROM is an identity
- * claim: when `inboundSpfEnabled` and SPF returns `fail` the transaction is
- * rejected (RFC 7208 §8.4). The full RFC 7208 §2.6 verdict is stashed on the
+ * encryption (RFC 3207). For a null reverse-path (`MAIL FROM:<>`), SPF evaluates
+ * the RFC5321.HELO identity instead of skipping authentication (RFC 7208 §2.4).
+ * When `inboundSpfEnabled` and the applicable identity returns `fail`, the
+ * transaction is rejected (RFC 7208 §8.4). The full RFC 7208 §2.6 verdict is stashed on the
  * typed transaction state so `onData` can thread softfail / temperror / neutral
  * into the mailbox payload (RFC 8601).
  */
@@ -256,16 +255,12 @@ export function buildOnMailFrom(
 			return;
 		}
 
-		// Skip SPF for the null return path (DSN) — nothing to authenticate.
-		if (!address.address || address.address === '<>') {
-			return;
-		}
-
 		try {
+			const heloIdentity = session.clientHostname || config.ehloHostname;
 			const spfResult = await checkSpf(
 				session.remoteAddress,
 				address.address,
-				session.clientHostname || config.ehloHostname,
+				heloIdentity,
 				authResolvers.spf
 			);
 
@@ -274,7 +269,8 @@ export function buildOnMailFrom(
 			// alignment (RFC 7489 §3.1 — SPF authenticates the envelope, not From).
 			session.transaction = {
 				spfResult: spfResult.result,
-				envelopeFromDomain: emailDomain(address.address),
+				envelopeFromDomain:
+					emailDomain(address.address) || heloIdentity.trim().toLowerCase().replace(/\.$/, ''),
 			};
 
 			if (spfResult.result === 'fail') {
@@ -399,11 +395,12 @@ export function buildOnData(
 			// Evaluate DMARC (RFC 7489): bind SPF + DKIM to the RFC5322.From domain via
 			// alignment + the From-domain policy. Fail-open on a crash.
 			const fromDomain = emailDomain(firstAddress(parsed.from) ?? '');
+			const fromAmbiguous = isFromAmbiguous(parsed.from, parsed.headerCounts.get('from'));
 			const dmarc =
-				config.inboundDmarcEnabled && fromDomain
+				config.inboundDmarcEnabled && (fromDomain || fromAmbiguous)
 					? await evaluateDmarc({
 							fromDomain,
-							fromAmbiguous: isFromAmbiguous(parsed.from, parsed.headerCounts.get('from')),
+							fromAmbiguous,
 							spf: { result: spfResult ?? 'none', domain: envelopeFromDomain },
 							dkim: {
 								result: dkim?.result ?? 'none',

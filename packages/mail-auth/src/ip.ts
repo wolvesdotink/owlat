@@ -22,33 +22,89 @@ export function stripIpv4Prefix(ip: string): string {
 	return ip;
 }
 
+export interface SpfMacroContext {
+	readonly sender?: string;
+	readonly helo?: string;
+}
+
+/** Syntax failure in an SPF macro expression (RFC 7208 §7.4 → permerror). */
+export class SpfMacroError extends Error {}
+
 /**
- * Expand the subset of RFC 7208 §7 macros that affect host lookups.
- *
- * Supports `%{i}` (sender IP, dotted-quad for IPv4 / nibble form for IPv6),
- * `%{d}` (current domain), `%{o}`/`%{s}` (sender — we only know the domain part),
- * and the literals `%%`, `%_`, `%-`. Macro modifiers (digit transformers,
- * reversal, alternate delimiters) are intentionally not implemented; an
- * unrecognised macro is left verbatim so the resulting lookup simply misses
- * rather than throwing — adequate for the common `exists:%{i}...` idiom.
+ * Expand RFC 7208 §7 domain-spec macros, including digit, reverse, and custom
+ * delimiter transformers. The validated-domain `%{p}` value follows the
+ * established verifier behavior of using the sender domain when no separate
+ * PTR-validation surface is available.
  */
-export function expandMacros(input: string, senderIp: string, domain: string): string {
+export function expandMacros(
+	input: string,
+	senderIp: string,
+	domain: string,
+	context: SpfMacroContext = {}
+): string {
 	if (!input.includes('%')) return input;
-	return input.replace(/%\{([a-zA-Z])\}|%%|%_|%-/g, (match, letter?: string) => {
+	const sender = context.sender ?? domain;
+	const at = sender.indexOf('@');
+	const senderLocal = at === -1 ? '' : sender.slice(0, at);
+	const senderDomain = at === -1 ? sender : sender.slice(at + 1);
+
+	return input.replace(/%%|%_|%-|%\{([^}]+)\}|%/gi, (match, expression?: string) => {
 		if (match === '%%') return '%';
 		if (match === '%_') return ' ';
 		if (match === '%-') return '%20';
-		switch ((letter ?? '').toLowerCase()) {
-			case 'i':
-				return macroIp(senderIp);
-			case 'd':
-				return domain;
-			case 's':
-			case 'o':
-				return domain;
-			default:
-				return match;
+		if (match === '%' || expression === undefined) {
+			throw new SpfMacroError('Unexpected % in SPF macro');
 		}
+
+		const rawLetter = expression[0] ?? '';
+		const letter = rawLetter.toLowerCase();
+		const render = (expanded: string): string =>
+			rawLetter === rawLetter.toUpperCase() ? encodeURIComponent(expanded) : expanded;
+		let value: string;
+		switch (letter) {
+			case 's':
+				value = sender;
+				break;
+			case 'l':
+				value = senderLocal;
+				break;
+			case 'o':
+			case 'p':
+				value = senderDomain;
+				break;
+			case 'd':
+				value = domain;
+				break;
+			case 'i':
+				value = macroIp(senderIp);
+				break;
+			case 'v':
+				value = senderIp.includes(':') ? 'ip6' : 'in-addr';
+				break;
+			case 'h':
+				value = context.helo ?? senderIp;
+				break;
+			default:
+				throw new SpfMacroError(`Unknown SPF macro letter: ${letter ?? ''}`);
+		}
+
+		const transformer = expression.slice(1);
+		const parsed = transformer.match(/^(\d+)?(r)?([.\-+,\x2f_=]*)$/i);
+		if (!parsed) throw new SpfMacroError(`Invalid SPF macro transformer: ${expression}`);
+		const partCount = parsed[1] === undefined ? undefined : Number(parsed[1]);
+		if (partCount !== undefined && (!Number.isInteger(partCount) || partCount === 0)) {
+			throw new SpfMacroError(`Invalid SPF macro part count: ${expression}`);
+		}
+		const delimiters = parsed[3] || '.';
+		if (parsed[2] === undefined && partCount === undefined && delimiters === '.') {
+			return render(value);
+		}
+
+		const escaped = delimiters.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		let parts = value.split(new RegExp(`[${escaped}]`));
+		if (parsed[2] !== undefined) parts = parts.reverse();
+		if (partCount !== undefined) parts = parts.slice(-partCount);
+		return render(parts.join('.'));
 	});
 }
 
@@ -100,7 +156,7 @@ export function ipMatchesCidr(ip: string, cidr: string): boolean {
 	const [network, prefixLenStr] = cidr.split('/');
 	const prefixLen = parseInt(prefixLenStr!, 10);
 
-	if (!network || isNaN(prefixLen)) return false;
+	if (!network || isNaN(prefixLen) || prefixLen < 0 || prefixLen > 32) return false;
 
 	const ipNum = ipToNumber(normalizedIp);
 	const netNum = ipToNumber(network);
@@ -109,6 +165,14 @@ export function ipMatchesCidr(ip: string, cidr: string): boolean {
 
 	const mask = prefixLen === 0 ? 0 : (~0 << (32 - prefixLen)) >>> 0;
 	return (ipNum & mask) === (netNum & mask);
+}
+
+/** Validate an SPF `ip4:` value, including an optional 0..32 prefix. */
+export function isValidIpv4Cidr(cidr: string): boolean {
+	const parts = cidr.split('/');
+	if (parts.length > 2 || ipToNumber(parts[0] ?? '') === null) return false;
+	if (parts.length === 1) return true;
+	return /^\d+$/.test(parts[1] ?? '') && Number(parts[1]) <= 32;
 }
 
 function ipToNumber(ip: string): number | null {
@@ -159,4 +223,12 @@ export function ipv6MatchesCidr(ip: string, cidr: string): boolean {
 	const ipNibble = parseInt(ipNibbles[fullNibbles]!, 16);
 	const netNibble = parseInt(netNibbles[fullNibbles]!, 16);
 	return (ipNibble & mask) === (netNibble & mask);
+}
+
+/** Validate an SPF `ip6:` value, including an optional 0..128 prefix. */
+export function isValidIpv6Cidr(cidr: string): boolean {
+	const parts = cidr.split('/');
+	if (parts.length > 2 || expandIpv6(parts[0] ?? '') === null) return false;
+	if (parts.length === 1) return true;
+	return /^\d+$/.test(parts[1] ?? '') && Number(parts[1]) <= 128;
 }

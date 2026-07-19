@@ -60,8 +60,23 @@ describe('expandMacros (RFC 7208 §7)', () => {
 		expect(expandMacros('%{o}', '1.2.3.4', 'd.com')).toBe('d.com');
 	});
 
-	it('leaves an unrecognised macro verbatim', () => {
-		expect(expandMacros('%{z}', '1.2.3.4', 'd.com')).toBe('%{z}');
+	it('applies reverse and digit/delimiter transformers', () => {
+		expect(expandMacros('%{ir}', '1.2.3.4', 'd.com')).toBe('4.3.2.1');
+		expect(expandMacros('%{d2}', '1.2.3.4', 'mail.example.com')).toBe('example.com');
+		expect(expandMacros('%{l1r-}', '1.2.3.4', 'd.com', { sender: 'a-b-c@d.com' })).toBe('a');
+	});
+
+	it('expands sender and HELO macros from the evaluation context', () => {
+		expect(
+			expandMacros('%{s}:%{l}:%{o}:%{h}:%{v}', '1.2.3.4', 'd.com', {
+				sender: 'alice@sender.example',
+				helo: 'helo.example',
+			})
+		).toBe('alice@sender.example:alice:sender.example:helo.example:in-addr');
+	});
+
+	it('rejects an unrecognised macro instead of silently querying a literal hostname', () => {
+		expect(() => expandMacros('%{z}', '1.2.3.4', 'd.com')).toThrow(/macro/i);
 	});
 });
 
@@ -82,6 +97,10 @@ describe('ipMatchesCidr (IPv4)', () => {
 
 	it('rejects a non-numeric prefix length', () => {
 		expect(ipMatchesCidr('10.0.0.5', '10.0.0.0/xx')).toBe(false);
+	});
+
+	it('rejects a prefix longer than 32 bits', () => {
+		expect(ipMatchesCidr('1.2.3.4', '0.0.0.0/33')).toBe(false);
 	});
 
 	it('rejects an empty network', () => {
