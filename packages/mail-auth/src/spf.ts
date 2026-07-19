@@ -91,6 +91,11 @@ function selectSpfRecord(records: readonly string[]): { record?: string; multipl
 	return { record: matches[0], multiple: false };
 }
 
+/** RFC 7208 §3.3: concatenate the character-strings within each TXT RR. */
+function joinTxtRecords(records: readonly (readonly string[])[]): string[] {
+	return records.map((chunks) => chunks.join(''));
+}
+
 /**
  * Perform SPF validation for an inbound email.
  *
@@ -121,7 +126,7 @@ export async function checkSpf(
 
 	try {
 		const records = (await resolver(domain, 'TXT')) as string[][];
-		const { record: spfRecord, multiple } = selectSpfRecord(records.flat());
+		const { record: spfRecord, multiple } = selectSpfRecord(joinTxtRecords(records));
 
 		if (multiple) {
 			// RFC 7208 §4.5: more than one v=spf1 record → permerror.
@@ -334,7 +339,7 @@ async function evaluateSpf(
 				};
 			}
 			const { record: includeSpf, multiple: includeMultiple } = selectSpfRecord(
-				includeRecords.flat()
+				joinTxtRecords(includeRecords)
 			);
 			// §4.5: more than one v=spf1 record at the included domain → permerror.
 			if (includeMultiple) {
@@ -430,7 +435,7 @@ async function evaluateSpf(
 			};
 		}
 		const { record: redirectSpf, multiple: redirectMultiple } = selectSpfRecord(
-			redirectRecords.flat()
+			joinTxtRecords(redirectRecords)
 		);
 		// §4.5: more than one v=spf1 record at the redirect target → permerror.
 		if (redirectMultiple) {
