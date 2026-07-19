@@ -5,6 +5,7 @@ import {
 } from '@owlat/plugin-codegen';
 import { PluginCompositionError, type PluginPackageName } from '@owlat/plugin-host';
 import { PluginCliError } from './errors';
+import { compareStrings } from './paths';
 
 /** One bundled plugin's declared capability ceiling, as previewed by the CLI. */
 export interface PluginCapabilitySummary {
@@ -119,8 +120,4 @@ function unionCapabilities(summaries: readonly PluginCapabilitySummary[]): Set<s
 
 function difference(left: ReadonlySet<string>, right: ReadonlySet<string>): readonly string[] {
 	return [...left].filter((value) => !right.has(value)).sort(compareStrings);
-}
-
-function compareStrings(left: string, right: string): number {
-	return left < right ? -1 : left > right ? 1 : 0;
 }
