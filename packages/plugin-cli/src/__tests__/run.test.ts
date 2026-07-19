@@ -1,3 +1,5 @@
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PluginCliError } from '../errors';
 import { dispatchFinite, KNOWN_COMMANDS, USAGE } from '../run';
@@ -39,6 +41,18 @@ describe('dispatchFinite', () => {
 		await expect(
 			dispatchFinite('frobnicate', [], { workspaceRoot: '/workspace', io })
 		).rejects.toThrow(PluginCliError);
+	});
+
+	it('does not scaffold into a directory named after a swallowed flag', async () => {
+		// `create my-plugin --dir --dry-run`: the flag parser must refuse rather
+		// than consume `--dry-run` as the `--dir` value and write a real tree into
+		// a directory literally named `--dry-run` with the switch silently off.
+		const root = await createCliWorkspace();
+		const { io } = captureIo();
+		await expect(
+			dispatchFinite('create', ['my-plugin', '--dir', '--dry-run'], { workspaceRoot: root, io })
+		).rejects.toThrow(/requires a value/);
+		await expect(readdir(join(root, '--dry-run'))).rejects.toMatchObject({ code: 'ENOENT' });
 	});
 
 	it('surfaces a malformed add invocation before any side effect', async () => {
