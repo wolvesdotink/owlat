@@ -388,6 +388,24 @@
         "vitest": "catalog:",
       },
     },
+    "packages/plugin-cli": {
+      "name": "@owlat/plugin-cli",
+      "version": "0.3.3",
+      "bin": {
+        "owlat-plugins": "./src/index.ts",
+      },
+      "dependencies": {
+        "@owlat/plugin-codegen": "workspace:*",
+        "@owlat/plugin-host": "workspace:*",
+        "@owlat/plugin-kit": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/plugin-codegen": {
       "name": "@owlat/plugin-codegen",
       "version": "0.3.3",
@@ -1053,6 +1071,8 @@
     "@owlat/marketing": ["@owlat/marketing@workspace:apps/marketing"],
 
     "@owlat/mta": ["@owlat/mta@workspace:apps/mta"],
+
+    "@owlat/plugin-cli": ["@owlat/plugin-cli@workspace:packages/plugin-cli"],
 
     "@owlat/plugin-codegen": ["@owlat/plugin-codegen@workspace:packages/plugin-codegen"],
 
