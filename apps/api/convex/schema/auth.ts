@@ -92,6 +92,32 @@ export const authTables = {
 		// "Send test email"). Drives the send-path-verified signal on the status
 		// page and onboarding. Unset ⇒ no successful test recorded yet.
 		deliveryTestLastSucceededAt: v.optional(v.number()),
+		// Latest non-secret health snapshot from the built-in MTA. Refreshed by a
+		// Convex cron so reactive Delivery surfaces can report infrastructure
+		// readiness without querying an external service from a database query.
+		mtaHealth: v.optional(
+			v.object({
+				status: v.union(v.literal('ok'), v.literal('degraded'), v.literal('unreachable')),
+				isRedisConnected: v.optional(v.boolean()),
+				isWorkerAlive: v.optional(v.boolean()),
+				isDnsReachable: v.optional(v.boolean()),
+				isAllIpsBlocked: v.optional(v.boolean()),
+				smtpOutbound: v.optional(
+					v.object({
+						status: v.union(v.literal('ok'), v.literal('degraded')),
+						checkedAt: v.number(),
+						ips: v.array(
+							v.object({
+								ip: v.string(),
+								status: v.union(v.literal('ok'), v.literal('failed')),
+								reason: v.optional(v.string()),
+							})
+						),
+					})
+				),
+				observedAt: v.number(),
+			})
+		),
 		// Cached contact count for O(1) queries (maintained on contact create/delete)
 		contactCount: v.optional(v.number()),
 		// Cached transactional send count for analytics reporting (incremented on each send)
