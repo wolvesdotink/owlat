@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parsePluginId, PluginIdError } from '@owlat/plugin-kit';
 import { parsePackageArgument } from '../config';
@@ -110,9 +110,7 @@ async function writeScaffold(
 		for (const path of sortedPaths(files)) {
 			if (existing.has(path)) continue;
 			const absolutePath = join(targetDir, ...path.split('/'));
-			for (const directory of await ensureDirectories(dirname(absolutePath))) {
-				createdDirs.push(directory);
-			}
+			await ensureDirectories(dirname(absolutePath), createdDirs);
 			await writeFile(absolutePath, files.get(path) ?? '', { encoding: 'utf8', flag: 'wx' });
 			createdFiles.push(absolutePath);
 		}
@@ -128,11 +126,14 @@ async function writeScaffold(
 
 /**
  * Create every missing directory from `directory` up to the first ancestor that
- * already exists (the workspace root always does), returning only the ones this
- * call created so a later failure can roll them back. Containment inside the
- * workspace is already guaranteed by `resolveTargetDir`.
+ * already exists (the workspace root always does), recording each into the
+ * caller's `createdDirs` sink the instant `mkdir` succeeds — not only on a clean
+ * return. A `mkdir` deeper in the same chain can fail (for example ENOSPC/EDQUOT,
+ * or EACCES when a just-created parent is not writable); recording eagerly means
+ * an outer directory this call already created is still rolled back rather than
+ * orphaned. Containment inside the workspace is guaranteed by `resolveTargetDir`.
  */
-async function ensureDirectories(directory: string): Promise<readonly string[]> {
+async function ensureDirectories(directory: string, createdDirs: string[]): Promise<void> {
 	const missing: string[] = [];
 	let current = directory;
 	while (!(await directoryExists(current))) {
@@ -141,16 +142,14 @@ async function ensureDirectories(directory: string): Promise<readonly string[]> 
 		if (parent === current) break;
 		current = parent;
 	}
-	const created: string[] = [];
 	for (const dir of missing.reverse()) {
 		try {
 			await mkdir(dir);
-			created.push(dir);
+			createdDirs.push(dir);
 		} catch (cause) {
 			if (!isExistingDirectoryError(cause)) throw cause;
 		}
 	}
-	return created;
 }
 
 async function directoryExists(path: string): Promise<boolean> {
@@ -162,6 +161,15 @@ async function directoryExists(path: string): Promise<boolean> {
 	}
 }
 
+/**
+ * Best-effort removal of everything this run created, innermost first: files
+ * before directories, and later-created (deeper) directories before their
+ * parents, so each directory is empty by the time it is removed. Directories go
+ * through `rmdir` — `rm({ recursive: false })` refuses a directory (EISDIR/EFAULT
+ * depending on the runtime), which the swallow below would hide, silently
+ * leaving the created tree behind. Any individual removal failure is swallowed so
+ * one stubborn entry never masks the original error the caller is about to throw.
+ */
 async function rollback(
 	createdFiles: readonly string[],
 	createdDirs: readonly string[]
@@ -170,7 +178,7 @@ async function rollback(
 		await rm(file, { force: true }).catch(() => undefined);
 	}
 	for (const directory of [...createdDirs].reverse()) {
-		await rm(directory, { recursive: false, force: true }).catch(() => undefined);
+		await rmdir(directory).catch(() => undefined);
 	}
 }
 
