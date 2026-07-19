@@ -24,6 +24,8 @@ dist/
 .env.development.local
 .env.test.local
 .env.production.local
+.owlat-provisioning.json
+.owlat-provisioning.json.*.tmp
 
 # Secrets / keys (must never be committed)
 *.key

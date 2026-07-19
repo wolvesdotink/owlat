@@ -62,6 +62,7 @@ Options:
   --mode <m>         Quickstart mode: populated | blank | custom.
   --email <e>        Admin email (bootstrap / quickstart).
   --password <p>     Admin password (bootstrap / quickstart).
+  --restart          Ignore saved quickstart checkpoints and run every stage.
   --help, -h         Show this help.
   --version          Show version.
 `);
