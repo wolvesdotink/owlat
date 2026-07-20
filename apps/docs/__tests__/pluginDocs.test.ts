@@ -544,14 +544,58 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 	});
 
 	it('documents the Tier-2 hook envelope', () => {
+		// The numbers an integrator implements against, pinned to their rows on
+		// both pages: a bare `toContain('5 s')` was satisfied by an unrelated
+		// `45 s` elsewhere on the page and pinned no threshold at all.
 		const constants = read('apps/api/convex/lib/constants.ts');
-		expect(constants).toContain('CONNECTED_APP_HOOK_TIMEOUT_MS = 5_000');
-		expect(constants).toContain('CONNECTED_APP_HOOK_RESPONSE_TOLERANCE_MS = 30_000');
-		expect(constants).toContain('CONNECTED_APP_HOOK_CIRCUIT_FAILURE_THRESHOLD = 5');
-		expect(constants).toContain('CONNECTED_APP_HOOK_CIRCUIT_COOLDOWN_MS = 60_000');
-		expect(docs.connectedApps).toContain('5 s');
-		expect(docs.connectedApps).toContain('30 s');
-		expect(docs.connectedApps).toContain('60 s');
+		const declaredPattern =
+			/^export const (CONNECTED_APP_HOOK_(?:TIMEOUT_MS|RESPONSE_TOLERANCE_MS|CIRCUIT_FAILURE_THRESHOLD|CIRCUIT_COOLDOWN_MS)) = /gm;
+		const breaker =
+			'| Circuit breaker | 5 consecutive failures per (app, kind) opens it; a 60 s cooldown then allows one half-open trial |';
+		expectDocumentedLimits({
+			sources: [constants],
+			declaredPattern,
+			proseFailure: 'has no table row',
+			section: section(docs.connectedApps, '### What Owlat enforces on every call'),
+			rendered: {
+				CONNECTED_APP_HOOK_TIMEOUT_MS: {
+					literal: '5_000',
+					prose: '| Deadline | 5 s, then the fetch is aborted |',
+				},
+				CONNECTED_APP_HOOK_RESPONSE_TOLERANCE_MS: {
+					literal: '30_000',
+					prose: '| Response freshness | 30 s tolerance |',
+				},
+				CONNECTED_APP_HOOK_CIRCUIT_FAILURE_THRESHOLD: { literal: '5', prose: breaker },
+				CONNECTED_APP_HOOK_CIRCUIT_COOLDOWN_MS: { literal: '60_000', prose: breaker },
+			},
+		});
+
+		// The troubleshooting page restates all four; pinning it too means the
+		// two pages cannot drift apart from each other or from the constants.
+		expectDocumentedLimits({
+			sources: [constants],
+			declaredPattern,
+			section: section(docs.troubleshooting, '## Tier-2 hook failures'),
+			rendered: {
+				CONNECTED_APP_HOOK_TIMEOUT_MS: {
+					literal: '5_000',
+					prose: 'The endpoint took longer than 5 s',
+				},
+				CONNECTED_APP_HOOK_RESPONSE_TOLERANCE_MS: {
+					literal: '30_000',
+					prose: 'outside the 30 s tolerance',
+				},
+				CONNECTED_APP_HOOK_CIRCUIT_FAILURE_THRESHOLD: {
+					literal: '5',
+					prose: 'Five consecutive failures tripped the breaker',
+				},
+				CONNECTED_APP_HOOK_CIRCUIT_COOLDOWN_MS: {
+					literal: '60_000',
+					prose: 'it retries one trial call after 60 s',
+				},
+			},
+		});
 	});
 
 	it('documents the exact hook header names', () => {
