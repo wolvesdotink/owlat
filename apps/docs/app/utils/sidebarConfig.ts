@@ -226,6 +226,33 @@ export const sidebarConfig: SidebarGroup[] = [
 		],
 	},
 	{
+		label: 'Plugin Platform',
+		section: 'developer',
+		items: [
+			{ label: 'Plugin Platform', to: '/developer/plugin-platform' },
+			{ label: 'Building a Plugin', to: '/developer/plugin-authoring' },
+			{
+				label: 'Contribution Reference',
+				to: '/developer/plugin-contributions',
+			},
+			{
+				label: 'Capabilities & Trust',
+				to: '/developer/plugin-capabilities',
+			},
+			{
+				label: 'Installing & Operating',
+				to: '/developer/plugin-operations',
+			},
+			{ label: 'Plugins CLI', to: '/developer/plugin-cli' },
+			{ label: 'Connected Apps', to: '/developer/plugin-connected-apps' },
+			{
+				label: 'Sandboxed Jobs',
+				to: '/developer/plugin-sandboxed-jobs',
+			},
+			{ label: 'Troubleshooting', to: '/developer/plugin-troubleshooting' },
+		],
+	},
+	{
 		label: 'Self-Hosting',
 		section: 'developer',
 		items: [

@@ -19,6 +19,7 @@ describe('sidebarGroupsForSection', () => {
 			'Architecture',
 			'Email & Delivery',
 			'Subsystem Internals',
+			'Plugin Platform',
 			'Self-Hosting',
 			'Decisions',
 		],

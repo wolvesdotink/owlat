@@ -9,7 +9,11 @@
 		"noEmit": true,
 		"outDir": "./dist",
 		"rootDir": ".",
-		"ignoreDeprecations": "6.0"
+		"ignoreDeprecations": "6.0",
+		"baseUrl": ".",
+		"paths": {
+			"@owlat/plugin-kit": ["./src/index.ts"]
+		}
 	},
 	"include": ["src/**/*.ts", "scripts/**/*.ts"],
 	"exclude": ["node_modules", "dist"]
