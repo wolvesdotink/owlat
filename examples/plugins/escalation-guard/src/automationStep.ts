@@ -14,7 +14,7 @@ import type {
 	PluginAutomationStepModule,
 	PluginAutomationStepResult,
 } from '@owlat/plugin-kit';
-import { EscalationConfigError } from './automationTrigger';
+import { assertPlainObject, EscalationConfigError, readOwnValue } from './config';
 
 export const ASSIGN_OWNER_STEP_LOCAL_ID = 'require-owner';
 
@@ -28,19 +28,8 @@ export interface RequireOwnerConfig {
 
 const PROPERTY_KEY = /^[A-Za-z][A-Za-z0-9_]*$/;
 
-function readOwnValue(raw: object, key: string): unknown {
-	const descriptor = Object.getOwnPropertyDescriptor(raw, key);
-	return descriptor && 'value' in descriptor ? descriptor.value : undefined;
-}
-
 export function parseRequireOwnerConfig(raw: unknown): RequireOwnerConfig {
-	if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-		throw new EscalationConfigError('Require-owner config must be a plain object');
-	}
-	const prototype = Object.getPrototypeOf(raw);
-	if (prototype !== Object.prototype && prototype !== null) {
-		throw new EscalationConfigError('Require-owner config must be a plain object');
-	}
+	assertPlainObject(raw, 'Require-owner config must be a plain object');
 	const ownerProperty = readOwnValue(raw, 'ownerProperty');
 	if (
 		typeof ownerProperty !== 'string' ||
@@ -61,11 +50,7 @@ export const requireOwnerStep: PluginAutomationStepModule<RequireOwnerConfig> = 
 		input: PluginAutomationStepInput,
 		config: RequireOwnerConfig
 	): Promise<PluginAutomationStepResult> {
-		const descriptor = Object.getOwnPropertyDescriptor(
-			input.contactProperties,
-			config.ownerProperty
-		);
-		const owner = descriptor && 'value' in descriptor ? descriptor.value : undefined;
+		const owner = readOwnValue(input.contactProperties, config.ownerProperty);
 		if (typeof owner === 'string' && owner.trim().length > 0) {
 			return { kind: 'completed' };
 		}

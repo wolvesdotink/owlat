@@ -12,7 +12,7 @@ import type {
 	PluginAutomationConditionInput,
 	PluginAutomationConditionModule,
 } from '@owlat/plugin-kit';
-import { EscalationConfigError } from './automationTrigger';
+import { assertPlainObject, EscalationConfigError, readOwnValue } from './config';
 
 export const PRIORITY_ACCOUNT_CONDITION_LOCAL_ID = 'priority-account';
 
@@ -26,11 +26,6 @@ export interface PriorityAccountConfig {
 
 const DOMAIN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
 
-function readOwnValue(raw: object, key: string): unknown {
-	const descriptor = Object.getOwnPropertyDescriptor(raw, key);
-	return descriptor && 'value' in descriptor ? descriptor.value : undefined;
-}
-
 /**
  * Strictly parse the persisted condition config. Every domain must be a
  * syntactically valid, already-lowercase bare domain; the list is bounded and
@@ -38,13 +33,7 @@ function readOwnValue(raw: object, key: string): unknown {
  * as "not matched" rather than silently taking the priority branch.
  */
 export function parsePriorityAccountConfig(raw: unknown): PriorityAccountConfig {
-	if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-		throw new EscalationConfigError('Priority-account config must be a plain object');
-	}
-	const prototype = Object.getPrototypeOf(raw);
-	if (prototype !== Object.prototype && prototype !== null) {
-		throw new EscalationConfigError('Priority-account config must be a plain object');
-	}
+	assertPlainObject(raw, 'Priority-account config must be a plain object');
 	const domains = readOwnValue(raw, 'domains');
 	if (!Array.isArray(domains) || domains.length === 0 || domains.length > MAX_PRIORITY_DOMAINS) {
 		throw new EscalationConfigError(
