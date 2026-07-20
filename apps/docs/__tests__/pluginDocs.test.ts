@@ -434,6 +434,24 @@ describe('plugin docs: untrusted-text controls are described as shipped, not as 
 	});
 });
 
+describe('plugin docs: the CLI page quotes the real help text', () => {
+	const run = read('packages/plugin-cli/src/run.ts');
+	const start = run.indexOf('export const USAGE = `') + 'export const USAGE = `'.length;
+	const usage = run.slice(start, run.indexOf('`;', start));
+
+	it('reproduces the CLI usage block verbatim', () => {
+		expect(usage).toContain('owlat plugins — manage bundled Owlat plugins');
+		expect(docs.cli, 'the quoted --help block has drifted from run.ts').toContain(usage);
+	});
+
+	it('publishes no internal pipeline id to plugin authors', () => {
+		// The help text is user-facing once the docs quote it, and "PP-nn" is an
+		// internal work-item id that means nothing to a plugin author.
+		expect(usage).not.toMatch(/PP-\d\d/);
+		expect(docs.cli).not.toMatch(/PP-\d\d/);
+	});
+});
+
 describe('plugin docs: the chapter does not promise unshipped extension points', () => {
 	it('names the reserved-but-unconsumed buckets as reserved', () => {
 		// These buckets exist in the manifest type but no codegen or host seam
