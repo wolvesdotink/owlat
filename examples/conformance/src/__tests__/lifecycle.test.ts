@@ -104,7 +104,15 @@ describe('clean install', () => {
 		const lock = JSON.parse(await readWorkspaceFile(root, 'bun.lock')) as {
 			packages: Record<string, unknown[]>;
 		};
-		lock.packages[TIER_1.packageName]![3] = 'sha512-not-a-real-integrity';
+		// Named error rather than `!`: if the harness ever stopped pinning the
+		// package in bun.lock, the tamper would apply to undefined and this case
+		// would die with a TypeError in its setup instead of reporting that the
+		// fixture no longer reproduces a published install.
+		const artifact = lock.packages[TIER_1.packageName];
+		if (!artifact) {
+			throw new Error(`bun.lock has no artifact for ${TIER_1.packageName}`);
+		}
+		artifact[3] = 'sha512-not-a-real-integrity';
 		await writeFile(join(root, 'bun.lock'), JSON.stringify(lock));
 		await expect(generatePluginComposition(root)).rejects.toMatchObject({
 			code: 'dependency_provenance',
