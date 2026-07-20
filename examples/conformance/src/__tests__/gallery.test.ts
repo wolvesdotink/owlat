@@ -172,6 +172,37 @@ describe('published package shape', () => {
 	});
 });
 
+describe('reference documentation', () => {
+	// Each reference README is a tutorial source, so every command it prints in
+	// inline code has to be one an operator can actually run. The executable name
+	// is READ FROM the CLI package's `bin` rather than copied here: renaming the
+	// binary then fails this suite instead of leaving the READMEs telling
+	// operators to run a command that does not exist.
+	async function shippedCliBinaries(): Promise<readonly string[]> {
+		const { bin } = JSON.parse(await readRepositoryFile('packages/plugin-cli/package.json')) as {
+			readonly bin?: Record<string, string>;
+		};
+		const names = Object.keys(bin ?? {});
+		expect(names.length, 'packages/plugin-cli declares no bin').toBeGreaterThan(0);
+		return names;
+	}
+
+	it('only prints Owlat commands the CLI package actually ships', async () => {
+		const binaries = await shippedCliBinaries();
+		for (const entry of REFERENCE_GALLERY) {
+			const readme = await readRepositoryFile(`${entry.directory}/README.md`);
+			// Inline-code spans that open an `owlat…` command. The separator keeps
+			// `owlat.hook.*` protocol strings, which are not commands, out of it.
+			for (const match of readme.matchAll(/`(owlat[ -][^`]*)`/g)) {
+				const invocation = match[1];
+				if (invocation === undefined) continue;
+				const executable = invocation.trim().split(/\s+/)[0];
+				expect(binaries, `${entry.directory}/README.md: \`${invocation}\``).toContain(executable);
+			}
+		}
+	});
+});
+
 describe('gallery capability ceilings', () => {
 	it('declares a capability for every contribution bucket a reference uses', () => {
 		const requiredCapability: Readonly<Record<string, string>> = {
