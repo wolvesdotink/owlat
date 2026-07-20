@@ -12,7 +12,9 @@ import { dirname, resolve } from 'node:path';
  *   1. every fenced TypeScript sample is the VERBATIM text of a region in
  *      `packages/plugin-kit/src/__tests__/docsSamples.test.ts`, which compiles
  *      under that package's `tsc --noEmit` and is exercised by its own
- *      assertions — so no sample can drift into pseudocode;
+ *      assertions — and, in the inverse direction, no ```ts fence is anything
+ *      other than such a region, so no sample can drift into pseudocode
+ *      (declarative shape sketches are tagged ```text, not ```ts);
  *   2. every identifier the chapter imports from `@owlat/plugin-kit` is a real
  *      export of `packages/plugin-kit/src/index.ts`;
  *   3. the capability, limit, and vocabulary tables match the constants the
@@ -102,6 +104,22 @@ describe('plugin docs: samples are the executable source, verbatim', () => {
 			).toBeGreaterThan(0);
 		});
 	}
+
+	it('has no ```ts fence that is not a quoted sample region', () => {
+		// The inverse of the assertions above: a hand-written sketch tagged `ts`
+		// would be compiled and asserted by nothing, which is exactly the
+		// pseudocode drift this suite exists to prevent. Shape sketches that are
+		// not compilable TypeScript are tagged ```text instead.
+		const sources = REGION_MAP.map((entry) => regionSource(entry.region));
+		for (const [key, file] of Object.entries(PAGES)) {
+			for (const fence of typescriptFences(docs[key as keyof typeof PAGES])) {
+				expect(
+					sources.some((source) => fence.includes(source)),
+					`a \`\`\`ts fence in ${file} is backed by no sample region:\n${fence}`
+				).toBe(true);
+			}
+		}
+	});
 
 	it('covers every region defined in the executable sample file', () => {
 		const declared = [...samplesSource.matchAll(/\/\/ #region ([a-z-]+)\n/g)].map((m) => m[1]!);
