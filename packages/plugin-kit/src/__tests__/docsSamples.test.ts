@@ -7,9 +7,11 @@
  * is compiled by this package's `tsc --noEmit`, and is exercised by the
  * assertions at the bottom of this file against the REAL exported contracts.
  * `apps/docs/__tests__/pluginDocs.test.ts` then asserts that the corresponding
- * fenced block in each doc page is byte-identical to the region here (with the
- * relative import specifier rewritten to the public `@owlat/plugin-kit` one), so
- * a doc sample cannot claim an API that this file does not compile and run.
+ * fenced block in each doc page is byte-identical to the region here, so a doc
+ * sample cannot claim an API that this file does not compile and run. The
+ * regions are written against the public `@owlat/plugin-kit` specifier — what a
+ * plugin author actually writes — which is what this package's vitest alias and
+ * tsconfig self-path exist to allow; nothing is rewritten on the way out.
  *
  * Adding a sample: wrap it in a new region, quote it from a doc page, and add
  * the pair to the doc test's region map.
