@@ -43,10 +43,13 @@ describe('scanner input cap (MAX_SCAN_LENGTH)', () => {
 		expect(report.overall).toMatch(/^(pass|warn|fail)$/);
 		expect(report).toEqual(analyzeEmail({ ...email, html: adversarial.slice(0, MAX_SCAN_LENGTH) }));
 		// CPU-bound by construction: this builds a 128 KiB adversarial body and
-		// analyzes it twice. That takes seconds on an idle machine and several times
-		// longer when the whole workspace runs its suites in parallel, so the default
-		// 5s deadline failed on machine load rather than on behavior. The assertions
-		// stay deterministic (equality against the capped prefix); only the deadline
+		// analyzes it twice. That measures ~2.7s on an idle machine and several
+		// times longer when the whole workspace runs its suites in parallel, so the
+		// default 5s deadline failed on machine load rather than on behavior. 20s
+		// keeps a ~7x margin over the idle cost — enough to absorb parallel-load
+		// skew, tight enough that a quadratic regression in analyzeEmail surfaces
+		// quickly instead of burning a minute per CI run. The assertions stay
+		// deterministic (equality against the capped prefix); only the deadline
 		// is generous.
-	}, 60_000);
+	}, 20_000);
 });
