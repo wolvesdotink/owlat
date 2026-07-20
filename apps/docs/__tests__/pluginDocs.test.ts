@@ -492,24 +492,76 @@ describe('plugin docs: untrusted-text controls are described as shipped, not as 
 		expect(callers, 'a web caller appeared; the docs must be updated to match').toEqual([]);
 	});
 
+	/**
+	 * The unit the SHIPPED label clamp counts, derived from `clampLabel` itself.
+	 * `String.prototype.slice` counts UTF-16 code units; spreading or
+	 * `Array.from`-ing the string counts code points. Pinning the doc phrase
+	 * alone would bless whichever unit the prose happens to name, so the docs
+	 * must instead be checked against the unit the code really uses — and the
+	 * other unit must be absent, so a page cannot satisfy this by naming both.
+	 */
+	function labelClampUnit(): { readonly stated: string; readonly wrong: string } {
+		const start = navigation.indexOf('function clampLabel(');
+		expect(start, 'clampLabel is gone; the docs describe a clamp that no longer exists').not.toBe(
+			-1
+		);
+		const body = navigation.slice(start, navigation.indexOf('\n}', start));
+		const codeUnits = /\.slice\(0, 64\)/.test(body);
+		const codePoints = /\[\.\.\.|Array\.from/.test(body);
+		expect(codeUnits !== codePoints, `clampLabel clamps ambiguously:\n${body}`).toBe(true);
+		return codeUnits
+			? { stated: '64 UTF-16 code units', wrong: '64 code points' }
+			: { stated: '64 code points', wrong: '64 UTF-16 code units' };
+	}
+
+	/** Markdown text with hard wraps collapsed, so a phrase can span lines. */
+	function flow(markdown: string): string {
+		return markdown.replace(/\s+/g, ' ');
+	}
+
 	it('the nav/settings reference describes the clamp, not an injection scrub', () => {
-		const nav = section(docs.contributions, '## Navigation and settings entries');
+		const nav = flow(section(docs.contributions, '## Navigation and settings entries'));
+		const unit = labelClampUnit();
 		expect(nav).not.toMatch(/injection.?scrub/i);
-		expect(nav).toContain('64 code points');
+		expect(nav, `the shipped clamp counts ${unit.stated}`).toContain(unit.stated);
+		expect(nav, `${unit.wrong} is not what clampLabel counts`).not.toContain(unit.wrong);
 		expect(nav).toMatch(/bidi/i);
 		expect(nav).toMatch(/spoofing/i);
 		expect(nav).toMatch(/escap/i);
 	});
 
 	it('the backend conventions describe the clamp, not an injection scrub', () => {
-		const bullet = conventions.slice(
-			conventions.indexOf('- Plugin nav and settings entries are data-only links.'),
-			conventions.indexOf('- The plugin settings module owns only')
+		const bullet = flow(
+			conventions.slice(
+				conventions.indexOf('- Plugin nav and settings entries are data-only links.'),
+				conventions.indexOf('- The plugin settings module owns only')
+			)
 		);
+		const unit = labelClampUnit();
 		expect(bullet.length).toBeGreaterThan(0);
 		expect(bullet).not.toMatch(/injection.?scrub/i);
-		expect(bullet).toMatch(/64 code points/);
+		expect(bullet, `the shipped clamp counts ${unit.stated}`).toContain(unit.stated);
+		expect(bullet, `${unit.wrong} is not what clampLabel counts`).not.toContain(unit.wrong);
 		expect(bullet).toMatch(/bidi/i);
+	});
+
+	it('the capability guide describes the browser clamp in the shipped unit', () => {
+		const untrusted = section(docs.capabilities, '### Untrusted text');
+		const browser = flow(untrusted.slice(untrusted.indexOf('Browser-bound plugin text')));
+		expect(browser, 'the browser-clamp paragraph moved').toMatch(/^Browser-bound/);
+		const unit = labelClampUnit();
+		expect(browser, `the shipped clamp counts ${unit.stated}`).toContain(unit.stated);
+		expect(browser, `${unit.wrong} is not what clampLabel counts`).not.toContain(unit.wrong);
+	});
+
+	it('the manifest validator bounds the label in the same unit the clamp counts', () => {
+		// The two layers must agree, or the documented budget is a fiction: the
+		// validator rejects a name over its ceiling before `clampLabel` ever sees
+		// it. Both count UTF-16 code units today (`.length` and `.slice`).
+		const validator = read('packages/plugin-kit/src/navContributionManifest.ts');
+		expect(validator).toContain('const MAX_NAME_LENGTH = 64;');
+		expect(validator).toContain('name.value.length > MAX_NAME_LENGTH');
+		expect(labelClampUnit().stated).toBe('64 UTF-16 code units');
 	});
 
 	it('names exactly the Convex boundaries that apply the untrusted-text policy', () => {

@@ -321,8 +321,10 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   add replay defense before accepting plugin-sourced traffic.
 - Plugin nav and settings entries are data-only links. Core entries register
   first and registry dedup is by destination href, first-registered-wins, so a
-  plugin cannot shadow a core destination. Labels are clamped to 64 code points
-  with control and bidi-format characters stripped when the entry is derived
+  plugin cannot shadow a core destination. Labels are clamped to 64 UTF-16 code
+  units (an astral character counts as two — the same unit the manifest
+  validator bounds the name by) with control and bidi-format characters
+  stripped when the entry is derived
   (spoofing defense; Vue's HTML escaping is the XSS defense) and the whole entry
   is flag-gated. The untrusted-text policy seam is not wired into this path — a
   new plugin-text→UI surface must decide for itself what it needs.
