@@ -8,8 +8,9 @@ import { createConvexClient } from './convex.js';
 import { startImapServer } from './server.js';
 import { AuthRateLimiter } from './rateLimit.js';
 import { logger } from './logger.js';
+import { pathToFileURL } from 'node:url';
 
-async function main() {
+export async function main() {
 	const config = loadConfig();
 	const convex = createConvexClient(config);
 
@@ -24,9 +25,7 @@ async function main() {
 			logger.warn({ err }, 'redis error — auth rate limiter will fail-open');
 		});
 	} else {
-		logger.warn(
-			'REDIS_URL not set — IMAP auth rate limiter disabled (fails open)'
-		);
+		logger.warn('REDIS_URL not set — IMAP auth rate limiter disabled (fails open)');
 	}
 
 	const rateLimiter = new AuthRateLimiter(redis, config.authRateLimit);
@@ -46,7 +45,10 @@ async function main() {
 	process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-main().catch((err) => {
-	logger.error({ err }, 'fatal startup error');
-	process.exit(1);
-});
+const entryPath = process.argv[1];
+if (entryPath && import.meta.url === pathToFileURL(entryPath).href) {
+	void main().catch((err) => {
+		logger.error({ err }, 'fatal startup error');
+		process.exit(1);
+	});
+}

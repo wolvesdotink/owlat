@@ -23,8 +23,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('agentSecurity') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 async function insertMailbox(ctx: { db: DatabaseWriter }): Promise<Id<'mailboxes'>> {
@@ -46,7 +46,7 @@ async function insertFolder(
 	ctx: { db: DatabaseWriter },
 	mailboxId: Id<'mailboxes'>,
 	name: string,
-	role: 'inbox' | 'spam',
+	role: 'inbox' | 'spam'
 ): Promise<Id<'mailFolders'>> {
 	const now = Date.now();
 	return ctx.db.insert('mailFolders', {
@@ -77,7 +77,7 @@ interface DeliverOverrides {
 async function deliver(
 	t: ReturnType<typeof convexTest>,
 	rawStorageId: Id<'_storage'>,
-	overrides: DeliverOverrides,
+	overrides: DeliverOverrides
 ): Promise<{ messageId: Id<'mailMessages'> } | { skipped: true }> {
 	return t.mutation(internal.mail.delivery.deliverToMailbox, {
 		rawStorageId,
@@ -196,6 +196,34 @@ describe('deliverToMailbox — auth/scan verdict storage + spam routing (PR-38)'
 			expect(msg?.dmarcResult).toBe('fail');
 			expect(msg?.dmarcPolicy).toBe('none');
 			expect(msg?.folderId).toBe(inboxId);
+		});
+	});
+
+	it('routes a permanent DMARC evaluation error to Spam without requiring a policy', async () => {
+		const t = convexTest(schema, modules);
+		let mailboxId!: Id<'mailboxes'>;
+		let inboxId!: Id<'mailFolders'>;
+		let spamId!: Id<'mailFolders'>;
+		let rawStorageId!: Id<'_storage'>;
+		await t.run(async (ctx) => {
+			mailboxId = await insertMailbox(ctx);
+			inboxId = await insertFolder(ctx, mailboxId, 'INBOX', 'inbox');
+			spamId = await insertFolder(ctx, mailboxId, 'Spam', 'spam');
+			rawStorageId = await ctx.storage.store(new Blob(['x']));
+		});
+
+		const result = await deliver(t, rawStorageId, {
+			messageId: '<ambiguous-from@attacker.example>',
+			dmarcResult: 'permerror',
+		});
+		expect('messageId' in result).toBe(true);
+		if (!('messageId' in result)) return;
+
+		await t.run(async (ctx: { db: DatabaseWriter }) => {
+			const msg = await ctx.db.get(result.messageId);
+			expect(msg?.dmarcResult).toBe('permerror');
+			expect(msg?.folderId).toBe(spamId);
+			expect(msg?.folderId).not.toBe(inboxId);
 		});
 	});
 

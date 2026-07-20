@@ -40,6 +40,7 @@ export function createTestConfig(overrides?: Partial<MtaConfig>): MtaConfig {
 			maxPerHost: 3,
 			idleTimeoutMs: 30000,
 			maxAgeMs: 300000,
+			maxMessagesPerConnection: 100,
 		},
 		orgLimits: {
 			defaultDailyLimit: 50000,

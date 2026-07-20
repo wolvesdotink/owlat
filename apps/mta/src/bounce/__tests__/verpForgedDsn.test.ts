@@ -24,13 +24,19 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import { parseBounce, getUnattributedBounceCount } from '../parser.js';
+import { reportPartsOf } from './helpers/reportParts.js';
 import { buildVerpAddress } from '../verp.js';
 import { parseFblOrDsnPhase } from '../phases/parseFblOrDsn.js';
 import { reduce } from '../outcome.js';
 import type { BasePhaseCtx, PhaseDeps } from '../types.js';
 import type { BounceAttempt } from '../types.js';
+
+/** `parseBounce` with the report parts derived from the fixture (see {@link reportPartsOf}). */
+function pb(parsed: ParsedMessage, envelopeRcptTo?: string) {
+	return parseBounce(parsed, reportPartsOf(parsed), envelopeRcptTo);
+}
 
 const KEY = 'integration-verp-key-abcdef0123456789';
 const RETURN_PATH_DOMAIN = 'bounces.owlat.test';
@@ -47,7 +53,7 @@ function forgedUnsignedRcpt(): string {
 }
 
 /** A minimal RFC 3464 hard-bounce DSN for `user@remote.test`. */
-function hardBounceDsn(): ParsedMail {
+function hardBounceDsn(): ParsedMessage {
 	return {
 		subject: 'Delivery Status Notification (Failure)',
 		from: { text: 'MAILER-DAEMON@mx.remote.test' },
@@ -61,7 +67,7 @@ function hardBounceDsn(): ParsedMail {
 		].join('\n'),
 		headers: new Map(),
 		attachments: [],
-	} as unknown as ParsedMail;
+	} as unknown as ParsedMessage;
 }
 
 /**
@@ -72,7 +78,7 @@ function hardBounceDsn(): ParsedMail {
  * attacker-controllable on a forged null-sender report. With a key configured,
  * NEITHER path may attribute the bounce.
  */
-function forgedHeaderBounceDsn(): ParsedMail {
+function forgedHeaderBounceDsn(): ParsedMessage {
 	return {
 		subject: 'Delivery Status Notification (Failure)',
 		from: { text: 'MAILER-DAEMON@mx.remote.test' },
@@ -90,17 +96,12 @@ function forgedHeaderBounceDsn(): ParsedMail {
 			{
 				contentType: 'message/rfc822',
 				content: Buffer.from(
-					[
-						`X-Owlat-Message-Id: ${messageId}`,
-						'Subject: original',
-						'',
-						'body',
-					].join('\n'),
-					'utf-8',
+					[`X-Owlat-Message-Id: ${messageId}`, 'Subject: original', '', 'body'].join('\n'),
+					'utf-8'
 				),
 			},
 		],
-	} as unknown as ParsedMail;
+	} as unknown as ParsedMessage;
 }
 
 beforeEach(() => {
@@ -118,7 +119,7 @@ describe('forged-DSN suppression poisoning (audit PR-03)', () => {
 		const forgedRcpt = forgedUnsignedRcpt();
 
 		const before = getUnattributedBounceCount();
-		const result = parseBounce(hardBounceDsn(), forgedRcpt);
+		const result = pb(hardBounceDsn(), forgedRcpt);
 
 		// No attributable messageId → null (cannot be used to suppress).
 		expect(result).toBeNull();
@@ -128,7 +129,7 @@ describe('forged-DSN suppression poisoning (audit PR-03)', () => {
 
 	it('(b) parseBounce DOES attribute a correctly-signed token for the same send', () => {
 		const signedRcpt = buildVerpAddress(messageId, RETURN_PATH_DOMAIN, KEY);
-		const result = parseBounce(hardBounceDsn(), signedRcpt);
+		const result = pb(hardBounceDsn(), signedRcpt);
 		expect(result).not.toBeNull();
 		expect(result!.originalMessageId).toBe(messageId);
 		expect(result!.bounceType).toBe('hard');
@@ -157,7 +158,7 @@ describe('forged-DSN suppression poisoning (audit PR-03)', () => {
 			// Reducing whatever terminal attempt arose emits no suppression event.
 			const { effects } = reduce(attempt, ctx);
 			const bouncedNotify = effects.filter(
-				(e) => e.kind === 'notify_convex' && e.event.event === 'bounced',
+				(e) => e.kind === 'notify_convex' && e.event.event === 'bounced'
 			);
 			expect(bouncedNotify).toHaveLength(0);
 		} else {
@@ -174,7 +175,7 @@ describe('forged-DSN suppression poisoning (audit PR-03)', () => {
 		// key configured, the header-scrape fallbacks (steps 2 and 3) MUST be
 		// skipped, so no attribution happens.
 		const before = getUnattributedBounceCount();
-		const result = parseBounce(forgedHeaderBounceDsn(), `noreply@${RETURN_PATH_DOMAIN}`);
+		const result = pb(forgedHeaderBounceDsn(), `noreply@${RETURN_PATH_DOMAIN}`);
 
 		expect(result).toBeNull();
 		expect(getUnattributedBounceCount()).toBe(before + 1);
@@ -196,7 +197,7 @@ describe('forged-DSN suppression poisoning (audit PR-03)', () => {
 			expect(attempt.kind).not.toBe('dsn_attributed');
 			const { effects } = reduce(attempt, ctx);
 			const bouncedNotify = effects.filter(
-				(e) => e.kind === 'notify_convex' && e.event.event === 'bounced',
+				(e) => e.kind === 'notify_convex' && e.event.event === 'bounced'
 			);
 			expect(bouncedNotify).toHaveLength(0);
 		} else {
@@ -209,7 +210,7 @@ describe('forged-DSN suppression poisoning (audit PR-03)', () => {
 		// header fallback remains active so existing unsigned deployments keep
 		// attributing DSNs that only carry the X-Owlat-Message-Id header.
 		delete process.env['BOUNCE_VERP_KEY'];
-		const result = parseBounce(forgedHeaderBounceDsn(), `noreply@${RETURN_PATH_DOMAIN}`);
+		const result = pb(forgedHeaderBounceDsn(), `noreply@${RETURN_PATH_DOMAIN}`);
 		expect(result).not.toBeNull();
 		expect(result!.originalMessageId).toBe(messageId);
 	});
@@ -231,11 +232,11 @@ describe('forged-DSN suppression poisoning (audit PR-03)', () => {
 
 		const { effects } = reduce(attempt, ctx);
 		const bouncedNotify = effects.filter(
-			(e) => e.kind === 'notify_convex' && e.event.event === 'bounced',
+			(e) => e.kind === 'notify_convex' && e.event.event === 'bounced'
 		);
 		expect(bouncedNotify).toHaveLength(1);
-		expect(
-			bouncedNotify[0]!.kind === 'notify_convex' && bouncedNotify[0]!.event.messageId,
-		).toBe(messageId);
+		expect(bouncedNotify[0]!.kind === 'notify_convex' && bouncedNotify[0]!.event.messageId).toBe(
+			messageId
+		);
 	});
 });

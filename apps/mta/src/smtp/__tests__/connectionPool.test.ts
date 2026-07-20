@@ -1,18 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('nodemailer', () => ({
-	default: {
-		// A FRESH transport per call so tests can assert transport identity
-		// (e.g. that a strict-TLS acquire is NOT served a pooled opportunistic one).
-		createTransport: vi.fn(() => ({
-			sendMail: vi.fn(),
-			close: vi.fn(),
-		})),
-	},
-}));
 vi.mock('prom-client', () => ({
 	Gauge: vi.fn(function () {
 		return { set: vi.fn() };
+	}),
+	Counter: vi.fn(function () {
+		return { inc: vi.fn() };
 	}),
 }));
 vi.mock('../../monitoring/collector.js', () => ({
@@ -24,7 +17,13 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import type Redis from 'ioredis';
 import { SmtpConnectionPool, PoolOverCapError } from '../connectionPool.js';
-import nodemailer from 'nodemailer';
+
+// These tests assert the pool's connect-config shape, TLS-profile keying, and
+// global-slot accounting — the acquire/release/eviction contract that X1's live-
+// socket reuse layers on top of (never opening a real socket here). The reuse
+// guardrails themselves (RSET boundary, per-connection cap, unhealthy-socket
+// eviction, the reused counter) are exercised against a real fake MX in
+// connectionReuse.integration.test.ts.
 
 describe('SmtpConnectionPool', () => {
 	let pool: SmtpConnectionPool;
@@ -34,39 +33,42 @@ describe('SmtpConnectionPool', () => {
 		pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
 	});
 
-	it('creates new transport on first acquire', async () => {
-		const result = await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
+	it('builds a connect config on first acquire', async () => {
+		const result = await pool.acquire('mx1.example.com', '10.0.0.1', {
+			port: 25,
+			socketTimeout: 12_345,
+		});
 
 		expect(result.key).toBe('mx1.example.com:10.0.0.1:none:rt0ru0');
-		expect(result.transport).toBeDefined();
-		expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+		expect(result.config.host).toBe('mx1.example.com');
+		expect(result.config.tlsMode).toBe('starttls');
+		expect(result.config.localAddress).toBe('10.0.0.1');
+		expect(result.config.timeouts?.command).toBe(12_345);
+		expect(result.config.timeouts?.data).toBe(12_345);
 	});
 
-	it('reuses existing transport for same key', async () => {
+	it('reuses the existing config for the same key', async () => {
 		const first = await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
 		pool.release(first.key);
 		const second = await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
 
 		expect(first.key).toBe(second.key);
-		expect(first.transport).toBe(second.transport);
-		// createTransport should only be called once since the second acquire reuses
-		expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+		// Reuse hands back the SAME config object (no rebuild, no new slot).
+		expect(first.config).toBe(second.config);
+		expect(pool.size).toBe(1);
 	});
 
 	it('release works without error', async () => {
 		const result = await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
 
 		expect(() => pool.release(result.key)).not.toThrow();
-		// Releasing a non-existent key should also not throw
 		expect(() => pool.release('non-existent-key')).not.toThrow();
 	});
 
 	it('size tracks pool entries', async () => {
 		expect(pool.size).toBe(0);
-
 		await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
 		expect(pool.size).toBe(1);
-
 		await pool.acquire('mx2.example.com', '10.0.0.1', { port: 25 });
 		expect(pool.size).toBe(2);
 	});
@@ -81,12 +83,10 @@ describe('SmtpConnectionPool', () => {
 	});
 
 	it('buildKey encodes the TLS profile (PR-22: requireTLS + rejectUnauthorized)', () => {
-		// Opportunistic, non-verifying — the default bucket.
 		const opportunistic = SmtpConnectionPool.buildKey('mx1.example.com', '10.0.0.1', undefined, {
 			requireTLS: false,
 			rejectUnauthorized: false,
 		});
-		// MTA-STS enforce — STARTTLS required AND certificate verified.
 		const enforcing = SmtpConnectionPool.buildKey('mx1.example.com', '10.0.0.1', undefined, {
 			requireTLS: true,
 			rejectUnauthorized: true,
@@ -94,40 +94,31 @@ describe('SmtpConnectionPool', () => {
 
 		expect(opportunistic).toBe('mx1.example.com:10.0.0.1:none:rt0ru0');
 		expect(enforcing).toBe('mx1.example.com:10.0.0.1:none:rt1ru1');
-		// The whole point: an enforcing send must never collide with an
-		// opportunistic transport to the same shared MX.
 		expect(enforcing).not.toBe(opportunistic);
 	});
 
-	it('binds DANE transports to the exact policy fingerprint', async () => {
+	it('binds DANE configs to the exact policy fingerprint (fingerprint never forwarded to the client)', async () => {
 		const verifyPeerCertificate = () => undefined;
 		const first = await pool.acquire('mx.shared.example', '10.0.0.1', {
 			port: 25,
 			requireTLS: true,
-			tls: {
-				rejectUnauthorized: false,
-				verifyPeerCertificate,
-				danePolicyFingerprint: 'policy-a',
-			},
+			tls: { rejectUnauthorized: false, verifyPeerCertificate, danePolicyFingerprint: 'policy-a' },
 		});
 		pool.release(first.key);
 		const second = await pool.acquire('mx.shared.example', '10.0.0.1', {
 			port: 25,
 			requireTLS: true,
-			tls: {
-				rejectUnauthorized: false,
-				verifyPeerCertificate,
-				danePolicyFingerprint: 'policy-b',
-			},
+			tls: { rejectUnauthorized: false, verifyPeerCertificate, danePolicyFingerprint: 'policy-b' },
 		});
 
 		expect(first.key).toContain('dapolicy-a');
 		expect(second.key).toContain('dapolicy-b');
-		expect(second.transport).not.toBe(first.transport);
-		expect(nodemailer.createTransport).toHaveBeenCalledTimes(2);
-		for (const [transportOptions] of vi.mocked(nodemailer.createTransport).mock.calls) {
-			expect(transportOptions.tls).not.toHaveProperty('danePolicyFingerprint');
-		}
+		expect(second.config).not.toBe(first.config);
+		// The pool-only fingerprint is NEVER forwarded into the client's TLS options.
+		expect(first.config.tls).not.toHaveProperty('danePolicyFingerprint');
+		expect(second.config.tls).not.toHaveProperty('danePolicyFingerprint');
+		// The DANE post-handshake verifier IS forwarded.
+		expect(typeof first.config.tls?.verifyPeerCertificate).toBe('function');
 	});
 
 	it('rejects an unfingerprinted DANE verifier instead of pooling it unsafely', async () => {
@@ -137,44 +128,30 @@ describe('SmtpConnectionPool', () => {
 				tls: { verifyPeerCertificate: () => undefined },
 			})
 		).rejects.toThrow(/requires a policy fingerprint/);
-		expect(nodemailer.createTransport).not.toHaveBeenCalled();
+		expect(pool.size).toBe(0);
 	});
 
-	it('pins tls.minVersion TLSv1.2 on every created transport (RFC 8996/9325)', async () => {
-		// Caller passes a tls block WITHOUT minVersion — the pool must still pin the floor.
-		await pool.acquire('mx1.example.com', '10.0.0.1', {
+	it('pins tls.minVersion TLSv1.2 on every built config (RFC 8996/9325)', async () => {
+		const { config } = await pool.acquire('mx1.example.com', '10.0.0.1', {
 			port: 25,
 			tls: { rejectUnauthorized: false },
 		});
-
-		expect(nodemailer.createTransport).toHaveBeenCalledWith(
-			expect.objectContaining({
-				tls: expect.objectContaining({ minVersion: 'TLSv1.2', rejectUnauthorized: false }),
-			})
-		);
+		expect(config.tls?.minVersion).toBe('TLSv1.2');
+		expect(config.tls?.rejectUnauthorized).toBe(false);
 	});
 
 	it('pins TLSv1.2 even when the caller passes no tls options at all', async () => {
-		await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
-
-		expect(nodemailer.createTransport).toHaveBeenCalledWith(
-			expect.objectContaining({
-				tls: expect.objectContaining({ minVersion: 'TLSv1.2' }),
-			})
-		);
+		const { config } = await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
+		expect(config.tls?.minVersion).toBe('TLSv1.2');
 	});
 
 	it('lets the caller raise the floor to TLSv1.3 without it being clobbered', async () => {
-		await pool.acquire('mx1.example.com', '10.0.0.1', {
+		const { config } = await pool.acquire('mx1.example.com', '10.0.0.1', {
 			port: 25,
 			tls: { rejectUnauthorized: true, minVersion: 'TLSv1.3' },
 		});
-
-		expect(nodemailer.createTransport).toHaveBeenCalledWith(
-			expect.objectContaining({
-				tls: expect.objectContaining({ minVersion: 'TLSv1.3', rejectUnauthorized: true }),
-			})
-		);
+		expect(config.tls?.minVersion).toBe('TLSv1.3');
+		expect(config.tls?.rejectUnauthorized).toBe(true);
 	});
 
 	it('closeAll clears pool', async () => {
@@ -182,45 +159,34 @@ describe('SmtpConnectionPool', () => {
 		pool.release(a.key);
 		const b = await pool.acquire('mx2.example.com', '10.0.0.1', { port: 25 });
 		pool.release(b.key);
-
 		expect(pool.size).toBe(2);
 
 		await pool.closeAll();
-
 		expect(pool.size).toBe(0);
 	});
 
 	it('TLS strictness participates in pool identity (PR-22: MTA-STS-enforce downgrade)', async () => {
-		// First, an opportunistic, non-verifying send to a shared MX.
 		const opportunistic = await pool.acquire('mx.shared.example.com', '10.0.0.1', {
 			port: 25,
 			requireTLS: false,
 			tls: { rejectUnauthorized: false },
 		});
 		pool.release(opportunistic.key);
-		expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+		expect(pool.size).toBe(1);
 
-		// Then an MTA-STS-enforce send to the SAME mxHost+bindIp+dkimDomain that
-		// REQUIRES STARTTLS and certificate verification. It must NOT reuse the
-		// opportunistic transport — a fresh, properly-configured one is created.
+		// An MTA-STS-enforce acquire to the SAME mx+bindIp+dkim that REQUIRES verified
+		// TLS must NOT reuse the opportunistic config — a fresh entry is created.
 		const enforcing = await pool.acquire('mx.shared.example.com', '10.0.0.1', {
 			port: 25,
 			requireTLS: true,
 			tls: { rejectUnauthorized: true },
 		});
 
-		expect(enforcing.transport).not.toBe(opportunistic.transport);
+		expect(enforcing.config).not.toBe(opportunistic.config);
 		expect(enforcing.key).not.toBe(opportunistic.key);
-		expect(nodemailer.createTransport).toHaveBeenCalledTimes(2);
 		expect(pool.size).toBe(2);
-
-		// And the enforcing transport carried the strict TLS settings to the factory.
-		const createTransport = vi.mocked(nodemailer.createTransport);
-		const enforcingCall = createTransport.mock.calls[1]?.[0];
-		expect(enforcingCall).toMatchObject({
-			requireTLS: true,
-			tls: { rejectUnauthorized: true },
-		});
+		expect(enforcing.config.requireTls).toBe(true);
+		expect(enforcing.config.tls?.rejectUnauthorized).toBe(true);
 	});
 });
 
@@ -271,7 +237,6 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 
 	it('enforces the global per-host cap atomically and rolls back over-cap reservations', async () => {
 		const redis = makeRedisMock();
-		// High per-host limit so the GLOBAL cap is the gate under test.
 		const pool = new SmtpConnectionPool({
 			maxPerHost: 100,
 			idleTimeoutMs: 30000,
@@ -279,14 +244,13 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 		});
 		pool.enableDistributedCoordination(redis as unknown as Redis, 2, 'srv1');
 
-		// Distinct bindIps → distinct keys → distinct transports to the SAME host.
 		await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
 		await pool.acquire('mx.example.com', '10.0.0.2', { port: 25 });
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(2);
 
-		// Third new connection is over the global cap of 2 → throws, INCR rolled back.
-		await expect(pool.acquire('mx.example.com', '10.0.0.3', { port: 25 })).rejects.toBeInstanceOf(
-			PoolOverCapError
+		await pool.acquire('mx.example.com', '10.0.0.3', { port: 25 }).then(
+			() => expect.fail('should be over cap'),
+			(err) => expect(err).toBeInstanceOf(PoolOverCapError)
 		);
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(2); // not 3
 	});
@@ -314,8 +278,6 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 		pool.release(b.key);
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(2);
 
-		// Third acquire to the same host evicts the LRU idle entry (decr) then
-		// reserves a slot for the new transport (incr) — net 2, balanced.
 		await pool.acquire('mx.example.com', '10.0.0.3', { port: 25 });
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(2);
 		expect(pool.size).toBe(2);
@@ -345,7 +307,6 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 			idleTimeoutMs: 30000,
 			maxAgeMs: 300000,
 		});
-		// No enableDistributedCoordination → no cap, no tracking.
 		await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
 		await pool.acquire('mx.example.com', '10.0.0.2', { port: 25 });
 		await pool.acquire('mx.example.com', '10.0.0.3', { port: 25 });
@@ -365,7 +326,6 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 		await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(1);
 
-		// Two more over-cap attempts both throw and both roll their INCR back.
 		await expect(pool.acquire('mx.example.com', '10.0.0.2', { port: 25 })).rejects.toBeInstanceOf(
 			PoolOverCapError
 		);
@@ -373,20 +333,18 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 			PoolOverCapError
 		);
 
-		// Count is still exactly the cap — never leaked above it, never went negative.
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(1);
-		// No transport was created for the rejected acquires.
-		expect(nodemailer.createTransport).toHaveBeenCalledTimes(1);
+		// No new entry was created for the rejected acquires.
+		expect(pool.size).toBe(1);
 	});
 });
 
 // ──────────────────────────────────────────────────────────────────────────
 // PR-73 regression lock: per-instance maxPerHost LRU-idle eviction + drain.
-// The pool bounds concurrent transports per MX host on a single instance and,
+// The pool bounds concurrent connections per MX host on a single instance and,
 // when full, evicts the least-recently-used IDLE entry to make room — never an
 // in-flight one. closeAll() drains: it waits for in-flight sends to finish
-// before tearing connections down. Bounding concurrency per receiving MX is the
-// politeness ISPs expect (RFC 5321 §4.5.4 retry/connection discipline).
+// before tearing entries down. (RFC 5321 §4.5.4 retry/connection discipline.)
 // ──────────────────────────────────────────────────────────────────────────
 describe('SmtpConnectionPool — per-instance LRU-idle eviction (PR-73)', () => {
 	beforeEach(() => {
@@ -399,60 +357,50 @@ describe('SmtpConnectionPool — per-instance LRU-idle eviction (PR-73)', () => 
 		vi.useRealTimers();
 	});
 
-	it('evicts the LEAST-recently-used idle transport when the per-host cap is hit', async () => {
+	it('evicts the LEAST-recently-used idle entry when the per-host cap is hit', async () => {
 		const pool = new SmtpConnectionPool({ maxPerHost: 2, idleTimeoutMs: 30000, maxAgeMs: 300000 });
 
-		// Two distinct transports to the same host (distinct bindIps → distinct keys).
 		const a = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
 		pool.release(a.key); // a released at t0
 
 		vi.advanceTimersByTime(1000);
 		const b = await pool.acquire('mx.example.com', '10.0.0.2', { port: 25 });
-		pool.release(b.key); // b released at t0+1s → b is MORE recently used than a
+		pool.release(b.key); // b released later → b is MORE recently used than a
 
 		expect(pool.size).toBe(2);
 
-		// Third acquire to the same host is over the per-host cap of 2. The LRU
-		// idle entry (a, oldest lastUsedAt) is evicted; b (newer) survives.
 		vi.advanceTimersByTime(1000);
-		const c = await pool.acquire('mx.example.com', '10.0.0.3', { port: 25 });
+		await pool.acquire('mx.example.com', '10.0.0.3', { port: 25 });
 
 		expect(pool.size).toBe(2);
-		// `a` was closed and removed; `b` and `c` remain.
-		expect(vi.mocked(a.transport.close)).toHaveBeenCalledTimes(1);
-		expect(vi.mocked(b.transport.close)).not.toHaveBeenCalled();
-		expect(vi.mocked(c.transport.close)).not.toHaveBeenCalled();
+		// `a` (LRU idle) was evicted; re-acquiring its key rebuilds a fresh config.
+		const aAgain = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
+		expect(aAgain.config).not.toBe(a.config);
 	});
 
-	it('does NOT evict an in-flight transport even when the per-host cap is hit', async () => {
+	it('does NOT evict an in-flight entry even when the per-host cap is hit', async () => {
 		const pool = new SmtpConnectionPool({ maxPerHost: 1, idleTimeoutMs: 30000, maxAgeMs: 300000 });
 
-		// One transport, still in-flight (never released).
 		const a = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
-		// a.inFlight === 1 — it must NOT be evicted.
-
-		// A second acquire to the same host is over the cap. There is no idle
-		// entry to evict, so the in-flight one is left alone and a new transport
-		// is added (the pool grows past maxPerHost rather than killing a live send).
+		// a.inFlight === 1 — it must NOT be evicted; the pool grows past cap instead.
 		const b = await pool.acquire('mx.example.com', '10.0.0.2', { port: 25 });
 
-		expect(vi.mocked(a.transport.close)).not.toHaveBeenCalled();
-		expect(b.transport).not.toBe(a.transport);
+		expect(b.config).not.toBe(a.config);
 		expect(pool.size).toBe(2);
+		// `a` survived: reusing its key returns the SAME config object.
+		const aAgain = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
+		expect(aAgain.config).toBe(a.config);
 	});
 
-	it('aged-out idle transports are evicted by the periodic sweep', async () => {
+	it('aged-out idle entries are evicted by the periodic sweep', async () => {
 		const pool = new SmtpConnectionPool({ maxPerHost: 5, idleTimeoutMs: 30000, maxAgeMs: 300000 });
 		const a = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
 		pool.release(a.key);
 		expect(pool.size).toBe(1);
 
 		pool.startEviction(10_000);
-
-		// Past the idle timeout (30s) → the next sweep evicts it.
 		vi.advanceTimersByTime(40_000);
 		expect(pool.size).toBe(0);
-		expect(vi.mocked(a.transport.close)).toHaveBeenCalledTimes(1);
 
 		await pool.closeAll();
 	});
@@ -464,29 +412,22 @@ describe('SmtpConnectionPool — drain on closeAll (PR-73)', () => {
 	it('waits for in-flight sends to finish before tearing the pool down', async () => {
 		const pool = new SmtpConnectionPool({ maxPerHost: 3, idleTimeoutMs: 30000, maxAgeMs: 300000 });
 
-		// Acquire and DO NOT release → one in-flight send.
 		const a = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
 		expect(pool.size).toBe(1);
 
-		// Kick off closeAll with a generous drain window; it should block on the
-		// in-flight count until we release.
 		let closed = false;
 		const closing = pool.closeAll(5000).then(() => {
 			closed = true;
 		});
 
-		// Let a few drain-poll cycles run; closeAll must still be waiting.
 		await new Promise((r) => setTimeout(r, 250));
 		expect(closed).toBe(false);
-		expect(vi.mocked(a.transport.close)).not.toHaveBeenCalled();
 
-		// Release the in-flight send → drain completes and the transport closes.
 		pool.release(a.key);
 		await closing;
 
 		expect(closed).toBe(true);
 		expect(pool.size).toBe(0);
-		expect(vi.mocked(a.transport.close)).toHaveBeenCalledTimes(1);
 	});
 
 	it('tears down immediately when nothing is in-flight', async () => {
@@ -496,6 +437,5 @@ describe('SmtpConnectionPool — drain on closeAll (PR-73)', () => {
 
 		await pool.closeAll();
 		expect(pool.size).toBe(0);
-		expect(vi.mocked(a.transport.close)).toHaveBeenCalledTimes(1);
 	});
 });

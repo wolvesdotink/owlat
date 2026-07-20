@@ -29,14 +29,32 @@ export class MtaIdentityManager {
 	 * (e.g. pre-seeded from the MTA's `DKIM_KEYS` env var) it is returned as-is
 	 * rather than overwritten, so registering never breaks an already-published
 	 * DKIM DNS record. Use the MTA's dedicated rotate endpoint to replace a key.
+	 *
+	 * `returnPathHost` sets the domain's per-domain VERP return-path host (D1),
+	 * tri-state per the D1 register contract:
+	 *   - `undefined` → send NO body: the MTA keeps whatever return-path config it
+	 *     had (none by default → the MTA's global `RETURN_PATH_DOMAIN`). This is
+	 *     the historic call, byte-identical to before the field existed.
+	 *   - a string   → set the per-domain host (a validated DNS FQDN).
+	 *   - `null`     → clear any override, reverting the MTA to its global host.
+	 * The MTA validates the host and 400s an invalid one; a 400 surfaces here as a
+	 * thrown registration error (same taxonomy as any non-2xx).
 	 */
-	async registerDomain(domain: string): Promise<MtaRegistrationResult> {
+	async registerDomain(
+		domain: string,
+		returnPathHost?: string | null
+	): Promise<MtaRegistrationResult> {
+		// Only attach a body when the caller expresses an intent for the field
+		// (set or clear). `undefined` ⇒ no body ⇒ the MTA's "no change" path.
+		const body = returnPathHost === undefined ? undefined : JSON.stringify({ returnPathHost });
+
 		const response = await fetch(`${this.baseUrl}/dkim/${encodeURIComponent(domain)}/register`, {
 			method: 'POST',
 			headers: {
 				Authorization: `Bearer ${this.apiKey}`,
 				'Content-Type': 'application/json',
 			},
+			...(body === undefined ? {} : { body }),
 		});
 
 		if (!response.ok) {

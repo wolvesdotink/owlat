@@ -83,7 +83,7 @@ export async function handleEmailJob(
 	job: ReservedJob<EmailJob>,
 	queue: Queue<EmailJob>,
 	redis: Redis,
-	config: MtaConfig,
+	config: MtaConfig
 ): Promise<void> {
 	const data = job.data;
 	const deps = { redis, config };
@@ -95,7 +95,7 @@ export async function handleEmailJob(
 
 	logger.debug(
 		{ messageId: data.messageId, to: data.to, domain, pool: data.ipPool },
-		'Processing email job',
+		'Processing email job'
 	);
 
 	recordWorkerHeartbeat(redis, config.serverId).catch(() => {});
@@ -149,7 +149,7 @@ async function disposeDefer(
 	domain: string,
 	kind: DeferKind,
 	delayMs: number,
-	reason: string,
+	reason: string
 ): Promise<void> {
 	const data = job.data;
 	const now = Date.now();
@@ -171,7 +171,7 @@ async function disposeDefer(
 
 	logger.info(
 		{ messageId: data.messageId, to: data.to, domain, kind, delay, reason },
-		`Deferred (${kind}) — re-enqueued in ${delay}ms (no attempt consumed)`,
+		`Deferred (${kind}) — re-enqueued in ${delay}ms (no attempt consumed)`
 	);
 }
 
@@ -186,11 +186,11 @@ async function emitExpiredBounce(
 	deps: { redis: Redis; config: MtaConfig },
 	domain: string,
 	ageMs: number,
-	reason: string,
+	reason: string
 ): Promise<void> {
 	logger.warn(
 		{ messageId: data.messageId, to: data.to, domain, ageMs, reason },
-		'Message exceeded max age — giving up with expired-bounce',
+		'Message exceeded max age — giving up with expired-bounce'
 	);
 
 	const effects: DispatchEffect[] = [
@@ -234,14 +234,14 @@ async function handleDrop(
 	job: EmailJob,
 	domain: string,
 	isp: string,
-	deps: { redis: Redis; config: MtaConfig },
+	deps: { redis: Redis; config: MtaConfig }
 ): Promise<void> {
 	const effects: DispatchEffect[] = [];
 
 	if (piped.status === 'screened') {
 		logger.warn(
 			{ messageId: job.messageId, to: job.to, reason: piped.reason },
-			'Content screening rejected',
+			'Content screening rejected'
 		);
 		effects.push({
 			kind: 'metrics_counter_inc',
@@ -250,10 +250,7 @@ async function handleDrop(
 			outcome: 'rejected',
 		});
 	} else {
-		logger.info(
-			{ messageId: job.messageId, to: job.to },
-			'Recipient suppressed — skipping',
-		);
+		logger.info({ messageId: job.messageId, to: job.to }, 'Recipient suppressed — skipping');
 	}
 
 	effects.push({
@@ -267,7 +264,7 @@ async function handleDrop(
 function buildDropEvent(
 	piped: Extract<PipelineResult<BasePhaseCtx>, { kind: 'drop' }>,
 	job: EmailJob,
-	domain: string,
+	domain: string
 ): DeliveryEvent {
 	const base: DeliveryEvent = {
 		messageId: job.messageId,
@@ -289,7 +286,7 @@ function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): v
 		case 'delivered':
 			logger.info(
 				{ messageId: job.messageId, to: job.to, ip: ctx.ip, durationMs: ctx.durationMs },
-				'Email delivered',
+				'Email delivered'
 			);
 			return;
 		case 'hard_bounce':
@@ -300,7 +297,7 @@ function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): v
 					error: outcome.error,
 					smtpCode: outcome.smtpCode,
 				},
-				'Hard bounce — permanent failure',
+				'Hard bounce — permanent failure'
 			);
 			return;
 		case 'deferred':
@@ -313,13 +310,19 @@ function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): v
 					category: outcome.classification.category,
 					suggestedDelay: outcome.classification.suggestedDelayMs,
 				},
-				`Deferred (${outcome.classification.category}) — will retry`,
+				`Deferred (${outcome.classification.category}) — will retry`
 			);
 			return;
 		case 'soft_bounce':
 			logger.warn(
 				{ messageId: job.messageId, to: job.to, error: outcome.error },
-				'Soft bounce — connection failure',
+				'Soft bounce — connection failure'
+			);
+			return;
+		case 'ambiguous':
+			logger.warn(
+				{ messageId: job.messageId, to: job.to, error: outcome.error },
+				'Ambiguous post-DATA outcome — terminal, not suppressed (message may have been delivered)'
 			);
 			return;
 	}

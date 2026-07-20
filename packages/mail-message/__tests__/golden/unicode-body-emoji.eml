@@ -1,0 +1,30 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=nilNcbO0hxfjjUTt2quDrA6GtSQEetEiWSUFWe+H9Io=;
+ b=fPalhf5XQBB2B3VIzz0YzWWsKCM+PH4J1aaE0v327gwUY8adQPWU+apOyb0UPvtEMvTosYrbZ
+ MPulDFyjm+wM4D0lylrAS3U7Pbli0SOIKAitFoi+OQ0985ow8hbDqc/W3VBkxtl//G8dTsbEaiL
+ DP/n7n3NQ1SxPJ21otJWopHUoBkGA+h+HcKX/NFosaegCpQQW1BlPNP5fn5cX2jeAwr+q8U7PaX
+ v2cI+KlFtfBdzhbQjQXHyMd9gNq3Edfh8S3FJ0DZoxbrEd27JbJeKAzvBlFHZzVNVFMwVqLo+XU
+ QLfzrmYEANHPVtfKqHMzZhiYmJWN9ZtNNOeQNigWA4fw==
+Message-ID: <corpus-26@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: Emoji body
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_unicode-body-emoji_0"
+
+----_owlat_unicode-body-emoji_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Party =F0=9F=8E=89=F0=9F=8E=88 with caf=C3=A9 =E2=98=95 and Gr=C3=BC=C3=
+=9Fe
+----_owlat_unicode-body-emoji_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<p>Party =F0=9F=8E=89=F0=9F=8E=88 with caf=C3=A9 =E2=98=95 and Gr=C3=BC=
+=C3=9Fe</p>
+----_owlat_unicode-body-emoji_0--

@@ -869,11 +869,15 @@ export const deliverToMailbox = internalMutation({
 		// A DMARC fail (RFC 7489) routes to Spam only when the From-domain owner
 		// published an enforcing policy (`quarantine`/`reject`). A `p=none` fail
 		// is monitor-only — record the verdict but do not move the message. A
-		// trusted-forwarder ARC rescue also suppresses the move.
+		// trusted-forwarder ARC rescue also suppresses the move. A permanent DMARC
+		// evaluation error is independently fail-closed: malformed/ambiguous From
+		// identifiers have no trustworthy domain from which to obtain a policy and
+		// must not land in Inbox merely because policy lookup is impossible.
 		const dmarcQuarantine =
-			!arcRescued &&
-			args.dmarcResult === 'fail' &&
-			(args.dmarcPolicy === 'quarantine' || args.dmarcPolicy === 'reject');
+			args.dmarcResult === 'permerror' ||
+			(!arcRescued &&
+				args.dmarcResult === 'fail' &&
+				(args.dmarcPolicy === 'quarantine' || args.dmarcPolicy === 'reject'));
 		const initialRole =
 			spamVerdict === 'spam' || args.virusVerdict === 'infected' || dmarcQuarantine
 				? 'spam'

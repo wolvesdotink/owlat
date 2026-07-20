@@ -10,6 +10,9 @@
  *
  * This drives each REAL server on a loopback ephemeral port and reads the actual
  * 220 greeting off the wire, asserting it starts with `220 mail.test.example `.
+ * Both the bounce (port-25 MX) and the submission listeners now run on the
+ * in-house `@owlat/smtp-listener`, normalized to a common {@link Greetable}
+ * boot/close shape.
  */
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { connect as netConnect } from 'node:net';
@@ -20,12 +23,9 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SMTPServer } from 'smtp-server';
+import type { SmtpListener } from '@owlat/smtp-listener';
 import { createBounceServer } from '../../bounce/server.js';
-import {
-	createSubmissionServer,
-	createImplicitTlsSubmissionServer,
-} from '../submissionServer.js';
+import { createSubmissionServer, createImplicitTlsSubmissionServer } from '../submissionServer.js';
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
 import type { Queue } from 'groupmq';
@@ -38,26 +38,33 @@ const EHLO = 'mail.test.example';
 const redis = {} as never;
 const queue = { add: vi.fn() } as unknown as Queue<EmailJob>;
 
+/** A booted-and-closable server, abstracting smtp-server vs the in-house listener. */
+interface Greetable {
+	listen(): Promise<number>;
+	close(): Promise<void>;
+}
+
+/** Adapt an `@owlat/smtp-listener` SmtpListener to {@link Greetable}. */
+function fromListener(listener: SmtpListener): Greetable {
+	return {
+		listen: async () => {
+			await listener.listen(0, '127.0.0.1');
+			return (listener.address() as AddressInfo).port;
+		},
+		close: () => listener.close(),
+	};
+}
+
 /**
- * Listen on a loopback ephemeral port and read the first SMTP greeting line.
+ * Boot on a loopback ephemeral port and read the first SMTP greeting line.
  *
  * `tls: true` connects over an implicit-TLS socket — required for the 465
  * (implicit-TLS) submission listener, which wraps the whole connection in TLS
  * before emitting any banner. The bounce listener and the 587 STARTTLS
  * submission listener both greet in cleartext.
  */
-async function readGreeting(
-	server: SMTPServer,
-	opts: { tls?: boolean } = {},
-): Promise<string> {
-	await new Promise<void>((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(0, '127.0.0.1', () => {
-			server.removeListener('error', reject);
-			resolve();
-		});
-	});
-	const port = (server.server.address() as AddressInfo).port;
+async function readGreeting(server: Greetable, opts: { tls?: boolean } = {}): Promise<string> {
+	const port = await server.listen();
 
 	return new Promise<string>((resolve, reject) => {
 		const socket: Socket = opts.tls
@@ -86,15 +93,11 @@ async function readGreeting(
 	});
 }
 
-function stopServer(server: SMTPServer): Promise<void> {
-	return new Promise((resolve) => server.close(() => resolve()));
-}
-
 describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)', () => {
-	let server: SMTPServer | undefined;
+	let server: Greetable | undefined;
 
-	// createSubmissionServer validates the PEM at construction, so the submission
-	// case needs real TLS material. Generate a throwaway self-signed pair once.
+	// The submission listeners validate the PEM at construction, so those cases
+	// need real TLS material. Generate a throwaway self-signed pair once.
 	let certPem: string;
 	let keyPem: string;
 
@@ -102,10 +105,19 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 		const dir = mkdtempSync(join(tmpdir(), 'owlat-banner-test-'));
 		try {
 			execFileSync('openssl', [
-				'req', '-x509', '-newkey', 'rsa:2048',
-				'-keyout', join(dir, 'key.pem'),
-				'-out', join(dir, 'cert.pem'),
-				'-days', '1', '-nodes', '-subj', `/CN=${EHLO}`,
+				'req',
+				'-x509',
+				'-newkey',
+				'rsa:2048',
+				'-keyout',
+				join(dir, 'key.pem'),
+				'-out',
+				join(dir, 'cert.pem'),
+				'-days',
+				'1',
+				'-nodes',
+				'-subj',
+				`/CN=${EHLO}`,
 			]);
 			certPem = readFileSync(join(dir, 'cert.pem'), 'utf8');
 			keyPem = readFileSync(join(dir, 'key.pem'), 'utf8');
@@ -115,7 +127,7 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 	});
 
 	afterEach(async () => {
-		if (server) await stopServer(server);
+		if (server) await server.close();
 		server = undefined;
 	});
 
@@ -130,7 +142,7 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 			inboundDkimEnabled: false,
 		} as unknown as MtaConfig;
 
-		server = createBounceServer(config, redis);
+		server = fromListener(createBounceServer(config, redis));
 		const greeting = await readGreeting(server);
 
 		expect(greeting.startsWith(`220 ${EHLO} `)).toBe(true);
@@ -147,7 +159,7 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 			submissionMaxAuthFailuresPerIp: 10,
 		} as unknown as MtaConfig;
 
-		server = createSubmissionServer(queue, redis, config);
+		server = fromListener(createSubmissionServer(queue, redis, config));
 		// 587 opens in plaintext and advertises STARTTLS — the banner is cleartext.
 		const greeting = await readGreeting(server);
 
@@ -165,7 +177,7 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 			submissionMaxAuthFailuresPerIp: 10,
 		} as unknown as MtaConfig;
 
-		server = createImplicitTlsSubmissionServer(queue, redis, config);
+		server = fromListener(createImplicitTlsSubmissionServer(queue, redis, config));
 		// 465 wraps the connection in TLS from the first byte — greet over TLS.
 		const greeting = await readGreeting(server, { tls: true });
 

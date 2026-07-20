@@ -8,8 +8,9 @@ import {
 	generateAndSendReports,
 	buildStsPolicyString,
 } from '../tlsRpt.js';
-import type { TlsRptQueue } from '../tlsRpt.js';
+import type { TlsRptQueue, TlsResultType } from '../tlsRpt.js';
 import type { EmailJob } from '../../types.js';
+import type { SmtpTlsCause } from '@owlat/smtp-client';
 import { classifyTlsFailure, stsAttributedResultType } from '../tlsFailureClassification.js';
 
 const { resolveMock } = vi.hoisted(() => ({ resolveMock: vi.fn() }));
@@ -565,53 +566,22 @@ describe('tlsRpt', () => {
 		});
 	});
 
-	// ── Regression lock: TLS failure classification table (RFC 8460 §4) ──
+	// ── Regression lock: the thin SmtpTlsCause -> TLS-RPT result-type map (RFC 8460 §4) ──
+	// The @owlat/smtp-client engine classifies every TLS/handshake failure at the
+	// source into a structured SmtpTlsCause; classifyTlsFailure is the total map
+	// from that discriminant onto the TLS-RPT result type — no string sniffing.
 	describe('classifyTlsFailure', () => {
-		const cases: Array<
-			[string, { code?: string; message?: string; response?: string }, string | null]
-		> = [
-			[
-				'ESOCKET socket error -> null (network, not TLS)',
-				{ code: 'ESOCKET', message: 'socket hang up' },
-				null,
-			],
-			[
-				'ETIMEDOUT -> null (network, not TLS)',
-				{ code: 'ETIMEDOUT', message: 'connect ETIMEDOUT' },
-				null,
-			],
-			['ECONNREFUSED -> null', { code: 'ECONNREFUSED' }, null],
-			['ECONNRESET -> null', { code: 'ECONNRESET' }, null],
-			[
-				'STARTTLS missing -> starttls-not-supported',
-				{ message: 'STARTTLS not advertised' },
-				'starttls-not-supported',
-			],
-			[
-				'expired cert -> certificate-expired',
-				{ message: 'certificate has expired' },
-				'certificate-expired',
-			],
-			[
-				'altname mismatch -> certificate-host-mismatch',
-				{ message: 'certificate altname does not match' },
-				'certificate-host-mismatch',
-			],
-			[
-				'untrusted cert -> certificate-not-trusted',
-				{ message: 'self signed certificate in chain' },
-				'certificate-not-trusted',
-			],
-			[
-				'generic SMTP error -> null (not TLS)',
-				{ code: '', message: '550 mailbox unavailable', response: '550' },
-				null,
-			],
+		const cases: Array<[SmtpTlsCause, TlsResultType]> = [
+			['starttls-unavailable', 'starttls-not-supported'],
+			['cert-expired', 'certificate-expired'],
+			['cert-host-mismatch', 'certificate-host-mismatch'],
+			['cert-untrusted', 'certificate-not-trusted'],
+			['handshake', 'validation-failure'],
 		];
 
-		for (const [name, error, expected] of cases) {
-			it(name, () => {
-				expect(classifyTlsFailure(error)).toBe(expected);
+		for (const [cause, expected] of cases) {
+			it(`${cause} -> ${expected}`, () => {
+				expect(classifyTlsFailure(cause)).toBe(expected);
 			});
 		}
 	});

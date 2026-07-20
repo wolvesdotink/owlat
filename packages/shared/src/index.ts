@@ -21,6 +21,17 @@ export {
 } from './address';
 export { type AlignmentMode, isSpfAligned, emailDomain } from './spfAlignment';
 export {
+	type DnsName,
+	type ZoneSplit,
+	InvalidDomainError,
+	asDnsName,
+	isDnsLabel,
+	splitZone,
+	trySplitZone,
+	zoneRelativeHost,
+} from './dnsZone';
+export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
+export {
 	SEND_TRANSPORT_KINDS,
 	type SendTransportKind,
 	type CoreSendTransportKind,
