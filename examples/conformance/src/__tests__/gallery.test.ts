@@ -249,6 +249,39 @@ describe('reference documentation', () => {
 		return names;
 	}
 
+	// A `./…` printed in a README's contribution table reads as a subpath import
+	// of the published package. A row naming a subpath the package does not export
+	// teaches an author to declare a module the loader cannot resolve, so the
+	// documented modules are checked against the real `exports` map.
+	it('never documents a contribution module the package does not export', async () => {
+		for (const entry of REFERENCE_GALLERY) {
+			const { exports } = JSON.parse(
+				await readRepositoryFile(`${entry.directory}/package.json`)
+			) as { readonly exports?: Record<string, unknown> };
+			const readme = await readRepositoryFile(`${entry.directory}/README.md`);
+			const rows = readme.split('\n').filter((line) => line.startsWith('|'));
+			if (entry.manifest.contributes) {
+				// A reference that contributes must document what it contributes; the
+				// Tier-2 connected app ships no in-process module and no such table.
+				expect(
+					rows.length,
+					`${entry.directory}/README.md documents no contributions`
+				).toBeGreaterThan(0);
+			}
+
+			for (const row of rows) {
+				for (const match of row.matchAll(/`(\.\/[^`]+)`/g)) {
+					const documented = match[1];
+					if (documented === undefined) continue;
+					expect(
+						Object.keys(exports ?? {}),
+						`${entry.directory}/README.md documents ${documented}`
+					).toContain(documented);
+				}
+			}
+		}
+	});
+
 	it('only prints Owlat commands the CLI package actually ships', async () => {
 		const binaries = await shippedCliBinaries();
 		for (const entry of REFERENCE_GALLERY) {
