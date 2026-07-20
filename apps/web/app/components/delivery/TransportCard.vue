@@ -28,8 +28,19 @@ const {
 const display = computed(() => (summary.value ? deriveTransportDisplay(summary.value) : null));
 
 const lastCheckedLabel = computed(() => {
-	const at = summary.value?.health?.lastCheckedAt;
+	const at = summary.value?.infrastructure?.observedAt ?? summary.value?.health?.lastCheckedAt;
 	return at ? formatCompactRelativeTime(at) : null;
+});
+
+const infrastructureChecks = computed(() => {
+	const health = summary.value?.infrastructure;
+	if (!health) return [];
+	return [
+		{ label: 'Queue store', ok: health.isRedisConnected },
+		{ label: 'Delivery worker', ok: health.isWorkerAlive },
+		{ label: 'DNS resolver', ok: health.isDnsReachable },
+		{ label: 'Outbound SMTP', ok: health.smtpOutbound?.status === 'ok' },
+	];
 });
 </script>
 
@@ -82,8 +93,27 @@ const lastCheckedLabel = computed(() => {
 					{{ display.healthLabel }}
 				</span>
 				<span v-if="lastCheckedLabel" class="text-xs text-text-tertiary">
-					Last send {{ lastCheckedLabel }}
+					Checked {{ lastCheckedLabel }}
 				</span>
+			</div>
+
+			<!-- Built-in MTA infrastructure signals come from the periodic /health
+				 snapshot, independently of whether a recent message happened to send. -->
+			<div
+				v-if="infrastructureChecks.length"
+				class="grid grid-cols-2 lg:grid-cols-4 gap-2 rounded-lg bg-bg-surface p-3"
+			>
+				<div
+					v-for="check in infrastructureChecks"
+					:key="check.label"
+					class="flex items-center gap-2 text-xs text-text-secondary"
+				>
+					<span
+						class="w-1.5 h-1.5 rounded-full shrink-0"
+						:class="healthDotClass[check.ok ? 'success' : 'error']"
+					/>
+					{{ check.label }}
+				</div>
 			</div>
 
 			<!-- Not-ready nudge (plain language, no lecture) -->

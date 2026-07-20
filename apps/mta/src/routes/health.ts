@@ -12,7 +12,7 @@ import { getPoolStatus } from '../scaling/ipPool.js';
 import { getDnsblStatus } from '../intelligence/dnsbl.js';
 import { getWarmingState } from '../intelligence/warming.js';
 import { registry } from '../monitoring/collector.js';
-import { logger } from '../monitoring/logger.js';
+import { getSmtpReachability } from './smtpReachability.js';
 
 const startTime = Date.now();
 
@@ -71,11 +71,14 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 		// DNS resolver health
 		const dnsOk = await checkDnsResolver();
 
-		// SMTP outbound reachability (probe a well-known MX)
-		const smtpProbe = await checkSmtpReachability();
+		// Real TCP/25 reachability from every configured source IP. Cached by the
+		// probe module so normal health polling does not hammer the remote MX.
+		const sendingIps = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
+		const smtpProbe = await getSmtpReachability(sendingIps);
 
 		// Determine overall status
-		const degraded = !redisOk || allIpsBlocked || !workerStatus.alive || !dnsOk;
+		const degraded =
+			!redisOk || allIpsBlocked || !workerStatus.alive || !dnsOk || smtpProbe.status !== 'ok';
 		const status = degraded ? 'degraded' : 'ok';
 
 		return c.json({
@@ -95,7 +98,10 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 /**
  * Check if the GroupMQ worker is alive based on heartbeat
  */
-async function checkWorkerLiveness(redis: Redis, serverId: string): Promise<{
+async function checkWorkerLiveness(
+	redis: Redis,
+	serverId: string
+): Promise<{
 	alive: boolean;
 	lastHeartbeat?: number;
 	secondsSinceHeartbeat?: number;
@@ -134,29 +140,6 @@ async function checkDnsResolver(): Promise<boolean> {
 		} catch {
 			return false;
 		}
-	}
-}
-
-/**
- * Check SMTP outbound reachability by attempting DNS MX lookup
- * for a well-known domain. Does NOT connect — just verifies DNS works.
- */
-async function checkSmtpReachability(): Promise<{
-	status: 'ok' | 'degraded' | 'unknown';
-	mxResolutionMs?: number;
-}> {
-	const start = Date.now();
-	try {
-		const records = await dnsResolve('gmail.com', 'MX');
-		const durationMs = Date.now() - start;
-
-		if (records.length > 0) {
-			return { status: 'ok', mxResolutionMs: durationMs };
-		}
-		return { status: 'degraded' };
-	} catch (err) {
-		logger.debug({ err }, 'SMTP reachability probe failed');
-		return { status: 'degraded', mxResolutionMs: Date.now() - start };
 	}
 }
 

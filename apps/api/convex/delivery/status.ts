@@ -27,6 +27,83 @@ import { getOptional, type EnvKey } from '../lib/env';
 import { isSendProviderKind } from '../lib/sendProviders/types';
 import { providerKindConfigured, isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
+import { isValidEmail } from '../lib/inputGuards';
+
+export type DeliveryTestStageKey =
+	| 'provider_configuration'
+	| 'recipient_validation'
+	| 'sender_resolution'
+	| 'provider_acceptance'
+	| 'result_recording';
+
+export interface DeliveryTestStage {
+	key: DeliveryTestStageKey;
+	label: string;
+	status: 'passed' | 'failed' | 'not_run';
+	detail: string;
+}
+
+export interface DeliveryTestResult {
+	success: boolean;
+	error: string | null;
+	provider: string | null;
+	providerMessageId: string | null;
+	latencyMs: number | null;
+	attempts: number | null;
+	stages: DeliveryTestStage[];
+}
+
+function testStages(): DeliveryTestStage[] {
+	return [
+		{
+			key: 'provider_configuration',
+			label: 'Provider configuration',
+			status: 'not_run',
+			detail: 'Not checked',
+		},
+		{
+			key: 'recipient_validation',
+			label: 'Recipient address',
+			status: 'not_run',
+			detail: 'Not checked',
+		},
+		{
+			key: 'sender_resolution',
+			label: 'Sender identity',
+			status: 'not_run',
+			detail: 'Not checked',
+		},
+		{
+			key: 'provider_acceptance',
+			label: 'Provider acceptance',
+			status: 'not_run',
+			detail: 'Not attempted',
+		},
+		{
+			key: 'result_recording',
+			label: 'Readiness record',
+			status: 'not_run',
+			detail: 'Not attempted',
+		},
+	];
+}
+
+function updateStage(
+	stages: DeliveryTestStage[],
+	key: DeliveryTestStageKey,
+	status: DeliveryTestStage['status'],
+	detail: string
+): void {
+	const stage = stages.find((entry) => entry.key === key);
+	if (stage) Object.assign(stage, { status, detail });
+}
+
+function testResult(
+	stages: DeliveryTestStage[],
+	patch: Omit<DeliveryTestResult, 'stages'>
+): DeliveryTestResult {
+	return { ...patch, stages };
+}
 
 /**
  * Report the delivery send-path configuration as booleans for the admin
@@ -72,6 +149,7 @@ export const getStatus = adminQuery({
 			// resets a previously-chosen floor to `opportunistic`. Unset ⇒ null.
 			outboundTlsMode: getOptional('OUTBOUND_TLS_MODE') ?? null,
 			lastTestSucceededAt: settings?.deliveryTestLastSucceededAt ?? null,
+			mtaHealth: provider === 'mta' ? (settings?.mtaHealth ?? null) : null,
 		};
 	},
 });
@@ -147,12 +225,14 @@ export const getTransportSummary = authedQuery({
 		// sender-alignment gate: the transport's normalized kind plus the effective
 		// DKIM `d=` / return-path domains (DNS-facing values, never credentials).
 		const facts = outboundTransportFacts();
+		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
 
 		return {
 			provider,
 			canSend,
 			advancedRoutingActive,
 			health,
+			infrastructure: provider === 'mta' ? (settings?.mtaHealth ?? null) : null,
 			alignment: {
 				kind: facts.kind,
 				returnPathDomain: facts.returnPathDomain,
@@ -188,48 +268,98 @@ export const recordTestResult = internalMutation({
 
 /**
  * Send a real test email through the configured delivery provider, so an admin
- * can confirm the send path works end-to-end before trusting it with a campaign
- * or transactional traffic. Reuses the single system transport
+ * can trace the send path through provider acceptance before trusting it with a
+ * campaign or transactional traffic. Reuses the single system transport
  * (`internal.systemMail.sendSystemEmail`) — it routes through whatever provider
  * `EMAIL_PROVIDER` names (MTA / Resend / SES); this does NOT add a parallel
  * sender. Records a success timestamp the status page and onboarding surface.
  *
- * Returns `{ success, error }` rather than throwing on a provider failure: a
- * misconfigured transport is the expected case this button exists to diagnose,
- * so the UI shows the reason inline instead of a generic toast.
+ * Returns a stage-by-stage trace rather than throwing on an expected provider
+ * failure, including the safe provider receipt metadata. Acceptance is not
+ * called delivery: the recipient inbox or provider feedback confirms that later.
  */
 // authz: admin floor enforced via internal.auth.membership.assertOrgAdmin
 // (organization:manage) inside the handler — actions can't call
 // requireOrgPermission directly.
 export const sendTest = authedAction({
 	args: { to: v.string() },
-	handler: async (ctx, args): Promise<{ success: boolean; error: string | null }> => {
+	handler: async (ctx, args): Promise<DeliveryTestResult> => {
 		// Admin floor (organization:manage) — actions can't run requireOrgPermission
 		// directly, so assert through the internal query that inherits our identity.
 		await ctx.runQuery(internal.auth.membership.assertOrgAdmin, {});
 
+		const stages = testStages();
 		const provider = getOptional('EMAIL_PROVIDER');
 		if (!isSendProviderKind(provider) || !providerKindConfigured(provider)) {
-			return {
+			updateStage(stages, 'provider_configuration', 'failed', 'No usable provider is configured');
+			return testResult(stages, {
 				success: false,
 				error:
 					'No delivery provider is configured. Set EMAIL_PROVIDER (mta, resend, or ses) and its credentials, then try again.',
-			};
+				provider: provider ?? null,
+				providerMessageId: null,
+				latencyMs: null,
+				attempts: null,
+			});
 		}
+		updateStage(stages, 'provider_configuration', 'passed', `${provider} is configured`);
 
 		const to = args.to.trim();
-		if (!to) {
-			return { success: false, error: 'Enter a recipient address for the test email.' };
+		if (!isValidEmail(to)) {
+			updateStage(stages, 'recipient_validation', 'failed', 'Recipient address is invalid');
+			return testResult(stages, {
+				success: false,
+				error: 'Enter a valid recipient address for the test email.',
+				provider,
+				providerMessageId: null,
+				latencyMs: null,
+				attempts: null,
+			});
 		}
+		updateStage(stages, 'recipient_validation', 'passed', 'Recipient address is valid');
 
-		const team = await ctx.runQuery(internal.confirmationEmailQueries.getTeamInfo, {});
+		let team: {
+			defaultFromEmail: string | null;
+			defaultFromName: string | null;
+		} | null;
+		try {
+			team = await ctx.runQuery(internal.confirmationEmailQueries.getTeamInfo, {});
+		} catch {
+			updateStage(stages, 'sender_resolution', 'failed', 'Could not load the sender identity');
+			return testResult(stages, {
+				success: false,
+				error: 'Could not resolve the sender identity. Check the deployment logs.',
+				provider,
+				providerMessageId: null,
+				latencyMs: null,
+				attempts: null,
+			});
+		}
 		const fromEmail =
 			team?.defaultFromEmail || `noreply@${getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app'}`;
 		const fromName = team?.defaultFromName || 'Owlat';
 		const from = fromName ? `${fromName} <${fromEmail}>` : fromEmail;
+		if (!isValidEmail(fromEmail)) {
+			updateStage(stages, 'sender_resolution', 'failed', 'Default sender address is invalid');
+			return testResult(stages, {
+				success: false,
+				error: 'The default sender address is invalid. Update the sender identity and try again.',
+				provider,
+				providerMessageId: null,
+				latencyMs: null,
+				attempts: null,
+			});
+		}
+		updateStage(stages, 'sender_resolution', 'passed', `Sending as ${fromEmail}`);
 
+		let dispatched: {
+			provider: string;
+			providerMessageId: string;
+			latencyMs: number;
+			attempts: number;
+		};
 		try {
-			await ctx.runAction(internal.systemMail.sendSystemEmail, {
+			dispatched = await ctx.runAction(internal.systemMail.sendSystemEmail, {
 				to,
 				from,
 				subject: 'Owlat delivery test',
@@ -240,13 +370,50 @@ export const sendTest = authedAction({
 		} catch {
 			// Swallow the provider error detail (it can carry endpoint/credential
 			// hints) and surface a safe, actionable message instead.
-			return {
+			updateStage(
+				stages,
+				'provider_acceptance',
+				'failed',
+				`${provider} did not accept the message`
+			);
+			return testResult(stages, {
 				success: false,
 				error: 'Test send failed. Check your provider credentials and the deployment logs.',
-			};
+				provider,
+				providerMessageId: null,
+				latencyMs: null,
+				attempts: null,
+			});
+		}
+		updateStage(
+			stages,
+			'provider_acceptance',
+			'passed',
+			`Accepted as ${dispatched.providerMessageId}`
+		);
+
+		try {
+			await ctx.runMutation(internal.delivery.status.recordTestResult, { at: Date.now() });
+			updateStage(stages, 'result_recording', 'passed', 'Readiness timestamp recorded');
+		} catch {
+			updateStage(stages, 'result_recording', 'failed', 'Could not record the readiness result');
+			return testResult(stages, {
+				success: false,
+				error: 'The provider accepted the message, but the readiness result could not be recorded.',
+				provider: dispatched.provider,
+				providerMessageId: dispatched.providerMessageId,
+				latencyMs: dispatched.latencyMs,
+				attempts: dispatched.attempts,
+			});
 		}
 
-		await ctx.runMutation(internal.delivery.status.recordTestResult, { at: Date.now() });
-		return { success: true, error: null };
+		return testResult(stages, {
+			success: true,
+			error: null,
+			provider: dispatched.provider,
+			providerMessageId: dispatched.providerMessageId,
+			latencyMs: dispatched.latencyMs,
+			attempts: dispatched.attempts,
+		});
 	},
 });
