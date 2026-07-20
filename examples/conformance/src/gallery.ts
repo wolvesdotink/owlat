@@ -91,6 +91,22 @@ export const REFERENCE_GALLERY: readonly GalleryEntry[] = Object.freeze([
 	}),
 ]);
 
+/**
+ * Live contribution buckets (`PLUGIN_LIVE_CONTRIBUTION_KINDS`) that no reference
+ * contributes to, with the reason each one cannot have a maintained example.
+ *
+ * The gallery cannot honestly claim to cover every live bucket, so it names the
+ * gap instead of leaving it unstated: `gallery.test.ts` asserts that live minus
+ * covered is EXACTLY this set, which means a thirteenth live bucket landing in
+ * the kernel — or a reference quietly dropping a contribution — turns the final
+ * conformance gate red naming the bucket.
+ */
+export const UNCOVERED_LIVE_BUCKETS: Readonly<Record<string, string>> = Object.freeze({
+	sendTransports:
+		'a maintained example would need a real ESP account and credentials to send through',
+	importProviders: 'a maintained example would need a real vendor account to import from',
+});
+
 /** Look up one reference by tier; throws rather than returning undefined. */
 export function galleryEntry(tier: PluginTier): GalleryEntry {
 	const entry = REFERENCE_GALLERY.find((candidate) => candidate.tier === tier);

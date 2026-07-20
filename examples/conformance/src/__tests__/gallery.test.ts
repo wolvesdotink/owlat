@@ -10,12 +10,17 @@ import { access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { composeBundledPlugins, createPluginPermissionService } from '@owlat/plugin-host';
-import { parsePluginManifest, PLUGIN_CONTRIBUTION_KINDS } from '@owlat/plugin-kit';
+import {
+	parsePluginManifest,
+	PLUGIN_CONTRIBUTION_KINDS,
+	PLUGIN_LIVE_CONTRIBUTION_KINDS,
+} from '@owlat/plugin-kit';
 import {
 	contributionExportPaths,
 	galleryEntry,
 	readCoreNavSectionKeys,
 	REFERENCE_GALLERY,
+	UNCOVERED_LIVE_BUCKETS,
 } from '../gallery';
 import { readRepositoryFile, REPOSITORY_ROOT } from '../repository';
 
@@ -59,7 +64,9 @@ describe('reference gallery coverage', () => {
 			REFERENCE_GALLERY.flatMap((entry) => Object.keys(entry.manifest.contributes ?? {}))
 		);
 		for (const bucket of used) expect(PLUGIN_CONTRIBUTION_KINDS).toContain(bucket);
-		// Every bucket with a live host runtime is covered by some reference.
+		// Ten of the twelve buckets with a live host runtime; the two the gallery
+		// does not cover are named, with their reason, in UNCOVERED_LIVE_BUCKETS
+		// and pinned by the next case.
 		expect([...used].sort()).toEqual([
 			'agentSteps',
 			'automationConditions',
@@ -72,6 +79,23 @@ describe('reference gallery coverage', () => {
 			'settingsPanels',
 			'webhookEvents',
 		]);
+	});
+
+	it('leaves exactly the declared live buckets uncovered, for a stated reason', () => {
+		// The live set is DERIVED from the kernel's capability-requirement table
+		// (@owlat/plugin-kit), never copied: adding a thirteenth live bucket there,
+		// or dropping a contribution from a reference manifest, fails here naming
+		// the bucket instead of silently widening the gallery's blind spot.
+		const covered = new Set(
+			REFERENCE_GALLERY.flatMap((entry) => Object.keys(entry.manifest.contributes ?? {}))
+		);
+		const uncovered = PLUGIN_LIVE_CONTRIBUTION_KINDS.filter((kind) => !covered.has(kind));
+
+		expect([...uncovered].sort()).toEqual(Object.keys(UNCOVERED_LIVE_BUCKETS).sort());
+		for (const [bucket, reason] of Object.entries(UNCOVERED_LIVE_BUCKETS)) {
+			expect(PLUGIN_LIVE_CONTRIBUTION_KINDS, bucket).toContain(bucket);
+			expect(reason.length, `${bucket} must state why it has no reference`).toBeGreaterThan(20);
+		}
 	});
 
 	it('gives the Tier-2 connected app no in-process contributions at all', () => {
