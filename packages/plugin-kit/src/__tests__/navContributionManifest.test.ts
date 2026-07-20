@@ -150,6 +150,22 @@ describe('plugin nav item contributions', () => {
 		).toBe(true);
 	});
 
+	it('bounds the name by UTF-16 code units, not by code points', () => {
+		// The render-side clamp (`clampLabel` in apps/web) slices at 64 code UNITS,
+		// so the manifest ceiling must count the same unit or the two layers
+		// disagree and the documented budget is fiction. 33 astral characters are
+		// 33 code points but 66 code units, so they are over the ceiling; 32 are
+		// exactly at it and pass through the render clamp untouched.
+		const astral = String.fromCodePoint(0x1f600);
+		expect(astral.length).toBe(2);
+		expect(
+			issuesFor(withNavItem({ name: astral.repeat(33) })).some((i) => i.path.endsWith('.name'))
+		).toBe(true);
+		expect(
+			issuesFor(withNavItem({ name: astral.repeat(32) })).some((i) => i.path.endsWith('.name'))
+		).toBe(false);
+	});
+
 	it('rejects a name that is empty once control/format characters are stripped', () => {
 		// A control-only name survives trim() but renders as a blank, unlabelled link.
 		expect(
