@@ -10,11 +10,29 @@
  *
  *   request:  owlat.hook.request.v1 / kind / appId / timestamp / nonce / sha256(body)
  *   response: owlat.hook.response.v1 / kind / appId / requestNonce / timestamp / sha256(body)
+ *
+ * Verification is constant-time, like the host's (see `constantTimeEqual`).
  */
 
-import { webcrypto } from 'node:crypto';
+import { timingSafeEqual, webcrypto } from 'node:crypto';
 
 const encoder = new TextEncoder();
+
+/**
+ * Compare two signature strings without leaking, through timing, how many
+ * leading bytes matched — the same property `constantTimeEqual` gives Owlat's
+ * own verifier (apps/api/convex/webhooks/security.ts, used by
+ * connectedApps/hookSignature.ts). A length mismatch short-circuits: the length
+ * of a signature is not a secret, and `timingSafeEqual` throws on unequal
+ * buffers. This module is a tutorial source, so the comparison has to be the one
+ * an author can safely copy into a real connected app.
+ */
+function constantTimeEqual(a: string, b: string): boolean {
+	const left = encoder.encode(a);
+	const right = encoder.encode(b);
+	if (left.length !== right.length) return false;
+	return timingSafeEqual(left, right);
+}
 
 export const HOOK_HEADERS = Object.freeze({
 	kind: 'x-owlat-hook',
@@ -102,7 +120,11 @@ export interface VerifyHookResponseOptions {
 	readonly body: string;
 }
 
-/** Verify the app's signed answer the way Owlat's hook client does. */
+/**
+ * Verify the app's signed answer the way Owlat's hook client does: recompute the
+ * canonical response signing string and compare in constant time, failing closed
+ * on a missing header.
+ */
 export async function verifyHookResponse(options: VerifyHookResponseOptions): Promise<boolean> {
 	const timestamp = options.headers[HOOK_HEADERS.timestamp];
 	const signature = options.headers[HOOK_HEADERS.signature];
@@ -115,5 +137,5 @@ export async function verifyHookResponse(options: VerifyHookResponseOptions): Pr
 		timestamp,
 		await sha256Hex(options.body),
 	].join('\n');
-	return signature === `v1=${await hmacHex(options.secret, signingString)}`;
+	return constantTimeEqual(signature, `v1=${await hmacHex(options.secret, signingString)}`);
 }
