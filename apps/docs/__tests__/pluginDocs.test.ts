@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
@@ -1281,5 +1281,47 @@ describe('plugin docs: every page is reachable', () => {
 			file.includes('plugin')
 		);
 		expect(new Set(files)).toEqual(new Set(Object.values(PAGES)));
+	});
+});
+
+/**
+ * The chapter points readers at directories under `examples/`. A cited path that
+ * no longer exists is exactly the drift the maintained gallery exists to
+ * prevent, so every one is resolved on disk. The single deliberate exception is
+ * the tutorial's scaffold output, which the reader creates by running the CLI —
+ * that one is pinned to the CLI's own default directory instead.
+ */
+describe('plugin docs: every cited example directory exists', () => {
+	const SCAFFOLD_TUTORIAL_DIRECTORY = 'examples/plugins/hello-owlat';
+
+	const cited = new Set(
+		[...chapter.matchAll(/examples\/(?:plugins\/)?[a-z0-9][a-z0-9-]*/g)].map((match) => match[0])
+	);
+
+	it('cites the three tier references and the conformance gallery', () => {
+		for (const directory of [
+			'examples/plugins/escalation-guard',
+			'examples/plugins/slack-approvals',
+			'examples/plugins/deliverability-lab',
+			'examples/conformance',
+		]) {
+			expect(cited, `${directory} is no longer documented`).toContain(directory);
+		}
+	});
+
+	it('resolves every cited directory that is not the tutorial scaffold', () => {
+		for (const directory of cited) {
+			if (directory === SCAFFOLD_TUTORIAL_DIRECTORY || directory === 'examples/plugins') continue;
+			expect(
+				existsSync(resolve(repoRoot, directory)),
+				`the docs cite ${directory}, which does not exist`
+			).toBe(true);
+		}
+	});
+
+	it('keeps the tutorial scaffold path equal to the CLI default', () => {
+		const create = read('packages/plugin-cli/src/commands/create.ts');
+		expect(create).toContain("join('examples', 'plugins', id)");
+		expect(cited).toContain(SCAFFOLD_TUTORIAL_DIRECTORY);
 	});
 });
