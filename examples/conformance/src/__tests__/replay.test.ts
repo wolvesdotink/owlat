@@ -462,7 +462,7 @@ describe('tier 3 replay — the sandboxed seed-list job', () => {
 });
 
 describe('cross-tier restrict-only invariant', () => {
-	it('never produces a gate value that allows a send', async () => {
+	it('objects to a spam-shaped draft and stays out of the way of a clean one', async () => {
 		const controller = new AbortController();
 		const spammy = {
 			from: 'sales@acme.example',
@@ -476,10 +476,12 @@ describe('cross-tier restrict-only invariant', () => {
 			subject: 'Re: API question',
 			draftBody: 'The delivery status endpoint is /v1/messages/:id.',
 		};
-		for (const input of [spammy, clean]) {
-			const result = await deliverabilityGate.evaluate(input, { signal: controller.signal });
-			expect(['objection', 'no-objection']).toContain(result.outcome);
-		}
+
+		const objected = await deliverabilityGate.evaluate(spammy, { signal: controller.signal });
+		expect(objected).toEqual({ outcome: 'objection', reason: expect.any(String) });
+
+		const quiet = await deliverabilityGate.evaluate(clean, { signal: controller.signal });
+		expect(quiet).toEqual({ outcome: 'no-objection' });
 	});
 
 	it('objects when its own analysis throws, never approving on error', async () => {
@@ -498,7 +500,12 @@ describe('cross-tier restrict-only invariant', () => {
 			},
 			{ signal: new AbortController().signal }
 		);
-		expect(['objection', 'no-objection']).toContain(result.outcome);
+		// The concrete fail-closed value, not set membership: deleting the gate's
+		// catch block must turn THIS test red.
+		expect(result).toEqual({
+			outcome: 'objection',
+			reason: expect.stringContaining('holding for review'),
+		});
 	});
 
 	it('cannot turn a core-blocked decision into an allowed one', () => {
