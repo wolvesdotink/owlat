@@ -13,6 +13,7 @@ import { deliverabilityLabPlugin } from '@owlat/example-deliverability-lab';
 import { escalationGuardPlugin } from '@owlat/example-escalation-guard';
 import { slackApprovalsPlugin } from '@owlat/example-slack-approvals';
 import type { PluginManifest } from '@owlat/plugin-kit';
+import { readRepositoryFile } from './repository';
 
 /**
  * 1 = bundled, in-process. 2 = connected app over the signed hook protocol.
@@ -35,26 +36,43 @@ export interface GalleryEntry {
 	readonly hasBundledContributions: boolean;
 }
 
+const DASHBOARD_NAVIGATION_PATH = 'apps/web/app/lib/dashboardNavigation.ts';
+const CORE_SECTIONS_DECLARATION = 'const CORE_SECTIONS: readonly CoreSection[] = [';
+
 /**
- * Core sidebar section keys a `navItems` contribution may target. Pinned here
- * because `buildNavigationSections` DROPS an item whose section is unknown
- * (fail-closed), so a typo silently deletes the entry instead of failing. The
- * authoritative list is `CORE_SECTIONS` in
- * `apps/web/app/lib/dashboardNavigation.ts`, itself pinned by the
- * "registers the full core section order" test in that app; if the two ever
- * disagree, that test and this constant fail together.
+ * The core sidebar section keys a `navItems` contribution may target, READ FROM
+ * the app rather than copied here. `buildNavigationSections` drops an item whose
+ * section is unknown (fail-closed), so a section key that drifts out of the core
+ * set silently deletes the entry instead of failing — exactly the bug the
+ * deliverability-lab nav fix in this piece repairs.
+ *
+ * A local copy would only ever pin the copy: renaming a core section key would
+ * leave this suite green. Extracting the keys from the source of truth means a
+ * rename turns the gallery red until every reference targets a section that
+ * still exists. Throws if the declaration moves, so the derivation can never
+ * silently degrade to an empty set.
  */
-export const CORE_NAV_SECTION_KEYS: readonly string[] = Object.freeze([
-	'inbox',
-	'postbox',
-	'chat',
-	'assistant',
-	'send',
-	'audience',
-	'delivery',
-	'knowledge',
-	'settings',
-]);
+export async function readCoreNavSectionKeys(): Promise<readonly string[]> {
+	const source = await readRepositoryFile(DASHBOARD_NAVIGATION_PATH);
+	const start = source.indexOf(CORE_SECTIONS_DECLARATION);
+	if (start < 0) {
+		throw new Error(
+			`${DASHBOARD_NAVIGATION_PATH} no longer declares "${CORE_SECTIONS_DECLARATION}"; update the gallery derivation`
+		);
+	}
+	const end = source.indexOf('\n];', start);
+	if (end < 0) {
+		throw new Error(`${DASHBOARD_NAVIGATION_PATH}: could not find the end of CORE_SECTIONS`);
+	}
+	// Top-level section entries only: they are the sole `key:` two tabs deep.
+	const keys = [...source.slice(start, end).matchAll(/\n\t\tkey: '([a-z][a-z0-9-]*)',/g)].map(
+		(match) => match[1] as string
+	);
+	if (keys.length === 0) {
+		throw new Error(`${DASHBOARD_NAVIGATION_PATH}: found no core section keys`);
+	}
+	return Object.freeze(keys);
+}
 
 export const REFERENCE_GALLERY: readonly GalleryEntry[] = Object.freeze([
 	Object.freeze({

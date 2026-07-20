@@ -12,7 +12,7 @@ import { parsePluginManifest, PLUGIN_CONTRIBUTION_KINDS } from '@owlat/plugin-ki
 import {
 	contributionExportPaths,
 	galleryEntry,
-	CORE_NAV_SECTION_KEYS,
+	readCoreNavSectionKeys,
 	REFERENCE_GALLERY,
 } from '../gallery';
 
@@ -96,12 +96,17 @@ describe('reference gallery coverage', () => {
 		expect(new Set(eventKinds).size).toBe(eventKinds.length);
 	});
 
-	it('targets only core sidebar sections, so no nav entry is silently dropped', () => {
+	it('targets only core sidebar sections, so no nav entry is silently dropped', async () => {
+		// Read from apps/web, not copied: renaming a core section key must turn
+		// THIS test red, because the host would start dropping the entry.
+		const coreSections = await readCoreNavSectionKeys();
+		expect(coreSections).toContain('inbox');
+
 		const sections = REFERENCE_GALLERY.flatMap((entry) =>
 			(entry.manifest.contributes?.navItems ?? []).map((item) => item.section)
 		);
 		expect(sections.length).toBeGreaterThan(0);
-		for (const section of sections) expect(CORE_NAV_SECTION_KEYS).toContain(section);
+		for (const section of sections) expect(coreSections).toContain(section);
 	});
 
 	it('keeps every contributed destination an internal dashboard path', () => {
