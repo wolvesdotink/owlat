@@ -122,7 +122,10 @@ describe('plugin docs: samples are the executable source, verbatim', () => {
 	});
 
 	it('covers every region defined in the executable sample file', () => {
-		const declared = [...samplesSource.matchAll(/\/\/ #region ([a-z-]+)\n/g)].map((m) => m[1]!);
+		// The capture must match `regionSource`'s marker format, which accepts any
+		// name: a narrower class would silently skip a region such as `sample-2`
+		// and the completeness guarantee would lapse without a failure.
+		const declared = [...samplesSource.matchAll(/\/\/ #region ([\w-]+)\n/g)].map((m) => m[1]!);
 		const quoted = new Set(REGION_MAP.map((entry) => entry.region));
 		expect(declared.length).toBeGreaterThan(0);
 		for (const region of declared) {
