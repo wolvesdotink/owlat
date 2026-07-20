@@ -38,11 +38,19 @@ export const sendSystemEmail = internalAction({
 		subject: v.string(),
 		html: v.string(),
 	},
-	handler: async (ctx, args): Promise<void> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		provider: 'mta' | 'resend' | 'ses' | 'smtp';
+		providerMessageId: string;
+		latencyMs: number;
+		attempts: number;
+	}> => {
 		const provider = getOptional('EMAIL_PROVIDER');
 		if (!isSendProviderKind(provider) || !providerKindConfigured(provider)) {
 			throw new Error(
-				'No system email transport configured: set EMAIL_PROVIDER (mta, resend, or ses) and its credentials. System/auth emails (password reset, invitations, double opt-in) require a transport.',
+				'No system email transport configured: set EMAIL_PROVIDER (mta, resend, or ses) and its credentials. System/auth emails (password reset, invitations, double opt-in) require a transport.'
 			);
 		}
 
@@ -62,14 +70,17 @@ export const sendSystemEmail = internalAction({
 					html: args.html,
 					headers: { 'Auto-Submitted': 'auto-generated' },
 				},
-				{ ipPool: 'transactional' },
+				{ ipPool: 'transactional' }
 			);
 			if (!dispatched.result.success) {
-				throw new Error(
-					`System email send failed via mta: ${dispatched.result.errorMessage}`,
-				);
+				throw new Error(`System email send failed via mta: ${dispatched.result.errorMessage}`);
 			}
-			return;
+			return {
+				provider: dispatched.providerType,
+				providerMessageId: dispatched.result.id,
+				latencyMs: dispatched.latencyMs,
+				attempts: dispatched.attempts,
+			};
 		}
 
 		// resend / ses: route through the provider abstraction, carrying the
@@ -84,12 +95,18 @@ export const sendSystemEmail = internalAction({
 				html: args.html,
 				headers: { 'Auto-Submitted': 'auto-generated' },
 			},
-			{},
+			{}
 		);
 		if (!dispatched.result.success) {
 			throw new Error(
-				`System email send failed via ${provider}: ${dispatched.result.errorMessage}`,
+				`System email send failed via ${provider}: ${dispatched.result.errorMessage}`
 			);
 		}
+		return {
+			provider: dispatched.providerType,
+			providerMessageId: dispatched.result.id,
+			latencyMs: dispatched.latencyMs,
+			attempts: dispatched.attempts,
+		};
 	},
 });

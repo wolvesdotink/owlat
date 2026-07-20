@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import { isValidEmail } from '~/utils/validation';
 import { buildDeliveryEnvSnippet } from '~/utils/deliveryEnvSnippet';
 
 useHead({ title: 'Delivery provider — Owlat' });
@@ -9,9 +8,6 @@ definePageMeta({
 	layout: 'dashboard',
 	middleware: 'auth',
 });
-
-const { user } = useAuth();
-const { showToast } = useToast();
 
 // Admin-gated send-path status. Booleans only — the query never returns a
 // credential value, just the presence of each required env var.
@@ -67,44 +63,6 @@ const envSetCommand = computed(() => {
 });
 
 const { copy, isCopied } = useCopyToClipboard();
-
-const lastTestLabel = computed(() => {
-	const at = status.value?.lastTestSucceededAt;
-	if (!at) return null;
-	return new Date(at).toLocaleString();
-});
-
-// Test send -----------------------------------------------------------------
-const testEmail = ref('');
-const testError = ref('');
-watch(
-	user,
-	(u) => {
-		if (u?.email && !testEmail.value) testEmail.value = u.email;
-	},
-	{ immediate: true }
-);
-
-const { run: sendTest, isLoading: isSending } = useBackendOperation(api.delivery.status.sendTest, {
-	label: 'Send test email',
-	type: 'action',
-});
-
-async function handleSendTest() {
-	testError.value = '';
-	const to = testEmail.value.trim();
-	if (!isValidEmail(to)) {
-		testError.value = 'Enter a valid recipient email address.';
-		return;
-	}
-	const result = await sendTest({ to });
-	if (result === undefined) return; // backend operation already surfaced the error
-	if (result.success) {
-		showToast(`Test email sent to ${to}`);
-	} else {
-		testError.value = result.error ?? 'Test send failed.';
-	}
-}
 
 // Inbound TLS-RPT (RFC 8460) roll-up — daily reports partners send us about
 // TLS negotiation when delivering mail to our MX. Member-safe (operator
@@ -334,53 +292,10 @@ const {
 			</UiCard>
 
 			<!-- Send test email -->
-			<UiCard padding="none" overflow="hidden">
-				<template #header>
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:mail-check" size="sm" variant="surface" rounded="lg" />
-						<div>
-							<h2 class="text-lg font-semibold text-text-primary">Send a test email</h2>
-							<p class="text-sm text-text-secondary">
-								Fire a real message through the configured provider to confirm delivery works
-							</p>
-						</div>
-					</div>
-				</template>
-
-				<div class="p-6 space-y-4">
-					<div class="flex flex-col sm:flex-row sm:items-end gap-3 max-w-xl">
-						<div class="flex-1">
-							<UiInput
-								v-model="testEmail"
-								type="email"
-								label="Recipient"
-								placeholder="you@example.com"
-								:error="testError"
-								:disabled="isSending"
-							/>
-						</div>
-						<UiButton
-							:loading="isSending"
-							:disabled="isSending || !canSend"
-							@click="handleSendTest"
-						>
-							<template #iconLeft>
-								<Icon v-if="!isSending" name="lucide:send" class="w-4 h-4" />
-							</template>
-							{{ isSending ? 'Sending…' : 'Send test email' }}
-						</UiButton>
-					</div>
-
-					<p v-if="!canSend" class="text-xs text-warning flex items-center gap-1.5">
-						<Icon name="lucide:alert-circle" class="w-3.5 h-3.5" />
-						Configure a delivery provider before sending a test.
-					</p>
-					<p v-else-if="lastTestLabel" class="text-xs text-success flex items-center gap-1.5">
-						<Icon name="lucide:check" class="w-3.5 h-3.5" />
-						Last successful test: {{ lastTestLabel }}
-					</p>
-				</div>
-			</UiCard>
+			<DeliveryTestSendCard
+				:can-send="canSend"
+				:last-test-succeeded-at="status?.lastTestSucceededAt"
+			/>
 
 			<!-- SES bounce & complaint feedback (only when SES is the provider) -->
 			<UiCard v-if="isSes" padding="none" overflow="hidden">
