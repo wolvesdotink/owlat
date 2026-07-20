@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/example-deliverability-lab",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Tier-1/2/3 reference plugin: pre-send deliverability checks (spam score, link + accessibility audit, seed-list test) behind a restrict-only send gate.",
 	"license": "Apache-2.0",

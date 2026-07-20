@@ -134,6 +134,7 @@ describe('reference gallery coverage', () => {
 
 describe('published package shape', () => {
 	interface ExamplePackageJson {
+		readonly version?: unknown;
 		readonly exports?: Record<string, unknown>;
 	}
 
@@ -153,6 +154,18 @@ describe('published package shape', () => {
 			const root = exports?.['.'];
 			expect(typeof root, `${entry.packageName} root export`).toBe('string');
 			expect(root as string, entry.packageName).toMatch(/^\.\//);
+		}
+	});
+
+	// `workspace.ts` installs every fixture at its MANIFEST version and writes
+	// that same string into package.json, bun.lock and the integrity input, so
+	// the harness only reproduces a published reference while the two agree. The
+	// loader does not cross-check them, which is exactly why nothing else would
+	// notice them drifting apart.
+	it('publishes at the version its manifest declares', async () => {
+		for (const entry of REFERENCE_GALLERY) {
+			const { version } = await readPackageJson(entry.directory);
+			expect(version, `${entry.packageName} package version`).toBe(entry.manifest.version);
 		}
 	});
 
