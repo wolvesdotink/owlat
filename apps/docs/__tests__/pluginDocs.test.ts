@@ -314,13 +314,54 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		expect(docs.sandboxedJobs).toContain('100 `queued` + `running`');
 	});
 
-	it('documents the plugin-storage quotas', () => {
+	it('documents every plugin-storage quota', () => {
+		// Every field of the frozen limit object, not a chosen few: the map below
+		// must cover the declaration exactly, so a new ceiling fails until it is
+		// documented, and deleting the table row that renders one fails too.
+		const rendered: Readonly<Record<string, { literal: string; row: string }>> = {
+			maxKeyBytes: { literal: '256', row: '256 bytes' },
+			maxValueBytes: { literal: '64 * 1024', row: '64 KiB' },
+			maxEntries: { literal: '1_000', row: '1 000' },
+			maxTotalBytes: { literal: '10 * 1024 * 1024', row: '10 MiB' },
+			maxListPageSize: { literal: '100', row: '100' },
+			maxJsonDepth: { literal: '32', row: '32 / 4 096 / 1 024 / 1 024' },
+			maxJsonNodes: { literal: '4_096', row: '32 / 4 096 / 1 024 / 1 024' },
+			maxArrayItems: { literal: '1_024', row: '32 / 4 096 / 1 024 / 1 024' },
+			maxObjectFields: { literal: '1_024', row: '32 / 4 096 / 1 024 / 1 024' },
+		};
 		const storage = read('apps/api/convex/plugins/storageJson.ts');
-		expect(storage).toContain('maxEntries: 1_000');
-		expect(storage).toContain('maxTotalBytes: 10 * 1024 * 1024');
-		expect(storage).toContain('maxListPageSize: 100');
-		expect(docs.capabilities).toContain('1 000');
-		expect(docs.capabilities).toContain('10 MiB');
+		const declaration = storage.slice(
+			storage.indexOf('PLUGIN_STORAGE_LIMITS = Object.freeze({'),
+			storage.indexOf('});')
+		);
+		const declared = [...declaration.matchAll(/^\t(\w+):/gm)].map((match) => match[1]!);
+		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
+
+		const limits = section(docs.capabilities, '### Storage isolation and limits');
+		for (const [key, { literal, row }] of Object.entries(rendered)) {
+			expect(declaration, `${key} is no longer ${literal}`).toContain(`${key}: ${literal},`);
+			expect(limits, `${key} (${row}) has no table row`).toContain(`| ${row} |`);
+		}
+	});
+
+	it('documents every plugin LLM request bound', () => {
+		const llm = read('apps/api/convex/plugins/llmRequest.ts');
+		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
+			PLUGIN_LLM_MAX_INPUT_BYTES: { literal: '64 * 1024', prose: '64 KiB of UTF-8 input' },
+			PLUGIN_LLM_MAX_MESSAGE_BYTES: { literal: '32 * 1024', prose: '32 KiB each' },
+			PLUGIN_LLM_MAX_MESSAGES: { literal: '32', prose: '32 messages' },
+			PLUGIN_LLM_MAX_OUTPUT_TOKENS: { literal: '2048', prose: '2 048 output tokens' },
+		};
+		const declared = [...llm.matchAll(/export const (PLUGIN_LLM_MAX_\w+) = /g)].map(
+			(match) => match[1]!
+		);
+		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
+
+		const budgets = section(docs.capabilities, '### LLM budgets');
+		for (const [name, { literal, prose }] of Object.entries(rendered)) {
+			expect(llm, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
+			expect(budgets, `${name} (${prose}) is undocumented`).toContain(prose);
+		}
 	});
 
 	it('documents the Tier-2 hook envelope', () => {
@@ -387,6 +428,44 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		for (const code of codegenCodes) {
 			expect(docs.troubleshooting, `codegen code ${code} is undocumented`).toContain(`\`${code}\``);
 		}
+	});
+
+	it('documents the whole send-transport failure vocabulary', () => {
+		const transport = read('packages/plugin-kit/src/sendTransport.ts');
+		const codes = [
+			...transport
+				.slice(transport.indexOf('PLUGIN_SEND_FAILURE_CODES = ['), transport.indexOf('] as const;'))
+				.matchAll(/'([a-z_]+)'/g),
+		].map((match) => match[1]!);
+		expect(codes.length).toBeGreaterThan(5);
+		const transports = section(docs.contributions, '## Send transports');
+		for (const code of codes) {
+			expect(transports, `failure code ${code} is undocumented`).toContain(`\`${code}\``);
+		}
+	});
+
+	it('quotes the dependency_missing message the codegen actually throws', () => {
+		const provenance = read('packages/plugin-codegen/src/packageProvenance.ts');
+		const message = /`(Bundled plugin [^`]+)`/.exec(provenance)?.[1];
+		expect(message, 'the provenance message moved').toBeTypeOf('string');
+		expect(docs.troubleshooting).toContain(message!.replace('${packageName}', '`<name>`'));
+	});
+
+	it('lists exactly the files the scaffold writes', () => {
+		const scaffold = read('packages/plugin-cli/src/scaffold.ts');
+		const written = [...scaffold.matchAll(/files\.set\('([^']+)'/g)].map((match) => match[1]!);
+		expect(written.length).toBeGreaterThan(5);
+		// The authoring guide draws `src/` as a directory node, so its leaves are
+		// the scaffold paths with that prefix removed.
+		const expected = new Set(written.map((path) => path.replace(/^src\//, '')));
+		const tree = /```text\n(examples\/plugins\/hello-owlat\/[\s\S]*?)```/.exec(docs.authoring)?.[1];
+		expect(tree, 'the scaffold tree is no longer on the authoring page').toBeTypeOf('string');
+		const listed = new Set(
+			[...tree!.matchAll(/── (\S+)/g)]
+				.map((match) => match[1]!)
+				.filter((name) => !name.endsWith('/'))
+		);
+		expect(listed).toEqual(expected);
 	});
 
 	it('documents every manifest issue code', () => {
