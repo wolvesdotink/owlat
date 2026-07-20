@@ -260,7 +260,7 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 		}
 	});
 
-	it('lists exactly the API scopes the backend recognises', () => {
+	it('documents every API scope the backend recognises', () => {
 		const scopes = read('apps/api/convex/auth/apiScopes.ts');
 		const declared = [
 			...scopes
@@ -332,9 +332,16 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 
 	it('documents every hook fallback reason the log can record', () => {
 		const log = read('apps/api/convex/connectedApps/hookDeliveryLog.ts');
-		const codes = [...log.matchAll(/v\.literal\('([a-z_]+)'\)/g)].map((match) => match[1]!);
-		const reasons = codes.filter(
-			(code) => !['draft', 'gate', 'score', 'app', 'fallback'].includes(code)
+		// Slice the reason validator itself rather than denylisting the hook-kind
+		// and delivery-source literals that share the file: a new kind or source
+		// must not be misread as an undocumented fallback reason.
+		const declaration = log.slice(
+			log.indexOf('export const hookUnavailableCodeValidator = v.union('),
+			log.indexOf('/** The literal union the validator accepts. */')
+		);
+		expect(declaration.length).toBeGreaterThan(0);
+		const reasons = [...declaration.matchAll(/v\.literal\('([a-z_]+)'\)/g)].map(
+			(match) => match[1]!
 		);
 		expect(reasons.length).toBeGreaterThan(15);
 		for (const reason of reasons) {
