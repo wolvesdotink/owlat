@@ -70,6 +70,20 @@ function regionSource(name: string): string {
 	return samplesSource.slice(start + `// #region ${name}\n`.length, end).trimEnd();
 }
 
+/**
+ * The body of one markdown section, from its heading up to the next heading of
+ * the same or a higher level. Lets an assertion pin what a specific section
+ * says instead of accepting the word appearing anywhere on the page.
+ */
+function section(markdown: string, heading: string): string {
+	const start = markdown.indexOf(`${heading}\n`);
+	if (start === -1) throw new Error(`no section "${heading}"`);
+	const level = heading.indexOf(' ');
+	const rest = markdown.slice(start + heading.length);
+	const next = rest.search(new RegExp(`\\n#{1,${level}} `));
+	return next === -1 ? rest : rest.slice(0, next);
+}
+
 /** Every fenced ```ts block on a page. */
 function typescriptFences(markdown: string): string[] {
 	return [...markdown.matchAll(/```ts\n([\s\S]*?)```/g)].map((match) => match[1]!.trimEnd());
@@ -280,6 +294,69 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		expect(issueCodes.length).toBeGreaterThan(5);
 		for (const code of issueCodes) {
 			expect(docs.troubleshooting, `issue code ${code} is undocumented`).toContain(code);
+		}
+	});
+});
+
+describe('plugin docs: untrusted-text controls are described as shipped, not as planned', () => {
+	const navigation = read('apps/web/app/lib/dashboardNavigation.ts');
+	const conventions = read('apps/api/convex/CONVENTIONS.md');
+
+	/** Every source file under the web app, so "no caller" can be asserted. */
+	function webSources(dir: string): string[] {
+		const files: string[] = [];
+		for (const entry of readdirSync(resolve(repoRoot, dir), { withFileTypes: true })) {
+			if (entry.name === 'node_modules') continue;
+			if (entry.isDirectory()) files.push(...webSources(`${dir}/${entry.name}`));
+			else if (/\.(ts|vue)$/.test(entry.name)) files.push(`${dir}/${entry.name}`);
+		}
+		return files;
+	}
+
+	it('the browser path really only clamps — the scrub seam has no web caller', () => {
+		expect(navigation).toContain(String.raw`.replace(/\p{Cc}|\p{Cf}/gu, '')`);
+		expect(navigation).toContain('.slice(0, 64)');
+		const callers = webSources('apps/web/app').filter((file) =>
+			read(file).includes('applyPluginUntrustedTextPolicy')
+		);
+		expect(callers, 'a web caller appeared; the docs must be updated to match').toEqual([]);
+	});
+
+	it('the nav/settings reference describes the clamp, not an injection scrub', () => {
+		const nav = section(docs.contributions, '## Navigation and settings entries');
+		expect(nav).not.toMatch(/injection.?scrub/i);
+		expect(nav).toContain('64 code points');
+		expect(nav).toMatch(/bidi/i);
+		expect(nav).toMatch(/spoofing/i);
+		expect(nav).toMatch(/escap/i);
+	});
+
+	it('the backend conventions describe the clamp, not an injection scrub', () => {
+		const bullet = conventions.slice(
+			conventions.indexOf('- Plugin nav and settings entries are data-only links.'),
+			conventions.indexOf('- The plugin settings module owns only')
+		);
+		expect(bullet.length).toBeGreaterThan(0);
+		expect(bullet).not.toMatch(/injection.?scrub/i);
+		expect(bullet).toMatch(/64 code points/);
+		expect(bullet).toMatch(/bidi/i);
+	});
+
+	it('the security guide scopes the scrub to the boundaries that apply it', () => {
+		const untrusted = section(docs.capabilities, '### Untrusted text');
+		expect(untrusted).toMatch(/Convex-side/);
+		expect(untrusted).toMatch(/is \*not\* applied/);
+		// Every boundary the guide names must be a real caller of the seam.
+		for (const [phrase, file] of [
+			['automation step reasons', 'apps/api/convex/automations/steps/pluginStep.ts'],
+			['autonomy gate reasons', 'apps/api/convex/agent/steps/route/pluginAutoSendGates.ts'],
+			['assistant tool output', 'packages/plugin-host/src/host.ts'],
+			['connected-app hook text', 'apps/api/convex/connectedApps/hookRuntime.ts'],
+		] as const) {
+			expect(untrusted, `boundary "${phrase}" is not named`).toContain(phrase);
+			expect(read(file), `${file} does not apply the policy`).toContain(
+				'applyPluginUntrustedTextPolicy'
+			);
 		}
 	});
 });
