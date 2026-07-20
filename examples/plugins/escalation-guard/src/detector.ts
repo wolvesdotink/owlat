@@ -28,9 +28,6 @@ export interface EscalationVerdict {
 /** Upper bound on the characters scanned from any one field. */
 export const MAX_SCAN_LENGTH = 20_000;
 
-/** Never report more than this many signals, however many phrases match. */
-export const MAX_SIGNALS = 8;
-
 interface SignalRule {
 	readonly id: string;
 	readonly level: Exclude<EscalationLevel, 'none'>;
@@ -93,6 +90,13 @@ const SIGNAL_RULES: readonly SignalRule[] = Object.freeze([
 	} as const),
 ]);
 
+/**
+ * Upper bound on the signals one verdict can carry: every rule contributes at
+ * most one signal, so the rule set IS the bound. Derived rather than written
+ * down so the exported number cannot drift away from the rules.
+ */
+export const MAX_SIGNALS = SIGNAL_RULES.length;
+
 /** The subject/body projection the detector reads. */
 export interface EscalationCandidate {
 	readonly subject?: string;
@@ -145,7 +149,6 @@ export function detectEscalation(candidate: EscalationCandidate): EscalationVerd
 	const signals: EscalationSignal[] = [];
 	let level: EscalationLevel = 'none';
 	for (const rule of SIGNAL_RULES) {
-		if (signals.length >= MAX_SIGNALS) break;
 		if (!rule.phrases.some((phrase) => haystack.includes(phrase))) continue;
 		signals.push({ id: rule.id, level: rule.level });
 		level = worstLevel(level, rule.level);

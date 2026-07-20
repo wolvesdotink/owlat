@@ -5,6 +5,7 @@ import {
 	summarizeVerdict,
 	worstLevel,
 	MAX_SCAN_LENGTH,
+	MAX_SIGNALS,
 } from '../detector';
 
 describe('detectEscalation', () => {
@@ -67,6 +68,25 @@ describe('detectEscalation', () => {
 		const padded = `${'a'.repeat(MAX_SCAN_LENGTH)} cease and desist`;
 		expect(detectEscalation({ textBody: padded }).level).toBe('none');
 		expect(detectEscalation({ textBody: `cease and desist ${padded}` }).level).toBe('escalate');
+	});
+
+	it('reports one signal per rule, so MAX_SIGNALS really is the ceiling', () => {
+		// One phrase from every rule, in one body.
+		const verdict = detectEscalation({
+			subject: 'Formal complaint',
+			textBody:
+				'Our lawyer is filing a GDPR complaint, we are disputing the charge, ' +
+				'and we will cancel our contract.',
+		});
+		expect(verdict.signals.map((signal) => signal.id)).toEqual([
+			'legal-threat',
+			'regulator',
+			'chargeback',
+			'churn',
+			'complaint',
+		]);
+		expect(verdict.signals).toHaveLength(MAX_SIGNALS);
+		expect(new Set(verdict.signals.map((signal) => signal.id)).size).toBe(MAX_SIGNALS);
 	});
 
 	it('returns the same verdict for the same input', () => {
