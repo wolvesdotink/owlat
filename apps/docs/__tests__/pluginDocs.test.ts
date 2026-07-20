@@ -444,6 +444,190 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		}
 	});
 
+	it('documents every manifest ceiling the validator enforces', () => {
+		const snapshot = read('packages/plugin-kit/src/manifestSnapshot.ts');
+		const schema = read('packages/plugin-kit/src/settingsSchema.ts');
+		// `MAX_ARRAY_LENGTH` guards a hostile `length` at the `unknown` boundary
+		// before validation; it is not a ceiling an author can budget against, so
+		// it is deliberately absent from the pages.
+		const internal = new Set(['MAX_ARRAY_LENGTH']);
+		const rendered: Readonly<
+			Record<string, { literal: string; authoring: string; troubleshooting: string }>
+		> = {
+			MAX_CAPABILITIES: {
+				literal: '64',
+				authoring: '64 capabilities',
+				troubleshooting: '64 capabilities',
+			},
+			MAX_REQUIRED_ENV_VARS: {
+				literal: '64',
+				authoring: '64 required env vars',
+				troubleshooting: '64 env vars',
+			},
+			MAX_CONTRIBUTIONS_PER_KIND: {
+				literal: '256',
+				authoring: '256 entries per contribution bucket',
+				troubleshooting: '256 entries per bucket',
+			},
+		};
+		const declared = [...snapshot.matchAll(/^const (MAX_\w+) = /gm)]
+			.map((match) => match[1]!)
+			.filter((name) => !internal.has(name));
+		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
+
+		const rules = section(docs.authoring, '### Rules the validator enforces');
+		const manifestErrors = section(docs.troubleshooting, '## Manifest errors');
+		for (const [name, { literal, authoring, troubleshooting }] of Object.entries(rendered)) {
+			expect(snapshot, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
+			expect(rules, `${name} (${authoring}) is undocumented`).toContain(authoring);
+			expect(manifestErrors, `${name} (${troubleshooting}) is undocumented`).toContain(
+				troubleshooting
+			);
+		}
+		// The settings-field ceiling is owned by settingsSchema and shared with the
+		// snapshotter, so it is pinned at its source, not at the import.
+		expect(schema).toContain('MAX_SETTINGS_FIELDS = 64;');
+		expect(rules).toContain('64 settings fields');
+		expect(manifestErrors).toContain('64 settings fields');
+	});
+
+	it('documents the llmBudget bounds the manifest validator enforces', () => {
+		const manifest = read('packages/plugin-kit/src/manifest.ts');
+		const check = manifest.slice(
+			manifest.indexOf("const dailyUsd = readDataProperty(value, 'dailyUsd'"),
+			manifest.indexOf("'$.llmBudget.dailyUsd'")
+		);
+		expect(check.length).toBeGreaterThan(0);
+		expect(check, 'the positive-value bound moved').toContain('dailyUsd.value <= 0');
+		expect(check, 'the upper bound moved').toContain('dailyUsd.value > 1_000_000');
+		// "At most six decimal places" is enforced as "an integer number of micro-USD".
+		expect(check, 'the decimal-place bound moved').toContain(
+			'!Number.isSafeInteger(dailyUsd.value * 1_000_000)'
+		);
+		expect(section(docs.authoring, '### Rules the validator enforces')).toContain(
+			'(> 0, ≤ 1,000,000, at most six decimal places)'
+		);
+		expect(section(docs.troubleshooting, '## Manifest errors')).toContain(
+			'must be > 0, ≤ 1 000 000, and expressible with at most six decimal places'
+		);
+	});
+
+	it('documents every settings-schema ceiling', () => {
+		const schema = read('packages/plugin-kit/src/settingsSchema.ts');
+		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
+			MAX_TEXT_LENGTH: { literal: '8_192', prose: '8 192 characters per text or secret value' },
+			MAX_SETTINGS_FIELDS: { literal: '64', prose: '64 fields' },
+			MAX_SETTINGS_OPTIONS: { literal: '64', prose: '64 options per select' },
+		};
+		const declared = [...schema.matchAll(/^export const (MAX_\w+) = /gm)].map((match) => match[1]!);
+		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
+
+		const settings = section(docs.contributions, '## Settings schema');
+		for (const [name, { literal, prose }] of Object.entries(rendered)) {
+			expect(schema, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
+			expect(settings, `${name} (${prose}) is undocumented`).toContain(prose);
+		}
+	});
+
+	it('documents the timeout ceiling for draft strategies and autonomy gates', () => {
+		for (const [file, heading] of [
+			['packages/plugin-kit/src/draftStrategy.ts', '## Draft strategies'],
+			['packages/plugin-kit/src/autonomyGate.ts', '## Autonomy gates (`sendGates`)'],
+		] as const) {
+			const max = /export const PLUGIN_\w+_TIMEOUT_MAX_MS = ([\w_]+);/.exec(read(file))?.[1];
+			expect(max, `${file} no longer declares a 30 s timeout ceiling`).toBe('30_000');
+			expect(section(docs.contributions, heading)).toContain('timeoutMs /* ≤ 30 000 */');
+		}
+	});
+
+	it('documents every hosted mail projection limit', () => {
+		// Both projections in one case: the guide describes them in one sentence
+		// and their field sets overlap. A new field in either map fails until the
+		// sentence names it.
+		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
+			fromCodePoints: { literal: '512', prose: '`from` 512' },
+			toCodePoints: { literal: '2_048', prose: '`to` 2 048' },
+			subjectCodePoints: { literal: '1_024', prose: '`subject` 1 024' },
+			bodyCodePoints: { literal: '64 * 1_024', prose: 'body or draft 65 536' },
+			draftCodePoints: { literal: '64 * 1_024', prose: 'body or draft 65 536' },
+			classificationCodePoints: {
+				literal: '128',
+				prose: 'classification an autonomy gate sees 128',
+			},
+		};
+		const declarations = (
+			[
+				['apps/api/convex/agent/pluginStepRuntime.ts', 'PLUGIN_AGENT_STEP_INPUT_LIMITS'],
+				[
+					'apps/api/convex/agent/steps/route/pluginAutoSendGates.ts',
+					'HOSTED_AUTONOMY_GATE_INPUT_LIMITS',
+				],
+			] as const
+		).map(([file, name]) => {
+			const source = read(file);
+			const start = source.indexOf(`export const ${name}`);
+			expect(start, `${name} moved out of ${file}`).not.toBe(-1);
+			return source.slice(start, source.indexOf('});', start));
+		});
+		const declared = declarations.flatMap((declaration) =>
+			[...declaration.matchAll(/^\t(\w+CodePoints):/gm)].map((match) => match[1]!)
+		);
+		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
+
+		const untrusted = section(docs.capabilities, '### Untrusted text');
+		for (const [field, { literal, prose }] of Object.entries(rendered)) {
+			expect(
+				declarations.some((declaration) => declaration.includes(`${field}: ${literal},`)),
+				`${field} is no longer ${literal}`
+			).toBe(true);
+			expect(untrusted, `${field} (${prose}) is undocumented`).toContain(prose);
+		}
+	});
+
+	it('documents every Tier-2 hook byte cap and code-point clamp', () => {
+		const constants = read('apps/api/convex/lib/constants.ts');
+		const rendered: Readonly<Record<string, { literal: string; row: string }>> = {
+			CONNECTED_APP_HOOK_MAX_REQUEST_BYTES: {
+				literal: '64 * 1024',
+				row: '| Request body cap | 64 KiB |',
+			},
+			CONNECTED_APP_HOOK_MAX_RESPONSE_BYTES: {
+				literal: '64 * 1024',
+				row: '| Response body cap | 64 KiB (drained under the cap; over-cap fails closed) |',
+			},
+			CONNECTED_APP_HOOK_MAX_DRAFT_CODE_POINTS: {
+				literal: '64 * 1024',
+				row: '| Accepted draft text | Injection-scrubbed and clamped to 65 536 code points |',
+			},
+			CONNECTED_APP_HOOK_MAX_REASON_CODE_POINTS: {
+				literal: '300',
+				row: '| Accepted reason text | Injection-scrubbed and clamped to 300 code points |',
+			},
+		};
+		const declared = [
+			...constants.matchAll(
+				/export const (CONNECTED_APP_HOOK_MAX_(?:REQUEST|RESPONSE)_BYTES|CONNECTED_APP_HOOK_MAX_\w+_CODE_POINTS) = /g
+			),
+		].map((match) => match[1]!);
+		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
+
+		const enforced = section(docs.connectedApps, '### What Owlat enforces on every call');
+		for (const [name, { literal, row }] of Object.entries(rendered)) {
+			expect(constants, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
+			expect(enforced, `${name} (${row}) has no table row`).toContain(row);
+		}
+	});
+
+	it('documents the delivery-log page bounds and retention', () => {
+		const constants = read('apps/api/convex/lib/constants.ts');
+		expect(constants).toContain('CONNECTED_APP_HOOK_LOG_DEFAULT_LIMIT = 50;');
+		expect(constants).toContain('CONNECTED_APP_HOOK_LOG_MAX_LIMIT = 200;');
+		expect(constants).toContain('AUDIT_LOG_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;');
+		const logs = section(docs.connectedApps, '## Delivery logs');
+		expect(logs).toContain('default 50 rows, maximum 200');
+		expect(logs).toContain('retention of 30 days');
+	});
+
 	it('quotes the dependency_missing message the codegen actually throws', () => {
 		const provenance = read('packages/plugin-codegen/src/packageProvenance.ts');
 		const message = /`(Bundled plugin [^`]+)`/.exec(provenance)?.[1];
