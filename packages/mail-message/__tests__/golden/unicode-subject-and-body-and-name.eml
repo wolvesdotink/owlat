@@ -1,0 +1,28 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=+ceOmVMeM7bl2I1yqblrW/kSlV5D9TTle80yXaIUSkI=;
+ b=jJ9aCfpC+9ynSmAC3Y4Hstr1fE1zqGg4xkbvQK0zznxGPOcvzaYvno96xs9EQHoB/0xmzXiBL
+ Mv515wUaonrlqz61jNh+bU6zzYWWpXJHs9+ep6FQyUf39RRKo1pzX7zZ3ZL3UT55gV90QE5oL/r
+ 76yXwKrVr9I52y0YZeJVcH+DwYU4HF+HFwCg66qza2w5GSdDcJMQhTv0/2ffvztwRYyqmjMx8CP
+ j4FLfWkwgoLVODm8Bu6nG4nNbwTPaHIgiM/6P+diCf27yZPRlnkS50qVRItUcrVkHmg9E4jJHhe
+ 7dgmPnGO/sbY9kVjSo/+WST0j861RCw1EOiuNq2bHfjA==
+Message-ID: <corpus-37@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: =?UTF-8?B?R3LDvMOfZSBUZWFt?= <team@owlat.test>
+To: =?UTF-8?B?UmVuw6ll?= <renee@example.com>
+Subject: =?UTF-8?B?R3LDvMOfZSDigJQgY2Fmw6kgcsOpc3Vtw6kg4piV?=
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_unicode-subject-and-body-and-name_0"
+
+----_owlat_unicode-subject-and-body-and-name_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+Gr=C3=BC=C3=9Fe =E2=80=94 caf=C3=A9 r=C3=A9sum=C3=A9
+----_owlat_unicode-subject-and-body-and-name_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+<p>Gr=C3=BC=C3=9Fe =E2=80=94 caf=C3=A9 r=C3=A9sum=C3=A9</p>
+----_owlat_unicode-subject-and-body-and-name_0--

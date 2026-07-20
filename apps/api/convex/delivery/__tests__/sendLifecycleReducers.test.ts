@@ -43,16 +43,12 @@ describe('legalEdgesFor', () => {
 	});
 
 	it('a HARD-bounced row is terminal (no legal outgoing edges)', () => {
-		const edges = legalEdgesFor(
-			campaignSend({ status: 'bounced', bounceType: 'hard' })
-		);
+		const edges = legalEdgesFor(campaignSend({ status: 'bounced', bounceType: 'hard' }));
 		expect(edges.size).toBe(0);
 	});
 
 	it('a SOFT-bounced row is NON-terminal — it may harden or draw a complaint', () => {
-		const edges = legalEdgesFor(
-			campaignSend({ status: 'bounced', bounceType: 'soft' })
-		);
+		const edges = legalEdgesFor(campaignSend({ status: 'bounced', bounceType: 'soft' }));
 		expect([...edges].sort()).toEqual(['bounced', 'complained']);
 	});
 });
@@ -108,6 +104,23 @@ describe('reduceFailed', () => {
 		});
 		expect(result.effects.map((e) => e.kind)).toContain('campaign_stats_failed');
 	});
+
+	// The MTA ambiguous-drop `failed` webhook event relies on this: a terminal
+	// `failed` transition must NEVER suppress the recipient (no blocklist insert) —
+	// the receiver may have accepted the message and the address is likely valid.
+	it('never suppresses the recipient (no blocklist_insert effect)', () => {
+		const result = reduceFailed(
+			campaignSend({ status: 'queued' }),
+			{
+				to: 'failed',
+				at: 3000,
+				errorMessage: 'ambiguous post-DATA drop',
+				errorCode: 'ambiguous_post_data',
+			},
+			campaignRef
+		);
+		expect(result.effects.some((e) => e.kind === 'blocklist_insert')).toBe(false);
+	});
 });
 
 describe('reduceBounced', () => {
@@ -143,9 +156,7 @@ describe('reduceBounced', () => {
 			'org.example',
 			recipient
 		);
-		const counter = result.effects.find(
-			(e) => e.kind === 'contact_soft_bounce_count'
-		);
+		const counter = result.effects.find((e) => e.kind === 'contact_soft_bounce_count');
 		expect(counter).toMatchObject({ count: 5 });
 		const block = result.effects.find((e) => e.kind === 'blocklist_insert');
 		expect(block).toMatchObject({ reason: 'bounced', bounceType: 'soft' });

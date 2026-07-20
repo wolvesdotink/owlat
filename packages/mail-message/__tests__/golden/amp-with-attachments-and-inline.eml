@@ -1,0 +1,55 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=IbP5rcFBqJ36icolqKXe9070kiiNFYzHtfLyXGBCXLQ=;
+ b=K0N3329JCkU/Szfs1FfqIRJqQPBGhswqTQKB+Ug72MopoidEXENGxXwpR+3CbvN2ADksFAahb
+ IhXpcVUggKTWGxJ+F38Ei5N30SJ4YIvKktUEHn+D63bHyLsyE5jVJwRuCIedcfVoTyhNLoNjVYl
+ E1Amc55PnbvgkqL7nhz8zfLSK7UH7yRbK3CRRZL2mrl6FpwFOWFKjcn/yMppUbDl/p19CM+a4W7
+ 0fDbezXBoHxL/sfJ8fsbKdTcRlbrP/tgQ9ZaH+rfivDmqJ71VCi3gILeiUbQyZiQ4KXEkqlIe5A
+ 4ZLg6gfu8TUOu6TfOC/qh8bZwwrFlWSIR9WNh809jYyA==
+Message-ID: <corpus-22@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: AMP with parts
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="--_owlat_amp-with-attachments-and-inline_2"
+
+----_owlat_amp-with-attachments-and-inline_2
+Content-Type: multipart/alternative; boundary="--_owlat_amp-with-attachments-and-inline_1"
+
+----_owlat_amp-with-attachments-and-inline_1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+fallback
+----_owlat_amp-with-attachments-and-inline_1
+Content-Type: text/x-amp-html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<!doctype html><html amp4email><body>AMP</body></html>
+----_owlat_amp-with-attachments-and-inline_1
+Content-Type: multipart/related; type="text/html"; boundary="--_owlat_amp-with-attachments-and-inline_0"
+
+----_owlat_amp-with-attachments-and-inline_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>fallback <img src="cid:hero1"></p>
+----_owlat_amp-with-attachments-and-inline_0
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="hero.png"
+Content-ID: <hero1>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9
+awAAAABJRU5ErkJggg==
+----_owlat_amp-with-attachments-and-inline_0--
+----_owlat_amp-with-attachments-and-inline_1--
+----_owlat_amp-with-attachments-and-inline_2
+Content-Type: text/plain
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="terms.txt"
+
+dGVybXMgYW5kIGNvbmRpdGlvbnM=
+----_owlat_amp-with-attachments-and-inline_2--

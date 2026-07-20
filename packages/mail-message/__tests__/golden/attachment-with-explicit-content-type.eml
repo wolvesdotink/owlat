@@ -1,0 +1,38 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=mXwb5XdPSGkAoQuAvwbjh1qaa16V1W5NuJAGVu+cD1A=;
+ b=lZYSMkCJt1gXZxA9vexodLZGOLI5kSTvSAzKz2SjJqait6XL00K/LvexTrshnzwSzcF9apjZg
+ r3Utpoi0KP3CPPz9/ZJYRfmWXfvaa3/jBqtepeSh1urffxGlrKnTplHq9ZT27anAaYthaFEK6YW
+ JeV1oBSMVsq4niH/JKG9EzfdQ5FHbr+ui+wjF+Yee9Ons5BMDaa1h8WS1cTvFuSg9cp3SN0zkRr
+ 3dXiXeec6g/Ld1/clc40+od3zYHEOR3XyvJfXQNn5IJ15aW1i766taggcTRAzA5G0s60dburNod
+ Ib5vp5yrbcCMPc5yZC3xX7Ra1Cq0NPOsNWV7WwI4yQJw==
+Message-ID: <corpus-38@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: PDF attachment
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="--_owlat_attachment-with-explicit-content-type_1"
+
+----_owlat_attachment-with-explicit-content-type_1
+Content-Type: multipart/alternative; boundary="--_owlat_attachment-with-explicit-content-type_0"
+
+----_owlat_attachment-with-explicit-content-type_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+invoice
+----_owlat_attachment-with-explicit-content-type_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>invoice</p>
+----_owlat_attachment-with-explicit-content-type_0--
+----_owlat_attachment-with-explicit-content-type_1
+Content-Type: application/pdf
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="invoice.pdf"
+
+JVBERi0xLjQgZmFrZSBwZGYgYnl0ZXM=
+----_owlat_attachment-with-explicit-content-type_1--

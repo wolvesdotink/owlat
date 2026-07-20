@@ -61,6 +61,14 @@ export interface WorkerCredentials {
 	smtpUsername: string;
 	imapPassword: string;
 	smtpPassword: string;
+	/**
+	 * OAuth bearer access token for the user's SMTP submission endpoint (Gmail /
+	 * Microsoft). When present, the outbound relay authenticates with SASL XOAUTH2
+	 * instead of a password. Acquisition and refresh of this token are owned by the
+	 * external-accounts OAuth feature — this worker only forwards whatever token the
+	 * backend handed it; `smtpPassword` is ignored on the XOAUTH2 path.
+	 */
+	smtpAccessToken?: string;
 }
 
 /** Summary row from listConnectableAccounts. */

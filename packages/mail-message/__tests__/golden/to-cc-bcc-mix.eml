@@ -1,0 +1,29 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:Cc:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=brGJnx0+817je2dPxXduF82q8YRR4Ph08SXhcRvRIKE=;
+ b=XLtx8fZDlfSXABRJTZVzLDMvHzrP+IQOMLeFEphJ3fx5AdNs1ms7euLRPZP5oBc4ucNan4cIb
+ DtThSWohQ2vug+AK3WvgFfFgitvvwrMcmEMV09/+AgokUUuKMm4BBvtQ0czvQxSssXl6dGc75uv
+ nEgv6IgdWOjjwGWjVyHhhAncqaPSu/69QOgpIcxIHoxTF7YRpWE4GXtGePJCjIs7vLS+FV/Kq46
+ s+yaTr5UDC931HAx5LgB9cG9x7YcApJ89dzr/PCBKHkEeGtxV8hN3ArfpExZPLwOUi70tVXvBOZ
+ gOd7xl4OfP6tGCj4dWWT5xR76l10/6UljmFOYwTtAWhQ==
+Message-ID: <corpus-11@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: a@example.com, b@example.com
+Cc: Carol <c@example.com>, d@example.com
+Subject: Mixed recipients
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_to-cc-bcc-mix_0"
+
+----_owlat_to-cc-bcc-mix_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+x
+----_owlat_to-cc-bcc-mix_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>x</p>
+----_owlat_to-cc-bcc-mix_0--

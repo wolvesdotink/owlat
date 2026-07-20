@@ -1,0 +1,50 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=bwOCiKo0vi6QwZ89lTvBrLsxEdt1iwkhyy1SlF98HiE=;
+ b=tiMg/1YuWzyQSdi6nF32Ps2IsKo2kHblmeFALBmSqUP78dXUxi4yeCAUl95u2pTf9OOHWvCHe
+ buPspB6/2SFwqg8mJ7++Ar7CDplADhsIdJDiSOovtRtm7xZAc0ofXyCDMJykjNJhO2vdWwCjIV5
+ 487CBXfHPeoS64BDakrphcwxhHwicoNNSix2ztRRB6U/KunlBZ2Dlx0EeOKydURTCwh8Gr6bPdB
+ eM37j6zAJqqMYAk4/+bT9vpAo6o7kGAGdLNK76Ornln3pG0ElUpecA1u/hYH43hwd0uLMcN7mdW
+ 6UpAAV7NRNQSBQcbWsKgnKnBmEwVAHOVSs8ZnKxuBKjQ==
+Message-ID: <corpus-20@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: rcpt@example.com
+Subject: Inline and attachment
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="--_owlat_inline-plus-file-attachment_2"
+
+----_owlat_inline-plus-file-attachment_2
+Content-Type: multipart/alternative; boundary="--_owlat_inline-plus-file-attachment_1"
+
+----_owlat_inline-plus-file-attachment_1
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+logo and a file
+----_owlat_inline-plus-file-attachment_1
+Content-Type: multipart/related; type="text/html"; boundary="--_owlat_inline-plus-file-attachment_0"
+
+----_owlat_inline-plus-file-attachment_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>logo <img src="cid:logo123"> and a file</p>
+----_owlat_inline-plus-file-attachment_0
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-Disposition: inline; filename="logo.png"
+Content-ID: <logo123>
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9
+awAAAABJRU5ErkJggg==
+----_owlat_inline-plus-file-attachment_0--
+----_owlat_inline-plus-file-attachment_1--
+----_owlat_inline-plus-file-attachment_2
+Content-Type: text/plain
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="report.txt"
+
+dGhlIHJlcG9ydA==
+----_owlat_inline-plus-file-attachment_2--

@@ -196,6 +196,55 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		});
 	});
 
+	it('routes email.failed to sendLifecycle with a terminal "failed" transition (never "bounced")', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const event: InboundEvent = {
+			kind: 'email.failed',
+			providerMessageId: 'msg-amb',
+			at: 3500,
+			errorMessage: 'Ambiguous post-DATA drop: connection reset',
+			errorCode: 'ambiguous_post_data',
+		};
+
+		await dispatchInboundEvent(ctx, event);
+
+		expect(runMutationCalls).toHaveLength(1);
+		expect(runMutationCalls[0]?.ref).toBe(SEND_LIFECYCLE);
+		expect(runMutationCalls[0]?.args).toEqual({
+			providerMessageId: 'msg-amb',
+			transition: {
+				to: 'failed',
+				at: 3500,
+				errorMessage: 'Ambiguous post-DATA drop: connection reset',
+				errorCode: 'ambiguous_post_data',
+			},
+		});
+		// A terminal failure must NOT be routed as a bounce.
+		const transition = (runMutationCalls[0]?.args as { transition: { to: string } }).transition;
+		expect(transition.to).not.toBe('bounced');
+	});
+
+	it('email.failed never suppresses the recipient (no blockedEmails.addFromEvent)', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const event: InboundEvent = {
+			kind: 'email.failed',
+			providerMessageId: 'msg-amb',
+			at: 3500,
+			errorMessage: 'reset',
+			errorCode: 'ambiguous_post_data',
+		};
+
+		await dispatchInboundEvent(ctx, event);
+
+		// The only downstream call is the send-lifecycle transition — never the
+		// blocklist mutation a bounce/complaint would trigger.
+		expect(runMutationCalls).toHaveLength(1);
+		expect(runMutationCalls[0]?.ref).toBe(SEND_LIFECYCLE);
+		expect(runMutationCalls.some((c) => c.ref === ref(internal.blockedEmails.addFromEvent))).toBe(
+			false
+		);
+	});
+
 	it('routes email.complained to sendLifecycle with a "complained" transition', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
 		const event: InboundEvent = {
@@ -335,6 +384,32 @@ describe('dispatchInboundEvent — Postbox message-id routing (pb- prefix)', () 
 		});
 		// Postbox per-recipient bounces discard the hard/soft classification.
 		expect(args.input).not.toHaveProperty('bounceType');
+	});
+
+	it('routes a pb- prefixed email.failed to the postbox lifecycle with a "failed" transition', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const event: InboundEvent = {
+			kind: 'email.failed',
+			providerMessageId: 'pb-amb',
+			at: 3600,
+			errorMessage: 'Ambiguous post-DATA drop: connection reset',
+			errorCode: 'ambiguous_post_data',
+		};
+
+		await dispatchInboundEvent(ctx, event);
+
+		expect(runMutationCalls).toHaveLength(1);
+		expect(runMutationCalls[0]?.ref).toBe(POSTBOX);
+		expect(runMutationCalls[0]?.ref).not.toBe(SEND_LIFECYCLE);
+		expect(runMutationCalls[0]?.args).toEqual({
+			rawProviderMessageId: 'pb-amb',
+			input: {
+				to: 'failed',
+				at: 3600,
+				errorMessage: 'Ambiguous post-DATA drop: connection reset',
+				errorCode: 'ambiguous_post_data',
+			},
+		});
 	});
 
 	it('omits bounceMessage on a pb- bounce when absent', async () => {

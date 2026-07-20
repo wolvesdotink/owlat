@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 
 vi.mock('../../fblProcessor.js', () => ({
 	tryParseARF: vi.fn(),
@@ -20,7 +20,7 @@ import type { BasePhaseCtx, PhaseDeps } from '../../types.js';
 
 function makeCtx(): BasePhaseCtx {
 	return {
-		parsed: { messageId: 'orig-1' } as unknown as ParsedMail,
+		parsed: { messageId: 'orig-1' } as unknown as ParsedMessage,
 		rawBuffer: Buffer.alloc(0),
 		rcptTo: 'bounce+abc@bounces.owlat.com',
 	};
@@ -98,7 +98,7 @@ describe('parseFblOrDsnPhase — fallthrough', () => {
 
 		// A non-`bounce+` recipient (ordinary inbound mail) defers to routing.
 		const ctx: BasePhaseCtx = {
-			parsed: { messageId: 'orig-1' } as unknown as ParsedMail,
+			parsed: { messageId: 'orig-1' } as unknown as ParsedMessage,
 			rawBuffer: Buffer.alloc(0),
 			rcptTo: 'someone@inbox.owlat.com',
 		};

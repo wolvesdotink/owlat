@@ -28,15 +28,16 @@
         "@owlat/channels": "workspace:*",
         "@owlat/email-renderer": "workspace:*",
         "@owlat/email-scanner": "workspace:*",
+        "@owlat/mail-message": "workspace:*",
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
         "@owlat/shared": "workspace:*",
+        "@owlat/smtp-client": "workspace:*",
         "ai": "catalog:ai",
         "better-auth": "catalog:convex",
         "cheerio": "^1.2.0",
         "convex": "catalog:convex",
         "nanoid": "^5.1.7",
-        "nodemailer": "^9.0.3",
         "openpgp": "^6.1.0",
         "posthog-node": "^5.28.5",
         "resend": "^6.9.4",
@@ -47,7 +48,6 @@
         "@edge-runtime/vm": "^5.0.0",
         "@faker-js/faker": "^10.3.0",
         "@types/node": "catalog:",
-        "@types/nodemailer": "^8.0.0",
         "@types/sanitize-html": "^2.13.0",
         "@vitest/coverage-v8": "catalog:",
         "convex-test": "^0.0.54",
@@ -135,17 +135,15 @@
       "version": "0.3.3",
       "dependencies": {
         "@hono/node-server": "^2.0.0",
+        "@owlat/mail-message": "workspace:*",
+        "@owlat/smtp-client": "workspace:*",
         "convex": "catalog:convex",
         "hono": "^4.12.25",
         "imapflow": "^1.0.171",
-        "mailparser": "^3.7.0",
-        "nodemailer": "^9.0.3",
         "pino": "^10.3.1",
       },
       "devDependencies": {
-        "@types/mailparser": "^3.4.5",
         "@types/node": "catalog:",
-        "@types/nodemailer": "^8.0.0",
         "tsx": "^4.19.0",
         "typescript": "catalog:",
         "vitest": "catalog:",
@@ -176,24 +174,25 @@
       "dependencies": {
         "@hono/node-server": "^2.0.0",
         "@owlat/email-scanner": "workspace:*",
+        "@owlat/mail-auth": "workspace:*",
+        "@owlat/mail-message": "workspace:*",
         "@owlat/shared": "workspace:*",
+        "@owlat/smtp-client": "workspace:*",
+        "@owlat/smtp-listener": "workspace:*",
         "groupmq": "^1.1.0",
         "hono": "^4.12.25",
         "ioredis": "^5.6.0",
-        "mailauth": "^4.13.3",
-        "mailparser": "^3.7.0",
-        "nodemailer": "^9.0.3",
         "pino": "^10.3.1",
         "prom-client": "^15.1.0",
-        "smtp-server": "^3.13.0",
       },
       "devDependencies": {
         "@types/mailparser": "^3.4.5",
         "@types/node": "catalog:",
-        "@types/nodemailer": "^8.0.0",
         "@types/smtp-server": "^3.5.10",
         "ioredis-mock": "^8.9.0",
         "mailauth": "^4.13.3",
+        "mailparser": "^3.7.0",
+        "smtp-server": "^3.13.0",
         "tsx": "^4.19.0",
         "typescript": "catalog:",
         "vitest": "catalog:",
@@ -388,6 +387,51 @@
         "vitest": "catalog:",
       },
     },
+    "packages/mail-auth": {
+      "name": "@owlat/mail-auth",
+      "version": "0.3.2",
+      "dependencies": {
+        "@owlat/mail-canon": "workspace:*",
+        "@owlat/shared": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "ioredis-mock": "^8.9.0",
+        "mailauth": "^4.13.3",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/mail-canon": {
+      "name": "@owlat/mail-canon",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "mailauth": "^4.13.3",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/mail-message": {
+      "name": "@owlat/mail-message",
+      "version": "1.0.0",
+      "dependencies": {
+        "@owlat/mail-canon": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/mailparser": "^3.4.5",
+        "@types/node": "catalog:",
+        "@types/nodemailer": "^8.0.0",
+        "@vitest/coverage-v8": "catalog:",
+        "mailauth": "^4.13.3",
+        "mailparser": "^3.7.0",
+        "nodemailer": "^9.0.3",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "packages/plugin-cli": {
       "name": "@owlat/plugin-cli",
       "version": "0.3.3",
@@ -463,6 +507,10 @@
     "packages/shared": {
       "name": "@owlat/shared",
       "version": "0.3.3",
+      "dependencies": {
+        "@owlat/mail-message": "workspace:*",
+        "tldts": "^7.0.30",
+      },
       "devDependencies": {
         "@types/node": "catalog:",
         "@vitest/coverage-v8": "catalog:",
@@ -475,6 +523,30 @@
       "optionalPeers": [
         "sanitize-html",
       ],
+    },
+    "packages/smtp-client": {
+      "name": "@owlat/smtp-client",
+      "version": "0.3.0",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@types/smtp-server": "^3.5.10",
+        "@vitest/coverage-v8": "catalog:",
+        "smtp-server": "^3.13.0",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
+    "packages/smtp-listener": {
+      "name": "@owlat/smtp-listener",
+      "version": "0.3.2",
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@types/smtp-server": "^3.5.10",
+        "@vitest/coverage-v8": "catalog:",
+        "smtp-server": "^3.13.0",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
     },
     "packages/ui": {
       "name": "@owlat/ui",
@@ -1066,6 +1138,12 @@
 
     "@owlat/imap": ["@owlat/imap@workspace:apps/imap"],
 
+    "@owlat/mail-auth": ["@owlat/mail-auth@workspace:packages/mail-auth"],
+
+    "@owlat/mail-canon": ["@owlat/mail-canon@workspace:packages/mail-canon"],
+
+    "@owlat/mail-message": ["@owlat/mail-message@workspace:packages/mail-message"],
+
     "@owlat/mail-sync": ["@owlat/mail-sync@workspace:apps/mail-sync"],
 
     "@owlat/marketing": ["@owlat/marketing@workspace:apps/marketing"],
@@ -1085,6 +1163,10 @@
     "@owlat/setup-cli": ["@owlat/setup-cli@workspace:apps/setup-cli"],
 
     "@owlat/shared": ["@owlat/shared@workspace:packages/shared"],
+
+    "@owlat/smtp-client": ["@owlat/smtp-client@workspace:packages/smtp-client"],
+
+    "@owlat/smtp-listener": ["@owlat/smtp-listener@workspace:packages/smtp-listener"],
 
     "@owlat/ui": ["@owlat/ui@workspace:packages/ui"],
 
@@ -1958,7 +2040,7 @@
 
     "@webcontainer/env": ["@webcontainer/env@1.1.1", "", {}, "sha512-6aN99yL695Hi9SuIk1oC88l9o0gmxL1nGWWQ/kNy81HigJ0FoaoTXpytCj6ItzgyCEwA9kF1wixsTuv5cjsgng=="],
 
-    "@zone-eu/mailsplit": ["@zone-eu/mailsplit@5.4.9", "", { "dependencies": { "libbase64": "1.3.0", "libmime": "5.3.8", "libqp": "2.1.1" } }, "sha512-Qq7k6FzA5SmGf5HFPcr17gE7M+O1gttlmWn7tlGUlhGsbbjUaBL/4cEWIwExeCzqu5+kyZJ91mcBZbQ9zEwwYA=="],
+    "@zone-eu/mailsplit": ["@zone-eu/mailsplit@5.4.8", "", { "dependencies": { "libbase64": "1.3.0", "libmime": "5.3.7", "libqp": "2.1.1" } }, "sha512-eEyACj4JZ7sjzRvy26QhLgKEMWwQbsw1+QZnlLX+/gihcNH07lVPOcnwf5U6UAL7gkc//J3jVd76o/WS+taUiA=="],
 
     "abbrev": ["abbrev@2.0.0", "", {}, "sha512-6/mh1E2u2YgEsCHdY0Yx5oW+61gZU+1vXaoiHHrpKeuRNNgFvS+/jrwHiQhB5apAf5oB7UB7E19ol2R2LKH8hQ=="],
 
@@ -4010,6 +4092,8 @@
 
     "@vue/devtools-kit/birpc": ["birpc@2.9.0", "", {}, "sha512-KrayHS5pBi69Xi9JmvoqrIgYGDkD6mcSe/i6YKi3w5kekCLzrX4+nawcXqrj2tIp50Kw/mT/s3p+GVK0A0sKxw=="],
 
+    "@zone-eu/mailsplit/libmime": ["libmime@5.3.7", "", { "dependencies": { "encoding-japanese": "2.2.0", "iconv-lite": "0.6.3", "libbase64": "1.3.0", "libqp": "2.1.1" } }, "sha512-FlDb3Wtha8P01kTL3P9M+ZDNDWPKPmKHWaU/cG/lg5pfuAwdflVpZE+wm9m7pKmC5ww6s+zTxBKS1p6yl3KpSw=="],
+
     "anymatch/picomatch": ["picomatch@2.3.2", "", {}, "sha512-V7+vQEJ06Z+c5tSye8S+nHUfI51xoXIXjHQ99cQtKUkQqqO1kO/KCJUfZXuB47h/YBlDhah2H3hdUGXn8ie0oA=="],
 
     "archiver/tar-stream": ["tar-stream@3.1.8", "", { "dependencies": { "b4a": "^1.6.4", "bare-fs": "^4.5.5", "fast-fifo": "^1.2.0", "streamx": "^2.15.0" } }, "sha512-U6QpVRyCGHva435KoNWy9PRoi2IFYCgtEhq9nmrPPpbRacPs9IH4aJ3gbrFC8dPcXvdSZ4XXfXT5Fshbp2MtlQ=="],
@@ -4058,6 +4142,8 @@
 
     "html-to-text/htmlparser2": ["htmlparser2@8.0.2", "", { "dependencies": { "domelementtype": "^2.3.0", "domhandler": "^5.0.3", "domutils": "^3.0.1", "entities": "^4.4.0" } }, "sha512-GYdjWKDkbRLkZ5geuHs5NY1puJ+PXwP7+fHPRz06Eirsb9ugf6d8kkXav6ADhcODhFFPMIXyxkxSuMf3D6NCFA=="],
 
+    "imapflow/@zone-eu/mailsplit": ["@zone-eu/mailsplit@5.4.9", "", { "dependencies": { "libbase64": "1.3.0", "libmime": "5.3.8", "libqp": "2.1.1" } }, "sha512-Qq7k6FzA5SmGf5HFPcr17gE7M+O1gttlmWn7tlGUlhGsbbjUaBL/4cEWIwExeCzqu5+kyZJ91mcBZbQ9zEwwYA=="],
+
     "imapflow/iconv-lite": ["iconv-lite@0.7.2", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw=="],
 
     "imapflow/nodemailer": ["nodemailer@8.0.7", "", {}, "sha512-pkjE4mkBzQjdJT4/UmlKl3pX0rC9fZmjh7c6C9o7lv66Ac6w9WCnzPzhbPNxwZAzlF4mdq4CSWB5+FbK6FWCow=="],
@@ -4083,8 +4169,6 @@
     "magic-regexp/unplugin": ["unplugin@2.3.11", "", { "dependencies": { "@jridgewell/remapping": "^2.3.5", "acorn": "^8.15.0", "picomatch": "^4.0.3", "webpack-virtual-modules": "^0.6.2" } }, "sha512-5uKD0nqiYVzlmCRs01Fhs2BdkEgBS3SAVP6ndrBsuK42iC2+JHyxM05Rm9G8+5mkmRtzMZGY8Ct5+mliZxU/Ww=="],
 
     "mailauth/nodemailer": ["nodemailer@8.0.7", "", {}, "sha512-pkjE4mkBzQjdJT4/UmlKl3pX0rC9fZmjh7c6C9o7lv66Ac6w9WCnzPzhbPNxwZAzlF4mdq4CSWB5+FbK6FWCow=="],
-
-    "mailparser/@zone-eu/mailsplit": ["@zone-eu/mailsplit@5.4.8", "", { "dependencies": { "libbase64": "1.3.0", "libmime": "5.3.7", "libqp": "2.1.1" } }, "sha512-eEyACj4JZ7sjzRvy26QhLgKEMWwQbsw1+QZnlLX+/gihcNH07lVPOcnwf5U6UAL7gkc//J3jVd76o/WS+taUiA=="],
 
     "mailparser/iconv-lite": ["iconv-lite@0.7.2", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw=="],
 
@@ -4442,8 +4526,6 @@
 
     "logs-sdk/oxc-parser/@oxc-project/types": ["@oxc-project/types@0.126.0", "", {}, "sha512-oGfVtjAgwQVVpfBrbtk4e1XDyWHRFta6BS3GWVzrF8xYBT2VGQAk39yJS/wFSMrZqoiCU4oghT3Ch0HaHGIHcQ=="],
 
-    "mailparser/@zone-eu/mailsplit/libmime": ["libmime@5.3.7", "", { "dependencies": { "encoding-japanese": "2.2.0", "iconv-lite": "0.6.3", "libbase64": "1.3.0", "libqp": "2.1.1" } }, "sha512-FlDb3Wtha8P01kTL3P9M+ZDNDWPKPmKHWaU/cG/lg5pfuAwdflVpZE+wm9m7pKmC5ww6s+zTxBKS1p6yl3KpSw=="],
-
     "mlly/pkg-types/confbox": ["confbox@0.1.8", "", {}, "sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w=="],
 
     "nitropack/esbuild/@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.27.7", "", { "os": "aix", "cpu": "ppc64" }, "sha512-EKX3Qwmhz1eMdEJokhALr0YiD0lhQNwDqkPYyPhiSwKrh7/4KRjQc04sZ8db+5DVVnZ1LmbNDI1uAMPEUBnQPg=="],
@@ -4747,8 +4829,6 @@
     "logs-sdk/oxc-parser/@oxc-parser/binding-wasm32-wasi/@emnapi/runtime": ["@emnapi/runtime@1.9.2", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-3U4+MIWHImeyu1wnmVygh5WlgfYDtyf0k8AbLhMFxOipihf6nrWC4syIm/SwEeec0mNSafiiNnMJwbza/Is6Lw=="],
 
     "logs-sdk/oxc-parser/@oxc-parser/binding-wasm32-wasi/@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.4", "", { "dependencies": { "@tybys/wasm-util": "^0.10.1" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow=="],
-
-    "mailparser/@zone-eu/mailsplit/libmime/iconv-lite": ["iconv-lite@0.6.3", "", { "dependencies": { "safer-buffer": ">= 2.1.2 < 3.0.0" } }, "sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw=="],
 
     "nuxt-og-image/@clack/prompts/fast-string-width/fast-string-truncated-width": ["fast-string-truncated-width@1.2.1", "", {}, "sha512-Q9acT/+Uu3GwGj+5w/zsGuQjh9O1TyywhIwAxHudtWrgF09nHOPrvTLhQevPbttcxjr/SNN7mJmfOw/B1bXgow=="],
 

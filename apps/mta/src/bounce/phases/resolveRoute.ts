@@ -14,6 +14,7 @@
 
 import { findRoute } from '../../inbound/router.js';
 import { findMailboxRoute } from '../../inbound/mailboxResolver.js';
+import type { AddressObject } from '@owlat/mail-message';
 import type { Phase } from '../pipeline.js';
 import type { BasePhaseCtx, CtxWithAcceptRoute, MailboxAttachmentMeta } from '../types.js';
 
@@ -112,14 +113,12 @@ export const resolveRoutePhase: Phase<BasePhaseCtx, CtxWithAcceptRoute> = {
 	},
 };
 
-function extractAddrs(
-	field: import('mailparser').ParsedMail['to'] | import('mailparser').ParsedMail['cc']
-): string[] {
+function extractAddrs(field: AddressObject | AddressObject[] | undefined): string[] {
 	if (!field) return [];
 	const objects = Array.isArray(field) ? field : [field];
 	const out: string[] = [];
 	for (const obj of objects) {
-		for (const v of obj.value ?? []) {
+		for (const v of obj.value) {
 			if (v.address) out.push(v.address);
 		}
 	}

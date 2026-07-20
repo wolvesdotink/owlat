@@ -42,7 +42,7 @@ export interface StsPolicy {
 /**
  * Get MTA-STS TLS options for a recipient domain
  *
- * Returns connection overrides for nodemailer transport:
+ * Returns the TLS floor the sender resolves into its @owlat/smtp-client acquire:
  * - requireTLS: true when policy mode is "enforce"
  * - rejectUnauthorized: true when policy mode is "enforce"
  * - allowedMxHosts: list of valid MX patterns to check against
@@ -160,10 +160,7 @@ async function fetchOrCachedPolicy(redis: Redis, domain: string): Promise<StsPol
 		try {
 			return await refetchAndCache(redis, cacheKey, domain, dnsVersion);
 		} catch (err) {
-			logger.warn(
-				{ domain, err },
-				'MTA-STS re-fetch on id change failed; serving cached policy'
-			);
+			logger.warn({ domain, err }, 'MTA-STS re-fetch on id change failed; serving cached policy');
 			return cachedPolicy;
 		}
 	}
@@ -274,7 +271,10 @@ export async function fetchStsPolicy(domain: string, dnsVersion: string): Promis
  * body we don't actually understand.
  */
 export function parseStsPolicy(text: string, version: string): StsPolicy {
-	const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+	const lines = text
+		.split('\n')
+		.map((l) => l.trim())
+		.filter(Boolean);
 
 	let hasValidVersion = false;
 	let mode: StsPolicyMode = 'none';

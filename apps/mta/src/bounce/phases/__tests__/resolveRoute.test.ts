@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 
 vi.mock('../../../inbound/router.js', () => ({
 	findRoute: vi.fn(),
@@ -25,7 +25,7 @@ function makeCtx(overrides: Partial<BasePhaseCtx> = {}): BasePhaseCtx {
 			attachments: [
 				{ filename: 'a.pdf', contentType: 'application/pdf', size: 10, contentId: 'cid-1' },
 			],
-		} as unknown as ParsedMail,
+		} as unknown as ParsedMessage,
 		rawBuffer: Buffer.alloc(0),
 		rcptTo: 'inbox@org.example',
 		...overrides,

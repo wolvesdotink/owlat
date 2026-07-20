@@ -20,6 +20,8 @@
  * it. A per-customer return-path subdomain makes SPF align too.
  */
 
+import { getDomain } from 'tldts';
+
 export type AlignmentMode = 'strict' | 'relaxed';
 
 /** Lowercase + strip a single trailing dot for comparison. */
@@ -28,16 +30,17 @@ function normalizeDomain(domain: string): string {
 }
 
 /**
- * Organizational-Domain approximation used for `relaxed` alignment: the last
- * two labels. Deliberately simple — it does NOT consult the Public Suffix List,
- * so multi-label public suffixes (e.g. `co.uk`) are not special-cased. This is
- * sufficient for the single-deployment self-host model where the return-path and
- * From-domain share a parent domain.
+ * Organizational Domain used for relaxed alignment (RFC 7489 §3.2): the
+ * registrable eTLD+1 from the Public Suffix List. Private suffixes are enabled
+ * because independently controlled tenants beneath entries such as `uk.com`
+ * or `github.io` must never authenticate one another. If the PSL cannot derive
+ * an eTLD+1 (single-label/internal or malformed input), fall back to the exact
+ * normalized domain; exact comparison is the fail-closed alignment behavior.
  */
-function organizationalDomain(domain: string): string {
-	const labels = normalizeDomain(domain).split('.').filter(Boolean);
-	if (labels.length <= 2) return labels.join('.');
-	return labels.slice(-2).join('.');
+export function organizationalDomain(domain: string): string {
+	const normalized = normalizeDomain(domain);
+	if (!normalized) return '';
+	return getDomain(normalized, { allowPrivateDomains: true }) ?? normalized;
 }
 
 /**
@@ -47,7 +50,7 @@ function organizationalDomain(domain: string): string {
 export function isSpfAligned(
 	envelopeFromDomain: string,
 	fromDomain: string,
-	mode: AlignmentMode = 'relaxed',
+	mode: AlignmentMode = 'relaxed'
 ): boolean {
 	const envelope = normalizeDomain(envelopeFromDomain);
 	const from = normalizeDomain(fromDomain);

@@ -4,10 +4,11 @@
  * Forwards parsed inbound emails to configured HTTP webhook endpoints.
  */
 
-import type { ParsedMail } from 'mailparser';
+import type { ParsedMessage } from '@owlat/mail-message';
 import { createHmac } from 'crypto';
 import type { InboundRoute } from './router.js';
 import type { InboundAuthVerdicts } from '../types.js';
+import { firstAddress } from './parsedAddress.js';
 import { logger } from '../monitoring/logger.js';
 
 const TIMEOUT_MS = 10_000;
@@ -42,7 +43,7 @@ interface EndpointForwardPayload extends InboundAuthVerdicts {
  * Forward a parsed email to the route's HTTP endpoint
  */
 export async function forwardToEndpoint(
-	parsed: ParsedMail,
+	parsed: ParsedMessage,
 	route: InboundRoute,
 	recipientAddress: string,
 	auth?: InboundAuthVerdicts
@@ -53,7 +54,7 @@ export async function forwardToEndpoint(
 	}
 
 	const payload: EndpointForwardPayload = {
-		from: parsed.from?.value?.[0]?.address ?? '',
+		from: firstAddress(parsed.from) ?? '',
 		to: recipientAddress,
 		subject: parsed.subject ?? '',
 		textBody: parsed.text,
@@ -63,7 +64,7 @@ export async function forwardToEndpoint(
 		messageId: parsed.messageId,
 		inReplyTo: parsed.inReplyTo,
 		references: Array.isArray(parsed.references) ? parsed.references.join(' ') : parsed.references,
-		attachments: (parsed.attachments ?? []).map((att) => ({
+		attachments: parsed.attachments.map((att) => ({
 			filename: att.filename,
 			contentType: att.contentType,
 			size: att.size,

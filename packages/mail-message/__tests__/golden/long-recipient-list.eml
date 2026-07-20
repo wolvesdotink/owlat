@@ -1,0 +1,52 @@
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ q=dns/txt; s=golden2026; t=1760000000;
+ bh=HUuLAxOenlVq+Ban2ToTXExvMlgbfG9sEmXR6L+SSMI=;
+ b=taZLD4pZ7UozQA8FvcakHz+F+XH8ch9YPzImqWhV1pXQ0LyzkTitNZPAERczCLketZaICmz6d
+ gzAXHTX/xGtJptjVznZXDLtsAV7a1VAtVChn7cyVd5ladmRy6C5Nv6xVrhDlKgXUyeGJzVrlS6A
+ Ys+WyjGP3BTNnx8tfK7iyvw6Bheot4NVbDoNaHOl4qAfpuv1Wo+8c61pzbaOu/Jl7LSiEWfiOH9
+ ic1qV/AWgrU/obd2b1juWF2FJT6fxQdgtfrBGBgvTNs2NKXAKnmlKQT0eEG80UdioeARHoQLeYS
+ RZ2h7lo1MEDQfVcNS63KZQexUHp6AUhMsRQuCVlIQWHg==
+Message-ID: <corpus-10@owlat.test>
+Date: Sat, 11 Jul 2026 09:30:00 +0000
+From: sender@owlat.test
+To: Recipient Number 1 <user1@example.com>,
+ Recipient Number 2 <user2@example.com>,
+ Recipient Number 3 <user3@example.com>,
+ Recipient Number 4 <user4@example.com>,
+ Recipient Number 5 <user5@example.com>,
+ Recipient Number 6 <user6@example.com>,
+ Recipient Number 7 <user7@example.com>,
+ Recipient Number 8 <user8@example.com>,
+ Recipient Number 9 <user9@example.com>,
+ Recipient Number 10 <user10@example.com>,
+ Recipient Number 11 <user11@example.com>,
+ Recipient Number 12 <user12@example.com>,
+ Recipient Number 13 <user13@example.com>,
+ Recipient Number 14 <user14@example.com>,
+ Recipient Number 15 <user15@example.com>,
+ Recipient Number 16 <user16@example.com>,
+ Recipient Number 17 <user17@example.com>,
+ Recipient Number 18 <user18@example.com>,
+ Recipient Number 19 <user19@example.com>,
+ Recipient Number 20 <user20@example.com>,
+ Recipient Number 21 <user21@example.com>,
+ Recipient Number 22 <user22@example.com>,
+ Recipient Number 23 <user23@example.com>,
+ Recipient Number 24 <user24@example.com>,
+ Recipient Number 25 <user25@example.com>
+Subject: Big to list
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="--_owlat_long-recipient-list_0"
+
+----_owlat_long-recipient-list_0
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+bulk
+----_owlat_long-recipient-list_0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 7bit
+
+<p>bulk</p>
+----_owlat_long-recipient-list_0--
