@@ -34,6 +34,10 @@ export default defineConfig({
 				__dirname,
 				'../../apps/code-worker/src/jobs/seedTest.ts'
 			),
+			'@owlat/code-worker/pluginTaskRunner': resolve(
+				__dirname,
+				'../../apps/code-worker/src/pluginTaskRunner.ts'
+			),
 			'@owlat/example-slack-approvals': resolve(
 				__dirname,
 				'../plugins/slack-approvals/src/index.ts'

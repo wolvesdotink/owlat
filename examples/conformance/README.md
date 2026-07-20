@@ -30,7 +30,13 @@ rather than three unrelated demos.
   plugins' own modules, including the adversarial Tier-2 paths (forged
   signature, wrong secret, wrong app, wrong protocol version, wrong hook kind,
   stale timestamp, replayed nonce, cross-tenant approval) and the Tier-3
-  plugin↔worker wire contract driven through the real sandbox job.
+  plugin↔worker payload/result contract, with the plugin's declared job kind
+  resolved through the worker's own command registry (`resolveJobCommand`) so a
+  renamed job kind fails here rather than at runtime. The sandbox invariants
+  around that command — separate uid, stripped environment, resource and time
+  limits, cancellation and cleanup — belong to the worker and are covered by
+  `apps/code-worker/src/__tests__/{uidSandbox,processIsolation,pluginTaskRunner}.test.ts`;
+  this suite does not re-run them.
 
 ## Why a temporary workspace
 
