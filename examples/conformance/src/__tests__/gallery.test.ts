@@ -6,6 +6,8 @@
  * as well as in its own package.
  */
 
+import { access } from 'node:fs/promises';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { composeBundledPlugins, createPluginPermissionService } from '@owlat/plugin-host';
 import { parsePluginManifest, PLUGIN_CONTRIBUTION_KINDS } from '@owlat/plugin-kit';
@@ -15,6 +17,7 @@ import {
 	readCoreNavSectionKeys,
 	REFERENCE_GALLERY,
 } from '../gallery';
+import { readRepositoryFile, REPOSITORY_ROOT } from '../repository';
 
 describe('reference gallery coverage', () => {
 	it('ships exactly one maintained reference per tier', () => {
@@ -116,6 +119,46 @@ describe('reference gallery coverage', () => {
 				...(entry.manifest.contributes?.settingsPanels ?? []).map((panel) => panel.href),
 			];
 			for (const href of hrefs) expect(href, entry.packageName).toMatch(/^\/dashboard\//);
+		}
+	});
+});
+
+describe('published package shape', () => {
+	interface ExamplePackageJson {
+		readonly exports?: Record<string, unknown>;
+	}
+
+	async function readPackageJson(directory: string): Promise<ExamplePackageJson> {
+		return JSON.parse(await readRepositoryFile(`${directory}/package.json`)) as ExamplePackageJson;
+	}
+
+	// The loader (packages/plugin-codegen/src/packageProvenance.ts) resolves a
+	// bundled plugin through condition-INDEPENDENT export strings and refuses a
+	// conditional root export with `conditional_manifest_export`. The conformance
+	// harness installs a fixture built to that rule, so without these two cases a
+	// reference could publish a shape the harness never sees and the real loader
+	// would refuse.
+	it('exposes its manifest through one condition-independent root export', async () => {
+		for (const entry of REFERENCE_GALLERY) {
+			const { exports } = await readPackageJson(entry.directory);
+			const root = exports?.['.'];
+			expect(typeof root, `${entry.packageName} root export`).toBe('string');
+			expect(root as string, entry.packageName).toMatch(/^\.\//);
+		}
+	});
+
+	it('exposes every contribution module its manifest names, as a real file', async () => {
+		for (const entry of REFERENCE_GALLERY) {
+			const { exports } = await readPackageJson(entry.directory);
+			for (const exportPath of contributionExportPaths(entry.manifest)) {
+				const target = exports?.[exportPath];
+				expect(typeof target, `${entry.packageName} ${exportPath}`).toBe('string');
+				const relative = (target as string).replace(/^\.\//, '');
+				await expect(
+					access(join(REPOSITORY_ROOT, entry.directory, relative)),
+					`${entry.packageName} ${exportPath} -> ${target as string}`
+				).resolves.toBeUndefined();
+			}
 		}
 	});
 });
