@@ -12,6 +12,8 @@
  * `--check` mode reports staleness rather than silently drifting.
  */
 
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { dispatchFinite } from '@owlat/plugin-cli/run';
 import { generatePluginComposition, PluginCodegenError } from '@owlat/plugin-codegen';
@@ -103,8 +105,6 @@ describe('clean install', () => {
 			packages: Record<string, unknown[]>;
 		};
 		lock.packages[TIER_1.packageName]![3] = 'sha512-not-a-real-integrity';
-		const { writeFile } = await import('node:fs/promises');
-		const { join } = await import('node:path');
 		await writeFile(join(root, 'bun.lock'), JSON.stringify(lock));
 		await expect(generatePluginComposition(root)).rejects.toMatchObject({
 			code: 'dependency_provenance',
