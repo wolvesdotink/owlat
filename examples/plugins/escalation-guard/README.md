@@ -23,7 +23,7 @@ bucket:
 | `automationTriggers`   | `./automationTrigger`   | Starts an automation when an escalation is raised               |
 | `automationConditions` | `./automationCondition` | Branches on whether the contact is a priority account           |
 | `automationSteps`      | `./automationStep`      | Blocks a run until the contact has a named escalation owner     |
-| `webhookEvents`        | `./webhookEvent`        | Publishes `plugin.escalation-guard.escalation-raised`           |
+| `webhookEvents`        | manifest only (payload helper on the package root) | Publishes `plugin.escalation-guard.escalation-raised` |
 | `navItems`             | manifest only           | An "Escalations" entry in the core Inbox section                |
 | `settingsPanels`       | manifest only           | A settings entry rendered from the declared `settingsSchema`    |
 
