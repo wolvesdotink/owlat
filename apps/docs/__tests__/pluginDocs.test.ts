@@ -86,6 +86,20 @@ function section(markdown: string, heading: string): string {
 	return next === -1 ? rest : rest.slice(0, next);
 }
 
+/**
+ * Every `.ts`/`.vue` source under a directory, so an assertion can derive the
+ * real caller set of a seam instead of trusting a hand-maintained list.
+ */
+function sourceFiles(dir: string): string[] {
+	const files: string[] = [];
+	for (const entry of readdirSync(resolve(repoRoot, dir), { withFileTypes: true })) {
+		if (entry.name === 'node_modules') continue;
+		if (entry.isDirectory()) files.push(...sourceFiles(`${dir}/${entry.name}`));
+		else if (/\.(ts|vue)$/.test(entry.name)) files.push(`${dir}/${entry.name}`);
+	}
+	return files;
+}
+
 /** Every fenced ```ts block on a page. */
 function typescriptFences(markdown: string): string[] {
 	return [...markdown.matchAll(/```ts\n([\s\S]*?)```/g)].map((match) => match[1]!.trimEnd());
@@ -385,21 +399,10 @@ describe('plugin docs: untrusted-text controls are described as shipped, not as 
 	const navigation = read('apps/web/app/lib/dashboardNavigation.ts');
 	const conventions = read('apps/api/convex/CONVENTIONS.md');
 
-	/** Every source file under the web app, so "no caller" can be asserted. */
-	function webSources(dir: string): string[] {
-		const files: string[] = [];
-		for (const entry of readdirSync(resolve(repoRoot, dir), { withFileTypes: true })) {
-			if (entry.name === 'node_modules') continue;
-			if (entry.isDirectory()) files.push(...webSources(`${dir}/${entry.name}`));
-			else if (/\.(ts|vue)$/.test(entry.name)) files.push(`${dir}/${entry.name}`);
-		}
-		return files;
-	}
-
 	it('the browser path really only clamps — the scrub seam has no web caller', () => {
 		expect(navigation).toContain(String.raw`.replace(/\p{Cc}|\p{Cf}/gu, '')`);
 		expect(navigation).toContain('.slice(0, 64)');
-		const callers = webSources('apps/web/app').filter((file) =>
+		const callers = sourceFiles('apps/web/app').filter((file) =>
 			read(file).includes('applyPluginUntrustedTextPolicy')
 		);
 		expect(callers, 'a web caller appeared; the docs must be updated to match').toEqual([]);
@@ -425,22 +428,50 @@ describe('plugin docs: untrusted-text controls are described as shipped, not as 
 		expect(bullet).toMatch(/bidi/i);
 	});
 
-	it('the security guide scopes the scrub to the boundaries that apply it', () => {
+	it('names exactly the Convex boundaries that apply the untrusted-text policy', () => {
 		const untrusted = section(docs.capabilities, '### Untrusted text');
 		expect(untrusted).toMatch(/Convex-side/);
 		expect(untrusted).toMatch(/is \*not\* applied/);
-		// Every boundary the guide names must be a real caller of the seam.
-		for (const [phrase, file] of [
-			['automation step reasons', 'apps/api/convex/automations/steps/pluginStep.ts'],
-			['autonomy gate reasons', 'apps/api/convex/agent/steps/route/pluginAutoSendGates.ts'],
-			['assistant tool output', 'packages/plugin-host/src/host.ts'],
-			['connected-app hook text', 'apps/api/convex/connectedApps/hookRuntime.ts'],
-		] as const) {
-			expect(untrusted, `boundary "${phrase}" is not named`).toContain(phrase);
-			expect(read(file), `${file} does not apply the policy`).toContain(
-				'applyPluginUntrustedTextPolicy'
-			);
-		}
+
+		// Derived rather than asserted one-directionally: the boundaries the guide
+		// names must correspond ONE-TO-ONE with the Convex files that call the
+		// seam. A fifth caller, a removed caller, or a boundary the guide invents
+		// (the plugin host merely DEFINING the policy is not a boundary) all fail.
+		const boundaryFileByPhrase: Readonly<Record<string, string>> = {
+			'automation step reasons': 'apps/api/convex/automations/steps/pluginStep.ts',
+			'autonomy gate reasons': 'apps/api/convex/agent/steps/route/pluginAutoSendGates.ts',
+			'connected-app hook text': 'apps/api/convex/connectedApps/hookRuntime.ts',
+		};
+		const callers = sourceFiles('apps/api/convex').filter((file) =>
+			read(file).includes('applyPluginUntrustedTextPolicy')
+		);
+		expect(
+			new Set(callers),
+			'the set of Convex callers changed; the security guide must name exactly them'
+		).toEqual(new Set(Object.values(boundaryFileByPhrase)));
+
+		const list = /Convex-side boundaries — ([^—]+) — /.exec(untrusted)?.[1];
+		expect(list, 'the guide no longer lists its Convex-side boundaries inline').toBeTypeOf(
+			'string'
+		);
+		const named = list!
+			.split(/,\s*(?:and\s+)?|\s+and\s+/)
+			.map((phrase) => phrase.trim())
+			.filter(Boolean);
+		expect(new Set(named)).toEqual(new Set(Object.keys(boundaryFileByPhrase)));
+		expect(named).toHaveLength(Object.keys(boundaryFileByPhrase).length);
+	});
+
+	it('attributes assistant tool scrubbing to the assistant, not to the plugin policy', () => {
+		// The assistant is NOT a plugin untrusted-text boundary: `assistantTools`
+		// is a reserved bucket, and built-in tool output is scrubbed by a core
+		// control of the assistant's own.
+		const untrusted = section(docs.capabilities, '### Untrusted text');
+		expect(untrusted).toContain('scrubForInjection');
+		expect(untrusted).toContain('`assistantTools` is a reserved bucket');
+		const toolRegistry = read('apps/api/convex/assistant/toolRegistry.ts');
+		expect(toolRegistry).toContain("import { scrubForInjection } from './prompt'");
+		expect(toolRegistry).not.toContain('applyPluginUntrustedTextPolicy');
 	});
 });
 
