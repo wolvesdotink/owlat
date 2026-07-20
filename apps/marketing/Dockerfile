@@ -12,7 +12,7 @@ COPY package.json bun.lock bunfig.toml ./
 COPY patches/ patches/
 
 # Copy all workspace package.json files for dependency resolution
-COPY --parents apps/*/package.json packages/*/package.json examples/plugins/*/package.json ./
+COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 
 RUN bun install --frozen-lockfile
 
