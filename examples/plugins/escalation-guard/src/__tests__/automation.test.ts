@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { JsonObject } from '@owlat/plugin-kit';
-import { EscalationConfigError, escalationTrigger } from '../automationTrigger';
+import { escalationTrigger } from '../automationTrigger';
+import { EscalationConfigError } from '../config';
 import {
 	emailDomain,
 	priorityAccountCondition,

@@ -54,9 +54,11 @@ export {
 	PROMPT_FIELD_MAX_LENGTH,
 } from './draftStrategy';
 
+/** The shared unknown-input boundary every `parseConfig` below is built on. */
+export { assertPlainObject, EscalationConfigError, readOwnValue } from './config';
+
 export {
 	escalationTrigger,
-	EscalationConfigError,
 	parseEscalationTriggerConfig,
 	ESCALATION_TRIGGER_LOCAL_ID,
 	type EscalationTriggerConfig,

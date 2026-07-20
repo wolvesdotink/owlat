@@ -13,6 +13,7 @@ import type {
 	PluginAutomationTriggerInput,
 	PluginAutomationTriggerModule,
 } from '@owlat/plugin-kit';
+import { assertPlainObject, EscalationConfigError, readOwnValue } from './config';
 import { meetsLevel, type EscalationLevel } from './detector';
 
 export const ESCALATION_TRIGGER_LOCAL_ID = 'escalation-raised';
@@ -22,31 +23,13 @@ export interface EscalationTriggerConfig {
 	readonly minimumLevel: Exclude<EscalationLevel, 'none'>;
 }
 
-export class EscalationConfigError extends Error {
-	constructor(message: string) {
-		super(message);
-		this.name = 'EscalationConfigError';
-	}
-}
-
-function readOwnValue(raw: object, key: string): unknown {
-	const descriptor = Object.getOwnPropertyDescriptor(raw, key);
-	return descriptor && 'value' in descriptor ? descriptor.value : undefined;
-}
-
 /**
  * Strictly parse an operator-persisted config. Accepts ONLY a plain object with
  * a `minimumLevel` of `watch` or `escalate`; a getter, an inherited property, an
  * array, or an unknown level all throw.
  */
 export function parseEscalationTriggerConfig(raw: unknown): EscalationTriggerConfig {
-	if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-		throw new EscalationConfigError('Escalation trigger config must be a plain object');
-	}
-	const prototype = Object.getPrototypeOf(raw);
-	if (prototype !== Object.prototype && prototype !== null) {
-		throw new EscalationConfigError('Escalation trigger config must be a plain object');
-	}
+	assertPlainObject(raw, 'Escalation trigger config must be a plain object');
 	const minimumLevel = readOwnValue(raw, 'minimumLevel');
 	if (minimumLevel !== 'watch' && minimumLevel !== 'escalate') {
 		throw new EscalationConfigError(
