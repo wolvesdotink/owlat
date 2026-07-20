@@ -9,7 +9,8 @@
 		"owlat-plugins": "./src/index.ts"
 	},
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./run": "./src/run.ts"
 	},
 	"scripts": {
 		"prepare:contracts": "bun run --cwd ../plugin-kit build",

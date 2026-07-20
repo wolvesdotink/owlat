@@ -27,6 +27,7 @@
 			"apps/*",
 			"packages/*",
 			"!packages/sdk-java",
+			"examples/conformance",
 			"examples/plugins/*"
 		],
 		"catalog": {

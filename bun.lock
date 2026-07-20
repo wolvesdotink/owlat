@@ -278,6 +278,24 @@
         "vue-tsc": "catalog:",
       },
     },
+    "examples/conformance": {
+      "name": "@owlat/plugin-conformance",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@owlat/code-worker": "workspace:*",
+        "@owlat/example-deliverability-lab": "workspace:*",
+        "@owlat/example-escalation-guard": "workspace:*",
+        "@owlat/example-slack-approvals": "workspace:*",
+        "@owlat/plugin-cli": "workspace:*",
+        "@owlat/plugin-codegen": "workspace:*",
+        "@owlat/plugin-host": "workspace:*",
+        "@owlat/plugin-kit": "workspace:*",
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "examples/plugins/deliverability-lab": {
       "name": "@owlat/example-deliverability-lab",
       "version": "0.0.0",
@@ -1169,6 +1187,8 @@
     "@owlat/plugin-cli": ["@owlat/plugin-cli@workspace:packages/plugin-cli"],
 
     "@owlat/plugin-codegen": ["@owlat/plugin-codegen@workspace:packages/plugin-codegen"],
+
+    "@owlat/plugin-conformance": ["@owlat/plugin-conformance@workspace:examples/conformance"],
 
     "@owlat/plugin-host": ["@owlat/plugin-host@workspace:packages/plugin-host"],
 
