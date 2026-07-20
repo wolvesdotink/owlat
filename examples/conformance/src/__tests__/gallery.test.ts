@@ -76,9 +76,18 @@ describe('reference gallery coverage', () => {
 
 	it('gives the Tier-2 connected app no in-process contributions at all', () => {
 		const connectedApp = galleryEntry(2);
-		expect(connectedApp.hasBundledContributions).toBe(false);
+		// Derived from the manifest, never a hand-maintained flag that could go
+		// stale: a Tier-2 connected app runs out of process and re-enters Owlat
+		// only as a restrict-only hook verdict, so it ships no in-process module.
 		expect(connectedApp.manifest.contributes).toBeUndefined();
 		expect(contributionExportPaths(connectedApp.manifest)).toEqual([]);
+	});
+
+	it('gives every in-process reference at least one contribution module', () => {
+		for (const entry of REFERENCE_GALLERY) {
+			if (entry.tier === 2) continue;
+			expect(contributionExportPaths(entry.manifest).length, entry.packageName).toBeGreaterThan(0);
+		}
 	});
 
 	it('never lets two references claim the same plugin id, nav href, or event kind', () => {

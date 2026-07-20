@@ -28,12 +28,6 @@ export interface GalleryEntry {
 	/** Workspace directory, relative to the repository root. */
 	readonly directory: string;
 	readonly manifest: PluginManifest;
-	/**
-	 * Whether the plugin ships in-process contribution modules. A Tier-2
-	 * connected app deliberately ships none: its code runs out of process and
-	 * re-enters Owlat only as a restrict-only hook verdict.
-	 */
-	readonly hasBundledContributions: boolean;
 }
 
 const DASHBOARD_NAVIGATION_PATH = 'apps/web/app/lib/dashboardNavigation.ts';
@@ -80,21 +74,18 @@ export const REFERENCE_GALLERY: readonly GalleryEntry[] = Object.freeze([
 		packageName: '@owlat/example-escalation-guard',
 		directory: 'examples/plugins/escalation-guard',
 		manifest: escalationGuardPlugin,
-		hasBundledContributions: true,
 	}),
 	Object.freeze({
 		tier: 2,
 		packageName: '@owlat/example-slack-approvals',
 		directory: 'examples/plugins/slack-approvals',
 		manifest: slackApprovalsPlugin,
-		hasBundledContributions: false,
 	}),
 	Object.freeze({
 		tier: 3,
 		packageName: '@owlat/example-deliverability-lab',
 		directory: 'examples/plugins/deliverability-lab',
 		manifest: deliverabilityLabPlugin,
-		hasBundledContributions: true,
 	}),
 ]);
 
