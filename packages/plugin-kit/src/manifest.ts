@@ -1,33 +1,23 @@
 import type { PluginCapability } from './capabilities';
-import { PLUGIN_AGENT_STEP_CAPABILITY } from './agentStep';
-import {
-	PLUGIN_AUTOMATION_CONDITION_CAPABILITY,
-	PLUGIN_AUTOMATION_STEP_CAPABILITY,
-	PLUGIN_AUTOMATION_TRIGGER_CAPABILITY,
-} from './automation';
 import { validateAutomationContributions } from './automationManifest';
-import { PLUGIN_AUTONOMY_GATE_CAPABILITY } from './autonomyGate';
+import {
+	CONTRIBUTION_CAPABILITY_REQUIREMENTS,
+	type ContributionBucket,
+} from './contributionRequirements';
 import { validateAutonomyGateContributions } from './autonomyGateManifest';
-import { PLUGIN_CRON_CAPABILITY } from './cron';
 import { validateCronContributions } from './cronManifest';
-import { PLUGIN_DRAFT_STRATEGY_CAPABILITY } from './draftStrategy';
 import { validateDraftStrategyContributions } from './draftStrategyManifest';
 import { validateAgentStepContributions } from './agentStepManifest';
-import { PLUGIN_IMPORT_PROVIDER_CAPABILITY } from './importProvider';
 import { validateImportProviderContributions } from './importProviderManifest';
-import { PLUGIN_NAV_ITEM_CAPABILITY } from './navItem';
-import { PLUGIN_SETTINGS_PANEL_CAPABILITY } from './settingsPanel';
 import {
 	validateNavItemContributions,
 	validateSettingsPanelContributions,
 } from './navContributionManifest';
-import { PLUGIN_WEBHOOK_EVENT_CAPABILITY } from './webhookEvent';
 import { validateWebhookEventContributions } from './webhookEventManifest';
 import { isPluginContributionKind, type PluginContributions } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { snapshotManifestInput } from './manifestSnapshot';
 import { isPluginId, type PluginId } from './pluginId';
-import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from './sendTransport';
 import { validateSendTransportContributions } from './sendTransportManifest';
 import type { PluginSettingsSchema } from './settingsSchema';
 import { validateSettingsSchema } from './settingsSchemaManifest';
@@ -41,6 +31,7 @@ import {
 } from './manifestValue';
 
 export { PLUGIN_CONTRIBUTION_KINDS } from './contributions';
+export { PLUGIN_LIVE_CONTRIBUTION_KINDS } from './contributionRequirements';
 export type { PluginContributionKind, PluginContributions } from './contributions';
 export type { PluginManifestIssue, PluginManifestIssueCode } from './manifestIssues';
 
@@ -292,60 +283,6 @@ function declaresCapability(
 ): boolean {
 	return items?.some((item) => item.kind === 'value' && item.value === capability) ?? false;
 }
-
-/**
- * Every contribution bucket that requires a matching capability and a feature
- * flag, as one data table so the checks stay identical across registries. Adding
- * a hosted registry means adding a row here, not another copy of the two checks.
- */
-const CONTRIBUTION_CAPABILITY_REQUIREMENTS = [
-	{
-		bucket: 'sendTransports',
-		capability: PLUGIN_SEND_TRANSPORT_CAPABILITY,
-		noun: 'send transports',
-	},
-	{ bucket: 'agentSteps', capability: PLUGIN_AGENT_STEP_CAPABILITY, noun: 'agent steps' },
-	{
-		bucket: 'draftStrategies',
-		capability: PLUGIN_DRAFT_STRATEGY_CAPABILITY,
-		noun: 'draft strategies',
-	},
-	{ bucket: 'sendGates', capability: PLUGIN_AUTONOMY_GATE_CAPABILITY, noun: 'autonomy gates' },
-	{
-		bucket: 'automationTriggers',
-		capability: PLUGIN_AUTOMATION_TRIGGER_CAPABILITY,
-		noun: 'automation triggers',
-	},
-	{
-		bucket: 'automationSteps',
-		capability: PLUGIN_AUTOMATION_STEP_CAPABILITY,
-		noun: 'automation steps',
-	},
-	{
-		bucket: 'automationConditions',
-		capability: PLUGIN_AUTOMATION_CONDITION_CAPABILITY,
-		noun: 'automation conditions',
-	},
-	{
-		bucket: 'webhookEvents',
-		capability: PLUGIN_WEBHOOK_EVENT_CAPABILITY,
-		noun: 'webhook events',
-	},
-	{
-		bucket: 'importProviders',
-		capability: PLUGIN_IMPORT_PROVIDER_CAPABILITY,
-		noun: 'import providers',
-	},
-	{ bucket: 'crons', capability: PLUGIN_CRON_CAPABILITY, noun: 'crons' },
-	{ bucket: 'navItems', capability: PLUGIN_NAV_ITEM_CAPABILITY, noun: 'navigation items' },
-	{
-		bucket: 'settingsPanels',
-		capability: PLUGIN_SETTINGS_PANEL_CAPABILITY,
-		noun: 'settings panels',
-	},
-] as const;
-
-type ContributionBucket = (typeof CONTRIBUTION_CAPABILITY_REQUIREMENTS)[number]['bucket'];
 
 function declaresContributions(
 	manifest: Record<string, unknown>,
