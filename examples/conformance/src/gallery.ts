@@ -59,9 +59,11 @@ export async function readCoreNavSectionKeys(): Promise<readonly string[]> {
 		throw new Error(`${DASHBOARD_NAVIGATION_PATH}: could not find the end of CORE_SECTIONS`);
 	}
 	// Top-level section entries only: they are the sole `key:` two tabs deep.
-	const keys = [...source.slice(start, end).matchAll(/\n\t\tkey: '([a-z][a-z0-9-]*)',/g)].map(
-		(match) => match[1] as string
-	);
+	const keys: string[] = [];
+	for (const match of source.slice(start, end).matchAll(/\n\t\tkey: '([a-z][a-z0-9-]*)',/g)) {
+		const key = match[1];
+		if (key !== undefined) keys.push(key);
+	}
 	if (keys.length === 0) {
 		throw new Error(`${DASHBOARD_NAVIGATION_PATH}: found no core section keys`);
 	}
@@ -96,17 +98,29 @@ export function galleryEntry(tier: PluginTier): GalleryEntry {
 	return entry;
 }
 
-/** Every `module.exportPath` a manifest points at, deduplicated and sorted. */
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+	return typeof value === 'object' && value !== null;
+}
+
+/**
+ * Every `module.exportPath` a manifest points at, deduplicated and sorted.
+ *
+ * Contribution buckets are heterogeneous and only some kinds carry a module, so
+ * this walks them structurally. It narrows with a guard rather than asserting a
+ * shape: this function is the pin the published-package-shape suite trusts, and
+ * an assertion here would be a claim the compiler stops checking.
+ */
 export function contributionExportPaths(manifest: PluginManifest): readonly string[] {
 	const paths = new Set<string>();
 	const contributes = manifest.contributes ?? {};
 	for (const bucket of Object.values(contributes)) {
 		if (!Array.isArray(bucket)) continue;
 		for (const contribution of bucket) {
-			if (contribution === null || typeof contribution !== 'object') continue;
-			const module = (contribution as { readonly module?: { readonly exportPath?: unknown } })
-				.module;
-			if (module && typeof module.exportPath === 'string') paths.add(module.exportPath);
+			if (!isRecord(contribution)) continue;
+			const module = contribution['module'];
+			if (!isRecord(module)) continue;
+			const exportPath = module['exportPath'];
+			if (typeof exportPath === 'string') paths.add(exportPath);
 		}
 	}
 	return [...paths].sort();

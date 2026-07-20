@@ -142,6 +142,26 @@ describe('published package shape', () => {
 		return JSON.parse(await readRepositoryFile(`${directory}/package.json`)) as ExamplePackageJson;
 	}
 
+	/**
+	 * Narrow one export entry to the string it must be, naming the package in the
+	 * failure. `expect(typeof x).toBe('string')` asserts but does not narrow, so
+	 * without this a non-string export would make the following matcher throw a
+	 * TypeError instead of failing the assertion it was written for.
+	 */
+	function requireStringExport(
+		exports: Record<string, unknown> | undefined,
+		key: string,
+		label: string
+	): string {
+		const target = exports?.[key];
+		if (typeof target !== 'string') {
+			throw new Error(`${label}: exports[${JSON.stringify(key)}] must be a string, got ${
+				target === undefined ? 'nothing' : typeof target
+			}`);
+		}
+		return target;
+	}
+
 	// The loader (packages/plugin-codegen/src/packageProvenance.ts) resolves a
 	// bundled plugin through condition-INDEPENDENT export strings and refuses a
 	// conditional root export with `conditional_manifest_export`. The conformance
@@ -151,9 +171,8 @@ describe('published package shape', () => {
 	it('exposes its manifest through one condition-independent root export', async () => {
 		for (const entry of REFERENCE_GALLERY) {
 			const { exports } = await readPackageJson(entry.directory);
-			const root = exports?.['.'];
-			expect(typeof root, `${entry.packageName} root export`).toBe('string');
-			expect(root as string, entry.packageName).toMatch(/^\.\//);
+			const root = requireStringExport(exports, '.', `${entry.packageName} root export`);
+			expect(root, entry.packageName).toMatch(/^\.\//);
 		}
 	});
 
@@ -173,12 +192,15 @@ describe('published package shape', () => {
 		for (const entry of REFERENCE_GALLERY) {
 			const { exports } = await readPackageJson(entry.directory);
 			for (const exportPath of contributionExportPaths(entry.manifest)) {
-				const target = exports?.[exportPath];
-				expect(typeof target, `${entry.packageName} ${exportPath}`).toBe('string');
-				const relative = (target as string).replace(/^\.\//, '');
+				const target = requireStringExport(
+					exports,
+					exportPath,
+					`${entry.packageName} ${exportPath}`
+				);
+				const relative = target.replace(/^\.\//, '');
 				await expect(
 					access(join(REPOSITORY_ROOT, entry.directory, relative)),
-					`${entry.packageName} ${exportPath} -> ${target as string}`
+					`${entry.packageName} ${exportPath} -> ${target}`
 				).resolves.toBeUndefined();
 			}
 		}
