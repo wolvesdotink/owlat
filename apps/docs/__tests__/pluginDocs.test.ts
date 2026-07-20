@@ -404,23 +404,72 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 
 describe('plugin docs: limits match the constants the host enforces', () => {
 	it('documents the cron scheduling and timeout envelope', () => {
+		// Both ends of both ranges, derived from the declaration rather than
+		// chosen: a renamed, added, or retuned bound fails until the table says so.
+		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
+			PLUGIN_CRON_MIN_INTERVAL_MINUTES: {
+				literal: '15',
+				prose: '| `schedule.intervalMinutes` | 15 …',
+			},
+			PLUGIN_CRON_MAX_INTERVAL_MINUTES: {
+				literal: '28 * 24 * 60',
+				prose: '… 40 320 (four weeks) |',
+			},
+			PLUGIN_CRON_TIMEOUT_MIN_MS: { literal: '1_000', prose: '| `timeoutMs` | 1 000 …' },
+			PLUGIN_CRON_TIMEOUT_MAX_MS: {
+				literal: '5 * 60_000',
+				prose: '… 300 000 (five minutes) |',
+			},
+		};
 		const cron = read('packages/plugin-kit/src/cron.ts');
-		expect(cron).toContain('PLUGIN_CRON_MIN_INTERVAL_MINUTES = 15');
-		expect(cron).toContain('PLUGIN_CRON_TIMEOUT_MAX_MS = 5 * 60_000');
-		expect(docs.contributions).toMatch(/15\s*…\s*40 320/);
-		expect(docs.contributions).toMatch(/1 000\s*…\s*300 000/);
+		const declared = [...cron.matchAll(/^export const (PLUGIN_CRON_\w+) = ([\d_ *]+);/gm)].map(
+			(match) => match[1]!
+		);
+		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
+
+		const crons = section(docs.contributions, '## Crons');
+		for (const [name, { literal, prose }] of Object.entries(rendered)) {
+			expect(cron, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
+			expect(crons, `${name} (${prose}) is undocumented`).toContain(prose);
+		}
 	});
 
 	it('documents the Tier-3 worker envelope', () => {
+		// Same treatment, and the two 64 KiB rows are pinned separately: the
+		// payload ceiling rejects at enqueue while the result ceiling truncates,
+		// so a bare `toContain('64 KiB')` would let either row cover the other.
+		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
+			PLUGIN_WORKER_MIN_ATTEMPTS: { literal: '1', prose: '| Attempts | clamped to 1 …' },
+			PLUGIN_WORKER_MAX_ATTEMPTS: { literal: '5', prose: '… 5 |' },
+			PLUGIN_WORKER_TIMEOUT_MIN_MS: {
+				literal: '1_000',
+				prose: '| Single-execution wall clock | clamped to 1 s …',
+			},
+			PLUGIN_WORKER_TIMEOUT_MAX_MS: { literal: '15 * 60_000', prose: '… 15 min |' },
+			PLUGIN_WORKER_PAYLOAD_MAX_BYTES: {
+				literal: '64 * 1024',
+				prose: '| Payload | ≤ 64 KiB (oversized ⇒ rejected at enqueue) |',
+			},
+			PLUGIN_WORKER_RESULT_MAX_BYTES: {
+				literal: '64 * 1024',
+				prose: '| Stored result | ≤ 64 KiB (oversized ⇒ truncated before persisting) |',
+			},
+			PLUGIN_WORKER_MAX_PENDING_JOBS: {
+				literal: '100',
+				prose: '| In-flight jobs per (organization, plugin) | 100 `queued` + `running` |',
+			},
+		};
 		const worker = read('packages/plugin-kit/src/workerTask.ts');
-		expect(worker).toContain('PLUGIN_WORKER_MAX_ATTEMPTS = 5');
-		expect(worker).toContain('PLUGIN_WORKER_TIMEOUT_MAX_MS = 15 * 60_000');
-		expect(worker).toContain('PLUGIN_WORKER_PAYLOAD_MAX_BYTES = 64 * 1024');
-		expect(worker).toContain('PLUGIN_WORKER_MAX_PENDING_JOBS = 100');
-		expect(docs.sandboxedJobs).toMatch(/1 … 5/);
-		expect(docs.sandboxedJobs).toMatch(/1 s … 15 min/);
-		expect(docs.sandboxedJobs).toContain('64 KiB');
-		expect(docs.sandboxedJobs).toContain('100 `queued` + `running`');
+		const declared = [...worker.matchAll(/^export const (PLUGIN_WORKER_\w+) = ([\d_ *]+);/gm)].map(
+			(match) => match[1]!
+		);
+		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
+
+		const limits = section(docs.sandboxedJobs, '## Enqueue limits');
+		for (const [name, { literal, prose }] of Object.entries(rendered)) {
+			expect(worker, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
+			expect(limits, `${name} (${prose}) is undocumented`).toContain(prose);
+		}
 	});
 
 	it('documents every plugin-storage quota', () => {
