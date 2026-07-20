@@ -15,23 +15,23 @@ Each business area lives in its own folder under `apps/api/convex/`:
 
 ```
 convex/
-├── mail/         # SMTP/IMAP, mailboxes, messages, drafts, identities
-├── campaigns/    # Marketing campaigns + scheduling + archives
-├── contacts/     # CRM contacts, identities, segments
-├── automations/  # Trigger-based workflows
-├── topics/       # Topics + DOI flows
-├── webhooks/     # Outbound webhooks + delivery logs
-├── inbox/        # Shared inbox + threading
-├── analytics/    # Funnels, reports, AI-driven viz
-├── domains/      # SPF/DKIM/DMARC, warming, reputation
-├── delivery/     # Provider-agnostic send pipeline
-├── forms/        # Embeddable signup forms
-├── auth/         # BetterAuth integration, sessions, roles
-├── plugins/      # Plugin host seams, hosted services, Tier-3 job queue
+├── mail/          # SMTP/IMAP, mailboxes, messages, drafts, identities
+├── campaigns/     # Marketing campaigns + scheduling + archives
+├── contacts/      # CRM contacts, identities, segments
+├── automations/   # Trigger-based workflows
+├── topics/        # Topics + DOI flows
+├── webhooks/      # Outbound webhooks + delivery logs
+├── inbox/         # Shared inbox + threading
+├── analytics/     # Funnels, reports, AI-driven viz
+├── domains/       # SPF/DKIM/DMARC, warming, reputation
+├── delivery/      # Provider-agnostic send pipeline
+├── forms/         # Embeddable signup forms
+├── auth/          # BetterAuth integration, sessions, roles
+├── plugins/       # Plugin host seams, hosted services, Tier-3 job queue
 ├── connectedApps/ # Tier-2 apps, sealed secrets, signed hooks, delivery logs
-├── lib/          # Shared helpers (env, permissions, providers)
-├── _utils/       # Lower-level utilities (errors, IDs)
-└── _generated/   # Convex codegen output
+├── lib/           # Shared helpers (env, permissions, providers)
+├── _utils/        # Lower-level utilities (errors, IDs)
+└── _generated/    # Convex codegen output
 ```
 
 Convex generated function paths mirror the folder structure: a query in
