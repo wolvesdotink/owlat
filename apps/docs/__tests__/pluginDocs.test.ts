@@ -110,12 +110,12 @@ describe('plugin docs: samples are the executable source, verbatim', () => {
 		it(`${PAGES[page]} quotes the "${region}" sample exactly`, () => {
 			const source = regionSource(region);
 			expect(source.length).toBeGreaterThan(0);
-			const fences = typescriptFences(docs[page]);
-			const matching = fences.filter((fence) => fence.includes(source));
+			// Equality, not containment: a fence that merely CONTAINS its region can
+			// carry hand-written lines that nothing compiles or runs.
 			expect(
-				matching.length,
-				`no \`\`\`ts fence in ${PAGES[page]} contains the "${region}" region verbatim`
-			).toBeGreaterThan(0);
+				typescriptFences(docs[page]),
+				`no \`\`\`ts fence in ${PAGES[page]} is the "${region}" region verbatim`
+			).toContain(source);
 		});
 	}
 
@@ -128,9 +128,9 @@ describe('plugin docs: samples are the executable source, verbatim', () => {
 		for (const [key, file] of Object.entries(PAGES)) {
 			for (const fence of typescriptFences(docs[key as keyof typeof PAGES])) {
 				expect(
-					sources.some((source) => fence.includes(source)),
-					`a \`\`\`ts fence in ${file} is backed by no sample region:\n${fence}`
-				).toBe(true);
+					sources,
+					`a \`\`\`ts fence in ${file} is not a sample region verbatim:\n${fence}`
+				).toContain(fence);
 			}
 		}
 	});
