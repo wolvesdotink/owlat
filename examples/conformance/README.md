@@ -37,6 +37,11 @@ rather than three unrelated demos.
   limits, cancellation and cleanup — belong to the worker and are covered by
   `apps/code-worker/src/__tests__/{uidSandbox,processIsolation,pluginTaskRunner}.test.ts`;
   this suite does not re-run them.
+- **`hookClient.test.ts`** — the tutorial contract of `src/hookClient.ts`, the
+  independent client half of the signed hook protocol the Tier-2 replay signs
+  with: a last-hex-character near miss is rejected in constant time, a truncated
+  signature is rejected rather than thrown at, a missing header fails closed, and
+  the signature is bound to the nonce, app id, body and secret.
 
 ## Why a temporary workspace
 
