@@ -13,7 +13,8 @@ contribution points the other two do not.
 
 It notices escalation-shaped inbound mail — legal threats, regulators,
 chargebacks, cancellations, formal complaints — from one deterministic detector
-(`src/detector.ts`), then uses that verdict across five contribution points:
+(`src/detector.ts`), then uses that verdict across every Tier-1 contribution
+bucket:
 
 | Contribution           | Module                  | Effect                                                          |
 | ---------------------- | ----------------------- | --------------------------------------------------------------- |
