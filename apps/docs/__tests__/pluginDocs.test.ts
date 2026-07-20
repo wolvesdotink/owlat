@@ -419,6 +419,8 @@ function expectDocumentedLimits(options: {
 	declaration?: string;
 	/** Must capture the declared name in group 1, and must be global. */
 	declaredPattern: RegExp;
+	/** Names deliberately left undocumented, excluded by name, never silently. */
+	exclude?: ReadonlySet<string>;
 	/** How the literal is written: `NAME = value;` or `field: value,`. */
 	form?: 'const' | 'field';
 	/** The rendered failure clause, so table cases read as table cases. */
@@ -429,7 +431,9 @@ function expectDocumentedLimits(options: {
 }): void {
 	const { sources, declaredPattern, form = 'const', proseFailure = 'is undocumented' } = options;
 	const declaration = options.declaration ?? sources.join('\n');
-	const declared = [...declaration.matchAll(declaredPattern)].map((match) => match[1]!);
+	const declared = [...declaration.matchAll(declaredPattern)]
+		.map((match) => match[1]!)
+		.filter((name) => !options.exclude?.has(name));
 	expect(new Set(declared)).toEqual(new Set(Object.keys(options.rendered)));
 
 	for (const [name, { literal, prose }] of Object.entries(options.rendered)) {
@@ -665,6 +669,52 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		for (const code of codes) {
 			expect(transports, `failure code ${code} is undocumented`).toContain(`\`${code}\``);
 		}
+	});
+
+	it('documents the send-transport retry ceiling', () => {
+		// The sketch on the page is ```text, not an executable sample, so nothing
+		// else pins its "≤ 3": without this the shape could promise seven.
+		// The two delay ceilings stay undocumented on purpose — the page says
+		// "bounded delays" rather than restating millisecond budgets an author
+		// cannot usefully budget against — and the label ceiling belongs to the
+		// descriptor field, not to the retry envelope, so both are excluded here
+		// by name instead of silently by set-equality.
+		expectDocumentedLimits({
+			sources: [read('packages/plugin-kit/src/sendTransportManifest.ts')],
+			declaredPattern: /^const (MAX_\w+) = /gm,
+			exclude: new Set(['MAX_LABEL_LENGTH', 'MAX_RETRY_DELAY_MS', 'MAX_TOTAL_DELAY_MS']),
+			section: section(docs.contributions, '## Send transports'),
+			rendered: {
+				MAX_RETRIES: { literal: '3', prose: 'retryDelays: [/* ≤ 3 bounded delays */]' },
+			},
+		});
+	});
+
+	it('documents the plugin-id length ceiling on both pages that state it', () => {
+		const pluginId = read('packages/plugin-kit/src/pluginId.ts');
+		const declaredPattern = /^const (MAX_PLUGIN_ID_LENGTH) = /gm;
+		expectDocumentedLimits({
+			sources: [pluginId],
+			declaredPattern,
+			section: section(docs.overview, '## Anatomy of a plugin'),
+			rendered: {
+				MAX_PLUGIN_ID_LENGTH: {
+					literal: '64',
+					prose: '| `id` | Lowercase kebab-case, ≤ 64 characters.',
+				},
+			},
+		});
+		expectDocumentedLimits({
+			sources: [pluginId],
+			declaredPattern,
+			section: section(docs.troubleshooting, '## Manifest errors'),
+			rendered: {
+				MAX_PLUGIN_ID_LENGTH: {
+					literal: '64',
+					prose: '`id` is not lowercase kebab-case ≤ 64 chars',
+				},
+			},
+		});
 	});
 
 	it('documents every manifest ceiling the validator enforces', () => {
