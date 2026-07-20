@@ -64,7 +64,7 @@ function manifestVersion(plugin: InstalledPlugin): string {
 }
 
 /** The canonical plugins.config.ts an operator would have on disk. */
-export function pluginsConfigSource(packages: readonly string[]): string {
+function pluginsConfigSource(packages: readonly string[]): string {
 	const list = packages.length === 0 ? '[]' : `[${packages.map((name) => `'${name}'`).join(', ')}]`;
 	return [
 		"import type { PluginsConfig } from '@owlat/plugin-codegen';",
