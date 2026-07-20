@@ -101,8 +101,8 @@
 	},
 	"devDependencies": {
 		"@changesets/cli": "^2.31.0",
-		"knip": "6.23.0",
-		"oxfmt": "^0.46.0",
+		"knip": "6.27.0",
+		"oxfmt": "^0.59.0",
 		"oxlint": "^1.69.0",
 		"turbo": "^2.9.18"
 	},
