@@ -680,6 +680,109 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		}
 	});
 
+	it('documents the exact hook signing strings and header formats', () => {
+		// The wire contract a third-party app implements HMAC verification
+		// against. The field ORDER is itself a security property — the direction
+		// tag is what stops a request signature being replayed as a response
+		// signature, and the echoed request nonce is the response-replay defense
+		// — so the sketch on the page is DERIVED from the two signing functions
+		// rather than compared against a hand-copied list of them.
+		const signature = read('apps/api/convex/connectedApps/hookSignature.ts');
+		const protocol = read('apps/api/convex/connectedApps/hookProtocol.ts');
+		const wire = section(docs.connectedApps, '### Wire contract');
+
+		const version = /CONNECTED_APP_HOOK_PROTOCOL_VERSION = '(\w+)' as const;/.exec(protocol)?.[1];
+		expect(version, 'hookProtocol.ts no longer declares a protocol version').toBeTruthy();
+
+		/** The ordered signing fields of one builder, written as the page writes them. */
+		function signingFields(direction: 'Request' | 'Response'): string[] {
+			const start = signature.indexOf(`async function build${direction}SigningString`);
+			expect(start, `hookSignature.ts has no build${direction}SigningString`).toBeGreaterThan(-1);
+			const body = signature.slice(start, signature.indexOf(`].join('\\n');`, start));
+			return [
+				...body.matchAll(
+					/`owlat\.hook\.(\w+)\.\$\{(\w+)\}`|await (\w+)\(fields\.(\w+)\)|String\(fields\.(\w+)\)|fields\.(\w+)/g
+				),
+			].map((match) => {
+				const [, tag, tagVersion, digest, digestArgument, stringified, plain] = match;
+				if (tag !== undefined) {
+					expect(tagVersion, 'the domain tag no longer interpolates the protocol version').toBe(
+						'CONNECTED_APP_HOOK_PROTOCOL_VERSION'
+					);
+					return `owlat.hook.${tag}.${version}`;
+				}
+				if (digest !== undefined) return `<${digest}(${digestArgument})>`;
+				return `<${stringified ?? plain}>`;
+			});
+		}
+
+		const expected = {
+			request: signingFields('Request'),
+			response: signingFields('Response'),
+		};
+		expect(expected.request.length, 'the request signing string derived as empty').toBeGreaterThan(
+			4
+		);
+		expect(expected.response.length).toBe(expected.request.length);
+
+		// The two columns of the ```text sketch, read positionally: each content
+		// line carries the request field then the response field.
+		const sketch = /```text\n([\s\S]*?)```/.exec(wire)?.[1];
+		expect(sketch, 'the wire contract no longer renders a signing-string sketch').toBeTruthy();
+		const documented: Record<'request' | 'response', string[]> = { request: [], response: [] };
+		for (const line of sketch!.split('\n')) {
+			const tokens = [...line.matchAll(/owlat\.hook\.\w+\.\w+|<[^>]+>/g)].map((match) => match[0]);
+			if (tokens.length === 0) continue;
+			expect(tokens.length, `the sketch line "${line.trim()}" is not two columns`).toBe(2);
+			documented.request.push(tokens[0]!);
+			documented.response.push(tokens[1]!);
+		}
+
+		for (const direction of ['request', 'response'] as const) {
+			expect(
+				documented[direction],
+				`the ${direction} signing string is ${expected[direction].join(', ')}, but the page renders ${documented[direction].join(', ')}`
+			).toEqual(expected[direction]);
+		}
+
+		// The header formats the signing string is transported in. Each is pinned
+		// to the code that produces it, so a v2 bump moves the version row, both
+		// domain tags and the signature scheme together.
+		expect(signature, 'the signature scheme is no longer the protocol version').toContain(
+			'const SIGNATURE_SCHEME = CONNECTED_APP_HOOK_PROTOCOL_VERSION;'
+		);
+		expect(signature, 'the signature header value is no longer `<scheme>=<mac>`').toContain(
+			'return `${SIGNATURE_SCHEME}=${mac}`;'
+		);
+		expect(signature, 'hmacHex no longer returns hex').toContain('return bytesToHex(signature);');
+		for (const row of [
+			`Protocol version \`${version}\`.`,
+			`| \`x-owlat-hook-version\` | \`${version}\` |`,
+			`| \`x-owlat-hook-signature\` | \`${version}=<hex hmac>\` |`,
+		]) {
+			expect(
+				wire,
+				`CONNECTED_APP_HOOK_PROTOCOL_VERSION (${version}) is undocumented: ${row}`
+			).toContain(row);
+		}
+
+		// The nonce entropy and the timestamp unit, derived from their sources.
+		const nonceBytes = Number(/^const NONCE_ENTROPY_BYTES = (\d+);/m.exec(signature)?.[1]);
+		expect(nonceBytes, 'hookSignature.ts no longer declares NONCE_ENTROPY_BYTES').toBeGreaterThan(
+			0
+		);
+		expect(wire, `NONCE_ENTROPY_BYTES (${nonceBytes} bytes) is undocumented`).toContain(
+			`| \`x-owlat-hook-nonce\` | Per-request ${nonceBytes * 8}-bit base64url nonce, signed |`
+		);
+		expect(
+			read('apps/api/convex/connectedApps/hookClient.ts'),
+			'the signed timestamp is no longer Unix seconds'
+		).toContain('const timestampSeconds = Math.floor(nowMs / 1000);');
+		expect(wire, 'the timestamp unit is undocumented').toContain(
+			'| `x-owlat-hook-timestamp` | Unix **seconds**, signed |'
+		);
+	});
+
 	it('documents every hook fallback reason the log can record', () => {
 		const log = read('apps/api/convex/connectedApps/hookDeliveryLog.ts');
 		// Slice the reason validator itself rather than denylisting the hook-kind
