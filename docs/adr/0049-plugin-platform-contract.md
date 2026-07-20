@@ -136,8 +136,8 @@ bounded, paginated cursors are authenticated-encrypted and scope-bound, and
 exact entry/byte quota counters update in the same Convex transaction as each
 write. Because access cannot be enabled or revoked honestly without a flag,
 manifest validation requires an explicit flag whenever either plugin-storage
-capability is declared; flags remain optional without storage. Tier-2 API key
-and HTTP surfaces remain deferred to their dedicated changes.
+capability is declared; flags remain optional without storage. The Tier-2 API
+key and HTTP surfaces are defined in ADR-0052.
 
 ### Hosted-action audit and LLM budgets
 
@@ -281,11 +281,13 @@ text or mail content. See ADR-0051.
    requires a rebuild.
 2. **Connected apps** run out of process and use scoped APIs, webhooks, and
    signed synchronous hooks. They do not execute code inside Convex or Nuxt.
+   See ADR-0052.
 3. **Sandboxed workers** handle untrusted or resource-heavy compute behind an OS
    process boundary and return data through host-controlled task interfaces.
+   See ADR-0053.
 
 The same capability vocabulary and host-service principles apply to all tiers;
-execution-specific registration is implemented in later ADRs.
+each tier's execution-specific registration is defined by its own ADR.
 
 ## Consequences
 
