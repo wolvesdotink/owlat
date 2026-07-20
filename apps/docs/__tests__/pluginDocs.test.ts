@@ -143,6 +143,36 @@ function documentedBucketCapabilities(): Set<string> {
 /** Number words the prose may use for a small count. */
 const COUNT_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'];
 
+/**
+ * Where each host-mediated (bucket-less) capability's limits are actually
+ * stated: the page, the route the contribution reference must link to, and a
+ * marker unique to that page's limit table.
+ */
+const LIMIT_PAGES: Readonly<
+	Record<string, { page: keyof typeof PAGES; route: string; marker: RegExp }>
+> = {
+	'llm:invoke': {
+		page: 'capabilities',
+		route: '/developer/plugin-capabilities',
+		marker: /### LLM budgets/,
+	},
+	'plugin-storage:read': {
+		page: 'capabilities',
+		route: '/developer/plugin-capabilities',
+		marker: /### Storage isolation and limits/,
+	},
+	'plugin-storage:write': {
+		page: 'capabilities',
+		route: '/developer/plugin-capabilities',
+		marker: /### Storage isolation and limits/,
+	},
+	'worker:enqueue': {
+		page: 'sandboxedJobs',
+		route: '/developer/plugin-sandboxed-jobs',
+		marker: /100 `queued` \+ `running`/,
+	},
+};
+
 /** Every fenced ```ts block on a page. */
 function typescriptFences(markdown: string): string[] {
 	return [...markdown.matchAll(/```ts\n([\s\S]*?)```/g)].map((match) => match[1]!.trimEnd());
@@ -268,6 +298,31 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 			);
 		}
 		expect(sentence!).toContain(`${COUNT_WORDS[unmapped.length]} capabilities have no`);
+
+		// A bucket-less capability is documented by that sentence alone, so the
+		// pointer it carries must lead to the page that actually states the
+		// capability's limits — not merely to the capability reference. Each
+		// marker is the limit table itself, and it must live on exactly one page:
+		// if a table moves, the uniqueness check retires the stale route instead
+		// of letting the link rot.
+		for (const capability of unmapped) {
+			const target = LIMIT_PAGES[capability];
+			expect(target, `${capability} has no bucket and no documented limit page`).toBeTypeOf(
+				'object'
+			);
+			const { page, route, marker } = target!;
+			expect(docs[page], `${capability} limits are no longer on ${route}`).toMatch(marker);
+			for (const [key, body] of Object.entries(docs)) {
+				if (key === page) continue;
+				expect(
+					body,
+					`${capability} limits also appear on ${key}; the route is ambiguous`
+				).not.toMatch(marker);
+			}
+			expect(sentence!, `${capability} limits are on ${route}, which the sentence omits`).toContain(
+				route
+			);
+		}
 	});
 
 	it('documents every contribution bucket the manifest type declares', () => {
