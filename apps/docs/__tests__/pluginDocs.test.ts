@@ -100,6 +100,19 @@ function sourceFiles(dir: string): string[] {
 	return files;
 }
 
+/** The contribution buckets the manifest type declares, in declaration order. */
+function contributionKinds(): string[] {
+	const contributions = read('packages/plugin-kit/src/contributions.ts');
+	return [
+		...contributions
+			.slice(
+				contributions.indexOf('PLUGIN_CONTRIBUTION_KINDS = ['),
+				contributions.indexOf('] as const;')
+			)
+			.matchAll(/'([a-zA-Z]+)'/g),
+	].map((match) => match[1]!);
+}
+
 /** Every fenced ```ts block on a page. */
 function typescriptFences(markdown: string): string[] {
 	return [...markdown.matchAll(/```ts\n([\s\S]*?)```/g)].map((match) => match[1]!.trimEnd());
@@ -204,15 +217,7 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 	}
 
 	it('documents every contribution bucket the manifest type declares', () => {
-		const contributions = read('packages/plugin-kit/src/contributions.ts');
-		const kinds = [
-			...contributions
-				.slice(
-					contributions.indexOf('PLUGIN_CONTRIBUTION_KINDS = ['),
-					contributions.indexOf('] as const;')
-				)
-				.matchAll(/'([a-zA-Z]+)'/g),
-		].map((match) => match[1]!);
+		const kinds = contributionKinds();
 		expect(kinds.length).toBeGreaterThan(15);
 		for (const kind of kinds) {
 			expect(docs.contributions, `bucket ${kind} is undocumented`).toContain(`\`${kind}\``);
@@ -495,12 +500,24 @@ describe('plugin docs: the CLI page quotes the real help text', () => {
 
 describe('plugin docs: the chapter does not promise unshipped extension points', () => {
 	it('names the reserved-but-unconsumed buckets as reserved', () => {
-		// These buckets exist in the manifest type but no codegen or host seam
-		// consumes them; the docs must say so rather than imply they work.
-		for (const bucket of ['assistantTools', 'emailBlocks', 'panels', 'widgets', 'taskCards']) {
-			expect(read('packages/plugin-codegen/src/generate.ts')).not.toContain(bucket);
+		// Derived from the page, not hardcoded: EVERY bucket the chapter calls
+		// reserved must really be unconsumed by codegen, so wiring one up fails
+		// here until the page stops calling it reserved — and a bucket quietly
+		// dropped from the list is caught by the contribution-bucket assertion,
+		// which requires every declared kind to be documented somewhere.
+		const reserved = section(docs.contributions, '## Declared but not yet consumed');
+		const kinds = new Set(contributionKinds());
+		const buckets = [...reserved.matchAll(/`([a-zA-Z]+)`/g)]
+			.map((match) => match[1]!)
+			.filter((name) => kinds.has(name));
+		expect(buckets.length).toBeGreaterThan(8);
+		const generate = read('packages/plugin-codegen/src/generate.ts');
+		for (const bucket of buckets) {
+			expect(
+				generate,
+				`bucket ${bucket} is documented as reserved but codegen reads it`
+			).not.toContain(bucket);
 		}
-		expect(docs.contributions).toContain('Declared but not yet consumed');
 	});
 
 	it('states that the import-provider signature contract has no replay defense', () => {
