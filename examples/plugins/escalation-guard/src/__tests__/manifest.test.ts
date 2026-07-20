@@ -15,6 +15,7 @@ import {
 	PLUGIN_SETTINGS_PANEL_CAPABILITY,
 	PLUGIN_WEBHOOK_EVENT_CAPABILITY,
 } from '@owlat/plugin-kit';
+import { createEscalationAgentStep, escalationAgentStep } from '../agentStep';
 import { escalationGuardPlugin, ESCALATION_GUARD_DAILY_LLM_BUDGET_USD } from '../manifest';
 
 const PACKAGE_NAME = '@owlat/example-escalation-guard';
@@ -119,5 +120,34 @@ describe('escalation-guard manifest', () => {
 		for (const field of escalationGuardPlugin.settingsSchema) {
 			expect(field.kind).not.toBe('secret');
 		}
+	});
+
+	it('never describes a settings field as if it fed a bundled module at runtime', () => {
+		// There is no settings channel into a bundled module: an agent step is
+		// execute(input) only, and an automation module parses the automation's own
+		// persisted step config. A description promising live wiring would teach a
+		// copying author a contract the platform does not have.
+		for (const field of escalationGuardPlugin.settingsSchema) {
+			expect(field.description, field.key).not.toMatch(/\b(reads|is routed|routes)\b/);
+			expect(field.description, field.key).toMatch(/Operator record of/);
+		}
+	});
+
+	it('holds at escalate in the bundled step regardless of the minimumLevel setting', async () => {
+		const watchLevel = {
+			inboundMessageId: 'msg-watch-1',
+			from: 'buyer@acme.example',
+			to: 'support@owlat.example',
+			subject: 'Following up',
+			textBody: 'This is unacceptable and I expect a call today.',
+		};
+		expect(escalationGuardPlugin.settingsSchema[0]?.key).toBe('minimumLevel');
+
+		// The bundled module the manifest points at ignores the setting entirely.
+		expect((await escalationAgentStep.execute(watchLevel)).kind).toBe('continue');
+
+		// Changing the behaviour means composing a different module at build time.
+		const composed = createEscalationAgentStep({ minimumLevel: 'watch' });
+		expect((await composed.execute(watchLevel)).kind).toBe('caution');
 	});
 });

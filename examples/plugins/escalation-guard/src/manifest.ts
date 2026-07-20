@@ -137,13 +137,21 @@ export const escalationGuardPlugin = definePlugin({
 			},
 		],
 	},
+	// Declaration-only settings schema: it shows how a plugin describes the
+	// operator-facing controls its settings panel renders, and the host validates,
+	// persists and redacts these fields. It is deliberately NOT a channel into the
+	// bundled modules: `PluginAgentStepModule` is `execute(input)` only, and an
+	// automation module is handed the automation's own persisted
+	// `step.config.pluginConfig` through its `parseConfig`, never plugin settings.
+	// Configurable behaviour is composed at build time instead. Each description
+	// below states that boundary rather than implying live wiring.
 	settingsSchema: [
 		{
 			kind: 'select',
 			key: 'minimumLevel',
 			label: 'Hold drafts at',
 			description:
-				'Severity at which an agent draft is routed to a human instead of sent autonomously.',
+				'Operator record of the severity at which an escalation draft should wait for a human. The bundled agent step uses its module default (escalate); a build that wants this configurable composes its own module with createEscalationAgentStep({ minimumLevel }).',
 			options: [
 				{ value: 'watch', label: 'Watch and above' },
 				{ value: 'escalate', label: 'Escalate only' },
@@ -155,7 +163,7 @@ export const escalationGuardPlugin = definePlugin({
 			key: 'ownerProperty',
 			label: 'Escalation owner property',
 			description:
-				'Contact property the "Require an escalation owner" automation step reads before letting a run continue.',
+				'Operator record of the contact property that should hold an escalation owner. The "Require an escalation owner" automation step takes this from its own step config, and a settings string field cannot express the parser\'s identifier rule, so parseConfig re-validates it.',
 			default: 'escalationOwner',
 			maxLength: 64,
 		},

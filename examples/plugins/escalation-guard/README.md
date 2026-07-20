@@ -53,10 +53,19 @@ chargebacks, cancellations, formal complaints — from one deterministic detecto
 
 Add the published package to `plugins.config.ts` (`owlat plugins add
 <package> --dry-run` previews the capability diff first), run `owlat plugins
-codegen`, enable the `plugin.escalation-guard` flag, grant the capabilities you
-want, and configure the two settings fields. Removing the package and re-running
-codegen removes every contribution again; the stored settings survive so a
-re-add is lossless, and the plugin settings screen offers to purge them.
+codegen`, enable the `plugin.escalation-guard` flag, and grant the capabilities
+you want. Removing the package and re-running codegen removes every
+contribution again; the stored settings survive so a re-add is lossless, and the
+plugin settings screen offers to purge them.
+
+The declared `settingsSchema` is a **declaration only**. The host renders,
+validates, persists and redacts those fields, but there is no channel from
+plugin settings into a bundled module: an agent step is `execute(input)`, and an
+automation module is handed the automation's own persisted
+`step.config.pluginConfig` through its `parseConfig`. Behaviour that must differ
+per build is composed at build time instead —
+`createEscalationAgentStep({ minimumLevel })` — which is what each field's
+description says.
 
 ## Tests
 
