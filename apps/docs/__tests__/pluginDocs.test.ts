@@ -202,6 +202,61 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 		}
 	});
 
+	it('counts the core agent steps and their placements correctly', () => {
+		const agentSteps = read('packages/plugin-host/src/agentSteps.ts');
+		const definitions = agentSteps.slice(
+			agentSteps.indexOf('CORE_AGENT_STEP_DEFINITIONS = Object.freeze(['),
+			agentSteps.indexOf('export type CoreAgentStepKind')
+		);
+		// `route` is terminal: it carries `placement: undefined` and so is not a
+		// legal anchor, which is why the anchor table lists one fewer step.
+		const entries = [...definitions.matchAll(/Object\.freeze\(\{([\s\S]*?)\}\)/g)].map(
+			(match) => match[1]!
+		);
+		const steps = entries.map((entry) => /kind: '([a-z_]+)'/.exec(entry)![1]!);
+		const anchors = entries
+			.filter((entry) => !entry.includes('placement: undefined'))
+			.map((entry) => /kind: '([a-z_]+)'/.exec(entry)![1]!);
+		expect(steps).toEqual([
+			'security_scan',
+			'context_retrieval',
+			'classify',
+			'clarify',
+			'draft',
+			'route',
+		]);
+		expect(definitions).toMatch(
+			/kind: 'route', continuationStatus: undefined, placement: undefined/
+		);
+		expect(anchors).toEqual(steps.filter((kind) => kind !== 'route'));
+
+		const placements = [
+			...agentSteps
+				.slice(
+					agentSteps.indexOf('SAFE_LIFECYCLE_EDGES_BY_PLACEMENT'),
+					agentSteps.indexOf('/** Flatten manifest declarations')
+				)
+				.matchAll(/^\t([a-z_]+): Object\.freeze\(/gm),
+		].map((match) => match[1]!);
+		expect(placements).toEqual(['classification', 'before_draft', 'after_draft']);
+
+		const stepSection = section(docs.contributions, '## Agent steps');
+		const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven'];
+		expect(stepSection).toContain(
+			`${NUMBER_WORDS[anchors.length]!.replace(/^./, (c) => c.toUpperCase())} of the ${
+				NUMBER_WORDS[steps.length]
+			} built-in steps`
+		);
+		expect(stepSection).toContain(`${NUMBER_WORDS[placements.length]} host-owned placements`);
+		expect(stepSection).toMatch(/terminal `route` step[^.]*no placement/);
+		for (const anchor of anchors) {
+			expect(stepSection, `anchor ${anchor} is not listed`).toContain(`\`${anchor}\``);
+		}
+		for (const placement of placements) {
+			expect(stepSection, `placement ${placement} is not listed`).toContain(`\`${placement}\``);
+		}
+	});
+
 	it('lists exactly the API scopes the backend recognises', () => {
 		const scopes = read('apps/api/convex/auth/apiScopes.ts');
 		const declared = [
