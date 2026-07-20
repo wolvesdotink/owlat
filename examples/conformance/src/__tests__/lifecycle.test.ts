@@ -202,17 +202,23 @@ describe('add', () => {
 });
 
 describe('disable', () => {
-	it('keeps a disabled plugin composed but wires it to the frontend behind its flag', async () => {
-		const root = await createGalleryDeployment(REFERENCE_GALLERY, [TIER_1.packageName]);
-		await generatePluginComposition(root);
-		const nuxt = await readWorkspaceFile(root, NUXT_COMPOSITION);
+	it('keeps the generated frontend composition importing the manifest of a bundled plugin', async () => {
+		// Disablement is a RUNTIME flag decision, not a build one: a bundled plugin
+		// is in the generated composition whether or not its flag is on — the
+		// operator has to be able to see it in order to enable it — and the
+		// frontend reads enablement from the flag at render time. Only bundling
+		// changes the generated file, which is what the two halves below show.
+		const bundled = await createGalleryDeployment(REFERENCE_GALLERY, [TIER_1.packageName]);
+		await generatePluginComposition(bundled);
+		const withPlugin = await readWorkspaceFile(bundled, NUXT_COMPOSITION);
+		expect(withPlugin).toContain(TIER_1.packageName);
+		expect(withPlugin).toContain('bundledPluginComposition');
 
-		// Disablement is a RUNTIME flag decision, not a build one: the generated
-		// composition still imports the manifest — the operator has to be able to
-		// see the plugin in order to enable it — and the frontend reads enablement
-		// from the flag at render time.
-		expect(nuxt).toContain(TIER_1.packageName);
-		expect(nuxt).toContain('bundledPluginComposition');
+		const unbundled = await createGalleryDeployment(REFERENCE_GALLERY);
+		await generatePluginComposition(unbundled);
+		const withoutPlugin = await readWorkspaceFile(unbundled, NUXT_COMPOSITION);
+		expect(withoutPlugin).not.toContain(TIER_1.packageName);
+		expect(withoutPlugin).toContain('bundledPluginComposition');
 	});
 
 	it('registers every reference behind its own namespaced flag, defaulting off', () => {
