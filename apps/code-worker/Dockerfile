@@ -11,9 +11,9 @@ WORKDIR /build
 COPY package.json bun.lock* ./
 COPY patches/ patches/
 # ALL workspace manifests — bun validates the frozen lockfile against the full
-# workspace shape (same idiom as apps/web/Dockerfile), examples/plugins/*
-# included.
-COPY --parents apps/*/package.json packages/*/package.json examples/plugins/*/package.json ./
+# workspace shape (same idiom as apps/web/Dockerfile), examples/* and
+# examples/plugins/* included.
+COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 # The worker imports the dist-shipping @owlat/plugin-kit workspace package, so it
 # is filtered in as well — that pulls in plugin-kit's build toolchain so we can
 # emit its dist before compiling the worker (tsc needs its types; the runtime
@@ -37,9 +37,9 @@ WORKDIR /build
 
 COPY package.json bun.lock* ./
 COPY patches/ patches/
-# examples/plugins/* are workspaces too — bun's frozen-lockfile check needs
-# their manifests to see the full workspace shape.
-COPY --parents apps/*/package.json packages/*/package.json examples/plugins/*/package.json ./
+# examples/* and examples/plugins/* are workspaces too — bun's frozen-lockfile
+# check needs their manifests to see the full workspace shape.
+COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 RUN bun install --frozen-lockfile --production --filter @owlat/code-worker
 
 # ── Runtime stage ────────────────────────────────────────────────────
