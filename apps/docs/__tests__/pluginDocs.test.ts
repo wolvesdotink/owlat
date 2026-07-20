@@ -504,6 +504,69 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		});
 	});
 
+	it('documents the Tier-3 container ceilings the compose file sets', () => {
+		// The security page states these as fact, and an operator sizes a host
+		// and reviews the uid boundary against them, so they are pinned to the
+		// compose service and the image that create them — not just to prose.
+		const compose = read('docker-compose.yml');
+		const start = compose.indexOf('\n  code-worker:\n');
+		expect(start, 'the code-worker service moved').not.toBe(-1);
+		const service = compose.slice(
+			start + 1,
+			start + 1 + compose.slice(start + 1).search(/\n {2}[a-z][a-z-]*:\n/)
+		);
+		const sandbox = section(docs.sandboxedJobs, '## The sandbox');
+
+		for (const [setting, row] of [
+			[
+				'mem_limit: ${CODE_WORKER_MEM_LIMIT:-2g}',
+				'| `mem_limit` | 2 g (`CODE_WORKER_MEM_LIMIT`) |',
+			],
+			['cpus: ${CODE_WORKER_CPUS:-1.0}', '| `cpus` | 1.0 (`CODE_WORKER_CPUS`) |'],
+			[
+				'pids_limit: ${CODE_WORKER_PIDS_LIMIT:-512}',
+				'| `pids_limit` | 512 (`CODE_WORKER_PIDS_LIMIT`) |',
+			],
+			[
+				'- /tmp:size=256m',
+				'| Filesystem | `read_only: true`, writes confined to the `code-workspace` volume and a 256 MiB `/tmp` tmpfs |',
+			],
+			['read_only: true', '`read_only: true`'],
+			['- no-new-privileges:true', '`no-new-privileges: true`'],
+			['- code-worker', 'The isolated `code-worker` bridge, shared only with Convex'],
+		] as const) {
+			expect(service, `the compose service no longer sets ${setting}`).toContain(setting);
+			expect(sandbox, `${setting} (${row}) is undocumented`).toContain(row);
+		}
+
+		// The capability row is built from the granted list rather than matched
+		// against a copy of it, so adding a fourth capability fails the row.
+		expect(service).toContain('cap_drop:\n      - ALL\n');
+		const capabilities = [
+			...service.slice(service.indexOf('cap_add:')).matchAll(/^ {6}- ([A-Z][A-Z_]*)$/gm),
+		].map((match) => match[1]!);
+		expect(capabilities.length).toBeGreaterThan(0);
+		expect(
+			sandbox,
+			`the granted capabilities ${capabilities.join(', ')} are undocumented`
+		).toContain(
+			`| Capabilities | \`cap_drop: ALL\`, then only ${capabilities
+				.map((capability) => `\`${capability}\``)
+				.join(', ')} |`
+		);
+
+		// The cross-uid boundary itself: the image creates the account the
+		// orchestrator drops to, and the page names that uid.
+		const dockerfile = read('apps/code-worker/Dockerfile');
+		expect(dockerfile, 'the sandbox group is no longer gid 10001').toContain(
+			'addgroup -S -g 10001 sandbox'
+		);
+		expect(dockerfile, 'the sandbox account is no longer uid 10001').toContain(
+			'-G sandbox -u 10001 -s /sbin/nologin sandbox'
+		);
+		expect(sandbox, 'the sandbox uid/gid is undocumented').toContain('`sandbox` uid/gid (10001)');
+	});
+
 	it('documents every plugin-storage quota', () => {
 		// Every field of the frozen limit object, not a chosen few: the map below
 		// must cover the declaration exactly, so a new ceiling fails until it is
