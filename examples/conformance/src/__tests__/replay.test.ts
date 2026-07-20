@@ -15,7 +15,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { runSeedTest } from '@owlat/code-worker/jobs/seedTest';
 import {
 	buildSeedTestPayload,
@@ -46,10 +46,7 @@ import {
 	type SlackMessage,
 } from '@owlat/example-slack-approvals';
 import { applyRestrictOnlyGateResult } from '@owlat/plugin-host';
-import { cleanupDeployments } from '../workspace';
 import { HOOK_HEADERS, signHookRequest, verifyHookResponse } from '../hookClient';
-
-afterAll(cleanupDeployments);
 
 const ESCALATION = Object.freeze({
 	inboundMessageId: 'msg-esc-1',
