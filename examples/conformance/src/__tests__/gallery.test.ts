@@ -155,9 +155,11 @@ describe('published package shape', () => {
 	): string {
 		const target = exports?.[key];
 		if (typeof target !== 'string') {
-			throw new Error(`${label}: exports[${JSON.stringify(key)}] must be a string, got ${
-				target === undefined ? 'nothing' : typeof target
-			}`);
+			throw new Error(
+				`${label}: exports[${JSON.stringify(key)}] must be a string, got ${
+					target === undefined ? 'nothing' : typeof target
+				}`
+			);
 		}
 		return target;
 	}
