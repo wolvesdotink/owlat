@@ -14,6 +14,7 @@
 			"@owlat/example-deliverability-lab": ["../plugins/deliverability-lab/src/index.ts"],
 			"@owlat/example-escalation-guard": ["../plugins/escalation-guard/src/index.ts"],
 			"@owlat/code-worker/jobs/seedTest": ["../../apps/code-worker/src/jobs/seedTest.ts"],
+			"@owlat/code-worker/pluginTaskRunner": ["../../apps/code-worker/src/pluginTaskRunner.ts"],
 			"@owlat/example-slack-approvals": ["../plugins/slack-approvals/src/index.ts"]
 		}
 	},

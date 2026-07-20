@@ -6,7 +6,8 @@
 	"homepage": "https://owlat.app",
 	"type": "module",
 	"exports": {
-		"./jobs/seedTest": "./src/jobs/seedTest.ts"
+		"./jobs/seedTest": "./src/jobs/seedTest.ts",
+		"./pluginTaskRunner": "./src/pluginTaskRunner.ts"
 	},
 	"scripts": {
 		"dev": "tsx watch src/index.ts",

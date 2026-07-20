@@ -7,7 +7,12 @@
  * the signed synchronous hook over the connected app's real HTTP handler,
  * including the adversarial paths: forged signature, replayed nonce, stale
  * timestamp, wrong app, wrong hook kind and a cross-tenant id. Tier 3 replays
- * the sandboxed job across the real plugin/worker wire contract.
+ * the plugin<->worker payload/result contract and resolves the plugin's declared
+ * job kind through the host's own command registry (`resolveJobCommand`), so a
+ * renamed job kind fails here instead of at runtime. The sandbox invariants
+ * themselves — uid drop, env stripping, timeouts, cancellation — belong to the
+ * worker and are covered by apps/code-worker's uidSandbox, processIsolation and
+ * pluginTaskRunner suites; this replay does not re-run them.
  *
  * The single invariant every replay checks is the one the platform rests on: a
  * plugin can add work or caution, and can never produce a value that sends,
@@ -17,6 +22,7 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { runSeedTest } from '@owlat/code-worker/jobs/seedTest';
+import { resolveJobCommand } from '@owlat/code-worker/pluginTaskRunner';
 import {
 	buildSeedTestPayload,
 	deliverabilityGate,
@@ -414,10 +420,33 @@ describe('tier 3 replay — the sandboxed seed-list job', () => {
 		};
 	}
 
+	// The plugin names a job kind; the WORKER decides what that kind runs. Nothing
+	// but this case ties the two literals together — rename the plugin's local id
+	// and every other suite stays green while `resolveJobCommand` starts returning
+	// null, i.e. the worker fails every enqueued seed test closed.
+	it('declares a job kind the worker has a host-controlled command for', async () => {
+		const { email, seeds } = await fixtureEmail();
+		const request = buildSeedTestPayload(email, seeds);
+
+		const command = resolveJobCommand(request.jobKind, request.payload);
+		expect(command, request.jobKind).not.toBeNull();
+		expect(command?.command).toBe('node');
+		expect(command?.args[0]).toMatch(/seedTestMain\.js$/);
+		// The payload arrives as its own argv element, never interpolated into a
+		// shell string, so a hostile payload cannot become part of the command.
+		expect(command?.args).toContain(request.payload);
+	});
+
+	it('refuses to resolve a job kind that is not this plugin’s', async () => {
+		const { email, seeds } = await fixtureEmail();
+		const { payload } = buildSeedTestPayload(email, seeds);
+		expect(resolveJobCommand('plugin.deliverability-lab.not-registered', payload)).toBeNull();
+		expect(resolveJobCommand('seed-test', payload)).toBeNull();
+	});
+
 	it('round-trips the plugin payload through the worker job and back', async () => {
 		const { email, seeds } = await fixtureEmail();
 		const request = buildSeedTestPayload(email, seeds);
-		expect(request.jobKind).toBe('plugin.deliverability-lab.seed-test');
 
 		const resultJson = runSeedTest(request.payload);
 		const parsed = parseSeedTestResult(resultJson);
