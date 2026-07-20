@@ -19,6 +19,12 @@
  * itself: `plugins.config.ts` accepts only registry-published packages, which is
  * exactly why the gallery installs published-shaped copies of the real manifests
  * into a temporary root instead of adding them to the checked-in config.
+ *
+ * Because the fixture is a copy, on its own it would prove the install contract
+ * only for a rewritten package. `gallery.test.ts` ("published package shape")
+ * closes that gap: it reads each reference's real `package.json` and asserts it
+ * declares the shape this harness synthesizes — a string root export plus a
+ * string export for every contribution module its manifest names.
  */
 
 import { createHash } from 'node:crypto';
