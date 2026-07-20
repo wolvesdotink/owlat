@@ -113,6 +113,36 @@ function contributionKinds(): string[] {
 	].map((match) => match[1]!);
 }
 
+/**
+ * Every capability string the kit defines, derived from its sources instead of
+ * listed here: capabilities are `namespace:verb` string literals and nothing
+ * else in `packages/plugin-kit/src/*.ts` has that shape, so a capability added
+ * by a later piece joins this set on its own and must be documented.
+ */
+function kitCapabilities(): Set<string> {
+	const capabilities = new Set<string>();
+	for (const entry of readdirSync(resolve(repoRoot, 'packages/plugin-kit/src'), {
+		withFileTypes: true,
+	})) {
+		if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+		for (const match of read(`packages/plugin-kit/src/${entry.name}`).matchAll(
+			/'([a-z][a-z-]*:[a-z][a-z-]*)'/g
+		)) {
+			capabilities.add(match[1]!);
+		}
+	}
+	return capabilities;
+}
+
+/** The capability named by each row of the contribution reference's bucket table. */
+function documentedBucketCapabilities(): Set<string> {
+	const summary = section(docs.contributions, '## Bucket summary');
+	return new Set([...summary.matchAll(/^\| `\w+` \| `([^`]+)` \|/gm)].map((match) => match[1]!));
+}
+
+/** Number words the prose may use for a small count. */
+const COUNT_WORDS = ['Zero', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight'];
+
 /** Every fenced ```ts block on a page. */
 function typescriptFences(markdown: string): string[] {
 	return [...markdown.matchAll(/```ts\n([\s\S]*?)```/g)].map((match) => match[1]!.trimEnd());
@@ -188,33 +218,57 @@ describe('plugin docs: imported identifiers exist in @owlat/plugin-kit', () => {
 });
 
 describe('plugin docs: capability vocabulary matches the shipped constants', () => {
-	const capabilityConstants: ReadonlyArray<[string, string]> = [
-		['sendTransport.ts', 'send:transport'],
-		['autonomyGate.ts', 'send:gate'],
-		['agentStep.ts', 'agent:step'],
-		['draftStrategy.ts', 'draft:strategy'],
-		['webhookEvent.ts', 'webhooks:publish'],
-		['importProvider.ts', 'imports:provide'],
-		['cron.ts', 'scheduler:cron'],
-		['navItem.ts', 'ui:navigation'],
-		['settingsPanel.ts', 'ui:settings'],
-		['workerTask.ts', 'worker:enqueue'],
-	];
+	const capabilities = [...kitCapabilities()].sort();
 
-	for (const [file, capability] of capabilityConstants) {
-		it(`documents ${capability} exactly as ${file} defines it`, () => {
-			expect(read(`packages/plugin-kit/src/${file}`)).toContain(`'${capability}' as const`);
+	it('derives the capability vocabulary from the kit sources', () => {
+		// A guard on the derivation itself: if the literal shape ever changes and
+		// the scan returns nothing, the per-capability cases below would all
+		// vanish silently instead of failing.
+		expect(capabilities.length).toBeGreaterThan(12);
+	});
+
+	for (const capability of capabilities) {
+		it(`documents ${capability} on both the capability and contribution pages`, () => {
 			expect(docs.capabilities).toContain(`\`${capability}\``);
 			expect(docs.contributions).toContain(`\`${capability}\``);
 		});
 	}
 
-	for (const capability of ['automation:trigger', 'automation:step', 'automation:condition']) {
-		it(`documents ${capability}`, () => {
-			expect(read('packages/plugin-kit/src/automation.ts')).toContain(`'${capability}' as const`);
-			expect(docs.capabilities).toContain(`\`${capability}\``);
-		});
-	}
+	it('names a real capability in every bucket row', () => {
+		const bucketCapabilities = documentedBucketCapabilities();
+		expect(bucketCapabilities.size).toBeGreaterThan(10);
+		for (const capability of bucketCapabilities) {
+			expect(capabilities, `bucket row names unknown capability ${capability}`).toContain(
+				capability
+			);
+		}
+	});
+
+	it('names every capability that has no contribution bucket', () => {
+		// The sentence that closes the vocabulary-to-bucket mapping. Everything the
+		// bucket table does not claim is host-mediated and must be named there, so
+		// a reader diffing the two lists is left with no unexplained leftovers.
+		const bucketCapabilities = documentedBucketCapabilities();
+		const unmapped = capabilities.filter((capability) => !bucketCapabilities.has(capability));
+		expect(unmapped.length).toBeGreaterThan(0);
+
+		const summary = section(docs.contributions, '## Bucket summary');
+		const sentence = summary.split('\n').find((line) => line.includes('no contribution bucket'));
+		expect(sentence, 'the bucket summary must say which capabilities have no bucket').toBeTypeOf(
+			'string'
+		);
+		for (const capability of unmapped) {
+			expect(sentence!, `${capability} has no bucket and is not named`).toContain(
+				`\`${capability}\``
+			);
+		}
+		for (const capability of bucketCapabilities) {
+			expect(sentence!, `${capability} has a bucket and must not be named`).not.toContain(
+				`\`${capability}\``
+			);
+		}
+		expect(sentence!).toContain(`${COUNT_WORDS[unmapped.length]} capabilities have no`);
+	});
 
 	it('documents every contribution bucket the manifest type declares', () => {
 		const kinds = contributionKinds();
