@@ -3831,6 +3831,114 @@ scanner), Toggles (module) (informal — the codebase says "feature
 flag" throughout), Settings flags (module) (overloaded with non-flag
 settings).
 
+## Plugin platform
+
+**Plugin**:
+An npm package that exports one validated manifest and, optionally,
+static contribution modules built against `@owlat/plugin-kit`. The
+manifest — not the code — is what the host reads to compose, permission,
+flag, budget, and render the plugin; validation inspects it as data and
+never invokes it. A plugin's `id` (lowercase kebab-case) namespaces its
+feature flag, storage, spend, audit attribution, and every kind it
+contributes.
+_Avoid_: Extension (the plan's early word; the shipped package, flag key,
+CLI, and manifest all say "plugin"), Module (already means a typed
+registry member inside a single seam), Integration (reserved for the
+import-provider / connected-service sense).
+
+**Manifest**:
+The `definePlugin(...)` declaration: `id`, semantic `version`, requested
+`capabilities`, data-only `contributes` buckets, an optional `flag`,
+`llmBudget`, Convex `component` export, and `settingsSchema`. It is the
+permission CEILING, never a permission: a contribution bucket requires
+both its capability and an explicit flag, plugin storage requires a flag,
+and `llm:invoke` requires a flag plus a validated daily budget.
+_Avoid_: Plugin config (`plugins.config.ts` is the config — the bundled
+membership list), Descriptor (that is one contribution entry).
+
+**Capability**:
+A lowercase `domain:action` string naming one host-mediated operation a
+plugin may REQUEST. Exact match; no wildcards. Distinct from a **Grant**,
+which is the operator decision allowing one declared capability for an
+installation. Grants can only ever restrict the manifest. The API-key
+scope vocabulary doubles as the capability vocabulary for connected-app
+access.
+_Avoid_: Permission (that is the granted state), Scope (that is the
+API-key spelling of the same string, on the Tier-2 path only).
+
+**Contribution**:
+One data-only descriptor in a manifest bucket, with its executable half
+behind a single condition-independent package export that codegen
+verifies without running. The stored kind is always
+`plugin.<pluginId>.<localId>`, so a plugin can never shadow or collide
+with a core kind. Buckets that no seam consumes yet are reserved names,
+not extension points.
+_Avoid_: Hook (that is the Tier-2 synchronous call), Extension point (the
+seam is the extension point; the contribution is what fills it).
+
+**Composition**:
+The generated, checked-in Convex and Nuxt modules that statically import
+the bundled set listed in `plugins.config.ts`, ordered by manifest id.
+Codegen verifies package identity, lockfile integrity, and realpath
+containment, imports only each package's manifest entry, and emits an
+isolate-safe catalog plus a separate executable registry per seam. The
+zero-plugin composition is a valid no-op deployment.
+_Avoid_: Plugin loader (nothing is loaded at runtime — that is the
+invariant), Registry (a registry is one seam's members; composition is
+the build-time whole).
+
+**Bundled plugin (Tier 1)**:
+A composed-at-build-time plugin running inside Owlat's own processes. It
+may contribute backend and frontend modules and ship an isolated Convex
+component under an injective `plugin_<id>` namespace. Its feature flag
+disables it instantly; install and removal need a rebuild. Its trust is
+the operator's own deployed code — the manifest is not a sandbox.
+
+**Connected app (Tier 2)**:
+An external HTTPS endpoint bound to a plugin id, holding a sealed shared
+secret and an operator-granted subset of that plugin's capabilities.
+Installs and revokes instantly and never executes code inside Convex or
+Nuxt. Lifecycle: `enabled` ⇄ `disabled`, plus the terminal `revoked`.
+
+**Signed hook**:
+One synchronous decision call Owlat makes to a connected app —
+`draft`, `gate`, or `score` — HMAC-signed in both directions over a
+canonical string with a direction tag, the body digest, a signed
+timestamp, and a per-request nonce that the response signature echoes.
+`gate` fails CLOSED to a caution objection and has no accept value in its
+schema; `draft` and `score` fail OPEN to the built-in default and to "no
+score". Bounded by a deadline, request/response byte caps, an SSRF guard,
+and a per-(app, kind) circuit breaker.
+_Avoid_: Webhook (that is the asynchronous, fan-out direction),
+Callback (ambiguous about who calls whom).
+
+**Plugin job (Tier 3)**:
+A unit of untrusted or heavy compute a plugin ENQUEUES onto the
+`pluginTasks` queue under `worker:enqueue`, run by the generalized
+code-worker as a separate unprivileged uid with every ambient credential
+stripped from its environment. The plugin picks which host-controlled job
+kind to run and supplies a bounded payload; it never supplies the
+command. Claim, cancel, reclaim, and read are host/operator operations,
+and attempts, timeout, payload/result bytes, and in-flight depth are all
+host-clamped.
+_Avoid_: Task (already means a code task / task-flow card), Worker (the
+worker is the executor; the job is the unit of work).
+
+**Plugin host**:
+The runtime-neutral enforcement kernel (`@owlat/plugin-host`) shared by
+Convex and Nuxt. It owns capability and flag checks, contribution
+ordering, restrict-only gate results, agent-step placements, navigation
+merging, and the untrusted-text policy. It executes only handlers the
+build statically composed; it is not a module loader.
+
+**Host-mediated service**:
+The only surface hosted plugin code receives — `permissions`, `storage`,
+`llm`, `logger`, `scheduler` on a `PluginContext`, or a smaller
+per-contribution `services` object. Never a Convex context, database
+handle, environment value, tenant id, credential, or scheduler function
+reference. Storage methods take no organization or plugin argument
+because the host already bound both scopes.
+
 ## Organization deletion
 
 **Organization deletion (module)**:
