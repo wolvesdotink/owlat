@@ -27,10 +27,8 @@ convex/
 ├── delivery/     # Provider-agnostic send pipeline
 ├── forms/        # Embeddable signup forms
 ├── auth/         # BetterAuth integration, sessions, roles
-├── plugins/      # Plugin host seams: generated catalogs/registries, authorization,
-│                 # hosted services (storage, LLM), settings, Tier-3 task queue
-├── connectedApps/# Tier-2 connected apps: lifecycle, sealed secrets, signed hooks,
-│                 # hook circuit + delivery logs
+├── plugins/      # Plugin host seams, hosted services, Tier-3 job queue
+├── connectedApps/ # Tier-2 apps, sealed secrets, signed hooks, delivery logs
 ├── lib/          # Shared helpers (env, permissions, providers)
 ├── _utils/       # Lower-level utilities (errors, IDs)
 └── _generated/   # Convex codegen output
