@@ -6,7 +6,7 @@
  * as well as in its own package.
  */
 
-import { access } from 'node:fs/promises';
+import { access, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { composeBundledPlugins, createPluginPermissionService } from '@owlat/plugin-host';
@@ -279,6 +279,20 @@ describe('reference documentation', () => {
 					).toContain(documented);
 				}
 			}
+		}
+	});
+
+	// This package's README is the gate's index: a suite it does not list is one a
+	// reader never learns about, which is how the hook-client contract stayed
+	// undocumented after it was added.
+	it('lists every conformance suite in this package README', async () => {
+		const readme = await readRepositoryFile('examples/conformance/README.md');
+		const suites = (await readdir(join(REPOSITORY_ROOT, 'examples/conformance/src/__tests__')))
+			.filter((file) => file.endsWith('.test.ts'))
+			.sort();
+		expect(suites.length, 'examples/conformance ships no suites').toBeGreaterThan(0);
+		for (const suite of suites) {
+			expect(readme, `examples/conformance/README.md does not mention ${suite}`).toContain(suite);
 		}
 	});
 
