@@ -15,21 +15,23 @@ Each business area lives in its own folder under `apps/api/convex/`:
 
 ```
 convex/
-├── mail/         # SMTP/IMAP, mailboxes, messages, drafts, identities
-├── campaigns/    # Marketing campaigns + scheduling + archives
-├── contacts/     # CRM contacts, identities, segments
-├── automations/  # Trigger-based workflows
-├── topics/       # Topics + DOI flows
-├── webhooks/     # Outbound webhooks + delivery logs
-├── inbox/        # Shared inbox + threading
-├── analytics/    # Funnels, reports, AI-driven viz
-├── domains/      # SPF/DKIM/DMARC, warming, reputation
-├── delivery/     # Provider-agnostic send pipeline
-├── forms/        # Embeddable signup forms
-├── auth/         # BetterAuth integration, sessions, roles
-├── lib/          # Shared helpers (env, permissions, providers)
-├── _utils/       # Lower-level utilities (errors, IDs)
-└── _generated/   # Convex codegen output
+├── mail/          # SMTP/IMAP, mailboxes, messages, drafts, identities
+├── campaigns/     # Marketing campaigns + scheduling + archives
+├── contacts/      # CRM contacts, identities, segments
+├── automations/   # Trigger-based workflows
+├── topics/        # Topics + DOI flows
+├── webhooks/      # Outbound webhooks + delivery logs
+├── inbox/         # Shared inbox + threading
+├── analytics/     # Funnels, reports, AI-driven viz
+├── domains/       # SPF/DKIM/DMARC, warming, reputation
+├── delivery/      # Provider-agnostic send pipeline
+├── forms/         # Embeddable signup forms
+├── auth/          # BetterAuth integration, sessions, roles
+├── plugins/       # Plugin host seams, hosted services, Tier-3 job queue
+├── connectedApps/ # Tier-2 apps, sealed secrets, signed hooks, delivery logs
+├── lib/           # Shared helpers (env, permissions, providers)
+├── _utils/        # Lower-level utilities (errors, IDs)
+└── _generated/    # Convex codegen output
 ```
 
 Convex generated function paths mirror the folder structure: a query in
@@ -299,6 +301,89 @@ capability being checked. See ADR-0039 (enforcement model) and ADR-0040
   control-stripped) before it reaches `automationRuns.triggerData`. Core and
   plugin triggers share one fanout — one running-instance guard, one no-steps
   guard, one stats bump, one scheduled walker.
+- Plugin crons derive their registrations from the generated catalog. The
+  namespaced kind is also the unique Convex registration name, registration is
+  idempotent, and every interval is clamped into the host scheduling limits, so
+  a stale or hand-edited catalog can never register a hot loop or an
+  effectively-never cron. An entry that cannot be expressed as a bounded
+  interval is skipped rather than allowed to break core cron registration. A
+  cron execution receives `{ signal, logger, llm }` only — never a Convex
+  context, tenant id, or credential — and is reauthorized before it runs.
+- Plugin webhook events are data-only: the catalog carries the namespaced wire
+  kind, its owner, and its subscription eligibility, and the authorization seam
+  rechecks flag, grant, and env before a plugin may publish one. Emit-time
+  payload data is untrusted and is clamped and scrubbed before delivery.
+- Plugin import providers resolve through the host and call `authorizeStart`
+  before a run opens; the paged fetch continues only while flag, grant, env, and
+  singleton scope hold. A provider's inbound signature contract is mandatory and
+  verified by the host in constant time against the raw body; it proves origin
+  only and carries no replay resistance, so any future inbound HTTP surface must
+  add replay defense before accepting plugin-sourced traffic.
+- Plugin nav and settings entries are data-only links. Core entries register
+  first and registry dedup is by destination href, first-registered-wins, so a
+  plugin cannot shadow a core destination. Labels are clamped to 64 UTF-16 code
+  units (an astral character counts as two — the same unit the manifest
+  validator bounds the name by) with control and bidi-format characters stripped
+  when the entry is derived (spoofing defense; Vue's HTML escaping is the XSS
+  defense) and the whole entry is flag-gated. The untrusted-text policy seam is
+  not wired into this path — a new plugin-text→UI surface must decide for itself
+  what it needs.
+- The plugin settings module owns only the `pluginSettings` column; enablement
+  and capability grants stay owned by the feature-flags module. Secret field
+  values are redacted server-side to a presence boolean and never leave the
+  backend; an omitted secret in a partial update keeps the stored one. Residual
+  settings for a plugin removed from the build are surfaced as orphaned so an
+  admin can purge them.
+- Enabling a bundled plugin flag requires the request to approve exactly the
+  capability set the manifest declares, and all `requiredEnvVars` must be
+  present. Disabling deletes the plugin's grant record. Flag state and grants
+  are read fresh in each caller's transaction, so a disable or revoke takes
+  effect on the very next operation.
+
+## Connected apps (Tier 2)
+
+- Read paths return `toPublicConnectedApp` only; the sealed secret columns are
+  omitted by construction. Never add a query that returns a row directly.
+- A connected app's requested capabilities are validated against the bound
+  plugin's manifest at registration (restrict-only ceiling) and the operator
+  grant is rechecked at runtime. Endpoints must be absolute https with a
+  hostname and no embedded credentials.
+- Secret minting, sealing, and opening live in `'use node'` files; persistence
+  mutations stay V8-safe and only ever see the envelope. The plaintext is
+  returned exactly once, at register or rotate, and is never stored or logged.
+- `hookProtocol` (kinds, headers, response validation) and `hookSignature`
+  (canonical signing strings, constant-time verification) are pure and V8-safe.
+  Keep crypto to Web Crypto there; `hookClient` and `hookRuntime` own the Node
+  runtime, the SSRF-guarded fetch, and the plugin binding.
+- Hook fail directions are fixed: `gate` fails closed to a caution objection;
+  `draft` and `score` fail open. Never add an accept value to a gate response.
+- Resolve the app and circuit state before opening the secret: a missing,
+  disabled, or revoked app, an ungranted hook kind, or an open breaker
+  short-circuits with no network call and no secret opened.
+- Scrub and clamp every app-returned string through the host untrusted-text
+  policy bound to the app's plugin before any consumer sees it.
+- The hook delivery log has no column for the payload, the returned text, the
+  secret, or either signature. Record only the kind, whether a call was
+  attempted, which side won, a fixed reason code, and the duration; keep the
+  reason validator exhaustive in both directions against `HookUnavailableCode`.
+
+## Plugin worker jobs (Tier 3)
+
+- `worker:enqueue` grants enqueue only. Claim, cancel, reclaim, and read are
+  host/operator operations, and a plugin may enqueue only its own namespaced job
+  kinds — ownership is decided from the kind string itself.
+- Clamp attempts, per-execution timeout, payload bytes, result bytes, and the
+  per-(organization, plugin) in-flight count in the enqueue transaction. Enqueue
+  fails closed: a disabled, ungranted, or undeclared plugin, a cross-plugin
+  kind, an oversized payload, or an exhausted in-flight budget inserts nothing.
+- A cancelled queued job is marked cancelled at claim and never runs; a
+  cancelled running job is killed at its next heartbeat; a cancelled job is
+  never retried. Lease reclaim of an abandoned `running` row is bounded per
+  sweep.
+- Job kinds map to a host-controlled command registry in the worker image. Never
+  build a command from the payload, and never pass a payload through a shell.
+- Enqueue and every terminal outcome write a `pluginId`-attributed audit row;
+  terminal failure reasons are a fixed taxonomy and error messages are clamped.
 
 ## Environment variables
 

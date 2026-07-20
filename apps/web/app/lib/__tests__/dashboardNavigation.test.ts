@@ -449,6 +449,37 @@ describe('derivePluginNavigation', () => {
 		);
 	});
 
+	it('clamps the label by UTF-16 code units and never splits a surrogate pair', () => {
+		// The clamp's unit is observable, and the docs state it: 32 astral
+		// characters are 64 code units — exactly the ceiling the manifest
+		// validator enforces — so the widest label an author can ship reaches the
+		// sidebar whole. A code-POINT clamp would let twice that through, and a
+		// code-unit clamp that cut mid-pair would leave a lone surrogate (U+FFFD
+		// when rendered); neither happens.
+		const label = String.fromCodePoint(0x1f600).repeat(32);
+		expect(label.length).toBe(64);
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/astral',
+				manifest: definePlugin({
+					id: 'astral',
+					version: '1.0.0',
+					capabilities: ['ui:settings'],
+					flag: { default: false },
+					contributes: {
+						settingsPanels: [
+							{ id: 'x', name: label, href: '/dashboard/settings/astral', icon: 'lucide:x' },
+						],
+					},
+				}),
+			},
+		]);
+		const clamped = derivePluginNavigation(plugins, () => true).settingsPanels[0]?.value.name;
+		expect(clamped).toBe(label);
+		expect([...(clamped ?? '')]).toHaveLength(32);
+		expect(clamped).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+	});
+
 	it('strips control characters from a plugin-authored label before rendering', () => {
 		// Build the control character programmatically so no raw byte lands in source.
 		const noisy = `Bad${String.fromCharCode(7)}Name`;
