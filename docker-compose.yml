@@ -488,9 +488,11 @@ services:
       convex:
         condition: service_healthy
     profiles:
-      # Coding-agent tasks (inbox.codeTasks) and/or Tier-3 plugin jobs. A bundled
-      # Tier-3 plugin's manifest flag declares `dockerProfiles: ['plugin-tasks']`,
-      # so enabling such a plugin brings this same sandboxed worker up.
+      # Coding-agent tasks (inbox.codeTasks) and/or Tier-3 plugin jobs. A plugin
+      # manifest flag carries only `default` + `requiredEnvVars`, so enabling a
+      # plugin that declares `worker:enqueue` does NOT bring this worker up:
+      # the operator activates `plugin-tasks` explicitly. Without it a plugin's
+      # jobs simply accumulate as `queued` rows.
       - inbox-codetasks
       - plugin-tasks
       - dev
