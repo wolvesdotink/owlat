@@ -174,15 +174,15 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 	for (const [file, capability] of capabilityConstants) {
 		it(`documents ${capability} exactly as ${file} defines it`, () => {
 			expect(read(`packages/plugin-kit/src/${file}`)).toContain(`'${capability}' as const`);
-			expect(docs.capabilities).toContain(capability);
-			expect(docs.contributions).toContain(capability);
+			expect(docs.capabilities).toContain(`\`${capability}\``);
+			expect(docs.contributions).toContain(`\`${capability}\``);
 		});
 	}
 
 	for (const capability of ['automation:trigger', 'automation:step', 'automation:condition']) {
 		it(`documents ${capability}`, () => {
 			expect(read('packages/plugin-kit/src/automation.ts')).toContain(`'${capability}' as const`);
-			expect(docs.capabilities).toContain(capability);
+			expect(docs.capabilities).toContain(`\`${capability}\``);
 		});
 	}
 
@@ -198,7 +198,7 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 		].map((match) => match[1]!);
 		expect(kinds.length).toBeGreaterThan(15);
 		for (const kind of kinds) {
-			expect(docs.contributions, `bucket ${kind} is undocumented`).toContain(kind);
+			expect(docs.contributions, `bucket ${kind} is undocumented`).toContain(`\`${kind}\``);
 		}
 	});
 
@@ -211,7 +211,7 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 		].map((match) => match[1]!);
 		expect(declared.length).toBeGreaterThan(5);
 		for (const scope of declared) {
-			expect(docs.capabilities, `scope ${scope} is undocumented`).toContain(scope);
+			expect(docs.capabilities, `scope ${scope} is undocumented`).toContain(`\`${scope}\``);
 		}
 	});
 });
@@ -283,7 +283,7 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 			expect(
 				docs.troubleshooting + docs.connectedApps,
 				`reason ${reason} is undocumented`
-			).toContain(reason);
+			).toContain(`\`${reason}\``);
 		}
 	});
 
@@ -293,7 +293,7 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		].map((match) => match[1]!);
 		expect(hostCodes.length).toBeGreaterThan(8);
 		for (const code of hostCodes) {
-			expect(docs.troubleshooting, `host code ${code} is undocumented`).toContain(code);
+			expect(docs.troubleshooting, `host code ${code} is undocumented`).toContain(`\`${code}\``);
 		}
 
 		const codegenCodes = [
@@ -301,7 +301,7 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		].map((match) => match[1]!);
 		expect(codegenCodes.length).toBeGreaterThan(10);
 		for (const code of codegenCodes) {
-			expect(docs.troubleshooting, `codegen code ${code} is undocumented`).toContain(code);
+			expect(docs.troubleshooting, `codegen code ${code} is undocumented`).toContain(`\`${code}\``);
 		}
 	});
 
@@ -311,7 +311,7 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		].map((match) => match[1]!);
 		expect(issueCodes.length).toBeGreaterThan(5);
 		for (const code of issueCodes) {
-			expect(docs.troubleshooting, `issue code ${code} is undocumented`).toContain(code);
+			expect(docs.troubleshooting, `issue code ${code} is undocumented`).toContain(`\`${code}\``);
 		}
 	});
 });
