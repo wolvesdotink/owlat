@@ -14,6 +14,7 @@ import {
 	parsePluginManifest,
 	PLUGIN_CONTRIBUTION_KINDS,
 	PLUGIN_LIVE_CONTRIBUTION_KINDS,
+	validatePluginManifest,
 } from '@owlat/plugin-kit';
 import {
 	contributionExportPaths,
@@ -266,23 +267,32 @@ describe('reference documentation', () => {
 
 describe('gallery capability ceilings', () => {
 	it('declares a capability for every contribution bucket a reference uses', () => {
-		const requiredCapability: Readonly<Record<string, string>> = {
-			agentSteps: 'agent:step',
-			automationConditions: 'automation:condition',
-			automationSteps: 'automation:step',
-			automationTriggers: 'automation:trigger',
-			crons: 'scheduler:cron',
-			draftStrategies: 'draft:strategy',
-			navItems: 'ui:navigation',
-			sendGates: 'send:gate',
-			settingsPanels: 'ui:settings',
-			webhookEvents: 'webhooks:publish',
-		};
+		// Differential against the shipped validator rather than a hand-written
+		// bucket→capability map: for each bucket a reference contributes to, every
+		// declared capability is dropped in turn and the manifest re-validated. The
+		// capability whose removal makes the validator object at `$.capabilities`
+		// IS the one the kernel requires for that bucket — read out of the kernel,
+		// so a renamed capability constant keeps this honest instead of pinning a
+		// string the host no longer uses.
 		for (const entry of REFERENCE_GALLERY) {
-			for (const bucket of Object.keys(entry.manifest.contributes ?? {})) {
-				const capability = requiredCapability[bucket];
-				expect(capability, `${entry.packageName} uses unmapped bucket ${bucket}`).toBeDefined();
-				expect(entry.manifest.capabilities, `${entry.packageName}:${bucket}`).toContain(capability);
+			for (const [bucket, contributions] of Object.entries(entry.manifest.contributes ?? {})) {
+				const scoped = { ...entry.manifest, contributes: { [bucket]: contributions } };
+				expect(validatePluginManifest(scoped).ok, `${entry.packageName}:${bucket}`).toBe(true);
+
+				const required = entry.manifest.capabilities.filter((capability) => {
+					const result = validatePluginManifest({
+						...scoped,
+						capabilities: entry.manifest.capabilities.filter((declared) => declared !== capability),
+					});
+					return (
+						!result.ok &&
+						result.issues.some(
+							(issue) => issue.path === '$.capabilities' && issue.message.includes(capability)
+						)
+					);
+				});
+
+				expect(required, `${entry.packageName}:${bucket} required capabilities`).toHaveLength(1);
 			}
 		}
 	});
