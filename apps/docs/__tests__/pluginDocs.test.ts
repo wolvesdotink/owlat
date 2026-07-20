@@ -402,124 +402,145 @@ describe('plugin docs: capability vocabulary matches the shipped constants', () 
 	});
 });
 
+/**
+ * The one shape every limits case below uses: derive the declared names from the
+ * source, require the documented set to be exactly that set (so an added,
+ * removed, or renamed bound fails until the page says so), then pin each
+ * literal to where it is declared and each rendered phrase to the section that
+ * renders it (so a retuned bound fails until the page is retuned with it).
+ *
+ * Written once rather than per case: each copy of the loop was another place a
+ * future author could weaken one call site by accident.
+ */
+function expectDocumentedLimits(options: {
+	/** Sources one of which must contain each literal, as written in code. */
+	sources: readonly string[];
+	/** Text the declared names are read from. Defaults to all of `sources`. */
+	declaration?: string;
+	/** Must capture the declared name in group 1, and must be global. */
+	declaredPattern: RegExp;
+	/** How the literal is written: `NAME = value;` or `field: value,`. */
+	form?: 'const' | 'field';
+	/** The rendered failure clause, so table cases read as table cases. */
+	proseFailure?: 'is undocumented' | 'has no table row';
+	/** Body of the one section that must render every phrase. */
+	section: string;
+	rendered: Readonly<Record<string, { literal: string; prose: string }>>;
+}): void {
+	const { sources, declaredPattern, form = 'const', proseFailure = 'is undocumented' } = options;
+	const declaration = options.declaration ?? sources.join('\n');
+	const declared = [...declaration.matchAll(declaredPattern)].map((match) => match[1]!);
+	expect(new Set(declared)).toEqual(new Set(Object.keys(options.rendered)));
+
+	for (const [name, { literal, prose }] of Object.entries(options.rendered)) {
+		const written = form === 'const' ? `${name} = ${literal};` : `${name}: ${literal},`;
+		expect(
+			sources.some((source) => source.includes(written)),
+			`${name} is no longer ${literal}`
+		).toBe(true);
+		expect(options.section, `${name} (${prose}) ${proseFailure}`).toContain(prose);
+	}
+}
+
 describe('plugin docs: limits match the constants the host enforces', () => {
 	it('documents the cron scheduling and timeout envelope', () => {
 		// Both ends of both ranges, derived from the declaration rather than
 		// chosen: a renamed, added, or retuned bound fails until the table says so.
-		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
-			PLUGIN_CRON_MIN_INTERVAL_MINUTES: {
-				literal: '15',
-				prose: '| `schedule.intervalMinutes` | 15 …',
+		expectDocumentedLimits({
+			sources: [read('packages/plugin-kit/src/cron.ts')],
+			declaredPattern: /^export const (PLUGIN_CRON_\w+) = ([\d_ *]+);/gm,
+			section: section(docs.contributions, '## Crons'),
+			rendered: {
+				PLUGIN_CRON_MIN_INTERVAL_MINUTES: {
+					literal: '15',
+					prose: '| `schedule.intervalMinutes` | 15 …',
+				},
+				PLUGIN_CRON_MAX_INTERVAL_MINUTES: {
+					literal: '28 * 24 * 60',
+					prose: '… 40 320 (four weeks) |',
+				},
+				PLUGIN_CRON_TIMEOUT_MIN_MS: { literal: '1_000', prose: '| `timeoutMs` | 1 000 …' },
+				PLUGIN_CRON_TIMEOUT_MAX_MS: {
+					literal: '5 * 60_000',
+					prose: '… 300 000 (five minutes) |',
+				},
 			},
-			PLUGIN_CRON_MAX_INTERVAL_MINUTES: {
-				literal: '28 * 24 * 60',
-				prose: '… 40 320 (four weeks) |',
-			},
-			PLUGIN_CRON_TIMEOUT_MIN_MS: { literal: '1_000', prose: '| `timeoutMs` | 1 000 …' },
-			PLUGIN_CRON_TIMEOUT_MAX_MS: {
-				literal: '5 * 60_000',
-				prose: '… 300 000 (five minutes) |',
-			},
-		};
-		const cron = read('packages/plugin-kit/src/cron.ts');
-		const declared = [...cron.matchAll(/^export const (PLUGIN_CRON_\w+) = ([\d_ *]+);/gm)].map(
-			(match) => match[1]!
-		);
-		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
-
-		const crons = section(docs.contributions, '## Crons');
-		for (const [name, { literal, prose }] of Object.entries(rendered)) {
-			expect(cron, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
-			expect(crons, `${name} (${prose}) is undocumented`).toContain(prose);
-		}
+		});
 	});
 
 	it('documents the Tier-3 worker envelope', () => {
 		// Same treatment, and the two 64 KiB rows are pinned separately: the
 		// payload ceiling rejects at enqueue while the result ceiling truncates,
 		// so a bare `toContain('64 KiB')` would let either row cover the other.
-		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
-			PLUGIN_WORKER_MIN_ATTEMPTS: { literal: '1', prose: '| Attempts | clamped to 1 …' },
-			PLUGIN_WORKER_MAX_ATTEMPTS: { literal: '5', prose: '… 5 |' },
-			PLUGIN_WORKER_TIMEOUT_MIN_MS: {
-				literal: '1_000',
-				prose: '| Single-execution wall clock | clamped to 1 s …',
+		expectDocumentedLimits({
+			sources: [read('packages/plugin-kit/src/workerTask.ts')],
+			declaredPattern: /^export const (PLUGIN_WORKER_\w+) = ([\d_ *]+);/gm,
+			section: section(docs.sandboxedJobs, '## Enqueue limits'),
+			rendered: {
+				PLUGIN_WORKER_MIN_ATTEMPTS: { literal: '1', prose: '| Attempts | clamped to 1 …' },
+				PLUGIN_WORKER_MAX_ATTEMPTS: { literal: '5', prose: '… 5 |' },
+				PLUGIN_WORKER_TIMEOUT_MIN_MS: {
+					literal: '1_000',
+					prose: '| Single-execution wall clock | clamped to 1 s …',
+				},
+				PLUGIN_WORKER_TIMEOUT_MAX_MS: { literal: '15 * 60_000', prose: '… 15 min |' },
+				PLUGIN_WORKER_PAYLOAD_MAX_BYTES: {
+					literal: '64 * 1024',
+					prose: '| Payload | ≤ 64 KiB (oversized ⇒ rejected at enqueue) |',
+				},
+				PLUGIN_WORKER_RESULT_MAX_BYTES: {
+					literal: '64 * 1024',
+					prose: '| Stored result | ≤ 64 KiB (oversized ⇒ truncated before persisting) |',
+				},
+				PLUGIN_WORKER_MAX_PENDING_JOBS: {
+					literal: '100',
+					prose: '| In-flight jobs per (organization, plugin) | 100 `queued` + `running` |',
+				},
 			},
-			PLUGIN_WORKER_TIMEOUT_MAX_MS: { literal: '15 * 60_000', prose: '… 15 min |' },
-			PLUGIN_WORKER_PAYLOAD_MAX_BYTES: {
-				literal: '64 * 1024',
-				prose: '| Payload | ≤ 64 KiB (oversized ⇒ rejected at enqueue) |',
-			},
-			PLUGIN_WORKER_RESULT_MAX_BYTES: {
-				literal: '64 * 1024',
-				prose: '| Stored result | ≤ 64 KiB (oversized ⇒ truncated before persisting) |',
-			},
-			PLUGIN_WORKER_MAX_PENDING_JOBS: {
-				literal: '100',
-				prose: '| In-flight jobs per (organization, plugin) | 100 `queued` + `running` |',
-			},
-		};
-		const worker = read('packages/plugin-kit/src/workerTask.ts');
-		const declared = [...worker.matchAll(/^export const (PLUGIN_WORKER_\w+) = ([\d_ *]+);/gm)].map(
-			(match) => match[1]!
-		);
-		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
-
-		const limits = section(docs.sandboxedJobs, '## Enqueue limits');
-		for (const [name, { literal, prose }] of Object.entries(rendered)) {
-			expect(worker, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
-			expect(limits, `${name} (${prose}) is undocumented`).toContain(prose);
-		}
+		});
 	});
 
 	it('documents every plugin-storage quota', () => {
 		// Every field of the frozen limit object, not a chosen few: the map below
 		// must cover the declaration exactly, so a new ceiling fails until it is
 		// documented, and deleting the table row that renders one fails too.
-		const rendered: Readonly<Record<string, { literal: string; row: string }>> = {
-			maxKeyBytes: { literal: '256', row: '256 bytes' },
-			maxValueBytes: { literal: '64 * 1024', row: '64 KiB' },
-			maxEntries: { literal: '1_000', row: '1 000' },
-			maxTotalBytes: { literal: '10 * 1024 * 1024', row: '10 MiB' },
-			maxListPageSize: { literal: '100', row: '100' },
-			maxJsonDepth: { literal: '32', row: '32 / 4 096 / 1 024 / 1 024' },
-			maxJsonNodes: { literal: '4_096', row: '32 / 4 096 / 1 024 / 1 024' },
-			maxArrayItems: { literal: '1_024', row: '32 / 4 096 / 1 024 / 1 024' },
-			maxObjectFields: { literal: '1_024', row: '32 / 4 096 / 1 024 / 1 024' },
-		};
 		const storage = read('apps/api/convex/plugins/storageJson.ts');
 		const declaration = storage.slice(
 			storage.indexOf('PLUGIN_STORAGE_LIMITS = Object.freeze({'),
 			storage.indexOf('});')
 		);
-		const declared = [...declaration.matchAll(/^\t(\w+):/gm)].map((match) => match[1]!);
-		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
-
-		const limits = section(docs.capabilities, '### Storage isolation and limits');
-		for (const [key, { literal, row }] of Object.entries(rendered)) {
-			expect(declaration, `${key} is no longer ${literal}`).toContain(`${key}: ${literal},`);
-			expect(limits, `${key} (${row}) has no table row`).toContain(`| ${row} |`);
-		}
+		expectDocumentedLimits({
+			sources: [declaration],
+			declaredPattern: /^\t(\w+):/gm,
+			form: 'field',
+			proseFailure: 'has no table row',
+			section: section(docs.capabilities, '### Storage isolation and limits'),
+			rendered: {
+				maxKeyBytes: { literal: '256', prose: '| 256 bytes |' },
+				maxValueBytes: { literal: '64 * 1024', prose: '| 64 KiB |' },
+				maxEntries: { literal: '1_000', prose: '| 1 000 |' },
+				maxTotalBytes: { literal: '10 * 1024 * 1024', prose: '| 10 MiB |' },
+				maxListPageSize: { literal: '100', prose: '| 100 |' },
+				maxJsonDepth: { literal: '32', prose: '| 32 / 4 096 / 1 024 / 1 024 |' },
+				maxJsonNodes: { literal: '4_096', prose: '| 32 / 4 096 / 1 024 / 1 024 |' },
+				maxArrayItems: { literal: '1_024', prose: '| 32 / 4 096 / 1 024 / 1 024 |' },
+				maxObjectFields: { literal: '1_024', prose: '| 32 / 4 096 / 1 024 / 1 024 |' },
+			},
+		});
 	});
 
 	it('documents every plugin LLM request bound', () => {
-		const llm = read('apps/api/convex/plugins/llmRequest.ts');
-		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
-			PLUGIN_LLM_MAX_INPUT_BYTES: { literal: '64 * 1024', prose: '64 KiB of UTF-8 input' },
-			PLUGIN_LLM_MAX_MESSAGE_BYTES: { literal: '32 * 1024', prose: '32 KiB each' },
-			PLUGIN_LLM_MAX_MESSAGES: { literal: '32', prose: '32 messages' },
-			PLUGIN_LLM_MAX_OUTPUT_TOKENS: { literal: '2048', prose: '2 048 output tokens' },
-		};
-		const declared = [...llm.matchAll(/export const (PLUGIN_LLM_MAX_\w+) = /g)].map(
-			(match) => match[1]!
-		);
-		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
-
-		const budgets = section(docs.capabilities, '### LLM budgets');
-		for (const [name, { literal, prose }] of Object.entries(rendered)) {
-			expect(llm, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
-			expect(budgets, `${name} (${prose}) is undocumented`).toContain(prose);
-		}
+		expectDocumentedLimits({
+			sources: [read('apps/api/convex/plugins/llmRequest.ts')],
+			declaredPattern: /export const (PLUGIN_LLM_MAX_\w+) = /g,
+			section: section(docs.capabilities, '### LLM budgets'),
+			rendered: {
+				PLUGIN_LLM_MAX_INPUT_BYTES: { literal: '64 * 1024', prose: '64 KiB of UTF-8 input' },
+				PLUGIN_LLM_MAX_MESSAGE_BYTES: { literal: '32 * 1024', prose: '32 KiB each' },
+				PLUGIN_LLM_MAX_MESSAGES: { literal: '32', prose: '32 messages' },
+				PLUGIN_LLM_MAX_OUTPUT_TOKENS: { literal: '2048', prose: '2 048 output tokens' },
+			},
+		});
 	});
 
 	it('documents the Tier-2 hook envelope', () => {
@@ -671,20 +692,16 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 	});
 
 	it('documents every settings-schema ceiling', () => {
-		const schema = read('packages/plugin-kit/src/settingsSchema.ts');
-		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
-			MAX_TEXT_LENGTH: { literal: '8_192', prose: '8 192 characters per text or secret value' },
-			MAX_SETTINGS_FIELDS: { literal: '64', prose: '64 fields' },
-			MAX_SETTINGS_OPTIONS: { literal: '64', prose: '64 options per select' },
-		};
-		const declared = [...schema.matchAll(/^export const (MAX_\w+) = /gm)].map((match) => match[1]!);
-		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
-
-		const settings = section(docs.contributions, '## Settings schema');
-		for (const [name, { literal, prose }] of Object.entries(rendered)) {
-			expect(schema, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
-			expect(settings, `${name} (${prose}) is undocumented`).toContain(prose);
-		}
+		expectDocumentedLimits({
+			sources: [read('packages/plugin-kit/src/settingsSchema.ts')],
+			declaredPattern: /^export const (MAX_\w+) = /gm,
+			section: section(docs.contributions, '## Settings schema'),
+			rendered: {
+				MAX_TEXT_LENGTH: { literal: '8_192', prose: '8 192 characters per text or secret value' },
+				MAX_SETTINGS_FIELDS: { literal: '64', prose: '64 fields' },
+				MAX_SETTINGS_OPTIONS: { literal: '64', prose: '64 options per select' },
+			},
+		});
 	});
 
 	it('documents the timeout ceiling for draft strategies and autonomy gates', () => {
@@ -702,17 +719,6 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 		// Both projections in one case: the guide describes them in one sentence
 		// and their field sets overlap. A new field in either map fails until the
 		// sentence names it.
-		const rendered: Readonly<Record<string, { literal: string; prose: string }>> = {
-			fromCodePoints: { literal: '512', prose: '`from` 512' },
-			toCodePoints: { literal: '2_048', prose: '`to` 2 048' },
-			subjectCodePoints: { literal: '1_024', prose: '`subject` 1 024' },
-			bodyCodePoints: { literal: '64 * 1_024', prose: 'body or draft 65 536' },
-			draftCodePoints: { literal: '64 * 1_024', prose: 'body or draft 65 536' },
-			classificationCodePoints: {
-				literal: '128',
-				prose: 'classification an autonomy gate sees 128',
-			},
-		};
 		const declarations = (
 			[
 				['apps/api/convex/agent/pluginStepRuntime.ts', 'PLUGIN_AGENT_STEP_INPUT_LIMITS'],
@@ -727,53 +733,51 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 			expect(start, `${name} moved out of ${file}`).not.toBe(-1);
 			return source.slice(start, source.indexOf('});', start));
 		});
-		const declared = declarations.flatMap((declaration) =>
-			[...declaration.matchAll(/^\t(\w+CodePoints):/gm)].map((match) => match[1]!)
-		);
-		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
-
-		const untrusted = section(docs.capabilities, '### Untrusted text');
-		for (const [field, { literal, prose }] of Object.entries(rendered)) {
-			expect(
-				declarations.some((declaration) => declaration.includes(`${field}: ${literal},`)),
-				`${field} is no longer ${literal}`
-			).toBe(true);
-			expect(untrusted, `${field} (${prose}) is undocumented`).toContain(prose);
-		}
+		expectDocumentedLimits({
+			sources: declarations,
+			declaredPattern: /^\t(\w+CodePoints):/gm,
+			form: 'field',
+			section: section(docs.capabilities, '### Untrusted text'),
+			rendered: {
+				fromCodePoints: { literal: '512', prose: '`from` 512' },
+				toCodePoints: { literal: '2_048', prose: '`to` 2 048' },
+				subjectCodePoints: { literal: '1_024', prose: '`subject` 1 024' },
+				bodyCodePoints: { literal: '64 * 1_024', prose: 'body or draft 65 536' },
+				draftCodePoints: { literal: '64 * 1_024', prose: 'body or draft 65 536' },
+				classificationCodePoints: {
+					literal: '128',
+					prose: 'classification an autonomy gate sees 128',
+				},
+			},
+		});
 	});
 
 	it('documents every Tier-2 hook byte cap and code-point clamp', () => {
-		const constants = read('apps/api/convex/lib/constants.ts');
-		const rendered: Readonly<Record<string, { literal: string; row: string }>> = {
-			CONNECTED_APP_HOOK_MAX_REQUEST_BYTES: {
-				literal: '64 * 1024',
-				row: '| Request body cap | 64 KiB |',
+		expectDocumentedLimits({
+			sources: [read('apps/api/convex/lib/constants.ts')],
+			declaredPattern:
+				/export const (CONNECTED_APP_HOOK_MAX_(?:REQUEST|RESPONSE)_BYTES|CONNECTED_APP_HOOK_MAX_\w+_CODE_POINTS) = /g,
+			proseFailure: 'has no table row',
+			section: section(docs.connectedApps, '### What Owlat enforces on every call'),
+			rendered: {
+				CONNECTED_APP_HOOK_MAX_REQUEST_BYTES: {
+					literal: '64 * 1024',
+					prose: '| Request body cap | 64 KiB |',
+				},
+				CONNECTED_APP_HOOK_MAX_RESPONSE_BYTES: {
+					literal: '64 * 1024',
+					prose: '| Response body cap | 64 KiB (drained under the cap; over-cap fails closed) |',
+				},
+				CONNECTED_APP_HOOK_MAX_DRAFT_CODE_POINTS: {
+					literal: '64 * 1024',
+					prose: '| Accepted draft text | Injection-scrubbed and clamped to 65 536 code points |',
+				},
+				CONNECTED_APP_HOOK_MAX_REASON_CODE_POINTS: {
+					literal: '300',
+					prose: '| Accepted reason text | Injection-scrubbed and clamped to 300 code points |',
+				},
 			},
-			CONNECTED_APP_HOOK_MAX_RESPONSE_BYTES: {
-				literal: '64 * 1024',
-				row: '| Response body cap | 64 KiB (drained under the cap; over-cap fails closed) |',
-			},
-			CONNECTED_APP_HOOK_MAX_DRAFT_CODE_POINTS: {
-				literal: '64 * 1024',
-				row: '| Accepted draft text | Injection-scrubbed and clamped to 65 536 code points |',
-			},
-			CONNECTED_APP_HOOK_MAX_REASON_CODE_POINTS: {
-				literal: '300',
-				row: '| Accepted reason text | Injection-scrubbed and clamped to 300 code points |',
-			},
-		};
-		const declared = [
-			...constants.matchAll(
-				/export const (CONNECTED_APP_HOOK_MAX_(?:REQUEST|RESPONSE)_BYTES|CONNECTED_APP_HOOK_MAX_\w+_CODE_POINTS) = /g
-			),
-		].map((match) => match[1]!);
-		expect(new Set(declared)).toEqual(new Set(Object.keys(rendered)));
-
-		const enforced = section(docs.connectedApps, '### What Owlat enforces on every call');
-		for (const [name, { literal, row }] of Object.entries(rendered)) {
-			expect(constants, `${name} is no longer ${literal}`).toContain(`${name} = ${literal};`);
-			expect(enforced, `${name} (${row}) has no table row`).toContain(row);
-		}
+		});
 	});
 
 	it('documents the delivery-log page bounds and retention', () => {
