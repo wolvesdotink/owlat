@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/example-slack-approvals",
-	"version": "0.0.0",
+	"version": "0.1.0",
 	"private": true,
 	"description": "Tier-2 reference connected app: a restrict-only Slack approvals hold gate over the signed synchronous-hook protocol.",
 	"license": "Apache-2.0",
