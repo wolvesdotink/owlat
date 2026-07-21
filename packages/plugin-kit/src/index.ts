@@ -196,6 +196,8 @@ export type {
 	PluginSendTransportParams,
 	PluginStaticModuleExport,
 } from './sendTransport';
+export { pluginContributionExportPaths, pluginContributionModules } from './contributionModules';
+export type { PluginContributionModuleReference } from './contributionModules';
 export type {
 	PluginComponentDefinition,
 	PluginContributionKind,
