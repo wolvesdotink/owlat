@@ -29,15 +29,16 @@
 			"dependsOn": ["^transit"]
 		},
 		"test": {
-			"dependsOn": ["transit"]
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"]
 		},
 		"test:coverage": {
-			"dependsOn": ["transit"],
+			"dependsOn": ["transit", "@owlat/plugin-kit#build"],
 			"outputs": ["coverage/**"]
 		},
 		"test:watch": {
 			"cache": false,
-			"persistent": true
+			"persistent": true,
+			"dependsOn": ["@owlat/plugin-kit#build"]
 		}
 	}
 }
