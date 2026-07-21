@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import {
-	buildComposeInput,
-	buildTransactionalListUnsubscribe,
-} from '../worker';
+import { buildComposeInput, buildTransactionalListUnsubscribe } from '../worker';
 import { composeForSend } from '../sendComposition';
 import { isAutomatedMail } from '../../lib/inboundClassification';
 import type { Id } from '../../_generated/dataModel';
@@ -50,10 +47,10 @@ describe('worker.buildComposeInput — campaign List-Unsubscribe', () => {
 		if (composeInput.kind !== 'campaign') throw new Error('expected campaign input');
 		expect(composeInput.listUnsubscribeHeader).toBeDefined();
 		expect(composeInput.listUnsubscribeHeader?.listUnsubscribe).toMatch(
-			/^<https:\/\/convex\.example\/unsub\/[^>]+>$/,
+			/^<https:\/\/convex\.example\/unsub\/[^>]+>$/
 		);
 		expect(composeInput.listUnsubscribeHeader?.listUnsubscribePost).toBe(
-			'List-Unsubscribe=One-Click',
+			'List-Unsubscribe=One-Click'
 		);
 		// The in-body footer stays topic-only for segments.
 		expect(composeInput.unsubscribeUrl).toBeUndefined();
@@ -114,6 +111,7 @@ describe('worker.buildComposeInput — campaign List-Unsubscribe', () => {
 describe('worker.buildTransactionalListUnsubscribe — automation marketing sends', () => {
 	const baseTransactional = {
 		kind: 'transactional' as const,
+		emailPurpose: 'transactional' as const,
 		to: 'jane@example.com',
 		from: 'drip@org.example',
 		template: { subject: 's', htmlContent: '<p></p>' },
@@ -127,9 +125,7 @@ describe('worker.buildTransactionalListUnsubscribe — automation marketing send
 			convexSiteUrl: 'https://convex.example',
 		});
 
-		expect(headers['List-Unsubscribe']).toMatch(
-			/^<https:\/\/convex\.example\/unsub\/[^>]+>$/,
-		);
+		expect(headers['List-Unsubscribe']).toMatch(/^<https:\/\/convex\.example\/unsub\/[^>]+>$/);
 		expect(headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
 	});
 
@@ -139,7 +135,7 @@ describe('worker.buildTransactionalListUnsubscribe — automation marketing send
 				...baseTransactional,
 				contactId: CONTACT_ID,
 				convexSiteUrl: 'https://convex.example',
-			}),
+			})
 		).toEqual({});
 	});
 
@@ -149,14 +145,14 @@ describe('worker.buildTransactionalListUnsubscribe — automation marketing send
 				...baseTransactional,
 				listUnsubscribe: true,
 				convexSiteUrl: 'https://convex.example',
-			}),
+			})
 		).toEqual({});
 		expect(
 			buildTransactionalListUnsubscribe({
 				...baseTransactional,
 				listUnsubscribe: true,
 				contactId: CONTACT_ID,
-			}),
+			})
 		).toEqual({});
 	});
 
@@ -165,7 +161,7 @@ describe('worker.buildTransactionalListUnsubscribe — automation marketing send
 			buildTransactionalListUnsubscribe({
 				...baseCampaign,
 				audienceType: 'segment',
-			}),
+			})
 		).toEqual({});
 	});
 });
@@ -178,6 +174,7 @@ describe('worker.buildTransactionalListUnsubscribe — automation marketing send
 describe('worker — agent_reply vs transactional Auto-Submitted (RFC 3834)', () => {
 	const baseTransactional = {
 		kind: 'transactional' as const,
+		emailPurpose: 'transactional' as const,
 		to: 'customer@example.com',
 		from: 'support@org.example',
 		template: { subject: 'Re: your message', htmlContent: '<p>Thanks for reaching out.</p>' },

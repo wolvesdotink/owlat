@@ -18,6 +18,7 @@ import { getMtaConfig, scanAttachmentBytes } from '../mail/mtaClient';
 import { transformHtml } from './sendComposition/transform';
 import { fetchGuarded } from '../lib/ssrfGuard';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
+import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -78,6 +79,7 @@ const envelopeInputValidator = v.union(
 	}),
 	v.object({
 		kind: v.literal('transactional'),
+		emailPurpose: v.union(v.literal('marketing'), v.literal('transactional')),
 		to: v.string(),
 		from: v.string(),
 		replyTo: v.optional(v.string()),
@@ -149,6 +151,7 @@ type WorkerEnvelopeInput =
 	  }
 	| {
 			kind: 'transactional';
+			emailPurpose: EmailPurpose;
 			to: string;
 			from: string;
 			replyTo?: string;
@@ -424,16 +427,16 @@ export const sendSingleEmail = internalAction({
 		// headers. The composer's headers win on key collision.
 		const envelopeHeaders =
 			envelopeInput.kind === 'transactional' ? envelopeInput.headers : undefined;
-		// Marketing automation steps route through the transactional envelope; the
-		// List-Unsubscribe header (RFC 8058 one-click, Node-only HMAC) is built
-		// here so the crypto stays in the Node worker. Campaign sends carry the
-		// header via the composer already, so this only fires for transactional.
+		// Automation one-click headers are built here; campaigns carry theirs from the composer.
 		const marketingHeaders = buildTransactionalListUnsubscribe(envelopeInput);
 		const mergedHeaders = {
 			...envelopeHeaders,
 			...marketingHeaders,
 			...composed.headers,
 		};
+		const emailPurpose: EmailPurpose =
+			envelopeInput.kind === 'campaign' ? 'marketing' : envelopeInput.emailPurpose;
+		assertMarketingOneClickHeaders(emailPurpose, mergedHeaders);
 
 		// Send via the Send dispatch helper. The helper owns retries, error
 		// categorization, and `providerHealth` recording for every attempt.

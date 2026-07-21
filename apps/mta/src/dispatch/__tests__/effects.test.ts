@@ -69,37 +69,53 @@ beforeEach(async () => {
 describe('applyEffects — per-effect dispatch', () => {
 	it('domain_throttle_success → domainThrottle.recordSuccess', async () => {
 		await applyEffects(
-			[{ kind: 'domain_throttle_success', ip: '10.0.0.1', domain: 'gmail.com' }],
-			makeDeps(),
+			[
+				{
+					kind: 'domain_throttle_success',
+					ip: '10.0.0.1',
+					throttleKey: 'gmail',
+					providerKey: 'gmail',
+				},
+			],
+			makeDeps()
 		);
 		expect(domainThrottle.recordSuccess).toHaveBeenCalledWith(
 			expect.anything(),
 			'10.0.0.1',
-			'gmail.com',
+			'gmail',
+			'gmail'
 		);
 	});
 
 	it('domain_throttle_reject → domainThrottle.recordReject', async () => {
 		await applyEffects(
-			[{ kind: 'domain_throttle_reject', ip: '10.0.0.1', domain: 'gmail.com' }],
-			makeDeps(),
+			[{ kind: 'domain_throttle_reject', ip: '10.0.0.1', throttleKey: 'gmail' }],
+			makeDeps()
 		);
 		expect(domainThrottle.recordReject).toHaveBeenCalledWith(
 			expect.anything(),
 			'10.0.0.1',
-			'gmail.com',
+			'gmail'
 		);
 	});
 
 	it('domain_throttle_defer → domainThrottle.recordDefer', async () => {
 		await applyEffects(
-			[{ kind: 'domain_throttle_defer', ip: '10.0.0.1', domain: 'gmail.com' }],
-			makeDeps(),
+			[
+				{
+					kind: 'domain_throttle_defer',
+					ip: '10.0.0.1',
+					throttleKey: 'gmail',
+					providerKey: 'gmail',
+				},
+			],
+			makeDeps()
 		);
 		expect(domainThrottle.recordDefer).toHaveBeenCalledWith(
 			expect.anything(),
 			'10.0.0.1',
-			'gmail.com',
+			'gmail',
+			'gmail'
 		);
 	});
 
@@ -113,13 +129,13 @@ describe('applyEffects — per-effect dispatch', () => {
 					enhancedCode: '2.0.0',
 				},
 			],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(smtpResponse.recordResponse).toHaveBeenCalledWith(
 			expect.anything(),
 			'gmail.com',
 			250,
-			'2.0.0',
+			'2.0.0'
 		);
 	});
 
@@ -127,13 +143,13 @@ describe('applyEffects — per-effect dispatch', () => {
 		const deps = makeDeps();
 		await applyEffects(
 			[{ kind: 'circuit_breaker_outcome', orgId: 'org-1', outcome: 'bounced' }],
-			deps,
+			deps
 		);
 		expect(circuitBreaker.recordOutcome).toHaveBeenCalledWith(
 			expect.anything(),
 			'org-1',
 			'bounced',
-			deps.config,
+			deps.config
 		);
 	});
 
@@ -154,7 +170,7 @@ describe('applyEffects — per-effect dispatch', () => {
 				{ kind: 'warming_record', ip: '10.0.0.2', result: 'bounce' },
 				{ kind: 'warming_record', ip: '10.0.0.3', result: 'deferral' },
 			],
-			deps,
+			deps
 		);
 		expect(warming.recordSend).toHaveBeenCalledWith(expect.anything(), '10.0.0.1');
 		expect(warming.recordBounce).toHaveBeenCalledWith(expect.anything(), '10.0.0.2');
@@ -171,9 +187,10 @@ describe('applyEffects — per-effect dispatch', () => {
 					pool: 'transactional',
 					outcome: 'delivered',
 					durationMs: 421,
+					providerKey: 'gmail',
 				},
 			],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(metrics.record).toHaveBeenCalledWith(
 			expect.anything(),
@@ -182,13 +199,14 @@ describe('applyEffects — per-effect dispatch', () => {
 			'transactional',
 			'delivered',
 			421,
+			'gmail'
 		);
 	});
 
 	it('metrics_counter_inc → emailsSentTotal.inc', async () => {
 		await applyEffects(
 			[{ kind: 'metrics_counter_inc', pool: 'transactional', isp: 'gmail', outcome: 'rejected' }],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(metrics.emailsSentTotal.inc).toHaveBeenCalledWith({
 			pool: 'transactional',
@@ -200,12 +218,12 @@ describe('applyEffects — per-effect dispatch', () => {
 	it('suppress_recipient → suppressionList.suppress', async () => {
 		await applyEffects(
 			[{ kind: 'suppress_recipient', address: 'user@gmail.com', reason: 'hard_bounce' }],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(suppressionList.suppress).toHaveBeenCalledWith(
 			expect.anything(),
 			'user@gmail.com',
-			'hard_bounce',
+			'hard_bounce'
 		);
 	});
 
@@ -215,7 +233,7 @@ describe('applyEffects — per-effect dispatch', () => {
 				{ kind: 'domain_failure_clear', domain: 'gmail.com' },
 				{ kind: 'domain_failure_record', domain: 'aol.com' },
 			],
-			makeDeps(),
+			makeDeps()
 		);
 		expect(degradation.clearDomainFailure).toHaveBeenCalledWith(expect.anything(), 'gmail.com');
 		expect(degradation.recordDomainFailure).toHaveBeenCalledWith(expect.anything(), 'aol.com');
@@ -315,8 +333,8 @@ describe('applyEffects — ordering', () => {
 		await expect(
 			applyEffects(
 				[{ kind: 'domain_throttle_success', ip: '10.0.0.1', domain: 'g.com' }],
-				makeDeps(),
-			),
+				makeDeps()
+			)
 		).rejects.toThrow('boom');
 	});
 });

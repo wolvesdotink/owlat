@@ -1,5 +1,5 @@
 /**
- * Dispatch outcome — pure classification + reducer for the post-send branch.
+ * Dispatch outcome — pure reducer for the post-send branch.
  *
  * Mirrors the **Send lifecycle (module)** shape from ADR-0006: typed outcome
  * + typed effect list + runner. The reducer has no side effects, no Redis
@@ -10,113 +10,23 @@
  * See ADR-0007 and CONTEXT.md's MTA dispatch section.
  */
 
-import type { EmailJobResult } from '../types.js';
-import { classifySmtpResponse, type SmtpClassification } from '../intelligence/smtpClassifier.js';
 import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';
 import type { AttemptCtx } from './types.js';
 import type { DispatchEffect } from './effects.js';
+import { outcomeEventBase } from './outcomeEvent.js';
+import type { DispatchOutcome } from './outcomeClassification.js';
+import { primarySendingDomain } from '../intelligence/gmailBulkSender.js';
 
-/**
- * The four possible outcomes of one Dispatch attempt's SMTP send.
- *
- * Fields are restricted to what's unique per outcome — shared facts (ip,
- * pool, domain, durationMs, job) live on the AttemptCtx the reducer
- * receives alongside.
- */
-export type DispatchOutcome =
-	| {
-			kind: 'delivered';
-			smtpCode: number;
-			smtpResponse: string | undefined;
-			remoteMessageId: string | undefined;
-			enhancedCode: string | undefined;
-	  }
-	| {
-			kind: 'hard_bounce';
-			smtpCode: number;
-			error: string;
-			enhancedCode: string | undefined;
-	  }
-	| {
-			kind: 'deferred';
-			smtpCode: number;
-			error: string;
-			enhancedCode: string | undefined;
-			classification: SmtpClassification;
-	  }
-	| {
-			kind: 'soft_bounce';
-			error: string;
-	  }
-	// The post-DATA ambiguous drop (AMBIGUOUS_TIMEOUT, W8): the message MAY
-	// already have been accepted. Terminal (no defer, no next-MX) but carries NO
-	// bounce semantics — no recipient suppression, no synthetic 5xx `smtp_response`,
-	// and no reputation penalties (circuit-breaker / throttle / warming). Mirrors
-	// the API's terminal-without-suppression handling of the same situation
-	// (`apps/api/convex/lib/sendProviders/ses/index.ts` AMBIGUOUS_TIMEOUT).
-	| {
-			kind: 'ambiguous';
-			error: string;
-	  };
+export { classifyResult } from './outcomeClassification.js';
+export type { DispatchOutcome } from './outcomeClassification.js';
 
 /**
  * The reducer's return type. `effects` runs through `applyEffects`;
- * `defer` (when present) is converted to a `DeferError` throw by the
- * caller (`handler.ts`, the GroupMQ boundary).
+ * `defer` (when present) tells the GroupMQ adapter how to re-enqueue.
  */
 export interface OutcomeReduction {
 	effects: DispatchEffect[];
 	defer: { delayMs: number; reason: string } | undefined;
-}
-
-/**
- * Translate the SMTP sender's result into a typed DispatchOutcome.
- */
-export function classifyResult(result: EmailJobResult): DispatchOutcome {
-	if (result.success) {
-		return {
-			kind: 'delivered',
-			smtpCode: result.smtpCode ?? 250,
-			smtpResponse: result.smtpResponse,
-			remoteMessageId: result.remoteMessageId,
-			enhancedCode: result.enhancedCode,
-		};
-	}
-
-	if (result.bounceType === 'ambiguous') {
-		return {
-			kind: 'ambiguous',
-			error: result.error ?? '',
-		};
-	}
-
-	if (result.bounceType === 'hard') {
-		return {
-			kind: 'hard_bounce',
-			smtpCode: result.smtpCode ?? 550,
-			error: result.error ?? '',
-			enhancedCode: result.enhancedCode,
-		};
-	}
-
-	if (result.bounceType === 'deferred') {
-		return {
-			kind: 'deferred',
-			smtpCode: result.smtpCode ?? 450,
-			error: result.error ?? '',
-			enhancedCode: result.enhancedCode,
-			classification: classifySmtpResponse(
-				result.smtpCode,
-				result.error ?? '',
-				result.enhancedCode
-			),
-		};
-	}
-
-	return {
-		kind: 'soft_bounce',
-		error: result.error ?? '',
-	};
 }
 
 /**
@@ -145,13 +55,15 @@ function reduceDelivered(
 	outcome: Extract<DispatchOutcome, { kind: 'delivered' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, pool, domain, durationMs } = ctx;
+	const { job, ip, domain, durationMs } = ctx;
+	const { throttleKey, providerKey } = ctx.destination;
+	const sendingPrimaryDomain = primarySendingDomain(job.dkimDomain);
 	// Per-campaign complaint rate needs a denominator: bump the campaign's
 	// delivered counter when the job carries a campaign-stream `Feedback-ID`.
 	const campaignId = parseCampaignFromFeedbackId(feedbackIdHeader(job.headers));
 	return {
 		effects: [
-			{ kind: 'domain_throttle_success', ip, domain },
+			{ kind: 'domain_throttle_success', ip, throttleKey, providerKey },
 			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'delivered' },
 			...(campaignId
 				? [{ kind: 'campaign_delivery_record', campaignId } as const satisfies DispatchEffect]
@@ -163,22 +75,23 @@ function reduceDelivered(
 				enhancedCode: outcome.enhancedCode,
 			},
 			{ kind: 'warming_record', ip, result: 'send' },
-			{ kind: 'metrics_record', domain, ip, pool: job.ipPool, outcome: 'delivered', durationMs },
+			{
+				kind: 'metrics_record',
+				domain,
+				ip,
+				pool: job.ipPool,
+				outcome: 'delivered',
+				durationMs,
+				providerKey,
+			},
 			{ kind: 'domain_failure_clear', domain },
 			{
 				kind: 'log_delivery_event',
 				event: {
-					messageId: job.messageId,
-					to: job.to,
-					from: job.from,
-					orgId: job.organizationId,
+					...outcomeEventBase(ctx),
 					status: 'delivered',
 					smtpCode: outcome.smtpCode,
 					smtpResponse: outcome.smtpResponse,
-					ip,
-					pool,
-					domain,
-					durationMs,
 				},
 			},
 			{
@@ -187,6 +100,8 @@ function reduceDelivered(
 					event: 'sent',
 					messageId: job.messageId,
 					organizationId: job.organizationId,
+					destinationProvider: providerKey,
+					...(sendingPrimaryDomain ? { primarySendingDomain: sendingPrimaryDomain } : {}),
 					remoteMessageId: outcome.remoteMessageId,
 					timestamp: Date.now(),
 				},
@@ -200,7 +115,8 @@ function reduceHardBounce(
 	outcome: Extract<DispatchOutcome, { kind: 'hard_bounce' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, pool, domain, durationMs } = ctx;
+	const { job, ip, domain, durationMs } = ctx;
+	const { throttleKey, providerKey } = ctx.destination;
 	return {
 		effects: [
 			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
@@ -210,24 +126,25 @@ function reduceHardBounce(
 				smtpCode: outcome.smtpCode,
 				enhancedCode: outcome.enhancedCode,
 			},
-			{ kind: 'domain_throttle_reject', ip, domain },
+			{ kind: 'domain_throttle_reject', ip, throttleKey },
 			{ kind: 'warming_record', ip, result: 'bounce' },
-			{ kind: 'metrics_record', domain, ip, pool: job.ipPool, outcome: 'bounced', durationMs },
+			{
+				kind: 'metrics_record',
+				domain,
+				ip,
+				pool: job.ipPool,
+				outcome: 'bounced',
+				durationMs,
+				providerKey,
+			},
 			{
 				kind: 'log_delivery_event',
 				event: {
-					messageId: job.messageId,
-					to: job.to,
-					from: job.from,
-					orgId: job.organizationId,
+					...outcomeEventBase(ctx),
 					status: 'bounced',
 					bounceType: 'hard',
 					smtpCode: outcome.smtpCode,
 					smtpResponse: outcome.error,
-					ip,
-					pool,
-					domain,
-					durationMs,
 				},
 			},
 			{
@@ -262,10 +179,11 @@ function reduceDeferred(
 	if (!outcome.classification.retryable) {
 		return reduceNonRetryableDeferral(outcome, ctx);
 	}
-	const { job, ip, pool, domain, durationMs } = ctx;
+	const { job, ip, domain, durationMs } = ctx;
+	const { throttleKey, providerKey } = ctx.destination;
 	return {
 		effects: [
-			{ kind: 'domain_throttle_defer', ip, domain },
+			{ kind: 'domain_throttle_defer', ip, throttleKey, providerKey },
 			{
 				kind: 'smtp_response',
 				domain,
@@ -273,22 +191,24 @@ function reduceDeferred(
 				enhancedCode: outcome.enhancedCode,
 			},
 			{ kind: 'warming_record', ip, result: 'deferral' },
-			{ kind: 'metrics_record', domain, ip, pool: job.ipPool, outcome: 'deferred', durationMs },
+			{
+				kind: 'metrics_record',
+				domain,
+				ip,
+				pool: job.ipPool,
+				outcome: 'deferred',
+				durationMs,
+				providerKey,
+			},
 			{
 				kind: 'log_delivery_event',
 				event: {
-					messageId: job.messageId,
-					to: job.to,
-					from: job.from,
-					orgId: job.organizationId,
+					...outcomeEventBase(ctx),
 					status: 'deferred',
 					smtpCode: outcome.smtpCode,
 					smtpResponse: outcome.error,
-					ip,
-					pool,
-					domain,
-					durationMs,
 					category: outcome.classification.category,
+					annotation: outcome.classification.annotation,
 				},
 			},
 		],
@@ -312,7 +232,8 @@ function reduceNonRetryableDeferral(
 	outcome: Extract<DispatchOutcome, { kind: 'deferred' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, pool, domain, durationMs } = ctx;
+	const { job, ip, domain, durationMs } = ctx;
+	const { throttleKey, providerKey } = ctx.destination;
 	return {
 		effects: [
 			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
@@ -322,25 +243,27 @@ function reduceNonRetryableDeferral(
 				smtpCode: outcome.smtpCode,
 				enhancedCode: outcome.enhancedCode,
 			},
-			{ kind: 'domain_throttle_reject', ip, domain },
+			{ kind: 'domain_throttle_reject', ip, throttleKey },
 			{ kind: 'warming_record', ip, result: 'bounce' },
-			{ kind: 'metrics_record', domain, ip, pool: job.ipPool, outcome: 'bounced', durationMs },
+			{
+				kind: 'metrics_record',
+				domain,
+				ip,
+				pool: job.ipPool,
+				outcome: 'bounced',
+				durationMs,
+				providerKey,
+			},
 			{
 				kind: 'log_delivery_event',
 				event: {
-					messageId: job.messageId,
-					to: job.to,
-					from: job.from,
-					orgId: job.organizationId,
+					...outcomeEventBase(ctx),
 					status: 'bounced',
 					bounceType: 'hard',
 					smtpCode: outcome.smtpCode,
 					smtpResponse: outcome.error,
-					ip,
-					pool,
-					domain,
-					durationMs,
 					category: outcome.classification.category,
+					annotation: outcome.classification.annotation,
 				},
 			},
 			{
@@ -364,26 +287,28 @@ function reduceSoftBounce(
 	outcome: Extract<DispatchOutcome, { kind: 'soft_bounce' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, pool, domain, durationMs } = ctx;
+	const { job, ip, domain, durationMs } = ctx;
+	const { providerKey } = ctx.destination;
 	return {
 		effects: [
 			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
 			{ kind: 'warming_record', ip, result: 'bounce' },
 			{ kind: 'domain_failure_record', domain },
-			{ kind: 'metrics_record', domain, ip, pool: job.ipPool, outcome: 'error', durationMs },
+			{
+				kind: 'metrics_record',
+				domain,
+				ip,
+				pool: job.ipPool,
+				outcome: 'error',
+				durationMs,
+				providerKey,
+			},
 			{
 				kind: 'log_delivery_event',
 				event: {
-					messageId: job.messageId,
-					to: job.to,
-					from: job.from,
-					orgId: job.organizationId,
+					...outcomeEventBase(ctx),
 					status: 'failed',
 					smtpResponse: outcome.error,
-					ip,
-					pool,
-					domain,
-					durationMs,
 				},
 			},
 			{
@@ -433,24 +358,26 @@ function reduceAmbiguous(
 	outcome: Extract<DispatchOutcome, { kind: 'ambiguous' }>,
 	ctx: AttemptCtx
 ): OutcomeReduction {
-	const { job, ip, pool, domain, durationMs } = ctx;
+	const { job, ip, domain, durationMs } = ctx;
+	const { providerKey } = ctx.destination;
 	return {
 		effects: [
-			{ kind: 'metrics_record', domain, ip, pool: job.ipPool, outcome: 'error', durationMs },
+			{
+				kind: 'metrics_record',
+				domain,
+				ip,
+				pool: job.ipPool,
+				outcome: 'error',
+				durationMs,
+				providerKey,
+			},
 			{
 				kind: 'log_delivery_event',
 				event: {
-					messageId: job.messageId,
-					to: job.to,
-					from: job.from,
-					orgId: job.organizationId,
+					...outcomeEventBase(ctx),
 					status: 'failed',
 					smtpResponse: outcome.error,
 					reason: 'ambiguous_post_data',
-					ip,
-					pool,
-					domain,
-					durationMs,
 				},
 			},
 			// Terminal, non-bounce notification: moves the message row out of

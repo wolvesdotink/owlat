@@ -80,6 +80,75 @@ export const deliveryTables = {
 		createdAt: v.number(),
 	}).index('by_period', ['periodStart']),
 
+	// Idempotency receipts for MTA accepted-delivery observations. The MTA may
+	// retry a webhook after a response is lost; this receipt prevents a retry
+	// from inflating the Gmail 24-hour volume rollup. Cleanup retains 48 hours.
+	gmailDeliveryReceipts: defineTable({
+		providerMessageId: v.string(),
+		acceptedAt: v.optional(v.number()),
+		ingestedAt: v.optional(v.number()),
+		// Deprecated compatibility field for rows written before acceptedAt and
+		// ingestedAt were separated. New writes leave it unset; cleanup removes
+		// legacy rows through the retained index during the migration window.
+		observedAt: v.optional(v.number()),
+	})
+		.index('by_message_id', ['providerMessageId'])
+		.index('by_ingested_at', ['ingestedAt'])
+		.index('by_observed_at', ['observedAt']),
+
+	// Hot-path accepted-delivery volume. Provider message ids deterministically
+	// spread writes across shards so a high-volume domain does not contend on one
+	// document under Convex optimistic concurrency control.
+	gmailVolumeBuckets: defineTable({
+		primaryDomain: v.string(),
+		hourStart: v.number(),
+		shardKey: v.number(),
+		deliveredCount: v.number(),
+		seedTag: v.optional(v.string()),
+	})
+		.index('by_domain_hour_shard', ['primaryDomain', 'hourStart', 'shardKey'])
+		.index('by_hour', ['hourStart']),
+
+	// Asynchronously materialized, fixed-width hourly totals per primary domain.
+	// Dashboard reads use the deliveredCount index and a documented top-domain cap
+	// instead of scanning every domain × hour × shard bucket. The hourly cleanup
+	// refreshes inactive rows so the index sheds expired hours without new mail.
+	gmailDomainVolumeRollups: defineTable({
+		primaryDomain: v.string(),
+		hourlyCounts: v.array(
+			v.object({
+				hourStart: v.number(),
+				deliveredCount: v.number(),
+			})
+		),
+		deliveredCount: v.number(),
+		windowRefreshedAt: v.number(),
+		seedTag: v.optional(v.string()),
+	})
+		.index('by_domain', ['primaryDomain'])
+		.index('by_delivered_count', ['deliveredCount', 'primaryDomain'])
+		.index('by_window_refreshed_at', ['windowRefreshedAt']),
+
+	// Stable per-domain coalescing seam for asynchronous rollup refreshes. Hot
+	// delivery writes only read an existing job; the first write after a refresh
+	// creates and schedules the next one.
+	gmailDomainVolumeRollupJobs: defineTable({
+		primaryDomain: v.string(),
+		scheduledAt: v.number(),
+	})
+		.index('by_domain', ['primaryDomain'])
+		.index('by_scheduled_at', ['scheduledAt']),
+
+	// Bounded histogram of real RFC 8058 POST processing latency. The one-click
+	// handler records one sample after the unsubscribe mutation has completed;
+	// the dashboard derives p95 over the retained 30-day daily buckets.
+	unsubscribeLatencyBuckets: defineTable({
+		periodStart: v.number(),
+		bucketCounts: v.array(v.number()),
+		totalSamples: v.number(),
+		lastRecordedAt: v.number(),
+	}).index('by_period', ['periodStart']),
+
 	// Content Scan Results - audit trail for pre-send content scanning
 	contentScanResults: defineTable({
 		resourceType: v.union(

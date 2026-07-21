@@ -13,7 +13,7 @@
  */
 
 import type Redis from 'ioredis';
-// Reads the runtime profile from Redis (seeded from config.ts ISP_PROFILES on
+// Reads the runtime destination-provider profile from Redis (seeded on
 // startup, then overridable via the admin API) so that operator changes — e.g.
 // lowering gmail.com's rate during a deliverability incident — take effect on
 // the throttle hot path without a redeploy. Falls back to the hardcoded
@@ -116,9 +116,14 @@ return 1
  * Uses a Lua script for atomic check-and-increment to prevent race
  * conditions when multiple workers compete for the same IP+domain pair.
  */
-export async function acquireSlot(redis: Redis, ip: string, domain: string): Promise<boolean> {
-	const profile = await getProfile(redis, domain);
-	const { hash: hashKey, window: windowKey } = keys(ip, domain);
+export async function acquireSlot(
+	redis: Redis,
+	ip: string,
+	throttleKey: string,
+	providerKey = throttleKey
+): Promise<boolean> {
+	const profile = await getProfile(redis, providerKey);
+	const { hash: hashKey, window: windowKey } = keys(ip, throttleKey);
 	const now = Date.now();
 	const windowStart = now - WINDOW_SECONDS * 1000;
 
@@ -141,9 +146,14 @@ export async function acquireSlot(redis: Redis, ip: string, domain: string): Pro
 /**
  * Record a successful send — may increase rate on sustained success
  */
-export async function recordSuccess(redis: Redis, ip: string, domain: string): Promise<void> {
-	const profile = await getProfile(redis, domain);
-	const { hash: hashKey } = keys(ip, domain);
+export async function recordSuccess(
+	redis: Redis,
+	ip: string,
+	throttleKey: string,
+	providerKey = throttleKey
+): Promise<void> {
+	const profile = await getProfile(redis, providerKey);
+	const { hash: hashKey } = keys(ip, throttleKey);
 
 	const consecutive = await redis.hincrby(hashKey, 'consecutiveSuccess', 1);
 
@@ -165,7 +175,10 @@ export async function recordSuccess(redis: Redis, ip: string, domain: string): P
 		);
 
 		if (newRate > currentRate) {
-			logger.debug({ ip, domain, currentRate, newRate }, 'Domain throttle rate increased');
+			logger.debug(
+				{ ip, throttleKey, currentRate, newRate },
+				'Destination throttle rate increased'
+			);
 		}
 	}
 
@@ -175,9 +188,14 @@ export async function recordSuccess(redis: Redis, ip: string, domain: string): P
 /**
  * Record a deferral (4xx) — reduces rate and marks domain as degraded
  */
-export async function recordDefer(redis: Redis, ip: string, domain: string): Promise<void> {
-	const profile = await getProfile(redis, domain);
-	const { hash: hashKey } = keys(ip, domain);
+export async function recordDefer(
+	redis: Redis,
+	ip: string,
+	throttleKey: string,
+	providerKey = throttleKey
+): Promise<void> {
+	const profile = await getProfile(redis, providerKey);
+	const { hash: hashKey } = keys(ip, throttleKey);
 	const now = Date.now();
 
 	const currentRate = parseFloat(
@@ -198,7 +216,7 @@ export async function recordDefer(redis: Redis, ip: string, domain: string): Pro
 		if (newRecentDefers >= 3) {
 			status = 'blocking';
 			logger.warn(
-				{ ip, domain, recentDefers: newRecentDefers },
+				{ ip, throttleKey, recentDefers: newRecentDefers },
 				'Domain marked as blocking for IP'
 			);
 		}
@@ -222,7 +240,7 @@ export async function recordDefer(redis: Redis, ip: string, domain: string): Pro
 	await redis.expire(hashKey, HASH_TTL);
 
 	logger.info(
-		{ ip, domain, previousRate: currentRate, newRate, status },
+		{ ip, throttleKey, previousRate: currentRate, newRate, status },
 		'Domain throttle rate reduced'
 	);
 }
@@ -230,8 +248,8 @@ export async function recordDefer(redis: Redis, ip: string, domain: string): Pro
 /**
  * Record a permanent rejection (5xx) — contributes to blocking detection
  */
-export async function recordReject(redis: Redis, ip: string, domain: string): Promise<void> {
-	const { hash: hashKey } = keys(ip, domain);
+export async function recordReject(redis: Redis, ip: string, throttleKey: string): Promise<void> {
+	const { hash: hashKey } = keys(ip, throttleKey);
 	await redis.hset(hashKey, 'consecutiveSuccess', '0');
 	await redis.expire(hashKey, HASH_TTL);
 }

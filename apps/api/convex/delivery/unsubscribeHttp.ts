@@ -13,6 +13,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
 import type { TokenValidation } from './tokenValidation';
+import { logWarn } from '../lib/runtimeLog';
 
 interface ContactUnsubInfo {
 	email: string;
@@ -42,9 +43,10 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 		resultMode: 'action',
 	},
 	async (ctx, { token }) => {
+		const startedAt = Date.now();
 		const validation = await ctx.runAction<TokenValidation>(
 			internal.delivery.unsubscribe.validateToken,
-			{ token },
+			{ token }
 		);
 
 		if (!validation.valid) {
@@ -58,7 +60,7 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 
 		const result = await ctx.runMutation<ProcessOutcome>(
 			internal.delivery.unsubscribeQueries.processUnsubscribe,
-			{ contactId: validation.contactId as Id<'contacts'> },
+			{ contactId: validation.contactId as Id<'contacts'> }
 		);
 
 		if (!result.success) {
@@ -75,8 +77,22 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 			? 'You were already unsubscribed from all topics'
 			: `You have been successfully unsubscribed from ${listsRemoved} topic${listsRemoved === 1 ? '' : 's'}`;
 
+		// Only successful/idempotent valid unsubscribe operations belong in this
+		// business-latency metric. Invalid public traffic must not dilute its p95.
+		const recordedAt = Date.now();
+		try {
+			await ctx.runMutation(internal.delivery.complianceTelemetry.recordUnsubscribeLatency, {
+				durationMs: recordedAt - startedAt,
+				recordedAt,
+			});
+		} catch (error) {
+			// Telemetry must never turn a successfully-applied unsubscribe into a
+			// provider-visible error that might trigger a retry.
+			logWarn('[unsubscribe] failed to record processing latency:', error);
+		}
+
 		return { ok: true, data: { message, listsRemoved } };
-	},
+	}
 );
 
 /**
@@ -99,7 +115,7 @@ export const verifyUnsubscribeToken = publicTokenEndpoint(
 	async (ctx, { token }) => {
 		const validation = await ctx.runAction<TokenValidation>(
 			internal.delivery.unsubscribe.validateToken,
-			{ token },
+			{ token }
 		);
 
 		if (!validation.valid) {
@@ -108,7 +124,7 @@ export const verifyUnsubscribeToken = publicTokenEndpoint(
 
 		const contact = await ctx.runQuery<ContactUnsubInfo | null>(
 			internal.delivery.unsubscribeQueries.getContactForUnsubscribe,
-			{ contactId: validation.contactId as Id<'contacts'> },
+			{ contactId: validation.contactId as Id<'contacts'> }
 		);
 
 		if (!contact) {
@@ -124,5 +140,5 @@ export const verifyUnsubscribeToken = publicTokenEndpoint(
 				organizationName: contact.organizationName,
 			},
 		};
-	},
+	}
 );

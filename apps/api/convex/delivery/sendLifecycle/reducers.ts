@@ -1,9 +1,5 @@
-import type { Doc } from '../../_generated/dataModel';
 import type { Effect } from './effects';
-import {
-	contactEmailOf,
-	nonCampaignActivityProvenance,
-} from './lookups';
+import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
 import type {
 	EmailSendDoc,
 	ReducerResult,
@@ -64,20 +60,9 @@ export { reduceBounced, reduceComplained } from './feedbackReducers';
 
 export const LEGAL_EDGES: Record<SendStatus, ReadonlySet<SendStatus>> = {
 	queued: new Set<SendStatus>(['sent', 'failed']),
-	sent: new Set<SendStatus>([
-		'delivered',
-		'opened',
-		'clicked',
-		'bounced',
-		'complained',
-	]),
+	sent: new Set<SendStatus>(['failed', 'delivered', 'opened', 'clicked', 'bounced', 'complained']),
 	failed: new Set<SendStatus>(),
-	delivered: new Set<SendStatus>([
-		'opened',
-		'clicked',
-		'bounced',
-		'complained',
-	]),
+	delivered: new Set<SendStatus>(['opened', 'clicked', 'bounced', 'complained']),
 	opened: new Set<SendStatus>(['clicked', 'bounced', 'complained']),
 	clicked: new Set<SendStatus>(['bounced', 'complained']),
 	bounced: new Set<SendStatus>(),
@@ -94,9 +79,7 @@ const SOFT_BOUNCED_LEGAL_EDGES: ReadonlySet<SendStatus> = new Set<SendStatus>([
 
 // Effective legal-edge set for a loaded Send, accounting for the soft-bounce
 // exception above. All non-`bounced` states use the static map.
-export function legalEdgesFor(
-	send: EmailSendDoc | TransactionalSendDoc
-): ReadonlySet<SendStatus> {
+export function legalEdgesFor(send: EmailSendDoc | TransactionalSendDoc): ReadonlySet<SendStatus> {
 	const from = send.status as SendStatus;
 	if (from === 'bounced' && send.bounceType === 'soft') {
 		return SOFT_BOUNCED_LEGAL_EDGES;
@@ -162,10 +145,7 @@ export function reduceSent(
 			literal: 'email.sent',
 			input: {
 				email: contactEmailOf(send),
-				campaignId:
-					ref.kind === 'campaign'
-						? (send as EmailSendDoc).campaignId
-						: null,
+				campaignId: ref.kind === 'campaign' ? (send as EmailSendDoc).campaignId : null,
 				transactionalEmailId:
 					ref.kind === 'transactional'
 						? ((send as TransactionalSendDoc).transactionalEmailId ?? null)
@@ -190,19 +170,15 @@ export function reduceSent(
 							emailType: 'campaign',
 							...((send as EmailSendDoc).personalizedSubject
 								? {
-										emailSubject: (send as EmailSendDoc)
-											.personalizedSubject,
+										emailSubject: (send as EmailSendDoc).personalizedSubject,
 									}
 								: {}),
 						}
 					: {
-							...nonCampaignActivityProvenance(
-								send as TransactionalSendDoc
-							),
+							...nonCampaignActivityProvenance(send as TransactionalSendDoc),
 							...((send as TransactionalSendDoc).subject
 								? {
-										emailSubject: (send as TransactionalSendDoc)
-											.subject,
+										emailSubject: (send as TransactionalSendDoc).subject,
 									}
 								: {}),
 						},
@@ -262,6 +238,7 @@ export function reduceFailed(
 	return {
 		patch: {
 			status: 'failed',
+			failedAt: args.at,
 			errorMessage: args.errorMessage,
 			errorCode: args.errorCode,
 		},
@@ -274,16 +251,13 @@ export function reduceFailed(
 
 export function reduceDelivered(
 	send: EmailSendDoc | TransactionalSendDoc,
-	args: Extract<TransitionInput, { to: 'delivered' }>,
-	ref: SendRef,
-	senderDomain: string | undefined,
-	// Recipient contact resolved by email — its running soft-bounce counter is
-	// reset to 0 here: a successful delivery proves the address recovered, so
-	// prior transient failures should not accumulate toward suppression.
-	recipientContact: Doc<'contacts'> | null
+	_args: Extract<TransitionInput, { to: 'delivered' }>
 ): ReducerResult {
 	const from = send.status as SendStatus;
-	if (from === 'delivered') {
+	// Delivery observation is independent from display status. Only `sent`
+	// advances to `delivered`; late acceptance after open/click/complaint is an
+	// attributable duplicate and must never regress the visible lifecycle.
+	if (from !== 'sent') {
 		return {
 			patch: {},
 			effects: [],
@@ -292,67 +266,9 @@ export function reduceDelivered(
 			to: 'delivered',
 		};
 	}
-	// `opened`/`clicked` imply we've already passed through delivered — accept
-	// as duplicate rather than transitioning backward.
-	if (from === 'opened' || from === 'clicked') {
-		return {
-			patch: {},
-			effects: [],
-			applied: 'duplicate',
-			from,
-			to: 'delivered',
-		};
-	}
-
-	const effects: Effect[] = [];
-
-	// Recovered address: clear any accumulated soft-bounce count so prior
-	// transient failures don't carry over toward suppress-after-N. Only emitted
-	// when there's a stored non-zero count to clear (avoids a redundant write).
-	if (recipientContact && (recipientContact.softBounceCount ?? 0) > 0) {
-		effects.push({
-			kind: 'contact_soft_bounce_count',
-			contactId: recipientContact._id,
-			count: 0,
-		});
-	}
-
-	// Denormalized campaign delivered counter — the deliverability denominator
-	// for campaign reports / top-performing / reputation. Mirrors
-	// `campaign_stats_opened`. Without this every open/click rate reads 0%.
-	if (ref.kind === 'campaign') {
-		effects.push({
-			kind: 'campaign_stats_delivered',
-			campaignId: (send as EmailSendDoc).campaignId,
-			at: args.at,
-		});
-	}
-
-	// Daily roll-up — both kinds (drives the Dashboard open/click rate).
-	effects.push({ kind: 'daily_stats_bump', field: 'delivered', at: args.at });
-
-	// Sending-reputation `deliver` event (deployment + sending-domain scope),
-	// for both kinds — drives the org/domain delivery rate.
-	effects.push({
-		kind: 'reputation_update',
-		eventType: 'deliver',
-		domain: senderDomain,
-	});
-
-	// Customer webhook — fires exactly once per send: duplicate and
-	// backward (opened/clicked → delivered) transitions return above before
-	// reaching here.
-	effects.push({
-		kind: 'customer_webhook',
-		spec: {
-			literal: 'email.delivered',
-			input: { email: contactEmailOf(send), at: args.at },
-		},
-	});
-
 	return {
-		patch: { status: 'delivered', deliveredAt: args.at },
-		effects,
+		patch: { status: 'delivered' },
+		effects: [],
 		applied: 'transitioned',
 		from,
 		to: 'delivered',
@@ -377,25 +293,7 @@ export function reduceOpened(
 		patch['openedAt'] = args.at;
 	}
 
-	// An open on a send the provider never reported `delivered` (still 'sent')
-	// implies delivery — you can't open an undelivered email. Count it toward
-	// the delivered denominator so open/click rates can't exceed 100% (mirrors
-	// computeAbVariantStats, which treats openedAt/clickedAt as delivery
-	// evidence). Gated on `from === 'sent'` so it fires exactly once and never
-	// for an already-delivered/opened/clicked send.
-	const impliesDelivery = isFirstOpen && from === 'sent';
-
 	const effects: Effect[] = [];
-	if (impliesDelivery && ref.kind === 'campaign') {
-		effects.push({
-			kind: 'campaign_stats_delivered',
-			campaignId: (send as EmailSendDoc).campaignId,
-			at: args.at,
-		});
-	}
-	if (impliesDelivery) {
-		effects.push({ kind: 'daily_stats_bump', field: 'delivered', at: args.at });
-	}
 	if (isFirstOpen && ref.kind === 'campaign') {
 		effects.push({
 			kind: 'campaign_stats_opened',
@@ -431,10 +329,7 @@ export function reduceClicked(
 	ref: SendRef
 ): ReducerResult {
 	const from = send.status as SendStatus;
-	const clickedLinks = [
-		...(send.clickedLinks ?? []),
-		{ url: args.url, clickedAt: args.at },
-	];
+	const clickedLinks = [...(send.clickedLinks ?? []), { url: args.url, clickedAt: args.at }];
 	const isFirstClick = !send.clickedAt;
 
 	const patch: Record<string, unknown> = { clickedLinks };
@@ -444,23 +339,7 @@ export function reduceClicked(
 		patch['clickedAt'] = args.at;
 	}
 
-	// A click on a send the provider never reported `delivered` (still 'sent')
-	// implies delivery — see reduceOpened. Counts toward the delivered
-	// denominator so click rate can't exceed 100%. Gated on `from === 'sent'`
-	// so open+click on the same send imply delivery at most once.
-	const impliesDelivery = isFirstClick && from === 'sent';
-
 	const effects: Effect[] = [];
-	if (impliesDelivery && ref.kind === 'campaign') {
-		effects.push({
-			kind: 'campaign_stats_delivered',
-			campaignId: (send as EmailSendDoc).campaignId,
-			at: args.at,
-		});
-	}
-	if (impliesDelivery) {
-		effects.push({ kind: 'daily_stats_bump', field: 'delivered', at: args.at });
-	}
 	if (isFirstClick && ref.kind === 'campaign') {
 		effects.push({
 			kind: 'campaign_stats_clicked',
@@ -486,8 +365,7 @@ export function reduceClicked(
 	return {
 		patch,
 		effects,
-		applied:
-			isFirstClick && patch['status'] === 'clicked' ? 'transitioned' : 'recorded',
+		applied: isFirstClick && patch['status'] === 'clicked' ? 'transitioned' : 'recorded',
 		from,
 		to: 'clicked',
 	};
