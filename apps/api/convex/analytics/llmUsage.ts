@@ -10,12 +10,19 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, type ActionCtx, type QueryCtx } from '../_generated/server';
+import {
+	internalMutation,
+	type ActionCtx,
+	type MutationCtx,
+	type QueryCtx,
+} from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import type { TokenUsage } from '../agent/steps/types';
 import { estimateCostUsd, providerLabelForModel } from '../lib/llm/pricing';
+import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { parsePluginId } from '@owlat/plugin-kit';
 
 /** Persist one LLM call's token usage + priced cost. No-ops when usage is absent. */
 export const record = internalMutation({
@@ -27,17 +34,35 @@ export const record = internalMutation({
 	handler: async (ctx, args) => {
 		const usage = args.tokenUsage;
 		if (!usage) return;
-		await ctx.db.insert('llmUsageEvents', {
-			feature: args.feature,
-			modelUsed: args.modelUsed,
-			promptTokens: usage.promptTokens,
-			completionTokens: usage.completionTokens,
-			totalTokens: usage.totalTokens,
-			costUsd: estimateCostUsd(args.modelUsed, usage),
-			createdAt: Date.now(),
-		});
+		await insertLlmUsage(ctx, args.feature, usage, args.modelUsed);
 	},
 });
+
+export interface LlmUsageAttribution {
+	readonly organizationId: string;
+	readonly pluginId: string;
+}
+
+/** Shared mutation-local writer so plugin settlement and its audit stay atomic. */
+export async function insertLlmUsage(
+	ctx: MutationCtx,
+	feature: string,
+	tokenUsage: TokenUsage,
+	modelUsed: string | undefined,
+	attribution?: LlmUsageAttribution
+): Promise<void> {
+	await ctx.db.insert('llmUsageEvents', {
+		feature,
+		organizationId: attribution?.organizationId,
+		pluginId: attribution?.pluginId,
+		modelUsed,
+		promptTokens: tokenUsage.promptTokens,
+		completionTokens: tokenUsage.completionTokens,
+		totalTokens: tokenUsage.totalTokens,
+		costUsd: estimateCostUsd(modelUsed, tokenUsage),
+		createdAt: Date.now(),
+	});
+}
 
 /**
  * Helper for action callers: record one LLM call's spend under a feature tag.
@@ -81,13 +106,27 @@ function groupSpend<E extends { totalTokens: number; costUsd: number }>(
 }
 
 /** The most-recent LLM usage events within a window, capped for a bounded scan. */
-async function recentUsageEvents(ctx: QueryCtx, hoursBack: number) {
+async function recentUsageEvents(ctx: QueryCtx, hoursBack: number, organizationId: string) {
 	const since = Date.now() - hoursBack * 60 * 60 * 1000;
-	return await ctx.db
-		.query('llmUsageEvents')
-		.withIndex('by_creation_time', (q) => q.gte('_creationTime', since))
-		.order('desc')
-		.take(5000);
+	const [legacyCore, tenantAttributed] = await Promise.all([
+		ctx.db
+			.query('llmUsageEvents')
+			.withIndex('by_organization_id_and_created_at', (query) =>
+				query.eq('organizationId', undefined).gte('createdAt', since)
+			)
+			.order('desc')
+			.take(5000),
+		ctx.db
+			.query('llmUsageEvents')
+			.withIndex('by_organization_id_and_created_at', (query) =>
+				query.eq('organizationId', organizationId).gte('createdAt', since)
+			)
+			.order('desc')
+			.take(5000),
+	]);
+	return [...legacyCore, ...tenantAttributed]
+		.sort((left, right) => right.createdAt - left.createdAt)
+		.slice(0, 5000);
 }
 
 /** Deployment AI spend grouped by feature over a recent window. */
@@ -96,8 +135,9 @@ export const getSpendByFeature = adminQuery({
 		hoursBack: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const hoursBack = args.hoursBack ?? 24;
-		const events = await recentUsageEvents(ctx, hoursBack);
+		const hoursBack = readHoursBack(args.hoursBack);
+		const organizationId = await activeLlmOrganizationId(ctx);
+		const events = await recentUsageEvents(ctx, hoursBack, organizationId);
 		const { groups, totalCostUsd } = groupSpend(events, (e) => e.feature);
 		const features = groups.map(({ key, ...totals }) => ({ feature: key, ...totals }));
 		return { features, totalCostUsd, hoursBack };
@@ -117,10 +157,60 @@ export const getSpendByProvider = adminQuery({
 		hoursBack: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		const hoursBack = args.hoursBack ?? 24;
-		const events = await recentUsageEvents(ctx, hoursBack);
+		const hoursBack = readHoursBack(args.hoursBack);
+		const organizationId = await activeLlmOrganizationId(ctx);
+		const events = await recentUsageEvents(ctx, hoursBack, organizationId);
 		const { groups, totalCostUsd } = groupSpend(events, (e) => providerLabelForModel(e.modelUsed));
 		const providers = groups.map(({ key, ...totals }) => ({ provider: key, ...totals }));
 		return { providers, totalCostUsd, hoursBack };
 	},
 });
+
+async function activeLlmOrganizationId(ctx: QueryCtx): Promise<string> {
+	const session = await getBetterAuthSessionWithRole(ctx);
+	if (!session?.activeOrganizationId || !session.role) {
+		throw new Error('LLM usage organization unavailable');
+	}
+	return session.activeOrganizationId;
+}
+
+/** Admin-only spend attribution for one validated plugin in the active tenant. */
+export const getSpendByPlugin = adminQuery({
+	args: {
+		pluginId: v.string(),
+		hoursBack: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
+		const pluginId = parsePluginId(args.pluginId);
+		const hoursBack = readHoursBack(args.hoursBack);
+		const session = await getBetterAuthSessionWithRole(ctx);
+		if (!session?.activeOrganizationId || !session.role) {
+			throw new Error('Plugin spend organization unavailable');
+		}
+		const organizationId = session.activeOrganizationId;
+		const since = Date.now() - hoursBack * 60 * 60 * 1000;
+		const events = await ctx.db
+			.query('llmUsageEvents')
+			.withIndex('by_organization_id_and_plugin_id_and_created_at', (query) =>
+				query.eq('organizationId', organizationId).eq('pluginId', pluginId).gte('createdAt', since)
+			)
+			.order('desc')
+			.take(5000);
+		return {
+			pluginId,
+			hoursBack,
+			calls: events.length,
+			totalTokens: events.reduce((sum, event) => sum + event.totalTokens, 0),
+			costUsd: events.reduce((sum, event) => sum + event.costUsd, 0),
+			isTruncated: events.length === 5000,
+		};
+	},
+});
+
+function readHoursBack(value: number | undefined): number {
+	const hours = value ?? 24;
+	if (!Number.isFinite(hours) || hours <= 0 || hours > 90 * 24) {
+		throw new TypeError('Invalid LLM spend window');
+	}
+	return hours;
+}

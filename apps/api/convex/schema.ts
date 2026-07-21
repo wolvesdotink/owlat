@@ -8,6 +8,7 @@ import { campaignTables } from './schema/campaigns';
 import { domainTables } from './schema/domains';
 import { contactTables } from './schema/contacts';
 import { authTables } from './schema/auth';
+import { instanceTables } from './schema/instance';
 import { templateTables } from './schema/templates';
 import { deliveryTables } from './schema/delivery';
 import { inboxTables } from './schema/inbox';
@@ -22,6 +23,7 @@ import { chatTables } from './schema/chat';
 import { assistantTables } from './schema/assistant';
 import { draftStreamTables } from './schema/draftStream';
 import { e2eeTables } from './schema/e2ee';
+import { pluginTables } from './schema/plugins';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -35,6 +37,7 @@ export default defineSchema({
 	...domainTables,
 	...contactTables,
 	...authTables,
+	...instanceTables,
 	...templateTables,
 	...deliveryTables,
 	...inboxTables,
@@ -49,4 +52,5 @@ export default defineSchema({
 	...assistantTables,
 	...draftStreamTables,
 	...e2eeTables,
+	...pluginTables,
 });

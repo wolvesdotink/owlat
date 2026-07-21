@@ -144,6 +144,15 @@ export type OrganizationDeletionTable =
 	| 'coalesceBatches'
 	| 'visualizations'
 	| 'dashboardLayouts'
+	| 'connectedApps'
+	| 'connectedAppHookCircuits'
+	| 'connectedAppHookDeliveryLogs'
+	| 'pluginStorageEntries'
+	| 'pluginStorageUsage'
+	| 'pluginLlmReservations'
+	| 'pluginLlmDailyUsage'
+	| 'pluginTasks'
+	| 'draftStrategySelections'
 	| 'shareLinks'
 	| 'integrationImports'
 	| 'codeWorkTasks';
@@ -287,6 +296,15 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('coalesceBatches'),
 	v.literal('visualizations'),
 	v.literal('dashboardLayouts'),
+	v.literal('connectedApps'),
+	v.literal('connectedAppHookCircuits'),
+	v.literal('connectedAppHookDeliveryLogs'),
+	v.literal('pluginStorageEntries'),
+	v.literal('pluginStorageUsage'),
+	v.literal('pluginLlmReservations'),
+	v.literal('pluginLlmDailyUsage'),
+	v.literal('pluginTasks'),
+	v.literal('draftStrategySelections'),
 	v.literal('shareLinks'),
 	v.literal('integrationImports'),
 	v.literal('codeWorkTasks')

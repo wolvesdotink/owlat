@@ -1,11 +1,11 @@
 'use node';
 
 import { v } from 'convex/values';
+import { internal } from './_generated/api';
 import { internalAction } from './_generated/server';
 import { getOptional } from './lib/env';
-import { isSendProviderKind } from './lib/sendProviders';
+import { isSendProviderKind, type SendProviderKind } from './lib/sendProviders';
 import { sendProviderDispatch } from './lib/sendProviders/dispatch';
-import { providerKindConfigured } from './lib/sendProviders/capability';
 
 /**
  * Single transport for every system / auth / DOI email (password reset,
@@ -42,22 +42,28 @@ export const sendSystemEmail = internalAction({
 		ctx,
 		args
 	): Promise<{
-		provider: 'mta' | 'resend' | 'ses' | 'smtp';
+		// Registry-aware: a bundled plugin can contribute a send provider, so the
+		// receipt carries whatever kind dispatch actually used, not a fixed union.
+		provider: SendProviderKind;
 		providerMessageId: string;
 		latencyMs: number;
 		attempts: number;
 	}> => {
 		const provider = getOptional('EMAIL_PROVIDER');
-		if (!isSendProviderKind(provider) || !providerKindConfigured(provider)) {
+		const providerReady = await ctx.runQuery(
+			internal.lib.sendProviders.capability.environmentSendProviderReady,
+			{}
+		);
+		if (!isSendProviderKind(provider) || !providerReady) {
 			throw new Error(
-				'No system email transport configured: set EMAIL_PROVIDER (mta, resend, or ses) and its credentials. System/auth emails (password reset, invitations, double opt-in) require a transport.'
+				'No system email transport configured: set EMAIL_PROVIDER to a registered transport and configure its requirements. System/auth emails (password reset, invitations, double opt-in) require a transport.'
 			);
 		}
 
 		if (provider === 'mta') {
 			// Behavior-preserving MTA path — routes through the shared provider
-			// dispatch just like resend/ses. `mtaSendProvider` defaults dkimDomain
-			// to the from-domain and generates a random messageId; ipPool
+			// dispatch just like every other kind. `mtaSendProvider` defaults
+			// dkimDomain to the from-domain and generates a random messageId; ipPool
 			// 'transactional' is passed explicitly, so the /send body matches the
 			// previous dedicated client byte-for-byte.
 			const dispatched = await sendProviderDispatch(
@@ -83,8 +89,9 @@ export const sendSystemEmail = internalAction({
 			};
 		}
 
-		// resend / ses: route through the provider abstraction, carrying the
-		// RFC 3834 anti-loop header the MTA path stamps server-side.
+		// Every non-MTA kind — built-in (resend / ses) or plugin-contributed —
+		// routes through the shared provider dispatch, carrying the RFC 3834
+		// anti-loop header the MTA path stamps server-side.
 		const dispatched = await sendProviderDispatch(
 			ctx,
 			provider,

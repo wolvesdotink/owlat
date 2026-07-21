@@ -26,7 +26,9 @@
 		"packages": [
 			"apps/*",
 			"packages/*",
-			"!packages/sdk-java"
+			"!packages/sdk-java",
+			"examples/conformance",
+			"examples/plugins/*"
 		],
 		"catalog": {
 			"typescript": "^6.0.3",
@@ -75,21 +77,32 @@
 		"lint": "turbo lint",
 		"lint:fix": "turbo lint:fix",
 		"lint:deadcode": "bash scripts/check-dead-code.sh",
+		"lint:build-graph": "bun scripts/check-build-graph.ts",
+		"lint:convex-orphans": "bun scripts/check-convex-plugin-orphans.ts",
 		"lint:filesize": "bash scripts/check-file-size.sh",
 		"lint:adr": "bash scripts/check-adr-numbers.sh",
 		"lint:branding": "bash scripts/check-branding.sh",
 		"lint:format": "bash scripts/check-format.sh",
 		"lint:imports": "bash scripts/check-cross-package-imports.sh",
+		"lint:docker-workspaces": "bash scripts/check-docker-workspaces.sh",
+		"lint:plugin-imports": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts --boundaries-only",
+		"plugins:prepare": "bun run --cwd packages/plugin-kit build",
+		"plugins:codegen": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts",
+		"plugins:check": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts --check",
+		"plugins:test-clean": "bun packages/plugin-codegen/scripts/cleanCheckoutSmoke.ts",
+		"plugins:test-api-graph": "bun packages/plugin-codegen/scripts/apiTestGraphSmoke.ts",
+		"plugins:test-convex-bundle": "bun run plugins:prepare && node packages/plugin-codegen/scripts/convexBundleSmoke.ts",
+		"plugins:test-deploy-graph": "bun packages/plugin-codegen/scripts/deployGraphSmoke.ts",
 		"deploy:api": "turbo deploy --filter=@owlat/api",
 		"ox:lint": "oxlint --config oxlintrc.json",
 		"ox:lint:fix": "oxlint --config oxlintrc.json --fix",
 		"ox:fmt": "oxfmt --config oxfmtrc.json .",
 		"ox:fmt:check": "oxfmt --config oxfmtrc.json --check .",
-		"ci:lint": "turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports",
+		"ci:lint": "bun run plugins:check && turbo lint --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:build-graph && bun run lint:convex-orphans && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:docker-workspaces && bun run lint:plugin-imports",
 		"ci:typecheck": "turbo typecheck --filter='!@owlat/desktop'",
 		"ci:test": "turbo test --filter='!@owlat/desktop'",
 		"ci:test:coverage": "turbo test:coverage --filter='!@owlat/desktop'",
-		"ci:verify": "turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports",
+		"ci:verify": "bun run plugins:test-api-graph && bun run plugins:check && turbo lint typecheck test --filter='!@owlat/desktop' && bun run lint:deadcode && bun run lint:build-graph && bun run lint:convex-orphans && bun run lint:filesize && bun run lint:adr && bun run lint:branding && bun run lint:format && bun run lint:imports && bun run lint:docker-workspaces && bun run lint:plugin-imports",
 		"test": "turbo test",
 		"test:watch": "turbo test:watch",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
@@ -98,6 +111,10 @@
 		"changeset:version": "changeset version",
 		"changeset:publish": "changeset publish",
 		"release": "bun run build && bun run changeset:publish"
+	},
+	"dependencies": {
+		"nuxt": "4.4.2",
+		"vite": "7.3.1"
 	},
 	"devDependencies": {
 		"@changesets/cli": "^2.31.0",
@@ -112,10 +129,11 @@
 		"fast-xml-builder": "^1.2.0",
 		"js-cookie": "^3.0.8",
 		"js-yaml": "^3.15.0",
-		"linkify-it": "^5.0.1",
+		"linkify-it": "^5.0.2",
 		"nuxt": "4.4.2",
 		"protobufjs": "^7.6.5",
 		"shell-quote": "^1.10.0",
+		"svgo": "^4.0.2",
 		"tar": "^7.5.20",
 		"tmp": "^0.2.7",
 		"undici": "^7.28.0",
@@ -129,9 +147,5 @@
 	"trustedDependencies": [
 		"@owlat/ui",
 		"better-sqlite3"
-	],
-	"dependencies": {
-		"nuxt": "4.4.2",
-		"vite": "7.3.1"
-	}
+	]
 }

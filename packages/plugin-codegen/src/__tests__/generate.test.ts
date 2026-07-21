@@ -1,0 +1,590 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import {
+	mkdtemp,
+	mkdir,
+	readFile,
+	readdir,
+	rename,
+	rm,
+	stat,
+	symlink,
+	writeFile,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { build } from 'esbuild';
+import { afterEach, describe, expect, it } from 'vitest';
+import { writeFileAtomically } from '../atomicWrite';
+import { generatePluginComposition } from '../generate';
+
+const temporaryRoots: string[] = [];
+const execFileAsync = promisify(execFile);
+const cliPath = resolve(dirname(fileURLToPath(import.meta.url)), '../cli.ts');
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..');
+
+async function createZeroPluginWorkspace(): Promise<string> {
+	const root = await mkdtemp(join(tmpdir(), 'owlat-plugin-generate-'));
+	temporaryRoots.push(root);
+	await mkdir(join(root, 'packages', 'plugin-codegen'), { recursive: true });
+	await writeFile(join(root, 'package.json'), JSON.stringify({ dependencies: {} }));
+	await writeFile(
+		join(root, 'plugins.config.ts'),
+		'export default { bundledPluginPackages: [] };\n'
+	);
+	return root;
+}
+
+async function createComponentPluginWorkspace(): Promise<string> {
+	const root = await createZeroPluginWorkspace();
+	const packageName = 'component-plugin';
+	const packageRoot = join(root, 'node_modules', packageName);
+	await mkdir(join(packageRoot, 'convex'), { recursive: true });
+	await writeFile(
+		join(root, 'package.json'),
+		JSON.stringify({ type: 'module', dependencies: { [packageName]: '1.0.0' } })
+	);
+	await writeFile(
+		join(root, 'bun.lock'),
+		JSON.stringify({
+			workspaces: { '': { dependencies: { [packageName]: '1.0.0' } } },
+			packages: {
+				[packageName]: [
+					`${packageName}@1.0.0`,
+					'',
+					{},
+					`sha512-${Buffer.alloc(64, 0xa5).toString('base64')}`,
+				],
+			},
+		})
+	);
+	await writeFile(
+		join(root, 'plugins.config.ts'),
+		`export default { bundledPluginPackages: [${JSON.stringify(packageName)}] };\n`
+	);
+	await writeFile(
+		join(packageRoot, 'package.json'),
+		JSON.stringify({
+			name: packageName,
+			version: '1.0.0',
+			type: 'module',
+			exports: {
+				'.': './index.js',
+				'./convex/convex.config': './convex/convex.config.js',
+			},
+		})
+	);
+	await writeFile(
+		join(packageRoot, 'index.js'),
+		`export default { id: 'component-test', version: '1.0.0', capabilities: [], component: { exportPath: './convex/convex.config' } };\n`
+	);
+	await writeFile(
+		join(packageRoot, 'convex/convex.config.js'),
+		"import { defineComponent } from 'convex/server';\nexport default defineComponent('component_test');\n"
+	);
+	return root;
+}
+
+async function createAgentPluginWorkspace(): Promise<string> {
+	const root = await createZeroPluginWorkspace();
+	const packageName = 'agent-plugin';
+	const packageRoot = join(root, 'node_modules', packageName);
+	await mkdir(join(packageRoot, 'agent'), { recursive: true });
+	await mkdir(join(packageRoot, 'draft'), { recursive: true });
+	await mkdir(join(packageRoot, 'crons'), { recursive: true });
+	await mkdir(join(root, 'node_modules/@owlat/plugin-kit'), { recursive: true });
+	await writeFile(
+		join(root, 'package.json'),
+		JSON.stringify({ type: 'module', dependencies: { [packageName]: '1.0.0' } })
+	);
+	await writeFile(
+		join(root, 'bun.lock'),
+		JSON.stringify({
+			workspaces: { '': { dependencies: { [packageName]: '1.0.0' } } },
+			packages: {
+				[packageName]: [
+					`${packageName}@1.0.0`,
+					'',
+					{},
+					`sha512-${Buffer.alloc(64, 0xa5).toString('base64')}`,
+				],
+			},
+		})
+	);
+	await writeFile(
+		join(root, 'plugins.config.ts'),
+		`export default { bundledPluginPackages: [${JSON.stringify(packageName)}] };\n`
+	);
+	await writeFile(
+		join(packageRoot, 'package.json'),
+		JSON.stringify({
+			name: packageName,
+			version: '1.0.0',
+			type: 'module',
+			exports: {
+				'.': './index.js',
+				'./agent/check': './agent/check.ts',
+				'./draft/legal': './draft/legal.ts',
+				'./gates/approval': './gates/approval.ts',
+				'./automation/trigger': './automation/trigger.ts',
+				'./automation/step': './automation/step.ts',
+				'./automation/condition': './automation/condition.ts',
+				'./crons/refresh': './crons/refresh.ts',
+			},
+		})
+	);
+	await writeFile(
+		join(packageRoot, 'index.js'),
+		`export default { id: 'fixture-agent', version: '1.0.0', capabilities: ['agent:step', 'draft:strategy', 'send:gate', 'automation:trigger', 'automation:step', 'automation:condition', 'scheduler:cron'], flag: { default: false }, contributes: { agentSteps: [{ id: 'check', after: 'security_scan', module: { exportPath: './agent/check' }, lifecycleEdges: [{ kind: 'caution', from: 'classifying', to: 'archived' }] }], draftStrategies: [{ id: 'legal', label: 'Legal', module: { exportPath: './draft/legal' }, timeoutMs: 1000 }], sendGates: [{ id: 'approval', label: 'Approval', module: { exportPath: './gates/approval' }, timeoutMs: 1000 }], automationTriggers: [{ id: 'ping', label: 'Ping', description: 'Fires on a ping', icon: 'bolt', module: { exportPath: './automation/trigger' } }], automationSteps: [{ id: 'notify', label: 'Notify', description: 'Sends a notification', icon: 'bell', module: { exportPath: './automation/step' } }], automationConditions: [{ id: 'vip', label: 'Is VIP', description: 'Contact is a VIP', icon: 'star', module: { exportPath: './automation/condition' } }], crons: [{ id: 'refresh', label: 'Refresh', module: { exportPath: './crons/refresh' }, schedule: { intervalMinutes: 360 }, timeoutMs: 30000 }] } };\n`
+	);
+	await writeFile(
+		join(packageRoot, 'agent/check.ts'),
+		"export default { async execute() { return { kind: 'continue' as const }; } };\n"
+	);
+	await writeFile(
+		join(packageRoot, 'draft/legal.ts'),
+		"export default { async generate() { return { draftBody: 'legal' }; } };\n"
+	);
+	await mkdir(join(packageRoot, 'gates'), { recursive: true });
+	await writeFile(
+		join(packageRoot, 'gates/approval.ts'),
+		"export default { async evaluate() { return { outcome: 'no-objection' as const }; } };\n"
+	);
+	await mkdir(join(packageRoot, 'automation'), { recursive: true });
+	await writeFile(
+		join(packageRoot, 'automation/trigger.ts'),
+		'export default { parseConfig() { return {}; }, matches() { return true; } };\n'
+	);
+	await writeFile(
+		join(packageRoot, 'automation/step.ts'),
+		"export default { parseConfig() { return {}; }, async execute() { return { kind: 'completed' as const }; } };\n"
+	);
+	await writeFile(
+		join(packageRoot, 'automation/condition.ts'),
+		'export default { parseConfig() { return {}; }, evaluate() { return true; } };\n'
+	);
+	await writeFile(join(packageRoot, 'crons/refresh.ts'), 'export default { async run() {} };\n');
+	await writeFile(
+		join(root, 'node_modules/@owlat/plugin-kit/package.json'),
+		JSON.stringify({ name: '@owlat/plugin-kit', version: '1.0.0', types: './index.d.ts' })
+	);
+	await writeFile(
+		join(root, 'node_modules/@owlat/plugin-kit/index.d.ts'),
+		'export interface PluginAgentStepModule { execute(input: unknown): Promise<unknown>; }\nexport interface PluginDraftStrategyModule { generate(input: unknown, services: unknown): Promise<{ draftBody: string }>; }\nexport interface PluginAutonomyGateModule { evaluate(input: unknown, services: unknown): Promise<{ outcome: "no-objection" } | { outcome: "objection"; reason: string }>; }\nexport interface PluginAutomationTriggerModule { parseConfig(raw: unknown): unknown; matches(input: unknown, config: unknown): boolean; }\nexport interface PluginAutomationStepModule { parseConfig(raw: unknown): unknown; execute(input: unknown, config: unknown): Promise<unknown>; }\nexport interface PluginAutomationConditionModule { parseConfig(raw: unknown): unknown; evaluate(input: unknown, config: unknown): boolean; }\nexport interface PluginCronModule { run(services: unknown): Promise<void>; }\n'
+	);
+	return root;
+}
+
+afterEach(async () => {
+	await Promise.all(
+		temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true }))
+	);
+});
+
+describe('generated composition freshness', () => {
+	it('resolves encoded file URLs without treating URL paths as filesystem paths', () => {
+		const testPath = join(tmpdir(), 'plugin codegen', 'generate.test.ts');
+		expect(fileURLToPath(pathToFileURL(testPath))).toBe(testPath);
+	});
+
+	it('writes both targets and accepts them in non-writing check mode', async () => {
+		const root = await createZeroPluginWorkspace();
+
+		await generatePluginComposition(root);
+		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
+		const componentPath = join(root, 'apps/api/convex/plugins/components.generated.ts');
+		const nuxtPath = join(root, 'apps/web/app/plugins/plugin-composition.generated.ts');
+		const catalogPath = join(root, 'apps/api/convex/plugins/sendTransportCatalog.generated.ts');
+		const modulesPath = join(root, 'apps/api/convex/plugins/sendTransportModules.generated.ts');
+		const agentCatalogPath = join(root, 'apps/api/convex/plugins/agentStepCatalog.generated.ts');
+		const agentModulesPath = join(root, 'apps/api/convex/plugins/agentStepModules.generated.ts');
+		const draftCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyCatalog.generated.ts'
+		);
+		const draftModulesPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyModules.generated.ts'
+		);
+		const gateCatalogPath = join(root, 'apps/api/convex/plugins/autonomyGateCatalog.generated.ts');
+		const gateModulesPath = join(root, 'apps/api/convex/plugins/autonomyGateModules.generated.ts');
+		const webhookEventCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/webhookEventCatalog.generated.ts'
+		);
+		const importProviderCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/importProviderCatalog.generated.ts'
+		);
+		const importProviderModulesPath = join(
+			root,
+			'apps/api/convex/plugins/importProviderModules.generated.ts'
+		);
+		const cronCatalogPath = join(root, 'apps/api/convex/plugins/cronCatalog.generated.ts');
+		const cronModulesPath = join(root, 'apps/api/convex/plugins/cronModules.generated.ts');
+		expect(await readFile(convexPath, 'utf8')).toContain('composeBundledPlugins([]);');
+		expect(await readFile(componentPath, 'utf8')).toContain('void app;');
+		expect(await readFile(nuxtPath, 'utf8')).toContain('defineNuxtPlugin');
+		expect(await readFile(catalogPath, 'utf8')).toContain('Object.freeze([])');
+		expect(await readFile(modulesPath, 'utf8')).toContain("'use node';");
+		expect(await readFile(agentCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(agentModulesPath, 'utf8')).toContain("'use node';");
+		expect(await readFile(draftCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(draftModulesPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(gateCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(gateModulesPath, 'utf8')).toContain('Object.freeze([] as const)');
+		for (const registry of ['Trigger', 'Step', 'Condition']) {
+			const catalog = join(
+				root,
+				`apps/api/convex/plugins/automation${registry}Catalog.generated.ts`
+			);
+			const modules = join(
+				root,
+				`apps/api/convex/plugins/automation${registry}Modules.generated.ts`
+			);
+			expect(await readFile(catalog, 'utf8')).toContain('Object.freeze([] as const)');
+			const modulesSource = await readFile(modules, 'utf8');
+			expect(modulesSource).toContain('Object.freeze([] as const)');
+			// Only the step walker runs in a Convex action, so only step modules are Node-only.
+			if (registry === 'Step') expect(modulesSource).toContain("'use node';");
+			else expect(modulesSource).not.toContain("'use node';");
+		}
+		expect(await readFile(webhookEventCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(importProviderCatalogPath, 'utf8')).toContain(
+			'Object.freeze([] as const)'
+		);
+		expect(await readFile(importProviderModulesPath, 'utf8')).toContain("'use node';");
+		expect(await readFile(importProviderModulesPath, 'utf8')).toContain(
+			'Object.freeze([] as const)'
+		);
+		expect(await readFile(cronCatalogPath, 'utf8')).toContain('Object.freeze([] as const)');
+		expect(await readFile(cronModulesPath, 'utf8')).toContain("'use node';");
+		expect(await readFile(cronModulesPath, 'utf8')).toContain('Object.freeze([] as const)');
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('generates component install/remove deterministically from one config source', async () => {
+		const root = await createComponentPluginWorkspace();
+		const componentPath = join(root, 'apps/api/convex/plugins/components.generated.ts');
+
+		await generatePluginComposition(root);
+		const installed = await readFile(componentPath, 'utf8');
+		expect(installed).toContain('from "component-plugin/convex/convex.config"');
+		expect(installed).toContain('{ name: "plugin_component_test" }');
+		await generatePluginComposition(root);
+		expect(await readFile(componentPath, 'utf8')).toBe(installed);
+
+		await writeFile(
+			join(root, 'plugins.config.ts'),
+			'export default { bundledPluginPackages: [] };\n'
+		);
+		await generatePluginComposition(root);
+		const removed = await readFile(componentPath, 'utf8');
+		expect(removed).toContain('void app;');
+		expect(removed).not.toContain('component-plugin');
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('typechecks and bundles nonempty generated executable registries', async () => {
+		const root = await createAgentPluginWorkspace();
+		await generatePluginComposition(root);
+		const catalogPath = join(root, 'apps/api/convex/plugins/agentStepCatalog.generated.ts');
+		const modulesPath = join(root, 'apps/api/convex/plugins/agentStepModules.generated.ts');
+		const catalog = await readFile(catalogPath, 'utf8');
+		const modules = await readFile(modulesPath, 'utf8');
+		const draftCatalogPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyCatalog.generated.ts'
+		);
+		const draftModulesPath = join(
+			root,
+			'apps/api/convex/plugins/draftStrategyModules.generated.ts'
+		);
+		const draftCatalog = await readFile(draftCatalogPath, 'utf8');
+		const draftModules = await readFile(draftModulesPath, 'utf8');
+		const gateCatalogPath = join(root, 'apps/api/convex/plugins/autonomyGateCatalog.generated.ts');
+		const gateModulesPath = join(root, 'apps/api/convex/plugins/autonomyGateModules.generated.ts');
+		const gateCatalog = await readFile(gateCatalogPath, 'utf8');
+		const gateModules = await readFile(gateModulesPath, 'utf8');
+		const cronCatalogPath = join(root, 'apps/api/convex/plugins/cronCatalog.generated.ts');
+		const cronModulesPath = join(root, 'apps/api/convex/plugins/cronModules.generated.ts');
+		const cronCatalog = await readFile(cronCatalogPath, 'utf8');
+		const cronModules = await readFile(cronModulesPath, 'utf8');
+		expect(catalog).toContain('Object.freeze({"kind":"caution"');
+		expect(modules).toContain('satisfies PluginAgentStepModule');
+		expect(draftCatalog).toContain('plugin.fixture-agent.legal');
+		expect(draftCatalog).not.toContain('agent-plugin/draft/legal');
+		expect(draftModules).toContain('from "agent-plugin/draft/legal"');
+		expect(draftModules).toContain('satisfies PluginDraftStrategyModule');
+		expect(gateCatalog).toContain('plugin.fixture-agent.approval');
+		expect(gateModules).toContain('from "agent-plugin/gates/approval"');
+		expect(gateModules).toContain('satisfies PluginAutonomyGateModule');
+		const automationExpectations = [
+			{
+				registry: 'Trigger',
+				kind: 'plugin.fixture-agent.ping',
+				export: 'automation/trigger',
+				contract: 'PluginAutomationTriggerModule',
+				icon: 'bolt',
+			},
+			{
+				registry: 'Step',
+				kind: 'plugin.fixture-agent.notify',
+				export: 'automation/step',
+				contract: 'PluginAutomationStepModule',
+				icon: 'bell',
+			},
+			{
+				registry: 'Condition',
+				kind: 'plugin.fixture-agent.vip',
+				export: 'automation/condition',
+				contract: 'PluginAutomationConditionModule',
+				icon: 'star',
+			},
+		];
+		for (const expectation of automationExpectations) {
+			const catalog = await readFile(
+				join(root, `apps/api/convex/plugins/automation${expectation.registry}Catalog.generated.ts`),
+				'utf8'
+			);
+			const modulesSource = await readFile(
+				join(root, `apps/api/convex/plugins/automation${expectation.registry}Modules.generated.ts`),
+				'utf8'
+			);
+			expect(catalog).toContain(expectation.kind);
+			expect(catalog).toContain(`icon: ${JSON.stringify(expectation.icon)}`);
+			expect(catalog).not.toContain(`agent-plugin/${expectation.export}`);
+			expect(modulesSource).toContain(`from "agent-plugin/${expectation.export}"`);
+			expect(modulesSource).toContain(`satisfies ${expectation.contract}`);
+		}
+		expect(cronCatalog).toContain('plugin.fixture-agent.refresh');
+		expect(cronCatalog).toContain('intervalMinutes: 360');
+		expect(cronCatalog).not.toContain('agent-plugin/crons/refresh');
+		expect(cronModules).toContain('from "agent-plugin/crons/refresh"');
+		expect(cronModules).toContain('satisfies PluginCronModule');
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+
+		await writeFile(
+			join(root, 'tsconfig.json'),
+			JSON.stringify({
+				compilerOptions: {
+					target: 'ESNext',
+					module: 'ESNext',
+					moduleResolution: 'Bundler',
+					strict: true,
+					noEmit: true,
+				},
+				files: [
+					catalogPath,
+					modulesPath,
+					draftCatalogPath,
+					draftModulesPath,
+					gateCatalogPath,
+					gateModulesPath,
+					cronCatalogPath,
+					cronModulesPath,
+				],
+			})
+		);
+		await execFileAsync(
+			join(repositoryRoot, 'node_modules/.bin/tsc'),
+			['--project', 'tsconfig.json'],
+			{
+				cwd: root,
+			}
+		);
+		for (const entryPoint of [
+			catalogPath,
+			modulesPath,
+			draftCatalogPath,
+			draftModulesPath,
+			gateCatalogPath,
+			gateModulesPath,
+			cronCatalogPath,
+			cronModulesPath,
+		]) {
+			await build({ absWorkingDir: root, entryPoints: [entryPoint], bundle: true, write: false });
+		}
+
+		await writeFile(join(root, 'node_modules/agent-plugin/agent/check.ts'), 'export default {};\n');
+		await expect(
+			execFileAsync(join(repositoryRoot, 'node_modules/.bin/tsc'), ['--project', 'tsconfig.json'], {
+				cwd: root,
+			})
+		).rejects.toThrow();
+	});
+
+	it('reads plugins.config.ts at its byte boundary and rejects one byte more', async () => {
+		const root = await createZeroPluginWorkspace();
+		const configPath = join(root, 'plugins.config.ts');
+		const config = 'export default { bundledPluginPackages: [] };\n';
+		await writeFile(configPath, config.padEnd(64 * 1024, ' '));
+		await expect(generatePluginComposition(root)).resolves.toBeUndefined();
+
+		await writeFile(configPath, config.padEnd(64 * 1024 + 1, ' '));
+		await expect(generatePluginComposition(root)).rejects.toMatchObject({
+			code: 'config_invalid',
+			message: expect.stringContaining('65536 bytes'),
+		});
+	});
+
+	it('reports every stale or missing generated target without rewriting it', async () => {
+		const root = await createZeroPluginWorkspace();
+		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
+		await mkdir(join(root, 'apps/api/convex/plugins'), { recursive: true });
+		await writeFile(convexPath, '// stale and must remain unchanged\n');
+
+		await expect(generatePluginComposition(root, { check: true })).rejects.toMatchObject({
+			code: 'generated_files_stale',
+			details: [
+				'apps/api/convex/plugins/plugins.generated.ts',
+				'apps/api/convex/plugins/components.generated.ts',
+				'apps/web/app/plugins/plugin-composition.generated.ts',
+				'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
+				'apps/api/convex/plugins/sendTransportModules.generated.ts',
+				'apps/api/convex/plugins/agentStepCatalog.generated.ts',
+				'apps/api/convex/plugins/agentStepModules.generated.ts',
+				'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
+				'apps/api/convex/plugins/draftStrategyModules.generated.ts',
+				'apps/api/convex/plugins/autonomyGateCatalog.generated.ts',
+				'apps/api/convex/plugins/autonomyGateModules.generated.ts',
+				'apps/api/convex/plugins/automationTriggerCatalog.generated.ts',
+				'apps/api/convex/plugins/automationTriggerModules.generated.ts',
+				'apps/api/convex/plugins/automationStepCatalog.generated.ts',
+				'apps/api/convex/plugins/automationStepModules.generated.ts',
+				'apps/api/convex/plugins/automationConditionCatalog.generated.ts',
+				'apps/api/convex/plugins/automationConditionModules.generated.ts',
+				'apps/api/convex/plugins/webhookEventCatalog.generated.ts',
+				'apps/api/convex/plugins/importProviderCatalog.generated.ts',
+				'apps/api/convex/plugins/importProviderModules.generated.ts',
+				'apps/api/convex/plugins/cronCatalog.generated.ts',
+				'apps/api/convex/plugins/cronModules.generated.ts',
+			],
+		});
+		expect(await readFile(convexPath, 'utf8')).toBe('// stale and must remain unchanged\n');
+	});
+
+	it('bounds existing generated files before freshness comparison', async () => {
+		const root = await createZeroPluginWorkspace();
+		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
+		await mkdir(dirname(convexPath), { recursive: true });
+		await writeFile(convexPath, ' '.repeat(4 * 1024 * 1024));
+		await expect(generatePluginComposition(root, { check: true })).rejects.toMatchObject({
+			code: 'generated_files_stale',
+			message: 'Bundled plugin composition is stale; run bun run plugins:codegen',
+		});
+
+		await writeFile(convexPath, ' '.repeat(4 * 1024 * 1024 + 1));
+		await expect(generatePluginComposition(root, { check: true })).rejects.toMatchObject({
+			code: 'generated_files_stale',
+			message: expect.stringContaining('4194304 bytes'),
+			details: ['apps/api/convex/plugins/plugins.generated.ts'],
+		});
+	});
+
+	// Each generation now writes 17 files; 20 concurrent runs (and 4 cold Bun
+	// subprocesses that compile the CLI) exceed vitest's 5s default on a loaded CI
+	// runner. These assert collision-safety, not latency, so give them headroom.
+	it('supports concurrent generation in one process without temporary-file collisions', async () => {
+		const root = await createZeroPluginWorkspace();
+
+		await Promise.all(Array.from({ length: 20 }, () => generatePluginComposition(root)));
+
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('supports concurrent generation in separate Bun processes', async () => {
+		const root = await createZeroPluginWorkspace();
+
+		await Promise.all(
+			Array.from({ length: 4 }, () => execFileAsync('bun', [cliPath], { cwd: root }))
+		);
+
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('ignores a planted legacy temporary symlink and never overwrites its victim', async () => {
+		const root = await createZeroPluginWorkspace();
+		const convexPath = join(root, 'apps/api/convex/plugins/plugins.generated.ts');
+		const victimPath = join(root, 'victim.txt');
+		await mkdir(dirname(convexPath), { recursive: true });
+		await writeFile(victimPath, 'unchanged\n');
+		await symlink(victimPath, `${convexPath}.${process.pid}.tmp`);
+
+		await generatePluginComposition(root);
+
+		expect(await readFile(victimPath, 'utf8')).toBe('unchanged\n');
+		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
+	});
+
+	it('rejects generated targets and parents that are symbolic links', async () => {
+		const targetRoot = await createZeroPluginWorkspace();
+		const targetVictim = join(targetRoot, 'target-victim.ts');
+		const convexTarget = join(targetRoot, 'apps/api/convex/plugins/plugins.generated.ts');
+		await mkdir(dirname(convexTarget), { recursive: true });
+		await writeFile(targetVictim, '// victim\n');
+		await symlink(targetVictim, convexTarget);
+		await expect(generatePluginComposition(targetRoot)).rejects.toMatchObject({
+			code: 'generated_path_unsafe',
+		});
+		expect(await readFile(targetVictim, 'utf8')).toBe('// victim\n');
+
+		const parentRoot = await createZeroPluginWorkspace();
+		const outsideParent = await mkdtemp(join(tmpdir(), 'owlat-plugin-outside-'));
+		temporaryRoots.push(outsideParent);
+		await mkdir(join(parentRoot, 'apps/api/convex'), { recursive: true });
+		await symlink(outsideParent, join(parentRoot, 'apps/api/convex/plugins'), 'dir');
+		await expect(generatePluginComposition(parentRoot)).rejects.toMatchObject({
+			code: 'generated_path_unsafe',
+		});
+	});
+
+	it('commits relative to the stable parent when its pathname is swapped at commit', async () => {
+		const root = await createZeroPluginWorkspace();
+		const parent = join(root, 'apps/api/convex/plugins');
+		const parkedParent = join(root, 'parked-plugins');
+		const target = join(parent, 'plugins.generated.ts');
+		const outside = await mkdtemp(join(tmpdir(), 'owlat-plugin-race-outside-'));
+		temporaryRoots.push(outside);
+		await mkdir(parent, { recursive: true });
+		await writeFile(join(outside, 'plugins.generated.ts'), 'outside victim\n');
+
+		const write = writeFileAtomically(root, target, 'committed safely\n', {
+			beforeCommit: async () => {
+				expect((await readdir(parent)).filter((entry) => entry.endsWith('.tmp'))).toHaveLength(1);
+				expect((await readdir(root)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
+				await rename(parent, parkedParent);
+				await symlink(outside, parent, 'dir');
+			},
+		});
+
+		await expect(write).rejects.toMatchObject({ code: 'generated_path_unsafe' });
+		expect(await readFile(join(outside, 'plugins.generated.ts'), 'utf8')).toBe('outside victim\n');
+		expect(await readFile(join(parkedParent, 'plugins.generated.ts'), 'utf8')).toBe(
+			'committed safely\n'
+		);
+		expect((await readdir(root)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
+		expect((await readdir(parkedParent)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
+	});
+
+	it('stages beside a target on a nested filesystem device', async () => {
+		if (process.platform !== 'linux') return;
+		let workspaceDevice;
+		let sharedMemoryDevice;
+		try {
+			[workspaceDevice, sharedMemoryDevice] = await Promise.all([stat('/'), stat('/dev/shm')]);
+		} catch {
+			return;
+		}
+		if (workspaceDevice.dev === sharedMemoryDevice.dev) return;
+
+		const parent = await mkdtemp('/dev/shm/owlat-plugin-atomic-');
+		temporaryRoots.push(parent);
+		const target = join(parent, 'generated.ts');
+		await writeFileAtomically('/', target, 'cross-device workspace\n');
+
+		expect(await readFile(target, 'utf8')).toBe('cross-device workspace\n');
+		expect((await readdir(parent)).filter((entry) => entry.endsWith('.tmp'))).toEqual([]);
+	});
+});

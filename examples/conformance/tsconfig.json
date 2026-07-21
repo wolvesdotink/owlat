@@ -1,0 +1,23 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"importHelpers": false,
+		"types": ["node"],
+		"lib": ["ES2023", "DOM"],
+		"noEmit": true,
+		"paths": {
+			"@owlat/plugin-kit": ["../../packages/plugin-kit/src/index.ts"],
+			"@owlat/shared/featureFlags": ["../../packages/shared/src/featureFlags.ts"],
+			"@owlat/plugin-host": ["../../packages/plugin-host/src/index.ts"],
+			"@owlat/plugin-codegen": ["../../packages/plugin-codegen/src/index.ts"],
+			"@owlat/plugin-cli/run": ["../../packages/plugin-cli/src/run.ts"],
+			"@owlat/example-deliverability-lab": ["../plugins/deliverability-lab/src/index.ts"],
+			"@owlat/example-escalation-guard": ["../plugins/escalation-guard/src/index.ts"],
+			"@owlat/code-worker/jobs/seedTest": ["../../apps/code-worker/src/jobs/seedTest.ts"],
+			"@owlat/code-worker/pluginTaskRunner": ["../../apps/code-worker/src/pluginTaskRunner.ts"],
+			"@owlat/example-slack-approvals": ["../plugins/slack-approvals/src/index.ts"]
+		}
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules", "dist"]
+}

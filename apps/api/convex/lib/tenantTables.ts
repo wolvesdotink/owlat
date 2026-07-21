@@ -178,6 +178,15 @@ export const TENANT_TABLES = [
 	'semanticFiles',
 
 	// ── Misc tenant data ──
+	'connectedApps',
+	'connectedAppHookCircuits',
+	'connectedAppHookDeliveryLogs',
+	'pluginStorageEntries',
+	'pluginStorageUsage',
+	'pluginLlmReservations',
+	'pluginLlmDailyUsage',
+	'pluginTasks',
+	'draftStrategySelections',
 	'shareLinks',
 	'integrationImports',
 	'codeWorkTasks',

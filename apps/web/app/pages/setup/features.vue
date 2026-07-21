@@ -3,6 +3,7 @@ import {
 	FEATURE_PACKS,
 	ALL_FEATURE_PACK_KEYS,
 	applyPackToggle,
+	FEATURE_FLAGS,
 	getFlagsByCategory,
 	isPackEnabled,
 	needsDeliveryProvider,
@@ -50,7 +51,7 @@ const packState = computed(() => {
 
 function togglePack(packKey: FeaturePackKey) {
 	const nextValue = packState.value[packKey] !== 'on';
-	const { next: nextFlags } = applyPackToggle(flags.value, packKey, nextValue);
+	const { next: nextFlags } = applyPackToggle(flags.value, packKey, nextValue, FEATURE_FLAGS);
 	flags.value = nextFlags;
 }
 </script>

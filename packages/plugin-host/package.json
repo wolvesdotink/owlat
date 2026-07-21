@@ -1,0 +1,35 @@
+{
+	"name": "@owlat/plugin-host",
+	"version": "0.3.3",
+	"private": true,
+	"description": "Runtime-neutral enforcement kernel for statically composed Owlat plugins",
+	"license": "Apache-2.0",
+	"type": "module",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		}
+	},
+	"scripts": {
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@owlat/plugin-kit": "workspace:*",
+		"@owlat/shared": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

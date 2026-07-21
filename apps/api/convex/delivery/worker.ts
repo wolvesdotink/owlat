@@ -5,16 +5,15 @@ import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import {
-	isSendProviderKind,
 	type ExtrasFor,
 	type MtaExtras,
 	type ResendExtras,
 	type SendProviderKind,
 } from '../lib/sendProviders';
+import { selectSendProviderKind } from '../lib/sendProviders/types';
 import { getUnsubscribeUrl, getListUnsubscribeHeader } from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
-import { getOptional } from '../lib/env';
 import { getMtaConfig, scanAttachmentBytes } from '../mail/mtaClient';
 import { transformHtml } from './sendComposition/transform';
 import { fetchGuarded } from '../lib/ssrfGuard';
@@ -195,16 +194,6 @@ function deriveIdempotencyKey(envelopeInput: WorkerEnvelopeInput): string | unde
 	const sendRowId =
 		envelopeInput.kind === 'campaign' ? envelopeInput.emailSendId : envelopeInput.sendId;
 	return sendRowId ? `send_${sendRowId}` : undefined;
-}
-
-function resolveProviderKind(envelopeInput: WorkerEnvelopeInput): SendProviderKind | null {
-	if (envelopeInput.providerType && isSendProviderKind(envelopeInput.providerType)) {
-		return envelopeInput.providerType;
-	}
-	const envKind = getOptional('EMAIL_PROVIDER');
-	// Fail-closed: no implicit MTA default. An unconfigured instance returns null
-	// and the worker refuses the send rather than dispatching to a phantom MTA.
-	return envKind && isSendProviderKind(envKind) ? envKind : null;
 }
 
 /**
@@ -412,7 +401,7 @@ export const sendSingleEmail = internalAction({
 			}
 		}
 
-		const providerKind = resolveProviderKind(envelopeInput);
+		const providerKind = selectSendProviderKind(envelopeInput.providerType);
 		if (!providerKind) {
 			// Fail-closed: no delivery provider configured. The send entry points
 			// gate on isDeliveryConfigured() upstream, so reaching here means a

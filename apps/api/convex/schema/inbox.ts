@@ -11,6 +11,7 @@ import {
 } from '../lib/convexValidators';
 import { pendingClarificationValidator } from '../inbox/clarificationValidators';
 import { attachmentSuggestionsValidator } from '../inbox/attachmentValidators';
+import { agentStepKindValidator } from '../agent/steps/catalog';
 
 /**
  * Inbox / Agent pipeline tables — AI-assisted shared inbox.
@@ -256,14 +257,7 @@ export const inboxTables = {
 		// Which pipeline step this action represents — matches the
 		// AgentStepKind union in convex/agent/steps/types.ts. The
 		// `plan` kind was dropped pre-prod with ADR-0014.
-		actionType: v.union(
-			v.literal('security_scan'),
-			v.literal('context_retrieval'),
-			v.literal('classify'),
-			v.literal('clarify'),
-			v.literal('draft'),
-			v.literal('route')
-		),
+		actionType: agentStepKindValidator,
 		// Execution status. `failed` is a RETRYABLE terminal-of-attempt state
 		// the retry cron (processingLifecycle.retryFailedActions) picks back up;
 		// `abandoned` is the TRUE terminal state, set once retries are exhausted
@@ -354,13 +348,22 @@ export const inboxTables = {
 	// by_creation_time index; retention prunes the tail.
 	llmUsageEvents: defineTable({
 		feature: v.string(),
+		organizationId: v.optional(v.string()),
+		pluginId: v.optional(v.string()),
 		modelUsed: v.optional(v.string()),
 		promptTokens: v.number(),
 		completionTokens: v.number(),
 		totalTokens: v.number(),
 		costUsd: v.number(),
 		createdAt: v.number(),
-	}).index('by_feature', ['feature']),
+	})
+		.index('by_feature', ['feature'])
+		.index('by_organization_id_and_created_at', ['organizationId', 'createdAt'])
+		.index('by_organization_id_and_plugin_id_and_created_at', [
+			'organizationId',
+			'pluginId',
+			'createdAt',
+		]),
 
 	// Thread Presence - ephemeral "who is here" rows for the shared-inbox thread
 	// view. One row per (thread, user); `mode` is `viewing` while the thread is

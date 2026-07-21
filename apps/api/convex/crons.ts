@@ -1,5 +1,6 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
+import { registerBundledPluginCrons } from './plugins/cronRegistration';
 
 const crons = cronJobs();
 
@@ -73,6 +74,16 @@ crons.interval(
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
 
+// Clean up old connected-app hook delivery logs weekly. connectedAppHookDeliveryLogs
+// is written on every signed-hook invocation; without this cron its retention
+// never runs and the table grows unbounded. Ages rows out at AUDIT_LOG_RETENTION_MS.
+crons.interval(
+	'cleanup connected-app hook delivery logs',
+	{ hours: 168 },
+	internal.connectedApps.hookDeliveryLogStore._cleanupHookDeliveryLogs,
+	{}
+);
+
 // Clean up old raw webhook payloads weekly. webhookPayloads is written on every
 // webhook ingest; without this cron its retention never runs and the table
 // grows unbounded (only purged on full org deletion).
@@ -97,6 +108,12 @@ crons.interval(
 	'retention: mail audit log',
 	{ hours: 24 },
 	internal.maintenance.retention.sweepMailAuditLog,
+	{}
+);
+crons.interval(
+	'retention: plugin llm accounting',
+	{ hours: 24 },
+	internal.maintenance.retention.sweepPluginLlmAccounting,
 	{}
 );
 crons.interval(
@@ -410,5 +427,10 @@ crons.interval(
 	internal.contacts.identities.autoMergeDuplicates,
 	{ limit: 20 }
 );
+
+// Append every bundled plugin cron (generated catalog) after the core crons,
+// each wrapped in the host runtime so flag/grant/env are rechecked per tick and
+// every run is attributed to its plugin. No-op when no plugin contributes crons.
+registerBundledPluginCrons(crons);
 
 export default crons;

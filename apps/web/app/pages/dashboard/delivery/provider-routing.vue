@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { unknownIpPoolWarning } from '~/utils/ipPool';
+import {
+	buildTransportOptions,
+	isTransportAvailable,
+	routeProvidersForWrite,
+	seedRouteProviders,
+	transportLabel,
+} from '~/utils/providerRouting';
 
 useHead({ title: 'Provider Routing — Owlat' });
 
@@ -64,16 +71,6 @@ const STRATEGIES: { value: Strategy; label: string; description: string }[] = [
 	},
 ];
 
-const SUPPORTED_PROVIDERS: { value: string; label: string }[] = [
-	{ value: 'mta', label: 'Built-in MTA' },
-	{ value: 'ses', label: 'Amazon SES' },
-	{ value: 'resend', label: 'Resend' },
-	{ value: 'smtp', label: 'SMTP relay' },
-];
-
-const providerLabel = (providerType: string): string =>
-	SUPPORTED_PROVIDERS.find((p) => p.value === providerType)?.label ?? providerType;
-
 const strategyLabel = (strategy: string): string =>
 	STRATEGIES.find((s) => s.value === strategy)?.label ?? strategy;
 
@@ -81,13 +78,18 @@ const strategyLabel = (strategy: string): string =>
 const { data: routesData, isLoading: routesLoading } = useOrganizationQuery(
 	api.providerRoutes.listRoutes
 );
+const { data: transportCatalog, isLoading: catalogLoading } = useOrganizationQuery(
+	api.providerRoutes.listTransportCatalog
+);
 
 // The IP-pool names the built-in MTA routes through — used to autocomplete the
 // per-route override and warn on an unknown pool name (silently ignored by the
 // MTA otherwise).
 const { data: ipPools } = useOrganizationQuery(api.providerRoutes.listIpPools);
 
-const isLoading = computed(() => organizationLoading.value || routesLoading.value);
+const isLoading = computed(
+	() => organizationLoading.value || routesLoading.value || catalogLoading.value
+);
 
 const routeByType = computed(() => {
 	const map = new Map<
@@ -103,6 +105,17 @@ const routeByType = computed(() => {
 	}
 	return map;
 });
+
+const transportOptions = computed(() =>
+	buildTransportOptions(
+		transportCatalog.value ?? [],
+		(routesData.value ?? []).flatMap((route) => route.providers)
+	)
+);
+const providerLabel = (providerType: string): string =>
+	transportLabel(transportOptions.value, providerType);
+const providerAvailable = (providerType: string): boolean =>
+	isTransportAvailable(transportOptions.value, providerType);
 
 // ── Mutations ───────────────────────────────────────────────────────
 const { run: setRoute } = useBackendOperation(api.providerRoutes.setRoute, {
@@ -136,16 +149,12 @@ function startEdit(messageType: MessageType) {
 	if (existing) {
 		editStrategy.value = existing.strategy as Strategy;
 		editIpPool.value = existing.ipPool ?? '';
-		editProviders.value = existing.providers.map((p) => ({ ...p }));
+		editProviders.value = seedRouteProviders(transportOptions.value, existing.providers);
 	} else {
-		// Seed a sensible default: every supported provider, MTA enabled first.
+		// Seed every composed provider with the first available transport enabled.
 		editStrategy.value = 'single';
 		editIpPool.value = '';
-		editProviders.value = SUPPORTED_PROVIDERS.map((p, index) => ({
-			providerType: p.value,
-			weight: 100,
-			isEnabled: index === 0,
-		}));
+		editProviders.value = seedRouteProviders(transportOptions.value);
 	}
 	editOpen.value = true;
 }
@@ -175,16 +184,13 @@ async function handleSave() {
 	const result = await setRoute({
 		messageType: editMessageType.value,
 		strategy: editStrategy.value,
-		// Persist the full ordered list (order matters for priority_failover);
-		// the backend keeps the disabled rows so the ordering survives edits.
-		providers: editProviders.value.map((p) => ({
-			providerType: p.providerType,
-			weight:
-				editStrategy.value === 'workload_split'
-					? Math.max(0, Math.round(p.weight ?? 0))
-					: undefined,
-			isEnabled: p.isEnabled,
-		})),
+		// Preserve registered-provider order while removing retired kinds that the
+		// fail-closed backend intentionally refuses to persist.
+		providers: routeProvidersForWrite(
+			transportOptions.value,
+			editProviders.value,
+			editStrategy.value
+		),
 		ipPool: editIpPool.value.trim() || undefined,
 	});
 	isSaving.value = false;
@@ -264,8 +270,8 @@ async function handleReset() {
 							<code class="px-1 py-0.5 rounded bg-bg-surface text-text-primary text-xs"
 								>EMAIL_PROVIDER</code
 							>
-							environment variable (the built-in MTA by default). Configure a route to enable
-							failover or to split traffic across multiple providers.
+							environment variable. Configure a route to enable failover or to split traffic across
+							multiple providers.
 						</p>
 					</div>
 				</div>
@@ -399,9 +405,13 @@ async function handleReset() {
 									v-model="provider.isEnabled"
 									type="checkbox"
 									class="rounded border-border-subtle text-brand focus:ring-brand"
+									:disabled="!providerAvailable(provider.providerType)"
 								/>
 								<span class="text-sm font-medium text-text-primary">
 									{{ providerLabel(provider.providerType) }}
+								</span>
+								<span v-if="!providerAvailable(provider.providerType)" class="text-xs text-warning">
+									Unavailable
 								</span>
 							</label>
 

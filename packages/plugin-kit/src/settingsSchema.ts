@@ -1,0 +1,244 @@
+import type { JsonPrimitive, JsonValue } from './json';
+import { isRecord } from './manifestValue';
+
+/**
+ * Declarative settings schema a plugin exposes so the host can render a generic
+ * operator settings form — capabilities and grants aside — without shipping any
+ * custom UI or arbitrary client code. Every field is a plain data descriptor;
+ * the host validates operator input against it. A `secret` field holds no value
+ * at all: it names a deployment environment variable, so credential plaintext is
+ * neither stored nor round-tripped to the browser.
+ *
+ * Manifest-time validation of a schema lives in `./settingsSchemaManifest`; this
+ * module owns the types plus the host/client-safe runtime helpers that operate on
+ * an already-validated schema.
+ */
+export type PluginSettingsFieldKind = 'string' | 'secret' | 'number' | 'boolean' | 'select';
+
+interface PluginSettingsFieldCommon {
+	readonly key: string;
+	readonly label: string;
+	readonly description?: string;
+	readonly required?: boolean;
+}
+
+/** A single-line free-text value. */
+export interface PluginSettingsStringField extends PluginSettingsFieldCommon {
+	readonly kind: 'string';
+	readonly default?: string;
+	readonly maxLength?: number;
+}
+
+/**
+ * A sensitive credential, supplied through the DEPLOYMENT ENVIRONMENT rather
+ * than through the settings form.
+ *
+ * A secret field carries no value: the operator sets `envVar` in the deployment
+ * and the host reports only whether it is present. Owlat therefore never
+ * persists plugin credential plaintext — there is no row to leak, no envelope to
+ * rotate, and no encryption path to get wrong. The form renders the field
+ * read-only with its presence state and the variable name to set.
+ *
+ * Storing the value instead would be a write-only credential store: no host path
+ * ever hands a plugin its settings (plugins receive host-mediated services only),
+ * so a persisted secret has no reader and is pure liability. `flag.requiredEnvVars`
+ * is the mechanism that can additionally make the variable's presence a
+ * precondition for the plugin running at all.
+ */
+export interface PluginSettingsSecretField extends PluginSettingsFieldCommon {
+	readonly kind: 'secret';
+	/** `PLUGIN_`-prefixed deployment environment variable that supplies the value. */
+	readonly envVar: string;
+}
+
+export interface PluginSettingsNumberField extends PluginSettingsFieldCommon {
+	readonly kind: 'number';
+	readonly default?: number;
+	readonly min?: number;
+	readonly max?: number;
+}
+
+export interface PluginSettingsBooleanField extends PluginSettingsFieldCommon {
+	readonly kind: 'boolean';
+	readonly default?: boolean;
+}
+
+export interface PluginSettingsSelectOption {
+	readonly value: string;
+	readonly label: string;
+}
+
+export interface PluginSettingsSelectField extends PluginSettingsFieldCommon {
+	readonly kind: 'select';
+	readonly options: readonly PluginSettingsSelectOption[];
+	readonly default?: string;
+}
+
+export type PluginSettingsField =
+	| PluginSettingsStringField
+	| PluginSettingsSecretField
+	| PluginSettingsNumberField
+	| PluginSettingsBooleanField
+	| PluginSettingsSelectField;
+
+export type PluginSettingsSchema = readonly PluginSettingsField[];
+
+export const SETTINGS_FIELD_KINDS: readonly PluginSettingsFieldKind[] = [
+	'string',
+	'secret',
+	'number',
+	'boolean',
+	'select',
+];
+
+/** Field keys that would collide with object internals; rejected everywhere. */
+export const RESERVED_FIELD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/** Upper bound on any text field's length, shared by both validators. */
+export const MAX_TEXT_LENGTH = 8_192;
+
+/**
+ * Domain bounds on a settings schema's size, shared by the manifest-time
+ * validator (`settingsSchemaManifest`) and the pre-validation snapshotter
+ * (`manifestSnapshot`) so the two layers can never drift out of sync.
+ */
+export const MAX_SETTINGS_FIELDS = 64;
+export const MAX_SETTINGS_OPTIONS = 64;
+
+// ─── Runtime helpers (host + client safe; operate on validated schemas) ──────
+
+export interface RedactedPluginSettings {
+	/** Every stored value known for the plugin. A secret field never has one. */
+	readonly values: Record<string, JsonValue>;
+	/** For each secret field, whether its environment variable is present. */
+	readonly secretsSet: Record<string, boolean>;
+}
+
+/** Whether a plugin secret's environment variable is set in this deployment. */
+export type SecretEnvPresence = (envVar: string) => boolean;
+
+/**
+ * Project stored settings for the client, plus a per-secret presence map.
+ *
+ * A secret field is not stored, so there is nothing to redact: its presence is
+ * read from the deployment environment through `isEnvPresent`. Callers with no
+ * environment access (the browser) pass nothing and get `false` throughout,
+ * which is the safe direction — a secret is never reported as set on evidence
+ * the caller does not have.
+ */
+export function redactPluginSettingsValues(
+	schema: PluginSettingsSchema,
+	stored: Readonly<Record<string, JsonValue>>,
+	isEnvPresent: SecretEnvPresence = () => false
+): RedactedPluginSettings {
+	const values: Record<string, JsonValue> = {};
+	const secretsSet: Record<string, boolean> = {};
+	for (const field of schema) {
+		if (field.kind === 'secret') {
+			secretsSet[field.key] = isEnvPresent(field.envVar);
+			continue;
+		}
+		if (Object.prototype.hasOwnProperty.call(stored, field.key)) {
+			values[field.key] = stored[field.key] as JsonValue;
+		} else if (field.default !== undefined) {
+			values[field.key] = field.default;
+		}
+	}
+	return { values, secretsSet };
+}
+
+export interface PluginSettingsInputIssue {
+	readonly key: string;
+	readonly message: string;
+}
+
+export type PluginSettingsInputValidation =
+	| { readonly ok: true; readonly values: Record<string, JsonPrimitive> }
+	| { readonly ok: false; readonly issues: readonly PluginSettingsInputIssue[] };
+
+/**
+ * Validate a partial operator update against the schema. Only supplied keys are
+ * checked; unknown keys, wrong types, out-of-range numbers and unlisted select
+ * values are rejected — as is any value for a `secret` field, which is supplied
+ * through the deployment environment and can never be written here.
+ */
+export function validatePluginSettingsInput(
+	schema: PluginSettingsSchema,
+	input: unknown
+): PluginSettingsInputValidation {
+	const issues: PluginSettingsInputIssue[] = [];
+	if (!isRecord(input)) {
+		return { ok: false, issues: [{ key: '$', message: 'must be a plain object' }] };
+	}
+	const byKey = new Map(schema.map((field) => [field.key, field]));
+	const values: Record<string, JsonPrimitive> = {};
+	for (const key of Object.keys(input)) {
+		const field = byKey.get(key);
+		if (!field || RESERVED_FIELD_KEYS.has(key)) {
+			issues.push({ key, message: 'is not a known setting' });
+			continue;
+		}
+		const raw = input[key];
+		const checked = checkFieldValue(field, raw, issues);
+		if (checked !== undefined) values[key] = checked;
+	}
+	return issues.length === 0 ? { ok: true, values } : { ok: false, issues };
+}
+
+function checkFieldValue(
+	field: PluginSettingsField,
+	raw: unknown,
+	issues: PluginSettingsInputIssue[]
+): JsonPrimitive | undefined {
+	switch (field.kind) {
+		case 'secret': {
+			// Never writable: the value lives in the deployment environment, so
+			// accepting one here would persist credential plaintext.
+			issues.push({
+				key: field.key,
+				message: `is supplied by the ${field.envVar} environment variable and cannot be set here`,
+			});
+			return undefined;
+		}
+		case 'string': {
+			if (typeof raw !== 'string') {
+				issues.push({ key: field.key, message: 'must be a string' });
+				return undefined;
+			}
+			const max = field.maxLength ?? MAX_TEXT_LENGTH;
+			if (raw.length > max) {
+				issues.push({ key: field.key, message: `must be at most ${max} characters` });
+				return undefined;
+			}
+			return raw;
+		}
+		case 'number': {
+			if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+				issues.push({ key: field.key, message: 'must be a finite number' });
+				return undefined;
+			}
+			if (
+				(field.min !== undefined && raw < field.min) ||
+				(field.max !== undefined && raw > field.max)
+			) {
+				issues.push({ key: field.key, message: 'is out of range' });
+				return undefined;
+			}
+			return raw;
+		}
+		case 'boolean': {
+			if (typeof raw !== 'boolean') {
+				issues.push({ key: field.key, message: 'must be a boolean' });
+				return undefined;
+			}
+			return raw;
+		}
+		case 'select': {
+			if (typeof raw !== 'string' || !field.options.some((option) => option.value === raw)) {
+				issues.push({ key: field.key, message: 'must match a declared option' });
+				return undefined;
+			}
+			return raw;
+		}
+	}
+}

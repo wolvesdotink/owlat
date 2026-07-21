@@ -413,7 +413,12 @@ services:
     profiles:
       - deploy
 
-  # ── Code Worker (AI coding agent sidecar) ──────────────────────────
+  # ── Worker (Tier-3 sandboxed code + plugin jobs) ───────────────────
+  # One worker, two queues: the inbound coding-agent tasks AND the generalized
+  # plugin-task queue (PP-27). Both run untrusted compute through the SAME
+  # separate-uid sandbox, so there is exactly one hardened executor to reason
+  # about — never a parallel worker. Activated by the `inbox-codetasks` profile
+  # (coding agent) and/or the `plugin-tasks` profile (Tier-3 plugin jobs).
   code-worker:
     # Never published to a registry — the explicit name just makes the locally
     # built tag deterministic (compose's default name depends on the project
@@ -486,7 +491,13 @@ services:
       convex:
         condition: service_healthy
     profiles:
+      # Coding-agent tasks (inbox.codeTasks) and/or Tier-3 plugin jobs. A plugin
+      # manifest flag carries only `default` + `requiredEnvVars`, so enabling a
+      # plugin that declares `worker:enqueue` does NOT bring this worker up:
+      # the operator activates `plugin-tasks` explicitly. Without it a plugin's
+      # jobs simply accumulate as `queued` rows.
       - inbox-codetasks
+      - plugin-tasks
       - dev
     restart: unless-stopped
 

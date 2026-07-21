@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { cardComponents } from './cardComponents';
+import { computed } from 'vue';
+import { dashboardWidgetRegistry } from '~/composables/widgets/dashboardWidgets';
+import { resolveWidget } from '~/composables/widgets/registry';
 
 interface DashboardCardProps {
 	card: {
@@ -11,7 +13,15 @@ interface DashboardCardProps {
 
 const props = defineProps<DashboardCardProps>();
 
-const resolvedComponent = computed(() => cardComponents[props.card.type] ?? null);
+const { isEnabled } = useFeatureFlag();
+
+// Resolve the card type against the widget registry with the current flag state.
+// - `ok`: render the card behind a per-widget isolation boundary.
+// - `disabled`: a flag-gated widget whose flag is off — omit it entirely.
+// - `unknown`: no renderer for this type — the "Unknown card type" affordance.
+const resolution = computed(() =>
+	resolveWidget(dashboardWidgetRegistry, props.card.type, isEnabled)
+);
 
 const sizeClasses = computed(() => {
 	switch (props.card.size) {
@@ -27,11 +37,8 @@ const sizeClasses = computed(() => {
 </script>
 
 <template>
-	<div :class="sizeClasses">
-		<component
-			:is="resolvedComponent"
-			v-if="resolvedComponent"
-		/>
+	<div v-if="resolution.status !== 'disabled'" :class="sizeClasses">
+		<WidgetHost v-if="resolution.status === 'ok'" :module="resolution.module" />
 		<UiCard v-else>
 			<div class="flex items-center gap-2 text-text-tertiary">
 				<Icon name="lucide:alert-circle" class="w-4 h-4" />

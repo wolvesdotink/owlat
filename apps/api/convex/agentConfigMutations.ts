@@ -15,6 +15,7 @@ import { publicQuery, adminMutation } from './lib/authedFunctions';
 import { recordAuditLog } from './lib/auditLog';
 import { getStoredFlags } from './lib/featureFlags';
 import { requireAdminContext, isActiveOrgMember } from './lib/sessionOrganization';
+import { FEATURE_FLAG_REGISTRY } from './plugins/featureFlagRegistry';
 
 /** Clamp a minute-of-day into [0, 1439] so a bad client value can't wedge the window. */
 function clampMinuteOfDay(minute: number): number {
@@ -192,7 +193,7 @@ export const killSwitch = adminMutation({
 		// 1. Disable the ai.autonomy feature flag via the shared cascade so any
 		//    dependent flags resolve consistently (same writer as setFeatureFlag).
 		const stored = await getStoredFlags(ctx);
-		const { next } = applyToggle(stored, 'ai.autonomy', false);
+		const { next } = applyToggle(stored, 'ai.autonomy', false, FEATURE_FLAG_REGISTRY);
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (settings) {
 			await ctx.db.patch(settings._id, { featureFlags: next, updatedAt: now });

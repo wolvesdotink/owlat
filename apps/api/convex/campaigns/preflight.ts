@@ -102,7 +102,7 @@ export async function validateReadyToSend(
 	}
 
 	// A delivery provider must actually be configured before the domain check —
-	// bulk campaigns dispatch through the provider abstraction (MTA/Resend/SES),
+	// bulk campaigns dispatch through the composed provider abstraction,
 	// never through a user's external IMAP mailbox. Without one, refuse here so
 	// zero `emailSends` rows are written instead of marching every recipient to
 	// `failed` against a provider that was never set up.

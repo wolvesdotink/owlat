@@ -1,5 +1,6 @@
-import { getConvexClient, fn } from './convexClient.js';
+import { getConvexClient, fn, pluginFn } from './convexClient.js';
 import { processTask, pruneStaleWorkspaces } from './taskRunner.js';
+import { pollForPluginTask } from './pluginTaskRunner.js';
 
 const POLL_INTERVAL_MS = Number(process.env['POLL_INTERVAL_MS'] ?? 10_000);
 
@@ -20,6 +21,16 @@ async function pollForTasks(): Promise<void> {
 	} catch (error) {
 		const errMsg = error instanceof Error ? error.message : String(error);
 		log(`Poll error: ${errMsg}`);
+	}
+}
+
+/** Drain the generalized Tier-3 plugin-task queue (same sandbox, same worker). */
+async function pollForPluginTasks(): Promise<void> {
+	try {
+		await pollForPluginTask();
+	} catch (error) {
+		const errMsg = error instanceof Error ? error.message : String(error);
+		log(`Plugin task poll error: ${errMsg}`);
 	}
 }
 
@@ -47,9 +58,29 @@ async function main(): Promise<void> {
 		log(`Failed to prune stale workspaces: ${error}`);
 	}
 
-	// Poll loop
+	// Reclaim plugin jobs a previous run left `running` (crashed mid-job) so they
+	// are requeued or failed instead of stranded — the queue-side lease recovery.
+	//
+	// This is a SINGLE-worker deployment (one code-worker drains the queue), so a
+	// freshly-started process provably holds no running jobs: every `running` row
+	// is the residue of the crashed predecessor, no matter how recent its last
+	// heartbeat. We therefore reclaim with `leaseMs: 0` (treat all as abandoned)
+	// rather than a lease window — a lease longer than the max job budget would
+	// skip a job whose worker crashed and restarted within seconds, stranding it
+	// `running` forever. The host still enforces the retry ceiling / never-retry-
+	// cancelled rules during reclaim.
+	try {
+		const { reclaimed } = await getConvexClient().mutation(pluginFn.reclaimStale, { leaseMs: 0 });
+		log(`Reclaimed ${reclaimed} stale plugin job(s)`);
+	} catch (error) {
+		log(`Failed to reclaim stale plugin jobs: ${error}`);
+	}
+
+	// Poll loop — one worker drains BOTH queues (code-work tasks and the
+	// generalized Tier-3 plugin-task queue) through the shared sandbox seam.
 	while (true) {
 		await pollForTasks();
+		await pollForPluginTasks();
 		await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 	}
 }

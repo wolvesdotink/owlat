@@ -1,0 +1,50 @@
+import { parsePluginId } from '@owlat/plugin-kit';
+import { describe, expect, it, vi } from 'vitest';
+import { runWithPluginFeatureFlag } from '../index';
+
+const policyPackId = parsePluginId('policy-pack');
+
+describe('plugin feature-flag enforcement', () => {
+	it('runs statically composed code only for an explicit true result', async () => {
+		const operation = vi.fn(() => 'ran');
+
+		await expect(
+			runWithPluginFeatureFlag({ isEnabled: async () => true }, policyPackId, operation)
+		).resolves.toBe('ran');
+		expect(operation).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		['false', false],
+		['undefined', undefined],
+		['a truthy non-boolean', 'true'],
+	] as const)('fails closed for %s', async (_label, enabled) => {
+		const operation = vi.fn();
+
+		await expect(
+			runWithPluginFeatureFlag({ isEnabled: () => enabled as boolean }, policyPackId, operation)
+		).rejects.toMatchObject({
+			code: 'plugin_disabled',
+			pluginId: 'policy-pack',
+		});
+		expect(operation).not.toHaveBeenCalled();
+	});
+
+	it('denies execution when flag resolution fails', async () => {
+		const operation = vi.fn();
+		const resolutionError = new Error('database unavailable');
+
+		await expect(
+			runWithPluginFeatureFlag(
+				{
+					isEnabled() {
+						throw resolutionError;
+					},
+				},
+				policyPackId,
+				operation
+			)
+		).rejects.toMatchObject({ code: 'feature_check_failed', cause: resolutionError });
+		expect(operation).not.toHaveBeenCalled();
+	});
+});

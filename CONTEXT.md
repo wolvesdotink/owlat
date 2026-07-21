@@ -2727,8 +2727,9 @@ not the module).
 
 **Send provider adapter (module)**:
 The per-provider module at `convex/lib/sendProviders/<kind>/index.ts` that
-owns the Send-side surface of one email provider. Three adapters today:
-`mta`, `ses`, `resend`. Discriminated by `kind: 'mta' | 'ses' | 'resend'`.
+owns the Send-side surface of one email provider. Four core adapters today:
+`mta`, `ses`, `resend`, `smtp`. Core kinds are discriminated by those literals;
+bundled plugin kinds use `plugin.<pluginId>.<localId>`.
 Dispatched by the registry at `sendProviders/index.ts` exporting
 `providerFor(kind)`. Mirrors the **Sending domain provider adapter
 (module)** shape — one TypeScript interface, N concrete implementations,
@@ -2757,10 +2758,14 @@ different provider set (Resend ships only on this side). Exports a
   and Resend carry `{}` today. Replaces the `params as MtaSendParams`
   cast in pre-deepening call sites.
 
-Adding a fourth send provider (e.g. Postmark) is a one-folder change:
-new `sendProviders/postmark/` directory with the adapter, one new entry
-in `SEND_PROVIDERS`, one literal added to `SendProviderKind`. The
-compile-time `satisfies` check on the registry catches missing methods.
+Adding a core provider remains a one-folder change: a new
+`sendProviders/<kind>/` adapter, one `SEND_PROVIDERS` entry, and one core kind.
+An operator-installed provider instead declares a data-only
+`contributes.sendTransports` descriptor and exports a `parseExtras` plus
+single-attempt `send` module from a verified package subpath. Codegen adds its
+metadata and Node adapter to separate generated registries; the runtime host
+authorizes flag, grant, environment, and singleton scope before every attempt.
+The compile-time `satisfies` check on the core registry catches missing methods.
 The dispatch helper never branches on `kind` — provider variation lives
 entirely behind this seam.
 
@@ -3173,8 +3178,9 @@ draft-status).
 
 **Inbox processing status**:
 The current state of an inbound message in `inboundMessages.processingStatus`:
-`received | security_check | quarantined | classifying | planning | drafting
-| draft_ready | approved | sent | rejected | archived | failed`. Twelve states
+`received | security_check | quarantined | classifying | drafting |
+draft_ready | awaiting_clarification | approved | sent | rejected | archived |
+failed`. Twelve states
 covering the joined agent-pipeline progression and the human draft-review
 hand-off. Companion fields written atomically with the status: `errorMessage`
 (on `failed`), `processedAt` (on terminals), `securityFlags` (on
@@ -3186,9 +3192,15 @@ hand-off. Companion fields written atomically with the status: `errorMessage`
 - `security_check → classifying` (no security issue; classify step starts)
 - `security_check → archived` (spam caught during scan)
 - `classifying → drafting`
+- `classifying → draft_ready` (no draft generation is needed)
+- `classifying → awaiting_clarification`
+- `awaiting_clarification → drafting`
+- `awaiting_clarification → archived` (owner dismisses the message)
 - `drafting → draft_ready`
+- `drafting → approved` (auto-send policy approves the draft)
 - `draft_ready → approved` (human approve or auto-approve)
 - `approved → sent` (after dispatch)
+- `approved → draft_ready` (cancelled auto-send returns to review)
 - `draft_ready → rejected` (human reject)
 - `quarantined → received` (release from quarantine → restarts pipeline)
 - `failed → received` (cron retry → restarts pipeline)
@@ -3196,11 +3208,11 @@ hand-off. Companion fields written atomically with the status: `errorMessage`
 - `* → failed` (pipeline error from any non-terminal state)
 
 `sent`, `rejected`, `archived` are terminal — transitions out of them are
-refused as `illegal_edge`. The agent pipeline's `context_retrieval` and
-`route` step kinds create **Agent action** rows without changing the
-processing status — they are recorded as ancillary step effects rather
-than visible transitions (kept this way to preserve today's queue-filter
-indexes). The four-state `conversationThreads.latestDraftStatus` is a
+refused as `illegal_edge`. The agent pipeline's `context_retrieval`, `clarify`,
+and `route` step kinds create **Agent action** rows without changing the
+processing status — they are recorded as ancillary step effects rather than
+visible transitions (kept this way to preserve today's queue-filter indexes).
+The four-state `conversationThreads.latestDraftStatus` is a
 *projection* of the latest draft-bearing message's processing status —
 written by the lifecycle module as a `set_thread_draft_status` effect,
 never by callers directly.
@@ -3219,7 +3231,7 @@ per kind in the happy path, plus retries within a kind). The
 creation/completion are fired as effects of inbox-side transitions or as
 the **Agent walker**'s in-state `recordStepBegin` / `recordStepEnd` calls
 that flow through the lifecycle's primitives. The Agent action's own
-`status` (`pending | running | completed | failed | skipped`) is
+`status` (`pending | running | completed | failed | abandoned | skipped`) is
 maintained by those effects; it does not get its own lifecycle module
 because every transition is already gated by an inbox-side transition.
 The `actionType` enum matches the **Agent step (module)** kind union
@@ -3298,13 +3310,21 @@ in `awaiting_clarification` (open questions for the owner) or falls through to
 `plan` kind was
 dropped with this deepening — today's plan-record was a placeholder JSON
 construction inside `agentDrafter` (`agentDrafter.ts:75-86`), never a
-real planning step; if a real planner ships later it joins as a new kind
-(module + walker registry entry + actionType enum + lifecycle
-`LEGAL_EDGES` re-addition of the `planning` state). Modules own only the
-compute + routing surface — Agent action creation/completion,
+real planning step; if a real planner ships later it joins through a host-owned
+catalog addition, its core module registry entry, and any corresponding
+lifecycle decision. Modules own only the compute + routing surface — Agent
+action creation/completion,
 `processingStatus` transitions, scheduling, and retry all live in the
 **Agent walker** which calls into the **Inbox processing lifecycle
 (module)** primitives.
+
+Bundled hosted kinds use `plugin.<pluginId>.<localId>` and come from the same
+generated catalog that derives `AgentStepKind`, the walker validator, the
+lifecycle action validator, and the schema validator. Their public module is
+deliberately narrower than a core module: it receives a bounded message
+projection and returns `continue` or a declared restrict-only `caution`. The
+walker preserves the original core continuation; plugins cannot route to
+another step, approve, send, or change core lifecycle legality.
 
 Replaces the six open-coded `internalAction` handlers in
 `convex/agent/agent<Kind>.ts` plus the scheduler-hop chain between them
@@ -3810,6 +3830,114 @@ _Avoid_: Flags (module) (collides with `ContentFlag` from the email
 scanner), Toggles (module) (informal — the codebase says "feature
 flag" throughout), Settings flags (module) (overloaded with non-flag
 settings).
+
+## Plugin platform
+
+**Plugin**:
+An npm package that exports one validated manifest and, optionally,
+static contribution modules built against `@owlat/plugin-kit`. The
+manifest — not the code — is what the host reads to compose, permission,
+flag, budget, and render the plugin; validation inspects it as data and
+never invokes it. A plugin's `id` (lowercase kebab-case) namespaces its
+feature flag, storage, spend, audit attribution, and every kind it
+contributes.
+_Avoid_: Extension (the plan's early word; the shipped package, flag key,
+CLI, and manifest all say "plugin"), Module (already means a typed
+registry member inside a single seam), Integration (reserved for the
+import-provider / connected-service sense).
+
+**Manifest**:
+The `definePlugin(...)` declaration: `id`, semantic `version`, requested
+`capabilities`, data-only `contributes` buckets, an optional `flag`,
+`llmBudget`, Convex `component` export, and `settingsSchema`. It is the
+permission CEILING, never a permission: a contribution bucket requires
+both its capability and an explicit flag, plugin storage requires a flag,
+and `llm:invoke` requires a flag plus a validated daily budget.
+_Avoid_: Plugin config (`plugins.config.ts` is the config — the bundled
+membership list), Descriptor (that is one contribution entry).
+
+**Capability**:
+A lowercase `domain:action` string naming one host-mediated operation a
+plugin may REQUEST. Exact match; no wildcards. Distinct from a **Grant**,
+which is the operator decision allowing one declared capability for an
+installation. Grants can only ever restrict the manifest. The API-key
+scope vocabulary doubles as the capability vocabulary for connected-app
+access.
+_Avoid_: Permission (that is the granted state), Scope (that is the
+API-key spelling of the same string, on the Tier-2 path only).
+
+**Contribution**:
+One data-only descriptor in a manifest bucket, with its executable half
+behind a single condition-independent package export that codegen
+verifies without running. The stored kind is always
+`plugin.<pluginId>.<localId>`, so a plugin can never shadow or collide
+with a core kind. Buckets that no seam consumes yet are reserved names,
+not extension points.
+_Avoid_: Hook (that is the Tier-2 synchronous call), Extension point (the
+seam is the extension point; the contribution is what fills it).
+
+**Composition**:
+The generated, checked-in Convex and Nuxt modules that statically import
+the bundled set listed in `plugins.config.ts`, ordered by manifest id.
+Codegen verifies package identity, lockfile integrity, and realpath
+containment, imports only each package's manifest entry, and emits an
+isolate-safe catalog plus a separate executable registry per seam. The
+zero-plugin composition is a valid no-op deployment.
+_Avoid_: Plugin loader (nothing is loaded at runtime — that is the
+invariant), Registry (a registry is one seam's members; composition is
+the build-time whole).
+
+**Bundled plugin (Tier 1)**:
+A composed-at-build-time plugin running inside Owlat's own processes. It
+may contribute backend and frontend modules and ship an isolated Convex
+component under an injective `plugin_<id>` namespace. Its feature flag
+disables it instantly; install and removal need a rebuild. Its trust is
+the operator's own deployed code — the manifest is not a sandbox.
+
+**Connected app (Tier 2)**:
+An external HTTPS endpoint bound to a plugin id, holding a sealed shared
+secret and an operator-granted subset of that plugin's capabilities.
+Installs and revokes instantly and never executes code inside Convex or
+Nuxt. Lifecycle: `enabled` ⇄ `disabled`, plus the terminal `revoked`.
+
+**Signed hook**:
+One synchronous decision call Owlat makes to a connected app —
+`draft`, `gate`, or `score` — HMAC-signed in both directions over a
+canonical string with a direction tag, the body digest, a signed
+timestamp, and a per-request nonce that the response signature echoes.
+`gate` fails CLOSED to a caution objection and has no accept value in its
+schema; `draft` and `score` fail OPEN to the built-in default and to "no
+score". Bounded by a deadline, request/response byte caps, an SSRF guard,
+and a per-(app, kind) circuit breaker.
+_Avoid_: Webhook (that is the asynchronous, fan-out direction),
+Callback (ambiguous about who calls whom).
+
+**Plugin job (Tier 3)**:
+A unit of untrusted or heavy compute a plugin ENQUEUES onto the
+`pluginTasks` queue under `worker:enqueue`, run by the generalized
+code-worker as a separate unprivileged uid with every ambient credential
+stripped from its environment. The plugin picks which host-controlled job
+kind to run and supplies a bounded payload; it never supplies the
+command. Claim, cancel, reclaim, and read are host/operator operations,
+and attempts, timeout, payload/result bytes, and in-flight depth are all
+host-clamped.
+_Avoid_: Task (already means a code task / task-flow card), Worker (the
+worker is the executor; the job is the unit of work).
+
+**Plugin host**:
+The runtime-neutral enforcement kernel (`@owlat/plugin-host`) shared by
+Convex and Nuxt. It owns capability and flag checks, contribution
+ordering, restrict-only gate results, agent-step placements, navigation
+merging, and the untrusted-text policy. It executes only handlers the
+build statically composed; it is not a module loader.
+
+**Host-mediated service**:
+The only surface hosted plugin code receives — `permissions`, `storage`,
+`llm`, `logger`, `scheduler` on a `PluginContext`, or a smaller
+per-contribution `services` object. Never a Convex context, database
+handle, environment value, tenant id, credential, or scheduler function
+reference. Storage methods take no organization or plugin argument
+because the host already bound both scopes.
 
 ## Organization deletion
 
@@ -4710,8 +4838,8 @@ aggregate (collides with the Postbox `outbound.state` aggregate-derivation).
   the only creator/updater of `agentActions`, and the only writer of
   `conversationThreads.latestDraftStatus`. Two distinct producer
   populations of transition calls: the *agent pipeline* — the **Agent
-  walker** dispatching to five **Agent step (module)**s
-  (`security_scan → context_retrieval → classify → draft → route`) plus
+  walker** dispatching to six **Agent step (module)**s
+  (`security_scan → context_retrieval → classify → clarify → draft → route`) plus
   the cron-driven `Agent walker.retryStep` — drives the pipeline-phase
   transitions (`received → security_check → classifying → drafting →
   draft_ready`); the *human review path* (`inbox/mutations.ts:

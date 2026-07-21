@@ -3,7 +3,7 @@
 # One-shot container that deploys Convex functions to a self-hosted backend.
 # Usage: docker compose --profile deploy run --rm convex-deploy
 
-FROM oven/bun:1.3-alpine AS deps
+FROM oven/bun:1.3.11-alpine AS deps
 
 # Build tools needed for native deps that may show up transitively from the
 # full workspace install (apps/docs uses better-sqlite3 as a devDep). Matches
@@ -18,11 +18,27 @@ COPY patches/ patches/
 
 # Copy all workspace package.json files for dependency resolution.
 # Bun's `--frozen-lockfile` reconciliation walks the entire workspace graph
-# (root package.json's `apps/*` glob), so all apps/*/package.json must be
-# present even though only apps/api is actually built.
-COPY --parents apps/*/package.json packages/*/package.json ./
+# (root package.json's `apps/*`, `packages/*`, `examples/*` AND
+# `examples/plugins/*` globs), so every workspace manifest must be present
+# even though only apps/api is actually built.
+COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 
 RUN bun install --frozen-lockfile
+
+# The generated Convex composition imports the plugin host, whose public
+# contract dependency resolves through plugin-kit's built package exports.
+# Build that contract from a clean context so deploys cannot rely on a local
+# ignored dist/ directory.
+COPY tsconfig.base.json ./
+COPY packages/plugin-kit/ packages/plugin-kit/
+RUN bun run --cwd packages/plugin-kit build
+
+# Re-run static membership, provenance, boundary, manifest, and generated-file
+# checks against the exact clean Docker context used by the deploy artifact.
+FROM deps AS composition-check
+COPY . .
+COPY --from=deps /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/
+RUN bun run plugins:check
 
 # ── Deploy stage ──
 FROM node:26-alpine
@@ -45,10 +61,22 @@ COPY --from=deps /app/packages/*/node_modules ./packages/
 # "Could not resolve @owlat/...").
 COPY tsconfig.base.json ./
 COPY apps/api/ apps/api/
+# This copy makes the deploy stage depend on the successful clean composition
+# check above and uses its verified generated backend module.
+COPY --from=composition-check /app/apps/api/convex/plugins/plugins.generated.ts apps/api/convex/plugins/plugins.generated.ts
 COPY packages/shared/ packages/shared/
 COPY packages/email-renderer/ packages/email-renderer/
 COPY packages/email-scanner/ packages/email-scanner/
 COPY packages/channels/ packages/channels/
+COPY packages/plugin-host/ packages/plugin-host/
+COPY packages/plugin-kit/package.json packages/plugin-kit/package.json
+COPY --from=deps /app/packages/plugin-kit/dist/ packages/plugin-kit/dist/
+COPY packages/plugin-codegen/scripts/convexBundleSmoke.ts packages/plugin-codegen/scripts/convexBundleSmoke.ts
+
+# Fail the image build if either package export points at an artifact that was
+# not copied into the final deploy image.
+RUN node --input-type=module -e "const { access } = await import('node:fs/promises'); const { fileURLToPath } = await import('node:url'); await Promise.all(['@owlat/plugin-host', '@owlat/plugin-kit'].map((specifier) => access(fileURLToPath(import.meta.resolve(specifier)))))"
+RUN OWLAT_CONVEX_BUNDLE_PRODUCTION_ONLY=1 node packages/plugin-codegen/scripts/convexBundleSmoke.ts
 
 # Version metadata — injected by CI on release
 ARG OWLAT_VERSION=dev

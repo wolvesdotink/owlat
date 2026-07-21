@@ -5,8 +5,9 @@
 ## Context
 
 `inboundMessages.processingStatus` is a 12-state column
-(`received | security_check | quarantined | classifying | planning |
-drafting | draft_ready | approved | sent | rejected | archived | failed`)
+(`received | security_check | quarantined | classifying | drafting |
+draft_ready | awaiting_clarification | approved | sent | rejected | archived |
+failed`)
 tracking each inbound message through the agent pipeline and then the
 human draft-review queue. The state machine has **nine writers** across
 two driver populations (agent pipeline + cron + human review), and the
@@ -81,15 +82,16 @@ turn"; the human assumes "I wrote `received` → the agent will pick it
 up." Any future writer of `received` would silently re-enter the
 pipeline.
 
-### 4. `context_retrieval` and `route` step kinds are invisible in `processingStatus`
+### 4. Three action kinds have no same-named `processingStatus`
 
 `agentActions.actionType` has six step kinds:
-`security_scan | context_retrieval | classify | plan | draft | route`.
-`processingStatus` covers four: `security_check`, `classifying`,
-`planning`, `drafting`. `context_retrieval` and `route` create
-`agentActions` rows but leave `processingStatus` unchanged. Observers
-of the verification queue cannot see "context-retrieval running" or
-"routing in progress" — the message appears to be still in its prior
+`security_scan | context_retrieval | classify | clarify | draft | route`.
+`processingStatus` directly names three: `security_check`, `classifying`, and
+`drafting`. `context_retrieval`, `clarify`, and `route` create `agentActions`
+rows without entering a same-named state; `clarify` may subsequently park the
+message in `awaiting_clarification`. Observers of the verification queue cannot
+see "context-retrieval running" or "routing in progress" — the message appears
+to be still in its prior
 state. Per-step duration / retry counts for those kinds live in
 `agentActions` and have to be joined in to surface in any operator UI.
 
@@ -123,6 +125,14 @@ Postbox outbound, DOI, Inbox processing), and the largest by writer
 count.
 
 ## Decision
+
+The accepted implementation was subsequently conformed by ADR-0014 and PP-08:
+the unreachable `planning` state and placeholder `plan` action were removed,
+`awaiting_clarification` / `clarify` were added, and all action-kind types and
+validators now derive from the agent-step catalog. Hosted plugin steps may ask
+the unchanged dispatcher for a declared restrict-only caution edge, but never
+extend or replace the core `LEGAL_EDGES` graph. Historical code sketches below
+retain the original proposal vocabulary.
 
 One module at `apps/api/convex/inbox/processingLifecycle.ts` owns
 transitions of `inboundMessages.processingStatus` and the atomic writes

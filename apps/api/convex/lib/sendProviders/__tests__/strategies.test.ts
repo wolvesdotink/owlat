@@ -17,9 +17,9 @@ describe('Send route strategy registry', () => {
 	});
 
 	it('strategyFor throws on unknown kinds', () => {
-		expect(() =>
-			strategyFor('unknown' as SendRouteStrategyKind),
-		).toThrow(/Unknown send route strategy/);
+		expect(() => strategyFor('unknown' as SendRouteStrategyKind)).toThrow(
+			/Unknown send route strategy/
+		);
 	});
 
 	it('SEND_ROUTE_STRATEGIES has exactly the three documented kinds', () => {
@@ -81,9 +81,9 @@ describe('priorityFailoverStrategy', () => {
 			{ providerType: 'mta', status: 'down', successRate: 0.1 },
 			{ providerType: 'ses', status: 'healthy', successRate: 0.99 },
 		];
-		expect(
-			strategyFor('priority_failover').select(entries, undefined, health),
-		).toMatchObject({ providerType: 'ses' });
+		expect(strategyFor('priority_failover').select(entries, undefined, health)).toMatchObject({
+			providerType: 'ses',
+		});
 	});
 
 	it('accepts "degraded" providers (only "down" is excluded)', () => {
@@ -95,9 +95,9 @@ describe('priorityFailoverStrategy', () => {
 			{ providerType: 'mta', status: 'degraded', successRate: 0.6 },
 			{ providerType: 'ses', status: 'healthy', successRate: 0.99 },
 		];
-		expect(
-			strategyFor('priority_failover').select(entries, undefined, health),
-		).toMatchObject({ providerType: 'mta' });
+		expect(strategyFor('priority_failover').select(entries, undefined, health)).toMatchObject({
+			providerType: 'mta',
+		});
 	});
 
 	it('falls through to first when all are down', () => {
@@ -109,9 +109,9 @@ describe('priorityFailoverStrategy', () => {
 			{ providerType: 'mta', status: 'down', successRate: 0.1 },
 			{ providerType: 'ses', status: 'down', successRate: 0.1 },
 		];
-		expect(
-			strategyFor('priority_failover').select(entries, undefined, health),
-		).toMatchObject({ providerType: 'mta' });
+		expect(strategyFor('priority_failover').select(entries, undefined, health)).toMatchObject({
+			providerType: 'mta',
+		});
 	});
 
 	it('returns null when entries empty', () => {
@@ -243,6 +243,22 @@ describe('resolveRoute (dispatcher + fallbacks)', () => {
 			{ providerType: 'ses', status: 'healthy', successRate: 0.99 },
 		];
 		expect(resolveRoute(config, health)).toMatchObject({ providerType: 'ses' });
+	});
+
+	it('skips stale unavailable providers and applies the same readiness rule to fallback', () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const config: ProviderRouteConfig = {
+			strategy: 'single',
+			providers: [
+				{ providerType: 'ses', isEnabled: true },
+				{ providerType: 'resend', isEnabled: true },
+			],
+		};
+		expect(resolveRoute(config, undefined, (kind) => kind === 'resend')).toEqual({
+			providerType: 'resend',
+			source: 'org_config',
+		});
+		expect(resolveRoute(config, undefined, () => false)).toBeNull();
 	});
 
 	it('unknown strategy literal falls back to env (null when no env)', () => {

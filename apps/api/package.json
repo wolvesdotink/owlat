@@ -54,6 +54,8 @@
 		"@owlat/email-renderer": "workspace:*",
 		"@owlat/email-scanner": "workspace:*",
 		"@owlat/mail-message": "workspace:*",
+		"@owlat/plugin-host": "workspace:*",
+		"@owlat/plugin-kit": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"ai": "catalog:ai",

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { estimateCost, estimateCostUsd, providerLabelForModel } from '../pricing';
+import {
+	estimateCost,
+	estimateCostUsd,
+	estimateKnownCostMicrousd,
+	providerLabelForModel,
+} from '../pricing';
 
 const oneMillionEach = {
 	promptTokens: 1_000_000,
@@ -63,6 +68,90 @@ describe('estimateCost', () => {
 	it('scales linearly with token counts', () => {
 		const half = { promptTokens: 500_000, completionTokens: 500_000, totalTokens: 1_000_000 };
 		expect(estimateCostUsd('gpt-4o-mini', half)).toBeCloseTo(0.75 / 2);
+	});
+});
+
+describe('known-model fixed-point admission pricing', () => {
+	it('ceil-prices exact models on their trusted native endpoints', () => {
+		expect(
+			estimateKnownCostMicrousd('openai-native', 'gpt-4o-mini', {
+				promptTokens: 100,
+				completionTokens: 100,
+				totalTokens: 200,
+			})
+		).toBe(75);
+		expect(estimateKnownCostMicrousd('anthropic-native', 'claude-opus-4-8', oneMillionEach)).toBe(
+			30_000_000
+		);
+		expect(
+			estimateKnownCostMicrousd('google-native', 'gemini-3.1-pro-preview', oneMillionEach)
+		).toBe(14_000_000);
+	});
+
+	it('admits the exact curated OpenRouter catalog', () => {
+		const knownProviderModels = [
+			'anthropic/claude-sonnet-5',
+			'anthropic/claude-opus-4.8',
+			'deepseek/deepseek-v4-flash',
+			'deepseek/deepseek-v4-pro',
+			'openai/gpt-5.6-sol',
+			'openai/gpt-5.6-luna',
+			'google/gemini-3.5-flash',
+			'minimax/minimax-m3',
+			'xiaomi/mimo-v2.5-pro',
+			'moonshotai/kimi-k2.6',
+		] as const;
+		for (const modelId of knownProviderModels) {
+			expect(estimateKnownCostMicrousd('openrouter', modelId, oneMillionEach), modelId).toBeTypeOf(
+				'number'
+			);
+		}
+	});
+
+	it('rejects uncatalogued versions, suffix tricks, and malformed namespaces', () => {
+		const rejected = [
+			'private/gpt-4o-mini-premium',
+			'private/gpt-4o-mini',
+			'openai/gpt-4o-mini',
+			'openai/gpt-4o-mini-9999',
+			'openai/gpt-4o-mini-9999-premium',
+			'openai/gpt-4o-mini/extra',
+			'anthropic/gpt-4o-mini',
+			'openai/',
+			'/gpt-4o-mini',
+			'openai//gpt-4o-mini',
+			'gpt-4o-mini',
+			'',
+		] as const;
+		for (const modelId of rejected) {
+			expect(
+				estimateKnownCostMicrousd('openrouter', modelId, oneMillionEach),
+				modelId
+			).toBeUndefined();
+		}
+		expect(
+			estimateKnownCostMicrousd('openai-native', 'gpt-4o-mini-9999', oneMillionEach)
+		).toBeUndefined();
+		expect(
+			estimateKnownCostMicrousd('anthropic-native', 'claude-opus-999', oneMillionEach)
+		).toBeUndefined();
+	});
+
+	it('rejects custom endpoints, provider mismatches, and unknown provenance', () => {
+		expect(estimateKnownCostMicrousd('custom', 'gpt-4o-mini', oneMillionEach)).toBeUndefined();
+		expect(
+			estimateKnownCostMicrousd('anthropic-native', 'gpt-4o-mini', oneMillionEach)
+		).toBeUndefined();
+		expect(
+			estimateKnownCostMicrousd('openai-native', 'claude-opus-4-8', oneMillionEach)
+		).toBeUndefined();
+		expect(
+			estimateKnownCostMicrousd('google-native', 'openai/gpt-5.6-sol', oneMillionEach)
+		).toBeUndefined();
+		expect(
+			estimateKnownCostMicrousd('unknown' as never, 'gpt-4o-mini', oneMillionEach)
+		).toBeUndefined();
+		expect(estimateKnownCostMicrousd('openai-native', undefined, oneMillionEach)).toBeUndefined();
 	});
 });
 

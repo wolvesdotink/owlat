@@ -4,8 +4,11 @@ import type { Id } from '@owlat/api/dataModel';
 import AgentTaskFlow from '~/components/agent-tasks/AgentTaskFlow.vue';
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
+import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
+import { resolveReviewFocusKey } from '~/utils/taskFlowKeyboard';
 import { useOrganization } from '~/composables/useOrganization';
 import { useTaskFlow } from '~/composables/useTaskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -44,6 +47,11 @@ function orderKey(item: FlowItem): TaskFlowOrderKey {
 const flow = useTaskFlow<FlowItem>(source, { key: orderKey });
 
 const current = computed(() => flow.current.value);
+/** The current card's kind — drives native rendering vs the fallback dispatcher. */
+const currentKind = computed<TaskFlowKind | null>(() =>
+	current.value ? orderKey(current.value).kind : null
+);
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
 const peekLabel = computed(() => {
 	const n = flow.nextItem.value;
@@ -93,26 +101,27 @@ watch(
 );
 
 // Keyboard: Cmd/Ctrl+Z undo (flow) plus the Review vocabulary on the focused
-// card — a = approve (send), x = reject, Enter = the primary action. Inert
-// while typing a reply into the compose box (isEditableTarget).
+// card — a = approve (send), x = reject, Enter = the primary action. Gated to
+// built-in kinds: a plugin/unknown card only honours `s` → skip (its native
+// controls own everything else), so the ambient shortcuts can never fire a
+// hidden send/reject/archive on a card that does not display them. Inert while
+// typing a reply into the compose box (isEditableTarget).
 function onCardKeydown(event: KeyboardEvent) {
 	if (!flow.active.value || flow.isComplete.value) return;
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
 	if (isEditableTarget(event.target)) return;
 	const row = current.value;
 	if (!row) return;
-	const k = event.key.toLowerCase();
-	if (k === 'x') {
-		event.preventDefault();
-		void reject(row);
-	} else if (k === 'a' && !needsReply(row.message)) {
-		event.preventDefault();
-		void approve(row);
-	} else if (k === 'enter') {
-		event.preventDefault();
-		if (needsReply(row.message)) void sendReply(row);
-		else void approve(row);
-	}
+	const action = resolveReviewFocusKey(event.key, {
+		currentKind: currentKind.value,
+		needsReply: needsReply(row.message),
+	});
+	if (!action) return;
+	event.preventDefault();
+	if (action === 'reject') void reject(row);
+	else if (action === 'approve') void approve(row);
+	else if (action === 'sendReply') void sendReply(row);
+	else flow.skip(row.id);
 }
 onMounted(() => {
 	window.addEventListener('keydown', flow.onWindowKeydown);
@@ -227,7 +236,7 @@ function openThread(row: FlowItem) {
 		@undo="flow.undo()"
 	>
 		<template v-if="current">
-			<TaskCardShell>
+			<TaskCardShell v-if="currentKind && isBuiltInTaskFlowKind(currentKind)">
 				<TaskContext :who="current.message.from" icon="lucide:mail">
 					<template #trailing>
 						<div v-if="current.message.classification" class="flex items-center gap-2">
@@ -330,6 +339,20 @@ function openThread(row: FlowItem) {
 					</TaskActions>
 				</template>
 			</TaskCardShell>
+
+			<!-- Unknown/disabled or plugin-contributed kind: never crash, never
+			     drop it — render (or gracefully fall back to) its card, and keep
+			     it skippable so the queue can advance. -->
+			<TaskCardRenderer
+				v-else-if="currentKind"
+				:kind="currentKind"
+				:item="current"
+				:is-flag-enabled="isFeatureEnabled"
+				:can-open="!!current.thread"
+				@skip="flow.skip(current!.id)"
+				@open="openThread(current!)"
+				@complete="(outcome) => flow.complete(current!.id, { outcome: outcome ?? 'completed' })"
+			/>
 		</template>
 
 		<template #done>
