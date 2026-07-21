@@ -14,18 +14,30 @@ contribution points the other two do not.
 It notices escalation-shaped inbound mail — legal threats, regulators,
 chargebacks, cancellations, formal complaints — from one deterministic detector
 (`src/detector.ts`), then uses that verdict across every Tier-1 contribution
-bucket:
+bucket. Five of those buckets are dispatched by the host today:
 
 | Contribution           | Module                  | Effect                                                          |
 | ---------------------- | ----------------------- | --------------------------------------------------------------- |
 | `agentSteps`           | `./agentStep`           | Routes an escalation reply to a human instead of auto-sending   |
 | `draftStrategies`      | `./draftStrategy`       | Writes a conservative acknowledgement via the host LLM dispatch |
-| `automationTriggers`   | `./automationTrigger`   | Starts an automation when an escalation is raised               |
-| `automationConditions` | `./automationCondition` | Branches on whether the contact is a priority account           |
 | `automationSteps`      | `./automationStep`      | Blocks a run until the contact has a named escalation owner     |
-| `webhookEvents`        | manifest only (payload helper on the package root) | Publishes `plugin.escalation-guard.escalation-raised` |
 | `navItems`             | manifest only           | An "Escalations" entry in the core Inbox section                |
 | `settingsPanels`       | manifest only           | A settings entry rendered from the declared `settingsSchema`    |
+
+It also contributes to three buckets that Owlat **declares but does not dispatch
+yet** — the contracts, capabilities, codegen output and authorization seams are
+in place and these modules are fully tested against them, but no host path calls
+them, so they have no effect on a running deployment today. They are here so the
+reference exercises the whole contract surface, and so the day a call site lands
+there is a worked implementation to check it against. See the "Declared,
+catalogued and authorized" table in the
+[Contribution Reference](../../../apps/docs/content/3.developer/42.plugin-contributions.md).
+
+| Contribution           | Module                  | Effect once dispatched                                          |
+| ---------------------- | ----------------------- | --------------------------------------------------------------- |
+| `automationTriggers`   | `./automationTrigger`   | Would start an automation when an escalation is raised          |
+| `automationConditions` | `./automationCondition` | Would branch on whether the contact is a priority account       |
+| `webhookEvents`        | manifest only (payload helper on the package root) | Would publish `plugin.escalation-guard.escalation-raised` |
 
 ## Why it is safe
 

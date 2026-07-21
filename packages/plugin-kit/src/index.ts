@@ -137,7 +137,9 @@ export {
 	isPluginManifest,
 	parsePluginManifest,
 	PLUGIN_CONTRIBUTION_KINDS,
+	PLUGIN_DISPATCHED_CONTRIBUTION_KINDS,
 	PLUGIN_LIVE_CONTRIBUTION_KINDS,
+	PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS,
 	PluginManifestError,
 	validatePluginManifest,
 } from './manifest';

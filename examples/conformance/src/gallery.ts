@@ -131,8 +131,8 @@ export function navigationHrefs(
 	if (!contributes) return [];
 	return ['navItems', 'settingsPanels'].flatMap((bucket) =>
 		(contributes[bucket] ?? [])
-			.filter((entry) => typeof entry.href === 'string')
-			.map((entry) => ({ bucket, id: String(entry.id), href: String(entry.href) }))
+			.filter((entry) => typeof entry['href'] === 'string')
+			.map((entry) => ({ bucket, id: String(entry['id']), href: String(entry['href']) }))
 	);
 }
 
