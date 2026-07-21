@@ -163,6 +163,25 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 
 	it('Gmail provider policy refuses plaintext even when the local mode is opportunistic', async () => {
 		probe = await startServer({ advertiseStartTls: false });
+		await redis.hset(
+			'mta:isp-profile:gmail',
+			'defaultRate',
+			'100',
+			'ceiling',
+			'300',
+			'floor',
+			'5',
+			'backoffFactor',
+			'0.5',
+			'recoveryFactor',
+			'1.1',
+			'tlsMode',
+			'opportunistic',
+			'maxConnections',
+			'5',
+			'maxDeliveriesPerConnection',
+			'50'
+		);
 
 		const result = await sendToMx(
 			createJob(),

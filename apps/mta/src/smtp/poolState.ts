@@ -28,6 +28,8 @@ export interface PoolEntry {
 	lastUsedAt: number;
 	inFlight: number;
 	createdAt: number;
+	/** Socket currently checked out by the in-flight delivery, when connected. */
+	active?: SmtpConnection;
 	/** At most one protocol-clean socket parked for reuse. */
 	idle?: IdleConnection;
 }

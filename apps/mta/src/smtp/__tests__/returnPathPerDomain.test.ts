@@ -51,6 +51,7 @@ vi.mock('../connectionPool.js', () => ({
 		release: vi.fn(),
 		takeConnection: vi.fn().mockResolvedValue(undefined),
 		storeConnection: vi.fn(),
+		attachConnection: vi.fn().mockReturnValue(true),
 		evictConnection: vi.fn(),
 	},
 	PoolOverCapError: class PoolOverCapError extends Error {},

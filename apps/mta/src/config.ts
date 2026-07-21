@@ -10,6 +10,7 @@ import type { IpPoolConfig, DkimKeyConfig, DestinationProviderProfile } from './
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
 import { assertValidEhloHostname } from './ehloConfig.js';
+import type { PoolCoordinationProtocol } from './smtp/poolGlobalCap.js';
 
 // EHLO hostname validation + per-IP resolution live in ehloConfig.ts (to keep
 // this module under the file-size gate); re-exported so existing importers are
@@ -136,6 +137,8 @@ export interface MtaConfig {
 	googlePostmasterCredentials?: string;
 	/** Global max SMTP connections per MX host across all instances */
 	smtpPoolGlobalMaxPerHost: number;
+	/** Rolling-upgrade gate for the distributed pool accounting protocol. */
+	smtpPoolCoordinationProtocol?: PoolCoordinationProtocol;
 	/**
 	 * Maximum wall-clock age (ms) a message may keep being retried before the
 	 * MTA gives up and emits a terminal expired-bounce. RFC 5321 §4.5.4.1
@@ -284,6 +287,10 @@ export function loadConfig(): MtaConfig {
 	const optionalEnv = (key: string, defaultValue: string): string => {
 		return process.env[key] ?? defaultValue;
 	};
+	const poolCoordinationProtocol = optionalEnv('SMTP_POOL_COORDINATION_PROTOCOL', 'legacy-v0');
+	if (poolCoordinationProtocol !== 'legacy-v0' && poolCoordinationProtocol !== 'leases-v1') {
+		throw new Error('SMTP_POOL_COORDINATION_PROTOCOL must be legacy-v0 or leases-v1');
+	}
 
 	// Parse IP pools from comma-separated env vars
 	const transactionalIps = requiredEnv('IP_POOLS_TRANSACTIONAL')
@@ -458,6 +465,7 @@ export function loadConfig(): MtaConfig {
 		rspamdRejectThreshold: parseFloat(optionalEnv('RSPAMD_REJECT_THRESHOLD', '15')),
 		googlePostmasterCredentials: process.env['GOOGLE_POSTMASTER_CREDENTIALS'],
 		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
+		smtpPoolCoordinationProtocol: poolCoordinationProtocol,
 		// Default: 4 days (RFC 5321 §4.5.4.1 recommends 4–5 days before giving up).
 		maxMessageAgeMs: parseInt(
 			optionalEnv('MAX_MESSAGE_AGE_MS', String(4 * 24 * 60 * 60 * 1000)),
