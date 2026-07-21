@@ -322,6 +322,42 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
+	it('parses contract-shaped Google Postmaster spam-rate telemetry', () => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'postmaster.stats',
+					domain: 'example.com',
+					date: '2026-07-20',
+					userReportedSpamRatio: 0.001,
+					timestamp: 1700000000000,
+				})
+			)
+		).toEqual({
+			kind: 'internal.postmaster_stats',
+			domain: 'example.com',
+			date: '2026-07-20',
+			userReportedSpamRatio: 0.001,
+			fetchedAt: 1700000000000,
+		});
+	});
+
+	it('drops missing or invalid Google Postmaster spam rates', () => {
+		const base = {
+			event: 'postmaster.stats',
+			domain: 'example.com',
+			date: '2026-07-20',
+			timestamp: 1700000000000,
+		};
+		expect(mtaAdapter.parseEvent(JSON.stringify(base))).toBeNull();
+		expect(
+			mtaAdapter.parseEvent(JSON.stringify({ ...base, userReportedSpamRatio: '0.001' }))
+		).toBeNull();
+		expect(
+			mtaAdapter.parseEvent(JSON.stringify({ ...base, userReportedSpamRatio: 1.1 }))
+		).toBeNull();
+	});
+
 	it.each(['pending', 'activated'] as const)('parses dkim.rotated (phase=%s)', (phase) => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({

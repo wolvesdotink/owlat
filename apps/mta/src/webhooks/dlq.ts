@@ -14,13 +14,100 @@ import { logger } from '../monitoring/logger.js';
 const DLQ_SORTED_SET = 'mta:dlq';
 const DLQ_ENTRY_PREFIX = 'mta:dlq:entry:';
 
+declare const webhookHttpStatusBrand: unique symbol;
+
+/** Valid HTTP response status observed while delivering a webhook. */
+export type WebhookHttpStatus = number & {
+	readonly [webhookHttpStatusBrand]: true;
+};
+
+/**
+ * A deliberately closed, non-sensitive description of why delivery failed.
+ * Provider response bodies and exception messages must never enter the DLQ.
+ */
+export type WebhookDeliveryFailure =
+	| { category: 'transport' }
+	| { category: 'deadline_exhausted' }
+	| { category: 'unknown' }
+	| { category: 'legacy' }
+	| { category: 'http'; status: WebhookHttpStatus };
+
 export interface DlqEntry {
 	dlqId: string;
 	event: MtaWebhookEvent;
-	error: string;
+	failure: WebhookDeliveryFailure;
 	attempts: number;
 	createdAt: number;
 	lastRetryAt?: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+function isWebhookHttpStatus(value: unknown): value is WebhookHttpStatus {
+	return typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599;
+}
+
+/** Convert an untrusted response status to a safe delivery-failure category. */
+export function classifyWebhookHttpFailure(status: number): WebhookDeliveryFailure {
+	return isWebhookHttpStatus(status) ? { category: 'http', status } : { category: 'unknown' };
+}
+
+function parseDeliveryFailure(value: unknown): WebhookDeliveryFailure | null {
+	if (!isRecord(value) || typeof value['category'] !== 'string') return null;
+
+	switch (value['category']) {
+		case 'transport':
+		case 'deadline_exhausted':
+		case 'unknown':
+		case 'legacy':
+			return { category: value['category'] };
+		case 'http':
+			return isWebhookHttpStatus(value['status'])
+				? { category: 'http', status: value['status'] }
+				: null;
+		default:
+			return null;
+	}
+}
+
+function parseDlqEntry(data: string): DlqEntry | null {
+	let value: unknown;
+	try {
+		value = JSON.parse(data);
+	} catch {
+		return null;
+	}
+
+	if (
+		!isRecord(value) ||
+		typeof value['dlqId'] !== 'string' ||
+		!isRecord(value['event']) ||
+		typeof value['event']['event'] !== 'string' ||
+		typeof value['event']['timestamp'] !== 'number' ||
+		typeof value['attempts'] !== 'number' ||
+		typeof value['createdAt'] !== 'number' ||
+		(value['lastRetryAt'] !== undefined && typeof value['lastRetryAt'] !== 'number')
+	) {
+		return null;
+	}
+
+	// Entries written before the typed failure model carried a free-form
+	// `error`. Preserve their retryability without returning that sensitive text.
+	const failure =
+		parseDeliveryFailure(value['failure']) ??
+		(typeof value['error'] === 'string' ? { category: 'legacy' as const } : null);
+	if (!failure) return null;
+
+	return {
+		dlqId: value['dlqId'],
+		event: value['event'] as unknown as MtaWebhookEvent,
+		failure,
+		attempts: value['attempts'],
+		createdAt: value['createdAt'],
+		...(value['lastRetryAt'] === undefined ? {} : { lastRetryAt: value['lastRetryAt'] }),
+	};
 }
 
 /**
@@ -29,14 +116,14 @@ export interface DlqEntry {
 export async function storeFailed(
 	redis: Redis,
 	event: MtaWebhookEvent,
-	error: string,
+	failure: WebhookDeliveryFailure,
 	config: MtaConfig
 ): Promise<string> {
 	const dlqId = randomUUID();
 	const entry: DlqEntry = {
 		dlqId,
 		event,
-		error,
+		failure,
 		attempts: 0,
 		createdAt: Date.now(),
 	};
@@ -55,7 +142,7 @@ export async function storeFailed(
 	await pipeline.exec();
 
 	logger.warn(
-		{ dlqId, eventType: event.event, messageId: event.messageId, error },
+		{ operation: 'convex_webhook_dlq', category: 'stored', eventType: event.event },
 		'Webhook event stored in DLQ'
 	);
 
@@ -77,11 +164,8 @@ export async function listFailed(
 	for (const dlqId of dlqIds) {
 		const data = await redis.get(`${DLQ_ENTRY_PREFIX}${dlqId}`);
 		if (data) {
-			try {
-				entries.push(JSON.parse(data));
-			} catch {
-				// Skip malformed entries
-			}
+			const entry = parseDlqEntry(data);
+			if (entry) entries.push(entry);
 		}
 	}
 
@@ -94,11 +178,7 @@ export async function listFailed(
 export async function getEntry(redis: Redis, dlqId: string): Promise<DlqEntry | null> {
 	const data = await redis.get(`${DLQ_ENTRY_PREFIX}${dlqId}`);
 	if (!data) return null;
-	try {
-		return JSON.parse(data);
-	} catch {
-		return null;
-	}
+	return parseDlqEntry(data);
 }
 
 /**

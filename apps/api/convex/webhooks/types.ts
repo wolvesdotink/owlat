@@ -130,6 +130,13 @@ export type InboundEvent =
 			message?: string;
 	  }
 	| {
+			kind: 'internal.postmaster_stats';
+			domain: string;
+			date: string;
+			userReportedSpamRatio: number;
+			fetchedAt: number;
+	  }
+	| {
 			// MTA→Convex DKIM rotation callback (RFC 6376 §3.6.1). `phase` mirrors
 			// the publish-then-switch overlap workflow: `'pending'` adds the new
 			// selector's record alongside the active one, `'activated'` retires the

@@ -241,6 +241,11 @@ export interface DeliveryDomainRow {
 	delivered30d: number;
 	complaints30d: number;
 	cleanInternalDaysBelowHardThreshold: number;
+	/** Latest provider-computed Google signal, distinct from Owlat's FBL rate. */
+	googlePostmaster: {
+		periodStart: number;
+		userReportedSpamRatio: number;
+	} | null;
 }
 
 /**
@@ -299,11 +304,23 @@ export const getDeliveryDomainTable = authedQuery({
 		const summaryByDomain = new Map<string, (typeof summaries)[number]>();
 		for (const summary of summaries) summaryByDomain.set(summary.domain, summary);
 		const spamByDomain = new Map(spamSummaries.map((summary) => [summary.domain, summary]));
+		const latestGoogleStats = await Promise.all(
+			domains.map(async (domainRecord) => {
+				const latest = await ctx.db
+					.query('googlePostmasterStats')
+					.withIndex('by_domain_period', (q) => q.eq('domain', domainRecord.domain))
+					.order('desc')
+					.first();
+				return [domainRecord.domain, latest] as const;
+			})
+		); // bounded: one indexed point lookup per org-curated sending domain
+		const googleByDomain = new Map(latestGoogleStats);
 
 		const rows: DeliveryDomainRow[] = domains.map((domainRecord) => {
 			const auth = domainAuthState(domainRecord.verificationResults);
 			const summary = summaryByDomain.get(domainRecord.domain);
 			const spam = spamByDomain.get(domainRecord.domain);
+			const google = googleByDomain.get(domainRecord.domain);
 			return {
 				domain: domainRecord.domain,
 				status: domainRecord.status,
@@ -320,6 +337,12 @@ export const getDeliveryDomainTable = authedQuery({
 				delivered30d: spam?.totalDelivered ?? 0,
 				complaints30d: spam?.totalComplaints ?? 0,
 				cleanInternalDaysBelowHardThreshold: spam?.cleanInternalDaysBelowHardThreshold ?? 0,
+				googlePostmaster: google
+					? {
+							periodStart: google.periodStart,
+							userReportedSpamRatio: google.userReportedSpamRatio,
+						}
+					: null,
 			};
 		});
 

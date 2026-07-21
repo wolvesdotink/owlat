@@ -7,8 +7,8 @@
 
 import { resolve4 } from 'dns/promises';
 import type Redis from 'ioredis';
-import { DNSBL_ZONES } from '../config.js';
 import type { MtaConfig } from '../config.js';
+import { DNSBL_LISTS, type DnsblListDefinition } from '@owlat/shared/dnsbl';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
 import { pool } from '../smtp/connectionPool.js';
@@ -22,20 +22,62 @@ const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const LOOKUP_TIMEOUT_MS = 5000;
 const DNSBL_PREFIX = 'mta:dnsbl:';
 const IP_POOL_BLOCKED = 'mta:ip-pool:blocked';
+const CLEAN_DNS_ERROR_CODES = new Set(['ENOTFOUND', 'ENODATA']);
+const SAFE_DNS_ERROR_CODES = new Set([
+	...CLEAN_DNS_ERROR_CODES,
+	'ESERVFAIL',
+	'ETIMEOUT',
+	'ECANCELLED',
+	'EREFUSED',
+	'EFORMERR',
+	'ENOTIMP',
+	'EBADQUERY',
+	'EBADNAME',
+	'EBADFAMILY',
+	'EBADRESP',
+	'ECONNREFUSED',
+	'ECONNRESET',
+	'EAI_AGAIN',
+]);
 
-type DnsblSeverity = 'critical' | 'warning';
-
-interface DnsblResult {
-	zone: string;
-	name: string;
-	severity: DnsblSeverity;
+interface DnsblResult extends Pick<DnsblListDefinition, 'id' | 'name' | 'severity'> {
 	status: 'listed' | 'clean' | 'unknown';
+}
+
+interface DnsblZone extends DnsblListDefinition {
+	zone: string;
+}
+
+function safeDnsErrorCode(error: unknown): string {
+	if (typeof error !== 'object' || error === null || !('code' in error)) return 'unknown';
+	const code = error.code;
+	return typeof code === 'string' && SAFE_DNS_ERROR_CODES.has(code) ? code : 'unknown';
+}
+
+/** Only Spamhaus is allowed to eject; every added feed stays advisory. */
+export function configuredDnsblZones(config: Pick<MtaConfig, 'abusixDnsblApiKey'>): DnsblZone[] {
+	const zones: DnsblZone[] = [
+		{ ...DNSBL_LISTS.spamhaus, zone: 'zen.spamhaus.org' },
+		{ ...DNSBL_LISTS.barracuda, zone: 'b.barracudacentral.org' },
+		{ ...DNSBL_LISTS.spamcop, zone: 'bl.spamcop.net' },
+	];
+	if (config.abusixDnsblApiKey) {
+		zones.push({
+			...DNSBL_LISTS.abusix,
+			zone: `${config.abusixDnsblApiKey}.combined.mail.abusix.zone`,
+		});
+	}
+	return zones;
 }
 
 /**
  * Check a single IP against a single DNSBL zone
  */
-async function checkDnsbl(ip: string, zone: string): Promise<DnsblResult['status']> {
+async function checkDnsbl(
+	ip: string,
+	listId: DnsblListDefinition['id'],
+	zone: string
+): Promise<DnsblResult['status']> {
 	const reversed = ip.split('.').reverse().join('.');
 	const lookup = `${reversed}.${zone}`;
 
@@ -48,19 +90,25 @@ async function checkDnsbl(ip: string, zone: string): Promise<DnsblResult['status
 					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), LOOKUP_TIMEOUT_MS))
 			),
 		]);
-		// If resolves to 127.0.0.x, the IP is listed
-		return Array.isArray(result) && result.some((addr) => addr.startsWith('127.'))
-			? 'listed'
-			: 'clean';
+		// Spamhaus reserves 127.255.255.x for resolver/configuration errors. That
+		// is neither listing nor delisting evidence, so it must preserve a prior
+		// quarantine just like SERVFAIL/timeout.
+		if (listId === 'spamhaus' && result.some((addr) => addr.startsWith('127.255.255.'))) {
+			logger.warn({ ip, listId, errorCode: 'resolver_policy' }, 'DNSBL check is unknown');
+			return 'unknown';
+		}
+		return result.some((addr) => addr.startsWith('127.')) ? 'listed' : 'unknown';
 	} catch (err: unknown) {
-		const error = err as { code?: string; message?: string };
+		const errorCode = safeDnsErrorCode(err);
 		// NXDOMAIN/ENOTFOUND = not listed (this is the expected "clean" result)
-		if (error.code === 'ENOTFOUND' || error.code === 'ENODATA') {
+		if (CLEAN_DNS_ERROR_CODES.has(errorCode)) {
 			return 'clean';
 		}
 		// Resolver availability is not evidence of delisting. Preserve the last
 		// confirmed decision (and fail closed for a never-observed address).
-		logger.warn({ ip, zone, error: error.message }, 'DNSBL check failed; status is unknown');
+		// Never log `zone` or the resolver message: keyed providers such as Abusix
+		// embed a credential in the queried hostname and resolver errors often echo it.
+		logger.warn({ ip, listId, errorCode }, 'DNSBL check is unknown');
 		return 'unknown';
 	} finally {
 		if (timeout) clearTimeout(timeout);
@@ -70,13 +118,13 @@ async function checkDnsbl(ip: string, zone: string): Promise<DnsblResult['status
 /**
  * Check an IP against all configured DNSBL zones
  */
-async function checkAllZones(ip: string): Promise<DnsblResult[]> {
+async function checkAllZones(ip: string, config: MtaConfig): Promise<DnsblResult[]> {
 	const results = await Promise.all(
-		DNSBL_ZONES.map(async (zone) => ({
-			zone: zone.zone,
+		configuredDnsblZones(config).map(async (zone) => ({
+			id: zone.id,
 			name: zone.name,
 			severity: zone.severity,
-			status: await checkDnsbl(ip, zone.zone),
+			status: await checkDnsbl(ip, zone.id, zone.zone),
 		}))
 	);
 	return results;
@@ -94,7 +142,7 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 	const observations = await Promise.all(
 		uniqueIps.map(async (ip) => {
 			const generation = await nextIpPoolObservationGeneration(redis, ip, 'dnsbl');
-			return { ip, generation, results: await checkAllZones(ip) };
+			return { ip, generation, results: await checkAllZones(ip, config) };
 		})
 	);
 
@@ -103,30 +151,32 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 
 		// Update Redis state
 		const updates: string[] = [];
-		let hasCritical = false;
 		let hasWarning = false;
 		const listedOn: string[] = [];
 
 		for (const result of results) {
-			updates.push(result.name.toLowerCase(), result.status);
-			updates.push(`${result.name.toLowerCase()}At`, String(Date.now()));
+			updates.push(result.id, result.status);
+			updates.push(`${result.id}At`, String(Date.now()));
 
 			if (result.status === 'listed') {
 				listedOn.push(result.name);
-				if (result.severity === 'critical') hasCritical = true;
-				else hasWarning = true;
+				if (result.severity === 'warning') hasWarning = true;
 			}
 		}
 
+		const spamhaus = results.find((result) => result.id === 'spamhaus');
+		if (!spamhaus) throw new Error('Spamhaus DNSBL observation is missing');
 		const hasUnknown = results.some((result) => result.status === 'unknown');
+		const previousSpamhausStatus = await redis.hget(hashKey, 'spamhaus');
 		const previousStatus = await redis.hget(hashKey, 'overallStatus');
-		const newStatus = hasCritical
-			? 'critical'
-			: hasUnknown
-				? 'unknown'
+		const newStatus =
+			spamhaus.status === 'listed'
+				? 'critical'
 				: hasWarning
 					? 'degraded'
-					: 'clean';
+					: hasUnknown
+						? 'unknown'
+						: 'clean';
 		updates.push('overallStatus', newStatus);
 		const stateFields: Record<string, string> = {};
 		for (let index = 0; index < updates.length; index += 2) {
@@ -136,7 +186,12 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 			ip,
 			reason: 'dnsbl',
 			generation,
-			decision: newStatus === 'critical' ? 'block' : newStatus === 'unknown' ? 'preserve' : 'clear',
+			decision:
+				spamhaus.status === 'listed'
+					? 'block'
+					: spamhaus.status === 'unknown'
+						? 'preserve'
+						: 'clear',
 			stateKey: hashKey,
 			stateFields,
 		});
@@ -160,8 +215,18 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 				},
 				config,
 				redis
-			).catch((err) => logger.error({ err }, 'Failed to alert Convex about IP blocklisting'));
-		} else if (newStatus === 'degraded' && previousStatus === 'clean') {
+			).catch(() =>
+				logger.error(
+					{
+						operation: 'dnsbl_alert',
+						category: 'delivery',
+						eventType: 'ip.blocklisted',
+					},
+					'Failed to alert Convex about IP blocklisting'
+				)
+			);
+		}
+		if (newStatus === 'degraded' && previousStatus !== 'degraded') {
 			// WARNING: Deprioritize but keep active
 			logger.warn({ ip, listedOn }, 'IP degraded — listed on non-critical blocklist');
 
@@ -177,20 +242,22 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 				config,
 				redis
 			).catch(() => {});
-		} else if (
+		}
+		const spamhausCleared = previousSpamhausStatus === 'listed' && spamhaus.status === 'clean';
+		const allListsCleared =
 			newStatus === 'clean' &&
 			previousStatus !== 'clean' &&
 			previousStatus !== 'unknown' &&
-			previousStatus
-		) {
-			logger.info({ ip }, 'IP delisted — DNSBL block cleared');
+			previousStatus !== null;
+		if (spamhausCleared || allListsCleared) {
+			logger.info({ ip }, 'IP delisted — Spamhaus quarantine cleared');
 
 			await notifyConvex(
 				{
 					event: 'ip.delisted',
 					ip,
 					severity: 'info',
-					message: `IP ${ip} delisted from all blocklists`,
+					message: `IP ${ip} is not listed on Spamhaus`,
 					timestamp: Date.now(),
 				},
 				config,
@@ -230,12 +297,20 @@ export async function startDnsblChecker(
 ): Promise<NodeJS.Timeout> {
 	const runIfLeader = async () => {
 		if (!isLeader()) return;
-		await runDnsblCheck(redis, config).catch((err) => logger.error({ err }, 'DNSBL check failed'));
+		await runDnsblCheck(redis, config).catch(() =>
+			logger.error({ operation: 'dnsbl_sweep', category: 'storage' }, 'DNSBL check failed')
+		);
 	};
 	// Every process completes a boot sweep before enabling delivery workers. This
 	// cannot rely on the current leader: during a rolling deployment that process
 	// may still have the old IP configuration. Generation CAS makes overlap safe.
-	await runDnsblCheck(redis, config);
+	try {
+		await runDnsblCheck(redis, config);
+	} catch {
+		// Do not propagate the raw Redis error into the process-level startup logger:
+		// ioredis command metadata can contain payloads or credentials.
+		throw new Error('Initial DNSBL sweep failed');
+	}
 
 	// Schedule periodic checks
 	return setInterval(() => {

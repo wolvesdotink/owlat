@@ -370,6 +370,14 @@ const DISPATCH: DispatchTable = {
 			}
 		}
 	},
+	'internal.postmaster_stats': async (ctx, e) => {
+		await ctx.runMutation(internal.delivery.postmaster.ingest, {
+			domain: e.domain,
+			date: e.date,
+			userReportedSpamRatio: e.userReportedSpamRatio,
+			fetchedAt: e.fetchedAt,
+		});
+	},
 };
 
 export async function dispatchInboundEvent(ctx: ActionCtx, event: InboundEvent): Promise<void> {

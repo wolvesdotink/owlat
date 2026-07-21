@@ -165,6 +165,10 @@
 			"types": "./src/ipReadinessSync.ts",
 			"import": "./src/ipReadinessSync.ts"
 		},
+		"./dnsbl": {
+			"types": "./src/dnsbl.ts",
+			"import": "./src/dnsbl.ts"
+		},
 		"./secureMessage": {
 			"types": "./src/secureMessage.ts",
 			"import": "./src/secureMessage.ts"

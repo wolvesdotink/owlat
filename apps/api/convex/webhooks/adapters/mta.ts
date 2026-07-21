@@ -37,6 +37,8 @@ interface MtaWebhookPayload {
 	phase?: 'pending' | 'activated';
 	campaignId?: string;
 	complaintRate?: number;
+	date?: string;
+	userReportedSpamRatio?: number;
 	destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
 	primarySendingDomain?: string;
 	inboundPayload?: {
@@ -242,6 +244,25 @@ export const mtaAdapter: InboundAdapter = {
 					...(payload.blocklists ? { blocklists: payload.blocklists } : {}),
 					...(payload.severity ? { severity: payload.severity } : {}),
 					...(payload.message ? { message: payload.message } : {}),
+				};
+			}
+			case 'postmaster.stats': {
+				if (
+					!payload.domain ||
+					!payload.date ||
+					typeof payload.userReportedSpamRatio !== 'number' ||
+					!Number.isFinite(payload.userReportedSpamRatio) ||
+					payload.userReportedSpamRatio < 0 ||
+					payload.userReportedSpamRatio > 1
+				) {
+					return null;
+				}
+				return {
+					kind: 'internal.postmaster_stats',
+					domain: payload.domain,
+					date: payload.date,
+					userReportedSpamRatio: payload.userReportedSpamRatio,
+					fetchedAt: payload.timestamp,
 				};
 			}
 			default:

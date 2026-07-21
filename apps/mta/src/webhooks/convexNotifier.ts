@@ -9,12 +9,17 @@ import { createHmac } from 'crypto';
 import type Redis from 'ioredis';
 import type { MtaWebhookEvent } from '../types.js';
 import type { MtaConfig } from '../config.js';
-import { storeFailed } from './dlq.js';
+import { classifyWebhookHttpFailure, storeFailed, type WebhookDeliveryFailure } from './dlq.js';
 import { logger } from '../monitoring/logger.js';
 
 const MAX_RETRIES = 5;
 const RETRY_DELAYS = [1000, 5000, 15000, 60000, 300000]; // 1s, 5s, 15s, 1m, 5m
 const TIMEOUT_MS = 10_000;
+
+interface NotifyConvexOptions {
+	/** Optional absolute deadline for callers that run inside a bounded sweep. */
+	deadline?: number;
+}
 
 /**
  * Send a webhook event to Convex
@@ -25,18 +30,25 @@ const TIMEOUT_MS = 10_000;
 export async function notifyConvex(
 	event: MtaWebhookEvent,
 	config: MtaConfig,
-	redis?: Redis
+	redis?: Redis,
+	options: NotifyConvexOptions = {}
 ): Promise<boolean> {
 	// Route personal-mailbox deliveries to the dedicated webhook
 	const path =
 		event.event === 'inbound.mailbox.received' ? '/webhooks/mta-mailbox' : '/webhooks/mta';
 	const url = `${config.convexSiteUrl}${path}`;
-	let lastError: Error | undefined;
+	let deliveryFailure: WebhookDeliveryFailure = { category: 'unknown' };
 
 	for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+		const remainingMs = options.deadline ? options.deadline - Date.now() : TIMEOUT_MS;
+		if (remainingMs <= 0) {
+			deliveryFailure = { category: 'deadline_exhausted' };
+			break;
+		}
+		let timeout: ReturnType<typeof setTimeout> | undefined;
 		try {
 			const controller = new AbortController();
-			const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+			timeout = setTimeout(() => controller.abort(), Math.min(TIMEOUT_MS, remainingMs));
 
 			const body = JSON.stringify(event);
 			const timestamp = String(Math.floor(Date.now() / 1000));
@@ -55,44 +67,78 @@ export async function notifyConvex(
 				signal: controller.signal,
 			});
 
-			clearTimeout(timeout);
-
 			if (response.ok) {
-				logger.debug({ event: event.event, messageId: event.messageId }, 'Convex webhook delivered');
+				logger.debug(
+					{
+						operation: 'convex_webhook',
+						category: 'delivered',
+						eventType: event.event,
+					},
+					'Convex webhook delivered'
+				);
 				return true;
 			}
 
-			lastError = new Error(`HTTP ${response.status}`);
+			deliveryFailure = classifyWebhookHttpFailure(response.status);
 			logger.warn(
-				{ event: event.event, status: response.status, attempt },
+				{
+					operation: 'convex_webhook',
+					category: 'http',
+					status: response.status,
+					attempt,
+					eventType: event.event,
+				},
 				'Convex webhook non-OK response'
 			);
-		} catch (err) {
-			lastError = err instanceof Error ? err : new Error(String(err));
-			logger.warn({ event: event.event, attempt, err }, 'Convex webhook failed');
+		} catch {
+			deliveryFailure = { category: 'transport' };
+			logger.warn(
+				{
+					operation: 'convex_webhook',
+					category: 'transport',
+					attempt,
+					eventType: event.event,
+				},
+				'Convex webhook failed'
+			);
+		} finally {
+			if (timeout) clearTimeout(timeout);
 		}
 
 		// Wait before retry (with jitter)
 		if (attempt < MAX_RETRIES) {
 			const baseDelay = RETRY_DELAYS[attempt] ?? 5000;
 			const jitter = Math.random() * baseDelay * 0.2; // ±20% jitter
-			await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
+			const delayMs = baseDelay + jitter;
+			if (options.deadline && Date.now() + delayMs >= options.deadline) {
+				deliveryFailure = { category: 'deadline_exhausted' };
+				break;
+			}
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
 		}
 	}
 
 	// All retries exhausted — store in DLQ if Redis available
 	if (redis) {
 		try {
-			await storeFailed(redis, event, lastError?.message ?? 'Unknown error', config);
-		} catch (dlqErr) {
+			await storeFailed(redis, event, deliveryFailure, config);
+		} catch {
 			logger.error(
-				{ err: dlqErr, event: event.event, messageId: event.messageId },
+				{
+					operation: 'convex_webhook_dlq',
+					category: 'storage',
+					eventType: event.event,
+				},
 				'Failed to store event in DLQ — event permanently lost'
 			);
 		}
 	} else {
 		logger.error(
-			{ event: event.event, messageId: event.messageId },
+			{
+				operation: 'convex_webhook_dlq',
+				category: 'unavailable',
+				eventType: event.event,
+			},
 			'Convex webhook delivery FAILED after all retries (no Redis for DLQ)'
 		);
 	}

@@ -5,6 +5,7 @@ import {
 	type FcrdnsFailureReason,
 	type FcrdnsVerdict,
 } from './fcrdns';
+import { isDnsblListId, type DnsblListId } from './dnsbl';
 
 export const IP_READINESS_BLOCK_REASONS = ['dnsbl', 'fcrdns'] as const;
 export type IpReadinessBlockReason = (typeof IP_READINESS_BLOCK_REASONS)[number];
@@ -32,6 +33,7 @@ export interface MtaIpReputationPayload {
 		active: boolean;
 		blockReasons?: IpReadinessBlockReason[];
 		dnsbl?: DnsblStatus;
+		dnsblListings?: DnsblListId[];
 		fcrdns?: {
 			ehlo: string;
 			ptrNames: string[];
@@ -63,6 +65,10 @@ function isStringArray(value: unknown): value is string[] {
 
 function isBlockReasonArray(value: unknown): value is IpReadinessBlockReason[] {
 	return isStringArray(value) && value.every(isIpReadinessBlockReason);
+}
+
+function isDnsblListingArray(value: unknown): value is DnsblListId[] {
+	return isStringArray(value) && value.every(isDnsblListId);
 }
 
 function isFcrdnsPayload(value: unknown): value is MtaFcrdnsPayload {
@@ -104,6 +110,7 @@ function isIpReputationRow(value: unknown): value is MtaIpReputationRow {
 		(value['blockReasons'] === undefined || isBlockReasonArray(value['blockReasons'])) &&
 		(value['dnsbl'] === undefined ||
 			(typeof value['dnsbl'] === 'string' && isDnsblStatus(value['dnsbl']))) &&
+		(value['dnsblListings'] === undefined || isDnsblListingArray(value['dnsblListings'])) &&
 		(value['fcrdns'] === undefined || value['fcrdns'] === null || isFcrdnsPayload(value['fcrdns']))
 	);
 }
@@ -149,6 +156,7 @@ export function normalizeIpReputationPayload(value: unknown) {
 			active: ip.active,
 			...(Array.isArray(ip.blockReasons) ? { blockReasons: ip.blockReasons } : {}),
 			...(typeof ip.dnsbl === 'string' ? { dnsbl: ip.dnsbl } : {}),
+			...(Array.isArray(ip.dnsblListings) ? { dnsblListings: ip.dnsblListings } : {}),
 			...(ip.fcrdns
 				? {
 						fcrdns: {
