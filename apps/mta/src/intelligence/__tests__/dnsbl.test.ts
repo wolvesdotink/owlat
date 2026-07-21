@@ -186,6 +186,32 @@ describe('DNSBL checking', () => {
 			await runDnsblCheck(redis, config);
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
 		});
+
+		it('preserves a prior critical quarantine when its critical zone is unknown but a warning zone is listed', async () => {
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (hostname.includes('zen.spamhaus.org') && hostname.startsWith('1.0.0.10')) {
+					return ['127.0.0.2'];
+				}
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+			await runDnsblCheck(redis, config);
+
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (!hostname.startsWith('1.0.0.10')) {
+					throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+				}
+				if (hostname.includes('zen.spamhaus.org')) {
+					throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
+				}
+				if (hostname.includes('b.barracudacentral.org')) return ['127.0.0.2'];
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+			await runDnsblCheck(redis, config);
+
+			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('unknown');
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
+			expect(await redis.hget('mta:ip-pool:underlying-blocks:dnsbl', '10.0.0.1')).toBe('1');
+		});
 	});
 
 	describe('getDnsblStatus', () => {
@@ -208,18 +234,30 @@ describe('DNSBL checking', () => {
 		});
 	});
 
-	it('does not run scheduled DNSBL work until this process is the elected leader', async () => {
+	it('always completes a boot sweep but gates later scheduled work on leadership', async () => {
 		vi.useFakeTimers();
 		let leader = false;
 		vi.mocked(resolve4).mockRejectedValue(
 			Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
 		);
-		const timer = startDnsblChecker(redis, config, () => leader);
-		expect(resolve4).not.toHaveBeenCalled();
+		const timer = await startDnsblChecker(redis, config, () => leader);
+		const bootLookupCount = vi.mocked(resolve4).mock.calls.length;
+		expect(bootLookupCount).toBeGreaterThan(0);
+
+		await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+		expect(resolve4).toHaveBeenCalledTimes(bootLookupCount);
 
 		leader = true;
 		await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
-		expect(resolve4).toHaveBeenCalled();
+		expect(vi.mocked(resolve4).mock.calls.length).toBeGreaterThan(bootLookupCount);
 		clearInterval(timer);
+	});
+
+	it('rejects startup when the boot sweep cannot persist its observation', async () => {
+		vi.spyOn(redis, 'incr').mockRejectedValueOnce(new Error('Redis unavailable'));
+
+		await expect(startDnsblChecker(redis, config, () => false)).rejects.toThrow(
+			'Redis unavailable'
+		);
 	});
 });

@@ -83,6 +83,52 @@ describe('ipPool', () => {
 			await initializePools(redis, testConfig);
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
 		});
+
+		it('drops an in-flight observation for a retired IP so re-adding requires a fresh sweep', async () => {
+			await initializePools(redis, testConfig);
+			const inFlightGeneration = await nextIpPoolObservationGeneration(redis, '10.0.0.1', 'fcrdns');
+			const rotated: IpPoolConfig = {
+				transactional: testConfig.transactional.slice(1),
+				campaign: testConfig.campaign,
+			};
+			await initializePools(redis, rotated);
+
+			const retiredObservation = await applyIpPoolObservation(redis, {
+				ip: '10.0.0.1',
+				reason: 'fcrdns',
+				generation: inFlightGeneration,
+				decision: 'clear',
+				stateKey: 'mta:fcrdns:10.0.0.1',
+				stateFields: { verdict: 'pass', checkedAt: '2' },
+			});
+
+			expect(retiredObservation.applied).toBe(false);
+			expect(await redis.exists('mta:fcrdns:10.0.0.1')).toBe(0);
+			expect(await redis.hget('mta:ip-pool:applied-observations:fcrdns', '10.0.0.1')).toBeNull();
+
+			await initializePools(redis, testConfig);
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
+		});
+
+		it('does not trust a cached lab override after the override policy is disabled', async () => {
+			await redis.hset(
+				'mta:fcrdns:10.0.0.1',
+				'verdict',
+				'fail',
+				'checkedAt',
+				'1',
+				'wouldBlockWithoutOverride',
+				'true',
+				'overridden',
+				'true'
+			);
+
+			await initializePools(redis, testConfig, false);
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
+
+			await initializePools(redis, testConfig, true);
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
+		});
 	});
 
 	describe('selectIp', () => {

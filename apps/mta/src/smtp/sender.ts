@@ -367,6 +367,22 @@ export async function sendToMx(
 		}
 
 		try {
+			// Acquisition, RSET, and connect are asynchronous. Fence once more at the
+			// last safe boundary before MAIL FROM so quarantine always wins that race,
+			// including for a socket already checked out when its pool is invalidated.
+			if (eligibilityLease && !(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
+				pool.evictConnection(key, conn);
+				return {
+					kind: 'smtp',
+					result: {
+						success: false,
+						error: 'Selected outbound IP became ineligible before SMTP envelope',
+						bounceType: 'deferred',
+						smtpCode: 451,
+					},
+				};
+			}
+
 			// `secured` reports whether this CONNECTION negotiated TLS (STARTTLS
 			// upgrade). It is per-connection: every message carried over a reused
 			// socket is attributed to the same TLS state. A cleartext delivery to an

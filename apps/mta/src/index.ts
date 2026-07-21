@@ -85,12 +85,19 @@ export async function main() {
 	await seedProfiles(redis);
 
 	// ── 4. Initialize IP pools in Redis ──
-	await initializePools(redis, config.ipPools);
+	await initializePools(redis, config.ipPools, config.allowUnverifiedFcrdns);
 
 	// ── 4b. FCrDNS readiness gate ──
 	// Complete the first observation before a worker can select an IP. A fresh,
 	// never-verified address therefore cannot race its quarantine at startup.
 	await runFcrdnsReadinessCheck(redis, config);
+
+	// ── 4c. Finish this process's first DNSBL sweep, then elect the cron leader ──
+	// The boot sweep is unconditional because an existing leader in a rolling
+	// deployment may still have the old IP configuration. Only periodic work is
+	// leader-gated; generation CAS makes overlapping boot observations safe.
+	const dnsblInterval = await startDnsblChecker(redis, config, isLeader);
+	startLeaderElection(redis, config.serverId);
 
 	// ── 5. Initialize warming for all IPs ──
 	const allIps = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
@@ -153,12 +160,6 @@ export async function main() {
 			);
 		}
 	}
-
-	// ── 9. Start leader election for periodic tasks ──
-	startLeaderElection(redis, config.serverId);
-
-	// ── 10. Start DNSBL checker (periodic, every 15 min — leader only) ──
-	const dnsblInterval = startDnsblChecker(redis, config, isLeader);
 
 	// ── 10b. Re-verify outbound identity hourly (leader only) ──
 	const fcrdnsInterval = setInterval(
