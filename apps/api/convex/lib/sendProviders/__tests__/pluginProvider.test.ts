@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parsePluginId, pluginSendTransportKind } from '@owlat/plugin-kit';
+import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { createHostedSendProvider, parseHostedSendTransportModule } from '../pluginProvider';
 import { EmailErrorCode } from '../types';
 
-const kind = pluginSendTransportKind(parsePluginId('mail-pack'), 'postmark');
+const kind = pluginNamespacedKind(parsePluginId('mail-pack'), 'postmark');
 const params = {
 	to: 'to@example.com',
 	from: 'from@example.com',

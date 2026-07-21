@@ -1,4 +1,4 @@
-import type { PluginId } from './pluginId';
+import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 
 /** Capability assigned by the host to every bundled send transport. */
 export const PLUGIN_SEND_TRANSPORT_CAPABILITY = 'send:transport' as const;
@@ -6,10 +6,9 @@ export const PLUGIN_SEND_TRANSPORT_CAPABILITY = 'send:transport' as const;
 export type PluginSendTransportCapability = typeof PLUGIN_SEND_TRANSPORT_CAPABILITY;
 
 /** Local contribution identity. The host namespaces it with the owning plugin id. */
-export type PluginSendTransportLocalId = string;
 
 /** Collision-safe transport kind stored in routes and health records. */
-export type PluginSendTransportKind = `plugin.${PluginId}.${PluginSendTransportLocalId}`;
+export type PluginSendTransportKind = PluginNamespacedKind;
 
 /** A condition-independent package export verified and imported by codegen. */
 export interface PluginStaticModuleExport {
@@ -18,7 +17,7 @@ export interface PluginStaticModuleExport {
 
 /** Data-only manifest descriptor. Executable code lives at `module.exportPath`. */
 export interface PluginSendTransportDefinition {
-	readonly id: PluginSendTransportLocalId;
+	readonly id: PluginLocalId;
 	readonly label: string;
 	readonly module: PluginStaticModuleExport;
 	/** Host-owned delays after retryable failures; at most three bounded entries. */
@@ -71,11 +70,4 @@ export type PluginSendAttempt =
 export interface PluginSendTransportModule<Extras = unknown> {
 	parseExtras(input: unknown): Extras;
 	send(params: PluginSendTransportParams, extras: Extras): Promise<PluginSendAttempt>;
-}
-
-export function pluginSendTransportKind(
-	pluginId: PluginId,
-	localId: PluginSendTransportLocalId
-): PluginSendTransportKind {
-	return `plugin.${pluginId}.${localId}`;
 }

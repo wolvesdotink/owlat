@@ -9,14 +9,14 @@
  * scrubs it again before any delivery attempt.
  */
 
-import { pluginWebhookEventKind, type PluginWebhookEventKind } from '@owlat/plugin-kit';
+import { pluginNamespacedKind, type PluginWebhookEventKind } from '@owlat/plugin-kit';
 import { ESCALATION_GUARD_PLUGIN_ID } from './constants';
 import type { EscalationVerdict } from './detector';
 
 export const ESCALATION_EVENT_LOCAL_ID = 'escalation-raised';
 
 /** `plugin.escalation-guard.escalation-raised` — collision-free by construction. */
-export const ESCALATION_EVENT_KIND: PluginWebhookEventKind = pluginWebhookEventKind(
+export const ESCALATION_EVENT_KIND: PluginWebhookEventKind = pluginNamespacedKind(
 	ESCALATION_GUARD_PLUGIN_ID,
 	ESCALATION_EVENT_LOCAL_ID
 );

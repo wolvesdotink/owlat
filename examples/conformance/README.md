@@ -58,6 +58,12 @@ rather than three unrelated demos.
   ways a seam can legitimately be reached (relative import, generated function
   reference, worker client path string), a test-only or codegen-only "consumer",
   an allowlisted seam that quietly gains a caller, and a stale allowlist entry.
+- **`namespacedKindGrammar.test.ts`** — the guard that keeps
+  `plugin.<pluginId>.<localId>` a single definition. The grammar is a security
+  boundary (core-vs-plugin dispatch and every ownership compare read it), so this
+  suite fails on any module outside `@owlat/plugin-kit`'s `namespacedKind.ts`
+  that constructs it inline, and round-trips every contributed kind of every
+  reference plugin through the one builder and its parser.
 - **`dockerWorkspaces.test.ts`** — the guard that keeps the examples installable
   in every image: `scripts/check-docker-workspaces.sh` is run against throwaway
   repositories so it cannot go quiet on the drift it exists to catch. Covers a

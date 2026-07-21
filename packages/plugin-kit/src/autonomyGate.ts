@@ -1,10 +1,10 @@
-import type { PluginId } from './pluginId';
+import type { PluginNamespacedKind } from './namespacedKind';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 export const PLUGIN_AUTONOMY_GATE_CAPABILITY = 'send:gate' as const;
 export const PLUGIN_AUTONOMY_GATE_TIMEOUT_MAX_MS = 30_000;
 
-export type PluginAutonomyGateKind = `plugin.${PluginId}.${string}`;
+export type PluginAutonomyGateKind = PluginNamespacedKind;
 
 /** Data-only declaration for a bundled gate on autonomous agent replies. */
 export interface PluginAutonomyGateDefinition {
@@ -46,11 +46,4 @@ export interface PluginAutonomyGateModule {
 		input: PluginAutonomyGateInput,
 		services: PluginAutonomyGateServices
 	): Promise<PluginAutonomyGateResult>;
-}
-
-export function pluginAutonomyGateKind(
-	pluginId: PluginId,
-	localId: string
-): PluginAutonomyGateKind {
-	return `plugin.${pluginId}.${localId}`;
 }

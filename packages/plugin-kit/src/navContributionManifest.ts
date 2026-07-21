@@ -1,3 +1,4 @@
+import { isPluginLocalId } from './namespacedKind';
 import { isSafeInternalNavPath } from './internalPath';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import {
@@ -16,7 +17,6 @@ import {
  * of five identical checks.
  */
 
-const LOCAL_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SECTION_KEY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const ICON = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
@@ -83,8 +83,7 @@ function validateLocalId(
 	if (id.kind !== 'value') return;
 	if (
 		typeof id.value !== 'string' ||
-		id.value.length > 64 ||
-		!LOCAL_ID.test(id.value) ||
+		!isPluginLocalId(id.value) ||
 		RESERVED_LOCAL_IDS.has(id.value)
 	) {
 		addManifestIssue(

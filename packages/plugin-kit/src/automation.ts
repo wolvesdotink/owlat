@@ -1,5 +1,5 @@
+import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 import type { JsonObject, JsonValue } from './json';
-import type { PluginId } from './pluginId';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 /**
@@ -16,12 +16,11 @@ export type PluginAutomationStepCapability = typeof PLUGIN_AUTOMATION_STEP_CAPAB
 export type PluginAutomationConditionCapability = typeof PLUGIN_AUTOMATION_CONDITION_CAPABILITY;
 
 /** Local contribution identity; the host namespaces it with the owning plugin id. */
-export type PluginAutomationLocalId = string;
 
 /** Collision-safe kinds persisted on automation rows, steps, and segment filters. */
-export type PluginAutomationTriggerKind = `plugin.${PluginId}.${PluginAutomationLocalId}`;
-export type PluginAutomationStepKind = `plugin.${PluginId}.${PluginAutomationLocalId}`;
-export type PluginAutomationConditionKind = `plugin.${PluginId}.${PluginAutomationLocalId}`;
+export type PluginAutomationTriggerKind = PluginNamespacedKind;
+export type PluginAutomationStepKind = PluginNamespacedKind;
+export type PluginAutomationConditionKind = PluginNamespacedKind;
 
 /**
  * Editor metadata connected to the automation builder palette. The host copies
@@ -45,7 +44,7 @@ export type PluginAutomationTriggerData = Readonly<
 
 /** Data-only manifest descriptor. Executable code lives at `module.exportPath`. */
 export interface PluginAutomationTriggerDefinition extends PluginAutomationEditorMetadata {
-	readonly id: PluginAutomationLocalId;
+	readonly id: PluginLocalId;
 	readonly module: PluginStaticModuleExport;
 }
 
@@ -68,17 +67,10 @@ export interface PluginAutomationTriggerModule<Config = unknown> {
 	): PluginAutomationTriggerData;
 }
 
-export function pluginAutomationTriggerKind(
-	pluginId: PluginId,
-	localId: PluginAutomationLocalId
-): PluginAutomationTriggerKind {
-	return `plugin.${pluginId}.${localId}`;
-}
-
 // ============== Step contribution ==============
 
 export interface PluginAutomationStepDefinition extends PluginAutomationEditorMetadata {
-	readonly id: PluginAutomationLocalId;
+	readonly id: PluginLocalId;
 	readonly module: PluginStaticModuleExport;
 }
 
@@ -102,17 +94,10 @@ export interface PluginAutomationStepModule<Config = unknown> {
 	execute(input: PluginAutomationStepInput, config: Config): Promise<PluginAutomationStepResult>;
 }
 
-export function pluginAutomationStepKind(
-	pluginId: PluginId,
-	localId: PluginAutomationLocalId
-): PluginAutomationStepKind {
-	return `plugin.${pluginId}.${localId}`;
-}
-
 // ============== Condition contribution ==============
 
 export interface PluginAutomationConditionDefinition extends PluginAutomationEditorMetadata {
-	readonly id: PluginAutomationLocalId;
+	readonly id: PluginLocalId;
 	readonly module: PluginStaticModuleExport;
 }
 
@@ -125,11 +110,4 @@ export interface PluginAutomationConditionInput {
 export interface PluginAutomationConditionModule<Config = unknown> {
 	parseConfig(raw: unknown): Config;
 	evaluate(input: PluginAutomationConditionInput, config: Config): boolean;
-}
-
-export function pluginAutomationConditionKind(
-	pluginId: PluginId,
-	localId: PluginAutomationLocalId
-): PluginAutomationConditionKind {
-	return `plugin.${pluginId}.${localId}`;
 }

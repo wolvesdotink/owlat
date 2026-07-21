@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	parsePluginId,
 	PLUGIN_IMPORT_PROVIDER_CAPABILITY,
-	pluginImportProviderKind,
+	pluginNamespacedKind,
 	validatePluginManifest,
 	type PluginImportProviderDefinition,
 	type PluginManifestIssue,
@@ -40,7 +40,7 @@ function issuesFor(value: unknown): readonly PluginManifestIssue[] {
 
 describe('plugin import provider contributions', () => {
 	it('namespaces every provider under its owning plugin id', () => {
-		expect(pluginImportProviderKind(parsePluginId('crm-pack'), 'hubspot')).toBe(
+		expect(pluginNamespacedKind(parsePluginId('crm-pack'), 'hubspot')).toBe(
 			'plugin.crm-pack.hubspot'
 		);
 	});

@@ -5,7 +5,7 @@ import {
 	type BundledPlugin,
 	type HostedAgentStepDefinition,
 } from '@owlat/plugin-host';
-import { parsePluginId } from '@owlat/plugin-kit';
+import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { renderCronCatalog, renderCronModules } from './renderCron';
 import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 import {
@@ -164,7 +164,7 @@ function automationContributionsFor(
 			packageName: parsePluginPackageName(plugin.packageName),
 			pluginId: parsePluginId(plugin.manifest.id),
 			localId: entry.id,
-			kind: `plugin.${plugin.manifest.id}.${entry.id}`,
+			kind: pluginNamespacedKind(plugin.manifest.id, entry.id),
 			label: entry.label,
 			description: entry.description,
 			icon: entry.icon,
@@ -228,7 +228,7 @@ function autonomyGatesFor(plugins: readonly BundledPlugin[]) {
 	).map(({ pluginId, contributionId, value }) => ({
 		...value,
 		pluginId,
-		kind: `plugin.${pluginId}.${contributionId}`,
+		kind: pluginNamespacedKind(pluginId, contributionId),
 	}));
 }
 
@@ -279,7 +279,7 @@ function draftStrategiesFor(plugins: readonly BundledPlugin[]) {
 		(plugin.manifest.contributes?.draftStrategies ?? []).map((strategy) => ({
 			packageName: parsePluginPackageName(plugin.packageName),
 			pluginId: parsePluginId(plugin.manifest.id),
-			kind: `plugin.${plugin.manifest.id}.${strategy.id}`,
+			kind: pluginNamespacedKind(plugin.manifest.id, strategy.id),
 			label: strategy.label,
 			exportPath: strategy.module.exportPath,
 			timeoutMs: strategy.timeoutMs,
@@ -392,7 +392,7 @@ function sendTransportsFor(plugins: readonly BundledPlugin[]): readonly Rendered
 			packageName: parsePluginPackageName(plugin.packageName),
 			pluginId: parsePluginId(plugin.manifest.id),
 			localId: transport.id,
-			kind: `plugin.${plugin.manifest.id}.${transport.id}`,
+			kind: pluginNamespacedKind(plugin.manifest.id, transport.id),
 			label: transport.label,
 			exportPath: transport.module.exportPath,
 			retryDelays: transport.retryDelays,

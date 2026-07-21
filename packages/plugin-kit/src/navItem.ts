@@ -1,10 +1,9 @@
-import type { PluginId } from './pluginId';
+import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 
 /** Capability the host assigns to every plugin that contributes navigation items. */
 export const PLUGIN_NAV_ITEM_CAPABILITY = 'ui:navigation' as const;
 
 export type PluginNavItemCapability = typeof PLUGIN_NAV_ITEM_CAPABILITY;
-export type PluginNavItemLocalId = string;
 
 /**
  * Plugin-scoped identity for a plugin-contributed navigation destination,
@@ -14,11 +13,9 @@ export type PluginNavItemLocalId = string;
  * (`derivePluginNavigation` sets each entry's id to its href), which is what
  * prevents a plugin from shadowing a core destination: two entries at the same
  * href collapse first-registered-wins, and core is always registered first.
- *
- * Intended consumer: the plugin-scoped settings index landing in PP-20; until
- * that lands `pluginNavItemKind` is exercised only by its own unit tests.
+
  */
-export type PluginNavItemKind = `plugin.${PluginId}.${PluginNavItemLocalId}`;
+export type PluginNavItemKind = PluginNamespacedKind;
 
 /**
  * Data-only descriptor for one sidebar navigation destination a plugin adds.
@@ -28,7 +25,7 @@ export type PluginNavItemKind = `plugin.${PluginId}.${PluginNavItemLocalId}`;
  * orders it deterministically after every core destination.
  */
 export interface PluginNavItemDefinition {
-	readonly id: PluginNavItemLocalId;
+	readonly id: PluginLocalId;
 	/**
 	 * Key of the core sidebar section the destination attaches to (for example
 	 * `audience` or `settings`). An item that targets an unknown or feature-off
@@ -52,11 +49,4 @@ export interface PluginNavItemDefinition {
 	readonly icon: string;
 	/** Ordering hint among this plugin's items in the same section (default: declaration order). */
 	readonly order?: number;
-}
-
-export function pluginNavItemKind(
-	pluginId: PluginId,
-	localId: PluginNavItemLocalId
-): PluginNavItemKind {
-	return `plugin.${pluginId}.${localId}`;
 }
