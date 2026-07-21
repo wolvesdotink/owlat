@@ -166,6 +166,24 @@ describe('Postmaster webhook privacy boundary', () => {
 			retained: false,
 		});
 		expect(await retainedRows(t)).toEqual({ payloads: [], stats: [] });
+
+		await t.run((ctx) =>
+			ctx.db.insert('domains', {
+				domain: 'removed.example',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: now + 1,
+				updatedAt: now + 1,
+			})
+		);
+		const recreated = await postSigned(t, observation);
+		expect(await recreated.json()).toMatchObject({
+			disposition: 'accepted_authorized',
+			retained: true,
+		});
+		const recreatedRows = await retainedRows(t);
+		expect(recreatedRows.payloads).toEqual([]);
+		expect(recreatedRows.stats).toHaveLength(1);
 	});
 
 	it('keeps HMAC rejection and non-Postmaster raw audit behavior unchanged', async () => {

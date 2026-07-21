@@ -140,6 +140,96 @@ describe('Google Postmaster v2 collection', () => {
 		expect(serializedLogs).not.toContain(unrelatedDomain);
 	});
 
+	it('cleans a domain missing after restart and permits a fresh same-day observation', async () => {
+		const redis = new Redis();
+		let domainIsListed = true;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.includes('/token')) return response({ access_token: 'token', expires_in: 3600 });
+				if (url.includes('/domains?')) {
+					return response({ domains: domainIsListed ? [verifiedDomain()] : [] });
+				}
+				return response({ domainStats: [spamStat()] });
+			})
+		);
+
+		await fetchPostmasterData(redis, config);
+		expect(await redis.get('mta:postmaster:pushed:example.com:2026-07-20')).toBe('1');
+		expect(await redis.zscore('mta:postmaster:domain-state-index', 'example.com')).toBe('1');
+		expect(await spamRate.get()).toEqual(
+			expect.objectContaining({
+				values: expect.arrayContaining([
+					expect.objectContaining({ labels: { domain: 'example.com' } }),
+				]),
+			})
+		);
+
+		// A new client proves discovery state is durable rather than process-local.
+		domainIsListed = false;
+		await fetchPostmasterData(new Redis(), config);
+
+		expect(await redis.get('mta:postmaster:pushed:example.com:2026-07-20')).toBeNull();
+		expect(await redis.get('mta:postmaster:stats-cursor:example.com')).toBeNull();
+		expect(await redis.zscore('mta:postmaster:domain-state-index', 'example.com')).toBeNull();
+		expect(await spamRate.get()).not.toEqual(
+			expect.objectContaining({
+				values: expect.arrayContaining([
+					expect.objectContaining({ labels: { domain: 'example.com' } }),
+				]),
+			})
+		);
+
+		spamRate.reset();
+		domainIsListed = true;
+		await fetchPostmasterData(redis, config);
+
+		const deliveredStats = vi
+			.mocked(notifyPostmasterConvex)
+			.mock.calls.filter(([event]) => event.event === 'postmaster.stats');
+		expect(deliveredStats).toHaveLength(2);
+		expect(await redis.get('mta:postmaster:pushed:example.com:2026-07-20')).toBe('1');
+	});
+
+	it('bounds indexed stale-domain cleanup without scanning unrelated Redis keys', async () => {
+		const redis = new Redis();
+		const staleDomainCount = 250;
+		const unrelatedKeyCount = 500;
+		const seed = redis.pipeline();
+		for (let index = 0; index < staleDomainCount; index++) {
+			const domain = `unowned-${index}.example`;
+			seed.zadd('mta:postmaster:domain-state-index', 0, domain);
+			seed.set(`mta:postmaster:stats-cursor:${domain}`, 'stale');
+			seed.set(`mta:postmaster:pushed:${domain}:2026-07-20`, '1');
+		}
+		for (let index = 0; index < unrelatedKeyCount; index++) {
+			seed.set(`unrelated:${index}`, 'keep');
+		}
+		await seed.exec();
+		const scanSpy = vi.spyOn(redis, 'scan');
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL | Request) =>
+				String(input).includes('/token')
+					? response({ access_token: 'token', expires_in: 3600 })
+					: response({ domains: [] })
+			)
+		);
+
+		await fetchPostmasterData(redis, config);
+		expect(await redis.zcard('mta:postmaster:domain-state-index')).toBe(150);
+		await fetchPostmasterData(redis, config);
+		expect(await redis.zcard('mta:postmaster:domain-state-index')).toBe(50);
+		await fetchPostmasterData(redis, config);
+
+		expect(scanSpy).not.toHaveBeenCalled();
+		expect(await redis.zcard('mta:postmaster:domain-state-index')).toBe(0);
+		expect(await redis.keys('mta:postmaster:stats-cursor:*')).toEqual([]);
+		expect(await redis.keys('mta:postmaster:pushed:*')).toEqual([]);
+		expect(await redis.keys('unrelated:*')).toHaveLength(unrelatedKeyCount);
+	});
+
 	it('accepts the current v2 ADMIN domain permission', async () => {
 		const redis = new Redis();
 		vi.stubGlobal(
