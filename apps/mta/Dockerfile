@@ -6,11 +6,11 @@ WORKDIR /app
 
 # Copy workspace root + all package.json files for dependency resolution. The
 # manifest set must cover every workspace the root package.json globs in
-# (examples/plugins/* included), or bun's frozen-lockfile check rejects the
-# partial workspace shape.
+# (examples/* and examples/plugins/* included), or bun's frozen-lockfile
+# check rejects the partial workspace shape.
 COPY package.json bun.lock ./
 COPY patches/ patches/
-COPY --parents apps/*/package.json packages/*/package.json examples/plugins/*/package.json ./
+COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 
 # Root-level filtered install (same idiom as web/updater/setup-cli): only this
 # package's deps — a workspace-wide install would run unrelated packages'

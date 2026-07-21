@@ -278,9 +278,27 @@
         "vue-tsc": "catalog:",
       },
     },
+    "examples/conformance": {
+      "name": "@owlat/plugin-conformance",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@owlat/code-worker": "workspace:*",
+        "@owlat/example-deliverability-lab": "workspace:*",
+        "@owlat/example-escalation-guard": "workspace:*",
+        "@owlat/example-slack-approvals": "workspace:*",
+        "@owlat/plugin-cli": "workspace:*",
+        "@owlat/plugin-codegen": "workspace:*",
+        "@owlat/plugin-host": "workspace:*",
+        "@owlat/plugin-kit": "workspace:*",
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "examples/plugins/deliverability-lab": {
       "name": "@owlat/example-deliverability-lab",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@owlat/plugin-kit": "workspace:*",
       },
@@ -291,9 +309,23 @@
         "vitest": "catalog:",
       },
     },
+    "examples/plugins/escalation-guard": {
+      "name": "@owlat/example-escalation-guard",
+      "version": "0.1.0",
+      "dependencies": {
+        "@owlat/plugin-kit": "workspace:*",
+      },
+      "devDependencies": {
+        "@owlat/plugin-host": "workspace:*",
+        "@types/node": "catalog:",
+        "@vitest/coverage-v8": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+      },
+    },
     "examples/plugins/slack-approvals": {
       "name": "@owlat/example-slack-approvals",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
         "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
@@ -1134,6 +1166,8 @@
 
     "@owlat/example-deliverability-lab": ["@owlat/example-deliverability-lab@workspace:examples/plugins/deliverability-lab"],
 
+    "@owlat/example-escalation-guard": ["@owlat/example-escalation-guard@workspace:examples/plugins/escalation-guard"],
+
     "@owlat/example-slack-approvals": ["@owlat/example-slack-approvals@workspace:examples/plugins/slack-approvals"],
 
     "@owlat/imap": ["@owlat/imap@workspace:apps/imap"],
@@ -1153,6 +1187,8 @@
     "@owlat/plugin-cli": ["@owlat/plugin-cli@workspace:packages/plugin-cli"],
 
     "@owlat/plugin-codegen": ["@owlat/plugin-codegen@workspace:packages/plugin-codegen"],
+
+    "@owlat/plugin-conformance": ["@owlat/plugin-conformance@workspace:examples/conformance"],
 
     "@owlat/plugin-host": ["@owlat/plugin-host@workspace:packages/plugin-host"],
 

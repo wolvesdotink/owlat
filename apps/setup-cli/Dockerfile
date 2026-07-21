@@ -12,8 +12,9 @@ COPY patches/ patches/
 # ALL workspace manifests (same idiom as apps/web/Dockerfile): bun validates the
 # frozen lockfile against the full workspace shape, so a partial set of
 # package.jsons reads as "lockfile had changes" and the install refuses to run.
-# The set must include examples/plugins/* — those are workspaces too.
-COPY --parents apps/*/package.json packages/*/package.json examples/plugins/*/package.json ./
+# The set must include examples/* and examples/plugins/* — those are
+# workspaces too.
+COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 RUN bun install --frozen-lockfile --filter @owlat/setup-cli
 
 COPY packages/shared packages/shared

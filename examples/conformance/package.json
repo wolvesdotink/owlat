@@ -1,0 +1,30 @@
+{
+	"name": "@owlat/plugin-conformance",
+	"version": "0.1.0",
+	"private": true,
+	"description": "The plugin-platform conformance gallery: lifecycle (install/add/remove/disable/upgrade) and full-pipeline replay suites driving the three maintained reference plugins through the real host, codegen and CLI.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"scripts": {
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@owlat/code-worker": "workspace:*",
+		"@owlat/example-deliverability-lab": "workspace:*",
+		"@owlat/example-escalation-guard": "workspace:*",
+		"@owlat/example-slack-approvals": "workspace:*",
+		"@owlat/plugin-cli": "workspace:*",
+		"@owlat/plugin-codegen": "workspace:*",
+		"@owlat/plugin-host": "workspace:*",
+		"@owlat/plugin-kit": "workspace:*",
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}
