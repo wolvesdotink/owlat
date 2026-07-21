@@ -83,7 +83,7 @@ export const preflightPlugin = definePlugin({
 				id: 'dashboard',
 				section: 'delivery',
 				name: 'Preflight',
-				href: '/dashboard/plugins/preflight',
+				href: '/dashboard/settings/plugins/preflight',
 				icon: 'lucide:radar',
 			},
 		],

@@ -19,7 +19,9 @@ import {
 import {
 	contributionExportPaths,
 	galleryEntry,
+	navigationHrefs,
 	readCoreNavSectionKeys,
+	readDashboardRouteMatchers,
 	REFERENCE_GALLERY,
 	UNCOVERED_LIVE_BUCKETS,
 } from '../gallery';
@@ -119,11 +121,22 @@ describe('reference gallery coverage', () => {
 		const ids = REFERENCE_GALLERY.map((entry) => entry.manifest.id);
 		expect(new Set(ids).size).toBe(ids.length);
 
-		const hrefs = REFERENCE_GALLERY.flatMap((entry) => [
-			...(entry.manifest.contributes?.navItems ?? []).map((item) => item.href),
-			...(entry.manifest.contributes?.settingsPanels ?? []).map((panel) => panel.href),
+		// The sidebar registry dedups per section, first-registered-wins, so the
+		// destination that can shadow another is a (section, href) pair — settings
+		// panels are always appended to the `settings` section. Two entries at the
+		// same pair collapse and one silently disappears; the SAME href reached
+		// from two different sections is legitimate, and is in fact the only way a
+		// plugin can put a nav entry anywhere (it cannot ship a page, so its own
+		// settings page is the one destination it owns).
+		const destinations = REFERENCE_GALLERY.flatMap((entry) => [
+			...(entry.manifest.contributes?.navItems ?? []).map(
+				(item) => `${item.section}\n${item.href}`
+			),
+			...(entry.manifest.contributes?.settingsPanels ?? []).map(
+				(panel) => `settings\n${panel.href}`
+			),
 		]);
-		expect(new Set(hrefs).size).toBe(hrefs.length);
+		expect(new Set(destinations).size).toBe(destinations.length);
 
 		const eventKinds = REFERENCE_GALLERY.flatMap((entry) =>
 			(entry.manifest.contributes?.webhookEvents ?? []).map(
@@ -153,6 +166,26 @@ describe('reference gallery coverage', () => {
 				...(entry.manifest.contributes?.settingsPanels ?? []).map((panel) => panel.href),
 			];
 			for (const href of hrefs) expect(href, entry.packageName).toMatch(/^\/dashboard\//);
+		}
+	});
+
+	it('points every contributed destination at a route the dashboard build has', async () => {
+		// A plugin cannot ship a page — no arbitrary browser code is loaded and
+		// codegen emits no Nuxt routes — so an href with no page behind it is a
+		// link that renders and then 404s. The route set is read from
+		// apps/web/app/pages so deleting a page turns this red.
+		const routes = await readDashboardRouteMatchers();
+		expect(routes.some((route) => route.route === '/dashboard/settings/plugins/[id]')).toBe(true);
+
+		const destinations = REFERENCE_GALLERY.flatMap((entry) =>
+			navigationHrefs(entry.manifest).map((href) => ({ ...href, plugin: entry.packageName }))
+		);
+		expect(destinations.length).toBeGreaterThan(0);
+		for (const destination of destinations) {
+			expect(
+				routes.some((route) => route.matches(destination.href)),
+				`${destination.plugin} ${destination.bucket}.${destination.id} links to ${destination.href}, which no dashboard route serves`
+			).toBe(true);
 		}
 	});
 });

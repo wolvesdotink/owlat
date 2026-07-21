@@ -37,7 +37,16 @@ export interface PluginNavItemDefinition {
 	readonly section: string;
 	/** Sidebar label (host-clamped and injection-scrubbed at render time). */
 	readonly name: string;
-	/** Absolute internal dashboard path the destination links to. */
+	/**
+	 * Absolute internal dashboard path the destination links to.
+	 *
+	 * A plugin cannot ship a page: no arbitrary browser code is loaded at runtime
+	 * and codegen emits no Nuxt routes, so this must resolve to a route the
+	 * dashboard build already has or the link renders and then 404s. Every plugin
+	 * gets `/dashboard/settings/plugins/<pluginId>` — its schema-rendered settings
+	 * page — for free; anything else must be a core route, or one the operator's
+	 * own build provides.
+	 */
 	readonly href: string;
 	/** Icon token, for example `lucide:sparkles`. */
 	readonly icon: string;
