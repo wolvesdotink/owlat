@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	DEFAULT_GENERIC_PTR_SUFFIXES,
 	isGenericPtrHostname,
@@ -33,6 +33,8 @@ describe('generic PTR data and heuristic', () => {
 });
 
 describe('verifyFcrdnsIdentity', () => {
+	afterEach(() => vi.useRealTimers());
+
 	it('requires the same forward-confirmed PTR to match EHLO', async () => {
 		const result = await verifyFcrdnsIdentity('203.0.113.10', 'mail.example.com', {
 			reverse: vi.fn(async () => ['other.example.com', 'mail.example.com']),
@@ -57,6 +59,53 @@ describe('verifyFcrdnsIdentity', () => {
 				ehloMatches: true,
 			},
 		});
+	});
+
+	it('bounds a reverse lookup that never settles', async () => {
+		vi.useFakeTimers();
+		const resultPromise = verifyFcrdnsIdentity(
+			'203.0.113.10',
+			'mail.example.com',
+			{ reverse: vi.fn(() => new Promise<string[]>(() => {})), resolve4: vi.fn() },
+			[],
+			100
+		);
+		await vi.advanceTimersByTimeAsync(100);
+		await expect(resultPromise).resolves.toMatchObject({
+			verdict: 'error',
+			reason: 'lookup-error',
+		});
+	});
+
+	it('bounds the entire identity check when a forward lookup never settles', async () => {
+		vi.useFakeTimers();
+		const resultPromise = verifyFcrdnsIdentity(
+			'203.0.113.10',
+			'mail.example.com',
+			{
+				reverse: vi.fn(async () => ['mail.example.com']),
+				resolve4: vi.fn(() => new Promise<string[]>(() => {})),
+			},
+			[],
+			100
+		);
+		await vi.advanceTimersByTimeAsync(100);
+		await expect(resultPromise).resolves.toMatchObject({
+			verdict: 'error',
+			reason: 'lookup-error',
+		});
+	});
+
+	it('checks multiple identities in parallel within one timeout budget', async () => {
+		vi.useFakeTimers();
+		const deps = { reverse: vi.fn(() => new Promise<string[]>(() => {})), resolve4: vi.fn() };
+		const checks = ['203.0.113.10', '203.0.113.11', '203.0.113.12'].map((ip) =>
+			verifyFcrdnsIdentity(ip, 'mail.example.com', deps, [], 100)
+		);
+		await vi.advanceTimersByTimeAsync(100);
+		const results = await Promise.all(checks);
+		expect(results).toHaveLength(3);
+		expect(results.every((result) => result.reason === 'lookup-error')).toBe(true);
 	});
 });
 

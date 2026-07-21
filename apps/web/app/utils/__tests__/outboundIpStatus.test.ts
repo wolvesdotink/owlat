@@ -22,6 +22,7 @@ describe('outboundIpPresentation', () => {
 		[
 			{
 				active: false,
+				blockReasons: ['fcrdns'],
 				fcrdns: {
 					verdict: 'fail',
 					isGenericPtr: false,
@@ -31,7 +32,7 @@ describe('outboundIpPresentation', () => {
 				},
 			},
 			'error',
-			'Quarantined',
+			'Identity quarantined',
 		],
 		[
 			{
@@ -51,9 +52,44 @@ describe('outboundIpPresentation', () => {
 		expect(outboundIpPresentation(input)).toMatchObject({ tone, label });
 	});
 
+	it('distinguishes DNSBL-only and combined quarantine causes', () => {
+		expect(
+			outboundIpPresentation({ active: false, blockReasons: ['dnsbl'], dnsbl: 'critical' })
+		).toMatchObject({ label: 'Blocklisted', tone: 'error' });
+		expect(
+			outboundIpPresentation({
+				active: false,
+				blockReasons: ['fcrdns', 'dnsbl'],
+				dnsbl: 'critical',
+				fcrdns: {
+					verdict: 'fail',
+					isGenericPtr: false,
+					isOverridden: false,
+					ptrNames: [],
+					reason: 'no-ptr',
+				},
+			})
+		).toMatchObject({ label: 'Identity + blocklist', tone: 'error' });
+	});
+
+	it('fails closed for an unknown readiness verdict', () => {
+		expect(
+			outboundIpPresentation({
+				active: true,
+				fcrdns: {
+					verdict: 'mysteriously-green',
+					isGenericPtr: false,
+					isOverridden: false,
+					ptrNames: [],
+				},
+			})
+		).toMatchObject({ label: 'Not verified', tone: 'error' });
+	});
+
 	it('renders actionable remediation for a failed provider PTR', () => {
 		const status = outboundIpPresentation({
 			active: false,
+			blockReasons: ['fcrdns'],
 			fcrdns: {
 				verdict: 'fail',
 				isGenericPtr: false,

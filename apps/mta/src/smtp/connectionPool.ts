@@ -370,6 +370,22 @@ export class SmtpConnectionPool {
 		logger.debug({ key }, 'Evicted pool entry after a transport error');
 	}
 
+	/** Fence one source identity from idle and checked-out socket reuse. */
+	invalidateBindIp(bindIp: string): void {
+		let changed = false;
+		for (const [key, entry] of this.pool.entries()) {
+			if (entry.config.localAddress !== bindIp) continue;
+			entry.idle?.conn.close();
+			this.pool.delete(key);
+			this.cap.release(entry.mxHost);
+			changed = true;
+		}
+		if (changed) {
+			this.updateGauge();
+			logger.warn({ bindIp }, 'Invalidated SMTP pool entries for ineligible source IP');
+		}
+	}
+
 	/** Best-effort polite teardown: send QUIT, read the 221, then destroy. */
 	private quitConnection(conn: SmtpConnection): void {
 		void quit(conn).catch(() => {});

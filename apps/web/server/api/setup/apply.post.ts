@@ -131,7 +131,7 @@ export default defineEventHandler(
 			if (!merged['DEFAULT_FROM_NAME']) merged['DEFAULT_FROM_NAME'] = 'Owlat';
 		}
 
-		if (chosenProvider === 'mta') {
+		if (profiles.includes('mta')) {
 			const identityPreflight = await preflightMtaIdentities(merged);
 			if (!identityPreflight.ok) {
 				return { ok: false, message: identityPreflight.message };

@@ -47,6 +47,12 @@ function emailDraft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 		resendKey: '',
 		ses: { region: 'us-east-1', accessKeyId: '', secretAccessKey: '' },
 		smtp: { ...blankSmtp },
+		mtaIdentity: {
+			transactionalIps: '203.0.113.10',
+			campaignIps: '203.0.113.11',
+			ehloHostname: 'mail.example.com',
+			ehloHostnames: '',
+		},
 		fromEmail: '',
 		fromName: '',
 		...overrides,
@@ -185,6 +191,29 @@ describe('email step navigation gate', () => {
 	it('accepts a blank From address (the field is optional)', () => {
 		expect(emailStepIsValid(emailDraft({ provider: 'mta', fromEmail: '' }))).toBe(true);
 	});
+
+	it('requires the outbound IP and EHLO identity whenever the MTA profile is enabled', () => {
+		const draft = emailDraft({
+			provider: 'smtp',
+			smtp: smtpRelay(),
+			mtaProfileEnabled: true,
+			mtaIdentity: {
+				transactionalIps: '',
+				campaignIps: '',
+				ehloHostname: '',
+				ehloHostnames: '',
+			},
+		});
+		expect(validateEmailStep(draft).mtaIdentity).toBeTruthy();
+		expect(emailStepIsValid(draft)).toBe(false);
+	});
+
+	it('rejects malformed per-IP EHLO JSON', () => {
+		const draft = emailDraft({
+			mtaIdentity: { ...emailDraft().mtaIdentity!, ehloHostnames: 'not json' },
+		});
+		expect(validateEmailStep(draft).mtaIdentity).toContain('JSON object');
+	});
 });
 
 describe('buildProviderEnv', () => {
@@ -258,6 +287,19 @@ describe('buildProviderEnv', () => {
 		);
 		expect(env['DEFAULT_FROM_EMAIL']).toBeUndefined();
 		expect(env['DEFAULT_FROM_NAME']).toBeUndefined();
+	});
+
+	it('writes MTA identity env even when direct delivery uses an SMTP relay', () => {
+		const env = buildProviderEnv(
+			{},
+			emailDraft({ provider: 'smtp', smtp: smtpRelay(), mtaProfileEnabled: true })
+		);
+		expect(env).toMatchObject({
+			EMAIL_PROVIDER: 'smtp',
+			IP_POOLS_TRANSACTIONAL: '203.0.113.10',
+			IP_POOLS_CAMPAIGN: '203.0.113.11',
+			EHLO_HOSTNAME: 'mail.example.com',
+		});
 	});
 });
 

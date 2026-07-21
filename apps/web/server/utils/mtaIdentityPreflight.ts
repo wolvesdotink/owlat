@@ -81,29 +81,33 @@ export async function preflightMtaIdentities(
 	} catch (err) {
 		return { ok: false, message: (err as Error).message, identities: [] };
 	}
-	const identities: MtaIdentityPreflightResult['identities'] = [];
-	for (const ip of ips) {
-		const ehlo = normalizeDnsName(perIpEhlo[ip] ?? defaultEhlo);
-		if (!isFqdn(ehlo)) {
-			return {
-				ok: false,
-				message: `No valid EHLO hostname is configured for ${ip}. Set EHLO_HOSTNAME or EHLO_HOSTNAMES to an FQDN.`,
-				identities,
-			};
-		}
-		const result = await verifyFcrdnsIdentity(ip, ehlo, deps, extraSuffixes);
-		const hardFailure = result.verdict === 'fail' || result.verdict === 'error';
-		identities.push({ ...result, overridden: hardFailure && allowOverride });
-		if (hardFailure && !allowOverride) {
-			const guidance = reverseDnsGuidance(result.ptrNames);
-			return {
-				ok: false,
-				message:
-					`Outbound IP ${ip} is quarantined: ${fcrdnsReasonMessage(result.reason)} ` +
-					`Set its PTR exactly to ${ehlo}. ${guidance.instruction}`,
-				identities,
-			};
-		}
+	const findings = await Promise.all(
+		ips.map(async (ip) => {
+			const ehlo = normalizeDnsName(perIpEhlo[ip] ?? defaultEhlo);
+			if (!isFqdn(ehlo)) {
+				return {
+					failure: `Outbound IP ${ip}: set EHLO_HOSTNAME or EHLO_HOSTNAMES to a valid FQDN.`,
+				};
+			}
+			const result = await verifyFcrdnsIdentity(ip, ehlo, deps, extraSuffixes);
+			const hardFailure = result.verdict === 'fail' || result.verdict === 'error';
+			const identity = { ...result, overridden: hardFailure && allowOverride };
+			if (hardFailure && !allowOverride) {
+				const guidance = reverseDnsGuidance(result.ptrNames);
+				return {
+					identity,
+					failure:
+						`Outbound IP ${ip} is quarantined: ${fcrdnsReasonMessage(result.reason)} ` +
+						`Set its PTR exactly to ${ehlo}. ${guidance.instruction}`,
+				};
+			}
+			return { identity };
+		})
+	);
+	const identities = findings.flatMap((finding) => (finding.identity ? [finding.identity] : []));
+	const failures = findings.flatMap((finding) => (finding.failure ? [finding.failure] : []));
+	if (failures.length > 0) {
+		return { ok: false, message: failures.join('\n'), identities };
 	}
 	return {
 		ok: true,

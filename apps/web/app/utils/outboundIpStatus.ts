@@ -1,13 +1,16 @@
 import {
 	fcrdnsReasonMessage,
+	isFcrdnsVerdict,
 	reverseDnsGuidance,
 	type FcrdnsFailureReason,
-	type FcrdnsVerdict,
 } from '@owlat/shared/fcrdns';
+import type { DnsblStatus, IpReadinessBlockReason } from '@owlat/shared/ipReadinessSync';
 import type { HealthTone } from './healthTone';
 
 export interface OutboundIpIdentityInput {
 	active: boolean;
+	blockReasons?: IpReadinessBlockReason[];
+	dnsbl?: DnsblStatus;
 	fcrdns?: {
 		verdict: string;
 		isGenericPtr: boolean;
@@ -26,15 +29,26 @@ export interface OutboundIpPresentation {
 
 export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpPresentation {
 	const identity = ip.fcrdns;
+	const identityBlocked = ip.blockReasons?.includes('fcrdns') === true;
+	const dnsblBlocked = ip.blockReasons?.includes('dnsbl') === true;
 	let tone: HealthTone;
 	let label: string;
-	if (identity?.isOverridden) {
+	if (identityBlocked && dnsblBlocked) {
+		tone = 'error';
+		label = 'Identity + blocklist';
+	} else if (dnsblBlocked) {
+		tone = 'error';
+		label = ip.dnsbl === 'unknown' ? 'Blocklist check unavailable' : 'Blocklisted';
+	} else if (identityBlocked) {
+		tone = 'error';
+		label = 'Identity quarantined';
+	} else if (identity?.isOverridden) {
 		tone = 'warning';
 		label = 'Lab override';
 	} else if (!ip.active) {
 		tone = 'error';
-		label = 'Quarantined';
-	} else if (!identity || identity.verdict === 'error') {
+		label = 'Unavailable';
+	} else if (!identity || !isFcrdnsVerdict(identity.verdict) || identity.verdict === 'error') {
 		tone = 'error';
 		label = 'Not verified';
 	} else if (identity.verdict === 'warn') {
@@ -45,20 +59,27 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 		label = 'Ready';
 	}
 
-	const detail = !identity
+	const identityDetail = !identity
 		? 'Waiting for the first live reverse-DNS check.'
 		: identity.isGenericPtr
 			? 'Forward DNS is valid, but this provider-default PTR can hurt sending reputation.'
 			: fcrdnsReasonMessage(identity.reason as FcrdnsFailureReason | undefined);
+	const blocklistDetail =
+		ip.dnsbl === 'unknown'
+			? 'The latest DNS blocklist lookup failed, so the prior safety decision is preserved.'
+			: 'A critical DNS blocklist currently excludes this IP from delivery.';
+	const detail =
+		identityBlocked && dnsblBlocked
+			? `${identityDetail} ${blocklistDetail}`
+			: dnsblBlocked
+				? blocklistDetail
+				: identityDetail;
 	const remediation =
-		identity && identity.verdict !== 'pass' && identity.verdict !== 'warn'
+		identityBlocked && identity
 			? reverseDnsGuidance(identity.ptrNames).instruction
-			: null;
+			: dnsblBlocked
+				? 'Review the MTA blocklist details, resolve the listing cause, and request delisting.'
+				: null;
 
 	return { tone, label, detail, remediation };
-}
-
-/** Narrow untrusted/string-backed Convex data without lying to the presenter. */
-export function isFcrdnsVerdict(value: string): value is FcrdnsVerdict {
-	return value === 'pass' || value === 'warn' || value === 'fail' || value === 'error';
 }

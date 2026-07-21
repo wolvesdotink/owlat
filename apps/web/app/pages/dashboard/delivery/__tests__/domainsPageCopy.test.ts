@@ -87,6 +87,7 @@ describe('Page ordering — mental model before transports', () => {
 vi.stubGlobal('useOrganizationQuery', () => ({ data: ref({ provider: 'mta' }) }));
 
 import DomainDnsGuidance from '../../../../components/delivery/DomainDnsGuidance.vue';
+import SendingDetails from '../../../../components/delivery/SendingDetails.vue';
 
 describe('DomainDnsGuidance — the banner being demoted', () => {
 	beforeEach(() => {
@@ -116,5 +117,48 @@ describe('DomainDnsGuidance — the banner being demoted', () => {
 			},
 		});
 		expect(w.find('div').exists()).toBe(false);
+	});
+});
+
+describe('Outbound identity status on the domains surface', () => {
+	it('mounts the outbound-IP panel from the page overview query', () => {
+		expect(pageSource).toMatch(
+			/<DeliverySendingDetails[\s\S]*?:warming="outboundIpDetail\.warming"/
+		);
+	});
+
+	it('shows the exact quarantine reason operators need to remediate', () => {
+		const wrapper = mount(SendingDetails, {
+			props: {
+				warming: {
+					syncedAt: Date.now(),
+					ips: [
+						{
+							ip: '203.0.113.10',
+							pool: 'transactional',
+							currentDay: 1,
+							sentToday: 0,
+							dailyCap: 100,
+							active: false,
+							blockReasons: ['fcrdns'],
+							dnsbl: 'clean',
+							fcrdns: {
+								ehlo: 'mail.example.com',
+								ptrNames: [],
+								verdict: 'fail',
+								isGenericPtr: false,
+								isOverridden: false,
+								reason: 'no-ptr',
+							},
+						},
+					],
+				},
+				volume: { dailySendCount: 0 },
+			},
+			global: { stubs: { UiCard: { template: '<div><slot /></div>' } } },
+		});
+		expect(wrapper.text()).toContain('Identity quarantined');
+		expect(wrapper.text()).toContain('No PTR record exists');
+		expect(wrapper.text()).toContain('mail.example.com');
 	});
 });

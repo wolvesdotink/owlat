@@ -158,7 +158,7 @@ export async function main() {
 	startLeaderElection(redis, config.serverId);
 
 	// ── 10. Start DNSBL checker (periodic, every 15 min — leader only) ──
-	const dnsblInterval = startDnsblChecker(redis, config);
+	const dnsblInterval = startDnsblChecker(redis, config, isLeader);
 
 	// ── 10b. Re-verify outbound identity hourly (leader only) ──
 	const fcrdnsInterval = setInterval(

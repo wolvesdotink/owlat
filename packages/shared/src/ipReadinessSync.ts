@@ -1,4 +1,23 @@
 import { getWarmingDisplayCapForDay, GRADUATED_DISPLAY_CAP } from './warming';
+import {
+	isFcrdnsFailureReason,
+	isFcrdnsVerdict,
+	type FcrdnsFailureReason,
+	type FcrdnsVerdict,
+} from './fcrdns';
+
+export const IP_READINESS_BLOCK_REASONS = ['dnsbl', 'fcrdns'] as const;
+export type IpReadinessBlockReason = (typeof IP_READINESS_BLOCK_REASONS)[number];
+export const DNSBL_STATUSES = ['unknown', 'clean', 'degraded', 'critical'] as const;
+export type DnsblStatus = (typeof DNSBL_STATUSES)[number];
+
+export function isIpReadinessBlockReason(value: string): value is IpReadinessBlockReason {
+	return value === 'dnsbl' || value === 'fcrdns';
+}
+
+export function isDnsblStatus(value: string): value is DnsblStatus {
+	return value === 'unknown' || value === 'clean' || value === 'degraded' || value === 'critical';
+}
 
 export interface MtaIpReputationPayload {
 	date: string;
@@ -11,8 +30,8 @@ export interface MtaIpReputationPayload {
 		warmingDay: number;
 		pool: string;
 		active: boolean;
-		blockReasons?: string[];
-		dnsbl?: string;
+		blockReasons?: IpReadinessBlockReason[];
+		dnsbl?: DnsblStatus;
 		fcrdns?: {
 			ehlo: string;
 			ptrNames: string[];
@@ -22,9 +41,9 @@ export interface MtaIpReputationPayload {
 				forwardConfirmed: boolean;
 				ehloMatches: boolean;
 			};
-			verdict: string;
+			verdict: FcrdnsVerdict;
 			genericPtr: boolean;
-			reason?: string;
+			reason?: FcrdnsFailureReason;
 			checkedAt: number;
 			overridden: boolean;
 		} | null;
@@ -42,6 +61,10 @@ function isStringArray(value: unknown): value is string[] {
 	return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function isBlockReasonArray(value: unknown): value is IpReadinessBlockReason[] {
+	return isStringArray(value) && value.every(isIpReadinessBlockReason);
+}
+
 function isFcrdnsPayload(value: unknown): value is MtaFcrdnsPayload {
 	if (!isRecord(value) || !isRecord(value['checklist'])) return false;
 	const checklist = value['checklist'];
@@ -53,8 +76,10 @@ function isFcrdnsPayload(value: unknown): value is MtaFcrdnsPayload {
 		typeof checklist['forwardConfirmed'] === 'boolean' &&
 		typeof checklist['ehloMatches'] === 'boolean' &&
 		typeof value['verdict'] === 'string' &&
+		isFcrdnsVerdict(value['verdict']) &&
 		typeof value['genericPtr'] === 'boolean' &&
-		(value['reason'] === undefined || typeof value['reason'] === 'string') &&
+		(value['reason'] === undefined ||
+			(typeof value['reason'] === 'string' && isFcrdnsFailureReason(value['reason']))) &&
 		typeof value['checkedAt'] === 'number' &&
 		Number.isFinite(value['checkedAt']) &&
 		typeof value['overridden'] === 'boolean'
@@ -76,8 +101,9 @@ function isIpReputationRow(value: unknown): value is MtaIpReputationRow {
 		Number.isFinite(value['warmingDay']) &&
 		typeof value['pool'] === 'string' &&
 		typeof value['active'] === 'boolean' &&
-		(value['blockReasons'] === undefined || isStringArray(value['blockReasons'])) &&
-		(value['dnsbl'] === undefined || typeof value['dnsbl'] === 'string') &&
+		(value['blockReasons'] === undefined || isBlockReasonArray(value['blockReasons'])) &&
+		(value['dnsbl'] === undefined ||
+			(typeof value['dnsbl'] === 'string' && isDnsblStatus(value['dnsbl']))) &&
 		(value['fcrdns'] === undefined || value['fcrdns'] === null || isFcrdnsPayload(value['fcrdns']))
 	);
 }

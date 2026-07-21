@@ -9,6 +9,7 @@
 import { resolve4, reverse } from 'dns/promises';
 import {
 	normalizeDnsName,
+	isFcrdnsFailureReason,
 	verifyFcrdnsIdentity,
 	type FcrdnsDnsDeps,
 	type FcrdnsFailureReason,
@@ -18,7 +19,12 @@ import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
 import { logger } from '../monitoring/logger.js';
-import { getIpPoolBlockReasons, setIpPoolBlock } from './ipPool.js';
+import { pool } from '../smtp/connectionPool.js';
+import {
+	applyIpPoolObservation,
+	nextIpPoolObservationGeneration,
+	type IpPoolObservationDecision,
+} from './ipPool.js';
 
 const FCRDNS_PREFIX = 'mta:fcrdns:';
 
@@ -33,6 +39,7 @@ export interface FcrdnsResult extends FcrdnsReadiness {
 
 export interface FcrdnsDeps extends FcrdnsDnsDeps {
 	now?: () => number;
+	timeoutMs?: number;
 }
 
 const DEFAULT_DEPS: FcrdnsDeps = { reverse, resolve4 };
@@ -73,7 +80,13 @@ export async function verifyFcrdns(
 	const expected = expectedNames.map(normalizeDnsName).filter(Boolean);
 	const ehlo = expected[0] ?? '';
 	const checkedAt = deps.now?.() ?? Date.now();
-	const verification = await verifyFcrdnsIdentity(ip, ehlo, deps, genericPtrSuffixes);
+	const verification = await verifyFcrdnsIdentity(
+		ip,
+		ehlo,
+		deps,
+		genericPtrSuffixes,
+		deps.timeoutMs
+	);
 	return {
 		...verification,
 		checkedAt,
@@ -83,10 +96,7 @@ export async function verifyFcrdns(
 	};
 }
 
-function readinessHash(
-	result: FcrdnsResult,
-	wouldBlockWithoutOverride: boolean
-): Record<string, string> {
+function readinessHash(result: FcrdnsResult): Record<string, string> {
 	return {
 		ip: result.ip,
 		ehlo: result.ehlo,
@@ -99,8 +109,6 @@ function readinessHash(
 		genericPtr: String(result.genericPtr),
 		reason: result.reason ?? '',
 		checkedAt: String(result.checkedAt),
-		overridden: String(result.overridden),
-		wouldBlockWithoutOverride: String(wouldBlockWithoutOverride),
 	};
 }
 
@@ -135,10 +143,46 @@ export async function getFcrdnsReadiness(
 				? data['verdict']
 				: 'error',
 		genericPtr: data['genericPtr'] === 'true',
-		...(reason ? { reason: reason as FcrdnsFailureReason } : {}),
+		...(reason && isFcrdnsFailureReason(reason) ? { reason } : {}),
 		checkedAt: Number(data['checkedAt']),
 		overridden: data['overridden'] === 'true',
 	};
+}
+
+async function observeFcrdnsIdentity(
+	config: FcrdnsConfig,
+	ip: string,
+	deps: FcrdnsDeps
+): Promise<FcrdnsResult> {
+	const ehlo = resolveEhloForIp(config, ip);
+	let result: FcrdnsResult;
+	try {
+		result = await verifyFcrdns(ip, [ehlo], deps, config.genericPtrSuffixes ?? []);
+	} catch (err) {
+		result = failedResult(
+			ip,
+			normalizeDnsName(ehlo),
+			[],
+			'lookup-error',
+			deps.now?.() ?? Date.now(),
+			{
+				ptrExists: false,
+				ptrIsFqdn: false,
+				forwardConfirmed: false,
+				ehloMatches: false,
+			}
+		);
+		logger.warn({ ip, err }, 'FCrDNS readiness check threw unexpectedly');
+	}
+	if (!result.ok) {
+		logger.warn(
+			{ ip, reason: result.reason, ptrNames: result.ptrNames, expectedEhlo: result.ehlo },
+			`FCrDNS readiness failed for sending IP ${ip} (${result.reason})`
+		);
+	} else if (result.genericPtr) {
+		logger.warn({ ip, ptrNames: result.ptrNames }, 'Sending IP uses a generic provider PTR');
+	}
+	return result;
 }
 
 export async function runFcrdnsSelfCheck(
@@ -146,31 +190,7 @@ export async function runFcrdnsSelfCheck(
 	deps: FcrdnsDeps = DEFAULT_DEPS
 ): Promise<FcrdnsResult[]> {
 	const ips = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
-	const results: FcrdnsResult[] = [];
-	for (const ip of ips) {
-		const ehlo = resolveEhloForIp(config, ip);
-		let result: FcrdnsResult;
-		try {
-			result = await verifyFcrdns(ip, [ehlo], deps, config.genericPtrSuffixes ?? []);
-		} catch (err) {
-			result = failedResult(ip, normalizeDnsName(ehlo), [], 'lookup-error', Date.now(), {
-				ptrExists: false,
-				ptrIsFqdn: false,
-				forwardConfirmed: false,
-				ehloMatches: false,
-			});
-			logger.warn({ ip, err }, 'FCrDNS readiness check threw unexpectedly');
-		}
-		if (!result.ok) {
-			logger.warn(
-				{ ip, reason: result.reason, ptrNames: result.ptrNames, expectedEhlo: result.ehlo },
-				`FCrDNS readiness failed for sending IP ${ip} (${result.reason})`
-			);
-		} else if (result.genericPtr) {
-			logger.warn({ ip, ptrNames: result.ptrNames }, 'Sending IP uses a generic provider PTR');
-		}
-		results.push(result);
-	}
+	const results = await Promise.all(ips.map((ip) => observeFcrdnsIdentity(config, ip, deps)));
 	logger.info(
 		{ total: results.length, ready: results.filter((result) => result.ok).length },
 		'FCrDNS readiness check complete'
@@ -184,31 +204,43 @@ export async function runFcrdnsReadinessCheck(
 	config: FcrdnsConfig,
 	deps: FcrdnsDeps = DEFAULT_DEPS
 ): Promise<FcrdnsResult[]> {
-	const results = await runFcrdnsSelfCheck(config, deps);
-	const persistedResults: FcrdnsResult[] = [];
-	for (const observed of results) {
-		const previous = await getFcrdnsReadiness(redis, observed.ip);
-		const existingBlocks = await getIpPoolBlockReasons(redis, observed.ip);
-		const previousWouldBlockRaw = await redis.hget(
-			`${FCRDNS_PREFIX}${observed.ip}`,
-			'wouldBlockWithoutOverride'
-		);
-		const hardFailure = observed.verdict === 'fail';
-		const firstCheckUnverified = observed.verdict === 'error' && previous === null;
-		// A transient lookup error preserves the last eligibility decision: it can
-		// neither release a prior hard failure nor quarantine a previously verified
-		// IP. A never-verified fresh IP fails closed.
-		const shouldBlock =
-			hardFailure ||
-			firstCheckUnverified ||
-			(observed.verdict === 'error' &&
-				(previousWouldBlockRaw === 'true' ||
-					(previousWouldBlockRaw === null && existingBlocks.includes('fcrdns'))));
-		const overridden = shouldBlock && config.allowUnverifiedFcrdns === true;
-		const result = { ...observed, overridden };
-		await redis.hset(`${FCRDNS_PREFIX}${result.ip}`, readinessHash(result, shouldBlock));
-		await setIpPoolBlock(redis, result.ip, 'fcrdns', shouldBlock && !overridden);
-		persistedResults.push(result);
-	}
-	return persistedResults;
+	const ips = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
+	const observations = await Promise.all(
+		ips.map(async (ip) => {
+			// Allocate before DNS starts: a later sweep always has a higher fencing
+			// generation even if its resolver finishes first.
+			const generation = await nextIpPoolObservationGeneration(redis, ip, 'fcrdns');
+			return { generation, observed: await observeFcrdnsIdentity(config, ip, deps) };
+		})
+	);
+	return Promise.all(
+		observations.map(async ({ generation, observed }) => {
+			const decision: IpPoolObservationDecision =
+				observed.verdict === 'fail' ? 'block' : observed.verdict === 'error' ? 'preserve' : 'clear';
+			const transition = await applyIpPoolObservation(redis, {
+				ip: observed.ip,
+				reason: 'fcrdns',
+				generation,
+				decision,
+				override: config.allowUnverifiedFcrdns === true,
+				stateKey: `${FCRDNS_PREFIX}${observed.ip}`,
+				stateFields: readinessHash(observed),
+			});
+			if (transition.becameBlocked) pool.invalidateBindIp(observed.ip);
+			if (!transition.applied) {
+				const current = await getFcrdnsReadiness(redis, observed.ip);
+				if (current) {
+					return {
+						...current,
+						ok: current.verdict === 'pass' || current.verdict === 'warn',
+						expectedNames: [current.ehlo],
+					};
+				}
+			}
+			return {
+				...observed,
+				overridden: transition.wouldBlockWithoutOverride && config.allowUnverifiedFcrdns === true,
+			};
+		})
+	);
 }

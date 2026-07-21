@@ -17,6 +17,14 @@ export const FCRDNS_FAILURE_REASONS = [
 export type FcrdnsFailureReason = (typeof FCRDNS_FAILURE_REASONS)[number];
 export type FcrdnsVerdict = 'pass' | 'warn' | 'fail' | 'error';
 
+export function isFcrdnsFailureReason(value: string): value is FcrdnsFailureReason {
+	return FCRDNS_FAILURE_REASONS.includes(value as FcrdnsFailureReason);
+}
+
+export function isFcrdnsVerdict(value: string): value is FcrdnsVerdict {
+	return value === 'pass' || value === 'warn' || value === 'fail' || value === 'error';
+}
+
 export interface FcrdnsChecklist {
 	ptrExists: boolean;
 	ptrIsFqdn: boolean;
@@ -43,6 +51,7 @@ export interface FcrdnsDnsDeps {
 }
 
 export type FcrdnsVerification = Omit<FcrdnsReadiness, 'checkedAt' | 'overridden'>;
+export const FCRDNS_DNS_TIMEOUT_MS = 5_000;
 
 /**
  * Provider-owned reverse-DNS suffixes that identify their default/generated
@@ -141,7 +150,7 @@ function failedVerification(
  * injected so the rule is testable and every caller classifies observations
  * identically.
  */
-export async function verifyFcrdnsIdentity(
+async function performFcrdnsVerification(
 	ip: string,
 	ehloHostname: string,
 	deps: FcrdnsDnsDeps,
@@ -225,6 +234,42 @@ export async function verifyFcrdnsIdentity(
 		verdict: genericPtr ? 'warn' : 'pass',
 		genericPtr,
 	};
+}
+
+/**
+ * Run one identity under a total DNS budget. Late resolver completions are pure
+ * observations and cannot mutate state; runtime generation CAS fences them too.
+ */
+export async function verifyFcrdnsIdentity(
+	ip: string,
+	ehloHostname: string,
+	deps: FcrdnsDnsDeps,
+	extraGenericSuffixes: readonly string[] = [],
+	timeoutMs = FCRDNS_DNS_TIMEOUT_MS
+): Promise<FcrdnsVerification> {
+	const ehlo = normalizeDnsName(ehloHostname);
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			performFcrdnsVerification(ip, ehlo, deps, extraGenericSuffixes),
+			new Promise<FcrdnsVerification>((resolve) => {
+				timer = setTimeout(
+					() =>
+						resolve(
+							failedVerification(ip, ehlo, [], 'lookup-error', {
+								ptrExists: false,
+								ptrIsFqdn: false,
+								forwardConfirmed: false,
+								ehloMatches: false,
+							})
+						),
+					timeoutMs
+				);
+			}),
+		]);
+	} finally {
+		if (timer) clearTimeout(timer);
+	}
 }
 
 export type ReverseDnsProvider = 'hetzner' | 'digitalocean' | 'ovh' | 'generic';

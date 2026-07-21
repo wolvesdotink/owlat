@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
 
 vi.mock('dns/promises', () => ({
@@ -11,10 +11,11 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { runDnsblCheck, getDnsblStatus } from '../dnsbl.js';
+import { runDnsblCheck, getDnsblStatus, startDnsblChecker } from '../dnsbl.js';
 import { resolve4 } from 'dns/promises';
 import { notifyConvex } from '../../webhooks/convexNotifier.js';
 import type { MtaConfig } from '../../config.js';
+import { initializePools, setIpPoolBlock } from '../../scaling/ipPool.js';
 
 function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 	return {
@@ -64,7 +65,13 @@ describe('DNSBL checking', () => {
 		vi.clearAllMocks();
 		redis = new Redis();
 		config = createConfig();
+		for (const ip of [...config.ipPools.transactional, ...config.ipPools.campaign]) {
+			await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
+		}
+		await initializePools(redis, config.ipPools);
 	});
+
+	afterEach(() => vi.useRealTimers());
 
 	describe('runDnsblCheck', () => {
 		it('keeps status clean when all lookups return NXDOMAIN', async () => {
@@ -82,9 +89,6 @@ describe('DNSBL checking', () => {
 		});
 
 		it('moves IP to blocked pool on critical listing', async () => {
-			// Add IPs to active pool first
-			await redis.sadd('mta:ip-pool:active', '10.0.0.1', '10.0.0.2');
-
 			// Spamhaus (critical) returns listed for 10.0.0.1, all others clean
 			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
 				// Spamhaus check for 10.0.0.1
@@ -113,7 +117,7 @@ describe('DNSBL checking', () => {
 		it('restores IP from blocked to active pool on delisting', async () => {
 			// Simulate previously blocked IP
 			await redis.sadd('mta:ip-pool:blocked', '10.0.0.1');
-			await redis.sadd('mta:ip-pool:active', '10.0.0.2');
+			await setIpPoolBlock(redis, '10.0.0.1', 'dnsbl', true);
 			await redis.hset('mta:dnsbl:10.0.0.1', 'overallStatus', 'critical');
 			await redis.hset('mta:dnsbl:10.0.0.2', 'overallStatus', 'clean');
 
@@ -158,6 +162,30 @@ describe('DNSBL checking', () => {
 				redis
 			);
 		});
+
+		it('preserves a critical quarantine through resolver failure and releases it only on confirmed clean results', async () => {
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (hostname.includes('zen.spamhaus.org') && hostname.startsWith('1.0.0.10')) {
+					return ['127.0.0.2'];
+				}
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+			await runDnsblCheck(redis, config);
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
+
+			vi.mocked(resolve4).mockRejectedValue(
+				Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' })
+			);
+			await runDnsblCheck(redis, config);
+			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('unknown');
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
+
+			vi.mocked(resolve4).mockRejectedValue(
+				Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
+			);
+			await runDnsblCheck(redis, config);
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
+		});
 	});
 
 	describe('getDnsblStatus', () => {
@@ -178,5 +206,20 @@ describe('DNSBL checking', () => {
 			expect(result).not.toBeNull();
 			expect(result!.overallStatus).toBe('clean');
 		});
+	});
+
+	it('does not run scheduled DNSBL work until this process is the elected leader', async () => {
+		vi.useFakeTimers();
+		let leader = false;
+		vi.mocked(resolve4).mockRejectedValue(
+			Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
+		);
+		const timer = startDnsblChecker(redis, config, () => leader);
+		expect(resolve4).not.toHaveBeenCalled();
+
+		leader = true;
+		await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+		expect(resolve4).toHaveBeenCalled();
+		clearInterval(timer);
 	});
 });
