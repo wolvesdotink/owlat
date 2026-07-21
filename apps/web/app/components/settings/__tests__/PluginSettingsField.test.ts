@@ -47,6 +47,41 @@ describe('PluginSettingsField accessibility', () => {
 		expect(wrapper.get(`#${descId}`).text()).toBe('The base URL');
 	});
 
+	it('names a secret without pointing a <label for> at a non-labelable element', () => {
+		// The presence indicator is a <p>, which is not a labelable form element, so
+		// a <label for> aimed at it would compute no accessible name. Like the
+		// boolean branch it must be named with aria-labelledby instead.
+		const field: Field = {
+			kind: 'secret',
+			key: 'apiKey',
+			envVar: 'PLUGIN_API_KEY',
+			label: 'API key',
+		};
+		const wrapper = mountField(field, { secretSet: false });
+		expect(wrapper.find('label').exists()).toBe(false);
+		const control = wrapper.get('[role="status"]');
+		const labelledBy = control.attributes('aria-labelledby');
+		expect(labelledBy).toBeTruthy();
+		expect(wrapper.get(`#${labelledBy}`).text()).toContain('API key');
+	});
+
+	it('associates the "set this variable" hint with the secret control', () => {
+		const field: Field = {
+			kind: 'secret',
+			key: 'apiKey',
+			envVar: 'PLUGIN_API_KEY',
+			label: 'API key',
+		};
+		const wrapper = mountField(field, { secretSet: false });
+		const describedBy = wrapper.get('[role="status"]').attributes('aria-describedby');
+		expect(describedBy).toBeTruthy();
+		const described = (describedBy ?? '')
+			.split(' ')
+			.map((id) => wrapper.get(`#${id}`).text())
+			.join(' ');
+		expect(described).toContain('PLUGIN_API_KEY');
+	});
+
 	it('renders a boolean as a role=switch button named by its label', () => {
 		const field: Field = { kind: 'boolean', key: 'verbose', label: 'Verbose' };
 		const wrapper = mountField(field, { modelValue: true });
