@@ -49,6 +49,7 @@ import { runSetup } from './setup';
 import { bootstrap } from './bootstrap-org';
 import { runSeed } from './seed';
 import type { CliOptions } from '../lib/cliOptions';
+import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
 
 export type Mode = 'populated' | 'blank' | 'custom';
 
@@ -73,6 +74,7 @@ export interface ParsedFlags {
 	password?: string;
 	skipSeed?: boolean;
 	forceSeed?: boolean;
+	restart?: boolean;
 }
 
 export async function runQuickstart(opts: RunOptions): Promise<number> {
@@ -222,6 +224,39 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 			mergeEnv(envForProfiles, { COMPOSE_PROFILES: composeProfilesUnion.join(',') })
 		);
 	}
+
+	const knownAdminEmail = shouldBootstrap
+		? (config?.admin.email ?? flags.email ?? (opts.assumeYes ? 'dev@example.com' : undefined))
+		: undefined;
+	const checkpointInputs: CheckpointInputs = {
+		mode,
+		shouldBootstrap,
+		shouldSeed,
+		...(knownAdminEmail ? { adminEmail: knownAdminEmail } : {}),
+		...(versionPin ? { version: versionPin } : {}),
+		buildLocal: opts.buildLocal ?? false,
+		localImages: opts.localImages ?? false,
+		composeProfiles: composeProfilesUnion,
+		...(await resolveSourceRevision(opts.owlatDir)),
+		...(config?.network ? { network: config.network } : {}),
+		...(config?.sending
+			? {
+					sending: {
+						provider: config.sending.provider,
+						...(config.domain ? { domain: config.domain.ehloHostname } : {}),
+					},
+				}
+			: {}),
+	};
+	const checkpoint = await ProvisioningCheckpoint.open({
+		owlatDir: opts.owlatDir,
+		inputs: checkpointInputs,
+		restart: flags.restart,
+	});
+	const completed = checkpoint.completedSteps();
+	if (completed.length > 0) {
+		log.info(`Resuming provisioning after ${completed.length} completed step(s).`);
+	}
 	reporter.step(SetupStep.ComposeUp, 'Starting containers');
 	const upCode = await dockerComposeUp(
 		opts.owlatDir,
@@ -234,6 +269,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		return upCode;
 	}
 	reporter.ok('Stack is up');
+	await checkpoint.complete('compose-up');
 
 	// Step 5: wait for the Convex backend's sync/`/version` endpoint — served on
 	// the CLOUD port (3210). The application `http.route` handlers (/seed/*,
@@ -257,6 +293,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		await waitForUrl({ url: `${localCloud}/version`, timeoutMs: 120_000 });
 		s.stop(pc.green('Convex backend is up'));
 		reporter.ok('Convex backend is up');
+		await checkpoint.complete('convex-ready');
 	} catch (e) {
 		s.stop(pc.red(`Convex did not come up: ${(e as Error).message}`));
 		log.error('Check `docker compose logs convex` for details.');
@@ -274,7 +311,8 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		envPath,
 		shouldSeed,
 		reporter,
-		opts.buildLocal ?? false
+		opts.buildLocal ?? false,
+		checkpoint
 	);
 	if (deployCode !== 0) {
 		reporter.done(false);
@@ -289,6 +327,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		await waitForUrl({ url: `${localSite}/api/v1/health`, timeoutMs: 60_000 });
 		s.stop(pc.green('Convex HTTP routes are live'));
 		reporter.ok('HTTP routes are live');
+		await checkpoint.complete('routes-ready');
 	} catch {
 		s.stop(pc.yellow('HTTP routes still warming up — continuing (bootstrap will retry).'));
 		reporter.warn('HTTP routes still warming up — continuing');
@@ -297,62 +336,73 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	let adminEmail: string | undefined;
 	reporter.step(SetupStep.BootstrapAdmin, 'Creating the admin account');
 	if (shouldBootstrap) {
-		const email =
-			config?.admin.email ??
-			flags.email ??
-			(opts.assumeYes ? 'dev@example.com' : await promptEmail());
-		if (!email) {
-			reporter.fail('No admin email provided');
-			reporter.done(false);
-			return 1;
-		}
-		const name =
-			config?.admin.name ??
-			flags.name ??
-			(opts.assumeYes ? 'Dev Admin' : await promptText('Admin display name'));
-		if (!name) {
-			reporter.fail('No admin name provided');
-			reporter.done(false);
-			return 1;
-		}
-		const password =
-			config?.admin.password ??
-			flags.password ??
-			(opts.assumeYes ? 'devpassword12345' : await promptPassword());
-		if (!password) {
-			reporter.fail('No admin password provided');
-			reporter.done(false);
-			return 1;
-		}
+		if (checkpoint.isComplete('bootstrap-admin') && knownAdminEmail) {
+			reporter.skip('completed in an earlier run');
+			adminEmail = knownAdminEmail;
+		} else {
+			const email =
+				config?.admin.email ??
+				flags.email ??
+				(opts.assumeYes ? 'dev@example.com' : await promptEmail());
+			if (!email) {
+				reporter.fail('No admin email provided');
+				reporter.done(false);
+				return 1;
+			}
+			const name =
+				config?.admin.name ??
+				flags.name ??
+				(opts.assumeYes ? 'Dev Admin' : await promptText('Admin display name'));
+			if (!name) {
+				reporter.fail('No admin name provided');
+				reporter.done(false);
+				return 1;
+			}
+			const password =
+				config?.admin.password ??
+				flags.password ??
+				(opts.assumeYes ? 'devpassword12345' : await promptPassword());
+			if (!password) {
+				reporter.fail('No admin password provided');
+				reporter.done(false);
+				return 1;
+			}
 
-		const exit = await bootstrap(
-			{ email, name, password },
-			opts,
-			config?.network ? localSite : undefined
-		);
-		if (exit !== 0) {
-			reporter.fail('Admin bootstrap failed');
-			reporter.done(false);
-			return exit;
+			const exit = await bootstrap(
+				{ email, name, password },
+				opts,
+				config?.network ? localSite : undefined
+			);
+			if (exit !== 0) {
+				reporter.fail('Admin bootstrap failed');
+				reporter.done(false);
+				return exit;
+			}
+			reporter.ok(`Admin ${email} created`);
+			adminEmail = email;
+			await checkpoint.complete('bootstrap-admin');
 		}
-		reporter.ok(`Admin ${email} created`);
-		adminEmail = email;
 	} else {
 		reporter.skip('blank mode — no admin created');
 	}
 
 	reporter.step(SetupStep.SeedDemo, 'Seeding demo data');
 	if (shouldSeed) {
-		const exit = await runSeed(
-			{ ...opts, positional: [] },
-			config?.network ? localSite : undefined
-		);
-		if (exit !== 0) {
-			reporter.fail('Demo seed failed');
-			reporter.done(false);
-			return exit;
+		if (checkpoint.isComplete('seed-demo')) {
+			reporter.skip('completed in an earlier run');
+		} else {
+			const exit = await runSeed(
+				{ ...opts, positional: [] },
+				config?.network ? localSite : undefined
+			);
+			if (exit !== 0) {
+				reporter.fail('Demo seed failed');
+				reporter.done(false);
+				return exit;
+			}
+			reporter.ok();
+			await checkpoint.complete('seed-demo');
 		}
-		reporter.ok();
 	} else {
 		reporter.skip('not requested');
 	}
@@ -425,7 +475,8 @@ async function deployBackend(
 	envPath: string,
 	seeding: boolean,
 	reporter: Reporter,
-	buildLocal = false
+	buildLocal: boolean,
+	checkpoint: ProvisioningCheckpoint
 ): Promise<number> {
 	const s = progressSpinner();
 
@@ -448,27 +499,33 @@ async function deployBackend(
 	} else {
 		reporter.skip('already present in .env');
 	}
+	await checkpoint.complete('admin-key');
 
 	// 2. Deploy functions.
 	reporter.step(SetupStep.DeployFunctions, 'Deploying backend functions');
-	s.start('Deploying Convex functions (apps/api) — first run pulls/builds the deployer image');
-	try {
-		// buildLocal: the deployer image is built from source here; the later
-		// env-set call reuses it (compose only pulls when the image is missing).
-		await deployConvexFunctions(
-			owlatDir,
-			(line) => {
-				s.message(line.slice(0, 80));
-				reporter.log(line);
-			},
-			buildLocal
-		);
-		s.stop(pc.green('Convex functions deployed'));
-		reporter.ok();
-	} catch (e) {
-		s.stop(pc.red(`${(e as Error).message}`));
-		reporter.fail((e as Error).message);
-		return 1;
+	if (checkpoint.isComplete('deploy-functions')) {
+		reporter.skip('completed in an earlier run');
+	} else {
+		s.start('Deploying Convex functions (apps/api) — first run pulls/builds the deployer image');
+		try {
+			// buildLocal: the deployer image is built from source here; the later
+			// env-set call reuses it (compose only pulls when the image is missing).
+			await deployConvexFunctions(
+				owlatDir,
+				(line) => {
+					s.message(line.slice(0, 80));
+					reporter.log(line);
+				},
+				buildLocal
+			);
+			s.stop(pc.green('Convex functions deployed'));
+			reporter.ok();
+			await checkpoint.complete('deploy-functions');
+		} catch (e) {
+			s.stop(pc.red(`${(e as Error).message}`));
+			reporter.fail((e as Error).message);
+			return 1;
+		}
 	}
 
 	// 3. Enable dev endpoints when seeding (otherwise /seed/demo is fail-closed).
@@ -497,6 +554,7 @@ async function deployBackend(
 		await setConvexEnvVars(owlatDir, runtimeVars, (line) => reporter.log(line));
 		s.stop(pc.green('Function-runtime env vars set'));
 		reporter.ok();
+		await checkpoint.complete('runtime-env');
 	} catch (e) {
 		s.stop(pc.red(`${(e as Error).message}`));
 		reporter.fail((e as Error).message);
@@ -547,8 +605,27 @@ export function parseFlags(args: string[]): ParsedFlags {
 		else if (k === '--password') out.password = raw;
 		else if (k === '--no-seed') out.skipSeed = true;
 		else if (k === '--seed') out.forceSeed = true;
+		else if (k === '--restart') out.restart = true;
 	}
 	return out;
+}
+
+async function resolveSourceRevision(owlatDir: string): Promise<{ sourceRevision?: string }> {
+	return new Promise((resolve) => {
+		const proc = spawn('git', ['rev-parse', 'HEAD'], {
+			cwd: owlatDir,
+			stdio: ['ignore', 'pipe', 'ignore'],
+		});
+		let stdout = '';
+		proc.stdout?.on('data', (chunk: Buffer) => {
+			stdout += chunk.toString();
+		});
+		proc.on('close', (code) => {
+			const revision = stdout.trim();
+			resolve(code === 0 && revision ? { sourceRevision: revision } : {});
+		});
+		proc.on('error', () => resolve({}));
+	});
 }
 
 function verifyMonorepo(dir: string): boolean {
