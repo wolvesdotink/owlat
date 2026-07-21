@@ -207,6 +207,37 @@ describe('MTA remote-acceptance reputation lifecycle', () => {
 		expect(gmailVolume.domains).toEqual([]);
 	});
 
+	it('does not clear a newer soft-bounce recovery count for replayed earlier acceptance', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = convexTest(schema, modules);
+		const providerMessageId = 'mta-soft-bounce-before-late-acceptance';
+		const sendId = await seedSentSend(t, providerMessageId);
+
+		await dispatch(t, {
+			kind: 'email.bounced',
+			providerMessageId,
+			at: NOW + 1,
+			bounceType: 'soft',
+		});
+		await dispatch(t, accepted(providerMessageId, NOW));
+
+		const { send, contact } = await t.run(async (ctx) => {
+			const send = await ctx.db.get(sendId);
+			return {
+				send,
+				contact: send?.contactId ? await ctx.db.get(send.contactId) : null,
+			};
+		});
+		expect(send).toMatchObject({
+			status: 'bounced',
+			bounceType: 'soft',
+			bouncedAt: NOW + 1,
+			deliveredAt: NOW,
+		});
+		expect(contact?.softBounceCount).toBe(1);
+	});
+
 	it('does not count or emit Gmail telemetry for a failure before acceptance', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(NOW);
