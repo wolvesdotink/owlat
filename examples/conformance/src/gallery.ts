@@ -12,7 +12,7 @@
 import { deliverabilityLabPlugin } from '@owlat/example-deliverability-lab';
 import { escalationGuardPlugin } from '@owlat/example-escalation-guard';
 import { slackApprovalsPlugin } from '@owlat/example-slack-approvals';
-import type { PluginManifest } from '@owlat/plugin-kit';
+import { pluginContributionExportPaths, type PluginManifest } from '@owlat/plugin-kit';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readRepositoryFile, REPOSITORY_ROOT } from './repository';
@@ -178,30 +178,11 @@ export function galleryEntry(tier: PluginTier): GalleryEntry {
 	return entry;
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-	return typeof value === 'object' && value !== null;
-}
-
 /**
  * Every `module.exportPath` a manifest points at, deduplicated and sorted.
  *
- * Contribution buckets are heterogeneous and only some kinds carry a module, so
- * this walks them structurally. It narrows with a guard rather than asserting a
- * shape: this function is the pin the published-package-shape suite trusts, and
- * an assertion here would be a claim the compiler stops checking.
+ * Re-exported from the kit rather than re-implemented: codegen's provenance
+ * verification walks the same structure, and a second local walk here could
+ * disagree with the one that actually gates generated imports.
  */
-export function contributionExportPaths(manifest: PluginManifest): readonly string[] {
-	const paths = new Set<string>();
-	const contributes = manifest.contributes ?? {};
-	for (const bucket of Object.values(contributes)) {
-		if (!Array.isArray(bucket)) continue;
-		for (const contribution of bucket) {
-			if (!isRecord(contribution)) continue;
-			const module = contribution['module'];
-			if (!isRecord(module)) continue;
-			const exportPath = module['exportPath'];
-			if (typeof exportPath === 'string') paths.add(exportPath);
-		}
-	}
-	return [...paths].sort();
-}
+export const contributionExportPaths = pluginContributionExportPaths;
