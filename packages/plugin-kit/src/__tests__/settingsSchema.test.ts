@@ -22,7 +22,7 @@ function firstIssuePath(value: unknown): string | undefined {
 
 const EXAMPLE_SCHEMA: PluginSettingsSchema = [
 	{ kind: 'string', key: 'endpoint', label: 'Endpoint', default: 'https://api.test' },
-	{ kind: 'secret', key: 'apiKey', label: 'API key', required: true },
+	{ kind: 'secret', key: 'apiKey', envVar: 'PLUGIN_API_KEY', label: 'API key', required: true },
 	{ kind: 'number', key: 'timeout', label: 'Timeout', default: 30, min: 1, max: 120 },
 	{ kind: 'boolean', key: 'verbose', label: 'Verbose', default: false },
 	{
@@ -172,25 +172,28 @@ describe('settingsSchema manifest validation', () => {
 });
 
 describe('redactPluginSettingsValues', () => {
-	it('drops secret plaintext and reports only whether each secret is set', () => {
-		const redacted = redactPluginSettingsValues(EXAMPLE_SCHEMA, {
-			endpoint: 'https://prod',
-			apiKey: 'super-secret',
-			timeout: 45,
-		});
+	it('reports secret presence from the environment and never from stored data', () => {
+		// Residual plaintext from a deployment that predates env-supplied secrets
+		// must never be projected back out, and must never be read as "set".
+		const redacted = redactPluginSettingsValues(
+			EXAMPLE_SCHEMA,
+			{ endpoint: 'https://prod', apiKey: 'super-secret', timeout: 45 },
+			(envVar) => envVar === 'PLUGIN_API_KEY'
+		);
 		expect(redacted.values).toEqual({
 			endpoint: 'https://prod',
 			timeout: 45,
 			verbose: false,
 			region: 'eu',
 		});
-		expect(Object.values(redacted.values)).not.toContain('super-secret');
+		expect(JSON.stringify(redacted)).not.toContain('super-secret');
 		expect(redacted.secretsSet).toEqual({ apiKey: true });
 	});
 
-	it('reports an unset secret as false', () => {
-		const redacted = redactPluginSettingsValues(EXAMPLE_SCHEMA, {});
+	it('reports a secret whose environment variable is absent as false', () => {
+		const redacted = redactPluginSettingsValues(EXAMPLE_SCHEMA, { apiKey: 'super-secret' });
 		expect(redacted.secretsSet).toEqual({ apiKey: false });
+		expect(JSON.stringify(redacted)).not.toContain('super-secret');
 	});
 
 	it('treats an empty stored secret as unset', () => {
@@ -225,11 +228,16 @@ describe('validatePluginSettingsInput', () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it('rejects an empty secret', () => {
-		const result = validatePluginSettingsInput(EXAMPLE_SCHEMA, { apiKey: '' });
-		expect(result.ok).toBe(false);
-		if (!result.ok) expect(result.issues[0]?.message).toMatch(/empty/);
-	});
+	it.each([['', 'super-secret'][0]!, 'super-secret'])(
+		'refuses to persist any value for a secret field (%j)',
+		(value) => {
+			// The proving assertion for the finding: a secret can never reach the
+			// stored settings map, so there is no plaintext at rest to protect.
+			const result = validatePluginSettingsInput(EXAMPLE_SCHEMA, { apiKey: value });
+			expect(result.ok).toBe(false);
+			if (!result.ok) expect(result.issues[0]?.message).toMatch(/PLUGIN_API_KEY/);
+		}
+	);
 
 	it('rejects a select value outside the options', () => {
 		const result = validatePluginSettingsInput(EXAMPLE_SCHEMA, { region: 'apac' });

@@ -54,7 +54,7 @@ const outcomeHandler = (
 	recordOutcome as unknown as {
 		_handler: (
 			ctx: unknown,
-			args: { pluginId: string; stepKind: string; success: boolean }
+			args: { pluginId: string; stepKind: string; outcome: 'completed' | 'failed' }
 		) => Promise<void>;
 	}
 )._handler;
@@ -129,7 +129,7 @@ describe('hosted automation step authorization', () => {
 		await outcomeHandler(fakeContext(true, true), {
 			pluginId: 'deliverability',
 			stepKind: 'plugin.deliverability.notify',
-			success: true,
+			outcome: 'completed',
 		});
 		expect(audit).toHaveBeenCalledWith(
 			expect.anything(),
@@ -144,7 +144,7 @@ describe('hosted automation step authorization', () => {
 		await outcomeHandler(fakeContext(true, true), {
 			pluginId: 'deliverability',
 			stepKind: 'plugin.deliverability.notify',
-			success: false,
+			outcome: 'failed',
 		});
 		expect(audit).toHaveBeenCalledWith(
 			expect.anything(),
@@ -160,7 +160,7 @@ describe('hosted automation step authorization', () => {
 			outcomeHandler(fakeContext(true, true), {
 				pluginId: 'other-pack',
 				stepKind: 'plugin.deliverability.notify',
-				success: true,
+				outcome: 'completed',
 			})
 		).rejects.toThrow('Invalid bundled automation step attribution');
 		expect(audit).not.toHaveBeenCalled();

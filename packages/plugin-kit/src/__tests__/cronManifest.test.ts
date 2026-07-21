@@ -4,8 +4,8 @@ import {
 	PLUGIN_CRON_MIN_INTERVAL_MINUTES,
 	PLUGIN_CRON_TIMEOUT_MAX_MS,
 	PLUGIN_CRON_TIMEOUT_MIN_MS,
-	pluginCronKind,
 } from '../cron';
+import { pluginNamespacedKind } from '../namespacedKind';
 import { parsePluginManifest, validatePluginManifest } from '../manifest';
 import { parsePluginId } from '../pluginId';
 
@@ -127,7 +127,7 @@ describe('plugin cron manifest contract', () => {
 	});
 
 	it('namespaces the cron kind with the owning plugin id', () => {
-		expect(pluginCronKind(parsePluginId('seed-lab'), 'refresh-scores')).toBe(
+		expect(pluginNamespacedKind(parsePluginId('seed-lab'), 'refresh-scores')).toBe(
 			'plugin.seed-lab.refresh-scores'
 		);
 	});

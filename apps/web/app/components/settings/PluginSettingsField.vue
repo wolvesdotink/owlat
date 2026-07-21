@@ -4,8 +4,9 @@
  * accessible (explicit label association, aria-describedby, aria-required, and a
  * role="switch" toggle) so the schema-driven form needs no per-field custom UI.
  *
- * Secret fields never receive the stored value: the input starts blank, a blank
- * value keeps the saved secret, and the hint reflects whether one is stored.
+ * A secret field is read-only: its value is supplied by a `PLUGIN_`-prefixed
+ * deployment environment variable, so the control renders the variable name and
+ * whether it is present, and there is no input to type a credential into.
  * SSR-safe — no window/document access, ids come from `useId()`.
  */
 import { computed, useId } from 'vue';
@@ -41,9 +42,11 @@ const numberValue = computed(() => (typeof props.modelValue === 'number' ? props
 const booleanValue = computed(() => props.modelValue === true);
 
 const secretHint = computed(() =>
-	props.secretSet
-		? 'A value is saved. Leave blank to keep it, or enter a new value to replace it.'
-		: 'No value saved yet.'
+	props.field.kind === 'secret'
+		? props.secretSet
+			? `Supplied by the ${props.field.envVar} environment variable, which is set.`
+			: `Set the ${props.field.envVar} environment variable in your deployment.`
+		: ''
 );
 
 function onText(event: Event) {
@@ -72,7 +75,9 @@ const inputClass =
 <template>
 	<div class="py-1">
 		<!-- Boolean uses a role=switch button, named via aria-labelledby (a button
-		     cannot be the target of <label for>). Every other kind uses <label for>. -->
+		     cannot be the target of <label for>). Secret uses the same treatment for
+		     the same reason. Every remaining kind renders a real form control and is
+		     named with <label for>. -->
 		<div v-if="field.kind === 'boolean'" class="flex items-start justify-between gap-4">
 			<div class="min-w-0">
 				<span :id="labelId" class="text-sm font-medium text-text-primary">{{ field.label }}</span>
@@ -99,6 +104,38 @@ const inputClass =
 			</button>
 		</div>
 
+		<!-- Env-supplied credential: presence only, never an editable value. The
+		     presence element is a <p>, which is NOT a labelable element, so — exactly
+		     like the boolean branch — it is named with aria-labelledby from a <span>
+		     rather than by a <label for> pointing at a non-labelable tag, and it
+		     carries aria-describedby so the "Set PLUGIN_…" hint is associated. -->
+		<div v-else-if="field.kind === 'secret'">
+			<span :id="labelId" class="block text-sm font-medium text-text-primary mb-1">
+				{{ field.label }}
+				<span v-if="field.required" class="text-error" aria-hidden="true">*</span>
+			</span>
+			<p v-if="field.description" :id="descriptionId" class="text-xs text-text-tertiary mb-1.5">
+				{{ field.description }}
+			</p>
+			<p
+				:id="controlId"
+				role="status"
+				:aria-labelledby="labelId"
+				:aria-describedby="describedBy"
+				class="flex items-center gap-2 text-sm rounded-lg px-3 py-2 bg-surface-1 border border-border-subtle"
+				:class="secretSet ? 'text-text-primary' : 'text-text-tertiary'"
+			>
+				<span
+					class="inline-block h-2 w-2 rounded-full"
+					:class="secretSet ? 'bg-success' : 'bg-border-subtle'"
+					aria-hidden="true"
+				/>
+				<span>{{ secretSet ? 'Set in the environment' : 'Not set' }}</span>
+				<code class="ml-auto text-xs text-text-tertiary">{{ field.envVar }}</code>
+			</p>
+			<p :id="hintId" class="text-xs text-text-tertiary mt-1">{{ secretHint }}</p>
+		</div>
+
 		<template v-else>
 			<label :for="controlId" class="block text-sm font-medium text-text-primary mb-1">
 				{{ field.label }}
@@ -118,21 +155,6 @@ const inputClass =
 				:aria-describedby="describedBy"
 				:maxlength="field.maxLength"
 				:disabled="disabled"
-				:class="inputClass"
-				@input="onText"
-			/>
-
-			<input
-				v-else-if="field.kind === 'secret'"
-				:id="controlId"
-				type="password"
-				autocomplete="off"
-				:value="stringValue"
-				:aria-required="field.required && !secretSet ? true : undefined"
-				:aria-describedby="describedBy"
-				:maxlength="field.maxLength"
-				:disabled="disabled"
-				:placeholder="secretSet ? 'Leave blank to keep the saved value' : 'Enter a value'"
 				:class="inputClass"
 				@input="onText"
 			/>
@@ -171,10 +193,6 @@ const inputClass =
 					{{ option.label }}
 				</option>
 			</select>
-
-			<p v-if="field.kind === 'secret'" :id="hintId" class="text-xs text-text-tertiary mt-1">
-				{{ secretHint }}
-			</p>
 		</template>
 	</div>
 </template>

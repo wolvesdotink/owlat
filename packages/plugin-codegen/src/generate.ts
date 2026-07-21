@@ -5,46 +5,9 @@ import { MAX_PLUGIN_CONFIG_BYTES, parsePluginsConfig } from './config';
 import { PluginCodegenError } from './errors';
 import { checkDirectPluginImports } from './packageBoundaries';
 import { loadBundledPlugins } from './packageLoader';
-import { renderPluginComposition } from './render';
+import { generatedArtifacts, renderPluginComposition } from './render';
 
 const CONFIG_PATH = 'plugins.config.ts';
-const CONVEX_OUTPUT_PATH = 'apps/api/convex/plugins/plugins.generated.ts';
-const COMPONENT_OUTPUT_PATH = 'apps/api/convex/plugins/components.generated.ts';
-const NUXT_OUTPUT_PATH = 'apps/web/app/plugins/plugin-composition.generated.ts';
-const SEND_TRANSPORT_CATALOG_OUTPUT_PATH =
-	'apps/api/convex/plugins/sendTransportCatalog.generated.ts';
-const SEND_TRANSPORT_MODULES_OUTPUT_PATH =
-	'apps/api/convex/plugins/sendTransportModules.generated.ts';
-const AGENT_STEP_CATALOG_OUTPUT_PATH = 'apps/api/convex/plugins/agentStepCatalog.generated.ts';
-const AGENT_STEP_MODULES_OUTPUT_PATH = 'apps/api/convex/plugins/agentStepModules.generated.ts';
-const DRAFT_STRATEGY_CATALOG_OUTPUT_PATH =
-	'apps/api/convex/plugins/draftStrategyCatalog.generated.ts';
-const DRAFT_STRATEGY_MODULES_OUTPUT_PATH =
-	'apps/api/convex/plugins/draftStrategyModules.generated.ts';
-const AUTONOMY_GATE_CATALOG_OUTPUT_PATH =
-	'apps/api/convex/plugins/autonomyGateCatalog.generated.ts';
-const AUTONOMY_GATE_MODULES_OUTPUT_PATH =
-	'apps/api/convex/plugins/autonomyGateModules.generated.ts';
-const AUTOMATION_TRIGGER_CATALOG_OUTPUT_PATH =
-	'apps/api/convex/plugins/automationTriggerCatalog.generated.ts';
-const AUTOMATION_TRIGGER_MODULES_OUTPUT_PATH =
-	'apps/api/convex/plugins/automationTriggerModules.generated.ts';
-const AUTOMATION_STEP_CATALOG_OUTPUT_PATH =
-	'apps/api/convex/plugins/automationStepCatalog.generated.ts';
-const AUTOMATION_STEP_MODULES_OUTPUT_PATH =
-	'apps/api/convex/plugins/automationStepModules.generated.ts';
-const AUTOMATION_CONDITION_CATALOG_OUTPUT_PATH =
-	'apps/api/convex/plugins/automationConditionCatalog.generated.ts';
-const AUTOMATION_CONDITION_MODULES_OUTPUT_PATH =
-	'apps/api/convex/plugins/automationConditionModules.generated.ts';
-const WEBHOOK_EVENT_CATALOG_OUTPUT_PATH =
-	'apps/api/convex/plugins/webhookEventCatalog.generated.ts';
-const IMPORT_PROVIDER_CATALOG_OUTPUT_PATH =
-	'apps/api/convex/plugins/importProviderCatalog.generated.ts';
-const IMPORT_PROVIDER_MODULES_OUTPUT_PATH =
-	'apps/api/convex/plugins/importProviderModules.generated.ts';
-const CRON_CATALOG_OUTPUT_PATH = 'apps/api/convex/plugins/cronCatalog.generated.ts';
-const CRON_MODULES_OUTPUT_PATH = 'apps/api/convex/plugins/cronModules.generated.ts';
 const MAX_GENERATED_FILE_BYTES = 4 * 1024 * 1024;
 
 export interface GeneratePluginCompositionOptions {
@@ -62,88 +25,13 @@ export async function generatePluginComposition(
 	if (options.boundariesOnly) return;
 
 	const plugins = await loadBundledPlugins(workspaceRoot, config.bundledPluginPackages);
-	const generated = renderPluginComposition(plugins);
-	const targets = [
-		{ path: join(workspaceRoot, CONVEX_OUTPUT_PATH), source: generated.convex },
-		{ path: join(workspaceRoot, COMPONENT_OUTPUT_PATH), source: generated.components },
-		{ path: join(workspaceRoot, NUXT_OUTPUT_PATH), source: generated.nuxt },
-		{
-			path: join(workspaceRoot, SEND_TRANSPORT_CATALOG_OUTPUT_PATH),
-			source: generated.sendTransportCatalog,
-		},
-		{
-			path: join(workspaceRoot, SEND_TRANSPORT_MODULES_OUTPUT_PATH),
-			source: generated.sendTransportModules,
-		},
-		{
-			path: join(workspaceRoot, AGENT_STEP_CATALOG_OUTPUT_PATH),
-			source: generated.agentStepCatalog,
-		},
-		{
-			path: join(workspaceRoot, AGENT_STEP_MODULES_OUTPUT_PATH),
-			source: generated.agentStepModules,
-		},
-		{
-			path: join(workspaceRoot, DRAFT_STRATEGY_CATALOG_OUTPUT_PATH),
-			source: generated.draftStrategyCatalog,
-		},
-		{
-			path: join(workspaceRoot, DRAFT_STRATEGY_MODULES_OUTPUT_PATH),
-			source: generated.draftStrategyModules,
-		},
-		{
-			path: join(workspaceRoot, AUTONOMY_GATE_CATALOG_OUTPUT_PATH),
-			source: generated.autonomyGateCatalog,
-		},
-		{
-			path: join(workspaceRoot, AUTONOMY_GATE_MODULES_OUTPUT_PATH),
-			source: generated.autonomyGateModules,
-		},
-		{
-			path: join(workspaceRoot, AUTOMATION_TRIGGER_CATALOG_OUTPUT_PATH),
-			source: generated.automationTriggerCatalog,
-		},
-		{
-			path: join(workspaceRoot, AUTOMATION_TRIGGER_MODULES_OUTPUT_PATH),
-			source: generated.automationTriggerModules,
-		},
-		{
-			path: join(workspaceRoot, AUTOMATION_STEP_CATALOG_OUTPUT_PATH),
-			source: generated.automationStepCatalog,
-		},
-		{
-			path: join(workspaceRoot, AUTOMATION_STEP_MODULES_OUTPUT_PATH),
-			source: generated.automationStepModules,
-		},
-		{
-			path: join(workspaceRoot, AUTOMATION_CONDITION_CATALOG_OUTPUT_PATH),
-			source: generated.automationConditionCatalog,
-		},
-		{
-			path: join(workspaceRoot, AUTOMATION_CONDITION_MODULES_OUTPUT_PATH),
-			source: generated.automationConditionModules,
-		},
-		{
-			path: join(workspaceRoot, WEBHOOK_EVENT_CATALOG_OUTPUT_PATH),
-			source: generated.webhookEventCatalog,
-		},
-		{
-			path: join(workspaceRoot, IMPORT_PROVIDER_CATALOG_OUTPUT_PATH),
-			source: generated.importProviderCatalog,
-		},
-		{
-			path: join(workspaceRoot, IMPORT_PROVIDER_MODULES_OUTPUT_PATH),
-			source: generated.importProviderModules,
-		},
-		{
-			path: join(workspaceRoot, CRON_CATALOG_OUTPUT_PATH),
-			source: generated.cronCatalog,
-		},
-		{
-			path: join(workspaceRoot, CRON_MODULES_OUTPUT_PATH),
-			source: generated.cronModules,
-		},
-	] as const;
+	// One table drives the whole output set (see GENERATED_ARTIFACT_PATHS): the
+	// writer and the --check staleness gate can never disagree about which files
+	// codegen owns.
+	const targets = generatedArtifacts(renderPluginComposition(plugins)).map((artifact) => ({
+		path: join(workspaceRoot, artifact.outputPath),
+		source: artifact.source,
+	}));
 
 	if (options.check) {
 		const staleFiles: string[] = [];

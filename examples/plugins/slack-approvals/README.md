@@ -7,8 +7,14 @@ hook** protocol (PP-24). It implements one thing — a **restrict-only hold gate
 
 ## What it does
 
-When Owlat is about to auto-send a reply, it calls this app's `gate` hook. The
-app:
+When Owlat is about to auto-send a reply it calls this app's `gate` hook — that
+is the contract this app implements. **Owlat does not make that call yet**: the
+hook protocol, signing, validation and delivery logging are implemented and
+tested, but no pipeline stage invokes `invokeHook`, so this reference runs
+against the protocol (and its own suites), not against live traffic. See the
+deferral note on
+[Connected Apps](../../../apps/docs/content/3.developer/46.plugin-connected-apps.md).
+On a call, the app:
 
 1. the **first** time it sees a draft, opens an approval request, posts the
    pending draft to a Slack channel with **Approve / Reject** buttons, and

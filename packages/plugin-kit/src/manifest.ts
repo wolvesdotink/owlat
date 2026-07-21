@@ -31,7 +31,11 @@ import {
 } from './manifestValue';
 
 export { PLUGIN_CONTRIBUTION_KINDS } from './contributions';
-export { PLUGIN_LIVE_CONTRIBUTION_KINDS } from './contributionRequirements';
+export {
+	PLUGIN_DISPATCHED_CONTRIBUTION_KINDS,
+	PLUGIN_LIVE_CONTRIBUTION_KINDS,
+	PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS,
+} from './contributionRequirements';
 export type { PluginContributionKind, PluginContributions } from './contributions';
 export type { PluginManifestIssue, PluginManifestIssueCode } from './manifestIssues';
 

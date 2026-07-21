@@ -564,6 +564,7 @@ import type * as plugins_draftStrategyModules_generated from "../plugins/draftSt
 import type * as plugins_draftStrategySelections from "../plugins/draftStrategySelections.js";
 import type * as plugins_importProviderAuthorization from "../plugins/importProviderAuthorization.js";
 import type * as plugins_hostedContributionAuthorization from "../plugins/hostedContributionAuthorization.js";
+import type * as plugins_hostedContributionCatalog from "../plugins/hostedContributionCatalog.js";
 import type * as plugins_importProviderCatalog from "../plugins/importProviderCatalog.js";
 import type * as plugins_importProviderCatalog_generated from "../plugins/importProviderCatalog.generated.js";
 import type * as plugins_importProviderModules_generated from "../plugins/importProviderModules.generated.js";
@@ -1279,6 +1280,7 @@ declare const fullApi: ApiFromModules<{
   "plugins/draftStrategySelections": typeof plugins_draftStrategySelections;
   "plugins/importProviderAuthorization": typeof plugins_importProviderAuthorization;
   "plugins/hostedContributionAuthorization": typeof plugins_hostedContributionAuthorization;
+  "plugins/hostedContributionCatalog": typeof plugins_hostedContributionCatalog;
   "plugins/importProviderCatalog": typeof plugins_importProviderCatalog;
   "plugins/importProviderCatalog.generated": typeof plugins_importProviderCatalog_generated;
   "plugins/importProviderModules.generated": typeof plugins_importProviderModules_generated;

@@ -12,8 +12,10 @@
 import { deliverabilityLabPlugin } from '@owlat/example-deliverability-lab';
 import { escalationGuardPlugin } from '@owlat/example-escalation-guard';
 import { slackApprovalsPlugin } from '@owlat/example-slack-approvals';
-import type { PluginManifest } from '@owlat/plugin-kit';
-import { readRepositoryFile } from './repository';
+import { pluginContributionExportPaths, type PluginManifest } from '@owlat/plugin-kit';
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
+import { readRepositoryFile, REPOSITORY_ROOT } from './repository';
 
 /**
  * 1 = bundled, in-process. 2 = connected app over the signed hook protocol.
@@ -70,6 +72,68 @@ export async function readCoreNavSectionKeys(): Promise<readonly string[]> {
 	return Object.freeze(keys);
 }
 
+const DASHBOARD_PAGES_DIRECTORY = 'apps/web/app/pages';
+
+/**
+ * Every dashboard route the Nuxt build actually produces, as a matcher, READ
+ * FROM the pages directory rather than listed here.
+ *
+ * A plugin cannot ship a page: no arbitrary browser code is loaded at runtime
+ * and codegen emits no routes, so a `navItems`/`settingsPanels` `href` that no
+ * page backs renders a working-looking link onto a 404. Deriving the route set
+ * from disk means deleting or renaming a page turns the gallery red instead of
+ * leaving a reference manifest pointing at nothing.
+ */
+export async function readDashboardRouteMatchers(): Promise<
+	readonly { readonly route: string; matches: (href: string) => boolean }[]
+> {
+	const matchers: { route: string; matches: (href: string) => boolean }[] = [];
+	async function walk(relative: string): Promise<void> {
+		const entries = await readdir(join(REPOSITORY_ROOT, DASHBOARD_PAGES_DIRECTORY, relative), {
+			withFileTypes: true,
+		});
+		for (const entry of entries) {
+			const child = relative === '' ? entry.name : `${relative}/${entry.name}`;
+			if (entry.isDirectory()) {
+				if (entry.name !== '__tests__') await walk(child);
+				continue;
+			}
+			if (!entry.name.endsWith('.vue')) continue;
+			const route = `/${child.replace(/\.vue$/, '').replace(/\/index$/, '')}`;
+			// A `[param]` segment matches one non-empty path segment.
+			const pattern = new RegExp(
+				`^${route
+					.split('/')
+					.map((segment) =>
+						/^\[.+\]$/.test(segment) ? '[^/]+' : segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+					)
+					.join('/')}$`
+			);
+			matchers.push({ route, matches: (href) => pattern.test(href) });
+		}
+	}
+	await walk('');
+	if (matchers.length === 0) {
+		throw new Error(`${DASHBOARD_PAGES_DIRECTORY}: found no pages; update the gallery derivation`);
+	}
+	return Object.freeze(matchers);
+}
+
+/** Every navigation/settings destination a manifest declares, with its origin. */
+export function navigationHrefs(
+	manifest: PluginManifest
+): readonly { readonly bucket: string; readonly id: string; readonly href: string }[] {
+	const contributes = manifest.contributes as
+		| Readonly<Record<string, readonly Readonly<Record<string, unknown>>[]>>
+		| undefined;
+	if (!contributes) return [];
+	return ['navItems', 'settingsPanels'].flatMap((bucket) =>
+		(contributes[bucket] ?? [])
+			.filter((entry) => typeof entry['href'] === 'string')
+			.map((entry) => ({ bucket, id: String(entry['id']), href: String(entry['href']) }))
+	);
+}
+
 export const REFERENCE_GALLERY: readonly GalleryEntry[] = Object.freeze([
 	Object.freeze({
 		tier: 1,
@@ -114,30 +178,11 @@ export function galleryEntry(tier: PluginTier): GalleryEntry {
 	return entry;
 }
 
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-	return typeof value === 'object' && value !== null;
-}
-
 /**
  * Every `module.exportPath` a manifest points at, deduplicated and sorted.
  *
- * Contribution buckets are heterogeneous and only some kinds carry a module, so
- * this walks them structurally. It narrows with a guard rather than asserting a
- * shape: this function is the pin the published-package-shape suite trusts, and
- * an assertion here would be a claim the compiler stops checking.
+ * Re-exported from the kit rather than re-implemented: codegen's provenance
+ * verification walks the same structure, and a second local walk here could
+ * disagree with the one that actually gates generated imports.
  */
-export function contributionExportPaths(manifest: PluginManifest): readonly string[] {
-	const paths = new Set<string>();
-	const contributes = manifest.contributes ?? {};
-	for (const bucket of Object.values(contributes)) {
-		if (!Array.isArray(bucket)) continue;
-		for (const contribution of bucket) {
-			if (!isRecord(contribution)) continue;
-			const module = contribution['module'];
-			if (!isRecord(module)) continue;
-			const exportPath = module['exportPath'];
-			if (typeof exportPath === 'string') paths.add(exportPath);
-		}
-	}
-	return [...paths].sort();
-}
+export const contributionExportPaths = pluginContributionExportPaths;

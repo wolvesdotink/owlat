@@ -44,7 +44,13 @@ vi.mock('../plugins.generated', () => ({
 						label: 'Endpoint',
 						default: 'https://api.test',
 					}),
-					Object.freeze({ kind: 'secret', key: 'apiKey', label: 'API key', required: true }),
+					Object.freeze({
+						kind: 'secret',
+						key: 'apiKey',
+						envVar: 'PLUGIN_POLICY_PACK_API_KEY',
+						label: 'API key',
+						required: true,
+					}),
 					Object.freeze({
 						kind: 'number',
 						key: 'timeout',
@@ -162,52 +168,39 @@ describe('getPluginSettingsOverview', () => {
 });
 
 describe('setPluginSettings', () => {
-	it('persists non-secret values and stores the secret server-side without returning it', async () => {
+	it('never writes a secret to the row, and refuses the whole save that carries one', async () => {
+		// The proving assertion for the cleartext-at-rest finding: after a save that
+		// tries to set a secret, no document anywhere holds the plaintext.
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await expect(
+			t.mutation(api.plugins.settings.setPluginSettings, {
+				pluginId: 'policy-pack',
+				values: { endpoint: 'https://prod.example', timeout: 45, apiKey: 'super-secret-token' },
+			})
+		).rejects.toThrow(/PLUGIN_POLICY_PACK_API_KEY/);
+
+		const document = await t.run(async (ctx) => ctx.db.query('instanceSettings').first());
+		expect(JSON.stringify(document ?? {})).not.toContain('super-secret-token');
+		expect(await readStoredSettings(t)).toBeNull();
+	});
+
+	it('persists the non-secret values on their own', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		const result = await t.mutation(api.plugins.settings.setPluginSettings, {
 			pluginId: 'policy-pack',
-			values: { endpoint: 'https://prod.example', timeout: 45, apiKey: 'super-secret-token' },
+			values: { endpoint: 'https://prod.example', timeout: 45 },
 		});
-		// The redacted return value never carries secret plaintext.
 		expect(result.values).toEqual({ endpoint: 'https://prod.example', timeout: 45 });
-		expect(result.secretsSet).toEqual({ apiKey: true });
-		expect(JSON.stringify(result)).not.toContain('super-secret-token');
-
-		// The overview likewise never returns the secret.
-		const overview = await t.query(api.plugins.settings.getPluginSettingsOverview, {});
-		expect(JSON.stringify(overview)).not.toContain('super-secret-token');
-		expect(overview.plugins[0]!.secretsSet).toEqual({ apiKey: true });
-
-		// The secret IS persisted server-side (proves storage, not a silent drop).
+		// The env var is unset in this test deployment, so the secret reads unset.
+		expect(result.secretsSet).toEqual({ apiKey: false });
 		const stored = await readStoredSettings(t);
-		expect(stored?.[FLAG_KEY]).toEqual({
-			endpoint: 'https://prod.example',
-			timeout: 45,
-			apiKey: 'super-secret-token',
-		});
+		expect(stored?.[FLAG_KEY]).toEqual({ endpoint: 'https://prod.example', timeout: 45 });
 	});
 
-	it('keeps an existing secret when a later update omits it', async () => {
+	it('sweeps residual secret plaintext left by an older deployment on the next save', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
-		await t.mutation(api.plugins.settings.setPluginSettings, {
-			pluginId: 'policy-pack',
-			values: { apiKey: 'first-secret' },
-		});
-		await t.mutation(api.plugins.settings.setPluginSettings, {
-			pluginId: 'policy-pack',
-			values: { endpoint: 'https://changed.example' },
-		});
-		const stored = await readStoredSettings(t);
-		expect(stored?.[FLAG_KEY]).toEqual({
-			apiKey: 'first-secret',
-			endpoint: 'https://changed.example',
-		});
-	});
-
-	it('drops a stored key the current schema no longer declares on the next save', async () => {
-		const t = convexTest(schema, modules).withIdentity(identity);
-		// Seed a stored record carrying a key (a former secret) that the current
-		// schema does not declare — the shape after a plugin upgrade removed a field.
+		// The shape a deployment that stored secrets would leave behind, plus a key
+		// the current schema no longer declares at all.
 		await t.run(async (ctx) => {
 			await ctx.db.insert('instanceSettings', {
 				pluginSettings: {
@@ -221,12 +214,10 @@ describe('setPluginSettings', () => {
 			values: { endpoint: 'https://prod.example' },
 		});
 		const stored = await readStoredSettings(t);
-		// The schema-declared secret is preserved; the removed key is dropped.
-		expect(stored?.[FLAG_KEY]).toEqual({
-			apiKey: 'stale-secret',
-			endpoint: 'https://prod.example',
-		});
-		expect(stored?.[FLAG_KEY]).not.toHaveProperty('legacyToken');
+		expect(stored?.[FLAG_KEY]).toEqual({ endpoint: 'https://prod.example' });
+		const document = await t.run(async (ctx) => ctx.db.query('instanceSettings').first());
+		expect(JSON.stringify(document ?? {})).not.toContain('stale-secret');
+		expect(JSON.stringify(document ?? {})).not.toContain('orphan-plaintext');
 	});
 
 	it('rejects an unknown field and writes nothing', async () => {
@@ -266,7 +257,7 @@ describe('resetPluginSettings', () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.mutation(api.plugins.settings.setPluginSettings, {
 			pluginId: 'policy-pack',
-			values: { endpoint: 'https://prod.example', apiKey: 'secret' },
+			values: { endpoint: 'https://prod.example' },
 		});
 		const result = await t.mutation(api.plugins.settings.resetPluginSettings, {
 			pluginId: 'policy-pack',

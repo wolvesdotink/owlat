@@ -27,8 +27,16 @@ Factories cache the resolved provider per-process. Tests can call
 | Interface | Env var | Implementations | Files |
 |---|---|---|---|
 | `EmailProvider` (domain identity/verification) | `EMAIL_PROVIDER` (mta) | SES, MTA | `emailProviders/{domainVerification,sesIdentity,mtaIdentity}.ts` |
-| Send providers (delivery dispatch + health + routing) | per-org config | Resend, SES, MTA | `sendProviders/` |
+| Send providers (delivery dispatch + health + routing) | per-org config | `mta`, `ses`, `resend`, `smtp` | `sendProviders/` |
 | `LLMProvider` | `LLM_PROVIDER` (openai) | OpenAI-compatible endpoints (OpenAI, OpenRouter, Ollama, Claude-via-compat) | `llmProvider.ts` |
+
+Send providers additionally take **operator-installed** implementations: a
+bundled plugin contributing a `sendTransports` entry appears as the kind
+`plugin.<pluginId>.<localId>`, catalogued at
+`convex/plugins/sendTransportCatalog.generated.ts` and adapted to the same
+`SendProviderModule` interface by `sendProviders/pluginProvider.ts`. Dispatch,
+retries, health and routing stay host-owned; see the [plugin contribution
+reference](../apps/docs/content/3.developer/42.plugin-contributions.md).
 
 Speculative single-implementation seams (auth, storage, analytics,
 notifications, vector stores) have been **deleted**, per the project's

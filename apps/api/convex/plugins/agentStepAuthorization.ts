@@ -1,64 +1,39 @@
-import { parsePluginId, PLUGIN_AGENT_STEP_CAPABILITY } from '@owlat/plugin-kit';
+import { PLUGIN_AGENT_STEP_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { pluginAgentStepDefinition } from '../agent/steps/catalog';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import { recordHostedPluginAudit } from './audit';
 import {
-	authorizeSystemBundledPlugin,
-	SYSTEM_PLUGIN_ACTOR_ID,
-	type HostedPluginActorScope,
-} from './authorization';
+	authorizeHostedContribution,
+	recordHostedContributionOutcome,
+	type HostedContributionAuthorizationSpec,
+} from './hostedContributionAuthorization';
 
-function matchingScope(
-	organizationId: string,
-	pluginIdInput: string,
-	stepKind: string
-): HostedPluginActorScope | null {
-	let pluginId;
-	try {
-		pluginId = parsePluginId(pluginIdInput);
-	} catch {
-		return null;
-	}
-	const definition = pluginAgentStepDefinition(stepKind);
-	if (!definition || definition.pluginId !== pluginId) return null;
-	return Object.freeze({ organizationId, userId: SYSTEM_PLUGIN_ACTOR_ID, pluginId });
-}
+/**
+ * Runtime authorization seam for plugin-contributed agent lifecycle steps.
+ * Rechecks immutable registration, the plugin flag, the `agent:step` grant,
+ * required env, and singleton scope in the caller's transaction; a denial never
+ * invokes plugin code and is audited as `access_denied`.
+ */
+const SPEC: HostedContributionAuthorizationSpec = {
+	capability: PLUGIN_AGENT_STEP_CAPABILITY,
+	operation: 'agent.step',
+	failureReasonCode: 'agent_step_failed',
+	attributionErrorMessage: 'Invalid bundled agent step attribution',
+	definitionFor: pluginAgentStepDefinition,
+};
 
-/** Rechecks immutable registration, flag, grant, env, and singleton scope before execution. */
 export const authorizeExecution = internalMutation({
 	args: { pluginId: v.string(), stepKind: v.string() },
-	handler: async (ctx, args): Promise<boolean> => {
-		const organizationId = await getSingletonOrganizationId(ctx).catch(() => null);
-		if (!organizationId) return false;
-		const auditScope = matchingScope(organizationId, args.pluginId, args.stepKind);
-		if (!auditScope) return false;
-		const scope = await authorizeSystemBundledPlugin(
-			ctx,
-			auditScope.pluginId,
-			PLUGIN_AGENT_STEP_CAPABILITY
-		);
-		if (scope) return true;
-		await recordHostedPluginAudit(ctx, auditScope, 'agent.step', 'denied', {
-			reasonCode: 'access_denied',
-		});
-		return false;
-	},
+	handler: (ctx, args): Promise<boolean> =>
+		authorizeHostedContribution(ctx, SPEC, args.pluginId, args.stepKind),
 });
 
 export const recordOutcome = internalMutation({
-	args: { pluginId: v.string(), stepKind: v.string(), success: v.boolean() },
-	handler: async (ctx, args): Promise<void> => {
-		const organizationId = await getSingletonOrganizationId(ctx);
-		const scope = matchingScope(organizationId, args.pluginId, args.stepKind);
-		if (!scope) throw new TypeError('Invalid bundled agent step attribution');
-		await recordHostedPluginAudit(
-			ctx,
-			scope,
-			'agent.step',
-			args.success ? 'completed' : 'failed',
-			args.success ? {} : { reasonCode: 'agent_step_failed' }
-		);
+	args: {
+		pluginId: v.string(),
+		stepKind: v.string(),
+		outcome: v.union(v.literal('completed'), v.literal('failed')),
 	},
+	handler: (ctx, args): Promise<void> =>
+		recordHostedContributionOutcome(ctx, SPEC, args.pluginId, args.stepKind, args.outcome),
 });

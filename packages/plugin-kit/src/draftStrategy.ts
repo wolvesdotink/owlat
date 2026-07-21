@@ -1,11 +1,11 @@
+import type { PluginNamespacedKind } from './namespacedKind';
 import type { PluginLlmService } from './context';
-import type { PluginId } from './pluginId';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 export const PLUGIN_DRAFT_STRATEGY_CAPABILITY = 'draft:strategy' as const;
 export const PLUGIN_DRAFT_STRATEGY_TIMEOUT_MAX_MS = 30_000;
 
-export type PluginDraftStrategyKind = `plugin.${PluginId}.${string}`;
+export type PluginDraftStrategyKind = PluginNamespacedKind;
 
 /** Data-only bundled-strategy declaration. */
 export interface PluginDraftStrategyDefinition {
@@ -49,11 +49,4 @@ export interface PluginDraftStrategyModule {
 		input: PluginDraftStrategyInput,
 		services: PluginDraftStrategyServices
 	): Promise<PluginDraftStrategyResult>;
-}
-
-export function pluginDraftStrategyKind(
-	pluginId: PluginId,
-	localId: string
-): PluginDraftStrategyKind {
-	return `plugin.${pluginId}.${localId}`;
 }

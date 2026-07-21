@@ -18,6 +18,13 @@ rather than three unrelated demos.
   ids/hrefs/event kinds, every contribution bucket paired with the capability it
   needs, an LLM budget exactly when `llm:invoke` is requested, grants that can
   only narrow, and nav items that target real core sidebar sections.
+- **`dispatchReachability.test.ts`** — the honesty gate on the contribution
+  buckets. Each capability-enforced bucket is classed `wired` or `declared` in
+  the kernel's requirement table; this suite names the one symbol a host path has
+  to reach for the bucket to run, then asserts a `wired` bucket has a production
+  consumer and a `declared` bucket has none. Wiring a declared bucket, or
+  deleting the last consumer of a wired one, turns it red until the table and the
+  Contribution Reference agree with the code.
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and
@@ -42,6 +49,21 @@ rather than three unrelated demos.
   with: a last-hex-character near miss is rejected in constant time, a truncated
   signature is rejected rather than thrown at, a missing header fails closed, and
   the signature is bound to the nonce, app id, body and secret.
+- **`convexPluginOrphans.test.ts`** — the guard on
+  `scripts/check-convex-plugin-orphans.ts`, the dead-code gate for the Convex
+  plugin host. knip declares the whole Convex tree as `entry`, so an orphaned
+  composition seam there is invisible to `lint:deadcode`; that gate closes the
+  hole, and this suite runs it against throwaway repositories so it cannot go
+  quiet on the drift it exists to catch. Covers a seam nothing reaches, the three
+  ways a seam can legitimately be reached (relative import, generated function
+  reference, worker client path string), a test-only or codegen-only "consumer",
+  an allowlisted seam that quietly gains a caller, and a stale allowlist entry.
+- **`namespacedKindGrammar.test.ts`** — the guard that keeps
+  `plugin.<pluginId>.<localId>` a single definition. The grammar is a security
+  boundary (core-vs-plugin dispatch and every ownership compare read it), so this
+  suite fails on any module outside `@owlat/plugin-kit`'s `namespacedKind.ts`
+  that constructs it inline, and round-trips every contributed kind of every
+  reference plugin through the one builder and its parser.
 - **`dockerWorkspaces.test.ts`** — the guard that keeps the examples installable
   in every image: `scripts/check-docker-workspaces.sh` is run against throwaway
   repositories so it cannot go quiet on the drift it exists to catch. Covers a
