@@ -1,50 +1,277 @@
 /**
- * IP Pool Management
+ * IP pool eligibility and round-robin selection.
  *
- * Manages sending IPs with round-robin selection within pools,
- * integrated with DNSBL checking (blocked IPs are excluded).
+ * Redis owns one configured-membership set, one active set, composed exclusion
+ * reasons, and an eligibility generation used as a fencing token at SMTP time.
+ * Observation transitions are generation-ordered Lua transactions so late DNS
+ * results cannot undo newer decisions from another MTA instance.
  */
 
 import type Redis from 'ioredis';
-import type { IpPoolType, IpPoolConfig } from '../types.js';
+import type { IpPoolConfig, IpPoolType } from '../types.js';
 import { logger } from '../monitoring/logger.js';
 
 const IP_POOL_ACTIVE = 'mta:ip-pool:active';
+const IP_POOL_CONFIGURED = 'mta:ip-pool:configured';
+const IP_POOL_ELIGIBILITY_GENERATIONS = 'mta:ip-pool:eligibility-generations';
+const EMERGENCY_KEY = 'mta:emergency:all_ips_blocked';
 const COUNTER_PREFIX = 'mta:ip-rr:';
 const BLOCK_REASONS_PREFIX = 'mta:ip-pool:block-reasons:';
+const OBSERVATION_SEQUENCE_PREFIX = 'mta:ip-pool:observation-sequence:';
+const APPLIED_OBSERVATIONS_PREFIX = 'mta:ip-pool:applied-observations:';
+const UNDERLYING_BLOCKS_PREFIX = 'mta:ip-pool:underlying-blocks:';
+const FCRDNS_PREFIX = 'mta:fcrdns:';
+const DNSBL_PREFIX = 'mta:dnsbl:';
+const VALIDATE_LEASE_SCRIPT = `
+return redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1
+  and redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 1
+  and tonumber(redis.call('HGET', KEYS[3], ARGV[1]) or '0') == tonumber(ARGV[2])
+  and 1 or 0
+`;
 
-export type IpPoolBlockReason = 'dnsbl' | 'fcrdns';
+export const IP_POOL_BLOCK_REASONS = ['dnsbl', 'fcrdns'] as const;
+export type IpPoolBlockReason = (typeof IP_POOL_BLOCK_REASONS)[number];
+export type IpPoolObservationDecision = 'block' | 'clear' | 'preserve';
 
-// Atomically compose independent exclusion reasons. Clearing one subsystem's
-// reason must never reactivate an IP that another subsystem still quarantines.
+export interface IpEligibilityLease {
+	ip: string;
+	eligibilityGeneration: number;
+}
+
+export interface IpPoolObservation {
+	ip: string;
+	reason: IpPoolBlockReason;
+	generation: number;
+	decision: IpPoolObservationDecision;
+	/** Only FCrDNS uses this explicit lab bypass. */
+	override?: boolean;
+	stateKey: string;
+	stateFields: Record<string, string>;
+}
+
+export interface IpPoolObservationResult {
+	applied: boolean;
+	active: boolean;
+	eligibilityGeneration: number;
+	wouldBlockWithoutOverride: boolean;
+	becameBlocked: boolean;
+}
+
+const APPLY_OBSERVATION_SCRIPT = `
+local stateKey = KEYS[1]
+local reasonKey = KEYS[2]
+local activeKey = KEYS[3]
+local configuredKey = KEYS[4]
+local appliedKey = KEYS[5]
+local underlyingKey = KEYS[6]
+local eligibilityGenerationKey = KEYS[7]
+local emergencyKey = KEYS[8]
+
+local ip = ARGV[1]
+local reason = ARGV[2]
+local observationGeneration = tonumber(ARGV[3])
+local decision = ARGV[4]
+local override = ARGV[5] == '1'
+local fieldCount = tonumber(ARGV[6])
+local appliedGeneration = tonumber(redis.call('HGET', appliedKey, ip) or '0')
+local wasActive = redis.call('SISMEMBER', activeKey, ip) == 1
+
+if observationGeneration <= appliedGeneration then
+  local existingUnderlying = redis.call('HGET', underlyingKey, ip) == '1'
+  return {0, wasActive and 1 or 0, tonumber(redis.call('HGET', eligibilityGenerationKey, ip) or '0'), existingUnderlying and 1 or 0, 0}
+end
+
+local underlying
+if decision == 'block' then
+  underlying = true
+elseif decision == 'clear' then
+  underlying = false
+else
+  local stored = redis.call('HGET', underlyingKey, ip)
+  underlying = not stored or stored == '1'
+end
+
+redis.call('HSET', appliedKey, ip, observationGeneration)
+redis.call('HSET', underlyingKey, ip, underlying and '1' or '0')
+for index = 0, fieldCount - 1 do
+  local fieldOffset = 7 + index * 2
+  redis.call('HSET', stateKey, ARGV[fieldOffset], ARGV[fieldOffset + 1])
+end
+if reason == 'fcrdns' then
+  redis.call('HSET', stateKey, 'wouldBlockWithoutOverride', underlying and 'true' or 'false')
+  redis.call('HSET', stateKey, 'overridden', (underlying and override) and 'true' or 'false')
+end
+
+local effectiveBlock = underlying and not override
+if effectiveBlock then
+  redis.call('HSET', reasonKey, reason, '1')
+else
+  redis.call('HDEL', reasonKey, reason)
+end
+if redis.call('HLEN', reasonKey) == 0 then redis.call('DEL', reasonKey) end
+
+local isConfigured = redis.call('SISMEMBER', configuredKey, ip) == 1
+local shouldBeActive = isConfigured and redis.call('HLEN', reasonKey) == 0
+if shouldBeActive then redis.call('SADD', activeKey, ip) else redis.call('SREM', activeKey, ip) end
+local isActive = redis.call('SISMEMBER', activeKey, ip) == 1
+local eligibilityGeneration = tonumber(redis.call('HGET', eligibilityGenerationKey, ip) or '0')
+local becameBlocked = false
+if wasActive ~= isActive then
+  eligibilityGeneration = redis.call('HINCRBY', eligibilityGenerationKey, ip, 1)
+  becameBlocked = wasActive and not isActive
+end
+
+local configuredIps = redis.call('SMEMBERS', configuredKey)
+local eligibleCount = 0
+for _, configuredIp in ipairs(configuredIps) do
+  if redis.call('SISMEMBER', activeKey, configuredIp) == 1 then eligibleCount = eligibleCount + 1 end
+end
+if #configuredIps > 0 and eligibleCount == 0 then redis.call('SET', emergencyKey, '1') else redis.call('DEL', emergencyKey) end
+
+return {1, isActive and 1 or 0, eligibilityGeneration, underlying and 1 or 0, becameBlocked and 1 or 0}
+`;
+
 const SET_BLOCK_REASON_SCRIPT = `
 local reasonKey = KEYS[1]
 local activeKey = KEYS[2]
+local configuredKey = KEYS[3]
+local generationKey = KEYS[4]
+local emergencyKey = KEYS[5]
+local underlyingKey = KEYS[6]
 local ip = ARGV[1]
 local reason = ARGV[2]
-local blocked = ARGV[3]
+local blocked = ARGV[3] == '1'
+local wasActive = redis.call('SISMEMBER', activeKey, ip) == 1
 
-if blocked == '1' then
-  redis.call('HSET', reasonKey, reason, '1')
-  redis.call('SREM', activeKey, ip)
-  return 0
-end
+redis.call('HSET', underlyingKey, ip, blocked and '1' or '0')
+if blocked then redis.call('HSET', reasonKey, reason, '1') else redis.call('HDEL', reasonKey, reason) end
+if redis.call('HLEN', reasonKey) == 0 then redis.call('DEL', reasonKey) end
+local shouldBeActive = redis.call('SISMEMBER', configuredKey, ip) == 1 and redis.call('HLEN', reasonKey) == 0
+if shouldBeActive then redis.call('SADD', activeKey, ip) else redis.call('SREM', activeKey, ip) end
+local isActive = redis.call('SISMEMBER', activeKey, ip) == 1
+if wasActive ~= isActive then redis.call('HINCRBY', generationKey, ip, 1) end
 
-redis.call('HDEL', reasonKey, reason)
-if redis.call('HLEN', reasonKey) == 0 then
-  redis.call('DEL', reasonKey)
-  redis.call('SADD', activeKey, ip)
-  return 1
+local configuredIps = redis.call('SMEMBERS', configuredKey)
+local eligibleCount = 0
+for _, configuredIp in ipairs(configuredIps) do
+  if redis.call('SISMEMBER', activeKey, configuredIp) == 1 then eligibleCount = eligibleCount + 1 end
 end
-redis.call('SREM', activeKey, ip)
-return 0
+if #configuredIps > 0 and eligibleCount == 0 then redis.call('SET', emergencyKey, '1') else redis.call('DEL', emergencyKey) end
+return isActive and 1 or 0
 `;
 
-/**
- * Add or clear one independent eligibility block and return whether the IP is
- * active afterwards. The Lua transaction prevents DNSBL/FCrDNS races from
- * losing a reason between the hash update and active-set reconciliation.
- */
+const INITIALIZE_POOLS_SCRIPT = `
+local configuredKey = KEYS[1]
+local activeKey = KEYS[2]
+local generationKey = KEYS[3]
+local emergencyKey = KEYS[4]
+local fcrdnsAppliedKey = KEYS[5]
+local dnsblAppliedKey = KEYS[6]
+local fcrdnsUnderlyingKey = KEYS[7]
+local dnsblUnderlyingKey = KEYS[8]
+local fcrdnsPrefix = ARGV[1]
+local blockPrefix = ARGV[2]
+local dnsblPrefix = ARGV[3]
+local newIps = {}
+for index = 4, #ARGV do newIps[ARGV[index]] = true end
+
+local previousIps = redis.call('SMEMBERS', configuredKey)
+for _, ip in ipairs(previousIps) do
+  if not newIps[ip] then
+    local wasActive = redis.call('SISMEMBER', activeKey, ip) == 1
+    redis.call('SREM', configuredKey, ip)
+    redis.call('SREM', activeKey, ip)
+    redis.call('DEL', fcrdnsPrefix .. ip)
+    redis.call('DEL', dnsblPrefix .. ip)
+    redis.call('DEL', blockPrefix .. ip)
+    redis.call('HDEL', fcrdnsAppliedKey, ip)
+    redis.call('HDEL', dnsblAppliedKey, ip)
+    redis.call('HDEL', fcrdnsUnderlyingKey, ip)
+    redis.call('HDEL', dnsblUnderlyingKey, ip)
+    if wasActive then redis.call('HINCRBY', generationKey, ip, 1) end
+  end
+end
+
+local staleActiveIps = redis.call('SMEMBERS', activeKey)
+for _, ip in ipairs(staleActiveIps) do
+  if not newIps[ip] then
+    redis.call('SREM', activeKey, ip)
+    redis.call('HINCRBY', generationKey, ip, 1)
+  end
+end
+
+for ip, _ in pairs(newIps) do
+  redis.call('SADD', configuredKey, ip)
+  local readinessKey = fcrdnsPrefix .. ip
+  local verdict = redis.call('HGET', readinessKey, 'verdict')
+  local checkedAt = redis.call('HGET', readinessKey, 'checkedAt')
+  local overridden = redis.call('HGET', readinessKey, 'overridden') == 'true'
+  local ready = checkedAt and (verdict == 'pass' or verdict == 'warn' or overridden)
+  local shouldBeActive = ready and redis.call('HLEN', blockPrefix .. ip) == 0
+  local wasActive = redis.call('SISMEMBER', activeKey, ip) == 1
+  if shouldBeActive then redis.call('SADD', activeKey, ip) else redis.call('SREM', activeKey, ip) end
+  local isActive = redis.call('SISMEMBER', activeKey, ip) == 1
+  if wasActive ~= isActive then redis.call('HINCRBY', generationKey, ip, 1) end
+end
+
+local configuredIps = redis.call('SMEMBERS', configuredKey)
+local eligibleCount = 0
+for _, ip in ipairs(configuredIps) do
+  if redis.call('SISMEMBER', activeKey, ip) == 1 then eligibleCount = eligibleCount + 1 end
+end
+if #configuredIps > 0 and eligibleCount == 0 then redis.call('SET', emergencyKey, '1') else redis.call('DEL', emergencyKey) end
+return {#configuredIps, eligibleCount}
+`;
+
+export function isIpPoolBlockReason(value: string): value is IpPoolBlockReason {
+	return value === 'dnsbl' || value === 'fcrdns';
+}
+
+export async function nextIpPoolObservationGeneration(
+	redis: Redis,
+	ip: string,
+	reason: IpPoolBlockReason
+): Promise<number> {
+	return redis.incr(`${OBSERVATION_SEQUENCE_PREFIX}${reason}:${ip}`);
+}
+
+export async function applyIpPoolObservation(
+	redis: Redis,
+	observation: IpPoolObservation
+): Promise<IpPoolObservationResult> {
+	const fields = Object.entries(observation.stateFields);
+	const args: Array<string | number> = [
+		observation.ip,
+		observation.reason,
+		observation.generation,
+		observation.decision,
+		observation.override ? '1' : '0',
+		fields.length,
+	];
+	for (const [field, value] of fields) args.push(field, value);
+	const raw = (await redis.eval(
+		APPLY_OBSERVATION_SCRIPT,
+		8,
+		observation.stateKey,
+		`${BLOCK_REASONS_PREFIX}${observation.ip}`,
+		IP_POOL_ACTIVE,
+		IP_POOL_CONFIGURED,
+		`${APPLIED_OBSERVATIONS_PREFIX}${observation.reason}`,
+		`${UNDERLYING_BLOCKS_PREFIX}${observation.reason}`,
+		IP_POOL_ELIGIBILITY_GENERATIONS,
+		EMERGENCY_KEY,
+		...args
+	)) as number[];
+	return {
+		applied: Number(raw[0]) === 1,
+		active: Number(raw[1]) === 1,
+		eligibilityGeneration: Number(raw[2]),
+		wouldBlockWithoutOverride: Number(raw[3]) === 1,
+		becameBlocked: Number(raw[4]) === 1,
+	};
+}
+
+/** Direct administrative/test transition; live observers use generation CAS above. */
 export async function setIpPoolBlock(
 	redis: Redis,
 	ip: string,
@@ -53,9 +280,13 @@ export async function setIpPoolBlock(
 ): Promise<boolean> {
 	const result = await redis.eval(
 		SET_BLOCK_REASON_SCRIPT,
-		2,
+		6,
 		`${BLOCK_REASONS_PREFIX}${ip}`,
 		IP_POOL_ACTIVE,
+		IP_POOL_CONFIGURED,
+		IP_POOL_ELIGIBILITY_GENERATIONS,
+		EMERGENCY_KEY,
+		`${UNDERLYING_BLOCKS_PREFIX}${reason}`,
 		ip,
 		reason,
 		blocked ? '1' : '0'
@@ -68,66 +299,73 @@ export async function getIpPoolBlockReasons(
 	ip: string
 ): Promise<IpPoolBlockReason[]> {
 	const reasons = await redis.hkeys(`${BLOCK_REASONS_PREFIX}${ip}`);
-	return reasons.filter(
-		(reason): reason is IpPoolBlockReason => reason === 'dnsbl' || reason === 'fcrdns'
+	return reasons.filter(isIpPoolBlockReason);
+}
+
+export async function isIpEligibilityLeaseValid(
+	redis: Redis,
+	lease: IpEligibilityLease
+): Promise<boolean> {
+	return (
+		Number(
+			await redis.eval(
+				VALIDATE_LEASE_SCRIPT,
+				3,
+				IP_POOL_CONFIGURED,
+				IP_POOL_ACTIVE,
+				IP_POOL_ELIGIBILITY_GENERATIONS,
+				lease.ip,
+				lease.eligibilityGeneration
+			)
+		) === 1
 	);
 }
 
-/**
- * Select an IP from the appropriate pool using round-robin
- * Respects DNSBL blocks — only returns active (non-blocked) IPs.
- *
- * @returns The selected IP address, or null if no IPs are available
- */
+export async function selectIpWithLease(
+	redis: Redis,
+	pool: IpPoolType,
+	config: IpPoolConfig,
+	dedicatedIp?: string
+): Promise<IpEligibilityLease | null> {
+	const configuredLocally = new Set([...config.transactional, ...config.campaign]);
+	const activeIps = new Set(await redis.smembers(IP_POOL_ACTIVE));
+	let selectedIp: string | undefined;
+
+	if (dedicatedIp) {
+		if (configuredLocally.has(dedicatedIp) && activeIps.has(dedicatedIp)) selectedIp = dedicatedIp;
+		else {
+			logger.error({ dedicatedIp }, 'Dedicated IP is unavailable; delivery remains queued');
+			return null;
+		}
+	} else {
+		const availableIps = config[pool].filter((ip) => activeIps.has(ip));
+		if (availableIps.length === 0) {
+			logger.error({ pool }, 'No eligible IPs available for pool; delivery remains queued');
+			return null;
+		}
+		if (availableIps.length === 1) selectedIp = availableIps[0];
+		else {
+			const counter = await redis.incr(`${COUNTER_PREFIX}${pool}`);
+			await redis.expire(`${COUNTER_PREFIX}${pool}`, 86400);
+			selectedIp = availableIps[(counter - 1) % availableIps.length];
+		}
+	}
+
+	if (!selectedIp) return null;
+	const generation = Number((await redis.hget(IP_POOL_ELIGIBILITY_GENERATIONS, selectedIp)) ?? 0);
+	const lease = { ip: selectedIp, eligibilityGeneration: generation };
+	return (await isIpEligibilityLeaseValid(redis, lease)) ? lease : null;
+}
+
 export async function selectIp(
 	redis: Redis,
 	pool: IpPoolType,
 	config: IpPoolConfig,
 	dedicatedIp?: string
 ): Promise<string | null> {
-	// A dedicated route is an identity constraint, not a preference. Falling
-	// through to another IP would silently violate the configured routing rule.
-	if (dedicatedIp) {
-		const activeIps = await redis.smembers(IP_POOL_ACTIVE);
-		if (activeIps.includes(dedicatedIp)) return dedicatedIp;
-		logger.error({ dedicatedIp }, 'Dedicated IP is unavailable; delivery remains queued');
-		return null;
-	}
-
-	const poolIps = config[pool];
-	if (poolIps.length === 0) return null;
-
-	// Get the set of currently active (non-blocked and non-quarantined) IPs.
-	const activeIps = await redis.smembers(IP_POOL_ACTIVE);
-	const activeSet = new Set(activeIps);
-
-	// Filter pool IPs to only active ones
-	const availableIps = poolIps.filter((ip) => activeSet.has(ip));
-
-	if (availableIps.length === 0) {
-		// A hard readiness gate must fail closed. Returning a configured but
-		// quarantined address here would make the active set advisory and let a
-		// fresh deployment send from a missing/mismatched PTR.
-		logger.error({ pool }, 'No eligible IPs available for pool; delivery remains queued');
-		return null;
-	}
-
-	if (availableIps.length === 1) {
-		return availableIps[0]!;
-	}
-
-	// Round-robin via Redis counter
-	const counterKey = `${COUNTER_PREFIX}${pool}`;
-	const counter = await redis.incr(counterKey);
-	await redis.expire(counterKey, 86400); // Reset daily
-
-	const index = (counter - 1) % availableIps.length;
-	return availableIps[index]!;
+	return (await selectIpWithLease(redis, pool, config, dedicatedIp))?.ip ?? null;
 }
 
-/**
- * Get all IPs with their status (for health endpoint)
- */
 export async function getPoolStatus(
 	redis: Redis,
 	config: IpPoolConfig
@@ -139,47 +377,48 @@ export async function getPoolStatus(
 		blockReasons: IpPoolBlockReason[];
 	}>
 > {
-	const activeIps = await redis.smembers(IP_POOL_ACTIVE);
-	const activeSet = new Set(activeIps);
+	const activeSet = new Set(await redis.smembers(IP_POOL_ACTIVE));
 	const result: Array<{
 		ip: string;
 		pool: IpPoolType;
 		active: boolean;
 		blockReasons: IpPoolBlockReason[];
 	}> = [];
-
-	for (const ip of config.transactional) {
-		result.push({
-			ip,
-			pool: 'transactional',
-			active: activeSet.has(ip),
-			blockReasons: await getIpPoolBlockReasons(redis, ip),
-		});
+	for (const [pool, ips] of [
+		['transactional', config.transactional],
+		['campaign', config.campaign],
+	] as const) {
+		for (const ip of ips) {
+			result.push({
+				ip,
+				pool,
+				active: activeSet.has(ip),
+				blockReasons: await getIpPoolBlockReasons(redis, ip),
+			});
+		}
 	}
-	for (const ip of config.campaign) {
-		result.push({
-			ip,
-			pool: 'campaign',
-			active: activeSet.has(ip),
-			blockReasons: await getIpPoolBlockReasons(redis, ip),
-		});
-	}
-
 	return result;
 }
 
-/**
- * Initialize IP pools in Redis (called on startup)
- */
+/** Replace configured membership atomically; new/unknown IPs start inactive. */
 export async function initializePools(redis: Redis, config: IpPoolConfig): Promise<void> {
 	const allIps = [...new Set([...config.transactional, ...config.campaign])];
-	for (const ip of allIps) {
-		// Reconcile persisted reasons on restart; never blindly re-add a previously
-		// quarantined or blocklisted address.
-		const reasons = await getIpPoolBlockReasons(redis, ip);
-		if (reasons.length === 0) await redis.sadd(IP_POOL_ACTIVE, ip);
-		else await redis.srem(IP_POOL_ACTIVE, ip);
-	}
+	await redis.eval(
+		INITIALIZE_POOLS_SCRIPT,
+		8,
+		IP_POOL_CONFIGURED,
+		IP_POOL_ACTIVE,
+		IP_POOL_ELIGIBILITY_GENERATIONS,
+		EMERGENCY_KEY,
+		`${APPLIED_OBSERVATIONS_PREFIX}fcrdns`,
+		`${APPLIED_OBSERVATIONS_PREFIX}dnsbl`,
+		`${UNDERLYING_BLOCKS_PREFIX}fcrdns`,
+		`${UNDERLYING_BLOCKS_PREFIX}dnsbl`,
+		FCRDNS_PREFIX,
+		BLOCK_REASONS_PREFIX,
+		DNSBL_PREFIX,
+		...allIps
+	);
 	logger.info(
 		{ transactional: config.transactional, campaign: config.campaign },
 		'IP pools initialized'

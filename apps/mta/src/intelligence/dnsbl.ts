@@ -11,12 +11,16 @@ import { DNSBL_ZONES } from '../config.js';
 import type { MtaConfig } from '../config.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
-import { getIpPoolBlockReasons, setIpPoolBlock } from '../scaling/ipPool.js';
+import { pool } from '../smtp/connectionPool.js';
+import {
+	applyIpPoolObservation,
+	getIpPoolBlockReasons,
+	nextIpPoolObservationGeneration,
+} from '../scaling/ipPool.js';
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const LOOKUP_TIMEOUT_MS = 5000;
 const DNSBL_PREFIX = 'mta:dnsbl:';
-const IP_POOL_ACTIVE = 'mta:ip-pool:active';
 const IP_POOL_BLOCKED = 'mta:ip-pool:blocked';
 
 type DnsblSeverity = 'critical' | 'warning';
@@ -25,34 +29,41 @@ interface DnsblResult {
 	zone: string;
 	name: string;
 	severity: DnsblSeverity;
-	listed: boolean;
+	status: 'listed' | 'clean' | 'unknown';
 }
 
 /**
  * Check a single IP against a single DNSBL zone
  */
-async function checkDnsbl(ip: string, zone: string): Promise<boolean> {
+async function checkDnsbl(ip: string, zone: string): Promise<DnsblResult['status']> {
 	const reversed = ip.split('.').reverse().join('.');
 	const lookup = `${reversed}.${zone}`;
 
+	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
 		const result = await Promise.race([
 			resolve4(lookup),
-			new Promise<never>((_, reject) =>
-				setTimeout(() => reject(new Error('DNSBL lookup timeout')), LOOKUP_TIMEOUT_MS)
+			new Promise<never>(
+				(_, reject) =>
+					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), LOOKUP_TIMEOUT_MS))
 			),
 		]);
 		// If resolves to 127.0.0.x, the IP is listed
-		return Array.isArray(result) && result.some((addr) => addr.startsWith('127.'));
+		return Array.isArray(result) && result.some((addr) => addr.startsWith('127.'))
+			? 'listed'
+			: 'clean';
 	} catch (err: unknown) {
 		const error = err as { code?: string; message?: string };
 		// NXDOMAIN/ENOTFOUND = not listed (this is the expected "clean" result)
 		if (error.code === 'ENOTFOUND' || error.code === 'ENODATA') {
-			return false;
+			return 'clean';
 		}
-		// Timeout or other error — treat as clean (don't block on DNS failure)
-		logger.warn({ ip, zone, error: error.message }, 'DNSBL check failed, treating as clean');
-		return false;
+		// Resolver availability is not evidence of delisting. Preserve the last
+		// confirmed decision (and fail closed for a never-observed address).
+		logger.warn({ ip, zone, error: error.message }, 'DNSBL check failed; status is unknown');
+		return 'unknown';
+	} finally {
+		if (timeout) clearTimeout(timeout);
 	}
 }
 
@@ -65,7 +76,7 @@ async function checkAllZones(ip: string): Promise<DnsblResult[]> {
 			zone: zone.zone,
 			name: zone.name,
 			severity: zone.severity,
-			listed: await checkDnsbl(ip, zone.zone),
+			status: await checkDnsbl(ip, zone.zone),
 		}))
 	);
 	return results;
@@ -80,8 +91,14 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 
 	logger.info({ ips: uniqueIps }, 'Running DNSBL check');
 
-	for (const ip of uniqueIps) {
-		const results = await checkAllZones(ip);
+	const observations = await Promise.all(
+		uniqueIps.map(async (ip) => {
+			const generation = await nextIpPoolObservationGeneration(redis, ip, 'dnsbl');
+			return { ip, generation, results: await checkAllZones(ip) };
+		})
+	);
+
+	for (const { ip, generation, results } of observations) {
 		const hashKey = `${DNSBL_PREFIX}${ip}`;
 
 		// Update Redis state
@@ -91,25 +108,41 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 		const listedOn: string[] = [];
 
 		for (const result of results) {
-			updates.push(result.name.toLowerCase(), result.listed ? 'listed' : 'clean');
+			updates.push(result.name.toLowerCase(), result.status);
 			updates.push(`${result.name.toLowerCase()}At`, String(Date.now()));
 
-			if (result.listed) {
+			if (result.status === 'listed') {
 				listedOn.push(result.name);
 				if (result.severity === 'critical') hasCritical = true;
 				else hasWarning = true;
 			}
 		}
 
+		const hasUnknown = results.some((result) => result.status === 'unknown');
 		const previousStatus = await redis.hget(hashKey, 'overallStatus');
-		const newStatus = hasCritical ? 'critical' : hasWarning ? 'degraded' : 'clean';
+		const newStatus = hasCritical
+			? 'critical'
+			: hasWarning
+				? 'degraded'
+				: hasUnknown
+					? 'unknown'
+					: 'clean';
 		updates.push('overallStatus', newStatus);
-
-		await redis.hset(hashKey, ...updates);
-		// Reconcile on every observation, not only transitions. The shared pool
-		// gate composes this reason atomically with FCrDNS quarantine.
-		await setIpPoolBlock(redis, ip, 'dnsbl', newStatus === 'critical');
-		if (newStatus === 'critical') await redis.sadd(IP_POOL_BLOCKED, ip);
+		const stateFields: Record<string, string> = {};
+		for (let index = 0; index < updates.length; index += 2) {
+			stateFields[updates[index]!] = updates[index + 1]!;
+		}
+		const transition = await applyIpPoolObservation(redis, {
+			ip,
+			reason: 'dnsbl',
+			generation,
+			decision: newStatus === 'critical' ? 'block' : newStatus === 'unknown' ? 'preserve' : 'clear',
+			stateKey: hashKey,
+			stateFields,
+		});
+		if (!transition.applied) continue;
+		if (transition.becameBlocked) pool.invalidateBindIp(ip);
+		if (transition.wouldBlockWithoutOverride) await redis.sadd(IP_POOL_BLOCKED, ip);
 		else await redis.srem(IP_POOL_BLOCKED, ip);
 
 		// Handle status transitions
@@ -144,7 +177,12 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 				config,
 				redis
 			).catch(() => {});
-		} else if (newStatus === 'clean' && previousStatus !== 'clean' && previousStatus) {
+		} else if (
+			newStatus === 'clean' &&
+			previousStatus !== 'clean' &&
+			previousStatus !== 'unknown' &&
+			previousStatus
+		) {
 			logger.info({ ip }, 'IP delisted — DNSBL block cleared');
 
 			await notifyConvex(
@@ -161,9 +199,9 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 		}
 	}
 
-	// Check if ALL IPs are blocked
-	const activeCount = await redis.scard(IP_POOL_ACTIVE);
-	if (activeCount === 0) {
+	// The pool transition owns the configured-only emergency aggregate; this
+	// module only decides whether the specialized all-blocklisted alert applies.
+	if ((await redis.get('mta:emergency:all_ips_blocked')) === '1') {
 		logger.error('ALL IPs unavailable — emergency state');
 		await redis.set('mta:emergency:all_ips_blocked', '1');
 		const reasonSets = await Promise.all(uniqueIps.map((ip) => getIpPoolBlockReasons(redis, ip)));
@@ -179,23 +217,26 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 				redis
 			).catch(() => {});
 		}
-	} else {
-		await redis.del('mta:emergency:all_ips_blocked');
 	}
 }
 
 /**
  * Initialize IP pools in Redis and start the DNSBL check interval
  */
-export function startDnsblChecker(redis: Redis, config: MtaConfig): NodeJS.Timeout {
-	// Run initial check
-	runDnsblCheck(redis, config).catch((err) => logger.error({ err }, 'Initial DNSBL check failed'));
+export function startDnsblChecker(
+	redis: Redis,
+	config: MtaConfig,
+	isLeader: () => boolean
+): NodeJS.Timeout {
+	const runIfLeader = () => {
+		if (!isLeader()) return;
+		runDnsblCheck(redis, config).catch((err) => logger.error({ err }, 'DNSBL check failed'));
+	};
+	runIfLeader();
 
 	// Schedule periodic checks
 	return setInterval(() => {
-		runDnsblCheck(redis, config).catch((err) =>
-			logger.error({ err }, 'Periodic DNSBL check failed')
-		);
+		runIfLeader();
 	}, CHECK_INTERVAL_MS);
 }
 

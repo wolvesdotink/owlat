@@ -100,9 +100,11 @@ function status(ip: OutboundIp) {
 				>
 					<p>{{ status(ip).detail }}</p>
 					<p v-if="status(ip).remediation" class="mt-1">
-						{{ status(ip).remediation }} Set the PTR value to
-						<code class="font-mono">{{ ip.fcrdns?.ehlo }}</code
-						>, then wait for DNS to update.
+						{{ status(ip).remediation }}
+						<template v-if="ip.blockReasons?.includes('fcrdns')">
+							Set the PTR value to <code class="font-mono">{{ ip.fcrdns?.ehlo }}</code
+							>, then wait for DNS to update.
+						</template>
 					</p>
 				</div>
 			</section>

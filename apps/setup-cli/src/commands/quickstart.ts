@@ -277,7 +277,7 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	// validator confirms every configured IP. The worker is already fail-closed,
 	// so bringing the container up to perform this probe cannot leak a send.
 	const envAfterCompose = await readEnv(envPath);
-	if (envAfterCompose['EMAIL_PROVIDER'] === 'mta') {
+	if (composeProfilesUnion.includes('mta')) {
 		const localMtaUrl = `http://${resolveLocalHost(process.env)}:${envAfterCompose['MTA_HTTP_PORT'] ?? '3100'}`;
 		reporter.step(SetupStep.MtaIdentity, 'Verifying outbound IP identity');
 		try {

@@ -40,6 +40,7 @@ import {
 	type TlsResultType,
 } from './tlsRpt.js';
 import { classifyTlsFailure, stsAttributedResultType } from './tlsFailureClassification.js';
+import { isIpEligibilityLeaseValid, type IpEligibilityLease } from '../scaling/ipPool.js';
 
 /** The discriminated outcome of one delivery attempt to a single MX host. */
 type AttemptOutcome =
@@ -146,8 +147,17 @@ export async function sendToMx(
 	job: EmailJob,
 	config: MtaConfig,
 	redis: Redis,
-	bindIp: string
+	bindIp: string,
+	eligibilityLease?: IpEligibilityLease
 ): Promise<EmailJobResult> {
+	if (eligibilityLease && !(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
+		return {
+			success: false,
+			error: 'Selected outbound IP is no longer eligible',
+			bounceType: 'deferred',
+			smtpCode: 451,
+		};
+	}
 	const recipientDomain = extractDomain(job.to);
 	let mxHosts: string[];
 	let daneDestinations = new Map<string, DaneMxDestination>();
@@ -287,6 +297,19 @@ export async function sendToMx(
 
 		let acquired: Awaited<ReturnType<typeof pool.acquire>>;
 		try {
+			// Fence the discovery interval too: no reusable or fresh SMTP connection
+			// is acquired after the selection generation becomes ineligible.
+			if (eligibilityLease && !(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
+				return {
+					kind: 'smtp',
+					result: {
+						success: false,
+						error: 'Selected outbound IP became ineligible before SMTP acquisition',
+						bounceType: 'deferred',
+						smtpCode: 451,
+					},
+				};
+			}
 			acquired = await pool.acquire(mxHost, bindIp, {
 				port: 25,
 				requireTLS,

@@ -67,4 +67,18 @@ describe('normalizeIpReputationPayload', () => {
 			})
 		).toBeNull();
 	});
+
+	it.each([
+		['verdict', { fcrdns: { verdict: 'healthy' } }],
+		['reason', { fcrdns: { verdict: 'fail', reason: 'dns-ish' } }],
+		['DNSBL status', { dnsbl: 'ready' }],
+		['block reason', { blockReasons: ['reputation-ish'] }],
+	])('rejects an unknown %s instead of presenting it as ready', (_name, fields) => {
+		expect(
+			normalizeIpReputationPayload({
+				date: '2026-07-21',
+				ips: [{ ...legacyIp, ...fields }],
+			})
+		).toBeNull();
+	});
 });

@@ -168,4 +168,23 @@ describe('POST /api/setup/apply — MTA identity gate', () => {
 		expect(pushMock).not.toHaveBeenCalled();
 		expect(writeMock).not.toHaveBeenCalled();
 	});
+
+	it('runs the identity gate when inbox enables MTA but delivery uses an SMTP relay', async () => {
+		body = {
+			flags: { ...getDefaultFlags({ hosted: false }), inbox: true },
+			env: { EMAIL_PROVIDER: 'smtp', SMTP_RELAY_PASSWORD: PLAINTEXT_PASSWORD },
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+		identityPreflightMock.mockResolvedValue({
+			ok: false,
+			message: 'Outbound identity is not ready.',
+			identities: [],
+		});
+
+		const result = await callRoute();
+		expect(result).toEqual({ ok: false, message: 'Outbound identity is not ready.' });
+		expect(identityPreflightMock).toHaveBeenCalledTimes(1);
+		expect(fetch).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
+	});
 });

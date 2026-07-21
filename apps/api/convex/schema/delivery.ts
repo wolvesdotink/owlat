@@ -170,8 +170,15 @@ export const deliveryTables = {
 				deferralRate: v.number(),
 				pool: v.string(),
 				active: v.boolean(),
-				blockReasons: v.optional(v.array(v.string())),
-				dnsbl: v.optional(v.string()),
+				blockReasons: v.optional(v.array(v.union(v.literal('dnsbl'), v.literal('fcrdns')))),
+				dnsbl: v.optional(
+					v.union(
+						v.literal('unknown'),
+						v.literal('clean'),
+						v.literal('degraded'),
+						v.literal('critical')
+					)
+				),
 				fcrdns: v.optional(
 					v.object({
 						ehlo: v.string(),
@@ -180,9 +187,22 @@ export const deliveryTables = {
 						isPtrFqdn: v.boolean(),
 						isForwardConfirmed: v.boolean(),
 						isEhloMatched: v.boolean(),
-						verdict: v.string(),
+						verdict: v.union(
+							v.literal('pass'),
+							v.literal('warn'),
+							v.literal('fail'),
+							v.literal('error')
+						),
 						isGenericPtr: v.boolean(),
-						reason: v.optional(v.string()),
+						reason: v.optional(
+							v.union(
+								v.literal('no-ptr'),
+								v.literal('ptr-not-fqdn'),
+								v.literal('forward-mismatch'),
+								v.literal('ehlo-mismatch'),
+								v.literal('lookup-error')
+							)
+						),
 						checkedAt: v.number(),
 						isOverridden: v.boolean(),
 					})

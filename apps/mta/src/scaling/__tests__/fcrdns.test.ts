@@ -30,6 +30,16 @@ function makeDeps(ptr: Record<string, string[]>, fwd: Record<string, string[]>):
 	};
 }
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (reason: unknown) => void;
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, resolve, reject };
+}
+
 describe('verifyFcrdns', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
@@ -130,6 +140,7 @@ describe('runFcrdnsReadinessCheck', () => {
 
 	it('persists a hard failure and quarantines the IP before selection', async () => {
 		const redis = new Redis();
+		await redis.flushall();
 		await initializePools(redis, config.ipPools);
 		await runFcrdnsReadinessCheck(redis, config, makeDeps({}, {}));
 		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
@@ -142,6 +153,7 @@ describe('runFcrdnsReadinessCheck', () => {
 
 	it('does not let repeated transient lookup errors change the prior eligibility decision', async () => {
 		const redis = new Redis();
+		await redis.flushall();
 		await initializePools(redis, config.ipPools);
 		const passing = makeDeps(
 			{ '1.2.3.4': ['mail.example.com'] },
@@ -165,6 +177,7 @@ describe('runFcrdnsReadinessCheck', () => {
 
 	it('admits an unverified IP only through the explicit lab override', async () => {
 		const redis = new Redis();
+		await redis.flushall();
 		await initializePools(redis, config.ipPools);
 		await runFcrdnsReadinessCheck(
 			redis,
@@ -187,6 +200,91 @@ describe('runFcrdnsReadinessCheck', () => {
 		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
 			verdict: 'error',
 			overridden: true,
+		});
+	});
+
+	it('does not let an older passing lookup clear a newer quarantine', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		const olderReverse = deferred<string[]>();
+		const olderStarted = deferred<void>();
+		const older = runFcrdnsReadinessCheck(redis, config, {
+			reverse: vi.fn(() => {
+				olderStarted.resolve();
+				return olderReverse.promise;
+			}),
+			resolve4: vi.fn(async () => ['1.2.3.4']),
+		});
+		await olderStarted.promise;
+
+		await runFcrdnsReadinessCheck(redis, config, makeDeps({}, {}));
+		olderReverse.resolve(['mail.example.com']);
+		await older;
+
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
+			verdict: 'fail',
+			reason: 'no-ptr',
+		});
+	});
+
+	it('does not let an older failure overwrite a newer passing observation', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		const olderReverse = deferred<string[]>();
+		const olderStarted = deferred<void>();
+		const older = runFcrdnsReadinessCheck(redis, config, {
+			reverse: vi.fn(() => {
+				olderStarted.resolve();
+				return olderReverse.promise;
+			}),
+			resolve4: vi.fn(),
+		});
+		await olderStarted.promise;
+
+		await runFcrdnsReadinessCheck(
+			redis,
+			config,
+			makeDeps({ '1.2.3.4': ['mail.example.com'] }, { 'mail.example.com': ['1.2.3.4'] })
+		);
+		olderReverse.reject(Object.assign(new Error('missing'), { code: 'ENOTFOUND' }));
+		await older;
+
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(1);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({ verdict: 'pass' });
+	});
+
+	it('fails closed when the newest observation is a transient error', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		const olderReverse = deferred<string[]>();
+		const olderStarted = deferred<void>();
+		const older = runFcrdnsReadinessCheck(redis, config, {
+			reverse: vi.fn(() => {
+				olderStarted.resolve();
+				return olderReverse.promise;
+			}),
+			resolve4: vi.fn(),
+		});
+		await olderStarted.promise;
+
+		await runFcrdnsReadinessCheck(redis, config, {
+			reverse: vi.fn(async () => {
+				throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
+			}),
+			resolve4: vi.fn(),
+		});
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
+		olderReverse.reject(Object.assign(new Error('missing'), { code: 'ENOTFOUND' }));
+		await older;
+
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
+			verdict: 'error',
+			reason: 'lookup-error',
 		});
 	});
 });
