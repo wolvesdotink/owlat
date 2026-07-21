@@ -13,6 +13,7 @@ import { getDnsblStatus } from '../intelligence/dnsbl.js';
 import { getWarmingState } from '../intelligence/warming.js';
 import { registry } from '../monitoring/collector.js';
 import { getSmtpReachability } from './smtpReachability.js';
+import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
 
 const startTime = Date.now();
 
@@ -43,10 +44,12 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 			pools.map(async (pool) => {
 				const dnsbl = await getDnsblStatus(redis, pool.ip);
 				const warmingState = await getWarmingState(redis, pool.ip);
+				const fcrdns = await getFcrdnsReadiness(redis, pool.ip);
 
 				return {
 					...pool,
 					dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
+					fcrdns,
 					warming: warmingState
 						? {
 								phase: warmingState.phase,
@@ -77,8 +80,18 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 		const smtpProbe = await getSmtpReachability(sendingIps);
 
 		// Determine overall status
+		const identityNotReady = ipStatus.some(
+			(ip) =>
+				!ip.fcrdns ||
+				(ip.fcrdns.verdict !== 'pass' && ip.fcrdns.verdict !== 'warn' && !ip.fcrdns.overridden)
+		);
 		const degraded =
-			!redisOk || allIpsBlocked || !workerStatus.alive || !dnsOk || smtpProbe.status !== 'ok';
+			!redisOk ||
+			allIpsBlocked ||
+			identityNotReady ||
+			!workerStatus.alive ||
+			!dnsOk ||
+			smtpProbe.status !== 'ok';
 		const status = degraded ? 'degraded' : 'ok';
 
 		return c.json({

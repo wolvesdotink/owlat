@@ -26,6 +26,11 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 import { readEnv, type EnvMap } from '../lib/env';
+import {
+	fcrdnsReasonMessage,
+	reverseDnsGuidance,
+	type FcrdnsFailureReason,
+} from '@owlat/shared/fcrdns';
 
 interface DoctorOptions {
 	owlatDir: string;
@@ -40,6 +45,51 @@ export interface SendPathFinding {
 export interface MtaHealthFinding {
 	ok: boolean;
 	message: string;
+}
+
+/** Interpret the exact runtime FCrDNS verdict exposed by the MTA health API. */
+export function evaluateMtaIdentityHealth(value: unknown): MtaHealthFinding[] {
+	if (!isRecord(value) || !Array.isArray(value['ips'])) {
+		return [{ ok: false, message: 'MTA returned no outbound-IP identity status' }];
+	}
+	if (value['ips'].length === 0) {
+		return [{ ok: false, message: 'MTA has no configured outbound IPs' }];
+	}
+	const findings: MtaHealthFinding[] = [];
+	for (const item of value['ips']) {
+		if (!isRecord(item) || typeof item['ip'] !== 'string' || !isRecord(item['fcrdns'])) {
+			findings.push({ ok: false, message: 'MTA returned an invalid outbound-IP identity result' });
+			continue;
+		}
+		const identity = item['fcrdns'];
+		const ehlo = typeof identity['ehlo'] === 'string' ? identity['ehlo'] : '(missing EHLO)';
+		const ptrNames = Array.isArray(identity['ptrNames'])
+			? identity['ptrNames'].filter((name): name is string => typeof name === 'string')
+			: [];
+		const overridden = identity['overridden'] === true;
+		const ready = identity['verdict'] === 'pass' || identity['verdict'] === 'warn' || overridden;
+		if (ready) {
+			const warning = identity['verdict'] === 'warn' ? ' (generic PTR — reputationally poor)' : '';
+			const bypass = overridden ? ' (lab override enabled)' : '';
+			findings.push({
+				ok: true,
+				message: `FCrDNS ready for ${item['ip']}: PTR ${ptrNames.join(', ') || '(none)'} matches EHLO ${ehlo}${warning}${bypass}`,
+			});
+			continue;
+		}
+		const reason =
+			typeof identity['reason'] === 'string'
+				? (identity['reason'] as FcrdnsFailureReason)
+				: undefined;
+		const guidance = reverseDnsGuidance(ptrNames);
+		findings.push({
+			ok: false,
+			message:
+				`FCrDNS blocked for ${item['ip']}: ${fcrdnsReasonMessage(reason)} ` +
+				`Set its PTR exactly to ${ehlo}. ${guidance.instruction}`,
+		});
+	}
+	return findings;
 }
 
 /**
@@ -95,6 +145,7 @@ export function evaluateMtaHealth(value: unknown): MtaHealthFinding[] {
 			message: 'MTA emergency circuit breaker is clear',
 		},
 	];
+	findings.push(...evaluateMtaIdentityHealth(value));
 
 	if (smtp['ips'].length === 0) {
 		findings.push({ ok: false, message: 'MTA has no sending IPs to probe' });
@@ -114,19 +165,36 @@ export function evaluateMtaHealth(value: unknown): MtaHealthFinding[] {
 	return findings;
 }
 
-/** Single-shot probe of the MTA `/health` endpoint. */
-async function probeMtaHealth(baseUrl: string): Promise<MtaHealthFinding[]> {
+async function fetchMtaHealth(baseUrl: string): Promise<unknown> {
 	const url = `${baseUrl.replace(/\/+$/, '')}/health`;
 	const ctrl = new AbortController();
 	const timer = setTimeout(() => ctrl.abort(), 3000);
 	try {
 		const resp = await fetch(url, { signal: ctrl.signal });
-		if (!resp.ok) return [{ ok: false, message: `${url} returned HTTP ${resp.status}` }];
-		return evaluateMtaHealth(await resp.json());
+		if (!resp.ok) throw new Error(`${url} returned HTTP ${resp.status}`);
+		return await resp.json();
 	} catch (err) {
-		return [{ ok: false, message: `${url} is unreachable (${(err as Error).message})` }];
+		throw new Error(`${url} is unreachable (${(err as Error).message})`);
 	} finally {
 		clearTimeout(timer);
+	}
+}
+
+/** Single-shot full infrastructure probe of the MTA `/health` endpoint. */
+export async function probeMtaHealth(baseUrl: string): Promise<MtaHealthFinding[]> {
+	try {
+		return evaluateMtaHealth(await fetchMtaHealth(baseUrl));
+	} catch (err) {
+		return [{ ok: false, message: (err as Error).message }];
+	}
+}
+
+/** Setup-time identity-only probe; worker traffic is not required yet. */
+export async function probeMtaIdentityHealth(baseUrl: string): Promise<MtaHealthFinding[]> {
+	try {
+		return evaluateMtaIdentityHealth(await fetchMtaHealth(baseUrl));
+	} catch (err) {
+		return [{ ok: false, message: (err as Error).message }];
 	}
 }
 

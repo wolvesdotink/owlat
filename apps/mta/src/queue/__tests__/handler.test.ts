@@ -34,7 +34,8 @@ vi.mock('../../intelligence/contentScreening.js', () => ({
 	screenContent: vi.fn().mockResolvedValue({ allowed: true }),
 }));
 vi.mock('../../scaling/ipPool.js', () => ({
-	selectIp: vi.fn().mockResolvedValue('10.0.0.1'),
+	selectIpWithLease: vi.fn().mockResolvedValue({ ip: '10.0.0.1', eligibilityGeneration: 1 }),
+	isIpEligibilityLeaseValid: vi.fn().mockResolvedValue(true),
 }));
 vi.mock('../../scaling/poolRules.js', () => ({
 	resolvePool: vi.fn().mockResolvedValue({ pool: 'transactional' }),
@@ -48,6 +49,7 @@ vi.mock('../../webhooks/convexNotifier.js', () => ({
 	notifyConvex: vi.fn().mockResolvedValue(true),
 }));
 vi.mock('../../monitoring/collector.js', () => ({
+	registry: { registerMetric: vi.fn() },
 	emailsSentTotal: { inc: vi.fn() },
 	record: vi.fn().mockResolvedValue(undefined),
 }));
@@ -213,7 +215,11 @@ describe('handleEmailJob', () => {
 		vi.mocked(cs.screenContent).mockResolvedValue({ allowed: true });
 
 		const ip = await import('../../scaling/ipPool.js');
-		vi.mocked(ip.selectIp).mockResolvedValue('10.0.0.1');
+		vi.mocked(ip.selectIpWithLease).mockResolvedValue({
+			ip: '10.0.0.1',
+			eligibilityGeneration: 1,
+		});
+		vi.mocked(ip.isIpEligibilityLeaseValid).mockResolvedValue(true);
 
 		const pr = await import('../../scaling/poolRules.js');
 		vi.mocked(pr.resolvePool).mockResolvedValue({ pool: 'transactional' });
@@ -271,6 +277,18 @@ describe('handleEmailJob', () => {
 		);
 		// A delivered job is never re-enqueued.
 		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('defers without acquiring SMTP when the selected IP is quarantined after selection', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { isIpEligibilityLeaseValid } = await import('../../scaling/ipPool.js');
+		vi.mocked(isIpEligibilityLeaseValid).mockResolvedValueOnce(false);
+
+		await run(createJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).toHaveBeenCalledOnce();
+		expect(queue.add).toHaveBeenCalledWith(expect.objectContaining({ delay: expect.any(Number) }));
 	});
 
 	it('rejects when content screening fails', async () => {
@@ -416,8 +434,8 @@ describe('handleEmailJob', () => {
 	});
 
 	it('PR-04 (b): no IPs available re-enqueues (60000ms), no throw', async () => {
-		const { selectIp } = await import('../../scaling/ipPool.js');
-		vi.mocked(selectIp).mockResolvedValue(null);
+		const { selectIpWithLease } = await import('../../scaling/ipPool.js');
+		vi.mocked(selectIpWithLease).mockResolvedValue(null);
 
 		await expect(run(createJob())).resolves.toBeUndefined();
 
