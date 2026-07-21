@@ -67,6 +67,12 @@ describe('destination-provider profile routes', () => {
 			provider: 'gmail',
 			profile: DESTINATION_PROVIDER_PROFILES['gmail'],
 		});
+
+		const listed = await request(app, 'GET', '/');
+		expect(listed.status).toBe(200);
+		expect(await listed.json()).toEqual({
+			profiles: { gmail: DESTINATION_PROVIDER_PROFILES['gmail'] },
+		});
 	});
 
 	it.each([

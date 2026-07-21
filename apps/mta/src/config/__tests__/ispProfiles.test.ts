@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import { DESTINATION_PROVIDER_PROFILES } from '../../config.js';
-import { getProfile, listProfiles } from '../ispProfiles.js';
+import { deleteProfile, getProfile, listProfiles, setProfile } from '../ispProfiles.js';
 import { logger } from '../../monitoring/logger.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -69,5 +69,14 @@ describe('destination-provider profile persistence', () => {
 			...Object.entries(fallback).flatMap(([field, value]) => [field, String(value)])
 		);
 		expect(await getProfile(redis, 'other')).toEqual(fallback);
+	});
+
+	it('keeps a deleted Gmail override listed with every checked-in default', async () => {
+		await setProfile(redis, 'gmail', { defaultRate: 120, maxConnections: 8 });
+		expect(await deleteProfile(redis, 'gmail')).toBe(true);
+
+		expect(await listProfiles(redis)).toEqual({
+			gmail: DESTINATION_PROVIDER_PROFILES['gmail'],
+		});
 	});
 });
