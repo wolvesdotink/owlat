@@ -7,8 +7,8 @@
  */
 
 import type Redis from 'ioredis';
-import type { DestinationProviderKey, EmailJob, IpPoolType } from '../types.js';
-import type { DestinationIdentity } from '../smtp/destinationProvider.js';
+import type { EmailJob, IpPoolType } from '../types.js';
+import type { DestinationSnapshot } from '../smtp/destinationProvider.js';
 import type { MtaConfig } from '../config.js';
 
 /**
@@ -18,9 +18,7 @@ import type { MtaConfig } from '../config.js';
 export interface BasePhaseCtx {
 	readonly job: EmailJob;
 	readonly domain: string;
-	readonly providerKey: DestinationProviderKey;
-	readonly throttleKey: string;
-	readonly destination: DestinationIdentity;
+	readonly destination: DestinationSnapshot;
 	readonly fromDomain: string | undefined;
 }
 

@@ -58,7 +58,14 @@ vi.mock('../connectionPool.js', () => ({
 	},
 }));
 vi.mock('../mxResolver.js', () => ({
-	getMxHostnames: vi.fn().mockResolvedValue(['mx1.example.com', 'mx2.example.com']),
+	resolveMxDestination: vi.fn().mockResolvedValue({
+		status: 'deliverable',
+		source: 'mx',
+		hosts: [
+			{ exchange: 'mx1.example.com', priority: 10 },
+			{ exchange: 'mx2.example.com', priority: 20 },
+		],
+	}),
 }));
 vi.mock('../daneMxResolver.js', () => ({
 	resolveDaneMxDestinations: vi.fn(),
@@ -98,7 +105,7 @@ import { SmtpError, type SmtpErrorInit, type SmtpConnection } from '@owlat/smtp-
 import { sendToMx } from '../sender.js';
 import { pool } from '../connectionPool.js';
 import { getStsTlsOptions } from '../mtaSts.js';
-import { getMxHostnames } from '../mxResolver.js';
+import { resolveMxDestination } from '../mxResolver.js';
 import { generateReport } from '../tlsRpt.js';
 import { lookupTlsaRecords } from '../daneResolver.js';
 import { resolveDaneMxDestinations } from '../daneMxResolver.js';
@@ -198,7 +205,14 @@ describe('sendToMx', () => {
 		await redis.flushall();
 		config = createConfig();
 
-		vi.mocked(getMxHostnames).mockResolvedValue(['mx1.example.com', 'mx2.example.com']);
+		vi.mocked(resolveMxDestination).mockResolvedValue({
+			status: 'deliverable',
+			source: 'mx',
+			hosts: [
+				{ exchange: 'mx1.example.com', priority: 10 },
+				{ exchange: 'mx2.example.com', priority: 20 },
+			],
+		});
 		vi.mocked(resolveDaneMxDestinations).mockResolvedValue({
 			status: 'destinations',
 			destinations: [
@@ -271,6 +285,11 @@ describe('sendToMx', () => {
 	function acquireOpts(call = 0): {
 		name?: string;
 		requireTLS?: boolean;
+		connectionLimits?: {
+			scope: string;
+			maxConnections: number;
+			maxDeliveriesPerConnection: number;
+		};
 		tls?: {
 			rejectUnauthorized?: boolean;
 			minVersion?: string;
@@ -283,13 +302,97 @@ describe('sendToMx', () => {
 	}
 
 	it('returns hard bounce when no MX records found', async () => {
-		vi.mocked(getMxHostnames).mockResolvedValue([]);
+		vi.mocked(resolveMxDestination).mockResolvedValue({
+			status: 'domain-not-found',
+			reason: 'Domain does not exist',
+		});
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
 
 		expect(result.success).toBe(false);
 		expect(result.bounceType).toBe('hard');
 		expect(result.smtpCode).toBe(550);
+	});
+
+	it('defers on a temporary MX resolver failure without opening SMTP', async () => {
+		vi.mocked(resolveMxDestination).mockResolvedValue({
+			status: 'temporary-failure',
+			reason: 'Temporary MX lookup failure (SERVFAIL)',
+		});
+
+		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+		expect(result).toMatchObject({ success: false, bounceType: 'deferred', smtpCode: 451 });
+		expect(acquireMock).not.toHaveBeenCalled();
+	});
+
+	it('returns the Null MX permanent failure without opening SMTP', async () => {
+		vi.mocked(resolveMxDestination).mockResolvedValue({ status: 'null-mx' });
+
+		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');
+
+		expect(result).toMatchObject({
+			success: false,
+			bounceType: 'hard',
+			smtpCode: 556,
+			enhancedCode: '5.1.10',
+		});
+		expect(acquireMock).not.toHaveBeenCalled();
+	});
+
+	it('raises TLS and uses the Gmail scope if a legacy unknown snapshot contains Google MX', async () => {
+		const result = await sendToMx(
+			createJob({ to: 'user@workspace.example' }),
+			config,
+			redis,
+			'10.0.0.1',
+			undefined,
+			{
+				recipientDomain: 'workspace.example',
+				providerKey: 'other',
+				throttleKey: 'workspace.example',
+				mx: {
+					status: 'deliverable',
+					source: 'mx',
+					hosts: [{ exchange: 'aspmx.l.google.com', priority: 10 }],
+				},
+				daneDiscoveryAuthenticated: true,
+			}
+		);
+
+		expect(result.success).toBe(true);
+		expect(acquireOpts()).toMatchObject({
+			requireTLS: true,
+			connectionLimits: { scope: 'provider:gmail' },
+		});
+		expect(resolveMxDestination).not.toHaveBeenCalled();
+	});
+
+	it('does not poison the Gmail scope if a legacy Gmail snapshot contains an unrelated MX', async () => {
+		const result = await sendToMx(
+			createJob({ to: 'user@workspace.example' }),
+			config,
+			redis,
+			'10.0.0.1',
+			undefined,
+			{
+				recipientDomain: 'workspace.example',
+				providerKey: 'gmail',
+				throttleKey: 'gmail',
+				mx: {
+					status: 'deliverable',
+					source: 'mx',
+					hosts: [{ exchange: 'mx.partner.example', priority: 10 }],
+				},
+				daneDiscoveryAuthenticated: true,
+			}
+		);
+
+		expect(result.success).toBe(true);
+		expect(acquireOpts()).toMatchObject({
+			requireTLS: true,
+			connectionLimits: { scope: 'mx:mx.partner.example' },
+		});
 	});
 
 	it('does not acquire an SMTP connection after its source-IP eligibility lease is revoked', async () => {
@@ -1139,6 +1242,30 @@ describe('sendToMx', () => {
 			expect(acquireOpts(0).tls ?? {}).not.toHaveProperty('verifyPeerCertificate');
 		});
 
+		it('applies provider policy to the MX hosts discovered through DANE', async () => {
+			vi.mocked(resolveDaneMxDestinations).mockResolvedValue({
+				status: 'destinations',
+				destinations: [
+					{
+						mxHostname: 'aspmx.l.google.com',
+						preference: 10,
+						mxSecurity: 'secure',
+						addressSecurity: 'secure',
+						addresses: ['192.0.2.1'],
+					},
+				],
+			});
+			vi.mocked(lookupTlsaRecords).mockResolvedValue({ status: 'no-tlsa' });
+
+			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
+
+			expect(result.success).toBe(true);
+			expect(acquireOpts()).toMatchObject({
+				requireTLS: true,
+				connectionLimits: { scope: 'provider:gmail' },
+			});
+		});
+
 		it('a TLSA lookup FAILURE (SERVFAIL/outage) defers — never downgrades to non-DANE', async () => {
 			vi.mocked(lookupTlsaRecords).mockResolvedValue({
 				status: 'lookup-failed',
@@ -1160,7 +1287,7 @@ describe('sendToMx', () => {
 
 			const result = await sendToMx(createJob(), daneConfig(), redis, '10.0.0.1');
 
-			expect(result).toMatchObject({ success: false, bounceType: 'soft' });
+			expect(result).toMatchObject({ success: false, bounceType: 'deferred' });
 			expect(result.error).toContain('DANE MX discovery failed');
 			expect(vi.mocked(lookupTlsaRecords)).not.toHaveBeenCalled();
 			expect(acquireMock).not.toHaveBeenCalled();

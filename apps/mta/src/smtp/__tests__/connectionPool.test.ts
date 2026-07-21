@@ -228,42 +228,34 @@ describe('SmtpConnectionPool', () => {
 	});
 });
 
-/** Minimal in-memory ioredis stand-in for the global-counter coordination. */
+/** Minimal in-memory stand-in for the sorted-set lease scripts. */
 function makeRedisMock() {
-	const store = new Map<string, number>();
+	const store = new Map<string, Map<string, number>>();
 	const mock = {
-		incr: vi.fn(async (k: string) => {
-			const v = (store.get(k) ?? 0) + 1;
-			store.set(k, v);
-			return v;
-		}),
-		decr: vi.fn(async (k: string) => {
-			const v = (store.get(k) ?? 0) - 1;
-			store.set(k, v);
-			return v;
-		}),
-		expire: vi.fn(async () => 1),
-		get: vi.fn(async (k: string) => (store.has(k) ? String(store.get(k)) : null)),
-		pipeline: vi.fn(() => {
-			const ops: Array<['incr' | 'decr', string]> = [];
-			const chain = {
-				incr: (k: string) => {
-					ops.push(['incr', k]);
-					return chain;
-				},
-				decr: (k: string) => {
-					ops.push(['decr', k]);
-					return chain;
-				},
-				expire: () => chain,
-				exec: async () => {
-					for (const [op, k] of ops) {
-						store.set(k, (store.get(k) ?? 0) + (op === 'incr' ? 1 : -1));
-					}
-					return [];
-				},
-			};
-			return chain;
+		eval: vi.fn(async (script: string, _keyCount: number, key: string, ...args: string[]) => {
+			const leases = store.get(key) ?? new Map<string, number>();
+			store.set(key, leases);
+
+			if (script.includes('local maximum')) {
+				const [nowRaw, expiresAtRaw, maximumRaw, leaseId] = args;
+				const now = Number(nowRaw);
+				for (const [id, expiresAt] of leases) {
+					if (expiresAt <= now) leases.delete(id);
+				}
+				if (leases.size >= Number(maximumRaw)) return 0;
+				leases.set(leaseId!, Number(expiresAtRaw));
+				return 1;
+			}
+
+			if (script.includes('local removed')) {
+				return leases.delete(args[0]!) ? 1 : 0;
+			}
+
+			const now = Number(args[0]);
+			for (const [id, expiresAt] of leases) {
+				if (expiresAt <= now) leases.delete(id);
+			}
+			return leases.size;
 		}),
 		_store: store,
 	};
@@ -273,7 +265,7 @@ function makeRedisMock() {
 describe('SmtpConnectionPool — distributed coordination', () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it('enforces the global per-host cap atomically and rolls back over-cap reservations', async () => {
+	it('enforces the global per-host cap atomically without creating rejected leases', async () => {
 		const redis = makeRedisMock();
 		const pool = new SmtpConnectionPool({
 			maxPerHost: 100,
@@ -377,7 +369,7 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(0);
 	});
 
-	it('rolls back the global INCR exactly once on an over-cap reservation (count stays at cap)', async () => {
+	it('leaves the lease set unchanged after repeated over-cap reservations', async () => {
 		const redis = makeRedisMock();
 		const pool = new SmtpConnectionPool({
 			maxPerHost: 100,

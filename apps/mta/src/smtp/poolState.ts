@@ -2,6 +2,7 @@
 
 import type { SmtpConnectOptions, SmtpConnection } from '@owlat/smtp-client';
 import type { PoolConfig } from './poolLimits.js';
+import type { GlobalConnectionLease } from './poolGlobalCap.js';
 
 export const DEFAULT_POOL_CONFIG: PoolConfig = {
 	maxPerHost: 3,
@@ -22,6 +23,7 @@ export interface PoolEntry {
 	baseKey: string;
 	config: SmtpConnectOptions;
 	connectionScope: string;
+	globalLease: GlobalConnectionLease;
 	maxDeliveriesPerConnection: number;
 	lastUsedAt: number;
 	inFlight: number;

@@ -4,10 +4,16 @@ import type { Queue, ReservedJob } from 'groupmq';
 
 vi.mock('../../smtp/sender.js', () => ({ sendToMx: vi.fn() }));
 vi.mock('../../smtp/destinationProvider.js', () => ({
-	resolveDestinationIdentity: vi.fn(async (_redis: unknown, domain: string) => ({
+	resolveDestinationSnapshot: vi.fn(async (_redis: unknown, domain: string) => ({
 		recipientDomain: domain,
 		providerKey: 'other',
 		throttleKey: domain,
+		mx: {
+			status: 'deliverable',
+			source: 'mx',
+			hosts: [{ exchange: `mx.${domain}`, priority: 0 }],
+		},
+		daneDiscoveryAuthenticated: true,
 	})),
 }));
 vi.mock('../../intelligence/circuitBreaker.js', () => ({
@@ -301,6 +307,7 @@ describe('handleEmailJob', () => {
 	it('rejects when content screening fails', async () => {
 		const { screenContent } = await import('../../intelligence/contentScreening.js');
 		const { sendToMx } = await import('../../smtp/sender.js');
+		const { logDeliveryEvent } = await import('../../monitoring/deliveryLogger.js');
 
 		vi.mocked(screenContent).mockResolvedValue({ allowed: false, reason: 'empty_body' });
 
@@ -308,11 +315,17 @@ describe('handleEmailJob', () => {
 
 		expect(sendToMx).not.toHaveBeenCalled();
 		expect(queue.add).not.toHaveBeenCalled();
+		expect(logDeliveryEvent).toHaveBeenCalledWith(
+			redis,
+			expect.objectContaining({ status: 'screened', provider: 'other' }),
+			config
+		);
 	});
 
 	it('skips suppressed recipients', async () => {
 		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
 		const { sendToMx } = await import('../../smtp/sender.js');
+		const { logDeliveryEvent } = await import('../../monitoring/deliveryLogger.js');
 
 		vi.mocked(isSuppressed).mockResolvedValue(true);
 
@@ -320,6 +333,11 @@ describe('handleEmailJob', () => {
 
 		expect(sendToMx).not.toHaveBeenCalled();
 		expect(queue.add).not.toHaveBeenCalled();
+		expect(logDeliveryEvent).toHaveBeenCalledWith(
+			redis,
+			expect.objectContaining({ status: 'suppressed', provider: 'other' }),
+			config
+		);
 	});
 
 	it('handles hard bounce — suppresses recipient and notifies Convex', async () => {
@@ -490,7 +508,11 @@ describe('handleEmailJob', () => {
 		// Delivery log records status 'expired'.
 		expect(logDeliveryEvent).toHaveBeenCalledWith(
 			redis,
-			expect.objectContaining({ status: 'expired', messageId: 'msg-001' }),
+			expect.objectContaining({
+				status: 'expired',
+				messageId: 'msg-001',
+				provider: 'other',
+			}),
 			config
 		);
 	});
@@ -529,7 +551,7 @@ describe('handleEmailJob', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 		expect(logDeliveryEvent).toHaveBeenCalledWith(
 			redis,
-			expect.objectContaining({ status: 'expired' }),
+			expect.objectContaining({ status: 'expired', provider: 'other' }),
 			config
 		);
 	});
@@ -554,7 +576,7 @@ describe('handleEmailJob', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 		expect(logDeliveryEvent).toHaveBeenCalledWith(
 			redis,
-			expect.objectContaining({ status: 'expired' }),
+			expect.objectContaining({ status: 'expired', provider: 'other' }),
 			config
 		);
 	});

@@ -13,6 +13,8 @@
  * - Authentication required: defer with longer delay
  */
 
+import type { DestinationProviderKey } from '../types.js';
+
 export type SmtpFailureCategory =
 	| 'greylisted' // Temporary — try again in a few minutes
 	| 'rate_limited' // Too many connections/messages — back off
@@ -42,59 +44,69 @@ export interface SmtpClassification {
 	annotation?: string;
 }
 
-const PROVIDER_FEEDBACK = [
+interface ProviderFeedbackSignature {
+	category: SmtpFailureCategory;
+	provider: DestinationProviderKey;
+	enhancedCode?: string;
+	responsePattern: RegExp;
+	delayMs: number;
+	annotation: string;
+}
+
+const PROVIDER_FEEDBACK: readonly ProviderFeedbackSignature[] = [
 	{
+		provider: 'gmail',
 		category: 'gmail_rate_limited',
-		matches: (text: string, enhancedCode?: string) =>
-			enhancedCode === '4.7.28' || /(?:^|\s)4\.7\.28(?:\s|$)/.test(text),
+		enhancedCode: '4.7.28',
+		responsePattern: /(?:^|\s)4\.7\.28(?:\s|$)/,
 		delayMs: 30 * 60_000,
 		annotation:
 			'Gmail is limiting delivery volume; the shared Gmail throttle bucket was tightened.',
 	},
 	{
+		provider: 'gmail',
 		category: 'gmail_ip_identity',
-		matches: (text: string, enhancedCode?: string) =>
-			enhancedCode === '4.7.23' || /(?:^|\s)4\.7\.23(?:\s|$)/.test(text),
+		enhancedCode: '4.7.23',
+		responsePattern: /(?:^|\s)4\.7\.23(?:\s|$)/,
 		delayMs: 60 * 60_000,
 		annotation:
 			'Gmail rejected the sending IP identity; verify PTR, forward DNS, and EHLO alignment.',
 	},
 	{
+		provider: 'gmail',
 		category: 'gmail_tls_required',
-		matches: (text: string, enhancedCode?: string) =>
-			enhancedCode === '4.7.29' || /(?:^|\s)4\.7\.29(?:\s|$)/.test(text),
+		enhancedCode: '4.7.29',
+		responsePattern: /(?:^|\s)4\.7\.29(?:\s|$)/,
 		delayMs: 45 * 60_000,
 		annotation:
 			'Gmail reported an unencrypted delivery attempt; its provider profile requires TLS.',
 	},
 	{
+		provider: 'yahoo',
 		category: 'yahoo_ts03',
-		matches: (text: string) => /(?:^|[\s[(])ts03(?:[\s\])]|$)/i.test(text),
+		responsePattern: /(?:^|[\s[(])ts03(?:[\s\])]|$)/i,
 		delayMs: 30 * 60_000,
 		annotation:
 			'Yahoo temporarily deferred this sender (TS03); the Yahoo throttle bucket was tightened.',
 	},
 	{
+		provider: 'yahoo',
 		category: 'yahoo_tss04',
-		matches: (text: string) => /(?:^|[\s[(])tss04(?:[\s\])]|$)/i.test(text),
+		responsePattern: /(?:^|[\s[(])tss04(?:[\s\])]|$)/i,
 		delayMs: 60 * 60_000,
 		annotation:
 			'Yahoo imposed an extended sender deferral (TSS04); delivery will resume cautiously.',
 	},
 	{
+		provider: 'microsoft',
 		category: 'microsoft_resource_throttle',
-		matches: (text: string, enhancedCode?: string) =>
-			enhancedCode === '4.3.2' || /(?:^|\s)4\.3\.2(?:\s|$)/.test(text),
+		enhancedCode: '4.3.2',
+		responsePattern: /(?:^|\s)4\.3\.2(?:\s|$)/,
 		delayMs: 20 * 60_000,
 		annotation:
 			'Microsoft reported temporary system throttling (4.3.2); the Microsoft bucket was slowed.',
 	},
-] as const satisfies ReadonlyArray<{
-	category: SmtpFailureCategory;
-	matches: (text: string, enhancedCode?: string) => boolean;
-	delayMs: number;
-	annotation: string;
-}>;
+];
 
 // Greylisting patterns — ISPs asking us to try again later
 const GREYLIST_PATTERNS =
@@ -130,12 +142,19 @@ const MAILBOX_FULL_PATTERNS =
 export function classifySmtpResponse(
 	smtpCode: number | undefined,
 	response: string,
-	enhancedCode?: string
+	enhancedCode?: string,
+	providerKey: DestinationProviderKey = 'other'
 ): SmtpClassification {
 	const text = response.toLowerCase();
-	const providerFeedback = PROVIDER_FEEDBACK.find((signature) =>
-		signature.matches(text, enhancedCode)
+	const providerSignatures = PROVIDER_FEEDBACK.filter(
+		(signature) => signature.provider === providerKey
 	);
+	// Prefer the separately parsed enhanced status code over tokens embedded in
+	// free-form response text when a provider returns conflicting signals.
+	const providerFeedback =
+		providerSignatures.find(
+			(signature) => signature.enhancedCode !== undefined && signature.enhancedCode === enhancedCode
+		) ?? providerSignatures.find((signature) => signature.responsePattern.test(text));
 	if (providerFeedback) {
 		return {
 			category: providerFeedback.category,

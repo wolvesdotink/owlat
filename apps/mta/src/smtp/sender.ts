@@ -19,8 +19,7 @@ import {
 import type { EmailJob, EmailJobResult } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
-import { getMxHostnames } from './mxResolver.js';
-import { resolveDaneMxDestinations, type DaneMxDestination } from './daneMxResolver.js';
+import type { DaneMxDestination } from './daneMxResolver.js';
 import { getDkimOptions, type DkimSigningKey } from './dkim.js';
 import { getReturnPathHost } from './dkimStore.js';
 import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
@@ -41,8 +40,13 @@ import {
 } from './tlsRpt.js';
 import { classifyTlsFailure, stsAttributedResultType } from './tlsFailureClassification.js';
 import { isIpEligibilityLeaseValid, type IpEligibilityLease } from '../scaling/ipPool.js';
-import { providerFromMxHostnames, type DestinationIdentity } from './destinationProvider.js';
+import {
+	providerFromMxHostnames,
+	resolveDestinationSnapshot,
+	type DestinationSnapshot,
+} from './destinationProvider.js';
 import { getProfile } from '../config/ispProfiles.js';
+import type { DestinationProviderProfile } from '../types.js';
 
 /** The discriminated outcome of one delivery attempt to a single MX host. */
 type AttemptOutcome =
@@ -55,6 +59,32 @@ type AttemptOutcome =
 	| { kind: 'tls-failure'; resultType: TlsResultType; response: string }
 	| { kind: 'connection'; response: string }
 	| { kind: 'over-cap' };
+
+const TLS_MODE_RANK: Record<DestinationProviderProfile['tlsMode'], number> = {
+	opportunistic: 0,
+	require: 1,
+	'require-verified': 2,
+};
+
+type DeliveryProviderPolicy = Pick<
+	DestinationProviderProfile,
+	'tlsMode' | 'maxConnections' | 'maxDeliveriesPerConnection'
+>;
+
+function strictestDeliveryProviderPolicy(
+	first: DestinationProviderProfile,
+	second: DestinationProviderProfile
+): DeliveryProviderPolicy {
+	return {
+		tlsMode:
+			TLS_MODE_RANK[second.tlsMode] > TLS_MODE_RANK[first.tlsMode] ? second.tlsMode : first.tlsMode,
+		maxConnections: Math.min(first.maxConnections, second.maxConnections),
+		maxDeliveriesPerConnection: Math.min(
+			first.maxDeliveriesPerConnection,
+			second.maxDeliveriesPerConnection
+		),
+	};
+}
 
 /**
  * Build the exact wire bytes for a job ONCE: compose the structured message (or
@@ -151,7 +181,7 @@ export async function sendToMx(
 	redis: Redis,
 	bindIp: string,
 	eligibilityLease?: IpEligibilityLease,
-	resolvedDestination?: DestinationIdentity
+	resolvedDestination?: DestinationSnapshot
 ): Promise<EmailJobResult> {
 	if (eligibilityLease && !(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
 		return {
@@ -162,56 +192,55 @@ export async function sendToMx(
 		};
 	}
 	const recipientDomain = extractDomain(job.to);
-	let mxHosts: string[];
-	let daneDestinations = new Map<string, DaneMxDestination>();
-	let daneDiscoveryAuthenticated = true;
-	if ((config.daneMode ?? 'off') !== 'off' && config.daneResolverUrl) {
-		const discovery = await resolveDaneMxDestinations(
-			redis,
-			recipientDomain,
-			config.daneResolverUrl
-		);
-		if (discovery.status === 'lookup-failed') {
-			if (config.daneMode === 'enforce') {
-				return {
-					success: false,
-					error: `DANE MX discovery failed for ${recipientDomain}: ${discovery.reason}`,
-					bounceType: 'soft',
-				};
-			}
-			logger.warn(
-				{ recipientDomain, reason: discovery.reason },
-				'DANE report-only MX discovery failed; using normal MX resolution'
-			);
-			daneDiscoveryAuthenticated = false;
-			mxHosts = await getMxHostnames(redis, recipientDomain);
-		} else if (discovery.status === 'not-found') {
-			mxHosts = [];
-		} else {
-			mxHosts = discovery.destinations.map((destination) => destination.mxHostname);
-			daneDestinations = new Map(
-				discovery.destinations.map((destination) => [destination.mxHostname, destination])
-			);
-		}
-	} else {
-		mxHosts = await getMxHostnames(redis, recipientDomain);
-	}
-
-	if (mxHosts.length === 0) {
+	// MX routing, DANE discovery, provider shaping, and queue throttling all use
+	// this single immutable snapshot. The sender never performs an independent MX
+	// lookup after Dispatch has acquired a provider bucket.
+	const destination =
+		resolvedDestination ?? (await resolveDestinationSnapshot(redis, recipientDomain, { config }));
+	if (destination.mx.status === 'temporary-failure') {
 		return {
 			success: false,
-			error: `No MX records found for ${recipientDomain}`,
+			error: destination.mx.reason,
+			bounceType: 'deferred',
+			smtpCode: 451,
+		};
+	}
+	if (destination.mx.status === 'domain-not-found') {
+		return {
+			success: false,
+			error: destination.mx.reason,
 			bounceType: 'hard',
 			smtpCode: 550,
 		};
 	}
-	const discoveredProvider = providerFromMxHostnames(mxHosts);
-	const destination = resolvedDestination ?? {
-		recipientDomain,
-		providerKey: discoveredProvider,
-		throttleKey: discoveredProvider === 'other' ? recipientDomain : discoveredProvider,
-	};
-	const providerProfile = await getProfile(redis, destination.providerKey);
+	if (destination.mx.status === 'null-mx') {
+		return {
+			success: false,
+			error: `Recipient domain ${recipientDomain} explicitly does not accept email (Null MX)`,
+			bounceType: 'hard',
+			smtpCode: 556,
+			enhancedCode: '5.1.10',
+		};
+	}
+
+	const mxHosts = destination.mx.hosts.map((host) => host.exchange);
+	const routeProvider = providerFromMxHostnames(mxHosts);
+	const snapshotProfile = await getProfile(redis, destination.providerKey);
+	const routeProfile =
+		routeProvider === destination.providerKey
+			? snapshotProfile
+			: await getProfile(redis, routeProvider);
+	// Defensive strictest-wins reconciliation protects hand-built/legacy snapshots
+	// and reverse migrations. Connection scope always follows the actual MX set,
+	// so a stale known provider can never poison its shared bucket.
+	const providerPolicy = strictestDeliveryProviderPolicy(snapshotProfile, routeProfile);
+	const daneDestinations = new Map<string, DaneMxDestination>(
+		(destination.daneDestinations ?? []).map((daneDestination) => [
+			daneDestination.mxHostname,
+			daneDestination,
+		])
+	);
+	const daneDiscoveryAuthenticated = destination.daneDiscoveryAuthenticated;
 
 	const dkimConfig = await getDkimOptions(redis, job.dkimDomain);
 
@@ -265,7 +294,7 @@ export async function sendToMx(
 	);
 	const tlsRequirements = resolveTlsRequirements({
 		localMode: localTlsMode,
-		providerMode: providerProfile.tlsMode,
+		providerMode: providerPolicy.tlsMode,
 		stsPolicy: { policyMode: stsOptions.policyMode },
 		daneResult: null,
 	});
@@ -343,12 +372,9 @@ export async function sendToMx(
 				socketTimeout: 60_000,
 				dkimDomain: dkimConfig?.domainName,
 				connectionLimits: {
-					scope:
-						destination.providerKey === 'other'
-							? `mx:${mxHost}`
-							: `provider:${destination.providerKey}`,
-					maxConnections: providerProfile.maxConnections,
-					maxDeliveriesPerConnection: providerProfile.maxDeliveriesPerConnection,
+					scope: routeProvider === 'other' ? `mx:${mxHost}` : `provider:${routeProvider}`,
+					maxConnections: providerPolicy.maxConnections,
+					maxDeliveriesPerConnection: providerPolicy.maxDeliveriesPerConnection,
 				},
 			});
 		} catch (err) {
@@ -660,7 +686,7 @@ export async function sendToMx(
 			// TLSA cert-authentication hook.
 			const daneTls = resolveTlsRequirements({
 				localMode: localTlsMode,
-				providerMode: providerProfile.tlsMode,
+				providerMode: providerPolicy.tlsMode,
 				stsPolicy: { policyMode: stsOptions.policyMode },
 				daneResult: { usable: true },
 			});
@@ -690,7 +716,7 @@ export async function sendToMx(
 			// honours D6 (DANE never bounces mail by default).
 			const daneTls = resolveTlsRequirements({
 				localMode: localTlsMode,
-				providerMode: providerProfile.tlsMode,
+				providerMode: providerPolicy.tlsMode,
 				stsPolicy: { policyMode: stsOptions.policyMode },
 				daneResult: { usable: true },
 			});

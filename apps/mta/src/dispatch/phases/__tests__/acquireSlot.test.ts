@@ -24,12 +24,16 @@ function makeCtx(): CtxWithIp {
 	return {
 		job,
 		domain: 'example.com',
-		providerKey: 'other',
-		throttleKey: 'example.com',
 		destination: {
 			recipientDomain: 'example.com',
 			providerKey: 'other',
 			throttleKey: 'example.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [{ exchange: 'mx.example.com', priority: 0 }],
+			},
+			daneDiscoveryAuthenticated: true,
 		},
 		fromDomain: 'owlat.com',
 		pool: 'transactional',
@@ -59,7 +63,7 @@ describe('acquireSlotPhase', () => {
 		});
 	});
 
-	it('forwards ip and domain to the helper', async () => {
+	it('forwards the IP and destination throttle identity to the helper', async () => {
 		vi.mocked(domainThrottle.acquireSlot).mockResolvedValueOnce(true);
 		await acquireSlotPhase.run(deps, makeCtx());
 		expect(domainThrottle.acquireSlot).toHaveBeenCalledWith(

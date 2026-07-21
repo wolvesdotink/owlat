@@ -24,7 +24,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 
 vi.mock('../mxResolver.js', () => ({
-	getMxHostnames: vi.fn().mockResolvedValue(['127.0.0.1']),
+	resolveMxDestination: vi.fn().mockResolvedValue({
+		status: 'deliverable',
+		source: 'mx',
+		hosts: [{ exchange: '127.0.0.1', priority: 0 }],
+	}),
 }));
 vi.mock('../mtaSts.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../mtaSts.js')>();
@@ -166,7 +170,17 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 			redis,
 			'127.0.0.1',
 			undefined,
-			{ recipientDomain: 'workspace.example', providerKey: 'gmail', throttleKey: 'gmail' }
+			{
+				recipientDomain: 'workspace.example',
+				providerKey: 'gmail',
+				throttleKey: 'gmail',
+				mx: {
+					status: 'deliverable',
+					source: 'mx',
+					hosts: [{ exchange: '127.0.0.1', priority: 0 }],
+				},
+				daneDiscoveryAuthenticated: true,
+			}
 		);
 
 		expect(result.success).toBe(false);

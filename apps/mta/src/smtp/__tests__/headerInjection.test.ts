@@ -44,7 +44,11 @@ vi.mock('../connectionPool.js', () => ({
 	PoolOverCapError: class PoolOverCapError extends Error {},
 }));
 vi.mock('../mxResolver.js', () => ({
-	getMxHostnames: vi.fn().mockResolvedValue(['mx1.example.com']),
+	resolveMxDestination: vi.fn().mockResolvedValue({
+		status: 'deliverable',
+		source: 'mx',
+		hosts: [{ exchange: 'mx1.example.com', priority: 0 }],
+	}),
 }));
 vi.mock('../dkim.js', () => ({
 	getDkimOptions: vi.fn().mockResolvedValue(undefined),
@@ -60,7 +64,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 import { sendToMx } from '../sender.js';
-import { getMxHostnames } from '../mxResolver.js';
+import { resolveMxDestination } from '../mxResolver.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 
@@ -136,7 +140,11 @@ describe('sendToMx — header injection (PR-43)', () => {
 		vi.clearAllMocks();
 		redis = new Redis();
 		config = createConfig();
-		vi.mocked(getMxHostnames).mockResolvedValue(['mx1.example.com']);
+		vi.mocked(resolveMxDestination).mockResolvedValue({
+			status: 'deliverable',
+			source: 'mx',
+			hosts: [{ exchange: 'mx1.example.com', priority: 0 }],
+		});
 		acquireMock.mockReturnValue({
 			key: 'test-key',
 			config: {

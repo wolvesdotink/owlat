@@ -4,21 +4,49 @@ import { classifySmtpResponse } from '../intelligence/smtpClassifier.js';
 describe('Enhanced SMTP response classifier', () => {
 	describe('provider feedback signatures', () => {
 		it.each([
-			['421 4.7.28 Gmail rate limited', '4.7.28', 'gmail_rate_limited', 1_800_000],
-			['421 4.7.23 Missing PTR', '4.7.23', 'gmail_ip_identity', 3_600_000],
-			['421 4.7.29 TLS required', '4.7.29', 'gmail_tls_required', 2_700_000],
-			['421 TS03 temporarily deferred', undefined, 'yahoo_ts03', 1_800_000],
-			['421 TSS04 temporarily deferred', undefined, 'yahoo_tss04', 3_600_000],
-			['451 4.3.2 temporary system problem', '4.3.2', 'microsoft_resource_throttle', 1_200_000],
+			['gmail', '421 4.7.28 Gmail rate limited', '4.7.28', 'gmail_rate_limited', 1_800_000],
+			['gmail', '421 4.7.23 Missing PTR', '4.7.23', 'gmail_ip_identity', 3_600_000],
+			['gmail', '421 4.7.29 TLS required', '4.7.29', 'gmail_tls_required', 2_700_000],
+			['yahoo', '421 TS03 temporarily deferred', undefined, 'yahoo_ts03', 1_800_000],
+			['yahoo', '421 TSS04 temporarily deferred', undefined, 'yahoo_tss04', 3_600_000],
+			[
+				'microsoft',
+				'451 4.3.2 temporary system problem',
+				'4.3.2',
+				'microsoft_resource_throttle',
+				1_200_000,
+			],
 		])(
 			'classifies %s with a tuned delay and dashboard annotation',
-			(response, enhanced, category, delay) => {
-				const result = classifySmtpResponse(421, response, enhanced);
+			(provider, response, enhanced, category, delay) => {
+				const result = classifySmtpResponse(421, response, enhanced, provider);
 				expect(result.category).toBe(category);
 				expect(result.suggestedDelayMs).toBe(delay);
 				expect(result.annotation).toBeTruthy();
 			}
 		);
+
+		it.each([
+			['gmail', '421 4.7.28 Gmail rate limited', '4.7.28'],
+			['yahoo', '421 TS03 temporarily deferred', undefined],
+			['microsoft', '451 4.3.2 temporary system problem', '4.3.2'],
+		] as const)(
+			'does not apply a %s signature to an unknown or different provider',
+			(provider, response, enhanced) => {
+				expect(classifySmtpResponse(421, response, enhanced, 'other').category).not.toContain(
+					provider
+				);
+				const differentProvider = provider === 'gmail' ? 'yahoo' : 'gmail';
+				expect(
+					classifySmtpResponse(421, response, enhanced, differentProvider).category
+				).not.toContain(provider);
+			}
+		);
+
+		it('prefers the parsed enhanced code when response text conflicts', () => {
+			const result = classifySmtpResponse(421, '421 4.7.28 rate limit text', '4.7.23', 'gmail');
+			expect(result.category).toBe('gmail_ip_identity');
+		});
 	});
 	describe('greylisting detection', () => {
 		it('should detect greylisting responses', () => {

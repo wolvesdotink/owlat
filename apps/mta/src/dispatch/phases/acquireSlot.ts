@@ -16,14 +16,14 @@ export const acquireSlotPhase: Phase<CtxWithIp, CtxWithIp> = {
 		const slotAcquired = await domainThrottle.acquireSlot(
 			deps.redis,
 			ctx.ip,
-			ctx.throttleKey,
-			ctx.providerKey
+			ctx.destination.throttleKey,
+			ctx.destination.providerKey
 		);
 		if (!slotAcquired) {
 			return {
 				kind: 'defer',
 				delayMs: 5_000,
-				reason: `Rate limit exceeded for ${ctx.ip} → ${ctx.throttleKey}`,
+				reason: `Rate limit exceeded for ${ctx.ip} → ${ctx.destination.throttleKey}`,
 			};
 		}
 		return { kind: 'continue', ctx };

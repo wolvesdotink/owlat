@@ -22,10 +22,10 @@
  * and ANY transport error — or a failed `RSET` probe — tears the entry down and
  * releases its slot, so a poisoned socket is NEVER retried.
  *
- * Each entry is one socket lineage and holds one optional Redis-coordinated slot.
+ * Each entry is one socket lineage and holds one optional Redis-coordinated lease.
  * Concurrent sends get distinct entries, so known-provider caps cover every live
- * connection across MX, DKIM, and TLS partitions. Coordination fails open when
- * Redis is unavailable; per-instance caps still apply.
+ * connection across MX, DKIM, and TLS partitions. Once coordination is enabled,
+ * Redis errors fail closed; leases expire after a crashed instance disappears.
  */
 
 import type Redis from 'ioredis';
@@ -165,7 +165,7 @@ export class SmtpConnectionPool {
 					this.disposeIdle(evicted);
 				}
 				this.pool.delete(oldestKey);
-				this.cap.release(evicted!.connectionScope);
+				this.cap.release(evicted!.globalLease);
 				logger.debug({ key: oldestKey }, 'Evicted pool entry for connection-scope limit');
 				scopeEntryCount--;
 			}
@@ -177,26 +177,25 @@ export class SmtpConnectionPool {
 
 		// Global cap (across all instances): atomically reserve a slot for the new
 		// entry. Throws when over cap so the caller can defer the job.
-		if (
-			!(await this.cap.tryReserve(
-				connectionScope,
-				this.slotTtlSeconds(),
-				options.connectionLimits?.maxConnections
-			))
-		) {
-			throw new PoolOverCapError(connectionScope);
-		}
-
 		const matchingConfig = [...this.pool.values()].find(
 			(entry) => entry.baseKey === baseKey
 		)?.config;
 		const config = matchingConfig ?? buildConnectConfig(mxHost, bindIp, options);
+		const globalLease = await this.cap.tryReserve(
+			connectionScope,
+			this.slotTtlSeconds(),
+			options.connectionLimits?.maxConnections
+		);
+		if (!globalLease) {
+			throw new PoolOverCapError(connectionScope);
+		}
 
 		const key = this.pool.has(baseKey) ? `${baseKey}#${++this.entrySequence}` : baseKey;
 		const entry: PoolEntry = {
 			baseKey,
 			config,
 			connectionScope,
+			globalLease,
 			maxDeliveriesPerConnection:
 				options.connectionLimits?.maxDeliveriesPerConnection ??
 				this.config.maxMessagesPerConnection,
@@ -213,8 +212,8 @@ export class SmtpConnectionPool {
 	}
 
 	/**
-	 * Get the global connection count for a provider or MX-host scope.
-	 * Fail-open to 0. Exposed for monitoring/tests.
+	 * Get the observed global connection count for a provider or MX-host scope.
+	 * Monitoring degrades to 0 on Redis errors; admission remains fail-closed.
 	 */
 	getGlobalConnectionCount(connectionScope: string): Promise<number> {
 		return this.cap.getCount(connectionScope);
@@ -345,7 +344,7 @@ export class SmtpConnectionPool {
 			entry.idle = undefined;
 		}
 		this.pool.delete(key);
-		this.cap.release(entry.connectionScope);
+		this.cap.release(entry.globalLease);
 		this.updateGauge();
 		logger.debug({ key }, 'Evicted pool entry after a transport error');
 	}
@@ -357,7 +356,7 @@ export class SmtpConnectionPool {
 			if (entry.config.localAddress !== bindIp) continue;
 			entry.idle?.conn.close();
 			this.pool.delete(key);
-			this.cap.release(entry.connectionScope);
+			this.cap.release(entry.globalLease);
 			changed = true;
 		}
 		if (changed) {
@@ -402,7 +401,7 @@ export class SmtpConnectionPool {
 				const entry = this.pool.get(key)!;
 				this.disposeIdle(entry);
 				this.pool.delete(key);
-				this.cap.release(entry.connectionScope);
+				this.cap.release(entry.globalLease);
 				logger.debug({ key }, 'Evicted idle/aged pool entry');
 			}
 
@@ -437,7 +436,7 @@ export class SmtpConnectionPool {
 		// global slot.
 		for (const entry of this.pool.values()) {
 			this.disposeIdle(entry);
-			this.cap.release(entry.connectionScope);
+			this.cap.release(entry.globalLease);
 		}
 
 		this.pool.clear();
