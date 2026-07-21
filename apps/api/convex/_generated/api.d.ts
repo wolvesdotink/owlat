@@ -180,6 +180,7 @@ import type * as delivery_messageIdRouting from "../delivery/messageIdRouting.js
 import type * as delivery_preferences from "../delivery/preferences.js";
 import type * as delivery_preferencesHttp from "../delivery/preferencesHttp.js";
 import type * as delivery_preferencesQueries from "../delivery/preferencesQueries.js";
+import type * as delivery_readinessValidators from "../delivery/readinessValidators.js";
 import type * as delivery_sendCompletion from "../delivery/sendCompletion.js";
 import type * as delivery_sendComposition_archive_snapshot_index from "../delivery/sendComposition/archive_snapshot/index.js";
 import type * as delivery_sendComposition_automation_index from "../delivery/sendComposition/automation/index.js";
@@ -805,6 +806,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/preferences": typeof delivery_preferences;
   "delivery/preferencesHttp": typeof delivery_preferencesHttp;
   "delivery/preferencesQueries": typeof delivery_preferencesQueries;
+  "delivery/readinessValidators": typeof delivery_readinessValidators;
   "delivery/sendCompletion": typeof delivery_sendCompletion;
   "delivery/sendComposition/archive_snapshot/index": typeof delivery_sendComposition_archive_snapshot_index;
   "delivery/sendComposition/automation/index": typeof delivery_sendComposition_automation_index;

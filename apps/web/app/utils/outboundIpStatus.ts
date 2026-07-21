@@ -29,8 +29,13 @@ export interface OutboundIpPresentation {
 
 export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpPresentation {
 	const identity = ip.fcrdns;
-	const identityBlocked = ip.blockReasons?.includes('fcrdns') === true;
-	const dnsblBlocked = ip.blockReasons?.includes('dnsbl') === true;
+	const identityFailed = identity?.verdict === 'fail';
+	const identityBlocked =
+		ip.blockReasons?.includes('fcrdns') === true ||
+		(identityFailed && identity?.isOverridden !== true);
+	const dnsblBlocked = ip.blockReasons?.includes('dnsbl') === true || ip.dnsbl === 'critical';
+	const dnsblUnavailable = ip.dnsbl === 'unknown';
+	const dnsblDegraded = ip.dnsbl === 'degraded';
 	let tone: HealthTone;
 	let label: string;
 	if (identityBlocked && dnsblBlocked) {
@@ -51,6 +56,12 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 	} else if (!identity || !isFcrdnsVerdict(identity.verdict) || identity.verdict === 'error') {
 		tone = 'error';
 		label = 'Not verified';
+	} else if (dnsblUnavailable) {
+		tone = 'error';
+		label = 'Blocklist check unavailable';
+	} else if (dnsblDegraded) {
+		tone = 'warning';
+		label = 'Blocklist warning';
 	} else if (identity.verdict === 'warn') {
 		tone = 'warning';
 		label = 'Needs attention';
@@ -67,17 +78,20 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 	const blocklistDetail =
 		ip.dnsbl === 'unknown'
 			? 'The latest DNS blocklist lookup failed, so the prior safety decision is preserved.'
-			: 'A critical DNS blocklist currently excludes this IP from delivery.';
+			: ip.dnsbl === 'degraded'
+				? 'A non-critical DNS blocklist currently lists this IP.'
+				: 'A critical DNS blocklist currently excludes this IP from delivery.';
+	const hasBlocklistConcern = dnsblBlocked || dnsblUnavailable || dnsblDegraded;
 	const detail =
 		identityBlocked && dnsblBlocked
 			? `${identityDetail} ${blocklistDetail}`
-			: dnsblBlocked
+			: hasBlocklistConcern
 				? blocklistDetail
 				: identityDetail;
 	const remediation =
 		identityBlocked && identity
 			? reverseDnsGuidance(identity.ptrNames).instruction
-			: dnsblBlocked
+			: hasBlocklistConcern
 				? 'Review the MTA blocklist details, resolve the listing cause, and request delisting.'
 				: null;
 

@@ -122,10 +122,10 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 		const previousStatus = await redis.hget(hashKey, 'overallStatus');
 		const newStatus = hasCritical
 			? 'critical'
-			: hasWarning
-				? 'degraded'
-				: hasUnknown
-					? 'unknown'
+			: hasUnknown
+				? 'unknown'
+				: hasWarning
+					? 'degraded'
 					: 'clean';
 		updates.push('overallStatus', newStatus);
 		const stateFields: Record<string, string> = {};
@@ -223,20 +223,23 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 /**
  * Initialize IP pools in Redis and start the DNSBL check interval
  */
-export function startDnsblChecker(
+export async function startDnsblChecker(
 	redis: Redis,
 	config: MtaConfig,
 	isLeader: () => boolean
-): NodeJS.Timeout {
-	const runIfLeader = () => {
+): Promise<NodeJS.Timeout> {
+	const runIfLeader = async () => {
 		if (!isLeader()) return;
-		runDnsblCheck(redis, config).catch((err) => logger.error({ err }, 'DNSBL check failed'));
+		await runDnsblCheck(redis, config).catch((err) => logger.error({ err }, 'DNSBL check failed'));
 	};
-	runIfLeader();
+	// Every process completes a boot sweep before enabling delivery workers. This
+	// cannot rely on the current leader: during a rolling deployment that process
+	// may still have the old IP configuration. Generation CAS makes overlap safe.
+	await runDnsblCheck(redis, config);
 
 	// Schedule periodic checks
 	return setInterval(() => {
-		runIfLeader();
+		void runIfLeader();
 	}, CHECK_INTERVAL_MS);
 }
 
