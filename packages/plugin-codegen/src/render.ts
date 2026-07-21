@@ -6,6 +6,11 @@ import {
 	type HostedAgentStepDefinition,
 } from '@owlat/plugin-host';
 import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
+import {
+	AUTOMATION_REGISTRIES,
+	renderAutomationCatalog,
+	renderAutomationModules,
+} from './renderAutomation';
 import { renderCronCatalog, renderCronModules } from './renderCron';
 import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 import {
@@ -38,6 +43,61 @@ export interface GeneratedPluginComposition {
 	readonly importProviderModules: string;
 	readonly cronCatalog: string;
 	readonly cronModules: string;
+}
+
+/**
+ * Every file codegen emits, as ONE table: artifact key -> repository path.
+ *
+ * The output set used to be spelled out three times — the fields of
+ * `GeneratedPluginComposition`, twenty-two `*_OUTPUT_PATH` constants, and
+ * twenty-two `{ path, source }` target entries — so adding one registry meant
+ * six coordinated edits across two files and forgetting one silently dropped a
+ * file from both the writer and the `--check` staleness gate. Typing this as a
+ * `Record` over the composition's own keys makes the compiler demand a path for
+ * every artifact and reject a path for one that no longer exists.
+ */
+export const GENERATED_ARTIFACT_PATHS: Readonly<Record<keyof GeneratedPluginComposition, string>> =
+	Object.freeze({
+		convex: 'apps/api/convex/plugins/plugins.generated.ts',
+		components: 'apps/api/convex/plugins/components.generated.ts',
+		nuxt: 'apps/web/app/plugins/plugin-composition.generated.ts',
+		sendTransportCatalog: 'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
+		sendTransportModules: 'apps/api/convex/plugins/sendTransportModules.generated.ts',
+		agentStepCatalog: 'apps/api/convex/plugins/agentStepCatalog.generated.ts',
+		agentStepModules: 'apps/api/convex/plugins/agentStepModules.generated.ts',
+		draftStrategyCatalog: 'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
+		draftStrategyModules: 'apps/api/convex/plugins/draftStrategyModules.generated.ts',
+		autonomyGateCatalog: 'apps/api/convex/plugins/autonomyGateCatalog.generated.ts',
+		autonomyGateModules: 'apps/api/convex/plugins/autonomyGateModules.generated.ts',
+		automationTriggerCatalog: 'apps/api/convex/plugins/automationTriggerCatalog.generated.ts',
+		automationTriggerModules: 'apps/api/convex/plugins/automationTriggerModules.generated.ts',
+		automationStepCatalog: 'apps/api/convex/plugins/automationStepCatalog.generated.ts',
+		automationStepModules: 'apps/api/convex/plugins/automationStepModules.generated.ts',
+		automationConditionCatalog: 'apps/api/convex/plugins/automationConditionCatalog.generated.ts',
+		automationConditionModules: 'apps/api/convex/plugins/automationConditionModules.generated.ts',
+		webhookEventCatalog: 'apps/api/convex/plugins/webhookEventCatalog.generated.ts',
+		importProviderCatalog: 'apps/api/convex/plugins/importProviderCatalog.generated.ts',
+		importProviderModules: 'apps/api/convex/plugins/importProviderModules.generated.ts',
+		cronCatalog: 'apps/api/convex/plugins/cronCatalog.generated.ts',
+		cronModules: 'apps/api/convex/plugins/cronModules.generated.ts',
+	});
+
+/** One emitted file: where it goes and the source that belongs there. */
+export interface GeneratedArtifact {
+	readonly key: keyof GeneratedPluginComposition;
+	readonly outputPath: string;
+	readonly source: string;
+}
+
+/** The rendered composition as the flat artifact list the writer iterates. */
+export function generatedArtifacts(
+	composition: GeneratedPluginComposition
+): readonly GeneratedArtifact[] {
+	return Object.freeze(
+		(Object.keys(GENERATED_ARTIFACT_PATHS) as (keyof GeneratedPluginComposition)[]).map((key) =>
+			Object.freeze({ key, outputPath: GENERATED_ARTIFACT_PATHS[key], source: composition[key] })
+		)
+	);
 }
 
 export function renderPluginComposition(
@@ -88,128 +148,6 @@ export function renderPluginComposition(
 	});
 }
 
-// ============== Automation registries (trigger / step / condition) ==============
-
-/**
- * The three automation registries share one editor-metadata + static-module
- * descriptor shape, so one renderer drives all three. Each descriptor differs
- * only in its manifest bucket, capability, and generated constant/contract
- * names — captured here so the generated output stays byte-identical in shape.
- */
-interface AutomationRegistrySpec {
-	readonly bucket: 'automationTriggers' | 'automationSteps' | 'automationConditions';
-	readonly capability: string;
-	readonly catalogConst: string;
-	readonly modulesConst: string;
-	readonly contract: string;
-	readonly varPrefix: string;
-	/**
-	 * Only automation STEP modules run inside a Convex action (the step walker),
-	 * so only they carry `'use node'`. Trigger fanout runs in a mutation and
-	 * condition evaluation runs in a query — both non-node — so their module
-	 * lists must stay importable outside the Node runtime.
-	 */
-	readonly useNode: boolean;
-}
-
-const AUTOMATION_REGISTRIES = {
-	trigger: {
-		bucket: 'automationTriggers',
-		capability: 'automation:trigger',
-		catalogConst: 'BUNDLED_PLUGIN_AUTOMATION_TRIGGER_CATALOG',
-		modulesConst: 'BUNDLED_PLUGIN_AUTOMATION_TRIGGER_MODULES',
-		contract: 'PluginAutomationTriggerModule',
-		varPrefix: 'bundledPluginAutomationTrigger',
-		useNode: false,
-	},
-	step: {
-		bucket: 'automationSteps',
-		capability: 'automation:step',
-		catalogConst: 'BUNDLED_PLUGIN_AUTOMATION_STEP_CATALOG',
-		modulesConst: 'BUNDLED_PLUGIN_AUTOMATION_STEP_MODULES',
-		contract: 'PluginAutomationStepModule',
-		varPrefix: 'bundledPluginAutomationStep',
-		useNode: true,
-	},
-	condition: {
-		bucket: 'automationConditions',
-		capability: 'automation:condition',
-		catalogConst: 'BUNDLED_PLUGIN_AUTOMATION_CONDITION_CATALOG',
-		modulesConst: 'BUNDLED_PLUGIN_AUTOMATION_CONDITION_MODULES',
-		contract: 'PluginAutomationConditionModule',
-		varPrefix: 'bundledPluginAutomationCondition',
-		useNode: false,
-	},
-} as const satisfies Record<string, AutomationRegistrySpec>;
-
-interface RenderedAutomationContribution {
-	readonly packageName: string;
-	readonly pluginId: string;
-	readonly localId: string;
-	readonly kind: string;
-	readonly label: string;
-	readonly description: string;
-	readonly icon: string;
-	readonly exportPath: string;
-	readonly requiredEnvVars: readonly string[];
-}
-
-function automationContributionsFor(
-	plugins: readonly BundledPlugin[],
-	spec: AutomationRegistrySpec
-): readonly RenderedAutomationContribution[] {
-	return plugins.flatMap((plugin) => {
-		const entries = plugin.manifest.contributes?.[spec.bucket] ?? [];
-		return entries.map((entry) => ({
-			packageName: parsePluginPackageName(plugin.packageName),
-			pluginId: parsePluginId(plugin.manifest.id),
-			localId: entry.id,
-			kind: pluginNamespacedKind(plugin.manifest.id, entry.id),
-			label: entry.label,
-			description: entry.description,
-			icon: entry.icon,
-			exportPath: entry.module.exportPath,
-			requiredEnvVars: plugin.manifest.flag?.requiredEnvVars ?? [],
-		}));
-	});
-}
-
-function renderAutomationCatalog(
-	plugins: readonly BundledPlugin[],
-	spec: AutomationRegistrySpec
-): string {
-	const entries = automationContributionsFor(plugins, spec)
-		.map(
-			(entry) => `\tObject.freeze({
-\t\tkind: ${JSON.stringify(entry.kind)},
-\t\tpluginId: ${JSON.stringify(entry.pluginId)},
-\t\tlocalId: ${JSON.stringify(entry.localId)},
-\t\tlabel: ${JSON.stringify(entry.label)},
-\t\tdescription: ${JSON.stringify(entry.description)},
-\t\ticon: ${JSON.stringify(entry.icon)},
-\t\trequiredEnvVars: Object.freeze(${JSON.stringify(entry.requiredEnvVars)}),
-\t\trequiredCapability: '${spec.capability}',
-\t}),`
-		)
-		.join('\n');
-	const catalog = entries
-		? `Object.freeze([\n${entries}\n] as const)`
-		: 'Object.freeze([] as const)';
-	return `${GENERATED_HEADER}export const ${spec.catalogConst} = ${catalog};\n`;
-}
-
-function renderAutomationModules(
-	plugins: readonly BundledPlugin[],
-	spec: AutomationRegistrySpec
-): string {
-	return renderPluginModuleFile(automationContributionsFor(plugins, spec), {
-		varPrefix: spec.varPrefix,
-		contract: spec.contract,
-		modulesConst: spec.modulesConst,
-		useNode: spec.useNode,
-	});
-}
-
 function autonomyGatesFor(plugins: readonly BundledPlugin[]) {
 	return orderHostedContributions(
 		plugins.flatMap((plugin) =>
@@ -252,26 +190,12 @@ function renderAutonomyGateCatalog(plugins: readonly BundledPlugin[]): string {
 }
 
 function renderAutonomyGateModules(plugins: readonly BundledPlugin[]): string {
-	const gates = autonomyGatesFor(plugins);
-	const imports = gates
-		.map(
-			(gate, index) =>
-				`import bundledPluginAutonomyGate${index} from ${JSON.stringify(`${gate.packageName}${gate.exportPath.slice(1)}`)};`
-		)
-		.join('\n');
-	const entries = gates
-		.map(
-			(gate, index) =>
-				`\tObject.freeze({ kind: ${JSON.stringify(gate.kind)}, pluginId: ${JSON.stringify(gate.pluginId)}, module: bundledPluginAutonomyGate${index} satisfies PluginAutonomyGateModule }),`
-		)
-		.join('\n');
-	const modules = entries
-		? `Object.freeze([\n${entries}\n] as const)`
-		: 'Object.freeze([] as const)';
-	const contractImport = gates.length
-		? "import type { PluginAutonomyGateModule } from '@owlat/plugin-kit';\n"
-		: '';
-	return `'use node';\n\n${GENERATED_HEADER}${contractImport}${imports}${imports ? '\n\n' : ''}export const BUNDLED_PLUGIN_AUTONOMY_GATE_MODULES = ${modules};\n`;
+	return renderPluginModuleFile(autonomyGatesFor(plugins), {
+		varPrefix: 'bundledPluginAutonomyGate',
+		contract: 'PluginAutonomyGateModule',
+		modulesConst: 'BUNDLED_PLUGIN_AUTONOMY_GATE_MODULES',
+		useNode: true,
+	});
 }
 
 function draftStrategiesFor(plugins: readonly BundledPlugin[]) {
