@@ -3,6 +3,13 @@ import Redis from 'ioredis-mock';
 import type { Queue, ReservedJob } from 'groupmq';
 
 vi.mock('../../smtp/sender.js', () => ({ sendToMx: vi.fn() }));
+vi.mock('../../smtp/destinationProvider.js', () => ({
+	resolveDestinationIdentity: vi.fn(async (_redis: unknown, domain: string) => ({
+		recipientDomain: domain,
+		providerKey: 'other',
+		throttleKey: domain,
+	})),
+}));
 vi.mock('../../intelligence/circuitBreaker.js', () => ({
 	canSend: vi.fn().mockResolvedValue({ allowed: true, state: 'closed' }),
 	recordOutcome: vi.fn().mockResolvedValue(undefined),

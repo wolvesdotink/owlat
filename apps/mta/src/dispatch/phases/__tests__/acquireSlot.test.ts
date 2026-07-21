@@ -24,7 +24,13 @@ function makeCtx(): CtxWithIp {
 	return {
 		job,
 		domain: 'example.com',
-		isp: 'other',
+		providerKey: 'other',
+		throttleKey: 'example.com',
+		destination: {
+			recipientDomain: 'example.com',
+			providerKey: 'other',
+			throttleKey: 'example.com',
+		},
 		fromDomain: 'owlat.com',
 		pool: 'transactional',
 		dedicatedIp: undefined,
@@ -60,6 +66,7 @@ describe('acquireSlotPhase', () => {
 			expect.anything(),
 			'10.0.0.1',
 			'example.com',
+			'other'
 		);
 	});
 });

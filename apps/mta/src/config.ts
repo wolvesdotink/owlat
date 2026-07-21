@@ -6,7 +6,7 @@ import { hostname } from 'os';
 import { isIPv4 } from 'node:net';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
-import type { IpPoolConfig, DkimKeyConfig, DomainProfile } from './types.js';
+import type { IpPoolConfig, DkimKeyConfig, DestinationProviderProfile } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
 import { assertValidEhloHostname } from './ehloConfig.js';
@@ -202,63 +202,59 @@ export function assertSubmissionTlsConfigured(
 }
 
 /**
- * ISP-specific sending profiles with adaptive rate limiting parameters
+ * MX-derived destination-provider shaping profiles.
  */
-export const ISP_PROFILES: Record<string, DomainProfile> = {
-	'gmail.com': {
+export const DESTINATION_PROVIDER_PROFILES: Record<string, DestinationProviderProfile> = {
+	gmail: {
 		defaultRate: 100,
 		ceiling: 300,
 		floor: 5,
 		backoffFactor: 0.5,
 		recoveryFactor: 1.1,
+		tlsMode: 'require',
+		maxConnections: 5,
+		maxDeliveriesPerConnection: 50,
 	},
-	'googlemail.com': {
-		defaultRate: 100,
-		ceiling: 300,
-		floor: 5,
-		backoffFactor: 0.5,
-		recoveryFactor: 1.1,
-	},
-	'outlook.com': {
+	microsoft: {
 		defaultRate: 80,
 		ceiling: 200,
 		floor: 5,
 		backoffFactor: 0.5,
 		recoveryFactor: 1.1,
+		tlsMode: 'opportunistic',
+		maxConnections: 3,
+		maxDeliveriesPerConnection: 100,
 	},
-	'hotmail.com': {
-		defaultRate: 80,
-		ceiling: 200,
-		floor: 5,
-		backoffFactor: 0.5,
-		recoveryFactor: 1.1,
-	},
-	'live.com': { defaultRate: 80, ceiling: 200, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	'yahoo.com': {
+	yahoo: {
 		defaultRate: 50,
 		ceiling: 150,
 		floor: 3,
 		backoffFactor: 0.4,
 		recoveryFactor: 1.05,
+		tlsMode: 'opportunistic',
+		maxConnections: 3,
+		maxDeliveriesPerConnection: 100,
 	},
-	'aol.com': { defaultRate: 50, ceiling: 150, floor: 3, backoffFactor: 0.4, recoveryFactor: 1.05 },
-	'ymail.com': {
-		defaultRate: 50,
-		ceiling: 150,
-		floor: 3,
-		backoffFactor: 0.4,
-		recoveryFactor: 1.05,
-	},
-	'icloud.com': {
+	apple: {
 		defaultRate: 60,
 		ceiling: 150,
 		floor: 5,
 		backoffFactor: 0.5,
 		recoveryFactor: 1.1,
+		tlsMode: 'opportunistic',
+		maxConnections: 3,
+		maxDeliveriesPerConnection: 100,
 	},
-	'me.com': { defaultRate: 60, ceiling: 150, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	'mac.com': { defaultRate: 60, ceiling: 150, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	__default__: { defaultRate: 30, ceiling: 100, floor: 2, backoffFactor: 0.5, recoveryFactor: 1.1 },
+	__default__: {
+		defaultRate: 30,
+		ceiling: 100,
+		floor: 2,
+		backoffFactor: 0.5,
+		recoveryFactor: 1.1,
+		tlsMode: 'opportunistic',
+		maxConnections: 3,
+		maxDeliveriesPerConnection: 100,
+	},
 };
 
 // The base warming schedule (day → daily cap) now lives in @owlat/shared so the

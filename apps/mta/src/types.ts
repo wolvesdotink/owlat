@@ -256,7 +256,7 @@ export interface InboundEmailPayload extends Pick<
 
 // ============ Domain Throttle Types ============
 
-export interface DomainProfile {
+export interface DestinationProviderProfile {
 	/** Default sending rate (emails per minute) */
 	defaultRate: number;
 	/** Maximum rate ceiling */
@@ -267,6 +267,12 @@ export interface DomainProfile {
 	backoffFactor: number;
 	/** Multiplier on sustained success (e.g., 1.1 = +10%) */
 	recoveryFactor: number;
+	/** Provider TLS floor composed with local, MTA-STS, and DANE policy. */
+	tlsMode: import('@owlat/shared').OutboundTlsMode;
+	/** Maximum live SMTP connection lineages for this provider. */
+	maxConnections: number;
+	/** Deliveries allowed over one SMTP connection before a clean recycle. */
+	maxDeliveriesPerConnection: number;
 }
 
 export type DomainHealthStatus = 'healthy' | 'degraded' | 'blocking';
@@ -385,4 +391,4 @@ export interface BounceClassification {
 
 export type MetricOutcome = 'delivered' | 'bounced' | 'deferred' | 'rejected' | 'error';
 
-export type IspName = 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+export type DestinationProviderKey = 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';

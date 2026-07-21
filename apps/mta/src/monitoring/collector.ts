@@ -7,7 +7,7 @@
 
 import type Redis from 'ioredis';
 import { Counter, Gauge, Histogram, Registry } from 'prom-client';
-import type { IspName, MetricOutcome } from '../types.js';
+import type { DestinationProviderKey, MetricOutcome } from '../types.js';
 import { classifyIsp } from '../queue/groups.js';
 
 // Redis metric keys
@@ -115,9 +115,10 @@ export async function record(
 	ip: string,
 	pool: string,
 	outcome: MetricOutcome,
-	durationMs?: number
+	durationMs?: number,
+	providerKey?: string
 ): Promise<void> {
-	const isp = classifyIsp(domain);
+	const isp = providerKey ?? classifyIsp(domain);
 	const today = new Date().toISOString().split('T')[0]!;
 
 	// Update Prometheus
@@ -146,7 +147,11 @@ export async function record(
 /**
  * Get ISP-level metrics for a given date
  */
-export async function getIspMetrics(redis: Redis, isp: IspName, date: string): Promise<Record<string, number>> {
+export async function getIspMetrics(
+	redis: Redis,
+	isp: DestinationProviderKey,
+	date: string
+): Promise<Record<string, number>> {
 	const key = `${ISP_METRICS_PREFIX}${isp}:${date}`;
 	const data = await redis.hgetall(key);
 	const result: Record<string, number> = {};
@@ -159,7 +164,11 @@ export async function getIspMetrics(redis: Redis, isp: IspName, date: string): P
 /**
  * Get IP-level metrics for a given date
  */
-export async function getIpMetrics(redis: Redis, ip: string, date: string): Promise<Record<string, number>> {
+export async function getIpMetrics(
+	redis: Redis,
+	ip: string,
+	date: string
+): Promise<Record<string, number>> {
 	const key = `${IP_METRICS_PREFIX}${ip}:${date}`;
 	const data = await redis.hgetall(key);
 	const result: Record<string, number> = {};

@@ -43,6 +43,8 @@ export interface DaneTlsaResult {
 export interface ResolveTlsRequirementsInput {
 	/** The effective local TLS mode (per-domain override, else the global env). */
 	localMode: OutboundTlsMode;
+	/** Destination-provider floor (for example Gmail requires encrypted delivery). */
+	providerMode?: OutboundTlsMode;
 	/** The recipient domain's MTA-STS policy state. */
 	stsPolicy: { policyMode: StsPolicyMode };
 	/** DANE/TLSA result — `null` when DANE is off or no usable TLSA exists. */
@@ -119,21 +121,25 @@ const STS_REASON: Record<StsPolicyMode, string> = {
  */
 export function resolveTlsRequirements({
 	localMode,
+	providerMode = 'opportunistic',
 	stsPolicy,
 	daneResult,
 }: ResolveTlsRequirementsInput): TlsRequirements {
 	const local = LOCAL_FLOOR[localMode];
+	const provider = LOCAL_FLOOR[providerMode];
 	const sts = STS_FLOOR[stsPolicy.policyMode];
 	const daneRequired = daneResult?.usable === true;
 
-	const requireTLS = local.requireTLS || sts.requireTLS || daneRequired;
+	const requireTLS = local.requireTLS || provider.requireTLS || sts.requireTLS || daneRequired;
 	const rejectUnauthorized = daneRequired
 		? false
-		: local.rejectUnauthorized || sts.rejectUnauthorized;
+		: local.rejectUnauthorized || provider.rejectUnauthorized || sts.rejectUnauthorized;
 
+	const providerReason =
+		providerMode === 'opportunistic' ? '' : `; provider ${LOCAL_REASON[providerMode]}`;
 	const reason = daneRequired
-		? `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]}; DANE TLSA authenticated (RFC 7672, supersedes MTA-STS/WebPKI) → requireTLS=${requireTLS}, pkix=false, dane=true`
-		: `${LOCAL_REASON[localMode]}; ${STS_REASON[stsPolicy.policyMode]} → requireTLS=${requireTLS}, verify=${rejectUnauthorized} (strictest-wins)`;
+		? `${LOCAL_REASON[localMode]}${providerReason}; ${STS_REASON[stsPolicy.policyMode]}; DANE TLSA authenticated (RFC 7672, supersedes MTA-STS/WebPKI) → requireTLS=${requireTLS}, pkix=false, dane=true`
+		: `${LOCAL_REASON[localMode]}${providerReason}; ${STS_REASON[stsPolicy.policyMode]} → requireTLS=${requireTLS}, verify=${rejectUnauthorized} (strictest-wins)`;
 
 	return { requireTLS, rejectUnauthorized, daneRequired, reason };
 }

@@ -156,4 +156,22 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(probe.dataReached()).toBe(true);
 		expect(await failureTypes()).toContain('starttls-not-supported');
 	}, 15000);
+
+	it('Gmail provider policy refuses plaintext even when the local mode is opportunistic', async () => {
+		probe = await startServer({ advertiseStartTls: false });
+
+		const result = await sendToMx(
+			createJob(),
+			createConfig({ outboundTlsMode: 'opportunistic' }),
+			redis,
+			'127.0.0.1',
+			undefined,
+			{ recipientDomain: 'workspace.example', providerKey: 'gmail', throttleKey: 'gmail' }
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.bounceType).toBe('soft');
+		expect(result.error).toContain('TLS required');
+		expect(probe.dataReached()).toBe(false);
+	}, 15000);
 });

@@ -41,6 +41,8 @@ import {
 } from './tlsRpt.js';
 import { classifyTlsFailure, stsAttributedResultType } from './tlsFailureClassification.js';
 import { isIpEligibilityLeaseValid, type IpEligibilityLease } from '../scaling/ipPool.js';
+import { providerFromMxHostnames, type DestinationIdentity } from './destinationProvider.js';
+import { getProfile } from '../config/ispProfiles.js';
 
 /** The discriminated outcome of one delivery attempt to a single MX host. */
 type AttemptOutcome =
@@ -148,7 +150,8 @@ export async function sendToMx(
 	config: MtaConfig,
 	redis: Redis,
 	bindIp: string,
-	eligibilityLease?: IpEligibilityLease
+	eligibilityLease?: IpEligibilityLease,
+	resolvedDestination?: DestinationIdentity
 ): Promise<EmailJobResult> {
 	if (eligibilityLease && !(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
 		return {
@@ -202,6 +205,13 @@ export async function sendToMx(
 			smtpCode: 550,
 		};
 	}
+	const discoveredProvider = providerFromMxHostnames(mxHosts);
+	const destination = resolvedDestination ?? {
+		recipientDomain,
+		providerKey: discoveredProvider,
+		throttleKey: discoveredProvider === 'other' ? recipientDomain : discoveredProvider,
+	};
+	const providerProfile = await getProfile(redis, destination.providerKey);
 
 	const dkimConfig = await getDkimOptions(redis, job.dkimDomain);
 
@@ -255,6 +265,7 @@ export async function sendToMx(
 	);
 	const tlsRequirements = resolveTlsRequirements({
 		localMode: localTlsMode,
+		providerMode: providerProfile.tlsMode,
 		stsPolicy: { policyMode: stsOptions.policyMode },
 		daneResult: null,
 	});
@@ -331,6 +342,14 @@ export async function sendToMx(
 				greetingTimeout: 30_000,
 				socketTimeout: 60_000,
 				dkimDomain: dkimConfig?.domainName,
+				connectionLimits: {
+					scope:
+						destination.providerKey === 'other'
+							? `mx:${mxHost}`
+							: `provider:${destination.providerKey}`,
+					maxConnections: providerProfile.maxConnections,
+					maxDeliveriesPerConnection: providerProfile.maxDeliveriesPerConnection,
+				},
 			});
 		} catch (err) {
 			// Over the global per-host connection cap — treat like a connection
@@ -641,6 +660,7 @@ export async function sendToMx(
 			// TLSA cert-authentication hook.
 			const daneTls = resolveTlsRequirements({
 				localMode: localTlsMode,
+				providerMode: providerProfile.tlsMode,
 				stsPolicy: { policyMode: stsOptions.policyMode },
 				daneResult: { usable: true },
 			});
@@ -670,6 +690,7 @@ export async function sendToMx(
 			// honours D6 (DANE never bounces mail by default).
 			const daneTls = resolveTlsRequirements({
 				localMode: localTlsMode,
+				providerMode: providerProfile.tlsMode,
 				stsPolicy: { policyMode: stsOptions.policyMode },
 				daneResult: { usable: true },
 			});
