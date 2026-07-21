@@ -10,11 +10,9 @@
 
 import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
-import { Gauge } from 'prom-client';
 import type { MtaConfig } from '../config.js';
 import type { GooglePostmasterStatsEvent } from '../types.js';
 import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
-import { registry } from './collector.js';
 import {
 	GOOGLE_POSTMASTER_API_BASE,
 	GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME,
@@ -44,13 +42,6 @@ const DOMAIN_PAGE_SIZE = 25;
 const DOMAIN_PAGES_PER_SWEEP = 2;
 const STATS_PAGE_SIZE = 200;
 const STATS_PAGES_PER_DOMAIN_PER_SWEEP = 4;
-
-export const spamRate = new Gauge({
-	name: 'mta_postmaster_spam_rate',
-	help: 'Google Postmaster user-reported spam ratio (0-1)',
-	labelNames: ['domain'] as const,
-	registers: [registry],
-});
 
 interface DomainPage {
 	domains: PostmasterDomainWire[];
@@ -237,7 +228,6 @@ async function clearDomainOperationalState(redis: Redis, domain: string): Promis
 	await redis.del(`${STATS_CURSOR_PREFIX}${domain}`, ...receiptKeysForCleanup(domain));
 	// Remove the durable index last so an interrupted cleanup is retried.
 	await redis.zrem(DOMAIN_STATE_INDEX_KEY, domain);
-	spamRate.remove({ domain });
 }
 
 async function readOrStartDiscoveryGeneration(redis: Redis, resuming: boolean): Promise<number> {
@@ -324,9 +314,6 @@ async function pushDomainStats(
 				return 'authorization_lost';
 			}
 			await redis.set(receiptKey, '1', 'EX', PUSH_RECEIPT_TTL_SECONDS);
-			if (acknowledgement.retained) {
-				spamRate.set({ domain: domainName }, event.userReportedSpamRatio);
-			}
 		}
 
 		const nextPageToken = page.nextPageToken;
