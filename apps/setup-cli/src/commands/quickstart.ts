@@ -50,6 +50,8 @@ import { bootstrap } from './bootstrap-org';
 import { runSeed } from './seed';
 import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
+import { resolveLocalHost } from '../lib/localHost';
+import { probeMtaIdentityHealth } from './doctor';
 
 export type Mode = 'populated' | 'blank' | 'custom';
 
@@ -270,6 +272,38 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	}
 	reporter.ok('Stack is up');
 	await checkpoint.complete('compose-up');
+
+	// A direct-delivery install is not complete until the MTA's own live
+	// validator confirms every configured IP. The worker is already fail-closed,
+	// so bringing the container up to perform this probe cannot leak a send.
+	const envAfterCompose = await readEnv(envPath);
+	if (composeProfilesUnion.includes('mta')) {
+		const localMtaUrl = `http://${resolveLocalHost(process.env)}:${envAfterCompose['MTA_HTTP_PORT'] ?? '3100'}`;
+		reporter.step(SetupStep.MtaIdentity, 'Verifying outbound IP identity');
+		try {
+			await waitForUrl({ url: `${localMtaUrl}/health`, timeoutMs: 30_000 });
+		} catch (err) {
+			reporter.fail(`MTA health endpoint did not become ready: ${(err as Error).message}`);
+			reporter.done(false);
+			return 1;
+		}
+		const identityFindings = await probeMtaIdentityHealth(localMtaUrl);
+		for (const finding of identityFindings) {
+			reporter.log(
+				`${finding.ok ? '✓' : '✗'} ${finding.message}`,
+				finding.ok ? 'stdout' : 'stderr'
+			);
+			if (finding.ok) log.success(finding.message);
+			else log.error(finding.message);
+		}
+		const failedIdentity = identityFindings.find((finding) => !finding.ok);
+		if (failedIdentity) {
+			reporter.fail(failedIdentity.message);
+			reporter.done(false);
+			return 1;
+		}
+		reporter.ok('Every outbound IP passed FCrDNS readiness');
+	}
 
 	// Step 5: wait for the Convex backend's sync/`/version` endpoint — served on
 	// the CLOUD port (3210). The application `http.route` handlers (/seed/*,

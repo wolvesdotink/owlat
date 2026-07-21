@@ -38,6 +38,7 @@ import { applyEffects, type DispatchEffect } from '../dispatch/effects.js';
 import type { AttemptCtx, BasePhaseCtx } from '../dispatch/types.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { PipelineResult } from '../dispatch/pipeline.js';
+import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 
 /**
  * Add random jitter (±15%) to a delay to prevent thundering herd when
@@ -113,9 +114,25 @@ export async function handleEmailJob(
 		await disposeDefer(job, queue, deps, domain, 'self_throttle', piped.delayMs, piped.reason);
 		return;
 	}
+	const eligibilityLease = {
+		ip: piped.ctx.ip,
+		eligibilityGeneration: piped.ctx.eligibilityGeneration,
+	};
+	if (!(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
+		await disposeDefer(
+			job,
+			queue,
+			deps,
+			domain,
+			'self_throttle',
+			60_000,
+			'Selected outbound IP became ineligible before SMTP'
+		);
+		return;
+	}
 
 	const startTime = Date.now();
-	const result = await sendToMx(data, config, redis, piped.ctx.ip);
+	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease);
 	const durationMs = Date.now() - startTime;
 
 	const outcome = classifyResult(result);

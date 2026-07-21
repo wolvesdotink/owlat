@@ -19,10 +19,11 @@ import { getDefaultFlags } from '@owlat/shared/featureFlags';
  * mocked so the route's own control flow is exercised in isolation.
  */
 
-const { pushMock, readMock, writeMock } = vi.hoisted(() => ({
+const { pushMock, readMock, writeMock, identityPreflightMock } = vi.hoisted(() => ({
 	pushMock: vi.fn(),
 	readMock: vi.fn(),
 	writeMock: vi.fn(),
+	identityPreflightMock: vi.fn(),
 }));
 
 vi.mock('@owlat/shared/setupEnv', async (importOriginal) => {
@@ -33,6 +34,9 @@ vi.mock('@owlat/shared/convexRuntimeEnv', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('@owlat/shared/convexRuntimeEnv')>();
 	return { ...actual, pushConvexRuntimeEnv: pushMock };
 });
+vi.mock('../../../utils/mtaIdentityPreflight', () => ({
+	preflightMtaIdentities: identityPreflightMock,
+}));
 
 const INSTANCE_SECRET = 'e'.repeat(64);
 const PLAINTEXT_PASSWORD = 'hunter2-relay-password';
@@ -69,6 +73,11 @@ beforeEach(() => {
 
 	pushMock.mockReset().mockResolvedValue(undefined);
 	writeMock.mockReset().mockResolvedValue(undefined);
+	identityPreflightMock.mockReset().mockResolvedValue({
+		ok: true,
+		message: 'Every outbound IP passed.',
+		identities: [],
+	});
 	// A configured install already carries the generated secrets + admin key.
 	readMock.mockReset().mockResolvedValue({
 		INSTANCE_SECRET,
@@ -134,5 +143,48 @@ describe('POST /api/setup/apply — relay password at rest', () => {
 		expect(pushMock.mock.invocationCallOrder[0]!).toBeLessThan(
 			writeMock.mock.invocationCallOrder[0]!
 		);
+	});
+});
+
+describe('POST /api/setup/apply — MTA identity gate', () => {
+	it('refuses the happy path before seeding or writing when live FCrDNS fails', async () => {
+		body = {
+			flags: getDefaultFlags({ hosted: false }),
+			env: { EMAIL_PROVIDER: 'mta' },
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+		identityPreflightMock.mockResolvedValue({
+			ok: false,
+			message: 'Set its PTR exactly to mail.example.com. In Hetzner Console…',
+			identities: [],
+		});
+
+		const result = await callRoute();
+		expect(result).toEqual({
+			ok: false,
+			message: 'Set its PTR exactly to mail.example.com. In Hetzner Console…',
+		});
+		expect(fetch).not.toHaveBeenCalled();
+		expect(pushMock).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
+	});
+
+	it('runs the identity gate when inbox enables MTA but delivery uses an SMTP relay', async () => {
+		body = {
+			flags: { ...getDefaultFlags({ hosted: false }), inbox: true },
+			env: { EMAIL_PROVIDER: 'smtp', SMTP_RELAY_PASSWORD: PLAINTEXT_PASSWORD },
+			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
+		};
+		identityPreflightMock.mockResolvedValue({
+			ok: false,
+			message: 'Outbound identity is not ready.',
+			identities: [],
+		});
+
+		const result = await callRoute();
+		expect(result).toEqual({ ok: false, message: 'Outbound identity is not ready.' });
+		expect(identityPreflightMock).toHaveBeenCalledTimes(1);
+		expect(fetch).not.toHaveBeenCalled();
+		expect(writeMock).not.toHaveBeenCalled();
 	});
 });

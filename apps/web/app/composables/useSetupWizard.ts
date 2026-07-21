@@ -26,6 +26,11 @@ import {
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
 import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
+import {
+	buildMtaIdentityEnv,
+	validateMtaIdentityDraft,
+	type MtaIdentityDraft,
+} from '~/utils/setupMtaIdentity';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
 
 // Re-export the shared preset table and its key type so the setup step (and its
@@ -104,6 +109,9 @@ export interface EmailStepDraft {
 	 * is byte-identical to the historic behaviour.
 	 */
 	outboundTlsMode?: OutboundTlsMode;
+	/** MTA can be enabled by receiving profiles even when delivery uses a relay. */
+	mtaProfileEnabled?: boolean;
+	mtaIdentity?: MtaIdentityDraft;
 	/** Optional From-identity — flows into the apply contract's `env`. */
 	fromEmail: string;
 	fromName: string;
@@ -148,6 +156,7 @@ export interface EmailStepErrors {
 	resendKey?: string;
 	ses?: string;
 	smtp?: string;
+	mtaIdentity?: string;
 	fromEmail?: string;
 }
 
@@ -183,6 +192,10 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 		} else if (!isValidSmtpPort(port)) {
 			errors.smtp = 'Port must be a whole number between 1 and 65535 (leave blank for 587).';
 		}
+	}
+	if (draft.provider === 'mta' || draft.mtaProfileEnabled) {
+		const identityError = validateMtaIdentityDraft(draft.mtaIdentity);
+		if (identityError) errors.mtaIdentity = identityError;
 	}
 	// From-identity is optional, but if supplied it must be a real address.
 	if (draft.fromEmail.trim() !== '' && !isSetupEmailValid(draft.fromEmail)) {
@@ -238,6 +251,13 @@ export function buildProviderEnv(
 			next['SMTP_RELAY_SECURE'] = secure ? 'true' : 'false';
 			next['SMTP_RELAY_USERNAME'] = username;
 			next['SMTP_RELAY_PASSWORD'] = password;
+		}
+	}
+	if (draft.provider === 'mta' || draft.mtaProfileEnabled) {
+		const identity = draft.mtaIdentity;
+		if (identity) {
+			Object.assign(next, buildMtaIdentityEnv(identity));
+			if (!identity.ehloHostnames.trim()) delete next['EHLO_HOSTNAMES'];
 		}
 	}
 

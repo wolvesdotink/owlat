@@ -165,6 +165,21 @@ describe('SmtpConnectionPool', () => {
 		expect(pool.size).toBe(0);
 	});
 
+	it('invalidates every entry for a quarantined bind IP without disturbing other identities', async () => {
+		const first = await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
+		pool.release(first.key);
+		const second = await pool.acquire('mx2.example.com', '10.0.0.1', { port: 25 });
+		pool.release(second.key);
+		const other = await pool.acquire('mx1.example.com', '10.0.0.2', { port: 25 });
+		pool.release(other.key);
+
+		pool.invalidateBindIp('10.0.0.1');
+
+		expect(pool.size).toBe(1);
+		const reacquired = await pool.acquire('mx1.example.com', '10.0.0.2', { port: 25 });
+		expect(reacquired.config).toBe(other.config);
+	});
+
 	it('TLS strictness participates in pool identity (PR-22: MTA-STS-enforce downgrade)', async () => {
 		const opportunistic = await pool.acquire('mx.shared.example.com', '10.0.0.1', {
 			port: 25,

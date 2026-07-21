@@ -20,6 +20,13 @@ const { hasActiveOrganization, isLoading: teamLoading, role } = useOrganizationC
 const { data: domainsData, isLoading: domainsLoading } = useOrganizationQuery(
 	api.domains.domains.listByOrganization
 );
+const { data: sendingOverview } = useOrganizationQuery(
+	api.analytics.reputationQueries.getSendingOverview
+);
+const outboundIpDetail = computed(() => {
+	const overview = sendingOverview.value;
+	return overview?.warming ? { warming: overview.warming, volume: overview.volume } : null;
+});
 
 const isLoading = computed(() => teamLoading.value || domainsLoading.value);
 
@@ -389,6 +396,14 @@ onBeforeUnmount(() => {
 				 domain" card, so the first thing under the h1 builds the mental model,
 				 not transports. The space-y-8 wrapper handles the spacing. -->
 			<DeliveryDomainDnsGuidance />
+
+			<!-- Outbound IP identity is DNS setup too: keep quarantine reasons and
+			     exact PTR repair guidance on the day-one domains surface. -->
+			<DeliverySendingDetails
+				v-if="outboundIpDetail"
+				:warming="outboundIpDetail.warming"
+				:volume="outboundIpDetail.volume"
+			/>
 
 			<!-- No verified domain → offer connecting an external mailbox instead -->
 			<div
