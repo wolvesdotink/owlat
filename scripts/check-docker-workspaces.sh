@@ -12,7 +12,9 @@
 # notices. This is a sibling of check-adr-numbers.sh and check-branding.sh: a
 # hard-0 invariant with no baseline. It expands the root package.json
 # `workspaces` globs to the workspaces that actually exist and asserts that each
-# one's package.json is matched by a pattern on every Dockerfile's COPY line.
+# one's package.json is matched by a pattern on every Dockerfile's COPY line —
+# and, so that an image cannot quietly opt itself out, that every Dockerfile
+# installing from the frozen lockfile carries such a line at all.
 
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -69,16 +71,35 @@ matches_pattern() {
 	[[ $path =~ ^${regex}$ ]]
 }
 
+# A Dockerfile instruction may be wrapped across backslash continuations, so the
+# file is read with those continuations folded away before anything is matched
+# against it. Without this a purely cosmetic re-wrap of a COPY line would take
+# its image out of the guard's sight.
+join_continuations() {
+	sed -e ':a' -e '/\\$/{N;s/\\\n//;ba' -e '}' "$1"
+}
+
 failures=0
 checked=0
 while IFS= read -r dockerfile; do
+	joined=$(join_continuations "$dockerfile")
 	patterns=$(
-		grep -E '^COPY --parents .*package\.json' "$dockerfile" \
-			| sed -E 's/^COPY --parents //; s/ \.\/$//' \
-			| tr ' ' '\n' \
+		printf '%s\n' "$joined" \
+			| grep -E '^[[:space:]]*COPY --parents .*package\.json' \
+			| sed -E 's/^[[:space:]]*COPY --parents[[:space:]]*//; s/[[:space:]]+\.\/$//' \
+			| tr -s ' \t' '\n\n' \
 			| grep -E 'package\.json$'
 	)
-	[ -n "$patterns" ] || continue
+	if [ -z "$patterns" ]; then
+		# An image that installs from the frozen lockfile MUST declare the
+		# manifests it copies; skipping it here is how the guard would go
+		# quiet on exactly the image that needs it.
+		if printf '%s\n' "$joined" | grep -qE 'bun install[^&|]*--frozen-lockfile'; then
+			echo "FAIL: $dockerfile runs 'bun install --frozen-lockfile' but copies no workspace manifests"
+			failures=$((failures + 1))
+		fi
+		continue
+	fi
 	checked=$((checked + 1))
 
 	for manifest in "${manifests[@]}"; do
