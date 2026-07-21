@@ -14,15 +14,16 @@ const WINDOW_MS = 30 * DAY_MS;
 
 export const SPAM_RATE_TARGET = PROVIDER_SPAM_RATE_POLICY.target;
 export const SPAM_RATE_HARD_THRESHOLD = PROVIDER_SPAM_RATE_POLICY.hardThreshold;
-export const SPAM_RATE_RECOVERY_DAYS = PROVIDER_SPAM_RATE_POLICY.recoveryDays;
+export const SPAM_RATE_INTERNAL_CLEAN_DAY_EVIDENCE_DAYS =
+	PROVIDER_SPAM_RATE_POLICY.internalCleanDayEvidenceDays;
 
 export interface SpamRateSummary {
 	spamRate: number | null;
 	totalDelivered: number;
 	totalComplaints: number;
 	status: 'no_data' | 'on_target' | 'elevated' | 'hard_limit';
-	cleanDaysBelowHardThreshold: number;
-	recoveryEligible: boolean;
+	cleanInternalDaysBelowHardThreshold: number;
+	hasRequiredInternalCleanDayEvidence: boolean;
 }
 
 type ReputationBucket = Doc<'sendingReputation'>;
@@ -59,13 +60,13 @@ export function deriveSpamRateSummary(
 					? 'elevated'
 					: 'on_target';
 
-	let cleanDaysBelowHardThreshold = 0;
+	let cleanInternalDaysBelowHardThreshold = 0;
 	const today = startOfDayUtc(now);
-	for (let daysAgo = 1; daysAgo <= SPAM_RATE_RECOVERY_DAYS; daysAgo++) {
+	for (let daysAgo = 1; daysAgo <= SPAM_RATE_INTERNAL_CLEAN_DAY_EVIDENCE_DAYS; daysAgo++) {
 		const day = daily.get(today - daysAgo * DAY_MS);
 		if (!day || day.delivered === 0) break;
 		if (day.complaints / day.delivered >= SPAM_RATE_HARD_THRESHOLD) break;
-		cleanDaysBelowHardThreshold++;
+		cleanInternalDaysBelowHardThreshold++;
 	}
 
 	return {
@@ -73,8 +74,9 @@ export function deriveSpamRateSummary(
 		totalDelivered,
 		totalComplaints,
 		status,
-		cleanDaysBelowHardThreshold,
-		recoveryEligible: cleanDaysBelowHardThreshold >= SPAM_RATE_RECOVERY_DAYS,
+		cleanInternalDaysBelowHardThreshold,
+		hasRequiredInternalCleanDayEvidence:
+			cleanInternalDaysBelowHardThreshold >= SPAM_RATE_INTERNAL_CLEAN_DAY_EVIDENCE_DAYS,
 	};
 }
 

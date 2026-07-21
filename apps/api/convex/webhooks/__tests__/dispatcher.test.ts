@@ -155,6 +155,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			args: {
 				providerMessageId: 'send_123',
 				primaryDomain: 'example.com',
+				acceptedAt: 1000,
 			},
 		});
 	});

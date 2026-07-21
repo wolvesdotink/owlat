@@ -104,6 +104,7 @@ const DISPATCH: DispatchTable = {
 			await ctx.runMutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
 				providerMessageId: e.providerMessageId,
 				primaryDomain: e.primarySendingDomain,
+				acceptedAt: e.at,
 			});
 		}
 	},

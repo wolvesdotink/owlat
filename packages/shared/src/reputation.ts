@@ -19,5 +19,5 @@ export const REPUTATION_MIN_SAMPLE_SIZE = 100;
 export const PROVIDER_SPAM_RATE_POLICY = {
 	target: 0.001,
 	hardThreshold: 0.003,
-	recoveryDays: 7,
+	internalCleanDayEvidenceDays: 7,
 } as const;

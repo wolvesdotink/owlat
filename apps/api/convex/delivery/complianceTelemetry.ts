@@ -9,6 +9,8 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const GMAIL_WINDOW_MS = DAY_MS;
 const TELEMETRY_RETENTION_MS = 48 * HOUR_MS;
+export const GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
+export const GMAIL_ACCEPTED_AT_MAX_AGE_MS = TELEMETRY_RETENTION_MS;
 const UNSUBSCRIBE_RETENTION_MS = 30 * DAY_MS;
 const GMAIL_VOLUME_SHARDS = 8;
 
@@ -68,11 +70,9 @@ export const recordGmailDelivery = internalMutation({
 	args: {
 		providerMessageId: v.string(),
 		primaryDomain: v.string(),
+		acceptedAt: v.number(),
 	},
 	handler: async (ctx, args) => {
-		// Provider timestamps are useful event metadata, but they are not trusted
-		// retention/window clocks. A skewed signed webhook must not create an
-		// immortal future bucket, so both clocks use server ingest time.
 		const ingestedAt = Date.now();
 		const receipt = await ctx.db
 			.query('gmailDeliveryReceipts')
@@ -82,9 +82,27 @@ export const recordGmailDelivery = internalMutation({
 
 		await ctx.db.insert('gmailDeliveryReceipts', {
 			providerMessageId: args.providerMessageId,
-			observedAt: ingestedAt,
+			acceptedAt: args.acceptedAt,
+			ingestedAt,
 		});
-		const bucketHour = hourStart(ingestedAt);
+
+		// The authenticated MTA's remote-DATA acceptance time places the event in
+		// the measurement window; server ingest time owns receipt retention. Small
+		// positive clock skew is clamped to ingest time. Events outside the 48-hour
+		// telemetry horizon, or beyond the explicit future-skew allowance, retain
+		// an idempotency receipt but do not create a volume bucket.
+		if (
+			!Number.isFinite(args.acceptedAt) ||
+			args.acceptedAt < ingestedAt - GMAIL_ACCEPTED_AT_MAX_AGE_MS
+		) {
+			return { recorded: false, reason: 'stale_accepted_at' as const };
+		}
+		if (args.acceptedAt > ingestedAt + GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS) {
+			return { recorded: false, reason: 'future_accepted_at' as const };
+		}
+
+		const boundedAcceptedAt = Math.min(args.acceptedAt, ingestedAt);
+		const bucketHour = hourStart(boundedAcceptedAt);
 		const shardKey = deterministicShard(args.providerMessageId);
 		const bucket = await ctx.db
 			.query('gmailVolumeBuckets')
@@ -199,9 +217,14 @@ export const cleanupComplianceTelemetry = internalMutation({
 		const gmailCutoff = now - TELEMETRY_RETENTION_MS;
 		const receipts = await ctx.db
 			.query('gmailDeliveryReceipts')
-			.withIndex('by_observed_at', (q) => q.lt('observedAt', gmailCutoff))
+			.withIndex('by_ingested_at', (q) => q.gt('ingestedAt', 0).lt('ingestedAt', gmailCutoff))
 			.collect(); // bounded: hourly cleanup limits this to newly expired receipts
 		for (const row of receipts) await ctx.db.delete(row._id);
+		const legacyReceipts = await ctx.db
+			.query('gmailDeliveryReceipts')
+			.withIndex('by_observed_at', (q) => q.gt('observedAt', 0).lt('observedAt', gmailCutoff))
+			.collect(); // bounded: legacy rows only during the migration window
+		for (const row of legacyReceipts) await ctx.db.delete(row._id);
 		const gmailBuckets = await ctx.db
 			.query('gmailVolumeBuckets')
 			.withIndex('by_hour', (q) => q.lt('hourStart', hourStart(gmailCutoff)))
@@ -209,9 +232,14 @@ export const cleanupComplianceTelemetry = internalMutation({
 		for (const row of gmailBuckets) await ctx.db.delete(row._id);
 		const futureReceipts = await ctx.db
 			.query('gmailDeliveryReceipts')
-			.withIndex('by_observed_at', (q) => q.gt('observedAt', now))
+			.withIndex('by_ingested_at', (q) => q.gt('ingestedAt', now))
 			.collect(); // bounded: invalid legacy/skew rows only
 		for (const row of futureReceipts) await ctx.db.delete(row._id);
+		const futureLegacyReceipts = await ctx.db
+			.query('gmailDeliveryReceipts')
+			.withIndex('by_observed_at', (q) => q.gt('observedAt', now))
+			.collect(); // bounded: invalid legacy rows only
+		for (const row of futureLegacyReceipts) await ctx.db.delete(row._id);
 		const futureGmailBuckets = await ctx.db
 			.query('gmailVolumeBuckets')
 			.withIndex('by_hour', (q) => q.gt('hourStart', hourStart(now)))

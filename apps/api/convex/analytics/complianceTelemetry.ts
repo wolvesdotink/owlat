@@ -11,7 +11,7 @@ import {
 } from '../delivery/complianceTelemetry';
 import {
 	SPAM_RATE_HARD_THRESHOLD,
-	SPAM_RATE_RECOVERY_DAYS,
+	SPAM_RATE_INTERNAL_CLEAN_DAY_EVIDENCE_DAYS,
 	SPAM_RATE_TARGET,
 	summarizeSpamRate,
 } from './spamRate';
@@ -33,7 +33,7 @@ export const getComplianceTelemetry = authedQuery({
 				...spamRate,
 				target: SPAM_RATE_TARGET,
 				hardThreshold: SPAM_RATE_HARD_THRESHOLD,
-				recoveryDaysRequired: SPAM_RATE_RECOVERY_DAYS,
+				internalCleanDaysRequired: SPAM_RATE_INTERNAL_CLEAN_DAY_EVIDENCE_DAYS,
 			},
 			gmail: {
 				domains: gmailDomains,

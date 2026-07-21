@@ -85,9 +85,15 @@ export const deliveryTables = {
 	// from inflating the Gmail 24-hour volume rollup. Cleanup retains 48 hours.
 	gmailDeliveryReceipts: defineTable({
 		providerMessageId: v.string(),
-		observedAt: v.number(),
+		acceptedAt: v.optional(v.number()),
+		ingestedAt: v.optional(v.number()),
+		// Deprecated compatibility field for rows written before acceptedAt and
+		// ingestedAt were separated. New writes leave it unset; cleanup removes
+		// legacy rows through the retained index during the migration window.
+		observedAt: v.optional(v.number()),
 	})
 		.index('by_message_id', ['providerMessageId'])
+		.index('by_ingested_at', ['ingestedAt'])
 		.index('by_observed_at', ['observedAt']),
 
 	// Hourly, write-sharded accepted-delivery volume for MX destinations Phase 2
