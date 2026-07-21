@@ -113,7 +113,8 @@ export interface ReputationSummary {
 	riskLevel: RiskLevel;
 }
 
-type ReputationBucket = Doc<'sendingReputation'>;
+export type ReputationBucket = Doc<'sendingReputation'>;
+export type DomainReputationBucketGroups = ReadonlyMap<string, readonly ReputationBucket[]>;
 
 const eventTypeValidator = v.union(
 	v.literal('bounce'),
@@ -164,7 +165,7 @@ function scopedBucketQuery(db: DatabaseReader, scope: ReputationScope) {
 }
 
 /** Sum the buckets inside the rolling window and derive rate + risk. */
-function summarizeBuckets(buckets: ReputationBucket[], cutoff: number): ReputationSummary {
+function summarizeBuckets(buckets: readonly ReputationBucket[], cutoff: number): ReputationSummary {
 	let totalSent = 0;
 	let totalDelivered = 0;
 	let totalBounced = 0;
@@ -216,30 +217,43 @@ export async function summarize(
  * domain-scoped buckets, grouped by domain, each group run through the shared
  * `summarizeBuckets` core. Only domains with in-window activity appear.
  */
-export async function summarizeDomains(
+export async function readDomainReputationBucketGroups(
 	db: DatabaseReader
-): Promise<Array<ReputationSummary & { domain: string }>> {
-	const cutoff = Date.now() - WINDOW_MS;
+): Promise<Map<string, ReputationBucket[]>> {
 	// bounded: per-domain × ≤60 days × SHARD_COUNT shard rows, kept bounded by
-	// the cleanup cron. Grouped by domain, then summed across shards per domain.
+	// the cleanup cron. Every domain dashboard metric consumes this one grouping.
 	const buckets = await db
 		.query('sendingReputation')
 		.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'domain'))
 		.collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
 
 	const byDomain = new Map<string, ReputationBucket[]>();
-	for (const b of buckets) {
-		if (b.periodStart < cutoff) continue;
-		if (!b.domain) continue; // defensive: domain-scoped rows always carry it
-		const group = byDomain.get(b.domain);
-		if (group) group.push(b);
-		else byDomain.set(b.domain, [b]);
+	for (const bucket of buckets) {
+		if (!bucket.domain) continue; // defensive: domain-scoped rows always carry it
+		const group = byDomain.get(bucket.domain);
+		if (group) group.push(bucket);
+		else byDomain.set(bucket.domain, [bucket]);
 	}
+	return byDomain;
+}
 
-	return [...byDomain.entries()].map(([domain, group]) => ({
-		domain,
-		...summarizeBuckets(group, cutoff),
-	}));
+export function summarizeDomainReputationGroups(
+	groups: DomainReputationBucketGroups,
+	now = Date.now()
+): Array<ReputationSummary & { domain: string }> {
+	const cutoff = now - WINDOW_MS;
+	return [...groups.entries()]
+		.filter(([, buckets]) => buckets.some((bucket) => bucket.periodStart >= cutoff))
+		.map(([domain, buckets]) => ({
+			domain,
+			...summarizeBuckets(buckets, cutoff),
+		}));
+}
+
+export async function summarizeDomains(
+	db: DatabaseReader
+): Promise<Array<ReputationSummary & { domain: string }>> {
+	return summarizeDomainReputationGroups(await readDomainReputationBucketGroups(db));
 }
 
 // ============ WRITER ============

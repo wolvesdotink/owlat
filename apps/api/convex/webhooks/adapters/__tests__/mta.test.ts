@@ -200,10 +200,9 @@ describe('mtaAdapter.parseEvent', () => {
 			})
 		);
 		expect(event).toEqual({
-			kind: 'email.sent',
+			kind: 'email.delivered',
 			providerMessageId: 'pb-123',
 			at: 1700000000000,
-			providerType: 'mta',
 		});
 	});
 
@@ -218,7 +217,7 @@ describe('mtaAdapter.parseEvent', () => {
 			})
 		);
 		expect(event).toMatchObject({
-			kind: 'email.sent',
+			kind: 'email.delivered',
 			destinationProvider: 'gmail',
 			primarySendingDomain: 'example.co.uk',
 		});

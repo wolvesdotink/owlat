@@ -44,54 +44,54 @@ export const handleOneClickUnsubscribe = publicTokenEndpoint(
 	},
 	async (ctx, { token }) => {
 		const startedAt = Date.now();
-		try {
-			const validation = await ctx.runAction<TokenValidation>(
-				internal.delivery.unsubscribe.validateToken,
-				{ token }
-			);
+		const validation = await ctx.runAction<TokenValidation>(
+			internal.delivery.unsubscribe.validateToken,
+			{ token }
+		);
 
-			if (!validation.valid) {
-				return {
-					ok: false,
-					reason: validation.reason ?? 'invalid_token',
-					message: 'Invalid or expired unsubscribe link',
-					status: 400,
-				};
-			}
-
-			const result = await ctx.runMutation<ProcessOutcome>(
-				internal.delivery.unsubscribeQueries.processUnsubscribe,
-				{ contactId: validation.contactId as Id<'contacts'> }
-			);
-
-			if (!result.success) {
-				return {
-					ok: false,
-					reason: 'contact_not_found',
-					message: 'Contact not found',
-					status: 404,
-				};
-			}
-
-			const listsRemoved = result.alreadyUnsubscribed ? 0 : (result.listsRemoved ?? 0);
-			const message = result.alreadyUnsubscribed
-				? 'You were already unsubscribed from all topics'
-				: `You have been successfully unsubscribed from ${listsRemoved} topic${listsRemoved === 1 ? '' : 's'}`;
-
-			return { ok: true, data: { message, listsRemoved } };
-		} finally {
-			const recordedAt = Date.now();
-			try {
-				await ctx.runMutation(internal.delivery.complianceTelemetry.recordUnsubscribeLatency, {
-					durationMs: recordedAt - startedAt,
-					recordedAt,
-				});
-			} catch (error) {
-				// Telemetry must never turn a successfully-applied unsubscribe into a
-				// provider-visible error that might trigger a retry.
-				logWarn('[unsubscribe] failed to record processing latency:', error);
-			}
+		if (!validation.valid) {
+			return {
+				ok: false,
+				reason: validation.reason ?? 'invalid_token',
+				message: 'Invalid or expired unsubscribe link',
+				status: 400,
+			};
 		}
+
+		const result = await ctx.runMutation<ProcessOutcome>(
+			internal.delivery.unsubscribeQueries.processUnsubscribe,
+			{ contactId: validation.contactId as Id<'contacts'> }
+		);
+
+		if (!result.success) {
+			return {
+				ok: false,
+				reason: 'contact_not_found',
+				message: 'Contact not found',
+				status: 404,
+			};
+		}
+
+		const listsRemoved = result.alreadyUnsubscribed ? 0 : (result.listsRemoved ?? 0);
+		const message = result.alreadyUnsubscribed
+			? 'You were already unsubscribed from all topics'
+			: `You have been successfully unsubscribed from ${listsRemoved} topic${listsRemoved === 1 ? '' : 's'}`;
+
+		// Only successful/idempotent valid unsubscribe operations belong in this
+		// business-latency metric. Invalid public traffic must not dilute its p95.
+		const recordedAt = Date.now();
+		try {
+			await ctx.runMutation(internal.delivery.complianceTelemetry.recordUnsubscribeLatency, {
+				durationMs: recordedAt - startedAt,
+				recordedAt,
+			});
+		} catch (error) {
+			// Telemetry must never turn a successfully-applied unsubscribe into a
+			// provider-visible error that might trigger a retry.
+			logWarn('[unsubscribe] failed to record processing latency:', error);
+		}
+
+		return { ok: true, data: { message, listsRemoved } };
 	}
 );
 

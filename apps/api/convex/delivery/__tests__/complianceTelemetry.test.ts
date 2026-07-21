@@ -46,18 +46,15 @@ beforeEach(() => {
 describe('Gmail bulk-sender volume', () => {
 	it('is idempotent by provider message id and keeps primary domains isolated', async () => {
 		const t = convexTest(schema, modules);
-		const observedAt = Date.now();
 		for (const primaryDomain of ['alpha.example', 'beta.example']) {
 			await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
 				providerMessageId: `msg-${primaryDomain}`,
 				primaryDomain,
-				observedAt,
 			});
 		}
 		await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
 			providerMessageId: 'msg-alpha.example',
 			primaryDomain: 'alpha.example',
-			observedAt,
 		});
 
 		const result = await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {});
@@ -67,6 +64,66 @@ describe('Gmail bulk-sender volume', () => {
 		]);
 		// The member-facing shape never exposes provider message ids/receipts.
 		expect(JSON.stringify(result.gmail)).not.toContain('msg-alpha');
+	});
+
+	it('uses trusted ingest time, excludes stale/future buckets, and cleans poisoned rows', async () => {
+		vi.useFakeTimers();
+		const now = Date.UTC(2026, 6, 21, 12, 30);
+		vi.setSystemTime(now);
+		try {
+			const t = convexTest(schema, modules);
+			await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
+				providerMessageId: 'trusted-now',
+				primaryDomain: 'trusted.example',
+			});
+			await t.run(async (ctx) => {
+				const receipt = await ctx.db
+					.query('gmailDeliveryReceipts')
+					.withIndex('by_message_id', (q) => q.eq('providerMessageId', 'trusted-now'))
+					.unique();
+				expect(receipt?.observedAt).toBe(now);
+
+				for (const [primaryDomain, hourStart] of [
+					['inside.example', now - 23 * 3_600_000],
+					['stale.example', now - 26 * 3_600_000],
+					['future.example', now + 24 * 3_600_000],
+				] as const) {
+					await ctx.db.insert('gmailVolumeBuckets', {
+						primaryDomain,
+						hourStart: Math.floor(hourStart / 3_600_000) * 3_600_000,
+						shardKey: 0,
+						deliveredCount: 99,
+					});
+				}
+				await ctx.db.insert('gmailDeliveryReceipts', {
+					providerMessageId: 'future-receipt',
+					observedAt: now + 24 * 3_600_000,
+				});
+			});
+
+			const result = await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {});
+			expect(result.gmail.domains).toEqual([
+				{ primaryDomain: 'inside.example', delivered24h: 99 },
+				{ primaryDomain: 'trusted.example', delivered24h: 1 },
+			]);
+
+			await t.mutation(internal.delivery.complianceTelemetry.cleanupComplianceTelemetry, {});
+			await t.run(async (ctx) => {
+				expect(
+					await ctx.db
+						.query('gmailDeliveryReceipts')
+						.withIndex('by_message_id', (q) => q.eq('providerMessageId', 'future-receipt'))
+						.unique()
+				).toBeNull();
+				const futureBuckets = await ctx.db
+					.query('gmailVolumeBuckets')
+					.withIndex('by_hour', (q) => q.gt('hourStart', now))
+					.collect();
+				expect(futureBuckets).toHaveLength(0);
+			});
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('fires the seeded approaching-5k warning and rejects anonymous reads', async () => {
@@ -127,10 +184,16 @@ describe('per-domain delivery dashboard spam rates', () => {
 		const rows = await t.query(api.analytics.reputationQueries.getDeliveryDomainTable, {});
 		const byDomain = new Map(rows.map((row) => [row.domain, row]));
 		expect(byDomain.get('target.example')).toMatchObject({
+			sent30d: 1_000,
+			delivered30d: 1_000,
+			complaints30d: 1,
 			spamRate: 0.001,
 			spamRateStatus: 'elevated',
 		});
 		expect(byDomain.get('hard.example')).toMatchObject({
+			sent30d: 1_000,
+			delivered30d: 1_000,
+			complaints30d: 3,
 			spamRate: 0.003,
 			spamRateStatus: 'hard_limit',
 		});

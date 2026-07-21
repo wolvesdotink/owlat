@@ -5,10 +5,12 @@ import { getDailySendVolume } from '../lib/sendingLimits';
 import {
 	summarize,
 	summarizeDomains,
+	readDomainReputationBucketGroups,
+	summarizeDomainReputationGroups,
 	type ReputationSummary,
 	type RiskLevel,
 } from './sendingReputation';
-import { summarizeDomainSpamRates, type SpamRateSummary } from './spamRate';
+import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
 type ReputationDto = {
@@ -193,15 +195,15 @@ export const getDomainReputations = authedQuery({
 			domainStatusMap.set(d.domain, d.status);
 		}
 
-		const results = summaries.map((s) => ({
-			domain: s.domain,
-			riskLevel: s.riskLevel as string,
-			bounceRate: s.bounceRate,
-			complaintRate: s.complaintRate,
-			totalSent: s.totalSent,
-			totalBounced: s.totalBounced,
-			totalComplaints: s.totalComplaints,
-			domainStatus: domainStatusMap.get(s.domain) ?? null,
+		const results = summaries.map((summary) => ({
+			domain: summary.domain,
+			riskLevel: summary.riskLevel as string,
+			bounceRate: summary.bounceRate,
+			complaintRate: summary.complaintRate,
+			totalSent: summary.totalSent,
+			totalBounced: summary.totalBounced,
+			totalComplaints: summary.totalComplaints,
+			domainStatus: domainStatusMap.get(summary.domain) ?? null,
 		}));
 
 		// Sort by totalSent descending (most active domains first)
@@ -289,23 +291,22 @@ export const getDeliveryDomainTable = authedQuery({
 		await getUserIdFromSession(ctx);
 
 		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
-		const [summaries, spamSummaries] = await Promise.all([
-			summarizeDomains(ctx.db),
-			summarizeDomainSpamRates(ctx.db),
-		]);
+		const bucketGroups = await readDomainReputationBucketGroups(ctx.db);
+		const summaries = summarizeDomainReputationGroups(bucketGroups);
+		const spamSummaries = summarizeDomainSpamRateGroups(bucketGroups);
 		// Keep the whole per-domain reputation summary, not just the volume, so the
 		// row can show a health dot from real risk plus bounce/complaint detail.
 		const summaryByDomain = new Map<string, (typeof summaries)[number]>();
-		for (const s of summaries) summaryByDomain.set(s.domain, s);
+		for (const summary of summaries) summaryByDomain.set(summary.domain, summary);
 		const spamByDomain = new Map(spamSummaries.map((summary) => [summary.domain, summary]));
 
-		const rows: DeliveryDomainRow[] = domains.map((d) => {
-			const auth = domainAuthState(d.verificationResults);
-			const summary = summaryByDomain.get(d.domain);
-			const spam = spamByDomain.get(d.domain);
+		const rows: DeliveryDomainRow[] = domains.map((domainRecord) => {
+			const auth = domainAuthState(domainRecord.verificationResults);
+			const summary = summaryByDomain.get(domainRecord.domain);
+			const spam = spamByDomain.get(domainRecord.domain);
 			return {
-				domain: d.domain,
-				status: d.status,
+				domain: domainRecord.domain,
+				status: domainRecord.status,
 				auth,
 				missing: missingAuthRecords(auth),
 				sent30d: summary?.totalSent ?? 0,

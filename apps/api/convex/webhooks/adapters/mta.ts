@@ -177,10 +177,12 @@ export const mtaAdapter: InboundAdapter = {
 			case 'sent': {
 				if (!payload.messageId) return null;
 				return {
-					kind: 'email.sent',
+					// The MTA emits this only after the destination SMTP server has
+					// accepted DATA. POST /send queue acceptance is recorded separately
+					// by the worker as `sent`; this is the truthful delivered denominator.
+					kind: 'email.delivered',
 					providerMessageId: payload.messageId,
 					at: payload.timestamp ?? Date.now(),
-					providerType: 'mta',
 					...(payload.destinationProvider
 						? { destinationProvider: payload.destinationProvider }
 						: {}),
