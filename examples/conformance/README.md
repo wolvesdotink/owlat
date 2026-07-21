@@ -42,6 +42,12 @@ rather than three unrelated demos.
   with: a last-hex-character near miss is rejected in constant time, a truncated
   signature is rejected rather than thrown at, a missing header fails closed, and
   the signature is bound to the nonce, app id, body and secret.
+- **`dockerWorkspaces.test.ts`** — the guard that keeps the examples installable
+  in every image: `scripts/check-docker-workspaces.sh` is run against throwaway
+  repositories so it cannot go quiet on the drift it exists to catch. Covers a
+  COPY wrapped across backslash continuations (still checked, globs intact and
+  glob dropped) and an image that runs `bun install --frozen-lockfile` while
+  copying no manifest at all.
 
 ## Why a temporary workspace
 
