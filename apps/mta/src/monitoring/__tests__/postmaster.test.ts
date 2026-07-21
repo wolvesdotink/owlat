@@ -17,8 +17,9 @@ import {
 	GOOGLE_POSTMASTER_AUTHORIZATION_SCOPES,
 	normalizeDomainStat,
 } from '../googlePostmasterApi.js';
+import { registry } from '../collector.js';
 import { logger } from '../logger.js';
-import { fetchPostmasterData, spamRate } from '../postmaster.js';
+import { fetchPostmasterData } from '../postmaster.js';
 
 const config = {
 	googlePostmaster: {
@@ -60,6 +61,12 @@ function spamStat(date = '2026-07-20', ratio = 0.0005) {
 	};
 }
 
+async function expectNoPostmasterDomainMetric(domain: string): Promise<void> {
+	const exportedMetrics = await registry.metrics();
+	expect(exportedMetrics).not.toContain('mta_postmaster');
+	expect(exportedMetrics).not.toContain(domain);
+}
+
 describe('Google Postmaster v2 response normalization', () => {
 	it('pins the two documented v2 authorization scopes', () => {
 		expect(GOOGLE_POSTMASTER_AUTHORIZATION_SCOPES).toEqual([
@@ -88,7 +95,6 @@ describe('Google Postmaster v2 collection', () => {
 		vi.clearAllMocks();
 		vi.spyOn(Date, 'now').mockReturnValue(FROZEN_NOW);
 		await new Redis().flushall();
-		spamRate.reset();
 	});
 
 	it('retains operational state only after Convex authorizes the exact domain', async () => {
@@ -96,7 +102,6 @@ describe('Google Postmaster v2 collection', () => {
 		const unrelatedDomain = 'unrelated-private.example';
 		await redis.set(`mta:postmaster:stats-cursor:${unrelatedDomain}`, 'legacy-cursor');
 		await redis.set(`mta:postmaster:pushed:${unrelatedDomain}:2026-07-20`, '1');
-		spamRate.set({ domain: unrelatedDomain }, 0.99);
 		vi.mocked(notifyPostmasterConvex).mockImplementation(async (event) => {
 			if (event.domain === unrelatedDomain) {
 				return { disposition: 'ignored_unowned', retained: false };
@@ -126,13 +131,7 @@ describe('Google Postmaster v2 collection', () => {
 		expect(await redis.keys('*')).not.toEqual(
 			expect.arrayContaining([expect.stringContaining(unrelatedDomain)])
 		);
-		expect(await spamRate.get()).not.toEqual(
-			expect.objectContaining({
-				values: expect.arrayContaining([
-					expect.objectContaining({ labels: { domain: unrelatedDomain } }),
-				]),
-			})
-		);
+		await expectNoPostmasterDomainMetric(unrelatedDomain);
 		const serializedLogs = JSON.stringify([
 			...vi.mocked(logger.warn).mock.calls,
 			...vi.mocked(logger.error).mock.calls,
@@ -140,7 +139,7 @@ describe('Google Postmaster v2 collection', () => {
 		expect(serializedLogs).not.toContain(unrelatedDomain);
 	});
 
-	it('cleans a domain missing after restart and permits a fresh same-day observation', async () => {
+	it('cleans a domain across leader handoff and permits a fresh same-day observation', async () => {
 		const redis = new Redis();
 		let domainIsListed = true;
 		vi.stubGlobal(
@@ -158,13 +157,7 @@ describe('Google Postmaster v2 collection', () => {
 		await fetchPostmasterData(redis, config);
 		expect(await redis.get('mta:postmaster:pushed:example.com:2026-07-20')).toBe('1');
 		expect(await redis.zscore('mta:postmaster:domain-state-index', 'example.com')).toBe('1');
-		expect(await spamRate.get()).toEqual(
-			expect.objectContaining({
-				values: expect.arrayContaining([
-					expect.objectContaining({ labels: { domain: 'example.com' } }),
-				]),
-			})
-		);
+		await expectNoPostmasterDomainMetric('example.com');
 
 		// A new client proves discovery state is durable rather than process-local.
 		domainIsListed = false;
@@ -173,15 +166,8 @@ describe('Google Postmaster v2 collection', () => {
 		expect(await redis.get('mta:postmaster:pushed:example.com:2026-07-20')).toBeNull();
 		expect(await redis.get('mta:postmaster:stats-cursor:example.com')).toBeNull();
 		expect(await redis.zscore('mta:postmaster:domain-state-index', 'example.com')).toBeNull();
-		expect(await spamRate.get()).not.toEqual(
-			expect.objectContaining({
-				values: expect.arrayContaining([
-					expect.objectContaining({ labels: { domain: 'example.com' } }),
-				]),
-			})
-		);
+		await expectNoPostmasterDomainMetric('example.com');
 
-		spamRate.reset();
 		domainIsListed = true;
 		await fetchPostmasterData(redis, config);
 
