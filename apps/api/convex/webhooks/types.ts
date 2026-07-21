@@ -51,6 +51,8 @@ export type InboundEvent =
 			kind: 'email.delivered';
 			providerMessageId: string;
 			at: number;
+			organizationId?: string;
+			recipient?: string;
 			destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
 			primarySendingDomain?: string;
 	  }

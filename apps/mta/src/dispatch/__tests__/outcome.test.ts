@@ -152,6 +152,9 @@ describe('reduce(delivered)', () => {
 		if (notify?.kind === 'notify_convex') {
 			expect(notify.event.event).toBe('sent');
 			expect(notify.event.messageId).toBe('msg-001');
+			expect(notify.event.organizationId).toBe('org-1');
+			expect(notify.event.recipient).toBe('user@example.com');
+			expect(notify.event.destinationProvider).toBe('other');
 			expect(notify.event.remoteMessageId).toBe('<remote@isp>');
 		}
 	});

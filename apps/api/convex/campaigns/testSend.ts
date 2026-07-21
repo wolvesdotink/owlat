@@ -170,6 +170,8 @@ export const sendTestEmail = authedAction({
 		// routing through the helper closes that drift.
 		const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
 			messageType: 'transactional',
+			to: args.testEmail,
+			from,
 		});
 		if (!resolved) {
 			throwInternal('Cannot send test email: no delivery provider is configured.');
@@ -271,20 +273,20 @@ export const sendTestEmailFromTemplate = authedAction({
 		const personalizedSubject = `[TEST] ${composed.subject}`;
 		const personalizedHtml = composed.html;
 
-		// Resolve provider route once for the batch.
-		const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-			messageType: 'transactional',
-		});
-		if (!resolved) {
-			throwInternal('Cannot send test emails: no delivery provider is configured.');
-		}
-
 		// Send to all test recipients via the dispatch helper (uniform
 		// retry + health recording per attempt).
 		const results: Array<{ email: string; success: boolean; error?: string }> = [];
 
 		for (const testEmail of args.testEmails) {
 			try {
+				const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+					messageType: 'transactional',
+					to: testEmail,
+					from,
+				});
+				if (!resolved) {
+					throw new Error('No delivery provider is configured');
+				}
 				const dispatched = await sendProviderDispatch(ctx, resolved.providerType, {
 					to: testEmail,
 					from,

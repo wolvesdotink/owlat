@@ -21,6 +21,10 @@ import {
 import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { getOptional } from '../env';
+import { extractDomainOrNull } from '@owlat/shared';
+import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
+import { getSingletonOrganizationId } from '../sessionOrganization';
+import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
@@ -40,7 +44,8 @@ export const messageTypeValidator = v.union(
  */
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
-	messageType: MessageType
+	messageType: MessageType,
+	addressContext?: { to?: string; from?: string; now?: number }
 ): Promise<ResolvedRoute | null> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
@@ -64,9 +69,97 @@ export async function resolveSendRouteFromDb(
 		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
 	}
 
-	return resolveRoute(routeConfig as ProviderRouteConfig | null, healthStatuses, (kind) =>
-		readyKinds.has(kind)
+	const deliverability = await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
+
+	return resolveRoute(
+		routeConfig as ProviderRouteConfig | null,
+		healthStatuses,
+		(kind) => readyKinds.has(kind),
+		deliverability
 	);
+}
+
+async function deliverabilityInput(
+	ctx: QueryCtx | MutationCtx,
+	routeConfig: Doc<'providerRoutes'> | null,
+	messageType: MessageType,
+	addressContext?: { to?: string; from?: string; now?: number }
+) {
+	if (!routeConfig?.deliverabilityFallback?.isEnabled || !addressContext?.to) return undefined;
+	const toDomain = extractDomainOrNull(addressContext.to);
+	if (!toDomain) return undefined;
+	const now = addressContext.now ?? Date.now();
+	let organizationId: string;
+	try {
+		organizationId = await getSingletonOrganizationId(ctx);
+	} catch {
+		return undefined;
+	}
+	const learnedProvider = await ctx.db
+		.query('destinationProviderDomains')
+		.withIndex('by_org_domain', (q) =>
+			q.eq('organizationId', organizationId).eq('domain', toDomain)
+		)
+		.first();
+	const provider =
+		learnedProvider && learnedProvider.expiresAt >= now
+			? learnedProvider.destinationProvider
+			: destinationProviderForDomain(toDomain);
+	const [providerState, globalState, warmingState] = await Promise.all([
+		ctx.db
+			.query('deliverabilityRouteStates')
+			.withIndex('by_org_provider', (q) =>
+				q.eq('organizationId', organizationId).eq('destinationProvider', provider)
+			)
+			.first(),
+		ctx.db
+			.query('deliverabilityRouteStates')
+			.withIndex('by_org_provider', (q) =>
+				q.eq('organizationId', organizationId).eq('destinationProvider', 'all')
+			)
+			.first(),
+		messageType === 'campaign' && routeConfig.deliverabilityFallback.isWarmupOverflowEnabled
+			? ctx.db.query('warmingState').first()
+			: Promise.resolve(null),
+	]);
+	const freshActive = [globalState, providerState].filter(
+		(state) => state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
+	);
+	const activeReasons = freshActive.flatMap((state) => state?.signals.map((s) => s.source) ?? []);
+	const isWarmupOverflow = Boolean(
+		warmingState &&
+		now - warmingState.syncedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+		warmingState.phase !== 'graduated' &&
+		warmingState.totalDailyCap > 0 &&
+		warmingState.totalSentToday >= warmingState.totalDailyCap
+	);
+	const fromDomain = addressContext.from ? extractDomainOrNull(addressContext.from) : null;
+	const isRelayDomainVerified = fromDomain
+		? await relayDomainVerified(
+				ctx,
+				fromDomain,
+				routeConfig.deliverabilityFallback.relayProviderType
+			)
+		: false;
+	return { activeReasons, isWarmupOverflow, isRelayDomainVerified };
+}
+
+async function relayDomainVerified(
+	ctx: QueryCtx | MutationCtx,
+	domainName: string,
+	relayProviderType: string
+): Promise<boolean> {
+	if (relayProviderType !== 'ses') return false;
+	const domain = await ctx.db
+		.query('domains')
+		.withIndex('by_domain', (q) => q.eq('domain', domainName.toLowerCase()))
+		.first();
+	if (!domain || domain.status !== 'verified' || domain.providerType !== 'ses') return false;
+	const identity = await ctx.db
+		.query('sendingDomainSesIdentities')
+		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+		.first();
+	return Boolean(identity && identity.dkimTokens.length > 0);
 }
 
 /**
@@ -77,8 +170,13 @@ export async function resolveSendRouteFromDb(
 export const resolveSendRoute = internalQuery({
 	args: {
 		messageType: messageTypeValidator,
+		to: v.optional(v.string()),
+		from: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ResolvedRoute | null> => {
-		return await resolveSendRouteFromDb(ctx, args.messageType);
+		return await resolveSendRouteFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+		});
 	},
 });

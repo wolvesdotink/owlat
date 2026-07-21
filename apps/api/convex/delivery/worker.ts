@@ -7,6 +7,7 @@ import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import {
 	type ExtrasFor,
 	type MtaExtras,
+	type MtaIpPool,
 	type ResendExtras,
 	type SendProviderKind,
 } from '../lib/sendProviders';
@@ -52,6 +53,7 @@ const envelopeInputValidator = v.union(
 		from: v.string(),
 		replyTo: v.optional(v.string()),
 		providerType: v.optional(v.string()),
+		ipPool: v.optional(v.string()),
 		template: v.object({
 			subject: v.string(),
 			htmlContent: v.string(),
@@ -84,6 +86,7 @@ const envelopeInputValidator = v.union(
 		from: v.string(),
 		replyTo: v.optional(v.string()),
 		providerType: v.optional(v.string()),
+		ipPool: v.optional(v.string()),
 		// The `transactionalSends._id` this envelope sends for. Used ONLY to
 		// derive a stable provider idempotency key (see `deriveIdempotencyKey`)
 		// so a surviving retry de-dupes at the MTA / Resend instead of double-
@@ -132,6 +135,7 @@ type WorkerEnvelopeInput =
 			from: string;
 			replyTo?: string;
 			providerType?: string;
+			ipPool?: string;
 			template: { subject: string; htmlContent: string };
 			contactInfo: {
 				contactId?: import('../_generated/dataModel').Id<'contacts'>;
@@ -156,6 +160,7 @@ type WorkerEnvelopeInput =
 			from: string;
 			replyTo?: string;
 			providerType?: string;
+			ipPool?: string;
 			sendId?: import('../_generated/dataModel').Id<'transactionalSends'>;
 			template: { subject: string; htmlContent: string };
 			dataVariables?: Record<string, unknown>;
@@ -448,7 +453,10 @@ export const sendSingleEmail = internalAction({
 		const idempotencyKey = deriveIdempotencyKey(envelopeInput);
 		const extras: ExtrasFor<SendProviderKind> =
 			providerKind === 'mta'
-				? ({ messageId: idempotencyKey } satisfies MtaExtras)
+				? ({
+						messageId: idempotencyKey,
+						...(envelopeInput.ipPool ? { ipPool: envelopeInput.ipPool as MtaIpPool } : {}),
+					} satisfies MtaExtras)
 				: providerKind === 'resend'
 					? ({ idempotencyKey } satisfies ResendExtras)
 					: {};

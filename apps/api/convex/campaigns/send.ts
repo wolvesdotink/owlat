@@ -36,6 +36,7 @@ import {
 	variantForHash,
 } from './sendVariantSplit';
 import { logWarn } from '../lib/runtimeLog';
+import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
 
 // Convex-backed implementation of the email-scanner's `UrlReputationCache`,
 // persisting Safe Browsing verdicts in the `urlReputationCache` table so
@@ -417,6 +418,7 @@ type EnqueueVariantArgs = {
 	audienceType?: 'topic' | 'segment';
 	viewInBrowserUrl?: string;
 	providerType?: string;
+	ipPool?: string;
 	trackingBaseUrl?: string;
 	convexSiteUrl?: string;
 	siteUrl?: string;
@@ -530,6 +532,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 				audienceType: args.audienceType,
 				viewInBrowserUrl: args.viewInBrowserUrl,
 				providerType: args.providerType,
+				ipPool: args.ipPool,
 				trackingBaseUrl: args.trackingBaseUrl,
 				organizationId: args.organizationId,
 				listId: args.listId,
@@ -558,6 +561,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 				audienceType: args.audienceType,
 				viewInBrowserUrl: args.viewInBrowserUrl,
 				providerType: args.providerType,
+				ipPool: args.ipPool,
 				trackingBaseUrl: args.trackingBaseUrl,
 				organizationId: args.organizationId,
 				listId: args.listId,
@@ -643,6 +647,8 @@ export const resolveCampaignPage = internalAction({
 
 		const resolvedRoute = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
 			messageType: 'campaign',
+			to: page.recipients[0]?.email,
+			from,
 		});
 		if (!resolvedRoute) {
 			// Fail-closed: the campaign pre-flight already requires a configured
@@ -770,15 +776,24 @@ export const resolveCampaignPage = internalAction({
 
 			// Group by (language, variant) so each combination enqueues with the
 			// right per-language content + variant tag in one batch.
-			type Bucket = { language: string; variant: 'A' | 'B' | undefined };
+			type Bucket = {
+				language: string;
+				variant: 'A' | 'B' | undefined;
+				destinationProvider: string;
+			};
 			const byBucket = new Map<string, { bucket: Bucket; recipients: typeof page.recipients }>();
 			for (const recipient of page.recipients) {
 				const variant = bucketFor(String(recipient._id));
 				if (variant === null) continue; // belongs to the other phase — skip
 				const language = recipient.language ?? tmplDefaultLanguage;
-				const key = `${language} ${variant ?? '-'}`;
+				const recipientDomain = recipient.email.split('@')[1] ?? '';
+				const destinationProvider = destinationProviderForDomain(recipientDomain);
+				const key = `${language}\u0000${variant ?? '-'}\u0000${destinationProvider}`;
 				if (!byBucket.has(key))
-					byBucket.set(key, { bucket: { language, variant }, recipients: [] });
+					byBucket.set(key, {
+						bucket: { language, variant, destinationProvider },
+						recipients: [],
+					});
 				byBucket.get(key)!.recipients.push(recipient);
 			}
 
@@ -819,6 +834,15 @@ export const resolveCampaignPage = internalAction({
 					htmlContent = aContent.htmlContent;
 				}
 
+				const firstRecipient = recipients[0];
+				const bucketRoute = firstRecipient
+					? await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+							messageType: 'campaign',
+							to: firstRecipient.email,
+							from,
+						})
+					: null;
+				const selectedRoute = bucketRoute ?? resolvedRoute;
 				pageEnqueued += await enqueueVariantBatch(ctx, {
 					campaignId: args.campaignId,
 					recipients,
@@ -829,7 +853,8 @@ export const resolveCampaignPage = internalAction({
 					replyTo: campaign.replyTo,
 					audienceType,
 					viewInBrowserUrl,
-					providerType: resolvedRoute.providerType,
+					providerType: selectedRoute.providerType,
+					ipPool: selectedRoute.ipPool,
 					trackingBaseUrl,
 					convexSiteUrl,
 					siteUrl,

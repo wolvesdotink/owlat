@@ -30,6 +30,30 @@ export interface ProviderRouteConfig {
 		isEnabled: boolean;
 	}>;
 	ipPool?: string;
+	deliverabilityFallback?: {
+		isEnabled: boolean;
+		relayProviderType: string;
+		isWarmupOverflowEnabled: boolean;
+	};
+}
+
+export type DeliverabilityReason = NonNullable<ResolvedRoute['deliverabilityReason']>;
+
+export interface DeliverabilityRouteInput {
+	activeReasons: readonly Exclude<DeliverabilityReason, 'warmup_overflow'>[];
+	isWarmupOverflow: boolean;
+	isRelayDomainVerified: boolean;
+}
+
+export class DeliverabilityRouteError extends Error {
+	readonly code = 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED';
+
+	constructor() {
+		super(
+			'Deliverability relay refused: verify this sending domain for the configured relay provider before enabling automatic fallback.'
+		);
+		this.name = 'DeliverabilityRouteError';
+	}
 }
 
 /**
@@ -44,7 +68,8 @@ export interface ProviderRouteConfig {
 export function resolveRoute(
 	routeConfig: ProviderRouteConfig | null,
 	healthStatuses?: readonly ProviderHealthStatus[],
-	isReady: (kind: SendProviderKind) => boolean = () => true
+	isReady: (kind: SendProviderKind) => boolean = () => true,
+	deliverability?: DeliverabilityRouteInput
 ): ResolvedRoute | null {
 	if (!routeConfig) return fallback(isReady);
 
@@ -62,7 +87,28 @@ export function resolveRoute(
 
 	const strategy = strategyFor(routeConfig.strategy);
 	const selected = strategy.select(enabledEntries, routeConfig.ipPool, healthStatuses);
-	return selected ?? fallback(isReady);
+	const resolved = selected ?? fallback(isReady);
+	if (!resolved || resolved.providerType !== 'mta' || !deliverability) return resolved;
+
+	const fallbackConfig = routeConfig.deliverabilityFallback;
+	const reason =
+		deliverability.activeReasons[0] ??
+		(fallbackConfig?.isWarmupOverflowEnabled && deliverability.isWarmupOverflow
+			? 'warmup_overflow'
+			: undefined);
+	if (!reason || !fallbackConfig?.isEnabled) return resolved;
+	if (!isSendProviderKind(fallbackConfig.relayProviderType)) return resolved;
+	const relay = enabledEntries.find(
+		(entry) =>
+			entry.providerType === fallbackConfig.relayProviderType && entry.providerType !== 'mta'
+	);
+	if (!relay) return resolved;
+	if (!deliverability.isRelayDomainVerified) throw new DeliverabilityRouteError();
+	return {
+		providerType: relay.providerType,
+		source: 'deliverability_fallback',
+		deliverabilityReason: reason,
+	};
 }
 
 function fallback(isReady: (kind: SendProviderKind) => boolean): ResolvedRoute | null {

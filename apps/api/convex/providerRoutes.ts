@@ -44,6 +44,7 @@ async function upsertRoute(
 		strategy: Doc<'providerRoutes'>['strategy'];
 		providers: Doc<'providerRoutes'>['providers'];
 		ipPool?: string;
+		deliverabilityFallback?: Doc<'providerRoutes'>['deliverabilityFallback'];
 	}
 ): Promise<Doc<'providerRoutes'>['_id']> {
 	const now = Date.now();
@@ -54,6 +55,7 @@ async function upsertRoute(
 			strategy: fields.strategy,
 			providers: fields.providers,
 			ipPool: fields.ipPool,
+			deliverabilityFallback: fields.deliverabilityFallback,
 			updatedAt: now,
 		});
 		return existing._id;
@@ -64,6 +66,7 @@ async function upsertRoute(
 		strategy: fields.strategy,
 		providers: fields.providers,
 		ipPool: fields.ipPool,
+		deliverabilityFallback: fields.deliverabilityFallback,
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -80,6 +83,12 @@ const strategyValidator = v.union(
 	v.literal('priority_failover'),
 	v.literal('workload_split')
 );
+
+const deliverabilityFallbackValidator = v.object({
+	isEnabled: v.boolean(),
+	relayProviderType: v.string(),
+	isWarmupOverflowEnabled: v.boolean(),
+});
 
 // ── Client-facing queries ──────────────────────────────────────────
 
@@ -138,6 +147,7 @@ export const setRoute = authedMutation({
 		strategy: strategyValidator,
 		providers: v.array(providerEntryValidator),
 		ipPool: v.optional(v.string()),
+		deliverabilityFallback: v.optional(deliverabilityFallbackValidator),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -146,6 +156,9 @@ export const setRoute = authedMutation({
 			'Only owners and admins can change provider routing'
 		);
 		const seenKinds = new Set<string>();
+		if (args.ipPool && !(MTA_IP_POOL_NAMES as readonly string[]).includes(args.ipPool)) {
+			throwInvalidInput('Provider route contains an unknown MTA IP pool');
+		}
 		for (const provider of args.providers) {
 			if (!isSendProviderKind(provider.providerType)) {
 				throwInvalidInput('Provider route contains an unknown transport');
@@ -158,11 +171,30 @@ export const setRoute = authedMutation({
 				throwInvalidInput('Provider route contains an unavailable transport');
 			}
 		}
+		const fallback = args.deliverabilityFallback;
+		if (fallback?.isEnabled) {
+			if (!isSendProviderKind(fallback.relayProviderType) || fallback.relayProviderType === 'mta') {
+				throwInvalidInput('Deliverability fallback must use a registered relay transport');
+			}
+			if (
+				!args.providers.some(
+					(provider) => provider.isEnabled && provider.providerType === fallback.relayProviderType
+				)
+			) {
+				throwInvalidInput('Deliverability fallback relay must be enabled in this route');
+			}
+			if (
+				!args.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+			) {
+				throwInvalidInput('Deliverability fallback requires an enabled owned-MTA route');
+			}
+		}
 
 		return await upsertRoute(ctx, args.messageType, {
 			strategy: args.strategy,
 			providers: args.providers,
 			ipPool: args.ipPool,
+			deliverabilityFallback: args.deliverabilityFallback,
 		});
 	},
 });

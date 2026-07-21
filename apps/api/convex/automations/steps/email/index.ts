@@ -24,8 +24,7 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		}
 		return {
 			emailTemplateId: r['emailTemplateId'],
-			subjectOverride:
-				typeof r['subjectOverride'] === 'string' ? r['subjectOverride'] : undefined,
+			subjectOverride: typeof r['subjectOverride'] === 'string' ? r['subjectOverride'] : undefined,
 		};
 	},
 	async enrichForQuery(ctx, config) {
@@ -59,7 +58,8 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		if (!orgSettings?.defaultFromEmail) {
 			return {
 				status: 'failed',
-				error: 'Email sender not configured. Please set a default sender email in organization settings.',
+				error:
+					'Email sender not configured. Please set a default sender email in organization settings.',
 			};
 		}
 
@@ -112,21 +112,24 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		// single owning topic.
 		const convexSiteUrl = getOptional('CONVEX_SITE_URL');
 		try {
-			const { sendId } = await ctx.runMutation(
-				internal.delivery.enqueue.enqueueNonCampaignSend,
-				{
-					kind: 'automation',
-					email: contactEmail,
-					contactId: contact._id,
-					automationId: automation._id,
-					subject: personalizedSubject,
-					html: personalizedHtml,
-					from,
-					...(convexSiteUrl
-						? { listUnsubscribe: true, convexSiteUrl }
-						: {}),
-				},
-			);
+			const route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+				messageType: 'automation',
+				to: contactEmail,
+				from,
+			});
+			if (!route) return { status: 'failed', error: 'No delivery provider configured' };
+			const { sendId } = await ctx.runMutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+				kind: 'automation',
+				email: contactEmail,
+				contactId: contact._id,
+				automationId: automation._id,
+				subject: personalizedSubject,
+				html: personalizedHtml,
+				from,
+				providerType: route.providerType,
+				ipPool: route.ipPool,
+				...(convexSiteUrl ? { listUnsubscribe: true, convexSiteUrl } : {}),
+			});
 
 			// `completed` here means the send was ENQUEUED (a queued Send row
 			// exists); the actual provider dispatch + lifecycle transition happen

@@ -22,6 +22,7 @@ import type { InboundEvent } from '../types';
 interface MtaWebhookPayload {
 	event: string;
 	messageId?: string;
+	organizationId?: string;
 	/** Complained recipient address (RFC 5965 §3.2) when no Message-ID. */
 	recipient?: string;
 	bounceType?: 'hard' | 'soft';
@@ -224,6 +225,8 @@ export const mtaAdapter: InboundAdapter = {
 					kind: 'email.delivered',
 					providerMessageId: payload.messageId,
 					at: payload.timestamp ?? Date.now(),
+					...(payload.organizationId ? { organizationId: payload.organizationId } : {}),
+					...(payload.recipient ? { recipient: payload.recipient } : {}),
 					...(payload.destinationProvider
 						? { destinationProvider: payload.destinationProvider }
 						: {}),
