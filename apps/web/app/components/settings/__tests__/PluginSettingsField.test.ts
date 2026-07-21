@@ -3,9 +3,9 @@
  * PluginSettingsField — one schema-rendered plugin settings control.
  *
  * Covers the accessibility wiring (label association, aria-describedby,
- * aria-required, role=switch), the secret-field behaviour (starts blank, hint
- * reflects stored state, emits the typed value), and SSR-safety (renders to a
- * string with no window/document access).
+ * aria-required, role=switch), the secret-field behaviour (read-only, presence
+ * only, names the environment variable, offers no input), and SSR-safety
+ * (renders to a string with no window/document access).
  */
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -58,20 +58,29 @@ describe('PluginSettingsField accessibility', () => {
 });
 
 describe('PluginSettingsField secret handling', () => {
-	it('starts blank and shows the saved-value hint when a secret is stored', () => {
-		const field: Field = { kind: 'secret', key: 'apiKey', label: 'API key' };
-		const wrapper = mountField(field, { modelValue: '', secretSet: true });
-		const input = wrapper.get('input[type="password"]');
-		expect((input.element as HTMLInputElement).value).toBe('');
-		expect(input.attributes('placeholder')).toBe('Leave blank to keep the saved value');
-		expect(wrapper.text()).toContain('A value is saved');
+	const secretField: Field = {
+		kind: 'secret',
+		key: 'apiKey',
+		envVar: 'PLUGIN_API_KEY',
+		label: 'API key',
+	};
+
+	it('offers no input at all, so a credential can never be typed into Owlat', () => {
+		const wrapper = mountField(secretField, { modelValue: '', secretSet: true });
+		expect(wrapper.find('input').exists()).toBe(false);
+		expect(wrapper.find('textarea').exists()).toBe(false);
 	});
 
-	it('shows the no-value hint and a plain prompt when no secret is stored', () => {
-		const field: Field = { kind: 'secret', key: 'apiKey', label: 'API key' };
-		const wrapper = mountField(field, { secretSet: false });
-		expect(wrapper.get('input[type="password"]').attributes('placeholder')).toBe('Enter a value');
-		expect(wrapper.text()).toContain('No value saved yet');
+	it('reports the environment variable as set', () => {
+		const wrapper = mountField(secretField, { modelValue: '', secretSet: true });
+		expect(wrapper.text()).toContain('Set in the environment');
+		expect(wrapper.text()).toContain('PLUGIN_API_KEY');
+	});
+
+	it('reports an absent environment variable and names what to set', () => {
+		const wrapper = mountField(secretField, { secretSet: false });
+		expect(wrapper.text()).toContain('Not set');
+		expect(wrapper.text()).toContain('PLUGIN_API_KEY');
 	});
 });
 
@@ -143,6 +152,7 @@ describe('PluginSettingsField SSR', () => {
 		const field: Field = {
 			kind: 'secret',
 			key: 'apiKey',
+			envVar: 'PLUGIN_API_KEY',
 			label: 'API key',
 			description: 'Provider credential',
 			required: true,
@@ -152,8 +162,8 @@ describe('PluginSettingsField SSR', () => {
 		});
 		const html = await renderToString(app);
 		expect(html).toContain('API key');
-		expect(html).toContain('type="password"');
-		// The stored secret plaintext is never part of the rendered markup.
-		expect(html).not.toContain('super-secret');
+		expect(html).toContain('PLUGIN_API_KEY');
+		// There is no credential input, so nothing to prefill and nothing to leak.
+		expect(html).not.toContain('type="password"');
 	});
 });

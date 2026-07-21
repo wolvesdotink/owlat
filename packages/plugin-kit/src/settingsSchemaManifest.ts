@@ -23,7 +23,7 @@ const MAX_DESCRIPTION_LENGTH = 280;
 const COMMON_FIELDS = new Set(['kind', 'key', 'label', 'description', 'required']);
 const KIND_EXTRA_FIELDS: Record<PluginSettingsFieldKind, readonly string[]> = {
 	string: ['default', 'maxLength'],
-	secret: ['maxLength'],
+	secret: ['envVar'],
 	number: ['default', 'min', 'max'],
 	boolean: ['default'],
 	select: ['options', 'default'],
@@ -169,7 +169,7 @@ function validateKindSpecific(
 			validateStringDefault(field, path, issues);
 			return;
 		case 'secret':
-			validateMaxLength(field, path, issues);
+			validateSecretEnvVar(field, path, issues);
 			return;
 		case 'number':
 			validateNumberField(field, path, issues);
@@ -180,6 +180,36 @@ function validateKindSpecific(
 		case 'select':
 			validateSelectField(field, path, issues);
 			return;
+	}
+}
+
+/**
+ * A `secret` field stores nothing: it names the deployment environment variable
+ * that supplies the credential. The name must be `PLUGIN_`-prefixed, matching
+ * the import-provider `secretEnvVar` rule, so a plugin can only ever point at a
+ * plugin-scoped variable and never at a core deployment secret.
+ */
+const SECRET_ENV_VAR = /^PLUGIN_[A-Z0-9][A-Z0-9_]*$/;
+const MAX_ENV_VAR_LENGTH = 128;
+
+function validateSecretEnvVar(
+	field: Record<string, unknown>,
+	path: string,
+	issues: PluginManifestIssue[]
+): void {
+	const envVar = readDataProperty(field, 'envVar', issues, true, path);
+	if (envVar.kind !== 'value') return;
+	if (
+		typeof envVar.value !== 'string' ||
+		envVar.value.length > MAX_ENV_VAR_LENGTH ||
+		!SECRET_ENV_VAR.test(envVar.value)
+	) {
+		addManifestIssue(
+			issues,
+			'invalid_format',
+			`${path}.envVar`,
+			'must be a PLUGIN_-prefixed uppercase environment variable name'
+		);
 	}
 }
 

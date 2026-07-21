@@ -30,15 +30,19 @@ export const slackApprovalsPlugin = definePlugin({
 		{
 			kind: 'secret',
 			key: 'slackSigningSecret',
+			envVar: 'PLUGIN_SLACK_SIGNING_SECRET',
 			label: 'Slack signing secret',
-			description: 'Used to authenticate Slack interaction callbacks.',
+			description:
+				'Used by this connected app to authenticate Slack interaction callbacks. Owlat stores no value: it reports only whether the deployment sets the variable.',
 			required: true,
 		},
 		{
 			kind: 'secret',
 			key: 'slackBotToken',
+			envVar: 'PLUGIN_SLACK_BOT_TOKEN',
 			label: 'Slack bot token',
-			description: 'Used to post the approval request into the channel.',
+			description:
+				'Used to post the approval request into the channel. Owlat stores no value: it reports only whether the deployment sets the variable.',
 			required: true,
 		},
 		{

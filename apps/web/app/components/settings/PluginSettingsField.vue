@@ -4,8 +4,9 @@
  * accessible (explicit label association, aria-describedby, aria-required, and a
  * role="switch" toggle) so the schema-driven form needs no per-field custom UI.
  *
- * Secret fields never receive the stored value: the input starts blank, a blank
- * value keeps the saved secret, and the hint reflects whether one is stored.
+ * A secret field is read-only: its value is supplied by a `PLUGIN_`-prefixed
+ * deployment environment variable, so the control renders the variable name and
+ * whether it is present, and there is no input to type a credential into.
  * SSR-safe — no window/document access, ids come from `useId()`.
  */
 import { computed, useId } from 'vue';
@@ -41,9 +42,11 @@ const numberValue = computed(() => (typeof props.modelValue === 'number' ? props
 const booleanValue = computed(() => props.modelValue === true);
 
 const secretHint = computed(() =>
-	props.secretSet
-		? 'A value is saved. Leave blank to keep it, or enter a new value to replace it.'
-		: 'No value saved yet.'
+	props.field.kind === 'secret'
+		? props.secretSet
+			? `Supplied by the ${props.field.envVar} environment variable, which is set.`
+			: `Set the ${props.field.envVar} environment variable in your deployment.`
+		: ''
 );
 
 function onText(event: Event) {
@@ -122,20 +125,21 @@ const inputClass =
 				@input="onText"
 			/>
 
-			<input
+			<!-- Env-supplied credential: presence only, never an editable value. -->
+			<p
 				v-else-if="field.kind === 'secret'"
 				:id="controlId"
-				type="password"
-				autocomplete="off"
-				:value="stringValue"
-				:aria-required="field.required && !secretSet ? true : undefined"
-				:aria-describedby="describedBy"
-				:maxlength="field.maxLength"
-				:disabled="disabled"
-				:placeholder="secretSet ? 'Leave blank to keep the saved value' : 'Enter a value'"
-				:class="inputClass"
-				@input="onText"
-			/>
+				class="flex items-center gap-2 text-sm rounded-lg px-3 py-2 bg-surface-1 border border-border-subtle"
+				:class="secretSet ? 'text-text-primary' : 'text-text-tertiary'"
+			>
+				<span
+					class="inline-block h-2 w-2 rounded-full"
+					:class="secretSet ? 'bg-success' : 'bg-border-subtle'"
+					aria-hidden="true"
+				/>
+				<span>{{ secretSet ? 'Set in the environment' : 'Not set' }}</span>
+				<code class="ml-auto text-xs text-text-tertiary">{{ field.envVar }}</code>
+			</p>
 
 			<input
 				v-else-if="field.kind === 'number'"
