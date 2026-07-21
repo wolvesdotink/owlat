@@ -25,3 +25,11 @@ export const OUTBOUND_TLS_MODES: readonly OutboundTlsMode[] = [
 export function isOutboundTlsMode(value: string): value is OutboundTlsMode {
 	return (OUTBOUND_TLS_MODES as readonly string[]).includes(value);
 }
+
+/** Return the stricter of two outbound TLS postures. */
+export function strictestOutboundTlsMode(
+	first: OutboundTlsMode,
+	second: OutboundTlsMode
+): OutboundTlsMode {
+	return OUTBOUND_TLS_MODES.indexOf(second) > OUTBOUND_TLS_MODES.indexOf(first) ? second : first;
+}

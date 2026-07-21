@@ -24,7 +24,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 
 vi.mock('../mxResolver.js', () => ({
-	getMxHostnames: vi.fn().mockResolvedValue(['127.0.0.1']),
+	resolveMxDestination: vi.fn().mockResolvedValue({
+		status: 'deliverable',
+		source: 'mx',
+		hosts: [{ exchange: '127.0.0.1', priority: 0 }],
+	}),
 }));
 vi.mock('../mtaSts.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../mtaSts.js')>();
@@ -155,5 +159,52 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(result.success).toBe(true);
 		expect(probe.dataReached()).toBe(true);
 		expect(await failureTypes()).toContain('starttls-not-supported');
+	}, 15000);
+
+	it('Gmail provider policy refuses plaintext even when the local mode is opportunistic', async () => {
+		probe = await startServer({ advertiseStartTls: false });
+		await redis.hset(
+			'mta:isp-profile:gmail',
+			'defaultRate',
+			'100',
+			'ceiling',
+			'300',
+			'floor',
+			'5',
+			'backoffFactor',
+			'0.5',
+			'recoveryFactor',
+			'1.1',
+			'tlsMode',
+			'opportunistic',
+			'maxConnections',
+			'5',
+			'maxDeliveriesPerConnection',
+			'50'
+		);
+
+		const result = await sendToMx(
+			createJob(),
+			createConfig({ outboundTlsMode: 'opportunistic' }),
+			redis,
+			'127.0.0.1',
+			undefined,
+			{
+				recipientDomain: 'workspace.example',
+				providerKey: 'gmail',
+				throttleKey: 'gmail',
+				mx: {
+					status: 'deliverable',
+					source: 'mx',
+					hosts: [{ exchange: '127.0.0.1', priority: 0 }],
+				},
+				daneDiscoveryAuthenticated: true,
+			}
+		);
+
+		expect(result.success).toBe(false);
+		expect(result.bounceType).toBe('soft');
+		expect(result.error).toContain('TLS required');
+		expect(probe.dataReached()).toBe(false);
 	}, 15000);
 });

@@ -547,6 +547,12 @@ export const mailTables = {
 							v.literal('failed')
 						),
 						sentAt: v.optional(v.number()),
+						// Remote-DATA acceptance is evidence independent of the
+						// recipient's display state. It may predate a later terminal
+						// event even when its webhook arrives afterward.
+						acceptedAt: v.optional(v.number()),
+						bouncedAt: v.optional(v.number()),
+						failedAt: v.optional(v.number()),
 						bounceMessage: v.optional(v.string()),
 						errorCode: v.optional(v.string()),
 					})

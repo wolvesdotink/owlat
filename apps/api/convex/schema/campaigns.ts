@@ -215,6 +215,7 @@ export const campaignTables = {
 		queuedAt: v.number(),
 		sentAt: v.optional(v.number()),
 		deliveredAt: v.optional(v.number()),
+		failedAt: v.optional(v.number()),
 		openedAt: v.optional(v.number()),
 		clickedAt: v.optional(v.number()),
 		bouncedAt: v.optional(v.number()),

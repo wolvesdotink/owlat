@@ -85,6 +85,17 @@ describe('resolveTlsRequirements — 3×3 mode × STS-state matrix', () => {
 });
 
 describe('resolveTlsRequirements — reason strings', () => {
+	it('provider policy raises the local opportunistic floor without requiring PKIX', () => {
+		const result = resolveTlsRequirements({
+			localMode: 'opportunistic',
+			providerMode: 'require',
+			stsPolicy: { policyMode: 'none' },
+			daneResult: null,
+		});
+		expect(result.requireTLS).toBe(true);
+		expect(result.rejectUnauthorized).toBe(false);
+		expect(result.reason).toContain('provider local policy require');
+	});
 	it.each(MATRIX)(
 		'local=$localMode sts=$policyMode reason names both drivers and the resolved floor',
 		({ localMode, policyMode, requireTLS, rejectUnauthorized }) => {

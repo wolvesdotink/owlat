@@ -6,10 +6,11 @@ import { hostname } from 'os';
 import { isIPv4 } from 'node:net';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
-import type { IpPoolConfig, DkimKeyConfig, DomainProfile } from './types.js';
+import type { IpPoolConfig, DkimKeyConfig, DestinationProviderProfile } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
 import { assertValidEhloHostname } from './ehloConfig.js';
+import type { PoolCoordinationProtocol } from './smtp/poolGlobalCap.js';
 
 // EHLO hostname validation + per-IP resolution live in ehloConfig.ts (to keep
 // this module under the file-size gate); re-exported so existing importers are
@@ -136,6 +137,8 @@ export interface MtaConfig {
 	googlePostmasterCredentials?: string;
 	/** Global max SMTP connections per MX host across all instances */
 	smtpPoolGlobalMaxPerHost: number;
+	/** Rolling-upgrade gate for the distributed pool accounting protocol. */
+	smtpPoolCoordinationProtocol?: PoolCoordinationProtocol;
 	/**
 	 * Maximum wall-clock age (ms) a message may keep being retried before the
 	 * MTA gives up and emits a terminal expired-bounce. RFC 5321 §4.5.4.1
@@ -202,63 +205,59 @@ export function assertSubmissionTlsConfigured(
 }
 
 /**
- * ISP-specific sending profiles with adaptive rate limiting parameters
+ * MX-derived destination-provider shaping profiles.
  */
-export const ISP_PROFILES: Record<string, DomainProfile> = {
-	'gmail.com': {
+export const DESTINATION_PROVIDER_PROFILES: Record<string, DestinationProviderProfile> = {
+	gmail: {
 		defaultRate: 100,
 		ceiling: 300,
 		floor: 5,
 		backoffFactor: 0.5,
 		recoveryFactor: 1.1,
+		tlsMode: 'require',
+		maxConnections: 5,
+		maxDeliveriesPerConnection: 50,
 	},
-	'googlemail.com': {
-		defaultRate: 100,
-		ceiling: 300,
-		floor: 5,
-		backoffFactor: 0.5,
-		recoveryFactor: 1.1,
-	},
-	'outlook.com': {
+	microsoft: {
 		defaultRate: 80,
 		ceiling: 200,
 		floor: 5,
 		backoffFactor: 0.5,
 		recoveryFactor: 1.1,
+		tlsMode: 'opportunistic',
+		maxConnections: 3,
+		maxDeliveriesPerConnection: 100,
 	},
-	'hotmail.com': {
-		defaultRate: 80,
-		ceiling: 200,
-		floor: 5,
-		backoffFactor: 0.5,
-		recoveryFactor: 1.1,
-	},
-	'live.com': { defaultRate: 80, ceiling: 200, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	'yahoo.com': {
+	yahoo: {
 		defaultRate: 50,
 		ceiling: 150,
 		floor: 3,
 		backoffFactor: 0.4,
 		recoveryFactor: 1.05,
+		tlsMode: 'opportunistic',
+		maxConnections: 3,
+		maxDeliveriesPerConnection: 100,
 	},
-	'aol.com': { defaultRate: 50, ceiling: 150, floor: 3, backoffFactor: 0.4, recoveryFactor: 1.05 },
-	'ymail.com': {
-		defaultRate: 50,
-		ceiling: 150,
-		floor: 3,
-		backoffFactor: 0.4,
-		recoveryFactor: 1.05,
-	},
-	'icloud.com': {
+	apple: {
 		defaultRate: 60,
 		ceiling: 150,
 		floor: 5,
 		backoffFactor: 0.5,
 		recoveryFactor: 1.1,
+		tlsMode: 'opportunistic',
+		maxConnections: 3,
+		maxDeliveriesPerConnection: 100,
 	},
-	'me.com': { defaultRate: 60, ceiling: 150, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	'mac.com': { defaultRate: 60, ceiling: 150, floor: 5, backoffFactor: 0.5, recoveryFactor: 1.1 },
-	__default__: { defaultRate: 30, ceiling: 100, floor: 2, backoffFactor: 0.5, recoveryFactor: 1.1 },
+	__default__: {
+		defaultRate: 30,
+		ceiling: 100,
+		floor: 2,
+		backoffFactor: 0.5,
+		recoveryFactor: 1.1,
+		tlsMode: 'opportunistic',
+		maxConnections: 3,
+		maxDeliveriesPerConnection: 100,
+	},
 };
 
 // The base warming schedule (day → daily cap) now lives in @owlat/shared so the
@@ -288,6 +287,10 @@ export function loadConfig(): MtaConfig {
 	const optionalEnv = (key: string, defaultValue: string): string => {
 		return process.env[key] ?? defaultValue;
 	};
+	const poolCoordinationProtocol = optionalEnv('SMTP_POOL_COORDINATION_PROTOCOL', 'legacy-v0');
+	if (poolCoordinationProtocol !== 'legacy-v0' && poolCoordinationProtocol !== 'leases-v1') {
+		throw new Error('SMTP_POOL_COORDINATION_PROTOCOL must be legacy-v0 or leases-v1');
+	}
 
 	// Parse IP pools from comma-separated env vars
 	const transactionalIps = requiredEnv('IP_POOLS_TRANSACTIONAL')
@@ -462,6 +465,7 @@ export function loadConfig(): MtaConfig {
 		rspamdRejectThreshold: parseFloat(optionalEnv('RSPAMD_REJECT_THRESHOLD', '15')),
 		googlePostmasterCredentials: process.env['GOOGLE_POSTMASTER_CREDENTIALS'],
 		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
+		smtpPoolCoordinationProtocol: poolCoordinationProtocol,
 		// Default: 4 days (RFC 5321 §4.5.4.1 recommends 4–5 days before giving up).
 		maxMessageAgeMs: parseInt(
 			optionalEnv('MAX_MESSAGE_AGE_MS', String(4 * 24 * 60 * 60 * 1000)),

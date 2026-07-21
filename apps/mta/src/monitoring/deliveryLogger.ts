@@ -38,6 +38,10 @@ export interface DeliveryEvent {
 	reason?: string;
 	/** SMTP failure category from enhanced classifier */
 	category?: string;
+	/** MX-derived destination provider used for shaping and dashboard grouping. */
+	provider?: string;
+	/** Operator-facing explanation for a recognized provider response. */
+	annotation?: string;
 }
 
 /**
@@ -54,13 +58,20 @@ export async function logDeliveryEvent(
 	try {
 		// Build flat field array for XADD
 		const fields: string[] = [
-			'messageId', event.messageId,
-			'to', event.to,
-			'from', event.from,
-			'orgId', event.orgId,
-			'status', event.status,
-			'domain', event.domain,
-			'timestamp', String(Date.now()),
+			'messageId',
+			event.messageId,
+			'to',
+			event.to,
+			'from',
+			event.from,
+			'orgId',
+			event.orgId,
+			'status',
+			event.status,
+			'domain',
+			event.domain,
+			'timestamp',
+			String(Date.now()),
 		];
 
 		if (event.smtpCode !== undefined) fields.push('smtpCode', String(event.smtpCode));
@@ -72,6 +83,8 @@ export async function logDeliveryEvent(
 		if (event.attempt !== undefined) fields.push('attempt', String(event.attempt));
 		if (event.reason) fields.push('reason', event.reason);
 		if (event.category) fields.push('category', event.category);
+		if (event.provider) fields.push('provider', event.provider);
+		if (event.annotation) fields.push('annotation', event.annotation);
 
 		// XADD with approximate maxlen trimming
 		await redis.xadd(streamKey, 'MAXLEN', '~', String(config.deliveryLogMaxLen), '*', ...fields);
@@ -116,6 +129,9 @@ export interface DeliveryLogEntry {
 	durationMs?: number;
 	attempt?: number;
 	reason?: string;
+	category?: string;
+	provider?: string;
+	annotation?: string;
 }
 
 /**
@@ -276,5 +292,8 @@ function parseStreamFields(fields: string[]): Omit<DeliveryLogEntry, 'id'> {
 		durationMs: map['durationMs'] ? parseInt(map['durationMs'], 10) : undefined,
 		attempt: map['attempt'] ? parseInt(map['attempt'], 10) : undefined,
 		reason: map['reason'],
+		category: map['category'],
+		provider: map['provider'],
+		annotation: map['annotation'],
 	};
 }

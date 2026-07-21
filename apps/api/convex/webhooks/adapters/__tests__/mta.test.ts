@@ -200,9 +200,26 @@ describe('mtaAdapter.parseEvent', () => {
 			})
 		);
 		expect(event).toEqual({
-			kind: 'email.sent',
+			kind: 'email.delivered',
 			providerMessageId: 'pb-123',
 			at: 1700000000000,
+		});
+	});
+
+	it('preserves Phase-2 Gmail provider identity and primary sending domain', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'sent',
+				messageId: 'send_123',
+				destinationProvider: 'gmail',
+				primarySendingDomain: 'example.co.uk',
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toMatchObject({
+			kind: 'email.delivered',
+			destinationProvider: 'gmail',
+			primarySendingDomain: 'example.co.uk',
 		});
 	});
 
