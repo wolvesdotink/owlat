@@ -11,7 +11,7 @@ import {
 
 const SCHEMA: PluginSettingsSchema = [
 	{ kind: 'string', key: 'endpoint', label: 'Endpoint', default: 'https://api.test' },
-	{ kind: 'secret', key: 'apiKey', label: 'API key', required: true },
+	{ kind: 'secret', key: 'apiKey', envVar: 'PLUGIN_API_KEY', label: 'API key', required: true },
 	{ kind: 'number', key: 'timeout', label: 'Timeout', default: 30, min: 1, max: 120 },
 	{ kind: 'boolean', key: 'verbose', label: 'Verbose', default: false },
 	{
@@ -34,7 +34,7 @@ const CONFIGURED: PluginSettingsRedactedState = {
 const EMPTY: PluginSettingsRedactedState = { values: {}, secretsSet: { apiKey: false } };
 
 describe('pluginSettingsBaseline', () => {
-	it('uses stored values, and always blanks secrets regardless of stored state', () => {
+	it('uses stored values, and never seeds an env-supplied secret', () => {
 		expect(pluginSettingsBaseline(SCHEMA, CONFIGURED)).toEqual({
 			endpoint: 'https://prod',
 			apiKey: '',
@@ -115,15 +115,12 @@ describe('pluginSettingsChanges', () => {
 		expect(hasPluginSettingsChanges(SCHEMA, { ...baseline }, baseline)).toBe(false);
 	});
 
-	it('never submits a blank secret, so a stored secret is kept', () => {
-		const form = { ...baseline, apiKey: '' };
-		expect(pluginSettingsChanges(SCHEMA, form, baseline)).toEqual({});
-	});
-
-	it('submits a typed secret replacement', () => {
+	it('never submits a secret, even if one somehow reaches the form state', () => {
+		// Owlat stores no plugin credentials: the value lives in the deployment
+		// environment, so the client must not be able to write one either.
 		const form = { ...baseline, apiKey: 'rotated-secret' };
-		expect(pluginSettingsChanges(SCHEMA, form, baseline)).toEqual({ apiKey: 'rotated-secret' });
-		expect(hasPluginSettingsChanges(SCHEMA, form, baseline)).toBe(true);
+		expect(pluginSettingsChanges(SCHEMA, form, baseline)).toEqual({});
+		expect(hasPluginSettingsChanges(SCHEMA, form, baseline)).toBe(false);
 	});
 
 	it('never submits a cleared number field, so the stored value is kept', () => {
@@ -150,20 +147,20 @@ describe('pluginSettingsChanges', () => {
 });
 
 describe('missingRequiredPluginSettings', () => {
-	it('is satisfied by an already-stored secret even when the input is blank', () => {
+	it('is satisfied when the secret environment variable is present', () => {
 		const baseline = pluginSettingsBaseline(SCHEMA, CONFIGURED);
 		expect(missingRequiredPluginSettings(SCHEMA, baseline, CONFIGURED)).toEqual([]);
 	});
 
-	it('flags a required secret that is neither stored nor typed', () => {
+	it('flags a required secret whose environment variable is absent', () => {
 		const baseline = pluginSettingsBaseline(SCHEMA, EMPTY);
 		expect(missingRequiredPluginSettings(SCHEMA, baseline, EMPTY)).toEqual(['apiKey']);
 	});
 
-	it('is satisfied by a freshly typed secret when none is stored', () => {
+	it('stays unsatisfied by a typed secret: only the environment variable counts', () => {
 		const baseline = pluginSettingsBaseline(SCHEMA, EMPTY);
 		const form = { ...baseline, apiKey: 'first' };
-		expect(missingRequiredPluginSettings(SCHEMA, form, EMPTY)).toEqual([]);
+		expect(missingRequiredPluginSettings(SCHEMA, form, EMPTY)).toEqual(['apiKey']);
 	});
 
 	it('flags a required string left empty', () => {

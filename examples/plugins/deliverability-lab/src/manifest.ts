@@ -133,9 +133,10 @@ export const deliverabilityLabPlugin = definePlugin({
 		{
 			kind: 'secret',
 			key: 'seedboxApiKey',
+			envVar: 'PLUGIN_SEEDBOX_API_KEY',
 			label: 'Seedbox API key',
 			description:
-				'Credential for a Tier-2 seedbox score hook. Stored and redacted server-side and never handed to in-process plugin code: the bundled gate ships without a remote hook, and a connected app is where this secret is used.',
+				'Credential for a Tier-2 seedbox score hook. Owlat persists no value and never hands it to in-process plugin code: the operator sets the environment variable and the settings screen reports only whether it is present.',
 			required: false,
 		},
 		{

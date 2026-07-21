@@ -4,13 +4,16 @@
  * `instanceSettings` row and exposes:
  *
  *   - `getPluginSettingsOverview` — admin query. For every bundled plugin:
- *     enablement, capability grants, and the operator-configured values. SECRET
- *     field values are redacted server-side to a presence boolean and NEVER
- *     leave the backend. Also surfaces "orphaned" residual settings left behind
+ *     enablement, capability grants, and the operator-configured values. A
+ *     SECRET field holds no stored value at all — it names a `PLUGIN_`-prefixed
+ *     deployment environment variable, and the overview reports only whether
+ *     that variable is present, so credential plaintext is never persisted by
+ *     Owlat nor sent to the browser. Also surfaces "orphaned" residual settings left behind
  *     by a plugin that was removed from the build, so an operator can purge them.
  *   - `setPluginSettings` — admin mutation. Validates a partial update against
- *     the plugin's `settingsSchema`, merges it over the stored values (an omitted
- *     secret keeps the stored one), and persists. Returns the redacted view.
+ *     the plugin's `settingsSchema`, merges it over the stored values, and
+ *     persists. A value for a `secret` field is rejected outright. Returns the
+ *     projected view.
  *   - `resetPluginSettings` — admin mutation. Clears all stored settings for a
  *     plugin id (works for removed plugins too, to purge orphaned config).
  *
@@ -34,6 +37,7 @@ import { requireAdminContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwInvalidInput } from '../_utils/errors';
 import { jsonPrimitiveRecord } from '../lib/convexValidators';
+import { isEnvPresent } from '../lib/env';
 import { FEATURE_FLAG_REGISTRY } from './featureFlagRegistry';
 import { bundledPluginComposition } from './plugins.generated';
 
@@ -86,7 +90,8 @@ export const getPluginSettingsOverview = adminQuery({
 			const grantMap = grants[flagKey] ?? {};
 			const { values, secretsSet } = redactPluginSettingsValues(
 				manifest.settingsSchema ?? [],
-				storedFor(pluginSettings, flagKey)
+				storedFor(pluginSettings, flagKey),
+				isEnvPresent
 			);
 			return {
 				pluginId: manifest.id,
@@ -138,12 +143,15 @@ export const setPluginSettings = authedMutation({
 		const flagKey = pluginFlagKey(pluginId);
 		const existing = await readInstanceSettings(ctx);
 		const currentAll = (existing?.pluginSettings ?? {}) as StoredPluginSettings;
-		// Carry over only stored keys the CURRENT schema still declares. A field
-		// removed from the schema in a plugin upgrade (notably a secret) would
-		// otherwise persist forever: redaction iterates the schema, so a dropped
-		// key is invisible to the overview and purgeable only by a full reset. Drop
-		// it on the next save so removed credentials do not linger as plaintext.
-		const schemaKeys = new Set(schema.map((field) => field.key));
+		// Carry over only stored keys the CURRENT schema still declares, and never a
+		// key that is now a secret. A field removed from the schema in a plugin
+		// upgrade would otherwise persist forever: projection iterates the schema,
+		// so a dropped key is invisible to the overview and purgeable only by a full
+		// reset. Dropping it on the next save also sweeps any plaintext left by a
+		// deployment that predates env-supplied secrets.
+		const schemaKeys = new Set(
+			schema.filter((field) => field.kind !== 'secret').map((field) => field.key)
+		);
 		const currentForPlugin = currentAll[flagKey] ?? {};
 		const carriedOver: Record<string, JsonPrimitive> = {};
 		for (const [key, value] of Object.entries(currentForPlugin)) {
@@ -182,7 +190,7 @@ export const setPluginSettings = authedMutation({
 			}),
 		});
 
-		return redactPluginSettingsValues(schema, merged);
+		return redactPluginSettingsValues(schema, merged, isEnvPresent);
 	},
 });
 
@@ -215,6 +223,6 @@ export const resetPluginSettings = authedMutation({
 			});
 		}
 
-		return redactPluginSettingsValues(manifest?.settingsSchema ?? [], {});
+		return redactPluginSettingsValues(manifest?.settingsSchema ?? [], {}, isEnvPresent);
 	},
 });

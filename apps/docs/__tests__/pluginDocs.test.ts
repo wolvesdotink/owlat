@@ -957,7 +957,7 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 			declaredPattern: /^export const (MAX_\w+) = /gm,
 			section: section(docs.contributions, '## Settings schema'),
 			rendered: {
-				MAX_TEXT_LENGTH: { literal: '8_192', prose: '8 192 characters per text or secret value' },
+				MAX_TEXT_LENGTH: { literal: '8_192', prose: '8 192 characters per text value' },
 				MAX_SETTINGS_FIELDS: { literal: '64', prose: '64 fields' },
 				MAX_SETTINGS_OPTIONS: { literal: '64', prose: '64 options per select' },
 			},
