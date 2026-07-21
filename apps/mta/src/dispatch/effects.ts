@@ -40,9 +40,9 @@ import type { PhaseDeps } from './types.js';
  * Discriminated union of MTA dispatch effects.
  */
 export type DispatchEffect =
-	| { kind: 'domain_throttle_success'; ip: string; domain: string }
-	| { kind: 'domain_throttle_reject'; ip: string; domain: string }
-	| { kind: 'domain_throttle_defer'; ip: string; domain: string }
+	| { kind: 'domain_throttle_success'; ip: string; throttleKey: string; providerKey: string }
+	| { kind: 'domain_throttle_reject'; ip: string; throttleKey: string }
+	| { kind: 'domain_throttle_defer'; ip: string; throttleKey: string; providerKey: string }
 	| { kind: 'smtp_response'; domain: string; smtpCode: number; enhancedCode: string | undefined }
 	| {
 			kind: 'circuit_breaker_outcome';
@@ -66,6 +66,7 @@ export type DispatchEffect =
 			pool: string;
 			outcome: MetricOutcome;
 			durationMs: number | undefined;
+			providerKey: string;
 	  }
 	| {
 			kind: 'metrics_counter_inc';
@@ -92,7 +93,7 @@ export type DispatchEffect =
  */
 export async function applyEffects(
 	effects: ReadonlyArray<DispatchEffect>,
-	deps: PhaseDeps,
+	deps: PhaseDeps
 ): Promise<void> {
 	const parallel: Array<Promise<unknown>> = [];
 	const sequential: DispatchEffect[] = [];
@@ -119,7 +120,7 @@ export async function applyEffects(
 
 function fireAndForget(
 	effect: Extract<DispatchEffect, { kind: 'log_delivery_event' | 'notify_convex' }>,
-	deps: PhaseDeps,
+	deps: PhaseDeps
 ): void {
 	if (effect.kind === 'log_delivery_event') {
 		logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
@@ -128,25 +129,35 @@ function fireAndForget(
 	notifyConvex(effect.event, deps.config, deps.redis).catch((err) =>
 		logger.error(
 			{ err, event: effect.event.event, messageId: effect.event.messageId },
-			'Failed to notify Convex',
-		),
+			'Failed to notify Convex'
+		)
 	);
 }
 
 function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 	switch (effect.kind) {
 		case 'domain_throttle_success':
-			return domainThrottle.recordSuccess(deps.redis, effect.ip, effect.domain);
+			return domainThrottle.recordSuccess(
+				deps.redis,
+				effect.ip,
+				effect.throttleKey,
+				effect.providerKey
+			);
 		case 'domain_throttle_reject':
-			return domainThrottle.recordReject(deps.redis, effect.ip, effect.domain);
+			return domainThrottle.recordReject(deps.redis, effect.ip, effect.throttleKey);
 		case 'domain_throttle_defer':
-			return domainThrottle.recordDefer(deps.redis, effect.ip, effect.domain);
+			return domainThrottle.recordDefer(
+				deps.redis,
+				effect.ip,
+				effect.throttleKey,
+				effect.providerKey
+			);
 		case 'smtp_response':
 			return smtpResponse.recordResponse(
 				deps.redis,
 				effect.domain,
 				effect.smtpCode,
-				effect.enhancedCode,
+				effect.enhancedCode
 			);
 		case 'circuit_breaker_outcome':
 			return circuitBreaker.recordOutcome(deps.redis, effect.orgId, effect.outcome, deps.config);
@@ -154,7 +165,7 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 			return campaignComplaintRate
 				.recordDelivery(deps.redis, effect.campaignId)
 				.catch((err) =>
-					logger.warn({ err, campaignId: effect.campaignId }, 'Failed to record campaign delivery'),
+					logger.warn({ err, campaignId: effect.campaignId }, 'Failed to record campaign delivery')
 				);
 		case 'warming_record':
 			if (effect.result === 'send') return warming.recordSend(deps.redis, effect.ip);
@@ -168,6 +179,7 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 				effect.pool,
 				effect.outcome,
 				effect.durationMs,
+				effect.providerKey
 			);
 		case 'metrics_counter_inc':
 			metrics.emailsSentTotal.inc({

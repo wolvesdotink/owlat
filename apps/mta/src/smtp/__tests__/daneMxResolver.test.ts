@@ -95,4 +95,17 @@ describe('resolveDaneMxDestinations', () => {
 			status: 'not-found',
 		});
 	});
+
+	it('recognizes authenticated Null MX without resolving addresses', async () => {
+		const fetchMock = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValueOnce(
+				dnsResponse({ Status: 0, AD: true, Answer: [{ type: 15, data: '0 .' }] })
+			);
+
+		await expect(resolveDaneMxDestinations(redis, 'null.example', RESOLVER)).resolves.toEqual({
+			status: 'null-mx',
+		});
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
 });
