@@ -3,19 +3,22 @@ import Redis from 'ioredis-mock';
 import type { MtaConfig } from '../../config.js';
 
 vi.mock('../../webhooks/convexNotifier.js', () => ({
-	notifyConvex: vi.fn().mockResolvedValue(true),
+	notifyPostmasterConvex: vi.fn().mockResolvedValue({
+		disposition: 'accepted_authorized',
+		retained: true,
+	}),
 }));
 vi.mock('../logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { notifyConvex } from '../../webhooks/convexNotifier.js';
+import { notifyPostmasterConvex } from '../../webhooks/convexNotifier.js';
 import {
 	GOOGLE_POSTMASTER_AUTHORIZATION_SCOPES,
 	normalizeDomainStat,
 } from '../googlePostmasterApi.js';
 import { logger } from '../logger.js';
-import { fetchPostmasterData } from '../postmaster.js';
+import { fetchPostmasterData, spamRate } from '../postmaster.js';
 
 const config = {
 	googlePostmaster: {
@@ -85,6 +88,56 @@ describe('Google Postmaster v2 collection', () => {
 		vi.clearAllMocks();
 		vi.spyOn(Date, 'now').mockReturnValue(FROZEN_NOW);
 		await new Redis().flushall();
+		spamRate.reset();
+	});
+
+	it('retains operational state only after Convex authorizes the exact domain', async () => {
+		const redis = new Redis();
+		const unrelatedDomain = 'unrelated-private.example';
+		await redis.set(`mta:postmaster:stats-cursor:${unrelatedDomain}`, 'legacy-cursor');
+		await redis.set(`mta:postmaster:pushed:${unrelatedDomain}:2026-07-20`, '1');
+		spamRate.set({ domain: unrelatedDomain }, 0.99);
+		vi.mocked(notifyPostmasterConvex).mockImplementation(async (event) => {
+			if (event.domain === unrelatedDomain) {
+				return { disposition: 'ignored_unowned', retained: false };
+			}
+			return { disposition: 'accepted_authorized', retained: event.event === 'postmaster.stats' };
+		});
+		const statsRequests: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.includes('/token')) return response({ access_token: 'token', expires_in: 3600 });
+				if (url.includes('/domains?')) {
+					return response({
+						domains: [verifiedDomain(), verifiedDomain(unrelatedDomain)],
+					});
+				}
+				statsRequests.push(url);
+				return response({ domainStats: [spamStat()] });
+			})
+		);
+
+		await fetchPostmasterData(redis, config);
+
+		expect(statsRequests).toHaveLength(1);
+		expect(statsRequests[0]).toContain('/domains/example.com/');
+		expect(await redis.keys('*')).not.toEqual(
+			expect.arrayContaining([expect.stringContaining(unrelatedDomain)])
+		);
+		expect(await spamRate.get()).not.toEqual(
+			expect.objectContaining({
+				values: expect.arrayContaining([
+					expect.objectContaining({ labels: { domain: unrelatedDomain } }),
+				]),
+			})
+		);
+		const serializedLogs = JSON.stringify([
+			...vi.mocked(logger.warn).mock.calls,
+			...vi.mocked(logger.error).mock.calls,
+		]);
+		expect(serializedLogs).not.toContain(unrelatedDomain);
 	});
 
 	it('accepts the current v2 ADMIN domain permission', async () => {
@@ -103,10 +156,9 @@ describe('Google Postmaster v2 collection', () => {
 
 		await fetchPostmasterData(redis, config);
 
-		expect(notifyConvex).toHaveBeenCalledWith(
+		expect(notifyPostmasterConvex).toHaveBeenCalledWith(
 			expect.objectContaining({ domain: 'admin.example.com' }),
 			config,
-			redis,
 			{ deadline: expect.any(Number) }
 		);
 	});
@@ -146,15 +198,14 @@ describe('Google Postmaster v2 collection', () => {
 		await fetchPostmasterData(redis, config);
 		await fetchPostmasterData(redis, config);
 
-		expect(notifyConvex).toHaveBeenCalledTimes(1);
-		expect(notifyConvex).toHaveBeenCalledWith(
+		expect(notifyPostmasterConvex).toHaveBeenCalledTimes(3);
+		expect(notifyPostmasterConvex).toHaveBeenCalledWith(
 			expect.objectContaining({
 				event: 'postmaster.stats',
 				domain: 'example.com',
 				userReportedSpamRatio: 0.0005,
 			}),
 			config,
-			redis,
 			{ deadline: expect.any(Number) }
 		);
 		expect(fetchMock.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal)).toBe(
@@ -188,7 +239,7 @@ describe('Google Postmaster v2 collection', () => {
 
 		await fetchPostmasterData(redis, config);
 
-		expect(notifyConvex).toHaveBeenCalledTimes(4);
+		expect(notifyPostmasterConvex).toHaveBeenCalledTimes(6);
 		expect(fetchMock.mock.calls.some(([url]) => String(url).includes('domain-page-2'))).toBe(true);
 		expect(
 			fetchMock.mock.calls.filter(([, init]) => String(init?.body).includes('stats-page-2'))
@@ -297,7 +348,7 @@ describe('Google Postmaster v2 collection', () => {
 			'stats4',
 			'stats5',
 		]);
-		expect(notifyConvex).toHaveBeenCalledTimes(6);
+		expect(notifyPostmasterConvex).toHaveBeenCalledTimes(8);
 		expect(await redis.get('mta:postmaster:stats-cursor:example.com')).toBeNull();
 	});
 
@@ -329,7 +380,7 @@ describe('Google Postmaster v2 collection', () => {
 		await fetchPostmasterData(redis, config);
 
 		expect(requestedStatsTokens).toEqual(['expired-stats', undefined]);
-		expect(notifyConvex).toHaveBeenCalledTimes(1);
+		expect(notifyPostmasterConvex).toHaveBeenCalledTimes(2);
 		expect(await redis.get('mta:postmaster:stats-cursor:example.com')).toBeNull();
 	});
 
@@ -363,7 +414,7 @@ describe('Google Postmaster v2 collection', () => {
 
 			expect(statsDomains).toHaveLength(1);
 			expect(statsDomains[0]).toContain('/domains/example.com/');
-			expect(notifyConvex).not.toHaveBeenCalled();
+			expect(notifyPostmasterConvex).toHaveBeenCalledTimes(1);
 			expect(await redis.get('mta:postmaster:domain-cursor')).toBeNull();
 			expect(await redis.get('mta:postmaster:stats-cursor:example.com')).toBeNull();
 		}
@@ -739,7 +790,11 @@ describe('Google Postmaster v2 collection', () => {
 
 	it('does not record a receipt when signed delivery fails', async () => {
 		const redis = new Redis();
-		vi.mocked(notifyConvex).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+		vi.mocked(notifyPostmasterConvex)
+			.mockResolvedValueOnce({ disposition: 'accepted_authorized', retained: false })
+			.mockResolvedValueOnce({ disposition: 'delivery_failed', retained: false })
+			.mockResolvedValueOnce({ disposition: 'accepted_authorized', retained: false })
+			.mockResolvedValueOnce({ disposition: 'accepted_authorized', retained: true });
 		vi.stubGlobal(
 			'fetch',
 			vi.fn(async (input: string | URL | Request) => {
@@ -753,6 +808,6 @@ describe('Google Postmaster v2 collection', () => {
 		await fetchPostmasterData(redis, config);
 		await fetchPostmasterData(redis, config);
 
-		expect(notifyConvex).toHaveBeenCalledTimes(2);
+		expect(notifyPostmasterConvex).toHaveBeenCalledTimes(4);
 	});
 });

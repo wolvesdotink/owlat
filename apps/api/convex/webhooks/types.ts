@@ -130,6 +130,10 @@ export type InboundEvent =
 			message?: string;
 	  }
 	| {
+			kind: 'internal.postmaster_authorize_domain';
+			domain: string;
+	  }
+	| {
 			kind: 'internal.postmaster_stats';
 			domain: string;
 			date: string;

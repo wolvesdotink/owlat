@@ -1,7 +1,7 @@
 /** Google Postmaster Tools ingestion and retention. */
 
 import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -22,6 +22,31 @@ function isRatio(value: number): boolean {
 	return Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+function isCanonicalDomain(domain: string): boolean {
+	return (
+		domain === domain.toLowerCase() &&
+		domain.length <= 253 &&
+		/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])$/.test(domain)
+	);
+}
+
+async function findVerifiedDomain(ctx: Pick<MutationCtx, 'db'>, domain: string) {
+	if (!isCanonicalDomain(domain)) return null;
+	const row = await ctx.db
+		.query('domains')
+		.withIndex('by_domain', (q) => q.eq('domain', domain))
+		.unique();
+	return row?.status === 'verified' ? row : null;
+}
+
+/** Fail-closed preflight before the collector retains any per-domain state. */
+export const authorizeDomain = internalMutation({
+	args: { domain: v.string() },
+	handler: async (ctx, args) => ({
+		authorized: (await findVerifiedDomain(ctx, args.domain)) !== null,
+	}),
+});
+
 export const ingest = internalMutation({
 	args: {
 		domain: v.string(),
@@ -32,6 +57,10 @@ export const ingest = internalMutation({
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		const periodStart = parseGoogleStatsDate(args.date);
+		const domain = await findVerifiedDomain(ctx, args.domain);
+		if (!domain) {
+			return { ingested: false, authorized: false, reason: 'domain_not_verified' as const };
+		}
 		if (
 			periodStart === null ||
 			periodStart > now ||
@@ -39,23 +68,10 @@ export const ingest = internalMutation({
 			!Number.isFinite(args.fetchedAt) ||
 			args.fetchedAt < periodStart ||
 			args.fetchedAt > now + FETCHED_AT_FUTURE_TOLERANCE_MS ||
-			args.domain !== args.domain.toLowerCase() ||
-			args.domain.length > 253 ||
-			!/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])$/.test(args.domain) ||
+			!isCanonicalDomain(args.domain) ||
 			!isRatio(args.userReportedSpamRatio)
 		) {
-			return { ingested: false, reason: 'invalid_observation' as const };
-		}
-
-		// Exact verified-domain join is the tenant boundary: a Google account may
-		// expose unrelated domains, but the signed collector cannot create rows for
-		// domains this Owlat deployment does not own and currently verify.
-		const domain = await ctx.db
-			.query('domains')
-			.withIndex('by_domain', (q) => q.eq('domain', args.domain))
-			.unique();
-		if (!domain || domain.status !== 'verified') {
-			return { ingested: false, reason: 'domain_not_verified' as const };
+			return { ingested: false, authorized: true, reason: 'invalid_observation' as const };
 		}
 
 		const values = {
@@ -73,14 +89,14 @@ export const ingest = internalMutation({
 			)
 			.unique();
 		if (existing && existing.fetchedAt > args.fetchedAt) {
-			return { ingested: false, reason: 'stale_observation' as const };
+			return { ingested: false, authorized: true, reason: 'stale_observation' as const };
 		}
 		if (existing && existing.fetchedAt === args.fetchedAt) {
-			return { ingested: true, updated: false, replayed: true };
+			return { ingested: true, authorized: true, updated: false, replayed: true };
 		}
 		if (existing) await ctx.db.patch(existing._id, values);
 		else await ctx.db.insert('googlePostmasterStats', values);
-		return { ingested: true, updated: existing !== null };
+		return { ingested: true, authorized: true, updated: existing !== null };
 	},
 });
 

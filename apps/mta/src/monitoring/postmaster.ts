@@ -13,7 +13,7 @@ import type Redis from 'ioredis';
 import { Gauge } from 'prom-client';
 import type { MtaConfig } from '../config.js';
 import type { GooglePostmasterStatsEvent } from '../types.js';
-import { notifyConvex } from '../webhooks/convexNotifier.js';
+import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
 import { registry } from './collector.js';
 import {
 	GOOGLE_POSTMASTER_API_BASE,
@@ -219,13 +219,30 @@ async function checkpointStatsCursor(
 	await redis.set(key, JSON.stringify(cursor), 'EX', PUSH_RECEIPT_TTL_SECONDS);
 }
 
+async function clearDomainOperationalState(redis: Redis, domain: string): Promise<void> {
+	await redis.del(`${STATS_CURSOR_PREFIX}${domain}`);
+	let cursor = '0';
+	do {
+		const [nextCursor, receiptKeys] = await redis.scan(
+			cursor,
+			'MATCH',
+			`${PUSHED_PREFIX}${domain}:*`,
+			'COUNT',
+			100
+		);
+		cursor = nextCursor;
+		if (receiptKeys.length > 0) await redis.del(...receiptKeys);
+	} while (cursor !== '0');
+	spamRate.remove({ domain });
+}
+
 async function pushDomainStats(
 	redis: Redis,
 	config: MtaConfig,
 	client: GooglePostmasterClient,
 	domain: PostmasterDomainWire,
 	deadline: number
-): Promise<void> {
+): Promise<'completed' | 'authorization_lost'> {
 	const domainName = domain.name.slice('domains/'.length);
 	const startDate = utcDateDaysAgo(BACKFILL_DAYS);
 	const endDate = utcDateDaysAgo(1);
@@ -250,7 +267,7 @@ async function pushDomainStats(
 			}
 			await redis.del(cursorKey);
 			logger.warn(
-				{ operation: 'domains.domainStats.query', domain: domainName },
+				{ operation: 'domains.domainStats.query' },
 				'Discarded invalid Google Postmaster statistics cursor'
 			);
 			pageToken = undefined;
@@ -262,27 +279,55 @@ async function pushDomainStats(
 		for (const event of page.events) {
 			const receiptKey = `${PUSHED_PREFIX}${domainName}:${event.date}`;
 			if (await redis.exists(receiptKey)) continue;
-			if (!(await notifyConvex(event, config, redis, { deadline }))) {
+			const acknowledgement = await notifyPostmasterConvex(event, config, { deadline });
+			if (acknowledgement.disposition === 'delivery_failed') {
 				throw new Error('Google Postmaster webhook delivery did not complete');
 			}
+			if (acknowledgement.disposition === 'ignored_unowned') {
+				await clearDomainOperationalState(redis, domainName);
+				return 'authorization_lost';
+			}
 			await redis.set(receiptKey, '1', 'EX', PUSH_RECEIPT_TTL_SECONDS);
-			spamRate.set({ domain: domainName }, event.userReportedSpamRatio);
+			if (acknowledgement.retained) {
+				spamRate.set({ domain: domainName }, event.userReportedSpamRatio);
+			}
 		}
 
 		const nextPageToken = page.nextPageToken;
 		if (nextPageToken && seenTokens.has(nextPageToken)) {
 			logger.warn(
-				{ operation: 'domains.domainStats.query', domain: domainName },
+				{ operation: 'domains.domainStats.query' },
 				'Google Postmaster statistics cursor repeated'
 			);
 			await redis.del(cursorKey);
-			return;
+			return 'completed';
 		}
 		await checkpointStatsCursor(redis, cursorKey, nextPageToken, startDate, endDate);
-		if (!nextPageToken) return;
+		if (!nextPageToken) return 'completed';
 		seenTokens.add(nextPageToken);
 		pageToken = nextPageToken;
 	}
+	return 'completed';
+}
+
+async function authorizeDomainCollection(
+	config: MtaConfig,
+	domain: string,
+	deadline: number
+): Promise<'authorized' | 'ignored'> {
+	const acknowledgement = await notifyPostmasterConvex(
+		{
+			event: 'postmaster.authorize_domain',
+			domain,
+			timestamp: Date.now(),
+		},
+		config,
+		{ deadline }
+	);
+	if (acknowledgement.disposition === 'delivery_failed') {
+		throw new Error('Google Postmaster authorization delivery did not complete');
+	}
+	return acknowledgement.disposition === 'accepted_authorized' ? 'authorized' : 'ignored';
 }
 
 async function releaseCollectionLock(redis: Redis, lockToken: string): Promise<void> {
@@ -327,6 +372,12 @@ export async function fetchPostmasterData(redis: Redis, config: MtaConfig): Prom
 			// Finish the whole page before checkpointing it. Any statistics error—
 			// including a possibly account-wide 403—stops the sweep at this page.
 			for (const domain of result.page.domains) {
+				const domainName = domain.name.slice('domains/'.length);
+				const authorization = await authorizeDomainCollection(config, domainName, deadline);
+				if (authorization === 'ignored') {
+					await clearDomainOperationalState(redis, domainName);
+					continue;
+				}
 				await pushDomainStats(redis, config, client, domain, deadline);
 			}
 

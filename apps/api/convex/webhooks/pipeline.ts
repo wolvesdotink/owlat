@@ -1,8 +1,8 @@
 /**
  * Inbound webhook pipeline — shared HTTP shell for per-provider adapters.
  *
- * Pipeline: rate-limit → adapter.verifySignature → audit-store →
- * adapter.parseEvent → dispatchInboundEvent → HTTP response.
+ * Pipeline: rate-limit → adapter.verifySignature → conditional audit-store
+ * → adapter.parseEvent → dispatchInboundEvent → HTTP response.
  *
  * Replaces the verify/parse/audit/dispatch ceremony that resendWebhook.ts
  * and mtaWebhook.ts each open-coded.
@@ -34,13 +34,20 @@ export interface InboundAdapter {
 	 */
 	parseEvent(rawBody: string): InboundEvent | null;
 	/**
+	 * Optional raw-audit gate for purpose-specific, privacy-sensitive protocols.
+	 * It runs only after signature verification. Returning false must be paired
+	 * with a dispatcher path that retains only its explicitly authorized data.
+	 * All adapters retain the established raw-audit behavior by default.
+	 */
+	shouldStoreRawPayload?: (rawBody: string) => boolean;
+	/**
 	 * Optional per-provider success response factory. Providers whose wire
 	 * contract dictates a non-JSON response (Twilio TwiML, Meta plain
 	 * `200 OK`) supply this. Must construct a fresh Response per call —
 	 * Response bodies are one-shot streams. When absent, the pipeline
 	 * returns its default JSON envelope `{success: true, kind}`.
 	 */
-	successResponse?: (event: InboundEvent) => Response;
+	successResponse?: (event: InboundEvent, dispatchResult?: unknown) => Response;
 }
 
 function jsonResponse(status: number, body: Record<string, unknown>): Response {
@@ -87,14 +94,16 @@ export async function runInboundPipeline(
 		return jsonResponse(verification.status, { error: verification.reason });
 	}
 
-	// Audit-store raw payload (non-blocking — never fail the webhook on this).
-	try {
-		await ctx.runMutation(internal.webhooks.payloads.store, {
-			source: adapter.source,
-			rawPayload: rawBody,
-		});
-	} catch {
-		// intentionally swallowed
+	if (adapter.shouldStoreRawPayload?.(rawBody) !== false) {
+		// Audit-store raw payload (non-blocking — never fail the webhook on this).
+		try {
+			await ctx.runMutation(internal.webhooks.payloads.store, {
+				source: adapter.source,
+				rawPayload: rawBody,
+			});
+		} catch {
+			// intentionally swallowed
+		}
 	}
 
 	let event: InboundEvent | null;
@@ -110,18 +119,16 @@ export async function runInboundPipeline(
 		return jsonResponse(200, { success: true, ignored: true });
 	}
 
+	let dispatchResult: unknown;
 	try {
-		await dispatchInboundEvent(ctx, event);
+		dispatchResult = await dispatchInboundEvent(ctx, event, { returnResult: true });
 	} catch (err) {
-		logError(
-			`[${adapter.source} Webhook] Dispatcher error for ${event.kind}:`,
-			err
-		);
+		logError(`[${adapter.source} Webhook] Dispatcher error for ${event.kind}:`, err);
 		return jsonResponse(500, { error: 'Failed to process event' });
 	}
 
 	if (adapter.successResponse) {
-		return adapter.successResponse(event);
+		return adapter.successResponse(event, dispatchResult);
 	}
 	return jsonResponse(200, { success: true, kind: event.kind });
 }

@@ -732,6 +732,23 @@ describe('dispatchInboundEvent — internal signals', () => {
 });
 
 describe('dispatchInboundEvent — Google Postmaster telemetry', () => {
+	it('routes the fail-closed domain authorization probe', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const event: InboundEvent = {
+			kind: 'internal.postmaster_authorize_domain',
+			domain: 'example.com',
+		};
+
+		await dispatchInboundEvent(ctx, event);
+
+		expect(runMutationCalls).toEqual([
+			{
+				ref: ref(internal.delivery.postmaster.authorizeDomain),
+				args: { domain: 'example.com' },
+			},
+		]);
+	});
+
 	it('routes aggregate telemetry to the bounded ingestion mutation', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
 		const event: InboundEvent = {

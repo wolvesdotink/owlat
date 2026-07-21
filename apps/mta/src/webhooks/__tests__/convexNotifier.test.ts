@@ -8,7 +8,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { notifyConvex } from '../convexNotifier.js';
+import { notifyConvex, notifyPostmasterConvex } from '../convexNotifier.js';
 import { storeFailed } from '../dlq.js';
 import { logger } from '../../monitoring/logger.js';
 import type { MtaWebhookEvent } from '../../types.js';
@@ -267,5 +267,68 @@ describe('notifyConvex', () => {
 
 		expect(await promise).toBe(false);
 		expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+	});
+
+	it('acknowledges an unowned Postmaster domain without DLQ retention or payload logs', async () => {
+		const domainSentinel = 'unrelated-private.example';
+		globalThis.fetch = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					success: true,
+					kind: 'internal.postmaster_authorize_domain',
+					disposition: 'ignored_unowned',
+					retained: false,
+				}),
+				{ status: 200 }
+			)
+		);
+		const redis = new Redis();
+
+		const result = await notifyConvex(
+			{
+				event: 'postmaster.authorize_domain',
+				domain: domainSentinel,
+				timestamp: Date.now(),
+			},
+			createConfig(),
+			redis
+		);
+
+		expect(result).toBe(true);
+		expect(storeFailed).not.toHaveBeenCalled();
+		expect(
+			JSON.stringify([
+				...vi.mocked(logger.debug).mock.calls,
+				...vi.mocked(logger.warn).mock.calls,
+				...vi.mocked(logger.error).mock.calls,
+			])
+		).not.toContain(domainSentinel);
+	});
+
+	it('retries Postmaster transport failures without retaining its payload in the DLQ', async () => {
+		const domainSentinel = 'transport-private.example';
+		globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 503 }));
+		const promise = notifyPostmasterConvex(
+			{
+				event: 'postmaster.stats',
+				domain: domainSentinel,
+				date: '2026-07-20',
+				userReportedSpamRatio: 0.75,
+				timestamp: Date.now(),
+			},
+			createConfig(),
+			{ deadline: Date.now() + 500 }
+		);
+		await vi.runAllTimersAsync();
+
+		expect(await promise).toEqual({ disposition: 'delivery_failed', retained: false });
+		expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+		expect(storeFailed).not.toHaveBeenCalled();
+		const serializedLogs = JSON.stringify([
+			...vi.mocked(logger.warn).mock.calls,
+			...vi.mocked(logger.error).mock.calls,
+		]);
+		expect(serializedLogs).not.toContain(domainSentinel);
+		expect(serializedLogs).not.toContain('0.75');
 	});
 });
