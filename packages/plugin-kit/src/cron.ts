@@ -1,5 +1,5 @@
+import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 import type { PluginLlmService, PluginLogger } from './context';
-import type { PluginId } from './pluginId';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 /** Capability assigned by the host to every bundled plugin cron. */
@@ -21,10 +21,9 @@ export const PLUGIN_CRON_TIMEOUT_MIN_MS = 1_000;
 export const PLUGIN_CRON_TIMEOUT_MAX_MS = 5 * 60_000; // 300000
 
 /** Local contribution identity. The host namespaces it with the owning plugin id. */
-export type PluginCronLocalId = string;
 
 /** Collision-safe cron kind used as the unique Convex cron registration name. */
-export type PluginCronKind = `plugin.${PluginId}.${PluginCronLocalId}`;
+export type PluginCronKind = PluginNamespacedKind;
 
 /** Fixed-interval schedule; the only shape a bundled plugin cron may request. */
 export interface PluginCronSchedule {
@@ -34,7 +33,7 @@ export interface PluginCronSchedule {
 
 /** Data-only manifest descriptor. Executable code lives at `module.exportPath`. */
 export interface PluginCronDefinition {
-	readonly id: PluginCronLocalId;
+	readonly id: PluginLocalId;
 	readonly label: string;
 	readonly module: PluginStaticModuleExport;
 	readonly schedule: PluginCronSchedule;
@@ -55,8 +54,4 @@ export interface PluginCronServices {
 
 export interface PluginCronModule {
 	run(services: PluginCronServices): Promise<void>;
-}
-
-export function pluginCronKind(pluginId: PluginId, localId: string): PluginCronKind {
-	return `plugin.${pluginId}.${localId}`;
 }

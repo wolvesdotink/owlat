@@ -1,10 +1,9 @@
-import type { PluginId } from './pluginId';
+import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 
 /** Capability the host assigns to every plugin that publishes webhook events. */
 export const PLUGIN_WEBHOOK_EVENT_CAPABILITY = 'webhooks:publish' as const;
 
 export type PluginWebhookEventCapability = typeof PLUGIN_WEBHOOK_EVENT_CAPABILITY;
-export type PluginWebhookEventLocalId = string;
 
 /**
  * Namespaced wire literal for a plugin-published webhook event. Core events
@@ -12,7 +11,7 @@ export type PluginWebhookEventLocalId = string;
  * event is `plugin.<pluginId>.<localId>` so a plugin can never shadow or
  * collide with a core event or another plugin's event.
  */
-export type PluginWebhookEventKind = `plugin.${PluginId}.${PluginWebhookEventLocalId}`;
+export type PluginWebhookEventKind = PluginNamespacedKind;
 
 /**
  * Data-only descriptor for one webhook event type a plugin publishes. The
@@ -21,7 +20,7 @@ export type PluginWebhookEventKind = `plugin.${PluginId}.${PluginWebhookEventLoc
  * host clamps and scrubs before delivery.
  */
 export interface PluginWebhookEventDefinition {
-	readonly id: PluginWebhookEventLocalId;
+	readonly id: PluginLocalId;
 	/** Operator-facing one-line description of what the event signals. */
 	readonly description: string;
 	/**
@@ -30,11 +29,4 @@ export interface PluginWebhookEventDefinition {
 	 * to a single explicit target.
 	 */
 	readonly subscribable: boolean;
-}
-
-export function pluginWebhookEventKind(
-	pluginId: PluginId,
-	localId: PluginWebhookEventLocalId
-): PluginWebhookEventKind {
-	return `plugin.${pluginId}.${localId}`;
 }

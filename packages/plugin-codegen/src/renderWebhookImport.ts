@@ -3,7 +3,7 @@ import {
 	parsePluginPackageName,
 	type BundledPlugin,
 } from '@owlat/plugin-host';
-import { parsePluginId } from '@owlat/plugin-kit';
+import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 
 interface RenderedWebhookEvent {
@@ -24,7 +24,7 @@ function webhookEventsFor(plugins: readonly BundledPlugin[]): readonly RenderedW
 		)
 	).map(({ pluginId, contributionId, value }) => ({
 		pluginId,
-		kind: `plugin.${pluginId}.${contributionId}`,
+		kind: pluginNamespacedKind(pluginId, contributionId),
 		description: value.description,
 		subscribable: value.subscribable,
 	}));
@@ -85,7 +85,7 @@ export function importProvidersFor(
 	).map(({ pluginId, contributionId, value }) => ({
 		...value,
 		pluginId,
-		kind: `plugin.${pluginId}.${contributionId}`,
+		kind: pluginNamespacedKind(pluginId, contributionId),
 	}));
 }
 

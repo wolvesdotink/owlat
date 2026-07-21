@@ -3,7 +3,7 @@ import {
 	parsePluginPackageName,
 	type BundledPlugin,
 } from '@owlat/plugin-host';
-import { parsePluginId } from '@owlat/plugin-kit';
+import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { GENERATED_HEADER, renderPluginModuleFile } from './renderShared';
 
 interface RenderedCron {
@@ -36,7 +36,7 @@ function cronsFor(plugins: readonly BundledPlugin[]): readonly RenderedCron[] {
 	).map(({ pluginId, contributionId, value }) => ({
 		...value,
 		pluginId,
-		kind: `plugin.${pluginId}.${contributionId}`,
+		kind: pluginNamespacedKind(pluginId, contributionId),
 	}));
 }
 

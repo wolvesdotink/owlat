@@ -1,5 +1,10 @@
 import { v } from 'convex/values';
-import { PLUGIN_AUTOMATION_TRIGGER_CAPABILITY } from '@owlat/plugin-kit';
+import {
+	isPluginId,
+	isPluginLocalId,
+	pluginNamespacedKind,
+	PLUGIN_AUTOMATION_TRIGGER_CAPABILITY,
+} from '@owlat/plugin-kit';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -229,7 +234,10 @@ export const firePluginTrigger = internalMutation({
 		payload: v.optional(v.record(v.string(), jsonPrimitiveValue)),
 	},
 	handler: async (ctx, args): Promise<{ triggered: number }> => {
-		const kind = `plugin.${args.pluginId}.${args.localId}`;
+		// Both halves are untrusted input here, and this seam fails CLOSED: an
+		// unparseable id fans out nothing rather than throwing at the caller.
+		if (!isPluginId(args.pluginId) || !isPluginLocalId(args.localId)) return { triggered: 0 };
+		const kind = pluginNamespacedKind(args.pluginId, args.localId);
 		const entry = pluginTriggerCatalogEntry(kind);
 		if (!entry || entry.pluginId !== args.pluginId) return { triggered: 0 };
 

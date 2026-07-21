@@ -1,10 +1,9 @@
-import type { PluginId } from './pluginId';
+import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 
 /** Capability the host assigns to every plugin that contributes settings panels. */
 export const PLUGIN_SETTINGS_PANEL_CAPABILITY = 'ui:settings' as const;
 
 export type PluginSettingsPanelCapability = typeof PLUGIN_SETTINGS_PANEL_CAPABILITY;
-export type PluginSettingsPanelLocalId = string;
 
 /**
  * Plugin-scoped identity for a plugin-contributed settings entry,
@@ -15,11 +14,9 @@ export type PluginSettingsPanelLocalId = string;
  * prevents a plugin from shadowing a core settings entry: two entries at the
  * same href collapse first-registered-wins, and core is always registered
  * first.
- *
- * Intended consumer: the plugin-scoped settings index landing in PP-20; until
- * that lands `pluginSettingsPanelKind` is exercised only by its own unit tests.
+
  */
-export type PluginSettingsPanelKind = `plugin.${PluginId}.${PluginSettingsPanelLocalId}`;
+export type PluginSettingsPanelKind = PluginNamespacedKind;
 
 /**
  * Data-only descriptor for one entry a plugin adds to the workspace settings
@@ -29,7 +26,7 @@ export type PluginSettingsPanelKind = `plugin.${PluginId}.${PluginSettingsPanelL
  * deterministically after every core settings entry.
  */
 export interface PluginSettingsPanelDefinition {
-	readonly id: PluginSettingsPanelLocalId;
+	readonly id: PluginLocalId;
 	/** Settings entry label (host-clamped and injection-scrubbed at render time). */
 	readonly name: string;
 	/** Absolute internal dashboard path the entry links to. */
@@ -38,11 +35,4 @@ export interface PluginSettingsPanelDefinition {
 	readonly icon: string;
 	/** Ordering hint among this plugin's settings entries (default: declaration order). */
 	readonly order?: number;
-}
-
-export function pluginSettingsPanelKind(
-	pluginId: PluginId,
-	localId: PluginSettingsPanelLocalId
-): PluginSettingsPanelKind {
-	return `plugin.${pluginId}.${localId}`;
 }

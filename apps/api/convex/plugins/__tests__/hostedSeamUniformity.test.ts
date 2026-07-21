@@ -46,9 +46,7 @@ describe('hosted contribution authorization seams', () => {
 
 	it.each(seamFiles())('%s delegates to the one shared implementation', (name) => {
 		const source = read(name);
-		expect(source, `${name} must build on ${SHARED_MODULE}`).toContain(
-			`from './${SHARED_MODULE}'`
-		);
+		expect(source, `${name} must build on ${SHARED_MODULE}`).toContain(`from './${SHARED_MODULE}'`);
 		expect(source).toContain('HostedContributionAuthorizationSpec');
 		expect(source).toMatch(/authorizeHostedContribution\(/);
 	});

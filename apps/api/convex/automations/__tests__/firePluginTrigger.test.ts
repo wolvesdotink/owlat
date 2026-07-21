@@ -79,7 +79,7 @@ function makeCtx(state: FanoutState = {}) {
 
 const args = {
 	pluginId: 'crm-sync',
-	localId: 'deal_won',
+	localId: 'deal-won',
 	contactId: 'contact-1',
 	payload: { amount: 500 },
 };
@@ -157,7 +157,7 @@ describe('firePluginTrigger', () => {
 			automationId: 'automation-1',
 			contactId: 'contact-1',
 			status: 'running',
-			triggeredBy: 'plugin.crm-sync.deal_won',
+			triggeredBy: 'plugin.crm-sync.deal-won',
 			triggerData: { score: 9 },
 		});
 		expect(bumpStats).toHaveBeenCalledOnce();
