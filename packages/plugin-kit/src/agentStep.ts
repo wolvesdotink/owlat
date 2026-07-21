@@ -1,13 +1,12 @@
+import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 import type { JsonValue } from './json';
-import type { PluginId } from './pluginId';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 /** Capability assigned by the host to every bundled agent-pipeline step. */
 export const PLUGIN_AGENT_STEP_CAPABILITY = 'agent:step' as const;
 
 export type PluginAgentStepCapability = typeof PLUGIN_AGENT_STEP_CAPABILITY;
-export type PluginAgentStepLocalId = string;
-export type PluginAgentStepKind = `plugin.${PluginId}.${PluginAgentStepLocalId}`;
+export type PluginAgentStepKind = PluginNamespacedKind;
 
 /** Finite, host-recognized lifecycle requests a step may make after it runs. */
 export type PluginAgentLifecycleEdge =
@@ -24,7 +23,7 @@ export type PluginAgentLifecycleEdge =
 
 /** Data-only manifest descriptor. Executable code lives at `module.exportPath`. */
 export interface PluginAgentStepDefinition {
-	readonly id: PluginAgentStepLocalId;
+	readonly id: PluginLocalId;
 	/** Core or namespaced plugin step after which this contribution runs. */
 	readonly after: string;
 	readonly module: PluginStaticModuleExport;
@@ -54,11 +53,4 @@ export type PluginAgentStepResult =
 /** Trusted bundled module invoked only after the host reauthorizes it. */
 export interface PluginAgentStepModule {
 	execute(input: PluginAgentStepInput): Promise<PluginAgentStepResult>;
-}
-
-export function pluginAgentStepKind(
-	pluginId: PluginId,
-	localId: PluginAgentStepLocalId
-): PluginAgentStepKind {
-	return `plugin.${pluginId}.${localId}`;
 }

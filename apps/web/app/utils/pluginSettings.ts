@@ -1,15 +1,20 @@
 /**
  * Pure helpers for the schema-rendered plugin settings UX. The settings form is
  * driven entirely from a plugin's `settingsSchema` (from the bundled-plugin
- * composition) joined with the server's redacted state (non-secret values plus a
- * per-secret "is set" flag). Keeping this logic pure keeps the pages SSR-safe and
- * lets the form/redaction behaviour be tested without mounting a component.
+ * composition) joined with the server's projected state (stored values plus a
+ * per-secret presence flag). Keeping this logic pure keeps the pages SSR-safe and
+ * lets the form behaviour be tested without mounting a component.
  *
- * Secret handling: a secret field's input starts blank and a blank value is
- * never submitted, so a stored secret is kept unless the operator types a
- * replacement — the client mirror of the server never returning secret plaintext.
+ * Secret handling: a secret field is NOT editable. Its value lives in a
+ * `PLUGIN_`-prefixed deployment environment variable, so the form renders it
+ * read-only, never seeds a value, and never submits one — Owlat stores no plugin
+ * credential plaintext at all.
  */
-import type { PluginSettingsField, PluginSettingsSchema } from '@owlat/plugin-kit';
+import type {
+	PluginSettingsField,
+	PluginSettingsSchema,
+	PluginSettingsSecretField,
+} from '@owlat/plugin-kit';
 
 export type PluginSettingsFormValue = string | number | boolean;
 export type PluginSettingsForm = Record<string, PluginSettingsFormValue>;
@@ -21,7 +26,7 @@ export interface PluginSettingsRedactedState {
 	 * value with a `typeof` guard against the field's declared kind.
 	 */
 	readonly values: Readonly<Record<string, unknown>>;
-	/** Whether each secret field currently has a stored value. */
+	/** Whether each secret field's environment variable is present. */
 	readonly secretsSet: Readonly<Record<string, boolean>>;
 }
 
@@ -30,7 +35,7 @@ export function baselineFieldValue(
 	field: PluginSettingsField,
 	state: PluginSettingsRedactedState
 ): PluginSettingsFormValue {
-	// Secrets always start blank — the stored value is never sent to the client.
+	// A secret is env-supplied and read-only: there is nothing to seed.
 	if (field.kind === 'secret') return '';
 	const stored = state.values[field.key];
 	switch (field.kind) {
@@ -67,8 +72,8 @@ export function pluginSettingsBaseline(
 
 /**
  * The changed subset to submit: any field whose current form value differs from
- * the baseline. Because secret baselines are blank, a blank secret is a no-op
- * (keeps the stored value) and only a typed replacement is sent.
+ * the baseline. A secret is never submitted — the server rejects any value for
+ * one, because the credential is supplied through the environment.
  */
 export function pluginSettingsChanges(
 	schema: PluginSettingsSchema,
@@ -79,11 +84,8 @@ export function pluginSettingsChanges(
 	for (const field of schema) {
 		const next = form[field.key];
 		if (next === undefined) continue;
-		if (field.kind === 'secret') {
-			// Only a non-empty secret is a change; blank keeps the stored value.
-			if (typeof next === 'string' && next !== '') changes[field.key] = next;
-			continue;
-		}
+		// A secret is env-supplied: never part of a settings write.
+		if (field.kind === 'secret') continue;
 		// A blanked number input emits '' (see PluginSettingsField.onNumber). Never
 		// submit it: the server would reject the whole save with "must be a finite
 		// number", so treat a cleared number as "unchanged" — the stored value
@@ -103,23 +105,26 @@ export function hasPluginSettingsChanges(
 	return Object.keys(pluginSettingsChanges(schema, form, baseline)).length > 0;
 }
 
-/** A client-side required-field check for immediate feedback before submitting. */
+/**
+ * A client-side required-field check for immediate feedback before submitting.
+ *
+ * Covers only the fields the operator can actually fill in on this form. A
+ * `required` secret is deliberately NOT included: it is env-supplied and renders
+ * read-only, so blocking the submit on one would name a field that has no input
+ * and would strand every other setting on the page until the deployment changes.
+ * `required` on a secret is a deployment precondition (enforced at runtime by
+ * `flag.requiredEnvVars`), not a form-validation rule — it is surfaced instead by
+ * `unsetRequiredPluginSecrets`, which warns without blocking.
+ */
 export function missingRequiredPluginSettings(
 	schema: PluginSettingsSchema,
-	form: Readonly<PluginSettingsForm>,
-	state: PluginSettingsRedactedState
+	form: Readonly<PluginSettingsForm>
 ): readonly string[] {
 	const missing: string[] = [];
 	for (const field of schema) {
 		if (!field.required) continue;
-		if (field.kind === 'secret') {
-			// Satisfied by an existing stored secret or a freshly typed one.
-			const typed = form[field.key];
-			if (state.secretsSet[field.key] === true) continue;
-			if (typeof typed === 'string' && typed !== '') continue;
-			missing.push(field.key);
-			continue;
-		}
+		// Env-supplied and not fillable here: never gates the save. See above.
+		if (field.kind === 'secret') continue;
 		// An unset number or select now baselines to '' (see baselineFieldValue),
 		// so an empty-string form value flags a required string, number, or select
 		// that has no effective value. A set number is a `number` and never matches.
@@ -127,4 +132,21 @@ export function missingRequiredPluginSettings(
 		if (typeof value === 'string' && value.trim() === '') missing.push(field.key);
 	}
 	return missing;
+}
+
+/**
+ * Required secret fields whose deployment environment variable is absent.
+ *
+ * This is a warning surface, not a validation gate: the page shows the variables
+ * an operator still has to set in the deployment while leaving every editable
+ * setting saveable.
+ */
+export function unsetRequiredPluginSecrets(
+	schema: PluginSettingsSchema,
+	state: PluginSettingsRedactedState
+): readonly PluginSettingsSecretField[] {
+	return schema.filter(
+		(field): field is PluginSettingsSecretField =>
+			field.kind === 'secret' && field.required === true && state.secretsSet[field.key] !== true
+	);
 }

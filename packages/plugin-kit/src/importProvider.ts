@@ -1,15 +1,14 @@
+import type { PluginLocalId, PluginNamespacedKind } from './namespacedKind';
 import type { JsonObject } from './json';
-import type { PluginId } from './pluginId';
 import type { PluginStaticModuleExport } from './sendTransport';
 
 /** Capability the host assigns to every plugin that contributes import providers. */
 export const PLUGIN_IMPORT_PROVIDER_CAPABILITY = 'imports:provide' as const;
 
 export type PluginImportProviderCapability = typeof PLUGIN_IMPORT_PROVIDER_CAPABILITY;
-export type PluginImportProviderLocalId = string;
 
 /** Collision-safe provider kind; the walker resolves it through the host. */
-export type PluginImportProviderKind = `plugin.${PluginId}.${PluginImportProviderLocalId}`;
+export type PluginImportProviderKind = PluginNamespacedKind;
 
 /** HMAC families the host can recompute and compare in constant time. */
 export type PluginInboundSignatureAlgorithm = 'hmac-sha256' | 'hmac-sha1';
@@ -51,7 +50,7 @@ export interface PluginInboundSignatureContract {
  * boundary and drives it through the provider-agnostic import walker.
  */
 export interface PluginImportProviderDefinition {
-	readonly id: PluginImportProviderLocalId;
+	readonly id: PluginLocalId;
 	readonly label: string;
 	readonly module: PluginStaticModuleExport;
 	/** Required inbound signature-verification contract for plugin-sourced events. */
@@ -86,11 +85,4 @@ export interface PluginImportProviderModule {
 		config: JsonObject
 	): { readonly ok: true } | { readonly ok: false; readonly reason: string };
 	fetchPage(input: PluginImportProviderInput): Promise<PluginImportPageResult>;
-}
-
-export function pluginImportProviderKind(
-	pluginId: PluginId,
-	localId: PluginImportProviderLocalId
-): PluginImportProviderKind {
-	return `plugin.${pluginId}.${localId}`;
 }

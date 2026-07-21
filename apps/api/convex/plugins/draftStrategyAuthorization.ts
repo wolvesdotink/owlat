@@ -1,39 +1,30 @@
-import { parsePluginId, PLUGIN_DRAFT_STRATEGY_CAPABILITY } from '@owlat/plugin-kit';
+import { PLUGIN_DRAFT_STRATEGY_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import { recordHostedPluginAudit, type HostedPluginAuditReasonCode } from './audit';
-import { authorizeSystemBundledPlugin, SYSTEM_PLUGIN_ACTOR_ID } from './authorization';
 import { pluginDraftStrategyDefinition } from './draftStrategyCatalog';
+import {
+	authorizeHostedContribution,
+	recordHostedContributionOutcome,
+	type HostedContributionAuthorizationSpec,
+} from './hostedContributionAuthorization';
 
-function matchingScope(organizationId: string, pluginIdInput: string, strategyKind: string) {
-	let pluginId;
-	try {
-		pluginId = parsePluginId(pluginIdInput);
-	} catch {
-		return null;
-	}
-	const definition = pluginDraftStrategyDefinition(strategyKind);
-	if (!definition || definition.pluginId !== pluginId) return null;
-	return Object.freeze({ organizationId, userId: SYSTEM_PLUGIN_ACTOR_ID, pluginId });
-}
+/**
+ * Runtime authorization seam for plugin-contributed draft strategies. A denial
+ * falls the host back to the built-in `default` strategy rather than failing the
+ * draft, so the recheck is safe to run on every draft.
+ */
+const SPEC: HostedContributionAuthorizationSpec = {
+	capability: PLUGIN_DRAFT_STRATEGY_CAPABILITY,
+	operation: 'draft.strategy',
+	failureReasonCode: 'draft_strategy_failed',
+	attributionErrorMessage: 'Invalid bundled draft strategy attribution',
+	definitionFor: pluginDraftStrategyDefinition,
+};
 
 export const authorizeExecution = internalMutation({
 	args: { pluginId: v.string(), strategyKind: v.string() },
-	handler: async (ctx, args): Promise<boolean> => {
-		const organizationId = await getSingletonOrganizationId(ctx).catch(() => null);
-		if (!organizationId) return false;
-		const auditScope = matchingScope(organizationId, args.pluginId, args.strategyKind);
-		if (!auditScope) return false;
-		if (
-			await authorizeSystemBundledPlugin(ctx, auditScope.pluginId, PLUGIN_DRAFT_STRATEGY_CAPABILITY)
-		)
-			return true;
-		await recordHostedPluginAudit(ctx, auditScope, 'draft.strategy', 'denied', {
-			reasonCode: 'access_denied',
-		});
-		return false;
-	},
+	handler: (ctx, args): Promise<boolean> =>
+		authorizeHostedContribution(ctx, SPEC, args.pluginId, args.strategyKind),
 });
 
 export const recordOutcome = internalMutation({
@@ -49,19 +40,13 @@ export const recordOutcome = internalMutation({
 			)
 		),
 	},
-	handler: async (ctx, args): Promise<void> => {
-		const scope = matchingScope(
-			await getSingletonOrganizationId(ctx),
-			args.pluginId,
-			args.strategyKind
-		);
-		if (!scope) throw new TypeError('Invalid bundled draft strategy attribution');
-		await recordHostedPluginAudit(
+	handler: (ctx, args): Promise<void> =>
+		recordHostedContributionOutcome(
 			ctx,
-			scope,
-			'draft.strategy',
+			SPEC,
+			args.pluginId,
+			args.strategyKind,
 			args.outcome,
-			args.reasonCode ? { reasonCode: args.reasonCode as HostedPluginAuditReasonCode } : {}
-		);
-	},
+			args.reasonCode
+		),
 });

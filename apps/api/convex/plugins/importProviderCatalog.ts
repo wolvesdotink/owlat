@@ -1,9 +1,9 @@
-import type {
-	PluginId,
-	PluginImportProviderKind,
-	PluginInboundSignatureContract,
-} from '@owlat/plugin-kit';
+import type { PluginImportProviderKind, PluginInboundSignatureContract } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_IMPORT_PROVIDER_CATALOG } from './importProviderCatalog.generated';
+import {
+	defineHostedContributionCatalog,
+	type HostedContributionDefinition,
+} from './hostedContributionCatalog';
 
 /**
  * Host view of a plugin-contributed import provider. Data-only metadata; the
@@ -11,21 +11,23 @@ import { BUNDLED_PLUGIN_IMPORT_PROVIDER_CATALOG } from './importProviderCatalog.
  * mandatory inbound signature-verification contract travels with the entry so
  * the host can authenticate any plugin-sourced request before trusting it.
  */
-export interface HostedImportProviderDefinition {
+export interface HostedImportProviderDefinition extends HostedContributionDefinition<'imports:provide'> {
 	readonly kind: PluginImportProviderKind;
-	readonly pluginId: PluginId;
 	readonly label: string;
 	readonly attestSource: string | null;
 	readonly requiredEnvVars: readonly string[];
 	readonly signature: PluginInboundSignatureContract;
-	readonly requiredCapability: 'imports:provide';
 }
 
-export const IMPORT_PROVIDER_CATALOG =
-	BUNDLED_PLUGIN_IMPORT_PROVIDER_CATALOG as readonly HostedImportProviderDefinition[];
+const CATALOG = defineHostedContributionCatalog<HostedImportProviderDefinition>(
+	BUNDLED_PLUGIN_IMPORT_PROVIDER_CATALOG,
+	'import provider'
+);
+
+export const IMPORT_PROVIDER_CATALOG = CATALOG.all;
 
 export function pluginImportProviderDefinition(
 	kind: string
 ): HostedImportProviderDefinition | undefined {
-	return IMPORT_PROVIDER_CATALOG.find((definition) => definition.kind === kind);
+	return CATALOG.byKind(kind);
 }

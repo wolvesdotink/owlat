@@ -222,7 +222,7 @@ async function recordOutcome(
 		.runMutation(internal.plugins.automationStepAuthorization.recordOutcome, {
 			pluginId,
 			stepKind,
-			success,
+			outcome: success ? 'completed' : 'failed',
 		})
 		// The step already executed; a failing audit write must not fail it (a
 		// plugin cannot be denied a completed run by knocking over audit). But the

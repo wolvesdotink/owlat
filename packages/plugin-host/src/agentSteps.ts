@@ -1,5 +1,5 @@
 import {
-	pluginAgentStepKind,
+	pluginNamespacedKind,
 	type PluginAgentLifecycleEdge,
 	type PluginId,
 } from '@owlat/plugin-kit';
@@ -105,7 +105,7 @@ export function composeBundledAgentSteps(
 		(plugin.manifest.contributes?.agentSteps ?? []).map((step) => ({
 			pluginId: plugin.manifest.id,
 			packageName: plugin.packageName,
-			kind: pluginAgentStepKind(plugin.manifest.id, step.id),
+			kind: pluginNamespacedKind(plugin.manifest.id, step.id),
 			after: step.after,
 			exportPath: step.module.exportPath,
 			lifecycleEdges: step.lifecycleEdges,

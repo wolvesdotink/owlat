@@ -1,3 +1,4 @@
+import { isPluginLocalId } from './namespacedKind';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import {
 	isRecord,
@@ -8,7 +9,6 @@ import {
 } from './manifestValue';
 import { isSafeStaticExportPath } from './staticExportPath';
 
-const LOCAL_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const RESERVED_LOCAL_IDS = new Set(['constructor', 'prototype', '__proto__']);
 const MAX_LABEL_LENGTH = 80;
 const MAX_RETRIES = 3;
@@ -50,8 +50,7 @@ function validateId(
 	if (id.kind !== 'value') return;
 	if (
 		typeof id.value !== 'string' ||
-		id.value.length > 64 ||
-		!LOCAL_ID.test(id.value) ||
+		!isPluginLocalId(id.value) ||
 		RESERVED_LOCAL_IDS.has(id.value)
 	) {
 		addManifestIssue(

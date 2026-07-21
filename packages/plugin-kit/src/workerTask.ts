@@ -1,3 +1,10 @@
+import {
+	isPluginLocalId,
+	parsePluginNamespacedKind,
+	pluginNamespacedKind,
+	type PluginLocalId,
+	type PluginNamespacedKind,
+} from './namespacedKind';
 import { isPluginId, type PluginId } from './pluginId';
 
 /**
@@ -53,33 +60,19 @@ export const PLUGIN_WORKER_RESULT_MAX_BYTES = 64 * 1024; // 65536
 export const PLUGIN_WORKER_MAX_PENDING_JOBS = 100;
 
 /** Local job identity within a plugin. The host namespaces it with the plugin id. */
-export type PluginWorkerJobLocalId = string;
+export type PluginWorkerJobLocalId = PluginLocalId;
 
 /**
  * Collision-safe job kind used as the queue's routing key. Namespacing every job
  * with its owning plugin id is what lets the host reject a cross-plugin enqueue
  * (a plugin trying to run another plugin's job kind) purely from the string.
  */
-export type PluginWorkerJobKind = `plugin.${PluginId}.${PluginWorkerJobLocalId}`;
+export type PluginWorkerJobKind = PluginNamespacedKind;
 
-const WORKER_JOB_LOCAL_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const WORKER_JOB_LOCAL_ID_MAX_LENGTH = 64;
-
-export function pluginWorkerJobKind(
-	pluginId: PluginId,
-	localId: PluginWorkerJobLocalId
-): PluginWorkerJobKind {
-	return `plugin.${pluginId}.${localId}`;
-}
+export const pluginWorkerJobKind = pluginNamespacedKind;
 
 /** True iff `localId` is a valid, namespacing-safe local job identity. */
-export function isPluginWorkerJobLocalId(value: unknown): value is PluginWorkerJobLocalId {
-	return (
-		typeof value === 'string' &&
-		value.length <= WORKER_JOB_LOCAL_ID_MAX_LENGTH &&
-		WORKER_JOB_LOCAL_ID.test(value)
-	);
-}
+export const isPluginWorkerJobLocalId = isPluginLocalId;
 
 /**
  * True iff `kind` is exactly `plugin.<pluginId>.<localId>` for the given plugin
@@ -92,9 +85,8 @@ export function isPluginWorkerJobKindOwnedBy(
 	pluginId: PluginId
 ): kind is PluginWorkerJobKind {
 	if (typeof kind !== 'string') return false;
-	const prefix = `plugin.${pluginId}.`;
-	if (!kind.startsWith(prefix)) return false;
-	return isPluginWorkerJobLocalId(kind.slice(prefix.length));
+	const parsed = parsePluginNamespacedKind(kind);
+	return parsed !== undefined && parsed.pluginId === pluginId;
 }
 
 /**

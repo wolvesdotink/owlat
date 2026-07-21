@@ -6,7 +6,7 @@ import {
 	type BundledPlugin,
 	type ValidatedBundledPluginSource,
 } from '@owlat/plugin-host';
-import { parsePluginManifest } from '@owlat/plugin-kit';
+import { parsePluginManifest, pluginContributionModules } from '@owlat/plugin-kit';
 import { PluginCodegenError } from './errors';
 import {
 	resolveVerifiedPluginEntry,
@@ -68,20 +68,12 @@ export async function loadBundledPlugins(
 		if (manifest.component) {
 			await verifyPluginComponentExport(workspaceRoot, packageName, manifest.component.exportPath);
 		}
-		for (const transport of manifest.contributes?.sendTransports ?? []) {
-			await verifyPluginContributionExport(workspaceRoot, packageName, transport.module.exportPath);
-		}
-		for (const step of manifest.contributes?.agentSteps ?? []) {
-			await verifyPluginContributionExport(workspaceRoot, packageName, step.module.exportPath);
-		}
-		for (const strategy of manifest.contributes?.draftStrategies ?? []) {
-			await verifyPluginContributionExport(workspaceRoot, packageName, strategy.module.exportPath);
-		}
-		for (const gate of manifest.contributes?.sendGates ?? []) {
-			await verifyPluginContributionExport(workspaceRoot, packageName, gate.module.exportPath);
-		}
-		for (const provider of manifest.contributes?.importProviders ?? []) {
-			await verifyPluginContributionExport(workspaceRoot, packageName, provider.module.exportPath);
+		// EVERY declared executable half is provenance-verified, found structurally
+		// rather than by listing the buckets that ship one. Per-bucket loops here
+		// let crons and the three automation registries reach generated Convex
+		// imports unverified when later pieces added them.
+		for (const contributed of pluginContributionModules(manifest)) {
+			await verifyPluginContributionExport(workspaceRoot, packageName, contributed.exportPath);
 		}
 		sources.push({ packageName, manifest });
 	}

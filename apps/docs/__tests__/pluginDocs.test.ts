@@ -957,7 +957,7 @@ describe('plugin docs: limits match the constants the host enforces', () => {
 			declaredPattern: /^export const (MAX_\w+) = /gm,
 			section: section(docs.contributions, '## Settings schema'),
 			rendered: {
-				MAX_TEXT_LENGTH: { literal: '8_192', prose: '8 192 characters per text or secret value' },
+				MAX_TEXT_LENGTH: { literal: '8_192', prose: '8 192 characters per text value' },
 				MAX_SETTINGS_FIELDS: { literal: '64', prose: '64 fields' },
 				MAX_SETTINGS_OPTIONS: { literal: '64', prose: '64 options per select' },
 			},
@@ -1236,13 +1236,72 @@ describe('plugin docs: the CLI page quotes the real help text', () => {
 });
 
 describe('plugin docs: the chapter does not promise unshipped extension points', () => {
+	/**
+	 * The bucket summary is split into "wired end to end" and "declared … but not
+	 * yet invoked". Which bucket belongs in which table is not a docs judgement —
+	 * it is the `dispatch` column of the kernel's requirement table, which the
+	 * conformance reachability gate pins to the real consumer set. Reading the
+	 * split from the source means a bucket that gets wired (or unwired) fails
+	 * here until the page moves its row.
+	 */
+	describe('the bucket summary splits dispatched from declared-only', () => {
+		function bucketsWithDispatch(dispatch: string): string[] {
+			const source = read('packages/plugin-kit/src/contributionRequirements.ts');
+			const table = source.slice(
+				source.indexOf('export const CONTRIBUTION_CAPABILITY_REQUIREMENTS = ['),
+				source.indexOf('] as const;')
+			);
+			return [...table.matchAll(/bucket: '(\w+)',[\s\S]*?dispatch: '(\w+)'/g)]
+				.filter((match) => match[2] === dispatch)
+				.map((match) => match[1]!);
+		}
+
+		function tableBuckets(heading: string): string[] {
+			const body = section(docs.contributions, heading);
+			return [...body.matchAll(/^\| `(\w+)` \| `[^`]+` \|/gm)].map((match) => match[1]!);
+		}
+
+		const wired = bucketsWithDispatch('wired');
+		const declared = bucketsWithDispatch('declared');
+
+		it('reads a non-degenerate split from the kernel table', () => {
+			expect(wired.length).toBeGreaterThan(0);
+			expect(declared.length).toBeGreaterThan(0);
+			expect([...wired, ...declared].sort()).toEqual(
+				[...contributionKinds()]
+					.sort()
+					.filter((kind) => wired.includes(kind) || declared.includes(kind))
+			);
+		});
+
+		it('lists exactly the dispatched buckets as wired end to end', () => {
+			expect(tableBuckets('### Wired end to end').sort()).toEqual([...wired].sort());
+		});
+
+		it('lists exactly the undispatched buckets as not yet invoked', () => {
+			const heading = '### Declared, catalogued and authorized — but not yet invoked';
+			expect(tableBuckets(heading).sort()).toEqual([...declared].sort());
+			expect(section(docs.contributions, heading)).toContain('No host path calls');
+		});
+
+		it('repeats the caveat in each undispatched bucket section', () => {
+			for (const marker of [
+				'Only `automationSteps` runs today',
+				'No publish path yet',
+				'No import walk reaches a plugin provider yet',
+			]) {
+				expect(docs.contributions, `${marker} caveat is gone`).toContain(marker);
+			}
+		});
+	});
+
 	it('names the reserved-but-unconsumed buckets as reserved', () => {
 		// Derived from the page, not hardcoded: EVERY bucket the chapter calls
 		// reserved must really be unconsumed by codegen, so wiring one up fails
 		// here until the page stops calling it reserved — and a bucket quietly
 		// dropped from the list is caught by the contribution-bucket assertion,
 		// which requires every declared kind to be documented somewhere.
-		const reserved = section(docs.contributions, '## Declared but not yet consumed');
+		const reserved = section(docs.contributions, '## Reserved names');
 		const kinds = new Set(contributionKinds());
 		const buckets = [...reserved.matchAll(/`([a-zA-Z]+)`/g)]
 			.map((match) => match[1]!)
@@ -1257,11 +1316,81 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 		}
 	});
 
+	/**
+	 * `invokeHook` is the ONLY surface that performs a signed hook call. Until a
+	 * pipeline stage calls it, every Tier-2 page saying "Owlat calls a connected
+	 * app at three decision points" is a promise the code does not keep. This
+	 * binds the claim to the real caller set: wire a call site and the deferral
+	 * markers become removable; leave it unwired and they are mandatory.
+	 */
+	it('marks the connected-app hook call sites as deferred while invokeHook has no caller', () => {
+		const HOOK_SYMBOL = 'connectedApps.hookRuntime.invokeHook';
+		const callers = sourceFiles('apps/api/convex').filter(
+			(file) =>
+				!file.includes('/__tests__/') &&
+				!file.includes('/_generated/') &&
+				!file.endsWith('connectedApps/hookRuntime.ts') &&
+				read(file).includes(HOOK_SYMBOL)
+		);
+
+		if (callers.length > 0) return; // Wired: the deferral markers may go.
+
+		expect(
+			docs.connectedApps,
+			'invokeHook has no production caller, so the connected-apps page must say so'
+		).toContain('no pipeline stage calls it yet');
+		expect(docs.overview).toContain('no pipeline call site yet');
+		expect(docs.capabilities).toContain('no pipeline stage calls it yet');
+		expect(read('docs/adr/0052-connected-apps-and-signed-hooks.md')).toContain('## Not yet wired');
+		expect(read('examples/plugins/slack-approvals/README.md')).toContain(
+			'Owlat does not make that call yet'
+		);
+	});
+
 	it('states that the import-provider signature contract has no replay defense', () => {
 		expect(read('packages/plugin-kit/src/importProvider.ts')).toContain(
 			'It carries no replay resistance'
 		);
 		expect(docs.contributions).toMatch(/no replay resistance/i);
+	});
+});
+
+/**
+ * A `navItems` entry naming a section the core sidebar does not declare is
+ * dropped fail-closed by `buildNavigationSections`, so a wrong `section` in a
+ * documented manifest is a sample that silently renders nothing. Both reference
+ * plugins carry a comment warning about exactly that; the docs get the same
+ * guard, derived from the real `CORE_SECTIONS` rather than a copied list.
+ */
+describe('plugin docs: navigation samples name a real core sidebar section', () => {
+	const navigation = read('apps/web/app/lib/dashboardNavigation.ts');
+	const coreSectionKeys = new Set(
+		[...navigation.matchAll(/\n\t\tkey: '([a-z][a-z0-9-]*)',/g)].map((match) => match[1]!)
+	);
+
+	it('derives a non-empty core section-key set from the host', () => {
+		expect(coreSectionKeys.size).toBeGreaterThan(0);
+		expect(coreSectionKeys).toContain('settings');
+		expect(navigation).toContain('CORE_SECTION_KEYS.has(item.section)');
+	});
+
+	it('uses only core section keys in every documented nav item', () => {
+		const used = [...chapter.matchAll(/^\s*section: '([^']+)',$/gm)].map((match) => match[1]!);
+		expect(used.length, 'the chapter no longer shows a navItems sample').toBeGreaterThan(0);
+		for (const key of used) {
+			expect(
+				coreSectionKeys.has(key),
+				`the docs use section '${key}', which the core sidebar does not declare`
+			).toBe(true);
+		}
+	});
+
+	it('tells the author which section keys are valid', () => {
+		const authoring = docs.authoring;
+		expect(authoring).toContain('core sidebar section keys');
+		for (const key of coreSectionKeys) {
+			expect(authoring, `section key ${key} is not listed for the author`).toContain(`\`${key}\``);
+		}
 	});
 });
 

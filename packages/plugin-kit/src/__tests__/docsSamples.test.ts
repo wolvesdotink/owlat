@@ -81,9 +81,9 @@ export const preflightPlugin = definePlugin({
 		navItems: [
 			{
 				id: 'dashboard',
-				section: 'insights',
+				section: 'delivery',
 				name: 'Preflight',
-				href: '/dashboard/plugins/preflight',
+				href: '/dashboard/settings/plugins/preflight',
 				icon: 'lucide:radar',
 			},
 		],
@@ -103,7 +103,13 @@ export const preflightPlugin = definePlugin({
 			label: 'Hold sends that fail preflight',
 			default: true,
 		},
-		{ kind: 'secret', key: 'vendorApiKey', label: 'Vendor API key', required: false },
+		{
+			kind: 'secret',
+			key: 'vendorApiKey',
+			envVar: 'PLUGIN_VENDOR_API_KEY',
+			label: 'Vendor API key',
+			required: false,
+		},
 	],
 });
 // #endregion contribution-manifest

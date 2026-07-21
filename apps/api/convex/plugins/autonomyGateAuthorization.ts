@@ -1,49 +1,30 @@
-import { parsePluginId, PLUGIN_AUTONOMY_GATE_CAPABILITY } from '@owlat/plugin-kit';
+import { PLUGIN_AUTONOMY_GATE_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import { recordHostedPluginAudit, type HostedPluginAuditReasonCode } from './audit';
-import {
-	authorizeSystemBundledPlugin,
-	SYSTEM_PLUGIN_ACTOR_ID,
-	type HostedPluginActorScope,
-} from './authorization';
 import { pluginAutonomyGateDefinition } from './autonomyGateCatalog';
+import {
+	authorizeHostedContribution,
+	recordHostedContributionOutcome,
+	type HostedContributionAuthorizationSpec,
+} from './hostedContributionAuthorization';
 
-function matchingScope(
-	organizationId: string,
-	pluginIdInput: string,
-	gateKind: string
-): HostedPluginActorScope | null {
-	let pluginId;
-	try {
-		pluginId = parsePluginId(pluginIdInput);
-	} catch {
-		return null;
-	}
-	const definition = pluginAutonomyGateDefinition(gateKind);
-	if (!definition || definition.pluginId !== pluginId) return null;
-	return Object.freeze({ organizationId, userId: SYSTEM_PLUGIN_ACTOR_ID, pluginId });
-}
+/**
+ * Runtime authorization seam for plugin-contributed autonomy (send) gates.
+ * Fails CLOSED: a denied, disabled or ungranted gate leaves the host's own
+ * caution objection in place, so the reply routes to human review.
+ */
+const SPEC: HostedContributionAuthorizationSpec = {
+	capability: PLUGIN_AUTONOMY_GATE_CAPABILITY,
+	operation: 'autonomy.gate',
+	failureReasonCode: 'autonomy_gate_failed',
+	attributionErrorMessage: 'Invalid bundled autonomy gate attribution',
+	definitionFor: pluginAutonomyGateDefinition,
+};
 
-/** Rechecks registration, flag, grant, env, and singleton scope immediately before execution. */
 export const authorizeExecution = internalMutation({
 	args: { pluginId: v.string(), gateKind: v.string() },
-	handler: async (ctx, args): Promise<boolean> => {
-		const organizationId = await getSingletonOrganizationId(ctx).catch(() => null);
-		if (!organizationId) return false;
-		const auditScope = matchingScope(organizationId, args.pluginId, args.gateKind);
-		if (!auditScope) return false;
-		if (
-			await authorizeSystemBundledPlugin(ctx, auditScope.pluginId, PLUGIN_AUTONOMY_GATE_CAPABILITY)
-		) {
-			return true;
-		}
-		await recordHostedPluginAudit(ctx, auditScope, 'autonomy.gate', 'denied', {
-			reasonCode: 'access_denied',
-		});
-		return false;
-	},
+	handler: (ctx, args): Promise<boolean> =>
+		authorizeHostedContribution(ctx, SPEC, args.pluginId, args.gateKind),
 });
 
 export const recordOutcome = internalMutation({
@@ -59,19 +40,13 @@ export const recordOutcome = internalMutation({
 			)
 		),
 	},
-	handler: async (ctx, args): Promise<void> => {
-		const scope = matchingScope(
-			await getSingletonOrganizationId(ctx),
-			args.pluginId,
-			args.gateKind
-		);
-		if (!scope) throw new TypeError('Invalid bundled autonomy gate attribution');
-		await recordHostedPluginAudit(
+	handler: (ctx, args): Promise<void> =>
+		recordHostedContributionOutcome(
 			ctx,
-			scope,
-			'autonomy.gate',
+			SPEC,
+			args.pluginId,
+			args.gateKind,
 			args.outcome,
-			args.reasonCode ? { reasonCode: args.reasonCode as HostedPluginAuditReasonCode } : {}
-		);
-	},
+			args.reasonCode
+		),
 });

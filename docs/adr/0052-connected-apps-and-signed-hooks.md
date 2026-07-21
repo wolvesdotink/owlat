@@ -8,8 +8,8 @@ Accepted.
 
 ADR-0049 fixed the platform's outer boundary and named three execution tiers,
 deferring "execution-specific registration" for Tier 2 to a later decision. That
-tier is now implemented: connected apps, plugin-bound API keys, signed
-synchronous draft/gate/score hooks, and redacted hook delivery logs.
+tier is now implemented: connected apps, plugin-bound API keys, the signed
+synchronous draft/gate/score hook protocol, and redacted hook delivery logs.
 
 Tier 1 requires a rebuild to install and runs with the operator's own trust.
 Many integrations need neither: they are external services that want to observe
@@ -135,6 +135,16 @@ a scan cap and a clamped page limit, and rows age out at the audit-log retention
   app's own error text. That is a deliberate trade: the log stays redacted.
 - Rotating `INSTANCE_SECRET` invalidates sealed hook secrets and requires
   rotating each app's secret.
+
+## Not yet wired
+
+`invokeHook` is the only surface that performs a signed hook call, and it has no
+production caller: the draft, route-gate and scoring stages run core and Tier-1
+contributions only. Registration, the plugin-bound API key path, the sealed
+shared secret and the redacted delivery log are live end to end; the hook call
+sites are not. This ADR fixes the protocol and the security envelope so wiring a
+call site is a local change with no contract decisions left in it — it does not
+claim the call sites exist.
 
 ## Non-goals
 

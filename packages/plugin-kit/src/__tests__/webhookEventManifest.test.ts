@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	parsePluginId,
 	PLUGIN_WEBHOOK_EVENT_CAPABILITY,
-	pluginWebhookEventKind,
+	pluginNamespacedKind,
 	validatePluginManifest,
 	type PluginManifestIssue,
 } from '../index';
@@ -27,7 +27,7 @@ function issuesFor(value: unknown): readonly PluginManifestIssue[] {
 
 describe('plugin webhook event contributions', () => {
 	it('namespaces every plugin event under its owning plugin id', () => {
-		expect(pluginWebhookEventKind(parsePluginId('events-pack'), 'deal-won')).toBe(
+		expect(pluginNamespacedKind(parsePluginId('events-pack'), 'deal-won')).toBe(
 			'plugin.events-pack.deal-won'
 		);
 	});

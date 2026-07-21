@@ -5,6 +5,13 @@
  * plugin kind can never shadow a core kind or another plugin's kind. A
  * collision throws at module load so composition fails closed. Shared by the
  * webhook-event and import-provider catalogs.
+ *
+ * Both of those buckets are `dispatch: 'declared'` in the kernel's requirement
+ * table: their catalogs, seams and tests exist, but no host path invokes them
+ * yet, so this helper is currently reachable only from code awaiting a call
+ * site. That is recorded, not hidden — see the "Declared, catalogued and
+ * authorized" table in the Contribution Reference and the conformance suite
+ * `dispatchReachability.test.ts`.
  */
 
 export interface HostedCatalog<E extends { readonly kind: string }> {

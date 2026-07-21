@@ -4,8 +4,7 @@ import {
 	parsePluginId,
 	PLUGIN_NAV_ITEM_CAPABILITY,
 	PLUGIN_SETTINGS_PANEL_CAPABILITY,
-	pluginNavItemKind,
-	pluginSettingsPanelKind,
+	pluginNamespacedKind,
 	validatePluginManifest,
 	type PluginManifestIssue,
 } from '../index';
@@ -75,7 +74,7 @@ function withNavItem(patch: Record<string, unknown>): Record<string, unknown> {
 
 describe('plugin nav item contributions', () => {
 	it('namespaces every plugin nav item under its owning plugin id', () => {
-		expect(pluginNavItemKind(parsePluginId('deals-nav'), 'pipeline')).toBe(
+		expect(pluginNamespacedKind(parsePluginId('deals-nav'), 'pipeline')).toBe(
 			'plugin.deals-nav.pipeline'
 		);
 	});
@@ -202,7 +201,7 @@ describe('plugin nav item contributions', () => {
 
 describe('plugin settings panel contributions', () => {
 	it('namespaces every plugin settings entry under its owning plugin id', () => {
-		expect(pluginSettingsPanelKind(parsePluginId('deals-settings'), 'sync')).toBe(
+		expect(pluginNamespacedKind(parsePluginId('deals-settings'), 'sync')).toBe(
 			'plugin.deals-settings.sync'
 		);
 	});
