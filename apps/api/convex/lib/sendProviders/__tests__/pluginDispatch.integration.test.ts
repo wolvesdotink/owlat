@@ -106,7 +106,7 @@ describe('hosted send transport dispatch', () => {
 		});
 		expect(scheduled[1]).toEqual({
 			name: 'plugins/sendTransportAuthorization:recordOutcome',
-			args: { pluginId: 'mail-pack', providerKind: kind, attempts: 1, success: true },
+			args: { pluginId: 'mail-pack', providerKind: kind, attempts: 1, outcome: 'completed' },
 		});
 	});
 

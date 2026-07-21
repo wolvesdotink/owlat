@@ -1,5 +1,9 @@
-import type { PluginId, PluginWebhookEventKind } from '@owlat/plugin-kit';
+import type { PluginWebhookEventKind } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_WEBHOOK_EVENT_CATALOG } from './webhookEventCatalog.generated';
+import {
+	defineHostedContributionCatalog,
+	type HostedContributionDefinition,
+} from './hostedContributionCatalog';
 
 /**
  * Host view of a plugin-published webhook event. Data-only: a plugin ships no
@@ -8,19 +12,21 @@ import { BUNDLED_PLUGIN_WEBHOOK_EVENT_CATALOG } from './webhookEventCatalog.gene
  * authorization seam (`webhookEventAuthorization.ts`) rechecks flag, grant, and
  * env before a plugin is allowed to publish one of these kinds.
  */
-export interface HostedWebhookEventDefinition {
+export interface HostedWebhookEventDefinition extends HostedContributionDefinition<'webhooks:publish'> {
 	readonly kind: PluginWebhookEventKind;
-	readonly pluginId: PluginId;
 	readonly description: string;
 	readonly subscribable: boolean;
-	readonly requiredCapability: 'webhooks:publish';
 }
 
-export const WEBHOOK_EVENT_CATALOG =
-	BUNDLED_PLUGIN_WEBHOOK_EVENT_CATALOG as readonly HostedWebhookEventDefinition[];
+const CATALOG = defineHostedContributionCatalog<HostedWebhookEventDefinition>(
+	BUNDLED_PLUGIN_WEBHOOK_EVENT_CATALOG,
+	'webhook event'
+);
+
+export const WEBHOOK_EVENT_CATALOG = CATALOG.all;
 
 export function pluginWebhookEventDefinition(
 	kind: string
 ): HostedWebhookEventDefinition | undefined {
-	return WEBHOOK_EVENT_CATALOG.find((definition) => definition.kind === kind);
+	return CATALOG.byKind(kind);
 }

@@ -1,6 +1,10 @@
 import { v } from 'convex/values';
 import type { PluginAutomationStepCapability, PluginId } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_AUTOMATION_STEP_CATALOG } from '../../plugins/automationStepCatalog.generated';
+import {
+	defineHostedContributionCatalog,
+	type HostedContributionDefinition,
+} from '../../plugins/hostedContributionCatalog';
 
 /**
  * Automation step-kind catalog — the open set of step kinds the editor and the
@@ -26,19 +30,19 @@ type GeneratedPluginStepKind =
 		: never;
 
 /** Editor metadata + gating metadata copied verbatim from the plugin manifest. */
-export interface GeneratedPluginStepCatalogEntry {
-	readonly kind: string;
-	readonly pluginId: string;
+export interface GeneratedPluginStepCatalogEntry extends HostedContributionDefinition<PluginAutomationStepCapability> {
 	readonly localId: string;
 	readonly label: string;
 	readonly description: string;
 	readonly icon: string;
 	readonly requiredEnvVars: readonly string[];
-	readonly requiredCapability: PluginAutomationStepCapability;
 }
 
-const PLUGIN_STEP_CATALOG =
-	BUNDLED_PLUGIN_AUTOMATION_STEP_CATALOG as readonly GeneratedPluginStepCatalogEntry[];
+const PLUGIN_CATALOG = defineHostedContributionCatalog<GeneratedPluginStepCatalogEntry>(
+	BUNDLED_PLUGIN_AUTOMATION_STEP_CATALOG,
+	'automation step'
+);
+const PLUGIN_STEP_CATALOG = PLUGIN_CATALOG.all;
 
 export type StepKind = CoreStepKind | GeneratedPluginStepKind;
 
@@ -55,14 +59,14 @@ export function isCoreStepKind(kind: string): kind is CoreStepKind {
 }
 
 export function isPluginStepKind(kind: string): kind is GeneratedPluginStepKind {
-	return kind.startsWith('plugin.') && PLUGIN_STEP_CATALOG.some((entry) => entry.kind === kind);
+	return kind.startsWith('plugin.') && PLUGIN_CATALOG.byKind(kind) !== undefined;
 }
 
 export function pluginStepCatalogEntry(kind: string): GeneratedPluginStepCatalogEntry | undefined {
-	return PLUGIN_STEP_CATALOG.find((entry) => entry.kind === kind);
+	return PLUGIN_CATALOG.byKind(kind);
 }
 
 /** The plugin that owns a plugin step kind, or undefined for core/unknown kinds. */
 export function stepPluginId(kind: string): PluginId | undefined {
-	return pluginStepCatalogEntry(kind)?.pluginId as PluginId | undefined;
+	return pluginStepCatalogEntry(kind)?.pluginId;
 }
