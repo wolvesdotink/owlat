@@ -68,6 +68,37 @@ interface MtaWebhookPayload {
 	timestamp: number;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+function isPostmasterProtocolPayload(rawBody: string): boolean {
+	try {
+		const payload = JSON.parse(rawBody) as unknown;
+		return (
+			isRecord(payload) &&
+			(payload['event'] === 'postmaster.authorize_domain' ||
+				payload['event'] === 'postmaster.stats')
+		);
+	} catch {
+		return false;
+	}
+}
+
+function postmasterAcknowledgement(event: InboundEvent, dispatchResult: unknown): Response {
+	const authorized = isRecord(dispatchResult) && dispatchResult['authorized'] === true;
+	const retained = isRecord(dispatchResult) && dispatchResult['ingested'] === true;
+	return new Response(
+		JSON.stringify({
+			success: true,
+			kind: event.kind,
+			disposition: authorized ? 'accepted_authorized' : 'ignored_unowned',
+			retained,
+		}),
+		{ status: 200, headers: { 'Content-Type': 'application/json' } }
+	);
+}
+
 const MTA_TIMESTAMP_TOLERANCE_SECONDS = 300; // 5 minutes
 
 const IP_EVENT_SUBKIND: Record<
@@ -99,6 +130,7 @@ export async function verifyMtaHeaders(
 
 export const mtaAdapter: InboundAdapter = {
 	source: 'mta',
+	shouldStoreRawPayload: (rawBody) => !isPostmasterProtocolPayload(rawBody),
 
 	async verifySignature(request, rawBody) {
 		const secret = getOptional('MTA_WEBHOOK_SECRET');
@@ -133,6 +165,13 @@ export const mtaAdapter: InboundAdapter = {
 		const payload = JSON.parse(rawBody) as MtaWebhookPayload;
 
 		switch (payload.event) {
+			case 'postmaster.authorize_domain': {
+				if (!payload.domain) return null;
+				return {
+					kind: 'internal.postmaster_authorize_domain',
+					domain: payload.domain,
+				};
+			}
 			case 'bounced': {
 				if (!payload.messageId) return null;
 				return {
@@ -268,5 +307,18 @@ export const mtaAdapter: InboundAdapter = {
 			default:
 				return null;
 		}
+	},
+
+	successResponse(event, dispatchResult) {
+		if (
+			event.kind === 'internal.postmaster_authorize_domain' ||
+			event.kind === 'internal.postmaster_stats'
+		) {
+			return postmasterAcknowledgement(event, dispatchResult);
+		}
+		return new Response(JSON.stringify({ success: true, kind: event.kind }), {
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		});
 	},
 };

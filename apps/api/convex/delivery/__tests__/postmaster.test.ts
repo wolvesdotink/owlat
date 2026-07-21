@@ -51,6 +51,21 @@ describe('Google Postmaster telemetry ingestion', () => {
 			userReportedSpamRatio: 0.001,
 			fetchedAt: now,
 		};
+		await expect(
+			t.mutation(internal.delivery.postmaster.authorizeDomain, {
+				domain: 'missing.example',
+			})
+		).resolves.toEqual({ authorized: false });
+		await expect(
+			t.mutation(internal.delivery.postmaster.authorizeDomain, {
+				domain: 'pending.example',
+			})
+		).resolves.toEqual({ authorized: false });
+		await expect(
+			t.mutation(internal.delivery.postmaster.authorizeDomain, {
+				domain: 'verified.example',
+			})
+		).resolves.toEqual({ authorized: true });
 
 		await expect(
 			t.mutation(internal.delivery.postmaster.ingest, { ...base, domain: 'missing.example' })

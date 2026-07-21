@@ -103,6 +103,7 @@ export type MtaWebhookEventType =
 	| 'ip.delisted'
 	| 'ip.warming_complete'
 	| 'all_ips_blocked'
+	| 'postmaster.authorize_domain'
 	| 'postmaster.stats'
 	| 'dkim.rotated'
 	| 'inbound.received'
@@ -173,6 +174,15 @@ export interface GooglePostmasterStatsEvent extends MtaWebhookEvent {
 	date: string;
 	userReportedSpamRatio: number;
 }
+
+export interface GooglePostmasterDomainAuthorizationEvent extends MtaWebhookEvent {
+	event: 'postmaster.authorize_domain';
+	domain: string;
+}
+
+export type GooglePostmasterWebhookEvent =
+	| GooglePostmasterDomainAuthorizationEvent
+	| GooglePostmasterStatsEvent;
 
 /**
  * RFC 8601 inbound authentication verdicts plus the DMARC alignment inputs, as
