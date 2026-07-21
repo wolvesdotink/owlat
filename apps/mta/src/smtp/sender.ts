@@ -405,6 +405,12 @@ export async function sendToMx(
 				// connection failure throws here, classified from the structured
 				// SmtpError (phase/tlsCause/replyCode) — never a log-string match.
 				conn = await SmtpConnection.connect(connectConfig);
+				if (!pool.attachConnection(key, conn)) {
+					return {
+						kind: 'connection',
+						response: 'Distributed connection lease was lost before SMTP envelope',
+					};
+				}
 			} catch (err) {
 				pool.release(key);
 				return classifyFailure(err, mxHost, ctx, daneRequired);

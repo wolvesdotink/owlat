@@ -19,6 +19,11 @@ const PROFILE_PREFIX = 'mta:isp-profile:';
 const PROFILE_LIST_KEY = 'mta:isp-profiles';
 const MAX_RATE_PER_MINUTE = 1_000_000;
 const MAX_RECOVERY_FACTOR = 100;
+const TLS_MODE_RANK: Record<DestinationProviderProfile['tlsMode'], number> = {
+	opportunistic: 0,
+	require: 1,
+	'require-verified': 2,
+};
 
 export const DESTINATION_PROVIDER_KEYS = [
 	'gmail',
@@ -88,9 +93,12 @@ export async function getProfile(
 	const data = await redis.hgetall(key);
 
 	if (data['defaultRate']) {
-		return parseProfile(
-			data,
-			DESTINATION_PROVIDER_PROFILES[canonicalKey] ?? DESTINATION_PROVIDER_PROFILES['__default__']!
+		return applyProviderMinimum(
+			canonicalKey,
+			parseProfile(
+				data,
+				DESTINATION_PROVIDER_PROFILES[canonicalKey] ?? DESTINATION_PROVIDER_PROFILES['__default__']!
+			)
 		);
 	}
 
@@ -99,13 +107,29 @@ export async function getProfile(
 	const defaultData = await redis.hgetall(defaultKey);
 
 	if (defaultData['defaultRate']) {
-		return parseProfile(defaultData, DESTINATION_PROVIDER_PROFILES['__default__']!);
+		return applyProviderMinimum(
+			canonicalKey,
+			parseProfile(defaultData, DESTINATION_PROVIDER_PROFILES['__default__']!)
+		);
 	}
 
 	// Ultimate fallback to the checked-in provider defaults.
 	return (
 		DESTINATION_PROVIDER_PROFILES[canonicalKey] ?? DESTINATION_PROVIDER_PROFILES['__default__']!
 	);
+}
+
+function applyProviderMinimum(
+	providerKey: string,
+	profile: DestinationProviderProfile
+): DestinationProviderProfile {
+	const minimum = DESTINATION_PROVIDER_PROFILES[providerKey];
+	if (!minimum || TLS_MODE_RANK[profile.tlsMode] >= TLS_MODE_RANK[minimum.tlsMode]) return profile;
+	logger.warn(
+		{ providerKey, configuredTlsMode: profile.tlsMode, minimumTlsMode: minimum.tlsMode },
+		'Raising destination provider TLS mode to the checked-in minimum'
+	);
+	return { ...profile, tlsMode: minimum.tlsMode };
 }
 
 function parseProfile(
@@ -140,7 +164,7 @@ function parseProfile(
 	}
 }
 
-function validateProfile(profile: DestinationProviderProfile): void {
+function validateProfile(profile: DestinationProviderProfile, providerKey?: string): void {
 	for (const [field, value] of [
 		['defaultRate', profile.defaultRate],
 		['ceiling', profile.ceiling],
@@ -188,6 +212,14 @@ function validateProfile(profile: DestinationProviderProfile): void {
 	) {
 		throw new Error('maxDeliveriesPerConnection must be an integer between 1 and 10000');
 	}
+	const minimumTlsMode = providerKey
+		? DESTINATION_PROVIDER_PROFILES[providerKey]?.tlsMode
+		: undefined;
+	if (minimumTlsMode && TLS_MODE_RANK[profile.tlsMode] < TLS_MODE_RANK[minimumTlsMode]) {
+		throw new Error(
+			`${providerKey} tlsMode cannot be below the checked-in ${minimumTlsMode} minimum`
+		);
+	}
 }
 
 /**
@@ -215,7 +247,7 @@ export async function setProfile(
 			profile.maxDeliveriesPerConnection ?? existing.maxDeliveriesPerConnection,
 	};
 
-	validateProfile(merged);
+	validateProfile(merged, canonicalKey);
 
 	await redis.hset(
 		key,

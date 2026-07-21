@@ -52,4 +52,13 @@ describe('destination-provider profile persistence', () => {
 		await redis.sadd('mta:isp-profiles', 'gmail', 'attacker.example');
 		expect(Object.keys(await listProfiles(redis))).toEqual(['gmail']);
 	});
+
+	it('preserves Gmail required TLS even when only an opportunistic default profile exists', async () => {
+		const fallback = DESTINATION_PROVIDER_PROFILES['__default__']!;
+		await redis.hset(
+			'mta:isp-profile:__default__',
+			...Object.entries(fallback).flatMap(([field, value]) => [field, String(value)])
+		);
+		expect((await getProfile(redis, 'gmail')).tlsMode).toBe('require');
+	});
 });

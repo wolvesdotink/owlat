@@ -66,6 +66,12 @@ describe('destination-provider profile routes', () => {
 		expect(response.status).toBe(400);
 	});
 
+	it('rejects a Gmail TLS downgrade below the checked-in required floor', async () => {
+		const response = await request(app, 'PUT', '/gmail', { tlsMode: 'opportunistic' });
+		expect(response.status).toBe(400);
+		expect(await response.json()).toMatchObject({ error: expect.stringContaining('minimum') });
+	});
+
 	it.each(['GET', 'PUT', 'DELETE'])('rejects an unknown provider for %s', async (method) => {
 		const response = await request(
 			app,

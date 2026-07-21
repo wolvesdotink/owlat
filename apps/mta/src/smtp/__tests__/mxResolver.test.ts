@@ -85,6 +85,23 @@ describe('resolveMxDestination', () => {
 		expect(await redis.get('mta:mx-cache:v2:xn--bcher-kva.example')).not.toBeNull();
 	});
 
+	it('selects the best 50 MX records after validation and preference ordering', async () => {
+		const lookup = vi.fn<MxDnsLookup>().mockResolvedValue(
+			Array.from({ length: 75 }, (_, index) => ({
+				exchange: `mx-${index}.example`,
+				priority: 74 - index,
+			}))
+		);
+
+		const result = await resolveMxDestination(redis, 'many.example', lookup);
+		expect(result.status).toBe('deliverable');
+		if (result.status === 'deliverable') {
+			expect(result.hosts).toHaveLength(50);
+			expect(result.hosts[0]).toEqual({ exchange: 'mx-74.example', priority: 0 });
+			expect(result.hosts.at(-1)).toEqual({ exchange: 'mx-25.example', priority: 49 });
+		}
+	});
+
 	it.each([
 		'not-json',
 		JSON.stringify({ status: 'deliverable', source: 'mx', hosts: [] }),

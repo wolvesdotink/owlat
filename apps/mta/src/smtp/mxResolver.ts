@@ -111,13 +111,13 @@ function recordsToResolution(records: readonly DnsMxRecord[], domain: string): M
 	if (records.length === 0) return implicitResolution(domain);
 
 	const hosts = records
-		.slice(0, MAX_MX_HOSTS)
 		.map((record) => ({
 			exchange: normalizeExchange(record.exchange),
 			priority: record.priority,
 		}))
 		.filter(isMxHost)
-		.sort((left, right) => left.priority - right.priority);
+		.sort((left, right) => left.priority - right.priority)
+		.slice(0, MAX_MX_HOSTS);
 
 	return hosts.length > 0
 		? { status: 'deliverable', source: 'mx', hosts }
