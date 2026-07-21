@@ -96,9 +96,8 @@ export const deliveryTables = {
 		.index('by_ingested_at', ['ingestedAt'])
 		.index('by_observed_at', ['observedAt']),
 
-	// Hourly, write-sharded accepted-delivery volume for MX destinations Phase 2
-	// classified as Gmail. `primaryDomain` is the PSL registrable DKIM domain,
-	// matching Google's same-primary-domain aggregation rule.
+	// Deprecated write-sharded hourly volume retained during the rollup migration.
+	// New writes use gmailDomainVolumeRollups; bounded cleanup drains these rows.
 	gmailVolumeBuckets: defineTable({
 		primaryDomain: v.string(),
 		hourStart: v.number(),
@@ -108,6 +107,26 @@ export const deliveryTables = {
 	})
 		.index('by_domain_hour_shard', ['primaryDomain', 'hourStart', 'shardKey'])
 		.index('by_hour', ['hourStart']),
+
+	// Materialized, fixed-width hourly totals per primary domain. Dashboard reads
+	// use the deliveredCount index and a documented top-domain cap instead of
+	// scanning every domain × hour × shard bucket. The hourly cleanup refreshes
+	// inactive rows so the index sheds expired hours without requiring new mail.
+	gmailDomainVolumeRollups: defineTable({
+		primaryDomain: v.string(),
+		hourlyCounts: v.array(
+			v.object({
+				hourStart: v.number(),
+				deliveredCount: v.number(),
+			})
+		),
+		deliveredCount: v.number(),
+		windowRefreshedAt: v.number(),
+		seedTag: v.optional(v.string()),
+	})
+		.index('by_domain', ['primaryDomain'])
+		.index('by_delivered_count', ['deliveredCount', 'primaryDomain'])
+		.index('by_window_refreshed_at', ['windowRefreshedAt']),
 
 	// Bounded histogram of real RFC 8058 POST processing latency. The one-click
 	// handler records one sample after the unsubscribe mutation has completed;

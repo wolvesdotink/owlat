@@ -88,6 +88,7 @@ const SEEDED_TABLES: TableNames[] = [
 	'domains',
 	'sendingDomainMtaIdentities',
 	'gmailVolumeBuckets',
+	'gmailDomainVolumeRollups',
 ];
 
 export interface SeedSummary {

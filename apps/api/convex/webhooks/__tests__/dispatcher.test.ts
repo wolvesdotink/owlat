@@ -484,10 +484,10 @@ describe('dispatchInboundEvent — Postbox message-id routing (pb- prefix)', () 
 
 		expect(runMutationCalls).toEqual([
 			{
-				ref: ref(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId),
+				ref: ref(internal.mail.postboxOutboundLifecycle.observeRemoteAcceptanceByMtaMessageId),
 				args: {
 					rawProviderMessageId: 'pb-xyz',
-					input: { to: 'sent', at: 2000 },
+					acceptedAt: 2000,
 				},
 			},
 		]);

@@ -1,9 +1,11 @@
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import {
+	COMPLIANCE_CLEANUP_BATCH_SIZE,
 	GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS,
+	GMAIL_DASHBOARD_DOMAIN_LIMIT,
 	histogramPercentileUpperBound,
 	latencyBucketIndex,
 	UNSUBSCRIBE_HONOR_WINDOW_MS,
@@ -44,30 +46,65 @@ beforeEach(() => {
 	authenticated = true;
 });
 
+afterEach(() => {
+	vi.useRealTimers();
+});
+
 describe('Gmail bulk-sender volume', () => {
 	it('is idempotent by provider message id and keeps primary domains isolated', async () => {
 		const t = convexTest(schema, modules);
 		const acceptedAt = Date.now();
-		for (const primaryDomain of ['alpha.example', 'beta.example']) {
+		for (const [providerMessageId, primaryDomain] of [
+			['msg-alpha-1', 'alpha.example'],
+			['msg-alpha-2', 'alpha.example'],
+			['msg-beta', 'beta.example'],
+		] as const) {
 			await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
-				providerMessageId: `msg-${primaryDomain}`,
+				providerMessageId,
 				primaryDomain,
 				acceptedAt,
 			});
 		}
 		await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
-			providerMessageId: 'msg-alpha.example',
+			providerMessageId: 'msg-alpha-1',
 			primaryDomain: 'alpha.example',
 			acceptedAt,
 		});
 
 		const result = await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {});
 		expect(result.gmail.domains).toEqual([
-			{ primaryDomain: 'alpha.example', delivered24h: 1 },
+			{ primaryDomain: 'alpha.example', delivered24h: 2 },
 			{ primaryDomain: 'beta.example', delivered24h: 1 },
 		]);
 		// The member-facing shape never exposes provider message ids/receipts.
 		expect(JSON.stringify(result.gmail)).not.toContain('msg-alpha');
+	});
+
+	it('caps the indexed domain read while retaining exact top-domain totals', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const currentHour = Math.floor(now / 3_600_000) * 3_600_000;
+		await t.run(async (ctx) => {
+			for (let index = 0; index < GMAIL_DASHBOARD_DOMAIN_LIMIT + 5; index++) {
+				const deliveredCount = index + 1;
+				await ctx.db.insert('gmailDomainVolumeRollups', {
+					primaryDomain: `domain-${String(index).padStart(3, '0')}.example`,
+					hourlyCounts: [{ hourStart: currentHour, deliveredCount }],
+					deliveredCount,
+					windowRefreshedAt: now,
+				});
+			}
+		});
+
+		const result = await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {});
+		expect(result.gmail.domains).toHaveLength(GMAIL_DASHBOARD_DOMAIN_LIMIT);
+		expect(result.gmail.domainLimit).toBe(GMAIL_DASHBOARD_DOMAIN_LIMIT);
+		expect(result.gmail.isDomainListTruncated).toBe(true);
+		expect(result.gmail.domains[0]).toEqual({
+			primaryDomain: 'domain-104.example',
+			delivered24h: 105,
+		});
+		expect(result.gmail.domains[result.gmail.domains.length - 1]?.delivered24h).toBe(6);
 	});
 
 	it('uses accepted event time for the 24-hour window and ingest time for retention', async () => {
@@ -214,14 +251,78 @@ describe('Gmail bulk-sender volume', () => {
 		}
 	});
 
+	it('drains new, legacy, bucket, and rollup retention backlogs across batches', async () => {
+		vi.useFakeTimers();
+		const now = Date.UTC(2026, 6, 21, 12, 30);
+		vi.setSystemTime(now);
+		const t = convexTest(schema, modules);
+		const rowCount = COMPLIANCE_CLEANUP_BATCH_SIZE + 5;
+		await t.run(async (ctx) => {
+			for (let index = 0; index < rowCount; index++) {
+				await ctx.db.insert('gmailDeliveryReceipts', {
+					providerMessageId: `expired-new-${index}`,
+					ingestedAt: now - 72 * 3_600_000,
+				});
+				await ctx.db.insert('gmailDeliveryReceipts', {
+					providerMessageId: `expired-legacy-${index}`,
+					observedAt: now - 72 * 3_600_000,
+				});
+				await ctx.db.insert('gmailVolumeBuckets', {
+					primaryDomain: `legacy-${index}.example`,
+					hourStart: now - 72 * 3_600_000,
+					shardKey: 0,
+					deliveredCount: 1,
+				});
+				await ctx.db.insert('gmailDomainVolumeRollups', {
+					primaryDomain: `expired-${index}.example`,
+					hourlyCounts: [{ hourStart: now - 72 * 3_600_000, deliveredCount: 1 }],
+					deliveredCount: 1,
+					windowRefreshedAt: now - 3_600_000,
+				});
+			}
+		});
+
+		const firstBatch = await t.mutation(
+			internal.delivery.complianceTelemetry.cleanupComplianceTelemetry,
+			{}
+		);
+		expect(firstBatch.continuationScheduled).toBe(true);
+		await t.run(async (ctx) => {
+			expect(
+				await ctx.db
+					.query('gmailDeliveryReceipts')
+					.withIndex('by_ingested_at', (q) => q.gt('ingestedAt', 0))
+					.take(rowCount)
+			).toHaveLength(5);
+			expect(
+				await ctx.db
+					.query('gmailDeliveryReceipts')
+					.withIndex('by_observed_at', (q) => q.gt('observedAt', 0))
+					.take(rowCount)
+			).toHaveLength(5);
+		});
+
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('gmailDeliveryReceipts').take(1)).toEqual([]);
+			expect(await ctx.db.query('gmailVolumeBuckets').take(1)).toEqual([]);
+			expect(await ctx.db.query('gmailDomainVolumeRollups').take(1)).toEqual([]);
+		});
+	});
+
 	it('fires the seeded approaching-5k warning and rejects anonymous reads', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
-			await ctx.db.insert('gmailVolumeBuckets', {
+			await ctx.db.insert('gmailDomainVolumeRollups', {
 				primaryDomain: 'demo.example',
-				hourStart: Math.floor(Date.now() / 3_600_000) * 3_600_000,
-				shardKey: 0,
+				hourlyCounts: [
+					{
+						hourStart: Math.floor(Date.now() / 3_600_000) * 3_600_000,
+						deliveredCount: 4_500,
+					},
+				],
 				deliveredCount: 4_500,
+				windowRefreshedAt: Date.now(),
 			});
 		});
 		const result = await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {});

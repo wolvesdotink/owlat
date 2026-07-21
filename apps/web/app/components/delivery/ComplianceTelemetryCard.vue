@@ -115,8 +115,11 @@ const SPAM_RATE_LABEL = {
 						TLS, one-click unsubscribe, and spam rate before crossing.
 					</p>
 					<p v-else class="mt-3 text-xs text-text-tertiary">
-						MX-derived Gmail destinations; primary-domain totals use hourly buckets (up to 60 min
-						overlap).
+						MX-derived Gmail destinations; primary-domain totals use hourly materialized counts (up
+						to 60 min overlap).
+					</p>
+					<p v-if="telemetry.gmail.isDomainListTruncated" class="mt-1 text-xs text-text-tertiary">
+						Showing the {{ telemetry.gmail.domainLimit }} highest-volume primary domains.
 					</p>
 				</section>
 

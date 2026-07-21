@@ -63,17 +63,17 @@ function accepted(providerMessageId: string, at: number): InboundEvent {
 async function expectExactlyOneDelivery(
 	t: TestHarness,
 	sendId: Id<'emailSends'>,
-	expectedStatus: 'opened' | 'clicked' | 'complained'
+	expectedStatus: 'opened' | 'clicked' | 'complained' | 'bounced' | 'failed'
 ): Promise<void> {
 	await t.finishAllScheduledFunctions(vi.runAllTimers);
-	const [send, reputation, gmailVolumes] = await Promise.all([
+	const [send, reputation, gmailVolume] = await Promise.all([
 		t.run((ctx) => ctx.db.get(sendId)),
 		t.run((ctx) => summarize(ctx.db, { kind: 'org' })),
-		t.run((ctx) => readGmailVolumes(ctx.db, Date.now())),
+		t.run((ctx) => readGmailVolumes(ctx.db)),
 	]);
 	expect(send).toMatchObject({ status: expectedStatus, deliveredAt: NOW });
 	expect(reputation.totalDelivered).toBe(1);
-	expect(gmailVolumes).toEqual([{ primaryDomain: PRIMARY_DOMAIN, delivered24h: 1 }]);
+	expect(gmailVolume.domains).toEqual([{ primaryDomain: PRIMARY_DOMAIN, delivered24h: 1 }]);
 }
 
 describe('MTA remote-acceptance reputation lifecycle', () => {
@@ -123,6 +123,46 @@ describe('MTA remote-acceptance reputation lifecycle', () => {
 				accepted(messageId, NOW + 1),
 			],
 		},
+		{
+			name: 'accepted → later bounce',
+			finalStatus: 'bounced' as const,
+			events: (messageId: string): InboundEvent[] => [
+				accepted(messageId, NOW),
+				{
+					kind: 'email.bounced',
+					providerMessageId: messageId,
+					at: NOW + 1,
+					bounceType: 'hard',
+				},
+			],
+		},
+		{
+			name: 'later bounce arrives before accepted',
+			finalStatus: 'bounced' as const,
+			events: (messageId: string): InboundEvent[] => [
+				{
+					kind: 'email.bounced',
+					providerMessageId: messageId,
+					at: NOW + 1,
+					bounceType: 'hard',
+				},
+				accepted(messageId, NOW),
+			],
+		},
+		{
+			name: 'later failure arrives before accepted',
+			finalStatus: 'failed' as const,
+			events: (messageId: string): InboundEvent[] => [
+				{
+					kind: 'email.failed',
+					providerMessageId: messageId,
+					at: NOW + 1,
+					errorMessage: 'ambiguous post-DATA timeout',
+					errorCode: 'AMBIGUOUS_TIMEOUT',
+				},
+				accepted(messageId, NOW),
+			],
+		},
 	])(
 		'records delivery once for $name without status regression',
 		async ({ finalStatus, events }) => {
@@ -156,15 +196,43 @@ describe('MTA remote-acceptance reputation lifecycle', () => {
 		await dispatch(t, accepted(providerMessageId, NOW + 1));
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
-		const [send, reputation, gmailVolumes] = await Promise.all([
+		const [send, reputation, gmailVolume] = await Promise.all([
 			t.run((ctx) => ctx.db.get(sendId)),
 			t.run((ctx) => summarize(ctx.db, { kind: 'org' })),
-			t.run((ctx) => readGmailVolumes(ctx.db, Date.now())),
+			t.run((ctx) => readGmailVolumes(ctx.db)),
 		]);
 		expect(send).toMatchObject({ status: 'bounced', bounceType: 'hard' });
 		expect(send?.deliveredAt).toBeUndefined();
 		expect(reputation.totalDelivered).toBe(0);
-		expect(gmailVolumes).toEqual([]);
+		expect(gmailVolume.domains).toEqual([]);
+	});
+
+	it('does not count or emit Gmail telemetry for a failure before acceptance', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = convexTest(schema, modules);
+		const providerMessageId = 'mta-preaccept-failure';
+		const sendId = await seedSentSend(t, providerMessageId);
+
+		await dispatch(t, {
+			kind: 'email.failed',
+			providerMessageId,
+			at: NOW,
+			errorMessage: 'pre-accept failure',
+			errorCode: 'MTA_FAILED',
+		});
+		await dispatch(t, accepted(providerMessageId, NOW + 1));
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		const [send, reputation, gmailVolume] = await Promise.all([
+			t.run((ctx) => ctx.db.get(sendId)),
+			t.run((ctx) => summarize(ctx.db, { kind: 'org' })),
+			t.run((ctx) => readGmailVolumes(ctx.db)),
+		]);
+		expect(send).toMatchObject({ status: 'failed', failedAt: NOW });
+		expect(send?.deliveredAt).toBeUndefined();
+		expect(reputation.totalDelivered).toBe(0);
+		expect(gmailVolume.domains).toEqual([]);
 	});
 
 	it('does not recreate delivery or telemetry state after the Send is deleted', async () => {
@@ -180,6 +248,23 @@ describe('MTA remote-acceptance reputation lifecycle', () => {
 		expect(await t.run((ctx) => summarize(ctx.db, { kind: 'org' }))).toMatchObject({
 			totalDelivered: 0,
 		});
-		expect(await t.run((ctx) => readGmailVolumes(ctx.db, Date.now()))).toEqual([]);
+		expect((await t.run((ctx) => readGmailVolumes(ctx.db))).domains).toEqual([]);
+	});
+
+	it('fails closed for a malformed terminal Send without an ordering timestamp', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = convexTest(schema, modules);
+		const providerMessageId = 'mta-malformed-terminal';
+		const sendId = await seedSentSend(t, providerMessageId);
+		await t.run((ctx) =>
+			ctx.db.patch(sendId, { status: 'bounced', bounceType: 'hard', bouncedAt: undefined })
+		);
+
+		await dispatch(t, accepted(providerMessageId, NOW));
+
+		const send = await t.run((ctx) => ctx.db.get(sendId));
+		expect(send?.deliveredAt).toBeUndefined();
+		expect((await t.run((ctx) => readGmailVolumes(ctx.db))).domains).toEqual([]);
 	});
 });

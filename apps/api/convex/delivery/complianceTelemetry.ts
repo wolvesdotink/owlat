@@ -3,6 +3,7 @@
 import { v } from 'convex/values';
 import type { DatabaseReader } from '../_generated/server';
 import { internalMutation } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { startOfDayUtc } from '../analytics/sendingReputation';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -12,7 +13,8 @@ const TELEMETRY_RETENTION_MS = 48 * HOUR_MS;
 export const GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS = 5 * 60 * 1000;
 export const GMAIL_ACCEPTED_AT_MAX_AGE_MS = TELEMETRY_RETENTION_MS;
 const UNSUBSCRIBE_RETENTION_MS = 30 * DAY_MS;
-const GMAIL_VOLUME_SHARDS = 8;
+export const COMPLIANCE_CLEANUP_BATCH_SIZE = 128;
+export const GMAIL_DASHBOARD_DOMAIN_LIMIT = 100;
 
 export const GMAIL_BULK_SENDER_THRESHOLD = 5_000;
 export const GMAIL_PROXIMITY_WARNING_THRESHOLD = 4_000;
@@ -37,12 +39,26 @@ function hourStart(epochMs: number): number {
 	return Math.floor(epochMs / HOUR_MS) * HOUR_MS;
 }
 
-function deterministicShard(value: string): number {
-	let hash = 0;
-	for (let index = 0; index < value.length; index++) {
-		hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-	}
-	return hash % GMAIL_VOLUME_SHARDS;
+type GmailHourlyCount = { hourStart: number; deliveredCount: number };
+
+function currentWindowCounts(counts: readonly GmailHourlyCount[], now: number): GmailHourlyCount[] {
+	const oldestHour = hourStart(now - GMAIL_WINDOW_MS);
+	const newestHour = hourStart(now);
+	return counts.filter((count) => count.hourStart >= oldestHour && count.hourStart <= newestHour);
+}
+
+function incrementHourlyCount(
+	counts: readonly GmailHourlyCount[],
+	acceptedHour: number,
+	now: number
+): GmailHourlyCount[] {
+	const byHour = new Map(
+		currentWindowCounts(counts, now).map((count) => [count.hourStart, count.deliveredCount])
+	);
+	byHour.set(acceptedHour, (byHour.get(acceptedHour) ?? 0) + 1);
+	return [...byHour.entries()]
+		.map(([countHour, deliveredCount]) => ({ hourStart: countHour, deliveredCount }))
+		.sort((left, right) => left.hourStart - right.hourStart);
 }
 
 export function latencyBucketIndex(durationMs: number): number {
@@ -102,26 +118,32 @@ export const recordGmailDelivery = internalMutation({
 		}
 
 		const boundedAcceptedAt = Math.min(args.acceptedAt, ingestedAt);
-		const bucketHour = hourStart(boundedAcceptedAt);
-		const shardKey = deterministicShard(args.providerMessageId);
-		const bucket = await ctx.db
-			.query('gmailVolumeBuckets')
-			.withIndex('by_domain_hour_shard', (q) =>
-				q
-					.eq('primaryDomain', args.primaryDomain)
-					.eq('hourStart', bucketHour)
-					.eq('shardKey', shardKey)
-			)
-			.unique();
-		if (bucket) {
-			await ctx.db.patch(bucket._id, { deliveredCount: bucket.deliveredCount + 1 });
-		} else {
-			await ctx.db.insert('gmailVolumeBuckets', {
-				primaryDomain: args.primaryDomain,
-				hourStart: bucketHour,
-				shardKey,
-				deliveredCount: 1,
-			});
+		const acceptedHour = hourStart(boundedAcceptedAt);
+		if (acceptedHour >= hourStart(ingestedAt - GMAIL_WINDOW_MS)) {
+			const rollup = await ctx.db
+				.query('gmailDomainVolumeRollups')
+				.withIndex('by_domain', (q) => q.eq('primaryDomain', args.primaryDomain))
+				.unique();
+			const hourlyCounts = incrementHourlyCount(
+				rollup?.hourlyCounts ?? [],
+				acceptedHour,
+				ingestedAt
+			);
+			const deliveredCount = hourlyCounts.reduce((sum, count) => sum + count.deliveredCount, 0);
+			if (rollup) {
+				await ctx.db.patch(rollup._id, {
+					hourlyCounts,
+					deliveredCount,
+					windowRefreshedAt: ingestedAt,
+				});
+			} else {
+				await ctx.db.insert('gmailDomainVolumeRollups', {
+					primaryDomain: args.primaryDomain,
+					hourlyCounts,
+					deliveredCount,
+					windowRefreshedAt: ingestedAt,
+				});
+			}
 		}
 		return { recorded: true };
 	},
@@ -161,31 +183,33 @@ export interface GmailPrimaryDomainVolume {
 	delivered24h: number;
 }
 
-export async function readGmailVolumes(
-	db: DatabaseReader,
-	now: number
-): Promise<GmailPrimaryDomainVolume[]> {
-	const cutoff = now - GMAIL_WINDOW_MS;
-	const buckets = await db
-		.query('gmailVolumeBuckets')
-		.withIndex('by_hour', (q) =>
-			q.gte('hourStart', hourStart(cutoff)).lte('hourStart', hourStart(now))
-		)
-		.collect(); // bounded: cleanup retains only 48 hours × 8 shards × active sending domains
-	const totals = new Map<string, number>();
-	for (const bucket of buckets) {
-		// Hour buckets straddle the exact 24h boundary. Excluding the older hour
-		// would undercount by up to 59m; include it and label the result approximate.
-		totals.set(
-			bucket.primaryDomain,
-			(totals.get(bucket.primaryDomain) ?? 0) + bucket.deliveredCount
-		);
-	}
-	return [...totals.entries()]
-		.map(([primaryDomain, delivered24h]) => ({ primaryDomain, delivered24h }))
-		.sort(
-			(a, b) => b.delivered24h - a.delivered24h || a.primaryDomain.localeCompare(b.primaryDomain)
-		);
+export interface GmailVolumeReadResult {
+	domains: GmailPrimaryDomainVolume[];
+	isDomainListTruncated: boolean;
+	domainLimit: number;
+}
+
+export async function readGmailVolumes(db: DatabaseReader): Promise<GmailVolumeReadResult> {
+	const rows = await db
+		.query('gmailDomainVolumeRollups')
+		.withIndex('by_delivered_count')
+		.order('desc')
+		.take(GMAIL_DASHBOARD_DOMAIN_LIMIT + 1);
+	return {
+		domains: rows
+			.slice(0, GMAIL_DASHBOARD_DOMAIN_LIMIT)
+			.map((row) => ({
+				primaryDomain: row.primaryDomain,
+				delivered24h: row.deliveredCount,
+			}))
+			.sort(
+				(left, right) =>
+					right.delivered24h - left.delivered24h ||
+					left.primaryDomain.localeCompare(right.primaryDomain)
+			),
+		isDomainListTruncated: rows.length > GMAIL_DASHBOARD_DOMAIN_LIMIT,
+		domainLimit: GMAIL_DASHBOARD_DOMAIN_LIMIT,
+	};
 }
 
 export async function readUnsubscribeLatency(db: DatabaseReader, now: number) {
@@ -215,41 +239,91 @@ export const cleanupComplianceTelemetry = internalMutation({
 	handler: async (ctx) => {
 		const now = Date.now();
 		const gmailCutoff = now - TELEMETRY_RETENTION_MS;
-		const receipts = await ctx.db
+		const expiredReceipts = await ctx.db
 			.query('gmailDeliveryReceipts')
 			.withIndex('by_ingested_at', (q) => q.gt('ingestedAt', 0).lt('ingestedAt', gmailCutoff))
-			.collect(); // bounded: hourly cleanup limits this to newly expired receipts
-		for (const row of receipts) await ctx.db.delete(row._id);
-		const legacyReceipts = await ctx.db
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
+		const expiredLegacyReceipts = await ctx.db
 			.query('gmailDeliveryReceipts')
 			.withIndex('by_observed_at', (q) => q.gt('observedAt', 0).lt('observedAt', gmailCutoff))
-			.collect(); // bounded: legacy rows only during the migration window
-		for (const row of legacyReceipts) await ctx.db.delete(row._id);
-		const gmailBuckets = await ctx.db
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
+		const expiredBuckets = await ctx.db
 			.query('gmailVolumeBuckets')
 			.withIndex('by_hour', (q) => q.lt('hourStart', hourStart(gmailCutoff)))
-			.collect(); // bounded: hourly cleanup limits this to newly expired buckets
-		for (const row of gmailBuckets) await ctx.db.delete(row._id);
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
 		const futureReceipts = await ctx.db
 			.query('gmailDeliveryReceipts')
 			.withIndex('by_ingested_at', (q) => q.gt('ingestedAt', now))
-			.collect(); // bounded: invalid legacy/skew rows only
-		for (const row of futureReceipts) await ctx.db.delete(row._id);
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
 		const futureLegacyReceipts = await ctx.db
 			.query('gmailDeliveryReceipts')
 			.withIndex('by_observed_at', (q) => q.gt('observedAt', now))
-			.collect(); // bounded: invalid legacy rows only
-		for (const row of futureLegacyReceipts) await ctx.db.delete(row._id);
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
 		const futureGmailBuckets = await ctx.db
 			.query('gmailVolumeBuckets')
 			.withIndex('by_hour', (q) => q.gt('hourStart', hourStart(now)))
-			.collect(); // bounded: invalid legacy/skew rows only
-		for (const row of futureGmailBuckets) await ctx.db.delete(row._id);
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
+
+		const receiptRows = new Map(
+			[
+				...expiredReceipts,
+				...expiredLegacyReceipts,
+				...futureReceipts,
+				...futureLegacyReceipts,
+			].map((row) => [String(row._id), row] as const)
+		);
+		for (const row of receiptRows.values()) await ctx.db.delete(row._id);
+		const bucketRows = new Map(
+			[...expiredBuckets, ...futureGmailBuckets].map((row) => [String(row._id), row] as const)
+		);
+		for (const row of bucketRows.values()) await ctx.db.delete(row._id);
+
+		const rollups = await ctx.db
+			.query('gmailDomainVolumeRollups')
+			.withIndex('by_window_refreshed_at', (q) => q.lt('windowRefreshedAt', hourStart(now)))
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
+		for (const rollup of rollups) {
+			const hourlyCounts = currentWindowCounts(rollup.hourlyCounts, now);
+			const deliveredCount = hourlyCounts.reduce((sum, count) => sum + count.deliveredCount, 0);
+			if (deliveredCount === 0) {
+				await ctx.db.delete(rollup._id);
+			} else {
+				await ctx.db.patch(rollup._id, {
+					hourlyCounts,
+					deliveredCount,
+					windowRefreshedAt: now,
+				});
+			}
+		}
 		const unsubscribeCutoff = startOfDayUtc(now - UNSUBSCRIBE_RETENTION_MS);
 		const latencyRows = await ctx.db
 			.query('unsubscribeLatencyBuckets')
 			.withIndex('by_period', (q) => q.lt('periodStart', unsubscribeCutoff))
-			.collect(); // bounded: one histogram row expires per day
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
 		for (const row of latencyRows) await ctx.db.delete(row._id);
+
+		const batches = [
+			expiredReceipts,
+			expiredLegacyReceipts,
+			expiredBuckets,
+			futureReceipts,
+			futureLegacyReceipts,
+			futureGmailBuckets,
+			rollups,
+			latencyRows,
+		];
+		const hasMore = batches.some((batch) => batch.length === COMPLIANCE_CLEANUP_BATCH_SIZE);
+		if (hasMore) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.delivery.complianceTelemetry.cleanupComplianceTelemetry,
+				{}
+			);
+		}
+		return {
+			deleted: receiptRows.size + bucketRows.size + latencyRows.length,
+			refreshedRollups: rollups.length,
+			continuationScheduled: hasMore,
+		};
 	},
 });

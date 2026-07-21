@@ -10,12 +10,35 @@ export interface DeliveryObservationResult {
 }
 
 /**
+ * Whether an authenticated remote-acceptance timestamp is compatible with the
+ * persisted lifecycle chronology. Arrival order is irrelevant: an acceptance
+ * observed before a later terminal event remains valid, while a terminal event
+ * that truly predates acceptance contradicts it. Missing terminal timestamps
+ * are malformed legacy evidence and fail closed.
+ */
+export function canAttributeRemoteAcceptance(
+	send: EmailSendDoc | TransactionalSendDoc,
+	acceptedAt: number
+): boolean {
+	if (send.deliveredAt !== undefined) return true;
+	const status = send.status as SendStatus;
+	if (status === 'queued') return false;
+	if (status === 'failed') {
+		return send.failedAt !== undefined && acceptedAt <= send.failedAt;
+	}
+	if (status === 'bounced') {
+		return send.bouncedAt !== undefined && acceptedAt <= send.bouncedAt;
+	}
+	return true;
+}
+
+/**
  * Derive the effects shared by every trustworthy piece of delivery evidence.
  *
  * `deliveredAt` is the persisted idempotency key: provider acceptance, an open,
  * a click, or a complaint may arrive first, but exactly one of them records the
  * delivered denominator. Display status remains owned by the event reducer, so
- * a late provider acceptance never regresses opened/clicked/complained state.
+ * a late provider acceptance never regresses advanced or terminal state.
  */
 export function reduceDeliveryObservation(
 	send: EmailSendDoc | TransactionalSendDoc,
@@ -28,15 +51,9 @@ export function reduceDeliveryObservation(
 		return { patch: {}, effects: [], isNewObservation: false };
 	}
 
-	const status = send.status as SendStatus;
-	// Queue/worker failures and hard bounces are not delivery evidence. The
-	// dispatcher validates the lifecycle edge before calling this reducer; this
-	// guard makes the primitive safe if a future caller forgets that precondition.
-	if (
-		status === 'queued' ||
-		status === 'failed' ||
-		(status === 'bounced' && send.bounceType === 'hard')
-	) {
+	// A queued row cannot have reached remote acceptance. Terminal chronology is
+	// checked by canAttributeRemoteAcceptance before this reducer is called.
+	if ((send.status as SendStatus) === 'queued') {
 		return { patch: {}, effects: [], isNewObservation: false };
 	}
 

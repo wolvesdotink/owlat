@@ -88,10 +88,13 @@ const DISPATCH: DispatchTable = {
 	},
 	'email.delivered': async (ctx, e) => {
 		const outcome = isPostboxMessageId(e.providerMessageId)
-			? await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId, {
-					rawProviderMessageId: e.providerMessageId,
-					input: { to: 'sent', at: e.at },
-				})
+			? await ctx.runMutation(
+					internal.mail.postboxOutboundLifecycle.observeRemoteAcceptanceByMtaMessageId,
+					{
+						rawProviderMessageId: e.providerMessageId,
+						acceptedAt: e.at,
+					}
+				)
 			: await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
 					providerMessageId: e.providerMessageId,
 					transition: { to: 'delivered', at: e.at },
