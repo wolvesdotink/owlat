@@ -59,7 +59,12 @@ export type DispatchEffect =
 			kind: 'campaign_delivery_record';
 			campaignId: string;
 	  }
-	| { kind: 'warming_record'; ip: string; result: 'send' | 'bounce' | 'deferral' }
+	| {
+			kind: 'warming_record';
+			ip: string;
+			result: 'send' | 'bounce' | 'deferral';
+			reservedMessageId?: string;
+	  }
 	| {
 			kind: 'metrics_record';
 			domain: string;
@@ -177,7 +182,8 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 					logger.warn({ err, campaignId: effect.campaignId }, 'Failed to record campaign delivery')
 				);
 		case 'warming_record':
-			if (effect.result === 'send') return warming.recordSend(deps.redis, effect.ip);
+			if (effect.result === 'send')
+				return warming.recordSend(deps.redis, effect.ip, effect.reservedMessageId);
 			if (effect.result === 'bounce') return warming.recordBounce(deps.redis, effect.ip);
 			return warming.recordDeferral(deps.redis, effect.ip);
 		case 'metrics_record':

@@ -25,10 +25,6 @@ export const RECIPIENT_BLOCKED_ERROR = 'recipient_blocked';
  */
 export const NO_DELIVERY_PROVIDER_ERROR = 'no_delivery_provider';
 
-const CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_CODE = 'DELIVERY_PROVIDER_UNAVAILABLE';
-const CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_MESSAGE =
-	'Delivery provider unavailable before campaign dispatch';
-
 // Per ADR-0006, the workpool `onComplete` callback is owned by the Send
 // completion (module) at `delivery/sendCompletion.ts` — each enqueue below
 // wires it directly via `internal.delivery.sendCompletion.completeSend`. The
@@ -77,34 +73,6 @@ export const enqueueCampaignEmails = internalMutation({
 		listId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Recheck the exact provider the worker will select immediately before
-		// enqueueing. Campaign preflight and route resolution happen earlier, so a
-		// plugin flag, grant, or credential can change before this mutation runs.
-		if (!(await selectedSendProviderReady(ctx, args.providerType))) {
-			// Campaign rows already exist by the time a timezone-delayed batch reaches
-			// this mutation. Throwing here would leave those rows queued forever, which
-			// in turn prevents the campaign lifecycle from leaving `sending`. Fail the
-			// whole batch through the canonical lifecycle writer instead: this records
-			// the normal failure effects while guaranteeing no worker or provider call.
-			const failedAt = Date.now();
-			for (const recipient of args.emails) {
-				await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-					send: { kind: 'campaign', id: recipient.emailSendId },
-					transition: {
-						to: 'failed',
-						at: failedAt,
-						errorMessage: CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_MESSAGE,
-						errorCode: CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_CODE,
-					},
-				});
-			}
-
-			await ctx.runMutation(internal.campaigns.lifecycle.reconcileCampaignCompletion, {
-				campaignId: args.campaignId,
-			});
-			return { enqueued: 0 };
-		}
-
 		for (const recipient of args.emails) {
 			await campaignEmailPool.enqueueAction(
 				ctx,

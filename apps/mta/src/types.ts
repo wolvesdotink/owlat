@@ -55,6 +55,19 @@ export interface EmailJob {
 	 * GroupMQ `ReservedJob.timestamp` of the current attempt.
 	 */
 	firstEnqueuedAt?: number;
+	/** Authenticated last-mile routing lease issued by this MTA. */
+	routingLease?: {
+		token: string;
+		destinationProvider: DestinationProviderKey;
+		probe: boolean;
+		ip?: string;
+		eligibilityGeneration?: number;
+		warmingReservation?: {
+			ip: string;
+			messageId: string;
+			expiresAt: number;
+		};
+	};
 }
 
 export type IpPoolType = 'transactional' | 'campaign';

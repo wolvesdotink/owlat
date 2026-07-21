@@ -32,6 +32,13 @@ const BLOCKED = 'blocked@example.com';
 
 const originalFetch = global.fetch;
 
+function decisionResponse(): Response {
+	return new Response(JSON.stringify({ decision: 'mta', lease: { token: 'lease-clean' } }), {
+		status: 200,
+		headers: { 'Content-Type': 'application/json' },
+	});
+}
+
 async function seedCampaignSend(
 	t: ReturnType<typeof convexTest>,
 	email: string
@@ -130,12 +137,15 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 
 		// Provider returns success — the worker must proceed past the re-check
 		// and actually dispatch (one POST), proving the gate only fires on a hit.
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ success: true, id: 'mta-clean-1' }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			})
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValueOnce(decisionResponse())
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ success: true, id: 'mta-clean-1' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+			);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
 		const result = (await t.action(internal.delivery.worker.sendSingleEmail, {
@@ -144,6 +154,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 				to: 'clean@example.com',
 				from: 'sender@example.com',
 				providerType: 'mta',
+				organizationId: 'org-test',
 				template: { subject: 'Hi', htmlContent: '<p>hi</p>' },
 				contactInfo: { contactId, email: 'clean@example.com' },
 				emailSendId: emailSendId as never,

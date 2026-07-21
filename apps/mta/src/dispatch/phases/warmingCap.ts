@@ -14,11 +14,18 @@ import type { CtxWithIp } from '../types.js';
 export const warmingCapPhase: Phase<CtxWithIp, CtxWithIp> = {
 	name: 'warming_cap',
 	async run(deps, ctx) {
+		const reservation = ctx.job.routingLease?.warmingReservation;
+		if (
+			reservation?.ip === ctx.ip &&
+			(await warming.isWarmingReservationValid(deps.redis, reservation))
+		) {
+			return { kind: 'continue', ctx };
+		}
 		const warmingCap = await warming.checkCap(deps.redis, ctx.ip);
 		if (!warmingCap.allowed) {
 			logger.debug(
 				{ ip: ctx.ip, sentToday: warmingCap.sentToday, dailyCap: warmingCap.dailyCap },
-				'Warming cap reached — deferring',
+				'Warming cap reached — deferring'
 			);
 			return {
 				kind: 'defer',

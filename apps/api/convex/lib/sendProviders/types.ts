@@ -100,6 +100,8 @@ export interface MtaExtras {
 	engagementScore?: number;
 	/** Domain for DKIM signing */
 	dkimDomain?: string;
+	organizationId?: string;
+	routingLease?: string;
 }
 
 export type SesExtras = Record<string, never>;

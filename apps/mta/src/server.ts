@@ -29,6 +29,7 @@ import { createIspProfileRoutes } from './routes/ispProfiles.js';
 import { createIpReputationRoutes } from './routes/ipReputation.js';
 import { createScanRoutes } from './routes/scan.js';
 import { logger } from './monitoring/logger.js';
+import { createRoutingDecisionHandler } from './routes/routingDecision.js';
 
 /** Auth context set by the authentication middleware */
 export interface AuthContext {
@@ -78,6 +79,7 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 
 	// ── Routes ──
 	app.post('/send', createSendHandler(queue, redis));
+	app.post('/send/decision', createRoutingDecisionHandler(redis, config));
 	app.get('/health', createHealthHandler(redis, config));
 	app.get('/metrics', createMetricsHandler());
 

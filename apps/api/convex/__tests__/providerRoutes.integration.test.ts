@@ -81,6 +81,27 @@ describe('providerRoutes mutation contracts', () => {
 		).rejects.toThrow('Provider route contains an unknown transport');
 	});
 
+	it('rejects a non-SES deliverability fallback and never persists it', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+
+		await expect(
+			t.mutation(api.providerRoutes.setRoute, {
+				...singleMtaRoute,
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'resend', isEnabled: false },
+				],
+				deliverabilityFallback: {
+					isEnabled: true,
+					relayProviderType: 'resend',
+					isWarmupOverflowEnabled: true,
+				},
+			})
+		).rejects.toThrow('Deliverability fallback currently supports only Amazon SES');
+
+		expect(await t.query(api.providerRoutes.listRoutes, {})).toHaveLength(0);
+	});
+
 	it('removeRoute returns a truthy value after deleting an existing route', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.mutation(api.providerRoutes.setRoute, singleMtaRoute);

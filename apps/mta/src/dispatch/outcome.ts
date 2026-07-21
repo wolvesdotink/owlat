@@ -79,7 +79,12 @@ function reduceDelivered(
 				smtpCode: outcome.smtpCode,
 				enhancedCode: outcome.enhancedCode,
 			},
-			{ kind: 'warming_record', ip, result: 'send' },
+			{
+				kind: 'warming_record',
+				ip,
+				result: 'send',
+				reservedMessageId: job.routingLease?.warmingReservation?.messageId,
+			},
 			{
 				kind: 'metrics_record',
 				domain,

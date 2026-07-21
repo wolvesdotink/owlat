@@ -163,7 +163,7 @@ crons.interval(
 );
 crons.interval(
 	'cleanup deliverability route state',
-	{ hours: 1 },
+	{ minutes: 5 },
 	internal.delivery.deliverabilityRouting.cleanupExpired,
 	{}
 );

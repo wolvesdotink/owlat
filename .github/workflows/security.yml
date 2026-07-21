@@ -46,6 +46,9 @@ jobs:
       - name: Audit (informational)
         run: bun audit || true
 
+      - name: Test audit policy parser
+        run: bunx vitest run scripts/__tests__/check-security-audit.test.ts
+
       - name: Audit (fail on High/Critical)
         run: |
           set -euo pipefail
@@ -54,76 +57,7 @@ jobs:
           # disables the gate (which is exactly what happened with the previous
           # `bun pm audit` + npm-quick-audit-shape parser).
           bun audit --json > audit.json || true
-          node -e "
-            const fs = require('fs');
-            const raw = fs.readFileSync('audit.json', 'utf8').trim();
-            if (!raw) {
-              console.error('bun audit produced no output — failing closed.');
-              process.exit(1);
-            }
-            // Acknowledged High/Critical advisories whose vulnerable code path is
-            // unreachable here, and whose fix we have not taken because it is a
-            // major upgrade or it regresses the build. Keyed by GHSA id (stable),
-            // so a NEW advisory for the same package still blocks. Anything with a
-            // safe drop-in fix must be upgraded (e.g. linkify-it is pinned to 5.0.1
-            // in package.json overrides), not listed here. Revisit each on the next
-            // safe upgrade.
-            const ACKNOWLEDGED = {
-              // nodemailer <=9.0.0: the raw-message option can bypass
-              // disableFileAccess/disableUrlAccess when raw is {path}/{href}. owlat
-              // passes raw only as an already-composed MIME Buffer
-              // (apps/mail-sync/src/send.ts), never an object, so the bypass is
-              // unreachable. Fix is 9.0.1 — a major bump from ^8.0.6, still pending.
-              'GHSA-p6gq-j5cr-w38f': 'nodemailer raw bypass: raw is a Buffer-only path here; fix 9.0.1 is a pending major bump',
-              // vite <=7.3.4 / <=8.0.15: server.fs.deny bypass, Windows-only and
-              // requires a network-exposed dev server. Production ships built Nitro
-              // artifacts on Linux; the vite dev server is never a runtime path.
-              'GHSA-fx2h-pf6j-xcff': 'vite server.fs.deny bypass: dev-server only + Windows only, not a production runtime path',
-              // nuxt <4.4.7: routeRules middleware bypass via case-sensitivity. owlat
-              // defines NO routeRules (web nuxt.config has routeRules:{}, docs/marketing
-              // none), so there is no rule to bypass. The fix (4.4.7+) breaks
-              // @nuxtjs/og-image prerendering in the docs + marketing builds, so we
-              // hold on it; revisit when og-image is compatible with Nuxt 4.4.7+.
-              'GHSA-mm7m-92g8-7m47': 'nuxt routeRules bypass: owlat defines no routeRules; 4.4.7+ fix regresses og-image builds',
-              // better-auth <1.6.13: stored XSS via a `javascript:` redirect_uri
-              // in the oidc-provider and mcp plugins. owlat's better-auth config
-              // (apps/api/convex/auth/auth.ts) enables only the organization /
-              // oneTimeToken / access / convex / crossDomain plugins — never
-              // oidc-provider or mcp — so no code path parses an OAuth/MCP
-              // redirect_uri and the sink is unreachable. Fix is the in-range
-              // (~1.6.9) 1.6.13 bump; take it on the next lockfile refresh (a
-              // lockfile change is out of scope for a UI PR).
-              'GHSA-86j7-9j95-vpqj': 'better-auth oidc/mcp redirect_uri XSS: those plugins are not enabled here; 1.6.13 is an in-range bump pending a lockfile refresh',
-            };
-            // bun emits the npm bulk-advisory shape: { pkgName: Advisory[] }
-            const data = JSON.parse(raw);
-            const blocking = [];
-            const acknowledged = [];
-            for (const [pkg, advisories] of Object.entries(data)) {
-              for (const a of advisories || []) {
-                if (a && (a.severity === 'high' || a.severity === 'critical')) {
-                  const ghsa = String(a.url || '').split('/').pop();
-                  const row = { pkg, severity: a.severity, title: a.title, url: a.url, ghsa };
-                  (ACKNOWLEDGED[ghsa] ? acknowledged : blocking).push(row);
-                }
-              }
-            }
-            if (acknowledged.length) {
-              console.log('Acknowledged (no upstream fix / not exploitable here):');
-              for (const a of acknowledged) {
-                console.log(' - [' + a.severity + '] ' + a.pkg + ' ' + a.ghsa + ': ' + ACKNOWLEDGED[a.ghsa]);
-              }
-            }
-            if (blocking.length === 0) {
-              console.log('No blocking high/critical vulnerabilities.');
-              process.exit(0);
-            }
-            console.error('Blocking vulnerabilities found:');
-            for (const b of blocking) {
-              console.error(' - [' + b.severity + '] ' + b.pkg + ' ' + b.ghsa + ': ' + b.title + ' (' + b.url + ')');
-            }
-            process.exit(1);
-          "
+          bun scripts/check-security-audit.ts audit.json
 
   semgrep:
     name: SAST (Semgrep)

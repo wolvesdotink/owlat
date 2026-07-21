@@ -155,7 +155,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 
 const enabledProviderCount = computed(() => editProviders.value.filter((p) => p.isEnabled).length);
 const enabledRelays = computed(() =>
-	editProviders.value.filter((provider) => provider.isEnabled && provider.providerType !== 'mta')
+	editProviders.value.filter((provider) => provider.isEnabled && provider.providerType === 'ses')
 );
 
 async function handleSave() {
@@ -168,7 +168,8 @@ async function handleSave() {
 	}
 	if (
 		editFallbackEnabled.value &&
-		(!enabled.some((provider) => provider.providerType === 'mta') ||
+		(editFallbackRelay.value !== 'ses' ||
+			!enabled.some((provider) => provider.providerType === 'mta') ||
 			!enabledRelays.value.some((provider) => provider.providerType === editFallbackRelay.value))
 	) {
 		showNotification('Enable the owned MTA and the selected relay before saving', 'error');

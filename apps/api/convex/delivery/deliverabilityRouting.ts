@@ -2,6 +2,13 @@ import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
 import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import { internalMutation } from '../_generated/server';
+import { internal } from '../_generated/api';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { contactEmailOf, loadSend, resolveProviderMessageId } from './sendLifecycle/lookups';
+import {
+	deliverabilitySignalValidator,
+	destinationProviderValidator,
+} from './deliverabilityValidators';
 
 export const DELIVERABILITY_SIGNAL_MAX_AGE_MS = 10 * 60 * 1000;
 export const DELIVERABILITY_MIN_HEALTHY_MS = 15 * 60 * 1000;
@@ -9,37 +16,6 @@ export const DELIVERABILITY_FALLBACK_COOLDOWN_MS = 30 * 60 * 1000;
 const STATE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const DOMAIN_CLASSIFICATION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const PROVIDERS = ['all', ...DESTINATION_PROVIDER_KEYS] as const;
-
-const providerValidator = v.union(
-	v.literal('all'),
-	v.literal('gmail'),
-	v.literal('microsoft'),
-	v.literal('yahoo'),
-	v.literal('apple'),
-	v.literal('other')
-);
-
-const destinationProviderValidator = v.union(
-	v.literal('gmail'),
-	v.literal('microsoft'),
-	v.literal('yahoo'),
-	v.literal('apple'),
-	v.literal('other')
-);
-
-const sourceValidator = v.union(
-	v.literal('ip_quarantined'),
-	v.literal('dnsbl_listed'),
-	v.literal('breaker_open'),
-	v.literal('persistent_defers')
-);
-
-const signalValidator = v.object({
-	provider: providerValidator,
-	source: sourceValidator,
-	severity: v.union(v.literal('warning'), v.literal('critical')),
-	observedAt: v.number(),
-});
 
 /**
  * Apply one complete MTA snapshot. Convex serializes this mutation, making the
@@ -49,7 +25,7 @@ export const applySnapshot = internalMutation({
 	args: {
 		organizationId: v.string(),
 		generatedAt: v.number(),
-		signals: v.array(signalValidator),
+		signals: v.array(deliverabilitySignalValidator),
 		appliedAt: v.number(),
 	},
 	handler: async (ctx, args) => {
@@ -119,24 +95,36 @@ export const applySnapshot = internalMutation({
  */
 export const recordDestinationProviderDomain = internalMutation({
 	args: {
-		organizationId: v.string(),
-		recipient: v.string(),
+		providerMessageId: v.string(),
 		destinationProvider: destinationProviderValidator,
 		observedAt: v.number(),
 	},
 	handler: async (ctx, args) => {
-		if (!args.organizationId || args.organizationId.length > 128) return { recorded: false };
-		const domain = extractDomainOrNull(args.recipient);
+		const now = Date.now();
+		if (
+			!args.providerMessageId ||
+			args.providerMessageId.length > 256 ||
+			args.observedAt > now + 2 * 60 * 1000 ||
+			now - args.observedAt > DOMAIN_CLASSIFICATION_RETENTION_MS
+		) {
+			return { recorded: false };
+		}
+		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
+		if (!ref) return { recorded: false };
+		const send = await loadSend(ctx, ref);
+		if (!send || send.providerType !== 'mta') return { recorded: false };
+		const organizationId = await getSingletonOrganizationId(ctx);
+		const domain = extractDomainOrNull(contactEmailOf(send));
 		if (!domain) return { recorded: false };
 		const existing = await ctx.db
 			.query('destinationProviderDomains')
 			.withIndex('by_org_domain', (q) =>
-				q.eq('organizationId', args.organizationId).eq('domain', domain)
+				q.eq('organizationId', organizationId).eq('domain', domain)
 			)
 			.first();
 		if (existing && existing.observedAt >= args.observedAt) return { recorded: false };
 		const fields = {
-			organizationId: args.organizationId,
+			organizationId,
 			domain,
 			destinationProvider: args.destinationProvider,
 			observedAt: args.observedAt,
@@ -155,16 +143,17 @@ export const cleanupExpired = internalMutation({
 		const expired = await ctx.db
 			.query('deliverabilityRouteStates')
 			.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
-			.take(32);
+			.take(128);
 		for (const row of expired) await ctx.db.delete(row._id);
-		const remaining = 32 - expired.length;
-		const expiredDomains = remaining
-			? await ctx.db
-					.query('destinationProviderDomains')
-					.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
-					.take(remaining)
-			: [];
+		const expiredDomains = await ctx.db
+			.query('destinationProviderDomains')
+			.withIndex('by_expires_at', (q) => q.lt('expiresAt', now))
+			.take(128);
 		for (const row of expiredDomains) await ctx.db.delete(row._id);
-		return { deleted: expired.length + expiredDomains.length };
+		const hasMore = expired.length === 128 || expiredDomains.length === 128;
+		if (hasMore) {
+			await ctx.scheduler.runAfter(0, internal.delivery.deliverabilityRouting.cleanupExpired, {});
+		}
+		return { deleted: expired.length + expiredDomains.length, hasMore };
 	},
 });

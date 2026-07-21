@@ -303,7 +303,7 @@ async function verifyTlsaRecord(hostname: string, record: DnsRecord): Promise<Ve
 	}
 }
 
-async function runDnsLookups(
+export async function runDnsLookups(
 	domain: string,
 	dnsRecords: {
 		spf?: DnsRecord;
@@ -433,6 +433,25 @@ export const verifyDomain = authedAction({
 
 		if (!outcome.ok) {
 			throwInternal(`Verification failed: ${outcome.reason}`);
+		}
+
+		// A primary MTA domain may also carry a coexisting SES escape-hatch
+		// identity. Verify that identity against its own records and provider
+		// verdict; never borrow the primary domain's status or DNS proof.
+		const sesIdentity = await ctx.runQuery(internal.domains.queries.getSesIdentity, {
+			domainId: args.domainId,
+		});
+		if (domain.providerType !== 'ses' && sesIdentity?.dnsRecords) {
+			const relayResults = await runDnsLookups(domain.domain, sesIdentity.dnsRecords);
+			const relayProviderCheck = await providerFor('ses').runProviderCheck!(domain.domain);
+			relayResults.sesStatus = relayProviderCheck.verified ? 'Success' : 'Pending';
+			await ctx.runMutation(internal.domains.sesRelayMutations.storeVerification, {
+				domainId: args.domainId,
+				dnsRecords: sesIdentity.dnsRecords,
+				verificationResults: relayResults,
+				isProviderVerified: relayProviderCheck.verified,
+				checkedAt: Date.now(),
+			});
 		}
 
 		return {

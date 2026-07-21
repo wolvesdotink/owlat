@@ -21,7 +21,10 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllEnvs());
 
-async function seedRouteState(options: { withSesIdentity: boolean }) {
+async function seedRouteState(options: {
+	withSesIdentity: boolean;
+	primaryProvider?: 'mta' | 'ses';
+}) {
 	const t = convexTest(schema, modules);
 	await t.run(async (ctx) => {
 		await ctx.db.insert('providerRoutes', {
@@ -41,13 +44,40 @@ async function seedRouteState(options: { withSesIdentity: boolean }) {
 		});
 		const domainId = await ctx.db.insert(
 			'domains',
-			createTestDomain({ domain: 'example.com', status: 'verified', providerType: 'ses' })
+			createTestDomain({
+				domain: 'example.com',
+				status: 'verified',
+				providerType: options.primaryProvider ?? 'mta',
+			})
 		);
 		if (options.withSesIdentity) {
 			await ctx.db.insert('sendingDomainSesIdentities', {
 				domainId,
 				dkimTokens: ['one', 'two', 'three'],
 				verificationToken: 'verified-token',
+				dnsRecords: {
+					spf: { type: 'TXT', host: '@', value: 'v=spf1 include:amazonses.com ~all' },
+					dkim: ['one', 'two', 'three'].map((token) => ({
+						type: 'CNAME' as const,
+						host: `${token}._domainkey`,
+						value: `${token}.dkim.amazonses.com`,
+					})),
+					mailFrom: [
+						{ type: 'MX', host: 'mail', value: 'feedback-smtp.example.com', priority: 10 },
+						{ type: 'TXT', host: 'mail', value: 'v=spf1 include:amazonses.com ~all' },
+					],
+				},
+				verificationResults: {
+					spf: { verified: true, lastChecked: NOW },
+					dkim: ['one', 'two', 'three'].map(() => ({ verified: true, lastChecked: NOW })),
+					mailFrom: [
+						{ verified: true, lastChecked: NOW },
+						{ verified: true, lastChecked: NOW },
+					],
+					sesStatus: 'Success',
+				},
+				isProviderVerified: true,
+				verifiedAt: NOW,
 				createdAt: NOW,
 				updatedAt: NOW,
 			});
@@ -117,6 +147,21 @@ describe('DB-backed deliverability route verification', () => {
 			providerType: 'ses',
 			source: 'deliverability_fallback',
 		});
+	});
+
+	it('accepts explicit SES relay proof while the primary domain remains MTA-owned', async () => {
+		const t = await seedRouteState({ withSesIdentity: true, primaryProvider: 'mta' });
+		const domain = await t.run((ctx) => ctx.db.query('domains').first());
+		expect(domain?.providerType).toBe('mta');
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({ providerType: 'ses', source: 'deliverability_fallback' });
 	});
 
 	it('refuses the affected slice when SES identity proof is absent', async () => {

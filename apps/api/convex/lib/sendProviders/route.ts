@@ -26,6 +26,8 @@ import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRoutin
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
+const SES_RELAY_PROOF_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
 // Single source of truth for the message-type literal set (imported by
@@ -45,7 +47,12 @@ export const messageTypeValidator = v.union(
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
 	messageType: MessageType,
-	addressContext?: { to?: string; from?: string; now?: number }
+	addressContext?: {
+		to?: string;
+		from?: string;
+		now?: number;
+		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+	}
 ): Promise<ResolvedRoute | null> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
@@ -71,21 +78,34 @@ export async function resolveSendRouteFromDb(
 
 	const deliverability = await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
 
-	return resolveRoute(
+	const resolved = resolveRoute(
 		routeConfig as ProviderRouteConfig | null,
 		healthStatuses,
 		(kind) => readyKinds.has(kind),
 		deliverability
 	);
+	return resolved
+		? {
+				...resolved,
+				warmupOverflowEnabled: Boolean(
+					messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
+				),
+			}
+		: null;
 }
 
 async function deliverabilityInput(
 	ctx: QueryCtx | MutationCtx,
 	routeConfig: Doc<'providerRoutes'> | null,
 	messageType: MessageType,
-	addressContext?: { to?: string; from?: string; now?: number }
+	addressContext?: {
+		to?: string;
+		from?: string;
+		now?: number;
+		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+	}
 ) {
-	if (!routeConfig?.deliverabilityFallback?.isEnabled || !addressContext?.to) return undefined;
+	if (!addressContext?.to) return undefined;
 	const toDomain = extractDomainOrNull(addressContext.to);
 	if (!toDomain) return undefined;
 	const now = addressContext.now ?? Date.now();
@@ -118,7 +138,7 @@ async function deliverabilityInput(
 				q.eq('organizationId', organizationId).eq('destinationProvider', 'all')
 			)
 			.first(),
-		messageType === 'campaign' && routeConfig.deliverabilityFallback.isWarmupOverflowEnabled
+		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
@@ -126,40 +146,74 @@ async function deliverabilityInput(
 		(state) => state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
 	);
 	const activeReasons = freshActive.flatMap((state) => state?.signals.map((s) => s.source) ?? []);
+	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
 	const isWarmupOverflow = Boolean(
-		warmingState &&
-		now - warmingState.syncedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-		warmingState.phase !== 'graduated' &&
-		warmingState.totalDailyCap > 0 &&
-		warmingState.totalSentToday >= warmingState.totalDailyCap
+		addressContext.forceRelayReason === 'warmup_overflow' ||
+		(warmingState &&
+			now - warmingState.syncedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+			warmingState.phase !== 'graduated' &&
+			warmingState.totalDailyCap > 0 &&
+			warmingState.totalSentToday >= warmingState.totalDailyCap)
 	);
 	const fromDomain = addressContext.from ? extractDomainOrNull(addressContext.from) : null;
-	const isRelayDomainVerified = fromDomain
-		? await relayDomainVerified(
-				ctx,
-				fromDomain,
-				routeConfig.deliverabilityFallback.relayProviderType
-			)
-		: false;
-	return { activeReasons, isWarmupOverflow, isRelayDomainVerified };
+	const isRelayDomainVerified =
+		fromDomain && routeConfig?.deliverabilityFallback?.isEnabled
+			? await relayDomainVerified(
+					ctx,
+					fromDomain,
+					routeConfig.deliverabilityFallback.relayProviderType,
+					now
+				)
+			: false;
+	const isGlobalBreakerOpen = Boolean(
+		globalState?.isFallbackActive &&
+		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+		globalState.signals.some((signal) => signal.source === 'breaker_open')
+	);
+	return { activeReasons, isWarmupOverflow, isRelayDomainVerified, isGlobalBreakerOpen };
 }
 
 async function relayDomainVerified(
 	ctx: QueryCtx | MutationCtx,
 	domainName: string,
-	relayProviderType: string
+	relayProviderType: string,
+	now: number
 ): Promise<boolean> {
 	if (relayProviderType !== 'ses') return false;
 	const domain = await ctx.db
 		.query('domains')
 		.withIndex('by_domain', (q) => q.eq('domain', domainName.toLowerCase()))
 		.first();
-	if (!domain || domain.status !== 'verified' || domain.providerType !== 'ses') return false;
+	if (!domain) return false;
 	const identity = await ctx.db
 		.query('sendingDomainSesIdentities')
 		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
 		.first();
-	return Boolean(identity && identity.dkimTokens.length > 0);
+	if (
+		!identity?.dnsRecords ||
+		!identity.verificationResults ||
+		!identity.isProviderVerified ||
+		!identity.verifiedAt ||
+		now - identity.verifiedAt > SES_RELAY_PROOF_MAX_AGE_MS
+	)
+		return false;
+	const proof = identity.verificationResults;
+	const results = [proof.spf, ...(proof.dkim ?? []), ...(proof.mailFrom ?? [])];
+	return Boolean(
+		proof.spf?.verified &&
+		identity.dkimTokens.length > 0 &&
+		proof.dkim?.length === identity.dkimTokens.length &&
+		proof.dkim.every((result) => result.verified) &&
+		identity.dnsRecords.mailFrom?.length &&
+		proof.mailFrom?.length === identity.dnsRecords.mailFrom.length &&
+		proof.mailFrom.every((result) => result.verified) &&
+		results.every(
+			(result) =>
+				result !== undefined &&
+				identity.verifiedAt! - result.lastChecked <= SES_RELAY_PROOF_MAX_AGE_MS &&
+				result.lastChecked <= identity.verifiedAt!
+		)
+	);
 }
 
 /**
@@ -172,11 +226,13 @@ export const resolveSendRoute = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.optional(v.string()),
 		from: v.optional(v.string()),
+		forceRelayReason: v.optional(v.union(v.literal('breaker_open'), v.literal('warmup_overflow'))),
 	},
 	handler: async (ctx, args): Promise<ResolvedRoute | null> => {
 		return await resolveSendRouteFromDb(ctx, args.messageType, {
 			to: args.to,
 			from: args.from,
+			forceRelayReason: args.forceRelayReason,
 		});
 	},
 });

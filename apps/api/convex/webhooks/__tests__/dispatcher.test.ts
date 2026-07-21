@@ -149,13 +149,21 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 
 		await dispatchInboundEvent(ctx, event);
 
-		expect(runMutationCalls).toHaveLength(2);
+		expect(runMutationCalls).toHaveLength(3);
 		expect(runMutationCalls[1]).toEqual({
 			ref: ref(internal.delivery.complianceTelemetry.recordGmailDelivery),
 			args: {
 				providerMessageId: 'send_123',
 				primaryDomain: 'example.com',
 				acceptedAt: 1000,
+			},
+		});
+		expect(runMutationCalls[2]).toEqual({
+			ref: ref(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain),
+			args: {
+				providerMessageId: 'send_123',
+				destinationProvider: 'gmail',
+				observedAt: 1000,
 			},
 		});
 	});
@@ -193,8 +201,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		expect(runMutationCalls[1]).toEqual({
 			ref: ref(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain),
 			args: {
-				organizationId: 'org-a',
-				recipient: 'user@workspace.example',
+				providerMessageId: 'send_456',
 				destinationProvider: 'microsoft',
 				observedAt: 2000,
 			},

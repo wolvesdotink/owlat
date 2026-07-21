@@ -109,6 +109,12 @@ export const domainTables = {
 		domainId: v.id('domains'),
 		dkimTokens: v.array(v.string()), // 3 DKIM tokens from SES
 		verificationToken: v.string(),
+		// Relay-specific proof is intentionally separate from the primary
+		// domain's DNS/status so an MTA identity and SES identity can coexist.
+		dnsRecords: v.optional(dnsRecordsValidator),
+		verificationResults: v.optional(verificationResultsValidator),
+		isProviderVerified: v.optional(v.boolean()),
+		verifiedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_domain', ['domainId']),

@@ -6,6 +6,7 @@
 
 import type { Validator } from 'convex/values';
 import type { InboundEmailMessage } from '@owlat/channels';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
 
@@ -44,16 +45,17 @@ export type InboundEvent =
 			providerMessageId: string;
 			at: number;
 			providerType?: string;
-			destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+			destinationProvider?: DestinationProviderKey;
 			primarySendingDomain?: string;
 	  }
 	| {
 			kind: 'email.delivered';
 			providerMessageId: string;
 			at: number;
+			/** Untrusted telemetry only; cache binding derives tenant/recipient from Send. */
 			organizationId?: string;
 			recipient?: string;
-			destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+			destinationProvider?: DestinationProviderKey;
 			primarySendingDomain?: string;
 	  }
 	| {

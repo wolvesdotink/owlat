@@ -11,7 +11,6 @@ import {
 	type ResendExtras,
 	type SendProviderKind,
 } from '../lib/sendProviders';
-import { selectSendProviderKind } from '../lib/sendProviders/types';
 import { getUnsubscribeUrl, getListUnsubscribeHeader } from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
@@ -20,6 +19,7 @@ import { transformHtml } from './sendComposition/transform';
 import { fetchGuarded } from '../lib/ssrfGuard';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
+import { resolveLastMileRouting } from './lastMileRouting';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -178,23 +178,7 @@ type WorkerEnvelopeInput =
 			convexSiteUrl?: string;
 	  };
 
-/**
- * Derive a STABLE idempotency key from the Send-row id this envelope sends for
- * (`emailSends._id` for campaigns, `transactionalSends._id` for transactionals).
- *
- * Convex document ids are globally unique and stable for the life of the row, so
- * the same envelope always derives the same key across re-runs. The key is
- * threaded to the provider so a surviving retry (a workpool re-run, or a future
- * caller that re-dispatches the same Send) de-dupes at the boundary instead of
- * double-delivering: the MTA `/send` route SET-NX dedups on `messageId`
- * (apps/mta/src/routes/send.ts), and Resend dedups on the `Idempotency-Key`
- * header. The pre-fix worker passed empty extras, so the MTA module minted a
- * fresh `crypto.randomUUID()` per attempt — defeating the MTA dedup entirely.
- *
- * Returns `undefined` only for the legacy/edge case where neither id is present
- * (e.g. an in-flight enqueue from before this field existed); the provider then
- * falls back to its own per-attempt id, preserving today's behavior.
- */
+/** Stable Send-row key used by MTA and Resend to deduplicate surviving retries. */
 function deriveIdempotencyKey(envelopeInput: WorkerEnvelopeInput): string | undefined {
 	const sendRowId =
 		envelopeInput.kind === 'campaign' ? envelopeInput.emailSendId : envelopeInput.sendId;
@@ -406,16 +390,6 @@ export const sendSingleEmail = internalAction({
 			}
 		}
 
-		const providerKind = selectSendProviderKind(envelopeInput.providerType);
-		if (!providerKind) {
-			// Fail-closed: no delivery provider configured. The send entry points
-			// gate on isDeliveryConfigured() upstream, so reaching here means a
-			// misconfiguration slipped through — fail loudly instead of guessing MTA.
-			throw new Error(
-				'No delivery provider configured: set EMAIL_PROVIDER (and its credentials) or a provider route before sending.'
-			);
-		}
-
 		const composeInput = buildComposeInput(envelopeInput);
 		const composed = composeForSend(composeInput);
 		const html = composed.transformConfig
@@ -443,6 +417,25 @@ export const sendSingleEmail = internalAction({
 			envelopeInput.kind === 'campaign' ? 'marketing' : envelopeInput.emailPurpose;
 		assertMarketingOneClickHeaders(emailPurpose, mergedHeaders);
 
+		const idempotencyKey = deriveIdempotencyKey(envelopeInput);
+		if (!idempotencyKey) {
+			throw new Error('Delivery safety decision requires a stable Send idempotency key.');
+		}
+		const {
+			providerKind,
+			route: lastMileRoute,
+			organizationId,
+			routingLease,
+		} = await resolveLastMileRouting(ctx, {
+			kind: envelopeInput.kind,
+			to: envelopeInput.to,
+			from: envelopeInput.from,
+			providerType: envelopeInput.providerType,
+			ipPool: envelopeInput.ipPool,
+			organizationId: envelopeInput.organizationId,
+			idempotencyKey,
+		});
+
 		// Send via the Send dispatch helper. The helper owns retries, error
 		// categorization, and `providerHealth` recording for every attempt.
 		//
@@ -450,12 +443,15 @@ export const sendSingleEmail = internalAction({
 		// retry de-dupes at the boundary: MTA dedups on `messageId`, Resend on
 		// the `Idempotency-Key` header. SES has no idempotency surface (its
 		// adapter treats a post-dispatch timeout as TERMINAL instead).
-		const idempotencyKey = deriveIdempotencyKey(envelopeInput);
 		const extras: ExtrasFor<SendProviderKind> =
 			providerKind === 'mta'
 				? ({
 						messageId: idempotencyKey,
-						...(envelopeInput.ipPool ? { ipPool: envelopeInput.ipPool as MtaIpPool } : {}),
+						organizationId,
+						routingLease,
+						...((lastMileRoute?.ipPool ?? envelopeInput.ipPool)
+							? { ipPool: (lastMileRoute?.ipPool ?? envelopeInput.ipPool) as MtaIpPool }
+							: {}),
 					} satisfies MtaExtras)
 				: providerKind === 'resend'
 					? ({ idempotencyKey } satisfies ResendExtras)

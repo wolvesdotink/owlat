@@ -43,16 +43,32 @@ export interface DeliverabilityRouteInput {
 	activeReasons: readonly Exclude<DeliverabilityReason, 'warmup_overflow'>[];
 	isWarmupOverflow: boolean;
 	isRelayDomainVerified: boolean;
+	isGlobalBreakerOpen?: boolean;
 }
 
 export class DeliverabilityRouteError extends Error {
-	readonly code = 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED';
+	readonly code: 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED' | 'DELIVERABILITY_RELAY_UNAVAILABLE';
+
+	constructor(reason: 'unverified' | 'unavailable' = 'unverified') {
+		super(
+			reason === 'unverified'
+				? 'Deliverability relay refused: verify this sending domain for the configured relay provider before enabling automatic fallback.'
+				: 'Deliverability relay unavailable: enable the verified Amazon SES transport or disable automatic fallback.'
+		);
+		this.code =
+			reason === 'unverified'
+				? 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
+				: 'DELIVERABILITY_RELAY_UNAVAILABLE';
+		this.name = 'DeliverabilityRouteError';
+	}
+}
+
+export class GlobalDeliveryCircuitOpenError extends Error {
+	readonly code = 'GLOBAL_DELIVERY_CIRCUIT_OPEN';
 
 	constructor() {
-		super(
-			'Deliverability relay refused: verify this sending domain for the configured relay provider before enabling automatic fallback.'
-		);
-		this.name = 'DeliverabilityRouteError';
+		super('Delivery is temporarily deferred by the organization-wide safety circuit.');
+		this.name = 'GlobalDeliveryCircuitOpenError';
 	}
 }
 
@@ -71,6 +87,7 @@ export function resolveRoute(
 	isReady: (kind: SendProviderKind) => boolean = () => true,
 	deliverability?: DeliverabilityRouteInput
 ): ResolvedRoute | null {
+	if (deliverability?.isGlobalBreakerOpen) throw new GlobalDeliveryCircuitOpenError();
 	if (!routeConfig) return fallback(isReady);
 
 	if (!isSendRouteStrategyKind(routeConfig.strategy)) return fallback(isReady);
@@ -88,7 +105,7 @@ export function resolveRoute(
 	const strategy = strategyFor(routeConfig.strategy);
 	const selected = strategy.select(enabledEntries, routeConfig.ipPool, healthStatuses);
 	const resolved = selected ?? fallback(isReady);
-	if (!resolved || resolved.providerType !== 'mta' || !deliverability) return resolved;
+	if (!resolved || !deliverability) return resolved;
 
 	const fallbackConfig = routeConfig.deliverabilityFallback;
 	const reason =
@@ -97,12 +114,13 @@ export function resolveRoute(
 			? 'warmup_overflow'
 			: undefined);
 	if (!reason || !fallbackConfig?.isEnabled) return resolved;
-	if (!isSendProviderKind(fallbackConfig.relayProviderType)) return resolved;
+	if (fallbackConfig.relayProviderType !== 'ses') {
+		throw new DeliverabilityRouteError('unavailable');
+	}
 	const relay = enabledEntries.find(
-		(entry) =>
-			entry.providerType === fallbackConfig.relayProviderType && entry.providerType !== 'mta'
+		(entry) => entry.providerType === fallbackConfig.relayProviderType
 	);
-	if (!relay) return resolved;
+	if (!relay) throw new DeliverabilityRouteError('unavailable');
 	if (!deliverability.isRelayDomainVerified) throw new DeliverabilityRouteError();
 	return {
 		providerType: relay.providerType,
