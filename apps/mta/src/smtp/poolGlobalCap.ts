@@ -11,7 +11,7 @@
  * connectionPool.ts so that file stays focused on the entry lifecycle.
  */
 
-import type Redis from "ioredis";
+import type Redis from 'ioredis';
 
 export class PoolGlobalCap {
 	private redis?: Redis;
@@ -55,7 +55,7 @@ export class PoolGlobalCap {
 	async tryReserve(
 		connectionScope: string,
 		ttlSeconds: number,
-		maximum?: number,
+		maximum?: number
 	): Promise<boolean> {
 		const limit = maximum ?? this.defaultGlobalMaxConnections;
 		if (!this.redis || !this.serverId || !limit) return true;
