@@ -13,11 +13,10 @@
 		"./run": "./src/run.ts"
 	},
 	"scripts": {
-		"prepare:contracts": "bun run --cwd ../plugin-kit build",
 		"start": "bun run src/index.ts",
-		"test": "bun run prepare:contracts && vitest run",
-		"test:watch": "bun run prepare:contracts && vitest watch",
-		"test:coverage": "bun run prepare:contracts && vitest run --coverage",
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
 		"lint": "oxlint --config ../../oxlintrc.json src",
 		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
 		"typecheck": "tsc --noEmit"
