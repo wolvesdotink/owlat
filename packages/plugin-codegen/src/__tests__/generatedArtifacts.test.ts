@@ -104,5 +104,5 @@ describe('generated artifact table', () => {
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
 		// One --check run per artifact: deliberate, and slower than the 5s default
 		// once the root ci:test gate runs every package in parallel.
-	}, 60_000);
+	});
 });
