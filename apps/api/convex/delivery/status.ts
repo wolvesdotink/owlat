@@ -286,9 +286,9 @@ export const recordTestResult = internalMutation({
  * Send a real test email through the configured delivery provider, so an admin
  * can trace the send path through provider acceptance before trusting it with a
  * campaign or transactional traffic. Reuses the single system transport
- * (`internal.systemMail.sendSystemEmail`) — it routes through whatever provider
- * `EMAIL_PROVIDER` names (MTA / Resend / SES); this does NOT add a parallel
- * sender. Records a success timestamp the status page and onboarding surface.
+ * (`internal.systemMail.sendSystemEmail`) — it routes through whatever transport
+ * `EMAIL_PROVIDER` names in the composed send-provider registry, built-in or
+ * plugin-contributed; this does NOT add a parallel sender. Records a success timestamp the status page and onboarding surface.
  *
  * Returns a stage-by-stage trace rather than throwing on an expected provider
  * failure, including the safe provider receipt metadata. Acceptance is not
