@@ -2,6 +2,7 @@
  * GroupMQ group key helpers and ISP classification
  */
 
+import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
 import type { DestinationProviderKey, IpPoolType } from '../types.js';
 
 export { extractDomain } from '@owlat/shared';
@@ -18,16 +19,7 @@ export function buildGroupKey(ipPool: IpPoolType, recipientDomain: string): stri
  * Classify a domain into a known ISP for metrics and profile lookups
  */
 export function classifyIsp(domain: string): DestinationProviderKey {
-	const d = domain.toLowerCase();
-
-	if (d === 'gmail.com' || d === 'googlemail.com') return 'gmail';
-	if (d === 'outlook.com' || d === 'hotmail.com' || d === 'live.com' || d === 'msn.com')
-		return 'microsoft';
-	if (d === 'yahoo.com' || d === 'aol.com' || d === 'ymail.com' || d === 'yahoo.co.uk')
-		return 'yahoo';
-	if (d === 'icloud.com' || d === 'me.com' || d === 'mac.com') return 'apple';
-
-	return 'other';
+	return destinationProviderForDomain(domain);
 }
 
 /**

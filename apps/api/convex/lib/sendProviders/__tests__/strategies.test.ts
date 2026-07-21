@@ -268,4 +268,84 @@ describe('resolveRoute (dispatcher + fallbacks)', () => {
 		};
 		expect(resolveRoute(config)).toBeNull();
 	});
+
+	it('drains only a triggered owned-MTA slice to its verified relay', () => {
+		const config: ProviderRouteConfig = {
+			strategy: 'priority_failover',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: false,
+			},
+		};
+		expect(
+			resolveRoute(config, undefined, () => true, {
+				activeReasons: ['breaker_open'],
+				isWarmupOverflow: false,
+				isRelayDomainVerified: true,
+			})
+		).toEqual({
+			providerType: 'ses',
+			source: 'deliverability_fallback',
+			deliverabilityReason: 'breaker_open',
+		});
+		expect(
+			resolveRoute(config, undefined, () => true, {
+				activeReasons: [],
+				isWarmupOverflow: false,
+				isRelayDomainVerified: true,
+			})
+		).toMatchObject({ providerType: 'mta', source: 'org_config' });
+	});
+
+	it('refuses an unverified relay with an actionable fixed error', () => {
+		const config: ProviderRouteConfig = {
+			strategy: 'single',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: true,
+			},
+		};
+		expect(() =>
+			resolveRoute(config, undefined, () => true, {
+				activeReasons: [],
+				isWarmupOverflow: true,
+				isRelayDomainVerified: false,
+			})
+		).toThrow(/verify this sending domain/i);
+	});
+
+	it('uses verified relay for opted-in warming overflow without changing normal selection', () => {
+		const config: ProviderRouteConfig = {
+			strategy: 'single',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: true,
+			},
+		};
+		expect(
+			resolveRoute(config, undefined, () => true, {
+				activeReasons: [],
+				isWarmupOverflow: true,
+				isRelayDomainVerified: true,
+			})
+		).toMatchObject({
+			providerType: 'ses',
+			deliverabilityReason: 'warmup_overflow',
+		});
+	});
 });

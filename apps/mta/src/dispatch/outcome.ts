@@ -64,7 +64,12 @@ function reduceDelivered(
 	return {
 		effects: [
 			{ kind: 'domain_throttle_success', ip, throttleKey, providerKey },
-			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'delivered' },
+			{
+				kind: 'circuit_breaker_outcome',
+				orgId: job.organizationId,
+				outcome: 'delivered',
+				providerKey,
+			},
 			...(campaignId
 				? [{ kind: 'campaign_delivery_record', campaignId } as const satisfies DispatchEffect]
 				: []),
@@ -100,6 +105,7 @@ function reduceDelivered(
 					event: 'sent',
 					messageId: job.messageId,
 					organizationId: job.organizationId,
+					recipient: job.to,
 					destinationProvider: providerKey,
 					...(sendingPrimaryDomain ? { primarySendingDomain: sendingPrimaryDomain } : {}),
 					remoteMessageId: outcome.remoteMessageId,
@@ -119,7 +125,12 @@ function reduceHardBounce(
 	const { throttleKey, providerKey } = ctx.destination;
 	return {
 		effects: [
-			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
+			{
+				kind: 'circuit_breaker_outcome',
+				orgId: job.organizationId,
+				outcome: 'bounced',
+				providerKey,
+			},
 			{
 				kind: 'smtp_response',
 				domain,
@@ -236,7 +247,12 @@ function reduceNonRetryableDeferral(
 	const { throttleKey, providerKey } = ctx.destination;
 	return {
 		effects: [
-			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
+			{
+				kind: 'circuit_breaker_outcome',
+				orgId: job.organizationId,
+				outcome: 'bounced',
+				providerKey,
+			},
 			{
 				kind: 'smtp_response',
 				domain,
@@ -291,7 +307,12 @@ function reduceSoftBounce(
 	const { providerKey } = ctx.destination;
 	return {
 		effects: [
-			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
+			{
+				kind: 'circuit_breaker_outcome',
+				orgId: job.organizationId,
+				outcome: 'bounced',
+				providerKey,
+			},
 			{ kind: 'warming_record', ip, result: 'bounce' },
 			{ kind: 'domain_failure_record', domain },
 			{

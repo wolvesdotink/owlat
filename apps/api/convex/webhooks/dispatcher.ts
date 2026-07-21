@@ -110,6 +110,17 @@ const DISPATCH: DispatchTable = {
 				acceptedAt: e.at,
 			});
 		}
+		if (outcome.ok && e.organizationId && e.recipient && e.destinationProvider) {
+			await ctx.runMutation(
+				internal.delivery.deliverabilityRouting.recordDestinationProviderDomain,
+				{
+					organizationId: e.organizationId,
+					recipient: e.recipient,
+					destinationProvider: e.destinationProvider,
+					observedAt: e.at,
+				}
+			);
+		}
 	},
 	'email.failed': async (ctx, e) => {
 		// Terminal, NON-bounce failure (MTA post-DATA ambiguous drop). Transition the

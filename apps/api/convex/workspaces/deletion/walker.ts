@@ -186,6 +186,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'sendingReputation',
 	'providerHealth',
 	'providerRoutes',
+	'deliverabilityRouteStates',
+	'destinationProviderDomains',
 	'domains',
 
 	// Chat (children before parents)
@@ -304,6 +306,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	sendingReputation: makeSweepStep('sendingReputation'),
 	providerHealth: makeSweepStep('providerHealth'),
 	providerRoutes: makeSweepStep('providerRoutes'),
+	deliverabilityRouteStates: makeSweepStep('deliverabilityRouteStates'),
+	destinationProviderDomains: makeSweepStep('destinationProviderDomains'),
 	domains: domainsStep,
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),

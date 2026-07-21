@@ -14,7 +14,11 @@ import type { BasePhaseCtx } from '../types.js';
 export const circuitBreakerPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 	name: 'circuit_breaker',
 	async run(deps, ctx) {
-		const breakerResult = await circuitBreaker.canSend(deps.redis, ctx.job.organizationId);
+		const breakerResult = await circuitBreaker.canSend(
+			deps.redis,
+			ctx.job.organizationId,
+			ctx.destination.providerKey
+		);
 		if (!breakerResult.allowed) {
 			logger.info(
 				{
@@ -22,7 +26,7 @@ export const circuitBreakerPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 					state: breakerResult.state,
 					retryAfter: breakerResult.retryAfter,
 				},
-				'Circuit breaker OPEN — deferring',
+				'Circuit breaker OPEN — deferring'
 			);
 			return {
 				kind: 'defer',

@@ -68,6 +68,7 @@ export const enqueueCampaignEmails = internalMutation({
 		audienceType: v.optional(v.union(v.literal('topic'), v.literal('segment'))),
 		viewInBrowserUrl: v.optional(v.string()),
 		providerType: v.optional(v.string()),
+		ipPool: v.optional(v.string()),
 		trackingBaseUrl: v.optional(v.string()),
 		// Singleton org id — anchors the Gmail FBL Feedback-ID SenderId.
 		organizationId: v.optional(v.string()),
@@ -115,6 +116,7 @@ export const enqueueCampaignEmails = internalMutation({
 						from: args.from,
 						replyTo: args.replyTo,
 						providerType: args.providerType,
+						ipPool: args.ipPool,
 						template: {
 							subject: args.subject,
 							htmlContent: args.htmlContent,
@@ -190,6 +192,7 @@ export const enqueueNonCampaignSend = internalMutation({
 		replyTo: v.optional(v.string()),
 		headers: v.optional(v.record(v.string(), v.string())),
 		providerType: v.optional(v.string()),
+		ipPool: v.optional(v.string()),
 		// Marketing List-Unsubscribe wiring (automation steps only): when set, the
 		// worker builds the RFC 8058 one-click header from `contactId` +
 		// `convexSiteUrl`. Agent 1:1 replies leave it unset (no List-Unsubscribe
@@ -250,6 +253,7 @@ export const enqueueNonCampaignSend = internalMutation({
 					from: args.from,
 					replyTo: args.replyTo,
 					providerType: args.providerType,
+					ipPool: args.ipPool,
 					sendId,
 					template: {
 						subject: args.subject,

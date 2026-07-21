@@ -161,6 +161,12 @@ crons.interval(
 	{ minutes: 5 },
 	internal.delivery.warmingSync.syncWarmingState
 );
+crons.interval(
+	'cleanup deliverability route state',
+	{ hours: 1 },
+	internal.delivery.deliverabilityRouting.cleanupExpired,
+	{}
+);
 
 // Keep the built-in MTA's infrastructure readiness visible to reactive
 // Delivery surfaces. The MTA internally caches its TCP/25 probes, so this

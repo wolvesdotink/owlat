@@ -49,12 +49,21 @@ const OUTCOME_TTL = 6 * 3600; // 6h TTL for outcome data
  * - { allowed: true } — proceed with sending
  * - { allowed: false, retryAfter } — circuit is open, delay and retry
  */
-export async function canSend(redis: Redis, orgId: string): Promise<{
+export async function canSend(
+	redis: Redis,
+	orgId: string,
+	provider?: string
+): Promise<{
 	allowed: boolean;
 	retryAfter?: number;
 	state?: CircuitState;
 }> {
-	const stateKey = `${BREAKER_PREFIX}${orgId}${STATE_SUFFIX}`;
+	if (provider) {
+		const globalResult = await canSend(redis, orgId);
+		if (!globalResult.allowed) return globalResult;
+	}
+
+	const stateKey = breakerStateKey(orgId, provider);
 	const stateData = await redis.hgetall(stateKey);
 
 	if (!stateData['status'] || stateData['status'] === 'closed') {
@@ -69,9 +78,12 @@ export async function canSend(redis: Redis, orgId: string): Promise<{
 			// Transition to half-open
 			await redis.hset(
 				stateKey,
-				'status', 'half-open',
-				'halfOpenSent', '0',
-				'halfOpenBounced', '0'
+				'status',
+				'half-open',
+				'halfOpenSent',
+				'0',
+				'halfOpenBounced',
+				'0'
 			);
 			logger.info({ orgId }, 'Circuit breaker entering half-open');
 			return { allowed: true, state: 'half-open' };
@@ -87,16 +99,19 @@ export async function canSend(redis: Redis, orgId: string): Promise<{
 			if (halfOpenBounced === 0) {
 				// All test sends delivered — close circuit
 				await redis.hset(stateKey, 'status', 'closed');
-				await redis.del(`${BREAKER_PREFIX}${orgId}${OUTCOMES_SUFFIX}`);
+				await redis.del(breakerOutcomesKey(orgId, provider));
 				logger.info({ orgId }, 'Circuit breaker closed (recovered)');
 				return { allowed: true, state: 'closed' };
 			} else {
 				// Bounces in test — re-open with extended cooldown
 				await redis.hset(
 					stateKey,
-					'status', 'open',
-					'cooldownUntil', String(now + EXTENDED_COOLDOWN_MS),
-					'tripReason', 'Bounce detected during half-open test'
+					'status',
+					'open',
+					'cooldownUntil',
+					String(now + EXTENDED_COOLDOWN_MS),
+					'tripReason',
+					'Bounce detected during half-open test'
 				);
 				logger.warn({ orgId, halfOpenBounced }, 'Circuit breaker re-opened from half-open');
 				return { allowed: false, retryAfter: EXTENDED_COOLDOWN_MS, state: 'open' };
@@ -106,6 +121,18 @@ export async function canSend(redis: Redis, orgId: string): Promise<{
 	}
 
 	return { allowed: true };
+}
+
+function breakerScope(orgId: string, provider?: string): string {
+	return provider ? `${orgId}:provider:${provider}` : orgId;
+}
+
+function breakerStateKey(orgId: string, provider?: string): string {
+	return `${BREAKER_PREFIX}${breakerScope(orgId, provider)}${STATE_SUFFIX}`;
+}
+
+function breakerOutcomesKey(orgId: string, provider?: string): string {
+	return `${BREAKER_PREFIX}${breakerScope(orgId, provider)}${OUTCOMES_SUFFIX}`;
 }
 
 /**
@@ -119,10 +146,25 @@ export async function recordOutcome(
 	redis: Redis,
 	orgId: string,
 	outcome: 'delivered' | 'bounced' | 'complained',
-	config?: MtaConfig
+	config?: MtaConfig,
+	provider?: string
 ): Promise<void> {
-	const outcomesKey = `${BREAKER_PREFIX}${orgId}${OUTCOMES_SUFFIX}`;
-	const stateKey = `${BREAKER_PREFIX}${orgId}${STATE_SUFFIX}`;
+	if (provider) {
+		await recordScopedOutcome(redis, orgId, outcome, undefined, provider);
+		return;
+	}
+	await recordScopedOutcome(redis, orgId, outcome, config);
+}
+
+async function recordScopedOutcome(
+	redis: Redis,
+	orgId: string,
+	outcome: 'delivered' | 'bounced' | 'complained',
+	config?: MtaConfig,
+	provider?: string
+): Promise<void> {
+	const outcomesKey = breakerOutcomesKey(orgId, provider);
+	const stateKey = breakerStateKey(orgId, provider);
 
 	const marker = outcome === 'bounced' ? 'b' : outcome === 'complained' ? 'c' : 'd';
 
@@ -199,10 +241,14 @@ export async function recordOutcome(
 		const now = Date.now();
 		await redis.hset(
 			stateKey,
-			'status', 'open',
-			'openedAt', String(now),
-			'cooldownUntil', String(now + COOLDOWN_MS),
-			'tripReason', reason
+			'status',
+			'open',
+			'openedAt',
+			String(now),
+			'cooldownUntil',
+			String(now + COOLDOWN_MS),
+			'tripReason',
+			reason
 		);
 		await redis.expire(stateKey, OUTCOME_TTL);
 
@@ -223,12 +269,11 @@ export async function recordOutcome(
 				},
 				config,
 				redis
-			).catch((err) => logger.error({ err, orgId }, 'Failed to notify Convex of circuit breaker trip'));
-
-			logger.info(
-				{ orgId, bounceRate, complaintRate, total },
-				'Circuit breaker trip details'
+			).catch((err) =>
+				logger.error({ err, orgId }, 'Failed to notify Convex of circuit breaker trip')
 			);
+
+			logger.info({ orgId, bounceRate, complaintRate, total }, 'Circuit breaker trip details');
 		}
 	}
 }
@@ -236,8 +281,12 @@ export async function recordOutcome(
 /**
  * Get circuit breaker state for monitoring
  */
-export async function getState(redis: Redis, orgId: string): Promise<CircuitBreakerState> {
-	const stateKey = `${BREAKER_PREFIX}${orgId}${STATE_SUFFIX}`;
+export async function getState(
+	redis: Redis,
+	orgId: string,
+	provider?: string
+): Promise<CircuitBreakerState> {
+	const stateKey = breakerStateKey(orgId, provider);
 	const data = await redis.hgetall(stateKey);
 
 	return {

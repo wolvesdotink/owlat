@@ -219,10 +219,72 @@ export const deliveryTables = {
 		),
 		// Optional IP pool override (for MTA provider)
 		ipPool: v.optional(v.string()),
+		// Explicit relay escape hatch. The relay must also be an enabled route
+		// entry and is re-verified for the From-domain at every route decision.
+		deliverabilityFallback: v.optional(
+			v.object({
+				isEnabled: v.boolean(),
+				relayProviderType: v.string(),
+				isWarmupOverflowEnabled: v.boolean(),
+			})
+		),
 		// Timestamps
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_message_type', ['messageType']),
+
+	// Durable provider-slice fallback state materialized from the authenticated
+	// MTA snapshot. One row per tenant + destination provider (plus `all`).
+	deliverabilityRouteStates: defineTable({
+		organizationId: v.string(),
+		destinationProvider: v.union(
+			v.literal('all'),
+			v.literal('gmail'),
+			v.literal('microsoft'),
+			v.literal('yahoo'),
+			v.literal('apple'),
+			v.literal('other')
+		),
+		isFallbackActive: v.boolean(),
+		signals: v.array(
+			v.object({
+				source: v.union(
+					v.literal('ip_quarantined'),
+					v.literal('dnsbl_listed'),
+					v.literal('breaker_open'),
+					v.literal('persistent_defers')
+				),
+				severity: v.union(v.literal('warning'), v.literal('critical')),
+				observedAt: v.number(),
+			})
+		),
+		fallbackActiveSince: v.optional(v.number()),
+		healthySince: v.optional(v.number()),
+		snapshotGeneratedAt: v.number(),
+		expiresAt: v.number(),
+		updatedAt: v.number(),
+	})
+		.index('by_org_provider', ['organizationId', 'destinationProvider'])
+		.index('by_expires_at', ['expiresAt']),
+
+	// Recipient-domain provider classifications learned from successful MTA
+	// deliveries. This lets pre-send routing reuse the MTA's authoritative MX
+	// resolution for custom Workspace / Microsoft 365 domains.
+	destinationProviderDomains: defineTable({
+		organizationId: v.string(),
+		domain: v.string(),
+		destinationProvider: v.union(
+			v.literal('gmail'),
+			v.literal('microsoft'),
+			v.literal('yahoo'),
+			v.literal('apple'),
+			v.literal('other')
+		),
+		observedAt: v.number(),
+		expiresAt: v.number(),
+	})
+		.index('by_org_domain', ['organizationId', 'domain'])
+		.index('by_expires_at', ['expiresAt']),
 
 	// Provider Health - tracks email provider health for failover decisions
 	providerHealth: defineTable({

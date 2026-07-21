@@ -211,6 +211,8 @@ describe('mtaAdapter.parseEvent', () => {
 			JSON.stringify({
 				event: 'sent',
 				messageId: 'send_123',
+				organizationId: 'org-a',
+				recipient: 'user@workspace.example',
 				destinationProvider: 'gmail',
 				primarySendingDomain: 'example.co.uk',
 				timestamp: 1700000000000,
@@ -218,6 +220,8 @@ describe('mtaAdapter.parseEvent', () => {
 		);
 		expect(event).toMatchObject({
 			kind: 'email.delivered',
+			organizationId: 'org-a',
+			recipient: 'user@workspace.example',
 			destinationProvider: 'gmail',
 			primarySendingDomain: 'example.co.uk',
 		});

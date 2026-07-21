@@ -24,7 +24,22 @@ function makeCtx(): BasePhaseCtx {
 		organizationId: 'org-42',
 		dkimDomain: 'owlat.com',
 	};
-	return { job, domain: 'example.com', isp: 'other', fromDomain: 'owlat.com' };
+	return {
+		job,
+		domain: 'example.com',
+		destination: {
+			recipientDomain: 'example.com',
+			providerKey: 'other',
+			throttleKey: 'example.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [{ exchange: 'mx.example.com', priority: 0 }],
+			},
+			daneDiscoveryAuthenticated: true,
+		},
+		fromDomain: 'owlat.com',
+	};
 }
 
 const deps: PhaseDeps = { redis: {} as never, config: {} as MtaConfig };
@@ -36,6 +51,7 @@ describe('circuitBreakerPhase', () => {
 		vi.mocked(circuitBreaker.canSend).mockResolvedValueOnce({ allowed: true, state: 'closed' });
 		const out = await circuitBreakerPhase.run(deps, makeCtx());
 		expect(out.kind).toBe('continue');
+		expect(circuitBreaker.canSend).toHaveBeenCalledWith(deps.redis, 'org-42', 'other');
 	});
 
 	it('defers using the breaker-supplied retryAfter when open', async () => {

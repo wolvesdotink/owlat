@@ -48,6 +48,7 @@ export type DispatchEffect =
 			kind: 'circuit_breaker_outcome';
 			orgId: string;
 			outcome: 'delivered' | 'bounced' | 'complained';
+			providerKey?: string;
 	  }
 	| {
 			/**
@@ -160,7 +161,15 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 				effect.enhancedCode
 			);
 		case 'circuit_breaker_outcome':
-			return circuitBreaker.recordOutcome(deps.redis, effect.orgId, effect.outcome, deps.config);
+			return effect.providerKey
+				? circuitBreaker.recordOutcome(
+						deps.redis,
+						effect.orgId,
+						effect.outcome,
+						deps.config,
+						effect.providerKey
+					)
+				: circuitBreaker.recordOutcome(deps.redis, effect.orgId, effect.outcome, deps.config);
 		case 'campaign_delivery_record':
 			return campaignComplaintRate
 				.recordDelivery(deps.redis, effect.campaignId)
