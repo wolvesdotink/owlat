@@ -222,6 +222,8 @@ const sendingDetail = computed(() => {
 				<p class="text-sm">{{ abuseWarning.message }}</p>
 			</div>
 
+			<DeliveryComplianceTelemetryCard />
+
 			<!-- Stat tiles: bounce / complaint / send budget — each with a real
 				 day-over-day delta direction and its threshold as a muted hint. -->
 			<UiCard>

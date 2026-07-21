@@ -23,9 +23,9 @@
 
 import type Redis from 'ioredis';
 import type { Queue, ReservedJob } from 'groupmq';
-import type { EmailJob } from '../types.js';
+import type { DestinationProviderKey, EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
-import { extractDomain, classifyIsp, buildGroupKey } from './groups.js';
+import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { sendToMx } from '../smtp/sender.js';
 import { recordWorkerHeartbeat } from '../routes/health.js';
@@ -39,6 +39,7 @@ import type { AttemptCtx, BasePhaseCtx } from '../dispatch/types.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { PipelineResult } from '../dispatch/pipeline.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
+import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
 
 /**
  * Add random jitter (±15%) to a delay to prevent thundering herd when
@@ -89,7 +90,8 @@ export async function handleEmailJob(
 	const data = job.data;
 	const deps = { redis, config };
 	const domain = extractDomain(data.to);
-	const isp = classifyIsp(domain);
+	const destination = await resolveDestinationSnapshot(redis, domain, { config });
+	const { providerKey } = destination;
 	// extractDomainOrNull unwraps a "Name <addr>" From (a raw split would keep
 	// the trailing `>`); undefined when no address is present.
 	const fromDomain = extractDomainOrNull(data.from) ?? undefined;
@@ -101,17 +103,31 @@ export async function handleEmailJob(
 
 	recordWorkerHeartbeat(redis, config.serverId).catch(() => {});
 
-	const baseCtx: BasePhaseCtx = { job: data, domain, isp, fromDomain };
+	const baseCtx: BasePhaseCtx = {
+		job: data,
+		domain,
+		destination,
+		fromDomain,
+	};
 
 	const piped = await runPipeline(deps, mainPipeline, baseCtx);
 
 	if (piped.kind === 'drop') {
-		await handleDrop(piped, data, domain, isp, deps);
+		await handleDrop(piped, data, domain, providerKey, deps);
 		return;
 	}
 
 	if (piped.kind === 'defer') {
-		await disposeDefer(job, queue, deps, domain, 'self_throttle', piped.delayMs, piped.reason);
+		await disposeDefer(
+			job,
+			queue,
+			deps,
+			domain,
+			providerKey,
+			'self_throttle',
+			piped.delayMs,
+			piped.reason
+		);
 		return;
 	}
 	const eligibilityLease = {
@@ -124,6 +140,7 @@ export async function handleEmailJob(
 			queue,
 			deps,
 			domain,
+			providerKey,
 			'self_throttle',
 			60_000,
 			'Selected outbound IP became ineligible before SMTP'
@@ -132,10 +149,10 @@ export async function handleEmailJob(
 	}
 
 	const startTime = Date.now();
-	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease);
+	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease, destination);
 	const durationMs = Date.now() - startTime;
 
-	const outcome = classifyResult(result);
+	const outcome = classifyResult(result, providerKey);
 	const attemptCtx: AttemptCtx = { ...piped.ctx, durationMs };
 	const { effects, defer } = reduce(outcome, attemptCtx);
 
@@ -143,7 +160,16 @@ export async function handleEmailJob(
 	logOutcome(outcome, data, attemptCtx);
 
 	if (defer) {
-		await disposeDefer(job, queue, deps, domain, 'remote_4xx', defer.delayMs, defer.reason);
+		await disposeDefer(
+			job,
+			queue,
+			deps,
+			domain,
+			providerKey,
+			'remote_4xx',
+			defer.delayMs,
+			defer.reason
+		);
 	}
 }
 
@@ -164,6 +190,7 @@ async function disposeDefer(
 	queue: Queue<EmailJob>,
 	deps: { redis: Redis; config: MtaConfig },
 	domain: string,
+	providerKey: DestinationProviderKey,
 	kind: DeferKind,
 	delayMs: number,
 	reason: string
@@ -173,7 +200,7 @@ async function disposeDefer(
 	const ageMs = messageAgeMs(job, now);
 
 	if (ageMs >= deps.config.maxMessageAgeMs) {
-		await emitExpiredBounce(data, deps, domain, ageMs, reason);
+		await emitExpiredBounce(data, deps, domain, providerKey, ageMs, reason);
 		return;
 	}
 
@@ -202,6 +229,7 @@ async function emitExpiredBounce(
 	data: EmailJob,
 	deps: { redis: Redis; config: MtaConfig },
 	domain: string,
+	providerKey: DestinationProviderKey,
 	ageMs: number,
 	reason: string
 ): Promise<void> {
@@ -221,6 +249,7 @@ async function emitExpiredBounce(
 				status: 'expired',
 				bounceType: 'soft',
 				domain,
+				provider: providerKey,
 				pool: data.ipPool,
 				reason: `Expired after ${ageMs}ms: ${reason}`,
 			},
@@ -250,7 +279,7 @@ async function handleDrop(
 	piped: Extract<PipelineResult<BasePhaseCtx>, { kind: 'drop' }>,
 	job: EmailJob,
 	domain: string,
-	isp: string,
+	providerKey: DestinationProviderKey,
 	deps: { redis: Redis; config: MtaConfig }
 ): Promise<void> {
 	const effects: DispatchEffect[] = [];
@@ -263,7 +292,7 @@ async function handleDrop(
 		effects.push({
 			kind: 'metrics_counter_inc',
 			pool: job.ipPool,
-			isp,
+			isp: providerKey,
 			outcome: 'rejected',
 		});
 	} else {
@@ -272,7 +301,7 @@ async function handleDrop(
 
 	effects.push({
 		kind: 'log_delivery_event',
-		event: buildDropEvent(piped, job, domain),
+		event: buildDropEvent(piped, job, domain, providerKey),
 	});
 
 	await applyEffects(effects, deps);
@@ -281,7 +310,8 @@ async function handleDrop(
 function buildDropEvent(
 	piped: Extract<PipelineResult<BasePhaseCtx>, { kind: 'drop' }>,
 	job: EmailJob,
-	domain: string
+	domain: string,
+	providerKey: DestinationProviderKey
 ): DeliveryEvent {
 	const base: DeliveryEvent = {
 		messageId: job.messageId,
@@ -290,6 +320,7 @@ function buildDropEvent(
 		orgId: job.organizationId,
 		status: piped.status,
 		domain,
+		provider: providerKey,
 		pool: job.ipPool,
 	};
 	if (piped.status === 'screened') {

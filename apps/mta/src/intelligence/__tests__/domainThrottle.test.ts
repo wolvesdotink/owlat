@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
-import { acquireSlot, recordSuccess, recordDefer, recordReject, getThrottleState } from '../domainThrottle.js';
+import {
+	acquireSlot,
+	recordSuccess,
+	recordDefer,
+	recordReject,
+	getThrottleState,
+} from '../domainThrottle.js';
 import { setProfile } from '../../config/ispProfiles.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -43,9 +49,12 @@ describe('domainThrottle', () => {
 			const now = Date.now();
 			await redis.hset(
 				hashKey,
-				'currentRate', '100',
-				'status', 'blocking',
-				'lastDeferAt', String(now)
+				'currentRate',
+				'100',
+				'status',
+				'blocking',
+				'lastDeferAt',
+				String(now)
 			);
 
 			const result = await acquireSlot(redis, ip, 'gmail.com');
@@ -57,9 +66,12 @@ describe('domainThrottle', () => {
 			const fiveMinAgo = Date.now() - 301_000;
 			await redis.hset(
 				hashKey,
-				'currentRate', '100',
-				'status', 'blocking',
-				'lastDeferAt', String(fiveMinAgo)
+				'currentRate',
+				'100',
+				'status',
+				'blocking',
+				'lastDeferAt',
+				String(fiveMinAgo)
 			);
 
 			const result = await acquireSlot(redis, ip, 'gmail.com');
@@ -98,7 +110,15 @@ describe('domainThrottle', () => {
 		it('rate does not exceed ceiling', async () => {
 			const hashKey = `mta:throttle:${ip}:gmail.com`;
 			// Set rate close to ceiling (gmail ceiling = 300)
-			await redis.hset(hashKey, 'currentRate', '295', 'status', 'healthy', 'consecutiveSuccess', '0');
+			await redis.hset(
+				hashKey,
+				'currentRate',
+				'295',
+				'status',
+				'healthy',
+				'consecutiveSuccess',
+				'0'
+			);
 
 			for (let i = 0; i < 20; i++) {
 				await recordSuccess(redis, ip, 'gmail.com');
@@ -222,7 +242,7 @@ describe('domainThrottle', () => {
 			// Before the fix domainThrottle read the static compiled profile
 			// (defaultRate=100) and this override had ZERO effect — ~100 slots
 			// per window would be granted.
-			await setProfile(redis, 'gmail.com', { defaultRate: 1, ceiling: 1, floor: 1 });
+			await setProfile(redis, 'gmail', { defaultRate: 1, ceiling: 1, floor: 1 });
 
 			// First acquisition within the 60s window succeeds and seeds the
 			// adaptive rate from the runtime defaultRate.
@@ -242,7 +262,7 @@ describe('domainThrottle', () => {
 
 		it('initializes the adaptive rate from a runtime override for a known domain', async () => {
 			// yahoo.com static defaultRate is 50; override it to 7 at runtime.
-			await setProfile(redis, 'yahoo.com', { defaultRate: 7, ceiling: 20, floor: 1 });
+			await setProfile(redis, 'yahoo', { defaultRate: 7, ceiling: 20, floor: 1 });
 
 			await acquireSlot(redis, ip, 'yahoo.com');
 
@@ -252,12 +272,20 @@ describe('domainThrottle', () => {
 
 		it('uses the runtime ceiling when recovering rate', async () => {
 			// Lower gmail's ceiling to 12 at runtime; recovery must respect it.
-			await setProfile(redis, 'gmail.com', { defaultRate: 5, ceiling: 12, floor: 1 });
+			await setProfile(redis, 'gmail', { defaultRate: 5, ceiling: 12, floor: 1 });
 
 			const hashKey = `mta:throttle:${ip}:gmail.com`;
 			// Sit just below the runtime ceiling so one recovery step would
 			// overshoot the static ceiling (300) but must be capped at 12.
-			await redis.hset(hashKey, 'currentRate', '11', 'status', 'healthy', 'consecutiveSuccess', '0');
+			await redis.hset(
+				hashKey,
+				'currentRate',
+				'11',
+				'status',
+				'healthy',
+				'consecutiveSuccess',
+				'0'
+			);
 
 			for (let i = 0; i < 20; i++) {
 				await recordSuccess(redis, ip, 'gmail.com');
@@ -270,7 +298,7 @@ describe('domainThrottle', () => {
 
 		it('uses the runtime floor when backing off rate', async () => {
 			// Raise gmail's floor to 10 at runtime; backoff must respect it.
-			await setProfile(redis, 'gmail.com', { defaultRate: 20, ceiling: 50, floor: 10 });
+			await setProfile(redis, 'gmail', { defaultRate: 20, ceiling: 50, floor: 10 });
 
 			const hashKey = `mta:throttle:${ip}:gmail.com`;
 			await redis.hset(hashKey, 'currentRate', '14', 'status', 'healthy');
@@ -308,7 +336,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('grants exactly the runtime-overridden cap (rate=7)', async () => {
-			await setProfile(redis, 'yahoo.com', { defaultRate: 7, ceiling: 20, floor: 1 });
+			await setProfile(redis, 'yahoo', { defaultRate: 7, ceiling: 20, floor: 1 });
 
 			let granted = 0;
 			for (let i = 0; i < 30; i++) {
@@ -330,7 +358,7 @@ describe('domainThrottle', () => {
 			// (that would breach the cap) and never fewer (that would waste
 			// capacity). This is the property the atomic script exists for.
 			const results = await Promise.all(
-				Array.from({ length: 50 }, () => acquireSlot(redis, ip, 'gmail.com')),
+				Array.from({ length: 50 }, () => acquireSlot(redis, ip, 'gmail.com'))
 			);
 
 			const granted = results.filter((r) => r === true).length;
@@ -343,9 +371,7 @@ describe('domainThrottle', () => {
 			const hashKey = `mta:throttle:${ip}:outlook.com`;
 			await redis.hset(hashKey, 'currentRate', '5', 'status', 'healthy');
 
-			await Promise.all(
-				Array.from({ length: 40 }, () => acquireSlot(redis, ip, 'outlook.com')),
-			);
+			await Promise.all(Array.from({ length: 40 }, () => acquireSlot(redis, ip, 'outlook.com')));
 
 			// The sorted-set window holds at most `currentRate` admitted entries.
 			const windowKey = `mta:throttle:window:${ip}:outlook.com`;
@@ -416,9 +442,12 @@ describe('domainThrottle', () => {
 			const hashKey = `mta:throttle:${ip}:gmail.com`;
 			await redis.hset(
 				hashKey,
-				'currentRate', '50',
-				'status', 'blocking',
-				'lastDeferAt', String(Date.now() - 60_000), // 1 min ago
+				'currentRate',
+				'50',
+				'status',
+				'blocking',
+				'lastDeferAt',
+				String(Date.now() - 60_000) // 1 min ago
 			);
 
 			expect(await acquireSlot(redis, ip, 'gmail.com')).toBe(false);
@@ -430,11 +459,16 @@ describe('domainThrottle', () => {
 			const hashKey = `mta:throttle:${ip}:gmail.com`;
 			await redis.hset(
 				hashKey,
-				'currentRate', '50',
-				'status', 'blocking',
-				'lastDeferAt', String(Date.now() - 3_600_001), // just over 1h ago
-				'recentDefers', '3',
-				'consecutiveSuccess', '0',
+				'currentRate',
+				'50',
+				'status',
+				'blocking',
+				'lastDeferAt',
+				String(Date.now() - 3_600_001), // just over 1h ago
+				'recentDefers',
+				'3',
+				'consecutiveSuccess',
+				'0'
 			);
 
 			// First acquire after 1h flips blocking → healthy and is admitted.
@@ -452,7 +486,15 @@ describe('domainThrottle', () => {
 	describe('PR-73: recordSuccess ramps the rate to the ISP ceiling', () => {
 		it('multiple recovery cycles climb toward and then clamp at the gmail ceiling (300)', async () => {
 			const hashKey = `mta:throttle:${ip}:gmail.com`;
-			await redis.hset(hashKey, 'currentRate', '100', 'status', 'healthy', 'consecutiveSuccess', '0');
+			await redis.hset(
+				hashKey,
+				'currentRate',
+				'100',
+				'status',
+				'healthy',
+				'consecutiveSuccess',
+				'0'
+			);
 
 			// 30 cycles of 20 consecutive successes each (recoveryFactor 1.1).
 			// 100 * 1.1^n grows past the 300 ceiling and must clamp there.
@@ -469,7 +511,15 @@ describe('domainThrottle', () => {
 
 		it('a recovery step from blocking restores healthy status', async () => {
 			const hashKey = `mta:throttle:${ip}:gmail.com`;
-			await redis.hset(hashKey, 'currentRate', '20', 'status', 'blocking', 'consecutiveSuccess', '0');
+			await redis.hset(
+				hashKey,
+				'currentRate',
+				'20',
+				'status',
+				'blocking',
+				'consecutiveSuccess',
+				'0'
+			);
 
 			for (let i = 0; i < 20; i++) {
 				await recordSuccess(redis, ip, 'gmail.com');

@@ -22,6 +22,7 @@ import { startDnsblChecker } from './intelligence/dnsbl.js';
 import { initializeWarming, evaluateDay } from './intelligence/warming.js';
 import * as orgLimits from './intelligence/orgLimits.js';
 import { pool } from './smtp/connectionPool.js';
+import { assertLeaseProtocolCutoverSafe } from './smtp/poolGlobalCap.js';
 import { seedFromConfig } from './smtp/dkimStore.js';
 import { initMtaSecretBox } from './lib/secretBox.js';
 import { seedProfiles } from './config/ispProfiles.js';
@@ -72,9 +73,20 @@ export async function main() {
 	logger.info('Redis connected');
 
 	// ── 3a. Enable distributed pool coordination ──
-	pool.enableDistributedCoordination(redis, config.smtpPoolGlobalMaxPerHost, config.serverId);
+	if (config.smtpPoolCoordinationProtocol === 'leases-v1') {
+		await assertLeaseProtocolCutoverSafe(redis);
+	}
+	pool.enableDistributedCoordination(
+		redis,
+		config.smtpPoolGlobalMaxPerHost,
+		config.serverId,
+		config.smtpPoolCoordinationProtocol ?? 'legacy-v0'
+	);
 	logger.info(
-		{ globalMaxPerHost: config.smtpPoolGlobalMaxPerHost },
+		{
+			globalMaxPerHost: config.smtpPoolGlobalMaxPerHost,
+			protocol: config.smtpPoolCoordinationProtocol,
+		},
 		'Distributed pool coordination enabled'
 	);
 

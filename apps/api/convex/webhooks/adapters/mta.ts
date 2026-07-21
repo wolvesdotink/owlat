@@ -37,6 +37,8 @@ interface MtaWebhookPayload {
 	phase?: 'pending' | 'activated';
 	campaignId?: string;
 	complaintRate?: number;
+	destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+	primarySendingDomain?: string;
 	inboundPayload?: {
 		from: string;
 		to: string;
@@ -175,9 +177,18 @@ export const mtaAdapter: InboundAdapter = {
 			case 'sent': {
 				if (!payload.messageId) return null;
 				return {
-					kind: 'email.sent',
+					// The MTA emits this only after the destination SMTP server has
+					// accepted DATA. POST /send queue acceptance is recorded separately
+					// by the worker as `sent`; this is the truthful delivered denominator.
+					kind: 'email.delivered',
 					providerMessageId: payload.messageId,
 					at: payload.timestamp ?? Date.now(),
+					...(payload.destinationProvider
+						? { destinationProvider: payload.destinationProvider }
+						: {}),
+					...(payload.primarySendingDomain
+						? { primarySendingDomain: payload.primarySendingDomain }
+						: {}),
 				};
 			}
 			case 'inbound.received': {
