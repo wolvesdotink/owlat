@@ -11,6 +11,7 @@ import { DNSBL_ZONES } from '../config.js';
 import type { MtaConfig } from '../config.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
+import { getIpPoolBlockReasons, setIpPoolBlock } from '../scaling/ipPool.js';
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const LOOKUP_TIMEOUT_MS = 5000;
@@ -105,11 +106,14 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 		updates.push('overallStatus', newStatus);
 
 		await redis.hset(hashKey, ...updates);
+		// Reconcile on every observation, not only transitions. The shared pool
+		// gate composes this reason atomically with FCrDNS quarantine.
+		await setIpPoolBlock(redis, ip, 'dnsbl', newStatus === 'critical');
+		if (newStatus === 'critical') await redis.sadd(IP_POOL_BLOCKED, ip);
+		else await redis.srem(IP_POOL_BLOCKED, ip);
 
 		// Handle status transitions
 		if (newStatus === 'critical' && previousStatus !== 'critical') {
-			// CRITICAL: Remove from active pool
-			await redis.smove(IP_POOL_ACTIVE, IP_POOL_BLOCKED, ip);
 			logger.error({ ip, listedOn }, 'IP BLOCKED — removed from active pool');
 
 			await notifyConvex(
@@ -141,9 +145,7 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 				redis
 			).catch(() => {});
 		} else if (newStatus === 'clean' && previousStatus !== 'clean' && previousStatus) {
-			// DELISTED: Restore to active pool
-			await redis.smove(IP_POOL_BLOCKED, IP_POOL_ACTIVE, ip);
-			logger.info({ ip }, 'IP delisted — restored to active pool');
+			logger.info({ ip }, 'IP delisted — DNSBL block cleared');
 
 			await notifyConvex(
 				{
@@ -162,18 +164,21 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 	// Check if ALL IPs are blocked
 	const activeCount = await redis.scard(IP_POOL_ACTIVE);
 	if (activeCount === 0) {
-		logger.error('ALL IPs blocked — emergency state');
+		logger.error('ALL IPs unavailable — emergency state');
 		await redis.set('mta:emergency:all_ips_blocked', '1');
-		await notifyConvex(
-			{
-				event: 'all_ips_blocked',
-				severity: 'critical',
-				message: 'All sending IPs are blocklisted. Email sending is paused.',
-				timestamp: Date.now(),
-			},
-			config,
-			redis
-		).catch(() => {});
+		const reasonSets = await Promise.all(uniqueIps.map((ip) => getIpPoolBlockReasons(redis, ip)));
+		if (reasonSets.every((reasons) => reasons.includes('dnsbl'))) {
+			await notifyConvex(
+				{
+					event: 'all_ips_blocked',
+					severity: 'critical',
+					message: 'All sending IPs are blocklisted. Email sending is paused.',
+					timestamp: Date.now(),
+				},
+				config,
+				redis
+			).catch(() => {});
+		}
 	} else {
 		await redis.del('mta:emergency:all_ips_blocked');
 	}
@@ -183,17 +188,8 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
  * Initialize IP pools in Redis and start the DNSBL check interval
  */
 export function startDnsblChecker(redis: Redis, config: MtaConfig): NodeJS.Timeout {
-	// Initialize active IP set
-	const allIps = [...config.ipPools.transactional, ...config.ipPools.campaign];
-	const uniqueIps = [...new Set(allIps)];
-	for (const ip of uniqueIps) {
-		redis.sadd(IP_POOL_ACTIVE, ip).catch(() => {});
-	}
-
 	// Run initial check
-	runDnsblCheck(redis, config).catch((err) =>
-		logger.error({ err }, 'Initial DNSBL check failed')
-	);
+	runDnsblCheck(redis, config).catch((err) => logger.error({ err }, 'Initial DNSBL check failed'));
 
 	// Schedule periodic checks
 	return setInterval(() => {
@@ -206,7 +202,10 @@ export function startDnsblChecker(redis: Redis, config: MtaConfig): NodeJS.Timeo
 /**
  * Get DNSBL status for an IP (for monitoring)
  */
-export async function getDnsblStatus(redis: Redis, ip: string): Promise<Record<string, string> | null> {
+export async function getDnsblStatus(
+	redis: Redis,
+	ip: string
+): Promise<Record<string, string> | null> {
 	const hashKey = `${DNSBL_PREFIX}${ip}`;
 	const data = await redis.hgetall(hashKey);
 	return Object.keys(data).length > 0 ? data : null;

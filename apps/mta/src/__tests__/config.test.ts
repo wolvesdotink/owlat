@@ -74,6 +74,28 @@ describe('loadConfig', () => {
 		expect(config.ipPools.transactional).toEqual(['10.0.0.1', '10.0.0.2', '10.0.0.3']);
 	});
 
+	it('rejects invalid or IPv6 pool entries until the IPv6 delivery phase is enabled', () => {
+		process.env.IP_POOLS_TRANSACTIONAL = 'not-an-ip';
+		expect(() => loadConfig()).toThrow('not a valid IPv4');
+		process.env.IP_POOLS_TRANSACTIONAL = '2001:db8::1';
+		expect(() => loadConfig()).toThrow('not a valid IPv4');
+	});
+
+	it('defaults to a fail-closed identity gate and parses safe custom PTR suffixes', () => {
+		delete process.env.MTA_ALLOW_UNVERIFIED_FCRDNS;
+		process.env.MTA_GENERIC_PTR_SUFFIXES = 'static.example-vps.net, customer.host.test ';
+		const config = loadConfig();
+		expect(config.allowUnverifiedFcrdns).toBe(false);
+		expect(config.genericPtrSuffixes).toEqual(['static.example-vps.net', 'customer.host.test']);
+	});
+
+	it('accepts only an explicit boolean lab override', () => {
+		process.env.MTA_ALLOW_UNVERIFIED_FCRDNS = 'true';
+		expect(loadConfig().allowUnverifiedFcrdns).toBe(true);
+		process.env.MTA_ALLOW_UNVERIFIED_FCRDNS = 'yes';
+		expect(() => loadConfig()).toThrow('must be true or false');
+	});
+
 	it('throws on invalid DKIM_KEYS JSON', () => {
 		process.env.DKIM_KEYS = 'not-valid-json{{{';
 		expect(() => loadConfig()).toThrow('DKIM_KEYS must be valid JSON');

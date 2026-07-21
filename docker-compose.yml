@@ -160,6 +160,9 @@ services:
       # presence + strength at boot (config.ts), matching the MTA_API_KEY contract.
       MTA_SECRET: ${MTA_SECRET:-}
       EHLO_HOSTNAME: ${EHLO_HOSTNAME:-mail.localhost}
+      EHLO_HOSTNAMES: ${EHLO_HOSTNAMES:-}
+      MTA_GENERIC_PTR_SUFFIXES: ${MTA_GENERIC_PTR_SUFFIXES:-}
+      MTA_ALLOW_UNVERIFIED_FCRDNS: ${MTA_ALLOW_UNVERIFIED_FCRDNS:-false}
       RETURN_PATH_DOMAIN: ${RETURN_PATH_DOMAIN:-bounces.localhost}
       BOUNCE_VERP_KEY: ${BOUNCE_VERP_KEY:-}
       CONVEX_SITE_URL: http://convex:3211

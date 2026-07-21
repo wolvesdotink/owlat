@@ -170,6 +170,23 @@ export const deliveryTables = {
 				deferralRate: v.number(),
 				pool: v.string(),
 				active: v.boolean(),
+				blockReasons: v.optional(v.array(v.string())),
+				dnsbl: v.optional(v.string()),
+				fcrdns: v.optional(
+					v.object({
+						ehlo: v.string(),
+						ptrNames: v.array(v.string()),
+						isPtrPresent: v.boolean(),
+						isPtrFqdn: v.boolean(),
+						isForwardConfirmed: v.boolean(),
+						isEhloMatched: v.boolean(),
+						verdict: v.string(),
+						isGenericPtr: v.boolean(),
+						reason: v.optional(v.string()),
+						checkedAt: v.number(),
+						isOverridden: v.boolean(),
+					})
+				),
 			})
 		),
 		syncedAt: v.number(),

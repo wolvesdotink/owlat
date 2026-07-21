@@ -23,6 +23,7 @@ export const SetupStep = {
 	Preflight: 'preflight',
 	Config: 'config',
 	ComposeUp: 'compose-up',
+	MtaIdentity: 'mta-identity',
 	WaitConvex: 'wait-convex',
 	AdminKey: 'admin-key',
 	DeployFunctions: 'deploy-functions',
