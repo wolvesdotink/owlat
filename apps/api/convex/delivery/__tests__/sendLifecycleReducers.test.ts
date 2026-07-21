@@ -87,6 +87,20 @@ describe('reduceSent', () => {
 		expect(result.patch).toEqual({});
 		expect(result.effects).toEqual([]);
 	});
+
+	it('counts MTA queue acceptance as sent only, never as delivered volume', () => {
+		const result = reduceSent(
+			campaignSend({ status: 'queued' }),
+			{ to: 'sent', at: 1000, providerMessageId: 'pm-mta', providerType: 'mta' },
+			campaignRef,
+			'org.example'
+		);
+		const reputationEvents = result.effects.filter((effect) => effect.kind === 'reputation_update');
+		expect(reputationEvents).toEqual([
+			{ kind: 'reputation_update', eventType: 'send', domain: 'org.example' },
+		]);
+		expect(result.patch['status']).toBe('sent');
+	});
 });
 
 describe('reduceFailed', () => {

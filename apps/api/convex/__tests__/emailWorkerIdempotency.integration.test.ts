@@ -52,6 +52,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		vi.stubEnv('MTA_API_URL', 'https://mta.test');
 		vi.stubEnv('MTA_API_KEY', 'test-key');
 		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
 	});
 
 	afterEach(() => {
@@ -84,13 +85,14 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 				new Response(JSON.stringify({ success: true, id: 'mta-msg-1' }), {
 					status: 200,
 					headers: { 'Content-Type': 'application/json' },
-				}),
+				})
 			);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
 		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
 			envelopeInput: {
 				kind: 'transactional' as const,
+				emailPurpose: 'transactional' as const,
 				to: 'rcpt@example.com',
 				from: 'sender@example.com',
 				providerType: 'mta',
@@ -118,12 +120,13 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		const t = convexTest(schema, modules);
 
 		let emailSendId: string;
+		let contactId: string;
 		await t.run(async (ctx) => {
 			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-			const contactId = await ctx.db.insert('contacts', createTestContact());
+			contactId = await ctx.db.insert('contacts', createTestContact());
 			emailSendId = await ctx.db.insert(
 				'emailSends',
-				createTestEmailSend({ campaignId, contactId, status: 'queued' }),
+				createTestEmailSend({ campaignId, contactId, status: 'queued' })
 			);
 		});
 
@@ -131,7 +134,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 			new Response(JSON.stringify({ success: true, id: 'mta-msg-2' }), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}),
+			})
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
@@ -142,8 +145,9 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 				from: 'sender@example.com',
 				providerType: 'mta',
 				template: { subject: 'hi', htmlContent: '<p>hi</p>' },
-				contactInfo: { email: 'rcpt@example.com' },
+				contactInfo: { contactId: contactId! as never, email: 'rcpt@example.com' },
 				emailSendId: emailSendId! as never,
+				convexSiteUrl: 'https://convex.example',
 			},
 		});
 
@@ -151,5 +155,57 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
 		expect(body.messageId).toBe(`send_${emailSendId!}`);
+	});
+
+	it('refuses a marketing automation envelope before provider dispatch when RFC 8058 headers are absent', async () => {
+		const t = convexTest(schema, modules);
+		const fetchSpy = vi.fn();
+		global.fetch = fetchSpy as unknown as typeof fetch;
+
+		await expect(
+			t.action(internal.delivery.worker.sendSingleEmail, {
+				envelopeInput: {
+					kind: 'transactional' as const,
+					emailPurpose: 'marketing' as const,
+					to: 'rcpt@example.com',
+					from: 'sender@example.com',
+					providerType: 'mta',
+					template: { subject: 'drip', htmlContent: '<p>drip</p>' },
+				},
+			})
+		).rejects.toThrow('list-unsubscribe');
+		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it('dispatches automation marketing mail with both RFC 8058 headers', async () => {
+		const t = convexTest(schema, modules);
+		const contactId = await t.run((ctx) => ctx.db.insert('contacts', createTestContact()));
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ success: true, id: 'mta-automation-1' }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		);
+		global.fetch = fetchSpy as unknown as typeof fetch;
+
+		await t.action(internal.delivery.worker.sendSingleEmail, {
+			envelopeInput: {
+				kind: 'transactional' as const,
+				emailPurpose: 'marketing' as const,
+				to: 'rcpt@example.com',
+				from: 'sender@example.com',
+				providerType: 'mta',
+				template: { subject: 'drip', htmlContent: '<p>drip</p>' },
+				contactId,
+				listUnsubscribe: true,
+				convexSiteUrl: 'https://convex.example',
+			},
+		});
+
+		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string) as {
+			headers: Record<string, string>;
+		};
+		expect(body.headers['List-Unsubscribe']).toMatch(/^<https:\/\/convex\.example\/unsub\//);
+		expect(body.headers['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
 	});
 });

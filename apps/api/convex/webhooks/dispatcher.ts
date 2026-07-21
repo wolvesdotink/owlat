@@ -87,12 +87,29 @@ const DISPATCH: DispatchTable = {
 		});
 	},
 	'email.delivered': async (ctx, e) => {
-		// Postbox dispatches have no separate delivered confirmation today.
-		if (isPostboxMessageId(e.providerMessageId)) return;
-		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
-			providerMessageId: e.providerMessageId,
-			transition: { to: 'delivered', at: e.at },
-		});
+		const outcome = isPostboxMessageId(e.providerMessageId)
+			? await ctx.runMutation(
+					internal.mail.postboxOutboundLifecycle.observeRemoteAcceptanceByMtaMessageId,
+					{
+						rawProviderMessageId: e.providerMessageId,
+						acceptedAt: e.at,
+					}
+				)
+			: await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+					providerMessageId: e.providerMessageId,
+					transition: { to: 'delivered', at: e.at },
+				});
+
+		// A late webhook after organization deletion must not recreate telemetry.
+		// Duplicate accepted-delivery webhooks are safe: the receipt writer below
+		// is idempotent by provider message id.
+		if (outcome.ok && e.destinationProvider === 'gmail' && e.primarySendingDomain) {
+			await ctx.runMutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
+				providerMessageId: e.providerMessageId,
+				primaryDomain: e.primarySendingDomain,
+				acceptedAt: e.at,
+			});
+		}
 	},
 	'email.failed': async (ctx, e) => {
 		// Terminal, NON-bounce failure (MTA post-DATA ambiguous drop). Transition the

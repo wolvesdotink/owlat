@@ -81,4 +81,9 @@ export {
 	type ComposeMessageInput,
 	type ComposedMessage,
 } from './compose/compose';
-export { signMessage, buildDkimSignatureLine, type DkimSigningKey } from './compose/dkim';
+export {
+	SIGNED_HEADERS,
+	signMessage,
+	buildDkimSignatureLine,
+	type DkimSigningKey,
+} from './compose/dkim';

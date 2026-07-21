@@ -15,6 +15,7 @@ import type { AttemptCtx } from './types.js';
 import type { DispatchEffect } from './effects.js';
 import { outcomeEventBase } from './outcomeEvent.js';
 import type { DispatchOutcome } from './outcomeClassification.js';
+import { primarySendingDomain } from '../intelligence/gmailBulkSender.js';
 
 export { classifyResult } from './outcomeClassification.js';
 export type { DispatchOutcome } from './outcomeClassification.js';
@@ -56,6 +57,7 @@ function reduceDelivered(
 ): OutcomeReduction {
 	const { job, ip, domain, durationMs } = ctx;
 	const { throttleKey, providerKey } = ctx.destination;
+	const sendingPrimaryDomain = primarySendingDomain(job.dkimDomain);
 	// Per-campaign complaint rate needs a denominator: bump the campaign's
 	// delivered counter when the job carries a campaign-stream `Feedback-ID`.
 	const campaignId = parseCampaignFromFeedbackId(feedbackIdHeader(job.headers));
@@ -98,6 +100,8 @@ function reduceDelivered(
 					event: 'sent',
 					messageId: job.messageId,
 					organizationId: job.organizationId,
+					destinationProvider: providerKey,
+					...(sendingPrimaryDomain ? { primarySendingDomain: sendingPrimaryDomain } : {}),
 					remoteMessageId: outcome.remoteMessageId,
 					timestamp: Date.now(),
 				},

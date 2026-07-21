@@ -121,6 +121,10 @@ export interface MtaWebhookEvent {
 	recipient?: string;
 	/** Organization ID (for org-level events) */
 	organizationId?: string;
+	/** Phase-2 MX-derived receiver identity for accepted-delivery telemetry. */
+	destinationProvider?: DestinationProviderKey;
+	/** PSL-correct primary sending domain used by Gmail's bulk classification. */
+	primarySendingDomain?: string;
 	/** Bounce type (for bounce events) */
 	bounceType?: 'hard' | 'soft';
 	/** Human-readable message */
