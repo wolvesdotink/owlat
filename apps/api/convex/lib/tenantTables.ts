@@ -74,6 +74,9 @@ export const TENANT_TABLES = [
 	'sendingDomainSesIdentities',
 	'trackingDomains',
 	'sendingReputation',
+	'gmailDeliveryReceipts',
+	'gmailVolumeBuckets',
+	'unsubscribeLatencyBuckets',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
 	'deliverySnapshots',
 	'sendDailyStats',

@@ -4,8 +4,8 @@
  * and the web reputation UI (`OrgReputationCard`, `DomainReputationTable`).
  *
  * A bounce/complaint rate (as a fraction of total sends) at or above each
- * boundary escalates the risk level. Industry context: Gmail/Yahoo reject above
- * ~0.3% complaints; major ESPs warn above ~2% bounces.
+ * boundary escalates the risk level. Industry context: Google and Yahoo publish
+ * 0.3% as a complaint-rate ceiling; major ESPs warn above ~2% bounces.
  */
 export const REPUTATION_THRESHOLDS = {
 	bounce: { medium: 0.02, high: 0.05, critical: 0.1 },
@@ -14,3 +14,10 @@ export const REPUTATION_THRESHOLDS = {
 
 /** Minimum sends before reputation enforcement kicks in (avoid penalizing tiny senders). */
 export const REPUTATION_MIN_SAMPLE_SIZE = 100;
+
+/** Google/Yahoo operator-facing FBL spam-rate guidance (complaints / delivered). */
+export const PROVIDER_SPAM_RATE_POLICY = {
+	target: 0.001,
+	hardThreshold: 0.003,
+	recoveryDays: 7,
+} as const;

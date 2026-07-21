@@ -37,6 +37,8 @@ interface MtaWebhookPayload {
 	phase?: 'pending' | 'activated';
 	campaignId?: string;
 	complaintRate?: number;
+	destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+	primarySendingDomain?: string;
 	inboundPayload?: {
 		from: string;
 		to: string;
@@ -178,6 +180,13 @@ export const mtaAdapter: InboundAdapter = {
 					kind: 'email.sent',
 					providerMessageId: payload.messageId,
 					at: payload.timestamp ?? Date.now(),
+					providerType: 'mta',
+					...(payload.destinationProvider
+						? { destinationProvider: payload.destinationProvider }
+						: {}),
+					...(payload.primarySendingDomain
+						? { primarySendingDomain: payload.primarySendingDomain }
+						: {}),
 				};
 			}
 			case 'inbound.received': {

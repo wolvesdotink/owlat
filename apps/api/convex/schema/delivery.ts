@@ -80,6 +80,39 @@ export const deliveryTables = {
 		createdAt: v.number(),
 	}).index('by_period', ['periodStart']),
 
+	// Idempotency receipts for MTA accepted-delivery observations. The MTA may
+	// retry a webhook after a response is lost; this receipt prevents a retry
+	// from inflating the Gmail 24-hour volume rollup. Cleanup retains 48 hours.
+	gmailDeliveryReceipts: defineTable({
+		providerMessageId: v.string(),
+		observedAt: v.number(),
+	})
+		.index('by_message_id', ['providerMessageId'])
+		.index('by_observed_at', ['observedAt']),
+
+	// Hourly, write-sharded accepted-delivery volume for MX destinations Phase 2
+	// classified as Gmail. `primaryDomain` is the PSL registrable DKIM domain,
+	// matching Google's same-primary-domain aggregation rule.
+	gmailVolumeBuckets: defineTable({
+		primaryDomain: v.string(),
+		hourStart: v.number(),
+		shardKey: v.number(),
+		deliveredCount: v.number(),
+		seedTag: v.optional(v.string()),
+	})
+		.index('by_domain_hour_shard', ['primaryDomain', 'hourStart', 'shardKey'])
+		.index('by_hour', ['hourStart']),
+
+	// Bounded histogram of real RFC 8058 POST processing latency. The one-click
+	// handler records one sample after the unsubscribe mutation has completed;
+	// the dashboard derives p95 over the retained 30-day daily buckets.
+	unsubscribeLatencyBuckets: defineTable({
+		periodStart: v.number(),
+		bucketCounts: v.array(v.number()),
+		totalSamples: v.number(),
+		lastRecordedAt: v.number(),
+	}).index('by_period', ['periodStart']),
+
 	// Content Scan Results - audit trail for pre-send content scanning
 	contentScanResults: defineTable({
 		resourceType: v.union(

@@ -39,8 +39,8 @@ import { REPUTATION_THRESHOLDS, REPUTATION_MIN_SAMPLE_SIZE } from '@owlat/shared
 /**
  * Industry-standard thresholds for sending reputation, derived from the shared
  * single source of truth (`@owlat/shared/reputation`) so the backend's risk
- * classification and the web reputation UI can never diverge. Gmail/Yahoo reject
- * at >0.3% complaint rate; major ESPs warn at >2% bounce rate.
+ * classification and the web reputation UI can never diverge. Google and Yahoo
+ * publish 0.3% as a complaint-rate ceiling; major ESPs warn at >2% bounce rate.
  */
 const RISK_THRESHOLDS = {
 	MIN_SAMPLE_SIZE: REPUTATION_MIN_SAMPLE_SIZE,

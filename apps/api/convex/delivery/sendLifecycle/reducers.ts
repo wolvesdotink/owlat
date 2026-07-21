@@ -1,9 +1,6 @@
 import type { Doc } from '../../_generated/dataModel';
 import type { Effect } from './effects';
-import {
-	contactEmailOf,
-	nonCampaignActivityProvenance,
-} from './lookups';
+import { contactEmailOf, nonCampaignActivityProvenance } from './lookups';
 import type {
 	EmailSendDoc,
 	ReducerResult,
@@ -64,20 +61,9 @@ export { reduceBounced, reduceComplained } from './feedbackReducers';
 
 export const LEGAL_EDGES: Record<SendStatus, ReadonlySet<SendStatus>> = {
 	queued: new Set<SendStatus>(['sent', 'failed']),
-	sent: new Set<SendStatus>([
-		'delivered',
-		'opened',
-		'clicked',
-		'bounced',
-		'complained',
-	]),
+	sent: new Set<SendStatus>(['delivered', 'opened', 'clicked', 'bounced', 'complained']),
 	failed: new Set<SendStatus>(),
-	delivered: new Set<SendStatus>([
-		'opened',
-		'clicked',
-		'bounced',
-		'complained',
-	]),
+	delivered: new Set<SendStatus>(['opened', 'clicked', 'bounced', 'complained']),
 	opened: new Set<SendStatus>(['clicked', 'bounced', 'complained']),
 	clicked: new Set<SendStatus>(['bounced', 'complained']),
 	bounced: new Set<SendStatus>(),
@@ -94,9 +80,7 @@ const SOFT_BOUNCED_LEGAL_EDGES: ReadonlySet<SendStatus> = new Set<SendStatus>([
 
 // Effective legal-edge set for a loaded Send, accounting for the soft-bounce
 // exception above. All non-`bounced` states use the static map.
-export function legalEdgesFor(
-	send: EmailSendDoc | TransactionalSendDoc
-): ReadonlySet<SendStatus> {
+export function legalEdgesFor(send: EmailSendDoc | TransactionalSendDoc): ReadonlySet<SendStatus> {
 	const from = send.status as SendStatus;
 	if (from === 'bounced' && send.bounceType === 'soft') {
 		return SOFT_BOUNCED_LEGAL_EDGES;
@@ -153,6 +137,17 @@ export function reduceSent(
 		eventType: 'send',
 		domain: senderDomain,
 	});
+	// The MTA emits `sent` only after the destination SMTP server accepts DATA;
+	// unlike API providers it has no later delivered webhook. Count that accepted
+	// delivery once here so the FBL spam-rate denominator is real delivered
+	// volume. Other providers retain their separate email.delivered transition.
+	if (args.providerType === 'mta') {
+		effects.push({
+			kind: 'reputation_update',
+			eventType: 'deliver',
+			domain: senderDomain,
+		});
+	}
 
 	// Customer webhook fires for both kinds. The payload tells the
 	// subscriber which kind by which id is populated.
@@ -162,10 +157,7 @@ export function reduceSent(
 			literal: 'email.sent',
 			input: {
 				email: contactEmailOf(send),
-				campaignId:
-					ref.kind === 'campaign'
-						? (send as EmailSendDoc).campaignId
-						: null,
+				campaignId: ref.kind === 'campaign' ? (send as EmailSendDoc).campaignId : null,
 				transactionalEmailId:
 					ref.kind === 'transactional'
 						? ((send as TransactionalSendDoc).transactionalEmailId ?? null)
@@ -190,19 +182,15 @@ export function reduceSent(
 							emailType: 'campaign',
 							...((send as EmailSendDoc).personalizedSubject
 								? {
-										emailSubject: (send as EmailSendDoc)
-											.personalizedSubject,
+										emailSubject: (send as EmailSendDoc).personalizedSubject,
 									}
 								: {}),
 						}
 					: {
-							...nonCampaignActivityProvenance(
-								send as TransactionalSendDoc
-							),
+							...nonCampaignActivityProvenance(send as TransactionalSendDoc),
 							...((send as TransactionalSendDoc).subject
 								? {
-										emailSubject: (send as TransactionalSendDoc)
-											.subject,
+										emailSubject: (send as TransactionalSendDoc).subject,
 									}
 								: {}),
 						},
@@ -431,10 +419,7 @@ export function reduceClicked(
 	ref: SendRef
 ): ReducerResult {
 	const from = send.status as SendStatus;
-	const clickedLinks = [
-		...(send.clickedLinks ?? []),
-		{ url: args.url, clickedAt: args.at },
-	];
+	const clickedLinks = [...(send.clickedLinks ?? []), { url: args.url, clickedAt: args.at }];
 	const isFirstClick = !send.clickedAt;
 
 	const patch: Record<string, unknown> = { clickedLinks };
@@ -486,8 +471,7 @@ export function reduceClicked(
 	return {
 		patch,
 		effects,
-		applied:
-			isFirstClick && patch['status'] === 'clicked' ? 'transitioned' : 'recorded',
+		applied: isFirstClick && patch['status'] === 'clicked' ? 'transitioned' : 'recorded',
 		from,
 		to: 'clicked',
 	};
