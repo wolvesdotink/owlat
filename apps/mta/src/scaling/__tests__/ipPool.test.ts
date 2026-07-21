@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
-import { selectIp, getPoolStatus, initializePools } from '../ipPool.js';
+import { selectIp, getPoolStatus, initializePools, setIpPoolBlock } from '../ipPool.js';
 import type { IpPoolConfig } from '../../types.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -41,14 +41,12 @@ describe('ipPool', () => {
 			expect(ip).toBe('10.0.0.1');
 		});
 
-		it('falls back to pool when dedicated IP not active', async () => {
+		it('fails closed instead of changing identity when a dedicated IP is unavailable', async () => {
 			await initializePools(redis, testConfig);
-			// Remove dedicated IP from active set
-			await redis.srem('mta:ip-pool:active', '10.0.0.99');
+			await setIpPoolBlock(redis, '10.0.0.1', 'fcrdns', true);
 
-			const ip = await selectIp(redis, 'transactional', testConfig, '10.0.0.99');
-			expect(ip).not.toBeNull();
-			expect(testConfig.transactional).toContain(ip);
+			const ip = await selectIp(redis, 'transactional', testConfig, '10.0.0.1');
+			expect(ip).toBeNull();
 		});
 
 		it('uses round-robin across pool IPs', async () => {
@@ -77,11 +75,18 @@ describe('ipPool', () => {
 			expect(results.every((ip) => ip !== '10.0.0.1')).toBe(true);
 		});
 
-		it('uses emergency fallback when all IPs blocked', async () => {
+		it('fails closed when all IPs are blocked', async () => {
 			// Do NOT initialize pools (no IPs in active set)
 			const ip = await selectIp(redis, 'transactional', testConfig);
-			// Emergency fallback returns first IP in pool
-			expect(ip).toBe('10.0.0.1');
+			expect(ip).toBeNull();
+		});
+
+		it('never selects a quarantined dedicated IP when no pool fallback is eligible', async () => {
+			await initializePools(redis, testConfig);
+			for (const ip of testConfig.transactional) {
+				await setIpPoolBlock(redis, ip, 'fcrdns', true);
+			}
+			expect(await selectIp(redis, 'transactional', testConfig, '10.0.0.1')).toBeNull();
 		});
 
 		it('returns null for empty pool', async () => {
@@ -107,6 +112,23 @@ describe('ipPool', () => {
 			expect(ip1?.active).toBe(true);
 			expect(ip2?.active).toBe(false);
 			expect(status.length).toBe(testConfig.transactional.length + testConfig.campaign.length);
+		});
+	});
+
+	describe('composed eligibility blocks', () => {
+		it('does not reactivate an IP until every subsystem clears its reason', async () => {
+			await initializePools(redis, testConfig);
+			await Promise.all([
+				setIpPoolBlock(redis, '10.0.0.1', 'dnsbl', true),
+				setIpPoolBlock(redis, '10.0.0.1', 'fcrdns', true),
+			]);
+
+			await setIpPoolBlock(redis, '10.0.0.1', 'dnsbl', false);
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
+			expect((await getPoolStatus(redis, testConfig))[0]?.blockReasons).toEqual(['fcrdns']);
+
+			await setIpPoolBlock(redis, '10.0.0.1', 'fcrdns', false);
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
 		});
 	});
 });

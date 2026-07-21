@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateMtaHealth, evaluateSendPath } from '../doctor';
+import { evaluateMtaHealth, evaluateMtaIdentityHealth, evaluateSendPath } from '../doctor';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
@@ -84,6 +84,16 @@ describe('doctor — evaluateMtaHealth', () => {
 		worker: { alive: true },
 		dns: 'ok',
 		emergency: { allIpsBlocked: false },
+		ips: [
+			{
+				ip: '192.0.2.10',
+				fcrdns: { verdict: 'pass', ehlo: 'mail1.example.com', ptrNames: ['mail1.example.com'] },
+			},
+			{
+				ip: '192.0.2.11',
+				fcrdns: { verdict: 'pass', ehlo: 'mail2.example.com', ptrNames: ['mail2.example.com'] },
+			},
+		],
 		smtpOutbound: {
 			status: 'ok',
 			ips: [
@@ -95,7 +105,7 @@ describe('doctor — evaluateMtaHealth', () => {
 
 	it('passes each infrastructure and per-IP SMTP check when healthy', () => {
 		const findings = evaluateMtaHealth(healthy);
-		expect(findings).toHaveLength(6);
+		expect(findings).toHaveLength(8);
 		expect(findings.every((finding) => finding.ok)).toBe(true);
 	});
 
@@ -121,5 +131,26 @@ describe('doctor — evaluateMtaHealth', () => {
 		expect(evaluateMtaHealth({ status: 'ok' })).toEqual([
 			{ ok: false, message: 'MTA returned an incomplete health response' },
 		]);
+	});
+});
+
+describe('doctor — FCrDNS setup guidance', () => {
+	it('fails with the exact desired PTR and provider-specific click path', () => {
+		const findings = evaluateMtaIdentityHealth({
+			ips: [
+				{
+					ip: '192.0.2.10',
+					fcrdns: {
+						verdict: 'fail',
+						reason: 'ehlo-mismatch',
+						ehlo: 'mail.example.com',
+						ptrNames: ['static.clients.your-server.de'],
+					},
+				},
+			],
+		});
+		expect(findings[0]?.ok).toBe(false);
+		expect(findings[0]?.message).toContain('Set its PTR exactly to mail.example.com');
+		expect(findings[0]?.message).toContain('Hetzner Console');
 	});
 });

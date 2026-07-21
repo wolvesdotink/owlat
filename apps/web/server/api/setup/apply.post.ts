@@ -30,6 +30,7 @@ import {
 	pushConvexRuntimeEnv,
 	selectRuntimeEnvVars,
 } from '@owlat/shared/convexRuntimeEnv';
+import { preflightMtaIdentities } from '../../utils/mtaIdentityPreflight';
 
 interface ApplyBody {
 	flags: FeatureFlagState;
@@ -128,6 +129,13 @@ export default defineEventHandler(
 			if (!merged['DEFAULT_FROM_DOMAIN']) merged['DEFAULT_FROM_DOMAIN'] = ehloHostname;
 			if (!merged['DEFAULT_FROM_EMAIL']) merged['DEFAULT_FROM_EMAIL'] = `noreply@${ehloHostname}`;
 			if (!merged['DEFAULT_FROM_NAME']) merged['DEFAULT_FROM_NAME'] = 'Owlat';
+		}
+
+		if (chosenProvider === 'mta') {
+			const identityPreflight = await preflightMtaIdentities(merged);
+			if (!identityPreflight.ok) {
+				return { ok: false, message: identityPreflight.message };
+			}
 		}
 
 		// 2. Create the admin user + org via the Convex seed endpoint (mirrors the
