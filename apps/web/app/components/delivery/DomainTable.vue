@@ -10,7 +10,7 @@
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
-import { formatNumber, formatPercentage } from '~/utils/formatters';
+import { formatDate, formatNumber, formatPercentage } from '~/utils/formatters';
 import { healthChipClass, healthDotClass, type HealthTone } from '~/utils/healthTone';
 
 // Derive the row type straight from the query's return so the two shapes can't
@@ -53,7 +53,17 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 				<UiIconBox icon="lucide:globe" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">Sending domains</h2>
-					<p class="text-sm text-text-secondary">Verification and 30-day volume per domain</p>
+					<p class="text-sm text-text-secondary">
+						Verification, internal feedback, and Google Postmaster signals per domain ·
+						<a
+							href="https://docs.owlat.app/developer/external-reputation-feedback#google-postmaster-tools"
+							target="_blank"
+							rel="noopener"
+							class="text-brand hover:underline"
+						>
+							setup guide
+						</a>
+					</p>
 				</div>
 			</div>
 
@@ -140,10 +150,33 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 										: ''
 							"
 						>
-							FBL spam {{ formatPercentage(row.spamRate, 3) }} · target &lt;
+							Owlat FBL spam {{ formatPercentage(row.spamRate, 3) }} · target &lt;
 							{{ formatPercentage(PROVIDER_SPAM_RATE_POLICY.target, 1) }} · hard
 							{{ formatPercentage(PROVIDER_SPAM_RATE_POLICY.hardThreshold, 1) }}
 						</p>
+						<div
+							v-if="row.googlePostmaster"
+							data-testid="google-postmaster-signal"
+							class="mt-1 rounded-md bg-bg-surface px-2 py-1.5"
+						>
+							<p
+								:class="
+									row.googlePostmaster.userReportedSpamRatio >=
+									PROVIDER_SPAM_RATE_POLICY.hardThreshold
+										? 'text-error'
+										: ''
+								"
+							>
+								Google spam
+								{{ formatPercentage(row.googlePostmaster.userReportedSpamRatio, 3) }}
+							</p>
+							<p class="text-[11px] text-text-tertiary mt-0.5">
+								Domain and IP reputation are unavailable in Google API v2
+							</p>
+							<p class="text-[11px] text-text-tertiary mt-0.5">
+								Google data for {{ formatDate(row.googlePostmaster.periodStart, 'short') }}
+							</p>
+						</div>
 						<p
 							v-if="
 								row.spamRateStatus === 'hard_limit' || row.cleanInternalDaysBelowHardThreshold > 0

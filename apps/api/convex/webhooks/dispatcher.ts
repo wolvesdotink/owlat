@@ -370,9 +370,32 @@ const DISPATCH: DispatchTable = {
 			}
 		}
 	},
+	'internal.postmaster_stats': async (ctx, e) => {
+		return ctx.runMutation(internal.delivery.postmaster.ingest, {
+			domain: e.domain,
+			date: e.date,
+			userReportedSpamRatio: e.userReportedSpamRatio,
+			fetchedAt: e.fetchedAt,
+		});
+	},
+	'internal.postmaster_authorize_domain': async (ctx, e) => {
+		return ctx.runMutation(internal.delivery.postmaster.authorizeDomain, {
+			domain: e.domain,
+		});
+	},
 };
 
-export async function dispatchInboundEvent(ctx: ActionCtx, event: InboundEvent): Promise<void> {
+export function dispatchInboundEvent(ctx: ActionCtx, event: InboundEvent): Promise<void>;
+export function dispatchInboundEvent(
+	ctx: ActionCtx,
+	event: InboundEvent,
+	options: { returnResult: true }
+): Promise<unknown>;
+export async function dispatchInboundEvent(
+	ctx: ActionCtx,
+	event: InboundEvent,
+	_options?: { returnResult: true }
+): Promise<unknown> {
 	const handler = DISPATCH[event.kind] as Handler<InboundEventKind>;
-	await handler(ctx, event as InboundEventOf<InboundEventKind>);
+	return handler(ctx, event as InboundEventOf<InboundEventKind>);
 }

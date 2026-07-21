@@ -183,6 +183,13 @@ crons.interval(
 	{}
 );
 
+crons.interval(
+	'cleanup Google Postmaster telemetry',
+	{ hours: 24 },
+	internal.delivery.postmaster.cleanup,
+	{}
+);
+
 // Evaluate the org reputation window hourly and auto-escalate Abuse status when
 // risk is high/critical. Moved off the per-send-event hot path (FIX 3a-1): the
 // wide org-window summarize runs once per cron tick instead of once per

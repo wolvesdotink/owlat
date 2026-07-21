@@ -3,6 +3,16 @@ import { v } from 'convex/values';
 /** Readiness fields shared by the warming-state table and its sync mutation. */
 export const ipReadinessFieldValidators = {
 	blockReasons: v.optional(v.array(v.union(v.literal('dnsbl'), v.literal('fcrdns')))),
+	dnsblListings: v.optional(
+		v.array(
+			v.union(
+				v.literal('spamhaus'),
+				v.literal('barracuda'),
+				v.literal('spamcop'),
+				v.literal('abusix')
+			)
+		)
+	),
 	dnsbl: v.optional(
 		v.union(v.literal('unknown'), v.literal('clean'), v.literal('degraded'), v.literal('critical'))
 	),
