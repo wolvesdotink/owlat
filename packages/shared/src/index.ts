@@ -44,6 +44,24 @@ export {
 	summarizeOutboundAlignment,
 } from './transportAlignment';
 export { type OutboundTlsMode, OUTBOUND_TLS_MODES, isOutboundTlsMode } from './outboundTlsMode';
+export {
+	type FcrdnsFailureReason,
+	type FcrdnsVerdict,
+	type FcrdnsChecklist,
+	type FcrdnsReadiness,
+	type FcrdnsDnsDeps,
+	type FcrdnsVerification,
+	type ReverseDnsProvider,
+	type ReverseDnsGuidance,
+	FCRDNS_FAILURE_REASONS,
+	DEFAULT_GENERIC_PTR_SUFFIXES,
+	normalizeDnsName,
+	isFqdn,
+	isGenericPtrHostname,
+	verifyFcrdnsIdentity,
+	reverseDnsGuidance,
+	fcrdnsReasonMessage,
+} from './fcrdns';
 // NOTE: `./dane` is intentionally NOT re-exported here. It depends on `node:crypto`
 // (certificate hashing) which does not resolve in the Nuxt web client bundle that
 // consumes this barrel. Server code (apps/api, apps/mta) imports it directly from

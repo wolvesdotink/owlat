@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { verifyFcrdns, runFcrdnsSelfCheck, type FcrdnsDeps } from '../fcrdns.js';
+import { getFcrdnsReadiness, runFcrdnsReadinessCheck } from '../fcrdns.js';
 import { logger } from '../../monitoring/logger.js';
+import Redis from 'ioredis-mock';
+import { initializePools } from '../ipPool.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -12,11 +15,9 @@ vi.mock('../../monitoring/logger.js', () => ({
  *  - fwd:   hostname → A records
  * Missing keys throw ENOTFOUND, matching Node's dns/promises behaviour.
  */
-function makeDeps(
-	ptr: Record<string, string[]>,
-	fwd: Record<string, string[]>,
-): FcrdnsDeps {
-	const notFound = (target: string) => Object.assign(new Error(`ENOTFOUND ${target}`), { code: 'ENOTFOUND' });
+function makeDeps(ptr: Record<string, string[]>, fwd: Record<string, string[]>): FcrdnsDeps {
+	const notFound = (target: string) =>
+		Object.assign(new Error(`ENOTFOUND ${target}`), { code: 'ENOTFOUND' });
 	return {
 		reverse: vi.fn(async (ip: string) => {
 			if (!(ip in ptr)) throw notFound(ip);
@@ -29,16 +30,23 @@ function makeDeps(
 	};
 }
 
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (reason: unknown) => void;
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, resolve, reject };
+}
+
 describe('verifyFcrdns', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
 
 	it('ok when PTR forward-confirms to the IP and matches an expected EHLO name', async () => {
-		const deps = makeDeps(
-			{ '1.2.3.4': ['mail.example.com'] },
-			{ 'mail.example.com': ['1.2.3.4'] },
-		);
+		const deps = makeDeps({ '1.2.3.4': ['mail.example.com'] }, { 'mail.example.com': ['1.2.3.4'] });
 		const result = await verifyFcrdns('1.2.3.4', ['mail.example.com'], deps);
 		expect(result.ok).toBe(true);
 		expect(result.reason).toBeUndefined();
@@ -48,7 +56,7 @@ describe('verifyFcrdns', () => {
 	it('normalizes a trailing dot and case in the PTR name', async () => {
 		const deps = makeDeps(
 			{ '1.2.3.4': ['Mail.Example.COM.'] },
-			{ 'mail.example.com': ['1.2.3.4'] },
+			{ 'mail.example.com': ['1.2.3.4'] }
 		);
 		const result = await verifyFcrdns('1.2.3.4', ['mail.example.com'], deps);
 		expect(result.ok).toBe(true);
@@ -62,10 +70,7 @@ describe('verifyFcrdns', () => {
 	});
 
 	it('not ok with reason forward-mismatch when PTR forward-resolves to a different IP', async () => {
-		const deps = makeDeps(
-			{ '1.2.3.4': ['mail.example.com'] },
-			{ 'mail.example.com': ['9.9.9.9'] },
-		);
+		const deps = makeDeps({ '1.2.3.4': ['mail.example.com'] }, { 'mail.example.com': ['9.9.9.9'] });
 		const result = await verifyFcrdns('1.2.3.4', ['mail.example.com'], deps);
 		expect(result.ok).toBe(false);
 		expect(result.reason).toBe('forward-mismatch');
@@ -74,11 +79,41 @@ describe('verifyFcrdns', () => {
 	it('not ok with reason ehlo-mismatch when PTR confirms but name differs from EHLO', async () => {
 		const deps = makeDeps(
 			{ '1.2.3.4': ['other.example.com'] },
-			{ 'other.example.com': ['1.2.3.4'] },
+			{ 'other.example.com': ['1.2.3.4'] }
 		);
 		const result = await verifyFcrdns('1.2.3.4', ['mail.example.com'], deps);
 		expect(result.ok).toBe(false);
 		expect(result.reason).toBe('ehlo-mismatch');
+	});
+
+	it('rejects a PTR value that is not an FQDN before forward lookup', async () => {
+		const deps = makeDeps({ '1.2.3.4': ['localhost'] }, {});
+		const result = await verifyFcrdns('1.2.3.4', ['mail.example.com'], deps);
+		expect(result.reason).toBe('ptr-not-fqdn');
+		expect(result.checklist).toMatchObject({ ptrExists: true, ptrIsFqdn: false });
+		expect(deps.resolve4).not.toHaveBeenCalled();
+	});
+
+	it('warns but remains deliverable for built-in and operator-added generic PTR suffixes', async () => {
+		const builtIn = makeDeps(
+			{ '1.2.3.4': ['static.1-2-3-4.clients.your-server.de'] },
+			{ 'static.1-2-3-4.clients.your-server.de': ['1.2.3.4'] }
+		);
+		const builtInResult = await verifyFcrdns(
+			'1.2.3.4',
+			['static.1-2-3-4.clients.your-server.de'],
+			builtIn
+		);
+		expect(builtInResult).toMatchObject({ ok: true, verdict: 'warn', genericPtr: true });
+
+		const custom = makeDeps(
+			{ '1.2.3.4': ['host.customer.example-vps.net'] },
+			{ 'host.customer.example-vps.net': ['1.2.3.4'] }
+		);
+		const customResult = await verifyFcrdns('1.2.3.4', ['host.customer.example-vps.net'], custom, [
+			'example-vps.net',
+		]);
+		expect(customResult.verdict).toBe('warn');
 	});
 
 	it('not ok with reason lookup-error on a transient DNS failure', async () => {
@@ -91,6 +126,166 @@ describe('verifyFcrdns', () => {
 		const result = await verifyFcrdns('1.2.3.4', ['mail.example.com'], deps);
 		expect(result.ok).toBe(false);
 		expect(result.reason).toBe('lookup-error');
+	});
+});
+
+describe('runFcrdnsReadinessCheck', () => {
+	const config = {
+		ipPools: { transactional: ['1.2.3.4'], campaign: ['1.2.3.4'] },
+		ehloHostname: 'mail.example.com',
+		ehloHostnames: {},
+		genericPtrSuffixes: [],
+		allowUnverifiedFcrdns: false,
+	};
+
+	it('persists a hard failure and quarantines the IP before selection', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		await runFcrdnsReadinessCheck(redis, config, makeDeps({}, {}));
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
+			verdict: 'fail',
+			reason: 'no-ptr',
+			overridden: false,
+		});
+	});
+
+	it('does not let repeated transient lookup errors change the prior eligibility decision', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		const passing = makeDeps(
+			{ '1.2.3.4': ['mail.example.com'] },
+			{ 'mail.example.com': ['1.2.3.4'] }
+		);
+		await runFcrdnsReadinessCheck(redis, config, passing);
+		const transient: FcrdnsDeps = {
+			reverse: vi.fn(async () => {
+				throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
+			}),
+			resolve4: vi.fn(),
+		};
+		await runFcrdnsReadinessCheck(redis, config, transient);
+		await runFcrdnsReadinessCheck(redis, config, transient);
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(1);
+
+		await runFcrdnsReadinessCheck(redis, config, makeDeps({}, {}));
+		await runFcrdnsReadinessCheck(redis, config, transient);
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
+	});
+
+	it('admits an unverified IP only through the explicit lab override', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		await runFcrdnsReadinessCheck(
+			redis,
+			{ ...config, allowUnverifiedFcrdns: true },
+			makeDeps({}, {})
+		);
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(1);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
+			verdict: 'fail',
+			overridden: true,
+		});
+
+		const transient: FcrdnsDeps = {
+			reverse: vi.fn(async () => {
+				throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
+			}),
+			resolve4: vi.fn(),
+		};
+		await runFcrdnsReadinessCheck(redis, { ...config, allowUnverifiedFcrdns: true }, transient);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
+			verdict: 'error',
+			overridden: true,
+		});
+	});
+
+	it('does not let an older passing lookup clear a newer quarantine', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		const olderReverse = deferred<string[]>();
+		const olderStarted = deferred<void>();
+		const older = runFcrdnsReadinessCheck(redis, config, {
+			reverse: vi.fn(() => {
+				olderStarted.resolve();
+				return olderReverse.promise;
+			}),
+			resolve4: vi.fn(async () => ['1.2.3.4']),
+		});
+		await olderStarted.promise;
+
+		await runFcrdnsReadinessCheck(redis, config, makeDeps({}, {}));
+		olderReverse.resolve(['mail.example.com']);
+		await older;
+
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
+			verdict: 'fail',
+			reason: 'no-ptr',
+		});
+	});
+
+	it('does not let an older failure overwrite a newer passing observation', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		const olderReverse = deferred<string[]>();
+		const olderStarted = deferred<void>();
+		const older = runFcrdnsReadinessCheck(redis, config, {
+			reverse: vi.fn(() => {
+				olderStarted.resolve();
+				return olderReverse.promise;
+			}),
+			resolve4: vi.fn(),
+		});
+		await olderStarted.promise;
+
+		await runFcrdnsReadinessCheck(
+			redis,
+			config,
+			makeDeps({ '1.2.3.4': ['mail.example.com'] }, { 'mail.example.com': ['1.2.3.4'] })
+		);
+		olderReverse.reject(Object.assign(new Error('missing'), { code: 'ENOTFOUND' }));
+		await older;
+
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(1);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({ verdict: 'pass' });
+	});
+
+	it('fails closed when the newest observation is a transient error', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		await initializePools(redis, config.ipPools);
+		const olderReverse = deferred<string[]>();
+		const olderStarted = deferred<void>();
+		const older = runFcrdnsReadinessCheck(redis, config, {
+			reverse: vi.fn(() => {
+				olderStarted.resolve();
+				return olderReverse.promise;
+			}),
+			resolve4: vi.fn(),
+		});
+		await olderStarted.promise;
+
+		await runFcrdnsReadinessCheck(redis, config, {
+			reverse: vi.fn(async () => {
+				throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
+			}),
+			resolve4: vi.fn(),
+		});
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
+		olderReverse.reject(Object.assign(new Error('missing'), { code: 'ENOTFOUND' }));
+		await older;
+
+		expect(await redis.sismember('mta:ip-pool:active', '1.2.3.4')).toBe(0);
+		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
+			verdict: 'error',
+			reason: 'lookup-error',
+		});
 	});
 });
 
@@ -119,7 +314,7 @@ describe('runFcrdnsSelfCheck', () => {
 				'mail1.example.com': ['1.1.1.1'],
 				'mail2.example.com': ['2.2.2.2'],
 				'fallback.example.com': ['3.3.3.3'],
-			},
+			}
 		);
 		const results = await runFcrdnsSelfCheck(config, deps);
 		expect(results).toHaveLength(3);
@@ -137,7 +332,7 @@ describe('runFcrdnsSelfCheck', () => {
 			{
 				'mail1.example.com': ['1.1.1.1'],
 				'wrong.example.com': ['2.2.2.2'],
-			},
+			}
 		);
 		const results = await runFcrdnsSelfCheck(config, deps);
 		expect(results).toHaveLength(3);
@@ -151,7 +346,7 @@ describe('runFcrdnsSelfCheck', () => {
 	it('uses the fallback EHLO name for IPs not in the per-IP map', async () => {
 		const deps = makeDeps(
 			{ '3.3.3.3': ['fallback.example.com'] },
-			{ 'fallback.example.com': ['3.3.3.3'] },
+			{ 'fallback.example.com': ['3.3.3.3'] }
 		);
 		const result = await verifyFcrdns('3.3.3.3', ['fallback.example.com'], deps);
 		expect(result.ok).toBe(true);

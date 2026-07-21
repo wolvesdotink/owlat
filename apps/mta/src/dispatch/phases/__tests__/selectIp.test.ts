@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../../scaling/ipPool.js', () => ({
-	selectIp: vi.fn(),
+	selectIpWithLease: vi.fn(),
 }));
 
 import { selectIpPhase } from '../selectIp.js';
@@ -42,14 +42,20 @@ beforeEach(() => vi.clearAllMocks());
 
 describe('selectIpPhase', () => {
 	it('continues and enriches ctx with the selected ip', async () => {
-		vi.mocked(ipPool.selectIp).mockResolvedValueOnce('10.0.0.1');
+		vi.mocked(ipPool.selectIpWithLease).mockResolvedValueOnce({
+			ip: '10.0.0.1',
+			eligibilityGeneration: 7,
+		});
 		const out = await selectIpPhase.run(deps, makeCtx());
 		expect(out.kind).toBe('continue');
-		if (out.kind === 'continue') expect(out.ctx.ip).toBe('10.0.0.1');
+		if (out.kind === 'continue') {
+			expect(out.ctx.ip).toBe('10.0.0.1');
+			expect(out.ctx.eligibilityGeneration).toBe(7);
+		}
 	});
 
 	it('defers 60s when no IPs are available', async () => {
-		vi.mocked(ipPool.selectIp).mockResolvedValueOnce(null);
+		vi.mocked(ipPool.selectIpWithLease).mockResolvedValueOnce(null);
 		const out = await selectIpPhase.run(deps, makeCtx());
 		expect(out).toEqual({
 			kind: 'defer',
@@ -59,14 +65,17 @@ describe('selectIpPhase', () => {
 	});
 
 	it('forwards pool, ipPools config, and dedicatedIp to the helper', async () => {
-		vi.mocked(ipPool.selectIp).mockResolvedValueOnce('10.0.0.99');
+		vi.mocked(ipPool.selectIpWithLease).mockResolvedValueOnce({
+			ip: '10.0.0.99',
+			eligibilityGeneration: 2,
+		});
 		const ctx = makeCtx({ pool: 'campaign', dedicatedIp: '10.0.0.99' });
 		await selectIpPhase.run(deps, ctx);
-		expect(ipPool.selectIp).toHaveBeenCalledWith(
+		expect(ipPool.selectIpWithLease).toHaveBeenCalledWith(
 			expect.anything(),
 			'campaign',
 			ipPools,
-			'10.0.0.99',
+			'10.0.0.99'
 		);
 	});
 });

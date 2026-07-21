@@ -17,7 +17,7 @@ import {
 	startSubmissionServer,
 } from './smtp/submissionServer.js';
 import { initializePools } from './scaling/ipPool.js';
-import { runFcrdnsSelfCheck } from './scaling/fcrdns.js';
+import { runFcrdnsReadinessCheck } from './scaling/fcrdns.js';
 import { startDnsblChecker } from './intelligence/dnsbl.js';
 import { initializeWarming, evaluateDay } from './intelligence/warming.js';
 import * as orgLimits from './intelligence/orgLimits.js';
@@ -85,14 +85,19 @@ export async function main() {
 	await seedProfiles(redis);
 
 	// ── 4. Initialize IP pools in Redis ──
-	await initializePools(redis, config.ipPools);
+	await initializePools(redis, config.ipPools, config.allowUnverifiedFcrdns);
 
-	// ── 4b. FCrDNS self-check (non-blocking) ──
-	// Verify every sending IP's PTR forward-confirms and matches its EHLO name.
-	// WARNs per misconfigured IP; never blocks startup.
-	runFcrdnsSelfCheck(config).catch((err) => {
-		logger.warn({ err }, 'FCrDNS self-check failed to run');
-	});
+	// ── 4b. FCrDNS readiness gate ──
+	// Complete the first observation before a worker can select an IP. A fresh,
+	// never-verified address therefore cannot race its quarantine at startup.
+	await runFcrdnsReadinessCheck(redis, config);
+
+	// ── 4c. Finish this process's first DNSBL sweep, then elect the cron leader ──
+	// The boot sweep is unconditional because an existing leader in a rolling
+	// deployment may still have the old IP configuration. Only periodic work is
+	// leader-gated; generation CAS makes overlapping boot observations safe.
+	const dnsblInterval = await startDnsblChecker(redis, config, isLeader);
+	startLeaderElection(redis, config.serverId);
 
 	// ── 5. Initialize warming for all IPs ──
 	const allIps = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
@@ -156,11 +161,16 @@ export async function main() {
 		}
 	}
 
-	// ── 9. Start leader election for periodic tasks ──
-	startLeaderElection(redis, config.serverId);
-
-	// ── 10. Start DNSBL checker (periodic, every 15 min — leader only) ──
-	const dnsblInterval = startDnsblChecker(redis, config);
+	// ── 10b. Re-verify outbound identity hourly (leader only) ──
+	const fcrdnsInterval = setInterval(
+		() => {
+			if (!isLeader()) return;
+			runFcrdnsReadinessCheck(redis, config).catch((err) =>
+				logger.error({ err }, 'Periodic FCrDNS readiness check failed')
+			);
+		},
+		60 * 60 * 1000
+	);
 
 	// ── 11. Start warming evaluation cron (daily check — leader only) ──
 	const warmingInterval = setInterval(
@@ -291,6 +301,7 @@ export async function main() {
 
 		// Stop accepting new work
 		clearInterval(dnsblInterval);
+		clearInterval(fcrdnsInterval);
 		clearInterval(warmingInterval);
 		clearInterval(postmasterInterval);
 		clearInterval(tlsRptInterval);
