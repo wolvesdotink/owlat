@@ -18,9 +18,9 @@ COPY patches/ patches/
 
 # Copy all workspace package.json files for dependency resolution. The set must
 # cover every workspace the root package.json globs in (apps/*, packages/* AND
-# examples/plugins/*), or bun's frozen-lockfile check sees a missing workspace
-# and refuses ("lockfile had changes, but lockfile is frozen").
-COPY --parents apps/*/package.json packages/*/package.json examples/plugins/*/package.json ./
+# examples/* and examples/plugins/*), or bun's frozen-lockfile check sees a
+# missing workspace and refuses ("lockfile had changes, but lockfile is frozen").
+COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
 
 RUN bun install --frozen-lockfile
 

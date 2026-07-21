@@ -7,6 +7,7 @@ import {
 	PluginIdError,
 	parsePluginManifest,
 	PLUGIN_CONTRIBUTION_KINDS,
+	PLUGIN_LIVE_CONTRIBUTION_KINDS,
 	PluginManifestError,
 	validatePluginManifest,
 } from '../index';
@@ -157,6 +158,25 @@ describe('plugin manifest validation', () => {
 				}).ok,
 				kind
 			).toBe(true);
+		}
+	});
+
+	it('names exactly the contribution kinds whose capability the validator enforces', () => {
+		// PLUGIN_LIVE_CONTRIBUTION_KINDS is the requirement table's own bucket
+		// column, so this proves the export tracks the validator instead of being a
+		// second hand-maintained list: every live kind refuses a contribution made
+		// without its capability, and every other kind is a manifest-only
+		// reservation that does not.
+		for (const kind of PLUGIN_CONTRIBUTION_KINDS) {
+			const result = validatePluginManifest({
+				...validManifest(),
+				capabilities: ['campaigns:read'],
+				llmBudget: undefined,
+				contributes: { [kind]: [{ id: 'probe' }] },
+			});
+			const demandsCapability =
+				!result.ok && result.issues.some((issue) => issue.path === '$.capabilities');
+			expect(demandsCapability, kind).toBe(PLUGIN_LIVE_CONTRIBUTION_KINDS.includes(kind));
 		}
 	});
 

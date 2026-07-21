@@ -1,0 +1,37 @@
+{
+	"name": "@owlat/example-escalation-guard",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Tier-1 reference plugin: an in-process escalation guard contributing an agent step, a draft strategy, automation trigger/step/condition, a webhook event and bundled UI entries.",
+	"license": "Apache-2.0",
+	"type": "module",
+	"main": "./src/index.ts",
+	"module": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./agentStep": "./src/agentStep.ts",
+		"./draftStrategy": "./src/draftStrategy.ts",
+		"./automationTrigger": "./src/automationTrigger.ts",
+		"./automationCondition": "./src/automationCondition.ts",
+		"./automationStep": "./src/automationStep.ts"
+	},
+	"scripts": {
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@owlat/plugin-kit": "workspace:*"
+	},
+	"devDependencies": {
+		"@owlat/plugin-host": "workspace:*",
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

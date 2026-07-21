@@ -11,8 +11,8 @@
  *   - Tier 2 (connected hook): the `llm:invoke` + seedbox usage the gate layers
  *     on (the vendor score hook is host-mediated, so it needs no contribution
  *     bucket — only the capability; the seedbox endpoint env var is declared as a
- *     forward-looking constant but is NOT a required-env enablement gate yet,
- *     because no shipped module reads it until PP-31 wires the remote hook);
+ *     forward-looking constant but is NOT a required-env enablement gate, because
+ *     the bundled gate ships with no remote hook — see the constant below);
  *   - Tier 3 (sandboxed worker): the `worker:enqueue` capability the seed-list
  *     job is enqueued under (`plugin.deliverability-lab.seed-test`).
  *
@@ -33,13 +33,22 @@ import {
 import { DELIVERABILITY_LAB_PLUGIN_ID } from './constants';
 
 /**
- * Env var the operator will set to point the plugin at a seedbox vendor endpoint.
- * Exported as the forward-looking declaration of that contract, but deliberately
- * NOT listed in `flag.requiredEnvVars`: the host treats a missing required env var
- * as an enablement blocker, and nothing shipped at this stage reads the seedbox
- * (the bundled gate is `createDeliverabilityGate()` with no remote hook). Adding
- * it to `requiredEnvVars` now would force operators to provision an endpoint that
- * does nothing. PP-31 wires the remote hook and promotes this to a real requirement.
+ * Env var an operator sets to point the plugin at a seedbox vendor endpoint.
+ * Exported as the declaration of that contract, but deliberately NOT listed in
+ * `flag.requiredEnvVars`: the host treats a missing required env var as an
+ * enablement blocker, and the module the manifest points at is
+ * `createDeliverabilityGate()` with NO remote hook, so requiring the var would
+ * force operators to provision an endpoint nothing reads.
+ *
+ * Composing the Tier-2 hook is a build-time decision, not a runtime one. The
+ * host hands a bundled gate only `{ signal }` — no settings, no connected-app
+ * client, no credential — so a deployment that wants the vendor opinion builds
+ * its own gate module with `createDeliverabilityGate({ remoteScoreHook })` and
+ * points the manifest at that export. Delivering operator settings or a
+ * connected-app client into the bundled gate/cron tiers would be a host contract
+ * change (`PluginAutonomyGateServices` / `PluginCronServices`) and is a
+ * deliberate non-goal of this program: it would push operator secrets into
+ * in-process plugin code, which is exactly what Tier 2 exists to avoid.
  */
 export const DELIVERABILITY_LAB_SEEDBOX_URL_ENV = 'DELIVERABILITY_LAB_SEEDBOX_URL';
 
@@ -84,7 +93,10 @@ export const deliverabilityLabPlugin = definePlugin({
 		navItems: [
 			{
 				id: 'dashboard',
-				section: 'insights',
+				// MUST be a CORE sidebar section key (CORE_SECTIONS in
+				// apps/web/app/lib/dashboardNavigation.ts). An item targeting an
+				// unknown section is dropped fail-closed, so it would never render.
+				section: 'delivery',
 				name: 'Deliverability',
 				href: '/dashboard/plugins/deliverability-lab',
 				icon: 'lucide:radar',
@@ -100,19 +112,22 @@ export const deliverabilityLabPlugin = definePlugin({
 		],
 	},
 	// Declaration-only settings schema: it shows how a plugin describes the
-	// operator-facing controls its settings panel will render, and the host
-	// validates and persists these fields. It is NOT yet consumed at runtime —
-	// the merged gate/cron `services` contracts expose no settings channel, so
-	// no shipped module here reads a setting value. The wiring that threads
-	// persisted settings into the gate/cron tiers lands with PP-31; until then
-	// each description states the intended effect without claiming it is live.
+	// operator-facing controls its settings panel renders, and the host validates,
+	// persists and redacts these fields. It is deliberately NOT consumed by the
+	// bundled gate or cron: those `services` contracts expose only `{ signal }`
+	// (plus logger/llm for a cron), and threading persisted settings — including a
+	// SECRET — into in-process plugin modules is a documented non-goal of the
+	// platform. A deployment that needs configurable behaviour composes it at
+	// build time (`createDeliverabilityGate({ ... })`) or moves the work to a
+	// Tier-2 connected app, which is where operator secrets are meant to live.
+	// Each description below states that boundary rather than implying live wiring.
 	settingsSchema: [
 		{
 			kind: 'boolean',
 			key: 'holdOnFail',
 			label: 'Hold sends that fail preflight',
 			description:
-				'Intended to let operators choose whether a failing preflight objects to the autonomous send. Not yet wired: the bundled gate always objects on a fail verdict until settings reach the gate tier (PP-31).',
+				'Operator record of whether a failing preflight should hold the send. The bundled gate always objects on a fail verdict; a build that wants this configurable composes its own gate module.',
 			default: true,
 		},
 		{
@@ -120,7 +135,7 @@ export const deliverabilityLabPlugin = definePlugin({
 			key: 'seedboxApiKey',
 			label: 'Seedbox API key',
 			description:
-				'Intended to authenticate the optional Tier-2 seedbox score hook. Stored server-side; the bundled gate ships without a remote score hook, so no shipped module reads this yet (PP-31).',
+				'Credential for a Tier-2 seedbox score hook. Stored and redacted server-side and never handed to in-process plugin code: the bundled gate ships without a remote hook, and a connected app is where this secret is used.',
 			required: false,
 		},
 		{
@@ -128,7 +143,7 @@ export const deliverabilityLabPlugin = definePlugin({
 			key: 'seedboxDeadlineMs',
 			label: 'Seedbox timeout (ms)',
 			description:
-				'Intended deadline, in ms, to wait for a seedbox score before falling back to local scoring. Not yet wired: the bundled gate uses its hardcoded default deadline until settings reach the gate tier (PP-31).',
+				'Operator record of the deadline, in ms, to wait for a seedbox score before falling back to local scoring. The bundled gate uses its own default deadline.',
 			default: 5000,
 			min: 500,
 			max: 15000,

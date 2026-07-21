@@ -119,7 +119,7 @@
 		},
 		"packages/sdk-js": { "entry": ["src/index.ts", "test/**/*.ts"] },
 		"packages/plugin-cli": {
-			"entry": ["src/index.ts", "src/**/__tests__/**/*.ts"],
+			"entry": ["src/index.ts", "src/run.ts", "src/**/__tests__/**/*.ts"],
 		},
 		"packages/plugin-codegen": {
 			"entry": [
