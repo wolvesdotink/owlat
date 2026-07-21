@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateSendPath } from '../doctor';
+import { evaluateMtaHealth, evaluateMtaIdentityHealth, evaluateSendPath } from '../doctor';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
@@ -68,8 +68,89 @@ describe('doctor — evaluateSendPath', () => {
 	});
 
 	it('PASSES when provider=resend and RESEND_API_KEY is present', () => {
-		const findings = evaluateSendPath(sending, { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: 're_x' });
+		const findings = evaluateSendPath(sending, {
+			EMAIL_PROVIDER: 'resend',
+			RESEND_API_KEY: 're_x',
+		});
 		expect(findings).toHaveLength(1);
 		expect(findings[0]?.ok).toBe(true);
+	});
+});
+
+describe('doctor — evaluateMtaHealth', () => {
+	const healthy = {
+		status: 'ok',
+		redis: 'connected',
+		worker: { alive: true },
+		dns: 'ok',
+		emergency: { allIpsBlocked: false },
+		ips: [
+			{
+				ip: '192.0.2.10',
+				fcrdns: { verdict: 'pass', ehlo: 'mail1.example.com', ptrNames: ['mail1.example.com'] },
+			},
+			{
+				ip: '192.0.2.11',
+				fcrdns: { verdict: 'pass', ehlo: 'mail2.example.com', ptrNames: ['mail2.example.com'] },
+			},
+		],
+		smtpOutbound: {
+			status: 'ok',
+			ips: [
+				{ ip: '192.0.2.10', status: 'ok' },
+				{ ip: '192.0.2.11', status: 'ok' },
+			],
+		},
+	};
+
+	it('passes each infrastructure and per-IP SMTP check when healthy', () => {
+		const findings = evaluateMtaHealth(healthy);
+		expect(findings).toHaveLength(8);
+		expect(findings.every((finding) => finding.ok)).toBe(true);
+	});
+
+	it('fails the exact source IP whose TCP/25 connection is blocked', () => {
+		const findings = evaluateMtaHealth({
+			...healthy,
+			status: 'degraded',
+			smtpOutbound: {
+				status: 'degraded',
+				ips: [
+					{ ip: '192.0.2.10', status: 'ok' },
+					{ ip: '192.0.2.11', status: 'failed', reason: 'network_unreachable' },
+				],
+			},
+		});
+		const failed = findings.filter((finding) => !finding.ok);
+		expect(failed).toHaveLength(1);
+		expect(failed[0]?.message).toContain('192.0.2.11');
+		expect(failed[0]?.message).toContain('network unreachable');
+	});
+
+	it('fails closed on an incomplete response', () => {
+		expect(evaluateMtaHealth({ status: 'ok' })).toEqual([
+			{ ok: false, message: 'MTA returned an incomplete health response' },
+		]);
+	});
+});
+
+describe('doctor — FCrDNS setup guidance', () => {
+	it('fails with the exact desired PTR and provider-specific click path', () => {
+		const findings = evaluateMtaIdentityHealth({
+			ips: [
+				{
+					ip: '192.0.2.10',
+					fcrdns: {
+						verdict: 'fail',
+						reason: 'ehlo-mismatch',
+						ehlo: 'mail.example.com',
+						ptrNames: ['static.clients.your-server.de'],
+					},
+				},
+			],
+		});
+		expect(findings[0]?.ok).toBe(false);
+		expect(findings[0]?.message).toContain('Set its PTR exactly to mail.example.com');
+		expect(findings[0]?.message).toContain('Hetzner Console');
 	});
 });

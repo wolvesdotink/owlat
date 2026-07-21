@@ -1,6 +1,7 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { contentScanFlagValidator } from '../lib/convexValidators';
+import { ipReadinessFieldValidators } from '../delivery/readinessValidators';
 
 /**
  * Delivery + sending-infrastructure tables — blocklist, reputation tracking, content scanning,
@@ -170,6 +171,7 @@ export const deliveryTables = {
 				deferralRate: v.number(),
 				pool: v.string(),
 				active: v.boolean(),
+				...ipReadinessFieldValidators,
 			})
 		),
 		syncedAt: v.number(),

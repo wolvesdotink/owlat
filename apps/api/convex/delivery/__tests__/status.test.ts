@@ -37,7 +37,7 @@ const deliveryGlob = Object.fromEntries(
 	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
 		path.replace(/^\.\.\//, '../../delivery/'),
 		mod,
-	]),
+	])
 );
 const modules = { ...rootGlob, ...deliveryGlob };
 
@@ -52,6 +52,7 @@ const ENV_KEYS = [
 
 const original: Record<string, string | undefined> = {};
 for (const k of ENV_KEYS) original[k] = process.env[k];
+const originalFetch = global.fetch;
 
 function setEnv(patch: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>) {
 	for (const k of ENV_KEYS) delete process.env[k];
@@ -65,6 +66,8 @@ afterEach(() => {
 		if (original[k] === undefined) delete process.env[k];
 		else process.env[k] = original[k];
 	}
+	global.fetch = originalFetch;
+	vi.restoreAllMocks();
 });
 
 describe('delivery.status.getStatus — can-send', () => {
@@ -128,5 +131,53 @@ describe('delivery.status.getStatus — no secret leakage', () => {
 			expect(Object.keys(entry).sort()).toEqual(['isPresent', 'name']);
 			expect(typeof entry.isPresent).toBe('boolean');
 		}
+	});
+});
+
+describe('delivery.status.sendTest — staged diagnostics', () => {
+	it('stops at provider configuration when no transport is usable', async () => {
+		setEnv({});
+		const t = convexTest(schema, modules);
+		const result = await t.action(api.delivery.status.sendTest, { to: 'admin@example.com' });
+
+		expect(result.success).toBe(false);
+		expect(result.stages[0]).toMatchObject({
+			key: 'provider_configuration',
+			status: 'failed',
+		});
+		expect(result.stages.slice(1).every((stage) => stage.status === 'not_run')).toBe(true);
+	});
+
+	it('identifies invalid recipient input before resolving a sender', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		const result = await t.action(api.delivery.status.sendTest, { to: 'not-an-email' });
+
+		expect(result.success).toBe(false);
+		expect(result.stages.map((stage) => stage.status)).toEqual([
+			'passed',
+			'failed',
+			'not_run',
+			'not_run',
+			'not_run',
+		]);
+	});
+
+	it('returns provider receipt metadata and passes every stage after acceptance', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		global.fetch = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ success: true, id: 'test-message-1' }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		) as unknown as typeof fetch;
+		const t = convexTest(schema, modules);
+		const result = await t.action(api.delivery.status.sendTest, { to: 'admin@example.com' });
+
+		expect(result.success).toBe(true);
+		expect(result.provider).toBe('mta');
+		expect(result.providerMessageId).toBe('test-message-1');
+		expect(result.attempts).toBe(1);
+		expect(result.stages.every((stage) => stage.status === 'passed')).toBe(true);
 	});
 });

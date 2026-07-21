@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseFlags, dnsInstructions, formatSummary, resolveComposeVersionPin } from '../quickstart.js';
+import {
+	parseFlags,
+	dnsInstructions,
+	formatSummary,
+	resolveComposeVersionPin,
+} from '../quickstart.js';
 import { mergeEnv, readEnv, writeEnv } from '../../lib/env.js';
 import type { SetupConfig } from '../../lib/setupConfig.js';
 
@@ -25,7 +30,9 @@ describe('resolveComposeVersionPin', () => {
 		expect(resolveComposeVersionPin({ owlatVersion: 'main' })).toBeUndefined();
 		expect(resolveComposeVersionPin({ owlatVersion: '' })).toBeUndefined();
 		expect(resolveComposeVersionPin({ owlatVersion: '  ' })).toBeUndefined();
-		expect(resolveComposeVersionPin({ owlatVersion: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' })).toBeUndefined();
+		expect(
+			resolveComposeVersionPin({ owlatVersion: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' })
+		).toBeUndefined();
 	});
 
 	it('a non-buildLocal (release) quickstart leaves a concrete, non-"dev" OWLAT_VERSION in the generated .env', async () => {
@@ -71,6 +78,10 @@ describe('parseFlags', () => {
 	it('maps the seed toggles to their booleans', () => {
 		expect(parseFlags(['--no-seed'])).toEqual({ skipSeed: true });
 		expect(parseFlags(['--seed'])).toEqual({ forceSeed: true });
+	});
+
+	it('parses the explicit checkpoint restart flag', () => {
+		expect(parseFlags(['--restart'])).toEqual({ restart: true });
 	});
 
 	it('ignores positional arguments', () => {
@@ -121,12 +132,20 @@ describe('formatSummary', () => {
 	});
 
 	it('shows the admin email for populated installs', () => {
-		const out = formatSummary({ mode: 'populated', adminEmail: 'admin@x.com', baseUrl: 'http://localhost:3210' });
+		const out = formatSummary({
+			mode: 'populated',
+			adminEmail: 'admin@x.com',
+			baseUrl: 'http://localhost:3210',
+		});
 		expect(out).toContain('admin@x.com');
 	});
 
 	it('always reminds the operator to back up — command, what it protects, and cadence', () => {
-		const out = formatSummary({ mode: 'populated', adminEmail: 'a@b.com', baseUrl: 'http://localhost:3210' });
+		const out = formatSummary({
+			mode: 'populated',
+			adminEmail: 'a@b.com',
+			baseUrl: 'http://localhost:3210',
+		});
 		// the exact one-off command…
 		expect(out).toContain('owlat backup');
 		// …and the scheduled-backups command…

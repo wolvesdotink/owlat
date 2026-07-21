@@ -5,7 +5,7 @@
  * registry's runtime kind tuples (`lib/llmProviders/types`) so the stored
  * `aiProviderConfig` shape and the registry stay a single source of truth —
  * adding a provider adapter widens both at once. Kept in this pure (no
- * `'use node'`) module so both `schema/auth.ts` and the config functions
+ * `'use node'`) module so both `schema/instance.ts` and the config functions
  * (v8 + Node) can import it without pulling in `node:crypto` or the AI SDK.
  */
 

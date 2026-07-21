@@ -26,6 +26,11 @@ import {
 	type FeatureFlagState,
 } from '@owlat/shared/featureFlags';
 import { readEnv, type EnvMap } from '../lib/env';
+import {
+	fcrdnsReasonMessage,
+	reverseDnsGuidance,
+	type FcrdnsFailureReason,
+} from '@owlat/shared/fcrdns';
 
 interface DoctorOptions {
 	owlatDir: string;
@@ -35,6 +40,56 @@ interface DoctorOptions {
 export interface SendPathFinding {
 	ok: boolean;
 	message: string;
+}
+
+export interface MtaHealthFinding {
+	ok: boolean;
+	message: string;
+}
+
+/** Interpret the exact runtime FCrDNS verdict exposed by the MTA health API. */
+export function evaluateMtaIdentityHealth(value: unknown): MtaHealthFinding[] {
+	if (!isRecord(value) || !Array.isArray(value['ips'])) {
+		return [{ ok: false, message: 'MTA returned no outbound-IP identity status' }];
+	}
+	if (value['ips'].length === 0) {
+		return [{ ok: false, message: 'MTA has no configured outbound IPs' }];
+	}
+	const findings: MtaHealthFinding[] = [];
+	for (const item of value['ips']) {
+		if (!isRecord(item) || typeof item['ip'] !== 'string' || !isRecord(item['fcrdns'])) {
+			findings.push({ ok: false, message: 'MTA returned an invalid outbound-IP identity result' });
+			continue;
+		}
+		const identity = item['fcrdns'];
+		const ehlo = typeof identity['ehlo'] === 'string' ? identity['ehlo'] : '(missing EHLO)';
+		const ptrNames = Array.isArray(identity['ptrNames'])
+			? identity['ptrNames'].filter((name): name is string => typeof name === 'string')
+			: [];
+		const overridden = identity['overridden'] === true;
+		const ready = identity['verdict'] === 'pass' || identity['verdict'] === 'warn' || overridden;
+		if (ready) {
+			const warning = identity['verdict'] === 'warn' ? ' (generic PTR — reputationally poor)' : '';
+			const bypass = overridden ? ' (lab override enabled)' : '';
+			findings.push({
+				ok: true,
+				message: `FCrDNS ready for ${item['ip']}: PTR ${ptrNames.join(', ') || '(none)'} matches EHLO ${ehlo}${warning}${bypass}`,
+			});
+			continue;
+		}
+		const reason =
+			typeof identity['reason'] === 'string'
+				? (identity['reason'] as FcrdnsFailureReason)
+				: undefined;
+		const guidance = reverseDnsGuidance(ptrNames);
+		findings.push({
+			ok: false,
+			message:
+				`FCrDNS blocked for ${item['ip']}: ${fcrdnsReasonMessage(reason)} ` +
+				`Set its PTR exactly to ${ehlo}. ${guidance.instruction}`,
+		});
+	}
+	return findings;
 }
 
 /**
@@ -67,26 +122,79 @@ export function evaluateSendPath(flags: FeatureFlagState, env: EnvMap): SendPath
 	}));
 }
 
-/**
- * Best-effort, single-shot probe of the MTA `/health` endpoint. Warn-only: a
- * not-yet-started or unreachable MTA is informational, not a hard failure (the
- * credential checks already cover misconfiguration).
- */
-async function probeMtaHealth(baseUrl: string): Promise<{ reachable: boolean; detail: string }> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+/** Pure interpretation of the MTA health body, separated for unit tests. */
+export function evaluateMtaHealth(value: unknown): MtaHealthFinding[] {
+	if (!isRecord(value)) return [{ ok: false, message: 'MTA returned an invalid health response' }];
+	const worker = isRecord(value['worker']) ? value['worker'] : null;
+	const emergency = isRecord(value['emergency']) ? value['emergency'] : null;
+	const smtp = isRecord(value['smtpOutbound']) ? value['smtpOutbound'] : null;
+	if (!worker || !emergency || !smtp || !Array.isArray(smtp['ips'])) {
+		return [{ ok: false, message: 'MTA returned an incomplete health response' }];
+	}
+
+	const findings: MtaHealthFinding[] = [
+		{ ok: value['redis'] === 'connected', message: 'MTA queue store is connected' },
+		{ ok: worker['alive'] === true, message: 'MTA delivery worker is alive' },
+		{ ok: value['dns'] === 'ok', message: 'MTA DNS resolver is reachable' },
+		{
+			ok: emergency['allIpsBlocked'] === false,
+			message: 'MTA emergency circuit breaker is clear',
+		},
+	];
+	findings.push(...evaluateMtaIdentityHealth(value));
+
+	if (smtp['ips'].length === 0) {
+		findings.push({ ok: false, message: 'MTA has no sending IPs to probe' });
+	}
+	for (const item of smtp['ips']) {
+		if (!isRecord(item) || typeof item['ip'] !== 'string') {
+			findings.push({ ok: false, message: 'MTA returned an invalid sending-IP result' });
+			continue;
+		}
+		const detail =
+			typeof item['reason'] === 'string' ? ` (${item['reason'].replaceAll('_', ' ')})` : '';
+		findings.push({
+			ok: item['status'] === 'ok',
+			message: `TCP/25 is reachable from ${item['ip']}${detail}`,
+		});
+	}
+	return findings;
+}
+
+async function fetchMtaHealth(baseUrl: string): Promise<unknown> {
 	const url = `${baseUrl.replace(/\/+$/, '')}/health`;
 	const ctrl = new AbortController();
 	const timer = setTimeout(() => ctrl.abort(), 3000);
 	try {
 		const resp = await fetch(url, { signal: ctrl.signal });
-		// Any HTTP answer below 500 means the MTA process is up and routing.
-		return {
-			reachable: resp.status >= 200 && resp.status < 500,
-			detail: `${url} → HTTP ${resp.status}`,
-		};
+		if (!resp.ok) throw new Error(`${url} returned HTTP ${resp.status}`);
+		return await resp.json();
 	} catch (err) {
-		return { reachable: false, detail: `${url} unreachable (${(err as Error).message})` };
+		throw new Error(`${url} is unreachable (${(err as Error).message})`);
 	} finally {
 		clearTimeout(timer);
+	}
+}
+
+/** Single-shot full infrastructure probe of the MTA `/health` endpoint. */
+export async function probeMtaHealth(baseUrl: string): Promise<MtaHealthFinding[]> {
+	try {
+		return evaluateMtaHealth(await fetchMtaHealth(baseUrl));
+	} catch (err) {
+		return [{ ok: false, message: (err as Error).message }];
+	}
+}
+
+/** Setup-time identity-only probe; worker traffic is not required yet. */
+export async function probeMtaIdentityHealth(baseUrl: string): Promise<MtaHealthFinding[]> {
+	try {
+		return evaluateMtaIdentityHealth(await fetchMtaHealth(baseUrl));
+	} catch (err) {
+		return [{ ok: false, message: (err as Error).message }];
 	}
 }
 
@@ -124,15 +232,13 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 	for (const finding of evaluateSendPath(flags, env)) {
 		check(finding.ok, `SEND PATH: ${finding.message}`);
 	}
-	// When the provider is the bundled MTA and its URL is set, additionally probe
-	// /health (warn-only — a stopped MTA is informational, not a config error).
+	// A configured direct-delivery MTA that cannot reach recipient MX servers is
+	// not ready to send. Treat every infrastructure finding as a real doctor
+	// failure, including the source-IP-bound TCP/25 checks.
 	if (needsDeliveryProvider(flags) && env['EMAIL_PROVIDER'] === 'mta' && env['MTA_API_URL']) {
-		const health = await probeMtaHealth(env['MTA_API_URL']);
-		console.log(
-			`${health.reachable ? pc.green('✓') : pc.yellow('!')} SEND PATH: MTA ${
-				health.reachable ? 'reachable' : 'not reachable (non-fatal)'
-			} — ${health.detail}`
-		);
+		for (const finding of await probeMtaHealth(env['MTA_API_URL'])) {
+			check(finding.ok, `SEND PATH: ${finding.message}`);
+		}
 	}
 
 	const overridePath = join(opts.owlatDir, 'docker-compose.override.yml');

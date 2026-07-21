@@ -399,6 +399,7 @@ export const PROVISION_TIMELINE: readonly TimelineSpec[] = [
 	{ id: SetupStep.Preflight, title: 'Check prerequisites', group: 'server' },
 	{ id: SetupStep.Config, title: 'Apply configuration', group: 'server' },
 	{ id: SetupStep.ComposeUp, title: 'Start containers', group: 'server' },
+	{ id: SetupStep.MtaIdentity, title: 'Verify outbound IP identity', group: 'server' },
 	{ id: SetupStep.WaitConvex, title: 'Wait for the backend', group: 'server' },
 	{ id: SetupStep.AdminKey, title: 'Mint the admin key', group: 'server' },
 	{ id: SetupStep.DeployFunctions, title: 'Deploy backend functions', group: 'server' },
