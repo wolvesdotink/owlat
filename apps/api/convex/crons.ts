@@ -162,6 +162,11 @@ crons.interval(
 	internal.delivery.warmingSync.syncWarmingState
 );
 
+// Keep the built-in MTA's infrastructure readiness visible to reactive
+// Delivery surfaces. The MTA internally caches its TCP/25 probes, so this
+// cadence does not create a connection storm against the probe target.
+crons.interval('sync MTA health', { minutes: 2 }, internal.delivery.mtaHealth.sync, {});
+
 // Clean up sending-reputation buckets older than 60 days every hour (both
 // scopes). Risk is derived on read (ADR-0042), so no periodic recalculation.
 crons.interval(

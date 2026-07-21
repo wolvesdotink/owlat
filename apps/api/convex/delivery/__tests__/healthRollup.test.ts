@@ -91,6 +91,22 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				mtaHealth: {
+					status: 'ok',
+					isRedisConnected: true,
+					isWorkerAlive: true,
+					isDnsReachable: true,
+					isAllIpsBlocked: false,
+					smtpOutbound: {
+						status: 'ok',
+						checkedAt: Date.now(),
+						ips: [{ ip: '192.0.2.10', status: 'ok' }],
+					},
+					observedAt: Date.now(),
+				},
+				createdAt: Date.now(),
+			});
 			await ctx.db.insert('domains', {
 				domain: 'mail.example.com',
 				status: 'verified',
@@ -104,6 +120,35 @@ describe('getDeliveryHealth (dot + page single source)', () => {
 		// Provider configured, domain verified, no in-window activity → nothing
 		// escalates, so the roll-up is deterministically healthy.
 		expect(health.level).toBe('ok');
+	});
+
+	it('returns error when the MTA reports degraded infrastructure', async () => {
+		setEnv({ EMAIL_PROVIDER: 'mta', MTA_API_URL: 'http://mta:3100', MTA_API_KEY: 'k' });
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', {
+				mtaHealth: {
+					status: 'degraded',
+					isRedisConnected: true,
+					isWorkerAlive: true,
+					isDnsReachable: true,
+					isAllIpsBlocked: false,
+					smtpOutbound: {
+						status: 'degraded',
+						checkedAt: Date.now(),
+						ips: [{ ip: '192.0.2.10', status: 'failed', reason: 'network_unreachable' }],
+					},
+					observedAt: Date.now(),
+				},
+				createdAt: Date.now(),
+			});
+		});
+
+		const health = await t.query(api.delivery.health.getDeliveryHealth, {});
+		expect(health).toEqual({
+			level: 'error',
+			reason: 'Mail server infrastructure is degraded',
+		});
 	});
 
 	it('returns error when the sending provider is unconfigured', async () => {

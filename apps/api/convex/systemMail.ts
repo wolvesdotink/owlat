@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { internalAction } from './_generated/server';
 import { getOptional } from './lib/env';
-import { isSendProviderKind } from './lib/sendProviders';
+import { isSendProviderKind, type SendProviderKind } from './lib/sendProviders';
 import { sendProviderDispatch } from './lib/sendProviders/dispatch';
 
 /**
@@ -38,7 +38,17 @@ export const sendSystemEmail = internalAction({
 		subject: v.string(),
 		html: v.string(),
 	},
-	handler: async (ctx, args): Promise<void> => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		// Registry-aware: a bundled plugin can contribute a send provider, so the
+		// receipt carries whatever kind dispatch actually used, not a fixed union.
+		provider: SendProviderKind;
+		providerMessageId: string;
+		latencyMs: number;
+		attempts: number;
+	}> => {
 		const provider = getOptional('EMAIL_PROVIDER');
 		const providerReady = await ctx.runQuery(
 			internal.lib.sendProviders.capability.environmentSendProviderReady,
@@ -52,8 +62,8 @@ export const sendSystemEmail = internalAction({
 
 		if (provider === 'mta') {
 			// Behavior-preserving MTA path — routes through the shared provider
-			// dispatch just like resend/ses. `mtaSendProvider` defaults dkimDomain
-			// to the from-domain and generates a random messageId; ipPool
+			// dispatch just like every other kind. `mtaSendProvider` defaults
+			// dkimDomain to the from-domain and generates a random messageId; ipPool
 			// 'transactional' is passed explicitly, so the /send body matches the
 			// previous dedicated client byte-for-byte.
 			const dispatched = await sendProviderDispatch(
@@ -71,11 +81,17 @@ export const sendSystemEmail = internalAction({
 			if (!dispatched.result.success) {
 				throw new Error(`System email send failed via mta: ${dispatched.result.errorMessage}`);
 			}
-			return;
+			return {
+				provider: dispatched.providerType,
+				providerMessageId: dispatched.result.id,
+				latencyMs: dispatched.latencyMs,
+				attempts: dispatched.attempts,
+			};
 		}
 
-		// resend / ses: route through the provider abstraction, carrying the
-		// RFC 3834 anti-loop header the MTA path stamps server-side.
+		// Every non-MTA kind — built-in (resend / ses) or plugin-contributed —
+		// routes through the shared provider dispatch, carrying the RFC 3834
+		// anti-loop header the MTA path stamps server-side.
 		const dispatched = await sendProviderDispatch(
 			ctx,
 			provider,
@@ -93,5 +109,11 @@ export const sendSystemEmail = internalAction({
 				`System email send failed via ${provider}: ${dispatched.result.errorMessage}`
 			);
 		}
+		return {
+			provider: dispatched.providerType,
+			providerMessageId: dispatched.result.id,
+			latencyMs: dispatched.latencyMs,
+			attempts: dispatched.attempts,
+		};
 	},
 });

@@ -34,6 +34,7 @@ export interface CtxWithPool extends BasePhaseCtx {
  */
 export interface CtxWithIp extends CtxWithPool {
 	readonly ip: string;
+	readonly eligibilityGeneration: number;
 }
 
 /**

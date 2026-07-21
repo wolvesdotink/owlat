@@ -7,12 +7,26 @@ import Redis from 'ioredis-mock';
 // pre-composed+signed bytes, and classifies on the structured SmtpError. These
 // unit tests mock the client's connect/sendEnvelope/quit seam and the pool, and
 // inspect the REAL composed bytes (@owlat/mail-message) handed to sendEnvelope.
-const { connectMock, sendEnvelopeMock, quitMock, acquireMock, releaseMock } = vi.hoisted(() => ({
+const {
+	connectMock,
+	sendEnvelopeMock,
+	quitMock,
+	acquireMock,
+	releaseMock,
+	evictConnectionMock,
+	leaseValidMock,
+} = vi.hoisted(() => ({
 	connectMock: vi.fn(),
 	sendEnvelopeMock: vi.fn(),
 	quitMock: vi.fn(),
 	acquireMock: vi.fn(),
 	releaseMock: vi.fn(),
+	evictConnectionMock: vi.fn(),
+	leaseValidMock: vi.fn(),
+}));
+
+vi.mock('../../scaling/ipPool.js', () => ({
+	isIpEligibilityLeaseValid: leaseValidMock,
 }));
 
 vi.mock('@owlat/smtp-client', async (importOriginal) => {
@@ -34,7 +48,7 @@ vi.mock('../connectionPool.js', () => ({
 		release: releaseMock,
 		takeConnection: vi.fn().mockResolvedValue(undefined),
 		storeConnection: vi.fn(),
-		evictConnection: vi.fn(),
+		evictConnection: evictConnectionMock,
 	},
 	PoolOverCapError: class PoolOverCapError extends Error {
 		constructor(public readonly mxHost: string) {
@@ -229,6 +243,7 @@ describe('sendToMx', () => {
 		connectMock.mockResolvedValue(liveConn(true));
 		sendEnvelopeMock.mockResolvedValue({ accepted: [], rejected: [], response: okReply() });
 		quitMock.mockResolvedValue(undefined);
+		leaseValidMock.mockResolvedValue(true);
 		vi.mocked(getStsTlsOptions).mockResolvedValue({
 			requireTLS: false,
 			rejectUnauthorized: false,
@@ -275,6 +290,39 @@ describe('sendToMx', () => {
 		expect(result.success).toBe(false);
 		expect(result.bounceType).toBe('hard');
 		expect(result.smtpCode).toBe(550);
+	});
+
+	it('does not acquire an SMTP connection after its source-IP eligibility lease is revoked', async () => {
+		leaseValidMock.mockResolvedValue(false);
+
+		const result = await sendToMx(createJob(), config, redis, '10.0.0.1', {
+			ip: '10.0.0.1',
+			eligibilityGeneration: 7,
+		});
+
+		expect(result).toMatchObject({ success: false, bounceType: 'deferred', smtpCode: 451 });
+		expect(acquireMock).not.toHaveBeenCalled();
+		expect(connectMock).not.toHaveBeenCalled();
+	});
+
+	it('closes an acquired connection when its source IP is quarantined before MAIL FROM', async () => {
+		leaseValidMock
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(false);
+		const connection = liveConn(true);
+		connectMock.mockResolvedValue(connection);
+
+		const result = await sendToMx(createJob(), config, redis, '10.0.0.1', {
+			ip: '10.0.0.1',
+			eligibilityGeneration: 7,
+		});
+
+		expect(result).toMatchObject({ success: false, bounceType: 'deferred', smtpCode: 451 });
+		expect(acquireMock).toHaveBeenCalledTimes(1);
+		expect(connectMock).toHaveBeenCalledTimes(1);
+		expect(sendEnvelopeMock).not.toHaveBeenCalled();
+		expect(evictConnectionMock).toHaveBeenCalledWith('mx1.example.com:10.0.0.1', connection);
 	});
 
 	it('returns success with remoteMessageId parsed from response', async () => {

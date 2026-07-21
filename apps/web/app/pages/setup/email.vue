@@ -9,18 +9,26 @@ import {
 	type ProviderChoice,
 	type SmtpPreset,
 } from '~/composables/useSetupWizard';
+import { getActiveProfiles } from '@owlat/shared/featureFlags';
 
 definePageMeta({ layout: false });
 useHead({ title: 'Owlat setup — Email provider' });
 
 const router = useRouter();
-const { env, requiresProvider, setupToken, goToStep } = useSetupWizard();
+const { env, flags, requiresProvider, setupToken, goToStep } = useSetupWizard();
 const { getStepStatus, isConnectorHighlighted } = useWizard(SETUP_WIZARD_STEPS, 'email');
 
 // Seed the local draft from any previously-entered values so going Back and
 // returning doesn't wipe the operator's input.
 const initialProvider = (env.value['EMAIL_PROVIDER'] as ProviderChoice | undefined) ?? null;
 const provider = ref<ProviderChoice>(initialProvider ?? (requiresProvider.value ? 'mta' : 'none'));
+const mtaProfileEnabled = computed(() =>
+	getActiveProfiles(flags.value, { deliveryProvider: provider.value }).includes('mta')
+);
+const transactionalIps = ref(env.value['IP_POOLS_TRANSACTIONAL'] ?? '');
+const campaignIps = ref(env.value['IP_POOLS_CAMPAIGN'] ?? '');
+const ehloHostname = ref(env.value['EHLO_HOSTNAME'] ?? '');
+const ehloHostnames = ref(env.value['EHLO_HOSTNAMES'] ?? '');
 const resendKey = ref(env.value['RESEND_API_KEY'] ?? '');
 const sesRegion = ref(env.value['AWS_SES_REGION'] ?? 'us-east-1');
 const sesAccess = ref(env.value['AWS_SES_ACCESS_KEY_ID'] ?? '');
@@ -79,6 +87,13 @@ const draft = computed<EmailStepDraft>(() => ({
 		secure: smtpSecure.value,
 		username: smtpUsername.value,
 		password: smtpPassword.value,
+	},
+	mtaProfileEnabled: mtaProfileEnabled.value,
+	mtaIdentity: {
+		transactionalIps: transactionalIps.value,
+		campaignIps: campaignIps.value,
+		ehloHostname: ehloHostname.value,
+		ehloHostnames: ehloHostnames.value,
 	},
 	fromEmail: fromEmail.value,
 	fromName: fromName.value,
@@ -327,6 +342,48 @@ async function next() {
 						<UiInput v-model="smtpUsername" label="Username" autocomplete="off" />
 						<UiInput v-model="smtpPassword" type="password" label="Password" autocomplete="off" />
 						<p v-if="showErrors && errors.smtp" class="text-sm text-error">{{ errors.smtp }}</p>
+					</div>
+
+					<div
+						v-if="mtaProfileEnabled"
+						class="mt-5 space-y-4 rounded-lg border border-border-default p-4"
+					>
+						<div>
+							<h2 class="font-medium text-text-primary">Outbound IP identity</h2>
+							<p class="text-sm text-text-secondary mt-1">
+								The MTA profile is enabled. Enter the public source IPs and the hostname their PTR
+								records resolve to before launch.
+							</p>
+						</div>
+						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+							<UiInput
+								v-model="transactionalIps"
+								label="Transactional IPs"
+								placeholder="203.0.113.10"
+								help-text="Comma-separated public IPv4 addresses."
+							/>
+							<UiInput
+								v-model="campaignIps"
+								label="Campaign IPs"
+								placeholder="203.0.113.11"
+								help-text="May repeat a transactional IP for a single-IP deployment."
+							/>
+						</div>
+						<UiInput
+							v-model="ehloHostname"
+							label="Default EHLO / PTR hostname"
+							placeholder="mail.example.com"
+							help-text="Set each IP PTR exactly to its EHLO hostname, then point that hostname back to the IP."
+						/>
+						<UiInput
+							v-model="ehloHostnames"
+							label="Per-IP EHLO overrides (optional JSON)"
+							placeholder='{"203.0.113.11":"mail2.example.com"}'
+							help-text="Use when different source IPs have different PTR hostnames."
+						/>
+						<p v-if="showErrors && errors.mtaIdentity" class="text-sm text-error">
+							{{ errors.mtaIdentity }}
+						</p>
 					</div>
 
 					<div v-if="provider === 'resend' || provider === 'smtp'" class="mt-5">

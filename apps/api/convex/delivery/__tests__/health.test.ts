@@ -6,6 +6,7 @@ const HEALTHY: DeliveryHealthInputs = {
 	reputationRisk: 'low',
 	domainStatuses: ['verified', 'verified'],
 	canSend: true,
+	mtaInfrastructure: null,
 };
 
 describe('rollUpDeliveryHealth', () => {
@@ -23,6 +24,19 @@ describe('rollUpDeliveryHealth', () => {
 		const r = rollUpDeliveryHealth({ ...HEALTHY, canSend: false });
 		expect(r.level).toBe('error');
 		expect(r.reason).toMatch(/provider/i);
+	});
+
+	// --- built-in MTA infrastructure dimension ---
+	it('errors when the MTA infrastructure is degraded', () => {
+		const r = rollUpDeliveryHealth({ ...HEALTHY, mtaInfrastructure: 'degraded' });
+		expect(r.level).toBe('error');
+		expect(r.reason).toMatch(/infrastructure/i);
+	});
+
+	it('warns when the MTA health snapshot is stale', () => {
+		const r = rollUpDeliveryHealth({ ...HEALTHY, mtaInfrastructure: 'stale' });
+		expect(r.level).toBe('warn');
+		expect(r.reason).toMatch(/stale/i);
 	});
 
 	// --- domain dimension ---
@@ -70,6 +84,7 @@ describe('rollUpDeliveryHealth', () => {
 			reputationRisk: 'high',
 			domainStatuses: ['failed'],
 			canSend: true,
+			mtaInfrastructure: null,
 		});
 		expect(r.level).toBe('error');
 	});
@@ -79,6 +94,7 @@ describe('rollUpDeliveryHealth', () => {
 			reputationRisk: 'low',
 			domainStatuses: ['pending'],
 			canSend: true,
+			mtaInfrastructure: null,
 		});
 		expect(r.level).toBe('warn');
 	});
@@ -89,6 +105,7 @@ describe('rollUpDeliveryHealth', () => {
 			reputationRisk: 'critical',
 			domainStatuses: ['verified'],
 			canSend: false,
+			mtaInfrastructure: null,
 		});
 		expect(r.level).toBe('error');
 		expect(r.reason).toMatch(/provider/i);

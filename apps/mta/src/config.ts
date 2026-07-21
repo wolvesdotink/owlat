@@ -3,7 +3,9 @@
  */
 
 import { hostname } from 'os';
+import { isIPv4 } from 'node:net';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
+import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
 import type { IpPoolConfig, DkimKeyConfig, DomainProfile } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
@@ -40,6 +42,10 @@ export interface MtaConfig {
 	 * back to `ehloHostname`. Empty in single-IP deployments.
 	 */
 	ehloHostnames: Record<string, string>;
+	/** Extra hostname suffixes treated as generic/provider-default PTRs. */
+	genericPtrSuffixes: string[];
+	/** Lab-only bypass for unverified FCrDNS. Never enable on an internet sender. */
+	allowUnverifiedFcrdns: boolean;
 	/** Domain for VERP return-path addresses */
 	returnPathDomain: string;
 	/** Convex site URL for webhook callbacks */
@@ -296,6 +302,11 @@ export function loadConfig(): MtaConfig {
 	if (transactionalIps.length === 0)
 		throw new Error('IP_POOLS_TRANSACTIONAL must contain at least one IP');
 	if (campaignIps.length === 0) throw new Error('IP_POOLS_CAMPAIGN must contain at least one IP');
+	for (const ip of [...transactionalIps, ...campaignIps]) {
+		if (!isIPv4(ip)) {
+			throw new Error(`${ip} is not a valid IPv4 address in IP_POOLS_*`);
+		}
+	}
 
 	// MTA_SECRET seals DKIM keys + relay credentials at rest. Fail the boot fast
 	// if it is absent or too weak rather than sealing under a guessable key.
@@ -328,6 +339,11 @@ export function loadConfig(): MtaConfig {
 			ehloHostnames[ip.trim()] = name.trim();
 		}
 	}
+
+	const genericPtrSuffixes = parseGenericPtrSuffixes(process.env['MTA_GENERIC_PTR_SUFFIXES']);
+	const allowUnverifiedFcrdns = parseUnverifiedFcrdnsOverride(
+		process.env['MTA_ALLOW_UNVERIFIED_FCRDNS']
+	);
 
 	// Parse DKIM keys from JSON env var
 	let dkimKeys: Record<string, DkimKeyConfig> = {};
@@ -384,6 +400,8 @@ export function loadConfig(): MtaConfig {
 		mtaSecret,
 		ehloHostname,
 		ehloHostnames,
+		genericPtrSuffixes,
+		allowUnverifiedFcrdns,
 		returnPathDomain: requiredEnv('RETURN_PATH_DOMAIN'),
 		convexSiteUrl: requiredEnv('CONVEX_SITE_URL'),
 		webhookSecret: requiredEnv('MTA_WEBHOOK_SECRET'),
