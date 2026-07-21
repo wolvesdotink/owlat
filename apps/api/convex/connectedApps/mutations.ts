@@ -33,6 +33,7 @@ import {
 	type ConnectedAppTransition,
 } from './lifecycle';
 import { loadConnectedAppInOrg } from './repository';
+import { revokeApiKeysForPlugin } from '../auth/apiKeys';
 
 const MANAGE_PERMISSION = 'organization:manage' as const;
 const MANAGE_MESSAGE = 'Only owners and admins can manage connected apps';
@@ -91,6 +92,9 @@ async function applyLifecycleTransition(
 		updatedAt: now,
 		...(transition === 'revoke' ? { revokedAt: now } : {}),
 	});
+	if (transition === 'revoke') {
+		await revokeApiKeysForPlugin(ctx, app.pluginId);
+	}
 	await recordConnectedAppAudit(ctx, {
 		userId,
 		organizationId: activeOrganizationId,
@@ -141,6 +145,7 @@ export const remove = authedMutation({
 			MANAGE_MESSAGE
 		);
 		const app = await loadConnectedAppInOrg(ctx, args.connectedAppId, activeOrganizationId);
+		await revokeApiKeysForPlugin(ctx, app.pluginId);
 		await ctx.db.delete(args.connectedAppId);
 		await recordConnectedAppAudit(ctx, {
 			userId,

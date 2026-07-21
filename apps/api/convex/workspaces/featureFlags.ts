@@ -216,6 +216,8 @@ export const setFeatureFlag = authedMutation({
 		if (pluginFlag) {
 			await recordAuditLog(ctx, {
 				userId: session.userId,
+				organizationId: session.activeOrganizationId,
+				pluginId: flag.slice('plugin.'.length),
 				action: 'settings.updated',
 				resource: 'settings',
 				resourceId: settingsId,

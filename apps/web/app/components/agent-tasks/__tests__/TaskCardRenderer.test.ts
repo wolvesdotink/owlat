@@ -44,7 +44,7 @@ describe('TaskCardRenderer', () => {
 		registry.register({
 			kind: 'plugin.acme.gated',
 			label: 'Gated',
-			flag: 'plugin.acme.gated',
+			flag: 'plugin.acme',
 			load: async () => ({ default: { template: '<div />' } }),
 		});
 		const wrapper = mountRenderer({
@@ -76,6 +76,7 @@ describe('TaskCardRenderer', () => {
 		registry.register({
 			kind: 'plugin.acme.card',
 			label: 'Card',
+			flag: 'plugin.acme',
 			load: async () => ({ default: PluginCard }),
 		});
 
@@ -94,6 +95,7 @@ describe('TaskCardRenderer', () => {
 		registry.register({
 			kind: 'plugin.acme.broken',
 			label: 'Broken',
+			flag: 'plugin.acme',
 			load: async () => {
 				throw new Error('bundle 500');
 			},
@@ -121,6 +123,7 @@ describe('TaskCardRenderer', () => {
 		registry.register({
 			kind: 'plugin.acme.throws',
 			label: 'Throws',
+			flag: 'plugin.acme',
 			load: async () => ({ default: Throwing }),
 		});
 		const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});

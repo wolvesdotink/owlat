@@ -210,6 +210,27 @@ describe('auditLogs.getStats', () => {
 		expect(stats.byAction['campaign.sent']).toBe(1);
 		expect(stats.byAction['settings.updated']).toBe(1);
 	});
+
+	it('seeks only the active tenant plus legacy singleton rows', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			for (const organizationId of ['tenant-a', 'tenant-b', undefined] as const) {
+				await ctx.db.insert('auditLogs', {
+					userId: 'admin-1',
+					organizationId,
+					action: 'settings.updated',
+					resource: 'settings',
+					createdAt: BASE,
+				});
+			}
+		});
+
+		const stats = await t.query(api.auditLogs.getStats, {
+			startDate: BASE - 1,
+			endDate: BASE + 1,
+		});
+		expect(stats.total).toBe(2);
+	});
 });
 
 describe('auditLogs.getActiveUsers', () => {

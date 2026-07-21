@@ -56,6 +56,21 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 	return snapshotRecord(value, (key, propertyValue) => {
 		if (typeof key !== 'string' || !isPluginContributionKind(key)) return propertyValue;
 		const path = `$.contributes.${key}`;
+		const snapshotItem = (item: unknown, index: number): unknown =>
+			snapshotRecord(item, (field, fieldValue) => {
+				if (field === 'module' || field === 'schedule' || field === 'signature') {
+					return snapshotRecord(fieldValue);
+				}
+				if (field === 'retryDelays') {
+					return snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues);
+				}
+				if (field === 'lifecycleEdges') {
+					return snapshotArray(fieldValue, `${path}[${index}].lifecycleEdges`, 12, issues, (edge) =>
+						snapshotRecord(edge)
+					);
+				}
+				return fieldValue;
+			});
 		return snapshotArray(
 			propertyValue,
 			path,
@@ -68,23 +83,12 @@ function snapshotContributions(value: unknown, issues: PluginManifestIssue[]): u
 				key === 'automationTriggers' ||
 				key === 'automationSteps' ||
 				key === 'automationConditions' ||
-				key === 'crons'
-				? (item, index) =>
-						snapshotRecord(item, (field, fieldValue) =>
-							field === 'module' || field === 'schedule'
-								? snapshotRecord(fieldValue)
-								: field === 'retryDelays'
-									? snapshotArray(fieldValue, `${path}[${index}].retryDelays`, 3, issues)
-									: field === 'lifecycleEdges'
-										? snapshotArray(
-												fieldValue,
-												`${path}[${index}].lifecycleEdges`,
-												12,
-												issues,
-												(edge) => snapshotRecord(edge)
-											)
-										: fieldValue
-						)
+				key === 'crons' ||
+				key === 'webhookEvents' ||
+				key === 'importProviders' ||
+				key === 'navItems' ||
+				key === 'settingsPanels'
+				? snapshotItem
 				: undefined
 		);
 	});

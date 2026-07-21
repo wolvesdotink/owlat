@@ -204,6 +204,40 @@ describe('connected-app lifecycle transitions', () => {
 		await expect(t.mutation(api.connectedApps.mutations.revoke, id)).rejects.toThrow();
 	});
 
+	it('revokes every plugin-bound API key in the same transaction as the app', async () => {
+		const t = client();
+		const app = await register(t);
+		const keyIds = await t.run(async (ctx) =>
+			Promise.all([
+				ctx.db.insert('apiKeys', {
+					name: 'connected key',
+					keyHash: 'hash-connected',
+					keyPrefix: 'connected',
+					pluginId: 'policy-pack',
+					isActive: true,
+					createdAt: 1,
+					updatedAt: 1,
+				}),
+				ctx.db.insert('apiKeys', {
+					name: 'unrelated key',
+					keyHash: 'hash-unrelated',
+					keyPrefix: 'unrelated',
+					pluginId: 'other-plugin',
+					isActive: true,
+					createdAt: 1,
+					updatedAt: 1,
+				}),
+			])
+		);
+
+		await t.mutation(api.connectedApps.mutations.revoke, { connectedAppId: app._id });
+
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(keyIds[0]))?.isActive).toBe(false);
+			expect((await ctx.db.get(keyIds[1]))?.isActive).toBe(true);
+		});
+	});
+
 	it('rotates the sealed secret and refuses to rotate a revoked app', async () => {
 		const t = client();
 		const app = await register(t);

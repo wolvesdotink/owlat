@@ -7,6 +7,7 @@ import {
 	Utf8ByteBudget,
 } from './boundedRepository';
 import { PluginCodegenError } from './errors';
+import { GENERATED_ARTIFACT_PATHS } from './render';
 import {
 	createRepositoryPackageMatcher,
 	readRepositoryModuleAliases,
@@ -27,27 +28,9 @@ const SOURCE_EXTENSIONS = new Set([
 ]);
 const MAX_SOURCE_BYTES = 2 * 1024 * 1024;
 const MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024;
-const GENERATED_COMPOSITION_FILES = new Set([
-	'apps/api/convex/plugins/plugins.generated.ts',
-	'apps/api/convex/plugins/components.generated.ts',
-	'apps/web/app/plugins/plugin-composition.generated.ts',
-	'apps/api/convex/plugins/sendTransportCatalog.generated.ts',
-	'apps/api/convex/plugins/sendTransportModules.generated.ts',
-	'apps/api/convex/plugins/agentStepCatalog.generated.ts',
-	'apps/api/convex/plugins/agentStepModules.generated.ts',
-	'apps/api/convex/plugins/draftStrategyCatalog.generated.ts',
-	'apps/api/convex/plugins/draftStrategyModules.generated.ts',
-	'apps/api/convex/plugins/autonomyGateCatalog.generated.ts',
-	'apps/api/convex/plugins/autonomyGateModules.generated.ts',
-	'apps/api/convex/plugins/automationTriggerCatalog.generated.ts',
-	'apps/api/convex/plugins/automationTriggerModules.generated.ts',
-	'apps/api/convex/plugins/automationStepCatalog.generated.ts',
-	'apps/api/convex/plugins/automationStepModules.generated.ts',
-	'apps/api/convex/plugins/automationConditionCatalog.generated.ts',
-	'apps/api/convex/plugins/automationConditionModules.generated.ts',
-	'apps/api/convex/plugins/cronCatalog.generated.ts',
-	'apps/api/convex/plugins/cronModules.generated.ts',
-]);
+export const GENERATED_COMPOSITION_FILES: ReadonlySet<string> = new Set(
+	Object.values(GENERATED_ARTIFACT_PATHS)
+);
 
 export interface DirectPluginImport {
 	readonly file: string;

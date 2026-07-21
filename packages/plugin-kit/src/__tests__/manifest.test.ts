@@ -71,6 +71,74 @@ describe('plugin manifest validation', () => {
 		expect(isPluginManifest(manifest)).toBe(true);
 	});
 
+	it('snapshots and freezes every live data-only contribution before validation', () => {
+		const manifest = {
+			id: 'data-contributions',
+			version: '1.0.0',
+			capabilities: [
+				'ui:navigation',
+				'ui:settings',
+				'webhooks:publish',
+				'imports:provide',
+			] as const,
+			flag: { default: false },
+			contributes: {
+				navItems: [
+					{
+						id: 'reports',
+						section: 'audience',
+						name: 'Reports',
+						href: '/dashboard/audience/reports',
+						icon: 'lucide:chart-bar',
+					},
+				],
+				settingsPanels: [
+					{
+						id: 'reports',
+						name: 'Reports',
+						href: '/dashboard/settings/reports',
+						icon: 'lucide:chart-bar',
+					},
+				],
+				webhookEvents: [
+					{ id: 'report-ready', description: 'A report is ready', subscribable: true },
+				],
+				importProviders: [
+					{
+						id: 'reports',
+						label: 'Reports',
+						module: { exportPath: './reports/import' },
+						signature: {
+							header: 'x-reports-signature',
+							algorithm: 'hmac-sha256',
+							encoding: 'hex',
+							secretEnvVar: 'PLUGIN_REPORTS_SECRET',
+						},
+						attestSource: 'reports',
+					},
+				],
+			},
+		};
+
+		const parsed = parsePluginManifest(manifest);
+		manifest.contributes.navItems[0]!.href = '/dashboard/settings';
+		manifest.contributes.importProviders[0]!.module.exportPath = './mutated';
+
+		expect(parsed.contributes?.navItems?.[0]?.href).toBe('/dashboard/audience/reports');
+		expect(parsed.contributes?.importProviders?.[0]?.module.exportPath).toBe('./reports/import');
+		for (const bucket of [
+			parsed.contributes?.navItems,
+			parsed.contributes?.settingsPanels,
+			parsed.contributes?.webhookEvents,
+			parsed.contributes?.importProviders,
+		]) {
+			expect(Object.isFrozen(bucket)).toBe(true);
+			expect(Object.isFrozen(bucket?.[0])).toBe(true);
+		}
+		expect(Object.isFrozen(parsed.contributes?.importProviders?.[0]?.module)).toBe(true);
+		expect(Object.isFrozen(parsed.contributes?.importProviders?.[0]?.signature)).toBe(true);
+	});
+
 	it('preserves the exact object and literal contribution types in definePlugin', () => {
 		const source = {
 			...validManifest(),

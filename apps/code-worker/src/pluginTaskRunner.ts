@@ -91,7 +91,7 @@ export function resolveJobCommand(
 	registry: Readonly<Record<string, JobCommandFactory>> = BUILTIN_JOB_COMMANDS
 ): JobCommandSpec | null {
 	const local = pluginWorkerJobLocalIdOf(jobKind);
-	if (!local) return null;
+	if (!local || !Object.hasOwn(registry, local)) return null;
 	const factory = registry[local];
 	return factory ? factory(payload) : null;
 }

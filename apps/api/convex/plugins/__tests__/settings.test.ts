@@ -12,17 +12,17 @@ vi.mock('../../lib/sessionOrganization', async () => ({
 	...(await vi.importActual('../../lib/sessionOrganization')),
 	getMutationContext: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
 		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
-		return { userId: 'owner', role: auth.role };
+		return { userId: 'owner', role: auth.role, activeOrganizationId: 'tenant-a' };
 	}),
 	requireAdminContext: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
 		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
 		if (auth.role === 'editor') throw new Error('forbidden');
-		return { userId: 'owner', role: auth.role };
+		return { userId: 'owner', role: auth.role, activeOrganizationId: 'tenant-a' };
 	}),
 	requireOrgPermission: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
 		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
 		if (auth.role === 'editor') throw new Error('forbidden');
-		return { userId: 'owner', role: auth.role };
+		return { userId: 'owner', role: auth.role, activeOrganizationId: 'tenant-a' };
 	}),
 }));
 
@@ -195,6 +195,14 @@ describe('setPluginSettings', () => {
 		expect(result.secretsSet).toEqual({ apiKey: false });
 		const stored = await readStoredSettings(t);
 		expect(stored?.[FLAG_KEY]).toEqual({ endpoint: 'https://prod.example', timeout: 45 });
+		await t.run(async (ctx) => {
+			const audit = await ctx.db.query('auditLogs').first();
+			expect(audit).toMatchObject({
+				organizationId: 'tenant-a',
+				pluginId: 'policy-pack',
+				action: 'settings.updated',
+			});
+		});
 	});
 
 	it('sweeps residual secret plaintext left by an older deployment on the next save', async () => {

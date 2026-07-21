@@ -8,6 +8,7 @@ import { hashApiKey } from './apiAuth';
 import { randomToken } from '../lib/randomToken';
 import { parsePluginId } from '@owlat/plugin-kit';
 import { allowedPluginBoundScopes, loadPluginBoundKeyContext } from '../plugins/apiKeyBinding';
+import type { MutationCtx } from '../_generated/server';
 
 // ============ QUERIES ============
 
@@ -290,28 +291,32 @@ export const revokeByPlugin = authedMutation({
 
 		// Reject an unparseable id rather than scanning for a literal that can
 		// never have been stored.
+		let pluginId;
 		try {
-			parsePluginId(args.pluginId);
+			pluginId = parsePluginId(args.pluginId);
 		} catch {
 			throwInvalidInput('Invalid pluginId');
 		}
 
-		const keys = await ctx.db
-			.query('apiKeys')
-			.withIndex('by_plugin_id', (q) => q.eq('pluginId', args.pluginId))
-			.collect(); // bounded: keys for one plugin (few)
-
-		const now = Date.now();
-		let revoked = 0;
-		for (const key of keys) {
-			if (!key.isActive) continue;
-			await ctx.db.patch(key._id, { isActive: false, revokedAt: now, updatedAt: now });
-			revoked += 1;
-		}
-
-		return { revoked };
+		return { revoked: await revokeApiKeysForPlugin(ctx, pluginId) };
 	},
 });
+
+/** Transaction-local cascade used by connected-app revoke/delete and the API surface above. */
+export async function revokeApiKeysForPlugin(ctx: MutationCtx, pluginId: string): Promise<number> {
+	const keys = await ctx.db
+		.query('apiKeys')
+		.withIndex('by_plugin_id', (q) => q.eq('pluginId', pluginId))
+		.collect(); // bounded: keys for one plugin (few)
+	const now = Date.now();
+	let revoked = 0;
+	for (const key of keys) {
+		if (!key.isActive) continue;
+		await ctx.db.patch(key._id, { isActive: false, revokedAt: now, updatedAt: now });
+		revoked += 1;
+	}
+	return revoked;
+}
 
 /**
  * Delete an API key permanently

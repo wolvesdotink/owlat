@@ -600,7 +600,7 @@ export function applyToggle(
 	stored: FeatureFlagState,
 	flag: FeatureFlagKey,
 	value: boolean,
-	registry: FeatureFlagRegistry = FEATURE_FLAGS
+	registry: FeatureFlagRegistry
 ): { next: FeatureFlagState; cascaded: FeatureFlagKey[] } {
 	const definition = getFeatureFlagDefinition(registry, flag);
 	if (!definition) throw new TypeError(`Unknown feature flag: ${flag}`);
@@ -871,7 +871,7 @@ export function applyPackToggle(
 	stored: FeatureFlagState,
 	packKey: FeaturePackKey,
 	value: boolean,
-	registry: FeatureFlagRegistry = FEATURE_FLAGS
+	registry: FeatureFlagRegistry
 ): { next: FeatureFlagState; cascaded: FeatureFlagKey[] } {
 	const pack = FEATURE_PACKS[packKey];
 	const packFlags = new Set<FeatureFlagKey>(pack.flags);

@@ -21,9 +21,10 @@ describe('provider-reported model identity', () => {
 
 		expect(dispatched).toMatchObject({
 			attempts: 1,
+			providerModelUsed: 'provider-rerouted-model',
 			result: {
 				text: 'generated text',
-				modelUsed: 'provider-rerouted-model',
+				modelUsed: REQUESTED_MODEL_ID,
 				tokenUsage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
 			},
 		});
@@ -35,8 +36,8 @@ describe('provider-reported model identity', () => {
 			prompt: 'hello',
 		});
 
-		expect(dispatched.result.modelUsed).toBeUndefined();
-		expect(dispatched.result.modelUsed).not.toBe(REQUESTED_MODEL_ID);
+		expect(dispatched.result.modelUsed).toBe(REQUESTED_MODEL_ID);
+		expect(dispatched.providerModelUsed).toBeUndefined();
 	});
 
 	it('uses raw identity from the successful retry attempt', async () => {
@@ -53,7 +54,8 @@ describe('provider-reported model identity', () => {
 		const dispatched = await runLlmTextWithAttemptMetadata({ model, prompt: 'hello' });
 
 		expect(dispatched.attempts).toBe(2);
-		expect(dispatched.result.modelUsed).toBe('successful-retry-model');
+		expect(dispatched.result.modelUsed).toBe(REQUESTED_MODEL_ID);
+		expect(dispatched.providerModelUsed).toBe('successful-retry-model');
 	}, 10_000);
 
 	it.each([
@@ -68,6 +70,7 @@ describe('provider-reported model identity', () => {
 			prompt: 'hello',
 		});
 
-		expect(dispatched.result.modelUsed).toBeUndefined();
+		expect(dispatched.result.modelUsed).toBe(REQUESTED_MODEL_ID);
+		expect(dispatched.providerModelUsed).toBeUndefined();
 	});
 });

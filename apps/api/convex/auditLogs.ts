@@ -1,6 +1,7 @@
 import { v } from 'convex/values';
 import { adminQuery } from './lib/authedFunctions';
 import type { Doc } from './_generated/dataModel';
+import type { QueryCtx } from './_generated/server';
 import { getBetterAuthSessionWithRole } from './lib/sessionOrganization';
 import { parsePluginId } from '@owlat/plugin-kit';
 
@@ -8,6 +9,9 @@ import { parsePluginId } from '@owlat/plugin-kit';
 // New code should import from lib/auditLog.ts (AuditAction / AuditResource).
 export type AuditAction = Doc<'auditLogs'>['action'];
 export type AuditResource = Doc<'auditLogs'>['resource'];
+
+const AUDIT_ANALYTICS_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
+const AUDIT_ANALYTICS_MAX_ROWS = 5_000;
 
 // Query: List audit logs with pagination and filtering
 export const list = adminQuery({
@@ -138,13 +142,13 @@ export const getStats = adminQuery({
 		// Default to the last 90 days when the caller didn't bound the
 		// query — `auditLogs` accumulates indefinitely, so an unbounded
 		// scan grows with deployment age.
-		const startDate = args.startDate ?? Date.now() - 90 * 24 * 60 * 60 * 1000;
 		const endDate = args.endDate ?? Date.now();
+		const startDate = Math.max(
+			args.startDate ?? endDate - AUDIT_ANALYTICS_WINDOW_MS,
+			endDate - AUDIT_ANALYTICS_WINDOW_MS
+		);
 
-		const logs = await ctx.db
-			.query('auditLogs')
-			.withIndex('by_created_at', (q) => q.gte('createdAt', startDate).lte('createdAt', endDate))
-			.collect(); // bounded: audit logs within the ≤90-day window range
+		const logs = await loadAuditAnalyticsWindow(ctx, organizationId, startDate, endDate);
 
 		// Count by resource type
 		const byResource: Record<string, number> = {};
@@ -172,11 +176,9 @@ export const getActiveUsers = adminQuery({
 		// "Active" is bounded to the last 90 days — the filter dropdown
 		// in /dashboard/settings/audit only needs users who have been
 		// recently active; an all-time scan grows linearly with logs.
-		const since = Date.now() - 90 * 24 * 60 * 60 * 1000;
-		const logs = await ctx.db
-			.query('auditLogs')
-			.withIndex('by_created_at', (q) => q.gte('createdAt', since))
-			.collect(); // bounded: audit logs within the ≤90-day window range
+		const now = Date.now();
+		const since = now - AUDIT_ANALYTICS_WINDOW_MS;
+		const logs = await loadAuditAnalyticsWindow(ctx, organizationId, since, now);
 
 		// Get unique authUserIds from logs
 		const authUserIds = [
@@ -226,6 +228,36 @@ function auditPageLimit(value: number | undefined): number {
 	const limit = value ?? 50;
 	if (!Number.isSafeInteger(limit) || limit < 1) throw new TypeError('Invalid audit page limit');
 	return Math.min(limit, 100);
+}
+
+/**
+ * Seek the active tenant and legacy singleton rows independently, then retain
+ * the newest bounded union. Fetching at most the cap from either index is
+ * sufficient to determine the newest cap across both streams and prevents a
+ * busy plugin cron from exhausting Convex's document-read limit.
+ */
+async function loadAuditAnalyticsWindow(
+	ctx: QueryCtx,
+	organizationId: string,
+	startDate: number,
+	endDate: number
+): Promise<Doc<'auditLogs'>[]> {
+	if (startDate > endDate) return [];
+	const queryForOrganization = (scope: string | undefined) =>
+		ctx.db
+			.query('auditLogs')
+			.withIndex('by_organization_id_and_created_at', (q) =>
+				q.eq('organizationId', scope).gte('createdAt', startDate).lte('createdAt', endDate)
+			)
+			.order('desc')
+			.take(AUDIT_ANALYTICS_MAX_ROWS);
+	const [tenantRows, legacyRows] = await Promise.all([
+		queryForOrganization(organizationId),
+		queryForOrganization(undefined),
+	]);
+	return [...tenantRows, ...legacyRows]
+		.sort((left, right) => right.createdAt - left.createdAt)
+		.slice(0, AUDIT_ANALYTICS_MAX_ROWS);
 }
 
 // Public + internal mutations for direct audit-log inserts removed:

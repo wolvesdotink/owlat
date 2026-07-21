@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import {
 	applyToggle,
 	applyPackToggle,
+	FEATURE_FLAGS,
 	type FeatureFlagState,
 	type FeatureFlagKey,
 	type FeaturePackKey,
@@ -63,13 +64,14 @@ export interface ToggleResult {
 export async function applyAndPersist(
 	owlatDir: string,
 	key: FeatureFlagKey,
-	value: boolean,
+	value: boolean
 ): Promise<ToggleResult> {
 	const current = await loadFlagState(owlatDir);
-	const { next, cascaded } = applyToggle(current, key, value);
-	await saveFlagState(owlatDir, next);
-	const profiles = await writeComposeOverride(join(owlatDir, OVERRIDE_FILE), next);
-	return { state: next, cascaded, profiles };
+	const { next, cascaded } = applyToggle(current, key, value, FEATURE_FLAGS);
+	const preserved = preservePluginOverrides(current, next);
+	await saveFlagState(owlatDir, preserved);
+	const profiles = await writeComposeOverride(join(owlatDir, OVERRIDE_FILE), preserved);
+	return { state: preserved, cascaded, profiles };
 }
 
 /**
@@ -79,11 +81,30 @@ export async function applyAndPersist(
 export async function applyPackAndPersist(
 	owlatDir: string,
 	key: FeaturePackKey,
-	value: boolean,
+	value: boolean
 ): Promise<ToggleResult> {
 	const current = await loadFlagState(owlatDir);
-	const { next, cascaded } = applyPackToggle(current, key, value);
-	await saveFlagState(owlatDir, next);
-	const profiles = await writeComposeOverride(join(owlatDir, OVERRIDE_FILE), next);
-	return { state: next, cascaded, profiles };
+	const { next, cascaded } = applyPackToggle(current, key, value, FEATURE_FLAGS);
+	const preserved = preservePluginOverrides(current, next);
+	await saveFlagState(owlatDir, preserved);
+	const profiles = await writeComposeOverride(join(owlatDir, OVERRIDE_FILE), preserved);
+	return { state: preserved, cascaded, profiles };
+}
+
+/**
+ * The setup CLI owns core flags but may run after bundled plugins have written
+ * their namespaced overrides. Preserve those opaque booleans verbatim: runtime
+ * composition remains responsible for deciding whether a plugin key is live.
+ */
+function preservePluginOverrides(
+	current: FeatureFlagState,
+	next: FeatureFlagState
+): FeatureFlagState {
+	const preserved = { ...next };
+	for (const [key, value] of Object.entries(current)) {
+		if (/^plugin\.[a-z][a-z0-9-]*$/.test(key) && typeof value === 'boolean') {
+			preserved[key as `plugin.${string}`] = value;
+		}
+	}
+	return preserved;
 }

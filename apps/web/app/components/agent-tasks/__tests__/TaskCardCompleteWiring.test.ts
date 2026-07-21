@@ -44,6 +44,7 @@ function mountWired(source: Item[]) {
 	registry.register({
 		kind: 'plugin.acme.card',
 		label: 'Card',
+		flag: 'plugin.acme',
 		load: async () => ({ default: PluginCard }),
 	});
 

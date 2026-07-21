@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
 	checkDirectPluginImports,
 	findDirectPluginImports,
+	GENERATED_COMPOSITION_FILES,
 	isPluginBoundarySourceFile,
 } from '../packageBoundaries';
+import { GENERATED_ARTIFACT_PATHS } from '../render';
 import { createRepositoryPackageMatcher, type RepositoryModuleAlias } from '../repositoryAliases';
 
 const configuredPackages = ['@acme/mail-plugin'];
@@ -19,6 +21,12 @@ afterEach(async () => {
 });
 
 describe('plugin package boundary lint', () => {
+	it('exempts exactly the generated artifacts owned by the renderer', () => {
+		expect([...GENERATED_COMPOSITION_FILES].sort()).toEqual(
+			Object.values(GENERATED_ARTIFACT_PATHS).sort()
+		);
+	});
+
 	it.each([
 		[`import plugin from '@acme/mail-plugin';`, '@acme/mail-plugin'],
 		[`export { plugin } from '@acme/mail-plugin/runtime';`, '@acme/mail-plugin/runtime'],
