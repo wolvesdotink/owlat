@@ -3,8 +3,7 @@ import type { MutationCtx } from '../_generated/server';
 import { recordAuditLog } from '../lib/auditLog';
 import type { AggregateState, RecipientState } from './postboxOutboundLifecycle';
 
-export type PostboxOutboundEffect = {
-	kind: 'audit_log';
+export type PostboxOutboundAuditEvent = {
 	mailMessageId: Id<'mailMessages'>;
 	mailboxId: Id<'mailboxes'>;
 	recipientIdx: number;
@@ -20,32 +19,30 @@ export type PostboxOutboundEffect = {
 	};
 };
 
-export async function applyPostboxOutboundEffects(
+export async function recordPostboxOutboundAudit(
 	ctx: MutationCtx,
-	effects: ReadonlyArray<PostboxOutboundEffect>
+	event: PostboxOutboundAuditEvent
 ): Promise<void> {
-	for (const effect of effects) {
-		await recordAuditLog(ctx, {
-			userId: 'system',
-			action: 'postbox_outbound_transition',
-			resource: 'mail_message',
-			resourceId: effect.mailMessageId,
-			details: {
-				mailboxId: effect.mailboxId,
-				recipientIdx: effect.recipientIdx,
-				from: effect.from,
-				to: effect.to,
-				aggregateBefore: effect.aggregateBefore,
-				aggregateAfter: effect.aggregateAfter,
-				at: effect.at,
-				...(effect.details?.bounceMessage !== undefined
-					? { bounceMessage: effect.details.bounceMessage }
-					: {}),
-				...(effect.details?.errorMessage !== undefined
-					? { errorMessage: effect.details.errorMessage }
-					: {}),
-				...(effect.details?.errorCode !== undefined ? { errorCode: effect.details.errorCode } : {}),
-			},
-		});
-	}
+	await recordAuditLog(ctx, {
+		userId: 'system',
+		action: 'postbox_outbound_transition',
+		resource: 'mail_message',
+		resourceId: event.mailMessageId,
+		details: {
+			mailboxId: event.mailboxId,
+			recipientIdx: event.recipientIdx,
+			from: event.from,
+			to: event.to,
+			aggregateBefore: event.aggregateBefore,
+			aggregateAfter: event.aggregateAfter,
+			at: event.at,
+			...(event.details?.bounceMessage !== undefined
+				? { bounceMessage: event.details.bounceMessage }
+				: {}),
+			...(event.details?.errorMessage !== undefined
+				? { errorMessage: event.details.errorMessage }
+				: {}),
+			...(event.details?.errorCode !== undefined ? { errorCode: event.details.errorCode } : {}),
+		},
+	});
 }

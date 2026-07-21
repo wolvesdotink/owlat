@@ -1,7 +1,7 @@
 /** Compliance telemetry writers and bounded read helpers. */
 
 import { v } from 'convex/values';
-import type { DatabaseReader } from '../_generated/server';
+import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { startOfDayUtc } from '../analytics/sendingReputation';
@@ -15,6 +15,10 @@ export const GMAIL_ACCEPTED_AT_MAX_AGE_MS = TELEMETRY_RETENTION_MS;
 const UNSUBSCRIBE_RETENTION_MS = 30 * DAY_MS;
 export const COMPLIANCE_CLEANUP_BATCH_SIZE = 128;
 export const GMAIL_DASHBOARD_DOMAIN_LIMIT = 100;
+export const GMAIL_VOLUME_SHARDS = 8;
+export const GMAIL_ROLLUP_REFRESH_DELAY_MS = 60 * 1000;
+const GMAIL_ROLLUP_JOB_STALE_MS = 10 * 60 * 1000;
+const GMAIL_MAX_BUCKETS_PER_WINDOW = (GMAIL_WINDOW_MS / HOUR_MS + 1) * GMAIL_VOLUME_SHARDS;
 
 export const GMAIL_BULK_SENDER_THRESHOLD = 5_000;
 export const GMAIL_PROXIMITY_WARNING_THRESHOLD = 4_000;
@@ -47,18 +51,12 @@ function currentWindowCounts(counts: readonly GmailHourlyCount[], now: number): 
 	return counts.filter((count) => count.hourStart >= oldestHour && count.hourStart <= newestHour);
 }
 
-function incrementHourlyCount(
-	counts: readonly GmailHourlyCount[],
-	acceptedHour: number,
-	now: number
-): GmailHourlyCount[] {
-	const byHour = new Map(
-		currentWindowCounts(counts, now).map((count) => [count.hourStart, count.deliveredCount])
-	);
-	byHour.set(acceptedHour, (byHour.get(acceptedHour) ?? 0) + 1);
-	return [...byHour.entries()]
-		.map(([countHour, deliveredCount]) => ({ hourStart: countHour, deliveredCount }))
-		.sort((left, right) => left.hourStart - right.hourStart);
+function deterministicShard(value: string): number {
+	let hash = 0;
+	for (let index = 0; index < value.length; index++) {
+		hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+	}
+	return hash % GMAIL_VOLUME_SHARDS;
 }
 
 export function latencyBucketIndex(durationMs: number): number {
@@ -120,32 +118,103 @@ export const recordGmailDelivery = internalMutation({
 		const boundedAcceptedAt = Math.min(args.acceptedAt, ingestedAt);
 		const acceptedHour = hourStart(boundedAcceptedAt);
 		if (acceptedHour >= hourStart(ingestedAt - GMAIL_WINDOW_MS)) {
-			const rollup = await ctx.db
-				.query('gmailDomainVolumeRollups')
+			const shardKey = deterministicShard(args.providerMessageId);
+			const bucket = await ctx.db
+				.query('gmailVolumeBuckets')
+				.withIndex('by_domain_hour_shard', (q) =>
+					q
+						.eq('primaryDomain', args.primaryDomain)
+						.eq('hourStart', acceptedHour)
+						.eq('shardKey', shardKey)
+				)
+				.unique();
+			if (bucket) {
+				await ctx.db.patch(bucket._id, { deliveredCount: bucket.deliveredCount + 1 });
+			} else {
+				await ctx.db.insert('gmailVolumeBuckets', {
+					primaryDomain: args.primaryDomain,
+					hourStart: acceptedHour,
+					shardKey,
+					deliveredCount: 1,
+				});
+			}
+
+			const pendingRefresh = await ctx.db
+				.query('gmailDomainVolumeRollupJobs')
 				.withIndex('by_domain', (q) => q.eq('primaryDomain', args.primaryDomain))
 				.unique();
-			const hourlyCounts = incrementHourlyCount(
-				rollup?.hourlyCounts ?? [],
-				acceptedHour,
-				ingestedAt
-			);
-			const deliveredCount = hourlyCounts.reduce((sum, count) => sum + count.deliveredCount, 0);
-			if (rollup) {
-				await ctx.db.patch(rollup._id, {
-					hourlyCounts,
-					deliveredCount,
-					windowRefreshedAt: ingestedAt,
-				});
-			} else {
-				await ctx.db.insert('gmailDomainVolumeRollups', {
+			if (!pendingRefresh) {
+				const jobId = await ctx.db.insert('gmailDomainVolumeRollupJobs', {
 					primaryDomain: args.primaryDomain,
-					hourlyCounts,
-					deliveredCount,
-					windowRefreshedAt: ingestedAt,
+					scheduledAt: ingestedAt,
 				});
+				await ctx.scheduler.runAfter(
+					GMAIL_ROLLUP_REFRESH_DELAY_MS,
+					internal.delivery.complianceTelemetry.refreshGmailDomainVolume,
+					{ jobId, primaryDomain: args.primaryDomain }
+				);
 			}
 		}
 		return { recorded: true };
+	},
+});
+
+async function materializeGmailDomainVolume(
+	ctx: MutationCtx,
+	primaryDomain: string,
+	now: number
+): Promise<void> {
+	const buckets = await ctx.db
+		.query('gmailVolumeBuckets')
+		.withIndex('by_domain_hour_shard', (q) =>
+			q
+				.eq('primaryDomain', primaryDomain)
+				.gte('hourStart', hourStart(now - GMAIL_WINDOW_MS))
+				.lte('hourStart', hourStart(now))
+		)
+		.take(GMAIL_MAX_BUCKETS_PER_WINDOW);
+	const totalsByHour = new Map<number, number>();
+	for (const bucket of buckets) {
+		totalsByHour.set(
+			bucket.hourStart,
+			(totalsByHour.get(bucket.hourStart) ?? 0) + bucket.deliveredCount
+		);
+	}
+	const hourlyCounts = [...totalsByHour.entries()]
+		.map(([countHour, deliveredCount]) => ({ hourStart: countHour, deliveredCount }))
+		.sort((left, right) => left.hourStart - right.hourStart);
+	const deliveredCount = hourlyCounts.reduce((sum, count) => sum + count.deliveredCount, 0);
+	const rollup = await ctx.db
+		.query('gmailDomainVolumeRollups')
+		.withIndex('by_domain', (q) => q.eq('primaryDomain', primaryDomain))
+		.unique();
+	if (deliveredCount === 0) {
+		if (rollup) await ctx.db.delete(rollup._id);
+		return;
+	}
+	if (rollup) {
+		await ctx.db.patch(rollup._id, { hourlyCounts, deliveredCount, windowRefreshedAt: now });
+	} else {
+		await ctx.db.insert('gmailDomainVolumeRollups', {
+			primaryDomain,
+			hourlyCounts,
+			deliveredCount,
+			windowRefreshedAt: now,
+		});
+	}
+}
+
+export const refreshGmailDomainVolume = internalMutation({
+	args: {
+		jobId: v.id('gmailDomainVolumeRollupJobs'),
+		primaryDomain: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const job = await ctx.db.get(args.jobId);
+		if (!job || job.primaryDomain !== args.primaryDomain) return { refreshed: false };
+		await materializeGmailDomainVolume(ctx, args.primaryDomain, Date.now());
+		await ctx.db.delete(job._id);
+		return { refreshed: true };
 	},
 });
 
@@ -263,6 +332,18 @@ export const cleanupComplianceTelemetry = internalMutation({
 			.query('gmailVolumeBuckets')
 			.withIndex('by_hour', (q) => q.gt('hourStart', hourStart(now)))
 			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
+		const staleRollupJobs = await ctx.db
+			.query('gmailDomainVolumeRollupJobs')
+			.withIndex('by_scheduled_at', (q) => q.lt('scheduledAt', now - GMAIL_ROLLUP_JOB_STALE_MS))
+			.take(COMPLIANCE_CLEANUP_BATCH_SIZE);
+		for (const job of staleRollupJobs) {
+			await ctx.db.patch(job._id, { scheduledAt: now });
+			await ctx.scheduler.runAfter(
+				0,
+				internal.delivery.complianceTelemetry.refreshGmailDomainVolume,
+				{ jobId: job._id, primaryDomain: job.primaryDomain }
+			);
+		}
 
 		const receiptRows = new Map(
 			[
@@ -309,6 +390,7 @@ export const cleanupComplianceTelemetry = internalMutation({
 			futureReceipts,
 			futureLegacyReceipts,
 			futureGmailBuckets,
+			staleRollupJobs,
 			rollups,
 			latencyRows,
 		];
@@ -323,6 +405,7 @@ export const cleanupComplianceTelemetry = internalMutation({
 		return {
 			deleted: receiptRows.size + bucketRows.size + latencyRows.length,
 			refreshedRollups: rollups.length,
+			rescheduledRollupJobs: staleRollupJobs.length,
 			continuationScheduled: hasMore,
 		};
 	},

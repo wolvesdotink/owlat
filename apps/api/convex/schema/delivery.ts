@@ -96,8 +96,9 @@ export const deliveryTables = {
 		.index('by_ingested_at', ['ingestedAt'])
 		.index('by_observed_at', ['observedAt']),
 
-	// Deprecated write-sharded hourly volume retained during the rollup migration.
-	// New writes use gmailDomainVolumeRollups; bounded cleanup drains these rows.
+	// Hot-path accepted-delivery volume. Provider message ids deterministically
+	// spread writes across shards so a high-volume domain does not contend on one
+	// document under Convex optimistic concurrency control.
 	gmailVolumeBuckets: defineTable({
 		primaryDomain: v.string(),
 		hourStart: v.number(),
@@ -108,10 +109,10 @@ export const deliveryTables = {
 		.index('by_domain_hour_shard', ['primaryDomain', 'hourStart', 'shardKey'])
 		.index('by_hour', ['hourStart']),
 
-	// Materialized, fixed-width hourly totals per primary domain. Dashboard reads
-	// use the deliveredCount index and a documented top-domain cap instead of
-	// scanning every domain × hour × shard bucket. The hourly cleanup refreshes
-	// inactive rows so the index sheds expired hours without requiring new mail.
+	// Asynchronously materialized, fixed-width hourly totals per primary domain.
+	// Dashboard reads use the deliveredCount index and a documented top-domain cap
+	// instead of scanning every domain × hour × shard bucket. The hourly cleanup
+	// refreshes inactive rows so the index sheds expired hours without new mail.
 	gmailDomainVolumeRollups: defineTable({
 		primaryDomain: v.string(),
 		hourlyCounts: v.array(
@@ -127,6 +128,16 @@ export const deliveryTables = {
 		.index('by_domain', ['primaryDomain'])
 		.index('by_delivered_count', ['deliveredCount', 'primaryDomain'])
 		.index('by_window_refreshed_at', ['windowRefreshedAt']),
+
+	// Stable per-domain coalescing seam for asynchronous rollup refreshes. Hot
+	// delivery writes only read an existing job; the first write after a refresh
+	// creates and schedules the next one.
+	gmailDomainVolumeRollupJobs: defineTable({
+		primaryDomain: v.string(),
+		scheduledAt: v.number(),
+	})
+		.index('by_domain', ['primaryDomain'])
+		.index('by_scheduled_at', ['scheduledAt']),
 
 	// Bounded histogram of real RFC 8058 POST processing latency. The one-click
 	// handler records one sample after the unsubscribe mutation has completed;
