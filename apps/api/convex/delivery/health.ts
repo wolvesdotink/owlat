@@ -2,7 +2,7 @@
  * Delivery health roll-up — the single "is sending healthy right now?" signal
  * that drives the sidebar's **Delivery** status dot.
  *
- * It composes three EXISTING read surfaces into one cheap query so the nav can
+ * It composes the existing read surfaces into one cheap query so the nav can
  * subscribe once (no N+1):
  *  - org sending reputation risk (`summarize` → `riskLevel`)
  *  - sending-domain verification states (`domains` table)
@@ -17,6 +17,7 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { summarize } from '../analytics/sendingReputation';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
+import { getOptional } from '../lib/env';
 
 /** Traffic-light level for the Delivery status dot. */
 export type DeliveryHealthLevel = 'ok' | 'warn' | 'error';
@@ -34,6 +35,8 @@ export interface DeliveryHealthInputs {
 	domainStatuses: DomainStatus[];
 	/** Whether the send path can actually dispatch (provider configured). */
 	canSend: boolean;
+	/** Live infrastructure posture when the built-in MTA is in the active route. */
+	mtaInfrastructure: 'healthy' | 'degraded' | 'unreachable' | 'stale' | 'unchecked' | null;
 }
 
 export interface DeliveryHealthRollup {
@@ -49,6 +52,21 @@ function providerHealth(canSend: boolean): DeliveryHealthRollup {
 	return canSend
 		? { level: 'ok', reason: 'Delivery provider is configured' }
 		: { level: 'error', reason: 'No delivery provider is configured' };
+}
+
+function mtaHealth(status: DeliveryHealthInputs['mtaInfrastructure']): DeliveryHealthRollup {
+	switch (status) {
+		case 'degraded':
+			return { level: 'error', reason: 'Mail server infrastructure is degraded' };
+		case 'unreachable':
+			return { level: 'error', reason: 'Mail server health endpoint is unreachable' };
+		case 'stale':
+			return { level: 'warn', reason: 'Mail server health check is stale' };
+		case 'unchecked':
+			return { level: 'warn', reason: 'Mail server health has not been checked yet' };
+		default:
+			return { level: 'ok', reason: 'Mail server infrastructure is healthy' };
+	}
 }
 
 /** Domain dimension: a failed verification is an error; anything mid-flight warns. */
@@ -77,15 +95,16 @@ function reputationHealth(risk: ReputationRisk | null): DeliveryHealthRollup {
 }
 
 /**
- * Roll the three delivery-health dimensions into one worst-of verdict. Pure:
+ * Roll the delivery-health dimensions into one worst-of verdict. Pure:
  * no DB, no ctx — the null-vs-populated and tie-break decisions are unit
  * testable. Ties at the same severity resolve in a fixed, most-actionable
- * order: provider → domains → reputation (so a red provider dot names the
- * provider, not a coincidentally-red reputation).
+ * order: provider → infrastructure → domains → reputation (so a red
+ * provider dot names the provider, not a coincidentally-red reputation).
  */
 export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHealthRollup {
 	const candidates: DeliveryHealthRollup[] = [
 		providerHealth(inputs.canSend),
+		mtaHealth(inputs.mtaInfrastructure),
 		domainHealth(inputs.domainStatuses),
 		reputationHealth(inputs.reputationRisk),
 	];
@@ -100,8 +119,8 @@ export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHeal
 
 /**
  * Live delivery-health roll-up for the sidebar dot. One query, three bounded
- * reads (rolling reputation buckets, the org's sending domains, the provider
- * routes) — cheap enough to subscribe to from the nav. Member-level: it returns
+ * reads (rolling reputation buckets, sending domains, provider routes, and the
+ * infrastructure singleton) — cheap enough to subscribe to from the nav. Member-level: it returns
  * only a level + a human reason string, never a credential or a raw metric.
  */
 // all-members: delivery health is org-wide operational status, member-visible — a coarse ok/warn/error level + human reason string, no credentials or raw metrics.
@@ -122,11 +141,27 @@ export const getDeliveryHealth = authedQuery({
 		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most.
 
 		const canSend = await isDeliveryConfigured(ctx);
+		const routes = await ctx.db.query('providerRoutes').collect(); // bounded: one row per message type
+		const usesMta =
+			getOptional('EMAIL_PROVIDER') === 'mta' ||
+			routes.some((route) =>
+				route.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+			);
+		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
+		const snapshot = settings?.mtaHealth;
+		let mtaInfrastructure: DeliveryHealthInputs['mtaInfrastructure'] = null;
+		if (usesMta) {
+			if (!snapshot) mtaInfrastructure = 'unchecked';
+			else if (Date.now() - snapshot.observedAt > 5 * 60_000) mtaInfrastructure = 'stale';
+			else if (snapshot.status === 'ok') mtaInfrastructure = 'healthy';
+			else mtaInfrastructure = snapshot.status;
+		}
 
 		return rollUpDeliveryHealth({
 			reputationRisk: hasActivity ? orgSummary.riskLevel : null,
 			domainStatuses: domains.map((d) => d.status),
 			canSend,
+			mtaInfrastructure,
 		});
 	},
 });
