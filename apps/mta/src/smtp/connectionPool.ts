@@ -28,28 +28,28 @@
  * Redis is unavailable; per-instance caps still apply.
  */
 
-import type Redis from "ioredis";
+import type Redis from 'ioredis';
 import {
 	quit,
 	resetTransaction,
 	type SmtpConnectOptions,
 	type SmtpConnection,
-} from "@owlat/smtp-client";
-import { logger } from "../monitoring/logger.js";
-import { PoolGlobalCap } from "./poolGlobalCap.js";
-import { smtpPoolConnections, smtpPoolReused } from "./poolMetrics.js";
+} from '@owlat/smtp-client';
+import { logger } from '../monitoring/logger.js';
+import { PoolGlobalCap } from './poolGlobalCap.js';
+import { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
 import {
 	buildConnectConfig,
 	buildPoolKey,
 	type AcquireOptions,
 	type TlsKeyProfile,
-} from "./poolConnectConfig.js";
-import { PoolOverCapError, type PoolConfig } from "./poolLimits.js";
-import { DEFAULT_POOL_CONFIG, type PoolEntry } from "./poolState.js";
+} from './poolConnectConfig.js';
+import { PoolOverCapError, type PoolConfig } from './poolLimits.js';
+import { DEFAULT_POOL_CONFIG, type PoolEntry } from './poolState.js';
 
-export type { AcquireOptions, TlsKeyProfile } from "./poolConnectConfig.js";
-export { PoolOverCapError, type PoolConfig } from "./poolLimits.js";
-export { smtpPoolConnections, smtpPoolReused } from "./poolMetrics.js";
+export type { AcquireOptions, TlsKeyProfile } from './poolConnectConfig.js';
+export { PoolOverCapError, type PoolConfig } from './poolLimits.js';
+export { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
 
 /**
  * `PoolOverCapError` is treated like a transient connection failure: try the
@@ -92,7 +92,7 @@ export class SmtpConnectionPool {
 		mxHost: string,
 		bindIp: string,
 		dkimDomain?: string,
-		tls?: TlsKeyProfile,
+		tls?: TlsKeyProfile
 	): string {
 		return buildPoolKey(mxHost, bindIp, dkimDomain, tls);
 	}
@@ -111,10 +111,10 @@ export class SmtpConnectionPool {
 	async acquire(
 		mxHost: string,
 		bindIp: string,
-		options: AcquireOptions,
+		options: AcquireOptions
 	): Promise<{ key: string; config: SmtpConnectOptions }> {
 		if (options.tls?.verifyPeerCertificate && !options.tls.danePolicyFingerprint) {
-			throw new Error("DANE verifier requires a policy fingerprint for safe pooling");
+			throw new Error('DANE verifier requires a policy fingerprint for safe pooling');
 		}
 		const dkimDomain = options.dkimDomain;
 		const baseKey = buildPoolKey(mxHost, bindIp, dkimDomain, {
@@ -125,7 +125,7 @@ export class SmtpConnectionPool {
 
 		// Reuse fast-path — an already-counted config, no new global slot.
 		const existingMatch = [...this.pool.entries()].find(
-			([, entry]) => entry.baseKey === baseKey && entry.inFlight === 0,
+			([, entry]) => entry.baseKey === baseKey && entry.inFlight === 0
 		);
 		const existing = existingMatch?.[1];
 		if (existing) {
@@ -144,7 +144,7 @@ export class SmtpConnectionPool {
 		// Per-scope limit (provider for known shared receivers, MX otherwise):
 		// evict the LRU idle lineage to make room, never an in-flight connection.
 		let scopeEntryCount = [...this.pool.values()].filter(
-			(entry) => entry.connectionScope === connectionScope,
+			(entry) => entry.connectionScope === connectionScope
 		).length;
 		while (scopeEntryCount >= maxConnections) {
 			let oldestKey: string | undefined;
@@ -166,7 +166,7 @@ export class SmtpConnectionPool {
 				}
 				this.pool.delete(oldestKey);
 				this.cap.release(evicted!.connectionScope);
-				logger.debug({ key: oldestKey }, "Evicted pool entry for connection-scope limit");
+				logger.debug({ key: oldestKey }, 'Evicted pool entry for connection-scope limit');
 				scopeEntryCount--;
 			}
 			if (!oldestKey) {
@@ -181,14 +181,14 @@ export class SmtpConnectionPool {
 			!(await this.cap.tryReserve(
 				connectionScope,
 				this.slotTtlSeconds(),
-				options.connectionLimits?.maxConnections,
+				options.connectionLimits?.maxConnections
 			))
 		) {
 			throw new PoolOverCapError(connectionScope);
 		}
 
 		const matchingConfig = [...this.pool.values()].find(
-			(entry) => entry.baseKey === baseKey,
+			(entry) => entry.baseKey === baseKey
 		)?.config;
 		const config = matchingConfig ?? buildConnectConfig(mxHost, bindIp, options);
 
@@ -207,7 +207,7 @@ export class SmtpConnectionPool {
 
 		this.pool.set(key, entry);
 		this.updateGauge();
-		logger.debug({ key }, "Created new pool entry");
+		logger.debug({ key }, 'Created new pool entry');
 
 		return { key, config };
 	}
@@ -319,7 +319,7 @@ export class SmtpConnectionPool {
 	private isRetirable(
 		messagesSent: number,
 		openedAt: number,
-		maxDeliveriesPerConnection: number,
+		maxDeliveriesPerConnection: number
 	): boolean {
 		return (
 			messagesSent >= maxDeliveriesPerConnection || Date.now() - openedAt > this.config.maxAgeMs
@@ -347,7 +347,7 @@ export class SmtpConnectionPool {
 		this.pool.delete(key);
 		this.cap.release(entry.connectionScope);
 		this.updateGauge();
-		logger.debug({ key }, "Evicted pool entry after a transport error");
+		logger.debug({ key }, 'Evicted pool entry after a transport error');
 	}
 
 	/** Fence one source identity from idle and checked-out socket reuse. */
@@ -362,7 +362,7 @@ export class SmtpConnectionPool {
 		}
 		if (changed) {
 			this.updateGauge();
-			logger.warn({ bindIp }, "Invalidated SMTP pool entries for ineligible source IP");
+			logger.warn({ bindIp }, 'Invalidated SMTP pool entries for ineligible source IP');
 		}
 	}
 
@@ -403,7 +403,7 @@ export class SmtpConnectionPool {
 				this.disposeIdle(entry);
 				this.pool.delete(key);
 				this.cap.release(entry.connectionScope);
-				logger.debug({ key }, "Evicted idle/aged pool entry");
+				logger.debug({ key }, 'Evicted idle/aged pool entry');
 			}
 
 			if (keysToEvict.length > 0) {
@@ -442,7 +442,7 @@ export class SmtpConnectionPool {
 
 		this.pool.clear();
 		this.updateGauge();
-		logger.info("SMTP connection pool closed");
+		logger.info('SMTP connection pool closed');
 	}
 
 	/**
@@ -462,8 +462,8 @@ export class SmtpConnectionPool {
 				idle++;
 			}
 		}
-		smtpPoolConnections.set({ state: "idle" }, idle);
-		smtpPoolConnections.set({ state: "active" }, active);
+		smtpPoolConnections.set({ state: 'idle' }, idle);
+		smtpPoolConnections.set({ state: 'active' }, active);
 	}
 
 	/**
