@@ -2,8 +2,8 @@
 	"name": "@owlat/web",
 	"version": "0.3.3",
 	"private": true,
-	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"scripts": {
 		"dev": "bun --env-file=../../.env --env-file=../../.env.local run nuxt dev",
@@ -31,6 +31,8 @@
 		"@owlat/email-builder": "workspace:*",
 		"@owlat/email-previewer": "workspace:*",
 		"@owlat/email-renderer": "workspace:*",
+		"@owlat/plugin-host": "workspace:*",
+		"@owlat/plugin-kit": "workspace:*",
 		"@owlat/shared": "workspace:*",
 		"@tailwindcss/vite": "catalog:vue",
 		"better-auth": "catalog:convex",

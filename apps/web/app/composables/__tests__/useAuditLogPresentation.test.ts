@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AUDIT_ACTION_LITERALS } from '@owlat/api/auditActions';
+import { AUDIT_ACTION_LITERALS, HOSTED_PLUGIN_OPERATION_LITERALS } from '@owlat/api/auditActions';
 import {
 	buildActionTypeGroups,
 	getActionLabel,
@@ -7,8 +7,10 @@ import {
 	getActionColorClass,
 	getResourceIcon,
 	getResourceLabel,
+	getHostedPluginDetailText,
 	formatTimestamp,
 	getUserInitials,
+	type AuditLogEntry,
 } from '../useAuditLogPresentation';
 
 describe('useAuditLogPresentation action catalog parity', () => {
@@ -96,4 +98,73 @@ describe('useAuditLogPresentation presentation helpers', () => {
 		expect(getUserInitials(undefined, 'zoe@example.com')).toBe('ZO');
 		expect(getUserInitials(undefined, undefined)).toBe('??');
 	});
+
+	it.each([
+		['plugin.action_completed', 'policy-pack', 'agent.step', 'policy-pack · Agent pipeline step'],
+		['plugin.action_completed', 'policy-pack', 'autonomy.gate', 'policy-pack · Autonomy gate'],
+		['plugin.action_completed', 'draft-helper', 'draft.strategy', 'draft-helper · Draft strategy'],
+		['plugin.action_completed', 'policy-pack', 'storage.get', 'policy-pack · Storage read'],
+		['plugin.action_failed', 'draft-helper', 'llm.generate', 'draft-helper · LLM generation'],
+		['plugin.action_denied', 'policy-pack', 'storage.set', 'policy-pack · Storage write'],
+	])('presents safe hosted plugin details for %s', (action, pluginId, operation, expected) => {
+		expect(
+			getHostedPluginDetailText(auditEntry({ action, pluginId, details: { operation } }))
+		).toBe(expected);
+	});
+
+	it('falls back to legacy resource attribution and ignores arbitrary or malformed details', () => {
+		expect(
+			getHostedPluginDetailText(
+				auditEntry({
+					action: 'plugin.action_completed',
+					resourceId: 'legacy-plugin',
+					details: { operation: 'storage.list', secret: 'must-not-render' },
+				})
+			)
+		).toBe('legacy-plugin · Storage list');
+		expect(
+			getHostedPluginDetailText(
+				auditEntry({
+					action: 'plugin.action_failed',
+					pluginId: 'policy-pack',
+					details: { operation: 'storage.get<script>', name: 'must-not-render' },
+				})
+			)
+		).toBe('policy-pack');
+		expect(
+			getHostedPluginDetailText(
+				auditEntry({
+					action: 'plugin.action_denied',
+					pluginId: '<img-onerror>',
+					details: { name: 'must-not-render' },
+				})
+			)
+		).toBe('Hosted plugin action');
+	});
+
+	it('provides a presentation label for every backend hosted operation literal', () => {
+		for (const operation of HOSTED_PLUGIN_OPERATION_LITERALS) {
+			const text = getHostedPluginDetailText(
+				auditEntry({
+					action: 'plugin.action_completed',
+					pluginId: 'policy-pack',
+					details: { operation },
+				})
+			);
+			expect(text, operation).toMatch(/^policy-pack · /);
+		}
+	});
 });
+
+function auditEntry(overrides: Partial<AuditLogEntry>): AuditLogEntry {
+	return {
+		_id: 'audit-id' as AuditLogEntry['_id'],
+		_creationTime: 1,
+		userId: 'user-1',
+		action: 'campaign.created',
+		resource: 'plugin',
+		createdAt: 1,
+		userProfile: null,
+		...overrides,
+	};
+}

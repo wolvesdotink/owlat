@@ -1,9 +1,27 @@
 import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
-import { type PaletteGroup, useCommandPaletteSurface } from '~/lib/commandPalette';
+import { type PaletteGroup, filterItems } from '~/lib/commandPalette';
+import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
+
+/** Stable registry id (and dedup key) of the Postbox surface provider. */
+export const POSTBOX_COMMAND_PROVIDER_ID = 'surface:postbox';
 
 /**
- * Registers Postbox as the app command palette's "current surface" while mounted.
+ * Orders Postbox only within the external provider tier — core providers are
+ * always consulted first regardless of priority, and the final render position
+ * comes from each group's `order`, not this value. It exists so a future second
+ * external/plugin provider has a defined position relative to Postbox.
+ */
+export const POSTBOX_COMMAND_PROVIDER_PRIORITY = 15;
+
+/**
+ * Route gate for the Postbox provider: the Postbox surface exactly or any nested
+ * child, but not a sibling like `/dashboard/postbox-archive`.
+ */
+export const matchPostboxRoute = routePrefixMatcher('/dashboard/postbox');
+
+/**
+ * Registers Postbox as a command-palette provider while its layout is mounted.
  *
  * The palette (Cmd/Ctrl-K, layouts/dashboard.vue) is the shared shell; Postbox is
  * a consumer — it contributes its reader actions + the folders/searches the
@@ -11,13 +29,19 @@ import { type PaletteGroup, useCommandPaletteSurface } from '~/lib/commandPalett
  * (a no-op when no conversation is open); the sidebar nav already covers
  * Inbox/Sent/Drafts/Spam/Trash/Settings, so this only adds the rest.
  *
+ * The provider is route-gated to `/dashboard/postbox` so its groups never leak
+ * onto another surface even if the registration outlives a route change, and it
+ * filters its own items by the palette query (the shell no longer does that on
+ * a shared bucket). `build` reads the reactive mailbox sections at call time, so
+ * team-inbox entries still appear the instant a shared inbox's membership
+ * resolves — no explicit watch needed.
+ *
  * Extracted from PostboxLayout.vue to keep the layout under the file-size cap;
  * mirrors how the sidebar nav was pulled into `useDashboardNavigation`.
  */
 export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 	const composerStack = usePostboxComposerStack();
 	const { isDesktop: isDesktopSurface } = useDesktopContext();
-	const paletteSurface = useCommandPaletteSurface();
 	// Accessible mailboxes → palette "switch mailbox" entries (personal when
 	// there's a choice, plus every team inbox). Reactive so entries appear the
 	// instant a shared inbox's membership resolves.
@@ -158,9 +182,14 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 		return groups;
 	}
 
-	// Rebuild reactively so team-inbox entries appear as membership resolves.
-	watch(sections, () => (paletteSurface.value = buildSurfaceGroups()), { immediate: true });
-	onBeforeUnmount(() => {
-		paletteSurface.value = [];
+	registerCommandPaletteProvider({
+		id: POSTBOX_COMMAND_PROVIDER_ID,
+		priority: POSTBOX_COMMAND_PROVIDER_PRIORITY,
+		matchRoute: matchPostboxRoute,
+		build: ({ query }) =>
+			buildSurfaceGroups().map((group) => ({
+				...group,
+				items: filterItems(group.items, query),
+			})),
 	});
 }

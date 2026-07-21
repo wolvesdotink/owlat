@@ -158,6 +158,76 @@ describe('llmProvider', () => {
 		});
 	});
 
+	describe('language endpoint provenance', () => {
+		it('returns native OpenAI provenance and the configured model id by default', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'test-key');
+			vi.stubEnv('LLM_MODEL_FAST', 'gpt-4o-mini');
+			const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+
+			await expect(resolveLanguageModelWithProvenance(ctx, 'summarize')).resolves.toMatchObject({
+				modelId: 'gpt-4o-mini',
+				endpointProvenance: 'openai-native',
+			});
+		});
+
+		it('marks an explicit env base URL as custom even for an exact catalog model', async () => {
+			vi.stubEnv('OPENAI_API_KEY', 'test-key');
+			vi.stubEnv('LLM_BASE_URL', 'https://proxy.example/v1');
+			vi.stubEnv('LLM_MODEL_FAST', 'gpt-4o-mini');
+			const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
+			const { ctx } = makeCtx(null);
+
+			await expect(resolveLanguageModelWithProvenance(ctx, 'summarize')).resolves.toMatchObject({
+				modelId: 'gpt-4o-mini',
+				endpointProvenance: 'custom',
+			});
+		});
+
+		it.each([
+			['openrouter', 'openai/gpt-5.6-luna', 'openrouter'],
+			['ollama', 'gpt-4o-mini', 'custom'],
+		] as const)(
+			'classifies the %s env endpoint with model %s as %s provenance',
+			async (provider, modelId, endpointProvenance) => {
+				vi.stubEnv('LLM_PROVIDER', provider);
+				vi.stubEnv('LLM_API_KEY', 'test-key');
+				vi.stubEnv('LLM_MODEL_FAST', modelId);
+				const { resolveLanguageModelWithProvenance } = await import('../llmProvider');
+				const { ctx } = makeCtx(null);
+
+				await expect(resolveLanguageModelWithProvenance(ctx, 'summarize')).resolves.toMatchObject({
+					modelId,
+					endpointProvenance,
+				});
+			}
+		);
+
+		it.each([
+			['openai', undefined, 'openai-native'],
+			['anthropic', undefined, 'anthropic-native'],
+			['google', undefined, 'google-native'],
+			['openrouter', undefined, 'openrouter'],
+			['openai', 'https://proxy.example/v1', 'custom'],
+			['anthropic', 'https://proxy.example/v1', 'custom'],
+			['google', 'https://proxy.example/v1', 'custom'],
+			['openrouter', 'https://proxy.example/v1', 'custom'],
+			['azure', undefined, 'custom'],
+			['openaiCompatible', 'http://localhost:11434/v1', 'custom'],
+		] as const)(
+			'classifies stored %s with base URL %s as %s provenance',
+			async (languageProviderKind, languageBaseUrl, expected) => {
+				const { buildStoredProviderConfig } = await import('../llmProvider');
+				const config = buildStoredProviderConfig(
+					storedRow({ languageProviderKind, languageBaseUrl }),
+					'test-key',
+					undefined
+				);
+				expect(config.language.endpointProvenance).toBe(expected);
+			}
+		);
+	});
+
 	// ============ resolveAiConfig (dual source + memoization) ============
 
 	describe('resolveAiConfig', () => {
@@ -272,6 +342,7 @@ describe('llmProvider', () => {
 			expect('getLLMProviderForUserText' in mod).toBe(false);
 			expect('getLLMProviderForClassifiedDraft' in mod).toBe(false);
 			expect(typeof mod.resolveLanguageModel).toBe('function');
+			expect(typeof mod.resolveLanguageModelWithProvenance).toBe('function');
 			expect(typeof mod.resolveAiConfig).toBe('function');
 		});
 	});

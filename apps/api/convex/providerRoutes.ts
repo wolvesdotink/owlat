@@ -5,6 +5,9 @@ import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { requireOrgPermission } from './lib/sessionOrganization';
 import { messageTypeValidator } from './lib/sendProviders/route';
 import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
+import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
+import { isSendProviderReady } from './lib/sendProviders/capability';
+import { throwInvalidInput } from './_utils/errors';
 
 /**
  * Provider Routes — CRUD operations for per-org email provider routing.
@@ -107,6 +110,22 @@ export const listIpPools = authedQuery({
 	},
 });
 
+/** Safe composed catalog; never exposes environment values or plugin code. */
+// all-members: transport labels and readiness booleans are the same non-secret
+// delivery state every member may already read from the routing/status surfaces.
+export const listTransportCatalog = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		return await Promise.all(
+			SEND_PROVIDER_CATALOG.map(async (entry) => ({
+				kind: entry.kind,
+				label: entry.label,
+				isAvailable: await isSendProviderReady(ctx, entry.kind),
+			}))
+		);
+	},
+});
+
 // ── Mutations ──────────────────────────────────────────────────────
 
 /**
@@ -126,6 +145,19 @@ export const setRoute = authedMutation({
 			'organization:manage',
 			'Only owners and admins can change provider routing'
 		);
+		const seenKinds = new Set<string>();
+		for (const provider of args.providers) {
+			if (!isSendProviderKind(provider.providerType)) {
+				throwInvalidInput('Provider route contains an unknown transport');
+			}
+			if (seenKinds.has(provider.providerType)) {
+				throwInvalidInput('Provider route contains a duplicate transport');
+			}
+			seenKinds.add(provider.providerType);
+			if (provider.isEnabled && !(await isSendProviderReady(ctx, provider.providerType))) {
+				throwInvalidInput('Provider route contains an unavailable transport');
+			}
+		}
 
 		return await upsertRoute(ctx, args.messageType, {
 			strategy: args.strategy,

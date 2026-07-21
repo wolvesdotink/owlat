@@ -47,7 +47,7 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `transactional_email.duplicated` | `transactional_email` | `{ sourceEmailId, name, slug }` |
 | `automation.created` / `automation.updated` / `automation.deleted` | `automation` | `{ name }` |
 | `automation.activated` / `automation.paused` | `automation` | `{ name }` |
-| `settings.updated` | `settings` | `detailsBlob: { changes: {...} }` |
+| `settings.updated` | `settings` | Workspace settings: `detailsBlob: { changes: {...} }`. Plugin settings (`plugins/settings.ts`, carrying the plugin id): a partial update emits `{ pluginId, changedFields }` (changed field keys only, never their values, so a secret can never enter the trail); a reset emits `{ pluginId, reset: true }`. |
 | `ai_provider_config.updated` | `ai_provider_config` | `detailsBlob: { languageProviderKind, modelFast, modelCapable, embeddingProviderKind, embeddingModel, embeddingModelVersion, isLanguageKeySet, isEmbeddingKeySet }` (never the key) |
 | `team_member.invited` | `team_member` | `{ email, role }` |
 | `team_member.removed` | `team_member` | `{ email }` |
@@ -80,6 +80,8 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `knowledge.edge_backfill_started` / `edge_backfill_cancelled` | `knowledge_config` | `{ jobId }` |
 | `abuse_status_changed` | `instance_settings` | `{ previousStatus, newStatus, reason, changedBy }` (see ADR-0011) |
 | `postbox_outbound_transition` | `mail_message` | `{ mailboxId, recipientIdx, from, to, aggregateBefore, aggregateAfter, at, bounceMessage?, errorMessage?, errorCode? }` (see ADR-0012) |
+| `plugin.action_completed` / `plugin.action_failed` / `plugin.action_denied` | `plugin` | Dedicated `organizationId` + `pluginId`; allowlisted `{ operation, outcome, attempts?, usageAvailable?, chargedMicrousd?, actualMicrousd?, reasonCode? }`. Never storage keys/values/cursors, prompts/results, secrets, or raw errors. |
+| `connected_app.registered` / `connected_app.enabled` / `connected_app.disabled` / `connected_app.revoked` / `connected_app.deleted` / `connected_app.secret_rotated` | `connected_app` | Tier-2 connected-app lifecycle (`connectedApps/*`). Dedicated `organizationId` + `pluginId`; scalar `{ pluginId, capabilityCount }`. Never the endpoint URL, the shared secret, or its sealed envelope. |
 
 ## Extending
 

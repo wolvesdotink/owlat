@@ -1,20 +1,29 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { getBundledPluginFeatureFlagDefinitions } from '@owlat/plugin-host';
 import {
-	FEATURE_FLAGS,
 	FEATURE_PACKS,
 	ALL_FEATURE_PACK_KEYS,
 	getFlagsByCategory,
 	isPackEnabled,
 	resolveFlags,
 	applyToggle,
+	createFeatureFlagRegistry,
+	isPluginFeatureFlagDefinition,
 	SENDING_FLAGS_REQUIRING_DELIVERY,
 	type FeatureFlagKey,
 	type FeatureFlagState,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
-import { flagsNeedingConfig } from '~/utils/featureConfig';
+import { flagsNeedingConfig, missingPluginEnvironmentVariables } from '~/utils/featureConfig';
 import { hasInboundFeature, INBOUND_FEATURE_FLAGS } from '~/utils/inboundDns';
+import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
+import FeatureFlagMetadata from '~/components/settings/FeatureFlagMetadata.vue';
+import PluginConfigStatusNotice from '~/components/settings/PluginConfigStatusNotice.vue';
+
+const pluginFeatureFlagDefinitions =
+	getBundledPluginFeatureFlagDefinitions(bundledPluginComposition);
+const featureFlagRegistry = createFeatureFlagRegistry(pluginFeatureFlagDefinitions);
 
 useHead({ title: 'Features — Owlat' });
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
@@ -24,19 +33,16 @@ const {
 	isLoading,
 	error: flagsError,
 } = useConvexQuery(api.workspaces.featureFlags.getFeatureFlags, {});
-// Whether a real delivery provider is configured — drives the "needs a provider"
-// hint for sending flags, which carry no requiredEnvVars of their own.
 const { data: deliveryConfigured } = useConvexQuery(
 	api.workspaces.featureFlags.deliveryConfigured,
 	{}
 );
-// Per-flag configuration gaps (missing env vars / no delivery provider). Joined
-// against the resolved on/off state to badge flags that are ENABLED but not yet
-// configured.
-const { data: flagsConfigStatus } = useConvexQuery(
-	api.workspaces.featureFlags.getFlagsConfigStatus,
-	{}
-);
+const {
+	data: flagsConfigStatus,
+	isLoading: isConfigStatusLoading,
+	error: configStatusError,
+	refetch: retryConfigStatus,
+} = useConvexQuery(api.workspaces.featureFlags.getFlagsConfigStatus, {});
 const { showToast } = useToast();
 
 // Writes go through the Operation module (ADR-0036): categorized failures are
@@ -51,13 +57,18 @@ const { run: setFeaturePack, isLoading: isSavingPack } = useBackendOperation(
 	{ label: 'Toggle feature pack' }
 );
 
-const byCategory = computed(() => getFlagsByCategory());
+const byCategory = computed(() => getFlagsByCategory({ registry: featureFlagRegistry }));
 
 const stored = computed<FeatureFlagState>(() => (liveFlags.value ?? {}) as FeatureFlagState);
-const resolved = computed(() => resolveFlags(stored.value));
+const resolved = computed(() => resolveFlags(stored.value, { registry: featureFlagRegistry }));
 
 // Flags that are enabled yet still missing configuration → badged "needs config".
 const needsConfig = computed(() => flagsNeedingConfig(resolved.value, flagsConfigStatus.value));
+const configStatusErrorMessage = computed(() =>
+	configStatusError.value instanceof Error
+		? configStatusError.value.message
+		: 'Plugin configuration could not be verified.'
+);
 
 const pendingCascade = ref<{
 	flag: FeatureFlagKey;
@@ -65,6 +76,10 @@ const pendingCascade = ref<{
 	cascaded: FeatureFlagKey[];
 } | null>(null);
 const missingEnv = ref<{ flag: FeatureFlagKey; vars: string[] } | null>(null);
+const pendingPluginApproval = ref<{
+	flag: FeatureFlagKey;
+	capabilities: readonly string[];
+} | null>(null);
 
 function categoryLabel(cat: string): string {
 	const map: Record<string, string> = {
@@ -74,21 +89,45 @@ function categoryLabel(cat: string): string {
 		integrations: 'Integrations',
 		security: 'Security & scanning',
 		deliverability: 'Analytics & deliverability',
+		plugins: 'Bundled plugins',
 	};
 	return map[cat] ?? cat;
 }
 
 async function onToggle(flag: FeatureFlagKey, value: boolean) {
 	// Preview cascade before committing.
-	const preview = applyToggle(stored.value, flag, value);
+	const preview = applyToggle(stored.value, flag, value, featureFlagRegistry);
 	const cascaded = preview.cascaded;
 
 	// If enabling a feature that requires env vars not in the running env,
 	// surface a modal asking for them. (We can't read .env from the browser,
 	// so this is a best-effort note, not a hard gate.)
-	const def = FEATURE_FLAGS[flag];
+	const def = featureFlagRegistry[flag];
+	if (!def) return;
+	if (value && isPluginFeatureFlagDefinition(def)) {
+		if (configStatusError.value) {
+			showToast('Could not verify plugin configuration. Retry the status check first.');
+			return;
+		}
+		if (flagsConfigStatus.value == null) {
+			showToast('Plugin configuration status is still loading. Try again in a moment.');
+			return;
+		}
+		const missingPluginEnv = missingPluginEnvironmentVariables(def, flagsConfigStatus.value);
+		if (missingPluginEnv.length > 0) {
+			missingEnv.value = { flag, vars: missingPluginEnv };
+			return;
+		}
+		const capabilities = def.requiredCapabilities;
+		if (capabilities.length > 0) {
+			pendingPluginApproval.value = { flag, capabilities };
+			return;
+		}
+		await commitToggle(flag, true, []);
+		return;
+	}
 	if (value && (def.requiredEnvVars?.length ?? 0) > 0) {
-		missingEnv.value = { flag, vars: def.requiredEnvVars ?? [] };
+		missingEnv.value = { flag, vars: [...(def.requiredEnvVars ?? [])] };
 	}
 
 	// Sending flags declare no requiredEnvVars (the provider is env+capability,
@@ -99,7 +138,7 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 		missingEnv.value = {
 			flag,
 			vars: [
-				'A delivery provider — set EMAIL_PROVIDER (mta, resend, or ses) and its credentials, then restart',
+				'A delivery provider — set EMAIL_PROVIDER to a registered transport, configure its requirements, then restart',
 			],
 		};
 	}
@@ -113,11 +152,39 @@ async function onToggle(flag: FeatureFlagKey, value: boolean) {
 	await commitToggle(flag, value);
 }
 
-async function commitToggle(flag: FeatureFlagKey, value: boolean) {
-	const res = await setFeatureFlag({ flag, value });
+function isPluginEnableBlocked(flag: FeatureFlagKey): boolean {
+	const definition = featureFlagRegistry[flag];
+	return (
+		definition !== undefined &&
+		isPluginFeatureFlagDefinition(definition) &&
+		resolved.value[flag] !== true &&
+		(isConfigStatusLoading.value ||
+			configStatusError.value !== null ||
+			flagsConfigStatus.value == null)
+	);
+}
+
+function pluginStatusTitle(flag: FeatureFlagKey): string | undefined {
+	if (!isPluginEnableBlocked(flag)) return undefined;
+	return configStatusError.value
+		? 'Retry the failed plugin configuration check before enabling'
+		: 'Plugin configuration status is still loading';
+}
+
+async function commitToggle(
+	flag: FeatureFlagKey,
+	value: boolean,
+	approvedCapabilities?: readonly string[]
+) {
+	const res = await setFeatureFlag({
+		flag,
+		value,
+		...(approvedCapabilities ? { approvedCapabilities: [...approvedCapabilities] } : {}),
+	});
 	pendingCascade.value = null;
+	pendingPluginApproval.value = null;
 	if (res === undefined) return; // failure already toasted by the operation module
-	showToast(`${FEATURE_FLAGS[flag].label} ${value ? 'enabled' : 'disabled'}.`);
+	showToast(`${featureFlagRegistry[flag]?.label ?? flag} ${value ? 'enabled' : 'disabled'}.`);
 	if (res.cascaded.length > 0) {
 		showToast(`Also disabled: ${res.cascaded.join(', ')}`);
 	}
@@ -127,6 +194,15 @@ async function commitToggle(flag: FeatureFlagKey, value: boolean) {
 	if (value && (INBOUND_FEATURE_FLAGS as readonly string[]).includes(flag)) {
 		showToast('Receiving mail? Add the MX records under Settings → Domains → Receiving.');
 	}
+}
+
+function confirmPluginApproval() {
+	if (!pendingPluginApproval.value) return;
+	void commitToggle(
+		pendingPluginApproval.value.flag,
+		true,
+		pendingPluginApproval.value.capabilities
+	);
 }
 
 function confirmCascade() {
@@ -249,6 +325,13 @@ async function togglePack(packKey: FeaturePackKey) {
 						</h2>
 					</template>
 
+					<PluginConfigStatusNotice
+						v-if="cat === 'plugins'"
+						:is-loading="isConfigStatusLoading"
+						:error-message="configStatusError ? configStatusErrorMessage : undefined"
+						@retry="retryConfigStatus"
+					/>
+
 					<!-- Inbound DNS hint: receiving needs MX + inbound-port setup, the
 					     inbound mirror of pointing a sending flag at a delivery provider. -->
 					<div
@@ -289,35 +372,27 @@ async function togglePack(packKey: FeaturePackKey) {
 									</span>
 								</div>
 								<p class="text-sm text-text-secondary mt-0.5">{{ def.description }}</p>
-								<p
-									v-if="def.requiredEnvVars?.length"
-									class="text-xs text-text-tertiary mt-1 font-mono"
-								>
-									Requires env: {{ def.requiredEnvVars.join(', ') }}
-								</p>
-								<p
-									v-if="def.dockerProfiles?.length"
-									class="text-xs text-text-tertiary mt-1 font-mono"
-								>
-									Docker profile: {{ def.dockerProfiles.join(', ') }}
-								</p>
+								<FeatureFlagMetadata :definition="def" />
 							</div>
 							<button
 								type="button"
 								role="switch"
 								:aria-checked="resolved[def.key]"
 								:aria-label="`Toggle ${def.label}`"
+								:data-testid="`feature-switch-${def.key}`"
 								class="relative inline-flex shrink-0 h-6 w-11 items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-40 disabled:cursor-not-allowed"
 								:class="
 									resolved[def.key] ? 'bg-brand border-brand' : 'bg-bg-surface border-border-subtle'
 								"
 								:disabled="
-									isSavingFlag || def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
+									isSavingFlag ||
+									isPluginEnableBlocked(def.key) ||
+									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
 								"
 								:title="
 									def.requires?.some((dep) => !resolved[dep as FeatureFlagKey])
 										? `Enable ${def.requires?.join(', ')} first`
-										: undefined
+										: pluginStatusTitle(def.key)
 								"
 								@click="onToggle(def.key, !resolved[def.key])"
 							>
@@ -337,7 +412,9 @@ async function togglePack(packKey: FeaturePackKey) {
 			:open="!!pendingCascade"
 			variant="warning"
 			:title="
-				pendingCascade ? `Disable ${FEATURE_FLAGS[pendingCascade.flag].label}?` : 'Disable feature?'
+				pendingCascade
+					? `Disable ${featureFlagRegistry[pendingCascade.flag]?.label ?? pendingCascade.flag}?`
+					: 'Disable feature?'
 			"
 			description="Disabling this will also turn off the dependent features listed below."
 			confirm-text="Disable all"
@@ -354,7 +431,35 @@ async function togglePack(packKey: FeaturePackKey) {
 				>
 					<Icon name="lucide:corner-down-right" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
 					<code class="text-xs bg-bg-surface px-1.5 py-0.5 rounded">{{ key }}</code>
-					<span class="truncate">{{ FEATURE_FLAGS[key].label }}</span>
+					<span class="truncate">{{ featureFlagRegistry[key]?.label ?? key }}</span>
+				</li>
+			</ul>
+		</UiConfirmationDialog>
+
+		<!-- Bundled plugin capability approval -->
+		<UiConfirmationDialog
+			:open="!!pendingPluginApproval"
+			variant="warning"
+			:title="
+				pendingPluginApproval
+					? `Approve ${featureFlagRegistry[pendingPluginApproval.flag]?.label ?? pendingPluginApproval.flag}?`
+					: 'Approve plugin access?'
+			"
+			description="This bundled plugin can use only the capabilities listed below. Enabling it records your explicit approval; disabling it withdraws every grant."
+			confirm-text="Approve & enable"
+			cancel-text="Cancel"
+			:is-loading="isSavingFlag"
+			@update:open="(value: boolean) => !value && (pendingPluginApproval = null)"
+			@confirm="confirmPluginApproval"
+		>
+			<ul v-if="pendingPluginApproval" class="mt-4 text-left space-y-1.5">
+				<li
+					v-for="capability in pendingPluginApproval.capabilities"
+					:key="capability"
+					class="text-sm text-text-secondary flex items-center gap-2"
+				>
+					<Icon name="lucide:shield-check" class="w-3.5 h-3.5 text-warning shrink-0" />
+					<code class="text-xs bg-bg-surface px-1.5 py-0.5 rounded">{{ capability }}</code>
 				</li>
 			</ul>
 		</UiConfirmationDialog>
@@ -363,7 +468,9 @@ async function togglePack(packKey: FeaturePackKey) {
 		<UiModal
 			:open="!!missingEnv"
 			:title="
-				missingEnv ? `${FEATURE_FLAGS[missingEnv.flag].label} needs config` : 'Configuration needed'
+				missingEnv
+					? `${featureFlagRegistry[missingEnv.flag]?.label ?? missingEnv.flag} needs config`
+					: 'Configuration needed'
 			"
 			@update:open="(v: boolean) => !v && (missingEnv = null)"
 		>

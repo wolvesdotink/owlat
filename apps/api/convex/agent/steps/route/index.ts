@@ -37,10 +37,8 @@
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
-import { detectInjection, INJECTION_CONFIDENCE_THRESHOLD } from '../security_scan/patterns';
-import { detectSecretLeak } from '../../../lib/secretLeakScan';
-import { deriveAuthenticatedRecipient } from '../../referenceMonitor';
-import { isWithinWorkingHours } from '../../../lib/workingHours';
+import { runCoreFinalAutoSendGates, runPreAutonomyGates } from './autoSendGates';
+import { runHostedAutoSendGates } from './pluginAutoSendGates';
 
 /**
  * Draft-quality self-check threaded from the `draft` step. `null`/absent when
@@ -109,165 +107,12 @@ export function resolveAutoApproveScore(
  * can't contain another contact's data in the first place. Do not weaken that
  * scoping on the assumption this gate will catch a leak — it won't.
  */
-async function assertSafeToAutoSend(
+export async function runFinalAutoSendGates(
 	ctx: Parameters<AgentStepModule<'route', RouteInput, RouteOutput>['execute']>[0],
 	inboundMessageId: Id<'inboundMessages'>
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
-	const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
-		inboundMessageId,
-	});
-	if (!message)
-		return { safe: false, reason: 'Message not found before send — routing to human review.' };
-
-	// Per-org dollar-spend budget: when the org's daily/monthly LLM budget is
-	// exhausted, degrade to draft-only — the draft is still produced and queued,
-	// only the unattended auto-SEND is withheld — so an autonomous (or injected)
-	// loop can't keep auto-replying past the ceiling and no mail is dropped.
-	// FAIL-SOFT: any error determining the budget also routes to human review
-	// (never auto-send on uncertainty).
-	try {
-		const budget = await ctx.runQuery(internal.analytics.spendBudget.getBudgetStatus, {});
-		if (!budget.autonomousAutoSendAllowed) {
-			return {
-				safe: false,
-				reason:
-					budget.reason || 'AI spend budget exhausted; not auto-sending — routing to human review.',
-			};
-		}
-	} catch {
-		return {
-			safe: false,
-			reason: 'Could not verify the AI spend budget; not auto-sending — routing to human review.',
-		};
-	}
-
-	// WORKING-HOURS gate. When the operator has confined autonomous sends to
-	// business hours, an auto-approve decided OUTSIDE the window is held for human
-	// review (the draft is still queued) rather than fired at, say, 3am — it waits
-	// for morning review. This runs BEFORE the daily cap is charged and before the
-	// send-delay/undo window or coalescing apply, so an out-of-hours reply never
-	// becomes a pending auto-send (see lib/workingHours.ts precedence note).
-	// FAIL-SAFE: the gate is off by default (24/7, today's behaviour); when it is
-	// ENABLED but can't be evaluated (e.g. an invalid timezone), hold for review —
-	// never auto-send on uncertainty.
-	try {
-		const cfg = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
-		if (cfg?.isWorkingHoursEnabled) {
-			let within: boolean;
-			try {
-				within = isWithinWorkingHours(cfg, Date.now());
-			} catch {
-				within = false;
-			}
-			if (!within) {
-				return {
-					safe: false,
-					reason:
-						'Outside configured working hours; not auto-sending — held for morning human review.',
-				};
-			}
-		}
-	} catch {
-		// Config read failed — fall through. A missing/unreadable config means the
-		// window can't be enforced; that degrades to today's 24/7 behaviour rather
-		// than blocking all sends. The other safety gates below still apply.
-	}
-
-	// Hard block: a draft produced from an ABANDONED clarification is a
-	// best-guess (the owner never confirmed the missing facts). Never auto-send
-	// it, regardless of autonomy tier or draft-quality score — a human must
-	// review. Set by the abandoned-clarification fallback cron.
-	if (message.isAutoSendBlocked) {
-		return {
-			safe: false,
-			reason:
-				'Draft was produced from an abandoned clarification (best-guess); routing to human review.',
-		};
-	}
-
-	// Hard block: complaint / urgent mail is the highest-stakes inbound. It now
-	// flows through the drafter (via the clarify step) instead of skipping to a
-	// blank human-review box, but it must NEVER become auto-send-eligible — a
-	// human always reviews it. Fail closed regardless of autonomy tier, autonomy
-	// rules, or draft-quality score. The classification was persisted upstream on
-	// the classifying → drafting edge.
-	const classification = message.classification;
-	if (
-		classification &&
-		(classification.category === 'complaint' || classification.priority === 'urgent')
-	) {
-		return {
-			safe: false,
-			reason: 'Complaint/urgent mail is never auto-sent; routing to human review.',
-		};
-	}
-
-	if (message.securityFlags?.guardUnavailable) {
-		return {
-			safe: false,
-			reason:
-				'Inbound injection guard was unavailable; not auto-sending — routing to human review.',
-		};
-	}
-
-	// RECIPIENT LOCK — the auto-send target is derived SERVER-SIDE from the
-	// authenticated inbound `From`; the model/draft can never supply or redirect
-	// it. If that sender can't be resolved to an address, there is no
-	// authenticated recipient to reply to unattended — fail closed.
-	const recipient = deriveAuthenticatedRecipient(message.from ?? '');
-	if (!recipient) {
-		return {
-			safe: false,
-			reason:
-				'Could not derive an authenticated recipient from the inbound sender; not auto-sending — routing to human review.',
-		};
-	}
-
-	const draft = message.draftResponse ?? '';
-	const outbound = detectInjection(draft);
-	if (outbound.detected && outbound.confidence >= INJECTION_CONFIDENCE_THRESHOLD) {
-		return {
-			safe: false,
-			reason: `Outbound draft tripped an injection pattern (${outbound.pattern ?? 'unknown'}); not auto-sending — routing to human review.`,
-		};
-	}
-
-	// A credential fingerprint in the draft (planted or hallucinated) would leak
-	// a secret past the org boundary with no human in the loop. Fail closed to
-	// human review, same posture as the injection check.
-	const leak = detectSecretLeak(draft);
-	if (leak.detected) {
-		return {
-			safe: false,
-			reason: `Outbound draft contains a credential pattern (${leak.kind}); not auto-sending — routing to human review.`,
-		};
-	}
-
-	// Natural-language handling rules — a standing "draft-only" / "never
-	// auto-send" / "always ask" / "auto-archive" rule the user taught the
-	// assistant holds this message for human review. This gate can only ever
-	// RESTRICT (it lives inside the safety gate that only downgrades), so a rule
-	// can never widen auto-send — only tighten it. FAIL-SOFT: a failure evaluating
-	// the rules degrades to the pre-rule autonomy decision (today's behaviour),
-	// which already passed every gate above.
-	try {
-		const rules = await ctx.runQuery(internal.mail.handlingRules.evaluateForMessage, {
-			inboundMessageId,
-		});
-		if (rules.restrictsAutoSend) {
-			return {
-				safe: false,
-				reason:
-					rules.reasons[0] ??
-					'A handling rule holds this message for human review; not auto-sending.',
-			};
-		}
-	} catch {
-		// swallowed: the rule layer is additive; a transient failure falls back to
-		// the autonomy decision already computed above.
-	}
-
-	return { safe: true };
+	const coreDecision = await runCoreFinalAutoSendGates(ctx, inboundMessageId);
+	return coreDecision.safe ? runHostedAutoSendGates(ctx, inboundMessageId) : coreDecision;
 }
 
 export type RouteOutput = {
@@ -286,7 +131,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 		// The auto-approve threshold is compared against DRAFT quality, not the
 		// classifier confidence. When the self-check is unknown/failed this is
 		// LOW (0), so an unknown draft never clears any threshold (fail-soft to
-		// human review). The autonomy tiers + assertSafeToAutoSend are unchanged;
+		// human review). The autonomy tiers + final gate registry are unchanged;
 		// this only swaps WHICH score feeds their threshold comparison.
 		const gateScore = resolveAutoApproveScore(input.draftQuality);
 
@@ -298,7 +143,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			// Auto-approval is only honoured if the final outbound safety gate
 			// passes; otherwise it degrades to human review with the gate's reason.
 			const autoApprove = async (reason: string): Promise<Decision> => {
-				const gate = await assertSafeToAutoSend(ctx, input.inboundMessageId);
+				const gate = await runFinalAutoSendGates(ctx, input.inboundMessageId);
 				return gate.safe
 					? { decision: 'auto_approve', reason }
 					: { decision: 'human_review', reason: gate.reason };
@@ -307,12 +152,11 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			// Tier 1 — circuit-breaker safety gate. A pipeline with an open breaker
 			// (LLM failures, confidence degradation, rejection spike) never
 			// auto-sends; everything goes to human review until it recovers.
-			const breakers = await ctx.runQuery(internal.agentHealth.getCircuitBreakersInternal, {});
-			const openBreaker = breakers.find((b) => b.state === 'open');
-			if (openBreaker) {
+			const prerequisite = await runPreAutonomyGates(ctx, input.inboundMessageId);
+			if (!prerequisite.safe) {
 				return {
 					decision: 'human_review',
-					reason: `Circuit breaker ${openBreaker.breakerType} is open — routing to human review.`,
+					reason: prerequisite.reason,
 				};
 			}
 
@@ -329,7 +173,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 				if (autonomy.allowed) {
 					// Apply the outbound safety gate BEFORE charging the daily cap, so
 					// a withheld send doesn't consume an auto-reply slot.
-					const gate = await assertSafeToAutoSend(ctx, input.inboundMessageId);
+					const gate = await runFinalAutoSendGates(ctx, input.inboundMessageId);
 					if (!gate.safe) return { decision: 'human_review', reason: gate.reason };
 
 					// Atomically charge the per-category daily cap. The query above is

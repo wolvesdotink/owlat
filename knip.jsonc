@@ -8,6 +8,7 @@
 	// and ratcheted by scripts/check-dead-code.sh. Be GENEROUS here: a config
 	// that flags a real entrypoint is worse than one that misses some dead code.
 	"workspaces": {
+		".": { "entry": ["plugins.config.ts"] },
 		// ---- Convex backend ----------------------------------------------
 		// Every file under convex/ is reachable by the Convex runtime (queries,
 		// mutations, actions, http routes, crons, schema, the generated API).
@@ -16,7 +17,7 @@
 		"apps/api": {
 			"entry": ["convex/**/*.ts"],
 			"project": ["convex/**/*.ts"],
-			"ignore": ["convex/_generated/**"]
+			"ignore": ["convex/_generated/**"],
 		},
 
 		// ---- Nuxt apps ---------------------------------------------------
@@ -27,17 +28,17 @@
 		// convention-loaded modules are never reported as unused.
 		"apps/web": {
 			"entry": ["app/**/*.{vue,ts}", "server/**/*.ts", "e2e/**/*.ts", "scripts/**"],
-			"playwright": { "config": ["e2e/playwright.config.ts"] }
+			"playwright": { "config": ["e2e/playwright.config.ts"] },
 		},
 		"apps/docs": {
 			// __tests__ lives at the app root (not under app/), so declare it
 			// explicitly — knip 6's vitest-plugin discovery of these specs is
 			// environment-sensitive, and without this entry they are mis-reported
 			// as unused files in CI.
-			"entry": ["content.config.ts", "app/**/*.{vue,ts}", "__tests__/**/*.ts"]
+			"entry": ["content.config.ts", "app/**/*.{vue,ts}", "__tests__/**/*.ts"],
 		},
 		"apps/marketing": {
-			"entry": ["app/**/*.{vue,ts}"]
+			"entry": ["app/**/*.{vue,ts}"],
 		},
 
 		// ---- Node/TS service apps ---------------------------------------
@@ -47,11 +48,11 @@
 		"apps/mta": { "entry": ["src/**/*.ts"] },
 		"apps/updater": { "entry": ["src/**/*.ts"] },
 		"apps/setup-cli": {
-			"entry": ["src/**/*.ts", "scripts/**"]
+			"entry": ["src/**/*.ts", "scripts/**"],
 		},
 		"apps/desktop": {
 			"entry": ["src/**/*.ts", "scripts/**"],
-			"ignore": ["src-tauri/**"]
+			"ignore": ["src-tauri/**"],
 		},
 
 		// ---- Library packages -------------------------------------------
@@ -96,8 +97,8 @@
 				"src/warming.ts",
 				"src/secureMessage.ts",
 				"src/spfAlignment.ts",
-				"src/**/__tests__/**/*.ts"
-			]
+				"src/**/__tests__/**/*.ts",
+			],
 		},
 		// The canonicalizer leaf publishes one barrel (`.` over src/canon.ts);
 		// declare it as entry alongside its vector suite.
@@ -113,13 +114,31 @@
 				"src/files/index.ts",
 				"src/clamav/index.ts",
 				"src/urls/index.ts",
-				"src/**/__tests__/**/*.ts"
-			]
+				"src/**/__tests__/**/*.ts",
+			],
 		},
 		"packages/sdk-js": { "entry": ["src/index.ts", "test/**/*.ts"] },
+		"packages/plugin-cli": {
+			"entry": ["src/index.ts", "src/run.ts", "src/**/__tests__/**/*.ts"],
+		},
+		"packages/plugin-codegen": {
+			"entry": [
+				"src/index.ts",
+				"src/cli.ts",
+				"src/atomicCommit.mjs",
+				"scripts/*.ts",
+				"src/**/__tests__/**/*.ts",
+			],
+		},
+		"packages/plugin-host": {
+			"entry": ["src/index.ts", "src/**/__tests__/**/*.ts"],
+		},
+		"packages/plugin-kit": {
+			"entry": ["src/index.ts", "scripts/*.ts", "src/**/__tests__/**/*.ts"],
+		},
 		// packages/ui is a Nuxt layer — every composable/component is reachable
 		// by auto-import convention (path prefix), so the whole tree stays entry.
-		"packages/ui": { "entry": ["**/*.{vue,ts}"] }
+		"packages/ui": { "entry": ["**/*.{vue,ts}"] },
 	},
 
 	// Global ignores: generated code, build output, vendored SDKs, the non-JS
@@ -136,9 +155,9 @@
 		"**/src-tauri/**",
 		"**/*.css",
 		"fixtures/**",
-		"packages/sdk-java/**"
+		"packages/sdk-java/**",
 	],
 	"ignoreBinaries": ["convex", "tauri", "playwright", "docker", "cargo"],
 	"ignoreWorkspaces": ["packages/sdk-java"],
-	"ignoreExportsUsedInFile": true
+	"ignoreExportsUsedInFile": true,
 }

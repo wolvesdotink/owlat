@@ -11,21 +11,21 @@
  * can-this-instance-send status and let an admin fire a real test email.
  *
  * Secret hygiene: `getStatus` reports the *presence* of each required env var as
- * a boolean and the provider KIND name (`mta` / `resend` / `ses`) — never a
+ * a boolean and the composed provider kind — never a
  * credential value. The single per-kind requirement model is shared with the
  * setup wizard / `owlat doctor` via `getSendPathRequiredEnv` (`@owlat/shared`)
- * and the backend capability check (`providerKindConfigured`), so this page
+ * and the backend readiness check (`isSendProviderReady`), so this page
  * cannot drift from what the send path actually needs.
  */
 
 import { v } from 'convex/values';
-import { getSendPathRequiredEnv, isDeliveryProviderKind } from '@owlat/shared';
 import { adminQuery, authedAction, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
-import { getOptional, type EnvKey } from '../lib/env';
+import { getOptional, isEnvPresent } from '../lib/env';
 import { isSendProviderKind } from '../lib/sendProviders/types';
-import { providerKindConfigured, isDeliveryConfigured } from '../lib/sendProviders/capability';
+import { isDeliveryConfigured, isSendProviderReady } from '../lib/sendProviders/capability';
+import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
 import { outboundTransportFacts } from '../lib/outboundAlignment';
 import { isValidEmail } from '../lib/inputGuards';
 
@@ -112,7 +112,7 @@ function testResult(
  *
  * Returns only:
  *  - `provider`            the `EMAIL_PROVIDER` kind name (or null) — not a secret
- *  - `isKnownProvider`     whether that names a real adapter (mta/resend/ses)
+ *  - `isKnownProvider`     whether that names a composed transport
  *  - `requiredEnv`         per required var: `{ name, isPresent }` (boolean only)
  *  - `providerConfigured`  provider known AND all its credentials present (env)
  *  - `canSend`             the real gate the send path uses (`isDeliveryConfigured`
@@ -125,21 +125,23 @@ export const getStatus = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		const provider = getOptional('EMAIL_PROVIDER') ?? null;
-		const isKnownProvider = isDeliveryProviderKind(provider ?? undefined);
+		const isKnownProvider = isSendProviderKind(provider);
+		const providerEntry = isKnownProvider ? sendProviderCatalogEntry(provider) : null;
 
 		// Presence-only: the required env var NAMES are public (they're documented
 		// in the setup wizard); their VALUES never leave the backend.
-		const requiredEnv = getSendPathRequiredEnv(provider ?? undefined).map((name) => ({
+		const requiredEnv = (providerEntry?.requiredEnvVars ?? []).map((name) => ({
 			name,
-			isPresent: Boolean(getOptional(name as EnvKey)),
+			isPresent: isEnvPresent(name),
 		}));
 
-		const providerConfigured = isSendProviderKind(provider) && providerKindConfigured(provider);
+		const providerConfigured = isKnownProvider && (await isSendProviderReady(ctx, provider));
 		const canSend = await isDeliveryConfigured(ctx);
 
 		const settings = await ctx.db.query('instanceSettings').first(); // bounded: singleton row
 		return {
 			provider,
+			providerLabel: providerEntry?.label ?? null,
 			isKnownProvider,
 			requiredEnv,
 			providerConfigured,
@@ -200,7 +202,20 @@ export const getTransportSummary = authedQuery({
 
 		// Advanced routing is "active" when any configured route enables a provider.
 		const routes = await ctx.db.query('providerRoutes').collect(); // bounded: one row per message type
-		const advancedRoutingActive = routes.some((route) => route.providers.some((p) => p.isEnabled));
+		let advancedRoutingActive = false;
+		for (const route of routes) {
+			for (const routeProvider of route.providers) {
+				if (
+					routeProvider.isEnabled &&
+					isSendProviderKind(routeProvider.providerType) &&
+					(await isSendProviderReady(ctx, routeProvider.providerType))
+				) {
+					advancedRoutingActive = true;
+					break;
+				}
+			}
+			if (advancedRoutingActive) break;
+		}
 
 		// Rolling health for the active provider kind (null before the first send).
 		// Only the two fields the transport card renders — status + last-checked.
@@ -229,6 +244,7 @@ export const getTransportSummary = authedQuery({
 
 		return {
 			provider,
+			providerLabel: isSendProviderKind(provider) ? sendProviderCatalogEntry(provider).label : null,
 			canSend,
 			advancedRoutingActive,
 			health,
@@ -270,9 +286,10 @@ export const recordTestResult = internalMutation({
  * Send a real test email through the configured delivery provider, so an admin
  * can trace the send path through provider acceptance before trusting it with a
  * campaign or transactional traffic. Reuses the single system transport
- * (`internal.systemMail.sendSystemEmail`) — it routes through whatever provider
- * `EMAIL_PROVIDER` names (MTA / Resend / SES); this does NOT add a parallel
- * sender. Records a success timestamp the status page and onboarding surface.
+ * (`internal.systemMail.sendSystemEmail`) — it routes through whatever
+ * transport `EMAIL_PROVIDER` names in the composed send-provider registry,
+ * built-in or plugin-contributed; this does NOT add a parallel sender. Records
+ * a success timestamp for the status page and onboarding surface.
  *
  * Returns a stage-by-stage trace rather than throwing on an expected provider
  * failure, including the safe provider receipt metadata. Acceptance is not
@@ -290,12 +307,16 @@ export const sendTest = authedAction({
 
 		const stages = testStages();
 		const provider = getOptional('EMAIL_PROVIDER');
-		if (!isSendProviderKind(provider) || !providerKindConfigured(provider)) {
+		const providerReady = await ctx.runQuery(
+			internal.lib.sendProviders.capability.environmentSendProviderReady,
+			{}
+		);
+		if (!isSendProviderKind(provider) || !providerReady) {
 			updateStage(stages, 'provider_configuration', 'failed', 'No usable provider is configured');
 			return testResult(stages, {
 				success: false,
 				error:
-					'No delivery provider is configured. Set EMAIL_PROVIDER (mta, resend, or ses) and its credentials, then try again.',
+					'No delivery provider is configured. Set EMAIL_PROVIDER to a registered transport and configure its requirements, then try again.',
 				provider: provider ?? null,
 				providerMessageId: null,
 				latencyMs: null,

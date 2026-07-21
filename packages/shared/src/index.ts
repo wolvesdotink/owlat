@@ -34,6 +34,8 @@ export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost
 export {
 	SEND_TRANSPORT_KINDS,
 	type SendTransportKind,
+	type CoreSendTransportKind,
+	type HostedSendTransportKind,
 	type OutboundAlignmentState,
 	type OutboundTransportFacts,
 	type FromAlignmentResult,

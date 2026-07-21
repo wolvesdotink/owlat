@@ -21,6 +21,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('admin-1'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'admin-1', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'admin-1', role: 'owner' }),
+		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
+			userId: 'admin-1',
+			activeOrganizationId: 'tenant-a',
+			role: 'owner',
+		}),
 	};
 });
 
@@ -112,6 +117,43 @@ describe('auditLogs.list', () => {
 		expect(second.nextCursor).toBeNull();
 	});
 
+	it('filters validated plugin attribution inside the active tenant and clamps page size', async () => {
+		const t = convexTest(schema, modules);
+		await seed(t);
+		await t.run(async (ctx) => {
+			for (const [organizationId, pluginId] of [
+				['tenant-a', 'alpha'],
+				['tenant-a', 'beta'],
+				['tenant-b', 'alpha'],
+			] as const) {
+				await ctx.db.insert('auditLogs', {
+					userId: 'admin-1',
+					organizationId,
+					pluginId,
+					action: 'plugin.action_completed',
+					resource: 'plugin',
+					createdAt: BASE + 4000,
+				});
+			}
+			for (let index = 0; index < 110; index++) {
+				await ctx.db.insert('auditLogs', {
+					userId: 'admin-1',
+					organizationId: 'tenant-a',
+					pluginId: 'alpha',
+					action: 'plugin.action_completed',
+					resource: 'plugin',
+					createdAt: BASE + 5000 + index,
+				});
+			}
+		});
+		const result = await t.query(api.auditLogs.list, { pluginId: 'alpha', limit: 10_000 });
+		expect(result.logs).toHaveLength(100);
+		expect(
+			result.logs.every((row) => row.organizationId === 'tenant-a' && row.pluginId === 'alpha')
+		).toBe(true);
+		await expect(t.query(api.auditLogs.list, { pluginId: '../secret' })).rejects.toThrow();
+	});
+
 	it('rejects a caller without organization:manage', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
@@ -167,6 +209,27 @@ describe('auditLogs.getStats', () => {
 		expect(stats.byAction['campaign.created']).toBe(1);
 		expect(stats.byAction['campaign.sent']).toBe(1);
 		expect(stats.byAction['settings.updated']).toBe(1);
+	});
+
+	it('seeks only the active tenant plus legacy singleton rows', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			for (const organizationId of ['tenant-a', 'tenant-b', undefined] as const) {
+				await ctx.db.insert('auditLogs', {
+					userId: 'admin-1',
+					organizationId,
+					action: 'settings.updated',
+					resource: 'settings',
+					createdAt: BASE,
+				});
+			}
+		});
+
+		const stats = await t.query(api.auditLogs.getStats, {
+			startDate: BASE - 1,
+			endDate: BASE + 1,
+		});
+		expect(stats.total).toBe(2);
 	});
 });
 

@@ -13,6 +13,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { throwForbidden } from '../_utils/errors';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
+import { FEATURE_FLAG_REGISTRY } from '../plugins/featureFlagRegistry';
 
 /**
  * Read the stored feature flag map from the singleton instanceSettings row.
@@ -32,7 +33,14 @@ export async function isFeatureEnabled(
 	flag: FeatureFlagKey
 ): Promise<boolean> {
 	const stored = await getStoredFlags(ctx);
-	return resolveFlags(stored)[flag];
+	return resolveStoredFeatureFlags(stored)[flag] === true;
+}
+
+/** Resolve storage through the composition registry, dropping stale plugin keys. */
+export function resolveStoredFeatureFlags(
+	stored: FeatureFlagState
+): Record<FeatureFlagKey, boolean> {
+	return resolveFlags(stored, { registry: FEATURE_FLAG_REGISTRY });
 }
 
 /**
@@ -55,7 +63,7 @@ export async function assertFeatureEnabled(
 	if (!enabled) {
 		throwForbidden(
 			`Feature "${flag}" is disabled on this Owlat instance. An admin can enable it from Settings → Features.`,
-			{ feature: flag },
+			{ feature: flag }
 		);
 	}
 }

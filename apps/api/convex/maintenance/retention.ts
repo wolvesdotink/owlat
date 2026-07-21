@@ -55,6 +55,30 @@ export const sweepMailAuditLog = internalMutation({
 	},
 });
 
+/** Plugin LLM reservations and daily aggregates age out with the audit window. */
+export const sweepPluginLlmAccounting = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const cutoff = Date.now() - AUDIT_LOG_RETENTION_MS;
+		const [reservations, dailyUsage] = await Promise.all([
+			ctx.db
+				.query('pluginLlmReservations')
+				.withIndex('by_creation_time', (q) => q.lt('_creationTime', cutoff))
+				.take(BATCH),
+			ctx.db
+				.query('pluginLlmDailyUsage')
+				.withIndex('by_creation_time', (q) => q.lt('_creationTime', cutoff))
+				.take(BATCH),
+		]);
+		for (const row of [...reservations, ...dailyUsage]) {
+			await ctx.db.delete(row._id);
+		}
+		if (reservations.length === BATCH || dailyUsage.length === BATCH) {
+			await ctx.scheduler.runAfter(0, internal.maintenance.retention.sweepPluginLlmAccounting, {});
+		}
+	},
+});
+
 export const scrubFormSubmissionMeta = internalMutation({
 	args: { cursor: v.optional(v.string()) },
 	handler: async (ctx, args) => {

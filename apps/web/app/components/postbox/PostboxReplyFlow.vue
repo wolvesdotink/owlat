@@ -4,8 +4,11 @@ import type { Id } from '@owlat/api/dataModel';
 import AgentTaskFlow from '~/components/agent-tasks/AgentTaskFlow.vue';
 import TaskActions from '~/components/agent-tasks/TaskActions.vue';
 import TaskAsk from '~/components/agent-tasks/TaskAsk.vue';
+import TaskCardRenderer from '~/components/agent-tasks/TaskCardRenderer.vue';
 import TaskCardShell from '~/components/agent-tasks/TaskCardShell.vue';
 import TaskContext from '~/components/agent-tasks/TaskContext.vue';
+import { isBuiltInTaskFlowKind } from '~/utils/taskCardRegistry';
+import { resolveReplyFocusKey } from '~/utils/taskFlowKeyboard';
 import type { ReplyQuoteTarget } from '~/composables/postbox/usePostboxQuotedText';
 import { useTaskFlow } from '~/composables/useTaskFlow';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
@@ -45,6 +48,10 @@ function orderKey(item: FlowItem): TaskFlowOrderKey {
 const flow = useTaskFlow<FlowItem>(source, { key: orderKey });
 
 const current = computed(() => flow.current.value);
+/** The current card's kind — drives native rendering vs the fallback dispatcher. */
+const currentKind = computed<TaskFlowKind | null>(() =>
+	current.value ? orderKey(current.value).kind : null
+);
 const estimateLabel = computed(() => formatTaskFlowEstimate(flow.remainingSeconds.value));
 const peekLabel = computed(() =>
 	flow.nextItem.value ? replyQueueHeadline(flow.nextItem.value) : ''
@@ -65,22 +72,26 @@ watch(
 );
 
 // Keyboard: Cmd/Ctrl+Z undo (flow), plus the Postbox row conventions on the
-// focused card — Enter = reply/done, e = archive. Inert while typing.
+// focused card — Enter = reply/done, e = archive. Gated to built-in kinds: a
+// plugin/unknown card only honours `s` → skip (its native controls own
+// everything else), so the ambient shortcuts can never fire a hidden reply or
+// archive on a card that does not display them. Inert while typing.
 function onCardKeydown(event: KeyboardEvent) {
 	if (!flow.active.value || flow.isComplete.value) return;
 	if (event.metaKey || event.ctrlKey || event.altKey) return;
 	if (isEditableTarget(event.target)) return;
 	const row = current.value;
 	if (!row) return;
-	const k = event.key.toLowerCase();
-	if (k === 'enter') {
-		event.preventDefault();
-		if (row.kind === 'followup') void markDone(row);
-		else void draftReply(row);
-	} else if (k === 'e' && row.kind !== 'followup') {
-		event.preventDefault();
-		void archiveRow(row);
-	}
+	const action = resolveReplyFocusKey(event.key, {
+		currentKind: currentKind.value,
+		isFollowup: row.kind === 'followup',
+	});
+	if (!action) return;
+	event.preventDefault();
+	if (action === 'markDone') void markDone(row);
+	else if (action === 'draftReply') void draftReply(row);
+	else if (action === 'archive') void archiveRow(row);
+	else flow.skip(row.id);
 }
 onMounted(() => {
 	window.addEventListener('keydown', flow.onWindowKeydown);
@@ -247,7 +258,11 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 		<template v-if="current">
 			<!-- Needs-your-input clarification -->
 			<PostboxClarificationCard
-				v-if="replyQueueSection(current) === 'needs_input'"
+				v-if="
+					currentKind &&
+					isBuiltInTaskFlowKind(currentKind) &&
+					replyQueueSection(current) === 'needs_input'
+				"
 				:item="current"
 				:submitting="busy"
 				@answer="(answers) => submitClarification(current!, answers)"
@@ -258,7 +273,7 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 			/>
 
 			<!-- Plain needs-you / follow-up / draft-review card -->
-			<TaskCardShell v-else>
+			<TaskCardShell v-else-if="currentKind && isBuiltInTaskFlowKind(currentKind)">
 				<TaskContext
 					:who="current.fromName || current.fromAddress"
 					:name="current.fromName"
@@ -356,6 +371,20 @@ const URGENCY_LABEL: Record<string, string> = { high: 'Urgent', low: 'Low priori
 					</button>
 				</TaskActions>
 			</TaskCardShell>
+
+			<!-- Unknown/disabled or plugin-contributed kind: never crash, never
+			     drop it — render (or gracefully fall back to) its card, and keep
+			     it skippable so the queue can advance. -->
+			<TaskCardRenderer
+				v-else-if="currentKind"
+				:kind="currentKind"
+				:item="current"
+				:is-flag-enabled="isFeatureEnabled"
+				:can-open="true"
+				@skip="flow.skip(current!.id)"
+				@open="openRow(current!)"
+				@complete="(outcome) => flow.complete(current!.id, { outcome: outcome ?? 'completed' })"
+			/>
 		</template>
 
 		<!-- End state -->

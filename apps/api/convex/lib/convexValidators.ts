@@ -147,15 +147,14 @@ export const abTestConfigValidator = v.object({
 	testDuration: v.optional(v.number()),
 });
 
-// Automation trigger config
 export const triggerConfigValidator = v.union(
 	v.object({ propertyKey: v.string() }),
 	v.object({ eventName: v.string() }),
-	v.object({ topicId: v.string() })
+	v.object({ topicId: v.string() }),
+	v.object({ pluginConfig: jsonPrimitiveRecord }) // plugin trigger config: opaque flat record, plugin-validated
 );
 
-// Automation step config — canonical condition-step shape:
-// `{ condition: Condition, yesBranchStepIndex?, noBranchStepIndex? }` per ADR-0004.
+// Automation step config. Condition step: `{ condition, yesBranchStepIndex?, noBranchStepIndex? }` (ADR-0004).
 const conditionStepConfigValidator = v.object({
 	condition: filterConditionValidator,
 	yesBranchStepIndex: v.optional(v.union(v.number(), v.null())),
@@ -168,7 +167,8 @@ export const stepConfigValidator = v.union(
 		duration: v.number(),
 		unit: v.union(v.literal('minutes'), v.literal('hours'), v.literal('days'), v.literal('weeks')),
 	}),
-	conditionStepConfigValidator
+	conditionStepConfigValidator,
+	v.object({ pluginConfig: jsonPrimitiveRecord }) // plugin step config: opaque flat record; plugin validates
 );
 
 // DNS records.

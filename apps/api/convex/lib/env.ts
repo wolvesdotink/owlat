@@ -225,3 +225,17 @@ export function isEnvPresent(key: string): boolean {
 	const value = process.env[key];
 	return value !== undefined && value !== '';
 }
+
+/**
+ * Read a plugin-declared signing secret by the `secretEnvVar` name from a
+ * plugin's inbound signature-verification contract. Accepts an arbitrary key
+ * (not the typed `EnvKey` union) because plugin secret variable names are
+ * declared in plugin manifests, not this deployment's fixed union. Reading
+ * through this module keeps the no-raw-`process.env` lint satisfied. Returns
+ * `undefined` when unset or empty so the host fails closed; the value is only
+ * ever fed into a constant-time HMAC comparison, never logged.
+ */
+export function getPluginSecret(key: string): string | undefined {
+	const value = process.env[key];
+	return value === undefined || value === '' ? undefined : value;
+}

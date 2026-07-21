@@ -1,0 +1,35 @@
+{
+	"name": "@owlat/plugin-cli",
+	"version": "0.3.3",
+	"private": true,
+	"description": "The owlat plugins CLI: create/add/remove/dev/codegen over the checked-in plugins.config.ts and the deterministic PP-03 codegen",
+	"license": "Apache-2.0",
+	"type": "module",
+	"bin": {
+		"owlat-plugins": "./src/index.ts"
+	},
+	"exports": {
+		".": "./src/index.ts",
+		"./run": "./src/run.ts"
+	},
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"test": "vitest run",
+		"test:watch": "vitest watch",
+		"test:coverage": "vitest run --coverage",
+		"lint": "oxlint --config ../../oxlintrc.json src",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src --fix",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@owlat/plugin-codegen": "workspace:*",
+		"@owlat/plugin-host": "workspace:*",
+		"@owlat/plugin-kit": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

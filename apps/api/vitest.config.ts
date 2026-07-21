@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -45,6 +46,14 @@ export default defineConfig({
 			thresholds: {
 				lines: 65,
 			},
+		},
+	},
+	resolve: {
+		alias: {
+			// plugin-host intentionally consumes plugin-kit's packaged dist in production.
+			// API tests run from a frozen clean checkout, so use the same source alias as
+			// plugin-host's own Vitest suite instead of depending on ignored build output.
+			'@owlat/plugin-kit': resolve(__dirname, '../../packages/plugin-kit/src/index.ts'),
 		},
 	},
 });

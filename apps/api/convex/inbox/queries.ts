@@ -434,10 +434,11 @@ export const getMessageActions = publicQuery({
 		const session = await getBetterAuthSessionWithRole(ctx);
 		if (!session || (session.role !== 'owner' && session.role !== 'admin')) return [];
 
-		return await ctx.db
+		const actions = await ctx.db
 			.query('agentActions')
 			.withIndex('by_inbound_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
 			.collect(); // bounded: one message's pipeline actions (~1 per step)
+		return actions.map(({ _id, actionType, status }) => ({ _id, actionType, status }));
 	},
 });
 

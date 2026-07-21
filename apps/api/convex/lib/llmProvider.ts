@@ -14,14 +14,11 @@
  *
  * The resolved config is memoized in-process for a short TTL so a burst of LLM
  * calls reads (and decrypts) at most once per window rather than per call. Both
- * paths resolve THROUGH the provider-adapter registry (`./llmProviders`): a
- * `kind` selects the adapter and the adapter builds the client — so adding a
- * provider is one adapter file and this module stays dumb about provider
- * specifics.
+ * paths resolve through the provider-adapter registry (`./llmProviders`), where
+ * a `kind` selects the adapter that builds the client.
  *
- * `resolveLanguageModel(ctx, task)` (async) replaces the former sync, env-only
- * per-task resolver. Embeddings resolve through the SAME `resolveAiConfig(ctx)`
- * point via `resolveEmbeddingModel(ctx)` — the two planes are DECOUPLED:
+ * Language models and embeddings resolve through the same `resolveAiConfig(ctx)`
+ * point, while the two planes remain decoupled:
  *
  *   • The embedding plane is LOCAL BY DEFAULT (an OpenAI-compatible sidecar via
  *     `LOCAL_EMBEDDING_BASE_URL`) so retrieval works under ANY language choice,
@@ -57,10 +54,14 @@ import {
 } from './llm/complexity';
 import { CURRENT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS } from './constants';
 import {
+	classifyEnvLanguageEndpoint,
+	classifyStoredLanguageEndpoint,
 	embeddingProviderFor,
 	languageProviderFor,
+	type LanguageEndpointProvenance,
 	type LanguageProviderKind,
 	type ProviderClientConfig,
+	type ResolvedLanguageModel,
 } from './llmProviders';
 import type { StoredEmbeddingProviderKind } from './aiProviderConfigValidators';
 
@@ -76,6 +77,7 @@ export type LLMTier = 'fast' | 'capable';
 /** The resolved language plane — kind + secret-bearing client + per-tier models. */
 export interface ResolvedLanguagePlane {
 	readonly kind: LanguageProviderKind;
+	readonly endpointProvenance: LanguageEndpointProvenance;
 	/** Decrypted client config (apiKey present only for hosted providers). */
 	readonly clientConfig: ProviderClientConfig;
 	readonly models: { readonly fast: string; readonly capable: string };
@@ -199,6 +201,10 @@ export function resolveEnvProviderConfig(): ResolvedProviderConfig {
 		source: 'env',
 		language: {
 			kind: ENV_LANGUAGE_KIND,
+			endpointProvenance: classifyEnvLanguageEndpoint(
+				getOptional('LLM_PROVIDER'),
+				Boolean(getOptional('LLM_BASE_URL'))
+			),
 			clientConfig,
 			models: { fast: modelIdForTier('fast'), capable: modelIdForTier('capable') },
 		},
@@ -227,6 +233,10 @@ export function buildStoredProviderConfig(
 		updatedAt: row.updatedAt,
 		language: {
 			kind: row.languageProviderKind,
+			endpointProvenance: classifyStoredLanguageEndpoint(
+				row.languageProviderKind,
+				row.languageBaseUrl !== undefined
+			),
 			clientConfig: { apiKey: languageKey, baseUrl: row.languageBaseUrl ?? adapter.defaultBaseUrl },
 			models: { fast: row.modelFast, capable: row.modelCapable },
 		},
@@ -341,10 +351,29 @@ export function __resetAiConfigCacheForTests(): void {
 	configCache = null;
 }
 
-/** Build the AI-SDK language model for a resolved config + tier via the registry. */
-function buildLanguageModelFromConfig(cfg: ResolvedProviderConfig, tier: LLMTier): LanguageModel {
+/** Build a model together with the trusted, secret-free resolution metadata. */
+function resolveLanguageModelFromConfig(
+	cfg: ResolvedProviderConfig,
+	tier: LLMTier
+): ResolvedLanguageModel {
 	const modelId = tier === 'fast' ? cfg.language.models.fast : cfg.language.models.capable;
-	return languageProviderFor(cfg.language.kind).buildChatModel(cfg.language.clientConfig, modelId);
+	return Object.freeze({
+		model: languageProviderFor(cfg.language.kind).buildChatModel(
+			cfg.language.clientConfig,
+			modelId
+		),
+		modelId,
+		endpointProvenance: cfg.language.endpointProvenance,
+	});
+}
+
+/** Resolve a language model with endpoint identity for hard-budget consumers. */
+export async function resolveLanguageModelWithProvenance(
+	ctx: ActionCtx,
+	task: LLMTask = 'draft'
+): Promise<ResolvedLanguageModel> {
+	const cfg = await resolveAiConfig(ctx);
+	return resolveLanguageModelFromConfig(cfg, taskTier(task));
 }
 
 /** Resolve the language model for a given task (plugs into the AI SDK helpers). */
@@ -352,8 +381,7 @@ export async function resolveLanguageModel(
 	ctx: ActionCtx,
 	task: LLMTask = 'draft'
 ): Promise<LanguageModel> {
-	const cfg = await resolveAiConfig(ctx);
-	return buildLanguageModelFromConfig(cfg, taskTier(task));
+	return (await resolveLanguageModelWithProvenance(ctx, task)).model;
 }
 
 /**
@@ -374,7 +402,7 @@ export async function resolveLanguageModelForUserText(
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' &&
 		taskTier(task) === 'capable' &&
 		isTrivialUserText(userText);
-	return buildLanguageModelFromConfig(cfg, downgrade ? 'fast' : taskTier(task));
+	return resolveLanguageModelFromConfig(cfg, downgrade ? 'fast' : taskTier(task)).model;
 }
 
 /**
@@ -395,7 +423,7 @@ export async function resolveLanguageModelForClassifiedDraft(
 	const cfg = await resolveAiConfig(ctx);
 	const downgrade =
 		getOptional('LLM_COMPLEXITY_ROUTING') === '1' && isTrivialClassifiedMessage(signals);
-	return buildLanguageModelFromConfig(cfg, downgrade ? 'fast' : 'capable');
+	return resolveLanguageModelFromConfig(cfg, downgrade ? 'fast' : 'capable').model;
 }
 
 // Known embedding models and their native output width. Used to fail fast when

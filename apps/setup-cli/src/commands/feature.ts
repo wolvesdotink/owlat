@@ -8,7 +8,11 @@
  */
 
 import pc from 'picocolors';
-import { FEATURE_FLAGS, type FeatureFlagKey } from '@owlat/shared/featureFlags';
+import {
+	FEATURE_FLAGS,
+	hasFeatureFlagDefinition,
+	type FeatureFlagKey,
+} from '@owlat/shared/featureFlags';
 import { applyAndPersist } from '../lib/flagState';
 
 interface FeatureOptions {
@@ -23,18 +27,14 @@ export async function runFeature(opts: FeatureOptions): Promise<number> {
 		return 1;
 	}
 
-	if (!(key in FEATURE_FLAGS)) {
+	if (!hasFeatureFlagDefinition(FEATURE_FLAGS, key)) {
 		console.error(`Unknown feature flag: ${key}`);
 		console.error(`\nAvailable flags:\n  ${Object.keys(FEATURE_FLAGS).join('\n  ')}`);
 		return 1;
 	}
 
 	const value = valueArg === 'on' || valueArg === 'true' || valueArg === '1';
-	const { cascaded, profiles } = await applyAndPersist(
-		opts.owlatDir,
-		key as FeatureFlagKey,
-		value,
-	);
+	const { cascaded, profiles } = await applyAndPersist(opts.owlatDir, key as FeatureFlagKey, value);
 
 	console.log(`${pc.green('✓')} ${key} = ${value ? pc.green('on') : pc.red('off')}`);
 	if (cascaded.length > 0) {

@@ -151,7 +151,7 @@ describe('securityScanStep.execute — guard unavailable (fail closed for auto-s
 		);
 
 		// Drafting proceeds (no injection detected) but the guard could not run, so
-		// the flag the route step / assertSafeToAutoSend consume is set — blocking
+		// the flag the route step's ordered final gate registry consumes is set — blocking
 		// the auto-send path while leaving the message to flow to human review.
 		expect(output.isInjection).toBe(false);
 		expect(output.securityFlags.guardUnavailable).toBe(true);

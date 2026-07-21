@@ -1,214 +1,34 @@
-import type { SectionKey } from '~/composables/useSidebarState';
+import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
+import {
+	buildNavigationSections,
+	derivePluginNavigation,
+	type NavigationItem,
+	type NavigationSection,
+} from '~/lib/dashboardNavigation';
 
-export interface NavigationItem {
-	name: string;
-	href: string;
-	icon: string;
-}
-
-export interface NavigationSection {
-	key: SectionKey;
-	name: string;
-	icon: string;
-	/**
-	 * When set, the sidebar renders the section as a single flat link to this
-	 * destination instead of a collapsible sub-list — used for surfaces that
-	 * carry their own in-page navigation (Postbox's folder rail) or have only
-	 * one destination (Chat, Assistant). `items` still feeds the command
-	 * palette so every destination stays reachable from ⌘K.
-	 */
-	href?: string;
-	items: NavigationItem[];
-}
+export type { NavigationItem, NavigationSection };
 
 /**
- * Single source of truth for the dashboard sidebar destinations, feature-flag
- * filtered. Consumed by both the sidebar (`layouts/dashboard.vue`) and the
- * global command palette (`AppCommandPalette`) so navigation never drifts
- * between the two. Extracted from the layout verbatim — same shape, same order.
+ * Single source of truth for the dashboard sidebar destinations. Consumed by
+ * both the sidebar (`layouts/dashboard.vue`) and the global command palette
+ * (`AppCommandPalette`) so navigation never drifts between the two.
+ *
+ * Core destinations are declared once in `~/lib/dashboardNavigation` and
+ * registered first through the host merge; plugin `navItems`/`settingsPanels`
+ * from the statically composed bundled plugins are appended after every core
+ * entry, gated behind each plugin's feature flag. The reactive shell just wires
+ * the live feature flags and desktop context into the pure builder.
  */
 export function useDashboardNavigation() {
 	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 	const { isDesktop } = useDesktopContext();
 
-	const navigationSections = computed<NavigationSection[]>(() => {
-		const settingsItems: NavigationItem[] = [
-			{ name: 'Overview', href: '/dashboard/settings', icon: 'lucide:settings' },
-			{ name: 'Workspace', href: '/dashboard/settings/workspace', icon: 'lucide:building-2' },
-			{ name: 'Properties', href: '/dashboard/settings/properties', icon: 'lucide:tags' },
-			{ name: 'Features', href: '/dashboard/settings/features', icon: 'lucide:toggle-right' },
-			...(isFeatureEnabled('ai.agent')
-				? [
-						{ name: 'AI Agent', href: '/dashboard/settings/agent', icon: 'lucide:bot' },
-						{
-							name: 'Agent Health',
-							href: '/dashboard/settings/agent-health',
-							icon: 'lucide:activity',
-						},
-					]
-				: []),
-			...(isFeatureEnabled('ai.autonomy')
-				? [
-						{
-							name: 'Autonomy',
-							href: '/dashboard/settings/autonomy',
-							icon: 'lucide:sliders-horizontal',
-						},
-					]
-				: []),
-			{ name: 'Messaging', href: '/dashboard/settings/channels', icon: 'lucide:radio' },
-			// Admin management surface for shared Postbox inboxes — only meaningful
-			// when a mail surface is on. The page itself shows an admins-only gate.
-			...(isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')
-				? [
-						{
-							name: 'Team Inboxes',
-							href: '/dashboard/settings/team-inboxes',
-							icon: 'lucide:mails',
-						},
-					]
-				: []),
-			{ name: 'Account', href: '/dashboard/settings/account', icon: 'lucide:users' },
-			...(isDesktop.value
-				? [{ name: 'Desktop', href: '/desktop/settings', icon: 'lucide:monitor' }]
-				: []),
-		];
-
-		const inboxItems: NavigationItem[] = [
-			{ name: 'All Threads', href: '/dashboard/inbox', icon: 'lucide:message-square' },
-			{ name: 'All activity', href: '/dashboard/inbox/activity', icon: 'lucide:activity' },
-			{ name: 'Review Queue', href: '/dashboard/inbox/review', icon: 'lucide:check-circle' },
-			...(isFeatureEnabled('inbox.codeTasks')
-				? [{ name: 'Code Tasks', href: '/dashboard/inbox/code-tasks', icon: 'lucide:code' }]
-				: []),
-			{ name: 'Quarantine', href: '/dashboard/inbox/quarantine', icon: 'lucide:shield-alert' },
-		];
-
-		// Unified "Send" section: everything you send from, in one place. Campaigns,
-		// Automations and Transactional are the top-level destinations; the email
-		// template surfaces (marketing/transactional templates, saved blocks, media,
-		// files) fold under the "Templates & blocks" landing at /dashboard/send.
-		const sendItems: NavigationItem[] = [
-			...(isFeatureEnabled('campaigns')
-				? [{ name: 'Campaigns', href: '/dashboard/campaigns', icon: 'lucide:megaphone' }]
-				: []),
-			...(isFeatureEnabled('automations')
-				? [{ name: 'Automations', href: '/dashboard/automations', icon: 'lucide:zap' }]
-				: []),
-			...(isFeatureEnabled('transactional')
-				? [
-						{
-							name: 'Transactional',
-							href: '/dashboard/send/transactional',
-							icon: 'lucide:file-code',
-						},
-					]
-				: []),
-			{ name: 'Templates & blocks', href: '/dashboard/send', icon: 'lucide:layout-grid' },
-		];
-
-		const sections: NavigationSection[] = [];
-
-		if (isFeatureEnabled('inbox')) {
-			sections.push({ key: 'inbox', name: 'Team Inbox', icon: 'lucide:inbox', items: inboxItems });
-		}
-
-		if (isFeatureEnabled('postbox') || isFeatureEnabled('mail.external')) {
-			// Every postbox page renders its own folder rail (folders, labels,
-			// search, compose), so the sidebar shows one flat link instead of
-			// duplicating the folder list. The items below are palette-only.
-			sections.push({
-				key: 'postbox',
-				name: 'Postbox',
-				icon: 'lucide:mailbox',
-				href: '/dashboard/postbox',
-				items: [
-					{ name: 'Inbox', href: '/dashboard/postbox/inbox', icon: 'lucide:inbox' },
-					{ name: 'Sent', href: '/dashboard/postbox/sent', icon: 'lucide:send' },
-					{ name: 'Drafts', href: '/dashboard/postbox/drafts', icon: 'lucide:file-edit' },
-					{ name: 'Spam', href: '/dashboard/postbox/spam', icon: 'lucide:shield-alert' },
-					{ name: 'Trash', href: '/dashboard/postbox/trash', icon: 'lucide:trash' },
-					{ name: 'Settings', href: '/dashboard/postbox/settings', icon: 'lucide:settings' },
-				],
-			});
-		}
-
-		if (isFeatureEnabled('chat')) {
-			sections.push({
-				key: 'chat',
-				name: 'Chat',
-				icon: 'lucide:message-circle',
-				href: '/dashboard/chat',
-				items: [{ name: 'Messages', href: '/dashboard/chat', icon: 'lucide:message-circle' }],
-			});
-		}
-
-		if (isFeatureEnabled('ai.assistant')) {
-			sections.push({
-				key: 'assistant',
-				name: 'Assistant',
-				icon: 'lucide:sparkles',
-				href: '/dashboard/assistant',
-				items: [{ name: 'Chat', href: '/dashboard/assistant', icon: 'lucide:sparkles' }],
-			});
-		}
-
-		sections.push({ key: 'send', name: 'Send', icon: 'lucide:send', items: sendItems });
-
-		// Audience sits directly under Send: who you're writing to, next to the
-		// tools that do the writing/sending.
-		sections.push({
-			key: 'audience',
-			name: 'Audience',
-			icon: 'lucide:users',
-			items: [
-				{ name: 'Overview', href: '/dashboard/audience', icon: 'lucide:layout-dashboard' },
-				{ name: 'Contacts', href: '/dashboard/audience/contacts', icon: 'lucide:users' },
-				{ name: 'Topics', href: '/dashboard/audience/topics', icon: 'lucide:list-filter' },
-				{ name: 'Segments', href: '/dashboard/audience/segments', icon: 'lucide:user-plus' },
-				{ name: 'Suppressions', href: '/dashboard/audience/suppressions', icon: 'lucide:ban' },
-			],
-		});
-
-		// Delivery: deliverability promoted to its own first-class section. Health is
-		// the landing overview; Setup is the slim config hub (domains, provider
-		// routing, webhooks, provider config, API keys). The section header carries a
-		// live worst-of status dot (see useDeliveryHealth).
-		sections.push({
-			key: 'delivery',
-			name: 'Delivery',
-			icon: 'lucide:truck',
-			items: [
-				{ name: 'Health', href: '/dashboard/delivery', icon: 'lucide:activity' },
-				{ name: 'Setup', href: '/dashboard/delivery/setup', icon: 'lucide:settings-2' },
-			],
-		});
-
-		if (isFeatureEnabled('ai.knowledge')) {
-			sections.push({
-				key: 'knowledge',
-				name: 'Knowledge',
-				icon: 'lucide:brain',
-				items: [
-					{ name: 'Explorer', href: '/dashboard/knowledge', icon: 'lucide:brain' },
-					// Graph dashboard (force-directed view + analytics) — gated on the
-					// analytics flag, which also drives the cron that fills the snapshot.
-					...(isFeatureEnabled('ai.knowledge.analytics')
-						? [{ name: 'Graph', href: '/dashboard/knowledge/graph', icon: 'lucide:share-2' }]
-						: []),
-				],
-			});
-		}
-
-		sections.push({
-			key: 'settings',
-			name: 'Settings',
-			icon: 'lucide:settings',
-			items: settingsItems,
-		});
-
-		return sections;
-	});
+	const navigationSections = computed<NavigationSection[]>(() =>
+		buildNavigationSections(
+			{ isFeatureEnabled, isDesktop: isDesktop.value },
+			derivePluginNavigation(bundledPluginComposition, isFeatureEnabled)
+		)
+	);
 
 	return { navigationSections };
 }

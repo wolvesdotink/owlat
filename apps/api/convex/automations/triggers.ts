@@ -1,4 +1,10 @@
 import { v } from 'convex/values';
+import {
+	isPluginId,
+	isPluginLocalId,
+	pluginNamespacedKind,
+	PLUGIN_AUTOMATION_TRIGGER_CAPABILITY,
+} from '@owlat/plugin-kit';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -11,6 +17,13 @@ import { contactUpdatedTrigger } from './triggers/contact_updated';
 import { eventReceivedTrigger } from './triggers/event_received';
 import { topicSubscribedTrigger } from './triggers/topic_subscribed';
 import type { FireInputFor, TriggerKind, TriggerModule, TriggerData } from './triggers/types';
+import {
+	isCoreTriggerKind,
+	pluginTriggerCatalogEntry,
+	type TriggerKind as PersistedTriggerKind,
+} from './triggers/catalog';
+import { pluginTriggerModuleFor } from './triggers/pluginTriggers';
+import { authorizeSystemBundledPlugin } from '../plugins/authorization';
 import { createContact } from '../contacts/creation';
 import { throwNotFound } from '../_utils/errors';
 
@@ -38,9 +51,11 @@ export function triggerModuleFor<K extends TriggerKind>(kind: K): (typeof TRIGGE
  */
 export async function enrichTriggerForQuery(
 	ctx: Pick<QueryCtx, 'db'>,
-	triggerType: TriggerKind,
+	triggerType: string,
 	triggerConfig: unknown
 ): Promise<Record<string, unknown>> {
+	// Plugin triggers own no host-side query join — the query returns them as-is.
+	if (!isCoreTriggerKind(triggerType)) return {};
 	const module = triggerModuleFor(triggerType);
 	if (!module.enrichForQuery) return {};
 	const config = module.parseConfig
@@ -70,7 +85,31 @@ export async function fireTrigger<K extends TriggerKind>(
 	input: FireInputFor<K>
 ): Promise<Id<'automationRuns'>[]> {
 	const module = triggerModuleFor(kind);
+	// Erase generics so the union of per-kind modules is callable without
+	// the intersection-type narrowing TS inserts at the call site.
+	const erased = module as unknown as ErasedTriggerModule;
+	return fanoutTrigger(ctx, kind, input, erased);
+}
 
+/**
+ * Generic-free trigger module shape the fanout calls. Both the core registry
+ * (via {@link fireTrigger}) and the host-composed plugin registry (via
+ * {@link firePluginTrigger}) resolve to this shape, so plugin and core triggers
+ * share one identical fanout — one running-instance guard, one no-steps guard,
+ * one stats bump, one scheduled walker.
+ */
+interface ErasedTriggerModule {
+	parseConfig?: (raw: unknown) => unknown;
+	matches: (input: unknown, config: unknown) => boolean;
+	buildTriggerData?: (input: unknown, config: unknown) => TriggerData;
+}
+
+async function fanoutTrigger(
+	ctx: MutationCtx,
+	kind: PersistedTriggerKind,
+	input: { readonly contactId: Id<'contacts'> },
+	erased: ErasedTriggerModule
+): Promise<Id<'automationRuns'>[]> {
 	const automations = await ctx.db
 		.query('automations')
 		.withIndex('by_status_trigger', (q) => q.eq('status', 'active').eq('triggerType', kind))
@@ -78,14 +117,6 @@ export async function fireTrigger<K extends TriggerKind>(
 
 	const triggered: Id<'automationRuns'>[] = [];
 	const now = Date.now();
-
-	// Erase generics so the union of per-kind modules is callable without
-	// the intersection-type narrowing TS inserts at the call site.
-	const erased = module as unknown as {
-		parseConfig?: (raw: unknown) => unknown;
-		matches: (input: unknown, config: unknown) => boolean;
-		buildTriggerData?: (input: unknown, config: unknown) => TriggerData;
-	};
 
 	for (const automation of automations) {
 		const config = erased.parseConfig ? erased.parseConfig(automation.triggerConfig) : null;
@@ -135,6 +166,108 @@ export async function fireTrigger<K extends TriggerKind>(
 
 	return triggered;
 }
+
+// ============== Host-composed plugin trigger firing ==============
+
+/**
+ * Unwrap a plugin trigger's persisted config. Plugin automations store their
+ * trigger config under the `{ pluginConfig }` arm of `triggerConfigValidator`
+ * (mirroring `pluginConfig` on step config), so the plugin's `parseConfig` sees
+ * its own opaque record — never the host's core config shapes. A row without the
+ * arm yields `{}` so a config-less plugin trigger still parses.
+ */
+function unwrapPluginTriggerConfig(raw: unknown): unknown {
+	return raw && typeof raw === 'object' && 'pluginConfig' in raw
+		? (raw as { pluginConfig: unknown }).pluginConfig
+		: {};
+}
+
+// A plugin's `buildTriggerData` output is untrusted text that lands verbatim on
+// the host-owned `automationRuns.triggerData`, so it is clamped at the host
+// boundary exactly like the step failure reason: bounded key count, bounded code
+// points per key and per string value, and control characters replaced with a
+// space. Non-string primitives (number/boolean/null) are size-bounded already.
+const MAX_TRIGGER_DATA_KEYS = 32;
+const MAX_TRIGGER_DATA_KEY_CODE_POINTS = 128;
+const MAX_TRIGGER_DATA_VALUE_CODE_POINTS = 1024;
+
+function clampTriggerText(text: string, maxCodePoints: number): string {
+	let out = '';
+	let count = 0;
+	for (const character of text) {
+		if (count >= maxCodePoints) break;
+		const codePoint = character.codePointAt(0) ?? 0;
+		out += codePoint < 0x20 || codePoint === 0x7f ? ' ' : character;
+		count += 1;
+	}
+	return out;
+}
+
+function clampTriggerData(data: TriggerData): TriggerData {
+	const clamped: TriggerData = {};
+	let keys = 0;
+	for (const [key, value] of Object.entries(data)) {
+		if (keys >= MAX_TRIGGER_DATA_KEYS) break;
+		const clampedKey = clampTriggerText(key, MAX_TRIGGER_DATA_KEY_CODE_POINTS);
+		clamped[clampedKey] =
+			typeof value === 'string'
+				? clampTriggerText(value, MAX_TRIGGER_DATA_VALUE_CODE_POINTS)
+				: value;
+		keys += 1;
+	}
+	return clamped;
+}
+
+/**
+ * Fire a bundled plugin trigger. This is the host seam a plugin's own code
+ * (e.g. a future webhook-event source) calls to fan a contact into automations
+ * that subscribe to its namespaced trigger kind. Fails closed: an unknown kind,
+ * a disabled plugin flag, or an ungranted `automation:trigger` capability fans
+ * out nothing. The plugin decides `matches`/`buildTriggerData`; the host owns
+ * the running-instance guard, the no-steps guard, stats, and scheduling.
+ */
+export const firePluginTrigger = internalMutation({
+	args: {
+		pluginId: v.string(),
+		localId: v.string(),
+		contactId: v.id('contacts'),
+		payload: v.optional(v.record(v.string(), jsonPrimitiveValue)),
+	},
+	handler: async (ctx, args): Promise<{ triggered: number }> => {
+		// Both halves are untrusted input here, and this seam fails CLOSED: an
+		// unparseable id fans out nothing rather than throwing at the caller.
+		if (!isPluginId(args.pluginId) || !isPluginLocalId(args.localId)) return { triggered: 0 };
+		const kind = pluginNamespacedKind(args.pluginId, args.localId);
+		const entry = pluginTriggerCatalogEntry(kind);
+		if (!entry || entry.pluginId !== args.pluginId) return { triggered: 0 };
+
+		const scope = await authorizeSystemBundledPlugin(
+			ctx,
+			args.pluginId,
+			PLUGIN_AUTOMATION_TRIGGER_CAPABILITY
+		);
+		if (!scope) return { triggered: 0 };
+
+		const module = pluginTriggerModuleFor(kind);
+		if (!module) return { triggered: 0 };
+
+		const input = { contactId: args.contactId, payload: args.payload ?? {} };
+		const erased: ErasedTriggerModule = {
+			parseConfig: (raw) => module.parseConfig(unwrapPluginTriggerConfig(raw)),
+			matches: (fireInput, config) => module.matches(fireInput as typeof input, config),
+			...(module.buildTriggerData
+				? {
+						buildTriggerData: (fireInput, config) =>
+							clampTriggerData(module.buildTriggerData!(fireInput as typeof input, config)),
+					}
+				: {}),
+		};
+		// The catalog entry above proves `kind` is a composed plugin trigger kind,
+		// which the schema-derived union admits once a plugin contributes it.
+		const triggered = await fanoutTrigger(ctx, kind as PersistedTriggerKind, input, erased);
+		return { triggered: triggered.length };
+	},
+});
 
 // ============== Per-kind internal mutation wrappers ==============
 

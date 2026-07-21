@@ -12,6 +12,8 @@ export type AuditDetails = Infer<typeof jsonPrimitiveRecord>;
 
 interface RecordAuditLogArgs {
 	userId: string;
+	organizationId?: string;
+	pluginId?: string;
 	action: AuditAction;
 	resource: AuditResource;
 	resourceId?: string;
@@ -35,12 +37,11 @@ interface RecordAuditLogArgs {
  *
  * See apps/api/convex/docs/audit-log-actions.md for the action catalog.
  */
-export async function recordAuditLog(
-	ctx: MutationCtx,
-	args: RecordAuditLogArgs,
-): Promise<void> {
+export async function recordAuditLog(ctx: MutationCtx, args: RecordAuditLogArgs): Promise<void> {
 	await ctx.db.insert('auditLogs', {
 		userId: args.userId,
+		organizationId: args.organizationId,
+		pluginId: args.pluginId,
 		action: args.action,
 		resource: args.resource,
 		resourceId: args.resourceId,
