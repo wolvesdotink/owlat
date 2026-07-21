@@ -205,12 +205,28 @@ export async function main() {
 			if (!isLeader()) return;
 			try {
 				await fetchPostmasterData(redis, config);
-			} catch (err) {
-				logger.error({ err }, 'Postmaster data fetch failed');
+			} catch {
+				// Never attach raw Redis/provider errors: command metadata can contain
+				// the OAuth access token being cached.
+				logger.error(
+					{ operation: 'postmaster.collection', trigger: 'scheduled', category: 'unexpected' },
+					'Postmaster data fetch failed'
+				);
 			}
 		},
 		60 * 60 * 1000
 	);
+	// Do not wait an hour after a restart for the first observation. The collector
+	// is internally idempotent and catches/logs provider failures. Keep the
+	// rejection handler as a final boundary against future collector regressions.
+	if (config.googlePostmaster && isLeader()) {
+		void fetchPostmasterData(redis, config).catch(() =>
+			logger.error(
+				{ operation: 'postmaster.collection', trigger: 'initial', category: 'unexpected' },
+				'Initial Postmaster data fetch failed'
+			)
+		);
+	}
 
 	// ── 13. Start TLS-RPT daily report generation (every 24h — leader only) ──
 	const tlsRptInterval = setInterval(

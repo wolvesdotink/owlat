@@ -25,6 +25,7 @@ function domainRow(cleanInternalDaysBelowHardThreshold: number) {
 		delivered30d: 1_000,
 		complaints30d: 3,
 		cleanInternalDaysBelowHardThreshold,
+		googlePostmaster: null,
 	};
 }
 
@@ -45,5 +46,28 @@ describe('DomainTable internal clean-day evidence', () => {
 		recovery = wrapper.find('[data-testid="domain-spam-recovery"]');
 		expect(recovery.text().replace(/\s+/g, ' ')).toContain('Owlat evidence 7 / 7 clean days');
 		expect(recovery.classes()).toContain('text-text-secondary');
+	});
+});
+
+describe('DomainTable Google Postmaster comparison', () => {
+	it('renders provider spam and the explicit v2 reputation limitation', () => {
+		const wrapper = mount(DomainTable, {
+			props: {
+				rows: [
+					{
+						...domainRow(0),
+						googlePostmaster: {
+							periodStart: Date.UTC(2026, 6, 20),
+							userReportedSpamRatio: 0.0012,
+						},
+					},
+				],
+			},
+			global: { stubs },
+		});
+		const signal = wrapper.find('[data-testid="google-postmaster-signal"]');
+		expect(signal.text().replace(/\s+/g, ' ')).toContain('Google spam 0.120%');
+		expect(signal.text()).toContain('Domain and IP reputation are unavailable in Google API v2');
+		expect(wrapper.text()).toContain('Owlat FBL spam 0.300%');
 	});
 });

@@ -322,6 +322,77 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
+	it('parses contract-shaped Google Postmaster spam-rate telemetry', () => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'postmaster.stats',
+					domain: 'example.com',
+					date: '2026-07-20',
+					userReportedSpamRatio: 0.001,
+					timestamp: 1700000000000,
+				})
+			)
+		).toEqual({
+			kind: 'internal.postmaster_stats',
+			domain: 'example.com',
+			date: '2026-07-20',
+			userReportedSpamRatio: 0.001,
+			fetchedAt: 1700000000000,
+		});
+	});
+
+	it('parses and withholds raw audit for the Postmaster authorization protocol', async () => {
+		const rawBody = JSON.stringify({
+			event: 'postmaster.authorize_domain',
+			domain: 'example.com',
+			timestamp: 1700000000000,
+		});
+		expect(mtaAdapter.shouldStoreRawPayload?.(rawBody)).toBe(false);
+		expect(mtaAdapter.parseEvent(rawBody)).toEqual({
+			kind: 'internal.postmaster_authorize_domain',
+			domain: 'example.com',
+		});
+		const response = mtaAdapter.successResponse!(mtaAdapter.parseEvent(rawBody)!, {
+			authorized: false,
+		});
+		expect(await response.json()).toEqual({
+			success: true,
+			kind: 'internal.postmaster_authorize_domain',
+			disposition: 'ignored_unowned',
+			retained: false,
+		});
+	});
+
+	it('keeps normal MTA events in raw audit while withholding Postmaster stats', () => {
+		expect(
+			mtaAdapter.shouldStoreRawPayload?.(
+				JSON.stringify({ event: 'postmaster.stats', domain: 'private.example' })
+			)
+		).toBe(false);
+		expect(
+			mtaAdapter.shouldStoreRawPayload?.(
+				JSON.stringify({ event: 'sent', messageId: 'message-1', timestamp: 1 })
+			)
+		).toBe(true);
+	});
+
+	it('drops missing or invalid Google Postmaster spam rates', () => {
+		const base = {
+			event: 'postmaster.stats',
+			domain: 'example.com',
+			date: '2026-07-20',
+			timestamp: 1700000000000,
+		};
+		expect(mtaAdapter.parseEvent(JSON.stringify(base))).toBeNull();
+		expect(
+			mtaAdapter.parseEvent(JSON.stringify({ ...base, userReportedSpamRatio: '0.001' }))
+		).toBeNull();
+		expect(
+			mtaAdapter.parseEvent(JSON.stringify({ ...base, userReportedSpamRatio: 1.1 }))
+		).toBeNull();
+	});
+
 	it.each(['pending', 'activated'] as const)('parses dkim.rotated (phase=%s)', (phase) => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({

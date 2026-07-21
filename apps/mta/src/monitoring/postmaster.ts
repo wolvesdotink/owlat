@@ -1,316 +1,433 @@
 /**
- * Google Postmaster Tools API Integration
+ * Google Postmaster Tools v2 collector.
  *
- * Pulls domain reputation, spam rate, authentication pass rates, and
- * delivery error data from Google's Postmaster Tools REST API.
+ * Domain and statistics cursors are checkpointed only after the page they
+ * describe has been delivered. Redis receipts make replay after a crash safe.
  *
- * Requires a Google Cloud service account with Postmaster Tools API access.
- * Set GOOGLE_POSTMASTER_CREDENTIALS to the JSON key file content.
- *
- * Data is stored in Redis and exposed via Prometheus metrics.
- *
- * @see https://developers.google.com/gmail/postmaster/reference/rest
+ * @see https://developers.google.com/workspace/gmail/postmaster/reference/rest/v2/domains/list
+ * @see https://developers.google.com/workspace/gmail/postmaster/reference/rest/v2/domains.domainStats/query
  */
 
+import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import { Gauge } from 'prom-client';
-import { registry } from './collector.js';
+import type { GooglePostmasterStatsEvent } from '../types.js';
+import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
+import {
+	GOOGLE_POSTMASTER_API_BASE,
+	GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME,
+	GoogleApiError,
+	GooglePostmasterClient,
+	isRecord,
+	normalizeDomainStat,
+	parseReadableVerifiedDomain,
+	type PostmasterDomainWire,
+} from './googlePostmasterApi.js';
 import { logger } from './logger.js';
 
-const POSTMASTER_PREFIX = 'mta:postmaster:';
-const TOKEN_KEY = 'mta:postmaster:token';
-const TOKEN_TTL = 3500; // ~58 minutes (tokens last 60 min)
-const API_BASE = 'https://gmailpostmastertools.googleapis.com/v1';
+const COLLECTION_LOCK_KEY = 'mta:postmaster:collection-lock';
+const DOMAIN_CURSOR_KEY = 'mta:postmaster:domain-cursor';
+const STATS_CURSOR_PREFIX = 'mta:postmaster:stats-cursor:';
+const PUSHED_PREFIX = 'mta:postmaster:pushed:';
+const DOMAIN_STATE_INDEX_KEY = 'mta:postmaster:domain-state-index';
+const DISCOVERY_GENERATION_KEY = 'mta:postmaster:discovery-generation';
+const BACKFILL_DAYS = 7;
+const PUSH_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
+const PUSH_RECEIPT_TTL_DAYS = Math.ceil(PUSH_RECEIPT_TTL_SECONDS / (24 * 60 * 60));
+const MAX_RECEIPT_AGE_DAYS = BACKFILL_DAYS + PUSH_RECEIPT_TTL_DAYS;
+const STALE_DOMAIN_CLEANUP_LIMIT = 100;
+const COLLECTION_LOCK_TTL_SECONDS = 30 * 60;
+const COLLECTION_RUN_BUDGET_MS = 10 * 60 * 1_000;
+const DOMAIN_PAGE_SIZE = 25;
+const DOMAIN_PAGES_PER_SWEEP = 2;
+const STATS_PAGE_SIZE = 200;
+const STATS_PAGES_PER_DOMAIN_PER_SWEEP = 4;
 
-// ─── Prometheus Metrics ─────────────────────────────────────────────
-
-export const domainReputation = new Gauge({
-	name: 'mta_postmaster_domain_reputation',
-	help: 'Google Postmaster domain reputation (1=HIGH, 2=MEDIUM, 3=LOW, 4=BAD)',
-	labelNames: ['domain'] as const,
-	registers: [registry],
-});
-
-export const spamRate = new Gauge({
-	name: 'mta_postmaster_spam_rate',
-	help: 'Google Postmaster user-reported spam rate (0-1)',
-	labelNames: ['domain'] as const,
-	registers: [registry],
-});
-
-export const authenticationRate = new Gauge({
-	name: 'mta_postmaster_auth_rate',
-	help: 'Google Postmaster authentication pass rate (SPF/DKIM/DMARC)',
-	labelNames: ['domain', 'type'] as const,
-	registers: [registry],
-});
-
-export const deliveryErrors = new Gauge({
-	name: 'mta_postmaster_delivery_errors',
-	help: 'Google Postmaster delivery error rate by category',
-	labelNames: ['domain', 'category'] as const,
-	registers: [registry],
-});
-
-// ─── Types ──────────────────────────────────────────────────────────
-
-interface ServiceAccountCredentials {
-	client_email: string;
-	private_key: string;
-	token_uri: string;
+interface DomainPage {
+	domains: PostmasterDomainWire[];
+	nextPageToken?: string;
 }
 
-interface PostmasterDomain {
-	name: string;
-	permission: string;
+interface StatsPage {
+	events: GooglePostmasterStatsEvent[];
+	nextPageToken?: string;
 }
 
-interface TrafficStats {
-	name?: string;
-	userReportedSpamRatio?: number;
-	domainReputation?: 'REPUTATION_UNSPECIFIED' | 'HIGH' | 'MEDIUM' | 'LOW' | 'BAD';
-	spfSuccessRatio?: number;
-	dkimSuccessRatio?: number;
-	dmarcSuccessRatio?: number;
-	deliveryErrors?: Array<{
-		errorClass?: string;
-		errorType?: string;
-		errorRatio?: number;
-	}>;
+interface StatsCursor {
+	pageToken: string;
+	startDate: string;
+	endDate: string;
 }
 
-// ─── Token Management ───────────────────────────────────────────────
+function dateObject(date: string): { year: number; month: number; day: number } {
+	const [year, month, day] = date.split('-').map(Number);
+	return { year: year!, month: month!, day: day! };
+}
 
-/**
- * Create a JWT and exchange it for a Google OAuth2 access token.
- * Uses the service account private key to sign the JWT.
- */
-async function getAccessToken(
-	redis: Redis,
-	credentials: ServiceAccountCredentials
-): Promise<string> {
-	// Check Redis cache first
-	const cached = await redis.get(TOKEN_KEY);
-	if (cached) return cached;
+function utcDateDaysAgo(daysAgo: number): string {
+	return new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1_000).toISOString().slice(0, 10);
+}
 
-	// Build JWT
-	const now = Math.floor(Date.now() / 1000);
-	const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
-	const payload = Buffer.from(JSON.stringify({
-		iss: credentials.client_email,
-		scope: 'https://www.googleapis.com/auth/postmaster.readonly',
-		aud: credentials.token_uri || 'https://oauth2.googleapis.com/token',
-		iat: now,
-		exp: now + 3600,
-	})).toString('base64url');
-
-	// Sign with the private key
-	const { createSign } = await import('crypto');
-	const sign = createSign('RSA-SHA256');
-	sign.update(`${header}.${payload}`);
-	const signature = sign.sign(credentials.private_key, 'base64url');
-
-	const jwt = `${header}.${payload}.${signature}`;
-
-	// Exchange JWT for access token
-	const tokenUrl = credentials.token_uri || 'https://oauth2.googleapis.com/token';
-	const response = await fetch(tokenUrl, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-		body: new URLSearchParams({
-			grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-			assertion: jwt,
-		}),
-	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		throw new Error(`Token exchange failed: ${response.status} ${errorText}`);
-	}
-
-	const data = await response.json() as { access_token: string };
-	const token = data.access_token;
-
-	// Cache in Redis
-	await redis.set(TOKEN_KEY, token, 'EX', TOKEN_TTL);
-
+function optionalPageToken(
+	payload: Record<string, unknown>,
+	operation: string
+): string | undefined {
+	const token = payload['nextPageToken'];
+	if (token === undefined || token === '') return undefined;
+	if (typeof token !== 'string') throw new GoogleApiError(operation, 200, 'request');
 	return token;
 }
 
-// ─── API Calls ──────────────────────────────────────────────────────
-
-/**
- * List all verified domains in Postmaster Tools
- */
-async function listDomains(token: string): Promise<PostmasterDomain[]> {
-	const response = await fetch(`${API_BASE}/domains`, {
-		headers: { Authorization: `Bearer ${token}` },
-	});
-
-	if (!response.ok) {
-		throw new Error(`List domains failed: ${response.status}`);
+async function fetchDomainPage(
+	client: GooglePostmasterClient,
+	pageToken?: string
+): Promise<DomainPage> {
+	const url = new URL(`${GOOGLE_POSTMASTER_API_BASE}/domains`);
+	url.searchParams.set('pageSize', String(DOMAIN_PAGE_SIZE));
+	if (pageToken) url.searchParams.set('pageToken', pageToken);
+	const payload = await client.json('domains.list', url.toString());
+	if (!isRecord(payload)) throw new GoogleApiError('domains.list', 200, 'request');
+	const domains = new Map<string, PostmasterDomainWire>();
+	if (Array.isArray(payload['domains'])) {
+		for (const raw of payload['domains']) {
+			const domain = parseReadableVerifiedDomain(raw);
+			if (domain) domains.set(domain.name, domain);
+		}
 	}
-
-	const data = await response.json() as { domains?: PostmasterDomain[] };
-	return data.domains ?? [];
+	return {
+		domains: [...domains.values()],
+		nextPageToken: optionalPageToken(payload, 'domains.list'),
+	};
 }
 
-/**
- * Get traffic stats for a domain on a given date
- *
- * @param domainResource - e.g., "domains/example.com"
- * @param date - YYYY-MM-DD format
- */
-async function getTrafficStats(
-	token: string,
-	domainResource: string,
-	date: string
-): Promise<TrafficStats | null> {
-	// API expects date in yyyymmdd format for the resource name
-	const dateCompact = date.replace(/-/g, '');
-	const url = `${API_BASE}/${domainResource}/trafficStats/${dateCompact}`;
-
-	const response = await fetch(url, {
-		headers: { Authorization: `Bearer ${token}` },
-	});
-
-	if (response.status === 404) {
-		return null; // No data for this date
-	}
-
-	if (!response.ok) {
-		throw new Error(`Get traffic stats failed: ${response.status}`);
-	}
-
-	return await response.json() as TrafficStats;
-}
-
-// ─── Reputation Score Mapping ───────────────────────────────────────
-
-function reputationToNumber(rep?: string): number {
-	switch (rep) {
-		case 'HIGH': return 1;
-		case 'MEDIUM': return 2;
-		case 'LOW': return 3;
-		case 'BAD': return 4;
-		default: return 0;
-	}
-}
-
-// ─── Main Cron Function ─────────────────────────────────────────────
-
-/**
- * Fetch Postmaster data for all verified domains.
- * Called periodically (e.g., every hour) by the leader instance.
- *
- * Stores data in Redis and updates Prometheus gauges.
- */
-export async function fetchPostmasterData(
+async function fetchDomainPageWithCursorRecovery(
+	client: GooglePostmasterClient,
 	redis: Redis,
-	config: MtaConfig
-): Promise<void> {
-	if (!config.googlePostmasterCredentials) {
-		return; // Not configured
-	}
-
-	let credentials: ServiceAccountCredentials;
+	pageToken: string | undefined,
+	mayRecoverPersistedCursor: boolean
+): Promise<{ page: DomainPage; requestedPageToken?: string }> {
 	try {
-		credentials = JSON.parse(config.googlePostmasterCredentials);
+		return { page: await fetchDomainPage(client, pageToken), requestedPageToken: pageToken };
+	} catch (error) {
+		if (
+			!(
+				mayRecoverPersistedCursor &&
+				pageToken &&
+				error instanceof GoogleApiError &&
+				error.category === 'request'
+			)
+		)
+			throw error;
+		await redis.del(DOMAIN_CURSOR_KEY);
+		logger.warn({ operation: 'domains.list' }, 'Discarded invalid Google Postmaster domain cursor');
+		return { page: await fetchDomainPage(client), requestedPageToken: undefined };
+	}
+}
+
+function queryBody(startDate: string, endDate: string, pageToken?: string) {
+	return {
+		metricDefinitions: [
+			{
+				name: GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME,
+				baseMetric: { standardMetric: 'SPAM_RATE' },
+			},
+		],
+		timeQuery: {
+			dateRanges: {
+				dateRanges: [{ start: dateObject(startDate), end: dateObject(endDate) }],
+			},
+		},
+		pageSize: STATS_PAGE_SIZE,
+		...(pageToken ? { pageToken } : {}),
+		aggregationGranularity: 'DAILY',
+	};
+}
+
+async function fetchStatsPage(
+	client: GooglePostmasterClient,
+	domain: string,
+	startDate: string,
+	endDate: string,
+	pageToken?: string
+): Promise<StatsPage> {
+	const payload = await client.json(
+		'domains.domainStats.query',
+		`${GOOGLE_POSTMASTER_API_BASE}/domains/${encodeURIComponent(domain)}/domainStats:query`,
+		{
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(queryBody(startDate, endDate, pageToken)),
+		}
+	);
+	if (!isRecord(payload)) throw new GoogleApiError('domains.domainStats.query', 200, 'request');
+	const events = new Map<string, GooglePostmasterStatsEvent>();
+	if (Array.isArray(payload['domainStats'])) {
+		for (const raw of payload['domainStats']) {
+			if (!isRecord(raw)) continue;
+			const event = normalizeDomainStat(domain, raw);
+			if (event && event.date >= startDate && event.date <= endDate) events.set(event.date, event);
+		}
+	}
+	return {
+		events: [...events.values()],
+		nextPageToken: optionalPageToken(payload, 'domains.domainStats.query'),
+	};
+}
+
+async function readStatsCursor(
+	redis: Redis,
+	key: string,
+	startDate: string,
+	endDate: string
+): Promise<string | undefined> {
+	const raw = await redis.get(key);
+	if (!raw) return undefined;
+	try {
+		const cursor = JSON.parse(raw) as unknown;
+		if (
+			isRecord(cursor) &&
+			typeof cursor['pageToken'] === 'string' &&
+			cursor['pageToken'].length > 0 &&
+			cursor['startDate'] === startDate &&
+			cursor['endDate'] === endDate
+		) {
+			return cursor['pageToken'];
+		}
 	} catch {
-		logger.error('Invalid GOOGLE_POSTMASTER_CREDENTIALS JSON');
+		// Malformed or stale local state is safely replayed from page one.
+	}
+	await redis.del(key);
+	return undefined;
+}
+
+async function checkpointStatsCursor(
+	redis: Redis,
+	key: string,
+	pageToken: string | undefined,
+	startDate: string,
+	endDate: string
+): Promise<void> {
+	if (!pageToken) {
+		await redis.del(key);
 		return;
 	}
+	const cursor: StatsCursor = { pageToken, startDate, endDate };
+	await redis.set(key, JSON.stringify(cursor), 'EX', PUSH_RECEIPT_TTL_SECONDS);
+}
 
-	try {
-		const token = await getAccessToken(redis, credentials);
-		const domains = await listDomains(token);
+function receiptKeysForCleanup(domain: string): string[] {
+	// A live receipt was written less than one TTL ago for an observation no
+	// older than the backfill window, so every possible key is in this range.
+	return Array.from(
+		{ length: MAX_RECEIPT_AGE_DAYS + 1 },
+		(_, daysAgo) => `${PUSHED_PREFIX}${domain}:${utcDateDaysAgo(daysAgo)}`
+	);
+}
 
-		if (domains.length === 0) {
-			logger.debug('No verified domains in Postmaster Tools');
-			return;
-		}
+async function clearDomainOperationalState(redis: Redis, domain: string): Promise<void> {
+	await redis.del(`${STATS_CURSOR_PREFIX}${domain}`, ...receiptKeysForCleanup(domain));
+	// Remove the durable index last so an interrupted cleanup is retried.
+	await redis.zrem(DOMAIN_STATE_INDEX_KEY, domain);
+}
 
-		// Fetch stats for yesterday (today's data is rarely available)
-		const yesterday = new Date(Date.now() - 86400_000).toISOString().split('T')[0]!;
+async function readOrStartDiscoveryGeneration(redis: Redis, resuming: boolean): Promise<number> {
+	const rawGeneration = await redis.get(DISCOVERY_GENERATION_KEY);
+	const currentGeneration = Number(rawGeneration);
+	if (resuming && Number.isSafeInteger(currentGeneration) && currentGeneration > 0) {
+		return currentGeneration;
+	}
+	const nextGeneration =
+		Number.isSafeInteger(currentGeneration) && currentGeneration > 0 ? currentGeneration + 1 : 1;
+	await redis.set(DISCOVERY_GENERATION_KEY, String(nextGeneration));
+	return nextGeneration;
+}
 
-		for (const domain of domains) {
-			const domainName = domain.name.replace('domains/', '');
-
-			try {
-				const stats = await getTrafficStats(token, domain.name, yesterday);
-				if (!stats) {
-					logger.debug({ domain: domainName, date: yesterday }, 'No Postmaster data for date');
-					continue;
-				}
-
-				// Store in Redis
-				const redisKey = `${POSTMASTER_PREFIX}${domainName}:${yesterday}`;
-				await redis.hset(redisKey, {
-					reputation: stats.domainReputation ?? 'unknown',
-					spamRate: String(stats.userReportedSpamRatio ?? 0),
-					spfRate: String(stats.spfSuccessRatio ?? 0),
-					dkimRate: String(stats.dkimSuccessRatio ?? 0),
-					dmarcRate: String(stats.dmarcSuccessRatio ?? 0),
-					fetchedAt: String(Date.now()),
-				});
-				await redis.expire(redisKey, 30 * 86400); // Keep 30 days
-
-				// Update Prometheus gauges
-				domainReputation.set({ domain: domainName }, reputationToNumber(stats.domainReputation));
-
-				if (stats.userReportedSpamRatio !== undefined) {
-					spamRate.set({ domain: domainName }, stats.userReportedSpamRatio);
-				}
-
-				if (stats.spfSuccessRatio !== undefined) {
-					authenticationRate.set({ domain: domainName, type: 'spf' }, stats.spfSuccessRatio);
-				}
-				if (stats.dkimSuccessRatio !== undefined) {
-					authenticationRate.set({ domain: domainName, type: 'dkim' }, stats.dkimSuccessRatio);
-				}
-				if (stats.dmarcSuccessRatio !== undefined) {
-					authenticationRate.set({ domain: domainName, type: 'dmarc' }, stats.dmarcSuccessRatio);
-				}
-
-				if (stats.deliveryErrors) {
-					for (const err of stats.deliveryErrors) {
-						if (err.errorClass && err.errorRatio !== undefined) {
-							deliveryErrors.set(
-								{ domain: domainName, category: err.errorClass },
-								err.errorRatio
-							);
-						}
-					}
-				}
-
-				logger.info(
-					{
-						domain: domainName,
-						reputation: stats.domainReputation,
-						spamRate: stats.userReportedSpamRatio,
-						date: yesterday,
-					},
-					'Postmaster data fetched'
-				);
-			} catch (err) {
-				logger.warn({ err, domain: domainName }, 'Failed to fetch Postmaster stats for domain');
-			}
-		}
-	} catch (err) {
-		logger.error({ err }, 'Postmaster API fetch failed');
+async function cleanupDomainsMissingFromDiscovery(
+	redis: Redis,
+	generation: number,
+	deadline: number
+): Promise<void> {
+	if (Date.now() >= deadline) return;
+	const staleDomains = await redis.zrangebyscore(
+		DOMAIN_STATE_INDEX_KEY,
+		'-inf',
+		generation - 1,
+		'LIMIT',
+		0,
+		STALE_DOMAIN_CLEANUP_LIMIT
+	);
+	for (const domain of staleDomains) {
+		if (Date.now() >= deadline) return;
+		await clearDomainOperationalState(redis, domain);
 	}
 }
 
-/**
- * Get stored Postmaster data for a domain and date
- */
-export async function getStoredPostmasterData(
+async function pushDomainStats(
 	redis: Redis,
+	config: MtaConfig,
+	client: GooglePostmasterClient,
+	domain: PostmasterDomainWire,
+	deadline: number
+): Promise<'completed' | 'authorization_lost'> {
+	const domainName = domain.name.slice('domains/'.length);
+	const startDate = utcDateDaysAgo(BACKFILL_DAYS);
+	const endDate = utcDateDaysAgo(1);
+	const cursorKey = `${STATS_CURSOR_PREFIX}${domainName}`;
+	let pageToken = await readStatsCursor(redis, cursorKey, startDate, endDate);
+	const seenTokens = new Set<string>(pageToken ? [pageToken] : []);
+	let mayRecoverPersistedCursor = pageToken !== undefined;
+
+	for (let pageIndex = 0; pageIndex < STATS_PAGES_PER_DOMAIN_PER_SWEEP; pageIndex++) {
+		let page: StatsPage;
+		try {
+			page = await fetchStatsPage(client, domainName, startDate, endDate, pageToken);
+		} catch (error) {
+			if (
+				!(
+					mayRecoverPersistedCursor &&
+					error instanceof GoogleApiError &&
+					error.category === 'request'
+				)
+			) {
+				throw error;
+			}
+			await redis.del(cursorKey);
+			logger.warn(
+				{ operation: 'domains.domainStats.query' },
+				'Discarded invalid Google Postmaster statistics cursor'
+			);
+			pageToken = undefined;
+			mayRecoverPersistedCursor = false;
+			page = await fetchStatsPage(client, domainName, startDate, endDate);
+		}
+		mayRecoverPersistedCursor = false;
+
+		for (const event of page.events) {
+			const receiptKey = `${PUSHED_PREFIX}${domainName}:${event.date}`;
+			if (await redis.exists(receiptKey)) continue;
+			const acknowledgement = await notifyPostmasterConvex(event, config, { deadline });
+			if (acknowledgement.disposition === 'delivery_failed') {
+				throw new Error('Google Postmaster webhook delivery did not complete');
+			}
+			if (acknowledgement.disposition === 'ignored_unowned') {
+				await clearDomainOperationalState(redis, domainName);
+				return 'authorization_lost';
+			}
+			await redis.set(receiptKey, '1', 'EX', PUSH_RECEIPT_TTL_SECONDS);
+		}
+
+		const nextPageToken = page.nextPageToken;
+		if (nextPageToken && seenTokens.has(nextPageToken)) {
+			logger.warn(
+				{ operation: 'domains.domainStats.query' },
+				'Google Postmaster statistics cursor repeated'
+			);
+			await redis.del(cursorKey);
+			return 'completed';
+		}
+		await checkpointStatsCursor(redis, cursorKey, nextPageToken, startDate, endDate);
+		if (!nextPageToken) return 'completed';
+		seenTokens.add(nextPageToken);
+		pageToken = nextPageToken;
+	}
+	return 'completed';
+}
+
+async function authorizeDomainCollection(
+	config: MtaConfig,
 	domain: string,
-	date: string
-): Promise<Record<string, string> | null> {
-	const key = `${POSTMASTER_PREFIX}${domain}:${date}`;
-	const data = await redis.hgetall(key);
-	return Object.keys(data).length > 0 ? data : null;
+	deadline: number
+): Promise<'authorized' | 'ignored'> {
+	const acknowledgement = await notifyPostmasterConvex(
+		{
+			event: 'postmaster.authorize_domain',
+			domain,
+			timestamp: Date.now(),
+		},
+		config,
+		{ deadline }
+	);
+	if (acknowledgement.disposition === 'delivery_failed') {
+		throw new Error('Google Postmaster authorization delivery did not complete');
+	}
+	return acknowledgement.disposition === 'accepted_authorized' ? 'authorized' : 'ignored';
+}
+
+async function releaseCollectionLock(redis: Redis, lockToken: string): Promise<void> {
+	await redis.eval(
+		"if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end",
+		1,
+		COLLECTION_LOCK_KEY,
+		lockToken
+	);
+}
+
+/** Hourly, overlap-safe sweep of the seven prior UTC days. */
+export async function fetchPostmasterData(redis: Redis, config: MtaConfig): Promise<void> {
+	if (!config.googlePostmaster) return;
+	const lockToken = randomUUID();
+	let lockAcquired = false;
+	try {
+		const acquired = await redis.set(
+			COLLECTION_LOCK_KEY,
+			lockToken,
+			'EX',
+			COLLECTION_LOCK_TTL_SECONDS,
+			'NX'
+		);
+		if (acquired !== 'OK') return;
+		lockAcquired = true;
+		const deadline = Date.now() + COLLECTION_RUN_BUDGET_MS;
+		const client = new GooglePostmasterClient(redis, config.googlePostmaster, deadline);
+		let pageToken = (await redis.get(DOMAIN_CURSOR_KEY)) ?? undefined;
+		const generation = await readOrStartDiscoveryGeneration(redis, pageToken !== undefined);
+		const seenTokens = new Set<string>(pageToken ? [pageToken] : []);
+		let mayRecoverPersistedCursor = pageToken !== undefined;
+
+		for (let pageIndex = 0; pageIndex < DOMAIN_PAGES_PER_SWEEP; pageIndex++) {
+			const result = await fetchDomainPageWithCursorRecovery(
+				client,
+				redis,
+				pageToken,
+				mayRecoverPersistedCursor
+			);
+			mayRecoverPersistedCursor = false;
+			pageToken = result.requestedPageToken;
+			// Finish the whole page before checkpointing it. Any statistics error—
+			// including a possibly account-wide 403—stops the sweep at this page.
+			for (const domain of result.page.domains) {
+				const domainName = domain.name.slice('domains/'.length);
+				const authorization = await authorizeDomainCollection(config, domainName, deadline);
+				if (authorization === 'ignored') {
+					await clearDomainOperationalState(redis, domainName);
+					continue;
+				}
+				await redis.zadd(DOMAIN_STATE_INDEX_KEY, generation, domainName);
+				await pushDomainStats(redis, config, client, domain, deadline);
+			}
+
+			const nextPageToken = result.page.nextPageToken;
+			if (nextPageToken && seenTokens.has(nextPageToken)) {
+				logger.warn({ operation: 'domains.list' }, 'Google Postmaster domain cursor repeated');
+				await redis.del(DOMAIN_CURSOR_KEY);
+				break;
+			}
+			if (!nextPageToken) {
+				await redis.del(DOMAIN_CURSOR_KEY);
+				await cleanupDomainsMissingFromDiscovery(redis, generation, deadline);
+				break;
+			}
+			await redis.set(DOMAIN_CURSOR_KEY, nextPageToken);
+			seenTokens.add(nextPageToken);
+			pageToken = nextPageToken;
+		}
+	} catch (error) {
+		const details =
+			error instanceof GoogleApiError
+				? { operation: error.operation, status: error.status, category: error.category }
+				: { operation: 'collection', category: 'unexpected' };
+		logger.error(details, 'Google Postmaster fetch stopped');
+	} finally {
+		if (lockAcquired) await releaseCollectionLock(redis, lockToken).catch(() => undefined);
+	}
 }

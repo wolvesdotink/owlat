@@ -161,4 +161,40 @@ describe('Outbound identity status on the domains surface', () => {
 		expect(wrapper.text()).toContain('No PTR record exists');
 		expect(wrapper.text()).toContain('mail.example.com');
 	});
+
+	it('deep-links each active blocklist warning to its provider runbook', () => {
+		const wrapper = mount(SendingDetails, {
+			props: {
+				warming: {
+					syncedAt: Date.now(),
+					ips: [
+						{
+							ip: '203.0.113.10',
+							pool: 'campaign',
+							currentDay: 2,
+							sentToday: 10,
+							dailyCap: 100,
+							active: true,
+							blockReasons: [],
+							dnsbl: 'degraded',
+							dnsblListings: ['barracuda', 'abusix'],
+						},
+					],
+				},
+				volume: { dailySendCount: 10 },
+			},
+			global: {
+				stubs: {
+					Icon: { template: '<i />' },
+					UiCard: { template: '<div><slot /></div>' },
+				},
+			},
+		});
+		const links = wrapper.findAll('a');
+		expect(links.map((link) => link.text())).toEqual([
+			'Barracuda recovery steps',
+			'Abusix recovery steps',
+		]);
+		expect(links[0]?.attributes('href')).toContain('/developer/dnsbl-delisting#barracuda');
+	});
 });

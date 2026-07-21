@@ -139,6 +139,22 @@ export const deliveryTables = {
 		.index('by_domain', ['primaryDomain'])
 		.index('by_scheduled_at', ['scheduledAt']),
 
+	// Google Postmaster Tools v2's daily SPAM_RATE for a verified authentication
+	// domain. One idempotent row per domain/day; the signed MTA collector is the
+	// only writer. Raw OAuth credentials/tokens never enter Convex. The retention
+	// sweep keeps at most 90 days.
+	googlePostmasterStats: defineTable({
+		domainId: v.id('domains'),
+		domain: v.string(),
+		periodStart: v.number(),
+		userReportedSpamRatio: v.number(),
+		fetchedAt: v.number(),
+		ingestedAt: v.number(),
+	})
+		.index('by_domain_period', ['domain', 'periodStart'])
+		.index('by_domain_id', ['domainId'])
+		.index('by_period', ['periodStart']),
+
 	// Bounded histogram of real RFC 8058 POST processing latency. The one-click
 	// handler records one sample after the unsubscribe mutation has completed;
 	// the dashboard derives p95 over the retained 30-day daily buckets.

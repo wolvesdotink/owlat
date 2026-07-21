@@ -110,6 +110,7 @@ describe('Organization deletion walker — STEPS list invariants', () => {
 		expect(STEPS.indexOf('sendingDomainSesIdentities')).toBeLessThan(domainsIdx);
 		expect(STEPS.indexOf('trackingDomains')).toBeLessThan(domainsIdx);
 		expect(STEPS.indexOf('sendingReputation')).toBeLessThan(domainsIdx);
+		expect(STEPS.indexOf('googlePostmasterStats')).toBeLessThan(domainsIdx);
 	});
 });
 

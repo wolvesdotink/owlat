@@ -26,8 +26,8 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 		try {
 			const result = await dlq.listFailed(redis, limit, offset);
 			return c.json(result);
-		} catch (err) {
-			logger.error({ err }, 'Failed to list DLQ entries');
+		} catch {
+			logger.error({ operation: 'dlq_list', category: 'storage' }, 'Failed to list DLQ entries');
 			return c.json({ error: 'Failed to list DLQ entries' }, 500);
 		}
 	});
@@ -41,8 +41,8 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 				oldestAge: stats.oldestTimestamp ? Date.now() - stats.oldestTimestamp : null,
 				newestAge: stats.newestTimestamp ? Date.now() - stats.newestTimestamp : null,
 			});
-		} catch (err) {
-			logger.error({ err }, 'Failed to get DLQ stats');
+		} catch {
+			logger.error({ operation: 'dlq_stats', category: 'storage' }, 'Failed to get DLQ stats');
 			return c.json({ error: 'Failed to get DLQ stats' }, 500);
 		}
 	});
@@ -70,8 +70,11 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 			await dlq.updateEntry(redis, entry);
 
 			return c.json({ success: false, delivered: false, attempts: entry.attempts });
-		} catch (err) {
-			logger.error({ err, dlqId }, 'Failed to retry DLQ entry');
+		} catch {
+			logger.error(
+				{ operation: 'dlq_retry_one', category: 'storage' },
+				'Failed to retry DLQ entry'
+			);
 			return c.json({ error: 'Failed to retry' }, 500);
 		}
 	});
@@ -100,8 +103,11 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 			}
 
 			return c.json({ success: true, delivered, failed, total: ids.length });
-		} catch (err) {
-			logger.error({ err }, 'Failed to retry all DLQ entries');
+		} catch {
+			logger.error(
+				{ operation: 'dlq_retry_all', category: 'storage' },
+				'Failed to retry all DLQ entries'
+			);
 			return c.json({ error: 'Failed to retry all' }, 500);
 		}
 	});
@@ -113,8 +119,11 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 		try {
 			const removed = await dlq.removeOne(redis, dlqId);
 			return c.json({ success: true, removed });
-		} catch (err) {
-			logger.error({ err, dlqId }, 'Failed to remove DLQ entry');
+		} catch {
+			logger.error(
+				{ operation: 'dlq_remove_one', category: 'storage' },
+				'Failed to remove DLQ entry'
+			);
 			return c.json({ error: 'Failed to remove' }, 500);
 		}
 	});
