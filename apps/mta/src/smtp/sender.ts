@@ -27,7 +27,7 @@ import { resolveTlsRequirements } from './tlsPolicy.js';
 import { resolveOutboundTlsMode } from './outboundTlsOverrides.js';
 import { buildVerpAddress } from '../bounce/verp.js';
 import { extractDomain } from '../queue/groups.js';
-import { extractDomainOrNull } from '@owlat/shared';
+import { extractDomainOrNull, strictestOutboundTlsMode } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
 import { pool, PoolOverCapError } from './connectionPool.js';
 import { prepareDaneAttempt, type DanePlan } from './daneVerify.js';
@@ -60,12 +60,6 @@ type AttemptOutcome =
 	| { kind: 'connection'; response: string }
 	| { kind: 'over-cap' };
 
-const TLS_MODE_RANK: Record<DestinationProviderProfile['tlsMode'], number> = {
-	opportunistic: 0,
-	require: 1,
-	'require-verified': 2,
-};
-
 type DeliveryProviderPolicy = Pick<
 	DestinationProviderProfile,
 	'tlsMode' | 'maxConnections' | 'maxDeliveriesPerConnection'
@@ -76,8 +70,7 @@ function strictestDeliveryProviderPolicy(
 	second: DestinationProviderProfile
 ): DeliveryProviderPolicy {
 	return {
-		tlsMode:
-			TLS_MODE_RANK[second.tlsMode] > TLS_MODE_RANK[first.tlsMode] ? second.tlsMode : first.tlsMode,
+		tlsMode: strictestOutboundTlsMode(first.tlsMode, second.tlsMode),
 		maxConnections: Math.min(first.maxConnections, second.maxConnections),
 		maxDeliveriesPerConnection: Math.min(
 			first.maxDeliveriesPerConnection,

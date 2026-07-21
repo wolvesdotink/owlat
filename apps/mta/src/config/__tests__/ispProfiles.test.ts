@@ -53,12 +53,21 @@ describe('destination-provider profile persistence', () => {
 		expect(Object.keys(await listProfiles(redis))).toEqual(['gmail']);
 	});
 
-	it('preserves Gmail required TLS even when only an opportunistic default profile exists', async () => {
+	it('uses all checked-in Gmail defaults when its Redis profile is absent', async () => {
 		const fallback = DESTINATION_PROVIDER_PROFILES['__default__']!;
 		await redis.hset(
 			'mta:isp-profile:__default__',
 			...Object.entries(fallback).flatMap(([field, value]) => [field, String(value)])
 		);
-		expect((await getProfile(redis, 'gmail')).tlsMode).toBe('require');
+		expect(await getProfile(redis, 'gmail')).toEqual(DESTINATION_PROVIDER_PROFILES['gmail']);
+	});
+
+	it('reserves the Redis default profile for the other provider bucket', async () => {
+		const fallback = { ...DESTINATION_PROVIDER_PROFILES['__default__']!, defaultRate: 45 };
+		await redis.hset(
+			'mta:isp-profile:__default__',
+			...Object.entries(fallback).flatMap(([field, value]) => [field, String(value)])
+		);
+		expect(await getProfile(redis, 'other')).toEqual(fallback);
 	});
 });
