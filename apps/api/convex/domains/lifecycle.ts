@@ -145,6 +145,11 @@ export type SendingDomainCreateOutcome =
 
 export type SendingDomainRemoveOutcome = { ok: true } | { ok: false; reason: 'domain_not_found' };
 
+// Ingestion permits one row per UTC day and retains 90 days. Leave headroom
+// for an in-flight cleanup, but fail the parent deletion atomically if that
+// invariant is ever violated rather than orphaning telemetry.
+const POSTMASTER_DOMAIN_CASCADE_LIMIT = 128;
+
 // ─── Validators ─────────────────────────────────────────────────────────────
 
 const providerIdentityValidator = v.union(
@@ -1357,6 +1362,15 @@ export const remove = internalMutation({
 		// domain verifies" forever. Clear them here, atomically with the removal
 		// (mirrors cancelForInvitation).
 		await clearReservationsForDomain(ctx, domainName);
+
+		const postmasterRows = await ctx.db
+			.query('googlePostmasterStats')
+			.withIndex('by_domain_id', (q) => q.eq('domainId', args.domainId))
+			.take(POSTMASTER_DOMAIN_CASCADE_LIMIT + 1);
+		if (postmasterRows.length > POSTMASTER_DOMAIN_CASCADE_LIMIT) {
+			throw new Error('Postmaster domain cascade exceeded its bounded invariant');
+		}
+		for (const row of postmasterRows) await ctx.db.delete(row._id);
 
 		// Delete the row; provider-side cleanup is best-effort + async.
 		await ctx.db.delete(args.domainId);

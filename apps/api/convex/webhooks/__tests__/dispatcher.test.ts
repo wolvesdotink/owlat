@@ -731,6 +731,33 @@ describe('dispatchInboundEvent — internal signals', () => {
 	});
 });
 
+describe('dispatchInboundEvent — Google Postmaster telemetry', () => {
+	it('routes aggregate telemetry to the bounded ingestion mutation', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const event: InboundEvent = {
+			kind: 'internal.postmaster_stats',
+			domain: 'example.com',
+			date: '2026-07-20',
+			userReportedSpamRatio: 0.001,
+			fetchedAt: 1_721_440_000_000,
+		};
+
+		await dispatchInboundEvent(ctx, event);
+
+		expect(runMutationCalls).toEqual([
+			{
+				ref: ref(internal.delivery.postmaster.ingest),
+				args: {
+					domain: 'example.com',
+					date: '2026-07-20',
+					userReportedSpamRatio: 0.001,
+					fetchedAt: 1_721_440_000_000,
+				},
+			},
+		]);
+	});
+});
+
 describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 	const SEND_NOT_FOUND = { ok: false, reason: 'send_not_found' } as const;
 

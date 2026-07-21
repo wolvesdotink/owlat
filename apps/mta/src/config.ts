@@ -133,8 +133,14 @@ export interface MtaConfig {
 	rspamdUrl?: string;
 	/** Rspamd reject threshold (score above this rejects the email) */
 	rspamdRejectThreshold: number;
-	/** Google Postmaster API credentials JSON */
-	googlePostmasterCredentials?: string;
+	/** Google Postmaster OAuth client + user refresh token. Never exposed over HTTP. */
+	googlePostmaster?: {
+		clientId: string;
+		clientSecret: string;
+		refreshToken: string;
+	};
+	/** Optional Abusix Guardian Mail DNS namespace key (warning-only checks). */
+	abusixDnsblApiKey?: string;
 	/** Global max SMTP connections per MX host across all instances */
 	smtpPoolGlobalMaxPerHost: number;
 	/** Rolling-upgrade gate for the distributed pool accounting protocol. */
@@ -266,15 +272,6 @@ export const DESTINATION_PROVIDER_PROFILES: Record<string, DestinationProviderPr
 export { BASE_WARMING_SCHEDULE } from '@owlat/shared/warming';
 
 /**
- * DNSBL zones to check
- */
-export const DNSBL_ZONES = [
-	{ zone: 'zen.spamhaus.org', name: 'Spamhaus', severity: 'critical' as const },
-	{ zone: 'b.barracudacentral.org', name: 'Barracuda', severity: 'warning' as const },
-	{ zone: 'bl.spamcop.net', name: 'SpamCop', severity: 'warning' as const },
-];
-
-/**
  * Load and validate configuration from environment variables
  */
 export function loadConfig(): MtaConfig {
@@ -287,6 +284,24 @@ export function loadConfig(): MtaConfig {
 	const optionalEnv = (key: string, defaultValue: string): string => {
 		return process.env[key] ?? defaultValue;
 	};
+	const googlePostmasterValues = [
+		process.env['GOOGLE_POSTMASTER_CLIENT_ID']?.trim(),
+		process.env['GOOGLE_POSTMASTER_CLIENT_SECRET']?.trim(),
+		process.env['GOOGLE_POSTMASTER_REFRESH_TOKEN']?.trim(),
+	] as const;
+	const googlePostmasterConfigured = googlePostmasterValues.some(Boolean);
+	if (googlePostmasterConfigured && !googlePostmasterValues.every(Boolean)) {
+		throw new Error(
+			'GOOGLE_POSTMASTER_CLIENT_ID, GOOGLE_POSTMASTER_CLIENT_SECRET, and GOOGLE_POSTMASTER_REFRESH_TOKEN must be set together'
+		);
+	}
+	const abusixDnsblApiKey = process.env['ABUSIX_DNSBL_API_KEY']?.trim();
+	if (
+		abusixDnsblApiKey &&
+		!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{30}[a-zA-Z0-9])$/.test(abusixDnsblApiKey)
+	) {
+		throw new Error('ABUSIX_DNSBL_API_KEY must be a 32-character DNS-label key');
+	}
 	const poolCoordinationProtocol = optionalEnv('SMTP_POOL_COORDINATION_PROTOCOL', 'legacy-v0');
 	if (poolCoordinationProtocol !== 'legacy-v0' && poolCoordinationProtocol !== 'leases-v1') {
 		throw new Error('SMTP_POOL_COORDINATION_PROTOCOL must be legacy-v0 or leases-v1');
@@ -463,7 +478,14 @@ export function loadConfig(): MtaConfig {
 		inboundArcEnabled: optionalEnv('INBOUND_ARC_ENABLED', 'true') === 'true',
 		rspamdUrl: process.env['RSPAMD_URL'],
 		rspamdRejectThreshold: parseFloat(optionalEnv('RSPAMD_REJECT_THRESHOLD', '15')),
-		googlePostmasterCredentials: process.env['GOOGLE_POSTMASTER_CREDENTIALS'],
+		googlePostmaster: googlePostmasterConfigured
+			? {
+					clientId: googlePostmasterValues[0]!,
+					clientSecret: googlePostmasterValues[1]!,
+					refreshToken: googlePostmasterValues[2]!,
+				}
+			: undefined,
+		abusixDnsblApiKey,
 		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
 		smtpPoolCoordinationProtocol: poolCoordinationProtocol,
 		// Default: 4 days (RFC 5321 §4.5.4.1 recommends 4–5 days before giving up).

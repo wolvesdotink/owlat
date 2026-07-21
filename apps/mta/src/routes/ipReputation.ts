@@ -13,7 +13,14 @@ import { getWarmingState } from '../intelligence/warming.js';
 import { getPoolStatus } from '../scaling/ipPool.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
-import { getDnsblStatus } from '../intelligence/dnsbl.js';
+import { configuredDnsblZones, getDnsblStatus } from '../intelligence/dnsbl.js';
+
+function listedDnsblIds(config: MtaConfig, dnsbl: Record<string, string> | null) {
+	if (!dnsbl) return [];
+	return configuredDnsblZones(config)
+		.filter((list) => dnsbl[list.id] === 'listed')
+		.map((list) => list.id);
+}
 
 export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono {
 	const app = new Hono();
@@ -78,6 +85,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 				: null,
 			fcrdns,
 			dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
+			dnsblListings: listedDnsblIds(config, dnsbl),
 		});
 	});
 
@@ -114,6 +122,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 					blockReasons: ipPoolEntry?.blockReasons ?? [],
 					fcrdns,
 					dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
+					dnsblListings: listedDnsblIds(config, dnsbl),
 				};
 			})
 		);

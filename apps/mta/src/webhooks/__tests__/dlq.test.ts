@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
 import {
+	classifyWebhookHttpFailure,
 	storeFailed,
 	listFailed,
 	getEntry,
@@ -11,6 +12,8 @@ import {
 } from '../dlq.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 import type { MtaWebhookEvent } from '../../types.js';
+
+const TRANSPORT_FAILURE = { category: 'transport' } as const;
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -39,7 +42,7 @@ describe('dlq', () => {
 
 	describe('storeFailed', () => {
 		it('creates entry and returns dlqId', async () => {
-			const dlqId = await storeFailed(redis, createTestEvent(), 'Connection refused', config);
+			const dlqId = await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
 			expect(dlqId).toBeTruthy();
 			expect(typeof dlqId).toBe('string');
 		});
@@ -47,13 +50,35 @@ describe('dlq', () => {
 
 	describe('getEntry', () => {
 		it('retrieves entry by dlqId', async () => {
-			const dlqId = await storeFailed(redis, createTestEvent(), 'Timeout', config);
+			const failure = classifyWebhookHttpFailure(503);
+			const dlqId = await storeFailed(redis, createTestEvent(), failure, config);
 
 			const entry = await getEntry(redis, dlqId);
 			expect(entry).not.toBeNull();
 			expect(entry!.dlqId).toBe(dlqId);
-			expect(entry!.error).toBe('Timeout');
+			expect(entry!.failure).toEqual({ category: 'http', status: 503 });
 			expect(entry!.event.event).toBe('bounced');
+		});
+
+		it('normalizes legacy free-form errors without returning their text', async () => {
+			const legacyErrorSentinel = 'provider-response-must-not-escape';
+			const dlqId = 'legacy-entry';
+			await redis.set(
+				`mta:dlq:entry:${dlqId}`,
+				JSON.stringify({
+					dlqId,
+					event: createTestEvent(),
+					error: legacyErrorSentinel,
+					attempts: 1,
+					createdAt: Date.now(),
+				})
+			);
+
+			const entry = await getEntry(redis, dlqId);
+
+			expect(entry?.failure).toEqual({ category: 'legacy' });
+			expect(JSON.stringify(entry)).not.toContain(legacyErrorSentinel);
+			expect(entry).not.toHaveProperty('error');
 		});
 
 		it('returns null for non-existent dlqId', async () => {
@@ -64,9 +89,9 @@ describe('dlq', () => {
 
 	describe('listFailed', () => {
 		it('returns entries newest-first', async () => {
-			await storeFailed(redis, createTestEvent({ messageId: 'msg-1' }), 'err1', config);
-			await storeFailed(redis, createTestEvent({ messageId: 'msg-2' }), 'err2', config);
-			await storeFailed(redis, createTestEvent({ messageId: 'msg-3' }), 'err3', config);
+			await storeFailed(redis, createTestEvent({ messageId: 'msg-1' }), TRANSPORT_FAILURE, config);
+			await storeFailed(redis, createTestEvent({ messageId: 'msg-2' }), TRANSPORT_FAILURE, config);
+			await storeFailed(redis, createTestEvent({ messageId: 'msg-3' }), TRANSPORT_FAILURE, config);
 
 			const result = await listFailed(redis);
 			expect(result.entries.length).toBe(3);
@@ -78,7 +103,7 @@ describe('dlq', () => {
 
 	describe('removeOne', () => {
 		it('deletes entry and returns true', async () => {
-			const dlqId = await storeFailed(redis, createTestEvent(), 'err', config);
+			const dlqId = await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
 
 			const removed = await removeOne(redis, dlqId);
 			expect(removed).toBe(true);
@@ -95,7 +120,7 @@ describe('dlq', () => {
 
 	describe('updateEntry', () => {
 		it('overwrites entry', async () => {
-			const dlqId = await storeFailed(redis, createTestEvent(), 'original', config);
+			const dlqId = await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
 			const entry = await getEntry(redis, dlqId);
 
 			entry!.attempts = 3;
@@ -110,8 +135,8 @@ describe('dlq', () => {
 
 	describe('getStats', () => {
 		it('returns total and timestamps', async () => {
-			await storeFailed(redis, createTestEvent(), 'e1', config);
-			await storeFailed(redis, createTestEvent(), 'e2', config);
+			await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
+			await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
 
 			const stats = await getStats(redis);
 			expect(stats.total).toBe(2);
@@ -130,8 +155,8 @@ describe('dlq', () => {
 
 	describe('getAllIds', () => {
 		it('returns all IDs', async () => {
-			const id1 = await storeFailed(redis, createTestEvent(), 'e1', config);
-			const id2 = await storeFailed(redis, createTestEvent(), 'e2', config);
+			const id1 = await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
+			const id2 = await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
 
 			const ids = await getAllIds(redis);
 			expect(ids).toContain(id1);

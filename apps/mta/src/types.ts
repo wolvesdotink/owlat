@@ -103,6 +103,7 @@ export type MtaWebhookEventType =
 	| 'ip.delisted'
 	| 'ip.warming_complete'
 	| 'all_ips_blocked'
+	| 'postmaster.stats'
 	| 'dkim.rotated'
 	| 'inbound.received'
 	| 'inbound.mailbox.received';
@@ -155,12 +156,22 @@ export interface MtaWebhookEvent {
 	campaignId?: string;
 	/** Complaint rate as a fraction 0..1 (for campaign.complaint_rate events) */
 	complaintRate?: number;
+	/** Google Postmaster daily observation fields (`postmaster.stats`). */
+	date?: string;
+	userReportedSpamRatio?: number;
 	/** Inbound email payload (for inbound.received events) */
 	inboundPayload?: InboundEmailPayload;
 	/** Personal-mailbox payload (for inbound.mailbox.received events) */
 	mailboxPayload?: MailboxInboundPayload;
 	/** Timestamp */
 	timestamp: number;
+}
+
+export interface GooglePostmasterStatsEvent extends MtaWebhookEvent {
+	event: 'postmaster.stats';
+	domain: string;
+	date: string;
+	userReportedSpamRatio: number;
 }
 
 /**

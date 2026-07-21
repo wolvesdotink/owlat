@@ -172,6 +172,36 @@ describe('loadConfig', () => {
 		expect(config.submissionMaxAuthFailuresPerIp).toBe(10);
 	});
 
+	it('enables Google Postmaster only when the complete OAuth credential set is present', () => {
+		process.env.GOOGLE_POSTMASTER_CLIENT_ID = 'client-id';
+		process.env.GOOGLE_POSTMASTER_CLIENT_SECRET = 'client-secret';
+		process.env.GOOGLE_POSTMASTER_REFRESH_TOKEN = 'refresh-token';
+
+		expect(loadConfig().googlePostmaster).toEqual({
+			clientId: 'client-id',
+			clientSecret: 'client-secret',
+			refreshToken: 'refresh-token',
+		});
+
+		delete process.env.GOOGLE_POSTMASTER_REFRESH_TOKEN;
+		expect(() => loadConfig()).toThrow('GOOGLE_POSTMASTER_REFRESH_TOKEN must be set together');
+	});
+
+	it('requires the official 32-character Abusix DNSBL API key shape', () => {
+		const validKey = '0123456789abcdef0123456789abcdef';
+		process.env.ABUSIX_DNSBL_API_KEY = validKey;
+		expect(loadConfig().abusixDnsblApiKey).toBe(validKey);
+
+		process.env.ABUSIX_DNSBL_API_KEY = 'short-key';
+		expect(() => loadConfig()).toThrow('32-character');
+
+		process.env.ABUSIX_DNSBL_API_KEY = '0123456789abcdef0123456789abcde.';
+		expect(() => loadConfig()).toThrow('ABUSIX_DNSBL_API_KEY');
+
+		process.env.ABUSIX_DNSBL_API_KEY = '-1234567890abcdef1234567890abcde';
+		expect(() => loadConfig()).toThrow('ABUSIX_DNSBL_API_KEY');
+	});
+
 	// ── PR-63 item 2: EHLO_HOSTNAME FQDN validation ──
 	describe('EHLO_HOSTNAME FQDN validation', () => {
 		it("rejects 'localhost'", () => {

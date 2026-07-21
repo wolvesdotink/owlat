@@ -11,11 +11,19 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { runDnsblCheck, getDnsblStatus, startDnsblChecker } from '../dnsbl.js';
+import {
+	configuredDnsblZones,
+	runDnsblCheck,
+	getDnsblStatus,
+	startDnsblChecker,
+} from '../dnsbl.js';
 import { resolve4 } from 'dns/promises';
 import { notifyConvex } from '../../webhooks/convexNotifier.js';
+import { logger } from '../../monitoring/logger.js';
 import type { MtaConfig } from '../../config.js';
 import { initializePools, setIpPoolBlock } from '../../scaling/ipPool.js';
+
+const ABUSIX_API_KEY = '0123456789abcdef0123456789abcdef';
 
 function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 	return {
@@ -64,6 +72,7 @@ describe('DNSBL checking', () => {
 	beforeEach(async () => {
 		vi.clearAllMocks();
 		redis = new Redis();
+		await redis.flushall();
 		config = createConfig();
 		for (const ip of [...config.ipPools.transactional, ...config.ipPools.campaign]) {
 			await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
@@ -74,6 +83,22 @@ describe('DNSBL checking', () => {
 	afterEach(() => vi.useRealTimers());
 
 	describe('runDnsblCheck', () => {
+		it('keeps Spamhaus as the sole ejecting feed and adds keyed Abusix as warning-only', () => {
+			const defaults = configuredDnsblZones(config);
+			expect(defaults.filter((zone) => zone.severity === 'critical')).toEqual([
+				expect.objectContaining({ id: 'spamhaus' }),
+			]);
+			expect(defaults.map((zone) => zone.id)).not.toContain('abusix');
+			const keyed = configuredDnsblZones({ ...config, abusixDnsblApiKey: ABUSIX_API_KEY });
+			expect(keyed).toContainEqual(
+				expect.objectContaining({
+					id: 'abusix',
+					severity: 'warning',
+					zone: `${ABUSIX_API_KEY}.combined.mail.abusix.zone`,
+				})
+			);
+		});
+
 		it('keeps status clean when all lookups return NXDOMAIN', async () => {
 			// NXDOMAIN = not listed — resolve4 throws ENOTFOUND
 			vi.mocked(resolve4).mockRejectedValue(
@@ -109,6 +134,135 @@ describe('DNSBL checking', () => {
 
 			expect(notifyConvex).toHaveBeenCalledWith(
 				expect.objectContaining({ event: 'ip.blocklisted', severity: 'critical' }),
+				config,
+				redis
+			);
+		});
+
+		it('never logs raw alert-delivery errors for a critical listing', async () => {
+			const deliverySentinel = 'sentinel-dnsbl-alert-payload-never-log';
+			vi.mocked(notifyConvex).mockRejectedValueOnce(
+				Object.assign(new Error(deliverySentinel), {
+					request: { body: deliverySentinel },
+				})
+			);
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (hostname.includes('zen.spamhaus.org') && hostname.startsWith('1.0.0.10')) {
+					return ['127.0.0.2'];
+				}
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+
+			await runDnsblCheck(redis, config);
+
+			const serializedLogs = JSON.stringify(vi.mocked(logger.error).mock.calls);
+			expect(serializedLogs).not.toContain(deliverySentinel);
+			expect(logger.error).toHaveBeenCalledWith(
+				{
+					operation: 'dnsbl_alert',
+					category: 'delivery',
+					eventType: 'ip.blocklisted',
+				},
+				'Failed to alert Convex about IP blocklisting'
+			);
+		});
+
+		it('treats Spamhaus resolver error answers as unknown and preserves quarantine', async () => {
+			await redis.sadd('mta:ip-pool:blocked', '10.0.0.1');
+			await setIpPoolBlock(redis, '10.0.0.1', 'dnsbl', true);
+			await redis.hset('mta:dnsbl:10.0.0.1', 'overallStatus', 'critical');
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (hostname.includes('zen.spamhaus.org') && hostname.startsWith('1.0.0.10')) {
+					return ['127.255.255.254'];
+				}
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+
+			await runDnsblCheck(redis, config);
+
+			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('unknown');
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
+			expect(await redis.hget('mta:ip-pool:underlying-blocks:dnsbl', '10.0.0.1')).toBe('1');
+		});
+
+		it('clears a prior Spamhaus quarantine when Spamhaus is clean despite warning-feed failure', async () => {
+			await redis.sadd('mta:ip-pool:blocked', '10.0.0.1');
+			await setIpPoolBlock(redis, '10.0.0.1', 'dnsbl', true);
+			await redis.hset('mta:dnsbl:10.0.0.1', 'overallStatus', 'critical', 'spamhaus', 'listed');
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (hostname.includes('zen.spamhaus.org')) {
+					throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+				}
+				throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
+			});
+
+			await runDnsblCheck(redis, config);
+
+			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('unknown');
+			expect(await redis.hget('mta:ip-pool:underlying-blocks:dnsbl', '10.0.0.1')).toBe('0');
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
+		});
+
+		it('surfaces a confirmed warning listing despite an unrelated unknown feed', async () => {
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (hostname.includes('b.barracudacentral.org') && hostname.startsWith('1.0.0.10')) {
+					return ['127.0.0.2'];
+				}
+				if (hostname.includes('bl.spamcop.net')) {
+					throw Object.assign(new Error('SERVFAIL'), { code: 'ESERVFAIL' });
+				}
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+
+			await runDnsblCheck(redis, config);
+
+			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('degraded');
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event: 'ip.blocklisted',
+					severity: 'warning',
+					blocklists: ['Barracuda'],
+				}),
+				config,
+				redis
+			);
+		});
+
+		it('never emits a keyed Abusix query name or resolver message to logs', async () => {
+			const apiKey = ABUSIX_API_KEY;
+			config.abusixDnsblApiKey = apiKey;
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				throw Object.assign(new Error(`SERVFAIL resolving ${hostname}`), { code: 'ESERVFAIL' });
+			});
+
+			await runDnsblCheck(redis, config);
+
+			const logged = JSON.stringify(vi.mocked(logger.warn).mock.calls);
+			expect(logged).not.toContain(apiKey);
+			expect(logged).not.toContain('combined.mail.abusix.zone');
+			expect(logged).toContain('abusix');
+		});
+
+		it('reports an Abusix listing as warning without removing the IP from rotation', async () => {
+			config.abusixDnsblApiKey = ABUSIX_API_KEY;
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				if (hostname.includes('combined.mail.abusix.zone') && hostname.startsWith('1.0.0.10')) {
+					return ['127.0.0.2'];
+				}
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+
+			await runDnsblCheck(redis, config);
+
+			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('degraded');
+			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(1);
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event: 'ip.blocklisted',
+					severity: 'warning',
+					blocklists: ['Abusix'],
+				}),
 				config,
 				redis
 			);
@@ -208,9 +362,14 @@ describe('DNSBL checking', () => {
 			});
 			await runDnsblCheck(redis, config);
 
-			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('unknown');
+			expect(await redis.hget('mta:dnsbl:10.0.0.1', 'overallStatus')).toBe('degraded');
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);
 			expect(await redis.hget('mta:ip-pool:underlying-blocks:dnsbl', '10.0.0.1')).toBe('1');
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({ event: 'ip.blocklisted', severity: 'warning' }),
+				config,
+				redis
+			);
 		});
 	});
 
@@ -254,10 +413,49 @@ describe('DNSBL checking', () => {
 	});
 
 	it('rejects startup when the boot sweep cannot persist its observation', async () => {
-		vi.spyOn(redis, 'incr').mockRejectedValueOnce(new Error('Redis unavailable'));
-
-		await expect(startDnsblChecker(redis, config, () => false)).rejects.toThrow(
-			'Redis unavailable'
+		const redisArgumentSentinel = 'sentinel-boot-dnsbl-command-argument-never-log';
+		vi.spyOn(redis, 'incr').mockRejectedValueOnce(
+			Object.assign(new Error(redisArgumentSentinel), {
+				command: {
+					name: 'incr',
+					args: ['mta:ip-pool:observation-generation:dnsbl', redisArgumentSentinel],
+				},
+			})
 		);
+
+		const startup = startDnsblChecker(redis, config, () => false);
+		await expect(startup).rejects.toThrow('Initial DNSBL sweep failed');
+		await startup.catch((error: unknown) => {
+			expect(String(error)).not.toContain(redisArgumentSentinel);
+			expect(error).not.toHaveProperty('command');
+		});
+	});
+
+	it('never logs Redis command arguments from a failed scheduled DNSBL sweep', async () => {
+		vi.useFakeTimers();
+		vi.mocked(resolve4).mockRejectedValue(
+			Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' })
+		);
+		const timer = await startDnsblChecker(redis, config, () => true);
+		const redisArgumentSentinel = 'sentinel-scheduled-dnsbl-command-argument-never-log';
+		vi.spyOn(redis, 'incr').mockRejectedValueOnce(
+			Object.assign(new Error(redisArgumentSentinel), {
+				command: {
+					name: 'incr',
+					args: ['mta:ip-pool:observation-generation:dnsbl', redisArgumentSentinel],
+				},
+			})
+		);
+
+		await vi.advanceTimersByTimeAsync(15 * 60 * 1000);
+
+		const serializedLogs = JSON.stringify(vi.mocked(logger.error).mock.calls);
+		expect(serializedLogs).not.toContain(redisArgumentSentinel);
+		expect(serializedLogs).not.toContain('mta:ip-pool:observation-generation:dnsbl');
+		expect(logger.error).toHaveBeenCalledWith(
+			{ operation: 'dnsbl_sweep', category: 'storage' },
+			'DNSBL check failed'
+		);
+		clearInterval(timer);
 	});
 });
