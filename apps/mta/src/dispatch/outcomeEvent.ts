@@ -17,7 +17,7 @@ export function outcomeEventBase(ctx: AttemptCtx): OutcomeEventBase {
 		ip: ctx.ip,
 		pool: ctx.pool,
 		domain: ctx.domain,
-		provider: ctx.providerKey,
+		provider: ctx.destination.providerKey,
 		durationMs: ctx.durationMs,
 	};
 }

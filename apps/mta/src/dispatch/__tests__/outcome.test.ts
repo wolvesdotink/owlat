@@ -23,7 +23,17 @@ function makeCtx(overrides: Partial<AttemptCtx> = {}): AttemptCtx {
 	return {
 		job,
 		domain: 'example.com',
-		isp: 'other',
+		destination: {
+			recipientDomain: 'example.com',
+			providerKey: 'other',
+			throttleKey: 'example.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [{ exchange: 'mx.example.com', priority: 0 }],
+			},
+			daneDiscoveryAuthenticated: true,
+		},
 		fromDomain: 'owlat.com',
 		pool: 'transactional',
 		dedicatedIp: undefined,

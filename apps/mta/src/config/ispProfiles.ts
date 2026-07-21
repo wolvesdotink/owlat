@@ -11,12 +11,26 @@
 
 import type Redis from 'ioredis';
 import { isOutboundTlsMode } from '@owlat/shared';
-import type { DestinationProviderProfile } from '../types.js';
+import type { DestinationProviderKey, DestinationProviderProfile } from '../types.js';
 import { DESTINATION_PROVIDER_PROFILES } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 
 const PROFILE_PREFIX = 'mta:isp-profile:';
 const PROFILE_LIST_KEY = 'mta:isp-profiles';
+const MAX_RATE_PER_MINUTE = 1_000_000;
+const MAX_RECOVERY_FACTOR = 100;
+
+export const DESTINATION_PROVIDER_KEYS = [
+	'gmail',
+	'microsoft',
+	'yahoo',
+	'apple',
+	'other',
+] as const satisfies readonly DestinationProviderKey[];
+
+export function isDestinationProviderKey(value: string): value is DestinationProviderKey {
+	return DESTINATION_PROVIDER_KEYS.some((providerKey) => providerKey === value);
+}
 
 function canonicalProfileKey(value: string): string {
 	const key = value.toLowerCase();
@@ -50,7 +64,7 @@ export async function seedProfiles(redis: Redis): Promise<void> {
 		pipeline.hsetnx(key, 'tlsMode', profile.tlsMode);
 		pipeline.hsetnx(key, 'maxConnections', String(profile.maxConnections));
 		pipeline.hsetnx(key, 'maxDeliveriesPerConnection', String(profile.maxDeliveriesPerConnection));
-		providerKeys.push(providerKey);
+		if (isDestinationProviderKey(providerKey)) providerKeys.push(providerKey);
 	}
 
 	// Track all known domains
@@ -99,19 +113,81 @@ function parseProfile(
 	fallback: DestinationProviderProfile
 ): DestinationProviderProfile {
 	const tlsMode = data['tlsMode'];
-	return {
-		defaultRate: parseFloat(data['defaultRate'] ?? String(fallback.defaultRate)),
-		ceiling: parseFloat(data['ceiling'] ?? String(fallback.ceiling)),
-		floor: parseFloat(data['floor'] ?? String(fallback.floor)),
-		backoffFactor: parseFloat(data['backoffFactor'] ?? String(fallback.backoffFactor)),
-		recoveryFactor: parseFloat(data['recoveryFactor'] ?? String(fallback.recoveryFactor)),
+	const parsed: DestinationProviderProfile = {
+		defaultRate: Number(data['defaultRate'] ?? fallback.defaultRate),
+		ceiling: Number(data['ceiling'] ?? fallback.ceiling),
+		floor: Number(data['floor'] ?? fallback.floor),
+		backoffFactor: Number(data['backoffFactor'] ?? fallback.backoffFactor),
+		recoveryFactor: Number(data['recoveryFactor'] ?? fallback.recoveryFactor),
 		tlsMode: tlsMode !== undefined && isOutboundTlsMode(tlsMode) ? tlsMode : fallback.tlsMode,
-		maxConnections: parseInt(data['maxConnections'] ?? String(fallback.maxConnections), 10),
-		maxDeliveriesPerConnection: parseInt(
-			data['maxDeliveriesPerConnection'] ?? String(fallback.maxDeliveriesPerConnection),
-			10
+		maxConnections: Number(data['maxConnections'] ?? fallback.maxConnections),
+		maxDeliveriesPerConnection: Number(
+			data['maxDeliveriesPerConnection'] ?? fallback.maxDeliveriesPerConnection
 		),
 	};
+	try {
+		if (tlsMode !== undefined && !isOutboundTlsMode(tlsMode)) {
+			throw new Error('tlsMode is invalid');
+		}
+		validateProfile(parsed);
+		return parsed;
+	} catch (err) {
+		logger.warn(
+			{ err: err instanceof Error ? err.message : String(err) },
+			'Ignoring corrupt destination provider profile in Redis'
+		);
+		return { ...fallback };
+	}
+}
+
+function validateProfile(profile: DestinationProviderProfile): void {
+	for (const [field, value] of [
+		['defaultRate', profile.defaultRate],
+		['ceiling', profile.ceiling],
+		['floor', profile.floor],
+	] as const) {
+		if (!Number.isFinite(value) || value <= 0 || value > MAX_RATE_PER_MINUTE) {
+			throw new Error(
+				`${field} must be finite and between 0 (exclusive) and ${MAX_RATE_PER_MINUTE}`
+			);
+		}
+	}
+	if (profile.floor > profile.ceiling) {
+		throw new Error('floor must be <= ceiling');
+	}
+	if (profile.defaultRate < profile.floor || profile.defaultRate > profile.ceiling) {
+		throw new Error('defaultRate must be between floor and ceiling');
+	}
+	if (
+		!Number.isFinite(profile.backoffFactor) ||
+		profile.backoffFactor <= 0 ||
+		profile.backoffFactor >= 1
+	) {
+		throw new Error('backoffFactor must be finite and between 0 and 1 (exclusive)');
+	}
+	if (
+		!Number.isFinite(profile.recoveryFactor) ||
+		profile.recoveryFactor <= 1 ||
+		profile.recoveryFactor > MAX_RECOVERY_FACTOR
+	) {
+		throw new Error(
+			`recoveryFactor must be finite and between 1 (exclusive) and ${MAX_RECOVERY_FACTOR}`
+		);
+	}
+	if (
+		!Number.isSafeInteger(profile.maxConnections) ||
+		profile.maxConnections < 1 ||
+		profile.maxConnections > 100
+	) {
+		throw new Error('maxConnections must be an integer between 1 and 100');
+	}
+	if (
+		!Number.isSafeInteger(profile.maxDeliveriesPerConnection) ||
+		profile.maxDeliveriesPerConnection < 1 ||
+		profile.maxDeliveriesPerConnection > 10_000
+	) {
+		throw new Error('maxDeliveriesPerConnection must be an integer between 1 and 10000');
+	}
 }
 
 /**
@@ -119,7 +195,7 @@ function parseProfile(
  */
 export async function setProfile(
 	redis: Redis,
-	providerKey: string,
+	providerKey: DestinationProviderKey,
 	profile: Partial<DestinationProviderProfile>
 ): Promise<DestinationProviderProfile> {
 	const canonicalKey = canonicalProfileKey(providerKey);
@@ -139,33 +215,7 @@ export async function setProfile(
 			profile.maxDeliveriesPerConnection ?? existing.maxDeliveriesPerConnection,
 	};
 
-	// Validate constraints
-	if (merged.floor > merged.ceiling) {
-		throw new Error('floor must be <= ceiling');
-	}
-	if (merged.defaultRate < merged.floor || merged.defaultRate > merged.ceiling) {
-		throw new Error('defaultRate must be between floor and ceiling');
-	}
-	if (merged.backoffFactor <= 0 || merged.backoffFactor >= 1) {
-		throw new Error('backoffFactor must be between 0 and 1 (exclusive)');
-	}
-	if (merged.recoveryFactor <= 1) {
-		throw new Error('recoveryFactor must be > 1');
-	}
-	if (
-		!Number.isSafeInteger(merged.maxConnections) ||
-		merged.maxConnections < 1 ||
-		merged.maxConnections > 100
-	) {
-		throw new Error('maxConnections must be an integer between 1 and 100');
-	}
-	if (
-		!Number.isSafeInteger(merged.maxDeliveriesPerConnection) ||
-		merged.maxDeliveriesPerConnection < 1 ||
-		merged.maxDeliveriesPerConnection > 10_000
-	) {
-		throw new Error('maxDeliveriesPerConnection must be an integer between 1 and 10000');
-	}
+	validateProfile(merged);
 
 	await redis.hset(
 		key,
@@ -195,7 +245,10 @@ export async function setProfile(
 /**
  * Delete a custom ISP profile (reverts to hardcoded default)
  */
-export async function deleteProfile(redis: Redis, providerKey: string): Promise<boolean> {
+export async function deleteProfile(
+	redis: Redis,
+	providerKey: DestinationProviderKey
+): Promise<boolean> {
 	const canonicalKey = canonicalProfileKey(providerKey);
 	const key = `${PROFILE_PREFIX}${canonicalKey}`;
 	const deleted = await redis.del(key);
@@ -213,7 +266,9 @@ export async function listProfiles(
 	const result: Record<string, DestinationProviderProfile> = {};
 
 	for (const providerKey of providerKeys) {
-		result[providerKey] = await getProfile(redis, providerKey);
+		if (isDestinationProviderKey(providerKey)) {
+			result[providerKey] = await getProfile(redis, providerKey);
+		}
 	}
 
 	return result;

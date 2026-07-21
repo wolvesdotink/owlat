@@ -56,7 +56,11 @@ vi.mock('../connectionPool.js', () => ({
 	PoolOverCapError: class PoolOverCapError extends Error {},
 }));
 vi.mock('../mxResolver.js', () => ({
-	getMxHostnames: vi.fn().mockResolvedValue(['mx1.example.com']),
+	resolveMxDestination: vi.fn().mockResolvedValue({
+		status: 'deliverable',
+		source: 'mx',
+		hosts: [{ exchange: 'mx1.example.com', priority: 0 }],
+	}),
 }));
 vi.mock('../daneMxResolver.js', () => ({
 	resolveDaneMxDestinations: vi.fn().mockResolvedValue({ status: 'not-found' }),

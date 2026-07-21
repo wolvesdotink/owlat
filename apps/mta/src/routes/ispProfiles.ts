@@ -10,6 +10,57 @@ import type { MtaConfig } from '../config.js';
 import * as ispProfiles from '../config/ispProfiles.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { isOutboundTlsMode } from '@owlat/shared';
+import type { DestinationProviderProfile } from '../types.js';
+
+const PROFILE_FIELDS = new Set([
+	'defaultRate',
+	'ceiling',
+	'floor',
+	'backoffFactor',
+	'recoveryFactor',
+	'tlsMode',
+	'maxConnections',
+	'maxDeliveriesPerConnection',
+]);
+
+function parseProfilePatch(body: unknown): Partial<DestinationProviderProfile> {
+	if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+		throw new Error('Request body must be an object');
+	}
+
+	const values = body as Record<string, unknown>;
+	for (const field of Object.keys(values)) {
+		if (!PROFILE_FIELDS.has(field)) throw new Error(`Unknown profile field: ${field}`);
+	}
+
+	const patch: Partial<DestinationProviderProfile> = {};
+	for (const field of [
+		'defaultRate',
+		'ceiling',
+		'floor',
+		'backoffFactor',
+		'recoveryFactor',
+		'maxConnections',
+		'maxDeliveriesPerConnection',
+	] as const) {
+		if (!(field in values)) continue;
+		const value = values[field];
+		if (typeof value !== 'number' || !Number.isFinite(value)) {
+			throw new Error(`${field} must be a finite number`);
+		}
+		patch[field] = value;
+	}
+
+	if ('tlsMode' in values) {
+		const tlsMode = values['tlsMode'];
+		if (typeof tlsMode !== 'string' || !isOutboundTlsMode(tlsMode)) {
+			throw new Error('tlsMode is invalid');
+		}
+		patch.tlsMode = tlsMode;
+	}
+
+	return patch;
+}
 
 export function createIspProfileRoutes(redis: Redis, config: MtaConfig): Hono {
 	const app = new Hono();
@@ -25,16 +76,24 @@ export function createIspProfileRoutes(redis: Redis, config: MtaConfig): Hono {
 
 	// GET /isp-profiles/:provider — get one destination-provider profile
 	app.get('/:provider', async (c) => {
-		const provider = c.req.param('provider');
+		const rawProvider = c.req.param('provider');
+		if (!ispProfiles.isDestinationProviderKey(rawProvider)) {
+			return c.json({ error: `Unknown destination provider: ${rawProvider}` }, 400);
+		}
+		const provider = rawProvider;
 		const profile = await ispProfiles.getProfile(redis, provider);
 		return c.json({ provider, profile });
 	});
 
-	// PUT /isp-profiles/:domain — update or create a profile
+	// PUT /isp-profiles/:provider — update a known provider profile
 	app.put('/:provider', async (c) => {
-		const provider = c.req.param('provider');
+		const rawProvider = c.req.param('provider');
+		if (!ispProfiles.isDestinationProviderKey(rawProvider)) {
+			return c.json({ error: `Unknown destination provider: ${rawProvider}` }, 400);
+		}
+		const provider = rawProvider;
 
-		let body: Record<string, unknown>;
+		let body: unknown;
 		try {
 			body = await c.req.json();
 		} catch {
@@ -42,25 +101,7 @@ export function createIspProfileRoutes(redis: Redis, config: MtaConfig): Hono {
 		}
 
 		try {
-			const profile = await ispProfiles.setProfile(redis, provider, {
-				defaultRate: typeof body['defaultRate'] === 'number' ? body['defaultRate'] : undefined,
-				ceiling: typeof body['ceiling'] === 'number' ? body['ceiling'] : undefined,
-				floor: typeof body['floor'] === 'number' ? body['floor'] : undefined,
-				backoffFactor:
-					typeof body['backoffFactor'] === 'number' ? body['backoffFactor'] : undefined,
-				recoveryFactor:
-					typeof body['recoveryFactor'] === 'number' ? body['recoveryFactor'] : undefined,
-				tlsMode:
-					typeof body['tlsMode'] === 'string' && isOutboundTlsMode(body['tlsMode'])
-						? body['tlsMode']
-						: undefined,
-				maxConnections:
-					typeof body['maxConnections'] === 'number' ? body['maxConnections'] : undefined,
-				maxDeliveriesPerConnection:
-					typeof body['maxDeliveriesPerConnection'] === 'number'
-						? body['maxDeliveriesPerConnection']
-						: undefined,
-			});
+			const profile = await ispProfiles.setProfile(redis, provider, parseProfilePatch(body));
 			return c.json({ provider, profile });
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Unknown error';
@@ -68,9 +109,13 @@ export function createIspProfileRoutes(redis: Redis, config: MtaConfig): Hono {
 		}
 	});
 
-	// DELETE /isp-profiles/:domain — remove custom profile (reverts to default)
+	// DELETE /isp-profiles/:provider — remove custom profile (reverts to default)
 	app.delete('/:provider', async (c) => {
-		const provider = c.req.param('provider');
+		const rawProvider = c.req.param('provider');
+		if (!ispProfiles.isDestinationProviderKey(rawProvider)) {
+			return c.json({ error: `Unknown destination provider: ${rawProvider}` }, 400);
+		}
+		const provider = rawProvider;
 		const deleted = await ispProfiles.deleteProfile(redis, provider);
 		return c.json({ deleted });
 	});

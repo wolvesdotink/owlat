@@ -1,32 +1,28 @@
-/**
- * Recipient-domain to destination-provider resolution.
- *
- * Queue ordering remains recipient-domain scoped. Only shared receiver policy
- * (throttle/profile/TLS/connections) rolls up to the provider discovered from
- * MX hostnames. Unknown MX operators retain a per-domain throttle key so the
- * generic fallback never combines unrelated receivers into one traffic budget.
- */
+/** One coherent MX route and provider-policy snapshot for a recipient domain. */
 
 import { domainToASCII } from 'node:url';
 import type Redis from 'ioredis';
+import type { MtaConfig } from '../config.js';
 import type { DestinationProviderKey } from '../types.js';
-import { resolveMxHosts, type MxHost } from './mxResolver.js';
-import { logger } from '../monitoring/logger.js';
+import { resolveDaneMxDestinations, type DaneMxDestination } from './daneMxResolver.js';
+import { resolveMxDestination, type MxDnsLookup, type MxResolution } from './mxResolver.js';
 
-const CACHE_PREFIX = 'mta:destination-provider:v1:';
-const KNOWN_PROVIDER_TTL_SECONDS = 600;
-const UNKNOWN_PROVIDER_TTL_SECONDS = 300;
-
-const PROVIDERS = ['gmail', 'microsoft', 'yahoo', 'apple', 'other'] as const;
-
-export interface DestinationIdentity {
+export interface DestinationSnapshot {
 	recipientDomain: string;
+	mx: MxResolution;
 	providerKey: DestinationProviderKey;
 	/** Known providers share a budget; unknown operators remain domain scoped. */
 	throttleKey: string;
+	/** DNSSEC-aware destinations from the same discovery, when DANE is enabled. */
+	daneDestinations?: DaneMxDestination[];
+	/** False only when report-only DANE discovery failed and normal DNS was used. */
+	daneDiscoveryAuthenticated: boolean;
 }
 
-type MxLookup = (redis: Redis, domain: string) => Promise<MxHost[]>;
+export interface DestinationResolutionOptions {
+	config?: Pick<MtaConfig, 'daneMode' | 'daneResolverUrl'>;
+	normalMxLookup?: MxDnsLookup;
+}
 
 function normalizeHostname(value: string): string {
 	return value.trim().toLowerCase().replace(/\.$/, '');
@@ -61,49 +57,75 @@ function providerFromMxHostname(mxHostname: string): DestinationProviderKey {
 	return 'other';
 }
 
-function isProviderKey(value: string): value is DestinationProviderKey {
-	return PROVIDERS.some((provider) => provider === value);
-}
-
-function identity(
+export function destinationFromMx(
 	recipientDomain: string,
-	providerKey: DestinationProviderKey
-): DestinationIdentity {
+	mx: MxResolution,
+	options: Pick<DestinationSnapshot, 'daneDestinations' | 'daneDiscoveryAuthenticated'> = {
+		daneDiscoveryAuthenticated: true,
+	}
+): DestinationSnapshot {
+	const domain = normalizeDomain(recipientDomain);
+	const providerKey =
+		mx.status === 'deliverable'
+			? providerFromMxHostnames(mx.hosts.map((record) => record.exchange))
+			: 'other';
 	return {
-		recipientDomain,
+		recipientDomain: domain,
+		mx,
 		providerKey,
-		throttleKey: providerKey === 'other' ? recipientDomain : providerKey,
+		throttleKey: providerKey === 'other' ? domain : providerKey,
+		...options,
 	};
 }
 
-/**
- * Resolve and cache provider identity. An empty MX result may be a transient
- * DNS failure, so it is deliberately not cached as `other`.
- */
-export async function resolveDestinationIdentity(
+/** Resolve MX and derive provider identity from that exact cached DNS snapshot. */
+export async function resolveDestinationSnapshot(
 	redis: Redis,
 	recipientDomain: string,
-	lookupMx: MxLookup = resolveMxHosts
-): Promise<DestinationIdentity> {
+	options: DestinationResolutionOptions = {}
+): Promise<DestinationSnapshot> {
 	const domain = normalizeDomain(recipientDomain);
-	const cacheKey = `${CACHE_PREFIX}${domain}`;
+	const daneMode = options.config?.daneMode ?? 'off';
+	const daneResolverUrl = options.config?.daneResolverUrl;
+	if (daneMode !== 'off' && daneResolverUrl) {
+		const discovery = await resolveDaneMxDestinations(redis, domain, daneResolverUrl);
+		if (discovery.status === 'destinations') {
+			return destinationFromMx(
+				domain,
+				{
+					status: 'deliverable',
+					source: 'mx',
+					hosts: discovery.destinations.map((destination) => ({
+						exchange: destination.mxHostname,
+						priority: destination.preference,
+					})),
+				},
+				{
+					daneDestinations: discovery.destinations,
+					daneDiscoveryAuthenticated: true,
+				}
+			);
+		}
+		if (discovery.status === 'null-mx') {
+			return destinationFromMx(domain, { status: 'null-mx' });
+		}
+		if (discovery.status === 'not-found') {
+			return destinationFromMx(domain, {
+				status: 'domain-not-found',
+				reason: `Recipient domain ${domain} does not exist (DNSSEC-aware NXDOMAIN)`,
+			});
+		}
+		if (daneMode === 'enforce') {
+			return destinationFromMx(domain, {
+				status: 'temporary-failure',
+				reason: `DANE MX discovery failed for ${domain}: ${discovery.reason}`,
+			});
+		}
 
-	try {
-		const cached = await redis.get(cacheKey);
-		if (cached && isProviderKey(cached)) return identity(domain, cached);
-	} catch (err) {
-		logger.warn({ err, recipientDomain: domain }, 'Destination provider cache read failed');
+		const fallbackMx = await resolveMxDestination(redis, domain, options.normalMxLookup);
+		return destinationFromMx(domain, fallbackMx, { daneDiscoveryAuthenticated: false });
 	}
 
-	const mxHosts = await lookupMx(redis, domain);
-	if (mxHosts.length === 0) return identity(domain, 'other');
-
-	const providerKey = providerFromMxHostnames(mxHosts.map((record) => record.exchange));
-	const ttl = providerKey === 'other' ? UNKNOWN_PROVIDER_TTL_SECONDS : KNOWN_PROVIDER_TTL_SECONDS;
-	try {
-		await redis.set(cacheKey, providerKey, 'EX', ttl);
-	} catch (err) {
-		logger.warn({ err, recipientDomain: domain }, 'Destination provider cache write failed');
-	}
-	return identity(domain, providerKey);
+	const mx = await resolveMxDestination(redis, domain, options.normalMxLookup);
+	return destinationFromMx(domain, mx);
 }

@@ -31,6 +31,7 @@ export interface DaneMxDestination {
 
 export type DaneMxLookupResult =
 	| { status: 'destinations'; destinations: DaneMxDestination[] }
+	| { status: 'null-mx' }
 	| { status: 'not-found' }
 	| { status: 'lookup-failed'; reason: string };
 
@@ -47,12 +48,14 @@ function isSuccessfulDnsResponse(response: DohResponse): boolean {
 	return status === DNS_RCODE_NOERROR || status === DNS_RCODE_NXDOMAIN;
 }
 
-function parseMxData(data: string): { preference: number; mxHostname: string } | null {
+function parseMxData(data: string): { preference: number; mxHostname: string } | 'null-mx' | null {
 	const match = data.trim().match(/^(\d+)\s+([^\s]+)$/);
 	if (!match?.[1] || !match[2]) return null;
 	const preference = Number(match[1]);
 	const mxHostname = normalizeHostname(match[2]);
-	if (!Number.isSafeInteger(preference) || preference < 0 || !mxHostname) return null;
+	if (!Number.isSafeInteger(preference) || preference < 0) return null;
+	if (preference === 0 && mxHostname === '') return 'null-mx';
+	if (!mxHostname) return null;
 	return { preference, mxHostname };
 }
 
@@ -129,10 +132,16 @@ export async function resolveDaneMxDestinations(
 	}
 
 	const mxSecurity = mxQuery.response.AD === true ? 'secure' : 'insecure';
-	let mxRecords = (mxQuery.response.Answer ?? [])
+	const parsedMxRecords = (mxQuery.response.Answer ?? [])
 		.filter((answer) => answer.type === MX_RRTYPE && typeof answer.data === 'string')
 		.map((answer) => parseMxData(answer.data as string))
-		.filter((record): record is { preference: number; mxHostname: string } => record !== null);
+		.filter((record) => record !== null);
+	if (parsedMxRecords.includes('null-mx')) {
+		return parsedMxRecords.length === 1
+			? { status: 'null-mx' }
+			: { status: 'lookup-failed', reason: 'Null MX was combined with other MX records' };
+	}
+	let mxRecords = parsedMxRecords as Array<{ preference: number; mxHostname: string }>;
 
 	// RFC 5321 implicit MX: a domain with addresses but no MX is its own SMTP host.
 	if (mxRecords.length === 0) {
