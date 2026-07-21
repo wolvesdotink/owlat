@@ -7,42 +7,42 @@
  * domain setup panel. A browsing surface, not a doing-surface: no second focal
  * point, weight-based emphasis, terracotta reserved for the fix link.
  */
-import type { FunctionReturnType } from "convex/server";
-import { api } from "@owlat/api";
-import { PROVIDER_SPAM_RATE_POLICY } from "@owlat/shared/reputation";
-import { formatNumber, formatPercentage } from "~/utils/formatters";
-import { healthChipClass, healthDotClass, type HealthTone } from "~/utils/healthTone";
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
+import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
+import { formatNumber, formatPercentage } from '~/utils/formatters';
+import { healthChipClass, healthDotClass, type HealthTone } from '~/utils/healthTone';
 
 // Derive the row type straight from the query's return so the two shapes can't
 // drift — this is exactly what `getDeliveryDomainTable` yields per domain.
 type DomainRow = FunctionReturnType<
 	typeof api.analytics.reputationQueries.getDeliveryDomainTable
 >[number];
-type DomainStatus = DomainRow["status"];
+type DomainStatus = DomainRow['status'];
 
 defineProps<{ rows: DomainRow[] }>();
 
-const DOMAIN_SETUP_ROUTE = "/dashboard/delivery/domains";
+const DOMAIN_SETUP_ROUTE = '/dashboard/delivery/domains';
 
 /** One lookup keyed off status: the chip's human label + its verification tone. */
 const STATUS_META: Record<DomainStatus, { label: string; tone: HealthTone }> = {
-	registering: { label: "Registering", tone: "warning" },
-	pending: { label: "Not verified", tone: "warning" },
-	verified: { label: "Verified", tone: "success" },
-	failed: { label: "Failed", tone: "error" },
+	registering: { label: 'Registering', tone: 'warning' },
+	pending: { label: 'Not verified', tone: 'warning' },
+	verified: { label: 'Verified', tone: 'success' },
+	failed: { label: 'Failed', tone: 'error' },
 };
 
 // The health DOT reflects reputation risk (a distinct signal from verification);
 // no in-window activity → neutral, not a misleading green. The CHIP keeps
 // encoding verification. Both use the shared tone→class maps.
-const RISK_TONE: Record<NonNullable<DomainRow["riskLevel"]>, HealthTone> = {
-	low: "success",
-	medium: "warning",
-	high: "error",
-	critical: "error",
+const RISK_TONE: Record<NonNullable<DomainRow['riskLevel']>, HealthTone> = {
+	low: 'success',
+	medium: 'warning',
+	high: 'error',
+	critical: 'error',
 };
-function riskTone(riskLevel: DomainRow["riskLevel"]): HealthTone {
-	return riskLevel ? RISK_TONE[riskLevel] : "neutral";
+function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
+	return riskLevel ? RISK_TONE[riskLevel] : 'neutral';
 }
 </script>
 
@@ -108,7 +108,7 @@ function riskTone(riskLevel: DomainRow["riskLevel"]): HealthTone {
 								SPF · DKIM · DMARC ✓
 							</span>
 							<template v-else>
-								<span class="text-text-tertiary"> Missing {{ row.missing.join(", ") }} </span>
+								<span class="text-text-tertiary"> Missing {{ row.missing.join(', ') }} </span>
 								<NuxtLink
 									:to="{ path: DOMAIN_SETUP_ROUTE, query: { domain: row.domain } }"
 									class="inline-flex items-center gap-0.5 text-brand font-medium hover:underline focus-visible:underline focus-visible:outline-none rounded-sm transition-colors duration-(--motion-fast)"
@@ -145,19 +145,16 @@ function riskTone(riskLevel: DomainRow["riskLevel"]): HealthTone {
 							{{ formatPercentage(PROVIDER_SPAM_RATE_POLICY.hardThreshold, 1) }}
 						</p>
 						<p
-							v-if="row.spamRateStatus === 'hard_limit' || row.cleanDaysBelowHardThreshold > 0"
-							data-testid="domain-spam-recovery"
-							class="mt-1"
-							:class="
-								row.cleanDaysBelowHardThreshold >= PROVIDER_SPAM_RATE_POLICY.recoveryDays
-									? 'text-success'
-									: 'text-text-secondary'
+							v-if="
+								row.spamRateStatus === 'hard_limit' || row.cleanInternalDaysBelowHardThreshold > 0
 							"
+							data-testid="domain-spam-recovery"
+							class="mt-1 text-text-secondary"
 						>
-							Recovery
-							<span>{{ row.cleanDaysBelowHardThreshold }}</span>
+							Owlat evidence
+							<span>{{ row.cleanInternalDaysBelowHardThreshold }}</span>
 							/
-							<span>{{ PROVIDER_SPAM_RATE_POLICY.recoveryDays }}</span>
+							<span>{{ PROVIDER_SPAM_RATE_POLICY.internalCleanDayEvidenceDays }}</span>
 							clean days
 						</p>
 					</div>

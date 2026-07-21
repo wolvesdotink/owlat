@@ -16,11 +16,11 @@ function telemetryFixture() {
 			totalDelivered: 0,
 			totalComplaints: 0,
 			status: 'no_data' as 'no_data' | 'on_target' | 'elevated' | 'hard_limit',
-			cleanDaysBelowHardThreshold: 0,
-			recoveryEligible: false,
+			cleanInternalDaysBelowHardThreshold: 0,
+			hasRequiredInternalCleanDayEvidence: false,
 			target: 0.001,
 			hardThreshold: 0.003,
-			recoveryDaysRequired: 7,
+			internalCleanDaysRequired: 7,
 		},
 		gmail: {
 			domains: [] as Array<{ primaryDomain: string; delivered24h: number }>,
@@ -94,20 +94,23 @@ describe('ComplianceTelemetryCard', () => {
 		expect(card.text()).toContain('approaching permanent Gmail bulk-sender classification');
 	});
 
-	it('renders clean-day recovery progress and eligibility', () => {
+	it('renders internal clean-day evidence without claiming Google eligibility', () => {
 		const telemetry = telemetryFixture();
-		telemetry.spamRate.cleanDaysBelowHardThreshold = 6;
+		telemetry.spamRate.cleanInternalDaysBelowHardThreshold = 6;
 		let progress = mountCard(telemetry).find('[data-testid="spam-recovery-progress"]');
-		expect(progress.text()).toContain('6 / 7 clean active days');
-		expect(progress.text()).not.toContain('recovery eligible');
+		expect(progress.text()).toContain('6 / 7 clean active days in Owlat data');
+		expect(progress.text()).not.toContain('evidence complete');
 
-		telemetry.spamRate.cleanDaysBelowHardThreshold = 7;
-		telemetry.spamRate.recoveryEligible = true;
+		telemetry.spamRate.cleanInternalDaysBelowHardThreshold = 7;
+		telemetry.spamRate.hasRequiredInternalCleanDayEvidence = true;
 		progress = mountCard(telemetry).find('[data-testid="spam-recovery-progress"]');
 		expect(progress.text().replace(/\s+/g, ' ')).toContain(
-			'7 / 7 clean active days · recovery eligible'
+			'7 / 7 clean active days in Owlat data · evidence complete'
 		);
-		expect(progress.classes()).toContain('text-success');
+		expect(progress.classes()).toContain('text-text-secondary');
+		const cardText = mountCard(telemetry).text();
+		expect(cardText).toContain('not Google mitigation eligibility');
+		expect(cardText).toContain('Verify Postmaster Tools');
 	});
 
 	it('renders the unsubscribe honor-window alert', () => {

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import { api } from "@owlat/api";
-import { formatNumber, formatPercentage } from "~/utils/formatters";
+import { api } from '@owlat/api';
+import { formatNumber, formatPercentage } from '~/utils/formatters';
 
 const { data: telemetry, isLoading } = useOrganizationQuery(
-	api.analytics.complianceTelemetry.getComplianceTelemetry,
+	api.analytics.complianceTelemetry.getComplianceTelemetry
 );
 
 function formatDuration(milliseconds: number | null): string {
-	if (milliseconds === null) return "Collecting data";
+	if (milliseconds === null) return 'Collecting data';
 	if (milliseconds < 1_000) return `≤ ${milliseconds} ms`;
 	if (milliseconds < 60_000) return `≤ ${Math.round(milliseconds / 1_000)} s`;
 	if (milliseconds < 3_600_000) return `≤ ${Math.round(milliseconds / 60_000)} min`;
@@ -15,17 +15,17 @@ function formatDuration(milliseconds: number | null): string {
 }
 
 const SPAM_RATE_TONE = {
-	no_data: "border-border-subtle",
-	on_target: "border-success/40 bg-success/5",
-	elevated: "border-warning/40 bg-warning/5",
-	hard_limit: "border-error/40 bg-error/5",
+	no_data: 'border-border-subtle',
+	on_target: 'border-success/40 bg-success/5',
+	elevated: 'border-warning/40 bg-warning/5',
+	hard_limit: 'border-error/40 bg-error/5',
 } as const;
 
 const SPAM_RATE_LABEL = {
-	no_data: "No data",
-	on_target: "On target",
-	elevated: "Above target",
-	hard_limit: "At hard line",
+	no_data: 'No data',
+	on_target: 'On target',
+	elevated: 'Above target',
+	hard_limit: 'At hard line',
 } as const;
 </script>
 
@@ -62,7 +62,7 @@ const SPAM_RATE_LABEL = {
 					<p class="mt-2 text-2xl font-semibold tabular-nums text-text-primary">
 						{{
 							telemetry.spamRate.spamRate === null
-								? "No data"
+								? 'No data'
 								: formatPercentage(telemetry.spamRate.spamRate, 3)
 						}}
 					</p>
@@ -71,19 +71,20 @@ const SPAM_RATE_LABEL = {
 						{{ formatPercentage(telemetry.spamRate.hardThreshold, 1) }}
 					</p>
 					<p class="mt-3 text-xs text-text-tertiary">
-						Google mitigation requires 7 consecutive completed days below 0.3%. Owlat's separate
-						0.2% / 100-send circuit breaker stops sending earlier.
+						Owlat clean-day evidence is an internal early signal, not Google mitigation eligibility.
+						Verify Postmaster Tools and every sender requirement.
 					</p>
 					<p
 						data-testid="spam-recovery-progress"
-						class="mt-2 text-xs font-medium"
-						:class="telemetry.spamRate.recoveryEligible ? 'text-success' : 'text-text-secondary'"
+						class="mt-2 text-xs font-medium text-text-secondary"
 					>
-						<span>{{ telemetry.spamRate.cleanDaysBelowHardThreshold }}</span>
+						<span>{{ telemetry.spamRate.cleanInternalDaysBelowHardThreshold }}</span>
 						/
-						<span>{{ telemetry.spamRate.recoveryDaysRequired }}</span>
-						clean active days
-						<span v-if="telemetry.spamRate.recoveryEligible"> · recovery eligible</span>
+						<span>{{ telemetry.spamRate.internalCleanDaysRequired }}</span>
+						clean active days in Owlat data
+						<span v-if="telemetry.spamRate.hasRequiredInternalCleanDayEvidence">
+							· evidence complete
+						</span>
 					</p>
 				</section>
 
@@ -103,7 +104,7 @@ const SPAM_RATE_LABEL = {
 					</p>
 					<p class="mt-1 text-xs text-text-secondary">
 						{{
-							telemetry.gmail.highestVolumeDomain?.primaryDomain ?? "No MTA-observed Gmail traffic"
+							telemetry.gmail.highestVolumeDomain?.primaryDomain ?? 'No MTA-observed Gmail traffic'
 						}}
 					</p>
 					<p

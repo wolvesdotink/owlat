@@ -240,7 +240,7 @@ export interface DeliveryDomainRow {
 	spamRateStatus: SpamRateSummary['status'];
 	delivered30d: number;
 	complaints30d: number;
-	cleanDaysBelowHardThreshold: number;
+	cleanInternalDaysBelowHardThreshold: number;
 }
 
 /**
@@ -319,7 +319,7 @@ export const getDeliveryDomainTable = authedQuery({
 				spamRateStatus: spam?.status ?? 'no_data',
 				delivered30d: spam?.totalDelivered ?? 0,
 				complaints30d: spam?.totalComplaints ?? 0,
-				cleanDaysBelowHardThreshold: spam?.cleanDaysBelowHardThreshold ?? 0,
+				cleanInternalDaysBelowHardThreshold: spam?.cleanInternalDaysBelowHardThreshold ?? 0,
 			};
 		});
 

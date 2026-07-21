@@ -10,7 +10,7 @@ const stubs = {
 	UiIconBox: { template: '<i />' },
 };
 
-function domainRow(cleanDaysBelowHardThreshold: number) {
+function domainRow(cleanInternalDaysBelowHardThreshold: number) {
 	return {
 		domain: 'example.com',
 		status: 'verified' as const,
@@ -24,18 +24,18 @@ function domainRow(cleanDaysBelowHardThreshold: number) {
 		spamRateStatus: 'hard_limit' as const,
 		delivered30d: 1_000,
 		complaints30d: 3,
-		cleanDaysBelowHardThreshold,
+		cleanInternalDaysBelowHardThreshold,
 	};
 }
 
-describe('DomainTable recovery progress', () => {
-	it('shows per-domain clean-day progress and eligibility tone', () => {
+describe('DomainTable internal clean-day evidence', () => {
+	it('shows per-domain evidence without an eligibility tone', () => {
 		let wrapper = mount(DomainTable, {
 			props: { rows: [domainRow(6)] },
 			global: { stubs },
 		});
 		let recovery = wrapper.find('[data-testid="domain-spam-recovery"]');
-		expect(recovery.text().replace(/\s+/g, ' ')).toContain('Recovery 6 / 7 clean days');
+		expect(recovery.text().replace(/\s+/g, ' ')).toContain('Owlat evidence 6 / 7 clean days');
 		expect(recovery.classes()).toContain('text-text-secondary');
 
 		wrapper = mount(DomainTable, {
@@ -43,7 +43,7 @@ describe('DomainTable recovery progress', () => {
 			global: { stubs },
 		});
 		recovery = wrapper.find('[data-testid="domain-spam-recovery"]');
-		expect(recovery.text().replace(/\s+/g, ' ')).toContain('Recovery 7 / 7 clean days');
-		expect(recovery.classes()).toContain('text-success');
+		expect(recovery.text().replace(/\s+/g, ' ')).toContain('Owlat evidence 7 / 7 clean days');
+		expect(recovery.classes()).toContain('text-text-secondary');
 	});
 });

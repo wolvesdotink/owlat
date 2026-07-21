@@ -1,91 +1,185 @@
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
-import { internal } from '../_generated/api';
+import type { ActionCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { summarize } from '../analytics/sendingReputation';
+import { readGmailVolumes } from '../delivery/complianceTelemetry';
+import { dispatchInboundEvent } from '../webhooks/dispatcher';
+import type { InboundEvent } from '../webhooks/types';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 
 const modules = import.meta.glob('../**/*.*s');
+const NOW = Date.UTC(2026, 6, 21, 12);
+const PRIMARY_DOMAIN = 'sender.example';
 
 afterEach(() => {
 	vi.useRealTimers();
 });
 
+type TestHarness = ReturnType<typeof convexTest>;
+
+function dispatch(t: TestHarness, event: InboundEvent): Promise<void> {
+	// The dispatcher is an action-layer function. Keep this integration test on
+	// its real mutation references while convex-test supplies the mutation
+	// executor; none of these email event handlers use the action scheduler.
+	const actionCtx = {
+		runMutation: (mutation: Parameters<ActionCtx['runMutation']>[0], args: unknown) =>
+			t.mutation(mutation, args),
+	} as unknown as ActionCtx;
+	return dispatchInboundEvent(actionCtx, event);
+}
+
+async function seedSentSend(t: TestHarness, providerMessageId: string): Promise<Id<'emailSends'>> {
+	return t.run(async (ctx) => {
+		const campaignId = await ctx.db.insert(
+			'campaigns',
+			createTestCampaign({ fromEmail: `news@${PRIMARY_DOMAIN}` })
+		);
+		const contactId = await ctx.db.insert('contacts', createTestContact());
+		return ctx.db.insert(
+			'emailSends',
+			createTestEmailSend({
+				campaignId,
+				contactId,
+				status: 'sent',
+				providerMessageId,
+				sentAt: NOW - 1_000,
+			})
+		);
+	});
+}
+
+function accepted(providerMessageId: string, at: number): InboundEvent {
+	return {
+		kind: 'email.delivered',
+		providerMessageId,
+		at,
+		destinationProvider: 'gmail',
+		primarySendingDomain: PRIMARY_DOMAIN,
+	};
+}
+
+async function expectExactlyOneDelivery(
+	t: TestHarness,
+	sendId: Id<'emailSends'>,
+	expectedStatus: 'opened' | 'clicked' | 'complained'
+): Promise<void> {
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
+	const [send, reputation, gmailVolumes] = await Promise.all([
+		t.run((ctx) => ctx.db.get(sendId)),
+		t.run((ctx) => summarize(ctx.db, { kind: 'org' })),
+		t.run((ctx) => readGmailVolumes(ctx.db, Date.now())),
+	]);
+	expect(send).toMatchObject({ status: expectedStatus, deliveredAt: NOW });
+	expect(reputation.totalDelivered).toBe(1);
+	expect(gmailVolumes).toEqual([{ primaryDomain: PRIMARY_DOMAIN, delivered24h: 1 }]);
+}
+
 describe('MTA remote-acceptance reputation lifecycle', () => {
-	it('counts queue acceptance as sent, remote acceptance once as delivered, and never counts a pre-acceptance bounce', async () => {
+	it.each([
+		{
+			name: 'accepted → opened',
+			finalStatus: 'opened' as const,
+			events: (messageId: string): InboundEvent[] => [
+				accepted(messageId, NOW),
+				{ kind: 'email.opened', providerMessageId: messageId, at: NOW + 1 },
+			],
+		},
+		{
+			name: 'opened → late accepted',
+			finalStatus: 'opened' as const,
+			events: (messageId: string): InboundEvent[] => [
+				{ kind: 'email.opened', providerMessageId: messageId, at: NOW },
+				accepted(messageId, NOW + 1),
+			],
+		},
+		{
+			name: 'clicked → late accepted',
+			finalStatus: 'clicked' as const,
+			events: (messageId: string): InboundEvent[] => [
+				{
+					kind: 'email.clicked',
+					providerMessageId: messageId,
+					at: NOW,
+					url: 'https://example.com',
+				},
+				accepted(messageId, NOW + 1),
+			],
+		},
+		{
+			name: 'accepted → complained',
+			finalStatus: 'complained' as const,
+			events: (messageId: string): InboundEvent[] => [
+				accepted(messageId, NOW),
+				{ kind: 'email.complained', providerMessageId: messageId, at: NOW + 1 },
+			],
+		},
+		{
+			name: 'complained → late accepted',
+			finalStatus: 'complained' as const,
+			events: (messageId: string): InboundEvent[] => [
+				{ kind: 'email.complained', providerMessageId: messageId, at: NOW },
+				accepted(messageId, NOW + 1),
+			],
+		},
+	])(
+		'records delivery once for $name without status regression',
+		async ({ finalStatus, events }) => {
+			vi.useFakeTimers();
+			vi.setSystemTime(NOW);
+			const t = convexTest(schema, modules);
+			const providerMessageId = `mta-${finalStatus}-${Math.random()}`;
+			const sendId = await seedSentSend(t, providerMessageId);
+
+			for (const event of events(providerMessageId)) await dispatch(t, event);
+			// Exercise provider retries after the lifecycle has already advanced.
+			await dispatch(t, accepted(providerMessageId, NOW + 2));
+
+			await expectExactlyOneDelivery(t, sendId, finalStatus);
+		}
+	);
+
+	it('does not count or emit Gmail telemetry for a hard bounce before acceptance', async () => {
 		vi.useFakeTimers();
-		vi.setSystemTime(Date.UTC(2026, 6, 21, 12));
+		vi.setSystemTime(NOW);
 		const t = convexTest(schema, modules);
-		const { acceptedSendId, bouncedSendId } = await t.run(async (ctx) => {
-			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-			const contactId = await ctx.db.insert('contacts', createTestContact());
-			return {
-				acceptedSendId: await ctx.db.insert(
-					'emailSends',
-					createTestEmailSend({ campaignId, contactId, status: 'queued' })
-				),
-				bouncedSendId: await ctx.db.insert(
-					'emailSends',
-					createTestEmailSend({ campaignId, contactId, status: 'queued' })
-				),
-			};
-		});
+		const providerMessageId = 'mta-preaccept-bounce';
+		const sendId = await seedSentSend(t, providerMessageId);
 
-		await t.mutation(internal.delivery.sendLifecycle.transition, {
-			send: { kind: 'campaign', id: acceptedSendId },
-			transition: {
-				to: 'sent',
-				at: Date.now(),
-				providerMessageId: 'mta-accepted',
-				providerType: 'mta',
-			},
+		await dispatch(t, {
+			kind: 'email.bounced',
+			providerMessageId,
+			at: NOW,
+			bounceType: 'hard',
 		});
+		await dispatch(t, accepted(providerMessageId, NOW + 1));
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		let reputation = await t.run((ctx) => summarize(ctx.db, { kind: 'org' }));
-		expect(reputation.totalSent).toBe(1);
+
+		const [send, reputation, gmailVolumes] = await Promise.all([
+			t.run((ctx) => ctx.db.get(sendId)),
+			t.run((ctx) => summarize(ctx.db, { kind: 'org' })),
+			t.run((ctx) => readGmailVolumes(ctx.db, Date.now())),
+		]);
+		expect(send).toMatchObject({ status: 'bounced', bounceType: 'hard' });
+		expect(send?.deliveredAt).toBeUndefined();
 		expect(reputation.totalDelivered).toBe(0);
+		expect(gmailVolumes).toEqual([]);
+	});
 
-		const accepted = await t.mutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
-				providerMessageId: 'mta-accepted',
-				transition: { to: 'delivered', at: Date.now() },
-			}
-		);
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		expect(accepted.ok && accepted.applied).toBe('transitioned');
-		reputation = await t.run((ctx) => summarize(ctx.db, { kind: 'org' }));
-		expect(reputation.totalDelivered).toBe(1);
+	it('does not recreate delivery or telemetry state after the Send is deleted', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = convexTest(schema, modules);
+		const providerMessageId = 'mta-deleted-send';
+		const sendId = await seedSentSend(t, providerMessageId);
+		await t.run((ctx) => ctx.db.delete(sendId));
 
-		const duplicate = await t.mutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
-				providerMessageId: 'mta-accepted',
-				transition: { to: 'delivered', at: Date.now() + 1 },
-			}
-		);
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		expect(duplicate.ok && duplicate.applied).toBe('duplicate');
-		reputation = await t.run((ctx) => summarize(ctx.db, { kind: 'org' }));
-		expect(reputation.totalDelivered).toBe(1);
+		await dispatch(t, accepted(providerMessageId, NOW));
 
-		await t.mutation(internal.delivery.sendLifecycle.transition, {
-			send: { kind: 'campaign', id: bouncedSendId },
-			transition: {
-				to: 'sent',
-				at: Date.now(),
-				providerMessageId: 'mta-bounced-before-acceptance',
-				providerType: 'mta',
-			},
+		expect(await t.run((ctx) => summarize(ctx.db, { kind: 'org' }))).toMatchObject({
+			totalDelivered: 0,
 		});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		await t.mutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
-			providerMessageId: 'mta-bounced-before-acceptance',
-			transition: { to: 'bounced', at: Date.now(), bounceType: 'hard' },
-		});
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
-		reputation = await t.run((ctx) => summarize(ctx.db, { kind: 'org' }));
-		expect(reputation.totalSent).toBe(2);
-		expect(reputation.totalDelivered).toBe(1);
+		expect(await t.run((ctx) => readGmailVolumes(ctx.db, Date.now()))).toEqual([]);
 	});
 });

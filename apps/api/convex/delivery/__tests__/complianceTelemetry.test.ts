@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import {
+	GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS,
 	histogramPercentileUpperBound,
 	latencyBucketIndex,
 	UNSUBSCRIBE_HONOR_WINDOW_MS,
@@ -46,15 +47,18 @@ beforeEach(() => {
 describe('Gmail bulk-sender volume', () => {
 	it('is idempotent by provider message id and keeps primary domains isolated', async () => {
 		const t = convexTest(schema, modules);
+		const acceptedAt = Date.now();
 		for (const primaryDomain of ['alpha.example', 'beta.example']) {
 			await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
 				providerMessageId: `msg-${primaryDomain}`,
 				primaryDomain,
+				acceptedAt,
 			});
 		}
 		await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
 			providerMessageId: 'msg-alpha.example',
 			primaryDomain: 'alpha.example',
+			acceptedAt,
 		});
 
 		const result = await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {});
@@ -66,60 +70,144 @@ describe('Gmail bulk-sender volume', () => {
 		expect(JSON.stringify(result.gmail)).not.toContain('msg-alpha');
 	});
 
-	it('uses trusted ingest time, excludes stale/future buckets, and cleans poisoned rows', async () => {
+	it('uses accepted event time for the 24-hour window and ingest time for retention', async () => {
 		vi.useFakeTimers();
 		const now = Date.UTC(2026, 6, 21, 12, 30);
 		vi.setSystemTime(now);
 		try {
 			const t = convexTest(schema, modules);
-			await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
-				providerMessageId: 'trusted-now',
-				primaryDomain: 'trusted.example',
-			});
+			for (const [providerMessageId, primaryDomain, acceptedAt] of [
+				['current', 'current.example', now],
+				['inside-window', 'inside.example', now - 23 * 3_600_000],
+				['delayed-30h', 'delayed.example', now - 30 * 3_600_000],
+			] as const) {
+				await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
+					providerMessageId,
+					primaryDomain,
+					acceptedAt,
+				});
+			}
 			await t.run(async (ctx) => {
 				const receipt = await ctx.db
 					.query('gmailDeliveryReceipts')
-					.withIndex('by_message_id', (q) => q.eq('providerMessageId', 'trusted-now'))
+					.withIndex('by_message_id', (q) => q.eq('providerMessageId', 'delayed-30h'))
 					.unique();
-				expect(receipt?.observedAt).toBe(now);
-
-				for (const [primaryDomain, hourStart] of [
-					['inside.example', now - 23 * 3_600_000],
-					['stale.example', now - 26 * 3_600_000],
-					['future.example', now + 24 * 3_600_000],
-				] as const) {
-					await ctx.db.insert('gmailVolumeBuckets', {
-						primaryDomain,
-						hourStart: Math.floor(hourStart / 3_600_000) * 3_600_000,
-						shardKey: 0,
-						deliveredCount: 99,
-					});
-				}
-				await ctx.db.insert('gmailDeliveryReceipts', {
-					providerMessageId: 'future-receipt',
-					observedAt: now + 24 * 3_600_000,
+				expect(receipt).toMatchObject({
+					acceptedAt: now - 30 * 3_600_000,
+					ingestedAt: now,
 				});
 			});
 
 			const result = await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {});
 			expect(result.gmail.domains).toEqual([
-				{ primaryDomain: 'inside.example', delivered24h: 99 },
-				{ primaryDomain: 'trusted.example', delivered24h: 1 },
+				{ primaryDomain: 'current.example', delivered24h: 1 },
+				{ primaryDomain: 'inside.example', delivered24h: 1 },
 			]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 
+	it('does not move a delayed delivery into the current window after receipt expiry and replay', async () => {
+		vi.useFakeTimers();
+		const firstIngestAt = Date.UTC(2026, 6, 21, 12, 30);
+		const acceptedAt = firstIngestAt - 30 * 3_600_000;
+		vi.setSystemTime(firstIngestAt);
+		try {
+			const t = convexTest(schema, modules);
+			await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
+				providerMessageId: 'delayed-replay',
+				primaryDomain: 'delayed.example',
+				acceptedAt,
+			});
+			expect(
+				(await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {})).gmail.domains
+			).toEqual([]);
+
+			vi.setSystemTime(firstIngestAt + 49 * 3_600_000);
+			await t.mutation(internal.delivery.complianceTelemetry.cleanupComplianceTelemetry, {});
+			const replay = await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
+				providerMessageId: 'delayed-replay',
+				primaryDomain: 'delayed.example',
+				acceptedAt,
+			});
+			expect(replay).toEqual({ recorded: false, reason: 'stale_accepted_at' });
+			expect(
+				(await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {})).gmail.domains
+			).toEqual([]);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('clamps bounded future skew, rejects larger skew, and cleans poisoned rows', async () => {
+		vi.useFakeTimers();
+		const now = Date.UTC(2026, 6, 21, 12, 30);
+		vi.setSystemTime(now);
+		try {
+			const t = convexTest(schema, modules);
+			const boundary = await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
+				providerMessageId: 'future-boundary',
+				primaryDomain: 'boundary.example',
+				acceptedAt: now + GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS,
+			});
+			expect(boundary).toEqual({ recorded: true });
+			const tooFar = await t.mutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
+				providerMessageId: 'future-rejected',
+				primaryDomain: 'future.example',
+				acceptedAt: now + GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS + 1,
+			});
+			expect(tooFar).toEqual({ recorded: false, reason: 'future_accepted_at' });
+			expect(
+				(await t.query(api.analytics.complianceTelemetry.getComplianceTelemetry, {})).gmail.domains
+			).toEqual([{ primaryDomain: 'boundary.example', delivered24h: 1 }]);
+
+			await t.run(async (ctx) => {
+				await ctx.db.insert('gmailDeliveryReceipts', {
+					providerMessageId: 'legacy-current',
+					observedAt: now,
+				});
+				await ctx.db.insert('gmailDeliveryReceipts', {
+					providerMessageId: 'future-ingest-poison',
+					ingestedAt: now + 24 * 3_600_000,
+				});
+				await ctx.db.insert('gmailDeliveryReceipts', {
+					providerMessageId: 'legacy-future-poison',
+					observedAt: now + 24 * 3_600_000,
+				});
+				await ctx.db.insert('gmailVolumeBuckets', {
+					primaryDomain: 'future-bucket.example',
+					hourStart: now + 24 * 3_600_000,
+					shardKey: 0,
+					deliveredCount: 99,
+				});
+			});
 			await t.mutation(internal.delivery.complianceTelemetry.cleanupComplianceTelemetry, {});
 			await t.run(async (ctx) => {
+				for (const providerMessageId of ['future-ingest-poison', 'legacy-future-poison']) {
+					expect(
+						await ctx.db
+							.query('gmailDeliveryReceipts')
+							.withIndex('by_message_id', (q) => q.eq('providerMessageId', providerMessageId))
+							.unique()
+					).toBeNull();
+				}
+				for (const providerMessageId of ['future-boundary', 'legacy-current']) {
+					expect(
+						await ctx.db
+							.query('gmailDeliveryReceipts')
+							.withIndex('by_message_id', (q) => q.eq('providerMessageId', providerMessageId))
+							.unique()
+					).not.toBeNull();
+				}
 				expect(
 					await ctx.db
-						.query('gmailDeliveryReceipts')
-						.withIndex('by_message_id', (q) => q.eq('providerMessageId', 'future-receipt'))
-						.unique()
-				).toBeNull();
-				const futureBuckets = await ctx.db
-					.query('gmailVolumeBuckets')
-					.withIndex('by_hour', (q) => q.gt('hourStart', now))
-					.collect();
-				expect(futureBuckets).toHaveLength(0);
+						.query('gmailVolumeBuckets')
+						.withIndex('by_domain_hour_shard', (q) =>
+							q.eq('primaryDomain', 'future-bucket.example')
+						)
+						.collect()
+				).toEqual([]);
 			});
 		} finally {
 			vi.useRealTimers();

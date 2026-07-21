@@ -154,8 +154,8 @@ describe('provider-facing FBL spam rate', () => {
 			});
 		}
 		const recovered = await t.run((ctx) => summarizeSpamRate(ctx.db, { kind: 'org' }, now));
-		expect(recovered.cleanDaysBelowHardThreshold).toBe(7);
-		expect(recovered.recoveryEligible).toBe(true);
+		expect(recovered.cleanInternalDaysBelowHardThreshold).toBe(7);
+		expect(recovered.hasRequiredInternalCleanDayEvidence).toBe(true);
 
 		await seedBucket(t, {
 			scope: 'org',
@@ -165,8 +165,8 @@ describe('provider-facing FBL spam rate', () => {
 			totalComplaints: 1,
 		});
 		const boundaryBreak = await t.run((ctx) => summarizeSpamRate(ctx.db, { kind: 'org' }, now));
-		expect(boundaryBreak.cleanDaysBelowHardThreshold).toBe(2);
-		expect(boundaryBreak.recoveryEligible).toBe(false);
+		expect(boundaryBreak.cleanInternalDaysBelowHardThreshold).toBe(2);
+		expect(boundaryBreak.hasRequiredInternalCleanDayEvidence).toBe(false);
 	});
 });
 
