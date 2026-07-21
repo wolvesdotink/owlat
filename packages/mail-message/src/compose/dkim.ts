@@ -70,7 +70,7 @@ export interface DkimSigningKey {
  * (the 2024 bulk-sender rule). Dropping the `-post` entry re-introduces that
  * regression.
  */
-const SIGNED_HEADERS: readonly string[] = [
+export const SIGNED_HEADERS: readonly string[] = [
 	'from',
 	'sender',
 	'reply-to',

@@ -20,6 +20,11 @@ import {
 } from './sendLifecycle/reducers';
 import { applyEffects } from './sendLifecycle/effects';
 import {
+	canAttributeRemoteAcceptance,
+	reduceDeliveryObservation,
+	type DeliveryObservationResult,
+} from './sendLifecycle/deliveryObservation';
+import {
 	contactEmailOf,
 	loadSend,
 	resolveProviderMessageId,
@@ -114,18 +119,46 @@ async function dispatch(
 	const legalEdges = legalEdgesFor(send);
 	const isLegalEdge = legalEdges.has(input.to);
 	const isSelfLoop = from === input.to;
+	const isDeliveryEvidence =
+		input.to === 'delivered' ||
+		input.to === 'opened' ||
+		input.to === 'clicked' ||
+		input.to === 'complained';
+	// A late accepted-delivery event remains attributable when its authenticated
+	// event time precedes a terminal transition. Arrival order never controls the
+	// denominator; persisted terminal timestamps do.
+	const isAttributableRemoteAcceptance =
+		input.to === 'delivered' && canAttributeRemoteAcceptance(send, input.at);
 
 	// Self-loops: `opened` / `clicked` re-fire as counter-only `recorded`
 	// events, and `bounced → bounced` re-fire is routed to the reducer (which
 	// decides duplicate vs. a soft-bounce counter bump vs. a soft → hard
 	// hardening). All other self-loops report `duplicate` via the reducer; the
 	// reducer also detects from === to and returns the duplicate outcome.
-	if (!isLegalEdge && !isSelfLoop) {
+	if (!isLegalEdge && !isSelfLoop && !isAttributableRemoteAcceptance) {
 		// Terminal states get a distinct reason for observability.
 		if (legalEdges.size === 0) {
 			return { ok: false, reason: 'terminal', from, to: input.to };
 		}
 		return { ok: false, reason: 'illegal_edge', from, to: input.to };
+	}
+
+	let deliveryObservation: DeliveryObservationResult = {
+		patch: {},
+		effects: [],
+		isNewObservation: false,
+	};
+	let deliverySenderDomain: string | undefined;
+	if (isDeliveryEvidence && send.deliveredAt === undefined) {
+		deliverySenderDomain = await senderDomainFor(ctx, send, ref);
+		const recipientContact = await resolveRecipientContact(ctx, send);
+		deliveryObservation = reduceDeliveryObservation(
+			send,
+			input.at,
+			ref,
+			deliverySenderDomain,
+			recipientContact
+		);
 	}
 
 	let result: ReducerResult;
@@ -139,9 +172,7 @@ async function dispatch(
 			result = reduceFailed(send, input, ref);
 			break;
 		case 'delivered': {
-			const senderDomain = await senderDomainFor(ctx, send, ref);
-			const recipientContact = await resolveRecipientContact(ctx, send);
-			result = reduceDelivered(send, input, ref, senderDomain, recipientContact);
+			result = reduceDelivered(send, input);
 			break;
 		}
 		case 'opened':
@@ -164,11 +195,21 @@ async function dispatch(
 			break;
 		}
 		case 'complained': {
-			const senderDomain = await senderDomainFor(ctx, send, ref);
+			const senderDomain = deliverySenderDomain ?? (await senderDomainFor(ctx, send, ref));
 			result = reduceComplained(send, input, ref, contactEmailOf(send), senderDomain);
 			break;
 		}
 	}
+
+	result = {
+		...result,
+		patch: { ...deliveryObservation.patch, ...result.patch },
+		effects: [...deliveryObservation.effects, ...result.effects],
+		applied:
+			deliveryObservation.isNewObservation && result.applied === 'duplicate'
+				? 'recorded'
+				: result.applied,
+	};
 
 	if (Object.keys(result.patch).length > 0) {
 		// Per-kind narrowing for the patch call — Convex's patch signature is

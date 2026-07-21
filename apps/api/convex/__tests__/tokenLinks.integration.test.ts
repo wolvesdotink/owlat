@@ -41,8 +41,8 @@ const modules = Object.fromEntries(
 			!p.includes('knowledgeExtraction') &&
 			!p.includes('semanticFileProcessing') &&
 			!p.includes('visualizationAgent') &&
-			!p.includes('llmProvider'),
-	),
+			!p.includes('llmProvider')
+	)
 );
 
 function setupTest() {
@@ -84,7 +84,7 @@ async function hmacBase64Url(secret: string, data: string): Promise<string> {
 		new TextEncoder().encode(secret),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
-		['sign'],
+		['sign']
 	);
 	const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(data));
 	return bytesToBase64Url(new Uint8Array(mac));
@@ -115,16 +115,16 @@ async function makeClickPath(emailSendId: string, href: string): Promise<string>
 
 async function seedContact(
 	t: ReturnType<typeof convexTest>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'contacts'>> {
 	return await t.run(async (ctx) =>
-		ctx.db.insert('contacts', createTestContact(overrides) as never),
+		ctx.db.insert('contacts', createTestContact(overrides) as never)
 	);
 }
 
 async function seedEmailSend(
 	t: ReturnType<typeof convexTest>,
-	overrides: Record<string, unknown> = {},
+	overrides: Record<string, unknown> = {}
 ): Promise<Id<'emailSends'>> {
 	const now = Date.now();
 	return await t.run(async (ctx) => {
@@ -338,14 +338,11 @@ describe('handleOneClickUnsubscribe (POST /unsub/...)', () => {
 async function seedTopicMembership(
 	t: ReturnType<typeof convexTest>,
 	contactId: Id<'contacts'>,
-	topicOverrides: Record<string, unknown> = {},
+	topicOverrides: Record<string, unknown> = {}
 ): Promise<Id<'topics'>> {
 	const now = Date.now();
 	return await t.run(async (ctx) => {
-		const topicId = await ctx.db.insert(
-			'topics',
-			createTestTopic(topicOverrides) as never,
-		);
+		const topicId = await ctx.db.insert('topics', createTestTopic(topicOverrides) as never);
 		await ctx.db.insert('contactTopics', {
 			contactId,
 			topicId,
@@ -358,18 +355,97 @@ async function seedTopicMembership(
 /** Count the contact's current topic memberships. */
 async function countMemberships(
 	t: ReturnType<typeof setupTest>,
-	contactId: Id<'contacts'>,
+	contactId: Id<'contacts'>
 ): Promise<number> {
 	const rows = await t.run(async (ctx) =>
 		ctx.db
 			.query('contactTopics')
 			.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-			.collect(),
+			.collect()
 	);
 	return rows.length;
 }
 
+async function unsubscribeLatencySampleCount(t: ReturnType<typeof setupTest>): Promise<number> {
+	return await t.run(async (ctx) => {
+		const rows = await ctx.db.query('unsubscribeLatencyBuckets').collect();
+		return rows.reduce((total, row) => total + row.totalSamples, 0);
+	});
+}
+
 describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () => {
+	it('records latency only for valid successful/idempotent operations', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t);
+		await seedTopicMembership(t, contactId, { name: 'Telemetry' });
+		const token = await makeUnsubToken(contactId);
+
+		const first = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(first.status).toBe(200);
+		expect(await unsubscribeLatencySampleCount(t)).toBe(1);
+
+		const idempotentRetry = await t.fetch(`/unsub/${encodeURIComponent(token)}`, {
+			method: 'POST',
+		});
+		expect(idempotentRetry.status).toBe(200);
+		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
+
+		const invalid = await t.fetch('/unsub/not-a-real-token', { method: 'POST' });
+		expect(invalid.status).toBe(400);
+		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
+
+		const expiredToken = await makeUnsubToken(contactId, Date.now() - 91 * 24 * 60 * 60 * 1000);
+		const expired = await t.fetch(`/unsub/${encodeURIComponent(expiredToken)}`, { method: 'POST' });
+		expect(expired.status).toBe(400);
+		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
+
+		const deletedContactId = await seedContact(t);
+		const missingContactToken = await makeUnsubToken(deletedContactId);
+		await t.run(async (ctx) => ctx.db.delete(deletedContactId));
+		const missingContact = await t.fetch(`/unsub/${encodeURIComponent(missingContactToken)}`, {
+			method: 'POST',
+		});
+		expect(missingContact.status).toBe(404);
+		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
+
+		// A correctly signed ID for the wrong table passes the cryptographic
+		// boundary but fails the contacts mutation validator. The public shell
+		// converts that processing failure to 500, and it must not become a
+		// business-latency sample.
+		const topicId = await t.run(async (ctx) =>
+			ctx.db.insert('topics', createTestTopic({ name: 'Wrong-table token' }) as never)
+		);
+		const wrongTableToken = await makeUnsubToken(topicId);
+		const processingError = await t.fetch(`/unsub/${encodeURIComponent(wrongTableToken)}`, {
+			method: 'POST',
+		});
+		expect(processingError.status).toBe(500);
+		expect(await unsubscribeLatencySampleCount(t)).toBe(2);
+	});
+
+	it('keeps a successful unsubscribe response when latency telemetry fails', async () => {
+		const t = setupTest();
+		const contactId = await seedContact(t);
+		await seedTopicMembership(t, contactId, { name: 'Fail-open telemetry' });
+		const periodStart = new Date().setUTCHours(0, 0, 0, 0);
+		await t.run(async (ctx) => {
+			for (let index = 0; index < 2; index++) {
+				await ctx.db.insert('unsubscribeLatencyBuckets', {
+					periodStart,
+					bucketCounts: Array(11).fill(0),
+					totalSamples: 0,
+					lastRecordedAt: Date.now(),
+				});
+			}
+		});
+
+		const token = await makeUnsubToken(contactId);
+		const response = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(response.status).toBe(200);
+		expect((await response.json()) as { ok: boolean }).toMatchObject({ ok: true });
+		expect(await countMemberships(t, contactId)).toBe(0);
+	});
+
 	it('valid token removes the contactTopics rows and returns 200 {ok:true} with NO auth headers', async () => {
 		const t = setupTest();
 		const contactId = await seedContact(t);
@@ -526,11 +602,9 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		const before = await t.run(async (ctx) =>
 			ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipients, {
 				audience: { kind: 'topic' as const, topicId },
-			}),
+			})
 		);
-		expect(before.map((r: { email: string }) => r.email)).toContain(
-			'audience-test@example.com',
-		);
+		expect(before.map((r: { email: string }) => r.email)).toContain('audience-test@example.com');
 
 		// One-click unsubscribe.
 		const token = await makeUnsubToken(contactId);
@@ -541,7 +615,7 @@ describe('handleOneClickUnsubscribe — RFC 8058 regression lock (PR-20)', () =>
 		const after = await t.run(async (ctx) =>
 			ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipients, {
 				audience: { kind: 'topic' as const, topicId },
-			}),
+			})
 		);
 		expect(after).toHaveLength(0);
 	});
@@ -654,10 +728,7 @@ describe('updatePreferences (POST /prefs/update/...)', () => {
 		const now = Date.now();
 		await t.run(async (ctx) => {
 			for (const name of ['Alpha', 'Beta']) {
-				const topicId = await ctx.db.insert(
-					'topics',
-					createTestTopic({ name }) as never,
-				);
+				const topicId = await ctx.db.insert('topics', createTestTopic({ name }) as never);
 				await ctx.db.insert('contactTopics', {
 					contactId,
 					topicId,
@@ -680,7 +751,7 @@ describe('updatePreferences (POST /prefs/update/...)', () => {
 			ctx.db
 				.query('contactTopics')
 				.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-				.collect(),
+				.collect()
 		);
 		expect(remaining).toHaveLength(0);
 	});
