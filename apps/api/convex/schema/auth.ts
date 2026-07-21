@@ -213,6 +213,7 @@ export const authTables = {
 		.index('by_action', ['action'])
 		.index('by_resource', ['resource'])
 		.index('by_created_at', ['createdAt'])
+		.index('by_organization_id_and_created_at', ['organizationId', 'createdAt'])
 		.index('by_organization_id_and_plugin_id_and_created_at', [
 			'organizationId',
 			'pluginId',

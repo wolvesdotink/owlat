@@ -174,7 +174,7 @@ function bindBundledPluginLlm(
 				assertExecutionActive(executionSignal);
 				await ctx.runMutation(internal.plugins.llmAccounting.settleSuccess, {
 					reservationId,
-					modelUsed: dispatched.result.modelUsed,
+					modelUsed: dispatched.providerModelUsed,
 					tokenUsage: dispatched.result.tokenUsage,
 					attempts: dispatched.attempts,
 					actorMode: actorPolicy.kind,
@@ -188,7 +188,7 @@ function bindBundledPluginLlm(
 			}
 			return Object.freeze({
 				text: dispatched.result.text,
-				modelUsed: dispatched.result.modelUsed,
+				modelUsed: dispatched.providerModelUsed,
 				usage: dispatched.result.tokenUsage,
 			});
 		},

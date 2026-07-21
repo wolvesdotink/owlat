@@ -20,7 +20,6 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*"
 	},
 	"devDependencies": {

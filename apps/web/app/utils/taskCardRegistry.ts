@@ -7,7 +7,7 @@
  * construction and can never be removed, reordered ahead of each other, or have
  * their metadata overwritten — so the existing queue ordering and time-estimate
  * behavior is preserved exactly. A statically-composed plugin may APPEND its own
- * `plugin.*`-namespaced kind (with a lazy card component and an optional gating
+ * `plugin.*`-namespaced kind (with a lazy card component and its owning plugin
  * flag); it can never displace a built-in, redefine one, or register a second
  * card for a kind that already exists.
  *
@@ -17,9 +17,10 @@
  * fallback placeholder rather than crashing or dropping the queue item.
  *
  * SECURITY. A plugin's `label` is untrusted, manifest-sourced text: it is
- * coerced to a string, trimmed, and length-clamped here and only ever rendered
- * as a text node (never `v-html`). `estimateSeconds` is clamped to a sane range
- * so a plugin cannot poison the whole flow's time estimate.
+ * coerced to a string, stripped of Unicode control/format characters, trimmed,
+ * and length-clamped here and only ever rendered as a text node (never
+ * `v-html`). `estimateSeconds` is clamped to a sane range so a plugin cannot
+ * poison the whole flow's time estimate.
  */
 
 import type { Component } from 'vue';
@@ -78,9 +79,9 @@ export const UNKNOWN_TASK_CARD_RANK = Number.MAX_SAFE_INTEGER;
 
 /** Built-in metadata, kept identical to the pre-registry constants. */
 const BUILT_IN_DEFINITIONS: readonly TaskCardKindDefinition[] = [
-	{ kind: 'question', rank: 0, estimateSeconds: 45, label: 'Question' },
-	{ kind: 'draft_review', rank: 1, estimateSeconds: 60, label: 'Draft review' },
-	{ kind: 'reply', rank: 2, estimateSeconds: 120, label: 'Reply' },
+	Object.freeze({ kind: 'question', rank: 0, estimateSeconds: 45, label: 'Question' }),
+	Object.freeze({ kind: 'draft_review', rank: 1, estimateSeconds: 60, label: 'Draft review' }),
+	Object.freeze({ kind: 'reply', rank: 2, estimateSeconds: 120, label: 'Reply' }),
 ];
 
 /** A plugin's contribution before the registry assigns its rank. */
@@ -110,6 +111,7 @@ function clampEstimate(seconds: number | undefined): number {
 function clampLabel(label: string): string {
 	return String(label ?? '')
 		.replace(/\s+/g, ' ')
+		.replace(/[\p{Cc}\p{Cf}]/gu, '')
 		.trim()
 		.slice(0, MAX_LABEL_LENGTH);
 }
@@ -118,6 +120,7 @@ export class TaskCardRegistry {
 	private readonly byKind = new Map<string, TaskCardKindDefinition>();
 	/** Monotonic counter so plugin ranks are stable in registration order. */
 	private nextPluginRank = BUILT_IN_TASK_FLOW_KINDS.length;
+	private frozen = false;
 
 	constructor() {
 		for (const def of BUILT_IN_DEFINITIONS) this.byKind.set(def.kind, def);
@@ -130,6 +133,7 @@ export class TaskCardRegistry {
 	 * Metadata is clamped before it is stored.
 	 */
 	register(registration: TaskCardKindRegistration): TaskCardKindDefinition {
+		if (this.frozen) throw new Error('Task-card registry is frozen');
 		const { kind } = registration;
 		if (isBuiltInTaskFlowKind(kind)) {
 			throw new Error(`Task-card kind "${kind}" is built in and cannot be overridden`);
@@ -143,6 +147,13 @@ export class TaskCardRegistry {
 		if (typeof registration.load !== 'function') {
 			throw new Error(`Task-card kind "${kind}" must supply a card component loader`);
 		}
+		const pluginId = kind.split('.')[1]!;
+		const expectedFlag = `plugin.${pluginId}`;
+		if (registration.flag !== expectedFlag) {
+			throw new Error(
+				`Task-card kind "${kind}" must be gated by its owning plugin flag "${expectedFlag}"`
+			);
+		}
 		const definition: TaskCardKindDefinition = Object.freeze({
 			kind,
 			rank: this.nextPluginRank++,
@@ -153,6 +164,16 @@ export class TaskCardRegistry {
 		});
 		this.byKind.set(kind, definition);
 		return definition;
+	}
+
+	/** Latch composition shut after boot; no late module can add a card kind. */
+	freeze(): this {
+		this.frozen = true;
+		return this;
+	}
+
+	isFrozen(): boolean {
+		return this.frozen;
 	}
 
 	/** The definition for a kind, or `undefined` if it was never registered. */
@@ -172,7 +193,7 @@ export class TaskCardRegistry {
 
 	/** Every registered kind in rank order (built-ins first, plugins appended). */
 	list(): readonly TaskCardKindDefinition[] {
-		return [...this.byKind.values()].sort((a, b) => a.rank - b.rank);
+		return Object.freeze([...this.byKind.values()].sort((a, b) => a.rank - b.rank));
 	}
 
 	/**
@@ -183,9 +204,8 @@ export class TaskCardRegistry {
 	 *   - a registered, enabled plugin kind → `plugin` (render its card);
 	 *   - anything unregistered → `unknown`.
 	 *
-	 * The predicate defaults to fail-closed (`() => false`): a gated kind with no
-	 * predicate resolves to `disabled`, never enabled. Ungated kinds (no `flag`)
-	 * are unaffected — the predicate is never consulted for them.
+	 * The predicate defaults to fail-closed (`() => false`): a plugin kind with no
+	 * predicate resolves to `disabled`, never enabled.
 	 */
 	resolve(
 		kind: TaskFlowKind,
@@ -206,4 +226,4 @@ export function createTaskCardRegistry(): TaskCardRegistry {
 }
 
 /** The app-wide registry the focused flows and the card dispatcher read from. */
-export const taskCardRegistry = createTaskCardRegistry();
+export const taskCardRegistry = createTaskCardRegistry().freeze();

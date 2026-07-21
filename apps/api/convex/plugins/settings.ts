@@ -180,6 +180,7 @@ export const setPluginSettings = authedMutation({
 		// can never leak into the audit trail.
 		await recordAuditLog(ctx, {
 			userId: session.userId,
+			organizationId: session.activeOrganizationId,
 			pluginId,
 			action: 'settings.updated',
 			resource: 'settings',
@@ -215,6 +216,7 @@ export const resetPluginSettings = authedMutation({
 			await ctx.db.patch(existing._id, { pluginSettings: nextAll, updatedAt: Date.now() });
 			await recordAuditLog(ctx, {
 				userId: session.userId,
+				organizationId: session.activeOrganizationId,
 				pluginId,
 				action: 'settings.updated',
 				resource: 'settings',

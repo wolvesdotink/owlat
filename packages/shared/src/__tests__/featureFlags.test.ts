@@ -104,7 +104,7 @@ describe('featureFlags — applyToggle', () => {
 			inbox: true,
 			'ai.autonomy': true,
 		};
-		const { next, cascaded } = applyToggle(stored, 'inbox', false);
+		const { next, cascaded } = applyToggle(stored, 'inbox', false, FEATURE_FLAGS);
 		expect(next.inbox).toBe(false);
 		expect(next['ai.agent']).toBe(false);
 		expect(next['ai.autonomy']).toBe(false);
@@ -121,7 +121,7 @@ describe('featureFlags — applyToggle', () => {
 			'ai.visualizations': true,
 			inbox: true,
 		};
-		const { next } = applyToggle(stored, 'ai', false);
+		const { next } = applyToggle(stored, 'ai', false, FEATURE_FLAGS);
 		expect(next.ai).toBe(false);
 		expect(next['ai.agent']).toBe(false);
 		expect(next['ai.autonomy']).toBe(false);
@@ -131,7 +131,7 @@ describe('featureFlags — applyToggle', () => {
 
 	it('cascades on when turning on a child auto-enables required parents', () => {
 		const stored: FeatureFlagState = { ai: false, 'ai.agent': false, inbox: false };
-		const { next, cascaded } = applyToggle(stored, 'ai.agent', true);
+		const { next, cascaded } = applyToggle(stored, 'ai.agent', true, FEATURE_FLAGS);
 		expect(next['ai.agent']).toBe(true);
 		expect(next.ai).toBe(true);
 		expect(next.inbox).toBe(true);
@@ -140,7 +140,7 @@ describe('featureFlags — applyToggle', () => {
 
 	it('toggling campaigns.archive does not cascade off campaigns', () => {
 		const stored: FeatureFlagState = { campaigns: true, 'campaigns.archive': true };
-		const { next, cascaded } = applyToggle(stored, 'campaigns.archive', false);
+		const { next, cascaded } = applyToggle(stored, 'campaigns.archive', false, FEATURE_FLAGS);
 		expect(next.campaigns).toBe(true);
 		expect(next['campaigns.archive']).toBe(false);
 		expect(cascaded).toEqual([]);
@@ -148,7 +148,7 @@ describe('featureFlags — applyToggle', () => {
 
 	it('turning off campaigns cascades off campaigns.archive', () => {
 		const stored: FeatureFlagState = { campaigns: true, 'campaigns.archive': true };
-		const { next, cascaded } = applyToggle(stored, 'campaigns', false);
+		const { next, cascaded } = applyToggle(stored, 'campaigns', false, FEATURE_FLAGS);
 		expect(next.campaigns).toBe(false);
 		expect(next['campaigns.archive']).toBe(false);
 		expect(cascaded).toContain('campaigns.archive');
@@ -269,6 +269,20 @@ describe('featureFlags — plugin namespace', () => {
 		expect(resolveFlags({ [defaultOn.key]: false }, { registry })[defaultOn.key]).toBe(false);
 		const { next } = applyToggle({}, defaultOn.key, false, registry);
 		expect(next[defaultOn.key]).toBe(false);
+	});
+
+	it('preserves plugin overrides when a core flag is toggled through the composed registry', () => {
+		const registry = createFeatureFlagRegistry([pluginFlag]);
+		const stored: FeatureFlagState = {
+			ai: true,
+			'ai.autonomy': true,
+			[pluginFlag.key]: false,
+		};
+
+		const { next } = applyToggle(stored, 'ai.autonomy', false, registry);
+
+		expect(next['ai.autonomy']).toBe(false);
+		expect(next[pluginFlag.key]).toBe(false);
 	});
 
 	it('includes plugin env requirements only while the plugin resolves on', () => {
@@ -490,7 +504,7 @@ describe('featureFlags — plugin namespace', () => {
 		'rejects inherited object key %s without mutating the input',
 		(key) => {
 			const stored: FeatureFlagState = { inbox: true };
-			expect(() => applyToggle(stored, key as FeatureFlagKey, true)).toThrow(
+			expect(() => applyToggle(stored, key as FeatureFlagKey, true, FEATURE_FLAGS)).toThrow(
 				`Unknown feature flag: ${key}`
 			);
 			expect(stored).toEqual({ inbox: true });
@@ -574,7 +588,7 @@ describe('featureFlags — feature packs', () => {
 
 	it('applyPackToggle off disables every pack member', () => {
 		const stored: FeatureFlagState = { inbox: true, chat: true, postbox: true };
-		const { next } = applyPackToggle(stored, 'emailClient', false);
+		const { next } = applyPackToggle(stored, 'emailClient', false, FEATURE_FLAGS);
 		expect(next.inbox).toBe(false);
 		expect(next.chat).toBe(false);
 		expect(next.postbox).toBe(false);
@@ -582,7 +596,7 @@ describe('featureFlags — feature packs', () => {
 
 	it('applyPackToggle on enables every pack member', () => {
 		const stored: FeatureFlagState = { inbox: false, chat: false, postbox: false };
-		const { next } = applyPackToggle(stored, 'emailClient', true);
+		const { next } = applyPackToggle(stored, 'emailClient', true, FEATURE_FLAGS);
 		expect(next.inbox).toBe(true);
 		expect(next.chat).toBe(true);
 		expect(next.postbox).toBe(true);
@@ -590,7 +604,7 @@ describe('featureFlags — feature packs', () => {
 
 	it('applyPackToggle for marketing on flips campaigns/automations/transactional all on', () => {
 		const stored: FeatureFlagState = { campaigns: false, automations: false, transactional: false };
-		const { next } = applyPackToggle(stored, 'marketing', true);
+		const { next } = applyPackToggle(stored, 'marketing', true, FEATURE_FLAGS);
 		expect(next.campaigns).toBe(true);
 		expect(next.automations).toBe(true);
 		expect(next.transactional).toBe(true);
@@ -606,7 +620,7 @@ describe('featureFlags — feature packs', () => {
 			inbox: true,
 			'inbox.codeTasks': true,
 		};
-		const { next, cascaded } = applyPackToggle(stored, 'ai', false);
+		const { next, cascaded } = applyPackToggle(stored, 'ai', false, FEATURE_FLAGS);
 		expect(next.ai).toBe(false);
 		expect(next['ai.agent']).toBe(false);
 		expect(next['inbox.codeTasks']).toBe(false);
@@ -617,7 +631,7 @@ describe('featureFlags — feature packs', () => {
 		// Turning on chat/inbox/postbox has no upstream deps, but the cascade
 		// machinery should still produce a consistent state.
 		const stored: FeatureFlagState = { inbox: false, chat: false, postbox: false };
-		const { next } = applyPackToggle(stored, 'emailClient', true);
+		const { next } = applyPackToggle(stored, 'emailClient', true, FEATURE_FLAGS);
 		expect(resolveFlags(next).inbox).toBe(true);
 		expect(resolveFlags(next).chat).toBe(true);
 		expect(resolveFlags(next).postbox).toBe(true);
@@ -630,8 +644,8 @@ describe('featureFlags — feature packs', () => {
 			chat: false,
 			postbox: true,
 		};
-		const turnedOn = applyPackToggle(stored, 'emailClient', true);
-		const turnedOff = applyPackToggle(turnedOn.next, 'emailClient', false);
+		const turnedOn = applyPackToggle(stored, 'emailClient', true, FEATURE_FLAGS);
+		const turnedOff = applyPackToggle(turnedOn.next, 'emailClient', false, FEATURE_FLAGS);
 		expect(turnedOff.next.campaigns).toBe(true);
 	});
 });
@@ -668,7 +682,7 @@ describe('featureFlags — knowledge-graph sub-flags', () => {
 			'ai.knowledge.graphRetrieval': true,
 			'ai.knowledge.analytics': true,
 		};
-		const { next } = applyToggle(stored, 'ai', false);
+		const { next } = applyToggle(stored, 'ai', false, FEATURE_FLAGS);
 		for (const key of KG_CHILDREN) {
 			expect(next[key]).toBe(false);
 		}

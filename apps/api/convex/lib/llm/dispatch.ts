@@ -216,6 +216,8 @@ export async function runLlmText(opts: LlmTextOptions): Promise<LlmTextResult> {
 export interface LlmTextAttemptResult {
 	readonly result: LlmTextResult;
 	readonly attempts: number;
+	/** Raw, validated provider echo for hard-budget settlement. */
+	readonly providerModelUsed: string | undefined;
 }
 
 /** Dispatch metadata used by hard-budget callers without changing core results. */
@@ -237,12 +239,17 @@ export async function runLlmTextWithAttemptMetadata(
 		opts.abortSignal
 	);
 	const { text, usage } = dispatched.value;
+	const providerModelUsed = providerModelIdentity.read();
 	return {
 		attempts: dispatched.attempts,
+		providerModelUsed,
 		result: {
 			text,
 			tokenUsage: normalizeUsage(usage),
-			modelUsed: providerModelIdentity.read(),
+			// Core attribution follows the requested model id, matching the object,
+			// tools and stream dispatch paths. Provider echoes remain separate so
+			// budget enforcement can detect reroutes without blanking core usage.
+			modelUsed: typeof opts.model === 'string' ? opts.model : opts.model.modelId,
 		},
 	};
 }

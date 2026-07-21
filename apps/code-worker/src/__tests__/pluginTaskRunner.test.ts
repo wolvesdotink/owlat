@@ -87,6 +87,11 @@ describe('resolveJobCommand — only host-registered, well-formed kinds run', ()
 		expect(resolveJobCommand('plugin.lab.exfiltrate', '{}')).toBeNull();
 	});
 
+	it('does not resolve job kinds through the registry prototype chain', () => {
+		expect(resolveJobCommand('plugin.lab.constructor', '{}')).toBeNull();
+		expect(resolveJobCommand('plugin.lab.to-string', '{}')).toBeNull();
+	});
+
 	it.each([
 		'selftest', // not namespaced
 		'plugin.lab.', // empty local id

@@ -17,11 +17,7 @@
  *     OBJECT. The gate fails CLOSED toward holding in every degraded case.
  */
 
-import {
-	createGateObjection,
-	NO_GATE_OBJECTION,
-	type RestrictOnlyGateResult,
-} from '@owlat/plugin-host';
+import type { PluginAutonomyGateResult } from '@owlat/plugin-kit';
 import type { ApprovalRepository } from './approvalRepository';
 import { createApprovalRequest, evaluateApproval } from './approvalStore';
 import { readOwnProperty, readOwnString } from './objectAccess';
@@ -58,12 +54,20 @@ const HOLD_REASONS = Object.freeze({
 	error: 'The Slack approvals gate could not be evaluated; holding for human review.',
 });
 
+const NO_GATE_OBJECTION = Object.freeze({
+	outcome: 'no-objection',
+} as const satisfies PluginAutonomyGateResult);
+
+function createGateObjection(reason: string): PluginAutonomyGateResult {
+	return Object.freeze({ outcome: 'objection' as const, reason });
+}
+
 /**
  * Decide the gate for one draft. Always resolves to a restrict-only verdict and
  * never throws — an internal fault becomes an objection (hold), so an exception
  * can never be mistaken for approval.
  */
-export async function evaluateGate(input: EvaluateGateInput): Promise<RestrictOnlyGateResult> {
+export async function evaluateGate(input: EvaluateGateInput): Promise<PluginAutonomyGateResult> {
 	try {
 		const messageId = readOwnString(input.payload, 'messageId');
 		if (messageId === undefined) {

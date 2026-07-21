@@ -104,7 +104,7 @@ describe('runLlmText input discriminator', () => {
 		expect(result).toEqual({
 			text: 'hello',
 			tokenUsage: { promptTokens: 11, completionTokens: 22, totalTokens: 33 },
-			modelUsed: undefined,
+			modelUsed: 'fake-model-id',
 		});
 	});
 
@@ -129,7 +129,7 @@ describe('runLlmText input discriminator', () => {
 			completionTokens: 10,
 			totalTokens: 15,
 		});
-		expect(result.modelUsed).toBeUndefined();
+		expect(result.modelUsed).toBe('fake-model-id');
 	});
 
 	it('passes `{ prompt, system }` through to the SDK', async () => {
@@ -150,10 +150,10 @@ describe('runLlmText input discriminator', () => {
 		expect(sdkArgs).not.toHaveProperty('messages');
 		expect(result.text).toBe('ok');
 		expect(result.tokenUsage).toBeUndefined();
-		expect(result.modelUsed).toBeUndefined();
+		expect(result.modelUsed).toBe('fake-model-id');
 	});
 
-	it('does not invent provider identity for a string model reference', async () => {
+	it('retains a requested string model reference for core attribution', async () => {
 		generateTextMock.mockResolvedValueOnce({
 			text: '',
 			usage: undefined,
@@ -164,7 +164,7 @@ describe('runLlmText input discriminator', () => {
 			prompt: 'hi',
 		});
 
-		expect(result.modelUsed).toBeUndefined();
+		expect(result.modelUsed).toBe('string-model-id');
 	});
 });
 
@@ -259,6 +259,7 @@ describe('runLlmText retry behavior', () => {
 			maxOutputTokens: 2048,
 		});
 		expect(result.attempts).toBe(2);
+		expect(result.providerModelUsed).toBeUndefined();
 		expect(generateTextMock.mock.calls[1]?.[0]).toMatchObject({ maxOutputTokens: 2048 });
 	}, 10_000);
 

@@ -331,7 +331,6 @@
       "name": "@owlat/example-slack-approvals",
       "version": "0.1.0",
       "dependencies": {
-        "@owlat/plugin-host": "workspace:*",
         "@owlat/plugin-kit": "workspace:*",
       },
       "devDependencies": {

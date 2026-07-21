@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { applyRestrictOnlyGateResult, type GateDecision } from '@owlat/plugin-host';
 import { createInMemoryApprovalRepository, type ApprovalRepository } from '../approvalRepository';
 import { createApprovalRequest, recordVote, type ApprovalRequest } from '../approvalStore';
 import { hmacSha256Hex, sha256Hex } from '../crypto';
@@ -210,14 +209,10 @@ describe('restrict-only composition (Slack cannot force approval or bypass core 
 		});
 		expect(verdict).toEqual({ outcome: 'no-objection' });
 
-		const coreBlocked: GateDecision = Object.freeze({
-			allowed: false,
-			objections: Object.freeze(['core: sender not warmed up']),
-		});
-		const composed = applyRestrictOnlyGateResult(coreBlocked, verdict);
-		// The approved Slack quorum does NOT flip the core block to allowed.
-		expect(composed.allowed).toBe(false);
-		expect(composed.objections).toEqual(['core: sender not warmed up']);
+		// The public plugin-kit result has no approval/unblock/send field. Owlat's
+		// private host composition remains solely responsible for core decisions.
+		expect(verdict).not.toHaveProperty('allowed');
+		expect(verdict).not.toHaveProperty('send');
 	});
 
 	it('can add a hold to an otherwise-allowed decision', async () => {
@@ -242,15 +237,8 @@ describe('restrict-only composition (Slack cannot force approval or bypass core 
 		});
 		expect(verdict.outcome).toBe('objection');
 
-		const coreAllowed: GateDecision = { allowed: true, objections: [] as const };
-		const composed = applyRestrictOnlyGateResult(coreAllowed, verdict);
-		expect(composed.allowed).toBe(false);
-	});
-
-	it('leaves an allowed decision allowed once quorum is met', async () => {
-		const coreAllowed: GateDecision = { allowed: true, objections: [] as const };
-		const composed = applyRestrictOnlyGateResult(coreAllowed, { outcome: 'no-objection' });
-		expect(composed.allowed).toBe(true);
+		expect(verdict).not.toHaveProperty('allowed');
+		expect(verdict).not.toHaveProperty('send');
 	});
 });
 

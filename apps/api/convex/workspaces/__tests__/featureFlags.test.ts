@@ -56,10 +56,12 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn(async () => ({
 			userId: 'test-user',
 			role: mockRole,
+			activeOrganizationId: 'tenant-a',
 		})),
 		requireAdminContext: vi.fn(async () => ({
 			userId: 'test-user',
 			role: mockRole,
+			activeOrganizationId: 'tenant-a',
 		})),
 	};
 });
@@ -333,6 +335,8 @@ describe('organizations.featureFlags.setFeatureFlag — bundled plugins', () => 
 				.withIndex('by_action', (query) => query.eq('action', 'settings.updated'))
 				.first();
 			expect(audit?.resourceId).toBe(settings?._id);
+			expect(audit?.organizationId).toBe('tenant-a');
+			expect(audit?.pluginId).toBe('policy-pack');
 			expect(audit?.detailsBlob).toContain('approvedCapabilities');
 		});
 

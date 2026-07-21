@@ -19,6 +19,7 @@ import {
 	resolveFlags,
 	needsDeliveryProvider,
 	applyPackToggle,
+	FEATURE_FLAGS,
 	ALL_FEATURE_FLAG_KEYS,
 	type CoreFeatureFlagKey,
 	ALL_FEATURE_PACK_KEYS,
@@ -281,7 +282,7 @@ export function resolveSetupFlags(config: SetupConfig): Record<FeatureFlagKey, b
 	let state: FeatureFlagState = getDefaultFlags({ hosted });
 
 	for (const [pack, on] of Object.entries(config.features.packs ?? {})) {
-		state = applyPackToggle(state, pack as FeaturePackKey, on).next;
+		state = applyPackToggle(state, pack as FeaturePackKey, on, FEATURE_FLAGS).next;
 	}
 	if (config.features.flags) {
 		state = { ...state, ...config.features.flags };
