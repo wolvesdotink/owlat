@@ -66,6 +66,18 @@ describe('loadConfig', () => {
 		expect(config.redisUrl).toBe('redis://localhost:6379');
 	});
 
+	it('defaults distributed pool coordination to the rolling-upgrade-safe legacy protocol', () => {
+		delete process.env.SMTP_POOL_COORDINATION_PROTOCOL;
+		expect(loadConfig().smtpPoolCoordinationProtocol).toBe('legacy-v0');
+	});
+
+	it('accepts leases-v1 explicitly and rejects unknown pool protocols', () => {
+		process.env.SMTP_POOL_COORDINATION_PROTOCOL = 'leases-v1';
+		expect(loadConfig().smtpPoolCoordinationProtocol).toBe('leases-v1');
+		process.env.SMTP_POOL_COORDINATION_PROTOCOL = 'leases-v2';
+		expect(() => loadConfig()).toThrow('SMTP_POOL_COORDINATION_PROTOCOL');
+	});
+
 	it('parses IP_POOLS_TRANSACTIONAL as comma-separated', () => {
 		process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1, 10.0.0.2, 10.0.0.3';
 

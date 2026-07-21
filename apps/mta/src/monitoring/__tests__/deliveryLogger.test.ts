@@ -60,6 +60,28 @@ describe.skipIf(!STREAMS_SUPPORTED)('deliveryLogger', () => {
 			const result = await queryDeliveryLogs(redis, {});
 			expect(result.entries.length).toBeGreaterThanOrEqual(2);
 		});
+
+		it('round-trips provider feedback annotations for the dashboard API', async () => {
+			const redis = new Redis();
+			await logDeliveryEvent(
+				redis,
+				createEvent({
+					messageId: 'provider-feedback',
+					status: 'deferred',
+					provider: 'gmail',
+					category: 'gmail_tls_required',
+					annotation: 'Gmail requires TLS.',
+				}),
+				config
+			);
+
+			const result = await queryDeliveryLogs(redis, { messageId: 'provider-feedback' });
+			expect(result.entries[0]).toMatchObject({
+				provider: 'gmail',
+				category: 'gmail_tls_required',
+				annotation: 'Gmail requires TLS.',
+			});
+		});
 	});
 
 	describe('getDeliveryLogStats', () => {

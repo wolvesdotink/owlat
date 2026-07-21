@@ -28,7 +28,11 @@ import Redis from 'ioredis-mock';
 // @owlat/smtp-client, and tlsRpt are REAL so the `conn.secured` read and the
 // TLS-RPT recording run end-to-end.
 vi.mock('../mxResolver.js', () => ({
-	getMxHostnames: vi.fn().mockResolvedValue(['127.0.0.1']),
+	resolveMxDestination: vi.fn().mockResolvedValue({
+		status: 'deliverable',
+		source: 'mx',
+		hosts: [{ exchange: '127.0.0.1', priority: 0 }],
+	}),
 }));
 vi.mock('../mtaSts.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../mtaSts.js')>();

@@ -45,12 +45,17 @@ vi.mock('../connectionPool.js', () => ({
 		release: releaseMock,
 		takeConnection: vi.fn().mockResolvedValue(undefined),
 		storeConnection: vi.fn(),
+		attachConnection: vi.fn().mockReturnValue(true),
 		evictConnection: vi.fn(),
 	},
 	PoolOverCapError: class PoolOverCapError extends Error {},
 }));
 vi.mock('../mxResolver.js', () => ({
-	getMxHostnames: vi.fn().mockResolvedValue(['mx1.acme.com']),
+	resolveMxDestination: vi.fn().mockResolvedValue({
+		status: 'deliverable',
+		source: 'mx',
+		hosts: [{ exchange: 'mx1.acme.com', priority: 0 }],
+	}),
 }));
 vi.mock('../dkim.js', () => ({
 	getDkimOptions: vi.fn().mockResolvedValue(undefined),
