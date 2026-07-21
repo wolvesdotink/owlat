@@ -1257,6 +1257,37 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 		}
 	});
 
+	/**
+	 * `invokeHook` is the ONLY surface that performs a signed hook call. Until a
+	 * pipeline stage calls it, every Tier-2 page saying "Owlat calls a connected
+	 * app at three decision points" is a promise the code does not keep. This
+	 * binds the claim to the real caller set: wire a call site and the deferral
+	 * markers become removable; leave it unwired and they are mandatory.
+	 */
+	it('marks the connected-app hook call sites as deferred while invokeHook has no caller', () => {
+		const HOOK_SYMBOL = 'connectedApps.hookRuntime.invokeHook';
+		const callers = sourceFiles('apps/api/convex').filter(
+			(file) =>
+				!file.includes('/__tests__/') &&
+				!file.includes('/_generated/') &&
+				!file.endsWith('connectedApps/hookRuntime.ts') &&
+				read(file).includes(HOOK_SYMBOL)
+		);
+
+		if (callers.length > 0) return; // Wired: the deferral markers may go.
+
+		expect(
+			docs.connectedApps,
+			'invokeHook has no production caller, so the connected-apps page must say so'
+		).toContain('no pipeline stage calls it yet');
+		expect(docs.overview).toContain('no pipeline call site yet');
+		expect(docs.capabilities).toContain('no pipeline stage calls it yet');
+		expect(read('docs/adr/0052-connected-apps-and-signed-hooks.md')).toContain('## Not yet wired');
+		expect(read('examples/plugins/slack-approvals/README.md')).toContain(
+			'Owlat does not make that call yet'
+		);
+	});
+
 	it('states that the import-provider signature contract has no replay defense', () => {
 		expect(read('packages/plugin-kit/src/importProvider.ts')).toContain(
 			'It carries no replay resistance'
