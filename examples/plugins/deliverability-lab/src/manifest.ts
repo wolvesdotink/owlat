@@ -98,7 +98,7 @@ export const deliverabilityLabPlugin = definePlugin({
 				// unknown section is dropped fail-closed, so it would never render.
 				section: 'delivery',
 				name: 'Deliverability',
-				href: '/dashboard/plugins/deliverability-lab',
+				href: '/dashboard/settings/plugins/deliverability-lab',
 				icon: 'lucide:radar',
 			},
 		],
