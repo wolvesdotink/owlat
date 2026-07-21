@@ -26,15 +26,89 @@ import {
 const MTA_RETRY_DELAYS = [1000, 5000] as const;
 
 const MTA_TIMEOUT_MS = 30_000;
+const MTA_DECISION_TIMEOUT_MS = 5_000;
+
+export type MtaRoutingDecision =
+	| { kind: 'mta'; leaseToken: string }
+	| {
+			kind: 'relay';
+			reason: 'relay_allowed' | 'provider_breaker' | 'provider_probe_limit' | 'warmup_overflow';
+	  }
+	| { kind: 'defer'; retryAfterMs: number };
+
+export async function resolveMtaRoutingDecision(input: {
+	messageId: string;
+	organizationId: string;
+	recipient: string;
+	from: string;
+	candidateProvider: 'mta' | 'relay';
+	ipPool?: MtaExtras['ipPool'];
+	allowWarmupOverflow: boolean;
+}): Promise<MtaRoutingDecision> {
+	const baseUrl = getOptional('MTA_API_URL');
+	const apiKey = getOptional('MTA_API_KEY');
+	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: 60_000 };
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), MTA_DECISION_TIMEOUT_MS);
+	try {
+		const response = await fetch(`${baseUrl.replace(/\/$/, '')}/send/decision`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+			body: JSON.stringify({ ...input, ipPool: input.ipPool ?? 'transactional' }),
+			signal: controller.signal,
+		});
+		if (!response.ok) return { kind: 'defer', retryAfterMs: 60_000 };
+		const value = (await response.json()) as unknown;
+		if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+			return { kind: 'defer', retryAfterMs: 60_000 };
+		}
+		const result = value as Record<string, unknown>;
+		if (result['decision'] === 'mta') {
+			const lease = result['lease'];
+			if (
+				typeof lease === 'object' &&
+				lease !== null &&
+				typeof (lease as Record<string, unknown>)['token'] === 'string'
+			) {
+				return {
+					kind: 'mta',
+					leaseToken: (lease as Record<string, string>)['token']!,
+				};
+			}
+		}
+		if (
+			result['decision'] === 'relay' &&
+			(result['reason'] === 'provider_breaker' ||
+				result['reason'] === 'provider_probe_limit' ||
+				result['reason'] === 'warmup_overflow')
+		) {
+			return { kind: 'relay', reason: result['reason'] };
+		}
+		if (result['decision'] === 'relay' && input.candidateProvider === 'relay') {
+			return { kind: 'relay', reason: 'relay_allowed' };
+		}
+		if (result['decision'] === 'defer') {
+			return {
+				kind: 'defer',
+				retryAfterMs:
+					typeof result['retryAfterMs'] === 'number'
+						? Math.min(Math.max(result['retryAfterMs'], 1_000), 60 * 60 * 1000)
+						: 60_000,
+			};
+		}
+		return { kind: 'defer', retryAfterMs: 60_000 };
+	} catch {
+		return { kind: 'defer', retryAfterMs: 60_000 };
+	} finally {
+		clearTimeout(timeout);
+	}
+}
 
 export const mtaSendProvider: SendProviderModule<'mta'> = {
 	kind: 'mta',
 	retryDelays: MTA_RETRY_DELAYS,
 
-	async sendEmail(
-		params: EmailSendParams,
-		extras?: MtaExtras,
-	): Promise<EmailSendAttempt> {
+	async sendEmail(params: EmailSendParams, extras?: MtaExtras): Promise<EmailSendAttempt> {
 		const baseUrl = getOptional('MTA_API_URL');
 		if (!baseUrl) {
 			return {
@@ -66,6 +140,8 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			ipPool: extras?.ipPool ?? 'transactional',
 			engagementScore: extras?.engagementScore,
 			dkimDomain: extras?.dkimDomain ?? fromDomain,
+			organizationId: extras?.organizationId,
+			routingLease: extras?.routingLease,
 		};
 
 		const normalizedUrl = baseUrl.replace(/\/$/, '');
@@ -125,6 +201,15 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	 * with a typed JSON `error` field.
 	 */
 	categorizeError(message: string, httpStatus?: number): EmailErrorCode {
+		if (
+			httpStatus === 409 &&
+			(message.includes('ROUTING_DECISION_') || message.includes('GLOBAL_SAFETY_DEFER'))
+		) {
+			// The MTA revalidates the authoritative lease immediately before
+			// enqueue. A breaker/IP-generation race must return to the worker so a
+			// fresh decision is resolved; it is not a permanent content failure.
+			return EmailErrorCode.SERVER_ERROR;
+		}
 		if (httpStatus !== undefined) {
 			const byStatus = httpStatusToErrorCode(httpStatus);
 			if (byStatus !== undefined) return byStatus;
@@ -138,7 +223,10 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 		if (lower.includes('rate') || lower.includes('too many')) {
 			return EmailErrorCode.RATE_LIMIT;
 		}
-		if (lower.includes('invalid') && (lower.includes('recipient') || lower.includes('to address'))) {
+		if (
+			lower.includes('invalid') &&
+			(lower.includes('recipient') || lower.includes('to address'))
+		) {
 			return EmailErrorCode.INVALID_RECIPIENT;
 		}
 		if (

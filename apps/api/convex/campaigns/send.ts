@@ -36,7 +36,6 @@ import {
 	variantForHash,
 } from './sendVariantSplit';
 import { logWarn } from '../lib/runtimeLog';
-import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
 
 // Convex-backed implementation of the email-scanner's `UrlReputationCache`,
 // persisting Safe Browsing verdicts in the `urlReputationCache` table so
@@ -774,24 +773,22 @@ export const resolveCampaignPage = internalAction({
 			const tmplDefaultLanguage = template?.defaultLanguage ?? 'en';
 			const campaignSubjectOverride = campaign.subject;
 
-			// Group by (language, variant) so each combination enqueues with the
-			// right per-language content + variant tag in one batch.
+			// Group only by content. Destination-provider routing is resolved for
+			// each actual recipient at the worker's last pre-attempt boundary, so a
+			// custom-domain MX classification cannot misroute this whole bucket.
 			type Bucket = {
 				language: string;
 				variant: 'A' | 'B' | undefined;
-				destinationProvider: string;
 			};
 			const byBucket = new Map<string, { bucket: Bucket; recipients: typeof page.recipients }>();
 			for (const recipient of page.recipients) {
 				const variant = bucketFor(String(recipient._id));
 				if (variant === null) continue; // belongs to the other phase — skip
 				const language = recipient.language ?? tmplDefaultLanguage;
-				const recipientDomain = recipient.email.split('@')[1] ?? '';
-				const destinationProvider = destinationProviderForDomain(recipientDomain);
-				const key = `${language}\u0000${variant ?? '-'}\u0000${destinationProvider}`;
+				const key = `${language}\u0000${variant ?? '-'}`;
 				if (!byBucket.has(key))
 					byBucket.set(key, {
-						bucket: { language, variant, destinationProvider },
+						bucket: { language, variant },
 						recipients: [],
 					});
 				byBucket.get(key)!.recipients.push(recipient);
@@ -834,15 +831,6 @@ export const resolveCampaignPage = internalAction({
 					htmlContent = aContent.htmlContent;
 				}
 
-				const firstRecipient = recipients[0];
-				const bucketRoute = firstRecipient
-					? await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-							messageType: 'campaign',
-							to: firstRecipient.email,
-							from,
-						})
-					: null;
-				const selectedRoute = bucketRoute ?? resolvedRoute;
 				pageEnqueued += await enqueueVariantBatch(ctx, {
 					campaignId: args.campaignId,
 					recipients,
@@ -853,8 +841,10 @@ export const resolveCampaignPage = internalAction({
 					replyTo: campaign.replyTo,
 					audienceType,
 					viewInBrowserUrl,
-					providerType: selectedRoute.providerType,
-					ipPool: selectedRoute.ipPool,
+					// Advisory snapshot only. The worker deliberately re-resolves current
+					// state for each recipient immediately before dispatch.
+					providerType: resolvedRoute.providerType,
+					ipPool: resolvedRoute.ipPool,
 					trackingBaseUrl,
 					convexSiteUrl,
 					siteUrl,

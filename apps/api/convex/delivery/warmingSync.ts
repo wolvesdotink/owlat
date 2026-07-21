@@ -57,11 +57,11 @@ export const syncWarmingState = internalAction({
 				syncedAt: Date.now(),
 			});
 
+			const now = Date.now();
 			const routing =
 				typeof payload === 'object' && payload !== null && 'routing' in payload
-					? normalizeDeliverabilityRoutingSnapshot(payload.routing)
+					? normalizeDeliverabilityRoutingSnapshot(payload.routing, now)
 					: null;
-			const now = Date.now();
 			if (
 				organizationId &&
 				routing &&

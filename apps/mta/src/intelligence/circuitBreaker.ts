@@ -41,6 +41,47 @@ export const COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 export const EXTENDED_COOLDOWN_MS = 60 * 60 * 1000; // 60 minutes
 export const HALF_OPEN_LIMIT = 5; // Test sends in half-open
 const OUTCOME_TTL = 6 * 3600; // 6h TTL for outcome data
+const PROBE_TTL_MS = 15 * 60 * 1000;
+
+const RESERVE_PROBE_LUA = `
+local stateKey = KEYS[1]
+local probeKey = KEYS[2]
+local now = tonumber(ARGV[1])
+local expiresAt = tonumber(ARGV[2])
+local messageId = ARGV[3]
+if redis.call('HGET', stateKey, 'status') ~= 'half-open' then return 0 end
+redis.call('ZREMRANGEBYSCORE', probeKey, '-inf', now)
+if redis.call('ZSCORE', probeKey, messageId) then return 1 end
+local completed = tonumber(redis.call('HGET', stateKey, 'halfOpenSent') or '0')
+local reserved = tonumber(redis.call('ZCARD', probeKey))
+if completed + reserved >= ${HALF_OPEN_LIMIT} then return 0 end
+redis.call('ZADD', probeKey, expiresAt, messageId)
+redis.call('PEXPIRE', probeKey, ${PROBE_TTL_MS + 60_000})
+return 1
+`;
+
+/** Atomically grant at most HALF_OPEN_LIMIT concurrent owned-IP probes. */
+export async function reserveHalfOpenProbe(
+	redis: Redis,
+	orgId: string,
+	provider: string,
+	messageId: string,
+	now = Date.now()
+): Promise<boolean> {
+	return (
+		Number(
+			await redis.eval(
+				RESERVE_PROBE_LUA,
+				2,
+				breakerStateKey(orgId, provider),
+				`${BREAKER_PREFIX}${breakerScope(orgId, provider)}:probes`,
+				now,
+				now + PROBE_TTL_MS,
+				messageId
+			)
+		) === 1
+	);
+}
 
 /**
  * Check if an organization can send (circuit breaker check)
@@ -150,7 +191,12 @@ export async function recordOutcome(
 	provider?: string
 ): Promise<void> {
 	if (provider) {
+		// Provider-local history powers selective relay fallback, while the
+		// organization-wide history remains the dominant abuse guard. Only the
+		// global scope receives config so one outcome can emit at most one Convex
+		// circuit-breaker notification.
 		await recordScopedOutcome(redis, orgId, outcome, undefined, provider);
+		await recordScopedOutcome(redis, orgId, outcome, config);
 		return;
 	}
 	await recordScopedOutcome(redis, orgId, outcome, config);

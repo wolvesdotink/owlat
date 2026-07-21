@@ -110,12 +110,11 @@ const DISPATCH: DispatchTable = {
 				acceptedAt: e.at,
 			});
 		}
-		if (outcome.ok && e.organizationId && e.recipient && e.destinationProvider) {
+		if (outcome.ok && e.destinationProvider) {
 			await ctx.runMutation(
 				internal.delivery.deliverabilityRouting.recordDestinationProviderDomain,
 				{
-					organizationId: e.organizationId,
-					recipient: e.recipient,
+					providerMessageId: e.providerMessageId,
 					destinationProvider: e.destinationProvider,
 					observedAt: e.at,
 				}

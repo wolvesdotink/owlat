@@ -32,6 +32,13 @@ const modules = import.meta.glob('../**/*.*s');
 
 const originalFetch = global.fetch;
 
+function decisionResponse(token: string): Response {
+	return new Response(JSON.stringify({ decision: 'mta', lease: { token } }), {
+		status: 200,
+		headers: { 'Content-Type': 'application/json' },
+	});
+}
+
 describe('FIX H1 — workpool de-amplification', () => {
 	it('both email pools share the maxAttempts:1 retry behavior (no pool-level retry)', () => {
 		// `maxAttempts` is TOTAL attempts including the first (the workpool
@@ -80,6 +87,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		// owns this retry; the worker is invoked exactly once.
 		const fetchSpy = vi
 			.fn()
+			.mockResolvedValueOnce(decisionResponse('lease-transactional'))
 			.mockResolvedValueOnce(new Response('500 Internal Server Error', { status: 500 }))
 			.mockResolvedValueOnce(
 				new Response(JSON.stringify({ success: true, id: 'mta-msg-1' }), {
@@ -96,6 +104,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 				to: 'rcpt@example.com',
 				from: 'sender@example.com',
 				providerType: 'mta',
+				organizationId: 'org-test',
 				sendId: sendId! as never,
 				template: { subject: 'hi', htmlContent: '<p>hi</p>' },
 			},
@@ -106,12 +115,12 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		//     dispatch retry, NOT a workpool re-run (which would re-enter the
 		//     whole worker and re-POST from scratch).
 		expect(result.success).toBe(true);
-		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		expect(fetchSpy).toHaveBeenCalledTimes(3);
 
 		// (b) Both POSTs carry the SAME messageId, derived from the send-row id —
 		//     not a fresh UUID per attempt. This is what the MTA SET-NX dedups on.
-		const body0 = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
-		const body1 = JSON.parse(fetchSpy.mock.calls[1]![1]!.body as string);
+		const body0 = JSON.parse(fetchSpy.mock.calls[1]![1]!.body as string);
+		const body1 = JSON.parse(fetchSpy.mock.calls[2]![1]!.body as string);
 		expect(body0.messageId).toBe(body1.messageId);
 		expect(body0.messageId).toBe(`send_${sendId!}`);
 	});
@@ -130,12 +139,15 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 			);
 		});
 
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ success: true, id: 'mta-msg-2' }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			})
-		);
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValueOnce(decisionResponse('lease-campaign'))
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ success: true, id: 'mta-msg-2' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+			);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
 		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
@@ -144,6 +156,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 				to: 'rcpt@example.com',
 				from: 'sender@example.com',
 				providerType: 'mta',
+				organizationId: 'org-test',
 				template: { subject: 'hi', htmlContent: '<p>hi</p>' },
 				contactInfo: { contactId: contactId! as never, email: 'rcpt@example.com' },
 				emailSendId: emailSendId! as never,
@@ -152,8 +165,8 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		});
 
 		expect(result.success).toBe(true);
-		expect(fetchSpy).toHaveBeenCalledTimes(1);
-		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		const body = JSON.parse(fetchSpy.mock.calls[1]![1]!.body as string);
 		expect(body.messageId).toBe(`send_${emailSendId!}`);
 	});
 
@@ -179,13 +192,23 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 
 	it('dispatches automation marketing mail with both RFC 8058 headers', async () => {
 		const t = convexTest(schema, modules);
-		const contactId = await t.run((ctx) => ctx.db.insert('contacts', createTestContact()));
-		const fetchSpy = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ success: true, id: 'mta-automation-1' }), {
-				status: 200,
-				headers: { 'Content-Type': 'application/json' },
-			})
-		);
+		const { contactId, sendId } = await t.run(async (ctx) => ({
+			contactId: await ctx.db.insert('contacts', createTestContact()),
+			sendId: await ctx.db.insert('transactionalSends', {
+				kind: 'automation',
+				email: 'rcpt@example.com',
+				status: 'queued',
+			}),
+		}));
+		const fetchSpy = vi
+			.fn()
+			.mockResolvedValueOnce(decisionResponse('lease-automation'))
+			.mockResolvedValueOnce(
+				new Response(JSON.stringify({ success: true, id: 'mta-automation-1' }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' },
+				})
+			);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
 		await t.action(internal.delivery.worker.sendSingleEmail, {
@@ -195,6 +218,8 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 				to: 'rcpt@example.com',
 				from: 'sender@example.com',
 				providerType: 'mta',
+				organizationId: 'org-test',
+				sendId,
 				template: { subject: 'drip', htmlContent: '<p>drip</p>' },
 				contactId,
 				listUnsubscribe: true,
@@ -202,7 +227,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 			},
 		});
 
-		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string) as {
+		const body = JSON.parse(fetchSpy.mock.calls[1]![1]!.body as string) as {
 			headers: Record<string, string>;
 		};
 		expect(body.headers['List-Unsubscribe']).toMatch(/^<https:\/\/convex\.example\/unsub\//);

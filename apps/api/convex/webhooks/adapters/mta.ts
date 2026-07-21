@@ -18,6 +18,7 @@ import { getOptional } from '../../lib/env';
 import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
+import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 interface MtaWebhookPayload {
 	event: string;
@@ -40,7 +41,7 @@ interface MtaWebhookPayload {
 	complaintRate?: number;
 	date?: string;
 	userReportedSpamRatio?: number;
-	destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+	destinationProvider?: unknown;
 	primarySendingDomain?: string;
 	inboundPayload?: {
 		from: string;
@@ -217,7 +218,12 @@ export const mtaAdapter: InboundAdapter = {
 				return null;
 			}
 			case 'sent': {
-				if (!payload.messageId) return null;
+				if (
+					!payload.messageId ||
+					(payload.destinationProvider !== undefined &&
+						!isDestinationProviderKey(payload.destinationProvider))
+				)
+					return null;
 				return {
 					// The MTA emits this only after the destination SMTP server has
 					// accepted DATA. POST /send queue acceptance is recorded separately

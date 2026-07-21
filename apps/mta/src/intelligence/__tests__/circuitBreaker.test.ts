@@ -4,6 +4,7 @@ import type RealRedis from 'ioredis';
 import {
 	canSend,
 	recordOutcome,
+	reserveHalfOpenProbe,
 	getState,
 	COMPLAINT_SLOW_THRESHOLD,
 	COMPLAINT_FAST_THRESHOLD,
@@ -186,7 +187,7 @@ describe('circuitBreaker', () => {
 	});
 
 	describe('recordOutcome', () => {
-		it('tracks a destination-provider breaker without opening unaffected slices', async () => {
+		it('tracks every destination-provider outcome in both local and global history', async () => {
 			for (let i = 0; i < 42; i++) {
 				await recordOutcome(redis, 'org-1', 'delivered', undefined, 'gmail');
 			}
@@ -196,8 +197,31 @@ describe('circuitBreaker', () => {
 
 			expect((await getState(redis, 'org-1', 'gmail')).status).toBe('open');
 			expect((await getState(redis, 'org-1', 'microsoft')).status).toBe('closed');
+			expect((await getState(redis, 'org-1')).status).toBe('open');
 			expect((await canSend(redis, 'org-1', 'gmail')).allowed).toBe(false);
-			expect((await canSend(redis, 'org-1', 'microsoft')).allowed).toBe(true);
+			expect((await canSend(redis, 'org-1', 'microsoft')).allowed).toBe(false);
+			expect(await redis.llen('mta:breaker:org-1:provider:gmail:outcomes')).toBe(50);
+			expect(await redis.llen('mta:breaker:org-1:outcomes')).toBe(50);
+		});
+
+		it('opens a bad provider slice while a healthy aggregate keeps other providers available', async () => {
+			for (let i = 0; i < 42; i++) {
+				await recordOutcome(redis, 'org-slice', 'delivered', undefined, 'gmail');
+			}
+			for (let i = 0; i < 7; i++) {
+				await recordOutcome(redis, 'org-slice', 'bounced', undefined, 'gmail');
+			}
+			// Move the first seven Gmail bounces out of the aggregate fast window
+			// without changing Gmail's independent provider-local ring.
+			for (let i = 0; i < 50; i++) {
+				await recordOutcome(redis, 'org-slice', 'delivered', undefined, 'microsoft');
+			}
+			await recordOutcome(redis, 'org-slice', 'bounced', undefined, 'gmail');
+
+			expect((await getState(redis, 'org-slice', 'gmail')).status).toBe('open');
+			expect((await getState(redis, 'org-slice')).status).toBe('closed');
+			expect((await canSend(redis, 'org-slice', 'gmail')).allowed).toBe(false);
+			expect((await canSend(redis, 'org-slice', 'microsoft')).allowed).toBe(true);
 		});
 
 		it('in closed state adds to outcomes list', async () => {
@@ -323,6 +347,26 @@ describe('circuitBreaker', () => {
 			const state = await getState(redis, 'org-1');
 			expect(state.status).toBe('open');
 			expect(state.tripReason).toBe('Already tripped');
+		});
+	});
+
+	describe('bounded half-open probes', () => {
+		it('grants at most five concurrent distinct probes and is idempotent by message', async () => {
+			await redis.hset(
+				'mta:breaker:org-probe:provider:gmail:state',
+				'status',
+				'half-open',
+				'halfOpenSent',
+				'0'
+			);
+			const grants = await Promise.all(
+				Array.from({ length: 12 }, (_, index) =>
+					reserveHalfOpenProbe(redis, 'org-probe', 'gmail', `probe-${index}`)
+				)
+			);
+			expect(grants.filter(Boolean)).toHaveLength(5);
+			expect(await reserveHalfOpenProbe(redis, 'org-probe', 'gmail', 'probe-0')).toBe(true);
+			expect(await reserveHalfOpenProbe(redis, 'org-probe', 'gmail', 'probe-overflow')).toBe(false);
 		});
 	});
 

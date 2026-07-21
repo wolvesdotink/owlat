@@ -2,6 +2,12 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { contentScanFlagValidator } from '../lib/convexValidators';
 import { ipReadinessFieldValidators } from '../delivery/readinessValidators';
+import {
+	deliverabilitySignalSeverityValidator,
+	deliverabilitySignalSourceValidator,
+	deliverabilitySignalProviderValidator,
+	destinationProviderValidator,
+} from '../delivery/deliverabilityValidators';
 
 /**
  * Delivery + sending-infrastructure tables — blocklist, reputation tracking, content scanning,
@@ -237,24 +243,12 @@ export const deliveryTables = {
 	// MTA snapshot. One row per tenant + destination provider (plus `all`).
 	deliverabilityRouteStates: defineTable({
 		organizationId: v.string(),
-		destinationProvider: v.union(
-			v.literal('all'),
-			v.literal('gmail'),
-			v.literal('microsoft'),
-			v.literal('yahoo'),
-			v.literal('apple'),
-			v.literal('other')
-		),
+		destinationProvider: deliverabilitySignalProviderValidator,
 		isFallbackActive: v.boolean(),
 		signals: v.array(
 			v.object({
-				source: v.union(
-					v.literal('ip_quarantined'),
-					v.literal('dnsbl_listed'),
-					v.literal('breaker_open'),
-					v.literal('persistent_defers')
-				),
-				severity: v.union(v.literal('warning'), v.literal('critical')),
+				source: deliverabilitySignalSourceValidator,
+				severity: deliverabilitySignalSeverityValidator,
 				observedAt: v.number(),
 			})
 		),
@@ -273,13 +267,7 @@ export const deliveryTables = {
 	destinationProviderDomains: defineTable({
 		organizationId: v.string(),
 		domain: v.string(),
-		destinationProvider: v.union(
-			v.literal('gmail'),
-			v.literal('microsoft'),
-			v.literal('yahoo'),
-			v.literal('apple'),
-			v.literal('other')
-		),
+		destinationProvider: destinationProviderValidator,
 		observedAt: v.number(),
 		expiresAt: v.number(),
 	})

@@ -25,6 +25,9 @@ function priorityToOrderMs(priority: number): number {
 }
 import { checkSystemHealth } from '../scaling/degradation.js';
 import { logger } from '../monitoring/logger.js';
+import { isRoutingLeaseBoundTo, readRoutingLease } from './routingDecision.js';
+import { canSend } from '../intelligence/circuitBreaker.js';
+import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 
 /** Match the existing attachment-scan ceiling and bound Redis job growth. */
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
@@ -58,6 +61,8 @@ interface SendRequest {
 	 * and every other address stays blocked. No MTA-side special-casing needed.
 	 */
 	allowedFromAddresses?: string[];
+	/** Opaque lease token returned by POST /send/decision. */
+	routingLease?: string;
 }
 
 /**
@@ -149,6 +154,64 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 			return c.json({ error: 'Missing required field: dkimDomain' }, 400);
 		}
 
+		let routingLease: EmailJob['routingLease'];
+		if (body.routingLease) {
+			const lease = await readRoutingLease(redis, body.routingLease);
+			if (
+				!isRoutingLeaseBoundTo(lease, {
+					messageId: body.messageId,
+					organizationId: body.organizationId,
+					recipient: body.to,
+				})
+			) {
+				return c.json(
+					{ error: 'Routing decision expired; resolve again', code: 'ROUTING_DECISION_EXPIRED' },
+					409
+				);
+			}
+			const global = await canSend(redis, body.organizationId);
+			if (!global.allowed) {
+				return c.json(
+					{ error: 'Delivery temporarily deferred by safety policy', code: 'GLOBAL_SAFETY_DEFER' },
+					409
+				);
+			}
+			const provider = await canSend(redis, body.organizationId, lease.destinationProvider);
+			if (!provider.allowed) {
+				return c.json(
+					{
+						error: 'Destination provider route changed; resolve again',
+						code: 'ROUTING_DECISION_CHANGED',
+					},
+					409
+				);
+			}
+			if (
+				lease.ip &&
+				lease.eligibilityGeneration !== undefined &&
+				!(await isIpEligibilityLeaseValid(redis, {
+					ip: lease.ip,
+					eligibilityGeneration: lease.eligibilityGeneration,
+				}))
+			) {
+				return c.json(
+					{
+						error: 'Owned IP eligibility changed; resolve again',
+						code: 'ROUTING_DECISION_CHANGED',
+					},
+					409
+				);
+			}
+			routingLease = {
+				token: lease.token,
+				destinationProvider: lease.destinationProvider,
+				probe: lease.probe,
+				ip: lease.ip,
+				eligibilityGeneration: lease.eligibilityGeneration,
+				warmingReservation: lease.warmingReservation,
+			};
+		}
+
 		if (body.sealedMimeBase64) {
 			if (body.organizationId !== 'postbox') {
 				return c.json({ error: 'sealedMimeBase64 is restricted to Postbox mail' }, 400);
@@ -216,6 +279,7 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 			engagementScore: body.engagementScore,
 			dkimDomain: body.dkimDomain,
 			firstEnqueuedAt: Date.now(),
+			...(routingLease ? { routingLease } : {}),
 		};
 
 		// Calculate group key and priority

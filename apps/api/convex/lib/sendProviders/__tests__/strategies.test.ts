@@ -348,4 +348,63 @@ describe('resolveRoute (dispatcher + fallbacks)', () => {
 			deliverabilityReason: 'warmup_overflow',
 		});
 	});
+
+	it('proof-gates fallback even when the base strategy already selected SES', () => {
+		const config: ProviderRouteConfig = {
+			strategy: 'single',
+			providers: [
+				{ providerType: 'ses', isEnabled: true },
+				{ providerType: 'mta', isEnabled: true },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: false,
+			},
+		};
+		expect(() =>
+			resolveRoute(config, undefined, () => true, {
+				activeReasons: ['breaker_open'],
+				isWarmupOverflow: false,
+				isRelayDomainVerified: false,
+			})
+		).toThrow(/verify this sending domain/i);
+	});
+
+	it('fails actionably when active fallback has no ready relay', () => {
+		const config: ProviderRouteConfig = {
+			strategy: 'single',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: false,
+			},
+		};
+		expect(() =>
+			resolveRoute(config, undefined, (kind) => kind === 'mta', {
+				activeReasons: ['breaker_open'],
+				isWarmupOverflow: false,
+				isRelayDomainVerified: true,
+			})
+		).toThrow(/relay unavailable/i);
+	});
+
+	it('blocks every base strategy while the organization-wide breaker is open', () => {
+		const config: ProviderRouteConfig = {
+			strategy: 'single',
+			providers: [{ providerType: 'ses', isEnabled: true }],
+		};
+		expect(() =>
+			resolveRoute(config, undefined, () => true, {
+				activeReasons: [],
+				isWarmupOverflow: false,
+				isRelayDomainVerified: false,
+				isGlobalBreakerOpen: true,
+			})
+		).toThrow(/organization-wide safety circuit/i);
+	});
 });

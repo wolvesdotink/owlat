@@ -1,5 +1,5 @@
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 
@@ -11,6 +11,11 @@ const deliveryGlob = Object.fromEntries(
 	])
 );
 const modules = { ...rootGlob, ...deliveryGlob };
+
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../../lib/sessionOrganization');
+	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a') };
+});
 
 async function stateFor(
 	t: TestConvex<typeof schema>,
@@ -94,17 +99,25 @@ describe('deliverability routing hysteresis', () => {
 
 	it('keeps the newest tenant-scoped MX classification', async () => {
 		const t = convexTest(schema, modules);
-		await t.mutation(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain, {
-			organizationId: 'org-a',
-			recipient: 'User@Workspace.Example',
-			destinationProvider: 'gmail',
-			observedAt: 20,
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('transactionalSends', {
+				kind: 'transactional',
+				email: 'User@Workspace.Example',
+				status: 'delivered',
+				providerType: 'mta',
+				providerMessageId: 'mta-new',
+			});
 		});
 		await t.mutation(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain, {
-			organizationId: 'org-a',
-			recipient: 'other@workspace.example',
+			providerMessageId: 'mta-new',
+			destinationProvider: 'gmail',
+			observedAt: now,
+		});
+		await t.mutation(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain, {
+			providerMessageId: 'mta-new',
 			destinationProvider: 'microsoft',
-			observedAt: 10,
+			observedAt: now - 1,
 		});
 
 		const rows = await t.run(async (ctx) => ctx.db.query('destinationProviderDomains').collect());
@@ -113,7 +126,78 @@ describe('deliverability routing hysteresis', () => {
 			organizationId: 'org-a',
 			domain: 'workspace.example',
 			destinationProvider: 'gmail',
-			observedAt: 20,
+			observedAt: now,
+		});
+	});
+
+	it('rejects future, non-MTA, and unresolvable Postbox observations', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('transactionalSends', {
+				kind: 'transactional',
+				email: 'user@example.com',
+				status: 'delivered',
+				providerType: 'ses',
+				providerMessageId: 'ses-message',
+			});
+		});
+
+		for (const input of [
+			{ providerMessageId: 'ses-message', observedAt: now },
+			{ providerMessageId: 'postbox-message', observedAt: now },
+			{ providerMessageId: 'ses-message', observedAt: now + 2 * 60 * 1000 + 1 },
+		]) {
+			expect(
+				await t.mutation(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain, {
+					...input,
+					destinationProvider: 'gmail',
+				})
+			).toEqual({ recorded: false });
+		}
+
+		const rows = await t.run(async (ctx) => ctx.db.query('destinationProviderDomains').collect());
+		expect(rows).toHaveLength(0);
+	});
+
+	it('cleans independent tables in bounded batches without starvation', async () => {
+		const t = convexTest(schema, modules);
+		const expiredAt = Date.now() - 1;
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 140; i++) {
+				await ctx.db.insert('deliverabilityRouteStates', {
+					organizationId: `org-${i}`,
+					destinationProvider: 'gmail',
+					isFallbackActive: false,
+					signals: [],
+					snapshotGeneratedAt: i,
+					expiresAt: expiredAt,
+					updatedAt: expiredAt,
+				});
+				await ctx.db.insert('destinationProviderDomains', {
+					organizationId: `org-${i}`,
+					domain: `domain-${i}.example`,
+					destinationProvider: 'gmail',
+					observedAt: expiredAt - 1,
+					expiresAt: expiredAt,
+				});
+			}
+		});
+
+		expect(await t.mutation(internal.delivery.deliverabilityRouting.cleanupExpired, {})).toEqual({
+			deleted: 256,
+			hasMore: true,
+		});
+		expect(
+			await t.run(async (ctx) => ({
+				states: (await ctx.db.query('deliverabilityRouteStates').collect()).length,
+				domains: (await ctx.db.query('destinationProviderDomains').collect()).length,
+			}))
+		).toEqual({ states: 12, domains: 12 });
+
+		expect(await t.mutation(internal.delivery.deliverabilityRouting.cleanupExpired, {})).toEqual({
+			deleted: 24,
+			hasMore: false,
 		});
 	});
 });

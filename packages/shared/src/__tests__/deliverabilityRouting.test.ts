@@ -7,17 +7,20 @@ import {
 describe('deliverability routing DTO', () => {
 	it('accepts a bounded fixed-taxonomy snapshot', () => {
 		expect(
-			normalizeDeliverabilityRoutingSnapshot({
-				generatedAt: 100,
-				signals: [
-					{
-						provider: 'gmail',
-						source: 'persistent_defers',
-						severity: 'warning',
-						observedAt: 90,
-					},
-				],
-			})
+			normalizeDeliverabilityRoutingSnapshot(
+				{
+					generatedAt: 100,
+					signals: [
+						{
+							provider: 'gmail',
+							source: 'persistent_defers',
+							severity: 'warning',
+							observedAt: 90,
+						},
+					],
+				},
+				100
+			)
 		).toEqual({
 			generatedAt: 100,
 			signals: [
@@ -48,7 +51,52 @@ describe('deliverability routing DTO', () => {
 		},
 		{ generatedAt: Number.NaN, signals: [] },
 	])('rejects malformed signal input', (input) => {
-		expect(normalizeDeliverabilityRoutingSnapshot(input)).toBeNull();
+		expect(normalizeDeliverabilityRoutingSnapshot(input, 1)).toBeNull();
+	});
+
+	it.each([
+		{
+			generatedAt: 100,
+			signals: [],
+			extra: true,
+		},
+		{
+			generatedAt: 100,
+			signals: [
+				{
+					provider: 'gmail',
+					source: 'breaker_open',
+					severity: 'critical',
+					observedAt: 100,
+					rawError: 'unchecked',
+				},
+			],
+		},
+	])('rejects unknown DTO keys', (input) => {
+		expect(normalizeDeliverabilityRoutingSnapshot(input, 100)).toBeNull();
+	});
+
+	it('rejects stale, future, and snapshot-inconsistent observation times', () => {
+		const signal = {
+			provider: 'gmail',
+			source: 'breaker_open',
+			severity: 'critical',
+		};
+		expect(
+			normalizeDeliverabilityRoutingSnapshot(
+				{ generatedAt: 1_000_000, signals: [{ ...signal, observedAt: 1_000_001 }] },
+				1_000_000
+			)
+		).toBeNull();
+		expect(
+			normalizeDeliverabilityRoutingSnapshot(
+				{ generatedAt: 1_000_000, signals: [{ ...signal, observedAt: 1 }] },
+				1_000_000
+			)
+		).toBeNull();
+		expect(
+			normalizeDeliverabilityRoutingSnapshot({ generatedAt: 1_200_001, signals: [] }, 1_000_000)
+		).toBeNull();
 	});
 
 	it('classifies only conservative consumer-provider domains', () => {

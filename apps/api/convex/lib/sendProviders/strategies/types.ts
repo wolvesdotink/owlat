@@ -31,6 +31,7 @@ export interface ProviderHealthStatus {
 export interface ResolvedRoute {
 	providerType: SendProviderKind;
 	ipPool?: string;
+	warmupOverflowEnabled?: boolean;
 	// 'org_config' = chosen by a providerRoutes strategy; 'env_fallback' =
 	// derived from EMAIL_PROVIDER. There is no implicit 'default' (MTA) source:
 	// when nothing is configured, route resolution returns `null` (unconfigured),

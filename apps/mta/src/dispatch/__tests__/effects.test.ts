@@ -172,7 +172,7 @@ describe('applyEffects — per-effect dispatch', () => {
 			],
 			deps
 		);
-		expect(warming.recordSend).toHaveBeenCalledWith(expect.anything(), '10.0.0.1');
+		expect(warming.recordSend).toHaveBeenCalledWith(expect.anything(), '10.0.0.1', undefined);
 		expect(warming.recordBounce).toHaveBeenCalledWith(expect.anything(), '10.0.0.2');
 		expect(warming.recordDeferral).toHaveBeenCalledWith(expect.anything(), '10.0.0.3');
 	});

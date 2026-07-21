@@ -8,6 +8,7 @@ import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
 import { isSendProviderReady } from './lib/sendProviders/capability';
 import { throwInvalidInput } from './_utils/errors';
+import { internal } from './_generated/api';
 
 /**
  * Provider Routes — CRUD operations for per-org email provider routing.
@@ -173,8 +174,8 @@ export const setRoute = authedMutation({
 		}
 		const fallback = args.deliverabilityFallback;
 		if (fallback?.isEnabled) {
-			if (!isSendProviderKind(fallback.relayProviderType) || fallback.relayProviderType === 'mta') {
-				throwInvalidInput('Deliverability fallback must use a registered relay transport');
+			if (fallback.relayProviderType !== 'ses') {
+				throwInvalidInput('Deliverability fallback currently supports only Amazon SES');
 			}
 			if (
 				!args.providers.some(
@@ -190,12 +191,31 @@ export const setRoute = authedMutation({
 			}
 		}
 
-		return await upsertRoute(ctx, args.messageType, {
+		const routeId = await upsertRoute(ctx, args.messageType, {
 			strategy: args.strategy,
 			providers: args.providers,
 			ipPool: args.ipPool,
 			deliverabilityFallback: args.deliverabilityFallback,
 		});
+		if (fallback?.isEnabled) {
+			const domains = await ctx.db
+				.query('domains')
+				.withIndex('by_status', (q) => q.eq('status', 'verified'))
+				.take(64);
+			for (const domain of domains) {
+				if (domain.providerType === 'mta') {
+					const existing = await ctx.db
+						.query('sendingDomainSesIdentities')
+						.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+						.first();
+					if (!existing)
+						await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
+							domainId: domain._id,
+						});
+				}
+			}
+		}
+		return routeId;
 	},
 });
 

@@ -22,6 +22,8 @@ export interface DeliverabilityRoutingSnapshot {
 }
 
 const MAX_SIGNALS = 32;
+export const DELIVERABILITY_SNAPSHOT_MAX_AGE_MS = 10 * 60 * 1000;
+export const DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;
 
 export function isDestinationProviderKey(value: unknown): value is DestinationProviderKey {
 	return (
@@ -33,11 +35,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
 }
 
-function isSignal(value: unknown): value is DeliverabilitySignal {
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+	const keys = Object.keys(value);
+	return keys.length === expected.length && keys.every((key) => expected.includes(key));
+}
+
+function isSignal(value: unknown, generatedAt: number, now: number): value is DeliverabilitySignal {
 	if (!isRecord(value)) return false;
+	if (!hasExactKeys(value, ['provider', 'source', 'severity', 'observedAt'])) return false;
 	const provider = value['provider'];
 	const source = value['source'];
 	const severity = value['severity'];
+	const observedAt = value['observedAt'];
 	return (
 		(provider === 'all' || isDestinationProviderKey(provider)) &&
 		(source === 'ip_quarantined' ||
@@ -45,30 +54,43 @@ function isSignal(value: unknown): value is DeliverabilitySignal {
 			source === 'breaker_open' ||
 			source === 'persistent_defers') &&
 		(severity === 'warning' || severity === 'critical') &&
-		typeof value['observedAt'] === 'number' &&
-		Number.isFinite(value['observedAt']) &&
-		value['observedAt'] >= 0
+		typeof observedAt === 'number' &&
+		Number.isFinite(observedAt) &&
+		observedAt >= 0 &&
+		observedAt <= generatedAt &&
+		generatedAt - observedAt <= DELIVERABILITY_SNAPSHOT_MAX_AGE_MS &&
+		observedAt <= now + DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS &&
+		now - observedAt <= DELIVERABILITY_SNAPSHOT_MAX_AGE_MS
 	);
 }
 
 /** Strict parser for the authenticated MTA routing-signal snapshot. */
 export function normalizeDeliverabilityRoutingSnapshot(
-	value: unknown
+	value: unknown,
+	now = Date.now()
 ): DeliverabilityRoutingSnapshot | null {
 	if (
 		!isRecord(value) ||
+		!hasExactKeys(value, ['generatedAt', 'signals']) ||
 		typeof value['generatedAt'] !== 'number' ||
 		!Number.isFinite(value['generatedAt']) ||
 		value['generatedAt'] < 0 ||
+		value['generatedAt'] > now + DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS ||
+		now - value['generatedAt'] > DELIVERABILITY_SNAPSHOT_MAX_AGE_MS ||
 		!Array.isArray(value['signals']) ||
 		value['signals'].length > MAX_SIGNALS ||
-		!value['signals'].every(isSignal)
+		!value['signals'].every((signal) => isSignal(signal, value['generatedAt'] as number, now))
 	) {
 		return null;
 	}
 	return {
 		generatedAt: value['generatedAt'],
-		signals: value['signals'].map((signal) => ({ ...signal })),
+		signals: value['signals'].map((signal) => ({
+			provider: signal.provider,
+			source: signal.source,
+			severity: signal.severity,
+			observedAt: signal.observedAt,
+		})),
 	};
 }
 

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed, watch } from 'vue';
+
 interface ProviderEntry {
 	providerType: string;
 	isEnabled: boolean;
@@ -14,7 +16,17 @@ const isEnabled = defineModel<boolean>('enabled', { required: true });
 const relay = defineModel<string>('relay', { required: true });
 const isWarmupOverflowEnabled = defineModel<boolean>('warmupOverflow', { required: true });
 const enabledRelays = computed(() =>
-	props.providers.filter((provider) => provider.isEnabled && provider.providerType !== 'mta')
+	props.providers.filter((provider) => provider.isEnabled && provider.providerType === 'ses')
+);
+
+watch(
+	enabledRelays,
+	(options) => {
+		if (!options.some((provider) => provider.providerType === relay.value)) {
+			relay.value = options[0]?.providerType ?? '';
+		}
+	},
+	{ immediate: true }
 );
 </script>
 
@@ -49,8 +61,8 @@ const enabledRelays = computed(() =>
 					</option>
 				</select>
 				<p class="mt-1 text-xs text-text-tertiary">
-					SES identities are verified automatically. Other relays are refused until their
-					provider-specific domain verification is available.
+					Amazon SES is the only supported escape-hatch relay. Its domain identity must be verified
+					before fallback can activate.
 				</p>
 			</div>
 			<label v-if="messageType === 'campaign'" class="flex items-start gap-2 cursor-pointer">
