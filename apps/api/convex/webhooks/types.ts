@@ -47,7 +47,13 @@ export type InboundEvent =
 			destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
 			primarySendingDomain?: string;
 	  }
-	| { kind: 'email.delivered'; providerMessageId: string; at: number }
+	| {
+			kind: 'email.delivered';
+			providerMessageId: string;
+			at: number;
+			destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+			primarySendingDomain?: string;
+	  }
 	| {
 			// Terminal, NON-bounce delivery failure. Emitted by the MTA for the
 			// post-DATA ambiguous drop (AMBIGUOUS_TIMEOUT, W8): the receiver MAY have

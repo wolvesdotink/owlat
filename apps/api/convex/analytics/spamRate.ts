@@ -3,7 +3,11 @@
 import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
 import type { Doc } from '../_generated/dataModel';
 import type { DatabaseReader } from '../_generated/server';
-import { startOfDayUtc, type ReputationScope } from './sendingReputation';
+import {
+	startOfDayUtc,
+	type DomainReputationBucketGroups,
+	type ReputationScope,
+} from './sendingReputation';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WINDOW_MS = 30 * DAY_MS;
@@ -93,23 +97,12 @@ export async function summarizeSpamRate(
 	return deriveSpamRateSummary(buckets, now);
 }
 
-export async function summarizeDomainSpamRates(
-	db: DatabaseReader,
+export function summarizeDomainSpamRateGroups(
+	groups: DomainReputationBucketGroups,
 	now = Date.now()
-): Promise<Array<SpamRateSummary & { domain: string }>> {
-	const buckets = await db
-		.query('sendingReputation')
-		.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'domain'))
-		.collect(); // bounded: one scope's ≤60-day × shard buckets (cron-pruned)
-	const byDomain = new Map<string, ReputationBucket[]>();
-	for (const bucket of buckets) {
-		if (!bucket.domain) continue;
-		const group = byDomain.get(bucket.domain);
-		if (group) group.push(bucket);
-		else byDomain.set(bucket.domain, [bucket]);
-	}
-	return [...byDomain.entries()].map(([domain, group]) => ({
+): Array<SpamRateSummary & { domain: string }> {
+	return [...groups.entries()].map(([domain, buckets]) => ({
 		domain,
-		...deriveSpamRateSummary(group, now),
+		...deriveSpamRateSummary(buckets, now),
 	}));
 }

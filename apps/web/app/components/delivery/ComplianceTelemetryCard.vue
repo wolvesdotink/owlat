@@ -1,18 +1,32 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
-import { formatNumber, formatPercentage } from '~/utils/formatters';
+import { api } from "@owlat/api";
+import { formatNumber, formatPercentage } from "~/utils/formatters";
 
 const { data: telemetry, isLoading } = useOrganizationQuery(
-	api.analytics.complianceTelemetry.getComplianceTelemetry
+	api.analytics.complianceTelemetry.getComplianceTelemetry,
 );
 
 function formatDuration(milliseconds: number | null): string {
-	if (milliseconds === null) return 'Collecting data';
+	if (milliseconds === null) return "Collecting data";
 	if (milliseconds < 1_000) return `≤ ${milliseconds} ms`;
 	if (milliseconds < 60_000) return `≤ ${Math.round(milliseconds / 1_000)} s`;
 	if (milliseconds < 3_600_000) return `≤ ${Math.round(milliseconds / 60_000)} min`;
 	return `≤ ${Math.round(milliseconds / 3_600_000)} h`;
 }
+
+const SPAM_RATE_TONE = {
+	no_data: "border-border-subtle",
+	on_target: "border-success/40 bg-success/5",
+	elevated: "border-warning/40 bg-warning/5",
+	hard_limit: "border-error/40 bg-error/5",
+} as const;
+
+const SPAM_RATE_LABEL = {
+	no_data: "No data",
+	on_target: "On target",
+	elevated: "Above target",
+	hard_limit: "At hard line",
+} as const;
 </script>
 
 <template>
@@ -28,14 +42,27 @@ function formatDuration(milliseconds: number | null): string {
 				</div>
 			</div>
 
-			<div v-if="isLoading" class="h-24 animate-pulse rounded-lg bg-surface-subtle" />
+			<div
+				v-if="isLoading"
+				data-testid="compliance-loading"
+				class="h-24 animate-pulse rounded-lg bg-surface-subtle"
+			/>
 			<div v-else-if="telemetry" class="grid gap-4 lg:grid-cols-3">
-				<section class="rounded-lg border border-border-subtle p-4">
-					<p class="text-sm font-medium text-text-primary">FBL spam rate · 30 days</p>
+				<section
+					data-testid="spam-rate"
+					class="rounded-lg border p-4"
+					:class="SPAM_RATE_TONE[telemetry.spamRate.status]"
+				>
+					<div class="flex items-center justify-between gap-3">
+						<p class="text-sm font-medium text-text-primary">FBL spam rate · 30 days</p>
+						<span class="text-xs font-medium text-text-secondary">
+							{{ SPAM_RATE_LABEL[telemetry.spamRate.status] }}
+						</span>
+					</div>
 					<p class="mt-2 text-2xl font-semibold tabular-nums text-text-primary">
 						{{
 							telemetry.spamRate.spamRate === null
-								? 'No data'
+								? "No data"
 								: formatPercentage(telemetry.spamRate.spamRate, 3)
 						}}
 					</p>
@@ -47,9 +74,21 @@ function formatDuration(milliseconds: number | null): string {
 						Google mitigation requires 7 consecutive completed days below 0.3%. Owlat's separate
 						0.2% / 100-send circuit breaker stops sending earlier.
 					</p>
+					<p
+						data-testid="spam-recovery-progress"
+						class="mt-2 text-xs font-medium"
+						:class="telemetry.spamRate.recoveryEligible ? 'text-success' : 'text-text-secondary'"
+					>
+						<span>{{ telemetry.spamRate.cleanDaysBelowHardThreshold }}</span>
+						/
+						<span>{{ telemetry.spamRate.recoveryDaysRequired }}</span>
+						clean active days
+						<span v-if="telemetry.spamRate.recoveryEligible"> · recovery eligible</span>
+					</p>
 				</section>
 
 				<section
+					data-testid="gmail-proximity"
 					class="rounded-lg border p-4"
 					:class="
 						telemetry.gmail.approachingBulkClassification
@@ -64,7 +103,7 @@ function formatDuration(milliseconds: number | null): string {
 					</p>
 					<p class="mt-1 text-xs text-text-secondary">
 						{{
-							telemetry.gmail.highestVolumeDomain?.primaryDomain ?? 'No MTA-observed Gmail traffic'
+							telemetry.gmail.highestVolumeDomain?.primaryDomain ?? "No MTA-observed Gmail traffic"
 						}}
 					</p>
 					<p
@@ -81,6 +120,7 @@ function formatDuration(milliseconds: number | null): string {
 				</section>
 
 				<section
+					data-testid="unsubscribe-latency"
 					class="rounded-lg border p-4"
 					:class="
 						telemetry.unsubscribe.exceedsHonorWindow

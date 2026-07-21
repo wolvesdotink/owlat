@@ -136,13 +136,13 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		});
 	});
 
-	it('records Gmail accepted volume after the idempotent send transition', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+	it('records Gmail accepted volume only after an attributable delivered transition', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
 		const event: InboundEvent = {
-			kind: 'email.sent',
+			kind: 'email.delivered',
 			providerMessageId: 'send_123',
 			at: 1000,
-			providerType: 'mta',
 			destinationProvider: 'gmail',
 			primarySendingDomain: 'example.com',
 		};
@@ -155,13 +155,29 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			args: {
 				providerMessageId: 'send_123',
 				primaryDomain: 'example.com',
-				observedAt: 1000,
 			},
 		});
 	});
 
+	it('does not recreate Gmail telemetry for an unknown or terminal Send', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: false, reason: 'send_not_found' });
+
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.delivered',
+			providerMessageId: 'deleted-send',
+			at: 1000,
+			destinationProvider: 'gmail',
+			primarySendingDomain: 'example.com',
+		});
+
+		expect(runMutationCalls).toHaveLength(1);
+		expect(runMutationCalls[0]?.ref).toBe(SEND_LIFECYCLE);
+	});
+
 	it('routes email.delivered to sendLifecycle with a "delivered" transition', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
 		const event: InboundEvent = {
 			kind: 'email.delivered',
 			providerMessageId: 'msg-abc',
@@ -454,8 +470,9 @@ describe('dispatchInboundEvent — Postbox message-id routing (pb- prefix)', () 
 		expect(args.input).not.toHaveProperty('bounceMessage');
 	});
 
-	it('no-ops a pb- prefixed email.delivered (postbox has no delivered confirmation)', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+	it('maps a pb- prefixed remote delivery confirmation to postbox sent', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
 		const event: InboundEvent = {
 			kind: 'email.delivered',
 			providerMessageId: 'pb-xyz',
@@ -464,7 +481,15 @@ describe('dispatchInboundEvent — Postbox message-id routing (pb- prefix)', () 
 
 		await dispatchInboundEvent(ctx, event);
 
-		expect(runMutationCalls).toHaveLength(0);
+		expect(runMutationCalls).toEqual([
+			{
+				ref: ref(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId),
+				args: {
+					rawProviderMessageId: 'pb-xyz',
+					input: { to: 'sent', at: 2000 },
+				},
+			},
+		]);
 	});
 
 	it('no-ops a pb- prefixed email.complained', async () => {

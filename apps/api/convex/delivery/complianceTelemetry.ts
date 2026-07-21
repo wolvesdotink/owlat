@@ -68,9 +68,12 @@ export const recordGmailDelivery = internalMutation({
 	args: {
 		providerMessageId: v.string(),
 		primaryDomain: v.string(),
-		observedAt: v.number(),
 	},
 	handler: async (ctx, args) => {
+		// Provider timestamps are useful event metadata, but they are not trusted
+		// retention/window clocks. A skewed signed webhook must not create an
+		// immortal future bucket, so both clocks use server ingest time.
+		const ingestedAt = Date.now();
 		const receipt = await ctx.db
 			.query('gmailDeliveryReceipts')
 			.withIndex('by_message_id', (q) => q.eq('providerMessageId', args.providerMessageId))
@@ -79,9 +82,9 @@ export const recordGmailDelivery = internalMutation({
 
 		await ctx.db.insert('gmailDeliveryReceipts', {
 			providerMessageId: args.providerMessageId,
-			observedAt: args.observedAt,
+			observedAt: ingestedAt,
 		});
-		const bucketHour = hourStart(args.observedAt);
+		const bucketHour = hourStart(ingestedAt);
 		const shardKey = deterministicShard(args.providerMessageId);
 		const bucket = await ctx.db
 			.query('gmailVolumeBuckets')
@@ -147,7 +150,9 @@ export async function readGmailVolumes(
 	const cutoff = now - GMAIL_WINDOW_MS;
 	const buckets = await db
 		.query('gmailVolumeBuckets')
-		.withIndex('by_hour', (q) => q.gte('hourStart', hourStart(cutoff)))
+		.withIndex('by_hour', (q) =>
+			q.gte('hourStart', hourStart(cutoff)).lte('hourStart', hourStart(now))
+		)
 		.collect(); // bounded: cleanup retains only 48 hours × 8 shards × active sending domains
 	const totals = new Map<string, number>();
 	for (const bucket of buckets) {
@@ -202,6 +207,16 @@ export const cleanupComplianceTelemetry = internalMutation({
 			.withIndex('by_hour', (q) => q.lt('hourStart', hourStart(gmailCutoff)))
 			.collect(); // bounded: hourly cleanup limits this to newly expired buckets
 		for (const row of gmailBuckets) await ctx.db.delete(row._id);
+		const futureReceipts = await ctx.db
+			.query('gmailDeliveryReceipts')
+			.withIndex('by_observed_at', (q) => q.gt('observedAt', now))
+			.collect(); // bounded: invalid legacy/skew rows only
+		for (const row of futureReceipts) await ctx.db.delete(row._id);
+		const futureGmailBuckets = await ctx.db
+			.query('gmailVolumeBuckets')
+			.withIndex('by_hour', (q) => q.gt('hourStart', hourStart(now)))
+			.collect(); // bounded: invalid legacy/skew rows only
+		for (const row of futureGmailBuckets) await ctx.db.delete(row._id);
 		const unsubscribeCutoff = startOfDayUtc(now - UNSUBSCRIBE_RETENTION_MS);
 		const latencyRows = await ctx.db
 			.query('unsubscribeLatencyBuckets')

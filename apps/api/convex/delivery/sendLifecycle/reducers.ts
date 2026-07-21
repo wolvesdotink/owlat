@@ -137,17 +137,6 @@ export function reduceSent(
 		eventType: 'send',
 		domain: senderDomain,
 	});
-	// The MTA emits `sent` only after the destination SMTP server accepts DATA;
-	// unlike API providers it has no later delivered webhook. Count that accepted
-	// delivery once here so the FBL spam-rate denominator is real delivered
-	// volume. Other providers retain their separate email.delivered transition.
-	if (args.providerType === 'mta') {
-		effects.push({
-			kind: 'reputation_update',
-			eventType: 'deliver',
-			domain: senderDomain,
-		});
-	}
 
 	// Customer webhook fires for both kinds. The payload tells the
 	// subscriber which kind by which id is populated.
