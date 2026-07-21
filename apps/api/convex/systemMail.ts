@@ -62,8 +62,8 @@ export const sendSystemEmail = internalAction({
 
 		if (provider === 'mta') {
 			// Behavior-preserving MTA path — routes through the shared provider
-			// dispatch just like resend/ses. `mtaSendProvider` defaults dkimDomain
-			// to the from-domain and generates a random messageId; ipPool
+			// dispatch just like every other kind. `mtaSendProvider` defaults
+			// dkimDomain to the from-domain and generates a random messageId; ipPool
 			// 'transactional' is passed explicitly, so the /send body matches the
 			// previous dedicated client byte-for-byte.
 			const dispatched = await sendProviderDispatch(
@@ -89,8 +89,9 @@ export const sendSystemEmail = internalAction({
 			};
 		}
 
-		// resend / ses: route through the provider abstraction, carrying the
-		// RFC 3834 anti-loop header the MTA path stamps server-side.
+		// Every non-MTA kind — built-in (resend / ses) or plugin-contributed —
+		// routes through the shared provider dispatch, carrying the RFC 3834
+		// anti-loop header the MTA path stamps server-side.
 		const dispatched = await sendProviderDispatch(
 			ctx,
 			provider,
