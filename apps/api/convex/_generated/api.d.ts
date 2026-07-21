@@ -616,6 +616,7 @@ import type * as schema_draftStream from "../schema/draftStream.js";
 import type * as schema_e2ee from "../schema/e2ee.js";
 import type * as schema_forms from "../schema/forms.js";
 import type * as schema_inbox from "../schema/inbox.js";
+import type * as schema_instance from "../schema/instance.js";
 import type * as schema_integrations from "../schema/integrations.js";
 import type * as schema_knowledge from "../schema/knowledge.js";
 import type * as schema_mail from "../schema/mail.js";
@@ -1329,6 +1330,7 @@ declare const fullApi: ApiFromModules<{
   "schema/e2ee": typeof schema_e2ee;
   "schema/forms": typeof schema_forms;
   "schema/inbox": typeof schema_inbox;
+  "schema/instance": typeof schema_instance;
   "schema/integrations": typeof schema_integrations;
   "schema/knowledge": typeof schema_knowledge;
   "schema/mail": typeof schema_mail;
