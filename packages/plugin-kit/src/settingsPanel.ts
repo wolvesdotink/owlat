@@ -14,7 +14,6 @@ export type PluginSettingsPanelCapability = typeof PLUGIN_SETTINGS_PANEL_CAPABIL
  * prevents a plugin from shadowing a core settings entry: two entries at the
  * same href collapse first-registered-wins, and core is always registered
  * first.
-
  */
 export type PluginSettingsPanelKind = PluginNamespacedKind;
 

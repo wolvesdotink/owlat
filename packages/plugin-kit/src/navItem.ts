@@ -13,7 +13,6 @@ export type PluginNavItemCapability = typeof PLUGIN_NAV_ITEM_CAPABILITY;
  * (`derivePluginNavigation` sets each entry's id to its href), which is what
  * prevents a plugin from shadowing a core destination: two entries at the same
  * href collapse first-registered-wins, and core is always registered first.
-
  */
 export type PluginNavItemKind = PluginNamespacedKind;
 
