@@ -8,6 +8,7 @@ import { campaignTables } from './schema/campaigns';
 import { domainTables } from './schema/domains';
 import { contactTables } from './schema/contacts';
 import { authTables } from './schema/auth';
+import { instanceTables } from './schema/instance';
 import { templateTables } from './schema/templates';
 import { deliveryTables } from './schema/delivery';
 import { inboxTables } from './schema/inbox';
@@ -36,6 +37,7 @@ export default defineSchema({
 	...domainTables,
 	...contactTables,
 	...authTables,
+	...instanceTables,
 	...templateTables,
 	...deliveryTables,
 	...inboxTables,
