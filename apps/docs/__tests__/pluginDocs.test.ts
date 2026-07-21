@@ -1236,13 +1236,70 @@ describe('plugin docs: the CLI page quotes the real help text', () => {
 });
 
 describe('plugin docs: the chapter does not promise unshipped extension points', () => {
+	/**
+	 * The bucket summary is split into "wired end to end" and "declared … but not
+	 * yet invoked". Which bucket belongs in which table is not a docs judgement —
+	 * it is the `dispatch` column of the kernel's requirement table, which the
+	 * conformance reachability gate pins to the real consumer set. Reading the
+	 * split from the source means a bucket that gets wired (or unwired) fails
+	 * here until the page moves its row.
+	 */
+	describe('the bucket summary splits dispatched from declared-only', () => {
+		function bucketsWithDispatch(dispatch: string): string[] {
+			const source = read('packages/plugin-kit/src/contributionRequirements.ts');
+			const table = source.slice(
+				source.indexOf('export const CONTRIBUTION_CAPABILITY_REQUIREMENTS = ['),
+				source.indexOf('] as const;')
+			);
+			return [...table.matchAll(/bucket: '(\w+)',[\s\S]*?dispatch: '(\w+)'/g)]
+				.filter((match) => match[2] === dispatch)
+				.map((match) => match[1]!);
+		}
+
+		function tableBuckets(heading: string): string[] {
+			const body = section(docs.contributions, heading);
+			return [...body.matchAll(/^\| `(\w+)` \| `[^`]+` \|/gm)].map((match) => match[1]!);
+		}
+
+		const wired = bucketsWithDispatch('wired');
+		const declared = bucketsWithDispatch('declared');
+
+		it('reads a non-degenerate split from the kernel table', () => {
+			expect(wired.length).toBeGreaterThan(0);
+			expect(declared.length).toBeGreaterThan(0);
+			expect([...wired, ...declared].sort()).toEqual([...contributionKinds()].sort().filter(
+				(kind) => wired.includes(kind) || declared.includes(kind)
+			));
+		});
+
+		it('lists exactly the dispatched buckets as wired end to end', () => {
+			expect(tableBuckets('### Wired end to end').sort()).toEqual([...wired].sort());
+		});
+
+		it('lists exactly the undispatched buckets as not yet invoked', () => {
+			const heading = '### Declared, catalogued and authorized — but not yet invoked';
+			expect(tableBuckets(heading).sort()).toEqual([...declared].sort());
+			expect(section(docs.contributions, heading)).toContain('No host path calls');
+		});
+
+		it('repeats the caveat in each undispatched bucket section', () => {
+			for (const marker of [
+				'Only `automationSteps` runs today',
+				'No publish path yet',
+				'No import walk reaches a plugin provider yet',
+			]) {
+				expect(docs.contributions, `${marker} caveat is gone`).toContain(marker);
+			}
+		});
+	});
+
 	it('names the reserved-but-unconsumed buckets as reserved', () => {
 		// Derived from the page, not hardcoded: EVERY bucket the chapter calls
 		// reserved must really be unconsumed by codegen, so wiring one up fails
 		// here until the page stops calling it reserved — and a bucket quietly
 		// dropped from the list is caught by the contribution-bucket assertion,
 		// which requires every declared kind to be documented somewhere.
-		const reserved = section(docs.contributions, '## Declared but not yet consumed');
+		const reserved = section(docs.contributions, '## Reserved names');
 		const kinds = new Set(contributionKinds());
 		const buckets = [...reserved.matchAll(/`([a-zA-Z]+)`/g)]
 			.map((match) => match[1]!)

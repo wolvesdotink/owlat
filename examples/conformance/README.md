@@ -18,6 +18,13 @@ rather than three unrelated demos.
   ids/hrefs/event kinds, every contribution bucket paired with the capability it
   needs, an LLM budget exactly when `llm:invoke` is requested, grants that can
   only narrow, and nav items that target real core sidebar sections.
+- **`dispatchReachability.test.ts`** — the honesty gate on the contribution
+  buckets. Each capability-enforced bucket is classed `wired` or `declared` in
+  the kernel's requirement table; this suite names the one symbol a host path has
+  to reach for the bucket to run, then asserts a `wired` bucket has a production
+  consumer and a `declared` bucket has none. Wiring a declared bucket, or
+  deleting the last consumer of a wired one, turns it red until the table and the
+  Contribution Reference agree with the code.
 - **`lifecycle.test.ts`** — clean install, `add`, `remove`, disable and upgrade,
   each run against a real disposable deployment. `@owlat/plugin-cli` rewrites a
   real `plugins.config.ts` (including `--dry-run` capability previews) and
