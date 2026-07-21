@@ -105,9 +105,7 @@ export async function readDashboardRouteMatchers(): Promise<
 				`^${route
 					.split('/')
 					.map((segment) =>
-						/^\[.+\]$/.test(segment)
-							? '[^/]+'
-							: segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+						/^\[.+\]$/.test(segment) ? '[^/]+' : segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 					)
 					.join('/')}$`
 			);

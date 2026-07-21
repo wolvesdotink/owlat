@@ -155,10 +155,7 @@ describe('contribution dispatch reachability', () => {
 		expect(PLUGIN_DISPATCHED_CONTRIBUTION_KINDS.length).toBeGreaterThan(0);
 		expect(PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS.length).toBeGreaterThan(0);
 		expect(
-			[
-				...PLUGIN_DISPATCHED_CONTRIBUTION_KINDS,
-				...PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS,
-			].sort()
+			[...PLUGIN_DISPATCHED_CONTRIBUTION_KINDS, ...PLUGIN_UNDISPATCHED_CONTRIBUTION_KINDS].sort()
 		).toEqual([...PLUGIN_LIVE_CONTRIBUTION_KINDS].sort());
 	});
 

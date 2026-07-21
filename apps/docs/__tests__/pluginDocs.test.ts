@@ -1267,9 +1267,11 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 		it('reads a non-degenerate split from the kernel table', () => {
 			expect(wired.length).toBeGreaterThan(0);
 			expect(declared.length).toBeGreaterThan(0);
-			expect([...wired, ...declared].sort()).toEqual([...contributionKinds()].sort().filter(
-				(kind) => wired.includes(kind) || declared.includes(kind)
-			));
+			expect([...wired, ...declared].sort()).toEqual(
+				[...contributionKinds()]
+					.sort()
+					.filter((kind) => wired.includes(kind) || declared.includes(kind))
+			);
 		});
 
 		it('lists exactly the dispatched buckets as wired end to end', () => {
