@@ -1,6 +1,10 @@
 import { v } from 'convex/values';
 import { CORE_AGENT_STEP_DEFINITIONS, type CoreAgentStepKind } from '@owlat/plugin-host';
 import { BUNDLED_PLUGIN_AGENT_STEP_CATALOG } from '../../plugins/agentStepCatalog.generated';
+import {
+	defineHostedContributionCatalog,
+	type HostedContributionDefinition,
+} from '../../plugins/hostedContributionCatalog';
 
 export { CORE_AGENT_STEP_DEFINITIONS } from '@owlat/plugin-host';
 export type { CoreAgentStepKind } from '@owlat/plugin-host';
@@ -12,9 +16,7 @@ type GeneratedPluginAgentStepKind =
 			: never
 		: never;
 
-interface GeneratedPluginAgentStepDefinition {
-	readonly kind: string;
-	readonly pluginId: string;
+interface GeneratedPluginAgentStepDefinition extends HostedContributionDefinition<'agent:step'> {
 	readonly after: string;
 	readonly continuationStatus: string;
 	readonly placement: 'classification' | 'before_draft' | 'after_draft';
@@ -23,11 +25,13 @@ interface GeneratedPluginAgentStepDefinition {
 		from: 'classifying' | 'drafting';
 		to: 'archived' | 'draft_ready' | 'failed';
 	}>[];
-	readonly requiredCapability: 'agent:step';
 }
 
-const PLUGIN_AGENT_STEP_CATALOG =
-	BUNDLED_PLUGIN_AGENT_STEP_CATALOG as readonly GeneratedPluginAgentStepDefinition[];
+const PLUGIN_CATALOG = defineHostedContributionCatalog<GeneratedPluginAgentStepDefinition>(
+	BUNDLED_PLUGIN_AGENT_STEP_CATALOG,
+	'agent step'
+);
+const PLUGIN_AGENT_STEP_CATALOG = PLUGIN_CATALOG.all;
 
 export type AgentStepKind = CoreAgentStepKind | GeneratedPluginAgentStepKind;
 
@@ -45,7 +49,7 @@ export function isPluginAgentStepKind(kind: AgentStepKind): kind is GeneratedPlu
 export function pluginAgentStepDefinition(
 	kind: string
 ): GeneratedPluginAgentStepDefinition | undefined {
-	return PLUGIN_AGENT_STEP_CATALOG.find((definition) => definition.kind === kind);
+	return PLUGIN_CATALOG.byKind(kind);
 }
 
 /** Depth-first stable expansion keeps siblings and plugin chains deterministic. */

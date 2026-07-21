@@ -1,19 +1,24 @@
 import { BUNDLED_PLUGIN_AUTONOMY_GATE_CATALOG } from './autonomyGateCatalog.generated';
+import {
+	defineHostedContributionCatalog,
+	type HostedContributionDefinition,
+} from './hostedContributionCatalog';
 
-export interface HostedAutonomyGateDefinition {
-	readonly kind: string;
-	readonly pluginId: string;
+export interface HostedAutonomyGateDefinition extends HostedContributionDefinition<'send:gate'> {
 	readonly label: string;
 	readonly timeoutMs: number;
 	readonly requiredEnvVars: readonly string[];
-	readonly requiredCapability: 'send:gate';
 }
 
-export const AUTONOMY_GATE_CATALOG =
-	BUNDLED_PLUGIN_AUTONOMY_GATE_CATALOG as readonly HostedAutonomyGateDefinition[];
+const CATALOG = defineHostedContributionCatalog<HostedAutonomyGateDefinition>(
+	BUNDLED_PLUGIN_AUTONOMY_GATE_CATALOG,
+	'autonomy gate'
+);
+
+export const AUTONOMY_GATE_CATALOG = CATALOG.all;
 
 export function pluginAutonomyGateDefinition(
 	kind: string
 ): HostedAutonomyGateDefinition | undefined {
-	return AUTONOMY_GATE_CATALOG.find((definition) => definition.kind === kind);
+	return CATALOG.byKind(kind);
 }

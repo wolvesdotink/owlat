@@ -158,7 +158,7 @@ async function terminalResult(
 			pluginId,
 			providerKind: kind,
 			attempts,
-			success: result.success,
+			outcome: result.success ? 'completed' : 'failed',
 		});
 	}
 	return { result, providerType: kind, latencyMs, attempts };

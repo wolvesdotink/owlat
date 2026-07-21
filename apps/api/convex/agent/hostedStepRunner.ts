@@ -18,7 +18,7 @@ async function recordOutcome(
 	await ctx.runMutation(internal.plugins.agentStepAuthorization.recordOutcome, {
 		pluginId,
 		stepKind,
-		success,
+		outcome: success ? 'completed' : 'failed',
 	});
 }
 

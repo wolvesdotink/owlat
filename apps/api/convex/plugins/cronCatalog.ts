@@ -1,18 +1,23 @@
-import type { PluginId } from '@owlat/plugin-kit';
 import { BUNDLED_PLUGIN_CRON_CATALOG } from './cronCatalog.generated';
+import {
+	defineHostedContributionCatalog,
+	type HostedContributionDefinition,
+} from './hostedContributionCatalog';
 
-export interface HostedCronDefinition {
-	readonly kind: string;
-	readonly pluginId: PluginId;
+export interface HostedCronDefinition extends HostedContributionDefinition<'scheduler:cron'> {
 	readonly label: string;
 	readonly intervalMinutes: number;
 	readonly timeoutMs: number;
 	readonly requiredEnvVars: readonly string[];
-	readonly requiredCapability: 'scheduler:cron';
 }
 
-export const CRON_CATALOG = BUNDLED_PLUGIN_CRON_CATALOG as readonly HostedCronDefinition[];
+const CATALOG = defineHostedContributionCatalog<HostedCronDefinition>(
+	BUNDLED_PLUGIN_CRON_CATALOG,
+	'cron'
+);
+
+export const CRON_CATALOG = CATALOG.all;
 
 export function pluginCronDefinition(kind: string): HostedCronDefinition | undefined {
-	return CRON_CATALOG.find((definition) => definition.kind === kind);
+	return CATALOG.byKind(kind);
 }

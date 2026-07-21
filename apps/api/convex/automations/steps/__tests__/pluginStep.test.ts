@@ -48,7 +48,7 @@ interface FakeCtx {
 function makeCtx(authorized: boolean): FakeCtx {
 	return {
 		runMutation: vi.fn(async (_ref: unknown, args: Record<string, unknown>) =>
-			'success' in args ? undefined : authorized
+			'outcome' in args ? undefined : authorized
 		),
 	};
 }
@@ -116,7 +116,7 @@ describe('hosted plugin automation step execution', () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 		const ctx = {
 			runMutation: vi.fn(async (_ref: unknown, args: Record<string, unknown>) => {
-				if ('success' in args) throw new Error('audit down');
+				if ('outcome' in args) throw new Error('audit down');
 				return true; // authorized
 			}),
 		};
