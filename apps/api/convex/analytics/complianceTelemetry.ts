@@ -22,12 +22,12 @@ export const getComplianceTelemetry = authedQuery({
 	handler: async (ctx) => {
 		await getUserIdFromSession(ctx);
 		const now = Date.now();
-		const [spamRate, gmailDomains, unsubscribe] = await Promise.all([
+		const [spamRate, gmailVolume, unsubscribe] = await Promise.all([
 			summarizeSpamRate(ctx.db, { kind: 'org' }, now),
-			readGmailVolumes(ctx.db, now),
+			readGmailVolumes(ctx.db),
 			readUnsubscribeLatency(ctx.db, now),
 		]);
-		const highestVolumeDomain = gmailDomains[0] ?? null;
+		const highestVolumeDomain = gmailVolume.domains[0] ?? null;
 		return {
 			spamRate: {
 				...spamRate,
@@ -36,7 +36,9 @@ export const getComplianceTelemetry = authedQuery({
 				internalCleanDaysRequired: SPAM_RATE_INTERNAL_CLEAN_DAY_EVIDENCE_DAYS,
 			},
 			gmail: {
-				domains: gmailDomains,
+				domains: gmailVolume.domains,
+				domainLimit: gmailVolume.domainLimit,
+				isDomainListTruncated: gmailVolume.isDomainListTruncated,
 				highestVolumeDomain,
 				warningThreshold: GMAIL_PROXIMITY_WARNING_THRESHOLD,
 				bulkSenderThreshold: GMAIL_BULK_SENDER_THRESHOLD,

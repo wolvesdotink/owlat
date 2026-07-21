@@ -60,7 +60,7 @@ export { reduceBounced, reduceComplained } from './feedbackReducers';
 
 export const LEGAL_EDGES: Record<SendStatus, ReadonlySet<SendStatus>> = {
 	queued: new Set<SendStatus>(['sent', 'failed']),
-	sent: new Set<SendStatus>(['delivered', 'opened', 'clicked', 'bounced', 'complained']),
+	sent: new Set<SendStatus>(['failed', 'delivered', 'opened', 'clicked', 'bounced', 'complained']),
 	failed: new Set<SendStatus>(),
 	delivered: new Set<SendStatus>(['opened', 'clicked', 'bounced', 'complained']),
 	opened: new Set<SendStatus>(['clicked', 'bounced', 'complained']),
@@ -238,6 +238,7 @@ export function reduceFailed(
 	return {
 		patch: {
 			status: 'failed',
+			failedAt: args.at,
 			errorMessage: args.errorMessage,
 			errorCode: args.errorCode,
 		},

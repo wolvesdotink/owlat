@@ -20,6 +20,7 @@ import {
 } from './sendLifecycle/reducers';
 import { applyEffects } from './sendLifecycle/effects';
 import {
+	canAttributeRemoteAcceptance,
 	reduceDeliveryObservation,
 	type DeliveryObservationResult,
 } from './sendLifecycle/deliveryObservation';
@@ -123,23 +124,18 @@ async function dispatch(
 		input.to === 'opened' ||
 		input.to === 'clicked' ||
 		input.to === 'complained';
-	// A late accepted-delivery event remains attributable after status has moved
-	// forward. If a bounce happened before any delivery evidence, deliveredAt is
-	// absent and this exception deliberately does not apply.
-	const isAttributableLateAcceptance =
-		input.to === 'delivered' &&
-		(send.deliveredAt !== undefined ||
-			from === 'delivered' ||
-			from === 'opened' ||
-			from === 'clicked' ||
-			from === 'complained');
+	// A late accepted-delivery event remains attributable when its authenticated
+	// event time precedes a terminal transition. Arrival order never controls the
+	// denominator; persisted terminal timestamps do.
+	const isAttributableRemoteAcceptance =
+		input.to === 'delivered' && canAttributeRemoteAcceptance(send, input.at);
 
 	// Self-loops: `opened` / `clicked` re-fire as counter-only `recorded`
 	// events, and `bounced → bounced` re-fire is routed to the reducer (which
 	// decides duplicate vs. a soft-bounce counter bump vs. a soft → hard
 	// hardening). All other self-loops report `duplicate` via the reducer; the
 	// reducer also detects from === to and returns the duplicate outcome.
-	if (!isLegalEdge && !isSelfLoop && !isAttributableLateAcceptance) {
+	if (!isLegalEdge && !isSelfLoop && !isAttributableRemoteAcceptance) {
 		// Terminal states get a distinct reason for observability.
 		if (legalEdges.size === 0) {
 			return { ok: false, reason: 'terminal', from, to: input.to };

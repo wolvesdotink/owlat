@@ -24,6 +24,8 @@ function telemetryFixture() {
 		},
 		gmail: {
 			domains: [] as Array<{ primaryDomain: string; delivered24h: number }>,
+			domainLimit: 100,
+			isDomainListTruncated: false,
 			highestVolumeDomain: null as { primaryDomain: string; delivered24h: number } | null,
 			warningThreshold: 4_000,
 			bulkSenderThreshold: 5_000,
@@ -92,6 +94,14 @@ describe('ComplianceTelemetryCard', () => {
 		const card = mountCard(telemetry).find('[data-testid="gmail-proximity"]');
 		expect(card.classes()).toContain('border-warning/40');
 		expect(card.text()).toContain('approaching permanent Gmail bulk-sender classification');
+	});
+
+	it('discloses when the indexed primary-domain list is capped', () => {
+		const telemetry = telemetryFixture();
+		telemetry.gmail.isDomainListTruncated = true;
+		expect(mountCard(telemetry).text()).toContain(
+			'Showing the 100 highest-volume primary domains.'
+		);
 	});
 
 	it('renders internal clean-day evidence without claiming Google eligibility', () => {
