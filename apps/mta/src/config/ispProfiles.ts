@@ -10,7 +10,7 @@
  */
 
 import type Redis from 'ioredis';
-import { isOutboundTlsMode } from '@owlat/shared';
+import { isOutboundTlsMode, strictestOutboundTlsMode } from '@owlat/shared';
 import type { DestinationProviderKey, DestinationProviderProfile } from '../types.js';
 import { DESTINATION_PROVIDER_PROFILES } from '../config.js';
 import { logger } from '../monitoring/logger.js';
@@ -19,12 +19,6 @@ const PROFILE_PREFIX = 'mta:isp-profile:';
 const PROFILE_LIST_KEY = 'mta:isp-profiles';
 const MAX_RATE_PER_MINUTE = 1_000_000;
 const MAX_RECOVERY_FACTOR = 100;
-const TLS_MODE_RANK: Record<DestinationProviderProfile['tlsMode'], number> = {
-	opportunistic: 0,
-	require: 1,
-	'require-verified': 2,
-};
-
 export const DESTINATION_PROVIDER_KEYS = [
 	'gmail',
 	'microsoft',
@@ -91,18 +85,18 @@ export async function getProfile(
 	const canonicalKey = canonicalProfileKey(providerKey);
 	const key = `${PROFILE_PREFIX}${canonicalKey}`;
 	const data = await redis.hgetall(key);
+	const checkedInProfile = DESTINATION_PROVIDER_PROFILES[canonicalKey];
+	const fallback = checkedInProfile ?? DESTINATION_PROVIDER_PROFILES['__default__']!;
 
 	if (data['defaultRate']) {
-		return applyProviderMinimum(
-			canonicalKey,
-			parseProfile(
-				data,
-				DESTINATION_PROVIDER_PROFILES[canonicalKey] ?? DESTINATION_PROVIDER_PROFILES['__default__']!
-			)
-		);
+		return applyProviderMinimum(canonicalKey, parseProfile(data, fallback));
 	}
 
-	// Fall back to hardcoded default profile
+	// A deleted or absent known-provider override reverts immediately to that
+	// provider's checked-in shaping policy. The generic Redis default is only for
+	// `other` and genuinely unknown provider keys.
+	if (checkedInProfile) return checkedInProfile;
+
 	const defaultKey = `${PROFILE_PREFIX}__default__`;
 	const defaultData = await redis.hgetall(defaultKey);
 
@@ -124,12 +118,14 @@ function applyProviderMinimum(
 	profile: DestinationProviderProfile
 ): DestinationProviderProfile {
 	const minimum = DESTINATION_PROVIDER_PROFILES[providerKey];
-	if (!minimum || TLS_MODE_RANK[profile.tlsMode] >= TLS_MODE_RANK[minimum.tlsMode]) return profile;
+	if (!minimum) return profile;
+	const tlsMode = strictestOutboundTlsMode(profile.tlsMode, minimum.tlsMode);
+	if (tlsMode === profile.tlsMode) return profile;
 	logger.warn(
 		{ providerKey, configuredTlsMode: profile.tlsMode, minimumTlsMode: minimum.tlsMode },
 		'Raising destination provider TLS mode to the checked-in minimum'
 	);
-	return { ...profile, tlsMode: minimum.tlsMode };
+	return { ...profile, tlsMode };
 }
 
 function parseProfile(
@@ -215,7 +211,10 @@ function validateProfile(profile: DestinationProviderProfile, providerKey?: stri
 	const minimumTlsMode = providerKey
 		? DESTINATION_PROVIDER_PROFILES[providerKey]?.tlsMode
 		: undefined;
-	if (minimumTlsMode && TLS_MODE_RANK[profile.tlsMode] < TLS_MODE_RANK[minimumTlsMode]) {
+	if (
+		minimumTlsMode &&
+		strictestOutboundTlsMode(profile.tlsMode, minimumTlsMode) !== profile.tlsMode
+	) {
 		throw new Error(
 			`${providerKey} tlsMode cannot be below the checked-in ${minimumTlsMode} minimum`
 		);
