@@ -2,9 +2,30 @@ import { describe, it, expect } from 'vitest';
 import { classifySmtpResponse } from '../intelligence/smtpClassifier.js';
 
 describe('Enhanced SMTP response classifier', () => {
+	describe('provider feedback signatures', () => {
+		it.each([
+			['421 4.7.28 Gmail rate limited', '4.7.28', 'gmail_rate_limited', 1_800_000],
+			['421 4.7.23 Missing PTR', '4.7.23', 'gmail_ip_identity', 3_600_000],
+			['421 4.7.29 TLS required', '4.7.29', 'gmail_tls_required', 2_700_000],
+			['421 TS03 temporarily deferred', undefined, 'yahoo_ts03', 1_800_000],
+			['421 TSS04 temporarily deferred', undefined, 'yahoo_tss04', 3_600_000],
+			['451 4.3.2 temporary system problem', '4.3.2', 'microsoft_resource_throttle', 1_200_000],
+		])(
+			'classifies %s with a tuned delay and dashboard annotation',
+			(response, enhanced, category, delay) => {
+				const result = classifySmtpResponse(421, response, enhanced);
+				expect(result.category).toBe(category);
+				expect(result.suggestedDelayMs).toBe(delay);
+				expect(result.annotation).toBeTruthy();
+			}
+		);
+	});
 	describe('greylisting detection', () => {
 		it('should detect greylisting responses', () => {
-			const result = classifySmtpResponse(450, '450 4.7.1 Greylisted, please try again in 120 seconds');
+			const result = classifySmtpResponse(
+				450,
+				'450 4.7.1 Greylisted, please try again in 120 seconds'
+			);
 			expect(result.category).toBe('greylisted');
 			expect(result.retryable).toBe(true);
 			expect(result.countAsBounce).toBe(false);

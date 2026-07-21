@@ -203,6 +203,29 @@ describe('SmtpConnectionPool', () => {
 		expect(enforcing.config.requireTls).toBe(true);
 		expect(enforcing.config.tls?.rejectUnauthorized).toBe(true);
 	});
+
+	it('enforces one provider connection cap across MX hosts and DKIM partitions', async () => {
+		const limits = {
+			scope: 'provider:gmail',
+			maxConnections: 2,
+			maxDeliveriesPerConnection: 50,
+		};
+		await pool.acquire('aspmx.l.google.com', '10.0.0.1', {
+			dkimDomain: 'alpha.example',
+			connectionLimits: limits,
+		});
+		await pool.acquire('alt1.aspmx.l.google.com', '10.0.0.2', {
+			dkimDomain: 'beta.example',
+			connectionLimits: limits,
+		});
+
+		await expect(
+			pool.acquire('alt2.aspmx.l.google.com', '10.0.0.3', {
+				dkimDomain: 'gamma.example',
+				connectionLimits: limits,
+			})
+		).rejects.toBeInstanceOf(PoolOverCapError);
+	});
 });
 
 /** Minimal in-memory ioredis stand-in for the global-counter coordination. */
@@ -268,6 +291,31 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 			(err) => expect(err).toBeInstanceOf(PoolOverCapError)
 		);
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(2); // not 3
+	});
+
+	it('enforces a provider override across MTA instances and different MX hosts', async () => {
+		const redis = makeRedisMock();
+		const first = new SmtpConnectionPool({ maxPerHost: 100 });
+		const second = new SmtpConnectionPool({ maxPerHost: 100 });
+		first.enableDistributedCoordination(redis as unknown as Redis, 10, 'srv1');
+		second.enableDistributedCoordination(redis as unknown as Redis, 10, 'srv2');
+		const connectionLimits = {
+			scope: 'provider:gmail',
+			maxConnections: 1,
+			maxDeliveriesPerConnection: 50,
+		};
+
+		const acquired = await first.acquire('aspmx.l.google.com', '10.0.0.1', {
+			connectionLimits,
+		});
+		await expect(
+			second.acquire('alt1.aspmx.l.google.com', '10.0.0.2', { connectionLimits })
+		).rejects.toBeInstanceOf(PoolOverCapError);
+		expect(await first.getGlobalConnectionCount('provider:gmail')).toBe(1);
+
+		first.release(acquired.key);
+		await first.closeAll();
+		await second.closeAll();
 	});
 
 	it('reuse takes no new global slot', async () => {

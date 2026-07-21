@@ -25,7 +25,7 @@ import type Redis from 'ioredis';
 import type { Queue, ReservedJob } from 'groupmq';
 import type { EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
-import { extractDomain, classifyIsp, buildGroupKey } from './groups.js';
+import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
 import { sendToMx } from '../smtp/sender.js';
 import { recordWorkerHeartbeat } from '../routes/health.js';
@@ -39,6 +39,7 @@ import type { AttemptCtx, BasePhaseCtx } from '../dispatch/types.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { PipelineResult } from '../dispatch/pipeline.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
+import { resolveDestinationIdentity } from '../smtp/destinationProvider.js';
 
 /**
  * Add random jitter (±15%) to a delay to prevent thundering herd when
@@ -89,7 +90,8 @@ export async function handleEmailJob(
 	const data = job.data;
 	const deps = { redis, config };
 	const domain = extractDomain(data.to);
-	const isp = classifyIsp(domain);
+	const destination = await resolveDestinationIdentity(redis, domain);
+	const { providerKey, throttleKey } = destination;
 	// extractDomainOrNull unwraps a "Name <addr>" From (a raw split would keep
 	// the trailing `>`); undefined when no address is present.
 	const fromDomain = extractDomainOrNull(data.from) ?? undefined;
@@ -101,12 +103,19 @@ export async function handleEmailJob(
 
 	recordWorkerHeartbeat(redis, config.serverId).catch(() => {});
 
-	const baseCtx: BasePhaseCtx = { job: data, domain, isp, fromDomain };
+	const baseCtx: BasePhaseCtx = {
+		job: data,
+		domain,
+		providerKey,
+		throttleKey,
+		destination,
+		fromDomain,
+	};
 
 	const piped = await runPipeline(deps, mainPipeline, baseCtx);
 
 	if (piped.kind === 'drop') {
-		await handleDrop(piped, data, domain, isp, deps);
+		await handleDrop(piped, data, domain, providerKey, deps);
 		return;
 	}
 
@@ -132,7 +141,7 @@ export async function handleEmailJob(
 	}
 
 	const startTime = Date.now();
-	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease);
+	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease, destination);
 	const durationMs = Date.now() - startTime;
 
 	const outcome = classifyResult(result);
@@ -250,7 +259,7 @@ async function handleDrop(
 	piped: Extract<PipelineResult<BasePhaseCtx>, { kind: 'drop' }>,
 	job: EmailJob,
 	domain: string,
-	isp: string,
+	providerKey: string,
 	deps: { redis: Redis; config: MtaConfig }
 ): Promise<void> {
 	const effects: DispatchEffect[] = [];
@@ -263,7 +272,7 @@ async function handleDrop(
 		effects.push({
 			kind: 'metrics_counter_inc',
 			pool: job.ipPool,
-			isp,
+			isp: providerKey,
 			outcome: 'rejected',
 		});
 	} else {

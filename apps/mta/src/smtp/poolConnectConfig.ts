@@ -10,6 +10,13 @@ import type { TLSSocket } from 'node:tls';
 import type { SmtpConnectOptions } from '@owlat/smtp-client';
 
 export interface AcquireOptions {
+	/** Provider-aware connection and socket-reuse limits. */
+	connectionLimits?: {
+		/** Stable distributed scope, e.g. `provider:gmail` or `mx:example.net`. */
+		scope: string;
+		maxConnections: number;
+		maxDeliveriesPerConnection: number;
+	};
 	port?: number;
 	requireTLS?: boolean;
 	tls?: {
