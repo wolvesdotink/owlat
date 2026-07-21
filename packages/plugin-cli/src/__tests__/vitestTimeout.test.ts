@@ -4,11 +4,10 @@ import vitestConfig from '../../vitest.config';
 import { PARALLEL_GATE_TIMEOUT_MS, VITEST_DEFAULT_TIMEOUT_MS } from '../../../../vitest.timeouts';
 
 /**
- * Release-gate guard for email-builder.
+ * Release-gate guard for plugin-cli.
  *
- * `src/host/__tests__/*.test.ts` reload the entire module graph on every single
- * test (`vi.resetModules()` then dynamic import), because the block registries
- * are module-level one-way latches.
+ * Every case here materialises a throwaway workspace on disk and drives the
+ * real codegen over it.
  * That cost is small in isolation, but the root `ci:test` gate runs every turbo
  * test task at once and it grows by roughly an order of magnitude, which used to
  * exceed vitest's 5000ms default and made `ci:verify` — and therefore the
@@ -22,7 +21,7 @@ import { PARALLEL_GATE_TIMEOUT_MS, VITEST_DEFAULT_TIMEOUT_MS } from '../../../..
  */
 const MIN_HEADROOM_FACTOR = 12;
 
-describe('email-builder vitest timeout budget', () => {
+describe('plugin-cli vitest timeout budget', () => {
 	const config = vitestConfig as ViteUserConfig;
 
 	it('configures an explicit test timeout instead of the 5000ms default', () => {

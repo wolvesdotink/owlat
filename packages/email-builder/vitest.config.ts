@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config';
 import vue from '@vitejs/plugin-vue';
 import { resolve } from 'path';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 export default defineConfig({
 	plugins: [vue()],
@@ -14,8 +15,8 @@ export default defineConfig({
 		// turbo test tasks in parallel, which blew vitest's 5000ms default and made
 		// the release gate flake. Size the budget for the reload, not for an idle
 		// machine. Asserted by src/__tests__/vitestTimeout.test.ts.
-		testTimeout: 20000,
-		hookTimeout: 20000,
+		testTimeout: PARALLEL_GATE_TIMEOUT_MS,
+		hookTimeout: PARALLEL_GATE_TIMEOUT_MS,
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'html'],

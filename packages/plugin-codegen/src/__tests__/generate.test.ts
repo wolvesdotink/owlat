@@ -284,7 +284,7 @@ describe('generated composition freshness', () => {
 		expect(removed).toContain('void app;');
 		expect(removed).not.toContain('component-plugin');
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
-	}, 15_000);
+	});
 
 	it('typechecks and bundles nonempty generated executable registries', async () => {
 		const root = await createAgentPluginWorkspace();
@@ -413,7 +413,7 @@ describe('generated composition freshness', () => {
 				cwd: root,
 			})
 		).rejects.toThrow();
-	}, 30_000);
+	});
 
 	it('reads plugins.config.ts at its byte boundary and rejects one byte more', async () => {
 		const root = await createZeroPluginWorkspace();
@@ -492,7 +492,7 @@ describe('generated composition freshness', () => {
 		await Promise.all(Array.from({ length: 20 }, () => generatePluginComposition(root)));
 
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
-	}, 30_000);
+	});
 
 	it('supports concurrent generation in separate Bun processes', async () => {
 		const root = await createZeroPluginWorkspace();
@@ -502,7 +502,7 @@ describe('generated composition freshness', () => {
 		);
 
 		await expect(generatePluginComposition(root, { check: true })).resolves.toBeUndefined();
-	}, 30_000);
+	});
 
 	it('ignores a planted legacy temporary symlink and never overwrites its victim', async () => {
 		const root = await createZeroPluginWorkspace();

@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 /**
  * The gallery drives the real packages from source, not from build output, so a
@@ -12,8 +13,11 @@ export default defineConfig({
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',
 		// The lifecycle suite runs the real codegen against throwaway workspaces,
-		// which spawns the atomic-commit helper per generated file.
-		testTimeout: 60_000,
+		// which spawns the atomic-commit helper per generated file. That fixed cost
+		// inflates under the root gate's full parallelism, so take the shared budget
+		// rather than a local literal (see vitest.timeouts.ts).
+		testTimeout: PARALLEL_GATE_TIMEOUT_MS,
+		hookTimeout: PARALLEL_GATE_TIMEOUT_MS,
 	},
 	resolve: {
 		alias: {
