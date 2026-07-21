@@ -238,6 +238,38 @@ describe('MTA remote-acceptance reputation lifecycle', () => {
 		expect(contact?.softBounceCount).toBe(1);
 	});
 
+	it('clears preexisting soft-bounce history after a failure arrives before acceptance', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		const t = convexTest(schema, modules);
+		const providerMessageId = 'mta-failure-before-late-acceptance';
+		const sendId = await seedSentSend(t, providerMessageId);
+		await t.run(async (ctx) => {
+			const send = await ctx.db.get(sendId);
+			if (!send?.contactId) throw new Error('Expected seeded Send to have a contact');
+			await ctx.db.patch(send.contactId, { softBounceCount: 2 });
+		});
+
+		await dispatch(t, {
+			kind: 'email.failed',
+			providerMessageId,
+			at: NOW + 1,
+			errorMessage: 'ambiguous post-DATA timeout',
+			errorCode: 'AMBIGUOUS_TIMEOUT',
+		});
+		await dispatch(t, accepted(providerMessageId, NOW));
+
+		const { send, contact } = await t.run(async (ctx) => {
+			const send = await ctx.db.get(sendId);
+			return {
+				send,
+				contact: send?.contactId ? await ctx.db.get(send.contactId) : null,
+			};
+		});
+		expect(send).toMatchObject({ status: 'failed', failedAt: NOW + 1, deliveredAt: NOW });
+		expect(contact?.softBounceCount).toBe(0);
+	});
+
 	it('does not count or emit Gmail telemetry for a failure before acceptance', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(NOW);

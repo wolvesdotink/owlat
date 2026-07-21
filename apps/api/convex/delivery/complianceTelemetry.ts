@@ -151,7 +151,7 @@ export const recordGmailDelivery = internalMutation({
 				await ctx.scheduler.runAfter(
 					GMAIL_ROLLUP_REFRESH_DELAY_MS,
 					internal.delivery.complianceTelemetry.refreshGmailDomainVolume,
-					{ jobId, primaryDomain: args.primaryDomain }
+					{ jobId }
 				);
 			}
 		}
@@ -205,14 +205,11 @@ async function materializeGmailDomainVolume(
 }
 
 export const refreshGmailDomainVolume = internalMutation({
-	args: {
-		jobId: v.id('gmailDomainVolumeRollupJobs'),
-		primaryDomain: v.string(),
-	},
+	args: { jobId: v.id('gmailDomainVolumeRollupJobs') },
 	handler: async (ctx, args) => {
 		const job = await ctx.db.get(args.jobId);
-		if (!job || job.primaryDomain !== args.primaryDomain) return { refreshed: false };
-		await materializeGmailDomainVolume(ctx, args.primaryDomain, Date.now());
+		if (!job) return { refreshed: false };
+		await materializeGmailDomainVolume(ctx, job.primaryDomain, Date.now());
 		await ctx.db.delete(job._id);
 		return { refreshed: true };
 	},
@@ -341,7 +338,7 @@ export const cleanupComplianceTelemetry = internalMutation({
 			await ctx.scheduler.runAfter(
 				0,
 				internal.delivery.complianceTelemetry.refreshGmailDomainVolume,
-				{ jobId: job._id, primaryDomain: job.primaryDomain }
+				{ jobId: job._id }
 			);
 		}
 

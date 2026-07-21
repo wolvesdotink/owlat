@@ -59,16 +59,20 @@ export function reduceDeliveryObservation(
 
 	const effects: Effect[] = [];
 	const status = send.status as SendStatus;
-	const terminalAt =
-		status === 'bounced' ? send.bouncedAt : status === 'failed' ? send.failedAt : undefined;
 	// Delivery normally clears prior soft-bounce recovery state. A remote
-	// acceptance replayed after a newer terminal event still counts toward the
-	// truthful denominator, but must not erase the terminal event's contact state.
-	const isAcceptanceBeforeTerminal = terminalAt !== undefined && at <= terminalAt;
+	// acceptance replayed after a newer soft bounce still counts toward the
+	// truthful denominator, but must not erase that bounce's contact penalty.
+	// A failure applies no contact penalty, so authenticated acceptance clears
+	// any soft-bounce history that predates it regardless of arrival order.
+	const isAcceptanceBeforeSoftBounce =
+		status === 'bounced' &&
+		send.bounceType === 'soft' &&
+		send.bouncedAt !== undefined &&
+		at <= send.bouncedAt;
 	if (
 		recipientContact &&
 		(recipientContact.softBounceCount ?? 0) > 0 &&
-		!isAcceptanceBeforeTerminal
+		!isAcceptanceBeforeSoftBounce
 	) {
 		effects.push({
 			kind: 'contact_soft_bounce_count',

@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
+import { refreshPendingGmailVolumes } from '../../__tests__/helpers/gmailVolume';
 import {
 	COMPLIANCE_CLEANUP_BATCH_SIZE,
 	GMAIL_ACCEPTED_AT_FUTURE_SKEW_MS,
@@ -41,17 +42,6 @@ const analyticsGlob = Object.fromEntries(
 	])
 );
 const modules = { ...rootGlob, ...deliveryGlob, ...analyticsGlob };
-type TestHarness = ReturnType<typeof convexTest>;
-
-async function refreshPendingGmailVolumes(t: TestHarness): Promise<void> {
-	const jobs = await t.run((ctx) => ctx.db.query('gmailDomainVolumeRollupJobs').take(256));
-	for (const job of jobs) {
-		await t.mutation(internal.delivery.complianceTelemetry.refreshGmailDomainVolume, {
-			jobId: job._id,
-			primaryDomain: job.primaryDomain,
-		});
-	}
-}
 
 beforeEach(() => {
 	authenticated = true;
@@ -120,6 +110,8 @@ describe('Gmail bulk-sender volume', () => {
 	});
 
 	it('shards a concurrent high-volume burst and coalesces one asynchronous rollup', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(Date.UTC(2026, 6, 21, 12, 30));
 		const t = convexTest(schema, modules);
 		const primaryDomain = 'burst.example';
 		const deliveredCount = 256;

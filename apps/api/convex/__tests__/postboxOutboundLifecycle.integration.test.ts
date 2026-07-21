@@ -15,6 +15,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import type { ActionCtx } from '../_generated/server';
 import { readGmailVolumes } from '../delivery/complianceTelemetry';
+import { refreshPendingGmailVolumes } from './helpers/gmailVolume';
 import { dispatchInboundEvent } from '../webhooks/dispatcher';
 import type { InboundEvent } from '../webhooks/types';
 
@@ -66,16 +67,6 @@ function dispatchEvent(t: ReturnType<typeof convexTest>, event: InboundEvent): P
 			t.mutation(mutation, args),
 	} as unknown as ActionCtx;
 	return dispatchInboundEvent(actionCtx, event);
-}
-
-async function refreshPendingGmailVolumes(t: ReturnType<typeof convexTest>): Promise<void> {
-	const jobs = await t.run((ctx) => ctx.db.query('gmailDomainVolumeRollupJobs').take(16));
-	for (const job of jobs) {
-		await t.mutation(internal.delivery.complianceTelemetry.refreshGmailDomainVolume, {
-			jobId: job._id,
-			primaryDomain: job.primaryDomain,
-		});
-	}
 }
 
 /**
