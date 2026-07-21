@@ -12,6 +12,8 @@ import { getIpMetrics } from '../monitoring/collector.js';
 import { getWarmingState } from '../intelligence/warming.js';
 import { getPoolStatus } from '../scaling/ipPool.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
+import { getDnsblStatus } from '../intelligence/dnsbl.js';
 
 export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono {
 	const app = new Hono();
@@ -25,10 +27,12 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 		const today = new Date().toISOString().split('T')[0]!;
 
 		// Gather data from multiple systems in parallel
-		const [todayMetrics, warmingState, poolStatuses] = await Promise.all([
+		const [todayMetrics, warmingState, poolStatuses, fcrdns, dnsbl] = await Promise.all([
 			getIpMetrics(redis, ip, today),
 			getWarmingState(redis, ip),
 			getPoolStatus(redis, config.ipPools),
+			getFcrdnsReadiness(redis, ip),
+			getDnsblStatus(redis, ip),
 		]);
 
 		const ipPoolEntry = poolStatuses.find((p) => p.ip === ip);
@@ -57,17 +61,23 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 			},
 			warming: warmingState
 				? {
-					phase: warmingState.phase,
-					currentDay: warmingState.currentDay,
-					dailyCap: warmingState.dailyCap,
-					sentToday: warmingState.sentToday,
-					bounceRate: warmingState.bounceRate,
-					deferralRate: warmingState.deferralRate,
-				}
+						phase: warmingState.phase,
+						currentDay: warmingState.currentDay,
+						dailyCap: warmingState.dailyCap,
+						sentToday: warmingState.sentToday,
+						bounceRate: warmingState.bounceRate,
+						deferralRate: warmingState.deferralRate,
+					}
 				: null,
 			pool: ipPoolEntry
-				? { pool: ipPoolEntry.pool, active: ipPoolEntry.active }
+				? {
+						pool: ipPoolEntry.pool,
+						active: ipPoolEntry.active,
+						blockReasons: ipPoolEntry.blockReasons,
+					}
 				: null,
+			fcrdns,
+			dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 		});
 	});
 
@@ -79,9 +89,11 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 
 		const summaries = await Promise.all(
 			allIps.map(async (ip) => {
-				const [metrics, warmingState] = await Promise.all([
+				const [metrics, warmingState, fcrdns, dnsbl] = await Promise.all([
 					getIpMetrics(redis, ip, today),
 					getWarmingState(redis, ip),
+					getFcrdnsReadiness(redis, ip),
+					getDnsblStatus(redis, ip),
 				]);
 
 				const ipPoolEntry = poolStatuses.find((p) => p.ip === ip);
@@ -93,11 +105,15 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 					delivered: metrics['delivered'] ?? 0,
 					bounced: metrics['bounced'] ?? 0,
 					deferred: metrics['deferred'] ?? 0,
-					bounceRate: totalSent > 0 ? Math.round(((metrics['bounced'] ?? 0) / totalSent) * 10000) / 100 : 0,
+					bounceRate:
+						totalSent > 0 ? Math.round(((metrics['bounced'] ?? 0) / totalSent) * 10000) / 100 : 0,
 					warmingPhase: warmingState?.phase ?? 'unknown',
 					warmingDay: warmingState?.currentDay ?? 0,
 					pool: ipPoolEntry?.pool ?? 'unknown',
 					active: ipPoolEntry?.active ?? false,
+					blockReasons: ipPoolEntry?.blockReasons ?? [],
+					fcrdns,
+					dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 				};
 			})
 		);

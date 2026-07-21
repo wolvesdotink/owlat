@@ -157,6 +157,14 @@
 			"types": "./src/warming.ts",
 			"import": "./src/warming.ts"
 		},
+		"./fcrdns": {
+			"types": "./src/fcrdns.ts",
+			"import": "./src/fcrdns.ts"
+		},
+		"./ipReadinessSync": {
+			"types": "./src/ipReadinessSync.ts",
+			"import": "./src/ipReadinessSync.ts"
+		},
 		"./secureMessage": {
 			"types": "./src/secureMessage.ts",
 			"import": "./src/secureMessage.ts"

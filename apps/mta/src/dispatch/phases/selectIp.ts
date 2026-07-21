@@ -5,15 +5,20 @@
  * round-robin. Defers the attempt (60s) when no IPs are available.
  */
 
-import { selectIp } from '../../scaling/ipPool.js';
+import { selectIpWithLease } from '../../scaling/ipPool.js';
 import type { Phase } from '../pipeline.js';
 import type { CtxWithIp, CtxWithPool } from '../types.js';
 
 export const selectIpPhase: Phase<CtxWithPool, CtxWithIp> = {
 	name: 'select_ip',
 	async run(deps, ctx) {
-		const ip = await selectIp(deps.redis, ctx.pool, deps.config.ipPools, ctx.dedicatedIp);
-		if (!ip) {
+		const lease = await selectIpWithLease(
+			deps.redis,
+			ctx.pool,
+			deps.config.ipPools,
+			ctx.dedicatedIp
+		);
+		if (!lease) {
 			return {
 				kind: 'defer',
 				delayMs: 60_000,
@@ -22,7 +27,7 @@ export const selectIpPhase: Phase<CtxWithPool, CtxWithIp> = {
 		}
 		return {
 			kind: 'continue',
-			ctx: { ...ctx, ip },
+			ctx: { ...ctx, ...lease },
 		};
 	},
 };
