@@ -44,6 +44,8 @@ export type InboundEvent =
 			providerMessageId: string;
 			at: number;
 			providerType?: string;
+			destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+			primarySendingDomain?: string;
 	  }
 	| { kind: 'email.delivered'; providerMessageId: string; at: number }
 	| {

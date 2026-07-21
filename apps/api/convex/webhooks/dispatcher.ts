@@ -85,6 +85,13 @@ const DISPATCH: DispatchTable = {
 				...(e.providerType ? { providerType: e.providerType } : {}),
 			},
 		});
+		if (e.destinationProvider === 'gmail' && e.primarySendingDomain) {
+			await ctx.runMutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
+				providerMessageId: e.providerMessageId,
+				primaryDomain: e.primarySendingDomain,
+				observedAt: e.at,
+			});
+		}
 	},
 	'email.delivered': async (ctx, e) => {
 		// Postbox dispatches have no separate delivered confirmation today.

@@ -36,6 +36,7 @@ import automationsFixture from './fixtures/automations.json';
 import webhooksFixture from './fixtures/webhooks.json';
 import domainsFixture from './fixtures/domains.json';
 import mailboxesFixture from './fixtures/mailboxes.json';
+import complianceTelemetryFixture from './fixtures/complianceTelemetry.json';
 
 import { accountsLoader } from './loaders/accounts';
 import { topicsLoader } from './loaders/topics';
@@ -49,6 +50,7 @@ import { automationsLoader } from './loaders/automations';
 import { webhooksLoader } from './loaders/webhooks';
 import { domainsLoader } from './loaders/domains';
 import { mailboxesLoader } from './loaders/mailboxes';
+import { complianceTelemetryLoader } from './loaders/complianceTelemetry';
 import type { Loader, SeedRefs } from './loaders/types';
 
 // Order matters: each entry's `dependencies` reference earlier modules in the
@@ -66,6 +68,7 @@ const LOADERS: Array<{ loader: Loader; records: unknown[] }> = [
 	{ loader: webhooksLoader, records: webhooksFixture },
 	{ loader: domainsLoader, records: domainsFixture },
 	{ loader: mailboxesLoader, records: mailboxesFixture },
+	{ loader: complianceTelemetryLoader, records: complianceTelemetryFixture },
 ];
 
 // Tables that may carry `seedTag: 'demo'` rows. Used by reset to wipe them.
@@ -84,6 +87,7 @@ const SEEDED_TABLES: TableNames[] = [
 	'webhooks',
 	'domains',
 	'sendingDomainMtaIdentities',
+	'gmailVolumeBuckets',
 ];
 
 export interface SeedSummary {

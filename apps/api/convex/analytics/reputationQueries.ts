@@ -8,6 +8,7 @@ import {
 	type ReputationSummary,
 	type RiskLevel,
 } from './sendingReputation';
+import { summarizeDomainSpamRates, type SpamRateSummary } from './spamRate';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
 type ReputationDto = {
@@ -232,6 +233,12 @@ export interface DeliveryDomainRow {
 	bounceRate: number | null;
 	/** Rolling complaint rate (0–1), `null` when the domain has no in-window activity. */
 	complaintRate: number | null;
+	/** FBL complaints / delivered volume, the Gmail/Yahoo-facing rate. */
+	spamRate: SpamRateSummary['spamRate'];
+	spamRateStatus: SpamRateSummary['status'];
+	delivered30d: number;
+	complaints30d: number;
+	cleanDaysBelowHardThreshold: number;
 }
 
 /**
@@ -282,15 +289,20 @@ export const getDeliveryDomainTable = authedQuery({
 		await getUserIdFromSession(ctx);
 
 		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
-		const summaries = await summarizeDomains(ctx.db);
+		const [summaries, spamSummaries] = await Promise.all([
+			summarizeDomains(ctx.db),
+			summarizeDomainSpamRates(ctx.db),
+		]);
 		// Keep the whole per-domain reputation summary, not just the volume, so the
 		// row can show a health dot from real risk plus bounce/complaint detail.
 		const summaryByDomain = new Map<string, (typeof summaries)[number]>();
 		for (const s of summaries) summaryByDomain.set(s.domain, s);
+		const spamByDomain = new Map(spamSummaries.map((summary) => [summary.domain, summary]));
 
 		const rows: DeliveryDomainRow[] = domains.map((d) => {
 			const auth = domainAuthState(d.verificationResults);
 			const summary = summaryByDomain.get(d.domain);
+			const spam = spamByDomain.get(d.domain);
 			return {
 				domain: d.domain,
 				status: d.status,
@@ -302,6 +314,11 @@ export const getDeliveryDomainTable = authedQuery({
 				riskLevel: summary?.riskLevel ?? null,
 				bounceRate: summary?.bounceRate ?? null,
 				complaintRate: summary?.complaintRate ?? null,
+				spamRate: spam?.spamRate ?? null,
+				spamRateStatus: spam?.status ?? 'no_data',
+				delivered30d: spam?.totalDelivered ?? 0,
+				complaints30d: spam?.totalComplaints ?? 0,
+				cleanDaysBelowHardThreshold: spam?.cleanDaysBelowHardThreshold ?? 0,
 			};
 		});
 

@@ -9,6 +9,7 @@
  */
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
+import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
 import { formatNumber, formatPercentage } from '~/utils/formatters';
 import { healthChipClass, healthDotClass, type HealthTone } from '~/utils/healthTone';
 
@@ -127,6 +128,21 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 						<p v-if="row.bounceRate !== null" class="mt-1">
 							{{ formatPercentage(row.bounceRate, 2) }} bounced ·
 							{{ formatPercentage(row.complaintRate ?? 0, 2) }} complaints
+						</p>
+						<p
+							v-if="row.spamRate !== null"
+							class="mt-1"
+							:class="
+								row.spamRateStatus === 'hard_limit'
+									? 'text-error'
+									: row.spamRateStatus === 'elevated'
+										? 'text-warning'
+										: ''
+							"
+						>
+							FBL spam {{ formatPercentage(row.spamRate, 3) }} · target &lt;
+							{{ formatPercentage(PROVIDER_SPAM_RATE_POLICY.target, 1) }} · hard
+							{{ formatPercentage(PROVIDER_SPAM_RATE_POLICY.hardThreshold, 1) }}
 						</p>
 					</div>
 				</div>

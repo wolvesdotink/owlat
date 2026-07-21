@@ -11,18 +11,15 @@ import {
 	type ResendExtras,
 	type SendProviderKind,
 } from '../lib/sendProviders';
-import { getUnsubscribeUrl, getListUnsubscribeHeader } from "./unsubscribe";
-import { getPreferenceUrl } from "./preferences";
+import { getUnsubscribeUrl, getListUnsubscribeHeader } from './unsubscribe';
+import { getPreferenceUrl } from './preferences';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { getMtaConfig, scanAttachmentBytes } from '../mail/mtaClient';
 import { transformHtml } from './sendComposition/transform';
 import { fetchGuarded } from '../lib/ssrfGuard';
-import {
-	composeForSend,
-	type CampaignComposeInput,
-	type ComposeInput,
-} from './sendComposition';
+import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
+import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -83,6 +80,7 @@ const envelopeInputValidator = v.union(
 	}),
 	v.object({
 		kind: v.literal('transactional'),
+		emailPurpose: v.union(v.literal('marketing'), v.literal('transactional')),
 		to: v.string(),
 		from: v.string(),
 		replyTo: v.optional(v.string()),
@@ -106,9 +104,7 @@ const envelopeInputValidator = v.union(
 		// `auto-replied` for the agent 1:1 reply path (an automatic reply to a
 		// specific inbound message); omitted → the composer defaults to
 		// `auto-generated` for system/DOI/transactional + automation mail.
-		autoSubmittedType: v.optional(
-			v.union(v.literal('auto-generated'), v.literal('auto-replied')),
-		),
+		autoSubmittedType: v.optional(v.union(v.literal('auto-generated'), v.literal('auto-replied'))),
 		// Unsubscribe footer wiring — set when the template's `showUnsubscribe`
 		// flag is on. The worker builds the HMAC unsubscribe/preference URLs
 		// (Node-only) from `siteUrl` + `contactId`, mirroring the campaign path.
@@ -127,7 +123,7 @@ const envelopeInputValidator = v.union(
 		// leave it unset (no List-Unsubscribe on 1:1 mail).
 		listUnsubscribe: v.optional(v.boolean()),
 		convexSiteUrl: v.optional(v.string()),
-	}),
+	})
 );
 
 type WorkerEnvelopeInput =
@@ -156,6 +152,7 @@ type WorkerEnvelopeInput =
 	  }
 	| {
 			kind: 'transactional';
+			emailPurpose: EmailPurpose;
 			to: string;
 			from: string;
 			replyTo?: string;
@@ -218,7 +215,7 @@ function resolveProviderKind(envelopeInput: WorkerEnvelopeInput): SendProviderKi
  * crypto in `getListUnsubscribeHeader` stays in the Node worker runtime.
  */
 export function buildTransactionalListUnsubscribe(
-	envelopeInput: WorkerEnvelopeInput,
+	envelopeInput: WorkerEnvelopeInput
 ): Record<string, string> {
 	if (
 		envelopeInput.kind !== 'transactional' ||
@@ -228,10 +225,7 @@ export function buildTransactionalListUnsubscribe(
 	) {
 		return {};
 	}
-	const header = getListUnsubscribeHeader(
-		envelopeInput.convexSiteUrl,
-		envelopeInput.contactId,
-	);
+	const header = getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactId);
 	return {
 		'List-Unsubscribe': header.listUnsubscribe,
 		'List-Unsubscribe-Post': header.listUnsubscribePost,
@@ -287,15 +281,12 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 			: undefined;
 	const listUnsubscribeHeader =
 		hasContact && envelopeInput.convexSiteUrl
-			? getListUnsubscribeHeader(
-					envelopeInput.convexSiteUrl,
-					envelopeInput.contactInfo.contactId!,
-				)
+			? getListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.contactInfo.contactId!)
 			: undefined;
 
 	const trackingBaseUrl =
 		envelopeInput.emailSendId && envelopeInput.convexSiteUrl
-			? envelopeInput.trackingBaseUrl ?? envelopeInput.convexSiteUrl
+			? (envelopeInput.trackingBaseUrl ?? envelopeInput.convexSiteUrl)
 			: undefined;
 
 	const composeInput: CampaignComposeInput = {
@@ -323,7 +314,7 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 // MTA scan endpoint is unavailable, file-type validation alone gates the
 // send.
 async function resolveAttachments(
-	refs: { filename: string; contentType?: string; url: string }[],
+	refs: { filename: string; contentType?: string; url: string }[]
 ): Promise<{ filename: string; content: Buffer; contentType?: string }[]> {
 	return Promise.all(
 		refs.map(async (att) => {
@@ -338,7 +329,7 @@ async function resolveAttachments(
 			});
 			if (!res.ok) {
 				throw new Error(
-					`Failed to fetch attachment "${att.filename}": ${res.status} ${res.statusText}`,
+					`Failed to fetch attachment "${att.filename}": ${res.status} ${res.statusText}`
 				);
 			}
 			const content = Buffer.from(await res.arrayBuffer());
@@ -349,7 +340,13 @@ async function resolveAttachments(
 			// Probe the ISO 9660 descriptor at offset 0x8001 to catch renamed ISOs.
 			const isoProbe =
 				content.length >= 0x8006 ? new Uint8Array(content.subarray(0x8001, 0x8006)) : undefined;
-			const fileValidation = validateFile(att.filename, firstBytes, undefined, content.length, isoProbe);
+			const fileValidation = validateFile(
+				att.filename,
+				firstBytes,
+				undefined,
+				content.length,
+				isoProbe
+			);
 
 			if (!fileValidation.allowed) {
 				throw new Error(`Attachment "${att.filename}" blocked: ${fileValidation.reason}`);
@@ -365,7 +362,7 @@ async function resolveAttachments(
 			const scanVerdict = await scanAttachmentBytes(getMtaConfig(), att.filename, content);
 			if (scanVerdict.kind === 'infected') {
 				throw new Error(
-					`Attachment "${att.filename}" blocked by malware scan: ${scanVerdict.reason}`,
+					`Attachment "${att.filename}" blocked by malware scan: ${scanVerdict.reason}`
 				);
 			}
 
@@ -374,7 +371,7 @@ async function resolveAttachments(
 				content,
 				contentType: att.contentType,
 			};
-		}),
+		})
 	);
 }
 
@@ -403,10 +400,9 @@ export const sendSingleEmail = internalAction({
 		// read via `blockedEmails.by_email`; NOT a scan. The non-campaign path
 		// already gates at enqueue (delivery/enqueue.ts), so it is not re-checked.
 		if (envelopeInput.kind === 'campaign') {
-			const blocked = await ctx.runQuery(
-				internal.blockedEmails.isBlockedInternal,
-				{ email: envelopeInput.to },
-			);
+			const blocked = await ctx.runQuery(internal.blockedEmails.isBlockedInternal, {
+				email: envelopeInput.to,
+			});
 			if (blocked) {
 				// Finalize as skipped without delivering. Return normally (do NOT
 				// throw) so the workpool run counts as a success and does not retry;
@@ -422,7 +418,7 @@ export const sendSingleEmail = internalAction({
 			// gate on isDeliveryConfigured() upstream, so reaching here means a
 			// misconfiguration slipped through — fail loudly instead of guessing MTA.
 			throw new Error(
-				'No delivery provider configured: set EMAIL_PROVIDER (and its credentials) or a provider route before sending.',
+				'No delivery provider configured: set EMAIL_PROVIDER (and its credentials) or a provider route before sending.'
 			);
 		}
 
@@ -442,16 +438,16 @@ export const sendSingleEmail = internalAction({
 		// headers. The composer's headers win on key collision.
 		const envelopeHeaders =
 			envelopeInput.kind === 'transactional' ? envelopeInput.headers : undefined;
-		// Marketing automation steps route through the transactional envelope; the
-		// List-Unsubscribe header (RFC 8058 one-click, Node-only HMAC) is built
-		// here so the crypto stays in the Node worker. Campaign sends carry the
-		// header via the composer already, so this only fires for transactional.
+		// Automation one-click headers are built here; campaigns carry theirs from the composer.
 		const marketingHeaders = buildTransactionalListUnsubscribe(envelopeInput);
 		const mergedHeaders = {
 			...envelopeHeaders,
 			...marketingHeaders,
 			...composed.headers,
 		};
+		const emailPurpose: EmailPurpose =
+			envelopeInput.kind === 'campaign' ? 'marketing' : envelopeInput.emailPurpose;
+		assertMarketingOneClickHeaders(emailPurpose, mergedHeaders);
 
 		// Send via the Send dispatch helper. The helper owns retries, error
 		// categorization, and `providerHealth` recording for every attempt.
@@ -483,13 +479,16 @@ export const sendSingleEmail = internalAction({
 				headers: Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined,
 				attachments: resolvedAttachments,
 			},
-			extras,
+			extras
 		);
 
 		if (dispatched.result.success) {
 			return {
 				success: true,
-				providerMessageId: providerKind === 'mta' && idempotencyKey && dispatched.result.id !== idempotencyKey ? idempotencyKey : dispatched.result.id, // MTA-only: keep the VERP token, not a dedup sentinel, so bounce/complaint DSNs resolve by_provider_message_id (Resend/SES keep their own ids)
+				providerMessageId:
+					providerKind === 'mta' && idempotencyKey && dispatched.result.id !== idempotencyKey
+						? idempotencyKey
+						: dispatched.result.id, // MTA-only: keep the VERP token, not a dedup sentinel, so bounce/complaint DSNs resolve by_provider_message_id (Resend/SES keep their own ids)
 				providerType: dispatched.providerType,
 				sendLatencyMs: dispatched.latencyMs,
 			};

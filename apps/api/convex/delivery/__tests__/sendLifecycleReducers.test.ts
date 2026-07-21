@@ -87,6 +87,21 @@ describe('reduceSent', () => {
 		expect(result.patch).toEqual({});
 		expect(result.effects).toEqual([]);
 	});
+
+	it('counts MTA SMTP acceptance as delivered volume without changing Send status', () => {
+		const result = reduceSent(
+			campaignSend({ status: 'queued' }),
+			{ to: 'sent', at: 1000, providerMessageId: 'pm-mta', providerType: 'mta' },
+			campaignRef,
+			'org.example'
+		);
+		const reputationEvents = result.effects.filter((effect) => effect.kind === 'reputation_update');
+		expect(reputationEvents).toEqual([
+			{ kind: 'reputation_update', eventType: 'send', domain: 'org.example' },
+			{ kind: 'reputation_update', eventType: 'deliver', domain: 'org.example' },
+		]);
+		expect(result.patch['status']).toBe('sent');
+	});
 });
 
 describe('reduceFailed', () => {

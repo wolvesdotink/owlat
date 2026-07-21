@@ -159,6 +159,13 @@ crons.interval(
 	{}
 );
 
+crons.interval(
+	'cleanup delivery compliance telemetry',
+	{ hours: 1 },
+	internal.delivery.complianceTelemetry.cleanupComplianceTelemetry,
+	{}
+);
+
 // Evaluate the org reputation window hourly and auto-escalate Abuse status when
 // risk is high/critical. Moved off the per-send-event hot path (FIX 3a-1): the
 // wide org-window summarize runs once per cron tick instead of once per

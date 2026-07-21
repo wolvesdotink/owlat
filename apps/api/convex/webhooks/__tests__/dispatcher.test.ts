@@ -136,6 +136,30 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		});
 	});
 
+	it('records Gmail accepted volume after the idempotent send transition', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const event: InboundEvent = {
+			kind: 'email.sent',
+			providerMessageId: 'send_123',
+			at: 1000,
+			providerType: 'mta',
+			destinationProvider: 'gmail',
+			primarySendingDomain: 'example.com',
+		};
+
+		await dispatchInboundEvent(ctx, event);
+
+		expect(runMutationCalls).toHaveLength(2);
+		expect(runMutationCalls[1]).toEqual({
+			ref: ref(internal.delivery.complianceTelemetry.recordGmailDelivery),
+			args: {
+				providerMessageId: 'send_123',
+				primaryDomain: 'example.com',
+				observedAt: 1000,
+			},
+		});
+	});
+
 	it('routes email.delivered to sendLifecycle with a "delivered" transition', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
 		const event: InboundEvent = {
@@ -220,7 +244,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			},
 		});
 		// A terminal failure must NOT be routed as a bounce.
-		const transition = (runMutationCalls[0]?.args as { transition: { to: string } }).transition;
+		const transition = (runMutationCalls[0]!.args as { transition: { to: string } }).transition;
 		expect(transition.to).not.toBe('bounced');
 	});
 
