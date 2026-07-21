@@ -7,6 +7,15 @@ export default defineConfig({
 	test: {
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',
+		// The email-block host tests deliberately reload the whole module graph
+		// (`vi.resetModules()` + dynamic import) on every test, because the block
+		// registries are module-level one-way latches. That fixed setup cost is
+		// milliseconds in isolation but seconds once the root `ci:test` gate runs all
+		// turbo test tasks in parallel, which blew vitest's 5000ms default and made
+		// the release gate flake. Size the budget for the reload, not for an idle
+		// machine. Asserted by src/__tests__/vitestTimeout.test.ts.
+		testTimeout: 20000,
+		hookTimeout: 20000,
 		coverage: {
 			provider: 'v8',
 			reporter: ['text', 'json-summary', 'html'],
