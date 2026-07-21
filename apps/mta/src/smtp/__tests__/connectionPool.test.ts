@@ -16,6 +16,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 import type Redis from 'ioredis';
+import type { SmtpConnection } from '@owlat/smtp-client';
 import { SmtpConnectionPool, PoolOverCapError } from '../connectionPool.js';
 
 // These tests assert the pool's connect-config shape, TLS-profile keying, and
@@ -203,45 +204,74 @@ describe('SmtpConnectionPool', () => {
 		expect(enforcing.config.requireTls).toBe(true);
 		expect(enforcing.config.tls?.rejectUnauthorized).toBe(true);
 	});
+
+	it('enforces one provider connection cap across MX hosts and DKIM partitions', async () => {
+		const limits = {
+			scope: 'provider:gmail',
+			maxConnections: 2,
+			maxDeliveriesPerConnection: 50,
+		};
+		await pool.acquire('aspmx.l.google.com', '10.0.0.1', {
+			dkimDomain: 'alpha.example',
+			connectionLimits: limits,
+		});
+		await pool.acquire('alt1.aspmx.l.google.com', '10.0.0.2', {
+			dkimDomain: 'beta.example',
+			connectionLimits: limits,
+		});
+
+		await expect(
+			pool.acquire('alt2.aspmx.l.google.com', '10.0.0.3', {
+				dkimDomain: 'gamma.example',
+				connectionLimits: limits,
+			})
+		).rejects.toBeInstanceOf(PoolOverCapError);
+	});
 });
 
-/** Minimal in-memory ioredis stand-in for the global-counter coordination. */
+/** Minimal in-memory stand-in for the sorted-set lease scripts. */
 function makeRedisMock() {
-	const store = new Map<string, number>();
+	const store = new Map<string, Map<string, number>>();
+	let failRenew = false;
 	const mock = {
-		incr: vi.fn(async (k: string) => {
-			const v = (store.get(k) ?? 0) + 1;
-			store.set(k, v);
-			return v;
+		eval: vi.fn(async (script: string, _keyCount: number, key: string, ...args: string[]) => {
+			const leases = store.get(key) ?? new Map<string, number>();
+			store.set(key, leases);
+			const now = Date.now();
+
+			if (script.includes('local maximum')) {
+				const [ttlRaw, maximumRaw, leaseId] = args;
+				for (const [id, expiresAt] of leases) {
+					if (expiresAt <= now) leases.delete(id);
+				}
+				if (leases.size >= Number(maximumRaw)) return 0;
+				leases.set(leaseId!, now + Number(ttlRaw));
+				return 1;
+			}
+			if (script.includes('local existingExpiry')) {
+				if (failRenew) {
+					failRenew = false;
+					throw new Error('renew unavailable');
+				}
+				const [ttlRaw, leaseId] = args;
+				const expiry = leases.get(leaseId!);
+				if (expiry === undefined || expiry <= now) return 0;
+				leases.set(leaseId!, now + Number(ttlRaw));
+				return 1;
+			}
+
+			if (script.includes('local removed')) {
+				return leases.delete(args[0]!) ? 1 : 0;
+			}
+
+			for (const [id, expiresAt] of leases) {
+				if (expiresAt <= now) leases.delete(id);
+			}
+			return leases.size;
 		}),
-		decr: vi.fn(async (k: string) => {
-			const v = (store.get(k) ?? 0) - 1;
-			store.set(k, v);
-			return v;
-		}),
-		expire: vi.fn(async () => 1),
-		get: vi.fn(async (k: string) => (store.has(k) ? String(store.get(k)) : null)),
-		pipeline: vi.fn(() => {
-			const ops: Array<['incr' | 'decr', string]> = [];
-			const chain = {
-				incr: (k: string) => {
-					ops.push(['incr', k]);
-					return chain;
-				},
-				decr: (k: string) => {
-					ops.push(['decr', k]);
-					return chain;
-				},
-				expire: () => chain,
-				exec: async () => {
-					for (const [op, k] of ops) {
-						store.set(k, (store.get(k) ?? 0) + (op === 'incr' ? 1 : -1));
-					}
-					return [];
-				},
-			};
-			return chain;
-		}),
+		failNextRenew: () => {
+			failRenew = true;
+		},
 		_store: store,
 	};
 	return mock;
@@ -250,7 +280,7 @@ function makeRedisMock() {
 describe('SmtpConnectionPool — distributed coordination', () => {
 	beforeEach(() => vi.clearAllMocks());
 
-	it('enforces the global per-host cap atomically and rolls back over-cap reservations', async () => {
+	it('enforces the global per-host cap atomically without creating rejected leases', async () => {
 		const redis = makeRedisMock();
 		const pool = new SmtpConnectionPool({
 			maxPerHost: 100,
@@ -268,6 +298,31 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 			(err) => expect(err).toBeInstanceOf(PoolOverCapError)
 		);
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(2); // not 3
+	});
+
+	it('enforces a provider override across MTA instances and different MX hosts', async () => {
+		const redis = makeRedisMock();
+		const first = new SmtpConnectionPool({ maxPerHost: 100 });
+		const second = new SmtpConnectionPool({ maxPerHost: 100 });
+		first.enableDistributedCoordination(redis as unknown as Redis, 10, 'srv1');
+		second.enableDistributedCoordination(redis as unknown as Redis, 10, 'srv2');
+		const connectionLimits = {
+			scope: 'provider:gmail',
+			maxConnections: 1,
+			maxDeliveriesPerConnection: 50,
+		};
+
+		const acquired = await first.acquire('aspmx.l.google.com', '10.0.0.1', {
+			connectionLimits,
+		});
+		await expect(
+			second.acquire('alt1.aspmx.l.google.com', '10.0.0.2', { connectionLimits })
+		).rejects.toBeInstanceOf(PoolOverCapError);
+		expect(await first.getGlobalConnectionCount('provider:gmail')).toBe(1);
+
+		first.release(acquired.key);
+		await first.closeAll();
+		await second.closeAll();
 	});
 
 	it('reuse takes no new global slot', async () => {
@@ -329,7 +384,7 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(0);
 	});
 
-	it('rolls back the global INCR exactly once on an over-cap reservation (count stays at cap)', async () => {
+	it('leaves the lease set unchanged after repeated over-cap reservations', async () => {
 		const redis = makeRedisMock();
 		const pool = new SmtpConnectionPool({
 			maxPerHost: 100,
@@ -351,6 +406,78 @@ describe('SmtpConnectionPool — distributed coordination', () => {
 		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(1);
 		// No new entry was created for the rejected acquires.
 		expect(pool.size).toBe(1);
+	});
+
+	it('renews an active entry past its original TTL so a second node cannot over-admit', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-07-21T12:00:00Z'));
+		try {
+			const redis = makeRedisMock();
+			const first = new SmtpConnectionPool({ maxPerHost: 100, maxAgeMs: 1_000 });
+			const second = new SmtpConnectionPool({ maxPerHost: 100, maxAgeMs: 1_000 });
+			first.enableDistributedCoordination(redis as unknown as Redis, 1, 'srv1');
+			second.enableDistributedCoordination(redis as unknown as Redis, 1, 'srv2');
+			const acquired = await first.acquire('mx.example.com', '10.0.0.1', { port: 25 });
+			const close = vi.fn();
+			const active = { close } as unknown as SmtpConnection;
+			expect(first.attachConnection(acquired.key, active)).toBe(true);
+
+			await vi.advanceTimersByTimeAsync(70_000);
+			expect(await first.getGlobalConnectionCount('mx.example.com')).toBe(1);
+			await expect(
+				second.acquire('mx.example.com', '10.0.0.2', { port: 25 })
+			).rejects.toBeInstanceOf(PoolOverCapError);
+			expect(close).not.toHaveBeenCalled();
+
+			first.evictConnection(acquired.key, active);
+			await first.closeAll(0);
+			await second.closeAll(0);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('closes an active socket and removes its entry when lease renewal fails', async () => {
+		const redis = makeRedisMock();
+		const pool = new SmtpConnectionPool({ maxPerHost: 100 });
+		pool.enableDistributedCoordination(redis as unknown as Redis, 1, 'srv1');
+		const acquired = await pool.acquire('mx.example.com', '10.0.0.1', { port: 25 });
+		const close = vi.fn();
+		const active = { close } as unknown as SmtpConnection;
+		expect(pool.attachConnection(acquired.key, active)).toBe(true);
+		redis.failNextRenew();
+
+		await pool.renewDistributedLeases();
+
+		expect(close).toHaveBeenCalledOnce();
+		expect(pool.size).toBe(0);
+		expect(await pool.getGlobalConnectionCount('mx.example.com')).toBe(0);
+		await pool.closeAll(0);
+	});
+
+	it('uses main-compatible per-MX scalar keys while the rollout gate is legacy-v0', async () => {
+		const evalMock = vi.fn().mockResolvedValue(1);
+		const redis = { eval: evalMock, get: vi.fn() } as unknown as Redis;
+		const pool = new SmtpConnectionPool({ maxPerHost: 100 });
+		pool.enableDistributedCoordination(redis, 10, 'new-node', 'legacy-v0');
+
+		await pool.acquire('aspmx.l.google.com', '10.0.0.1', {
+			connectionLimits: {
+				scope: 'provider:gmail',
+				maxConnections: 5,
+				maxDeliveriesPerConnection: 50,
+			},
+		});
+
+		expect(evalMock).toHaveBeenCalledWith(
+			expect.stringContaining("redis.call('INCR', globalKey)"),
+			2,
+			'mta:pool:global:aspmx.l.google.com',
+			'mta:pool:instance:new-node:aspmx.l.google.com',
+			expect.any(String),
+			'10'
+		);
+		await pool.closeAll(0);
 	});
 });
 

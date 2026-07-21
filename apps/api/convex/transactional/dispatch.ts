@@ -307,6 +307,7 @@ export const dispatch = internalMutation({
 			{
 				envelopeInput: {
 					kind: 'transactional' as const,
+					emailPurpose: 'transactional' as const,
 					to: args.email,
 					from,
 					...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),

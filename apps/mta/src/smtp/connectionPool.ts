@@ -1,36 +1,9 @@
 /**
- * SMTP Connection Pool
- *
- * Maintains reusable @owlat/smtp-client CONNECT CONFIGS keyed by
- * {mxHost}:{bindIp}:{dkimDomain}:{tlsProfile}, where tlsProfile encodes
- * requireTLS, tls.rejectUnauthorized, and any DANE policy fingerprint. The TLS
- * profile MUST be part of the key: many domains share an MX (Google/O365), so
- * without it an MTA-STS-enforce send (requireTLS + verifying) would silently
- * reuse an earlier opportunistic, non-verifying entry to the same MX — a
- * STARTTLS-stripping / enforcement bypass on the high-value shared-MX providers
- * (RFC 8461 §5, RFC 7435). Evicts idle and aged-out entries automatically.
- *
- * TRUE SOCKET REUSE (X1): a pool entry may park ONE idle, live
- * {@link SmtpConnection}. Consecutive jobs to the same key reuse that socket
- * across an `RSET` boundary ({@link SmtpConnectionPool.takeConnection} → the
- * client's `resetTransaction`, which verifies the 250 so no leftover reply leaks
- * between transactions) instead of a fresh TCP+STARTTLS+EHLO handshake each time.
- * Three guardrails bound reuse ({@link SmtpConnectionPool.isRetirable} +
- * {@link SmtpConnectionPool.evictConnection}): a per-connection message cap
- * (`maxMessagesPerConnection`, ~100) and the max-lifetime cap (`maxAgeMs`, from
- * the socket's own open time) both `QUIT` the socket so the next job reconnects;
- * and ANY transport error — or a failed `RSET` probe — tears the entry down and
- * releases its slot, so a poisoned socket is NEVER retried.
- *
- * Distributed coordination (optional, via Redis): each ACTUALLY-CREATED pool
- * ENTRY holds one global slot (`mta:pool:global:<host>`), reserved atomically at
- * creation (INCR-then-check, rolled back over the global cap) and released on
- * every teardown path (per-host / idle-aged / poisoned-socket evict, closeAll). A
- * slot counts one ENTRY — one lineage of at most one reused socket — NOT every
- * live socket: reuse, and a cap-driven QUIT+reconnect within an entry, take no new
- * slot, and concurrent sends to one key open their OWN uncounted one-shot sockets
- * (the pre-X1 accounting). Best-effort: fail-opens (no throttle) when Redis is down
- * or coordination is disabled.
+ * Reusable SMTP socket lineages keyed by MX, bind IP, DKIM domain, and TLS
+ * profile. TLS policy is part of the key to prevent cross-domain downgrade on
+ * shared MX hosts. Healthy sockets cross a verified RSET boundary before reuse;
+ * age/message limits and every transport failure retire the lineage. Each entry
+ * owns one Redis-coordinated lease, renewed while the entry remains live.
  */
 
 import type Redis from 'ioredis';
@@ -41,7 +14,8 @@ import {
 	type SmtpConnection,
 } from '@owlat/smtp-client';
 import { logger } from '../monitoring/logger.js';
-import { PoolGlobalCap } from './poolGlobalCap.js';
+import { PoolGlobalCap, type PoolCoordinationProtocol } from './poolGlobalCap.js';
+import { PoolLeaseHeartbeat, type LeaseHeartbeatTarget } from './poolLeaseHeartbeat.js';
 import { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
 import {
 	buildConnectConfig,
@@ -49,76 +23,37 @@ import {
 	type AcquireOptions,
 	type TlsKeyProfile,
 } from './poolConnectConfig.js';
+import { PoolOverCapError, type PoolConfig } from './poolLimits.js';
+import { DEFAULT_POOL_CONFIG, type PoolEntry } from './poolState.js';
 
 export type { AcquireOptions, TlsKeyProfile } from './poolConnectConfig.js';
+export { PoolOverCapError, type PoolConfig } from './poolLimits.js';
 export { smtpPoolConnections, smtpPoolReused } from './poolMetrics.js';
 
-export interface PoolConfig {
-	/** Max concurrent entries per host (default 3) */
-	maxPerHost: number;
-	/** Drop entries idle longer than this (default 30_000ms) */
-	idleTimeoutMs: number;
-	/** Drop entries older than this regardless of activity (default 300_000ms) */
-	maxAgeMs: number;
-	/** Max messages over one reused socket before a clean QUIT+reconnect (default 100). */
-	maxMessagesPerConnection: number;
-}
-
-/** A parked, idle, RSET-reusable live connection cached on a {@link PoolEntry}. */
-interface IdleConnection {
-	conn: SmtpConnection;
-	/** Deliveries already completed over this socket (for the per-connection cap). */
-	messagesSent: number;
-	/** When the socket was opened (for the max-lifetime cap, reusing `maxAgeMs`). */
-	openedAt: number;
-}
-
-interface PoolEntry {
-	config: SmtpConnectOptions;
-	mxHost: string;
-	lastUsedAt: number;
-	inFlight: number;
-	createdAt: number;
-	/**
-	 * A single idle, live connection parked for the next job to this key, or
-	 * undefined when none is currently available (never parked, checked out for an
-	 * in-flight send, or torn down). At most one socket is reused per entry;
-	 * concurrent sends to the same key open their own one-shot sockets.
-	 */
-	idle?: IdleConnection;
-}
-
 /**
- * Thrown by `acquire` when opening a new connection would exceed the global
- * per-host cap (across all MTA instances). The caller treats it like a transient
- * connection failure — try the next MX, else defer the job for retry.
+ * `PoolOverCapError` is treated like a transient connection failure: try the
+ * next MX, then defer when every destination scope is full.
  */
-export class PoolOverCapError extends Error {
-	constructor(public readonly mxHost: string) {
-		super(`Global connection cap reached for MX host ${mxHost}`);
-		this.name = 'PoolOverCapError';
-	}
-}
-
-const DEFAULT_CONFIG: PoolConfig = {
-	maxPerHost: 3,
-	idleTimeoutMs: 30_000,
-	maxAgeMs: 300_000,
-	maxMessagesPerConnection: 100,
-};
-
 export class SmtpConnectionPool {
 	private pool = new Map<string, PoolEntry>();
 	private config: PoolConfig;
 	private evictionTimer: ReturnType<typeof setInterval> | undefined;
+	private coordinationProtocol: PoolCoordinationProtocol = 'leases-v1';
 	private cap = new PoolGlobalCap();
+	private leaseHeartbeat = new PoolLeaseHeartbeat(
+		this.cap,
+		() => this.slotTtlSeconds(),
+		() => [...this.pool.entries()].map(([key, entry]) => ({ key, lease: entry.globalLease })),
+		(target) => this.handleLeaseLoss(target)
+	);
+	private entrySequence = 0;
 	// Message-count + open-time for a connection checked OUT of its entry (between
 	// takeConnection and storeConnection), so the caps survive the round-trip without
 	// the sender threading them. A WeakMap never pins a dropped socket.
 	private connMeta = new WeakMap<SmtpConnection, { messagesSent: number; openedAt: number }>();
 
 	constructor(config?: Partial<PoolConfig>) {
-		this.config = { ...DEFAULT_CONFIG, ...config };
+		this.config = { ...DEFAULT_POOL_CONFIG, ...config };
 	}
 
 	/**
@@ -134,8 +69,15 @@ export class SmtpConnectionPool {
 	 * total connections per MX host across all instances stays within the
 	 * global limit.
 	 */
-	enableDistributedCoordination(redis: Redis, globalMaxPerHost: number, serverId: string): void {
-		this.cap.enable(redis, globalMaxPerHost, serverId);
+	enableDistributedCoordination(
+		redis: Redis,
+		globalMaxPerHost: number,
+		serverId: string,
+		protocol: PoolCoordinationProtocol = 'leases-v1'
+	): void {
+		this.coordinationProtocol = protocol;
+		this.cap.enable(redis, globalMaxPerHost, serverId, protocol);
+		this.leaseHeartbeat.start(protocol);
 	}
 
 	/** Build the pool key for a connection (see {@link buildPoolKey}). */
@@ -148,17 +90,7 @@ export class SmtpConnectionPool {
 		return buildPoolKey(mxHost, bindIp, dkimDomain, tls);
 	}
 
-	/**
-	 * Acquire a connect config from the pool or build a new one.
-	 *
-	 * Async because opening a NEW connection consults the Redis global cap when
-	 * distributed coordination is enabled. Reusing a pooled config, and the whole
-	 * method when coordination is disabled, resolves without a round-trip. The
-	 * caller opens ONE {@link SmtpConnection} from the returned config per delivery
-	 * attempt (W3 one-connection-per-send) and releases the key afterwards.
-	 *
-	 * @throws {PoolOverCapError} when a new connection would exceed the global cap.
-	 */
+	/** Reserve a pool entry, throwing PoolOverCapError when its scope is full. */
 	async acquire(
 		mxHost: string,
 		bindIp: string,
@@ -168,36 +100,41 @@ export class SmtpConnectionPool {
 			throw new Error('DANE verifier requires a policy fingerprint for safe pooling');
 		}
 		const dkimDomain = options.dkimDomain;
-		const key = buildPoolKey(mxHost, bindIp, dkimDomain, {
+		const baseKey = buildPoolKey(mxHost, bindIp, dkimDomain, {
 			requireTLS: options.requireTLS,
 			rejectUnauthorized: options.tls?.rejectUnauthorized,
 			danePolicyFingerprint: options.tls?.danePolicyFingerprint,
 		});
 
 		// Reuse fast-path — an already-counted config, no new global slot.
-		const existing = this.pool.get(key);
+		const existingMatch = [...this.pool.entries()].find(
+			([, entry]) => entry.baseKey === baseKey && entry.inFlight === 0
+		);
+		const existing = existingMatch?.[1];
 		if (existing) {
-			existing.inFlight++;
+			existing.inFlight = 1;
 			existing.lastUsedAt = Date.now();
+			existing.maxDeliveriesPerConnection =
+				options.connectionLimits?.maxDeliveriesPerConnection ?? existing.maxDeliveriesPerConnection;
 			this.updateGauge();
-			return { key, config: existing.config };
+			return { key: existingMatch![0], config: existing.config };
 		}
 
-		// Per-host limit (this instance): evict the LRU idle entry to make room.
-		const hostPrefix = `${mxHost}:`;
-		let hostCount = 0;
-		for (const poolKey of this.pool.keys()) {
-			if (poolKey.startsWith(hostPrefix)) {
-				hostCount++;
-			}
-		}
+		const connectionScope = options.connectionLimits?.scope ?? mxHost;
+		const maxConnections = options.connectionLimits?.maxConnections ?? this.config.maxPerHost;
+		const strictProviderLimit = options.connectionLimits !== undefined;
 
-		if (hostCount >= this.config.maxPerHost) {
+		// Per-scope limit (provider for known shared receivers, MX otherwise):
+		// evict the LRU idle lineage to make room, never an in-flight connection.
+		let scopeEntryCount = [...this.pool.values()].filter(
+			(entry) => entry.connectionScope === connectionScope
+		).length;
+		while (scopeEntryCount >= maxConnections) {
 			let oldestKey: string | undefined;
 			let oldestTime = Infinity;
 			for (const [poolKey, entry] of this.pool.entries()) {
 				if (
-					poolKey.startsWith(hostPrefix) &&
+					entry.connectionScope === connectionScope &&
 					entry.inFlight === 0 &&
 					entry.lastUsedAt < oldestTime
 				) {
@@ -211,22 +148,47 @@ export class SmtpConnectionPool {
 					this.disposeIdle(evicted);
 				}
 				this.pool.delete(oldestKey);
-				this.cap.release(mxHost);
-				logger.debug({ key: oldestKey }, 'Evicted pool entry for host limit');
+				this.cap.release(evicted!.globalLease);
+				logger.debug({ key: oldestKey }, 'Evicted pool entry for connection-scope limit');
+				scopeEntryCount--;
+			}
+			if (!oldestKey) {
+				if (strictProviderLimit) throw new PoolOverCapError(connectionScope);
+				break;
 			}
 		}
 
 		// Global cap (across all instances): atomically reserve a slot for the new
 		// entry. Throws when over cap so the caller can defer the job.
-		if (!(await this.cap.tryReserve(mxHost, this.slotTtlSeconds()))) {
-			throw new PoolOverCapError(mxHost);
+		const matchingConfig = [...this.pool.values()].find(
+			(entry) => entry.baseKey === baseKey
+		)?.config;
+		const config = matchingConfig ?? buildConnectConfig(mxHost, bindIp, options);
+		// legacy-v0 must use the exact per-MX scalar key understood by binaries
+		// currently on main. Provider-wide lease scopes activate only after the
+		// explicitly gated leases-v1 fleet cutover.
+		const globalConnectionScope =
+			this.coordinationProtocol === 'legacy-v0' ? mxHost : connectionScope;
+		const globalLease = await this.cap.tryReserve(
+			globalConnectionScope,
+			this.slotTtlSeconds(),
+			this.coordinationProtocol === 'legacy-v0'
+				? undefined
+				: options.connectionLimits?.maxConnections
+		);
+		if (!globalLease) {
+			throw new PoolOverCapError(connectionScope);
 		}
 
-		const config = buildConnectConfig(mxHost, bindIp, options);
-
+		const key = this.pool.has(baseKey) ? `${baseKey}#${++this.entrySequence}` : baseKey;
 		const entry: PoolEntry = {
+			baseKey,
 			config,
-			mxHost,
+			connectionScope,
+			globalLease,
+			maxDeliveriesPerConnection:
+				options.connectionLimits?.maxDeliveriesPerConnection ??
+				this.config.maxMessagesPerConnection,
 			lastUsedAt: Date.now(),
 			inFlight: 1,
 			createdAt: Date.now(),
@@ -239,18 +201,12 @@ export class SmtpConnectionPool {
 		return { key, config };
 	}
 
-	/**
-	 * Get the global connection count for an MX host (across all instances).
-	 * Fail-open to 0. Exposed for monitoring/tests.
-	 */
-	getGlobalConnectionCount(mxHost: string): Promise<number> {
-		return this.cap.getCount(mxHost);
+	/** Observed global count; monitoring returns 0 on Redis errors. */
+	getGlobalConnectionCount(connectionScope: string): Promise<number> {
+		return this.cap.getCount(connectionScope);
 	}
 
-	/**
-	 * Release an entry back to the pool after use. In-memory only — the global
-	 * slot is held for the entry's whole lifetime and released on teardown.
-	 */
+	/** Mark an entry idle while retaining its global slot for reuse. */
 	release(key: string): void {
 		const entry = this.pool.get(key);
 		if (!entry) return;
@@ -279,12 +235,14 @@ export class SmtpConnectionPool {
 		}
 		const idle = entry.idle;
 		entry.idle = undefined; // check out — an in-flight send parks nothing meanwhile
+		entry.active = idle.conn;
 		this.updateGauge();
 
-		if (this.isRetirable(idle.messagesSent, idle.openedAt)) {
+		if (this.isRetirable(idle.messagesSent, idle.openedAt, entry.maxDeliveriesPerConnection)) {
 			// Aged out while parked (the message cap is enforced before parking in
 			// storeConnection, so only the lifetime bound trips here): retire it cleanly.
 			this.quitConnection(idle.conn);
+			entry.active = undefined;
 			return undefined;
 		}
 
@@ -295,12 +253,24 @@ export class SmtpConnectionPool {
 		} catch {
 			// A poisoned socket (dead peer, unexpected reply): discard, reconnect fresh.
 			idle.conn.close();
+			entry.active = undefined;
 			return undefined;
 		}
 		// Carry the caps across the send so storeConnection can apply them on return.
 		this.connMeta.set(idle.conn, { messagesSent: idle.messagesSent, openedAt: idle.openedAt });
 		smtpPoolReused.inc();
 		return idle.conn;
+	}
+
+	/** Attach a freshly opened socket so lease loss can fence the active attempt. */
+	attachConnection(key: string, conn: SmtpConnection): boolean {
+		const entry = this.pool.get(key);
+		if (!entry) {
+			conn.close();
+			return false;
+		}
+		entry.active = conn;
+		return true;
 	}
 
 	/**
@@ -323,7 +293,12 @@ export class SmtpConnectionPool {
 		const messagesSent = meta.messagesSent + 1;
 
 		const entry = this.pool.get(key);
-		if (!entry || entry.idle || this.isRetirable(messagesSent, meta.openedAt)) {
+		if (entry?.active === conn) entry.active = undefined;
+		if (
+			!entry ||
+			entry.idle ||
+			this.isRetirable(messagesSent, meta.openedAt, entry.maxDeliveriesPerConnection)
+		) {
 			this.quitConnection(conn);
 			return;
 		}
@@ -339,10 +314,13 @@ export class SmtpConnectionPool {
 	 * {@link takeConnection} and {@link storeConnection} consult, so the bounds live
 	 * in one place.
 	 */
-	private isRetirable(messagesSent: number, openedAt: number): boolean {
+	private isRetirable(
+		messagesSent: number,
+		openedAt: number,
+		maxDeliveriesPerConnection: number
+	): boolean {
 		return (
-			messagesSent >= this.config.maxMessagesPerConnection ||
-			Date.now() - openedAt > this.config.maxAgeMs
+			messagesSent >= maxDeliveriesPerConnection || Date.now() - openedAt > this.config.maxAgeMs
 		);
 	}
 
@@ -359,13 +337,15 @@ export class SmtpConnectionPool {
 		if (!entry) {
 			return;
 		}
+		if (entry.active && entry.active !== conn) entry.active.close();
+		entry.active = undefined;
 		if (entry.idle) {
 			// Defensive: a concurrently-parked socket on a now-poisoned entry goes too.
 			entry.idle.conn.close();
 			entry.idle = undefined;
 		}
 		this.pool.delete(key);
-		this.cap.release(entry.mxHost);
+		this.cap.release(entry.globalLease);
 		this.updateGauge();
 		logger.debug({ key }, 'Evicted pool entry after a transport error');
 	}
@@ -375,9 +355,10 @@ export class SmtpConnectionPool {
 		let changed = false;
 		for (const [key, entry] of this.pool.entries()) {
 			if (entry.config.localAddress !== bindIp) continue;
+			entry.active?.close();
 			entry.idle?.conn.close();
 			this.pool.delete(key);
-			this.cap.release(entry.mxHost);
+			this.cap.release(entry.globalLease);
 			changed = true;
 		}
 		if (changed) {
@@ -399,9 +380,25 @@ export class SmtpConnectionPool {
 		}
 	}
 
-	/**
-	 * Start periodic eviction of idle and aged-out entries
-	 */
+	/** Deterministic seam for health checks and ownership-loss tests. */
+	renewDistributedLeases(): Promise<void> {
+		return this.leaseHeartbeat.runNow();
+	}
+
+	private handleLeaseLoss(target: LeaseHeartbeatTarget): void {
+		const entry = this.pool.get(target.key);
+		if (!entry || entry.globalLease !== target.lease) return;
+		entry.active?.close();
+		this.disposeIdle(entry);
+		this.pool.delete(target.key);
+		this.cap.release(entry.globalLease);
+		this.updateGauge();
+		logger.error(
+			{ key: target.key, connectionScope: entry.globalLease.connectionScope },
+			'Lost distributed SMTP connection lease; closed the pool entry'
+		);
+	}
+
 	startEviction(intervalMs = 10_000): void {
 		if (this.evictionTimer) return;
 
@@ -422,7 +419,7 @@ export class SmtpConnectionPool {
 				const entry = this.pool.get(key)!;
 				this.disposeIdle(entry);
 				this.pool.delete(key);
-				this.cap.release(entry.mxHost);
+				this.cap.release(entry.globalLease);
 				logger.debug({ key }, 'Evicted idle/aged pool entry');
 			}
 
@@ -441,6 +438,7 @@ export class SmtpConnectionPool {
 			clearInterval(this.evictionTimer);
 			this.evictionTimer = undefined;
 		}
+		this.leaseHeartbeat.stop();
 
 		// Wait for in-flight to reach 0
 		const deadline = Date.now() + drainTimeoutMs;
@@ -456,8 +454,9 @@ export class SmtpConnectionPool {
 		// Drop all entries, closing any parked live socket and releasing each one's
 		// global slot.
 		for (const entry of this.pool.values()) {
+			entry.active?.close();
 			this.disposeIdle(entry);
-			this.cap.release(entry.mxHost);
+			this.cap.release(entry.globalLease);
 		}
 
 		this.pool.clear();

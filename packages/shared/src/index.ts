@@ -43,7 +43,12 @@ export {
 	checkFromAlignment,
 	summarizeOutboundAlignment,
 } from './transportAlignment';
-export { type OutboundTlsMode, OUTBOUND_TLS_MODES, isOutboundTlsMode } from './outboundTlsMode';
+export {
+	type OutboundTlsMode,
+	OUTBOUND_TLS_MODES,
+	isOutboundTlsMode,
+	strictestOutboundTlsMode,
+} from './outboundTlsMode';
 export {
 	type FcrdnsFailureReason,
 	type FcrdnsVerdict,

@@ -216,9 +216,13 @@ function acquireOptions(port: number): AcquireOptions {
 async function deliverOnce(
 	pool: SmtpConnectionPool,
 	port: number,
-	envelope: { to: string[]; body: string }
+	envelope: { to: string[]; body: string },
+	connectionLimits?: AcquireOptions['connectionLimits']
 ): Promise<{ reused: boolean; secured: boolean }> {
-	const { key, config } = await pool.acquire('127.0.0.1', '127.0.0.1', acquireOptions(port));
+	const { key, config } = await pool.acquire('127.0.0.1', '127.0.0.1', {
+		...acquireOptions(port),
+		...(connectionLimits ? { connectionLimits } : {}),
+	});
 	let conn = await pool.takeConnection(key);
 	const reused = conn !== undefined;
 	if (conn === undefined) {
@@ -264,6 +268,26 @@ async function reusedTotal(): Promise<number> {
 const body = (n: number): string => `Subject: msg ${n}\r\n\r\nbody ${n}\r\n`;
 
 describe('SmtpConnectionPool — true socket reuse (X1)', () => {
+	it('uses the provider delivery cap instead of the process-wide default', async () => {
+		const mx = await startFakeMx();
+		const pool = makePool(mx.port, { maxMessagesPerConnection: 100 });
+		const limits = {
+			scope: 'provider:gmail',
+			maxConnections: 5,
+			maxDeliveriesPerConnection: 2,
+		};
+
+		const outcomes = [];
+		for (let i = 1; i <= 3; i++) {
+			outcomes.push(
+				(await deliverOnce(pool, mx.port, { to: [`r${i}@gmail.test`], body: body(i) }, limits))
+					.reused
+			);
+		}
+
+		expect(outcomes).toEqual([false, true, false]);
+		expect(mx.connections()).toBe(2);
+	});
 	it('(a) N sequential sends reuse ONE connection across RSET; the cap-th QUITs and the next reconnects', async () => {
 		const mx = await startFakeMx();
 		const cap = 3;

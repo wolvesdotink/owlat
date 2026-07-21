@@ -34,20 +34,21 @@ const originalFetch = global.fetch;
 
 async function seedCampaignSend(
 	t: ReturnType<typeof convexTest>,
-	email: string,
-): Promise<Id<'emailSends'>> {
+	email: string
+): Promise<{ emailSendId: Id<'emailSends'>; contactId: Id<'contacts'> }> {
 	return await t.run(async (ctx) => {
 		const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
 		const contactId = await ctx.db.insert('contacts', createTestContact({ email }));
-		return await ctx.db.insert(
+		const emailSendId = await ctx.db.insert(
 			'emailSends',
 			createTestEmailSend({
 				campaignId,
 				contactId,
 				contactEmail: email,
 				status: 'queued',
-			}),
+			})
 		);
+		return { emailSendId, contactId };
 	});
 }
 
@@ -58,6 +59,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 		vi.stubEnv('MTA_API_URL', 'https://mta.test');
 		vi.stubEnv('MTA_API_KEY', 'test-key');
 		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
 	});
 
 	afterEach(() => {
@@ -68,7 +70,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 
 	it('skips a recipient blocked after resolution — no provider POST, returns suppressed', async () => {
 		const t = convexTest(schema, modules);
-		const emailSendId = await seedCampaignSend(t, BLOCKED);
+		const { emailSendId, contactId } = await seedCampaignSend(t, BLOCKED);
 
 		// Recipient lands on the blocklist AFTER the campaign was resolved +
 		// enqueued (e.g. a spam complaint from an earlier send) but BEFORE this
@@ -92,8 +94,9 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 				from: 'sender@example.com',
 				providerType: 'mta',
 				template: { subject: 'Hi', htmlContent: '<p>hi</p>' },
-				contactInfo: { email: BLOCKED },
+				contactInfo: { contactId, email: BLOCKED },
 				emailSendId: emailSendId as never,
+				convexSiteUrl: 'https://convex.example',
 			},
 		})) as { success: boolean; suppressed?: boolean };
 
@@ -105,7 +108,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 
 	it('completion handler finalizes a suppressed worker result as failed/RECIPIENT_SUPPRESSED (not sent)', async () => {
 		const t = convexTest(schema, modules);
-		const emailSendId = await seedCampaignSend(t, BLOCKED);
+		const { emailSendId } = await seedCampaignSend(t, BLOCKED);
 
 		await t.mutation(internal.delivery.sendCompletion.completeSend, {
 			workId: 'test-work-id' as never,
@@ -123,7 +126,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 
 	it('a clean (non-blocked) recipient is NOT short-circuited by the re-check', async () => {
 		const t = convexTest(schema, modules);
-		const emailSendId = await seedCampaignSend(t, 'clean@example.com');
+		const { emailSendId, contactId } = await seedCampaignSend(t, 'clean@example.com');
 
 		// Provider returns success — the worker must proceed past the re-check
 		// and actually dispatch (one POST), proving the gate only fires on a hit.
@@ -131,7 +134,7 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 			new Response(JSON.stringify({ success: true, id: 'mta-clean-1' }), {
 				status: 200,
 				headers: { 'Content-Type': 'application/json' },
-			}),
+			})
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
@@ -142,8 +145,9 @@ describe('campaign worker — pre-dispatch suppression re-check', () => {
 				from: 'sender@example.com',
 				providerType: 'mta',
 				template: { subject: 'Hi', htmlContent: '<p>hi</p>' },
-				contactInfo: { email: 'clean@example.com' },
+				contactInfo: { contactId, email: 'clean@example.com' },
 				emailSendId: emailSendId as never,
+				convexSiteUrl: 'https://convex.example',
 			},
 		})) as { success: boolean; suppressed?: boolean };
 

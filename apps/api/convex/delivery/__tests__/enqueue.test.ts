@@ -54,7 +54,7 @@ const deliveryGlob = Object.fromEntries(
 	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
 		path.replace(/^\.\.\//, '../../delivery/'),
 		mod,
-	]),
+	])
 );
 const allModules = { ...rootGlob, ...deliveryGlob };
 const modules = Object.fromEntries(
@@ -64,8 +64,8 @@ const modules = Object.fromEntries(
 			!path.includes('posthog') &&
 			!path.includes('delivery/worker.ts') &&
 			!path.includes('campaigns/testSend') &&
-			!path.includes('delivery/workpool'),
-	),
+			!path.includes('delivery/workpool')
+	)
 );
 
 // Silence "Could not find module" rejections from the excluded workpool/worker
@@ -98,7 +98,7 @@ async function seedSettings(t: TestConvex<typeof schema>): Promise<void> {
 			createTestInstanceSettings({
 				defaultFromEmail: 'noreply@example.com',
 				defaultFromName: 'Owlat',
-			}),
+			})
 		);
 	});
 }
@@ -111,7 +111,7 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
-				createTestBlockedEmail({ email: 'blocked@example.com', reason: 'complained' }),
+				createTestBlockedEmail({ email: 'blocked@example.com', reason: 'complained' })
 			);
 		});
 
@@ -122,12 +122,10 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 				subject: 'Hi',
 				html: '<p>Hi</p>',
 				from: 'Owlat <noreply@example.com>',
-			}),
+			})
 		).rejects.toThrow('recipient_blocked');
 
-		const rows = await t.run(async (ctx) =>
-			ctx.db.query('transactionalSends').collect(),
-		);
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 		expect(rows).toHaveLength(0);
 	});
 
@@ -149,7 +147,7 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 					subject: 'Hi',
 					html: '<p>Hi</p>',
 					from: 'Owlat <noreply@example.com>',
-				}),
+				})
 			).rejects.toThrow('no_delivery_provider');
 
 			const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
@@ -166,7 +164,7 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
-				createTestBlockedEmail({ email: 'blocked@example.com', reason: 'bounced' }),
+				createTestBlockedEmail({ email: 'blocked@example.com', reason: 'bounced' })
 			);
 		});
 
@@ -177,28 +175,23 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 				subject: 'Re: Hi',
 				html: '<p>Re: Hi</p>',
 				from: 'Owlat <noreply@example.com>',
-			}),
+			})
 		).rejects.toThrow('recipient_blocked');
 
-		const rows = await t.run(async (ctx) =>
-			ctx.db.query('transactionalSends').collect(),
-		);
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 		expect(rows).toHaveLength(0);
 	});
 
 	it('inserts a queued row for a non-blocked recipient (positive control)', async () => {
 		const t = convexTest(schema, modules);
 
-		const { sendId } = await t.mutation(
-			internal.delivery.enqueue.enqueueNonCampaignSend,
-			{
-				kind: 'automation',
-				email: 'allowed@example.com',
-				subject: 'Hi',
-				html: '<p>Hi</p>',
-				from: 'Owlat <noreply@example.com>',
-			},
-		);
+		const { sendId } = await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			kind: 'automation',
+			email: 'allowed@example.com',
+			subject: 'Hi',
+			html: '<p>Hi</p>',
+			from: 'Owlat <noreply@example.com>',
+		});
 
 		const send = await t.run(async (ctx) => ctx.db.get(sendId));
 		expect(send?.status).toBe('queued');
@@ -230,6 +223,7 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 			| Record<string, unknown>
 			| undefined;
 		expect(envelopeInput?.['kind']).toBe('transactional');
+		expect(envelopeInput?.['emailPurpose']).toBe('transactional');
 		expect(envelopeInput?.['autoSubmittedType']).toBe('auto-replied');
 		expect(envelopeInput?.['listUnsubscribe']).toBeUndefined();
 	});
@@ -253,6 +247,7 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 			| Record<string, unknown>
 			| undefined;
 		expect(envelopeInput?.['kind']).toBe('transactional');
+		expect(envelopeInput?.['emailPurpose']).toBe('marketing');
 		expect(envelopeInput?.['autoSubmittedType']).toBeUndefined();
 	});
 });
@@ -261,7 +256,7 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 
 async function seedActiveEmailAutomation(
 	t: TestConvex<typeof schema>,
-	contactEmail: string,
+	contactEmail: string
 ): Promise<{ automationRunId: Id<'automationRuns'>; stepRunId: Id<'automationStepRuns'> }> {
 	return await t.run(async (ctx) => {
 		const templateId = await ctx.db.insert(
@@ -269,11 +264,11 @@ async function seedActiveEmailAutomation(
 			createTestEmailTemplate({
 				subject: 'Welcome {{firstName}}',
 				htmlContent: '<p>Hello {{firstName}}</p>',
-			}),
+			})
 		);
 		const automationId = await ctx.db.insert(
 			'automations',
-			createTestAutomation({ status: 'active' }),
+			createTestAutomation({ status: 'active' })
 		);
 		const stepId = await ctx.db.insert(
 			'automationSteps',
@@ -282,11 +277,11 @@ async function seedActiveEmailAutomation(
 				stepIndex: 0,
 				stepType: 'email',
 				config: { emailTemplateId: templateId },
-			}),
+			})
 		);
 		const contactId = await ctx.db.insert(
 			'contacts',
-			createTestContact({ email: contactEmail, firstName: 'Pat' }),
+			createTestContact({ email: contactEmail, firstName: 'Pat' })
 		);
 		const now = Date.now();
 		const automationRunId = await ctx.db.insert('automationRuns', {
@@ -317,12 +312,12 @@ describe('automation email step — suppression enforcement', () => {
 		await t.run(async (ctx) => {
 			await ctx.db.insert(
 				'blockedEmails',
-				createTestBlockedEmail({ email: 'blocked@example.com', reason: 'complained' }),
+				createTestBlockedEmail({ email: 'blocked@example.com', reason: 'complained' })
 			);
 		});
 		const { automationRunId, stepRunId } = await seedActiveEmailAutomation(
 			t,
-			'blocked@example.com',
+			'blocked@example.com'
 		);
 
 		const result = await t.action(internal.automations.stepWalker.executeStep, {
@@ -335,9 +330,7 @@ describe('automation email step — suppression enforcement', () => {
 		expect(result.success).toBe(true);
 
 		// No Send row was produced for the suppressed recipient.
-		const rows = await t.run(async (ctx) =>
-			ctx.db.query('transactionalSends').collect(),
-		);
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 		expect(rows).toHaveLength(0);
 
 		// The step run completed with no emailSendId (a no-op skip).
@@ -351,7 +344,7 @@ describe('automation email step — suppression enforcement', () => {
 		await seedSettings(t);
 		const { automationRunId, stepRunId } = await seedActiveEmailAutomation(
 			t,
-			'allowed@example.com',
+			'allowed@example.com'
 		);
 
 		const result = await t.action(internal.automations.stepWalker.executeStep, {
@@ -360,9 +353,7 @@ describe('automation email step — suppression enforcement', () => {
 		});
 		expect(result.success).toBe(true);
 
-		const rows = await t.run(async (ctx) =>
-			ctx.db.query('transactionalSends').collect(),
-		);
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.kind).toBe('automation');
 		expect(rows[0]?.email).toBe('allowed@example.com');

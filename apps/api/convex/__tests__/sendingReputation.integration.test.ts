@@ -16,6 +16,11 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { summarize, summarizeDomains } from '../analytics/sendingReputation';
+import {
+	SPAM_RATE_HARD_THRESHOLD,
+	SPAM_RATE_TARGET,
+	summarizeSpamRate,
+} from '../analytics/spamRate';
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -30,22 +35,23 @@ vi.mock('../lib/contactCountHelpers', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('agentContext') &&
-		!path.includes('agentClassifier') &&
-		!path.includes('agentDrafter') &&
-		!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
-		!path.includes('knowledgeExtraction') &&
-		!path.includes('semanticFileProcessing') &&
-		!path.includes('visualizationAgent') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('agentContext') &&
+			!path.includes('agentClassifier') &&
+			!path.includes('agentDrafter') &&
+			!path.includes('agentRouter') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
+			!path.includes('knowledgeExtraction') &&
+			!path.includes('semanticFileProcessing') &&
+			!path.includes('visualizationAgent') &&
+			!path.includes('llmProvider')
 	)
 );
 
@@ -80,7 +86,7 @@ async function seedBucket(
 		totalBounced?: number;
 		totalHardBounced?: number;
 		totalComplaints?: number;
-	},
+	}
 ): Promise<void> {
 	await t.run(async (ctx) => {
 		await ctx.db.insert('sendingReputation', {
@@ -101,13 +107,68 @@ async function seedBucket(
 async function record(
 	t: Tester,
 	eventType: 'send' | 'deliver' | 'bounce' | 'hard_bounce' | 'complaint',
-	domain?: string,
+	domain?: string
 ): Promise<void> {
 	await t.mutation(internal.analytics.sendingReputation.recordEvent, {
 		eventType,
 		...(domain ? { domain } : {}),
 	});
 }
+
+describe('provider-facing FBL spam rate', () => {
+	it('uses delivered volume and classifies the exact 0.1% / 0.3% boundaries', async () => {
+		const now = dayStart(Date.now()) + 12 * 60 * 60 * 1000;
+		const t = convexTest(schema, modules);
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(now),
+			totalSent: 20_000,
+			totalDelivered: 10_000,
+			totalComplaints: 10,
+		});
+		const target = await t.run((ctx) => summarizeSpamRate(ctx.db, { kind: 'org' }, now));
+		expect(target.spamRate).toBe(SPAM_RATE_TARGET);
+		expect(target.status).toBe('elevated');
+
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(now),
+			shardKey: 1,
+			totalDelivered: 0,
+			totalComplaints: 20,
+		});
+		const hard = await t.run((ctx) => summarizeSpamRate(ctx.db, { kind: 'org' }, now));
+		expect(hard.spamRate).toBe(SPAM_RATE_HARD_THRESHOLD);
+		expect(hard.status).toBe('hard_limit');
+	});
+
+	it('requires seven completed active days strictly below 0.3% for recovery', async () => {
+		const now = dayStart(Date.now()) + 12 * 60 * 60 * 1000;
+		const t = convexTest(schema, modules);
+		for (let daysAgo = 1; daysAgo <= 7; daysAgo++) {
+			await seedBucket(t, {
+				scope: 'org',
+				periodStart: dayStart(now) - daysAgo * DAY_MS,
+				totalDelivered: 1_000,
+				totalComplaints: 2,
+			});
+		}
+		const recovered = await t.run((ctx) => summarizeSpamRate(ctx.db, { kind: 'org' }, now));
+		expect(recovered.cleanInternalDaysBelowHardThreshold).toBe(7);
+		expect(recovered.hasRequiredInternalCleanDayEvidence).toBe(true);
+
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(now) - 3 * DAY_MS,
+			shardKey: 1,
+			totalDelivered: 0,
+			totalComplaints: 1,
+		});
+		const boundaryBreak = await t.run((ctx) => summarizeSpamRate(ctx.db, { kind: 'org' }, now));
+		expect(boundaryBreak.cleanInternalDaysBelowHardThreshold).toBe(2);
+		expect(boundaryBreak.hasRequiredInternalCleanDayEvidence).toBe(false);
+	});
+});
 
 // ────────────────────────────────────────────────────────────────────
 // recordEvent — accumulation per scope
@@ -243,7 +304,7 @@ describe('sharded writes — summarize sums across shards', () => {
 			ctx.db
 				.query('sendingReputation')
 				.withIndex('by_scope_domain_period_shard', (q) => q.eq('scope', 'org'))
-				.collect(),
+				.collect()
 		);
 		const distinctShards = new Set(rows.map((r) => r.shardKey));
 		expect(distinctShards.size).toBeGreaterThan(1);
@@ -254,7 +315,7 @@ describe('sharded writes — summarize sums across shards', () => {
 				bounced: acc.bounced + r.totalBounced,
 				complaints: acc.complaints + r.totalComplaints,
 			}),
-			{ sent: 0, bounced: 0, complaints: 0 },
+			{ sent: 0, bounced: 0, complaints: 0 }
 		);
 		expect(summed).toEqual({ sent: SENDS, bounced: BOUNCES, complaints: COMPLAINTS });
 	});
@@ -263,9 +324,27 @@ describe('sharded writes — summarize sums across shards', () => {
 		const t = convexTest(schema, modules);
 		const today = dayStart(Date.now());
 		// Three explicit shards of the same org day-bucket.
-		await seedBucket(t, { scope: 'org', periodStart: today, shardKey: 0, totalSent: 400, totalBounced: 4 });
-		await seedBucket(t, { scope: 'org', periodStart: today, shardKey: 3, totalSent: 350, totalBounced: 6 });
-		await seedBucket(t, { scope: 'org', periodStart: today, shardKey: 7, totalSent: 250, totalBounced: 0 });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: today,
+			shardKey: 0,
+			totalSent: 400,
+			totalBounced: 4,
+		});
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: today,
+			shardKey: 3,
+			totalSent: 350,
+			totalBounced: 6,
+		});
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: today,
+			shardKey: 7,
+			totalSent: 250,
+			totalBounced: 0,
+		});
 
 		const org = await t.run((ctx) => summarize(ctx.db, { kind: 'org' }));
 		expect(org.totalSent).toBe(1000);
@@ -298,7 +377,12 @@ describe('summarize — derive on read', () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
 		// Recent, healthy bucket.
-		await seedBucket(t, { scope: 'org', periodStart: dayStart(now), totalSent: 200, totalBounced: 0 });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(now),
+			totalSent: 200,
+			totalBounced: 0,
+		});
 		// Old, catastrophic bucket — must NOT count.
 		await seedBucket(t, {
 			scope: 'org',
@@ -343,10 +427,28 @@ describe('summarize — derive on read', () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
 		const today = dayStart(now);
-		await seedBucket(t, { scope: 'domain', domain: 'a.com', periodStart: today, totalSent: 500, totalBounced: 5 });
-		await seedBucket(t, { scope: 'domain', domain: 'a.com', periodStart: dayStart(now - DAY_MS), totalSent: 500, totalBounced: 5 });
+		await seedBucket(t, {
+			scope: 'domain',
+			domain: 'a.com',
+			periodStart: today,
+			totalSent: 500,
+			totalBounced: 5,
+		});
+		await seedBucket(t, {
+			scope: 'domain',
+			domain: 'a.com',
+			periodStart: dayStart(now - DAY_MS),
+			totalSent: 500,
+			totalBounced: 5,
+		});
 		// Only an out-of-window bucket → excluded entirely.
-		await seedBucket(t, { scope: 'domain', domain: 'stale.com', periodStart: dayStart(now - 40 * DAY_MS), totalSent: 999, totalBounced: 0 });
+		await seedBucket(t, {
+			scope: 'domain',
+			domain: 'stale.com',
+			periodStart: dayStart(now - 40 * DAY_MS),
+			totalSent: 999,
+			totalBounced: 0,
+		});
 
 		const domains = await t.run((ctx) => summarizeDomains(ctx.db));
 		expect(domains.map((d) => d.domain).sort()).toEqual(['a.com']);
@@ -459,7 +561,12 @@ describe('evaluateAutoEnforce — enforce decision', () => {
 	it('decides off the ORG window only — a critical domain does not enqueue', async () => {
 		const t = convexTest(schema, modules);
 		// Healthy org window; a noisy domain bucket must not lift it.
-		await seedBucket(t, { scope: 'org', periodStart: dayStart(Date.now()), totalSent: 1000, totalBounced: 0 });
+		await seedBucket(t, {
+			scope: 'org',
+			periodStart: dayStart(Date.now()),
+			totalSent: 1000,
+			totalBounced: 0,
+		});
 		await seedBucket(t, {
 			scope: 'domain',
 			domain: 'bad.com',
