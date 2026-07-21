@@ -44,7 +44,7 @@
 		"test": "vitest run",
 		"test:watch": "vitest watch",
 		"test:coverage": "vitest run --coverage && bun run test:package",
-		"test:package": "bun run build && bun scripts/packageSmoke.ts",
+		"test:package": "bun scripts/packageSmoke.ts",
 		"lint": "oxlint --config ../../oxlintrc.json src scripts",
 		"lint:fix": "oxlint --config ../../oxlintrc.json src scripts --fix",
 		"typecheck": "tsc --noEmit"
