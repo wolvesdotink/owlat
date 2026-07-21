@@ -283,7 +283,9 @@ export async function deleteProfile(
 	const canonicalKey = canonicalProfileKey(providerKey);
 	const key = `${PROFILE_PREFIX}${canonicalKey}`;
 	const deleted = await redis.del(key);
-	await redis.srem(PROFILE_LIST_KEY, canonicalKey);
+	// DELETE removes only the runtime override. The known provider remains in the
+	// catalog so list callers immediately see its effective checked-in defaults.
+	await redis.sadd(PROFILE_LIST_KEY, canonicalKey);
 	return deleted > 0;
 }
 
