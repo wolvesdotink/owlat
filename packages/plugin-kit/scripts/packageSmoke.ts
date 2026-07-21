@@ -1,9 +1,35 @@
+/**
+ * Smoke-tests the *packaged* `@owlat/plugin-kit`: packs the tarball, installs it
+ * into a throwaway consumer, and exercises the built artifact at runtime and
+ * through `tsc`.
+ *
+ * It packs the dist/ that `@owlat/plugin-kit#build` already produced instead of
+ * rebuilding it. `bun pm pack` would otherwise run `prepack`, which is
+ * `bun run build` — a `tsup --clean` of the one shared artifact in this repo,
+ * fired from a *test* task that turbo runs concurrently with every sibling
+ * `test:coverage` job that imports @owlat/plugin-kit. `--ignore-scripts`
+ * suppresses that; the legal files prepack would have staged are staged here
+ * instead, and the mtime assertion below fails if anything reintroduces a
+ * rebuild. See scripts/check-build-graph.ts for the guard that enforces this.
+ */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { cleanPackageLegalFiles, PACKAGE_LEGAL_FILES } from './packageLegalFiles';
+import {
+	cleanPackageLegalFiles,
+	PACKAGE_LEGAL_FILES,
+	stagePackageLegalFiles,
+} from './packageLegalFiles';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryRoot = resolve(packageRoot, '../..');
@@ -11,6 +37,7 @@ const temporaryRoot = mkdtempSync(join(tmpdir(), 'owlat-plugin-kit-'));
 const packageMetadata = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as {
 	name: string;
 	version: string;
+	scripts?: Record<string, string>;
 };
 const archiveName = `${packageMetadata.name.replace(/^@/, '').replaceAll('/', '-')}-${packageMetadata.version}.tgz`;
 const archivePath = join(temporaryRoot, archiveName);
@@ -31,12 +58,36 @@ function runBytes(command: string, args: string[], cwd: string): Buffer {
 	});
 }
 
-try {
-	run('bun', ['pm', 'pack', '--destination', temporaryRoot], packageRoot);
-	for (const file of PACKAGE_LEGAL_FILES) {
-		if (existsSync(join(packageRoot, file))) {
-			throw new Error(`Postpack did not remove staged ${file}`);
+const distEntry = join(packageRoot, 'dist/index.js');
+if (!existsSync(distEntry)) {
+	throw new Error(
+		'packages/plugin-kit/dist is missing. This smoke packs the artifact `@owlat/plugin-kit#build` produced; run `turbo run build --filter=@owlat/plugin-kit` first.'
+	);
+}
+const distSignatureBeforePack = statSync(distEntry).mtimeMs;
+
+// The pack below runs with --ignore-scripts, so assert the publish-time hooks it
+// stands in for still do what this smoke simulates: stage the legal files, build
+// the dist, and clean the staged copies again.
+for (const [script, expected] of [
+	['prepack', ['run build', 'packageLegalFiles.ts stage']],
+	['postpack', ['packageLegalFiles.ts clean']],
+] as const) {
+	const command = packageMetadata.scripts?.[script] ?? '';
+	for (const fragment of expected) {
+		if (!command.includes(fragment)) {
+			throw new Error(`Publish hook "${script}" no longer runs \`${fragment}\``);
 		}
+	}
+}
+
+try {
+	stagePackageLegalFiles();
+	run('bun', ['pm', 'pack', '--ignore-scripts', '--destination', temporaryRoot], packageRoot);
+	if (statSync(distEntry).mtimeMs !== distSignatureBeforePack) {
+		throw new Error(
+			'Packing rebuilt packages/plugin-kit/dist. This smoke must never write the shared artifact — it races every task that reads it.'
+		);
 	}
 
 	const archiveFiles = run('tar', ['-tzf', archivePath], packageRoot).trim().split('\n');
