@@ -1265,6 +1265,45 @@ describe('plugin docs: the chapter does not promise unshipped extension points',
 	});
 });
 
+/**
+ * A `navItems` entry naming a section the core sidebar does not declare is
+ * dropped fail-closed by `buildNavigationSections`, so a wrong `section` in a
+ * documented manifest is a sample that silently renders nothing. Both reference
+ * plugins carry a comment warning about exactly that; the docs get the same
+ * guard, derived from the real `CORE_SECTIONS` rather than a copied list.
+ */
+describe('plugin docs: navigation samples name a real core sidebar section', () => {
+	const navigation = read('apps/web/app/lib/dashboardNavigation.ts');
+	const coreSectionKeys = new Set(
+		[...navigation.matchAll(/\n\t\tkey: '([a-z][a-z0-9-]*)',/g)].map((match) => match[1]!)
+	);
+
+	it('derives a non-empty core section-key set from the host', () => {
+		expect(coreSectionKeys.size).toBeGreaterThan(0);
+		expect(coreSectionKeys).toContain('settings');
+		expect(navigation).toContain('CORE_SECTION_KEYS.has(item.section)');
+	});
+
+	it('uses only core section keys in every documented nav item', () => {
+		const used = [...chapter.matchAll(/^\s*section: '([^']+)',$/gm)].map((match) => match[1]!);
+		expect(used.length, 'the chapter no longer shows a navItems sample').toBeGreaterThan(0);
+		for (const key of used) {
+			expect(
+				coreSectionKeys.has(key),
+				`the docs use section '${key}', which the core sidebar does not declare`
+			).toBe(true);
+		}
+	});
+
+	it('tells the author which section keys are valid', () => {
+		const authoring = docs.authoring;
+		expect(authoring).toContain('core sidebar section keys');
+		for (const key of coreSectionKeys) {
+			expect(authoring, `section key ${key} is not listed for the author`).toContain(`\`${key}\``);
+		}
+	});
+});
+
 describe('plugin docs: every page is reachable', () => {
 	const sidebar = read('apps/docs/app/utils/sidebarConfig.ts');
 

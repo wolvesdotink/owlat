@@ -81,7 +81,7 @@ export const preflightPlugin = definePlugin({
 		navItems: [
 			{
 				id: 'dashboard',
-				section: 'insights',
+				section: 'delivery',
 				name: 'Preflight',
 				href: '/dashboard/plugins/preflight',
 				icon: 'lucide:radar',
