@@ -31,8 +31,13 @@ const COLLECTION_LOCK_KEY = 'mta:postmaster:collection-lock';
 const DOMAIN_CURSOR_KEY = 'mta:postmaster:domain-cursor';
 const STATS_CURSOR_PREFIX = 'mta:postmaster:stats-cursor:';
 const PUSHED_PREFIX = 'mta:postmaster:pushed:';
+const DOMAIN_STATE_INDEX_KEY = 'mta:postmaster:domain-state-index';
+const DISCOVERY_GENERATION_KEY = 'mta:postmaster:discovery-generation';
 const BACKFILL_DAYS = 7;
 const PUSH_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
+const PUSH_RECEIPT_TTL_DAYS = Math.ceil(PUSH_RECEIPT_TTL_SECONDS / (24 * 60 * 60));
+const MAX_RECEIPT_AGE_DAYS = BACKFILL_DAYS + PUSH_RECEIPT_TTL_DAYS;
+const STALE_DOMAIN_CLEANUP_LIMIT = 100;
 const COLLECTION_LOCK_TTL_SECONDS = 30 * 60;
 const COLLECTION_RUN_BUDGET_MS = 10 * 60 * 1_000;
 const DOMAIN_PAGE_SIZE = 25;
@@ -219,21 +224,52 @@ async function checkpointStatsCursor(
 	await redis.set(key, JSON.stringify(cursor), 'EX', PUSH_RECEIPT_TTL_SECONDS);
 }
 
+function receiptKeysForCleanup(domain: string): string[] {
+	// A live receipt was written less than one TTL ago for an observation no
+	// older than the backfill window, so every possible key is in this range.
+	return Array.from(
+		{ length: MAX_RECEIPT_AGE_DAYS + 1 },
+		(_, daysAgo) => `${PUSHED_PREFIX}${domain}:${utcDateDaysAgo(daysAgo)}`
+	);
+}
+
 async function clearDomainOperationalState(redis: Redis, domain: string): Promise<void> {
-	await redis.del(`${STATS_CURSOR_PREFIX}${domain}`);
-	let cursor = '0';
-	do {
-		const [nextCursor, receiptKeys] = await redis.scan(
-			cursor,
-			'MATCH',
-			`${PUSHED_PREFIX}${domain}:*`,
-			'COUNT',
-			100
-		);
-		cursor = nextCursor;
-		if (receiptKeys.length > 0) await redis.del(...receiptKeys);
-	} while (cursor !== '0');
+	await redis.del(`${STATS_CURSOR_PREFIX}${domain}`, ...receiptKeysForCleanup(domain));
+	// Remove the durable index last so an interrupted cleanup is retried.
+	await redis.zrem(DOMAIN_STATE_INDEX_KEY, domain);
 	spamRate.remove({ domain });
+}
+
+async function readOrStartDiscoveryGeneration(redis: Redis, resuming: boolean): Promise<number> {
+	const rawGeneration = await redis.get(DISCOVERY_GENERATION_KEY);
+	const currentGeneration = Number(rawGeneration);
+	if (resuming && Number.isSafeInteger(currentGeneration) && currentGeneration > 0) {
+		return currentGeneration;
+	}
+	const nextGeneration =
+		Number.isSafeInteger(currentGeneration) && currentGeneration > 0 ? currentGeneration + 1 : 1;
+	await redis.set(DISCOVERY_GENERATION_KEY, String(nextGeneration));
+	return nextGeneration;
+}
+
+async function cleanupDomainsMissingFromDiscovery(
+	redis: Redis,
+	generation: number,
+	deadline: number
+): Promise<void> {
+	if (Date.now() >= deadline) return;
+	const staleDomains = await redis.zrangebyscore(
+		DOMAIN_STATE_INDEX_KEY,
+		'-inf',
+		generation - 1,
+		'LIMIT',
+		0,
+		STALE_DOMAIN_CLEANUP_LIMIT
+	);
+	for (const domain of staleDomains) {
+		if (Date.now() >= deadline) return;
+		await clearDomainOperationalState(redis, domain);
+	}
 }
 
 async function pushDomainStats(
@@ -357,6 +393,7 @@ export async function fetchPostmasterData(redis: Redis, config: MtaConfig): Prom
 		const deadline = Date.now() + COLLECTION_RUN_BUDGET_MS;
 		const client = new GooglePostmasterClient(redis, config.googlePostmaster, deadline);
 		let pageToken = (await redis.get(DOMAIN_CURSOR_KEY)) ?? undefined;
+		const generation = await readOrStartDiscoveryGeneration(redis, pageToken !== undefined);
 		const seenTokens = new Set<string>(pageToken ? [pageToken] : []);
 		let mayRecoverPersistedCursor = pageToken !== undefined;
 
@@ -378,6 +415,7 @@ export async function fetchPostmasterData(redis: Redis, config: MtaConfig): Prom
 					await clearDomainOperationalState(redis, domainName);
 					continue;
 				}
+				await redis.zadd(DOMAIN_STATE_INDEX_KEY, generation, domainName);
 				await pushDomainStats(redis, config, client, domain, deadline);
 			}
 
@@ -389,6 +427,7 @@ export async function fetchPostmasterData(redis: Redis, config: MtaConfig): Prom
 			}
 			if (!nextPageToken) {
 				await redis.del(DOMAIN_CURSOR_KEY);
+				await cleanupDomainsMissingFromDiscovery(redis, generation, deadline);
 				break;
 			}
 			await redis.set(DOMAIN_CURSOR_KEY, nextPageToken);
