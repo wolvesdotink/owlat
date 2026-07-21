@@ -10,7 +10,11 @@
  * read-only, never seeds a value, and never submits one — Owlat stores no plugin
  * credential plaintext at all.
  */
-import type { PluginSettingsField, PluginSettingsSchema } from '@owlat/plugin-kit';
+import type {
+	PluginSettingsField,
+	PluginSettingsSchema,
+	PluginSettingsSecretField,
+} from '@owlat/plugin-kit';
 
 export type PluginSettingsFormValue = string | number | boolean;
 export type PluginSettingsForm = Record<string, PluginSettingsFormValue>;
@@ -101,20 +105,26 @@ export function hasPluginSettingsChanges(
 	return Object.keys(pluginSettingsChanges(schema, form, baseline)).length > 0;
 }
 
-/** A client-side required-field check for immediate feedback before submitting. */
+/**
+ * A client-side required-field check for immediate feedback before submitting.
+ *
+ * Covers only the fields the operator can actually fill in on this form. A
+ * `required` secret is deliberately NOT included: it is env-supplied and renders
+ * read-only, so blocking the submit on one would name a field that has no input
+ * and would strand every other setting on the page until the deployment changes.
+ * `required` on a secret is a deployment precondition (enforced at runtime by
+ * `flag.requiredEnvVars`), not a form-validation rule — it is surfaced instead by
+ * `unsetRequiredPluginSecrets`, which warns without blocking.
+ */
 export function missingRequiredPluginSettings(
 	schema: PluginSettingsSchema,
-	form: Readonly<PluginSettingsForm>,
-	state: PluginSettingsRedactedState
+	form: Readonly<PluginSettingsForm>
 ): readonly string[] {
 	const missing: string[] = [];
 	for (const field of schema) {
 		if (!field.required) continue;
-		if (field.kind === 'secret') {
-			// Satisfied only by the environment variable actually being present.
-			if (state.secretsSet[field.key] !== true) missing.push(field.key);
-			continue;
-		}
+		// Env-supplied and not fillable here: never gates the save. See above.
+		if (field.kind === 'secret') continue;
 		// An unset number or select now baselines to '' (see baselineFieldValue),
 		// so an empty-string form value flags a required string, number, or select
 		// that has no effective value. A set number is a `number` and never matches.
@@ -122,4 +132,21 @@ export function missingRequiredPluginSettings(
 		if (typeof value === 'string' && value.trim() === '') missing.push(field.key);
 	}
 	return missing;
+}
+
+/**
+ * Required secret fields whose deployment environment variable is absent.
+ *
+ * This is a warning surface, not a validation gate: the page shows the variables
+ * an operator still has to set in the deployment while leaving every editable
+ * setting saveable.
+ */
+export function unsetRequiredPluginSecrets(
+	schema: PluginSettingsSchema,
+	state: PluginSettingsRedactedState
+): readonly PluginSettingsSecretField[] {
+	return schema.filter(
+		(field): field is PluginSettingsSecretField =>
+			field.kind === 'secret' && field.required === true && state.secretsSet[field.key] !== true
+	);
 }

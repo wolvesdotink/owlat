@@ -6,6 +6,7 @@ import {
 	missingRequiredPluginSettings,
 	pluginSettingsBaseline,
 	pluginSettingsChanges,
+	unsetRequiredPluginSecrets,
 	type PluginSettingsRedactedState,
 } from '../pluginSettings';
 
@@ -147,20 +148,16 @@ describe('pluginSettingsChanges', () => {
 });
 
 describe('missingRequiredPluginSettings', () => {
-	it('is satisfied when the secret environment variable is present', () => {
-		const baseline = pluginSettingsBaseline(SCHEMA, CONFIGURED);
-		expect(missingRequiredPluginSettings(SCHEMA, baseline, CONFIGURED)).toEqual([]);
-	});
-
-	it('flags a required secret whose environment variable is absent', () => {
-		const baseline = pluginSettingsBaseline(SCHEMA, EMPTY);
-		expect(missingRequiredPluginSettings(SCHEMA, baseline, EMPTY)).toEqual(['apiKey']);
-	});
-
-	it('stays unsatisfied by a typed secret: only the environment variable counts', () => {
-		const baseline = pluginSettingsBaseline(SCHEMA, EMPTY);
-		const form = { ...baseline, apiKey: 'first' };
-		expect(missingRequiredPluginSettings(SCHEMA, form, EMPTY)).toEqual(['apiKey']);
+	it('ignores a required secret entirely, set or not: it has no input to fill', () => {
+		// A secret is env-supplied and renders read-only, so gating the save on one
+		// would name a field the operator cannot fill and would strand every other
+		// setting on the page behind a deployment change.
+		expect(
+			missingRequiredPluginSettings(SCHEMA, pluginSettingsBaseline(SCHEMA, CONFIGURED))
+		).toEqual([]);
+		expect(missingRequiredPluginSettings(SCHEMA, pluginSettingsBaseline(SCHEMA, EMPTY))).toEqual(
+			[]
+		);
 	});
 
 	it('flags a required string left empty', () => {
@@ -169,7 +166,7 @@ describe('missingRequiredPluginSettings', () => {
 		];
 		const state: PluginSettingsRedactedState = { values: {}, secretsSet: {} };
 		const baseline = pluginSettingsBaseline(schema, state);
-		expect(missingRequiredPluginSettings(schema, baseline, state)).toEqual(['name']);
+		expect(missingRequiredPluginSettings(schema, baseline)).toEqual(['name']);
 	});
 
 	it('flags a required number/select that is unset with no default', () => {
@@ -185,7 +182,7 @@ describe('missingRequiredPluginSettings', () => {
 		];
 		const state: PluginSettingsRedactedState = { values: {}, secretsSet: {} };
 		const baseline = pluginSettingsBaseline(schema, state);
-		expect(missingRequiredPluginSettings(schema, baseline, state)).toEqual(['port', 'mode']);
+		expect(missingRequiredPluginSettings(schema, baseline)).toEqual(['port', 'mode']);
 	});
 
 	it('flags a required select whose stored value is no longer an option', () => {
@@ -202,7 +199,7 @@ describe('missingRequiredPluginSettings', () => {
 		// select is flagged rather than silently accepted as a stale, unusable value.
 		const state: PluginSettingsRedactedState = { values: { mode: 'legacy' }, secretsSet: {} };
 		const baseline = pluginSettingsBaseline(schema, state);
-		expect(missingRequiredPluginSettings(schema, baseline, state)).toEqual(['mode']);
+		expect(missingRequiredPluginSettings(schema, baseline)).toEqual(['mode']);
 	});
 
 	it('is satisfied once the unset required number/select receive values', () => {
@@ -218,6 +215,27 @@ describe('missingRequiredPluginSettings', () => {
 		];
 		const state: PluginSettingsRedactedState = { values: {}, secretsSet: {} };
 		const form = { port: 8080, mode: 'a' };
-		expect(missingRequiredPluginSettings(schema, form, state)).toEqual([]);
+		expect(missingRequiredPluginSettings(schema, form)).toEqual([]);
+	});
+});
+
+describe('unsetRequiredPluginSecrets', () => {
+	it('reports a required secret whose environment variable is absent', () => {
+		expect(unsetRequiredPluginSecrets(SCHEMA, EMPTY).map((field) => field.envVar)).toEqual([
+			'PLUGIN_API_KEY',
+		]);
+	});
+
+	it('reports nothing once the variable is present', () => {
+		expect(unsetRequiredPluginSecrets(SCHEMA, CONFIGURED)).toEqual([]);
+	});
+
+	it('ignores an optional secret: only a declared precondition is worth a warning', () => {
+		const schema: PluginSettingsSchema = [
+			{ kind: 'secret', key: 'optional', envVar: 'PLUGIN_OPTIONAL', label: 'Optional' },
+		];
+		expect(
+			unsetRequiredPluginSecrets(schema, { values: {}, secretsSet: { optional: false } })
+		).toEqual([]);
 	});
 });

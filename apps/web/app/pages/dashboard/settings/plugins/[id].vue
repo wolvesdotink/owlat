@@ -7,6 +7,7 @@ import {
 	missingRequiredPluginSettings,
 	pluginSettingsBaseline,
 	pluginSettingsChanges,
+	unsetRequiredPluginSecrets,
 	type PluginSettingsForm,
 	type PluginSettingsRedactedState,
 } from '~/utils/pluginSettings';
@@ -89,6 +90,10 @@ watch(
 );
 
 const isDirty = computed(() => hasPluginSettingsChanges(schema.value, form.value, baseline.value));
+// Required secrets whose deployment variable is absent. Surfaced as a persistent
+// warning, never as a save gate: they have no input on this form, so blocking the
+// submit on one would strand every editable setting behind a deployment change.
+const unsetSecrets = computed(() => unsetRequiredPluginSecrets(schema.value, serverState.value));
 // Both destructive paths (in-form "Reset to defaults" and the orphaned-plugin
 // "Clear residual settings") confirm before invoking reset(), so a single
 // misclick can never wipe stored values, including saved secrets.
@@ -96,7 +101,7 @@ const showResetConfirm = ref(false);
 const showOrphanClearConfirm = ref(false);
 
 async function save() {
-	const missing = missingRequiredPluginSettings(schema.value, form.value, serverState.value);
+	const missing = missingRequiredPluginSettings(schema.value, form.value);
 	if (missing.length > 0) {
 		const labels = missing
 			.map((key) => schema.value.find((field) => field.key === key)?.label ?? key)
@@ -256,7 +261,8 @@ function confirmOrphanClear() {
 								<div>
 									<h2 class="text-lg font-semibold text-text-primary">Settings</h2>
 									<p class="text-sm text-text-secondary">
-										Configuration this plugin exposes. Secrets are stored securely and never shown.
+										Configuration this plugin exposes. Secrets are supplied by deployment
+										environment variables, never stored by Owlat.
 									</p>
 								</div>
 							</div>
@@ -267,6 +273,33 @@ function confirmOrphanClear() {
 						</div>
 
 						<form v-else class="p-6" @submit.prevent="save">
+							<!-- Deployment precondition, not a form error: the settings below stay
+							     editable and saveable while these variables are unset. -->
+							<div
+								v-if="unsetSecrets.length > 0"
+								class="mb-5 flex items-start gap-3 rounded-lg bg-bg-surface border border-border-subtle p-4"
+								role="status"
+							>
+								<Icon name="lucide:key-round" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
+								<div class="text-sm text-text-secondary">
+									<p>
+										This plugin needs
+										{{
+											unsetSecrets.length === 1
+												? 'an environment variable'
+												: 'environment variables'
+										}}
+										set in your deployment before it can run. Other settings can still be saved.
+									</p>
+									<ul class="mt-1.5 space-y-0.5">
+										<li v-for="secret in unsetSecrets" :key="secret.key">
+											<code class="text-xs text-text-tertiary">{{ secret.envVar }}</code>
+											<span class="text-text-tertiary"> — {{ secret.label }}</span>
+										</li>
+									</ul>
+								</div>
+							</div>
+
 							<div class="space-y-5">
 								<PluginSettingsField
 									v-for="field in schema"
