@@ -97,6 +97,7 @@ beforeEach(() => {
 
 describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 	const SEND_LIFECYCLE = ref(internal.delivery.sendLifecycle.transitionByProviderMessageId);
+	const MTA_ACCEPTANCE = ref(internal.delivery.sendLifecycle.recordMtaRemoteAcceptance);
 
 	it('routes email.sent to sendLifecycle with a "sent" transition', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
@@ -168,6 +169,26 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		});
 	});
 
+	it('keeps member-test status evidence but skips compliance and route learning', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.delivered',
+			providerMessageId: 'send_test',
+			at: 1000,
+			providerType: 'mta',
+			deliveryDomain: 'member_test',
+			destinationProvider: 'gmail',
+			primarySendingDomain: 'example.com',
+		});
+		expect(runMutationCalls).toEqual([
+			{
+				ref: MTA_ACCEPTANCE,
+				args: { providerMessageId: 'send_test', at: 1000 },
+			},
+		]);
+	});
+
 	it('does not recreate Gmail telemetry for an unknown or terminal Send', async () => {
 		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
 		nextRunMutationReturns({ ok: false, reason: 'send_not_found' });
@@ -176,12 +197,13 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			kind: 'email.delivered',
 			providerMessageId: 'deleted-send',
 			at: 1000,
+			providerType: 'mta',
 			destinationProvider: 'gmail',
 			primarySendingDomain: 'example.com',
 		});
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(SEND_LIFECYCLE);
+		expect(runMutationCalls[0]?.ref).toBe(MTA_ACCEPTANCE);
 	});
 
 	it('persists the MTA-observed recipient provider after accepted delivery', async () => {
@@ -192,6 +214,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			kind: 'email.delivered',
 			providerMessageId: 'send_456',
 			at: 2000,
+			providerType: 'mta',
 			organizationId: 'org-a',
 			recipient: 'user@workspace.example',
 			destinationProvider: 'microsoft',
@@ -208,22 +231,23 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		});
 	});
 
-	it('routes email.delivered to sendLifecycle with a "delivered" transition', async () => {
+	it('routes MTA email.delivered through atomic sent then delivered acceptance', async () => {
 		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
 		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
 		const event: InboundEvent = {
 			kind: 'email.delivered',
 			providerMessageId: 'msg-abc',
 			at: 2000,
+			providerType: 'mta',
 		};
 
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(SEND_LIFECYCLE);
+		expect(runMutationCalls[0]?.ref).toBe(MTA_ACCEPTANCE);
 		expect(runMutationCalls[0]?.args).toEqual({
 			providerMessageId: 'msg-abc',
-			transition: { to: 'delivered', at: 2000 },
+			at: 2000,
 		});
 	});
 

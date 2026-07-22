@@ -12,7 +12,8 @@
  * branch is reachable without a live Redis/queue or a real server.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { Hono } from 'hono';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
@@ -48,6 +49,8 @@ vi.mock('../routingDecision.js', () => ({
 const { createSendHandler } = await import('../send.js');
 const { checkSystemHealth } = await import('../../scaling/degradation.js');
 const mockedHealth = vi.mocked(checkSystemHealth);
+
+afterEach(() => vi.useRealTimers());
 
 interface FakeQueue {
 	add: ReturnType<typeof vi.fn>;
@@ -98,6 +101,7 @@ function validBody(overrides: Record<string, unknown> = {}): string {
 		ipPool: 'transactional',
 		organizationId: 'crm-orgA',
 		messageType: 'transactional',
+		deliveryDomain: 'production',
 		dkimDomain: 'example.com',
 		routingLease: 'test-routing-lease',
 		workAttemptId: 'work-attempt-1',
@@ -148,6 +152,58 @@ describe('POST /send — health gate', () => {
 });
 
 describe('POST /send — request validation', () => {
+	it.each([
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS - 1, status: 200 },
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS, status: 400 },
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 1, status: 400 },
+	] as const)(
+		'enforces the original cumulative deadline at offset $offset',
+		async ({ offset, status }) => {
+			vi.useFakeTimers();
+			vi.setSystemTime(new Date('2026-03-01T00:00:00Z'));
+			const startedAt = Date.now() - offset;
+			const queue = fakeQueue();
+			const res = await post(
+				buildApp(queue, fakeRedis()),
+				validBody({
+					routingReentry: {
+						envelopeInput: { kind: 'transactional' },
+						retryState: { attempt: 1, startedAt, idempotencyKey: 'msg-1' },
+					},
+				})
+			);
+
+			expect(res.status).toBe(status);
+			if (status === 200) {
+				expect(queue.add).toHaveBeenCalledOnce();
+				expect(queue.add.mock.calls[0]?.[0].data).toMatchObject({ firstEnqueuedAt: startedAt });
+			} else {
+				expect(queue.add).not.toHaveBeenCalled();
+			}
+		}
+	);
+
+	it('rejects a future delivery origin instead of rebasing it', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-03-01T00:00:00Z'));
+		const queue = fakeQueue();
+		const res = await post(
+			buildApp(queue, fakeRedis()),
+			validBody({
+				routingReentry: {
+					envelopeInput: { kind: 'transactional' },
+					retryState: {
+						attempt: 1,
+						startedAt: Date.now() + 1,
+						idempotencyKey: 'msg-1',
+					},
+				},
+			})
+		);
+		expect(res.status).toBe(400);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
 	it('returns 400 when a required field is missing', async () => {
 		const queue = fakeQueue();
 		const res = await post(buildApp(queue, fakeRedis()), validBody({ subject: undefined }));

@@ -5,6 +5,7 @@
  */
 
 import { Hono } from 'hono';
+import { randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as dlq from '../webhooks/dlq.js';
@@ -52,24 +53,30 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 		const dlqId = c.req.param('dlqId');
 
 		try {
-			const entry = await dlq.getEntry(redis, dlqId);
+			const entry = await dlq.claimOne(redis, dlqId, {
+				owner: `manual:${randomUUID()}`,
+				now: Date.now(),
+				requireDue: false,
+				enforceAutoLimit: false,
+				autoRetryLimit: 8,
+			});
 			if (!entry) {
-				return c.json({ error: 'DLQ entry not found' }, 404);
+				return c.json({ error: 'DLQ entry unavailable or already claimed' }, 409);
 			}
 
 			// Attempt redelivery
-			const success = await notifyConvex(entry.event, config);
+			const success = await notifyConvex(entry.event, config, undefined, {
+				deadline: entry.claim.expiresAt - 5_000,
+			});
 			if (success) {
-				await dlq.removeOne(redis, dlqId);
+				await dlq.settleClaim(redis, entry, 'success', Date.now());
 				return c.json({ success: true, delivered: true });
 			}
 
 			// Update retry attempt count
-			entry.attempts++;
-			entry.lastRetryAt = Date.now();
-			await dlq.updateEntry(redis, entry);
+			await dlq.settleClaim(redis, entry, 'failure', Date.now());
 
-			return c.json({ success: false, delivered: false, attempts: entry.attempts });
+			return c.json({ success: false, delivered: false, attempts: entry.attempts + 1 });
 		} catch {
 			logger.error(
 				{ operation: 'dlq_retry_one', category: 'storage' },
@@ -87,17 +94,23 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 			let failed = 0;
 
 			for (const dlqId of ids) {
-				const entry = await dlq.getEntry(redis, dlqId);
+				const entry = await dlq.claimOne(redis, dlqId, {
+					owner: `manual-all:${randomUUID()}`,
+					now: Date.now(),
+					requireDue: false,
+					enforceAutoLimit: false,
+					autoRetryLimit: 8,
+				});
 				if (!entry) continue;
 
-				const success = await notifyConvex(entry.event, config);
+				const success = await notifyConvex(entry.event, config, undefined, {
+					deadline: entry.claim.expiresAt - 5_000,
+				});
 				if (success) {
-					await dlq.removeOne(redis, dlqId);
+					await dlq.settleClaim(redis, entry, 'success', Date.now());
 					delivered++;
 				} else {
-					entry.attempts++;
-					entry.lastRetryAt = Date.now();
-					await dlq.updateEntry(redis, entry);
+					await dlq.settleClaim(redis, entry, 'failure', Date.now());
 					failed++;
 				}
 			}

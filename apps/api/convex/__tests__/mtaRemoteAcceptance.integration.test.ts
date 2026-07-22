@@ -55,6 +55,7 @@ function accepted(providerMessageId: string, at: number): InboundEvent {
 		kind: 'email.delivered',
 		providerMessageId,
 		at,
+		providerType: 'mta',
 		destinationProvider: 'gmail',
 		primarySendingDomain: PRIMARY_DOMAIN,
 	};

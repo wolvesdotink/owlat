@@ -42,4 +42,10 @@ describe('provider-routing SES relay operations surface', () => {
 		expect(source).toContain('Load more domains');
 		expect(source).not.toContain('Showing the first 512 owned-MTA domains');
 	});
+
+	it('renders the explicit manual-primary SPF not-applicable proof state', () => {
+		expect(source).toContain('data-testid="relay-spf-not-applicable"');
+		expect(source).toContain("domain.spfProofState === 'not_applicable_manual_primary'");
+		expect(source).toContain('Apex SPF: not applicable to SES relay proof');
+	});
 });

@@ -12,6 +12,7 @@ import { getOptional } from '../../env';
 import {
 	extractDomainOrNull,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	type DeliveryDomain,
 	type GovernedMessageType,
 } from '@owlat/shared';
 import {
@@ -44,6 +45,8 @@ export async function resolveMtaRoutingDecision(input: {
 	messageId: string;
 	workAttemptId: string;
 	routingReentryToken: string;
+	startedAt: number;
+	deliveryDomain: DeliveryDomain;
 	messageType: GovernedMessageType;
 	organizationId: string;
 	recipient: string;
@@ -172,6 +175,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			dkimDomain: extras?.dkimDomain ?? fromDomain,
 			organizationId: extras?.organizationId,
 			messageType: extras?.messageType,
+			deliveryDomain: extras?.deliveryDomain,
 			routingLease: extras?.routingLease,
 			allowWarmupOverflow: extras?.allowWarmupOverflow,
 		};

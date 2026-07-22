@@ -2,7 +2,7 @@
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
-import type { GovernedMessageType } from '@owlat/shared';
+import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
 import type { MtaIpPool, SendProviderKind } from '../lib/sendProviders';
 import { resolveMtaRoutingDecision } from '../lib/sendProviders/mta';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
@@ -19,6 +19,8 @@ interface LastMileInput {
 	idempotencyKey: string;
 	workAttemptId: string;
 	routingReentryToken: string;
+	startedAt: number;
+	deliveryDomain: DeliveryDomain;
 }
 
 export interface LastMileRoutingReady {
@@ -80,6 +82,8 @@ export async function resolveLastMileRouting(
 		messageId: input.idempotencyKey,
 		workAttemptId: input.workAttemptId,
 		routingReentryToken: input.routingReentryToken,
+		startedAt: input.startedAt,
+		deliveryDomain: input.deliveryDomain,
 		messageType: input.messageType,
 		organizationId,
 		recipient: input.to,

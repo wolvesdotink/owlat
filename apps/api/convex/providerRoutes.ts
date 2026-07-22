@@ -172,6 +172,11 @@ export const listDeliverabilityRelayDomains = authedQuery({
 									: ('provisioning' as const),
 						dnsRecords: identity?.dnsRecords,
 						verificationResults: identity?.verificationResults,
+						spfProofState:
+							identity?.spfProofState ??
+							(identity?.dnsRecords?.spf
+								? ('dns_required' as const)
+								: ('not_applicable_manual_primary' as const)),
 						isProviderVerified: identity?.isProviderVerified ?? false,
 						verifiedAt: identity?.verifiedAt,
 					};

@@ -282,6 +282,7 @@ export const sendSingleEmail = internalAction({
 
 		return await dispatchGovernedEmail(ctx, {
 			envelopeInput,
+			deliveryDomain: envelopeInput.deliveryDomain ?? 'production',
 			messageType: resolveWorkerMessageType(envelopeInput),
 			to: envelopeInput.to,
 			from: envelopeInput.from,

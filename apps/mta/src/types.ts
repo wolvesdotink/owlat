@@ -45,6 +45,8 @@ export interface EmailJob {
 	ipPool: IpPoolType;
 	/** Organization ID for circuit breaker and webhook correlation */
 	organizationId: string;
+	/** Authenticated production-vs-member-preview effect domain. */
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
 	/** Engagement score 0-100 from Convex contact activity (for priority ordering) */
 	engagementScore?: number;
 	/** Domain for DKIM signing */
@@ -150,6 +152,7 @@ export interface MtaWebhookEvent {
 	recipient?: string;
 	/** Organization ID (for org-level events) */
 	organizationId?: string;
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
 	/** Phase-2 MX-derived receiver identity for accepted-delivery telemetry. */
 	destinationProvider?: DestinationProviderKey;
 	/** PSL-correct primary sending domain used by Gmail's bulk classification. */

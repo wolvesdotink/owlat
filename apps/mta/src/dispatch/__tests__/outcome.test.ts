@@ -225,6 +225,37 @@ describe('reduce(hard_bounce)', () => {
 	});
 });
 
+describe('member test delivery effect isolation', () => {
+	it.each([
+		{
+			kind: 'delivered',
+			smtpCode: 250,
+			smtpResponse: 'Queued',
+			enhancedCode: '2.0.0',
+		} as const,
+		{
+			kind: 'hard_bounce',
+			smtpCode: 550,
+			error: 'No such user',
+			enhancedCode: '5.1.1',
+		} as const,
+	])('retains lifecycle/log evidence but no production state for $kind', (outcome) => {
+		const job = makeJob({ deliveryDomain: 'member_test' });
+		const { effects } = reduce(outcome, makeCtx({ job }));
+		expect(effects.map((effect) => effect.kind)).toEqual(['log_delivery_event', 'notify_convex']);
+		const notify = effects.find((effect) => effect.kind === 'notify_convex');
+		expect(notify).toMatchObject({
+			kind: 'notify_convex',
+			event: { messageId: 'msg-001', deliveryDomain: 'member_test' },
+		});
+		if (notify?.kind === 'notify_convex') {
+			expect(notify.event.recipient).toBeUndefined();
+			expect(notify.event.destinationProvider).toBeUndefined();
+			expect(notify.event.primarySendingDomain).toBeUndefined();
+		}
+	});
+});
+
 describe('reduce(deferred)', () => {
 	it('produces the canonical 5-effect list (no notify_convex) plus a defer from the classification', () => {
 		const outcome: DispatchOutcome = {

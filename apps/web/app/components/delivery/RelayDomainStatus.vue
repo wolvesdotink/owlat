@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
+import { api } from "@owlat/api";
+import type { Id } from "@owlat/api/dataModel";
 
 interface RelayDnsRecord {
 	type?: string;
@@ -17,9 +17,9 @@ const {
 } = usePaginatedQuery(api.providerRoutes.listDeliverabilityRelayDomains, () => ({}), {
 	initialNumItems: 100,
 });
-const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
+const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === "CanLoadMore");
 const { run: verifyRelayDomain } = useBackendOperation(api.domains.dnsVerification.verifyDomain, {
-	label: 'Verify relay domain',
+	label: "Verify relay domain",
 });
 const { showToast: showNotification } = useToast();
 const verifyingRelayDomainId = ref<string | null>(null);
@@ -32,7 +32,7 @@ function relayRecords(
 				mailFrom?: RelayDnsRecord[];
 		  }
 		| null
-		| undefined
+		| undefined,
 ): RelayDnsRecord[] {
 	return [
 		...(records?.spf ? [records.spf] : []),
@@ -41,11 +41,11 @@ function relayRecords(
 	];
 }
 
-async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
+async function handleVerifyRelayDomain(domainId: Id<"domains">) {
 	verifyingRelayDomainId.value = domainId;
 	const result = await verifyRelayDomain({ domainId });
 	verifyingRelayDomainId.value = null;
-	if (result !== undefined) showNotification('Relay DNS verification refreshed');
+	if (result !== undefined) showNotification("Relay DNS verification refreshed");
 }
 </script>
 
@@ -89,6 +89,14 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 				Provisioning is queued. Refresh shortly to see the DNS plan.
 			</p>
 			<div v-else class="space-y-2">
+				<p
+					v-if="domain.spfProofState === 'not_applicable_manual_primary'"
+					class="rounded bg-bg-surface p-3 text-xs text-text-secondary"
+					data-testid="relay-spf-not-applicable"
+				>
+					Apex SPF: not applicable to SES relay proof. Keep the reviewed manual primary SPF policy;
+					SES is authenticated by its verified DKIM and dedicated MAIL FROM records.
+				</p>
 				<div
 					v-for="record in relayRecords(domain.dnsRecords)"
 					:key="`${record.type}:${record.host ?? record.hostname}:${record.value}`"
@@ -102,7 +110,10 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 				</div>
 			</div>
 		</div>
-		<div v-if="canLoadMoreRelayDomains" class="flex justify-center border-t border-border-subtle pt-4">
+		<div
+			v-if="canLoadMoreRelayDomains"
+			class="flex justify-center border-t border-border-subtle pt-4"
+		>
 			<UiButton variant="secondary" @click="loadMoreRelayDomains(100)">Load more domains</UiButton>
 		</div>
 	</div>

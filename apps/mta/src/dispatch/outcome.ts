@@ -16,6 +16,7 @@ import type { DispatchEffect } from './effects.js';
 import { outcomeEventBase } from './outcomeEvent.js';
 import type { DispatchOutcome } from './outcomeClassification.js';
 import { primarySendingDomain } from '../intelligence/gmailBulkSender.js';
+import { applyDeliveryDomainPolicy } from './outcomeDeliveryDomain.js';
 
 export { classifyResult } from './outcomeClassification.js';
 export type { DispatchOutcome } from './outcomeClassification.js';
@@ -37,18 +38,25 @@ export interface OutcomeReduction {
  * metrics, logger, or fetch is required to verify the reducer's correctness.
  */
 export function reduce(outcome: DispatchOutcome, ctx: AttemptCtx): OutcomeReduction {
+	let reduction: OutcomeReduction;
 	switch (outcome.kind) {
 		case 'delivered':
-			return reduceDelivered(outcome, ctx);
+			reduction = reduceDelivered(outcome, ctx);
+			break;
 		case 'hard_bounce':
-			return reduceHardBounce(outcome, ctx);
+			reduction = reduceHardBounce(outcome, ctx);
+			break;
 		case 'deferred':
-			return reduceDeferred(outcome, ctx);
+			reduction = reduceDeferred(outcome, ctx);
+			break;
 		case 'soft_bounce':
-			return reduceSoftBounce(outcome, ctx);
+			reduction = reduceSoftBounce(outcome, ctx);
+			break;
 		case 'ambiguous':
-			return reduceAmbiguous(outcome, ctx);
+			reduction = reduceAmbiguous(outcome, ctx);
+			break;
 	}
+	return applyDeliveryDomainPolicy(reduction, ctx);
 }
 
 function reduceDelivered(

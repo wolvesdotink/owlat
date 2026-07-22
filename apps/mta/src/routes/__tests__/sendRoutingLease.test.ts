@@ -11,6 +11,7 @@ vi.mock('../../scaling/degradation.js', () => ({
 }));
 
 const { createSendHandler } = await import('../send.js');
+const STARTED_AT = Date.now();
 
 function body(overrides: Record<string, unknown> = {}) {
 	return {
@@ -22,6 +23,7 @@ function body(overrides: Record<string, unknown> = {}) {
 		ipPool: 'campaign',
 		organizationId: 'org-1',
 		messageType: 'campaign',
+		deliveryDomain: 'production',
 		dkimDomain: 'example.org',
 		routingLease: 'token-1',
 		workAttemptId: 'work-attempt-1',
@@ -29,7 +31,7 @@ function body(overrides: Record<string, unknown> = {}) {
 		allowWarmupOverflow: false,
 		routingReentry: {
 			envelopeInput: { kind: 'campaign' },
-			retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: 'message-1' },
+			retryState: { attempt: 1, startedAt: STARTED_AT, idempotencyKey: 'message-1' },
 		},
 		...overrides,
 	};
@@ -45,6 +47,8 @@ function lease(overrides: Record<string, unknown> = {}) {
 		recipient: 'user@example.com',
 		from: 'sender@example.org',
 		messageType: 'campaign',
+		startedAt: STARTED_AT,
+		deliveryDomain: 'production',
 		candidateProvider: 'mta',
 		ipPool: 'campaign',
 		destinationProvider: 'gmail',

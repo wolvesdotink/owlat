@@ -20,9 +20,11 @@ describe('deliverability routing documentation', () => {
 		expect(providers).toMatch(/future domains when they become verified/i);
 	});
 
-	it('documents one merged SPF, dedicated SES MAIL FROM, and unchanged primary DMARC', () => {
-		expect(guide).toMatch(/one merged record authorizing both the owned MTA and SES/i);
+	it('documents conditional SPF proof, dedicated SES MAIL FROM, and unchanged primary DMARC', () => {
+		expect(guide).toMatch(/when an apex SPF row is displayed.*single reviewed merge/i);
 		expect(guide).toMatch(/second `v=spf1` record would break SPF/i);
+		expect(guide).toMatch(/if no apex SPF row is shown.*manual primary SPF unchanged/i);
+		expect(guide).toMatch(/proof as not applicable to the SES relay/i);
 		expect(providers).toContain('`ses-mail` MAIL FROM');
 		expect(providers).toMatch(/primary domain's DMARC remains authoritative/i);
 	});

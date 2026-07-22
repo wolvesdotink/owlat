@@ -1,6 +1,11 @@
 'use node';
 
-import { MAX_GOVERNED_ROUTING_ATTEMPTS, type GovernedMessageType } from '@owlat/shared';
+import {
+	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+	MAX_GOVERNED_ROUTING_ATTEMPTS,
+	type DeliveryDomain,
+	type GovernedMessageType,
+} from '@owlat/shared';
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
@@ -28,6 +33,7 @@ type SendRef =
 
 interface GovernedDispatchRequest<TEnvelope> {
 	envelopeInput: TEnvelope;
+	deliveryDomain: DeliveryDomain;
 	messageType: GovernedMessageType;
 	to: string;
 	from: string;
@@ -90,6 +96,10 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	if (retryState.attempt > MAX_GOVERNED_ROUTING_ATTEMPTS) {
 		throw new Error('Governed delivery retry limit exhausted.');
 	}
+	const ageMs = Date.now() - retryState.startedAt;
+	if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+		throw new Error('Governed delivery deadline expired.');
+	}
 	const organizationId =
 		request.organizationId ??
 		(await ctx.runQuery(internal.campaigns.sendQueries.getSingletonOrganizationId, {}));
@@ -115,6 +125,8 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		idempotencyKey,
 		workAttemptId,
 		routingReentryToken: snapshot.token,
+		startedAt: retryState.startedAt,
+		deliveryDomain: request.deliveryDomain,
 	});
 	if (routing.kind === 'defer') {
 		await ctx.runMutation(internal.delivery.routingReentry.discardSnapshot, {
@@ -147,6 +159,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 					},
 					organizationId,
 					messageType: request.messageType,
+					deliveryDomain: request.deliveryDomain,
 					routingLease,
 					allowWarmupOverflow: Boolean(
 						request.messageType === 'campaign' && route?.warmupOverflowEnabled

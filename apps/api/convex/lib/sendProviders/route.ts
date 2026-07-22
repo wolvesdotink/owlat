@@ -200,9 +200,23 @@ async function relayDomainVerified(
 	)
 		return false;
 	const proof = identity.verificationResults;
-	const results = [proof.spf, ...(proof.dkim ?? []), ...(proof.mailFrom ?? [])];
+	const spfProofState =
+		identity.spfProofState ??
+		(identity.dnsRecords.spf ? 'dns_required' : 'not_applicable_manual_primary');
+	const spfSatisfied =
+		spfProofState === 'dns_required'
+			? Boolean(identity.dnsRecords.spf && proof.spf?.verified)
+			: domain.providerType === 'mta' &&
+				domain.status === 'verified' &&
+				!identity.dnsRecords.spf &&
+				!proof.spf;
+	const results = [
+		...(spfProofState === 'dns_required' ? [proof.spf] : []),
+		...(proof.dkim ?? []),
+		...(proof.mailFrom ?? []),
+	];
 	return Boolean(
-		proof.spf?.verified &&
+		spfSatisfied &&
 		identity.dkimTokens.length > 0 &&
 		proof.dkim?.length === identity.dkimTokens.length &&
 		proof.dkim.every((result) => result.verified) &&

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, watch } from "vue";
 
 interface ProviderEntry {
 	providerType: string;
@@ -7,26 +7,26 @@ interface ProviderEntry {
 }
 
 const props = defineProps<{
-	messageType: 'campaign' | 'transactional' | 'automation';
+	messageType: "campaign" | "transactional" | "automation";
 	providers: ProviderEntry[];
 	providerLabel: (providerType: string) => string;
 }>();
 
-const isEnabled = defineModel<boolean>('enabled', { required: true });
-const relay = defineModel<string>('relay', { required: true });
-const isWarmupOverflowEnabled = defineModel<boolean>('warmupOverflow', { required: true });
+const isEnabled = defineModel<boolean>("enabled", { required: true });
+const relay = defineModel<string>("relay", { required: true });
+const isWarmupOverflowEnabled = defineModel<boolean>("warmupOverflow", { required: true });
 const enabledRelays = computed(() =>
-	props.providers.filter((provider) => provider.isEnabled && provider.providerType === 'ses')
+	props.providers.filter((provider) => provider.isEnabled && provider.providerType === "ses"),
 );
 
 watch(
 	enabledRelays,
 	(options) => {
 		if (!options.some((provider) => provider.providerType === relay.value)) {
-			relay.value = options[0]?.providerType ?? '';
+			relay.value = options[0]?.providerType ?? "";
 		}
 	},
-	{ immediate: true }
+	{ immediate: true },
 );
 </script>
 
@@ -63,8 +63,8 @@ watch(
 				<p class="mt-1 text-xs text-text-tertiary">
 					Amazon SES is the only supported escape-hatch relay. Saving starts SES identity
 					provisioning for every verified owned-MTA domain, but fallback cannot activate until each
-					domain's DNS and SES status are verified. Publish the single merged apex SPF shown on this
-					page; do not add a second SPF record.
+					domain's DNS and SES status are verified. Publish the single merged apex SPF when one is
+					shown; otherwise preserve the reviewed manual primary SPF. Never add a second SPF record.
 				</p>
 			</div>
 			<label v-if="messageType === 'campaign'" class="flex items-start gap-2 cursor-pointer">

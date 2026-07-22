@@ -164,6 +164,35 @@ describe('DB-backed deliverability route verification', () => {
 		).toMatchObject({ providerType: 'ses', source: 'deliverability_fallback' });
 	});
 
+	it('authorizes verified SES DKIM/MAIL FROM when primary SPF is explicitly manual', async () => {
+		const t = await seedRouteState({ withSesIdentity: true, primaryProvider: 'mta' });
+		await t.run(async (ctx) => {
+			const identity = await ctx.db.query('sendingDomainSesIdentities').first();
+			if (!identity?.dnsRecords || !identity.verificationResults) throw new Error('missing proof');
+			await ctx.db.patch(identity._id, {
+				spfProofState: 'not_applicable_manual_primary',
+				dnsRecords: {
+					dkim: identity.dnsRecords.dkim,
+					mailFrom: identity.dnsRecords.mailFrom,
+				},
+				verificationResults: {
+					dkim: identity.verificationResults.dkim,
+					mailFrom: identity.verificationResults.mailFrom,
+					sesStatus: 'Success',
+				},
+			});
+		});
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({ providerType: 'ses', source: 'deliverability_fallback' });
+	});
+
 	it('refuses the affected slice when SES identity proof is absent', async () => {
 		const t = await seedRouteState({ withSesIdentity: false });
 		await expect(

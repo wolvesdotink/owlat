@@ -32,6 +32,7 @@ import {
 	senderDomainFor,
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
+import { mirrorEmailSendWrite } from '../unifiedMessages';
 
 // ============================================================================
 // Send lifecycle — the single writer of `emailSends.status` and
@@ -225,6 +226,53 @@ async function dispatch(
 	if (result.applied !== 'duplicate') {
 		await applyEffects(ctx, result.effects);
 
+		// Agent-reply source finalization belongs to the Send terminal edge, not
+		// to one transport callback. Direct/relay completion and authenticated MTA
+		// remote acceptance both pass here, while duplicate transitions remain a
+		// no-op. This closes the approved-message state before the stale reconciler
+		// can enqueue a second reply.
+		if (
+			ref.kind === 'transactional' &&
+			(send as TransactionalSendDoc).kind === 'agent_reply' &&
+			(send as TransactionalSendDoc).inboundMessageId &&
+			(input.to === 'sent' || input.to === 'failed' || input.to === 'bounced')
+		) {
+			const agentSend = send as TransactionalSendDoc;
+			const succeeded = input.to === 'sent';
+			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: agentSend.inboundMessageId!,
+				input: succeeded
+					? { to: 'sent', at: input.at }
+					: {
+							to: 'failed',
+							at: input.at,
+							errorMessage:
+								input.to === 'failed'
+									? input.errorMessage
+									: (input.bounceMessage ?? 'Delivery bounced'),
+						},
+			});
+
+			if (succeeded) {
+				try {
+					const inbound = await ctx.db.get(agentSend.inboundMessageId!);
+					if (inbound?.threadId && agentSend.contactId) {
+						await mirrorEmailSendWrite(ctx, {
+							threadId: inbound.threadId,
+							contactId: agentSend.contactId,
+							subject: agentSend.subject,
+							textBody: inbound.draftResponse,
+							externalMessageId: input.providerMessageId,
+							status: 'sent',
+						});
+					}
+				} catch {
+					// The timeline is a denormalized, idempotent read model. It must
+					// never roll back the authoritative Send/source lifecycle edge.
+				}
+			}
+		}
+
 		// ── Post-send OUTCOME signal (graduated-autonomy learning) ──
 		// A bounce or complaint on any agent reply (auto-sent OR human-approved)
 		// is unambiguous negative feedback for the category/sender it was sent
@@ -292,5 +340,24 @@ export const transitionByProviderMessageId = internalMutation({
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		return await dispatch(ctx, ref, args.transition);
+	},
+});
+
+/** Atomically record an MTA's remote SMTP acceptance as sent then delivered. */
+export const recordMtaRemoteAcceptance = internalMutation({
+	args: { providerMessageId: v.string(), at: v.number() },
+	handler: async (ctx, args): Promise<TransitionOutcome> => {
+		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
+		if (!ref) return { ok: false, reason: 'send_not_found' };
+		await dispatch(ctx, ref, {
+			to: 'sent',
+			at: args.at,
+			providerMessageId: args.providerMessageId,
+			providerType: 'mta',
+		});
+		// Delivery evidence can arrive after a later bounce/failure. The delivered
+		// reducer owns timestamp attribution in that case; never let the synthetic
+		// sent edge suppress an otherwise attributable observation.
+		return await dispatch(ctx, ref, { to: 'delivered', at: args.at });
 	},
 });

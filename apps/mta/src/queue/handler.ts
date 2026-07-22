@@ -186,6 +186,10 @@ export async function handleEmailJob(
 			defer.delayMs,
 			defer.reason
 		);
+	} else if (data.deliveryDomain === 'member_test') {
+		// Test outcomes do not report breaker/warming consumption, so release any
+		// authenticated reservation/probe instead of leaving persistent capacity.
+		await releaseRoutingReservations(data, deps);
 	}
 }
 
@@ -245,6 +249,7 @@ async function handoffRoutingReentry(
 			messageId: data.messageId,
 			routingReentryToken: data.routingReentryToken,
 			workAttemptId: data.workAttemptId,
+			deliveryDomain: data.deliveryDomain,
 			routingReentry: data.routingReentry,
 			routingReentryReason,
 			timestamp: Date.now(),
@@ -347,6 +352,7 @@ async function emitExpiredBounce(
 				event: 'bounced',
 				messageId: data.messageId,
 				organizationId: data.organizationId,
+				deliveryDomain: data.deliveryDomain,
 				bounceType: 'soft',
 				message: `Message expired after ${ageMs}ms without delivery: ${reason}`,
 				timestamp: Date.now(),
@@ -355,6 +361,7 @@ async function emitExpiredBounce(
 	];
 
 	await applyEffects(effects, deps);
+	if (data.deliveryDomain === 'member_test') await releaseRoutingReservations(data, deps);
 }
 
 /**
@@ -376,12 +383,14 @@ async function handleDrop(
 			{ messageId: job.messageId, to: job.to, reason: piped.reason },
 			'Content screening rejected'
 		);
-		effects.push({
-			kind: 'metrics_counter_inc',
-			pool: job.ipPool,
-			isp: providerKey,
-			outcome: 'rejected',
-		});
+		if (job.deliveryDomain !== 'member_test') {
+			effects.push({
+				kind: 'metrics_counter_inc',
+				pool: job.ipPool,
+				isp: providerKey,
+				outcome: 'rejected',
+			});
+		}
 	} else {
 		logger.info({ messageId: job.messageId, to: job.to }, 'Recipient suppressed — skipping');
 	}
@@ -392,6 +401,7 @@ async function handleDrop(
 	});
 
 	await applyEffects(effects, deps);
+	if (job.deliveryDomain === 'member_test') await releaseRoutingReservations(job, deps);
 }
 
 function buildDropEvent(

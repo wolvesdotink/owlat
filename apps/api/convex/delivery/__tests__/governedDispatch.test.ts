@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { ActionCtx } from '../../_generated/server';
 
 const resolveLastMileRouting = vi.hoisted(() => vi.fn());
@@ -18,6 +19,7 @@ const envelopeInput = {
 } as const;
 const baseRequest = {
 	envelopeInput,
+	deliveryDomain: 'production' as const,
 	messageType: 'campaign' as const,
 	to: 'recipient@example.com',
 	from: 'sender@example.com',
@@ -31,6 +33,8 @@ const baseRequest = {
 };
 
 describe('dispatchGovernedEmail', () => {
+	afterEach(() => vi.useRealTimers());
+
 	beforeEach(() => {
 		resolveLastMileRouting.mockReset();
 		sendProviderDispatch.mockReset();
@@ -52,6 +56,8 @@ describe('dispatchGovernedEmail', () => {
 			idempotencyKey: 'send_send-row-1',
 			workAttemptId: expect.any(String),
 			routingReentryToken: 'reentry-token',
+			startedAt: expect.any(Number),
+			deliveryDomain: 'production',
 		});
 		expect(sendProviderDispatch).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
@@ -95,6 +101,7 @@ describe('dispatchGovernedEmail', () => {
 				routingReentryToken: 'reentry-token',
 				organizationId: 'org-1',
 				messageType: 'campaign',
+				deliveryDomain: 'production',
 				routingLease: 'lease-1',
 				allowWarmupOverflow: false,
 				ipPool: 'campaign',
@@ -118,6 +125,7 @@ describe('dispatchGovernedEmail', () => {
 	});
 
 	it('preserves the original retry key when the provider rejects a stale lease', async () => {
+		const startedAt = Date.now() - 100;
 		resolveLastMileRouting.mockResolvedValue({
 			kind: 'ready',
 			providerKind: 'mta',
@@ -141,7 +149,7 @@ describe('dispatchGovernedEmail', () => {
 			...baseRequest,
 			retryState: {
 				attempt: 2,
-				startedAt: 100,
+				startedAt,
 				idempotencyKey: 'send_original',
 			},
 		});
@@ -152,9 +160,45 @@ describe('dispatchGovernedEmail', () => {
 			retryAfterMs: 5_000,
 			retryState: {
 				attempt: 3,
-				startedAt: 100,
+				startedAt,
 				idempotencyKey: 'send_original',
 			},
 		});
 	});
+
+	it.each([
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS - 1, accepted: true },
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS, accepted: false },
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 1, accepted: false },
+	])(
+		'enforces the cumulative delivery deadline at offset $offset',
+		async ({ offset, accepted }) => {
+			vi.useFakeTimers();
+			vi.setSystemTime(new Date('2026-03-01T00:00:00Z'));
+			const now = Date.now();
+			resolveLastMileRouting.mockResolvedValue({ kind: 'defer', retryAfterMs: 30_000 });
+			const request = {
+				...baseRequest,
+				retryState: {
+					attempt: 2,
+					startedAt: now - offset,
+					idempotencyKey: 'send_original',
+				},
+			};
+
+			if (accepted) {
+				await expect(dispatchGovernedEmail(ctx, request)).resolves.toMatchObject({
+					success: false,
+					deferred: true,
+					retryState: { startedAt: now - offset },
+				});
+				expect(resolveLastMileRouting).toHaveBeenCalledOnce();
+			} else {
+				await expect(dispatchGovernedEmail(ctx, request)).rejects.toThrow(
+					'Governed delivery deadline expired.'
+				);
+				expect(resolveLastMileRouting).not.toHaveBeenCalled();
+			}
+		}
+	);
 });

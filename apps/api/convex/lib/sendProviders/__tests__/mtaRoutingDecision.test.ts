@@ -7,6 +7,8 @@ const decisionInput = {
 	messageId: 'send-1',
 	workAttemptId: 'work-1',
 	routingReentryToken: 'reentry-1',
+	startedAt: Date.now(),
+	deliveryDomain: 'production' as const,
 	messageType: 'campaign' as const,
 	organizationId: 'org-1',
 	recipient: 'to@example.com',

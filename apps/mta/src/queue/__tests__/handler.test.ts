@@ -99,6 +99,7 @@ function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 
 function createGovernedJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return createJob({
+		deliveryDomain: 'production',
 		routingLease: {
 			token: 'lease-1',
 			destinationProvider: 'other',
@@ -335,6 +336,32 @@ describe('handleEmailJob', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
+	it('releases test reservations without recording production warming or breaker usage', async () => {
+		const { recordOutcome, releaseHalfOpenProbe } =
+			await import('../../intelligence/circuitBreaker.js');
+		const { recordSend, releaseWarmingSlot } = await import('../../intelligence/warming.js');
+		const reservation = {
+			ip: '10.0.0.1',
+			messageId: 'msg-001',
+			utcDate: '2026-07-22',
+			expiresAt: Date.now() + 60_000,
+		};
+		await run(
+			createGovernedJob({
+				deliveryDomain: 'member_test',
+				routingLease: {
+					...createGovernedJob().routingLease!,
+					warmingReservation: reservation,
+				},
+			})
+		);
+
+		expect(recordOutcome).not.toHaveBeenCalled();
+		expect(recordSend).not.toHaveBeenCalled();
+		expect(releaseWarmingSlot).toHaveBeenCalledWith(redis, reservation);
+		expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(2);
+	});
+
 	it('defers without acquiring SMTP when the selected IP is quarantined after selection', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { isIpEligibilityLeaseValid } = await import('../../scaling/ipPool.js');
@@ -347,30 +374,33 @@ describe('handleEmailJob', () => {
 		expect(queue.add).toHaveBeenCalledWith(expect.objectContaining({ delay: expect.any(Number) }));
 	});
 
-	it('hands a governed job back to Convex when IP eligibility changes, without stale requeue', async () => {
-		const { sendToMx } = await import('../../smtp/sender.js');
-		const { isIpEligibilityLeaseValid } = await import('../../scaling/ipPool.js');
-		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
-		const { releaseHalfOpenProbe } = await import('../../intelligence/circuitBreaker.js');
-		vi.mocked(isIpEligibilityLeaseValid).mockResolvedValueOnce(false);
+	it.each(['production', 'member_test'] as const)(
+		'hands a %s governed job back to Convex when IP eligibility changes, without SMTP',
+		async (deliveryDomain) => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+			const { isIpEligibilityLeaseValid } = await import('../../scaling/ipPool.js');
+			const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+			const { releaseHalfOpenProbe } = await import('../../intelligence/circuitBreaker.js');
+			vi.mocked(isIpEligibilityLeaseValid).mockResolvedValueOnce(false);
 
-		await run(createGovernedJob());
+			await run(createGovernedJob({ deliveryDomain }));
 
-		expect(sendToMx).not.toHaveBeenCalled();
-		expect(queue.add).not.toHaveBeenCalled();
-		expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(2);
-		expect(notifyConvex).toHaveBeenCalledWith(
-			expect.objectContaining({
-				event: 'routing.reentry',
-				messageId: 'msg-001',
-				routingReentry: expect.objectContaining({
-					retryState: expect.objectContaining({ idempotencyKey: 'msg-001' }),
+			expect(sendToMx).not.toHaveBeenCalled();
+			expect(queue.add).not.toHaveBeenCalled();
+			expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(2);
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event: 'routing.reentry',
+					messageId: 'msg-001',
+					routingReentry: expect.objectContaining({
+						retryState: expect.objectContaining({ idempotencyKey: 'msg-001' }),
+					}),
 				}),
-			}),
-			config,
-			redis
-		);
-	});
+				config,
+				redis
+			);
+		}
+	);
 
 	it('hands a stale breaker generation back to Convex instead of relay/self-requeue', async () => {
 		const { canSend } = await import('../../intelligence/circuitBreaker.js');

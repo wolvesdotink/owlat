@@ -39,6 +39,8 @@ const request = {
 	messageId: 'send-1',
 	workAttemptId: 'work-1',
 	routingReentryToken: 'reentry-1',
+	startedAt: Date.now(),
+	deliveryDomain: 'production',
 	messageType: 'campaign',
 	organizationId: 'org-1',
 	recipient: 'person@gmail.com',
