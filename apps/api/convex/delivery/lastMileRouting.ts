@@ -7,6 +7,7 @@ import type { MtaIpPool, SendProviderKind } from '../lib/sendProviders';
 import { resolveMtaRoutingDecision } from '../lib/sendProviders/mta';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
 import { selectSendProviderKind } from '../lib/sendProviders/types';
+import { getOptional } from '../lib/env';
 
 interface LastMileInput {
 	messageType: GovernedMessageType;
@@ -38,12 +39,12 @@ export async function resolveLastMileRouting(
 	ctx: ActionCtx,
 	input: LastMileInput
 ): Promise<LastMileRoutingResult> {
-	let route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+	const plan = await ctx.runQuery(internal.lib.sendProviders.route.resolveLastMileRoutePlan, {
 		messageType: input.messageType,
 		to: input.to,
 		from: input.from,
-		baseOnly: true,
 	});
+	let route = plan.route;
 	let providerKind = selectSendProviderKind(route?.providerType ?? input.providerType);
 	if (!providerKind) {
 		throw new Error(
@@ -55,6 +56,23 @@ export async function resolveLastMileRouting(
 		(await ctx.runQuery(internal.campaigns.sendQueries.getSingletonOrganizationId, {}));
 	if (!organizationId)
 		throw new Error('Delivery safety decision requires an organization identity.');
+	if (!plan.isMtaGoverned) {
+		return { kind: 'ready', providerKind, route, organizationId };
+	}
+	// Convex snapshots are authoritative for IP/DNSBL/persistent-defer routing.
+	// Only a breaker route is eligible for an MTA half-open recovery probe.
+	if (route?.deliverabilityReason && route.deliverabilityReason !== 'breaker_open') {
+		return { kind: 'ready', providerKind, route, organizationId };
+	}
+	if (!getOptional('MTA_API_URL') || !getOptional('MTA_API_KEY')) {
+		return { kind: 'defer', retryAfterMs: 60_000 };
+	}
+	const baseProviderKind = selectSendProviderKind(
+		plan.baseRoute?.providerType ?? input.providerType
+	);
+	if (!baseProviderKind) {
+		throw new Error('Owned-MTA routing has no configured base transport.');
+	}
 
 	const decision = await resolveMtaRoutingDecision({
 		messageId: input.idempotencyKey,
@@ -62,14 +80,28 @@ export async function resolveLastMileRouting(
 		organizationId,
 		recipient: input.to,
 		from: input.from,
-		candidateProvider: providerKind === 'mta' ? 'mta' : 'relay',
-		ipPool: (route?.ipPool ?? input.ipPool) as MtaIpPool | undefined,
-		allowWarmupOverflow: Boolean(input.messageType === 'campaign' && route?.warmupOverflowEnabled),
+		candidateProvider: baseProviderKind === 'mta' ? 'mta' : 'relay',
+		ipPool: (plan.baseRoute?.ipPool ?? input.ipPool) as MtaIpPool | undefined,
+		allowWarmupOverflow: Boolean(
+			input.messageType === 'campaign' && plan.baseRoute?.warmupOverflowEnabled
+		),
 	});
 	if (decision.kind === 'defer') {
 		return { kind: 'defer', retryAfterMs: decision.retryAfterMs };
 	}
-	if (providerKind === 'mta' && decision.kind === 'relay') {
+	if (decision.kind === 'mta') {
+		if (baseProviderKind !== 'mta') {
+			throw new Error('MTA returned an owned route for a relay-only candidate.');
+		}
+		return {
+			kind: 'ready',
+			providerKind: 'mta',
+			route: plan.baseRoute,
+			organizationId,
+			routingLease: decision.leaseToken,
+		};
+	}
+	if (baseProviderKind === 'mta' && route?.providerType !== 'ses') {
 		route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
 			messageType: input.messageType,
 			to: input.to,
@@ -86,6 +118,5 @@ export async function resolveLastMileRouting(
 		providerKind,
 		route,
 		organizationId,
-		...(decision.kind === 'mta' ? { routingLease: decision.leaseToken } : {}),
 	};
 }

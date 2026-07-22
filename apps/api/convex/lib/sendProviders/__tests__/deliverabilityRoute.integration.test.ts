@@ -177,6 +177,42 @@ describe('DB-backed deliverability route verification', () => {
 		).rejects.toThrow(/verify this sending domain/i);
 	});
 
+	it('requires fresh SES relay proof when route priority selects SES before a signal', async () => {
+		const t = await seedRouteState({ withSesIdentity: false });
+		await t.run(async (ctx) => {
+			const route = await ctx.db.query('providerRoutes').first();
+			if (!route) throw new Error('missing route');
+			await ctx.db.patch(route._id, {
+				strategy: 'priority_failover',
+				providers: [
+					{ providerType: 'ses', isEnabled: true },
+					{ providerType: 'mta', isEnabled: true },
+				],
+			});
+			const gmail = await ctx.db
+				.query('deliverabilityRouteStates')
+				.withIndex('by_org_provider', (q) =>
+					q.eq('organizationId', 'org-a').eq('destinationProvider', 'gmail')
+				)
+				.first();
+			if (!gmail) throw new Error('missing gmail state');
+			await ctx.db.patch(gmail._id, {
+				isFallbackActive: false,
+				signals: [],
+				fallbackActiveSince: undefined,
+			});
+		});
+		await expect(
+			t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).rejects.toThrow(/verify this sending domain/i);
+	});
+
 	it('ignores an expired signal instead of creating a new relay decision', async () => {
 		const t = await seedRouteState({ withSesIdentity: true });
 		expect(

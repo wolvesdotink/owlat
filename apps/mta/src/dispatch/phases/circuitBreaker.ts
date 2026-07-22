@@ -15,7 +15,7 @@ export const circuitBreakerPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 	name: 'circuit_breaker',
 	async run(deps, ctx) {
 		const globalResult = await circuitBreaker.canSend(deps.redis, ctx.job.organizationId);
-		const providerResult = await circuitBreaker.canSend(
+		const providerResult = await circuitBreaker.canSendScope(
 			deps.redis,
 			ctx.job.organizationId,
 			ctx.destination.providerKey
