@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../../intelligence/circuitBreaker.js', () => ({
 	canSend: vi.fn(),
+	canSendScope: vi.fn(),
 	reserveHalfOpenProbe: vi.fn(),
 }));
 vi.mock('../../../monitoring/logger.js', () => ({
@@ -52,6 +53,11 @@ beforeEach(() => {
 		state: 'closed',
 		generation: 0,
 	});
+	vi.mocked(circuitBreaker.canSendScope).mockResolvedValue({
+		allowed: true,
+		state: 'closed',
+		generation: 0,
+	});
 });
 
 describe('circuitBreakerPhase', () => {
@@ -64,7 +70,7 @@ describe('circuitBreakerPhase', () => {
 		const out = await circuitBreakerPhase.run(deps, makeCtx());
 		expect(out.kind).toBe('continue');
 		expect(circuitBreaker.canSend).toHaveBeenCalledWith(deps.redis, 'org-42');
-		expect(circuitBreaker.canSend).toHaveBeenCalledWith(deps.redis, 'org-42', 'other');
+		expect(circuitBreaker.canSendScope).toHaveBeenCalledWith(deps.redis, 'org-42', 'other');
 	});
 
 	it('defers using the breaker-supplied retryAfter when open', async () => {
@@ -99,9 +105,16 @@ describe('circuitBreakerPhase', () => {
 			globalBreakerGeneration: 1,
 			providerBreakerGeneration: 1,
 		};
-		vi.mocked(circuitBreaker.canSend)
-			.mockResolvedValueOnce({ allowed: true, state: 'closed', generation: 2 })
-			.mockResolvedValueOnce({ allowed: true, state: 'closed', generation: 1 });
+		vi.mocked(circuitBreaker.canSend).mockResolvedValueOnce({
+			allowed: true,
+			state: 'closed',
+			generation: 2,
+		});
+		vi.mocked(circuitBreaker.canSendScope).mockResolvedValueOnce({
+			allowed: true,
+			state: 'closed',
+			generation: 1,
+		});
 		expect((await circuitBreakerPhase.run(deps, ctx)).kind).toBe('defer');
 	});
 
@@ -115,9 +128,16 @@ describe('circuitBreakerPhase', () => {
 			globalBreakerGeneration: 1,
 			providerBreakerGeneration: 2,
 		};
-		vi.mocked(circuitBreaker.canSend)
-			.mockResolvedValueOnce({ allowed: true, state: 'closed', generation: 1 })
-			.mockResolvedValueOnce({ allowed: true, state: 'half-open', generation: 2 });
+		vi.mocked(circuitBreaker.canSend).mockResolvedValueOnce({
+			allowed: true,
+			state: 'closed',
+			generation: 1,
+		});
+		vi.mocked(circuitBreaker.canSendScope).mockResolvedValueOnce({
+			allowed: true,
+			state: 'half-open',
+			generation: 2,
+		});
 		vi.mocked(circuitBreaker.reserveHalfOpenProbe).mockResolvedValue(true);
 		expect((await circuitBreakerPhase.run(deps, ctx)).kind).toBe('continue');
 		expect(circuitBreaker.reserveHalfOpenProbe).toHaveBeenCalledWith(
