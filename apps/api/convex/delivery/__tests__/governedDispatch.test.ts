@@ -86,7 +86,17 @@ describe('dispatchGovernedEmail', () => {
 				organizationId: 'org-1',
 				messageType: 'campaign',
 				routingLease: 'lease-1',
+				allowWarmupOverflow: false,
 				ipPool: 'campaign',
+				routingReentry: {
+					sendRef: { kind: 'campaign', id: 'send-row-1' },
+					envelopeInput,
+					retryState: {
+						attempt: 1,
+						startedAt: expect.any(Number),
+						idempotencyKey: 'send_send-row-1',
+					},
+				},
 			}
 		);
 		expect(result).toEqual({
