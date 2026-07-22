@@ -40,6 +40,8 @@ describe('routing decision global-breaker precedence', () => {
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
 				messageId: 'send-1',
+				workAttemptId: 'work-1',
+				routingReentryToken: 'reentry-1',
 				messageType: 'campaign',
 				organizationId: 'org-1',
 				recipient: 'person@gmail.com',

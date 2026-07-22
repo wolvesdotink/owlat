@@ -1,9 +1,12 @@
 import { v } from 'convex/values';
 import { vOnCompleteArgs } from '@convex-dev/workpool';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS, MAX_GOVERNED_ROUTING_ATTEMPTS } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
+import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
+import type { WorkerEnvelopeInput } from './workerEnvelope';
 
 // ============================================================================
 // Send completion (module) — see CONTEXT.md.
@@ -35,12 +38,6 @@ const sendRefValidator = v.union(
 	})
 );
 
-const retryStateValidator = v.object({
-	attempt: v.number(),
-	startedAt: v.number(),
-	idempotencyKey: v.string(),
-});
-
 // The success return shape of the `sendSingleEmail` worker action — surfaced
 // on the workpool's `result.returnValue` for a successful run. (The action
 // throws on failure, which the workpool reports as `result.kind === 'failed'`.)
@@ -57,12 +54,10 @@ interface SendWorkerSuccess {
 	suppressed?: boolean;
 	deferred?: boolean;
 	retryAfterMs?: number;
-	envelopeInput?: unknown;
+	envelopeInput?: WorkerEnvelopeInput;
 	retryState?: { attempt: number; startedAt: number; idempotencyKey: string };
+	acceptedForDelivery?: true;
 }
-
-const MAX_ROUTING_RETRIES = 8;
-const MAX_ROUTING_RETRY_AGE_MS = 6 * 60 * 60 * 1000;
 
 export const completeSend = internalMutation({
 	args: vOnCompleteArgs(v.object({ sendRef: sendRefValidator })),
@@ -78,8 +73,8 @@ export const completeSend = internalMutation({
 			returnValue?.deferred &&
 			returnValue.envelopeInput &&
 			returnValue.retryState &&
-			returnValue.retryState.attempt <= MAX_ROUTING_RETRIES &&
-			now - returnValue.retryState.startedAt <= MAX_ROUTING_RETRY_AGE_MS
+			returnValue.retryState.attempt <= MAX_GOVERNED_ROUTING_ATTEMPTS &&
+			now - returnValue.retryState.startedAt <= GOVERNED_MTA_MAX_MESSAGE_AGE_MS
 		) {
 			await ctx.scheduler.runAfter(
 				Math.min(Math.max(returnValue.retryAfterMs ?? 60_000, 1_000), 3_600_000),
@@ -93,7 +88,22 @@ export const completeSend = internalMutation({
 			return;
 		}
 
-		if (returnValue?.success && returnValue.providerMessageId) {
+		if (returnValue?.success && returnValue.providerMessageId && returnValue.acceptedForDelivery) {
+			// MTA intake is an accepted queue handoff, not remote acceptance. Keep
+			// the Send queued so a later stale-route callback can still fail/retry;
+			// the MTA sent webhook (or a final relay attempt) owns the terminal edge.
+			const send = await ctx.db.get(sendRef.id);
+			if (send?.status === 'queued') {
+				if (send.providerMessageId && send.providerMessageId !== returnValue.providerMessageId) {
+					throw new Error('MTA acceptance conflicts with the Send provider identity.');
+				}
+				await ctx.db.patch(sendRef.id, {
+					providerMessageId: returnValue.providerMessageId,
+					providerType: returnValue.providerType ?? 'mta',
+				});
+			}
+			return;
+		} else if (returnValue?.success && returnValue.providerMessageId) {
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: sendRef,
 				transition: {
@@ -207,64 +217,10 @@ export const completeSend = internalMutation({
 export const retrySend = internalMutation({
 	args: {
 		sendRef: sendRefValidator,
-		envelopeInput: v.any(),
-		retryState: v.object({
-			attempt: v.number(),
-			startedAt: v.number(),
-			idempotencyKey: v.string(),
-		}),
-	},
-	handler: async (ctx, args) => {
-		const pool = args.sendRef.kind === 'campaign' ? campaignEmailPool : transactionalEmailPool;
-		await pool.enqueueAction(
-			ctx,
-			internal.delivery.worker.sendSingleEmail,
-			{ envelopeInput: args.envelopeInput, retryState: args.retryState },
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: { sendRef: args.sendRef },
-			}
-		);
-	},
-});
-
-/**
- * Re-enter governed dispatch after the MTA accepted a job but detected a stale
- * route before opening an SMTP connection. The attempt marker and workpool
- * enqueue commit atomically, making retried HMAC webhooks idempotent while the
- * original Send and provider idempotency key remain unchanged.
- */
-export const reenterAcceptedMtaSend = internalMutation({
-	args: {
-		sendRef: sendRefValidator,
-		messageId: v.string(),
-		envelopeInput: v.any(),
+		envelopeInput: envelopeInputValidator,
 		retryState: retryStateValidator,
-		reason: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const send =
-			args.sendRef.kind === 'campaign'
-				? await ctx.db.get(args.sendRef.id)
-				: await ctx.db.get(args.sendRef.id);
-		if (!send) return { disposition: 'send_not_found' as const };
-		if (send.status !== 'queued' && send.status !== 'sent') {
-			return { disposition: 'terminal' as const };
-		}
-		if (send.providerMessageId && send.providerMessageId !== args.messageId) {
-			return { disposition: 'message_mismatch' as const };
-		}
-		if (
-			(send.mtaRoutingReentryAttempt ?? 0) >= args.retryState.attempt ||
-			args.retryState.attempt > MAX_ROUTING_RETRIES ||
-			Date.now() - args.retryState.startedAt > MAX_ROUTING_RETRY_AGE_MS
-		) {
-			return { disposition: 'duplicate_or_expired' as const };
-		}
-
-		await ctx.db.patch(args.sendRef.id, {
-			mtaRoutingReentryAttempt: args.retryState.attempt,
-		});
 		const pool = args.sendRef.kind === 'campaign' ? campaignEmailPool : transactionalEmailPool;
 		await pool.enqueueAction(
 			ctx,
@@ -275,6 +231,5 @@ export const reenterAcceptedMtaSend = internalMutation({
 				context: { sendRef: args.sendRef },
 			}
 		);
-		return { disposition: 'enqueued' as const, reason: args.reason };
 	},
 });

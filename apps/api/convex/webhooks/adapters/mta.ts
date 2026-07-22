@@ -19,7 +19,7 @@ import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../securi
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import type { Id } from '../../_generated/dataModel';
+import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
 
 interface MtaWebhookPayload {
 	event: string;
@@ -44,7 +44,10 @@ interface MtaWebhookPayload {
 	userReportedSpamRatio?: number;
 	destinationProvider?: unknown;
 	primarySendingDomain?: string;
+	routingReentryToken?: unknown;
+	workAttemptId?: unknown;
 	routingReentry?: unknown;
+	routingReentryReason?: unknown;
 	inboundPayload?: {
 		from: string;
 		to: string;
@@ -70,41 +73,6 @@ interface MtaWebhookPayload {
 		dmarcPolicy?: string;
 	};
 	timestamp: number;
-}
-
-function parseRoutingReentry(value: unknown, messageId: string) {
-	if (!isRecord(value) || !isRecord(value['sendRef']) || !isRecord(value['retryState'])) {
-		return null;
-	}
-	const sendRef = value['sendRef'];
-	const retryState = value['retryState'];
-	if (
-		(sendRef['kind'] !== 'campaign' && sendRef['kind'] !== 'transactional') ||
-		typeof sendRef['id'] !== 'string' ||
-		!isRecord(value['envelopeInput']) ||
-		typeof retryState['attempt'] !== 'number' ||
-		!Number.isInteger(retryState['attempt']) ||
-		retryState['attempt'] < 1 ||
-		retryState['attempt'] > 8 ||
-		typeof retryState['startedAt'] !== 'number' ||
-		!Number.isFinite(retryState['startedAt']) ||
-		retryState['idempotencyKey'] !== messageId
-	) {
-		return null;
-	}
-	const ref =
-		sendRef['kind'] === 'campaign'
-			? { kind: 'campaign' as const, id: sendRef['id'] as Id<'emailSends'> }
-			: { kind: 'transactional' as const, id: sendRef['id'] as Id<'transactionalSends'> };
-	return {
-		sendRef: ref,
-		envelopeInput: value['envelopeInput'],
-		retryState: {
-			attempt: retryState['attempt'],
-			startedAt: retryState['startedAt'],
-			idempotencyKey: messageId,
-		},
-	};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -205,14 +173,44 @@ export const mtaAdapter: InboundAdapter = {
 
 		switch (payload.event) {
 			case 'routing.reentry': {
-				if (!payload.messageId) return null;
-				const reentry = parseRoutingReentry(payload.routingReentry, payload.messageId);
-				if (!reentry) return null;
+				const reentry = isRecord(payload.routingReentry) ? payload.routingReentry : null;
+				const retryState =
+					reentry && isRecord(reentry['retryState']) ? reentry['retryState'] : null;
+				if (
+					!payload.messageId ||
+					typeof payload.routingReentryToken !== 'string' ||
+					payload.routingReentryToken.length < 1 ||
+					payload.routingReentryToken.length > 512 ||
+					typeof payload.workAttemptId !== 'string' ||
+					payload.workAttemptId.length < 1 ||
+					payload.workAttemptId.length > 128 ||
+					!reentry ||
+					!isRecord(reentry['envelopeInput']) ||
+					!retryState ||
+					typeof retryState['attempt'] !== 'number' ||
+					!Number.isInteger(retryState['attempt']) ||
+					retryState['attempt'] < 1 ||
+					retryState['attempt'] > 9 ||
+					typeof retryState['startedAt'] !== 'number' ||
+					!Number.isFinite(retryState['startedAt']) ||
+					retryState['idempotencyKey'] !== payload.messageId ||
+					(payload.routingReentryReason !== 'routing_lease_stale' &&
+						payload.routingReentryReason !== 'circuit_breaker_changed' &&
+						payload.routingReentryReason !== 'warming_capacity_changed')
+				)
+					return null;
 				return {
 					kind: 'internal.routing_reentry',
 					providerMessageId: payload.messageId,
-					reason: payload.message ?? 'accepted MTA route became stale before SMTP',
-					...reentry,
+					token: payload.routingReentryToken,
+					workAttemptId: payload.workAttemptId,
+					envelopeInput: reentry['envelopeInput'] as WorkerEnvelopeInput,
+					retryState: {
+						attempt: retryState['attempt'],
+						startedAt: retryState['startedAt'],
+						idempotencyKey: payload.messageId,
+					},
+					reason: payload.routingReentryReason,
 				};
 			}
 			case 'postmaster.authorize_domain': {
@@ -367,6 +365,19 @@ export const mtaAdapter: InboundAdapter = {
 	},
 
 	successResponse(event, dispatchResult) {
+		if (event.kind === 'internal.routing_reentry' && isRecord(dispatchResult)) {
+			const disposition = dispatchResult['disposition'];
+			if (
+				disposition === 'expired' ||
+				disposition === 'snapshot_not_found' ||
+				disposition === 'superseded'
+			) {
+				return new Response(JSON.stringify({ success: false, disposition }), {
+					status: disposition === 'expired' ? 410 : 409,
+					headers: { 'Content-Type': 'application/json' },
+				});
+			}
+		}
 		if (
 			event.kind === 'internal.postmaster_authorize_domain' ||
 			event.kind === 'internal.postmaster_stats'

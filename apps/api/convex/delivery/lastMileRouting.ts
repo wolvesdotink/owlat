@@ -17,6 +17,8 @@ interface LastMileInput {
 	ipPool?: string;
 	organizationId?: string;
 	idempotencyKey: string;
+	workAttemptId: string;
+	routingReentryToken: string;
 }
 
 export interface LastMileRoutingReady {
@@ -76,6 +78,8 @@ export async function resolveLastMileRouting(
 
 	const decision = await resolveMtaRoutingDecision({
 		messageId: input.idempotencyKey,
+		workAttemptId: input.workAttemptId,
+		routingReentryToken: input.routingReentryToken,
 		messageType: input.messageType,
 		organizationId,
 		recipient: input.to,

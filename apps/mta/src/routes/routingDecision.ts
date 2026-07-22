@@ -5,6 +5,7 @@ import {
 	isGovernedMessageType,
 	isValidEmail,
 	parseAddress,
+	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
 	type GovernedRoutingContext,
 } from '@owlat/shared';
 import type { MtaConfig } from '../config.js';
@@ -12,6 +13,7 @@ import type { AuthContext } from '../server.js';
 import {
 	canSend,
 	canSendScope,
+	isRelayAllowedByGlobalBreaker,
 	releaseHalfOpenProbe,
 	reserveHalfOpenProbe,
 } from '../intelligence/circuitBreaker.js';
@@ -33,6 +35,8 @@ type DecisionRequest = GovernedRoutingContext;
 export interface RoutingLeaseRecord {
 	token: string;
 	messageId: string;
+	workAttemptId: string;
+	routingReentryToken: string;
 	organizationId: string;
 	recipient: string;
 	from: string;
@@ -60,6 +64,8 @@ export function isRoutingLeaseBoundTo(
 		lease &&
 		lease.expiresAt >= now &&
 		lease.messageId === request.messageId &&
+		lease.workAttemptId === request.workAttemptId &&
+		lease.routingReentryToken === request.routingReentryToken &&
 		lease.organizationId === request.organizationId &&
 		lease.recipient === request.recipient.toLowerCase() &&
 		lease.from === normalizedFrom(request.from) &&
@@ -84,6 +90,8 @@ function validRequest(value: unknown): value is DecisionRequest {
 	const body = value as Record<string, unknown>;
 	const exact = [
 		'messageId',
+		'workAttemptId',
+		'routingReentryToken',
 		'messageType',
 		'organizationId',
 		'recipient',
@@ -98,6 +106,12 @@ function validRequest(value: unknown): value is DecisionRequest {
 		typeof body['messageId'] === 'string' &&
 		body['messageId'].length > 0 &&
 		body['messageId'].length <= 256 &&
+		typeof body['workAttemptId'] === 'string' &&
+		body['workAttemptId'].length > 0 &&
+		body['workAttemptId'].length <= 128 &&
+		typeof body['routingReentryToken'] === 'string' &&
+		body['routingReentryToken'].length > 0 &&
+		body['routingReentryToken'].length <= ROUTING_REENTRY_TOKEN_MAX_LENGTH &&
 		isGovernedMessageType(body['messageType']) &&
 		typeof body['organizationId'] === 'string' &&
 		body['organizationId'].length > 0 &&
@@ -158,15 +172,19 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			});
 		}
 		if (input.candidateProvider === 'relay') {
-			return global.state === 'half-open'
-				? c.json({ decision: 'defer', reason: 'global_probe', retryAfterMs: 60_000 })
-				: c.json({ decision: 'relay' });
+			return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
+				? c.json({ decision: 'relay' })
+				: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
 		}
 
 		const toDomain = extractDomainOrNull(input.recipient)!;
 		const destination = await resolveDestinationSnapshot(redis, toDomain, { config });
 		const provider = await canSendScope(redis, input.organizationId, destination.providerKey);
-		if (!provider.allowed) return c.json({ decision: 'relay', reason: 'provider_breaker' });
+		if (!provider.allowed) {
+			return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
+				? c.json({ decision: 'relay', reason: 'provider_breaker' })
+				: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
+		}
 		// Re-read global after the provider check. A global breaker transition must
 		// dominate every provider-local fallback decision, including one racing
 		// this request; it is never safe to translate that transition into relay.
@@ -202,7 +220,11 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 		let warmingReservation: WarmingReservation | undefined;
 		if (input.allowWarmupOverflow) {
 			const reserved = await reserveWarmingSlot(redis, selected.ip, input.messageId);
-			if (!reserved.allowed) return c.json({ decision: 'relay', reason: 'warmup_overflow' });
+			if (!reserved.allowed) {
+				return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
+					? c.json({ decision: 'relay', reason: 'warmup_overflow' })
+					: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
+			}
 			warmingReservation = reserved.reservation;
 		}
 
@@ -243,7 +265,9 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 							currentGlobal.generation
 						);
 					if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
-					return c.json({ decision: 'relay', reason: 'provider_probe_limit' });
+					return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
+						? c.json({ decision: 'relay', reason: 'provider_probe_limit' })
+						: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
 				}
 			}
 
@@ -251,6 +275,8 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			const lease: RoutingLeaseRecord = {
 				token: leaseToken,
 				messageId: input.messageId,
+				workAttemptId: input.workAttemptId,
+				routingReentryToken: input.routingReentryToken,
 				organizationId: input.organizationId,
 				recipient: input.recipient.toLowerCase(),
 				from: normalizedFrom(input.from),

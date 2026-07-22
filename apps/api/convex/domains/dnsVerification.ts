@@ -442,15 +442,8 @@ export const verifyDomain = authedAction({
 			domainId: args.domainId,
 		});
 		if (domain.providerType !== 'ses' && sesIdentity?.dnsRecords) {
-			const relayResults = await runDnsLookups(domain.domain, sesIdentity.dnsRecords);
-			const relayProviderCheck = await providerFor('ses').runProviderCheck!(domain.domain);
-			relayResults.sesStatus = relayProviderCheck.verified ? 'Success' : 'Pending';
-			await ctx.runMutation(internal.domains.sesRelayMutations.storeVerification, {
+			await ctx.runAction(internal.domains.sesRelayVerification.refreshSesRelayIdentity, {
 				domainId: args.domainId,
-				dnsRecords: sesIdentity.dnsRecords,
-				verificationResults: relayResults,
-				isProviderVerified: relayProviderCheck.verified,
-				checkedAt: Date.now(),
 			});
 		}
 

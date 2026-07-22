@@ -414,21 +414,35 @@ describe('dispatchInboundEvent — accepted MTA routing re-entry', () => {
 		await dispatchInboundEvent(ctx, {
 			kind: 'internal.routing_reentry',
 			providerMessageId: 'send_tx-1',
-			reason: 'IP eligibility changed',
-			sendRef: { kind: 'transactional', id: 'tx-1' as never },
-			envelopeInput: { kind: 'transactional', to: 'person@example.com' },
-			retryState: { attempt: 1, startedAt: 1000, idempotencyKey: 'send_tx-1' },
+			token: 'opaque-token',
+			workAttemptId: 'work-1',
+			reason: 'circuit_breaker_changed',
+			envelopeInput: {
+				kind: 'transactional',
+				to: 'person@example.com',
+				from: 'sender@example.org',
+				template: { subject: 'Hello', htmlContent: '<p>Hello</p>' },
+				emailPurpose: 'transactional',
+			},
+			retryState: { attempt: 2, startedAt: 1000, idempotencyKey: 'send_tx-1' },
 		});
 
 		expect(runMutationCalls).toEqual([
 			{
-				ref: ref(internal.delivery.sendCompletion.reenterAcceptedMtaSend),
+				ref: ref(internal.delivery.routingReentry.consumeSnapshot),
 				args: {
-					sendRef: { kind: 'transactional', id: 'tx-1' },
+					token: 'opaque-token',
 					messageId: 'send_tx-1',
-					envelopeInput: { kind: 'transactional', to: 'person@example.com' },
-					retryState: { attempt: 1, startedAt: 1000, idempotencyKey: 'send_tx-1' },
-					reason: 'IP eligibility changed',
+					workAttemptId: 'work-1',
+					envelopeInput: {
+						kind: 'transactional',
+						to: 'person@example.com',
+						from: 'sender@example.org',
+						template: { subject: 'Hello', htmlContent: '<p>Hello</p>' },
+						emailPurpose: 'transactional',
+					},
+					retryState: { attempt: 2, startedAt: 1000, idempotencyKey: 'send_tx-1' },
+					reason: 'circuit_breaker_changed',
 				},
 			},
 		]);

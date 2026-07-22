@@ -4,9 +4,15 @@ import {
 	reduceSent,
 	reduceFailed,
 	reduceBounced,
+	reduceClicked,
+	reduceComplained,
+	reduceOpened,
 	type EmailSendDoc,
 	type SendRef,
+	type TransactionalSendDoc,
 } from '../sendLifecycle/reducers';
+import { reduceDeliveryObservation } from '../sendLifecycle/deliveryObservation';
+import { withoutTestSendEffects } from '../sendLifecycle/types';
 import type { Doc, Id } from '../../_generated/dataModel';
 
 // Pure unit tests for the send-lifecycle reducers. These import the reducers
@@ -19,8 +25,10 @@ import type { Doc, Id } from '../../_generated/dataModel';
 const SEND_ID = 'send1' as Id<'emailSends'>;
 const CAMPAIGN_ID = 'campaign1' as Id<'campaigns'>;
 const CONTACT_ID = 'contact1' as Id<'contacts'>;
+const TEST_SEND_ID = 'test-send-1' as Id<'transactionalSends'>;
 
 const campaignRef: SendRef = { kind: 'campaign', id: SEND_ID };
+const testRef: SendRef = { kind: 'transactional', id: TEST_SEND_ID };
 
 // Minimal emailSends row — only the fields the reducers read. Cast through the
 // Doc type; the reducers never touch the convex `_creationTime`/system fields.
@@ -35,6 +43,69 @@ function campaignSend(overrides: Partial<EmailSendDoc> = {}): EmailSendDoc {
 		...overrides,
 	} as unknown as EmailSendDoc;
 }
+
+function testSend(overrides: Partial<TransactionalSendDoc> = {}): TransactionalSendDoc {
+	return {
+		_id: TEST_SEND_ID,
+		_creationTime: 0,
+		kind: 'test',
+		email: 'member@example.com',
+		contactId: CONTACT_ID,
+		status: 'sent',
+		...overrides,
+	} as unknown as TransactionalSendDoc;
+}
+
+describe('durable test Send effect isolation', () => {
+	it('keeps lifecycle evidence but strips analytics, reputation, webhooks, activity, and suppression', () => {
+		const send = testSend();
+		const contact = {
+			_id: CONTACT_ID,
+			_creationTime: 0,
+			email: 'member@example.com',
+			softBounceCount: 4,
+		} as unknown as Doc<'contacts'>;
+		const results = [
+			reduceSent(
+				testSend({ status: 'queued' }),
+				{ to: 'sent', at: 1, providerMessageId: 'pm-test' },
+				testRef,
+				'example.org'
+			),
+			reduceOpened(send, { to: 'opened', at: 2 }, testRef),
+			reduceClicked(send, { to: 'clicked', at: 3, url: 'https://example.org' }, testRef),
+			reduceBounced(
+				send,
+				{ to: 'bounced', at: 4, bounceType: 'hard' },
+				testRef,
+				'member@example.com',
+				'example.org',
+				contact
+			),
+			reduceComplained(
+				send,
+				{ to: 'complained', at: 5 },
+				testRef,
+				'member@example.com',
+				'example.org'
+			),
+		];
+
+		for (const result of results) {
+			const isolated = withoutTestSendEffects(send, testRef, result);
+			expect(isolated.patch).not.toEqual({});
+			expect(isolated.effects).toEqual([]);
+		}
+
+		const delivery = withoutTestSendEffects(
+			send,
+			testRef,
+			reduceDeliveryObservation(send, 6, testRef, 'example.org', contact)
+		);
+		expect(delivery.patch).toEqual({ deliveredAt: 6 });
+		expect(delivery.effects).toEqual([]);
+	});
+});
 
 describe('legalEdgesFor', () => {
 	it('queued may only advance to sent/failed', () => {

@@ -69,12 +69,13 @@ type DispatchTable = { [K in InboundEventKind]: Handler<K> };
 
 const DISPATCH: DispatchTable = {
 	'internal.routing_reentry': async (ctx, e) => {
-		await ctx.runMutation(internal.delivery.sendCompletion.reenterAcceptedMtaSend, {
-			sendRef: e.sendRef,
+		return await ctx.runMutation(internal.delivery.routingReentry.consumeSnapshot, {
+			token: e.token,
 			messageId: e.providerMessageId,
+			workAttemptId: e.workAttemptId,
+			reason: e.reason,
 			envelopeInput: e.envelopeInput,
 			retryState: e.retryState,
-			reason: e.reason,
 		});
 	},
 	'email.sent': async (ctx, e) => {

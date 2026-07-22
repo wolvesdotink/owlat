@@ -275,6 +275,21 @@ function breakerStateKey(orgId: string, provider?: string): string {
 	return `${BREAKER_PREFIX}{${breakerScope(orgId, provider)}}${STATE_SUFFIX}`;
 }
 
+const GLOBAL_RELAY_CLOSED_LUA = `
+local status = redis.call('HGET', KEYS[1], 'status')
+if (not status) or status == 'closed' then return 1 end
+return 0
+`;
+
+/**
+ * Atomic global dominance guard for relay fallbacks. Relay is not a recovery
+ * probe, so open and half-open must both defer; only the exact closed state is
+ * authorized at the point the decision is made.
+ */
+export async function isRelayAllowedByGlobalBreaker(redis: Redis, orgId: string): Promise<boolean> {
+	return Number(await redis.eval(GLOBAL_RELAY_CLOSED_LUA, 1, breakerStateKey(orgId))) === 1;
+}
+
 function breakerOutcomesKey(orgId: string, provider?: string): string {
 	return `${BREAKER_PREFIX}{${breakerScope(orgId, provider)}}${OUTCOMES_SUFFIX}`;
 }

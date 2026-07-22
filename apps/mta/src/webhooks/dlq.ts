@@ -172,6 +172,19 @@ export async function listFailed(
 	return { entries, total };
 }
 
+/** Oldest bounded page used by the automatic recovery sweeper. */
+export async function listOldest(redis: Redis, limit: number): Promise<DlqEntry[]> {
+	const dlqIds = await redis.zrange(DLQ_SORTED_SET, 0, Math.max(0, limit - 1));
+	const entries: DlqEntry[] = [];
+	for (const dlqId of dlqIds) {
+		const data = await redis.get(`${DLQ_ENTRY_PREFIX}${dlqId}`);
+		if (!data) continue;
+		const entry = parseDlqEntry(data);
+		if (entry) entries.push(entry);
+	}
+	return entries;
+}
+
 /**
  * Get a specific DLQ entry
  */

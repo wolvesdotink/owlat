@@ -64,7 +64,7 @@ export const circuitBreakerPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 				'Circuit breaker OPEN — deferring'
 			);
 			const reason = `Circuit breaker route changed for org ${ctx.job.organizationId}`;
-			return ctx.job.routingReentry
+			return ctx.job.routingReentryToken
 				? { kind: 'routing_reentry', reason }
 				: {
 						kind: 'defer',

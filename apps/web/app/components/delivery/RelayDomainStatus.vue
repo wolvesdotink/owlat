@@ -10,10 +10,14 @@ interface RelayDnsRecord {
 	priority?: number;
 }
 
-const { data: relayDomainResult } = useOrganizationQuery(
-	api.providerRoutes.listDeliverabilityRelayDomains
-);
-const relayDomains = computed(() => relayDomainResult.value?.domains ?? []);
+const {
+	results: relayDomains,
+	status: relayDomainStatus,
+	loadMore: loadMoreRelayDomains,
+} = usePaginatedQuery(api.providerRoutes.listDeliverabilityRelayDomains, () => ({}), {
+	initialNumItems: 100,
+});
+const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
 const { run: verifyRelayDomain } = useBackendOperation(api.domains.dnsVerification.verifyDomain, {
 	label: 'Verify relay domain',
 });
@@ -50,17 +54,12 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 		<div>
 			<h2 class="text-lg font-medium text-text-primary">SES escape-hatch domains</h2>
 			<p class="mt-1 text-sm text-text-secondary">
-				Publish these exact records before automatic fallback can activate. The apex SPF value
-				already merges the owned MTA and SES authorization and replaces the existing SPF record.
-				Your primary DMARC record remains unchanged.
+				Publish these records before automatic fallback can activate. A shown apex SPF value is
+				authoritatively merged with the owned-MTA policy. If no SPF row is shown, preserve your
+				existing SPF record and complete a reviewed additive merge; never replace it with an
+				SES-only value. Your primary DMARC record remains unchanged.
 			</p>
 		</div>
-		<p
-			v-if="relayDomainResult?.isTruncated"
-			class="rounded border border-warning/30 bg-warning/10 p-3 text-sm text-text-secondary"
-		>
-			Showing the first 512 owned-MTA domains. Use the domain settings pages for the remainder.
-		</p>
 		<div
 			v-for="domain in relayDomains"
 			:key="domain.domainId"
@@ -102,6 +101,9 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 					<code class="block mt-1 break-all text-text-primary">{{ record.value }}</code>
 				</div>
 			</div>
+		</div>
+		<div v-if="canLoadMoreRelayDomains" class="flex justify-center border-t border-border-subtle pt-4">
+			<UiButton variant="secondary" @click="loadMoreRelayDomains(100)">Load more domains</UiButton>
 		</div>
 	</div>
 </template>

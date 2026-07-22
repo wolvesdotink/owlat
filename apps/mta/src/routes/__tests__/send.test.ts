@@ -62,6 +62,7 @@ function fakeRedis(overrides: Record<string, unknown> = {}): Redis {
 	return {
 		zcard: vi.fn().mockResolvedValue(0),
 		set: vi.fn().mockResolvedValue('OK'),
+		del: vi.fn().mockResolvedValue(1),
 		eval: vi.fn().mockResolvedValue(1),
 		llen: vi.fn().mockResolvedValue(0),
 		hgetall: vi.fn().mockResolvedValue({}),
@@ -99,9 +100,10 @@ function validBody(overrides: Record<string, unknown> = {}): string {
 		messageType: 'transactional',
 		dkimDomain: 'example.com',
 		routingLease: 'test-routing-lease',
+		workAttemptId: 'work-attempt-1',
+		routingReentryToken: 'reentry-token',
 		allowWarmupOverflow: false,
 		routingReentry: {
-			sendRef: { kind: 'transactional', id: 'send-id-1' },
 			envelopeInput: { kind: 'transactional' },
 			retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: messageId },
 		},
@@ -269,6 +271,41 @@ describe('POST /send — per-org credential scoping', () => {
 });
 
 describe('POST /send — dedup', () => {
+	it('queues one real replacement for a fresh re-entry attempt with the same provider id', async () => {
+		const seen = new Set<string>();
+		const redis = fakeRedis({
+			set: vi.fn(async (key: string) => {
+				if (seen.has(key)) return null;
+				seen.add(key);
+				return 'OK';
+			}),
+		});
+		const queue = fakeQueue();
+		const app = buildApp(queue, redis);
+		const first = await post(
+			app,
+			validBody({ messageId: 'send-stable', workAttemptId: 'attempt-1' })
+		);
+		const replacement = await post(
+			app,
+			validBody({ messageId: 'send-stable', workAttemptId: 'attempt-2' })
+		);
+		const duplicate = await post(
+			app,
+			validBody({ messageId: 'send-stable', workAttemptId: 'attempt-2' })
+		);
+
+		expect([first.status, replacement.status, duplicate.status]).toEqual([200, 200, 200]);
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(queue.add.mock.calls.map((call) => call[0].jobId)).toEqual(['attempt-1', 'attempt-2']);
+		expect(await replacement.json()).toMatchObject({ success: true, id: 'send-stable' });
+		expect(await duplicate.json()).toMatchObject({
+			success: true,
+			id: 'send-stable',
+			deduplicated: true,
+		});
+	});
+
 	it('returns a deduplicated response without enqueuing when messageId was already seen', async () => {
 		const queue = fakeQueue();
 		// SET NX miss → key already exists → duplicate.
@@ -287,12 +324,18 @@ describe('POST /send — dedup', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
-	it('writes the dedup key with a 24h NX TTL on a fresh message', async () => {
+	it('writes the work-attempt dedup key for the full four-day lifetime', async () => {
 		const queue = fakeQueue();
 		const redis = fakeRedis();
 		await post(buildApp(queue, redis), validBody({ messageId: 'fresh-1' }));
 
-		expect(redis.set).toHaveBeenCalledWith('mta:sent-ids:fresh-1', '1', 'EX', 86400, 'NX');
+		expect(redis.set).toHaveBeenCalledWith(
+			'mta:work-attempts:work-attempt-1',
+			'1',
+			'PX',
+			345_600_000,
+			'NX'
+		);
 	});
 });
 
@@ -349,6 +392,8 @@ describe('POST /send — job construction and routing', () => {
 				allowedFromAddresses: ['alice@example.com'],
 				routingLease: undefined,
 				routingReentry: undefined,
+				routingReentryToken: undefined,
+				workAttemptId: undefined,
 			})
 		);
 
@@ -409,23 +454,20 @@ describe('POST /send — job construction and routing', () => {
 		expect(arg.data.headers).toBeUndefined();
 	});
 
-	it('returns the queue job id on success', async () => {
+	it('returns the stable provider message id on success', async () => {
 		const queue = fakeQueue();
 		const res = await post(buildApp(queue, fakeRedis()), validBody());
 
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { success: boolean; id: string };
-		expect(body).toMatchObject({ success: true, id: 'mock-job-id' });
+		expect(body).toMatchObject({ success: true, id: 'msg-1' });
 	});
 
 	// ── async-DSN attribution regression (audit PR-01) ────────────────────────
-	// The accepted job id MUST equal the request messageId: the Convex worker
-	// stores the returned id as `providerMessageId`, and the SMTP sender encodes
-	// that SAME messageId into the VERP Return-Path. If the queue id diverged
-	// (e.g. a random groupmq UUID), every async bounce DSN would decode the VERP
-	// token, fail the `by_provider_message_id` lookup, and be silently dropped —
-	// inflating real bounce rates against Gmail/Yahoo thresholds (RFC 5321 §4.4).
-	it('passes jobId = messageId so the accepted id matches the VERP token', async () => {
+	// Queue identity is per attempt, while provider/VERP identity is stable for
+	// the Send. A fresh routing re-entry can therefore queue without duplicating
+	// provider attribution.
+	it('uses workAttemptId as jobId while returning the stable provider id', async () => {
 		// A queue double that honours the supplied jobId, exactly like groupmq's
 		// `AddOptions.jobId` does — the returned Job.id is the jobId we passed.
 		const queue: FakeQueue = {
@@ -438,10 +480,10 @@ describe('POST /send — job construction and routing', () => {
 		const res = await post(buildApp(queue, fakeRedis()), validBody({ messageId: 'send_abc123' }));
 
 		expect(res.status).toBe(200);
-		// queue.add was called with the request messageId as the idempotent jobId.
+		// queue.add uses the unique attempt identity.
 		const arg = queue.add.mock.calls[0]![0] as { jobId?: string };
-		expect(arg.jobId).toBe('send_abc123');
-		// …and the response echoes that id back to the worker.
+		expect(arg.jobId).toBe('work-attempt-1');
+		// The response still echoes the stable provider/VERP identity.
 		const body = (await res.json()) as { success: boolean; id: string };
 		expect(body).toMatchObject({ success: true, id: 'send_abc123' });
 	});

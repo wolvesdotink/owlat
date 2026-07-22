@@ -13,6 +13,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
+import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 
 const permissionState = vi.hoisted(() => ({ allowed: true }));
 
@@ -237,9 +238,11 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {});
-		expect(result).toMatchObject({ isTruncated: false });
-		expect(result.domains).toMatchObject([
+		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+			paginationOpts: { cursor: null, numItems: 100 },
+		});
+		expect(result.isDone).toBe(true);
+		expect(result.page).toMatchObject([
 			{
 				domain: 'relay.example',
 				status: 'pending',
@@ -249,7 +252,7 @@ describe('deliverability relay domain lifecycle', () => {
 		]);
 	});
 
-	it('distinguishes primary verification and reports bounded status truncation explicitly', async () => {
+	it('distinguishes primary verification and paginates beyond 512 domains', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('domains', {
@@ -272,11 +275,18 @@ describe('deliverability relay domain lifecycle', () => {
 			}
 		});
 
-		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {});
-		expect(result.isTruncated).toBe(true);
-		expect(result.domains).toHaveLength(512);
-		expect(result.domains.some((domain) => domain.domain === 'external.example')).toBe(false);
-		expect(result.domains).toContainEqual(
+		const first = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+			paginationOpts: { cursor: null, numItems: 512 },
+		});
+		expect(first.isDone).toBe(false);
+		const second = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+			paginationOpts: { cursor: first.continueCursor, numItems: 512 },
+		});
+		const domains = [...first.page, ...second.page];
+		expect(second.isDone).toBe(true);
+		expect(domains).toHaveLength(513);
+		expect(domains.some((domain) => domain.domain === 'external.example')).toBe(false);
+		expect(domains).toContainEqual(
 			expect.objectContaining({
 				domain: 'owned-0.example',
 				status: 'awaiting_primary_verification',
@@ -284,13 +294,43 @@ describe('deliverability relay domain lifecycle', () => {
 		);
 	});
 
+	it('surfaces an expired SES verification proof as stale', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			const domainId = await ctx.db.insert('domains', {
+				domain: 'stale-relay.example',
+				providerType: 'mta',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('sendingDomainSesIdentities', {
+				domainId,
+				dkimTokens: ['one'],
+				verificationToken: 'proof',
+				dnsRecords: {},
+				isProviderVerified: true,
+				verifiedAt: Date.now() - SES_RELAY_PROOF_MAX_AGE_MS - 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+			paginationOpts: { cursor: null, numItems: 10 },
+		});
+		expect(result.page[0]?.status).toBe('stale');
+	});
+
 	it('keeps operational relay DNS and status behind organization management permission', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		permissionState.allowed = false;
 
-		await expect(t.query(api.providerRoutes.listDeliverabilityRelayDomains, {})).rejects.toThrow(
-			'Missing required permission'
-		);
+		await expect(
+			t.query(api.providerRoutes.listDeliverabilityRelayDomains, {
+				paginationOpts: { cursor: null, numItems: 100 },
+			})
+		).rejects.toThrow('Missing required permission');
 	});
 
 	it('provisions a future MTA domain on its first verified lifecycle edge', async () => {

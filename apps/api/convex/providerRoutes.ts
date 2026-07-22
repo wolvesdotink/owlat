@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
+import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import type { Doc } from './_generated/dataModel';
 import { type MutationCtx, type QueryCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
@@ -140,21 +141,18 @@ export const listTransportCatalog = authedQuery({
 
 /** Operational SES relay DNS/status for every owned-MTA sending domain. */
 export const listDeliverabilityRelayDomains = authedQuery({
-	args: {},
-	handler: async (ctx) => {
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
 		await requireOrgPermission(ctx, 'organization:manage');
-		// This is an operator status surface, not the provisioning drain. Bound the
-		// response; provisioning itself cursor-paginates every existing domain and
-		// the lifecycle covers future domains.
 		const page = await ctx.db
 			.query('domains')
 			.withIndex('by_provider_type', (q) => q.eq('providerType', 'mta'))
-			.take(513);
-		const domains = page.slice(0, 512);
+			.paginate(args.paginationOpts);
+		const now = Date.now();
 		return {
-			isTruncated: page.length > domains.length,
-			domains: await Promise.all(
-				domains.map(async (domain) => {
+			...page,
+			page: await Promise.all(
+				page.page.map(async (domain) => {
 					const identity = await ctx.db
 						.query('sendingDomainSesIdentities')
 						.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
@@ -167,7 +165,9 @@ export const listDeliverabilityRelayDomains = authedQuery({
 								? ('awaiting_primary_verification' as const)
 								: identity
 									? identity.verifiedAt
-										? ('verified' as const)
+										? now - identity.verifiedAt <= SES_RELAY_PROOF_MAX_AGE_MS
+											? ('verified' as const)
+											: ('stale' as const)
 										: ('pending' as const)
 									: ('provisioning' as const),
 						dnsRecords: identity?.dnsRecords,

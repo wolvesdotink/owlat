@@ -30,6 +30,7 @@ import {
 	createTestEmailTemplate,
 	createTestInstanceSettings,
 } from '../../__tests__/factories';
+import { TEST_SEND_RETENTION_MS } from '../enqueue';
 
 // Stub the workpool so enqueue's `enqueueAction` is a no-op (the Workpool
 // component isn't registered in convexTest, and the worker action would need
@@ -249,6 +250,93 @@ describe('delivery.enqueue.enqueueNonCampaignSend — suppression gate', () => {
 		expect(envelopeInput?.['kind']).toBe('transactional');
 		expect(envelopeInput?.['emailPurpose']).toBe('marketing');
 		expect(envelopeInput?.['autoSubmittedType']).toBeUndefined();
+	});
+});
+
+describe('delivery.enqueue.enqueueTestSend — durable governed preview', () => {
+	it('creates an explicit test Send and queues the normal worker/completion contract', async () => {
+		const t = convexTest(schema, modules);
+		const { transactionalEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+		const previous = {
+			provider: process.env['EMAIL_PROVIDER'],
+			url: process.env['MTA_API_URL'],
+			key: process.env['MTA_API_KEY'],
+		};
+		process.env['EMAIL_PROVIDER'] = 'mta';
+		process.env['MTA_API_URL'] = 'https://mta.test';
+		process.env['MTA_API_KEY'] = 'test-key';
+		try {
+			const { sendId } = await t.mutation(internal.delivery.enqueue.enqueueTestSend, {
+				email: 'member@example.com',
+				organizationId: 'org-1',
+				from: 'Owlat <sender@example.org>',
+				subject: '[TEST] Hello',
+				html: '<p>Hello</p>',
+			});
+
+			const send = await t.run(async (ctx) => ctx.db.get(sendId));
+			expect(send).toMatchObject({
+				kind: 'test',
+				email: 'member@example.com',
+				status: 'queued',
+			});
+			const call = enqueueAction.mock.calls[0];
+			expect(call?.[2]).toMatchObject({
+				envelopeInput: {
+					kind: 'transactional',
+					messageType: 'transactional',
+					emailPurpose: 'transactional',
+					organizationId: 'org-1',
+					sendId,
+				},
+			});
+			expect(call?.[3]).toMatchObject({
+				context: { sendRef: { kind: 'transactional', id: sendId } },
+			});
+		} finally {
+			if (previous.provider === undefined) delete process.env['EMAIL_PROVIDER'];
+			else process.env['EMAIL_PROVIDER'] = previous.provider;
+			if (previous.url === undefined) delete process.env['MTA_API_URL'];
+			else process.env['MTA_API_URL'] = previous.url;
+			if (previous.key === undefined) delete process.env['MTA_API_KEY'];
+			else process.env['MTA_API_KEY'] = previous.key;
+		}
+	});
+
+	it('deletes only an expired test row and leaves ordinary Sends untouched', async () => {
+		const t = convexTest(schema, modules);
+		const queuedAt = Date.now() - TEST_SEND_RETENTION_MS - 1;
+		const { testId, ordinaryId } = await t.run(async (ctx) => ({
+			testId: await ctx.db.insert('transactionalSends', {
+				kind: 'test',
+				email: 'member@example.com',
+				status: 'sent',
+				queuedAt,
+			}),
+			ordinaryId: await ctx.db.insert('transactionalSends', {
+				kind: 'transactional',
+				email: 'customer@example.com',
+				status: 'sent',
+				queuedAt,
+			}),
+		}));
+
+		await expect(
+			t.mutation(internal.delivery.enqueue.deleteExpiredTestSend, {
+				sendId: testId,
+				queuedAt,
+			})
+		).resolves.toBe(true);
+		await expect(
+			t.mutation(internal.delivery.enqueue.deleteExpiredTestSend, {
+				sendId: ordinaryId,
+				queuedAt,
+			})
+		).resolves.toBe(false);
+		const rows = await t.run(async (ctx) => ctx.db.query('transactionalSends').collect());
+		expect(rows.map((row) => row._id)).toEqual([ordinaryId]);
 	});
 });
 

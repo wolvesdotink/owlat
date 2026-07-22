@@ -62,8 +62,10 @@ describe('mtaAdapter.parseEvent', () => {
 				event: 'routing.reentry',
 				messageId: 'send_campaign-1',
 				message: 'breaker generation changed',
+				routingReentryToken: 'rr1.authenticated-token',
+				workAttemptId: 'work-attempt-1',
+				routingReentryReason: 'circuit_breaker_changed',
 				routingReentry: {
-					sendRef: { kind: 'campaign', id: 'campaign-1' },
 					envelopeInput: { kind: 'campaign', to: 'person@example.com' },
 					retryState: {
 						attempt: 1,
@@ -77,7 +79,9 @@ describe('mtaAdapter.parseEvent', () => {
 		expect(event).toMatchObject({
 			kind: 'internal.routing_reentry',
 			providerMessageId: 'send_campaign-1',
-			sendRef: { kind: 'campaign', id: 'campaign-1' },
+			token: 'rr1.authenticated-token',
+			workAttemptId: 'work-attempt-1',
+			reason: 'circuit_breaker_changed',
 			retryState: { attempt: 1, idempotencyKey: 'send_campaign-1' },
 		});
 	});
@@ -88,8 +92,10 @@ describe('mtaAdapter.parseEvent', () => {
 				JSON.stringify({
 					event: 'routing.reentry',
 					messageId: 'send-1',
+					routingReentryToken: 'rr1.authenticated-token',
+					workAttemptId: 'work-attempt-1',
+					routingReentryReason: 'routing_lease_stale',
 					routingReentry: {
-						sendRef: { kind: 'transactional', id: 'tx-1' },
 						envelopeInput: { kind: 'transactional' },
 						retryState: { attempt: 1, startedAt: 1, idempotencyKey: 'send-other' },
 					},

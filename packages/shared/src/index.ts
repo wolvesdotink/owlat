@@ -31,6 +31,7 @@ export {
 	zoneRelativeHost,
 } from './dnsZone';
 export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
+export { SES_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
 export {
 	SEND_TRANSPORT_KINDS,
 	type SendTransportKind,
@@ -122,6 +123,14 @@ export {
 	type GovernedRoutingContext,
 	isGovernedMessageType,
 } from './routingDispatch';
+export {
+	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+	MAX_GOVERNED_ROUTING_ATTEMPTS,
+	ROUTING_REENTRY_CLOCK_SKEW_MS,
+	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
+	ROUTING_REENTRY_TOKEN_TTL_MS,
+	ROUTING_WORK_ATTEMPT_ID_MAX_LENGTH,
+} from './routingReentry';
 export type { ValidationIssue } from './validation';
 export {
 	emailClients,

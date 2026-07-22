@@ -20,14 +20,20 @@ import { rateLimiter } from '../rateLimiter';
  */
 export const getTestSendAllowedRecipients = internalQuery({
 	args: {},
-	handler: async (ctx): Promise<{ allowed: string[]; callerUserId: string }> => {
+	handler: async (
+		ctx
+	): Promise<{ allowed: string[]; callerUserId: string; organizationId: string }> => {
 		const session = await requireOrgMember(ctx);
 		// 1-per-user on a single-org instance — the member roster, bounded.
 		const profiles = await ctx.db.query('userProfiles').collect(); // bounded: org member roster (single-org deployment: tiny)
 		const allowed = profiles
 			.map((p) => p.email?.toLowerCase())
 			.filter((e): e is string => typeof e === 'string' && e.length > 0);
-		return { allowed, callerUserId: session.userId };
+		return {
+			allowed,
+			callerUserId: session.userId,
+			organizationId: session.activeOrganizationId,
+		};
 	},
 });
 

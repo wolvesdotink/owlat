@@ -110,10 +110,11 @@ function createGovernedJob(overrides: Partial<EmailJob> = {}): EmailJob {
 			providerBreakerGeneration: 0,
 		},
 		routingReentry: {
-			sendRef: { kind: 'transactional', id: 'send-id-1' },
 			envelopeInput: { kind: 'transactional' },
 			retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: 'msg-001' },
 		},
+		routingReentryToken: 'reentry-token',
+		workAttemptId: 'work-attempt-1',
 		...overrides,
 	});
 }
@@ -384,7 +385,7 @@ describe('handleEmailJob', () => {
 		expect(notifyConvex).toHaveBeenCalledWith(
 			expect.objectContaining({
 				event: 'routing.reentry',
-				message: expect.stringContaining('route changed'),
+				routingReentryReason: 'circuit_breaker_changed',
 			}),
 			config,
 			redis
@@ -631,6 +632,26 @@ describe('handleEmailJob', () => {
 				provider: 'other',
 			}),
 			config
+		);
+	});
+
+	it('expires at the exact shared four-day boundary', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 451,
+			error: '451 4.7.1 retry later',
+		});
+		const firstEnqueuedAt = Date.now() - 4 * DAY_MS;
+		await run(createJob({ firstEnqueuedAt }), { timestamp: firstEnqueuedAt });
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'bounced' }),
+			config,
+			redis
 		);
 	});
 

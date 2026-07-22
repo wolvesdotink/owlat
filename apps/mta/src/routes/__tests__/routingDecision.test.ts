@@ -5,6 +5,8 @@ function lease(overrides: Partial<RoutingLeaseRecord> = {}): RoutingLeaseRecord 
 	return {
 		token: 'lease-1',
 		messageId: 'message-1',
+		workAttemptId: 'work-1',
+		routingReentryToken: 'reentry-1',
 		organizationId: 'org-1',
 		recipient: 'user@example.com',
 		from: 'sender@example.org',
@@ -28,6 +30,8 @@ describe('routing decision lease binding', () => {
 				lease(),
 				{
 					messageId: 'message-1',
+					workAttemptId: 'work-1',
+					routingReentryToken: 'reentry-1',
 					messageType: 'campaign',
 					organizationId: 'org-1',
 					recipient: 'USER@example.com',
@@ -49,12 +53,16 @@ describe('routing decision lease binding', () => {
 		{ messageType: 'automation' as const },
 		{ ipPool: 'transactional' as const },
 		{ allowWarmupOverflow: true },
+		{ workAttemptId: 'work-2' },
+		{ routingReentryToken: 'reentry-2' },
 	])('rejects cross-message, cross-tenant, and cross-recipient replay', (override) => {
 		expect(
 			isRoutingLeaseBoundTo(
 				lease(),
 				{
 					messageId: 'message-1',
+					workAttemptId: 'work-1',
+					routingReentryToken: 'reentry-1',
 					messageType: 'campaign',
 					organizationId: 'org-1',
 					recipient: 'user@example.com',
@@ -75,6 +83,8 @@ describe('routing decision lease binding', () => {
 				lease(),
 				{
 					messageId: 'message-1',
+					workAttemptId: 'work-1',
+					routingReentryToken: 'reentry-1',
 					messageType: 'campaign',
 					organizationId: 'org-1',
 					recipient: 'user@example.com',

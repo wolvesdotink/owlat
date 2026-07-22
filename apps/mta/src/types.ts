@@ -7,6 +7,8 @@
 export interface EmailJob {
 	/** Owlat internal message ID for correlation (becomes providerMessageId in Convex) */
 	messageId: string;
+	/** Unique bounded work identity; provider correlation remains messageId. */
+	workAttemptId?: string;
 	/** Recipient email address */
 	to: string;
 	/** Sender email address */
@@ -72,9 +74,10 @@ export interface EmailJob {
 			expiresAt: number;
 		};
 	};
-	/** Authenticated Convex work item for stale pre-network route handoff. */
+	/** Opaque handle to server-side Convex state; contains no tenant content. */
+	routingReentryToken?: string;
+	/** Callback material whose canonical digest is authenticated by the token. */
 	routingReentry?: {
-		sendRef: { kind: 'campaign' | 'transactional'; id: string };
 		envelopeInput: unknown;
 		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
 	};
@@ -188,8 +191,17 @@ export interface MtaWebhookEvent {
 	inboundPayload?: InboundEmailPayload;
 	/** Personal-mailbox payload (for inbound.mailbox.received events) */
 	mailboxPayload?: MailboxInboundPayload;
-	/** Original Convex work item for a pre-network routing re-entry. */
-	routingReentry?: EmailJob['routingReentry'];
+	/** Opaque Convex state handle for a pre-network routing re-entry. */
+	routingReentryToken?: string;
+	workAttemptId?: string;
+	routingReentry?: {
+		envelopeInput: unknown;
+		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+	};
+	routingReentryReason?:
+		| 'routing_lease_stale'
+		| 'circuit_breaker_changed'
+		| 'warming_capacity_changed';
 	/** Timestamp */
 	timestamp: number;
 }

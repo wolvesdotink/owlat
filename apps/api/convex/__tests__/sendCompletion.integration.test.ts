@@ -74,6 +74,82 @@ async function setupTransactionalSend(
 // ============================================================================
 
 describe('completeSend — campaign Sends', () => {
+	it('keeps MTA intake provisional until the sent webhook resolves by provider id', async () => {
+		const t = convexTest(schema, modules);
+		const sendId = await setupCampaignSend(t);
+		await t.run((ctx) => ctx.db.patch(sendId, { providerMessageId: undefined }));
+
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: testWorkId,
+			result: {
+				kind: 'success',
+				returnValue: {
+					success: true,
+					providerMessageId: 'mta-provisional-1',
+					providerType: 'mta',
+					acceptedForDelivery: true,
+				},
+			},
+			context: { sendRef: { kind: 'campaign', id: sendId } },
+		});
+		expect(await t.run((ctx) => ctx.db.get(sendId))).toMatchObject({
+			status: 'queued',
+			providerMessageId: 'mta-provisional-1',
+		});
+
+		const webhook = await t.mutation(
+			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: 'mta-provisional-1',
+				transition: {
+					to: 'sent',
+					at: NOW,
+					providerMessageId: 'mta-provisional-1',
+					providerType: 'mta',
+				},
+			}
+		);
+		expect(webhook).toMatchObject({ ok: true });
+		expect((await t.run((ctx) => ctx.db.get(sendId)))?.status).toBe('sent');
+	});
+
+	it('recovers when the sent webhook races before provisional completion', async () => {
+		const t = convexTest(schema, modules);
+		const sendId = await setupCampaignSend(t);
+		await t.run((ctx) => ctx.db.patch(sendId, { providerMessageId: undefined }));
+		const transition = {
+			to: 'sent' as const,
+			at: NOW,
+			providerMessageId: 'mta-race-1',
+			providerType: 'mta',
+		};
+		const early = await t.mutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: 'mta-race-1',
+			transition,
+		});
+		expect(early).toEqual({ ok: false, reason: 'send_not_found' });
+
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: testWorkId,
+			result: {
+				kind: 'success',
+				returnValue: {
+					success: true,
+					providerMessageId: 'mta-race-1',
+					providerType: 'mta',
+					acceptedForDelivery: true,
+				},
+			},
+			context: { sendRef: { kind: 'campaign', id: sendId } },
+		});
+		const retry = await t.mutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: 'mta-race-1',
+			transition,
+		});
+		expect(retry).toMatchObject({ ok: true });
+		expect((await t.run((ctx) => ctx.db.get(sendId)))?.status).toBe('sent');
+	});
+
 	it('typed routing deferral keeps the Send queued and schedules bounded re-entry', async () => {
 		const t = convexTest(schema, modules);
 		const sendId = await setupCampaignSend(t);

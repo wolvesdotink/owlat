@@ -9,15 +9,20 @@ vi.mock('../../lib/sendProviders/dispatch', () => ({ sendProviderDispatch }));
 
 import { dispatchGovernedEmail } from '../governedDispatch';
 
-const ctx = {} as ActionCtx;
-const envelopeInput = { kind: 'campaign', emailSendId: 'send-row-1' } as const;
+const runMutation = vi.fn().mockResolvedValue({ token: 'reentry-token', expiresAt: Date.now() });
+const ctx = { runMutation } as unknown as ActionCtx;
+const envelopeInput = {
+	kind: 'campaign',
+	emailSendId: 'send-row-1',
+	organizationId: 'org-1',
+} as const;
 const baseRequest = {
 	envelopeInput,
 	messageType: 'campaign' as const,
 	to: 'recipient@example.com',
 	from: 'sender@example.com',
 	organizationId: 'org-1',
-	stableSendId: 'send-row-1',
+	sendRef: { kind: 'campaign' as const, id: 'send-row-1' as never },
 	message: {
 		subject: 'Subject',
 		html: '<p>Body</p>',
@@ -29,6 +34,7 @@ describe('dispatchGovernedEmail', () => {
 	beforeEach(() => {
 		resolveLastMileRouting.mockReset();
 		sendProviderDispatch.mockReset();
+		runMutation.mockClear();
 	});
 
 	it('returns a typed retry envelope without dispatching when routing defers', async () => {
@@ -44,6 +50,8 @@ describe('dispatchGovernedEmail', () => {
 			ipPool: undefined,
 			organizationId: 'org-1',
 			idempotencyKey: 'send_send-row-1',
+			workAttemptId: expect.any(String),
+			routingReentryToken: 'reentry-token',
 		});
 		expect(sendProviderDispatch).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
@@ -51,7 +59,7 @@ describe('dispatchGovernedEmail', () => {
 			deferred: true,
 			retryAfterMs: 30_000,
 			envelopeInput,
-			retryState: { attempt: 1, idempotencyKey: 'send_send-row-1' },
+			retryState: { attempt: 2, idempotencyKey: 'send_send-row-1' },
 		});
 	});
 
@@ -83,16 +91,17 @@ describe('dispatchGovernedEmail', () => {
 			},
 			{
 				messageId: 'send_send-row-1',
+				workAttemptId: expect.any(String),
+				routingReentryToken: 'reentry-token',
 				organizationId: 'org-1',
 				messageType: 'campaign',
 				routingLease: 'lease-1',
 				allowWarmupOverflow: false,
 				ipPool: 'campaign',
 				routingReentry: {
-					sendRef: { kind: 'campaign', id: 'send-row-1' },
 					envelopeInput,
 					retryState: {
-						attempt: 1,
+						attempt: 2,
 						startedAt: expect.any(Number),
 						idempotencyKey: 'send_send-row-1',
 					},
@@ -104,6 +113,7 @@ describe('dispatchGovernedEmail', () => {
 			providerMessageId: 'send_send-row-1',
 			providerType: 'mta',
 			sendLatencyMs: 12,
+			acceptedForDelivery: true,
 		});
 	});
 
