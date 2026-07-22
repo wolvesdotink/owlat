@@ -98,6 +98,7 @@ export async function resolveLastMileRouting(
 		allowWarmupOverflow: Boolean(
 			input.messageType === 'campaign' && plan.baseRoute?.warmupOverflowEnabled
 		),
+		requireProviderProbe: route?.deliverabilityReason === 'breaker_open',
 	});
 	if (decision.kind === 'defer') {
 		return { kind: 'defer', retryAfterMs: decision.retryAfterMs };
@@ -105,6 +106,9 @@ export async function resolveLastMileRouting(
 	if (decision.kind === 'mta') {
 		if (baseProviderKind !== 'mta') {
 			throw new Error('MTA returned an owned route for a relay-only candidate.');
+		}
+		if (route?.deliverabilityReason === 'breaker_open' && !decision.isProviderProbe) {
+			return { kind: 'ready', providerKind, route, organizationId };
 		}
 		return {
 			kind: 'ready',

@@ -5,11 +5,20 @@
  * Includes shared secret authentication, retry logic, and DLQ fallback.
  */
 
-import { createHmac } from 'crypto';
+import { createHmac, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import type { GooglePostmasterWebhookEvent, MtaWebhookEvent } from '../types.js';
 import type { MtaConfig } from '../config.js';
-import { classifyWebhookHttpFailure, storeFailed, type WebhookDeliveryFailure } from './dlq.js';
+import {
+	claimOne,
+	classifyWebhookHttpFailure,
+	settleClaim,
+	storeFailed,
+	storePending,
+	WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
+	type ClaimedDlqEntry,
+	type WebhookDeliveryFailure,
+} from './dlq.js';
 import { logger } from '../monitoring/logger.js';
 
 const MAX_RETRIES = 5;
@@ -19,6 +28,8 @@ const TIMEOUT_MS = 10_000;
 interface NotifyConvexOptions {
 	/** Optional absolute deadline for callers that run inside a bounded sweep. */
 	deadline?: number;
+	/** Completion clock injected by deterministic sweep tests. */
+	clock?: () => number;
 }
 
 type SuccessfulResponseDecoder<T> = (response: Response) => Promise<T | null>;
@@ -223,5 +234,50 @@ export async function notifyConvex(
 		);
 	}
 
+	return false;
+}
+
+/**
+ * Persist a terminal callback before its GroupMQ job may ACK, then start an
+ * immediate owner-fenced attempt. The sweeper recovers the same durable row if
+ * that process disappears while the background network request is in flight.
+ */
+export async function queueConvexWebhook(
+	event: MtaWebhookEvent,
+	config: MtaConfig,
+	redis: Redis,
+	idempotencyKey: string
+): Promise<string> {
+	const dlqId = await storePending(redis, event, config, idempotencyKey);
+	const entry = await claimOne(redis, dlqId, {
+		owner: `immediate:${randomUUID()}`,
+		now: Date.now(),
+		requireDue: true,
+		enforceAutoLimit: true,
+		autoRetryLimit: WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
+	});
+	if (entry) {
+		deliverClaimedWebhook(redis, entry, config).catch((err) =>
+			logger.error(
+				{ err, operation: 'convex_webhook_outbox', eventType: event.event, dlqId },
+				'Durable webhook outbox delivery attempt failed'
+			)
+		);
+	}
+	return dlqId;
+}
+
+/** Shared owner-fenced delivery path for immediate attempts and sweeper recovery. */
+export async function deliverClaimedWebhook(
+	redis: Redis,
+	entry: ClaimedDlqEntry,
+	config: MtaConfig,
+	options: NotifyConvexOptions = {}
+): Promise<boolean> {
+	const result = await deliverWithRetries(entry.event, config, options, async () => true);
+	if (result.delivered) {
+		return await settleClaim(redis, entry, 'success', options.clock?.() ?? Date.now());
+	}
+	await settleClaim(redis, entry, 'failure', options.clock?.() ?? Date.now(), result.failure);
 	return false;
 }

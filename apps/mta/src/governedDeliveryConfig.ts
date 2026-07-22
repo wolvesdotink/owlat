@@ -27,8 +27,17 @@ export function loadGovernedDeliveryConfig(optionalEnv: OptionalEnv): GovernedDe
 		throw new Error(`MAX_MESSAGE_AGE_MS must be between 1 and ${GOVERNED_MTA_MAX_MESSAGE_AGE_MS}`);
 	}
 
+	const webhookDlqMaxSize = Number(optionalEnv('WEBHOOK_DLQ_MAX_SIZE', '10000'));
+	if (
+		!Number.isSafeInteger(webhookDlqMaxSize) ||
+		webhookDlqMaxSize <= 0 ||
+		webhookDlqMaxSize > 1_000_000
+	) {
+		throw new Error('WEBHOOK_DLQ_MAX_SIZE must be an integer between 1 and 1000000');
+	}
+
 	return {
 		maxMessageAgeMs,
-		webhookDlqMaxSize: parseInt(optionalEnv('WEBHOOK_DLQ_MAX_SIZE', '10000'), 10),
+		webhookDlqMaxSize,
 	};
 }

@@ -160,8 +160,12 @@ async function dispatch(
 	if (isDeliveryEvidence && send.deliveredAt === undefined) {
 		deliverySenderDomain = await senderDomainFor(ctx, send, ref);
 		const recipientContact = await resolveRecipientContact(ctx, send);
+		const observationSend =
+			isBoundQueuedMtaTerminal && input.to === 'complained'
+				? ({ ...send, status: 'sent' } as typeof send)
+				: send;
 		deliveryObservation = reduceDeliveryObservation(
-			send,
+			observationSend,
 			input.at,
 			ref,
 			deliverySenderDomain,
@@ -241,7 +245,10 @@ async function dispatch(
 			ref.kind === 'transactional' &&
 			(send as TransactionalSendDoc).kind === 'agent_reply' &&
 			(send as TransactionalSendDoc).inboundMessageId &&
-			(input.to === 'sent' || input.to === 'failed' || input.to === 'bounced')
+			(input.to === 'sent' ||
+				input.to === 'failed' ||
+				input.to === 'bounced' ||
+				input.to === 'complained')
 		) {
 			const agentSend = send as TransactionalSendDoc;
 			const succeeded = input.to === 'sent';
@@ -255,7 +262,9 @@ async function dispatch(
 							errorMessage:
 								input.to === 'failed'
 									? input.errorMessage
-									: (input.bounceMessage ?? 'Delivery bounced'),
+									: input.to === 'bounced'
+										? (input.bounceMessage ?? 'Delivery bounced')
+										: 'Recipient complained about delivery',
 						},
 			});
 
@@ -296,6 +305,14 @@ async function dispatch(
 					signal: input.to === 'bounced' ? 'bounce' : 'complaint',
 				});
 			}
+		}
+
+		// Reconcile at the authoritative lifecycle edge, including terminal MTA
+		// webhooks that arrive after the workpool's intake callback returned.
+		if (ref.kind === 'campaign' && from === 'queued') {
+			await ctx.runMutation(internal.campaigns.lifecycle.reconcileCampaignCompletion, {
+				campaignId: (send as EmailSendDoc).campaignId,
+			});
 		}
 	}
 
@@ -395,6 +412,10 @@ export const recordMtaRemoteAcceptance = internalMutation({
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
+		const send = await loadSend(ctx, ref);
+		if (!send || send.providerType !== 'mta' || send.providerMessageId !== args.providerMessageId) {
+			return { ok: false, reason: 'send_not_found' };
+		}
 		await dispatch(ctx, ref, {
 			to: 'sent',
 			at: args.at,

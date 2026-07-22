@@ -9,6 +9,8 @@ export interface EmailJob {
 	messageId: string;
 	/** Unique bounded work identity; provider correlation remains messageId. */
 	workAttemptId?: string;
+	/** Durable predecessor→successor handoff promoted when a deferred job starts. */
+	deferHandoffId?: string;
 	/** Recipient email address */
 	to: string;
 	/** Sender email address */

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { MtaConfig } from '../../config.js';
-import { claimOne, getEntry, removeOne, settleClaim, storeFailed } from '../dlq.js';
+import { claimOne, getEntry, removeOne, settleClaim, storeFailed, storePending } from '../dlq.js';
 
 function dockerAvailable(): boolean {
 	try {
@@ -115,8 +115,24 @@ describe.runIf(dockerAvailable())('webhook DLQ on Redis Cluster', () => {
 		const second = await storeFailed(cluster as never, event, { category: 'transport' }, config);
 		const third = await storeFailed(cluster as never, event, { category: 'transport' }, config);
 		expect(await getEntry(cluster as never, first)).toBeNull();
-		expect(await removeOne(cluster as never, second)).toBe(true);
-		expect(await getEntry(cluster as never, second)).toBeNull();
 		expect(await getEntry(cluster as never, third)).not.toBeNull();
+		await expect(
+			storePending(
+				cluster as never,
+				{ ...event, messageId: 'cluster-terminal' },
+				config,
+				'cluster-terminal:sent'
+			)
+		).rejects.toThrow('at capacity');
+		expect(await removeOne(cluster as never, second)).toBe(true);
+		const pending = await storePending(
+			cluster as never,
+			{ ...event, messageId: 'cluster-terminal' },
+			config,
+			'cluster-terminal:sent'
+		);
+		expect(await getEntry(cluster as never, pending)).not.toBeNull();
+		await storeFailed(cluster as never, event, { category: 'transport' }, config);
+		expect(await getEntry(cluster as never, pending)).not.toBeNull();
 	}, 15_000);
 });

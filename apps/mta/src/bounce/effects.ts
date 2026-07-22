@@ -11,9 +11,8 @@
  * - "Tracking" effects (circuit breaker, FBL stats, metrics counters,
  *   attachment staging, endpoint forwarding) run in parallel via
  *   `Promise.all`.
- * - `notify_convex` is fire-and-forget (matching `dispatch/effects.ts:118`).
- *   The pre-deepening server awaited it inline, which put the Convex
- *   round-trip in the SMTP ACK budget — the new runner removes that.
+ * - Attributed DSN/FBL terminal callbacks persist to the durable outbox before
+ *   SMTP ACK. Other inbound callbacks remain fire-and-forget.
  * - `mailbox_quota_bump` is fire-and-forget — matches the original's
  *   `bumpUsedBytes(...).catch(() => undefined)` orphan.
  *
@@ -24,7 +23,7 @@ import type { ParsedMessage } from '@owlat/mail-message';
 import * as circuitBreaker from '../intelligence/circuitBreaker.js';
 import * as campaignComplaintRate from '../intelligence/campaignComplaintRate.js';
 import * as metrics from '../monitoring/collector.js';
-import { notifyConvex } from '../webhooks/convexNotifier.js';
+import { notifyConvex, queueConvexWebhook } from '../webhooks/convexNotifier.js';
 import { forwardToEndpoint } from '../inbound/forwarder.js';
 import { bumpUsedBytes } from '../inbound/mailboxResolver.js';
 import { logger } from '../monitoring/logger.js';
@@ -118,6 +117,21 @@ export async function applyEffects(
 	const parallel: Array<Promise<unknown>> = [];
 
 	for (const effect of effects) {
+		if (
+			effect.kind === 'notify_convex' &&
+			effect.event.messageId &&
+			(effect.event.event === 'bounced' || effect.event.event === 'complained')
+		) {
+			parallel.push(
+				queueConvexWebhook(
+					effect.event,
+					deps.config,
+					deps.redis,
+					`feedback:${effect.event.messageId}:${effect.event.event}`
+				)
+			);
+			continue;
+		}
 		if (effect.kind === 'notify_convex' || effect.kind === 'mailbox_quota_bump') {
 			fireAndForget(effect, deps);
 			continue;

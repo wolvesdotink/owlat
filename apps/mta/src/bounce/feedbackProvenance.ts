@@ -62,7 +62,10 @@ export async function recordFeedbackProvenance(redis: Redis, job: EmailJob): Pro
 	pipeline.zremrangebyscore(recipient, '-inf', String(now - FEEDBACK_TTL_MS));
 	pipeline.zremrangebyrank(recipient, 0, -(MAX_RECIPIENT_OBSERVATIONS + 1));
 	pipeline.expire(recipient, FEEDBACK_TTL_SECONDS);
-	await pipeline.exec();
+	const results = await pipeline.exec();
+	if (!results || results.some(([error]) => error !== null)) {
+		throw new Error('Delayed-feedback provenance pipeline did not commit completely');
+	}
 }
 
 function parseRecord(value: string | null): FeedbackProvenance | null {
@@ -129,13 +132,17 @@ export async function attachFeedbackProvenance(
 	}
 
 	if (attempt.kind === 'fbl' && classification.recipient) {
+		// A recipient observation proves that Owlat sent mail, not that this ARF
+		// came from a trusted feedback loop. Without exact Message-ID attribution
+		// the report remains non-destructive even when the recipient has one known
+		// delivery domain.
 		const domain = await recipientDomain(redis, classification.recipient);
 		const enriched = {
 			...classification,
 			organizationId: undefined,
 			campaignId: undefined,
 			...(domain === 'unknown' ? {} : { deliveryDomain: domain }),
-			feedbackProvenance: domain,
+			feedbackProvenance: 'unknown' as const,
 		};
 		return { ...attempt, arf: enriched };
 	}

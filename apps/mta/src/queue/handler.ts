@@ -44,37 +44,13 @@ import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { releaseWarmingSlot } from '../intelligence/warming.js';
 import { releaseHalfOpenProbe } from '../intelligence/circuitBreaker.js';
 import { recordFeedbackProvenance } from '../bounce/feedbackProvenance.js';
-
-/**
- * Add random jitter (±15%) to a delay to prevent thundering herd when
- * many jobs hit the same deferral reason simultaneously.
- */
-export function withJitter(delayMs: number): number {
-	const jitterFactor = 0.85 + Math.random() * 0.3;
-	return Math.round(delayMs * jitterFactor);
-}
-
-/**
- * The two flavours of defer, distinguished only so logs/telemetry can tell a
- * server-side throttle from a remote 4xx. Neither consumes a delivery attempt
- * — both re-enqueue with the computed delay and give up only on age.
- *
- * - `self_throttle`: WE chose not to send (warming cap, org limit, domain
- *   throttle, breaker cooldown, SMTP-intel backpressure, no IP available).
- * - `remote_4xx`: the receiving MX returned a transient failure (greylist,
- *   rate-limit, soft connection bounce).
- */
-type DeferKind = 'self_throttle' | 'remote_4xx';
-
-/**
- * Wall-clock age of the message, measured from its first enqueue. Falls back
- * to the current attempt's GroupMQ enqueue timestamp for legacy jobs that
- * predate `firstEnqueuedAt`.
- */
-function messageAgeMs(job: ReservedJob<EmailJob>, now: number): number {
-	const firstEnqueuedAt = job.data.firstEnqueuedAt ?? job.timestamp;
-	return now - firstEnqueuedAt;
-}
+import { promoteIntakeReceipt } from '../routes/sendReceipt.js';
+import {
+	handoffDeferredJob,
+	promoteDeferredHandoff,
+	resumeDeferredHandoff,
+} from './deferHandoff.js';
+import { messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -93,6 +69,11 @@ export async function handleEmailJob(
 ): Promise<void> {
 	const data = job.data;
 	const deps = { redis, config };
+	// This durable CAS closes the route-side queue.add/receipt gap before the
+	// worker can perform SMTP or reach a GroupMQ-completable terminal path.
+	await promoteIntakeReceipt(redis, data);
+	await promoteDeferredHandoff(redis, data);
+	if (await resumeDeferredHandoff(redis, queue, job.id, data)) return;
 	const domain = extractDomain(data.to);
 	const destination = await resolveDestinationSnapshot(redis, domain, { config });
 	const { providerKey } = destination;
@@ -166,9 +147,25 @@ export async function handleEmailJob(
 	}
 
 	const startTime = Date.now();
-	await recordFeedbackProvenance(redis, data).catch((err) =>
-		logger.warn({ err, messageId: data.messageId }, 'Failed to persist delayed-feedback provenance')
-	);
+	try {
+		await recordFeedbackProvenance(redis, data);
+	} catch (err) {
+		logger.warn(
+			{ err, messageId: data.messageId },
+			'Delayed-feedback provenance unavailable — deferring before SMTP'
+		);
+		await disposeDefer(
+			job,
+			queue,
+			deps,
+			domain,
+			providerKey,
+			'self_throttle',
+			60_000,
+			'Delayed-feedback provenance persistence failed'
+		);
+		return;
+	}
 	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease, destination);
 	const durationMs = Date.now() - startTime;
 
@@ -303,11 +300,14 @@ async function disposeDefer(
 	const delay = withJitter(delayMs);
 	const requeued: EmailJob = { ...data, firstEnqueuedAt: data.firstEnqueuedAt ?? job.timestamp };
 
-	await queue.add({
-		groupId: buildGroupKey(data.ipPool, domain),
-		data: requeued,
-		delay,
-	});
+	await handoffDeferredJob(
+		deps.redis,
+		queue,
+		job.id,
+		requeued,
+		buildGroupKey(data.ipPool, domain),
+		delay
+	);
 
 	logger.info(
 		{ messageId: data.messageId, to: data.to, domain, kind, delay, reason },

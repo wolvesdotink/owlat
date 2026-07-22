@@ -90,6 +90,10 @@ describe('delayed feedback provenance', () => {
 			const attributed = await attachFeedbackProvenance(redis, attempt);
 			const { effects } = reduce(attributed, {} as never);
 
+			if (attempt.kind === 'fbl' && !attempt.arf.originalMessageId) {
+				expect(effects).toEqual([]);
+				return;
+			}
 			expect(effects.map((effect) => effect.kind)).toEqual(['notify_convex']);
 			expect(effects[0]).toMatchObject({
 				kind: 'notify_convex',
@@ -131,5 +135,32 @@ describe('delayed feedback provenance', () => {
 		await recordFeedbackProvenance(redis, job('cluster-1', 'production'));
 		const keys = await redis.keys('mta:{feedback}:*');
 		expect(new Set(keys.map((key) => keySlot(key))).size).toBe(1);
+	});
+
+	it('rejects a partial provenance pipeline commit', async () => {
+		const pipeline = {
+			setex: vi.fn(),
+			zadd: vi.fn(),
+			zremrangebyscore: vi.fn(),
+			zremrangebyrank: vi.fn(),
+			expire: vi.fn(),
+			exec: vi.fn().mockResolvedValue([
+				[null, 'OK'],
+				[new Error('index write failed'), null],
+			]),
+		};
+		for (const method of [
+			'setex',
+			'zadd',
+			'zremrangebyscore',
+			'zremrangebyrank',
+			'expire',
+		] as const) {
+			pipeline[method].mockReturnValue(pipeline);
+		}
+		vi.spyOn(redis, 'pipeline').mockReturnValue(pipeline as never);
+		await expect(recordFeedbackProvenance(redis, job('partial', 'production'))).rejects.toThrow(
+			'did not commit completely'
+		);
 	});
 });

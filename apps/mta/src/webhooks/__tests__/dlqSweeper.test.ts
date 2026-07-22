@@ -4,16 +4,14 @@ import type { MtaConfig } from '../../config.js';
 
 const listEligibleIds = vi.hoisted(() => vi.fn());
 const claimOne = vi.hoisted(() => vi.fn());
-const settleClaim = vi.hoisted(() => vi.fn());
-const notifyConvex = vi.hoisted(() => vi.fn());
+const deliverClaimedWebhook = vi.hoisted(() => vi.fn());
 
 vi.mock('../dlq.js', () => ({
 	listEligibleIds,
 	claimOne,
-	settleClaim,
 	WEBHOOK_DLQ_AUTO_RETRY_LIMIT: 8,
 }));
-vi.mock('../convexNotifier.js', () => ({ notifyConvex }));
+vi.mock('../convexNotifier.js', () => ({ deliverClaimedWebhook }));
 
 const { sweepWebhookDlq, WEBHOOK_DLQ_SWEEP_BATCH_SIZE } = await import('../dlqSweeper.js');
 const { webhookDlqRetryDelayMs, WEBHOOK_DLQ_AUTO_RETRY_LIMIT } =
@@ -37,7 +35,7 @@ function entry(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	settleClaim.mockResolvedValue(true);
+	deliverClaimedWebhook.mockResolvedValue(true);
 	listEligibleIds.mockResolvedValue([]);
 });
 
@@ -47,7 +45,7 @@ describe('automatic webhook DLQ recovery', () => {
 		claimOne
 			.mockResolvedValueOnce(entry())
 			.mockResolvedValueOnce(entry({ dlqId: 'dlq-2', attempts: 2 }));
-		notifyConvex.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+		deliverClaimedWebhook.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
 		expect(await sweepWebhookDlq(redis, config, () => 1_000_000)).toEqual({
 			delivered: 1,
@@ -67,19 +65,19 @@ describe('automatic webhook DLQ recovery', () => {
 			'dlq-1',
 			expect.objectContaining({ autoRetryLimit: WEBHOOK_DLQ_AUTO_RETRY_LIMIT })
 		);
-		expect(settleClaim).toHaveBeenNthCalledWith(
+		expect(deliverClaimedWebhook).toHaveBeenNthCalledWith(
 			1,
 			redis,
 			expect.objectContaining({ dlqId: 'dlq-1' }),
-			'success',
-			1_000_000
+			config,
+			expect.objectContaining({ deadline: expect.any(Number) })
 		);
-		expect(settleClaim).toHaveBeenNthCalledWith(
+		expect(deliverClaimedWebhook).toHaveBeenNthCalledWith(
 			2,
 			redis,
 			expect.objectContaining({ dlqId: 'dlq-2' }),
-			'failure',
-			1_000_000
+			config,
+			expect.objectContaining({ deadline: expect.any(Number) })
 		);
 	});
 
@@ -89,26 +87,25 @@ describe('automatic webhook DLQ recovery', () => {
 			delivered: 0,
 			attempted: 0,
 		});
-		expect(notifyConvex).not.toHaveBeenCalled();
-		expect(settleClaim).not.toHaveBeenCalled();
+		expect(deliverClaimedWebhook).not.toHaveBeenCalled();
 	});
 
 	it('claims each row after prior network work and settles at completion time', async () => {
 		listEligibleIds.mockResolvedValue(['dlq-1', 'dlq-2']);
 		claimOne.mockResolvedValueOnce(entry()).mockResolvedValueOnce(entry({ dlqId: 'dlq-2' }));
-		notifyConvex.mockResolvedValue(true);
+		deliverClaimedWebhook.mockImplementation(async (_redis, _entry, _config, options) => {
+			options.clock();
+			return true;
+		});
 		let now = 1_000_000;
 		const clock = () => (now += 10_000);
 		await sweepWebhookDlq(redis, config, clock);
 
 		expect(claimOne.mock.invocationCallOrder[1]).toBeGreaterThan(
-			notifyConvex.mock.invocationCallOrder[0]!
+			deliverClaimedWebhook.mock.invocationCallOrder[0]!
 		);
-		expect(settleClaim.mock.calls[0]![3]).toBeGreaterThan(claimOne.mock.calls[0]![2].now);
 		expect(claimOne.mock.calls[0]![2].now).toBe(1_020_000);
-		expect(settleClaim.mock.calls[0]![3]).toBe(1_030_000);
 		expect(claimOne.mock.calls[1]![2].now).toBe(1_040_000);
-		expect(settleClaim.mock.calls[1]![3]).toBe(1_050_000);
 	});
 
 	it('uses bounded exponential backoff', () => {

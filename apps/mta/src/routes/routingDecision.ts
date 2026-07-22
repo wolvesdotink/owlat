@@ -32,7 +32,7 @@ import type { DestinationProviderKey, IpPoolType } from '../types.js';
 const ROUTING_LEASE_TTL_SECONDS = 15 * 60;
 const ROUTING_LEASE_PREFIX = 'mta:routing-lease:';
 
-type DecisionRequest = GovernedRoutingContext;
+type DecisionRequest = GovernedRoutingContext & { requireProviderProbe?: boolean };
 
 export interface RoutingLeaseRecord {
 	token: string;
@@ -109,7 +109,9 @@ function validRequest(value: unknown): value is DecisionRequest {
 		'allowWarmupOverflow',
 	];
 	return (
-		Object.keys(body).length === exact.length &&
+		Object.keys(body).every((key) => [...exact, 'requireProviderProbe'].includes(key)) &&
+		Object.keys(body).length ===
+			exact.length + (body['requireProviderProbe'] === undefined ? 0 : 1) &&
 		exact.every((key) => key in body) &&
 		typeof body['messageId'] === 'string' &&
 		body['messageId'].length > 0 &&
@@ -135,7 +137,9 @@ function validRequest(value: unknown): value is DecisionRequest {
 		normalizedFrom(body['from']).length > 0 &&
 		(body['candidateProvider'] === 'mta' || body['candidateProvider'] === 'relay') &&
 		(body['ipPool'] === 'campaign' || body['ipPool'] === 'transactional') &&
-		typeof body['allowWarmupOverflow'] === 'boolean'
+		typeof body['allowWarmupOverflow'] === 'boolean' &&
+		(body['requireProviderProbe'] === undefined ||
+			typeof body['requireProviderProbe'] === 'boolean')
 	);
 }
 
@@ -197,6 +201,9 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
 				? c.json({ decision: 'relay', reason: 'provider_breaker' })
 				: c.json({ decision: 'defer', reason: 'global_safety', retryAfterMs: 60_000 });
+		}
+		if (input.requireProviderProbe === true && provider.state !== 'half-open') {
+			return c.json({ decision: 'relay', reason: 'provider_hysteresis' });
 		}
 		// Re-read global after the provider check. A global breaker transition must
 		// dominate every provider-local fallback decision, including one racing
@@ -310,7 +317,10 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 				...(warmingReservation ? { warmingReservation } : {}),
 			};
 			await writeLease(redis, lease);
-			return c.json({ decision: 'mta', lease: { token: leaseToken } });
+			return c.json({
+				decision: 'mta',
+				lease: { token: leaseToken, providerProbe, globalProbe },
+			});
 		} catch {
 			if (leaseToken) await redis.del(`${ROUTING_LEASE_PREFIX}${leaseToken}`).catch(() => 0);
 			if (providerProbe) {

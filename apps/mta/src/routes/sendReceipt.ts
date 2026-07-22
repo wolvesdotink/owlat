@@ -3,6 +3,8 @@
 import type { Context } from 'hono';
 import type Redis from 'ioredis';
 import type { AuthContext } from '../server.js';
+import type { EmailJob } from '../types.js';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 
 export type IntakeReceipt =
 	| { state: 'reserved'; messageId: string; reservedAt: number }
@@ -33,6 +35,49 @@ export function parseIntakeReceipt(value: string | null): IntakeReceipt | null {
 		// Malformed receipts are never positive acceptance evidence.
 	}
 	return null;
+}
+
+export async function hasAcceptedIntakeReceipt(
+	redis: Redis,
+	key: string,
+	messageId: string
+): Promise<boolean> {
+	const receipt = parseIntakeReceipt(await redis.get(key));
+	return receipt?.state === 'accepted' && receipt.messageId === messageId;
+}
+
+/**
+ * A reserved GroupMQ job proves intake acceptance as soon as its worker starts.
+ * The CAS prevents a colliding work attempt from overwriting another message's
+ * receipt, and the write must succeed before any SMTP or terminal processing.
+ */
+export async function promoteIntakeReceipt(redis: Redis, job: EmailJob): Promise<void> {
+	if (!job.workAttemptId) return;
+	const key = intakeReceiptKey(job.workAttemptId);
+	const raw = await redis.get(key);
+	const receipt = parseIntakeReceipt(raw);
+	if (receipt?.state === 'accepted' && receipt.messageId === job.messageId) return;
+	if (!raw || receipt?.state !== 'reserved' || receipt.messageId !== job.messageId) {
+		throw new Error('Work-attempt receipt is missing or bound to another message');
+	}
+	const accepted = JSON.stringify({
+		state: 'accepted',
+		messageId: job.messageId,
+		acceptedAt: Date.now(),
+	});
+	const promoted = (await redis.eval(
+		"if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]); return 1 end return 0",
+		1,
+		key,
+		raw,
+		accepted,
+		String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS)
+	)) as number;
+	if (promoted !== 1) {
+		const raced = parseIntakeReceipt(await redis.get(key));
+		if (raced?.state === 'accepted' && raced.messageId === job.messageId) return;
+		throw new Error('Work-attempt receipt promotion lost its ownership');
+	}
 }
 
 /** Authenticated durable acceptance lookup used after a lost intake response. */

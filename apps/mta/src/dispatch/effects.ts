@@ -9,10 +9,9 @@
  * Preserved behavior from the pre-deepening handler:
  * - "Tracking" effects (domain throttle, smtp response, circuit breaker,
  *   warming, metrics, domain failure) run in parallel via `Promise.all`.
- * - `log_delivery_event` and `notify_convex` are fire-and-forget — they're
- *   started, error handling is attached, and the runner does not await
- *   their completion. `notify_convex` retries internally for up to ~6
- *   minutes; awaiting it would block worker progress.
+ * - delivery logging stays fire-and-forget. Terminal Convex callbacks are
+ *   synchronously persisted to the Redis outbox, while their network delivery
+ *   continues under an owner-fenced background claim.
  * - `suppress_recipient` is sequential after the parallel batch — matches
  *   the current handler's `await suppressionList.suppress(...)` after the
  *   Promise.all + fire-and-forget log/notify in the hard-bounce branch.
@@ -30,7 +29,7 @@ import { clearDomainFailure, recordDomainFailure } from '../scaling/degradation.
 import * as metrics from '../monitoring/collector.js';
 import { logDeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
-import { notifyConvex } from '../webhooks/convexNotifier.js';
+import { queueConvexWebhook } from '../webhooks/convexNotifier.js';
 import type { MtaWebhookEvent, MetricOutcome } from '../types.js';
 import type { SuppressionReason } from '../intelligence/suppressionList.js';
 import { logger } from '../monitoring/logger.js';
@@ -111,9 +110,22 @@ export async function applyEffects(
 	const sequential: DispatchEffect[] = [];
 
 	for (const effect of effects) {
-		if (effect.kind === 'log_delivery_event' || effect.kind === 'notify_convex') {
-			// Fire-and-forget — start now, attach error handling, do not await
+		if (effect.kind === 'log_delivery_event') {
 			fireAndForget(effect, deps);
+			continue;
+		}
+		if (effect.kind === 'notify_convex') {
+			if (!effect.event.messageId) {
+				throw new Error('Dispatch terminal callback is missing its stable message identity');
+			}
+			parallel.push(
+				queueConvexWebhook(
+					effect.event,
+					deps.config,
+					deps.redis,
+					`dispatch:${effect.event.messageId}:${effect.event.event}`
+				)
+			);
 			continue;
 		}
 		if (effect.kind === 'suppress_recipient') {
@@ -131,19 +143,10 @@ export async function applyEffects(
 }
 
 function fireAndForget(
-	effect: Extract<DispatchEffect, { kind: 'log_delivery_event' | 'notify_convex' }>,
+	effect: Extract<DispatchEffect, { kind: 'log_delivery_event' }>,
 	deps: PhaseDeps
 ): void {
-	if (effect.kind === 'log_delivery_event') {
-		logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
-		return;
-	}
-	notifyConvex(effect.event, deps.config, deps.redis).catch((err) =>
-		logger.error(
-			{ err, event: effect.event.event, messageId: effect.event.messageId },
-			'Failed to notify Convex'
-		)
-	);
+	logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
 }
 
 function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
@@ -216,7 +219,7 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 			return clearDomainFailure(deps.redis, effect.domain);
 		case 'domain_failure_record':
 			return recordDomainFailure(deps.redis, effect.domain);
-		// These two are handled by `fireAndForget` above; this branch only
+		// These are handled before `applyOne`; this branch only
 		// exists to make the switch exhaustive at the type level.
 		case 'log_delivery_event':
 		case 'notify_convex':

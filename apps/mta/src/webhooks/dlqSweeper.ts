@@ -2,8 +2,8 @@ import type Redis from 'ioredis';
 import { randomUUID } from 'crypto';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
-import { notifyConvex } from './convexNotifier.js';
-import { claimOne, listEligibleIds, settleClaim, WEBHOOK_DLQ_AUTO_RETRY_LIMIT } from './dlq.js';
+import { deliverClaimedWebhook } from './convexNotifier.js';
+import { claimOne, listEligibleIds, WEBHOOK_DLQ_AUTO_RETRY_LIMIT } from './dlq.js';
 
 export const WEBHOOK_DLQ_SWEEP_BATCH_SIZE = 50;
 
@@ -20,6 +20,7 @@ export async function sweepWebhookDlq(
 		// Scan beyond one batch so stale/corrupt candidates cannot permanently hide
 		// newer retryable work. Exhausted rows are retained only in the created index.
 		scanLimit: WEBHOOK_DLQ_SWEEP_BATCH_SIZE * 20,
+		autoRetryLimit: WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
 	});
 	let delivered = 0;
 	let attempted = 0;
@@ -34,17 +35,15 @@ export async function sweepWebhookDlq(
 		});
 		if (!entry) continue;
 		attempted += 1;
-		// Omit Redis so a failed sweep updates this entry instead of nesting a
-		// second DLQ record. notifyConvex still applies its bounded HTTP retries.
+		// Shared delivery settles this exact owner-fenced row instead of nesting a
+		// second DLQ record.
 		if (
-			await notifyConvex(entry.event, config, undefined, {
+			await deliverClaimedWebhook(redis, entry, config, {
 				deadline: entry.claim.expiresAt - 5_000,
+				clock,
 			})
-		) {
-			if (await settleClaim(redis, entry, 'success', clock())) delivered += 1;
-			continue;
-		}
-		await settleClaim(redis, entry, 'failure', clock());
+		)
+			delivered += 1;
 	}
 	if (attempted > 0) {
 		logger.info(
