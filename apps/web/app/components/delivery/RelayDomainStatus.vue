@@ -10,9 +10,10 @@ interface RelayDnsRecord {
 	priority?: number;
 }
 
-const { data: relayDomains } = useOrganizationQuery(
+const { data: relayDomainResult } = useOrganizationQuery(
 	api.providerRoutes.listDeliverabilityRelayDomains
 );
+const relayDomains = computed(() => relayDomainResult.value?.domains ?? []);
 const { run: verifyRelayDomain } = useBackendOperation(api.domains.dnsVerification.verifyDomain, {
 	label: 'Verify relay domain',
 });
@@ -54,6 +55,12 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 				Your primary DMARC record remains unchanged.
 			</p>
 		</div>
+		<p
+			v-if="relayDomainResult?.isTruncated"
+			class="rounded border border-warning/30 bg-warning/10 p-3 text-sm text-text-secondary"
+		>
+			Showing the first 512 owned-MTA domains. Use the domain settings pages for the remainder.
+		</p>
 		<div
 			v-for="domain in relayDomains"
 			:key="domain.domainId"
@@ -73,7 +80,13 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
 					Verify DNS
 				</UiButton>
 			</div>
-			<p v-if="!domain.dnsRecords" class="text-sm text-text-secondary">
+			<p
+				v-if="domain.status === 'awaiting_primary_verification'"
+				class="text-sm text-text-secondary"
+			>
+				Verify the primary owned-MTA domain first; SES relay provisioning starts afterward.
+			</p>
+			<p v-else-if="!domain.dnsRecords" class="text-sm text-text-secondary">
 				Provisioning is queued. Refresh shortly to see the DNS plan.
 			</p>
 			<div v-else class="space-y-2">

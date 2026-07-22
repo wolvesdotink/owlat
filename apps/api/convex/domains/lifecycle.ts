@@ -1379,10 +1379,24 @@ export const remove = internalMutation({
 			? domain.providerType
 			: null;
 		const domainName = domain.domain;
+		const cleanupProviders = new Set<SendingDomainProviderKind>();
+		if (providerKind) cleanupProviders.add(providerKind);
+		const [mtaIdentity, sesIdentity] = await Promise.all([
+			ctx.db
+				.query('sendingDomainMtaIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', args.domainId))
+				.first(),
+			ctx.db
+				.query('sendingDomainSesIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', args.domainId))
+				.first(),
+		]);
+		if (mtaIdentity) cleanupProviders.add('mta');
+		if (sesIdentity) cleanupProviders.add('ses');
 
-		// Clear the per-provider sibling identity row (mutation context).
-		if (providerKind) {
-			const adapter = providerFor(providerKind);
+		// Hybrid MTA+SES routing owns two external identities and two sibling rows.
+		for (const kind of cleanupProviders) {
+			const adapter = providerFor(kind);
 			await adapter.clearIdentity(ctx, args.domainId);
 		}
 
@@ -1415,11 +1429,11 @@ export const remove = internalMutation({
 				},
 			},
 		];
-		if (providerKind) {
+		for (const kind of cleanupProviders) {
 			effects.push({
 				kind: 'delete_with_provider',
 				domain: domainName,
-				providerType: providerKind,
+				providerType: kind,
 			});
 		}
 		await applyEffects(ctx, effects, args.userId);

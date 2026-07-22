@@ -146,11 +146,15 @@ export const listDeliverabilityRelayDomains = authedQuery({
 		// This is an operator status surface, not the provisioning drain. Bound the
 		// response; provisioning itself cursor-paginates every existing domain and
 		// the lifecycle covers future domains.
-		const domains = await ctx.db.query('domains').take(512);
-		return await Promise.all(
-			domains
-				.filter((domain) => domain.providerType === 'mta')
-				.map(async (domain) => {
+		const page = await ctx.db
+			.query('domains')
+			.withIndex('by_provider_type', (q) => q.eq('providerType', 'mta'))
+			.take(513);
+		const domains = page.slice(0, 512);
+		return {
+			isTruncated: page.length > domains.length,
+			domains: await Promise.all(
+				domains.map(async (domain) => {
 					const identity = await ctx.db
 						.query('sendingDomainSesIdentities')
 						.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
@@ -158,18 +162,22 @@ export const listDeliverabilityRelayDomains = authedQuery({
 					return {
 						domainId: domain._id,
 						domain: domain.domain,
-						status: identity
-							? identity.verifiedAt
-								? ('verified' as const)
-								: ('pending' as const)
-							: ('provisioning' as const),
+						status:
+							domain.status !== 'verified'
+								? ('awaiting_primary_verification' as const)
+								: identity
+									? identity.verifiedAt
+										? ('verified' as const)
+										: ('pending' as const)
+									: ('provisioning' as const),
 						dnsRecords: identity?.dnsRecords,
 						verificationResults: identity?.verificationResults,
 						isProviderVerified: identity?.isProviderVerified ?? false,
 						verifiedAt: identity?.verifiedAt,
 					};
 				})
-		);
+			),
+		};
 	},
 });
 

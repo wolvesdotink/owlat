@@ -88,7 +88,8 @@ export const domainTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_domain', ['domain'])
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		.index('by_provider_type', ['providerType']),
 
 	// MTA sending domain identity — 1:0..1 with `domains` (one row per
 	// MTA-provider-registered domain). Owned by the **Sending domain provider
