@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailErrorCode } from '../types';
 import { mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
+import { ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
 
 const decisionInput = {
 	messageId: 'send-1',
+	messageType: 'campaign' as const,
 	organizationId: 'org-1',
 	recipient: 'to@example.com',
 	from: 'from@example.com',
@@ -52,11 +54,49 @@ describe('MTA routing decision client', () => {
 		expect(await pending).toEqual({ kind: 'defer', retryAfterMs: 60_000 });
 	});
 
+	it.each([
+		{ decision: 'mta', lease: { token: 'lease-1' }, unexpected: true },
+		{ decision: 'mta', lease: { token: 'x'.repeat(ROUTING_LEASE_TOKEN_MAX_LENGTH + 1) } },
+		{ decision: 'relay', reason: 'provider_breaker', unexpected: true },
+		{ decision: 'defer', reason: 'global_safety', retryAfterMs: 1_000, unexpected: true },
+		{ decision: 'defer', retryAfterMs: 1_000 },
+	])('rejects an inexact decision response: %j', async (body) => {
+		global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+		expect(await resolveMtaRoutingDecision(decisionInput)).toEqual({
+			kind: 'defer',
+			retryAfterMs: 60_000,
+		});
+	});
+
+	it('accepts exact decisions and bounds finite defer delays', async () => {
+		for (const [body, expected] of [
+			[
+				{ decision: 'mta', lease: { token: 'lease-1' } },
+				{ kind: 'mta', leaseToken: 'lease-1' },
+			],
+			[
+				{ decision: 'relay', reason: 'provider_probe_limit' },
+				{ kind: 'relay', reason: 'provider_probe_limit' },
+			],
+			[
+				{ decision: 'defer', reason: 'global_safety', retryAfterMs: -1 },
+				{ kind: 'defer', retryAfterMs: 1_000 },
+			],
+			[
+				{ decision: 'defer', reason: 'global_safety', retryAfterMs: 9_000_000 },
+				{ kind: 'defer', retryAfterMs: 3_600_000 },
+			],
+		] as const) {
+			global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+			expect(await resolveMtaRoutingDecision(decisionInput)).toEqual(expected);
+		}
+	});
+
 	it.each(['ROUTING_DECISION_EXPIRED', 'ROUTING_DECISION_CHANGED', 'GLOBAL_SAFETY_DEFER'])(
-		'classifies a %s enqueue race as retryable',
+		'classifies a %s enqueue race as a fresh-routing deferral',
 		(code) => {
 			expect(mtaSendProvider.categorizeError(JSON.stringify({ code }), 409)).toBe(
-				EmailErrorCode.SERVER_ERROR
+				EmailErrorCode.ROUTING_DEFERRED
 			);
 		}
 	);

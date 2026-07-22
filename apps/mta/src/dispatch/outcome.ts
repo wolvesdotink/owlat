@@ -69,6 +69,7 @@ function reduceDelivered(
 				orgId: job.organizationId,
 				outcome: 'delivered',
 				providerKey,
+				...probeReceipt(job),
 			},
 			...(campaignId
 				? [{ kind: 'campaign_delivery_record', campaignId } as const satisfies DispatchEffect]
@@ -83,7 +84,7 @@ function reduceDelivered(
 				kind: 'warming_record',
 				ip,
 				result: 'send',
-				reservedMessageId: job.routingLease?.warmingReservation?.messageId,
+				reservation: job.routingLease?.warmingReservation,
 			},
 			{
 				kind: 'metrics_record',
@@ -135,6 +136,7 @@ function reduceHardBounce(
 				orgId: job.organizationId,
 				outcome: 'bounced',
 				providerKey,
+				...probeReceipt(job),
 			},
 			{
 				kind: 'smtp_response',
@@ -257,6 +259,7 @@ function reduceNonRetryableDeferral(
 				orgId: job.organizationId,
 				outcome: 'bounced',
 				providerKey,
+				...probeReceipt(job),
 			},
 			{
 				kind: 'smtp_response',
@@ -304,6 +307,28 @@ function reduceNonRetryableDeferral(
 	};
 }
 
+function probeReceipt(job: AttemptCtx['job']): {
+	probeReceipt?: {
+		messageId: string;
+		globalGeneration?: number;
+		providerGeneration?: number;
+	};
+} {
+	const lease = job.routingLease;
+	if (!lease?.probe && !lease?.globalProbe) return {};
+	return {
+		probeReceipt: {
+			messageId: job.messageId,
+			...(lease.globalProbe && lease.globalBreakerGeneration !== undefined
+				? { globalGeneration: lease.globalBreakerGeneration }
+				: {}),
+			...(lease.probe && lease.providerBreakerGeneration !== undefined
+				? { providerGeneration: lease.providerBreakerGeneration }
+				: {}),
+		},
+	};
+}
+
 function reduceSoftBounce(
 	outcome: Extract<DispatchOutcome, { kind: 'soft_bounce' }>,
 	ctx: AttemptCtx
@@ -317,6 +342,7 @@ function reduceSoftBounce(
 				orgId: job.organizationId,
 				outcome: 'bounced',
 				providerKey,
+				...probeReceipt(job),
 			},
 			{ kind: 'warming_record', ip, result: 'bounce' },
 			{ kind: 'domain_failure_record', domain },

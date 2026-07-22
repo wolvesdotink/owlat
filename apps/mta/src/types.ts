@@ -60,11 +60,15 @@ export interface EmailJob {
 		token: string;
 		destinationProvider: DestinationProviderKey;
 		probe: boolean;
+		globalProbe?: boolean;
 		ip?: string;
 		eligibilityGeneration?: number;
+		globalBreakerGeneration?: number;
+		providerBreakerGeneration?: number;
 		warmingReservation?: {
 			ip: string;
 			messageId: string;
+			utcDate: string;
 			expiresAt: number;
 		};
 	};

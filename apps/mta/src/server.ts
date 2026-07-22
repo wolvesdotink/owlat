@@ -79,6 +79,8 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 
 	// ── Routes ──
 	app.post('/send', createSendHandler(queue, redis));
+	app.post('/send/postbox', createSendHandler(queue, redis, 'postbox'));
+	app.post('/send/system', createSendHandler(queue, redis, 'system'));
 	app.post('/send/decision', createRoutingDecisionHandler(redis, config));
 	app.get('/health', createHealthHandler(redis, config));
 	app.get('/metrics', createMetricsHandler());

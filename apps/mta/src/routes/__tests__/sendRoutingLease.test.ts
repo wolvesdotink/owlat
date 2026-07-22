@@ -21,6 +21,7 @@ function body(overrides: Record<string, unknown> = {}) {
 		html: '<p>Body</p>',
 		ipPool: 'campaign',
 		organizationId: 'org-1',
+		messageType: 'campaign',
 		dkimDomain: 'example.org',
 		routingLease: 'token-1',
 		...overrides,
@@ -33,8 +34,15 @@ function lease(overrides: Record<string, unknown> = {}) {
 		messageId: 'message-1',
 		organizationId: 'org-1',
 		recipient: 'user@example.com',
+		from: 'sender@example.org',
+		messageType: 'campaign',
+		candidateProvider: 'mta',
+		ipPool: 'campaign',
 		destinationProvider: 'gmail',
 		probe: false,
+		globalProbe: false,
+		globalBreakerGeneration: 0,
+		providerBreakerGeneration: 0,
 		expiresAt: Date.now() + 60_000,
 		ip: '10.0.0.1',
 		eligibilityGeneration: 7,
@@ -46,6 +54,12 @@ async function request(options: {
 	lease?: string;
 	evalResult?: number;
 	state?: (key: string) => object;
+	bodyOverrides?: Record<string, unknown>;
+	mode?: 'governed' | 'postbox' | 'system';
+	auth?: {
+		isMasterKey: boolean;
+		orgCredential?: { organizationId: string };
+	};
 }) {
 	const queue = { add: vi.fn().mockResolvedValue({ id: 'message-1' }) };
 	const redis = {
@@ -58,19 +72,86 @@ async function request(options: {
 	} as unknown as Redis;
 	const app = new Hono();
 	app.use('/send', async (c, next) => {
-		c.set('auth', { isMasterKey: true });
+		c.set('auth', options.auth ?? { isMasterKey: true });
 		await next();
 	});
-	app.post('/send', createSendHandler(queue as unknown as Queue<EmailJob>, redis));
+	app.post('/send', createSendHandler(queue as unknown as Queue<EmailJob>, redis, options.mode));
 	const response = await app.request('/send', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(body()),
+		body: JSON.stringify(body(options.bodyOverrides)),
 	});
 	return { response, queue };
 }
 
 describe('POST /send routing lease revalidation', () => {
+	it('rejects a governed send without a routing lease', async () => {
+		const { response, queue } = await request({ bodyOverrides: { routingLease: undefined } });
+		expect(response.status).toBe(409);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('keeps Postbox on its master-only fixed scope without a tenant lease', async () => {
+		const { response, queue } = await request({
+			mode: 'postbox',
+			bodyOverrides: {
+				organizationId: 'postbox',
+				messageType: undefined,
+				routingLease: undefined,
+				allowedFromAddresses: ['sender@example.org'],
+			},
+		});
+		expect(response.status).toBe(200);
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it.each([
+		{
+			label: 'Postbox',
+			mode: 'postbox' as const,
+			organizationId: 'postbox',
+			extra: { allowedFromAddresses: ['sender@example.org'] },
+		},
+		{ label: 'system', mode: 'system' as const, organizationId: 'system', extra: {} },
+	])('keeps $label intake master-only and fixed to its route scope', async (scope) => {
+		const unprivileged = await request({
+			mode: scope.mode,
+			auth: { isMasterKey: false, orgCredential: { organizationId: scope.organizationId } },
+			bodyOverrides: {
+				organizationId: scope.organizationId,
+				messageType: undefined,
+				routingLease: undefined,
+				...scope.extra,
+			},
+		});
+		expect(unprivileged.response.status).toBe(403);
+		expect(unprivileged.queue.add).not.toHaveBeenCalled();
+
+		const wrongScope = await request({
+			mode: scope.mode,
+			bodyOverrides: {
+				organizationId: 'org-1',
+				messageType: undefined,
+				routingLease: undefined,
+				...scope.extra,
+			},
+		});
+		expect(wrongScope.response.status).toBe(403);
+		expect(wrongScope.queue.add).not.toHaveBeenCalled();
+	});
+
+	it('refuses Postbox traffic on the governed intake', async () => {
+		const { response, queue } = await request({
+			bodyOverrides: {
+				organizationId: 'postbox',
+				messageType: undefined,
+				routingLease: undefined,
+				allowedFromAddresses: ['sender@example.org'],
+			},
+		});
+		expect(response.status).toBe(400);
+		expect(queue.add).not.toHaveBeenCalled();
+	});
 	it.each([
 		lease({ organizationId: 'org-2' }),
 		lease({ recipient: 'other@example.com' }),

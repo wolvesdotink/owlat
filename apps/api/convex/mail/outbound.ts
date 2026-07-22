@@ -611,7 +611,7 @@ export const dispatchDraft = internalAction({
 				// insert_mail_message effect.
 				const mtaMessageId = `pb-${mailMessageId}-${i}`;
 				try {
-					const res = await fetch(`${mta.baseUrl}/send`, {
+					const res = await fetch(`${mta.baseUrl}/send/postbox`, {
 						method: 'POST',
 						headers: {
 							'Content-Type': 'application/json',

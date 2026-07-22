@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { paginationOptsValidator } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
 import { type MutationCtx, type QueryCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
@@ -9,6 +10,7 @@ import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/c
 import { isSendProviderReady } from './lib/sendProviders/capability';
 import { throwInvalidInput } from './_utils/errors';
 import { internal } from './_generated/api';
+import { internalMutation } from './_generated/server';
 
 /**
  * Provider Routes — CRUD operations for per-org email provider routing.
@@ -136,6 +138,69 @@ export const listTransportCatalog = authedQuery({
 	},
 });
 
+/** Operational SES relay DNS/status for every owned-MTA sending domain. */
+export const listDeliverabilityRelayDomains = authedQuery({
+	args: {},
+	handler: async (ctx) => {
+		await requireOrgPermission(ctx, 'organization:manage');
+		// This is an operator status surface, not the provisioning drain. Bound the
+		// response; provisioning itself cursor-paginates every existing domain and
+		// the lifecycle covers future domains.
+		const domains = await ctx.db.query('domains').take(512);
+		return await Promise.all(
+			domains
+				.filter((domain) => domain.providerType === 'mta')
+				.map(async (domain) => {
+					const identity = await ctx.db
+						.query('sendingDomainSesIdentities')
+						.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+						.first();
+					return {
+						domainId: domain._id,
+						domain: domain.domain,
+						status: identity
+							? identity.verifiedAt
+								? ('verified' as const)
+								: ('pending' as const)
+							: ('provisioning' as const),
+						dnsRecords: identity?.dnsRecords,
+						verificationResults: identity?.verificationResults,
+						isProviderVerified: identity?.isProviderVerified ?? false,
+						verifiedAt: identity?.verifiedAt,
+					};
+				})
+		);
+	},
+});
+
+/** Cursor drain used when fallback is enabled; future domains use lifecycle provisioning. */
+export const provisionDeliverabilityRelayBatch = internalMutation({
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		const page = await ctx.db
+			.query('domains')
+			.withIndex('by_status', (q) => q.eq('status', 'verified'))
+			.paginate(args.paginationOpts);
+		for (const domain of page.page) {
+			if (domain.providerType !== 'mta') continue;
+			const existing = await ctx.db
+				.query('sendingDomainSesIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+				.first();
+			if (!existing) {
+				await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
+					domainId: domain._id,
+				});
+			}
+		}
+		if (!page.isDone) {
+			await ctx.scheduler.runAfter(500, internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+				paginationOpts: { cursor: page.continueCursor, numItems: args.paginationOpts.numItems },
+			});
+		}
+	},
+});
+
 // ── Mutations ──────────────────────────────────────────────────────
 
 /**
@@ -198,22 +263,9 @@ export const setRoute = authedMutation({
 			deliverabilityFallback: args.deliverabilityFallback,
 		});
 		if (fallback?.isEnabled) {
-			const domains = await ctx.db
-				.query('domains')
-				.withIndex('by_status', (q) => q.eq('status', 'verified'))
-				.take(64);
-			for (const domain of domains) {
-				if (domain.providerType === 'mta') {
-					const existing = await ctx.db
-						.query('sendingDomainSesIdentities')
-						.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-						.first();
-					if (!existing)
-						await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
-							domainId: domain._id,
-						});
-				}
-			}
+			await ctx.scheduler.runAfter(0, internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+				paginationOpts: { cursor: null, numItems: 32 },
+			});
 		}
 		return routeId;
 	},

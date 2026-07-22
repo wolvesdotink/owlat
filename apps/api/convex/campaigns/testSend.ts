@@ -5,6 +5,8 @@ import { authedAction } from '../lib/authedFunctions';
 import type { ActionCtx } from '../_generated/server';
 import { internal, api } from '../_generated/api';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
+import { resolveLastMileRouting } from '../delivery/lastMileRouting';
+import type { EmailSendParams, MtaExtras, MtaIpPool, ResendExtras } from '../lib/sendProviders';
 import { composeForSend } from '../delivery/sendComposition';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { senderNotAllowedMessage } from './senders';
@@ -69,6 +71,32 @@ async function assertCampaignSenderAllowed(
 	if (!allowed) {
 		throwForbidden(senderNotAllowedMessage(fromEmail));
 	}
+}
+
+export async function dispatchGovernedTestEmail(ctx: ActionCtx, params: EmailSendParams) {
+	const idempotencyKey = `test_${crypto.randomUUID()}`;
+	const routing = await resolveLastMileRouting(ctx, {
+		messageType: 'transactional',
+		to: params.to,
+		from: params.from,
+		idempotencyKey,
+	});
+	if (routing.kind === 'defer') {
+		throw new Error(`Delivery safety policy deferred this test for ${routing.retryAfterMs}ms`);
+	}
+	const extras =
+		routing.providerKind === 'mta'
+			? ({
+					messageId: idempotencyKey,
+					messageType: 'transactional',
+					organizationId: routing.organizationId,
+					routingLease: routing.routingLease,
+					...(routing.route?.ipPool ? { ipPool: routing.route.ipPool as MtaIpPool } : {}),
+				} satisfies MtaExtras)
+			: routing.providerKind === 'resend'
+				? ({ idempotencyKey } satisfies ResendExtras)
+				: {};
+	return await sendProviderDispatch(ctx, routing.providerKind, params, extras);
 }
 
 // Action to send a test email for a campaign
@@ -168,15 +196,7 @@ export const sendTestEmail = authedAction({
 		// Send the test email through the Send dispatch helper. Test sends
 		// previously bypassed the workpool → Send completion → health chain;
 		// routing through the helper closes that drift.
-		const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-			messageType: 'transactional',
-			to: args.testEmail,
-			from,
-		});
-		if (!resolved) {
-			throwInternal('Cannot send test email: no delivery provider is configured.');
-		}
-		const dispatched = await sendProviderDispatch(ctx, resolved.providerType, {
+		const dispatched = await dispatchGovernedTestEmail(ctx, {
 			to: args.testEmail,
 			from,
 			replyTo: campaign.replyTo,
@@ -279,15 +299,7 @@ export const sendTestEmailFromTemplate = authedAction({
 
 		for (const testEmail of args.testEmails) {
 			try {
-				const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-					messageType: 'transactional',
-					to: testEmail,
-					from,
-				});
-				if (!resolved) {
-					throw new Error('No delivery provider is configured');
-				}
-				const dispatched = await sendProviderDispatch(ctx, resolved.providerType, {
+				const dispatched = await dispatchGovernedTestEmail(ctx, {
 					to: testEmail,
 					from,
 					subject: personalizedSubject,

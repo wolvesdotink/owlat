@@ -113,6 +113,15 @@ export {
 	verifyMtaStsPublication,
 } from './mtaStsPolicy';
 export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from './spf';
+export {
+	GOVERNED_MESSAGE_TYPES,
+	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	type GovernedCandidateProvider,
+	type GovernedIpPool,
+	type GovernedMessageType,
+	type GovernedRoutingContext,
+	isGovernedMessageType,
+} from './routingDispatch';
 export type { ValidationIssue } from './validation';
 export {
 	emailClients,

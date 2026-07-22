@@ -3,6 +3,7 @@ import { vOnCompleteArgs } from '@convex-dev/workpool';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
+import { campaignEmailPool, transactionalEmailPool } from './workpool';
 
 // ============================================================================
 // Send completion (module) — see CONTEXT.md.
@@ -48,7 +49,14 @@ interface SendWorkerSuccess {
 	// routes the Send to a suppression-labelled terminal 'failed' transition
 	// instead of the generic WORKPOOL_FAILED one.
 	suppressed?: boolean;
+	deferred?: boolean;
+	retryAfterMs?: number;
+	envelopeInput?: unknown;
+	retryState?: { attempt: number; startedAt: number; idempotencyKey: string };
 }
+
+const MAX_ROUTING_RETRIES = 8;
+const MAX_ROUTING_RETRY_AGE_MS = 6 * 60 * 60 * 1000;
 
 export const completeSend = internalMutation({
 	args: vOnCompleteArgs(v.object({ sendRef: sendRefValidator })),
@@ -57,11 +65,27 @@ export const completeSend = internalMutation({
 		const now = Date.now();
 
 		const returnValue =
-			result.kind === 'success'
-				? (result.returnValue as SendWorkerSuccess | undefined)
-				: undefined;
+			result.kind === 'success' ? (result.returnValue as SendWorkerSuccess | undefined) : undefined;
 
 		const succeeded = Boolean(returnValue?.success && returnValue.providerMessageId);
+		if (
+			returnValue?.deferred &&
+			returnValue.envelopeInput &&
+			returnValue.retryState &&
+			returnValue.retryState.attempt <= MAX_ROUTING_RETRIES &&
+			now - returnValue.retryState.startedAt <= MAX_ROUTING_RETRY_AGE_MS
+		) {
+			await ctx.scheduler.runAfter(
+				Math.min(Math.max(returnValue.retryAfterMs ?? 60_000, 1_000), 3_600_000),
+				internal.delivery.sendCompletion.retrySend,
+				{
+					sendRef,
+					envelopeInput: returnValue.envelopeInput,
+					retryState: returnValue.retryState,
+				}
+			);
+			return;
+		}
 
 		if (returnValue?.success && returnValue.providerMessageId) {
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
@@ -70,9 +94,7 @@ export const completeSend = internalMutation({
 					to: 'sent',
 					at: now,
 					providerMessageId: returnValue.providerMessageId,
-					...(returnValue.providerType
-						? { providerType: returnValue.providerType }
-						: {}),
+					...(returnValue.providerType ? { providerType: returnValue.providerType } : {}),
 				},
 			});
 		} else if (returnValue?.suppressed) {
@@ -91,8 +113,7 @@ export const completeSend = internalMutation({
 				},
 			});
 		} else {
-			const errorMessage =
-				result.kind === 'failed' ? result.error : 'Unknown error';
+			const errorMessage = result.kind === 'failed' ? result.error : 'Unknown error';
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: sendRef,
 				transition: {
@@ -112,10 +133,9 @@ export const completeSend = internalMutation({
 		if (sendRef.kind === 'campaign') {
 			const send = await ctx.db.get(sendRef.id);
 			if (send) {
-				await ctx.runMutation(
-					internal.campaigns.lifecycle.reconcileCampaignCompletion,
-					{ campaignId: send.campaignId },
-				);
+				await ctx.runMutation(internal.campaigns.lifecycle.reconcileCampaignCompletion, {
+					campaignId: send.campaignId,
+				});
 			}
 		}
 
@@ -136,9 +156,7 @@ export const completeSend = internalMutation({
 								to: 'failed',
 								at: now,
 								errorMessage:
-									result.kind === 'failed'
-										? result.error || 'Send failed'
-										: 'Send failed',
+									result.kind === 'failed' ? result.error || 'Send failed' : 'Send failed',
 							},
 				});
 
@@ -176,5 +194,30 @@ export const completeSend = internalMutation({
 		// Provider health recording is intentionally NOT here — the
 		// **Send dispatch (helper)** in `lib/sendProviders/dispatch.ts`
 		// records every attempt uniformly upstream of this module.
+	},
+});
+
+/** Re-enter the same bounded workpool after a typed last-mile deferral. */
+export const retrySend = internalMutation({
+	args: {
+		sendRef: sendRefValidator,
+		envelopeInput: v.any(),
+		retryState: v.object({
+			attempt: v.number(),
+			startedAt: v.number(),
+			idempotencyKey: v.string(),
+		}),
+	},
+	handler: async (ctx, args) => {
+		const pool = args.sendRef.kind === 'campaign' ? campaignEmailPool : transactionalEmailPool;
+		await pool.enqueueAction(
+			ctx,
+			internal.delivery.worker.sendSingleEmail,
+			{ envelopeInput: args.envelopeInput, retryState: args.retryState },
+			{
+				onComplete: internal.delivery.sendCompletion.completeSend,
+				context: { sendRef: args.sendRef },
+			}
+		);
 	},
 });

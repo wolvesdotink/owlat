@@ -188,6 +188,12 @@ describe('deliverability routing hysteresis', () => {
 			deleted: 256,
 			hasMore: true,
 		});
+		const scheduled = await t.run(
+			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled).toHaveLength(1);
+		expect(scheduled[0]!.scheduledTime).toBeGreaterThan(Date.now());
+		expect(scheduled[0]!.args[0]).toEqual({ continuation: 1 });
 		expect(
 			await t.run(async (ctx) => ({
 				states: (await ctx.db.query('deliverabilityRouteStates').collect()).length,
@@ -199,5 +205,32 @@ describe('deliverability routing hysteresis', () => {
 			deleted: 24,
 			hasMore: false,
 		});
+	});
+
+	it('hands remaining cleanup back to the cron after the bounded continuation budget', async () => {
+		const t = convexTest(schema, modules);
+		const expiredAt = Date.now() - 1;
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 128; i++) {
+				await ctx.db.insert('deliverabilityRouteStates', {
+					organizationId: `budget-org-${i}`,
+					destinationProvider: 'gmail',
+					isFallbackActive: false,
+					signals: [],
+					snapshotGeneratedAt: i,
+					expiresAt: expiredAt,
+					updatedAt: expiredAt,
+				});
+			}
+		});
+
+		expect(
+			await t.mutation(internal.delivery.deliverabilityRouting.cleanupExpired, {
+				continuation: 15,
+			})
+		).toEqual({ deleted: 128, hasMore: true });
+		expect(
+			await t.run(async (ctx) => ctx.db.system.query('_scheduled_functions').collect())
+		).toHaveLength(0);
 	});
 });

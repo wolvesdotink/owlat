@@ -1,13 +1,6 @@
 import { readFileSync } from 'node:fs';
 
-export const ACKNOWLEDGED_ADVISORIES: Readonly<Record<string, string>> = Object.freeze({
-	// Nuxt <4.4.7: routeRules middleware bypass via case-sensitivity. Owlat
-	// defines no routeRules (web has an empty object; docs/marketing have none),
-	// so there is no rule to bypass. The fix currently regresses og-image
-	// prerendering; revisit when that integration supports Nuxt 4.4.7+.
-	'GHSA-MM7M-92G8-7M47':
-		'nuxt routeRules bypass: Owlat defines no routeRules; 4.4.7+ currently regresses og-image builds',
-});
+export const ACKNOWLEDGED_ADVISORIES: Readonly<Record<string, string>> = Object.freeze({});
 
 export interface AuditFinding {
 	pkg: string;

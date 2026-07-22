@@ -18,13 +18,16 @@ describe('security audit parser', () => {
 		const raw = JSON.stringify(
 			auditEntry('high', 'https://github.com/advisories/GHSA-mm7m-92g8-7m47/')
 		);
+		const acknowledgements = {
+			'GHSA-MM7M-92G8-7M47': 'Pinned test-only acknowledgement',
+		};
 
-		const result = classifyAuditJson(raw);
+		const result = classifyAuditJson(raw, acknowledgements);
 
 		expect(result.acknowledged).toHaveLength(1);
 		expect(result.acknowledged[0]?.ghsa).toBe('GHSA-MM7M-92G8-7M47');
 		expect(result.blocking).toHaveLength(0);
-		expect(formatAuditClassification(result).exitCode).toBe(0);
+		expect(formatAuditClassification(result, acknowledgements).exitCode).toBe(0);
 	});
 
 	it('blocks an unacknowledged high or critical advisory', () => {
@@ -65,6 +68,6 @@ describe('security audit parser', () => {
 	);
 
 	it('contains only acknowledgements that are still required by the lockfile policy', () => {
-		expect(Object.keys(ACKNOWLEDGED_ADVISORIES)).toEqual(['GHSA-MM7M-92G8-7M47']);
+		expect(Object.keys(ACKNOWLEDGED_ADVISORIES)).toEqual([]);
 	});
 });

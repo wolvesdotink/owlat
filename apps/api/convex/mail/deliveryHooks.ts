@@ -47,10 +47,10 @@ export async function forwardToTarget(
 		bodyText?: string;
 		bodyHtml?: string;
 	},
-	target: string,
+	target: string
 ): Promise<void> {
 	const selfLower = args.mailboxAddress.toLowerCase();
-	await fetch(`${mta.baseUrl}/send`, {
+	await fetch(`${mta.baseUrl}/send/postbox`, {
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
@@ -79,6 +79,7 @@ export async function forwardToTarget(
 			ipPool: 'transactional',
 			organizationId: 'postbox',
 			dkimDomain: selfLower.split('@')[1] ?? 'localhost',
+			allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
 		}),
 	});
 }
@@ -134,10 +135,7 @@ export function shouldAutoReply(args: {
  * The null sender (`''`) never reaches here — `shouldAutoReply` suppresses the
  * whole auto-reply for it (a bounce/DSN). Exported for unit testing.
  */
-export function autoReplyRecipient(args: {
-	fromAddress: string;
-	returnPath?: string;
-}): string {
+export function autoReplyRecipient(args: { fromAddress: string; returnPath?: string }): string {
 	const rp = args.returnPath?.trim();
 	if (rp) return rp.toLowerCase();
 	return args.fromAddress.toLowerCase();
@@ -292,7 +290,7 @@ export const runPostDelivery = internalAction({
 		});
 
 		try {
-			await fetch(`${mta.baseUrl}/send`, {
+			await fetch(`${mta.baseUrl}/send/postbox`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -318,6 +316,7 @@ export const runPostDelivery = internalAction({
 					ipPool: 'transactional',
 					organizationId: 'postbox',
 					dkimDomain: selfLower.split('@')[1] ?? 'localhost',
+					allowedFromAddresses: [args.mailboxAddress.toLowerCase()],
 				}),
 			});
 			await ctx.runMutation(internal.mail.vacation.internalRecordReply, {

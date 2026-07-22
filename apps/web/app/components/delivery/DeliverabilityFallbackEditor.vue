@@ -61,8 +61,10 @@ watch(
 					</option>
 				</select>
 				<p class="mt-1 text-xs text-text-tertiary">
-					Amazon SES is the only supported escape-hatch relay. Its domain identity must be verified
-					before fallback can activate.
+					Amazon SES is the only supported escape-hatch relay. Saving starts SES identity
+					provisioning for every verified owned-MTA domain, but fallback cannot activate until each
+					domain's DNS and SES status are verified. Publish the single merged apex SPF shown on this
+					page; do not add a second SPF record.
 				</p>
 			</div>
 			<label v-if="messageType === 'campaign'" class="flex items-start gap-2 cursor-pointer">

@@ -15,11 +15,28 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithIp> = {
 	name: 'warming_cap',
 	async run(deps, ctx) {
 		const reservation = ctx.job.routingLease?.warmingReservation;
-		if (
-			reservation?.ip === ctx.ip &&
-			(await warming.isWarmingReservationValid(deps.redis, reservation))
-		) {
-			return { kind: 'continue', ctx };
+		if (reservation?.ip === ctx.ip) {
+			const current = await warming.ensureWarmingReservation(deps.redis, reservation);
+			if (!current.allowed || !current.reservation) {
+				return {
+					kind: 'defer',
+					delayMs: 300_000,
+					reason: `Warming reservation unavailable for IP ${ctx.ip}`,
+				};
+			}
+			return {
+				kind: 'continue',
+				ctx: {
+					...ctx,
+					job: {
+						...ctx.job,
+						routingLease: {
+							...ctx.job.routingLease!,
+							warmingReservation: current.reservation,
+						},
+					},
+				},
+			};
 		}
 		const warmingCap = await warming.checkCap(deps.redis, ctx.ip);
 		if (!warmingCap.allowed) {

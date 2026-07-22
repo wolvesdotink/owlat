@@ -99,7 +99,6 @@ const { run: setRoute } = useBackendOperation(api.providerRoutes.setRoute, {
 const { run: removeRoute } = useBackendOperation(api.providerRoutes.removeRoute, {
 	label: 'Reset provider route',
 });
-
 const { showToast: showNotification } = useToast();
 
 // ── Edit modal ──────────────────────────────────────────────────────
@@ -112,7 +111,6 @@ const editFallbackEnabled = ref(false);
 const editFallbackRelay = ref('ses');
 const editWarmupOverflow = ref(false);
 const isSaving = ref(false);
-
 const editMessageTypeMeta = computed(() =>
 	MESSAGE_TYPES.find((m) => m.value === editMessageType.value)
 );
@@ -279,6 +277,8 @@ async function handleReset() {
 					</div>
 				</div>
 			</div>
+
+			<DeliveryRelayDomainStatus />
 
 			<!-- Message-type route cards -->
 			<div class="grid gap-4">

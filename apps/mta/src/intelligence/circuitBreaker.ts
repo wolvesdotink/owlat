@@ -49,7 +49,10 @@ local probeKey = KEYS[2]
 local now = tonumber(ARGV[1])
 local expiresAt = tonumber(ARGV[2])
 local messageId = ARGV[3]
+local expectedGeneration = tonumber(ARGV[4])
 if redis.call('HGET', stateKey, 'status') ~= 'half-open' then return 0 end
+local generation = tonumber(redis.call('HGET', stateKey, 'generation') or '0')
+if expectedGeneration >= 0 and generation ~= expectedGeneration then return 0 end
 redis.call('ZREMRANGEBYSCORE', probeKey, '-inf', now)
 if redis.call('ZSCORE', probeKey, messageId) then return 1 end
 local completed = tonumber(redis.call('HGET', stateKey, 'halfOpenSent') or '0')
@@ -64,9 +67,10 @@ return 1
 export async function reserveHalfOpenProbe(
 	redis: Redis,
 	orgId: string,
-	provider: string,
+	provider: string | undefined,
 	messageId: string,
-	now = Date.now()
+	now = Date.now(),
+	expectedGeneration = -1
 ): Promise<boolean> {
 	return (
 		Number(
@@ -74,10 +78,66 @@ export async function reserveHalfOpenProbe(
 				RESERVE_PROBE_LUA,
 				2,
 				breakerStateKey(orgId, provider),
-				`${BREAKER_PREFIX}${breakerScope(orgId, provider)}:probes`,
+				breakerProbesKey(orgId, provider),
 				now,
 				now + PROBE_TTL_MS,
-				messageId
+				messageId,
+				expectedGeneration
+			)
+		) === 1
+	);
+}
+
+const RELEASE_PROBE_LUA = `
+if redis.call('HGET', KEYS[1], 'status') ~= 'half-open' then return 0 end
+if tonumber(redis.call('HGET', KEYS[1], 'generation') or '0') ~= tonumber(ARGV[2]) then return 0 end
+return redis.call('ZREM', KEYS[2], ARGV[1])
+`;
+
+export async function releaseHalfOpenProbe(
+	redis: Redis,
+	orgId: string,
+	provider: string | undefined,
+	messageId: string,
+	generation: number
+): Promise<void> {
+	await redis.eval(
+		RELEASE_PROBE_LUA,
+		2,
+		breakerStateKey(orgId, provider),
+		breakerProbesKey(orgId, provider),
+		messageId,
+		generation
+	);
+}
+
+const CONSUME_PROBE_LUA = `
+if redis.call('HGET', KEYS[1], 'status') ~= 'half-open' then return 0 end
+if tonumber(redis.call('HGET', KEYS[1], 'generation') or '0') ~= tonumber(ARGV[2]) then return 0 end
+if redis.call('ZREM', KEYS[2], ARGV[1]) ~= 1 then return 0 end
+redis.call('HINCRBY', KEYS[1], 'halfOpenSent', 1)
+if ARGV[3] ~= 'delivered' then redis.call('HINCRBY', KEYS[1], 'halfOpenBounced', 1) end
+return 1
+`;
+
+async function consumeHalfOpenProbe(
+	redis: Redis,
+	orgId: string,
+	provider: string | undefined,
+	messageId: string,
+	generation: number,
+	outcome: 'delivered' | 'bounced' | 'complained'
+): Promise<boolean> {
+	return (
+		Number(
+			await redis.eval(
+				CONSUME_PROBE_LUA,
+				2,
+				breakerStateKey(orgId, provider),
+				breakerProbesKey(orgId, provider),
+				messageId,
+				generation,
+				outcome
 			)
 		) === 1
 	);
@@ -98,6 +158,7 @@ export async function canSend(
 	allowed: boolean;
 	retryAfter?: number;
 	state?: CircuitState;
+	generation: number;
 }> {
 	if (provider) {
 		const globalResult = await canSend(redis, orgId);
@@ -108,7 +169,7 @@ export async function canSend(
 	const stateData = await redis.hgetall(stateKey);
 
 	if (!stateData['status'] || stateData['status'] === 'closed') {
-		return { allowed: true, state: 'closed' };
+		return { allowed: true, state: 'closed', generation: Number(stateData['generation'] ?? 0) };
 	}
 
 	const now = Date.now();
@@ -117,6 +178,7 @@ export async function canSend(
 		const cooldownUntil = parseInt(stateData['cooldownUntil'] ?? '0', 10);
 		if (now >= cooldownUntil) {
 			// Transition to half-open
+			const generation = Number(stateData['generation'] ?? 0) + 1;
 			await redis.hset(
 				stateKey,
 				'status',
@@ -124,12 +186,19 @@ export async function canSend(
 				'halfOpenSent',
 				'0',
 				'halfOpenBounced',
-				'0'
+				'0',
+				'generation',
+				String(generation)
 			);
 			logger.info({ orgId }, 'Circuit breaker entering half-open');
-			return { allowed: true, state: 'half-open' };
+			return { allowed: true, state: 'half-open', generation };
 		}
-		return { allowed: false, retryAfter: cooldownUntil - now, state: 'open' };
+		return {
+			allowed: false,
+			retryAfter: cooldownUntil - now,
+			state: 'open',
+			generation: Number(stateData['generation'] ?? 0),
+		};
 	}
 
 	if (stateData['status'] === 'half-open') {
@@ -139,12 +208,18 @@ export async function canSend(
 			const halfOpenBounced = parseInt(stateData['halfOpenBounced'] ?? '0', 10);
 			if (halfOpenBounced === 0) {
 				// All test sends delivered — close circuit
-				await redis.hset(stateKey, 'status', 'closed');
+				const generation = Number(stateData['generation'] ?? 0) + 1;
+				await redis.hset(stateKey, 'status', 'closed', 'generation', String(generation));
 				await redis.del(breakerOutcomesKey(orgId, provider));
 				logger.info({ orgId }, 'Circuit breaker closed (recovered)');
-				return { allowed: true, state: 'closed' };
+				return {
+					allowed: true,
+					state: 'closed',
+					generation,
+				};
 			} else {
 				// Bounces in test — re-open with extended cooldown
+				const generation = Number(stateData['generation'] ?? 0) + 1;
 				await redis.hset(
 					stateKey,
 					'status',
@@ -152,16 +227,27 @@ export async function canSend(
 					'cooldownUntil',
 					String(now + EXTENDED_COOLDOWN_MS),
 					'tripReason',
-					'Bounce detected during half-open test'
+					'Bounce detected during half-open test',
+					'generation',
+					String(generation)
 				);
 				logger.warn({ orgId, halfOpenBounced }, 'Circuit breaker re-opened from half-open');
-				return { allowed: false, retryAfter: EXTENDED_COOLDOWN_MS, state: 'open' };
+				return {
+					allowed: false,
+					retryAfter: EXTENDED_COOLDOWN_MS,
+					state: 'open',
+					generation,
+				};
 			}
 		}
-		return { allowed: true, state: 'half-open' };
+		return {
+			allowed: true,
+			state: 'half-open',
+			generation: Number(stateData['generation'] ?? 0),
+		};
 	}
 
-	return { allowed: true };
+	return { allowed: true, generation: Number(stateData['generation'] ?? 0) };
 }
 
 function breakerScope(orgId: string, provider?: string): string {
@@ -169,11 +255,15 @@ function breakerScope(orgId: string, provider?: string): string {
 }
 
 function breakerStateKey(orgId: string, provider?: string): string {
-	return `${BREAKER_PREFIX}${breakerScope(orgId, provider)}${STATE_SUFFIX}`;
+	return `${BREAKER_PREFIX}{${breakerScope(orgId, provider)}}${STATE_SUFFIX}`;
 }
 
 function breakerOutcomesKey(orgId: string, provider?: string): string {
-	return `${BREAKER_PREFIX}${breakerScope(orgId, provider)}${OUTCOMES_SUFFIX}`;
+	return `${BREAKER_PREFIX}{${breakerScope(orgId, provider)}}${OUTCOMES_SUFFIX}`;
+}
+
+function breakerProbesKey(orgId: string, provider?: string): string {
+	return `${BREAKER_PREFIX}{${breakerScope(orgId, provider)}}:probes`;
 }
 
 /**
@@ -188,15 +278,45 @@ export async function recordOutcome(
 	orgId: string,
 	outcome: 'delivered' | 'bounced' | 'complained',
 	config?: MtaConfig,
-	provider?: string
+	provider?: string,
+	probeReceipt?: { messageId: string; globalGeneration?: number; providerGeneration?: number }
 ): Promise<void> {
 	if (provider) {
 		// Provider-local history powers selective relay fallback, while the
 		// organization-wide history remains the dominant abuse guard. Only the
 		// global scope receives config so one outcome can emit at most one Convex
 		// circuit-breaker notification.
-		await recordScopedOutcome(redis, orgId, outcome, undefined, provider);
-		await recordScopedOutcome(redis, orgId, outcome, config);
+		if (probeReceipt?.providerGeneration !== undefined) {
+			await consumeHalfOpenProbe(
+				redis,
+				orgId,
+				provider,
+				probeReceipt.messageId,
+				probeReceipt.providerGeneration,
+				outcome
+			);
+		} else await recordScopedOutcome(redis, orgId, outcome, undefined, provider);
+		if (probeReceipt?.globalGeneration !== undefined) {
+			await consumeHalfOpenProbe(
+				redis,
+				orgId,
+				undefined,
+				probeReceipt.messageId,
+				probeReceipt.globalGeneration,
+				outcome
+			);
+		} else await recordScopedOutcome(redis, orgId, outcome, config);
+		return;
+	}
+	if (probeReceipt?.globalGeneration !== undefined) {
+		await consumeHalfOpenProbe(
+			redis,
+			orgId,
+			undefined,
+			probeReceipt.messageId,
+			probeReceipt.globalGeneration,
+			outcome
+		);
 		return;
 	}
 	await recordScopedOutcome(redis, orgId, outcome, config);
@@ -218,13 +338,7 @@ async function recordScopedOutcome(
 	const currentStatus = await redis.hget(stateKey, 'status');
 
 	// Handle half-open state tracking
-	if (currentStatus === 'half-open') {
-		if (outcome === 'bounced' || outcome === 'complained') {
-			await redis.hincrby(stateKey, 'halfOpenBounced', 1);
-		}
-		await redis.hincrby(stateKey, 'halfOpenSent', 1);
-		return;
-	}
+	if (currentStatus === 'half-open') return;
 
 	// Normal tracking: add to ring buffer
 	await redis.lpush(outcomesKey, marker);
@@ -294,7 +408,9 @@ async function recordScopedOutcome(
 			'cooldownUntil',
 			String(now + COOLDOWN_MS),
 			'tripReason',
-			reason
+			reason,
+			'generation',
+			String(Number((await redis.hget(stateKey, 'generation')) ?? 0) + 1)
 		);
 		await redis.expire(stateKey, OUTCOME_TTL);
 

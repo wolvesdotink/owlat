@@ -32,6 +32,18 @@ vi.mock('../../scaling/degradation.js', async () => {
 			.mockResolvedValue({ redisHealthy: true, backpressure: false, allIpsBlocked: false }),
 	};
 });
+vi.mock('../routingDecision.js', () => ({
+	readRoutingLease: vi.fn().mockResolvedValue({
+		token: 'test-routing-lease',
+		destinationProvider: 'other',
+		probe: false,
+		globalProbe: false,
+		globalBreakerGeneration: 0,
+		providerBreakerGeneration: 0,
+		expiresAt: Date.now() + 60_000,
+	}),
+	isRoutingLeaseBoundTo: vi.fn().mockReturnValue(true),
+}));
 
 const { createSendHandler } = await import('../send.js');
 const { checkSystemHealth } = await import('../../scaling/degradation.js');
@@ -58,13 +70,18 @@ function fakeRedis(overrides: Record<string, unknown> = {}): Redis {
 	} as unknown as Redis;
 }
 
-function buildApp(queue: FakeQueue, redis: Redis, auth: AuthContext = { isMasterKey: true }): Hono {
+function buildApp(
+	queue: FakeQueue,
+	redis: Redis,
+	auth: AuthContext = { isMasterKey: true },
+	mode: 'governed' | 'postbox' | 'system' = 'governed'
+): Hono {
 	const app = new Hono();
 	app.use('/send', async (c, next) => {
 		c.set('auth', auth);
 		await next();
 	});
-	app.post('/send', createSendHandler(queue as unknown as Queue<never>, redis));
+	app.post('/send', createSendHandler(queue as unknown as Queue<never>, redis, mode));
 	return app;
 }
 
@@ -78,7 +95,9 @@ function validBody(overrides: Record<string, unknown> = {}): string {
 		html: '<p>x</p>',
 		ipPool: 'transactional',
 		organizationId: 'crm-orgA',
+		messageType: 'transactional',
 		dkimDomain: 'example.com',
+		routingLease: 'test-routing-lease',
 		...overrides,
 	});
 }
@@ -314,12 +333,14 @@ describe('POST /send — job construction and routing', () => {
 		].join('\r\n');
 		const sealedMimeBase64 = Buffer.from(sealedMime).toString('base64');
 		const res = await post(
-			buildApp(queue, fakeRedis()),
+			buildApp(queue, fakeRedis(), { isMasterKey: true }, 'postbox'),
 			validBody({
 				organizationId: 'postbox',
+				messageType: undefined,
 				subject: '...',
 				sealedMimeBase64,
 				allowedFromAddresses: ['alice@example.com'],
+				routingLease: undefined,
 			})
 		);
 
@@ -338,12 +359,14 @@ describe('POST /send — job construction and routing', () => {
 			'--x--',
 		].join('\r\n');
 		const res = await post(
-			buildApp(queue, fakeRedis()),
+			buildApp(queue, fakeRedis(), { isMasterKey: true }, 'postbox'),
 			validBody({
 				organizationId: 'postbox',
+				messageType: undefined,
 				subject: '...',
 				sealedMimeBase64: Buffer.from(forged).toString('base64'),
 				allowedFromAddresses: ['alice@example.com'],
+				routingLease: undefined,
 			})
 		);
 		expect(res.status).toBe(400);

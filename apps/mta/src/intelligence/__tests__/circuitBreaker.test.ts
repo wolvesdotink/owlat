@@ -46,7 +46,7 @@ describe('circuitBreaker', () => {
 		it('returns allowed:false with retryAfter when state is open and cooldown not expired', async () => {
 			const now = Date.now();
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'open',
 				'cooldownUntil',
@@ -62,7 +62,7 @@ describe('circuitBreaker', () => {
 		it('transitions to half-open when cooldown has expired', async () => {
 			const pastCooldown = Date.now() - 1000;
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'open',
 				'cooldownUntil',
@@ -81,7 +81,7 @@ describe('circuitBreaker', () => {
 
 		it('in half-open with <5 sends returns allowed:true', async () => {
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -98,14 +98,14 @@ describe('circuitBreaker', () => {
 		it('keeps a provider slice blocked while the organization-wide breaker is open', async () => {
 			const now = Date.now();
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'open',
 				'cooldownUntil',
 				String(now + COOLDOWN_MS)
 			);
 			await redis.hset(
-				'mta:breaker:org-1:provider:gmail:state',
+				'mta:breaker:{org-1:provider:gmail}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -122,7 +122,7 @@ describe('circuitBreaker', () => {
 
 		it('half-open after 5 sends with 0 bounces closes circuit', async () => {
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -131,7 +131,7 @@ describe('circuitBreaker', () => {
 				'0'
 			);
 			// Seed some leftover outcomes to verify they get cleared
-			await redis.lpush('mta:breaker:org-1:outcomes', 'b', 'd', 'd');
+			await redis.lpush('mta:breaker:{org-1}:outcomes', 'b', 'd', 'd');
 
 			const result = await canSend(redis, 'org-1');
 			expect(result.allowed).toBe(true);
@@ -141,13 +141,13 @@ describe('circuitBreaker', () => {
 			expect(state.status).toBe('closed');
 
 			// Outcomes list should be deleted
-			const outcomes = await redis.lrange('mta:breaker:org-1:outcomes', 0, -1);
+			const outcomes = await redis.lrange('mta:breaker:{org-1}:outcomes', 0, -1);
 			expect(outcomes).toHaveLength(0);
 		});
 
 		it('clears only provider outcomes when a provider slice recovers', async () => {
 			await redis.hset(
-				'mta:breaker:org-1:provider:gmail:state',
+				'mta:breaker:{org-1:provider:gmail}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -155,19 +155,19 @@ describe('circuitBreaker', () => {
 				'halfOpenBounced',
 				'0'
 			);
-			await redis.lpush('mta:breaker:org-1:outcomes', 'b');
-			await redis.lpush('mta:breaker:org-1:provider:gmail:outcomes', 'd');
+			await redis.lpush('mta:breaker:{org-1}:outcomes', 'b');
+			await redis.lpush('mta:breaker:{org-1:provider:gmail}:outcomes', 'd');
 
 			const result = await canSend(redis, 'org-1', 'gmail');
 
 			expect(result.allowed).toBe(true);
-			expect(await redis.llen('mta:breaker:org-1:provider:gmail:outcomes')).toBe(0);
-			expect(await redis.llen('mta:breaker:org-1:outcomes')).toBe(1);
+			expect(await redis.llen('mta:breaker:{org-1:provider:gmail}:outcomes')).toBe(0);
+			expect(await redis.llen('mta:breaker:{org-1}:outcomes')).toBe(1);
 		});
 
 		it('half-open after 5 sends with bounces re-opens with 60min cooldown', async () => {
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -200,8 +200,8 @@ describe('circuitBreaker', () => {
 			expect((await getState(redis, 'org-1')).status).toBe('open');
 			expect((await canSend(redis, 'org-1', 'gmail')).allowed).toBe(false);
 			expect((await canSend(redis, 'org-1', 'microsoft')).allowed).toBe(false);
-			expect(await redis.llen('mta:breaker:org-1:provider:gmail:outcomes')).toBe(50);
-			expect(await redis.llen('mta:breaker:org-1:outcomes')).toBe(50);
+			expect(await redis.llen('mta:breaker:{org-1:provider:gmail}:outcomes')).toBe(50);
+			expect(await redis.llen('mta:breaker:{org-1}:outcomes')).toBe(50);
 		});
 
 		it('opens a bad provider slice while a healthy aggregate keeps other providers available', async () => {
@@ -229,7 +229,7 @@ describe('circuitBreaker', () => {
 			await recordOutcome(redis, 'org-1', 'bounced');
 			await recordOutcome(redis, 'org-1', 'delivered');
 
-			const outcomes = await redis.lrange('mta:breaker:org-1:outcomes', 0, -1);
+			const outcomes = await redis.lrange('mta:breaker:{org-1}:outcomes', 0, -1);
 			expect(outcomes).toHaveLength(3);
 			expect(outcomes[0]).toBe('d'); // most recent (lpush)
 			expect(outcomes[1]).toBe('b');
@@ -300,7 +300,7 @@ describe('circuitBreaker', () => {
 
 		it('in half-open increments halfOpenSent/halfOpenBounced and does not add to outcomes', async () => {
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -309,23 +309,31 @@ describe('circuitBreaker', () => {
 				'0'
 			);
 
-			await recordOutcome(redis, 'org-1', 'delivered');
-			await recordOutcome(redis, 'org-1', 'bounced');
-			await recordOutcome(redis, 'org-1', 'delivered');
+			for (const [messageId, outcome] of [
+				['probe-1', 'delivered'],
+				['probe-2', 'bounced'],
+				['probe-3', 'delivered'],
+			] as const) {
+				await reserveHalfOpenProbe(redis, 'org-1', undefined, messageId, Date.now(), 0);
+				await recordOutcome(redis, 'org-1', outcome, undefined, undefined, {
+					messageId,
+					globalGeneration: 0,
+				});
+			}
 
 			const state = await getState(redis, 'org-1');
 			expect(state.halfOpenSent).toBe(3);
 			expect(state.halfOpenBounced).toBe(1);
 
 			// Should NOT add to outcomes list
-			const outcomes = await redis.lrange('mta:breaker:org-1:outcomes', 0, -1);
+			const outcomes = await redis.lrange('mta:breaker:{org-1}:outcomes', 0, -1);
 			expect(outcomes).toHaveLength(0);
 		});
 
 		it('when already open adds to list but does not re-check thresholds', async () => {
 			const now = Date.now();
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'open',
 				'openedAt',
@@ -340,7 +348,7 @@ describe('circuitBreaker', () => {
 			await recordOutcome(redis, 'org-1', 'bounced');
 
 			// Should still add to outcomes
-			const outcomes = await redis.lrange('mta:breaker:org-1:outcomes', 0, -1);
+			const outcomes = await redis.lrange('mta:breaker:{org-1}:outcomes', 0, -1);
 			expect(outcomes).toHaveLength(2);
 
 			// State should remain the same (no re-trip)
@@ -353,7 +361,7 @@ describe('circuitBreaker', () => {
 	describe('bounded half-open probes', () => {
 		it('grants at most five concurrent distinct probes and is idempotent by message', async () => {
 			await redis.hset(
-				'mta:breaker:org-probe:provider:gmail:state',
+				'mta:breaker:{org-probe:provider:gmail}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -376,7 +384,7 @@ describe('circuitBreaker', () => {
 			await recordOutcome(redis, 'org-1', 'complained');
 			await recordOutcome(redis, 'org-1', 'delivered');
 
-			const outcomes = await redis.lrange('mta:breaker:org-1:outcomes', 0, -1);
+			const outcomes = await redis.lrange('mta:breaker:{org-1}:outcomes', 0, -1);
 			expect(outcomes).toHaveLength(3);
 			expect(outcomes[0]).toBe('d');
 			expect(outcomes[1]).toBe('c');
@@ -428,7 +436,7 @@ describe('circuitBreaker', () => {
 
 		it('complaints count as halfOpenBounced in half-open state', async () => {
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -437,8 +445,16 @@ describe('circuitBreaker', () => {
 				'0'
 			);
 
-			await recordOutcome(redis, 'org-1', 'delivered');
-			await recordOutcome(redis, 'org-1', 'complained');
+			for (const [messageId, outcome] of [
+				['probe-delivered', 'delivered'],
+				['probe-complained', 'complained'],
+			] as const) {
+				await reserveHalfOpenProbe(redis, 'org-1', undefined, messageId, Date.now(), 0);
+				await recordOutcome(redis, 'org-1', outcome, undefined, undefined, {
+					messageId,
+					globalGeneration: 0,
+				});
+			}
 
 			const state = await getState(redis, 'org-1');
 			expect(state.halfOpenSent).toBe(2);
@@ -447,7 +463,7 @@ describe('circuitBreaker', () => {
 
 		it('complaints do NOT add to outcomes list in half-open state', async () => {
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'half-open',
 				'halfOpenSent',
@@ -458,7 +474,7 @@ describe('circuitBreaker', () => {
 
 			await recordOutcome(redis, 'org-1', 'complained');
 
-			const outcomes = await redis.lrange('mta:breaker:org-1:outcomes', 0, -1);
+			const outcomes = await redis.lrange('mta:breaker:{org-1}:outcomes', 0, -1);
 			expect(outcomes).toHaveLength(0);
 		});
 
@@ -482,7 +498,7 @@ describe('circuitBreaker', () => {
 			await recordOutcome(redis, 'org-1', 'complained');
 			await recordOutcome(redis, 'org-1', 'delivered');
 
-			const outcomes = await redis.lrange('mta:breaker:org-1:outcomes', 0, -1);
+			const outcomes = await redis.lrange('mta:breaker:{org-1}:outcomes', 0, -1);
 			expect(outcomes).toEqual(['d', 'c', 'b', 'd']);
 		});
 	});
@@ -568,7 +584,19 @@ describe('circuitBreaker', () => {
 
 			// Five clean probe sends are recorded in half-open (not the ring buffer).
 			for (let i = 0; i < HALF_OPEN_LIMIT; i++) {
-				await recordOutcome(redis, 'org-life', 'delivered');
+				const messageId = `probe-${i}`;
+				await reserveHalfOpenProbe(
+					redis,
+					'org-life',
+					undefined,
+					messageId,
+					Date.now(),
+					halfOpen.generation
+				);
+				await recordOutcome(redis, 'org-life', 'delivered', undefined, undefined, {
+					messageId,
+					globalGeneration: halfOpen.generation,
+				});
 			}
 			const probed = await getState(redis, 'org-life');
 			expect(probed.halfOpenSent).toBe(HALF_OPEN_LIMIT);
@@ -586,11 +614,29 @@ describe('circuitBreaker', () => {
 			for (let i = 0; i < 99; i++) await recordOutcome(redis, 'org-reopen', 'delivered');
 			await recordOutcome(redis, 'org-reopen', 'complained');
 			vi.advanceTimersByTime(COOLDOWN_MS + 1000);
-			expect((await canSend(redis, 'org-reopen')).state).toBe('half-open');
+			const halfOpen = await canSend(redis, 'org-reopen');
+			expect(halfOpen.state).toBe('half-open');
 
 			// Probe: four clean, one bounce — a single failure is enough.
-			for (let i = 0; i < 4; i++) await recordOutcome(redis, 'org-reopen', 'delivered');
-			await recordOutcome(redis, 'org-reopen', 'bounced');
+			for (let i = 0; i < HALF_OPEN_LIMIT; i++) {
+				const messageId = `probe-${i}`;
+				await reserveHalfOpenProbe(
+					redis,
+					'org-reopen',
+					undefined,
+					messageId,
+					Date.now(),
+					halfOpen.generation
+				);
+				await recordOutcome(
+					redis,
+					'org-reopen',
+					i === HALF_OPEN_LIMIT - 1 ? 'bounced' : 'delivered',
+					undefined,
+					undefined,
+					{ messageId, globalGeneration: halfOpen.generation }
+				);
+			}
 			const probed = await getState(redis, 'org-reopen');
 			expect(probed.halfOpenSent).toBe(HALF_OPEN_LIMIT);
 			expect(probed.halfOpenBounced).toBe(1);
@@ -610,10 +656,28 @@ describe('circuitBreaker', () => {
 			for (let i = 0; i < 99; i++) await recordOutcome(redis, 'org-reopen-c', 'delivered');
 			await recordOutcome(redis, 'org-reopen-c', 'complained');
 			vi.advanceTimersByTime(COOLDOWN_MS + 1000);
-			expect((await canSend(redis, 'org-reopen-c')).state).toBe('half-open');
+			const halfOpen = await canSend(redis, 'org-reopen-c');
+			expect(halfOpen.state).toBe('half-open');
 
-			for (let i = 0; i < 4; i++) await recordOutcome(redis, 'org-reopen-c', 'delivered');
-			await recordOutcome(redis, 'org-reopen-c', 'complained');
+			for (let i = 0; i < HALF_OPEN_LIMIT; i++) {
+				const messageId = `probe-${i}`;
+				await reserveHalfOpenProbe(
+					redis,
+					'org-reopen-c',
+					undefined,
+					messageId,
+					Date.now(),
+					halfOpen.generation
+				);
+				await recordOutcome(
+					redis,
+					'org-reopen-c',
+					i === HALF_OPEN_LIMIT - 1 ? 'complained' : 'delivered',
+					undefined,
+					undefined,
+					{ messageId, globalGeneration: halfOpen.generation }
+				);
+			}
 
 			const reopened = await canSend(redis, 'org-reopen-c');
 			expect(reopened.state).toBe('open');
@@ -637,7 +701,7 @@ describe('circuitBreaker', () => {
 		it('returns correct shape for open state', async () => {
 			const now = Date.now();
 			await redis.hset(
-				'mta:breaker:org-1:state',
+				'mta:breaker:{org-1}:state',
 				'status',
 				'open',
 				'openedAt',

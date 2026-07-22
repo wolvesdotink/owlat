@@ -279,7 +279,14 @@ describe('handleEmailJob', () => {
 		await run(createJob());
 
 		expect(sendToMx).toHaveBeenCalled();
-		expect(recordOutcome).toHaveBeenCalledWith(redis, 'org-1', 'delivered', config, 'other');
+		expect(recordOutcome).toHaveBeenCalledWith(
+			redis,
+			'org-1',
+			'delivered',
+			config,
+			'other',
+			undefined
+		);
 		expect(recordSuccess).toHaveBeenCalled();
 		expect(recordSend).toHaveBeenCalled();
 		expect(clearDomainFailure).toHaveBeenCalled();

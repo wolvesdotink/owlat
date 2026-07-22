@@ -101,6 +101,8 @@ export interface MtaExtras {
 	/** Domain for DKIM signing */
 	dkimDomain?: string;
 	organizationId?: string;
+	messageType?: import('@owlat/shared').GovernedMessageType;
+	intakePath?: 'system';
 	routingLease?: string;
 }
 
@@ -110,8 +112,7 @@ export interface ResendExtras {
 	/**
 	 * Stable idempotency key. Forwarded to Resend as the `Idempotency-Key`
 	 * header so a surviving retry de-dupes at Resend instead of double-sending.
-	 * The worker derives this from the Send-row id (see
-	 * `emailWorker.deriveIdempotencyKey`).
+	 * The governed dispatch boundary derives this from the durable Send row.
 	 */
 	idempotencyKey?: string;
 }
@@ -164,13 +165,20 @@ export enum EmailErrorCode {
 	 * server error.
 	 */
 	SMTPUTF8_UNSUPPORTED = 'SMTPUTF8_UNSUPPORTED',
+	/** A last-mile safety lease changed; reschedule with a fresh decision. */
+	ROUTING_DEFERRED = 'ROUTING_DEFERRED',
 	/** Unknown error */
 	UNKNOWN = 'UNKNOWN',
 }
 
 export type EmailSendAttempt =
 	| { success: true; id: string }
-	| { success: false; errorMessage: string; errorCode: EmailErrorCode };
+	| {
+			success: false;
+			errorMessage: string;
+			errorCode: EmailErrorCode;
+			retryAfterMs?: number;
+	  };
 
 // ─── Dispatch helper result ────────────────────────────────────────────────
 
