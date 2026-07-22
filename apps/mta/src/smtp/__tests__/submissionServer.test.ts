@@ -34,6 +34,10 @@ import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
 import type { Queue } from 'groupmq';
 import { promoteIntakeReceipt } from '../../routes/sendReceipt.js';
+import {
+	SUBMISSION_DEDUPLICATION_MAIL_PARAMETER,
+	SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER,
+} from '../submissionIdentity.js';
 
 const config = {
 	apiKey: 'master-secret-key',
@@ -49,7 +53,7 @@ interface TestSession {
 	clientHostname?: string;
 	authenticated?: boolean;
 	state: SubmissionSessionState;
-	mailFrom?: { address: string };
+	mailFrom?: { address: string; params?: Record<string, string> };
 	rcptTo: Array<{ address: string }>;
 }
 
@@ -106,6 +110,24 @@ async function dataCall(
 		session as never
 	);
 	return { reply: reply as SmtpReply | undefined, queue, receiptRedis };
+}
+
+function acceptingDataHarness() {
+	const receiptRedis = new Redis();
+	const queued = new Map<string, unknown>();
+	const queue = {
+		add: vi.fn(
+			async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+				queued.set(options.jobId!, options);
+			}
+		),
+		getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+	};
+	return {
+		queue,
+		receiptRedis,
+		onData: buildOnData({ queue: queue as never, redis: receiptRedis as never }),
+	};
 }
 
 beforeEach(() => {
@@ -321,7 +343,10 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		const session = makeSession({
 			authenticated: true,
 			state: { auth },
-			mailFrom: { address: 'sender@brand.com' },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'partial-fanout-1' },
+			},
 			rcptTo: [{ address: 'first@example.com' }, { address: 'second@example.net' }],
 		});
 		const message = Buffer.from(baseMime('sender@brand.com', 'ignored@example.org'));
@@ -392,7 +417,10 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		const session = makeSession({
 			authenticated: true,
 			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
-			mailFrom: { address: 'sender@brand.com' },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'lost-response-1' },
+			},
 			rcptTo: [{ address: 'recipient@example.com' }],
 		});
 
@@ -405,25 +433,48 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(queue.add).toHaveBeenCalledOnce();
 	});
 
-	it('deduplicates byte-identical retries but treats changed DATA as a new submission', async () => {
-		const receiptRedis = new Redis();
-		await receiptRedis.flushall();
-		const queued = new Map<string, unknown>();
-		const queue = {
-			add: vi.fn(
-				async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
-					queued.set(options.jobId!, options);
+	it('retries safely after the client-key binding commits but its response is lost', async () => {
+		const { queue, receiptRedis, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'lost-binding-response-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const data = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+		const committedEval = receiptRedis.eval.bind(receiptRedis) as (
+			...args: unknown[]
+		) => Promise<unknown>;
+		let loseResponse = true;
+		const evalSpy = vi
+			.spyOn(receiptRedis, 'eval')
+			.mockImplementation(async (...args: unknown[]) => {
+				const result = await committedEval(...args);
+				if (loseResponse && String(args[0]).includes("local existing = redis.call('GET'")) {
+					loseResponse = false;
+					throw new Error('binding response lost');
 				}
-			),
-			getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
-		};
+				return result;
+			});
+
+		expect(await onData(data, session as never)).toMatchObject({ code: 451 });
+		expect(queue.add).not.toHaveBeenCalled();
+		evalSpy.mockRestore();
+		expect(await onData(data, session as never)).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('deduplicates byte-identical retries but treats changed DATA as a new submission', async () => {
+		const { queue, onData } = acceptingDataHarness();
 		const session = makeSession({
 			authenticated: true,
 			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
 			mailFrom: { address: 'sender@brand.com' },
 			rcptTo: [{ address: 'recipient@example.com' }],
 		});
-		const onData = buildOnData({ queue: queue as never, redis: receiptRedis as never });
 		const original = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
 
 		expect(await onData(original, session as never)).toBeUndefined();
@@ -439,6 +490,112 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 
 		expect(queue.add).toHaveBeenCalledTimes(2);
 		expect(queue.add.mock.calls[0]![0].jobId).not.toBe(queue.add.mock.calls[1]![0].jobId);
+	});
+
+	it('reconciles an identical client-key retry and rejects changed DATA with 554', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: { address: 'sender@brand.com' },
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const original = baseMime('sender@brand.com', 'recipient@example.com').replace(
+			'Subject: hello',
+			'Subject: hello\r\nX-Owlat-Idempotency-Key: client-transaction-1'
+		);
+
+		expect(await onData(Buffer.from(original), session as never)).toBeUndefined();
+		expect(await onData(Buffer.from(original), session as never)).toBeUndefined();
+		expect(
+			await onData(Buffer.from(original.replace('body text', 'retry')), session as never)
+		).toMatchObject({ code: 554, enhanced: '5.5.4' });
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('rejects reuse of a client key with a different envelope sender', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'sender-binding-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const data = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(data, session as never)).toBeUndefined();
+		session.mailFrom!.address = 'other@brand.com';
+		expect(await onData(data, session as never)).toMatchObject({
+			code: 554,
+			enhanced: '5.5.4',
+		});
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('allows intentional byte-identical sends when the client changes transaction identity', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'intentional-send-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const identicalData = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(identicalData, session as never)).toBeUndefined();
+		session.mailFrom!.params![SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER] = 'intentional-send-2';
+		expect(await onData(identicalData, session as never)).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(queue.add.mock.calls[0]![0].jobId).not.toBe(queue.add.mock.calls[1]![0].jobId);
+	});
+
+	it('allows intentional byte-identical sends with transaction-scoped deduplication disabled', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_DEDUPLICATION_MAIL_PARAMETER]: 'OFF' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const identicalData = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(identicalData, session as never)).toBeUndefined();
+		expect(await onData(identicalData, session as never)).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(queue.add.mock.calls[0]![0].jobId).not.toBe(queue.add.mock.calls[1]![0].jobId);
+	});
+
+	it('rejects conflicting transaction identity and deduplication controls before enqueue', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: {
+					[SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'conflict-1',
+					[SUBMISSION_DEDUPLICATION_MAIL_PARAMETER]: 'OFF',
+				},
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+
+		expect(
+			await onData(
+				Buffer.from(baseMime('sender@brand.com', 'recipient@example.com')),
+				session as never
+			)
+		).toMatchObject({ code: 554, enhanced: '5.5.4' });
+		expect(queue.add).not.toHaveBeenCalled();
 	});
 
 	// RFC 2046 §5.1.4: the AMP alternative must survive submission. `parseMessage`
@@ -933,6 +1090,8 @@ describe('submission TLS gate — wire-level', () => {
 			expect(ehlo).toMatch(/250[ -]/);
 			// STARTTLS must be advertised since we connect over plaintext.
 			expect(ehlo).toMatch(/STARTTLS/);
+			expect(ehlo).toMatch(/\bXOWLATID\b/);
+			expect(ehlo).toMatch(/\bXOWLATDEDUP\b/);
 
 			// AUTH PLAIN with the CORRECT master key — but BEFORE STARTTLS. The
 			// listener must refuse it with 530 (encryption required) and never run

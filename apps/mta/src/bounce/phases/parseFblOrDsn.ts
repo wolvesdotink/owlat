@@ -36,11 +36,15 @@ export const parseFblOrDsnPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 		const arfResult = tryParseARF(parsed, reportParts);
 		if (arfResult) {
 			const dedupKey = generateDedupKey(parsed, arfResult.originalMessageId);
-			const dedup = await reserveComplaint(deps.redis, dedupKey);
-			if (dedup.kind === 'completed') {
+			const dedup = await reserveComplaint(deps.redis, dedupKey, deps.config.fblDedupProtocol);
+			if (dedup.kind === 'completed' || dedup.kind === 'legacy-occupied') {
 				logger.info(
-					{ messageId: arfResult.originalMessageId, dedupKey },
-					'Duplicate FBL complaint skipped'
+					{
+						messageId: arfResult.originalMessageId,
+						dedupKey,
+						dedupState: dedup.kind,
+					},
+					'Occupied FBL complaint skipped'
 				);
 				return { kind: 'dropSilently', reason: 'duplicate_fbl_complaint' };
 			}

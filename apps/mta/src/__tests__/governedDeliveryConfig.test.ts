@@ -10,7 +10,9 @@ const optionalEnv =
 describe('loadGovernedDeliveryConfig', () => {
 	it('loads the governed retry and DLQ defaults together', () => {
 		expect(loadGovernedDeliveryConfig(optionalEnv({}))).toEqual({
+			fblDedupProtocol: 'legacy-shadow',
 			maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+			smtpOutcomeJournalMaxSize: 10_000,
 			webhookDlqMaxSize: 10_000,
 		});
 	});
@@ -18,9 +20,19 @@ describe('loadGovernedDeliveryConfig', () => {
 	it('loads explicit retry and DLQ bounds', () => {
 		expect(
 			loadGovernedDeliveryConfig(
-				optionalEnv({ MAX_MESSAGE_AGE_MS: '3600000', WEBHOOK_DLQ_MAX_SIZE: '250' })
+				optionalEnv({
+					FBL_DEDUP_PROTOCOL: 'owned-v2',
+					MAX_MESSAGE_AGE_MS: '3600000',
+					SMTP_OUTCOME_JOURNAL_MAX_SIZE: '500',
+					WEBHOOK_DLQ_MAX_SIZE: '250',
+				})
 			)
-		).toEqual({ maxMessageAgeMs: 3_600_000, webhookDlqMaxSize: 250 });
+		).toEqual({
+			fblDedupProtocol: 'owned-v2',
+			maxMessageAgeMs: 3_600_000,
+			smtpOutcomeJournalMaxSize: 500,
+			webhookDlqMaxSize: 250,
+		});
 	});
 
 	it.each(['0', '-1', 'not-a-number', String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 1)])(
@@ -40,4 +52,19 @@ describe('loadGovernedDeliveryConfig', () => {
 			).toThrow('WEBHOOK_DLQ_MAX_SIZE must be an integer');
 		}
 	);
+
+	it.each(['0', '-1', 'NaN', '1.5', '1000001', '12entries'])(
+		'rejects an unsafe SMTP outcome journal maximum of %s at boot',
+		(value) => {
+			expect(() =>
+				loadGovernedDeliveryConfig(optionalEnv({ SMTP_OUTCOME_JOURNAL_MAX_SIZE: value }))
+			).toThrow('SMTP_OUTCOME_JOURNAL_MAX_SIZE must be an integer');
+		}
+	);
+
+	it('rejects an unknown FBL deduplication protocol at boot', () => {
+		expect(() =>
+			loadGovernedDeliveryConfig(optionalEnv({ FBL_DEDUP_PROTOCOL: 'magic-v3' }))
+		).toThrow('FBL_DEDUP_PROTOCOL must be one of: legacy-shadow, owned-v2');
+	});
 });

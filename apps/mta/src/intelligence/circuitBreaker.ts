@@ -18,29 +18,28 @@
 
 import type Redis from 'ioredis';
 import type { CircuitBreakerState, CircuitState } from '../types.js';
-import { notifyConvex } from '../webhooks/convexNotifier.js';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
+import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
+import {
+	circuitBreakerOutcomesKey,
+	recordCircuitBreakerOutcome,
+} from './circuitBreakerOutcomeStore.js';
+export {
+	COMPLAINT_FAST_THRESHOLD,
+	COMPLAINT_SLOW_THRESHOLD,
+	COOLDOWN_MS,
+	FAST_THRESHOLD,
+	FAST_WINDOW,
+	SLOW_THRESHOLD,
+	SLOW_WINDOW,
+} from './circuitBreakerOutcomeStore.js';
 
 const BREAKER_PREFIX = 'mta:breaker:';
-const OUTCOMES_SUFFIX = ':outcomes';
 const STATE_SUFFIX = ':state';
 
-// Bounce thresholds
-export const FAST_WINDOW = 50; // Check after 50 sends
-export const FAST_THRESHOLD = 0.15; // >15% bounce rate
-export const SLOW_WINDOW = 100; // Check after 100 sends
-export const SLOW_THRESHOLD = 0.08; // >8% bounce rate
-
-// Complaint thresholds — complaints are more damaging than bounces
-// ISPs blocklist on complaint rates far lower than bounce rates
-export const COMPLAINT_FAST_THRESHOLD = 0.04; // >4% complaint rate in last 50 (very early signal)
-export const COMPLAINT_SLOW_THRESHOLD = 0.002; // >0.2% complaint rate in last 100 (industry standard)
-
-export const COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 export const EXTENDED_COOLDOWN_MS = 60 * 60 * 1000; // 60 minutes
 export const HALF_OPEN_LIMIT = 5; // Test sends in half-open
-const OUTCOME_TTL = 6 * 3600; // 6h TTL for outcome data
 const PROBE_TTL_MS = 15 * 60 * 1000;
 
 const RESERVE_PROBE_LUA = `
@@ -227,7 +226,7 @@ export async function canSendScope(
 				// All test sends delivered — close circuit
 				const generation = Number(stateData['generation'] ?? 0) + 1;
 				await redis.hset(stateKey, 'status', 'closed', 'generation', String(generation));
-				await redis.del(breakerOutcomesKey(orgId, provider));
+				await redis.del(circuitBreakerOutcomesKey(breakerScope(orgId, provider)));
 				logger.info({ orgId }, 'Circuit breaker closed (recovered)');
 				return {
 					allowed: true,
@@ -290,10 +289,6 @@ export async function isRelayAllowedByGlobalBreaker(redis: Redis, orgId: string)
 	return Number(await redis.eval(GLOBAL_RELAY_CLOSED_LUA, 1, breakerStateKey(orgId))) === 1;
 }
 
-function breakerOutcomesKey(orgId: string, provider?: string): string {
-	return `${BREAKER_PREFIX}{${breakerScope(orgId, provider)}}${OUTCOMES_SUFFIX}`;
-}
-
 function breakerProbesKey(orgId: string, provider?: string): string {
 	return `${BREAKER_PREFIX}{${breakerScope(orgId, provider)}}:probes`;
 }
@@ -311,7 +306,8 @@ export async function recordOutcome(
 	outcome: 'delivered' | 'bounced' | 'complained',
 	config?: MtaConfig,
 	provider?: string,
-	probeReceipt?: { messageId: string; globalGeneration?: number; providerGeneration?: number }
+	probeReceipt?: { messageId: string; globalGeneration?: number; providerGeneration?: number },
+	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<void> {
 	if (provider) {
 		// Provider-local history powers selective relay fallback, while the
@@ -327,7 +323,15 @@ export async function recordOutcome(
 				probeReceipt.providerGeneration,
 				outcome
 			);
-		} else await recordScopedOutcome(redis, orgId, outcome, undefined, provider);
+		} else
+			await recordCircuitBreakerOutcome(
+				redis,
+				breakerScope(orgId, provider),
+				orgId,
+				outcome,
+				undefined,
+				idempotencyIdentity
+			);
 		if (probeReceipt?.globalGeneration !== undefined) {
 			await consumeHalfOpenProbe(
 				redis,
@@ -337,7 +341,8 @@ export async function recordOutcome(
 				probeReceipt.globalGeneration,
 				outcome
 			);
-		} else await recordScopedOutcome(redis, orgId, outcome, config);
+		} else
+			await recordCircuitBreakerOutcome(redis, orgId, orgId, outcome, config, idempotencyIdentity);
 		return;
 	}
 	if (probeReceipt?.globalGeneration !== undefined) {
@@ -351,125 +356,7 @@ export async function recordOutcome(
 		);
 		return;
 	}
-	await recordScopedOutcome(redis, orgId, outcome, config);
-}
-
-async function recordScopedOutcome(
-	redis: Redis,
-	orgId: string,
-	outcome: 'delivered' | 'bounced' | 'complained',
-	config?: MtaConfig,
-	provider?: string
-): Promise<void> {
-	const outcomesKey = breakerOutcomesKey(orgId, provider);
-	const stateKey = breakerStateKey(orgId, provider);
-
-	const marker = outcome === 'bounced' ? 'b' : outcome === 'complained' ? 'c' : 'd';
-
-	// Get current state
-	const currentStatus = await redis.hget(stateKey, 'status');
-
-	// Handle half-open state tracking
-	if (currentStatus === 'half-open') return;
-
-	// Normal tracking: add to ring buffer
-	await redis.lpush(outcomesKey, marker);
-	await redis.ltrim(outcomesKey, 0, SLOW_WINDOW - 1);
-	await redis.expire(outcomesKey, OUTCOME_TTL);
-
-	// Only check thresholds if we're closed
-	if (currentStatus === 'open') return;
-
-	// Check thresholds
-	const outcomes = await redis.lrange(outcomesKey, 0, SLOW_WINDOW - 1);
-	const total = outcomes.length;
-	const bounces = outcomes.filter((o) => o === 'b').length;
-	const complaints = outcomes.filter((o) => o === 'c').length;
-
-	let shouldTrip = false;
-	let reason = '';
-
-	// ── Bounce rate checks ──
-
-	if (total >= FAST_WINDOW) {
-		const recentBounces = outcomes.slice(0, FAST_WINDOW).filter((o) => o === 'b').length;
-		const recentRate = recentBounces / FAST_WINDOW;
-		if (recentRate > FAST_THRESHOLD) {
-			shouldTrip = true;
-			reason = `Bounce rate ${(recentRate * 100).toFixed(1)}% exceeded ${FAST_THRESHOLD * 100}% threshold in last ${FAST_WINDOW} sends`;
-		}
-	}
-
-	if (!shouldTrip && total >= SLOW_WINDOW) {
-		const bounceRate = bounces / total;
-		if (bounceRate > SLOW_THRESHOLD) {
-			shouldTrip = true;
-			reason = `Bounce rate ${(bounceRate * 100).toFixed(1)}% exceeded ${SLOW_THRESHOLD * 100}% threshold in last ${SLOW_WINDOW} sends`;
-		}
-	}
-
-	// ── Complaint rate checks ──
-	// Complaints are checked with lower thresholds because ISPs (Gmail, Yahoo)
-	// penalize senders at much lower complaint rates (~0.3%) than bounce rates
-
-	if (!shouldTrip && total >= FAST_WINDOW) {
-		const recentComplaints = outcomes.slice(0, FAST_WINDOW).filter((o) => o === 'c').length;
-		const recentRate = recentComplaints / FAST_WINDOW;
-		if (recentRate > COMPLAINT_FAST_THRESHOLD) {
-			shouldTrip = true;
-			reason = `Complaint rate ${(recentRate * 100).toFixed(1)}% exceeded ${COMPLAINT_FAST_THRESHOLD * 100}% threshold in last ${FAST_WINDOW} sends`;
-		}
-	}
-
-	if (!shouldTrip && total >= SLOW_WINDOW) {
-		const complaintRate = complaints / total;
-		if (complaintRate > COMPLAINT_SLOW_THRESHOLD) {
-			shouldTrip = true;
-			reason = `Complaint rate ${(complaintRate * 100).toFixed(2)}% exceeded ${COMPLAINT_SLOW_THRESHOLD * 100}% threshold in last ${SLOW_WINDOW} sends`;
-		}
-	}
-
-	if (shouldTrip) {
-		const now = Date.now();
-		await redis.hset(
-			stateKey,
-			'status',
-			'open',
-			'openedAt',
-			String(now),
-			'cooldownUntil',
-			String(now + COOLDOWN_MS),
-			'tripReason',
-			reason,
-			'generation',
-			String(Number((await redis.hget(stateKey, 'generation')) ?? 0) + 1)
-		);
-		await redis.expire(stateKey, OUTCOME_TTL);
-
-		logger.warn({ orgId, reason }, 'Circuit breaker TRIPPED');
-
-		// Alert Convex
-		if (config) {
-			const bounceRate = bounces / total;
-			const complaintRate = complaints / total;
-			notifyConvex(
-				{
-					event: 'org.circuit_breaker',
-					organizationId: orgId,
-					bounceRate,
-					message: reason,
-					severity: 'critical',
-					timestamp: now,
-				},
-				config,
-				redis
-			).catch((err) =>
-				logger.error({ err, orgId }, 'Failed to notify Convex of circuit breaker trip')
-			);
-
-			logger.info({ orgId, bounceRate, complaintRate, total }, 'Circuit breaker trip details');
-		}
-	}
+	await recordCircuitBreakerOutcome(redis, orgId, orgId, outcome, config, idempotencyIdentity);
 }
 
 /**

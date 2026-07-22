@@ -9,8 +9,8 @@
  * Preserved behavior from the pre-deepening server (`bounce/server.ts`
  * onData):
  * - "Tracking" effects (circuit breaker, FBL stats, metrics counters,
- *   attachment staging, endpoint forwarding) run in parallel via
- *   `Promise.all`.
+ *   attachment staging, endpoint forwarding) start in parallel and all settle
+ *   before a deterministic first failure is surfaced.
  * - Attributed DSN/FBL terminal callbacks persist to the durable outbox before
  *   SMTP ACK. Other inbound callbacks remain fire-and-forget.
  * - `mailbox_quota_bump` is fire-and-forget — matches the original's
@@ -31,9 +31,14 @@ import type { InboundAuthVerdicts, MtaWebhookEvent } from '../types.js';
 import type { InboundRoute } from '../inbound/router.js';
 import type { PhaseDeps } from './types.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
+import { settleStartedEffects } from '../lib/settleStartedEffects.js';
+import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
 
 export interface BounceEffectReplayGuard {
-	runSecondary<T>(effectIdentity: string, apply: () => Promise<T>): Promise<T | undefined>;
+	runSecondary<T>(
+		effectIdentity: string,
+		apply: (downstreamIdentity: DurableEffectIdentity) => Promise<T>
+	): Promise<T | undefined>;
 }
 
 /**
@@ -116,7 +121,7 @@ export class DurableFeedbackPersistenceError extends TransientFeedbackProcessing
  * Apply a list of effects.
  *
  * Effects are partitioned into two buckets:
- * 1. `parallel` — awaited via `Promise.all`.
+ * 1. `parallel` — all started, then settled before the first failure is surfaced.
  * 2. `fireAndForget` — started with attached error handling; not awaited.
  *
  * The partitioning preserves the exact behavior of the pre-deepening
@@ -155,7 +160,7 @@ export async function applyEffects(
 	// Feedback bytes must not be SMTP-ACKed until their attributed terminal
 	// callback is durable. Complete this phase before even starting best-effort
 	// effects so an unrelated rejection cannot mask the typed failure.
-	await Promise.all(durableTerminal);
+	await settleStartedEffects(durableTerminal);
 
 	const parallel: Array<Promise<unknown>> = [];
 	for (const [index, effect] of remaining.entries()) {
@@ -163,12 +168,16 @@ export async function applyEffects(
 			fireAndForget(effect, deps);
 			continue;
 		}
-		const apply = () => applyOne(effect, deps);
+		const apply = (downstreamIdentity?: DurableEffectIdentity) =>
+			applyOne(effect, deps, downstreamIdentity);
 		parallel.push(
 			replayGuard ? replayGuard.runSecondary(`${index}:${effect.kind}`, apply) : apply()
 		);
 	}
-	await Promise.all(parallel);
+	// Do not release or complete the parent complaint reservation while a
+	// sibling still owns a child effect lease. Failures are surfaced only after
+	// every effect that was started has settled, in deterministic input order.
+	await settleStartedEffects(parallel);
 }
 
 function feedbackOutboxIdentity(event: MtaWebhookEvent): string {
@@ -192,10 +201,28 @@ function fireAndForget(
 	bumpUsedBytes(deps.redis, effect.address, effect.deltaBytes).catch(() => undefined);
 }
 
-function applyOne(effect: BounceEffect, deps: PhaseDeps): Promise<unknown> {
+function applyOne(
+	effect: BounceEffect,
+	deps: PhaseDeps,
+	downstreamIdentity?: DurableEffectIdentity
+): Promise<unknown> {
 	switch (effect.kind) {
 		case 'circuit_breaker_outcome':
-			return circuitBreaker.recordOutcome(deps.redis, effect.orgId, effect.outcome, deps.config);
+			return retryableComplaintEffect(
+				downstreamIdentity
+					? circuitBreaker.recordOutcome(
+							deps.redis,
+							effect.orgId,
+							effect.outcome,
+							deps.config,
+							undefined,
+							undefined,
+							downstreamIdentity
+						)
+					: circuitBreaker.recordOutcome(deps.redis, effect.orgId, effect.outcome, deps.config),
+				downstreamIdentity,
+				'Circuit-breaker complaint outcome is uncertain'
+			);
 		case 'metric_inc':
 			if (effect.metric === 'fbl_complaint') {
 				metrics.fblComplaintsTotal.inc({ isp: effect.isp, attributed: effect.attributed });
@@ -206,7 +233,7 @@ function applyOne(effect: BounceEffect, deps: PhaseDeps): Promise<unknown> {
 			}
 			return Promise.resolve();
 		case 'campaign_complaint_record':
-			return recordCampaignComplaint(effect, deps);
+			return recordCampaignComplaint(effect, deps, downstreamIdentity);
 		case 'fbl_stats_record': {
 			const today = new Date().toISOString().split('T')[0];
 			return deps.redis.hincrby(`mta:fbl-stats:${today}`, 'total', 1).catch(() => {
@@ -232,18 +259,27 @@ function applyOne(effect: BounceEffect, deps: PhaseDeps): Promise<unknown> {
 /**
  * Record a complaint against the campaign's rolling rate window. When the
  * complaint pushes the campaign over the 0.3% threshold for the first time, fire
- * a `campaign.complaint_rate` alert to Convex. Both steps are best-effort:
- * Redis or Convex being unavailable must never block the SMTP ACK.
+ * a `campaign.complaint_rate` alert to Convex. Legacy unguarded calls remain
+ * best-effort; guarded complaint replays surface uncertainty so the stable
+ * downstream identity can safely retry the Redis increment and alert outbox.
  */
 async function recordCampaignComplaint(
 	effect: Extract<BounceEffect, { kind: 'campaign_complaint_record' }>,
-	deps: PhaseDeps
+	deps: PhaseDeps,
+	downstreamIdentity?: DurableEffectIdentity
 ): Promise<void> {
 	let result;
 	try {
-		result = await campaignComplaintRate.recordComplaint(deps.redis, effect.campaignId);
+		result = await campaignComplaintRate.recordComplaint(
+			deps.redis,
+			effect.campaignId,
+			downstreamIdentity
+		);
 	} catch (err) {
 		logger.warn({ err, campaignId: effect.campaignId }, 'Failed to record campaign complaint');
+		if (downstreamIdentity) {
+			throw new TransientFeedbackProcessingError('Campaign complaint outcome is uncertain', err);
+		}
 		return;
 	}
 
@@ -260,22 +296,48 @@ async function recordCampaignComplaint(
 		'Campaign complaint rate exceeded threshold'
 	);
 
-	notifyConvex(
-		{
-			event: 'campaign.complaint_rate',
-			campaignId: effect.campaignId,
-			organizationId: effect.organizationId,
-			complaintRate: result.rate,
-			message: `Campaign complaint rate ${ratePct}% exceeded ${(campaignComplaintRate.CAMPAIGN_COMPLAINT_THRESHOLD * 100).toFixed(1)}% threshold (${result.complaints}/${result.delivered})`,
-			severity: 'critical',
-			timestamp: Date.now(),
-		},
-		deps.config,
-		deps.redis
-	).catch((err) =>
+	const alert: MtaWebhookEvent = {
+		event: 'campaign.complaint_rate',
+		campaignId: effect.campaignId,
+		organizationId: effect.organizationId,
+		complaintRate: result.rate,
+		message: `Campaign complaint rate ${ratePct}% exceeded ${(campaignComplaintRate.CAMPAIGN_COMPLAINT_THRESHOLD * 100).toFixed(1)}% threshold (${result.complaints}/${result.delivered})`,
+		severity: 'critical',
+		timestamp: Date.now(),
+	};
+	if (downstreamIdentity) {
+		try {
+			await queueConvexWebhook(
+				alert,
+				deps.config,
+				deps.redis,
+				`campaign-complaint-alert:${downstreamIdentity}`
+			);
+		} catch (err) {
+			throw new TransientFeedbackProcessingError(
+				'Campaign complaint alert persistence is uncertain',
+				err
+			);
+		}
+		return;
+	}
+	notifyConvex(alert, deps.config, deps.redis).catch((err) =>
 		logger.error(
 			{ err, campaignId: effect.campaignId },
 			'Failed to alert Convex of campaign complaint rate'
 		)
 	);
+}
+
+async function retryableComplaintEffect<T>(
+	operation: Promise<T>,
+	downstreamIdentity: DurableEffectIdentity | undefined,
+	message: string
+): Promise<T> {
+	try {
+		return await operation;
+	} catch (error) {
+		if (downstreamIdentity) throw new TransientFeedbackProcessingError(message, error);
+		throw error;
+	}
 }

@@ -8,7 +8,8 @@
  *
  * Preserved behavior from the pre-deepening handler:
  * - "Tracking" effects (domain throttle, smtp response, circuit breaker,
- *   warming, metrics, domain failure) run in parallel via `Promise.all`.
+ *   warming, metrics, domain failure) start in parallel and all settle before
+ *   a deterministic first failure is surfaced.
  * - delivery logging stays fire-and-forget. Terminal Convex callbacks are
  *   synchronously persisted to the Redis outbox, while their network delivery
  *   continues under an owner-fenced background claim.
@@ -35,6 +36,8 @@ import type { SuppressionReason } from '../intelligence/suppressionList.js';
 import { logger } from '../monitoring/logger.js';
 import type { PhaseDeps } from './types.js';
 import type { WarmingReservation } from '../intelligence/warming.js';
+import { settleStartedEffects } from '../lib/settleStartedEffects.js';
+import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
 
 /**
  * Discriminated union of MTA dispatch effects.
@@ -93,14 +96,17 @@ export type DispatchEffect =
 
 export interface DispatchEffectReplayGuard {
 	/** Apply an effect and checkpoint it only after it resolves successfully. */
-	runSecondary<T>(effectIdentity: string, apply: () => Promise<T>): Promise<T | undefined>;
+	runSecondary<T>(
+		effectIdentity: string,
+		apply: (downstreamIdentity: DurableEffectIdentity) => Promise<T>
+	): Promise<T | undefined>;
 }
 
 /**
  * Apply a list of effects.
  *
  * Effects are partitioned into three buckets:
- * 1. `parallel` — awaited via `Promise.all`.
+ * 1. `parallel` — all started, then settled before the first failure is surfaced.
  * 2. `fireAndForget` — started with attached error handling; not awaited.
  * 3. `sequential` — awaited after the parallel batch resolves.
  *
@@ -135,7 +141,7 @@ export async function applyEffects(
 	// Critical ownership transfer is deterministic and retry-safe. Persist it
 	// before claiming any at-most-once secondary effect, so an outbox outage
 	// cannot consume those claims without making the terminal callback durable.
-	await Promise.all(terminal);
+	await settleStartedEffects(terminal);
 
 	for (const [index, effect] of effects.entries()) {
 		if (effect.kind === 'notify_convex') continue;
@@ -146,7 +152,7 @@ export async function applyEffects(
 		parallel.push(applySecondary(effect, index, deps, replayGuard));
 	}
 
-	await Promise.all(parallel);
+	await settleStartedEffects(parallel);
 
 	for (const effect of sequential) {
 		await applyOne(effect, deps);
@@ -159,12 +165,12 @@ async function applySecondary(
 	deps: PhaseDeps,
 	replayGuard: DispatchEffectReplayGuard | undefined
 ): Promise<unknown> {
-	const apply = async () => {
+	const apply = async (downstreamIdentity?: DurableEffectIdentity) => {
 		if (effect.kind === 'log_delivery_event') {
 			await logDeliveryEvent(deps.redis, effect.event, deps.config);
 			return;
 		}
-		return applyOne(effect, deps);
+		return applyOne(effect, deps, downstreamIdentity);
 	};
 	if (replayGuard) return replayGuard.runSecondary(`${index}:${effect.kind}`, apply);
 	if (effect.kind === 'log_delivery_event') {
@@ -181,7 +187,11 @@ function fireAndForget(
 	logDeliveryEvent(deps.redis, effect.event, deps.config).catch(() => {});
 }
 
-function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
+function applyOne(
+	effect: DispatchEffect,
+	deps: PhaseDeps,
+	downstreamIdentity?: DurableEffectIdentity
+): Promise<unknown> {
 	switch (effect.kind) {
 		case 'domain_throttle_success':
 			return domainThrottle.recordSuccess(
@@ -207,16 +217,7 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 				effect.enhancedCode
 			);
 		case 'circuit_breaker_outcome':
-			return effect.providerKey
-				? circuitBreaker.recordOutcome(
-						deps.redis,
-						effect.orgId,
-						effect.outcome,
-						deps.config,
-						effect.providerKey,
-						effect.probeReceipt
-					)
-				: circuitBreaker.recordOutcome(deps.redis, effect.orgId, effect.outcome, deps.config);
+			return recordCircuitBreakerEffect(effect, deps, downstreamIdentity);
 		case 'campaign_delivery_record':
 			return campaignComplaintRate
 				.recordDelivery(deps.redis, effect.campaignId)
@@ -257,4 +258,33 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 		case 'notify_convex':
 			return Promise.resolve();
 	}
+}
+
+function recordCircuitBreakerEffect(
+	effect: Extract<DispatchEffect, { kind: 'circuit_breaker_outcome' }>,
+	deps: PhaseDeps,
+	downstreamIdentity?: DurableEffectIdentity
+): Promise<void> {
+	if (downstreamIdentity) {
+		return circuitBreaker.recordOutcome(
+			deps.redis,
+			effect.orgId,
+			effect.outcome,
+			deps.config,
+			effect.providerKey,
+			effect.probeReceipt,
+			downstreamIdentity
+		);
+	}
+	if (effect.providerKey) {
+		return circuitBreaker.recordOutcome(
+			deps.redis,
+			effect.orgId,
+			effect.outcome,
+			deps.config,
+			effect.providerKey,
+			effect.probeReceipt
+		);
+	}
+	return circuitBreaker.recordOutcome(deps.redis, effect.orgId, effect.outcome, deps.config);
 }

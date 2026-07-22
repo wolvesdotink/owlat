@@ -424,6 +424,8 @@ export function applySetupDefaults(
 		// Matches the legacy bash wizard (scripts/setup.sh: http://mta:3100).
 		MTA_API_URL: 'http://mta:3100',
 		MTA_INTERNAL_URL: 'http://mta:3100',
+		SMTP_OUTCOME_JOURNAL_MAX_SIZE: '10000',
+		FBL_DEDUP_PROTOCOL: 'owned-v2',
 		// Dev endpoints (/seed/demo, /dev/reset) are fail-closed unless truthy.
 		// Default ON for local 'dev' installs; production self-host stays closed
 		// (quickstart flips it on only when demo-seeding).

@@ -26,6 +26,7 @@ const RECIPIENT = 'complainer@example.net';
 
 function config(): MtaConfig {
 	return {
+		fblDedupProtocol: 'owned-v2',
 		inboundDkimEnabled: false,
 		inboundDmarcEnabled: false,
 		inboundArcEnabled: false,
@@ -98,9 +99,10 @@ describe('feedback durability through the real bounce pipeline', () => {
 		const smtpSession = session(signedReturnPath);
 
 		expect(await handler(message, smtpSession)).toMatchObject({ code: 451, enhanced: '4.3.0' });
-		expect(await redis.hget(`mta:fbl:dedup:${MESSAGE_ID}`, 'status')).toBe('retryable');
+		const [ownedKey] = await redis.keys('mta:fbl:dedup:v2:*');
+		expect(await redis.hget(ownedKey!, 'status')).toBe('retryable');
 		expect(await handler(message, smtpSession)).toBeUndefined();
-		expect(await redis.hget(`mta:fbl:dedup:${MESSAGE_ID}`, 'status')).toBe('completed');
+		expect(await redis.hget(ownedKey!, 'status')).toBe('completed');
 		expect(await handler(message, smtpSession)).toBeUndefined();
 		expect(mocks.queueConvexWebhook).toHaveBeenCalledTimes(2);
 	});
@@ -125,7 +127,8 @@ describe('feedback durability through the real bounce pipeline', () => {
 			code: 451,
 			enhanced: '4.3.0',
 		});
-		expect(await redis.hget(`mta:fbl:dedup:${MESSAGE_ID}`, 'status')).toBe('retryable');
+		const [ownedKey] = await redis.keys('mta:fbl:dedup:v2:*');
+		expect(await redis.hget(ownedKey!, 'status')).toBe('retryable');
 		expect(mocks.queueConvexWebhook).not.toHaveBeenCalled();
 	});
 

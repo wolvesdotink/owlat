@@ -20,7 +20,9 @@
  * per-campaign observability alert, so it fires at the published ceiling.
  */
 
+import { createHash } from 'crypto';
 import type Redis from 'ioredis';
+import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
 
 const PREFIX = 'mta:campaign-complaints:';
 const COUNTS_SUFFIX = ':counts';
@@ -37,6 +39,25 @@ export const CAMPAIGN_MIN_DELIVERIES = 100;
 
 /** 30-day TTL — matches the delivery-metrics retention window. */
 const TTL_SECONDS = 30 * 86400;
+
+const RECORD_COMPLAINT_ONCE_LUA = `
+local previous = redis.call('HGET', KEYS[1], ARGV[1])
+if previous then
+  local counts = redis.call('HMGET', KEYS[1], 'complaints', 'delivered')
+  return {counts[1] or '0', counts[2] or '0', previous}
+end
+if ARGV[5] == '1' then redis.call('HSET', KEYS[1], 'alerted', '1') end
+local complaints = redis.call('HINCRBY', KEYS[1], 'complaints', 1)
+local delivered = tonumber(redis.call('HGET', KEYS[1], 'delivered') or '0')
+local crossing = 'recorded'
+if delivered >= tonumber(ARGV[3]) and complaints / math.max(delivered, 1) > tonumber(ARGV[4]) then
+  if redis.call('HSETNX', KEYS[1], 'alerted', '1') == 1 then crossing = 'crossed' end
+end
+redis.call('HSET', KEYS[1], ARGV[1], crossing)
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+local counts = redis.call('HMGET', KEYS[1], 'complaints', 'delivered')
+return {counts[1] or '0', counts[2] or '0', crossing}
+`;
 
 /**
  * Convex document-id shape: lowercase base32-ish alphanumeric, ~32 chars. We
@@ -91,13 +112,41 @@ export async function recordDelivery(redis: Redis, campaignId: string, count = 1
 export async function recordComplaint(
 	redis: Redis,
 	campaignId: string,
+	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<CampaignComplaintResult> {
 	const key = countsKey(campaignId);
-	const complaints = await redis.hincrby(key, 'complaints', 1);
-	await redis.expire(key, TTL_SECONDS);
-
-	const deliveredRaw = await redis.hget(key, 'delivered');
-	const delivered = deliveredRaw ? parseInt(deliveredRaw, 10) : 0;
+	let complaints: number;
+	let delivered: number;
+	if (idempotencyIdentity) {
+		const identityField = `effect:${createHash('sha256')
+			.update(idempotencyIdentity)
+			.digest('hex')}`;
+		const legacyAlerted = await redis.exists(alertedKey(campaignId));
+		const counts = (await redis.eval(
+			RECORD_COMPLAINT_ONCE_LUA,
+			1,
+			key,
+			identityField,
+			String(TTL_SECONDS),
+			String(CAMPAIGN_MIN_DELIVERIES),
+			String(CAMPAIGN_COMPLAINT_THRESHOLD),
+			String(legacyAlerted)
+		)) as [string, string, 'crossed' | 'recorded'];
+		complaints = Number(counts[0]);
+		delivered = Number(counts[1]);
+		return {
+			complaints,
+			delivered,
+			rate: complaints / Math.max(delivered, 1),
+			thresholdCrossed: counts[2] === 'crossed',
+		};
+	} else {
+		// Compatibility for callers that do not yet own a durable effect identity.
+		complaints = await redis.hincrby(key, 'complaints', 1);
+		await redis.expire(key, TTL_SECONDS);
+		const deliveredRaw = await redis.hget(key, 'delivered');
+		delivered = deliveredRaw ? parseInt(deliveredRaw, 10) : 0;
+	}
 
 	const rate = complaints / Math.max(delivered, 1);
 
@@ -149,7 +198,7 @@ export function parseCampaignFromFeedbackId(value: string | undefined): string |
 /** Read the current per-campaign complaint stats (for monitoring / tests). */
 export async function getStats(
 	redis: Redis,
-	campaignId: string,
+	campaignId: string
 ): Promise<{ complaints: number; delivered: number; rate: number }> {
 	const data = await redis.hgetall(countsKey(campaignId));
 	const complaints = data['complaints'] ? parseInt(data['complaints'], 10) : 0;

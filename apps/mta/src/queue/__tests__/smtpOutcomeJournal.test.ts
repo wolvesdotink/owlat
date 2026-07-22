@@ -130,7 +130,7 @@ describe('SMTP outcome journal', () => {
 			await runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record', apply)
 		).toBeUndefined();
 		expect(apply).toHaveBeenCalledOnce();
-		expect(await redis.pttl(smtpOutcomeJournalKeys.effectClaimsKey('job-1'))).toBeGreaterThan(
+		expect(await redis.pttl(smtpOutcomeJournalKeys.effectCheckpointsKey('job-1'))).toBeGreaterThan(
 			GOVERNED_MTA_MAX_MESSAGE_AGE_MS
 		);
 	});
@@ -161,14 +161,15 @@ describe('SMTP outcome journal', () => {
 
 		await expect(
 			runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record', apply, {
-				leaseMs: 5,
+				leaseMs: 50,
 				waitMs: 1,
 			})
 		).rejects.toThrow('Effect checkpoint could not be started');
 		expect(apply).not.toHaveBeenCalled();
 		evalSpy.mockRestore();
+		await new Promise((resolve) => setTimeout(resolve, 55));
 		await runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record', apply, {
-			leaseMs: 5,
+			leaseMs: 1000,
 			waitMs: 1,
 		});
 		expect(apply).toHaveBeenCalledOnce();
@@ -191,7 +192,7 @@ describe('SMTP outcome journal', () => {
 			{ now: 142 }
 		);
 		await redis.hset(
-			smtpOutcomeJournalKeys.effectClaimsKey('job-1'),
+			smtpOutcomeJournalKeys.effectCheckpointsKey('job-1'),
 			'0:domain_throttle_success',
 			`pending:crashed-worker:${Date.now() - 1}`
 		);
@@ -208,7 +209,7 @@ describe('SMTP outcome journal', () => {
 
 		const invalidExpiryApply = vi.fn().mockResolvedValue(undefined);
 		await redis.hset(
-			smtpOutcomeJournalKeys.effectClaimsKey('job-1'),
+			smtpOutcomeJournalKeys.effectCheckpointsKey('job-1'),
 			'1:smtp_response',
 			'pending:forged-worker:Infinity'
 		);
@@ -268,6 +269,99 @@ describe('SMTP outcome journal', () => {
 		finishFirst();
 		await Promise.all([first, contender]);
 		expect(apply).toHaveBeenCalledOnce();
+	});
+
+	it('recovers after one transient heartbeat renewal failure', async () => {
+		const fresh = await reserveSmtpOutcome(
+			redis,
+			'job-renew',
+			'message-renew',
+			attempt('message-renew'),
+			{
+				now: 100,
+				capacity: 10,
+			}
+		);
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		const completed = await finalizeSmtpOutcome(
+			redis,
+			fresh.entry,
+			fresh.raw,
+			{ success: true, smtpCode: 250 },
+			42,
+			deliveredOutcome,
+			deliveredReduction,
+			{ now: 142 }
+		);
+		const originalEval = redis.eval.bind(redis);
+		let renewalCalls = 0;
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			const script = String(args[0]);
+			const isRenewal = script.includes(
+				'pendingEffectLease(ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]))'
+			);
+			if (isRenewal && renewalCalls++ === 0) throw new Error('transient renewal outage');
+			return (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+		});
+		const apply = vi.fn(async () => new Promise((resolve) => setTimeout(resolve, 110)));
+
+		await expect(
+			runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:renew-recovery', apply, {
+				leaseMs: 90,
+				waitMs: 1,
+			})
+		).resolves.toBeUndefined();
+		expect(renewalCalls).toBeGreaterThanOrEqual(2);
+		evalSpy.mockRestore();
+	});
+
+	it('completes when a heartbeat renewal committed but its response was lost', async () => {
+		const fresh = await reserveSmtpOutcome(
+			redis,
+			'job-lost-renew',
+			'message-lost-renew',
+			attempt('message-lost-renew'),
+			{
+				now: 100,
+				capacity: 10,
+			}
+		);
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		const completed = await finalizeSmtpOutcome(
+			redis,
+			fresh.entry,
+			fresh.raw,
+			{ success: true, smtpCode: 250 },
+			42,
+			deliveredOutcome,
+			deliveredReduction,
+			{ now: 142 }
+		);
+		const originalEval = redis.eval.bind(redis);
+		let lost = false;
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+			if (
+				!lost &&
+				String(args[0]).includes(
+					'pendingEffectLease(ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]))'
+				)
+			) {
+				lost = true;
+				throw new Error('renewal response lost');
+			}
+			return result;
+		});
+		const apply = vi.fn(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+
+		await expect(
+			runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:lost-renewal', apply, {
+				leaseMs: 90,
+				waitMs: 1,
+			})
+		).resolves.toBeUndefined();
+		expect(lost).toBe(true);
+		evalSpy.mockRestore();
 	});
 
 	it('retries a secondary effect after the effect rejects', async () => {

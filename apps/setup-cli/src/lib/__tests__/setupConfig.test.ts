@@ -297,6 +297,8 @@ describe('buildSetupFromConfig', () => {
 		expect(out.env['SITE_URL']).toBe('http://localhost:3000');
 		expect(out.env['CONVEX_SITE_URL']).toBe('http://localhost:3211');
 		expect(out.env['EMAIL_PROVIDER']).toBe('mta');
+		expect(out.env['SMTP_OUTCOME_JOURNAL_MAX_SIZE']).toBe('10000');
+		expect(out.env['FBL_DEDUP_PROTOCOL']).toBe('owned-v2');
 		expect(out.admin).toEqual(cfg.admin);
 		expect(out.seedDemo).toBe(false);
 		expect(out.hosted).toBe(false);
@@ -459,6 +461,18 @@ describe('applySetupDefaults', () => {
 		const env: Record<string, string> = { MTA_API_URL: 'http://mta.internal:9100' };
 		applySetupDefaults(env, 'selfhost');
 		expect(env['MTA_API_URL']).toBe('http://mta.internal:9100');
+	});
+
+	it('never overrides an operator-supplied SMTP outcome journal capacity', () => {
+		const env: Record<string, string> = { SMTP_OUTCOME_JOURNAL_MAX_SIZE: '25000' };
+		applySetupDefaults(env, 'selfhost');
+		expect(env['SMTP_OUTCOME_JOURNAL_MAX_SIZE']).toBe('25000');
+	});
+
+	it('never overrides an operator-supplied FBL migration mode', () => {
+		const env: Record<string, string> = { FBL_DEDUP_PROTOCOL: 'legacy-shadow' };
+		applySetupDefaults(env, 'selfhost');
+		expect(env['FBL_DEDUP_PROTOCOL']).toBe('legacy-shadow');
 	});
 
 	it('opens dev mode for dev', () => {

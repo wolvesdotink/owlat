@@ -1,7 +1,8 @@
 /**
- * ARGV[6..9] describe the existing row as observed by parseDlqEntry. The script
+ * ARGV[6..10] describe the existing row as observed by parseDlqEntry. The script
  * compares the exact raw value before trusting that observation, keeping row
- * validation, index repair, and the attempts sidecar update in one transition.
+ * validation, quarantine or index repair, and the attempts sidecar update in
+ * one transition.
  */
 export const STORE_LUA = `
 local id = ARGV[1]
@@ -10,6 +11,13 @@ local inserted = 0
 if existing then
   if ARGV[5] ~= '1' then return 0 end
   if ARGV[6] ~= '1' or existing ~= ARGV[7] then return -4 end
+  if ARGV[10] == '1' then
+    redis.call('HDEL', KEYS[1], id, 'attempts:' .. id, 'claim:' .. id, 'claim-expiry:' .. id, 'version:' .. id)
+    redis.call('ZREM', KEYS[2], id)
+    redis.call('ZREM', KEYS[3], id)
+    redis.call('SREM', KEYS[4], id)
+    return -5
+  end
   if ARGV[8] ~= '1' then
     if redis.call('HEXISTS', KEYS[1], 'claim:' .. id) == 1 then return -3 end
     redis.call('HSET', KEYS[1], id, ARGV[2], 'attempts:' .. id, '0')

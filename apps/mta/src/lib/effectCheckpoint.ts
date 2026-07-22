@@ -1,52 +1,73 @@
 /** Durable checkpoints for replaying side effects after an owned operation. */
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 
-const BEGIN_EFFECT_LUA = `
+/** Shared lease-state transitions; storage/parent ownership remain adapter-specific. */
+export const EFFECT_LEASE_LUA_FUNCTIONS = `
+local function parsePendingEffectLease(state)
+  local _, _, token, expiresAt = string.find(state or '', '^pending:([^:]+):([%d%.]+)$')
+  return token, tonumber(expiresAt)
+end
+local function inspectEffectLease(state, token, now)
+  if state == 'applied' then return 0, nil end
+  local pendingToken, expiresAt = parsePendingEffectLease(state)
+  if pendingToken and expiresAt and expiresAt > 0 and expiresAt > now then
+    if pendingToken == token then return 1, expiresAt end
+    return 2, expiresAt
+  end
+  return 3, nil
+end
+local function ownsCurrentEffectLease(state, token, now)
+  local pendingToken, expiresAt = parsePendingEffectLease(state)
+  return pendingToken == token and expiresAt and expiresAt > 0 and expiresAt > now
+end
+local function ownsEffectLeaseToken(state, token)
+  local pendingToken, _ = parsePendingEffectLease(state)
+  return pendingToken == token
+end
+local function pendingEffectLease(token, now, leaseMs)
+  local expiresAt = now + leaseMs
+  return 'pending:' .. token .. ':' .. expiresAt, expiresAt
+end
+`;
+
+const BEGIN_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 local state = redis.call('HGET', KEYS[2], ARGV[2])
-if state == 'applied' then return {0, ''} end
-if state then
-  local _, _, pendingToken, expiresAt = string.find(state, '^pending:([^:]+):([%d%.]+)$')
-  local parsedExpiry = tonumber(expiresAt)
-  if pendingToken and parsedExpiry and parsedExpiry > 0 and parsedExpiry > tonumber(ARGV[4]) then
-    if pendingToken == ARGV[5] then return {1, expiresAt} end
-    return {2, expiresAt}
-  end
-end
-local expiresAt = tonumber(ARGV[4]) + tonumber(ARGV[6])
-redis.call('HSET', KEYS[2], ARGV[2], 'pending:' .. ARGV[5] .. ':' .. expiresAt)
+local disposition, currentExpiry = inspectEffectLease(state, ARGV[5], tonumber(ARGV[4]))
+if disposition == 0 then return {0, ''} end
+if disposition == 1 then return {1, tostring(currentExpiry)} end
+if disposition == 2 then return {2, tostring(currentExpiry)} end
+local pendingState, expiresAt = pendingEffectLease(ARGV[5], tonumber(ARGV[4]), tonumber(ARGV[6]))
+redis.call('HSET', KEYS[2], ARGV[2], pendingState)
 redis.call('PEXPIRE', KEYS[2], ARGV[3])
 return {1, tostring(expiresAt)}
 `;
 
-const RENEW_EFFECT_LUA = `
+const RENEW_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 local state = redis.call('HGET', KEYS[2], ARGV[2])
-local _, _, pendingToken = string.find(state or '', '^pending:([^:]+):[%d%.]+$')
-if pendingToken ~= ARGV[4] then return -1 end
-local expiresAt = tonumber(ARGV[5]) + tonumber(ARGV[6])
-redis.call('HSET', KEYS[2], ARGV[2], 'pending:' .. ARGV[4] .. ':' .. expiresAt)
+if not ownsCurrentEffectLease(state, ARGV[4], tonumber(ARGV[5])) then return -1 end
+local pendingState, expiresAt = pendingEffectLease(ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]))
+redis.call('HSET', KEYS[2], ARGV[2], pendingState)
 redis.call('PEXPIRE', KEYS[2], ARGV[3])
 return expiresAt
 `;
 
-const COMPLETE_EFFECT_LUA = `
+const COMPLETE_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 local state = redis.call('HGET', KEYS[2], ARGV[2])
-local _, _, pendingToken = string.find(state or '', '^pending:([^:]+):[%d%.]+$')
-if pendingToken ~= ARGV[4] then return -1 end
+if not ownsCurrentEffectLease(state, ARGV[4], tonumber(ARGV[5])) then return -1 end
 redis.call('HSET', KEYS[2], ARGV[2], 'applied')
 redis.call('PEXPIRE', KEYS[2], ARGV[3])
 return 1
 `;
 
-const RELEASE_EFFECT_LUA = `
+const RELEASE_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
 local state = redis.call('HGET', KEYS[2], ARGV[2])
-local _, _, pendingToken = string.find(state or '', '^pending:([^:]+):[%d%.]+$')
-if pendingToken ~= ARGV[4] then return -1 end
+if not ownsEffectLeaseToken(state, ARGV[4]) then return -1 end
 redis.call('HDEL', KEYS[2], ARGV[2])
 redis.call('PEXPIRE', KEYS[2], ARGV[3])
 return 1
@@ -54,12 +75,16 @@ return 1
 
 const DEFAULT_EFFECT_LEASE_MS = 60_000;
 const DEFAULT_EFFECT_WAIT_MS = 50;
+/** Longest parent replay horizon (FBL complaint deduplication: seven days). */
+export const DURABLE_EFFECT_IDEMPOTENCY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface EffectCheckpointScope {
 	/** Redis string whose exact value proves that this processor still owns the operation. */
 	readonly ownerKey: string;
 	readonly ownerValue: string;
 	readonly checkpointsKey: string;
+	/** Stable parent identity used to derive downstream idempotency keys. */
+	readonly downstreamScope: string;
 	readonly ttlMs: number;
 	readonly leaseMs?: number;
 	readonly waitMs?: number;
@@ -80,13 +105,27 @@ export type EffectLeaseStart =
 export interface EffectLeaseStore {
 	begin(token: string, now: number, leaseMs: number): Promise<EffectLeaseStart>;
 	renew(token: string, now: number, leaseMs: number): Promise<void>;
-	complete(token: string): Promise<void>;
+	complete(token: string, now: number): Promise<void>;
 	release(token: string): Promise<void>;
 }
 
 export interface EffectLeaseOptions {
 	readonly leaseMs?: number;
 	readonly waitMs?: number;
+}
+
+declare const durableEffectIdentityBrand: unique symbol;
+export type DurableEffectIdentity = string & { readonly [durableEffectIdentityBrand]: true };
+
+export function durableEffectIdentity(
+	downstreamScope: string,
+	effectIdentity: string
+): DurableEffectIdentity {
+	return `effect:v1:${createHash('sha256')
+		.update(downstreamScope)
+		.update('\0')
+		.update(effectIdentity)
+		.digest('hex')}` as DurableEffectIdentity;
 }
 
 /**
@@ -103,8 +142,9 @@ export async function runCheckpointedEffect<T>(
 	redis: Redis,
 	scope: EffectCheckpointScope,
 	effectIdentity: string,
-	apply: () => Promise<T>
+	apply: (downstreamIdentity: DurableEffectIdentity) => Promise<T>
 ): Promise<T | undefined> {
+	const downstreamIdentity = durableEffectIdentity(scope.downstreamScope, effectIdentity);
 	return runLeasedEffect(
 		{
 			begin: async (token, now, leaseMs) => {
@@ -149,7 +189,7 @@ export async function runCheckpointedEffect<T>(
 					throw new EffectCheckpointError('Effect checkpoint lease renewal failed', error);
 				}
 			},
-			complete: async (token) => {
+			complete: async (token, now) => {
 				try {
 					const completed = (await redis.eval(
 						COMPLETE_EFFECT_LUA,
@@ -159,7 +199,8 @@ export async function runCheckpointedEffect<T>(
 						scope.ownerValue,
 						effectIdentity,
 						String(scope.ttlMs),
-						token
+						token,
+						String(now)
 					)) as number;
 					if (completed < 0) throw new Error('lease owner changed');
 				} catch (error) {
@@ -184,7 +225,7 @@ export async function runCheckpointedEffect<T>(
 				}
 			},
 		},
-		apply,
+		() => apply(downstreamIdentity),
 		{ leaseMs: scope.leaseMs, waitMs: scope.waitMs }
 	);
 }
@@ -209,14 +250,13 @@ export async function runLeasedEffect<T>(
 	}
 
 	let renewal = Promise.resolve();
-	let renewalError: unknown;
 	const heartbeat = setInterval(
 		() => {
-			renewal = renewal
-				.then(() => store.renew(token, Date.now(), leaseMs))
-				.catch((error) => {
-					renewalError = error;
-				});
+			// A transient renewal failure is not sticky: later heartbeats keep
+			// trying, and the terminal transition validates the lease that exists
+			// at that moment. This also tolerates a lost renewal response whose
+			// Redis write committed.
+			renewal = renewal.then(() => store.renew(token, Date.now(), leaseMs)).catch(() => {});
 		},
 		Math.max(5, Math.floor(leaseMs / 3))
 	);
@@ -226,14 +266,12 @@ export async function runLeasedEffect<T>(
 	} catch (error) {
 		clearInterval(heartbeat);
 		await renewal;
-		if (renewalError) throw renewalError;
 		await store.release(token);
 		throw error;
 	}
 	clearInterval(heartbeat);
 	await renewal;
-	if (renewalError) throw renewalError;
-	await store.complete(token);
+	await store.complete(token, Date.now());
 	return result;
 }
 

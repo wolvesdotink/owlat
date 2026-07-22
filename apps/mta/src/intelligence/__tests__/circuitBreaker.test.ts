@@ -14,6 +14,10 @@ import {
 	EXTENDED_COOLDOWN_MS,
 	HALF_OPEN_LIMIT,
 } from '../circuitBreaker.js';
+import {
+	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
+	durableEffectIdentity,
+} from '../../lib/effectCheckpoint.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -187,6 +191,55 @@ describe('circuitBreaker', () => {
 	});
 
 	describe('recordOutcome', () => {
+		it('appends each durable outcome once in global and provider histories', async () => {
+			const identity = durableEffectIdentity('smtp-job:test', 'circuit-breaker:delivered');
+
+			await recordOutcome(redis, 'org-1', 'delivered', undefined, 'gmail', undefined, identity);
+			await recordOutcome(redis, 'org-1', 'delivered', undefined, 'gmail', undefined, identity);
+
+			expect(await redis.llen('mta:breaker:{org-1}:outcomes')).toBe(1);
+			expect(await redis.llen('mta:breaker:{org-1:provider:gmail}:outcomes')).toBe(1);
+		});
+
+		it('does not append again after Redis commits but its response is lost', async () => {
+			const identity = durableEffectIdentity('smtp-job:test', 'circuit-breaker:bounced');
+			const committedEval = redis.eval.bind(redis) as (...args: unknown[]) => Promise<unknown>;
+			let loseResponse = true;
+			(redis as unknown as { eval: (...args: unknown[]) => Promise<unknown> }).eval = async (
+				...args
+			) => {
+				const result = await committedEval(...args);
+				if (loseResponse && String(args[0]).includes("redis.call('ZADD'")) {
+					loseResponse = false;
+					throw new Error('simulated lost Redis response');
+				}
+				return result;
+			};
+
+			await expect(
+				recordOutcome(redis, 'org-1', 'bounced', undefined, undefined, undefined, identity)
+			).rejects.toThrow('simulated lost Redis response');
+			await recordOutcome(redis, 'org-1', 'bounced', undefined, undefined, undefined, identity);
+
+			expect(await redis.lrange('mta:breaker:{org-1}:outcomes', 0, -1)).toEqual(['b']);
+		});
+
+		it('retains outcome identities beyond the six-hour rolling list horizon', async () => {
+			const original = durableEffectIdentity('smtp-job:test', 'circuit-breaker:original');
+			const traffic = durableEffectIdentity('smtp-job:test', 'circuit-breaker:traffic');
+			await recordOutcome(redis, 'org-1', 'delivered', undefined, undefined, undefined, original);
+			vi.advanceTimersByTime(5 * 60 * 60 * 1000);
+			await recordOutcome(redis, 'org-1', 'delivered', undefined, undefined, undefined, traffic);
+			vi.advanceTimersByTime(2 * 60 * 60 * 1000);
+
+			await recordOutcome(redis, 'org-1', 'delivered', undefined, undefined, undefined, original);
+
+			expect(await redis.llen('mta:breaker:{org-1}:outcomes')).toBe(2);
+			expect(await redis.pttl('mta:breaker:{org-1}:outcome-effects')).toBeGreaterThan(
+				DURABLE_EFFECT_IDEMPOTENCY_TTL_MS - 1000
+			);
+		});
+
 		it('tracks every destination-provider outcome in both local and global history', async () => {
 			for (let i = 0; i < 42; i++) {
 				await recordOutcome(redis, 'org-1', 'delivered', undefined, 'gmail');
