@@ -72,6 +72,12 @@ export interface EmailJob {
 			expiresAt: number;
 		};
 	};
+	/** Authenticated Convex work item for stale pre-network route handoff. */
+	routingReentry?: {
+		sendRef: { kind: 'campaign' | 'transactional'; id: string };
+		envelopeInput: unknown;
+		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+	};
 }
 
 export type IpPoolType = 'transactional' | 'campaign';
@@ -124,6 +130,7 @@ export type MtaWebhookEventType =
 	| 'postmaster.stats'
 	| 'dkim.rotated'
 	| 'inbound.received'
+	| 'routing.reentry'
 	| 'inbound.mailbox.received';
 
 export interface MtaWebhookEvent {
@@ -181,6 +188,8 @@ export interface MtaWebhookEvent {
 	inboundPayload?: InboundEmailPayload;
 	/** Personal-mailbox payload (for inbound.mailbox.received events) */
 	mailboxPayload?: MailboxInboundPayload;
+	/** Original Convex work item for a pre-network routing re-entry. */
+	routingReentry?: EmailJob['routingReentry'];
 	/** Timestamp */
 	timestamp: number;
 }

@@ -18,11 +18,10 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithIp> = {
 		if (reservation?.ip === ctx.ip) {
 			const current = await warming.ensureWarmingReservation(deps.redis, reservation);
 			if (!current.allowed || !current.reservation) {
-				return {
-					kind: 'defer',
-					delayMs: 300_000,
-					reason: `Warming reservation unavailable for IP ${ctx.ip}`,
-				};
+				const reason = `Warming reservation unavailable for IP ${ctx.ip}`;
+				return ctx.job.routingReentry
+					? { kind: 'routing_reentry', reason }
+					: { kind: 'defer', delayMs: 300_000, reason };
 			}
 			return {
 				kind: 'continue',
@@ -44,11 +43,10 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithIp> = {
 				{ ip: ctx.ip, sentToday: warmingCap.sentToday, dailyCap: warmingCap.dailyCap },
 				'Warming cap reached — deferring'
 			);
-			return {
-				kind: 'defer',
-				delayMs: 300_000,
-				reason: `Warming cap reached for IP ${ctx.ip}`,
-			};
+			const reason = `Warming cap reached for IP ${ctx.ip}`;
+			return ctx.job.routingReentry
+				? { kind: 'routing_reentry', reason }
+				: { kind: 'defer', delayMs: 300_000, reason };
 		}
 		return { kind: 'continue', ctx };
 	},

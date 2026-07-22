@@ -19,6 +19,7 @@ import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../securi
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { Id } from '../../_generated/dataModel';
 
 interface MtaWebhookPayload {
 	event: string;
@@ -43,6 +44,7 @@ interface MtaWebhookPayload {
 	userReportedSpamRatio?: number;
 	destinationProvider?: unknown;
 	primarySendingDomain?: string;
+	routingReentry?: unknown;
 	inboundPayload?: {
 		from: string;
 		to: string;
@@ -68,6 +70,41 @@ interface MtaWebhookPayload {
 		dmarcPolicy?: string;
 	};
 	timestamp: number;
+}
+
+function parseRoutingReentry(value: unknown, messageId: string) {
+	if (!isRecord(value) || !isRecord(value['sendRef']) || !isRecord(value['retryState'])) {
+		return null;
+	}
+	const sendRef = value['sendRef'];
+	const retryState = value['retryState'];
+	if (
+		(sendRef['kind'] !== 'campaign' && sendRef['kind'] !== 'transactional') ||
+		typeof sendRef['id'] !== 'string' ||
+		!isRecord(value['envelopeInput']) ||
+		typeof retryState['attempt'] !== 'number' ||
+		!Number.isInteger(retryState['attempt']) ||
+		retryState['attempt'] < 1 ||
+		retryState['attempt'] > 8 ||
+		typeof retryState['startedAt'] !== 'number' ||
+		!Number.isFinite(retryState['startedAt']) ||
+		retryState['idempotencyKey'] !== messageId
+	) {
+		return null;
+	}
+	const ref =
+		sendRef['kind'] === 'campaign'
+			? { kind: 'campaign' as const, id: sendRef['id'] as Id<'emailSends'> }
+			: { kind: 'transactional' as const, id: sendRef['id'] as Id<'transactionalSends'> };
+	return {
+		sendRef: ref,
+		envelopeInput: value['envelopeInput'],
+		retryState: {
+			attempt: retryState['attempt'],
+			startedAt: retryState['startedAt'],
+			idempotencyKey: messageId,
+		},
+	};
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -167,6 +204,17 @@ export const mtaAdapter: InboundAdapter = {
 		const payload = JSON.parse(rawBody) as MtaWebhookPayload;
 
 		switch (payload.event) {
+			case 'routing.reentry': {
+				if (!payload.messageId) return null;
+				const reentry = parseRoutingReentry(payload.routingReentry, payload.messageId);
+				if (!reentry) return null;
+				return {
+					kind: 'internal.routing_reentry',
+					providerMessageId: payload.messageId,
+					reason: payload.message ?? 'accepted MTA route became stale before SMTP',
+					...reentry,
+				};
+			}
 			case 'postmaster.authorize_domain': {
 				if (!payload.domain) return null;
 				return {

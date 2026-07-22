@@ -39,6 +39,7 @@ export interface RoutingLeaseRecord {
 	messageType: DecisionRequest['messageType'];
 	candidateProvider: DecisionRequest['candidateProvider'];
 	ipPool: IpPoolType;
+	allowWarmupOverflow: boolean;
 	destinationProvider: DestinationProviderKey;
 	probe: boolean;
 	globalProbe: boolean;
@@ -64,7 +65,8 @@ export function isRoutingLeaseBoundTo(
 		lease.from === normalizedFrom(request.from) &&
 		lease.messageType === request.messageType &&
 		lease.candidateProvider === request.candidateProvider &&
-		lease.ipPool === request.ipPool
+		lease.ipPool === request.ipPool &&
+		lease.allowWarmupOverflow === request.allowWarmupOverflow
 	);
 }
 
@@ -252,6 +254,7 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			messageType: input.messageType,
 			candidateProvider: input.candidateProvider,
 			ipPool: input.ipPool,
+			allowWarmupOverflow: input.allowWarmupOverflow,
 			destinationProvider: destination.providerKey,
 			probe: providerProbe,
 			globalProbe,

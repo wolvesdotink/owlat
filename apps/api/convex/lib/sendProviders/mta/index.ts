@@ -163,6 +163,8 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			organizationId: extras?.organizationId,
 			messageType: extras?.messageType,
 			routingLease: extras?.routingLease,
+			routingReentry: extras?.routingReentry,
+			allowWarmupOverflow: extras?.allowWarmupOverflow,
 		};
 
 		const normalizedUrl = baseUrl.replace(/\/$/, '');

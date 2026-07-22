@@ -7,6 +7,7 @@
 import type { Validator } from 'convex/values';
 import type { InboundEmailMessage } from '@owlat/channels';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { Id } from '../_generated/dataModel';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
 
@@ -132,6 +133,16 @@ export type InboundEvent =
 			blocklists?: string[];
 			severity?: 'info' | 'warning' | 'critical';
 			message?: string;
+	  }
+	| {
+			kind: 'internal.routing_reentry';
+			providerMessageId: string;
+			reason: string;
+			sendRef:
+				| { kind: 'campaign'; id: Id<'emailSends'> }
+				| { kind: 'transactional'; id: Id<'transactionalSends'> };
+			envelopeInput: unknown;
+			retryState: { attempt: number; startedAt: number; idempotencyKey: string };
 	  }
 	| {
 			kind: 'internal.postmaster_authorize_domain';

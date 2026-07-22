@@ -104,6 +104,14 @@ export interface MtaExtras {
 	messageType?: import('@owlat/shared').GovernedMessageType;
 	intakePath?: 'system';
 	routingLease?: string;
+	/** Durable Convex work item used when an accepted job's route goes stale. */
+	routingReentry?: {
+		sendRef: { kind: 'campaign' | 'transactional'; id: string };
+		envelopeInput: unknown;
+		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+	};
+	/** Decision input bound into the authenticated routing lease. */
+	allowWarmupOverflow?: boolean;
 }
 
 export type SesExtras = Record<string, never>;

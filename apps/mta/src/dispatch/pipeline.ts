@@ -34,6 +34,7 @@ import {
  */
 export type DispatchTerminal =
 	| { kind: 'defer'; delayMs: number; reason: string }
+	| { kind: 'routing_reentry'; reason: string }
 	| { kind: 'drop'; status: 'screened' | 'suppressed'; reason: string };
 
 /**
@@ -63,7 +64,10 @@ export type Phase<TIn extends BasePhaseCtx, TOut extends BasePhaseCtx> = Generic
  * runner returns — the caller (handler.ts) translates `defer` into a
  * `DeferError` throw.
  */
-export type PipelineResult<TOut extends BasePhaseCtx> = GenericPipelineResult<TOut, DispatchTerminal>;
+export type PipelineResult<TOut extends BasePhaseCtx> = GenericPipelineResult<
+	TOut,
+	DispatchTerminal
+>;
 
 /**
  * A composed pipeline. Carries the input ctx type and the final output ctx
@@ -85,7 +89,10 @@ export type Pipeline<TIn extends BasePhaseCtx, TOut extends BasePhaseCtx> = Gene
  * generic `Compose` helper.
  */
 export function compose<
-	const Phases extends readonly [Phase<BasePhaseCtx, BasePhaseCtx>, ...Array<Phase<BasePhaseCtx, BasePhaseCtx>>],
+	const Phases extends readonly [
+		Phase<BasePhaseCtx, BasePhaseCtx>,
+		...Array<Phase<BasePhaseCtx, BasePhaseCtx>>,
+	],
 >(...phases: Phases): ComposedPipeline<PhaseDeps, BasePhaseCtx, DispatchTerminal, Phases> {
 	return composeGeneric<PhaseDeps, BasePhaseCtx, DispatchTerminal, Phases>(...phases);
 }
@@ -97,7 +104,7 @@ export function compose<
 export function runPipeline<TIn extends BasePhaseCtx, TOut extends BasePhaseCtx>(
 	deps: PhaseDeps,
 	pipeline: Pipeline<TIn, TOut>,
-	ctx: TIn,
+	ctx: TIn
 ): Promise<PipelineResult<TOut>> {
 	return runPipelineGeneric(deps, pipeline, ctx);
 }

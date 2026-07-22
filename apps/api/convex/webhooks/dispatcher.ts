@@ -68,6 +68,15 @@ type Handler<K extends InboundEventKind> = (
 type DispatchTable = { [K in InboundEventKind]: Handler<K> };
 
 const DISPATCH: DispatchTable = {
+	'internal.routing_reentry': async (ctx, e) => {
+		await ctx.runMutation(internal.delivery.sendCompletion.reenterAcceptedMtaSend, {
+			sendRef: e.sendRef,
+			messageId: e.providerMessageId,
+			envelopeInput: e.envelopeInput,
+			retryState: e.retryState,
+			reason: e.reason,
+		});
+	},
 	'email.sent': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) {
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId, {
