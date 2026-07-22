@@ -415,6 +415,7 @@ export function createSendHandler(
 		// Build job
 		const job: EmailJob = {
 			messageId: body.messageId,
+			intakeReceiptId: queueIdentity,
 			workAttemptId: body.workAttemptId,
 			to: body.to,
 			from: body.from,

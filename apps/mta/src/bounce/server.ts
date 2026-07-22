@@ -39,7 +39,7 @@ import { verifyArcChain } from './inboundArc.js';
 import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
 import { reduce } from './outcome.js';
-import { applyEffects } from './effects.js';
+import { applyEffects, DurableFeedbackPersistenceError } from './effects.js';
 import { dmarcFromIdentity } from '../inbound/parsedAddress.js';
 import type { SpfVerdict } from './types.js';
 import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
@@ -477,6 +477,13 @@ export function buildOnData(
 			return AckAndSwallowErrors;
 		} catch (err) {
 			logger.error({ err }, 'Error processing inbound email');
+			if (err instanceof DurableFeedbackPersistenceError) {
+				return {
+					code: 451,
+					enhanced: '4.3.0',
+					text: 'Attributed feedback persistence unavailable',
+				};
+			}
 			return AckAndSwallowErrors; // Accept anyway to prevent sender retries.
 		}
 	};

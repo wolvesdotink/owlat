@@ -86,6 +86,7 @@ import type { MtaConfig } from '../../config.js';
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {
 		messageId: 'msg-001',
+		intakeReceiptId: 'work-attempt-1',
 		to: 'user@example.com',
 		from: 'sender@owlat.com',
 		subject: 'Test',
@@ -300,9 +301,9 @@ describe('handleEmailJob', () => {
 	});
 
 	async function run(data: EmailJob, envelope: Partial<ReservedJob<EmailJob>> = {}) {
-		if (data.workAttemptId && !(await redis.get(`mta:work-attempts:${data.workAttemptId}`))) {
+		if (!(await redis.get(`mta:work-attempts:${data.intakeReceiptId}`))) {
 			await redis.set(
-				`mta:work-attempts:${data.workAttemptId}`,
+				`mta:work-attempts:${data.intakeReceiptId}`,
 				JSON.stringify({ state: 'reserved', messageId: data.messageId, reservedAt: Date.now() })
 			);
 		}
@@ -350,6 +351,72 @@ describe('handleEmailJob', () => {
 		);
 		// A delivered job is never re-enqueued.
 		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('replays an in-flight reservation as ambiguous without another SMTP call', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
+		await reserveSmtpOutcome(redis, 'job-1', 'msg-001', {
+			now: Date.now(),
+			capacity: config.webhookDlqMaxSize,
+		});
+
+		await run(createJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		expect(queueConvexWebhook).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'failed', messageId: 'msg-001' }),
+			config,
+			redis,
+			'dispatch:msg-001:failed'
+		);
+	});
+
+	it('does not repeat SMTP when the result-journal write fails after the network call', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const originalEval = redis.eval.bind(redis);
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			if (String(args[0]).includes('current == ARGV[1]')) {
+				throw new Error('journal response lost');
+			}
+			return await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+		});
+
+		await expect(run(createJob())).rejects.toThrow('journal response lost');
+		evalSpy.mockRestore();
+		await run(createJob());
+
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps a completed result until terminal outbox persistence succeeds', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(queueConvexWebhook)
+			.mockRejectedValueOnce(new Error('outbox unavailable'))
+			.mockResolvedValue('outbox-recovered');
+
+		await expect(run(createJob())).rejects.toThrow('outbox unavailable');
+		await run(createJob());
+
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+		expect(queueConvexWebhook).toHaveBeenCalledTimes(2);
+	});
+
+	it('defers before SMTP when outcome-journal capacity is unavailable', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
+		config.webhookDlqMaxSize = 1;
+		await reserveSmtpOutcome(redis, 'other-job', 'other-message', {
+			now: Date.now(),
+			capacity: 1,
+		});
+
+		await run(createJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).toHaveBeenCalledOnce();
 	});
 
 	function provenancePipelineWithError() {

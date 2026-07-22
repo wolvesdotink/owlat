@@ -27,7 +27,6 @@ import type { DestinationProviderKey, EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
-import { sendToMx } from '../smtp/sender.js';
 import { recordWorkerHeartbeat } from '../routes/health.js';
 import { logger } from '../monitoring/logger.js';
 import { runPipeline } from '../dispatch/pipeline.js';
@@ -41,8 +40,6 @@ import type { PipelineResult } from '../dispatch/pipeline.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
-import { releaseWarmingSlot } from '../intelligence/warming.js';
-import { releaseHalfOpenProbe } from '../intelligence/circuitBreaker.js';
 import { recordFeedbackProvenance } from '../bounce/feedbackProvenance.js';
 import { promoteIntakeReceipt } from '../routes/sendReceipt.js';
 import {
@@ -51,6 +48,9 @@ import {
 	resumeDeferredHandoff,
 } from './deferHandoff.js';
 import { messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
+import { clearCompletedSmtpOutcomeForJob, clearSmtpOutcome } from './smtpOutcomeJournal.js';
+import { runJournaledSmtpAttempt } from './journaledSmtpAttempt.js';
+import { releaseRoutingReservations } from './routingReservations.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -73,7 +73,10 @@ export async function handleEmailJob(
 	// worker can perform SMTP or reach a GroupMQ-completable terminal path.
 	await promoteIntakeReceipt(redis, data);
 	await promoteDeferredHandoff(redis, data);
-	if (await resumeDeferredHandoff(redis, queue, job.id, data)) return;
+	if (await resumeDeferredHandoff(redis, queue, job.id, data)) {
+		await clearCompletedSmtpOutcomeForJob(redis, String(job.id), data.messageId);
+		return;
+	}
 	const domain = extractDomain(data.to);
 	const destination = await resolveDestinationSnapshot(redis, domain, { config });
 	const { providerKey } = destination;
@@ -166,8 +169,32 @@ export async function handleEmailJob(
 		);
 		return;
 	}
-	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease, destination);
-	const durationMs = Date.now() - startTime;
+	const smtpAttempt = await runJournaledSmtpAttempt({
+		redis,
+		config,
+		jobId: String(job.id),
+		job: data,
+		ip: piped.ctx.ip,
+		eligibilityLease,
+		destination,
+		startedAt: startTime,
+	});
+	if (smtpAttempt.kind === 'capacity') {
+		await disposeDefer(
+			job,
+			queue,
+			deps,
+			domain,
+			providerKey,
+			'self_throttle',
+			60_000,
+			'SMTP outcome journal is at capacity'
+		);
+		return;
+	}
+
+	const completed = smtpAttempt.journal;
+	const { result, durationMs } = completed.entry;
 
 	const outcome = classifyResult(result, providerKey);
 	const attemptCtx: AttemptCtx = { ...piped.ctx, durationMs };
@@ -192,41 +219,7 @@ export async function handleEmailJob(
 		// authenticated reservation/probe instead of leaving persistent capacity.
 		await releaseRoutingReservations(data, deps);
 	}
-}
-
-async function releaseRoutingReservations(
-	data: EmailJob,
-	deps: { redis: Redis; config: MtaConfig }
-): Promise<void> {
-	const lease = data.routingLease;
-	if (!lease) return;
-	const releases: Array<Promise<unknown>> = [];
-	if (lease.warmingReservation) {
-		releases.push(releaseWarmingSlot(deps.redis, lease.warmingReservation));
-	}
-	if (lease.globalProbe && lease.globalBreakerGeneration !== undefined) {
-		releases.push(
-			releaseHalfOpenProbe(
-				deps.redis,
-				data.organizationId,
-				undefined,
-				data.messageId,
-				lease.globalBreakerGeneration
-			)
-		);
-	}
-	if (lease.probe && lease.providerBreakerGeneration !== undefined) {
-		releases.push(
-			releaseHalfOpenProbe(
-				deps.redis,
-				data.organizationId,
-				lease.destinationProvider,
-				data.messageId,
-				lease.providerBreakerGeneration
-			)
-		);
-	}
-	await Promise.all(releases);
+	await clearSmtpOutcome(redis, completed.entry, completed.raw);
 }
 
 /** Fixed pre-network outcome: hand the accepted job back to governed Convex dispatch. */

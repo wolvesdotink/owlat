@@ -48,19 +48,16 @@ import {
 import { oracleOldStack } from './helpers/oracleStack';
 // The bounce/FBL scrapers are driven directly (below) to prove the report-part
 // recovery yields IDENTICAL classification outcomes across the library boundary.
-// Only the logger + VERP signing gate are stubbed (unsigned mode so the
-// header-scrape attribution fallbacks run); mailparser stays the oracle (I1).
+// Only logging is stubbed; mailparser stays the oracle (I1), while attribution
+// uses the same signed VERP proof required in production.
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
-vi.mock('../../bounce/verp.js', () => ({
-	parseVerpAddress: vi.fn().mockReturnValue(null),
-	isVerpSigningEnabled: vi.fn().mockReturnValue(false),
 }));
 import { simpleParser } from 'mailparser';
 import { parseMessage, type ParsedMessage } from '@owlat/mail-message';
 import { extractReportParts, type ReportPart } from '../../bounce/reportParts.js';
 import { parseBounce } from '../../bounce/parser.js';
+import { buildVerpAddress } from '../../bounce/verp.js';
 import { tryParseARF } from '../../bounce/fblProcessor.js';
 import type { BounceClassification } from '../../bounce/types.js';
 
@@ -146,14 +143,17 @@ describe('report-part recovery keeps bounce-class / FBL outcomes identical', () 
 	}
 
 	it('the disposition-less DSN classifies the SAME hard bounce on old (mailparser) and new stacks', async () => {
+		const verpKey = 'replay-corpus-verp-key-012345678901';
+		process.env['BOUNCE_VERP_KEY'] = verpKey;
+		const envelopeRecipient = buildVerpAddress('corpus-message', 'bounces.test', verpKey);
 		const raw = readFileSync(join(CORPUS_DIR, 'dsn-report-nodisp.eml'));
 
 		const newParsed = parseMessage(raw);
-		const newResult = parseBounce(newParsed, extractReportParts(raw));
+		const newResult = parseBounce(newParsed, extractReportParts(raw), envelopeRecipient);
 
 		const oldParsed = (await simpleParser(raw)) as unknown as ParsedMessage;
 		const oldAtts = (await simpleParser(raw)).attachments;
-		const oldResult = parseBounce(oldParsed, oldReportParts(oldAtts));
+		const oldResult = parseBounce(oldParsed, oldReportParts(oldAtts), envelopeRecipient);
 
 		// The new stack recovered the machine-readable delivery-status the pipeline
 		// classifies off — mailparser had it folded into `.text` instead.
@@ -164,6 +164,7 @@ describe('report-part recovery keeps bounce-class / FBL outcomes identical', () 
 		expect(newResult?.bounceType).toBe('hard');
 		expect(norm(newResult)).toEqual(norm(oldResult));
 		expect(newResult?.originalMessageId).toBe(oldResult?.originalMessageId);
+		delete process.env['BOUNCE_VERP_KEY'];
 	});
 
 	it('the disposition-less ARF yields the SAME complaint on old (mailparser) and new stacks', async () => {

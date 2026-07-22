@@ -166,6 +166,39 @@ describe('applyEffects — per-effect dispatch', () => {
 		);
 	});
 
+	it('keeps pending soft and hard bounce callbacks under distinct durable identities', async () => {
+		for (const bounceType of ['soft', 'hard'] as const) {
+			await applyEffects(
+				[
+					{
+						kind: 'notify_convex',
+						event: {
+							event: 'bounced',
+							messageId: 'm-bounce',
+							bounceType,
+							timestamp: 1700000000,
+						},
+					},
+				],
+				makeDeps()
+			);
+		}
+		expect(queueConvexWebhook).toHaveBeenNthCalledWith(
+			1,
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+			'feedback:m-bounce:bounced:soft'
+		);
+		expect(queueConvexWebhook).toHaveBeenNthCalledWith(
+			2,
+			expect.anything(),
+			expect.anything(),
+			expect.anything(),
+			'feedback:m-bounce:bounced:hard'
+		);
+	});
+
 	it('mailbox_quota_bump → bumpUsedBytes (fire-and-forget)', async () => {
 		await applyEffects(
 			[{ kind: 'mailbox_quota_bump', address: 'me@org.example', deltaBytes: 1234 }],

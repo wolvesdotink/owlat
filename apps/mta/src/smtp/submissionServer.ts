@@ -52,6 +52,7 @@ import { logger } from '../monitoring/logger.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import { randomUUID } from 'crypto';
+import { reserveNewIntakeReceipt } from '../routes/sendReceipt.js';
 import {
 	checkConnectionRateLimit,
 	releaseConnection,
@@ -270,8 +271,8 @@ function extractAmpHtml(binary: string): string | undefined {
  * for tests. Returns a rejection {@link SmtpHandlerResult} to refuse, or nothing
  * to accept with the listener's default 250.
  */
-export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
-	const { queue } = deps;
+export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
+	const { queue, redis } = deps;
 	return async function onData(message: Buffer, session: Session): Promise<SmtpHandlerResult> {
 		try {
 			const authData = session.state.auth;
@@ -324,6 +325,7 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
 					: `smtp-${randomUUID()}`;
 				const job: EmailJob = {
 					messageId,
+					intakeReceiptId: messageId,
 					to,
 					from: fromAddress,
 					subject: parsed.subject ?? '(no subject)',
@@ -340,7 +342,13 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
 				const groupId = buildGroupKey(job.ipPool, domain);
 				const priority = mapToPriority(undefined);
 
-				await queue.add({ groupId, data: job, orderMs: priorityToOrderMs(priority) });
+				await reserveNewIntakeReceipt(redis, job.intakeReceiptId, job.messageId);
+				await queue.add({
+					groupId,
+					data: job,
+					orderMs: priorityToOrderMs(priority),
+					jobId: job.intakeReceiptId,
+				});
 				queued++;
 			}
 
@@ -508,7 +516,7 @@ function buildSubmissionListener(
 		),
 		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
 		onMailFrom: buildOnMailFrom(),
-		onData: buildOnData({ queue }),
+		onData: buildOnData({ queue, redis }),
 		onError: (err) => logger.error({ err }, 'SMTP submission listener error'),
 	});
 

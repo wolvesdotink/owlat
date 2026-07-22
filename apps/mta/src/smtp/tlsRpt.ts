@@ -21,6 +21,7 @@ import { registry } from '../monitoring/collector.js';
 import type { EmailJob } from '../types.js';
 import { formatTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
+import { reserveNewIntakeReceipt } from '../routes/sendReceipt.js';
 
 const TLS_RPT_PREFIX = 'mta:tls-rpt:';
 const TLS_RPT_TTL = 3 * 86400; // Keep 3 days of records
@@ -480,8 +481,10 @@ export async function generateAndSendReports(
 					const endTs = Math.floor(new Date(report['date-range']['end-datetime']).getTime() / 1000);
 					const filename = `${submitterDomain}!${domain}!${startTs}!${endTs}.json.gz`;
 
+					const messageId = `tlsrpt-${domain}-${yesterday}-${Date.now()}`;
 					const job: EmailJob = {
-						messageId: `tlsrpt-${domain}-${yesterday}-${Date.now()}`,
+						messageId,
+						intakeReceiptId: messageId,
 						to: recipient,
 						from: fromAddress,
 						subject,
@@ -507,7 +510,8 @@ export async function generateAndSendReports(
 					};
 
 					const groupId = buildGroupKey('transactional', extractDomain(recipient));
-					await queue.add({ groupId, data: job, jobId: job.messageId });
+					await reserveNewIntakeReceipt(redis, job.intakeReceiptId, job.messageId);
+					await queue.add({ groupId, data: job, jobId: job.intakeReceiptId });
 
 					stats.sent++;
 					tlsReportsSent.inc();

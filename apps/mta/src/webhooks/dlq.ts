@@ -97,13 +97,12 @@ function parseDlqEntry(data: string): DlqEntry | null {
 
 const STORE_LUA = `
 if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then return 0 end
-if ARGV[5] == '0' and redis.call('ZCARD', KEYS[2]) >= tonumber(ARGV[4]) then return -1 end
 local sequence = redis.call('HINCRBY', KEYS[1], '_created-sequence', 1)
 redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
 redis.call('HSET', KEYS[1], 'attempts:' .. ARGV[1], '0')
 redis.call('ZADD', KEYS[2], sequence, ARGV[1])
 redis.call('ZADD', KEYS[3], ARGV[3], ARGV[1])
-if ARGV[6] == '1' then redis.call('SADD', KEYS[4], ARGV[1]) end
+if ARGV[5] == '1' then redis.call('SADD', KEYS[4], ARGV[1]) end
 local excess = redis.call('ZCARD', KEYS[2]) - tonumber(ARGV[4])
 local insertedRetained = 1
 if excess > 0 then
@@ -120,6 +119,14 @@ if excess > 0 then
   end
 end
 if insertedRetained == 0 then return -2 end
+if excess > 0 then
+  redis.call('HDEL', KEYS[1], ARGV[1], 'attempts:' .. ARGV[1], 'claim:' .. ARGV[1], 'claim-expiry:' .. ARGV[1], 'version:' .. ARGV[1])
+  redis.call('ZREM', KEYS[2], ARGV[1])
+  redis.call('ZREM', KEYS[3], ARGV[1])
+  redis.call('SREM', KEYS[4], ARGV[1])
+  if ARGV[5] == '1' then return -2 end
+  return -1
+end
 return 1
 `;
 
@@ -190,8 +197,10 @@ for i = 1, #ARGV, 3 do
   local currentClaim = redis.call('HGET', KEYS[1], 'claim:' .. id)
   local ownsClaim = (expectedClaim == '' and not currentClaim) or currentClaim == expectedClaim
   if redis.call('HGET', KEYS[1], id) == expected and ownsClaim then
-    redis.call('HDEL', KEYS[1], 'claim:' .. id, 'claim-expiry:' .. id, 'version:' .. id)
+	redis.call('HDEL', KEYS[1], id, 'attempts:' .. id, 'claim:' .. id, 'claim-expiry:' .. id, 'version:' .. id)
+	redis.call('ZREM', KEYS[2], id)
     redis.call('ZREM', KEYS[3], id)
+	redis.call('SREM', KEYS[4], id)
     quarantined = quarantined + 1
   end
 end
@@ -201,8 +210,11 @@ return quarantined
 const REMOVE_MISSING_DUE_LUA = `
 local removed = 0
 for _, id in ipairs(ARGV) do
-  if redis.call('HEXISTS', KEYS[1], id) == 0 and not redis.call('HGET', KEYS[1], 'claim:' .. id) then
-    removed = removed + redis.call('ZREM', KEYS[3], id)
+  if redis.call('HEXISTS', KEYS[1], id) == 0 then
+	redis.call('HDEL', KEYS[1], 'attempts:' .. id, 'claim:' .. id, 'claim-expiry:' .. id, 'version:' .. id)
+	removed = removed + redis.call('ZREM', KEYS[2], id)
+	removed = removed + redis.call('ZREM', KEYS[3], id)
+	removed = removed + redis.call('SREM', KEYS[4], id)
   end
 end
 return removed
@@ -234,7 +246,6 @@ async function store(
 	failure: WebhookDeliveryFailure,
 	config: MtaConfig,
 	dueAt: number,
-	allowEviction: boolean,
 	isProtected: boolean
 ): Promise<{ dlqId: string; inserted: boolean }> {
 	const createdAt = Date.now();
@@ -247,7 +258,6 @@ async function store(
 		JSON.stringify(entry),
 		String(dueAt),
 		String(config.webhookDlqMaxSize),
-		allowEviction ? '1' : '0',
 		isProtected ? '1' : '0'
 	)) as number;
 	if (status === -1) throw new Error('Webhook terminal outbox is at capacity');
@@ -269,7 +279,6 @@ export async function storeFailed(
 		failure,
 		config,
 		createdAt + webhookDlqRetryDelayMs(0),
-		true,
 		false
 	);
 	logger.warn(
@@ -287,10 +296,7 @@ export async function storePending(
 	idempotencyKey: string
 ): Promise<string> {
 	const dlqId = `outbox-${createHash('sha256').update(idempotencyKey).digest('hex')}`;
-	await store(redis, dlqId, event, { category: 'pending' }, config, Date.now(), false, true);
-	if (!(await getEntry(redis, dlqId))) {
-		throw new Error('Webhook terminal outbox persistence could not be verified');
-	}
+	await store(redis, dlqId, event, { category: 'pending' }, config, Date.now(), true);
 	return dlqId;
 }
 

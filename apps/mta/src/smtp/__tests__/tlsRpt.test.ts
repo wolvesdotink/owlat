@@ -12,6 +12,7 @@ import type { TlsRptQueue, TlsResultType } from '../tlsRpt.js';
 import type { EmailJob } from '../../types.js';
 import type { SmtpTlsCause } from '@owlat/smtp-client';
 import { classifyTlsFailure, stsAttributedResultType } from '../tlsFailureClassification.js';
+import { promoteIntakeReceipt } from '../../routes/sendReceipt.js';
 
 const { resolveMock } = vi.hoisted(() => ({ resolveMock: vi.fn() }));
 vi.mock('dns/promises', () => ({ resolve: resolveMock }));
@@ -511,6 +512,11 @@ describe('tlsRpt', () => {
 			// Exactly one MTA message enqueued.
 			expect(added).toHaveLength(1);
 			const job = added[0]!.data;
+			expect(added[0]!.jobId).toBe(job.intakeReceiptId);
+			await promoteIntakeReceipt(redis as never, job);
+			expect(await redis.get(`mta:work-attempts:${job.intakeReceiptId}`)).toContain(
+				'"state":"accepted"'
+			);
 
 			expect(job.to).toBe('tls-reports@example.com');
 			expect(job.subject).toMatch(/^Report Domain: example.com Submitter: /);

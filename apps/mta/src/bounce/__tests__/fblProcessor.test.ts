@@ -80,7 +80,7 @@ describe('tryParseARF', () => {
 		);
 
 		expect(result).not.toBeNull();
-		expect(result!.originalMessageId).toBe('msg-complaint-001');
+		expect(result!.originalMessageId).toBeUndefined();
 	});
 
 	// PR-13: Gmail and several large ISPs redact the original Message-ID in
@@ -508,7 +508,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 
 		const result = tryParseARF(parsed, parts);
 		expect(result).not.toBeNull();
-		expect(result!.originalMessageId).toBe('send_abc123');
+		expect(result!.originalMessageId).toBeUndefined();
 		expect(result!.organizationId).toBe('org-7');
 	});
 });

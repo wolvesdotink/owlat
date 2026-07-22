@@ -33,6 +33,7 @@ import {
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
 import type { Queue } from 'groupmq';
+import { promoteIntakeReceipt } from '../../routes/sendReceipt.js';
 
 const config = {
 	apiKey: 'master-secret-key',
@@ -70,9 +71,13 @@ async function authCall(
 
 async function dataCall(raw: string, auth: AuthenticatedSession | undefined) {
 	const queue = { add: vi.fn().mockResolvedValue(undefined) };
+	const receiptRedis = new Redis();
 	const session = makeSession({ authenticated: auth !== undefined, state: { auth } });
-	const reply = await buildOnData({ queue: queue as never })(Buffer.from(raw), session as never);
-	return { reply: reply as SmtpReply | undefined, queue };
+	const reply = await buildOnData({ queue: queue as never, redis: receiptRedis as never })(
+		Buffer.from(raw),
+		session as never
+	);
+	return { reply: reply as SmtpReply | undefined, queue, receiptRedis };
 }
 
 beforeEach(() => {
@@ -229,7 +234,7 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 	it('allows master/credential sessions to send any From and fans out per recipient', async () => {
 		const mime =
 			'From: anyone@brand.com\r\nTo: a@x.com, b@y.com\r\nCc: c@z.com\r\nSubject: s\r\n\r\nhi\r\n';
-		const { reply, queue } = await dataCall(mime, {
+		const { reply, queue, receiptRedis } = await dataCall(mime, {
 			organizationId: 'org1',
 			credentialName: 'cred',
 		});
@@ -237,10 +242,15 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(queue.add).toHaveBeenCalledTimes(3);
 		const jobs = queue.add.mock.calls.map((c) => c[0].data);
 		expect(jobs.map((j) => j.to).sort()).toEqual(['a@x.com', 'b@y.com', 'c@z.com']);
-		for (const j of jobs) {
+		for (const [index, j] of jobs.entries()) {
 			expect(j.organizationId).toBe('org1');
 			expect(j.dkimDomain).toBe('brand.com');
 			expect(j.messageId).toMatch(/^smtp-/);
+			expect(queue.add.mock.calls[index]![0].jobId).toBe(j.intakeReceiptId);
+			await promoteIntakeReceipt(receiptRedis as never, j);
+			expect(await receiptRedis.get(`mta:work-attempts:${j.intakeReceiptId}`)).toContain(
+				'"state":"accepted"'
+			);
 		}
 	});
 
