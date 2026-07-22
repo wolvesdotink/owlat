@@ -2,19 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../../config.js';
 
-const claimEligible = vi.hoisted(() => vi.fn());
+const listEligibleIds = vi.hoisted(() => vi.fn());
+const claimOne = vi.hoisted(() => vi.fn());
 const settleClaim = vi.hoisted(() => vi.fn());
 const notifyConvex = vi.hoisted(() => vi.fn());
 
-vi.mock('../dlq.js', () => ({ claimEligible, settleClaim }));
+vi.mock('../dlq.js', () => ({
+	listEligibleIds,
+	claimOne,
+	settleClaim,
+	WEBHOOK_DLQ_AUTO_RETRY_LIMIT: 8,
+}));
 vi.mock('../convexNotifier.js', () => ({ notifyConvex }));
 
-const {
-	sweepWebhookDlq,
-	webhookDlqRetryDelayMs,
-	WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
-	WEBHOOK_DLQ_SWEEP_BATCH_SIZE,
-} = await import('../dlqSweeper.js');
+const { sweepWebhookDlq, WEBHOOK_DLQ_SWEEP_BATCH_SIZE } = await import('../dlqSweeper.js');
+const { webhookDlqRetryDelayMs, WEBHOOK_DLQ_AUTO_RETRY_LIMIT } =
+	await vi.importActual<typeof import('../dlq.js')>('../dlq.js');
 
 const redis = {} as Redis;
 const config = {} as MtaConfig;
@@ -35,24 +38,34 @@ function entry(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
 	vi.clearAllMocks();
 	settleClaim.mockResolvedValue(true);
+	listEligibleIds.mockResolvedValue([]);
 });
 
 describe('automatic webhook DLQ recovery', () => {
 	it('retries one bounded oldest page, deleting success and advancing failure', async () => {
-		claimEligible.mockResolvedValue([entry(), entry({ dlqId: 'dlq-2', attempts: 2 })]);
+		listEligibleIds.mockResolvedValue(['dlq-1', 'dlq-2']);
+		claimOne
+			.mockResolvedValueOnce(entry())
+			.mockResolvedValueOnce(entry({ dlqId: 'dlq-2', attempts: 2 }));
 		notifyConvex.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
-		expect(await sweepWebhookDlq(redis, config, 1_000_000)).toEqual({
+		expect(await sweepWebhookDlq(redis, config, () => 1_000_000)).toEqual({
 			delivered: 1,
 			attempted: 2,
 		});
-		expect(claimEligible).toHaveBeenCalledWith(
+		expect(listEligibleIds).toHaveBeenCalledWith(
 			redis,
 			expect.objectContaining({
 				now: 1_000_000,
 				limit: WEBHOOK_DLQ_SWEEP_BATCH_SIZE,
-				autoRetryLimit: WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
 			})
+		);
+		expect(claimOne).toHaveBeenCalledTimes(2);
+		expect(claimOne).toHaveBeenNthCalledWith(
+			1,
+			redis,
+			'dlq-1',
+			expect.objectContaining({ autoRetryLimit: WEBHOOK_DLQ_AUTO_RETRY_LIMIT })
 		);
 		expect(settleClaim).toHaveBeenNthCalledWith(
 			1,
@@ -71,13 +84,31 @@ describe('automatic webhook DLQ recovery', () => {
 	});
 
 	it('leaves exhausted and not-yet-due entries inspectable without retrying', async () => {
-		claimEligible.mockResolvedValue([]);
-		expect(await sweepWebhookDlq(redis, config, 1_000_000)).toEqual({
+		listEligibleIds.mockResolvedValue([]);
+		expect(await sweepWebhookDlq(redis, config, () => 1_000_000)).toEqual({
 			delivered: 0,
 			attempted: 0,
 		});
 		expect(notifyConvex).not.toHaveBeenCalled();
 		expect(settleClaim).not.toHaveBeenCalled();
+	});
+
+	it('claims each row after prior network work and settles at completion time', async () => {
+		listEligibleIds.mockResolvedValue(['dlq-1', 'dlq-2']);
+		claimOne.mockResolvedValueOnce(entry()).mockResolvedValueOnce(entry({ dlqId: 'dlq-2' }));
+		notifyConvex.mockResolvedValue(true);
+		let now = 1_000_000;
+		const clock = () => (now += 10_000);
+		await sweepWebhookDlq(redis, config, clock);
+
+		expect(claimOne.mock.invocationCallOrder[1]).toBeGreaterThan(
+			notifyConvex.mock.invocationCallOrder[0]!
+		);
+		expect(settleClaim.mock.calls[0]![3]).toBeGreaterThan(claimOne.mock.calls[0]![2].now);
+		expect(claimOne.mock.calls[0]![2].now).toBe(1_020_000);
+		expect(settleClaim.mock.calls[0]![3]).toBe(1_030_000);
+		expect(claimOne.mock.calls[1]![2].now).toBe(1_040_000);
+		expect(settleClaim.mock.calls[1]![3]).toBe(1_050_000);
 	});
 
 	it('uses bounded exponential backoff', () => {

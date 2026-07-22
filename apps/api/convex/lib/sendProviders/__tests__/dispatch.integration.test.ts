@@ -131,6 +131,27 @@ describe('sendProviderDispatch — retry semantics', () => {
 		expect(scheduled[0]).toMatchObject({ success: true });
 	});
 
+	it('preserves acceptance_unknown after every MTA intake response is lost', async () => {
+		const { ctx, scheduled } = buildFakeCtx();
+		const lost = {
+			success: false as const,
+			errorMessage: 'network response lost',
+			errorCode: EmailErrorCode.SERVER_ERROR,
+			acceptanceUnknown: true as const,
+		};
+		const sendSpy = vi.spyOn(mtaSendProvider, 'sendEmail').mockResolvedValue(lost);
+
+		const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams, {
+			messageId: 'send-stable',
+			workAttemptId: 'work-stable',
+		});
+
+		expect(sendSpy).toHaveBeenCalledTimes(3);
+		expect(sendSpy.mock.calls.every((call) => call[1]?.workAttemptId === 'work-stable')).toBe(true);
+		expect(out.result).toEqual(lost);
+		expect(scheduled).toHaveLength(1);
+	});
+
 	it('exhausted retries: attempts=retryDelays.length+1, health recorded { success: false }', async () => {
 		const { ctx, scheduled } = buildFakeCtx();
 		const failedAttempt: EmailSendAttempt = {

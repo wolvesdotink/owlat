@@ -65,6 +65,8 @@ export const retryStateValidator = v.object({
 	attempt: v.number(),
 	startedAt: v.number(),
 	idempotencyKey: v.string(),
+	workAttemptId: v.optional(v.string()),
+	acceptanceReconciliation: v.optional(v.boolean()),
 });
 
 export type WorkerRetryState = Infer<typeof retryStateValidator>;

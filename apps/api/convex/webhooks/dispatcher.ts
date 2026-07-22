@@ -142,7 +142,8 @@ const DISPATCH: DispatchTable = {
 		}
 	},
 	'email.failed': async (ctx, e) => {
-		// Terminal, NON-bounce failure (MTA post-DATA ambiguous drop). Transition the
+		// Terminal, NON-bounce failure (screening/suppression or an ambiguous
+		// post-DATA drop). Transition the
 		// send row to `failed` so it leaves "sending" — deliberately NOT `bounced`:
 		// `reduceFailed` applies no recipient suppression and no reputation penalty,
 		// because the receiver may have accepted the message and the address is very
@@ -159,15 +160,20 @@ const DISPATCH: DispatchTable = {
 			});
 			return;
 		}
-		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
-			providerMessageId: e.providerMessageId,
-			transition: {
-				to: 'failed',
-				at: e.at,
-				errorMessage: e.errorMessage,
-				errorCode: e.errorCode,
-			},
-		});
+		await ctx.runMutation(
+			e.providerType === 'mta'
+				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
+				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: e.providerMessageId,
+				transition: {
+					to: 'failed',
+					at: e.at,
+					errorMessage: e.errorMessage,
+					errorCode: e.errorCode,
+				},
+			}
+		);
 	},
 	'email.bounced': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) {
@@ -186,7 +192,9 @@ const DISPATCH: DispatchTable = {
 			return;
 		}
 		const outcome = (await ctx.runMutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			e.providerType === 'mta'
+				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
+				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			{
 				providerMessageId: e.providerMessageId,
 				transition: {
@@ -205,7 +213,7 @@ const DISPATCH: DispatchTable = {
 		// Suppress the complainer directly by email — a complaint must always
 		// reach the blocklist, never evaporate into a metric.
 		if (!e.providerMessageId) {
-			if (!e.recipient) return;
+			if (!e.recipient || (e.providerType !== 'ses' && e.deliveryDomain !== 'production')) return;
 			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
 				email: e.recipient,
 				reason: 'complained',
@@ -214,7 +222,9 @@ const DISPATCH: DispatchTable = {
 		}
 		if (isPostboxMessageId(e.providerMessageId)) return;
 		const outcome = (await ctx.runMutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			e.providerType === 'mta'
+				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
+				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			{
 				providerMessageId: e.providerMessageId,
 				transition: { to: 'complained', at: e.at },

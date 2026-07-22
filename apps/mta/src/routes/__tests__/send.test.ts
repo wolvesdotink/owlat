@@ -17,8 +17,9 @@ import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { Hono } from 'hono';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
-import type { AuthContext } from '../../server.js';
+import { createApp, type AuthContext } from '../../server.js';
 import { buildGroupKey, extractDomain } from '../../queue/groups.js';
+import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 
 vi.mock('../../redis.js', () => ({
 	isRedisHealthy: vi.fn().mockResolvedValue(true),
@@ -44,9 +45,10 @@ vi.mock('../routingDecision.js', () => ({
 		expiresAt: Date.now() + 60_000,
 	}),
 	isRoutingLeaseBoundTo: vi.fn().mockReturnValue(true),
+	createRoutingDecisionHandler: vi.fn().mockReturnValue(() => new Response(null, { status: 204 })),
 }));
 
-const { createSendHandler } = await import('../send.js');
+const { createSendHandler, createSendReceiptHandler } = await import('../send.js');
 const { checkSystemHealth } = await import('../../scaling/degradation.js');
 const mockedHealth = vi.mocked(checkSystemHealth);
 
@@ -54,10 +56,30 @@ afterEach(() => vi.useRealTimers());
 
 interface FakeQueue {
 	add: ReturnType<typeof vi.fn>;
+	getJob: ReturnType<typeof vi.fn>;
 }
 
 function fakeQueue(): FakeQueue {
-	return { add: vi.fn().mockResolvedValue({ id: 'mock-job-id' }) };
+	const jobs = new Map<string, unknown>();
+	return {
+		add: vi.fn().mockImplementation(async (options: { jobId?: string }) => {
+			if (options.jobId) jobs.set(options.jobId, options);
+			return { id: 'mock-job-id' };
+		}),
+		getJob: vi.fn().mockImplementation(async (id: string) => jobs.get(id) ?? null),
+	};
+}
+
+function receiptRedis(): Redis {
+	const values = new Map<string, string>();
+	return fakeRedis({
+		set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
+			if (args.includes('NX') && values.has(key)) return null;
+			values.set(key, value);
+			return 'OK';
+		}),
+		get: vi.fn(async (key: string) => values.get(key) ?? null),
+	});
 }
 
 /** Minimal Redis double. `set` returns 'OK' (new id) unless overridden. */
@@ -328,14 +350,7 @@ describe('POST /send — per-org credential scoping', () => {
 
 describe('POST /send — dedup', () => {
 	it('queues one real replacement for a fresh re-entry attempt with the same provider id', async () => {
-		const seen = new Set<string>();
-		const redis = fakeRedis({
-			set: vi.fn(async (key: string) => {
-				if (seen.has(key)) return null;
-				seen.add(key);
-				return 'OK';
-			}),
-		});
+		const redis = receiptRedis();
 		const queue = fakeQueue();
 		const app = buildApp(queue, redis);
 		const first = await post(
@@ -365,7 +380,14 @@ describe('POST /send — dedup', () => {
 	it('returns a deduplicated response without enqueuing when messageId was already seen', async () => {
 		const queue = fakeQueue();
 		// SET NX miss → key already exists → duplicate.
-		const redis = fakeRedis({ set: vi.fn().mockResolvedValue(null) });
+		const redis = fakeRedis({
+			set: vi.fn().mockResolvedValue(null),
+			get: vi
+				.fn()
+				.mockResolvedValue(
+					JSON.stringify({ state: 'accepted', messageId: 'send_abc123', acceptedAt: Date.now() })
+				),
+		});
 		const res = await post(buildApp(queue, redis), validBody({ messageId: 'send_abc123' }));
 
 		expect(res.status).toBe(200);
@@ -385,13 +407,136 @@ describe('POST /send — dedup', () => {
 		const redis = fakeRedis();
 		await post(buildApp(queue, redis), validBody({ messageId: 'fresh-1' }));
 
-		expect(redis.set).toHaveBeenCalledWith(
+		expect(redis.set).toHaveBeenNthCalledWith(
+			1,
 			'mta:work-attempts:work-attempt-1',
-			'1',
+			expect.stringContaining('"state":"reserved"'),
 			'PX',
 			345_600_000,
 			'NX'
 		);
+		expect(redis.set).toHaveBeenNthCalledWith(
+			2,
+			'mta:work-attempts:work-attempt-1',
+			expect.stringContaining('"state":"accepted"'),
+			'PX',
+			345_600_000
+		);
+	});
+
+	it('takes over a stale crash-before-add reservation with the same work identity', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-01T00:01:00Z'));
+		const stale = JSON.stringify({
+			state: 'reserved',
+			messageId: 'msg-1',
+			reservedAt: Date.now() - 30_001,
+		});
+		const redis = fakeRedis({
+			set: vi.fn().mockResolvedValue(null),
+			get: vi.fn().mockResolvedValue(stale),
+			eval: vi.fn().mockResolvedValue(1),
+		});
+		const queue = fakeQueue();
+		const response = await post(buildApp(queue, redis), validBody());
+
+		expect(response.status).toBe(200);
+		expect(queue.add).toHaveBeenCalledTimes(1);
+		expect(queue.add.mock.calls[0]![0].jobId).toBe('work-attempt-1');
+	});
+
+	it('records acceptance when queue.add committed before its response was lost', async () => {
+		const committed = { id: 'work-attempt-1' };
+		const queue: FakeQueue = {
+			add: vi.fn().mockRejectedValue(new Error('queue client response lost')),
+			getJob: vi.fn().mockResolvedValue(committed),
+		};
+		const redis = fakeRedis();
+		const response = await post(buildApp(queue, redis), validBody({ messageId: 'send-stable' }));
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ success: true, id: 'send-stable' });
+		expect(redis.set).toHaveBeenLastCalledWith(
+			'mta:work-attempts:work-attempt-1',
+			expect.stringContaining('"state":"accepted"'),
+			'PX',
+			GOVERNED_MTA_MAX_MESSAGE_AGE_MS
+		);
+	});
+});
+
+describe('GET /send/receipt/:workAttemptId', () => {
+	function receiptApp(redis: Redis, auth: AuthContext): Hono {
+		const app = new Hono();
+		app.use('/send/*', async (c, next) => {
+			c.set('auth', auth);
+			await next();
+		});
+		app.get('/send/receipt/:workAttemptId', createSendReceiptHandler(redis));
+		return app;
+	}
+
+	it('is master-only and does not disclose provider identity cross-org', async () => {
+		const redis = fakeRedis({
+			get: vi
+				.fn()
+				.mockResolvedValue(
+					JSON.stringify({ state: 'accepted', messageId: 'send-secret', acceptedAt: Date.now() })
+				),
+		});
+		const response = await receiptApp(redis, {
+			isMasterKey: false,
+			orgCredential: { organizationId: 'other-org', id: 'credential' },
+		} as AuthContext).request('/send/receipt/guessed-work-id');
+		expect(response.status).toBe(403);
+		expect(await response.text()).not.toContain('send-secret');
+	});
+
+	it('returns durable accepted evidence to the master reconciler', async () => {
+		const redis = fakeRedis({
+			get: vi
+				.fn()
+				.mockResolvedValue(
+					JSON.stringify({ state: 'accepted', messageId: 'send-stable', acceptedAt: Date.now() })
+				),
+		});
+		const response = await receiptApp(redis, { isMasterKey: true }).request('/send/receipt/work-1');
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ state: 'accepted', messageId: 'send-stable' });
+	});
+
+	it('enforces master-only access through the real /send/* authentication middleware', async () => {
+		const receipt = JSON.stringify({
+			state: 'accepted',
+			messageId: 'send-secret',
+			acceptedAt: Date.now(),
+		});
+		const redis = fakeRedis({
+			get: vi.fn(async (key: string) => {
+				if (key === 'mta:cred:org-key') {
+					return JSON.stringify({ organizationId: 'other-org', name: 'other', createdAt: 1 });
+				}
+				if (key === 'mta:work-attempts:work-1') return receipt;
+				return null;
+			}),
+		});
+		const app = createApp(
+			fakeQueue() as unknown as Queue<never>,
+			redis,
+			createTestConfig({ apiKey: 'master-key' })
+		);
+		const request = (token?: string) =>
+			app.request('/send/receipt/work-1', {
+				headers: token ? { Authorization: `Bearer ${token}` } : {},
+			});
+
+		expect((await request()).status).toBe(401);
+		const crossOrg = await request('org-key');
+		expect(crossOrg.status).toBe(403);
+		expect(await crossOrg.text()).not.toContain('send-secret');
+		const master = await request('master-key');
+		expect(master.status).toBe(200);
+		expect(await master.json()).toMatchObject({ state: 'accepted', messageId: 'send-secret' });
 	});
 });
 
@@ -532,6 +677,7 @@ describe('POST /send — job construction and routing', () => {
 				.mockImplementation((opts: { jobId?: string }) =>
 					Promise.resolve({ id: opts.jobId ?? 'random-uuid' })
 				),
+			getJob: vi.fn().mockResolvedValue(null),
 		};
 		const res = await post(buildApp(queue, fakeRedis()), validBody({ messageId: 'send_abc123' }));
 
@@ -545,7 +691,10 @@ describe('POST /send — job construction and routing', () => {
 	});
 
 	it('returns 500 when the enqueue fails', async () => {
-		const queue: FakeQueue = { add: vi.fn().mockRejectedValue(new Error('queue down')) };
+		const queue: FakeQueue = {
+			add: vi.fn().mockRejectedValue(new Error('queue down')),
+			getJob: vi.fn().mockResolvedValue(null),
+		};
 		const res = await post(buildApp(queue, fakeRedis()), validBody());
 
 		expect(res.status).toBe(500);

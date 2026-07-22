@@ -371,7 +371,7 @@ describe('classifySmtpResponse — retry-delay regression guards', () => {
 });
 
 describe('reduce(soft_bounce)', () => {
-	it('produces the canonical 6-effect list plus a 60s defer', () => {
+	it('keeps a retryable soft bounce provisional until the four-day expiry', () => {
 		const outcome: DispatchOutcome = { kind: 'soft_bounce', error: 'Connection refused' };
 
 		const { effects, defer } = reduce(outcome, makeCtx());
@@ -381,7 +381,6 @@ describe('reduce(soft_bounce)', () => {
 			'domain_failure_record',
 			'metrics_record',
 			'log_delivery_event',
-			'notify_convex',
 		]);
 		expect(defer).toEqual({
 			delayMs: 60_000,
@@ -389,13 +388,11 @@ describe('reduce(soft_bounce)', () => {
 		});
 	});
 
-	it('notify_convex carries bounceType: soft', () => {
+	it('does not emit a premature terminal callback while the soft bounce will retry', () => {
 		const outcome: DispatchOutcome = { kind: 'soft_bounce', error: 'Connection refused' };
 		const { effects } = reduce(outcome, makeCtx());
 		const notify = effects.find((e) => e.kind === 'notify_convex');
-		if (notify?.kind === 'notify_convex') {
-			expect(notify.event.bounceType).toBe('soft');
-		}
+		expect(notify).toBeUndefined();
 	});
 });
 

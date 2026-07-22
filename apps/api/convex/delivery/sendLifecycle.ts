@@ -109,7 +109,8 @@ const transitionInputValidator = v.union(
 async function dispatch(
 	ctx: MutationCtx,
 	ref: SendRef,
-	input: TransitionInput
+	input: TransitionInput,
+	options: { allowQueuedMtaTerminal?: boolean } = {}
 ): Promise<TransitionOutcome> {
 	const send = await loadSend(ctx, ref);
 	if (!send) return { ok: false, reason: 'send_not_found' };
@@ -119,7 +120,12 @@ async function dispatch(
 	// non-terminal (it may harden or draw a complaint), so its legal set is
 	// `{bounced, complained}` rather than the empty static `bounced` set.
 	const legalEdges = legalEdgesFor(send);
-	const isLegalEdge = legalEdges.has(input.to);
+	const isBoundQueuedMtaTerminal =
+		options.allowQueuedMtaTerminal === true &&
+		from === 'queued' &&
+		send.providerType === 'mta' &&
+		(input.to === 'bounced' || input.to === 'complained' || input.to === 'failed');
+	const isLegalEdge = legalEdges.has(input.to) || isBoundQueuedMtaTerminal;
 	const isSelfLoop = from === input.to;
 	const isDeliveryEvidence =
 		input.to === 'delivered' ||
@@ -340,6 +346,46 @@ export const transitionByProviderMessageId = internalMutation({
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		return await dispatch(ctx, ref, args.transition);
+	},
+});
+
+/** Bind the deterministic MTA identity before crossing the network boundary. */
+export const bindMtaProviderIdentity = internalMutation({
+	args: { send: sendRefValidator, providerMessageId: v.string() },
+	handler: async (ctx, args) => {
+		const send = await loadSend(ctx, args.send);
+		if (!send) return { ok: false as const, reason: 'send_not_found' as const };
+		if (
+			send.providerType === 'mta' &&
+			send.providerMessageId &&
+			send.providerMessageId !== args.providerMessageId
+		) {
+			return { ok: false as const, reason: 'identity_conflict' as const };
+		}
+		if (send.status !== 'queued') {
+			return { ok: false as const, reason: 'terminal' as const };
+		}
+		if (!send.providerMessageId || send.providerType !== 'mta') {
+			await ctx.db.patch(args.send.id, {
+				providerMessageId: args.providerMessageId,
+				providerType: 'mta',
+			});
+		}
+		return { ok: true as const };
+	},
+});
+
+/** Apply an authenticated terminal MTA result to its pre-bound provisional Send. */
+export const transitionMtaByProviderMessageId = internalMutation({
+	args: { providerMessageId: v.string(), transition: transitionInputValidator },
+	handler: async (ctx, args): Promise<TransitionOutcome> => {
+		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
+		if (!ref) return { ok: false, reason: 'send_not_found' };
+		const send = await loadSend(ctx, ref);
+		if (!send || send.providerType !== 'mta' || send.providerMessageId !== args.providerMessageId) {
+			return { ok: false, reason: 'send_not_found' };
+		}
+		return await dispatch(ctx, ref, args.transition, { allowQueuedMtaTerminal: true });
 	},
 });
 

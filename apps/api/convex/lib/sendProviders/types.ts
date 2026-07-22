@@ -190,6 +190,8 @@ export type EmailSendAttempt =
 			errorMessage: string;
 			errorCode: EmailErrorCode;
 			retryAfterMs?: number;
+			/** MTA request outcome is unknown because no HTTP response was observed. */
+			acceptanceUnknown?: true;
 	  };
 
 // ─── Dispatch helper result ────────────────────────────────────────────────

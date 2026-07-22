@@ -199,9 +199,11 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			if (!response.ok) {
 				const errorText = await response.text().catch(() => 'Unknown error');
 				let retryAfterMs: number | undefined;
+				let intakePending = false;
 				if (response.status === 409) {
 					try {
 						const parsed = JSON.parse(errorText) as Record<string, unknown>;
+						intakePending = parsed['code'] === 'INTAKE_PENDING';
 						if (typeof parsed['retryAfterMs'] === 'number') {
 							retryAfterMs = Math.min(Math.max(parsed['retryAfterMs'], 1_000), 3_600_000);
 						}
@@ -212,8 +214,11 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				return {
 					success: false,
 					errorMessage: errorText,
-					errorCode: this.categorizeError(errorText, response.status),
+					errorCode: intakePending
+						? EmailErrorCode.SERVER_ERROR
+						: this.categorizeError(errorText, response.status),
 					...(retryAfterMs === undefined ? {} : { retryAfterMs }),
+					...(intakePending ? { acceptanceUnknown: true as const } : {}),
 				};
 			}
 
@@ -235,6 +240,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				success: false,
 				errorMessage,
 				errorCode: this.categorizeError(errorMessage),
+				acceptanceUnknown: true,
 			};
 		} finally {
 			clearTimeout(timeout);

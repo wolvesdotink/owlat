@@ -44,6 +44,7 @@ import { dmarcFromIdentity } from '../inbound/parsedAddress.js';
 import type { SpfVerdict } from './types.js';
 import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
 import { logAttempt, isLocalAddress } from './serverHelpers.js';
+import { attachFeedbackProvenance } from './feedbackProvenance.js';
 
 /** Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND wire-enforced by the listener). */
 const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
@@ -453,9 +454,10 @@ export function buildOnData(
 				return AckAndSwallowErrors;
 			}
 
-			logAttempt(piped.attempt, parsed);
+			const attributedAttempt = await attachFeedbackProvenance(redis, piped.attempt);
+			logAttempt(attributedAttempt, parsed);
 
-			const { effects } = reduce(piped.attempt, {
+			const { effects } = reduce(attributedAttempt, {
 				parsed,
 				rawBuffer,
 				rcptTo,

@@ -81,7 +81,13 @@ export interface EmailJob {
 	/** Callback material whose canonical digest is authenticated by the token. */
 	routingReentry?: {
 		envelopeInput: unknown;
-		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+		retryState: {
+			attempt: number;
+			startedAt: number;
+			idempotencyKey: string;
+			workAttemptId?: string;
+			acceptanceReconciliation?: boolean;
+		};
 	};
 }
 
@@ -161,6 +167,8 @@ export interface MtaWebhookEvent {
 	bounceType?: 'hard' | 'soft';
 	/** Human-readable message */
 	message?: string;
+	/** Closed lifecycle failure code for terminal non-delivery events. */
+	errorCode?: string;
 	/** Affected IP (for IP events) */
 	ip?: string;
 	/** Blocklists the IP is listed on */
@@ -199,7 +207,13 @@ export interface MtaWebhookEvent {
 	workAttemptId?: string;
 	routingReentry?: {
 		envelopeInput: unknown;
-		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+		retryState: {
+			attempt: number;
+			startedAt: number;
+			idempotencyKey: string;
+			workAttemptId?: string;
+			acceptanceReconciliation?: boolean;
+		};
 	};
 	routingReentryReason?:
 		| 'routing_lease_stale'
@@ -407,6 +421,10 @@ export interface BounceClassification {
 	diagnosticCode?: string;
 	originalMessageId?: string;
 	organizationId?: string;
+	/** Server-persisted production/test attribution for delayed feedback. */
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
+	/** Unknown/mixed provenance is explicitly non-destructive. */
+	feedbackProvenance?: import('@owlat/shared').DeliveryDomain | 'unknown';
 	/**
 	 * The complained/bounced recipient address, extracted from the ARF
 	 * feedback-report part (RFC 5965 §3.2 `Original-Rcpt-To` /

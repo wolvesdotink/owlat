@@ -35,6 +35,13 @@ import { logger } from '../monitoring/logger.js';
 import { isRoutingLeaseBoundTo, readRoutingLease } from './routingDecision.js';
 import { canSend, canSendScope } from '../intelligence/circuitBreaker.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
+import {
+	INTAKE_RESERVATION_LEASE_MS,
+	intakeReceiptKey,
+	parseIntakeReceipt,
+} from './sendReceipt.js';
+
+export { createSendReceiptHandler } from './sendReceipt.js';
 
 /** Match the existing attachment-scan ceiling and bound Redis job growth. */
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
@@ -340,22 +347,81 @@ export function createSendHandler(
 		// Provider/VERP identity is stable, but each bounded routing attempt must
 		// create real work. Deduplicate only the lease-bound attempt identity.
 		const queueIdentity = mode === 'governed' ? body.workAttemptId! : body.messageId;
-		const dedupKey = `mta:work-attempts:${queueIdentity}`;
-		const wasNew = await redis.set(dedupKey, '1', 'PX', GOVERNED_MTA_MAX_MESSAGE_AGE_MS, 'NX');
-		if (!wasNew) {
-			logger.info(
-				{ messageId: body.messageId, workAttemptId: queueIdentity },
-				'Duplicate work attempt — skipping'
-			);
-			// Return the REAL messageId (the VERP token), not a literal "duplicate".
-			// The caller (Convex worker) stores the returned `id` as
-			// `providerMessageId`; the SMTP sender encodes that SAME `messageId` into
-			// the VERP Return-Path. If we returned "duplicate" here, the stored
-			// providerMessageId would never match the VERP token carried by the
-			// already-enqueued message, so every later bounce/complaint webhook would
-			// resolve to send_not_found and the hard-bouncing recipient would never be
-			// suppressed. Echoing body.messageId keeps stored id == VERP token.
-			return c.json({ success: true, id: body.messageId, deduplicated: true });
+		const dedupKey = intakeReceiptKey(queueIdentity);
+		const reservationNow = Date.now();
+		const reservedReceipt = JSON.stringify({
+			state: 'reserved',
+			messageId: body.messageId,
+			reservedAt: reservationNow,
+		});
+		const acceptedReceipt = JSON.stringify({
+			state: 'accepted',
+			messageId: body.messageId,
+			acceptedAt: reservationNow,
+		});
+		const wasNew = await redis.set(
+			dedupKey,
+			reservedReceipt,
+			'PX',
+			GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+			'NX'
+		);
+		let ownsReservation = wasNew === 'OK';
+		if (!ownsReservation) {
+			const rawExisting = await redis.get(dedupKey);
+			const existing = parseIntakeReceipt(rawExisting);
+			if (existing?.state === 'accepted' && existing.messageId === body.messageId) {
+				logger.info(
+					{ messageId: body.messageId, workAttemptId: queueIdentity },
+					'Duplicate work attempt — skipping'
+				);
+				return c.json({ success: true, id: body.messageId, deduplicated: true });
+			}
+			const queued = typeof queue.getJob === 'function' ? await queue.getJob(queueIdentity) : null;
+			if (queued && (!existing || existing.messageId === body.messageId)) {
+				await redis.set(dedupKey, acceptedReceipt, 'PX', GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
+			}
+			const receipt = parseIntakeReceipt(await redis.get(dedupKey));
+			if (receipt?.state === 'accepted' && receipt.messageId === body.messageId) {
+				logger.info(
+					{ messageId: body.messageId, workAttemptId: queueIdentity },
+					'Duplicate work attempt — skipping'
+				);
+				return c.json({ success: true, id: body.messageId, deduplicated: true });
+			}
+			const stale =
+				!existing ||
+				(existing.state === 'reserved' &&
+					existing.messageId === body.messageId &&
+					existing.reservedAt + INTAKE_RESERVATION_LEASE_MS <= reservationNow);
+			if (stale) {
+				ownsReservation = rawExisting
+					? ((await redis.eval(
+							"if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]); return 1 end return 0",
+							1,
+							dedupKey,
+							rawExisting,
+							reservedReceipt,
+							String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS)
+						)) as number) === 1
+					: (await redis.set(
+							dedupKey,
+							reservedReceipt,
+							'PX',
+							GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+							'NX'
+						)) === 'OK';
+			}
+			if (!ownsReservation) {
+				return c.json(
+					{
+						error: 'Intake reservation is still pending',
+						code: 'INTAKE_PENDING',
+						retryAfterMs: 1_000,
+					},
+					409
+				);
+			}
 		}
 
 		// Build job
@@ -400,6 +466,9 @@ export function createSendHandler(
 				orderMs: priorityToOrderMs(priority),
 				jobId: queueIdentity,
 			});
+			// This write is the durable receipt boundary. If the HTTP response is
+			// lost, Convex can prove acceptance without starting a fresh route.
+			await redis.set(dedupKey, acceptedReceipt, 'PX', GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
 
 			logger.debug(
 				{ messageId: body.messageId, groupId, priority, jobId: result.id },
@@ -408,9 +477,19 @@ export function createSendHandler(
 
 			return c.json({ success: true, id: body.messageId, workAttemptId: result.id });
 		} catch (err) {
-			// The reservation represents accepted queue work, not merely an intake
-			// attempt. A failed enqueue must remain retryable.
-			await redis.del(dedupKey);
+			// queue.add may have committed before its client observed an error. The
+			// deterministic job id is authoritative in that ambiguity window.
+			const queued = await queue.getJob(queueIdentity).catch(() => null);
+			if (queued) {
+				await redis.set(dedupKey, acceptedReceipt, 'PX', GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
+				return c.json({ success: true, id: body.messageId, workAttemptId: queueIdentity });
+			}
+			await redis.eval(
+				"if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end return 0",
+				1,
+				dedupKey,
+				reservedReceipt
+			);
 			logger.error({ err, messageId: body.messageId }, 'Failed to enqueue email');
 			return c.json({ error: 'Failed to queue email' }, 500);
 		}

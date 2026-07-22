@@ -456,6 +456,7 @@ describe('handleEmailJob', () => {
 		const { screenContent } = await import('../../intelligence/contentScreening.js');
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { logDeliveryEvent } = await import('../../monitoring/deliveryLogger.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
 
 		vi.mocked(screenContent).mockResolvedValue({ allowed: false, reason: 'empty_body' });
 
@@ -468,12 +469,21 @@ describe('handleEmailJob', () => {
 			expect.objectContaining({ status: 'screened', provider: 'other' }),
 			config
 		);
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'failed',
+				errorCode: 'CONTENT_SCREENED',
+			}),
+			config,
+			redis
+		);
 	});
 
 	it('skips suppressed recipients', async () => {
 		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { logDeliveryEvent } = await import('../../monitoring/deliveryLogger.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
 
 		vi.mocked(isSuppressed).mockResolvedValue(true);
 
@@ -485,6 +495,14 @@ describe('handleEmailJob', () => {
 			redis,
 			expect.objectContaining({ status: 'suppressed', provider: 'other' }),
 			config
+		);
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'failed',
+				errorCode: 'RECIPIENT_SUPPRESSED',
+			}),
+			config,
+			redis
 		);
 	});
 

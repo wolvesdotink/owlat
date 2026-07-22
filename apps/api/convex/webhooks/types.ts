@@ -74,6 +74,7 @@ export type InboundEvent =
 			at: number;
 			errorMessage: string;
 			errorCode: string;
+			providerType?: string;
 			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
@@ -82,6 +83,7 @@ export type InboundEvent =
 			at: number;
 			bounceType: 'hard' | 'soft';
 			bounceMessage?: string;
+			providerType?: string;
 			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
@@ -96,6 +98,8 @@ export type InboundEvent =
 			 * complaint still lands the recipient on the blocklist.
 			 */
 			recipient?: string;
+			providerType?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			kind: 'email.opened';
