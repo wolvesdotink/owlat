@@ -45,16 +45,18 @@ export type SubmissionIdentityResult =
 	| { readonly ok: false; readonly message: string };
 
 const BIND_CLIENT_REQUEST_LUA = `
-local existing = redis.call('GET', KEYS[1])
+local existing = redis.call('HGET', KEYS[1], 'request')
 if not existing then
-  redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+  redis.call('HSET', KEYS[1], 'request', ARGV[1])
+  for index = 3, #ARGV do redis.call('HSET', KEYS[1], 'recipient:' .. ARGV[index], '1') end
+  redis.call('PEXPIRE', KEYS[1], ARGV[2])
   return 1
 end
-if existing == ARGV[1] then
-  redis.call('PEXPIRE', KEYS[1], ARGV[2])
-  return 0
+if existing ~= ARGV[1] then return -1 end
+for index = 3, #ARGV do
+  if redis.call('HEXISTS', KEYS[1], 'recipient:' .. ARGV[index]) == 0 then return -2 end
 end
-return -1
+return 0
 `;
 
 export function normalizeEnvelopeAddress(address: string): string {
@@ -149,8 +151,9 @@ export function resolveSubmissionIdentity(
  */
 export async function bindSubmissionClientRequest(
 	redis: Redis,
-	identity: ResolvedSubmissionIdentity
-): Promise<'not-client' | 'bound' | 'matching' | 'conflict'> {
+	identity: ResolvedSubmissionIdentity,
+	recipients: ReadonlyArray<string>
+): Promise<'not-client' | 'bound' | 'matching' | 'conflict' | 'recipient-expansion'> {
 	if (identity.mode !== 'client') return 'not-client';
 	if (!identity.clientKeyFingerprint) {
 		throw new Error('Client submission identity is missing its key fingerprint');
@@ -161,13 +164,25 @@ export async function bindSubmissionClientRequest(
 			1,
 			`mta:submission-idempotency:{${identity.clientKeyFingerprint}}`,
 			identity.requestFingerprint,
-			String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS)
+			String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS),
+			...normalizedRecipientDigests(recipients)
 		)
 	);
 	if (status === 1) return 'bound';
 	if (status === 0) return 'matching';
 	if (status === -1) return 'conflict';
+	if (status === -2) return 'recipient-expansion';
 	throw new Error('Submission idempotency binding returned an invalid status');
+}
+
+function normalizedRecipientDigests(recipients: ReadonlyArray<string>): string[] {
+	return [
+		...new Set(
+			recipients.map((recipient) =>
+				createHash('sha256').update(normalizeEnvelopeAddress(recipient)).digest('hex')
+			)
+		),
+	].sort();
 }
 
 function hashCanonicalValue(value: unknown): string {

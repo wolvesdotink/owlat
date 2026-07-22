@@ -74,6 +74,70 @@ function callbackArgs(value: Awaited<ReturnType<typeof fixture>>) {
 	};
 }
 
+function canonicalJson(value: unknown): string {
+	if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+	const record = value as Record<string, unknown>;
+	return `{${Object.keys(record)
+		.filter((key) => record[key] !== undefined)
+		.sort()
+		.map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+		.join(',')}}`;
+}
+
+async function legacyToken(
+	value: Awaited<ReturnType<typeof fixture>>,
+	secret: string
+): Promise<string> {
+	const digest = new Uint8Array(
+		await crypto.subtle.digest(
+			'SHA-256',
+			new TextEncoder().encode(
+				canonicalJson({ envelopeInput: value.envelopeInput, retryState: value.retryState })
+			)
+		)
+	);
+	const digestBase64 = btoa(String.fromCharCode(...digest))
+		.replaceAll('+', '-')
+		.replaceAll('/', '_')
+		.replace(/=+$/u, '');
+	const payload = {
+		v: 1,
+		k: 'c',
+		i: value.sendId,
+		o: 'org-1',
+		m: value.retryState.idempotencyKey,
+		w: 'work-attempt-1',
+		a: value.retryState.attempt,
+		e: value.retryState.startedAt + GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+		d: digestBase64,
+	};
+	const keyBytes = await crypto.subtle.digest(
+		'SHA-256',
+		new TextEncoder().encode(`owlat-routing-reentry-key-v1\0${secret}`)
+	);
+	const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
+	const iv = new Uint8Array(12).fill(7);
+	const ciphertext = new Uint8Array(
+		await crypto.subtle.encrypt(
+			{
+				name: 'AES-GCM',
+				iv,
+				additionalData: new TextEncoder().encode('owlat-routing-reentry:v1'),
+			},
+			key,
+			new TextEncoder().encode(JSON.stringify(payload))
+		)
+	);
+	const combined = new Uint8Array(iv.length + ciphertext.length);
+	combined.set(iv);
+	combined.set(ciphertext, iv.length);
+	return `rr1.${btoa(String.fromCharCode(...combined))
+		.replaceAll('+', '-')
+		.replaceAll('/', '_')
+		.replace(/=+$/u, '')}`;
+}
+
 describe('authenticated MTA routing re-entry', () => {
 	async function originalMtaCompletion(value: Awaited<ReturnType<typeof fixture>>) {
 		await value.t.mutation(internal.delivery.sendCompletion.completeSend, {
@@ -176,6 +240,22 @@ describe('authenticated MTA routing re-entry', () => {
 			providerMessageId: value.retryState.idempotencyKey,
 			mtaRoutingReentryAttempt: 2,
 		});
+	});
+
+	it('accepts an rr1 token under the rolling previous secret during deployment', async () => {
+		const value = await fixture();
+		const previousSecret = 'previous-routing-reentry-secret-at-least-32-characters';
+		const token = await legacyToken(value, previousSecret);
+		vi.stubEnv('INSTANCE_SECRET', 'current-routing-reentry-secret-at-least-32-characters');
+		vi.stubEnv('INSTANCE_SECRET_PREVIOUS', previousSecret);
+
+		expect(
+			await value.t.mutation(internal.delivery.routingReentry.consumeSnapshot, {
+				...callbackArgs(value),
+				token,
+			})
+		).toMatchObject({ disposition: 'enqueued' });
+		expect(enqueueAction).toHaveBeenCalledOnce();
 	});
 
 	it('fails closed when the authenticated token is tampered', async () => {

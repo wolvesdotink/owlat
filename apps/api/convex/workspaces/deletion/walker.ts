@@ -128,6 +128,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 
 	// Webhook / form children before parents
 	'webhookDeliveryLogs',
+	'mtaCampaignAlertReceipts',
 	'webhookPayloads',
 	'webhooks',
 	'formSubmissions',
@@ -282,6 +283,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	googlePostmasterStats: makeSweepStep('googlePostmasterStats'),
 	unsubscribeLatencyBuckets: makeSweepStep('unsubscribeLatencyBuckets'),
 	webhookDeliveryLogs: makeSweepStep('webhookDeliveryLogs'),
+	mtaCampaignAlertReceipts: makeSweepStep('mtaCampaignAlertReceipts'),
 	webhooks: makeSweepStep('webhooks'),
 	formSubmissions: makeSweepStep('formSubmissions'),
 	formEndpoints: makeSweepStep('formEndpoints'),

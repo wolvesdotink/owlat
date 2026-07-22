@@ -73,6 +73,12 @@ crons.interval(
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
+crons.interval(
+	'cleanup MTA campaign alert receipts',
+	{ hours: 24 },
+	internal.webhooks.cleanup.cleanupCampaignAlertReceipts,
+	{}
+);
 
 // Clean up old connected-app hook delivery logs weekly. connectedAppHookDeliveryLogs
 // is written on every signed-hook invocation; without this cron its retention

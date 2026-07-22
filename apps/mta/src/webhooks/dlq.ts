@@ -15,7 +15,7 @@ import { logger } from '../monitoring/logger.js';
 import { parseDeliveryFailure, type WebhookDeliveryFailure } from './dlqFailure.js';
 import { webhookDlqRetryDelayMs } from './dlqRetryPolicy.js';
 import { STORE_LUA } from './dlqStoreScript.js';
-import { isMtaWebhookEventType } from './webhookEventType.js';
+import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
 
 export {
 	classifyWebhookHttpFailure,
@@ -54,18 +54,6 @@ function isFiniteNumber(value: unknown): value is number {
 	return typeof value === 'number' && Number.isFinite(value);
 }
 
-function hasInvalidEventDiscriminator(data: string): boolean {
-	try {
-		const value: unknown = JSON.parse(data);
-		return (
-			isRecord(value) &&
-			(!isRecord(value['event']) || !isMtaWebhookEventType(value['event']['event']))
-		);
-	} catch {
-		return false;
-	}
-}
-
 function parseDlqEntry(data: string, expectedDlqId: string): DlqEntry | null {
 	let value: unknown;
 	try {
@@ -77,9 +65,7 @@ function parseDlqEntry(data: string, expectedDlqId: string): DlqEntry | null {
 		!isRecord(value) ||
 		typeof value['dlqId'] !== 'string' ||
 		value['dlqId'] !== expectedDlqId ||
-		!isRecord(value['event']) ||
-		!isMtaWebhookEventType(value['event']['event']) ||
-		!isFiniteNumber(value['event']['timestamp']) ||
+		!isMtaWebhookEvent(value['event']) ||
 		!isFiniteNumber(value['attempts']) ||
 		!Number.isInteger(value['attempts']) ||
 		value['attempts'] < 0 ||
@@ -234,6 +220,8 @@ async function store(
 	dueAt: number,
 	isProtected: boolean
 ): Promise<{ dlqId: string; inserted: boolean }> {
+	if (!isMtaWebhookEvent(event))
+		throw new Error('Webhook event does not match its runtime contract');
 	const createdAt = Date.now();
 	const entry: DlqEntry = { dlqId, event, failure, attempts: 0, createdAt };
 	const observationChanged = -4;
@@ -245,9 +233,9 @@ async function store(
 	) {
 		const observedRaw = isProtected ? await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, dlqId) : null;
 		const observedEntry = observedRaw ? parseDlqEntry(observedRaw, dlqId) : null;
-		const invalidEventDiscriminator = observedRaw
-			? hasInvalidEventDiscriminator(observedRaw)
-			: false;
+		const invalidProtectedEntry = observedRaw !== null && observedEntry === null;
+		const requestedPayloadMatches =
+			observedEntry === null || canonicalJson(observedEntry.event) === canonicalJson(event);
 		const observedPendingEntry =
 			observedEntry?.failure.category === 'pending' ? observedEntry : null;
 		status = (await redis.eval(
@@ -263,18 +251,30 @@ async function store(
 			observedRaw ?? '',
 			observedPendingEntry ? '1' : '0',
 			String(observedPendingEntry?.attempts ?? 0),
-			invalidEventDiscriminator ? '1' : '0'
+			invalidProtectedEntry ? '1' : '0',
+			requestedPayloadMatches ? '1' : '0'
 		)) as number;
 	}
 	if (status === -1) throw new Error('Webhook terminal outbox is at capacity');
 	if (status === -2) throw new Error('Webhook DLQ is at protected capacity');
 	if (status === -3) throw new Error('Existing protected webhook outbox is inconsistent');
-	if (status === -5)
-		throw new Error('Existing protected webhook outbox event type was quarantined');
+	if (status === -5) throw new Error('Existing protected webhook outbox row was quarantined');
+	if (status === -6) throw new Error('Existing protected webhook outbox payload does not match');
 	if (status === observationChanged) {
 		throw new Error('Existing protected webhook outbox changed during repair');
 	}
 	return { dlqId, inserted: status === 1 };
+}
+
+function canonicalJson(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+	if (isRecord(value)) {
+		return `{${Object.keys(value)
+			.sort()
+			.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+			.join(',')}}`;
+	}
+	return JSON.stringify(value) ?? 'undefined';
 }
 
 export async function storeFailed(

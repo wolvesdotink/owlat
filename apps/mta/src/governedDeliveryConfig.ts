@@ -6,13 +6,12 @@ type GovernedCapacityEnv = 'SMTP_OUTCOME_JOURNAL_MAX_SIZE' | 'WEBHOOK_DLQ_MAX_SI
 const DEFAULT_GOVERNED_CAPACITY = '10000';
 const MAX_GOVERNED_CAPACITY = 1_000_000;
 
-export const FBL_DEDUP_PROTOCOLS = ['legacy-shadow', 'owned-v2'] as const;
-export type FblDedupProtocol = (typeof FBL_DEDUP_PROTOCOLS)[number];
+const FBL_DEDUP_PROTOCOL = 'owned-v2';
+const FBL_DEDUP_FRESH_INSTALL_ACK = 'fresh-install';
+const FBL_DEDUP_QUIESCED_CUTOVER_ACK = 'quiesced-v1-intake';
 
 /** Bounded configuration for governed delivery safety state. */
 export interface GovernedDeliveryConfig {
-	/** Rolling-upgrade protocol for complaint reservation ownership. */
-	fblDedupProtocol: FblDedupProtocol;
 	/** Max unresolved SMTP outcome reservations retained before new attempts defer. */
 	smtpOutcomeJournalMaxSize: number;
 	/** Max entries retained in the webhook dead-letter queue. */
@@ -34,9 +33,20 @@ function loadGovernedCapacity(optionalEnv: OptionalEnv, key: GovernedCapacityEnv
 
 /** Load governed retry-age and Redis safety-state capacity ceilings. */
 export function loadGovernedDeliveryConfig(optionalEnv: OptionalEnv): GovernedDeliveryConfig {
-	const fblDedupProtocol = optionalEnv('FBL_DEDUP_PROTOCOL', 'legacy-shadow');
-	if (!FBL_DEDUP_PROTOCOLS.includes(fblDedupProtocol as FblDedupProtocol)) {
-		throw new Error(`FBL_DEDUP_PROTOCOL must be one of: ${FBL_DEDUP_PROTOCOLS.join(', ')}`);
+	const fblDedupProtocol = optionalEnv('FBL_DEDUP_PROTOCOL', '');
+	if (fblDedupProtocol !== FBL_DEDUP_PROTOCOL) {
+		throw new Error(
+			'FBL_DEDUP_PROTOCOL must be explicitly set to owned-v2; existing installations must complete the documented quiesced cutover first'
+		);
+	}
+	const fblDedupCutoverAck = optionalEnv('FBL_DEDUP_CUTOVER_ACK', '');
+	if (
+		fblDedupCutoverAck !== FBL_DEDUP_FRESH_INSTALL_ACK &&
+		fblDedupCutoverAck !== FBL_DEDUP_QUIESCED_CUTOVER_ACK
+	) {
+		throw new Error(
+			'FBL_DEDUP_CUTOVER_ACK must be fresh-install or quiesced-v1-intake; never acknowledge an upgrade before all legacy FBL intake is quiesced and drained'
+		);
 	}
 
 	const maxMessageAgeMs = parseInt(
@@ -58,7 +68,6 @@ export function loadGovernedDeliveryConfig(optionalEnv: OptionalEnv): GovernedDe
 	const webhookDlqMaxSize = loadGovernedCapacity(optionalEnv, 'WEBHOOK_DLQ_MAX_SIZE');
 
 	return {
-		fblDedupProtocol: fblDedupProtocol as FblDedupProtocol,
 		maxMessageAgeMs,
 		smtpOutcomeJournalMaxSize,
 		webhookDlqMaxSize,

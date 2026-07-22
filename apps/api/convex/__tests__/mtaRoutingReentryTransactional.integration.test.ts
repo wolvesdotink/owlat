@@ -68,6 +68,7 @@ describe('transactional MTA routing re-entry', () => {
 			retryState,
 		});
 
+		expect(issued.token).toMatch(/^rr2\./u);
 		expect(issued.expiresAt - retryState.startedAt).toBeLessThanOrEqual(
 			GOVERNED_MTA_MAX_MESSAGE_AGE_MS
 		);

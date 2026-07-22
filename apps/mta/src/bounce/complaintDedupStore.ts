@@ -10,34 +10,31 @@ import {
 	type DurableEffectIdentity,
 	type EffectLeaseOptions,
 } from '../lib/effectCheckpoint.js';
-import type { FblDedupProtocol } from '../governedDeliveryConfig.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 
-const LEGACY_FBL_DEDUP_PREFIX = 'mta:fbl:dedup:';
-const OWNED_FBL_DEDUP_PREFIX = 'mta:fbl:dedup:v2:';
+const OWNED_FBL_DEDUP_PREFIX = 'mta:fbl:dedup:owned-v2:';
 const FBL_DEDUP_TTL_SECONDS = 7 * 86400;
 const FBL_RESERVATION_TTL_SECONDS = 15 * 60;
 
 export interface ComplaintDedupReservation {
 	readonly key: string;
 	readonly token: string;
-	readonly protocol: FblDedupProtocol;
 }
 
 export type ComplaintDedupResult =
 	| { readonly kind: 'completed' }
-	| { readonly kind: 'legacy-occupied' }
 	| { readonly kind: 'reserved'; readonly reservation: ComplaintDedupReservation };
 
 const RESERVE_COMPLAINT_LUA = `
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType == 'none' then
-  redis.call('HSET', KEYS[1], 'status', 'reserved', 'token', ARGV[1])
+  redis.call('HSET', KEYS[1], 'version', '2', 'status', 'reserved', 'token', ARGV[1])
   redis.call('EXPIRE', KEYS[1], ARGV[2])
   return 1
 end
 if keyType == 'string' then return -2 end
+if redis.call('HGET', KEYS[1], 'version') ~= '2' then return -3 end
 local status = redis.call('HGET', KEYS[1], 'status')
 if status == 'completed' then return 0 end
 if status == 'retryable' then
@@ -51,8 +48,9 @@ return -1
 const COMPLETE_COMPLAINT_LUA = `
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
-if keyType == 'string' then return 0 end
+if keyType == 'string' then return -1 end
 if keyType ~= 'hash' then return -1 end
+if redis.call('HGET', KEYS[1], 'version') ~= '2' then return -1 end
 local status = redis.call('HGET', KEYS[1], 'status')
 if status == 'completed' then return 0 end
 if status == 'reserved' and redis.call('HGET', KEYS[1], 'token') == ARGV[1] then
@@ -68,6 +66,7 @@ const RELEASE_COMPLAINT_LUA = `
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash' then return 0 end
+if redis.call('HGET', KEYS[1], 'version') ~= '2' then return 0 end
 if redis.call('HGET', KEYS[1], 'status') == 'reserved'
   and redis.call('HGET', KEYS[1], 'token') == ARGV[1] then
   redis.call('HSET', KEYS[1], 'status', 'retryable')
@@ -82,6 +81,7 @@ const BEGIN_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash'
+  or redis.call('HGET', KEYS[1], 'version') ~= '2'
   or redis.call('HGET', KEYS[1], 'status') ~= 'reserved'
   or redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return {-1, ''} end
 local field = 'effect:' .. ARGV[2]
@@ -99,6 +99,7 @@ const RENEW_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash'
+  or redis.call('HGET', KEYS[1], 'version') ~= '2'
   or redis.call('HGET', KEYS[1], 'status') ~= 'reserved'
   or redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return -1 end
 local field = 'effect:' .. ARGV[2]
@@ -113,6 +114,7 @@ const COMPLETE_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash'
+  or redis.call('HGET', KEYS[1], 'version') ~= '2'
   or redis.call('HGET', KEYS[1], 'status') ~= 'reserved'
   or redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return -1 end
 local field = 'effect:' .. ARGV[2]
@@ -126,6 +128,7 @@ const RELEASE_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash'
+  or redis.call('HGET', KEYS[1], 'version') ~= '2'
   or redis.call('HGET', KEYS[1], 'status') ~= 'reserved'
   or redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return -1 end
 local field = 'effect:' .. ARGV[2]
@@ -137,31 +140,8 @@ return 1
 
 export async function reserveComplaint(
 	redis: Redis,
-	dedupKey: string,
-	protocol: FblDedupProtocol = 'legacy-shadow'
+	dedupKey: string
 ): Promise<ComplaintDedupResult> {
-	if (protocol === 'legacy-shadow') {
-		let legacyClaim: string | null;
-		try {
-			legacyClaim = await redis.set(
-				legacyComplaintKey(dedupKey),
-				'1',
-				'EX',
-				FBL_DEDUP_TTL_SECONDS,
-				'NX'
-			);
-		} catch (error) {
-			throw new TransientFeedbackProcessingError(
-				'Legacy complaint deduplication is unavailable',
-				error
-			);
-		}
-		// The legacy value `1` cannot distinguish a live claim from a completed
-		// complaint. This mode intentionally preserves old-binary exclusion only;
-		// it must be drained before the owned-v2 cutover.
-		if (legacyClaim === null) return { kind: 'legacy-occupied' };
-	}
-
 	const key = ownedComplaintKey(dedupKey);
 	const token = `reserved:${randomUUID()}`;
 	let status: number;
@@ -177,21 +157,23 @@ export async function reserveComplaint(
 		throw new TransientFeedbackProcessingError('Complaint deduplication is unavailable', error);
 	}
 	if (status === 0) return { kind: 'completed' };
-	if (status === 1) return { kind: 'reserved', reservation: { key, token, protocol } };
+	if (status === 1) return { kind: 'reserved', reservation: { key, token } };
 	if (status === -2) {
 		throw new TransientFeedbackProcessingError(
 			'Owned complaint deduplication contains a legacy value',
 			new Error('Versioned FBL namespace must contain only owned-v2 hashes')
 		);
 	}
+	if (status === -3) {
+		throw new TransientFeedbackProcessingError(
+			'Owned complaint deduplication has an unsupported version',
+			new Error('Versioned FBL namespace must contain version 2 hashes')
+		);
+	}
 	throw new TransientFeedbackProcessingError(
 		'Complaint processing is already in progress',
 		new Error('FBL reservation is held by another intake')
 	);
-}
-
-function legacyComplaintKey(dedupKey: string): string {
-	return `${LEGACY_FBL_DEDUP_PREFIX}${dedupKey}`;
 }
 
 function ownedComplaintKey(dedupKey: string): string {

@@ -132,9 +132,11 @@ export type InboundEvent =
 	  }
 	| {
 			kind: 'internal.campaign_complaint_rate';
+			eventId: string;
 			message: string;
-			campaignId?: string;
-			complaintRate?: number;
+			campaignId: string;
+			complaintRate: number;
+			at: number;
 	  }
 	| {
 			kind: 'internal.ip_event';

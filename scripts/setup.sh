@@ -1223,6 +1223,26 @@ write_selfhost_env() {
   section "Writing Configuration"
 
   local env_file=".env"
+  local fbl_dedup_protocol="owned-v2"
+  local fbl_dedup_cutover_ack="fresh-install"
+
+  # A non-empty existing environment may have live legacy workers/keys. Never
+  # turn it into owned-v2 merely because this setup version learned a new
+  # default. The operator must quiesce legacy FBL intake, drain handlers, and
+  # write the explicit acknowledgement before re-running setup.
+  if [[ -s "$env_file" ]]; then
+    fbl_dedup_protocol=$(grep -E '^FBL_DEDUP_PROTOCOL=' "$env_file" | tail -1 | cut -d= -f2- || true)
+    fbl_dedup_cutover_ack=$(grep -E '^FBL_DEDUP_CUTOVER_ACK=' "$env_file" | tail -1 | cut -d= -f2- || true)
+    if [[ "$fbl_dedup_protocol" != "owned-v2" ]] ||
+       [[ "$fbl_dedup_cutover_ack" != "fresh-install" && "$fbl_dedup_cutover_ack" != "quiesced-v1-intake" ]]; then
+      error "Existing install needs an explicit FBL deduplication cutover."
+      info "Quiesce legacy bounce/FBL intake, drain in-flight handlers, then set:"
+      info "FBL_DEDUP_PROTOCOL=owned-v2"
+      info "FBL_DEDUP_CUTOVER_ACK=quiesced-v1-intake"
+      info "See apps/docs/content/3.developer/10.mta-system.md before re-running setup."
+      return 1
+    fi
+  fi
 
   # Backup existing
   if [[ -f "$env_file" ]]; then
@@ -1265,7 +1285,8 @@ write_selfhost_env() {
     echo ""
     echo "WORKER_CONCURRENCY=${SELFHOST_VARS[WORKER_CONCURRENCY]:-50}"
     echo "SMTP_OUTCOME_JOURNAL_MAX_SIZE=${SELFHOST_VARS[SMTP_OUTCOME_JOURNAL_MAX_SIZE]:-10000}"
-    echo "FBL_DEDUP_PROTOCOL=${SELFHOST_VARS[FBL_DEDUP_PROTOCOL]:-owned-v2}"
+    echo "FBL_DEDUP_PROTOCOL=${fbl_dedup_protocol}"
+    echo "FBL_DEDUP_CUTOVER_ACK=${fbl_dedup_cutover_ack}"
     echo "MTA_LOG_LEVEL=${SELFHOST_VARS[MTA_LOG_LEVEL]:-info}"
     echo ""
     echo "# ── Port Overrides (optional) ────────────────────────────────────────────────"

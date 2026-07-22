@@ -30,6 +30,7 @@ import {
 import { ensureSecrets } from './secrets';
 import { mergeEnv, type EnvMap } from './env';
 import { isValidEmail } from './validators';
+import { applyFreshFblDedupDefaults, assertFblDedupCutoverConfigured } from './fblDedupSetup';
 
 export type DeploymentMode = 'selfhost' | 'dev' | 'hosted';
 
@@ -404,7 +405,8 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 export function applySetupDefaults(
 	env: EnvMap,
 	deploymentMode: DeploymentMode,
-	flags?: Partial<Record<FeatureFlagKey, boolean>>
+	flags?: Partial<Record<FeatureFlagKey, boolean>>,
+	isFreshInstall = false
 ): void {
 	const defaults: Record<string, string> = {
 		SITE_URL: 'http://localhost:3000',
@@ -425,12 +427,14 @@ export function applySetupDefaults(
 		MTA_API_URL: 'http://mta:3100',
 		MTA_INTERNAL_URL: 'http://mta:3100',
 		SMTP_OUTCOME_JOURNAL_MAX_SIZE: '10000',
-		FBL_DEDUP_PROTOCOL: 'owned-v2',
 		// Dev endpoints (/seed/demo, /dev/reset) are fail-closed unless truthy.
 		// Default ON for local 'dev' installs; production self-host stays closed
 		// (quickstart flips it on only when demo-seeding).
 		OWLAT_DEV_MODE: deploymentMode === 'dev' ? 'true' : 'false',
 	};
+	if (isFreshInstall) {
+		applyFreshFblDedupDefaults(defaults);
+	}
 	// External-mailbox feature (apps/mail-sync worker, mail.external flag): the
 	// Convex function runtime dispatches outbound mail for external IMAP/SMTP
 	// accounts to the worker at MAIL_SYNC_API_URL. Without it `selectRuntimeEnvVars`
@@ -467,6 +471,8 @@ export interface ResolvedSetup {
 export function buildSetupFromConfig(config: SetupConfig, existingEnv: EnvMap): ResolvedSetup {
 	const hosted = config.deploymentMode === 'hosted';
 	const flags = resolveSetupFlags(config);
+	const isFreshInstall = Object.keys(existingEnv).length === 0;
+	if (!isFreshInstall) assertFblDedupCutoverConfigured(existingEnv);
 
 	const patch = buildEnvPatchFromConfig(config);
 	patch['OWLAT_DEPLOYMENT_MODE'] = config.deploymentMode;
@@ -474,7 +480,7 @@ export function buildSetupFromConfig(config: SetupConfig, existingEnv: EnvMap): 
 
 	const merged = mergeEnv(existingEnv, patch);
 	const withSecrets = ensureSecrets(merged);
-	applySetupDefaults(withSecrets, config.deploymentMode, flags);
+	applySetupDefaults(withSecrets, config.deploymentMode, flags, isFreshInstall);
 
 	return {
 		deploymentMode: config.deploymentMode,

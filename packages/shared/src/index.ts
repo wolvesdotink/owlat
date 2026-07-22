@@ -3,6 +3,13 @@ export * from './types';
 export * from './featureFlags';
 export * from './operatingModes';
 export {
+	MTA_WEBHOOK_EVENT_TYPES,
+	type MtaWebhookEventType,
+	type SharedMtaWebhookEvent,
+	isMtaWebhookEventType,
+	isMtaWebhookEvent,
+} from './mtaWebhookEvent';
+export {
 	type OperationErrorCategory,
 	type OperationError,
 	OPERATION_ERROR_CATEGORIES,

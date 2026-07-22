@@ -9,6 +9,7 @@ import {
 	applySetupDefaults,
 	type SetupConfig,
 } from '../setupConfig';
+import { assertFblDedupCutoverConfigured } from '../fblDedupSetup';
 
 /** A minimal valid config; tests clone + mutate it. The default flags enable
  * bulk sending (campaigns/transactional), which now requires a delivery
@@ -299,6 +300,7 @@ describe('buildSetupFromConfig', () => {
 		expect(out.env['EMAIL_PROVIDER']).toBe('mta');
 		expect(out.env['SMTP_OUTCOME_JOURNAL_MAX_SIZE']).toBe('10000');
 		expect(out.env['FBL_DEDUP_PROTOCOL']).toBe('owned-v2');
+		expect(out.env['FBL_DEDUP_CUTOVER_ACK']).toBe('fresh-install');
 		expect(out.admin).toEqual(cfg.admin);
 		expect(out.seedDemo).toBe(false);
 		expect(out.hosted).toBe(false);
@@ -320,10 +322,19 @@ describe('buildSetupFromConfig', () => {
 			SITE_URL: 'https://my.host',
 			CUSTOM_KEY: 'keep-me',
 			BETTER_AUTH_SECRET: 'preexisting',
+			FBL_DEDUP_PROTOCOL: 'owned-v2',
+			FBL_DEDUP_CUTOVER_ACK: 'quiesced-v1-intake',
 		});
 		expect(out.env['SITE_URL']).toBe('https://my.host'); // default did not override
 		expect(out.env['CUSTOM_KEY']).toBe('keep-me');
 		expect(out.env['BETTER_AUTH_SECRET']).toBe('preexisting'); // ensureSecrets preserves
+		expect(out.env['FBL_DEDUP_CUTOVER_ACK']).toBe('quiesced-v1-intake');
+	});
+
+	it('refuses to infer an owned-v2 cutover for an existing environment', () => {
+		expect(() =>
+			buildSetupFromConfig(parseSetupConfig(base()), { INSTANCE_SECRET: 'already-installed' })
+		).toThrow('Existing install requires an explicit FBL cutover');
 	});
 
 	it('honors seedDemo from the config', () => {
@@ -363,7 +374,18 @@ describe('send-path env reaches the Convex runtime', () => {
 		extra: Record<string, unknown>,
 		existing: Record<string, string> = {}
 	): Record<string, string> {
-		const out = buildSetupFromConfig(parseSetupConfig({ ...base(), ...extra }), existing).env;
+		const acknowledgedExisting =
+			Object.keys(existing).length === 0
+				? existing
+				: {
+						FBL_DEDUP_PROTOCOL: 'owned-v2',
+						FBL_DEDUP_CUTOVER_ACK: 'quiesced-v1-intake',
+						...existing,
+					};
+		const out = buildSetupFromConfig(
+			parseSetupConfig({ ...base(), ...extra }),
+			acknowledgedExisting
+		).env;
 		return Object.fromEntries(selectRuntimeEnvVars(out));
 	}
 
@@ -469,10 +491,30 @@ describe('applySetupDefaults', () => {
 		expect(env['SMTP_OUTCOME_JOURNAL_MAX_SIZE']).toBe('25000');
 	});
 
-	it('never overrides an operator-supplied FBL migration mode', () => {
+	it('does not add an FBL migration acknowledgement without fresh-install proof', () => {
 		const env: Record<string, string> = { FBL_DEDUP_PROTOCOL: 'legacy-shadow' };
 		applySetupDefaults(env, 'selfhost');
 		expect(env['FBL_DEDUP_PROTOCOL']).toBe('legacy-shadow');
+		expect(env['FBL_DEDUP_CUTOVER_ACK']).toBeUndefined();
+	});
+
+	it('writes owned-v2 only when the caller proves this is a fresh install', () => {
+		const env: Record<string, string> = {};
+		applySetupDefaults(env, 'selfhost', undefined, true);
+		expect(env['FBL_DEDUP_PROTOCOL']).toBe('owned-v2');
+		expect(env['FBL_DEDUP_CUTOVER_ACK']).toBe('fresh-install');
+	});
+
+	it('accepts only explicit fresh or quiesced cutover state for an existing install', () => {
+		expect(() =>
+			assertFblDedupCutoverConfigured({
+				FBL_DEDUP_PROTOCOL: 'owned-v2',
+				FBL_DEDUP_CUTOVER_ACK: 'quiesced-v1-intake',
+			})
+		).not.toThrow();
+		expect(() => assertFblDedupCutoverConfigured({ FBL_DEDUP_PROTOCOL: 'legacy-shadow' })).toThrow(
+			'Existing install requires an explicit FBL cutover'
+		);
 	});
 
 	it('opens dev mode for dev', () => {

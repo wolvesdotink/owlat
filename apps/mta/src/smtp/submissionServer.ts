@@ -328,12 +328,15 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 				};
 			}
 
-			const clientRequestBinding = await bindSubmissionClientRequest(redis, identity);
-			if (clientRequestBinding === 'conflict') {
+			const clientRequestBinding = await bindSubmissionClientRequest(redis, identity, recipients);
+			if (clientRequestBinding === 'conflict' || clientRequestBinding === 'recipient-expansion') {
 				return {
 					code: 554,
 					enhanced: '5.5.4',
-					text: 'Idempotency key is already bound to different message content or sender',
+					text:
+						clientRequestBinding === 'conflict'
+							? 'Idempotency key is already bound to different message content or sender'
+							: 'Idempotency key cannot add recipients after first use',
 				};
 			}
 

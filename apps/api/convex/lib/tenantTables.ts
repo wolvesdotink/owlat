@@ -47,6 +47,7 @@ export const TENANT_TABLES = [
 	'transactionalEmails',
 
 	// ── Webhooks ──
+	'mtaCampaignAlertReceipts',
 	'webhookDeliveryLogs',
 	'webhookPayloads',
 	'webhooks',

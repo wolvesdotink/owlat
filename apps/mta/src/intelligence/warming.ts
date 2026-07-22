@@ -14,66 +14,23 @@ import type { MtaConfig } from '../config.js';
 import type { WarmingPhase, WarmingState } from '../types.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
-
-const WARMING_PREFIX = 'mta:warming:';
-const WARMING_RESERVATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-
-const RESERVE_SLOT_LUA = `
-local hashKey = KEYS[1]
-local reservationsKey = KEYS[2]
-local today = ARGV[1]
-local now = tonumber(ARGV[2])
-local expiresAt = tonumber(ARGV[3])
-local messageId = ARGV[4]
-
-local startedAt = redis.call('HGET', hashKey, 'startedAt')
-local phase = redis.call('HGET', hashKey, 'phase')
-if not startedAt or phase == 'graduated' then return { 1, 0, -1, 0 } end
-
-local reset = redis.call('HGET', hashKey, 'sentTodayReset')
-if reset ~= today then redis.call('HSET', hashKey, 'sentToday', '0', 'sentTodayReset', today) end
-redis.call('ZREMRANGEBYSCORE', reservationsKey, '-inf', now)
-local existing = redis.call('ZSCORE', reservationsKey, messageId)
-local sent = tonumber(redis.call('HGET', hashKey, 'sentToday') or '0')
-local cap = tonumber(redis.call('HGET', hashKey, 'dailyCap') or '0')
-local reserved = tonumber(redis.call('ZCARD', reservationsKey))
-if existing then return { 1, sent, cap, reserved } end
-if sent + reserved >= cap then return { 0, sent, cap, reserved } end
-redis.call('ZADD', reservationsKey, expiresAt, messageId)
-redis.call('PEXPIRE', reservationsKey, ${WARMING_RESERVATION_TTL_MS + 60_000})
-return { 1, sent, cap, reserved + 1 }
-`;
-
-const RECORD_RESERVED_SEND_LUA = `
-local hashKey = KEYS[1]
-local reservationsKey = KEYS[2]
-local statsKey = KEYS[3]
-local receiptKey = KEYS[4]
-local messageId = ARGV[1]
-if redis.call('EXISTS', receiptKey) == 1 then return 0 end
-if redis.call('ZREM', reservationsKey, messageId) ~= 1 then return -1 end
-redis.call('HINCRBY', hashKey, 'sentToday', 1)
-redis.call('HINCRBY', statsKey, 'sent', 1)
-redis.call('EXPIRE', statsKey, 172800)
-redis.call('SET', receiptKey, '1', 'EX', 172800)
-return 1
-`;
-
-function reservationsKey(ip: string, today: string): string {
-	return `${WARMING_PREFIX}{warming:${ip}}:reservations:${today}`;
-}
-
-function warmingStateKey(ip: string): string {
-	return `${WARMING_PREFIX}{warming:${ip}}:state`;
-}
-
-function dailyStatsKey(ip: string, today: string): string {
-	return `${WARMING_PREFIX}{warming:${ip}}:daily:${today}`;
-}
-
-function reservationReceiptKey(ip: string, messageId: string): string {
-	return `${WARMING_PREFIX}{warming:${ip}}:reservation-receipt:${messageId}`;
-}
+import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
+import {
+	recordDailyWarmingOutcomeOnce,
+	recordUnreservedWarmingSendOnce,
+} from './warmingOutcomeStore.js';
+import {
+	CHECK_WARMING_CAP_ROLLOVER_LUA,
+	RECORD_RESERVED_WARMING_SEND_LUA,
+	RESERVE_WARMING_SLOT_LUA,
+	WARMING_RESERVATION_TTL_MS,
+} from './warmingScripts.js';
+import {
+	warmingDailyStatsKey,
+	warmingReservationReceiptKey,
+	warmingReservationsKey,
+	warmingStateKey,
+} from './warmingKeys.js';
 
 export interface WarmingReservation {
 	ip: string;
@@ -98,10 +55,10 @@ export async function reserveWarmingSlot(
 	const today = new Date(now).toISOString().split('T')[0]!;
 	const expiresAt = now + WARMING_RESERVATION_TTL_MS;
 	const result = (await redis.eval(
-		RESERVE_SLOT_LUA,
+		RESERVE_WARMING_SLOT_LUA,
 		2,
 		warmingStateKey(ip),
-		reservationsKey(ip, today),
+		warmingReservationsKey(ip, today),
 		today,
 		now,
 		expiresAt,
@@ -125,7 +82,8 @@ export async function isWarmingReservationValid(
 	if (reservation.expiresAt < now) return false;
 	const today = reservation.utcDate;
 	return (
-		(await redis.zscore(reservationsKey(reservation.ip, today), reservation.messageId)) !== null
+		(await redis.zscore(warmingReservationsKey(reservation.ip, today), reservation.messageId)) !==
+		null
 	);
 }
 
@@ -133,7 +91,10 @@ export async function releaseWarmingSlot(
 	redis: Redis,
 	reservation: WarmingReservation
 ): Promise<void> {
-	await redis.zrem(reservationsKey(reservation.ip, reservation.utcDate), reservation.messageId);
+	await redis.zrem(
+		warmingReservationsKey(reservation.ip, reservation.utcDate),
+		reservation.messageId
+	);
 }
 
 /** Revalidate a queued reservation against the actual UTC delivery day. */
@@ -150,35 +111,6 @@ export async function ensureWarmingReservation(
 	const renewed = await reserveWarmingSlot(redis, reservation.ip, reservation.messageId, now);
 	return renewed.allowed ? { allowed: true, reservation: renewed.reservation } : { allowed: false };
 }
-
-/**
- * Atomically roll over the per-day send counter.
- *
- * KEYS[1] = warming hash key
- * ARGV[1] = today's UTC date (YYYY-MM-DD)
- *
- * Reads the stored reset date and the cap inside a single atomic script so
- * that two workers hitting a rolled-over day can't both observe the stale
- * date and double-reset `sentToday`. Returns the post-rollover `sentToday`
- * and `dailyCap` so the caller doesn't need a second non-atomic read.
- *
- * Returns: { sentToday, dailyCap }  (both as strings)
- */
-const CHECK_CAP_ROLLOVER_LUA = `
-local hashKey = KEYS[1]
-local today = ARGV[1]
-
-local reset = redis.call('HGET', hashKey, 'sentTodayReset')
-local dailyCap = redis.call('HGET', hashKey, 'dailyCap') or '0'
-
-if reset ~= today then
-  redis.call('HSET', hashKey, 'sentToday', '0', 'sentTodayReset', today)
-  return { '0', dailyCap }
-end
-
-local sentToday = redis.call('HGET', hashKey, 'sentToday') or '0'
-return { sentToday, dailyCap }
-`;
 
 // Adaptive thresholds
 const ACCELERATE_BOUNCE_MAX = 0.01; // <1% bounce rate to accelerate
@@ -224,10 +156,12 @@ export async function checkCap(
 	// Atomic day-rollover reset: read the stored reset date, the cap, and
 	// (re)set the counter inside one Lua script so two concurrent workers at a
 	// rolled-over date can't both observe the stale date and double-reset.
-	const result = (await redis.eval(CHECK_CAP_ROLLOVER_LUA, 1, warmingStateKey(ip), today)) as [
-		string,
-		string,
-	];
+	const result = (await redis.eval(
+		CHECK_WARMING_CAP_ROLLOVER_LUA,
+		1,
+		warmingStateKey(ip),
+		today
+	)) as [string, string];
 	const sentToday = parseInt(result[0] ?? '0', 10);
 	const dailyCap = result[1] === 'Infinity' ? Infinity : parseInt(result[1] ?? '0', 10);
 
@@ -244,24 +178,29 @@ export async function checkCap(
 export async function recordSend(
 	redis: Redis,
 	ip: string,
-	reservation?: WarmingReservation
+	reservation?: WarmingReservation,
+	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<void> {
 	const hashKey = warmingStateKey(ip);
 	const today = new Date().toISOString().split('T')[0]!;
-	const statsKey = dailyStatsKey(ip, today);
+	const statsKey = warmingDailyStatsKey(ip, today);
 	if (reservation) {
 		const recorded = Number(
 			await redis.eval(
-				RECORD_RESERVED_SEND_LUA,
+				RECORD_RESERVED_WARMING_SEND_LUA,
 				4,
 				hashKey,
-				reservationsKey(ip, reservation.utcDate),
+				warmingReservationsKey(ip, reservation.utcDate),
 				statsKey,
-				reservationReceiptKey(ip, reservation.messageId),
+				warmingReservationReceiptKey(ip, reservation.messageId),
 				reservation.messageId
 			)
 		);
 		void recorded;
+		return;
+	}
+	if (idempotencyIdentity) {
+		await recordUnreservedWarmingSendOnce(redis, ip, today, idempotencyIdentity);
 		return;
 	}
 
@@ -273,17 +212,33 @@ export async function recordSend(
 /**
  * Record a bounce during warming
  */
-export async function recordBounce(redis: Redis, ip: string): Promise<void> {
+export async function recordBounce(
+	redis: Redis,
+	ip: string,
+	idempotencyIdentity?: DurableEffectIdentity
+): Promise<void> {
 	const today = new Date().toISOString().split('T')[0]!;
-	await redis.hincrby(dailyStatsKey(ip, today), 'bounced', 1);
+	if (idempotencyIdentity) {
+		await recordDailyWarmingOutcomeOnce(redis, ip, today, 'bounced', idempotencyIdentity);
+		return;
+	}
+	await redis.hincrby(warmingDailyStatsKey(ip, today), 'bounced', 1);
 }
 
 /**
  * Record a deferral during warming
  */
-export async function recordDeferral(redis: Redis, ip: string): Promise<void> {
+export async function recordDeferral(
+	redis: Redis,
+	ip: string,
+	idempotencyIdentity?: DurableEffectIdentity
+): Promise<void> {
 	const today = new Date().toISOString().split('T')[0]!;
-	await redis.hincrby(dailyStatsKey(ip, today), 'deferred', 1);
+	if (idempotencyIdentity) {
+		await recordDailyWarmingOutcomeOnce(redis, ip, today, 'deferred', idempotencyIdentity);
+		return;
+	}
+	await redis.hincrby(warmingDailyStatsKey(ip, today), 'deferred', 1);
 }
 
 /**
@@ -340,7 +295,7 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	if (state.lastEvaluatedDate === today) return;
 
 	const hashKey = warmingStateKey(ip);
-	const dailyStats = await redis.hgetall(dailyStatsKey(ip, today));
+	const dailyStats = await redis.hgetall(warmingDailyStatsKey(ip, today));
 
 	const sent = parseInt(dailyStats['sent'] ?? '0', 10);
 	const bounced = parseInt(dailyStats['bounced'] ?? '0', 10);

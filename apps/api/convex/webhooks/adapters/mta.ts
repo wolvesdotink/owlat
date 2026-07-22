@@ -18,65 +18,8 @@ import { getOptional } from '../../lib/env';
 import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
-import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import { isDeliveryDomain } from '@owlat/shared';
+import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
 import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
-
-interface MtaWebhookPayload {
-	event: string;
-	messageId?: string;
-	organizationId?: string;
-	/** Complained recipient address (RFC 5965 §3.2) when no Message-ID. */
-	recipient?: string;
-	bounceType?: 'hard' | 'soft';
-	message?: string;
-	errorCode?: unknown;
-	ip?: string;
-	blocklists?: string[];
-	severity?: 'info' | 'warning' | 'critical';
-	bounceRate?: number;
-	/** DKIM rotation callback fields (event `dkim.rotated`). */
-	domain?: string;
-	selector?: string;
-	dnsRecord?: string;
-	phase?: 'pending' | 'activated';
-	campaignId?: string;
-	complaintRate?: number;
-	date?: string;
-	userReportedSpamRatio?: number;
-	destinationProvider?: unknown;
-	primarySendingDomain?: string;
-	deliveryDomain?: unknown;
-	routingReentryToken?: unknown;
-	workAttemptId?: unknown;
-	routingReentry?: unknown;
-	routingReentryReason?: unknown;
-	inboundPayload?: {
-		from: string;
-		to: string;
-		subject: string;
-		textBody?: string;
-		htmlBody?: string;
-		headers: Record<string, string>;
-		date?: string;
-		messageId?: string;
-		inReplyTo?: string;
-		references?: string;
-		attachments: Array<{
-			filename?: string;
-			contentType: string;
-			size: number;
-			redisKey?: string;
-		}>;
-		// RFC 8601 inbound auth verdicts, forwarded by the MTA so the AI-inbox
-		// path can persist them on `inboundMessages` (previously dropped here).
-		spfResult?: string;
-		dkimResult?: string;
-		dmarcResult?: string;
-		dmarcPolicy?: string;
-	};
-	timestamp: number;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
@@ -120,6 +63,19 @@ const IP_EVENT_SUBKIND: Record<
 	'ip.warming_complete': 'warming_complete',
 	all_ips_blocked: 'all_blocked',
 };
+
+const ROUTING_REENTRY_DISPOSITION_STATUS = {
+	invalid_token: 409,
+	binding_mismatch: 409,
+	message_mismatch: 409,
+	expired: 409,
+	snapshot_not_found: 409,
+	enqueued: 200,
+	duplicate: 200,
+	terminal: 200,
+	deadline_expired: 200,
+	retry_exhausted: 200,
+} as const;
 
 export async function verifyMtaHeaders(
 	body: string,
@@ -172,11 +128,9 @@ export const mtaAdapter: InboundAdapter = {
 	},
 
 	parseEvent(rawBody): InboundEvent | null {
-		const payload = JSON.parse(rawBody) as MtaWebhookPayload;
-		if (payload.deliveryDomain !== undefined && !isDeliveryDomain(payload.deliveryDomain)) {
-			return null;
-		}
-
+		const parsed: unknown = JSON.parse(rawBody);
+		if (!isMtaWebhookEvent(parsed)) return null;
+		const payload = parsed;
 		switch (payload.event) {
 			case 'routing.reentry': {
 				const reentry = isRecord(payload.routingReentry) ? payload.routingReentry : null;
@@ -285,12 +239,7 @@ export const mtaAdapter: InboundAdapter = {
 				return null;
 			}
 			case 'sent': {
-				if (
-					!payload.messageId ||
-					(payload.destinationProvider !== undefined &&
-						!isDestinationProviderKey(payload.destinationProvider))
-				)
-					return null;
+				if (!payload.messageId) return null;
 				return {
 					// The MTA emits this only after the destination SMTP server has
 					// accepted DATA. POST /send queue acceptance is recorded separately
@@ -344,9 +293,11 @@ export const mtaAdapter: InboundAdapter = {
 			case 'campaign.complaint_rate': {
 				return {
 					kind: 'internal.campaign_complaint_rate',
-					message: payload.message ?? 'campaign complaint rate exceeded threshold',
-					...(payload.campaignId ? { campaignId: payload.campaignId } : {}),
-					...(payload.complaintRate !== undefined ? { complaintRate: payload.complaintRate } : {}),
+					eventId: payload.eventId,
+					message: payload.message,
+					campaignId: payload.campaignId,
+					complaintRate: payload.complaintRate,
+					at: payload.timestamp,
 				};
 			}
 			case 'ip.blocklisted':
@@ -388,18 +339,21 @@ export const mtaAdapter: InboundAdapter = {
 	},
 
 	successResponse(event, dispatchResult) {
-		if (event.kind === 'internal.routing_reentry' && isRecord(dispatchResult)) {
-			const disposition = dispatchResult['disposition'];
-			if (
-				disposition === 'expired' ||
-				disposition === 'snapshot_not_found' ||
-				disposition === 'superseded'
-			) {
-				return new Response(JSON.stringify({ success: false, disposition }), {
-					status: disposition === 'expired' ? 410 : 409,
-					headers: { 'Content-Type': 'application/json' },
-				});
-			}
+		if (event.kind === 'internal.routing_reentry') {
+			const disposition = isRecord(dispatchResult) ? dispatchResult['disposition'] : undefined;
+			const status =
+				typeof disposition === 'string' && disposition in ROUTING_REENTRY_DISPOSITION_STATUS
+					? ROUTING_REENTRY_DISPOSITION_STATUS[
+							disposition as keyof typeof ROUTING_REENTRY_DISPOSITION_STATUS
+						]
+					: 500;
+			// The MTA's protected outbox treats every non-2xx as durable retry /
+			// operator-visible work. Only dispositions that atomically enqueued a
+			// successor or observed a terminal/idempotent Send may be acknowledged.
+			return new Response(
+				JSON.stringify({ success: status === 200, disposition: disposition ?? 'invalid_result' }),
+				{ status, headers: { 'Content-Type': 'application/json' } }
+			);
 		}
 		if (
 			event.kind === 'internal.postmaster_authorize_domain' ||

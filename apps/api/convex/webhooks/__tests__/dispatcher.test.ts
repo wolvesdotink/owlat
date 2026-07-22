@@ -769,7 +769,7 @@ describe('dispatchInboundEvent — internal signals', () => {
 		const event: InboundEvent = {
 			kind: 'internal.circuit_breaker_tripped',
 			message: 'bounce spike',
-			bounceRate: 12,
+			bounceRate: 0.12,
 		};
 
 		await dispatchInboundEvent(ctx, event);
@@ -782,7 +782,7 @@ describe('dispatchInboundEvent — internal signals', () => {
 		expect(args.input.to).toBe('warned');
 		expect(args.input.changedBy).toBe('mta_circuit_breaker');
 		expect(args.input.reason).toContain('bounce spike');
-		expect(args.input.reason).toContain('12%');
+		expect(args.input.reason).toContain('12.00%');
 	});
 
 	it('swallows downstream failures on circuit_breaker_tripped (does not throw)', async () => {
@@ -796,39 +796,61 @@ describe('dispatchInboundEvent — internal signals', () => {
 		await expect(dispatchInboundEvent(ctx, event)).resolves.toBeUndefined();
 	});
 
-	it('routes campaign_complaint_rate to abuseStatus.transition with a "warned" transition', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+	it('routes campaign_complaint_rate to the transactional idempotent alert mutation', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
 		const event: InboundEvent = {
 			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'a'.repeat(64)}`,
 			message: 'Campaign complaint rate 0.40% exceeded 0.3% threshold (4/1000)',
 			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
 			complaintRate: 0.004,
+			at: 1_700_000_000_000,
 		};
 
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(ref(internal.workspaces.abuseStatus.transition));
-		const args = runMutationCalls[0]?.args as {
-			input: { to: string; reason: string; changedBy: string };
-		};
-		expect(args.input.to).toBe('warned');
-		expect(args.input.changedBy).toBe('mta_campaign_complaint_rate');
-		// Carries the MTA message + the formatted rate parenthetical + campaign id.
-		expect(args.input.reason).toContain('exceeded 0.3% threshold');
-		expect(args.input.reason).toContain('(0.40%)');
-		expect(args.input.reason).toContain('[campaign jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4]');
+		expect(runMutationCalls[0]).toEqual({
+			ref: ref(internal.workspaces.abuseStatus.recordCampaignComplaintAlert),
+			args: {
+				eventId: event.eventId,
+				campaignId: event.campaignId,
+				message: event.message,
+				complaintRate: event.complaintRate,
+				eventTimestamp: event.at,
+			},
+		});
 	});
 
-	it('swallows downstream failures on campaign_complaint_rate (does not throw)', async () => {
+	it('propagates a rejected campaign alert transition so the MTA retains its outbox row', async () => {
+		const { ctx, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: false, reason: 'no_settings_row' });
+		const event: InboundEvent = {
+			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'b'.repeat(64)}`,
+			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
+			message: 'rate exceeded',
+			complaintRate: 0.004,
+			at: 1_700_000_000_000,
+		};
+
+		await expect(dispatchInboundEvent(ctx, event)).rejects.toThrow('no_settings_row');
+	});
+
+	it('propagates campaign alert mutation exceptions so the MTA retries', async () => {
 		const { ctx, failNextRunMutation } = makeCtx();
 		failNextRunMutation(new Error('abuse mutation failed'));
 		const event: InboundEvent = {
 			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'c'.repeat(64)}`,
+			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
 			message: 'rate exceeded',
+			complaintRate: 0.004,
+			at: 1_700_000_000_000,
 		};
 
-		await expect(dispatchInboundEvent(ctx, event)).resolves.toBeUndefined();
+		await expect(dispatchInboundEvent(ctx, event)).rejects.toThrow('abuse mutation failed');
 	});
 
 	it('schedules a warming sync for ip_event subkind=blocklisted', async () => {

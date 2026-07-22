@@ -18,15 +18,42 @@ import {
 	type WorkerRetryState,
 } from './workerEnvelope';
 
-const TOKEN_PREFIX = 'rr1.';
-const TOKEN_AAD = new TextEncoder().encode('owlat-routing-reentry:v1');
+const TOKEN_PREFIX = 'rr2.';
+const LEGACY_TOKEN_PREFIX = 'rr1.';
+const TOKEN_AAD = new TextEncoder().encode('owlat-routing-reentry:v2');
+const LEGACY_TOKEN_AAD = new TextEncoder().encode('owlat-routing-reentry:v1');
 
 export const sendRefValidator = v.union(
 	v.object({ kind: v.literal('campaign'), id: v.id('emailSends') }),
 	v.object({ kind: v.literal('transactional'), id: v.id('transactionalSends') })
 );
 
-interface TokenPayload {
+interface RoutingReentryTokenPayload {
+	sendKind: 'campaign' | 'transactional';
+	sendId: string;
+	organizationId: string;
+	messageId: string;
+	workAttemptId: string;
+	attempt: number;
+	expiresAt: number;
+	callbackDigest: string;
+}
+
+/** Compact encrypted wire representation. Opaque names do not enter domain logic. */
+interface CompactTokenPayload {
+	v: 2;
+	k: 'c' | 't';
+	i: string;
+	o: string;
+	m: string;
+	w: string;
+	a: number;
+	e: number;
+	d: string;
+}
+
+/** Rolling decoder for tokens issued by the previous rr1 deployment. */
+interface LegacyCompactTokenPayload {
 	v: 1;
 	k: 'c' | 't';
 	i: string;
@@ -58,12 +85,12 @@ function base64UrlToBytes(value: string): Uint8Array | null {
 	}
 }
 
-function isTokenPayload(value: unknown): value is TokenPayload {
+function isCompactTokenPayload(value: unknown): value is CompactTokenPayload {
 	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
 	const payload = value as Record<string, unknown>;
 	return (
 		Object.keys(payload).length === 9 &&
-		payload['v'] === 1 &&
+		payload['v'] === 2 &&
 		(payload['k'] === 'c' || payload['k'] === 't') &&
 		typeof payload['i'] === 'string' &&
 		typeof payload['o'] === 'string' &&
@@ -77,6 +104,41 @@ function isTokenPayload(value: unknown): value is TokenPayload {
 		typeof payload['d'] === 'string' &&
 		payload['d'].length === 43
 	);
+}
+
+function isLegacyCompactTokenPayload(value: unknown): value is LegacyCompactTokenPayload {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+	const payload = value as Record<string, unknown>;
+	return payload['v'] === 1 && isCompactTokenPayload({ ...payload, v: 2 });
+}
+
+function fromCompactTokenPayload(
+	payload: CompactTokenPayload | LegacyCompactTokenPayload
+): RoutingReentryTokenPayload {
+	return {
+		sendKind: payload.k === 'c' ? 'campaign' : 'transactional',
+		sendId: payload.i,
+		organizationId: payload.o,
+		messageId: payload.m,
+		workAttemptId: payload.w,
+		attempt: payload.a,
+		expiresAt: payload.e,
+		callbackDigest: payload.d,
+	};
+}
+
+function toCompactTokenPayload(payload: RoutingReentryTokenPayload): CompactTokenPayload {
+	return {
+		v: 2,
+		k: payload.sendKind === 'campaign' ? 'c' : 't',
+		i: payload.sendId,
+		o: payload.organizationId,
+		m: payload.messageId,
+		w: payload.workAttemptId,
+		a: payload.attempt,
+		e: payload.expiresAt,
+		d: payload.callbackDigest,
+	};
 }
 
 async function keyFromSecret(secret: string): Promise<CryptoKey> {
@@ -95,13 +157,13 @@ function currentSecret(): string {
 	return secret;
 }
 
-async function encryptToken(payload: TokenPayload): Promise<string> {
+async function encryptToken(payload: RoutingReentryTokenPayload): Promise<string> {
 	const iv = crypto.getRandomValues(new Uint8Array(12));
 	const ciphertext = new Uint8Array(
 		await crypto.subtle.encrypt(
 			{ name: 'AES-GCM', iv, additionalData: TOKEN_AAD },
 			await keyFromSecret(currentSecret()),
-			new TextEncoder().encode(JSON.stringify(payload))
+			new TextEncoder().encode(JSON.stringify(toCompactTokenPayload(payload)))
 		)
 	);
 	const combined = new Uint8Array(iv.length + ciphertext.length);
@@ -114,24 +176,34 @@ async function encryptToken(payload: TokenPayload): Promise<string> {
 	return token;
 }
 
-async function tryDecrypt(token: string, secret: string): Promise<TokenPayload | null> {
-	const encoded = token.startsWith(TOKEN_PREFIX) ? token.slice(TOKEN_PREFIX.length) : '';
+async function tryDecrypt(
+	token: string,
+	secret: string
+): Promise<RoutingReentryTokenPayload | null> {
+	const isCurrent = token.startsWith(TOKEN_PREFIX);
+	const isLegacy = token.startsWith(LEGACY_TOKEN_PREFIX);
+	if (!isCurrent && !isLegacy) return null;
+	const prefix = isCurrent ? TOKEN_PREFIX : LEGACY_TOKEN_PREFIX;
+	const additionalData = isCurrent ? TOKEN_AAD : LEGACY_TOKEN_AAD;
+	const encoded = token.slice(prefix.length);
 	const bytes = base64UrlToBytes(encoded);
 	if (!bytes || bytes.length <= 28) return null;
 	try {
 		const plaintext = await crypto.subtle.decrypt(
-			{ name: 'AES-GCM', iv: bytes.slice(0, 12), additionalData: TOKEN_AAD },
+			{ name: 'AES-GCM', iv: bytes.slice(0, 12), additionalData },
 			await keyFromSecret(secret),
 			bytes.slice(12)
 		);
 		const parsed: unknown = JSON.parse(new TextDecoder().decode(plaintext));
-		return isTokenPayload(parsed) ? parsed : null;
+		if (isCurrent && isCompactTokenPayload(parsed)) return fromCompactTokenPayload(parsed);
+		if (isLegacy && isLegacyCompactTokenPayload(parsed)) return fromCompactTokenPayload(parsed);
+		return null;
 	} catch {
 		return null;
 	}
 }
 
-async function decryptToken(token: string): Promise<TokenPayload | null> {
+async function decryptToken(token: string): Promise<RoutingReentryTokenPayload | null> {
 	if (token.length > ROUTING_REENTRY_TOKEN_MAX_LENGTH) return null;
 	const payload = await tryDecrypt(token, currentSecret());
 	if (payload) return payload;
@@ -174,10 +246,7 @@ export const issueSnapshot = internalMutation({
 		if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
 			throw new Error('Routing re-entry deadline expired.');
 		}
-		const send =
-			args.sendRef.kind === 'campaign'
-				? await ctx.db.get(args.sendRef.id)
-				: await ctx.db.get(args.sendRef.id);
+		const send = await ctx.db.get(args.sendRef.id);
 		if (!send || send.status !== 'queued') {
 			throw new Error('Routing re-entry token requires an existing queued Send.');
 		}
@@ -197,15 +266,14 @@ export const issueSnapshot = internalMutation({
 			args.retryState.startedAt + GOVERNED_MTA_MAX_MESSAGE_AGE_MS
 		);
 		const token = await encryptToken({
-			v: 1,
-			k: args.sendRef.kind === 'campaign' ? 'c' : 't',
-			i: args.sendRef.id,
-			o: args.organizationId,
-			m: args.messageId,
-			w: args.workAttemptId,
-			a: args.retryState.attempt,
-			e: expiresAt,
-			d: await callbackDigest(args.envelopeInput, args.retryState),
+			sendKind: args.sendRef.kind,
+			sendId: args.sendRef.id,
+			organizationId: args.organizationId,
+			messageId: args.messageId,
+			workAttemptId: args.workAttemptId,
+			attempt: args.retryState.attempt,
+			expiresAt,
+			callbackDigest: await callbackDigest(args.envelopeInput, args.retryState),
 		});
 		return { token, expiresAt };
 	},
@@ -231,13 +299,13 @@ type TargetResolution =
  */
 async function resolveReentryTarget(
 	ctx: MutationCtx,
-	payload: TokenPayload,
+	payload: RoutingReentryTokenPayload,
 	envelopeInput: WorkerEnvelopeInput,
 	retryState: WorkerRetryState,
 	messageId: string
 ): Promise<TargetResolution> {
-	if (payload.k === 'c') {
-		const id = ctx.db.normalizeId('emailSends', payload.i);
+	if (payload.sendKind === 'campaign') {
+		const id = ctx.db.normalizeId('emailSends', payload.sendId);
 		if (!id || envelopeInput.kind !== 'campaign' || envelopeInput.emailSendId !== id) {
 			return { ok: false, disposition: 'binding_mismatch' };
 		}
@@ -250,7 +318,7 @@ async function resolveReentryTarget(
 				send,
 				recordAttempt: async () => {
 					await ctx.db.patch(id, {
-						mtaRoutingReentryAttempt: payload.a,
+						mtaRoutingReentryAttempt: payload.attempt,
 						...(!send.providerMessageId
 							? { providerMessageId: messageId, providerType: 'mta' }
 							: {}),
@@ -271,7 +339,7 @@ async function resolveReentryTarget(
 		};
 	}
 
-	const id = ctx.db.normalizeId('transactionalSends', payload.i);
+	const id = ctx.db.normalizeId('transactionalSends', payload.sendId);
 	if (!id || envelopeInput.kind !== 'transactional' || envelopeInput.sendId !== id) {
 		return { ok: false, disposition: 'binding_mismatch' };
 	}
@@ -284,7 +352,7 @@ async function resolveReentryTarget(
 			send,
 			recordAttempt: async () => {
 				await ctx.db.patch(id, {
-					mtaRoutingReentryAttempt: payload.a,
+					mtaRoutingReentryAttempt: payload.attempt,
 					...(!send.providerMessageId ? { providerMessageId: messageId, providerType: 'mta' } : {}),
 				});
 			},
@@ -321,12 +389,12 @@ export const consumeSnapshot = internalMutation({
 		const payload = await decryptToken(args.token);
 		if (!payload) return { disposition: 'invalid_token' as const };
 		if (
-			payload.m !== args.messageId ||
-			payload.w !== args.workAttemptId ||
-			payload.a !== args.retryState.attempt ||
-			payload.d !== (await callbackDigest(args.envelopeInput, args.retryState)) ||
+			payload.messageId !== args.messageId ||
+			payload.workAttemptId !== args.workAttemptId ||
+			payload.attempt !== args.retryState.attempt ||
+			payload.callbackDigest !== (await callbackDigest(args.envelopeInput, args.retryState)) ||
 			args.retryState.idempotencyKey !== args.messageId ||
-			args.envelopeInput.organizationId !== payload.o
+			args.envelopeInput.organizationId !== payload.organizationId
 		) {
 			return { disposition: 'binding_mismatch' as const };
 		}
@@ -336,7 +404,7 @@ export const consumeSnapshot = internalMutation({
 			return { disposition: 'binding_mismatch' as const };
 		}
 		const deadlineExpired = ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS;
-		if (!deadlineExpired && payload.e <= now) return { disposition: 'expired' as const };
+		if (!deadlineExpired && payload.expiresAt <= now) return { disposition: 'expired' as const };
 
 		const resolution = await resolveReentryTarget(
 			ctx,
@@ -363,11 +431,11 @@ export const consumeSnapshot = internalMutation({
 			});
 			return { disposition: 'deadline_expired' as const };
 		}
-		if ((send.mtaRoutingReentryAttempt ?? 0) >= payload.a) {
+		if ((send.mtaRoutingReentryAttempt ?? 0) >= payload.attempt) {
 			return { disposition: 'duplicate' as const };
 		}
 		await recordAttempt();
-		if (payload.a > MAX_GOVERNED_ROUTING_ATTEMPTS) {
+		if (payload.attempt > MAX_GOVERNED_ROUTING_ATTEMPTS) {
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: sendRef,
 				transition: {

@@ -343,7 +343,7 @@ describe('applyEffects — ordering', () => {
 		expect(queueConvexWebhook).toHaveBeenCalled();
 	});
 
-	it('still surfaces parallel-bucket errors (Promise.all rejection)', async () => {
+	it('settles every started effect before surfacing the first input-order failure', async () => {
 		vi.mocked(domainThrottle.recordSuccess).mockRejectedValueOnce(new Error('boom'));
 
 		await expect(

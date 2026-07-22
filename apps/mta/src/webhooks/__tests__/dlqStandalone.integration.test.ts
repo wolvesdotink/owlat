@@ -132,7 +132,7 @@ describe.runIf(dockerAvailable())('webhook DLQ on standalone Redis', () => {
 		expect(claimed).not.toBeNull();
 	});
 
-	it('rewrites a structurally invalid deterministic row only when it is unclaimed', async () => {
+	it('quarantines an incomplete event-specific deterministic row', async () => {
 		const payload = event('standalone-invalid');
 		const id = await storePending(redis, payload, config, 'standalone-invalid:bounced');
 		await redis.hset(
@@ -140,24 +140,28 @@ describe.runIf(dockerAvailable())('webhook DLQ on standalone Redis', () => {
 			id,
 			JSON.stringify({
 				dlqId: id,
-				event: payload,
+				event: { event: 'bounced', timestamp: payload.timestamp },
 				failure: { category: 'pending' },
 				attempts: 9,
 				createdAt: 'not-a-timestamp',
 			})
 		);
 
-		expect(await storePending(redis, payload, config, 'standalone-invalid:bounced')).toBe(id);
-		expect(await getEntry(redis, id)).toMatchObject({ dlqId: id, event: payload, attempts: 0 });
-		expect(
-			await claimOne(redis, id, {
-				owner: 'repair-verification',
-				now: Date.now(),
-				requireDue: false,
-				enforceAutoLimit: false,
-				autoRetryLimit: 8,
-			})
-		).not.toBeNull();
+		await expect(
+			storePending(redis, payload, config, 'standalone-invalid:bounced')
+		).rejects.toThrow('quarantined');
+		expect(await getEntry(redis, id)).toBeNull();
+	});
+
+	it('rejects deterministic identity reuse with a different immutable payload', async () => {
+		const payload = event('standalone-payload-binding');
+		const key = 'standalone-payload-binding:bounced';
+		const id = await storePending(redis, payload, config, key);
+
+		await expect(
+			storePending(redis, { ...payload, bounceType: 'soft' }, config, key)
+		).rejects.toThrow('payload does not match');
+		expect(await getEntry(redis, id)).toMatchObject({ event: payload });
 	});
 
 	it('quarantines an unknown event type instead of repairing or protecting it', async () => {

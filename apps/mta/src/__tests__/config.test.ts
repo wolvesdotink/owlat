@@ -17,6 +17,8 @@ const REQUIRED_ENV = {
 	MTA_WEBHOOK_SECRET: 'test-secret',
 	IP_POOLS_TRANSACTIONAL: '10.0.0.1,10.0.0.2',
 	IP_POOLS_CAMPAIGN: '10.0.0.3',
+	FBL_DEDUP_PROTOCOL: 'owned-v2',
+	FBL_DEDUP_CUTOVER_ACK: 'fresh-install',
 };
 
 describe('loadConfig', () => {
@@ -80,6 +82,15 @@ describe('loadConfig', () => {
 
 		expect(config.port).toBe(3100);
 		expect(config.redisUrl).toBe('redis://localhost:6379');
+	});
+
+	it('fails closed without an explicit owned-v2 install or cutover acknowledgement', () => {
+		delete process.env.FBL_DEDUP_PROTOCOL;
+		expect(() => loadConfig()).toThrow('FBL_DEDUP_PROTOCOL must be explicitly set to owned-v2');
+
+		process.env.FBL_DEDUP_PROTOCOL = 'owned-v2';
+		delete process.env.FBL_DEDUP_CUTOVER_ACK;
+		expect(() => loadConfig()).toThrow('FBL_DEDUP_CUTOVER_ACK');
 	});
 
 	it('defaults distributed pool coordination to the rolling-upgrade-safe legacy protocol', () => {

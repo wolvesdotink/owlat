@@ -205,7 +205,7 @@ describe('mtaAdapter.parseEvent', () => {
 				timestamp: 1700000000000,
 			})
 		);
-		expect(event).toMatchObject({ errorCode: 'ambiguous_post_data' });
+		expect(event).toBeNull();
 	});
 
 	it('returns null for failed without messageId', () => {
@@ -319,6 +319,7 @@ describe('mtaAdapter.parseEvent', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'inbound.received',
+				organizationId: 'org-1',
 				timestamp: 1700000000000,
 				inboundPayload: {
 					from: 'sender@example.com',
@@ -343,15 +344,16 @@ describe('mtaAdapter.parseEvent', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'org.circuit_breaker',
+				organizationId: 'org-1',
 				message: 'high bounce rate',
-				bounceRate: 12.5,
+				bounceRate: 0.125,
 				timestamp: 1700000000000,
 			})
 		);
 		expect(event).toEqual({
 			kind: 'internal.circuit_breaker_tripped',
 			message: 'high bounce rate',
-			bounceRate: 12.5,
+			bounceRate: 0.125,
 		});
 	});
 
@@ -359,6 +361,7 @@ describe('mtaAdapter.parseEvent', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'campaign.complaint_rate',
+				eventId: `effect:v1:${'a'.repeat(64)}`,
 				campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
 				complaintRate: 0.004,
 				message: 'Campaign complaint rate 0.40% exceeded 0.3% threshold (4/1000)',
@@ -368,28 +371,50 @@ describe('mtaAdapter.parseEvent', () => {
 		);
 		expect(event).toEqual({
 			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'a'.repeat(64)}`,
 			message: 'Campaign complaint rate 0.40% exceeded 0.3% threshold (4/1000)',
 			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
 			complaintRate: 0.004,
+			at: 1700000000000,
 		});
 	});
 
-	it('defaults the campaign.complaint_rate message when absent', () => {
-		const event = mtaAdapter.parseEvent(
-			JSON.stringify({
-				event: 'campaign.complaint_rate',
-				campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
-				timestamp: 1700000000000,
-			})
-		);
-		expect(event).toMatchObject({
-			kind: 'internal.campaign_complaint_rate',
-			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
-		});
-		// complaintRate omitted when not supplied.
-		if (event?.kind === 'internal.campaign_complaint_rate') {
-			expect(event.complaintRate).toBeUndefined();
-		}
+	it.each([
+		{ eventId: undefined },
+		{ eventId: 'short' },
+		{ eventId: 'x'.repeat(161) },
+		{ campaignId: undefined },
+		{ campaignId: ['not-a-string'] },
+		{ campaignId: 'short' },
+		{ message: undefined },
+		{ message: 42 },
+		{ message: 'x'.repeat(513) },
+		{ complaintRate: undefined },
+		{ complaintRate: 'not-a-number' },
+		{ complaintRate: Number.NaN },
+		{ complaintRate: -0.01 },
+		{ complaintRate: 1.01 },
+		{ timestamp: Number.POSITIVE_INFINITY },
+	])('rejects a malformed bounded campaign alert: %j', (override) => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'campaign.complaint_rate',
+					eventId: `effect:v1:${'a'.repeat(64)}`,
+					campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
+					complaintRate: 0.004,
+					message: 'Campaign complaint rate exceeded',
+					timestamp: 1700000000000,
+					...override,
+				})
+			)
+		).toBeNull();
+	});
+
+	it('rejects a valid event discriminator whose event-specific required field is absent', () => {
+		expect(
+			mtaAdapter.parseEvent(JSON.stringify({ event: 'sent', timestamp: 1700000000000 }))
+		).toBeNull();
 	});
 
 	it.each([
@@ -403,6 +428,7 @@ describe('mtaAdapter.parseEvent', () => {
 				event,
 				ip: '10.0.0.1',
 				severity: 'warning',
+				message: 'Deliverability state changed',
 				timestamp: 1700000000000,
 			})
 		);
@@ -540,4 +566,49 @@ describe('mtaAdapter.parseEvent', () => {
 		);
 		expect(event).toBeNull();
 	});
+});
+
+describe('mtaAdapter routing re-entry acknowledgement', () => {
+	const routingEvent = {
+		kind: 'internal.routing_reentry' as const,
+		providerMessageId: 'send_1',
+		token: 'rr2.token',
+		workAttemptId: 'work-1',
+		envelopeInput: {
+			kind: 'transactional' as const,
+			emailPurpose: 'transactional' as const,
+			to: 'person@example.com',
+			from: 'sender@example.org',
+			template: { subject: 'Hello', htmlContent: '<p>Hello</p>' },
+		},
+		retryState: { attempt: 1, startedAt: 1, idempotencyKey: 'send_1' },
+		reason: 'circuit_breaker_changed' as const,
+	};
+
+	it.each([
+		'invalid_token',
+		'binding_mismatch',
+		'message_mismatch',
+		'expired',
+		'snapshot_not_found',
+	])('returns non-2xx for unsafe disposition %s', (disposition) => {
+		const response = mtaAdapter.successResponse?.(routingEvent, { disposition });
+		expect(response?.status).toBe(409);
+	});
+
+	it.each(['enqueued', 'duplicate', 'terminal', 'deadline_expired', 'retry_exhausted'])(
+		'acknowledges disposition %s only after the Send has a safe successor state',
+		(disposition) => {
+			const response = mtaAdapter.successResponse?.(routingEvent, { disposition });
+			expect(response?.status).toBe(200);
+		}
+	);
+
+	it.each([undefined, {}, { disposition: 'future_unhandled_disposition' }])(
+		'fails closed on an invalid mutation result: %j',
+		(dispatchResult) => {
+			const response = mtaAdapter.successResponse?.(routingEvent, dispatchResult);
+			expect(response?.status).toBe(500);
+		}
+	);
 });
