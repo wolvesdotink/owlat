@@ -33,10 +33,16 @@ const modules = import.meta.glob('../**/*.*s');
 const originalFetch = global.fetch;
 
 function decisionResponse(token: string): Response {
-	return new Response(JSON.stringify({ decision: 'mta', lease: { token } }), {
-		status: 200,
-		headers: { 'Content-Type': 'application/json' },
-	});
+	return new Response(
+		JSON.stringify({
+			decision: 'mta',
+			lease: { token, providerProbe: false, globalProbe: false },
+		}),
+		{
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		}
+	);
 }
 
 describe('FIX H1 — workpool de-amplification', () => {

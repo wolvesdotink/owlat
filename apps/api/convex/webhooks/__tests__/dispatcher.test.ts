@@ -215,6 +215,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			providerMessageId: 'send_456',
 			at: 2000,
 			providerType: 'mta',
+			deliveryDomain: 'production',
 			organizationId: 'org-a',
 			recipient: 'user@workspace.example',
 			destinationProvider: 'microsoft',
@@ -229,6 +230,37 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 				observedAt: 2000,
 			},
 		});
+	});
+
+	it('keeps unknown MTA provenance out of production telemetry', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.delivered',
+			providerMessageId: 'send_unknown_domain',
+			at: 2001,
+			providerType: 'mta',
+			destinationProvider: 'gmail',
+			primarySendingDomain: 'example.org',
+		});
+		expect(runMutationCalls).toHaveLength(1);
+		expect(runMutationCalls[0]?.ref).toBe(MTA_ACCEPTANCE);
+	});
+
+	it('preserves legacy non-MTA telemetry when deliveryDomain is absent', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.delivered',
+			providerMessageId: 'legacy-relay',
+			at: 2002,
+			providerType: 'ses',
+			destinationProvider: 'gmail',
+		});
+		expect(runMutationCalls).toHaveLength(2);
+		expect(runMutationCalls[1]?.ref).toBe(
+			ref(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain)
+		);
 	});
 
 	it('routes MTA email.delivered through atomic sent then delivered acceptance', async () => {

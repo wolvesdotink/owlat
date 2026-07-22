@@ -16,20 +16,7 @@ import {
 	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
 } from '@owlat/shared';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
-import { mapToPriority } from '../intelligence/engagementPriority.js';
-
-/**
- * Convert priority level (1-4) to an orderMs value.
- * Lower orderMs = processed first. Priority 1 gets timestamp 0,
- * priority 4 gets current timestamp. This ensures high-engagement
- * emails are always dequeued before low-engagement ones.
- */
-function priorityToOrderMs(priority: number): number {
-	// Use a far-past base timestamp so priority jobs always go first
-	// Priority 1: 0ms, Priority 2: 1ms, Priority 3: 2ms, Priority 4: current time
-	if (priority <= 3) return priority;
-	return Date.now();
-}
+import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { checkSystemHealth } from '../scaling/degradation.js';
 import { logger } from '../monitoring/logger.js';
 import { isRoutingLeaseBoundTo, readRoutingLease } from './routingDecision.js';
@@ -37,6 +24,7 @@ import { canSend, canSendScope } from '../intelligence/circuitBreaker.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 import {
 	INTAKE_RESERVATION_LEASE_MS,
+	hasAcceptedIntakeReceipt,
 	intakeReceiptKey,
 	parseIntakeReceipt,
 } from './sendReceipt.js';
@@ -482,6 +470,11 @@ export function createSendHandler(
 			const queued = await queue.getJob(queueIdentity).catch(() => null);
 			if (queued) {
 				await redis.set(dedupKey, acceptedReceipt, 'PX', GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
+				return c.json({ success: true, id: body.messageId, workAttemptId: queueIdentity });
+			}
+			// A fast worker may have completed and been trimmed before queue.add's
+			// client observed its response. Its receipt promotion is authoritative.
+			if (await hasAcceptedIntakeReceipt(redis, dedupKey, body.messageId)) {
 				return c.json({ success: true, id: body.messageId, workAttemptId: queueIdentity });
 			}
 			await redis.eval(

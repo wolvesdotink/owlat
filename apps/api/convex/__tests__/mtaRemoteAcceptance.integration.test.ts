@@ -9,6 +9,11 @@ import { dispatchInboundEvent } from '../webhooks/dispatcher';
 import type { InboundEvent } from '../webhooks/types';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
 
+vi.mock('../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../lib/sessionOrganization');
+	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org-test') };
+});
+
 const modules = import.meta.glob('../**/*.*s');
 const NOW = Date.UTC(2026, 6, 21, 12);
 const PRIMARY_DOMAIN = 'sender.example';
@@ -44,6 +49,7 @@ async function seedSentSend(t: TestHarness, providerMessageId: string): Promise<
 				contactId,
 				status: 'sent',
 				providerMessageId,
+				providerType: 'mta',
 				sentAt: NOW - 1_000,
 			})
 		);
@@ -56,6 +62,7 @@ function accepted(providerMessageId: string, at: number): InboundEvent {
 		providerMessageId,
 		at,
 		providerType: 'mta',
+		deliveryDomain: 'production',
 		destinationProvider: 'gmail',
 		primarySendingDomain: PRIMARY_DOMAIN,
 	};

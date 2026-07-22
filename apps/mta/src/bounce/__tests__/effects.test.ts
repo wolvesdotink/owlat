@@ -12,6 +12,7 @@ vi.mock('../../monitoring/collector.js', () => ({
 }));
 vi.mock('../../webhooks/convexNotifier.js', () => ({
 	notifyConvex: vi.fn().mockResolvedValue(true),
+	queueConvexWebhook: vi.fn().mockResolvedValue('outbox-feedback'),
 }));
 vi.mock('../../inbound/forwarder.js', () => ({
 	forwardToEndpoint: vi.fn().mockResolvedValue(true),
@@ -27,7 +28,7 @@ import { applyEffects, type BounceEffect } from '../effects.js';
 import * as circuitBreaker from '../../intelligence/circuitBreaker.js';
 import * as campaignComplaintRate from '../../intelligence/campaignComplaintRate.js';
 import * as metrics from '../../monitoring/collector.js';
-import { notifyConvex } from '../../webhooks/convexNotifier.js';
+import { notifyConvex, queueConvexWebhook } from '../../webhooks/convexNotifier.js';
 import { forwardToEndpoint } from '../../inbound/forwarder.js';
 import { bumpUsedBytes } from '../../inbound/mailboxResolver.js';
 import type { PhaseDeps } from '../types.js';
@@ -40,6 +41,8 @@ function makeDeps(): PhaseDeps {
 
 beforeEach(async () => {
 	vi.clearAllMocks();
+	vi.mocked(notifyConvex).mockResolvedValue(true);
+	vi.mocked(queueConvexWebhook).mockResolvedValue('outbox-feedback');
 	// ioredis-mock shares a backing store across instances — wipe it so the
 	// per-test Redis state is clean.
 	await new Redis().flushall();
@@ -141,7 +144,7 @@ describe('applyEffects — per-effect dispatch', () => {
 		expect(forwardToEndpoint).toHaveBeenCalledWith(parsed, route, 'me@org.example', auth);
 	});
 
-	it('notify_convex → notifyConvex (fire-and-forget)', async () => {
+	it('attributed terminal notify_convex → durable outbox', async () => {
 		await applyEffects(
 			[
 				{
@@ -155,7 +158,12 @@ describe('applyEffects — per-effect dispatch', () => {
 			],
 			makeDeps()
 		);
-		expect(notifyConvex).toHaveBeenCalled();
+		expect(queueConvexWebhook).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'complained', messageId: 'm-1' }),
+			expect.anything(),
+			expect.anything(),
+			'feedback:m-1:complained'
+		);
 	});
 
 	it('mailbox_quota_bump → bumpUsedBytes (fire-and-forget)', async () => {
@@ -180,6 +188,27 @@ describe('applyEffects — fire-and-forget guarantees', () => {
 			makeDeps()
 		);
 		expect(notifyConvex).toHaveBeenCalled();
+	});
+
+	it('blocks SMTP ACK only until attributed callback persistence completes', async () => {
+		let release!: (value: string) => void;
+		vi.mocked(queueConvexWebhook).mockImplementation(
+			() => new Promise<string>((resolve) => (release = resolve))
+		);
+		let settled = false;
+		const applying = applyEffects(
+			[
+				{
+					kind: 'notify_convex',
+					event: { event: 'bounced', messageId: 'dsn-1', timestamp: 0 },
+				},
+			],
+			makeDeps()
+		).then(() => (settled = true));
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		release('outbox-feedback');
+		await applying;
 	});
 
 	it('does not await mailbox_quota_bump — applyEffects resolves even if it hangs', async () => {
@@ -290,7 +319,7 @@ describe('applyEffects — batch dispatch', () => {
 		await applyEffects(effects, deps);
 		expect(circuitBreaker.recordOutcome).toHaveBeenCalled();
 		expect(metrics.fblComplaintsTotal.inc).toHaveBeenCalled();
-		expect(notifyConvex).toHaveBeenCalled();
+		expect(queueConvexWebhook).toHaveBeenCalled();
 		const today = new Date().toISOString().split('T')[0];
 		expect(await deps.redis.hget(`mta:fbl-stats:${today}`, 'total')).toBe('1');
 	});

@@ -47,7 +47,7 @@ import { assertSubmissionTlsConfigured } from '../config.js';
 import { lookupCredential } from '../auth/credentials.js';
 import { verifyPostboxAppPassword } from '../auth/postboxAuth.js';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
-import { mapToPriority } from '../intelligence/engagementPriority.js';
+import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { logger } from '../monitoring/logger.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
@@ -67,11 +67,6 @@ import { createSlotTracker } from '../lib/connectionSlots.js';
  * message can always carry a max-size file.
  */
 const MAX_SUBMISSION_BYTES = MAX_ATTACHMENT_BYTES;
-
-function priorityToOrderMs(priority: number): number {
-	if (priority <= 3) return priority;
-	return Date.now();
-}
 
 /** The authenticated identity of a submission session. */
 export interface AuthenticatedSession {

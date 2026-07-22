@@ -65,6 +65,7 @@ vi.mock('../../scaling/degradation.js', () => ({
 }));
 vi.mock('../../webhooks/convexNotifier.js', () => ({
 	notifyConvex: vi.fn().mockResolvedValue(true),
+	queueConvexWebhook: vi.fn(),
 }));
 vi.mock('../../monitoring/collector.js', () => ({
 	registry: { registerMetric: vi.fn() },
@@ -147,9 +148,13 @@ function reserve(
  * A queue stub exposing only the `add` the handler uses for defer re-enqueue.
  * `add` returns a fake Job-shaped object — the handler ignores the return.
  */
-function createQueueStub(): Pick<Queue<EmailJob>, 'add'> & { add: ReturnType<typeof vi.fn> } {
+function createQueueStub(): Pick<Queue<EmailJob>, 'add' | 'getJob'> & {
+	add: ReturnType<typeof vi.fn>;
+	getJob: ReturnType<typeof vi.fn>;
+} {
 	return {
 		add: vi.fn().mockResolvedValue({ id: 'requeued-1' }),
+		getJob: vi.fn().mockResolvedValue(null),
 	};
 }
 
@@ -213,6 +218,7 @@ describe('handleEmailJob', () => {
 	beforeEach(async () => {
 		vi.resetAllMocks();
 		redis = new Redis();
+		await redis.flushall();
 		config = createConfig();
 		queue = createQueueStub();
 
@@ -281,6 +287,10 @@ describe('handleEmailJob', () => {
 
 		const wh = await import('../../webhooks/convexNotifier.js');
 		vi.mocked(wh.notifyConvex).mockResolvedValue(true);
+		vi.mocked(wh.queueConvexWebhook).mockImplementation(async (event, webhookConfig, client) => {
+			await wh.notifyConvex(event, webhookConfig, client);
+			return 'outbox-test';
+		});
 
 		const mc = await import('../../monitoring/collector.js');
 		vi.mocked(mc.record).mockResolvedValue(undefined);
@@ -289,7 +299,13 @@ describe('handleEmailJob', () => {
 		vi.mocked(dl.logDeliveryEvent).mockResolvedValue(undefined);
 	});
 
-	function run(data: EmailJob, envelope: Partial<ReservedJob<EmailJob>> = {}) {
+	async function run(data: EmailJob, envelope: Partial<ReservedJob<EmailJob>> = {}) {
+		if (data.workAttemptId && !(await redis.get(`mta:work-attempts:${data.workAttemptId}`))) {
+			await redis.set(
+				`mta:work-attempts:${data.workAttemptId}`,
+				JSON.stringify({ state: 'reserved', messageId: data.messageId, reservedAt: Date.now() })
+			);
+		}
 		return handleEmailJob(
 			reserve(data, envelope),
 			queue as unknown as Queue<EmailJob>,
@@ -334,6 +350,98 @@ describe('handleEmailJob', () => {
 		);
 		// A delivered job is never re-enqueued.
 		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	function provenancePipelineWithError() {
+		const pipeline = {
+			setex: vi.fn(),
+			zadd: vi.fn(),
+			zremrangebyscore: vi.fn(),
+			zremrangebyrank: vi.fn(),
+			expire: vi.fn(),
+			exec: vi.fn().mockResolvedValue([
+				[null, 'OK'],
+				[new Error('recipient index unavailable'), null],
+			]),
+		};
+		for (const method of [
+			'setex',
+			'zadd',
+			'zremrangebyscore',
+			'zremrangebyrank',
+			'expire',
+		] as const) {
+			pipeline[method].mockReturnValue(pipeline);
+		}
+		return pipeline;
+	}
+
+	it('fails closed before SMTP and durably requeues on a provenance tuple error', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.spyOn(redis, 'pipeline').mockReturnValue(provenancePipelineWithError() as never);
+		await run(createGovernedJob());
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).toHaveBeenCalledOnce();
+		expect(queue.add).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ workAttemptId: 'work-attempt-1' }),
+			})
+		);
+	});
+
+	it('propagates provenance requeue failure so GroupMQ cannot ACK', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.spyOn(redis, 'pipeline').mockReturnValue(provenancePipelineWithError() as never);
+		queue.add.mockRejectedValueOnce(new Error('requeue persistence failed'));
+		await expect(run(createGovernedJob())).rejects.toThrow('requeue persistence failed');
+		expect(sendToMx).not.toHaveBeenCalled();
+	});
+
+	it('reuses one deterministic successor when provenance requeue commits but its response is lost', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.spyOn(redis, 'pipeline').mockReturnValue(provenancePipelineWithError() as never);
+		let committedJobId: string | undefined;
+		queue.add.mockImplementation(async (options: { jobId?: string }) => {
+			if (!committedJobId) {
+				committedJobId = options.jobId;
+				throw new Error('requeue response lost after commit');
+			}
+			expect(options.jobId).toBe(committedJobId);
+			return { id: committedJobId };
+		});
+		const governed = createGovernedJob();
+		await expect(run(governed)).rejects.toThrow('response lost after commit');
+		await run(governed);
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(committedJobId).toMatch(/^defer-[0-9a-f]{64}$/);
+		expect(sendToMx).not.toHaveBeenCalled();
+	});
+
+	it('does not fork SMTP after a committed successor completes and is trimmed', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const pipelineSpy = vi
+			.spyOn(redis, 'pipeline')
+			.mockReturnValueOnce(provenancePipelineWithError() as never);
+		let committed: { jobId: string; data: EmailJob; groupId: string; delay: number } | undefined;
+		queue.add.mockImplementationOnce(async (options) => {
+			committed = options as typeof committed;
+			throw new Error('successor committed; response lost');
+		});
+		queue.getJob.mockResolvedValue(null);
+		const predecessor = createGovernedJob();
+		await expect(run(predecessor)).rejects.toThrow('response lost');
+		pipelineSpy.mockRestore();
+
+		// The successor starts, promotes the durable handoff, sends once, and is
+		// then conceptually absent from GroupMQ's completed-job window.
+		expect(committed?.jobId).toMatch(/^defer-[0-9a-f]{64}$/);
+		await run(committed!.data, { id: committed!.jobId });
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+
+		// Retrying the predecessor after successor completion/trim observes the
+		// accepted handoff receipt and returns before its pipeline or SMTP.
+		await run(predecessor);
+		expect(sendToMx).toHaveBeenCalledTimes(1);
 	});
 
 	it('releases test reservations without recording production warming or breaker usage', async () => {
@@ -609,7 +717,9 @@ describe('handleEmailJob', () => {
 		// even at attempts=4 (the last before maxAttempts=5) it still re-queues.
 		for (let attempt = 0; attempt < 5; attempt++) {
 			queue.add.mockClear();
-			await expect(run(createJob(), { attempts: attempt })).resolves.toBeUndefined();
+			await expect(
+				run(createJob(), { id: `warming-job-${attempt}`, attempts: attempt })
+			).resolves.toBeUndefined();
 			expect(queue.add).toHaveBeenCalledTimes(1);
 		}
 	});

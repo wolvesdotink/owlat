@@ -59,7 +59,7 @@ describe('MTA routing decision client', () => {
 	});
 
 	it.each([
-		{ decision: 'mta', lease: { token: 'lease-1', expiresAt: Date.now() } },
+		{ decision: 'mta', lease: { token: 'lease-1', providerProbe: false } },
 		{ decision: 'mta', lease: { token: 'lease-1' }, unexpected: true },
 		{ decision: 'mta', lease: { token: 'x'.repeat(ROUTING_LEASE_TOKEN_MAX_LENGTH + 1) } },
 		{ decision: 'relay', reason: 'provider_breaker', unexpected: true },
@@ -78,8 +78,16 @@ describe('MTA routing decision client', () => {
 	it('accepts exact decisions and bounds finite defer delays', async () => {
 		for (const [body, expected] of [
 			[
-				{ decision: 'mta', lease: { token: 'lease-1' } },
-				{ kind: 'mta', leaseToken: 'lease-1' },
+				{
+					decision: 'mta',
+					lease: { token: 'lease-1', providerProbe: true, globalProbe: false },
+				},
+				{
+					kind: 'mta',
+					leaseToken: 'lease-1',
+					isProviderProbe: true,
+					isGlobalProbe: false,
+				},
 			],
 			[
 				{ decision: 'relay', reason: 'provider_probe_limit' },

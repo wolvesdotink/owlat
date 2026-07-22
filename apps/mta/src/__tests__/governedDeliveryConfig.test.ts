@@ -31,4 +31,13 @@ describe('loadGovernedDeliveryConfig', () => {
 			);
 		}
 	);
+
+	it.each(['0', '-1', 'NaN', '1.5', '1000001', '12entries'])(
+		'rejects an unsafe webhook DLQ maximum of %s at boot',
+		(value) => {
+			expect(() =>
+				loadGovernedDeliveryConfig(optionalEnv({ WEBHOOK_DLQ_MAX_SIZE: value }))
+			).toThrow('WEBHOOK_DLQ_MAX_SIZE must be an integer');
+		}
+	);
 });

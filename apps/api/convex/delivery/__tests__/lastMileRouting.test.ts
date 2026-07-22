@@ -64,7 +64,12 @@ describe('last-mile governance boundary', () => {
 	it('still lets an MTA half-open recovery probe override a breaker snapshot', async () => {
 		vi.stubEnv('MTA_API_URL', 'https://mta.test');
 		vi.stubEnv('MTA_API_KEY', 'key');
-		resolveMtaRoutingDecision.mockResolvedValue({ kind: 'mta', leaseToken: 'lease-1' });
+		resolveMtaRoutingDecision.mockResolvedValue({
+			kind: 'mta',
+			leaseToken: 'lease-1',
+			isProviderProbe: true,
+			isGlobalProbe: false,
+		});
 		const route = {
 			providerType: 'ses' as const,
 			source: 'deliverability_fallback' as const,
@@ -86,5 +91,34 @@ describe('last-mile governance boundary', () => {
 			routingLease: 'lease-1',
 		});
 		expect(resolveMtaRoutingDecision).toHaveBeenCalledOnce();
+		expect(resolveMtaRoutingDecision).toHaveBeenCalledWith(
+			expect.objectContaining({ requireProviderProbe: true })
+		);
+	});
+
+	it.each([
+		{ isProviderProbe: false, isGlobalProbe: false, label: 'normal MTA route' },
+		{ isProviderProbe: false, isGlobalProbe: true, label: 'unrelated global probe' },
+	])('preserves relay hysteresis for a $label', async (decision) => {
+		vi.stubEnv('MTA_API_URL', 'https://mta.test');
+		vi.stubEnv('MTA_API_KEY', 'key');
+		resolveMtaRoutingDecision.mockResolvedValue({
+			kind: 'mta',
+			leaseToken: 'lease-unused',
+			isProviderProbe: decision.isProviderProbe,
+			isGlobalProbe: decision.isGlobalProbe,
+		});
+		const route = {
+			providerType: 'ses' as const,
+			source: 'deliverability_fallback' as const,
+			deliverabilityReason: 'breaker_open' as const,
+		};
+		const baseRoute = { providerType: 'mta' as const, source: 'org_config' as const };
+		expect(
+			await resolveLastMileRouting(
+				context({ route, baseRoute, isMtaGoverned: true }, 'org-1'),
+				input
+			)
+		).toMatchObject({ kind: 'ready', providerKind: 'ses', route });
 	});
 });

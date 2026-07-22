@@ -58,7 +58,7 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 				now: Date.now(),
 				requireDue: false,
 				enforceAutoLimit: false,
-				autoRetryLimit: 8,
+				autoRetryLimit: dlq.WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
 			});
 			if (!entry) {
 				return c.json({ error: 'DLQ entry unavailable or already claimed' }, 409);
@@ -99,7 +99,7 @@ export function createDlqRoutes(redis: Redis, config: MtaConfig) {
 					now: Date.now(),
 					requireDue: false,
 					enforceAutoLimit: false,
-					autoRetryLimit: 8,
+					autoRetryLimit: dlq.WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
 				});
 				if (!entry) continue;
 

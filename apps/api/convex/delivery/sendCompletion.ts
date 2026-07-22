@@ -174,20 +174,6 @@ export const completeSend = internalMutation({
 			});
 		}
 
-		// Batch completion: a campaign Send just left the queue. Reconcile the
-		// owning campaign — when its LAST queued send clears, this advances the
-		// campaign 'sending' → 'sent' (the step the pipeline previously lacked,
-		// which left every campaign stuck in 'sending' forever). No-op until the
-		// last send completes; transactional sends have no campaign to advance.
-		if (sendRef.kind === 'campaign') {
-			const send = await ctx.db.get(sendRef.id);
-			if (send) {
-				await ctx.runMutation(internal.campaigns.lifecycle.reconcileCampaignCompletion, {
-					campaignId: send.campaignId,
-				});
-			}
-		}
-
 		// Provider health recording is intentionally NOT here — the
 		// **Send dispatch (helper)** in `lib/sendProviders/dispatch.ts`
 		// records every attempt uniformly upstream of this module.

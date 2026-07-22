@@ -17,6 +17,7 @@ import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { Hono } from 'hono';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
+import RedisMock from 'ioredis-mock';
 import { createApp, type AuthContext } from '../../server.js';
 import { buildGroupKey, extractDomain } from '../../queue/groups.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
@@ -49,6 +50,7 @@ vi.mock('../routingDecision.js', () => ({
 }));
 
 const { createSendHandler, createSendReceiptHandler } = await import('../send.js');
+const { promoteIntakeReceipt } = await import('../sendReceipt.js');
 const { checkSystemHealth } = await import('../../scaling/degradation.js');
 const mockedHealth = vi.mocked(checkSystemHealth);
 
@@ -461,6 +463,57 @@ describe('POST /send — dedup', () => {
 			expect.stringContaining('"state":"accepted"'),
 			'PX',
 			GOVERNED_MTA_MAX_MESSAGE_AGE_MS
+		);
+	});
+
+	it('trusts worker-promoted acceptance after the completed queue job was trimmed', async () => {
+		const values = new Map<string, string>();
+		const redis = fakeRedis({
+			set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
+				if (args.includes('NX') && values.has(key)) return null;
+				values.set(key, value);
+				return 'OK';
+			}),
+			get: vi.fn(async (key: string) => values.get(key) ?? null),
+			eval: vi.fn().mockResolvedValue(0),
+		});
+		const queue: FakeQueue = {
+			add: vi.fn(async () => {
+				// Simulate the worker's pre-processing CAS and immediate GroupMQ trim,
+				// followed by loss of queue.add's client response.
+				values.set(
+					'mta:work-attempts:work-attempt-1',
+					JSON.stringify({ state: 'accepted', messageId: 'msg-1', acceptedAt: Date.now() })
+				);
+				throw new Error('add response lost after completion');
+			}),
+			getJob: vi.fn().mockResolvedValue(null),
+		};
+		const response = await post(buildApp(queue, redis), validBody());
+		expect(response.status).toBe(200);
+		expect(await response.json()).toMatchObject({ success: true, workAttemptId: 'work-attempt-1' });
+		expect(values.get('mta:work-attempts:work-attempt-1')).toContain('"state":"accepted"');
+	});
+
+	it('promotes only the same work-attempt/message reservation by CAS', async () => {
+		const redis = new RedisMock();
+		await redis.set(
+			'mta:work-attempts:work-cas',
+			JSON.stringify({ state: 'reserved', messageId: 'bound-message', reservedAt: Date.now() })
+		);
+		await expect(
+			promoteIntakeReceipt(redis, {
+				messageId: 'other-message',
+				workAttemptId: 'work-cas',
+			} as never)
+		).rejects.toThrow('bound to another message');
+		await promoteIntakeReceipt(redis, {
+			messageId: 'bound-message',
+			workAttemptId: 'work-cas',
+		} as never);
+		expect(await redis.get('mta:work-attempts:work-cas')).toContain('"state":"accepted"');
+		expect(await redis.pttl('mta:work-attempts:work-cas')).toBeGreaterThan(
+			GOVERNED_MTA_MAX_MESSAGE_AGE_MS - 1_000
 		);
 	});
 });

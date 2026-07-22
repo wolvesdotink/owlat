@@ -20,7 +20,7 @@ afterEach(async () => {
 });
 
 type Source = 'campaign' | 'agent_reply' | 'member_test';
-type Terminal = 'delivered' | 'bounced' | 'failed';
+type Terminal = 'delivered' | 'bounced' | 'failed' | 'complained';
 
 async function seed(source: Source) {
 	const t = convexTest(schema, modules);
@@ -31,7 +31,7 @@ async function seed(source: Source) {
 	let inboundMessageId: Id<'inboundMessages'> | undefined;
 	await t.run(async (ctx) => {
 		if (source === 'campaign') {
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign());
+			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ status: 'sending' }));
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			const sendId = await ctx.db.insert(
 				'emailSends',
@@ -72,7 +72,7 @@ async function seed(source: Source) {
 describe('MTA post-intake terminal matrix', () => {
 	it.each(
 		(['campaign', 'agent_reply', 'member_test'] as const).flatMap((source) =>
-			(['delivered', 'bounced', 'failed'] as const).flatMap((terminal) =>
+			(['delivered', 'bounced', 'failed', 'complained'] as const).flatMap((terminal) =>
 				(['completion-first', 'callback-first'] as const).map((order) => ({
 					source,
 					terminal,
@@ -111,12 +111,17 @@ describe('MTA post-intake terminal matrix', () => {
 										bounceType: 'hard' as const,
 										bounceMessage: '550 no such user',
 									}
-								: {
-										to: 'failed' as const,
-										at: 1_700_000_000_000,
-										errorMessage: 'screened or ambiguous',
-										errorCode: 'MTA_TERMINAL_FAILURE',
-									},
+								: terminal === 'complained'
+									? {
+											to: 'complained' as const,
+											at: 1_700_000_000_000,
+										}
+									: {
+											to: 'failed' as const,
+											at: 1_700_000_000_000,
+											errorMessage: 'screened or ambiguous',
+											errorCode: 'MTA_TERMINAL_FAILURE',
+										},
 					}
 				);
 			};
@@ -164,13 +169,36 @@ describe('MTA post-intake terminal matrix', () => {
 					if (campaign) await rollupCampaignStatsRow(ctx, campaign);
 					const updated = await ctx.db.get(value.campaignId! as Id<'campaigns'>);
 					expect(updated?.statsSent).toBe(terminal === 'delivered' ? 1 : 0);
-					expect(updated?.statsDelivered).toBe(terminal === 'delivered' ? 1 : 0);
+					expect(updated?.statsDelivered).toBe(
+						terminal === 'delivered' || terminal === 'complained' ? 1 : 0
+					);
 					expect(updated?.statsBounced).toBe(terminal === 'bounced' ? 1 : 0);
 					expect(updated?.statsFailed).toBe(terminal === 'failed' ? 1 : 0);
+					expect(updated?.status).toBe('sent');
 				});
 			}
 		}
 	);
+
+	it('rejects remote acceptance that resolves to a non-MTA provider binding', async () => {
+		const value = await seed('campaign');
+		await value.t.run((ctx) =>
+			ctx.db.patch(value.ref.id, {
+				providerMessageId: 'relay-collision',
+				providerType: 'ses',
+			})
+		);
+		expect(
+			await value.t.mutation(internal.delivery.sendLifecycle.recordMtaRemoteAcceptance, {
+				providerMessageId: 'relay-collision',
+				at: 1_700_000_000_000,
+			})
+		).toEqual({ ok: false, reason: 'send_not_found' });
+		expect(await value.t.run((ctx) => ctx.db.get(value.ref.id))).toMatchObject({
+			status: 'queued',
+			providerType: 'ses',
+		});
+	});
 });
 
 describe('member-test delayed FBL isolation', () => {

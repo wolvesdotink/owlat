@@ -34,15 +34,26 @@ export function mapToPriority(score?: number): number {
 	return PRIORITY_BANDS.COLD;
 }
 
+/** Map priority to GroupMQ's ascending order timestamp. */
+export function priorityToOrderMs(priority: number): number {
+	if (priority <= PRIORITY_BANDS.LOW) return priority;
+	return Date.now();
+}
+
 /**
  * Get a human-readable label for a priority level
  */
 export function priorityLabel(priority: number): string {
 	switch (priority) {
-		case 1: return 'high-engagement';
-		case 2: return 'medium-engagement';
-		case 3: return 'low-engagement';
-		case 4: return 'cold';
-		default: return 'unknown';
+		case 1:
+			return 'high-engagement';
+		case 2:
+			return 'medium-engagement';
+		case 3:
+			return 'low-engagement';
+		case 4:
+			return 'cold';
+		default:
+			return 'unknown';
 	}
 }

@@ -34,10 +34,15 @@ const MTA_TIMEOUT_MS = 30_000;
 const MTA_DECISION_TIMEOUT_MS = 5_000;
 
 export type MtaRoutingDecision =
-	| { kind: 'mta'; leaseToken: string }
+	| { kind: 'mta'; leaseToken: string; isProviderProbe: boolean; isGlobalProbe: boolean }
 	| {
 			kind: 'relay';
-			reason: 'relay_allowed' | 'provider_breaker' | 'provider_probe_limit' | 'warmup_overflow';
+			reason:
+				| 'relay_allowed'
+				| 'provider_breaker'
+				| 'provider_probe_limit'
+				| 'provider_hysteresis'
+				| 'warmup_overflow';
 	  }
 	| { kind: 'defer'; retryAfterMs: number };
 
@@ -54,6 +59,7 @@ export async function resolveMtaRoutingDecision(input: {
 	candidateProvider: 'mta' | 'relay';
 	ipPool?: MtaExtras['ipPool'];
 	allowWarmupOverflow: boolean;
+	requireProviderProbe?: boolean;
 }): Promise<MtaRoutingDecision> {
 	const baseUrl = getOptional('MTA_API_URL');
 	const apiKey = getOptional('MTA_API_KEY');
@@ -80,15 +86,19 @@ export async function resolveMtaRoutingDecision(input: {
 				typeof lease === 'object' &&
 				lease !== null &&
 				!Array.isArray(lease) &&
-				Object.keys(lease).length === 1 &&
+				Object.keys(lease).length === 3 &&
 				typeof (lease as Record<string, unknown>)['token'] === 'string' &&
 				((lease as Record<string, unknown>)['token'] as string).length > 0 &&
 				((lease as Record<string, unknown>)['token'] as string).length <=
-					ROUTING_LEASE_TOKEN_MAX_LENGTH
+					ROUTING_LEASE_TOKEN_MAX_LENGTH &&
+				typeof (lease as Record<string, unknown>)['providerProbe'] === 'boolean' &&
+				typeof (lease as Record<string, unknown>)['globalProbe'] === 'boolean'
 			) {
 				return {
 					kind: 'mta',
 					leaseToken: (lease as Record<string, string>)['token']!,
+					isProviderProbe: (lease as Record<string, boolean>)['providerProbe']!,
+					isGlobalProbe: (lease as Record<string, boolean>)['globalProbe']!,
 				};
 			}
 		}
@@ -97,6 +107,7 @@ export async function resolveMtaRoutingDecision(input: {
 			Object.keys(result).length === 2 &&
 			(result['reason'] === 'provider_breaker' ||
 				result['reason'] === 'provider_probe_limit' ||
+				result['reason'] === 'provider_hysteresis' ||
 				result['reason'] === 'warmup_overflow')
 		) {
 			return { kind: 'relay', reason: result['reason'] };

@@ -33,10 +33,16 @@ const BLOCKED = 'blocked@example.com';
 const originalFetch = global.fetch;
 
 function decisionResponse(): Response {
-	return new Response(JSON.stringify({ decision: 'mta', lease: { token: 'lease-clean' } }), {
-		status: 200,
-		headers: { 'Content-Type': 'application/json' },
-	});
+	return new Response(
+		JSON.stringify({
+			decision: 'mta',
+			lease: { token: 'lease-clean', providerProbe: false, globalProbe: false },
+		}),
+		{
+			status: 200,
+			headers: { 'Content-Type': 'application/json' },
+		}
+	);
 }
 
 async function seedCampaignSend(

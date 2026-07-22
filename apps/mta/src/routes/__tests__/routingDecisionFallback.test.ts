@@ -122,6 +122,36 @@ describe('global breaker dominance over relay fallback', () => {
 		);
 	});
 
+	it.each([
+		['ordinary closed route', closed],
+		['unrelated global probe', { allowed: true, state: 'half-open' as const, generation: 3 }],
+	] as const)('keeps Convex hysteresis on relay for an %s', async (_label, globalState) => {
+		canSendScope.mockResolvedValue(closed);
+		canSend.mockResolvedValue(globalState);
+		expect(await decide({ requireProviderProbe: true })).toEqual({
+			decision: 'relay',
+			reason: 'provider_hysteresis',
+		});
+		expect(reserveProbe).not.toHaveBeenCalled();
+	});
+
+	it('returns an explicit persisted provider-probe lease during hysteresis', async () => {
+		canSendScope.mockResolvedValue({ allowed: true, state: 'half-open', generation: 4 });
+		const decision = await decide({ requireProviderProbe: true });
+		expect(decision).toMatchObject({
+			decision: 'mta',
+			lease: { providerProbe: true, globalProbe: false },
+		});
+		expect(reserveProbe).toHaveBeenCalledWith(
+			expect.anything(),
+			'org-1',
+			'gmail',
+			'send-1',
+			expect.any(Number),
+			4
+		);
+	});
+
 	it('keeps member tests behind global and destination-provider breakers', async () => {
 		canSend.mockResolvedValueOnce({
 			allowed: false,

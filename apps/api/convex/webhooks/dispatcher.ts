@@ -118,8 +118,12 @@ const DISPATCH: DispatchTable = {
 		// A late webhook after organization deletion must not recreate telemetry.
 		// Duplicate accepted-delivery webhooks are safe: the receipt writer below
 		// is idempotent by provider message id.
+		const isProductionTelemetry =
+			e.providerType === 'mta'
+				? e.deliveryDomain === 'production'
+				: e.deliveryDomain !== 'member_test';
 		if (
-			e.deliveryDomain !== 'member_test' &&
+			isProductionTelemetry &&
 			outcome.ok &&
 			e.destinationProvider === 'gmail' &&
 			e.primarySendingDomain
@@ -130,7 +134,7 @@ const DISPATCH: DispatchTable = {
 				acceptedAt: e.at,
 			});
 		}
-		if (e.deliveryDomain !== 'member_test' && outcome.ok && e.destinationProvider) {
+		if (isProductionTelemetry && outcome.ok && e.destinationProvider) {
 			await ctx.runMutation(
 				internal.delivery.deliverabilityRouting.recordDestinationProviderDomain,
 				{

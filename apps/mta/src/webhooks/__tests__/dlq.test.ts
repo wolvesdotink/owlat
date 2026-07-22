@@ -3,6 +3,7 @@ import Redis from 'ioredis-mock';
 import {
 	classifyWebhookHttpFailure,
 	storeFailed,
+	storePending,
 	listFailed,
 	getEntry,
 	removeOne,
@@ -20,6 +21,7 @@ import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 import type { MtaWebhookEvent } from '../../types.js';
 
 const TRANSPORT_FAILURE = { category: 'transport' } as const;
+const LARGE_BATCH_TEST_TIMEOUT_MS = 20_000;
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -52,6 +54,53 @@ describe('dlq', () => {
 			expect(dlqId).toBeTruthy();
 			expect(typeof dlqId).toBe('string');
 		});
+	});
+
+	it('fails closed when a terminal outbox reaches capacity', async () => {
+		const one = { ...config, webhookDlqMaxSize: 1 };
+		const retained = await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, one);
+		await expect(
+			storePending(redis, createTestEvent({ messageId: 'terminal-2' }), one, 'terminal-2:bounced')
+		).rejects.toThrow('at capacity');
+		expect(await getEntry(redis, retained)).not.toBeNull();
+	});
+
+	it('never lets ordinary DLQ retention evict an unresolved terminal outbox', async () => {
+		const one = { ...config, webhookDlqMaxSize: 1 };
+		const pending = await storePending(
+			redis,
+			createTestEvent({ messageId: 'protected-terminal' }),
+			one,
+			'protected-terminal:bounced'
+		);
+		await expect(
+			storeFailed(redis, createTestEvent({ messageId: 'ordinary-failure' }), TRANSPORT_FAILURE, one)
+		).rejects.toThrow('protected capacity');
+		expect(await getEntry(redis, pending)).not.toBeNull();
+		expect(await getAllIds(redis)).toEqual([pending]);
+	});
+
+	it('deduplicates the same terminal outbox identity without resetting ownership state', async () => {
+		const event = createTestEvent({ messageId: 'same-terminal' });
+		const first = await storePending(redis, event, config, 'same-terminal:bounced');
+		const claimed = await claimOne(redis, first, {
+			owner: 'first-worker',
+			now: Date.now(),
+			requireDue: false,
+			enforceAutoLimit: false,
+			autoRetryLimit: 8,
+		});
+		expect(await storePending(redis, event, config, 'same-terminal:bounced')).toBe(first);
+		expect(
+			await claimOne(redis, first, {
+				owner: 'replay-worker',
+				now: Date.now(),
+				requireDue: false,
+				enforceAutoLimit: false,
+				autoRetryLimit: 8,
+			})
+		).toBeNull();
+		expect(claimed).not.toBeNull();
 	});
 
 	describe('getEntry', () => {
@@ -180,49 +229,136 @@ describe('dlq', () => {
 			}
 		}
 
-		it('drains a legacy >1000 exhausted due prefix without deleting inspectable rows', async () => {
-			for (let index = 0; index < 1_001; index++) {
-				await seedRaw(`exhausted-${index}`, 8, index, { includeExhaustedInDue: true });
-			}
-			await seedRaw('routing-reentry-due', 0, 2_000);
+		it(
+			'drains a legacy >1000 exhausted due prefix without deleting inspectable rows',
+			async () => {
+				const pipeline = redis.pipeline();
+				for (let index = 0; index < 1_001; index++) {
+					const id = `exhausted-${index}`;
+					pipeline.hset(
+						WEBHOOK_DLQ_ENTRIES_KEY,
+						id,
+						JSON.stringify({
+							dlqId: id,
+							event: createTestEvent({ messageId: id }),
+							failure: TRANSPORT_FAILURE,
+							attempts: 8,
+							createdAt: index,
+						})
+					);
+					pipeline.hset(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`, '8');
+					pipeline.zadd(WEBHOOK_DLQ_CREATED_KEY, index, id);
+					pipeline.zadd(WEBHOOK_DLQ_DUE_KEY, index + 60_000, id);
+				}
+				await pipeline.exec();
+				await seedRaw('routing-reentry-due', 0, 2_000);
 
-			const firstPage = await listEligibleIds(redis, {
-				now: 1_000_000,
-				limit: 50,
-				scanLimit: 1_000,
-			});
-			expect(firstPage).toHaveLength(1_000);
-			expect(firstPage).not.toContain('routing-reentry-due');
-			for (const id of firstPage) {
+				const firstPage = await listEligibleIds(redis, {
+					now: 1_000_000,
+					limit: 50,
+					scanLimit: 1_000,
+					autoRetryLimit: 8,
+				});
+				expect(firstPage).toEqual([]);
+
+				const secondPage = await listEligibleIds(redis, {
+					now: 1_000_000,
+					limit: 50,
+					scanLimit: 1_000,
+					autoRetryLimit: 8,
+				});
+				expect(secondPage).toContain('routing-reentry-due');
 				expect(
-					await claimOne(redis, id, {
-						owner: 'sweeper-first-pass',
+					await claimOne(redis, 'routing-reentry-due', {
+						owner: 'sweeper-second-pass',
 						now: 1_000_000,
 						requireDue: true,
 						enforceAutoLimit: true,
 						autoRetryLimit: 8,
 					})
-				).toBeNull();
-			}
+				).not.toBeNull();
+				expect(
+					(await listFailed(redis, 2_000)).entries.filter((entry) => entry.attempts === 8)
+				).toHaveLength(1_001);
+			},
+			LARGE_BATCH_TEST_TIMEOUT_MS
+		);
 
-			const secondPage = await listEligibleIds(redis, {
-				now: 1_000_000,
-				limit: 50,
-				scanLimit: 1_000,
+		it(
+			'atomically quarantines a >1000 corrupt due prefix and exposes valid work immediately',
+			async () => {
+				const pipeline = redis.pipeline();
+				for (let index = 0; index < 1_001; index++) {
+					const id = `corrupt-${String(index).padStart(4, '0')}`;
+					pipeline.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, '{malformed');
+					pipeline.zadd(WEBHOOK_DLQ_CREATED_KEY, index, id);
+					pipeline.zadd(WEBHOOK_DLQ_DUE_KEY, index, id);
+				}
+				pipeline.hset(
+					WEBHOOK_DLQ_ENTRIES_KEY,
+					'valid-after-corrupt',
+					JSON.stringify({
+						dlqId: 'valid-after-corrupt',
+						event: createTestEvent({ messageId: 'valid-after-corrupt' }),
+						failure: TRANSPORT_FAILURE,
+						attempts: 0,
+						createdAt: 2_000,
+					})
+				);
+				pipeline.hset(WEBHOOK_DLQ_ENTRIES_KEY, 'attempts:valid-after-corrupt', '0');
+				pipeline.zadd(WEBHOOK_DLQ_CREATED_KEY, 2_000, 'valid-after-corrupt');
+				pipeline.zadd(WEBHOOK_DLQ_DUE_KEY, 2_000, 'valid-after-corrupt');
+				await pipeline.exec();
+
+				const ids = await listEligibleIds(redis, { now: 10_000, limit: 50, scanLimit: 2_000 });
+				expect(ids).toEqual(['valid-after-corrupt']);
+				expect(await redis.zcard(WEBHOOK_DLQ_DUE_KEY)).toBe(1);
+				expect(await redis.zcard(WEBHOOK_DLQ_CREATED_KEY)).toBe(1_002);
+			},
+			LARGE_BATCH_TEST_TIMEOUT_MS
+		);
+
+		it('does not let list-side corrupt cleanup steal a live claim', async () => {
+			const id = 'claimed-corrupt';
+			await redis.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, '{malformed');
+			await redis.hset(WEBHOOK_DLQ_ENTRIES_KEY, `claim:${id}`, 'active-owner|7');
+			await redis.hset(WEBHOOK_DLQ_ENTRIES_KEY, `claim-expiry:${id}`, '200000');
+			await redis.zadd(WEBHOOK_DLQ_CREATED_KEY, 1, id);
+			await redis.zadd(WEBHOOK_DLQ_DUE_KEY, 1, id);
+			expect(await listEligibleIds(redis, { now: 100_000, limit: 50 })).toEqual([]);
+			expect(await redis.zscore(WEBHOOK_DLQ_DUE_KEY, id)).not.toBeNull();
+			expect(await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, `claim:${id}`)).toBe('active-owner|7');
+
+			// Once expired, the exact observed token is CAS-quarantined.
+			expect(await listEligibleIds(redis, { now: 200_001, limit: 50 })).toEqual([]);
+			expect(await redis.zscore(WEBHOOK_DLQ_DUE_KEY, id)).toBeNull();
+		});
+
+		it('does not remove a due row reinserted between missing-row read and cleanup', async () => {
+			const id = 'missing-then-reinserted';
+			await redis.zadd(WEBHOOK_DLQ_DUE_KEY, 1, id);
+			const originalEval = (redis.eval as unknown as (...args: unknown[]) => Promise<unknown>).bind(
+				redis
+			);
+			vi.spyOn(redis, 'eval').mockImplementationOnce(async (...args: unknown[]) => {
+				await redis.hset(
+					WEBHOOK_DLQ_ENTRIES_KEY,
+					id,
+					JSON.stringify({
+						dlqId: id,
+						event: createTestEvent({ messageId: id }),
+						failure: TRANSPORT_FAILURE,
+						attempts: 0,
+						createdAt: 1,
+					})
+				);
+				await redis.hset(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`, '0');
+				return await originalEval(...args);
 			});
-			expect(secondPage).toContain('routing-reentry-due');
-			expect(
-				await claimOne(redis, 'routing-reentry-due', {
-					owner: 'sweeper-second-pass',
-					now: 1_000_000,
-					requireDue: true,
-					enforceAutoLimit: true,
-					autoRetryLimit: 8,
-				})
-			).not.toBeNull();
-			expect(
-				(await listFailed(redis, 2_000)).entries.filter((entry) => entry.attempts === 8)
-			).toHaveLength(1_001);
+
+			expect(await listEligibleIds(redis, { now: 100, limit: 50 })).toEqual([]);
+			expect(await redis.zscore(WEBHOOK_DLQ_DUE_KEY, id)).not.toBeNull();
+			expect(await listEligibleIds(redis, { now: 100, limit: 50 })).toEqual([id]);
 		});
 
 		it('allows only one owner, reclaims an expired lease, and rejects stale settlement', async () => {
@@ -256,8 +392,8 @@ describe('dlq', () => {
 			expect(await settleClaim(redis, winner!, 'failure', 100_003)).toBe(false);
 			expect(await settleClaim(redis, replacement!, 'success', 100_003)).toBe(true);
 			expect(await getEntry(redis, 'race')).toBeNull();
-			// Every transition covers the same three shared-hash-slot structures.
-			expect(evalSpy.mock.calls.every((call) => call[1] === 3)).toBe(true);
+			// Every transition covers the same four shared-hash-slot structures.
+			expect(evalSpy.mock.calls.every((call) => call[1] === 4)).toBe(true);
 		});
 
 		it('bases retry due time on actual settlement completion and clears transient claim fields', async () => {
@@ -365,5 +501,19 @@ describe('dlq', () => {
 		expect(JSON.stringify(await redis.hgetall(WEBHOOK_DLQ_ENTRIES_KEY))).not.toContain(
 			'raw-rfc822-private-first'
 		);
+	});
+
+	it('evicts the true oldest insert under a frozen clock and concurrent stores', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-07-22T00:00:00Z'));
+		const two = { ...config, webhookDlqMaxSize: 2 };
+		const [first, second, third] = await Promise.all([
+			storeFailed(redis, createTestEvent({ messageId: 'first' }), TRANSPORT_FAILURE, two),
+			storeFailed(redis, createTestEvent({ messageId: 'second' }), TRANSPORT_FAILURE, two),
+			storeFailed(redis, createTestEvent({ messageId: 'third' }), TRANSPORT_FAILURE, two),
+		]);
+		expect(await getEntry(redis, first)).toBeNull();
+		expect(await getAllIds(redis)).toEqual([second, third]);
+		vi.useRealTimers();
 	});
 });
