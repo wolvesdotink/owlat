@@ -7,8 +7,8 @@
 export interface EmailJob {
 	/** Owlat internal message ID for correlation (becomes providerMessageId in Convex) */
 	messageId: string;
-	/** Stable identity of the initial GroupMQ intake reservation. */
-	intakeReceiptId: string;
+	/** Stable identity of the initial GroupMQ intake reservation. Absent on retained legacy jobs. */
+	intakeReceiptId?: string;
 	/** Unique bounded work identity; provider correlation remains messageId. */
 	workAttemptId?: string;
 	/** Durable predecessor→successor handoff promoted when a deferred job starts. */

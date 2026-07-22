@@ -143,9 +143,6 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		mtaReconciliation: retryState.acceptanceReconciliation === true,
 	});
 	if (routing.kind === 'defer') {
-		await ctx.runMutation(internal.delivery.routingReentry.discardSnapshot, {
-			token: snapshot.token,
-		});
 		if (retryState.acceptanceReconciliation) {
 			return {
 				success: false,
@@ -174,11 +171,6 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			providerMessageId: idempotencyKey,
 		});
 		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
-	}
-	if (providerKind !== 'mta') {
-		await ctx.runMutation(internal.delivery.routingReentry.discardSnapshot, {
-			token: snapshot.token,
-		});
 	}
 	const extras: ExtrasFor<SendProviderKind> =
 		providerKind === 'mta'

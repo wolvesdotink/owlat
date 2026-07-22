@@ -1101,7 +1101,7 @@ configure_selfhost_mta() {
   owl_say "Let's configure the mail engine for your self-hosted flock."
 
   # Auto-generate keys
-  local mta_key mta_webhook_secret mta_secret
+  local mta_key mta_webhook_secret mta_secret bounce_verp_key
   mta_key=$(generate_secret)
   mta_webhook_secret=$(generate_secret)
   # Seals DKIM keys + relay credentials at rest (>= 32 bytes; the MTA refuses to
@@ -1109,17 +1109,20 @@ configure_selfhost_mta() {
   # as hex to match `openssl rand -hex 32` in the .env examples and the shared
   # `ensureSecrets` generator — one canonical format everywhere.
   mta_secret=$(generate_hex_secret)
+  bounce_verp_key=$(generate_secret)
 
   # Store in BOTH selfhost .env and Convex env vars
   set_selfhost_var "MTA_API_KEY" "$mta_key"
   set_selfhost_var "MTA_WEBHOOK_SECRET" "$mta_webhook_secret"
   set_selfhost_var "MTA_SECRET" "$mta_secret"
+  set_selfhost_var "BOUNCE_VERP_KEY" "$bounce_verp_key"
   set_convex_var "MTA_API_KEY" "$mta_key"
   set_convex_var "MTA_WEBHOOK_SECRET" "$mta_webhook_secret"
 
   success "Generated MTA_API_KEY"
   success "Generated MTA_WEBHOOK_SECRET"
   success "Generated MTA_SECRET"
+  success "Generated BOUNCE_VERP_KEY"
 
   echo ""
 
@@ -1250,6 +1253,7 @@ write_selfhost_env() {
     echo "MTA_API_KEY=${SELFHOST_VARS[MTA_API_KEY]:-}"
     echo "MTA_WEBHOOK_SECRET=${SELFHOST_VARS[MTA_WEBHOOK_SECRET]:-}"
     echo "MTA_SECRET=${SELFHOST_VARS[MTA_SECRET]:-}"
+    echo "BOUNCE_VERP_KEY=${SELFHOST_VARS[BOUNCE_VERP_KEY]:-}"
     echo ""
     echo "EHLO_HOSTNAME=${SELFHOST_VARS[EHLO_HOSTNAME]:-mail.example.com}"
     echo "RETURN_PATH_DOMAIN=${SELFHOST_VARS[RETURN_PATH_DOMAIN]:-bounces.example.com}"
@@ -1922,13 +1926,13 @@ doctor() {
     doctor_check pass ".env file present"
 
     local missing=()
-    for var in INSTANCE_SECRET MTA_API_KEY MTA_WEBHOOK_SECRET; do
+    for var in INSTANCE_SECRET MTA_API_KEY MTA_WEBHOOK_SECRET MTA_SECRET BOUNCE_VERP_KEY; do
       if ! grep -qE "^${var}=.+" .env 2>/dev/null; then
         missing+=("$var")
       fi
     done
     if [[ ${#missing[@]} -eq 0 ]]; then
-      doctor_check pass "Required secrets set" "INSTANCE_SECRET, MTA_API_KEY, MTA_WEBHOOK_SECRET"
+      doctor_check pass "Required secrets set" "INSTANCE_SECRET, MTA_API_KEY, MTA_WEBHOOK_SECRET, MTA_SECRET, BOUNCE_VERP_KEY"
     else
       doctor_check fail "Missing secrets" "${missing[*]}" "regenerate with: openssl rand -hex 32"
     fi

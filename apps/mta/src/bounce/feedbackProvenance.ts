@@ -14,6 +14,7 @@ import type { DeliveryDomain } from '@owlat/shared';
 import type { BounceAttempt } from './types.js';
 import type { EmailJob } from '../types.js';
 import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';
+import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 
 const FEEDBACK_TTL_SECONDS = 8 * 24 * 60 * 60;
 const FEEDBACK_TTL_MS = FEEDBACK_TTL_SECONDS * 1_000;
@@ -115,9 +116,17 @@ export async function attachFeedbackProvenance(
 ): Promise<BounceAttempt> {
 	if (attempt.kind !== 'fbl' && attempt.kind !== 'dsn_attributed') return attempt;
 	const classification = attempt.kind === 'fbl' ? attempt.arf : attempt.bounce;
-	const exact = classification.originalMessageId
-		? parseRecord(await redis.get(messageKey(classification.originalMessageId)))
-		: null;
+	let exact: FeedbackProvenance | null = null;
+	if (classification.originalMessageId) {
+		try {
+			exact = parseRecord(await redis.get(messageKey(classification.originalMessageId)));
+		} catch (error) {
+			throw new TransientFeedbackProcessingError(
+				'Authenticated feedback provenance is unavailable',
+				error
+			);
+		}
+	}
 	if (exact) {
 		const enriched = {
 			...classification,

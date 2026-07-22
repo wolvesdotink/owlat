@@ -173,4 +173,65 @@ describe.runIf(dockerAvailable())('webhook DLQ on Redis Cluster', () => {
 			expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(0);
 		}
 	}, 15_000);
+
+	it('atomically repairs a deterministic protected row and its indexes', async () => {
+		const config = { webhookDlqMaxSize: 10 } as MtaConfig;
+		const event = {
+			event: 'complained' as const,
+			messageId: 'cluster-repair',
+			timestamp: Date.now(),
+		};
+		const id = await storePending(cluster as never, event, config, 'cluster-repair:complained');
+		const raw = JSON.parse((await cluster.hget(WEBHOOK_DLQ_ENTRIES_KEY, id))!) as Record<
+			string,
+			unknown
+		>;
+		raw['attempts'] = 4;
+		await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, JSON.stringify(raw));
+		await cluster.hdel(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`);
+		await cluster.zrem(WEBHOOK_DLQ_CREATED_KEY, id);
+		await cluster.zrem(WEBHOOK_DLQ_DUE_KEY, id);
+		await cluster.srem(WEBHOOK_DLQ_PROTECTED_KEY, id);
+
+		expect(await storePending(cluster as never, event, config, 'cluster-repair:complained')).toBe(
+			id
+		);
+		expect(await getEntry(cluster as never, id)).toMatchObject({ dlqId: id, event });
+		expect(await cluster.hget(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`)).toBe('4');
+		expect(await cluster.zscore(WEBHOOK_DLQ_CREATED_KEY, id)).not.toBeNull();
+		expect(await cluster.zscore(WEBHOOK_DLQ_DUE_KEY, id)).not.toBeNull();
+		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(1);
+	}, 15_000);
+
+	it('fails closed without deleting repaired protected rows at protected capacity', async () => {
+		await cluster.del(
+			WEBHOOK_DLQ_ENTRIES_KEY,
+			WEBHOOK_DLQ_CREATED_KEY,
+			WEBHOOK_DLQ_DUE_KEY,
+			WEBHOOK_DLQ_PROTECTED_KEY
+		);
+		const one = { webhookDlqMaxSize: 1 } as MtaConfig;
+		const hiddenEvent = {
+			event: 'bounced' as const,
+			messageId: 'cluster-hidden',
+			bounceType: 'hard' as const,
+			timestamp: Date.now(),
+		};
+		const hidden = await storePending(cluster as never, hiddenEvent, one, 'cluster-hidden:bounced');
+		await cluster.zrem(WEBHOOK_DLQ_CREATED_KEY, hidden);
+		await cluster.srem(WEBHOOK_DLQ_PROTECTED_KEY, hidden);
+		const visible = await storePending(
+			cluster as never,
+			{ ...hiddenEvent, messageId: 'cluster-visible' },
+			one,
+			'cluster-visible:bounced'
+		);
+
+		await expect(
+			storePending(cluster as never, hiddenEvent, one, 'cluster-hidden:bounced')
+		).rejects.toThrow('protected capacity');
+		expect(await getEntry(cluster as never, hidden)).not.toBeNull();
+		expect(await getEntry(cluster as never, visible)).not.toBeNull();
+		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, hidden)).toBe(1);
+	}, 15_000);
 });

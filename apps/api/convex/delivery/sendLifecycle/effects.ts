@@ -54,6 +54,7 @@ export type Effect =
 			kind: 'campaign_stats_bounced';
 			campaignId: Id<'campaigns'>;
 			isHard: boolean;
+			previousBounceType?: 'soft';
 			at: number;
 	  }
 	| {
@@ -117,13 +118,38 @@ export async function applyEffects(
 					.query('blockedEmails')
 					.withIndex('by_email', (q) => q.eq('email', normalized))
 					.first();
-				if (existing) break;
+				if (existing) {
+					// A threshold-created soft suppression can later receive decisive
+					// hard-bounce evidence. Preserve the single blocklist row while
+					// upgrading both its classification and provenance; the hard mirror
+					// refresh below also changes the MTA backstop from expiring to permanent.
+					if (
+						existing.reason !== 'bounced' ||
+						existing.bounceType !== 'soft' ||
+						effect.reason !== 'bounced' ||
+						effect.bounceType !== 'hard'
+					) {
+						break;
+					}
+					await ctx.db.patch(existing._id, {
+						bounceType: 'hard',
+						sourceType: effect.source.kind === 'campaign' ? 'emailSend' : 'transactionalSend',
+						sourceEmailSendId: effect.source.kind === 'campaign' ? effect.source.id : undefined,
+						sourceTransactionalSendId:
+							effect.source.kind === 'transactional' ? effect.source.id : undefined,
+					});
+					await scheduleSuppressionMirror(ctx, {
+						email: normalized,
+						reason: 'bounced',
+						bounceType: 'hard',
+					});
+					break;
+				}
 				await ctx.db.insert('blockedEmails', {
 					email: normalized,
 					reason: effect.reason,
 					...(effect.bounceType ? { bounceType: effect.bounceType } : {}),
-					sourceType:
-						effect.source.kind === 'campaign' ? 'emailSend' : 'transactionalSend',
+					sourceType: effect.source.kind === 'campaign' ? 'emailSend' : 'transactionalSend',
 					...(effect.source.kind === 'campaign'
 						? { sourceEmailSendId: effect.source.id }
 						: { sourceTransactionalSendId: effect.source.id }),
@@ -165,10 +191,16 @@ export async function applyEffects(
 			// (not the single campaigns row) so a blast's per-recipient counter
 			// writes don't contend; a rollup cron sums shards into campaigns.stats*.
 			case 'campaign_stats_bounced': {
-				await bumpCampaignStats(ctx, effect.campaignId, {
-					statsBounced: 1,
-					...(effect.isHard ? { statsHardBounced: 1 } : { statsSoftBounced: 1 }),
-				});
+				await bumpCampaignStats(
+					ctx,
+					effect.campaignId,
+					effect.previousBounceType === 'soft'
+						? { statsSoftBounced: -1, statsHardBounced: 1 }
+						: {
+								statsBounced: 1,
+								...(effect.isHard ? { statsHardBounced: 1 } : { statsSoftBounced: 1 }),
+							}
+				);
 				break;
 			}
 			case 'campaign_stats_sent': {
@@ -205,8 +237,7 @@ export async function applyEffects(
 						{
 							type: 'suspicious_pattern' as const,
 							severity: 'low' as const,
-							description:
-								'Spam complaint received (feedback loop)',
+							description: 'Spam complaint received (feedback loop)',
 							match: effect.contactEmail,
 						},
 					],
@@ -214,14 +245,10 @@ export async function applyEffects(
 				break;
 			}
 			case 'reputation_update': {
-				await ctx.scheduler.runAfter(
-					0,
-					internal.analytics.sendingReputation.recordEvent,
-					{
-						eventType: effect.eventType,
-						...(effect.domain ? { domain: effect.domain } : {}),
-					}
-				);
+				await ctx.scheduler.runAfter(0, internal.analytics.sendingReputation.recordEvent, {
+					eventType: effect.eventType,
+					...(effect.domain ? { domain: effect.domain } : {}),
+				});
 				break;
 			}
 			case 'attachment_cleanup': {
@@ -229,10 +256,7 @@ export async function applyEffects(
 					try {
 						await ctx.storage.delete(storageId as Id<'_storage'>);
 					} catch (err) {
-						logWarn(
-							`[sendLifecycle] failed to delete attachment blob ${storageId}:`,
-							err
-						);
+						logWarn(`[sendLifecycle] failed to delete attachment blob ${storageId}:`, err);
 					}
 				}
 				break;

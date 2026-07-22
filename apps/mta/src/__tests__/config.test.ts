@@ -64,6 +64,14 @@ describe('loadConfig', () => {
 		expect(() => loadConfig()).toThrow('BOUNCE_VERP_KEY must be at least 32 bytes');
 	});
 
+	it.each(['replace-with-openssl-rand-base64-32', 'REPLACE-WITH-OPENSSL-RAND-BASE64-32'])(
+		'rejects the known VERP placeholder %s even though it is long enough',
+		(placeholder) => {
+			process.env.BOUNCE_VERP_KEY = placeholder;
+			expect(() => loadConfig()).toThrow('not a placeholder');
+		}
+	);
+
 	it('uses defaults for PORT and REDIS_URL', () => {
 		delete process.env.PORT;
 		delete process.env.REDIS_URL;

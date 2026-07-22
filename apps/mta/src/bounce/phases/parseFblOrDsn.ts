@@ -2,17 +2,17 @@
  * Phase: classify the inbound mail as FBL/ARF complaint, attributed DSN
  * bounce, or unattributed DSN bounce.
  *
- * The duplicate-complaint check is intrinsic to FBL classification (an
- * already-seen complaint is silently ACKed). The check uses Redis `SET NX`
- * — both a check and a claim in one atomic op — so it lives inside this
- * phase rather than as a separate "redis_dedup" effect.
+ * Complaint deduplication is intrinsic to FBL classification. An atomically
+ * reserved complaint continues through durable persistence; only a completed
+ * reservation is silently ACKed. The server releases a reservation before a
+ * transient 451 so the same feedback bytes can be retried.
  *
  * On `continue`, the ctx is unchanged and the next phase (`resolveRoute`)
  * decides whether this is a mailbox delivery, a routed inbound, or
  * unrecognized.
  */
 
-import { tryParseARF, isDuplicateComplaint, generateDedupKey } from '../fblProcessor.js';
+import { tryParseARF, reserveComplaint, generateDedupKey } from '../fblProcessor.js';
 import { parseBounce } from '../parser.js';
 import { extractReportParts } from '../reportParts.js';
 import { logger } from '../../monitoring/logger.js';
@@ -36,15 +36,18 @@ export const parseFblOrDsnPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 		const arfResult = tryParseARF(parsed, reportParts);
 		if (arfResult) {
 			const dedupKey = generateDedupKey(parsed, arfResult.originalMessageId);
-			const isDuplicate = await isDuplicateComplaint(deps.redis, dedupKey);
-			if (isDuplicate) {
+			const dedup = await reserveComplaint(deps.redis, dedupKey);
+			if (dedup.kind === 'completed') {
 				logger.info(
 					{ messageId: arfResult.originalMessageId, dedupKey },
 					'Duplicate FBL complaint skipped'
 				);
 				return { kind: 'dropSilently', reason: 'duplicate_fbl_complaint' };
 			}
-			return { kind: 'bounceTo', attempt: { kind: 'fbl', arf: arfResult } };
+			return {
+				kind: 'bounceTo',
+				attempt: { kind: 'fbl', arf: arfResult, dedupReservation: dedup.reservation },
+			};
 		}
 
 		// 2. Try DSN bounce.

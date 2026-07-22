@@ -49,10 +49,12 @@ interface TestSession {
 	clientHostname?: string;
 	authenticated?: boolean;
 	state: SubmissionSessionState;
+	mailFrom?: { address: string };
+	rcptTo: Array<{ address: string }>;
 }
 
 function makeSession(overrides: Partial<TestSession> = {}): TestSession {
-	return { remoteAddress: '', state: {}, ...overrides };
+	return { remoteAddress: '', state: {}, rcptTo: [], ...overrides };
 }
 
 async function authCall(
@@ -69,10 +71,36 @@ async function authCall(
 	return { outcome, session };
 }
 
-async function dataCall(raw: string, auth: AuthenticatedSession | undefined) {
-	const queue = { add: vi.fn().mockResolvedValue(undefined) };
+function headerAddresses(raw: string, header: string): string[] {
+	const value = raw.match(new RegExp(`^${header}: (.+)$`, 'im'))?.[1] ?? '';
+	return [...value.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+/gi)].map(([address]) => address!);
+}
+
+async function dataCall(
+	raw: string,
+	auth: AuthenticatedSession | undefined,
+	envelope: { from?: string; recipients?: string[] } = {}
+) {
+	const queued = new Map<string, unknown>();
+	const queue = {
+		add: vi.fn(
+			async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+				if (options.jobId) queued.set(options.jobId, options);
+			}
+		),
+		getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+	};
 	const receiptRedis = new Redis();
-	const session = makeSession({ authenticated: auth !== undefined, state: { auth } });
+	const recipients = envelope.recipients ?? [
+		...headerAddresses(raw, 'To'),
+		...headerAddresses(raw, 'Cc'),
+	];
+	const session = makeSession({
+		authenticated: auth !== undefined,
+		state: { auth },
+		mailFrom: { address: envelope.from ?? headerAddresses(raw, 'From')[0] ?? '' },
+		rcptTo: recipients.map((address) => ({ address })),
+	});
 	const reply = await buildOnData({ queue: queue as never, redis: receiptRedis as never })(
 		Buffer.from(raw),
 		session as never
@@ -252,6 +280,130 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 				'"state":"accepted"'
 			);
 		}
+	});
+
+	it('uses the SMTP envelope recipient order and removes exact duplicates', async () => {
+		const mime = baseMime('sender@brand.com', 'header-only@ignored.example');
+		const { reply, queue } = await dataCall(
+			mime,
+			{ organizationId: 'org1', credentialName: 'cred' },
+			{
+				from: 'bounce@brand.com',
+				recipients: ['first@Example.COM', 'first@example.com', 'second@else.net'],
+			}
+		);
+
+		expect(reply).toBeUndefined();
+		expect(queue.add.mock.calls.map(([options]) => options.data.to)).toEqual([
+			'first@example.com',
+			'second@else.net',
+		]);
+	});
+
+	it('reconciles partial fan-out and retries only the missing recipient', async () => {
+		const receiptRedis = new Redis();
+		await receiptRedis.flushall();
+		const queued = new Map<string, unknown>();
+		let failSecond = true;
+		const queue = {
+			add: vi.fn(
+				async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+					if (options.data.to === 'second@example.net' && failSecond) {
+						failSecond = false;
+						throw new Error('queue unavailable');
+					}
+					queued.set(options.jobId!, options);
+				}
+			),
+			getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+		};
+		const auth = { organizationId: 'org1', credentialName: 'cred' };
+		const session = makeSession({
+			authenticated: true,
+			state: { auth },
+			mailFrom: { address: 'sender@brand.com' },
+			rcptTo: [{ address: 'first@example.com' }, { address: 'second@example.net' }],
+		});
+		const message = Buffer.from(baseMime('sender@brand.com', 'ignored@example.org'));
+		const onData = buildOnData({ queue: queue as never, redis: receiptRedis as never });
+
+		expect((await onData(message, session as never))?.code).toBe(451);
+		expect(await onData(message, session as never)).toBeUndefined();
+
+		const firstAdds = queue.add.mock.calls.filter(
+			([options]) => options.data.to === 'first@example.com'
+		);
+		const secondAdds = queue.add.mock.calls.filter(
+			([options]) => options.data.to === 'second@example.net'
+		);
+		expect(firstAdds).toHaveLength(1);
+		expect(secondAdds).toHaveLength(2);
+		expect(secondAdds[0]![0].jobId).toBe(secondAdds[1]![0].jobId);
+	});
+
+	it('accepts a lost queue response after reconciling the committed job', async () => {
+		const receiptRedis = new Redis();
+		await receiptRedis.flushall();
+		const queued = new Map<string, unknown>();
+		const queue = {
+			add: vi.fn(
+				async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+					queued.set(options.jobId!, options);
+					throw new Error('response lost');
+				}
+			),
+			getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+		};
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: { address: 'sender@brand.com' },
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+
+		const reply = await buildOnData({ queue: queue as never, redis: receiptRedis as never })(
+			Buffer.from(baseMime('sender@brand.com', 'recipient@example.com')),
+			session as never
+		);
+
+		expect(reply).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('deduplicates byte-identical retries but treats changed DATA as a new submission', async () => {
+		const receiptRedis = new Redis();
+		await receiptRedis.flushall();
+		const queued = new Map<string, unknown>();
+		const queue = {
+			add: vi.fn(
+				async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+					queued.set(options.jobId!, options);
+				}
+			),
+			getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+		};
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: { address: 'sender@brand.com' },
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const onData = buildOnData({ queue: queue as never, redis: receiptRedis as never });
+		const original = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(original, session as never)).toBeUndefined();
+		expect(await onData(original, session as never)).toBeUndefined();
+		expect(
+			await onData(
+				Buffer.from(
+					baseMime('sender@brand.com', 'recipient@example.com').replace('hello', 'changed')
+				),
+				session as never
+			)
+		).toBeUndefined();
+
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(queue.add.mock.calls[0]![0].jobId).not.toBe(queue.add.mock.calls[1]![0].jobId);
 	});
 
 	// RFC 2046 §5.1.4: the AMP alternative must survive submission. `parseMessage`

@@ -496,6 +496,7 @@ describe('tlsRpt', () => {
 					added.push(opts);
 					return { id: opts.jobId ?? 'generated-id' };
 				}),
+				getJob: vi.fn(async () => null),
 			};
 
 			const fetchMock = vi.fn();
@@ -538,6 +539,33 @@ describe('tlsRpt', () => {
 			expect(decoded).toEqual(expected);
 
 			vi.unstubAllGlobals();
+		});
+
+		it('reconciles a lost mailto enqueue response under one semantic report id', async () => {
+			const key = `mta:tls-rpt:example.com:${yesterday}`;
+			await redis.hincrby(key, 'successes', 1);
+			dnsWithRua({ 'example.com': 'mailto:tls-reports@example.com' });
+			const committed = new Map<string, unknown>();
+			const queue: TlsRptQueue = {
+				add: vi.fn(async (opts) => {
+					committed.set(opts.jobId!, opts);
+					throw new Error('queue response lost');
+				}),
+				getJob: vi.fn(async (jobId) => committed.get(jobId) ?? null),
+			};
+
+			const first = await generateAndSendReports(redis, 'Owlat MTA', 'postmaster@owlat.com', queue);
+			const second = await generateAndSendReports(
+				redis,
+				'Owlat MTA',
+				'postmaster@owlat.com',
+				queue
+			);
+
+			expect(first.sent).toBe(1);
+			expect(second.sent).toBe(1);
+			expect(queue.add).toHaveBeenCalledOnce();
+			expect(queue.add.mock.calls[0]![0].jobId).toMatch(/^tlsrpt-[0-9a-f]{64}$/);
 		});
 
 		it('skips a mailto: rua when no send queue is available', async () => {

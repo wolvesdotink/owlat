@@ -12,7 +12,8 @@
  * {@link BounceTransaction} state (replacing the old `SessionWithSpf` widening);
  * the VERP / personal-mailbox / route RCPT gate with structured 552/550 replies
  * (onRcptTo); and the Bounce intake pipeline over a `ParsedMessage` (onData),
- * which always ACKs (the explicit {@link AckAndSwallowErrors} decision).
+ * which ACKs malformed/unattributed input but returns a transient 451 when
+ * authenticated feedback cannot reach durable storage.
  */
 
 import {
@@ -38,13 +39,12 @@ import { createInboundAuthResolvers } from './inboundAuthResolver.js';
 import { verifyArcChain } from './inboundArc.js';
 import { runPipeline } from './pipeline.js';
 import { mainPipeline } from './phases/index.js';
-import { reduce } from './outcome.js';
-import { applyEffects, DurableFeedbackPersistenceError } from './effects.js';
 import { dmarcFromIdentity } from '../inbound/parsedAddress.js';
 import type { SpfVerdict } from './types.js';
 import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
-import { logAttempt, isLocalAddress } from './serverHelpers.js';
-import { attachFeedbackProvenance } from './feedbackProvenance.js';
+import { isLocalAddress } from './serverHelpers.js';
+import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
+import { processBounceAttempt } from './attemptProcessor.js';
 
 /** Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND wire-enforced by the listener). */
 const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
@@ -66,10 +66,11 @@ type BounceSession = SmtpSession<unknown, BounceTransaction>;
 
 /**
  * AckAndSwallowErrors — the explicit at-least-once decision (I2 e). The MX
- * listener ALWAYS answers a received message with the default 250, even when
- * downstream parsing / pipeline processing throws: a remote MTA must never be
- * told to retry a bounce/DSN whose bytes we already consumed (backscatter
- * amplification). Returning `undefined` emits the default 250 data-accepted reply.
+ * listener answers malformed, unattributed, and best-effort processing failures
+ * with the default 250: a remote MTA must not amplify backscatter by retrying
+ * bytes we cannot act on. Authenticated feedback whose durable storage is
+ * transiently unavailable is the narrow exception and receives 451. Returning
+ * `undefined` emits the default 250 data-accepted reply.
  */
 const AckAndSwallowErrors: SmtpHandlerResult = undefined;
 
@@ -360,7 +361,8 @@ export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
  * DMARC / ARC are evaluated over the raw bytes before parsing mangles
  * canonicalization, then the intake pipeline (parseFblOrDsn → resolveRoute →
  * stageAttachments) classifies and the reducer runs the effects. The handler
- * ALWAYS ACKs — see {@link AckAndSwallowErrors}.
+ * ACKs by default, with a narrow transient-storage 451 exception — see
+ * {@link AckAndSwallowErrors}.
  */
 export function buildOnData(
 	config: MtaConfig,
@@ -454,10 +456,7 @@ export function buildOnData(
 				return AckAndSwallowErrors;
 			}
 
-			const attributedAttempt = await attachFeedbackProvenance(redis, piped.attempt);
-			logAttempt(attributedAttempt, parsed);
-
-			const { effects } = reduce(attributedAttempt, {
+			await processBounceAttempt(deps, piped.attempt, {
 				parsed,
 				rawBuffer,
 				rcptTo,
@@ -472,12 +471,11 @@ export function buildOnData(
 				dkimSigningDomain: dkim?.domain,
 				returnPath,
 			});
-			await applyEffects(effects, deps);
 
 			return AckAndSwallowErrors;
 		} catch (err) {
 			logger.error({ err }, 'Error processing inbound email');
-			if (err instanceof DurableFeedbackPersistenceError) {
+			if (err instanceof TransientFeedbackProcessingError) {
 				return {
 					code: 451,
 					enhanced: '4.3.0',

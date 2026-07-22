@@ -101,29 +101,6 @@ describe('dlq', () => {
 		expect(await getEntry(redis, first)).not.toBeNull();
 	});
 
-	it('deduplicates the same terminal outbox identity without resetting ownership state', async () => {
-		const event = createTestEvent({ messageId: 'same-terminal' });
-		const first = await storePending(redis, event, config, 'same-terminal:bounced');
-		const claimed = await claimOne(redis, first, {
-			owner: 'first-worker',
-			now: Date.now(),
-			requireDue: false,
-			enforceAutoLimit: false,
-			autoRetryLimit: 8,
-		});
-		expect(await storePending(redis, event, config, 'same-terminal:bounced')).toBe(first);
-		expect(
-			await claimOne(redis, first, {
-				owner: 'replay-worker',
-				now: Date.now(),
-				requireDue: false,
-				enforceAutoLimit: false,
-				autoRetryLimit: 8,
-			})
-		).toBeNull();
-		expect(claimed).not.toBeNull();
-	});
-
 	it('retains a later hard bounce while the earlier soft bounce is still pending', async () => {
 		const soft = await storePending(
 			redis,

@@ -82,6 +82,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 import { handleEmailJob } from '../handler.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import type { CtxWithIp } from '../../dispatch/types.js';
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {
@@ -120,6 +121,29 @@ function createGovernedJob(overrides: Partial<EmailJob> = {}): EmailJob {
 		workAttemptId: 'work-attempt-1',
 		...overrides,
 	});
+}
+
+function createAttempt(job = createJob()): CtxWithIp {
+	return {
+		job,
+		domain: 'example.com',
+		destination: {
+			recipientDomain: 'example.com',
+			providerKey: 'other',
+			throttleKey: 'example.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [{ exchange: 'mx.example.com', priority: 0 }],
+			},
+			daneDiscoveryAuthenticated: true,
+		},
+		fromDomain: 'owlat.com',
+		pool: 'transactional',
+		dedicatedIp: undefined,
+		ip: '10.0.0.1',
+		eligibilityGeneration: 1,
+	};
 }
 
 /**
@@ -301,9 +325,10 @@ describe('handleEmailJob', () => {
 	});
 
 	async function run(data: EmailJob, envelope: Partial<ReservedJob<EmailJob>> = {}) {
-		if (!(await redis.get(`mta:work-attempts:${data.intakeReceiptId}`))) {
+		const intakeReceiptId = data.intakeReceiptId ?? data.workAttemptId ?? data.messageId;
+		if (!(await redis.get(`mta:work-attempts:${intakeReceiptId}`))) {
 			await redis.set(
-				`mta:work-attempts:${data.intakeReceiptId}`,
+				`mta:work-attempts:${intakeReceiptId}`,
 				JSON.stringify({ state: 'reserved', messageId: data.messageId, reservedAt: Date.now() })
 			);
 		}
@@ -355,15 +380,18 @@ describe('handleEmailJob', () => {
 
 	it('replays an in-flight reservation as ambiguous without another SMTP call', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
+		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
 		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
-		await reserveSmtpOutcome(redis, 'job-1', 'msg-001', {
+		await reserveSmtpOutcome(redis, 'job-1', 'msg-001', createAttempt(), {
 			now: Date.now(),
 			capacity: config.webhookDlqMaxSize,
 		});
+		vi.mocked(isSuppressed).mockResolvedValue(true);
 
 		await run(createJob());
 
 		expect(sendToMx).not.toHaveBeenCalled();
+		expect(isSuppressed).not.toHaveBeenCalled();
 		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
 		expect(queueConvexWebhook).toHaveBeenCalledWith(
 			expect.objectContaining({ event: 'failed', messageId: 'msg-001' }),
@@ -393,25 +421,130 @@ describe('handleEmailJob', () => {
 	it('keeps a completed result until terminal outbox persistence succeeds', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		const { recordOutcome } = await import('../../intelligence/circuitBreaker.js');
+		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
+		const { resolveDestinationSnapshot } = await import('../../smtp/destinationProvider.js');
 		vi.mocked(queueConvexWebhook)
 			.mockRejectedValueOnce(new Error('outbox unavailable'))
 			.mockResolvedValue('outbox-recovered');
 
 		await expect(run(createJob())).rejects.toThrow('outbox unavailable');
+		vi.mocked(isSuppressed).mockResolvedValue(true);
 		await run(createJob());
 
 		expect(sendToMx).toHaveBeenCalledTimes(1);
 		expect(queueConvexWebhook).toHaveBeenCalledTimes(2);
+		expect(recordOutcome).toHaveBeenCalledTimes(1);
+		expect(resolveDestinationSnapshot).toHaveBeenCalledTimes(1);
+		expect(isSuppressed).toHaveBeenCalledTimes(1);
+		expect(queueConvexWebhook).toHaveBeenLastCalledWith(
+			expect.objectContaining({ event: 'sent', messageId: 'msg-001' }),
+			config,
+			redis,
+			'dispatch:msg-001:sent'
+		);
+	});
+
+	it('retains a terminal tombstone when its response is lost before GroupMQ ACK', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { recordOutcome } = await import('../../intelligence/circuitBreaker.js');
+		const originalEval = redis.eval.bind(redis);
+		let loseTerminalizationResponse = true;
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+			if (
+				loseTerminalizationResponse &&
+				String(args[0]).includes("redis.call('ZREM', KEYS[2], KEYS[1])")
+			) {
+				loseTerminalizationResponse = false;
+				throw new Error('terminalization response lost');
+			}
+			return result;
+		});
+
+		await expect(run(createJob())).rejects.toThrow('terminalization response lost');
+		evalSpy.mockRestore();
+		await run(createJob());
+
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+		expect(recordOutcome).toHaveBeenCalledTimes(1);
+	});
+
+	it('reconciles an accepted SMTP-defer successor before age changes on replay', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 451,
+			error: '451 4.7.1 retry later',
+		});
+		const originalEval = redis.eval.bind(redis);
+		let rejectTerminalization = true;
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			if (
+				rejectTerminalization &&
+				String(args[0]).includes("redis.call('ZREM', KEYS[2], KEYS[1])")
+			) {
+				rejectTerminalization = false;
+				throw new Error('terminalization unavailable');
+			}
+			return await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+		});
+		let now = Date.now();
+		const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+		const data = createJob({ firstEnqueuedAt: now - config.maxMessageAgeMs + 1_000 });
+
+		await expect(run(data)).rejects.toThrow('terminalization unavailable');
+		now += 2_000;
+		await run(data);
+		evalSpy.mockRestore();
+		nowSpy.mockRestore();
+
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(queue.add).toHaveBeenCalledOnce();
+		expect(queueConvexWebhook).not.toHaveBeenCalled();
+	});
+
+	it('promotes a retained legacy job through its prior work-attempt receipt', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const legacy = createGovernedJob();
+		delete legacy.intakeReceiptId;
+
+		await run(legacy);
+
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(JSON.parse((await redis.get('mta:work-attempts:work-attempt-1'))!)).toMatchObject({
+			state: 'accepted',
+			messageId: 'msg-001',
+		});
+	});
+
+	it('preserves retained non-governed jobs that predate intake receipts', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const legacy = createJob();
+		delete legacy.intakeReceiptId;
+
+		await handleEmailJob(reserve(legacy), queue as unknown as Queue<EmailJob>, redis, config);
+
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(await redis.get('mta:work-attempts:msg-001')).toBeNull();
 	});
 
 	it('defers before SMTP when outcome-journal capacity is unavailable', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
 		config.webhookDlqMaxSize = 1;
-		await reserveSmtpOutcome(redis, 'other-job', 'other-message', {
-			now: Date.now(),
-			capacity: 1,
-		});
+		await reserveSmtpOutcome(
+			redis,
+			'other-job',
+			'other-message',
+			createAttempt(createJob({ messageId: 'other-message' })),
+			{
+				now: Date.now(),
+				capacity: 1,
+			}
+		);
 
 		await run(createJob());
 
@@ -576,6 +709,42 @@ describe('handleEmailJob', () => {
 			);
 		}
 	);
+
+	it('releases stale routing ownership before persisting handoff and never retries through SMTP', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { isIpEligibilityLeaseValid } = await import('../../scaling/ipPool.js');
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		const { releaseHalfOpenProbe } = await import('../../intelligence/circuitBreaker.js');
+		let leaseReleased = false;
+		let eligibilityChecks = 0;
+		vi.mocked(isIpEligibilityLeaseValid).mockImplementation(async () => {
+			eligibilityChecks += 1;
+			return eligibilityChecks === 1 ? false : !leaseReleased;
+		});
+		vi.mocked(releaseHalfOpenProbe).mockImplementation(async () => {
+			leaseReleased = true;
+		});
+		vi.mocked(queueConvexWebhook)
+			.mockRejectedValueOnce(new Error('protected outbox unavailable'))
+			.mockResolvedValueOnce('recovered-outbox-id');
+
+		await expect(run(createGovernedJob())).rejects.toThrow('protected outbox unavailable');
+		await run(createGovernedJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queueConvexWebhook).toHaveBeenCalledTimes(2);
+		expect(queueConvexWebhook).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({ event: 'routing.reentry', workAttemptId: 'work-attempt-1' }),
+			config,
+			redis,
+			'routing-reentry:work-attempt-1:reentry-token'
+		);
+		expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(4);
+		expect(releaseHalfOpenProbe.mock.invocationCallOrder[0]).toBeLessThan(
+			queueConvexWebhook.mock.invocationCallOrder[0]
+		);
+	});
 
 	it('hands a stale breaker generation back to Convex instead of relay/self-requeue', async () => {
 		const { canSend } = await import('../../intelligence/circuitBreaker.js');

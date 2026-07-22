@@ -91,6 +91,14 @@ export type DispatchEffect =
 	| { kind: 'domain_failure_clear'; domain: string }
 	| { kind: 'domain_failure_record'; domain: string };
 
+export interface DispatchEffectReplayGuard {
+	/**
+	 * Claim an explicitly secondary control/telemetry effect before it starts.
+	 * A false result means a prior execution already claimed this effect.
+	 */
+	claimSecondary(effectIdentity: string): Promise<boolean>;
+}
+
 /**
  * Apply a list of effects.
  *
@@ -104,21 +112,19 @@ export type DispatchEffect =
  */
 export async function applyEffects(
 	effects: ReadonlyArray<DispatchEffect>,
-	deps: PhaseDeps
+	deps: PhaseDeps,
+	replayGuard?: DispatchEffectReplayGuard
 ): Promise<void> {
+	const terminal: Array<Promise<unknown>> = [];
 	const parallel: Array<Promise<unknown>> = [];
 	const sequential: DispatchEffect[] = [];
 
 	for (const effect of effects) {
-		if (effect.kind === 'log_delivery_event') {
-			fireAndForget(effect, deps);
-			continue;
-		}
 		if (effect.kind === 'notify_convex') {
 			if (!effect.event.messageId) {
 				throw new Error('Dispatch terminal callback is missing its stable message identity');
 			}
-			parallel.push(
+			terminal.push(
 				queueConvexWebhook(
 					effect.event,
 					deps.config,
@@ -126,13 +132,21 @@ export async function applyEffects(
 					`dispatch:${effect.event.messageId}:${effect.event.event}`
 				)
 			);
-			continue;
 		}
+	}
+
+	// Critical ownership transfer is deterministic and retry-safe. Persist it
+	// before claiming any at-most-once secondary effect, so an outbox outage
+	// cannot consume those claims without making the terminal callback durable.
+	await Promise.all(terminal);
+
+	for (const [index, effect] of effects.entries()) {
+		if (effect.kind === 'notify_convex') continue;
 		if (effect.kind === 'suppress_recipient') {
 			sequential.push(effect);
 			continue;
 		}
-		parallel.push(applyOne(effect, deps));
+		parallel.push(applySecondary(effect, index, deps, replayGuard));
 	}
 
 	await Promise.all(parallel);
@@ -140,6 +154,20 @@ export async function applyEffects(
 	for (const effect of sequential) {
 		await applyOne(effect, deps);
 	}
+}
+
+async function applySecondary(
+	effect: Exclude<DispatchEffect, { kind: 'notify_convex' | 'suppress_recipient' }>,
+	index: number,
+	deps: PhaseDeps,
+	replayGuard: DispatchEffectReplayGuard | undefined
+): Promise<unknown> {
+	if (replayGuard && !(await replayGuard.claimSecondary(`${index}:${effect.kind}`))) return;
+	if (effect.kind === 'log_delivery_event') {
+		fireAndForget(effect, deps);
+		return;
+	}
+	return applyOne(effect, deps);
 }
 
 function fireAndForget(

@@ -12,8 +12,12 @@ export type IntakeReceipt =
 
 export const INTAKE_RESERVATION_LEASE_MS = 30_000;
 
-export function intakeReceiptKey(workAttemptId: string): string {
-	return `mta:work-attempts:${workAttemptId}`;
+export function intakeReceiptKey(intakeReceiptId: string): string {
+	return `mta:work-attempts:${intakeReceiptId}`;
+}
+
+export function resolveIntakeReceiptId(job: EmailJob): string | undefined {
+	return job.intakeReceiptId ?? job.workAttemptId;
 }
 
 export function parseIntakeReceipt(value: string | null): IntakeReceipt | null {
@@ -52,12 +56,17 @@ export async function hasAcceptedIntakeReceipt(
  * receipt, and the write must succeed before any SMTP or terminal processing.
  */
 export async function promoteIntakeReceipt(redis: Redis, job: EmailJob): Promise<void> {
-	const key = intakeReceiptKey(job.intakeReceiptId);
+	const receiptId = resolveIntakeReceiptId(job);
+	const key = intakeReceiptKey(receiptId ?? job.messageId);
 	const raw = await redis.get(key);
+	// Retained jobs from before durable intake receipts have neither an explicit
+	// receipt nor a governed work-attempt identity. Preserve their historical
+	// worker path unless a newer producer actually reserved a message-id receipt.
+	if (!receiptId && !raw) return;
 	const receipt = parseIntakeReceipt(raw);
 	if (receipt?.state === 'accepted' && receipt.messageId === job.messageId) return;
 	if (!raw || receipt?.state !== 'reserved' || receipt.messageId !== job.messageId) {
-		throw new Error('Work-attempt receipt is missing or bound to another message');
+		throw new Error('Intake receipt is missing or bound to another message');
 	}
 	const accepted = JSON.stringify({
 		state: 'accepted',
@@ -75,7 +84,7 @@ export async function promoteIntakeReceipt(redis: Redis, job: EmailJob): Promise
 	if (promoted !== 1) {
 		const raced = parseIntakeReceipt(await redis.get(key));
 		if (raced?.state === 'accepted' && raced.messageId === job.messageId) return;
-		throw new Error('Work-attempt receipt promotion lost its ownership');
+		throw new Error('Intake receipt promotion lost its ownership');
 	}
 }
 

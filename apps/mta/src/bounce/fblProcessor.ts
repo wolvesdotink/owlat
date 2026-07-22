@@ -17,10 +17,48 @@ import { parseVerpAddress, isVerpSigningEnabled } from './verp.js';
 import { addressText } from '../inbound/parsedAddress.js';
 import type { ReportPart } from './reportParts.js';
 import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
+import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 
 const FBL_DEDUP_PREFIX = 'mta:fbl:dedup:';
 const FBL_DEDUP_TTL = 7 * 86400; // 7 days
+const FBL_RESERVATION_TTL = 15 * 60; // longer than the inbound processing budget
+
+export interface ComplaintDedupReservation {
+	readonly key: string;
+	readonly token: string;
+}
+
+export type ComplaintDedupResult =
+	| { readonly kind: 'completed' }
+	| { readonly kind: 'reserved'; readonly reservation: ComplaintDedupReservation };
+
+const RESERVE_COMPLAINT_LUA = `
+local existing = redis.call('GET', KEYS[1])
+if not existing then
+  redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+  return 1
+end
+if existing == 'completed' or existing == '1' then return 0 end
+return -1
+`;
+
+const COMPLETE_COMPLAINT_LUA = `
+local existing = redis.call('GET', KEYS[1])
+if existing == ARGV[1] then
+  redis.call('SET', KEYS[1], 'completed', 'EX', ARGV[2])
+  return 1
+end
+if existing == 'completed' or existing == '1' then return 0 end
+return -1
+`;
+
+const RELEASE_COMPLAINT_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`;
 
 /**
  * Generate a deduplication key from complaint content.
@@ -35,15 +73,67 @@ export function generateDedupKey(parsed: ParsedMessage, originalMessageId?: stri
 	return createHash('sha256').update(fingerprint).digest('hex').slice(0, 32);
 }
 
-/**
- * Check if a complaint has already been processed (deduplication).
- * Returns true if this is a duplicate that should be skipped.
- */
-export async function isDuplicateComplaint(redis: Redis, dedupKey: string): Promise<boolean> {
+/** Reserve a complaint without declaring it durably processed yet. */
+export async function reserveComplaint(
+	redis: Redis,
+	dedupKey: string
+): Promise<ComplaintDedupResult> {
 	const key = `${FBL_DEDUP_PREFIX}${dedupKey}`;
-	// SET NX returns null if key already exists (duplicate)
-	const result = await redis.set(key, '1', 'EX', FBL_DEDUP_TTL, 'NX');
-	return result === null; // null means key existed = duplicate
+	const token = `reserved:${randomUUID()}`;
+	let status: number;
+	try {
+		status = (await redis.eval(
+			RESERVE_COMPLAINT_LUA,
+			1,
+			key,
+			token,
+			String(FBL_RESERVATION_TTL)
+		)) as number;
+	} catch (error) {
+		throw new TransientFeedbackProcessingError('Complaint deduplication is unavailable', error);
+	}
+	if (status === 0) return { kind: 'completed' };
+	if (status === 1) return { kind: 'reserved', reservation: { key, token } };
+	throw new TransientFeedbackProcessingError(
+		'Complaint processing is already in progress',
+		new Error('FBL reservation is held by another intake')
+	);
+}
+
+/** Mark a reservation complete only after its feedback effects have succeeded. */
+export async function completeComplaint(
+	redis: Redis,
+	reservation: ComplaintDedupReservation
+): Promise<void> {
+	let status: number;
+	try {
+		status = (await redis.eval(
+			COMPLETE_COMPLAINT_LUA,
+			1,
+			reservation.key,
+			reservation.token,
+			String(FBL_DEDUP_TTL)
+		)) as number;
+	} catch (error) {
+		throw new TransientFeedbackProcessingError(
+			'Complaint deduplication completion is unavailable',
+			error
+		);
+	}
+	if (status < 0) {
+		throw new TransientFeedbackProcessingError(
+			'Complaint reservation expired before completion',
+			new Error('FBL reservation ownership was lost')
+		);
+	}
+}
+
+/** Release only the reservation owned by this intake, permitting an SMTP retry. */
+export async function releaseComplaint(
+	redis: Redis,
+	reservation: ComplaintDedupReservation
+): Promise<void> {
+	await redis.eval(RELEASE_COMPLAINT_LUA, 1, reservation.key, reservation.token);
 }
 
 /**

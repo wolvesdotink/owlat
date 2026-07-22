@@ -30,6 +30,7 @@ import { logger } from '../monitoring/logger.js';
 import type { InboundAuthVerdicts, MtaWebhookEvent } from '../types.js';
 import type { InboundRoute } from '../inbound/router.js';
 import type { PhaseDeps } from './types.js';
+import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 
 /**
  * Discriminated union of Bounce intake effects.
@@ -100,9 +101,9 @@ export type BounceEffect =
 	  };
 
 /** Signals the one inbound failure for which SMTP must request a retry. */
-export class DurableFeedbackPersistenceError extends Error {
+export class DurableFeedbackPersistenceError extends TransientFeedbackProcessingError {
 	constructor(cause: unknown) {
-		super('Attributed feedback could not be persisted durably', { cause });
+		super('Attributed feedback could not be persisted durably', cause);
 		this.name = 'DurableFeedbackPersistenceError';
 	}
 }
