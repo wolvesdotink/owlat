@@ -87,8 +87,9 @@ function buildApp(
 
 /** A request body that passes every gate; override fields per case. */
 function validBody(overrides: Record<string, unknown> = {}): string {
+	const messageId = typeof overrides['messageId'] === 'string' ? overrides['messageId'] : 'msg-1';
 	return JSON.stringify({
-		messageId: 'msg-1',
+		messageId,
 		to: 'bob@example.com',
 		from: 'alice@example.com',
 		subject: 'Hi',
@@ -98,6 +99,12 @@ function validBody(overrides: Record<string, unknown> = {}): string {
 		messageType: 'transactional',
 		dkimDomain: 'example.com',
 		routingLease: 'test-routing-lease',
+		allowWarmupOverflow: false,
+		routingReentry: {
+			sendRef: { kind: 'transactional', id: 'send-id-1' },
+			envelopeInput: { kind: 'transactional' },
+			retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: messageId },
+		},
 		...overrides,
 	});
 }
@@ -341,6 +348,7 @@ describe('POST /send — job construction and routing', () => {
 				sealedMimeBase64,
 				allowedFromAddresses: ['alice@example.com'],
 				routingLease: undefined,
+				routingReentry: undefined,
 			})
 		);
 
@@ -367,6 +375,7 @@ describe('POST /send — job construction and routing', () => {
 				sealedMimeBase64: Buffer.from(forged).toString('base64'),
 				allowedFromAddresses: ['alice@example.com'],
 				routingLease: undefined,
+				routingReentry: undefined,
 			})
 		);
 		expect(res.status).toBe(400);

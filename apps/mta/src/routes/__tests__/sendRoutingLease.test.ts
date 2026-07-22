@@ -24,6 +24,12 @@ function body(overrides: Record<string, unknown> = {}) {
 		messageType: 'campaign',
 		dkimDomain: 'example.org',
 		routingLease: 'token-1',
+		allowWarmupOverflow: false,
+		routingReentry: {
+			sendRef: { kind: 'campaign', id: 'send-id-1' },
+			envelopeInput: { kind: 'campaign' },
+			retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: 'message-1' },
+		},
 		...overrides,
 	};
 }
@@ -79,7 +85,12 @@ async function request(options: {
 	const response = await app.request('/send', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(body(options.bodyOverrides)),
+		body: JSON.stringify(
+			body({
+				...(options.mode && options.mode !== 'governed' ? { routingReentry: undefined } : {}),
+				...options.bodyOverrides,
+			})
+		),
 	});
 	return { response, queue };
 }

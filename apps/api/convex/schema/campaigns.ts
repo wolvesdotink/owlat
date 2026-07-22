@@ -207,6 +207,8 @@ export const campaignTables = {
 		),
 		// Email provider message ID for tracking
 		providerMessageId: v.optional(v.string()),
+		// Highest accepted MTA pre-network routing handoff enqueued for this Send.
+		mtaRoutingReentryAttempt: v.optional(v.number()),
 		// Personalized content for this recipient (to preserve exactly what was sent)
 		personalizedSubject: v.optional(v.string()),
 		// A/B test variant tracking - "A" or "B" for test recipients

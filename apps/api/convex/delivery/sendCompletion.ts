@@ -35,6 +35,12 @@ const sendRefValidator = v.union(
 	})
 );
 
+const retryStateValidator = v.object({
+	attempt: v.number(),
+	startedAt: v.number(),
+	idempotencyKey: v.string(),
+});
+
 // The success return shape of the `sendSingleEmail` worker action — surfaced
 // on the workpool's `result.returnValue` for a successful run. (The action
 // throws on failure, which the workpool reports as `result.kind === 'failed'`.)
@@ -219,5 +225,56 @@ export const retrySend = internalMutation({
 				context: { sendRef: args.sendRef },
 			}
 		);
+	},
+});
+
+/**
+ * Re-enter governed dispatch after the MTA accepted a job but detected a stale
+ * route before opening an SMTP connection. The attempt marker and workpool
+ * enqueue commit atomically, making retried HMAC webhooks idempotent while the
+ * original Send and provider idempotency key remain unchanged.
+ */
+export const reenterAcceptedMtaSend = internalMutation({
+	args: {
+		sendRef: sendRefValidator,
+		messageId: v.string(),
+		envelopeInput: v.any(),
+		retryState: retryStateValidator,
+		reason: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const send =
+			args.sendRef.kind === 'campaign'
+				? await ctx.db.get(args.sendRef.id)
+				: await ctx.db.get(args.sendRef.id);
+		if (!send) return { disposition: 'send_not_found' as const };
+		if (send.status !== 'queued' && send.status !== 'sent') {
+			return { disposition: 'terminal' as const };
+		}
+		if (send.providerMessageId && send.providerMessageId !== args.messageId) {
+			return { disposition: 'message_mismatch' as const };
+		}
+		if (
+			(send.mtaRoutingReentryAttempt ?? 0) >= args.retryState.attempt ||
+			args.retryState.attempt > MAX_ROUTING_RETRIES ||
+			Date.now() - args.retryState.startedAt > MAX_ROUTING_RETRY_AGE_MS
+		) {
+			return { disposition: 'duplicate_or_expired' as const };
+		}
+
+		await ctx.db.patch(args.sendRef.id, {
+			mtaRoutingReentryAttempt: args.retryState.attempt,
+		});
+		const pool = args.sendRef.kind === 'campaign' ? campaignEmailPool : transactionalEmailPool;
+		await pool.enqueueAction(
+			ctx,
+			internal.delivery.worker.sendSingleEmail,
+			{ envelopeInput: args.envelopeInput, retryState: args.retryState },
+			{
+				onComplete: internal.delivery.sendCompletion.completeSend,
+				context: { sendRef: args.sendRef },
+			}
+		);
+		return { disposition: 'enqueued' as const, reason: args.reason };
 	},
 });

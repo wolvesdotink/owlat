@@ -40,6 +40,9 @@ import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { PipelineResult } from '../dispatch/pipeline.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
+import { notifyConvex } from '../webhooks/convexNotifier.js';
+import { releaseWarmingSlot } from '../intelligence/warming.js';
+import { releaseHalfOpenProbe } from '../intelligence/circuitBreaker.js';
 
 /**
  * Add random jitter (±15%) to a delay to prevent thundering herd when
@@ -117,6 +120,11 @@ export async function handleEmailJob(
 		return;
 	}
 
+	if (piped.kind === 'routing_reentry') {
+		await handoffRoutingReentry(data, deps, piped.reason);
+		return;
+	}
+
 	if (piped.kind === 'defer') {
 		await disposeDefer(
 			job,
@@ -135,6 +143,14 @@ export async function handleEmailJob(
 		eligibilityGeneration: piped.ctx.eligibilityGeneration,
 	};
 	if (!(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
+		if (data.routingReentry) {
+			await handoffRoutingReentry(
+				data,
+				deps,
+				'Selected outbound IP eligibility changed before SMTP'
+			);
+			return;
+		}
 		await disposeDefer(
 			job,
 			queue,
@@ -169,6 +185,69 @@ export async function handleEmailJob(
 			'remote_4xx',
 			defer.delayMs,
 			defer.reason
+		);
+	}
+}
+
+async function releaseRoutingReservations(
+	data: EmailJob,
+	deps: { redis: Redis; config: MtaConfig }
+): Promise<void> {
+	const lease = data.routingLease;
+	if (!lease) return;
+	const releases: Array<Promise<unknown>> = [];
+	if (lease.warmingReservation) {
+		releases.push(releaseWarmingSlot(deps.redis, lease.warmingReservation));
+	}
+	if (lease.globalProbe && lease.globalBreakerGeneration !== undefined) {
+		releases.push(
+			releaseHalfOpenProbe(
+				deps.redis,
+				data.organizationId,
+				undefined,
+				data.messageId,
+				lease.globalBreakerGeneration
+			)
+		);
+	}
+	if (lease.probe && lease.providerBreakerGeneration !== undefined) {
+		releases.push(
+			releaseHalfOpenProbe(
+				deps.redis,
+				data.organizationId,
+				lease.destinationProvider,
+				data.messageId,
+				lease.providerBreakerGeneration
+			)
+		);
+	}
+	await Promise.all(releases);
+}
+
+/** Fixed pre-network outcome: hand the accepted job back to governed Convex dispatch. */
+async function handoffRoutingReentry(
+	data: EmailJob,
+	deps: { redis: Redis; config: MtaConfig },
+	reason: string
+): Promise<void> {
+	if (!data.routingReentry) throw new Error('Missing routing re-entry context');
+	await releaseRoutingReservations(data, deps);
+	const delivered = await notifyConvex(
+		{
+			event: 'routing.reentry',
+			messageId: data.messageId,
+			organizationId: data.organizationId,
+			message: reason,
+			routingReentry: data.routingReentry,
+			timestamp: Date.now(),
+		},
+		deps.config,
+		deps.redis
+	);
+	if (!delivered) {
+		logger.warn(
+			{ messageId: data.messageId, reason },
+			'Routing re-entry stored for authenticated webhook retry'
 		);
 	}
 }

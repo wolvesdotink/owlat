@@ -56,6 +56,49 @@ describe('verifyMtaHeaders', () => {
 });
 
 describe('mtaAdapter.parseEvent', () => {
+	it('parses an authenticated accepted-job routing re-entry with the same Send/idempotency', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'routing.reentry',
+				messageId: 'send_campaign-1',
+				message: 'breaker generation changed',
+				routingReentry: {
+					sendRef: { kind: 'campaign', id: 'campaign-1' },
+					envelopeInput: { kind: 'campaign', to: 'person@example.com' },
+					retryState: {
+						attempt: 1,
+						startedAt: 1700000000000,
+						idempotencyKey: 'send_campaign-1',
+					},
+				},
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toMatchObject({
+			kind: 'internal.routing_reentry',
+			providerMessageId: 'send_campaign-1',
+			sendRef: { kind: 'campaign', id: 'campaign-1' },
+			retryState: { attempt: 1, idempotencyKey: 'send_campaign-1' },
+		});
+	});
+
+	it('rejects a routing re-entry whose retry key does not match the accepted message', () => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'routing.reentry',
+					messageId: 'send-1',
+					routingReentry: {
+						sendRef: { kind: 'transactional', id: 'tx-1' },
+						envelopeInput: { kind: 'transactional' },
+						retryState: { attempt: 1, startedAt: 1, idempotencyKey: 'send-other' },
+					},
+					timestamp: 1,
+				})
+			)
+		).toBeNull();
+	});
+
 	it('parses bounced with hard classification', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({

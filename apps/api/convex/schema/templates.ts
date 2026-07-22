@@ -241,6 +241,8 @@ export const templateTables = {
 		dataVariables: v.optional(jsonPrimitiveRecord),
 		// Provider information
 		providerMessageId: v.optional(v.string()), // Message ID from email provider (Resend)
+		// Highest accepted MTA pre-network routing handoff enqueued for this Send.
+		mtaRoutingReentryAttempt: v.optional(v.number()),
 		// Current status of this email send. Per ADR-0006, transactional sends
 		// now pre-create in `queued` (symmetric with campaign sends) so the
 		// worker-completion path goes through the Send lifecycle for both

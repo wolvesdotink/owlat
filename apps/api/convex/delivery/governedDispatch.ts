@@ -93,6 +93,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	}
 
 	const { providerKind, route, organizationId, routingLease } = routing;
+	const routingRetryState = nextRetryState(request.retryState, idempotencyKey);
 	const extras: ExtrasFor<SendProviderKind> =
 		providerKind === 'mta'
 			? ({
@@ -100,6 +101,24 @@ export async function dispatchGovernedEmail<TEnvelope>(
 					organizationId,
 					messageType: request.messageType,
 					routingLease,
+					allowWarmupOverflow: Boolean(
+						request.messageType === 'campaign' && route?.warmupOverflowEnabled
+					),
+					...(request.stableSendId
+						? {
+								routingReentry: {
+									sendRef: {
+										kind:
+											request.messageType === 'campaign'
+												? ('campaign' as const)
+												: ('transactional' as const),
+										id: request.stableSendId,
+									},
+									envelopeInput: request.envelopeInput,
+									retryState: routingRetryState,
+								},
+							}
+						: {}),
 					...((route?.ipPool ?? request.ipPool)
 						? { ipPool: (route?.ipPool ?? request.ipPool) as MtaIpPool }
 						: {}),
@@ -136,7 +155,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			deferred: true,
 			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
 			envelopeInput: request.envelopeInput,
-			retryState: nextRetryState(request.retryState, idempotencyKey),
+			retryState: routingRetryState,
 		};
 	}
 

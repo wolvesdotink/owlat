@@ -408,6 +408,33 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 	});
 });
 
+describe('dispatchInboundEvent — accepted MTA routing re-entry', () => {
+	it('routes the authenticated work item to the idempotent Send re-entry mutation', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		await dispatchInboundEvent(ctx, {
+			kind: 'internal.routing_reentry',
+			providerMessageId: 'send_tx-1',
+			reason: 'IP eligibility changed',
+			sendRef: { kind: 'transactional', id: 'tx-1' as never },
+			envelopeInput: { kind: 'transactional', to: 'person@example.com' },
+			retryState: { attempt: 1, startedAt: 1000, idempotencyKey: 'send_tx-1' },
+		});
+
+		expect(runMutationCalls).toEqual([
+			{
+				ref: ref(internal.delivery.sendCompletion.reenterAcceptedMtaSend),
+				args: {
+					sendRef: { kind: 'transactional', id: 'tx-1' },
+					messageId: 'send_tx-1',
+					envelopeInput: { kind: 'transactional', to: 'person@example.com' },
+					retryState: { attempt: 1, startedAt: 1000, idempotencyKey: 'send_tx-1' },
+					reason: 'IP eligibility changed',
+				},
+			},
+		]);
+	});
+});
+
 describe('dispatchInboundEvent — Postbox message-id routing (pb- prefix)', () => {
 	const POSTBOX = ref(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId);
 	const SEND_LIFECYCLE = ref(internal.delivery.sendLifecycle.transitionByProviderMessageId);

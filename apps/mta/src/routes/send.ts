@@ -64,6 +64,32 @@ interface SendRequest {
 	allowedFromAddresses?: string[];
 	/** Opaque lease token returned by POST /send/decision. */
 	routingLease?: string;
+	routingReentry?: EmailJob['routingReentry'];
+	allowWarmupOverflow?: boolean;
+}
+
+function validRoutingReentry(
+	value: EmailJob['routingReentry'] | undefined,
+	messageId: string
+): value is NonNullable<EmailJob['routingReentry']> {
+	if (!value || typeof value !== 'object') return false;
+	const sendRef = value.sendRef;
+	const retry = value.retryState;
+	return Boolean(
+		sendRef &&
+		(sendRef.kind === 'campaign' || sendRef.kind === 'transactional') &&
+		typeof sendRef.id === 'string' &&
+		sendRef.id.length > 0 &&
+		sendRef.id.length <= 256 &&
+		value.envelopeInput &&
+		typeof value.envelopeInput === 'object' &&
+		retry &&
+		Number.isInteger(retry.attempt) &&
+		retry.attempt > 0 &&
+		retry.attempt <= 8 &&
+		Number.isFinite(retry.startedAt) &&
+		retry.idempotencyKey === messageId
+	);
 }
 
 /**
@@ -127,14 +153,14 @@ export function createSendHandler(
 			if (!auth.isMasterKey || body.organizationId !== 'postbox') {
 				return c.json({ error: 'Postbox intake requires the master credential' }, 403);
 			}
-			if (body.routingLease) {
+			if (body.routingLease || body.routingReentry) {
 				return c.json({ error: 'Postbox intake does not accept tenant routing leases' }, 400);
 			}
 		} else if (mode === 'system') {
 			if (!auth.isMasterKey || body.organizationId !== 'system') {
 				return c.json({ error: 'System intake requires the master credential' }, 403);
 			}
-			if (body.routingLease) {
+			if (body.routingLease || body.routingReentry) {
 				return c.json({ error: 'System intake does not accept tenant routing leases' }, 400);
 			}
 		} else {
@@ -149,6 +175,9 @@ export function createSendHandler(
 					{ error: 'A current routing lease is required', code: 'ROUTING_LEASE_REQUIRED' },
 					409
 				);
+			}
+			if (!validRoutingReentry(body.routingReentry, body.messageId)) {
+				return c.json({ error: 'Missing or invalid routing re-entry context' }, 400);
 			}
 		}
 		if (!auth.isMasterKey && auth.orgCredential) {
@@ -199,7 +228,7 @@ export function createSendHandler(
 					messageType: body.messageType!,
 					candidateProvider: 'mta',
 					ipPool: body.ipPool,
-					allowWarmupOverflow: false,
+					allowWarmupOverflow: body.allowWarmupOverflow === true,
 				})
 			) {
 				return c.json(
@@ -321,6 +350,9 @@ export function createSendHandler(
 			dkimDomain: body.dkimDomain,
 			firstEnqueuedAt: Date.now(),
 			...(routingLease ? { routingLease } : {}),
+			...(mode === 'governed' && body.routingReentry
+				? { routingReentry: body.routingReentry }
+				: {}),
 		};
 
 		// Calculate group key and priority

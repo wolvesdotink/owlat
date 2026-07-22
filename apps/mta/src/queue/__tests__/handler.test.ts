@@ -17,7 +17,10 @@ vi.mock('../../smtp/destinationProvider.js', () => ({
 	})),
 }));
 vi.mock('../../intelligence/circuitBreaker.js', () => ({
-	canSend: vi.fn().mockResolvedValue({ allowed: true, state: 'closed' }),
+	canSend: vi.fn().mockResolvedValue({ allowed: true, state: 'closed', generation: 0 }),
+	canSendScope: vi.fn().mockResolvedValue({ allowed: true, state: 'closed', generation: 0 }),
+	releaseHalfOpenProbe: vi.fn().mockResolvedValue(undefined),
+	reserveHalfOpenProbe: vi.fn().mockResolvedValue(true),
 	recordOutcome: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../../intelligence/domainThrottle.js', () => ({
@@ -32,6 +35,8 @@ vi.mock('../../intelligence/smtpResponse.js', () => ({
 }));
 vi.mock('../../intelligence/warming.js', () => ({
 	checkCap: vi.fn().mockResolvedValue({ allowed: true, sentToday: 0, dailyCap: Infinity }),
+	ensureWarmingReservation: vi.fn(),
+	releaseWarmingSlot: vi.fn().mockResolvedValue(undefined),
 	recordSend: vi.fn().mockResolvedValue(undefined),
 	recordBounce: vi.fn().mockResolvedValue(undefined),
 	recordDeferral: vi.fn().mockResolvedValue(undefined),
@@ -90,6 +95,27 @@ function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 		firstEnqueuedAt: Date.now(),
 		...overrides,
 	};
+}
+
+function createGovernedJob(overrides: Partial<EmailJob> = {}): EmailJob {
+	return createJob({
+		routingLease: {
+			token: 'lease-1',
+			destinationProvider: 'other',
+			probe: true,
+			globalProbe: true,
+			ip: '10.0.0.1',
+			eligibilityGeneration: 1,
+			globalBreakerGeneration: 0,
+			providerBreakerGeneration: 0,
+		},
+		routingReentry: {
+			sendRef: { kind: 'transactional', id: 'send-id-1' },
+			envelopeInput: { kind: 'transactional' },
+			retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: 'msg-001' },
+		},
+		...overrides,
+	});
 }
 
 /**
@@ -198,7 +224,14 @@ describe('handleEmailJob', () => {
 		});
 
 		const cb = await import('../../intelligence/circuitBreaker.js');
-		vi.mocked(cb.canSend).mockResolvedValue({ allowed: true, state: 'closed' });
+		vi.mocked(cb.canSend).mockResolvedValue({ allowed: true, state: 'closed', generation: 0 });
+		vi.mocked(cb.canSendScope).mockResolvedValue({
+			allowed: true,
+			state: 'closed',
+			generation: 0,
+		});
+		vi.mocked(cb.releaseHalfOpenProbe).mockResolvedValue(undefined);
+		vi.mocked(cb.reserveHalfOpenProbe).mockResolvedValue(true);
 		vi.mocked(cb.recordOutcome).mockResolvedValue(undefined);
 
 		const dt = await import('../../intelligence/domainThrottle.js');
@@ -213,6 +246,8 @@ describe('handleEmailJob', () => {
 
 		const warm = await import('../../intelligence/warming.js');
 		vi.mocked(warm.checkCap).mockResolvedValue({ allowed: true, sentToday: 0, dailyCap: Infinity });
+		vi.mocked(warm.ensureWarmingReservation).mockResolvedValue({ allowed: true });
+		vi.mocked(warm.releaseWarmingSlot).mockResolvedValue(undefined);
 		vi.mocked(warm.recordSend).mockResolvedValue(undefined);
 		vi.mocked(warm.recordBounce).mockResolvedValue(undefined);
 		vi.mocked(warm.recordDeferral).mockResolvedValue(undefined);
@@ -309,6 +344,81 @@ describe('handleEmailJob', () => {
 		expect(sendToMx).not.toHaveBeenCalled();
 		expect(queue.add).toHaveBeenCalledOnce();
 		expect(queue.add).toHaveBeenCalledWith(expect.objectContaining({ delay: expect.any(Number) }));
+	});
+
+	it('hands a governed job back to Convex when IP eligibility changes, without stale requeue', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { isIpEligibilityLeaseValid } = await import('../../scaling/ipPool.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		const { releaseHalfOpenProbe } = await import('../../intelligence/circuitBreaker.js');
+		vi.mocked(isIpEligibilityLeaseValid).mockResolvedValueOnce(false);
+
+		await run(createGovernedJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(2);
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'routing.reentry',
+				messageId: 'msg-001',
+				routingReentry: expect.objectContaining({
+					retryState: expect.objectContaining({ idempotencyKey: 'msg-001' }),
+				}),
+			}),
+			config,
+			redis
+		);
+	});
+
+	it('hands a stale breaker generation back to Convex instead of relay/self-requeue', async () => {
+		const { canSend } = await import('../../intelligence/circuitBreaker.js');
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(canSend).mockResolvedValue({ allowed: true, state: 'closed', generation: 2 });
+
+		await run(createGovernedJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'routing.reentry',
+				message: expect.stringContaining('route changed'),
+			}),
+			config,
+			redis
+		);
+	});
+
+	it('routes a cross-midnight full warming cap back to Convex and releases its old slot', async () => {
+		const { ensureWarmingReservation, releaseWarmingSlot } =
+			await import('../../intelligence/warming.js');
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const oldReservation = {
+			ip: '10.0.0.1',
+			messageId: 'msg-001',
+			utcDate: '2026-07-21',
+			expiresAt: Date.now() - 1,
+		};
+		vi.mocked(ensureWarmingReservation).mockResolvedValue({
+			allowed: false,
+			sentToday: 50,
+			dailyCap: 50,
+		});
+
+		await run(
+			createGovernedJob({
+				routingLease: {
+					...createGovernedJob().routingLease!,
+					warmingReservation: oldReservation,
+				},
+			})
+		);
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(releaseWarmingSlot).toHaveBeenCalledWith(redis, oldReservation);
 	});
 
 	it('rejects when content screening fails', async () => {

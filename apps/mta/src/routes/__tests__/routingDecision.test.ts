@@ -11,6 +11,7 @@ function lease(overrides: Partial<RoutingLeaseRecord> = {}): RoutingLeaseRecord 
 		messageType: 'campaign',
 		candidateProvider: 'mta',
 		ipPool: 'campaign',
+		allowWarmupOverflow: false,
 		destinationProvider: 'gmail',
 		probe: false,
 		globalProbe: false,

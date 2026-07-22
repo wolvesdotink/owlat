@@ -63,11 +63,14 @@ export const circuitBreakerPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 				},
 				'Circuit breaker OPEN — deferring'
 			);
-			return {
-				kind: 'defer',
-				delayMs: globalResult.retryAfter ?? providerResult.retryAfter ?? 60_000,
-				reason: `Circuit breaker open for org ${ctx.job.organizationId}`,
-			};
+			const reason = `Circuit breaker route changed for org ${ctx.job.organizationId}`;
+			return ctx.job.routingReentry
+				? { kind: 'routing_reentry', reason }
+				: {
+						kind: 'defer',
+						delayMs: globalResult.retryAfter ?? providerResult.retryAfter ?? 60_000,
+						reason,
+					};
 		}
 		return { kind: 'continue', ctx };
 	},
