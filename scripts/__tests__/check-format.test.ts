@@ -16,6 +16,14 @@ function write(root: string, path: string, contents = 'export const value = 1;\n
 	writeFileSync(absolute, contents);
 }
 
+function formatEnv(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+	const env = { ...process.env };
+	delete env.GITHUB_BASE_REF;
+	delete env.GITHUB_ENV;
+	delete env.OXFMT_BASE;
+	return { ...env, ...overrides };
+}
+
 describe('check-format changed-file ratchet', () => {
 	it('deduplicates committed, staged, unstaged, and untracked source files', () => {
 		const root = mkdtempSync(join(tmpdir(), 'owlat-format-ratchet-'));
@@ -58,7 +66,7 @@ describe('check-format changed-file ratchet', () => {
 			const output = execFileSync('bash', ['scripts/check-format.sh'], {
 				cwd: root,
 				encoding: 'utf8',
-				env: { ...process.env, OXFMT_BASE: base },
+				env: formatEnv({ OXFMT_BASE: base }),
 			});
 			const formatterArgs = output.trim().split('\n').slice(1);
 
@@ -77,6 +85,58 @@ describe('check-format changed-file ratchet', () => {
 			expect(output).not.toContain('notes.md');
 		} finally {
 			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it('uses the fetched pull-request base in a hermetic CI-shaped repository', () => {
+		const sandbox = mkdtempSync(join(tmpdir(), 'owlat-format-ci-base-'));
+		const root = join(sandbox, 'repo');
+		const origin = join(sandbox, 'origin.git');
+		try {
+			mkdirSync(join(root, 'scripts'), { recursive: true });
+			mkdirSync(join(root, 'node_modules/.bin'), { recursive: true });
+			copyFileSync(SCRIPT, join(root, 'scripts/check-format.sh'));
+			writeFileSync(
+				join(root, 'node_modules/.bin/oxfmt'),
+				'#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n',
+				{ mode: 0o755 }
+			);
+
+			git(root, ['init', '--quiet']);
+			git(root, ['config', 'user.email', 'test@example.com']);
+			git(root, ['config', 'user.name', 'Format Test']);
+			write(root, 'baseline.ts');
+			git(root, ['add', '.']);
+			git(root, ['commit', '--quiet', '-m', 'baseline']);
+			git(root, ['branch', '-M', 'main']);
+			git(sandbox, ['init', '--bare', '--quiet', origin]);
+			git(root, ['remote', 'add', 'origin', origin]);
+			git(root, ['push', '--quiet', '-u', 'origin', 'main']);
+
+			git(root, ['checkout', '--quiet', '-b', 'feature']);
+			write(root, 'feature.ts');
+			git(root, ['add', 'feature.ts']);
+			git(root, ['commit', '--quiet', '-m', 'feature']);
+
+			const output = execFileSync('bash', ['scripts/check-format.sh'], {
+				cwd: root,
+				encoding: 'utf8',
+				env: formatEnv({
+					GITHUB_BASE_REF: 'main',
+					GITHUB_ENV: join(sandbox, 'github-env'),
+					OXFMT_BASE: 'must-not-win',
+				}),
+			});
+
+			expect(output).toContain('checking 1 changed file(s)');
+			expect(output.trim().split('\n').slice(1)).toEqual([
+				'--config',
+				'oxfmtrc.json',
+				'--check',
+				'feature.ts',
+			]);
+		} finally {
+			rmSync(sandbox, { recursive: true, force: true });
 		}
 	});
 });
