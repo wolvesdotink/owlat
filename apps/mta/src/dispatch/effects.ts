@@ -33,7 +33,6 @@ import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import { queueConvexWebhook } from '../webhooks/convexNotifier.js';
 import type { MtaWebhookEvent, MetricOutcome } from '../types.js';
 import type { SuppressionReason } from '../intelligence/suppressionList.js';
-import { logger } from '../monitoring/logger.js';
 import type { PhaseDeps } from './types.js';
 import type { WarmingReservation } from '../intelligence/warming.js';
 import { settleStartedEffects } from '../lib/settleStartedEffects.js';
@@ -194,41 +193,70 @@ function applyOne(
 ): Promise<unknown> {
 	switch (effect.kind) {
 		case 'domain_throttle_success':
-			return domainThrottle.recordSuccess(
-				deps.redis,
-				effect.ip,
-				effect.throttleKey,
-				effect.providerKey
-			);
+			return downstreamIdentity
+				? domainThrottle.recordSuccess(
+						deps.redis,
+						effect.ip,
+						effect.throttleKey,
+						effect.providerKey,
+						downstreamIdentity
+					)
+				: domainThrottle.recordSuccess(
+						deps.redis,
+						effect.ip,
+						effect.throttleKey,
+						effect.providerKey
+					);
 		case 'domain_throttle_reject':
-			return domainThrottle.recordReject(deps.redis, effect.ip, effect.throttleKey);
+			return downstreamIdentity
+				? domainThrottle.recordReject(deps.redis, effect.ip, effect.throttleKey, downstreamIdentity)
+				: domainThrottle.recordReject(deps.redis, effect.ip, effect.throttleKey);
 		case 'domain_throttle_defer':
-			return domainThrottle.recordDefer(
-				deps.redis,
-				effect.ip,
-				effect.throttleKey,
-				effect.providerKey
-			);
+			return downstreamIdentity
+				? domainThrottle.recordDefer(
+						deps.redis,
+						effect.ip,
+						effect.throttleKey,
+						effect.providerKey,
+						downstreamIdentity
+					)
+				: domainThrottle.recordDefer(deps.redis, effect.ip, effect.throttleKey, effect.providerKey);
 		case 'smtp_response':
-			return smtpResponse.recordResponse(
-				deps.redis,
-				effect.domain,
-				effect.smtpCode,
-				effect.enhancedCode
-			);
+			return downstreamIdentity
+				? smtpResponse.recordResponse(
+						deps.redis,
+						effect.domain,
+						effect.smtpCode,
+						effect.enhancedCode,
+						downstreamIdentity
+					)
+				: smtpResponse.recordResponse(
+						deps.redis,
+						effect.domain,
+						effect.smtpCode,
+						effect.enhancedCode
+					);
 		case 'circuit_breaker_outcome':
 			return recordCircuitBreakerEffect(effect, deps, downstreamIdentity);
 		case 'campaign_delivery_record':
-			return campaignComplaintRate
-				.recordDelivery(deps.redis, effect.campaignId)
-				.catch((err) =>
-					logger.warn({ err, campaignId: effect.campaignId }, 'Failed to record campaign delivery')
-				);
+			return campaignComplaintRate.recordDelivery(
+				deps.redis,
+				effect.campaignId,
+				1,
+				downstreamIdentity
+			);
 		case 'warming_record':
 			if (effect.result === 'send')
-				return warming.recordSend(deps.redis, effect.ip, effect.reservation);
-			if (effect.result === 'bounce') return warming.recordBounce(deps.redis, effect.ip);
-			return warming.recordDeferral(deps.redis, effect.ip);
+				return downstreamIdentity
+					? warming.recordSend(deps.redis, effect.ip, effect.reservation, downstreamIdentity)
+					: warming.recordSend(deps.redis, effect.ip, effect.reservation);
+			if (effect.result === 'bounce')
+				return downstreamIdentity
+					? warming.recordBounce(deps.redis, effect.ip, downstreamIdentity)
+					: warming.recordBounce(deps.redis, effect.ip);
+			return downstreamIdentity
+				? warming.recordDeferral(deps.redis, effect.ip, downstreamIdentity)
+				: warming.recordDeferral(deps.redis, effect.ip);
 		case 'metrics_record':
 			return metrics.record(
 				deps.redis,
@@ -251,7 +279,9 @@ function applyOne(
 		case 'domain_failure_clear':
 			return clearDomainFailure(deps.redis, effect.domain);
 		case 'domain_failure_record':
-			return recordDomainFailure(deps.redis, effect.domain);
+			return downstreamIdentity
+				? recordDomainFailure(deps.redis, effect.domain, downstreamIdentity)
+				: recordDomainFailure(deps.redis, effect.domain);
 		// These are handled before `applyOne`; this branch only
 		// exists to make the switch exhaustive at the type level.
 		case 'log_delivery_event':

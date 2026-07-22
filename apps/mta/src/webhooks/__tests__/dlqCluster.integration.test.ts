@@ -229,6 +229,31 @@ describe.runIf(dockerAvailable())('webhook DLQ on Redis Cluster', () => {
 		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(0);
 	}, 15_000);
 
+	it('quarantines incomplete protected events and rejects immutable payload collisions', async () => {
+		const config = { webhookDlqMaxSize: 10 } as MtaConfig;
+		const event = {
+			event: 'bounced' as const,
+			messageId: 'cluster-payload-binding',
+			bounceType: 'hard' as const,
+			timestamp: Date.now(),
+		};
+		const key = 'cluster-payload-binding:bounced';
+		const id = await storePending(cluster as never, event, config, key);
+
+		await expect(
+			storePending(cluster as never, { ...event, bounceType: 'soft' }, config, key)
+		).rejects.toThrow('payload does not match');
+		const raw = JSON.parse((await cluster.hget(WEBHOOK_DLQ_ENTRIES_KEY, id))!) as Record<
+			string,
+			unknown
+		>;
+		raw['event'] = { event: 'bounced', timestamp: event.timestamp };
+		await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, JSON.stringify(raw));
+
+		await expect(storePending(cluster as never, event, config, key)).rejects.toThrow('quarantined');
+		expect(await getEntry(cluster as never, id)).toBeNull();
+	}, 15_000);
+
 	it('fails closed without deleting repaired protected rows at protected capacity', async () => {
 		await cluster.del(
 			WEBHOOK_DLQ_ENTRIES_KEY,

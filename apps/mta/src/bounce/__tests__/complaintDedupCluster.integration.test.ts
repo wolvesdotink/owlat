@@ -7,6 +7,7 @@ import {
 	releaseComplaint,
 	reserveComplaint,
 	runComplaintEffect,
+	type ComplaintDedupReservation,
 } from '../complaintDedupStore.js';
 import {
 	getStats,
@@ -15,6 +16,10 @@ import {
 } from '../../intelligence/campaignComplaintRate.js';
 import { recordOutcome } from '../../intelligence/circuitBreaker.js';
 import { durableEffectIdentity } from '../../lib/effectCheckpoint.js';
+import { recordDefer, throttleStateKey } from '../../intelligence/domainThrottle.js';
+import { getDomainHealth, recordResponse } from '../../intelligence/smtpResponse.js';
+import { recordBounce } from '../../intelligence/warming.js';
+import { recordDomainFailure, shouldBackoffDomain } from '../../scaling/degradation.js';
 
 function dockerAvailable(): boolean {
 	try {
@@ -110,7 +115,7 @@ describe.runIf(dockerAvailable())('complaint deduplication on Redis Cluster', ()
 	});
 
 	it('uses one Cluster-safe v2 key for reservation, effects, release, and completion', async () => {
-		const first = await reserveComplaint(cluster as never, 'cluster-complaint', 'owned-v2');
+		const first = await reserveComplaint(cluster as never, 'cluster-complaint');
 		if (first.kind !== 'reserved') throw new Error('expected reservation');
 		const apply = vi.fn().mockResolvedValue(undefined);
 		await runComplaintEffect(
@@ -121,7 +126,7 @@ describe.runIf(dockerAvailable())('complaint deduplication on Redis Cluster', ()
 		);
 		await releaseComplaint(cluster as never, first.reservation);
 
-		const retry = await reserveComplaint(cluster as never, 'cluster-complaint', 'owned-v2');
+		const retry = await reserveComplaint(cluster as never, 'cluster-complaint');
 		if (retry.kind !== 'reserved') throw new Error('expected retry reservation');
 		await runComplaintEffect(
 			cluster as never,
@@ -134,66 +139,95 @@ describe.runIf(dockerAvailable())('complaint deduplication on Redis Cluster', ()
 		expect(apply).toHaveBeenCalledOnce();
 		expect(await cluster.hget(retry.reservation.key, 'status')).toBe('completed');
 		expect(await cluster.ttl(retry.reservation.key)).toBeGreaterThan(7 * 86400 - 5);
-		expect(await reserveComplaint(cluster as never, 'cluster-complaint', 'owned-v2')).toEqual({
+		expect(await reserveComplaint(cluster as never, 'cluster-complaint')).toEqual({
 			kind: 'completed',
 		});
 	}, 15_000);
 
-	it('legacy-shadow excludes an old SET NX worker during the drain phase', async () => {
-		const result = await reserveComplaint(
-			cluster as never,
-			'shadow-cluster-complaint',
-			'legacy-shadow'
-		);
+	it('accepts owned-v2 after quiescence even while a legacy marker remains', async () => {
+		await cluster.set('mta:fbl:dedup:shadow-cluster-complaint', '1', 'EX', 60);
+		const result = await reserveComplaint(cluster as never, 'shadow-cluster-complaint');
 		if (result.kind !== 'reserved') throw new Error('expected reservation');
-		expect(
-			await cluster.set('mta:fbl:dedup:shadow-cluster-complaint', '1', 'EX', 60, 'NX')
-		).toBeNull();
-		expect(await cluster.hget(result.reservation.key, 'status')).toBe('reserved');
+		expect(await cluster.hget(result.reservation.key, 'version')).toBe('2');
 	}, 15_000);
 
-	it('owned-v2 ignores a legacy string key without changing its TTL', async () => {
+	it('does not mutate or refresh a residual legacy key while reserving v2', async () => {
 		const key = 'mta:fbl:dedup:legacy-cluster-complaint';
 		await cluster.set(key, '1', 'EX', 60);
 		const before = await cluster.ttl(key);
-		expect(
-			(await reserveComplaint(cluster as never, 'legacy-cluster-complaint', 'owned-v2')).kind
-		).toBe('reserved');
+		expect((await reserveComplaint(cluster as never, 'legacy-cluster-complaint')).kind).toBe(
+			'reserved'
+		);
 		expect(await cluster.get(key)).toBe('1');
 		expect(await cluster.ttl(key)).toBeGreaterThanOrEqual(before - 1);
 	}, 15_000);
 
-	it('deduplicates downstream complaint counters and breaker histories without CROSSSLOT', async () => {
+	it('applies each downstream control once when an old-success marker is replayed', async () => {
+		const complaint = `legacy-success-${suffix}`;
+		await cluster.set(`mta:fbl:dedup:${complaint}`, '1', 'EX', 60);
 		const campaign = `campaign-${suffix}`;
-		const complaintIdentity = durableEffectIdentity(
-			`fbl-complaint:${suffix}`,
-			'campaign-complaint-rate'
-		);
 		await recordDelivery(cluster as never, campaign, 1000);
-		await recordComplaint(cluster as never, campaign, complaintIdentity);
-		await recordComplaint(cluster as never, campaign, complaintIdentity);
-		expect((await getStats(cluster as never, campaign)).complaints).toBe(1);
+		const applyControls = async (reservation: ComplaintDedupReservation) => {
+			await runComplaintEffect(
+				cluster as never,
+				reservation,
+				'campaign-complaint-rate',
+				(identity) => recordComplaint(cluster as never, campaign, identity)
+			);
+			await runComplaintEffect(cluster as never, reservation, 'circuit-breaker', (identity) =>
+				recordOutcome(
+					cluster as never,
+					`org-${suffix}`,
+					'complained',
+					undefined,
+					'gmail',
+					undefined,
+					identity
+				)
+			);
+		};
 
-		const outcomeIdentity = durableEffectIdentity(`fbl-complaint:${suffix}`, 'circuit-breaker');
-		await recordOutcome(
-			cluster as never,
-			`org-${suffix}`,
-			'complained',
-			undefined,
-			'gmail',
-			undefined,
-			outcomeIdentity
-		);
-		await recordOutcome(
-			cluster as never,
-			`org-${suffix}`,
-			'complained',
-			undefined,
-			'gmail',
-			undefined,
-			outcomeIdentity
-		);
+		const first = await reserveComplaint(cluster as never, complaint);
+		if (first.kind !== 'reserved') throw new Error('expected reservation');
+		await applyControls(first.reservation);
+		await releaseComplaint(cluster as never, first.reservation);
+		const retry = await reserveComplaint(cluster as never, complaint);
+		if (retry.kind !== 'reserved') throw new Error('expected retry reservation');
+		await applyControls(retry.reservation);
+		await completeComplaint(cluster as never, retry.reservation);
+
+		expect((await getStats(cluster as never, campaign)).complaints).toBe(1);
 		expect(await cluster.llen(`mta:breaker:{org-${suffix}}:outcomes`)).toBe(1);
 		expect(await cluster.llen(`mta:breaker:{org-${suffix}:provider:gmail}:outcomes`)).toBe(1);
+	}, 15_000);
+
+	it('keeps every dispatch control atomic and idempotent on Cluster', async () => {
+		const campaign = `dispatch${suffix}`;
+		const identity = durableEffectIdentity(`cluster-dispatch:${suffix}`, 'control');
+		for (let replay = 0; replay < 2; replay++) {
+			await recordDelivery(cluster as never, campaign, 1, identity);
+			await recordDefer(cluster as never, '192.0.2.20', 'gmail.com', 'gmail', identity);
+			await recordResponse(cluster as never, 'gmail.com', 421, '4.7.0', identity);
+			await recordBounce(cluster as never, '192.0.2.20', identity);
+			await recordDomainFailure(cluster as never, 'example.com', identity);
+		}
+
+		expect((await getStats(cluster as never, campaign)).delivered).toBe(1);
+		expect(await cluster.hget(throttleStateKey('192.0.2.20', 'gmail.com'), 'recentDefers')).toBe(
+			'1'
+		);
+		expect(await getDomainHealth(cluster as never, 'gmail.com')).toMatchObject({
+			totalSent: 1,
+			total4xx: 1,
+		});
+		expect(
+			await cluster.hget(
+				`mta:warming:{warming:192.0.2.20}:daily:${new Date().toISOString().slice(0, 10)}`,
+				'bounced'
+			)
+		).toBe('1');
+		expect(
+			(await shouldBackoffDomain(cluster as never, 'example.com')).retryAfter
+		).toBeLessThanOrEqual(30_000);
 	}, 15_000);
 });

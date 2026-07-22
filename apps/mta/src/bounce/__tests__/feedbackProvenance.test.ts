@@ -11,7 +11,8 @@ const EIGHT_DAYS_MS = 8 * 24 * 60 * 60 * 1_000;
 function job(
 	messageId: string,
 	deliveryDomain: 'production' | 'member_test',
-	recipient = 'recipient@example.com'
+	recipient = 'recipient@example.com',
+	campaignId?: string
 ): EmailJob {
 	return {
 		messageId,
@@ -24,6 +25,7 @@ function job(
 		organizationId: 'org-1',
 		deliveryDomain,
 		dkimDomain: 'example.org',
+		...(campaignId ? { headers: { 'Feedback-ID': `campaign:${campaignId}:topic:sender-id` } } : {}),
 	};
 }
 
@@ -39,7 +41,7 @@ function dsn(messageId: string): BounceAttempt {
 	};
 }
 
-function redacted(recipient = 'recipient@example.com'): BounceAttempt {
+function redacted(recipient = 'recipient@example.com'): Extract<BounceAttempt, { kind: 'fbl' }> {
 	return {
 		kind: 'fbl',
 		arf: {
@@ -51,7 +53,7 @@ function redacted(recipient = 'recipient@example.com'): BounceAttempt {
 	};
 }
 
-function attributedFbl(messageId: string): BounceAttempt {
+function attributedFbl(messageId: string): Extract<BounceAttempt, { kind: 'fbl' }> {
 	return {
 		kind: 'fbl',
 		arf: {
@@ -107,6 +109,89 @@ describe('delayed feedback provenance', () => {
 		await recordFeedbackProvenance(redis, job('member-1', 'member_test'));
 		const attributed = await attachFeedbackProvenance(redis, redacted());
 
+		expect(attributed.kind === 'fbl' && attributed.arf.feedbackProvenance).toBe('unknown');
+		expect(reduce(attributed, {} as never).effects).toEqual([]);
+	});
+
+	it('replaces forged ARF tenant and campaign labels with persisted outbound provenance', async () => {
+		const trustedCampaign = 'trustedcampaign1234';
+		await recordFeedbackProvenance(
+			redis,
+			job('known-message', 'production', 'recipient@example.com', trustedCampaign)
+		);
+		const forged: BounceAttempt = {
+			kind: 'fbl',
+			arf: {
+				...attributedFbl('known-message').arf,
+				organizationId: 'attacker-organization',
+				campaignId: 'attackercampaign9999',
+			},
+		};
+
+		const attributed = await attachFeedbackProvenance(redis, forged);
+		expect(attributed.kind === 'fbl' && attributed.arf).toMatchObject({
+			organizationId: 'org-1',
+			campaignId: trustedCampaign,
+			feedbackProvenance: 'production',
+		});
+		const campaignEffects = reduce(attributed, {} as never).effects.filter(
+			(effect) =>
+				effect.kind === 'campaign_complaint_record' ||
+				(effect.kind === 'metric_inc' && effect.metric === 'fbl_complaint_by_campaign')
+		);
+		expect(campaignEffects).toHaveLength(2);
+		expect(campaignEffects).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ campaignId: trustedCampaign }),
+				expect.objectContaining({ campaign: trustedCampaign }),
+			])
+		);
+	});
+
+	it('creates no campaign effects or Redis state for many forged campaign labels', async () => {
+		for (let index = 0; index < 256; index++) {
+			const forged: BounceAttempt = {
+				kind: 'fbl',
+				arf: {
+					...redacted(`recipient-${index}@example.com`).arf,
+					organizationId: `attacker-org-${index}`,
+					campaignId: `forgedcampaign${String(index).padStart(16, '0')}`,
+				},
+			};
+			const attributed = await attachFeedbackProvenance(redis, forged);
+			expect(reduce(attributed, {} as never).effects).toEqual([]);
+		}
+
+		expect(await redis.keys('mta:campaign-complaints:*')).toEqual([]);
+		expect(await redis.keys('mta:campaign-complaint:*')).toEqual([]);
+	});
+
+	it('caps the recipient provenance index at 64 known outbound observations', async () => {
+		for (let index = 0; index < 96; index++) {
+			await recordFeedbackProvenance(
+				redis,
+				job(`bounded-${index}`, 'production', 'bounded@example.com')
+			);
+		}
+		const [recipientIndex] = (await redis.keys('mta:{feedback}:recipient:*')) as string[];
+		expect(recipientIndex).toBeDefined();
+		expect(await redis.zcard(recipientIndex!)).toBe(64);
+	});
+
+	it.each([
+		{ campaignId: 'x'.repeat(200) },
+		{ campaignId: 42 },
+		{ messageId: 'different-message' },
+	])('rejects malformed persisted attribution without creating campaign effects', async (patch) => {
+		await recordFeedbackProvenance(
+			redis,
+			job('corrupt-record', 'production', 'recipient@example.com', 'trustedcampaign1234')
+		);
+		const [messageKey] = (await redis.keys('mta:{feedback}:message:*')) as string[];
+		const stored = JSON.parse((await redis.get(messageKey!))!) as Record<string, unknown>;
+		await redis.set(messageKey!, JSON.stringify({ ...stored, ...patch }));
+
+		const attributed = await attachFeedbackProvenance(redis, attributedFbl('corrupt-record'));
 		expect(attributed.kind === 'fbl' && attributed.arf.feedbackProvenance).toBe('unknown');
 		expect(reduce(attributed, {} as never).effects).toEqual([]);
 	});

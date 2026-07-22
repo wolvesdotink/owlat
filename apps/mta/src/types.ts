@@ -130,27 +130,13 @@ export interface EmailJobResult {
 
 // ============ Webhook Event Types ============
 
-export type MtaWebhookEventType =
-	| 'sent'
-	| 'bounced'
-	| 'failed'
-	| 'complained'
-	| 'org.circuit_breaker'
-	| 'campaign.complaint_rate'
-	| 'ip.blocklisted'
-	| 'ip.delisted'
-	| 'ip.warming_complete'
-	| 'all_ips_blocked'
-	| 'postmaster.authorize_domain'
-	| 'postmaster.stats'
-	| 'dkim.rotated'
-	| 'inbound.received'
-	| 'routing.reentry'
-	| 'inbound.mailbox.received';
+export type MtaWebhookEventType = import('@owlat/shared/mtaWebhookEvent').MtaWebhookEventType;
 
 export interface MtaWebhookEvent {
 	/** Event type */
 	event: MtaWebhookEventType;
+	/** Stable producer identity for end-to-end idempotent event consumers. */
+	eventId?: string;
 	/** Owlat message ID for correlation */
 	messageId?: string;
 	/**

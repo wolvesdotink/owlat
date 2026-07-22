@@ -37,6 +37,37 @@ describe('campaignComplaintRate', () => {
 			expect(stats.complaints).toBe(0);
 			expect(stats.rate).toBe(0);
 		});
+
+		it('increments once when a durable delivery effect is replayed', async () => {
+			const identity = durableEffectIdentity('smtp-attempt:test', 'campaign-delivery:c1');
+
+			await recordDelivery(redis, 'c1', 1, identity);
+			await recordDelivery(redis, 'c1', 1, identity);
+
+			expect((await getStats(redis, 'c1')).delivered).toBe(1);
+		});
+
+		it('does not duplicate a delivery after its Redis commit response is lost', async () => {
+			const identity = durableEffectIdentity('smtp-attempt:test', 'campaign-delivery:lost');
+			const committedEval = redis.eval.bind(redis) as (...args: unknown[]) => Promise<unknown>;
+			let loseResponse = true;
+			(redis as unknown as { eval: (...args: unknown[]) => Promise<unknown> }).eval = async (
+				...args
+			) => {
+				const result = await committedEval(...args);
+				if (loseResponse && String(args[0]).includes("redis.call('EXISTS', KEYS[2])")) {
+					loseResponse = false;
+					throw new Error('simulated lost Redis response');
+				}
+				return result;
+			};
+
+			await expect(recordDelivery(redis, 'c1', 1, identity)).rejects.toThrow(
+				'simulated lost Redis response'
+			);
+			await expect(recordDelivery(redis, 'c1', 1, identity)).resolves.toBeUndefined();
+			expect((await getStats(redis, 'c1')).delivered).toBe(1);
+		});
 	});
 
 	describe('recordComplaint', () => {
@@ -62,7 +93,7 @@ describe('campaignComplaintRate', () => {
 				...args
 			) => {
 				const result = await committedEval(...args);
-				if (loseResponse && String(args[0]).includes("local previous = redis.call('HGET'")) {
+				if (loseResponse && String(args[0]).includes("redis.call('EXISTS', KEYS[2])")) {
 					loseResponse = false;
 					throw new Error('simulated lost Redis response');
 				}

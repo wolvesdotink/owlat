@@ -325,7 +325,7 @@ const DISPATCH: DispatchTable = {
 					to: 'warned',
 					at: Date.now(),
 					reason: `MTA circuit breaker: ${e.message}${
-						e.bounceRate ? ` (bounce rate: ${e.bounceRate}%)` : ''
+						e.bounceRate !== undefined ? ` (bounce rate: ${(e.bounceRate * 100).toFixed(2)}%)` : ''
 					}`,
 					changedBy: 'mta_circuit_breaker',
 				},
@@ -382,21 +382,20 @@ const DISPATCH: DispatchTable = {
 		// persisted and operator-visible instead of being a dead drop.
 		// eslint-disable-next-line no-console
 		console.warn(`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`);
-		const ratePct =
-			e.complaintRate !== undefined ? ` (${(e.complaintRate * 100).toFixed(2)}%)` : '';
-		const campaignSuffix = e.campaignId ? ` [campaign ${e.campaignId}]` : '';
-		try {
-			await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
-				input: {
-					to: 'warned',
-					at: Date.now(),
-					reason: `MTA campaign complaint rate: ${e.message}${ratePct}${campaignSuffix}`,
-					changedBy: 'mta_campaign_complaint_rate',
-				},
-			});
-		} catch (err) {
-			logError('[Webhook Dispatcher] Failed to set abuse status for campaign complaint rate:', err);
+		const outcome = await ctx.runMutation(
+			internal.workspaces.abuseStatus.recordCampaignComplaintAlert,
+			{
+				eventId: e.eventId,
+				campaignId: e.campaignId,
+				message: e.message,
+				complaintRate: e.complaintRate,
+				eventTimestamp: e.at,
+			}
+		);
+		if (!outcome.ok) {
+			throw new Error(`Campaign complaint alert was not persisted: ${outcome.reason}`);
 		}
+		return outcome;
 	},
 	'internal.ip_event': async (ctx, e) => {
 		const level = e.severity === 'critical' ? 'error' : 'warn';

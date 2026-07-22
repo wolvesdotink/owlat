@@ -32,7 +32,27 @@ import type { InboundRoute } from '../inbound/router.js';
 import type { PhaseDeps } from './types.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 import { settleStartedEffects } from '../lib/settleStartedEffects.js';
-import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
+import {
+	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
+	type DurableEffectIdentity,
+} from '../lib/effectCheckpoint.js';
+import { createHash } from 'crypto';
+
+const RECORD_FBL_STAT_ONCE_LUA = `
+if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+redis.call('HINCRBY', KEYS[1], 'total', 1)
+redis.call('EXPIRE', KEYS[1], ARGV[1])
+redis.call('SET', KEYS[2], 'recorded', 'PX', ARGV[2])
+return 1
+`;
+
+export function fblStatsKey(utcDate: string): string {
+	return `mta:fbl-stats:{${utcDate}}:counts`;
+}
+
+function fblStatsReceiptKey(utcDate: string, identity: DurableEffectIdentity): string {
+	return `mta:fbl-stats:{${utcDate}}:effect:${createHash('sha256').update(identity).digest('hex')}`;
+}
 
 export interface BounceEffectReplayGuard {
 	runSecondary<T>(
@@ -235,19 +255,40 @@ function applyOne(
 		case 'campaign_complaint_record':
 			return recordCampaignComplaint(effect, deps, downstreamIdentity);
 		case 'fbl_stats_record': {
-			const today = new Date().toISOString().split('T')[0];
-			return deps.redis.hincrby(`mta:fbl-stats:${today}`, 'total', 1).catch(() => {
+			const today = new Date().toISOString().split('T')[0]!;
+			if (downstreamIdentity) {
+				return deps.redis.eval(
+					RECORD_FBL_STAT_ONCE_LUA,
+					2,
+					fblStatsKey(today),
+					fblStatsReceiptKey(today, downstreamIdentity),
+					'172800',
+					String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
+				);
+			}
+			return deps.redis.hincrby(fblStatsKey(today), 'total', 1).catch(() => {
 				// Non-critical — daily stats counter; missing increments are tolerable.
 			});
 		}
 		case 'stage_attachment':
+			if (downstreamIdentity) {
+				return deps.redis.setex(effect.redisKey, effect.ttlSeconds, effect.contentBase64);
+			}
 			return deps.redis
 				.setex(effect.redisKey, effect.ttlSeconds, effect.contentBase64)
 				.catch((err: unknown) => {
 					logger.warn({ err, redisKey: effect.redisKey }, 'Failed to stage attachment in Redis');
 				});
 		case 'forward_to_endpoint':
-			return forwardToEndpoint(effect.parsed, effect.route, effect.rcptTo, effect.auth);
+			return downstreamIdentity
+				? forwardToEndpoint(
+						effect.parsed,
+						effect.route,
+						effect.rcptTo,
+						effect.auth,
+						downstreamIdentity
+					)
+				: forwardToEndpoint(effect.parsed, effect.route, effect.rcptTo, effect.auth);
 		// These two are handled by `fireAndForget` above; this branch only
 		// exists to make the switch exhaustive at the type level.
 		case 'notify_convex':
@@ -298,12 +339,19 @@ async function recordCampaignComplaint(
 
 	const alert: MtaWebhookEvent = {
 		event: 'campaign.complaint_rate',
+		eventId:
+			downstreamIdentity ??
+			createHash('sha256')
+				.update(
+					`${effect.campaignId}\0${result.recordedAt}\0${result.complaints}\0${result.delivered}`
+				)
+				.digest('hex'),
 		campaignId: effect.campaignId,
 		organizationId: effect.organizationId,
 		complaintRate: result.rate,
 		message: `Campaign complaint rate ${ratePct}% exceeded ${(campaignComplaintRate.CAMPAIGN_COMPLAINT_THRESHOLD * 100).toFixed(1)}% threshold (${result.complaints}/${result.delivered})`,
 		severity: 'critical',
-		timestamp: Date.now(),
+		timestamp: result.recordedAt,
 	};
 	if (downstreamIdentity) {
 		try {

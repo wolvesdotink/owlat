@@ -97,6 +97,10 @@
 			"types": "./src/operationError.ts",
 			"import": "./src/operationError.ts"
 		},
+		"./mtaWebhookEvent": {
+			"types": "./src/mtaWebhookEvent.ts",
+			"import": "./src/mtaWebhookEvent.ts"
+		},
 		"./postboxSanitize": {
 			"types": "./src/postboxSanitize.ts",
 			"import": "./src/postboxSanitize.ts"

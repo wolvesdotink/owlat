@@ -69,15 +69,25 @@ export async function recordFeedbackProvenance(redis: Redis, job: EmailJob): Pro
 	}
 }
 
-function parseRecord(value: string | null): FeedbackProvenance | null {
+function parseRecord(value: string | null, expectedMessageId: string): FeedbackProvenance | null {
 	if (!value) return null;
 	try {
 		const parsed = JSON.parse(value) as Record<string, unknown>;
+		const campaignId = parsed['campaignId'];
+		const isKnownCampaignId =
+			campaignId === undefined ||
+			(typeof campaignId === 'string' &&
+				parseCampaignFromFeedbackId(`campaign:${campaignId}:known:known`) === campaignId);
 		if (
-			typeof parsed['messageId'] === 'string' &&
+			parsed['messageId'] === expectedMessageId &&
 			(parsed['deliveryDomain'] === 'production' || parsed['deliveryDomain'] === 'member_test') &&
 			typeof parsed['organizationId'] === 'string' &&
-			typeof parsed['recipient'] === 'string'
+			parsed['organizationId'].length > 0 &&
+			parsed['organizationId'].length <= 128 &&
+			typeof parsed['recipient'] === 'string' &&
+			parsed['recipient'].length > 0 &&
+			parsed['recipient'].length <= 320 &&
+			isKnownCampaignId
 		) {
 			return parsed as unknown as FeedbackProvenance;
 		}
@@ -119,7 +129,10 @@ export async function attachFeedbackProvenance(
 	let exact: FeedbackProvenance | null = null;
 	if (classification.originalMessageId) {
 		try {
-			exact = parseRecord(await redis.get(messageKey(classification.originalMessageId)));
+			exact = parseRecord(
+				await redis.get(messageKey(classification.originalMessageId)),
+				classification.originalMessageId
+			);
 		} catch (error) {
 			throw new TransientFeedbackProcessingError(
 				'Authenticated feedback provenance is unavailable',

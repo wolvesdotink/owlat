@@ -24,7 +24,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-import { applyEffects, type BounceEffect } from '../effects.js';
+import { applyEffects, fblStatsKey, type BounceEffect } from '../effects.js';
 import * as circuitBreaker from '../../intelligence/circuitBreaker.js';
 import * as campaignComplaintRate from '../../intelligence/campaignComplaintRate.js';
 import * as metrics from '../../monitoring/collector.js';
@@ -102,7 +102,7 @@ describe('applyEffects — per-effect dispatch', () => {
 		const deps = makeDeps();
 		await applyEffects([{ kind: 'fbl_stats_record' }], deps);
 		const today = new Date().toISOString().split('T')[0];
-		const value = await deps.redis.hget(`mta:fbl-stats:${today}`, 'total');
+		const value = await deps.redis.hget(fblStatsKey(today), 'total');
 		expect(value).toBe('1');
 	});
 
@@ -263,7 +263,7 @@ describe('applyEffects — fire-and-forget guarantees', () => {
 		).resolves.toBeUndefined();
 	});
 
-	it('surfaces awaited-bucket errors (Promise.all rejection)', async () => {
+	it('settles every started effect before surfacing the first input-order failure', async () => {
 		vi.mocked(circuitBreaker.recordOutcome).mockRejectedValueOnce(new Error('boom'));
 		await expect(
 			applyEffects(
@@ -392,6 +392,6 @@ describe('applyEffects — batch dispatch', () => {
 		expect(metrics.fblComplaintsTotal.inc).toHaveBeenCalled();
 		expect(queueConvexWebhook).toHaveBeenCalled();
 		const today = new Date().toISOString().split('T')[0];
-		expect(await deps.redis.hget(`mta:fbl-stats:${today}`, 'total')).toBe('1');
+		expect(await deps.redis.hget(fblStatsKey(today), 'total')).toBe('1');
 	});
 });

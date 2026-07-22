@@ -303,11 +303,15 @@ describe('SMTP outcome journal', () => {
 			if (isRenewal && renewalCalls++ === 0) throw new Error('transient renewal outage');
 			return (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
 		});
-		const apply = vi.fn(async () => new Promise((resolve) => setTimeout(resolve, 110)));
+		// Keep the synthetic lease comfortably above scheduler jitter from the
+		// repository-wide parallel suite while still spanning multiple heartbeats:
+		// the first renewal fails, a later one succeeds, and completion observes
+		// that renewed ownership. Production uses the much larger 60-second lease.
+		const apply = vi.fn(async () => new Promise((resolve) => setTimeout(resolve, 1_100)));
 
 		await expect(
 			runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:renew-recovery', apply, {
-				leaseMs: 90,
+				leaseMs: 900,
 				waitMs: 1,
 			})
 		).resolves.toBeUndefined();

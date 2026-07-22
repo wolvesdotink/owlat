@@ -10,6 +10,7 @@ import type { InboundRoute } from './router.js';
 import type { InboundAuthVerdicts } from '../types.js';
 import { firstAddress } from './parsedAddress.js';
 import { logger } from '../monitoring/logger.js';
+import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
 
 const TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 2;
@@ -46,7 +47,8 @@ export async function forwardToEndpoint(
 	parsed: ParsedMessage,
 	route: InboundRoute,
 	recipientAddress: string,
-	auth?: InboundAuthVerdicts
+	auth?: InboundAuthVerdicts,
+	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<boolean> {
 	if (!route.endpointUrl) {
 		logger.error({ routeId: route.id }, 'Route has no endpoint URL');
@@ -89,6 +91,7 @@ export async function forwardToEndpoint(
 	// webhook secret — same scheme the Convex handlers verify. Customer routes
 	// carry no secret and stay unsigned.
 	const signedHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+	if (idempotencyIdentity) signedHeaders['Idempotency-Key'] = idempotencyIdentity;
 	if (route.systemSecret) {
 		const timestamp = String(Math.floor(Date.now() / 1000));
 		const signature = createHmac('sha256', route.systemSecret)

@@ -26,7 +26,6 @@ const RECIPIENT = 'complainer@example.net';
 
 function config(): MtaConfig {
 	return {
-		fblDedupProtocol: 'owned-v2',
 		inboundDkimEnabled: false,
 		inboundDmarcEnabled: false,
 		inboundArcEnabled: false,
@@ -99,7 +98,7 @@ describe('feedback durability through the real bounce pipeline', () => {
 		const smtpSession = session(signedReturnPath);
 
 		expect(await handler(message, smtpSession)).toMatchObject({ code: 451, enhanced: '4.3.0' });
-		const [ownedKey] = await redis.keys('mta:fbl:dedup:v2:*');
+		const [ownedKey] = await redis.keys('mta:fbl:dedup:owned-v2:*');
 		expect(await redis.hget(ownedKey!, 'status')).toBe('retryable');
 		expect(await handler(message, smtpSession)).toBeUndefined();
 		expect(await redis.hget(ownedKey!, 'status')).toBe('completed');
@@ -127,7 +126,7 @@ describe('feedback durability through the real bounce pipeline', () => {
 			code: 451,
 			enhanced: '4.3.0',
 		});
-		const [ownedKey] = await redis.keys('mta:fbl:dedup:v2:*');
+		const [ownedKey] = await redis.keys('mta:fbl:dedup:owned-v2:*');
 		expect(await redis.hget(ownedKey!, 'status')).toBe('retryable');
 		expect(mocks.queueConvexWebhook).not.toHaveBeenCalled();
 	});

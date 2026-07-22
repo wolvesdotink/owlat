@@ -10,10 +10,11 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { isSendingAllowed } from '../workspaces/abuseGate';
+import { CAMPAIGN_ALERT_RECEIPT_RETENTION_MS } from '../workspaces/abuseStatus';
 
 vi.mock('../lib/contactCountHelpers', async () => {
 	const actual = await vi.importActual('../lib/contactCountHelpers');
@@ -47,6 +48,8 @@ const modules = Object.fromEntries(
 			!path.includes('llmProvider')
 	)
 );
+
+afterEach(() => vi.useRealTimers());
 
 async function seedSettings(
 	t: ReturnType<typeof convexTest>,
@@ -163,6 +166,89 @@ describe('abuseStatus.transition — severity rules', () => {
 
 		expect(outcome.ok).toBe(false);
 		if (!outcome.ok) expect(outcome.reason).toBe('no_settings_row');
+	});
+});
+
+describe('abuseStatus.recordCampaignComplaintAlert — transactional idempotency', () => {
+	const alert = {
+		eventId: `effect:v1:${'a'.repeat(64)}`,
+		campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
+		message: 'Campaign complaint rate exceeded the threshold',
+		complaintRate: 0.004,
+		eventTimestamp: 1_700_000_000_000,
+	};
+
+	it('commits the status, audit, and 35-day receipt once across response-loss replay', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+
+		const first = await t.mutation(
+			internal.workspaces.abuseStatus.recordCampaignComplaintAlert,
+			alert
+		);
+		const replay = await t.mutation(
+			internal.workspaces.abuseStatus.recordCampaignComplaintAlert,
+			alert
+		);
+
+		expect(first).toEqual({ ok: true, applied: 'transitioned' });
+		expect(replay).toEqual({ ok: true, applied: 'duplicate' });
+		await t.run(async (ctx) => {
+			const receipts = await ctx.db.query('mtaCampaignAlertReceipts').collect();
+			const audits = await ctx.db.query('auditLogs').collect();
+			expect(receipts).toHaveLength(1);
+			expect(receipts[0]).toMatchObject({
+				eventId: alert.eventId,
+				campaignId: alert.campaignId,
+				transitionApplied: 'transitioned',
+				expiresAt: Date.now() + CAMPAIGN_ALERT_RECEIPT_RETENTION_MS,
+			});
+			expect(audits).toHaveLength(1);
+			expect(audits[0]?.details?.['eventId']).toBe(alert.eventId);
+		});
+	});
+
+	it('fails closed when one event id is rebound to different alert content', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t);
+		await t.mutation(internal.workspaces.abuseStatus.recordCampaignComplaintAlert, alert);
+
+		expect(
+			await t.mutation(internal.workspaces.abuseStatus.recordCampaignComplaintAlert, {
+				...alert,
+				complaintRate: 0.9,
+			})
+		).toEqual({ ok: false, reason: 'event_id_conflict' });
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('mtaCampaignAlertReceipts').collect()).toHaveLength(1);
+			expect(await ctx.db.query('auditLogs').collect()).toHaveLength(1);
+		});
+	});
+
+	it('does not create a receipt or audit when the settings row is absent', async () => {
+		const t = convexTest(schema, modules);
+		expect(
+			await t.mutation(internal.workspaces.abuseStatus.recordCampaignComplaintAlert, alert)
+		).toEqual({ ok: false, reason: 'no_settings_row' });
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('mtaCampaignAlertReceipts').collect()).toEqual([]);
+			expect(await ctx.db.query('auditLogs').collect()).toEqual([]);
+		});
+	});
+
+	it('does not acknowledge or receipt an alert when the status transition is terminal', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t, { abuseStatus: 'banned' });
+
+		expect(
+			await t.mutation(internal.workspaces.abuseStatus.recordCampaignComplaintAlert, alert)
+		).toEqual({ ok: false, reason: 'terminal', from: 'banned', to: 'warned' });
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('mtaCampaignAlertReceipts').collect()).toEqual([]);
+			expect(await ctx.db.query('auditLogs').collect()).toEqual([]);
+		});
 	});
 });
 

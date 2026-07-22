@@ -453,7 +453,7 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 			.spyOn(receiptRedis, 'eval')
 			.mockImplementation(async (...args: unknown[]) => {
 				const result = await committedEval(...args);
-				if (loseResponse && String(args[0]).includes("local existing = redis.call('GET'")) {
+				if (loseResponse && String(args[0]).includes("local existing = redis.call('HGET'")) {
 					loseResponse = false;
 					throw new Error('binding response lost');
 				}
@@ -464,6 +464,57 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 		evalSpy.mockRestore();
 		expect(await onData(data, session as never)).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('rejects recipient expansion for an existing client key before enqueue', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'recipient-binding-1' },
+			},
+			rcptTo: [{ address: 'first@example.com' }, { address: 'second@example.net' }],
+		});
+		const data = Buffer.from(baseMime('sender@brand.com', 'ignored@example.org'));
+
+		expect(await onData(data, session as never)).toBeUndefined();
+		session.rcptTo = [
+			{ address: 'second@example.net' },
+			{ address: 'first@example.com' },
+			{ address: 'added@example.org' },
+		];
+		expect(await onData(data, session as never)).toMatchObject({
+			code: 554,
+			enhanced: '5.5.4',
+		});
+		expect(queue.add).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not extend a client-key binding horizon on matching retries', async () => {
+		const { queue, receiptRedis, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'fixed-horizon-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const data = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(data, session as never)).toBeUndefined();
+		const [bindingKey] = await receiptRedis.keys('mta:submission-idempotency:*');
+		expect(bindingKey).toBeDefined();
+		const initialTtl = await receiptRedis.pttl(bindingKey!);
+		await new Promise((resolve) => setTimeout(resolve, 25));
+		expect(await onData(data, session as never)).toBeUndefined();
+		const retryTtl = await receiptRedis.pttl(bindingKey!);
+
+		expect(retryTtl).toBeLessThan(initialTtl - 10);
 		expect(queue.add).toHaveBeenCalledOnce();
 	});
 
