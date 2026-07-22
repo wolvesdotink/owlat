@@ -93,8 +93,13 @@ const singleMtaRoute = {
 beforeEach(() => {
 	permissionState.allowed = true;
 	vi.useFakeTimers();
+	vi.stubEnv('MTA_API_URL', 'https://mta.test');
+	vi.stubEnv('MTA_API_KEY', 'test-key');
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllEnvs();
+});
 
 describe('providerRoutes mutation contracts', () => {
 	it('setRoute returns a truthy id the UI can use as a success signal', async () => {
@@ -232,8 +237,9 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		const domains = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {});
-		expect(domains).toMatchObject([
+		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {});
+		expect(result).toMatchObject({ isTruncated: false });
+		expect(result.domains).toMatchObject([
 			{
 				domain: 'relay.example',
 				status: 'pending',
@@ -241,6 +247,41 @@ describe('deliverability relay domain lifecycle', () => {
 				dnsRecords: { spf: { host: '@' } },
 			},
 		]);
+	});
+
+	it('distinguishes primary verification and reports bounded status truncation explicitly', async () => {
+		const t = convexTest(schema, modules).withIdentity(identity);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'external.example',
+				providerType: 'ses',
+				status: 'verified',
+				dnsRecords: {},
+				createdAt: 0,
+				updatedAt: 0,
+			});
+			for (let index = 0; index < 513; index++) {
+				await ctx.db.insert('domains', {
+					domain: `owned-${index}.example`,
+					providerType: 'mta',
+					status: index === 0 ? 'pending' : 'verified',
+					dnsRecords: {},
+					createdAt: index + 1,
+					updatedAt: index + 1,
+				});
+			}
+		});
+
+		const result = await t.query(api.providerRoutes.listDeliverabilityRelayDomains, {});
+		expect(result.isTruncated).toBe(true);
+		expect(result.domains).toHaveLength(512);
+		expect(result.domains.some((domain) => domain.domain === 'external.example')).toBe(false);
+		expect(result.domains).toContainEqual(
+			expect.objectContaining({
+				domain: 'owned-0.example',
+				status: 'awaiting_primary_verification',
+			})
+		);
 	});
 
 	it('keeps operational relay DNS and status behind organization management permission', async () => {

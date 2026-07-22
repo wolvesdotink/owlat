@@ -178,10 +178,9 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'knowledgeEdgeBackfillJobs',
 	'knowledgeGraphStats',
 
-	// Domain stack — provider identities + reputation before domains,
-	// which delegates for SES / MTA-side cleanup
-	'sendingDomainMtaIdentities',
-	'sendingDomainSesIdentities',
+	// Domain stack — reputation before domains. The domains step clears BOTH
+	// identity siblings and schedules both external provider deletions, so it
+	// must run before the orphan-sweep fallbacks erase that routing evidence.
 	'trackingDomains',
 	'sendingReputation',
 	'providerHealth',
@@ -189,6 +188,8 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'deliverabilityRouteStates',
 	'destinationProviderDomains',
 	'domains',
+	'sendingDomainMtaIdentities',
+	'sendingDomainSesIdentities',
 
 	// Chat (children before parents)
 	'chatMentions',

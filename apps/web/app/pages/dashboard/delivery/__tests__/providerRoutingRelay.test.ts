@@ -35,5 +35,7 @@ describe('provider-routing SES relay operations surface', () => {
 		expect(source).toContain('replaces the existing SPF record');
 		expect(source).toContain('Your primary DMARC record remains unchanged');
 		expect(source).toContain('Provisioning is queued');
+		expect(source).toContain('Verify the primary owned-MTA domain first');
+		expect(source).toContain('Showing the first 512 owned-MTA domains');
 	});
 });
