@@ -188,7 +188,7 @@ describe.runIf(dockerAvailable())('webhook DLQ on Redis Cluster', () => {
 		>;
 		raw['attempts'] = 4;
 		await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, JSON.stringify(raw));
-		await cluster.hdel(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`);
+		await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`, '99');
 		await cluster.zrem(WEBHOOK_DLQ_CREATED_KEY, id);
 		await cluster.zrem(WEBHOOK_DLQ_DUE_KEY, id);
 		await cluster.srem(WEBHOOK_DLQ_PROTECTED_KEY, id);

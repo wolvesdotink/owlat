@@ -47,7 +47,7 @@ import {
 } from './deferHandoff.js';
 import { messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
 import {
-	claimSmtpSecondaryEffect,
+	runSmtpSecondaryEffect,
 	markSmtpEffectsApplied,
 	readSmtpOutcome,
 } from './smtpOutcomeJournal.js';
@@ -222,8 +222,8 @@ async function applyCompletedAttempt(
 	const attemptCtx: AttemptCtx = { ...attempt, job: job.data, durationMs };
 
 	await applyEffects(reduction.effects, deps, {
-		claimSecondary: (effectIdentity) =>
-			claimSmtpSecondaryEffect(deps.redis, completed.entry, completed.raw, effectIdentity),
+		runSecondary: (effectIdentity, apply) =>
+			runSmtpSecondaryEffect(deps.redis, completed.entry, completed.raw, effectIdentity, apply),
 	});
 	logOutcome(outcome, job.data, attemptCtx);
 

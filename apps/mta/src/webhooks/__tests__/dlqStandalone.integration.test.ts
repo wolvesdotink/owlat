@@ -88,7 +88,7 @@ describe.runIf(dockerAvailable())('webhook DLQ on standalone Redis', () => {
 		};
 	}
 
-	it('structurally validates an existing row and repairs indexes without resetting attempts', async () => {
+	it('structurally validates an existing row and repairs indexes and attempts atomically', async () => {
 		const payload = event('standalone-repair');
 		const id = await storePending(redis, payload, config, 'standalone-repair:bounced');
 		const raw = JSON.parse((await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, id))!) as Record<
@@ -97,7 +97,7 @@ describe.runIf(dockerAvailable())('webhook DLQ on standalone Redis', () => {
 		>;
 		raw['attempts'] = 4;
 		await redis.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, JSON.stringify(raw));
-		await redis.hdel(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`);
+		await redis.hset(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`, '99');
 		await redis.zrem(WEBHOOK_DLQ_CREATED_KEY, id);
 		await redis.zrem(WEBHOOK_DLQ_DUE_KEY, id);
 		await redis.srem(WEBHOOK_DLQ_PROTECTED_KEY, id);
@@ -139,16 +139,25 @@ describe.runIf(dockerAvailable())('webhook DLQ on standalone Redis', () => {
 			WEBHOOK_DLQ_ENTRIES_KEY,
 			id,
 			JSON.stringify({
-				dlqId: 'wrong-id',
-				event: payload,
+				dlqId: id,
+				event: { messageId: payload.messageId },
 				failure: { category: 'pending' },
 				attempts: 9,
-				createdAt: Date.now(),
+				createdAt: 'not-a-timestamp',
 			})
 		);
 
 		expect(await storePending(redis, payload, config, 'standalone-invalid:bounced')).toBe(id);
 		expect(await getEntry(redis, id)).toMatchObject({ dlqId: id, event: payload, attempts: 0 });
+		expect(
+			await claimOne(redis, id, {
+				owner: 'repair-verification',
+				now: Date.now(),
+				requireDue: false,
+				enforceAutoLimit: false,
+				autoRetryLimit: 8,
+			})
+		).not.toBeNull();
 	});
 
 	it('fails closed instead of rewriting a structurally invalid claimed row', async () => {

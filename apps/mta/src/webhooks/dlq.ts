@@ -49,7 +49,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
 }
 
-function parseDlqEntry(data: string): DlqEntry | null {
+function isFiniteNumber(value: unknown): value is number {
+	return typeof value === 'number' && Number.isFinite(value);
+}
+
+function parseDlqEntry(data: string, expectedDlqId: string): DlqEntry | null {
 	let value: unknown;
 	try {
 		value = JSON.parse(data);
@@ -59,12 +63,15 @@ function parseDlqEntry(data: string): DlqEntry | null {
 	if (
 		!isRecord(value) ||
 		typeof value['dlqId'] !== 'string' ||
+		value['dlqId'] !== expectedDlqId ||
 		!isRecord(value['event']) ||
 		typeof value['event']['event'] !== 'string' ||
-		typeof value['event']['timestamp'] !== 'number' ||
-		typeof value['attempts'] !== 'number' ||
-		typeof value['createdAt'] !== 'number' ||
-		(value['lastRetryAt'] !== undefined && typeof value['lastRetryAt'] !== 'number')
+		!isFiniteNumber(value['event']['timestamp']) ||
+		!isFiniteNumber(value['attempts']) ||
+		!Number.isInteger(value['attempts']) ||
+		value['attempts'] < 0 ||
+		!isFiniteNumber(value['createdAt']) ||
+		(value['lastRetryAt'] !== undefined && !isFiniteNumber(value['lastRetryAt']))
 	) {
 		return null;
 	}
@@ -74,9 +81,9 @@ function parseDlqEntry(data: string): DlqEntry | null {
 	if (!failure) return null;
 	const claim = isRecord(value['claim'])
 		? typeof value['claim']['owner'] === 'string' &&
-			typeof value['claim']['version'] === 'number' &&
+			isFiniteNumber(value['claim']['version']) &&
 			Number.isInteger(value['claim']['version']) &&
-			typeof value['claim']['expiresAt'] === 'number'
+			isFiniteNumber(value['claim']['expiresAt'])
 			? {
 					owner: value['claim']['owner'],
 					version: value['claim']['version'],
@@ -216,19 +223,38 @@ async function store(
 ): Promise<{ dlqId: string; inserted: boolean }> {
 	const createdAt = Date.now();
 	const entry: DlqEntry = { dlqId, event, failure, attempts: 0, createdAt };
-	const status = (await redis.eval(
-		STORE_LUA,
-		4,
-		...KEYS,
-		dlqId,
-		JSON.stringify(entry),
-		String(dueAt),
-		String(config.webhookDlqMaxSize),
-		isProtected ? '1' : '0'
-	)) as number;
+	const observationChanged = -4;
+	let status = observationChanged;
+	for (
+		let observationAttempt = 0;
+		observationAttempt < 3 && status === observationChanged;
+		observationAttempt++
+	) {
+		const observedRaw = isProtected ? await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, dlqId) : null;
+		const observedEntry = observedRaw ? parseDlqEntry(observedRaw, dlqId) : null;
+		const observedPendingEntry =
+			observedEntry?.failure.category === 'pending' ? observedEntry : null;
+		status = (await redis.eval(
+			STORE_LUA,
+			4,
+			...KEYS,
+			dlqId,
+			JSON.stringify(entry),
+			String(dueAt),
+			String(config.webhookDlqMaxSize),
+			isProtected ? '1' : '0',
+			observedRaw === null ? '0' : '1',
+			observedRaw ?? '',
+			observedPendingEntry ? '1' : '0',
+			String(observedPendingEntry?.attempts ?? 0)
+		)) as number;
+	}
 	if (status === -1) throw new Error('Webhook terminal outbox is at capacity');
 	if (status === -2) throw new Error('Webhook DLQ is at protected capacity');
 	if (status === -3) throw new Error('Existing protected webhook outbox is inconsistent');
+	if (status === observationChanged) {
+		throw new Error('Existing protected webhook outbox changed during repair');
+	}
 	return { dlqId, inserted: status === 1 };
 }
 
@@ -292,7 +318,7 @@ export async function claimOne(
 		String(options.autoRetryLimit)
 	)) as [string, string, string, string] | null;
 	if (!result) return null;
-	const parsed = parseDlqEntry(result[0]);
+	const parsed = parseDlqEntry(result[0], dlqId);
 	if (!parsed) {
 		await redis.eval(QUARANTINE_LUA, 4, ...KEYS, dlqId, result[0], result[3]);
 		return null;
@@ -333,7 +359,7 @@ export async function listEligibleIds(
 	const missing: string[] = [];
 	for (let index = 0; index < ids.length; index++) {
 		const raw = raws[index];
-		const parsed = raw ? parseDlqEntry(raw) : null;
+		const parsed = raw ? parseDlqEntry(raw, ids[index]!) : null;
 		if (
 			raw &&
 			parsed &&
@@ -400,9 +426,9 @@ export async function listFailed(
 	const total = await redis.zcard(WEBHOOK_DLQ_CREATED_KEY);
 	const ids = await redis.zrevrange(WEBHOOK_DLQ_CREATED_KEY, offset, offset + limit - 1);
 	const raw = ids.length > 0 ? await redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, ...ids) : [];
-	const entries = raw.flatMap((value) => {
+	const entries = raw.flatMap((value, index) => {
 		if (!value) return [];
-		const entry = parseDlqEntry(value);
+		const entry = parseDlqEntry(value, ids[index]!);
 		return entry ? [entry] : [];
 	});
 	return { entries, total };
@@ -410,7 +436,7 @@ export async function listFailed(
 
 export async function getEntry(redis: Redis, dlqId: string): Promise<DlqEntry | null> {
 	const data = await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, dlqId);
-	return data ? parseDlqEntry(data) : null;
+	return data ? parseDlqEntry(data, dlqId) : null;
 }
 
 export async function removeOne(redis: Redis, dlqId: string): Promise<boolean> {
@@ -432,8 +458,8 @@ export async function getStats(redis: Redis): Promise<{
 	const [oldest, newest] = await redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, oldestIds[0]!, newestIds[0]!);
 	return {
 		total,
-		oldestTimestamp: oldest ? (parseDlqEntry(oldest)?.createdAt ?? null) : null,
-		newestTimestamp: newest ? (parseDlqEntry(newest)?.createdAt ?? null) : null,
+		oldestTimestamp: oldest ? (parseDlqEntry(oldest, oldestIds[0]!)?.createdAt ?? null) : null,
+		newestTimestamp: newest ? (parseDlqEntry(newest, newestIds[0]!)?.createdAt ?? null) : null,
 	};
 }
 

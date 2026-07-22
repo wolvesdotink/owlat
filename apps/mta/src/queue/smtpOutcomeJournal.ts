@@ -12,6 +12,7 @@ import type { EmailJobResult } from '../types.js';
 import type { CtxWithIp } from '../dispatch/types.js';
 import type { DispatchOutcome, OutcomeReduction } from '../dispatch/outcome.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
+import { runCheckpointedEffect } from '../lib/effectCheckpoint.js';
 
 const JOURNAL_INDEX_KEY = 'mta:{smtp-outcome}:expiries';
 const JOURNAL_KEY_PREFIX = 'mta:{smtp-outcome}:job:';
@@ -85,13 +86,6 @@ if current == ARGV[1] then
 	return {1, ARGV[2]}
 end
 return {0, current or ''}
-`;
-
-const CLAIM_EFFECT_LUA = `
-if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
-local claimed = redis.call('HSETNX', KEYS[2], ARGV[2], 'claimed')
-redis.call('PEXPIRE', KEYS[2], ARGV[3])
-return claimed
 `;
 
 function journalKey(jobId: string): string {
@@ -339,33 +333,28 @@ export async function markSmtpEffectsApplied(
 	return resolved;
 }
 
-/**
- * Claim one secondary effect before applying it.
- *
- * Secondary control/telemetry effects are explicitly at-most-once after SMTP:
- * a lost claim response skips the effect on replay instead of inflating
- * counters. Critical deterministic outbox and recipient-suppression effects do
- * not use this gate and remain safely retryable.
- */
-export async function claimSmtpSecondaryEffect(
+/** Run a secondary effect and checkpoint it only after successful completion. */
+export async function runSmtpSecondaryEffect<T>(
 	redis: Redis,
 	entry: CompletedSmtpOutcome,
 	expectedRaw: string,
-	effectIdentity: string
-): Promise<boolean> {
-	const claimed = (await redis.eval(
-		CLAIM_EFFECT_LUA,
-		2,
-		journalKey(entry.jobId),
-		effectClaimsKey(entry.jobId),
-		expectedRaw,
+	effectIdentity: string,
+	apply: () => Promise<T>,
+	options: { leaseMs?: number; waitMs?: number } = {}
+): Promise<T | undefined> {
+	return runCheckpointedEffect(
+		redis,
+		{
+			ownerKey: journalKey(entry.jobId),
+			ownerValue: expectedRaw,
+			checkpointsKey: effectClaimsKey(entry.jobId),
+			ttlMs: SMTP_OUTCOME_JOURNAL_TTL_MS,
+			leaseMs: options.leaseMs,
+			waitMs: options.waitMs,
+		},
 		effectIdentity,
-		String(SMTP_OUTCOME_JOURNAL_TTL_MS)
-	)) as number;
-	if (claimed === -1) {
-		throw new Error('SMTP outcome journal effect claim lost ownership');
-	}
-	return claimed === 1;
+		apply
+	);
 }
 
 export const smtpOutcomeJournalKeys = {
