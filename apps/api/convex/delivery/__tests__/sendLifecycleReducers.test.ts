@@ -259,4 +259,22 @@ describe('reduceBounced', () => {
 		expect(result.applied).toBe('duplicate');
 		expect(result.effects).toEqual([]);
 	});
+
+	it('reclassifies a soft campaign bounce as hard without adding another total bounce', () => {
+		const result = reduceBounced(
+			campaignSend({ status: 'bounced', bounceType: 'soft' }),
+			{ to: 'bounced', at: 7000, bounceType: 'hard' },
+			campaignRef,
+			'jane@example.com',
+			'org.example',
+			null
+		);
+
+		expect(result.effects.find((effect) => effect.kind === 'campaign_stats_bounced')).toMatchObject(
+			{
+				isHard: true,
+				previousBounceType: 'soft',
+			}
+		);
+	});
 });

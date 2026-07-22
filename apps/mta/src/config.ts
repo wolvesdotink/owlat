@@ -6,6 +6,7 @@ import { hostname } from 'os';
 import { isIPv4 } from 'node:net';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
+import { isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
 import type { IpPoolConfig, DkimKeyConfig, DestinationProviderProfile } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
@@ -326,6 +327,9 @@ export function loadConfig(): MtaConfig {
 	const mtaSecret = requiredEnv('MTA_SECRET');
 	assertMtaSecretStrength(mtaSecret);
 	const bounceVerpKey = requiredEnv('BOUNCE_VERP_KEY');
+	if (isKnownPlaceholderSecret(bounceVerpKey)) {
+		throw new Error('BOUNCE_VERP_KEY must be a generated secret, not a placeholder');
+	}
 	if (Buffer.byteLength(bounceVerpKey, 'utf8') < 32) {
 		throw new Error('BOUNCE_VERP_KEY must be at least 32 bytes');
 	}

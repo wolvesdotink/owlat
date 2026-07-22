@@ -21,14 +21,3 @@ export function buildGroupKey(ipPool: IpPoolType, recipientDomain: string): stri
 export function classifyIsp(domain: string): DestinationProviderKey {
 	return destinationProviderForDomain(domain);
 }
-
-/**
- * Map engagement score to GroupMQ priority (lower number = higher priority)
- */
-export function engagementToPriority(score?: number): number {
-	if (score === undefined || score === null) return 3;
-	if (score >= 80) return 1;
-	if (score >= 50) return 2;
-	if (score >= 20) return 3;
-	return 4;
-}

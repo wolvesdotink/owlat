@@ -6,10 +6,17 @@ import {
 	ROUTING_REENTRY_TOKEN_TTL_MS,
 } from '@owlat/shared';
 import { internal } from '../_generated/api';
-import { internalMutation } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import { internalMutation, type MutationCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
+import type { SendRef } from './sendLifecycle/types';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
-import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
+import {
+	envelopeInputValidator,
+	retryStateValidator,
+	type WorkerEnvelopeInput,
+	type WorkerRetryState,
+} from './workerEnvelope';
 
 const TOKEN_PREFIX = 'rr1.';
 const TOKEN_AAD = new TextEncoder().encode('owlat-routing-reentry:v1');
@@ -204,11 +211,97 @@ export const issueSnapshot = internalMutation({
 	},
 });
 
-// Tokens are self-contained; a route that resolves away from MTA has no server state to discard.
-export const discardSnapshot = internalMutation({
-	args: { token: v.string() },
-	handler: async () => undefined,
-});
+type ReentrySend = Doc<'emailSends'> | Doc<'transactionalSends'>;
+
+interface ReentryTarget {
+	sendRef: SendRef;
+	send: ReentrySend;
+	recordAttempt(): Promise<void>;
+	enqueue(): Promise<void>;
+}
+
+type TargetResolution =
+	| { ok: true; target: ReentryTarget }
+	| { ok: false; disposition: 'binding_mismatch' | 'snapshot_not_found' };
+
+/**
+ * Resolve the token's table-specific Send once, then expose typed closures for
+ * the only operations that differ between campaign and transactional rows.
+ * The caller owns the shared lifecycle/CAS/deadline state machine.
+ */
+async function resolveReentryTarget(
+	ctx: MutationCtx,
+	payload: TokenPayload,
+	envelopeInput: WorkerEnvelopeInput,
+	retryState: WorkerRetryState,
+	messageId: string
+): Promise<TargetResolution> {
+	if (payload.k === 'c') {
+		const id = ctx.db.normalizeId('emailSends', payload.i);
+		if (!id || envelopeInput.kind !== 'campaign' || envelopeInput.emailSendId !== id) {
+			return { ok: false, disposition: 'binding_mismatch' };
+		}
+		const send = await ctx.db.get(id);
+		if (!send) return { ok: false, disposition: 'snapshot_not_found' };
+		return {
+			ok: true,
+			target: {
+				sendRef: { kind: 'campaign', id },
+				send,
+				recordAttempt: async () => {
+					await ctx.db.patch(id, {
+						mtaRoutingReentryAttempt: payload.a,
+						...(!send.providerMessageId
+							? { providerMessageId: messageId, providerType: 'mta' }
+							: {}),
+					});
+				},
+				enqueue: async () => {
+					await campaignEmailPool.enqueueAction(
+						ctx,
+						internal.delivery.worker.sendSingleEmail,
+						{ envelopeInput, retryState },
+						{
+							onComplete: internal.delivery.sendCompletion.completeSend,
+							context: { sendRef: { kind: 'campaign', id } },
+						}
+					);
+				},
+			},
+		};
+	}
+
+	const id = ctx.db.normalizeId('transactionalSends', payload.i);
+	if (!id || envelopeInput.kind !== 'transactional' || envelopeInput.sendId !== id) {
+		return { ok: false, disposition: 'binding_mismatch' };
+	}
+	const send = await ctx.db.get(id);
+	if (!send) return { ok: false, disposition: 'snapshot_not_found' };
+	return {
+		ok: true,
+		target: {
+			sendRef: { kind: 'transactional', id },
+			send,
+			recordAttempt: async () => {
+				await ctx.db.patch(id, {
+					mtaRoutingReentryAttempt: payload.a,
+					...(!send.providerMessageId ? { providerMessageId: messageId, providerType: 'mta' } : {}),
+				});
+			},
+			enqueue: async () => {
+				await transactionalEmailPool.enqueueAction(
+					ctx,
+					internal.delivery.worker.sendSingleEmail,
+					{ envelopeInput, retryState },
+					{
+						onComplete: internal.delivery.sendCompletion.completeSend,
+						context: { sendRef: { kind: 'transactional', id } },
+					}
+				);
+			},
+		},
+	};
+}
 
 /** Decrypt, bind, and atomically advance the persisted attempt marker before enqueue. */
 export const consumeSnapshot = internalMutation({
@@ -245,75 +338,22 @@ export const consumeSnapshot = internalMutation({
 		const deadlineExpired = ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS;
 		if (!deadlineExpired && payload.e <= now) return { disposition: 'expired' as const };
 
-		if (payload.k === 'c') {
-			const id = ctx.db.normalizeId('emailSends', payload.i);
-			if (!id || args.envelopeInput.kind !== 'campaign' || args.envelopeInput.emailSendId !== id) {
-				return { disposition: 'binding_mismatch' as const };
-			}
-			const send = await ctx.db.get(id);
-			if (!send) return { disposition: 'snapshot_not_found' as const };
-			if (send.status !== 'queued') return { disposition: 'terminal' as const };
-			if (send.providerMessageId && send.providerMessageId !== args.messageId) {
-				return { disposition: 'message_mismatch' as const };
-			}
-			if (deadlineExpired) {
-				await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-					send: { kind: 'campaign', id },
-					transition: {
-						to: 'failed',
-						at: now,
-						errorCode: 'DELIVERY_DEADLINE_EXPIRED',
-						errorMessage: 'Delivery exceeded the cumulative four-day routing deadline.',
-					},
-				});
-				return { disposition: 'deadline_expired' as const };
-			}
-			if ((send.mtaRoutingReentryAttempt ?? 0) >= payload.a) {
-				return { disposition: 'duplicate' as const };
-			}
-			await ctx.db.patch(id, {
-				mtaRoutingReentryAttempt: payload.a,
-				...(!send.providerMessageId
-					? { providerMessageId: args.messageId, providerType: 'mta' }
-					: {}),
-			});
-			if (payload.a > MAX_GOVERNED_ROUTING_ATTEMPTS) {
-				await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-					send: { kind: 'campaign', id },
-					transition: {
-						to: 'failed',
-						at: Date.now(),
-						errorCode: 'ROUTING_RETRY_EXHAUSTED',
-						errorMessage: 'Delivery routing changed after the final bounded attempt.',
-					},
-				});
-				return { disposition: 'retry_exhausted' as const };
-			}
-			await campaignEmailPool.enqueueAction(
-				ctx,
-				internal.delivery.worker.sendSingleEmail,
-				{ envelopeInput: args.envelopeInput, retryState: args.retryState },
-				{
-					onComplete: internal.delivery.sendCompletion.completeSend,
-					context: { sendRef: { kind: 'campaign', id } },
-				}
-			);
-			return { disposition: 'enqueued' as const, reason: args.reason };
-		}
-
-		const id = ctx.db.normalizeId('transactionalSends', payload.i);
-		if (!id || args.envelopeInput.kind !== 'transactional' || args.envelopeInput.sendId !== id) {
-			return { disposition: 'binding_mismatch' as const };
-		}
-		const send = await ctx.db.get(id);
-		if (!send) return { disposition: 'snapshot_not_found' as const };
+		const resolution = await resolveReentryTarget(
+			ctx,
+			payload,
+			args.envelopeInput,
+			args.retryState,
+			args.messageId
+		);
+		if (!resolution.ok) return { disposition: resolution.disposition };
+		const { sendRef, send, recordAttempt, enqueue } = resolution.target;
 		if (send.status !== 'queued') return { disposition: 'terminal' as const };
 		if (send.providerMessageId && send.providerMessageId !== args.messageId) {
 			return { disposition: 'message_mismatch' as const };
 		}
 		if (deadlineExpired) {
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-				send: { kind: 'transactional', id },
+				send: sendRef,
 				transition: {
 					to: 'failed',
 					at: now,
@@ -326,33 +366,20 @@ export const consumeSnapshot = internalMutation({
 		if ((send.mtaRoutingReentryAttempt ?? 0) >= payload.a) {
 			return { disposition: 'duplicate' as const };
 		}
-		await ctx.db.patch(id, {
-			mtaRoutingReentryAttempt: payload.a,
-			...(!send.providerMessageId
-				? { providerMessageId: args.messageId, providerType: 'mta' }
-				: {}),
-		});
+		await recordAttempt();
 		if (payload.a > MAX_GOVERNED_ROUTING_ATTEMPTS) {
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-				send: { kind: 'transactional', id },
+				send: sendRef,
 				transition: {
 					to: 'failed',
-					at: Date.now(),
+					at: now,
 					errorCode: 'ROUTING_RETRY_EXHAUSTED',
 					errorMessage: 'Delivery routing changed after the final bounded attempt.',
 				},
 			});
 			return { disposition: 'retry_exhausted' as const };
 		}
-		await transactionalEmailPool.enqueueAction(
-			ctx,
-			internal.delivery.worker.sendSingleEmail,
-			{ envelopeInput: args.envelopeInput, retryState: args.retryState },
-			{
-				onComplete: internal.delivery.sendCompletion.completeSend,
-				context: { sendRef: { kind: 'transactional', id } },
-			}
-		);
+		await enqueue();
 		return { disposition: 'enqueued' as const, reason: args.reason };
 	},
 });

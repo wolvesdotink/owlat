@@ -13,6 +13,7 @@
  */
 
 import type Redis from 'ioredis';
+import { createHash } from 'crypto';
 import { resolve as dnsResolve } from 'dns/promises';
 import { gzipSync } from 'zlib';
 import { logger } from '../monitoring/logger.js';
@@ -21,7 +22,7 @@ import { registry } from '../monitoring/collector.js';
 import type { EmailJob } from '../types.js';
 import { formatTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
-import { reserveNewIntakeReceipt } from '../routes/sendReceipt.js';
+import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
 
 const TLS_RPT_PREFIX = 'mta:tls-rpt:';
 const TLS_RPT_TTL = 3 * 86400; // Keep 3 days of records
@@ -118,6 +119,7 @@ export interface TlsRptQueue {
 		jobId?: string;
 		orderMs?: number;
 	}): Promise<{ id: string }>;
+	getJob(jobId: string): Promise<unknown | null>;
 }
 
 // ─── Recording TLS Results ──────────────────────────────────────────
@@ -481,8 +483,20 @@ export async function generateAndSendReports(
 					const endTs = Math.floor(new Date(report['date-range']['end-datetime']).getTime() / 1000);
 					const filename = `${submitterDomain}!${domain}!${startTs}!${endTs}.json.gz`;
 
-					const messageId = `tlsrpt-${domain}-${yesterday}-${Date.now()}`;
-					const job: EmailJob = {
+					const reportIdentity = createHash('sha256')
+						.update(
+							JSON.stringify({
+								reportId: report['report-id'],
+								submitterDomain,
+								policyDomain: domain,
+								recipient,
+								startTs,
+								endTs,
+							})
+						)
+						.digest('hex');
+					const messageId = `tlsrpt-${reportIdentity}`;
+					const job: EmailJob & { intakeReceiptId: string } = {
 						messageId,
 						intakeReceiptId: messageId,
 						to: recipient,
@@ -510,8 +524,7 @@ export async function generateAndSendReports(
 					};
 
 					const groupId = buildGroupKey('transactional', extractDomain(recipient));
-					await reserveNewIntakeReceipt(redis, job.intakeReceiptId, job.messageId);
-					await queue.add({ groupId, data: job, jobId: job.intakeReceiptId });
+					await enqueueReconciledIntake(queue, redis, { groupId, data: job });
 
 					stats.sent++;
 					tlsReportsSent.inc();

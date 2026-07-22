@@ -9,17 +9,23 @@
 import { createHash } from 'crypto';
 import type Redis from 'ioredis';
 import type { EmailJobResult } from '../types.js';
+import type { CtxWithIp } from '../dispatch/types.js';
+import type { DispatchOutcome, OutcomeReduction } from '../dispatch/outcome.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 
 const JOURNAL_INDEX_KEY = 'mta:{smtp-outcome}:expiries';
 const JOURNAL_KEY_PREFIX = 'mta:{smtp-outcome}:job:';
 export const SMTP_OUTCOME_JOURNAL_TTL_MS = GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 24 * 60 * 60 * 1000;
 
+export type SmtpAttemptSnapshot = Omit<CtxWithIp, 'job'>;
+
 interface InFlightSmtpOutcome {
 	state: 'in_flight';
 	jobId: string;
 	messageId: string;
 	reservedAt: number;
+	/** Immutable routing/reducer input captured before the SMTP transaction. */
+	attempt: SmtpAttemptSnapshot;
 }
 
 interface CompletedSmtpOutcome {
@@ -29,9 +35,22 @@ interface CompletedSmtpOutcome {
 	result: EmailJobResult;
 	durationMs: number;
 	completedAt: number;
+	attempt: SmtpAttemptSnapshot;
+	outcome: DispatchOutcome;
+	reduction: OutcomeReduction;
 }
 
-export type SmtpOutcomeJournalEntry = InFlightSmtpOutcome | CompletedSmtpOutcome;
+interface EffectsAppliedSmtpOutcome {
+	state: 'effects_applied';
+	jobId: string;
+	messageId: string;
+	appliedAt: number;
+}
+
+export type SmtpOutcomeJournalEntry =
+	| InFlightSmtpOutcome
+	| CompletedSmtpOutcome
+	| EffectsAppliedSmtpOutcome;
 
 export type SmtpOutcomeReservation =
 	| { kind: 'fresh'; entry: InFlightSmtpOutcome; raw: string }
@@ -58,15 +77,29 @@ end
 return {0, current or ''}
 `;
 
-const CLEAR_LUA = `
-if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
-redis.call('DEL', KEYS[1])
-redis.call('ZREM', KEYS[2], KEYS[1])
-return 1
+const MARK_EFFECTS_APPLIED_LUA = `
+local current = redis.call('GET', KEYS[1])
+if current == ARGV[1] then
+	redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
+	redis.call('ZREM', KEYS[2], KEYS[1])
+	return {1, ARGV[2]}
+end
+return {0, current or ''}
+`;
+
+const CLAIM_EFFECT_LUA = `
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return -1 end
+local claimed = redis.call('HSETNX', KEYS[2], ARGV[2], 'claimed')
+redis.call('PEXPIRE', KEYS[2], ARGV[3])
+return claimed
 `;
 
 function journalKey(jobId: string): string {
 	return `${JOURNAL_KEY_PREFIX}${createHash('sha256').update(jobId).digest('hex')}`;
+}
+
+function effectClaimsKey(jobId: string): string {
+	return `mta:{smtp-outcome}:effects:${createHash('sha256').update(jobId).digest('hex')}`;
 }
 
 function parseEntry(raw: string): SmtpOutcomeJournalEntry {
@@ -81,27 +114,102 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 	}
 	const entry = value as Record<string, unknown>;
 	if (
-		(entry['state'] !== 'in_flight' && entry['state'] !== 'completed') ||
-		typeof entry['jobId'] !== 'string' ||
-		typeof entry['messageId'] !== 'string'
+		entry['state'] !== 'in_flight' &&
+		entry['state'] !== 'completed' &&
+		entry['state'] !== 'effects_applied'
 	) {
 		throw new Error('SMTP outcome journal contains an invalid entry');
 	}
+	if (typeof entry['jobId'] !== 'string' || typeof entry['messageId'] !== 'string') {
+		throw new Error('SMTP outcome journal contains an invalid entry');
+	}
 	if (entry['state'] === 'in_flight') {
-		if (typeof entry['reservedAt'] !== 'number') {
+		if (typeof entry['reservedAt'] !== 'number' || !isAttemptSnapshot(entry['attempt'])) {
 			throw new Error('SMTP outcome journal contains an invalid reservation');
 		}
 		return entry as unknown as InFlightSmtpOutcome;
+	}
+	if (entry['state'] === 'effects_applied') {
+		if (typeof entry['appliedAt'] !== 'number') {
+			throw new Error('SMTP outcome journal contains an invalid terminal tombstone');
+		}
+		return entry as unknown as EffectsAppliedSmtpOutcome;
 	}
 	if (
 		!entry['result'] ||
 		typeof entry['result'] !== 'object' ||
 		typeof entry['durationMs'] !== 'number' ||
-		typeof entry['completedAt'] !== 'number'
+		typeof entry['completedAt'] !== 'number' ||
+		!isAttemptSnapshot(entry['attempt']) ||
+		!entry['outcome'] ||
+		!entry['reduction']
 	) {
 		throw new Error('SMTP outcome journal contains an invalid completed result');
 	}
 	return entry as unknown as CompletedSmtpOutcome;
+}
+
+function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot {
+	if (!value || typeof value !== 'object') return false;
+	const attempt = value as Record<string, unknown>;
+	if (
+		typeof attempt['domain'] !== 'string' ||
+		(attempt['fromDomain'] !== undefined && typeof attempt['fromDomain'] !== 'string') ||
+		(attempt['pool'] !== 'transactional' && attempt['pool'] !== 'campaign') ||
+		(attempt['dedicatedIp'] !== undefined && typeof attempt['dedicatedIp'] !== 'string') ||
+		typeof attempt['ip'] !== 'string' ||
+		typeof attempt['eligibilityGeneration'] !== 'number' ||
+		!Number.isSafeInteger(attempt['eligibilityGeneration'])
+	) {
+		return false;
+	}
+	const destination = attempt['destination'];
+	if (!destination || typeof destination !== 'object') return false;
+	const route = destination as Record<string, unknown>;
+	return (
+		typeof route['recipientDomain'] === 'string' &&
+		['gmail', 'microsoft', 'yahoo', 'apple', 'other'].includes(String(route['providerKey'])) &&
+		typeof route['throttleKey'] === 'string' &&
+		typeof route['daneDiscoveryAuthenticated'] === 'boolean' &&
+		isMxSnapshot(route['mx']) &&
+		(route['daneDestinations'] === undefined || Array.isArray(route['daneDestinations']))
+	);
+}
+
+function isMxSnapshot(value: unknown): boolean {
+	if (!value || typeof value !== 'object') return false;
+	const mx = value as Record<string, unknown>;
+	if (mx['status'] === 'null-mx') return true;
+	if (mx['status'] === 'domain-not-found' || mx['status'] === 'temporary-failure') {
+		return typeof mx['reason'] === 'string';
+	}
+	return (
+		mx['status'] === 'deliverable' &&
+		(mx['source'] === 'mx' || mx['source'] === 'implicit') &&
+		Array.isArray(mx['hosts']) &&
+		mx['hosts'].length > 0 &&
+		mx['hosts'].length <= 50 &&
+		mx['hosts'].every(
+			(host) =>
+				!!host &&
+				typeof host === 'object' &&
+				typeof (host as Record<string, unknown>)['exchange'] === 'string' &&
+				typeof (host as Record<string, unknown>)['priority'] === 'number' &&
+				Number.isSafeInteger((host as Record<string, unknown>)['priority'])
+		)
+	);
+}
+
+export async function readSmtpOutcome(
+	redis: Redis,
+	jobId: string,
+	messageId: string
+): Promise<{ entry: SmtpOutcomeJournalEntry; raw: string } | null> {
+	const raw = await redis.get(journalKey(jobId));
+	if (!raw) return null;
+	const entry = parseEntry(raw);
+	assertBinding(entry, jobId, messageId);
+	return { entry, raw };
 }
 
 function assertBinding(entry: SmtpOutcomeJournalEntry, jobId: string, messageId: string): void {
@@ -114,13 +222,26 @@ export async function reserveSmtpOutcome(
 	redis: Redis,
 	jobId: string,
 	messageId: string,
+	attempt: SmtpAttemptSnapshot,
 	options: { now: number; capacity: number }
 ): Promise<SmtpOutcomeReservation> {
+	if (!isAttemptSnapshot(attempt)) {
+		throw new Error('SMTP outcome journal received an invalid attempt snapshot');
+	}
 	const entry: InFlightSmtpOutcome = {
 		state: 'in_flight',
 		jobId,
 		messageId,
 		reservedAt: options.now,
+		attempt: {
+			domain: attempt.domain,
+			destination: attempt.destination,
+			fromDomain: attempt.fromDomain,
+			pool: attempt.pool,
+			dedicatedIp: attempt.dedicatedIp,
+			ip: attempt.ip,
+			eligibilityGeneration: attempt.eligibilityGeneration,
+		},
 	};
 	const raw = JSON.stringify(entry);
 	const result = (await redis.eval(
@@ -147,6 +268,8 @@ export async function finalizeSmtpOutcome(
 	expectedRaw: string,
 	result: EmailJobResult,
 	durationMs: number,
+	outcome: DispatchOutcome,
+	reduction: OutcomeReduction,
 	options: { now: number }
 ): Promise<{ entry: CompletedSmtpOutcome; raw: string }> {
 	const completed: CompletedSmtpOutcome = {
@@ -156,6 +279,9 @@ export async function finalizeSmtpOutcome(
 		result,
 		durationMs,
 		completedAt: options.now,
+		attempt: entry.attempt,
+		outcome,
+		reduction,
 	};
 	const completedRaw = JSON.stringify(completed);
 	const response = (await redis.eval(
@@ -176,34 +302,74 @@ export async function finalizeSmtpOutcome(
 	return { entry: resolved, raw: response[1] };
 }
 
-/** Clear only the exact completed result whose effects/handoff are durable. */
-export async function clearSmtpOutcome(
+/**
+ * Terminalize a completed attempt without deleting its replay guard.
+ *
+ * The tombstone is intentionally retained beyond GroupMQ's retry horizon. Its
+ * capacity-index membership is removed, so completed queue history cannot
+ * prevent new SMTP attempts from reserving journal space.
+ */
+export async function markSmtpEffectsApplied(
 	redis: Redis,
 	entry: CompletedSmtpOutcome,
-	expectedRaw: string
-): Promise<boolean> {
-	const cleared = (await redis.eval(
-		CLEAR_LUA,
+	expectedRaw: string,
+	options: { now: number }
+): Promise<EffectsAppliedSmtpOutcome> {
+	const tombstone: EffectsAppliedSmtpOutcome = {
+		state: 'effects_applied',
+		jobId: entry.jobId,
+		messageId: entry.messageId,
+		appliedAt: options.now,
+	};
+	const tombstoneRaw = JSON.stringify(tombstone);
+	const response = (await redis.eval(
+		MARK_EFFECTS_APPLIED_LUA,
 		2,
 		journalKey(entry.jobId),
 		JOURNAL_INDEX_KEY,
-		expectedRaw
-	)) as number;
-	return cleared === 1;
+		expectedRaw,
+		tombstoneRaw,
+		String(SMTP_OUTCOME_JOURNAL_TTL_MS)
+	)) as [number, string];
+	const resolved = parseEntry(response[1]);
+	assertBinding(resolved, entry.jobId, entry.messageId);
+	if (resolved.state !== 'effects_applied') {
+		throw new Error('SMTP outcome journal terminalization lost ownership');
+	}
+	return resolved;
 }
 
-/** Best-effort predecessor cleanup after a durable defer handoff is resumed. */
-export async function clearCompletedSmtpOutcomeForJob(
+/**
+ * Claim one secondary effect before applying it.
+ *
+ * Secondary control/telemetry effects are explicitly at-most-once after SMTP:
+ * a lost claim response skips the effect on replay instead of inflating
+ * counters. Critical deterministic outbox and recipient-suppression effects do
+ * not use this gate and remain safely retryable.
+ */
+export async function claimSmtpSecondaryEffect(
 	redis: Redis,
-	jobId: string,
-	messageId: string
-): Promise<void> {
-	const key = journalKey(jobId);
-	const raw = await redis.get(key);
-	if (!raw) return;
-	const entry = parseEntry(raw);
-	assertBinding(entry, jobId, messageId);
-	if (entry.state === 'completed') await clearSmtpOutcome(redis, entry, raw);
+	entry: CompletedSmtpOutcome,
+	expectedRaw: string,
+	effectIdentity: string
+): Promise<boolean> {
+	const claimed = (await redis.eval(
+		CLAIM_EFFECT_LUA,
+		2,
+		journalKey(entry.jobId),
+		effectClaimsKey(entry.jobId),
+		expectedRaw,
+		effectIdentity,
+		String(SMTP_OUTCOME_JOURNAL_TTL_MS)
+	)) as number;
+	if (claimed === -1) {
+		throw new Error('SMTP outcome journal effect claim lost ownership');
+	}
+	return claimed === 1;
 }
 
-export const smtpOutcomeJournalKeys = { index: JOURNAL_INDEX_KEY, journalKey };
+export const smtpOutcomeJournalKeys = {
+	index: JOURNAL_INDEX_KEY,
+	journalKey,
+	effectClaimsKey,
+};

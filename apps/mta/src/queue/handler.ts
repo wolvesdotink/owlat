@@ -31,7 +31,6 @@ import { recordWorkerHeartbeat } from '../routes/health.js';
 import { logger } from '../monitoring/logger.js';
 import { runPipeline } from '../dispatch/pipeline.js';
 import { mainPipeline } from '../dispatch/phases/index.js';
-import { classifyResult, reduce } from '../dispatch/outcome.js';
 import type { DispatchOutcome } from '../dispatch/outcome.js';
 import { applyEffects, type DispatchEffect } from '../dispatch/effects.js';
 import type { AttemptCtx, BasePhaseCtx } from '../dispatch/types.js';
@@ -39,7 +38,6 @@ import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { PipelineResult } from '../dispatch/pipeline.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
-import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { recordFeedbackProvenance } from '../bounce/feedbackProvenance.js';
 import { promoteIntakeReceipt } from '../routes/sendReceipt.js';
 import {
@@ -48,9 +46,14 @@ import {
 	resumeDeferredHandoff,
 } from './deferHandoff.js';
 import { messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
-import { clearCompletedSmtpOutcomeForJob, clearSmtpOutcome } from './smtpOutcomeJournal.js';
-import { runJournaledSmtpAttempt } from './journaledSmtpAttempt.js';
+import {
+	claimSmtpSecondaryEffect,
+	markSmtpEffectsApplied,
+	readSmtpOutcome,
+} from './smtpOutcomeJournal.js';
+import { resumeJournaledSmtpAttempt, runJournaledSmtpAttempt } from './journaledSmtpAttempt.js';
 import { releaseRoutingReservations } from './routingReservations.js';
+import { handoffRoutingReentry } from './routingReentryHandoff.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -72,9 +75,17 @@ export async function handleEmailJob(
 	// This durable CAS closes the route-side queue.add/receipt gap before the
 	// worker can perform SMTP or reach a GroupMQ-completable terminal path.
 	await promoteIntakeReceipt(redis, data);
+	const journalJobId = String(job.id);
+	const priorSmtpOutcome = await readSmtpOutcome(redis, journalJobId, data.messageId);
+	if (priorSmtpOutcome?.entry.state === 'effects_applied') return;
+	if (priorSmtpOutcome) {
+		const replay = await resumeJournaledSmtpAttempt(redis, priorSmtpOutcome, data);
+		if (replay.kind === 'effects_applied') return;
+		await applyCompletedAttempt(replay.journal, job, queue, deps);
+		return;
+	}
 	await promoteDeferredHandoff(redis, data);
 	if (await resumeDeferredHandoff(redis, queue, job.id, data)) {
-		await clearCompletedSmtpOutcomeForJob(redis, String(job.id), data.messageId);
 		return;
 	}
 	const domain = extractDomain(data.to);
@@ -172,11 +183,10 @@ export async function handleEmailJob(
 	const smtpAttempt = await runJournaledSmtpAttempt({
 		redis,
 		config,
-		jobId: String(job.id),
+		jobId: journalJobId,
 		job: data,
-		ip: piped.ctx.ip,
+		attempt: piped.ctx,
 		eligibilityLease,
-		destination,
 		startedAt: startTime,
 	});
 	if (smtpAttempt.kind === 'capacity') {
@@ -192,71 +202,55 @@ export async function handleEmailJob(
 		);
 		return;
 	}
-
-	const completed = smtpAttempt.journal;
-	const { result, durationMs } = completed.entry;
-
-	const outcome = classifyResult(result, providerKey);
-	const attemptCtx: AttemptCtx = { ...piped.ctx, durationMs };
-	const { effects, defer } = reduce(outcome, attemptCtx);
-
-	await applyEffects(effects, deps);
-	logOutcome(outcome, data, attemptCtx);
-
-	if (defer) {
-		await disposeDefer(
-			job,
-			queue,
-			deps,
-			domain,
-			providerKey,
-			'remote_4xx',
-			defer.delayMs,
-			defer.reason
-		);
-	} else if (data.deliveryDomain === 'member_test') {
-		// Test outcomes do not report breaker/warming consumption, so release any
-		// authenticated reservation/probe instead of leaving persistent capacity.
-		await releaseRoutingReservations(data, deps);
-	}
-	await clearSmtpOutcome(redis, completed.entry, completed.raw);
+	if (smtpAttempt.kind === 'effects_applied') return;
+	await applyCompletedAttempt(smtpAttempt.journal, job, queue, deps);
 }
 
-/** Fixed pre-network outcome: hand the accepted job back to governed Convex dispatch. */
-async function handoffRoutingReentry(
-	data: EmailJob,
-	deps: { redis: Redis; config: MtaConfig },
-	reason: string
+type CompletedAttemptJournal = Extract<
+	Awaited<ReturnType<typeof runJournaledSmtpAttempt>>,
+	{ kind: 'completed' }
+>['journal'];
+
+/** Apply the exact reduction captured beside the irreversible SMTP result. */
+async function applyCompletedAttempt(
+	completed: CompletedAttemptJournal,
+	job: ReservedJob<EmailJob>,
+	queue: Queue<EmailJob>,
+	deps: { redis: Redis; config: MtaConfig }
 ): Promise<void> {
-	if (!data.routingReentryToken || !data.routingReentry || !data.workAttemptId) {
-		throw new Error('Missing routing re-entry context');
+	const { attempt, durationMs, outcome, reduction } = completed.entry;
+	const attemptCtx: AttemptCtx = { ...attempt, job: job.data, durationMs };
+
+	await applyEffects(reduction.effects, deps, {
+		claimSecondary: (effectIdentity) =>
+			claimSmtpSecondaryEffect(deps.redis, completed.entry, completed.raw, effectIdentity),
+	});
+	logOutcome(outcome, job.data, attemptCtx);
+
+	if (reduction.defer) {
+		// If the first effect pass durably handed off a successor but lost the
+		// journal-terminalization response, reconcile that exact successor before
+		// re-evaluating message age or jitter on replay.
+		if (!(await resumeDeferredHandoff(deps.redis, queue, job.id, job.data))) {
+			await disposeDefer(
+				job,
+				queue,
+				deps,
+				attempt.domain,
+				attempt.destination.providerKey,
+				'remote_4xx',
+				reduction.defer.delayMs,
+				reduction.defer.reason
+			);
+		}
+	} else if (job.data.deliveryDomain === 'member_test') {
+		// Test outcomes do not report breaker/warming consumption, so release any
+		// authenticated reservation/probe instead of leaving persistent capacity.
+		await releaseRoutingReservations(job.data, deps);
 	}
-	await releaseRoutingReservations(data, deps);
-	const routingReentryReason = /warming/i.test(reason)
-		? ('warming_capacity_changed' as const)
-		: /circuit/i.test(reason)
-			? ('circuit_breaker_changed' as const)
-			: ('routing_lease_stale' as const);
-	const delivered = await notifyConvex(
-		{
-			event: 'routing.reentry',
-			messageId: data.messageId,
-			routingReentryToken: data.routingReentryToken,
-			workAttemptId: data.workAttemptId,
-			deliveryDomain: data.deliveryDomain,
-			routingReentry: data.routingReentry,
-			routingReentryReason,
-			timestamp: Date.now(),
-		},
-		deps.config,
-		deps.redis
-	);
-	if (!delivered) {
-		logger.warn(
-			{ messageId: data.messageId, routingReentryReason },
-			'Routing re-entry stored for authenticated webhook retry'
-		);
-	}
+	await markSmtpEffectsApplied(deps.redis, completed.entry, completed.raw, {
+		now: Date.now(),
+	});
 }
 
 /**

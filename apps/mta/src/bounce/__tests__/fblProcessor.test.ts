@@ -7,7 +7,13 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 import { parseMessage, type ParsedMessage, type MessageAttachment } from '@owlat/mail-message';
-import { tryParseARF, isDuplicateComplaint, generateDedupKey } from '../fblProcessor.js';
+import {
+	tryParseARF,
+	reserveComplaint,
+	completeComplaint,
+	releaseComplaint,
+	generateDedupKey,
+} from '../fblProcessor.js';
 import { buildVerpAddress } from '../verp.js';
 import { extractReportParts, type ReportPart } from '../reportParts.js';
 import { reportPartsOf } from './helpers/reportParts.js';
@@ -629,7 +635,7 @@ describe('generateDedupKey', () => {
 	});
 });
 
-describe('isDuplicateComplaint', () => {
+describe('complaint deduplication reservations', () => {
 	let redis: RealRedis;
 
 	beforeEach(() => {
@@ -640,56 +646,52 @@ describe('isDuplicateComplaint', () => {
 		await redis.flushall();
 	});
 
-	it('returns false for first occurrence (not a duplicate)', async () => {
-		const result = await isDuplicateComplaint(redis, 'msg-001');
-		expect(result).toBe(false);
+	it('reserves the first occurrence without declaring it completed', async () => {
+		const result = await reserveComplaint(redis, 'msg-001');
+		expect(result.kind).toBe('reserved');
+		expect(await redis.get('mta:fbl:dedup:msg-001')).toMatch(/^reserved:/);
 	});
 
-	it('returns true for second occurrence (is a duplicate)', async () => {
-		await isDuplicateComplaint(redis, 'msg-001');
-		const result = await isDuplicateComplaint(redis, 'msg-001');
-		expect(result).toBe(true);
+	it('does not ACK a concurrent intake while the first reservation is unresolved', async () => {
+		await reserveComplaint(redis, 'msg-001');
+		await expect(reserveComplaint(redis, 'msg-001')).rejects.toThrow(
+			'Complaint processing is already in progress'
+		);
 	});
 
-	it('tracks different message IDs independently', async () => {
-		await isDuplicateComplaint(redis, 'msg-001');
-		const result = await isDuplicateComplaint(redis, 'msg-002');
-		expect(result).toBe(false); // Different message, not a duplicate
+	it('permits the same feedback to retry after its reservation is released', async () => {
+		const first = await reserveComplaint(redis, 'msg-retry');
+		expect(first.kind).toBe('reserved');
+		if (first.kind !== 'reserved') throw new Error('expected reservation');
+		await releaseComplaint(redis, first.reservation);
+		expect((await reserveComplaint(redis, 'msg-retry')).kind).toBe('reserved');
 	});
 
-	it('stores dedup keys in Redis with correct prefix', async () => {
-		await isDuplicateComplaint(redis, 'msg-test');
-		const value = await redis.get('mta:fbl:dedup:msg-test');
-		expect(value).toBe('1');
+	it('deduplicates only after the owned reservation is completed', async () => {
+		const first = await reserveComplaint(redis, 'msg-completed');
+		if (first.kind !== 'reserved') throw new Error('expected reservation');
+		await completeComplaint(redis, first.reservation);
+		expect(await redis.get('mta:fbl:dedup:msg-completed')).toBe('completed');
+		expect(await reserveComplaint(redis, 'msg-completed')).toEqual({ kind: 'completed' });
 	});
 
-	// ── PR-72 regression-lock: the dedup claim is a 7-day SET NX ──────────────
-	//
-	// The complaint metric must be emitted exactly once per complaint. That
-	// once-only guarantee rests entirely on this SET NX claim: the FIRST call
-	// claims the key (returns not-duplicate → metric fires), every later call in
-	// the 7-day window sees the key and returns duplicate (no metric). If the EX
-	// is ever dropped the key would live forever (complaints never re-counted) or
-	// — worse, if NX is dropped — every report would re-fire the metric. Locks
-	// both the 7-day TTL and the atomic check-and-claim. See
-	// EMAIL_BEST_PRACTICES_AUDIT_2026-06-21.md "PR-72".
-	it('claims the dedup key with a 7-day TTL', async () => {
-		await isDuplicateComplaint(redis, 'msg-ttl');
+	it('keeps completed deduplication state for seven days', async () => {
+		const result = await reserveComplaint(redis, 'msg-ttl');
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		await completeComplaint(redis, result.reservation);
 		const ttl = await redis.ttl('mta:fbl:dedup:msg-ttl');
 		const SEVEN_DAYS = 7 * 86400;
-		// ioredis(-mock) returns the remaining TTL in seconds; allow a small slack.
 		expect(ttl).toBeGreaterThan(SEVEN_DAYS - 5);
 		expect(ttl).toBeLessThanOrEqual(SEVEN_DAYS);
 	});
 
-	it('counts a complaint exactly once across repeated reports (metric-once semantics)', async () => {
-		// The pipeline emits the complaint metric only on the not-duplicate branch.
-		// Model that: count how many of N identical reports are "first sightings".
-		let metricFires = 0;
-		for (let i = 0; i < 4; i++) {
-			const isDup = await isDuplicateComplaint(redis, 'msg-once');
-			if (!isDup) metricFires++;
-		}
-		expect(metricFires).toBe(1);
+	it('does not let a stale owner release a newer reservation', async () => {
+		const first = await reserveComplaint(redis, 'msg-owner');
+		if (first.kind !== 'reserved') throw new Error('expected reservation');
+		await redis.del(first.reservation.key);
+		const second = await reserveComplaint(redis, 'msg-owner');
+		if (second.kind !== 'reserved') throw new Error('expected second reservation');
+		await releaseComplaint(redis, first.reservation);
+		expect(await redis.get(second.reservation.key)).toBe(second.reservation.token);
 	});
 });

@@ -12,7 +12,7 @@
  *     as the listener's single `authenticate` hook, gated by the per-IP
  *     failed-AUTH throttle (RFC 4954 §4, OWASP brute-force);
  *   - a require-auth-before-MAIL gate (submission never relays unauthenticated);
- *   - per-recipient job fan-out off the RFC5322 header recipients, the From
+ *   - per-recipient job fan-out off the authenticated SMTP envelope, the From
  *     forgery 553 5.7.1 guard for Postbox sessions, and AMP `text/x-amp-html`
  *     recovery, all in the DATA hook;
  *   - the per-IP connection cap (onConnect) + counter release (socket close),
@@ -51,8 +51,8 @@ import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPrio
 import { logger } from '../monitoring/logger.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
-import { randomUUID } from 'crypto';
-import { reserveNewIntakeReceipt } from '../routes/sendReceipt.js';
+import { createHash } from 'crypto';
+import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
 import {
 	checkConnectionRateLimit,
 	releaseConnection,
@@ -114,6 +114,69 @@ function clientName(session: Session): string | undefined {
 /** Best-effort remote IP from the session (for throttling / limiting). */
 function sessionRemoteIp(session: Session): string {
 	return session.remoteAddress || 'unknown';
+}
+
+function normalizeEnvelopeAddress(address: string): string {
+	const trimmed = address.trim();
+	const separator = trimmed.lastIndexOf('@');
+	if (separator < 0) return trimmed;
+	return `${trimmed.slice(0, separator)}@${trimmed.slice(separator + 1).toLowerCase()}`;
+}
+
+function submissionRecipients(session: Session): string[] {
+	const seen = new Set<string>();
+	const recipients: string[] = [];
+	for (const recipient of session.rcptTo) {
+		const normalized = normalizeEnvelopeAddress(recipient.address);
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		recipients.push(normalized);
+	}
+	return recipients;
+}
+
+/**
+ * Strongest retry identity available from authenticated SMTP.
+ *
+ * Canonical JSON keeps field boundaries collision-safe; recipient order is
+ * intentionally the first-accepted SMTP envelope order after exact duplicate
+ * removal. Exact DATA bytes are represented by their own SHA-256 digest.
+ */
+function submissionFingerprint(
+	auth: AuthenticatedSession,
+	envelopeFrom: string,
+	recipients: readonly string[],
+	message: Buffer
+): string {
+	const principal = auth.postbox
+		? {
+				kind: 'postbox',
+				organizationId: auth.organizationId,
+				mailboxId: auth.postbox.mailboxId,
+				appPasswordId: auth.postbox.appPasswordId,
+			}
+		: {
+				kind: 'credential',
+				organizationId: auth.organizationId,
+				credentialName: auth.credentialName,
+			};
+	return createHash('sha256')
+		.update(
+			JSON.stringify({
+				principal,
+				envelopeFrom: normalizeEnvelopeAddress(envelopeFrom),
+				recipients,
+				dataSha256: createHash('sha256').update(message).digest('hex'),
+			})
+		)
+		.digest('hex');
+}
+
+function submissionJobId(prefix: string, fingerprint: string, recipient: string): string {
+	const recipientDigest = createHash('sha256')
+		.update(JSON.stringify([fingerprint, recipient]))
+		.digest('hex');
+	return `${prefix}-${recipientDigest}`;
 }
 
 /**
@@ -220,17 +283,6 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 	};
 }
 
-/** Collect the bare addresses of a parsed address header into `out`. */
-function collectAddresses(field: AddressObject | AddressObject[] | undefined, out: string[]): void {
-	if (!field) return;
-	const objs = Array.isArray(field) ? field : [field];
-	for (const obj of objs) {
-		for (const entry of obj.value) {
-			if (entry.address) out.push(entry.address);
-		}
-	}
-}
-
 /** The first From address, lowercased (identity for the forgery guard + DKIM domain). */
 function firstFrom(field: AddressObject | AddressObject[] | undefined): string {
 	if (!field) return '';
@@ -285,10 +337,7 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 			const binary = message.toString('latin1');
 			const parsed = parseMessage(binary);
 
-			const recipients: string[] = [];
-			collectAddresses(parsed.to, recipients);
-			collectAddresses(parsed.cc, recipients);
-			collectAddresses(parsed.bcc, recipients);
+			const recipients = submissionRecipients(session);
 
 			if (recipients.length === 0) {
 				return { code: 554, enhanced: '5.5.0', text: 'No valid recipients' };
@@ -296,6 +345,11 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 
 			const fromAddress = firstFrom(parsed.from);
 			const fromDomain = emailDomain(fromAddress);
+			const envelopeFrom = session.mailFrom?.address;
+			if (!envelopeFrom) {
+				return { code: 503, enhanced: '5.5.1', text: 'MAIL FROM required' };
+			}
+			const fingerprint = submissionFingerprint(authData, envelopeFrom, recipients, message);
 
 			// RFC 2046 §5.1.4: preserve the AMP alternative so the sender re-emits the
 			// `text/x-amp-html` part (see {@link extractAmpHtml}).
@@ -320,10 +374,9 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 			for (const to of recipients) {
 				// Postbox-prefixed messageId so the bounce/sent webhook can look the
 				// row back up — same convention as the webmail dispatch path.
-				const messageId = authData.postbox
-					? `pb-smtp-${authData.postbox.mailboxId}-${randomUUID()}`
-					: `smtp-${randomUUID()}`;
-				const job: EmailJob = {
+				const prefix = authData.postbox ? `pb-smtp-${authData.postbox.mailboxId}` : 'smtp';
+				const messageId = submissionJobId(prefix, fingerprint, to);
+				const job: EmailJob & { intakeReceiptId: string } = {
 					messageId,
 					intakeReceiptId: messageId,
 					to,
@@ -342,12 +395,10 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 				const groupId = buildGroupKey(job.ipPool, domain);
 				const priority = mapToPriority(undefined);
 
-				await reserveNewIntakeReceipt(redis, job.intakeReceiptId, job.messageId);
-				await queue.add({
+				await enqueueReconciledIntake(queue, redis, {
 					groupId,
 					data: job,
 					orderMs: priorityToOrderMs(priority),
-					jobId: job.intakeReceiptId,
 				});
 				queued++;
 			}
@@ -458,8 +509,8 @@ function submissionTls(config: MtaConfig): SmtpTlsConfig {
  * Build a submission listener. The 587 (STARTTLS) and 465 (implicit-TLS) flavors
  * are behaviorally identical post-AUTH — only the transport differs
  * (`implicitTls`). AUTH is refused until the channel is secure (`requireTls`),
- * MAIL is refused until AUTH succeeds, and recipients are taken from the message
- * headers (not the SMTP envelope) exactly as the previous listener did.
+ * MAIL is refused until AUTH succeeds, and delivery recipients come from the
+ * authenticated SMTP envelope; To/Cc/Bcc headers are display content only.
  */
 function buildSubmissionListener(
 	queue: Queue<EmailJob>,

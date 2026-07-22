@@ -353,4 +353,42 @@ describe('applyEffects — ordering', () => {
 			)
 		).rejects.toThrow('boom');
 	});
+
+	it('retries the durable callback while claiming secondary effects at most once', async () => {
+		vi.mocked(queueConvexWebhook)
+			.mockRejectedValueOnce(new Error('outbox unavailable'))
+			.mockResolvedValue('outbox-1');
+		const claimed = new Set<string>();
+		const replayGuard = {
+			claimSecondary: vi.fn(async (identity: string) => {
+				if (claimed.has(identity)) return false;
+				claimed.add(identity);
+				return true;
+			}),
+		};
+		const effects: DispatchEffect[] = [
+			{
+				kind: 'notify_convex',
+				event: {
+					event: 'sent',
+					messageId: 'm-1',
+					organizationId: 'org-1',
+					timestamp: 1700000000,
+				},
+			},
+			{ kind: 'circuit_breaker_outcome', orgId: 'org-1', outcome: 'delivered' },
+			{ kind: 'suppress_recipient', address: 'user@example.com', reason: 'hard_bounce' },
+		];
+
+		await expect(applyEffects(effects, makeDeps(), replayGuard)).rejects.toThrow(
+			'outbox unavailable'
+		);
+		await applyEffects(effects, makeDeps(), replayGuard);
+		await applyEffects(effects, makeDeps(), replayGuard);
+
+		expect(queueConvexWebhook).toHaveBeenCalledTimes(3);
+		expect(circuitBreaker.recordOutcome).toHaveBeenCalledTimes(1);
+		// Suppression is a critical idempotent write, so it remains retryable.
+		expect(suppressionList.suppress).toHaveBeenCalledTimes(2);
+	});
 });

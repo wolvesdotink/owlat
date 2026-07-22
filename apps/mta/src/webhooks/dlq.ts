@@ -14,6 +14,7 @@ import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { parseDeliveryFailure, type WebhookDeliveryFailure } from './dlqFailure.js';
 import { webhookDlqRetryDelayMs } from './dlqRetryPolicy.js';
+import { STORE_LUA } from './dlqStoreScript.js';
 
 export {
 	classifyWebhookHttpFailure,
@@ -94,41 +95,6 @@ function parseDlqEntry(data: string): DlqEntry | null {
 		...(claim ? { claim } : {}),
 	};
 }
-
-const STORE_LUA = `
-if redis.call('HEXISTS', KEYS[1], ARGV[1]) == 1 then return 0 end
-local sequence = redis.call('HINCRBY', KEYS[1], '_created-sequence', 1)
-redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
-redis.call('HSET', KEYS[1], 'attempts:' .. ARGV[1], '0')
-redis.call('ZADD', KEYS[2], sequence, ARGV[1])
-redis.call('ZADD', KEYS[3], ARGV[3], ARGV[1])
-if ARGV[5] == '1' then redis.call('SADD', KEYS[4], ARGV[1]) end
-local excess = redis.call('ZCARD', KEYS[2]) - tonumber(ARGV[4])
-local insertedRetained = 1
-if excess > 0 then
-  local candidates = redis.call('ZRANGE', KEYS[2], 0, -1)
-  for _, id in ipairs(candidates) do
-    if excess <= 0 then break end
-    if redis.call('SISMEMBER', KEYS[4], id) == 0 then
-      redis.call('HDEL', KEYS[1], id, 'attempts:' .. id, 'claim:' .. id, 'claim-expiry:' .. id, 'version:' .. id)
-      redis.call('ZREM', KEYS[2], id)
-      redis.call('ZREM', KEYS[3], id)
-      if id == ARGV[1] then insertedRetained = 0 end
-      excess = excess - 1
-    end
-  end
-end
-if insertedRetained == 0 then return -2 end
-if excess > 0 then
-  redis.call('HDEL', KEYS[1], ARGV[1], 'attempts:' .. ARGV[1], 'claim:' .. ARGV[1], 'claim-expiry:' .. ARGV[1], 'version:' .. ARGV[1])
-  redis.call('ZREM', KEYS[2], ARGV[1])
-  redis.call('ZREM', KEYS[3], ARGV[1])
-  redis.call('SREM', KEYS[4], ARGV[1])
-  if ARGV[5] == '1' then return -2 end
-  return -1
-end
-return 1
-`;
 
 const CLAIM_LUA = `
 local raw = redis.call('HGET', KEYS[1], ARGV[1])
@@ -262,6 +228,7 @@ async function store(
 	)) as number;
 	if (status === -1) throw new Error('Webhook terminal outbox is at capacity');
 	if (status === -2) throw new Error('Webhook DLQ is at protected capacity');
+	if (status === -3) throw new Error('Existing protected webhook outbox is inconsistent');
 	return { dlqId, inserted: status === 1 };
 }
 
