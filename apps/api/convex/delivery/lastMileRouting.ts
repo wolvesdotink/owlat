@@ -21,6 +21,7 @@ interface LastMileInput {
 	routingReentryToken: string;
 	startedAt: number;
 	deliveryDomain: DeliveryDomain;
+	mtaReconciliation?: boolean;
 }
 
 export interface LastMileRoutingReady {
@@ -61,6 +62,7 @@ export async function resolveLastMileRouting(
 	if (!organizationId)
 		throw new Error('Delivery safety decision requires an organization identity.');
 	if (!plan.isMtaGoverned) {
+		if (input.mtaReconciliation) return { kind: 'defer', retryAfterMs: 60_000 };
 		return { kind: 'ready', providerKind, route, organizationId };
 	}
 	// Convex snapshots are authoritative for IP/DNSBL/persistent-defer routing.
@@ -76,6 +78,9 @@ export async function resolveLastMileRouting(
 	);
 	if (!baseProviderKind) {
 		throw new Error('Owned-MTA routing has no configured base transport.');
+	}
+	if (input.mtaReconciliation && baseProviderKind !== 'mta') {
+		return { kind: 'defer', retryAfterMs: 60_000 };
 	}
 
 	const decision = await resolveMtaRoutingDecision({
@@ -108,6 +113,9 @@ export async function resolveLastMileRouting(
 			organizationId,
 			routingLease: decision.leaseToken,
 		};
+	}
+	if (input.mtaReconciliation) {
+		return { kind: 'defer', retryAfterMs: 60_000 };
 	}
 	if (baseProviderKind === 'mta' && route?.providerType !== 'ses') {
 		route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {

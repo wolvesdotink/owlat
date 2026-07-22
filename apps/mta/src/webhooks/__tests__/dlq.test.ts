@@ -6,12 +6,15 @@ import {
 	listFailed,
 	getEntry,
 	removeOne,
-	updateEntry,
 	getStats,
 	getAllIds,
-	claimEligible,
+	listEligibleIds,
 	claimOne,
 	settleClaim,
+	webhookDlqRetryDelayMs,
+	WEBHOOK_DLQ_ENTRIES_KEY,
+	WEBHOOK_DLQ_CREATED_KEY,
+	WEBHOOK_DLQ_DUE_KEY,
 } from '../dlq.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 import type { MtaWebhookEvent } from '../../types.js';
@@ -66,8 +69,9 @@ describe('dlq', () => {
 		it('normalizes legacy free-form errors without returning their text', async () => {
 			const legacyErrorSentinel = 'provider-response-must-not-escape';
 			const dlqId = 'legacy-entry';
-			await redis.set(
-				`mta:dlq:entry:${dlqId}`,
+			await redis.hset(
+				WEBHOOK_DLQ_ENTRIES_KEY,
+				dlqId,
 				JSON.stringify({
 					dlqId,
 					event: createTestEvent(),
@@ -76,7 +80,6 @@ describe('dlq', () => {
 					createdAt: Date.now(),
 				})
 			);
-
 			const entry = await getEntry(redis, dlqId);
 
 			expect(entry?.failure).toEqual({ category: 'legacy' });
@@ -121,21 +124,6 @@ describe('dlq', () => {
 		});
 	});
 
-	describe('updateEntry', () => {
-		it('overwrites entry', async () => {
-			const dlqId = await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
-			const entry = await getEntry(redis, dlqId);
-
-			entry!.attempts = 3;
-			entry!.lastRetryAt = Date.now();
-			await updateEntry(redis, entry!);
-
-			const updated = await getEntry(redis, dlqId);
-			expect(updated!.attempts).toBe(3);
-			expect(updated!.lastRetryAt).toBeDefined();
-		});
-	});
-
 	describe('getStats', () => {
 		it('returns total and timestamps', async () => {
 			await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, config);
@@ -168,9 +156,15 @@ describe('dlq', () => {
 	});
 
 	describe('atomic retry claims', () => {
-		async function seedRaw(id: string, attempts: number, createdAt: number) {
-			await redis.set(
-				`mta:dlq:entry:${id}`,
+		async function seedRaw(
+			id: string,
+			attempts: number,
+			createdAt: number,
+			options: { includeExhaustedInDue?: boolean } = {}
+		) {
+			await redis.hset(
+				WEBHOOK_DLQ_ENTRIES_KEY,
+				id,
 				JSON.stringify({
 					dlqId: id,
 					event: createTestEvent({ messageId: id }),
@@ -179,25 +173,56 @@ describe('dlq', () => {
 					createdAt,
 				})
 			);
-			await redis.zadd('mta:dlq', createdAt, id);
+			await redis.hset(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`, String(attempts));
+			await redis.zadd(WEBHOOK_DLQ_CREATED_KEY, createdAt, id);
+			if (attempts < 8 || options.includeExhaustedInDue) {
+				await redis.zadd(WEBHOOK_DLQ_DUE_KEY, createdAt + 60_000, id);
+			}
 		}
 
-		it('walks past more than 50 exhausted entries to claim newer due work', async () => {
-			for (let index = 0; index < 51; index++) await seedRaw(`exhausted-${index}`, 8, index);
-			await seedRaw('routing-reentry-due', 0, 100);
+		it('drains a legacy >1000 exhausted due prefix without deleting inspectable rows', async () => {
+			for (let index = 0; index < 1_001; index++) {
+				await seedRaw(`exhausted-${index}`, 8, index, { includeExhaustedInDue: true });
+			}
+			await seedRaw('routing-reentry-due', 0, 2_000);
 
-			const claimed = await claimEligible(redis, {
-				owner: 'sweeper-a',
+			const firstPage = await listEligibleIds(redis, {
 				now: 1_000_000,
 				limit: 50,
-				autoRetryLimit: 8,
-				pageSize: 50,
+				scanLimit: 1_000,
 			});
+			expect(firstPage).toHaveLength(1_000);
+			expect(firstPage).not.toContain('routing-reentry-due');
+			for (const id of firstPage) {
+				expect(
+					await claimOne(redis, id, {
+						owner: 'sweeper-first-pass',
+						now: 1_000_000,
+						requireDue: true,
+						enforceAutoLimit: true,
+						autoRetryLimit: 8,
+					})
+				).toBeNull();
+			}
 
-			expect(claimed.map((entry) => entry.dlqId)).toEqual(['routing-reentry-due']);
+			const secondPage = await listEligibleIds(redis, {
+				now: 1_000_000,
+				limit: 50,
+				scanLimit: 1_000,
+			});
+			expect(secondPage).toContain('routing-reentry-due');
 			expect(
-				(await listFailed(redis, 100)).entries.filter((entry) => entry.attempts === 8)
-			).toHaveLength(51);
+				await claimOne(redis, 'routing-reentry-due', {
+					owner: 'sweeper-second-pass',
+					now: 1_000_000,
+					requireDue: true,
+					enforceAutoLimit: true,
+					autoRetryLimit: 8,
+				})
+			).not.toBeNull();
+			expect(
+				(await listFailed(redis, 2_000)).entries.filter((entry) => entry.attempts === 8)
+			).toHaveLength(1_001);
 		});
 
 		it('allows only one owner, reclaims an expired lease, and rejects stale settlement', async () => {
@@ -231,9 +256,53 @@ describe('dlq', () => {
 			expect(await settleClaim(redis, winner!, 'failure', 100_003)).toBe(false);
 			expect(await settleClaim(redis, replacement!, 'success', 100_003)).toBe(true);
 			expect(await getEntry(redis, 'race')).toBeNull();
-			// Every ownership CAS script is deliberately single-key; index cleanup
-			// is idempotent after the CAS, so Redis Cluster cannot CROSSSLOT.
-			expect(evalSpy.mock.calls.every((call) => call[1] === 1)).toBe(true);
+			// Every transition covers the same three shared-hash-slot structures.
+			expect(evalSpy.mock.calls.every((call) => call[1] === 3)).toBe(true);
+		});
+
+		it('bases retry due time on actual settlement completion and clears transient claim fields', async () => {
+			await seedRaw('completion-backoff', 0, 0);
+			const claimed = await claimOne(redis, 'completion-backoff', {
+				owner: 'sweeper',
+				now: 100_000,
+				leaseMs: 50_000,
+				requireDue: true,
+				enforceAutoLimit: true,
+				autoRetryLimit: 8,
+			});
+			expect(claimed).not.toBeNull();
+
+			const completedAt = 140_000;
+			expect(await settleClaim(redis, claimed!, 'failure', completedAt)).toBe(true);
+			expect(Number(await redis.zscore(WEBHOOK_DLQ_DUE_KEY, 'completion-backoff'))).toBe(
+				completedAt + webhookDlqRetryDelayMs(1)
+			);
+			const fields = await redis.hkeys(WEBHOOK_DLQ_ENTRIES_KEY);
+			expect(fields).not.toContain('claim:completion-backoff');
+			expect(fields).not.toContain('claim-expiry:completion-backoff');
+			expect(fields.filter((field) => field.endsWith('completion-backoff')).sort()).toEqual([
+				'attempts:completion-backoff',
+				'completion-backoff',
+				'version:completion-backoff',
+			]);
+		});
+
+		it('removes payload, attempts, claim, expiry, and version after successful settlement', async () => {
+			await seedRaw('metadata-cleanup', 0, 0);
+			const claimed = await claimOne(redis, 'metadata-cleanup', {
+				owner: 'sweeper',
+				now: 100_000,
+				requireDue: true,
+				enforceAutoLimit: true,
+				autoRetryLimit: 8,
+			});
+			expect(claimed).not.toBeNull();
+			expect(await settleClaim(redis, claimed!, 'success', 100_100)).toBe(true);
+			expect(
+				(await redis.hkeys(WEBHOOK_DLQ_ENTRIES_KEY)).filter((field) =>
+					field.endsWith('metadata-cleanup')
+				)
+			).toEqual([]);
 		});
 
 		it('prevents a manual retry from racing an active automatic claim', async () => {
@@ -255,5 +324,46 @@ describe('dlq', () => {
 			expect(automatic).not.toBeNull();
 			expect(manual).toBeNull();
 		});
+
+		it('makes discard win atomically over both success and failure settlement', async () => {
+			for (const outcome of ['success', 'failure'] as const) {
+				await seedRaw(`discard-${outcome}`, 0, 0);
+				const claimed = await claimOne(redis, `discard-${outcome}`, {
+					owner: 'sweeper',
+					now: 100_000,
+					requireDue: true,
+					enforceAutoLimit: true,
+					autoRetryLimit: 8,
+				});
+				expect(claimed).not.toBeNull();
+				expect(await removeOne(redis, `discard-${outcome}`)).toBe(true);
+				expect(await settleClaim(redis, claimed!, outcome, 100_001)).toBe(false);
+				expect(await getEntry(redis, `discard-${outcome}`)).toBeNull();
+				expect(await redis.zscore(WEBHOOK_DLQ_CREATED_KEY, `discard-${outcome}`)).toBeNull();
+				expect(await redis.zscore(WEBHOOK_DLQ_DUE_KEY, `discard-${outcome}`)).toBeNull();
+			}
+		});
+	});
+
+	it('erases evicted raw payloads from every DLQ structure', async () => {
+		const one = { ...config, webhookDlqMaxSize: 1 };
+		const first = await storeFailed(
+			redis,
+			createTestEvent({ message: 'raw-rfc822-private-first' }),
+			TRANSPORT_FAILURE,
+			one
+		);
+		await storeFailed(
+			redis,
+			createTestEvent({ message: 'raw-rfc822-private-second' }),
+			TRANSPORT_FAILURE,
+			one
+		);
+		expect(await redis.hexists(WEBHOOK_DLQ_ENTRIES_KEY, first)).toBe(0);
+		expect(await redis.zscore(WEBHOOK_DLQ_CREATED_KEY, first)).toBeNull();
+		expect(await redis.zscore(WEBHOOK_DLQ_DUE_KEY, first)).toBeNull();
+		expect(JSON.stringify(await redis.hgetall(WEBHOOK_DLQ_ENTRIES_KEY))).not.toContain(
+			'raw-rfc822-private-first'
+		);
 	});
 });

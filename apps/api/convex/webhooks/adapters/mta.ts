@@ -30,6 +30,7 @@ interface MtaWebhookPayload {
 	recipient?: string;
 	bounceType?: 'hard' | 'soft';
 	message?: string;
+	errorCode?: unknown;
 	ip?: string;
 	blocklists?: string[];
 	severity?: 'info' | 'warning' | 'critical';
@@ -234,20 +235,29 @@ export const mtaAdapter: InboundAdapter = {
 					bounceType: payload.bounceType === 'hard' ? 'hard' : 'soft',
 					...(payload.message ? { bounceMessage: payload.message } : {}),
 					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+					providerType: 'mta',
 				};
 			}
 			case 'failed': {
-				// Terminal, NON-bounce failure (MTA post-DATA ambiguous drop). Map to
+				// Terminal, NON-bounce failure (for example a screened message or an
+				// ambiguous post-DATA drop). Map to
 				// the `failed` send status — distinct from `bounced`, so the dispatcher
 				// applies NO recipient suppression and NO reputation penalty.
 				if (!payload.messageId) return null;
+				const errorCode =
+					typeof payload.errorCode === 'string' &&
+					payload.errorCode.length > 0 &&
+					payload.errorCode.length <= 128
+						? payload.errorCode
+						: 'ambiguous_post_data';
 				return {
 					kind: 'email.failed',
 					providerMessageId: payload.messageId,
 					at: payload.timestamp ?? Date.now(),
 					errorMessage: payload.message ?? 'Delivery failed (ambiguous post-DATA drop)',
-					errorCode: 'ambiguous_post_data',
+					errorCode,
 					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+					providerType: 'mta',
 				};
 			}
 			case 'complained': {
@@ -259,6 +269,8 @@ export const mtaAdapter: InboundAdapter = {
 						kind: 'email.complained',
 						providerMessageId: payload.messageId,
 						at: payload.timestamp,
+						providerType: 'mta',
+						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 					};
 				}
 				if (payload.recipient) {
@@ -266,6 +278,8 @@ export const mtaAdapter: InboundAdapter = {
 						kind: 'email.complained',
 						recipient: payload.recipient,
 						at: payload.timestamp,
+						providerType: 'mta',
+						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 					};
 				}
 				return null;

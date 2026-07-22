@@ -370,6 +370,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			kind: 'email.complained',
 			recipient: 'victim@example.com',
 			at: 4000,
+			deliveryDomain: 'production',
 		};
 
 		await dispatchInboundEvent(ctx, event);
@@ -381,6 +382,20 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			email: 'victim@example.com',
 			reason: 'complained',
 		});
+	});
+
+	it.each([
+		{ name: 'member preview', deliveryDomain: 'member_test' as const },
+		{ name: 'unknown provenance', deliveryDomain: undefined },
+	])('does not suppress a redacted recipient for $name', async ({ deliveryDomain }) => {
+		const { ctx, runMutationCalls } = makeCtx();
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.complained',
+			recipient: 'victim@example.com',
+			at: 4000,
+			...(deliveryDomain ? { deliveryDomain } : {}),
+		});
+		expect(runMutationCalls).toHaveLength(0);
 	});
 
 	it('no-ops an email.complained that carries neither a Message-ID nor a recipient', async () => {

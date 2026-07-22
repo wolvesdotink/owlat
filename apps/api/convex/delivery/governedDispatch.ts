@@ -25,6 +25,8 @@ export interface WorkerRetryState {
 	attempt: number;
 	startedAt: number;
 	idempotencyKey: string;
+	workAttemptId?: string;
+	acceptanceReconciliation?: boolean;
 }
 
 type SendRef =
@@ -61,6 +63,16 @@ export type GovernedDispatchResult<TEnvelope> =
 			retryAfterMs: number;
 			envelopeInput: TEnvelope;
 			retryState: WorkerRetryState;
+	  }
+	| {
+			success: false;
+			acceptanceUnknown: true;
+			providerMessageId: string;
+			workAttemptId: string;
+			startedAt: number;
+			envelopeInput: TEnvelope;
+			retryState: WorkerRetryState;
+			retryAfterMs?: number;
 	  };
 
 function currentRetryState(
@@ -68,6 +80,7 @@ function currentRetryState(
 	idempotencyKey: string
 ): WorkerRetryState {
 	return {
+		...retryState,
 		attempt: retryState?.attempt ?? 1,
 		startedAt: retryState?.startedAt ?? Date.now(),
 		idempotencyKey,
@@ -106,7 +119,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	if (!organizationId)
 		throw new Error('Delivery safety decision requires an organization identity.');
 	if (!request.sendRef) throw new Error('Governed MTA delivery requires a durable Send reference.');
-	const workAttemptId = crypto.randomUUID();
+	const workAttemptId = retryState.workAttemptId ?? crypto.randomUUID();
 	const snapshot = await ctx.runMutation(internal.delivery.routingReentry.issueSnapshot, {
 		sendRef: request.sendRef,
 		organizationId,
@@ -127,11 +140,24 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		routingReentryToken: snapshot.token,
 		startedAt: retryState.startedAt,
 		deliveryDomain: request.deliveryDomain,
+		mtaReconciliation: retryState.acceptanceReconciliation === true,
 	});
 	if (routing.kind === 'defer') {
 		await ctx.runMutation(internal.delivery.routingReentry.discardSnapshot, {
 			token: snapshot.token,
 		});
+		if (retryState.acceptanceReconciliation) {
+			return {
+				success: false,
+				acceptanceUnknown: true,
+				providerMessageId: idempotencyKey,
+				workAttemptId,
+				startedAt: retryState.startedAt,
+				envelopeInput: request.envelopeInput,
+				retryState,
+				retryAfterMs: routing.retryAfterMs,
+			};
+		}
 		return {
 			success: false,
 			deferred: true,
@@ -142,6 +168,13 @@ export async function dispatchGovernedEmail<TEnvelope>(
 	}
 
 	const { providerKind, route, routingLease } = routing;
+	if (providerKind === 'mta') {
+		const binding = await ctx.runMutation(internal.delivery.sendLifecycle.bindMtaProviderIdentity, {
+			send: request.sendRef,
+			providerMessageId: idempotencyKey,
+		});
+		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
+	}
 	if (providerKind !== 'mta') {
 		await ctx.runMutation(internal.delivery.routingReentry.discardSnapshot, {
 			token: snapshot.token,
@@ -202,6 +235,21 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
 			envelopeInput: request.envelopeInput,
 			retryState: nextRetryState(retryState),
+		};
+	}
+	if (providerKind === 'mta' && dispatched.result.acceptanceUnknown) {
+		return {
+			success: false,
+			acceptanceUnknown: true,
+			providerMessageId: idempotencyKey,
+			workAttemptId,
+			startedAt: retryState.startedAt,
+			envelopeInput: request.envelopeInput,
+			retryState: {
+				...retryState,
+				workAttemptId,
+				acceptanceReconciliation: true,
+			},
 		};
 	}
 

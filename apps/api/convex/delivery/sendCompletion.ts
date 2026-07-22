@@ -5,7 +5,7 @@ import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
-import type { WorkerEnvelopeInput } from './workerEnvelope';
+import type { WorkerEnvelopeInput, WorkerRetryState } from './workerEnvelope';
 
 // ============================================================================
 // Send completion (module) — see CONTEXT.md.
@@ -54,8 +54,11 @@ interface SendWorkerSuccess {
 	deferred?: boolean;
 	retryAfterMs?: number;
 	envelopeInput?: WorkerEnvelopeInput;
-	retryState?: { attempt: number; startedAt: number; idempotencyKey: string };
+	retryState?: WorkerRetryState;
 	acceptedForDelivery?: true;
+	acceptanceUnknown?: true;
+	workAttemptId?: string;
+	startedAt?: number;
 }
 
 export const completeSend = internalMutation({
@@ -66,6 +69,38 @@ export const completeSend = internalMutation({
 
 		const returnValue =
 			result.kind === 'success' ? (result.returnValue as SendWorkerSuccess | undefined) : undefined;
+
+		if (
+			returnValue?.acceptanceUnknown &&
+			returnValue.providerMessageId &&
+			returnValue.envelopeInput &&
+			returnValue.retryState
+		) {
+			const send = await ctx.db.get(sendRef.id);
+			if (!send || send.status !== 'queued') return;
+			if (now - returnValue.retryState.startedAt < GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+				await ctx.scheduler.runAfter(
+					Math.min(Math.max(returnValue.retryAfterMs ?? 1_000, 1_000), 3_600_000),
+					internal.delivery.sendCompletion.retrySend,
+					{
+						sendRef,
+						envelopeInput: returnValue.envelopeInput,
+						retryState: returnValue.retryState,
+					}
+				);
+				return;
+			}
+			await ctx.runMutation(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId, {
+				providerMessageId: returnValue.providerMessageId,
+				transition: {
+					to: 'failed',
+					at: now,
+					errorMessage: 'MTA intake acceptance could not be confirmed before the delivery deadline',
+					errorCode: 'MTA_ACCEPTANCE_UNCONFIRMED',
+				},
+			});
+			return;
+		}
 
 		if (
 			returnValue?.deferred &&

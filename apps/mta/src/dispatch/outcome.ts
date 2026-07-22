@@ -371,17 +371,6 @@ function reduceSoftBounce(
 					smtpResponse: outcome.error,
 				},
 			},
-			{
-				kind: 'notify_convex',
-				event: {
-					event: 'bounced',
-					messageId: job.messageId,
-					organizationId: job.organizationId,
-					bounceType: 'soft',
-					message: outcome.error,
-					timestamp: Date.now(),
-				},
-			},
 		],
 		defer: {
 			delayMs: 60_000,

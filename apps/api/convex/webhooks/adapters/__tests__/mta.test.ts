@@ -112,6 +112,7 @@ describe('mtaAdapter.parseEvent', () => {
 				messageId: 'msg_1',
 				bounceType: 'hard',
 				message: 'user unknown',
+				deliveryDomain: 'production',
 				timestamp: 1700000000000,
 			})
 		);
@@ -121,6 +122,8 @@ describe('mtaAdapter.parseEvent', () => {
 			at: 1700000000000,
 			bounceType: 'hard',
 			bounceMessage: 'user unknown',
+			providerType: 'mta',
+			deliveryDomain: 'production',
 		});
 	});
 
@@ -162,6 +165,7 @@ describe('mtaAdapter.parseEvent', () => {
 			at: 1700000000000,
 			errorMessage: 'Ambiguous post-DATA drop: connection reset',
 			errorCode: 'ambiguous_post_data',
+			providerType: 'mta',
 		});
 		expect(event?.kind).not.toBe('email.bounced');
 	});
@@ -177,6 +181,33 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
+	it.each(['CONTENT_SCREENED', 'RECIPIENT_SUPPRESSED'])(
+		'preserves the bounded MTA terminal error code %s',
+		(errorCode) => {
+			const event = mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'failed',
+					messageId: 'msg_drop',
+					errorCode,
+					timestamp: 1700000000000,
+				})
+			);
+			expect(event).toMatchObject({ kind: 'email.failed', errorCode });
+		}
+	);
+
+	it('does not accept an unbounded terminal error code', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'failed',
+				messageId: 'msg_drop',
+				errorCode: 'x'.repeat(129),
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toMatchObject({ errorCode: 'ambiguous_post_data' });
+	});
+
 	it('returns null for failed without messageId', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({ event: 'failed', timestamp: 1700000000000 })
@@ -184,11 +215,12 @@ describe('mtaAdapter.parseEvent', () => {
 		expect(event).toBeNull();
 	});
 
-	it('parses complained', () => {
+	it('parses complained with authenticated member-test provenance', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'complained',
 				messageId: 'msg_2',
+				deliveryDomain: 'member_test',
 				timestamp: 1700000000000,
 			})
 		);
@@ -196,6 +228,8 @@ describe('mtaAdapter.parseEvent', () => {
 			kind: 'email.complained',
 			providerMessageId: 'msg_2',
 			at: 1700000000000,
+			providerType: 'mta',
+			deliveryDomain: 'member_test',
 		});
 	});
 
@@ -207,6 +241,7 @@ describe('mtaAdapter.parseEvent', () => {
 			JSON.stringify({
 				event: 'complained',
 				recipient: 'victim@example.com',
+				deliveryDomain: 'member_test',
 				timestamp: 1700000000000,
 			})
 		);
@@ -214,6 +249,8 @@ describe('mtaAdapter.parseEvent', () => {
 			kind: 'email.complained',
 			recipient: 'victim@example.com',
 			at: 1700000000000,
+			providerType: 'mta',
+			deliveryDomain: 'member_test',
 		});
 	});
 
@@ -230,6 +267,7 @@ describe('mtaAdapter.parseEvent', () => {
 			kind: 'email.complained',
 			providerMessageId: 'msg_2',
 			at: 1700000000000,
+			providerType: 'mta',
 		});
 	});
 

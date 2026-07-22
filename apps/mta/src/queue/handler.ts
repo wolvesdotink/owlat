@@ -43,6 +43,7 @@ import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { releaseWarmingSlot } from '../intelligence/warming.js';
 import { releaseHalfOpenProbe } from '../intelligence/circuitBreaker.js';
+import { recordFeedbackProvenance } from '../bounce/feedbackProvenance.js';
 
 /**
  * Add random jitter (±15%) to a delay to prevent thundering herd when
@@ -165,6 +166,9 @@ export async function handleEmailJob(
 	}
 
 	const startTime = Date.now();
+	await recordFeedbackProvenance(redis, data).catch((err) =>
+		logger.warn({ err, messageId: data.messageId }, 'Failed to persist delayed-feedback provenance')
+	);
 	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease, destination);
 	const durationMs = Date.now() - startTime;
 
@@ -398,6 +402,21 @@ async function handleDrop(
 	effects.push({
 		kind: 'log_delivery_event',
 		event: buildDropEvent(piped, job, domain, providerKey),
+	});
+	effects.push({
+		kind: 'notify_convex',
+		event: {
+			event: 'failed',
+			messageId: job.messageId,
+			organizationId: job.organizationId,
+			deliveryDomain: job.deliveryDomain,
+			message:
+				piped.status === 'screened'
+					? `Content screening rejected: ${piped.reason}`
+					: 'Recipient suppressed by MTA policy',
+			errorCode: piped.status === 'screened' ? 'CONTENT_SCREENED' : 'RECIPIENT_SUPPRESSED',
+			timestamp: Date.now(),
+		},
 	});
 
 	await applyEffects(effects, deps);

@@ -58,6 +58,7 @@ describe('dispatchGovernedEmail', () => {
 			routingReentryToken: 'reentry-token',
 			startedAt: expect.any(Number),
 			deliveryDomain: 'production',
+			mtaReconciliation: false,
 		});
 		expect(sendProviderDispatch).not.toHaveBeenCalled();
 		expect(result).toMatchObject({
@@ -70,6 +71,9 @@ describe('dispatchGovernedEmail', () => {
 	});
 
 	it('binds the governed MTA route, lease, pool, and stable idempotency key', async () => {
+		runMutation
+			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true });
 		resolveLastMileRouting.mockResolvedValue({
 			kind: 'ready',
 			providerKind: 'mta',
@@ -125,6 +129,9 @@ describe('dispatchGovernedEmail', () => {
 	});
 
 	it('preserves the original retry key when the provider rejects a stale lease', async () => {
+		runMutation
+			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true });
 		const startedAt = Date.now() - 100;
 		resolveLastMileRouting.mockResolvedValue({
 			kind: 'ready',
@@ -164,6 +171,60 @@ describe('dispatchGovernedEmail', () => {
 				idempotencyKey: 'send_original',
 			},
 		});
+	});
+
+	it('replays a request-never-arrived ambiguity with the same MTA-only work identity', async () => {
+		runMutation
+			.mockResolvedValueOnce({ token: 'reentry-token-1', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true })
+			.mockResolvedValueOnce({ token: 'reentry-token-2', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true });
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'ready',
+			providerKind: 'mta',
+			route: { ipPool: 'campaign' },
+			organizationId: 'org-1',
+			routingLease: 'lease-1',
+		});
+		sendProviderDispatch
+			.mockResolvedValueOnce({
+				result: {
+					success: false,
+					errorCode: 'SERVER_ERROR',
+					errorMessage: 'request outcome unknown',
+					acceptanceUnknown: true,
+				},
+				providerType: 'mta',
+				latencyMs: 10,
+				attempts: 3,
+			})
+			.mockResolvedValueOnce({
+				result: { success: true, id: 'send_send-row-1' },
+				providerType: 'mta',
+				latencyMs: 5,
+				attempts: 1,
+			});
+
+		const unknown = await dispatchGovernedEmail(ctx, baseRequest);
+		expect(unknown).toMatchObject({
+			success: false,
+			acceptanceUnknown: true,
+			retryState: { acceptanceReconciliation: true, workAttemptId: expect.any(String) },
+		});
+		if (!('acceptanceUnknown' in unknown)) throw new Error('expected ambiguity');
+		const accepted = await dispatchGovernedEmail(ctx, {
+			...baseRequest,
+			retryState: unknown.retryState,
+		});
+
+		const firstExtras = sendProviderDispatch.mock.calls[0]![3] as { workAttemptId: string };
+		const secondExtras = sendProviderDispatch.mock.calls[1]![3] as { workAttemptId: string };
+		expect(secondExtras.workAttemptId).toBe(firstExtras.workAttemptId);
+		expect(resolveLastMileRouting.mock.calls[1]![1]).toMatchObject({
+			workAttemptId: firstExtras.workAttemptId,
+			mtaReconciliation: true,
+		});
+		expect(accepted).toMatchObject({ success: true, acceptedForDelivery: true });
 	});
 
 	it.each([
