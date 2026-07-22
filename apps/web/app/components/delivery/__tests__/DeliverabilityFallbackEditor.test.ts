@@ -34,4 +34,11 @@ describe('DeliverabilityFallbackEditor', () => {
 		expect(options[0]!.attributes('value')).toBe('ses');
 		expect(wrapper.emitted('update:relay')?.at(-1)).toEqual(['ses']);
 	});
+
+	it('does not universally tell manual-SPF operators to replace their policy', () => {
+		const text = mountEditor('ses').text();
+		expect(text).toContain('when one is shown');
+		expect(text).toContain('preserve the reviewed manual primary SPF');
+		expect(text).not.toContain('Publish the single merged apex SPF shown');
+	});
 });

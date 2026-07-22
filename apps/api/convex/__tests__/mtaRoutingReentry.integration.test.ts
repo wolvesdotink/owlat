@@ -1,6 +1,6 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ROUTING_REENTRY_TOKEN_TTL_MS } from '@owlat/shared';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
@@ -199,18 +199,58 @@ describe('authenticated MTA routing re-entry', () => {
 		expect(enqueueAction).not.toHaveBeenCalled();
 	});
 
-	it('rejects the exact token at the expiry boundary', async () => {
+	it('rejects the exact token at the cumulative deadline boundary', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 		const value = await fixture();
-		vi.advanceTimersByTime(ROUTING_REENTRY_TOKEN_TTL_MS);
+		vi.advanceTimersByTime(GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
 		const result = await value.t.mutation(
 			internal.delivery.routingReentry.consumeSnapshot,
 			callbackArgs(value)
 		);
-		expect(result).toEqual({ disposition: 'expired' });
+		expect(result).toEqual({ disposition: 'deadline_expired' });
 		expect(enqueueAction).not.toHaveBeenCalled();
+		expect(await value.t.run((ctx) => ctx.db.get(value.sendId))).toMatchObject({
+			status: 'failed',
+			errorCode: 'DELIVERY_DEADLINE_EXPIRED',
+		});
 	});
+
+	it.each([
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS - 1, disposition: 'enqueued' },
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS, disposition: 'deadline_expired' },
+		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS + 1, disposition: 'deadline_expired' },
+	] as const)(
+		'handles delayed DLQ recovery at cumulative offset $offset without resetting its origin',
+		async ({ offset, disposition }) => {
+			vi.useFakeTimers();
+			vi.setSystemTime(new Date('2026-02-01T00:00:00Z'));
+			const value = await fixture();
+			vi.advanceTimersByTime(offset);
+
+			const result = await value.t.mutation(
+				internal.delivery.routingReentry.consumeSnapshot,
+				callbackArgs(value)
+			);
+			expect(result).toMatchObject({ disposition });
+			if (disposition === 'enqueued') {
+				expect(enqueueAction).toHaveBeenCalledOnce();
+				expect(enqueueAction.mock.calls[0]?.[2]).toMatchObject({
+					retryState: { startedAt: value.retryState.startedAt },
+				});
+				expect(await value.t.run((ctx) => ctx.db.get(value.sendId))).toMatchObject({
+					status: 'queued',
+					mtaRoutingReentryAttempt: 2,
+				});
+			} else {
+				expect(enqueueAction).not.toHaveBeenCalled();
+				expect(await value.t.run((ctx) => ctx.db.get(value.sendId))).toMatchObject({
+					status: 'failed',
+					errorCode: 'DELIVERY_DEADLINE_EXPIRED',
+				});
+			}
+		}
+	);
 
 	it('marks the Send failed instead of creating attempt nine', async () => {
 		const value = await fixture(9);

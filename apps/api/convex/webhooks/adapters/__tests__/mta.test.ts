@@ -252,6 +252,7 @@ describe('mtaAdapter.parseEvent', () => {
 			kind: 'email.delivered',
 			providerMessageId: 'pb-123',
 			at: 1700000000000,
+			providerType: 'mta',
 		});
 	});
 

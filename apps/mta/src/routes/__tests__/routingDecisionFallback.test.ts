@@ -37,6 +37,8 @@ const input = {
 	messageId: 'send-1',
 	workAttemptId: 'work-1',
 	routingReentryToken: 'reentry-1',
+	startedAt: Date.now(),
+	deliveryDomain: 'production',
 	messageType: 'campaign',
 	organizationId: 'org-1',
 	recipient: 'person@gmail.com',
@@ -118,5 +120,31 @@ describe('global breaker dominance over relay fallback', () => {
 			expect.any(Number),
 			3
 		);
+	});
+
+	it('keeps member tests behind global and destination-provider breakers', async () => {
+		canSend.mockResolvedValueOnce({
+			allowed: false,
+			state: 'open',
+			generation: 2,
+			retryAfter: 30_000,
+		});
+		expect(await decide({ deliveryDomain: 'member_test' })).toMatchObject({
+			decision: 'defer',
+			reason: 'global_safety',
+		});
+
+		canSendScope.mockResolvedValueOnce({ allowed: false, state: 'open', generation: 2 });
+		expect(await decide({ deliveryDomain: 'member_test' })).toMatchObject({
+			decision: 'defer',
+			reason: 'global_safety',
+		});
+	});
+
+	it('never reserves persistent warming capacity for a member test', async () => {
+		expect(
+			await decide({ deliveryDomain: 'member_test', allowWarmupOverflow: true })
+		).toMatchObject({ decision: 'mta' });
+		expect(reserveWarmingSlot).not.toHaveBeenCalled();
 	});
 });

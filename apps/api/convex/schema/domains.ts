@@ -114,6 +114,12 @@ export const domainTables = {
 		// domain's DNS/status so an MTA identity and SES identity can coexist.
 		dnsRecords: v.optional(dnsRecordsValidator),
 		verificationResults: v.optional(verificationResultsValidator),
+		// Explicit relay-SPF proof contract. When the owned MTA intentionally
+		// emits no apex SPF row, SES uses its verified custom MAIL FROM and the
+		// operator's manual primary policy remains outside relay authorization.
+		spfProofState: v.optional(
+			v.union(v.literal('dns_required'), v.literal('not_applicable_manual_primary'))
+		),
 		isProviderVerified: v.optional(v.boolean()),
 		verifiedAt: v.optional(v.number()),
 		createdAt: v.number(),

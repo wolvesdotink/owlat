@@ -19,6 +19,7 @@ import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../securi
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
 import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import { isDeliveryDomain } from '@owlat/shared';
 import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
 
 interface MtaWebhookPayload {
@@ -44,6 +45,7 @@ interface MtaWebhookPayload {
 	userReportedSpamRatio?: number;
 	destinationProvider?: unknown;
 	primarySendingDomain?: string;
+	deliveryDomain?: unknown;
 	routingReentryToken?: unknown;
 	workAttemptId?: unknown;
 	routingReentry?: unknown;
@@ -170,6 +172,9 @@ export const mtaAdapter: InboundAdapter = {
 
 	parseEvent(rawBody): InboundEvent | null {
 		const payload = JSON.parse(rawBody) as MtaWebhookPayload;
+		if (payload.deliveryDomain !== undefined && !isDeliveryDomain(payload.deliveryDomain)) {
+			return null;
+		}
 
 		switch (payload.event) {
 			case 'routing.reentry': {
@@ -228,6 +233,7 @@ export const mtaAdapter: InboundAdapter = {
 					at: payload.timestamp,
 					bounceType: payload.bounceType === 'hard' ? 'hard' : 'soft',
 					...(payload.message ? { bounceMessage: payload.message } : {}),
+					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 				};
 			}
 			case 'failed': {
@@ -241,6 +247,7 @@ export const mtaAdapter: InboundAdapter = {
 					at: payload.timestamp ?? Date.now(),
 					errorMessage: payload.message ?? 'Delivery failed (ambiguous post-DATA drop)',
 					errorCode: 'ambiguous_post_data',
+					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 				};
 			}
 			case 'complained': {
@@ -277,6 +284,7 @@ export const mtaAdapter: InboundAdapter = {
 					kind: 'email.delivered',
 					providerMessageId: payload.messageId,
 					at: payload.timestamp ?? Date.now(),
+					providerType: 'mta',
 					...(payload.organizationId ? { organizationId: payload.organizationId } : {}),
 					...(payload.recipient ? { recipient: payload.recipient } : {}),
 					...(payload.destinationProvider
@@ -285,6 +293,7 @@ export const mtaAdapter: InboundAdapter = {
 					...(payload.primarySendingDomain
 						? { primarySendingDomain: payload.primarySendingDomain }
 						: {}),
+					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 				};
 			}
 			case 'inbound.received': {

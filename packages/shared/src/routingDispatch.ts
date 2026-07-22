@@ -6,6 +6,13 @@ export type GovernedCandidateProvider = 'mta' | 'relay';
 export type GovernedIpPool = 'campaign' | 'transactional';
 
 /**
+ * Authenticated delivery provenance. Member previews use the real transport
+ * but must never mutate production recipient/reputation/compliance state.
+ */
+export const DELIVERY_DOMAINS = ['production', 'member_test'] as const;
+export type DeliveryDomain = (typeof DELIVERY_DOMAINS)[number];
+
+/**
  * Exact context bound into an MTA routing lease. Keep this tuple shared by
  * Convex and the MTA so adding a routing input cannot silently create a replay
  * surface at the transport boundary.
@@ -16,6 +23,9 @@ export interface GovernedRoutingContext {
 	workAttemptId: string;
 	/** Opaque Convex-issued handle to the server-side re-entry snapshot. */
 	routingReentryToken: string;
+	/** Original governed-delivery clock; every re-entry shares this deadline. */
+	startedAt: number;
+	deliveryDomain: DeliveryDomain;
 	messageType: GovernedMessageType;
 	organizationId: string;
 	recipient: string;
@@ -29,4 +39,8 @@ export const ROUTING_LEASE_TOKEN_MAX_LENGTH = 128;
 
 export function isGovernedMessageType(value: unknown): value is GovernedMessageType {
 	return GOVERNED_MESSAGE_TYPES.includes(value as GovernedMessageType);
+}
+
+export function isDeliveryDomain(value: unknown): value is DeliveryDomain {
+	return DELIVERY_DOMAINS.includes(value as DeliveryDomain);
 }

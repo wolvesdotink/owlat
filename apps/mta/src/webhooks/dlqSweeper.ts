@@ -1,8 +1,9 @@
 import type Redis from 'ioredis';
+import { randomUUID } from 'crypto';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 import { notifyConvex } from './convexNotifier.js';
-import { listOldest, removeOne, updateEntry } from './dlq.js';
+import { claimEligible, settleClaim } from './dlq.js';
 
 export const WEBHOOK_DLQ_AUTO_RETRY_LIMIT = 8;
 export const WEBHOOK_DLQ_SWEEP_BATCH_SIZE = 50;
@@ -17,26 +18,28 @@ export async function sweepWebhookDlq(
 	config: MtaConfig,
 	now = Date.now()
 ): Promise<{ delivered: number; attempted: number }> {
-	const entries = await listOldest(redis, WEBHOOK_DLQ_SWEEP_BATCH_SIZE);
+	const owner = `sweeper:${randomUUID()}`;
+	const entries = await claimEligible(redis, {
+		owner,
+		now,
+		limit: WEBHOOK_DLQ_SWEEP_BATCH_SIZE,
+		autoRetryLimit: WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
+	});
 	let delivered = 0;
 	let attempted = 0;
 	for (const entry of entries) {
-		if (entry.attempts >= WEBHOOK_DLQ_AUTO_RETRY_LIMIT) continue;
-		const dueAt = (entry.lastRetryAt ?? entry.createdAt) + webhookDlqRetryDelayMs(entry.attempts);
-		if (dueAt > now) continue;
 		attempted += 1;
 		// Omit Redis so a failed sweep updates this entry instead of nesting a
 		// second DLQ record. notifyConvex still applies its bounded HTTP retries.
-		if (await notifyConvex(entry.event, config)) {
-			await removeOne(redis, entry.dlqId);
-			delivered += 1;
+		if (
+			await notifyConvex(entry.event, config, undefined, {
+				deadline: entry.claim.expiresAt - 5_000,
+			})
+		) {
+			if (await settleClaim(redis, entry, 'success', now)) delivered += 1;
 			continue;
 		}
-		await updateEntry(redis, {
-			...entry,
-			attempts: entry.attempts + 1,
-			lastRetryAt: now,
-		});
+		await settleClaim(redis, entry, 'failure', now);
 	}
 	if (attempted > 0) {
 		logger.info(

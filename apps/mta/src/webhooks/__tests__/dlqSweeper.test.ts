@@ -2,12 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../../config.js';
 
-const listOldest = vi.hoisted(() => vi.fn());
-const removeOne = vi.hoisted(() => vi.fn());
-const updateEntry = vi.hoisted(() => vi.fn());
+const claimEligible = vi.hoisted(() => vi.fn());
+const settleClaim = vi.hoisted(() => vi.fn());
 const notifyConvex = vi.hoisted(() => vi.fn());
 
-vi.mock('../dlq.js', () => ({ listOldest, removeOne, updateEntry }));
+vi.mock('../dlq.js', () => ({ claimEligible, settleClaim }));
 vi.mock('../convexNotifier.js', () => ({ notifyConvex }));
 
 const {
@@ -28,45 +27,57 @@ function entry(overrides: Record<string, unknown> = {}) {
 		failure: { category: 'transport' as const },
 		attempts: 0,
 		createdAt: 0,
+		claim: { owner: 'sweeper:test', version: 1, expiresAt: 2_000_000 },
 		...overrides,
 	};
 }
 
 beforeEach(() => {
 	vi.clearAllMocks();
-	removeOne.mockResolvedValue(undefined);
-	updateEntry.mockResolvedValue(undefined);
+	settleClaim.mockResolvedValue(true);
 });
 
 describe('automatic webhook DLQ recovery', () => {
 	it('retries one bounded oldest page, deleting success and advancing failure', async () => {
-		listOldest.mockResolvedValue([entry(), entry({ dlqId: 'dlq-2', attempts: 2 })]);
+		claimEligible.mockResolvedValue([entry(), entry({ dlqId: 'dlq-2', attempts: 2 })]);
 		notifyConvex.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
 		expect(await sweepWebhookDlq(redis, config, 1_000_000)).toEqual({
 			delivered: 1,
 			attempted: 2,
 		});
-		expect(listOldest).toHaveBeenCalledWith(redis, WEBHOOK_DLQ_SWEEP_BATCH_SIZE);
-		expect(removeOne).toHaveBeenCalledWith(redis, 'dlq-1');
-		expect(updateEntry).toHaveBeenCalledWith(
+		expect(claimEligible).toHaveBeenCalledWith(
 			redis,
-			expect.objectContaining({ dlqId: 'dlq-2', attempts: 3, lastRetryAt: 1_000_000 })
+			expect.objectContaining({
+				now: 1_000_000,
+				limit: WEBHOOK_DLQ_SWEEP_BATCH_SIZE,
+				autoRetryLimit: WEBHOOK_DLQ_AUTO_RETRY_LIMIT,
+			})
+		);
+		expect(settleClaim).toHaveBeenNthCalledWith(
+			1,
+			redis,
+			expect.objectContaining({ dlqId: 'dlq-1' }),
+			'success',
+			1_000_000
+		);
+		expect(settleClaim).toHaveBeenNthCalledWith(
+			2,
+			redis,
+			expect.objectContaining({ dlqId: 'dlq-2' }),
+			'failure',
+			1_000_000
 		);
 	});
 
 	it('leaves exhausted and not-yet-due entries inspectable without retrying', async () => {
-		listOldest.mockResolvedValue([
-			entry({ attempts: WEBHOOK_DLQ_AUTO_RETRY_LIMIT }),
-			entry({ dlqId: 'future', attempts: 1, lastRetryAt: 999_999 }),
-		]);
+		claimEligible.mockResolvedValue([]);
 		expect(await sweepWebhookDlq(redis, config, 1_000_000)).toEqual({
 			delivered: 0,
 			attempted: 0,
 		});
 		expect(notifyConvex).not.toHaveBeenCalled();
-		expect(removeOne).not.toHaveBeenCalled();
-		expect(updateEntry).not.toHaveBeenCalled();
+		expect(settleClaim).not.toHaveBeenCalled();
 	});
 
 	it('uses bounded exponential backoff', () => {

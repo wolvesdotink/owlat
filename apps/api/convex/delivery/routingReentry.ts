@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import {
+	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
 	MAX_GOVERNED_ROUTING_ATTEMPTS,
 	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
 	ROUTING_REENTRY_TOKEN_TTL_MS,
@@ -161,6 +162,11 @@ export const issueSnapshot = internalMutation({
 		retryState: retryStateValidator,
 	},
 	handler: async (ctx, args) => {
+		const now = Date.now();
+		const ageMs = now - args.retryState.startedAt;
+		if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+			throw new Error('Routing re-entry deadline expired.');
+		}
 		const send =
 			args.sendRef.kind === 'campaign'
 				? await ctx.db.get(args.sendRef.id)
@@ -179,7 +185,10 @@ export const issueSnapshot = internalMutation({
 		if (args.envelopeInput.organizationId !== args.organizationId) {
 			throw new Error('Routing re-entry envelope does not belong to the organization.');
 		}
-		const expiresAt = Date.now() + ROUTING_REENTRY_TOKEN_TTL_MS;
+		const expiresAt = Math.min(
+			now + ROUTING_REENTRY_TOKEN_TTL_MS,
+			args.retryState.startedAt + GOVERNED_MTA_MAX_MESSAGE_AGE_MS
+		);
 		const token = await encryptToken({
 			v: 1,
 			k: args.sendRef.kind === 'campaign' ? 'c' : 't',
@@ -228,7 +237,13 @@ export const consumeSnapshot = internalMutation({
 		) {
 			return { disposition: 'binding_mismatch' as const };
 		}
-		if (payload.e <= Date.now()) return { disposition: 'expired' as const };
+		const now = Date.now();
+		const ageMs = now - args.retryState.startedAt;
+		if (!Number.isFinite(ageMs) || ageMs < 0) {
+			return { disposition: 'binding_mismatch' as const };
+		}
+		const deadlineExpired = ageMs >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS;
+		if (!deadlineExpired && payload.e <= now) return { disposition: 'expired' as const };
 
 		if (payload.k === 'c') {
 			const id = ctx.db.normalizeId('emailSends', payload.i);
@@ -240,6 +255,18 @@ export const consumeSnapshot = internalMutation({
 			if (send.status !== 'queued') return { disposition: 'terminal' as const };
 			if (send.providerMessageId && send.providerMessageId !== args.messageId) {
 				return { disposition: 'message_mismatch' as const };
+			}
+			if (deadlineExpired) {
+				await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
+					send: { kind: 'campaign', id },
+					transition: {
+						to: 'failed',
+						at: now,
+						errorCode: 'DELIVERY_DEADLINE_EXPIRED',
+						errorMessage: 'Delivery exceeded the cumulative four-day routing deadline.',
+					},
+				});
+				return { disposition: 'deadline_expired' as const };
 			}
 			if ((send.mtaRoutingReentryAttempt ?? 0) >= payload.a) {
 				return { disposition: 'duplicate' as const };
@@ -283,6 +310,18 @@ export const consumeSnapshot = internalMutation({
 		if (send.status !== 'queued') return { disposition: 'terminal' as const };
 		if (send.providerMessageId && send.providerMessageId !== args.messageId) {
 			return { disposition: 'message_mismatch' as const };
+		}
+		if (deadlineExpired) {
+			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
+				send: { kind: 'transactional', id },
+				transition: {
+					to: 'failed',
+					at: now,
+					errorCode: 'DELIVERY_DEADLINE_EXPIRED',
+					errorMessage: 'Delivery exceeded the cumulative four-day routing deadline.',
+				},
+			});
+			return { disposition: 'deadline_expired' as const };
 		}
 		if ((send.mtaRoutingReentryAttempt ?? 0) >= payload.a) {
 			return { disposition: 'duplicate' as const };

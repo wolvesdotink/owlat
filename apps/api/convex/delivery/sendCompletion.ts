@@ -3,7 +3,6 @@ import { vOnCompleteArgs } from '@convex-dev/workpool';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS, MAX_GOVERNED_ROUTING_ATTEMPTS } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
-import { mirrorEmailSendWrite } from '../unifiedMessages';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
 import type { WorkerEnvelopeInput } from './workerEnvelope';
@@ -68,13 +67,12 @@ export const completeSend = internalMutation({
 		const returnValue =
 			result.kind === 'success' ? (result.returnValue as SendWorkerSuccess | undefined) : undefined;
 
-		const succeeded = Boolean(returnValue?.success && returnValue.providerMessageId);
 		if (
 			returnValue?.deferred &&
 			returnValue.envelopeInput &&
 			returnValue.retryState &&
 			returnValue.retryState.attempt <= MAX_GOVERNED_ROUTING_ATTEMPTS &&
-			now - returnValue.retryState.startedAt <= GOVERNED_MTA_MAX_MESSAGE_AGE_MS
+			now - returnValue.retryState.startedAt < GOVERNED_MTA_MAX_MESSAGE_AGE_MS
 		) {
 			await ctx.scheduler.runAfter(
 				Math.min(Math.max(returnValue.retryAfterMs ?? 60_000, 1_000), 3_600_000),
@@ -152,58 +150,6 @@ export const completeSend = internalMutation({
 				await ctx.runMutation(internal.campaigns.lifecycle.reconcileCampaignCompletion, {
 					campaignId: send.campaignId,
 				});
-			}
-		}
-
-		// Agent-reply reconciliation: an `agent_reply` Send carries the inbound
-		// message it answers. `sendApprovedReply` no longer marks that message
-		// `sent` optimistically at dispatch (ADR-0010) — it enqueues and lets the
-		// confirmed worker outcome drive the inbound message's terminal state
-		// here, symmetric to the campaign reconcile above. Without this, an agent
-		// reply would send but leave its inbound message stuck in `approved`.
-		if (sendRef.kind === 'transactional') {
-			const send = await ctx.db.get(sendRef.id);
-			if (send?.kind === 'agent_reply' && send.inboundMessageId) {
-				await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-					inboundMessageId: send.inboundMessageId,
-					input: succeeded
-						? { to: 'sent', at: now }
-						: {
-								to: 'failed',
-								at: now,
-								errorMessage:
-									result.kind === 'failed' ? result.error || 'Send failed' : 'Send failed',
-							},
-				});
-
-				// Mirror the CONFIRMED agent reply into the unified contact timeline,
-				// the outbound counterpart to the inbound mirror in
-				// inbox/messages.ts. An agent reply lives on a real conversationThread,
-				// so it's a genuine conversation turn — unlike campaign / transactional
-				// / automation sends, which are NOT mirrored (no inbound thread; they
-				// surface in the Activity tab via contactActivities). Idempotent on the
-				// provider message id and best-effort: a mirror failure must not undo
-				// the lifecycle transitions above or fail the workpool callback.
-				if (succeeded) {
-					try {
-						const inbound = await ctx.db.get(send.inboundMessageId);
-						if (inbound?.threadId && send.contactId) {
-							await mirrorEmailSendWrite(ctx, {
-								threadId: inbound.threadId,
-								contactId: send.contactId,
-								subject: send.subject,
-								textBody: inbound.draftResponse,
-								externalMessageId: returnValue?.providerMessageId,
-								status: 'sent',
-							});
-						}
-					} catch {
-						// Best-effort: the timeline mirror is a denormalized read model,
-						// never the source of truth. Swallow so a mirror error can't fail
-						// the Send completion callback (which would re-run the lifecycle
-						// transitions). The next confirmed reply re-establishes the thread.
-					}
-				}
 			}
 		}
 

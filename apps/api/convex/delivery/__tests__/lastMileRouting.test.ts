@@ -20,6 +20,8 @@ const input = {
 	idempotencyKey: 'send-1',
 	workAttemptId: 'work-1',
 	routingReentryToken: 'reentry-1',
+	startedAt: Date.now(),
+	deliveryDomain: 'production' as const,
 };
 
 afterEach(() => {

@@ -121,6 +121,9 @@ export {
 	type GovernedIpPool,
 	type GovernedMessageType,
 	type GovernedRoutingContext,
+	DELIVERY_DOMAINS,
+	type DeliveryDomain,
+	isDeliveryDomain,
 	isGovernedMessageType,
 } from './routingDispatch';
 export {

@@ -2,6 +2,8 @@ import type { Context } from 'hono';
 import type Redis from 'ioredis';
 import {
 	extractDomainOrNull,
+	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+	isDeliveryDomain,
 	isGovernedMessageType,
 	isValidEmail,
 	parseAddress,
@@ -37,6 +39,8 @@ export interface RoutingLeaseRecord {
 	messageId: string;
 	workAttemptId: string;
 	routingReentryToken: string;
+	startedAt: number;
+	deliveryDomain: DecisionRequest['deliveryDomain'];
 	organizationId: string;
 	recipient: string;
 	from: string;
@@ -66,6 +70,8 @@ export function isRoutingLeaseBoundTo(
 		lease.messageId === request.messageId &&
 		lease.workAttemptId === request.workAttemptId &&
 		lease.routingReentryToken === request.routingReentryToken &&
+		lease.startedAt === request.startedAt &&
+		lease.deliveryDomain === request.deliveryDomain &&
 		lease.organizationId === request.organizationId &&
 		lease.recipient === request.recipient.toLowerCase() &&
 		lease.from === normalizedFrom(request.from) &&
@@ -92,6 +98,8 @@ function validRequest(value: unknown): value is DecisionRequest {
 		'messageId',
 		'workAttemptId',
 		'routingReentryToken',
+		'startedAt',
+		'deliveryDomain',
 		'messageType',
 		'organizationId',
 		'recipient',
@@ -112,6 +120,11 @@ function validRequest(value: unknown): value is DecisionRequest {
 		typeof body['routingReentryToken'] === 'string' &&
 		body['routingReentryToken'].length > 0 &&
 		body['routingReentryToken'].length <= ROUTING_REENTRY_TOKEN_MAX_LENGTH &&
+		typeof body['startedAt'] === 'number' &&
+		Number.isFinite(body['startedAt']) &&
+		body['startedAt'] <= Date.now() &&
+		Date.now() - body['startedAt'] < GOVERNED_MTA_MAX_MESSAGE_AGE_MS &&
+		isDeliveryDomain(body['deliveryDomain']) &&
 		isGovernedMessageType(body['messageType']) &&
 		typeof body['organizationId'] === 'string' &&
 		body['organizationId'].length > 0 &&
@@ -218,7 +231,7 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			return c.json({ decision: 'defer', reason: 'no_owned_ip', retryAfterMs: 60_000 });
 
 		let warmingReservation: WarmingReservation | undefined;
-		if (input.allowWarmupOverflow) {
+		if (input.allowWarmupOverflow && input.deliveryDomain === 'production') {
 			const reserved = await reserveWarmingSlot(redis, selected.ip, input.messageId);
 			if (!reserved.allowed) {
 				return (await isRelayAllowedByGlobalBreaker(redis, input.organizationId))
@@ -277,6 +290,8 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 				messageId: input.messageId,
 				workAttemptId: input.workAttemptId,
 				routingReentryToken: input.routingReentryToken,
+				startedAt: input.startedAt,
+				deliveryDomain: input.deliveryDomain,
 				organizationId: input.organizationId,
 				recipient: input.recipient.toLowerCase(),
 				from: normalizedFrom(input.from),

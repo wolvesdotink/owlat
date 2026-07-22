@@ -105,22 +105,32 @@ const DISPATCH: DispatchTable = {
 						acceptedAt: e.at,
 					}
 				)
-			: await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
-					providerMessageId: e.providerMessageId,
-					transition: { to: 'delivered', at: e.at },
-				});
+			: e.providerType === 'mta'
+				? await ctx.runMutation(internal.delivery.sendLifecycle.recordMtaRemoteAcceptance, {
+						providerMessageId: e.providerMessageId,
+						at: e.at,
+					})
+				: await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+						providerMessageId: e.providerMessageId,
+						transition: { to: 'delivered', at: e.at },
+					});
 
 		// A late webhook after organization deletion must not recreate telemetry.
 		// Duplicate accepted-delivery webhooks are safe: the receipt writer below
 		// is idempotent by provider message id.
-		if (outcome.ok && e.destinationProvider === 'gmail' && e.primarySendingDomain) {
+		if (
+			e.deliveryDomain !== 'member_test' &&
+			outcome.ok &&
+			e.destinationProvider === 'gmail' &&
+			e.primarySendingDomain
+		) {
 			await ctx.runMutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
 				providerMessageId: e.providerMessageId,
 				primaryDomain: e.primarySendingDomain,
 				acceptedAt: e.at,
 			});
 		}
-		if (outcome.ok && e.destinationProvider) {
+		if (e.deliveryDomain !== 'member_test' && outcome.ok && e.destinationProvider) {
 			await ctx.runMutation(
 				internal.delivery.deliverabilityRouting.recordDestinationProviderDomain,
 				{

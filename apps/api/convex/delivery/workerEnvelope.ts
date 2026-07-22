@@ -11,6 +11,7 @@ const attachmentRefValidator = v.object({
 export const envelopeInputValidator = v.union(
 	v.object({
 		kind: v.literal('campaign'),
+		deliveryDomain: v.optional(v.literal('production')),
 		to: v.string(),
 		from: v.string(),
 		replyTo: v.optional(v.string()),
@@ -35,6 +36,7 @@ export const envelopeInputValidator = v.union(
 	}),
 	v.object({
 		kind: v.literal('transactional'),
+		deliveryDomain: v.optional(v.union(v.literal('production'), v.literal('member_test'))),
 		messageType: v.optional(v.union(v.literal('transactional'), v.literal('automation'))),
 		emailPurpose: v.union(v.literal('marketing'), v.literal('transactional')),
 		to: v.string(),

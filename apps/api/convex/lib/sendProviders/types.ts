@@ -111,6 +111,7 @@ export interface MtaExtras {
 	dkimDomain?: string;
 	organizationId?: string;
 	messageType?: import('@owlat/shared').GovernedMessageType;
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
 	intakePath?: 'system';
 	routingLease?: string;
 	/** Decision input bound into the authenticated routing lease. */

@@ -49,6 +49,7 @@ export const provision = internalAction({
 			dkimTokens: identity.dkimTokens,
 			verificationToken: identity.verificationToken,
 			dnsRecords,
+			spfProofState: dnsRecords.spf ? 'dns_required' : 'not_applicable_manual_primary',
 		});
 		return { provisioned: true };
 	},

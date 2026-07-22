@@ -7,6 +7,7 @@
 import type { Validator } from 'convex/values';
 import type { InboundEmailMessage } from '@owlat/channels';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { DeliveryDomain } from '@owlat/shared';
 import type { WorkerEnvelopeInput } from '../delivery/workerEnvelope';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
@@ -48,16 +49,19 @@ export type InboundEvent =
 			providerType?: string;
 			destinationProvider?: DestinationProviderKey;
 			primarySendingDomain?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			kind: 'email.delivered';
 			providerMessageId: string;
 			at: number;
+			providerType?: string;
 			/** Untrusted telemetry only; cache binding derives tenant/recipient from Send. */
 			organizationId?: string;
 			recipient?: string;
 			destinationProvider?: DestinationProviderKey;
 			primarySendingDomain?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			// Terminal, NON-bounce delivery failure. Emitted by the MTA for the
@@ -70,6 +74,7 @@ export type InboundEvent =
 			at: number;
 			errorMessage: string;
 			errorCode: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			kind: 'email.bounced';
@@ -77,6 +82,7 @@ export type InboundEvent =
 			at: number;
 			bounceType: 'hard' | 'soft';
 			bounceMessage?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			kind: 'email.complained';

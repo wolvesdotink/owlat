@@ -10,6 +10,7 @@ export const storeProvisioning = internalMutation({
 		dkimTokens: v.array(v.string()),
 		verificationToken: v.string(),
 		dnsRecords: dnsRecordsValidator,
+		spfProofState: v.union(v.literal('dns_required'), v.literal('not_applicable_manual_primary')),
 	},
 	handler: async (ctx, args) => {
 		const existing = await ctx.db
@@ -21,6 +22,7 @@ export const storeProvisioning = internalMutation({
 			dkimTokens: args.dkimTokens,
 			verificationToken: args.verificationToken,
 			dnsRecords: args.dnsRecords,
+			spfProofState: args.spfProofState,
 			verificationResults: undefined,
 			isProviderVerified: false,
 			verifiedAt: undefined,
@@ -50,8 +52,13 @@ export const storeVerification = internalMutation({
 			.withIndex('by_domain', (q) => q.eq('domainId', args.domainId))
 			.first();
 		if (!existing) return { recorded: false };
+		const spfProofState =
+			existing.spfProofState ??
+			(args.dnsRecords.spf ? 'dns_required' : 'not_applicable_manual_primary');
 		const dnsVerified = Boolean(
-			(!args.dnsRecords.spf || args.verificationResults.spf?.verified) &&
+			(spfProofState === 'not_applicable_manual_primary'
+				? !args.dnsRecords.spf && !args.verificationResults.spf
+				: Boolean(args.dnsRecords.spf && args.verificationResults.spf?.verified)) &&
 			args.verificationResults.dkim?.length &&
 			args.verificationResults.dkim.every((result) => result.verified) &&
 			args.verificationResults.mailFrom?.length &&
@@ -60,6 +67,7 @@ export const storeVerification = internalMutation({
 		const verified = dnsVerified && args.isProviderVerified;
 		await ctx.db.patch(existing._id, {
 			dnsRecords: args.dnsRecords,
+			spfProofState,
 			verificationResults: args.verificationResults,
 			isProviderVerified: args.isProviderVerified,
 			verifiedAt: verified ? args.checkedAt : undefined,

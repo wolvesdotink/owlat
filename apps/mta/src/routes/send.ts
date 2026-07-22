@@ -9,6 +9,7 @@ import type { EmailJob } from '../types.js';
 import type { AuthContext } from '../server.js';
 import {
 	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+	isDeliveryDomain,
 	isGovernedMessageType,
 	isValidEmail,
 	parseAddress,
@@ -57,6 +58,7 @@ interface SendRequest {
 	ipPool: 'transactional' | 'campaign';
 	organizationId: string;
 	messageType?: 'campaign' | 'transactional' | 'automation';
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
 	engagementScore?: number;
 	dkimDomain: string;
 	/**
@@ -164,6 +166,9 @@ export function createSendHandler(
 			if (!isGovernedMessageType(body.messageType)) {
 				return c.json({ error: 'Missing or invalid governed messageType' }, 400);
 			}
+			if (!isDeliveryDomain(body.deliveryDomain)) {
+				return c.json({ error: 'Missing or invalid governed deliveryDomain' }, 400);
+			}
 			if (!body.routingLease) {
 				return c.json(
 					{ error: 'A current routing lease is required', code: 'ROUTING_LEASE_REQUIRED' },
@@ -185,6 +190,8 @@ export function createSendHandler(
 				body.routingReentry.retryState.attempt < 1 ||
 				body.routingReentry.retryState.attempt > 9 ||
 				!Number.isFinite(body.routingReentry.retryState.startedAt) ||
+				body.routingReentry.retryState.startedAt > Date.now() ||
+				Date.now() - body.routingReentry.retryState.startedAt >= GOVERNED_MTA_MAX_MESSAGE_AGE_MS ||
 				body.routingReentry.retryState.idempotencyKey !== body.messageId
 			) {
 				return c.json({ error: 'Missing or invalid routing re-entry context' }, 400);
@@ -234,6 +241,8 @@ export function createSendHandler(
 					messageId: body.messageId,
 					workAttemptId: body.workAttemptId!,
 					routingReentryToken: body.routingReentryToken!,
+					startedAt: body.routingReentry!.retryState.startedAt,
+					deliveryDomain: body.deliveryDomain!,
 					organizationId: body.organizationId,
 					recipient: body.to,
 					from: body.from,
@@ -364,9 +373,10 @@ export function createSendHandler(
 			headers: body.headers,
 			ipPool: body.ipPool,
 			organizationId: body.organizationId,
+			deliveryDomain: mode === 'governed' ? body.deliveryDomain : undefined,
 			engagementScore: body.engagementScore,
 			dkimDomain: body.dkimDomain,
-			firstEnqueuedAt: Date.now(),
+			firstEnqueuedAt: mode === 'governed' ? body.routingReentry!.retryState.startedAt : Date.now(),
 			...(routingLease ? { routingLease } : {}),
 			...(mode === 'governed' && body.routingReentryToken
 				? { routingReentryToken: body.routingReentryToken }

@@ -70,6 +70,7 @@ export const enqueueTestSend = internalMutation({
 			{
 				envelopeInput: {
 					kind: 'transactional' as const,
+					deliveryDomain: 'member_test' as const,
 					messageType: 'transactional' as const,
 					emailPurpose: 'transactional' as const,
 					to: args.email,
@@ -160,6 +161,7 @@ export const enqueueCampaignEmails = internalMutation({
 				{
 					envelopeInput: {
 						kind: 'campaign' as const,
+						deliveryDomain: 'production' as const,
 						to: recipient.email,
 						from: args.from,
 						replyTo: args.replyTo,
@@ -295,6 +297,7 @@ export const enqueueNonCampaignSend = internalMutation({
 			{
 				envelopeInput: {
 					kind: 'transactional' as const,
+					deliveryDomain: 'production' as const,
 					messageType:
 						args.kind === 'automation' ? ('automation' as const) : ('transactional' as const),
 					emailPurpose:
