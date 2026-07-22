@@ -354,16 +354,17 @@ describe('applyEffects — ordering', () => {
 		).rejects.toThrow('boom');
 	});
 
-	it('retries the durable callback while claiming secondary effects at most once', async () => {
+	it('retries the durable callback while checkpointing successful secondary effects', async () => {
 		vi.mocked(queueConvexWebhook)
 			.mockRejectedValueOnce(new Error('outbox unavailable'))
 			.mockResolvedValue('outbox-1');
 		const claimed = new Set<string>();
 		const replayGuard = {
-			claimSecondary: vi.fn(async (identity: string) => {
-				if (claimed.has(identity)) return false;
+			runSecondary: vi.fn(async (identity: string, apply: () => Promise<unknown>) => {
+				if (claimed.has(identity)) return undefined;
+				const result = await apply();
 				claimed.add(identity);
-				return true;
+				return result;
 			}),
 		};
 		const effects: DispatchEffect[] = [

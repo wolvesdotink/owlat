@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import {
-	claimSmtpSecondaryEffect,
+	runSmtpSecondaryEffect,
 	finalizeSmtpOutcome,
 	markSmtpEffectsApplied,
 	reserveSmtpOutcome,
@@ -106,7 +106,7 @@ describe('SMTP outcome journal', () => {
 		).toMatchObject({ kind: 'fresh' });
 	});
 
-	it('claims each secondary effect once with the same bounded lifetime', async () => {
+	it('checkpoints each successful secondary effect with the same bounded lifetime', async () => {
 		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', attempt('message-1'), {
 			now: 100,
 			capacity: 10,
@@ -122,18 +122,20 @@ describe('SMTP outcome journal', () => {
 			deliveredReduction,
 			{ now: 142 }
 		);
+		const apply = vi.fn().mockResolvedValue('recorded');
 		expect(
-			await claimSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record')
-		).toBe(true);
+			await runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record', apply)
+		).toBe('recorded');
 		expect(
-			await claimSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record')
-		).toBe(false);
+			await runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record', apply)
+		).toBeUndefined();
+		expect(apply).toHaveBeenCalledOnce();
 		expect(await redis.pttl(smtpOutcomeJournalKeys.effectClaimsKey('job-1'))).toBeGreaterThan(
 			GOVERNED_MTA_MAX_MESSAGE_AGE_MS
 		);
 	});
 
-	it('treats a lost secondary-claim response as already claimed on replay', async () => {
+	it('retries a secondary effect after its pending-checkpoint response is lost', async () => {
 		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', attempt('message-1'), {
 			now: 100,
 			capacity: 10,
@@ -152,17 +154,194 @@ describe('SMTP outcome journal', () => {
 		const originalEval = redis.eval.bind(redis);
 		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
 			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
-			if (String(args[0]).includes("HSETNX', KEYS[2]")) throw new Error('claim response lost');
+			if (String(args[0]).includes("'pending:'")) throw new Error('checkpoint response lost');
 			return result;
 		});
+		const apply = vi.fn().mockResolvedValue(undefined);
 
 		await expect(
-			claimSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record')
-		).rejects.toThrow('claim response lost');
+			runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record', apply, {
+				leaseMs: 5,
+				waitMs: 1,
+			})
+		).rejects.toThrow('Effect checkpoint could not be started');
+		expect(apply).not.toHaveBeenCalled();
 		evalSpy.mockRestore();
-		expect(
-			await claimSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record')
-		).toBe(false);
+		await runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record', apply, {
+			leaseMs: 5,
+			waitMs: 1,
+		});
+		expect(apply).toHaveBeenCalledOnce();
+	});
+
+	it('takes over expired crash leases without accepting non-finite expiries', async () => {
+		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', attempt('message-1'), {
+			now: 100,
+			capacity: 10,
+		});
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		const completed = await finalizeSmtpOutcome(
+			redis,
+			fresh.entry,
+			fresh.raw,
+			{ success: true, smtpCode: 250 },
+			42,
+			deliveredOutcome,
+			deliveredReduction,
+			{ now: 142 }
+		);
+		await redis.hset(
+			smtpOutcomeJournalKeys.effectClaimsKey('job-1'),
+			'0:domain_throttle_success',
+			`pending:crashed-worker:${Date.now() - 1}`
+		);
+		const apply = vi.fn().mockResolvedValue(undefined);
+
+		await runSmtpSecondaryEffect(
+			redis,
+			completed.entry,
+			completed.raw,
+			'0:domain_throttle_success',
+			apply
+		);
+		expect(apply).toHaveBeenCalledOnce();
+
+		const invalidExpiryApply = vi.fn().mockResolvedValue(undefined);
+		await redis.hset(
+			smtpOutcomeJournalKeys.effectClaimsKey('job-1'),
+			'1:smtp_response',
+			'pending:forged-worker:Infinity'
+		);
+		await runSmtpSecondaryEffect(
+			redis,
+			completed.entry,
+			completed.raw,
+			'1:smtp_response',
+			invalidExpiryApply
+		);
+		expect(invalidExpiryApply).toHaveBeenCalledOnce();
+	});
+
+	it('serializes concurrent processors that share the same durable owner', async () => {
+		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', attempt('message-1'), {
+			now: 100,
+			capacity: 10,
+		});
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		const completed = await finalizeSmtpOutcome(
+			redis,
+			fresh.entry,
+			fresh.raw,
+			{ success: true, smtpCode: 250 },
+			42,
+			deliveredOutcome,
+			deliveredReduction,
+			{ now: 142 }
+		);
+		let finishFirst!: () => void;
+		const firstCanFinish = new Promise<void>((resolve) => {
+			finishFirst = resolve;
+		});
+		const apply = vi.fn(async () => firstCanFinish);
+		const options = { leaseMs: 5_000, waitMs: 1 };
+		const first = runSmtpSecondaryEffect(
+			redis,
+			completed.entry,
+			completed.raw,
+			'0:circuit_breaker_outcome',
+			apply,
+			options
+		);
+		await vi.waitFor(() => expect(apply).toHaveBeenCalledOnce());
+		const contender = runSmtpSecondaryEffect(
+			redis,
+			completed.entry,
+			completed.raw,
+			'0:circuit_breaker_outcome',
+			apply,
+			options
+		);
+		// Give the contender time to observe the active owned lease and wait.
+		await new Promise((resolve) => setTimeout(resolve, 40));
+		expect(apply).toHaveBeenCalledOnce();
+
+		finishFirst();
+		await Promise.all([first, contender]);
+		expect(apply).toHaveBeenCalledOnce();
+	});
+
+	it('retries a secondary effect after the effect rejects', async () => {
+		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', attempt('message-1'), {
+			now: 100,
+			capacity: 10,
+		});
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		const completed = await finalizeSmtpOutcome(
+			redis,
+			fresh.entry,
+			fresh.raw,
+			{ success: true, smtpCode: 250 },
+			42,
+			deliveredOutcome,
+			deliveredReduction,
+			{ now: 142 }
+		);
+		const apply = vi
+			.fn<() => Promise<void>>()
+			.mockRejectedValueOnce(new Error('effect unavailable'))
+			.mockResolvedValueOnce(undefined);
+
+		await expect(
+			runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:warming_record', apply)
+		).rejects.toThrow('effect unavailable');
+		await runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:warming_record', apply);
+		expect(apply).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not repeat an effect when the applied-checkpoint response is lost', async () => {
+		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', attempt('message-1'), {
+			now: 100,
+			capacity: 10,
+		});
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		const completed = await finalizeSmtpOutcome(
+			redis,
+			fresh.entry,
+			fresh.raw,
+			{ success: true, smtpCode: 250 },
+			42,
+			deliveredOutcome,
+			deliveredReduction,
+			{ now: 142 }
+		);
+		const originalEval = redis.eval.bind(redis);
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+			if (String(args[0]).includes("HSET', KEYS[2], ARGV[2], 'applied'")) {
+				throw new Error('completion response lost');
+			}
+			return result;
+		});
+		const apply = vi.fn().mockResolvedValue(undefined);
+
+		await expect(
+			runSmtpSecondaryEffect(
+				redis,
+				completed.entry,
+				completed.raw,
+				'0:circuit_breaker_outcome',
+				apply
+			)
+		).rejects.toThrow('Effect checkpoint could not be completed');
+		evalSpy.mockRestore();
+		await runSmtpSecondaryEffect(
+			redis,
+			completed.entry,
+			completed.raw,
+			'0:circuit_breaker_outcome',
+			apply
+		);
+		expect(apply).toHaveBeenCalledOnce();
 	});
 
 	it('fails closed at capacity without evicting an unresolved reservation', async () => {

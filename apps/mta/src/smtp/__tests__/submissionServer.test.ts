@@ -328,6 +328,7 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		const onData = buildOnData({ queue: queue as never, redis: receiptRedis as never });
 
 		expect((await onData(message, session as never))?.code).toBe(451);
+		session.rcptTo = [{ address: 'second@example.net' }, { address: 'first@example.com' }];
 		expect(await onData(message, session as never)).toBeUndefined();
 
 		const firstAdds = queue.add.mock.calls.filter(
@@ -339,6 +340,40 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(firstAdds).toHaveLength(1);
 		expect(secondAdds).toHaveLength(2);
 		expect(secondAdds[0]![0].jobId).toBe(secondAdds[1]![0].jobId);
+	});
+
+	it('reconciles a committed recipient when a partial fan-out retry contains only that recipient', async () => {
+		const receiptRedis = new Redis();
+		await receiptRedis.flushall();
+		const queued = new Map<string, unknown>();
+		const queue = {
+			add: vi.fn(
+				async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+					if (options.data.to === 'second@example.net') throw new Error('queue unavailable');
+					queued.set(options.jobId!, options);
+				}
+			),
+			getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+		};
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: { address: 'sender@brand.com' },
+			rcptTo: [{ address: 'first@example.com' }, { address: 'second@example.net' }],
+		});
+		const message = Buffer.from(baseMime('sender@brand.com', 'ignored@example.org'));
+		const onData = buildOnData({ queue: queue as never, redis: receiptRedis as never });
+
+		expect((await onData(message, session as never))?.code).toBe(451);
+		const committedJobId = queue.add.mock.calls[0]![0].jobId;
+		session.rcptTo = [{ address: 'first@example.com' }];
+		expect(await onData(message, session as never)).toBeUndefined();
+
+		const firstAdds = queue.add.mock.calls.filter(
+			([options]) => options.data.to === 'first@example.com'
+		);
+		expect(firstAdds).toHaveLength(1);
+		expect(firstAdds[0]![0].jobId).toBe(committedJobId);
 	});
 
 	it('accepts a lost queue response after reconciling the committed job', async () => {

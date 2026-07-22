@@ -92,11 +92,8 @@ export type DispatchEffect =
 	| { kind: 'domain_failure_record'; domain: string };
 
 export interface DispatchEffectReplayGuard {
-	/**
-	 * Claim an explicitly secondary control/telemetry effect before it starts.
-	 * A false result means a prior execution already claimed this effect.
-	 */
-	claimSecondary(effectIdentity: string): Promise<boolean>;
+	/** Apply an effect and checkpoint it only after it resolves successfully. */
+	runSecondary<T>(effectIdentity: string, apply: () => Promise<T>): Promise<T | undefined>;
 }
 
 /**
@@ -162,12 +159,19 @@ async function applySecondary(
 	deps: PhaseDeps,
 	replayGuard: DispatchEffectReplayGuard | undefined
 ): Promise<unknown> {
-	if (replayGuard && !(await replayGuard.claimSecondary(`${index}:${effect.kind}`))) return;
+	const apply = async () => {
+		if (effect.kind === 'log_delivery_event') {
+			await logDeliveryEvent(deps.redis, effect.event, deps.config);
+			return;
+		}
+		return applyOne(effect, deps);
+	};
+	if (replayGuard) return replayGuard.runSecondary(`${index}:${effect.kind}`, apply);
 	if (effect.kind === 'log_delivery_event') {
 		fireAndForget(effect, deps);
 		return;
 	}
-	return applyOne(effect, deps);
+	return apply();
 }
 
 function fireAndForget(

@@ -32,6 +32,10 @@ import type { InboundRoute } from '../inbound/router.js';
 import type { PhaseDeps } from './types.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 
+export interface BounceEffectReplayGuard {
+	runSecondary<T>(effectIdentity: string, apply: () => Promise<T>): Promise<T | undefined>;
+}
+
 /**
  * Discriminated union of Bounce intake effects.
  *
@@ -121,7 +125,8 @@ export class DurableFeedbackPersistenceError extends TransientFeedbackProcessing
  */
 export async function applyEffects(
 	effects: ReadonlyArray<BounceEffect>,
-	deps: PhaseDeps
+	deps: PhaseDeps,
+	replayGuard?: BounceEffectReplayGuard
 ): Promise<void> {
 	const durableTerminal: Array<Promise<unknown>> = [];
 	const remaining: BounceEffect[] = [];
@@ -153,12 +158,15 @@ export async function applyEffects(
 	await Promise.all(durableTerminal);
 
 	const parallel: Array<Promise<unknown>> = [];
-	for (const effect of remaining) {
+	for (const [index, effect] of remaining.entries()) {
 		if (effect.kind === 'notify_convex' || effect.kind === 'mailbox_quota_bump') {
 			fireAndForget(effect, deps);
 			continue;
 		}
-		parallel.push(applyOne(effect, deps));
+		const apply = () => applyOne(effect, deps);
+		parallel.push(
+			replayGuard ? replayGuard.runSecondary(`${index}:${effect.kind}`, apply) : apply()
+		);
 	}
 	await Promise.all(parallel);
 }

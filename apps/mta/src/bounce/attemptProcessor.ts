@@ -5,6 +5,7 @@ import { applyEffects } from './effects.js';
 import {
 	completeComplaint,
 	releaseComplaint,
+	runComplaintEffect,
 	type ComplaintDedupReservation,
 } from './fblProcessor.js';
 import { attachFeedbackProvenance } from './feedbackProvenance.js';
@@ -22,7 +23,16 @@ export async function processBounceAttempt(
 	try {
 		const attributedAttempt = await attachFeedbackProvenance(deps.redis, attempt);
 		logAttempt(attributedAttempt, ctx.parsed);
-		await applyEffects(reduce(attributedAttempt, ctx).effects, deps);
+		await applyEffects(
+			reduce(attributedAttempt, ctx).effects,
+			deps,
+			reservation
+				? {
+						runSecondary: (effectIdentity, apply) =>
+							runComplaintEffect(deps.redis, reservation, effectIdentity, apply),
+					}
+				: undefined
+		);
 		if (reservation) await completeComplaint(deps.redis, reservation);
 	} catch (error) {
 		if (reservation && error instanceof TransientFeedbackProcessingError) {

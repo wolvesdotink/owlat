@@ -12,6 +12,7 @@ import {
 	reserveComplaint,
 	completeComplaint,
 	releaseComplaint,
+	runComplaintEffect,
 	generateDedupKey,
 } from '../fblProcessor.js';
 import { buildVerpAddress } from '../verp.js';
@@ -649,7 +650,8 @@ describe('complaint deduplication reservations', () => {
 	it('reserves the first occurrence without declaring it completed', async () => {
 		const result = await reserveComplaint(redis, 'msg-001');
 		expect(result.kind).toBe('reserved');
-		expect(await redis.get('mta:fbl:dedup:msg-001')).toMatch(/^reserved:/);
+		expect(await redis.hget('mta:fbl:dedup:msg-001', 'status')).toBe('reserved');
+		expect(await redis.ttl('mta:fbl:dedup:msg-001')).toBeGreaterThan(14 * 60);
 	});
 
 	it('does not ACK a concurrent intake while the first reservation is unresolved', async () => {
@@ -671,8 +673,22 @@ describe('complaint deduplication reservations', () => {
 		const first = await reserveComplaint(redis, 'msg-completed');
 		if (first.kind !== 'reserved') throw new Error('expected reservation');
 		await completeComplaint(redis, first.reservation);
-		expect(await redis.get('mta:fbl:dedup:msg-completed')).toBe('completed');
+		expect(await redis.hget('mta:fbl:dedup:msg-completed', 'status')).toBe('completed');
 		expect(await reserveComplaint(redis, 'msg-completed')).toEqual({ kind: 'completed' });
+	});
+
+	it('honors completed deduplication keys written before the checkpoint migration', async () => {
+		await redis.set('mta:fbl:dedup:legacy-message', '1', 'EX', 60);
+		expect(await reserveComplaint(redis, 'legacy-message')).toEqual({ kind: 'completed' });
+		expect(await redis.get('mta:fbl:dedup:legacy-message')).toBe('1');
+		expect(await redis.ttl('mta:fbl:dedup:legacy-message')).toBeGreaterThan(0);
+	});
+
+	it('atomically excludes an old SET NX worker while a new reservation is active', async () => {
+		const result = await reserveComplaint(redis, 'rolling-deploy');
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		expect(await redis.set(result.reservation.key, '1', 'EX', 60, 'NX')).toBeNull();
+		expect(await redis.hget(result.reservation.key, 'token')).toBe(result.reservation.token);
 	});
 
 	it('keeps completed deduplication state for seven days', async () => {
@@ -692,6 +708,47 @@ describe('complaint deduplication reservations', () => {
 		const second = await reserveComplaint(redis, 'msg-owner');
 		if (second.kind !== 'reserved') throw new Error('expected second reservation');
 		await releaseComplaint(redis, first.reservation);
-		expect(await redis.get(second.reservation.key)).toBe(second.reservation.token);
+		expect(await redis.hget(second.reservation.key, 'token')).toBe(second.reservation.token);
+	});
+
+	it('retains successful effect checkpoints when completion fails and the intake retries', async () => {
+		const first = await reserveComplaint(redis, 'msg-completion-retry');
+		if (first.kind !== 'reserved') throw new Error('expected first reservation');
+		const apply = vi.fn().mockResolvedValue(undefined);
+		await runComplaintEffect(redis, first.reservation, '0:circuit_breaker_outcome', apply);
+
+		// A transient completeComplaint failure releases this owner so SMTP can retry.
+		await releaseComplaint(redis, first.reservation);
+		const retry = await reserveComplaint(redis, 'msg-completion-retry');
+		if (retry.kind !== 'reserved') throw new Error('expected retry reservation');
+		await runComplaintEffect(redis, retry.reservation, '0:circuit_breaker_outcome', apply);
+		await completeComplaint(redis, retry.reservation);
+
+		expect(apply).toHaveBeenCalledOnce();
+	});
+
+	it('recognizes completed feedback after the completion response is lost', async () => {
+		const first = await reserveComplaint(redis, 'msg-completion-response');
+		if (first.kind !== 'reserved') throw new Error('expected first reservation');
+		const apply = vi.fn().mockResolvedValue(undefined);
+		await runComplaintEffect(redis, first.reservation, '0:metric_inc', apply);
+		const originalEval = redis.eval.bind(redis);
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+			if (String(args[0]).includes("'status', 'completed'")) {
+				throw new Error('completion response lost');
+			}
+			return result;
+		});
+
+		await expect(completeComplaint(redis, first.reservation)).rejects.toThrow(
+			'Complaint deduplication completion is unavailable'
+		);
+		evalSpy.mockRestore();
+		await releaseComplaint(redis, first.reservation);
+		expect(await reserveComplaint(redis, 'msg-completion-response')).toEqual({
+			kind: 'completed',
+		});
+		expect(apply).toHaveBeenCalledOnce();
 	});
 });

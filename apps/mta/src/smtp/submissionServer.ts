@@ -138,14 +138,14 @@ function submissionRecipients(session: Session): string[] {
 /**
  * Strongest retry identity available from authenticated SMTP.
  *
- * Canonical JSON keeps field boundaries collision-safe; recipient order is
- * intentionally the first-accepted SMTP envelope order after exact duplicate
- * removal. Exact DATA bytes are represented by their own SHA-256 digest.
+ * Canonical JSON keeps field boundaries collision-safe. Recipients are omitted
+ * here and added individually by `submissionRecipientJobId`, so a retry with a
+ * reordered or reduced envelope reconciles the same already-accepted jobs.
+ * Exact DATA bytes are represented by their own SHA-256 digest.
  */
-function submissionFingerprint(
+function submissionMessageFingerprint(
 	auth: AuthenticatedSession,
 	envelopeFrom: string,
-	recipients: readonly string[],
 	message: Buffer
 ): string {
 	const principal = auth.postbox
@@ -165,14 +165,13 @@ function submissionFingerprint(
 			JSON.stringify({
 				principal,
 				envelopeFrom: normalizeEnvelopeAddress(envelopeFrom),
-				recipients,
 				dataSha256: createHash('sha256').update(message).digest('hex'),
 			})
 		)
 		.digest('hex');
 }
 
-function submissionJobId(prefix: string, fingerprint: string, recipient: string): string {
+function submissionRecipientJobId(prefix: string, fingerprint: string, recipient: string): string {
 	const recipientDigest = createHash('sha256')
 		.update(JSON.stringify([fingerprint, recipient]))
 		.digest('hex');
@@ -349,7 +348,7 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 			if (!envelopeFrom) {
 				return { code: 503, enhanced: '5.5.1', text: 'MAIL FROM required' };
 			}
-			const fingerprint = submissionFingerprint(authData, envelopeFrom, recipients, message);
+			const fingerprint = submissionMessageFingerprint(authData, envelopeFrom, message);
 
 			// RFC 2046 §5.1.4: preserve the AMP alternative so the sender re-emits the
 			// `text/x-amp-html` part (see {@link extractAmpHtml}).
@@ -375,7 +374,7 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 				// Postbox-prefixed messageId so the bounce/sent webhook can look the
 				// row back up — same convention as the webmail dispatch path.
 				const prefix = authData.postbox ? `pb-smtp-${authData.postbox.mailboxId}` : 'smtp';
-				const messageId = submissionJobId(prefix, fingerprint, to);
+				const messageId = submissionRecipientJobId(prefix, fingerprint, to);
 				const job: EmailJob & { intakeReceiptId: string } = {
 					messageId,
 					intakeReceiptId: messageId,
