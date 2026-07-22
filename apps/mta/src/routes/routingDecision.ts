@@ -113,13 +113,14 @@ function validRequest(value: unknown): value is DecisionRequest {
 }
 
 async function writeLease(redis: Redis, lease: RoutingLeaseRecord): Promise<void> {
-	await redis.set(
+	const stored = await redis.set(
 		`${ROUTING_LEASE_PREFIX}${lease.token}`,
 		JSON.stringify(lease),
 		'EX',
 		ROUTING_LEASE_TTL_SECONDS,
 		'NX'
 	);
+	if (stored !== 'OK') throw new Error('Routing lease token collision');
 }
 
 export async function readRoutingLease(
@@ -207,65 +208,92 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 
 		let globalProbe = false;
 		let providerProbe = false;
-		if (currentGlobal.state === 'half-open') {
-			globalProbe = await reserveHalfOpenProbe(
-				redis,
-				input.organizationId,
-				undefined,
-				input.messageId,
-				Date.now(),
-				currentGlobal.generation
-			);
-			if (!globalProbe) {
-				if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
-				return c.json({ decision: 'defer', reason: 'global_probe', retryAfterMs: 60_000 });
+		let leaseToken: string | undefined;
+		try {
+			if (currentGlobal.state === 'half-open') {
+				globalProbe = await reserveHalfOpenProbe(
+					redis,
+					input.organizationId,
+					undefined,
+					input.messageId,
+					Date.now(),
+					currentGlobal.generation
+				);
+				if (!globalProbe) {
+					if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
+					return c.json({ decision: 'defer', reason: 'global_probe', retryAfterMs: 60_000 });
+				}
 			}
-		}
-		if (provider.state === 'half-open') {
-			providerProbe = await reserveHalfOpenProbe(
-				redis,
-				input.organizationId,
-				destination.providerKey,
-				input.messageId,
-				Date.now(),
-				provider.generation
-			);
-			if (!providerProbe) {
-				if (globalProbe)
-					await releaseHalfOpenProbe(
-						redis,
-						input.organizationId,
-						undefined,
-						input.messageId,
-						currentGlobal.generation
-					);
-				if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
-				return c.json({ decision: 'relay', reason: 'provider_probe_limit' });
+			if (provider.state === 'half-open') {
+				providerProbe = await reserveHalfOpenProbe(
+					redis,
+					input.organizationId,
+					destination.providerKey,
+					input.messageId,
+					Date.now(),
+					provider.generation
+				);
+				if (!providerProbe) {
+					if (globalProbe)
+						await releaseHalfOpenProbe(
+							redis,
+							input.organizationId,
+							undefined,
+							input.messageId,
+							currentGlobal.generation
+						);
+					if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
+					return c.json({ decision: 'relay', reason: 'provider_probe_limit' });
+				}
 			}
-		}
 
-		const token = crypto.randomUUID();
-		const lease: RoutingLeaseRecord = {
-			token,
-			messageId: input.messageId,
-			organizationId: input.organizationId,
-			recipient: input.recipient.toLowerCase(),
-			from: normalizedFrom(input.from),
-			messageType: input.messageType,
-			candidateProvider: input.candidateProvider,
-			ipPool: input.ipPool,
-			allowWarmupOverflow: input.allowWarmupOverflow,
-			destinationProvider: destination.providerKey,
-			probe: providerProbe,
-			globalProbe,
-			expiresAt: Date.now() + ROUTING_LEASE_TTL_SECONDS * 1000,
-			ip: selected.ip,
-			eligibilityGeneration: selected.eligibilityGeneration,
-			globalBreakerGeneration: currentGlobal.generation,
-			providerBreakerGeneration: provider.generation,
-			...(warmingReservation ? { warmingReservation } : {}),
-		};
-		await writeLease(redis, lease);
-		return c.json({ decision: 'mta', lease });
+			leaseToken = crypto.randomUUID();
+			const lease: RoutingLeaseRecord = {
+				token: leaseToken,
+				messageId: input.messageId,
+				organizationId: input.organizationId,
+				recipient: input.recipient.toLowerCase(),
+				from: normalizedFrom(input.from),
+				messageType: input.messageType,
+				candidateProvider: input.candidateProvider,
+				ipPool: input.ipPool,
+				allowWarmupOverflow: input.allowWarmupOverflow,
+				destinationProvider: destination.providerKey,
+				probe: providerProbe,
+				globalProbe,
+				expiresAt: Date.now() + ROUTING_LEASE_TTL_SECONDS * 1000,
+				ip: selected.ip,
+				eligibilityGeneration: selected.eligibilityGeneration,
+				globalBreakerGeneration: currentGlobal.generation,
+				providerBreakerGeneration: provider.generation,
+				...(warmingReservation ? { warmingReservation } : {}),
+			};
+			await writeLease(redis, lease);
+			return c.json({ decision: 'mta', lease: { token: leaseToken } });
+		} catch {
+			if (leaseToken) await redis.del(`${ROUTING_LEASE_PREFIX}${leaseToken}`).catch(() => 0);
+			if (providerProbe) {
+				await releaseHalfOpenProbe(
+					redis,
+					input.organizationId,
+					destination.providerKey,
+					input.messageId,
+					provider.generation
+				).catch(() => {});
+			}
+			if (globalProbe) {
+				await releaseHalfOpenProbe(
+					redis,
+					input.organizationId,
+					undefined,
+					input.messageId,
+					currentGlobal.generation
+				).catch(() => {});
+			}
+			if (warmingReservation) {
+				await releaseWarmingSlot(redis, warmingReservation).catch(() => {});
+			}
+			return c.json({ decision: 'defer', reason: 'lease_persistence', retryAfterMs: 60_000 });
+		}
 	};
 }

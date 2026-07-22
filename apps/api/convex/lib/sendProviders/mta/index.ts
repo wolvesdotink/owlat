@@ -74,6 +74,8 @@ export async function resolveMtaRoutingDecision(input: {
 				Object.keys(result).length === 2 &&
 				typeof lease === 'object' &&
 				lease !== null &&
+				!Array.isArray(lease) &&
+				Object.keys(lease).length === 1 &&
 				typeof (lease as Record<string, unknown>)['token'] === 'string' &&
 				((lease as Record<string, unknown>)['token'] as string).length > 0 &&
 				((lease as Record<string, unknown>)['token'] as string).length <=
@@ -103,9 +105,12 @@ export async function resolveMtaRoutingDecision(input: {
 		}
 		if (
 			result['decision'] === 'defer' &&
+			Object.keys(result).length === 3 &&
 			Object.keys(result).every((key) => ['decision', 'reason', 'retryAfterMs'].includes(key)) &&
-			Object.keys(result).length >= 2 &&
-			typeof result['reason'] === 'string'
+			(result['reason'] === 'global_safety' ||
+				result['reason'] === 'global_probe' ||
+				result['reason'] === 'no_owned_ip' ||
+				result['reason'] === 'lease_persistence')
 		) {
 			const retryAfterMs = result['retryAfterMs'];
 			return {

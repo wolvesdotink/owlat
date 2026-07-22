@@ -48,6 +48,7 @@ describe('routing decision lease binding', () => {
 		{ from: 'other@example.org' },
 		{ messageType: 'automation' as const },
 		{ ipPool: 'transactional' as const },
+		{ allowWarmupOverflow: true },
 	])('rejects cross-message, cross-tenant, and cross-recipient replay', (override) => {
 		expect(
 			isRoutingLeaseBoundTo(
