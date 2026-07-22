@@ -137,8 +137,8 @@ export const recordDestinationProviderDomain = internalMutation({
 });
 
 export const cleanupExpired = internalMutation({
-	args: {},
-	handler: async (ctx) => {
+	args: { continuation: v.optional(v.number()) },
+	handler: async (ctx, args) => {
 		const now = Date.now();
 		const expired = await ctx.db
 			.query('deliverabilityRouteStates')
@@ -151,8 +151,11 @@ export const cleanupExpired = internalMutation({
 			.take(128);
 		for (const row of expiredDomains) await ctx.db.delete(row._id);
 		const hasMore = expired.length === 128 || expiredDomains.length === 128;
-		if (hasMore) {
-			await ctx.scheduler.runAfter(0, internal.delivery.deliverabilityRouting.cleanupExpired, {});
+		const continuation = args.continuation ?? 0;
+		if (hasMore && continuation < 15) {
+			await ctx.scheduler.runAfter(1_000, internal.delivery.deliverabilityRouting.cleanupExpired, {
+				continuation: continuation + 1,
+			});
 		}
 		return { deleted: expired.length + expiredDomains.length, hasMore };
 	},

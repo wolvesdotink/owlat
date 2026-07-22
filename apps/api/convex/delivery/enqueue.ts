@@ -215,6 +215,8 @@ export const enqueueNonCampaignSend = internalMutation({
 			{
 				envelopeInput: {
 					kind: 'transactional' as const,
+					messageType:
+						args.kind === 'automation' ? ('automation' as const) : ('transactional' as const),
 					emailPurpose:
 						args.kind === 'automation' ? ('marketing' as const) : ('transactional' as const),
 					to: args.email,

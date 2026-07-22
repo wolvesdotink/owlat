@@ -2,13 +2,14 @@
 
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
+import type { GovernedMessageType } from '@owlat/shared';
 import type { MtaIpPool, SendProviderKind } from '../lib/sendProviders';
 import { resolveMtaRoutingDecision } from '../lib/sendProviders/mta';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
 import { selectSendProviderKind } from '../lib/sendProviders/types';
 
 interface LastMileInput {
-	kind: 'campaign' | 'transactional';
+	messageType: GovernedMessageType;
 	to: string;
 	from: string;
 	providerType?: string;
@@ -17,26 +18,32 @@ interface LastMileInput {
 	idempotencyKey: string;
 }
 
-export interface LastMileRoutingResult {
+export interface LastMileRoutingReady {
+	kind: 'ready';
 	providerKind: SendProviderKind;
 	route: ResolvedRoute | null;
 	organizationId: string;
 	routingLease?: string;
 }
 
+export interface LastMileRoutingDeferred {
+	kind: 'defer';
+	retryAfterMs: number;
+}
+
+export type LastMileRoutingResult = LastMileRoutingReady | LastMileRoutingDeferred;
+
 /** Resolve current recipient routing and the MTA's authoritative safety lease. */
 export async function resolveLastMileRouting(
 	ctx: ActionCtx,
 	input: LastMileInput
 ): Promise<LastMileRoutingResult> {
-	let route =
-		input.kind === 'campaign'
-			? await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-					messageType: 'campaign',
-					to: input.to,
-					from: input.from,
-				})
-			: null;
+	let route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+		messageType: input.messageType,
+		to: input.to,
+		from: input.from,
+		baseOnly: true,
+	});
 	let providerKind = selectSendProviderKind(route?.providerType ?? input.providerType);
 	if (!providerKind) {
 		throw new Error(
@@ -51,19 +58,20 @@ export async function resolveLastMileRouting(
 
 	const decision = await resolveMtaRoutingDecision({
 		messageId: input.idempotencyKey,
+		messageType: input.messageType,
 		organizationId,
 		recipient: input.to,
 		from: input.from,
 		candidateProvider: providerKind === 'mta' ? 'mta' : 'relay',
 		ipPool: (route?.ipPool ?? input.ipPool) as MtaIpPool | undefined,
-		allowWarmupOverflow: Boolean(input.kind === 'campaign' && route?.warmupOverflowEnabled),
+		allowWarmupOverflow: Boolean(input.messageType === 'campaign' && route?.warmupOverflowEnabled),
 	});
 	if (decision.kind === 'defer') {
-		throw new Error('Delivery temporarily deferred by the routing safety policy.');
+		return { kind: 'defer', retryAfterMs: decision.retryAfterMs };
 	}
 	if (providerKind === 'mta' && decision.kind === 'relay') {
 		route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-			messageType: input.kind,
+			messageType: input.messageType,
 			to: input.to,
 			from: input.from,
 			forceRelayReason: decision.reason === 'warmup_overflow' ? 'warmup_overflow' : 'breaker_open',
@@ -74,6 +82,7 @@ export async function resolveLastMileRouting(
 		}
 	}
 	return {
+		kind: 'ready',
 		providerKind,
 		route,
 		organizationId,

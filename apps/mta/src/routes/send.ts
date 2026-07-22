@@ -7,7 +7,7 @@ import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
 import type { AuthContext } from '../server.js';
-import { isValidEmail, parseAddress } from '@owlat/shared';
+import { isGovernedMessageType, isValidEmail, parseAddress } from '@owlat/shared';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority } from '../intelligence/engagementPriority.js';
 
@@ -47,6 +47,7 @@ interface SendRequest {
 	headers?: Record<string, string>;
 	ipPool: 'transactional' | 'campaign';
 	organizationId: string;
+	messageType?: 'campaign' | 'transactional' | 'automation';
 	engagementScore?: number;
 	dkimDomain: string;
 	/**
@@ -68,7 +69,11 @@ interface SendRequest {
 /**
  * Create the send route handler
  */
-export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
+export function createSendHandler(
+	queue: Queue<EmailJob>,
+	redis: Redis,
+	mode: 'governed' | 'postbox' | 'system' = 'governed'
+) {
 	return async (c: Context) => {
 		// Check system health
 		const health = await checkSystemHealth(redis);
@@ -118,6 +123,34 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 
 		// Enforce org scoping for per-org credentials
 		const auth = c.get('auth') as AuthContext;
+		if (mode === 'postbox') {
+			if (!auth.isMasterKey || body.organizationId !== 'postbox') {
+				return c.json({ error: 'Postbox intake requires the master credential' }, 403);
+			}
+			if (body.routingLease) {
+				return c.json({ error: 'Postbox intake does not accept tenant routing leases' }, 400);
+			}
+		} else if (mode === 'system') {
+			if (!auth.isMasterKey || body.organizationId !== 'system') {
+				return c.json({ error: 'System intake requires the master credential' }, 403);
+			}
+			if (body.routingLease) {
+				return c.json({ error: 'System intake does not accept tenant routing leases' }, 400);
+			}
+		} else {
+			if (body.organizationId === 'postbox') {
+				return c.json({ error: 'Postbox mail must use /send/postbox' }, 400);
+			}
+			if (!isGovernedMessageType(body.messageType)) {
+				return c.json({ error: 'Missing or invalid governed messageType' }, 400);
+			}
+			if (!body.routingLease) {
+				return c.json(
+					{ error: 'A current routing lease is required', code: 'ROUTING_LEASE_REQUIRED' },
+					409
+				);
+			}
+		}
 		if (!auth.isMasterKey && auth.orgCredential) {
 			if (body.organizationId !== auth.orgCredential.organizationId) {
 				return c.json({ error: 'Credential not authorized for this organization' }, 403);
@@ -135,12 +168,12 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 		// send-intake route MUST run this same check. (The unused
 		// /send/batch route was removed precisely because it duplicated this
 		// intake without the gate — don't reintroduce a gateless bulk path.)
-		if (body.organizationId === 'postbox' && body.allowedFromAddresses) {
+		if (mode === 'postbox') {
 			// Compare the angle-addr, not the raw header: a display-name From
 			// ("Alice <alice@example.com>") must still bind to the bare allowed
 			// address, while a forged address can't hide behind a display name.
 			const fromLower = parsedFrom.address;
-			const ok = body.allowedFromAddresses.some((allowed) => allowed.toLowerCase() === fromLower);
+			const ok = body.allowedFromAddresses?.some((allowed) => allowed.toLowerCase() === fromLower);
 			if (!ok) {
 				logger.warn(
 					{ messageId: body.messageId, from: body.from, allowed: body.allowedFromAddresses },
@@ -155,13 +188,18 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 		}
 
 		let routingLease: EmailJob['routingLease'];
-		if (body.routingLease) {
+		if (mode === 'governed' && body.routingLease) {
 			const lease = await readRoutingLease(redis, body.routingLease);
 			if (
 				!isRoutingLeaseBoundTo(lease, {
 					messageId: body.messageId,
 					organizationId: body.organizationId,
 					recipient: body.to,
+					from: body.from,
+					messageType: body.messageType!,
+					candidateProvider: 'mta',
+					ipPool: body.ipPool,
+					allowWarmupOverflow: false,
 				})
 			) {
 				return c.json(
@@ -170,14 +208,14 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 				);
 			}
 			const global = await canSend(redis, body.organizationId);
-			if (!global.allowed) {
+			if (!global.allowed || global.generation !== lease.globalBreakerGeneration) {
 				return c.json(
 					{ error: 'Delivery temporarily deferred by safety policy', code: 'GLOBAL_SAFETY_DEFER' },
 					409
 				);
 			}
 			const provider = await canSend(redis, body.organizationId, lease.destinationProvider);
-			if (!provider.allowed) {
+			if (!provider.allowed || provider.generation !== lease.providerBreakerGeneration) {
 				return c.json(
 					{
 						error: 'Destination provider route changed; resolve again',
@@ -206,8 +244,11 @@ export function createSendHandler(queue: Queue<EmailJob>, redis: Redis) {
 				token: lease.token,
 				destinationProvider: lease.destinationProvider,
 				probe: lease.probe,
+				globalProbe: lease.globalProbe,
 				ip: lease.ip,
 				eligibilityGeneration: lease.eligibilityGeneration,
+				globalBreakerGeneration: lease.globalBreakerGeneration,
+				providerBreakerGeneration: lease.providerBreakerGeneration,
 				warmingReservation: lease.warmingReservation,
 			};
 		}

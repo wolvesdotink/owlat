@@ -51,6 +51,7 @@ export async function resolveSendRouteFromDb(
 		to?: string;
 		from?: string;
 		now?: number;
+		baseOnly?: boolean;
 		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
 	}
 ): Promise<ResolvedRoute | null> {
@@ -76,7 +77,9 @@ export async function resolveSendRouteFromDb(
 		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
 	}
 
-	const deliverability = await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
+	const deliverability = addressContext?.baseOnly
+		? undefined
+		: await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
 
 	const resolved = resolveRoute(
 		routeConfig as ProviderRouteConfig | null,
@@ -102,6 +105,7 @@ async function deliverabilityInput(
 		to?: string;
 		from?: string;
 		now?: number;
+		baseOnly?: boolean;
 		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
 	}
 ) {
@@ -207,12 +211,11 @@ async function relayDomainVerified(
 		identity.dnsRecords.mailFrom?.length &&
 		proof.mailFrom?.length === identity.dnsRecords.mailFrom.length &&
 		proof.mailFrom.every((result) => result.verified) &&
-		results.every(
-			(result) =>
-				result !== undefined &&
-				identity.verifiedAt! - result.lastChecked <= SES_RELAY_PROOF_MAX_AGE_MS &&
-				result.lastChecked <= identity.verifiedAt!
-		)
+		results.every((result) => {
+			if (!result || !Number.isFinite(result.lastChecked)) return false;
+			const age = now - result.lastChecked;
+			return age >= 0 && age <= SES_RELAY_PROOF_MAX_AGE_MS;
+		})
 	);
 }
 
@@ -226,12 +229,14 @@ export const resolveSendRoute = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.optional(v.string()),
 		from: v.optional(v.string()),
+		baseOnly: v.optional(v.boolean()),
 		forceRelayReason: v.optional(v.union(v.literal('breaker_open'), v.literal('warmup_overflow'))),
 	},
 	handler: async (ctx, args): Promise<ResolvedRoute | null> => {
 		return await resolveSendRouteFromDb(ctx, args.messageType, {
 			to: args.to,
 			from: args.from,
+			baseOnly: args.baseOnly,
 			forceRelayReason: args.forceRelayReason,
 		});
 	},

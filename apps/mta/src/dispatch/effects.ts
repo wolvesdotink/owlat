@@ -35,6 +35,7 @@ import type { MtaWebhookEvent, MetricOutcome } from '../types.js';
 import type { SuppressionReason } from '../intelligence/suppressionList.js';
 import { logger } from '../monitoring/logger.js';
 import type { PhaseDeps } from './types.js';
+import type { WarmingReservation } from '../intelligence/warming.js';
 
 /**
  * Discriminated union of MTA dispatch effects.
@@ -49,6 +50,11 @@ export type DispatchEffect =
 			orgId: string;
 			outcome: 'delivered' | 'bounced' | 'complained';
 			providerKey?: string;
+			probeReceipt?: {
+				messageId: string;
+				globalGeneration?: number;
+				providerGeneration?: number;
+			};
 	  }
 	| {
 			/**
@@ -63,7 +69,7 @@ export type DispatchEffect =
 			kind: 'warming_record';
 			ip: string;
 			result: 'send' | 'bounce' | 'deferral';
-			reservedMessageId?: string;
+			reservation?: WarmingReservation;
 	  }
 	| {
 			kind: 'metrics_record';
@@ -172,7 +178,8 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 						effect.orgId,
 						effect.outcome,
 						deps.config,
-						effect.providerKey
+						effect.providerKey,
+						effect.probeReceipt
 					)
 				: circuitBreaker.recordOutcome(deps.redis, effect.orgId, effect.outcome, deps.config);
 		case 'campaign_delivery_record':
@@ -183,7 +190,7 @@ function applyOne(effect: DispatchEffect, deps: PhaseDeps): Promise<unknown> {
 				);
 		case 'warming_record':
 			if (effect.result === 'send')
-				return warming.recordSend(deps.redis, effect.ip, effect.reservedMessageId);
+				return warming.recordSend(deps.redis, effect.ip, effect.reservation);
 			if (effect.result === 'bounce') return warming.recordBounce(deps.redis, effect.ip);
 			return warming.recordDeferral(deps.redis, effect.ip);
 		case 'metrics_record':

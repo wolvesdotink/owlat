@@ -14,23 +14,58 @@ import type { BasePhaseCtx } from '../types.js';
 export const circuitBreakerPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 	name: 'circuit_breaker',
 	async run(deps, ctx) {
-		const breakerResult = await circuitBreaker.canSend(
+		const globalResult = await circuitBreaker.canSend(deps.redis, ctx.job.organizationId);
+		const providerResult = await circuitBreaker.canSend(
 			deps.redis,
 			ctx.job.organizationId,
 			ctx.destination.providerKey
 		);
-		if (!breakerResult.allowed) {
+		const lease = ctx.job.routingLease;
+		const generationChanged = Boolean(
+			lease &&
+			(globalResult.generation !== lease.globalBreakerGeneration ||
+				providerResult.generation !== lease.providerBreakerGeneration)
+		);
+		let probesCurrent = true;
+		if (globalResult.state === 'half-open') {
+			probesCurrent = Boolean(
+				lease?.globalProbe &&
+				(await circuitBreaker.reserveHalfOpenProbe(
+					deps.redis,
+					ctx.job.organizationId,
+					undefined,
+					ctx.job.messageId,
+					Date.now(),
+					globalResult.generation
+				))
+			);
+		}
+		if (probesCurrent && providerResult.state === 'half-open') {
+			probesCurrent = Boolean(
+				lease?.probe &&
+				(await circuitBreaker.reserveHalfOpenProbe(
+					deps.redis,
+					ctx.job.organizationId,
+					ctx.destination.providerKey,
+					ctx.job.messageId,
+					Date.now(),
+					providerResult.generation
+				))
+			);
+		}
+		if (!globalResult.allowed || !providerResult.allowed || generationChanged || !probesCurrent) {
 			logger.info(
 				{
 					orgId: ctx.job.organizationId,
-					state: breakerResult.state,
-					retryAfter: breakerResult.retryAfter,
+					state: !globalResult.allowed ? globalResult.state : providerResult.state,
+					retryAfter: globalResult.retryAfter ?? providerResult.retryAfter,
+					generationChanged,
 				},
 				'Circuit breaker OPEN — deferring'
 			);
 			return {
 				kind: 'defer',
-				delayMs: breakerResult.retryAfter ?? 60_000,
+				delayMs: globalResult.retryAfter ?? providerResult.retryAfter ?? 60_000,
 				reason: `Circuit breaker open for org ${ctx.job.organizationId}`,
 			};
 		}

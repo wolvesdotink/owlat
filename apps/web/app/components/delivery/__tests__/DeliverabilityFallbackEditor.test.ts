@@ -1,20 +1,20 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from "vitest";
-import { mount } from "@vue/test-utils";
-import { computed, watch } from "vue";
-import DeliverabilityFallbackEditor from "../DeliverabilityFallbackEditor.vue";
+import { describe, expect, it, vi } from 'vitest';
+import { mount } from '@vue/test-utils';
+import { computed, watch } from 'vue';
+import DeliverabilityFallbackEditor from '../DeliverabilityFallbackEditor.vue';
 
-vi.stubGlobal("computed", computed);
-vi.stubGlobal("watch", watch);
+vi.stubGlobal('computed', computed);
+vi.stubGlobal('watch', watch);
 
-function mountEditor(relay = "resend") {
+function mountEditor(relay = 'resend') {
 	return mount(DeliverabilityFallbackEditor, {
 		props: {
-			messageType: "campaign",
+			messageType: 'campaign',
 			providers: [
-				{ providerType: "mta", isEnabled: true },
-				{ providerType: "ses", isEnabled: true },
-				{ providerType: "resend", isEnabled: true },
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+				{ providerType: 'resend', isEnabled: true },
 			],
 			providerLabel: (kind: string) => kind.toUpperCase(),
 			enabled: true,
@@ -24,14 +24,14 @@ function mountEditor(relay = "resend") {
 	});
 }
 
-describe("DeliverabilityFallbackEditor", () => {
-	it("offers only SES and synchronizes an unsupported model value", async () => {
+describe('DeliverabilityFallbackEditor', () => {
+	it('offers only SES and synchronizes an unsupported model value', async () => {
 		const wrapper = mountEditor();
 		await wrapper.vm.$nextTick();
 
-		const options = wrapper.findAll("#fallback-relay option");
+		const options = wrapper.findAll('#fallback-relay option');
 		expect(options).toHaveLength(1);
-		expect(options[0]!.attributes("value")).toBe("ses");
-		expect(wrapper.emitted("update:relay")?.at(-1)).toEqual(["ses"]);
+		expect(options[0]!.attributes('value')).toBe('ses');
+		expect(wrapper.emitted('update:relay')?.at(-1)).toEqual(['ses']);
 	});
 });

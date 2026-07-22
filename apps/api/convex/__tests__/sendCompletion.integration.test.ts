@@ -74,6 +74,39 @@ async function setupTransactionalSend(
 // ============================================================================
 
 describe('completeSend — campaign Sends', () => {
+	it('typed routing deferral keeps the Send queued and schedules bounded re-entry', async () => {
+		const t = convexTest(schema, modules);
+		const sendId = await setupCampaignSend(t);
+
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: testWorkId,
+			result: {
+				kind: 'success',
+				returnValue: {
+					success: false,
+					deferred: true,
+					retryAfterMs: 60_000,
+					envelopeInput: { kind: 'campaign' },
+					retryState: {
+						attempt: 1,
+						startedAt: Date.now(),
+						idempotencyKey: `send_${sendId}`,
+					},
+				},
+			},
+			context: { sendRef: { kind: 'campaign', id: sendId } },
+		});
+
+		expect(await t.run(async (ctx) => (await ctx.db.get(sendId))?.status)).toBe('queued');
+		const scheduled = await t.run(
+			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled).toHaveLength(1);
+		expect(scheduled[0]?.args[0]).toMatchObject({
+			retryState: { attempt: 1, idempotencyKey: `send_${sendId}` },
+		});
+	});
+
 	it('result.success → transitions queued to sent', async () => {
 		const t = convexTest(schema, modules);
 		const sendId = await setupCampaignSend(t);

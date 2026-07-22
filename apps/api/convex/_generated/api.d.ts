@@ -205,6 +205,7 @@ import type * as delivery_complianceTelemetry from "../delivery/complianceTeleme
 import type * as delivery_deliverabilityRouting from "../delivery/deliverabilityRouting.js";
 import type * as delivery_deliverabilityValidators from "../delivery/deliverabilityValidators.js";
 import type * as delivery_enqueue from "../delivery/enqueue.js";
+import type * as delivery_governedDispatch from "../delivery/governedDispatch.js";
 import type * as delivery_health from "../delivery/health.js";
 import type * as delivery_lastMileRouting from "../delivery/lastMileRouting.js";
 import type * as delivery_marketingCompliance from "../delivery/marketingCompliance.js";
@@ -934,6 +935,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/deliverabilityRouting": typeof delivery_deliverabilityRouting;
   "delivery/deliverabilityValidators": typeof delivery_deliverabilityValidators;
   "delivery/enqueue": typeof delivery_enqueue;
+  "delivery/governedDispatch": typeof delivery_governedDispatch;
   "delivery/health": typeof delivery_health;
   "delivery/lastMileRouting": typeof delivery_lastMileRouting;
   "delivery/marketingCompliance": typeof delivery_marketingCompliance;

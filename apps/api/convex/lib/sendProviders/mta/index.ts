@@ -9,7 +9,11 @@
  */
 
 import { getOptional } from '../../env';
-import { extractDomainOrNull } from '@owlat/shared';
+import {
+	extractDomainOrNull,
+	ROUTING_LEASE_TOKEN_MAX_LENGTH,
+	type GovernedMessageType,
+} from '@owlat/shared';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
@@ -38,6 +42,7 @@ export type MtaRoutingDecision =
 
 export async function resolveMtaRoutingDecision(input: {
 	messageId: string;
+	messageType: GovernedMessageType;
 	organizationId: string;
 	recipient: string;
 	from: string;
@@ -66,9 +71,13 @@ export async function resolveMtaRoutingDecision(input: {
 		if (result['decision'] === 'mta') {
 			const lease = result['lease'];
 			if (
+				Object.keys(result).length === 2 &&
 				typeof lease === 'object' &&
 				lease !== null &&
-				typeof (lease as Record<string, unknown>)['token'] === 'string'
+				typeof (lease as Record<string, unknown>)['token'] === 'string' &&
+				((lease as Record<string, unknown>)['token'] as string).length > 0 &&
+				((lease as Record<string, unknown>)['token'] as string).length <=
+					ROUTING_LEASE_TOKEN_MAX_LENGTH
 			) {
 				return {
 					kind: 'mta',
@@ -78,21 +87,32 @@ export async function resolveMtaRoutingDecision(input: {
 		}
 		if (
 			result['decision'] === 'relay' &&
+			Object.keys(result).length === 2 &&
 			(result['reason'] === 'provider_breaker' ||
 				result['reason'] === 'provider_probe_limit' ||
 				result['reason'] === 'warmup_overflow')
 		) {
 			return { kind: 'relay', reason: result['reason'] };
 		}
-		if (result['decision'] === 'relay' && input.candidateProvider === 'relay') {
+		if (
+			result['decision'] === 'relay' &&
+			Object.keys(result).length === 1 &&
+			input.candidateProvider === 'relay'
+		) {
 			return { kind: 'relay', reason: 'relay_allowed' };
 		}
-		if (result['decision'] === 'defer') {
+		if (
+			result['decision'] === 'defer' &&
+			Object.keys(result).every((key) => ['decision', 'reason', 'retryAfterMs'].includes(key)) &&
+			Object.keys(result).length >= 2 &&
+			typeof result['reason'] === 'string'
+		) {
+			const retryAfterMs = result['retryAfterMs'];
 			return {
 				kind: 'defer',
 				retryAfterMs:
-					typeof result['retryAfterMs'] === 'number'
-						? Math.min(Math.max(result['retryAfterMs'], 1_000), 60 * 60 * 1000)
+					typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs)
+						? Math.min(Math.max(retryAfterMs, 1_000), 60 * 60 * 1000)
 						: 60_000,
 			};
 		}
@@ -141,6 +161,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			engagementScore: extras?.engagementScore,
 			dkimDomain: extras?.dkimDomain ?? fromDomain,
 			organizationId: extras?.organizationId,
+			messageType: extras?.messageType,
 			routingLease: extras?.routingLease,
 		};
 
@@ -149,7 +170,8 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 		const timeout = setTimeout(() => controller.abort(), MTA_TIMEOUT_MS);
 
 		try {
-			const response = await fetch(`${normalizedUrl}/send`, {
+			const endpoint = extras?.intakePath === 'system' ? '/send/system' : '/send';
+			const response = await fetch(`${normalizedUrl}${endpoint}`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -161,10 +183,22 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 
 			if (!response.ok) {
 				const errorText = await response.text().catch(() => 'Unknown error');
+				let retryAfterMs: number | undefined;
+				if (response.status === 409) {
+					try {
+						const parsed = JSON.parse(errorText) as Record<string, unknown>;
+						if (typeof parsed['retryAfterMs'] === 'number') {
+							retryAfterMs = Math.min(Math.max(parsed['retryAfterMs'], 1_000), 3_600_000);
+						}
+					} catch {
+						// The categorizer still handles a non-JSON 409 conservatively.
+					}
+				}
 				return {
 					success: false,
 					errorMessage: errorText,
 					errorCode: this.categorizeError(errorText, response.status),
+					...(retryAfterMs === undefined ? {} : { retryAfterMs }),
 				};
 			}
 
@@ -208,7 +242,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			// The MTA revalidates the authoritative lease immediately before
 			// enqueue. A breaker/IP-generation race must return to the worker so a
 			// fresh decision is resolved; it is not a permanent content failure.
-			return EmailErrorCode.SERVER_ERROR;
+			return EmailErrorCode.ROUTING_DEFERRED;
 		}
 		if (httpStatus !== undefined) {
 			const byStatus = httpStatusToErrorCode(httpStatus);

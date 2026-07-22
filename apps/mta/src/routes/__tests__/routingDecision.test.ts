@@ -1,45 +1,88 @@
-import { describe, expect, it } from "vitest";
-import { isRoutingLeaseBoundTo, type RoutingLeaseRecord } from "../routingDecision.js";
+import { describe, expect, it } from 'vitest';
+import { isRoutingLeaseBoundTo, type RoutingLeaseRecord } from '../routingDecision.js';
 
 function lease(overrides: Partial<RoutingLeaseRecord> = {}): RoutingLeaseRecord {
 	return {
-		token: "lease-1",
-		messageId: "message-1",
-		organizationId: "org-1",
-		recipient: "user@example.com",
-		destinationProvider: "gmail",
+		token: 'lease-1',
+		messageId: 'message-1',
+		organizationId: 'org-1',
+		recipient: 'user@example.com',
+		from: 'sender@example.org',
+		messageType: 'campaign',
+		candidateProvider: 'mta',
+		ipPool: 'campaign',
+		destinationProvider: 'gmail',
 		probe: false,
+		globalProbe: false,
+		globalBreakerGeneration: 0,
 		expiresAt: 10_000,
 		...overrides,
 	};
 }
 
-describe("routing decision lease binding", () => {
-	it("accepts only the exact tenant, message, and recipient before expiry", () => {
+describe('routing decision lease binding', () => {
+	it('accepts only the exact tenant, message, and recipient before expiry', () => {
 		expect(
 			isRoutingLeaseBoundTo(
 				lease(),
-				{ messageId: "message-1", organizationId: "org-1", recipient: "USER@example.com" },
-				9_000,
-			),
+				{
+					messageId: 'message-1',
+					messageType: 'campaign',
+					organizationId: 'org-1',
+					recipient: 'USER@example.com',
+					from: 'sender@example.org',
+					candidateProvider: 'mta',
+					ipPool: 'campaign',
+					allowWarmupOverflow: false,
+				},
+				9_000
+			)
 		).toBe(true);
 	});
 
 	it.each([
-		{ messageId: "other", organizationId: "org-1", recipient: "user@example.com" },
-		{ messageId: "message-1", organizationId: "org-2", recipient: "user@example.com" },
-		{ messageId: "message-1", organizationId: "org-1", recipient: "other@example.com" },
-	])("rejects cross-message, cross-tenant, and cross-recipient replay", (request) => {
-		expect(isRoutingLeaseBoundTo(lease(), request, 9_000)).toBe(false);
-	});
-
-	it("rejects an expired lease", () => {
+		{ messageId: 'other', organizationId: 'org-1', recipient: 'user@example.com' },
+		{ messageId: 'message-1', organizationId: 'org-2', recipient: 'user@example.com' },
+		{ messageId: 'message-1', organizationId: 'org-1', recipient: 'other@example.com' },
+		{ from: 'other@example.org' },
+		{ messageType: 'automation' as const },
+		{ ipPool: 'transactional' as const },
+	])('rejects cross-message, cross-tenant, and cross-recipient replay', (override) => {
 		expect(
 			isRoutingLeaseBoundTo(
 				lease(),
-				{ messageId: "message-1", organizationId: "org-1", recipient: "user@example.com" },
-				10_001,
-			),
+				{
+					messageId: 'message-1',
+					messageType: 'campaign',
+					organizationId: 'org-1',
+					recipient: 'user@example.com',
+					from: 'sender@example.org',
+					candidateProvider: 'mta',
+					ipPool: 'campaign',
+					allowWarmupOverflow: false,
+					...override,
+				},
+				9_000
+			)
+		).toBe(false);
+	});
+
+	it('rejects an expired lease', () => {
+		expect(
+			isRoutingLeaseBoundTo(
+				lease(),
+				{
+					messageId: 'message-1',
+					messageType: 'campaign',
+					organizationId: 'org-1',
+					recipient: 'user@example.com',
+					from: 'sender@example.org',
+					candidateProvider: 'mta',
+					ipPool: 'campaign',
+					allowWarmupOverflow: false,
+				},
+				10_001
+			)
 		).toBe(false);
 	});
 });

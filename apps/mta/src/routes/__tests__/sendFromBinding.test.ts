@@ -59,7 +59,7 @@ function buildApp(queue: FakeQueue, redis: Redis): Hono {
 		c.set('auth', { isMasterKey: true });
 		await next();
 	});
-	app.post('/send', createSendHandler(queue as unknown as Queue<never>, redis));
+	app.post('/send', createSendHandler(queue as unknown as Queue<never>, redis, 'postbox'));
 	return app;
 }
 
@@ -189,7 +189,7 @@ describe('POST /send — Postbox from-binding', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
-	it('skips the check for non-postbox organizationId', async () => {
+	it('rejects a non-Postbox organization on the fixed-scope intake', async () => {
 		const queue = fakeQueue();
 		const app = buildApp(queue, fakeRedis());
 
@@ -209,16 +209,14 @@ describe('POST /send — Postbox from-binding', () => {
 			}),
 		});
 
-		expect(res.status).toBe(200);
-		expect(queue.add).toHaveBeenCalledTimes(1);
+		expect(res.status).toBe(403);
+		expect(queue.add).not.toHaveBeenCalled();
 	});
 
-	it('skips the check when allowedFromAddresses is omitted (back-compat)', async () => {
+	it('rejects when allowedFromAddresses is omitted', async () => {
 		const queue = fakeQueue();
 		const app = buildApp(queue, fakeRedis());
 
-		// Legacy Convex builds that haven't been updated yet would omit
-		// the array entirely. We must not break them.
 		const res = await app.request('/send', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -234,7 +232,7 @@ describe('POST /send — Postbox from-binding', () => {
 			}),
 		});
 
-		expect(res.status).toBe(200);
-		expect(queue.add).toHaveBeenCalledTimes(1);
+		expect(res.status).toBe(403);
+		expect(queue.add).not.toHaveBeenCalled();
 	});
 });

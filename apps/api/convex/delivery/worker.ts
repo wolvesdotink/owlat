@@ -3,14 +3,6 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
-import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
-import {
-	type ExtrasFor,
-	type MtaExtras,
-	type MtaIpPool,
-	type ResendExtras,
-	type SendProviderKind,
-} from '../lib/sendProviders';
 import { getUnsubscribeUrl, getListUnsubscribeHeader } from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
@@ -19,7 +11,7 @@ import { transformHtml } from './sendComposition/transform';
 import { fetchGuarded } from '../lib/ssrfGuard';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
-import { resolveLastMileRouting } from './lastMileRouting';
+import { dispatchGovernedEmail } from './governedDispatch';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -81,6 +73,7 @@ const envelopeInputValidator = v.union(
 	}),
 	v.object({
 		kind: v.literal('transactional'),
+		messageType: v.optional(v.union(v.literal('transactional'), v.literal('automation'))),
 		emailPurpose: v.union(v.literal('marketing'), v.literal('transactional')),
 		to: v.string(),
 		from: v.string(),
@@ -155,6 +148,7 @@ type WorkerEnvelopeInput =
 	  }
 	| {
 			kind: 'transactional';
+			messageType?: 'transactional' | 'automation';
 			emailPurpose: EmailPurpose;
 			to: string;
 			from: string;
@@ -178,12 +172,11 @@ type WorkerEnvelopeInput =
 			convexSiteUrl?: string;
 	  };
 
-/** Stable Send-row key used by MTA and Resend to deduplicate surviving retries. */
-function deriveIdempotencyKey(envelopeInput: WorkerEnvelopeInput): string | undefined {
-	const sendRowId =
-		envelopeInput.kind === 'campaign' ? envelopeInput.emailSendId : envelopeInput.sendId;
-	return sendRowId ? `send_${sendRowId}` : undefined;
-}
+const retryStateValidator = v.object({
+	attempt: v.number(),
+	startedAt: v.number(),
+	idempotencyKey: v.string(),
+});
 
 /**
  * Build the RFC 8058 one-click `List-Unsubscribe` header for a MARKETING
@@ -365,8 +358,9 @@ async function resolveAttachments(
 export const sendSingleEmail = internalAction({
 	args: {
 		envelopeInput: envelopeInputValidator,
+		retryState: v.optional(retryStateValidator),
 	},
-	handler: async (ctx, { envelopeInput }) => {
+	handler: async (ctx, { envelopeInput, retryState }) => {
 		// Suppression re-check — campaign path only. Campaigns filter the blocklist
 		// once, at audience-resolution time, then enqueue. But the timezone path
 		// can schedule a send up to ~24h out and the rate-limited campaign queue
@@ -417,52 +411,22 @@ export const sendSingleEmail = internalAction({
 			envelopeInput.kind === 'campaign' ? 'marketing' : envelopeInput.emailPurpose;
 		assertMarketingOneClickHeaders(emailPurpose, mergedHeaders);
 
-		const idempotencyKey = deriveIdempotencyKey(envelopeInput);
-		if (!idempotencyKey) {
-			throw new Error('Delivery safety decision requires a stable Send idempotency key.');
-		}
-		const {
-			providerKind,
-			route: lastMileRoute,
-			organizationId,
-			routingLease,
-		} = await resolveLastMileRouting(ctx, {
-			kind: envelopeInput.kind,
+		return await dispatchGovernedEmail(ctx, {
+			envelopeInput,
+			messageType:
+				envelopeInput.kind === 'campaign'
+					? 'campaign'
+					: (envelopeInput.messageType ?? 'transactional'),
 			to: envelopeInput.to,
 			from: envelopeInput.from,
+			replyTo: envelopeInput.replyTo,
 			providerType: envelopeInput.providerType,
 			ipPool: envelopeInput.ipPool,
 			organizationId: envelopeInput.organizationId,
-			idempotencyKey,
-		});
-
-		// Send via the Send dispatch helper. The helper owns retries, error
-		// categorization, and `providerHealth` recording for every attempt.
-		//
-		// Thread a stable, Send-row-derived idempotency key so any surviving
-		// retry de-dupes at the boundary: MTA dedups on `messageId`, Resend on
-		// the `Idempotency-Key` header. SES has no idempotency surface (its
-		// adapter treats a post-dispatch timeout as TERMINAL instead).
-		const extras: ExtrasFor<SendProviderKind> =
-			providerKind === 'mta'
-				? ({
-						messageId: idempotencyKey,
-						organizationId,
-						routingLease,
-						...((lastMileRoute?.ipPool ?? envelopeInput.ipPool)
-							? { ipPool: (lastMileRoute?.ipPool ?? envelopeInput.ipPool) as MtaIpPool }
-							: {}),
-					} satisfies MtaExtras)
-				: providerKind === 'resend'
-					? ({ idempotencyKey } satisfies ResendExtras)
-					: {};
-		const dispatched = await sendProviderDispatch(
-			ctx,
-			providerKind,
-			{
-				to: envelopeInput.to,
-				from: envelopeInput.from,
-				replyTo: envelopeInput.replyTo,
+			stableSendId:
+				envelopeInput.kind === 'campaign' ? envelopeInput.emailSendId : envelopeInput.sendId,
+			retryState,
+			message: {
 				subject: composed.subject,
 				html,
 				// Plain-text alternative derived from the UNTRACKED composer html
@@ -472,21 +436,6 @@ export const sendSingleEmail = internalAction({
 				headers: Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined,
 				attachments: resolvedAttachments,
 			},
-			extras
-		);
-
-		if (dispatched.result.success) {
-			return {
-				success: true,
-				providerMessageId:
-					providerKind === 'mta' && idempotencyKey && dispatched.result.id !== idempotencyKey
-						? idempotencyKey
-						: dispatched.result.id, // MTA-only: keep the VERP token, not a dedup sentinel, so bounce/complaint DSNs resolve by_provider_message_id (Resend/SES keep their own ids)
-				providerType: dispatched.providerType,
-				sendLatencyMs: dispatched.latencyMs,
-			};
-		}
-
-		throw new Error(dispatched.result.errorMessage || 'Unknown email sending error');
+		});
 	},
 });

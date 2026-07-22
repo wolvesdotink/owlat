@@ -25,8 +25,8 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('agentSecurity') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 async function insertMailbox(ctx: { db: DatabaseWriter }): Promise<Id<'mailboxes'>> {
@@ -46,7 +46,7 @@ async function insertMailbox(ctx: { db: DatabaseWriter }): Promise<Id<'mailboxes
 
 async function insertInbox(
 	ctx: { db: DatabaseWriter },
-	mailboxId: Id<'mailboxes'>,
+	mailboxId: Id<'mailboxes'>
 ): Promise<Id<'mailFolders'>> {
 	const now = Date.now();
 	return ctx.db.insert('mailFolders', {
@@ -66,7 +66,7 @@ async function insertInbox(
 
 async function enableResponder(
 	ctx: { db: DatabaseWriter },
-	mailboxId: Id<'mailboxes'>,
+	mailboxId: Id<'mailboxes'>
 ): Promise<void> {
 	const now = Date.now();
 	await ctx.db.insert('mailVacationResponders', {
@@ -95,7 +95,7 @@ interface DeliverArgs {
 async function deliverAndDrain(
 	t: ReturnType<typeof convexTest>,
 	rawStorageId: Id<'_storage'>,
-	args: DeliverArgs,
+	args: DeliverArgs
 ): Promise<void> {
 	vi.useFakeTimers();
 	try {
@@ -127,6 +127,9 @@ interface SendBody {
 	to: string;
 	subject: string;
 	headers: Record<string, string>;
+	organizationId: string;
+	allowedFromAddresses: string[];
+	routingLease?: unknown;
 }
 
 /** Spy on global fetch; return the captured /send POST url + parsed body. */
@@ -230,9 +233,13 @@ describe('vacation auto-reply — null-return-path bounce suppression (PR-45)', 
 			returnPath: 'alice@isp.example',
 		});
 
-		// Positive control: the responder fired (one /send) and logged the reply.
+		// Positive control: the responder fired through the fixed Postbox intake
+		// and logged the reply.
 		expect(calls).toHaveLength(1);
-		expect(calls[0]!.url).toBe('https://mta.test/send');
+		expect(calls[0]!.url).toBe('https://mta.test/send/postbox');
+		expect(calls[0]!.body.organizationId).toBe('postbox');
+		expect(calls[0]!.body.allowedFromAddresses).toEqual(['me@example.com']);
+		expect(calls[0]!.body).not.toHaveProperty('routingLease');
 		await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const log = await ctx.db.query('mailVacationLog').collect();
 			expect(log).toHaveLength(1);
