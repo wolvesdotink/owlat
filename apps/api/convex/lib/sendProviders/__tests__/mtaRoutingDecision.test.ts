@@ -55,11 +55,14 @@ describe('MTA routing decision client', () => {
 	});
 
 	it.each([
+		{ decision: 'mta', lease: { token: 'lease-1', expiresAt: Date.now() } },
 		{ decision: 'mta', lease: { token: 'lease-1' }, unexpected: true },
 		{ decision: 'mta', lease: { token: 'x'.repeat(ROUTING_LEASE_TOKEN_MAX_LENGTH + 1) } },
 		{ decision: 'relay', reason: 'provider_breaker', unexpected: true },
 		{ decision: 'defer', reason: 'global_safety', retryAfterMs: 1_000, unexpected: true },
 		{ decision: 'defer', retryAfterMs: 1_000 },
+		{ decision: 'defer', reason: 'invented_reason', retryAfterMs: 1_000 },
+		{ decision: 'defer', reason: 'global_safety' },
 	])('rejects an inexact decision response: %j', async (body) => {
 		global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
 		expect(await resolveMtaRoutingDecision(decisionInput)).toEqual({
