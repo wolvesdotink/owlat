@@ -203,6 +203,32 @@ describe.runIf(dockerAvailable())('webhook DLQ on Redis Cluster', () => {
 		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(1);
 	}, 15_000);
 
+	it('atomically quarantines a protected row with an unknown event type', async () => {
+		const config = { webhookDlqMaxSize: 10 } as MtaConfig;
+		const event = {
+			event: 'complained' as const,
+			messageId: 'cluster-invalid-event',
+			timestamp: Date.now(),
+		};
+		const key = 'cluster-invalid-event:complained';
+		const id = await storePending(cluster as never, event, config, key);
+		const raw = JSON.parse((await cluster.hget(WEBHOOK_DLQ_ENTRIES_KEY, id))!) as Record<
+			string,
+			unknown
+		>;
+		raw['event'] = { ...event, event: 'future.unrecognized' };
+		await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, JSON.stringify(raw));
+
+		await expect(storePending(cluster as never, event, config, key)).rejects.toThrow('quarantined');
+		expect(await cluster.hmget(WEBHOOK_DLQ_ENTRIES_KEY, id, `attempts:${id}`)).toEqual([
+			null,
+			null,
+		]);
+		expect(await cluster.zscore(WEBHOOK_DLQ_CREATED_KEY, id)).toBeNull();
+		expect(await cluster.zscore(WEBHOOK_DLQ_DUE_KEY, id)).toBeNull();
+		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(0);
+	}, 15_000);
+
 	it('fails closed without deleting repaired protected rows at protected capacity', async () => {
 		await cluster.del(
 			WEBHOOK_DLQ_ENTRIES_KEY,

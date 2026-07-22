@@ -20,6 +20,7 @@ export function createTestEmailJob(overrides?: Partial<EmailJob>): EmailJob {
 
 export function createTestConfig(overrides?: Partial<MtaConfig>): MtaConfig {
 	return {
+		fblDedupProtocol: 'owned-v2',
 		port: 3100,
 		bouncePort: 2525,
 		redisUrl: 'redis://localhost:6379',
@@ -53,6 +54,7 @@ export function createTestConfig(overrides?: Partial<MtaConfig>): MtaConfig {
 		deliveryLogMaxLen: 100000,
 		deliveryLogTtlHours: 72,
 		webhookDlqMaxSize: 10000,
+		smtpOutcomeJournalMaxSize: 10000,
 		bounceMaxConnectionsPerIp: 10,
 		bounceMaxClients: 200,
 		bounceTarpitEnabled: false,

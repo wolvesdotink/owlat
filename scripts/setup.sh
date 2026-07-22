@@ -1264,6 +1264,8 @@ write_selfhost_env() {
     echo "DKIM_KEYS=${SELFHOST_VARS[DKIM_KEYS]:-{}}"
     echo ""
     echo "WORKER_CONCURRENCY=${SELFHOST_VARS[WORKER_CONCURRENCY]:-50}"
+    echo "SMTP_OUTCOME_JOURNAL_MAX_SIZE=${SELFHOST_VARS[SMTP_OUTCOME_JOURNAL_MAX_SIZE]:-10000}"
+    echo "FBL_DEDUP_PROTOCOL=${SELFHOST_VARS[FBL_DEDUP_PROTOCOL]:-owned-v2}"
     echo "MTA_LOG_LEVEL=${SELFHOST_VARS[MTA_LOG_LEVEL]:-info}"
     echo ""
     echo "# ── Port Overrides (optional) ────────────────────────────────────────────────"

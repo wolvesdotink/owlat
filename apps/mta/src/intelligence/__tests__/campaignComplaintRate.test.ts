@@ -9,6 +9,7 @@ import {
 	CAMPAIGN_COMPLAINT_THRESHOLD,
 	CAMPAIGN_MIN_DELIVERIES,
 } from '../campaignComplaintRate.js';
+import { durableEffectIdentity } from '../../lib/effectCheckpoint.js';
 
 describe('campaignComplaintRate', () => {
 	let redis: RealRedis;
@@ -39,6 +40,45 @@ describe('campaignComplaintRate', () => {
 	});
 
 	describe('recordComplaint', () => {
+		it('increments once when the same durable complaint effect is replayed', async () => {
+			await recordDelivery(redis, 'c1', 1000);
+			const identity = durableEffectIdentity('fbl-complaint:test', 'campaign-rate:c1');
+
+			const first = await recordComplaint(redis, 'c1', identity);
+			const replay = await recordComplaint(redis, 'c1', identity);
+
+			expect(first.complaints).toBe(1);
+			expect(replay.complaints).toBe(1);
+			expect(await getStats(redis, 'c1')).toMatchObject({ complaints: 1, delivered: 1000 });
+		});
+
+		it('returns the original threshold crossing after a committed response is lost', async () => {
+			await recordDelivery(redis, 'c1', 1000);
+			for (let index = 0; index < 3; index++) await recordComplaint(redis, 'c1');
+			const identity = durableEffectIdentity('fbl-complaint:test', 'campaign-rate:crossing');
+			const committedEval = redis.eval.bind(redis) as (...args: unknown[]) => Promise<unknown>;
+			let loseResponse = true;
+			(redis as unknown as { eval: (...args: unknown[]) => Promise<unknown> }).eval = async (
+				...args
+			) => {
+				const result = await committedEval(...args);
+				if (loseResponse && String(args[0]).includes("local previous = redis.call('HGET'")) {
+					loseResponse = false;
+					throw new Error('simulated lost Redis response');
+				}
+				return result;
+			};
+
+			await expect(recordComplaint(redis, 'c1', identity)).rejects.toThrow(
+				'simulated lost Redis response'
+			);
+			await expect(recordComplaint(redis, 'c1', identity)).resolves.toMatchObject({
+				complaints: 4,
+				thresholdCrossed: true,
+			});
+			expect((await getStats(redis, 'c1')).complaints).toBe(4);
+		});
+
 		it('returns the running rate (complaints / deliveries)', async () => {
 			await recordDelivery(redis, 'c1', 1000);
 			const r1 = await recordComplaint(redis, 'c1');
@@ -91,9 +131,7 @@ describe('campaignComplaintRate', () => {
 		const CAMPAIGN_ID = 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4';
 
 		it('extracts field 2 from a campaign-stream Feedback-ID', () => {
-			expect(parseCampaignFromFeedbackId(`campaign:${CAMPAIGN_ID}:topic:ab12cd`)).toBe(
-				CAMPAIGN_ID,
-			);
+			expect(parseCampaignFromFeedbackId(`campaign:${CAMPAIGN_ID}:topic:ab12cd`)).toBe(CAMPAIGN_ID);
 		});
 
 		it('returns undefined for the txn stream', () => {
@@ -112,7 +150,7 @@ describe('campaignComplaintRate', () => {
 
 		it('trims surrounding whitespace', () => {
 			expect(parseCampaignFromFeedbackId(`  campaign:${CAMPAIGN_ID}:segment:zz  `)).toBe(
-				CAMPAIGN_ID,
+				CAMPAIGN_ID
 			);
 		});
 
@@ -121,14 +159,12 @@ describe('campaignComplaintRate', () => {
 		// be rejected so it cannot inflate metric cardinality (memory DoS).
 		it('returns undefined for a campaignId outside the doc-id charset', () => {
 			// Underscores, uppercase, and other punctuation are not valid Convex ids.
+			expect(parseCampaignFromFeedbackId('campaign:camp_42:topic:ab12cd')).toBeUndefined();
 			expect(
-				parseCampaignFromFeedbackId('campaign:camp_42:topic:ab12cd'),
+				parseCampaignFromFeedbackId('campaign:UPPERCASE1234567890abcd:topic:ab12cd')
 			).toBeUndefined();
 			expect(
-				parseCampaignFromFeedbackId('campaign:UPPERCASE1234567890abcd:topic:ab12cd'),
-			).toBeUndefined();
-			expect(
-				parseCampaignFromFeedbackId('campaign:has space here1234567:topic:ab12cd'),
+				parseCampaignFromFeedbackId('campaign:has space here1234567:topic:ab12cd')
 			).toBeUndefined();
 		});
 
@@ -138,9 +174,7 @@ describe('campaignComplaintRate', () => {
 
 		it('returns undefined for an oversized campaignId (bounds per-value cardinality)', () => {
 			const oversized = 'a'.repeat(65);
-			expect(
-				parseCampaignFromFeedbackId(`campaign:${oversized}:topic:ab12cd`),
-			).toBeUndefined();
+			expect(parseCampaignFromFeedbackId(`campaign:${oversized}:topic:ab12cd`)).toBeUndefined();
 			// A pathological multi-kilobyte forged value is also rejected.
 			const huge = 'b'.repeat(5000);
 			expect(parseCampaignFromFeedbackId(`campaign:${huge}:topic:ab12cd`)).toBeUndefined();

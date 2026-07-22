@@ -8,6 +8,13 @@ import {
 	reserveComplaint,
 	runComplaintEffect,
 } from '../complaintDedupStore.js';
+import {
+	getStats,
+	recordComplaint,
+	recordDelivery,
+} from '../../intelligence/campaignComplaintRate.js';
+import { recordOutcome } from '../../intelligence/circuitBreaker.js';
+import { durableEffectIdentity } from '../../lib/effectCheckpoint.js';
 
 function dockerAvailable(): boolean {
 	try {
@@ -102,10 +109,9 @@ describe.runIf(dockerAvailable())('complaint deduplication on Redis Cluster', ()
 		}
 	});
 
-	it('uses one cross-version-safe key for reservation, effects, release, and completion', async () => {
-		const first = await reserveComplaint(cluster as never, 'cluster-complaint');
+	it('uses one Cluster-safe v2 key for reservation, effects, release, and completion', async () => {
+		const first = await reserveComplaint(cluster as never, 'cluster-complaint', 'owned-v2');
 		if (first.kind !== 'reserved') throw new Error('expected reservation');
-		expect(await cluster.set(first.reservation.key, '1', 'EX', 60, 'NX')).toBeNull();
 		const apply = vi.fn().mockResolvedValue(undefined);
 		await runComplaintEffect(
 			cluster as never,
@@ -115,7 +121,7 @@ describe.runIf(dockerAvailable())('complaint deduplication on Redis Cluster', ()
 		);
 		await releaseComplaint(cluster as never, first.reservation);
 
-		const retry = await reserveComplaint(cluster as never, 'cluster-complaint');
+		const retry = await reserveComplaint(cluster as never, 'cluster-complaint', 'owned-v2');
 		if (retry.kind !== 'reserved') throw new Error('expected retry reservation');
 		await runComplaintEffect(
 			cluster as never,
@@ -128,19 +134,66 @@ describe.runIf(dockerAvailable())('complaint deduplication on Redis Cluster', ()
 		expect(apply).toHaveBeenCalledOnce();
 		expect(await cluster.hget(retry.reservation.key, 'status')).toBe('completed');
 		expect(await cluster.ttl(retry.reservation.key)).toBeGreaterThan(7 * 86400 - 5);
-		expect(await reserveComplaint(cluster as never, 'cluster-complaint')).toEqual({
+		expect(await reserveComplaint(cluster as never, 'cluster-complaint', 'owned-v2')).toEqual({
 			kind: 'completed',
 		});
 	}, 15_000);
 
-	it('recognizes a legacy string key without changing its TTL', async () => {
+	it('legacy-shadow excludes an old SET NX worker during the drain phase', async () => {
+		const result = await reserveComplaint(
+			cluster as never,
+			'shadow-cluster-complaint',
+			'legacy-shadow'
+		);
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		expect(
+			await cluster.set('mta:fbl:dedup:shadow-cluster-complaint', '1', 'EX', 60, 'NX')
+		).toBeNull();
+		expect(await cluster.hget(result.reservation.key, 'status')).toBe('reserved');
+	}, 15_000);
+
+	it('owned-v2 ignores a legacy string key without changing its TTL', async () => {
 		const key = 'mta:fbl:dedup:legacy-cluster-complaint';
 		await cluster.set(key, '1', 'EX', 60);
 		const before = await cluster.ttl(key);
-		expect(await reserveComplaint(cluster as never, 'legacy-cluster-complaint')).toEqual({
-			kind: 'completed',
-		});
+		expect(
+			(await reserveComplaint(cluster as never, 'legacy-cluster-complaint', 'owned-v2')).kind
+		).toBe('reserved');
 		expect(await cluster.get(key)).toBe('1');
 		expect(await cluster.ttl(key)).toBeGreaterThanOrEqual(before - 1);
+	}, 15_000);
+
+	it('deduplicates downstream complaint counters and breaker histories without CROSSSLOT', async () => {
+		const campaign = `campaign-${suffix}`;
+		const complaintIdentity = durableEffectIdentity(
+			`fbl-complaint:${suffix}`,
+			'campaign-complaint-rate'
+		);
+		await recordDelivery(cluster as never, campaign, 1000);
+		await recordComplaint(cluster as never, campaign, complaintIdentity);
+		await recordComplaint(cluster as never, campaign, complaintIdentity);
+		expect((await getStats(cluster as never, campaign)).complaints).toBe(1);
+
+		const outcomeIdentity = durableEffectIdentity(`fbl-complaint:${suffix}`, 'circuit-breaker');
+		await recordOutcome(
+			cluster as never,
+			`org-${suffix}`,
+			'complained',
+			undefined,
+			'gmail',
+			undefined,
+			outcomeIdentity
+		);
+		await recordOutcome(
+			cluster as never,
+			`org-${suffix}`,
+			'complained',
+			undefined,
+			'gmail',
+			undefined,
+			outcomeIdentity
+		);
+		expect(await cluster.llen(`mta:breaker:{org-${suffix}}:outcomes`)).toBe(1);
+		expect(await cluster.llen(`mta:breaker:{org-${suffix}:provider:gmail}:outcomes`)).toBe(1);
 	}, 15_000);
 });

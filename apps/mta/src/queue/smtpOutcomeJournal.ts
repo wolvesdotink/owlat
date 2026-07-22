@@ -12,7 +12,7 @@ import type { EmailJobResult } from '../types.js';
 import type { CtxWithIp } from '../dispatch/types.js';
 import type { DispatchOutcome, OutcomeReduction } from '../dispatch/outcome.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
-import { runCheckpointedEffect } from '../lib/effectCheckpoint.js';
+import { runCheckpointedEffect, type DurableEffectIdentity } from '../lib/effectCheckpoint.js';
 
 const JOURNAL_INDEX_KEY = 'mta:{smtp-outcome}:expiries';
 const JOURNAL_KEY_PREFIX = 'mta:{smtp-outcome}:job:';
@@ -92,7 +92,7 @@ function journalKey(jobId: string): string {
 	return `${JOURNAL_KEY_PREFIX}${createHash('sha256').update(jobId).digest('hex')}`;
 }
 
-function effectClaimsKey(jobId: string): string {
+function effectCheckpointsKey(jobId: string): string {
 	return `mta:{smtp-outcome}:effects:${createHash('sha256').update(jobId).digest('hex')}`;
 }
 
@@ -339,7 +339,7 @@ export async function runSmtpSecondaryEffect<T>(
 	entry: CompletedSmtpOutcome,
 	expectedRaw: string,
 	effectIdentity: string,
-	apply: () => Promise<T>,
+	apply: (downstreamIdentity: DurableEffectIdentity) => Promise<T>,
 	options: { leaseMs?: number; waitMs?: number } = {}
 ): Promise<T | undefined> {
 	return runCheckpointedEffect(
@@ -347,7 +347,8 @@ export async function runSmtpSecondaryEffect<T>(
 		{
 			ownerKey: journalKey(entry.jobId),
 			ownerValue: expectedRaw,
-			checkpointsKey: effectClaimsKey(entry.jobId),
+			checkpointsKey: effectCheckpointsKey(entry.jobId),
+			downstreamScope: `smtp-job:${entry.jobId}`,
 			ttlMs: SMTP_OUTCOME_JOURNAL_TTL_MS,
 			leaseMs: options.leaseMs,
 			waitMs: options.waitMs,
@@ -360,5 +361,5 @@ export async function runSmtpSecondaryEffect<T>(
 export const smtpOutcomeJournalKeys = {
 	index: JOURNAL_INDEX_KEY,
 	journalKey,
-	effectClaimsKey,
+	effectCheckpointsKey,
 };

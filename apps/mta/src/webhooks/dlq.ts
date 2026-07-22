@@ -15,6 +15,7 @@ import { logger } from '../monitoring/logger.js';
 import { parseDeliveryFailure, type WebhookDeliveryFailure } from './dlqFailure.js';
 import { webhookDlqRetryDelayMs } from './dlqRetryPolicy.js';
 import { STORE_LUA } from './dlqStoreScript.js';
+import { isMtaWebhookEventType } from './webhookEventType.js';
 
 export {
 	classifyWebhookHttpFailure,
@@ -53,6 +54,18 @@ function isFiniteNumber(value: unknown): value is number {
 	return typeof value === 'number' && Number.isFinite(value);
 }
 
+function hasInvalidEventDiscriminator(data: string): boolean {
+	try {
+		const value: unknown = JSON.parse(data);
+		return (
+			isRecord(value) &&
+			(!isRecord(value['event']) || !isMtaWebhookEventType(value['event']['event']))
+		);
+	} catch {
+		return false;
+	}
+}
+
 function parseDlqEntry(data: string, expectedDlqId: string): DlqEntry | null {
 	let value: unknown;
 	try {
@@ -65,7 +78,7 @@ function parseDlqEntry(data: string, expectedDlqId: string): DlqEntry | null {
 		typeof value['dlqId'] !== 'string' ||
 		value['dlqId'] !== expectedDlqId ||
 		!isRecord(value['event']) ||
-		typeof value['event']['event'] !== 'string' ||
+		!isMtaWebhookEventType(value['event']['event']) ||
 		!isFiniteNumber(value['event']['timestamp']) ||
 		!isFiniteNumber(value['attempts']) ||
 		!Number.isInteger(value['attempts']) ||
@@ -232,6 +245,9 @@ async function store(
 	) {
 		const observedRaw = isProtected ? await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, dlqId) : null;
 		const observedEntry = observedRaw ? parseDlqEntry(observedRaw, dlqId) : null;
+		const invalidEventDiscriminator = observedRaw
+			? hasInvalidEventDiscriminator(observedRaw)
+			: false;
 		const observedPendingEntry =
 			observedEntry?.failure.category === 'pending' ? observedEntry : null;
 		status = (await redis.eval(
@@ -246,12 +262,15 @@ async function store(
 			observedRaw === null ? '0' : '1',
 			observedRaw ?? '',
 			observedPendingEntry ? '1' : '0',
-			String(observedPendingEntry?.attempts ?? 0)
+			String(observedPendingEntry?.attempts ?? 0),
+			invalidEventDiscriminator ? '1' : '0'
 		)) as number;
 	}
 	if (status === -1) throw new Error('Webhook terminal outbox is at capacity');
 	if (status === -2) throw new Error('Webhook DLQ is at protected capacity');
 	if (status === -3) throw new Error('Existing protected webhook outbox is inconsistent');
+	if (status === -5)
+		throw new Error('Existing protected webhook outbox event type was quarantined');
 	if (status === observationChanged) {
 		throw new Error('Existing protected webhook outbox changed during repair');
 	}

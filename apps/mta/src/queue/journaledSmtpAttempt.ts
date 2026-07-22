@@ -34,7 +34,7 @@ export async function runJournaledSmtpAttempt(options: {
 		options.attempt,
 		{
 			now: options.startedAt,
-			capacity: options.config.webhookDlqMaxSize,
+			capacity: options.config.smtpOutcomeJournalMaxSize,
 		}
 	);
 	if (reservation.kind === 'capacity') return { kind: 'capacity' };

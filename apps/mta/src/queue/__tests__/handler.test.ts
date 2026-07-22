@@ -212,6 +212,7 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		deliveryLogMaxLen: 100000,
 		deliveryLogTtlHours: 72,
 		webhookDlqMaxSize: 10000,
+		smtpOutcomeJournalMaxSize: 10000,
 		bounceMaxConnectionsPerIp: 10,
 		bounceMaxClients: 200,
 		bounceTarpitEnabled: false,
@@ -364,7 +365,8 @@ describe('handleEmailJob', () => {
 			'delivered',
 			config,
 			'other',
-			undefined
+			undefined,
+			expect.stringMatching(/^effect:v1:/)
 		);
 		expect(recordSuccess).toHaveBeenCalled();
 		expect(recordSend).toHaveBeenCalled();
@@ -384,7 +386,7 @@ describe('handleEmailJob', () => {
 		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
 		await reserveSmtpOutcome(redis, 'job-1', 'msg-001', createAttempt(), {
 			now: Date.now(),
-			capacity: config.webhookDlqMaxSize,
+			capacity: config.smtpOutcomeJournalMaxSize,
 		});
 		vi.mocked(isSuppressed).mockResolvedValue(true);
 
@@ -534,7 +536,7 @@ describe('handleEmailJob', () => {
 	it('defers before SMTP when outcome-journal capacity is unavailable', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
-		config.webhookDlqMaxSize = 1;
+		config.smtpOutcomeJournalMaxSize = 1;
 		await reserveSmtpOutcome(
 			redis,
 			'other-job',

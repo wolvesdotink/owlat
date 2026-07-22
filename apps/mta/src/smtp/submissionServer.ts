@@ -51,7 +51,6 @@ import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPrio
 import { logger } from '../monitoring/logger.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
-import { createHash } from 'crypto';
 import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
 import {
 	checkConnectionRateLimit,
@@ -61,6 +60,14 @@ import {
 	clearAuthFailures,
 } from './submissionSecurity.js';
 import { createSlotTracker } from '../lib/connectionSlots.js';
+import {
+	bindSubmissionClientRequest,
+	normalizeEnvelopeAddress,
+	resolveSubmissionIdentity,
+	SUBMISSION_DEDUPLICATION_MAIL_PARAMETER,
+	SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER,
+	submissionRecipientJobId,
+} from './submissionIdentity.js';
 
 /**
  * Hard cap for buffered submitted MIME (advertised via EHLO SIZE AND enforced by
@@ -116,13 +123,6 @@ function sessionRemoteIp(session: Session): string {
 	return session.remoteAddress || 'unknown';
 }
 
-function normalizeEnvelopeAddress(address: string): string {
-	const trimmed = address.trim();
-	const separator = trimmed.lastIndexOf('@');
-	if (separator < 0) return trimmed;
-	return `${trimmed.slice(0, separator)}@${trimmed.slice(separator + 1).toLowerCase()}`;
-}
-
 function submissionRecipients(session: Session): string[] {
 	const seen = new Set<string>();
 	const recipients: string[] = [];
@@ -133,49 +133,6 @@ function submissionRecipients(session: Session): string[] {
 		recipients.push(normalized);
 	}
 	return recipients;
-}
-
-/**
- * Strongest retry identity available from authenticated SMTP.
- *
- * Canonical JSON keeps field boundaries collision-safe. Recipients are omitted
- * here and added individually by `submissionRecipientJobId`, so a retry with a
- * reordered or reduced envelope reconciles the same already-accepted jobs.
- * Exact DATA bytes are represented by their own SHA-256 digest.
- */
-function submissionMessageFingerprint(
-	auth: AuthenticatedSession,
-	envelopeFrom: string,
-	message: Buffer
-): string {
-	const principal = auth.postbox
-		? {
-				kind: 'postbox',
-				organizationId: auth.organizationId,
-				mailboxId: auth.postbox.mailboxId,
-				appPasswordId: auth.postbox.appPasswordId,
-			}
-		: {
-				kind: 'credential',
-				organizationId: auth.organizationId,
-				credentialName: auth.credentialName,
-			};
-	return createHash('sha256')
-		.update(
-			JSON.stringify({
-				principal,
-				envelopeFrom: normalizeEnvelopeAddress(envelopeFrom),
-				dataSha256: createHash('sha256').update(message).digest('hex'),
-			})
-		)
-		.digest('hex');
-}
-
-function submissionRecipientJobId(prefix: string, fingerprint: string, recipient: string): string {
-	const recipientDigest = createHash('sha256')
-		.update(JSON.stringify([fingerprint, recipient]))
-		.digest('hex');
-	return `${prefix}-${recipientDigest}`;
 }
 
 /**
@@ -344,11 +301,14 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 
 			const fromAddress = firstFrom(parsed.from);
 			const fromDomain = emailDomain(fromAddress);
-			const envelopeFrom = session.mailFrom?.address;
-			if (!envelopeFrom) {
+			const envelope = session.mailFrom;
+			if (!envelope?.address) {
 				return { code: 503, enhanced: '5.5.1', text: 'MAIL FROM required' };
 			}
-			const fingerprint = submissionMessageFingerprint(authData, envelopeFrom, message);
+			const identity = resolveSubmissionIdentity(authData, envelope, parsed.headers, message);
+			if (!identity.ok) {
+				return { code: 554, enhanced: '5.5.4', text: identity.message };
+			}
 
 			// RFC 2046 §5.1.4: preserve the AMP alternative so the sender re-emits the
 			// `text/x-amp-html` part (see {@link extractAmpHtml}).
@@ -368,13 +328,22 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 				};
 			}
 
+			const clientRequestBinding = await bindSubmissionClientRequest(redis, identity);
+			if (clientRequestBinding === 'conflict') {
+				return {
+					code: 554,
+					enhanced: '5.5.4',
+					text: 'Idempotency key is already bound to different message content or sender',
+				};
+			}
+
 			// Fan out: one job per recipient.
 			let queued = 0;
 			for (const to of recipients) {
 				// Postbox-prefixed messageId so the bounce/sent webhook can look the
 				// row back up — same convention as the webmail dispatch path.
 				const prefix = authData.postbox ? `pb-smtp-${authData.postbox.mailboxId}` : 'smtp';
-				const messageId = submissionRecipientJobId(prefix, fingerprint, to);
+				const messageId = submissionRecipientJobId(prefix, identity.fingerprint, to);
 				const job: EmailJob & { intakeReceiptId: string } = {
 					messageId,
 					intakeReceiptId: messageId,
@@ -403,7 +372,12 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
 			}
 
 			logger.info(
-				{ from: fromAddress, recipients: recipients.length, queued },
+				{
+					from: fromAddress,
+					recipients: recipients.length,
+					queued,
+					submissionIdentityMode: identity.mode,
+				},
 				'SMTP submission accepted'
 			);
 			return;
@@ -545,6 +519,7 @@ function buildSubmissionListener(
 		// identity stays consistent with reverse DNS.
 		hostname: config.ehloHostname,
 		banner: `${config.ehloHostname} Owlat SMTP Submission`,
+		extensions: [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER, SUBMISSION_DEDUPLICATION_MAIL_PARAMETER],
 		maxMessageBytes: MAX_SUBMISSION_BYTES, // advertised via EHLO SIZE; enforced in the loop
 		tls,
 		implicitTls,

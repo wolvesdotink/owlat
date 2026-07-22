@@ -1,25 +1,32 @@
 /** Single-key complaint reservation and per-effect checkpoint state. */
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import {
+	EFFECT_LEASE_LUA_FUNCTIONS,
 	EffectCheckpointError,
+	durableEffectIdentity,
 	runLeasedEffect,
+	type DurableEffectIdentity,
 	type EffectLeaseOptions,
 } from '../lib/effectCheckpoint.js';
+import type { FblDedupProtocol } from '../governedDeliveryConfig.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 
-const FBL_DEDUP_PREFIX = 'mta:fbl:dedup:';
+const LEGACY_FBL_DEDUP_PREFIX = 'mta:fbl:dedup:';
+const OWNED_FBL_DEDUP_PREFIX = 'mta:fbl:dedup:v2:';
 const FBL_DEDUP_TTL_SECONDS = 7 * 86400;
 const FBL_RESERVATION_TTL_SECONDS = 15 * 60;
 
 export interface ComplaintDedupReservation {
 	readonly key: string;
 	readonly token: string;
+	readonly protocol: FblDedupProtocol;
 }
 
 export type ComplaintDedupResult =
 	| { readonly kind: 'completed' }
+	| { readonly kind: 'legacy-occupied' }
 	| { readonly kind: 'reserved'; readonly reservation: ComplaintDedupReservation };
 
 const RESERVE_COMPLAINT_LUA = `
@@ -30,7 +37,7 @@ if keyType == 'none' then
   redis.call('EXPIRE', KEYS[1], ARGV[2])
   return 1
 end
-if keyType == 'string' then return 0 end
+if keyType == 'string' then return -2 end
 local status = redis.call('HGET', KEYS[1], 'status')
 if status == 'completed' then return 0 end
 if status == 'retryable' then
@@ -71,7 +78,7 @@ end
 return 0
 `;
 
-const BEGIN_EFFECT_LUA = `
+const BEGIN_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash'
@@ -79,21 +86,16 @@ if keyType ~= 'hash'
   or redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return {-1, ''} end
 local field = 'effect:' .. ARGV[2]
 local state = redis.call('HGET', KEYS[1], field)
-if state == 'applied' then return {0, ''} end
-if state then
-  local _, _, pendingToken, expiresAt = string.find(state, '^pending:([^:]+):([%d%.]+)$')
-  local parsedExpiry = tonumber(expiresAt)
-  if pendingToken and parsedExpiry and parsedExpiry > 0 and parsedExpiry > tonumber(ARGV[3]) then
-    if pendingToken == ARGV[4] then return {1, expiresAt} end
-    return {2, expiresAt}
-  end
-end
-local expiresAt = tonumber(ARGV[3]) + tonumber(ARGV[5])
-redis.call('HSET', KEYS[1], field, 'pending:' .. ARGV[4] .. ':' .. expiresAt)
+local disposition, currentExpiry = inspectEffectLease(state, ARGV[4], tonumber(ARGV[3]))
+if disposition == 0 then return {0, ''} end
+if disposition == 1 then return {1, tostring(currentExpiry)} end
+if disposition == 2 then return {2, tostring(currentExpiry)} end
+local pendingState, expiresAt = pendingEffectLease(ARGV[4], tonumber(ARGV[3]), tonumber(ARGV[5]))
+redis.call('HSET', KEYS[1], field, pendingState)
 return {1, tostring(expiresAt)}
 `;
 
-const RENEW_EFFECT_LUA = `
+const RENEW_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash'
@@ -101,14 +103,13 @@ if keyType ~= 'hash'
   or redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return -1 end
 local field = 'effect:' .. ARGV[2]
 local state = redis.call('HGET', KEYS[1], field)
-local _, _, pendingToken = string.find(state or '', '^pending:([^:]+):[%d%.]+$')
-if pendingToken ~= ARGV[3] then return -1 end
-local expiresAt = tonumber(ARGV[4]) + tonumber(ARGV[5])
-redis.call('HSET', KEYS[1], field, 'pending:' .. ARGV[3] .. ':' .. expiresAt)
+if not ownsCurrentEffectLease(state, ARGV[3], tonumber(ARGV[4])) then return -1 end
+local pendingState, expiresAt = pendingEffectLease(ARGV[3], tonumber(ARGV[4]), tonumber(ARGV[5]))
+redis.call('HSET', KEYS[1], field, pendingState)
 return expiresAt
 `;
 
-const COMPLETE_EFFECT_LUA = `
+const COMPLETE_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash'
@@ -116,13 +117,12 @@ if keyType ~= 'hash'
   or redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return -1 end
 local field = 'effect:' .. ARGV[2]
 local state = redis.call('HGET', KEYS[1], field)
-local _, _, pendingToken = string.find(state or '', '^pending:([^:]+):[%d%.]+$')
-if pendingToken ~= ARGV[3] then return -1 end
+if not ownsCurrentEffectLease(state, ARGV[3], tonumber(ARGV[4])) then return -1 end
 redis.call('HSET', KEYS[1], field, 'applied')
 return 1
 `;
 
-const RELEASE_EFFECT_LUA = `
+const RELEASE_EFFECT_LUA = `${EFFECT_LEASE_LUA_FUNCTIONS}
 local keyTypeReply = redis.call('TYPE', KEYS[1])
 local keyType = type(keyTypeReply) == 'table' and keyTypeReply['ok'] or keyTypeReply
 if keyType ~= 'hash'
@@ -130,17 +130,39 @@ if keyType ~= 'hash'
   or redis.call('HGET', KEYS[1], 'token') ~= ARGV[1] then return -1 end
 local field = 'effect:' .. ARGV[2]
 local state = redis.call('HGET', KEYS[1], field)
-local _, _, pendingToken = string.find(state or '', '^pending:([^:]+):[%d%.]+$')
-if pendingToken ~= ARGV[3] then return -1 end
+if not ownsEffectLeaseToken(state, ARGV[3]) then return -1 end
 redis.call('HDEL', KEYS[1], field)
 return 1
 `;
 
 export async function reserveComplaint(
 	redis: Redis,
-	dedupKey: string
+	dedupKey: string,
+	protocol: FblDedupProtocol = 'legacy-shadow'
 ): Promise<ComplaintDedupResult> {
-	const key = `${FBL_DEDUP_PREFIX}${dedupKey}`;
+	if (protocol === 'legacy-shadow') {
+		let legacyClaim: string | null;
+		try {
+			legacyClaim = await redis.set(
+				legacyComplaintKey(dedupKey),
+				'1',
+				'EX',
+				FBL_DEDUP_TTL_SECONDS,
+				'NX'
+			);
+		} catch (error) {
+			throw new TransientFeedbackProcessingError(
+				'Legacy complaint deduplication is unavailable',
+				error
+			);
+		}
+		// The legacy value `1` cannot distinguish a live claim from a completed
+		// complaint. This mode intentionally preserves old-binary exclusion only;
+		// it must be drained before the owned-v2 cutover.
+		if (legacyClaim === null) return { kind: 'legacy-occupied' };
+	}
+
+	const key = ownedComplaintKey(dedupKey);
 	const token = `reserved:${randomUUID()}`;
 	let status: number;
 	try {
@@ -155,11 +177,26 @@ export async function reserveComplaint(
 		throw new TransientFeedbackProcessingError('Complaint deduplication is unavailable', error);
 	}
 	if (status === 0) return { kind: 'completed' };
-	if (status === 1) return { kind: 'reserved', reservation: { key, token } };
+	if (status === 1) return { kind: 'reserved', reservation: { key, token, protocol } };
+	if (status === -2) {
+		throw new TransientFeedbackProcessingError(
+			'Owned complaint deduplication contains a legacy value',
+			new Error('Versioned FBL namespace must contain only owned-v2 hashes')
+		);
+	}
 	throw new TransientFeedbackProcessingError(
 		'Complaint processing is already in progress',
 		new Error('FBL reservation is held by another intake')
 	);
+}
+
+function legacyComplaintKey(dedupKey: string): string {
+	return `${LEGACY_FBL_DEDUP_PREFIX}${dedupKey}`;
+}
+
+function ownedComplaintKey(dedupKey: string): string {
+	const identityHash = createHash('sha256').update(dedupKey).digest('hex');
+	return `${OWNED_FBL_DEDUP_PREFIX}{${identityHash}}`;
 }
 
 export async function completeComplaint(
@@ -206,7 +243,7 @@ export async function runComplaintEffect<T>(
 	redis: Redis,
 	reservation: ComplaintDedupReservation,
 	effectIdentity: string,
-	apply: () => Promise<T>,
+	apply: (downstreamIdentity: DurableEffectIdentity) => Promise<T>,
 	options: EffectLeaseOptions = {}
 ): Promise<T | undefined> {
 	try {
@@ -251,7 +288,7 @@ export async function runComplaintEffect<T>(
 						throw new EffectCheckpointError('complaint effect lease owner changed');
 					}
 				},
-				complete: async (token) => {
+				complete: async (token, now) => {
 					const completed = await checkpointResult(
 						redis.eval(
 							COMPLETE_EFFECT_LUA,
@@ -259,7 +296,8 @@ export async function runComplaintEffect<T>(
 							reservation.key,
 							reservation.token,
 							effectIdentity,
-							token
+							token,
+							String(now)
 						) as Promise<number>,
 						'complaint effect checkpoint could not be completed'
 					);
@@ -284,7 +322,7 @@ export async function runComplaintEffect<T>(
 					}
 				},
 			},
-			apply,
+			() => apply(durableEffectIdentity(`fbl-complaint:${reservation.key}`, effectIdentity)),
 			options
 		);
 	} catch (error) {

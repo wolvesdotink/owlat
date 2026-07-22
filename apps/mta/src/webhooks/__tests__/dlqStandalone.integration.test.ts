@@ -140,7 +140,7 @@ describe.runIf(dockerAvailable())('webhook DLQ on standalone Redis', () => {
 			id,
 			JSON.stringify({
 				dlqId: id,
-				event: { messageId: payload.messageId },
+				event: payload,
 				failure: { category: 'pending' },
 				attempts: 9,
 				createdAt: 'not-a-timestamp',
@@ -158,6 +158,25 @@ describe.runIf(dockerAvailable())('webhook DLQ on standalone Redis', () => {
 				autoRetryLimit: 8,
 			})
 		).not.toBeNull();
+	});
+
+	it('quarantines an unknown event type instead of repairing or protecting it', async () => {
+		const payload = event('standalone-invalid-event');
+		const key = 'standalone-invalid-event:bounced';
+		const id = await storePending(redis, payload, config, key);
+		const raw = JSON.parse((await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, id))!) as Record<
+			string,
+			unknown
+		>;
+		raw['event'] = { ...payload, event: 'future.unrecognized' };
+		await redis.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, JSON.stringify(raw));
+
+		expect(await getEntry(redis, id)).toBeNull();
+		await expect(storePending(redis, payload, config, key)).rejects.toThrow('quarantined');
+		expect(await redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, id, `attempts:${id}`)).toEqual([null, null]);
+		expect(await redis.zscore(WEBHOOK_DLQ_CREATED_KEY, id)).toBeNull();
+		expect(await redis.zscore(WEBHOOK_DLQ_DUE_KEY, id)).toBeNull();
+		expect(await redis.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(0);
 	});
 
 	it('fails closed instead of rewriting a structurally invalid claimed row', async () => {

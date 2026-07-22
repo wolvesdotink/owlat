@@ -272,6 +272,44 @@ describe('applyEffects — fire-and-forget guarantees', () => {
 			)
 		).rejects.toThrow('boom');
 	});
+
+	it('waits for a delayed sibling before surfacing another sibling failure', async () => {
+		let releaseForward!: () => void;
+		vi.mocked(forwardToEndpoint).mockImplementationOnce(
+			() => new Promise<boolean>((resolve) => (releaseForward = () => resolve(true)))
+		);
+		vi.mocked(circuitBreaker.recordOutcome).mockRejectedValueOnce(new Error('breaker failed'));
+		const route: InboundRoute = {
+			id: 'route-delayed',
+			domain: 'org.example',
+			address: 'inbox',
+			mode: 'endpoint',
+			endpointUrl: 'https://hook.example',
+			createdAt: 0,
+		};
+		const applying = applyEffects(
+			[
+				{ kind: 'circuit_breaker_outcome', orgId: 'org-1', outcome: 'complained' },
+				{
+					kind: 'forward_to_endpoint',
+					route,
+					parsed: { subject: 'delayed' } as ParsedMessage,
+					rcptTo: 'inbox@org.example',
+				},
+			],
+			makeDeps()
+		);
+		let settled = false;
+		void applying.then(
+			() => (settled = true),
+			() => (settled = true)
+		);
+		await vi.waitFor(() => expect(forwardToEndpoint).toHaveBeenCalled());
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		releaseForward();
+		await expect(applying).rejects.toThrow('breaker failed');
+	});
 });
 
 // PR-15: per-campaign complaint-rate tracking + 0.3% alert. The

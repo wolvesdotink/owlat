@@ -638,6 +638,8 @@ describe('generateDedupKey', () => {
 
 describe('complaint deduplication reservations', () => {
 	let redis: RealRedis;
+	const reserveOwned = (client: RealRedis, dedupKey: string) =>
+		reserveComplaint(client, dedupKey, 'owned-v2');
 
 	beforeEach(() => {
 		redis = new Redis() as unknown as RealRedis;
@@ -648,78 +650,86 @@ describe('complaint deduplication reservations', () => {
 	});
 
 	it('reserves the first occurrence without declaring it completed', async () => {
-		const result = await reserveComplaint(redis, 'msg-001');
+		const result = await reserveOwned(redis, 'msg-001');
 		expect(result.kind).toBe('reserved');
-		expect(await redis.hget('mta:fbl:dedup:msg-001', 'status')).toBe('reserved');
-		expect(await redis.ttl('mta:fbl:dedup:msg-001')).toBeGreaterThan(14 * 60);
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		expect(await redis.hget(result.reservation.key, 'status')).toBe('reserved');
+		expect(await redis.ttl(result.reservation.key)).toBeGreaterThan(14 * 60);
 	});
 
 	it('does not ACK a concurrent intake while the first reservation is unresolved', async () => {
-		await reserveComplaint(redis, 'msg-001');
-		await expect(reserveComplaint(redis, 'msg-001')).rejects.toThrow(
+		await reserveOwned(redis, 'msg-001');
+		await expect(reserveOwned(redis, 'msg-001')).rejects.toThrow(
 			'Complaint processing is already in progress'
 		);
 	});
 
 	it('permits the same feedback to retry after its reservation is released', async () => {
-		const first = await reserveComplaint(redis, 'msg-retry');
+		const first = await reserveOwned(redis, 'msg-retry');
 		expect(first.kind).toBe('reserved');
 		if (first.kind !== 'reserved') throw new Error('expected reservation');
 		await releaseComplaint(redis, first.reservation);
-		expect((await reserveComplaint(redis, 'msg-retry')).kind).toBe('reserved');
+		expect((await reserveOwned(redis, 'msg-retry')).kind).toBe('reserved');
 	});
 
 	it('deduplicates only after the owned reservation is completed', async () => {
-		const first = await reserveComplaint(redis, 'msg-completed');
+		const first = await reserveOwned(redis, 'msg-completed');
 		if (first.kind !== 'reserved') throw new Error('expected reservation');
 		await completeComplaint(redis, first.reservation);
-		expect(await redis.hget('mta:fbl:dedup:msg-completed', 'status')).toBe('completed');
-		expect(await reserveComplaint(redis, 'msg-completed')).toEqual({ kind: 'completed' });
+		expect(await redis.hget(first.reservation.key, 'status')).toBe('completed');
+		expect(await reserveOwned(redis, 'msg-completed')).toEqual({ kind: 'completed' });
 	});
 
-	it('honors completed deduplication keys written before the checkpoint migration', async () => {
+	it('owned-v2 never infers terminal state from the ambiguous legacy value', async () => {
 		await redis.set('mta:fbl:dedup:legacy-message', '1', 'EX', 60);
-		expect(await reserveComplaint(redis, 'legacy-message')).toEqual({ kind: 'completed' });
+		expect((await reserveOwned(redis, 'legacy-message')).kind).toBe('reserved');
 		expect(await redis.get('mta:fbl:dedup:legacy-message')).toBe('1');
 		expect(await redis.ttl('mta:fbl:dedup:legacy-message')).toBeGreaterThan(0);
 	});
 
-	it('atomically excludes an old SET NX worker while a new reservation is active', async () => {
+	it('legacy-shadow excludes an old SET NX worker and writes owned-v2 state', async () => {
 		const result = await reserveComplaint(redis, 'rolling-deploy');
 		if (result.kind !== 'reserved') throw new Error('expected reservation');
-		expect(await redis.set(result.reservation.key, '1', 'EX', 60, 'NX')).toBeNull();
+		expect(await redis.set('mta:fbl:dedup:rolling-deploy', '1', 'EX', 60, 'NX')).toBeNull();
 		expect(await redis.hget(result.reservation.key, 'token')).toBe(result.reservation.token);
 	});
 
+	it('legacy-shadow reports an occupied legacy value without calling it completed', async () => {
+		await redis.set('mta:fbl:dedup:legacy-owner', '1', 'EX', 60);
+		expect(await reserveComplaint(redis, 'legacy-owner', 'legacy-shadow')).toEqual({
+			kind: 'legacy-occupied',
+		});
+	});
+
 	it('keeps completed deduplication state for seven days', async () => {
-		const result = await reserveComplaint(redis, 'msg-ttl');
+		const result = await reserveOwned(redis, 'msg-ttl');
 		if (result.kind !== 'reserved') throw new Error('expected reservation');
 		await completeComplaint(redis, result.reservation);
-		const ttl = await redis.ttl('mta:fbl:dedup:msg-ttl');
+		const ttl = await redis.ttl(result.reservation.key);
 		const SEVEN_DAYS = 7 * 86400;
 		expect(ttl).toBeGreaterThan(SEVEN_DAYS - 5);
 		expect(ttl).toBeLessThanOrEqual(SEVEN_DAYS);
 	});
 
 	it('does not let a stale owner release a newer reservation', async () => {
-		const first = await reserveComplaint(redis, 'msg-owner');
+		const first = await reserveOwned(redis, 'msg-owner');
 		if (first.kind !== 'reserved') throw new Error('expected reservation');
 		await redis.del(first.reservation.key);
-		const second = await reserveComplaint(redis, 'msg-owner');
+		const second = await reserveOwned(redis, 'msg-owner');
 		if (second.kind !== 'reserved') throw new Error('expected second reservation');
 		await releaseComplaint(redis, first.reservation);
 		expect(await redis.hget(second.reservation.key, 'token')).toBe(second.reservation.token);
 	});
 
 	it('retains successful effect checkpoints when completion fails and the intake retries', async () => {
-		const first = await reserveComplaint(redis, 'msg-completion-retry');
+		const first = await reserveOwned(redis, 'msg-completion-retry');
 		if (first.kind !== 'reserved') throw new Error('expected first reservation');
 		const apply = vi.fn().mockResolvedValue(undefined);
 		await runComplaintEffect(redis, first.reservation, '0:circuit_breaker_outcome', apply);
 
 		// A transient completeComplaint failure releases this owner so SMTP can retry.
 		await releaseComplaint(redis, first.reservation);
-		const retry = await reserveComplaint(redis, 'msg-completion-retry');
+		const retry = await reserveOwned(redis, 'msg-completion-retry');
 		if (retry.kind !== 'reserved') throw new Error('expected retry reservation');
 		await runComplaintEffect(redis, retry.reservation, '0:circuit_breaker_outcome', apply);
 		await completeComplaint(redis, retry.reservation);
@@ -728,7 +738,7 @@ describe('complaint deduplication reservations', () => {
 	});
 
 	it('recognizes completed feedback after the completion response is lost', async () => {
-		const first = await reserveComplaint(redis, 'msg-completion-response');
+		const first = await reserveOwned(redis, 'msg-completion-response');
 		if (first.kind !== 'reserved') throw new Error('expected first reservation');
 		const apply = vi.fn().mockResolvedValue(undefined);
 		await runComplaintEffect(redis, first.reservation, '0:metric_inc', apply);
@@ -746,7 +756,7 @@ describe('complaint deduplication reservations', () => {
 		);
 		evalSpy.mockRestore();
 		await releaseComplaint(redis, first.reservation);
-		expect(await reserveComplaint(redis, 'msg-completion-response')).toEqual({
+		expect(await reserveOwned(redis, 'msg-completion-response')).toEqual({
 			kind: 'completed',
 		});
 		expect(apply).toHaveBeenCalledOnce();
