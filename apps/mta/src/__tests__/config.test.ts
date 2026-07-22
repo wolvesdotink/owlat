@@ -10,6 +10,7 @@ const REQUIRED_ENV = {
 	MTA_API_KEY: 'test-api-key',
 	// >= 32 bytes — the boot floor for the secret box that seals DKIM keys at rest.
 	MTA_SECRET: 'test-mta-secret-0123456789abcdef0123456789abcdef',
+	BOUNCE_VERP_KEY: 'test-bounce-verp-key-0123456789abcdef',
 	EHLO_HOSTNAME: 'mail.owlat.com',
 	RETURN_PATH_DOMAIN: 'bounces.owlat.com',
 	CONVEX_SITE_URL: 'https://test.convex.site',
@@ -54,6 +55,13 @@ describe('loadConfig', () => {
 	it('exposes a valid MTA_SECRET on the config', () => {
 		const config = loadConfig();
 		expect(config.mtaSecret).toBe(REQUIRED_ENV.MTA_SECRET);
+	});
+
+	it('requires a strong VERP signing key at startup', () => {
+		delete process.env.BOUNCE_VERP_KEY;
+		expect(() => loadConfig()).toThrow('BOUNCE_VERP_KEY');
+		process.env.BOUNCE_VERP_KEY = 'too-short';
+		expect(() => loadConfig()).toThrow('BOUNCE_VERP_KEY must be at least 32 bytes');
 	});
 
 	it('uses defaults for PORT and REDIS_URL', () => {

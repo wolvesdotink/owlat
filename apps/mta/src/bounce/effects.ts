@@ -99,6 +99,14 @@ export type BounceEffect =
 			auth?: InboundAuthVerdicts;
 	  };
 
+/** Signals the one inbound failure for which SMTP must request a retry. */
+export class DurableFeedbackPersistenceError extends Error {
+	constructor(cause: unknown) {
+		super('Attributed feedback could not be persisted durably', { cause });
+		this.name = 'DurableFeedbackPersistenceError';
+	}
+}
+
 /**
  * Apply a list of effects.
  *
@@ -114,7 +122,8 @@ export async function applyEffects(
 	effects: ReadonlyArray<BounceEffect>,
 	deps: PhaseDeps
 ): Promise<void> {
-	const parallel: Array<Promise<unknown>> = [];
+	const durableTerminal: Array<Promise<unknown>> = [];
+	const remaining: BounceEffect[] = [];
 
 	for (const effect of effects) {
 		if (
@@ -122,24 +131,40 @@ export async function applyEffects(
 			effect.event.messageId &&
 			(effect.event.event === 'bounced' || effect.event.event === 'complained')
 		) {
-			parallel.push(
+			durableTerminal.push(
 				queueConvexWebhook(
 					effect.event,
 					deps.config,
 					deps.redis,
-					`feedback:${effect.event.messageId}:${effect.event.event}`
-				)
+					feedbackOutboxIdentity(effect.event)
+				).catch((err) => {
+					throw new DurableFeedbackPersistenceError(err);
+				})
 			);
 			continue;
 		}
+		remaining.push(effect);
+	}
+
+	// Feedback bytes must not be SMTP-ACKed until their attributed terminal
+	// callback is durable. Complete this phase before even starting best-effort
+	// effects so an unrelated rejection cannot mask the typed failure.
+	await Promise.all(durableTerminal);
+
+	const parallel: Array<Promise<unknown>> = [];
+	for (const effect of remaining) {
 		if (effect.kind === 'notify_convex' || effect.kind === 'mailbox_quota_bump') {
 			fireAndForget(effect, deps);
 			continue;
 		}
 		parallel.push(applyOne(effect, deps));
 	}
-
 	await Promise.all(parallel);
+}
+
+function feedbackOutboxIdentity(event: MtaWebhookEvent): string {
+	const bounceType = event.event === 'bounced' ? `:${event.bounceType ?? 'unknown'}` : '';
+	return `feedback:${event.messageId}:${event.event}${bounceType}`;
 }
 
 function fireAndForget(

@@ -325,6 +325,10 @@ export function loadConfig(): MtaConfig {
 	// if it is absent or too weak rather than sealing under a guessable key.
 	const mtaSecret = requiredEnv('MTA_SECRET');
 	assertMtaSecretStrength(mtaSecret);
+	const bounceVerpKey = requiredEnv('BOUNCE_VERP_KEY');
+	if (Buffer.byteLength(bounceVerpKey, 'utf8') < 32) {
+		throw new Error('BOUNCE_VERP_KEY must be at least 32 bytes');
+	}
 
 	// EHLO hostname must be a real FQDN that can match a PTR record.
 	const ehloHostname = requiredEnv('EHLO_HOSTNAME');

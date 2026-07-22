@@ -3,7 +3,18 @@ import { randomUUID } from 'node:crypto';
 import Redis from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { MtaConfig } from '../../config.js';
-import { claimOne, getEntry, removeOne, settleClaim, storeFailed, storePending } from '../dlq.js';
+import {
+	claimOne,
+	getEntry,
+	listEligibleIds,
+	settleClaim,
+	storeFailed,
+	storePending,
+	WEBHOOK_DLQ_CREATED_KEY,
+	WEBHOOK_DLQ_DUE_KEY,
+	WEBHOOK_DLQ_ENTRIES_KEY,
+	WEBHOOK_DLQ_PROTECTED_KEY,
+} from '../dlq.js';
 
 function dockerAvailable(): boolean {
 	try {
@@ -112,19 +123,10 @@ describe.runIf(dockerAvailable())('webhook DLQ on Redis Cluster', () => {
 		expect(claimed).not.toBeNull();
 		expect(await settleClaim(cluster as never, claimed!, 'failure', Date.now())).toBe(true);
 
-		const second = await storeFailed(cluster as never, event, { category: 'transport' }, config);
+		await storeFailed(cluster as never, event, { category: 'transport' }, config);
 		const third = await storeFailed(cluster as never, event, { category: 'transport' }, config);
 		expect(await getEntry(cluster as never, first)).toBeNull();
 		expect(await getEntry(cluster as never, third)).not.toBeNull();
-		await expect(
-			storePending(
-				cluster as never,
-				{ ...event, messageId: 'cluster-terminal' },
-				config,
-				'cluster-terminal:sent'
-			)
-		).rejects.toThrow('at capacity');
-		expect(await removeOne(cluster as never, second)).toBe(true);
 		const pending = await storePending(
 			cluster as never,
 			{ ...event, messageId: 'cluster-terminal' },
@@ -132,7 +134,43 @@ describe.runIf(dockerAvailable())('webhook DLQ on Redis Cluster', () => {
 			'cluster-terminal:sent'
 		);
 		expect(await getEntry(cluster as never, pending)).not.toBeNull();
+		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, pending)).toBe(1);
+		expect(await cluster.zcard(WEBHOOK_DLQ_CREATED_KEY)).toBe(config.webhookDlqMaxSize);
 		await storeFailed(cluster as never, event, { category: 'transport' }, config);
 		expect(await getEntry(cluster as never, pending)).not.toBeNull();
+	}, 15_000);
+
+	it('atomically frees every capacity artifact for missing and corrupt protected rows', async () => {
+		for (const [id, raw] of [
+			['cluster-corrupt', '{malformed'],
+			['cluster-missing', null],
+		] as const) {
+			if (raw) await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, raw);
+			await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`, '3');
+			await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, `claim:${id}`, 'dead-owner|2');
+			await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, `claim-expiry:${id}`, '1');
+			await cluster.hset(WEBHOOK_DLQ_ENTRIES_KEY, `version:${id}`, '2');
+			await cluster.zadd(WEBHOOK_DLQ_CREATED_KEY, 1, id);
+			await cluster.zadd(WEBHOOK_DLQ_DUE_KEY, 1, id);
+			await cluster.sadd(WEBHOOK_DLQ_PROTECTED_KEY, id);
+		}
+
+		await listEligibleIds(cluster as never, { now: Date.now(), limit: 10, scanLimit: 10 });
+
+		for (const id of ['cluster-corrupt', 'cluster-missing']) {
+			expect(
+				await cluster.hmget(
+					WEBHOOK_DLQ_ENTRIES_KEY,
+					id,
+					`attempts:${id}`,
+					`claim:${id}`,
+					`claim-expiry:${id}`,
+					`version:${id}`
+				)
+			).toEqual([null, null, null, null, null]);
+			expect(await cluster.zscore(WEBHOOK_DLQ_CREATED_KEY, id)).toBeNull();
+			expect(await cluster.zscore(WEBHOOK_DLQ_DUE_KEY, id)).toBeNull();
+			expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(0);
+		}
 	}, 15_000);
 });

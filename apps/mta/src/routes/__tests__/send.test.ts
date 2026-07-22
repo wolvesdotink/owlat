@@ -466,34 +466,75 @@ describe('POST /send — dedup', () => {
 		);
 	});
 
-	it('trusts worker-promoted acceptance after the completed queue job was trimmed', async () => {
-		const values = new Map<string, string>();
-		const redis = fakeRedis({
-			set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
-				if (args.includes('NX') && values.has(key)) return null;
-				values.set(key, value);
-				return 'OK';
-			}),
-			get: vi.fn(async (key: string) => values.get(key) ?? null),
-			eval: vi.fn().mockResolvedValue(0),
-		});
-		const queue: FakeQueue = {
-			add: vi.fn(async () => {
-				// Simulate the worker's pre-processing CAS and immediate GroupMQ trim,
-				// followed by loss of queue.add's client response.
-				values.set(
-					'mta:work-attempts:work-attempt-1',
-					JSON.stringify({ state: 'accepted', messageId: 'msg-1', acceptedAt: Date.now() })
-				);
-				throw new Error('add response lost after completion');
-			}),
-			getJob: vi.fn().mockResolvedValue(null),
-		};
-		const response = await post(buildApp(queue, redis), validBody());
-		expect(response.status).toBe(200);
-		expect(await response.json()).toMatchObject({ success: true, workAttemptId: 'work-attempt-1' });
-		expect(values.get('mta:work-attempts:work-attempt-1')).toContain('"state":"accepted"');
-	});
+	it.each([
+		{ mode: 'governed' as const, receiptId: 'work-attempt-1', body: {} },
+		{
+			mode: 'postbox' as const,
+			receiptId: 'msg-1',
+			body: {
+				organizationId: 'postbox',
+				messageType: undefined,
+				routingLease: undefined,
+				routingReentry: undefined,
+				routingReentryToken: undefined,
+				workAttemptId: undefined,
+				allowedFromAddresses: ['alice@example.com'],
+			},
+		},
+		{
+			mode: 'system' as const,
+			receiptId: 'msg-1',
+			body: {
+				organizationId: 'system',
+				messageType: undefined,
+				routingLease: undefined,
+				routingReentry: undefined,
+				routingReentryToken: undefined,
+				workAttemptId: undefined,
+			},
+		},
+	])(
+		'trusts worker-promoted $mode acceptance after completion trim and deduplicates replay',
+		async ({ mode, receiptId, body }) => {
+			const values = new Map<string, string>();
+			const redis = fakeRedis({
+				set: vi.fn(async (key: string, value: string, ...args: unknown[]) => {
+					if (args.includes('NX') && values.has(key)) return null;
+					values.set(key, value);
+					return 'OK';
+				}),
+				get: vi.fn(async (key: string) => values.get(key) ?? null),
+				eval: vi.fn().mockResolvedValue(0),
+			});
+			const queue: FakeQueue = {
+				add: vi.fn(async (options) => {
+					expect(options.jobId).toBe(options.data.intakeReceiptId);
+					// Simulate the worker's pre-processing CAS and immediate GroupMQ trim,
+					// followed by loss of queue.add's client response.
+					values.set(
+						`mta:work-attempts:${options.data.intakeReceiptId}`,
+						JSON.stringify({
+							state: 'accepted',
+							messageId: options.data.messageId,
+							acceptedAt: Date.now(),
+						})
+					);
+					throw new Error('add response lost after completion');
+				}),
+				getJob: vi.fn().mockResolvedValue(null),
+			};
+			const app = buildApp(queue, redis, { isMasterKey: true }, mode);
+			const requestBody = validBody(body);
+			const response = await post(app, requestBody);
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ success: true, id: 'msg-1' });
+			expect(values.get(`mta:work-attempts:${receiptId}`)).toContain('"state":"accepted"');
+			const replay = await post(app, requestBody);
+			expect(replay.status).toBe(200);
+			expect(await replay.json()).toMatchObject({ success: true, deduplicated: true });
+			expect(queue.add).toHaveBeenCalledOnce();
+		}
+	);
 
 	it('promotes only the same work-attempt/message reservation by CAS', async () => {
 		const redis = new RedisMock();
@@ -504,12 +545,12 @@ describe('POST /send — dedup', () => {
 		await expect(
 			promoteIntakeReceipt(redis, {
 				messageId: 'other-message',
-				workAttemptId: 'work-cas',
+				intakeReceiptId: 'work-cas',
 			} as never)
 		).rejects.toThrow('bound to another message');
 		await promoteIntakeReceipt(redis, {
 			messageId: 'bound-message',
-			workAttemptId: 'work-cas',
+			intakeReceiptId: 'work-cas',
 		} as never);
 		expect(await redis.get('mta:work-attempts:work-cas')).toContain('"state":"accepted"');
 		expect(await redis.pttl('mta:work-attempts:work-cas')).toBeGreaterThan(

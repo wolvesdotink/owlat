@@ -205,14 +205,10 @@ describe('forged-DSN suppression poisoning (audit PR-03)', () => {
 		}
 	});
 
-	it('(e) WITHOUT a key, the legacy header-scrape fallback still attributes (backward-compatible)', () => {
-		// Sanity check that the gate is key-conditional: with no signing key the
-		// header fallback remains active so existing unsigned deployments keep
-		// attributing DSNs that only carry the X-Owlat-Message-Id header.
+	it('(e) WITHOUT a key, forged returned headers remain unattributed', () => {
 		delete process.env['BOUNCE_VERP_KEY'];
 		const result = pb(forgedHeaderBounceDsn(), `noreply@${RETURN_PATH_DOMAIN}`);
-		expect(result).not.toBeNull();
-		expect(result!.originalMessageId).toBe(messageId);
+		expect(result).toBeNull();
 	});
 
 	it('(d) a correctly-signed DSN for the same existing send DOES produce a notify_convex "bounced" effect', async () => {

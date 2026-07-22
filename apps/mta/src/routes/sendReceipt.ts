@@ -52,8 +52,7 @@ export async function hasAcceptedIntakeReceipt(
  * receipt, and the write must succeed before any SMTP or terminal processing.
  */
 export async function promoteIntakeReceipt(redis: Redis, job: EmailJob): Promise<void> {
-	if (!job.workAttemptId) return;
-	const key = intakeReceiptKey(job.workAttemptId);
+	const key = intakeReceiptKey(job.intakeReceiptId);
 	const raw = await redis.get(key);
 	const receipt = parseIntakeReceipt(raw);
 	if (receipt?.state === 'accepted' && receipt.messageId === job.messageId) return;
@@ -77,6 +76,25 @@ export async function promoteIntakeReceipt(redis: Redis, job: EmailJob): Promise
 		const raced = parseIntakeReceipt(await redis.get(key));
 		if (raced?.state === 'accepted' && raced.messageId === job.messageId) return;
 		throw new Error('Work-attempt receipt promotion lost its ownership');
+	}
+}
+
+/** Reserve a receipt before a non-HTTP producer exposes its GroupMQ job. */
+export async function reserveNewIntakeReceipt(
+	redis: Redis,
+	intakeReceiptId: string,
+	messageId: string,
+	now = Date.now()
+): Promise<void> {
+	const reserved = await redis.set(
+		intakeReceiptKey(intakeReceiptId),
+		JSON.stringify({ state: 'reserved', messageId, reservedAt: now }),
+		'PX',
+		GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+		'NX'
+	);
+	if (reserved !== 'OK') {
+		throw new Error('Intake receipt identity is already reserved');
 	}
 }
 

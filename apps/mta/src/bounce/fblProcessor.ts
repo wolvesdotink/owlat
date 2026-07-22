@@ -141,15 +141,13 @@ export function tryParseARF(
 	// signed VERP token (the `Original-Mail-From` return-path) — the
 	// unauthenticated header scrapes are skipped so a forged complaint cannot
 	// suppress a healthy recipient.
-	const headerFallbackAllowed = !isVerpSigningEnabled();
-
 	let originalMessageId: string | undefined;
 
 	// First, prefer the authenticated VERP return-path (Original-Mail-From). Per
 	// RFC 5965 §3.2 this lives in the structured feedback-report part. It is the
 	// only source verified against the HMAC, so it is always trusted.
 	const originalMailFrom = matchField(parts.feedbackReport, 'Original-Mail-From');
-	if (originalMailFrom) {
+	if (isVerpSigningEnabled() && originalMailFrom) {
 		const verifiedId = parseVerpAddress(originalMailFrom);
 		if (verifiedId) {
 			originalMessageId = verifiedId;
@@ -173,13 +171,6 @@ export function tryParseARF(
 	if (!organizationId) {
 		// Some reports embed it inline rather than as a re-attached rfc822 part.
 		organizationId = matchField(bodyText, 'X-Owlat-Org-Id');
-	}
-
-	if (headerFallbackAllowed && !originalMessageId) {
-		// Look for our custom headers in the ORIGINAL message part.
-		originalMessageId =
-			matchField(parts.originalMessage, 'X-Owlat-Message-Id') ??
-			matchMessageId(parts.originalMessage);
 	}
 
 	// Extract the complained recipient address. RFC 5965 §3.2 puts it in the
@@ -287,12 +278,6 @@ function matchField(text: string, field: string): string | undefined {
 	const match = text.match(re);
 	const value = match?.[1]?.trim();
 	return value && value.length > 0 ? value : undefined;
-}
-
-/** Match a standard `Message-ID: <...>` header and return the bracketed id. */
-function matchMessageId(text: string): string | undefined {
-	const match = text.match(/Message-ID:\s*<([^>]+)>/i);
-	return match?.[1]?.trim();
 }
 
 /**

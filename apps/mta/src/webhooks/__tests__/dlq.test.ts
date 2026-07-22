@@ -16,6 +16,7 @@ import {
 	WEBHOOK_DLQ_ENTRIES_KEY,
 	WEBHOOK_DLQ_CREATED_KEY,
 	WEBHOOK_DLQ_DUE_KEY,
+	WEBHOOK_DLQ_PROTECTED_KEY,
 } from '../dlq.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 import type { MtaWebhookEvent } from '../../types.js';
@@ -56,13 +57,19 @@ describe('dlq', () => {
 		});
 	});
 
-	it('fails closed when a terminal outbox reaches capacity', async () => {
+	it('evicts an ordinary row to admit a protected terminal outbox', async () => {
 		const one = { ...config, webhookDlqMaxSize: 1 };
 		const retained = await storeFailed(redis, createTestEvent(), TRANSPORT_FAILURE, one);
-		await expect(
-			storePending(redis, createTestEvent({ messageId: 'terminal-2' }), one, 'terminal-2:bounced')
-		).rejects.toThrow('at capacity');
-		expect(await getEntry(redis, retained)).not.toBeNull();
+		const pending = await storePending(
+			redis,
+			createTestEvent({ messageId: 'terminal-2' }),
+			one,
+			'terminal-2:bounced'
+		);
+		expect(await getEntry(redis, retained)).toBeNull();
+		expect(await getEntry(redis, pending)).not.toBeNull();
+		expect(await redis.sismember(WEBHOOK_DLQ_PROTECTED_KEY, pending)).toBe(1);
+		expect(await redis.zcard(WEBHOOK_DLQ_CREATED_KEY)).toBe(1);
 	});
 
 	it('never lets ordinary DLQ retention evict an unresolved terminal outbox', async () => {
@@ -78,6 +85,20 @@ describe('dlq', () => {
 		).rejects.toThrow('protected capacity');
 		expect(await getEntry(redis, pending)).not.toBeNull();
 		expect(await getAllIds(redis)).toEqual([pending]);
+	});
+
+	it('fails closed when protected rows consume the configured capacity', async () => {
+		const one = { ...config, webhookDlqMaxSize: 1 };
+		const first = await storePending(redis, createTestEvent(), one, 'protected:first');
+		await expect(
+			storePending(
+				redis,
+				createTestEvent({ messageId: 'second-protected' }),
+				one,
+				'protected:second'
+			)
+		).rejects.toThrow('protected capacity');
+		expect(await getEntry(redis, first)).not.toBeNull();
 	});
 
 	it('deduplicates the same terminal outbox identity without resetting ownership state', async () => {
@@ -101,6 +122,25 @@ describe('dlq', () => {
 			})
 		).toBeNull();
 		expect(claimed).not.toBeNull();
+	});
+
+	it('retains a later hard bounce while the earlier soft bounce is still pending', async () => {
+		const soft = await storePending(
+			redis,
+			createTestEvent({ event: 'bounced', messageId: 'soft-then-hard', bounceType: 'soft' }),
+			config,
+			'feedback:soft-then-hard:bounced:soft'
+		);
+		const hard = await storePending(
+			redis,
+			createTestEvent({ event: 'bounced', messageId: 'soft-then-hard', bounceType: 'hard' }),
+			config,
+			'feedback:soft-then-hard:bounced:hard'
+		);
+
+		expect(hard).not.toBe(soft);
+		expect((await getEntry(redis, soft))?.event).toMatchObject({ bounceType: 'soft' });
+		expect((await getEntry(redis, hard))?.event).toMatchObject({ bounceType: 'hard' });
 	});
 
 	describe('getEntry', () => {
@@ -313,7 +353,7 @@ describe('dlq', () => {
 				const ids = await listEligibleIds(redis, { now: 10_000, limit: 50, scanLimit: 2_000 });
 				expect(ids).toEqual(['valid-after-corrupt']);
 				expect(await redis.zcard(WEBHOOK_DLQ_DUE_KEY)).toBe(1);
-				expect(await redis.zcard(WEBHOOK_DLQ_CREATED_KEY)).toBe(1_002);
+				expect(await redis.zcard(WEBHOOK_DLQ_CREATED_KEY)).toBe(1);
 			},
 			LARGE_BATCH_TEST_TIMEOUT_MS
 		);
