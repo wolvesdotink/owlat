@@ -26,7 +26,7 @@ function priorityToOrderMs(priority: number): number {
 import { checkSystemHealth } from '../scaling/degradation.js';
 import { logger } from '../monitoring/logger.js';
 import { isRoutingLeaseBoundTo, readRoutingLease } from './routingDecision.js';
-import { canSend } from '../intelligence/circuitBreaker.js';
+import { canSend, canSendScope } from '../intelligence/circuitBreaker.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 
 /** Match the existing attachment-scan ceiling and bound Redis job growth. */
@@ -214,7 +214,7 @@ export function createSendHandler(
 					409
 				);
 			}
-			const provider = await canSend(redis, body.organizationId, lease.destinationProvider);
+			const provider = await canSendScope(redis, body.organizationId, lease.destinationProvider);
 			if (!provider.allowed || provider.generation !== lease.providerBreakerGeneration) {
 				return c.json(
 					{

@@ -241,3 +241,43 @@ export const resolveSendRoute = internalQuery({
 		});
 	},
 });
+
+/**
+ * Resolve both the policy-aware route and its underlying strategy route for
+ * the last-mile action. The action uses the base candidate only for an MTA
+ * recovery probe; the policy-aware route remains authoritative for every
+ * persisted Convex safety signal.
+ */
+export const resolveLastMileRoutePlan = internalQuery({
+	args: {
+		messageType: messageTypeValidator,
+		to: v.string(),
+		from: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const routeConfig = await ctx.db
+			.query('providerRoutes')
+			.withIndex('by_message_type', (q) => q.eq('messageType', args.messageType))
+			.first();
+		const route = await resolveSendRouteFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+		});
+		const baseRoute = await resolveSendRouteFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+			baseOnly: true,
+		});
+		const isHybrid = Boolean(
+			routeConfig?.deliverabilityFallback?.isEnabled &&
+			routeConfig.providers.some(
+				(provider) => provider.isEnabled && provider.providerType === 'mta'
+			)
+		);
+		return {
+			route,
+			baseRoute,
+			isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta',
+		};
+	},
+});

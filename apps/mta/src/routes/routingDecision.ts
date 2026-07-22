@@ -11,6 +11,7 @@ import type { MtaConfig } from '../config.js';
 import type { AuthContext } from '../server.js';
 import {
 	canSend,
+	canSendScope,
 	releaseHalfOpenProbe,
 	reserveHalfOpenProbe,
 } from '../intelligence/circuitBreaker.js';
@@ -161,8 +162,22 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 
 		const toDomain = extractDomainOrNull(input.recipient)!;
 		const destination = await resolveDestinationSnapshot(redis, toDomain, { config });
-		const provider = await canSend(redis, input.organizationId, destination.providerKey);
+		const provider = await canSendScope(redis, input.organizationId, destination.providerKey);
 		if (!provider.allowed) return c.json({ decision: 'relay', reason: 'provider_breaker' });
+		// Re-read global after the provider check. A global breaker transition must
+		// dominate every provider-local fallback decision, including one racing
+		// this request; it is never safe to translate that transition into relay.
+		const currentGlobal = await canSend(redis, input.organizationId);
+		if (!currentGlobal.allowed) {
+			return c.json({
+				decision: 'defer',
+				reason: 'global_safety',
+				retryAfterMs: currentGlobal.retryAfter ?? 60_000,
+			});
+		}
+		if (currentGlobal.state === 'half-open' && global.state !== 'half-open') {
+			return c.json({ decision: 'defer', reason: 'global_probe', retryAfterMs: 60_000 });
+		}
 
 		const fromDomain = extractDomainOrNull(input.from) ?? undefined;
 		const poolRule = await resolvePool(
@@ -190,14 +205,14 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 
 		let globalProbe = false;
 		let providerProbe = false;
-		if (global.state === 'half-open') {
+		if (currentGlobal.state === 'half-open') {
 			globalProbe = await reserveHalfOpenProbe(
 				redis,
 				input.organizationId,
 				undefined,
 				input.messageId,
 				Date.now(),
-				global.generation
+				currentGlobal.generation
 			);
 			if (!globalProbe) {
 				if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
@@ -220,7 +235,7 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 						input.organizationId,
 						undefined,
 						input.messageId,
-						global.generation
+						currentGlobal.generation
 					);
 				if (warmingReservation) await releaseWarmingSlot(redis, warmingReservation);
 				return c.json({ decision: 'relay', reason: 'provider_probe_limit' });
@@ -243,7 +258,7 @@ export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 			expiresAt: Date.now() + ROUTING_LEASE_TTL_SECONDS * 1000,
 			ip: selected.ip,
 			eligibilityGeneration: selected.eligibilityGeneration,
-			globalBreakerGeneration: global.generation,
+			globalBreakerGeneration: currentGlobal.generation,
 			providerBreakerGeneration: provider.generation,
 			...(warmingReservation ? { warmingReservation } : {}),
 		};

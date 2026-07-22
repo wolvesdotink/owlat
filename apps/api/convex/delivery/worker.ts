@@ -172,6 +172,17 @@ type WorkerEnvelopeInput =
 			convexSiteUrl?: string;
 	  };
 
+/** Preserve legacy automation envelopes that predate the messageType field. */
+export function resolveWorkerMessageType(
+	envelopeInput: WorkerEnvelopeInput
+): 'campaign' | 'transactional' | 'automation' {
+	if (envelopeInput.kind === 'campaign') return 'campaign';
+	return (
+		envelopeInput.messageType ??
+		(envelopeInput.emailPurpose === 'marketing' ? 'automation' : 'transactional')
+	);
+}
+
 const retryStateValidator = v.object({
 	attempt: v.number(),
 	startedAt: v.number(),
@@ -413,10 +424,7 @@ export const sendSingleEmail = internalAction({
 
 		return await dispatchGovernedEmail(ctx, {
 			envelopeInput,
-			messageType:
-				envelopeInput.kind === 'campaign'
-					? 'campaign'
-					: (envelopeInput.messageType ?? 'transactional'),
+			messageType: resolveWorkerMessageType(envelopeInput),
 			to: envelopeInput.to,
 			from: envelopeInput.from,
 			replyTo: envelopeInput.replyTo,

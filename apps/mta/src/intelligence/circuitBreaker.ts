@@ -164,7 +164,24 @@ export async function canSend(
 		const globalResult = await canSend(redis, orgId);
 		if (!globalResult.allowed) return globalResult;
 	}
+	return canSendScope(redis, orgId, provider);
+}
 
+/**
+ * Check exactly one breaker scope. Callers that already check the global
+ * breaker use this for the provider scope so a concurrent global transition
+ * can never be mistaken for a provider-only failure and routed to relay.
+ */
+export async function canSendScope(
+	redis: Redis,
+	orgId: string,
+	provider?: string
+): Promise<{
+	allowed: boolean;
+	retryAfter?: number;
+	state?: CircuitState;
+	generation: number;
+}> {
 	const stateKey = breakerStateKey(orgId, provider);
 	const stateData = await redis.hgetall(stateKey);
 

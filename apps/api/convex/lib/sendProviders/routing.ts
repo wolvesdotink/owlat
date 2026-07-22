@@ -105,9 +105,19 @@ export function resolveRoute(
 	const strategy = strategyFor(routeConfig.strategy);
 	const selected = strategy.select(enabledEntries, routeConfig.ipPool, healthStatuses);
 	const resolved = selected ?? fallback(isReady);
-	if (!resolved || !deliverability) return resolved;
+	if (!resolved) return resolved;
 
 	const fallbackConfig = routeConfig.deliverabilityFallback;
+	const isHybridRelaySelection = Boolean(
+		fallbackConfig?.isEnabled &&
+		resolved.providerType === fallbackConfig.relayProviderType &&
+		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+	);
+	if (isHybridRelaySelection && !deliverability?.isRelayDomainVerified) {
+		throw new DeliverabilityRouteError();
+	}
+	if (!deliverability) return resolved;
+
 	const reason =
 		deliverability.activeReasons[0] ??
 		(fallbackConfig?.isWarmupOverflowEnabled && deliverability.isWarmupOverflow
