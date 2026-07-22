@@ -132,6 +132,7 @@
 		"linkify-it": "^5.0.2",
 		"nodemailer": "9.0.3",
 		"nuxt": "4.4.7",
+		"nuxt-og-image": "6.7.4",
 		"protobufjs": "^7.6.5",
 		"sharp": "0.35.3",
 		"shell-quote": "^1.10.0",
