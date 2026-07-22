@@ -28,4 +28,16 @@ describe('hybrid SES relay DNS plan', () => {
 		expect(result.dkim).toHaveLength(1);
 		expect(result.mailFrom?.[0]?.host).toBe('ses-mail');
 	});
+
+	it('never publishes an SES-only apex SPF when no primary policy is known', () => {
+		const result = buildHybridSesRelayDnsRecords(
+			{},
+			{
+				spf: { type: 'TXT', host: '@', value: 'v=spf1 include:amazonses.com ~all' },
+				dkim: [{ type: 'CNAME', host: 'ses._domainkey', value: 'ses.dkim.amazonses.com' }],
+			}
+		);
+		expect(result.spf).toBeUndefined();
+		expect(result.dkim).toHaveLength(1);
+	});
 });

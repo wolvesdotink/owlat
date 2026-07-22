@@ -7,7 +7,13 @@ import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
 import type { AuthContext } from '../server.js';
-import { isGovernedMessageType, isValidEmail, parseAddress } from '@owlat/shared';
+import {
+	GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+	isGovernedMessageType,
+	isValidEmail,
+	parseAddress,
+	ROUTING_REENTRY_TOKEN_MAX_LENGTH,
+} from '@owlat/shared';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { mapToPriority } from '../intelligence/engagementPriority.js';
 
@@ -34,6 +40,9 @@ const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
 
 interface SendRequest {
 	messageId: string;
+	workAttemptId?: string;
+	routingReentryToken?: string;
+	routingReentry?: EmailJob['routingReentry'];
 	to: string;
 	from: string;
 	subject: string;
@@ -64,32 +73,7 @@ interface SendRequest {
 	allowedFromAddresses?: string[];
 	/** Opaque lease token returned by POST /send/decision. */
 	routingLease?: string;
-	routingReentry?: EmailJob['routingReentry'];
 	allowWarmupOverflow?: boolean;
-}
-
-function validRoutingReentry(
-	value: EmailJob['routingReentry'] | undefined,
-	messageId: string
-): value is NonNullable<EmailJob['routingReentry']> {
-	if (!value || typeof value !== 'object') return false;
-	const sendRef = value.sendRef;
-	const retry = value.retryState;
-	return Boolean(
-		sendRef &&
-		(sendRef.kind === 'campaign' || sendRef.kind === 'transactional') &&
-		typeof sendRef.id === 'string' &&
-		sendRef.id.length > 0 &&
-		sendRef.id.length <= 256 &&
-		value.envelopeInput &&
-		typeof value.envelopeInput === 'object' &&
-		retry &&
-		Number.isInteger(retry.attempt) &&
-		retry.attempt > 0 &&
-		retry.attempt <= 8 &&
-		Number.isFinite(retry.startedAt) &&
-		retry.idempotencyKey === messageId
-	);
 }
 
 /**
@@ -153,14 +137,24 @@ export function createSendHandler(
 			if (!auth.isMasterKey || body.organizationId !== 'postbox') {
 				return c.json({ error: 'Postbox intake requires the master credential' }, 403);
 			}
-			if (body.routingLease || body.routingReentry) {
+			if (
+				body.routingLease ||
+				body.routingReentryToken ||
+				body.routingReentry ||
+				body.workAttemptId
+			) {
 				return c.json({ error: 'Postbox intake does not accept tenant routing leases' }, 400);
 			}
 		} else if (mode === 'system') {
 			if (!auth.isMasterKey || body.organizationId !== 'system') {
 				return c.json({ error: 'System intake requires the master credential' }, 403);
 			}
-			if (body.routingLease || body.routingReentry) {
+			if (
+				body.routingLease ||
+				body.routingReentryToken ||
+				body.routingReentry ||
+				body.workAttemptId
+			) {
 				return c.json({ error: 'System intake does not accept tenant routing leases' }, 400);
 			}
 		} else {
@@ -176,7 +170,23 @@ export function createSendHandler(
 					409
 				);
 			}
-			if (!validRoutingReentry(body.routingReentry, body.messageId)) {
+			if (
+				typeof body.routingReentryToken !== 'string' ||
+				body.routingReentryToken.length < 1 ||
+				body.routingReentryToken.length > ROUTING_REENTRY_TOKEN_MAX_LENGTH ||
+				typeof body.workAttemptId !== 'string' ||
+				body.workAttemptId.length < 1 ||
+				body.workAttemptId.length > 128 ||
+				!body.routingReentry ||
+				typeof body.routingReentry.envelopeInput !== 'object' ||
+				body.routingReentry.envelopeInput === null ||
+				!body.routingReentry.retryState ||
+				!Number.isInteger(body.routingReentry.retryState.attempt) ||
+				body.routingReentry.retryState.attempt < 1 ||
+				body.routingReentry.retryState.attempt > 9 ||
+				!Number.isFinite(body.routingReentry.retryState.startedAt) ||
+				body.routingReentry.retryState.idempotencyKey !== body.messageId
+			) {
 				return c.json({ error: 'Missing or invalid routing re-entry context' }, 400);
 			}
 		}
@@ -222,6 +232,8 @@ export function createSendHandler(
 			if (
 				!isRoutingLeaseBoundTo(lease, {
 					messageId: body.messageId,
+					workAttemptId: body.workAttemptId!,
+					routingReentryToken: body.routingReentryToken!,
 					organizationId: body.organizationId,
 					recipient: body.to,
 					from: body.from,
@@ -316,11 +328,16 @@ export function createSendHandler(
 			return c.json({ error: 'ipPool must be "transactional" or "campaign"' }, 400);
 		}
 
-		// Deduplication: prevent re-queuing the same messageId (e.g., from Convex retries)
-		const dedupKey = `mta:sent-ids:${body.messageId}`;
-		const wasNew = await redis.set(dedupKey, '1', 'EX', 86400, 'NX'); // TTL: 24h, set-if-not-exists
+		// Provider/VERP identity is stable, but each bounded routing attempt must
+		// create real work. Deduplicate only the lease-bound attempt identity.
+		const queueIdentity = mode === 'governed' ? body.workAttemptId! : body.messageId;
+		const dedupKey = `mta:work-attempts:${queueIdentity}`;
+		const wasNew = await redis.set(dedupKey, '1', 'PX', GOVERNED_MTA_MAX_MESSAGE_AGE_MS, 'NX');
 		if (!wasNew) {
-			logger.info({ messageId: body.messageId }, 'Duplicate messageId — skipping');
+			logger.info(
+				{ messageId: body.messageId, workAttemptId: queueIdentity },
+				'Duplicate work attempt — skipping'
+			);
 			// Return the REAL messageId (the VERP token), not a literal "duplicate".
 			// The caller (Convex worker) stores the returned `id` as
 			// `providerMessageId`; the SMTP sender encodes that SAME `messageId` into
@@ -335,6 +352,7 @@ export function createSendHandler(
 		// Build job
 		const job: EmailJob = {
 			messageId: body.messageId,
+			workAttemptId: body.workAttemptId,
 			to: body.to,
 			from: body.from,
 			subject: body.subject,
@@ -350,6 +368,9 @@ export function createSendHandler(
 			dkimDomain: body.dkimDomain,
 			firstEnqueuedAt: Date.now(),
 			...(routingLease ? { routingLease } : {}),
+			...(mode === 'governed' && body.routingReentryToken
+				? { routingReentryToken: body.routingReentryToken }
+				: {}),
 			...(mode === 'governed' && body.routingReentry
 				? { routingReentry: body.routingReentry }
 				: {}),
@@ -361,23 +382,13 @@ export function createSendHandler(
 		const priority = mapToPriority(body.engagementScore);
 
 		try {
-			// jobId MUST equal body.messageId. The caller (Convex worker) stores
-			// the returned `id` as `emailSends/transactionalSends.providerMessageId`,
-			// and the SMTP sender encodes that SAME `messageId` into the VERP
-			// Return-Path (apps/mta/src/smtp/sender.ts → buildVerpAddress). When an
-			// async DSN bounces back, the VERP token is decoded and looked up via
-			// `by_provider_message_id` (apps/api/convex/delivery/sendLifecycle.ts).
-			// If we let groupmq mint a random UUID here, the stored
-			// providerMessageId never matches the VERP token and every
-			// post-acceptance bounce is silently dropped (send_not_found). Pinning
-			// jobId = messageId keeps acceptance id == VERP token == stored
-			// providerMessageId. (It also gives groupmq queue-level idempotency on
-			// the same key the Redis SET-NX dedup already uses.)
+			// GroupMQ identity is attempt-scoped. `job.data.messageId` remains the
+			// stable provider/VERP correlation id used by lifecycle webhooks.
 			const result = await queue.add({
 				groupId,
 				data: job,
 				orderMs: priorityToOrderMs(priority),
-				jobId: body.messageId,
+				jobId: queueIdentity,
 			});
 
 			logger.debug(
@@ -385,8 +396,11 @@ export function createSendHandler(
 				'Email queued'
 			);
 
-			return c.json({ success: true, id: result.id });
+			return c.json({ success: true, id: body.messageId, workAttemptId: result.id });
 		} catch (err) {
+			// The reservation represents accepted queue work, not merely an intake
+			// attempt. A failed enqueue must remain retryable.
+			await redis.del(dedupKey);
 			logger.error({ err, messageId: body.messageId }, 'Failed to enqueue email');
 			return c.json({ error: 'Failed to queue email' }, 500);
 		}

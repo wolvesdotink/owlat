@@ -5,13 +5,17 @@ import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { getUnsubscribeUrl, getListUnsubscribeHeader } from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
-import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getMtaConfig, scanAttachmentBytes } from '../mail/mtaClient';
 import { transformHtml } from './sendComposition/transform';
 import { fetchGuarded } from '../lib/ssrfGuard';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
 import { dispatchGovernedEmail } from './governedDispatch';
+import {
+	envelopeInputValidator,
+	retryStateValidator,
+	type WorkerEnvelopeInput,
+} from './workerEnvelope';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -32,146 +36,6 @@ import { dispatchGovernedEmail } from './governedDispatch';
 // `providerType`). The worker turns this into a `ComposeInput` for the
 // per-kind composer, then dispatches the composed envelope.
 
-const attachmentRefValidator = v.object({
-	filename: v.string(),
-	contentType: v.optional(v.string()),
-	url: v.string(),
-});
-
-const envelopeInputValidator = v.union(
-	v.object({
-		kind: v.literal('campaign'),
-		to: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		providerType: v.optional(v.string()),
-		ipPool: v.optional(v.string()),
-		template: v.object({
-			subject: v.string(),
-			htmlContent: v.string(),
-		}),
-		contactInfo: v.object({
-			contactId: v.optional(v.id('contacts')),
-			email: v.string(),
-			firstName: v.optional(v.string()),
-			lastName: v.optional(v.string()),
-		}),
-		audienceType: v.optional(v.union(v.literal('topic'), v.literal('segment'))),
-		emailSendId: v.optional(v.id('emailSends')),
-		// Gmail FBL — the campaign + singleton org id let the composer emit a
-		// per-campaign `Feedback-ID` header for Postmaster spam-rate granularity.
-		campaignId: v.optional(v.id('campaigns')),
-		organizationId: v.optional(v.string()),
-		siteUrl: v.optional(v.string()),
-		convexSiteUrl: v.optional(v.string()),
-		trackingBaseUrl: v.optional(v.string()),
-		viewInBrowserUrl: v.optional(v.string()),
-		// RFC 2919 List-Id header value for a TOPIC campaign, pre-built by the
-		// orchestrator (`getListIdHeader`) from the topic id/name + sending
-		// domain. Absent for segment campaigns.
-		listId: v.optional(v.string()),
-	}),
-	v.object({
-		kind: v.literal('transactional'),
-		messageType: v.optional(v.union(v.literal('transactional'), v.literal('automation'))),
-		emailPurpose: v.union(v.literal('marketing'), v.literal('transactional')),
-		to: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		providerType: v.optional(v.string()),
-		ipPool: v.optional(v.string()),
-		// The `transactionalSends._id` this envelope sends for. Used ONLY to
-		// derive a stable provider idempotency key (see `deriveIdempotencyKey`)
-		// so a surviving retry de-dupes at the MTA / Resend instead of double-
-		// sending. Optional for back-compat with any in-flight enqueue.
-		sendId: v.optional(v.id('transactionalSends')),
-		template: v.object({
-			subject: v.string(),
-			htmlContent: v.string(),
-		}),
-		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
-		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
-		// Custom MIME headers (e.g. In-Reply-To / References for agent replies).
-		// Merged below; the composer's own headers (e.g. `Feedback-ID`) win on
-		// key collision.
-		headers: v.optional(v.record(v.string(), v.string())),
-		// RFC 3834 Auto-Submitted classification (see TransactionalComposeInput).
-		// `auto-replied` for the agent 1:1 reply path (an automatic reply to a
-		// specific inbound message); omitted → the composer defaults to
-		// `auto-generated` for system/DOI/transactional + automation mail.
-		autoSubmittedType: v.optional(v.union(v.literal('auto-generated'), v.literal('auto-replied'))),
-		// Unsubscribe footer wiring — set when the template's `showUnsubscribe`
-		// flag is on. The worker builds the HMAC unsubscribe/preference URLs
-		// (Node-only) from `siteUrl` + `contactId`, mirroring the campaign path.
-		showUnsubscribe: v.optional(v.boolean()),
-		contactId: v.optional(v.id('contacts')),
-		siteUrl: v.optional(v.string()),
-		// Gmail FBL — singleton org id; the composer emits a `txn`-stream
-		// `Feedback-ID` header so transactional spam complaints aggregate apart
-		// from bulk campaign sends.
-		organizationId: v.optional(v.string()),
-		// List-Unsubscribe header wiring for MARKETING non-campaign sends
-		// (automation drip/broadcast steps). When `listUnsubscribe` is set and a
-		// `contactId` + `convexSiteUrl` are present, the worker builds the RFC 8058
-		// one-click header (Node-only HMAC) and merges it onto the envelope so
-		// Gmail/Yahoo's 2024 bulk rule is satisfied. Transactional/agent sends
-		// leave it unset (no List-Unsubscribe on 1:1 mail).
-		listUnsubscribe: v.optional(v.boolean()),
-		convexSiteUrl: v.optional(v.string()),
-	})
-);
-
-type WorkerEnvelopeInput =
-	| {
-			kind: 'campaign';
-			to: string;
-			from: string;
-			replyTo?: string;
-			providerType?: string;
-			ipPool?: string;
-			template: { subject: string; htmlContent: string };
-			contactInfo: {
-				contactId?: import('../_generated/dataModel').Id<'contacts'>;
-				email: string;
-				firstName?: string;
-				lastName?: string;
-			};
-			audienceType?: 'topic' | 'segment';
-			emailSendId?: import('../_generated/dataModel').Id<'emailSends'>;
-			campaignId?: import('../_generated/dataModel').Id<'campaigns'>;
-			organizationId?: string;
-			siteUrl?: string;
-			convexSiteUrl?: string;
-			trackingBaseUrl?: string;
-			viewInBrowserUrl?: string;
-			listId?: string;
-	  }
-	| {
-			kind: 'transactional';
-			messageType?: 'transactional' | 'automation';
-			emailPurpose: EmailPurpose;
-			to: string;
-			from: string;
-			replyTo?: string;
-			providerType?: string;
-			ipPool?: string;
-			sendId?: import('../_generated/dataModel').Id<'transactionalSends'>;
-			template: { subject: string; htmlContent: string };
-			dataVariables?: Record<string, unknown>;
-			attachmentRefs?: { filename: string; contentType?: string; url: string }[];
-			headers?: Record<string, string>;
-			autoSubmittedType?: 'auto-generated' | 'auto-replied';
-			showUnsubscribe?: boolean;
-			contactId?: import('../_generated/dataModel').Id<'contacts'>;
-			siteUrl?: string;
-			organizationId?: string;
-			// Marketing List-Unsubscribe wiring for automation steps — see the
-			// validator above. The worker builds + merges the header when both
-			// `listUnsubscribe` and `convexSiteUrl` + `contactId` are present.
-			listUnsubscribe?: boolean;
-			convexSiteUrl?: string;
-	  };
-
 /** Preserve legacy automation envelopes that predate the messageType field. */
 export function resolveWorkerMessageType(
 	envelopeInput: WorkerEnvelopeInput
@@ -182,12 +46,6 @@ export function resolveWorkerMessageType(
 		(envelopeInput.emailPurpose === 'marketing' ? 'automation' : 'transactional')
 	);
 }
-
-const retryStateValidator = v.object({
-	attempt: v.number(),
-	startedAt: v.number(),
-	idempotencyKey: v.string(),
-});
 
 /**
  * Build the RFC 8058 one-click `List-Unsubscribe` header for a MARKETING
@@ -431,8 +289,12 @@ export const sendSingleEmail = internalAction({
 			providerType: envelopeInput.providerType,
 			ipPool: envelopeInput.ipPool,
 			organizationId: envelopeInput.organizationId,
-			stableSendId:
-				envelopeInput.kind === 'campaign' ? envelopeInput.emailSendId : envelopeInput.sendId,
+			sendRef:
+				envelopeInput.kind === 'campaign' && envelopeInput.emailSendId
+					? { kind: 'campaign', id: envelopeInput.emailSendId }
+					: envelopeInput.kind === 'transactional' && envelopeInput.sendId
+						? { kind: 'transactional', id: envelopeInput.sendId }
+						: undefined,
 			retryState,
 			message: {
 				subject: composed.subject,

@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ROUTING_REENTRY_TOKEN_TTL_MS } from '@owlat/shared';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
@@ -12,63 +13,217 @@ vi.mock('../delivery/workpool', () => ({
 
 const modules = import.meta.glob('../**/*.*s');
 
-beforeEach(() => enqueueAction.mockClear());
+beforeEach(() => {
+	enqueueAction.mockClear();
+	vi.stubEnv('INSTANCE_SECRET', 'routing-reentry-test-secret-at-least-32-characters');
+});
 
-describe('accepted MTA routing re-entry', () => {
-	it('atomically enqueues one retry for duplicate callbacks with the same Send/idempotency key', async () => {
-		const t = convexTest(schema, modules);
-		const sendId = await t.run(async (ctx) => {
-			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-			const contactId = await ctx.db.insert('contacts', createTestContact());
-			return await ctx.db.insert(
-				'emailSends',
-				createTestEmailSend({
-					campaignId,
-					contactId,
-					status: 'sent',
-					providerMessageId: `send_pending`,
-				})
-			);
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllEnvs();
+});
+
+async function fixture(attempt = 2) {
+	const t = convexTest(schema, modules);
+	const sendId = await t.run(async (ctx) => {
+		const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
+		const contactId = await ctx.db.insert('contacts', createTestContact());
+		return ctx.db.insert(
+			'emailSends',
+			createTestEmailSend({
+				campaignId,
+				contactId,
+				status: 'queued',
+				providerMessageId: undefined,
+			})
+		);
+	});
+	const envelopeInput = {
+		kind: 'campaign' as const,
+		to: 'person@example.com',
+		from: 'sender@example.org',
+		template: { subject: 'Hello', htmlContent: '<p>Hello</p>' },
+		contactInfo: { email: 'person@example.com' },
+		emailSendId: sendId,
+		organizationId: 'org-1',
+	};
+	const retryState = {
+		attempt,
+		startedAt: Date.now(),
+		idempotencyKey: `send_${sendId}`,
+	};
+	const issued = await t.mutation(internal.delivery.routingReentry.issueSnapshot, {
+		sendRef: { kind: 'campaign', id: sendId },
+		organizationId: 'org-1',
+		messageId: retryState.idempotencyKey,
+		workAttemptId: 'work-attempt-1',
+		envelopeInput,
+		retryState,
+	});
+	return { t, sendId, envelopeInput, retryState, token: issued.token };
+}
+
+function callbackArgs(value: Awaited<ReturnType<typeof fixture>>) {
+	return {
+		token: value.token,
+		messageId: value.retryState.idempotencyKey,
+		workAttemptId: 'work-attempt-1',
+		reason: 'circuit_breaker_changed' as const,
+		envelopeInput: value.envelopeInput,
+		retryState: value.retryState,
+	};
+}
+
+describe('authenticated MTA routing re-entry', () => {
+	async function originalMtaCompletion(value: Awaited<ReturnType<typeof fixture>>) {
+		await value.t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: 'original-mta-work' as never,
+			result: {
+				kind: 'success',
+				returnValue: {
+					success: true,
+					providerMessageId: value.retryState.idempotencyKey,
+					providerType: 'mta',
+					acceptedForDelivery: true,
+				},
+			},
+			context: { sendRef: { kind: 'campaign', id: value.sendId } },
 		});
-		const args = {
-			sendRef: { kind: 'campaign' as const, id: sendId },
-			messageId: 'send_pending',
-			envelopeInput: {
-				kind: 'campaign',
-				to: 'person@example.com',
-				from: 'sender@example.org',
-			},
-			retryState: {
-				attempt: 1,
-				startedAt: Date.now(),
-				idempotencyKey: 'send_pending',
-			},
-			reason: 'breaker generation changed',
-		};
+	}
 
-		const first = await t.mutation(internal.delivery.sendCompletion.reenterAcceptedMtaSend, args);
-		const duplicate = await t.mutation(
-			internal.delivery.sendCompletion.reenterAcceptedMtaSend,
-			args
+	async function establishRelayReentry(order: 'completion-first' | 'callback-first') {
+		const value = await fixture();
+		if (order === 'completion-first') await originalMtaCompletion(value);
+		expect(
+			await value.t.mutation(internal.delivery.routingReentry.consumeSnapshot, callbackArgs(value))
+		).toMatchObject({ disposition: 'enqueued' });
+		if (order === 'callback-first') await originalMtaCompletion(value);
+		expect((await value.t.run((ctx) => ctx.db.get(value.sendId)))?.status).toBe('queued');
+		return value;
+	}
+
+	it.each(['completion-first', 'callback-first'] as const)(
+		'terminates a relay success and resolves later webhooks by relay id (%s)',
+		async (order) => {
+			const value = await establishRelayReentry(order);
+			const relayId = `ses-relay-${order}`;
+			await value.t.mutation(internal.delivery.sendCompletion.completeSend, {
+				workId: 'relay-work' as never,
+				result: {
+					kind: 'success',
+					returnValue: {
+						success: true,
+						providerMessageId: relayId,
+						providerType: 'ses',
+					},
+				},
+				context: { sendRef: { kind: 'campaign', id: value.sendId } },
+			});
+			expect(await value.t.run((ctx) => ctx.db.get(value.sendId))).toMatchObject({
+				status: 'sent',
+				providerMessageId: relayId,
+				providerType: 'ses',
+			});
+			const lookup = await value.t.mutation(
+				internal.delivery.sendLifecycle.transitionByProviderMessageId,
+				{
+					providerMessageId: relayId,
+					transition: {
+						to: 'sent',
+						at: Date.now(),
+						providerMessageId: relayId,
+						providerType: 'ses',
+					},
+				}
+			);
+			expect(lookup).toMatchObject({ ok: true, applied: 'duplicate' });
+		}
+	);
+
+	it.each(['completion-first', 'callback-first'] as const)(
+		'terminates a relay failure without allowing the late MTA acceptance to mark sent (%s)',
+		async (order) => {
+			const value = await establishRelayReentry(order);
+			await value.t.mutation(internal.delivery.sendCompletion.completeSend, {
+				workId: 'relay-work' as never,
+				result: { kind: 'failed', error: 'SES relay rejected the request' },
+				context: { sendRef: { kind: 'campaign', id: value.sendId } },
+			});
+			expect(await value.t.run((ctx) => ctx.db.get(value.sendId))).toMatchObject({
+				status: 'failed',
+				errorCode: 'WORKPOOL_FAILED',
+				errorMessage: 'SES relay rejected the request',
+			});
+		}
+	);
+
+	it('atomically accepts a newer attempt and rejects the duplicate callback', async () => {
+		const value = await fixture();
+		const first = await value.t.mutation(
+			internal.delivery.routingReentry.consumeSnapshot,
+			callbackArgs(value)
+		);
+		const duplicate = await value.t.mutation(
+			internal.delivery.routingReentry.consumeSnapshot,
+			callbackArgs(value)
 		);
 
 		expect(first).toMatchObject({ disposition: 'enqueued' });
-		expect(duplicate).toEqual({ disposition: 'duplicate_or_expired' });
+		expect(duplicate).toEqual({ disposition: 'duplicate' });
 		expect(enqueueAction).toHaveBeenCalledOnce();
-		expect(enqueueAction).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.anything(),
-			expect.objectContaining({
-				retryState: expect.objectContaining({ idempotencyKey: 'send_pending' }),
-			}),
-			expect.objectContaining({
-				context: { sendRef: { kind: 'campaign', id: sendId } },
-			})
+		expect(await value.t.run((ctx) => ctx.db.get(value.sendId))).toMatchObject({
+			status: 'queued',
+			providerMessageId: value.retryState.idempotencyKey,
+			mtaRoutingReentryAttempt: 2,
+		});
+	});
+
+	it('fails closed when the authenticated token is tampered', async () => {
+		const value = await fixture();
+		const args = callbackArgs(value);
+		const result = await value.t.mutation(internal.delivery.routingReentry.consumeSnapshot, {
+			...args,
+			token: `${args.token.slice(0, -1)}${args.token.endsWith('A') ? 'B' : 'A'}`,
+		});
+		expect(result).toEqual({ disposition: 'invalid_token' });
+		expect(enqueueAction).not.toHaveBeenCalled();
+	});
+
+	it('rejects callback material rebound to another organization', async () => {
+		const value = await fixture();
+		const result = await value.t.mutation(internal.delivery.routingReentry.consumeSnapshot, {
+			...callbackArgs(value),
+			envelopeInput: { ...value.envelopeInput, organizationId: 'org-2' },
+		});
+		expect(result).toEqual({ disposition: 'binding_mismatch' });
+		expect(enqueueAction).not.toHaveBeenCalled();
+	});
+
+	it('rejects the exact token at the expiry boundary', async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+		const value = await fixture();
+		vi.advanceTimersByTime(ROUTING_REENTRY_TOKEN_TTL_MS);
+		const result = await value.t.mutation(
+			internal.delivery.routingReentry.consumeSnapshot,
+			callbackArgs(value)
 		);
-		expect(await t.run((ctx) => ctx.db.get(sendId))).toMatchObject({
-			status: 'sent',
-			providerMessageId: 'send_pending',
-			mtaRoutingReentryAttempt: 1,
+		expect(result).toEqual({ disposition: 'expired' });
+		expect(enqueueAction).not.toHaveBeenCalled();
+	});
+
+	it('marks the Send failed instead of creating attempt nine', async () => {
+		const value = await fixture(9);
+		const result = await value.t.mutation(
+			internal.delivery.routingReentry.consumeSnapshot,
+			callbackArgs(value)
+		);
+		expect(result).toEqual({ disposition: 'retry_exhausted' });
+		expect(enqueueAction).not.toHaveBeenCalled();
+		expect(await value.t.run((ctx) => ctx.db.get(value.sendId))).toMatchObject({
+			status: 'failed',
+			errorCode: 'ROUTING_RETRY_EXHAUSTED',
+			mtaRoutingReentryAttempt: 9,
 		});
 	});
 });

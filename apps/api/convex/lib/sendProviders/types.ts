@@ -94,6 +94,15 @@ export interface EmailSendParams {
 export interface MtaExtras {
 	/** Unique message ID for correlation */
 	messageId?: string;
+	/** Unique identity for this bounded queue attempt. */
+	workAttemptId?: string;
+	/** Opaque Convex-issued server-side re-entry snapshot handle. */
+	routingReentryToken?: string;
+	/** Callback material whose canonical digest is authenticated by the token. */
+	routingReentry?: {
+		envelopeInput: unknown;
+		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+	};
 	/** IP pool: 'transactional' or 'campaign' (see MTA_IP_POOL_NAMES). */
 	ipPool?: MtaIpPool;
 	/** Engagement score 0-100 for priority ordering */
@@ -104,12 +113,6 @@ export interface MtaExtras {
 	messageType?: import('@owlat/shared').GovernedMessageType;
 	intakePath?: 'system';
 	routingLease?: string;
-	/** Durable Convex work item used when an accepted job's route goes stale. */
-	routingReentry?: {
-		sendRef: { kind: 'campaign' | 'transactional'; id: string };
-		envelopeInput: unknown;
-		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
-	};
 	/** Decision input bound into the authenticated routing lease. */
 	allowWarmupOverflow?: boolean;
 }

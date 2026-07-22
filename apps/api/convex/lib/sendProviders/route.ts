@@ -21,12 +21,10 @@ import {
 import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { getOptional } from '../env';
-import { extractDomainOrNull } from '@owlat/shared';
+import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
-
-const SES_RELAY_PROOF_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 

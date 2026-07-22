@@ -42,6 +42,8 @@ export type MtaRoutingDecision =
 
 export async function resolveMtaRoutingDecision(input: {
 	messageId: string;
+	workAttemptId: string;
+	routingReentryToken: string;
 	messageType: GovernedMessageType;
 	organizationId: string;
 	recipient: string;
@@ -155,6 +157,9 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 
 		const body = {
 			messageId: extras?.messageId ?? crypto.randomUUID(),
+			workAttemptId: extras?.workAttemptId,
+			routingReentryToken: extras?.routingReentryToken,
+			routingReentry: extras?.routingReentry,
 			to: params.to,
 			from: params.from,
 			subject: params.subject,
@@ -168,7 +173,6 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 			organizationId: extras?.organizationId,
 			messageType: extras?.messageType,
 			routingLease: extras?.routingLease,
-			routingReentry: extras?.routingReentry,
 			allowWarmupOverflow: extras?.allowWarmupOverflow,
 		};
 

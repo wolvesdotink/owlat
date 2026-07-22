@@ -1,6 +1,7 @@
 'use node';
 
-import type { GovernedMessageType } from '@owlat/shared';
+import { MAX_GOVERNED_ROUTING_ATTEMPTS, type GovernedMessageType } from '@owlat/shared';
+import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
 import {
@@ -12,12 +13,18 @@ import {
 	type SendProviderKind,
 } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
+import type { WorkerEnvelopeInput } from './workerEnvelope';
+import type { Id } from '../_generated/dataModel';
 
 export interface WorkerRetryState {
 	attempt: number;
 	startedAt: number;
 	idempotencyKey: string;
 }
+
+type SendRef =
+	| { kind: 'campaign'; id: Id<'emailSends'> }
+	| { kind: 'transactional'; id: Id<'transactionalSends'> };
 
 interface GovernedDispatchRequest<TEnvelope> {
 	envelopeInput: TEnvelope;
@@ -28,7 +35,7 @@ interface GovernedDispatchRequest<TEnvelope> {
 	providerType?: string;
 	ipPool?: string;
 	organizationId?: string;
-	stableSendId?: string;
+	sendRef?: SendRef;
 	retryState?: WorkerRetryState;
 	message: Omit<EmailSendParams, 'to' | 'from' | 'replyTo'>;
 }
@@ -39,6 +46,8 @@ export type GovernedDispatchResult<TEnvelope> =
 			providerMessageId: string;
 			providerType: SendProviderKind;
 			sendLatencyMs: number;
+			/** MTA intake accepted the work; delivery remains queued until its webhook. */
+			acceptedForDelivery?: true;
 	  }
 	| {
 			success: false;
@@ -48,15 +57,19 @@ export type GovernedDispatchResult<TEnvelope> =
 			retryState: WorkerRetryState;
 	  };
 
-function nextRetryState(
+function currentRetryState(
 	retryState: WorkerRetryState | undefined,
 	idempotencyKey: string
 ): WorkerRetryState {
 	return {
-		attempt: (retryState?.attempt ?? 0) + 1,
+		attempt: retryState?.attempt ?? 1,
 		startedAt: retryState?.startedAt ?? Date.now(),
 		idempotencyKey,
 	};
+}
+
+function nextRetryState(current: WorkerRetryState): WorkerRetryState {
+	return { ...current, attempt: current.attempt + 1 };
 }
 
 /**
@@ -72,53 +85,72 @@ export async function dispatchGovernedEmail<TEnvelope>(
 ): Promise<GovernedDispatchResult<TEnvelope>> {
 	const idempotencyKey =
 		request.retryState?.idempotencyKey ??
-		(request.stableSendId ? `send_${request.stableSendId}` : `legacy_${crypto.randomUUID()}`);
+		(request.sendRef ? `send_${request.sendRef.id}` : `legacy_${crypto.randomUUID()}`);
+	const retryState = currentRetryState(request.retryState, idempotencyKey);
+	if (retryState.attempt > MAX_GOVERNED_ROUTING_ATTEMPTS) {
+		throw new Error('Governed delivery retry limit exhausted.');
+	}
+	const organizationId =
+		request.organizationId ??
+		(await ctx.runQuery(internal.campaigns.sendQueries.getSingletonOrganizationId, {}));
+	if (!organizationId)
+		throw new Error('Delivery safety decision requires an organization identity.');
+	if (!request.sendRef) throw new Error('Governed MTA delivery requires a durable Send reference.');
+	const workAttemptId = crypto.randomUUID();
+	const snapshot = await ctx.runMutation(internal.delivery.routingReentry.issueSnapshot, {
+		sendRef: request.sendRef,
+		organizationId,
+		messageId: idempotencyKey,
+		workAttemptId,
+		envelopeInput: request.envelopeInput as WorkerEnvelopeInput,
+		retryState: nextRetryState(retryState),
+	});
 	const routing = await resolveLastMileRouting(ctx, {
 		messageType: request.messageType,
 		to: request.to,
 		from: request.from,
 		providerType: request.providerType,
 		ipPool: request.ipPool,
-		organizationId: request.organizationId,
+		organizationId,
 		idempotencyKey,
+		workAttemptId,
+		routingReentryToken: snapshot.token,
 	});
 	if (routing.kind === 'defer') {
+		await ctx.runMutation(internal.delivery.routingReentry.discardSnapshot, {
+			token: snapshot.token,
+		});
 		return {
 			success: false,
 			deferred: true,
 			retryAfterMs: routing.retryAfterMs,
 			envelopeInput: request.envelopeInput,
-			retryState: nextRetryState(request.retryState, idempotencyKey),
+			retryState: nextRetryState(retryState),
 		};
 	}
 
-	const { providerKind, route, organizationId, routingLease } = routing;
-	const routingRetryState = nextRetryState(request.retryState, idempotencyKey);
+	const { providerKind, route, routingLease } = routing;
+	if (providerKind !== 'mta') {
+		await ctx.runMutation(internal.delivery.routingReentry.discardSnapshot, {
+			token: snapshot.token,
+		});
+	}
 	const extras: ExtrasFor<SendProviderKind> =
 		providerKind === 'mta'
 			? ({
 					messageId: idempotencyKey,
+					workAttemptId,
+					routingReentryToken: snapshot.token,
+					routingReentry: {
+						envelopeInput: request.envelopeInput,
+						retryState: nextRetryState(retryState),
+					},
 					organizationId,
 					messageType: request.messageType,
 					routingLease,
 					allowWarmupOverflow: Boolean(
 						request.messageType === 'campaign' && route?.warmupOverflowEnabled
 					),
-					...(request.stableSendId
-						? {
-								routingReentry: {
-									sendRef: {
-										kind:
-											request.messageType === 'campaign'
-												? ('campaign' as const)
-												: ('transactional' as const),
-										id: request.stableSendId,
-									},
-									envelopeInput: request.envelopeInput,
-									retryState: routingRetryState,
-								},
-							}
-						: {}),
 					...((route?.ipPool ?? request.ipPool)
 						? { ipPool: (route?.ipPool ?? request.ipPool) as MtaIpPool }
 						: {}),
@@ -147,6 +179,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 					: dispatched.result.id,
 			providerType: dispatched.providerType,
 			sendLatencyMs: dispatched.latencyMs,
+			...(providerKind === 'mta' ? { acceptedForDelivery: true as const } : {}),
 		};
 	}
 	if (dispatched.result.errorCode === 'ROUTING_DEFERRED') {
@@ -155,7 +188,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			deferred: true,
 			retryAfterMs: dispatched.result.retryAfterMs ?? 60_000,
 			envelopeInput: request.envelopeInput,
-			retryState: routingRetryState,
+			retryState: nextRetryState(retryState),
 		};
 	}
 

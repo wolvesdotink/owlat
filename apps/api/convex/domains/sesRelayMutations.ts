@@ -1,6 +1,8 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convexValidators';
+import { internal } from '../_generated/api';
+import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 
 export const storeProvisioning = internalMutation({
 	args: {
@@ -49,7 +51,7 @@ export const storeVerification = internalMutation({
 			.first();
 		if (!existing) return { recorded: false };
 		const dnsVerified = Boolean(
-			args.verificationResults.spf?.verified &&
+			(!args.dnsRecords.spf || args.verificationResults.spf?.verified) &&
 			args.verificationResults.dkim?.length &&
 			args.verificationResults.dkim.every((result) => result.verified) &&
 			args.verificationResults.mailFrom?.length &&
@@ -64,5 +66,43 @@ export const storeVerification = internalMutation({
 			updatedAt: args.checkedAt,
 		});
 		return { recorded: true, verified };
+	},
+});
+
+/** Schedule a bounded renewal batch before the 30-day routing proof expires. */
+export const scheduleVerificationRefresh = internalMutation({
+	args: { cursor: v.optional(v.string()) },
+	handler: async (ctx, args): Promise<number> => {
+		const refreshBefore = Date.now() - (SES_RELAY_PROOF_MAX_AGE_MS - 24 * 60 * 60 * 1000);
+		const retryPendingBefore = Date.now() - 24 * 60 * 60 * 1000;
+		let scheduled = 0;
+		const page = await ctx.db
+			.query('sendingDomainSesIdentities')
+			.paginate({ cursor: args.cursor ?? null, numItems: 100 });
+		for (const identity of page.page) {
+			if (
+				(identity.verifiedAt !== undefined && identity.verifiedAt >= refreshBefore) ||
+				(identity.verifiedAt === undefined && identity.updatedAt >= retryPendingBefore)
+			) {
+				continue;
+			}
+			await ctx.scheduler.runAfter(
+				scheduled * 1_000,
+				internal.domains.sesRelayVerification.refreshSesRelayIdentity,
+				{ domainId: identity.domainId }
+			);
+			scheduled += 1;
+		}
+		if (!page.isDone) {
+			// The scheduled-function argument is the durable continuation. Each
+			// action reads at most one page, so large installations progress without
+			// a collect, timeout, or repeatedly starving identities after page one.
+			await ctx.scheduler.runAfter(
+				Math.max(scheduled * 1_000, 1_000),
+				internal.domains.sesRelayMutations.scheduleVerificationRefresh,
+				{ cursor: page.continueCursor }
+			);
+		}
+		return scheduled;
 	},
 });

@@ -60,6 +60,7 @@ describe('FIX H1 — stable idempotency key through the worker (MTA path)', () =
 		vi.stubEnv('MTA_API_KEY', 'test-key');
 		vi.stubEnv('EMAIL_PROVIDER', 'mta');
 		vi.stubEnv('UNSUBSCRIBE_SECRET', 'test-unsubscribe-secret');
+		vi.stubEnv('INSTANCE_SECRET', 'test-routing-reentry-secret-32-bytes-minimum');
 	});
 
 	afterEach(() => {

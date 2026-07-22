@@ -214,8 +214,15 @@ export const templateTables = {
 	transactionalSends: defineTable({
 		// Which non-campaign source produced this Send. `transactional` is the
 		// public transactional API; `automation` is an automation email step;
-		// `agent_reply` is an approved agent-drafted inbox reply.
-		kind: v.union(v.literal('transactional'), v.literal('automation'), v.literal('agent_reply')),
+		// `agent_reply` is an approved agent-drafted inbox reply; `test` is a
+		// member-only preview that needs a durable Send for governed MTA re-entry
+		// but is excluded from customer analytics and suppression effects.
+		kind: v.union(
+			v.literal('transactional'),
+			v.literal('automation'),
+			v.literal('agent_reply'),
+			v.literal('test')
+		),
 		// Set for `kind: 'transactional'` (the template-backed API send). Optional
 		// because automation/agent sends carry their own provenance + pre-rendered
 		// subject/html instead of a template id.

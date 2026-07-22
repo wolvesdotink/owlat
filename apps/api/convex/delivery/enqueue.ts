@@ -25,6 +25,9 @@ export const RECIPIENT_BLOCKED_ERROR = 'recipient_blocked';
  */
 export const NO_DELIVERY_PROVIDER_ERROR = 'no_delivery_provider';
 
+/** Test-preview Sends outlive the MTA's four-day queue ceiling, then self-delete. */
+export const TEST_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 // Per ADR-0006, the workpool `onComplete` callback is owned by the Send
 // completion (module) at `delivery/sendCompletion.ts` — each enqueue below
 // wires it directly via `internal.delivery.sendCompletion.completeSend`. The
@@ -33,6 +36,83 @@ export const NO_DELIVERY_PROVIDER_ERROR = 'no_delivery_provider';
 // contact-activity insert, attachment-cleanup loop, provider health tracking)
 // is gone; every concern moved to the lifecycle effect list or to the Send
 // completion module.
+
+/**
+ * Queue a member-only test preview through the same durable governed path as
+ * every other Send. The caller owns recipient/sender authorization; this
+ * mutation owns the durable SendRef, workpool completion, and bounded cleanup.
+ */
+export const enqueueTestSend = internalMutation({
+	args: {
+		email: v.string(),
+		organizationId: v.string(),
+		from: v.string(),
+		replyTo: v.optional(v.string()),
+		subject: v.string(),
+		html: v.string(),
+	},
+	handler: async (ctx, args) => {
+		if (!(await selectedSendProviderReady(ctx, undefined))) {
+			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
+		}
+		const queuedAt = Date.now();
+		const sendId = await ctx.db.insert('transactionalSends', {
+			kind: 'test' as const,
+			email: args.email,
+			subject: args.subject,
+			status: 'queued',
+			queuedAt,
+		});
+
+		await transactionalEmailPool.enqueueAction(
+			ctx,
+			internal.delivery.worker.sendSingleEmail,
+			{
+				envelopeInput: {
+					kind: 'transactional' as const,
+					messageType: 'transactional' as const,
+					emailPurpose: 'transactional' as const,
+					to: args.email,
+					from: args.from,
+					replyTo: args.replyTo,
+					organizationId: args.organizationId,
+					sendId,
+					template: { subject: args.subject, htmlContent: args.html },
+				},
+			},
+			{
+				onComplete: internal.delivery.sendCompletion.completeSend,
+				context: { sendRef: { kind: 'transactional' as const, id: sendId } },
+			}
+		);
+		await ctx.scheduler.runAfter(
+			TEST_SEND_RETENTION_MS,
+			internal.delivery.enqueue.deleteExpiredTestSend,
+			{ sendId, queuedAt }
+		);
+		return { sendId };
+	},
+});
+
+/** Idempotent per-row retention callback; seven days exceeds every MTA retry window. */
+export const deleteExpiredTestSend = internalMutation({
+	args: { sendId: v.id('transactionalSends'), queuedAt: v.number() },
+	handler: async (ctx, args) => {
+		const send = await ctx.db.get(args.sendId);
+		if (!send || send.kind !== 'test' || send.queuedAt !== args.queuedAt) return false;
+		const remainingMs = args.queuedAt + TEST_SEND_RETENTION_MS - Date.now();
+		if (remainingMs > 0) {
+			await ctx.scheduler.runAfter(
+				remainingMs,
+				internal.delivery.enqueue.deleteExpiredTestSend,
+				args
+			);
+			return false;
+		}
+		await ctx.db.delete(args.sendId);
+		return true;
+	},
+});
 
 /**
  * Internal mutation to enqueue campaign emails to workpool (used for

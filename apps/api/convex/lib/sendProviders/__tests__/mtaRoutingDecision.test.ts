@@ -5,6 +5,8 @@ import { ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
 
 const decisionInput = {
 	messageId: 'send-1',
+	workAttemptId: 'work-1',
+	routingReentryToken: 'reentry-1',
 	messageType: 'campaign' as const,
 	organizationId: 'org-1',
 	recipient: 'to@example.com',

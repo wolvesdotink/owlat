@@ -24,9 +24,10 @@ function body(overrides: Record<string, unknown> = {}) {
 		messageType: 'campaign',
 		dkimDomain: 'example.org',
 		routingLease: 'token-1',
+		workAttemptId: 'work-attempt-1',
+		routingReentryToken: 'reentry-token',
 		allowWarmupOverflow: false,
 		routingReentry: {
-			sendRef: { kind: 'campaign', id: 'send-id-1' },
 			envelopeInput: { kind: 'campaign' },
 			retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: 'message-1' },
 		},
@@ -38,6 +39,8 @@ function lease(overrides: Record<string, unknown> = {}) {
 	return JSON.stringify({
 		token: 'token-1',
 		messageId: 'message-1',
+		workAttemptId: 'work-attempt-1',
+		routingReentryToken: 'reentry-token',
 		organizationId: 'org-1',
 		recipient: 'user@example.com',
 		from: 'sender@example.org',
@@ -87,7 +90,13 @@ async function request(options: {
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify(
 			body({
-				...(options.mode && options.mode !== 'governed' ? { routingReentry: undefined } : {}),
+				...(options.mode && options.mode !== 'governed'
+					? {
+							routingReentry: undefined,
+							routingReentryToken: undefined,
+							workAttemptId: undefined,
+						}
+					: {}),
 				...options.bodyOverrides,
 			})
 		),

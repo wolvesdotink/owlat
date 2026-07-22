@@ -172,6 +172,12 @@ crons.interval(
 // Delivery surfaces. The MTA internally caches its TCP/25 probes, so this
 // cadence does not create a connection storm against the probe target.
 crons.interval('sync MTA health', { minutes: 2 }, internal.delivery.mtaHealth.sync, {});
+crons.interval(
+	'refresh SES relay verification proofs',
+	{ hours: 24 },
+	internal.domains.sesRelayMutations.scheduleVerificationRefresh,
+	{}
+);
 
 // Clean up sending-reputation buckets older than 60 days every hour (both
 // scopes). Risk is derived on read (ADR-0042), so no periodic recalculation.

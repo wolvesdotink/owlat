@@ -1,65 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 
-const resolveLastMileRouting = vi.hoisted(() => vi.fn());
-const sendProviderDispatch = vi.hoisted(() => vi.fn());
+const { enqueueGovernedTestEmail } = await import('../testSend');
 
-vi.mock('../../delivery/lastMileRouting', () => ({ resolveLastMileRouting }));
-vi.mock('../../lib/sendProviders/dispatch', () => ({ sendProviderDispatch }));
-
-const { dispatchGovernedTestEmail } = await import('../testSend');
-
-const ctx = {} as ActionCtx;
+const runMutation = vi.fn();
+const ctx = { runMutation } as unknown as ActionCtx;
 const params = {
 	to: 'member@example.com',
 	from: 'Owlat <sender@example.org>',
+	replyTo: 'reply@example.org',
 	subject: '[TEST] Hello',
 	html: '<p>Hello</p>',
 };
 
 describe('campaign and template test-send routing', () => {
-	beforeEach(() => {
-		resolveLastMileRouting.mockReset();
-		sendProviderDispatch.mockReset();
-	});
+	beforeEach(() => runMutation.mockReset());
 
-	it('resolves the current transactional route and forwards the exact MTA lease', async () => {
-		resolveLastMileRouting.mockResolvedValue({
-			kind: 'ready',
-			providerKind: 'mta',
+	it('creates a durable test Send and queues the normal governed worker path', async () => {
+		runMutation.mockResolvedValue({ sendId: 'test-send-1' });
+
+		const result = await enqueueGovernedTestEmail(ctx, params, 'org-1');
+		expect(result).toEqual({ sendId: 'test-send-1' });
+		expect(result).not.toHaveProperty('result');
+		expect(runMutation).toHaveBeenCalledWith(expect.anything(), {
+			email: params.to,
 			organizationId: 'org-1',
-			routingLease: 'lease-1',
-			route: { ipPool: 'transactional' },
+			from: params.from,
+			replyTo: params.replyTo,
+			subject: params.subject,
+			html: params.html,
 		});
-		sendProviderDispatch.mockResolvedValue({ result: { success: true, id: 'queued-1' } });
-
-		await dispatchGovernedTestEmail(ctx, params);
-
-		expect(resolveLastMileRouting).toHaveBeenCalledWith(
-			ctx,
-			expect.objectContaining({
-				messageType: 'transactional',
-				to: params.to,
-				from: params.from,
-				idempotencyKey: expect.stringMatching(/^test_/),
-			})
-		);
-		const decision = resolveLastMileRouting.mock.calls[0]![1];
-		expect(sendProviderDispatch).toHaveBeenCalledWith(ctx, 'mta', params, {
-			messageId: decision.idempotencyKey,
-			messageType: 'transactional',
-			organizationId: 'org-1',
-			routingLease: 'lease-1',
-			ipPool: 'transactional',
-		});
-	});
-
-	it('does not dispatch when the authoritative decision defers', async () => {
-		resolveLastMileRouting.mockResolvedValue({ kind: 'defer', retryAfterMs: 30_000 });
-
-		await expect(dispatchGovernedTestEmail(ctx, params)).rejects.toThrow(
-			'Delivery safety policy deferred this test'
-		);
-		expect(sendProviderDispatch).not.toHaveBeenCalled();
 	});
 });

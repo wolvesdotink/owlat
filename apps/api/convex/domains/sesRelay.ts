@@ -9,12 +9,17 @@ import type { DnsRecords } from './domains';
 
 /** One publishable DNS plan for an MTA domain with an SES escape hatch. */
 export function buildHybridSesRelayDnsRecords(primary: DnsRecords, ses: DnsRecords): DnsRecords {
-	const spf = ses.spf
-		? {
-				...ses.spf,
-				value: primary.spf ? mergeSpfRecords(primary.spf.value, ses.spf.value) : ses.spf.value,
-			}
-		: primary.spf;
+	// An SES-only apex value is not an authoritative replacement for an
+	// existing/manual SPF policy. Publish a merged value only when the primary
+	// provider supplied the policy we are extending; otherwise omit it and let
+	// the UI require an explicit reviewed merge.
+	const spf =
+		primary.spf && ses.spf
+			? {
+					...ses.spf,
+					value: mergeSpfRecords(primary.spf.value, ses.spf.value),
+				}
+			: primary.spf;
 	return {
 		...(spf ? { spf } : {}),
 		...(ses.dkim ? { dkim: ses.dkim } : {}),

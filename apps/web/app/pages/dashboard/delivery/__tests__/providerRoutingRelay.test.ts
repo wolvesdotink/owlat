@@ -32,10 +32,14 @@ describe('provider-routing SES relay operations surface', () => {
 	});
 
 	it('states the merged-SPF and unchanged-DMARC requirements without claiming instant readiness', () => {
-		expect(source).toContain('replaces the existing SPF record');
+		expect(source).toContain('preserve your');
+		expect(source).toContain('never replace it with an');
+		expect(source).not.toContain('replaces the existing SPF record');
 		expect(source).toContain('Your primary DMARC record remains unchanged');
 		expect(source).toContain('Provisioning is queued');
 		expect(source).toContain('Verify the primary owned-MTA domain first');
-		expect(source).toContain('Showing the first 512 owned-MTA domains');
+		expect(source).toContain('usePaginatedQuery');
+		expect(source).toContain('Load more domains');
+		expect(source).not.toContain('Showing the first 512 owned-MTA domains');
 	});
 });

@@ -18,6 +18,8 @@ const input = {
 	from: 'sender@example.org',
 	organizationId: 'org-1',
 	idempotencyKey: 'send-1',
+	workAttemptId: 'work-1',
+	routingReentryToken: 'reentry-1',
 };
 
 afterEach(() => {

@@ -143,7 +143,7 @@ export async function handleEmailJob(
 		eligibilityGeneration: piped.ctx.eligibilityGeneration,
 	};
 	if (!(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
-		if (data.routingReentry) {
+		if (data.routingReentryToken) {
 			await handoffRoutingReentry(
 				data,
 				deps,
@@ -230,15 +230,23 @@ async function handoffRoutingReentry(
 	deps: { redis: Redis; config: MtaConfig },
 	reason: string
 ): Promise<void> {
-	if (!data.routingReentry) throw new Error('Missing routing re-entry context');
+	if (!data.routingReentryToken || !data.routingReentry || !data.workAttemptId) {
+		throw new Error('Missing routing re-entry context');
+	}
 	await releaseRoutingReservations(data, deps);
+	const routingReentryReason = /warming/i.test(reason)
+		? ('warming_capacity_changed' as const)
+		: /circuit/i.test(reason)
+			? ('circuit_breaker_changed' as const)
+			: ('routing_lease_stale' as const);
 	const delivered = await notifyConvex(
 		{
 			event: 'routing.reentry',
 			messageId: data.messageId,
-			organizationId: data.organizationId,
-			message: reason,
+			routingReentryToken: data.routingReentryToken,
+			workAttemptId: data.workAttemptId,
 			routingReentry: data.routingReentry,
+			routingReentryReason,
 			timestamp: Date.now(),
 		},
 		deps.config,
@@ -246,7 +254,7 @@ async function handoffRoutingReentry(
 	);
 	if (!delivered) {
 		logger.warn(
-			{ messageId: data.messageId, reason },
+			{ messageId: data.messageId, routingReentryReason },
 			'Routing re-entry stored for authenticated webhook retry'
 		);
 	}

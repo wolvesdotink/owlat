@@ -31,6 +31,7 @@ import {
 	resolveRecipientContact,
 	senderDomainFor,
 } from './sendLifecycle/lookups';
+import { withoutTestSendEffects } from './sendLifecycle/types';
 
 // ============================================================================
 // Send lifecycle — the single writer of `emailSends.status` and
@@ -201,7 +202,7 @@ async function dispatch(
 		}
 	}
 
-	result = {
+	result = withoutTestSendEffects(send, ref, {
 		...result,
 		patch: { ...deliveryObservation.patch, ...result.patch },
 		effects: [...deliveryObservation.effects, ...result.effects],
@@ -209,7 +210,7 @@ async function dispatch(
 			deliveryObservation.isNewObservation && result.applied === 'duplicate'
 				? 'recorded'
 				: result.applied,
-	};
+	});
 
 	if (Object.keys(result.patch).length > 0) {
 		// Per-kind narrowing for the patch call — Convex's patch signature is

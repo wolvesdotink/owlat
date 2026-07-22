@@ -51,11 +51,7 @@ export type TransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason:
-				| 'send_not_found'
-				| 'illegal_edge'
-				| 'invalid_for_kind'
-				| 'terminal';
+			reason: 'send_not_found' | 'illegal_edge' | 'invalid_for_kind' | 'terminal';
 			from?: SendStatus;
 			to?: SendStatus;
 	  };
@@ -70,3 +66,18 @@ export type ReducerResult = {
 	from: SendStatus;
 	to: SendStatus;
 };
+
+/**
+ * Test previews need the durable lifecycle for authenticated routing re-entry,
+ * but must not become customer/product telemetry or recipient suppression.
+ * Keep the patch/status evidence and erase only the declarative side effects.
+ */
+export function withoutTestSendEffects<T extends { effects: Effect[] }>(
+	send: EmailSendDoc | TransactionalSendDoc,
+	ref: SendRef,
+	result: T
+): T {
+	return ref.kind === 'transactional' && (send as TransactionalSendDoc).kind === 'test'
+		? { ...result, effects: [] }
+		: result;
+}

@@ -131,7 +131,7 @@ const handleSend = async () => {
 			close();
 		}, 1500);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Failed to send test email';
+		const message = error instanceof Error ? error.message : 'Failed to queue test email';
 		sendResult.value = {
 			success: false,
 			message,
@@ -188,7 +188,7 @@ watch(
 		<div class="flex items-center gap-3 mb-6">
 			<UiIconBox icon="lucide:send" size="sm" variant="brand" rounded="lg" />
 			<div>
-				<h2 class="text-lg font-semibold text-text-primary">Send Test Email</h2>
+				<h2 class="text-lg font-semibold text-text-primary">Queue Test Email</h2>
 				<p class="text-sm text-text-secondary">Preview how your email will look</p>
 			</div>
 		</div>
@@ -347,7 +347,7 @@ watch(
 			>
 				<UiSpinner v-if="isSending" size="xs" tone="inverse" />
 				<Icon v-else name="lucide:send" class="w-4 h-4" />
-				<span>{{ isSending ? 'Sending...' : 'Send Test' }}</span>
+				<span>{{ isSending ? 'Queueing...' : 'Queue Test' }}</span>
 			</button>
 		</template>
 	</UiModal>

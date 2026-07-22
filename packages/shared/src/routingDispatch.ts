@@ -12,6 +12,10 @@ export type GovernedIpPool = 'campaign' | 'transactional';
  */
 export interface GovernedRoutingContext {
 	messageId: string;
+	/** Unique queue/work identity. Never used as the provider or VERP id. */
+	workAttemptId: string;
+	/** Opaque Convex-issued handle to the server-side re-entry snapshot. */
+	routingReentryToken: string;
 	messageType: GovernedMessageType;
 	organizationId: string;
 	recipient: string;
