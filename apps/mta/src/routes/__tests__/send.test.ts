@@ -557,6 +557,45 @@ describe('POST /send — dedup', () => {
 			GOVERNED_MTA_MAX_MESSAGE_AGE_MS - 1_000
 		);
 	});
+
+	it('re-arms an accepted receipt so a message can survive to its expiry', async () => {
+		// A message may be deferred right up to the four-day max age, and the
+		// give-up bounce is emitted by a worker run at that age. If the receipt
+		// expired at the first run's horizon, that final run would throw here,
+		// the job would dead-letter, and the Convex Send would never terminalize.
+		const redis = new RedisMock();
+		const job = { messageId: 'long-lived', intakeReceiptId: 'work-long' } as never;
+		await redis.set(
+			'mta:work-attempts:work-long',
+			JSON.stringify({ state: 'reserved', messageId: 'long-lived', reservedAt: Date.now() })
+		);
+		await promoteIntakeReceipt(redis, job);
+		await redis.pexpire('mta:work-attempts:work-long', 5_000);
+
+		await promoteIntakeReceipt(redis, job);
+
+		expect(await redis.pttl('mta:work-attempts:work-long')).toBeGreaterThan(
+			GOVERNED_MTA_MAX_MESSAGE_AGE_MS - 1_000
+		);
+		expect(await redis.get('mta:work-attempts:work-long')).toContain('"state":"accepted"');
+	});
+
+	it('does not re-arm a receipt bound to a different message', async () => {
+		const redis = new RedisMock();
+		await redis.set(
+			'mta:work-attempts:work-foreign',
+			JSON.stringify({ state: 'accepted', messageId: 'owner', acceptedAt: Date.now() }),
+			'PX',
+			5_000
+		);
+		await expect(
+			promoteIntakeReceipt(redis, {
+				messageId: 'intruder',
+				intakeReceiptId: 'work-foreign',
+			} as never)
+		).rejects.toThrow('bound to another message');
+		expect(await redis.pttl('mta:work-attempts:work-foreign')).toBeLessThanOrEqual(5_000);
+	});
 });
 
 describe('GET /send/receipt/:workAttemptId', () => {

@@ -78,6 +78,13 @@ end
 return {0, current or ''}
 `;
 
+const RELEASE_LUA = `
+if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
+redis.call('DEL', KEYS[1])
+redis.call('ZREM', KEYS[2], KEYS[1])
+return 1
+`;
+
 const MARK_EFFECTS_APPLIED_LUA = `
 local current = redis.call('GET', KEYS[1])
 if current == ARGV[1] then
@@ -253,6 +260,32 @@ export async function reserveSmtpOutcome(
 	const existing = parseEntry(result[1]);
 	assertBinding(existing, jobId, messageId);
 	return { kind: 'existing', entry: existing, raw: result[1] };
+}
+
+/**
+ * CAS-release a reservation that never reached the wire.
+ *
+ * `sendToMx` does real work before it opens a socket — an eligibility lease
+ * read, MX/profile lookups, DKIM signing, MTA-STS and TLS resolution. A
+ * transient failure there (a Redis failover, say) is not an uncertain SMTP
+ * transaction: nothing was transmitted. Keeping the reservation would let the
+ * retry resolve it as `ambiguous` and terminally fail a message that never
+ * left the process. Releasing restores plain queue-retry semantics for the
+ * pre-wire window while leaving every on-the-wire interruption ambiguous.
+ */
+export async function releaseSmtpOutcome(
+	redis: Redis,
+	entry: InFlightSmtpOutcome,
+	expectedRaw: string
+): Promise<boolean> {
+	const released = (await redis.eval(
+		RELEASE_LUA,
+		2,
+		journalKey(entry.jobId),
+		JOURNAL_INDEX_KEY,
+		expectedRaw
+	)) as number;
+	return released === 1;
 }
 
 /** CAS an in-flight reservation (or replay) to one stable completed result. */

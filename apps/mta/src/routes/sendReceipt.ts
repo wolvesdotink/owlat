@@ -64,7 +64,22 @@ export async function promoteIntakeReceipt(redis: Redis, job: EmailJob): Promise
 	// worker path unless a newer producer actually reserved a message-id receipt.
 	if (!receiptId && !raw) return;
 	const receipt = parseIntakeReceipt(raw);
-	if (receipt?.state === 'accepted' && receipt.messageId === job.messageId) return;
+	if (receipt?.state === 'accepted' && receipt.messageId === job.messageId) {
+		// A message can be deferred right up to the four-day max age, and the
+		// give-up bounce is emitted by a worker run at that age. Anchoring the
+		// receipt to the first run would expire it a hair before that run, so
+		// this promotion would throw, the job would dead-letter, and the Convex
+		// Send would stay `queued` with no terminal edge at all. Every run that
+		// still owns the receipt therefore re-arms its horizon.
+		await redis.eval(
+			"if redis.call('GET', KEYS[1]) == ARGV[1] then redis.call('PEXPIRE', KEYS[1], ARGV[2]) end return 1",
+			1,
+			key,
+			raw as string,
+			String(GOVERNED_MTA_MAX_MESSAGE_AGE_MS)
+		);
+		return;
+	}
 	if (!raw || receipt?.state !== 'reserved' || receipt.messageId !== job.messageId) {
 		throw new Error('Intake receipt is missing or bound to another message');
 	}

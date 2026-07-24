@@ -348,7 +348,9 @@ async function recordCampaignComplaint(
 				.digest('hex'),
 		campaignId: effect.campaignId,
 		organizationId: effect.organizationId,
-		complaintRate: result.rate,
+		// The shared webhook schema requires a ratio in [0,1]; a pathological
+		// complaints/delivered ratio must not make the alert unsendable.
+		complaintRate: Math.min(1, Math.max(0, result.rate)),
 		message: `Campaign complaint rate ${ratePct}% exceeded ${(campaignComplaintRate.CAMPAIGN_COMPLAINT_THRESHOLD * 100).toFixed(1)}% threshold (${result.complaints}/${result.delivered})`,
 		severity: 'critical',
 		timestamp: result.recordedAt,

@@ -4,7 +4,11 @@ import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import type { EmailJob } from '../types.js';
 import { sendToMx } from '../smtp/sender.js';
-import { finalizeSmtpOutcome, reserveSmtpOutcome } from './smtpOutcomeJournal.js';
+import {
+	finalizeSmtpOutcome,
+	releaseSmtpOutcome,
+	reserveSmtpOutcome,
+} from './smtpOutcomeJournal.js';
 import type { SmtpOutcomeJournalEntry } from './smtpOutcomeJournal.js';
 import { classifyResult, reduce } from '../dispatch/outcome.js';
 import type { CtxWithIp } from '../dispatch/types.js';
@@ -43,14 +47,30 @@ export async function runJournaledSmtpAttempt(options: {
 		return resumeJournaledSmtpAttempt(options.redis, reservation, options.job);
 	}
 
-	const result = await sendToMx(
-		options.job,
-		options.config,
-		options.redis,
-		reservation.entry.attempt.ip,
-		options.eligibilityLease,
-		reservation.entry.attempt.destination
-	);
+	// Everything `sendToMx` does before it acquires a connection — the
+	// eligibility read, MX/profile lookups, DKIM signing, MTA-STS and TLS
+	// resolution — is retryable and transmits nothing. Only once the wire is
+	// attempted does the reservation represent genuine uncertainty.
+	let wireAttempted = false;
+	let result: Awaited<ReturnType<typeof sendToMx>>;
+	try {
+		result = await sendToMx(
+			options.job,
+			options.config,
+			options.redis,
+			reservation.entry.attempt.ip,
+			options.eligibilityLease,
+			reservation.entry.attempt.destination,
+			() => {
+				wireAttempted = true;
+			}
+		);
+	} catch (error) {
+		if (!wireAttempted) {
+			await releaseSmtpOutcome(options.redis, reservation.entry, reservation.raw).catch(() => {});
+		}
+		throw error;
+	}
 	const completedAt = Date.now();
 	return {
 		kind: 'completed',

@@ -4,6 +4,7 @@ import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestCampaign, createTestContact, createTestEmailSend } from './factories';
+import { mtaAdapter } from '../webhooks/adapters/mta';
 
 const enqueueAction = vi.fn().mockResolvedValue('work-1');
 vi.mock('../delivery/workpool', () => ({
@@ -331,6 +332,57 @@ describe('authenticated MTA routing re-entry', () => {
 			}
 		}
 	);
+
+	it('re-enters through the real webhook wire after an acceptance-unknown reconciliation', async () => {
+		// `governedDispatch` adds `workAttemptId` + `acceptanceReconciliation` to
+		// the retryState when MTA acceptance is unknown, and the callback digest
+		// covers the whole object. This asserts the exact bytes the MTA echoes
+		// survive `mtaAdapter.parseEvent` and still match the issued digest —
+		// otherwise the Send is stranded `queued` behind a permanent 409.
+		const value = await fixture(2);
+		const retryState = {
+			...value.retryState,
+			workAttemptId: 'work-attempt-1',
+			acceptanceReconciliation: true,
+		};
+		const issued = await value.t.mutation(internal.delivery.routingReentry.issueSnapshot, {
+			sendRef: { kind: 'campaign', id: value.sendId },
+			organizationId: 'org-1',
+			messageId: retryState.idempotencyKey,
+			workAttemptId: 'work-attempt-1',
+			envelopeInput: value.envelopeInput,
+			retryState,
+		});
+
+		const parsed = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'routing.reentry',
+				messageId: retryState.idempotencyKey,
+				routingReentryToken: issued.token,
+				workAttemptId: 'work-attempt-1',
+				routingReentryReason: 'warming_capacity_changed',
+				routingReentry: { envelopeInput: value.envelopeInput, retryState },
+				timestamp: Date.now(),
+			})
+		);
+		expect(parsed).not.toBeNull();
+		const event = parsed as Extract<
+			NonNullable<typeof parsed>,
+			{ kind: 'internal.routing_reentry' }
+		>;
+
+		expect(
+			await value.t.mutation(internal.delivery.routingReentry.consumeSnapshot, {
+				token: event.token,
+				messageId: event.providerMessageId,
+				workAttemptId: event.workAttemptId,
+				reason: event.reason,
+				envelopeInput: event.envelopeInput,
+				retryState: event.retryState,
+			})
+		).toMatchObject({ disposition: 'enqueued' });
+		expect(enqueueAction).toHaveBeenCalledOnce();
+	});
 
 	it('marks the Send failed instead of creating attempt nine', async () => {
 		const value = await fixture(9);

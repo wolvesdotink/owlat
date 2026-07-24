@@ -136,6 +136,12 @@ export const mtaAdapter: InboundAdapter = {
 				const reentry = isRecord(payload.routingReentry) ? payload.routingReentry : null;
 				const retryState =
 					reentry && isRecord(reentry['retryState']) ? reentry['retryState'] : null;
+				// The optional fields are part of the callback digest issued by
+				// `issueSnapshot`, so they must round-trip byte-for-byte. Dropping
+				// them turns every acceptance-reconciliation re-entry into a
+				// permanent `binding_mismatch` and strands the Send in `queued`.
+				const reentryWorkAttemptId = retryState?.['workAttemptId'];
+				const acceptanceReconciliation = retryState?.['acceptanceReconciliation'];
 				if (
 					!payload.messageId ||
 					typeof payload.routingReentryToken !== 'string' ||
@@ -154,6 +160,12 @@ export const mtaAdapter: InboundAdapter = {
 					typeof retryState['startedAt'] !== 'number' ||
 					!Number.isFinite(retryState['startedAt']) ||
 					retryState['idempotencyKey'] !== payload.messageId ||
+					(reentryWorkAttemptId !== undefined &&
+						(typeof reentryWorkAttemptId !== 'string' ||
+							reentryWorkAttemptId.length < 1 ||
+							reentryWorkAttemptId.length > 128)) ||
+					(acceptanceReconciliation !== undefined &&
+						typeof acceptanceReconciliation !== 'boolean') ||
 					(payload.routingReentryReason !== 'routing_lease_stale' &&
 						payload.routingReentryReason !== 'circuit_breaker_changed' &&
 						payload.routingReentryReason !== 'warming_capacity_changed')
@@ -169,6 +181,10 @@ export const mtaAdapter: InboundAdapter = {
 						attempt: retryState['attempt'],
 						startedAt: retryState['startedAt'],
 						idempotencyKey: payload.messageId,
+						...(typeof reentryWorkAttemptId === 'string'
+							? { workAttemptId: reentryWorkAttemptId }
+							: {}),
+						...(typeof acceptanceReconciliation === 'boolean' ? { acceptanceReconciliation } : {}),
 					},
 					reason: payload.routingReentryReason,
 				};

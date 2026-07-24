@@ -210,7 +210,7 @@ describe.runIf(dockerAvailable())('webhook DLQ on standalone Redis', () => {
 
 		await expect(
 			storePending(redis, hiddenEvent, one, 'standalone-hidden:bounced')
-		).rejects.toThrow('protected capacity');
+		).rejects.toThrow('could not retain this row at capacity');
 		expect(await getEntry(redis, hidden)).not.toBeNull();
 		expect(await getEntry(redis, visible)).not.toBeNull();
 		expect(await redis.sismember(WEBHOOK_DLQ_PROTECTED_KEY, hidden)).toBe(1);

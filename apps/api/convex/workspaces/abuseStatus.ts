@@ -53,22 +53,24 @@ export type TransitionOutcome =
 			to?: AbuseStatus;
 	  };
 
-/** Longer than the MTA's 30-day campaign alert identity horizon. */
+/** Matches the MTA's 35-day campaign alert identity horizon. */
 export const CAMPAIGN_ALERT_RECEIPT_RETENTION_MS = 35 * 24 * 60 * 60 * 1000;
 
+/**
+ * `skipped` is a durably recorded alert whose severity rules refused the
+ * status change (already `suspended`/`banned`). It is a success: the alert is
+ * audited and receipted, so the producer must not retry it. Only
+ * `no_settings_row` (transient early-deployment state) and `event_id_conflict`
+ * (an identity reused with different content) are failures.
+ */
 export type CampaignAlertOutcome =
 	| {
 			ok: true;
-			applied: 'transitioned' | 'recorded' | 'duplicate';
+			applied: 'transitioned' | 'recorded' | 'duplicate' | 'skipped';
 	  }
 	| {
 			ok: false;
-			reason:
-				| 'no_settings_row'
-				| 'illegal_edge'
-				| 'terminal'
-				| 'severity_downgrade'
-				| 'event_id_conflict';
+			reason: 'no_settings_row' | 'event_id_conflict';
 	  };
 
 // ─── Validators ─────────────────────────────────────────────────────────────
@@ -227,18 +229,43 @@ export const recordCampaignComplaintAlert = internalMutation({
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (!settings) return { ok: false, reason: 'no_settings_row' };
 		const ratePercent = (args.complaintRate * 100).toFixed(2);
+		const reason = `MTA campaign complaint rate: ${args.message} (${ratePercent}%) [campaign ${args.campaignId}]`;
 		const outcome = await dispatch(
 			ctx,
 			settings,
 			{
 				to: 'warned',
 				at: args.eventTimestamp,
-				reason: `MTA campaign complaint rate: ${args.message} (${ratePercent}%) [campaign ${args.campaignId}]`,
+				reason,
 				changedBy: 'mta_campaign_complaint_rate',
 			},
 			{ adminOverride: false, eventId: args.eventId }
 		);
-		if (!outcome.ok) return outcome;
+		// This alert always targets `warned`, so an instance already `suspended`
+		// or `banned` refuses it — and reputation auto-enforcement suspends on
+		// exactly the complaint rates that raise these alerts. Retrying can never
+		// succeed, so audit and receipt the alert and acknowledge the producer
+		// instead of turning a correlated safety signal into DLQ toil.
+		if (!outcome.ok && outcome.reason !== 'no_settings_row') {
+			await recordAuditLog(ctx, {
+				userId: 'mta_campaign_complaint_rate',
+				action: 'abuse_status_changed',
+				resource: 'instance_settings',
+				resourceId: settings._id,
+				details: {
+					previousStatus: outcome.from ?? 'clean',
+					newStatus: outcome.from ?? 'clean',
+					reason,
+					applied: 'skipped',
+					refusedBecause: outcome.reason,
+					adminOverride: 'false',
+					eventId: args.eventId,
+				},
+			});
+		} else if (!outcome.ok) {
+			return { ok: false, reason: 'no_settings_row' };
+		}
+		const applied = outcome.ok ? outcome.applied : ('skipped' as const);
 
 		const processedAt = Date.now();
 		await ctx.db.insert('mtaCampaignAlertReceipts', {
@@ -249,9 +276,9 @@ export const recordCampaignComplaintAlert = internalMutation({
 			eventTimestamp: args.eventTimestamp,
 			processedAt,
 			expiresAt: processedAt + CAMPAIGN_ALERT_RECEIPT_RETENTION_MS,
-			transitionApplied: outcome.applied,
+			transitionApplied: applied,
 		});
-		return { ok: true, applied: outcome.applied };
+		return { ok: true, applied };
 	},
 });
 

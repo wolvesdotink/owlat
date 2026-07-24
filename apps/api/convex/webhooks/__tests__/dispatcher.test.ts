@@ -838,6 +838,24 @@ describe('dispatchInboundEvent — internal signals', () => {
 		await expect(dispatchInboundEvent(ctx, event)).rejects.toThrow('no_settings_row');
 	});
 
+	it('acknowledges an alert the instance recorded without changing its status', async () => {
+		const { ctx, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'skipped' });
+		const event: InboundEvent = {
+			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'c'.repeat(64)}`,
+			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
+			message: 'rate exceeded',
+			complaintRate: 0.004,
+			at: 1_700_000_000_000,
+		};
+
+		await expect(dispatchInboundEvent(ctx, event)).resolves.toEqual({
+			ok: true,
+			applied: 'skipped',
+		});
+	});
+
 	it('propagates campaign alert mutation exceptions so the MTA retries', async () => {
 		const { ctx, failNextRunMutation } = makeCtx();
 		failNextRunMutation(new Error('abuse mutation failed'));
