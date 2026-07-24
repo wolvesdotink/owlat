@@ -392,6 +392,11 @@ const DISPATCH: DispatchTable = {
 				eventTimestamp: e.at,
 			}
 		);
+		// The mutation acknowledges every durably recorded alert, including one
+		// whose status change severity rules refused (`applied: 'skipped'`).
+		// Only a missing settings row (transient) and a reused event id with
+		// different content (integrity violation) reach a non-2xx and let the
+		// MTA retry its protected outbox row.
 		if (!outcome.ok) {
 			throw new Error(`Campaign complaint alert was not persisted: ${outcome.reason}`);
 		}

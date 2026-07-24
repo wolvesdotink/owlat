@@ -53,7 +53,7 @@ import {
 } from './smtpOutcomeJournal.js';
 import { resumeJournaledSmtpAttempt, runJournaledSmtpAttempt } from './journaledSmtpAttempt.js';
 import { releaseRoutingReservations } from './routingReservations.js';
-import { handoffRoutingReentry } from './routingReentryHandoff.js';
+import { handoffRoutingReentry, resumeRoutingReentryHandoff } from './routingReentryHandoff.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -88,6 +88,12 @@ export async function handleEmailJob(
 	if (await resumeDeferredHandoff(redis, queue, job.id, data)) {
 		return;
 	}
+	// Ownership may already have moved back to Convex routing on an earlier run
+	// of this job. Re-entering dispatch here would send a message the successor
+	// is also sending.
+	if (await resumeRoutingReentryHandoff(redis, String(job.id), data, deps)) {
+		return;
+	}
 	const domain = extractDomain(data.to);
 	const destination = await resolveDestinationSnapshot(redis, domain, { config });
 	const { providerKey } = destination;
@@ -112,12 +118,12 @@ export async function handleEmailJob(
 	const piped = await runPipeline(deps, mainPipeline, baseCtx);
 
 	if (piped.kind === 'drop') {
-		await handleDrop(piped, data, domain, providerKey, deps);
+		await handleDrop(piped, data, domain, providerKey, deps, data.firstEnqueuedAt ?? job.timestamp);
 		return;
 	}
 
 	if (piped.kind === 'routing_reentry') {
-		await handoffRoutingReentry(data, deps, piped.reason);
+		await handoffRoutingReentry(data, deps, piped.reason, String(job.id));
 		return;
 	}
 
@@ -143,7 +149,8 @@ export async function handleEmailJob(
 			await handoffRoutingReentry(
 				data,
 				deps,
-				'Selected outbound IP eligibility changed before SMTP'
+				'Selected outbound IP eligibility changed before SMTP',
+				String(job.id)
 			);
 			return;
 		}
@@ -280,7 +287,7 @@ async function disposeDefer(
 	const ageMs = messageAgeMs(job, now);
 
 	if (ageMs >= deps.config.maxMessageAgeMs) {
-		await emitExpiredBounce(data, deps, domain, providerKey, ageMs, reason);
+		await emitExpiredBounce(job, deps, domain, providerKey, ageMs, reason);
 		return;
 	}
 
@@ -309,13 +316,19 @@ async function disposeDefer(
  * address failure.
  */
 async function emitExpiredBounce(
-	data: EmailJob,
+	job: ReservedJob<EmailJob>,
 	deps: { redis: Redis; config: MtaConfig },
 	domain: string,
 	providerKey: DestinationProviderKey,
 	ageMs: number,
 	reason: string
 ): Promise<void> {
+	const data = job.data;
+	// The protected outbox row is keyed deterministically and compares payloads
+	// byte-for-byte, so a replay that stamps a fresh clock is rejected outright
+	// and dead-letters the job. Anchor the terminal notification to the job's
+	// own expiry deadline instead of the observing run's wall clock.
+	const expiredAt = (data.firstEnqueuedAt ?? job.timestamp) + deps.config.maxMessageAgeMs;
 	logger.warn(
 		{ messageId: data.messageId, to: data.to, domain, ageMs, reason },
 		'Message exceeded max age — giving up with expired-bounce'
@@ -345,14 +358,17 @@ async function emitExpiredBounce(
 				organizationId: data.organizationId,
 				deliveryDomain: data.deliveryDomain,
 				bounceType: 'soft',
-				message: `Message expired after ${ageMs}ms without delivery: ${reason}`,
-				timestamp: Date.now(),
+				message: `Message expired after ${deps.config.maxMessageAgeMs}ms without delivery`,
+				timestamp: expiredAt,
 			},
 		},
 	];
 
 	await applyEffects(effects, deps);
-	if (data.deliveryDomain === 'member_test') await releaseRoutingReservations(data, deps);
+	// The message never reached the wire, so its warming slot and half-open
+	// probe were never consumed. Leaving them held burns real capacity for the
+	// rest of the UTC day on exactly the warming IPs that can least afford it.
+	await releaseRoutingReservations(data, deps);
 }
 
 /**
@@ -365,7 +381,9 @@ async function handleDrop(
 	job: EmailJob,
 	domain: string,
 	providerKey: DestinationProviderKey,
-	deps: { redis: Redis; config: MtaConfig }
+	deps: { redis: Redis; config: MtaConfig },
+	/** Stable across replays — the protected outbox compares payloads exactly. */
+	droppedAt: number
 ): Promise<void> {
 	const effects: DispatchEffect[] = [];
 
@@ -402,12 +420,14 @@ async function handleDrop(
 					? `Content screening rejected: ${piped.reason}`
 					: 'Recipient suppressed by MTA policy',
 			errorCode: piped.status === 'screened' ? 'CONTENT_SCREENED' : 'RECIPIENT_SUPPRESSED',
-			timestamp: Date.now(),
+			timestamp: droppedAt,
 		},
 	});
 
 	await applyEffects(effects, deps);
-	if (job.deliveryDomain === 'member_test') await releaseRoutingReservations(job, deps);
+	// Screening and suppression drop the message before any SMTP conversation,
+	// so the reserved warming slot and half-open probe were never consumed.
+	await releaseRoutingReservations(job, deps);
 }
 
 function buildDropEvent(

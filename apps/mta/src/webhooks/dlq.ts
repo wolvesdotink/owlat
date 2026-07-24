@@ -256,7 +256,9 @@ async function store(
 		)) as number;
 	}
 	if (status === -1) throw new Error('Webhook terminal outbox is at capacity');
-	if (status === -2) throw new Error('Webhook DLQ is at protected capacity');
+	// Either a protected row could not be admitted, or an unprotected row was
+	// evicted by the very sweep that made room — both mean "not retained".
+	if (status === -2) throw new Error('Webhook DLQ could not retain this row at capacity');
 	if (status === -3) throw new Error('Existing protected webhook outbox is inconsistent');
 	if (status === -5) throw new Error('Existing protected webhook outbox row was quarantined');
 	if (status === -6) throw new Error('Existing protected webhook outbox payload does not match');

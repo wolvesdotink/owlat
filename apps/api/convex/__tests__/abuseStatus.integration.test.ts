@@ -238,16 +238,53 @@ describe('abuseStatus.recordCampaignComplaintAlert — transactional idempotency
 		});
 	});
 
-	it('does not acknowledge or receipt an alert when the status transition is terminal', async () => {
-		const t = convexTest(schema, modules);
-		await seedSettings(t, { abuseStatus: 'banned' });
+	// Reputation auto-enforcement suspends on exactly the complaint rates that
+	// raise these alerts, so a refused status change is the CORRELATED case, not
+	// a rare one. Retrying can never succeed: record it and acknowledge, or the
+	// alert burns its outbox retries and parks in the DLQ forever.
+	it.each(['suspended', 'banned'] as const)(
+		'records and acknowledges an alert whose status change is refused (%s)',
+		async (abuseStatus) => {
+			const t = convexTest(schema, modules);
+			await seedSettings(t, { abuseStatus });
 
+			expect(
+				await t.mutation(internal.workspaces.abuseStatus.recordCampaignComplaintAlert, alert)
+			).toEqual({ ok: true, applied: 'skipped' });
+			await t.run(async (ctx) => {
+				const settings = await ctx.db.query('instanceSettings').first();
+				expect(settings?.abuseStatus).toBe(abuseStatus);
+				expect(await ctx.db.query('mtaCampaignAlertReceipts').collect()).toMatchObject([
+					{ eventId: alert.eventId, transitionApplied: 'skipped' },
+				]);
+				const logs = await ctx.db.query('auditLogs').collect();
+				expect(logs).toMatchObject([
+					{
+						action: 'abuse_status_changed',
+						details: {
+							previousStatus: abuseStatus,
+							newStatus: abuseStatus,
+							applied: 'skipped',
+							refusedBecause: abuseStatus === 'banned' ? 'terminal' : 'severity_downgrade',
+							eventId: alert.eventId,
+						},
+					},
+				]);
+			});
+		}
+	);
+
+	it('replays a refused alert without duplicating its audit row', async () => {
+		const t = convexTest(schema, modules);
+		await seedSettings(t, { abuseStatus: 'suspended' });
+
+		await t.mutation(internal.workspaces.abuseStatus.recordCampaignComplaintAlert, alert);
 		expect(
 			await t.mutation(internal.workspaces.abuseStatus.recordCampaignComplaintAlert, alert)
-		).toEqual({ ok: false, reason: 'terminal', from: 'banned', to: 'warned' });
+		).toEqual({ ok: true, applied: 'duplicate' });
 		await t.run(async (ctx) => {
-			expect(await ctx.db.query('mtaCampaignAlertReceipts').collect()).toEqual([]);
-			expect(await ctx.db.query('auditLogs').collect()).toEqual([]);
+			expect(await ctx.db.query('mtaCampaignAlertReceipts').collect()).toHaveLength(1);
+			expect(await ctx.db.query('auditLogs').collect()).toHaveLength(1);
 		});
 	});
 });

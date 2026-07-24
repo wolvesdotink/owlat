@@ -100,7 +100,13 @@ export const webhookTables = {
 		eventTimestamp: v.number(),
 		processedAt: v.number(),
 		expiresAt: v.number(),
-		transitionApplied: v.union(v.literal('transitioned'), v.literal('recorded')),
+		transitionApplied: v.union(
+			v.literal('transitioned'),
+			v.literal('recorded'),
+			// The alert was audited and receipted, but severity rules refused the
+			// status change (the instance is already suspended or banned).
+			v.literal('skipped')
+		),
 	})
 		.index('by_event_id', ['eventId'])
 		.index('by_expires_at', ['expiresAt']),

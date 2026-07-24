@@ -86,6 +86,96 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
+	it('round-trips the reconciliation fields the callback digest was issued over', () => {
+		// `issueSnapshot` digests the whole retryState. An acceptance-unknown
+		// dispatch adds `workAttemptId` + `acceptanceReconciliation`, so dropping
+		// them here would make every reconciliation re-entry a permanent
+		// `binding_mismatch` and leave the Send queued forever.
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'routing.reentry',
+				messageId: 'send_campaign-1',
+				routingReentryToken: 'rr2.authenticated-token',
+				workAttemptId: 'work-attempt-2',
+				routingReentryReason: 'warming_capacity_changed',
+				routingReentry: {
+					envelopeInput: { kind: 'campaign', to: 'person@example.com' },
+					retryState: {
+						attempt: 2,
+						startedAt: 1700000000000,
+						idempotencyKey: 'send_campaign-1',
+						workAttemptId: 'work-attempt-1',
+						acceptanceReconciliation: true,
+					},
+				},
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toMatchObject({
+			kind: 'internal.routing_reentry',
+			retryState: {
+				attempt: 2,
+				startedAt: 1700000000000,
+				idempotencyKey: 'send_campaign-1',
+				workAttemptId: 'work-attempt-1',
+				acceptanceReconciliation: true,
+			},
+		});
+	});
+
+	it('omits absent reconciliation fields rather than materializing them', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'routing.reentry',
+				messageId: 'send_campaign-1',
+				routingReentryToken: 'rr2.authenticated-token',
+				workAttemptId: 'work-attempt-2',
+				routingReentryReason: 'warming_capacity_changed',
+				routingReentry: {
+					envelopeInput: { kind: 'campaign', to: 'person@example.com' },
+					retryState: {
+						attempt: 1,
+						startedAt: 1700000000000,
+						idempotencyKey: 'send_campaign-1',
+					},
+				},
+				timestamp: 1700000000000,
+			})
+		);
+		expect(
+			Object.keys((event as { retryState: Record<string, unknown> }).retryState).sort()
+		).toEqual(['attempt', 'idempotencyKey', 'startedAt']);
+	});
+
+	it.each([
+		{ workAttemptId: 42 },
+		{ workAttemptId: '' },
+		{ workAttemptId: 'w'.repeat(129) },
+		{ acceptanceReconciliation: 'yes' },
+	])('rejects a routing re-entry with an invalid reconciliation field (%j)', (overrides) => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'routing.reentry',
+					messageId: 'send_campaign-1',
+					routingReentryToken: 'rr2.authenticated-token',
+					workAttemptId: 'work-attempt-2',
+					routingReentryReason: 'warming_capacity_changed',
+					routingReentry: {
+						envelopeInput: { kind: 'campaign', to: 'person@example.com' },
+						retryState: {
+							attempt: 1,
+							startedAt: 1700000000000,
+							idempotencyKey: 'send_campaign-1',
+							...overrides,
+						},
+					},
+					timestamp: 1700000000000,
+				})
+			)
+		).toBeNull();
+	});
+
 	it('rejects a routing re-entry whose retry key does not match the accepted message', () => {
 		expect(
 			mtaAdapter.parseEvent(

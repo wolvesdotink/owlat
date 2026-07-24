@@ -82,7 +82,7 @@ describe('dlq', () => {
 		);
 		await expect(
 			storeFailed(redis, createTestEvent({ messageId: 'ordinary-failure' }), TRANSPORT_FAILURE, one)
-		).rejects.toThrow('protected capacity');
+		).rejects.toThrow('could not retain this row at capacity');
 		expect(await getEntry(redis, pending)).not.toBeNull();
 		expect(await getAllIds(redis)).toEqual([pending]);
 	});
@@ -97,7 +97,7 @@ describe('dlq', () => {
 				one,
 				'protected:second'
 			)
-		).rejects.toThrow('protected capacity');
+		).rejects.toThrow('could not retain this row at capacity');
 		expect(await getEntry(redis, first)).not.toBeNull();
 	});
 

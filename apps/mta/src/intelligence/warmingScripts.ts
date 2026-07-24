@@ -17,8 +17,13 @@ if reset ~= today then redis.call('HSET', hashKey, 'sentToday', '0', 'sentTodayR
 redis.call('ZREMRANGEBYSCORE', reservationsKey, '-inf', now)
 local existing = redis.call('ZSCORE', reservationsKey, messageId)
 local sent = tonumber(redis.call('HGET', hashKey, 'sentToday') or '0')
-local cap = tonumber(redis.call('HGET', hashKey, 'dailyCap') or '0')
+local capRaw = redis.call('HGET', hashKey, 'dailyCap') or '0'
 local reserved = tonumber(redis.call('ZCARD', reservationsKey))
+-- A plateaued/accelerated IP past the schedule writes the literal 'Infinity'.
+-- tonumber() turns that into a Lua inf, which Redis truncates to a nonsense
+-- integer on the way back. Report the uncapped sentinel instead.
+if capRaw == 'Infinity' or capRaw == 'inf' then return { 1, sent, -1, reserved } end
+local cap = tonumber(capRaw) or 0
 if existing then return { 1, sent, cap, reserved } end
 if sent + reserved >= cap then return { 0, sent, cap, reserved } end
 redis.call('ZADD', reservationsKey, expiresAt, messageId)
@@ -37,7 +42,9 @@ if redis.call('ZREM', reservationsKey, messageId) ~= 1 then return -1 end
 redis.call('HINCRBY', hashKey, 'sentToday', 1)
 redis.call('HINCRBY', statsKey, 'sent', 1)
 redis.call('EXPIRE', statsKey, 172800)
-redis.call('SET', receiptKey, '1', 'EX', 172800)
+-- The receipt must outlive the reservation it guards; anything shorter would
+-- silently stop guarding replays that arrive late in the reservation horizon.
+redis.call('SET', receiptKey, '1', 'PX', ${WARMING_RESERVATION_TTL_MS})
 return 1
 `;
 

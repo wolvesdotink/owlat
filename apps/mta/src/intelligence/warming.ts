@@ -65,12 +65,17 @@ export async function reserveWarmingSlot(
 		messageId
 	)) as Array<number | string>;
 	const allowed = Number(result[0]) === 1;
+	// An IP that is not warming (or has graduated) is uncapped and reserves
+	// nothing. Handing back a reservation object anyway would make `recordSend`
+	// take the reserved branch, find no member to consume, and silently drop the
+	// send from both `sentToday` and the daily stats.
+	const uncapped = Number(result[2] ?? 0) === -1;
 	return {
 		allowed,
 		sentToday: Number(result[1] ?? 0),
-		dailyCap: Number(result[2] ?? 0) === -1 ? Infinity : Number(result[2] ?? 0),
+		dailyCap: uncapped ? Infinity : Number(result[2] ?? 0),
 		reserved: Number(result[3] ?? 0),
-		...(allowed ? { reservation: { ip, messageId, utcDate: today, expiresAt } } : {}),
+		...(allowed && !uncapped ? { reservation: { ip, messageId, utcDate: today, expiresAt } } : {}),
 	};
 }
 
@@ -196,7 +201,16 @@ export async function recordSend(
 				reservation.messageId
 			)
 		);
-		void recorded;
+		// -1: the reservation was not in today's set (already consumed by an
+		// earlier replay, released, or rolled past its UTC day). The send is not
+		// counted, which is correct for a replay but is a real accounting gap
+		// otherwise — surface it rather than discarding it silently.
+		if (recorded === -1) {
+			logger.warn(
+				{ ip, messageId: reservation.messageId, utcDate: reservation.utcDate },
+				'Warming send had no live reservation to consume — not counted'
+			);
+		}
 		return;
 	}
 	if (idempotencyIdentity) {

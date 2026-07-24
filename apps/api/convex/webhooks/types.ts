@@ -8,7 +8,7 @@ import type { Validator } from 'convex/values';
 import type { InboundEmailMessage } from '@owlat/channels';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DeliveryDomain } from '@owlat/shared';
-import type { WorkerEnvelopeInput } from '../delivery/workerEnvelope';
+import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEnvelope';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
 
@@ -152,7 +152,7 @@ export type InboundEvent =
 			token: string;
 			workAttemptId: string;
 			envelopeInput: WorkerEnvelopeInput;
-			retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+			retryState: WorkerRetryState;
 			reason: 'routing_lease_stale' | 'circuit_breaker_changed' | 'warming_capacity_changed';
 	  }
 	| {
