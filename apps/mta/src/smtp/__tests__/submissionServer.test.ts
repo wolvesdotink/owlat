@@ -33,6 +33,11 @@ import {
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
 import type { Queue } from 'groupmq';
+import { promoteIntakeReceipt } from '../../routes/sendReceipt.js';
+import {
+	SUBMISSION_DEDUPLICATION_MAIL_PARAMETER,
+	SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER,
+} from '../submissionIdentity.js';
 
 const config = {
 	apiKey: 'master-secret-key',
@@ -48,10 +53,12 @@ interface TestSession {
 	clientHostname?: string;
 	authenticated?: boolean;
 	state: SubmissionSessionState;
+	mailFrom?: { address: string; params?: Record<string, string> };
+	rcptTo: Array<{ address: string }>;
 }
 
 function makeSession(overrides: Partial<TestSession> = {}): TestSession {
-	return { remoteAddress: '', state: {}, ...overrides };
+	return { remoteAddress: '', state: {}, rcptTo: [], ...overrides };
 }
 
 async function authCall(
@@ -68,11 +75,59 @@ async function authCall(
 	return { outcome, session };
 }
 
-async function dataCall(raw: string, auth: AuthenticatedSession | undefined) {
-	const queue = { add: vi.fn().mockResolvedValue(undefined) };
-	const session = makeSession({ authenticated: auth !== undefined, state: { auth } });
-	const reply = await buildOnData({ queue: queue as never })(Buffer.from(raw), session as never);
-	return { reply: reply as SmtpReply | undefined, queue };
+function headerAddresses(raw: string, header: string): string[] {
+	const value = raw.match(new RegExp(`^${header}: (.+)$`, 'im'))?.[1] ?? '';
+	return [...value.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+/gi)].map(([address]) => address!);
+}
+
+async function dataCall(
+	raw: string,
+	auth: AuthenticatedSession | undefined,
+	envelope: { from?: string; recipients?: string[] } = {}
+) {
+	const queued = new Map<string, unknown>();
+	const queue = {
+		add: vi.fn(
+			async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+				if (options.jobId) queued.set(options.jobId, options);
+			}
+		),
+		getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+	};
+	const receiptRedis = new Redis();
+	const recipients = envelope.recipients ?? [
+		...headerAddresses(raw, 'To'),
+		...headerAddresses(raw, 'Cc'),
+	];
+	const session = makeSession({
+		authenticated: auth !== undefined,
+		state: { auth },
+		mailFrom: { address: envelope.from ?? headerAddresses(raw, 'From')[0] ?? '' },
+		rcptTo: recipients.map((address) => ({ address })),
+	});
+	const reply = await buildOnData({ queue: queue as never, redis: receiptRedis as never })(
+		Buffer.from(raw),
+		session as never
+	);
+	return { reply: reply as SmtpReply | undefined, queue, receiptRedis };
+}
+
+function acceptingDataHarness() {
+	const receiptRedis = new Redis();
+	const queued = new Map<string, unknown>();
+	const queue = {
+		add: vi.fn(
+			async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+				queued.set(options.jobId!, options);
+			}
+		),
+		getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+	};
+	return {
+		queue,
+		receiptRedis,
+		onData: buildOnData({ queue: queue as never, redis: receiptRedis as never }),
+	};
 }
 
 beforeEach(() => {
@@ -229,7 +284,7 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 	it('allows master/credential sessions to send any From and fans out per recipient', async () => {
 		const mime =
 			'From: anyone@brand.com\r\nTo: a@x.com, b@y.com\r\nCc: c@z.com\r\nSubject: s\r\n\r\nhi\r\n';
-		const { reply, queue } = await dataCall(mime, {
+		const { reply, queue, receiptRedis } = await dataCall(mime, {
 			organizationId: 'org1',
 			credentialName: 'cred',
 		});
@@ -237,11 +292,361 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		expect(queue.add).toHaveBeenCalledTimes(3);
 		const jobs = queue.add.mock.calls.map((c) => c[0].data);
 		expect(jobs.map((j) => j.to).sort()).toEqual(['a@x.com', 'b@y.com', 'c@z.com']);
-		for (const j of jobs) {
+		for (const [index, j] of jobs.entries()) {
 			expect(j.organizationId).toBe('org1');
 			expect(j.dkimDomain).toBe('brand.com');
 			expect(j.messageId).toMatch(/^smtp-/);
+			expect(queue.add.mock.calls[index]![0].jobId).toBe(j.intakeReceiptId);
+			await promoteIntakeReceipt(receiptRedis as never, j);
+			expect(await receiptRedis.get(`mta:work-attempts:${j.intakeReceiptId}`)).toContain(
+				'"state":"accepted"'
+			);
 		}
+	});
+
+	it('uses the SMTP envelope recipient order and removes exact duplicates', async () => {
+		const mime = baseMime('sender@brand.com', 'header-only@ignored.example');
+		const { reply, queue } = await dataCall(
+			mime,
+			{ organizationId: 'org1', credentialName: 'cred' },
+			{
+				from: 'bounce@brand.com',
+				recipients: ['first@Example.COM', 'first@example.com', 'second@else.net'],
+			}
+		);
+
+		expect(reply).toBeUndefined();
+		expect(queue.add.mock.calls.map(([options]) => options.data.to)).toEqual([
+			'first@example.com',
+			'second@else.net',
+		]);
+	});
+
+	it('reconciles partial fan-out and retries only the missing recipient', async () => {
+		const receiptRedis = new Redis();
+		await receiptRedis.flushall();
+		const queued = new Map<string, unknown>();
+		let failSecond = true;
+		const queue = {
+			add: vi.fn(
+				async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+					if (options.data.to === 'second@example.net' && failSecond) {
+						failSecond = false;
+						throw new Error('queue unavailable');
+					}
+					queued.set(options.jobId!, options);
+				}
+			),
+			getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+		};
+		const auth = { organizationId: 'org1', credentialName: 'cred' };
+		const session = makeSession({
+			authenticated: true,
+			state: { auth },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'partial-fanout-1' },
+			},
+			rcptTo: [{ address: 'first@example.com' }, { address: 'second@example.net' }],
+		});
+		const message = Buffer.from(baseMime('sender@brand.com', 'ignored@example.org'));
+		const onData = buildOnData({ queue: queue as never, redis: receiptRedis as never });
+
+		expect((await onData(message, session as never))?.code).toBe(451);
+		session.rcptTo = [{ address: 'second@example.net' }, { address: 'first@example.com' }];
+		expect(await onData(message, session as never)).toBeUndefined();
+
+		const firstAdds = queue.add.mock.calls.filter(
+			([options]) => options.data.to === 'first@example.com'
+		);
+		const secondAdds = queue.add.mock.calls.filter(
+			([options]) => options.data.to === 'second@example.net'
+		);
+		expect(firstAdds).toHaveLength(1);
+		expect(secondAdds).toHaveLength(2);
+		expect(secondAdds[0]![0].jobId).toBe(secondAdds[1]![0].jobId);
+	});
+
+	it('reconciles a committed recipient when a partial fan-out retry contains only that recipient', async () => {
+		const receiptRedis = new Redis();
+		await receiptRedis.flushall();
+		const queued = new Map<string, unknown>();
+		const queue = {
+			add: vi.fn(
+				async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+					if (options.data.to === 'second@example.net') throw new Error('queue unavailable');
+					queued.set(options.jobId!, options);
+				}
+			),
+			getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+		};
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: { address: 'sender@brand.com' },
+			rcptTo: [{ address: 'first@example.com' }, { address: 'second@example.net' }],
+		});
+		const message = Buffer.from(baseMime('sender@brand.com', 'ignored@example.org'));
+		const onData = buildOnData({ queue: queue as never, redis: receiptRedis as never });
+
+		expect((await onData(message, session as never))?.code).toBe(451);
+		const committedJobId = queue.add.mock.calls[0]![0].jobId;
+		session.rcptTo = [{ address: 'first@example.com' }];
+		expect(await onData(message, session as never)).toBeUndefined();
+
+		const firstAdds = queue.add.mock.calls.filter(
+			([options]) => options.data.to === 'first@example.com'
+		);
+		expect(firstAdds).toHaveLength(1);
+		expect(firstAdds[0]![0].jobId).toBe(committedJobId);
+	});
+
+	it('accepts a lost queue response after reconciling the committed job', async () => {
+		const receiptRedis = new Redis();
+		await receiptRedis.flushall();
+		const queued = new Map<string, unknown>();
+		const queue = {
+			add: vi.fn(
+				async (options: { groupId: string; data: EmailJob; jobId?: string; orderMs?: number }) => {
+					queued.set(options.jobId!, options);
+					throw new Error('response lost');
+				}
+			),
+			getJob: vi.fn(async (jobId: string) => queued.get(jobId) ?? null),
+		};
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'lost-response-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+
+		const reply = await buildOnData({ queue: queue as never, redis: receiptRedis as never })(
+			Buffer.from(baseMime('sender@brand.com', 'recipient@example.com')),
+			session as never
+		);
+
+		expect(reply).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('retries safely after the client-key binding commits but its response is lost', async () => {
+		const { queue, receiptRedis, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'lost-binding-response-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const data = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+		const committedEval = receiptRedis.eval.bind(receiptRedis) as (
+			...args: unknown[]
+		) => Promise<unknown>;
+		let loseResponse = true;
+		const evalSpy = vi
+			.spyOn(receiptRedis, 'eval')
+			.mockImplementation(async (...args: unknown[]) => {
+				const result = await committedEval(...args);
+				if (loseResponse && String(args[0]).includes("local existing = redis.call('HGET'")) {
+					loseResponse = false;
+					throw new Error('binding response lost');
+				}
+				return result;
+			});
+
+		expect(await onData(data, session as never)).toMatchObject({ code: 451 });
+		expect(queue.add).not.toHaveBeenCalled();
+		evalSpy.mockRestore();
+		expect(await onData(data, session as never)).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('rejects recipient expansion for an existing client key before enqueue', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'recipient-binding-1' },
+			},
+			rcptTo: [{ address: 'first@example.com' }, { address: 'second@example.net' }],
+		});
+		const data = Buffer.from(baseMime('sender@brand.com', 'ignored@example.org'));
+
+		expect(await onData(data, session as never)).toBeUndefined();
+		session.rcptTo = [
+			{ address: 'second@example.net' },
+			{ address: 'first@example.com' },
+			{ address: 'added@example.org' },
+		];
+		expect(await onData(data, session as never)).toMatchObject({
+			code: 554,
+			enhanced: '5.5.4',
+		});
+		expect(queue.add).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not extend a client-key binding horizon on matching retries', async () => {
+		const { queue, receiptRedis, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'fixed-horizon-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const data = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(data, session as never)).toBeUndefined();
+		const [bindingKey] = await receiptRedis.keys('mta:submission-idempotency:*');
+		expect(bindingKey).toBeDefined();
+		const initialTtl = await receiptRedis.pttl(bindingKey!);
+		await new Promise((resolve) => setTimeout(resolve, 25));
+		expect(await onData(data, session as never)).toBeUndefined();
+		const retryTtl = await receiptRedis.pttl(bindingKey!);
+
+		expect(retryTtl).toBeLessThan(initialTtl - 10);
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('deduplicates byte-identical retries but treats changed DATA as a new submission', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: { address: 'sender@brand.com' },
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const original = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(original, session as never)).toBeUndefined();
+		expect(await onData(original, session as never)).toBeUndefined();
+		expect(
+			await onData(
+				Buffer.from(
+					baseMime('sender@brand.com', 'recipient@example.com').replace('hello', 'changed')
+				),
+				session as never
+			)
+		).toBeUndefined();
+
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(queue.add.mock.calls[0]![0].jobId).not.toBe(queue.add.mock.calls[1]![0].jobId);
+	});
+
+	it('reconciles an identical client-key retry and rejects changed DATA with 554', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: { address: 'sender@brand.com' },
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const original = baseMime('sender@brand.com', 'recipient@example.com').replace(
+			'Subject: hello',
+			'Subject: hello\r\nX-Owlat-Idempotency-Key: client-transaction-1'
+		);
+
+		expect(await onData(Buffer.from(original), session as never)).toBeUndefined();
+		expect(await onData(Buffer.from(original), session as never)).toBeUndefined();
+		expect(
+			await onData(Buffer.from(original.replace('body text', 'retry')), session as never)
+		).toMatchObject({ code: 554, enhanced: '5.5.4' });
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('rejects reuse of a client key with a different envelope sender', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'sender-binding-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const data = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(data, session as never)).toBeUndefined();
+		session.mailFrom!.address = 'other@brand.com';
+		expect(await onData(data, session as never)).toMatchObject({
+			code: 554,
+			enhanced: '5.5.4',
+		});
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	it('allows intentional byte-identical sends when the client changes transaction identity', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'intentional-send-1' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const identicalData = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(identicalData, session as never)).toBeUndefined();
+		session.mailFrom!.params![SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER] = 'intentional-send-2';
+		expect(await onData(identicalData, session as never)).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(queue.add.mock.calls[0]![0].jobId).not.toBe(queue.add.mock.calls[1]![0].jobId);
+	});
+
+	it('allows intentional byte-identical sends with transaction-scoped deduplication disabled', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: { [SUBMISSION_DEDUPLICATION_MAIL_PARAMETER]: 'OFF' },
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+		const identicalData = Buffer.from(baseMime('sender@brand.com', 'recipient@example.com'));
+
+		expect(await onData(identicalData, session as never)).toBeUndefined();
+		expect(await onData(identicalData, session as never)).toBeUndefined();
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(queue.add.mock.calls[0]![0].jobId).not.toBe(queue.add.mock.calls[1]![0].jobId);
+	});
+
+	it('rejects conflicting transaction identity and deduplication controls before enqueue', async () => {
+		const { queue, onData } = acceptingDataHarness();
+		const session = makeSession({
+			authenticated: true,
+			state: { auth: { organizationId: 'org1', credentialName: 'cred' } },
+			mailFrom: {
+				address: 'sender@brand.com',
+				params: {
+					[SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER]: 'conflict-1',
+					[SUBMISSION_DEDUPLICATION_MAIL_PARAMETER]: 'OFF',
+				},
+			},
+			rcptTo: [{ address: 'recipient@example.com' }],
+		});
+
+		expect(
+			await onData(
+				Buffer.from(baseMime('sender@brand.com', 'recipient@example.com')),
+				session as never
+			)
+		).toMatchObject({ code: 554, enhanced: '5.5.4' });
+		expect(queue.add).not.toHaveBeenCalled();
 	});
 
 	// RFC 2046 §5.1.4: the AMP alternative must survive submission. `parseMessage`
@@ -736,6 +1141,8 @@ describe('submission TLS gate — wire-level', () => {
 			expect(ehlo).toMatch(/250[ -]/);
 			// STARTTLS must be advertised since we connect over plaintext.
 			expect(ehlo).toMatch(/STARTTLS/);
+			expect(ehlo).toMatch(/\bXOWLATID\b/);
+			expect(ehlo).toMatch(/\bXOWLATDEDUP\b/);
 
 			// AUTH PLAIN with the CORRECT master key — but BEFORE STARTTLS. The
 			// listener must refuse it with 530 (encryption required) and never run

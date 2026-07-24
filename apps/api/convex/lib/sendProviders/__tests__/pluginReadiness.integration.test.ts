@@ -112,7 +112,9 @@ async function expectFallbackReadiness(
 	const ctx = fakeContext(fixture);
 	expect(await isDeliveryConfigured(ctx as never, messageType)).toBe(expectedReady);
 	expect(await resolveSendRouteFromDb(ctx as never, messageType)).toEqual(
-		expectedReady ? { providerType: pluginKind, source: 'env_fallback' } : null
+		expectedReady
+			? { providerType: pluginKind, source: 'env_fallback', warmupOverflowEnabled: false }
+			: null
 	);
 }
 
@@ -318,12 +320,13 @@ describe('enqueue provider selection matches worker selection', () => {
 		expect(send?.providerType).toBeUndefined();
 	});
 
-	it('terminally fails every delayed recipient when an explicit plugin loses readiness', async () => {
+	it('queues delayed recipients for worker-time re-resolution when readiness changes', async () => {
 		vi.stubEnv('EMAIL_PROVIDER', pluginKind);
 		const { t, campaignId } = await seedPluginReadinessScenario({});
 		expect(await t.run(async (ctx) => resolveSendRouteFromDb(ctx, 'campaign'))).toEqual({
 			providerType: pluginKind,
 			source: 'env_fallback',
+			warmupOverflowEnabled: false,
 		});
 
 		const recipients = await t.run(async (ctx) => {
@@ -344,7 +347,9 @@ describe('enqueue provider selection matches worker selection', () => {
 			});
 			return results;
 		});
-		// A ready fallback must not replace the explicit route selected earlier.
+		// The delayed enqueue must not freeze or reject the stale provider choice.
+		// The worker resolves the current route for each recipient immediately
+		// before dispatch, where the now-ready MTA route replaces it.
 		vi.stubEnv('EMAIL_PROVIDER', 'mta');
 		const { campaignEmailPool } = await import('../../../delivery/workpool');
 		const enqueueAction = vi.mocked(campaignEmailPool.enqueueAction);
@@ -359,8 +364,8 @@ describe('enqueue provider selection matches worker selection', () => {
 				htmlContent: '<p>Hello</p>',
 				providerType: pluginKind,
 			})
-		).resolves.toEqual({ enqueued: 0 });
-		expect(enqueueAction).not.toHaveBeenCalled();
+		).resolves.toEqual({ enqueued: 2 });
+		expect(enqueueAction).toHaveBeenCalledTimes(2);
 
 		const outcome = await t.run(async (ctx) => ({
 			campaign: await ctx.db.get(campaignId),
@@ -375,12 +380,11 @@ describe('enqueue provider selection matches worker selection', () => {
 				recipients.map((recipient) =>
 					expect.objectContaining({
 						_id: recipient.emailSendId,
-						status: 'failed',
-						errorCode: 'DELIVERY_PROVIDER_UNAVAILABLE',
+						status: 'queued',
 					})
 				)
 			)
 		);
-		expect(outcome.campaign?.status).toBe('sent');
+		expect(outcome.campaign?.status).toBe('sending');
 	});
 });

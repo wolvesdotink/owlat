@@ -31,11 +31,14 @@ export interface OutcomeReduction {
  * metrics, logger, or fetch is required to verify the reducer's correctness.
  */
 export function reduce(attempt: BounceAttempt, ctx: BasePhaseCtx): OutcomeReduction {
+	let reduction: OutcomeReduction;
 	switch (attempt.kind) {
 		case 'fbl':
-			return reduceFbl(attempt);
+			reduction = reduceFbl(attempt);
+			break;
 		case 'dsn_attributed':
-			return reduceDsnAttributed(attempt);
+			reduction = reduceDsnAttributed(attempt);
+			break;
 		case 'dsn_unattributed':
 			return reduceDsnUnattributed();
 		case 'mailbox':
@@ -49,6 +52,32 @@ export function reduce(attempt: BounceAttempt, ctx: BasePhaseCtx): OutcomeReduct
 		case 'unrecognized':
 			return { effects: [] };
 	}
+	return applyFeedbackProvenancePolicy(reduction, attempt);
+}
+
+function applyFeedbackProvenancePolicy(
+	reduction: OutcomeReduction,
+	attempt: Extract<BounceAttempt, { kind: 'fbl' | 'dsn_attributed' }>
+): OutcomeReduction {
+	const feedback = attempt.kind === 'fbl' ? attempt.arf : attempt.bounce;
+	// Direct reducer tests and legacy callers predate persisted provenance. The
+	// live SMTP path always sets an explicit value via attachFeedbackProvenance.
+	if (!feedback.feedbackProvenance) return reduction;
+	if (feedback.feedbackProvenance === 'unknown') return { effects: [] };
+	const deliveryDomain = feedback.feedbackProvenance;
+	const events = reduction.effects.map(
+		(effect): BounceEffect =>
+			effect.kind === 'notify_convex'
+				? {
+						...effect,
+						event: { ...effect.event, deliveryDomain },
+					}
+				: effect
+	);
+	if (deliveryDomain === 'production') return { effects: events };
+	// Member previews retain only their authenticated lifecycle callback. They
+	// never train breakers, warming, FBL/campaign counters, or suppression.
+	return { effects: events.filter((effect) => effect.kind === 'notify_convex') };
 }
 
 function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeReduction {

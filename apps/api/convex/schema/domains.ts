@@ -88,7 +88,8 @@ export const domainTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_domain', ['domain'])
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		.index('by_provider_type', ['providerType']),
 
 	// MTA sending domain identity — 1:0..1 with `domains` (one row per
 	// MTA-provider-registered domain). Owned by the **Sending domain provider
@@ -109,6 +110,18 @@ export const domainTables = {
 		domainId: v.id('domains'),
 		dkimTokens: v.array(v.string()), // 3 DKIM tokens from SES
 		verificationToken: v.string(),
+		// Relay-specific proof is intentionally separate from the primary
+		// domain's DNS/status so an MTA identity and SES identity can coexist.
+		dnsRecords: v.optional(dnsRecordsValidator),
+		verificationResults: v.optional(verificationResultsValidator),
+		// Explicit relay-SPF proof contract. When the owned MTA intentionally
+		// emits no apex SPF row, SES uses its verified custom MAIL FROM and the
+		// operator's manual primary policy remains outside relay authorization.
+		spfProofState: v.optional(
+			v.union(v.literal('dns_required'), v.literal('not_applicable_manual_primary'))
+		),
+		isProviderVerified: v.optional(v.boolean()),
+		verifiedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_domain', ['domainId']),

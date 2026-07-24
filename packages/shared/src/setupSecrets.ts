@@ -17,6 +17,18 @@ import { webcrypto } from 'node:crypto';
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
+const KNOWN_PLACEHOLDER_SECRETS = new Set([
+	'change-me',
+	'changeme',
+	'replace-me',
+	'replace-with-openssl-rand-base64-32',
+]);
+
+/** Reject documentation placeholders wherever setup or runtime consumes secrets. */
+export function isKnownPlaceholderSecret(value: string): boolean {
+	return KNOWN_PLACEHOLDER_SECRETS.has(value.trim().toLowerCase());
+}
+
 export function generateSecret(byteLength = 32): string {
 	const bytes = new Uint8Array(byteLength);
 	webcrypto.getRandomValues(bytes);
@@ -86,7 +98,9 @@ export function ensureSecrets(existing: Record<string, string>): Record<string, 
 		// (lib/convexDeploy.ts:generateConvexAdminKey).
 	};
 	for (const [key, gen] of Object.entries(required)) {
-		if (!out[key]) out[key] = gen();
+		if (!out[key] || (key === 'BOUNCE_VERP_KEY' && isKnownPlaceholderSecret(out[key]))) {
+			out[key] = gen();
+		}
 	}
 	return out;
 }

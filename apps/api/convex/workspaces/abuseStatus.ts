@@ -53,6 +53,26 @@ export type TransitionOutcome =
 			to?: AbuseStatus;
 	  };
 
+/** Matches the MTA's 35-day campaign alert identity horizon. */
+export const CAMPAIGN_ALERT_RECEIPT_RETENTION_MS = 35 * 24 * 60 * 60 * 1000;
+
+/**
+ * `skipped` is a durably recorded alert whose severity rules refused the
+ * status change (already `suspended`/`banned`). It is a success: the alert is
+ * audited and receipted, so the producer must not retry it. Only
+ * `no_settings_row` (transient early-deployment state) and `event_id_conflict`
+ * (an identity reused with different content) are failures.
+ */
+export type CampaignAlertOutcome =
+	| {
+			ok: true;
+			applied: 'transitioned' | 'recorded' | 'duplicate' | 'skipped';
+	  }
+	| {
+			ok: false;
+			reason: 'no_settings_row' | 'event_id_conflict';
+	  };
+
 // ─── Validators ─────────────────────────────────────────────────────────────
 
 export const abuseStatusValidator = v.union(
@@ -101,7 +121,7 @@ async function dispatch(
 	ctx: MutationCtx,
 	settings: Doc<'instanceSettings'>,
 	input: TransitionInput,
-	options: { adminOverride: boolean }
+	options: { adminOverride: boolean; eventId?: string }
 ): Promise<TransitionOutcome> {
 	const from = (settings.abuseStatus ?? 'clean') as AbuseStatus;
 
@@ -139,6 +159,7 @@ async function dispatch(
 			reason: input.reason,
 			applied: result.applied,
 			adminOverride: options.adminOverride ? 'true' : 'false',
+			...(options.eventId ? { eventId: options.eventId } : {}),
 		},
 	});
 
@@ -170,6 +191,94 @@ export const transition = internalMutation({
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (!settings) return { ok: false, reason: 'no_settings_row' };
 		return await dispatch(ctx, settings, args.input, { adminOverride: false });
+	},
+});
+
+/**
+ * Persist one MTA campaign complaint alert exactly once.
+ *
+ * The receipt, status transition, and audit row share this mutation's Convex
+ * transaction. A response-loss replay therefore observes the receipt and
+ * returns success without creating a second same-state audit row. A reused
+ * event id with different immutable content fails closed.
+ */
+export const recordCampaignComplaintAlert = internalMutation({
+	args: {
+		eventId: v.string(),
+		campaignId: v.string(),
+		message: v.string(),
+		complaintRate: v.number(),
+		eventTimestamp: v.number(),
+	},
+	handler: async (ctx, args): Promise<CampaignAlertOutcome> => {
+		const existing = await ctx.db
+			.query('mtaCampaignAlertReceipts')
+			.withIndex('by_event_id', (q) => q.eq('eventId', args.eventId))
+			.unique();
+		if (existing) {
+			const isSameAlert =
+				existing.campaignId === args.campaignId &&
+				existing.message === args.message &&
+				existing.complaintRate === args.complaintRate &&
+				existing.eventTimestamp === args.eventTimestamp;
+			return isSameAlert
+				? { ok: true, applied: 'duplicate' }
+				: { ok: false, reason: 'event_id_conflict' };
+		}
+
+		const settings = await ctx.db.query('instanceSettings').first();
+		if (!settings) return { ok: false, reason: 'no_settings_row' };
+		const ratePercent = (args.complaintRate * 100).toFixed(2);
+		const reason = `MTA campaign complaint rate: ${args.message} (${ratePercent}%) [campaign ${args.campaignId}]`;
+		const outcome = await dispatch(
+			ctx,
+			settings,
+			{
+				to: 'warned',
+				at: args.eventTimestamp,
+				reason,
+				changedBy: 'mta_campaign_complaint_rate',
+			},
+			{ adminOverride: false, eventId: args.eventId }
+		);
+		// This alert always targets `warned`, so an instance already `suspended`
+		// or `banned` refuses it — and reputation auto-enforcement suspends on
+		// exactly the complaint rates that raise these alerts. Retrying can never
+		// succeed, so audit and receipt the alert and acknowledge the producer
+		// instead of turning a correlated safety signal into DLQ toil.
+		if (!outcome.ok && outcome.reason !== 'no_settings_row') {
+			await recordAuditLog(ctx, {
+				userId: 'mta_campaign_complaint_rate',
+				action: 'abuse_status_changed',
+				resource: 'instance_settings',
+				resourceId: settings._id,
+				details: {
+					previousStatus: outcome.from ?? 'clean',
+					newStatus: outcome.from ?? 'clean',
+					reason,
+					applied: 'skipped',
+					refusedBecause: outcome.reason,
+					adminOverride: 'false',
+					eventId: args.eventId,
+				},
+			});
+		} else if (!outcome.ok) {
+			return { ok: false, reason: 'no_settings_row' };
+		}
+		const applied = outcome.ok ? outcome.applied : ('skipped' as const);
+
+		const processedAt = Date.now();
+		await ctx.db.insert('mtaCampaignAlertReceipts', {
+			eventId: args.eventId,
+			campaignId: args.campaignId,
+			message: args.message,
+			complaintRate: args.complaintRate,
+			eventTimestamp: args.eventTimestamp,
+			processedAt,
+			expiresAt: processedAt + CAMPAIGN_ALERT_RECEIPT_RETENTION_MS,
+			transitionApplied: applied,
+		});
+		return { ok: true, applied };
 	},
 });
 

@@ -3,6 +3,8 @@ import { internalAction, internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { normalizeIpReputationPayload } from '@owlat/shared/ipReadinessSync';
+import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabilityRouting';
+import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
 import { ipReadinessFieldValidators } from './readinessValidators';
 
 /**
@@ -25,7 +27,13 @@ export const syncWarmingState = internalAction({
 		}
 
 		try {
-			const response = await fetch(`${mtaUrl}/ip-reputation`, {
+			const organizationId = await ctx.runQuery(
+				internal.campaigns.sendQueries.getSingletonOrganizationId,
+				{}
+			);
+			const url = new URL(`${mtaUrl}/ip-reputation`);
+			if (organizationId) url.searchParams.set('organizationId', organizationId);
+			const response = await fetch(url, {
 				headers: {
 					Authorization: `Bearer ${mtaApiKey}`,
 				},
@@ -37,7 +45,8 @@ export const syncWarmingState = internalAction({
 				return;
 			}
 
-			const normalized = normalizeIpReputationPayload(await response.json());
+			const payload: unknown = await response.json();
+			const normalized = normalizeIpReputationPayload(payload);
 			if (!normalized) {
 				console.error('[WarmingSync] MTA returned an invalid IP reputation payload');
 				return;
@@ -47,6 +56,32 @@ export const syncWarmingState = internalAction({
 				...normalized,
 				syncedAt: Date.now(),
 			});
+
+			const now = Date.now();
+			const routing =
+				typeof payload === 'object' && payload !== null && 'routing' in payload
+					? normalizeDeliverabilityRoutingSnapshot(payload.routing, now)
+					: null;
+			if (
+				organizationId &&
+				routing &&
+				routing.generatedAt <= now + 2 * 60 * 1000 &&
+				now - routing.generatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
+			) {
+				await ctx.runMutation(internal.delivery.deliverabilityRouting.applySnapshot, {
+					organizationId,
+					generatedAt: routing.generatedAt,
+					signals: routing.signals,
+					appliedAt: now,
+				});
+			} else if (
+				organizationId &&
+				typeof payload === 'object' &&
+				payload !== null &&
+				'routing' in payload
+			) {
+				console.error('[WarmingSync] MTA returned stale or invalid deliverability routing signals');
+			}
 
 			// Check if approaching capacity limit (for admin alerts)
 			if (normalized.phase === 'graduated' && normalized.totalDailyCap > 0) {

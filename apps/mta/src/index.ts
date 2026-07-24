@@ -32,6 +32,7 @@ import { checkRotationStatus, activatePendingKey } from './smtp/dkimRotation.js'
 import type { DkimRotationNotifier } from './smtp/dkimRotation.js';
 import { generateAndSendReports as sendTlsReports } from './smtp/tlsRpt.js';
 import { notifyConvex } from './webhooks/convexNotifier.js';
+import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';
 import { closeListenerSafely } from './lib/closeListenerSafely.js';
 import { pathToFileURL } from 'node:url';
@@ -120,6 +121,19 @@ export async function main() {
 	// ── 6. Create GroupMQ queue and worker ──
 	const queue = createEmailQueue(redis);
 	const worker = createEmailWorker(queue, redis, config);
+
+	// Recover routing/lifecycle callbacks automatically after a Convex outage.
+	// The sweep is bounded and leader-gated; exhausted entries remain available
+	// through the authenticated manual DLQ routes.
+	const webhookDlqInterval = setInterval(() => {
+		if (!isLeader()) return;
+		void sweepWebhookDlq(redis, config).catch(() =>
+			logger.error(
+				{ operation: 'convex_webhook_dlq', category: 'automatic_retry' },
+				'Automatic webhook DLQ recovery sweep failed'
+			)
+		);
+	}, 60_000);
 
 	// ── 7. Start HTTP server ──
 	const app = createApp(queue, redis, config);
@@ -334,6 +348,7 @@ export async function main() {
 		clearInterval(postmasterInterval);
 		clearInterval(tlsRptInterval);
 		clearInterval(dkimRotationInterval);
+		clearInterval(webhookDlqInterval);
 
 		// Close HTTP server
 		if (typeof server.close === 'function') {

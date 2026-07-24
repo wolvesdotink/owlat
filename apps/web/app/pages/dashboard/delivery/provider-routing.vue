@@ -8,6 +8,12 @@ import {
 	seedRouteProviders,
 	transportLabel,
 } from '~/utils/providerRouting';
+import {
+	PROVIDER_ROUTE_MESSAGE_TYPES as MESSAGE_TYPES,
+	PROVIDER_ROUTE_STRATEGIES as STRATEGIES,
+	type ProviderRouteMessageType as MessageType,
+	type ProviderRouteStrategy as Strategy,
+} from '~/utils/providerRouteOptions';
 
 useHead({ title: 'Provider Routing — Owlat' });
 
@@ -22,54 +28,17 @@ const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizatio
 // messageType: schema/delivery.ts providerRoutes; strategy: strategyValidator
 // in providerRoutes.ts; providerType: SEND_PROVIDERS registry in
 // lib/sendProviders/index.ts.
-type MessageType = 'campaign' | 'transactional' | 'automation';
-type Strategy = 'single' | 'priority_failover' | 'workload_split';
-
 interface ProviderEntry {
 	providerType: string;
 	weight?: number;
 	isEnabled: boolean;
 }
 
-const MESSAGE_TYPES: { value: MessageType; label: string; description: string; icon: string }[] = [
-	{
-		value: 'transactional',
-		label: 'Transactional',
-		description: 'Account, confirmation, and other one-to-one emails',
-		icon: 'lucide:mail-check',
-	},
-	{
-		value: 'campaign',
-		label: 'Campaigns',
-		description: 'Broadcast newsletters and marketing campaigns',
-		icon: 'lucide:megaphone',
-	},
-	{
-		value: 'automation',
-		label: 'Automations',
-		description: 'Emails sent by automated journeys and triggers',
-		icon: 'lucide:workflow',
-	},
-];
-
-const STRATEGIES: { value: Strategy; label: string; description: string }[] = [
-	{
-		value: 'single',
-		label: 'Single provider',
-		description: 'Always send through the first enabled provider.',
-	},
-	{
-		value: 'priority_failover',
-		label: 'Priority failover',
-		description:
-			'Try providers in order; fall over to the next on failure or when one is unhealthy.',
-	},
-	{
-		value: 'workload_split',
-		label: 'Workload split',
-		description: 'Distribute traffic across providers by the weights you set.',
-	},
-];
+interface DeliverabilityFallback {
+	isEnabled: boolean;
+	relayProviderType: string;
+	isWarmupOverflowEnabled: boolean;
+}
 
 const strategyLabel = (strategy: string): string =>
 	STRATEGIES.find((s) => s.value === strategy)?.label ?? strategy;
@@ -94,13 +63,19 @@ const isLoading = computed(
 const routeByType = computed(() => {
 	const map = new Map<
 		MessageType,
-		{ strategy: string; providers: ProviderEntry[]; ipPool?: string }
+		{
+			strategy: string;
+			providers: ProviderEntry[];
+			ipPool?: string;
+			deliverabilityFallback?: DeliverabilityFallback;
+		}
 	>();
 	for (const route of routesData.value ?? []) {
 		map.set(route.messageType, {
 			strategy: route.strategy,
 			providers: route.providers,
 			ipPool: route.ipPool,
+			deliverabilityFallback: route.deliverabilityFallback,
 		});
 	}
 	return map;
@@ -124,7 +99,6 @@ const { run: setRoute } = useBackendOperation(api.providerRoutes.setRoute, {
 const { run: removeRoute } = useBackendOperation(api.providerRoutes.removeRoute, {
 	label: 'Reset provider route',
 });
-
 const { showToast: showNotification } = useToast();
 
 // ── Edit modal ──────────────────────────────────────────────────────
@@ -133,8 +107,10 @@ const editMessageType = ref<MessageType>('transactional');
 const editStrategy = ref<Strategy>('single');
 const editIpPool = ref('');
 const editProviders = ref<ProviderEntry[]>([]);
+const editFallbackEnabled = ref(false);
+const editFallbackRelay = ref('ses');
+const editWarmupOverflow = ref(false);
 const isSaving = ref(false);
-
 const editMessageTypeMeta = computed(() =>
 	MESSAGE_TYPES.find((m) => m.value === editMessageType.value)
 );
@@ -150,11 +126,17 @@ function startEdit(messageType: MessageType) {
 		editStrategy.value = existing.strategy as Strategy;
 		editIpPool.value = existing.ipPool ?? '';
 		editProviders.value = seedRouteProviders(transportOptions.value, existing.providers);
+		editFallbackEnabled.value = existing.deliverabilityFallback?.isEnabled ?? false;
+		editFallbackRelay.value = existing.deliverabilityFallback?.relayProviderType ?? 'ses';
+		editWarmupOverflow.value = existing.deliverabilityFallback?.isWarmupOverflowEnabled ?? false;
 	} else {
 		// Seed every composed provider with the first available transport enabled.
 		editStrategy.value = 'single';
 		editIpPool.value = '';
 		editProviders.value = seedRouteProviders(transportOptions.value);
+		editFallbackEnabled.value = false;
+		editFallbackRelay.value = 'ses';
+		editWarmupOverflow.value = false;
 	}
 	editOpen.value = true;
 }
@@ -170,6 +152,9 @@ function moveProvider(index: number, direction: -1 | 1) {
 }
 
 const enabledProviderCount = computed(() => editProviders.value.filter((p) => p.isEnabled).length);
+const enabledRelays = computed(() =>
+	editProviders.value.filter((provider) => provider.isEnabled && provider.providerType === 'ses')
+);
 
 async function handleSave() {
 	if (!hasActiveOrganization.value) return;
@@ -177,6 +162,15 @@ async function handleSave() {
 	const enabled = editProviders.value.filter((p) => p.isEnabled);
 	if (enabled.length === 0) {
 		showNotification('Enable at least one provider before saving', 'error');
+		return;
+	}
+	if (
+		editFallbackEnabled.value &&
+		(editFallbackRelay.value !== 'ses' ||
+			!enabled.some((provider) => provider.providerType === 'mta') ||
+			!enabledRelays.value.some((provider) => provider.providerType === editFallbackRelay.value))
+	) {
+		showNotification('Enable the owned MTA and the selected relay before saving', 'error');
 		return;
 	}
 
@@ -192,6 +186,13 @@ async function handleSave() {
 			editStrategy.value
 		),
 		ipPool: editIpPool.value.trim() || undefined,
+		deliverabilityFallback: editFallbackEnabled.value
+			? {
+					isEnabled: true,
+					relayProviderType: editFallbackRelay.value,
+					isWarmupOverflowEnabled: editWarmupOverflow.value,
+				}
+			: undefined,
 	});
 	isSaving.value = false;
 
@@ -277,6 +278,8 @@ async function handleReset() {
 				</div>
 			</div>
 
+			<DeliveryRelayDomainStatus />
+
 			<!-- Message-type route cards -->
 			<div class="grid gap-4">
 				<div v-for="type in MESSAGE_TYPES" :key="type.value" class="card p-6">
@@ -290,35 +293,12 @@ async function handleReset() {
 								<p class="text-sm text-text-secondary mt-0.5">{{ type.description }}</p>
 
 								<!-- Configured route summary -->
-								<div v-if="routeByType.get(type.value)" class="mt-3 space-y-2">
-									<span
-										class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-brand/20 text-brand border-brand/30"
-									>
-										<Icon name="lucide:git-branch" class="w-3 h-3" />
-										{{ strategyLabel(routeByType.get(type.value)!.strategy) }}
-									</span>
-									<div class="flex flex-wrap items-center gap-2">
-										<span
-											v-for="(provider, index) in routeByType
-												.get(type.value)!
-												.providers.filter((p) => p.isEnabled)"
-											:key="provider.providerType"
-											class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-bg-surface text-text-secondary border border-border-subtle"
-										>
-											<span class="text-text-tertiary">{{ index + 1 }}.</span>
-											{{ providerLabel(provider.providerType) }}
-											<span
-												v-if="routeByType.get(type.value)!.strategy === 'workload_split'"
-												class="text-text-tertiary"
-											>
-												({{ provider.weight ?? 0 }})
-											</span>
-										</span>
-									</div>
-									<p v-if="routeByType.get(type.value)!.ipPool" class="text-xs text-text-tertiary">
-										IP pool: {{ routeByType.get(type.value)!.ipPool }}
-									</p>
-								</div>
+								<DeliveryProviderRouteSummary
+									v-if="routeByType.get(type.value)"
+									:route="routeByType.get(type.value)!"
+									:strategy-label="strategyLabel"
+									:provider-label="providerLabel"
+								/>
 
 								<!-- Default fallback summary -->
 								<p v-else class="mt-3 text-xs text-text-tertiary inline-flex items-center gap-1.5">
@@ -458,6 +438,15 @@ async function handleReset() {
 						default.
 					</p>
 				</div>
+
+				<DeliveryDeliverabilityFallbackEditor
+					v-model:enabled="editFallbackEnabled"
+					v-model:relay="editFallbackRelay"
+					v-model:warmup-overflow="editWarmupOverflow"
+					:message-type="editMessageType"
+					:providers="editProviders"
+					:provider-label="providerLabel"
+				/>
 			</div>
 
 			<template #footer>

@@ -104,10 +104,10 @@ describe('Organization deletion walker — STEPS list invariants', () => {
 		expect(STEPS.indexOf('contacts')).toBeGreaterThan(STEPS.indexOf('transactionalSends'));
 	});
 
-	it('orders domain identities + reputation before domains step', () => {
+	it('orders domain reputation before domains and identity orphan sweeps after it', () => {
 		const domainsIdx = STEPS.indexOf('domains');
-		expect(STEPS.indexOf('sendingDomainMtaIdentities')).toBeLessThan(domainsIdx);
-		expect(STEPS.indexOf('sendingDomainSesIdentities')).toBeLessThan(domainsIdx);
+		expect(STEPS.indexOf('sendingDomainMtaIdentities')).toBeGreaterThan(domainsIdx);
+		expect(STEPS.indexOf('sendingDomainSesIdentities')).toBeGreaterThan(domainsIdx);
 		expect(STEPS.indexOf('trackingDomains')).toBeLessThan(domainsIdx);
 		expect(STEPS.indexOf('sendingReputation')).toBeLessThan(domainsIdx);
 		expect(STEPS.indexOf('googlePostmasterStats')).toBeLessThan(domainsIdx);

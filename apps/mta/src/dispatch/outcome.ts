@@ -16,6 +16,7 @@ import type { DispatchEffect } from './effects.js';
 import { outcomeEventBase } from './outcomeEvent.js';
 import type { DispatchOutcome } from './outcomeClassification.js';
 import { primarySendingDomain } from '../intelligence/gmailBulkSender.js';
+import { applyDeliveryDomainPolicy } from './outcomeDeliveryDomain.js';
 
 export { classifyResult } from './outcomeClassification.js';
 export type { DispatchOutcome } from './outcomeClassification.js';
@@ -37,18 +38,25 @@ export interface OutcomeReduction {
  * metrics, logger, or fetch is required to verify the reducer's correctness.
  */
 export function reduce(outcome: DispatchOutcome, ctx: AttemptCtx): OutcomeReduction {
+	let reduction: OutcomeReduction;
 	switch (outcome.kind) {
 		case 'delivered':
-			return reduceDelivered(outcome, ctx);
+			reduction = reduceDelivered(outcome, ctx);
+			break;
 		case 'hard_bounce':
-			return reduceHardBounce(outcome, ctx);
+			reduction = reduceHardBounce(outcome, ctx);
+			break;
 		case 'deferred':
-			return reduceDeferred(outcome, ctx);
+			reduction = reduceDeferred(outcome, ctx);
+			break;
 		case 'soft_bounce':
-			return reduceSoftBounce(outcome, ctx);
+			reduction = reduceSoftBounce(outcome, ctx);
+			break;
 		case 'ambiguous':
-			return reduceAmbiguous(outcome, ctx);
+			reduction = reduceAmbiguous(outcome, ctx);
+			break;
 	}
+	return applyDeliveryDomainPolicy(reduction, ctx);
 }
 
 function reduceDelivered(
@@ -64,7 +72,13 @@ function reduceDelivered(
 	return {
 		effects: [
 			{ kind: 'domain_throttle_success', ip, throttleKey, providerKey },
-			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'delivered' },
+			{
+				kind: 'circuit_breaker_outcome',
+				orgId: job.organizationId,
+				outcome: 'delivered',
+				providerKey,
+				...probeReceipt(job),
+			},
 			...(campaignId
 				? [{ kind: 'campaign_delivery_record', campaignId } as const satisfies DispatchEffect]
 				: []),
@@ -74,7 +88,12 @@ function reduceDelivered(
 				smtpCode: outcome.smtpCode,
 				enhancedCode: outcome.enhancedCode,
 			},
-			{ kind: 'warming_record', ip, result: 'send' },
+			{
+				kind: 'warming_record',
+				ip,
+				result: 'send',
+				reservation: job.routingLease?.warmingReservation,
+			},
 			{
 				kind: 'metrics_record',
 				domain,
@@ -100,6 +119,7 @@ function reduceDelivered(
 					event: 'sent',
 					messageId: job.messageId,
 					organizationId: job.organizationId,
+					recipient: job.to,
 					destinationProvider: providerKey,
 					...(sendingPrimaryDomain ? { primarySendingDomain: sendingPrimaryDomain } : {}),
 					remoteMessageId: outcome.remoteMessageId,
@@ -119,7 +139,13 @@ function reduceHardBounce(
 	const { throttleKey, providerKey } = ctx.destination;
 	return {
 		effects: [
-			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
+			{
+				kind: 'circuit_breaker_outcome',
+				orgId: job.organizationId,
+				outcome: 'bounced',
+				providerKey,
+				...probeReceipt(job),
+			},
 			{
 				kind: 'smtp_response',
 				domain,
@@ -236,7 +262,13 @@ function reduceNonRetryableDeferral(
 	const { throttleKey, providerKey } = ctx.destination;
 	return {
 		effects: [
-			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
+			{
+				kind: 'circuit_breaker_outcome',
+				orgId: job.organizationId,
+				outcome: 'bounced',
+				providerKey,
+				...probeReceipt(job),
+			},
 			{
 				kind: 'smtp_response',
 				domain,
@@ -283,6 +315,28 @@ function reduceNonRetryableDeferral(
 	};
 }
 
+function probeReceipt(job: AttemptCtx['job']): {
+	probeReceipt?: {
+		messageId: string;
+		globalGeneration?: number;
+		providerGeneration?: number;
+	};
+} {
+	const lease = job.routingLease;
+	if (!lease?.probe && !lease?.globalProbe) return {};
+	return {
+		probeReceipt: {
+			messageId: job.messageId,
+			...(lease.globalProbe && lease.globalBreakerGeneration !== undefined
+				? { globalGeneration: lease.globalBreakerGeneration }
+				: {}),
+			...(lease.probe && lease.providerBreakerGeneration !== undefined
+				? { providerGeneration: lease.providerBreakerGeneration }
+				: {}),
+		},
+	};
+}
+
 function reduceSoftBounce(
 	outcome: Extract<DispatchOutcome, { kind: 'soft_bounce' }>,
 	ctx: AttemptCtx
@@ -291,7 +345,13 @@ function reduceSoftBounce(
 	const { providerKey } = ctx.destination;
 	return {
 		effects: [
-			{ kind: 'circuit_breaker_outcome', orgId: job.organizationId, outcome: 'bounced' },
+			{
+				kind: 'circuit_breaker_outcome',
+				orgId: job.organizationId,
+				outcome: 'bounced',
+				providerKey,
+				...probeReceipt(job),
+			},
 			{ kind: 'warming_record', ip, result: 'bounce' },
 			{ kind: 'domain_failure_record', domain },
 			{
@@ -309,17 +369,6 @@ function reduceSoftBounce(
 					...outcomeEventBase(ctx),
 					status: 'failed',
 					smtpResponse: outcome.error,
-				},
-			},
-			{
-				kind: 'notify_convex',
-				event: {
-					event: 'bounced',
-					messageId: job.messageId,
-					organizationId: job.organizationId,
-					bounceType: 'soft',
-					message: outcome.error,
-					timestamp: Date.now(),
 				},
 			},
 		],

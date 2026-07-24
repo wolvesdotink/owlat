@@ -38,12 +38,22 @@ files=()
 # rule must never touch `_generated/`. Generated files are owned by codegen, not
 # the formatter. Keep this comment outside the process substitution: Bash 3.2
 # misparses backticks inside comments nested in `< <(...)`.
+pathspecs=(
+	'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs'
+	':(exclude)**/_generated/**'
+)
 while IFS= read -r f; do
 	[ -n "$f" ] && [ -f "$f" ] && files+=("$f")
 done < <(
-	git diff --name-only --diff-filter=ACMR "$mergebase"...HEAD -- \
-		'*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' \
-		':(exclude)**/_generated/**'
+	{
+		# Committed branch changes, plus every pre-commit worktree state. Keep
+		# these separate: a path can appear in more than one state, so sort once
+		# after collecting them all.
+		git diff --name-only --diff-filter=ACMR "$mergebase"...HEAD -- "${pathspecs[@]}"
+		git diff --cached --name-only --diff-filter=ACMR -- "${pathspecs[@]}"
+		git diff --name-only --diff-filter=ACMR -- "${pathspecs[@]}"
+		git ls-files --others --exclude-standard -- "${pathspecs[@]}"
+	} | LC_ALL=C sort -u
 )
 
 if [ "${#files[@]}" -eq 0 ]; then

@@ -1,8 +1,11 @@
 import { v } from 'convex/values';
 import { vOnCompleteArgs } from '@convex-dev/workpool';
+import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS, MAX_GOVERNED_ROUTING_ATTEMPTS } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
-import { mirrorEmailSendWrite } from '../unifiedMessages';
+import { campaignEmailPool, transactionalEmailPool } from './workpool';
+import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
+import type { WorkerEnvelopeInput, WorkerRetryState } from './workerEnvelope';
 
 // ============================================================================
 // Send completion (module) — see CONTEXT.md.
@@ -48,6 +51,14 @@ interface SendWorkerSuccess {
 	// routes the Send to a suppression-labelled terminal 'failed' transition
 	// instead of the generic WORKPOOL_FAILED one.
 	suppressed?: boolean;
+	deferred?: boolean;
+	retryAfterMs?: number;
+	envelopeInput?: WorkerEnvelopeInput;
+	retryState?: WorkerRetryState;
+	acceptedForDelivery?: true;
+	acceptanceUnknown?: true;
+	workAttemptId?: string;
+	startedAt?: number;
 }
 
 export const completeSend = internalMutation({
@@ -57,22 +68,82 @@ export const completeSend = internalMutation({
 		const now = Date.now();
 
 		const returnValue =
-			result.kind === 'success'
-				? (result.returnValue as SendWorkerSuccess | undefined)
-				: undefined;
+			result.kind === 'success' ? (result.returnValue as SendWorkerSuccess | undefined) : undefined;
 
-		const succeeded = Boolean(returnValue?.success && returnValue.providerMessageId);
+		if (
+			returnValue?.acceptanceUnknown &&
+			returnValue.providerMessageId &&
+			returnValue.envelopeInput &&
+			returnValue.retryState
+		) {
+			const send = await ctx.db.get(sendRef.id);
+			if (!send || send.status !== 'queued') return;
+			if (now - returnValue.retryState.startedAt < GOVERNED_MTA_MAX_MESSAGE_AGE_MS) {
+				await ctx.scheduler.runAfter(
+					Math.min(Math.max(returnValue.retryAfterMs ?? 1_000, 1_000), 3_600_000),
+					internal.delivery.sendCompletion.retrySend,
+					{
+						sendRef,
+						envelopeInput: returnValue.envelopeInput,
+						retryState: returnValue.retryState,
+					}
+				);
+				return;
+			}
+			await ctx.runMutation(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId, {
+				providerMessageId: returnValue.providerMessageId,
+				transition: {
+					to: 'failed',
+					at: now,
+					errorMessage: 'MTA intake acceptance could not be confirmed before the delivery deadline',
+					errorCode: 'MTA_ACCEPTANCE_UNCONFIRMED',
+				},
+			});
+			return;
+		}
 
-		if (returnValue?.success && returnValue.providerMessageId) {
+		if (
+			returnValue?.deferred &&
+			returnValue.envelopeInput &&
+			returnValue.retryState &&
+			returnValue.retryState.attempt <= MAX_GOVERNED_ROUTING_ATTEMPTS &&
+			now - returnValue.retryState.startedAt < GOVERNED_MTA_MAX_MESSAGE_AGE_MS
+		) {
+			await ctx.scheduler.runAfter(
+				Math.min(Math.max(returnValue.retryAfterMs ?? 60_000, 1_000), 3_600_000),
+				internal.delivery.sendCompletion.retrySend,
+				{
+					sendRef,
+					envelopeInput: returnValue.envelopeInput,
+					retryState: returnValue.retryState,
+				}
+			);
+			return;
+		}
+
+		if (returnValue?.success && returnValue.providerMessageId && returnValue.acceptedForDelivery) {
+			// MTA intake is an accepted queue handoff, not remote acceptance. Keep
+			// the Send queued so a later stale-route callback can still fail/retry;
+			// the MTA sent webhook (or a final relay attempt) owns the terminal edge.
+			const send = await ctx.db.get(sendRef.id);
+			if (send?.status === 'queued') {
+				if (send.providerMessageId && send.providerMessageId !== returnValue.providerMessageId) {
+					throw new Error('MTA acceptance conflicts with the Send provider identity.');
+				}
+				await ctx.db.patch(sendRef.id, {
+					providerMessageId: returnValue.providerMessageId,
+					providerType: returnValue.providerType ?? 'mta',
+				});
+			}
+			return;
+		} else if (returnValue?.success && returnValue.providerMessageId) {
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: sendRef,
 				transition: {
 					to: 'sent',
 					at: now,
 					providerMessageId: returnValue.providerMessageId,
-					...(returnValue.providerType
-						? { providerType: returnValue.providerType }
-						: {}),
+					...(returnValue.providerType ? { providerType: returnValue.providerType } : {}),
 				},
 			});
 		} else if (returnValue?.suppressed) {
@@ -91,8 +162,7 @@ export const completeSend = internalMutation({
 				},
 			});
 		} else {
-			const errorMessage =
-				result.kind === 'failed' ? result.error : 'Unknown error';
+			const errorMessage = result.kind === 'failed' ? result.error : 'Unknown error';
 			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 				send: sendRef,
 				transition: {
@@ -104,77 +174,29 @@ export const completeSend = internalMutation({
 			});
 		}
 
-		// Batch completion: a campaign Send just left the queue. Reconcile the
-		// owning campaign — when its LAST queued send clears, this advances the
-		// campaign 'sending' → 'sent' (the step the pipeline previously lacked,
-		// which left every campaign stuck in 'sending' forever). No-op until the
-		// last send completes; transactional sends have no campaign to advance.
-		if (sendRef.kind === 'campaign') {
-			const send = await ctx.db.get(sendRef.id);
-			if (send) {
-				await ctx.runMutation(
-					internal.campaigns.lifecycle.reconcileCampaignCompletion,
-					{ campaignId: send.campaignId },
-				);
-			}
-		}
-
-		// Agent-reply reconciliation: an `agent_reply` Send carries the inbound
-		// message it answers. `sendApprovedReply` no longer marks that message
-		// `sent` optimistically at dispatch (ADR-0010) — it enqueues and lets the
-		// confirmed worker outcome drive the inbound message's terminal state
-		// here, symmetric to the campaign reconcile above. Without this, an agent
-		// reply would send but leave its inbound message stuck in `approved`.
-		if (sendRef.kind === 'transactional') {
-			const send = await ctx.db.get(sendRef.id);
-			if (send?.kind === 'agent_reply' && send.inboundMessageId) {
-				await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-					inboundMessageId: send.inboundMessageId,
-					input: succeeded
-						? { to: 'sent', at: now }
-						: {
-								to: 'failed',
-								at: now,
-								errorMessage:
-									result.kind === 'failed'
-										? result.error || 'Send failed'
-										: 'Send failed',
-							},
-				});
-
-				// Mirror the CONFIRMED agent reply into the unified contact timeline,
-				// the outbound counterpart to the inbound mirror in
-				// inbox/messages.ts. An agent reply lives on a real conversationThread,
-				// so it's a genuine conversation turn — unlike campaign / transactional
-				// / automation sends, which are NOT mirrored (no inbound thread; they
-				// surface in the Activity tab via contactActivities). Idempotent on the
-				// provider message id and best-effort: a mirror failure must not undo
-				// the lifecycle transitions above or fail the workpool callback.
-				if (succeeded) {
-					try {
-						const inbound = await ctx.db.get(send.inboundMessageId);
-						if (inbound?.threadId && send.contactId) {
-							await mirrorEmailSendWrite(ctx, {
-								threadId: inbound.threadId,
-								contactId: send.contactId,
-								subject: send.subject,
-								textBody: inbound.draftResponse,
-								externalMessageId: returnValue?.providerMessageId,
-								status: 'sent',
-							});
-						}
-					} catch {
-						// Best-effort: the timeline mirror is a denormalized read model,
-						// never the source of truth. Swallow so a mirror error can't fail
-						// the Send completion callback (which would re-run the lifecycle
-						// transitions). The next confirmed reply re-establishes the thread.
-					}
-				}
-			}
-		}
-
 		// Provider health recording is intentionally NOT here — the
 		// **Send dispatch (helper)** in `lib/sendProviders/dispatch.ts`
 		// records every attempt uniformly upstream of this module.
+	},
+});
+
+/** Re-enter the same bounded workpool after a typed last-mile deferral. */
+export const retrySend = internalMutation({
+	args: {
+		sendRef: sendRefValidator,
+		envelopeInput: envelopeInputValidator,
+		retryState: retryStateValidator,
+	},
+	handler: async (ctx, args) => {
+		const pool = args.sendRef.kind === 'campaign' ? campaignEmailPool : transactionalEmailPool;
+		await pool.enqueueAction(
+			ctx,
+			internal.delivery.worker.sendSingleEmail,
+			{ envelopeInput: args.envelopeInput, retryState: args.retryState },
+			{
+				onComplete: internal.delivery.sendCompletion.completeSend,
+				context: { sendRef: args.sendRef },
+			}
+		);
 	},
 });

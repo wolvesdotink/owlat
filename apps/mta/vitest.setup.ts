@@ -9,3 +9,5 @@
  */
 
 process.env['MTA_SECRET'] ??= 'test-mta-secret-0123456789abcdef0123456789abcdef';
+process.env['FBL_DEDUP_PROTOCOL'] ??= 'owned-v2';
+process.env['FBL_DEDUP_CUTOVER_ACK'] ??= 'fresh-install';

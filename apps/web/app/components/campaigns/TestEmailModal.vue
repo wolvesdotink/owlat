@@ -71,7 +71,7 @@ const handleSendTestEmail = async () => {
 			close();
 		}, 2000);
 	} catch (error) {
-		testEmailError.value = error instanceof Error ? error.message : 'Failed to send test email';
+		testEmailError.value = error instanceof Error ? error.message : 'Failed to queue test email';
 	} finally {
 		isSending.value = false;
 	}
@@ -96,7 +96,7 @@ const submitForm = () => {
 </script>
 
 <template>
-	<UiModal :open="open" title="Send Test Email" :persistent="isSending" @update:open="close">
+	<UiModal :open="open" title="Queue Test Email" :persistent="isSending" @update:open="close">
 		<!-- Success State -->
 		<div v-if="emailSent" class="text-center py-8">
 			<div
@@ -104,7 +104,7 @@ const submitForm = () => {
 			>
 				<Icon name="lucide:check-circle" class="w-8 h-8 text-success" />
 			</div>
-			<p class="text-lg font-medium text-text-primary">Test Email Sent!</p>
+			<p class="text-lg font-medium text-text-primary">Test Email Queued!</p>
 			<p class="text-sm text-text-secondary mt-2">Check your inbox at {{ testEmailAddress }}</p>
 		</div>
 
@@ -172,7 +172,7 @@ const submitForm = () => {
 					<UiButton variant="secondary" :disabled="isSending" @click="close">Cancel</UiButton>
 					<UiButton :loading="isSending" :disabled="isSending" @click="submitForm">
 						<template v-if="!isSending" #iconLeft><Icon name="lucide:send-horizonal" class="w-4 h-4" /></template>
-						{{ isSending ? 'Sending...' : 'Send Test' }}
+						{{ isSending ? 'Queueing...' : 'Queue Test' }}
 					</UiButton>
 				</div>
 			</UiModalFooter>

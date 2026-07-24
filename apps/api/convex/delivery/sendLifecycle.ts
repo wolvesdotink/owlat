@@ -31,6 +31,8 @@ import {
 	resolveRecipientContact,
 	senderDomainFor,
 } from './sendLifecycle/lookups';
+import { withoutTestSendEffects } from './sendLifecycle/types';
+import { mirrorEmailSendWrite } from '../unifiedMessages';
 
 // ============================================================================
 // Send lifecycle — the single writer of `emailSends.status` and
@@ -107,7 +109,8 @@ const transitionInputValidator = v.union(
 async function dispatch(
 	ctx: MutationCtx,
 	ref: SendRef,
-	input: TransitionInput
+	input: TransitionInput,
+	options: { allowQueuedMtaTerminal?: boolean } = {}
 ): Promise<TransitionOutcome> {
 	const send = await loadSend(ctx, ref);
 	if (!send) return { ok: false, reason: 'send_not_found' };
@@ -117,7 +120,12 @@ async function dispatch(
 	// non-terminal (it may harden or draw a complaint), so its legal set is
 	// `{bounced, complained}` rather than the empty static `bounced` set.
 	const legalEdges = legalEdgesFor(send);
-	const isLegalEdge = legalEdges.has(input.to);
+	const isBoundQueuedMtaTerminal =
+		options.allowQueuedMtaTerminal === true &&
+		from === 'queued' &&
+		send.providerType === 'mta' &&
+		(input.to === 'bounced' || input.to === 'complained' || input.to === 'failed');
+	const isLegalEdge = legalEdges.has(input.to) || isBoundQueuedMtaTerminal;
 	const isSelfLoop = from === input.to;
 	const isDeliveryEvidence =
 		input.to === 'delivered' ||
@@ -152,8 +160,12 @@ async function dispatch(
 	if (isDeliveryEvidence && send.deliveredAt === undefined) {
 		deliverySenderDomain = await senderDomainFor(ctx, send, ref);
 		const recipientContact = await resolveRecipientContact(ctx, send);
+		const observationSend =
+			isBoundQueuedMtaTerminal && input.to === 'complained'
+				? ({ ...send, status: 'sent' } as typeof send)
+				: send;
 		deliveryObservation = reduceDeliveryObservation(
-			send,
+			observationSend,
 			input.at,
 			ref,
 			deliverySenderDomain,
@@ -201,7 +213,7 @@ async function dispatch(
 		}
 	}
 
-	result = {
+	result = withoutTestSendEffects(send, ref, {
 		...result,
 		patch: { ...deliveryObservation.patch, ...result.patch },
 		effects: [...deliveryObservation.effects, ...result.effects],
@@ -209,7 +221,7 @@ async function dispatch(
 			deliveryObservation.isNewObservation && result.applied === 'duplicate'
 				? 'recorded'
 				: result.applied,
-	};
+	});
 
 	if (Object.keys(result.patch).length > 0) {
 		// Per-kind narrowing for the patch call — Convex's patch signature is
@@ -223,6 +235,58 @@ async function dispatch(
 
 	if (result.applied !== 'duplicate') {
 		await applyEffects(ctx, result.effects);
+
+		// Agent-reply source finalization belongs to the Send terminal edge, not
+		// to one transport callback. Direct/relay completion and authenticated MTA
+		// remote acceptance both pass here, while duplicate transitions remain a
+		// no-op. This closes the approved-message state before the stale reconciler
+		// can enqueue a second reply.
+		if (
+			ref.kind === 'transactional' &&
+			(send as TransactionalSendDoc).kind === 'agent_reply' &&
+			(send as TransactionalSendDoc).inboundMessageId &&
+			(input.to === 'sent' ||
+				input.to === 'failed' ||
+				input.to === 'bounced' ||
+				input.to === 'complained')
+		) {
+			const agentSend = send as TransactionalSendDoc;
+			const succeeded = input.to === 'sent';
+			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+				inboundMessageId: agentSend.inboundMessageId!,
+				input: succeeded
+					? { to: 'sent', at: input.at }
+					: {
+							to: 'failed',
+							at: input.at,
+							errorMessage:
+								input.to === 'failed'
+									? input.errorMessage
+									: input.to === 'bounced'
+										? (input.bounceMessage ?? 'Delivery bounced')
+										: 'Recipient complained about delivery',
+						},
+			});
+
+			if (succeeded) {
+				try {
+					const inbound = await ctx.db.get(agentSend.inboundMessageId!);
+					if (inbound?.threadId && agentSend.contactId) {
+						await mirrorEmailSendWrite(ctx, {
+							threadId: inbound.threadId,
+							contactId: agentSend.contactId,
+							subject: agentSend.subject,
+							textBody: inbound.draftResponse,
+							externalMessageId: input.providerMessageId,
+							status: 'sent',
+						});
+					}
+				} catch {
+					// The timeline is a denormalized, idempotent read model. It must
+					// never roll back the authoritative Send/source lifecycle edge.
+				}
+			}
+		}
 
 		// ── Post-send OUTCOME signal (graduated-autonomy learning) ──
 		// A bounce or complaint on any agent reply (auto-sent OR human-approved)
@@ -241,6 +305,14 @@ async function dispatch(
 					signal: input.to === 'bounced' ? 'bounce' : 'complaint',
 				});
 			}
+		}
+
+		// Reconcile at the authoritative lifecycle edge, including terminal MTA
+		// webhooks that arrive after the workpool's intake callback returned.
+		if (ref.kind === 'campaign' && from === 'queued') {
+			await ctx.runMutation(internal.campaigns.lifecycle.reconcileCampaignCompletion, {
+				campaignId: (send as EmailSendDoc).campaignId,
+			});
 		}
 	}
 
@@ -291,5 +363,68 @@ export const transitionByProviderMessageId = internalMutation({
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		return await dispatch(ctx, ref, args.transition);
+	},
+});
+
+/** Bind the deterministic MTA identity before crossing the network boundary. */
+export const bindMtaProviderIdentity = internalMutation({
+	args: { send: sendRefValidator, providerMessageId: v.string() },
+	handler: async (ctx, args) => {
+		const send = await loadSend(ctx, args.send);
+		if (!send) return { ok: false as const, reason: 'send_not_found' as const };
+		if (
+			send.providerType === 'mta' &&
+			send.providerMessageId &&
+			send.providerMessageId !== args.providerMessageId
+		) {
+			return { ok: false as const, reason: 'identity_conflict' as const };
+		}
+		if (send.status !== 'queued') {
+			return { ok: false as const, reason: 'terminal' as const };
+		}
+		if (!send.providerMessageId || send.providerType !== 'mta') {
+			await ctx.db.patch(args.send.id, {
+				providerMessageId: args.providerMessageId,
+				providerType: 'mta',
+			});
+		}
+		return { ok: true as const };
+	},
+});
+
+/** Apply an authenticated terminal MTA result to its pre-bound provisional Send. */
+export const transitionMtaByProviderMessageId = internalMutation({
+	args: { providerMessageId: v.string(), transition: transitionInputValidator },
+	handler: async (ctx, args): Promise<TransitionOutcome> => {
+		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
+		if (!ref) return { ok: false, reason: 'send_not_found' };
+		const send = await loadSend(ctx, ref);
+		if (!send || send.providerType !== 'mta' || send.providerMessageId !== args.providerMessageId) {
+			return { ok: false, reason: 'send_not_found' };
+		}
+		return await dispatch(ctx, ref, args.transition, { allowQueuedMtaTerminal: true });
+	},
+});
+
+/** Atomically record an MTA's remote SMTP acceptance as sent then delivered. */
+export const recordMtaRemoteAcceptance = internalMutation({
+	args: { providerMessageId: v.string(), at: v.number() },
+	handler: async (ctx, args): Promise<TransitionOutcome> => {
+		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
+		if (!ref) return { ok: false, reason: 'send_not_found' };
+		const send = await loadSend(ctx, ref);
+		if (!send || send.providerType !== 'mta' || send.providerMessageId !== args.providerMessageId) {
+			return { ok: false, reason: 'send_not_found' };
+		}
+		await dispatch(ctx, ref, {
+			to: 'sent',
+			at: args.at,
+			providerMessageId: args.providerMessageId,
+			providerType: 'mta',
+		});
+		// Delivery evidence can arrive after a later bounce/failure. The delivered
+		// reducer owns timestamp attribution in that case; never let the synthetic
+		// sent edge suppress an otherwise attributable observation.
+		return await dispatch(ctx, ref, { to: 'delivered', at: args.at });
 	},
 });

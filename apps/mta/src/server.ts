@@ -12,7 +12,7 @@ import type { MtaConfig } from './config.js';
 import type { OrgCredential } from './auth/credentials.js';
 import { lookupCredential } from './auth/credentials.js';
 import { timingSafeStringEqual } from './auth/timingSafe.js';
-import { createSendHandler } from './routes/send.js';
+import { createSendHandler, createSendReceiptHandler } from './routes/send.js';
 import { createHealthHandler, createMetricsHandler } from './routes/health.js';
 import { createCredentialRoutes } from './routes/credentials.js';
 import { createOrgLimitsRoutes } from './routes/orgLimits.js';
@@ -29,6 +29,7 @@ import { createIspProfileRoutes } from './routes/ispProfiles.js';
 import { createIpReputationRoutes } from './routes/ipReputation.js';
 import { createScanRoutes } from './routes/scan.js';
 import { logger } from './monitoring/logger.js';
+import { createRoutingDecisionHandler } from './routes/routingDecision.js';
 
 /** Auth context set by the authentication middleware */
 export interface AuthContext {
@@ -78,6 +79,10 @@ export function createApp(queue: Queue<EmailJob>, redis: Redis, config: MtaConfi
 
 	// ── Routes ──
 	app.post('/send', createSendHandler(queue, redis));
+	app.post('/send/postbox', createSendHandler(queue, redis, 'postbox'));
+	app.post('/send/system', createSendHandler(queue, redis, 'system'));
+	app.post('/send/decision', createRoutingDecisionHandler(redis, config));
+	app.get('/send/receipt/:workAttemptId', createSendReceiptHandler(redis));
 	app.get('/health', createHealthHandler(redis, config));
 	app.get('/metrics', createMetricsHandler());
 

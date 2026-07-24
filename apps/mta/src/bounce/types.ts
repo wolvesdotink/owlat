@@ -16,6 +16,7 @@ import type { MtaConfig } from '../config.js';
 import type { InboundRoute } from '../inbound/router.js';
 import type { MailboxCacheEntry } from '../inbound/mailboxResolver.js';
 import type { BounceClassification } from '../types.js';
+import type { ComplaintDedupReservation } from './fblProcessor.js';
 
 /**
  * The base ctx every Phase receives — derived purely from what the SMTP
@@ -183,6 +184,8 @@ export type BounceAttempt =
 	| {
 			readonly kind: 'fbl';
 			readonly arf: BounceClassification;
+			/** Owned until the terminal complaint callback is durably persisted. */
+			readonly dedupReservation?: ComplaintDedupReservation;
 	  }
 	| {
 			readonly kind: 'dsn_attributed';

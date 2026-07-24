@@ -3,22 +3,19 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
-import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
-import {
-	type ExtrasFor,
-	type MtaExtras,
-	type ResendExtras,
-	type SendProviderKind,
-} from '../lib/sendProviders';
-import { selectSendProviderKind } from '../lib/sendProviders/types';
 import { getUnsubscribeUrl, getListUnsubscribeHeader } from './unsubscribe';
 import { getPreferenceUrl } from './preferences';
-import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getMtaConfig, scanAttachmentBytes } from '../mail/mtaClient';
 import { transformHtml } from './sendComposition/transform';
 import { fetchGuarded } from '../lib/ssrfGuard';
 import { composeForSend, type CampaignComposeInput, type ComposeInput } from './sendComposition';
 import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCompliance';
+import { dispatchGovernedEmail } from './governedDispatch';
+import {
+	envelopeInputValidator,
+	retryStateValidator,
+	type WorkerEnvelopeInput,
+} from './workerEnvelope';
 
 /**
  * Email Worker Action for Workpool-based Email Sending
@@ -39,161 +36,15 @@ import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCo
 // `providerType`). The worker turns this into a `ComposeInput` for the
 // per-kind composer, then dispatches the composed envelope.
 
-const attachmentRefValidator = v.object({
-	filename: v.string(),
-	contentType: v.optional(v.string()),
-	url: v.string(),
-});
-
-const envelopeInputValidator = v.union(
-	v.object({
-		kind: v.literal('campaign'),
-		to: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		providerType: v.optional(v.string()),
-		template: v.object({
-			subject: v.string(),
-			htmlContent: v.string(),
-		}),
-		contactInfo: v.object({
-			contactId: v.optional(v.id('contacts')),
-			email: v.string(),
-			firstName: v.optional(v.string()),
-			lastName: v.optional(v.string()),
-		}),
-		audienceType: v.optional(v.union(v.literal('topic'), v.literal('segment'))),
-		emailSendId: v.optional(v.id('emailSends')),
-		// Gmail FBL — the campaign + singleton org id let the composer emit a
-		// per-campaign `Feedback-ID` header for Postmaster spam-rate granularity.
-		campaignId: v.optional(v.id('campaigns')),
-		organizationId: v.optional(v.string()),
-		siteUrl: v.optional(v.string()),
-		convexSiteUrl: v.optional(v.string()),
-		trackingBaseUrl: v.optional(v.string()),
-		viewInBrowserUrl: v.optional(v.string()),
-		// RFC 2919 List-Id header value for a TOPIC campaign, pre-built by the
-		// orchestrator (`getListIdHeader`) from the topic id/name + sending
-		// domain. Absent for segment campaigns.
-		listId: v.optional(v.string()),
-	}),
-	v.object({
-		kind: v.literal('transactional'),
-		emailPurpose: v.union(v.literal('marketing'), v.literal('transactional')),
-		to: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		providerType: v.optional(v.string()),
-		// The `transactionalSends._id` this envelope sends for. Used ONLY to
-		// derive a stable provider idempotency key (see `deriveIdempotencyKey`)
-		// so a surviving retry de-dupes at the MTA / Resend instead of double-
-		// sending. Optional for back-compat with any in-flight enqueue.
-		sendId: v.optional(v.id('transactionalSends')),
-		template: v.object({
-			subject: v.string(),
-			htmlContent: v.string(),
-		}),
-		dataVariables: v.optional(v.record(v.string(), jsonPrimitiveValue)),
-		attachmentRefs: v.optional(v.array(attachmentRefValidator)),
-		// Custom MIME headers (e.g. In-Reply-To / References for agent replies).
-		// Merged below; the composer's own headers (e.g. `Feedback-ID`) win on
-		// key collision.
-		headers: v.optional(v.record(v.string(), v.string())),
-		// RFC 3834 Auto-Submitted classification (see TransactionalComposeInput).
-		// `auto-replied` for the agent 1:1 reply path (an automatic reply to a
-		// specific inbound message); omitted → the composer defaults to
-		// `auto-generated` for system/DOI/transactional + automation mail.
-		autoSubmittedType: v.optional(v.union(v.literal('auto-generated'), v.literal('auto-replied'))),
-		// Unsubscribe footer wiring — set when the template's `showUnsubscribe`
-		// flag is on. The worker builds the HMAC unsubscribe/preference URLs
-		// (Node-only) from `siteUrl` + `contactId`, mirroring the campaign path.
-		showUnsubscribe: v.optional(v.boolean()),
-		contactId: v.optional(v.id('contacts')),
-		siteUrl: v.optional(v.string()),
-		// Gmail FBL — singleton org id; the composer emits a `txn`-stream
-		// `Feedback-ID` header so transactional spam complaints aggregate apart
-		// from bulk campaign sends.
-		organizationId: v.optional(v.string()),
-		// List-Unsubscribe header wiring for MARKETING non-campaign sends
-		// (automation drip/broadcast steps). When `listUnsubscribe` is set and a
-		// `contactId` + `convexSiteUrl` are present, the worker builds the RFC 8058
-		// one-click header (Node-only HMAC) and merges it onto the envelope so
-		// Gmail/Yahoo's 2024 bulk rule is satisfied. Transactional/agent sends
-		// leave it unset (no List-Unsubscribe on 1:1 mail).
-		listUnsubscribe: v.optional(v.boolean()),
-		convexSiteUrl: v.optional(v.string()),
-	})
-);
-
-type WorkerEnvelopeInput =
-	| {
-			kind: 'campaign';
-			to: string;
-			from: string;
-			replyTo?: string;
-			providerType?: string;
-			template: { subject: string; htmlContent: string };
-			contactInfo: {
-				contactId?: import('../_generated/dataModel').Id<'contacts'>;
-				email: string;
-				firstName?: string;
-				lastName?: string;
-			};
-			audienceType?: 'topic' | 'segment';
-			emailSendId?: import('../_generated/dataModel').Id<'emailSends'>;
-			campaignId?: import('../_generated/dataModel').Id<'campaigns'>;
-			organizationId?: string;
-			siteUrl?: string;
-			convexSiteUrl?: string;
-			trackingBaseUrl?: string;
-			viewInBrowserUrl?: string;
-			listId?: string;
-	  }
-	| {
-			kind: 'transactional';
-			emailPurpose: EmailPurpose;
-			to: string;
-			from: string;
-			replyTo?: string;
-			providerType?: string;
-			sendId?: import('../_generated/dataModel').Id<'transactionalSends'>;
-			template: { subject: string; htmlContent: string };
-			dataVariables?: Record<string, unknown>;
-			attachmentRefs?: { filename: string; contentType?: string; url: string }[];
-			headers?: Record<string, string>;
-			autoSubmittedType?: 'auto-generated' | 'auto-replied';
-			showUnsubscribe?: boolean;
-			contactId?: import('../_generated/dataModel').Id<'contacts'>;
-			siteUrl?: string;
-			organizationId?: string;
-			// Marketing List-Unsubscribe wiring for automation steps — see the
-			// validator above. The worker builds + merges the header when both
-			// `listUnsubscribe` and `convexSiteUrl` + `contactId` are present.
-			listUnsubscribe?: boolean;
-			convexSiteUrl?: string;
-	  };
-
-/**
- * Derive a STABLE idempotency key from the Send-row id this envelope sends for
- * (`emailSends._id` for campaigns, `transactionalSends._id` for transactionals).
- *
- * Convex document ids are globally unique and stable for the life of the row, so
- * the same envelope always derives the same key across re-runs. The key is
- * threaded to the provider so a surviving retry (a workpool re-run, or a future
- * caller that re-dispatches the same Send) de-dupes at the boundary instead of
- * double-delivering: the MTA `/send` route SET-NX dedups on `messageId`
- * (apps/mta/src/routes/send.ts), and Resend dedups on the `Idempotency-Key`
- * header. The pre-fix worker passed empty extras, so the MTA module minted a
- * fresh `crypto.randomUUID()` per attempt — defeating the MTA dedup entirely.
- *
- * Returns `undefined` only for the legacy/edge case where neither id is present
- * (e.g. an in-flight enqueue from before this field existed); the provider then
- * falls back to its own per-attempt id, preserving today's behavior.
- */
-function deriveIdempotencyKey(envelopeInput: WorkerEnvelopeInput): string | undefined {
-	const sendRowId =
-		envelopeInput.kind === 'campaign' ? envelopeInput.emailSendId : envelopeInput.sendId;
-	return sendRowId ? `send_${sendRowId}` : undefined;
+/** Preserve legacy automation envelopes that predate the messageType field. */
+export function resolveWorkerMessageType(
+	envelopeInput: WorkerEnvelopeInput
+): 'campaign' | 'transactional' | 'automation' {
+	if (envelopeInput.kind === 'campaign') return 'campaign';
+	return (
+		envelopeInput.messageType ??
+		(envelopeInput.emailPurpose === 'marketing' ? 'automation' : 'transactional')
+	);
 }
 
 /**
@@ -376,8 +227,9 @@ async function resolveAttachments(
 export const sendSingleEmail = internalAction({
 	args: {
 		envelopeInput: envelopeInputValidator,
+		retryState: v.optional(retryStateValidator),
 	},
-	handler: async (ctx, { envelopeInput }) => {
+	handler: async (ctx, { envelopeInput, retryState }) => {
 		// Suppression re-check — campaign path only. Campaigns filter the blocklist
 		// once, at audience-resolution time, then enqueue. But the timezone path
 		// can schedule a send up to ~24h out and the rate-limited campaign queue
@@ -399,16 +251,6 @@ export const sendSingleEmail = internalAction({
 				// non-delivery transition (status 'failed', code RECIPIENT_SUPPRESSED).
 				return { success: false, suppressed: true };
 			}
-		}
-
-		const providerKind = selectSendProviderKind(envelopeInput.providerType);
-		if (!providerKind) {
-			// Fail-closed: no delivery provider configured. The send entry points
-			// gate on isDeliveryConfigured() upstream, so reaching here means a
-			// misconfiguration slipped through — fail loudly instead of guessing MTA.
-			throw new Error(
-				'No delivery provider configured: set EMAIL_PROVIDER (and its credentials) or a provider route before sending.'
-			);
 		}
 
 		const composeInput = buildComposeInput(envelopeInput);
@@ -438,27 +280,24 @@ export const sendSingleEmail = internalAction({
 			envelopeInput.kind === 'campaign' ? 'marketing' : envelopeInput.emailPurpose;
 		assertMarketingOneClickHeaders(emailPurpose, mergedHeaders);
 
-		// Send via the Send dispatch helper. The helper owns retries, error
-		// categorization, and `providerHealth` recording for every attempt.
-		//
-		// Thread a stable, Send-row-derived idempotency key so any surviving
-		// retry de-dupes at the boundary: MTA dedups on `messageId`, Resend on
-		// the `Idempotency-Key` header. SES has no idempotency surface (its
-		// adapter treats a post-dispatch timeout as TERMINAL instead).
-		const idempotencyKey = deriveIdempotencyKey(envelopeInput);
-		const extras: ExtrasFor<SendProviderKind> =
-			providerKind === 'mta'
-				? ({ messageId: idempotencyKey } satisfies MtaExtras)
-				: providerKind === 'resend'
-					? ({ idempotencyKey } satisfies ResendExtras)
-					: {};
-		const dispatched = await sendProviderDispatch(
-			ctx,
-			providerKind,
-			{
-				to: envelopeInput.to,
-				from: envelopeInput.from,
-				replyTo: envelopeInput.replyTo,
+		return await dispatchGovernedEmail(ctx, {
+			envelopeInput,
+			deliveryDomain: envelopeInput.deliveryDomain ?? 'production',
+			messageType: resolveWorkerMessageType(envelopeInput),
+			to: envelopeInput.to,
+			from: envelopeInput.from,
+			replyTo: envelopeInput.replyTo,
+			providerType: envelopeInput.providerType,
+			ipPool: envelopeInput.ipPool,
+			organizationId: envelopeInput.organizationId,
+			sendRef:
+				envelopeInput.kind === 'campaign' && envelopeInput.emailSendId
+					? { kind: 'campaign', id: envelopeInput.emailSendId }
+					: envelopeInput.kind === 'transactional' && envelopeInput.sendId
+						? { kind: 'transactional', id: envelopeInput.sendId }
+						: undefined,
+			retryState,
+			message: {
 				subject: composed.subject,
 				html,
 				// Plain-text alternative derived from the UNTRACKED composer html
@@ -468,21 +307,6 @@ export const sendSingleEmail = internalAction({
 				headers: Object.keys(mergedHeaders).length > 0 ? mergedHeaders : undefined,
 				attachments: resolvedAttachments,
 			},
-			extras
-		);
-
-		if (dispatched.result.success) {
-			return {
-				success: true,
-				providerMessageId:
-					providerKind === 'mta' && idempotencyKey && dispatched.result.id !== idempotencyKey
-						? idempotencyKey
-						: dispatched.result.id, // MTA-only: keep the VERP token, not a dedup sentinel, so bounce/complaint DSNs resolve by_provider_message_id (Resend/SES keep their own ids)
-				providerType: dispatched.providerType,
-				sendLatencyMs: dispatched.latencyMs,
-			};
-		}
-
-		throw new Error(dispatched.result.errorMessage || 'Unknown email sending error');
+		});
 	},
 });

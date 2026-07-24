@@ -9,7 +9,7 @@ import { internal } from '../_generated/api';
  *
  * The MTA branch used to call a dedicated `sendViaInstanceMta` client. It now
  * routes through the shared `sendProviderDispatch` like the resend/ses branches,
- * passing ipPool 'transactional'. These tests lock the byte-for-byte /send body
+ * passing ipPool 'transactional'. These tests lock the /send/system body
  * (ipPool 'transactional', dkimDomain defaulted to the from-domain, a random
  * messageId, and the RFC 3834 `Auto-Submitted: auto-generated` header) so the
  * default self-host is provably unchanged, and confirm the provider-health
@@ -32,7 +32,7 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 		vi.restoreAllMocks();
 	});
 
-	it('POSTs a /send body carrying ipPool "transactional", the Auto-Submitted header, the defaulted dkimDomain, and a random messageId', async () => {
+	it('POSTs a fixed-scope /send/system body carrying the transactional pool and system identity', async () => {
 		const t = convexTest(schema, modules);
 
 		const fetchSpy = vi.fn().mockResolvedValue(
@@ -52,10 +52,12 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 
 		expect(fetchSpy).toHaveBeenCalledTimes(1);
 		const url = fetchSpy.mock.calls[0]![0] as string;
-		expect(url).toBe('https://mta.test/send');
+		expect(url).toBe('https://mta.test/send/system');
 
 		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
 		expect(body.ipPool).toBe('transactional');
+		expect(body.organizationId).toBe('system');
+		expect(body).not.toHaveProperty('routingLease');
 		expect(body.to).toBe('user@example.com');
 		expect(body.from).toBe('Owlat <noreply@mail.example.com>');
 		expect(body.subject).toBe('Reset your password');

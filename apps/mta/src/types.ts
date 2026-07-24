@@ -7,6 +7,12 @@
 export interface EmailJob {
 	/** Owlat internal message ID for correlation (becomes providerMessageId in Convex) */
 	messageId: string;
+	/** Stable identity of the initial GroupMQ intake reservation. Absent on retained legacy jobs. */
+	intakeReceiptId?: string;
+	/** Unique bounded work identity; provider correlation remains messageId. */
+	workAttemptId?: string;
+	/** Durable predecessor→successor handoff promoted when a deferred job starts. */
+	deferHandoffId?: string;
 	/** Recipient email address */
 	to: string;
 	/** Sender email address */
@@ -43,6 +49,8 @@ export interface EmailJob {
 	ipPool: IpPoolType;
 	/** Organization ID for circuit breaker and webhook correlation */
 	organizationId: string;
+	/** Authenticated production-vs-member-preview effect domain. */
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
 	/** Engagement score 0-100 from Convex contact activity (for priority ordering) */
 	engagementScore?: number;
 	/** Domain for DKIM signing */
@@ -55,6 +63,36 @@ export interface EmailJob {
 	 * GroupMQ `ReservedJob.timestamp` of the current attempt.
 	 */
 	firstEnqueuedAt?: number;
+	/** Authenticated last-mile routing lease issued by this MTA. */
+	routingLease?: {
+		token: string;
+		destinationProvider: DestinationProviderKey;
+		probe: boolean;
+		globalProbe?: boolean;
+		ip?: string;
+		eligibilityGeneration?: number;
+		globalBreakerGeneration?: number;
+		providerBreakerGeneration?: number;
+		warmingReservation?: {
+			ip: string;
+			messageId: string;
+			utcDate: string;
+			expiresAt: number;
+		};
+	};
+	/** Opaque handle to server-side Convex state; contains no tenant content. */
+	routingReentryToken?: string;
+	/** Callback material whose canonical digest is authenticated by the token. */
+	routingReentry?: {
+		envelopeInput: unknown;
+		retryState: {
+			attempt: number;
+			startedAt: number;
+			idempotencyKey: string;
+			workAttemptId?: string;
+			acceptanceReconciliation?: boolean;
+		};
+	};
 }
 
 export type IpPoolType = 'transactional' | 'campaign';
@@ -92,26 +130,13 @@ export interface EmailJobResult {
 
 // ============ Webhook Event Types ============
 
-export type MtaWebhookEventType =
-	| 'sent'
-	| 'bounced'
-	| 'failed'
-	| 'complained'
-	| 'org.circuit_breaker'
-	| 'campaign.complaint_rate'
-	| 'ip.blocklisted'
-	| 'ip.delisted'
-	| 'ip.warming_complete'
-	| 'all_ips_blocked'
-	| 'postmaster.authorize_domain'
-	| 'postmaster.stats'
-	| 'dkim.rotated'
-	| 'inbound.received'
-	| 'inbound.mailbox.received';
+export type MtaWebhookEventType = import('@owlat/shared/mtaWebhookEvent').MtaWebhookEventType;
 
 export interface MtaWebhookEvent {
 	/** Event type */
 	event: MtaWebhookEventType;
+	/** Stable producer identity for end-to-end idempotent event consumers. */
+	eventId?: string;
 	/** Owlat message ID for correlation */
 	messageId?: string;
 	/**
@@ -123,6 +148,7 @@ export interface MtaWebhookEvent {
 	recipient?: string;
 	/** Organization ID (for org-level events) */
 	organizationId?: string;
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
 	/** Phase-2 MX-derived receiver identity for accepted-delivery telemetry. */
 	destinationProvider?: DestinationProviderKey;
 	/** PSL-correct primary sending domain used by Gmail's bulk classification. */
@@ -131,6 +157,8 @@ export interface MtaWebhookEvent {
 	bounceType?: 'hard' | 'soft';
 	/** Human-readable message */
 	message?: string;
+	/** Closed lifecycle failure code for terminal non-delivery events. */
+	errorCode?: string;
 	/** Affected IP (for IP events) */
 	ip?: string;
 	/** Blocklists the IP is listed on */
@@ -164,6 +192,23 @@ export interface MtaWebhookEvent {
 	inboundPayload?: InboundEmailPayload;
 	/** Personal-mailbox payload (for inbound.mailbox.received events) */
 	mailboxPayload?: MailboxInboundPayload;
+	/** Opaque Convex state handle for a pre-network routing re-entry. */
+	routingReentryToken?: string;
+	workAttemptId?: string;
+	routingReentry?: {
+		envelopeInput: unknown;
+		retryState: {
+			attempt: number;
+			startedAt: number;
+			idempotencyKey: string;
+			workAttemptId?: string;
+			acceptanceReconciliation?: boolean;
+		};
+	};
+	routingReentryReason?:
+		| 'routing_lease_stale'
+		| 'circuit_breaker_changed'
+		| 'warming_capacity_changed';
 	/** Timestamp */
 	timestamp: number;
 }
@@ -366,6 +411,10 @@ export interface BounceClassification {
 	diagnosticCode?: string;
 	originalMessageId?: string;
 	organizationId?: string;
+	/** Server-persisted production/test attribution for delayed feedback. */
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
+	/** Unknown/mixed provenance is explicitly non-destructive. */
+	feedbackProvenance?: import('@owlat/shared').DeliveryDomain | 'unknown';
 	/**
 	 * The complained/bounced recipient address, extracted from the ARF
 	 * feedback-report part (RFC 5965 §3.2 `Original-Rcpt-To` /

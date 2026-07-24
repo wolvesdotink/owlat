@@ -6,6 +6,9 @@
 
 import type { Validator } from 'convex/values';
 import type { InboundEmailMessage } from '@owlat/channels';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { DeliveryDomain } from '@owlat/shared';
+import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEnvelope';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
 
@@ -44,15 +47,21 @@ export type InboundEvent =
 			providerMessageId: string;
 			at: number;
 			providerType?: string;
-			destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+			destinationProvider?: DestinationProviderKey;
 			primarySendingDomain?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			kind: 'email.delivered';
 			providerMessageId: string;
 			at: number;
-			destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
+			providerType?: string;
+			/** Untrusted telemetry only; cache binding derives tenant/recipient from Send. */
+			organizationId?: string;
+			recipient?: string;
+			destinationProvider?: DestinationProviderKey;
 			primarySendingDomain?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			// Terminal, NON-bounce delivery failure. Emitted by the MTA for the
@@ -65,6 +74,8 @@ export type InboundEvent =
 			at: number;
 			errorMessage: string;
 			errorCode: string;
+			providerType?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			kind: 'email.bounced';
@@ -72,6 +83,8 @@ export type InboundEvent =
 			at: number;
 			bounceType: 'hard' | 'soft';
 			bounceMessage?: string;
+			providerType?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			kind: 'email.complained';
@@ -85,6 +98,8 @@ export type InboundEvent =
 			 * complaint still lands the recipient on the blocklist.
 			 */
 			recipient?: string;
+			providerType?: string;
+			deliveryDomain?: DeliveryDomain;
 	  }
 	| {
 			kind: 'email.opened';
@@ -117,9 +132,11 @@ export type InboundEvent =
 	  }
 	| {
 			kind: 'internal.campaign_complaint_rate';
+			eventId: string;
 			message: string;
-			campaignId?: string;
-			complaintRate?: number;
+			campaignId: string;
+			complaintRate: number;
+			at: number;
 	  }
 	| {
 			kind: 'internal.ip_event';
@@ -128,6 +145,15 @@ export type InboundEvent =
 			blocklists?: string[];
 			severity?: 'info' | 'warning' | 'critical';
 			message?: string;
+	  }
+	| {
+			kind: 'internal.routing_reentry';
+			providerMessageId: string;
+			token: string;
+			workAttemptId: string;
+			envelopeInput: WorkerEnvelopeInput;
+			retryState: WorkerRetryState;
+			reason: 'routing_lease_stale' | 'circuit_breaker_changed' | 'warming_capacity_changed';
 	  }
 	| {
 			kind: 'internal.postmaster_authorize_domain';

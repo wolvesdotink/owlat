@@ -27,6 +27,16 @@ describe('ensureSecrets', () => {
 		expect(Buffer.byteLength(out['MTA_SECRET']!, 'utf8')).toBeGreaterThanOrEqual(32);
 	});
 
+	it('mints a VERP key and replaces the documentation placeholder', () => {
+		const fresh = ensureSecrets({});
+		expect(fresh['BOUNCE_VERP_KEY']).toMatch(/^[A-Za-z0-9]{40}$/);
+		const repaired = ensureSecrets({
+			BOUNCE_VERP_KEY: 'replace-with-openssl-rand-base64-32',
+		});
+		expect(repaired['BOUNCE_VERP_KEY']).toMatch(/^[A-Za-z0-9]{40}$/);
+		expect(repaired['BOUNCE_VERP_KEY']).not.toBe('replace-with-openssl-rand-base64-32');
+	});
+
 	it('preserves an operator-supplied MTA_SECRET (idempotent)', () => {
 		const out = ensureSecrets({ MTA_SECRET: 'operator-provided-secret-value-32bytes!!' });
 		expect(out['MTA_SECRET']).toBe('operator-provided-secret-value-32bytes!!');

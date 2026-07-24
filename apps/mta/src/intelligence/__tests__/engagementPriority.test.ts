@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { PRIORITY_BANDS, mapToPriority, priorityLabel } from '../engagementPriority.js';
+import {
+	PRIORITY_BANDS,
+	mapToPriority,
+	priorityLabel,
+	priorityToOrderMs,
+} from '../engagementPriority.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -36,5 +41,19 @@ describe('priorityLabel', () => {
 
 	it('returns "unknown" for unrecognized priority', () => {
 		expect(priorityLabel(5)).toBe('unknown');
+	});
+});
+
+describe('priorityToOrderMs', () => {
+	it.each([PRIORITY_BANDS.HIGH, PRIORITY_BANDS.MEDIUM, PRIORITY_BANDS.LOW])(
+		'preserves priority %d as a far-past order value',
+		(priority) => {
+			expect(priorityToOrderMs(priority)).toBe(priority);
+		}
+	);
+
+	it('uses the current time for cold recipients', () => {
+		vi.spyOn(Date, 'now').mockReturnValue(42_000);
+		expect(priorityToOrderMs(PRIORITY_BANDS.COLD)).toBe(42_000);
 	});
 });

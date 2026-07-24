@@ -53,6 +53,7 @@ export function createTestConfig(overrides?: Partial<MtaConfig>): MtaConfig {
 		deliveryLogMaxLen: 100000,
 		deliveryLogTtlHours: 72,
 		webhookDlqMaxSize: 10000,
+		smtpOutcomeJournalMaxSize: 10000,
 		bounceMaxConnectionsPerIp: 10,
 		bounceMaxClients: 200,
 		bounceTarpitEnabled: false,

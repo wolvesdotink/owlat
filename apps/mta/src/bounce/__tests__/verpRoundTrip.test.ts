@@ -14,7 +14,7 @@
  * Gmail/Yahoo suppression thresholds.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -23,6 +23,9 @@ vi.mock('../../monitoring/logger.js', () => ({
 import type { ParsedMessage } from '@owlat/mail-message';
 import { parseBounce } from '../parser.js';
 import { buildVerpAddress } from '../verp.js';
+
+const VERP_KEY = 'round-trip-test-verp-key-012345678901';
+afterEach(() => delete process.env['BOUNCE_VERP_KEY']);
 
 function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMessage {
 	return {
@@ -36,12 +39,13 @@ function createMockParsedMail(overrides: Record<string, unknown> = {}): ParsedMe
 
 describe('VERP round-trip — bounce attribution (PR-01)', () => {
 	it('decodes the stored providerMessageId back out of a DSN addressed to its VERP envelope', () => {
+		process.env['BOUNCE_VERP_KEY'] = VERP_KEY;
 		// Exactly what the worker stores on the Send row after the /send fix:
 		// providerMessageId === messageId === `send_<emailSendId>`.
 		const storedProviderMessageId = 'send_jh7abcdef0123456789';
 
 		// The MTA stamps this onto the Return-Path for every outbound message.
-		const verp = buildVerpAddress(storedProviderMessageId, 'bounces.test');
+		const verp = buildVerpAddress(storedProviderMessageId, 'bounces.test', VERP_KEY);
 		expect(verp.startsWith('bounce+')).toBe(true);
 		expect(verp.endsWith('@bounces.test')).toBe(true);
 

@@ -17,7 +17,10 @@ vi.mock('../../smtp/destinationProvider.js', () => ({
 	})),
 }));
 vi.mock('../../intelligence/circuitBreaker.js', () => ({
-	canSend: vi.fn().mockResolvedValue({ allowed: true, state: 'closed' }),
+	canSend: vi.fn().mockResolvedValue({ allowed: true, state: 'closed', generation: 0 }),
+	canSendScope: vi.fn().mockResolvedValue({ allowed: true, state: 'closed', generation: 0 }),
+	releaseHalfOpenProbe: vi.fn().mockResolvedValue(undefined),
+	reserveHalfOpenProbe: vi.fn().mockResolvedValue(true),
 	recordOutcome: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../../intelligence/domainThrottle.js', () => ({
@@ -32,6 +35,8 @@ vi.mock('../../intelligence/smtpResponse.js', () => ({
 }));
 vi.mock('../../intelligence/warming.js', () => ({
 	checkCap: vi.fn().mockResolvedValue({ allowed: true, sentToday: 0, dailyCap: Infinity }),
+	ensureWarmingReservation: vi.fn(),
+	releaseWarmingSlot: vi.fn().mockResolvedValue(undefined),
 	recordSend: vi.fn().mockResolvedValue(undefined),
 	recordBounce: vi.fn().mockResolvedValue(undefined),
 	recordDeferral: vi.fn().mockResolvedValue(undefined),
@@ -60,6 +65,7 @@ vi.mock('../../scaling/degradation.js', () => ({
 }));
 vi.mock('../../webhooks/convexNotifier.js', () => ({
 	notifyConvex: vi.fn().mockResolvedValue(true),
+	queueConvexWebhook: vi.fn(),
 }));
 vi.mock('../../monitoring/collector.js', () => ({
 	registry: { registerMetric: vi.fn() },
@@ -76,10 +82,12 @@ vi.mock('../../monitoring/logger.js', () => ({
 import { handleEmailJob } from '../handler.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import type { CtxWithIp } from '../../dispatch/types.js';
 
 function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {
 		messageId: 'msg-001',
+		intakeReceiptId: 'work-attempt-1',
 		to: 'user@example.com',
 		from: 'sender@owlat.com',
 		subject: 'Test',
@@ -89,6 +97,52 @@ function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 		dkimDomain: 'owlat.com',
 		firstEnqueuedAt: Date.now(),
 		...overrides,
+	};
+}
+
+function createGovernedJob(overrides: Partial<EmailJob> = {}): EmailJob {
+	return createJob({
+		deliveryDomain: 'production',
+		routingLease: {
+			token: 'lease-1',
+			destinationProvider: 'other',
+			probe: true,
+			globalProbe: true,
+			ip: '10.0.0.1',
+			eligibilityGeneration: 1,
+			globalBreakerGeneration: 0,
+			providerBreakerGeneration: 0,
+		},
+		routingReentry: {
+			envelopeInput: { kind: 'transactional' },
+			retryState: { attempt: 1, startedAt: Date.now(), idempotencyKey: 'msg-001' },
+		},
+		routingReentryToken: 'reentry-token',
+		workAttemptId: 'work-attempt-1',
+		...overrides,
+	});
+}
+
+function createAttempt(job = createJob()): CtxWithIp {
+	return {
+		job,
+		domain: 'example.com',
+		destination: {
+			recipientDomain: 'example.com',
+			providerKey: 'other',
+			throttleKey: 'example.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [{ exchange: 'mx.example.com', priority: 0 }],
+			},
+			daneDiscoveryAuthenticated: true,
+		},
+		fromDomain: 'owlat.com',
+		pool: 'transactional',
+		dedicatedIp: undefined,
+		ip: '10.0.0.1',
+		eligibilityGeneration: 1,
 	};
 }
 
@@ -119,9 +173,13 @@ function reserve(
  * A queue stub exposing only the `add` the handler uses for defer re-enqueue.
  * `add` returns a fake Job-shaped object — the handler ignores the return.
  */
-function createQueueStub(): Pick<Queue<EmailJob>, 'add'> & { add: ReturnType<typeof vi.fn> } {
+function createQueueStub(): Pick<Queue<EmailJob>, 'add' | 'getJob'> & {
+	add: ReturnType<typeof vi.fn>;
+	getJob: ReturnType<typeof vi.fn>;
+} {
 	return {
 		add: vi.fn().mockResolvedValue({ id: 'requeued-1' }),
+		getJob: vi.fn().mockResolvedValue(null),
 	};
 }
 
@@ -154,6 +212,7 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		deliveryLogMaxLen: 100000,
 		deliveryLogTtlHours: 72,
 		webhookDlqMaxSize: 10000,
+		smtpOutcomeJournalMaxSize: 10000,
 		bounceMaxConnectionsPerIp: 10,
 		bounceMaxClients: 200,
 		bounceTarpitEnabled: false,
@@ -185,6 +244,7 @@ describe('handleEmailJob', () => {
 	beforeEach(async () => {
 		vi.resetAllMocks();
 		redis = new Redis();
+		await redis.flushall();
 		config = createConfig();
 		queue = createQueueStub();
 
@@ -198,7 +258,14 @@ describe('handleEmailJob', () => {
 		});
 
 		const cb = await import('../../intelligence/circuitBreaker.js');
-		vi.mocked(cb.canSend).mockResolvedValue({ allowed: true, state: 'closed' });
+		vi.mocked(cb.canSend).mockResolvedValue({ allowed: true, state: 'closed', generation: 0 });
+		vi.mocked(cb.canSendScope).mockResolvedValue({
+			allowed: true,
+			state: 'closed',
+			generation: 0,
+		});
+		vi.mocked(cb.releaseHalfOpenProbe).mockResolvedValue(undefined);
+		vi.mocked(cb.reserveHalfOpenProbe).mockResolvedValue(true);
 		vi.mocked(cb.recordOutcome).mockResolvedValue(undefined);
 
 		const dt = await import('../../intelligence/domainThrottle.js');
@@ -213,6 +280,8 @@ describe('handleEmailJob', () => {
 
 		const warm = await import('../../intelligence/warming.js');
 		vi.mocked(warm.checkCap).mockResolvedValue({ allowed: true, sentToday: 0, dailyCap: Infinity });
+		vi.mocked(warm.ensureWarmingReservation).mockResolvedValue({ allowed: true });
+		vi.mocked(warm.releaseWarmingSlot).mockResolvedValue(undefined);
 		vi.mocked(warm.recordSend).mockResolvedValue(undefined);
 		vi.mocked(warm.recordBounce).mockResolvedValue(undefined);
 		vi.mocked(warm.recordDeferral).mockResolvedValue(undefined);
@@ -244,6 +313,10 @@ describe('handleEmailJob', () => {
 
 		const wh = await import('../../webhooks/convexNotifier.js');
 		vi.mocked(wh.notifyConvex).mockResolvedValue(true);
+		vi.mocked(wh.queueConvexWebhook).mockImplementation(async (event, webhookConfig, client) => {
+			await wh.notifyConvex(event, webhookConfig, client);
+			return 'outbox-test';
+		});
 
 		const mc = await import('../../monitoring/collector.js');
 		vi.mocked(mc.record).mockResolvedValue(undefined);
@@ -252,7 +325,14 @@ describe('handleEmailJob', () => {
 		vi.mocked(dl.logDeliveryEvent).mockResolvedValue(undefined);
 	});
 
-	function run(data: EmailJob, envelope: Partial<ReservedJob<EmailJob>> = {}) {
+	async function run(data: EmailJob, envelope: Partial<ReservedJob<EmailJob>> = {}) {
+		const intakeReceiptId = data.intakeReceiptId ?? data.workAttemptId ?? data.messageId;
+		if (!(await redis.get(`mta:work-attempts:${intakeReceiptId}`))) {
+			await redis.set(
+				`mta:work-attempts:${intakeReceiptId}`,
+				JSON.stringify({ state: 'reserved', messageId: data.messageId, reservedAt: Date.now() })
+			);
+		}
 		return handleEmailJob(
 			reserve(data, envelope),
 			queue as unknown as Queue<EmailJob>,
@@ -279,7 +359,15 @@ describe('handleEmailJob', () => {
 		await run(createJob());
 
 		expect(sendToMx).toHaveBeenCalled();
-		expect(recordOutcome).toHaveBeenCalledWith(redis, 'org-1', 'delivered', config);
+		expect(recordOutcome).toHaveBeenCalledWith(
+			redis,
+			'org-1',
+			'delivered',
+			config,
+			'other',
+			undefined,
+			expect.stringMatching(/^effect:v1:/)
+		);
 		expect(recordSuccess).toHaveBeenCalled();
 		expect(recordSend).toHaveBeenCalled();
 		expect(clearDomainFailure).toHaveBeenCalled();
@@ -290,6 +378,298 @@ describe('handleEmailJob', () => {
 		);
 		// A delivered job is never re-enqueued.
 		expect(queue.add).not.toHaveBeenCalled();
+	});
+
+	it('replays an in-flight reservation as ambiguous without another SMTP call', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
+		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
+		await reserveSmtpOutcome(redis, 'job-1', 'msg-001', createAttempt(), {
+			now: Date.now(),
+			capacity: config.smtpOutcomeJournalMaxSize,
+		});
+		vi.mocked(isSuppressed).mockResolvedValue(true);
+
+		await run(createJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(isSuppressed).not.toHaveBeenCalled();
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		expect(queueConvexWebhook).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'failed', messageId: 'msg-001' }),
+			config,
+			redis,
+			'dispatch:msg-001:failed'
+		);
+	});
+
+	it('does not repeat SMTP when the result-journal write fails after the network call', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const originalEval = redis.eval.bind(redis);
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			if (String(args[0]).includes('current == ARGV[1]')) {
+				throw new Error('journal response lost');
+			}
+			return await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+		});
+
+		await expect(run(createJob())).rejects.toThrow('journal response lost');
+		evalSpy.mockRestore();
+		await run(createJob());
+
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps a completed result until terminal outbox persistence succeeds', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		const { recordOutcome } = await import('../../intelligence/circuitBreaker.js');
+		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
+		const { resolveDestinationSnapshot } = await import('../../smtp/destinationProvider.js');
+		vi.mocked(queueConvexWebhook)
+			.mockRejectedValueOnce(new Error('outbox unavailable'))
+			.mockResolvedValue('outbox-recovered');
+
+		await expect(run(createJob())).rejects.toThrow('outbox unavailable');
+		vi.mocked(isSuppressed).mockResolvedValue(true);
+		await run(createJob());
+
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+		expect(queueConvexWebhook).toHaveBeenCalledTimes(2);
+		expect(recordOutcome).toHaveBeenCalledTimes(1);
+		expect(resolveDestinationSnapshot).toHaveBeenCalledTimes(1);
+		expect(isSuppressed).toHaveBeenCalledTimes(1);
+		expect(queueConvexWebhook).toHaveBeenLastCalledWith(
+			expect.objectContaining({ event: 'sent', messageId: 'msg-001' }),
+			config,
+			redis,
+			'dispatch:msg-001:sent'
+		);
+	});
+
+	it('retains a terminal tombstone when its response is lost before GroupMQ ACK', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { recordOutcome } = await import('../../intelligence/circuitBreaker.js');
+		const originalEval = redis.eval.bind(redis);
+		let loseTerminalizationResponse = true;
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+			if (
+				loseTerminalizationResponse &&
+				String(args[0]).includes("redis.call('ZREM', KEYS[2], KEYS[1])")
+			) {
+				loseTerminalizationResponse = false;
+				throw new Error('terminalization response lost');
+			}
+			return result;
+		});
+
+		await expect(run(createJob())).rejects.toThrow('terminalization response lost');
+		evalSpy.mockRestore();
+		await run(createJob());
+
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+		expect(recordOutcome).toHaveBeenCalledTimes(1);
+	});
+
+	it('reconciles an accepted SMTP-defer successor before age changes on replay', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 451,
+			error: '451 4.7.1 retry later',
+		});
+		const originalEval = redis.eval.bind(redis);
+		let rejectTerminalization = true;
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			if (
+				rejectTerminalization &&
+				String(args[0]).includes("redis.call('ZREM', KEYS[2], KEYS[1])")
+			) {
+				rejectTerminalization = false;
+				throw new Error('terminalization unavailable');
+			}
+			return await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+		});
+		let now = Date.now();
+		const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
+		const data = createJob({ firstEnqueuedAt: now - config.maxMessageAgeMs + 1_000 });
+
+		await expect(run(data)).rejects.toThrow('terminalization unavailable');
+		now += 2_000;
+		await run(data);
+		evalSpy.mockRestore();
+		nowSpy.mockRestore();
+
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(queue.add).toHaveBeenCalledOnce();
+		expect(queueConvexWebhook).not.toHaveBeenCalled();
+	});
+
+	it('promotes a retained legacy job through its prior work-attempt receipt', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const legacy = createGovernedJob();
+		delete legacy.intakeReceiptId;
+
+		await run(legacy);
+
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(JSON.parse((await redis.get('mta:work-attempts:work-attempt-1'))!)).toMatchObject({
+			state: 'accepted',
+			messageId: 'msg-001',
+		});
+	});
+
+	it('preserves retained non-governed jobs that predate intake receipts', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const legacy = createJob();
+		delete legacy.intakeReceiptId;
+
+		await handleEmailJob(reserve(legacy), queue as unknown as Queue<EmailJob>, redis, config);
+
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(await redis.get('mta:work-attempts:msg-001')).toBeNull();
+	});
+
+	it('defers before SMTP when outcome-journal capacity is unavailable', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
+		config.smtpOutcomeJournalMaxSize = 1;
+		await reserveSmtpOutcome(
+			redis,
+			'other-job',
+			'other-message',
+			createAttempt(createJob({ messageId: 'other-message' })),
+			{
+				now: Date.now(),
+				capacity: 1,
+			}
+		);
+
+		await run(createJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).toHaveBeenCalledOnce();
+	});
+
+	function provenancePipelineWithError() {
+		const pipeline = {
+			setex: vi.fn(),
+			zadd: vi.fn(),
+			zremrangebyscore: vi.fn(),
+			zremrangebyrank: vi.fn(),
+			expire: vi.fn(),
+			exec: vi.fn().mockResolvedValue([
+				[null, 'OK'],
+				[new Error('recipient index unavailable'), null],
+			]),
+		};
+		for (const method of [
+			'setex',
+			'zadd',
+			'zremrangebyscore',
+			'zremrangebyrank',
+			'expire',
+		] as const) {
+			pipeline[method].mockReturnValue(pipeline);
+		}
+		return pipeline;
+	}
+
+	it('fails closed before SMTP and durably requeues on a provenance tuple error', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.spyOn(redis, 'pipeline').mockReturnValue(provenancePipelineWithError() as never);
+		await run(createGovernedJob());
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).toHaveBeenCalledOnce();
+		expect(queue.add).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ workAttemptId: 'work-attempt-1' }),
+			})
+		);
+	});
+
+	it('propagates provenance requeue failure so GroupMQ cannot ACK', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.spyOn(redis, 'pipeline').mockReturnValue(provenancePipelineWithError() as never);
+		queue.add.mockRejectedValueOnce(new Error('requeue persistence failed'));
+		await expect(run(createGovernedJob())).rejects.toThrow('requeue persistence failed');
+		expect(sendToMx).not.toHaveBeenCalled();
+	});
+
+	it('reuses one deterministic successor when provenance requeue commits but its response is lost', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.spyOn(redis, 'pipeline').mockReturnValue(provenancePipelineWithError() as never);
+		let committedJobId: string | undefined;
+		queue.add.mockImplementation(async (options: { jobId?: string }) => {
+			if (!committedJobId) {
+				committedJobId = options.jobId;
+				throw new Error('requeue response lost after commit');
+			}
+			expect(options.jobId).toBe(committedJobId);
+			return { id: committedJobId };
+		});
+		const governed = createGovernedJob();
+		await expect(run(governed)).rejects.toThrow('response lost after commit');
+		await run(governed);
+		expect(queue.add).toHaveBeenCalledTimes(2);
+		expect(committedJobId).toMatch(/^defer-[0-9a-f]{64}$/);
+		expect(sendToMx).not.toHaveBeenCalled();
+	});
+
+	it('does not fork SMTP after a committed successor completes and is trimmed', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const pipelineSpy = vi
+			.spyOn(redis, 'pipeline')
+			.mockReturnValueOnce(provenancePipelineWithError() as never);
+		let committed: { jobId: string; data: EmailJob; groupId: string; delay: number } | undefined;
+		queue.add.mockImplementationOnce(async (options) => {
+			committed = options as typeof committed;
+			throw new Error('successor committed; response lost');
+		});
+		queue.getJob.mockResolvedValue(null);
+		const predecessor = createGovernedJob();
+		await expect(run(predecessor)).rejects.toThrow('response lost');
+		pipelineSpy.mockRestore();
+
+		// The successor starts, promotes the durable handoff, sends once, and is
+		// then conceptually absent from GroupMQ's completed-job window.
+		expect(committed?.jobId).toMatch(/^defer-[0-9a-f]{64}$/);
+		await run(committed!.data, { id: committed!.jobId });
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+
+		// Retrying the predecessor after successor completion/trim observes the
+		// accepted handoff receipt and returns before its pipeline or SMTP.
+		await run(predecessor);
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+	});
+
+	it('releases test reservations without recording production warming or breaker usage', async () => {
+		const { recordOutcome, releaseHalfOpenProbe } =
+			await import('../../intelligence/circuitBreaker.js');
+		const { recordSend, releaseWarmingSlot } = await import('../../intelligence/warming.js');
+		const reservation = {
+			ip: '10.0.0.1',
+			messageId: 'msg-001',
+			utcDate: '2026-07-22',
+			expiresAt: Date.now() + 60_000,
+		};
+		await run(
+			createGovernedJob({
+				deliveryDomain: 'member_test',
+				routingLease: {
+					...createGovernedJob().routingLease!,
+					warmingReservation: reservation,
+				},
+			})
+		);
+
+		expect(recordOutcome).not.toHaveBeenCalled();
+		expect(recordSend).not.toHaveBeenCalled();
+		expect(releaseWarmingSlot).toHaveBeenCalledWith(redis, reservation);
+		expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(2);
 	});
 
 	it('defers without acquiring SMTP when the selected IP is quarantined after selection', async () => {
@@ -304,10 +684,293 @@ describe('handleEmailJob', () => {
 		expect(queue.add).toHaveBeenCalledWith(expect.objectContaining({ delay: expect.any(Number) }));
 	});
 
+	it.each(['production', 'member_test'] as const)(
+		'hands a %s governed job back to Convex when IP eligibility changes, without SMTP',
+		async (deliveryDomain) => {
+			const { sendToMx } = await import('../../smtp/sender.js');
+			const { isIpEligibilityLeaseValid } = await import('../../scaling/ipPool.js');
+			const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+			const { releaseHalfOpenProbe } = await import('../../intelligence/circuitBreaker.js');
+			vi.mocked(isIpEligibilityLeaseValid).mockResolvedValueOnce(false);
+
+			await run(createGovernedJob({ deliveryDomain }));
+
+			expect(sendToMx).not.toHaveBeenCalled();
+			expect(queue.add).not.toHaveBeenCalled();
+			expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(2);
+			expect(notifyConvex).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event: 'routing.reentry',
+					messageId: 'msg-001',
+					routingReentry: expect.objectContaining({
+						retryState: expect.objectContaining({ idempotencyKey: 'msg-001' }),
+					}),
+				}),
+				config,
+				redis
+			);
+		}
+	);
+
+	it('releases stale routing ownership before persisting handoff and never retries through SMTP', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { isIpEligibilityLeaseValid } = await import('../../scaling/ipPool.js');
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		const { releaseHalfOpenProbe } = await import('../../intelligence/circuitBreaker.js');
+		let leaseReleased = false;
+		let eligibilityChecks = 0;
+		vi.mocked(isIpEligibilityLeaseValid).mockImplementation(async () => {
+			eligibilityChecks += 1;
+			return eligibilityChecks === 1 ? false : !leaseReleased;
+		});
+		vi.mocked(releaseHalfOpenProbe).mockImplementation(async () => {
+			leaseReleased = true;
+		});
+		vi.mocked(queueConvexWebhook)
+			.mockRejectedValueOnce(new Error('protected outbox unavailable'))
+			.mockResolvedValueOnce('recovered-outbox-id');
+
+		await expect(run(createGovernedJob())).rejects.toThrow('protected outbox unavailable');
+		await run(createGovernedJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queueConvexWebhook).toHaveBeenCalledTimes(2);
+		expect(queueConvexWebhook).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({ event: 'routing.reentry', workAttemptId: 'work-attempt-1' }),
+			config,
+			redis,
+			'routing-reentry:work-attempt-1:reentry-token'
+		);
+		expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(4);
+		expect(releaseHalfOpenProbe.mock.invocationCallOrder[0]).toBeLessThan(
+			queueConvexWebhook.mock.invocationCallOrder[0]
+		);
+	});
+
+	it('hands a stale breaker generation back to Convex instead of relay/self-requeue', async () => {
+		const { canSend } = await import('../../intelligence/circuitBreaker.js');
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(canSend).mockResolvedValue({ allowed: true, state: 'closed', generation: 2 });
+
+		await run(createGovernedJob());
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'routing.reentry',
+				routingReentryReason: 'circuit_breaker_changed',
+			}),
+			config,
+			redis
+		);
+	});
+
+	it('routes a cross-midnight full warming cap back to Convex and releases its old slot', async () => {
+		const { ensureWarmingReservation, releaseWarmingSlot } =
+			await import('../../intelligence/warming.js');
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const oldReservation = {
+			ip: '10.0.0.1',
+			messageId: 'msg-001',
+			utcDate: '2026-07-21',
+			expiresAt: Date.now() - 1,
+		};
+		vi.mocked(ensureWarmingReservation).mockResolvedValue({
+			allowed: false,
+			sentToday: 50,
+			dailyCap: 50,
+		});
+
+		await run(
+			createGovernedJob({
+				routingLease: {
+					...createGovernedJob().routingLease!,
+					warmingReservation: oldReservation,
+				},
+			})
+		);
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(releaseWarmingSlot).toHaveBeenCalledWith(redis, oldReservation);
+	});
+
+	it('never re-enters dispatch after ownership moved back to Convex routing', async () => {
+		// GroupMQ records completion only after the handler returns. A crash in
+		// that window redelivers this job while the successor Convex enqueued is
+		// already sending — and by then the condition that triggered the handoff
+		// (a breaker generation, a rolled warming day) has typically cleared, so
+		// an unfenced replay would happily put the same message on the wire.
+		const { canSend } = await import('../../intelligence/circuitBreaker.js');
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(canSend).mockResolvedValue({ allowed: true, state: 'closed', generation: 2 });
+
+		const job = createGovernedJob();
+		await run(job);
+		vi.mocked(canSend).mockResolvedValue({ allowed: true, state: 'closed', generation: 0 });
+		await run(job);
+
+		expect(sendToMx).not.toHaveBeenCalled();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(queueConvexWebhook).toHaveBeenCalledTimes(1);
+	});
+
+	it('releases the routing reservations a screened production send never consumed', async () => {
+		const { screenContent } = await import('../../intelligence/contentScreening.js');
+		const { releaseWarmingSlot } = await import('../../intelligence/warming.js');
+		const { releaseHalfOpenProbe } = await import('../../intelligence/circuitBreaker.js');
+		const reservation = {
+			ip: '10.0.0.1',
+			messageId: 'msg-001',
+			utcDate: '2026-07-25',
+			expiresAt: Date.now() + DAY_MS,
+		};
+		vi.mocked(screenContent).mockResolvedValue({ allowed: false, reason: 'empty_body' });
+
+		await run(
+			createGovernedJob({
+				routingLease: { ...createGovernedJob().routingLease!, warmingReservation: reservation },
+			})
+		);
+
+		// The message never reached SMTP, so holding the slot would burn a day of
+		// a warming IP's cap on mail that was never sent.
+		expect(releaseWarmingSlot).toHaveBeenCalledWith(redis, reservation);
+		expect(releaseHalfOpenProbe).toHaveBeenCalledTimes(2);
+	});
+
+	it('releases the routing reservations of an expired message', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { releaseWarmingSlot } = await import('../../intelligence/warming.js');
+		const reservation = {
+			ip: '10.0.0.1',
+			messageId: 'msg-001',
+			utcDate: '2026-07-25',
+			expiresAt: Date.now() + DAY_MS,
+		};
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 451,
+			error: '451 4.7.1 retry later',
+		});
+		const firstEnqueuedAt = Date.now() - 4 * DAY_MS;
+
+		await run(
+			createGovernedJob({
+				firstEnqueuedAt,
+				routingLease: { ...createGovernedJob().routingLease!, warmingReservation: reservation },
+			}),
+			{ timestamp: firstEnqueuedAt }
+		);
+
+		expect(releaseWarmingSlot).toHaveBeenCalledWith(redis, reservation);
+	});
+
+	it.each([
+		{
+			label: 'a screened drop',
+			event: 'failed',
+			setup: async () => {
+				const { screenContent } = await import('../../intelligence/contentScreening.js');
+				vi.mocked(screenContent).mockResolvedValue({ allowed: false, reason: 'empty_body' });
+				return { firstEnqueuedAt: Date.now() };
+			},
+		},
+		{
+			label: 'an expired message',
+			event: 'bounced',
+			setup: async () => {
+				const { sendToMx } = await import('../../smtp/sender.js');
+				vi.mocked(sendToMx).mockResolvedValue({
+					success: false,
+					bounceType: 'deferred',
+					smtpCode: 451,
+					error: '451 4.7.1 retry later',
+				});
+				return { firstEnqueuedAt: Date.now() - 4 * DAY_MS };
+			},
+		},
+	])('rebuilds an identical terminal payload when $label replays', async ({ event, setup }) => {
+		// The protected outbox row is deterministic by message id and event, and
+		// it compares payloads byte-for-byte. A replay that stamps a fresh clock
+		// is rejected outright, which dead-letters the job. A transient outbox
+		// failure on the first run is the cheapest way to reach the second
+		// rebuild that the guard would compare against.
+		const { queueConvexWebhook } = await import('../../webhooks/convexNotifier.js');
+		const { firstEnqueuedAt } = await setup();
+		const job = createJob({ firstEnqueuedAt });
+		vi.mocked(queueConvexWebhook).mockRejectedValueOnce(new Error('outbox unavailable'));
+
+		await expect(run(job, { timestamp: firstEnqueuedAt })).rejects.toThrow('outbox unavailable');
+		await new Promise((resolve) => setTimeout(resolve, 5));
+		await run(job, { timestamp: firstEnqueuedAt });
+
+		const payloads = vi
+			.mocked(queueConvexWebhook)
+			.mock.calls.map(([sent]) => sent)
+			.filter((sent) => sent.event === event);
+		expect(payloads).toHaveLength(2);
+		expect(payloads[0]).toEqual(payloads[1]);
+	});
+
+	it('retries a message whose attempt failed before anything reached the wire', async () => {
+		// `sendToMx` reads leases, resolves MX/profiles, signs DKIM and resolves
+		// TLS before it opens a socket. A transient failure there transmitted
+		// nothing, so it must stay an ordinary queue retry — not an ambiguous
+		// outcome that terminally fails a message that never left the process.
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(sendToMx).mockRejectedValueOnce(new Error('redis failover during DKIM read'));
+
+		const job = createJob();
+		await expect(run(job)).rejects.toThrow('redis failover during DKIM read');
+		expect(notifyConvex).not.toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'failed' }),
+			config,
+			redis
+		);
+
+		await run(job);
+
+		expect(sendToMx).toHaveBeenCalledTimes(2);
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'sent' }),
+			config,
+			redis
+		);
+	});
+
+	it('keeps an interrupted on-the-wire attempt ambiguous instead of resending', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(sendToMx).mockImplementationOnce(async (...args) => {
+			const onWireAttempt = args[6] as (() => void) | undefined;
+			onWireAttempt?.();
+			throw new Error('socket died mid-DATA');
+		});
+
+		const job = createJob();
+		await expect(run(job)).rejects.toThrow('socket died mid-DATA');
+		await run(job);
+
+		expect(sendToMx).toHaveBeenCalledTimes(1);
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'failed' }),
+			config,
+			redis
+		);
+	});
+
 	it('rejects when content screening fails', async () => {
 		const { screenContent } = await import('../../intelligence/contentScreening.js');
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { logDeliveryEvent } = await import('../../monitoring/deliveryLogger.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
 
 		vi.mocked(screenContent).mockResolvedValue({ allowed: false, reason: 'empty_body' });
 
@@ -320,12 +983,21 @@ describe('handleEmailJob', () => {
 			expect.objectContaining({ status: 'screened', provider: 'other' }),
 			config
 		);
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'failed',
+				errorCode: 'CONTENT_SCREENED',
+			}),
+			config,
+			redis
+		);
 	});
 
 	it('skips suppressed recipients', async () => {
 		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { logDeliveryEvent } = await import('../../monitoring/deliveryLogger.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
 
 		vi.mocked(isSuppressed).mockResolvedValue(true);
 
@@ -337,6 +1009,14 @@ describe('handleEmailJob', () => {
 			redis,
 			expect.objectContaining({ status: 'suppressed', provider: 'other' }),
 			config
+		);
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({
+				event: 'failed',
+				errorCode: 'RECIPIENT_SUPPRESSED',
+			}),
+			config,
+			redis
 		);
 	});
 
@@ -443,7 +1123,9 @@ describe('handleEmailJob', () => {
 		// even at attempts=4 (the last before maxAttempts=5) it still re-queues.
 		for (let attempt = 0; attempt < 5; attempt++) {
 			queue.add.mockClear();
-			await expect(run(createJob(), { attempts: attempt })).resolves.toBeUndefined();
+			await expect(
+				run(createJob(), { id: `warming-job-${attempt}`, attempts: attempt })
+			).resolves.toBeUndefined();
 			expect(queue.add).toHaveBeenCalledTimes(1);
 		}
 	});
@@ -514,6 +1196,26 @@ describe('handleEmailJob', () => {
 				provider: 'other',
 			}),
 			config
+		);
+	});
+
+	it('expires at the exact shared four-day boundary', async () => {
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
+		vi.mocked(sendToMx).mockResolvedValue({
+			success: false,
+			bounceType: 'deferred',
+			smtpCode: 451,
+			error: '451 4.7.1 retry later',
+		});
+		const firstEnqueuedAt = Date.now() - 4 * DAY_MS;
+		await run(createJob({ firstEnqueuedAt }), { timestamp: firstEnqueuedAt });
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(notifyConvex).toHaveBeenCalledWith(
+			expect.objectContaining({ event: 'bounced' }),
+			config,
+			redis
 		);
 	});
 

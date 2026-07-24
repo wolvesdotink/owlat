@@ -9,9 +9,7 @@ vi.mock('../classifier.js', () => ({
 }));
 vi.mock('../verp.js', () => ({
 	parseVerpAddress: vi.fn().mockReturnValue(null),
-	// Default to unsigned mode so the existing header-fallback tests still
-	// exercise steps 2/3. The keyed-gate behavior is covered in verpForgedDsn.test.ts.
-	isVerpSigningEnabled: vi.fn().mockReturnValue(false),
+	isVerpSigningEnabled: vi.fn().mockReturnValue(true),
 }));
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -53,7 +51,7 @@ describe('parseBounce', () => {
 		expect(parseVerpAddress).toHaveBeenCalledWith('bounce+bXNnLTAwMQ@bounces.owlat.com');
 	});
 
-	it('falls back to X-Owlat-Message-Id in attachments', () => {
+	it('rejects X-Owlat-Message-Id in returned attachments without signed VERP', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue(null);
 
 		const result = pb(
@@ -66,11 +64,10 @@ describe('parseBounce', () => {
 			})
 		);
 
-		expect(result).not.toBeNull();
-		expect(result!.originalMessageId).toBe('msg-from-attachment');
+		expect(result).toBeNull();
 	});
 
-	it('falls back to X-Owlat-Message-Id in body text', () => {
+	it('rejects X-Owlat-Message-Id in returned body text without signed VERP', () => {
 		vi.mocked(parseVerpAddress).mockReturnValue(null);
 
 		const result = pb(
@@ -80,8 +77,7 @@ describe('parseBounce', () => {
 			})
 		);
 
-		expect(result).not.toBeNull();
-		expect(result!.originalMessageId).toBe('msg-from-body');
+		expect(result).toBeNull();
 	});
 
 	it('returns null when no messageId is extractable', () => {

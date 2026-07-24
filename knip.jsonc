@@ -8,7 +8,7 @@
 	// and ratcheted by scripts/check-dead-code.sh. Be GENEROUS here: a config
 	// that flags a real entrypoint is worse than one that misses some dead code.
 	"workspaces": {
-		".": { "entry": ["plugins.config.ts"] },
+		".": { "entry": ["plugins.config.ts", "scripts/__tests__/**/*.ts"] },
 		// ---- Convex backend ----------------------------------------------
 		// Every file under convex/ is reachable by the Convex runtime (queries,
 		// mutations, actions, http routes, crons, schema, the generated API).

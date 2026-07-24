@@ -174,7 +174,13 @@ export async function sendToMx(
 	redis: Redis,
 	bindIp: string,
 	eligibilityLease?: IpEligibilityLease,
-	resolvedDestination?: DestinationSnapshot
+	resolvedDestination?: DestinationSnapshot,
+	/**
+	 * Invoked once, immediately before the first connection acquisition. Until
+	 * it fires nothing has been transmitted, so the caller can treat a throw as
+	 * a plain retryable failure instead of an uncertain SMTP transaction.
+	 */
+	onWireAttempt?: () => void
 ): Promise<EmailJobResult> {
 	if (eligibilityLease && !(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
 		return {
@@ -329,6 +335,7 @@ export async function sendToMx(
 		const daneRequired = danePlan !== undefined;
 
 		let acquired: Awaited<ReturnType<typeof pool.acquire>>;
+		onWireAttempt?.();
 		try {
 			// Fence the discovery interval too: no reusable or fresh SMTP connection
 			// is acquired after the selection generation becomes ineligible.

@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import type { ActionCtx } from '../_generated/server';
 import { internal, api } from '../_generated/api';
-import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
+import type { EmailSendParams } from '../lib/sendProviders';
 import { composeForSend } from '../delivery/sendComposition';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { senderNotAllowedMessage } from './senders';
@@ -28,8 +28,8 @@ import {
 async function guardTestSend(
 	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation'>,
 	recipients: string[]
-): Promise<void> {
-	const { allowed, callerUserId } = await ctx.runQuery(
+): Promise<string> {
+	const { allowed, callerUserId, organizationId } = await ctx.runQuery(
 		internal.campaigns.sendQueries.getTestSendAllowedRecipients,
 		{}
 	);
@@ -47,6 +47,7 @@ async function guardTestSend(
 			);
 		}
 	}
+	return organizationId;
 }
 
 /**
@@ -69,6 +70,22 @@ async function assertCampaignSenderAllowed(
 	if (!allowed) {
 		throwForbidden(senderNotAllowedMessage(fromEmail));
 	}
+}
+
+export async function enqueueGovernedTestEmail(
+	ctx: ActionCtx,
+	params: EmailSendParams,
+	organizationId: string
+) {
+	const { sendId } = await ctx.runMutation(internal.delivery.enqueue.enqueueTestSend, {
+		email: params.to,
+		organizationId,
+		from: params.from,
+		replyTo: params.replyTo,
+		subject: params.subject,
+		html: params.html,
+	});
+	return { sendId };
 }
 
 // Action to send a test email for a campaign
@@ -122,7 +139,7 @@ export const sendTestEmail = authedAction({
 
 		// Rate-limit + restrict the recipient to an org-member inbox so the
 		// preview action can't be used to relay mail to arbitrary addresses.
-		await guardTestSend(ctx, [args.testEmail]);
+		const organizationId = await guardTestSend(ctx, [args.testEmail]);
 
 		// Get email template content for specified language (or default)
 		const langContent = await ctx.runQuery(
@@ -165,31 +182,24 @@ export const sendTestEmail = authedAction({
 		const langSuffix = args.language ? ` (${args.language.toUpperCase()})` : '';
 		const testSubject = `[TEST${langSuffix}] ${composed.subject}`;
 
-		// Send the test email through the Send dispatch helper. Test sends
-		// previously bypassed the workpool → Send completion → health chain;
-		// routing through the helper closes that drift.
-		const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-			messageType: 'transactional',
-		});
-		if (!resolved) {
-			throwInternal('Cannot send test email: no delivery provider is configured.');
-		}
-		const dispatched = await sendProviderDispatch(ctx, resolved.providerType, {
-			to: args.testEmail,
-			from,
-			replyTo: campaign.replyTo,
-			subject: testSubject,
-			html: composed.html,
-		});
-
-		if (!dispatched.result.success) {
-			throwInternal(`Failed to send test email: ${dispatched.result.errorMessage}`);
-		}
+		// Queue a durable test Send through the normal worker → governed dispatch
+		// → completion chain. The action reports queue acceptance, not delivery.
+		const { sendId } = await enqueueGovernedTestEmail(
+			ctx,
+			{
+				to: args.testEmail,
+				from,
+				replyTo: campaign.replyTo,
+				subject: testSubject,
+				html: composed.html,
+			},
+			organizationId
+		);
 
 		return {
 			success: true,
-			id: dispatched.result.id,
-			message: `Test email sent to ${args.testEmail}`,
+			id: String(sendId),
+			message: `Test email queued for ${args.testEmail}`,
 			language: langContent.resolvedLanguage,
 		};
 	},
@@ -235,7 +245,7 @@ export const sendTestEmailFromTemplate = authedAction({
 		// Rate-limit + restrict recipients to org-member inboxes so the preview
 		// action can't relay attacker-controlled HTML to arbitrary external
 		// addresses from the verified sending domain.
-		await guardTestSend(ctx, args.testEmails);
+		const organizationId = await guardTestSend(ctx, args.testEmails);
 
 		// Validate sending domain is verified
 		const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
@@ -271,39 +281,26 @@ export const sendTestEmailFromTemplate = authedAction({
 		const personalizedSubject = `[TEST] ${composed.subject}`;
 		const personalizedHtml = composed.html;
 
-		// Resolve provider route once for the batch.
-		const resolved = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
-			messageType: 'transactional',
-		});
-		if (!resolved) {
-			throwInternal('Cannot send test emails: no delivery provider is configured.');
-		}
-
 		// Send to all test recipients via the dispatch helper (uniform
 		// retry + health recording per attempt).
 		const results: Array<{ email: string; success: boolean; error?: string }> = [];
 
 		for (const testEmail of args.testEmails) {
 			try {
-				const dispatched = await sendProviderDispatch(ctx, resolved.providerType, {
-					to: testEmail,
-					from,
-					subject: personalizedSubject,
-					html: personalizedHtml,
+				await enqueueGovernedTestEmail(
+					ctx,
+					{
+						to: testEmail,
+						from,
+						subject: personalizedSubject,
+						html: personalizedHtml,
+					},
+					organizationId
+				);
+				results.push({
+					email: testEmail,
+					success: true,
 				});
-
-				if (!dispatched.result.success) {
-					results.push({
-						email: testEmail,
-						success: false,
-						error: dispatched.result.errorMessage,
-					});
-				} else {
-					results.push({
-						email: testEmail,
-						success: true,
-					});
-				}
 			} catch (error) {
 				results.push({
 					email: testEmail,
@@ -330,8 +327,8 @@ export const sendTestEmailFromTemplate = authedAction({
 			results,
 			message:
 				failedCount > 0
-					? `Sent ${successCount} test email(s), ${failedCount} failed`
-					: `Test email${successCount > 1 ? 's' : ''} sent to ${args.testEmails.join(', ')}`,
+					? `Queued ${successCount} test email(s), ${failedCount} failed to queue`
+					: `Test email${successCount > 1 ? 's' : ''} queued for ${args.testEmails.join(', ')}`,
 		};
 	},
 });

@@ -34,20 +34,21 @@ interface SendBody {
 	text?: string;
 	replyTo?: string;
 	dkimDomain: string;
+	organizationId: string;
+	allowedFromAddresses: string[];
+	routingLease?: unknown;
 	headers: Record<string, string>;
 }
 
 function captureSend() {
 	const calls: Array<{ url: string; body: SendBody }> = [];
-	const fetchSpy = vi
-		.spyOn(globalThis, 'fetch')
-		.mockImplementation(async (url, init) => {
-			calls.push({
-				url: String(url),
-				body: JSON.parse(String((init as RequestInit | undefined)?.body ?? '{}')) as SendBody,
-			});
-			return new Response('{}', { status: 200 });
+	const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+		calls.push({
+			url: String(url),
+			body: JSON.parse(String((init as RequestInit | undefined)?.body ?? '{}')) as SendBody,
 		});
+		return new Response('{}', { status: 200 });
+	});
 	return { calls, fetchSpy };
 }
 
@@ -68,8 +69,11 @@ describe('forwardToTarget', () => {
 		await forwardToTarget(mta, baseArgs, 'forward-target@elsewhere.example');
 
 		expect(calls).toHaveLength(1);
-		expect(calls[0]!.url).toBe('https://mta.test/send');
+		expect(calls[0]!.url).toBe('https://mta.test/send/postbox');
 		const body = calls[0]!.body;
+		expect(body.organizationId).toBe('postbox');
+		expect(body.allowedFromAddresses).toEqual(['me@owlat.test']);
+		expect(body).not.toHaveProperty('routingLease');
 
 		// Re-originated under the mailbox so the outbound DKIM/SPF check passes.
 		expect(body.from).toBe('me@owlat.test');
@@ -90,7 +94,7 @@ describe('forwardToTarget', () => {
 		await forwardToTarget(
 			mta,
 			{ ...baseArgs, bodyHtml: '<p>ok</p><script>alert(1)</script>' },
-			'forward-target@elsewhere.example',
+			'forward-target@elsewhere.example'
 		);
 
 		const body = calls[0]!.body;
@@ -125,7 +129,7 @@ describe('shouldAutoReply', () => {
 				// Spoofable header says a human-ish daemon; envelope says <>.
 				fromAddress: 'MAILER-DAEMON@mx.isp.example',
 				returnPath: '',
-			}),
+			})
 		).toBe(false);
 	});
 
@@ -139,14 +143,12 @@ describe('shouldAutoReply', () => {
 
 	it('suppresses a self-send (sender == mailbox)', () => {
 		expect(
-			shouldAutoReply({ ...base, fromAddress: 'ME@owlat.test', returnPath: 'me@owlat.test' }),
+			shouldAutoReply({ ...base, fromAddress: 'ME@owlat.test', returnPath: 'me@owlat.test' })
 		).toBe(false);
 	});
 
 	it('suppresses automated mail flagged by Auto-Submitted (RFC 3834 §3)', () => {
-		expect(
-			shouldAutoReply({ ...base, headers: { 'Auto-Submitted': 'auto-replied' } }),
-		).toBe(false);
+		expect(shouldAutoReply({ ...base, headers: { 'Auto-Submitted': 'auto-replied' } })).toBe(false);
 	});
 
 	it('suppresses mailing-list traffic flagged by List-Id', () => {
@@ -171,13 +173,13 @@ describe('autoReplyRecipient', () => {
 			autoReplyRecipient({
 				fromAddress: 'alice-display@isp.example',
 				returnPath: 'bounce+alice@isp.example',
-			}),
+			})
 		).toBe('bounce+alice@isp.example');
 	});
 
 	it('lower-cases the chosen recipient', () => {
 		expect(
-			autoReplyRecipient({ fromAddress: 'X@isp.example', returnPath: 'Bounce@ISP.example' }),
+			autoReplyRecipient({ fromAddress: 'X@isp.example', returnPath: 'Bounce@ISP.example' })
 		).toBe('bounce@isp.example');
 	});
 
@@ -186,17 +188,15 @@ describe('autoReplyRecipient', () => {
 	});
 
 	it('falls back to the From header on a whitespace-only return-path', () => {
-		expect(
-			autoReplyRecipient({ fromAddress: 'carol@isp.example', returnPath: '   ' }),
-		).toBe('carol@isp.example');
+		expect(autoReplyRecipient({ fromAddress: 'carol@isp.example', returnPath: '   ' })).toBe(
+			'carol@isp.example'
+		);
 	});
 });
 
 describe('autoReplyThreadingHeaders', () => {
 	it('sets In-Reply-To and References to the triggering Message-Id', () => {
-		expect(
-			autoReplyThreadingHeaders({ triggeringMessageId: '<original-msg-id@host>' }),
-		).toEqual({
+		expect(autoReplyThreadingHeaders({ triggeringMessageId: '<original-msg-id@host>' })).toEqual({
 			'In-Reply-To': '<original-msg-id@host>',
 			References: '<original-msg-id@host>',
 		});
@@ -207,7 +207,7 @@ describe('autoReplyThreadingHeaders', () => {
 			autoReplyThreadingHeaders({
 				triggeringMessageId: '<msg-2@host>',
 				triggeringReferences: '<root@host> <msg-1@host>',
-			}),
+			})
 		).toEqual({
 			'In-Reply-To': '<msg-2@host>',
 			References: '<root@host> <msg-1@host> <msg-2@host>',

@@ -279,6 +279,11 @@ type Effect =
 			// in the "activates when your domain verifies" state).
 			kind: 'claim_reserved_mailboxes';
 			domain: string;
+	  }
+	| {
+			kind: 'provision_ses_relay_if_enabled';
+			domainId: Id<'domains'>;
+			providerType: SendingDomainProviderKind | null;
 	  };
 
 type ReducerResult = {
@@ -433,6 +438,11 @@ function buildEffects(
 	// pre-verification for invitees who already accepted.
 	if (input.to === 'verified') {
 		effects.push({ kind: 'claim_reserved_mailboxes', domain: domain.domain });
+		effects.push({
+			kind: 'provision_ses_relay_if_enabled',
+			domainId: domain._id,
+			providerType: providerKind,
+		});
 	}
 
 	return effects;
@@ -523,6 +533,25 @@ async function applyEffects(
 					internal.mail.pendingMailbox.provisionReservationsForVerifiedDomain,
 					{ domain: effect.domain }
 				);
+				break;
+			}
+			case 'provision_ses_relay_if_enabled': {
+				if (effect.providerType !== 'mta') break;
+				// Bounded by the fixed message-type enum (campaign, transactional,
+				// automation); take one spare row so a malformed duplicate still cannot
+				// turn the verified-domain transition into an unbounded scan.
+				const routes = await ctx.db.query('providerRoutes').take(4);
+				if (
+					routes.some(
+						(route) =>
+							route.deliverabilityFallback?.isEnabled &&
+							route.deliverabilityFallback.relayProviderType === 'ses'
+					)
+				) {
+					await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
+						domainId: effect.domainId,
+					});
+				}
 				break;
 			}
 		}
@@ -1350,10 +1379,24 @@ export const remove = internalMutation({
 			? domain.providerType
 			: null;
 		const domainName = domain.domain;
+		const cleanupProviders = new Set<SendingDomainProviderKind>();
+		if (providerKind) cleanupProviders.add(providerKind);
+		const [mtaIdentity, sesIdentity] = await Promise.all([
+			ctx.db
+				.query('sendingDomainMtaIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', args.domainId))
+				.first(),
+			ctx.db
+				.query('sendingDomainSesIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', args.domainId))
+				.first(),
+		]);
+		if (mtaIdentity) cleanupProviders.add('mta');
+		if (sesIdentity) cleanupProviders.add('ses');
 
-		// Clear the per-provider sibling identity row (mutation context).
-		if (providerKind) {
-			const adapter = providerFor(providerKind);
+		// Hybrid MTA+SES routing owns two external identities and two sibling rows.
+		for (const kind of cleanupProviders) {
+			const adapter = providerFor(kind);
 			await adapter.clearIdentity(ctx, args.domainId);
 		}
 
@@ -1386,11 +1429,11 @@ export const remove = internalMutation({
 				},
 			},
 		];
-		if (providerKind) {
+		for (const kind of cleanupProviders) {
 			effects.push({
 				kind: 'delete_with_provider',
 				domain: domainName,
-				providerType: providerKind,
+				providerType: kind,
 			});
 		}
 		await applyEffects(ctx, effects, args.userId);

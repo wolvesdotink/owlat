@@ -73,6 +73,12 @@ crons.interval(
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
+crons.interval(
+	'cleanup MTA campaign alert receipts',
+	{ hours: 24 },
+	internal.webhooks.cleanup.cleanupCampaignAlertReceipts,
+	{}
+);
 
 // Clean up old connected-app hook delivery logs weekly. connectedAppHookDeliveryLogs
 // is written on every signed-hook invocation; without this cron its retention
@@ -161,11 +167,23 @@ crons.interval(
 	{ minutes: 5 },
 	internal.delivery.warmingSync.syncWarmingState
 );
+crons.interval(
+	'cleanup deliverability route state',
+	{ minutes: 5 },
+	internal.delivery.deliverabilityRouting.cleanupExpired,
+	{}
+);
 
 // Keep the built-in MTA's infrastructure readiness visible to reactive
 // Delivery surfaces. The MTA internally caches its TCP/25 probes, so this
 // cadence does not create a connection storm against the probe target.
 crons.interval('sync MTA health', { minutes: 2 }, internal.delivery.mtaHealth.sync, {});
+crons.interval(
+	'refresh SES relay verification proofs',
+	{ hours: 24 },
+	internal.domains.sesRelayMutations.scheduleVerificationRefresh,
+	{}
+);
 
 // Clean up sending-reputation buckets older than 60 days every hour (both
 // scopes). Risk is derived on read (ADR-0042), so no periodic recalculation.

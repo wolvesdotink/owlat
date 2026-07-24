@@ -128,6 +128,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 
 	// Webhook / form children before parents
 	'webhookDeliveryLogs',
+	'mtaCampaignAlertReceipts',
 	'webhookPayloads',
 	'webhooks',
 	'formSubmissions',
@@ -178,15 +179,18 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'knowledgeEdgeBackfillJobs',
 	'knowledgeGraphStats',
 
-	// Domain stack — provider identities + reputation before domains,
-	// which delegates for SES / MTA-side cleanup
-	'sendingDomainMtaIdentities',
-	'sendingDomainSesIdentities',
+	// Domain stack — reputation before domains. The domains step clears BOTH
+	// identity siblings and schedules both external provider deletions, so it
+	// must run before the orphan-sweep fallbacks erase that routing evidence.
 	'trackingDomains',
 	'sendingReputation',
 	'providerHealth',
 	'providerRoutes',
+	'deliverabilityRouteStates',
+	'destinationProviderDomains',
 	'domains',
+	'sendingDomainMtaIdentities',
+	'sendingDomainSesIdentities',
 
 	// Chat (children before parents)
 	'chatMentions',
@@ -279,6 +283,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	googlePostmasterStats: makeSweepStep('googlePostmasterStats'),
 	unsubscribeLatencyBuckets: makeSweepStep('unsubscribeLatencyBuckets'),
 	webhookDeliveryLogs: makeSweepStep('webhookDeliveryLogs'),
+	mtaCampaignAlertReceipts: makeSweepStep('mtaCampaignAlertReceipts'),
 	webhooks: makeSweepStep('webhooks'),
 	formSubmissions: makeSweepStep('formSubmissions'),
 	formEndpoints: makeSweepStep('formEndpoints'),
@@ -304,6 +309,8 @@ export const ORGANIZATION_DELETION_STEPS = {
 	sendingReputation: makeSweepStep('sendingReputation'),
 	providerHealth: makeSweepStep('providerHealth'),
 	providerRoutes: makeSweepStep('providerRoutes'),
+	deliverabilityRouteStates: makeSweepStep('deliverabilityRouteStates'),
+	destinationProviderDomains: makeSweepStep('destinationProviderDomains'),
 	domains: domainsStep,
 	onboardingProgress: makeSweepStep('onboardingProgress'),
 	invitationResends: makeSweepStep('invitationResends'),

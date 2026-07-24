@@ -6,10 +6,15 @@ import { hostname } from 'os';
 import { isIPv4 } from 'node:net';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
+import { isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
 import type { IpPoolConfig, DkimKeyConfig, DestinationProviderProfile } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
 import { assertValidEhloHostname } from './ehloConfig.js';
+import {
+	loadGovernedDeliveryConfig,
+	type GovernedDeliveryConfig,
+} from './governedDeliveryConfig.js';
 import type { PoolCoordinationProtocol } from './smtp/poolGlobalCap.js';
 
 // EHLO hostname validation + per-IP resolution live in ehloConfig.ts (to keep
@@ -17,7 +22,7 @@ import type { PoolCoordinationProtocol } from './smtp/poolGlobalCap.js';
 // unaffected.
 export { assertValidEhloHostname, resolveEhloForIp } from './ehloConfig.js';
 
-export interface MtaConfig {
+export interface MtaConfig extends GovernedDeliveryConfig {
 	/** HTTP server port */
 	port: number;
 	/** Inbound SMTP port for bounce processing */
@@ -105,8 +110,6 @@ export interface MtaConfig {
 	deliveryLogMaxLen: number;
 	/** TTL in hours for delivery log streams */
 	deliveryLogTtlHours: number;
-	/** Max entries in the webhook dead letter queue */
-	webhookDlqMaxSize: number;
 	/** TLS cert for bounce SMTP server (PEM string, enables STARTTLS) */
 	bounceServerTlsCert?: string;
 	/** TLS key for bounce SMTP server (PEM string) */
@@ -145,13 +148,6 @@ export interface MtaConfig {
 	smtpPoolGlobalMaxPerHost: number;
 	/** Rolling-upgrade gate for the distributed pool accounting protocol. */
 	smtpPoolCoordinationProtocol?: PoolCoordinationProtocol;
-	/**
-	 * Maximum wall-clock age (ms) a message may keep being retried before the
-	 * MTA gives up and emits a terminal expired-bounce. RFC 5321 §4.5.4.1
-	 * recommends ~4–5 days. Measured from the *first* enqueue, so it survives
-	 * defer re-queues (greylist/rate-limit/warming-cap/breaker).
-	 */
-	maxMessageAgeMs: number;
 	/**
 	 * Global outbound TLS posture for direct-MX delivery (RFC 7435/8461/9325).
 	 * `opportunistic` (default) is byte-identical to the historic behaviour:
@@ -330,6 +326,13 @@ export function loadConfig(): MtaConfig {
 	// if it is absent or too weak rather than sealing under a guessable key.
 	const mtaSecret = requiredEnv('MTA_SECRET');
 	assertMtaSecretStrength(mtaSecret);
+	const bounceVerpKey = requiredEnv('BOUNCE_VERP_KEY');
+	if (isKnownPlaceholderSecret(bounceVerpKey)) {
+		throw new Error('BOUNCE_VERP_KEY must be a generated secret, not a placeholder');
+	}
+	if (Buffer.byteLength(bounceVerpKey, 'utf8') < 32) {
+		throw new Error('BOUNCE_VERP_KEY must be at least 32 bytes');
+	}
 
 	// EHLO hostname must be a real FQDN that can match a PTR record.
 	const ehloHostname = requiredEnv('EHLO_HOSTNAME');
@@ -409,8 +412,10 @@ export function loadConfig(): MtaConfig {
 	// channel, inert-without-resolver) lives in daneConfig.ts to keep this module
 	// under the file-size gate.
 	const { daneMode, daneResolverUrl } = loadDaneConfig(optionalEnv);
+	const governedDelivery = loadGovernedDeliveryConfig(optionalEnv);
 
 	return {
+		...governedDelivery,
 		port: parseInt(optionalEnv('PORT', '3100'), 10),
 		bouncePort: parseInt(optionalEnv('BOUNCE_PORT', '25'), 10),
 		redisUrl: optionalEnv('REDIS_URL', 'redis://localhost:6379'),
@@ -464,7 +469,6 @@ export function loadConfig(): MtaConfig {
 		contentMaxSizeKb: parseInt(optionalEnv('CONTENT_MAX_SIZE_KB', '500'), 10),
 		deliveryLogMaxLen: parseInt(optionalEnv('DELIVERY_LOG_MAX_LEN', '100000'), 10),
 		deliveryLogTtlHours: parseInt(optionalEnv('DELIVERY_LOG_TTL_HOURS', '72'), 10),
-		webhookDlqMaxSize: parseInt(optionalEnv('WEBHOOK_DLQ_MAX_SIZE', '10000'), 10),
 		bounceServerTlsCert: process.env['BOUNCE_TLS_CERT'],
 		bounceServerTlsKey: process.env['BOUNCE_TLS_KEY'],
 		bounceMaxConnectionsPerIp: parseInt(optionalEnv('BOUNCE_MAX_CONNECTIONS_PER_IP', '10'), 10),
@@ -488,11 +492,6 @@ export function loadConfig(): MtaConfig {
 		abusixDnsblApiKey,
 		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
 		smtpPoolCoordinationProtocol: poolCoordinationProtocol,
-		// Default: 4 days (RFC 5321 §4.5.4.1 recommends 4–5 days before giving up).
-		maxMessageAgeMs: parseInt(
-			optionalEnv('MAX_MESSAGE_AGE_MS', String(4 * 24 * 60 * 60 * 1000)),
-			10
-		),
 		outboundTlsMode,
 		daneMode,
 		daneResolverUrl,

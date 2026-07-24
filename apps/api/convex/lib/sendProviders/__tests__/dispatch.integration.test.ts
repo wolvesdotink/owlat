@@ -18,7 +18,7 @@ import {
 type WritableRetryDelays = { retryDelays: readonly number[] };
 function setRetryDelays(
 	provider: SendProviderModule<SendProviderKind>,
-	delays: readonly number[],
+	delays: readonly number[]
 ): void {
 	(provider as unknown as WritableRetryDelays).retryDelays = delays;
 }
@@ -31,11 +31,7 @@ type ScheduledRecord = {
 
 interface FakeActionCtx {
 	scheduler: {
-		runAfter: (
-			ms: number,
-			fn: unknown,
-			args: ScheduledRecord,
-		) => Promise<void>;
+		runAfter: (ms: number, fn: unknown, args: ScheduledRecord) => Promise<void>;
 	};
 }
 
@@ -81,15 +77,35 @@ describe('sendProviderDispatch — retry semantics', () => {
 			id: 'msg-1',
 		} satisfies EmailSendAttempt);
 
-		const out = await sendProviderDispatch(
-			ctx as never,
-			'mta',
-			sampleParams,
-		);
+		const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams);
 
 		expect(out.attempts).toBe(1);
 		expect(out.providerType).toBe('mta');
 		expect(out.result).toEqual({ success: true, id: 'msg-1' });
+		expect(scheduled).toHaveLength(1);
+		expect(scheduled[0]).toMatchObject({ providerType: 'mta', success: true });
+	});
+
+	it('a durable test-preview attempt still records provider health', async () => {
+		const { ctx, scheduled } = buildFakeCtx();
+		vi.spyOn(mtaSendProvider, 'sendEmail').mockResolvedValueOnce({
+			success: true,
+			id: 'send_test-row-1',
+		});
+
+		await sendProviderDispatch(ctx as never, 'mta', sampleParams, {
+			messageId: 'send_test-row-1',
+			workAttemptId: 'test-work-1',
+			routingReentryToken: 'rr1.test-token',
+			organizationId: 'org-1',
+			messageType: 'transactional',
+			routingLease: 'lease-1',
+			routingReentry: {
+				envelopeInput: { kind: 'transactional', sendId: 'test-row-1' },
+				retryState: { attempt: 2, startedAt: 1, idempotencyKey: 'send_test-row-1' },
+			},
+		});
+
 		expect(scheduled).toHaveLength(1);
 		expect(scheduled[0]).toMatchObject({ providerType: 'mta', success: true });
 	});
@@ -105,11 +121,7 @@ describe('sendProviderDispatch — retry semantics', () => {
 			})
 			.mockResolvedValueOnce({ success: true, id: 'msg-after-retry' });
 
-		const out = await sendProviderDispatch(
-			ctx as never,
-			'mta',
-			sampleParams,
-		);
+		const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams);
 
 		expect(sendSpy).toHaveBeenCalledTimes(2);
 		expect(out.attempts).toBe(2);
@@ -117,6 +129,27 @@ describe('sendProviderDispatch — retry semantics', () => {
 		// Critical: health recorded once, only on terminal outcome.
 		expect(scheduled).toHaveLength(1);
 		expect(scheduled[0]).toMatchObject({ success: true });
+	});
+
+	it('preserves acceptance_unknown after every MTA intake response is lost', async () => {
+		const { ctx, scheduled } = buildFakeCtx();
+		const lost = {
+			success: false as const,
+			errorMessage: 'network response lost',
+			errorCode: EmailErrorCode.SERVER_ERROR,
+			acceptanceUnknown: true as const,
+		};
+		const sendSpy = vi.spyOn(mtaSendProvider, 'sendEmail').mockResolvedValue(lost);
+
+		const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams, {
+			messageId: 'send-stable',
+			workAttemptId: 'work-stable',
+		});
+
+		expect(sendSpy).toHaveBeenCalledTimes(3);
+		expect(sendSpy.mock.calls.every((call) => call[1]?.workAttemptId === 'work-stable')).toBe(true);
+		expect(out.result).toEqual(lost);
+		expect(scheduled).toHaveLength(1);
 	});
 
 	it('exhausted retries: attempts=retryDelays.length+1, health recorded { success: false }', async () => {
@@ -128,11 +161,7 @@ describe('sendProviderDispatch — retry semantics', () => {
 		};
 		vi.spyOn(mtaSendProvider, 'sendEmail').mockResolvedValue(failedAttempt);
 
-		const out = await sendProviderDispatch(
-			ctx as never,
-			'mta',
-			sampleParams,
-		);
+		const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams);
 
 		expect(out.attempts).toBe(mtaSendProvider.retryDelays.length + 1);
 		expect(out.result.success).toBe(false);
@@ -148,11 +177,7 @@ describe('sendProviderDispatch — retry semantics', () => {
 			errorCode: EmailErrorCode.INVALID_RECIPIENT,
 		});
 
-		const out = await sendProviderDispatch(
-			ctx as never,
-			'mta',
-			sampleParams,
-		);
+		const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams);
 
 		expect(sendSpy).toHaveBeenCalledTimes(1);
 		expect(out.attempts).toBe(1);
@@ -172,11 +197,7 @@ describe('sendProviderDispatch — retry semantics', () => {
 			})
 			.mockResolvedValueOnce({ success: true, id: 'ok' });
 
-		const out = await sendProviderDispatch(
-			ctx as never,
-			'mta',
-			sampleParams,
-		);
+		const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams);
 
 		expect(sendSpy).toHaveBeenCalledTimes(2);
 		expect(out.result.success).toBe(true);
@@ -190,11 +211,7 @@ describe('sendProviderDispatch — retry semantics', () => {
 			errorCode: EmailErrorCode.SERVER_ERROR,
 		});
 
-		const out = await sendProviderDispatch(
-			ctx as never,
-			'mta',
-			sampleParams,
-		);
+		const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams);
 
 		expect(out.latencyMs).toBeGreaterThanOrEqual(0);
 		expect(scheduled[0]?.latencyMs).toBe(out.latencyMs);
@@ -216,11 +233,7 @@ describe('sendProviderDispatch — per-provider retry counts', () => {
 				errorCode: EmailErrorCode.SERVER_ERROR,
 			});
 
-			const out = await sendProviderDispatch(
-				ctx as never,
-				'mta',
-				sampleParams,
-			);
+			const out = await sendProviderDispatch(ctx as never, 'mta', sampleParams);
 
 			expect(sendSpy).toHaveBeenCalledTimes(3);
 			expect(out.attempts).toBe(3);
@@ -234,19 +247,13 @@ describe('sendProviderDispatch — per-provider retry counts', () => {
 		setRetryDelays(resendSendProvider, [0, 0, 0]);
 		try {
 			const { ctx } = buildFakeCtx();
-			const sendSpy = vi
-				.spyOn(resendSendProvider, 'sendEmail')
-				.mockResolvedValue({
-					success: false,
-					errorMessage: 'rate_limit_exceeded',
-					errorCode: EmailErrorCode.RATE_LIMIT,
-				});
+			const sendSpy = vi.spyOn(resendSendProvider, 'sendEmail').mockResolvedValue({
+				success: false,
+				errorMessage: 'rate_limit_exceeded',
+				errorCode: EmailErrorCode.RATE_LIMIT,
+			});
 
-			const out = await sendProviderDispatch(
-				ctx as never,
-				'resend',
-				sampleParams,
-			);
+			const out = await sendProviderDispatch(ctx as never, 'resend', sampleParams);
 
 			expect(sendSpy).toHaveBeenCalledTimes(4);
 			expect(out.attempts).toBe(4);
@@ -266,11 +273,7 @@ describe('sendProviderDispatch — per-provider retry counts', () => {
 				errorCode: EmailErrorCode.RATE_LIMIT,
 			});
 
-			const out = await sendProviderDispatch(
-				ctx as never,
-				'ses',
-				sampleParams,
-			);
+			const out = await sendProviderDispatch(ctx as never, 'ses', sampleParams);
 
 			expect(sendSpy).toHaveBeenCalledTimes(4);
 			expect(out.attempts).toBe(4);

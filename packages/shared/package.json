@@ -97,6 +97,10 @@
 			"types": "./src/operationError.ts",
 			"import": "./src/operationError.ts"
 		},
+		"./mtaWebhookEvent": {
+			"types": "./src/mtaWebhookEvent.ts",
+			"import": "./src/mtaWebhookEvent.ts"
+		},
 		"./postboxSanitize": {
 			"types": "./src/postboxSanitize.ts",
 			"import": "./src/postboxSanitize.ts"
@@ -164,6 +168,10 @@
 		"./ipReadinessSync": {
 			"types": "./src/ipReadinessSync.ts",
 			"import": "./src/ipReadinessSync.ts"
+		},
+		"./deliverabilityRouting": {
+			"types": "./src/deliverabilityRouting.ts",
+			"import": "./src/deliverabilityRouting.ts"
 		},
 		"./dnsbl": {
 			"types": "./src/dnsbl.ts",

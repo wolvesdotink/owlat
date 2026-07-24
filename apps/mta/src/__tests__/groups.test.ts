@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildGroupKey, extractDomain, classifyIsp, engagementToPriority } from '../queue/groups.js';
+import { buildGroupKey, extractDomain, classifyIsp } from '../queue/groups.js';
 
 describe('extractDomain', () => {
 	it('should extract domain from a simple email', () => {
@@ -68,31 +68,5 @@ describe('buildGroupKey', () => {
 
 	it('should lowercase the domain', () => {
 		expect(buildGroupKey('transactional', 'GMAIL.COM')).toBe('transactional:gmail.com');
-	});
-});
-
-describe('engagementToPriority', () => {
-	it('should map high engagement to priority 1', () => {
-		expect(engagementToPriority(100)).toBe(1);
-		expect(engagementToPriority(80)).toBe(1);
-	});
-
-	it('should map medium engagement to priority 2', () => {
-		expect(engagementToPriority(79)).toBe(2);
-		expect(engagementToPriority(50)).toBe(2);
-	});
-
-	it('should map low engagement to priority 3', () => {
-		expect(engagementToPriority(49)).toBe(3);
-		expect(engagementToPriority(20)).toBe(3);
-	});
-
-	it('should map very low engagement to priority 4', () => {
-		expect(engagementToPriority(19)).toBe(4);
-		expect(engagementToPriority(0)).toBe(4);
-	});
-
-	it('should default to priority 3 for undefined', () => {
-		expect(engagementToPriority(undefined)).toBe(3);
 	});
 });

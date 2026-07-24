@@ -27,12 +27,10 @@ import type { DestinationProviderKey, EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { extractDomain, buildGroupKey } from './groups.js';
 import { extractDomainOrNull } from '@owlat/shared';
-import { sendToMx } from '../smtp/sender.js';
 import { recordWorkerHeartbeat } from '../routes/health.js';
 import { logger } from '../monitoring/logger.js';
 import { runPipeline } from '../dispatch/pipeline.js';
 import { mainPipeline } from '../dispatch/phases/index.js';
-import { classifyResult, reduce } from '../dispatch/outcome.js';
 import type { DispatchOutcome } from '../dispatch/outcome.js';
 import { applyEffects, type DispatchEffect } from '../dispatch/effects.js';
 import type { AttemptCtx, BasePhaseCtx } from '../dispatch/types.js';
@@ -40,37 +38,22 @@ import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
 import type { PipelineResult } from '../dispatch/pipeline.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
-
-/**
- * Add random jitter (±15%) to a delay to prevent thundering herd when
- * many jobs hit the same deferral reason simultaneously.
- */
-export function withJitter(delayMs: number): number {
-	const jitterFactor = 0.85 + Math.random() * 0.3;
-	return Math.round(delayMs * jitterFactor);
-}
-
-/**
- * The two flavours of defer, distinguished only so logs/telemetry can tell a
- * server-side throttle from a remote 4xx. Neither consumes a delivery attempt
- * — both re-enqueue with the computed delay and give up only on age.
- *
- * - `self_throttle`: WE chose not to send (warming cap, org limit, domain
- *   throttle, breaker cooldown, SMTP-intel backpressure, no IP available).
- * - `remote_4xx`: the receiving MX returned a transient failure (greylist,
- *   rate-limit, soft connection bounce).
- */
-type DeferKind = 'self_throttle' | 'remote_4xx';
-
-/**
- * Wall-clock age of the message, measured from its first enqueue. Falls back
- * to the current attempt's GroupMQ enqueue timestamp for legacy jobs that
- * predate `firstEnqueuedAt`.
- */
-function messageAgeMs(job: ReservedJob<EmailJob>, now: number): number {
-	const firstEnqueuedAt = job.data.firstEnqueuedAt ?? job.timestamp;
-	return now - firstEnqueuedAt;
-}
+import { recordFeedbackProvenance } from '../bounce/feedbackProvenance.js';
+import { promoteIntakeReceipt } from '../routes/sendReceipt.js';
+import {
+	handoffDeferredJob,
+	promoteDeferredHandoff,
+	resumeDeferredHandoff,
+} from './deferHandoff.js';
+import { messageAgeMs, withJitter, type DeferKind } from './deferPolicy.js';
+import {
+	runSmtpSecondaryEffect,
+	markSmtpEffectsApplied,
+	readSmtpOutcome,
+} from './smtpOutcomeJournal.js';
+import { resumeJournaledSmtpAttempt, runJournaledSmtpAttempt } from './journaledSmtpAttempt.js';
+import { releaseRoutingReservations } from './routingReservations.js';
+import { handoffRoutingReentry, resumeRoutingReentryHandoff } from './routingReentryHandoff.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -89,6 +72,28 @@ export async function handleEmailJob(
 ): Promise<void> {
 	const data = job.data;
 	const deps = { redis, config };
+	// This durable CAS closes the route-side queue.add/receipt gap before the
+	// worker can perform SMTP or reach a GroupMQ-completable terminal path.
+	await promoteIntakeReceipt(redis, data);
+	const journalJobId = String(job.id);
+	const priorSmtpOutcome = await readSmtpOutcome(redis, journalJobId, data.messageId);
+	if (priorSmtpOutcome?.entry.state === 'effects_applied') return;
+	if (priorSmtpOutcome) {
+		const replay = await resumeJournaledSmtpAttempt(redis, priorSmtpOutcome, data);
+		if (replay.kind === 'effects_applied') return;
+		await applyCompletedAttempt(replay.journal, job, queue, deps);
+		return;
+	}
+	await promoteDeferredHandoff(redis, data);
+	if (await resumeDeferredHandoff(redis, queue, job.id, data)) {
+		return;
+	}
+	// Ownership may already have moved back to Convex routing on an earlier run
+	// of this job. Re-entering dispatch here would send a message the successor
+	// is also sending.
+	if (await resumeRoutingReentryHandoff(redis, String(job.id), data, deps)) {
+		return;
+	}
 	const domain = extractDomain(data.to);
 	const destination = await resolveDestinationSnapshot(redis, domain, { config });
 	const { providerKey } = destination;
@@ -113,7 +118,12 @@ export async function handleEmailJob(
 	const piped = await runPipeline(deps, mainPipeline, baseCtx);
 
 	if (piped.kind === 'drop') {
-		await handleDrop(piped, data, domain, providerKey, deps);
+		await handleDrop(piped, data, domain, providerKey, deps, data.firstEnqueuedAt ?? job.timestamp);
+		return;
+	}
+
+	if (piped.kind === 'routing_reentry') {
+		await handoffRoutingReentry(data, deps, piped.reason, String(job.id));
 		return;
 	}
 
@@ -135,6 +145,15 @@ export async function handleEmailJob(
 		eligibilityGeneration: piped.ctx.eligibilityGeneration,
 	};
 	if (!(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
+		if (data.routingReentryToken) {
+			await handoffRoutingReentry(
+				data,
+				deps,
+				'Selected outbound IP eligibility changed before SMTP',
+				String(job.id)
+			);
+			return;
+		}
 		await disposeDefer(
 			job,
 			queue,
@@ -149,28 +168,96 @@ export async function handleEmailJob(
 	}
 
 	const startTime = Date.now();
-	const result = await sendToMx(data, config, redis, piped.ctx.ip, eligibilityLease, destination);
-	const durationMs = Date.now() - startTime;
-
-	const outcome = classifyResult(result, providerKey);
-	const attemptCtx: AttemptCtx = { ...piped.ctx, durationMs };
-	const { effects, defer } = reduce(outcome, attemptCtx);
-
-	await applyEffects(effects, deps);
-	logOutcome(outcome, data, attemptCtx);
-
-	if (defer) {
+	try {
+		await recordFeedbackProvenance(redis, data);
+	} catch (err) {
+		logger.warn(
+			{ err, messageId: data.messageId },
+			'Delayed-feedback provenance unavailable — deferring before SMTP'
+		);
 		await disposeDefer(
 			job,
 			queue,
 			deps,
 			domain,
 			providerKey,
-			'remote_4xx',
-			defer.delayMs,
-			defer.reason
+			'self_throttle',
+			60_000,
+			'Delayed-feedback provenance persistence failed'
 		);
+		return;
 	}
+	const smtpAttempt = await runJournaledSmtpAttempt({
+		redis,
+		config,
+		jobId: journalJobId,
+		job: data,
+		attempt: piped.ctx,
+		eligibilityLease,
+		startedAt: startTime,
+	});
+	if (smtpAttempt.kind === 'capacity') {
+		await disposeDefer(
+			job,
+			queue,
+			deps,
+			domain,
+			providerKey,
+			'self_throttle',
+			60_000,
+			'SMTP outcome journal is at capacity'
+		);
+		return;
+	}
+	if (smtpAttempt.kind === 'effects_applied') return;
+	await applyCompletedAttempt(smtpAttempt.journal, job, queue, deps);
+}
+
+type CompletedAttemptJournal = Extract<
+	Awaited<ReturnType<typeof runJournaledSmtpAttempt>>,
+	{ kind: 'completed' }
+>['journal'];
+
+/** Apply the exact reduction captured beside the irreversible SMTP result. */
+async function applyCompletedAttempt(
+	completed: CompletedAttemptJournal,
+	job: ReservedJob<EmailJob>,
+	queue: Queue<EmailJob>,
+	deps: { redis: Redis; config: MtaConfig }
+): Promise<void> {
+	const { attempt, durationMs, outcome, reduction } = completed.entry;
+	const attemptCtx: AttemptCtx = { ...attempt, job: job.data, durationMs };
+
+	await applyEffects(reduction.effects, deps, {
+		runSecondary: (effectIdentity, apply) =>
+			runSmtpSecondaryEffect(deps.redis, completed.entry, completed.raw, effectIdentity, apply),
+	});
+	logOutcome(outcome, job.data, attemptCtx);
+
+	if (reduction.defer) {
+		// If the first effect pass durably handed off a successor but lost the
+		// journal-terminalization response, reconcile that exact successor before
+		// re-evaluating message age or jitter on replay.
+		if (!(await resumeDeferredHandoff(deps.redis, queue, job.id, job.data))) {
+			await disposeDefer(
+				job,
+				queue,
+				deps,
+				attempt.domain,
+				attempt.destination.providerKey,
+				'remote_4xx',
+				reduction.defer.delayMs,
+				reduction.defer.reason
+			);
+		}
+	} else if (job.data.deliveryDomain === 'member_test') {
+		// Test outcomes do not report breaker/warming consumption, so release any
+		// authenticated reservation/probe instead of leaving persistent capacity.
+		await releaseRoutingReservations(job.data, deps);
+	}
+	await markSmtpEffectsApplied(deps.redis, completed.entry, completed.raw, {
+		now: Date.now(),
+	});
 }
 
 /**
@@ -200,18 +287,21 @@ async function disposeDefer(
 	const ageMs = messageAgeMs(job, now);
 
 	if (ageMs >= deps.config.maxMessageAgeMs) {
-		await emitExpiredBounce(data, deps, domain, providerKey, ageMs, reason);
+		await emitExpiredBounce(job, deps, domain, providerKey, ageMs, reason);
 		return;
 	}
 
 	const delay = withJitter(delayMs);
 	const requeued: EmailJob = { ...data, firstEnqueuedAt: data.firstEnqueuedAt ?? job.timestamp };
 
-	await queue.add({
-		groupId: buildGroupKey(data.ipPool, domain),
-		data: requeued,
-		delay,
-	});
+	await handoffDeferredJob(
+		deps.redis,
+		queue,
+		job.id,
+		requeued,
+		buildGroupKey(data.ipPool, domain),
+		delay
+	);
 
 	logger.info(
 		{ messageId: data.messageId, to: data.to, domain, kind, delay, reason },
@@ -226,13 +316,19 @@ async function disposeDefer(
  * address failure.
  */
 async function emitExpiredBounce(
-	data: EmailJob,
+	job: ReservedJob<EmailJob>,
 	deps: { redis: Redis; config: MtaConfig },
 	domain: string,
 	providerKey: DestinationProviderKey,
 	ageMs: number,
 	reason: string
 ): Promise<void> {
+	const data = job.data;
+	// The protected outbox row is keyed deterministically and compares payloads
+	// byte-for-byte, so a replay that stamps a fresh clock is rejected outright
+	// and dead-letters the job. Anchor the terminal notification to the job's
+	// own expiry deadline instead of the observing run's wall clock.
+	const expiredAt = (data.firstEnqueuedAt ?? job.timestamp) + deps.config.maxMessageAgeMs;
 	logger.warn(
 		{ messageId: data.messageId, to: data.to, domain, ageMs, reason },
 		'Message exceeded max age — giving up with expired-bounce'
@@ -260,14 +356,19 @@ async function emitExpiredBounce(
 				event: 'bounced',
 				messageId: data.messageId,
 				organizationId: data.organizationId,
+				deliveryDomain: data.deliveryDomain,
 				bounceType: 'soft',
-				message: `Message expired after ${ageMs}ms without delivery: ${reason}`,
-				timestamp: Date.now(),
+				message: `Message expired after ${deps.config.maxMessageAgeMs}ms without delivery`,
+				timestamp: expiredAt,
 			},
 		},
 	];
 
 	await applyEffects(effects, deps);
+	// The message never reached the wire, so its warming slot and half-open
+	// probe were never consumed. Leaving them held burns real capacity for the
+	// rest of the UTC day on exactly the warming IPs that can least afford it.
+	await releaseRoutingReservations(data, deps);
 }
 
 /**
@@ -280,7 +381,9 @@ async function handleDrop(
 	job: EmailJob,
 	domain: string,
 	providerKey: DestinationProviderKey,
-	deps: { redis: Redis; config: MtaConfig }
+	deps: { redis: Redis; config: MtaConfig },
+	/** Stable across replays — the protected outbox compares payloads exactly. */
+	droppedAt: number
 ): Promise<void> {
 	const effects: DispatchEffect[] = [];
 
@@ -289,12 +392,14 @@ async function handleDrop(
 			{ messageId: job.messageId, to: job.to, reason: piped.reason },
 			'Content screening rejected'
 		);
-		effects.push({
-			kind: 'metrics_counter_inc',
-			pool: job.ipPool,
-			isp: providerKey,
-			outcome: 'rejected',
-		});
+		if (job.deliveryDomain !== 'member_test') {
+			effects.push({
+				kind: 'metrics_counter_inc',
+				pool: job.ipPool,
+				isp: providerKey,
+				outcome: 'rejected',
+			});
+		}
 	} else {
 		logger.info({ messageId: job.messageId, to: job.to }, 'Recipient suppressed — skipping');
 	}
@@ -303,8 +408,26 @@ async function handleDrop(
 		kind: 'log_delivery_event',
 		event: buildDropEvent(piped, job, domain, providerKey),
 	});
+	effects.push({
+		kind: 'notify_convex',
+		event: {
+			event: 'failed',
+			messageId: job.messageId,
+			organizationId: job.organizationId,
+			deliveryDomain: job.deliveryDomain,
+			message:
+				piped.status === 'screened'
+					? `Content screening rejected: ${piped.reason}`
+					: 'Recipient suppressed by MTA policy',
+			errorCode: piped.status === 'screened' ? 'CONTENT_SCREENED' : 'RECIPIENT_SUPPRESSED',
+			timestamp: droppedAt,
+		},
+	});
 
 	await applyEffects(effects, deps);
+	// Screening and suppression drop the message before any SMTP conversation,
+	// so the reserved warming slot and half-open probe were never consumed.
+	await releaseRoutingReservations(job, deps);
 }
 
 function buildDropEvent(
