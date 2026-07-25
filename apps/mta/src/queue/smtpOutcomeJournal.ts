@@ -1,12 +1,12 @@
 /**
  * Durable uncertainty boundary around the irreversible SMTP transaction.
  *
- * A fresh reservation is the only state allowed to enter `sendToMx`. If a
- * worker disappears after reserving, a replay converts the reservation to a
- * deterministic ambiguous result rather than risking a duplicate delivery.
+ * A fresh reservation starts retry-safe. It becomes uncertain immediately
+ * before the DATA body and terminator are written; only that phase replays as
+ * ambiguous after worker interruption.
  */
 
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import type { EmailJobResult } from '../types.js';
 import type { CtxWithIp } from '../dispatch/types.js';
@@ -22,9 +22,17 @@ export type SmtpAttemptSnapshot = Omit<CtxWithIp, 'job'>;
 
 interface InFlightSmtpOutcome {
 	state: 'in_flight';
+	/**
+	 * Missing only on reservations persisted before the DATA-boundary protocol.
+	 * Legacy entries are treated as uncertain because they may already have sent
+	 * the message body.
+	 */
+	phase?: 'pre_data' | 'uncertain';
 	jobId: string;
 	messageId: string;
 	reservedAt: number;
+	/** Unique CAS owner; absent only on legacy phase-less reservations. */
+	reservationToken?: string;
 	/** Immutable routing/reducer input captured before the SMTP transaction. */
 	attempt: SmtpAttemptSnapshot;
 }
@@ -78,6 +86,16 @@ end
 return {0, current or ''}
 `;
 
+const MARK_UNCERTAIN_LUA = `
+local current = redis.call('GET', KEYS[1])
+if current == ARGV[2] then return {1, current} end
+if current ~= ARGV[1] then return {0, current or ''} end
+local ttl = redis.call('PTTL', KEYS[1])
+if ttl <= 0 then return {0, ''} end
+redis.call('SET', KEYS[1], ARGV[2], 'PX', ttl)
+return {1, ARGV[2]}
+`;
+
 const RELEASE_LUA = `
 if redis.call('GET', KEYS[1]) ~= ARGV[1] then return 0 end
 redis.call('DEL', KEYS[1])
@@ -125,7 +143,15 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 		throw new Error('SMTP outcome journal contains an invalid entry');
 	}
 	if (entry['state'] === 'in_flight') {
-		if (typeof entry['reservedAt'] !== 'number' || !isAttemptSnapshot(entry['attempt'])) {
+		if (
+			(entry['phase'] !== undefined &&
+				entry['phase'] !== 'pre_data' &&
+				entry['phase'] !== 'uncertain') ||
+			(entry['phase'] !== undefined && typeof entry['reservationToken'] !== 'string') ||
+			(entry['reservationToken'] !== undefined && typeof entry['reservationToken'] !== 'string') ||
+			typeof entry['reservedAt'] !== 'number' ||
+			!isAttemptSnapshot(entry['attempt'])
+		) {
 			throw new Error('SMTP outcome journal contains an invalid reservation');
 		}
 		return entry as unknown as InFlightSmtpOutcome;
@@ -231,9 +257,11 @@ export async function reserveSmtpOutcome(
 	}
 	const entry: InFlightSmtpOutcome = {
 		state: 'in_flight',
+		phase: 'pre_data',
 		jobId,
 		messageId,
 		reservedAt: options.now,
+		reservationToken: randomUUID(),
 		attempt: {
 			domain: attempt.domain,
 			destination: attempt.destination,
@@ -263,20 +291,55 @@ export async function reserveSmtpOutcome(
 }
 
 /**
- * CAS-release a reservation that never attempted an SMTP envelope.
+ * Atomically cross the irreversible SMTP boundary.
+ *
+ * The expected raw value includes a random reservation token, so a
+ * delayed worker cannot mutate its successor. Repeating the same transition is
+ * idempotent, and the original fixed expiry is preserved rather than extended.
+ */
+export async function markSmtpOutcomeUncertain(
+	redis: Redis,
+	entry: InFlightSmtpOutcome,
+	expectedRaw: string
+): Promise<{ entry: InFlightSmtpOutcome; raw: string }> {
+	if (entry.phase !== 'pre_data') {
+		throw new Error('SMTP outcome journal is not at the pre-DATA boundary');
+	}
+	const uncertainEntry: InFlightSmtpOutcome = { ...entry, phase: 'uncertain' };
+	const uncertainRaw = JSON.stringify(uncertainEntry);
+	const response = (await redis.eval(
+		MARK_UNCERTAIN_LUA,
+		1,
+		journalKey(entry.jobId),
+		expectedRaw,
+		uncertainRaw
+	)) as [number, string];
+	if (response[0] !== 1 || !response[1]) {
+		throw new Error('SMTP outcome journal DATA transition lost ownership');
+	}
+	const resolved = parseEntry(response[1]);
+	assertBinding(resolved, entry.jobId, entry.messageId);
+	if (resolved.state !== 'in_flight' || resolved.phase !== 'uncertain') {
+		throw new Error('SMTP outcome journal DATA transition lost ownership');
+	}
+	return { entry: resolved, raw: response[1] };
+}
+
+/**
+ * CAS-release a reservation whose message body was never written.
  *
  * Eligibility reads, MX/profile lookups, DKIM signing, pool acquisition,
- * connection setup, MTA-STS, and TLS negotiation may all fail before MAIL FROM.
- * Those failures cannot make the recipient accept the message, so retaining
- * the reservation would incorrectly turn a safe retry into an ambiguous
- * terminal outcome. Releasing restores queue-retry semantics while preserving
- * every interruption after the envelope boundary as uncertain.
+ * connection setup, MTA-STS, TLS negotiation, and MAIL/RCPT/DATA negotiation
+ * may all fail before the DATA body. Those failures cannot make the recipient
+ * accept the message, so retaining the reservation would incorrectly turn a
+ * safe retry into an ambiguous terminal outcome.
  */
 export async function releaseSmtpOutcome(
 	redis: Redis,
 	entry: InFlightSmtpOutcome,
 	expectedRaw: string
 ): Promise<boolean> {
+	if (entry.phase !== 'pre_data') return false;
 	const released = (await redis.eval(
 		RELEASE_LUA,
 		2,

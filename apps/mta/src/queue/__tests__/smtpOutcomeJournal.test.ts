@@ -3,6 +3,7 @@ import Redis from 'ioredis-mock';
 import {
 	runSmtpSecondaryEffect,
 	finalizeSmtpOutcome,
+	markSmtpOutcomeUncertain,
 	markSmtpEffectsApplied,
 	reserveSmtpOutcome,
 	SMTP_OUTCOME_JOURNAL_TTL_MS,
@@ -104,6 +105,32 @@ describe('SMTP outcome journal', () => {
 				capacity: 1,
 			})
 		).toMatchObject({ kind: 'fresh' });
+	});
+
+	it('atomically and idempotently marks the DATA body boundary without extending expiry', async () => {
+		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', attempt('message-1'), {
+			now: Date.now(),
+			capacity: 10,
+		});
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		expect(fresh.entry.phase).toBe('pre_data');
+		const ttlBefore = await redis.pttl(smtpOutcomeJournalKeys.journalKey('job-1'));
+
+		const uncertain = await markSmtpOutcomeUncertain(redis, fresh.entry, fresh.raw);
+		expect(uncertain.entry.phase).toBe('uncertain');
+		expect(await markSmtpOutcomeUncertain(redis, fresh.entry, fresh.raw)).toEqual(uncertain);
+		expect(await redis.pttl(smtpOutcomeJournalKeys.journalKey('job-1'))).toBeLessThanOrEqual(
+			ttlBefore
+		);
+
+		const successorRaw = JSON.stringify({
+			...uncertain.entry,
+			reservationToken: 'successor-owner',
+		});
+		await redis.set(smtpOutcomeJournalKeys.journalKey('job-1'), successorRaw);
+		await expect(markSmtpOutcomeUncertain(redis, fresh.entry, fresh.raw)).rejects.toThrow(
+			'lost ownership'
+		);
 	});
 
 	it('checkpoints each successful secondary effect with the same bounded lifetime', async () => {

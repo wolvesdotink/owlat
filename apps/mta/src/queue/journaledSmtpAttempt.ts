@@ -6,6 +6,7 @@ import type { EmailJob } from '../types.js';
 import { sendToMx } from '../smtp/sender.js';
 import {
 	finalizeSmtpOutcome,
+	markSmtpOutcomeUncertain,
 	releaseSmtpOutcome,
 	reserveSmtpOutcome,
 } from './smtpOutcomeJournal.js';
@@ -19,6 +20,7 @@ type CompletedJournal = Awaited<ReturnType<typeof finalizeSmtpOutcome>>;
 
 export type JournaledSmtpAttempt =
 	| { kind: 'capacity' }
+	| { kind: 'retry_pre_data' }
 	| { kind: 'effects_applied' }
 	| { kind: 'completed'; journal: CompletedJournal };
 
@@ -44,13 +46,11 @@ export async function runJournaledSmtpAttempt(options: {
 	if (reservation.kind === 'capacity') return { kind: 'capacity' };
 
 	if (reservation.kind === 'existing') {
-		return resumeJournaledSmtpAttempt(options.redis, reservation, options.job);
+		const replay = await resumeJournaledSmtpAttempt(options.redis, reservation, options.job);
+		return replay.kind === 'retry_pre_data' ? runJournaledSmtpAttempt(options) : replay;
 	}
 
-	// MX/profile lookups, DKIM signing, eligibility fences, pool acquisition,
-	// connection setup, and TLS negotiation cannot make the recipient accept the
-	// message. Only an attempted SMTP envelope creates delivery uncertainty.
-	let envelopeAttempted = false;
+	let activeJournal = { entry: reservation.entry, raw: reservation.raw };
 	let result: Awaited<ReturnType<typeof sendToMx>>;
 	try {
 		result = await sendToMx(
@@ -60,13 +60,19 @@ export async function runJournaledSmtpAttempt(options: {
 			reservation.entry.attempt.ip,
 			options.eligibilityLease,
 			reservation.entry.attempt.destination,
-			() => {
-				envelopeAttempted = true;
+			async () => {
+				activeJournal = await markSmtpOutcomeUncertain(
+					options.redis,
+					activeJournal.entry,
+					activeJournal.raw
+				);
 			}
 		);
 	} catch (error) {
-		if (!envelopeAttempted) {
-			await releaseSmtpOutcome(options.redis, reservation.entry, reservation.raw).catch(() => {});
+		if (activeJournal.entry.phase === 'pre_data') {
+			await releaseSmtpOutcome(options.redis, activeJournal.entry, activeJournal.raw).catch(
+				() => {}
+			);
 		}
 		throw error;
 	}
@@ -75,8 +81,8 @@ export async function runJournaledSmtpAttempt(options: {
 		kind: 'completed',
 		journal: await completeAttempt(
 			options.redis,
-			reservation.entry,
-			reservation.raw,
+			activeJournal.entry,
+			activeJournal.raw,
 			options.job,
 			result,
 			completedAt - options.startedAt,
@@ -94,6 +100,12 @@ export async function resumeJournaledSmtpAttempt(
 	if (journal.entry.state === 'effects_applied') return { kind: 'effects_applied' };
 	if (journal.entry.state === 'completed') {
 		return { kind: 'completed', journal: { entry: journal.entry, raw: journal.raw } };
+	}
+	if (journal.entry.phase === 'pre_data') {
+		if (!(await releaseSmtpOutcome(redis, journal.entry, journal.raw))) {
+			throw new Error('SMTP pre-DATA journal replay lost ownership');
+		}
+		return { kind: 'retry_pre_data' };
 	}
 	return {
 		kind: 'completed',
