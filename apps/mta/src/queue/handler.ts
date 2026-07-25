@@ -80,8 +80,10 @@ export async function handleEmailJob(
 	if (priorSmtpOutcome) {
 		const replay = await resumeJournaledSmtpAttempt(redis, priorSmtpOutcome, data);
 		if (replay.kind === 'effects_applied') return;
-		await applyCompletedAttempt(replay.journal, job, queue, deps);
-		return;
+		if (replay.kind === 'completed') {
+			await applyCompletedAttempt(replay.journal, job, queue, deps);
+			return;
+		}
 	}
 	await promoteDeferredHandoff(redis, data);
 	if (await resumeDeferredHandoff(redis, queue, job.id, data)) {
@@ -211,6 +213,9 @@ export async function handleEmailJob(
 			'SMTP outcome journal is at capacity'
 		);
 		return;
+	}
+	if (smtpAttempt.kind === 'retry_pre_data') {
+		throw new Error('SMTP pre-DATA journal replay was not reacquired');
 	}
 	if (smtpAttempt.kind === 'effects_applied') return;
 	await applyCompletedAttempt(smtpAttempt.journal, job, queue, deps);

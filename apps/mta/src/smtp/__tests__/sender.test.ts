@@ -118,7 +118,7 @@ import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 import type { CtxWithIp } from '../../dispatch/types.js';
 import { runJournaledSmtpAttempt } from '../../queue/journaledSmtpAttempt.js';
-import { smtpOutcomeJournalKeys } from '../../queue/smtpOutcomeJournal.js';
+import { reserveSmtpOutcome, smtpOutcomeJournalKeys } from '../../queue/smtpOutcomeJournal.js';
 
 // A fresh live-connection stub whose `secured` flag the test controls.
 function liveConn(secured = true): { secured: boolean; close: ReturnType<typeof vi.fn> } {
@@ -299,6 +299,7 @@ describe('sendToMx', () => {
 
 	describe('SMTP outcome journal envelope boundary', () => {
 		const journalKey = smtpOutcomeJournalKeys.journalKey('job-sender-boundary');
+		const neverCompletes = new Promise<never>(() => {});
 
 		async function runJournaled(job: EmailJob) {
 			return runJournaledSmtpAttempt({
@@ -312,14 +313,25 @@ describe('sendToMx', () => {
 			});
 		}
 
-		it('releases and retries when the final eligibility fence throws before MAIL FROM', async () => {
-			const job = createJob();
-			leaseValidMock
-				.mockResolvedValueOnce(true)
-				.mockRejectedValueOnce(new Error('Redis failover during eligibility fence'));
+		async function journalPhase(): Promise<unknown> {
+			const raw = await redis.get(journalKey);
+			return raw ? (JSON.parse(raw) as { phase?: unknown }).phase : undefined;
+		}
 
-			await expect(runJournaled(job)).rejects.toThrow('Redis failover during eligibility fence');
-			expect(await redis.get(journalKey)).toBeNull();
+		it('retries after a worker disappears before opening the SMTP connection', async () => {
+			const job = createJob();
+			let connectionAttempted!: () => void;
+			const reachedConnection = new Promise<void>((resolve) => {
+				connectionAttempted = resolve;
+			});
+			connectMock.mockImplementationOnce(async () => {
+				connectionAttempted();
+				return neverCompletes;
+			});
+
+			void runJournaled(job);
+			await reachedConnection;
+			expect(await journalPhase()).toBe('pre_data');
 
 			await expect(runJournaled(job)).resolves.toMatchObject({
 				kind: 'completed',
@@ -328,40 +340,51 @@ describe('sendToMx', () => {
 			expect(sendEnvelopeMock).toHaveBeenCalledOnce();
 		});
 
-		it('releases and retries when pool acquisition throws before MAIL FROM', async () => {
+		it('retries after a worker disappears after 354 but before the DATA body', async () => {
 			const job = createJob();
-			acquireMock.mockRejectedValueOnce(new Error('Redis pool lease unavailable'));
+			let dataAccepted!: () => void;
+			const reachedDataBoundary = new Promise<void>((resolve) => {
+				dataAccepted = resolve;
+			});
+			sendEnvelopeMock.mockImplementationOnce(async () => {
+				// The smtp-client contract invokes beforeDataBodyWrite only after 354.
+				// Leaving it uncalled models interruption in the instruction gap
+				// immediately before the body write.
+				dataAccepted();
+				return neverCompletes;
+			});
 
-			await expect(runJournaled(job)).rejects.toThrow('Redis pool lease unavailable');
-			expect(await redis.get(journalKey)).toBeNull();
+			void runJournaled(job);
+			await reachedDataBoundary;
+			expect(await journalPhase()).toBe('pre_data');
 
 			await expect(runJournaled(job)).resolves.toMatchObject({
 				kind: 'completed',
 				journal: { entry: { state: 'completed', result: { success: true } } },
 			});
-			expect(sendEnvelopeMock).toHaveBeenCalledOnce();
+			expect(sendEnvelopeMock).toHaveBeenCalledTimes(2);
 		});
 
-		it('retains and replays a true post-DATA ambiguity without another envelope', async () => {
+		it('does not resend after the body boundary when the final reply is never observed', async () => {
 			const job = createJob();
-			sendEnvelopeMock.mockRejectedValue(
-				smtpError({
-					phase: 'data-final',
-					message: 'connection dropped after DATA',
-					secured: true,
-				})
+			let bodyWritten!: () => void;
+			const reachedMissingFinalReply = new Promise<void>((resolve) => {
+				bodyWritten = resolve;
+			});
+			sendEnvelopeMock.mockImplementationOnce(
+				async (
+					_conn: SmtpConnection,
+					options: { beforeDataBodyWrite?: () => void | Promise<void> }
+				) => {
+					await options.beforeDataBodyWrite?.();
+					bodyWritten();
+					return neverCompletes;
+				}
 			);
 
-			await expect(runJournaled(job)).resolves.toMatchObject({
-				kind: 'completed',
-				journal: {
-					entry: {
-						state: 'completed',
-						result: { success: false, bounceType: 'ambiguous' },
-					},
-				},
-			});
-			expect(await redis.get(journalKey)).not.toBeNull();
+			void runJournaled(job);
+			await reachedMissingFinalReply;
+			expect(await journalPhase()).toBe('uncertain');
 
 			await expect(runJournaled(job)).resolves.toMatchObject({
 				kind: 'completed',
@@ -373,6 +396,32 @@ describe('sendToMx', () => {
 				},
 			});
 			expect(sendEnvelopeMock).toHaveBeenCalledOnce();
+		});
+
+		it('treats a legacy phase-less in-flight reservation as uncertain', async () => {
+			const job = createJob();
+			const legacy = await reserveSmtpOutcome(
+				redis,
+				'job-sender-boundary',
+				job.messageId,
+				createAttempt(job),
+				{ now: Date.now(), capacity: config.smtpOutcomeJournalMaxSize }
+			);
+			if (legacy.kind !== 'fresh') throw new Error('expected fresh reservation');
+			const legacyEntry = JSON.parse(legacy.raw) as Record<string, unknown>;
+			delete legacyEntry['phase'];
+			await redis.set(journalKey, JSON.stringify(legacyEntry));
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: {
+					entry: {
+						state: 'completed',
+						result: { success: false, bounceType: 'ambiguous' },
+					},
+				},
+			});
+			expect(sendEnvelopeMock).not.toHaveBeenCalled();
 		});
 	});
 

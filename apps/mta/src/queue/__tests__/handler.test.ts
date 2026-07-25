@@ -380,14 +380,17 @@ describe('handleEmailJob', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
-	it('replays an in-flight reservation as ambiguous without another SMTP call', async () => {
+	it('replays an uncertain reservation as ambiguous without another SMTP call', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { isSuppressed } = await import('../../intelligence/suppressionList.js');
-		const { reserveSmtpOutcome } = await import('../smtpOutcomeJournal.js');
-		await reserveSmtpOutcome(redis, 'job-1', 'msg-001', createAttempt(), {
+		const { markSmtpOutcomeUncertain, reserveSmtpOutcome } =
+			await import('../smtpOutcomeJournal.js');
+		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'msg-001', createAttempt(), {
 			now: Date.now(),
 			capacity: config.smtpOutcomeJournalMaxSize,
 		});
+		if (fresh.kind !== 'fresh') throw new Error('expected fresh reservation');
+		await markSmtpOutcomeUncertain(redis, fresh.entry, fresh.raw);
 		vi.mocked(isSuppressed).mockResolvedValue(true);
 
 		await run(createJob());
@@ -405,6 +408,16 @@ describe('handleEmailJob', () => {
 
 	it('does not repeat SMTP when the result-journal write fails after the network call', async () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
+		vi.mocked(sendToMx).mockImplementation(async (...args) => {
+			const beforeDataBodyWrite = args[6] as (() => Promise<void>) | undefined;
+			await beforeDataBodyWrite?.();
+			return {
+				success: true,
+				smtpCode: 250,
+				smtpResponse: '250 OK',
+				remoteMessageId: 'default-remote-id@mx.example.com',
+			};
+		});
 		const originalEval = redis.eval.bind(redis);
 		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
 			if (String(args[0]).includes('current == ARGV[1]')) {
@@ -989,8 +1002,8 @@ describe('handleEmailJob', () => {
 		const { sendToMx } = await import('../../smtp/sender.js');
 		const { notifyConvex } = await import('../../webhooks/convexNotifier.js');
 		vi.mocked(sendToMx).mockImplementationOnce(async (...args) => {
-			const onWireAttempt = args[6] as (() => void) | undefined;
-			onWireAttempt?.();
+			const beforeDataBodyWrite = args[6] as (() => Promise<void>) | undefined;
+			await beforeDataBodyWrite?.();
 			throw new Error('socket died mid-DATA');
 		});
 
