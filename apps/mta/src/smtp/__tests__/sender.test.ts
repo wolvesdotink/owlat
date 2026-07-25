@@ -116,6 +116,9 @@ import type { PeerCertificate, TLSSocket } from 'node:tls';
 import { MX_CERT } from './certFixture.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import type { CtxWithIp } from '../../dispatch/types.js';
+import { runJournaledSmtpAttempt } from '../../queue/journaledSmtpAttempt.js';
+import { reserveSmtpOutcome, smtpOutcomeJournalKeys } from '../../queue/smtpOutcomeJournal.js';
 
 // A fresh live-connection stub whose `secured` flag the test controls.
 function liveConn(secured = true): { secured: boolean; close: ReturnType<typeof vi.fn> } {
@@ -180,6 +183,7 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		contentMaxSizeKb: 500,
 		deliveryLogMaxLen: 100000,
 		deliveryLogTtlHours: 72,
+		smtpOutcomeJournalMaxSize: 10000,
 		webhookDlqMaxSize: 10000,
 		bounceMaxConnectionsPerIp: 10,
 		bounceMaxClients: 200,
@@ -194,6 +198,32 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		maxMessageAgeMs: 432_000_000,
 		...overrides,
 	} satisfies MtaConfig;
+}
+
+function createAttempt(job: EmailJob): CtxWithIp {
+	return {
+		job,
+		domain: 'example.com',
+		destination: {
+			recipientDomain: 'example.com',
+			providerKey: 'other',
+			throttleKey: 'example.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [
+					{ exchange: 'mx1.example.com', priority: 10 },
+					{ exchange: 'mx2.example.com', priority: 20 },
+				],
+			},
+			daneDiscoveryAuthenticated: true,
+		},
+		fromDomain: 'owlat.com',
+		pool: 'transactional',
+		dedicatedIp: undefined,
+		ip: '10.0.0.1',
+		eligibilityGeneration: 1,
+	};
 }
 
 describe('sendToMx', () => {
@@ -264,6 +294,134 @@ describe('sendToMx', () => {
 			rejectUnauthorized: false,
 			allowedMxHosts: [],
 			policyMode: 'none',
+		});
+	});
+
+	describe('SMTP outcome journal envelope boundary', () => {
+		const journalKey = smtpOutcomeJournalKeys.journalKey('job-sender-boundary');
+		const neverCompletes = new Promise<never>(() => {});
+
+		async function runJournaled(job: EmailJob) {
+			return runJournaledSmtpAttempt({
+				redis,
+				config,
+				jobId: 'job-sender-boundary',
+				job,
+				eligibilityLease: { ip: '10.0.0.1', eligibilityGeneration: 1 },
+				attempt: createAttempt(job),
+				startedAt: Date.now(),
+			});
+		}
+
+		async function journalPhase(): Promise<unknown> {
+			const raw = await redis.get(journalKey);
+			return raw ? (JSON.parse(raw) as { phase?: unknown }).phase : undefined;
+		}
+
+		it('retries after a worker disappears before opening the SMTP connection', async () => {
+			const job = createJob();
+			let connectionAttempted!: () => void;
+			const reachedConnection = new Promise<void>((resolve) => {
+				connectionAttempted = resolve;
+			});
+			connectMock.mockImplementationOnce(async () => {
+				connectionAttempted();
+				return neverCompletes;
+			});
+
+			void runJournaled(job);
+			await reachedConnection;
+			expect(await journalPhase()).toBe('pre_data');
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: { entry: { state: 'completed', result: { success: true } } },
+			});
+			expect(sendEnvelopeMock).toHaveBeenCalledOnce();
+		});
+
+		it('retries after a worker disappears after 354 but before the DATA body', async () => {
+			const job = createJob();
+			let dataAccepted!: () => void;
+			const reachedDataBoundary = new Promise<void>((resolve) => {
+				dataAccepted = resolve;
+			});
+			sendEnvelopeMock.mockImplementationOnce(async () => {
+				// The smtp-client contract invokes beforeDataBodyWrite only after 354.
+				// Leaving it uncalled models interruption in the instruction gap
+				// immediately before the body write.
+				dataAccepted();
+				return neverCompletes;
+			});
+
+			void runJournaled(job);
+			await reachedDataBoundary;
+			expect(await journalPhase()).toBe('pre_data');
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: { entry: { state: 'completed', result: { success: true } } },
+			});
+			expect(sendEnvelopeMock).toHaveBeenCalledTimes(2);
+		});
+
+		it('does not resend after the body boundary when the final reply is never observed', async () => {
+			const job = createJob();
+			let bodyWritten!: () => void;
+			const reachedMissingFinalReply = new Promise<void>((resolve) => {
+				bodyWritten = resolve;
+			});
+			sendEnvelopeMock.mockImplementationOnce(
+				async (
+					_conn: SmtpConnection,
+					options: { beforeDataBodyWrite?: () => void | Promise<void> }
+				) => {
+					await options.beforeDataBodyWrite?.();
+					bodyWritten();
+					return neverCompletes;
+				}
+			);
+
+			void runJournaled(job);
+			await reachedMissingFinalReply;
+			expect(await journalPhase()).toBe('uncertain');
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: {
+					entry: {
+						state: 'completed',
+						result: { success: false, bounceType: 'ambiguous' },
+					},
+				},
+			});
+			expect(sendEnvelopeMock).toHaveBeenCalledOnce();
+		});
+
+		it('treats a legacy phase-less in-flight reservation as uncertain', async () => {
+			const job = createJob();
+			const legacy = await reserveSmtpOutcome(
+				redis,
+				'job-sender-boundary',
+				job.messageId,
+				createAttempt(job),
+				{ now: Date.now(), capacity: config.smtpOutcomeJournalMaxSize }
+			);
+			if (legacy.kind !== 'fresh') throw new Error('expected fresh reservation');
+			const legacyEntry = JSON.parse(legacy.raw) as Record<string, unknown>;
+			delete legacyEntry['phase'];
+			await redis.set(journalKey, JSON.stringify(legacyEntry));
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: {
+					entry: {
+						state: 'completed',
+						result: { success: false, bounceType: 'ambiguous' },
+					},
+				},
+			});
+			expect(sendEnvelopeMock).not.toHaveBeenCalled();
 		});
 	});
 
@@ -445,7 +603,12 @@ describe('sendToMx', () => {
 
 	it('returns hard bounce on 5xx SMTP error and stops trying', async () => {
 		sendEnvelopeMock.mockRejectedValue(
-			smtpError({ phase: 'rcpt', message: '550 5.1.1 User unknown', replyCode: 550, secured: true })
+			smtpError({
+				phase: 'rcpt',
+				message: '550 5.1.1 User unknown',
+				replyCode: 550,
+				secured: true,
+			})
 		);
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');

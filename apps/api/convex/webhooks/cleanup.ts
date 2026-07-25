@@ -4,6 +4,22 @@ import { AUDIT_LOG_RETENTION_MS } from '../lib/constants';
 
 const CLEANUP_BATCH_SIZE = 100;
 
+/** Delete expired campaign-alert receipts without an unbounded table scan. */
+export const cleanupCampaignAlertReceipts = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const expired = await ctx.db
+			.query('mtaCampaignAlertReceipts')
+			.withIndex('by_expires_at', (q) => q.lt('expiresAt', Date.now()))
+			.take(CLEANUP_BATCH_SIZE);
+		for (const receipt of expired) await ctx.db.delete(receipt._id);
+		if (expired.length === CLEANUP_BATCH_SIZE) {
+			await ctx.scheduler.runAfter(0, internal.webhooks.cleanup.cleanupCampaignAlertReceipts, {});
+		}
+		return { deletedCount: expired.length };
+	},
+});
+
 // Clean up webhook delivery logs older than retention period in batches
 export const cleanupOldLogs = internalMutation({
 	args: {},

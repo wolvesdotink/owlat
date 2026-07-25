@@ -27,6 +27,7 @@ export type {
 	SendProviderModule,
 	ExtrasFor,
 	MtaExtras,
+	MtaIpPool,
 	SesExtras,
 	ResendExtras,
 	SmtpExtras,

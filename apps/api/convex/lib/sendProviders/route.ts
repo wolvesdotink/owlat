@@ -14,6 +14,8 @@ import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated
 import type { Doc } from '../../_generated/dataModel';
 import {
 	resolveRoute,
+	DeliverabilityRouteError,
+	GlobalDeliveryCircuitOpenError,
 	type ProviderRouteConfig,
 	type ProviderHealthStatus,
 	type ResolvedRoute,
@@ -21,6 +23,10 @@ import {
 import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { getOptional } from '../env';
+import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
+import { getSingletonOrganizationId } from '../sessionOrganization';
+import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
@@ -40,7 +46,14 @@ export const messageTypeValidator = v.union(
  */
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
-	messageType: MessageType
+	messageType: MessageType,
+	addressContext?: {
+		to?: string;
+		from?: string;
+		now?: number;
+		baseOnly?: boolean;
+		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+	}
 ): Promise<ResolvedRoute | null> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
@@ -64,9 +77,184 @@ export async function resolveSendRouteFromDb(
 		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
 	}
 
-	return resolveRoute(routeConfig as ProviderRouteConfig | null, healthStatuses, (kind) =>
-		readyKinds.has(kind)
+	const deliverability = addressContext?.baseOnly
+		? undefined
+		: await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
+
+	const resolved = resolveRoute(
+		routeConfig as ProviderRouteConfig | null,
+		healthStatuses,
+		(kind) => readyKinds.has(kind),
+		deliverability
 	);
+	return resolved
+		? {
+				...resolved,
+				warmupOverflowEnabled: Boolean(
+					messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
+				),
+			}
+		: null;
+}
+
+async function deliverabilityInput(
+	ctx: QueryCtx | MutationCtx,
+	routeConfig: Doc<'providerRoutes'> | null,
+	messageType: MessageType,
+	addressContext?: {
+		to?: string;
+		from?: string;
+		now?: number;
+		baseOnly?: boolean;
+		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+	}
+) {
+	if (!addressContext?.to) return undefined;
+	const toDomain = extractDomainOrNull(addressContext.to);
+	if (!toDomain) return undefined;
+	const now = addressContext.now ?? Date.now();
+	let organizationId: string;
+	try {
+		organizationId = await getSingletonOrganizationId(ctx);
+	} catch {
+		return undefined;
+	}
+	const learnedProvider = await ctx.db
+		.query('destinationProviderDomains')
+		.withIndex('by_org_domain', (q) =>
+			q.eq('organizationId', organizationId).eq('domain', toDomain)
+		)
+		.first();
+	const provider =
+		learnedProvider && learnedProvider.expiresAt >= now
+			? learnedProvider.destinationProvider
+			: destinationProviderForDomain(toDomain);
+	const [providerState, globalState, warmingState] = await Promise.all([
+		ctx.db
+			.query('deliverabilityRouteStates')
+			.withIndex('by_org_provider', (q) =>
+				q.eq('organizationId', organizationId).eq('destinationProvider', provider)
+			)
+			.first(),
+		ctx.db
+			.query('deliverabilityRouteStates')
+			.withIndex('by_org_provider', (q) =>
+				q.eq('organizationId', organizationId).eq('destinationProvider', 'all')
+			)
+			.first(),
+		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
+			? ctx.db.query('warmingState').first()
+			: Promise.resolve(null),
+	]);
+	const freshActive = [globalState, providerState].filter(
+		(state) => state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
+	);
+	const activeReasons = freshActive.flatMap((state) => state?.signals.map((s) => s.source) ?? []);
+	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
+	const isWarmupOverflow = Boolean(
+		addressContext.forceRelayReason === 'warmup_overflow' ||
+		(warmingState &&
+			now - warmingState.syncedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+			warmingState.phase !== 'graduated' &&
+			warmingState.totalDailyCap > 0 &&
+			warmingState.totalSentToday >= warmingState.totalDailyCap)
+	);
+	const fromDomain = addressContext.from ? extractDomainOrNull(addressContext.from) : null;
+	const isRelayDomainVerified =
+		fromDomain && routeConfig?.deliverabilityFallback?.isEnabled
+			? await relayDomainVerified(
+					ctx,
+					fromDomain,
+					routeConfig.deliverabilityFallback.relayProviderType,
+					now
+				)
+			: false;
+	const isGlobalBreakerOpen = Boolean(
+		globalState?.isFallbackActive &&
+		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+		globalState.signals.some((signal) => signal.source === 'breaker_open')
+	);
+	return { activeReasons, isWarmupOverflow, isRelayDomainVerified, isGlobalBreakerOpen };
+}
+
+async function relayDomainVerified(
+	ctx: QueryCtx | MutationCtx,
+	domainName: string,
+	relayProviderType: string,
+	now: number
+): Promise<boolean> {
+	if (relayProviderType !== 'ses') return false;
+	const domain = await ctx.db
+		.query('domains')
+		.withIndex('by_domain', (q) => q.eq('domain', domainName.toLowerCase()))
+		.first();
+	if (!domain) return false;
+	const identity = await ctx.db
+		.query('sendingDomainSesIdentities')
+		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+		.first();
+	if (
+		!identity?.dnsRecords ||
+		!identity.verificationResults ||
+		!identity.isProviderVerified ||
+		!identity.verifiedAt ||
+		now - identity.verifiedAt > SES_RELAY_PROOF_MAX_AGE_MS
+	)
+		return false;
+	const proof = identity.verificationResults;
+	const spfProofState =
+		identity.spfProofState ??
+		(identity.dnsRecords.spf ? 'dns_required' : 'not_applicable_manual_primary');
+	const spfSatisfied =
+		spfProofState === 'dns_required'
+			? Boolean(identity.dnsRecords.spf && proof.spf?.verified)
+			: domain.providerType === 'mta' &&
+				domain.status === 'verified' &&
+				!identity.dnsRecords.spf &&
+				!proof.spf;
+	const results = [
+		...(spfProofState === 'dns_required' ? [proof.spf] : []),
+		...(proof.dkim ?? []),
+		...(proof.mailFrom ?? []),
+	];
+	return Boolean(
+		spfSatisfied &&
+		identity.dkimTokens.length > 0 &&
+		proof.dkim?.length === identity.dkimTokens.length &&
+		proof.dkim.every((result) => result.verified) &&
+		identity.dnsRecords.mailFrom?.length &&
+		proof.mailFrom?.length === identity.dnsRecords.mailFrom.length &&
+		proof.mailFrom.every((result) => result.verified) &&
+		results.every((result) => {
+			if (!result || !Number.isFinite(result.lastChecked)) return false;
+			const age = now - result.lastChecked;
+			return age >= 0 && age <= SES_RELAY_PROOF_MAX_AGE_MS;
+		})
+	);
+}
+
+/**
+ * Refusals that mean "not right now", not "never".
+ *
+ * `resolveRoute` throws for an open org-wide safety circuit and for a
+ * fallback whose relay identity is unverified or unavailable. Both are
+ * transient states — the error text says "temporarily deferred" — but a throw
+ * crossing an action boundary loses its class, surfaces as a workpool failure,
+ * and terminalizes the Send as `WORKPOOL_FAILED`. Opening the safety circuit
+ * would then burn every in-flight campaign send instead of pausing it. The
+ * governed queries below convert them to a typed deferral, which the last-mile
+ * boundary turns into a bounded retry (capped by the routing attempt limit and
+ * the four-day delivery deadline).
+ */
+export type RoutingDeferralCode =
+	| 'GLOBAL_DELIVERY_CIRCUIT_OPEN'
+	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
+	| 'DELIVERABILITY_RELAY_UNAVAILABLE';
+
+function routingDeferralCode(error: unknown): RoutingDeferralCode | null {
+	if (error instanceof GlobalDeliveryCircuitOpenError) return error.code;
+	if (error instanceof DeliverabilityRouteError) return error.code;
+	return null;
 }
 
 /**
@@ -77,8 +265,104 @@ export async function resolveSendRouteFromDb(
 export const resolveSendRoute = internalQuery({
 	args: {
 		messageType: messageTypeValidator,
+		to: v.optional(v.string()),
+		from: v.optional(v.string()),
+		baseOnly: v.optional(v.boolean()),
+		forceRelayReason: v.optional(v.union(v.literal('breaker_open'), v.literal('warmup_overflow'))),
 	},
 	handler: async (ctx, args): Promise<ResolvedRoute | null> => {
-		return await resolveSendRouteFromDb(ctx, args.messageType);
+		return await resolveSendRouteFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+			baseOnly: args.baseOnly,
+			forceRelayReason: args.forceRelayReason,
+		});
 	},
+});
+
+/**
+ * Resolve both the policy-aware route and its underlying strategy route for
+ * the last-mile action. The action uses the base candidate only for an MTA
+ * recovery probe; the policy-aware route remains authoritative for every
+ * persisted Convex safety signal.
+ */
+export async function resolveLastMileRoutePlanFromDb(
+	ctx: QueryCtx,
+	messageType: MessageType,
+	addressContext: { to: string; from: string }
+): Promise<{
+	route: ResolvedRoute | null;
+	baseRoute: ResolvedRoute | null;
+	isMtaGoverned: boolean;
+	deferralCode?: RoutingDeferralCode;
+}> {
+	const routeConfig = await ctx.db
+		.query('providerRoutes')
+		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
+		.first();
+	const isHybrid = Boolean(
+		routeConfig?.deliverabilityFallback?.isEnabled &&
+		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+	);
+	try {
+		const route = await resolveSendRouteFromDb(ctx, messageType, addressContext);
+		const baseRoute = await resolveSendRouteFromDb(ctx, messageType, {
+			...addressContext,
+			baseOnly: true,
+		});
+		return { route, baseRoute, isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta' };
+	} catch (error) {
+		const deferralCode = routingDeferralCode(error);
+		if (!deferralCode) throw error;
+		return { route: null, baseRoute: null, isMtaGoverned: isHybrid, deferralCode };
+	}
+}
+
+export const resolveLastMileRoutePlan = internalQuery({
+	args: {
+		messageType: messageTypeValidator,
+		to: v.string(),
+		from: v.string(),
+	},
+	handler: async (ctx, args) =>
+		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, { to: args.to, from: args.from }),
+});
+
+/**
+ * The relay a governed send falls back to once the MTA hands back an
+ * overflow/breaker decision. Reports a transient refusal instead of throwing,
+ * so an unverified or unavailable relay defers the message rather than
+ * terminalizing it.
+ */
+export async function resolveGovernedRelayRouteFromDb(
+	ctx: QueryCtx,
+	messageType: MessageType,
+	options: {
+		to?: string;
+		from?: string;
+		forceRelayReason: 'breaker_open' | 'warmup_overflow';
+	}
+): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> {
+	try {
+		return { route: await resolveSendRouteFromDb(ctx, messageType, options) };
+	} catch (error) {
+		const deferralCode = routingDeferralCode(error);
+		if (!deferralCode) throw error;
+		return { route: null, deferralCode };
+	}
+}
+
+export const resolveGovernedRelayRoute = internalQuery({
+	args: {
+		messageType: messageTypeValidator,
+		to: v.optional(v.string()),
+		from: v.optional(v.string()),
+		forceRelayReason: v.union(v.literal('breaker_open'), v.literal('warmup_overflow')),
+	},
+	handler: async (ctx, args) =>
+		await resolveGovernedRelayRouteFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+			forceRelayReason: args.forceRelayReason,
+		}),
 });

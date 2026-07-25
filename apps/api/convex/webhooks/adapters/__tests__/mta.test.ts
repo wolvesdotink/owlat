@@ -56,6 +56,145 @@ describe('verifyMtaHeaders', () => {
 });
 
 describe('mtaAdapter.parseEvent', () => {
+	it('parses an authenticated accepted-job routing re-entry with the same Send/idempotency', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'routing.reentry',
+				messageId: 'send_campaign-1',
+				message: 'breaker generation changed',
+				routingReentryToken: 'rr1.authenticated-token',
+				workAttemptId: 'work-attempt-1',
+				routingReentryReason: 'circuit_breaker_changed',
+				routingReentry: {
+					envelopeInput: { kind: 'campaign', to: 'person@example.com' },
+					retryState: {
+						attempt: 1,
+						startedAt: 1700000000000,
+						idempotencyKey: 'send_campaign-1',
+					},
+				},
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toMatchObject({
+			kind: 'internal.routing_reentry',
+			providerMessageId: 'send_campaign-1',
+			token: 'rr1.authenticated-token',
+			workAttemptId: 'work-attempt-1',
+			reason: 'circuit_breaker_changed',
+			retryState: { attempt: 1, idempotencyKey: 'send_campaign-1' },
+		});
+	});
+
+	it('round-trips the reconciliation fields the callback digest was issued over', () => {
+		// `issueSnapshot` digests the whole retryState. An acceptance-unknown
+		// dispatch adds `workAttemptId` + `acceptanceReconciliation`, so dropping
+		// them here would make every reconciliation re-entry a permanent
+		// `binding_mismatch` and leave the Send queued forever.
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'routing.reentry',
+				messageId: 'send_campaign-1',
+				routingReentryToken: 'rr2.authenticated-token',
+				workAttemptId: 'work-attempt-2',
+				routingReentryReason: 'warming_capacity_changed',
+				routingReentry: {
+					envelopeInput: { kind: 'campaign', to: 'person@example.com' },
+					retryState: {
+						attempt: 2,
+						startedAt: 1700000000000,
+						idempotencyKey: 'send_campaign-1',
+						workAttemptId: 'work-attempt-1',
+						acceptanceReconciliation: true,
+					},
+				},
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toMatchObject({
+			kind: 'internal.routing_reentry',
+			retryState: {
+				attempt: 2,
+				startedAt: 1700000000000,
+				idempotencyKey: 'send_campaign-1',
+				workAttemptId: 'work-attempt-1',
+				acceptanceReconciliation: true,
+			},
+		});
+	});
+
+	it('omits absent reconciliation fields rather than materializing them', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'routing.reentry',
+				messageId: 'send_campaign-1',
+				routingReentryToken: 'rr2.authenticated-token',
+				workAttemptId: 'work-attempt-2',
+				routingReentryReason: 'warming_capacity_changed',
+				routingReentry: {
+					envelopeInput: { kind: 'campaign', to: 'person@example.com' },
+					retryState: {
+						attempt: 1,
+						startedAt: 1700000000000,
+						idempotencyKey: 'send_campaign-1',
+					},
+				},
+				timestamp: 1700000000000,
+			})
+		);
+		expect(
+			Object.keys((event as { retryState: Record<string, unknown> }).retryState).sort()
+		).toEqual(['attempt', 'idempotencyKey', 'startedAt']);
+	});
+
+	it.each([
+		{ workAttemptId: 42 },
+		{ workAttemptId: '' },
+		{ workAttemptId: 'w'.repeat(129) },
+		{ acceptanceReconciliation: 'yes' },
+	])('rejects a routing re-entry with an invalid reconciliation field (%j)', (overrides) => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'routing.reentry',
+					messageId: 'send_campaign-1',
+					routingReentryToken: 'rr2.authenticated-token',
+					workAttemptId: 'work-attempt-2',
+					routingReentryReason: 'warming_capacity_changed',
+					routingReentry: {
+						envelopeInput: { kind: 'campaign', to: 'person@example.com' },
+						retryState: {
+							attempt: 1,
+							startedAt: 1700000000000,
+							idempotencyKey: 'send_campaign-1',
+							...overrides,
+						},
+					},
+					timestamp: 1700000000000,
+				})
+			)
+		).toBeNull();
+	});
+
+	it('rejects a routing re-entry whose retry key does not match the accepted message', () => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'routing.reentry',
+					messageId: 'send-1',
+					routingReentryToken: 'rr1.authenticated-token',
+					workAttemptId: 'work-attempt-1',
+					routingReentryReason: 'routing_lease_stale',
+					routingReentry: {
+						envelopeInput: { kind: 'transactional' },
+						retryState: { attempt: 1, startedAt: 1, idempotencyKey: 'send-other' },
+					},
+					timestamp: 1,
+				})
+			)
+		).toBeNull();
+	});
+
 	it('parses bounced with hard classification', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
@@ -63,6 +202,7 @@ describe('mtaAdapter.parseEvent', () => {
 				messageId: 'msg_1',
 				bounceType: 'hard',
 				message: 'user unknown',
+				deliveryDomain: 'production',
 				timestamp: 1700000000000,
 			})
 		);
@@ -72,6 +212,8 @@ describe('mtaAdapter.parseEvent', () => {
 			at: 1700000000000,
 			bounceType: 'hard',
 			bounceMessage: 'user unknown',
+			providerType: 'mta',
+			deliveryDomain: 'production',
 		});
 	});
 
@@ -113,6 +255,7 @@ describe('mtaAdapter.parseEvent', () => {
 			at: 1700000000000,
 			errorMessage: 'Ambiguous post-DATA drop: connection reset',
 			errorCode: 'ambiguous_post_data',
+			providerType: 'mta',
 		});
 		expect(event?.kind).not.toBe('email.bounced');
 	});
@@ -128,6 +271,33 @@ describe('mtaAdapter.parseEvent', () => {
 		});
 	});
 
+	it.each(['CONTENT_SCREENED', 'RECIPIENT_SUPPRESSED'])(
+		'preserves the bounded MTA terminal error code %s',
+		(errorCode) => {
+			const event = mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'failed',
+					messageId: 'msg_drop',
+					errorCode,
+					timestamp: 1700000000000,
+				})
+			);
+			expect(event).toMatchObject({ kind: 'email.failed', errorCode });
+		}
+	);
+
+	it('does not accept an unbounded terminal error code', () => {
+		const event = mtaAdapter.parseEvent(
+			JSON.stringify({
+				event: 'failed',
+				messageId: 'msg_drop',
+				errorCode: 'x'.repeat(129),
+				timestamp: 1700000000000,
+			})
+		);
+		expect(event).toBeNull();
+	});
+
 	it('returns null for failed without messageId', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({ event: 'failed', timestamp: 1700000000000 })
@@ -135,11 +305,12 @@ describe('mtaAdapter.parseEvent', () => {
 		expect(event).toBeNull();
 	});
 
-	it('parses complained', () => {
+	it('parses complained with authenticated member-test provenance', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'complained',
 				messageId: 'msg_2',
+				deliveryDomain: 'member_test',
 				timestamp: 1700000000000,
 			})
 		);
@@ -147,6 +318,8 @@ describe('mtaAdapter.parseEvent', () => {
 			kind: 'email.complained',
 			providerMessageId: 'msg_2',
 			at: 1700000000000,
+			providerType: 'mta',
+			deliveryDomain: 'member_test',
 		});
 	});
 
@@ -158,6 +331,7 @@ describe('mtaAdapter.parseEvent', () => {
 			JSON.stringify({
 				event: 'complained',
 				recipient: 'victim@example.com',
+				deliveryDomain: 'member_test',
 				timestamp: 1700000000000,
 			})
 		);
@@ -165,6 +339,8 @@ describe('mtaAdapter.parseEvent', () => {
 			kind: 'email.complained',
 			recipient: 'victim@example.com',
 			at: 1700000000000,
+			providerType: 'mta',
+			deliveryDomain: 'member_test',
 		});
 	});
 
@@ -181,6 +357,7 @@ describe('mtaAdapter.parseEvent', () => {
 			kind: 'email.complained',
 			providerMessageId: 'msg_2',
 			at: 1700000000000,
+			providerType: 'mta',
 		});
 	});
 
@@ -203,6 +380,7 @@ describe('mtaAdapter.parseEvent', () => {
 			kind: 'email.delivered',
 			providerMessageId: 'pb-123',
 			at: 1700000000000,
+			providerType: 'mta',
 		});
 	});
 
@@ -211,6 +389,8 @@ describe('mtaAdapter.parseEvent', () => {
 			JSON.stringify({
 				event: 'sent',
 				messageId: 'send_123',
+				organizationId: 'org-a',
+				recipient: 'user@workspace.example',
 				destinationProvider: 'gmail',
 				primarySendingDomain: 'example.co.uk',
 				timestamp: 1700000000000,
@@ -218,6 +398,8 @@ describe('mtaAdapter.parseEvent', () => {
 		);
 		expect(event).toMatchObject({
 			kind: 'email.delivered',
+			organizationId: 'org-a',
+			recipient: 'user@workspace.example',
 			destinationProvider: 'gmail',
 			primarySendingDomain: 'example.co.uk',
 		});
@@ -227,6 +409,7 @@ describe('mtaAdapter.parseEvent', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'inbound.received',
+				organizationId: 'org-1',
 				timestamp: 1700000000000,
 				inboundPayload: {
 					from: 'sender@example.com',
@@ -251,15 +434,16 @@ describe('mtaAdapter.parseEvent', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'org.circuit_breaker',
+				organizationId: 'org-1',
 				message: 'high bounce rate',
-				bounceRate: 12.5,
+				bounceRate: 0.125,
 				timestamp: 1700000000000,
 			})
 		);
 		expect(event).toEqual({
 			kind: 'internal.circuit_breaker_tripped',
 			message: 'high bounce rate',
-			bounceRate: 12.5,
+			bounceRate: 0.125,
 		});
 	});
 
@@ -267,6 +451,7 @@ describe('mtaAdapter.parseEvent', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'campaign.complaint_rate',
+				eventId: `effect:v1:${'a'.repeat(64)}`,
 				campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
 				complaintRate: 0.004,
 				message: 'Campaign complaint rate 0.40% exceeded 0.3% threshold (4/1000)',
@@ -276,28 +461,50 @@ describe('mtaAdapter.parseEvent', () => {
 		);
 		expect(event).toEqual({
 			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'a'.repeat(64)}`,
 			message: 'Campaign complaint rate 0.40% exceeded 0.3% threshold (4/1000)',
 			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
 			complaintRate: 0.004,
+			at: 1700000000000,
 		});
 	});
 
-	it('defaults the campaign.complaint_rate message when absent', () => {
-		const event = mtaAdapter.parseEvent(
-			JSON.stringify({
-				event: 'campaign.complaint_rate',
-				campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
-				timestamp: 1700000000000,
-			})
-		);
-		expect(event).toMatchObject({
-			kind: 'internal.campaign_complaint_rate',
-			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
-		});
-		// complaintRate omitted when not supplied.
-		if (event?.kind === 'internal.campaign_complaint_rate') {
-			expect(event.complaintRate).toBeUndefined();
-		}
+	it.each([
+		{ eventId: undefined },
+		{ eventId: 'short' },
+		{ eventId: 'x'.repeat(161) },
+		{ campaignId: undefined },
+		{ campaignId: ['not-a-string'] },
+		{ campaignId: 'short' },
+		{ message: undefined },
+		{ message: 42 },
+		{ message: 'x'.repeat(513) },
+		{ complaintRate: undefined },
+		{ complaintRate: 'not-a-number' },
+		{ complaintRate: Number.NaN },
+		{ complaintRate: -0.01 },
+		{ complaintRate: 1.01 },
+		{ timestamp: Number.POSITIVE_INFINITY },
+	])('rejects a malformed bounded campaign alert: %j', (override) => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'campaign.complaint_rate',
+					eventId: `effect:v1:${'a'.repeat(64)}`,
+					campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
+					complaintRate: 0.004,
+					message: 'Campaign complaint rate exceeded',
+					timestamp: 1700000000000,
+					...override,
+				})
+			)
+		).toBeNull();
+	});
+
+	it('rejects a valid event discriminator whose event-specific required field is absent', () => {
+		expect(
+			mtaAdapter.parseEvent(JSON.stringify({ event: 'sent', timestamp: 1700000000000 }))
+		).toBeNull();
 	});
 
 	it.each([
@@ -311,6 +518,7 @@ describe('mtaAdapter.parseEvent', () => {
 				event,
 				ip: '10.0.0.1',
 				severity: 'warning',
+				message: 'Deliverability state changed',
 				timestamp: 1700000000000,
 			})
 		);
@@ -448,4 +656,49 @@ describe('mtaAdapter.parseEvent', () => {
 		);
 		expect(event).toBeNull();
 	});
+});
+
+describe('mtaAdapter routing re-entry acknowledgement', () => {
+	const routingEvent = {
+		kind: 'internal.routing_reentry' as const,
+		providerMessageId: 'send_1',
+		token: 'rr2.token',
+		workAttemptId: 'work-1',
+		envelopeInput: {
+			kind: 'transactional' as const,
+			emailPurpose: 'transactional' as const,
+			to: 'person@example.com',
+			from: 'sender@example.org',
+			template: { subject: 'Hello', htmlContent: '<p>Hello</p>' },
+		},
+		retryState: { attempt: 1, startedAt: 1, idempotencyKey: 'send_1' },
+		reason: 'circuit_breaker_changed' as const,
+	};
+
+	it.each([
+		'invalid_token',
+		'binding_mismatch',
+		'message_mismatch',
+		'expired',
+		'snapshot_not_found',
+	])('returns non-2xx for unsafe disposition %s', (disposition) => {
+		const response = mtaAdapter.successResponse?.(routingEvent, { disposition });
+		expect(response?.status).toBe(409);
+	});
+
+	it.each(['enqueued', 'duplicate', 'terminal', 'deadline_expired', 'retry_exhausted'])(
+		'acknowledges disposition %s only after the Send has a safe successor state',
+		(disposition) => {
+			const response = mtaAdapter.successResponse?.(routingEvent, { disposition });
+			expect(response?.status).toBe(200);
+		}
+	);
+
+	it.each([undefined, {}, { disposition: 'future_unhandled_disposition' }])(
+		'fails closed on an invalid mutation result: %j',
+		(dispatchResult) => {
+			const response = mtaAdapter.successResponse?.(routingEvent, dispatchResult);
+			expect(response?.status).toBe(500);
+		}
+	);
 });

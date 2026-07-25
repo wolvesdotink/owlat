@@ -97,6 +97,7 @@ beforeEach(() => {
 
 describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 	const SEND_LIFECYCLE = ref(internal.delivery.sendLifecycle.transitionByProviderMessageId);
+	const MTA_ACCEPTANCE = ref(internal.delivery.sendLifecycle.recordMtaRemoteAcceptance);
 
 	it('routes email.sent to sendLifecycle with a "sent" transition', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
@@ -149,7 +150,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 
 		await dispatchInboundEvent(ctx, event);
 
-		expect(runMutationCalls).toHaveLength(2);
+		expect(runMutationCalls).toHaveLength(3);
 		expect(runMutationCalls[1]).toEqual({
 			ref: ref(internal.delivery.complianceTelemetry.recordGmailDelivery),
 			args: {
@@ -158,6 +159,34 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 				acceptedAt: 1000,
 			},
 		});
+		expect(runMutationCalls[2]).toEqual({
+			ref: ref(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain),
+			args: {
+				providerMessageId: 'send_123',
+				destinationProvider: 'gmail',
+				observedAt: 1000,
+			},
+		});
+	});
+
+	it('keeps member-test status evidence but skips compliance and route learning', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.delivered',
+			providerMessageId: 'send_test',
+			at: 1000,
+			providerType: 'mta',
+			deliveryDomain: 'member_test',
+			destinationProvider: 'gmail',
+			primarySendingDomain: 'example.com',
+		});
+		expect(runMutationCalls).toEqual([
+			{
+				ref: MTA_ACCEPTANCE,
+				args: { providerMessageId: 'send_test', at: 1000 },
+			},
+		]);
 	});
 
 	it('does not recreate Gmail telemetry for an unknown or terminal Send', async () => {
@@ -168,30 +197,89 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			kind: 'email.delivered',
 			providerMessageId: 'deleted-send',
 			at: 1000,
+			providerType: 'mta',
 			destinationProvider: 'gmail',
 			primarySendingDomain: 'example.com',
 		});
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(SEND_LIFECYCLE);
+		expect(runMutationCalls[0]?.ref).toBe(MTA_ACCEPTANCE);
 	});
 
-	it('routes email.delivered to sendLifecycle with a "delivered" transition', async () => {
+	it('persists the MTA-observed recipient provider after accepted delivery', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
+
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.delivered',
+			providerMessageId: 'send_456',
+			at: 2000,
+			providerType: 'mta',
+			deliveryDomain: 'production',
+			organizationId: 'org-a',
+			recipient: 'user@workspace.example',
+			destinationProvider: 'microsoft',
+		});
+
+		expect(runMutationCalls).toHaveLength(2);
+		expect(runMutationCalls[1]).toEqual({
+			ref: ref(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain),
+			args: {
+				providerMessageId: 'send_456',
+				destinationProvider: 'microsoft',
+				observedAt: 2000,
+			},
+		});
+	});
+
+	it('keeps unknown MTA provenance out of production telemetry', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.delivered',
+			providerMessageId: 'send_unknown_domain',
+			at: 2001,
+			providerType: 'mta',
+			destinationProvider: 'gmail',
+			primarySendingDomain: 'example.org',
+		});
+		expect(runMutationCalls).toHaveLength(1);
+		expect(runMutationCalls[0]?.ref).toBe(MTA_ACCEPTANCE);
+	});
+
+	it('preserves legacy non-MTA telemetry when deliveryDomain is absent', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.delivered',
+			providerMessageId: 'legacy-relay',
+			at: 2002,
+			providerType: 'ses',
+			destinationProvider: 'gmail',
+		});
+		expect(runMutationCalls).toHaveLength(2);
+		expect(runMutationCalls[1]?.ref).toBe(
+			ref(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain)
+		);
+	});
+
+	it('routes MTA email.delivered through atomic sent then delivered acceptance', async () => {
 		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
 		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
 		const event: InboundEvent = {
 			kind: 'email.delivered',
 			providerMessageId: 'msg-abc',
 			at: 2000,
+			providerType: 'mta',
 		};
 
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(SEND_LIFECYCLE);
+		expect(runMutationCalls[0]?.ref).toBe(MTA_ACCEPTANCE);
 		expect(runMutationCalls[0]?.args).toEqual({
 			providerMessageId: 'msg-abc',
-			transition: { to: 'delivered', at: 2000 },
+			at: 2000,
 		});
 	});
 
@@ -314,6 +402,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			kind: 'email.complained',
 			recipient: 'victim@example.com',
 			at: 4000,
+			deliveryDomain: 'production',
 		};
 
 		await dispatchInboundEvent(ctx, event);
@@ -325,6 +414,20 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 			email: 'victim@example.com',
 			reason: 'complained',
 		});
+	});
+
+	it.each([
+		{ name: 'member preview', deliveryDomain: 'member_test' as const },
+		{ name: 'unknown provenance', deliveryDomain: undefined },
+	])('does not suppress a redacted recipient for $name', async ({ deliveryDomain }) => {
+		const { ctx, runMutationCalls } = makeCtx();
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.complained',
+			recipient: 'victim@example.com',
+			at: 4000,
+			...(deliveryDomain ? { deliveryDomain } : {}),
+		});
+		expect(runMutationCalls).toHaveLength(0);
 	});
 
 	it('no-ops an email.complained that carries neither a Message-ID nor a recipient', async () => {
@@ -373,6 +476,47 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 				url: 'https://example.com/landing',
 			},
 		});
+	});
+});
+
+describe('dispatchInboundEvent — accepted MTA routing re-entry', () => {
+	it('routes the authenticated work item to the idempotent Send re-entry mutation', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		await dispatchInboundEvent(ctx, {
+			kind: 'internal.routing_reentry',
+			providerMessageId: 'send_tx-1',
+			token: 'opaque-token',
+			workAttemptId: 'work-1',
+			reason: 'circuit_breaker_changed',
+			envelopeInput: {
+				kind: 'transactional',
+				to: 'person@example.com',
+				from: 'sender@example.org',
+				template: { subject: 'Hello', htmlContent: '<p>Hello</p>' },
+				emailPurpose: 'transactional',
+			},
+			retryState: { attempt: 2, startedAt: 1000, idempotencyKey: 'send_tx-1' },
+		});
+
+		expect(runMutationCalls).toEqual([
+			{
+				ref: ref(internal.delivery.routingReentry.consumeSnapshot),
+				args: {
+					token: 'opaque-token',
+					messageId: 'send_tx-1',
+					workAttemptId: 'work-1',
+					envelopeInput: {
+						kind: 'transactional',
+						to: 'person@example.com',
+						from: 'sender@example.org',
+						template: { subject: 'Hello', htmlContent: '<p>Hello</p>' },
+						emailPurpose: 'transactional',
+					},
+					retryState: { attempt: 2, startedAt: 1000, idempotencyKey: 'send_tx-1' },
+					reason: 'circuit_breaker_changed',
+				},
+			},
+		]);
 	});
 });
 
@@ -625,7 +769,7 @@ describe('dispatchInboundEvent — internal signals', () => {
 		const event: InboundEvent = {
 			kind: 'internal.circuit_breaker_tripped',
 			message: 'bounce spike',
-			bounceRate: 12,
+			bounceRate: 0.12,
 		};
 
 		await dispatchInboundEvent(ctx, event);
@@ -638,7 +782,7 @@ describe('dispatchInboundEvent — internal signals', () => {
 		expect(args.input.to).toBe('warned');
 		expect(args.input.changedBy).toBe('mta_circuit_breaker');
 		expect(args.input.reason).toContain('bounce spike');
-		expect(args.input.reason).toContain('12%');
+		expect(args.input.reason).toContain('12.00%');
 	});
 
 	it('swallows downstream failures on circuit_breaker_tripped (does not throw)', async () => {
@@ -652,39 +796,79 @@ describe('dispatchInboundEvent — internal signals', () => {
 		await expect(dispatchInboundEvent(ctx, event)).resolves.toBeUndefined();
 	});
 
-	it('routes campaign_complaint_rate to abuseStatus.transition with a "warned" transition', async () => {
-		const { ctx, runMutationCalls } = makeCtx();
+	it('routes campaign_complaint_rate to the transactional idempotent alert mutation', async () => {
+		const { ctx, runMutationCalls, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'transitioned' });
 		const event: InboundEvent = {
 			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'a'.repeat(64)}`,
 			message: 'Campaign complaint rate 0.40% exceeded 0.3% threshold (4/1000)',
 			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
 			complaintRate: 0.004,
+			at: 1_700_000_000_000,
 		};
 
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(ref(internal.workspaces.abuseStatus.transition));
-		const args = runMutationCalls[0]?.args as {
-			input: { to: string; reason: string; changedBy: string };
-		};
-		expect(args.input.to).toBe('warned');
-		expect(args.input.changedBy).toBe('mta_campaign_complaint_rate');
-		// Carries the MTA message + the formatted rate parenthetical + campaign id.
-		expect(args.input.reason).toContain('exceeded 0.3% threshold');
-		expect(args.input.reason).toContain('(0.40%)');
-		expect(args.input.reason).toContain('[campaign jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4]');
+		expect(runMutationCalls[0]).toEqual({
+			ref: ref(internal.workspaces.abuseStatus.recordCampaignComplaintAlert),
+			args: {
+				eventId: event.eventId,
+				campaignId: event.campaignId,
+				message: event.message,
+				complaintRate: event.complaintRate,
+				eventTimestamp: event.at,
+			},
+		});
 	});
 
-	it('swallows downstream failures on campaign_complaint_rate (does not throw)', async () => {
+	it('propagates a rejected campaign alert transition so the MTA retains its outbox row', async () => {
+		const { ctx, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: false, reason: 'no_settings_row' });
+		const event: InboundEvent = {
+			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'b'.repeat(64)}`,
+			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
+			message: 'rate exceeded',
+			complaintRate: 0.004,
+			at: 1_700_000_000_000,
+		};
+
+		await expect(dispatchInboundEvent(ctx, event)).rejects.toThrow('no_settings_row');
+	});
+
+	it('acknowledges an alert the instance recorded without changing its status', async () => {
+		const { ctx, nextRunMutationReturns } = makeCtx();
+		nextRunMutationReturns({ ok: true, applied: 'skipped' });
+		const event: InboundEvent = {
+			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'c'.repeat(64)}`,
+			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
+			message: 'rate exceeded',
+			complaintRate: 0.004,
+			at: 1_700_000_000_000,
+		};
+
+		await expect(dispatchInboundEvent(ctx, event)).resolves.toEqual({
+			ok: true,
+			applied: 'skipped',
+		});
+	});
+
+	it('propagates campaign alert mutation exceptions so the MTA retries', async () => {
 		const { ctx, failNextRunMutation } = makeCtx();
 		failNextRunMutation(new Error('abuse mutation failed'));
 		const event: InboundEvent = {
 			kind: 'internal.campaign_complaint_rate',
+			eventId: `effect:v1:${'c'.repeat(64)}`,
+			campaignId: 'jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4',
 			message: 'rate exceeded',
+			complaintRate: 0.004,
+			at: 1_700_000_000_000,
 		};
 
-		await expect(dispatchInboundEvent(ctx, event)).resolves.toBeUndefined();
+		await expect(dispatchInboundEvent(ctx, event)).rejects.toThrow('abuse mutation failed');
 	});
 
 	it('schedules a warming sync for ip_event subkind=blocklisted', async () => {

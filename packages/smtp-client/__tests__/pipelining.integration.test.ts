@@ -61,6 +61,8 @@ interface RunningPeer {
 	port: number;
 	/** Every raw chunk the peer received — used to prove the client batched writes. */
 	chunks: Buffer[];
+	/** DATA-boundary events issued or observed by the peer and test hook. */
+	dataEvents: string[];
 }
 
 const closers: Array<() => void> = [];
@@ -101,6 +103,7 @@ function writeReplies(socket: net.Socket, replies: readonly string[], framing: F
  */
 function startPipeServer(options: PipeServerOptions): Promise<RunningPeer> {
 	const chunks: Buffer[] = [];
+	const dataEvents: string[] = [];
 	const framing = options.framing ?? 'batched';
 	const server = net.createServer((socket) => {
 		socket.on('error', () => {});
@@ -111,6 +114,7 @@ function startPipeServer(options: PipeServerOptions): Promise<RunningPeer> {
 			chunks.push(Buffer.from(chunk));
 			buffer += chunk.toString('utf8');
 			if (inData) {
+				dataEvents.push('body received');
 				if (options.dropOnData) {
 					socket.destroy();
 					return;
@@ -123,6 +127,7 @@ function startPipeServer(options: PipeServerOptions): Promise<RunningPeer> {
 				return;
 			}
 			const replies: string[] = [];
+			let dataReplyWritten = false;
 			let nl = buffer.indexOf('\n');
 			while (nl !== -1) {
 				const line = buffer.slice(0, nl).replace(/\r$/, '');
@@ -136,6 +141,7 @@ function startPipeServer(options: PipeServerOptions): Promise<RunningPeer> {
 					replies.push(options.rcptReply ? options.rcptReply(mailbox) : '250 2.1.5 rcpt ok\r\n');
 				} else if (/^DATA/i.test(line)) {
 					replies.push(options.dataReply ?? '354 end with <CRLF>.<CRLF>\r\n');
+					dataReplyWritten = true;
 					inData = true;
 					break;
 				} else if (/^QUIT/i.test(line)) {
@@ -147,6 +153,9 @@ function startPipeServer(options: PipeServerOptions): Promise<RunningPeer> {
 			}
 			if (replies.length > 0) {
 				writeReplies(socket, replies, framing);
+				if (dataReplyWritten) {
+					dataEvents.push('354 written');
+				}
 			}
 		});
 	});
@@ -154,7 +163,7 @@ function startPipeServer(options: PipeServerOptions): Promise<RunningPeer> {
 	closers.push(() => server.close());
 	return new Promise((resolve) => {
 		server.listen(0, '127.0.0.1', () =>
-			resolve({ port: (server.address() as AddressInfo).port, chunks })
+			resolve({ port: (server.address() as AddressInfo).port, chunks, dataEvents })
 		);
 	});
 }
@@ -484,4 +493,34 @@ describe('PIPELINING — classification is identical forced on and off', () => {
 		});
 		expect(shape(on.result)).toEqual(shape(off.result));
 	});
+});
+
+describe('DATA body boundary', () => {
+	it.each<PipeliningMode>(['never', 'always'])(
+		'awaits the boundary hook after 354 and writes no body when it rejects (%s)',
+		async (pipelining) => {
+			const peer = await startPipeServer({ ehloReply: PIPELINING_EHLO });
+			const conn = await connectPlain(peer.port);
+			const boundaryFailure = new Error('journal transition failed');
+
+			await expect(
+				sendEnvelope(conn, {
+					from: 'sender@example.com',
+					to: ['rcpt@example.net'],
+					data: MESSAGE,
+					pipelining,
+					beforeDataBodyWrite: async () => {
+						peer.dataEvents.push('hook called');
+						expect(peer.dataEvents).toEqual(['354 written', 'hook called']);
+						throw boundaryFailure;
+					},
+				})
+			).rejects.toBe(boundaryFailure);
+
+			conn.close();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(peer.dataEvents).toEqual(['354 written', 'hook called']);
+			expect(Buffer.concat(peer.chunks).toString('utf8')).not.toContain('Subject: pipelined');
+		}
+	);
 });

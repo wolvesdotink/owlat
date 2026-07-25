@@ -246,7 +246,10 @@ export const dispatch = internalMutation({
 
 		// 8. Provider route resolution. Reads the route config + health
 		//    snapshots in-transaction via the shared `resolveSendRoute` seam.
-		const resolvedRoute = await resolveSendRouteFromDb(ctx, 'transactional');
+		const resolvedRoute = await resolveSendRouteFromDb(ctx, 'transactional', {
+			to: args.email,
+			from: defaultFromEmail,
+		});
 
 		// 9. Template + request attachment merge.
 		const mergedAttachments = mergeAttachments(template.attachments, args.attachmentRefs);
@@ -311,6 +314,7 @@ export const dispatch = internalMutation({
 					to: args.email,
 					from,
 					...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),
+					...(resolvedRoute?.ipPool ? { ipPool: resolvedRoute.ipPool } : {}),
 					sendId,
 					template: {
 						subject: subjectToSend,

@@ -3,7 +3,7 @@ import type { ParsedMessage } from '@owlat/mail-message';
 
 vi.mock('../../fblProcessor.js', () => ({
 	tryParseARF: vi.fn(),
-	isDuplicateComplaint: vi.fn(),
+	reserveComplaint: vi.fn(),
 	generateDedupKey: vi.fn(() => 'dedup-key-xyz'),
 }));
 vi.mock('../../parser.js', () => ({
@@ -14,7 +14,7 @@ vi.mock('../../../monitoring/logger.js', () => ({
 }));
 
 import { parseFblOrDsnPhase } from '../parseFblOrDsn.js';
-import { tryParseARF, isDuplicateComplaint } from '../../fblProcessor.js';
+import { tryParseARF, reserveComplaint } from '../../fblProcessor.js';
 import { parseBounce } from '../../parser.js';
 import type { BasePhaseCtx, PhaseDeps } from '../../types.js';
 
@@ -40,10 +40,23 @@ describe('parseFblOrDsnPhase — FBL/ARF', () => {
 			organizationId: 'org-1',
 		};
 		vi.mocked(tryParseARF).mockReturnValueOnce(arf);
-		vi.mocked(isDuplicateComplaint).mockResolvedValueOnce(false);
+		vi.mocked(reserveComplaint).mockResolvedValueOnce({
+			kind: 'reserved',
+			reservation: { key: 'mta:fbl:dedup:dedup-key-xyz', token: 'reserved:test' },
+		});
 
 		const out = await parseFblOrDsnPhase.run(deps, makeCtx());
-		expect(out).toEqual({ kind: 'bounceTo', attempt: { kind: 'fbl', arf } });
+		expect(out).toEqual({
+			kind: 'bounceTo',
+			attempt: {
+				kind: 'fbl',
+				arf,
+				dedupReservation: {
+					key: 'mta:fbl:dedup:dedup-key-xyz',
+					token: 'reserved:test',
+				},
+			},
+		});
 		expect(parseBounce).not.toHaveBeenCalled();
 	});
 
@@ -54,7 +67,7 @@ describe('parseFblOrDsnPhase — FBL/ARF', () => {
 			message: 'x',
 			originalMessageId: 'orig-1',
 		});
-		vi.mocked(isDuplicateComplaint).mockResolvedValueOnce(true);
+		vi.mocked(reserveComplaint).mockResolvedValueOnce({ kind: 'completed' });
 
 		const out = await parseFblOrDsnPhase.run(deps, makeCtx());
 		expect(out).toEqual({ kind: 'dropSilently', reason: 'duplicate_fbl_complaint' });

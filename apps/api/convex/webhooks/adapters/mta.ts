@@ -18,55 +18,8 @@ import { getOptional } from '../../lib/env';
 import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
-
-interface MtaWebhookPayload {
-	event: string;
-	messageId?: string;
-	/** Complained recipient address (RFC 5965 §3.2) when no Message-ID. */
-	recipient?: string;
-	bounceType?: 'hard' | 'soft';
-	message?: string;
-	ip?: string;
-	blocklists?: string[];
-	severity?: 'info' | 'warning' | 'critical';
-	bounceRate?: number;
-	/** DKIM rotation callback fields (event `dkim.rotated`). */
-	domain?: string;
-	selector?: string;
-	dnsRecord?: string;
-	phase?: 'pending' | 'activated';
-	campaignId?: string;
-	complaintRate?: number;
-	date?: string;
-	userReportedSpamRatio?: number;
-	destinationProvider?: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other';
-	primarySendingDomain?: string;
-	inboundPayload?: {
-		from: string;
-		to: string;
-		subject: string;
-		textBody?: string;
-		htmlBody?: string;
-		headers: Record<string, string>;
-		date?: string;
-		messageId?: string;
-		inReplyTo?: string;
-		references?: string;
-		attachments: Array<{
-			filename?: string;
-			contentType: string;
-			size: number;
-			redisKey?: string;
-		}>;
-		// RFC 8601 inbound auth verdicts, forwarded by the MTA so the AI-inbox
-		// path can persist them on `inboundMessages` (previously dropped here).
-		spfResult?: string;
-		dkimResult?: string;
-		dmarcResult?: string;
-		dmarcPolicy?: string;
-	};
-	timestamp: number;
-}
+import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
+import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
@@ -110,6 +63,19 @@ const IP_EVENT_SUBKIND: Record<
 	'ip.warming_complete': 'warming_complete',
 	all_ips_blocked: 'all_blocked',
 };
+
+const ROUTING_REENTRY_DISPOSITION_STATUS = {
+	invalid_token: 409,
+	binding_mismatch: 409,
+	message_mismatch: 409,
+	expired: 409,
+	snapshot_not_found: 409,
+	enqueued: 200,
+	duplicate: 200,
+	terminal: 200,
+	deadline_expired: 200,
+	retry_exhausted: 200,
+} as const;
 
 export async function verifyMtaHeaders(
 	body: string,
@@ -162,9 +128,67 @@ export const mtaAdapter: InboundAdapter = {
 	},
 
 	parseEvent(rawBody): InboundEvent | null {
-		const payload = JSON.parse(rawBody) as MtaWebhookPayload;
-
+		const parsed: unknown = JSON.parse(rawBody);
+		if (!isMtaWebhookEvent(parsed)) return null;
+		const payload = parsed;
 		switch (payload.event) {
+			case 'routing.reentry': {
+				const reentry = isRecord(payload.routingReentry) ? payload.routingReentry : null;
+				const retryState =
+					reentry && isRecord(reentry['retryState']) ? reentry['retryState'] : null;
+				// The optional fields are part of the callback digest issued by
+				// `issueSnapshot`, so they must round-trip byte-for-byte. Dropping
+				// them turns every acceptance-reconciliation re-entry into a
+				// permanent `binding_mismatch` and strands the Send in `queued`.
+				const reentryWorkAttemptId = retryState?.['workAttemptId'];
+				const acceptanceReconciliation = retryState?.['acceptanceReconciliation'];
+				if (
+					!payload.messageId ||
+					typeof payload.routingReentryToken !== 'string' ||
+					payload.routingReentryToken.length < 1 ||
+					payload.routingReentryToken.length > 512 ||
+					typeof payload.workAttemptId !== 'string' ||
+					payload.workAttemptId.length < 1 ||
+					payload.workAttemptId.length > 128 ||
+					!reentry ||
+					!isRecord(reentry['envelopeInput']) ||
+					!retryState ||
+					typeof retryState['attempt'] !== 'number' ||
+					!Number.isInteger(retryState['attempt']) ||
+					retryState['attempt'] < 1 ||
+					retryState['attempt'] > 9 ||
+					typeof retryState['startedAt'] !== 'number' ||
+					!Number.isFinite(retryState['startedAt']) ||
+					retryState['idempotencyKey'] !== payload.messageId ||
+					(reentryWorkAttemptId !== undefined &&
+						(typeof reentryWorkAttemptId !== 'string' ||
+							reentryWorkAttemptId.length < 1 ||
+							reentryWorkAttemptId.length > 128)) ||
+					(acceptanceReconciliation !== undefined &&
+						typeof acceptanceReconciliation !== 'boolean') ||
+					(payload.routingReentryReason !== 'routing_lease_stale' &&
+						payload.routingReentryReason !== 'circuit_breaker_changed' &&
+						payload.routingReentryReason !== 'warming_capacity_changed')
+				)
+					return null;
+				return {
+					kind: 'internal.routing_reentry',
+					providerMessageId: payload.messageId,
+					token: payload.routingReentryToken,
+					workAttemptId: payload.workAttemptId,
+					envelopeInput: reentry['envelopeInput'] as WorkerEnvelopeInput,
+					retryState: {
+						attempt: retryState['attempt'],
+						startedAt: retryState['startedAt'],
+						idempotencyKey: payload.messageId,
+						...(typeof reentryWorkAttemptId === 'string'
+							? { workAttemptId: reentryWorkAttemptId }
+							: {}),
+						...(typeof acceptanceReconciliation === 'boolean' ? { acceptanceReconciliation } : {}),
+					},
+					reason: payload.routingReentryReason,
+				};
+			}
 			case 'postmaster.authorize_domain': {
 				if (!payload.domain) return null;
 				return {
@@ -180,19 +204,30 @@ export const mtaAdapter: InboundAdapter = {
 					at: payload.timestamp,
 					bounceType: payload.bounceType === 'hard' ? 'hard' : 'soft',
 					...(payload.message ? { bounceMessage: payload.message } : {}),
+					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+					providerType: 'mta',
 				};
 			}
 			case 'failed': {
-				// Terminal, NON-bounce failure (MTA post-DATA ambiguous drop). Map to
+				// Terminal, NON-bounce failure (for example a screened message or an
+				// ambiguous post-DATA drop). Map to
 				// the `failed` send status — distinct from `bounced`, so the dispatcher
 				// applies NO recipient suppression and NO reputation penalty.
 				if (!payload.messageId) return null;
+				const errorCode =
+					typeof payload.errorCode === 'string' &&
+					payload.errorCode.length > 0 &&
+					payload.errorCode.length <= 128
+						? payload.errorCode
+						: 'ambiguous_post_data';
 				return {
 					kind: 'email.failed',
 					providerMessageId: payload.messageId,
 					at: payload.timestamp ?? Date.now(),
 					errorMessage: payload.message ?? 'Delivery failed (ambiguous post-DATA drop)',
-					errorCode: 'ambiguous_post_data',
+					errorCode,
+					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+					providerType: 'mta',
 				};
 			}
 			case 'complained': {
@@ -204,6 +239,8 @@ export const mtaAdapter: InboundAdapter = {
 						kind: 'email.complained',
 						providerMessageId: payload.messageId,
 						at: payload.timestamp,
+						providerType: 'mta',
+						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 					};
 				}
 				if (payload.recipient) {
@@ -211,6 +248,8 @@ export const mtaAdapter: InboundAdapter = {
 						kind: 'email.complained',
 						recipient: payload.recipient,
 						at: payload.timestamp,
+						providerType: 'mta',
+						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 					};
 				}
 				return null;
@@ -224,12 +263,16 @@ export const mtaAdapter: InboundAdapter = {
 					kind: 'email.delivered',
 					providerMessageId: payload.messageId,
 					at: payload.timestamp ?? Date.now(),
+					providerType: 'mta',
+					...(payload.organizationId ? { organizationId: payload.organizationId } : {}),
+					...(payload.recipient ? { recipient: payload.recipient } : {}),
 					...(payload.destinationProvider
 						? { destinationProvider: payload.destinationProvider }
 						: {}),
 					...(payload.primarySendingDomain
 						? { primarySendingDomain: payload.primarySendingDomain }
 						: {}),
+					...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
 				};
 			}
 			case 'inbound.received': {
@@ -266,9 +309,11 @@ export const mtaAdapter: InboundAdapter = {
 			case 'campaign.complaint_rate': {
 				return {
 					kind: 'internal.campaign_complaint_rate',
-					message: payload.message ?? 'campaign complaint rate exceeded threshold',
-					...(payload.campaignId ? { campaignId: payload.campaignId } : {}),
-					...(payload.complaintRate !== undefined ? { complaintRate: payload.complaintRate } : {}),
+					eventId: payload.eventId,
+					message: payload.message,
+					campaignId: payload.campaignId,
+					complaintRate: payload.complaintRate,
+					at: payload.timestamp,
 				};
 			}
 			case 'ip.blocklisted':
@@ -310,6 +355,22 @@ export const mtaAdapter: InboundAdapter = {
 	},
 
 	successResponse(event, dispatchResult) {
+		if (event.kind === 'internal.routing_reentry') {
+			const disposition = isRecord(dispatchResult) ? dispatchResult['disposition'] : undefined;
+			const status =
+				typeof disposition === 'string' && disposition in ROUTING_REENTRY_DISPOSITION_STATUS
+					? ROUTING_REENTRY_DISPOSITION_STATUS[
+							disposition as keyof typeof ROUTING_REENTRY_DISPOSITION_STATUS
+						]
+					: 500;
+			// The MTA's protected outbox treats every non-2xx as durable retry /
+			// operator-visible work. Only dispositions that atomically enqueued a
+			// successor or observed a terminal/idempotent Send may be acknowledged.
+			return new Response(
+				JSON.stringify({ success: status === 200, disposition: disposition ?? 'invalid_result' }),
+				{ status, headers: { 'Content-Type': 'application/json' } }
+			);
+		}
 		if (
 			event.kind === 'internal.postmaster_authorize_domain' ||
 			event.kind === 'internal.postmaster_stats'

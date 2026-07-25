@@ -135,6 +135,7 @@ export function reduceBounced(
 			kind: 'campaign_stats_bounced',
 			campaignId: (send as EmailSendDoc).campaignId,
 			isHard,
+			...(wasSoftBounced && isHard ? { previousBounceType: 'soft' as const } : {}),
 			at: args.at,
 		});
 	}
@@ -215,9 +216,10 @@ export function reduceComplained(
 			kind: 'contact_activity',
 			literal: 'email_complained',
 			contactId: send.contactId,
-			metadata: ref.kind === 'campaign'
-				? { campaignId: String((send as EmailSendDoc).campaignId) }
-				: nonCampaignBounceProvenance(send as TransactionalSendDoc),
+			metadata:
+				ref.kind === 'campaign'
+					? { campaignId: String((send as EmailSendDoc).campaignId) }
+					: nonCampaignBounceProvenance(send as TransactionalSendDoc),
 			occurredAt: args.at,
 		});
 	}

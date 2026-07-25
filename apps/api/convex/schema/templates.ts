@@ -214,8 +214,15 @@ export const templateTables = {
 	transactionalSends: defineTable({
 		// Which non-campaign source produced this Send. `transactional` is the
 		// public transactional API; `automation` is an automation email step;
-		// `agent_reply` is an approved agent-drafted inbox reply.
-		kind: v.union(v.literal('transactional'), v.literal('automation'), v.literal('agent_reply')),
+		// `agent_reply` is an approved agent-drafted inbox reply; `test` is a
+		// member-only preview that needs a durable Send for governed MTA re-entry
+		// but is excluded from customer analytics and suppression effects.
+		kind: v.union(
+			v.literal('transactional'),
+			v.literal('automation'),
+			v.literal('agent_reply'),
+			v.literal('test')
+		),
 		// Set for `kind: 'transactional'` (the template-backed API send). Optional
 		// because automation/agent sends carry their own provenance + pre-rendered
 		// subject/html instead of a template id.
@@ -241,6 +248,8 @@ export const templateTables = {
 		dataVariables: v.optional(jsonPrimitiveRecord),
 		// Provider information
 		providerMessageId: v.optional(v.string()), // Message ID from email provider (Resend)
+		// Highest accepted MTA pre-network routing handoff enqueued for this Send.
+		mtaRoutingReentryAttempt: v.optional(v.number()),
 		// Current status of this email send. Per ADR-0006, transactional sends
 		// now pre-create in `queued` (symmetric with campaign sends) so the
 		// worker-completion path goes through the Send lifecycle for both
@@ -293,5 +302,9 @@ export const templateTables = {
 		.index('by_email', ['email'])
 		.index('by_contact', ['contactId'])
 		.index('by_sent_at', ['sentAt'])
-		.index('by_provider_message_id', ['providerMessageId']),
+		.index('by_provider_message_id', ['providerMessageId'])
+		// Answers "does this inbound message already have a send?" as a point
+		// lookup. The stuck-approved reconciler used to infer that from a bounded
+		// scan of all queued sends, which unrelated volume could starve.
+		.index('by_inbound_message_status', ['inboundMessageId', 'status']),
 };

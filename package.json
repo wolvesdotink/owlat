@@ -40,7 +40,7 @@
 		"catalogs": {
 			"vue": {
 				"vue": "^3.5.33",
-				"nuxt": "^4.4.2",
+				"nuxt": "^4.4.7",
 				"@nuxtjs/color-mode": "^4.0.0",
 				"@nuxt/fonts": "^0.14.0",
 				"tailwindcss": "^4.2.4",
@@ -48,8 +48,8 @@
 			},
 			"convex": {
 				"convex": "^1.36.1",
-				"better-auth": ">=1.6.13 <1.6.16",
-				"@convex-dev/better-auth": "^0.12.0"
+				"better-auth": ">=1.6.22 <1.7.0",
+				"@convex-dev/better-auth": "^0.12.5"
 			},
 			"ai": {
 				"ai": "^6.0.168",
@@ -82,7 +82,7 @@
 		"lint:filesize": "bash scripts/check-file-size.sh",
 		"lint:adr": "bash scripts/check-adr-numbers.sh",
 		"lint:branding": "bash scripts/check-branding.sh",
-		"lint:format": "bash scripts/check-format.sh",
+		"lint:format": "vitest run scripts/__tests__/check-format.test.ts && bash scripts/check-format.sh",
 		"lint:imports": "bash scripts/check-cross-package-imports.sh",
 		"lint:docker-workspaces": "bash scripts/check-docker-workspaces.sh",
 		"lint:plugin-imports": "bun run plugins:prepare && bun packages/plugin-codegen/src/cli.ts --boundaries-only",
@@ -113,7 +113,7 @@
 		"release": "bun run build && bun run changeset:publish"
 	},
 	"dependencies": {
-		"nuxt": "4.4.2",
+		"nuxt": "4.4.7",
 		"vite": "7.3.1"
 	},
 	"devDependencies": {
@@ -124,14 +124,18 @@
 		"turbo": "^2.9.18"
 	},
 	"overrides": {
-		"brace-expansion": "^5.0.7",
+		"brace-expansion": "^5.0.8",
 		"devalue": "^5.8.1",
 		"fast-xml-builder": "^1.2.0",
 		"js-cookie": "^3.0.8",
 		"js-yaml": "^3.15.0",
 		"linkify-it": "^5.0.2",
-		"nuxt": "4.4.2",
+		"nodemailer": "9.0.3",
+		"nuxt": "4.4.7",
+		"nuxt-og-image": "6.7.4",
+		"postcss": "^8.5.18",
 		"protobufjs": "^7.6.5",
+		"sharp": "0.35.3",
 		"shell-quote": "^1.10.0",
 		"svgo": "^4.0.2",
 		"tar": "^7.5.20",

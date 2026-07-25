@@ -86,6 +86,11 @@ export interface EnvelopeOptions {
 	/** Extra ESMTP params on every RCPT TO (e.g. `NOTIFY=NEVER`). */
 	rcptParams?: readonly string[];
 	/**
+	 * Awaited after the server accepts DATA with 354 and immediately before the
+	 * message body and terminator are written. Rejecting leaves the body unwritten.
+	 */
+	beforeDataBodyWrite?: () => void | Promise<void>;
+	/**
 	 * PIPELINING (RFC 2920) override. Defaults to `'auto'` — pipeline iff the server
 	 * advertised the capability. `'always'`/`'never'` force the path. Timing only:
 	 * verdicts and phase-tagged errors are indistinguishable from sequential mode.
@@ -261,7 +266,7 @@ async function sendEnvelopeSequential(
 
 	// DATA — the 354 intermediate handshake (phase `data`).
 	const dataReply = await conn.command(serializeData(), 'data');
-	return completeData(conn, prepared, dataReply, accepted, rejected);
+	return completeData(conn, prepared, dataReply, accepted, rejected, options.beforeDataBodyWrite);
 }
 
 /**
@@ -331,7 +336,7 @@ async function sendEnvelopePipelined(
 		throw everyRecipientRejected(conn, rejected);
 	}
 
-	return completeData(conn, prepared, dataReply, accepted, rejected);
+	return completeData(conn, prepared, dataReply, accepted, rejected, options.beforeDataBodyWrite);
 }
 
 function partitionVerdict(
@@ -371,7 +376,8 @@ async function completeData(
 	prepared: PreparedEnvelope,
 	dataReply: SmtpReply,
 	accepted: RecipientVerdict[],
-	rejected: RecipientVerdict[]
+	rejected: RecipientVerdict[],
+	beforeDataBodyWrite: EnvelopeOptions['beforeDataBodyWrite']
 ): Promise<SendResult> {
 	if (!isPositiveIntermediate(dataReply.code)) {
 		throw errorFromReply(
@@ -381,6 +387,7 @@ async function completeData(
 			dataReply
 		);
 	}
+	await beforeDataBodyWrite?.();
 	// The socket-lifecycle mechanics live on SmtpConnection, which owns the socket.
 	const dataDeadline = Date.now() + conn.dataTimeoutMs;
 	// Did the full dot-stuffed body AND the <CRLF>.<CRLF> terminator reach the

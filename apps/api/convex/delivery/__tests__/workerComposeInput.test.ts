@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { buildComposeInput, buildTransactionalListUnsubscribe } from '../worker';
+import {
+	buildComposeInput,
+	buildTransactionalListUnsubscribe,
+	resolveWorkerMessageType,
+} from '../worker';
 import { composeForSend } from '../sendComposition';
 import { isAutomatedMail } from '../../lib/inboundClassification';
 import type { Id } from '../../_generated/dataModel';
@@ -163,6 +167,32 @@ describe('worker.buildTransactionalListUnsubscribe — automation marketing send
 				audienceType: 'segment',
 			})
 		).toEqual({});
+	});
+});
+
+describe('worker legacy message-type derivation', () => {
+	it('keeps an old marketing transactional envelope on the automation route', () => {
+		expect(
+			resolveWorkerMessageType({
+				kind: 'transactional',
+				emailPurpose: 'marketing',
+				to: 'person@example.com',
+				from: 'automation@example.org',
+				template: { subject: 'Legacy drip', htmlContent: '<p>Hello</p>' },
+			})
+		).toBe('automation');
+	});
+
+	it('honors an explicit message type and derives old transactional mail', () => {
+		const envelope = {
+			kind: 'transactional' as const,
+			emailPurpose: 'transactional' as const,
+			to: 'person@example.com',
+			from: 'system@example.org',
+			template: { subject: 'Receipt', htmlContent: '<p>Thanks</p>' },
+		};
+		expect(resolveWorkerMessageType(envelope)).toBe('transactional');
+		expect(resolveWorkerMessageType({ ...envelope, messageType: 'automation' })).toBe('automation');
 	});
 });
 

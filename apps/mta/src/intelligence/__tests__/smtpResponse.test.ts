@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
-import { shouldDefer, recordResponse, getDomainHealth } from '../smtpResponse.js';
+import {
+	shouldDefer,
+	recordResponse,
+	getDomainHealth,
+	smtpResponseRetryKey,
+	smtpResponseStateKey,
+} from '../smtpResponse.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -22,7 +28,7 @@ describe('smtpResponse', () => {
 
 		it('returns remaining ms when retry key is active', async () => {
 			const retryUntil = Date.now() + 60_000;
-			await redis.set('mta:smtp-intel:retry:example.com', String(retryUntil), 'PX', 60_000);
+			await redis.set(smtpResponseRetryKey('example.com'), String(retryUntil), 'PX', 60_000);
 
 			const result = await shouldDefer(redis, 'example.com');
 			expect(result).toBeGreaterThan(0);
@@ -34,8 +40,8 @@ describe('smtpResponse', () => {
 		it('stores 2xx counters', async () => {
 			await recordResponse(redis, 'example.com', 250);
 
-			const total2xx = await redis.hget('mta:smtp-intel:example.com', 'total2xx');
-			const totalSent = await redis.hget('mta:smtp-intel:example.com', 'totalSent');
+			const total2xx = await redis.hget(smtpResponseStateKey('example.com'), 'total2xx');
+			const totalSent = await redis.hget(smtpResponseStateKey('example.com'), 'totalSent');
 			expect(total2xx).toBe('1');
 			expect(totalSent).toBe('1');
 		});
@@ -43,14 +49,14 @@ describe('smtpResponse', () => {
 		it('stores 4xx counters', async () => {
 			await recordResponse(redis, 'example.com', 421);
 
-			const total4xx = await redis.hget('mta:smtp-intel:example.com', 'total4xx');
+			const total4xx = await redis.hget(smtpResponseStateKey('example.com'), 'total4xx');
 			expect(total4xx).toBe('1');
 		});
 
 		it('stores 5xx counters', async () => {
 			await recordResponse(redis, 'example.com', 550);
 
-			const total5xx = await redis.hget('mta:smtp-intel:example.com', 'total5xx');
+			const total5xx = await redis.hget(smtpResponseStateKey('example.com'), 'total5xx');
 			expect(total5xx).toBe('1');
 		});
 
@@ -59,7 +65,7 @@ describe('smtpResponse', () => {
 				await recordResponse(redis, 'example.com', 550);
 			}
 
-			const health = await redis.hget('mta:smtp-intel:example.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('example.com'), 'healthStatus');
 			// With fewer than 5 responses, healthStatus should not be set
 			// (or should remain at default since analysis is skipped)
 			expect(health === null || health === undefined || health === 'healthy').toBe(true);
@@ -71,7 +77,7 @@ describe('smtpResponse', () => {
 				await recordResponse(redis, 'block.com', 550);
 			}
 
-			const health = await redis.hget('mta:smtp-intel:block.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('block.com'), 'healthStatus');
 			expect(health).toBe('blocking');
 
 			const deferMs = await shouldDefer(redis, 'block.com');
@@ -87,7 +93,7 @@ describe('smtpResponse', () => {
 				await recordResponse(redis, 'slow.com', 421);
 			}
 
-			const health = await redis.hget('mta:smtp-intel:slow.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('slow.com'), 'healthStatus');
 			expect(health).toBe('degraded');
 
 			const deferMs = await shouldDefer(redis, 'slow.com');
@@ -117,7 +123,7 @@ describe('smtpResponse', () => {
 			for (let i = 0; i < 9; i++) {
 				await recordResponse(redis, 'few5xx.com', 550);
 			}
-			const health = await redis.hget('mta:smtp-intel:few5xx.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('few5xx.com'), 'healthStatus');
 			expect(health).not.toBe('blocking');
 			expect(await shouldDefer(redis, 'few5xx.com')).toBe(0);
 		});
@@ -129,7 +135,7 @@ describe('smtpResponse', () => {
 			for (let i = 0; i < 7; i++) await recordResponse(redis, 'exactly70.com', 550);
 			for (let i = 0; i < 3; i++) await recordResponse(redis, 'exactly70.com', 250);
 
-			const health = await redis.hget('mta:smtp-intel:exactly70.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('exactly70.com'), 'healthStatus');
 			expect(health).not.toBe('blocking');
 		});
 
@@ -138,7 +144,7 @@ describe('smtpResponse', () => {
 			for (let i = 0; i < 2; i++) await recordResponse(redis, 'block5xx.com', 250);
 			for (let i = 0; i < 12; i++) await recordResponse(redis, 'block5xx.com', 550);
 
-			const health = await redis.hget('mta:smtp-intel:block5xx.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('block5xx.com'), 'healthStatus');
 			expect(health).toBe('blocking');
 
 			// Blocking defer window is 5 minutes; with frozen time the remaining
@@ -160,7 +166,7 @@ describe('smtpResponse', () => {
 			await recordResponse(redis, 'deg.com', 250);
 			for (let i = 0; i < 5; i++) await recordResponse(redis, 'deg.com', 421);
 
-			const health = await redis.hget('mta:smtp-intel:deg.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('deg.com'), 'healthStatus');
 			expect(health).toBe('degraded');
 
 			// Degraded defer window is 2 minutes.
@@ -178,7 +184,7 @@ describe('smtpResponse', () => {
 			for (let i = 0; i < 4; i++) await recordResponse(redis, 'recover.com', 421);
 			await recordResponse(redis, 'recover.com', 250); // most recent → breaks the last-5-all-4xx run
 
-			const health = await redis.hget('mta:smtp-intel:recover.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('recover.com'), 'healthStatus');
 			expect(health).not.toBe('degraded');
 			// No degraded transition ever occurred, so no defer window was set.
 			expect(await shouldDefer(redis, 'recover.com')).toBe(0);
@@ -191,7 +197,7 @@ describe('smtpResponse', () => {
 			for (let i = 0; i < 3; i++) await recordResponse(redis, 'half4xx.com', 250);
 			for (let i = 0; i < 3; i++) await recordResponse(redis, 'half4xx.com', 421);
 
-			const health = await redis.hget('mta:smtp-intel:half4xx.com', 'healthStatus');
+			const health = await redis.hget(smtpResponseStateKey('half4xx.com'), 'healthStatus');
 			expect(health).not.toBe('degraded');
 		});
 	});

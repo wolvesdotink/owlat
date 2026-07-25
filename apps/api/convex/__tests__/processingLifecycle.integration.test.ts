@@ -934,6 +934,39 @@ describe('processingLifecycle.reconcileStuckApproved', () => {
 		expect(await countReEnqueues(t, messageId)).toBe(0);
 	});
 
+	it('still sees a live reply behind a large backlog of unrelated queued sends', async () => {
+		// Governed MTA sends dwell in `queued` for the whole delivery lifetime, so
+		// the old bounded scan of all queued sends could be starved by unrelated
+		// volume — and re-firing sends the customer a second real email, every
+		// tick, until the first one lands.
+		const t = convexTest(schema, modules);
+		const messageId = await createMessage(t, {
+			processingStatus: 'approved',
+			processedAt: STALE_BEFORE,
+			draftResponse: 'A reply',
+		});
+		await t.run(async (ctx) => {
+			for (let index = 0; index < 600; index++) {
+				await ctx.db.insert('transactionalSends', {
+					kind: 'transactional' as const,
+					email: `bulk-${index}@example.com`,
+					status: 'queued' as const,
+					queuedAt: STALE_BEFORE - 1_000,
+				});
+			}
+			await ctx.db.insert('transactionalSends', {
+				kind: 'agent_reply' as const,
+				email: 'sender@example.com',
+				inboundMessageId: messageId,
+				status: 'queued' as const,
+			});
+		});
+
+		const result = await t.mutation(internal.inbox.processingLifecycle.reconcileStuckApproved, {});
+		expect(result.reEnqueued).toBe(0);
+		expect(await countReEnqueues(t, messageId)).toBe(0);
+	});
+
 	it('ignores recently-approved messages inside the staleness window', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, {

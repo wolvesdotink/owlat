@@ -74,6 +74,115 @@ async function setupTransactionalSend(
 // ============================================================================
 
 describe('completeSend — campaign Sends', () => {
+	it('keeps MTA intake provisional until the sent webhook resolves by provider id', async () => {
+		const t = convexTest(schema, modules);
+		const sendId = await setupCampaignSend(t);
+		await t.run((ctx) => ctx.db.patch(sendId, { providerMessageId: undefined }));
+
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: testWorkId,
+			result: {
+				kind: 'success',
+				returnValue: {
+					success: true,
+					providerMessageId: 'mta-provisional-1',
+					providerType: 'mta',
+					acceptedForDelivery: true,
+				},
+			},
+			context: { sendRef: { kind: 'campaign', id: sendId } },
+		});
+		expect(await t.run((ctx) => ctx.db.get(sendId))).toMatchObject({
+			status: 'queued',
+			providerMessageId: 'mta-provisional-1',
+		});
+
+		const webhook = await t.mutation(
+			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: 'mta-provisional-1',
+				transition: {
+					to: 'sent',
+					at: NOW,
+					providerMessageId: 'mta-provisional-1',
+					providerType: 'mta',
+				},
+			}
+		);
+		expect(webhook).toMatchObject({ ok: true });
+		expect((await t.run((ctx) => ctx.db.get(sendId)))?.status).toBe('sent');
+	});
+
+	it('recovers when the sent webhook races before provisional completion', async () => {
+		const t = convexTest(schema, modules);
+		const sendId = await setupCampaignSend(t);
+		await t.run((ctx) => ctx.db.patch(sendId, { providerMessageId: undefined }));
+		const transition = {
+			to: 'sent' as const,
+			at: NOW,
+			providerMessageId: 'mta-race-1',
+			providerType: 'mta',
+		};
+		const early = await t.mutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: 'mta-race-1',
+			transition,
+		});
+		expect(early).toEqual({ ok: false, reason: 'send_not_found' });
+
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: testWorkId,
+			result: {
+				kind: 'success',
+				returnValue: {
+					success: true,
+					providerMessageId: 'mta-race-1',
+					providerType: 'mta',
+					acceptedForDelivery: true,
+				},
+			},
+			context: { sendRef: { kind: 'campaign', id: sendId } },
+		});
+		const retry = await t.mutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+			providerMessageId: 'mta-race-1',
+			transition,
+		});
+		expect(retry).toMatchObject({ ok: true });
+		expect((await t.run((ctx) => ctx.db.get(sendId)))?.status).toBe('sent');
+	});
+
+	it('typed routing deferral keeps the Send queued and schedules bounded re-entry', async () => {
+		const t = convexTest(schema, modules);
+		const sendId = await setupCampaignSend(t);
+
+		await t.mutation(internal.delivery.sendCompletion.completeSend, {
+			workId: testWorkId,
+			result: {
+				kind: 'success',
+				returnValue: {
+					success: false,
+					deferred: true,
+					retryAfterMs: 60_000,
+					envelopeInput: { kind: 'campaign' },
+					retryState: {
+						attempt: 1,
+						startedAt: Date.now(),
+						idempotencyKey: `send_${sendId}`,
+					},
+				},
+			},
+			context: { sendRef: { kind: 'campaign', id: sendId } },
+		});
+
+		expect(await t.run(async (ctx) => (await ctx.db.get(sendId))?.status)).toBe('queued');
+		const scheduled = await t.run(
+			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled).toHaveLength(1);
+		expect(scheduled[0]?.args[0]).toMatchObject({
+			retryState: { attempt: 1, idempotencyKey: `send_${sendId}` },
+		});
+	});
+
 	it('result.success → transitions queued to sent', async () => {
 		const t = convexTest(schema, modules);
 		const sendId = await setupCampaignSend(t);
@@ -371,6 +480,7 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 		// A seed that carries the thread + contact the outbound mirror needs.
 		async function seedThreadedAgentReply(t: ReturnType<typeof convexTest>): Promise<{
 			sendId: Id<'transactionalSends'>;
+			inboundMessageId: Id<'inboundMessages'>;
 			threadId: Id<'conversationThreads'>;
 			contactId: Id<'contacts'>;
 		}> {
@@ -408,7 +518,7 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 					contactId,
 					subject: 'Re: Hi',
 				});
-				return { sendId, threadId, contactId };
+				return { sendId, inboundMessageId, threadId, contactId };
 			});
 		}
 
@@ -479,6 +589,53 @@ describe('completeSend — does NOT write providerHealth (ADR-0020 regression)',
 					.collect();
 				expect(rows).toHaveLength(1);
 			});
+		});
+
+		it('finalizes an accepted MTA reply once and leaves no stale-approved resend work', async () => {
+			const t = convexTest(schema, modules);
+			const { sendId, inboundMessageId, contactId } = await seedThreadedAgentReply(t);
+			await t.mutation(internal.delivery.sendCompletion.completeSend, {
+				result: {
+					kind: 'success',
+					returnValue: {
+						success: true,
+						providerMessageId: 'send_agent_mta',
+						providerType: 'mta',
+						acceptedForDelivery: true,
+					},
+				},
+				context: { sendRef: { kind: 'transactional', id: sendId } },
+				workId: testWorkId,
+			});
+			expect(await t.run((ctx) => ctx.db.get(sendId))).toMatchObject({
+				status: 'queued',
+				providerMessageId: 'send_agent_mta',
+			});
+
+			await t.mutation(internal.delivery.sendLifecycle.recordMtaRemoteAcceptance, {
+				providerMessageId: 'send_agent_mta',
+				at: NOW + 1,
+			});
+			// Duplicate authenticated callback remains idempotent.
+			await t.mutation(internal.delivery.sendLifecycle.recordMtaRemoteAcceptance, {
+				providerMessageId: 'send_agent_mta',
+				at: NOW + 1,
+			});
+
+			expect(await t.run((ctx) => ctx.db.get(sendId))).toMatchObject({ status: 'delivered' });
+			expect(await t.run((ctx) => ctx.db.get(inboundMessageId))).toMatchObject({
+				processingStatus: 'sent',
+			});
+			const rows = await t.run((ctx) =>
+				ctx.db
+					.query('unifiedMessages')
+					.withIndex('by_contact', (q) => q.eq('contactId', contactId))
+					.collect()
+			);
+			expect(rows).toHaveLength(1);
+			expect(
+				await t.mutation(internal.inbox.processingLifecycle.reconcileStuckApproved, {})
+			).toEqual({ reEnqueued: 0 });
 		});
 	});
 });

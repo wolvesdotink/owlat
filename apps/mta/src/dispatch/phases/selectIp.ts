@@ -12,6 +12,17 @@ import type { CtxWithIp, CtxWithPool } from '../types.js';
 export const selectIpPhase: Phase<CtxWithPool, CtxWithIp> = {
 	name: 'select_ip',
 	async run(deps, ctx) {
+		const reserved = ctx.job.routingLease;
+		if (reserved?.ip && reserved.eligibilityGeneration !== undefined) {
+			return {
+				kind: 'continue',
+				ctx: {
+					...ctx,
+					ip: reserved.ip,
+					eligibilityGeneration: reserved.eligibilityGeneration,
+				},
+			};
+		}
 		const lease = await selectIpWithLease(
 			deps.redis,
 			ctx.pool,

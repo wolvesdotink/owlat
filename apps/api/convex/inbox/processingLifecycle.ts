@@ -255,23 +255,29 @@ export const reconcileStuckApproved = internalMutation({
 		});
 		if (stale.length === 0) return { reEnqueued: 0 };
 
-		// One scan of the live queue: which inbound messages still have an
-		// in-flight (`queued`) agent_reply send? Those are NOT stuck — their
-		// completion is simply pending. The queued set is the small live tail.
-		const queuedSends = await ctx.db
-			.query('transactionalSends')
-			.withIndex('by_status', (q) => q.eq('status', 'queued'))
-			.take(500);
-		const inFlight = new Set<string>();
-		for (const send of queuedSends) {
-			if (send.kind === 'agent_reply' && send.inboundMessageId) {
-				inFlight.add(send.inboundMessageId);
-			}
-		}
+		// Does THIS message still have an in-flight (`queued`) agent_reply send?
+		// If so it is not stuck — its completion is simply pending.
+		//
+		// This is a point lookup per candidate rather than a bounded scan of all
+		// queued sends. That scan assumed the queued set was "the small live
+		// tail", which held while a transactional send left `queued` within
+		// seconds of dispatch. An MTA-governed send now stays `queued` for the
+		// whole delivery lifetime, so unrelated volume could push a live reply
+		// out of the window — and re-firing `sendApprovedReply` sends the
+		// customer a second real email, every tick, until the first one lands.
+		const hasQueuedReply = async (inboundMessageId: Id<'inboundMessages'>): Promise<boolean> => {
+			const sends = await ctx.db
+				.query('transactionalSends')
+				.withIndex('by_inbound_message_status', (q) =>
+					q.eq('inboundMessageId', inboundMessageId).eq('status', 'queued')
+				)
+				.take(5);
+			return sends.some((send) => send.kind === 'agent_reply');
+		};
 
 		let reEnqueued = 0;
 		for (const message of stale) {
-			if (inFlight.has(message._id)) continue; // send still pending — leave it
+			if (await hasQueuedReply(message._id)) continue; // send still pending — leave it
 			// Channel replies (sms/whatsapp/generic) complete via
 			// channels.dispatchOutbound, NOT the transactionalSends queue — they
 			// never have a queued send, so the "no queued send ⇒ lost" inference

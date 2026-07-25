@@ -8,11 +8,34 @@
 import type Redis from 'ioredis';
 import { isRedisHealthy } from '../redis.js';
 import { logger } from '../monitoring/logger.js';
+import { createHash } from 'crypto';
+import {
+	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
+	type DurableEffectIdentity,
+} from '../lib/effectCheckpoint.js';
 
 const BACKPRESSURE_QUEUE_THRESHOLD = 10_000;
 const DOMAIN_FAILURE_BASE_MS = 30_000;
 const DOMAIN_FAILURE_MAX_MS = 600_000;
 const DOMAIN_FAILURE_PREFIX = 'mta:domain-fail:';
+
+const RECORD_DOMAIN_FAILURE_ONCE_LUA = `
+if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+local count = redis.call('HINCRBY', KEYS[1], 'count', 1)
+local delay = math.min(tonumber(ARGV[2]) * (2 ^ (count - 1)), tonumber(ARGV[3]))
+redis.call('HSET', KEYS[1], 'retryAt', tostring(tonumber(ARGV[1]) + delay))
+redis.call('PEXPIRE', KEYS[1], math.max(3600000, delay))
+redis.call('SET', KEYS[2], 'recorded', 'PX', ARGV[4])
+return {count, delay}
+`;
+
+function domainFailureKey(domain: string): string {
+	return `${DOMAIN_FAILURE_PREFIX}{${domain}}:state`;
+}
+
+function domainFailureReceiptKey(domain: string, identity: DurableEffectIdentity): string {
+	return `${DOMAIN_FAILURE_PREFIX}{${domain}}:effect:${createHash('sha256').update(identity).digest('hex')}`;
+}
 
 export interface DegradationState {
 	redisHealthy: boolean;
@@ -60,12 +83,15 @@ export async function checkSystemHealth(redis: Redis): Promise<DegradationState>
  * Check if sends to a specific domain should be backed off
  * (connection-level failures, distinct from SMTP-level throttle/intel)
  */
-export async function shouldBackoffDomain(redis: Redis, domain: string): Promise<{
+export async function shouldBackoffDomain(
+	redis: Redis,
+	domain: string
+): Promise<{
 	backoff: boolean;
 	retryAfter?: number;
 }> {
-	const key = `${DOMAIN_FAILURE_PREFIX}${domain}`;
-	const data = await redis.get(key);
+	const key = domainFailureKey(domain);
+	const data = await redis.hget(key, 'retryAt');
 	if (!data) return { backoff: false };
 
 	const retryAt = parseInt(data, 10);
@@ -82,17 +108,38 @@ export async function shouldBackoffDomain(redis: Redis, domain: string): Promise
  * Record a domain connection failure (TCP-level, not SMTP)
  * Applies exponential backoff per domain
  */
-export async function recordDomainFailure(redis: Redis, domain: string): Promise<void> {
-	const key = `${DOMAIN_FAILURE_PREFIX}${domain}`;
-	const countKey = `${DOMAIN_FAILURE_PREFIX}${domain}:count`;
+export async function recordDomainFailure(
+	redis: Redis,
+	domain: string,
+	idempotencyIdentity?: DurableEffectIdentity
+): Promise<void> {
+	const key = domainFailureKey(domain);
+	if (idempotencyIdentity) {
+		const result = (await redis.eval(
+			RECORD_DOMAIN_FAILURE_ONCE_LUA,
+			2,
+			key,
+			domainFailureReceiptKey(domain, idempotencyIdentity),
+			String(Date.now()),
+			String(DOMAIN_FAILURE_BASE_MS),
+			String(DOMAIN_FAILURE_MAX_MS),
+			String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
+		)) as [number, number] | number;
+		if (!Array.isArray(result)) return;
+		logger.warn(
+			{ domain, delay: Number(result[1]), failureCount: Number(result[0]) },
+			'Domain connection failure — backing off'
+		);
+		return;
+	}
 
-	const count = await redis.incr(countKey);
-	await redis.expire(countKey, 3600); // Reset failure count after 1 hour of no failures
+	const count = await redis.hincrby(key, 'count', 1);
 
 	const delay = Math.min(DOMAIN_FAILURE_BASE_MS * Math.pow(2, count - 1), DOMAIN_FAILURE_MAX_MS);
 	const retryAt = Date.now() + delay;
 
-	await redis.set(key, String(retryAt), 'PX', delay);
+	await redis.hset(key, 'retryAt', String(retryAt));
+	await redis.pexpire(key, Math.max(3_600_000, delay));
 
 	logger.warn({ domain, delay, failureCount: count }, 'Domain connection failure — backing off');
 }
@@ -101,5 +148,5 @@ export async function recordDomainFailure(redis: Redis, domain: string): Promise
  * Clear domain failure state (on successful connection)
  */
 export async function clearDomainFailure(redis: Redis, domain: string): Promise<void> {
-	await redis.del(`${DOMAIN_FAILURE_PREFIX}${domain}`, `${DOMAIN_FAILURE_PREFIX}${domain}:count`);
+	await redis.del(domainFailureKey(domain));
 }

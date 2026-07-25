@@ -33,6 +33,7 @@ vi.mock('../../monitoring/deliveryLogger.js', () => ({
 }));
 vi.mock('../../webhooks/convexNotifier.js', () => ({
 	notifyConvex: vi.fn().mockResolvedValue(true),
+	queueConvexWebhook: vi.fn().mockResolvedValue('outbox-1'),
 }));
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -48,7 +49,7 @@ import * as suppressionList from '../../intelligence/suppressionList.js';
 import * as degradation from '../../scaling/degradation.js';
 import * as metrics from '../../monitoring/collector.js';
 import { logDeliveryEvent } from '../../monitoring/deliveryLogger.js';
-import { notifyConvex } from '../../webhooks/convexNotifier.js';
+import { queueConvexWebhook } from '../../webhooks/convexNotifier.js';
 import type { PhaseDeps } from '../types.js';
 import type { MtaConfig } from '../../config.js';
 
@@ -172,7 +173,7 @@ describe('applyEffects — per-effect dispatch', () => {
 			],
 			deps
 		);
-		expect(warming.recordSend).toHaveBeenCalledWith(expect.anything(), '10.0.0.1');
+		expect(warming.recordSend).toHaveBeenCalledWith(expect.anything(), '10.0.0.1', undefined);
 		expect(warming.recordBounce).toHaveBeenCalledWith(expect.anything(), '10.0.0.2');
 		expect(warming.recordDeferral).toHaveBeenCalledWith(expect.anything(), '10.0.0.3');
 	});
@@ -252,7 +253,7 @@ describe('applyEffects — per-effect dispatch', () => {
 		expect(logDeliveryEvent).toHaveBeenCalledWith(expect.anything(), event, expect.anything());
 	});
 
-	it('notify_convex → notifyConvex (fire-and-forget)', async () => {
+	it('notify_convex → durable outbox before resolving', async () => {
 		const event = {
 			event: 'sent' as const,
 			messageId: 'm-1',
@@ -260,7 +261,12 @@ describe('applyEffects — per-effect dispatch', () => {
 			timestamp: 1700000000,
 		};
 		await applyEffects([{ kind: 'notify_convex', event }], makeDeps());
-		expect(notifyConvex).toHaveBeenCalledWith(event, expect.anything(), expect.anything());
+		expect(queueConvexWebhook).toHaveBeenCalledWith(
+			event,
+			expect.anything(),
+			expect.anything(),
+			'dispatch:m-1:sent'
+		);
 	});
 });
 
@@ -313,8 +319,11 @@ describe('applyEffects — ordering', () => {
 		expect(logDeliveryEvent).toHaveBeenCalled();
 	});
 
-	it('does not await notify_convex — applyEffects resolves even if notify hangs', async () => {
-		vi.mocked(notifyConvex).mockImplementation(() => new Promise(() => {}));
+	it('does not resolve until durable outbox persistence completes', async () => {
+		let release!: (value: string) => void;
+		vi.mocked(queueConvexWebhook).mockImplementation(
+			() => new Promise<string>((resolve) => (release = resolve))
+		);
 
 		const event = {
 			event: 'sent' as const,
@@ -323,11 +332,18 @@ describe('applyEffects — ordering', () => {
 			timestamp: 1700000000,
 		};
 
-		await applyEffects([{ kind: 'notify_convex', event }], makeDeps());
-		expect(notifyConvex).toHaveBeenCalled();
+		let settled = false;
+		const applying = applyEffects([{ kind: 'notify_convex', event }], makeDeps()).then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		release('outbox-1');
+		await applying;
+		expect(queueConvexWebhook).toHaveBeenCalled();
 	});
 
-	it('still surfaces parallel-bucket errors (Promise.all rejection)', async () => {
+	it('settles every started effect before surfacing the first input-order failure', async () => {
 		vi.mocked(domainThrottle.recordSuccess).mockRejectedValueOnce(new Error('boom'));
 
 		await expect(
@@ -336,5 +352,44 @@ describe('applyEffects — ordering', () => {
 				makeDeps()
 			)
 		).rejects.toThrow('boom');
+	});
+
+	it('retries the durable callback while checkpointing successful secondary effects', async () => {
+		vi.mocked(queueConvexWebhook)
+			.mockRejectedValueOnce(new Error('outbox unavailable'))
+			.mockResolvedValue('outbox-1');
+		const claimed = new Set<string>();
+		const replayGuard = {
+			runSecondary: vi.fn(async (identity: string, apply: () => Promise<unknown>) => {
+				if (claimed.has(identity)) return undefined;
+				const result = await apply();
+				claimed.add(identity);
+				return result;
+			}),
+		};
+		const effects: DispatchEffect[] = [
+			{
+				kind: 'notify_convex',
+				event: {
+					event: 'sent',
+					messageId: 'm-1',
+					organizationId: 'org-1',
+					timestamp: 1700000000,
+				},
+			},
+			{ kind: 'circuit_breaker_outcome', orgId: 'org-1', outcome: 'delivered' },
+			{ kind: 'suppress_recipient', address: 'user@example.com', reason: 'hard_bounce' },
+		];
+
+		await expect(applyEffects(effects, makeDeps(), replayGuard)).rejects.toThrow(
+			'outbox unavailable'
+		);
+		await applyEffects(effects, makeDeps(), replayGuard);
+		await applyEffects(effects, makeDeps(), replayGuard);
+
+		expect(queueConvexWebhook).toHaveBeenCalledTimes(3);
+		expect(circuitBreaker.recordOutcome).toHaveBeenCalledTimes(1);
+		// Suppression is a critical idempotent write, so it remains retryable.
+		expect(suppressionList.suppress).toHaveBeenCalledTimes(2);
 	});
 });
