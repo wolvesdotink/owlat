@@ -176,11 +176,11 @@ export async function sendToMx(
 	eligibilityLease?: IpEligibilityLease,
 	resolvedDestination?: DestinationSnapshot,
 	/**
-	 * Invoked once, immediately before the first connection acquisition. Until
-	 * it fires nothing has been transmitted, so the caller can treat a throw as
-	 * a plain retryable failure instead of an uncertain SMTP transaction.
+	 * Invoked immediately before each SMTP envelope attempt. Connection setup,
+	 * capability negotiation, and eligibility fencing cannot cause message
+	 * acceptance, so a throw before this boundary remains safely retryable.
 	 */
-	onWireAttempt?: () => void
+	onEnvelopeAttempt?: () => void
 ): Promise<EmailJobResult> {
 	if (eligibilityLease && !(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
 		return {
@@ -335,7 +335,6 @@ export async function sendToMx(
 		const daneRequired = danePlan !== undefined;
 
 		let acquired: Awaited<ReturnType<typeof pool.acquire>>;
-		onWireAttempt?.();
 		try {
 			// Fence the discovery interval too: no reusable or fresh SMTP connection
 			// is acquired after the selection generation becomes ineligible.
@@ -441,6 +440,10 @@ export async function sendToMx(
 			// NOT a TLS success.
 			const secured = conn.secured;
 
+			// MAIL FROM is the first command that can begin an irreversible delivery
+			// transaction. Everything above is connection preparation or fencing and
+			// can be retried safely if its infrastructure fails.
+			onEnvelopeAttempt?.();
 			const result: SendResult = await sendEnvelope(conn, {
 				from: verpAddress,
 				to: [job.to],

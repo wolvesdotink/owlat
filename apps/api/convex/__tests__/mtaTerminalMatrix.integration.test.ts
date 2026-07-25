@@ -20,7 +20,51 @@ afterEach(async () => {
 });
 
 type Source = 'campaign' | 'agent_reply' | 'member_test';
-type Terminal = 'delivered' | 'bounced' | 'failed' | 'complained';
+
+const TERMINAL_CASES = [
+	{
+		terminal: 'delivered',
+		label: 'delivered',
+		errorCode: undefined,
+		countsAsSent: true,
+	},
+	{
+		terminal: 'bounced',
+		label: 'bounced',
+		errorCode: undefined,
+		countsAsSent: true,
+	},
+	{
+		terminal: 'complained',
+		label: 'complained',
+		errorCode: undefined,
+		countsAsSent: true,
+	},
+	{
+		terminal: 'failed',
+		label: 'ambiguous post-DATA failure',
+		errorCode: 'ambiguous_post_data',
+		countsAsSent: true,
+	},
+	{
+		terminal: 'failed',
+		label: 'content-screened local drop',
+		errorCode: 'CONTENT_SCREENED',
+		countsAsSent: false,
+	},
+	{
+		terminal: 'failed',
+		label: 'recipient-suppressed local drop',
+		errorCode: 'RECIPIENT_SUPPRESSED',
+		countsAsSent: false,
+	},
+	{
+		terminal: 'failed',
+		label: 'unconfirmed MTA intake',
+		errorCode: 'MTA_ACCEPTANCE_UNCONFIRMED',
+		countsAsSent: false,
+	},
+] as const;
 
 async function seed(source: Source) {
 	const t = convexTest(schema, modules);
@@ -72,17 +116,17 @@ async function seed(source: Source) {
 describe('MTA post-intake terminal matrix', () => {
 	it.each(
 		(['campaign', 'agent_reply', 'member_test'] as const).flatMap((source) =>
-			(['delivered', 'bounced', 'failed', 'complained'] as const).flatMap((terminal) =>
+			TERMINAL_CASES.flatMap((terminalCase) =>
 				(['completion-first', 'callback-first'] as const).map((order) => ({
 					source,
-					terminal,
+					...terminalCase,
 					order,
 				}))
 			)
 		)
 	)(
-		'$source reaches exactly one $terminal result ($order) and duplicate evidence is inert',
-		async ({ source, terminal, order }) => {
+		'$source reaches exactly one $label result ($order) and duplicate evidence is inert',
+		async ({ source, terminal, errorCode, countsAsSent, order }) => {
 			const value = await seed(source);
 			const providerMessageId = `send_${source}_${terminal}`;
 			expect(
@@ -119,8 +163,8 @@ describe('MTA post-intake terminal matrix', () => {
 									: {
 											to: 'failed' as const,
 											at: 1_700_000_000_000,
-											errorMessage: 'screened or ambiguous',
-											errorCode: 'MTA_TERMINAL_FAILURE',
+											errorMessage: `MTA terminal disposition: ${errorCode}`,
+											errorCode,
 										},
 					}
 				);
@@ -168,18 +212,27 @@ describe('MTA post-intake terminal matrix', () => {
 					const campaign = await ctx.db.get(value.campaignId! as Id<'campaigns'>);
 					if (campaign) await rollupCampaignStatsRow(ctx, campaign);
 					const updated = await ctx.db.get(value.campaignId! as Id<'campaigns'>);
-					// Every MTA terminal outcome counts one outbound attempt. A send
-					// the MTA rejected at SMTP never passes through `sent`, and
-					// omitting it here would leave `statsBounced`/`statsComplained`
-					// (and the reputation bounce rate that drives auto-enforcement)
-					// with a numerator but no denominator.
-					expect(updated?.statsSent).toBe(1);
+					// SMTP rejection/complaint and post-DATA ambiguity prove an
+					// envelope attempt. Local policy drops and unconfirmed intake do
+					// not, so they must not inflate either sent-volume denominator.
+					expect(updated?.statsSent).toBe(countsAsSent ? 1 : 0);
 					expect(updated?.statsDelivered).toBe(
 						terminal === 'delivered' || terminal === 'complained' ? 1 : 0
 					);
 					expect(updated?.statsBounced).toBe(terminal === 'bounced' ? 1 : 0);
 					expect(updated?.statsFailed).toBe(terminal === 'failed' ? 1 : 0);
 					expect(updated?.status).toBe('sent');
+					const dailySent = (await ctx.db.query('sendDailyStats').collect()).reduce(
+						(total, row) => total + row.sent,
+						0
+					);
+					expect(dailySent).toBe(countsAsSent ? 1 : 0);
+					const scheduledSendReputationUpdates = (
+						await ctx.db.system.query('_scheduled_functions').collect()
+					).filter(
+						(job) => job.name.includes('sendingReputation') && job.args[0]?.eventType === 'send'
+					);
+					expect(scheduledSendReputationUpdates).toHaveLength(countsAsSent ? 1 : 0);
 				});
 			}
 		}

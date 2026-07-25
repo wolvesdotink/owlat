@@ -104,6 +104,22 @@ const transitionInputValidator = v.union(
 	v.object({ to: v.literal('complained'), at: v.number() })
 );
 
+/**
+ * Whether an MTA terminal callback proves that an SMTP envelope was attempted.
+ *
+ * Bounce and complaint evidence necessarily follows an outbound attempt.
+ * `ambiguous_post_data` is the one failed disposition emitted after message
+ * data reached the wire. Other failed codes describe local policy, routing, or
+ * intake failures and must not inflate sent-volume denominators.
+ */
+function hasOutboundAttemptEvidence(input: TransitionInput): boolean {
+	return (
+		input.to === 'bounced' ||
+		input.to === 'complained' ||
+		(input.to === 'failed' && input.errorCode === 'ambiguous_post_data')
+	);
+}
+
 // ─── Dispatcher — the one place that fans transition kinds to reducers ─────
 
 async function dispatch(
@@ -213,16 +229,15 @@ async function dispatch(
 		}
 	}
 
-	// A message the MTA rejected at SMTP goes `queued -> bounced|complained`
-	// without ever passing through `sent`, so `reduceSent`'s outbound
-	// accounting never runs. Bounce and complaint rates divide by exactly that
-	// counter, and auto-enforcement escalates off the quotient — leaving it out
-	// reports a bounce rate of 100% for a batch that half-bounced and can
-	// suspend a healthy instance. Emit the denominator here (the `email.sent`
-	// customer webhook deliberately stays with `reduceSent`: nothing was ever
-	// accepted for delivery).
+	// An SMTP rejection or post-DATA ambiguity goes `queued -> terminal` without
+	// passing through `sent`, so `reduceSent`'s outbound accounting never runs.
+	// Preserve the rate denominator only when the callback proves an envelope
+	// attempt. Local screening, suppression, routing exhaustion, and intake
+	// uncertainty are terminal non-deliveries, not sent volume. The `email.sent`
+	// customer webhook deliberately stays with `reduceSent`: nothing here was
+	// accepted for delivery.
 	const queuedTerminalSendAccounting: Effect[] =
-		isBoundQueuedMtaTerminal && result.applied !== 'duplicate'
+		isBoundQueuedMtaTerminal && result.applied !== 'duplicate' && hasOutboundAttemptEvidence(input)
 			? [
 					...(ref.kind === 'campaign'
 						? ([

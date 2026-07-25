@@ -798,6 +798,46 @@ describe('handleEmailJob', () => {
 		expect(releaseWarmingSlot).toHaveBeenCalledWith(redis, oldReservation);
 	});
 
+	it('delivers a final governed attempt after its old warming reservation becomes uncapped', async () => {
+		const { ensureWarmingReservation, recordSend } = await import('../../intelligence/warming.js');
+		const { sendToMx } = await import('../../smtp/sender.js');
+		const oldReservation = {
+			ip: '10.0.0.1',
+			messageId: 'msg-001',
+			utcDate: '2026-07-21',
+			expiresAt: Date.now() - 1,
+		};
+		vi.mocked(ensureWarmingReservation).mockResolvedValue({
+			allowed: true,
+			reservation: undefined,
+		});
+		const governedJob = createGovernedJob({
+			routingLease: {
+				...createGovernedJob().routingLease!,
+				warmingReservation: oldReservation,
+			},
+			routingReentry: {
+				envelopeInput: { kind: 'campaign' },
+				retryState: {
+					attempt: 9,
+					startedAt: Date.now(),
+					idempotencyKey: 'msg-001',
+				},
+			},
+		});
+
+		await run(governedJob);
+
+		expect(sendToMx).toHaveBeenCalledOnce();
+		expect(queue.add).not.toHaveBeenCalled();
+		expect(recordSend).toHaveBeenCalledWith(
+			redis,
+			'10.0.0.1',
+			undefined,
+			expect.stringMatching(/^effect:v1:/)
+		);
+	});
+
 	it('never re-enters dispatch after ownership moved back to Convex routing', async () => {
 		// GroupMQ records completion only after the handler returns. A crash in
 		// that window redelivers this job while the successor Convex enqueued is
