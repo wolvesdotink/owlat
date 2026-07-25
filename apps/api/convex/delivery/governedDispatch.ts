@@ -187,7 +187,11 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			deferred: true,
 			retryAfterMs: routing.retryAfterMs,
 			envelopeInput: request.envelopeInput,
-			retryState: nextRetryState(retryState),
+			// The attempt cap bounds routing churn. A deliberate safety hold is
+			// not churn: consuming attempts would terminalize the send minutes
+			// into a pause that is meant to outlast them, so a held message is
+			// bounded by the delivery deadline instead.
+			retryState: routing.isPolicyHold ? retryState : nextRetryState(retryState),
 		};
 	}
 
