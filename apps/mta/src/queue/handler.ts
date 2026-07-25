@@ -32,10 +32,8 @@ import { logger } from '../monitoring/logger.js';
 import { runPipeline } from '../dispatch/pipeline.js';
 import { mainPipeline } from '../dispatch/phases/index.js';
 import type { DispatchOutcome } from '../dispatch/outcome.js';
-import { applyEffects, type DispatchEffect } from '../dispatch/effects.js';
+import { applyEffects } from '../dispatch/effects.js';
 import type { AttemptCtx, BasePhaseCtx } from '../dispatch/types.js';
-import type { DeliveryEvent } from '../monitoring/deliveryLogger.js';
-import type { PipelineResult } from '../dispatch/pipeline.js';
 import { isIpEligibilityLeaseValid } from '../scaling/ipPool.js';
 import { resolveDestinationSnapshot } from '../smtp/destinationProvider.js';
 import { recordFeedbackProvenance } from '../bounce/feedbackProvenance.js';
@@ -54,6 +52,7 @@ import {
 import { resumeJournaledSmtpAttempt, runJournaledSmtpAttempt } from './journaledSmtpAttempt.js';
 import { releaseRoutingReservations } from './routingReservations.js';
 import { handoffRoutingReentry, resumeRoutingReentryHandoff } from './routingReentryHandoff.js';
+import { emitExpiredBounce, handleDrop } from './nonDeliveryOutcomes.js';
 
 /**
  * Process a single email job through the Dispatch pipeline + Dispatch
@@ -311,155 +310,6 @@ async function disposeDefer(
 		{ messageId: data.messageId, to: data.to, domain, kind, delay, reason },
 		`Deferred (${kind}) — re-enqueued in ${delay}ms (no attempt consumed)`
 	);
-}
-
-/**
- * Emit the terminal expired-bounce once the max message age is exceeded.
- * Recorded as a soft bounce (the message kept being transiently deferred) so
- * downstream bounce handling treats it as a give-up rather than a permanent
- * address failure.
- */
-async function emitExpiredBounce(
-	job: ReservedJob<EmailJob>,
-	deps: { redis: Redis; config: MtaConfig },
-	domain: string,
-	providerKey: DestinationProviderKey,
-	ageMs: number,
-	reason: string
-): Promise<void> {
-	const data = job.data;
-	// The protected outbox row is keyed deterministically and compares payloads
-	// byte-for-byte, so a replay that stamps a fresh clock is rejected outright
-	// and dead-letters the job. Anchor the terminal notification to the job's
-	// own expiry deadline instead of the observing run's wall clock.
-	const expiredAt = (data.firstEnqueuedAt ?? job.timestamp) + deps.config.maxMessageAgeMs;
-	logger.warn(
-		{ messageId: data.messageId, to: data.to, domain, ageMs, reason },
-		'Message exceeded max age — giving up with expired-bounce'
-	);
-
-	const effects: DispatchEffect[] = [
-		{
-			kind: 'log_delivery_event',
-			event: {
-				messageId: data.messageId,
-				to: data.to,
-				from: data.from,
-				orgId: data.organizationId,
-				status: 'expired',
-				bounceType: 'soft',
-				domain,
-				provider: providerKey,
-				pool: data.ipPool,
-				reason: `Expired after ${ageMs}ms: ${reason}`,
-			},
-		},
-		{
-			kind: 'notify_convex',
-			event: {
-				event: 'bounced',
-				messageId: data.messageId,
-				organizationId: data.organizationId,
-				deliveryDomain: data.deliveryDomain,
-				bounceType: 'soft',
-				message: `Message expired after ${deps.config.maxMessageAgeMs}ms without delivery`,
-				timestamp: expiredAt,
-			},
-		},
-	];
-
-	await applyEffects(effects, deps);
-	// The message never reached the wire, so its warming slot and half-open
-	// probe were never consumed. Leaving them held burns real capacity for the
-	// rest of the UTC day on exactly the warming IPs that can least afford it.
-	await releaseRoutingReservations(data, deps);
-}
-
-/**
- * Apply the side effects for a pipeline drop. Status-specific:
- *   - `screened`: warn log, Prometheus rejected-counter inc, delivery log.
- *   - `suppressed`: info log, delivery log.
- */
-async function handleDrop(
-	piped: Extract<PipelineResult<BasePhaseCtx>, { kind: 'drop' }>,
-	job: EmailJob,
-	deps: { redis: Redis; config: MtaConfig },
-	drop: {
-		domain: string;
-		providerKey: DestinationProviderKey;
-		/** Stable across replays — the protected outbox compares payloads exactly. */
-		droppedAt: number;
-	}
-): Promise<void> {
-	const { domain, providerKey, droppedAt } = drop;
-	const effects: DispatchEffect[] = [];
-
-	if (piped.status === 'screened') {
-		logger.warn(
-			{ messageId: job.messageId, to: job.to, reason: piped.reason },
-			'Content screening rejected'
-		);
-		if (job.deliveryDomain !== 'member_test') {
-			effects.push({
-				kind: 'metrics_counter_inc',
-				pool: job.ipPool,
-				isp: providerKey,
-				outcome: 'rejected',
-			});
-		}
-	} else {
-		logger.info({ messageId: job.messageId, to: job.to }, 'Recipient suppressed — skipping');
-	}
-
-	effects.push({
-		kind: 'log_delivery_event',
-		event: buildDropEvent(piped, job, domain, providerKey),
-	});
-	effects.push({
-		kind: 'notify_convex',
-		event: {
-			event: 'failed',
-			messageId: job.messageId,
-			organizationId: job.organizationId,
-			deliveryDomain: job.deliveryDomain,
-			// The screening reason carries a live rspamd score, which is
-			// re-evaluated on a replay and would break the outbox payload
-			// comparison. The exact score stays in the delivery log above.
-			message:
-				piped.status === 'screened'
-					? 'Content screening rejected the message'
-					: 'Recipient suppressed by MTA policy',
-			errorCode: piped.status === 'screened' ? 'CONTENT_SCREENED' : 'RECIPIENT_SUPPRESSED',
-			timestamp: droppedAt,
-		},
-	});
-
-	await applyEffects(effects, deps);
-	// Screening and suppression drop the message before any SMTP conversation,
-	// so the reserved warming slot and half-open probe were never consumed.
-	await releaseRoutingReservations(job, deps);
-}
-
-function buildDropEvent(
-	piped: Extract<PipelineResult<BasePhaseCtx>, { kind: 'drop' }>,
-	job: EmailJob,
-	domain: string,
-	providerKey: DestinationProviderKey
-): DeliveryEvent {
-	const base: DeliveryEvent = {
-		messageId: job.messageId,
-		to: job.to,
-		from: job.from,
-		orgId: job.organizationId,
-		status: piped.status,
-		domain,
-		provider: providerKey,
-		pool: job.ipPool,
-	};
-	if (piped.status === 'screened') {
-		return { ...base, reason: piped.reason };
-	}
-	return base;
 }
 
 function logOutcome(outcome: DispatchOutcome, job: EmailJob, ctx: AttemptCtx): void {
