@@ -246,7 +246,9 @@ export const recordCampaignComplaintAlert = internalMutation({
 		// exactly the complaint rates that raise these alerts. Retrying can never
 		// succeed, so audit and receipt the alert and acknowledge the producer
 		// instead of turning a correlated safety signal into DLQ toil.
-		if (!outcome.ok && outcome.reason !== 'no_settings_row') {
+		// `dispatch` is handed the settings row, so its only refusals here are the
+		// permanent severity ones.
+		if (!outcome.ok) {
 			await recordAuditLog(ctx, {
 				userId: 'mta_campaign_complaint_rate',
 				action: 'abuse_status_changed',
@@ -262,8 +264,6 @@ export const recordCampaignComplaintAlert = internalMutation({
 					eventId: args.eventId,
 				},
 			});
-		} else if (!outcome.ok) {
-			return { ok: false, reason: 'no_settings_row' };
 		}
 		const applied = outcome.ok ? outcome.applied : ('skipped' as const);
 

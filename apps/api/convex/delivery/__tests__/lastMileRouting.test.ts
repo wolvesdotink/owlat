@@ -121,4 +121,85 @@ describe('last-mile governance boundary', () => {
 			)
 		).toMatchObject({ kind: 'ready', providerKind: 'ses', route });
 	});
+
+	// An acceptance-unknown retry may be racing an MTA job that was actually
+	// committed. Only the owned-MTA path deduplicates it (on the reused
+	// workAttemptId); a relay carries no idempotency key at all, so relaying
+	// here delivers a second copy to the recipient.
+	describe('acceptance reconciliation never leaves the owned MTA path', () => {
+		const reconciling = { ...input, mtaReconciliation: true };
+
+		it.each(['ses', 'resend', 'smtp'] as const)(
+			'defers an external-only %s deployment',
+			async (providerType) => {
+				const route = { providerType, source: 'org_config' as const };
+				expect(
+					await resolveLastMileRouting(
+						context({ route, baseRoute: route, isMtaGoverned: false }, 'org-1'),
+						reconciling
+					)
+				).toMatchObject({ kind: 'defer' });
+			}
+		);
+
+		it.each(['ip_quarantined', 'dnsbl_listed', 'persistent_defers'] as const)(
+			'defers a Convex %s snapshot fallback instead of relaying',
+			async (deliverabilityReason) => {
+				const route = {
+					providerType: 'ses' as const,
+					source: 'deliverability_fallback' as const,
+					deliverabilityReason,
+				};
+				const baseRoute = { providerType: 'mta' as const, source: 'org_config' as const };
+				expect(
+					await resolveLastMileRouting(
+						context({ route, baseRoute, isMtaGoverned: true }, 'org-1'),
+						reconciling
+					)
+				).toMatchObject({ kind: 'defer' });
+				expect(resolveMtaRoutingDecision).not.toHaveBeenCalled();
+			}
+		);
+
+		it('defers relay hysteresis on an open breaker instead of relaying', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({
+				kind: 'mta',
+				leaseToken: 'lease-unused',
+				isProviderProbe: false,
+				isGlobalProbe: false,
+			});
+			const route = {
+				providerType: 'ses' as const,
+				source: 'deliverability_fallback' as const,
+				deliverabilityReason: 'breaker_open' as const,
+			};
+			const baseRoute = { providerType: 'mta' as const, source: 'org_config' as const };
+			expect(
+				await resolveLastMileRouting(
+					context({ route, baseRoute, isMtaGoverned: true }, 'org-1'),
+					reconciling
+				)
+			).toMatchObject({ kind: 'defer' });
+		});
+
+		it('still allows the owned MTA route that can deduplicate the attempt', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({
+				kind: 'mta',
+				leaseToken: 'lease-1',
+				isProviderProbe: false,
+				isGlobalProbe: false,
+			});
+			const baseRoute = { providerType: 'mta' as const, source: 'org_config' as const };
+			expect(
+				await resolveLastMileRouting(
+					context({ route: baseRoute, baseRoute, isMtaGoverned: true }, 'org-1'),
+					reconciling
+				)
+			).toMatchObject({ kind: 'ready', providerKind: 'mta', routingLease: 'lease-1' });
+		});
+	});
 });

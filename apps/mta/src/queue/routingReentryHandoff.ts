@@ -130,9 +130,7 @@ export async function handoffRoutingReentry(
 	reason: string,
 	jobId: string
 ): Promise<void> {
-	if (!job.routingReentryToken || !job.routingReentry || !job.workAttemptId) {
-		throw new Error('Missing routing re-entry context');
-	}
+	if (!job.workAttemptId) throw new Error('Missing routing re-entry context');
 	const now = Date.now();
 	const reserved: RoutingReentryHandoffReceipt = {
 		state: 'reserved',
@@ -156,7 +154,7 @@ export async function handoffRoutingReentry(
 	}
 	// An earlier run of this job already reserved the handoff. Finish that one
 	// so the outbox payload stays identical instead of starting a second one.
-	if (!(await resumeRoutingReentryHandoff(deps.redis, jobId, job, deps))) {
+	if (!(await resumeRoutingReentryHandoff(jobId, job, deps))) {
 		throw new Error('Routing re-entry handoff receipt is unreadable');
 	}
 }
@@ -166,15 +164,14 @@ export async function handoffRoutingReentry(
  * this job has already surrendered ownership and must not re-enter dispatch.
  */
 export async function resumeRoutingReentryHandoff(
-	redis: Redis,
 	jobId: string,
 	job: EmailJob,
 	deps: { redis: Redis; config: MtaConfig }
 ): Promise<boolean> {
-	const raw = await redis.get(handoffKey(jobId));
+	const raw = await deps.redis.get(handoffKey(jobId));
 	const receipt = parseReceipt(raw);
 	if (!raw || !receipt) return false;
-	if (receipt.messageId !== job.messageId) {
+	if (receipt.messageId !== job.messageId || receipt.workAttemptId !== job.workAttemptId) {
 		throw new Error('Routing re-entry handoff is bound to another message');
 	}
 	if (receipt.state === 'accepted') return true;
