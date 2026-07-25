@@ -321,6 +321,9 @@ export async function finalizeSmtpOutcome(
 		String(SMTP_OUTCOME_JOURNAL_TTL_MS),
 		String(options.now)
 	)) as [number, string];
+	// An empty observation means the reservation is simply gone — a concurrent
+	// pre-wire release. Say so rather than reporting malformed JSON.
+	if (!response[1]) throw new Error('SMTP outcome journal finalization lost ownership');
 	const resolved = parseEntry(response[1]);
 	assertBinding(resolved, entry.jobId, entry.messageId);
 	if (resolved.state !== 'completed') {

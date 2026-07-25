@@ -227,6 +227,60 @@ describe('dispatchGovernedEmail', () => {
 		expect(accepted).toMatchObject({ success: true, acceptedForDelivery: true });
 	});
 
+	it('gives a routing re-entry successor a work attempt of its own', async () => {
+		// A re-entry successor that inherited `workAttemptId` would dedupe against
+		// the intake receipt of the job that just surrendered ownership: the MTA
+		// answers `deduplicated: true`, Convex marks the Send accepted for
+		// delivery, no MTA work exists, and the Send waits `queued` for a webhook
+		// that can never arrive. The handoff is always pre-SMTP, so the
+		// reconciliation the flag was waiting on is resolved too.
+		runMutation
+			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+			.mockResolvedValueOnce({ ok: true });
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'ready',
+			providerKind: 'mta',
+			route: { ipPool: 'campaign' },
+			routingLease: { token: 'lease-1' },
+		});
+		sendProviderDispatch.mockResolvedValue({
+			result: { success: true, id: 'send_send-row-1' },
+			providerType: 'mta',
+			latencyMs: 5,
+			attempts: 1,
+		});
+
+		await dispatchGovernedEmail(ctx, {
+			...baseRequest,
+			retryState: {
+				attempt: 2,
+				startedAt: Date.now(),
+				idempotencyKey: 'send_send-row-1',
+				workAttemptId: 'work-attempt-from-the-unknown-acceptance',
+				acceptanceReconciliation: true,
+			},
+		});
+
+		// This attempt still reuses the identity it is reconciling…
+		const extras = sendProviderDispatch.mock.calls[0]![3] as {
+			workAttemptId: string;
+			routingReentry: { retryState: Record<string, unknown> };
+		};
+		expect(extras.workAttemptId).toBe('work-attempt-from-the-unknown-acceptance');
+
+		// …but what it hands a successor must not carry that identity onward, and
+		// the snapshot digest must cover the same bytes the MTA will echo.
+		const snapshotArgs = runMutation.mock.calls[0]![1] as {
+			retryState: Record<string, unknown>;
+		};
+		expect(Object.keys(snapshotArgs.retryState).sort()).toEqual([
+			'attempt',
+			'idempotencyKey',
+			'startedAt',
+		]);
+		expect(extras.routingReentry.retryState).toEqual(snapshotArgs.retryState);
+	});
+
 	it.each([
 		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS - 1, accepted: true },
 		{ offset: GOVERNED_MTA_MAX_MESSAGE_AGE_MS, accepted: false },

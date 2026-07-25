@@ -18,7 +18,7 @@ import {
 	type TransitionInput,
 	type TransitionOutcome,
 } from './sendLifecycle/reducers';
-import { applyEffects } from './sendLifecycle/effects';
+import { applyEffects, type Effect } from './sendLifecycle/effects';
 import {
 	canAttributeRemoteAcceptance,
 	reduceDeliveryObservation,
@@ -213,10 +213,35 @@ async function dispatch(
 		}
 	}
 
+	// A message the MTA rejected at SMTP goes `queued -> bounced|complained`
+	// without ever passing through `sent`, so `reduceSent`'s outbound
+	// accounting never runs. Bounce and complaint rates divide by exactly that
+	// counter, and auto-enforcement escalates off the quotient — leaving it out
+	// reports a bounce rate of 100% for a batch that half-bounced and can
+	// suspend a healthy instance. Emit the denominator here (the `email.sent`
+	// customer webhook deliberately stays with `reduceSent`: nothing was ever
+	// accepted for delivery).
+	const queuedTerminalSendAccounting: Effect[] =
+		isBoundQueuedMtaTerminal && result.applied !== 'duplicate'
+			? [
+					...(ref.kind === 'campaign'
+						? ([
+								{ kind: 'campaign_stats_sent', campaignId: (send as EmailSendDoc).campaignId },
+							] as Effect[])
+						: []),
+					{ kind: 'daily_stats_bump', field: 'sent', at: input.at },
+					{
+						kind: 'reputation_update',
+						eventType: 'send',
+						domain: deliverySenderDomain ?? (await senderDomainFor(ctx, send, ref)),
+					},
+				]
+			: [];
+
 	result = withoutTestSendEffects(send, ref, {
 		...result,
 		patch: { ...deliveryObservation.patch, ...result.patch },
-		effects: [...deliveryObservation.effects, ...result.effects],
+		effects: [...queuedTerminalSendAccounting, ...deliveryObservation.effects, ...result.effects],
 		applied:
 			deliveryObservation.isNewObservation && result.applied === 'duplicate'
 				? 'recorded'

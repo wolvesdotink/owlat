@@ -14,6 +14,8 @@ import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated
 import type { Doc } from '../../_generated/dataModel';
 import {
 	resolveRoute,
+	DeliverabilityRouteError,
+	GlobalDeliveryCircuitOpenError,
 	type ProviderRouteConfig,
 	type ProviderHealthStatus,
 	type ResolvedRoute,
@@ -232,6 +234,30 @@ async function relayDomainVerified(
 }
 
 /**
+ * Refusals that mean "not right now", not "never".
+ *
+ * `resolveRoute` throws for an open org-wide safety circuit and for a
+ * fallback whose relay identity is unverified or unavailable. Both are
+ * transient states — the error text says "temporarily deferred" — but a throw
+ * crossing an action boundary loses its class, surfaces as a workpool failure,
+ * and terminalizes the Send as `WORKPOOL_FAILED`. Opening the safety circuit
+ * would then burn every in-flight campaign send instead of pausing it. The
+ * governed queries below convert them to a typed deferral, which the last-mile
+ * boundary turns into a bounded retry (capped by the routing attempt limit and
+ * the four-day delivery deadline).
+ */
+export type RoutingDeferralCode =
+	| 'GLOBAL_DELIVERY_CIRCUIT_OPEN'
+	| 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED'
+	| 'DELIVERABILITY_RELAY_UNAVAILABLE';
+
+function routingDeferralCode(error: unknown): RoutingDeferralCode | null {
+	if (error instanceof GlobalDeliveryCircuitOpenError) return error.code;
+	if (error instanceof DeliverabilityRouteError) return error.code;
+	return null;
+}
+
+/**
  * Internal query wrapper for action callers (which can only reach the DB via
  * `ctx.runQuery`). Folds the route lookup, the provider-health read, and the
  * caller-side `resolveRoute` into one round-trip.
@@ -260,36 +286,83 @@ export const resolveSendRoute = internalQuery({
  * recovery probe; the policy-aware route remains authoritative for every
  * persisted Convex safety signal.
  */
+export async function resolveLastMileRoutePlanFromDb(
+	ctx: QueryCtx,
+	messageType: MessageType,
+	addressContext: { to: string; from: string }
+): Promise<{
+	route: ResolvedRoute | null;
+	baseRoute: ResolvedRoute | null;
+	isMtaGoverned: boolean;
+	deferralCode?: RoutingDeferralCode;
+}> {
+	const routeConfig = await ctx.db
+		.query('providerRoutes')
+		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
+		.first();
+	const isHybrid = Boolean(
+		routeConfig?.deliverabilityFallback?.isEnabled &&
+		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+	);
+	try {
+		const route = await resolveSendRouteFromDb(ctx, messageType, addressContext);
+		const baseRoute = await resolveSendRouteFromDb(ctx, messageType, {
+			...addressContext,
+			baseOnly: true,
+		});
+		return { route, baseRoute, isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta' };
+	} catch (error) {
+		const deferralCode = routingDeferralCode(error);
+		if (!deferralCode) throw error;
+		return { route: null, baseRoute: null, isMtaGoverned: isHybrid, deferralCode };
+	}
+}
+
 export const resolveLastMileRoutePlan = internalQuery({
 	args: {
 		messageType: messageTypeValidator,
 		to: v.string(),
 		from: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const routeConfig = await ctx.db
-			.query('providerRoutes')
-			.withIndex('by_message_type', (q) => q.eq('messageType', args.messageType))
-			.first();
-		const route = await resolveSendRouteFromDb(ctx, args.messageType, {
-			to: args.to,
-			from: args.from,
-		});
-		const baseRoute = await resolveSendRouteFromDb(ctx, args.messageType, {
-			to: args.to,
-			from: args.from,
-			baseOnly: true,
-		});
-		const isHybrid = Boolean(
-			routeConfig?.deliverabilityFallback?.isEnabled &&
-			routeConfig.providers.some(
-				(provider) => provider.isEnabled && provider.providerType === 'mta'
-			)
-		);
-		return {
-			route,
-			baseRoute,
-			isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta',
-		};
+	handler: async (ctx, args) =>
+		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, { to: args.to, from: args.from }),
+});
+
+/**
+ * The relay a governed send falls back to once the MTA hands back an
+ * overflow/breaker decision. Reports a transient refusal instead of throwing,
+ * so an unverified or unavailable relay defers the message rather than
+ * terminalizing it.
+ */
+export async function resolveGovernedRelayRouteFromDb(
+	ctx: QueryCtx,
+	messageType: MessageType,
+	options: {
+		to?: string;
+		from?: string;
+		forceRelayReason: 'breaker_open' | 'warmup_overflow';
+	}
+): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> {
+	try {
+		return { route: await resolveSendRouteFromDb(ctx, messageType, options) };
+	} catch (error) {
+		const deferralCode = routingDeferralCode(error);
+		if (!deferralCode) throw error;
+		return { route: null, deferralCode };
+	}
+}
+
+export const resolveGovernedRelayRoute = internalQuery({
+	args: {
+		messageType: messageTypeValidator,
+		to: v.optional(v.string()),
+		from: v.optional(v.string()),
+		forceRelayReason: v.union(v.literal('breaker_open'), v.literal('warmup_overflow')),
 	},
+	handler: async (ctx, args) =>
+		await resolveGovernedRelayRouteFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+			forceRelayReason: args.forceRelayReason,
+		}),
 });

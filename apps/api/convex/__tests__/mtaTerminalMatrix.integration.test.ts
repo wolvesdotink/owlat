@@ -168,7 +168,12 @@ describe('MTA post-intake terminal matrix', () => {
 					const campaign = await ctx.db.get(value.campaignId! as Id<'campaigns'>);
 					if (campaign) await rollupCampaignStatsRow(ctx, campaign);
 					const updated = await ctx.db.get(value.campaignId! as Id<'campaigns'>);
-					expect(updated?.statsSent).toBe(terminal === 'delivered' ? 1 : 0);
+					// Every MTA terminal outcome counts one outbound attempt. A send
+					// the MTA rejected at SMTP never passes through `sent`, and
+					// omitting it here would leave `statsBounced`/`statsComplained`
+					// (and the reputation bounce rate that drives auto-enforcement)
+					// with a numerator but no denominator.
+					expect(updated?.statsSent).toBe(1);
 					expect(updated?.statsDelivered).toBe(
 						terminal === 'delivered' || terminal === 'complained' ? 1 : 0
 					);

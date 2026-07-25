@@ -2,7 +2,11 @@ import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import { createTestDomain } from '../../../__tests__/factories';
-import { resolveSendRouteFromDb } from '../route';
+import {
+	resolveGovernedRelayRouteFromDb,
+	resolveLastMileRoutePlanFromDb,
+	resolveSendRouteFromDb,
+} from '../route';
 
 vi.mock('../../sessionOrganization', async () => {
 	const actual = await vi.importActual('../../sessionOrganization');
@@ -240,6 +244,58 @@ describe('DB-backed deliverability route verification', () => {
 				})
 			)
 		).rejects.toThrow(/verify this sending domain/i);
+	});
+
+	// `resolveRoute` throws for these states, and a throw crossing the action
+	// boundary becomes a workpool failure that terminalizes the Send as
+	// `WORKPOOL_FAILED`. Opening the org-wide safety circuit would then destroy
+	// every in-flight campaign send instead of pausing it, so the governed
+	// queries must report a deferral instead.
+	it('reports an open org-wide safety circuit as a deferral, not a failure', async () => {
+		const t = await seedRouteState({ withSesIdentity: true });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: 'org-a',
+				destinationProvider: 'all',
+				isFallbackActive: true,
+				signals: [{ source: 'breaker_open', severity: 'critical', observedAt: NOW }],
+				fallbackActiveSince: NOW,
+				snapshotGeneratedAt: NOW,
+				expiresAt: NOW + 86_400_000,
+				updatedAt: NOW,
+			});
+		});
+
+		// The governed query reads the wall clock, so the seeded signal has to be
+		// current for it to count as active.
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		try {
+			expect(
+				await t.run((ctx) =>
+					resolveLastMileRoutePlanFromDb(ctx, 'campaign', {
+						to: 'person@gmail.com',
+						from: 'sender@example.com',
+					})
+				)
+			).toMatchObject({ route: null, deferralCode: 'GLOBAL_DELIVERY_CIRCUIT_OPEN' });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('reports an unverified fallback relay as a deferral, not a failure', async () => {
+		const t = await seedRouteState({ withSesIdentity: false });
+
+		expect(
+			await t.run((ctx) =>
+				resolveGovernedRelayRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					forceRelayReason: 'breaker_open',
+				})
+			)
+		).toMatchObject({ route: null, deferralCode: 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED' });
 	});
 
 	it('ignores an expired signal instead of creating a new relay decision', async () => {

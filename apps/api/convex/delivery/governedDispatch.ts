@@ -92,6 +92,33 @@ function nextRetryState(current: WorkerRetryState): WorkerRetryState {
 }
 
 /**
+ * The retry state a routing re-entry successor inherits.
+ *
+ * A successor is a NEW work attempt and must mint its own `workAttemptId`.
+ * Inheriting the current one would make the successor's `POST /send` dedupe
+ * against the intake receipt of the very job that surrendered ownership: the
+ * MTA answers `deduplicated: true`, Convex records the Send as accepted for
+ * delivery, and no MTA work exists — the Send waits `queued` for a terminal
+ * webhook that can never arrive, and the message is never delivered.
+ *
+ * `acceptanceReconciliation` is dropped for the same reason it was set: it
+ * marks acceptance as *unknown*, and a re-entry handoff always happens before
+ * SMTP, which proves that attempt did not deliver. The successor is an
+ * ordinary governed attempt again.
+ *
+ * Both the issued snapshot and the MTA-facing copy must use this, or the
+ * callback digest stops matching.
+ */
+function reentryRetryState(current: WorkerRetryState): WorkerRetryState {
+	const next = nextRetryState(current);
+	return {
+		attempt: next.attempt,
+		startedAt: next.startedAt,
+		idempotencyKey: next.idempotencyKey,
+	};
+}
+
+/**
  * Resolve the authoritative last-mile route and dispatch one composed message.
  *
  * This boundary owns the stable idempotency key, governed routing lease, MTA
@@ -126,7 +153,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		messageId: idempotencyKey,
 		workAttemptId,
 		envelopeInput: request.envelopeInput as WorkerEnvelopeInput,
-		retryState: nextRetryState(retryState),
+		retryState: reentryRetryState(retryState),
 	});
 	const routing = await resolveLastMileRouting(ctx, {
 		messageType: request.messageType,
@@ -180,7 +207,9 @@ export async function dispatchGovernedEmail<TEnvelope>(
 					routingReentryToken: snapshot.token,
 					routingReentry: {
 						envelopeInput: request.envelopeInput,
-						retryState: nextRetryState(retryState),
+						// Must equal the snapshot's retryState above — the callback
+						// digest covers it.
+						retryState: reentryRetryState(retryState),
 					},
 					organizationId,
 					messageType: request.messageType,

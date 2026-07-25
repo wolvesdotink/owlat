@@ -90,8 +90,8 @@ export async function handleEmailJob(
 	}
 	// Ownership may already have moved back to Convex routing on an earlier run
 	// of this job. Re-entering dispatch here would send a message the successor
-	// is also sending.
-	if (await resumeRoutingReentryHandoff(redis, String(job.id), data, deps)) {
+	// is also sending. Only a governed job can own a re-entry receipt.
+	if (data.routingReentryToken && (await resumeRoutingReentryHandoff(String(job.id), data, deps))) {
 		return;
 	}
 	const domain = extractDomain(data.to);
@@ -118,7 +118,11 @@ export async function handleEmailJob(
 	const piped = await runPipeline(deps, mainPipeline, baseCtx);
 
 	if (piped.kind === 'drop') {
-		await handleDrop(piped, data, domain, providerKey, deps, data.firstEnqueuedAt ?? job.timestamp);
+		await handleDrop(piped, data, deps, {
+			domain,
+			providerKey,
+			droppedAt: data.firstEnqueuedAt ?? job.timestamp,
+		});
 		return;
 	}
 
@@ -379,12 +383,15 @@ async function emitExpiredBounce(
 async function handleDrop(
 	piped: Extract<PipelineResult<BasePhaseCtx>, { kind: 'drop' }>,
 	job: EmailJob,
-	domain: string,
-	providerKey: DestinationProviderKey,
 	deps: { redis: Redis; config: MtaConfig },
-	/** Stable across replays — the protected outbox compares payloads exactly. */
-	droppedAt: number
+	drop: {
+		domain: string;
+		providerKey: DestinationProviderKey;
+		/** Stable across replays — the protected outbox compares payloads exactly. */
+		droppedAt: number;
+	}
 ): Promise<void> {
+	const { domain, providerKey, droppedAt } = drop;
 	const effects: DispatchEffect[] = [];
 
 	if (piped.status === 'screened') {
@@ -415,9 +422,12 @@ async function handleDrop(
 			messageId: job.messageId,
 			organizationId: job.organizationId,
 			deliveryDomain: job.deliveryDomain,
+			// The screening reason carries a live rspamd score, which is
+			// re-evaluated on a replay and would break the outbox payload
+			// comparison. The exact score stays in the delivery log above.
 			message:
 				piped.status === 'screened'
-					? `Content screening rejected: ${piped.reason}`
+					? 'Content screening rejected the message'
 					: 'Recipient suppressed by MTA policy',
 			errorCode: piped.status === 'screened' ? 'CONTENT_SCREENED' : 'RECIPIENT_SUPPRESSED',
 			timestamp: droppedAt,

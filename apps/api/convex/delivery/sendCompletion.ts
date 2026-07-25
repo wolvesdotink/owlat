@@ -188,6 +188,13 @@ export const retrySend = internalMutation({
 		retryState: retryStateValidator,
 	},
 	handler: async (ctx, args) => {
+		// The Send may have terminalized between arming this retry and running it
+		// — a routing re-entry successor landed, or a webhook resolved it. Its
+		// worker would then throw on the missing queued Send, and the workpool
+		// failure would demote an already-`sent` row to `failed`, deleting its
+		// attachments and closing the row to the real bounce that follows.
+		const send = await ctx.db.get(args.sendRef.id);
+		if (!send || send.status !== 'queued') return;
 		const pool = args.sendRef.kind === 'campaign' ? campaignEmailPool : transactionalEmailPool;
 		await pool.enqueueAction(
 			ctx,
