@@ -116,6 +116,9 @@ import type { PeerCertificate, TLSSocket } from 'node:tls';
 import { MX_CERT } from './certFixture.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import type { CtxWithIp } from '../../dispatch/types.js';
+import { runJournaledSmtpAttempt } from '../../queue/journaledSmtpAttempt.js';
+import { smtpOutcomeJournalKeys } from '../../queue/smtpOutcomeJournal.js';
 
 // A fresh live-connection stub whose `secured` flag the test controls.
 function liveConn(secured = true): { secured: boolean; close: ReturnType<typeof vi.fn> } {
@@ -180,6 +183,7 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		contentMaxSizeKb: 500,
 		deliveryLogMaxLen: 100000,
 		deliveryLogTtlHours: 72,
+		smtpOutcomeJournalMaxSize: 10000,
 		webhookDlqMaxSize: 10000,
 		bounceMaxConnectionsPerIp: 10,
 		bounceMaxClients: 200,
@@ -194,6 +198,32 @@ function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		maxMessageAgeMs: 432_000_000,
 		...overrides,
 	} satisfies MtaConfig;
+}
+
+function createAttempt(job: EmailJob): CtxWithIp {
+	return {
+		job,
+		domain: 'example.com',
+		destination: {
+			recipientDomain: 'example.com',
+			providerKey: 'other',
+			throttleKey: 'example.com',
+			mx: {
+				status: 'deliverable',
+				source: 'mx',
+				hosts: [
+					{ exchange: 'mx1.example.com', priority: 10 },
+					{ exchange: 'mx2.example.com', priority: 20 },
+				],
+			},
+			daneDiscoveryAuthenticated: true,
+		},
+		fromDomain: 'owlat.com',
+		pool: 'transactional',
+		dedicatedIp: undefined,
+		ip: '10.0.0.1',
+		eligibilityGeneration: 1,
+	};
 }
 
 describe('sendToMx', () => {
@@ -264,6 +294,85 @@ describe('sendToMx', () => {
 			rejectUnauthorized: false,
 			allowedMxHosts: [],
 			policyMode: 'none',
+		});
+	});
+
+	describe('SMTP outcome journal envelope boundary', () => {
+		const journalKey = smtpOutcomeJournalKeys.journalKey('job-sender-boundary');
+
+		async function runJournaled(job: EmailJob) {
+			return runJournaledSmtpAttempt({
+				redis,
+				config,
+				jobId: 'job-sender-boundary',
+				job,
+				eligibilityLease: { ip: '10.0.0.1', eligibilityGeneration: 1 },
+				attempt: createAttempt(job),
+				startedAt: Date.now(),
+			});
+		}
+
+		it('releases and retries when the final eligibility fence throws before MAIL FROM', async () => {
+			const job = createJob();
+			leaseValidMock
+				.mockResolvedValueOnce(true)
+				.mockRejectedValueOnce(new Error('Redis failover during eligibility fence'));
+
+			await expect(runJournaled(job)).rejects.toThrow('Redis failover during eligibility fence');
+			expect(await redis.get(journalKey)).toBeNull();
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: { entry: { state: 'completed', result: { success: true } } },
+			});
+			expect(sendEnvelopeMock).toHaveBeenCalledOnce();
+		});
+
+		it('releases and retries when pool acquisition throws before MAIL FROM', async () => {
+			const job = createJob();
+			acquireMock.mockRejectedValueOnce(new Error('Redis pool lease unavailable'));
+
+			await expect(runJournaled(job)).rejects.toThrow('Redis pool lease unavailable');
+			expect(await redis.get(journalKey)).toBeNull();
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: { entry: { state: 'completed', result: { success: true } } },
+			});
+			expect(sendEnvelopeMock).toHaveBeenCalledOnce();
+		});
+
+		it('retains and replays a true post-DATA ambiguity without another envelope', async () => {
+			const job = createJob();
+			sendEnvelopeMock.mockRejectedValue(
+				smtpError({
+					phase: 'data-final',
+					message: 'connection dropped after DATA',
+					secured: true,
+				})
+			);
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: {
+					entry: {
+						state: 'completed',
+						result: { success: false, bounceType: 'ambiguous' },
+					},
+				},
+			});
+			expect(await redis.get(journalKey)).not.toBeNull();
+
+			await expect(runJournaled(job)).resolves.toMatchObject({
+				kind: 'completed',
+				journal: {
+					entry: {
+						state: 'completed',
+						result: { success: false, bounceType: 'ambiguous' },
+					},
+				},
+			});
+			expect(sendEnvelopeMock).toHaveBeenCalledOnce();
 		});
 	});
 
@@ -445,7 +554,12 @@ describe('sendToMx', () => {
 
 	it('returns hard bounce on 5xx SMTP error and stops trying', async () => {
 		sendEnvelopeMock.mockRejectedValue(
-			smtpError({ phase: 'rcpt', message: '550 5.1.1 User unknown', replyCode: 550, secured: true })
+			smtpError({
+				phase: 'rcpt',
+				message: '550 5.1.1 User unknown',
+				replyCode: 550,
+				secured: true,
+			})
 		);
 
 		const result = await sendToMx(createJob(), config, redis, '10.0.0.1');

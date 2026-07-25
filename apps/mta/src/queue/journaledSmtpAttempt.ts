@@ -47,11 +47,10 @@ export async function runJournaledSmtpAttempt(options: {
 		return resumeJournaledSmtpAttempt(options.redis, reservation, options.job);
 	}
 
-	// Everything `sendToMx` does before it acquires a connection — the
-	// eligibility read, MX/profile lookups, DKIM signing, MTA-STS and TLS
-	// resolution — is retryable and transmits nothing. Only once the wire is
-	// attempted does the reservation represent genuine uncertainty.
-	let wireAttempted = false;
+	// MX/profile lookups, DKIM signing, eligibility fences, pool acquisition,
+	// connection setup, and TLS negotiation cannot make the recipient accept the
+	// message. Only an attempted SMTP envelope creates delivery uncertainty.
+	let envelopeAttempted = false;
 	let result: Awaited<ReturnType<typeof sendToMx>>;
 	try {
 		result = await sendToMx(
@@ -62,11 +61,11 @@ export async function runJournaledSmtpAttempt(options: {
 			options.eligibilityLease,
 			reservation.entry.attempt.destination,
 			() => {
-				wireAttempted = true;
+				envelopeAttempted = true;
 			}
 		);
 	} catch (error) {
-		if (!wireAttempted) {
+		if (!envelopeAttempted) {
 			await releaseSmtpOutcome(options.redis, reservation.entry, reservation.raw).catch(() => {});
 		}
 		throw error;

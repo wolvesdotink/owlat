@@ -17,11 +17,19 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithIp> = {
 		const reservation = ctx.job.routingLease?.warmingReservation;
 		if (reservation?.ip === ctx.ip) {
 			const current = await warming.ensureWarmingReservation(deps.redis, reservation);
-			if (!current.allowed || !current.reservation) {
+			if (!current.allowed) {
 				const reason = `Warming reservation unavailable for IP ${ctx.ip}`;
 				return ctx.job.routingReentryToken
 					? { kind: 'routing_reentry', reason }
 					: { kind: 'defer', delayMs: 300_000, reason };
+			}
+			const routingLease = { ...ctx.job.routingLease! };
+			if (current.reservation) {
+				routingLease.warmingReservation = current.reservation;
+			} else {
+				// Graduated/uncapped IPs intentionally reserve no capacity. Drop
+				// the obsolete reservation so delivery uses unreserved accounting.
+				delete routingLease.warmingReservation;
 			}
 			return {
 				kind: 'continue',
@@ -29,10 +37,7 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithIp> = {
 					...ctx,
 					job: {
 						...ctx.job,
-						routingLease: {
-							...ctx.job.routingLease!,
-							warmingReservation: current.reservation,
-						},
+						routingLease,
 					},
 				},
 			};

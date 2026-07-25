@@ -194,7 +194,7 @@ export async function handleEmailJob(
 		redis,
 		config,
 		jobId: journalJobId,
-		job: data,
+		job: piped.ctx.job,
 		attempt: piped.ctx,
 		eligibilityLease,
 		startedAt: startTime,

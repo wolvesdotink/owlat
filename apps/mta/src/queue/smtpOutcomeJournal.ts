@@ -263,15 +263,14 @@ export async function reserveSmtpOutcome(
 }
 
 /**
- * CAS-release a reservation that never reached the wire.
+ * CAS-release a reservation that never attempted an SMTP envelope.
  *
- * `sendToMx` does real work before it opens a socket — an eligibility lease
- * read, MX/profile lookups, DKIM signing, MTA-STS and TLS resolution. A
- * transient failure there (a Redis failover, say) is not an uncertain SMTP
- * transaction: nothing was transmitted. Keeping the reservation would let the
- * retry resolve it as `ambiguous` and terminally fail a message that never
- * left the process. Releasing restores plain queue-retry semantics for the
- * pre-wire window while leaving every on-the-wire interruption ambiguous.
+ * Eligibility reads, MX/profile lookups, DKIM signing, pool acquisition,
+ * connection setup, MTA-STS, and TLS negotiation may all fail before MAIL FROM.
+ * Those failures cannot make the recipient accept the message, so retaining
+ * the reservation would incorrectly turn a safe retry into an ambiguous
+ * terminal outcome. Releasing restores queue-retry semantics while preserving
+ * every interruption after the envelope boundary as uncertain.
  */
 export async function releaseSmtpOutcome(
 	redis: Redis,
@@ -322,7 +321,7 @@ export async function finalizeSmtpOutcome(
 		String(options.now)
 	)) as [number, string];
 	// An empty observation means the reservation is simply gone — a concurrent
-	// pre-wire release. Say so rather than reporting malformed JSON.
+	// pre-envelope release. Say so rather than reporting malformed JSON.
 	if (!response[1]) throw new Error('SMTP outcome journal finalization lost ownership');
 	const resolved = parseEntry(response[1]);
 	assertBinding(resolved, entry.jobId, entry.messageId);
