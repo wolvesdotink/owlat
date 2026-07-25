@@ -227,6 +227,40 @@ describe('dispatchGovernedEmail', () => {
 		expect(accepted).toMatchObject({ success: true, acceptedForDelivery: true });
 	});
 
+	it('holds a send under a safety pause without spending its routing attempts', async () => {
+		// Eight 60-second attempts would terminalize the send ~7 minutes in —
+		// inside a single deliverability signal's own 10-minute freshness window,
+		// so the "pause" would still destroy the mail, just later.
+		resolveLastMileRouting.mockResolvedValue({
+			kind: 'defer',
+			retryAfterMs: 600_000,
+			isPolicyHold: true,
+		});
+
+		const result = await dispatchGovernedEmail(ctx, {
+			...baseRequest,
+			retryState: { attempt: 4, startedAt: Date.now(), idempotencyKey: 'send_send-row-1' },
+		});
+
+		expect(result).toMatchObject({
+			success: false,
+			deferred: true,
+			retryAfterMs: 600_000,
+			retryState: { attempt: 4 },
+		});
+	});
+
+	it('still spends an attempt on ordinary routing churn', async () => {
+		resolveLastMileRouting.mockResolvedValue({ kind: 'defer', retryAfterMs: 30_000 });
+
+		const result = await dispatchGovernedEmail(ctx, {
+			...baseRequest,
+			retryState: { attempt: 4, startedAt: Date.now(), idempotencyKey: 'send_send-row-1' },
+		});
+
+		expect(result).toMatchObject({ deferred: true, retryState: { attempt: 5 } });
+	});
+
 	it('gives a routing re-entry successor a work attempt of its own', async () => {
 		// A re-entry successor that inherited `workAttemptId` would dedupe against
 		// the intake receipt of the job that just surrendered ownership: the MTA

@@ -302,5 +302,9 @@ export const templateTables = {
 		.index('by_email', ['email'])
 		.index('by_contact', ['contactId'])
 		.index('by_sent_at', ['sentAt'])
-		.index('by_provider_message_id', ['providerMessageId']),
+		.index('by_provider_message_id', ['providerMessageId'])
+		// Answers "does this inbound message already have a send?" as a point
+		// lookup. The stuck-approved reconciler used to infer that from a bounded
+		// scan of all queued sends, which unrelated volume could starve.
+		.index('by_inbound_message_status', ['inboundMessageId', 'status']),
 };

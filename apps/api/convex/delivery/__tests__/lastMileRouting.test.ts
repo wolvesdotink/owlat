@@ -122,6 +122,23 @@ describe('last-mile governance boundary', () => {
 		).toMatchObject({ kind: 'ready', providerKind: 'ses', route });
 	});
 
+	it('marks a safety refusal as a hold rather than ordinary routing churn', async () => {
+		expect(
+			await resolveLastMileRouting(
+				context(
+					{
+						route: null,
+						baseRoute: null,
+						isMtaGoverned: true,
+						deferralCode: 'GLOBAL_DELIVERY_CIRCUIT_OPEN',
+					},
+					'org-1'
+				),
+				input
+			)
+		).toMatchObject({ kind: 'defer', isPolicyHold: true });
+	});
+
 	// An acceptance-unknown retry may be racing an MTA job that was actually
 	// committed. Only the owned-MTA path deduplicates it (on the reused
 	// workAttemptId); a relay carries no idempotency key at all, so relaying

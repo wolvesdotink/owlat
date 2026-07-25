@@ -35,7 +35,19 @@ export interface LastMileRoutingReady {
 export interface LastMileRoutingDeferred {
 	kind: 'defer';
 	retryAfterMs: number;
+	/**
+	 * A deliberate safety hold (an open org-wide circuit, an unverified relay
+	 * identity) rather than routing churn. The routing attempt cap exists to
+	 * bound churn, so a hold must not consume one — eight 60-second attempts
+	 * would terminalize the send about seven minutes in, well inside a single
+	 * signal's own freshness window, which is the destruction the hold exists
+	 * to prevent. Held sends are bounded by the four-day delivery deadline.
+	 */
+	isPolicyHold?: boolean;
 }
+
+/** Poll at the deliverability signal's own freshness horizon while held. */
+const POLICY_HOLD_RETRY_MS = 10 * 60 * 1000;
 
 export type LastMileRoutingResult = LastMileRoutingReady | LastMileRoutingDeferred;
 
@@ -69,10 +81,14 @@ export async function resolveLastMileRouting(
 		from: input.from,
 	});
 	// An open org-wide safety circuit, or a fallback whose relay identity is
-	// unverified, is a "not right now" — deferring keeps the message alive under
-	// the routing attempt cap and the delivery deadline instead of burning every
-	// in-flight send the moment a safety signal trips.
-	if (plan.deferralCode) return { kind: 'defer', retryAfterMs: 60_000 };
+	// unverified, is a "not right now" — holding keeps the message alive until
+	// the deadline instead of burning every in-flight send the moment a safety
+	// signal trips. The code is logged because it is the operator's only clue
+	// as to why mail paused.
+	if (plan.deferralCode) {
+		console.warn(`[lastMileRouting] holding delivery: ${plan.deferralCode}`);
+		return { kind: 'defer', retryAfterMs: POLICY_HOLD_RETRY_MS, isPolicyHold: true };
+	}
 	let route = plan.route;
 	let providerKind = selectSendProviderKind(route?.providerType ?? input.providerType);
 	if (!providerKind) {
@@ -163,10 +179,13 @@ export async function resolveLastMileRouting(
 		route = relay.route;
 		providerKind = selectSendProviderKind(route?.providerType);
 		// The MTA has already declined this message, so there is nowhere to send
-		// it right now. Defer rather than terminalizing a message the policy
-		// intends to hold.
+		// it right now. Hold rather than terminalizing a message the policy
+		// intends to pause.
 		if (relay.deferralCode || !providerKind || providerKind === 'mta') {
-			return { kind: 'defer', retryAfterMs: 60_000 };
+			console.warn(
+				`[lastMileRouting] holding delivery: ${relay.deferralCode ?? 'relay_unavailable'}`
+			);
+			return { kind: 'defer', retryAfterMs: POLICY_HOLD_RETRY_MS, isPolicyHold: true };
 		}
 	}
 	return withReconciliationSafety(
