@@ -49,7 +49,7 @@
 			"convex": {
 				"convex": "^1.36.1",
 				"better-auth": ">=1.6.22 <1.7.0",
-				"@convex-dev/better-auth": "^0.12.0"
+				"@convex-dev/better-auth": "^0.12.5"
 			},
 			"ai": {
 				"ai": "^6.0.168",
@@ -131,9 +131,9 @@
 		"js-yaml": "^3.15.0",
 		"linkify-it": "^5.0.2",
 		"nodemailer": "9.0.3",
-		"postcss": "^8.5.18",
 		"nuxt": "4.4.7",
 		"nuxt-og-image": "6.7.4",
+		"postcss": "^8.5.18",
 		"protobufjs": "^7.6.5",
 		"sharp": "0.35.3",
 		"shell-quote": "^1.10.0",
