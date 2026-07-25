@@ -56,7 +56,7 @@ export function parseBounce(
 ): BounceClassification | null {
 	// 1. Try to extract messageId from VERP envelope recipient
 	let messageId: string | null = null;
-	if (envelopeRcptTo) {
+	if (isVerpSigningEnabled() && envelopeRcptTo) {
 		messageId = parseVerpAddress(envelopeRcptTo);
 	}
 
@@ -69,28 +69,6 @@ export function parseBounce(
 	// trusted attribution source is the verified VERP token (step 1); the
 	// unauthenticated fallbacks are skipped and the bounce is treated as
 	// unattributed below.
-	const headerFallbackAllowed = !isVerpSigningEnabled();
-
-	// 2. If no VERP, try to find our custom header in the returned original message
-	if (headerFallbackAllowed && !messageId) {
-		for (const part of reportParts) {
-			const content = part.content.toString('utf-8');
-			const match = content.match(/X-Owlat-Message-Id:\s*(.+)/i);
-			if (match?.[1]) {
-				messageId = match[1].trim();
-				break;
-			}
-		}
-	}
-
-	// 3. Try to find it in the text body (some DSNs inline the original headers)
-	if (headerFallbackAllowed && !messageId && parsed.text) {
-		const match = parsed.text.match(/X-Owlat-Message-Id:\s*(.+)/i);
-		if (match?.[1]) {
-			messageId = match[1].trim();
-		}
-	}
-
 	if (!messageId) {
 		unattributedBounceCount++;
 
@@ -110,7 +88,7 @@ export function parseBounce(
 		return null;
 	}
 
-	// 4. Extract organization ID if available
+	// 2. Extract organization ID if available
 	let organizationId: string | undefined;
 	const fullText = `${parsed.text ?? ''} ${reportParts.map((p) => p.content.toString('utf-8')).join(' ')}`;
 	const orgMatch = fullText.match(/X-Owlat-Org-Id:\s*(.+)/i);
@@ -118,7 +96,7 @@ export function parseBounce(
 		organizationId = orgMatch[1].trim();
 	}
 
-	// 5. Classify the bounce.
+	// 3. Classify the bounce.
 	//
 	// The authoritative RFC 3464 per-recipient fields (Status:/Action:/
 	// Diagnostic-Code:) live in the machine-readable message/delivery-status

@@ -10,12 +10,15 @@ const REQUIRED_ENV = {
 	MTA_API_KEY: 'test-api-key',
 	// >= 32 bytes — the boot floor for the secret box that seals DKIM keys at rest.
 	MTA_SECRET: 'test-mta-secret-0123456789abcdef0123456789abcdef',
+	BOUNCE_VERP_KEY: 'test-bounce-verp-key-0123456789abcdef',
 	EHLO_HOSTNAME: 'mail.owlat.com',
 	RETURN_PATH_DOMAIN: 'bounces.owlat.com',
 	CONVEX_SITE_URL: 'https://test.convex.site',
 	MTA_WEBHOOK_SECRET: 'test-secret',
 	IP_POOLS_TRANSACTIONAL: '10.0.0.1,10.0.0.2',
 	IP_POOLS_CAMPAIGN: '10.0.0.3',
+	FBL_DEDUP_PROTOCOL: 'owned-v2',
+	FBL_DEDUP_CUTOVER_ACK: 'fresh-install',
 };
 
 describe('loadConfig', () => {
@@ -56,6 +59,21 @@ describe('loadConfig', () => {
 		expect(config.mtaSecret).toBe(REQUIRED_ENV.MTA_SECRET);
 	});
 
+	it('requires a strong VERP signing key at startup', () => {
+		delete process.env.BOUNCE_VERP_KEY;
+		expect(() => loadConfig()).toThrow('BOUNCE_VERP_KEY');
+		process.env.BOUNCE_VERP_KEY = 'too-short';
+		expect(() => loadConfig()).toThrow('BOUNCE_VERP_KEY must be at least 32 bytes');
+	});
+
+	it.each(['replace-with-openssl-rand-base64-32', 'REPLACE-WITH-OPENSSL-RAND-BASE64-32'])(
+		'rejects the known VERP placeholder %s even though it is long enough',
+		(placeholder) => {
+			process.env.BOUNCE_VERP_KEY = placeholder;
+			expect(() => loadConfig()).toThrow('not a placeholder');
+		}
+	);
+
 	it('uses defaults for PORT and REDIS_URL', () => {
 		delete process.env.PORT;
 		delete process.env.REDIS_URL;
@@ -64,6 +82,15 @@ describe('loadConfig', () => {
 
 		expect(config.port).toBe(3100);
 		expect(config.redisUrl).toBe('redis://localhost:6379');
+	});
+
+	it('fails closed without an explicit owned-v2 install or cutover acknowledgement', () => {
+		delete process.env.FBL_DEDUP_PROTOCOL;
+		expect(() => loadConfig()).toThrow('FBL_DEDUP_PROTOCOL must be explicitly set to owned-v2');
+
+		process.env.FBL_DEDUP_PROTOCOL = 'owned-v2';
+		delete process.env.FBL_DEDUP_CUTOVER_ACK;
+		expect(() => loadConfig()).toThrow('FBL_DEDUP_CUTOVER_ACK');
 	});
 
 	it('defaults distributed pool coordination to the rolling-upgrade-safe legacy protocol', () => {

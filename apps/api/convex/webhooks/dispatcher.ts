@@ -68,6 +68,16 @@ type Handler<K extends InboundEventKind> = (
 type DispatchTable = { [K in InboundEventKind]: Handler<K> };
 
 const DISPATCH: DispatchTable = {
+	'internal.routing_reentry': async (ctx, e) => {
+		return await ctx.runMutation(internal.delivery.routingReentry.consumeSnapshot, {
+			token: e.token,
+			messageId: e.providerMessageId,
+			workAttemptId: e.workAttemptId,
+			reason: e.reason,
+			envelopeInput: e.envelopeInput,
+			retryState: e.retryState,
+		});
+	},
 	'email.sent': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) {
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transitionByMtaMessageId, {
@@ -95,24 +105,49 @@ const DISPATCH: DispatchTable = {
 						acceptedAt: e.at,
 					}
 				)
-			: await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
-					providerMessageId: e.providerMessageId,
-					transition: { to: 'delivered', at: e.at },
-				});
+			: e.providerType === 'mta'
+				? await ctx.runMutation(internal.delivery.sendLifecycle.recordMtaRemoteAcceptance, {
+						providerMessageId: e.providerMessageId,
+						at: e.at,
+					})
+				: await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
+						providerMessageId: e.providerMessageId,
+						transition: { to: 'delivered', at: e.at },
+					});
 
 		// A late webhook after organization deletion must not recreate telemetry.
 		// Duplicate accepted-delivery webhooks are safe: the receipt writer below
 		// is idempotent by provider message id.
-		if (outcome.ok && e.destinationProvider === 'gmail' && e.primarySendingDomain) {
+		const isProductionTelemetry =
+			e.providerType === 'mta'
+				? e.deliveryDomain === 'production'
+				: e.deliveryDomain !== 'member_test';
+		if (
+			isProductionTelemetry &&
+			outcome.ok &&
+			e.destinationProvider === 'gmail' &&
+			e.primarySendingDomain
+		) {
 			await ctx.runMutation(internal.delivery.complianceTelemetry.recordGmailDelivery, {
 				providerMessageId: e.providerMessageId,
 				primaryDomain: e.primarySendingDomain,
 				acceptedAt: e.at,
 			});
 		}
+		if (isProductionTelemetry && outcome.ok && e.destinationProvider) {
+			await ctx.runMutation(
+				internal.delivery.deliverabilityRouting.recordDestinationProviderDomain,
+				{
+					providerMessageId: e.providerMessageId,
+					destinationProvider: e.destinationProvider,
+					observedAt: e.at,
+				}
+			);
+		}
 	},
 	'email.failed': async (ctx, e) => {
-		// Terminal, NON-bounce failure (MTA post-DATA ambiguous drop). Transition the
+		// Terminal, NON-bounce failure (screening/suppression or an ambiguous
+		// post-DATA drop). Transition the
 		// send row to `failed` so it leaves "sending" — deliberately NOT `bounced`:
 		// `reduceFailed` applies no recipient suppression and no reputation penalty,
 		// because the receiver may have accepted the message and the address is very
@@ -129,15 +164,20 @@ const DISPATCH: DispatchTable = {
 			});
 			return;
 		}
-		await ctx.runMutation(internal.delivery.sendLifecycle.transitionByProviderMessageId, {
-			providerMessageId: e.providerMessageId,
-			transition: {
-				to: 'failed',
-				at: e.at,
-				errorMessage: e.errorMessage,
-				errorCode: e.errorCode,
-			},
-		});
+		await ctx.runMutation(
+			e.providerType === 'mta'
+				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
+				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			{
+				providerMessageId: e.providerMessageId,
+				transition: {
+					to: 'failed',
+					at: e.at,
+					errorMessage: e.errorMessage,
+					errorCode: e.errorCode,
+				},
+			}
+		);
 	},
 	'email.bounced': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) {
@@ -156,7 +196,9 @@ const DISPATCH: DispatchTable = {
 			return;
 		}
 		const outcome = (await ctx.runMutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			e.providerType === 'mta'
+				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
+				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			{
 				providerMessageId: e.providerMessageId,
 				transition: {
@@ -175,7 +217,7 @@ const DISPATCH: DispatchTable = {
 		// Suppress the complainer directly by email — a complaint must always
 		// reach the blocklist, never evaporate into a metric.
 		if (!e.providerMessageId) {
-			if (!e.recipient) return;
+			if (!e.recipient || (e.providerType !== 'ses' && e.deliveryDomain !== 'production')) return;
 			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
 				email: e.recipient,
 				reason: 'complained',
@@ -184,7 +226,9 @@ const DISPATCH: DispatchTable = {
 		}
 		if (isPostboxMessageId(e.providerMessageId)) return;
 		const outcome = (await ctx.runMutation(
-			internal.delivery.sendLifecycle.transitionByProviderMessageId,
+			e.providerType === 'mta'
+				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
+				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
 			{
 				providerMessageId: e.providerMessageId,
 				transition: { to: 'complained', at: e.at },
@@ -281,7 +325,7 @@ const DISPATCH: DispatchTable = {
 					to: 'warned',
 					at: Date.now(),
 					reason: `MTA circuit breaker: ${e.message}${
-						e.bounceRate ? ` (bounce rate: ${e.bounceRate}%)` : ''
+						e.bounceRate !== undefined ? ` (bounce rate: ${(e.bounceRate * 100).toFixed(2)}%)` : ''
 					}`,
 					changedBy: 'mta_circuit_breaker',
 				},
@@ -338,21 +382,25 @@ const DISPATCH: DispatchTable = {
 		// persisted and operator-visible instead of being a dead drop.
 		// eslint-disable-next-line no-console
 		console.warn(`[Webhook Dispatcher] Campaign complaint rate alert: ${e.message}`);
-		const ratePct =
-			e.complaintRate !== undefined ? ` (${(e.complaintRate * 100).toFixed(2)}%)` : '';
-		const campaignSuffix = e.campaignId ? ` [campaign ${e.campaignId}]` : '';
-		try {
-			await ctx.runMutation(internal.workspaces.abuseStatus.transition, {
-				input: {
-					to: 'warned',
-					at: Date.now(),
-					reason: `MTA campaign complaint rate: ${e.message}${ratePct}${campaignSuffix}`,
-					changedBy: 'mta_campaign_complaint_rate',
-				},
-			});
-		} catch (err) {
-			logError('[Webhook Dispatcher] Failed to set abuse status for campaign complaint rate:', err);
+		const outcome = await ctx.runMutation(
+			internal.workspaces.abuseStatus.recordCampaignComplaintAlert,
+			{
+				eventId: e.eventId,
+				campaignId: e.campaignId,
+				message: e.message,
+				complaintRate: e.complaintRate,
+				eventTimestamp: e.at,
+			}
+		);
+		// The mutation acknowledges every durably recorded alert, including one
+		// whose status change severity rules refused (`applied: 'skipped'`).
+		// Only a missing settings row (transient) and a reused event id with
+		// different content (integrity violation) reach a non-2xx and let the
+		// MTA retry its protected outbox row.
+		if (!outcome.ok) {
+			throw new Error(`Campaign complaint alert was not persisted: ${outcome.reason}`);
 		}
+		return outcome;
 	},
 	'internal.ip_event': async (ctx, e) => {
 		const level = e.severity === 'critical' ? 'error' : 'warn';

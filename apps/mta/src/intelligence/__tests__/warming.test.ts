@@ -10,6 +10,7 @@ import {
 	initializeWarming,
 	evaluateDay,
 	getWarmingState,
+	reserveWarmingSlot,
 } from '../warming.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 import { getWarmingCapForDay } from '@owlat/shared/warming';
@@ -54,7 +55,7 @@ describe('warming', () => {
 			const firstState = await getWarmingState(redis, ip);
 
 			// Modify state to verify it won't be overwritten
-			await redis.hset(`mta:warming:${ip}`, 'currentDay', '5');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'currentDay', '5');
 
 			await initializeWarming(redis, ip);
 			const secondState = await getWarmingState(redis, ip);
@@ -82,7 +83,7 @@ describe('warming', () => {
 		it('returns allowed:false when sentToday >= dailyCap', async () => {
 			await initializeWarming(redis, ip);
 			// Set sentToday to cap
-			await redis.hset(`mta:warming:${ip}`, 'sentToday', '50');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'sentToday', '50');
 
 			const result = await checkCap(redis, ip);
 			expect(result.allowed).toBe(false);
@@ -94,7 +95,13 @@ describe('warming', () => {
 	describe('getDailyCap', () => {
 		it('returns Infinity for graduated IP', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'phase', 'graduated', 'dailyCap', String(Infinity));
+			await redis.hset(
+				`mta:warming:{warming:${ip}}:state`,
+				'phase',
+				'graduated',
+				'dailyCap',
+				String(Infinity)
+			);
 
 			const cap = await getDailyCap(redis, ip);
 			expect(cap).toBe(Infinity);
@@ -111,8 +118,62 @@ describe('warming', () => {
 			const state = await getWarmingState(redis, ip);
 			expect(state!.sentToday).toBe(2);
 
-			const dailySent = await redis.hget('mta:warming:daily:10.0.0.1:2026-03-22', 'sent');
+			const dailySent = await redis.hget('mta:warming:{warming:10.0.0.1}:daily:2026-03-22', 'sent');
 			expect(dailySent).toBe('2');
+		});
+	});
+
+	describe('authoritative warming reservations', () => {
+		it('at cap-1 grants exactly one distinct message and idempotently reuses it', async () => {
+			await initializeWarming(redis, ip);
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'sentToday', '49');
+
+			const decisions = await Promise.all(
+				Array.from({ length: 10 }, (_, index) => reserveWarmingSlot(redis, ip, `message-${index}`))
+			);
+			expect(decisions.filter((decision) => decision.allowed)).toHaveLength(1);
+			const winner = decisions.find((decision) => decision.allowed)!;
+			expect((await reserveWarmingSlot(redis, ip, winner.reservation!.messageId)).allowed).toBe(
+				true
+			);
+			expect((await reserveWarmingSlot(redis, ip, 'overflow')).allowed).toBe(false);
+		});
+
+		it('converts a delivered reservation into exactly one warming send', async () => {
+			await initializeWarming(redis, ip);
+			const reservation = await reserveWarmingSlot(redis, ip, 'reserved-message');
+			expect(reservation.allowed).toBe(true);
+
+			await recordSend(redis, ip, reservation.reservation);
+			await recordSend(redis, ip, reservation.reservation);
+			expect((await getWarmingState(redis, ip))!.sentToday).toBe(1);
+			// The provider outcome is idempotent at the reservation boundary.
+			expect(
+				await redis.zscore(
+					'mta:warming:{warming:10.0.0.1}:reservations:2026-03-22',
+					'reserved-message'
+				)
+			).toBeNull();
+		});
+
+		it('reclaims an expired reservation without changing sent counters', async () => {
+			await initializeWarming(redis, ip);
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'sentToday', '49');
+			expect((await reserveWarmingSlot(redis, ip, 'expired')).allowed).toBe(true);
+			vi.advanceTimersByTime(7 * 24 * 60 * 60 * 1000 + 1);
+			expect((await reserveWarmingSlot(redis, ip, 'replacement')).allowed).toBe(true);
+			expect((await getWarmingState(redis, ip))!.sentToday).toBe(0);
+		});
+
+		it('does not release owned capacity after a failed or ambiguous network outcome', async () => {
+			await initializeWarming(redis, ip);
+			await reserveWarmingSlot(redis, ip, 'uncertain');
+			await recordDeferral(redis, ip);
+			await recordBounce(redis, ip);
+			expect(
+				await redis.zscore('mta:warming:{warming:10.0.0.1}:reservations:2026-03-22', 'uncertain')
+			).not.toBeNull();
+			expect((await getWarmingState(redis, ip))!.sentToday).toBe(0);
 		});
 	});
 
@@ -130,10 +191,22 @@ describe('warming', () => {
 
 		it('skips when graduated', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'phase', 'graduated', 'dailyCap', String(Infinity));
+			await redis.hset(
+				`mta:warming:{warming:${ip}}:state`,
+				'phase',
+				'graduated',
+				'dailyCap',
+				String(Infinity)
+			);
 
 			// Record some sends in daily stats
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '100', 'bounced', '50');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'100',
+				'bounced',
+				'50'
+			);
 
 			await evaluateDay(redis, ip, config);
 
@@ -143,10 +216,16 @@ describe('warming', () => {
 
 		it('HALT: bounce>8% sets phase to plateau', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'dailyCap', '100');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'dailyCap', '100');
 
 			// 10 sent, 1 bounced = 10% > 8%
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '10', 'bounced', '1');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'10',
+				'bounced',
+				'1'
+			);
 
 			await evaluateDay(redis, ip, config);
 
@@ -156,10 +235,16 @@ describe('warming', () => {
 
 		it('DECELERATE: bounce 4% reduces cap by 0.7x', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'dailyCap', '200', 'currentDay', '5');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'dailyCap', '200', 'currentDay', '5');
 
 			// 100 sent, 4 bounced = 4% > 3%
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '100', 'bounced', '4');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'100',
+				'bounced',
+				'4'
+			);
 
 			await evaluateDay(redis, ip, config);
 
@@ -170,10 +255,18 @@ describe('warming', () => {
 
 		it('ACCELERATE: bounce<1%, defer<5%, usage>80% increases day by 1.5x', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'dailyCap', '200', 'currentDay', '5');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'dailyCap', '200', 'currentDay', '5');
 
 			// 180 sent out of 200 cap = 90% usage, 0 bounces, 0 defers
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '180', 'bounced', '0', 'deferred', '0');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'180',
+				'bounced',
+				'0',
+				'deferred',
+				'0'
+			);
 
 			await evaluateDay(redis, ip, config);
 
@@ -184,11 +277,19 @@ describe('warming', () => {
 
 		it('NORMAL: advances day by 1', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'dailyCap', '200', 'currentDay', '5');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'dailyCap', '200', 'currentDay', '5');
 
 			// 100 sent, 2 bounced = 2% (between 1% and 3%), 0 deferred
 			// This doesn't hit accelerate (bounce >=1%) or decelerate (bounce <=3%)
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '100', 'bounced', '2', 'deferred', '0');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'100',
+				'bounced',
+				'2',
+				'deferred',
+				'0'
+			);
 
 			await evaluateDay(redis, ip, config);
 
@@ -198,10 +299,24 @@ describe('warming', () => {
 
 		it('GRADUATION: day>=30, bounce<2% sets phase graduated and cap Infinity', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'dailyCap', '30000', 'currentDay', '30');
+			await redis.hset(
+				`mta:warming:{warming:${ip}}:state`,
+				'dailyCap',
+				'30000',
+				'currentDay',
+				'30'
+			);
 
 			// 1000 sent, 5 bounced = 0.5% < 2%
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '1000', 'bounced', '5', 'deferred', '0');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'1000',
+				'bounced',
+				'5',
+				'deferred',
+				'0'
+			);
 
 			await evaluateDay(redis, ip, config);
 
@@ -218,11 +333,19 @@ describe('warming', () => {
 			// ticks. Use a NORMAL-branch scenario (bounce between accelerate and
 			// decelerate thresholds) so a single step is a clean +1.
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'currentDay', '1', 'dailyCap', '50');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'currentDay', '1', 'dailyCap', '50');
 
 			// 40 sent, 1 bounced = 2.5% (>1% so NOT accelerate, <3% so NOT
 			// decelerate) → NORMAL branch advances exactly one schedule day.
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '40', 'bounced', '1', 'deferred', '0');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'40',
+				'bounced',
+				'1',
+				'deferred',
+				'0'
+			);
 
 			const dayTwoCap = getWarmingCapForDay(2);
 
@@ -241,9 +364,17 @@ describe('warming', () => {
 
 		it('24 calls produce the same state as a single call (pure idempotency, even on the accelerate branch)', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'currentDay', '5', 'dailyCap', '200');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'currentDay', '5', 'dailyCap', '200');
 			// 180/200 = 90% usage, clean → accelerate branch.
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '180', 'bounced', '0', 'deferred', '0');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'180',
+				'bounced',
+				'0',
+				'deferred',
+				'0'
+			);
 
 			for (let h = 0; h < 24; h++) {
 				await evaluateDay(redis, ip, config);
@@ -253,8 +384,16 @@ describe('warming', () => {
 			// Reset to the same starting point and call exactly once.
 			await redis.flushall();
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'currentDay', '5', 'dailyCap', '200');
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '180', 'bounced', '0', 'deferred', '0');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'currentDay', '5', 'dailyCap', '200');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'180',
+				'bounced',
+				'0',
+				'deferred',
+				'0'
+			);
 			await evaluateDay(redis, ip, config);
 			const after1 = await getWarmingState(redis, ip);
 
@@ -264,8 +403,16 @@ describe('warming', () => {
 
 		it('advances again once the UTC date rolls over', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'currentDay', '1', 'dailyCap', '50');
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '40', 'bounced', '1', 'deferred', '0');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'currentDay', '1', 'dailyCap', '50');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'40',
+				'bounced',
+				'1',
+				'deferred',
+				'0'
+			);
 
 			// First day: evaluate (hourly, but idempotent) → day advances once.
 			for (let h = 0; h < 24; h++) {
@@ -277,7 +424,15 @@ describe('warming', () => {
 
 			// Roll the clock forward one UTC day and record clean sends for it.
 			vi.setSystemTime(new Date('2026-03-23T12:00:00Z'));
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-23', 'sent', '40', 'bounced', '1', 'deferred', '0');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-23',
+				'sent',
+				'40',
+				'bounced',
+				'1',
+				'deferred',
+				'0'
+			);
 
 			await evaluateDay(redis, ip, config);
 			const afterDay2 = await getWarmingState(redis, ip);
@@ -287,7 +442,7 @@ describe('warming', () => {
 
 		it('does not arm the guard on a no-send day, so a later call the same day still evaluates', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'currentDay', '5', 'dailyCap', '200');
+			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'currentDay', '5', 'dailyCap', '200');
 
 			// First call: no sends recorded yet → no-op, guard stays unset.
 			await evaluateDay(redis, ip, config);
@@ -296,7 +451,15 @@ describe('warming', () => {
 			expect(mid!.lastEvaluatedDate).toBe('');
 
 			// Sends arrive later the same UTC day; the next call must evaluate.
-			await redis.hset('mta:warming:daily:10.0.0.1:2026-03-22', 'sent', '100', 'bounced', '2', 'deferred', '0');
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'100',
+				'bounced',
+				'2',
+				'deferred',
+				'0'
+			);
 			await evaluateDay(redis, ip, config);
 			const after = await getWarmingState(redis, ip);
 			expect(after!.currentDay).toBe(6);
@@ -308,7 +471,13 @@ describe('warming', () => {
 		it('resets sentToday exactly once when two checkCap calls race at a rolled-over date', async () => {
 			await initializeWarming(redis, ip);
 			// Simulate yesterday's leftover counter.
-			await redis.hset(`mta:warming:${ip}`, 'sentToday', '37', 'sentTodayReset', '2026-03-21');
+			await redis.hset(
+				`mta:warming:{warming:${ip}}:state`,
+				'sentToday',
+				'37',
+				'sentTodayReset',
+				'2026-03-21'
+			);
 
 			// Two concurrent checkCap calls at today's date. Both observe the stale
 			// reset date, but the Lua script must reset sentToday exactly once — the
@@ -326,7 +495,15 @@ describe('warming', () => {
 
 		it('preserves sentToday when the date has not rolled over', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(`mta:warming:${ip}`, 'sentToday', '12', 'sentTodayReset', '2026-03-22', 'dailyCap', '50');
+			await redis.hset(
+				`mta:warming:{warming:${ip}}:state`,
+				'sentToday',
+				'12',
+				'sentTodayReset',
+				'2026-03-22',
+				'dailyCap',
+				'50'
+			);
 
 			const result = await checkCap(redis, ip);
 			expect(result.sentToday).toBe(12);

@@ -163,7 +163,7 @@ describe('degradation', () => {
 			expect(result.backoff).toBe(false);
 
 			// The retry key was actively deleted (not merely expired-by-TTL).
-			const raw = await redis.get('mta:domain-fail:elapse.com');
+			const raw = await redis.hget('mta:domain-fail:{elapse.com}:state', 'retryAt');
 			expect(raw).toBeNull();
 		});
 	});

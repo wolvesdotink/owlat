@@ -76,7 +76,7 @@ export const sendSystemEmail = internalAction({
 					html: args.html,
 					headers: { 'Auto-Submitted': 'auto-generated' },
 				},
-				{ ipPool: 'transactional' }
+				{ ipPool: 'transactional', organizationId: 'system', intakePath: 'system' }
 			);
 			if (!dispatched.result.success) {
 				throw new Error(`System email send failed via mta: ${dispatched.result.errorMessage}`);

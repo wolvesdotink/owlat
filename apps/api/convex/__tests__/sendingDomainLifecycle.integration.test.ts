@@ -597,6 +597,59 @@ describe('Sending domain lifecycle — regenerate', () => {
 });
 
 describe('Sending domain lifecycle — remove', () => {
+	it('removes both MTA and SES identities for a hybrid domain', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert('domains', {
+				domain: 'hybrid.example.com',
+				status: 'verified',
+				dnsRecords: { dkim: [] },
+				providerType: 'mta',
+				verifiedAt: Date.now(),
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('sendingDomainMtaIdentities', {
+				domainId: id,
+				dkimSelector: 'owlat',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('sendingDomainSesIdentities', {
+				domainId: id,
+				dkimTokens: ['one', 'two', 'three'],
+				verificationToken: 'verified',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			return id;
+		});
+
+		expect(
+			await t.mutation(internal.domains.lifecycle.remove, {
+				domainId,
+				userId: 'user',
+			})
+		).toEqual({ ok: true });
+		const providerDeletes = await t.run(async (ctx) => {
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			return scheduled
+				.filter((job) => job.name.includes('deleteDomainAction'))
+				.map((job) => job.args[0] as { providerType: string; domain: string });
+		});
+		expect(providerDeletes).toEqual(
+			expect.arrayContaining([
+				{ providerType: 'mta', domain: 'hybrid.example.com' },
+				{ providerType: 'ses', domain: 'hybrid.example.com' },
+			])
+		);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(domainId)).toBeNull();
+			expect(await ctx.db.query('sendingDomainMtaIdentities').collect()).toHaveLength(0);
+			expect(await ctx.db.query('sendingDomainSesIdentities').collect()).toHaveLength(0);
+		});
+	});
+
 	it('removes domain + sibling identity + audit log', async () => {
 		const t = convexTest(schema, modules);
 		let domainId: Id<'domains'>;

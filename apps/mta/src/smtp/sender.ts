@@ -60,6 +60,14 @@ type AttemptOutcome =
 	| { kind: 'connection'; response: string }
 	| { kind: 'over-cap' };
 
+/** Keeps a failed durability fence out of SMTP/MX retry classification. */
+class SmtpDataBodyJournalTransitionError extends Error {
+	constructor(readonly transitionFailure: unknown) {
+		super('SMTP DATA body journal transition failed');
+		this.name = 'SmtpDataBodyJournalTransitionError';
+	}
+}
+
 type DeliveryProviderPolicy = Pick<
 	DestinationProviderProfile,
 	'tlsMode' | 'maxConnections' | 'maxDeliveriesPerConnection'
@@ -174,7 +182,12 @@ export async function sendToMx(
 	redis: Redis,
 	bindIp: string,
 	eligibilityLease?: IpEligibilityLease,
-	resolvedDestination?: DestinationSnapshot
+	resolvedDestination?: DestinationSnapshot,
+	/**
+	 * Awaited after a recipient server accepts DATA with 354 and immediately
+	 * before the message body and terminator are written.
+	 */
+	beforeDataBodyWrite?: () => Promise<void>
 ): Promise<EmailJobResult> {
 	if (eligibilityLease && !(await isIpEligibilityLeaseValid(redis, eligibilityLease))) {
 		return {
@@ -438,6 +451,17 @@ export async function sendToMx(
 				from: verpAddress,
 				to: [job.to],
 				data: signedBytes,
+				...(beforeDataBodyWrite
+					? {
+							beforeDataBodyWrite: async () => {
+								try {
+									await beforeDataBodyWrite();
+								} catch (transitionFailure) {
+									throw new SmtpDataBodyJournalTransitionError(transitionFailure);
+								}
+							},
+						}
+					: {}),
 			});
 
 			// Record the TLS-RPT result for this successful delivery (RFC 8460 §4.3).
@@ -475,6 +499,13 @@ export async function sendToMx(
 				},
 			};
 		} catch (err) {
+			if (err instanceof SmtpDataBodyJournalTransitionError) {
+				// The peer has entered DATA mode but no body bytes were written. The
+				// socket cannot be reused, and a Redis durability failure must escape
+				// this MX loop so the queue retries from a durable pre-DATA state.
+				pool.evictConnection(key, conn);
+				throw err.transitionFailure;
+			}
 			if (isCleanPreDataRejection(err)) {
 				// A clean pre-DATA reply rejection (every recipient refused, or MAIL FROM
 				// bounced) left the SMTP session OPEN and the socket protocol-healthy — it

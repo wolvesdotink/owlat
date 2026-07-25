@@ -7,6 +7,8 @@ import {
 	recordDefer,
 	recordReject,
 	getThrottleState,
+	throttleStateKey,
+	throttleWindowKey,
 } from '../domainThrottle.js';
 import { setProfile } from '../../config/ispProfiles.js';
 
@@ -45,7 +47,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('returns false when blocking status within 5min', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			const now = Date.now();
 			await redis.hset(
 				hashKey,
@@ -62,7 +64,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('auto-recovers from blocking after 5 minutes', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			const fiveMinAgo = Date.now() - 301_000;
 			await redis.hset(
 				hashKey,
@@ -108,7 +110,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('rate does not exceed ceiling', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			// Set rate close to ceiling (gmail ceiling = 300)
 			await redis.hset(
 				hashKey,
@@ -143,7 +145,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('rate does not go below floor', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			// gmail floor = 5
 			await redis.hset(hashKey, 'currentRate', '6', 'status', 'healthy');
 
@@ -197,7 +199,7 @@ describe('domainThrottle', () => {
 	describe('acquireSlot atomicity', () => {
 		it('concurrent acquireSlot calls do not exceed rate limit', async () => {
 			// Set a low rate to make it easy to test
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(hashKey, 'currentRate', '3', 'status', 'healthy');
 
 			// Fire 5 concurrent acquireSlot calls — only 3 should succeed
@@ -274,7 +276,7 @@ describe('domainThrottle', () => {
 			// Lower gmail's ceiling to 12 at runtime; recovery must respect it.
 			await setProfile(redis, 'gmail', { defaultRate: 5, ceiling: 12, floor: 1 });
 
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			// Sit just below the runtime ceiling so one recovery step would
 			// overshoot the static ceiling (300) but must be capped at 12.
 			await redis.hset(
@@ -300,7 +302,7 @@ describe('domainThrottle', () => {
 			// Raise gmail's floor to 10 at runtime; backoff must respect it.
 			await setProfile(redis, 'gmail', { defaultRate: 20, ceiling: 50, floor: 10 });
 
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(hashKey, 'currentRate', '14', 'status', 'healthy');
 
 			await recordDefer(redis, ip, 'gmail.com');
@@ -322,7 +324,7 @@ describe('domainThrottle', () => {
 	describe('PR-73: acquireSlot exact cap', () => {
 		it('grants exactly defaultRate slots per window then denies (gmail=100)', async () => {
 			// Seed the adaptive rate explicitly so the cap is unambiguous.
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(hashKey, 'currentRate', '100', 'status', 'healthy');
 
 			let granted = 0;
@@ -349,7 +351,7 @@ describe('domainThrottle', () => {
 
 	describe('PR-73: acquireSlot is race-free under parallel load', () => {
 		it('50 parallel acquireSlot calls grant EXACTLY currentRate (no overshoot)', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			const currentRate = 12;
 			await redis.hset(hashKey, 'currentRate', String(currentRate), 'status', 'healthy');
 
@@ -368,13 +370,13 @@ describe('domainThrottle', () => {
 		});
 
 		it('the window count never exceeds the rate after a concurrent burst', async () => {
-			const hashKey = `mta:throttle:${ip}:outlook.com`;
+			const hashKey = throttleStateKey(ip, 'outlook.com');
 			await redis.hset(hashKey, 'currentRate', '5', 'status', 'healthy');
 
 			await Promise.all(Array.from({ length: 40 }, () => acquireSlot(redis, ip, 'outlook.com')));
 
 			// The sorted-set window holds at most `currentRate` admitted entries.
-			const windowKey = `mta:throttle:window:${ip}:outlook.com`;
+			const windowKey = throttleWindowKey(ip, 'outlook.com');
 			const windowCount = await redis.zcard(windowKey);
 			expect(windowCount).toBe(5);
 		});
@@ -382,7 +384,7 @@ describe('domainThrottle', () => {
 
 	describe('PR-73: recordDefer backoff path → floor → blocking', () => {
 		it('three defers within 5 minutes ratchet down toward floor and mark blocking', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(hashKey, 'currentRate', '100', 'status', 'healthy');
 
 			// Defer #1: degraded, 100 * 0.5 = 50
@@ -407,7 +409,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('a defer after >5min resets the rapid-defer counter (no premature blocking)', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(hashKey, 'currentRate', '100', 'status', 'healthy');
 
 			await recordDefer(redis, ip, 'gmail.com'); // recentDefers = 1
@@ -423,7 +425,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('repeated defers clamp the rate at the floor and never below', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(hashKey, 'currentRate', '100', 'status', 'healthy');
 
 			// Hammer many defers; gmail floor = 5.
@@ -439,7 +441,7 @@ describe('domainThrottle', () => {
 
 	describe('PR-73: blocking auto-recovery', () => {
 		it('stays blocked within 5 minutes of the last defer', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(
 				hashKey,
 				'currentRate',
@@ -456,7 +458,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('auto-recovers to healthy after 1 hour of inactivity', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(
 				hashKey,
 				'currentRate',
@@ -485,7 +487,7 @@ describe('domainThrottle', () => {
 
 	describe('PR-73: recordSuccess ramps the rate to the ISP ceiling', () => {
 		it('multiple recovery cycles climb toward and then clamp at the gmail ceiling (300)', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(
 				hashKey,
 				'currentRate',
@@ -510,7 +512,7 @@ describe('domainThrottle', () => {
 		});
 
 		it('a recovery step from blocking restores healthy status', async () => {
-			const hashKey = `mta:throttle:${ip}:gmail.com`;
+			const hashKey = throttleStateKey(ip, 'gmail.com');
 			await redis.hset(
 				hashKey,
 				'currentRate',

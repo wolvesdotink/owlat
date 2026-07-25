@@ -7,7 +7,14 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 import { parseMessage, type ParsedMessage, type MessageAttachment } from '@owlat/mail-message';
-import { tryParseARF, isDuplicateComplaint, generateDedupKey } from '../fblProcessor.js';
+import {
+	tryParseARF,
+	reserveComplaint,
+	completeComplaint,
+	releaseComplaint,
+	runComplaintEffect,
+	generateDedupKey,
+} from '../fblProcessor.js';
 import { buildVerpAddress } from '../verp.js';
 import { extractReportParts, type ReportPart } from '../reportParts.js';
 import { reportPartsOf } from './helpers/reportParts.js';
@@ -80,7 +87,7 @@ describe('tryParseARF', () => {
 		);
 
 		expect(result).not.toBeNull();
-		expect(result!.originalMessageId).toBe('msg-complaint-001');
+		expect(result!.originalMessageId).toBeUndefined();
 	});
 
 	// PR-13: Gmail and several large ISPs redact the original Message-ID in
@@ -155,7 +162,7 @@ describe('tryParseARF', () => {
 		expect(result!.recipient).toBeUndefined();
 	});
 
-	it('extracts organizationId from X-Owlat-Org-Id in attachments', () => {
+	it('does not trust organizationId from X-Owlat-Org-Id in attachments', () => {
 		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
@@ -169,11 +176,11 @@ describe('tryParseARF', () => {
 		);
 
 		expect(result).not.toBeNull();
-		expect(result!.organizationId).toBe('org-99');
+		expect(result!.organizationId).toBeUndefined();
 	});
 
-	// PR-15: per-campaign attribution from the original message's Feedback-ID.
-	it('extracts campaignId from a campaign-stream Feedback-ID in attachments', () => {
+	// Campaign attribution is resolved later from the persisted outbound record.
+	it('does not trust campaignId from a campaign-stream Feedback-ID in attachments', () => {
 		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
@@ -189,7 +196,7 @@ describe('tryParseARF', () => {
 		);
 
 		expect(result).not.toBeNull();
-		expect(result!.campaignId).toBe('jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4');
+		expect(result!.campaignId).toBeUndefined();
 	});
 
 	it('leaves campaignId undefined for a transactional (txn) Feedback-ID', () => {
@@ -209,7 +216,7 @@ describe('tryParseARF', () => {
 		expect(result!.campaignId).toBeUndefined();
 	});
 
-	it('extracts campaignId from a Feedback-ID surfaced in the report body', () => {
+	it('does not trust campaignId from a Feedback-ID surfaced in the report body', () => {
 		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse\nFeedback-ID: campaign:bodyc4mp41gn0123456789abcdefghij:segment:zz99\nMore',
@@ -218,14 +225,12 @@ describe('tryParseARF', () => {
 		);
 
 		expect(result).not.toBeNull();
-		expect(result!.campaignId).toBe('bodyc4mp41gn0123456789abcdefghij');
+		expect(result!.campaignId).toBeUndefined();
 	});
 
-	// SECURITY: the Feedback-ID is scraped from internet-inbound ARF content and
-	// its field-2 becomes a Prometheus label / Redis key. A forged value that is
-	// not a plausible Convex doc id must not be attributed (unbounded metric
-	// cardinality → memory DoS).
-	it('drops a forged/oversized field-2 campaignId rather than attributing it', () => {
+	// SECURITY: no internet-supplied field-2 may become a permanent Prometheus
+	// label or Redis key, regardless of whether its syntax looks plausible.
+	it('does not attribute an oversized forged campaign field', () => {
 		const oversized = 'z'.repeat(200);
 		const result = arfOf(
 			createMockParsedMail({
@@ -302,12 +307,13 @@ describe('tryParseARF', () => {
 // A real RFC 5965 ARF report is a multipart/report with three sub-parts: a
 // human-readable text/plain, a machine-readable message/feedback-report (the
 // authoritative structured fields), and a message/rfc822 copy of the original
-// message (which carries our Feedback-ID / X-Owlat-* headers). The processor
-// used to substring-scan every part indiscriminately and guess the ISP from
-// Received; it now routes by MIME content-type and reads:
+// message (which may carry Feedback-ID / X-Owlat-* headers). The processor used
+// to substring-scan every part indiscriminately and guess the ISP from Received;
+// it now routes by MIME content-type and reads:
 //   - Feedback-Type / Original-Rcpt-To / Reported-Domain / Source-IP / Source ISP
-//     from the message/feedback-report part, and
-//   - Feedback-ID / X-Owlat-Message-Id from the message/rfc822 original message.
+//     from the message/feedback-report part.
+// Re-attached original-message identifiers are ignored; signed VERP plus the
+// persisted outbound record is the only tenant/campaign attribution path.
 // These fixtures are real-shaped ISP ARF reports (Comcast / Yahoo / Microsoft)
 // parsed through the real MIME parser so the content-type routing is exercised
 // end-to-end. See EMAIL_BEST_PRACTICES_AUDIT_2026-06-21.md "PR-14".
@@ -433,10 +439,10 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 		expect(result!.message).toContain('microsoft');
 	});
 
-	// The Feedback-ID lives on the ORIGINAL message (message/rfc822 part), NOT the
-	// feedback-report part. Now that it lands outbound (sendComposition), read it
-	// back from the original-message part so per-campaign attribution works.
-	it('reads the campaign Feedback-ID from the message/rfc822 original-message part', async () => {
+	// The re-attached original message is still internet-supplied at this trust
+	// boundary; even an honestly echoed Feedback-ID is resolved via persisted
+	// provenance rather than trusted directly.
+	it('does not trust the campaign Feedback-ID from the original-message part', async () => {
 		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
@@ -457,22 +463,17 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 		expect(result).not.toBeNull();
 		expect(result!.feedbackType).toBe('abuse');
 		expect(result!.recipient).toBe('clicker@gmail.com');
-		expect(result!.campaignId).toBe('jh71d9k2m3n4p5q6r7s8t9v0w1x2y3z4');
+		expect(result!.campaignId).toBeUndefined();
 	});
 
-	// A Feedback-ID that appears in the feedback-report part (NOT the original
-	// message) must NOT be mistaken for our outbound campaign id — only the
-	// original-message copy is ours. (This guards the part-routing: pre-fix the
-	// blind scan would pick up a Feedback-ID from anywhere.)
+	// A Feedback-ID in the structured report is equally untrusted and ignored.
 	it('does not read a campaignId from a Feedback-ID placed in the feedback-report part only', async () => {
 		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
 				'User-Agent: Comcast-Feedback-Loop/1.0',
 				'Original-Rcpt-To: x@comcast.net',
-				// Some ISPs echo a Feedback-ID into the report part; the canonical
-				// source remains the original message. Our outbound id is read back
-				// from message/rfc822, so absent it there we attribute no campaign.
+				// Some ISPs echo a Feedback-ID into this part; it is not provenance.
 			].join('\r\n'),
 			originalMessage: [
 				'From: news@owlat.test',
@@ -487,9 +488,7 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 		expect(result!.campaignId).toBeUndefined();
 	});
 
-	// X-Owlat-Message-Id is echoed in the original message; attribution must read
-	// it from the message/rfc822 part (when VERP signing is not configured).
-	it('reads X-Owlat-Message-Id back from the message/rfc822 original-message part', async () => {
+	it('does not trust X-Owlat identifiers from the original-message part', async () => {
 		const { parsed, parts } = await buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
@@ -508,8 +507,8 @@ describe('tryParseARF — structured feedback-report part (audit PR-14)', () => 
 
 		const result = tryParseARF(parsed, parts);
 		expect(result).not.toBeNull();
-		expect(result!.originalMessageId).toBe('send_abc123');
-		expect(result!.organizationId).toBe('org-7');
+		expect(result!.originalMessageId).toBeUndefined();
+		expect(result!.organizationId).toBeUndefined();
 	});
 });
 
@@ -572,7 +571,7 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 		expect(result!.originalMessageId).toBe(realId);
 	});
 
-	it('still extracts organizationId (non-attribution metadata) even when key is set', () => {
+	it('does not trust organizationId metadata even when the VERP key is set', () => {
 		const result = arfOf(
 			createMockParsedMail({
 				text: 'Feedback-Type: abuse',
@@ -586,7 +585,7 @@ describe('tryParseARF — forged-complaint poisoning (audit PR-03, key configure
 		);
 
 		expect(result).not.toBeNull();
-		expect(result!.organizationId).toBe('org-99');
+		expect(result!.organizationId).toBeUndefined();
 		expect(result!.originalMessageId).toBeUndefined();
 	});
 });
@@ -629,8 +628,9 @@ describe('generateDedupKey', () => {
 	});
 });
 
-describe('isDuplicateComplaint', () => {
+describe('complaint deduplication reservations', () => {
 	let redis: RealRedis;
+	const reserveOwned = (client: RealRedis, dedupKey: string) => reserveComplaint(client, dedupKey);
 
 	beforeEach(() => {
 		redis = new Redis() as unknown as RealRedis;
@@ -640,56 +640,135 @@ describe('isDuplicateComplaint', () => {
 		await redis.flushall();
 	});
 
-	it('returns false for first occurrence (not a duplicate)', async () => {
-		const result = await isDuplicateComplaint(redis, 'msg-001');
-		expect(result).toBe(false);
+	it('reserves the first occurrence without declaring it completed', async () => {
+		const result = await reserveOwned(redis, 'msg-001');
+		expect(result.kind).toBe('reserved');
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		expect(await redis.hget(result.reservation.key, 'status')).toBe('reserved');
+		expect(await redis.ttl(result.reservation.key)).toBeGreaterThan(14 * 60);
 	});
 
-	it('returns true for second occurrence (is a duplicate)', async () => {
-		await isDuplicateComplaint(redis, 'msg-001');
-		const result = await isDuplicateComplaint(redis, 'msg-001');
-		expect(result).toBe(true);
+	it('does not ACK a concurrent intake while the first reservation is unresolved', async () => {
+		await reserveOwned(redis, 'msg-001');
+		await expect(reserveOwned(redis, 'msg-001')).rejects.toThrow(
+			'Complaint processing is already in progress'
+		);
 	});
 
-	it('tracks different message IDs independently', async () => {
-		await isDuplicateComplaint(redis, 'msg-001');
-		const result = await isDuplicateComplaint(redis, 'msg-002');
-		expect(result).toBe(false); // Different message, not a duplicate
+	it('permits the same feedback to retry after its reservation is released', async () => {
+		const first = await reserveOwned(redis, 'msg-retry');
+		expect(first.kind).toBe('reserved');
+		if (first.kind !== 'reserved') throw new Error('expected reservation');
+		await releaseComplaint(redis, first.reservation);
+		expect((await reserveOwned(redis, 'msg-retry')).kind).toBe('reserved');
 	});
 
-	it('stores dedup keys in Redis with correct prefix', async () => {
-		await isDuplicateComplaint(redis, 'msg-test');
-		const value = await redis.get('mta:fbl:dedup:msg-test');
-		expect(value).toBe('1');
+	it('deduplicates only after the owned reservation is completed', async () => {
+		const first = await reserveOwned(redis, 'msg-completed');
+		if (first.kind !== 'reserved') throw new Error('expected reservation');
+		await completeComplaint(redis, first.reservation);
+		expect(await redis.hget(first.reservation.key, 'status')).toBe('completed');
+		expect(await reserveOwned(redis, 'msg-completed')).toEqual({ kind: 'completed' });
 	});
 
-	// ── PR-72 regression-lock: the dedup claim is a 7-day SET NX ──────────────
-	//
-	// The complaint metric must be emitted exactly once per complaint. That
-	// once-only guarantee rests entirely on this SET NX claim: the FIRST call
-	// claims the key (returns not-duplicate → metric fires), every later call in
-	// the 7-day window sees the key and returns duplicate (no metric). If the EX
-	// is ever dropped the key would live forever (complaints never re-counted) or
-	// — worse, if NX is dropped — every report would re-fire the metric. Locks
-	// both the 7-day TTL and the atomic check-and-claim. See
-	// EMAIL_BEST_PRACTICES_AUDIT_2026-06-21.md "PR-72".
-	it('claims the dedup key with a 7-day TTL', async () => {
-		await isDuplicateComplaint(redis, 'msg-ttl');
-		const ttl = await redis.ttl('mta:fbl:dedup:msg-ttl');
+	it('owned-v2 never infers terminal state from the ambiguous legacy value', async () => {
+		await redis.set('mta:fbl:dedup:legacy-message', '1', 'EX', 60);
+		expect((await reserveOwned(redis, 'legacy-message')).kind).toBe('reserved');
+		expect(await redis.get('mta:fbl:dedup:legacy-message')).toBe('1');
+		expect(await redis.ttl('mta:fbl:dedup:legacy-message')).toBeGreaterThan(0);
+	});
+
+	it('recovers an old pre-effect crash into independently owned v2 state', async () => {
+		await redis.set('mta:fbl:dedup:legacy-owner', '1', 'EX', 60);
+		const result = await reserveComplaint(redis, 'legacy-owner');
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		expect(await redis.hget(result.reservation.key, 'status')).toBe('reserved');
+		expect(await redis.get('mta:fbl:dedup:legacy-owner')).toBe('1');
+	});
+
+	it('stores an explicit v2 marker on every owned reservation', async () => {
+		const result = await reserveOwned(redis, 'versioned-owner');
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		expect(await redis.hget(result.reservation.key, 'version')).toBe('2');
+	});
+
+	it('fails closed on a string or unsupported hash in the owned-v2 namespace', async () => {
+		const result = await reserveOwned(redis, 'corrupt-versioned-owner');
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		await redis.del(result.reservation.key);
+		await redis.set(result.reservation.key, '1');
+		await expect(completeComplaint(redis, result.reservation)).rejects.toThrow(
+			'Complaint reservation expired before completion'
+		);
+		await expect(reserveOwned(redis, 'corrupt-versioned-owner')).rejects.toThrow(
+			'Owned complaint deduplication contains a legacy value'
+		);
+
+		await redis.del(result.reservation.key);
+		await redis.hset(result.reservation.key, 'version', '3', 'status', 'completed');
+		await expect(reserveOwned(redis, 'corrupt-versioned-owner')).rejects.toThrow(
+			'Owned complaint deduplication has an unsupported version'
+		);
+	});
+
+	it('keeps completed deduplication state for seven days', async () => {
+		const result = await reserveOwned(redis, 'msg-ttl');
+		if (result.kind !== 'reserved') throw new Error('expected reservation');
+		await completeComplaint(redis, result.reservation);
+		const ttl = await redis.ttl(result.reservation.key);
 		const SEVEN_DAYS = 7 * 86400;
-		// ioredis(-mock) returns the remaining TTL in seconds; allow a small slack.
 		expect(ttl).toBeGreaterThan(SEVEN_DAYS - 5);
 		expect(ttl).toBeLessThanOrEqual(SEVEN_DAYS);
 	});
 
-	it('counts a complaint exactly once across repeated reports (metric-once semantics)', async () => {
-		// The pipeline emits the complaint metric only on the not-duplicate branch.
-		// Model that: count how many of N identical reports are "first sightings".
-		let metricFires = 0;
-		for (let i = 0; i < 4; i++) {
-			const isDup = await isDuplicateComplaint(redis, 'msg-once');
-			if (!isDup) metricFires++;
-		}
-		expect(metricFires).toBe(1);
+	it('does not let a stale owner release a newer reservation', async () => {
+		const first = await reserveOwned(redis, 'msg-owner');
+		if (first.kind !== 'reserved') throw new Error('expected reservation');
+		await redis.del(first.reservation.key);
+		const second = await reserveOwned(redis, 'msg-owner');
+		if (second.kind !== 'reserved') throw new Error('expected second reservation');
+		await releaseComplaint(redis, first.reservation);
+		expect(await redis.hget(second.reservation.key, 'token')).toBe(second.reservation.token);
+	});
+
+	it('retains successful effect checkpoints when completion fails and the intake retries', async () => {
+		const first = await reserveOwned(redis, 'msg-completion-retry');
+		if (first.kind !== 'reserved') throw new Error('expected first reservation');
+		const apply = vi.fn().mockResolvedValue(undefined);
+		await runComplaintEffect(redis, first.reservation, '0:circuit_breaker_outcome', apply);
+
+		// A transient completeComplaint failure releases this owner so SMTP can retry.
+		await releaseComplaint(redis, first.reservation);
+		const retry = await reserveOwned(redis, 'msg-completion-retry');
+		if (retry.kind !== 'reserved') throw new Error('expected retry reservation');
+		await runComplaintEffect(redis, retry.reservation, '0:circuit_breaker_outcome', apply);
+		await completeComplaint(redis, retry.reservation);
+
+		expect(apply).toHaveBeenCalledOnce();
+	});
+
+	it('recognizes completed feedback after the completion response is lost', async () => {
+		const first = await reserveOwned(redis, 'msg-completion-response');
+		if (first.kind !== 'reserved') throw new Error('expected first reservation');
+		const apply = vi.fn().mockResolvedValue(undefined);
+		await runComplaintEffect(redis, first.reservation, '0:metric_inc', apply);
+		const originalEval = redis.eval.bind(redis);
+		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
+			if (String(args[0]).includes("'status', 'completed'")) {
+				throw new Error('completion response lost');
+			}
+			return result;
+		});
+
+		await expect(completeComplaint(redis, first.reservation)).rejects.toThrow(
+			'Complaint deduplication completion is unavailable'
+		);
+		evalSpy.mockRestore();
+		await releaseComplaint(redis, first.reservation);
+		expect(await reserveOwned(redis, 'msg-completion-response')).toEqual({
+			kind: 'completed',
+		});
+		expect(apply).toHaveBeenCalledOnce();
 	});
 });

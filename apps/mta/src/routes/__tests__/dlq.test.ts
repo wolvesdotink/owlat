@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
 	listFailed: vi.fn(),
 	getStats: vi.fn(),
 	getEntry: vi.fn(),
+	claimOne: vi.fn(),
+	settleClaim: vi.fn(),
 	removeOne: vi.fn(),
 	updateEntry: vi.fn(),
 	getAllIds: vi.fn(),
@@ -16,6 +18,8 @@ vi.mock('../../webhooks/dlq.js', () => ({
 	listFailed: mocks.listFailed,
 	getStats: mocks.getStats,
 	getEntry: mocks.getEntry,
+	claimOne: mocks.claimOne,
+	settleClaim: mocks.settleClaim,
 	removeOne: mocks.removeOne,
 	updateEntry: mocks.updateEntry,
 	getAllIds: mocks.getAllIds,
@@ -81,7 +85,7 @@ describe('DLQ route failure logging', () => {
 	});
 
 	it('sanitizes retry failures, including serialized entry writes', async () => {
-		mocks.getEntry.mockResolvedValueOnce({
+		mocks.claimOne.mockResolvedValueOnce({
 			dlqId: 'sensitive-id',
 			event: {
 				event: 'sent',
@@ -91,9 +95,10 @@ describe('DLQ route failure logging', () => {
 			failure: { category: 'transport' },
 			attempts: 0,
 			createdAt: Date.now(),
+			claim: { owner: 'manual', version: 1, expiresAt: Date.now() + 1000 },
 		});
 		mocks.notifyConvex.mockResolvedValueOnce(false);
-		mocks.updateEntry.mockRejectedValueOnce(storageError());
+		mocks.settleClaim.mockRejectedValueOnce(storageError());
 
 		expect((await request('POST', '/sensitive-id/retry')).status).toBe(500);
 		expectOnlySafeFailureMetadata('dlq_retry_one', 'Failed to retry DLQ entry');

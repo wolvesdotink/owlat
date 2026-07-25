@@ -21,11 +21,10 @@
  * window and a bounded number of recent windows to cover the days-long DSN
  * delivery delay (RFC 5321 §4.5.4.1 retry horizon is 4–5 days).
  *
- * Legacy/unsigned format (`bounce+{base64url(id)}@`) is still PRODUCED and
- * ACCEPTED only when no signing key is configured, so a deployment that has not
- * set BOUNCE_VERP_KEY keeps working unchanged. Once a key is set, an unsigned
- * (or wrong-MAC, or tampered-id) token is rejected with `null` — the bounce is
- * then treated as unattributed and never suppresses a recipient.
+ * The legacy/unsigned format (`bounce+{base64url(id)}@`) remains available only
+ * to isolated compatibility tests that deliberately omit a key. Production
+ * startup requires BOUNCE_VERP_KEY, and the DSN/ARF parsers never accept the
+ * unsigned helper result as attribution evidence.
  */
 
 import { createHmac, timingSafeEqual } from 'crypto';
@@ -48,7 +47,8 @@ const WINDOW_TOLERANCE = 6;
  * Resolve the VERP signing key. Reading the env here (rather than threading it
  * through every caller) keeps `buildVerpAddress`/`parseVerpAddress` drop-in for
  * the existing call sites; tests pass the key explicitly. An empty/undefined
- * key means "unsigned mode" (legacy, backward-compatible).
+ * key enables the unsigned compatibility helper used only by isolated tests;
+ * production startup rejects that configuration.
  */
 function resolveVerpKey(explicit?: string): string | undefined {
 	const key = explicit ?? process.env['BOUNCE_VERP_KEY'];
@@ -100,8 +100,9 @@ function macsEqual(a: string, b: string): boolean {
 /**
  * Build a VERP return-path address encoding the message ID.
  *
- * When a signing key is configured the token carries an authenticating HMAC;
- * otherwise it falls back to the legacy unsigned `bounce+{id}@` form.
+ * A signing key produces the production HMAC token. Omitting it produces the
+ * legacy unsigned form only for isolated compatibility tests; production
+ * startup requires BOUNCE_VERP_KEY.
  *
  * @param messageId        the send's stored providerMessageId
  * @param returnPathDomain the bounce domain (e.g. `bounces.owlat.com`)
@@ -112,7 +113,7 @@ export function buildVerpAddress(
 	messageId: string,
 	returnPathDomain: string,
 	key?: string,
-	now: number = Date.now(),
+	now: number = Date.now()
 ): string {
 	const encoded = Buffer.from(messageId).toString('base64url');
 	const signingKey = resolveVerpKey(key);
@@ -138,7 +139,7 @@ export function buildVerpAddress(
 export function parseVerpAddress(
 	address: string,
 	key?: string,
-	now: number = Date.now(),
+	now: number = Date.now()
 ): string | null {
 	// Grammar: bounce+<encodedId>[+<mac>]@... — `+` separates id and mac, so the
 	// encodedId capture must be `+`-free; the mac (when present) follows it.

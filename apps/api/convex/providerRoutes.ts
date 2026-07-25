@@ -1,4 +1,6 @@
 import { v } from 'convex/values';
+import { paginationOptsValidator } from 'convex/server';
+import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import type { Doc } from './_generated/dataModel';
 import { type MutationCtx, type QueryCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
@@ -8,6 +10,8 @@ import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
 import { isSendProviderReady } from './lib/sendProviders/capability';
 import { throwInvalidInput } from './_utils/errors';
+import { internal } from './_generated/api';
+import { internalMutation } from './_generated/server';
 
 /**
  * Provider Routes — CRUD operations for per-org email provider routing.
@@ -44,6 +48,7 @@ async function upsertRoute(
 		strategy: Doc<'providerRoutes'>['strategy'];
 		providers: Doc<'providerRoutes'>['providers'];
 		ipPool?: string;
+		deliverabilityFallback?: Doc<'providerRoutes'>['deliverabilityFallback'];
 	}
 ): Promise<Doc<'providerRoutes'>['_id']> {
 	const now = Date.now();
@@ -54,6 +59,7 @@ async function upsertRoute(
 			strategy: fields.strategy,
 			providers: fields.providers,
 			ipPool: fields.ipPool,
+			deliverabilityFallback: fields.deliverabilityFallback,
 			updatedAt: now,
 		});
 		return existing._id;
@@ -64,6 +70,7 @@ async function upsertRoute(
 		strategy: fields.strategy,
 		providers: fields.providers,
 		ipPool: fields.ipPool,
+		deliverabilityFallback: fields.deliverabilityFallback,
 		createdAt: now,
 		updatedAt: now,
 	});
@@ -80,6 +87,12 @@ const strategyValidator = v.union(
 	v.literal('priority_failover'),
 	v.literal('workload_split')
 );
+
+const deliverabilityFallbackValidator = v.object({
+	isEnabled: v.boolean(),
+	relayProviderType: v.string(),
+	isWarmupOverflowEnabled: v.boolean(),
+});
 
 // ── Client-facing queries ──────────────────────────────────────────
 
@@ -126,6 +139,81 @@ export const listTransportCatalog = authedQuery({
 	},
 });
 
+/** Operational SES relay DNS/status for every owned-MTA sending domain. */
+export const listDeliverabilityRelayDomains = authedQuery({
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		await requireOrgPermission(ctx, 'organization:manage');
+		const page = await ctx.db
+			.query('domains')
+			.withIndex('by_provider_type', (q) => q.eq('providerType', 'mta'))
+			.paginate(args.paginationOpts);
+		const now = Date.now();
+		return {
+			...page,
+			page: await Promise.all(
+				page.page.map(async (domain) => {
+					const identity = await ctx.db
+						.query('sendingDomainSesIdentities')
+						.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+						.first();
+					return {
+						domainId: domain._id,
+						domain: domain.domain,
+						status:
+							domain.status !== 'verified'
+								? ('awaiting_primary_verification' as const)
+								: identity
+									? identity.verifiedAt
+										? now - identity.verifiedAt <= SES_RELAY_PROOF_MAX_AGE_MS
+											? ('verified' as const)
+											: ('stale' as const)
+										: ('pending' as const)
+									: ('provisioning' as const),
+						dnsRecords: identity?.dnsRecords,
+						verificationResults: identity?.verificationResults,
+						spfProofState:
+							identity?.spfProofState ??
+							(identity?.dnsRecords?.spf
+								? ('dns_required' as const)
+								: ('not_applicable_manual_primary' as const)),
+						isProviderVerified: identity?.isProviderVerified ?? false,
+						verifiedAt: identity?.verifiedAt,
+					};
+				})
+			),
+		};
+	},
+});
+
+/** Cursor drain used when fallback is enabled; future domains use lifecycle provisioning. */
+export const provisionDeliverabilityRelayBatch = internalMutation({
+	args: { paginationOpts: paginationOptsValidator },
+	handler: async (ctx, args) => {
+		const page = await ctx.db
+			.query('domains')
+			.withIndex('by_status', (q) => q.eq('status', 'verified'))
+			.paginate(args.paginationOpts);
+		for (const domain of page.page) {
+			if (domain.providerType !== 'mta') continue;
+			const existing = await ctx.db
+				.query('sendingDomainSesIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+				.first();
+			if (!existing) {
+				await ctx.scheduler.runAfter(0, internal.domains.sesRelay.provision, {
+					domainId: domain._id,
+				});
+			}
+		}
+		if (!page.isDone) {
+			await ctx.scheduler.runAfter(500, internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+				paginationOpts: { cursor: page.continueCursor, numItems: args.paginationOpts.numItems },
+			});
+		}
+	},
+});
+
 // ── Mutations ──────────────────────────────────────────────────────
 
 /**
@@ -138,6 +226,7 @@ export const setRoute = authedMutation({
 		strategy: strategyValidator,
 		providers: v.array(providerEntryValidator),
 		ipPool: v.optional(v.string()),
+		deliverabilityFallback: v.optional(deliverabilityFallbackValidator),
 	},
 	handler: async (ctx, args) => {
 		await requireOrgPermission(
@@ -146,6 +235,9 @@ export const setRoute = authedMutation({
 			'Only owners and admins can change provider routing'
 		);
 		const seenKinds = new Set<string>();
+		if (args.ipPool && !(MTA_IP_POOL_NAMES as readonly string[]).includes(args.ipPool)) {
+			throwInvalidInput('Provider route contains an unknown MTA IP pool');
+		}
 		for (const provider of args.providers) {
 			if (!isSendProviderKind(provider.providerType)) {
 				throwInvalidInput('Provider route contains an unknown transport');
@@ -158,12 +250,37 @@ export const setRoute = authedMutation({
 				throwInvalidInput('Provider route contains an unavailable transport');
 			}
 		}
+		const fallback = args.deliverabilityFallback;
+		if (fallback?.isEnabled) {
+			if (fallback.relayProviderType !== 'ses') {
+				throwInvalidInput('Deliverability fallback currently supports only Amazon SES');
+			}
+			if (
+				!args.providers.some(
+					(provider) => provider.isEnabled && provider.providerType === fallback.relayProviderType
+				)
+			) {
+				throwInvalidInput('Deliverability fallback relay must be enabled in this route');
+			}
+			if (
+				!args.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
+			) {
+				throwInvalidInput('Deliverability fallback requires an enabled owned-MTA route');
+			}
+		}
 
-		return await upsertRoute(ctx, args.messageType, {
+		const routeId = await upsertRoute(ctx, args.messageType, {
 			strategy: args.strategy,
 			providers: args.providers,
 			ipPool: args.ipPool,
+			deliverabilityFallback: args.deliverabilityFallback,
 		});
+		if (fallback?.isEnabled) {
+			await ctx.scheduler.runAfter(0, internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+				paginationOpts: { cursor: null, numItems: 32 },
+			});
+		}
+		return routeId;
 	},
 });
 

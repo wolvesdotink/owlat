@@ -10,17 +10,19 @@
  */
 
 import type { ParsedMessage } from '@owlat/mail-message';
-import type Redis from 'ioredis';
 import type { BounceClassification } from '../types.js';
 import { logger } from '../monitoring/logger.js';
 import { parseVerpAddress, isVerpSigningEnabled } from './verp.js';
 import { addressText } from '../inbound/parsedAddress.js';
 import type { ReportPart } from './reportParts.js';
-import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';
 import { createHash } from 'crypto';
-
-const FBL_DEDUP_PREFIX = 'mta:fbl:dedup:';
-const FBL_DEDUP_TTL = 7 * 86400; // 7 days
+export {
+	completeComplaint,
+	releaseComplaint,
+	reserveComplaint,
+	runComplaintEffect,
+} from './complaintDedupStore.js';
+export type { ComplaintDedupReservation, ComplaintDedupResult } from './complaintDedupStore.js';
 
 /**
  * Generate a deduplication key from complaint content.
@@ -36,18 +38,7 @@ export function generateDedupKey(parsed: ParsedMessage, originalMessageId?: stri
 }
 
 /**
- * Check if a complaint has already been processed (deduplication).
- * Returns true if this is a duplicate that should be skipped.
- */
-export async function isDuplicateComplaint(redis: Redis, dedupKey: string): Promise<boolean> {
-	const key = `${FBL_DEDUP_PREFIX}${dedupKey}`;
-	// SET NX returns null if key already exists (duplicate)
-	const result = await redis.set(key, '1', 'EX', FBL_DEDUP_TTL, 'NX');
-	return result === null; // null means key existed = duplicate
-}
-
-/**
- * The two machine-readable MIME parts of an RFC 5965 ARF report.
+ * The machine-readable fields of an RFC 5965 ARF report.
  *
  * An ARF report is a `multipart/report; report-type=feedback-report` body with
  * three sub-parts (RFC 5965 §2):
@@ -55,22 +46,15 @@ export async function isDuplicateComplaint(redis: Redis, dedupKey: string): Prom
  *   2. `message/feedback-report` — the STRUCTURED, key:value report fields
  *      (`Feedback-Type`, `Original-Mail-From`, `Original-Rcpt-To`,
  *      `Reported-Domain`, `Source-IP`, …). This is the authoritative signal.
- *   3. `message/rfc822` (or `text/rfc822-headers`) — a copy of the ORIGINAL
- *      message we sent, which carries our `Feedback-ID` / `X-Owlat-*` headers.
+ *   3. `message/rfc822` (or `text/rfc822-headers`) — an untrusted copy of the
+ *      original message. It is never an attribution source.
  *
- * The previous implementation substring-scanned every part indiscriminately,
- * so a `Feedback-ID` in the original message and a `Original-Rcpt-To` in the
- * feedback-report part were read from whichever attachment happened to contain
- * them. We now split the two parts by content-type so each field is read from
- * the part RFC 5965 actually defines it in. When an ISP fails to set the
- * sub-part content-types, both fall back to a heuristic split / the raw body so
- * a malformed-but-genuine report still attributes.
+ * We retain only structured feedback fields here. Outbound organization and
+ * campaign attribution comes later from signed, server-persisted provenance.
  */
 interface ArfParts {
 	/** Decoded text of the `message/feedback-report` part (structured fields). */
 	feedbackReport: string;
-	/** Decoded text of the `message/rfc822` original-message part. */
-	originalMessage: string;
 }
 
 /**
@@ -141,46 +125,24 @@ export function tryParseARF(
 	// signed VERP token (the `Original-Mail-From` return-path) — the
 	// unauthenticated header scrapes are skipped so a forged complaint cannot
 	// suppress a healthy recipient.
-	const headerFallbackAllowed = !isVerpSigningEnabled();
-
 	let originalMessageId: string | undefined;
 
 	// First, prefer the authenticated VERP return-path (Original-Mail-From). Per
 	// RFC 5965 §3.2 this lives in the structured feedback-report part. It is the
 	// only source verified against the HMAC, so it is always trusted.
 	const originalMailFrom = matchField(parts.feedbackReport, 'Original-Mail-From');
-	if (originalMailFrom) {
+	if (isVerpSigningEnabled() && originalMailFrom) {
 		const verifiedId = parseVerpAddress(originalMailFrom);
 		if (verifiedId) {
 			originalMessageId = verifiedId;
 		}
 	}
 
-	// Per-campaign attribution: the ORIGINAL message carries a Gmail FBL
-	// `Feedback-ID` header (`<streamType>:<campaignId>:<audienceType>:<senderId>`,
-	// see delivery/sendComposition/feedbackId.ts). Read it back from the
-	// `message/rfc822` part once it lands outbound. This is only a metric label
-	// (never a suppression handle), so it is not gated behind the VERP-signing
-	// header-fallback guard. Some ISPs instead surface the Feedback-ID inline in
-	// the report body, so fall back to that.
-	let campaignId = extractCampaignIdFromFeedbackId(parts.originalMessage);
-	if (!campaignId) {
-		campaignId = extractCampaignIdFromFeedbackId(bodyText);
-	}
-
-	// Our X-Owlat-Org-Id is echoed in the original message we sent.
-	let organizationId = matchField(parts.originalMessage, 'X-Owlat-Org-Id');
-	if (!organizationId) {
-		// Some reports embed it inline rather than as a re-attached rfc822 part.
-		organizationId = matchField(bodyText, 'X-Owlat-Org-Id');
-	}
-
-	if (headerFallbackAllowed && !originalMessageId) {
-		// Look for our custom headers in the ORIGINAL message part.
-		originalMessageId =
-			matchField(parts.originalMessage, 'X-Owlat-Message-Id') ??
-			matchMessageId(parts.originalMessage);
-	}
+	// Never copy Feedback-ID or X-Owlat-Org-Id from the re-attached original
+	// message. ARF bytes are internet-controlled and syntactic validation cannot
+	// bound label/key cardinality. attachFeedbackProvenance resolves both values
+	// from the server-persisted outbound record only after this parser verifies a
+	// signed VERP Message-ID.
 
 	// Extract the complained recipient address. RFC 5965 §3.2 puts it in the
 	// machine-readable feedback-report part as `Original-Rcpt-To` (the field
@@ -207,9 +169,7 @@ export function tryParseARF(
 		{
 			feedbackType,
 			originalMessageId,
-			organizationId,
 			recipient,
-			campaignId,
 			sourceIsp,
 			reportedDomain,
 			sourceIp,
@@ -225,9 +185,7 @@ export function tryParseARF(
 		// the ISP token must stay a single \w+ word.
 		message: `Spam complaint via ARF from ${sourceIsp ?? 'unknown ISP'}`,
 		originalMessageId,
-		organizationId,
 		recipient,
-		campaignId,
 		feedbackType,
 		reportedDomain,
 		sourceIp,
@@ -236,20 +194,16 @@ export function tryParseARF(
 }
 
 /**
- * Split an ARF report into its `message/feedback-report` (structured fields)
- * and `message/rfc822` (original message) parts by MIME content-type.
+ * Recover the ARF `message/feedback-report` structured fields by MIME type.
  *
  * mailparser flattens both `message/*` sub-parts into `parsed.attachments`,
  * each tagged with its `contentType`, so we can route by type rather than
- * scanning blindly. ISPs that mislabel or omit the sub-part content-types fall
- * back to: any attachment that looks like a feedback-report (carries
- * `Feedback-Type:`) → feedbackReport, the rest → originalMessage; and the
- * top-level body text is always folded into the feedbackReport scan so an
- * inline (non-multipart) report still parses.
+ * scanning blindly. A mislabeled part carrying `Feedback-Type:` is accepted;
+ * the top-level body is folded in for inline reports. Re-attached original
+ * message bytes are intentionally ignored for attribution.
  */
 function splitArfParts(reportParts: ReportPart[], bodyText: string): ArfParts {
 	let feedbackReport = '';
-	let originalMessage = '';
 
 	for (const part of reportParts) {
 		const content = part.content.toString('utf-8');
@@ -257,14 +211,9 @@ function splitArfParts(reportParts: ReportPart[], bodyText: string): ArfParts {
 
 		if (type === 'message/feedback-report') {
 			feedbackReport += `\n${content}`;
-		} else if (type === 'message/rfc822' || type === 'text/rfc822-headers') {
-			originalMessage += `\n${content}`;
 		} else if (/^\s*Feedback-Type:/im.test(content)) {
 			// Mislabeled/untyped part that is clearly the feedback-report.
 			feedbackReport += `\n${content}`;
-		} else {
-			// Anything else (typically the re-attached original message).
-			originalMessage += `\n${content}`;
 		}
 	}
 
@@ -272,7 +221,7 @@ function splitArfParts(reportParts: ReportPart[], bodyText: string): ArfParts {
 	// reports and for ISPs that don't attach a typed feedback-report part.
 	feedbackReport += `\n${bodyText}`;
 
-	return { feedbackReport, originalMessage };
+	return { feedbackReport };
 }
 
 /**
@@ -287,12 +236,6 @@ function matchField(text: string, field: string): string | undefined {
 	const match = text.match(re);
 	const value = match?.[1]?.trim();
 	return value && value.length > 0 ? value : undefined;
-}
-
-/** Match a standard `Message-ID: <...>` header and return the bracketed id. */
-function matchMessageId(text: string): string | undefined {
-	const match = text.match(/Message-ID:\s*<([^>]+)>/i);
-	return match?.[1]?.trim();
 }
 
 /**
@@ -348,17 +291,6 @@ function normalizeRecipient(raw: string): string | undefined {
 		value = angle[1].trim();
 	}
 	return value.length > 0 ? value : undefined;
-}
-
-/**
- * Scrape a `Feedback-ID:` header line out of raw message text and return the
- * campaignId it carries (field 2 of the `campaign` stream), delegating the
- * value parsing to the shared `parseCampaignFromFeedbackId` so the inbound
- * bounce path and the outbound delivery path agree on the format.
- */
-function extractCampaignIdFromFeedbackId(content: string): string | undefined {
-	const match = content.match(/Feedback-ID:\s*([^\r\n]+)/i);
-	return parseCampaignFromFeedbackId(match?.[1]);
 }
 
 /**

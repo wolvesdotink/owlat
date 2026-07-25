@@ -22,3 +22,12 @@ export const getDomainForRegistration = internalQuery({
 		return await ctx.db.get(args.domainId);
 	},
 });
+
+export const getSesIdentity = internalQuery({
+	args: { domainId: v.id('domains') },
+	handler: async (ctx, args) =>
+		await ctx.db
+			.query('sendingDomainSesIdentities')
+			.withIndex('by_domain', (q) => q.eq('domainId', args.domainId))
+			.first(),
+});

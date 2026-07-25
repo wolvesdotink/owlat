@@ -86,4 +86,28 @@ export const webhookTables = {
 		// Newest payload for one provider — powers the Delivery page's live
 		// "last SES event received" line without scanning every source's rows.
 		.index('by_source_and_received_at', ['source', 'receivedAt']),
+
+	// Transactional idempotency receipts for MTA campaign complaint alerts.
+	// The producer can retry after a lost HTTP response for up to its durable
+	// marker horizon; retaining the immutable alert projection lets the API
+	// distinguish a truthful replay from an event-id collision without writing
+	// a second abuse-status audit row.
+	mtaCampaignAlertReceipts: defineTable({
+		eventId: v.string(),
+		campaignId: v.string(),
+		message: v.string(),
+		complaintRate: v.number(),
+		eventTimestamp: v.number(),
+		processedAt: v.number(),
+		expiresAt: v.number(),
+		transitionApplied: v.union(
+			v.literal('transitioned'),
+			v.literal('recorded'),
+			// The alert was audited and receipted, but severity rules refused the
+			// status change (the instance is already suspended or banned).
+			v.literal('skipped')
+		),
+	})
+		.index('by_event_id', ['eventId'])
+		.index('by_expires_at', ['expiresAt']),
 };

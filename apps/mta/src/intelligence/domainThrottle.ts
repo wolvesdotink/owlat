@@ -20,6 +20,11 @@ import type Redis from 'ioredis';
 // defaults when Redis has no profile (e.g. before seeding).
 import { getProfile } from '../config/ispProfiles.js';
 import { logger } from '../monitoring/logger.js';
+import { createHash } from 'crypto';
+import {
+	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
+	type DurableEffectIdentity,
+} from '../lib/effectCheckpoint.js';
 
 const THROTTLE_PREFIX = 'mta:throttle:';
 const WINDOW_PREFIX = 'mta:throttle:window:';
@@ -30,12 +35,66 @@ const HASH_TTL = 86400; // 24h TTL for throttle state
 /**
  * Build Redis keys scoped to a specific IP + domain pair
  */
+function throttleSlot(ip: string, domain: string): string {
+	return createHash('sha256').update(`${ip}\0${domain}`).digest('hex');
+}
+
+export function throttleStateKey(ip: string, domain: string): string {
+	return `${THROTTLE_PREFIX}{${throttleSlot(ip, domain)}}:state`;
+}
+
+export function throttleWindowKey(ip: string, domain: string): string {
+	return `${WINDOW_PREFIX}{${throttleSlot(ip, domain)}}:sends`;
+}
+
+function effectReceiptKey(ip: string, domain: string, identity: DurableEffectIdentity): string {
+	return `${THROTTLE_PREFIX}{${throttleSlot(ip, domain)}}:effect:${createHash('sha256').update(identity).digest('hex')}`;
+}
+
 function keys(ip: string, domain: string) {
 	return {
-		hash: `${THROTTLE_PREFIX}${ip}:${domain}`,
-		window: `${WINDOW_PREFIX}${ip}:${domain}`,
+		hash: throttleStateKey(ip, domain),
+		window: throttleWindowKey(ip, domain),
 	};
 }
+
+const RECORD_SUCCESS_ONCE_LUA = `
+if redis.call('EXISTS', KEYS[2]) == 1 then return {0, '0', '0'} end
+local consecutive = redis.call('HINCRBY', KEYS[1], 'consecutiveSuccess', 1)
+local currentRate = tonumber(redis.call('HGET', KEYS[1], 'currentRate') or ARGV[1])
+local newRate = currentRate
+if consecutive >= tonumber(ARGV[2]) then
+  newRate = math.min(currentRate * tonumber(ARGV[3]), tonumber(ARGV[4]))
+  redis.call('HSET', KEYS[1], 'currentRate', tostring(newRate), 'consecutiveSuccess', '0', 'status', 'healthy')
+end
+redis.call('EXPIRE', KEYS[1], ARGV[5])
+redis.call('SET', KEYS[2], 'recorded', 'PX', ARGV[6])
+return {1, tostring(currentRate), tostring(newRate)}
+`;
+
+const RECORD_DEFER_ONCE_LUA = `
+if redis.call('EXISTS', KEYS[2]) == 1 then return {0, '0', '0', '0', 'duplicate'} end
+local now = tonumber(ARGV[1])
+local currentRate = tonumber(redis.call('HGET', KEYS[1], 'currentRate') or ARGV[2])
+local newRate = math.max(currentRate * tonumber(ARGV[3]), tonumber(ARGV[4]))
+local lastDeferAt = tonumber(redis.call('HGET', KEYS[1], 'lastDeferAt') or '0')
+local recentDefers = tonumber(redis.call('HGET', KEYS[1], 'recentDefers') or '0')
+local status = 'degraded'
+if now - lastDeferAt < 300000 then recentDefers = recentDefers + 1 else recentDefers = 1 end
+if recentDefers >= 3 then status = 'blocking' end
+redis.call('HSET', KEYS[1], 'currentRate', tostring(newRate), 'consecutiveSuccess', '0', 'lastDeferAt', tostring(now), 'status', status, 'recentDefers', tostring(recentDefers))
+redis.call('EXPIRE', KEYS[1], ARGV[5])
+redis.call('SET', KEYS[2], 'recorded', 'PX', ARGV[6])
+return {1, tostring(currentRate), tostring(newRate), tostring(recentDefers), status}
+`;
+
+const RECORD_REJECT_ONCE_LUA = `
+if redis.call('EXISTS', KEYS[2]) == 1 then return 0 end
+redis.call('HSET', KEYS[1], 'consecutiveSuccess', '0')
+redis.call('EXPIRE', KEYS[1], ARGV[1])
+redis.call('SET', KEYS[2], 'recorded', 'PX', ARGV[2])
+return 1
+`;
 
 /**
  * Lua script for atomic slot acquisition.
@@ -150,10 +209,32 @@ export async function recordSuccess(
 	redis: Redis,
 	ip: string,
 	throttleKey: string,
-	providerKey = throttleKey
+	providerKey = throttleKey,
+	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<void> {
 	const profile = await getProfile(redis, providerKey);
 	const { hash: hashKey } = keys(ip, throttleKey);
+	if (idempotencyIdentity) {
+		const result = (await redis.eval(
+			RECORD_SUCCESS_ONCE_LUA,
+			2,
+			hashKey,
+			effectReceiptKey(ip, throttleKey, idempotencyIdentity),
+			String(profile.defaultRate),
+			String(RECOVERY_THRESHOLD),
+			String(profile.recoveryFactor),
+			String(profile.ceiling),
+			String(HASH_TTL),
+			String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
+		)) as [number, string, string];
+		if (Number(result[0]) === 1 && Number(result[2]) > Number(result[1])) {
+			logger.debug(
+				{ ip, throttleKey, currentRate: Number(result[1]), newRate: Number(result[2]) },
+				'Destination throttle rate increased'
+			);
+		}
+		return;
+	}
 
 	const consecutive = await redis.hincrby(hashKey, 'consecutiveSuccess', 1);
 
@@ -192,11 +273,44 @@ export async function recordDefer(
 	redis: Redis,
 	ip: string,
 	throttleKey: string,
-	providerKey = throttleKey
+	providerKey = throttleKey,
+	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<void> {
 	const profile = await getProfile(redis, providerKey);
 	const { hash: hashKey } = keys(ip, throttleKey);
 	const now = Date.now();
+	if (idempotencyIdentity) {
+		const result = (await redis.eval(
+			RECORD_DEFER_ONCE_LUA,
+			2,
+			hashKey,
+			effectReceiptKey(ip, throttleKey, idempotencyIdentity),
+			String(now),
+			String(profile.defaultRate),
+			String(profile.backoffFactor),
+			String(profile.floor),
+			String(HASH_TTL),
+			String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
+		)) as [number, string, string, string, string];
+		if (Number(result[0]) === 0) return;
+		if (result[4] === 'blocking') {
+			logger.warn(
+				{ ip, throttleKey, recentDefers: Number(result[3]) },
+				'Domain marked as blocking for IP'
+			);
+		}
+		logger.info(
+			{
+				ip,
+				throttleKey,
+				previousRate: Number(result[1]),
+				newRate: Number(result[2]),
+				status: result[4],
+			},
+			'Domain throttle rate reduced'
+		);
+		return;
+	}
 
 	const currentRate = parseFloat(
 		(await redis.hget(hashKey, 'currentRate')) ?? String(profile.defaultRate)
@@ -248,8 +362,24 @@ export async function recordDefer(
 /**
  * Record a permanent rejection (5xx) — contributes to blocking detection
  */
-export async function recordReject(redis: Redis, ip: string, throttleKey: string): Promise<void> {
+export async function recordReject(
+	redis: Redis,
+	ip: string,
+	throttleKey: string,
+	idempotencyIdentity?: DurableEffectIdentity
+): Promise<void> {
 	const { hash: hashKey } = keys(ip, throttleKey);
+	if (idempotencyIdentity) {
+		await redis.eval(
+			RECORD_REJECT_ONCE_LUA,
+			2,
+			hashKey,
+			effectReceiptKey(ip, throttleKey, idempotencyIdentity),
+			String(HASH_TTL),
+			String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS)
+		);
+		return;
+	}
 	await redis.hset(hashKey, 'consecutiveSuccess', '0');
 	await redis.expire(hashKey, HASH_TTL);
 }

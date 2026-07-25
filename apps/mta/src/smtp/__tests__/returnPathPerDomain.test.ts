@@ -376,6 +376,7 @@ describe('D1 — per-domain VERP return-path host', () => {
 		});
 
 		it('a DSN arriving at the per-domain host still attributes back to the send', async () => {
+			process.env['BOUNCE_VERP_KEY'] = 'return-path-test-verp-key-0123456789';
 			await dkimStore.setReturnPathHost(redis, 'acme.com', 'bounce.acme.com');
 			dkimStore.clearCache();
 
@@ -402,7 +403,7 @@ describe('D1 — per-domain VERP return-path host', () => {
 		});
 
 		it('per-domain host attribution survives the VERP HMAC (signed mode)', async () => {
-			process.env['BOUNCE_VERP_KEY'] = 'test-signing-key';
+			process.env['BOUNCE_VERP_KEY'] = 'return-path-test-verp-key-0123456789';
 			await dkimStore.setReturnPathHost(redis, 'acme.com', 'bounce.acme.com');
 			dkimStore.clearCache();
 

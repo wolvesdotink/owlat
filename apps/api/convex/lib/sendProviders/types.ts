@@ -94,12 +94,28 @@ export interface EmailSendParams {
 export interface MtaExtras {
 	/** Unique message ID for correlation */
 	messageId?: string;
+	/** Unique identity for this bounded queue attempt. */
+	workAttemptId?: string;
+	/** Opaque Convex-issued server-side re-entry snapshot handle. */
+	routingReentryToken?: string;
+	/** Callback material whose canonical digest is authenticated by the token. */
+	routingReentry?: {
+		envelopeInput: unknown;
+		retryState: { attempt: number; startedAt: number; idempotencyKey: string };
+	};
 	/** IP pool: 'transactional' or 'campaign' (see MTA_IP_POOL_NAMES). */
 	ipPool?: MtaIpPool;
 	/** Engagement score 0-100 for priority ordering */
 	engagementScore?: number;
 	/** Domain for DKIM signing */
 	dkimDomain?: string;
+	organizationId?: string;
+	messageType?: import('@owlat/shared').GovernedMessageType;
+	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
+	intakePath?: 'system';
+	routingLease?: string;
+	/** Decision input bound into the authenticated routing lease. */
+	allowWarmupOverflow?: boolean;
 }
 
 export type SesExtras = Record<string, never>;
@@ -108,8 +124,7 @@ export interface ResendExtras {
 	/**
 	 * Stable idempotency key. Forwarded to Resend as the `Idempotency-Key`
 	 * header so a surviving retry de-dupes at Resend instead of double-sending.
-	 * The worker derives this from the Send-row id (see
-	 * `emailWorker.deriveIdempotencyKey`).
+	 * The governed dispatch boundary derives this from the durable Send row.
 	 */
 	idempotencyKey?: string;
 }
@@ -162,13 +177,22 @@ export enum EmailErrorCode {
 	 * server error.
 	 */
 	SMTPUTF8_UNSUPPORTED = 'SMTPUTF8_UNSUPPORTED',
+	/** A last-mile safety lease changed; reschedule with a fresh decision. */
+	ROUTING_DEFERRED = 'ROUTING_DEFERRED',
 	/** Unknown error */
 	UNKNOWN = 'UNKNOWN',
 }
 
 export type EmailSendAttempt =
 	| { success: true; id: string }
-	| { success: false; errorMessage: string; errorCode: EmailErrorCode };
+	| {
+			success: false;
+			errorMessage: string;
+			errorCode: EmailErrorCode;
+			retryAfterMs?: number;
+			/** MTA request outcome is unknown because no HTTP response was observed. */
+			acceptanceUnknown?: true;
+	  };
 
 // ─── Dispatch helper result ────────────────────────────────────────────────
 

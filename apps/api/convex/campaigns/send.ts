@@ -417,6 +417,7 @@ type EnqueueVariantArgs = {
 	audienceType?: 'topic' | 'segment';
 	viewInBrowserUrl?: string;
 	providerType?: string;
+	ipPool?: string;
 	trackingBaseUrl?: string;
 	convexSiteUrl?: string;
 	siteUrl?: string;
@@ -530,6 +531,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 				audienceType: args.audienceType,
 				viewInBrowserUrl: args.viewInBrowserUrl,
 				providerType: args.providerType,
+				ipPool: args.ipPool,
 				trackingBaseUrl: args.trackingBaseUrl,
 				organizationId: args.organizationId,
 				listId: args.listId,
@@ -558,6 +560,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 				audienceType: args.audienceType,
 				viewInBrowserUrl: args.viewInBrowserUrl,
 				providerType: args.providerType,
+				ipPool: args.ipPool,
 				trackingBaseUrl: args.trackingBaseUrl,
 				organizationId: args.organizationId,
 				listId: args.listId,
@@ -643,6 +646,8 @@ export const resolveCampaignPage = internalAction({
 
 		const resolvedRoute = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
 			messageType: 'campaign',
+			to: page.recipients[0]?.email,
+			from,
 		});
 		if (!resolvedRoute) {
 			// Fail-closed: the campaign pre-flight already requires a configured
@@ -768,17 +773,24 @@ export const resolveCampaignPage = internalAction({
 			const tmplDefaultLanguage = template?.defaultLanguage ?? 'en';
 			const campaignSubjectOverride = campaign.subject;
 
-			// Group by (language, variant) so each combination enqueues with the
-			// right per-language content + variant tag in one batch.
-			type Bucket = { language: string; variant: 'A' | 'B' | undefined };
+			// Group only by content. Destination-provider routing is resolved for
+			// each actual recipient at the worker's last pre-attempt boundary, so a
+			// custom-domain MX classification cannot misroute this whole bucket.
+			type Bucket = {
+				language: string;
+				variant: 'A' | 'B' | undefined;
+			};
 			const byBucket = new Map<string, { bucket: Bucket; recipients: typeof page.recipients }>();
 			for (const recipient of page.recipients) {
 				const variant = bucketFor(String(recipient._id));
 				if (variant === null) continue; // belongs to the other phase — skip
 				const language = recipient.language ?? tmplDefaultLanguage;
-				const key = `${language} ${variant ?? '-'}`;
+				const key = `${language}\u0000${variant ?? '-'}`;
 				if (!byBucket.has(key))
-					byBucket.set(key, { bucket: { language, variant }, recipients: [] });
+					byBucket.set(key, {
+						bucket: { language, variant },
+						recipients: [],
+					});
 				byBucket.get(key)!.recipients.push(recipient);
 			}
 
@@ -829,7 +841,10 @@ export const resolveCampaignPage = internalAction({
 					replyTo: campaign.replyTo,
 					audienceType,
 					viewInBrowserUrl,
+					// Advisory snapshot only. The worker deliberately re-resolves current
+					// state for each recipient immediately before dispatch.
 					providerType: resolvedRoute.providerType,
+					ipPool: resolvedRoute.ipPool,
 					trackingBaseUrl,
 					convexSiteUrl,
 					siteUrl,

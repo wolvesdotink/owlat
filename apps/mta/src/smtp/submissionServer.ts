@@ -12,7 +12,7 @@
  *     as the listener's single `authenticate` hook, gated by the per-IP
  *     failed-AUTH throttle (RFC 4954 §4, OWASP brute-force);
  *   - a require-auth-before-MAIL gate (submission never relays unauthenticated);
- *   - per-recipient job fan-out off the RFC5322 header recipients, the From
+ *   - per-recipient job fan-out off the authenticated SMTP envelope, the From
  *     forgery 553 5.7.1 guard for Postbox sessions, and AMP `text/x-amp-html`
  *     recovery, all in the DATA hook;
  *   - the per-IP connection cap (onConnect) + counter release (socket close),
@@ -47,11 +47,11 @@ import { assertSubmissionTlsConfigured } from '../config.js';
 import { lookupCredential } from '../auth/credentials.js';
 import { verifyPostboxAppPassword } from '../auth/postboxAuth.js';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
-import { mapToPriority } from '../intelligence/engagementPriority.js';
+import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { logger } from '../monitoring/logger.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { emailDomain } from '@owlat/shared/spfAlignment';
-import { randomUUID } from 'crypto';
+import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
 import {
 	checkConnectionRateLimit,
 	releaseConnection,
@@ -60,6 +60,14 @@ import {
 	clearAuthFailures,
 } from './submissionSecurity.js';
 import { createSlotTracker } from '../lib/connectionSlots.js';
+import {
+	bindSubmissionClientRequest,
+	normalizeEnvelopeAddress,
+	resolveSubmissionIdentity,
+	SUBMISSION_DEDUPLICATION_MAIL_PARAMETER,
+	SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER,
+	submissionRecipientJobId,
+} from './submissionIdentity.js';
 
 /**
  * Hard cap for buffered submitted MIME (advertised via EHLO SIZE AND enforced by
@@ -67,11 +75,6 @@ import { createSlotTracker } from '../lib/connectionSlots.js';
  * message can always carry a max-size file.
  */
 const MAX_SUBMISSION_BYTES = MAX_ATTACHMENT_BYTES;
-
-function priorityToOrderMs(priority: number): number {
-	if (priority <= 3) return priority;
-	return Date.now();
-}
 
 /** The authenticated identity of a submission session. */
 export interface AuthenticatedSession {
@@ -118,6 +121,18 @@ function clientName(session: Session): string | undefined {
 /** Best-effort remote IP from the session (for throttling / limiting). */
 function sessionRemoteIp(session: Session): string {
 	return session.remoteAddress || 'unknown';
+}
+
+function submissionRecipients(session: Session): string[] {
+	const seen = new Set<string>();
+	const recipients: string[] = [];
+	for (const recipient of session.rcptTo) {
+		const normalized = normalizeEnvelopeAddress(recipient.address);
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		recipients.push(normalized);
+	}
+	return recipients;
 }
 
 /**
@@ -224,17 +239,6 @@ export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>
 	};
 }
 
-/** Collect the bare addresses of a parsed address header into `out`. */
-function collectAddresses(field: AddressObject | AddressObject[] | undefined, out: string[]): void {
-	if (!field) return;
-	const objs = Array.isArray(field) ? field : [field];
-	for (const obj of objs) {
-		for (const entry of obj.value) {
-			if (entry.address) out.push(entry.address);
-		}
-	}
-}
-
 /** The first From address, lowercased (identity for the forgery guard + DKIM domain). */
 function firstFrom(field: AddressObject | AddressObject[] | undefined): string {
 	if (!field) return '';
@@ -275,8 +279,8 @@ function extractAmpHtml(binary: string): string | undefined {
  * for tests. Returns a rejection {@link SmtpHandlerResult} to refuse, or nothing
  * to accept with the listener's default 250.
  */
-export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
-	const { queue } = deps;
+export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
+	const { queue, redis } = deps;
 	return async function onData(message: Buffer, session: Session): Promise<SmtpHandlerResult> {
 		try {
 			const authData = session.state.auth;
@@ -289,10 +293,7 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
 			const binary = message.toString('latin1');
 			const parsed = parseMessage(binary);
 
-			const recipients: string[] = [];
-			collectAddresses(parsed.to, recipients);
-			collectAddresses(parsed.cc, recipients);
-			collectAddresses(parsed.bcc, recipients);
+			const recipients = submissionRecipients(session);
 
 			if (recipients.length === 0) {
 				return { code: 554, enhanced: '5.5.0', text: 'No valid recipients' };
@@ -300,6 +301,14 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
 
 			const fromAddress = firstFrom(parsed.from);
 			const fromDomain = emailDomain(fromAddress);
+			const envelope = session.mailFrom;
+			if (!envelope?.address) {
+				return { code: 503, enhanced: '5.5.1', text: 'MAIL FROM required' };
+			}
+			const identity = resolveSubmissionIdentity(authData, envelope, parsed.headers, message);
+			if (!identity.ok) {
+				return { code: 554, enhanced: '5.5.4', text: identity.message };
+			}
 
 			// RFC 2046 §5.1.4: preserve the AMP alternative so the sender re-emits the
 			// `text/x-amp-html` part (see {@link extractAmpHtml}).
@@ -319,16 +328,28 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
 				};
 			}
 
+			const clientRequestBinding = await bindSubmissionClientRequest(redis, identity, recipients);
+			if (clientRequestBinding === 'conflict' || clientRequestBinding === 'recipient-expansion') {
+				return {
+					code: 554,
+					enhanced: '5.5.4',
+					text:
+						clientRequestBinding === 'conflict'
+							? 'Idempotency key is already bound to different message content or sender'
+							: 'Idempotency key cannot add recipients after first use',
+				};
+			}
+
 			// Fan out: one job per recipient.
 			let queued = 0;
 			for (const to of recipients) {
 				// Postbox-prefixed messageId so the bounce/sent webhook can look the
 				// row back up — same convention as the webmail dispatch path.
-				const messageId = authData.postbox
-					? `pb-smtp-${authData.postbox.mailboxId}-${randomUUID()}`
-					: `smtp-${randomUUID()}`;
-				const job: EmailJob = {
+				const prefix = authData.postbox ? `pb-smtp-${authData.postbox.mailboxId}` : 'smtp';
+				const messageId = submissionRecipientJobId(prefix, identity.fingerprint, to);
+				const job: EmailJob & { intakeReceiptId: string } = {
 					messageId,
+					intakeReceiptId: messageId,
 					to,
 					from: fromAddress,
 					subject: parsed.subject ?? '(no subject)',
@@ -345,12 +366,21 @@ export function buildOnData(deps: Pick<SubmissionDeps, 'queue'>) {
 				const groupId = buildGroupKey(job.ipPool, domain);
 				const priority = mapToPriority(undefined);
 
-				await queue.add({ groupId, data: job, orderMs: priorityToOrderMs(priority) });
+				await enqueueReconciledIntake(queue, redis, {
+					groupId,
+					data: job,
+					orderMs: priorityToOrderMs(priority),
+				});
 				queued++;
 			}
 
 			logger.info(
-				{ from: fromAddress, recipients: recipients.length, queued },
+				{
+					from: fromAddress,
+					recipients: recipients.length,
+					queued,
+					submissionIdentityMode: identity.mode,
+				},
 				'SMTP submission accepted'
 			);
 			return;
@@ -455,8 +485,8 @@ function submissionTls(config: MtaConfig): SmtpTlsConfig {
  * Build a submission listener. The 587 (STARTTLS) and 465 (implicit-TLS) flavors
  * are behaviorally identical post-AUTH — only the transport differs
  * (`implicitTls`). AUTH is refused until the channel is secure (`requireTls`),
- * MAIL is refused until AUTH succeeds, and recipients are taken from the message
- * headers (not the SMTP envelope) exactly as the previous listener did.
+ * MAIL is refused until AUTH succeeds, and delivery recipients come from the
+ * authenticated SMTP envelope; To/Cc/Bcc headers are display content only.
  */
 function buildSubmissionListener(
 	queue: Queue<EmailJob>,
@@ -492,6 +522,7 @@ function buildSubmissionListener(
 		// identity stays consistent with reverse DNS.
 		hostname: config.ehloHostname,
 		banner: `${config.ehloHostname} Owlat SMTP Submission`,
+		extensions: [SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER, SUBMISSION_DEDUPLICATION_MAIL_PARAMETER],
 		maxMessageBytes: MAX_SUBMISSION_BYTES, // advertised via EHLO SIZE; enforced in the loop
 		tls,
 		implicitTls,
@@ -513,7 +544,7 @@ function buildSubmissionListener(
 		),
 		// Submission never relays unauthenticated: refuse MAIL FROM until AUTH.
 		onMailFrom: buildOnMailFrom(),
-		onData: buildOnData({ queue }),
+		onData: buildOnData({ queue, redis }),
 		onError: (err) => logger.error({ err }, 'SMTP submission listener error'),
 	});
 

@@ -25,9 +25,8 @@ export const RECIPIENT_BLOCKED_ERROR = 'recipient_blocked';
  */
 export const NO_DELIVERY_PROVIDER_ERROR = 'no_delivery_provider';
 
-const CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_CODE = 'DELIVERY_PROVIDER_UNAVAILABLE';
-const CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_MESSAGE =
-	'Delivery provider unavailable before campaign dispatch';
+/** Test-preview Sends outlive the MTA's four-day queue ceiling, then self-delete. */
+export const TEST_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Per ADR-0006, the workpool `onComplete` callback is owned by the Send
 // completion (module) at `delivery/sendCompletion.ts` — each enqueue below
@@ -37,6 +36,84 @@ const CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_MESSAGE =
 // contact-activity insert, attachment-cleanup loop, provider health tracking)
 // is gone; every concern moved to the lifecycle effect list or to the Send
 // completion module.
+
+/**
+ * Queue a member-only test preview through the same durable governed path as
+ * every other Send. The caller owns recipient/sender authorization; this
+ * mutation owns the durable SendRef, workpool completion, and bounded cleanup.
+ */
+export const enqueueTestSend = internalMutation({
+	args: {
+		email: v.string(),
+		organizationId: v.string(),
+		from: v.string(),
+		replyTo: v.optional(v.string()),
+		subject: v.string(),
+		html: v.string(),
+	},
+	handler: async (ctx, args) => {
+		if (!(await selectedSendProviderReady(ctx, undefined))) {
+			throw new Error(NO_DELIVERY_PROVIDER_ERROR);
+		}
+		const queuedAt = Date.now();
+		const sendId = await ctx.db.insert('transactionalSends', {
+			kind: 'test' as const,
+			email: args.email,
+			subject: args.subject,
+			status: 'queued',
+			queuedAt,
+		});
+
+		await transactionalEmailPool.enqueueAction(
+			ctx,
+			internal.delivery.worker.sendSingleEmail,
+			{
+				envelopeInput: {
+					kind: 'transactional' as const,
+					deliveryDomain: 'member_test' as const,
+					messageType: 'transactional' as const,
+					emailPurpose: 'transactional' as const,
+					to: args.email,
+					from: args.from,
+					replyTo: args.replyTo,
+					organizationId: args.organizationId,
+					sendId,
+					template: { subject: args.subject, htmlContent: args.html },
+				},
+			},
+			{
+				onComplete: internal.delivery.sendCompletion.completeSend,
+				context: { sendRef: { kind: 'transactional' as const, id: sendId } },
+			}
+		);
+		await ctx.scheduler.runAfter(
+			TEST_SEND_RETENTION_MS,
+			internal.delivery.enqueue.deleteExpiredTestSend,
+			{ sendId, queuedAt }
+		);
+		return { sendId };
+	},
+});
+
+/** Idempotent per-row retention callback; seven days exceeds every MTA retry window. */
+export const deleteExpiredTestSend = internalMutation({
+	args: { sendId: v.id('transactionalSends'), queuedAt: v.number() },
+	handler: async (ctx, args) => {
+		const send = await ctx.db.get(args.sendId);
+		if (!send || send.kind !== 'test' || send.queuedAt !== args.queuedAt) return false;
+		const remainingMs = args.queuedAt + TEST_SEND_RETENTION_MS - Date.now();
+		if (remainingMs > 0) {
+			await ctx.scheduler.runAfter(
+				remainingMs,
+				internal.delivery.enqueue.deleteExpiredTestSend,
+				args
+			);
+			return false;
+		}
+		await ctx.db.delete(args.sendId);
+		return true;
+	},
+});
 
 /**
  * Internal mutation to enqueue campaign emails to workpool (used for
@@ -68,6 +145,7 @@ export const enqueueCampaignEmails = internalMutation({
 		audienceType: v.optional(v.union(v.literal('topic'), v.literal('segment'))),
 		viewInBrowserUrl: v.optional(v.string()),
 		providerType: v.optional(v.string()),
+		ipPool: v.optional(v.string()),
 		trackingBaseUrl: v.optional(v.string()),
 		// Singleton org id — anchors the Gmail FBL Feedback-ID SenderId.
 		organizationId: v.optional(v.string()),
@@ -76,34 +154,6 @@ export const enqueueCampaignEmails = internalMutation({
 		listId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		// Recheck the exact provider the worker will select immediately before
-		// enqueueing. Campaign preflight and route resolution happen earlier, so a
-		// plugin flag, grant, or credential can change before this mutation runs.
-		if (!(await selectedSendProviderReady(ctx, args.providerType))) {
-			// Campaign rows already exist by the time a timezone-delayed batch reaches
-			// this mutation. Throwing here would leave those rows queued forever, which
-			// in turn prevents the campaign lifecycle from leaving `sending`. Fail the
-			// whole batch through the canonical lifecycle writer instead: this records
-			// the normal failure effects while guaranteeing no worker or provider call.
-			const failedAt = Date.now();
-			for (const recipient of args.emails) {
-				await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-					send: { kind: 'campaign', id: recipient.emailSendId },
-					transition: {
-						to: 'failed',
-						at: failedAt,
-						errorMessage: CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_MESSAGE,
-						errorCode: CAMPAIGN_PROVIDER_UNAVAILABLE_ERROR_CODE,
-					},
-				});
-			}
-
-			await ctx.runMutation(internal.campaigns.lifecycle.reconcileCampaignCompletion, {
-				campaignId: args.campaignId,
-			});
-			return { enqueued: 0 };
-		}
-
 		for (const recipient of args.emails) {
 			await campaignEmailPool.enqueueAction(
 				ctx,
@@ -111,10 +161,12 @@ export const enqueueCampaignEmails = internalMutation({
 				{
 					envelopeInput: {
 						kind: 'campaign' as const,
+						deliveryDomain: 'production' as const,
 						to: recipient.email,
 						from: args.from,
 						replyTo: args.replyTo,
 						providerType: args.providerType,
+						ipPool: args.ipPool,
 						template: {
 							subject: args.subject,
 							htmlContent: args.htmlContent,
@@ -190,6 +242,7 @@ export const enqueueNonCampaignSend = internalMutation({
 		replyTo: v.optional(v.string()),
 		headers: v.optional(v.record(v.string(), v.string())),
 		providerType: v.optional(v.string()),
+		ipPool: v.optional(v.string()),
 		// Marketing List-Unsubscribe wiring (automation steps only): when set, the
 		// worker builds the RFC 8058 one-click header from `contactId` +
 		// `convexSiteUrl`. Agent 1:1 replies leave it unset (no List-Unsubscribe
@@ -244,12 +297,16 @@ export const enqueueNonCampaignSend = internalMutation({
 			{
 				envelopeInput: {
 					kind: 'transactional' as const,
+					deliveryDomain: 'production' as const,
+					messageType:
+						args.kind === 'automation' ? ('automation' as const) : ('transactional' as const),
 					emailPurpose:
 						args.kind === 'automation' ? ('marketing' as const) : ('transactional' as const),
 					to: args.email,
 					from: args.from,
 					replyTo: args.replyTo,
 					providerType: args.providerType,
+					ipPool: args.ipPool,
 					sendId,
 					template: {
 						subject: args.subject,

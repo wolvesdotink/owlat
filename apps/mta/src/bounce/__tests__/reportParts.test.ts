@@ -16,20 +16,18 @@
  * `parseBounce` to classify off `Status:`.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-// Unsigned VERP mode so the `X-Owlat-Message-Id` header-scrape fallback runs.
-vi.mock('../verp.js', () => ({
-	parseVerpAddress: vi.fn().mockReturnValue(null),
-	isVerpSigningEnabled: vi.fn().mockReturnValue(false),
-}));
-
 import { parseMessage } from '@owlat/mail-message';
 import { extractReportParts } from '../reportParts.js';
 import { parseBounce } from '../parser.js';
+import { buildVerpAddress } from '../verp.js';
+
+const VERP_KEY = 'report-parts-test-verp-key-0123456789';
+afterEach(() => delete process.env['BOUNCE_VERP_KEY']);
 
 /** A real, standards-shaped DSN whose `message/*` parts carry NO disposition. */
 const DISPOSITIONLESS_DSN = [
@@ -96,14 +94,18 @@ describe('extractReportParts recovers disposition-less report parts', () => {
 	});
 
 	it('parseBounce classifies the disposition-less DSN off Status: as a hard bounce', () => {
+		process.env['BOUNCE_VERP_KEY'] = VERP_KEY;
 		const parsed = parseMessage(Buffer.from(DISPOSITIONLESS_DSN));
 		const parts = extractReportParts(Buffer.from(DISPOSITIONLESS_DSN));
-		const result = parseBounce(parsed, parts);
+		const result = parseBounce(
+			parsed,
+			parts,
+			buildVerpAddress('owlat-msg-123@owlat.test', 'bounces.test', VERP_KEY)
+		);
 		expect(result).not.toBeNull();
 		expect(result?.type).toBe('bounced');
 		expect(result?.bounceType).toBe('hard');
-		// Attribution came from the recovered returned-message part's X-Owlat header.
-		expect(result?.originalMessageId).toBe('<owlat-msg-123@owlat.test>');
+		expect(result?.originalMessageId).toBe('owlat-msg-123@owlat.test');
 	});
 });
 
@@ -138,7 +140,8 @@ const TEXT_PLAIN_ATTACHMENT_BOUNCE = [
 ].join('\r\n');
 
 describe('a text/plain attachment stays a recoverable report part (finding #4)', () => {
-	it('surfaces the text/plain attachment (not dropped as body) so X-Owlat attribution survives', () => {
+	it('surfaces the text/plain attachment while exact attribution comes from signed VERP', () => {
+		process.env['BOUNCE_VERP_KEY'] = VERP_KEY;
 		const parts = extractReportParts(Buffer.from(TEXT_PLAIN_ATTACHMENT_BOUNCE));
 		const textAttachment = parts.find(
 			(p) =>
@@ -148,8 +151,12 @@ describe('a text/plain attachment stays a recoverable report part (finding #4)',
 		expect(textAttachment?.filename).toBe('original.txt');
 
 		const parsed = parseMessage(Buffer.from(TEXT_PLAIN_ATTACHMENT_BOUNCE));
-		const result = parseBounce(parsed, parts);
-		expect(result?.originalMessageId).toBe('<owlat-msg-456@owlat.test>');
+		const result = parseBounce(
+			parsed,
+			parts,
+			buildVerpAddress('owlat-msg-456@owlat.test', 'bounces.test', VERP_KEY)
+		);
+		expect(result?.originalMessageId).toBe('owlat-msg-456@owlat.test');
 		expect(result?.bounceType).toBe('hard');
 	});
 });

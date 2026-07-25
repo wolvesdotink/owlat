@@ -76,9 +76,7 @@ export const getThreadMessages = internalQuery({
 			.order('desc')
 			.take(args.limit + 1); // Take one extra in case we need to exclude
 
-		return messages
-			.filter((m) => m._id !== args.excludeMessageId)
-			.slice(0, args.limit);
+		return messages.filter((m) => m._id !== args.excludeMessageId).slice(0, args.limit);
 	},
 });
 
@@ -140,9 +138,7 @@ function buildThreadingHeaders(inbound: {
 }): Record<string, string> {
 	const headers: Record<string, string> = {};
 	if (!inbound.messageId) return headers;
-	const wrapped = inbound.messageId.startsWith('<')
-		? inbound.messageId
-		: `<${inbound.messageId}>`;
+	const wrapped = inbound.messageId.startsWith('<') ? inbound.messageId : `<${inbound.messageId}>`;
 	headers['In-Reply-To'] = wrapped;
 	const prior = (inbound.references ?? '').trim();
 	headers['References'] = prior ? `${prior} ${wrapped}` : wrapped;
@@ -216,7 +212,9 @@ export const sendApprovedReply = internalAction({
 				},
 				inboundMessageId: args.inboundMessageId,
 			});
-			logInfo(`[Agent Pipeline] Dispatched approved ${message.to} reply (inbound=${args.inboundMessageId})`);
+			logInfo(
+				`[Agent Pipeline] Dispatched approved ${message.to} reply (inbound=${args.inboundMessageId})`
+			);
 			return;
 		}
 
@@ -234,13 +232,12 @@ export const sendApprovedReply = internalAction({
 		// instanceSettings.defaultFrom* → env defaults.
 		const settings = await ctx.runQuery(
 			internal.automations.stepExecutorQueries.getInstanceSettings,
-			{},
+			{}
 		);
-		const fromEmail =
-			settings?.defaultFromEmail ?? getOptional('DEFAULT_FROM_EMAIL');
+		const fromEmail = settings?.defaultFromEmail ?? getOptional('DEFAULT_FROM_EMAIL');
 		if (!fromEmail) {
 			await fail(
-				'No sending identity configured — set a default sender email in organization settings.',
+				'No sending identity configured — set a default sender email in organization settings.'
 			);
 			return;
 		}
@@ -295,22 +292,25 @@ export const sendApprovedReply = internalAction({
 		// (see delivery/sendCompletion.ts) — no more optimistic transition at
 		// dispatch time.
 		try {
-			const { sendId } = await ctx.runMutation(
-				internal.delivery.enqueue.enqueueNonCampaignSend,
-				{
-					kind: 'agent_reply',
-					email: recipient,
-					...(message.contactId ? { contactId: message.contactId } : {}),
-					inboundMessageId: args.inboundMessageId,
-					subject,
-					html,
-					from,
-					...(Object.keys(headers).length > 0 ? { headers } : {}),
-				},
-			);
-			logInfo(
-				`[Agent Pipeline] Enqueued approved reply to ${recipient} (sendId=${sendId})`,
-			);
+			const route = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
+				messageType: 'transactional',
+				to: recipient,
+				from,
+			});
+			if (!route) throw new Error('No delivery provider configured');
+			const { sendId } = await ctx.runMutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+				kind: 'agent_reply',
+				email: recipient,
+				...(message.contactId ? { contactId: message.contactId } : {}),
+				inboundMessageId: args.inboundMessageId,
+				subject,
+				html,
+				from,
+				providerType: route.providerType,
+				ipPool: route.ipPool,
+				...(Object.keys(headers).length > 0 ? { headers } : {}),
+			});
+			logInfo(`[Agent Pipeline] Enqueued approved reply to ${recipient} (sendId=${sendId})`);
 		} catch (err) {
 			await fail(err instanceof Error ? err.message : String(err));
 		}

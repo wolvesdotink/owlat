@@ -1,36 +1,33 @@
 /**
- * Webhook Dead Letter Queue
+ * Webhook Dead Letter Queue.
  *
- * Stores failed webhook events in Redis for later retry or inspection.
- * Prevents permanent event loss when the Convex backend is unreachable.
+ * Every mutable datum lives in four Redis structures sharing the same hash
+ * tag. Store, claim, settle, capacity eviction, and administrative discard are
+ * therefore single-slot Lua transitions on both standalone Redis and Cluster.
+ * Raw webhook payloads never survive an index eviction.
  */
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import type { MtaWebhookEvent } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
+import { parseDeliveryFailure, type WebhookDeliveryFailure } from './dlqFailure.js';
+import { webhookDlqRetryDelayMs } from './dlqRetryPolicy.js';
+import { STORE_LUA } from './dlqStoreScript.js';
+import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
 
-const DLQ_SORTED_SET = 'mta:dlq';
-const DLQ_ENTRY_PREFIX = 'mta:dlq:entry:';
+export {
+	classifyWebhookHttpFailure,
+	type WebhookDeliveryFailure,
+	type WebhookHttpStatus,
+} from './dlqFailure.js';
+export { webhookDlqRetryDelayMs } from './dlqRetryPolicy.js';
 
-declare const webhookHttpStatusBrand: unique symbol;
-
-/** Valid HTTP response status observed while delivering a webhook. */
-export type WebhookHttpStatus = number & {
-	readonly [webhookHttpStatusBrand]: true;
-};
-
-/**
- * A deliberately closed, non-sensitive description of why delivery failed.
- * Provider response bodies and exception messages must never enter the DLQ.
- */
-export type WebhookDeliveryFailure =
-	| { category: 'transport' }
-	| { category: 'deadline_exhausted' }
-	| { category: 'unknown' }
-	| { category: 'legacy' }
-	| { category: 'http'; status: WebhookHttpStatus };
+export const WEBHOOK_DLQ_ENTRIES_KEY = 'mta:{webhook-dlq}:entries';
+export const WEBHOOK_DLQ_CREATED_KEY = 'mta:{webhook-dlq}:created';
+export const WEBHOOK_DLQ_DUE_KEY = 'mta:{webhook-dlq}:due';
+export const WEBHOOK_DLQ_PROTECTED_KEY = 'mta:{webhook-dlq}:protected';
 
 export interface DlqEntry {
 	dlqId: string;
@@ -39,67 +36,61 @@ export interface DlqEntry {
 	attempts: number;
 	createdAt: number;
 	lastRetryAt?: number;
+	claim?: { owner: string; version: number; expiresAt: number; token?: string };
 }
+
+export interface ClaimedDlqEntry extends DlqEntry {
+	claim: NonNullable<DlqEntry['claim']>;
+}
+
+export const WEBHOOK_DLQ_CLAIM_LEASE_MS = 15 * 60 * 1000;
+export const WEBHOOK_DLQ_AUTO_RETRY_LIMIT = 8;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
 }
 
-function isWebhookHttpStatus(value: unknown): value is WebhookHttpStatus {
-	return typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599;
+function isFiniteNumber(value: unknown): value is number {
+	return typeof value === 'number' && Number.isFinite(value);
 }
 
-/** Convert an untrusted response status to a safe delivery-failure category. */
-export function classifyWebhookHttpFailure(status: number): WebhookDeliveryFailure {
-	return isWebhookHttpStatus(status) ? { category: 'http', status } : { category: 'unknown' };
-}
-
-function parseDeliveryFailure(value: unknown): WebhookDeliveryFailure | null {
-	if (!isRecord(value) || typeof value['category'] !== 'string') return null;
-
-	switch (value['category']) {
-		case 'transport':
-		case 'deadline_exhausted':
-		case 'unknown':
-		case 'legacy':
-			return { category: value['category'] };
-		case 'http':
-			return isWebhookHttpStatus(value['status'])
-				? { category: 'http', status: value['status'] }
-				: null;
-		default:
-			return null;
-	}
-}
-
-function parseDlqEntry(data: string): DlqEntry | null {
+function parseDlqEntry(data: string, expectedDlqId: string): DlqEntry | null {
 	let value: unknown;
 	try {
 		value = JSON.parse(data);
 	} catch {
 		return null;
 	}
-
 	if (
 		!isRecord(value) ||
 		typeof value['dlqId'] !== 'string' ||
-		!isRecord(value['event']) ||
-		typeof value['event']['event'] !== 'string' ||
-		typeof value['event']['timestamp'] !== 'number' ||
-		typeof value['attempts'] !== 'number' ||
-		typeof value['createdAt'] !== 'number' ||
-		(value['lastRetryAt'] !== undefined && typeof value['lastRetryAt'] !== 'number')
+		value['dlqId'] !== expectedDlqId ||
+		!isMtaWebhookEvent(value['event']) ||
+		!isFiniteNumber(value['attempts']) ||
+		!Number.isInteger(value['attempts']) ||
+		value['attempts'] < 0 ||
+		!isFiniteNumber(value['createdAt']) ||
+		(value['lastRetryAt'] !== undefined && !isFiniteNumber(value['lastRetryAt']))
 	) {
 		return null;
 	}
-
-	// Entries written before the typed failure model carried a free-form
-	// `error`. Preserve their retryability without returning that sensitive text.
 	const failure =
 		parseDeliveryFailure(value['failure']) ??
 		(typeof value['error'] === 'string' ? { category: 'legacy' as const } : null);
 	if (!failure) return null;
-
+	const claim = isRecord(value['claim'])
+		? typeof value['claim']['owner'] === 'string' &&
+			isFiniteNumber(value['claim']['version']) &&
+			Number.isInteger(value['claim']['version']) &&
+			isFiniteNumber(value['claim']['expiresAt'])
+			? {
+					owner: value['claim']['owner'],
+					version: value['claim']['version'],
+					expiresAt: value['claim']['expiresAt'],
+				}
+			: null
+		: null;
+	if (value['claim'] !== undefined && !claim) return null;
 	return {
 		dlqId: value['dlqId'],
 		event: value['event'] as unknown as MtaWebhookEvent,
@@ -107,126 +98,392 @@ function parseDlqEntry(data: string): DlqEntry | null {
 		attempts: value['attempts'],
 		createdAt: value['createdAt'],
 		...(value['lastRetryAt'] === undefined ? {} : { lastRetryAt: value['lastRetryAt'] }),
+		...(claim ? { claim } : {}),
 	};
 }
 
-/**
- * Store a failed webhook event in the DLQ
- */
+const CLAIM_LUA = `
+local raw = redis.call('HGET', KEYS[1], ARGV[1])
+if not raw then return nil end
+local now = tonumber(ARGV[3])
+local existingClaim = redis.call('HGET', KEYS[1], 'claim:' .. ARGV[1])
+if existingClaim then
+  local expiresAt = tonumber(redis.call('HGET', KEYS[1], 'claim-expiry:' .. ARGV[1]))
+  if expiresAt and expiresAt > now then return nil end
+end
+local attempts = tonumber(redis.call('HGET', KEYS[1], 'attempts:' .. ARGV[1])) or 0
+if ARGV[6] == '1' and attempts >= tonumber(ARGV[7]) then
+  redis.call('ZREM', KEYS[3], ARGV[1])
+  return nil
+end
+if ARGV[5] == '1' then
+  local due = redis.call('ZSCORE', KEYS[3], ARGV[1])
+  if not due or tonumber(due) > now then return nil end
+end
+local version = redis.call('HINCRBY', KEYS[1], 'version:' .. ARGV[1], 1)
+local expiresAt = now + tonumber(ARGV[4])
+local token = ARGV[2] .. '|' .. version
+redis.call('HSET', KEYS[1], 'claim:' .. ARGV[1], token)
+redis.call('HSET', KEYS[1], 'claim-expiry:' .. ARGV[1], tostring(expiresAt))
+return { raw, tostring(version), tostring(expiresAt), token }
+`;
+
+const SETTLE_LUA = `
+local raw = redis.call('HGET', KEYS[1], ARGV[1])
+if not raw then return 0 end
+if redis.call('HGET', KEYS[1], 'claim:' .. ARGV[1]) ~= ARGV[2] then return 0 end
+if ARGV[3] == 'success' then
+  redis.call('HDEL', KEYS[1], ARGV[1], 'attempts:' .. ARGV[1], 'claim:' .. ARGV[1], 'claim-expiry:' .. ARGV[1], 'version:' .. ARGV[1])
+  redis.call('ZREM', KEYS[2], ARGV[1])
+  redis.call('ZREM', KEYS[3], ARGV[1])
+  redis.call('SREM', KEYS[4], ARGV[1])
+  return 1
+end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[4])
+redis.call('HSET', KEYS[1], 'attempts:' .. ARGV[1], ARGV[5])
+redis.call('HDEL', KEYS[1], 'claim:' .. ARGV[1])
+redis.call('HDEL', KEYS[1], 'claim-expiry:' .. ARGV[1])
+if ARGV[6] == '' then
+  redis.call('ZREM', KEYS[3], ARGV[1])
+else
+  redis.call('ZADD', KEYS[3], ARGV[6], ARGV[1])
+end
+return 1
+`;
+
+const DISCARD_LUA = `
+local removed = redis.call('HDEL', KEYS[1], ARGV[1])
+redis.call('HDEL', KEYS[1], 'attempts:' .. ARGV[1], 'claim:' .. ARGV[1], 'claim-expiry:' .. ARGV[1], 'version:' .. ARGV[1])
+redis.call('ZREM', KEYS[2], ARGV[1])
+redis.call('ZREM', KEYS[3], ARGV[1])
+redis.call('SREM', KEYS[4], ARGV[1])
+return removed
+`;
+
+const QUARANTINE_LUA = `
+local quarantined = 0
+for i = 1, #ARGV, 3 do
+  local id = ARGV[i]
+  local expected = ARGV[i + 1]
+  local expectedClaim = ARGV[i + 2]
+  local currentClaim = redis.call('HGET', KEYS[1], 'claim:' .. id)
+  local ownsClaim = (expectedClaim == '' and not currentClaim) or currentClaim == expectedClaim
+  if redis.call('HGET', KEYS[1], id) == expected and ownsClaim then
+	redis.call('HDEL', KEYS[1], id, 'attempts:' .. id, 'claim:' .. id, 'claim-expiry:' .. id, 'version:' .. id)
+	redis.call('ZREM', KEYS[2], id)
+    redis.call('ZREM', KEYS[3], id)
+	redis.call('SREM', KEYS[4], id)
+    quarantined = quarantined + 1
+  end
+end
+return quarantined
+`;
+
+const REMOVE_MISSING_DUE_LUA = `
+local removed = 0
+for _, id in ipairs(ARGV) do
+  if redis.call('HEXISTS', KEYS[1], id) == 0 then
+	redis.call('HDEL', KEYS[1], 'attempts:' .. id, 'claim:' .. id, 'claim-expiry:' .. id, 'version:' .. id)
+	removed = removed + redis.call('ZREM', KEYS[2], id)
+	removed = removed + redis.call('ZREM', KEYS[3], id)
+	removed = removed + redis.call('SREM', KEYS[4], id)
+  end
+end
+return removed
+`;
+
+const REMOVE_EXHAUSTED_DUE_LUA = `
+local removed = 0
+for i = 1, #ARGV, 2 do
+  local id = ARGV[i]
+  local expected = ARGV[i + 1]
+  if redis.call('HGET', KEYS[1], id) == expected then
+    removed = removed + redis.call('ZREM', KEYS[3], id)
+  end
+end
+return removed
+`;
+
+const KEYS = [
+	WEBHOOK_DLQ_ENTRIES_KEY,
+	WEBHOOK_DLQ_CREATED_KEY,
+	WEBHOOK_DLQ_DUE_KEY,
+	WEBHOOK_DLQ_PROTECTED_KEY,
+] as const;
+
+async function store(
+	redis: Redis,
+	dlqId: string,
+	event: MtaWebhookEvent,
+	failure: WebhookDeliveryFailure,
+	config: MtaConfig,
+	dueAt: number,
+	isProtected: boolean
+): Promise<{ dlqId: string; inserted: boolean }> {
+	if (!isMtaWebhookEvent(event))
+		throw new Error('Webhook event does not match its runtime contract');
+	const createdAt = Date.now();
+	const entry: DlqEntry = { dlqId, event, failure, attempts: 0, createdAt };
+	const observationChanged = -4;
+	let status = observationChanged;
+	for (
+		let observationAttempt = 0;
+		observationAttempt < 3 && status === observationChanged;
+		observationAttempt++
+	) {
+		const observedRaw = isProtected ? await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, dlqId) : null;
+		const observedEntry = observedRaw ? parseDlqEntry(observedRaw, dlqId) : null;
+		const invalidProtectedEntry = observedRaw !== null && observedEntry === null;
+		const requestedPayloadMatches =
+			observedEntry === null || canonicalJson(observedEntry.event) === canonicalJson(event);
+		const observedPendingEntry =
+			observedEntry?.failure.category === 'pending' ? observedEntry : null;
+		status = (await redis.eval(
+			STORE_LUA,
+			4,
+			...KEYS,
+			dlqId,
+			JSON.stringify(entry),
+			String(dueAt),
+			String(config.webhookDlqMaxSize),
+			isProtected ? '1' : '0',
+			observedRaw === null ? '0' : '1',
+			observedRaw ?? '',
+			observedPendingEntry ? '1' : '0',
+			String(observedPendingEntry?.attempts ?? 0),
+			invalidProtectedEntry ? '1' : '0',
+			requestedPayloadMatches ? '1' : '0'
+		)) as number;
+	}
+	if (status === -1) throw new Error('Webhook terminal outbox is at capacity');
+	// Either a protected row could not be admitted, or an unprotected row was
+	// evicted by the very sweep that made room — both mean "not retained".
+	if (status === -2) throw new Error('Webhook DLQ could not retain this row at capacity');
+	if (status === -3) throw new Error('Existing protected webhook outbox is inconsistent');
+	if (status === -5) throw new Error('Existing protected webhook outbox row was quarantined');
+	if (status === -6) throw new Error('Existing protected webhook outbox payload does not match');
+	if (status === observationChanged) {
+		throw new Error('Existing protected webhook outbox changed during repair');
+	}
+	return { dlqId, inserted: status === 1 };
+}
+
+function canonicalJson(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+	if (isRecord(value)) {
+		return `{${Object.keys(value)
+			.sort()
+			.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+			.join(',')}}`;
+	}
+	return JSON.stringify(value) ?? 'undefined';
+}
+
 export async function storeFailed(
 	redis: Redis,
 	event: MtaWebhookEvent,
 	failure: WebhookDeliveryFailure,
 	config: MtaConfig
 ): Promise<string> {
-	const dlqId = randomUUID();
-	const entry: DlqEntry = {
-		dlqId,
+	const createdAt = Date.now();
+	const { dlqId } = await store(
+		redis,
+		randomUUID(),
 		event,
 		failure,
-		attempts: 0,
-		createdAt: Date.now(),
-	};
-
-	const pipeline = redis.pipeline();
-
-	// Store full entry data
-	pipeline.set(`${DLQ_ENTRY_PREFIX}${dlqId}`, JSON.stringify(entry));
-
-	// Add to sorted set (score = timestamp for ordering)
-	pipeline.zadd(DLQ_SORTED_SET, String(entry.createdAt), dlqId);
-
-	// Trim to max size (remove oldest entries)
-	pipeline.zremrangebyrank(DLQ_SORTED_SET, 0, -(config.webhookDlqMaxSize + 1));
-
-	await pipeline.exec();
-
+		config,
+		createdAt + webhookDlqRetryDelayMs(0),
+		false
+	);
 	logger.warn(
 		{ operation: 'convex_webhook_dlq', category: 'stored', eventType: event.event },
 		'Webhook event stored in DLQ'
 	);
-
 	return dlqId;
 }
 
-/**
- * List failed events from the DLQ (newest first)
- */
+/** Persist an idempotent webhook outbox row before the owning queue job ACKs. */
+export async function storePending(
+	redis: Redis,
+	event: MtaWebhookEvent,
+	config: MtaConfig,
+	idempotencyKey: string
+): Promise<string> {
+	const dlqId = `outbox-${createHash('sha256').update(idempotencyKey).digest('hex')}`;
+	await store(redis, dlqId, event, { category: 'pending' }, config, Date.now(), true);
+	return dlqId;
+}
+
+export async function claimOne(
+	redis: Redis,
+	dlqId: string,
+	options: {
+		owner: string;
+		now: number;
+		leaseMs?: number;
+		requireDue: boolean;
+		enforceAutoLimit: boolean;
+		autoRetryLimit: number;
+	}
+): Promise<ClaimedDlqEntry | null> {
+	const result = (await redis.eval(
+		CLAIM_LUA,
+		4,
+		...KEYS,
+		dlqId,
+		options.owner,
+		String(options.now),
+		String(options.leaseMs ?? WEBHOOK_DLQ_CLAIM_LEASE_MS),
+		options.requireDue ? '1' : '0',
+		options.enforceAutoLimit ? '1' : '0',
+		String(options.autoRetryLimit)
+	)) as [string, string, string, string] | null;
+	if (!result) return null;
+	const parsed = parseDlqEntry(result[0], dlqId);
+	if (!parsed) {
+		await redis.eval(QUARANTINE_LUA, 4, ...KEYS, dlqId, result[0], result[3]);
+		return null;
+	}
+	return {
+		...parsed,
+		claim: {
+			owner: options.owner,
+			version: Number(result[1]),
+			expiresAt: Number(result[2]),
+			token: result[3],
+		},
+	};
+}
+
+/** Return due candidates without leasing them; callers claim immediately before I/O. */
+export async function listEligibleIds(
+	redis: Redis,
+	options: { now: number; limit: number; scanLimit?: number; autoRetryLimit?: number }
+): Promise<string[]> {
+	const ids = await redis.zrangebyscore(
+		WEBHOOK_DLQ_DUE_KEY,
+		'-inf',
+		String(options.now),
+		'LIMIT',
+		0,
+		Math.max(options.limit, options.scanLimit ?? options.limit)
+	);
+	if (ids.length === 0) return [];
+	const [raws, claims, claimExpiries] = await Promise.all([
+		redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, ...ids),
+		redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, ...ids.map((id) => `claim:${id}`)),
+		redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, ...ids.map((id) => `claim-expiry:${id}`)),
+	]);
+	const corrupt: string[] = [];
+	const exhausted: string[] = [];
+	const valid: string[] = [];
+	const missing: string[] = [];
+	for (let index = 0; index < ids.length; index++) {
+		const raw = raws[index];
+		const parsed = raw ? parseDlqEntry(raw, ids[index]!) : null;
+		if (
+			raw &&
+			parsed &&
+			options.autoRetryLimit !== undefined &&
+			parsed.attempts >= options.autoRetryLimit
+		) {
+			exhausted.push(ids[index]!, raw);
+		} else if (parsed) valid.push(ids[index]!);
+		else if (raw) {
+			const claim = claims[index];
+			const expiry = Number(claimExpiries[index]);
+			if (!claim || !Number.isFinite(expiry) || expiry <= options.now) {
+				corrupt.push(ids[index]!, raw, claim ?? '');
+			}
+		} else missing.push(ids[index]!);
+	}
+	if (corrupt.length > 0) await redis.eval(QUARANTINE_LUA, 4, ...KEYS, ...corrupt);
+	if (missing.length > 0) await redis.eval(REMOVE_MISSING_DUE_LUA, 4, ...KEYS, ...missing);
+	if (exhausted.length > 0) {
+		await redis.eval(REMOVE_EXHAUSTED_DUE_LUA, 4, ...KEYS, ...exhausted);
+	}
+	return valid;
+}
+
+export async function settleClaim(
+	redis: Redis,
+	entry: ClaimedDlqEntry,
+	outcome: 'success' | 'failure',
+	now: number,
+	failure?: WebhookDeliveryFailure
+): Promise<boolean> {
+	const nextAttempts = entry.attempts + 1;
+	const nextDue =
+		outcome === 'failure' && nextAttempts < WEBHOOK_DLQ_AUTO_RETRY_LIMIT
+			? String(now + webhookDlqRetryDelayMs(nextAttempts))
+			: '';
+	const updatedEntry: DlqEntry = {
+		...entry,
+		...(failure ? { failure } : {}),
+		claim: undefined,
+		attempts: nextAttempts,
+		lastRetryAt: now,
+	};
+	const claimToken = entry.claim.token ?? `${entry.claim.owner}|${entry.claim.version}`;
+	const settled = (await redis.eval(
+		SETTLE_LUA,
+		4,
+		...KEYS,
+		entry.dlqId,
+		claimToken,
+		outcome,
+		JSON.stringify(updatedEntry),
+		String(nextAttempts),
+		nextDue
+	)) as number;
+	return settled === 1;
+}
+
 export async function listFailed(
 	redis: Redis,
-	limit: number = 50,
-	offset: number = 0
+	limit = 50,
+	offset = 0
 ): Promise<{ entries: DlqEntry[]; total: number }> {
-	const total = await redis.zcard(DLQ_SORTED_SET);
-	const dlqIds = await redis.zrevrange(DLQ_SORTED_SET, offset, offset + limit - 1);
-
-	const entries: DlqEntry[] = [];
-	for (const dlqId of dlqIds) {
-		const data = await redis.get(`${DLQ_ENTRY_PREFIX}${dlqId}`);
-		if (data) {
-			const entry = parseDlqEntry(data);
-			if (entry) entries.push(entry);
-		}
-	}
-
+	const total = await redis.zcard(WEBHOOK_DLQ_CREATED_KEY);
+	const ids = await redis.zrevrange(WEBHOOK_DLQ_CREATED_KEY, offset, offset + limit - 1);
+	const raw = ids.length > 0 ? await redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, ...ids) : [];
+	const entries = raw.flatMap((value, index) => {
+		if (!value) return [];
+		const entry = parseDlqEntry(value, ids[index]!);
+		return entry ? [entry] : [];
+	});
 	return { entries, total };
 }
 
-/**
- * Get a specific DLQ entry
- */
 export async function getEntry(redis: Redis, dlqId: string): Promise<DlqEntry | null> {
-	const data = await redis.get(`${DLQ_ENTRY_PREFIX}${dlqId}`);
-	if (!data) return null;
-	return parseDlqEntry(data);
+	const data = await redis.hget(WEBHOOK_DLQ_ENTRIES_KEY, dlqId);
+	return data ? parseDlqEntry(data, dlqId) : null;
 }
 
-/**
- * Remove a specific entry from the DLQ (after successful retry or manual discard)
- */
 export async function removeOne(redis: Redis, dlqId: string): Promise<boolean> {
-	const pipeline = redis.pipeline();
-	pipeline.del(`${DLQ_ENTRY_PREFIX}${dlqId}`);
-	pipeline.zrem(DLQ_SORTED_SET, dlqId);
-	const results = await pipeline.exec();
-
-	const deleted = results?.[0]?.[1] as number;
-	return deleted > 0;
+	const removed = (await redis.eval(DISCARD_LUA, 4, ...KEYS, dlqId)) as number;
+	return removed === 1;
 }
 
-/**
- * Update a DLQ entry (e.g., after a retry attempt)
- */
-export async function updateEntry(redis: Redis, entry: DlqEntry): Promise<void> {
-	await redis.set(`${DLQ_ENTRY_PREFIX}${entry.dlqId}`, JSON.stringify(entry));
-}
-
-/**
- * Get DLQ statistics
- */
 export async function getStats(redis: Redis): Promise<{
 	total: number;
 	oldestTimestamp: number | null;
 	newestTimestamp: number | null;
 }> {
-	const total = await redis.zcard(DLQ_SORTED_SET);
-	if (total === 0) {
-		return { total: 0, oldestTimestamp: null, newestTimestamp: null };
-	}
-
-	const oldest = await redis.zrange(DLQ_SORTED_SET, 0, 0, 'WITHSCORES');
-	const newest = await redis.zrevrange(DLQ_SORTED_SET, 0, 0, 'WITHSCORES');
-
+	const total = await redis.zcard(WEBHOOK_DLQ_CREATED_KEY);
+	if (total === 0) return { total: 0, oldestTimestamp: null, newestTimestamp: null };
+	const [oldestIds, newestIds] = await Promise.all([
+		redis.zrange(WEBHOOK_DLQ_CREATED_KEY, 0, 0),
+		redis.zrevrange(WEBHOOK_DLQ_CREATED_KEY, 0, 0),
+	]);
+	const [oldest, newest] = await redis.hmget(WEBHOOK_DLQ_ENTRIES_KEY, oldestIds[0]!, newestIds[0]!);
 	return {
 		total,
-		oldestTimestamp: oldest[1] ? parseInt(oldest[1], 10) : null,
-		newestTimestamp: newest[1] ? parseInt(newest[1], 10) : null,
+		oldestTimestamp: oldest ? (parseDlqEntry(oldest, oldestIds[0]!)?.createdAt ?? null) : null,
+		newestTimestamp: newest ? (parseDlqEntry(newest, newestIds[0]!)?.createdAt ?? null) : null,
 	};
 }
 
-/**
- * Get all DLQ entry IDs for retry-all operations
- */
 export async function getAllIds(redis: Redis): Promise<string[]> {
-	return redis.zrange(DLQ_SORTED_SET, 0, -1);
+	return await redis.zrange(WEBHOOK_DLQ_CREATED_KEY, 0, -1);
 }
