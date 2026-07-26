@@ -213,6 +213,10 @@
 			"types": "./src/deliverabilityRouting.ts",
 			"import": "./src/deliverabilityRouting.ts"
 		},
+		"./seedPlacement": {
+			"types": "./src/seedPlacement.ts",
+			"import": "./src/seedPlacement.ts"
+		},
 		"./dnsbl": {
 			"types": "./src/dnsbl.ts",
 			"import": "./src/dnsbl.ts"
