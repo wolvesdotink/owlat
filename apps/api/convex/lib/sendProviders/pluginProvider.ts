@@ -43,8 +43,12 @@ export function createHostedSendProvider(
 		kind,
 		retryDelays: Object.freeze([...retryDelays]),
 		// A hosted transport's configuration is resolved by the plugin host from
-		// the plugin's own declared environment, so the record is accepted for
-		// signature parity and deliberately not read here.
+		// the plugin's own declared DEPLOYMENT-WIDE environment, so the record is
+		// accepted for signature parity and deliberately not read here. That is
+		// sound only because a plugin kind cannot have named instances:
+		// `resolveSendTransport` rejects `plugin.<id>.<local>#x` with
+		// `instances_unsupported`, so `transport` here is always the default
+		// instance and can never name credentials this module would then ignore.
 		async sendEmail(
 			_transport: SendTransportRecord,
 			params: EmailSendParams,

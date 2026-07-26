@@ -21,10 +21,19 @@
  * credential model would be a competing abstraction.
  *
  * Resolution FAILS CLOSED. An id that is malformed, names an unknown kind,
- * names an undeclared instance, or names a declared instance whose config has
- * been removed throws {@link SendTransportResolutionError}. It never degrades
- * to "whatever else is configured" — silently borrowing another transport's
- * credentials would be both a routing and a security regression.
+ * names an undeclared instance, names an instance of a kind that cannot HAVE
+ * instances, or names a declared instance whose config has been removed throws
+ * {@link SendTransportResolutionError}. It never degrades to "whatever else is
+ * configured" — silently borrowing another transport's credentials would be
+ * both a routing and a security regression.
+ *
+ * Named instances are a CORE-KIND feature. A plugin-contributed kind's
+ * configuration is resolved by the plugin host from the plugin's own declared
+ * deployment-wide environment, which the `__<INSTANCEKEY>` suffix does not
+ * reach; a named instance of such a kind would therefore resolve and then send
+ * with the DEFAULT plugin instance's credentials. That is exactly the silent
+ * credential borrow this module promises cannot happen, so it is rejected with
+ * `instances_unsupported` instead.
  *
  * Isolate-safe: no `'use node'` dependencies, so the routing/read seams can
  * import it.
@@ -40,16 +49,36 @@ import {
 	type SendProviderKind,
 } from './catalog';
 
-/** `<kind>` (default instance) or `<kind>#<instanceKey>` (named instance). */
-export type SendTransportId = string;
+/**
+ * `<kind>` (default instance) or `<kind>#<instanceKey>` (named instance).
+ *
+ * Written as a template-literal union rather than a bare `string` so a typo'd
+ * kind (`sendProviderDispatch(ctx, 'mtaa', …)`) is rejected at the CALL SITE,
+ * the way the pre-refactor `kind: K` parameter was. It is a shape check, not a
+ * validity check: whether the id names a transport this deployment actually has
+ * is a runtime question, answered by {@link resolveSendTransport}.
+ */
+export type SendTransportId = SendProviderKind | `${SendProviderKind}#${string}`;
 
 /** Separates the kind from the instance key inside a transport id. */
-export const SEND_TRANSPORT_INSTANCE_SEPARATOR = '#';
+const SEND_TRANSPORT_INSTANCE_SEPARATOR = '#';
 
 /** Joins a base variable name to an instance key: `SMTP_RELAY_HOST__BACKUP`. */
 const SEND_TRANSPORT_ENV_SUFFIX_SEPARATOR = '__';
 
-const INSTANCE_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+const MAX_INSTANCE_KEY_LENGTH = 32;
+const INSTANCE_KEY_PATTERN = new RegExp(`^[a-z0-9][a-z0-9_-]{0,${MAX_INSTANCE_KEY_LENGTH - 1}}$`);
+
+/**
+ * Derived from the grammar, never guessed: the longest kind this deployment
+ * actually has (a plugin kind is `plugin.<pluginId>.<localId>`, up to 136
+ * characters) plus the separator plus the longest legal instance key. A fixed
+ * cap would reject a legitimate long-named plugin transport.
+ */
+const MAX_TRANSPORT_ID_LENGTH =
+	SEND_PROVIDER_CATALOG.reduce((longest, entry) => Math.max(longest, entry.kind.length), 0) +
+	SEND_TRANSPORT_INSTANCE_SEPARATOR.length +
+	MAX_INSTANCE_KEY_LENGTH;
 
 export interface SendTransportRecord {
 	readonly id: SendTransportId;
@@ -71,6 +100,8 @@ export type SendTransportResolutionReason =
 	| 'unknown_kind'
 	/** A named instance that `SEND_TRANSPORT_INSTANCES` does not declare. */
 	| 'unregistered_instance'
+	/** A named instance of a kind that cannot have instances (a plugin kind). */
+	| 'instances_unsupported'
 	/** A declared instance whose configuration has been removed. */
 	| 'revoked';
 
@@ -82,9 +113,11 @@ export type SendTransportResolutionReason =
 export class SendTransportResolutionError extends Error {
 	readonly code = 'SEND_TRANSPORT_UNRESOLVED';
 	readonly reason: SendTransportResolutionReason;
-	readonly transportId: SendTransportId;
+	/** The rejected id, as given. Typed `string`: an unresolvable id need not
+	 *  even have the shape of a {@link SendTransportId}. */
+	readonly transportId: string;
 
-	constructor(transportId: SendTransportId, reason: SendTransportResolutionReason) {
+	constructor(transportId: string, reason: SendTransportResolutionReason) {
 		super(`Unresolvable send transport: ${reason}`);
 		this.name = 'SendTransportResolutionError';
 		this.reason = reason;
@@ -99,7 +132,7 @@ export function defaultSendTransportId(kind: SendProviderKind): SendTransportId 
 
 /** The id of a NAMED instance of a kind. */
 export function namedSendTransportId(kind: SendProviderKind, instanceKey: string): SendTransportId {
-	return `${kind}${SEND_TRANSPORT_INSTANCE_SEPARATOR}${instanceKey}`;
+	return `${kind}#${instanceKey}`;
 }
 
 /**
@@ -119,8 +152,8 @@ interface ParsedSendTransportId {
 }
 
 /** Split an id into kind + instance key, or `null` when it is not well formed. */
-export function parseSendTransportId(id: string): ParsedSendTransportId | null {
-	if (id.length === 0 || id.length > 128) return null;
+function parseSendTransportId(id: string): ParsedSendTransportId | null {
+	if (id.length === 0 || id.length > MAX_TRANSPORT_ID_LENGTH) return null;
 	const separatorIndex = id.indexOf(SEND_TRANSPORT_INSTANCE_SEPARATOR);
 	if (separatorIndex === -1) return { kind: id, instanceKey: null };
 	const kind = id.slice(0, separatorIndex);
@@ -139,16 +172,22 @@ let cachedDeclarationSource: string | null = null;
 let cachedDeclarations: readonly SendTransportInstanceDeclaration[] = [];
 
 /**
- * Parse `SEND_TRANSPORT_INSTANCES`. Malformed or duplicate entries are DROPPED
- * rather than thrown on: a typo in an operator's env must not take the send
- * path down. Dispatching to the id it was meant to declare then fails closed
- * with `unregistered_instance`, which is the honest outcome.
+ * Parse `SEND_TRANSPORT_INSTANCES`. Malformed, duplicate and AMBIGUOUS entries
+ * are DROPPED rather than thrown on: a typo in an operator's env must not take
+ * the send path down. Dispatching to the id it was meant to declare then fails
+ * closed with `unregistered_instance`, which is the honest outcome.
+ *
+ * Ambiguous means two declarations of the same kind whose instance keys derive
+ * the SAME env suffix — `smtp#a-b` and `smtp#a_b` both read
+ * `SMTP_RELAY_HOST__A_B`. Two ids sharing one credential set, with separate
+ * client caches, is the credential borrow this module exists to prevent, so the
+ * SECOND declaration is dropped and only the first keeps the suffix.
  */
 function declaredInstances(): readonly SendTransportInstanceDeclaration[] {
 	const source = getOptional('SEND_TRANSPORT_INSTANCES') ?? '';
 	if (cachedDeclarationSource === source) return cachedDeclarations;
 
-	const seen = new Set<string>();
+	const claimedEnvSuffixes = new Set<string>();
 	const declarations: SendTransportInstanceDeclaration[] = [];
 	for (const rawEntry of source.split(',')) {
 		const entry = rawEntry.trim();
@@ -156,9 +195,11 @@ function declaredInstances(): readonly SendTransportInstanceDeclaration[] {
 		const parsed = parseSendTransportId(entry);
 		if (!parsed || parsed.instanceKey === null) continue;
 		if (!isSendProviderKind(parsed.kind)) continue;
-		const id = namedSendTransportId(parsed.kind, parsed.instanceKey);
-		if (seen.has(id)) continue;
-		seen.add(id);
+		// Keyed by kind + derived suffix rather than by id: it subsumes the exact
+		// duplicate (same key derives the same suffix) and the aliasing pair.
+		const envIdentity = `${parsed.kind}${sendTransportEnvName('', parsed.instanceKey)}`;
+		if (claimedEnvSuffixes.has(envIdentity)) continue;
+		claimedEnvSuffixes.add(envIdentity);
 		declarations.push(Object.freeze({ kind: parsed.kind, instanceKey: parsed.instanceKey }));
 	}
 
@@ -192,18 +233,42 @@ function buildRecord(
  * are gated on this: the default instance resolves unconditionally so an
  * unconfigured deployment keeps producing exactly the adapter-level
  * `AUTH_FAILED` / "missing variable" outcome it produces today.
+ *
+ * FAILS CLOSED on an EMPTY requirement list. `[].every(…)` is vacuously true,
+ * so a catalog entry that declares no variables would make every named instance
+ * of that kind "configured" — a transport with nothing of its own to read can
+ * only be reading somebody else's configuration.
  */
 function isNamedInstanceConfigured(record: SendTransportRecord): boolean {
+	if (record.requiredEnvVars.length === 0) return false;
 	return record.requiredEnvVars.every((name) => isEnvPresent(name));
 }
 
-/** Every transport this deployment can dispatch through, defaults first. */
+/** Whether a kind supports named instances at all (see the module docblock). */
+function supportsNamedInstances(entry: SendProviderCatalogEntry): boolean {
+	return entry.pluginId === undefined;
+}
+
+/**
+ * Every transport this deployment can dispatch through, defaults first.
+ *
+ * CONTRACT: every id returned RESOLVES. A declared named instance that is
+ * unconfigured, or belongs to a kind that cannot have instances, is omitted
+ * rather than listed — so enumerate-then-dispatch (what the ramp controller
+ * does) can never pick an id `resolveSendTransport` would reject. Default
+ * instances are always listed: they resolve unconditionally by design, and
+ * whether their credentials are present is `providerKindConfigured`'s question.
+ */
 export function listSendTransports(): readonly SendTransportRecord[] {
 	const records: SendTransportRecord[] = SEND_PROVIDER_CATALOG.map((entry) =>
 		buildRecord(entry, null)
 	);
 	for (const declaration of declaredInstances()) {
-		records.push(buildRecord(sendProviderCatalogEntry(declaration.kind), declaration.instanceKey));
+		const entry = sendProviderCatalogEntry(declaration.kind);
+		if (!supportsNamedInstances(entry)) continue;
+		const record = buildRecord(entry, declaration.instanceKey);
+		if (!isNamedInstanceConfigured(record)) continue;
+		records.push(record);
 	}
 	return Object.freeze(records);
 }
@@ -211,8 +276,12 @@ export function listSendTransports(): readonly SendTransportRecord[] {
 /**
  * Resolve a transport id to its record, or throw
  * {@link SendTransportResolutionError}. Never falls back to another transport.
+ *
+ * Takes a `string`, not a {@link SendTransportId}: this is the runtime
+ * validator, so it must be callable with an id that came from storage, an env
+ * declaration or an HTTP body and may be any shape at all.
  */
-export function resolveSendTransport(transportId: SendTransportId): SendTransportRecord {
+export function resolveSendTransport(transportId: string): SendTransportRecord {
 	const parsed = parseSendTransportId(transportId);
 	if (!parsed) throw new SendTransportResolutionError(transportId, 'malformed_id');
 	if (!isSendProviderKind(parsed.kind)) {
@@ -222,6 +291,10 @@ export function resolveSendTransport(transportId: SendTransportId): SendTranspor
 	const entry = sendProviderCatalogEntry(parsed.kind);
 	const { instanceKey } = parsed;
 	if (instanceKey === null) return buildRecord(entry, null);
+
+	if (!supportsNamedInstances(entry)) {
+		throw new SendTransportResolutionError(transportId, 'instances_unsupported');
+	}
 
 	const isDeclared = declaredInstances().some(
 		(declaration) => declaration.kind === parsed.kind && declaration.instanceKey === instanceKey
