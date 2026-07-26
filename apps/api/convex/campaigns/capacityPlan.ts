@@ -43,21 +43,42 @@ export interface CampaignCapacityPlanInput {
 	now: number;
 }
 
-export type CampaignCapacityPlan =
-	| { fits: true }
-	| {
-			fits: false;
-			/**
-			 * Days the send needs. `0` is the "cannot be planned" sentinel — no
-			 * usable capacity was projected at all. Callers MUST treat `days === 0`
-			 * as unknown capacity and ALLOW the send (never refuse on missing data).
-			 */
-			days: number;
-			/** Per-day recipient slice sizes, `slices.length === days`. */
-			slices: number[];
-			/** Projected completion instant: the end of the last sliced day. */
-			finishesAt: number;
-	  };
+/**
+ * The multi-day schedule handed back instead of an error when the audience
+ * provably cannot be delivered inside the message-retention horizon. Capacity
+ * is a SCHEDULE, not a failure — the UI renders "Sending over N days".
+ */
+export interface CampaignCapacitySchedule {
+	fits: false;
+	/**
+	 * Days the send needs. `0` is the "cannot be planned" sentinel — no usable
+	 * capacity was projected at all, or the projection plateaus at zero before
+	 * the audience is covered. Callers MUST treat `days === 0` as unknown
+	 * capacity and ALLOW the send (never refuse on missing data).
+	 */
+	days: number;
+	/** Per-day recipient slice sizes, `slices.length === days`. */
+	slices: number[];
+	/**
+	 * End of the last sliced day. This is the projected completion instant
+	 * unless `truncated` is set, in which case it is only the end of the last
+	 * ENUMERATED day and the real finish is later.
+	 */
+	finishesAt: number;
+	/**
+	 * Recipients the returned slices actually cover. Equals the audience size
+	 * unless `truncated` is set, so a caller can never mistake a partial
+	 * schedule for a complete one (plan D14 — say the quiet part).
+	 */
+	covered: number;
+	/**
+	 * The plan hit `MAX_PLAN_DAYS` with recipients still unscheduled. The copy
+	 * must say "more than N days", never quote `days` as the finish date.
+	 */
+	truncated: boolean;
+}
+
+export type CampaignCapacityPlan = { fits: true } | CampaignCapacitySchedule;
 
 /** Start of the UTC day containing `now`. */
 function utcDayStart(now: number): number {
@@ -128,13 +149,29 @@ export function planCampaignCapacity(input: CampaignCapacityPlanInput): Campaign
 	// Trim trailing zero days so `days` is the day the last recipient goes out.
 	while (slices.length > 0 && slices[slices.length - 1] === 0) slices.pop();
 
-	// Nothing could be scheduled at all: no positive capacity anywhere. This is
-	// the "cannot be planned" sentinel — callers hold and allow.
-	if (slices.length === 0) {
-		return { fits: false, days: 0, slices: [], finishesAt: input.now };
+	const covered = audienceSize - remaining;
+
+	// Nothing could be scheduled at all, OR the projection plateaus at zero
+	// before the audience is covered: there is no schedule that reaches everyone
+	// and none can be invented. Rather than hand back slices that silently drop
+	// the tail, collapse to the "cannot be planned" sentinel — callers hold and
+	// allow, exactly as they do for unknown capacity.
+	if (slices.length === 0 || (remaining > 0 && trailingRate <= 0)) {
+		return {
+			fits: false,
+			days: 0,
+			slices: [],
+			finishesAt: input.now,
+			covered: 0,
+			truncated: false,
+		};
 	}
+
+	// Reaching MAX_PLAN_DAYS with recipients left is a real, coverable schedule
+	// that is simply longer than we are willing to enumerate. Say so.
+	const truncated = remaining > 0;
 
 	const days = slices.length;
 	const finishesAt = utcDayStart(input.now) + days * MS_PER_DAY;
-	return { fits: false, days, slices, finishesAt };
+	return { fits: false, days, slices, finishesAt, covered, truncated };
 }
