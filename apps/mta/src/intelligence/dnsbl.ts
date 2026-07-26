@@ -87,21 +87,49 @@ export function dnsblQueryName(ip: string, zone: string): string {
 	return `${reversed}.${zone}`;
 }
 
-/** Check a single IP against a single applicable DNSBL zone. */
-async function checkDnsbl(
+/** Resolver seam so callers (and tests) can supply their own DNS transport. */
+export interface DnsblLookupDeps {
+	resolve4: (hostname: string) => Promise<string[]>;
+	timeoutMs?: number;
+}
+
+export interface DnsblLookupResult {
+	status: DnsblResult['status'];
+	/** Bounded copy of the raw A answers, for callers that decode return codes. */
+	answers: string[];
+}
+
+/** A hostile or misconfigured zone can answer with an unbounded RRset. */
+const MAX_RETAINED_ANSWERS = 16;
+const MAX_ANSWER_LENGTH = 45;
+
+function boundedAnswers(answers: readonly string[]): string[] {
+	return answers
+		.slice(0, MAX_RETAINED_ANSWERS)
+		.map((answer) => String(answer).slice(0, MAX_ANSWER_LENGTH));
+}
+
+/**
+ * Look one IP up in one DNSBL zone and return both the verdict and the raw
+ * answers. This is the single DNSBL lookup path in the MTA: the periodic
+ * routing checker and the pre-flight IP audit both go through it.
+ */
+export async function lookupDnsblZone(
 	ip: string,
-	listId: DnsblListDefinition['id'],
-	zone: string
-): Promise<DnsblResult['status']> {
+	listId: string,
+	zone: string,
+	deps: DnsblLookupDeps = { resolve4 }
+): Promise<DnsblLookupResult> {
 	const lookup = dnsblQueryName(ip, zone);
+	const timeoutMs = deps.timeoutMs ?? LOOKUP_TIMEOUT_MS;
 
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
 		const result = await Promise.race([
-			resolve4(lookup),
+			deps.resolve4(lookup),
 			new Promise<never>(
 				(_, reject) =>
-					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), LOOKUP_TIMEOUT_MS))
+					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), timeoutMs))
 			),
 		]);
 		// Spamhaus reserves 127.255.255.x for resolver/configuration errors. That
@@ -109,24 +137,36 @@ async function checkDnsbl(
 		// quarantine just like SERVFAIL/timeout.
 		if (listId === 'spamhaus' && result.some((addr) => addr.startsWith('127.255.255.'))) {
 			logger.warn({ ip, listId, errorCode: 'resolver_policy' }, 'DNSBL check is unknown');
-			return 'unknown';
+			return { status: 'unknown', answers: boundedAnswers(result) };
 		}
-		return result.some((addr) => addr.startsWith('127.')) ? 'listed' : 'unknown';
+		return {
+			status: result.some((addr) => addr.startsWith('127.')) ? 'listed' : 'unknown',
+			answers: boundedAnswers(result),
+		};
 	} catch (err: unknown) {
 		const errorCode = safeDnsErrorCode(err);
 		// NXDOMAIN/ENOTFOUND = not listed (this is the expected "clean" result)
 		if (CLEAN_DNS_ERROR_CODES.has(errorCode)) {
-			return 'clean';
+			return { status: 'clean', answers: [] };
 		}
 		// Resolver availability is not evidence of delisting. Preserve the last
 		// confirmed decision (and fail closed for a never-observed address).
 		// Never log `zone` or the resolver message: keyed providers such as Abusix
 		// embed a credential in the queried hostname and resolver errors often echo it.
 		logger.warn({ ip, listId, errorCode }, 'DNSBL check is unknown');
-		return 'unknown';
+		return { status: 'unknown', answers: [] };
 	} finally {
 		if (timeout) clearTimeout(timeout);
 	}
+}
+
+/** Check a single IP against a single applicable DNSBL zone. */
+async function checkDnsbl(
+	ip: string,
+	listId: DnsblListDefinition['id'],
+	zone: string
+): Promise<DnsblResult['status']> {
+	return (await lookupDnsblZone(ip, listId, zone)).status;
 }
 
 /**
