@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
+import {
+	registerUploadedMediaReference,
+	type StoredMediaReference,
+} from '~/utils/mediaAssetReference';
 
 const props = withDefaults(
 	defineProps<{
@@ -23,10 +28,7 @@ const emit = defineEmits<{
 	(e: 'update:open', value: boolean): void;
 	(
 		e: 'select',
-		value: {
-			url: string;
-			storageId: string;
-			mediaAssetId: string;
+		value: StoredMediaReference & {
 			width?: number;
 			height?: number;
 			filename?: string;
@@ -94,7 +96,7 @@ const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDropZone(
 const selectAsset = (asset: (typeof assets.value)[0]) => {
 	emit('select', {
 		url: asset.url,
-		storageId: asset.storageId as string,
+		storageId: asset.storageId as Id<'_storage'>,
 		mediaAssetId: asset._id,
 		width: asset.width,
 		height: asset.height,
@@ -119,23 +121,24 @@ const handleUploadAndSelect = async (files: File[]) => {
 		const isImage = file.type.startsWith('image/');
 		const dimensions = isImage ? await getImageDimensions(file) : null;
 
-		const created = await createMediaAsset({
-			storageId,
-			filename: file.name,
-			mimeType: file.type,
-			fileSize: file.size,
-			width: dimensions?.width,
-			height: dimensions?.height,
-		});
-		if (created === undefined) return;
-
-		// Get the URL and select it
-		const url = await requireConvex().query(api.storage.getUrl, { storageId });
-		if (url) {
-			emit('select', {
-				url,
+		const registered = await registerUploadedMediaReference(
+			{
+				createMediaAsset: (metadata) => createMediaAsset(metadata),
+				getUrl: (registeredStorageId) =>
+					requireConvex().query(api.storage.getUrl, { storageId: registeredStorageId }),
+			},
+			{
 				storageId,
-				mediaAssetId: created,
+				filename: file.name,
+				mimeType: file.type,
+				fileSize: file.size,
+				width: dimensions?.width,
+				height: dimensions?.height,
+			}
+		);
+		if (registered.ok) {
+			emit('select', {
+				...registered.reference,
 				width: dimensions?.width,
 				height: dimensions?.height,
 				filename: file.name,

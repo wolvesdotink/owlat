@@ -8,6 +8,10 @@ import {
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
+import {
+	registerUploadedMediaReference,
+	type MediaAssetReferenceDeps,
+} from '~/utils/mediaAssetReference';
 
 /**
  * Email editor bridge (module) — the app-side owner that backs the
@@ -26,20 +30,9 @@ import { getImageDimensions } from '~/utils/getImageDimensions';
 // without mounting a page.
 // ---------------------------------------------------------------------------
 
-export interface UploadImageDeps {
+export interface UploadImageDeps extends MediaAssetReferenceDeps {
 	/** Mint a one-shot upload URL (Convex `storage.generateUploadUrl`). */
 	generateUploadUrl: () => Promise<string | null | undefined>;
-	/** Resolve a stored file's public URL (Convex `storage.getUrl`). */
-	getUrl: (storageId: Id<'_storage'>) => Promise<string | null>;
-	/** Register the uploaded file in the media library (Convex `mediaAssets.create`). */
-	createMediaAsset: (asset: {
-		storageId: Id<'_storage'>;
-		filename: string;
-		mimeType: string;
-		fileSize: number;
-		width?: number;
-		height?: number;
-	}) => Promise<Id<'mediaAssets'> | undefined>;
 	/** Measure the image client-side for the media-library record. */
 	getImageDimensions: (file: File) => Promise<{ width: number; height: number } | null>;
 }
@@ -79,7 +72,7 @@ export function createUploadImageHandler(
 		// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
 		// must exist before we can mint its URL.
 		const dimensions = await deps.getImageDimensions(file);
-		const mediaAssetId = await deps.createMediaAsset({
+		const registered = await registerUploadedMediaReference(deps, {
 			storageId,
 			filename: file.name,
 			mimeType: file.type,
@@ -87,15 +80,14 @@ export function createUploadImageHandler(
 			width: dimensions?.width,
 			height: dimensions?.height,
 		});
-		if (!mediaAssetId) throw new Error('Image upload did not create a media asset');
-
-		const url = await deps.getUrl(storageId);
-
-		if (!url) {
+		if (!registered.ok && registered.reason === 'media-registration-failed') {
+			throw new Error('Image upload did not create a media asset');
+		}
+		if (!registered.ok) {
 			throw new Error('Failed to get image URL');
 		}
 
-		return { url, storageId, mediaAssetId };
+		return registered.reference;
 	};
 }
 
