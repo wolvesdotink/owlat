@@ -12,28 +12,14 @@
  * Prop-driven so every state is unit-tested directly; the Delivery page owns
  * the (member-safe) query.
  */
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
 import { formatDate } from '~/utils/formatters';
 
-interface PostmasterCard {
-	id: string;
-	severity: 'critical' | 'warning' | 'info';
-	title: string;
-	detail: string;
-	remedy: string;
-	check: string;
-}
-
-interface PostmasterDomainStatus {
-	domain: string;
-	periodStart: number | null;
-	compliancePeriodStart: number | null;
-	cards: PostmasterCard[];
-}
-
-interface PostmasterStatus {
-	connected: boolean;
-	domains: PostmasterDomainStatus[];
-}
+// Derived from the query's own return type so the server shape and the props
+// cannot drift — the same idiom as `DomainTable.vue`.
+type PostmasterStatus = FunctionReturnType<typeof api.delivery.postmaster.getPostmasterStatus>;
+type PostmasterDomainStatus = PostmasterStatus['domains'][number];
 
 const props = defineProps<{
 	status: PostmasterStatus | null | undefined;
@@ -61,13 +47,20 @@ const reportedDomains = computed(() =>
 	)
 );
 
+/**
+ * Rows to render: the compliance verdict's day when there is one, otherwise
+ * the statistics day. Resolved once here rather than in the template, which
+ * would otherwise call it twice per row and narrow across the two calls.
+ */
 const failingDomains = computed(() =>
-	reportedDomains.value.filter((domain) => domain.cards.length > 0)
+	reportedDomains.value
+		.filter((domain: PostmasterDomainStatus) => domain.cards.length > 0)
+		.map((domain: PostmasterDomainStatus) => ({
+			domain: domain.domain,
+			cards: domain.cards,
+			observedAt: domain.compliancePeriodStart ?? domain.periodStart,
+		}))
 );
-
-function observedAt(domain: PostmasterDomainStatus): number | null {
-	return domain.compliancePeriodStart ?? domain.periodStart;
-}
 </script>
 
 <template>
@@ -124,19 +117,19 @@ function observedAt(domain: PostmasterDomainStatus): number | null {
 
 			<div v-else class="space-y-4">
 				<section
-					v-for="domain in failingDomains"
-					:key="domain.domain"
+					v-for="row in failingDomains"
+					:key="row.domain"
 					data-testid="postmaster-domain"
 					class="space-y-2"
 				>
 					<div class="flex items-baseline justify-between gap-3">
-						<p class="text-sm font-medium text-text-primary">{{ domain.domain }}</p>
-						<p v-if="observedAt(domain) !== null" class="text-xs text-text-tertiary">
-							Google data for {{ formatDate(observedAt(domain), 'short') }}
+						<p class="text-sm font-medium text-text-primary">{{ row.domain }}</p>
+						<p v-if="row.observedAt !== null" class="text-xs text-text-tertiary">
+							Google data for {{ formatDate(row.observedAt, 'short') }}
 						</p>
 					</div>
 					<article
-						v-for="card in domain.cards"
+						v-for="card in row.cards"
 						:key="card.id"
 						data-testid="postmaster-card"
 						:data-check="card.check"

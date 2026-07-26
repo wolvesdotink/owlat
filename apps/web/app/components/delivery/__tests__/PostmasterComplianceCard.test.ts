@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import type { FunctionReturnType } from 'convex/server';
+import type { api } from '@owlat/api';
 import PostmasterComplianceCard from '../PostmasterComplianceCard.vue';
 
 const stubs = {
@@ -9,27 +11,34 @@ const stubs = {
 	UiIconBox: { template: '<i />' },
 };
 
+// Same derivation as the component: the fixtures below are checked against the
+// server's own shape, so a query change breaks the test rather than drifting.
+type PostmasterStatus = FunctionReturnType<typeof api.delivery.postmaster.getPostmasterStatus>;
+
+type PostmasterDomainStatus = PostmasterStatus['domains'][number];
+
 interface CardProps {
-	status:
-		| {
-				connected: boolean;
-				domains: Array<{
-					domain: string;
-					periodStart: number | null;
-					compliancePeriodStart: number | null;
-					cards: Array<{
-						id: string;
-						severity: 'critical' | 'warning' | 'info';
-						title: string;
-						detail: string;
-						remedy: string;
-						check: string;
-					}>;
-				}>;
-		  }
-		| null
-		| undefined;
+	status: PostmasterStatus | null | undefined;
 	isLoading: boolean;
+}
+
+/** A domain the query would return, with every signal absent unless named. */
+function domainStatus(
+	overrides: Pick<PostmasterDomainStatus, 'domain'> & Partial<PostmasterDomainStatus>
+): PostmasterDomainStatus {
+	return {
+		periodStart: null,
+		compliancePeriodStart: null,
+		userReportedSpamRatio: null,
+		spfSuccessRatio: null,
+		dkimSuccessRatio: null,
+		dmarcSuccessRatio: null,
+		deliveryErrorRatio: null,
+		deliveryErrors: [],
+		checks: [],
+		cards: [],
+		...overrides,
+	};
 }
 
 function mountCard(props: CardProps) {
@@ -52,12 +61,12 @@ describe('PostmasterComplianceCard', () => {
 			status: {
 				connected: true,
 				domains: [
-					{
+					domainStatus({
 						domain: 'a.example',
 						periodStart: Date.UTC(2026, 6, 20),
 						compliancePeriodStart: Date.UTC(2026, 6, 21),
 						cards: [failingCard],
-					},
+					}),
 				],
 			},
 		});
@@ -99,14 +108,7 @@ describe('PostmasterComplianceCard', () => {
 			isLoading: false,
 			status: {
 				connected: true,
-				domains: [
-					{
-						domain: 'a.example',
-						periodStart: Date.UTC(2026, 6, 20),
-						compliancePeriodStart: null,
-						cards: [],
-					},
-				],
+				domains: [domainStatus({ domain: 'a.example', periodStart: Date.UTC(2026, 6, 20) })],
 			},
 		});
 
