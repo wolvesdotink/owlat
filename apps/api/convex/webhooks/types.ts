@@ -147,6 +147,16 @@ export type InboundEvent =
 			message?: string;
 	  }
 	| {
+			kind: 'internal.ip_readiness_regressed';
+			eventId: string;
+			ip: string;
+			readinessCheck: 'fcrdns' | 'spf';
+			readinessReason: string;
+			eligibilityGeneration: number;
+			observedAt: number;
+			message: string;
+	  }
+	| {
 			kind: 'internal.routing_reentry';
 			providerMessageId: string;
 			token: string;

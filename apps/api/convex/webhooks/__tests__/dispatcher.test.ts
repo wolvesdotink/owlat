@@ -889,6 +889,34 @@ describe('dispatchInboundEvent — internal signals', () => {
 		expect(schedulerCalls[0]?.ref).toBe(ref(internal.delivery.warmingSync.syncWarmingState));
 	});
 
+	it('persists an IPv6 readiness regression through the idempotent alert mutation', async () => {
+		const { ctx, runMutationCalls } = makeCtx();
+		const event: InboundEvent = {
+			kind: 'internal.ip_readiness_regressed',
+			eventId: 'ipv6-readiness-v1:spf:2001:db8::10:7',
+			ip: '2001:db8::10',
+			readinessCheck: 'spf',
+			readinessReason: 'missing-ip6-mechanism',
+			eligibilityGeneration: 7,
+			observedAt: 1_700_000_000_000,
+			message: 'IPv6 SPF regressed',
+		};
+
+		await dispatchInboundEvent(ctx, event);
+		expect(runMutationCalls).toContainEqual({
+			ref: ref(internal.delivery.ipReadinessAlerts.recordRegression),
+			args: {
+				eventId: event.eventId,
+				ip: event.ip,
+				readinessCheck: event.readinessCheck,
+				readinessReason: event.readinessReason,
+				eligibilityGeneration: event.eligibilityGeneration,
+				observedAt: event.observedAt,
+				message: event.message,
+			},
+		});
+	});
+
 	it('schedules a warming sync for ip_event subkind=warming_complete', async () => {
 		const { ctx, schedulerCalls } = makeCtx();
 		const event: InboundEvent = {

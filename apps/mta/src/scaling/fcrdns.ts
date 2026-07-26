@@ -270,6 +270,12 @@ export async function runFcrdnsReadinessCheck(
 				observed.verdict === 'fail' ? 'block' : observed.verdict === 'error' ? 'preserve' : 'clear';
 			const allowIpv4LabOverride =
 				observed.addressFamily === 'ipv4' && config.allowUnverifiedFcrdns === true;
+			const confirmedIpv6RegressionReason =
+				observed.addressFamily === 'ipv6' &&
+				observed.verdict === 'fail' &&
+				observed.reason !== 'lookup-error'
+					? observed.reason
+					: undefined;
 			const transition = await applyIpPoolObservation(redis, {
 				ip: observed.ip,
 				reason: 'fcrdns',
@@ -278,6 +284,16 @@ export async function runFcrdnsReadinessCheck(
 				override: allowIpv4LabOverride,
 				stateKey: `${FCRDNS_PREFIX}${observed.ip}`,
 				stateFields: readinessHash(observed),
+				...(confirmedIpv6RegressionReason
+					? {
+							regressionAlert: {
+								check: 'fcrdns' as const,
+								reason: confirmedIpv6RegressionReason,
+								timestamp: observed.checkedAt,
+								message: `IPv6 source ${observed.ip} was quarantined after FCrDNS regressed (${confirmedIpv6RegressionReason}).`,
+							},
+						}
+					: {}),
 			});
 			if (transition.becameBlocked) pool.invalidateBindIp(observed.ip);
 			if (!transition.applied) {

@@ -209,6 +209,10 @@ export interface MtaWebhookEvent {
 		| 'routing_lease_stale'
 		| 'circuit_breaker_changed'
 		| 'warming_capacity_changed';
+	/** Confirmed IPv6 identity/SPF regression fields. */
+	readinessCheck?: 'fcrdns' | 'spf';
+	readinessReason?: string;
+	eligibilityGeneration?: number;
 	/** Timestamp */
 	timestamp: number;
 }

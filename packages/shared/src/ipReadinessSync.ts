@@ -6,19 +6,25 @@ import {
 	type FcrdnsVerdict,
 } from './fcrdns';
 import { isDnsblListId, type DnsblListId } from './dnsbl';
+import {
+	IP_READINESS_BLOCK_REASONS,
+	DNSBL_STATUSES,
+	isDnsblStatus,
+	isIpReadinessBlockReason,
+	isIpv6SpfFailureReason,
+	isSourceAddressFailureReason,
+	type DnsblStatus,
+	type IpReadinessBlockReason,
+	type Ipv6SpfFailureReason,
+	type Ipv6SpfVerdict,
+	type SourceAddressFailureReason,
+	type SourceAddressVerdict,
+} from './ipReadiness';
 
-export const IP_READINESS_BLOCK_REASONS = ['dnsbl', 'fcrdns', 'ipv4-identity', 'spf'] as const;
-export type IpReadinessBlockReason = (typeof IP_READINESS_BLOCK_REASONS)[number];
-export const DNSBL_STATUSES = ['unknown', 'clean', 'degraded', 'critical'] as const;
-export type DnsblStatus = (typeof DNSBL_STATUSES)[number];
-
-export function isIpReadinessBlockReason(value: string): value is IpReadinessBlockReason {
-	return value === 'dnsbl' || value === 'fcrdns' || value === 'ipv4-identity' || value === 'spf';
-}
-
-export function isDnsblStatus(value: string): value is DnsblStatus {
-	return value === 'unknown' || value === 'clean' || value === 'degraded' || value === 'critical';
-}
+export { IP_READINESS_BLOCK_REASONS, isIpReadinessBlockReason };
+export type { IpReadinessBlockReason };
+export { DNSBL_STATUSES, isDnsblStatus };
+export type { DnsblStatus };
 
 export interface MtaIpReputationPayload {
 	date: string;
@@ -51,8 +57,14 @@ export interface MtaIpReputationPayload {
 		} | null;
 		ipv6Spf?: {
 			domain: string;
-			verdict: 'pass' | 'fail' | 'error';
-			reason?: 'no-spf-record' | 'multiple-spf-records' | 'missing-ip6-mechanism' | 'lookup-error';
+			verdict: Ipv6SpfVerdict;
+			reason?: Ipv6SpfFailureReason;
+			checkedAt: number;
+		} | null;
+		sourceAddress?: {
+			verdict: SourceAddressVerdict;
+			reason?: SourceAddressFailureReason;
+			target?: string;
 			checkedAt: number;
 		} | null;
 	}>;
@@ -104,10 +116,21 @@ function isIpv6SpfPayload(value: unknown): value is NonNullable<MtaIpReputationR
 		typeof value['domain'] === 'string' &&
 		(value['verdict'] === 'pass' || value['verdict'] === 'fail' || value['verdict'] === 'error') &&
 		(value['reason'] === undefined ||
-			value['reason'] === 'no-spf-record' ||
-			value['reason'] === 'multiple-spf-records' ||
-			value['reason'] === 'missing-ip6-mechanism' ||
-			value['reason'] === 'lookup-error') &&
+			(typeof value['reason'] === 'string' && isIpv6SpfFailureReason(value['reason']))) &&
+		typeof value['checkedAt'] === 'number' &&
+		Number.isFinite(value['checkedAt'])
+	);
+}
+
+function isSourceAddressPayload(
+	value: unknown
+): value is NonNullable<MtaIpReputationRow['sourceAddress']> {
+	return (
+		isRecord(value) &&
+		(value['verdict'] === 'pass' || value['verdict'] === 'fail' || value['verdict'] === 'error') &&
+		(value['reason'] === undefined ||
+			(typeof value['reason'] === 'string' && isSourceAddressFailureReason(value['reason']))) &&
+		(value['target'] === undefined || typeof value['target'] === 'string') &&
 		typeof value['checkedAt'] === 'number' &&
 		Number.isFinite(value['checkedAt'])
 	);
@@ -137,7 +160,10 @@ function isIpReputationRow(value: unknown): value is MtaIpReputationRow {
 			isFcrdnsPayload(value['fcrdns'])) &&
 		(value['ipv6Spf'] === undefined ||
 			value['ipv6Spf'] === null ||
-			isIpv6SpfPayload(value['ipv6Spf']))
+			isIpv6SpfPayload(value['ipv6Spf'])) &&
+		(value['sourceAddress'] === undefined ||
+			value['sourceAddress'] === null ||
+			isSourceAddressPayload(value['sourceAddress']))
 	);
 }
 
@@ -207,6 +233,16 @@ export function normalizeIpReputationPayload(value: unknown) {
 							verdict: ip.ipv6Spf.verdict,
 							...(ip.ipv6Spf.reason ? { reason: ip.ipv6Spf.reason } : {}),
 							checkedAt: ip.ipv6Spf.checkedAt,
+						},
+					}
+				: {}),
+			...(ip.sourceAddress
+				? {
+						sourceAddress: {
+							verdict: ip.sourceAddress.verdict,
+							...(ip.sourceAddress.reason ? { reason: ip.sourceAddress.reason } : {}),
+							...(ip.sourceAddress.target ? { target: ip.sourceAddress.target } : {}),
+							checkedAt: ip.sourceAddress.checkedAt,
 						},
 					}
 				: {}),

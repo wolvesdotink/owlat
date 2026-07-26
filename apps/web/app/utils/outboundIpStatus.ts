@@ -35,12 +35,16 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 		(identityFailed && identity?.isOverridden !== true);
 	const dnsblBlocked = ip.blockReasons?.includes('dnsbl') === true || ip.dnsbl === 'critical';
 	const ipv4IdentityBlocked = ip.blockReasons?.includes('ipv4-identity') === true;
+	const sourceAddressBlocked = ip.blockReasons?.includes('source-address') === true;
 	const spfBlocked = ip.blockReasons?.includes('spf') === true;
 	const dnsblUnavailable = ip.dnsbl === 'unknown';
 	const dnsblDegraded = ip.dnsbl === 'degraded';
 	let tone: HealthTone;
 	let label: string;
-	if (spfBlocked) {
+	if (sourceAddressBlocked) {
+		tone = 'error';
+		label = 'Source address unavailable';
+	} else if (spfBlocked) {
 		tone = 'error';
 		label = 'IPv6 SPF prerequisite';
 	} else if (ipv4IdentityBlocked) {
@@ -90,24 +94,28 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 				? 'A non-critical DNS blocklist currently lists this IP.'
 				: 'A critical DNS blocklist currently excludes this IP from delivery.';
 	const hasBlocklistConcern = dnsblBlocked || dnsblUnavailable || dnsblDegraded;
-	const detail = spfBlocked
-		? 'Outbound IPv6 stays quarantined until the return-path SPF record authorizes its exact ip6: address.'
-		: ipv4IdentityBlocked
-			? 'Outbound IPv6 stays quarantined until every configured IPv4 identity passes FCrDNS.'
-			: identityBlocked && dnsblBlocked
-				? `${identityDetail} ${blocklistDetail}`
-				: hasBlocklistConcern
-					? blocklistDetail
-					: identityDetail;
-	const remediation = spfBlocked
-		? 'Publish the generated ip6: mechanism on the return-path domain, then verify again.'
-		: ipv4IdentityBlocked
-			? 'Repair the IPv4 PTR, forward A record, and EHLO alignment before enabling IPv6.'
-			: identityBlocked && identity
-				? reverseDnsGuidance(identity.ptrNames).instruction
-				: hasBlocklistConcern
-					? 'Review the MTA blocklist details, resolve the listing cause, and request delisting.'
-					: null;
+	const detail = sourceAddressBlocked
+		? 'Outbound IPv6 stays quarantined because the MTA cannot bind and route this source address.'
+		: spfBlocked
+			? 'Outbound IPv6 stays quarantined until the return-path SPF record authorizes its exact ip6: address.'
+			: ipv4IdentityBlocked
+				? 'Outbound IPv6 stays quarantined until every configured IPv4 identity passes FCrDNS.'
+				: identityBlocked && dnsblBlocked
+					? `${identityDetail} ${blocklistDetail}`
+					: hasBlocklistConcern
+						? blocklistDetail
+						: identityDetail;
+	const remediation = sourceAddressBlocked
+		? 'Assign and route the IPv6 address on the MTA host/container, then run readiness again.'
+		: spfBlocked
+			? 'Publish the generated ip6: mechanism on the return-path domain, then verify again.'
+			: ipv4IdentityBlocked
+				? 'Repair the IPv4 PTR, forward A record, and EHLO alignment before enabling IPv6.'
+				: identityBlocked && identity
+					? reverseDnsGuidance(identity.ptrNames).instruction
+					: hasBlocklistConcern
+						? 'Review the MTA blocklist details, resolve the listing cause, and request delisting.'
+						: null;
 
 	return { tone, label, detail, remediation };
 }

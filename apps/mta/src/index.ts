@@ -19,6 +19,8 @@ import {
 import { initializePools } from './scaling/ipPool.js';
 import { runFcrdnsReadinessCheck } from './scaling/fcrdns.js';
 import { runIpv6SpfReadinessCheck } from './scaling/ipv6SpfReadiness.js';
+import { runSourceAddressReadinessCheck } from './scaling/sourceAddressReadiness.js';
+import { flushPendingIpReadinessAlerts } from './scaling/ipReadinessAlerts.js';
 import { startDnsblChecker } from './intelligence/dnsbl.js';
 import { initializeWarming, evaluateDay } from './intelligence/warming.js';
 import * as orgLimits from './intelligence/orgLimits.js';
@@ -104,8 +106,10 @@ export async function main() {
 	// ── 4b. FCrDNS readiness gate ──
 	// Complete the first observation before a worker can select an IP. A fresh,
 	// never-verified address therefore cannot race its quarantine at startup.
+	await runSourceAddressReadinessCheck(redis, config);
 	await runFcrdnsReadinessCheck(redis, config);
 	await runIpv6SpfReadinessCheck(redis, config);
+	await flushPendingIpReadinessAlerts(redis, config);
 
 	// ── 4c. Finish this process's first DNSBL sweep, then elect the cron leader ──
 	// The boot sweep is unconditional because an existing leader in a rolling
@@ -129,12 +133,14 @@ export async function main() {
 	// through the authenticated manual DLQ routes.
 	const webhookDlqInterval = setInterval(() => {
 		if (!isLeader()) return;
-		void sweepWebhookDlq(redis, config).catch(() =>
-			logger.error(
-				{ operation: 'convex_webhook_dlq', category: 'automatic_retry' },
-				'Automatic webhook DLQ recovery sweep failed'
-			)
-		);
+		void flushPendingIpReadinessAlerts(redis, config)
+			.then(() => sweepWebhookDlq(redis, config))
+			.catch(() =>
+				logger.error(
+					{ operation: 'convex_webhook_dlq', category: 'automatic_retry' },
+					'Automatic webhook recovery sweep failed'
+				)
+			);
 	}, 60_000);
 
 	// ── 7. Start HTTP server ──
@@ -193,7 +199,8 @@ export async function main() {
 	const fcrdnsInterval = setInterval(
 		() => {
 			if (!isLeader()) return;
-			void runFcrdnsReadinessCheck(redis, config)
+			void runSourceAddressReadinessCheck(redis, config)
+				.then(() => runFcrdnsReadinessCheck(redis, config))
 				.then(() => runIpv6SpfReadinessCheck(redis, config))
 				.catch((err) => logger.error({ err }, 'Periodic outbound-IP readiness check failed'));
 		},

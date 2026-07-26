@@ -17,14 +17,15 @@ export const FCRDNS_FAILURE_REASONS = [
 ] as const;
 
 export type FcrdnsFailureReason = (typeof FCRDNS_FAILURE_REASONS)[number];
-export type FcrdnsVerdict = 'pass' | 'warn' | 'fail' | 'error';
+export const FCRDNS_VERDICTS = ['pass', 'warn', 'fail', 'error'] as const;
+export type FcrdnsVerdict = (typeof FCRDNS_VERDICTS)[number];
 
 export function isFcrdnsFailureReason(value: string): value is FcrdnsFailureReason {
 	return FCRDNS_FAILURE_REASONS.includes(value as FcrdnsFailureReason);
 }
 
 export function isFcrdnsVerdict(value: string): value is FcrdnsVerdict {
-	return value === 'pass' || value === 'warn' || value === 'fail' || value === 'error';
+	return FCRDNS_VERDICTS.some((verdict) => verdict === value);
 }
 
 export interface FcrdnsChecklist {

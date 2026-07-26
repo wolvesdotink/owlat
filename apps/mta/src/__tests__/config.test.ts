@@ -132,7 +132,9 @@ describe('loadConfig', () => {
 		process.env.MTA_IPV6_ENABLED = 'true';
 		process.env.IP_POOLS_TRANSACTIONAL = '2001:db8::1';
 		process.env.IP_POOLS_CAMPAIGN = '2001:db8::2';
-		expect(() => loadConfig()).toThrow('requires at least one configured IPv4');
+		expect(() => loadConfig()).toThrow(
+			'transactional pool requires an IPv4 fallback in that same pool'
+		);
 
 		process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1,::';
 		process.env.IP_POOLS_CAMPAIGN = '10.0.0.2';

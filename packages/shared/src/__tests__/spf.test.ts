@@ -16,6 +16,9 @@ describe('isSpfRecord', () => {
 		expect(isSpfRecord('v=DMARC1; p=none')).toBe(false);
 		expect(isSpfRecord('google-site-verification=abc')).toBe(false);
 		expect(isSpfRecord('')).toBe(false);
+		expect(isSpfRecord('v=spf1:invalid')).toBe(false);
+		expect(isSpfRecord('v=spf1/invalid')).toBe(false);
+		expect(isSpfRecord('v=spf1;invalid')).toBe(false);
 	});
 });
 
@@ -101,5 +104,21 @@ describe('spfRecordHasExactIpMechanism', () => {
 		expect(spfRecordHasExactIpMechanism('v=spf1 ip6:2001:db8::/64 -all', '2001:db8::10')).toBe(
 			false
 		);
+	});
+
+	it('accepts only positive exact address mechanisms and never follows indirection', () => {
+		expect(spfRecordHasExactIpMechanism('v=spf1 +ip6:2001:db8::10 -all', '2001:db8::10')).toBe(
+			true
+		);
+		for (const record of [
+			'v=spf1 -ip6:2001:db8::10 -all',
+			'v=spf1 ~ip6:2001:db8::10 -all',
+			'v=spf1 ?ip6:2001:db8::10 -all',
+			'v=spf1 include:2001:db8::10 -all',
+			'v=spf1 redirect=2001:db8::10',
+			'v=spf1 ip6:2001:db8::/64 -all',
+		]) {
+			expect(spfRecordHasExactIpMechanism(record, '2001:db8::10')).toBe(false);
+		}
 	});
 });

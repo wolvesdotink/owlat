@@ -13,8 +13,11 @@
 
 import { parseIpAddress } from './ipAddress';
 
-/** Matches an SPF record: `v=spf1` (case-insensitive, leading whitespace ok). */
-const SPF_RECORD_RE = /^\s*v=spf1\b/i;
+/**
+ * Matches the complete RFC 7208 version term. Punctuation is not a delimiter:
+ * `v=spf1:broken` is an unknown version string, not an SPF record.
+ */
+const SPF_RECORD_RE = /^\s*v=spf1(?:\s|$)/i;
 
 /** The trailing `all` mechanism, with an optional qualifier (`~-+?`). */
 const ALL_MECHANISM_RE = /^[~+?-]?all$/i;
@@ -81,7 +84,11 @@ export function spfRecordHasExactIpMechanism(record: string, address: string): b
 	if (!parsed || !isSpfRecord(record)) return false;
 	const prefix = `${parsed.family === 'ipv4' ? 'ip4' : 'ip6'}:`;
 	return parseSpfMechanisms(record).some((mechanism) => {
-		const normalizedMechanism = mechanism.toLowerCase();
+		// The explicit `+` qualifier has the same pass semantics as the default
+		// qualifier. Neutral/softfail/fail mechanisms do not authorize a source
+		// for this conservative readiness gate.
+		const normalizedMechanism = mechanism.toLowerCase().replace(/^\+/, '');
+		if (/^[?~-]/.test(mechanism)) return false;
 		if (!normalizedMechanism.startsWith(prefix)) return false;
 		return parseIpAddress(normalizedMechanism.slice(prefix.length))?.address === parsed.address;
 	});
