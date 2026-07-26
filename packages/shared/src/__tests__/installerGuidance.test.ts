@@ -4,7 +4,6 @@ import {
 	IP_AUDIT_VPS_PROVIDERS,
 	isIpAuditVpsProvider,
 	PROVIDER_NOTE_MAX_CHARS,
-	providersRequiringPort25Request,
 	VPS_PORT25_NOTES,
 } from '../ipAuditProviders';
 
@@ -40,11 +39,10 @@ describe('installer provider note', () => {
 		expect(note.note).toMatch(/block/i);
 	});
 
-	it('lists the providers that need a port-25 request after tenure', () => {
-		const providers = providersRequiringPort25Request();
-		expect(providers).toContain('hetzner');
-		expect(providers).toContain('ovh');
-		expect(providers).not.toContain('digitalocean');
+	it('states which providers need a port-25 request after tenure', () => {
+		expect(VPS_PORT25_NOTES.hetzner.port25Policy).toBe('request_after_tenure');
+		expect(VPS_PORT25_NOTES.ovh.port25Policy).toBe('request_after_tenure');
+		expect(VPS_PORT25_NOTES.digitalocean.port25Policy).not.toBe('request_after_tenure');
 	});
 
 	it('recognises only the providers it documents', () => {

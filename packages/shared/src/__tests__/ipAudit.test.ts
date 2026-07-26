@@ -211,7 +211,11 @@ describe('evaluateIpAudit — the three outcomes', () => {
 	it('keeps a non-Spamhaus zone that did not answer advisory only', () => {
 		const report = evaluateIpAudit(
 			input({
-				zones: [zone('spamhaus', 'clean'), zone('barracuda', 'unknown'), zone('spamcop', 'unknown')],
+				zones: [
+					zone('spamhaus', 'clean'),
+					zone('barracuda', 'unknown'),
+					zone('spamcop', 'unknown'),
+				],
 			})
 		);
 		expect(report.verdict).toBe('clean');

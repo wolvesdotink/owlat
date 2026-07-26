@@ -112,10 +112,3 @@ export function isIpAuditVpsProvider(value: string): value is IpAuditVpsProvider
 export function installerProviderNote(provider: string): VpsPort25Note {
 	return isIpAuditVpsProvider(provider) ? VPS_PORT25_NOTES[provider] : VPS_PORT25_NOTES.other;
 }
-
-/** Providers whose port-25 policy is worth flagging before the operator commits. */
-export function providersRequiringPort25Request(): IpAuditVpsProvider[] {
-	return IP_AUDIT_VPS_PROVIDERS.filter(
-		(provider) => VPS_PORT25_NOTES[provider].port25Policy === 'request_after_tenure'
-	);
-}
