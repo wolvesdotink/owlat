@@ -35,6 +35,8 @@ import { probePort25Egress, type Port25ProbeResult } from './port25Probe.js';
 
 const IP_AUDIT_PREFIX = 'mta:ip-audit:';
 const AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/** Keep a record for a few audit cycles so a decommissioned address ages out. */
+const AUDIT_RECORD_TTL_MS = AUDIT_INTERVAL_MS * 7;
 /** Cheap staleness poll so a fresh install is audited within the hour. */
 const AUDIT_DUE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 const ZONE_TIMEOUT_MS = 5_000;
@@ -166,8 +168,10 @@ async function observeNeighbourhood(
 				if (result.status === 'clean') return false;
 				const sublists = decodeSpamhausAnswers(result.answers);
 				// A whole /24 in the PBL is a policy statement about the range, not
-				// evidence that the neighbours are spamming.
-				return sublists.some((sublist) => sublist !== 'pbl');
+				// evidence that the neighbours are spamming. Anything else counts —
+				// including a listing whose return code we could not decode, which is
+				// still a listing.
+				return sublists.length === 0 || sublists.some((sublist) => sublist !== 'pbl');
 			} catch {
 				return null;
 			}
@@ -228,7 +232,25 @@ export function ipAuditKey(ip: string): string {
 }
 
 export async function storeIpAuditRecord(redis: Redis, record: IpAuditRecord): Promise<void> {
-	await redis.set(ipAuditKey(record.ip), JSON.stringify(record));
+	// An address dropped from the pools stops being re-audited, so the record
+	// has to age out on its own rather than linger in Redis forever.
+	await redis.set(ipAuditKey(record.ip), JSON.stringify(record), 'PX', AUDIT_RECORD_TTL_MS);
+}
+
+/**
+ * Shape check for a stored blob. Our own writes are still untrusted input: a
+ * record written by an older build must read as absent, never as a half-typed
+ * object that throws on the first iteration.
+ */
+function isStoredAuditRecord(value: unknown): value is IpAuditRecord {
+	if (!value || typeof value !== 'object') return false;
+	const record = value as Record<string, unknown>;
+	return (
+		typeof record['ip'] === 'string' &&
+		typeof record['checkedAt'] === 'number' &&
+		Array.isArray(record['findings']) &&
+		Array.isArray(record['zones'])
+	);
 }
 
 /** Read the last stored audit. A missing or corrupt record is simply absent. */
@@ -237,8 +259,7 @@ export async function getIpAuditRecord(redis: Redis, ip: string): Promise<IpAudi
 	if (!raw) return null;
 	try {
 		const parsed: unknown = JSON.parse(raw);
-		if (!parsed || typeof parsed !== 'object') return null;
-		return parsed as IpAuditRecord;
+		return isStoredAuditRecord(parsed) ? parsed : null;
 	} catch {
 		return null;
 	}
