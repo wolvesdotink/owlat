@@ -1,90 +1,30 @@
 <script setup lang="ts">
+/**
+ * `::secure-email-journey` — the two-route illustration on the Secure Email
+ * guide. Contrasts an ordinary hop-by-hop TLS route, where every mail server
+ * is an endpoint holding plaintext, with a Sealed Mail route where the relays
+ * carry ciphertext.
+ *
+ * This component owns the figure, heading and summary; the node/link chain and
+ * its responsive collapse live in `SecureEmailJourneyRoute`, and the flow copy
+ * lives in `app/utils/secureEmailJourney`.
+ */
 import { onMounted, ref } from 'vue';
+import { secureEmailJourneyFlows } from '../../utils/secureEmailJourney';
 
-const visible = ref(false);
+const isVisible = ref(false);
 
 onMounted(() => {
 	requestAnimationFrame(() => {
-		visible.value = true;
+		isVisible.value = true;
 	});
 });
-
-const flows = [
-	{
-		id: 'transport',
-		eyebrow: 'Ordinary secure email',
-		title: 'TLS protects each connection',
-		detail: 'The message is opened and handled again at every mail server.',
-		state: 'Hop-by-hop',
-		nodes: [
-			{
-				label: 'Sender',
-				detail: 'Mail app',
-				badge: 'Readable',
-				icon: 'M4 4h16v16H4zM4 7l8 6 8-6',
-			},
-			{
-				label: 'Sending server',
-				detail: 'Queues + routes',
-				badge: 'Can read',
-				icon: 'M4 6h16v5H4zM4 13h16v5H4zM7 8.5h.01M7 15.5h.01',
-			},
-			{
-				label: 'Receiving server',
-				detail: 'Filters + stores',
-				badge: 'Can read',
-				icon: 'M4 6h16v5H4zM4 13h16v5H4zM17 8.5h.01M17 15.5h.01',
-			},
-			{
-				label: 'Recipient',
-				detail: 'Mail app',
-				badge: 'Readable',
-				icon: 'M3 19V9l9-6 9 6v10H3zm0-10l9 6 9-6',
-			},
-		],
-		links: ['TLS', 'STARTTLS', 'TLS'],
-	},
-	{
-		id: 'sealed',
-		eyebrow: 'Owlat Sealed Mail',
-		title: 'The message stays sealed across the route',
-		detail: 'Transport TLS still protects the links, while OpenPGP protects the message itself.',
-		state: 'End-to-end',
-		nodes: [
-			{
-				label: 'Sender workspace',
-				detail: 'Seal + sign',
-				badge: 'Readable',
-				icon: 'M7 11V8a5 5 0 0110 0v3m-9 0h8a2 2 0 012 2v7H6v-7a2 2 0 012-2z',
-			},
-			{
-				label: 'Sending server',
-				detail: 'Routes ciphertext',
-				badge: 'Sealed',
-				icon: 'M4 6h16v5H4zM4 13h16v5H4zM7 8.5h.01M7 15.5h.01',
-			},
-			{
-				label: 'Receiving server',
-				detail: 'Receives ciphertext',
-				badge: 'Sealed',
-				icon: 'M4 6h16v5H4zM4 13h16v5H4zM17 8.5h.01M17 15.5h.01',
-			},
-			{
-				label: 'Recipient workspace',
-				detail: 'Open + verify',
-				badge: 'Readable',
-				icon: 'M17 11V8a5 5 0 00-9.9-1M8 11h8a2 2 0 012 2v7H6v-7a2 2 0 012-2z',
-			},
-		],
-		links: ['TLS + sealed', 'STARTTLS + sealed', 'TLS + sealed'],
-	},
-];
 </script>
 
 <template>
-	<div class="sej" :class="{ 'is-visible': visible }">
+	<div class="sej" :class="{ 'is-visible': isVisible }">
 		<figure
-			v-for="(flow, flowIndex) in flows"
+			v-for="(flow, flowIndex) in secureEmailJourneyFlows"
 			:key="flow.id"
 			class="sej-flow"
 			:class="`sej-flow--${flow.id}`"
@@ -99,67 +39,7 @@ const flows = [
 				<span class="sej-state">{{ flow.state }}</span>
 			</figcaption>
 
-			<div class="sej-route">
-				<template v-for="(node, nodeIndex) in flow.nodes" :key="node.label">
-					<div
-						class="sej-node"
-						:class="{ 'is-sealed': node.badge === 'Sealed' }"
-						:style="{ '--node-index': nodeIndex }"
-					>
-						<div class="sej-icon">
-							<svg
-								width="22"
-								height="22"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="1.6"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							>
-								<path :d="node.icon" />
-							</svg>
-						</div>
-						<span class="sej-node-label">{{ node.label }}</span>
-						<span class="sej-node-detail">{{ node.detail }}</span>
-						<span class="sej-node-badge">{{ node.badge }}</span>
-					</div>
-
-					<div v-if="nodeIndex < flow.links.length" class="sej-link">
-						<span class="sej-link-label">
-							<svg
-								width="11"
-								height="11"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								stroke-width="2"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							>
-								<path d="M7 11V8a5 5 0 0110 0v3M6 11h12v9H6z" />
-							</svg>
-							{{ flow.links[nodeIndex] }}
-						</span>
-						<div class="sej-link-line">
-							<span class="sej-packet">
-								<svg
-									width="12"
-									height="12"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								>
-									<path d="M4 6h16v12H4zM4 8l8 5 8-5" />
-								</svg>
-							</span>
-						</div>
-					</div>
-				</template>
-			</div>
+			<SecureEmailJourneyRoute :nodes="flow.nodes" :links="flow.links" :is-visible="isVisible" />
 
 			<div class="sej-summary">
 				<svg
@@ -291,138 +171,6 @@ const flows = [
 	letter-spacing: 0.03em;
 }
 
-.sej-route {
-	display: grid;
-	grid-template-columns:
-		minmax(80px, 1fr) minmax(70px, 0.72fr) minmax(80px, 1fr) minmax(70px, 0.72fr)
-		minmax(80px, 1fr) minmax(70px, 0.72fr) minmax(80px, 1fr);
-	align-items: start;
-}
-
-.sej-node {
-	display: flex;
-	min-width: 0;
-	align-items: center;
-	flex-direction: column;
-	gap: 3px;
-	text-align: center;
-	opacity: 0;
-	transform: scale(0.94);
-	transition:
-		opacity 0.45s var(--ease-spring),
-		transform 0.45s var(--ease-spring);
-	transition-delay: calc(0.18s + var(--flow-index) * 0.12s + var(--node-index) * 0.08s);
-}
-
-.is-visible .sej-node {
-	opacity: 1;
-	transform: scale(1);
-}
-
-.sej-icon {
-	display: grid;
-	width: 48px;
-	height: 48px;
-	margin-bottom: 4px;
-	place-items: center;
-	border: 1px solid color-mix(in oklab, var(--flow-color) 28%, var(--color-border-default));
-	border-radius: 13px;
-	background: color-mix(in oklab, var(--flow-color) 8%, var(--color-bg-surface));
-	box-shadow: 0 8px 24px color-mix(in oklab, var(--flow-color) 8%, transparent);
-	color: var(--flow-color);
-	transition:
-		transform var(--motion-moderate) var(--ease-spring),
-		box-shadow var(--motion-moderate) var(--ease-spring);
-}
-
-.sej-node:hover .sej-icon {
-	transform: translateY(-2px);
-	box-shadow: 0 10px 28px color-mix(in oklab, var(--flow-color) 15%, transparent);
-}
-
-.sej-node-label {
-	color: var(--color-text-primary);
-	font-size: 0.6875rem;
-	font-weight: var(--font-weight-semibold);
-	line-height: 1.35;
-}
-
-.sej-node-detail {
-	color: var(--color-text-tertiary);
-	font-size: 0.625rem;
-	line-height: 1.35;
-}
-
-.sej-node-badge {
-	margin-top: 4px;
-	padding: 1px 7px;
-	border-radius: 999px;
-	background: var(--color-bg-soft);
-	color: var(--color-text-tertiary);
-	font-family: var(--font-mono);
-	font-size: 0.5625rem;
-	font-weight: var(--font-weight-semibold);
-	letter-spacing: 0.03em;
-	text-transform: uppercase;
-}
-
-.sej-node.is-sealed .sej-node-badge {
-	background: color-mix(in oklab, var(--color-success) 10%, var(--color-bg-surface));
-	color: var(--color-success);
-}
-
-.sej-link {
-	position: relative;
-	min-width: 0;
-	padding-top: 16px;
-}
-
-.sej-link-label {
-	display: flex;
-	min-height: 18px;
-	align-items: center;
-	justify-content: center;
-	gap: 4px;
-	color: var(--flow-color);
-	font-family: var(--font-mono);
-	font-size: 0.5625rem;
-	font-weight: var(--font-weight-semibold);
-	white-space: nowrap;
-}
-
-.sej-link-line {
-	position: relative;
-	height: 1px;
-	margin-top: 8px;
-	background: color-mix(in oklab, var(--flow-color) 42%, var(--color-border-default));
-}
-
-.sej-link-line::after {
-	position: absolute;
-	top: -3px;
-	right: -1px;
-	width: 7px;
-	height: 7px;
-	border-top: 1px solid var(--flow-color);
-	border-right: 1px solid var(--flow-color);
-	content: '';
-	transform: rotate(45deg);
-}
-
-.sej-packet {
-	position: absolute;
-	top: -7px;
-	left: 0;
-	display: grid;
-	width: 17px;
-	height: 15px;
-	place-items: center;
-	border-radius: 4px;
-	background: var(--color-bg-elevated);
-	color: var(--flow-color);
-	animation: sej-travel 3.4s ease-in-out infinite;
-}
-
 .sej-summary {
 	display: flex;
 	align-items: flex-start;
@@ -442,96 +190,6 @@ const flows = [
 	color: var(--flow-color);
 }
 
-@keyframes sej-travel {
-	0%,
-	10% {
-		left: 0;
-		opacity: 0;
-	}
-	20% {
-		opacity: 1;
-	}
-	80% {
-		opacity: 1;
-	}
-	90%,
-	100% {
-		left: calc(100% - 16px);
-		opacity: 0;
-	}
-}
-
-@media (max-width: 760px) {
-	.sej-route {
-		grid-template-columns: 1fr;
-		gap: 0;
-	}
-
-	.sej-node {
-		display: grid;
-		grid-template-columns: 44px minmax(0, 1fr) auto;
-		grid-template-rows: auto auto;
-		column-gap: 10px;
-		text-align: left;
-	}
-
-	.sej-icon {
-		width: 44px;
-		height: 44px;
-		grid-row: 1 / 3;
-		margin: 0;
-	}
-
-	.sej-node-label {
-		align-self: end;
-	}
-
-	.sej-node-detail {
-		align-self: start;
-	}
-
-	.sej-node-badge {
-		grid-column: 3;
-		grid-row: 1 / 3;
-		align-self: center;
-		margin: 0;
-	}
-
-	.sej-link {
-		display: grid;
-		min-height: 48px;
-		grid-template-columns: 44px minmax(0, 1fr);
-		align-items: center;
-		column-gap: 10px;
-		padding: 0;
-	}
-
-	.sej-link-label {
-		grid-column: 2;
-		justify-content: flex-start;
-	}
-
-	.sej-link-line {
-		position: absolute;
-		top: 3px;
-		bottom: 3px;
-		left: 21px;
-		width: 1px;
-		height: auto;
-		margin: 0;
-	}
-
-	.sej-link-line::after {
-		top: auto;
-		right: -3px;
-		bottom: 0;
-	}
-
-	.sej-packet {
-		display: none;
-	}
-}
-
 @media (max-width: 460px) {
 	.sej-flow {
 		padding: 14px;
@@ -544,15 +202,10 @@ const flows = [
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.sej-flow,
-	.sej-node {
+	.sej-flow {
 		opacity: 1;
 		transform: none;
 		transition: none;
-	}
-
-	.sej-packet {
-		animation: none;
 	}
 }
 </style>
