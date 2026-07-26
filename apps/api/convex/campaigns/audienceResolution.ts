@@ -15,6 +15,8 @@
  *                              (test/asserts only), bounded by COUNT_CEILING.
  *   - `countRecipients`      — public query, accumulates integers by streaming,
  *                              capped at COUNT_CEILING.
+ *   - `countRecipientsInternal` — the same count without a session, for the
+ *                              binding capacity pre-flight (campaigns/capacityPreflight.ts).
  */
 
 import { v } from 'convex/values';
@@ -90,7 +92,7 @@ function projectRecipient(contact: Doc<'contacts'>): CampaignRecipient {
 export function selectRecipient(
 	contact: Doc<'contacts'>,
 	gate: { requiresDoi: boolean; blockedEmails: ReadonlySet<string> },
-	membershipPendingDoi?: boolean,
+	membershipPendingDoi?: boolean
 ): CampaignRecipient | null {
 	if (contact.deletedAt !== undefined) return null; // live-contact
 	if (!contact.email) return null; // email-present
@@ -164,7 +166,7 @@ export interface ResolvedPage {
  */
 async function resolveRecipientPageImpl(
 	ctx: QueryCtx,
-	args: { audience: StoredAudience; cursor: string; numItems: number },
+	args: { audience: StoredAudience; cursor: string; numItems: number }
 ): Promise<ResolvedPage> {
 	const { audience, cursor, numItems } = args;
 
@@ -186,7 +188,7 @@ async function resolveRecipientPageImpl(
 
 		const contacts = await batchGet<Doc<'contacts'>>(
 			ctx,
-			page.map((membership) => membership.contactId),
+			page.map((membership) => membership.contactId)
 		);
 		const recipients: CampaignRecipient[] = [];
 		for (const membership of page) {
@@ -222,10 +224,7 @@ async function resolveRecipientPageImpl(
 	try {
 		parsedFilters = parseSegmentFilters(filters);
 	} catch (err) {
-		logWarn(
-			'audienceResolution: segment filters failed to parse; resolving zero recipients',
-			err,
-		);
+		logWarn('audienceResolution: segment filters failed to parse; resolving zero recipients', err);
 		return { recipients: [], nextCursor: null, pageCandidates: 0 };
 	}
 
@@ -270,7 +269,7 @@ async function resolveRecipientPageImpl(
  */
 async function* streamAudienceCandidates(
 	ctx: QueryCtx,
-	audience: StoredAudience,
+	audience: StoredAudience
 ): AsyncGenerator<{ recipient: CampaignRecipient | null }> {
 	const blockedEmails = await loadSuppressionSet(ctx);
 
@@ -369,24 +368,43 @@ export const resolveRecipients = internalQuery({
 // so `eligible` equals the delivered count; `total - eligible` is the honest
 // excluded gap. Capped at COUNT_CEILING — past the cap it stops streaming and
 // returns `capped: true` so the wizard renders e.g. `25,000+`. ──
+export interface AudienceCount {
+	total: number;
+	eligible: number;
+	capped: boolean;
+}
+
+/** Shared counting core — one predicate, one ceiling, two entry points. */
+async function countAudienceImpl(ctx: QueryCtx, audience: StoredAudience): Promise<AudienceCount> {
+	let total = 0;
+	let eligible = 0;
+	for await (const { recipient } of streamAudienceCandidates(ctx, audience)) {
+		total += 1;
+		if (recipient) eligible += 1;
+		if (total >= COUNT_CEILING) {
+			// Cap reached — clamp to the ceiling and stop streaming. There may be
+			// more candidates, so the readout is "at least CEILING".
+			return { total: COUNT_CEILING, eligible: Math.min(eligible, COUNT_CEILING), capped: true };
+		}
+	}
+	return { total, eligible, capped: false };
+}
+
 export const countRecipients = authedQuery({
 	args: { audience: v.optional(audienceValidator) },
-	handler: async (
-		ctx,
-		{ audience },
-	): Promise<{ total: number; eligible: number; capped: boolean }> => {
+	handler: async (ctx, { audience }): Promise<AudienceCount> => {
 		if (!audience) return { total: 0, eligible: 0, capped: false };
-		let total = 0;
-		let eligible = 0;
-		for await (const { recipient } of streamAudienceCandidates(ctx, audience)) {
-			total += 1;
-			if (recipient) eligible += 1;
-			if (total >= COUNT_CEILING) {
-				// Cap reached — clamp to the ceiling and stop streaming. There may be
-				// more candidates, so the readout is "at least CEILING".
-				return { total: COUNT_CEILING, eligible: Math.min(eligible, COUNT_CEILING), capped: true };
-			}
-		}
-		return { total, eligible, capped: false };
+		return await countAudienceImpl(ctx, audience);
+	},
+});
+
+// ── Entry 2b: the same count, session-free. The binding capacity pre-flight
+// (`campaigns/capacityPreflight.ts`) runs at schedule time AND at scheduler-tick
+// fire time, where there is no user session to authorize against; the calling
+// pre-flight has already gated on the caller's permission. ──
+export const countRecipientsInternal = internalQuery({
+	args: { audience: audienceValidator },
+	handler: async (ctx, { audience }): Promise<AudienceCount> => {
+		return await countAudienceImpl(ctx, audience);
 	},
 });
