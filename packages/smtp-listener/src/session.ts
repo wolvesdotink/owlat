@@ -8,6 +8,7 @@
  */
 
 import type { Socket } from 'node:net';
+import { TLSSocket } from 'node:tls';
 import { runCommandLoop, type ResolvedListenerConfig } from './commandLoop.js';
 import { resolveTlsConfig } from './tls.js';
 import type { MutableSmtpSession, SmtpListenerOptions } from './types.js';
@@ -65,6 +66,9 @@ function buildSession<S, T>(
 		localAddress: socket.localAddress ?? '',
 		localPort: socket.localPort ?? 0,
 		secure: initialSecure,
+		...(initialSecure && socket instanceof TLSSocket
+			? { tlsProtocol: socket.getProtocol() ?? undefined }
+			: {}),
 		authenticated: false,
 		esmtp: false,
 		rcptTo: [],

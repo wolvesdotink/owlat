@@ -3,6 +3,7 @@
 import { isDestinationProviderKey, type DestinationProviderKey } from './deliverabilityRouting';
 import { parseIpAddress } from './ipAddress';
 import { isDeliveryDomain, type DeliveryDomain } from './routingDispatch';
+import { isDeliverabilityProbeTokenFormat } from './deliverabilityProbeFormat';
 
 export const MTA_WEBHOOK_EVENT_TYPES = [
 	'sent',
@@ -22,6 +23,7 @@ export const MTA_WEBHOOK_EVENT_TYPES = [
 	'routing.reentry',
 	'inbound.mailbox.received',
 	'ip.readiness_regressed',
+	'deliverability.probe_observed',
 ] as const;
 
 export type MtaWebhookEventType = (typeof MTA_WEBHOOK_EVENT_TYPES)[number];
@@ -63,6 +65,12 @@ interface EventBase<K extends MtaWebhookEventType> {
 	readinessCheck?: 'fcrdns' | 'spf';
 	readinessReason?: string;
 	eligibilityGeneration?: number;
+	probeToken?: string;
+	spfResult?: string;
+	dkimResult?: string;
+	dmarcResult?: string;
+	tlsVersion?: string;
+	ptr?: string;
 }
 
 export type SharedMtaWebhookEvent =
@@ -123,12 +131,34 @@ export type SharedMtaWebhookEvent =
 			readinessReason: string;
 			eligibilityGeneration: number;
 			message: string;
+	  })
+	| (EventBase<'deliverability.probe_observed'> & {
+			eventId: string;
+			probeToken: string;
+			spfResult: string;
+			dkimResult: string;
+			dmarcResult: string;
+			ip: string;
+			tlsVersion: string;
+			ptr: string;
+			selector?: string;
 	  });
 
 const EVENT_TYPES = new Set<string>(MTA_WEBHOOK_EVENT_TYPES);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CAMPAIGN_ID = /^[a-z0-9]{16,64}$/;
 const EVENT_ID = /^[\x21-\x7e]{16,160}$/;
+const SPF_RESULTS = new Set([
+	'pass',
+	'fail',
+	'softfail',
+	'neutral',
+	'none',
+	'temperror',
+	'permerror',
+]);
+const DKIM_RESULTS = new Set(['pass', 'fail', 'neutral', 'none', 'temperror', 'permerror']);
+const DMARC_RESULTS = new Set(['pass', 'fail', 'none', 'temperror', 'permerror']);
 
 export function isMtaWebhookEventType(value: unknown): value is MtaWebhookEventType {
 	return typeof value === 'string' && EVENT_TYPES.has(value);
@@ -151,6 +181,12 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 		!optionalBounded(value['domain'], 253) ||
 		!optionalBounded(value['selector'], 128) ||
 		!optionalBounded(value['dnsRecord'], 4096) ||
+		!optionalBounded(value['probeToken'], 128) ||
+		!optionalBounded(value['spfResult'], 32) ||
+		!optionalBounded(value['dkimResult'], 32) ||
+		!optionalBounded(value['dmarcResult'], 32) ||
+		!optionalBounded(value['tlsVersion'], 64) ||
+		!optionalBounded(value['ptr'], 512) ||
 		!optionalBounded(value['primarySendingDomain'], 253) ||
 		!optionalBounded(value['remoteMessageId'], 512) ||
 		(value['deliveryDomain'] !== undefined && !isDeliveryDomain(value['deliveryDomain'])) ||
@@ -263,6 +299,23 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 				bounded(value['message'], 512)
 			);
 		}
+		case 'deliverability.probe_observed':
+			return (
+				typeof value['eventId'] === 'string' &&
+				EVENT_ID.test(value['eventId']) &&
+				typeof value['probeToken'] === 'string' &&
+				isDeliverabilityProbeTokenFormat(value['probeToken']) &&
+				typeof value['spfResult'] === 'string' &&
+				SPF_RESULTS.has(value['spfResult']) &&
+				typeof value['dkimResult'] === 'string' &&
+				DKIM_RESULTS.has(value['dkimResult']) &&
+				typeof value['dmarcResult'] === 'string' &&
+				DMARC_RESULTS.has(value['dmarcResult']) &&
+				typeof value['ip'] === 'string' &&
+				parseIpAddress(value['ip']) !== null &&
+				bounded(value['tlsVersion'], 64) &&
+				bounded(value['ptr'], 512)
+			);
 	}
 }
 

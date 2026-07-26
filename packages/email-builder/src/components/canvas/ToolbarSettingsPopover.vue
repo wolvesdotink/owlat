@@ -11,14 +11,13 @@ const props = defineProps<{
 	schema: BlockAttributeSchema;
 	theme: Required<EmailTheme>;
 	variables?: Variable[];
-	onUploadImage?: (file: File) => Promise<{ url: string; storageId?: string }>;
 	anchorElement: HTMLElement;
 	/** When provided, render only this single group instead of all schema groups */
 	group?: PropertyGroupType;
 }>();
 
-const groups = computed(() => props.group ? [props.group] : props.schema.groups);
-const title = computed(() => props.group ? props.group.label : props.schema.label);
+const groups = computed(() => (props.group ? [props.group] : props.schema.groups));
+const title = computed(() => (props.group ? props.group.label : props.schema.label));
 
 const emit = defineEmits<{
 	(e: 'update', key: string, value: unknown): void;
@@ -88,8 +87,14 @@ onUnmounted(() => {
 			:style="popoverStyle"
 			@mousedown.stop
 		>
-			<div class="flex items-center justify-between py-2.5 px-3 border-b border-border-subtle shrink-0">
-				<span id="toolbar-settings-title" class="text-xs font-semibold uppercase tracking-[0.05em] text-text-secondary">{{ title }}</span>
+			<div
+				class="flex items-center justify-between py-2.5 px-3 border-b border-border-subtle shrink-0"
+			>
+				<span
+					id="toolbar-settings-title"
+					class="text-xs font-semibold uppercase tracking-[0.05em] text-text-secondary"
+					>{{ title }}</span
+				>
 				<IconButton :icon="X" title="Close" aria-label="Close" size="sm" @click="emit('close')" />
 			</div>
 
@@ -101,7 +106,6 @@ onUnmounted(() => {
 					:block="block"
 					:theme="theme"
 					:variables="variables"
-					:on-upload-image="onUploadImage"
 					:hide-header="!!group"
 					@update="(key, value) => emit('update', key, value)"
 				/>
@@ -109,4 +113,3 @@ onUnmounted(() => {
 		</div>
 	</Teleport>
 </template>
-

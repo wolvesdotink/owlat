@@ -90,6 +90,35 @@ describe('sealed-blob decrypt-serving proxy', () => {
 		expect(url).toBeNull();
 	});
 
+	it('fails closed when a sealed blob outlives the instance key', async () => {
+		const t = convexTest(schema, modules);
+		const storageId = await t.run((ctx) =>
+			storeSealedBlob(ctx.storage, enc.encode(`${CANARY} blob body`), 'message/rfc822')
+		);
+		vi.stubEnv('INSTANCE_SECRET', undefined);
+
+		const url = await t.run((ctx) => sealedBlobUrl(ctx.storage, storageId, 'message/rfc822'));
+		expect(url).toBeNull();
+	});
+
+	it('never serves a truncated blob that retains the reserved envelope magic', async () => {
+		const t = convexTest(schema, modules);
+		const truncated = new Uint8Array([0x41, 0x52, 0x42, 0x4c, 0x42, 0x31, 0x01, 0x00]);
+		const storageId = await t.run((ctx) =>
+			ctx.storage.store(new Blob([truncated as unknown as BlobPart]))
+		);
+		const url = await t.run((ctx) =>
+			sealedBlobUrl(ctx.storage, storageId, 'application/octet-stream')
+		);
+		const response = await t.fetch((url as string).slice(SITE.length));
+		expect(response.status).toBe(500);
+
+		vi.stubEnv('INSTANCE_SECRET', undefined);
+		expect(
+			await t.run((ctx) => sealedBlobUrl(ctx.storage, storageId, 'application/octet-stream'))
+		).toBeNull();
+	});
+
 	it('rejects a forged signature with 403', async () => {
 		const t = convexTest(schema, modules);
 		const { url } = await seedSealedBlob(t, 'message/rfc822');

@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { PropertyField as PropertyFieldType } from '../../schema/types';
-import type { EditorBlock, Variable, EmailTheme, GradientBackground } from '../../types';
+import type {
+	EditorBlock,
+	Variable,
+	EmailTheme,
+	GradientBackground,
+	ImageUploadResult,
+} from '../../types';
 
 // Field sub-components
 import ColorField from './fields/ColorField.vue';
@@ -33,6 +39,10 @@ import {
 	DEFAULT_CONDITION_OPERATOR,
 } from '../../utils/blockCondition';
 import { normalizeRepeat, DEFAULT_ITEM_ALIAS } from '../../utils/blockRepeat';
+import {
+	mediaAssetIdentityKeyForImageSource,
+	storageIdentityKeyForImageSource,
+} from '../../utils/imageStorage';
 
 const props = defineProps<{
 	field: PropertyFieldType;
@@ -40,7 +50,6 @@ const props = defineProps<{
 	block: EditorBlock;
 	theme: Required<EmailTheme>;
 	variables?: Variable[];
-	onUploadImage?: (file: File) => Promise<{ url: string; storageId?: string }>;
 }>();
 
 const emit = defineEmits<{
@@ -52,10 +61,30 @@ const stringValue = computed(() => (props.value as string) ?? '');
 const numberValue = computed(() => (props.value as number) ?? 0);
 const booleanValue = computed(() => (props.value as boolean) ?? false);
 
+function updateImageUrl(value: string) {
+	emit('update', value);
+	const storageIdentityKey = storageIdentityKeyForImageSource(props.field.key);
+	if (storageIdentityKey) {
+		emit('update-keyed', storageIdentityKey, undefined);
+	}
+	const mediaAssetIdentityKey = mediaAssetIdentityKeyForImageSource(props.field.key);
+	if (mediaAssetIdentityKey) emit('update-keyed', mediaAssetIdentityKey, undefined);
+}
+
+function selectStoredImage(result: ImageUploadResult) {
+	emit('update', result.url);
+	const storageIdentityKey = storageIdentityKeyForImageSource(props.field.key);
+	if (storageIdentityKey) {
+		emit('update-keyed', storageIdentityKey, result.storageId);
+	}
+	const mediaAssetIdentityKey = mediaAssetIdentityKeyForImageSource(props.field.key);
+	if (mediaAssetIdentityKey) emit('update-keyed', mediaAssetIdentityKey, result.mediaAssetId);
+}
+
 // Condition editor ----------------------------------------------------------
 const condition = computed(() => (props.value as Partial<BlockCondition> | undefined) ?? {});
 const conditionOperator = computed<ConditionOperator>(
-	() => condition.value.operator ?? DEFAULT_CONDITION_OPERATOR,
+	() => condition.value.operator ?? DEFAULT_CONDITION_OPERATOR
 );
 /** equals/notEquals/contains compare against a value; exists/notExists do not */
 const conditionNeedsValue = computed(() => operatorNeedsValue(conditionOperator.value));
@@ -116,10 +145,7 @@ const fontFamilyOptions = [
 		:class="{ 'flex-row items-center justify-between gap-3 min-h-[34px]': isInlineLayout }"
 	>
 		<!-- Label: always shown except for toggle (which has its own label) -->
-		<FieldLabel
-			v-if="field.type !== 'toggle'"
-			:class="{ 'shrink-0 min-w-0': isInlineLayout }"
-		>
+		<FieldLabel v-if="field.type !== 'toggle'" :class="{ 'shrink-0 min-w-0': isInlineLayout }">
 			{{ field.label }}
 		</FieldLabel>
 
@@ -217,8 +243,8 @@ const fontFamilyOptions = [
 		<ImageField
 			v-else-if="field.type === 'image'"
 			:value="stringValue"
-			:on-upload-image="onUploadImage"
-			@update="(val) => emit('update', val)"
+			@update="updateImageUrl"
+			@select="selectStoredImage"
 		/>
 
 		<!-- Alignment selector -->
@@ -253,7 +279,7 @@ const fontFamilyOptions = [
 		<!-- Gradient editor -->
 		<GradientEditor
 			v-else-if="field.type === 'gradient'"
-			:model-value="(value as GradientBackground | undefined)"
+			:model-value="value as GradientBackground | undefined"
 			@update:model-value="(val) => emit('update', val)"
 		/>
 
@@ -270,7 +296,7 @@ const fontFamilyOptions = [
 		<ArrayEditor
 			v-else-if="field.type === 'array'"
 			:field="field"
-			:value="(value as unknown[])"
+			:value="value as unknown[]"
 			@update="(val) => emit('update', val)"
 		/>
 
@@ -312,7 +338,8 @@ const fontFamilyOptions = [
 					@update="(v) => updateRepeat({ itemAlias: v })"
 				/>
 				<p class="text-[11px] leading-[1.4] text-text-tertiary m-0">
-					Reference each item with <code>{{ itemRefExample }}</code>.
+					Reference each item with <code>{{ itemRefExample }}</code
+					>.
 				</p>
 			</div>
 			<div class="flex flex-col gap-[5px]">
@@ -330,6 +357,8 @@ const fontFamilyOptions = [
 		</div>
 
 		<!-- Help text -->
-		<p v-if="field.helpText" class="text-[11px] leading-[1.4] text-text-tertiary m-0">{{ field.helpText }}</p>
+		<p v-if="field.helpText" class="text-[11px] leading-[1.4] text-text-tertiary m-0">
+			{{ field.helpText }}
+		</p>
 	</div>
 </template>

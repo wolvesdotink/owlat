@@ -24,6 +24,8 @@ WORKDIR /app/apps/docs
 
 COPY --from=deps /app/node_modules ../../node_modules
 COPY apps/docs/ ./
+COPY tsconfig.base.json ../../tsconfig.base.json
+COPY packages/shared/ ../../packages/shared/
 COPY packages/ui/ ../../packages/ui/
 
 # Generate packages/ui/.nuxt/tsconfig.json (excluded from Docker context by

@@ -52,6 +52,7 @@ import { checkSpf } from '@owlat/mail-auth';
 import { findMailboxRoute } from '../../inbound/mailboxResolver.js';
 import { isInboundTlsRequired } from '../../inbound/inboundTlsPolicy.js';
 import type { MtaConfig } from '../../config.js';
+import { createDeliverabilityProbeToken } from '@owlat/shared/deliverabilityProbeToken';
 
 /** Minimal MtaConfig — only the fields the hooks read. */
 function makeConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
@@ -62,6 +63,8 @@ function makeConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
 		bounceMaxConnectionsPerIp: 10,
 		bounceTarpitEnabled: false,
 		bounceTarpitDelayMs: 0,
+		returnPathDomain: 'bounces.owlat.test',
+		webhookSecret: 'mta-test-secret',
 		...overrides,
 	} as unknown as MtaConfig;
 }
@@ -187,10 +190,56 @@ describe('bounce onMailFrom SPF gate (PR-74)', () => {
 // ─── RCPT gate — TLS-RPT rua system route + quota ─────────────────────────────
 
 /** Run `onRcptTo` and resolve with the reply it returned (or undefined). */
-async function runRcptTo(config: MtaConfig, rcptTo: string): Promise<SmtpReply | void> {
+async function runRcptTo(
+	config: MtaConfig,
+	rcptTo: string,
+	session = makeSession()
+): Promise<SmtpReply | void> {
 	const onRcptTo = buildOnRcptTo(config, fakeRedis);
-	return onRcptTo(addr(rcptTo));
+	return onRcptTo(addr(rcptTo), session as Parameters<typeof onRcptTo>[1]);
 }
+
+describe('bounce onRcptTo — authenticated deliverability probe', () => {
+	const config = makeConfig();
+	const token = createDeliverabilityProbeToken(config.webhookSecret, Date.now() + 15 * 60_000);
+	const probe = `deliverability-probe+${token}@${config.returnPathDomain}`;
+
+	it('accepts a valid probe as the only recipient and rejects a forged MAC', async () => {
+		const session = makeSession();
+		expect(await runRcptTo(config, probe, session)).toBeUndefined();
+		expect(session.transaction).toMatchObject({ deliverabilityProbeToken: token });
+		const forgedToken = `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}`;
+		const forged = `deliverability-probe+${forgedToken}@${config.returnPathDomain}`;
+		expect((await runRcptTo(config, forged))?.code).toBe(550);
+	});
+
+	it('rejects an expired probe before mailbox or route work', async () => {
+		vi.mocked(findMailboxRoute).mockClear();
+		const expired = createDeliverabilityProbeToken(config.webhookSecret, Date.now() - 1_000);
+		const reply = await runRcptTo(
+			config,
+			`deliverability-probe+${expired}@${config.returnPathDomain}`
+		);
+		expect(reply?.code).toBe(550);
+		expect(findMailboxRoute).not.toHaveBeenCalled();
+	});
+
+	it('rejects a normal recipient after an accepted probe', async () => {
+		const session = makeSession();
+		session.rcptTo.push(addr(probe));
+		const reply = await runRcptTo(config, 'user@example.test', session);
+		expect(reply?.code).toBe(550);
+		expect(reply?.enhanced).toBe('5.5.3');
+	});
+
+	it('rejects a probe after a normal recipient', async () => {
+		const session = makeSession();
+		session.rcptTo.push(addr('user@example.test'));
+		const reply = await runRcptTo(config, probe, session);
+		expect(reply?.code).toBe(550);
+		expect(reply?.enhanced).toBe('5.5.3');
+	});
+});
 
 describe('bounce onRcptTo — TLS-RPT rua system route', () => {
 	const RUA = 'tls-reports@owlat.test';

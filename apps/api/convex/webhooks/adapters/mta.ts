@@ -25,13 +25,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null;
 }
 
-function isPostmasterProtocolPayload(rawBody: string): boolean {
+function isSensitiveInternalPayload(rawBody: string): boolean {
 	try {
 		const payload = JSON.parse(rawBody) as unknown;
 		return (
 			isRecord(payload) &&
 			(payload['event'] === 'postmaster.authorize_domain' ||
-				payload['event'] === 'postmaster.stats')
+				payload['event'] === 'postmaster.stats' ||
+				payload['event'] === 'deliverability.probe_observed')
 		);
 	} catch {
 		return false;
@@ -96,7 +97,7 @@ export async function verifyMtaHeaders(
 
 export const mtaAdapter: InboundAdapter = {
 	source: 'mta',
-	shouldStoreRawPayload: (rawBody) => !isPostmasterProtocolPayload(rawBody),
+	shouldStoreRawPayload: (rawBody) => !isSensitiveInternalPayload(rawBody),
 
 	async verifySignature(request, rawBody) {
 		const secret = getOptional('MTA_WEBHOOK_SECRET');
@@ -340,6 +341,25 @@ export const mtaAdapter: InboundAdapter = {
 					eligibilityGeneration: payload.eligibilityGeneration,
 					observedAt: payload.timestamp,
 					message: payload.message,
+				};
+			}
+			case 'deliverability.probe_observed': {
+				const authResult = (value: string | undefined) =>
+					value === 'pass'
+						? ('pass' as const)
+						: value === 'fail'
+							? ('fail' as const)
+							: ('unknown' as const);
+				return {
+					kind: 'internal.deliverability_probe_observed',
+					token: payload.probeToken,
+					spf: authResult(payload.spfResult),
+					dkim: authResult(payload.dkimResult),
+					dmarc: authResult(payload.dmarcResult),
+					...(payload.selector ? { dkimSelector: payload.selector } : {}),
+					tlsVersion: payload.tlsVersion,
+					sendingIp: payload.ip,
+					ptr: payload.ptr,
 				};
 			}
 			case 'postmaster.stats': {

@@ -20,32 +20,53 @@
  *      mailbox row itself.
  *   2. External accounts (encrypted IMAP/SMTP credentials!) + folder-sync
  *      state + any user-keyed app passwords.
- *   3. Chat: anonymize authored messages ('[deleted account]') page by page —
+ *   3. Revoke staged account-export leases and purge their storage artifacts.
+ *   4. Anonymize active deliverability-alert recipient rows.
+ *   5. Anonymize compacted terminal deliverability-alert receipts.
+ *   6. Chat: anonymize authored messages ('[deleted account]') page by page —
  *      room conversations keep their flow, the identity goes; drop room
  *      memberships and mentions.
- *   4. Mark the deletion request completed.
+ *   7. Mark the deletion request completed.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import {
+	DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT,
+	boundedDeliverabilityAlertRecipientRows,
+	deliverabilityAlertNotificationPatch,
+} from '../delivery/checklistAlertRecipients';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
+const ALERT_RECIPIENT_ERASURE_PAGE_SIZE = 100;
+const ACCOUNT_EXPORT_ERASURE_BATCH_SIZE = 25;
+const DELETED_ACCOUNT_ID = '[deleted account]';
 
 export const eraseMemberData = internalMutation({
 	args: {
 		authUserId: v.string(),
 		requestId: v.id('accountDeletionRequests'),
+		alertCursor: v.optional(v.string()),
+		isAlertErasureDone: v.optional(v.boolean()),
+		alertReceiptCursor: v.optional(v.string()),
+		isAlertReceiptErasureDone: v.optional(v.boolean()),
 		chatCursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const reschedule = async (chatCursor?: string) => {
+		const reschedule = async (continuation?: {
+			alertCursor?: string;
+			isAlertErasureDone?: boolean;
+			alertReceiptCursor?: string;
+			isAlertReceiptErasureDone?: boolean;
+			chatCursor?: string;
+		}) => {
 			await ctx.scheduler.runAfter(0, internal.auth.memberErasure.eraseMemberData, {
 				authUserId: args.authUserId,
 				requestId: args.requestId,
-				...(chatCursor !== undefined ? { chatCursor } : {}),
+				...continuation,
 			});
 		};
 
@@ -228,7 +249,114 @@ export const eraseMemberData = internalMutation({
 			await ctx.db.delete(row._id);
 		}
 
-		// ── Phase 3: chat — anonymize authorship page by page ──
+		// ── Phase 3: staged account-export capabilities and storage ──
+		const exportSession = await ctx.db
+			.query('accountExportSessions')
+			.withIndex('by_user_and_expires_at', (q) => q.eq('userId', args.authUserId))
+			.first();
+		if (exportSession) {
+			const leases = await ctx.db
+				.query('accountExportArtifactLeases')
+				.withIndex('by_session', (q) => q.eq('sessionId', exportSession._id))
+				.take(ACCOUNT_EXPORT_ERASURE_BATCH_SIZE);
+			for (const lease of leases) await ctx.db.delete(lease._id);
+			if (leases.length === ACCOUNT_EXPORT_ERASURE_BATCH_SIZE) {
+				await reschedule();
+				return;
+			}
+			const artifacts = await ctx.db
+				.query('accountExportArtifacts')
+				.withIndex('by_session_and_key', (q) => q.eq('sessionId', exportSession._id))
+				.take(ACCOUNT_EXPORT_ERASURE_BATCH_SIZE);
+			for (const artifact of artifacts) {
+				await ctx.storage.delete(artifact.storageId);
+				await ctx.db.delete(artifact._id);
+			}
+			if (artifacts.length === ACCOUNT_EXPORT_ERASURE_BATCH_SIZE) {
+				await reschedule();
+				return;
+			}
+			await ctx.db.delete(exportSession._id);
+			await reschedule();
+			return;
+		}
+
+		// ── Phase 4: Deliverability alert recipient ledger ──
+		if (args.isAlertErasureDone !== true) {
+			const recipientPage = await ctx.db
+				.query('deliverabilityAlertRecipients')
+				.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
+				.paginate({
+					cursor: args.alertCursor ?? null,
+					numItems: ALERT_RECIPIENT_ERASURE_PAGE_SIZE,
+				});
+			const touchedAlertIds = new Set<Id<'deliverabilityRegressionAlerts'>>();
+			for (const recipient of recipientPage.page) {
+				touchedAlertIds.add(recipient.alertId);
+				await ctx.db.patch(recipient._id, {
+					userId: DELETED_ACCOUNT_ID,
+					...(recipient.status === 'pending'
+						? {
+								status: 'cancelled' as const,
+								nextAttemptAt: undefined,
+							}
+						: recipient.status === 'sending'
+							? {
+									status: 'unavailable' as const,
+									unavailableReason: 'transport_outcome_unknown' as const,
+									attemptToken: undefined,
+									attemptStartedAt: undefined,
+									nextAttemptAt: undefined,
+								}
+							: {}),
+				});
+			}
+			for (const alertId of touchedAlertIds) {
+				const alert = await ctx.db.get(alertId);
+				if (!alert) continue;
+				const states = boundedDeliverabilityAlertRecipientRows(
+					await ctx.db
+						.query('deliverabilityAlertRecipients')
+						.withIndex('by_alert', (q) => q.eq('alertId', alertId))
+						.take(DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT + 1)
+				);
+				await ctx.db.patch(
+					alert._id,
+					deliverabilityAlertNotificationPatch(states, alert.compactedRecipientOutcomes)
+				);
+			}
+			await reschedule(
+				recipientPage.isDone
+					? { isAlertErasureDone: true }
+					: { alertCursor: recipientPage.continueCursor }
+			);
+			return;
+		}
+
+		// ── Phase 5: compacted terminal recipient receipts ──
+		if (args.isAlertReceiptErasureDone !== true) {
+			const receiptPage = await ctx.db
+				.query('deliverabilityAlertRecipientReceipts')
+				.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
+				.paginate({
+					cursor: args.alertReceiptCursor ?? null,
+					numItems: ALERT_RECIPIENT_ERASURE_PAGE_SIZE,
+				});
+			for (const receipt of receiptPage.page) {
+				await ctx.db.patch(receipt._id, { userId: DELETED_ACCOUNT_ID });
+			}
+			await reschedule(
+				receiptPage.isDone
+					? { isAlertErasureDone: true, isAlertReceiptErasureDone: true }
+					: {
+							isAlertErasureDone: true,
+							alertReceiptCursor: receiptPage.continueCursor,
+						}
+			);
+			return;
+		}
+
+		// ── Phase 6: chat — anonymize authorship page by page ──
 		const page = await ctx.db
 			.query('chatMessages')
 			.paginate({ cursor: args.chatCursor ?? null, numItems: CHAT_PAGE });
@@ -238,7 +366,11 @@ export const eraseMemberData = internalMutation({
 			}
 		}
 		if (!page.isDone) {
-			await reschedule(page.continueCursor);
+			await reschedule({
+				isAlertErasureDone: true,
+				isAlertReceiptErasureDone: true,
+				chatCursor: page.continueCursor,
+			});
 			return;
 		}
 
@@ -254,7 +386,7 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: one user's mentions
 		for (const mention of mentions) await ctx.db.delete(mention._id);
 
-		// ── Phase 4: done ──
+		// ── Phase 7: done ──
 		const request = await ctx.db.get(args.requestId as Id<'accountDeletionRequests'>);
 		if (request && request.status !== 'completed') {
 			await ctx.db.patch(args.requestId, {

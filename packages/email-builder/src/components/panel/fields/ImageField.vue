@@ -1,19 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, inject } from 'vue';
+import { ref, computed } from 'vue';
 import { ImageUp, ImageIcon } from '@lucide/vue';
-import { EmailBuilderHandlersKey } from '../../../composables/useEmailBuilderHandlers';
+import { useEmailBuilderHandlers } from '../../../composables/useEmailBuilderHandlers';
+import type { ImageUploadResult } from '../../../types';
 
-const props = defineProps<{
-	value: string;
-	onUploadImage?: (file: File) => Promise<{ url: string; storageId?: string }>;
-}>();
+const props = defineProps<{ value: string }>();
 
-// Inject handlers to get pickFromMediaLibrary without prop drilling
-const handlers = inject(EmailBuilderHandlersKey, undefined);
-const hasMediaLibrary = computed(() => !!handlers?.pickFromMediaLibrary);
+const handlers = useEmailBuilderHandlers();
+const hasMediaLibrary = computed(() => !!handlers.pickFromMediaLibrary);
 
 const emit = defineEmits<{
 	(e: 'update', value: string): void;
+	(e: 'select', value: ImageUploadResult): void;
 }>();
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -21,11 +19,11 @@ const isUploading = ref(false);
 const uploadError = ref('');
 
 function handleBrowse() {
-	if (!handlers?.pickFromMediaLibrary) return;
+	if (!handlers.pickFromMediaLibrary) return;
 	// Callback-based: the edit page will call onSelect when the user picks an image.
 	// This doesn't require the component to stay mounted.
 	handlers.pickFromMediaLibrary((result) => {
-		emit('update', result.url);
+		emit('select', result);
 	});
 }
 
@@ -43,12 +41,12 @@ function openFilePicker() {
 
 async function handleFileSelect(event: Event) {
 	const file = (event.target as HTMLInputElement).files?.[0];
-	if (!file || !props.onUploadImage) return;
+	if (!file) return;
 	isUploading.value = true;
 	uploadError.value = '';
 	try {
-		const result = await props.onUploadImage(file);
-		emit('update', result.url);
+		const result = await handlers.uploadImage(file);
+		emit('select', result);
 	} catch (error) {
 		uploadError.value = error instanceof Error ? error.message : 'Upload failed';
 	} finally {
@@ -60,7 +58,10 @@ async function handleFileSelect(event: Event) {
 <template>
 	<div class="flex flex-col gap-1.5">
 		<!-- Thumbnail preview -->
-		<div v-if="hasPreview" class="relative w-full h-16 border border-border-subtle rounded-lg overflow-hidden bg-checker">
+		<div
+			v-if="hasPreview"
+			class="relative w-full h-16 border border-border-subtle rounded-lg overflow-hidden bg-checker"
+		>
 			<img :src="value" alt="" class="w-full h-full object-contain" />
 		</div>
 
@@ -83,7 +84,7 @@ async function handleFileSelect(event: Event) {
 				<ImageUp :size="14" />
 			</button>
 			<button
-				v-else-if="onUploadImage"
+				v-else
 				class="flex items-center gap-1 py-2 px-2.5 text-xs font-medium border border-border-subtle rounded-lg bg-bg-surface text-text-secondary cursor-pointer whitespace-nowrap transition-all duration-(--motion-moderate) hover:not-disabled:bg-bg-overlay hover:not-disabled:text-text-primary disabled:opacity-60 disabled:cursor-not-allowed"
 				type="button"
 				:disabled="isUploading"
@@ -101,12 +102,18 @@ async function handleFileSelect(event: Event) {
 		</div>
 
 		<!-- Upload error -->
-		<div v-if="uploadError" class="flex items-center gap-1.5 p-2 border border-red-300 rounded-lg bg-red-50 text-red-700 text-xs">
+		<div
+			v-if="uploadError"
+			class="flex items-center gap-1.5 p-2 border border-red-300 rounded-lg bg-red-50 text-red-700 text-xs"
+		>
 			<span>{{ uploadError }}</span>
 		</div>
 
 		<!-- Drop zone hint -->
-		<div v-if="!hasPreview" class="flex items-center justify-center gap-1.5 p-3 border border-dashed border-border-subtle rounded-lg text-text-disabled text-xs">
+		<div
+			v-if="!hasPreview"
+			class="flex items-center justify-center gap-1.5 p-3 border border-dashed border-border-subtle rounded-lg text-text-disabled text-xs"
+		>
 			<ImageIcon :size="16" />
 			<span>Paste URL or upload</span>
 		</div>

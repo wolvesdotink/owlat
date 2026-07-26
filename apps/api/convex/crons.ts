@@ -134,6 +134,12 @@ crons.interval(
 	internal.mail.authRateLimit.sweepOld,
 	{}
 );
+crons.interval(
+	'retention: deliverability center',
+	{ hours: 24 },
+	internal.delivery.checklistRetention.sweepOrphanAlerts,
+	{}
+);
 
 // Refresh segment cached counts every 30 minutes
 // Keeps cachedCount/cachedCountUpdatedAt fresh for the segments list UI
@@ -211,6 +217,20 @@ crons.interval(
 	'cleanup Google Postmaster telemetry',
 	{ hours: 24 },
 	internal.delivery.postmaster.cleanup,
+	{}
+);
+
+crons.interval(
+	'check critical deliverability DNS and blocklists',
+	{ hours: 1 },
+	internal.delivery.checklistSweep.runHourly,
+	{}
+);
+
+crons.interval(
+	'check complete deliverability posture',
+	{ hours: 24 },
+	internal.delivery.checklistSweep.runDaily,
 	{}
 );
 

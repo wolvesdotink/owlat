@@ -28,7 +28,7 @@ describe('createUploadImageHandler', () => {
 		deps = {
 			generateUploadUrl: vi.fn().mockResolvedValue('https://upload.example/url'),
 			getUrl: vi.fn().mockResolvedValue('https://cdn.example/image.png'),
-			createMediaAsset: vi.fn().mockResolvedValue({ _id: 'asset_1' }),
+			createMediaAsset: vi.fn().mockResolvedValue('asset_1'),
 			getImageDimensions: vi.fn().mockResolvedValue({ width: 800, height: 600 }),
 		};
 	});
@@ -43,7 +43,11 @@ describe('createUploadImageHandler', () => {
 
 		const result = await upload(file);
 
-		expect(result).toEqual({ url: 'https://cdn.example/image.png', storageId: 'st_1' });
+		expect(result).toEqual({
+			url: 'https://cdn.example/image.png',
+			storageId: 'st_1',
+			mediaAssetId: 'asset_1',
+		});
 		expect(deps.generateUploadUrl).toHaveBeenCalledOnce();
 		expect(fetchMock).toHaveBeenCalledWith('https://upload.example/url', {
 			method: 'POST',
@@ -91,6 +95,15 @@ describe('createUploadImageHandler', () => {
 		const upload = createUploadImageHandler(deps);
 
 		await expect(upload(makeFile())).rejects.toThrow('Failed to upload image');
+		expect(deps.getUrl).not.toHaveBeenCalled();
+	});
+
+	it('rejects an upload response without a durable storage ID', async () => {
+		fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+		const upload = createUploadImageHandler(deps);
+
+		await expect(upload(makeFile())).rejects.toThrow('Image upload did not return a storage ID');
+		expect(deps.createMediaAsset).not.toHaveBeenCalled();
 		expect(deps.getUrl).not.toHaveBeenCalled();
 	});
 

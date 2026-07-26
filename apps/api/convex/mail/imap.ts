@@ -9,7 +9,7 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery, internalMutation } from '../_generated/server';
+import { internalAction, internalQuery, internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id, Doc } from '../_generated/dataModel';
 import { resolveAllowedFromAddressesForCtx } from './identities';
@@ -189,7 +189,7 @@ export const fetchRawStorageId = internalQuery({
  *  Consumed by the IMAP server's FETCH (apps/imap) to stream message bodies —
  *  storage URLs can only be minted inside a Convex function (there is no
  *  client-addressable `_storage` module to call from ConvexHttpClient). */
-export const getRawStorageUrl = internalQuery({
+export const getRawStorageUrl = internalAction({
 	args: { storageId: v.id('_storage') },
 	// E8b: the raw `.eml` is sealed at rest, so hand the IMAP server a
 	// decrypt-serving proxy URL — its `FETCH RFC822` stream then receives the

@@ -76,6 +76,28 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 		expect(result.latencyMs).toBeGreaterThanOrEqual(0);
 	});
 
+	it('forwards a caller-stable idempotency key as the MTA message id', async () => {
+		const t = convexTest(schema, modules);
+		const fetchSpy = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ success: true, id: 'stable-alert-id' }), {
+				status: 200,
+				headers: { 'Content-Type': 'application/json' },
+			})
+		);
+		global.fetch = fetchSpy as unknown as typeof fetch;
+
+		await t.action(internal.systemMail.sendSystemEmail, {
+			to: 'admin@example.com',
+			from: 'Owlat <noreply@mail.example.com>',
+			subject: 'Deliverability regression',
+			html: '<p>Review the incident.</p>',
+			idempotencyKey: 'stable-alert-id',
+		});
+
+		const body = JSON.parse(fetchSpy.mock.calls[0]![1]!.body as string);
+		expect(body.messageId).toBe('stable-alert-id');
+	});
+
 	// The provider-health recording path is now shared with resend/ses: the MTA
 	// system-mail path goes through `sendProviderDispatch`, whose success- and
 	// failure-side `recordSendResult` scheduling is covered end-to-end (including

@@ -25,6 +25,11 @@ import type { TableNames } from '../_generated/dataModel';
  * can never drift again.
  */
 export const TENANT_TABLES = [
+	// Short-lived export capabilities must be revoked with the single tenant.
+	'accountExportArtifactLeases',
+	'accountExportArtifacts',
+	'accountExportSessions',
+
 	// ── Contacts subtree (children first) ──
 	'contactPropertyValues',
 	'contactTopics',
@@ -82,6 +87,12 @@ export const TENANT_TABLES = [
 	'googlePostmasterStats',
 	'unsubscribeLatencyBuckets',
 	'deliverabilityRouteStates',
+	'deliverabilityAlertRecipients',
+	'deliverabilityAlertRecipientReceipts',
+	'deliverabilityRegressionAlerts',
+	'deliverabilityVerificationState',
+	'deliverabilityEvidence',
+	'deliverabilityLoopbackAttempts',
 	'destinationProviderDomains',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
 	'deliverySnapshots',

@@ -144,7 +144,13 @@ export interface ConditionalOption {
 /**
  * Text block content
  */
-export interface TextBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface TextBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	html: string;
 	blockType: TextBlockType;
 	fontSize: number;
@@ -182,12 +188,25 @@ export interface TextBlockContent extends DarkModeOverrides, ResponsiveVisibilit
 /**
  * Image block content
  */
-export interface ImageBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface ImageBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	src: string;
 	alt: string;
 	width: number;
 	align: 'left' | 'center' | 'right';
+	/** Durable blob identity paired with src. */
 	storageId?: string;
+	/** Durable media-library provenance authorizing storageId. */
+	mediaAssetId?: string;
+	/** Durable blob identity paired with darkSrc. */
+	darkStorageId?: string;
+	/** Durable media-library provenance authorizing darkStorageId. */
+	darkMediaAssetId?: string;
 	linkUrl?: string;
 	/** Optional fixed height in px */
 	height?: number;
@@ -220,7 +239,13 @@ export interface ImageBlockContent extends DarkModeOverrides, ResponsiveVisibili
 /**
  * Button block content
  */
-export interface ButtonBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface ButtonBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	text: string;
 	url: string;
 	backgroundColor: string;
@@ -269,7 +294,13 @@ export interface ButtonBlockContent extends DarkModeOverrides, ResponsiveVisibil
 /**
  * Divider block content
  */
-export interface DividerBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface DividerBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	color: string;
 	thickness: number;
 	width: number;
@@ -294,7 +325,8 @@ export interface DividerBlockContent extends DarkModeOverrides, ResponsiveVisibi
 /**
  * Spacer block content
  */
-export interface SpacerBlockContent extends DarkModeOverrides, ResponsiveVisibility, CssClassOption, ConditionalOption {
+export interface SpacerBlockContent
+	extends DarkModeOverrides, ResponsiveVisibility, CssClassOption, ConditionalOption {
 	height: number;
 	paddingTop?: number;
 	paddingRight?: number;
@@ -361,7 +393,13 @@ export interface ColumnStyle {
 /**
  * Columns block content
  */
-export interface ColumnsBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface ColumnsBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	columnCount: 1 | 2 | 3 | 4;
 	ratio: ColumnRatio;
 	mobileStacking: boolean;
@@ -431,7 +469,13 @@ export interface ContainerItem {
 /**
  * Container block content - groups multiple blocks with shared styling
  */
-export interface ContainerBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface ContainerBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	items: ContainerItem[];
 	maxWidth: number;
 	paddingTop: number;
@@ -525,7 +569,13 @@ export interface SocialLink {
 /**
  * Social block content
  */
-export interface SocialBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface SocialBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	links: SocialLink[];
 	iconStyle: 'filled' | 'outline';
 	align: 'left' | 'center' | 'right';
@@ -554,7 +604,13 @@ export interface SocialBlockContent extends DarkModeOverrides, ResponsiveVisibil
 /**
  * Hero block content - full-width background image with overlaid text + CTA
  */
-export interface HeroBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface HeroBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	backgroundImage: string;
 	backgroundPosition: 'top' | 'center' | 'bottom';
 	backgroundSize: 'cover' | 'contain';
@@ -621,7 +677,13 @@ export type TableResponsiveMode = 'default' | 'stack' | 'scroll' | 'hide-columns
 /**
  * Table block content - for data tables, invoices, pricing
  */
-export interface TableBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface TableBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	headers: string[];
 	rows: string[][];
 	headerBackgroundColor: string;
@@ -660,7 +722,8 @@ export interface TableBlockContent extends DarkModeOverrides, ResponsiveVisibili
 /**
  * Raw HTML block content - escape hatch for power users
  */
-export interface RawHtmlBlockContent extends ResponsiveVisibility, CssClassOption, ConditionalOption {
+export interface RawHtmlBlockContent
+	extends ResponsiveVisibility, CssClassOption, ConditionalOption {
 	html: string;
 	paddingTop?: number;
 	paddingRight?: number;
@@ -676,7 +739,13 @@ export interface RawHtmlBlockContent extends ResponsiveVisibility, CssClassOptio
 /**
  * Video thumbnail block content - thumbnail with play button overlay
  */
-export interface VideoBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface VideoBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	thumbnailUrl: string;
 	videoUrl: string;
 	alt: string;
@@ -713,7 +782,13 @@ export interface AccordionSection {
  * Accordion block content - CSS-only expandable sections
  * Works in Apple Mail, iOS Mail (~60% of clients), falls back to all sections expanded.
  */
-export interface AccordionBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface AccordionBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	sections: AccordionSection[];
 	/** Whether multiple sections can be open simultaneously */
 	allowMultiple?: boolean;
@@ -758,7 +833,13 @@ export interface MenuLink {
 /**
  * Menu/navbar block content - horizontal navigation links
  */
-export interface MenuBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface MenuBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	items: MenuLink[];
 	align: 'left' | 'center' | 'right';
 	/** Font size for menu links */
@@ -809,7 +890,13 @@ export interface CarouselImage {
  * Carousel block content - CSS-only image slideshow
  * Interactive in Apple Mail, iOS (~40% of clients). Falls back to first/stacked images.
  */
-export interface CarouselBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface CarouselBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	images: CarouselImage[];
 	/** Navigation dot size in px */
 	iconWidth?: number;
@@ -839,7 +926,13 @@ export interface CarouselBlockContent extends DarkModeOverrides, ResponsiveVisib
 /**
  * List block content - table-based list rendering for cross-client consistency
  */
-export interface ListBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface ListBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	/** List item text (can contain HTML) */
 	items: string[];
 	/** List style type */
@@ -875,7 +968,13 @@ export interface ListBlockContent extends DarkModeOverrides, ResponsiveVisibilit
 /**
  * Progress bar block content - table-based progress indicator
  */
-export interface ProgressBarBlockContent extends DarkModeOverrides, ResponsiveVisibility, FullWidthOption, CssClassOption, ConditionalOption {
+export interface ProgressBarBlockContent
+	extends
+		DarkModeOverrides,
+		ResponsiveVisibility,
+		FullWidthOption,
+		CssClassOption,
+		ConditionalOption {
 	/** Current value (0-100) */
 	value: number;
 	/** Maximum value (default 100) */
@@ -1016,7 +1115,7 @@ export type EditorBlock = {
  */
 export function isBlockType<T extends BlockType>(
 	block: EditorBlock,
-	type: T,
+	type: T
 ): block is EditorBlock & { type: T; content: BlockTypeContentMap[T] } {
 	return block.type === type;
 }

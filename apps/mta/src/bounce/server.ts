@@ -22,14 +22,11 @@ import {
 	type SmtpSession,
 	type SmtpAddress,
 	type SmtpHandlerResult,
-	type SmtpReply,
 	type SmtpTlsConfig,
 } from '@owlat/smtp-listener';
 import { parseMessage } from '@owlat/mail-message';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import { findRoute } from '../inbound/router.js';
-import { findMailboxRoute } from '../inbound/mailboxResolver.js';
 import { logger } from '../monitoring/logger.js';
 import { emailDomain } from '@owlat/shared/spfAlignment';
 import { checkConnectionRateLimit, releaseConnection } from './inboundSecurity.js';
@@ -45,6 +42,9 @@ import { inboundTlsRequiredReply, isInboundTlsRequired } from '../inbound/inboun
 import { isLocalAddress } from './serverHelpers.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
 import { processBounceAttempt } from './attemptProcessor.js';
+import { recordDeliverabilityProbeIfPresent } from './deliverabilityProbe.js';
+import { buildOnRcptTo } from './recipientGate.js';
+export { buildOnRcptTo } from './recipientGate.js';
 
 /** Hard cap for buffered inbound MIME (advertised via EHLO SIZE AND wire-enforced by the listener). */
 const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
@@ -60,6 +60,7 @@ const MAX_INBOUND_BYTES = 10 * 1024 * 1024;
 interface BounceTransaction {
 	spfResult?: SpfVerdict;
 	envelopeFromDomain?: string;
+	deliverabilityProbeToken?: string;
 }
 
 type BounceSession = SmtpSession<unknown, BounceTransaction>;
@@ -302,59 +303,6 @@ export function buildOnMailFrom(
 }
 
 /**
- * VERP / personal-mailbox / route RCPT gate (onRcptTo). VERP bounce/FBL addresses
- * are always accepted. A personal-mailbox hit is pre-flight quota-checked and
- * refused over quota with `552 5.2.2`. Everything else falls through to the
- * inbound route table (plus the TLS-RPT `_smtp._tls` rua system route, RFC 8460);
- * an unrouted or `reject`-mode recipient is refused `550`, a store fault `550`
- * (byte-preserving the pre-cutover smtp-server default).
- */
-export function buildOnRcptTo(config: MtaConfig, redis: Redis) {
-	return function onRcptTo(address: SmtpAddress): Promise<SmtpHandlerResult> | SmtpHandlerResult {
-		// 1. VERP bounce/FBL addresses — always accept.
-		if (address.address.startsWith('bounce+') || address.address.startsWith('fbl+')) {
-			return;
-		}
-
-		// 2. Personal-mailbox lookup (Postbox) — Redis cache only.
-		return findMailboxRoute(redis, address.address)
-			.then((mailboxEntry): Promise<SmtpHandlerResult> | SmtpHandlerResult => {
-				if (mailboxEntry) {
-					// Pre-flight quota check (best-effort; SIZE may be unknown). The old
-					// smtp-server path emitted `550 552 5.2.2 …` (its 550 default prefixed
-					// the code embedded in the message); the structured reply corrects
-					// this to the intended `552 5.2.2` (I2 c — corrected real SMTP codes).
-					if (
-						mailboxEntry.quotaBytes != null &&
-						mailboxEntry.usedBytes >= mailboxEntry.quotaBytes
-					) {
-						return { code: 552, enhanced: '5.2.2', text: 'Mailbox over quota' };
-					}
-					return;
-				}
-
-				// 3. Fall through to the inbound route table + the TLS-RPT system route
-				//    for the operator's `_smtp._tls` rua address (RFC 8460). The system
-				//    config MUST be threaded here too, or the rua address is rejected
-				//    "Mailbox not found" before onData ever runs.
-				return findRoute(redis, address.address, {
-					ruaAddress: config.tlsRptRua,
-					convexSiteUrl: config.convexSiteUrl,
-					webhookSecret: config.webhookSecret,
-				})
-					.then((route): SmtpHandlerResult => {
-						if (route && route.mode !== 'reject') {
-							return;
-						}
-						return { code: 550, text: 'Mailbox not found' };
-					})
-					.catch((): SmtpReply => ({ code: 451, enhanced: '4.3.0', text: 'Temporary error' }));
-			})
-			.catch((): SmtpReply => ({ code: 451, enhanced: '4.3.0', text: 'Temporary error' }));
-	};
-}
-
-/**
  * The Bounce intake pipeline over a fully-received `ParsedMessage` (onData). The
  * listener hands the buffered, byte-budget-bounded (I4), dot-decoded message;
  * `parseMessage` reads it (replacing `mailparser`'s `simpleParser`). SPF / DKIM /
@@ -414,6 +362,28 @@ export function buildOnData(
 				: undefined;
 			const dmarcResult = dmarc?.result;
 			const dmarcPolicy = dmarc?.policy;
+
+			const passingSignature = dkim?.signatures.find((signature) => signature.verdict === 'pass');
+			if (
+				await recordDeliverabilityProbeIfPresent(
+					{
+						recipientCount: session.rcptTo.length,
+						...(session.transaction?.deliverabilityProbeToken
+							? { acceptedToken: session.transaction.deliverabilityProbeToken }
+							: {}),
+						spfResult: spfResult ?? 'unknown',
+						dkimResult: dkimResult ?? 'unknown',
+						dmarcResult: dmarcResult ?? 'unknown',
+						...(passingSignature?.selector ? { dkimSelector: passingSignature.selector } : {}),
+						remoteAddress: session.remoteAddress,
+						...(session.tlsProtocol ? { tlsProtocol: session.tlsProtocol } : {}),
+					},
+					config,
+					redis
+				)
+			) {
+				return AckAndSwallowErrors;
+			}
 
 			// Verify the ARC chain (RFC 8617) over the raw bytes (Sealed Mail A5). The MTA
 			// extracts the honest verdict; Convex applies the trusted-forwarder override.
