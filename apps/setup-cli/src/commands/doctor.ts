@@ -151,6 +151,10 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 	if (smtp['ips'].length === 0) {
 		findings.push({ ok: false, message: 'MTA has no sending IPs to probe' });
 	}
+	// A blocked TCP/25 is nearly always the provider, not the install. The note
+	// goes on the FIRST blocked address only — a nudge, not a lecture, however
+	// many addresses are bound.
+	let nudged = false;
 	for (const item of smtp['ips']) {
 		if (!isRecord(item) || typeof item['ip'] !== 'string') {
 			findings.push({ ok: false, message: 'MTA returned an invalid sending-IP result' });
@@ -159,9 +163,9 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 		const detail =
 			typeof item['reason'] === 'string' ? ` (${item['reason'].replaceAll('_', ' ')})` : '';
 		const ok = item['status'] === 'ok';
-		// A blocked TCP/25 is nearly always the provider, not the install. Add one
-		// short factual note — a nudge, not a lecture — and only on failure.
-		const nudge = ok ? '' : ` — ${installerProviderNote(env['MTA_VPS_PROVIDER'] ?? '').note}`;
+		const nudge =
+			ok || nudged ? '' : ` — ${installerProviderNote(env['MTA_VPS_PROVIDER'] ?? '').note}`;
+		if (nudge) nudged = true;
 		findings.push({
 			ok,
 			message: `TCP/25 is reachable from ${item['ip']}${detail}${nudge}`,

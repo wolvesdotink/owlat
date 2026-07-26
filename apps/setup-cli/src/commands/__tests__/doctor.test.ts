@@ -153,6 +153,28 @@ describe('doctor — evaluateMtaHealth', () => {
 		).toBe(true);
 	});
 
+	it('prints the provider note once however many addresses are blocked', () => {
+		const findings = evaluateMtaHealth(
+			{
+				...healthy,
+				status: 'degraded',
+				smtpOutbound: {
+					status: 'degraded',
+					ips: [
+						{ ip: '192.0.2.11', status: 'failed', reason: 'timeout' },
+						{ ip: '192.0.2.12', status: 'failed', reason: 'timeout' },
+						{ ip: '192.0.2.13', status: 'failed', reason: 'timeout' },
+					],
+				},
+			},
+			{ MTA_VPS_PROVIDER: 'digitalocean' }
+		);
+		const nudged = findings.filter((finding) => finding.message.includes('DigitalOcean'));
+		expect(nudged).toHaveLength(1);
+		expect(nudged[0]?.message).toContain('192.0.2.11');
+		expect(findings.filter((finding) => finding.message.includes('TCP/25'))).toHaveLength(3);
+	});
+
 	it('fails closed on an incomplete response', () => {
 		expect(evaluateMtaHealth({ status: 'ok' })).toEqual([
 			{ ok: false, message: 'MTA returned an incomplete health response' },
