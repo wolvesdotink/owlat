@@ -37,6 +37,7 @@ export const sendSystemEmail = internalAction({
 		from: v.string(),
 		subject: v.string(),
 		html: v.string(),
+		idempotencyKey: v.optional(v.string()),
 	},
 	handler: async (
 		ctx,
@@ -76,10 +77,17 @@ export const sendSystemEmail = internalAction({
 					html: args.html,
 					headers: { 'Auto-Submitted': 'auto-generated' },
 				},
-				{ ipPool: 'transactional', organizationId: 'system', intakePath: 'system' }
+				{
+					ipPool: 'transactional',
+					organizationId: 'system',
+					intakePath: 'system',
+					...(args.idempotencyKey ? { messageId: args.idempotencyKey } : {}),
+				}
 			);
 			if (!dispatched.result.success) {
-				throw new Error(`System email send failed via mta: ${dispatched.result.errorMessage}`);
+				throw new Error(
+					`System email send failed via mta (${dispatched.result.errorCode}): ${dispatched.result.errorMessage}`
+				);
 			}
 			return {
 				provider: dispatched.providerType,
@@ -102,11 +110,11 @@ export const sendSystemEmail = internalAction({
 				html: args.html,
 				headers: { 'Auto-Submitted': 'auto-generated' },
 			},
-			{}
+			provider === 'resend' && args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}
 		);
 		if (!dispatched.result.success) {
 			throw new Error(
-				`System email send failed via ${provider}: ${dispatched.result.errorMessage}`
+				`System email send failed via ${provider} (${dispatched.result.errorCode}): ${dispatched.result.errorMessage}`
 			);
 		}
 		return {

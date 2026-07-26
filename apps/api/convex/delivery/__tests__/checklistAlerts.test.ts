@@ -16,83 +16,96 @@ describe('deliverability regression email retry policy', () => {
 		expect(regressionEmailRetryDelay(100)).toBeNull();
 	});
 
-	function harness(
-		recipients: string[],
-		sendEmail: RegressionEmailDependencies['sendEmail'] = vi.fn(async () => undefined)
-	) {
-		const runMutation = vi.fn(async () => true);
-		const runAfter = vi.fn(async () => undefined);
+	function harness(options?: {
+		recipients?: Array<{ userId: string; email?: string }>;
+		claims?: Array<{ userId: string; email: string; attemptCount: number }>;
+		preparedState?: 'pending' | 'sent' | 'unavailable';
+		completion?: { state: 'pending' | 'sent' | 'unavailable'; retryScheduled: boolean };
+		sendEmail?: RegressionEmailDependencies['sendEmail'];
+	}) {
 		const runQuery = vi.fn(
-			async (): Promise<{ message: string } | null> => ({
-				message: 'PTR regressed <unsafe>',
+			async (): Promise<{ emailDirectoryAttemptCount?: number } | null> => ({
+				emailDirectoryAttemptCount: 0,
 			})
 		);
-		const ctx = {
-			runQuery,
-			runMutation,
-			scheduler: { runAfter },
-		} as never;
+		const runMutation = vi
+			.fn()
+			.mockResolvedValueOnce({
+				message: 'PTR regressed <unsafe>',
+				claims: options?.claims ?? [],
+				state: options?.preparedState ?? 'unavailable',
+			})
+			.mockResolvedValueOnce(options?.completion ?? { state: 'sent', retryScheduled: false });
+		const ctx = { runQuery, runMutation } as never;
 		const dependencies: RegressionEmailDependencies = {
-			loadRecipients: vi.fn(async () => recipients),
-			sendEmail,
+			loadRecipients: vi.fn(async () => options?.recipients ?? []),
+			sendEmail: options?.sendEmail ?? vi.fn(async () => undefined),
+			now: vi.fn(() => 10_000),
+			randomId: vi.fn(() => 'attempt-token'),
 		};
-		return { ctx, dependencies, runMutation, runAfter, runQuery };
+		return { ctx, dependencies, runQuery, runMutation };
 	}
 
-	it('marks no-recipient terminal without scheduling a retry', async () => {
-		const test = harness([]);
+	it('records no eligible administrator as unavailable without sending', async () => {
+		const test = harness();
 		await expect(
 			deliverRegressionEmailHandler(
 				test.ctx,
 				{ organizationId: 'org', identity: 'incident' },
 				test.dependencies
 			)
-		).resolves.toMatchObject({ reason: 'no_admin_recipient' });
-		expect(test.runAfter).not.toHaveBeenCalled();
-		expect(test.runMutation).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ state: 'unavailable' })
-		);
+		).resolves.toEqual({ sent: false, reason: 'no_admin_recipient' });
+		expect(test.dependencies.sendEmail).not.toHaveBeenCalled();
+		expect(test.runMutation).toHaveBeenCalledTimes(1);
 	});
 
-	it('retries transient delivery rejection and marks success sent', async () => {
-		const rejected = harness(
-			['admin@example.test'],
-			vi.fn(async () => Promise.reject('busy'))
-		);
-		await expect(
-			deliverRegressionEmailHandler(
-				rejected.ctx,
-				{ organizationId: 'org', identity: 'incident', attempt: 0 },
-				rejected.dependencies
-			)
-		).resolves.toMatchObject({ reason: 'retry_scheduled' });
-		expect(rejected.runAfter).toHaveBeenCalledWith(
-			60_000,
-			expect.anything(),
-			expect.objectContaining({ attempt: 1 })
-		);
-		expect(rejected.runMutation).not.toHaveBeenCalled();
-
-		const delivered = harness(['admin@example.test']);
-		await expect(
-			deliverRegressionEmailHandler(
-				delivered.ctx,
-				{ organizationId: 'org', identity: 'incident' },
-				delivered.dependencies
-			)
-		).resolves.toEqual({ sent: true });
-		expect(delivered.runMutation).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ state: 'sent' })
-		);
-	});
-
-	it('retries only failed recipients after a partial delivery', async () => {
-		const sendEmail = vi.fn(async (_ctx, payload: { to: string }) => {
-			if (payload.to === 'failed@example.test') throw new Error('busy');
+	it('uses stable user identity and binds transport idempotency to the current address', async () => {
+		const first = harness({
+			recipients: [{ userId: 'user-1', email: 'old@example.test' }],
+			claims: [{ userId: 'user-1', email: 'old@example.test', attemptCount: 1 }],
 		});
-		const test = harness(['sent@example.test', 'failed@example.test'], sendEmail);
+		await deliverRegressionEmailHandler(
+			first.ctx,
+			{ organizationId: 'org', identity: 'incident' },
+			first.dependencies
+		);
+		const firstPayload = vi.mocked(first.dependencies.sendEmail).mock.calls[0]?.[1];
+
+		const second = harness({
+			recipients: [{ userId: 'user-1', email: 'new@example.test' }],
+			claims: [{ userId: 'user-1', email: 'new@example.test', attemptCount: 2 }],
+		});
+		await deliverRegressionEmailHandler(
+			second.ctx,
+			{ organizationId: 'org', identity: 'incident' },
+			second.dependencies
+		);
+		const secondPayload = vi.mocked(second.dependencies.sendEmail).mock.calls[0]?.[1];
+
+		expect(firstPayload).toMatchObject({ to: 'old@example.test' });
+		expect(secondPayload).toMatchObject({ to: 'new@example.test' });
+		expect(secondPayload?.idempotencyKey).not.toBe(firstPayload?.idempotencyKey);
+		expect(firstPayload?.html).toContain('&lt;unsafe&gt;');
+	});
+
+	it('persists partial results and retries only the failed stable user id', async () => {
+		const sendEmail = vi.fn(async (_ctx, payload: { to: string }) => {
+			if (payload.to === 'failed@example.test') {
+				throw new Error('System email send failed via mta (SERVER_ERROR): busy');
+			}
+		});
+		const test = harness({
+			recipients: [
+				{ userId: 'sent-user', email: 'sent@example.test' },
+				{ userId: 'failed-user', email: 'failed@example.test' },
+			],
+			claims: [
+				{ userId: 'sent-user', email: 'sent@example.test', attemptCount: 1 },
+				{ userId: 'failed-user', email: 'failed@example.test', attemptCount: 1 },
+			],
+			completion: { state: 'pending', retryScheduled: true },
+			sendEmail,
+		});
 
 		await expect(
 			deliverRegressionEmailHandler(
@@ -100,149 +113,145 @@ describe('deliverability regression email retry policy', () => {
 				{ organizationId: 'org', identity: 'incident' },
 				test.dependencies
 			)
-		).resolves.toMatchObject({ reason: 'retry_scheduled' });
-		expect(test.runAfter).toHaveBeenCalledWith(
-			60_000,
+		).resolves.toEqual({ sent: true, reason: 'retry_scheduled' });
+		expect(test.runMutation).toHaveBeenLastCalledWith(
 			expect.anything(),
 			expect.objectContaining({
-				attempt: 1,
-				pendingRecipients: ['failed@example.test'],
+				attemptToken: 'attempt-token',
+				results: [
+					{ userId: 'sent-user', isSuccess: true },
+					{ userId: 'failed-user', isSuccess: false, retryAt: 70_000 },
+				],
 			})
 		);
-		expect(test.runMutation).not.toHaveBeenCalled();
-
-		sendEmail.mockClear();
-		sendEmail.mockResolvedValue(undefined);
-		await expect(
-			deliverRegressionEmailHandler(
-				test.ctx,
-				{
-					organizationId: 'org',
-					identity: 'incident',
-					attempt: 1,
-					pendingRecipients: ['failed@example.test'],
-				},
-				test.dependencies
-			)
-		).resolves.toEqual({ sent: true });
-		expect(test.dependencies.loadRecipients).toHaveBeenCalledTimes(2);
-		expect(sendEmail).toHaveBeenCalledTimes(1);
-		expect(sendEmail).toHaveBeenCalledWith(
-			test.ctx,
-			expect.objectContaining({ to: 'failed@example.test' })
-		);
-		expect(test.runMutation).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ state: 'sent' })
-		);
 	});
 
-	it('cancels a recipient retry after the alert resolves', async () => {
-		const sendEmail = vi.fn(async () => undefined);
-		const test = harness(['admin@example.test'], sendEmail);
-		test.runQuery.mockResolvedValue(null);
+	it('does not retry an ambiguous SES outcome that could already have delivered', async () => {
+		const test = harness({
+			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
+			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
+			completion: { state: 'unavailable', retryScheduled: false },
+			sendEmail: vi.fn(async () => {
+				throw new Error('System email send failed via ses (AMBIGUOUS_TIMEOUT): timed out');
+			}),
+		});
 
-		await expect(
-			deliverRegressionEmailHandler(
-				test.ctx,
-				{
-					organizationId: 'org',
-					identity: 'incident',
-					attempt: 1,
-					pendingRecipients: ['admin@example.test'],
-				},
-				test.dependencies
-			)
-		).resolves.toMatchObject({ reason: 'not_pending' });
-		expect(sendEmail).not.toHaveBeenCalled();
-		expect(test.runAfter).not.toHaveBeenCalled();
-		expect(test.runMutation).not.toHaveBeenCalled();
-	});
-
-	it('does not retry a recipient who is no longer an administrator', async () => {
-		const sendEmail = vi.fn(async () => undefined);
-		const test = harness(['current-admin@example.test'], sendEmail);
-
-		await expect(
-			deliverRegressionEmailHandler(
-				test.ctx,
-				{
-					organizationId: 'org',
-					identity: 'incident',
-					attempt: 1,
-					pendingRecipients: ['former-admin@example.test'],
-				},
-				test.dependencies
-			)
-		).resolves.toEqual({ sent: true });
-		expect(sendEmail).not.toHaveBeenCalled();
-		expect(test.runMutation).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ state: 'sent' })
-		);
-	});
-
-	it('marks unavailable when the remaining partial-delivery recipient exhausts retries', async () => {
-		const sendEmail = vi.fn(async () => Promise.reject('busy'));
-		const test = harness(['already-sent@example.test', 'failed@example.test'], sendEmail);
-
-		await expect(
-			deliverRegressionEmailHandler(
-				test.ctx,
-				{
-					organizationId: 'org',
-					identity: 'incident',
-					attempt: 3,
-					pendingRecipients: ['failed@example.test'],
-				},
-				test.dependencies
-			)
-		).resolves.toMatchObject({ reason: 'delivery_failed' });
-		expect(test.dependencies.loadRecipients).toHaveBeenCalledTimes(1);
-		expect(sendEmail).toHaveBeenCalledTimes(1);
-		expect(sendEmail).toHaveBeenCalledWith(
-			test.ctx,
-			expect.objectContaining({ to: 'failed@example.test' })
-		);
-		expect(test.runMutation).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ state: 'unavailable' })
-		);
-	});
-
-	it('marks unavailable only after the transient retry budget is exhausted', async () => {
-		const test = harness(
-			['admin@example.test'],
-			vi.fn(async () => Promise.reject('busy'))
-		);
-		await expect(
-			deliverRegressionEmailHandler(
-				test.ctx,
-				{ organizationId: 'org', identity: 'incident', attempt: 3 },
-				test.dependencies
-			)
-		).resolves.toMatchObject({ reason: 'delivery_failed' });
-		expect(test.runAfter).not.toHaveBeenCalled();
-		expect(test.runMutation).toHaveBeenCalledWith(
-			expect.anything(),
-			expect.objectContaining({ state: 'unavailable' })
-		);
-	});
-
-	it('retries a transient recipient-directory failure', async () => {
-		const test = harness([]);
-		test.dependencies.loadRecipients = vi.fn(async () => Promise.reject('directory unavailable'));
 		await expect(
 			deliverRegressionEmailHandler(
 				test.ctx,
 				{ organizationId: 'org', identity: 'incident' },
 				test.dependencies
 			)
-		).resolves.toMatchObject({ reason: 'retry_scheduled' });
-		expect(test.runAfter).toHaveBeenCalledWith(
-			60_000,
+		).resolves.toEqual({ sent: false, reason: 'delivery_failed' });
+		expect(test.runMutation).toHaveBeenLastCalledWith(
 			expect.anything(),
-			expect.objectContaining({ attempt: 1 })
+			expect.objectContaining({
+				results: [{ userId: 'user-1', isSuccess: false }],
+			})
 		);
+	});
+
+	it('does not retry a permanent recipient rejection', async () => {
+		const test = harness({
+			recipients: [{ userId: 'user-1', email: 'invalid@example.test' }],
+			claims: [{ userId: 'user-1', email: 'invalid@example.test', attemptCount: 1 }],
+			completion: { state: 'unavailable', retryScheduled: false },
+			sendEmail: vi.fn(async () => {
+				throw new Error('System email send failed via mta (INVALID_RECIPIENT): rejected');
+			}),
+		});
+
+		await deliverRegressionEmailHandler(
+			test.ctx,
+			{ organizationId: 'org', identity: 'incident' },
+			test.dependencies
+		);
+		expect(test.runMutation).toHaveBeenLastCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				results: [{ userId: 'user-1', isSuccess: false }],
+			})
+		);
+	});
+
+	it.each([
+		'System email send failed via plugin (UNKNOWN): uncertain',
+		'action boundary failed without a provider receipt',
+	])('does not retry an unconfirmed transport outcome: %s', async (message) => {
+		const test = harness({
+			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
+			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
+			completion: { state: 'unavailable', retryScheduled: false },
+			sendEmail: vi.fn(async () => {
+				throw new Error(message);
+			}),
+		});
+
+		await deliverRegressionEmailHandler(
+			test.ctx,
+			{ organizationId: 'org', identity: 'incident' },
+			test.dependencies
+		);
+		expect(test.runMutation).toHaveBeenLastCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				results: [{ userId: 'user-1', isSuccess: false }],
+			})
+		);
+	});
+
+	it('durably schedules recipient-directory retries and stops at the bound', async () => {
+		const retrying = harness();
+		retrying.dependencies.loadRecipients = vi.fn(async () => {
+			throw new Error('directory unavailable');
+		});
+		retrying.runMutation.mockReset().mockResolvedValue({
+			state: 'pending',
+			retryScheduled: true,
+		});
+		await expect(
+			deliverRegressionEmailHandler(
+				retrying.ctx,
+				{ organizationId: 'org', identity: 'incident' },
+				retrying.dependencies
+			)
+		).resolves.toEqual({ sent: false, reason: 'retry_scheduled' });
+		expect(retrying.runMutation).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({ retryAt: 70_000 })
+		);
+
+		const exhausted = harness();
+		exhausted.runQuery.mockResolvedValue({ emailDirectoryAttemptCount: 3 });
+		exhausted.dependencies.loadRecipients = retrying.dependencies.loadRecipients;
+		exhausted.runMutation.mockReset().mockResolvedValue({
+			state: 'unavailable',
+			retryScheduled: false,
+		});
+		await expect(
+			deliverRegressionEmailHandler(
+				exhausted.ctx,
+				{ organizationId: 'org', identity: 'incident' },
+				exhausted.dependencies
+			)
+		).resolves.toEqual({ sent: false, reason: 'delivery_failed' });
+		expect(exhausted.runMutation).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.not.objectContaining({ retryAt: expect.anything() })
+		);
+	});
+
+	it('cancels immediately after the alert resolves', async () => {
+		const test = harness();
+		test.runQuery.mockResolvedValue(null);
+		await expect(
+			deliverRegressionEmailHandler(
+				test.ctx,
+				{ organizationId: 'org', identity: 'incident' },
+				test.dependencies
+			)
+		).resolves.toEqual({ sent: false, reason: 'not_pending' });
+		expect(test.dependencies.loadRecipients).not.toHaveBeenCalled();
+		expect(test.runMutation).not.toHaveBeenCalled();
 	});
 });

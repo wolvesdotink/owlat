@@ -8,7 +8,12 @@ import {
 	deliverabilitySignalProviderValidator,
 	destinationProviderValidator,
 } from '../delivery/deliverabilityValidators';
-import { DELIVERABILITY_CHECKLIST, type DeliverabilityCheckId } from '@owlat/shared';
+import {
+	DELIVERABILITY_ALERT_RECIPIENT_STATUSES,
+	DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS,
+	DELIVERABILITY_CHECKLIST,
+	type DeliverabilityCheckId,
+} from '@owlat/shared';
 
 const [firstDeliverabilityCheck, ...remainingDeliverabilityChecks] = DELIVERABILITY_CHECKLIST.map(
 	(item) => item.id
@@ -16,6 +21,12 @@ const [firstDeliverabilityCheck, ...remainingDeliverabilityChecks] = DELIVERABIL
 const deliverabilityCheckIdSchemaValidator = v.union(
 	v.literal(firstDeliverabilityCheck),
 	...remainingDeliverabilityChecks.map((item) => v.literal(item))
+);
+const deliverabilityAlertRecipientStatusValidator = v.union(
+	...DELIVERABILITY_ALERT_RECIPIENT_STATUSES.map((status) => v.literal(status))
+);
+const deliverabilityAlertRecipientUnavailableReasonValidator = v.union(
+	...DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS.map((reason) => v.literal(reason))
 );
 
 /**
@@ -408,6 +419,7 @@ export const deliveryTables = {
 			v.literal('unavailable')
 		),
 		emailNotifiedAt: v.optional(v.number()),
+		emailDirectoryAttemptCount: v.optional(v.number()),
 		acknowledgedAt: v.optional(v.number()),
 		resolvedAt: v.optional(v.number()),
 		createdAt: v.number(),
@@ -420,6 +432,24 @@ export const deliveryTables = {
 		.index('by_domain_id', ['domainId'])
 		.index('by_resolved_at', ['resolvedAt'])
 		.index('by_observed_at', ['observedAt']),
+
+	// Stable per-user delivery identity for one regression alert. Mutable email
+	// addresses are resolved immediately before sending and never persisted.
+	deliverabilityAlertRecipients: defineTable({
+		organizationId: v.string(),
+		alertId: v.id('deliverabilityRegressionAlerts'),
+		userId: v.string(),
+		status: deliverabilityAlertRecipientStatusValidator,
+		attemptCount: v.number(),
+		attemptToken: v.optional(v.string()),
+		attemptStartedAt: v.optional(v.number()),
+		nextAttemptAt: v.optional(v.number()),
+		sentAt: v.optional(v.number()),
+		unavailableReason: v.optional(deliverabilityAlertRecipientUnavailableReasonValidator),
+	})
+		.index('by_alert', ['alertId'])
+		.index('by_user', ['userId'])
+		.index('by_org', ['organizationId']),
 
 	// Honest end-to-end probe seam. A row starts at `sending`, moves to
 	// `awaiting_inbound` only after the real outbound provider accepts it, and

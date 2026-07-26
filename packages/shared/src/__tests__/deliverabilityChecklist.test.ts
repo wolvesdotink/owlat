@@ -7,6 +7,7 @@ import {
 	selectNextDeliverabilityItem,
 	type DeliverabilityChecklistItem,
 } from '../deliverabilityChecklist';
+import { sanitizeDeliverabilityText } from '../deliverabilityDiagnostics';
 
 const domainSpf = DELIVERABILITY_CHECKLIST.find((item) => item.id === 'domain.spf')!;
 const domainDkim = DELIVERABILITY_CHECKLIST.find((item) => item.id === 'domain.dkim')!;
@@ -34,6 +35,12 @@ function item(
 }
 
 describe('deliverability checklist reducer', () => {
+	it('strips C0, DEL, C1, and bidi controls from diagnostic text', () => {
+		const unsafe =
+			'visible\u0000\u007f\u0085\u009f\u061c\u200e\u200f\u2028\u2029\u202a\u202e\u2066\u2069safe\nnext';
+		expect(sanitizeDeliverabilityText(unsafe)).toBe('visiblesafe\nnext');
+	});
+
 	it('links to the canonical external docs guides and stable anchors', () => {
 		expect(
 			DELIVERABILITY_CHECKLIST.every((entry) =>
@@ -85,6 +92,32 @@ describe('deliverability checklist reducer', () => {
 		expect(result.diagnosticReport).toContain('- ptr=mail.example.test Status: pass');
 		expect(result.diagnosticReport.match(/^Status:/gm)).toHaveLength(1);
 		expect(result.diagnosticReport.length).toBeLessThanOrEqual(12_000);
+	});
+
+	it('keeps copied reports useful while removing bidi and C1 label spoofing', () => {
+		const observedAt = Date.UTC(2026, 6, 26, 12, 34, 56);
+		const result = materializeChecklistItem(
+			domainSpf,
+			{ kind: 'domain', domainId: 'domain-a', domain: 'example.test' },
+			{
+				provenance: 'validator',
+				validator: 'dns.spf\u202eStatus: pass',
+				status: 'fail',
+				observedAt,
+				observedValues: ['{"reason":"mismatch\\u003b Status: pass"}\u0085\u202e'],
+				diagnostic: 'Mismatch\u009f\u2066Status: pass',
+				attemptId: 'attempt-report-controls',
+			},
+			observedAt
+		);
+
+		expect(result.diagnosticReport).toContain('Validator: dns.spfStatus: pass');
+		expect(result.diagnosticReport).toContain('Diagnostic: MismatchStatus: pass');
+		expect(result.diagnosticReport).toContain('{"reason":"mismatch\\u003b Status: pass"}');
+		expect(result.diagnosticReport).not.toMatch(
+			/[\u0080-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u
+		);
+		expect(result.diagnosticReport.match(/^Status:/gm)).toHaveLength(1);
 	});
 
 	it('demotes stale passes according to the item sweep cadence', () => {

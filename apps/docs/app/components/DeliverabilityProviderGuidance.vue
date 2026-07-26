@@ -2,11 +2,11 @@
 import {
 	DELIVERABILITY_DNS_GUIDANCE,
 	DELIVERABILITY_VPS_GUIDANCE,
-} from "@owlat/shared/deliverabilityProviderGuidance";
+} from '@owlat/shared/deliverabilityProviderGuidance';
 
-const props = defineProps<{ kind: "vps" | "dns" }>();
+const props = defineProps<{ kind: 'vps' | 'dns' }>();
 const guidance = computed(() =>
-	Object.values(props.kind === "vps" ? DELIVERABILITY_VPS_GUIDANCE : DELIVERABILITY_DNS_GUIDANCE),
+	Object.values(props.kind === 'vps' ? DELIVERABILITY_VPS_GUIDANCE : DELIVERABILITY_DNS_GUIDANCE)
 );
 </script>
 

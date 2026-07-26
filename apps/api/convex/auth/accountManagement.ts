@@ -14,6 +14,7 @@ import {
 } from '../lib/sessionOrganization';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 import { throwNotFound, throwInvalidState } from '../_utils/errors';
+import { toDeliverabilityAlertRecipientState } from '../delivery/checklistAlertRecipients';
 
 // Type for organization data export
 interface OrganizationExport {
@@ -53,6 +54,14 @@ interface PersonalDataExport {
 		'secretCiphertext' | 'secretIv' | 'secretAuthTag'
 	>[];
 	chatMessages: Doc<'chatMessages'>[];
+	deliverabilityAlertRecipientStates: Array<{
+		alertId: Doc<'deliverabilityAlertRecipients'>['alertId'];
+		organizationId: string;
+		state: Omit<
+			Doc<'deliverabilityAlertRecipients'>,
+			'_id' | '_creationTime' | 'alertId' | 'organizationId'
+		>;
+	}>;
 }
 
 /**
@@ -254,7 +263,26 @@ async function collectPersonalData(ctx: QueryCtx, authUserId: string): Promise<P
 		.withIndex('by_author', (q) => q.eq('authorId', authUserId))
 		.collect(); // bounded: account-export, messages this user authored
 
-	return { mailboxes, mailMessages, mailDrafts, externalMailAccounts, chatMessages };
+	const deliverabilityAlertRecipientStates = (
+		await ctx.db
+			.query('deliverabilityAlertRecipients')
+			.withIndex('by_user', (q) => q.eq('userId', authUserId))
+			.collect()
+	) // bounded: account-export
+		.map((recipient) => ({
+			alertId: recipient.alertId,
+			organizationId: recipient.organizationId,
+			state: toDeliverabilityAlertRecipientState(recipient),
+		}));
+
+	return {
+		mailboxes,
+		mailMessages,
+		mailDrafts,
+		externalMailAccounts,
+		chatMessages,
+		deliverabilityAlertRecipientStates,
+	};
 }
 
 /**

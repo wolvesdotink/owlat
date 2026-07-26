@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { Id } from "@owlat/api/dataModel";
-import type { DeliverabilityLoopbackResult } from "~/utils/deliverabilityCenter";
+import type { Id } from '@owlat/api/dataModel';
+import type { DeliverabilityLoopbackResult } from '~/utils/deliverabilityCenter';
 
 const props = defineProps<{
 	domains: Array<{
-		id: Id<"domains">;
+		id: Id<'domains'>;
 		domain: string;
 		eligible: boolean;
 		blockedReason?: string;
@@ -14,71 +14,71 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-	start: [domainId: Id<"domains">];
+	start: [domainId: Id<'domains'>];
 }>();
 
-const selectedDomainId = ref<Id<"domains"> | "">("");
+const selectedDomainId = ref<Id<'domains'> | ''>('');
 const selectedDomain = computed(() =>
-	props.domains.find((domain) => domain.id === selectedDomainId.value),
+	props.domains.find((domain) => domain.id === selectedDomainId.value)
 );
 const latest = computed(() => selectedDomain.value?.latest);
 watch(
 	() => props.domains,
 	(domains) => {
 		if (!domains.some((domain) => domain.id === selectedDomainId.value)) {
-			selectedDomainId.value = domains[0]?.id ?? "";
+			selectedDomainId.value = domains[0]?.id ?? '';
 		}
 	},
-	{ immediate: true },
+	{ immediate: true }
 );
 
 const resultItems = computed(() => {
 	const result = latest.value;
 	if (!result) return [];
 	return [
-		{ key: "spf", label: "Sender authorization (SPF)", value: result.spf },
+		{ key: 'spf', label: 'Sender authorization (SPF)', value: result.spf },
 		{
-			key: "dkim",
-			label: "Email signature (DKIM)",
+			key: 'dkim',
+			label: 'Email signature (DKIM)',
 			value: result.dkim,
 			detail: result.dkimSelector,
 		},
-		{ key: "dmarc", label: "Domain alignment (DMARC)", value: result.dmarc },
+		{ key: 'dmarc', label: 'Domain alignment (DMARC)', value: result.dmarc },
 	].filter((item) => item.value);
 });
 const isInFlight = computed(
-	() => latest.value?.status === "sending" || latest.value?.status === "awaiting_inbound",
+	() => latest.value?.status === 'sending' || latest.value?.status === 'awaiting_inbound'
 );
 const latestStatusLabel = computed(() => {
 	switch (latest.value?.status) {
-		case "sending":
-			return "Sending probe";
-		case "awaiting_inbound":
-			return "Waiting for receipt";
-		case "passed":
-			return "Proof passed";
-		case "failed":
-			return "Proof failed";
-		case "timed_out":
-			return "Probe timed out";
+		case 'sending':
+			return 'Sending probe';
+		case 'awaiting_inbound':
+			return 'Waiting for receipt';
+		case 'passed':
+			return 'Proof passed';
+		case 'failed':
+			return 'Proof failed';
+		case 'timed_out':
+			return 'Probe timed out';
 		default:
-			return "";
+			return '';
 	}
 });
 
 const resultIcon = {
-	pass: "lucide:check-circle-2",
-	fail: "lucide:x-circle",
-	unknown: "lucide:circle-dashed",
+	pass: 'lucide:check-circle-2',
+	fail: 'lucide:x-circle',
+	unknown: 'lucide:circle-dashed',
 } as const;
 const resultClass = {
-	pass: "text-success",
-	fail: "text-error",
-	unknown: "text-text-tertiary",
+	pass: 'text-success',
+	fail: 'text-error',
+	unknown: 'text-text-tertiary',
 } as const;
 
 function start() {
-	if (selectedDomainId.value) emit("start", selectedDomainId.value);
+	if (selectedDomainId.value) emit('start', selectedDomainId.value);
 }
 </script>
 
@@ -150,7 +150,7 @@ function start() {
 					<p class="mt-1 text-sm text-text-secondary">
 						{{
 							selectedDomain.blockedReason ??
-							"The loopback proof unlocks after the server identity and required domain checks pass."
+							'The loopback proof unlocks after the server identity and required domain checks pass.'
 						}}
 					</p>
 				</div>
@@ -171,7 +171,7 @@ function start() {
 					<template #iconLeft>
 						<Icon v-if="!isStarting && !isInFlight" name="lucide:send" class="h-4 w-4" />
 					</template>
-					{{ isInFlight ? "Running proof…" : "Run end-to-end proof" }}
+					{{ isInFlight ? 'Running proof…' : 'Run end-to-end proof' }}
 				</UiButton>
 			</div>
 
@@ -181,9 +181,9 @@ function start() {
 			>
 				<h3 class="font-semibold text-text-primary">
 					{{
-						latest.status === "passed"
-							? "Your email passed the receiving checks"
-							: "The probe found a problem"
+						latest.status === 'passed'
+							? 'Your email passed the receiving checks'
+							: 'The probe found a problem'
 					}}
 				</h3>
 				<p class="mt-1 text-xs text-text-tertiary">Result for {{ latest.domain }}</p>
@@ -203,11 +203,11 @@ function start() {
 						<p class="mt-2 text-sm font-medium text-text-primary">{{ result.label }}</p>
 						<p class="mt-0.5 text-xs text-text-secondary">
 							{{
-								result.value === "pass"
-									? "Passed"
-									: result.value === "fail"
-										? "Failed"
-										: "Not checked"
+								result.value === 'pass'
+									? 'Passed'
+									: result.value === 'fail'
+										? 'Failed'
+										: 'Not checked'
 							}}
 							<span v-if="result.detail"> · {{ result.detail }}</span>
 						</p>

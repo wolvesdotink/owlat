@@ -14,11 +14,13 @@ import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { loopbackTimeoutPatch } from './checklistLoopbackState';
 import { checklistTraits } from './checklistTraits';
+import { DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT } from './checklistAlertRecipients';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const DELIVERABILITY_EVIDENCE_RETENTION_MS = 90 * DAY_MS;
 export const DELIVERABILITY_COMPLETED_RETENTION_MS = 30 * DAY_MS;
 export const DELIVERABILITY_RETENTION_BATCH_SIZE = 128;
+export const DELIVERABILITY_ALERT_RETENTION_BATCH_SIZE = 4;
 
 const sweepArgs = {
 	cursor: v.optional(v.string()),
@@ -196,9 +198,19 @@ export const sweepAlerts = internalMutation({
 			.withIndex('by_resolved_at', (q) => q.gte('resolvedAt', 0).lt('resolvedAt', cutoff))
 			.paginate({
 				cursor: args.cursor ?? null,
-				numItems: DELIVERABILITY_RETENTION_BATCH_SIZE,
+				numItems: DELIVERABILITY_ALERT_RETENTION_BATCH_SIZE,
 			});
-		for (const alert of page.page) await ctx.db.delete(alert._id);
+		for (const alert of page.page) {
+			const recipients = await ctx.db
+				.query('deliverabilityAlertRecipients')
+				.withIndex('by_alert', (q) => q.eq('alertId', alert._id))
+				.take(DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT + 1);
+			if (recipients.length > DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT) {
+				throw new Error('Deliverability alert recipient history exceeds its bounded limit');
+			}
+			for (const recipient of recipients) await ctx.db.delete(recipient._id);
+			await ctx.db.delete(alert._id);
+		}
 		if (page.isDone) {
 			await ctx.scheduler.runAfter(
 				0,

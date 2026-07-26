@@ -87,6 +87,7 @@ export type OrganizationDeletionTable =
 	| 'providerHealth'
 	| 'providerRoutes'
 	| 'deliverabilityRouteStates'
+	| 'deliverabilityAlertRecipients'
 	| 'deliverabilityRegressionAlerts'
 	| 'deliverabilityVerificationState'
 	| 'deliverabilityEvidence'
@@ -247,6 +248,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('providerHealth'),
 	v.literal('providerRoutes'),
 	v.literal('deliverabilityRouteStates'),
+	v.literal('deliverabilityAlertRecipients'),
 	v.literal('deliverabilityRegressionAlerts'),
 	v.literal('deliverabilityVerificationState'),
 	v.literal('deliverabilityEvidence'),

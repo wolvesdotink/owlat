@@ -54,6 +54,76 @@ describe('Deliverability Center regression evidence', () => {
 		});
 	});
 
+	it('reclaims a lost scheduled retry after the bounded scheduler grace', async () => {
+		const t = convexTest(schema, modules);
+		const organizationId = 'org-lost-retry';
+		const targetKey = `${organizationId.length}:${organizationId}|deployment`;
+		await t.run((ctx) =>
+			ctx.db.insert('deliverabilityVerificationState', {
+				organizationId,
+				itemId: 'deployment.ptr',
+				targetKey,
+				attemptId: 'lost-retry-attempt',
+				generation: 7,
+				retryIndex: 3,
+				nextCheckAt: 81_000,
+				leaseToken: 'lost-retry-lease',
+				leaseExpiresAt: 21_000,
+				updatedAt: 21_000,
+			})
+		);
+
+		await expect(
+			t.mutation(internal.delivery.checklistEvidence.claimVerification, {
+				organizationId,
+				itemId: 'deployment.ptr',
+				attemptId: 'recovery-sweep',
+				leaseToken: 'recovery-lease',
+				now: 141_001,
+				preserveScheduledRetry: true,
+			})
+		).resolves.toMatchObject({
+			claimed: true,
+			generation: 8,
+			retryIndex: 0,
+		});
+	});
+
+	it('lets the scheduled retry claim exactly at its due time', async () => {
+		const t = convexTest(schema, modules);
+		const organizationId = 'org-scheduler-edge';
+		const targetKey = `${organizationId.length}:${organizationId}|deployment`;
+		await t.run((ctx) =>
+			ctx.db.insert('deliverabilityVerificationState', {
+				organizationId,
+				itemId: 'deployment.ptr',
+				targetKey,
+				attemptId: 'scheduled-attempt',
+				generation: 7,
+				retryIndex: 3,
+				nextCheckAt: 81_000,
+				leaseToken: 'scheduled-lease',
+				leaseExpiresAt: 21_000,
+				updatedAt: 21_000,
+			})
+		);
+
+		await expect(
+			t.mutation(internal.delivery.checklistEvidence.claimVerification, {
+				organizationId,
+				itemId: 'deployment.ptr',
+				attemptId: 'due-retry-attempt',
+				leaseToken: 'due-retry-lease',
+				now: 81_000,
+				expectedGeneration: 7,
+			})
+		).resolves.toMatchObject({
+			claimed: true,
+			generation: 7,
+			retryIndex: 3,
+		});
+	});
+
 	it('alerts pass → transient warn → confirmed fail and resolves on recovery', async () => {
 		const t = convexTest(schema, modules);
 		const organizationId = 'org-regression';

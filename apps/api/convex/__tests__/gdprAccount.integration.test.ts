@@ -80,8 +80,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const betterAuthModules = import.meta.glob('../betterAuth/**/*.*s');
@@ -102,7 +102,7 @@ beforeEach(() => {
 async function seedProfile(
 	t: TestConvex<typeof schema>,
 	authUserId: string,
-	email = 'me@example.com',
+	email = 'me@example.com'
 ): Promise<Id<'userProfiles'>> {
 	return await t.run(async (ctx) => {
 		return await ctx.db.insert('userProfiles', {
@@ -131,7 +131,7 @@ async function seedMember(
 	t: TestConvex<typeof schema>,
 	organizationId: string,
 	authUserId: string,
-	role: 'owner' | 'admin' | 'editor',
+	role: 'owner' | 'admin' | 'editor'
 ): Promise<void> {
 	await t.mutation(components.betterAuth.adapter.create, {
 		input: {
@@ -139,6 +139,61 @@ async function seedMember(
 			data: { organizationId, userId: authUserId, role, createdAt: Date.now() },
 		},
 	} as never);
+}
+
+async function seedDeliverabilityAlertRecipients(
+	t: TestConvex<typeof schema>,
+	authUserId: string,
+	count: number
+): Promise<void> {
+	await t.run(async (ctx) => {
+		const now = Date.now();
+		const evidence = {
+			organizationId: 'org-x',
+			itemId: 'deployment.ptr' as const,
+			scopeKind: 'deployment' as const,
+			targetKey: '5:org-x|deployment',
+			validator: 'gdpr-test',
+			status: 'pass' as const,
+			observedValues: ['203.0.113.10'],
+			diagnostic: 'verified',
+			observedAt: now,
+			createdAt: now,
+		};
+		const previousEvidenceId = await ctx.db.insert('deliverabilityEvidence', {
+			...evidence,
+			attemptId: 'gdpr-previous',
+		});
+		const regressedEvidenceId = await ctx.db.insert('deliverabilityEvidence', {
+			...evidence,
+			attemptId: 'gdpr-regressed',
+			status: 'fail',
+		});
+		for (let index = 0; index < count; index += 1) {
+			const isSent = index === 0;
+			const alertId = await ctx.db.insert('deliverabilityRegressionAlerts', {
+				organizationId: 'org-x',
+				identity: `gdpr-alert-${index}`,
+				itemId: 'deployment.ptr',
+				targetKey: '5:org-x|deployment',
+				previousEvidenceId,
+				regressedEvidenceId,
+				observedAt: now,
+				message: 'PTR regressed',
+				emailNotificationState: isSent ? 'sent' : 'pending',
+				...(isSent ? { emailNotifiedAt: now } : {}),
+				createdAt: now,
+			});
+			await ctx.db.insert('deliverabilityAlertRecipients', {
+				organizationId: 'org-x',
+				alertId,
+				userId: authUserId,
+				status: isSent ? 'sent' : 'pending',
+				attemptCount: isSent ? 1 : 0,
+				...(isSent ? { sentAt: now } : { nextAttemptAt: now + 60_000 }),
+			});
+		}
+	});
 }
 
 // ============================================================
@@ -151,7 +206,7 @@ describe('accountManagement.exportUserData — requireSelf', () => {
 		await seedProfile(t, 'auth-user-1');
 
 		await expect(
-			t.query(api.auth.accountManagement.exportUserData, { userId: 'someone-else' }),
+			t.query(api.auth.accountManagement.exportUserData, { userId: 'someone-else' })
 		).rejects.toThrow();
 	});
 
@@ -344,6 +399,7 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		await seedProfile(t, 'auth-user-1', 'me@example.com');
 		const orgId = await seedOrg(t);
 		await seedMember(t, orgId, 'auth-user-1', 'editor');
+		await seedDeliverabilityAlertRecipients(t, 'auth-user-1', 1);
 
 		await t.run(async (ctx) => {
 			const now = Date.now();
@@ -493,6 +549,15 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		// Chat: only the caller's own authorship is exported, not others'.
 		expect(res.personalData.chatMessages).toHaveLength(1);
 		expect(res.personalData.chatMessages[0]!.text).toBe('my chat message');
+		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(1);
+		expect(res.personalData.deliverabilityAlertRecipientStates[0]!.state).toMatchObject({
+			userId: 'auth-user-1',
+			status: 'sent',
+			attemptCount: 1,
+		});
+		expect(res.personalData.deliverabilityAlertRecipientStates[0]!.state).not.toHaveProperty(
+			'email'
+		);
 
 		// Redaction: storage-blob handles and the encrypted credential envelope
 		// never appear in the bundle.
@@ -524,6 +589,7 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		expect(res.personalData.mailDrafts).toHaveLength(0);
 		expect(res.personalData.externalMailAccounts).toHaveLength(0);
 		expect(res.personalData.chatMessages).toHaveLength(0);
+		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(0);
 	});
 });
 
@@ -597,6 +663,11 @@ describe('accountManagement.deleteAccountForRequest — non-owner member', () =>
 			authUserId: 'auth-user-1',
 			requestId,
 		});
+		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
+			authUserId: 'auth-user-1',
+			requestId,
+			isAlertErasureDone: true,
+		});
 		await t.run(async (ctx) => {
 			const request = await ctx.db.get(requestId);
 			expect(request?.status).toBe('completed');
@@ -613,14 +684,22 @@ describe('memberErasure.eraseMemberData', () => {
 	async function drainWalk(
 		t: TestConvex<typeof schema>,
 		authUserId: string,
-		requestId: Id<'accountDeletionRequests'>,
+		requestId: Id<'accountDeletionRequests'>
 	): Promise<void> {
 		// Bounded loop — every hop either deletes a batch (and reschedules) or
 		// reaches phase 4. A handful of hops covers the seeded data.
 		for (let i = 0; i < 20; i++) {
+			const isAlertErasureDone = await t.run(async (ctx) => {
+				const recipient = await ctx.db
+					.query('deliverabilityAlertRecipients')
+					.withIndex('by_user', (q) => q.eq('userId', authUserId))
+					.first();
+				return recipient === null;
+			});
 			await t.mutation(internal.auth.memberErasure.eraseMemberData, {
 				authUserId,
 				requestId,
+				...(isAlertErasureDone ? { isAlertErasureDone: true } : {}),
 			});
 			const done = await t.run(async (ctx) => {
 				const r = await ctx.db.get(requestId);
@@ -861,6 +940,52 @@ describe('memberErasure.eraseMemberData', () => {
 		});
 	});
 
+	it('anonymizes more than one recipient-ledger page and reconciles each parent alert', async () => {
+		const t = newHarness();
+		const authUserId = 'auth-user-with-alerts';
+		const profileId = await seedProfile(t, authUserId);
+		const requestId = await t.run((ctx) =>
+			ctx.db.insert('accountDeletionRequests', {
+				userProfileId: profileId,
+				email: 'alerts@example.com',
+				requestedAt: Date.now(),
+				scheduledForDeletion: Date.now(),
+				cancellationToken: 'alert-ledger-token',
+				status: 'pending',
+				createdAt: Date.now(),
+			})
+		);
+		await seedDeliverabilityAlertRecipients(t, authUserId, 101);
+
+		await drainWalk(t, authUserId, requestId);
+
+		await t.run(async (ctx) => {
+			const ownedRows = await ctx.db
+				.query('deliverabilityAlertRecipients')
+				.withIndex('by_user', (q) => q.eq('userId', authUserId))
+				.collect();
+			expect(ownedRows).toHaveLength(0);
+			const anonymizedRows = await ctx.db
+				.query('deliverabilityAlertRecipients')
+				.withIndex('by_user', (q) => q.eq('userId', '[deleted account]'))
+				.collect();
+			expect(anonymizedRows).toHaveLength(101);
+			expect(anonymizedRows.filter((row) => row.status === 'sent')).toHaveLength(1);
+			expect(anonymizedRows.filter((row) => row.status === 'cancelled')).toHaveLength(100);
+
+			const alerts = await ctx.db.query('deliverabilityRegressionAlerts').collect();
+			expect(alerts.filter((alert) => alert.emailNotificationState === 'sent')).toHaveLength(1);
+			expect(alerts.filter((alert) => alert.emailNotificationState === 'unavailable')).toHaveLength(
+				100
+			);
+			expect(
+				alerts
+					.filter((alert) => alert.emailNotificationState === 'unavailable')
+					.every((alert) => alert.emailNotifiedAt === undefined)
+			).toBe(true);
+		});
+	});
+
 	it('is a clean no-op (still completes the request) when the member owns no personal data', async () => {
 		const t = newHarness();
 		const authUserId = 'auth-user-3';
@@ -880,6 +1005,7 @@ describe('memberErasure.eraseMemberData', () => {
 		await t.mutation(internal.auth.memberErasure.eraseMemberData, {
 			authUserId,
 			requestId,
+			isAlertErasureDone: true,
 		});
 
 		await t.run(async (ctx) => {

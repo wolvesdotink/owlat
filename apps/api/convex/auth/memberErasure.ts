@@ -30,22 +30,33 @@ import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import {
+	DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT,
+	deliverabilityAlertNotificationPatch,
+} from '../delivery/checklistAlertRecipients';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
+const DELETED_ACCOUNT_ID = '[deleted account]';
 
 export const eraseMemberData = internalMutation({
 	args: {
 		authUserId: v.string(),
 		requestId: v.id('accountDeletionRequests'),
+		alertCursor: v.optional(v.string()),
+		isAlertErasureDone: v.optional(v.boolean()),
 		chatCursor: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const reschedule = async (chatCursor?: string) => {
+		const reschedule = async (continuation?: {
+			alertCursor?: string;
+			isAlertErasureDone?: boolean;
+			chatCursor?: string;
+		}) => {
 			await ctx.scheduler.runAfter(0, internal.auth.memberErasure.eraseMemberData, {
 				authUserId: args.authUserId,
 				requestId: args.requestId,
-				...(chatCursor !== undefined ? { chatCursor } : {}),
+				...continuation,
 			});
 		};
 
@@ -228,7 +239,55 @@ export const eraseMemberData = internalMutation({
 			await ctx.db.delete(row._id);
 		}
 
-		// ── Phase 3: chat — anonymize authorship page by page ──
+		// ── Phase 3: Deliverability alert recipient ledger ──
+		if (args.isAlertErasureDone !== true) {
+			const alertPage = await ctx.db
+				.query('deliverabilityAlertRecipients')
+				.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
+				.paginate({
+					cursor: args.alertCursor ?? null,
+					numItems: DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT,
+				});
+			const touchedAlertIds = new Set<Id<'deliverabilityRegressionAlerts'>>();
+			for (const recipient of alertPage.page) {
+				touchedAlertIds.add(recipient.alertId);
+				await ctx.db.patch(recipient._id, {
+					userId: DELETED_ACCOUNT_ID,
+					...(recipient.status === 'pending'
+						? {
+								status: 'cancelled' as const,
+								nextAttemptAt: undefined,
+							}
+						: recipient.status === 'sending'
+							? {
+									status: 'unavailable' as const,
+									unavailableReason: 'transport_outcome_unknown' as const,
+									attemptToken: undefined,
+									attemptStartedAt: undefined,
+									nextAttemptAt: undefined,
+								}
+							: {}),
+				});
+			}
+			for (const alertId of touchedAlertIds) {
+				const alert = await ctx.db.get(alertId);
+				if (!alert) continue;
+				const states = await ctx.db
+					.query('deliverabilityAlertRecipients')
+					.withIndex('by_alert', (q) => q.eq('alertId', alertId))
+					.take(DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT + 1);
+				if (states.length > DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT) {
+					throw new Error('Deliverability alert recipient history exceeds its bounded limit');
+				}
+				await ctx.db.patch(alert._id, deliverabilityAlertNotificationPatch(states));
+			}
+			await reschedule(
+				alertPage.isDone ? { isAlertErasureDone: true } : { alertCursor: alertPage.continueCursor }
+			);
+			return;
+		}
+
+		// ── Phase 4: chat — anonymize authorship page by page ──
 		const page = await ctx.db
 			.query('chatMessages')
 			.paginate({ cursor: args.chatCursor ?? null, numItems: CHAT_PAGE });
@@ -238,7 +297,10 @@ export const eraseMemberData = internalMutation({
 			}
 		}
 		if (!page.isDone) {
-			await reschedule(page.continueCursor);
+			await reschedule({
+				isAlertErasureDone: true,
+				chatCursor: page.continueCursor,
+			});
 			return;
 		}
 
@@ -254,7 +316,7 @@ export const eraseMemberData = internalMutation({
 			.collect(); // bounded: one user's mentions
 		for (const mention of mentions) await ctx.db.delete(mention._id);
 
-		// ── Phase 4: done ──
+		// ── Phase 5: done ──
 		const request = await ctx.db.get(args.requestId as Id<'accountDeletionRequests'>);
 		if (request && request.status !== 'completed') {
 			await ctx.db.patch(args.requestId, {

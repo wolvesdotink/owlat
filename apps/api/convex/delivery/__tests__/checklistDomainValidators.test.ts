@@ -188,6 +188,38 @@ describe('domain checklist validation', () => {
 		resolveCname.mockRestore();
 	});
 
+	it('backs off a transient provider-managed DKIM target before warning for message proof', async () => {
+		const resolveTxt = vi.spyOn(dns, 'resolveTxt').mockRejectedValue(new Error('not found'));
+		const resolveCname = vi.spyOn(dns, 'resolveCname').mockRejectedValue(new Error('not found'));
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [{ verified: true, foundValue: 'selector.provider.test.' }],
+		} as never);
+		const dkimContext = context(
+			{},
+			{
+				dkim: [
+					{
+						type: 'CNAME',
+						host: 's1._domainkey',
+						value: 'selector.provider.test',
+					},
+				],
+			}
+		);
+
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, false)
+		).resolves.toMatchObject({ status: 'pending-dns' });
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, true)
+		).resolves.toMatchObject({
+			status: 'warn',
+			diagnostic: expect.stringContaining('message-level proof'),
+		});
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
+	});
+
 	it('does not pass DMARC solely because its own record is verified', async () => {
 		vi.mocked(runDnsLookups).mockResolvedValue({
 			spf: { verified: false, error: 'The SPF value does not match.' },
@@ -494,8 +526,8 @@ describe('domain checklist validation', () => {
 		expect(observation.status).toBe('pending-dns');
 		expect(observation.observedValues).toEqual(
 			expect.arrayContaining([
-				expect.stringContaining('dns=return-path[0]'),
-				expect.stringContaining('dns=return-path[1]'),
+				expect.stringContaining('"label":"return-path[0]"'),
+				expect.stringContaining('"label":"return-path[1]"'),
 			])
 		);
 		await expect(
@@ -568,7 +600,7 @@ describe('domain checklist validation', () => {
 		).resolves.toMatchObject({
 			status: 'pending-dns',
 			observedValues: expect.arrayContaining([
-				expect.stringContaining('observed=old.owlat.example'),
+				expect.stringContaining('"observed":"old.owlat.example"'),
 			]),
 		});
 		await expect(
