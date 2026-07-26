@@ -17,6 +17,7 @@ import {
 	openTransactionalEmailContent,
 	projectEmailTemplateMetadata,
 	projectTransactionalEmailMetadata,
+	referencedTemplateMediaAssetIds,
 } from '../lib/accountExportTemplates';
 import {
 	openMailDraftForAccountExport,
@@ -60,6 +61,7 @@ async function artifactUrl(ctx: ActionCtx, storageId: Id<'_storage'>): Promise<s
 interface StagedAccountExportContent {
 	contentDownloadUrl: string;
 	contentArtifactId: Id<'accountExportArtifacts'>;
+	contentLeaseToken: string;
 }
 
 async function stageAccountExportContent(
@@ -73,6 +75,7 @@ async function stageAccountExportContent(
 ): Promise<StagedAccountExportContent> {
 	const bytes = new TextEncoder().encode(JSON.stringify(args.content));
 	const artifactKey = await contentAddressedArtifactKey(args.artifactScope, bytes);
+	const leaseToken = crypto.randomUUID();
 	const existing: Doc<'accountExportArtifacts'> | null = await ctx.runQuery(
 		internal.auth.accountExportArtifacts.findArtifact,
 		{
@@ -82,10 +85,36 @@ async function stageAccountExportContent(
 		}
 	);
 	if (existing) {
-		return {
-			contentDownloadUrl: await artifactUrl(ctx, existing.storageId),
-			contentArtifactId: existing._id,
-		};
+		const leasedArtifact: Doc<'accountExportArtifacts'> | null = await ctx.runMutation(
+			internal.auth.accountExportArtifacts.acquireArtifactLease,
+			{
+				userId: args.userId,
+				sessionId: args.sessionId,
+				artifactId: existing._id,
+				leaseToken,
+			}
+		);
+		if (leasedArtifact) {
+			try {
+				return {
+					contentDownloadUrl: await artifactUrl(ctx, leasedArtifact.storageId),
+					contentArtifactId: leasedArtifact._id,
+					contentLeaseToken: leaseToken,
+				};
+			} catch (error) {
+				await ctx
+					.runMutation(internal.auth.accountExportArtifacts.releaseArtifact, {
+						userId: args.userId,
+						sessionId: args.sessionId,
+						artifactId: leasedArtifact._id,
+						leaseToken,
+					})
+					.catch(() => undefined);
+				throw error;
+			}
+		}
+		// The last prior consumer may have acknowledged between the lookup and
+		// lease mutation. Restage below instead of failing a retry-safe page.
 	}
 
 	const storageId = await storeSealedBlob(ctx.storage, bytes, 'application/json');
@@ -97,12 +126,26 @@ async function stageAccountExportContent(
 				artifactKey,
 				storageId,
 				contentLength: bytes.byteLength,
+				leaseToken,
 			});
 		if (!registered.created) await ctx.storage.delete(storageId);
-		return {
-			contentDownloadUrl: await artifactUrl(ctx, registered.artifact.storageId),
-			contentArtifactId: registered.artifact._id,
-		};
+		try {
+			return {
+				contentDownloadUrl: await artifactUrl(ctx, registered.artifact.storageId),
+				contentArtifactId: registered.artifact._id,
+				contentLeaseToken: leaseToken,
+			};
+		} catch (error) {
+			await ctx
+				.runMutation(internal.auth.accountExportArtifacts.releaseArtifact, {
+					userId: args.userId,
+					sessionId: args.sessionId,
+					artifactId: registered.artifact._id,
+					leaseToken,
+				})
+				.catch(() => undefined);
+			throw error;
+		}
 	} catch (error) {
 		try {
 			const registered = await ctx.runQuery(internal.auth.accountExportArtifacts.findArtifact, {
@@ -153,12 +196,14 @@ export const acknowledgeExportArtifact = authedAction({
 		userId: v.string(),
 		exportSessionId: v.id('accountExportSessions'),
 		artifactId: v.id('accountExportArtifacts'),
+		leaseToken: v.string(),
 	},
 	handler: async (ctx, args): Promise<boolean> =>
 		ctx.runMutation(internal.auth.accountExportArtifacts.releaseArtifact, {
 			userId: args.userId,
 			sessionId: args.exportSessionId,
 			artifactId: args.artifactId,
+			leaseToken: args.leaseToken,
 		}),
 });
 
@@ -239,29 +284,44 @@ export const exportUserDataPage = authedAction({
 					paginationOpts,
 				}
 			)) as PaginationResult<Doc<'emailTemplates'>> | PaginationResult<Doc<'transactionalEmails'>>;
-			const page = await Promise.all(
-				result.page.map(async (template) => {
-					const isEmailTemplate = args.resource === 'emailTemplates';
-					const content = isEmailTemplate
-						? await openEmailTemplateContent(ctx.storage, template as Doc<'emailTemplates'>)
-						: await openTransactionalEmailContent(
-								ctx.storage,
-								template as Doc<'transactionalEmails'>
-							);
-					const stagedContent = await stageAccountExportContent(ctx, {
-						userId: args.userId,
-						sessionId: args.exportSessionId,
-						artifactScope: artifactScope(args.resource, template._id),
-						content,
-					});
-					return {
-						...(isEmailTemplate
-							? projectEmailTemplateMetadata(template as Doc<'emailTemplates'>)
-							: projectTransactionalEmailMetadata(template as Doc<'transactionalEmails'>)),
-						...stagedContent,
-					};
-				})
-			);
+			const page: Record<string, unknown>[] = [];
+			for (const template of result.page) {
+				const isEmailTemplate = args.resource === 'emailTemplates';
+				const mediaAssetIds = referencedTemplateMediaAssetIds(template);
+				const authorizedMedia: Array<{ mediaAssetId: string; storageId: string }> = [];
+				for (let offset = 0; offset < mediaAssetIds.length; offset += 200) {
+					authorizedMedia.push(
+						...(await ctx.runQuery(internal.auth.accountExportQueries.listAuthorizedTemplateMedia, {
+							userId: args.userId,
+							organizationId: args.organizationId!,
+							mediaAssetIds: mediaAssetIds.slice(offset, offset + 200),
+						}))
+					);
+				}
+				const content = isEmailTemplate
+					? await openEmailTemplateContent(
+							ctx.storage,
+							template as Doc<'emailTemplates'>,
+							authorizedMedia
+						)
+					: await openTransactionalEmailContent(
+							ctx.storage,
+							template as Doc<'transactionalEmails'>,
+							authorizedMedia
+						);
+				const stagedContent = await stageAccountExportContent(ctx, {
+					userId: args.userId,
+					sessionId: args.exportSessionId,
+					artifactScope: artifactScope(args.resource, template._id),
+					content,
+				});
+				page.push({
+					...(isEmailTemplate
+						? projectEmailTemplateMetadata(template as Doc<'emailTemplates'>)
+						: projectTransactionalEmailMetadata(template as Doc<'transactionalEmails'>)),
+					...stagedContent,
+				});
+			}
 			return serializeAccountExportPage({ ...result, page });
 		}
 		if (isAccountExportOrganizationResource(args.resource)) {

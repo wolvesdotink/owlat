@@ -25,6 +25,11 @@ import type { TableNames } from '../_generated/dataModel';
  * can never drift again.
  */
 export const TENANT_TABLES = [
+	// Short-lived export capabilities must be revoked with the single tenant.
+	'accountExportArtifactLeases',
+	'accountExportArtifacts',
+	'accountExportSessions',
+
 	// ── Contacts subtree (children first) ──
 	'contactPropertyValues',
 	'contactTopics',
@@ -83,6 +88,7 @@ export const TENANT_TABLES = [
 	'unsubscribeLatencyBuckets',
 	'deliverabilityRouteStates',
 	'deliverabilityAlertRecipients',
+	'deliverabilityAlertRecipientReceipts',
 	'deliverabilityRegressionAlerts',
 	'deliverabilityVerificationState',
 	'deliverabilityEvidence',
@@ -225,9 +231,6 @@ export const NON_TENANT_TABLES = [
 	// The deletion-tracking table itself — account deletion patches the request
 	// row to `completed`, so it must survive the wipe.
 	'accountDeletionRequests',
-	// Ephemeral per-user export state has its own one-hour expiry lifecycle.
-	'accountExportSessions',
-	'accountExportArtifacts',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
 	// dedicated step.
 	'instanceSettings',

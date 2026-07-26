@@ -111,6 +111,7 @@ export const authTables = {
 		userId: v.string(),
 		artifactCount: v.number(),
 		artifactBytes: v.number(),
+		leaseCount: v.optional(v.number()),
 		createdAt: v.number(),
 		expiresAt: v.number(),
 	}).index('by_user_and_expires_at', ['userId', 'expiresAt']),
@@ -122,8 +123,21 @@ export const authTables = {
 		artifactKey: v.string(),
 		storageId: v.id('_storage'),
 		contentLength: v.number(),
+		activeLeaseCount: v.optional(v.number()),
 		createdAt: v.number(),
 	}).index('by_session_and_key', ['sessionId', 'artifactKey']),
+
+	// One lease per issued staged URL. Acknowledging one consumer cannot remove
+	// an artifact that another concurrently-issued export page is still reading.
+	accountExportArtifactLeases: defineTable({
+		sessionId: v.id('accountExportSessions'),
+		artifactId: v.id('accountExportArtifacts'),
+		leaseToken: v.string(),
+		createdAt: v.number(),
+	})
+		.index('by_session', ['sessionId'])
+		.index('by_artifact', ['artifactId'])
+		.index('by_token', ['leaseToken']),
 
 	// Onboarding dismissal — INSTANCE-SCOPED (single org per deployment).
 	// Step progress is derived live from real instance data in

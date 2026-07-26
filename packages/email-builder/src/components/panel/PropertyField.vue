@@ -39,7 +39,10 @@ import {
 	DEFAULT_CONDITION_OPERATOR,
 } from '../../utils/blockCondition';
 import { normalizeRepeat, DEFAULT_ITEM_ALIAS } from '../../utils/blockRepeat';
-import { storageIdentityKeyForImageSource } from '../../utils/imageStorage';
+import {
+	mediaAssetIdentityKeyForImageSource,
+	storageIdentityKeyForImageSource,
+} from '../../utils/imageStorage';
 
 const props = defineProps<{
 	field: PropertyFieldType;
@@ -64,6 +67,8 @@ function updateImageUrl(value: string) {
 	if (storageIdentityKey) {
 		emit('update-keyed', storageIdentityKey, undefined);
 	}
+	const mediaAssetIdentityKey = mediaAssetIdentityKeyForImageSource(props.field.key);
+	if (mediaAssetIdentityKey) emit('update-keyed', mediaAssetIdentityKey, undefined);
 }
 
 function selectStoredImage(result: ImageUploadResult) {
@@ -72,6 +77,8 @@ function selectStoredImage(result: ImageUploadResult) {
 	if (storageIdentityKey) {
 		emit('update-keyed', storageIdentityKey, result.storageId);
 	}
+	const mediaAssetIdentityKey = mediaAssetIdentityKeyForImageSource(props.field.key);
+	if (mediaAssetIdentityKey) emit('update-keyed', mediaAssetIdentityKey, result.mediaAssetId);
 }
 
 // Condition editor ----------------------------------------------------------

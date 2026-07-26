@@ -27,6 +27,7 @@ import { getOptional } from '../lib/env';
 import { safeCompare } from '../lib/safeCompare';
 import { devDeploymentResponseOrNull } from './_guard';
 import { TENANT_TABLES } from '../lib/tenantTables';
+import type { Doc } from '../_generated/dataModel';
 
 interface ResetCounts {
 	users: number;
@@ -59,6 +60,9 @@ export const runReset = internalMutation({
 		for (const table of TENANT_TABLES) {
 			const rows = await ctx.db.query(table).collect(); // bounded: dev-only full wipe of each tenant table
 			for (const row of rows) {
+				if (table === 'accountExportArtifacts') {
+					await ctx.storage.delete((row as Doc<'accountExportArtifacts'>).storageId);
+				}
 				await ctx.db.delete(row._id);
 				counts.tenantRows++;
 			}

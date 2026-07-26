@@ -261,6 +261,125 @@ describe('domain checklist validation', () => {
 		resolveCname.mockRestore();
 	});
 
+	it('accepts a strong provider CNAME target whose DKIM TXT omits the optional v tag', async () => {
+		const strongRecord = rsaDkimRecord(2_048).replace('v=DKIM1; ', '');
+		const resolveTxt = vi.spyOn(dns, 'resolveTxt').mockResolvedValue([[strongRecord]]);
+		const resolveCname = vi.spyOn(dns, 'resolveCname').mockRejectedValue(new Error('not found'));
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [{ verified: true, foundValue: 'selector.provider.test.' }],
+		} as never);
+
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.dkim',
+				context(
+					{},
+					{
+						dkim: [
+							{
+								type: 'CNAME',
+								host: 's1._domainkey',
+								value: 'selector.provider.test',
+							},
+						],
+					}
+				),
+				true
+			)
+		).resolves.toMatchObject({
+			status: 'pass',
+			observedValues: expect.arrayContaining(['key-bits=2048']),
+		});
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
+	});
+
+	it('rejects ambiguous provider CNAME targets with multiple DKIM keys', async () => {
+		const strongRecord = rsaDkimRecord(2_048);
+		const resolveTxt = vi
+			.spyOn(dns, 'resolveTxt')
+			.mockResolvedValue([[strongRecord], [strongRecord.replace('v=DKIM1; ', '')]]);
+		const resolveCname = vi.spyOn(dns, 'resolveCname').mockRejectedValue(new Error('not found'));
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [{ verified: true, foundValue: 'selector.provider.test.' }],
+		} as never);
+
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.dkim',
+				context(
+					{},
+					{
+						dkim: [
+							{
+								type: 'CNAME',
+								host: 's1._domainkey',
+								value: 'selector.provider.test',
+							},
+						],
+					}
+				),
+				true
+			)
+		).resolves.toMatchObject({
+			status: 'fail',
+			observedValues: expect.arrayContaining(['key-bits=unparseable']),
+		});
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
+	});
+
+	it('rejects a provider DKIM TXT with duplicate key tags', async () => {
+		const strongRecord = rsaDkimRecord(2_048);
+		const resolveTxt = vi
+			.spyOn(dns, 'resolveTxt')
+			.mockResolvedValue([[`${strongRecord}; p=duplicate`]]);
+		const resolveCname = vi.spyOn(dns, 'resolveCname').mockRejectedValue(new Error('not found'));
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [{ verified: true, foundValue: 'selector.provider.test.' }],
+		} as never);
+		const dkimContext = context(
+			{},
+			{
+				dkim: [{ type: 'CNAME', host: 's1._domainkey', value: 'selector.provider.test' }],
+			}
+		);
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, true)
+		).resolves.toMatchObject({
+			status: 'fail',
+			observedValues: expect.arrayContaining(['key-bits=unparseable']),
+		});
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
+	});
+
+	it('rejects a provider selector with multiple CNAME targets', async () => {
+		const resolveTxt = vi.spyOn(dns, 'resolveTxt').mockRejectedValue(new Error('not found'));
+		const resolveCname = vi
+			.spyOn(dns, 'resolveCname')
+			.mockResolvedValue(['one.provider.test.', 'two.provider.test.']);
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [{ verified: true, foundValue: 'selector.provider.test.' }],
+		} as never);
+		const dkimContext = context(
+			{},
+			{
+				dkim: [{ type: 'CNAME', host: 's1._domainkey', value: 'selector.provider.test' }],
+			}
+		);
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, true)
+		).resolves.toMatchObject({
+			status: 'fail',
+			observedValues: expect.arrayContaining(['key-bits=unparseable']),
+		});
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
+	});
+
 	it('fails mixed unresolved provider CNAME and unparseable direct DKIM evidence', async () => {
 		const resolveTxt = vi.spyOn(dns, 'resolveTxt').mockRejectedValue(new Error('not found'));
 		const resolveCname = vi.spyOn(dns, 'resolveCname').mockRejectedValue(new Error('not found'));

@@ -566,7 +566,7 @@ describe('deliverability regression email state', () => {
 		);
 	});
 
-	it('admits all 50 current admins alongside 120 protected prior outcomes without duplicates', async () => {
+	it('admits all 50 current admins while compacting protected prior outcomes into receipts', async () => {
 		const t = convexTest(schema, modules);
 		await insertPendingAlert(t, 'protected-turnover');
 		await t.run(async (ctx) => {
@@ -624,10 +624,10 @@ describe('deliverability regression email state', () => {
 		);
 		expect(repeated?.claims).toEqual([]);
 
-		const { recipients } = await readAlertState(t);
-		expect(recipients).toHaveLength(170);
-		expect(new Set(recipients.map((recipient) => recipient.userId)).size).toBe(170);
-		expect(recipients.filter((recipient) => recipient.status === 'sent')).toHaveLength(40);
+		const { recipients, alert } = await readAlertState(t);
+		expect(recipients).toHaveLength(120);
+		expect(new Set(recipients.map((recipient) => recipient.userId)).size).toBe(120);
+		expect(recipients.filter((recipient) => recipient.status === 'sent')).toHaveLength(0);
 		expect(recipients.filter((recipient) => recipient.status === 'sending')).toHaveLength(90);
 		expect(
 			recipients.filter(
@@ -635,7 +635,17 @@ describe('deliverability regression email state', () => {
 					recipient.status === 'unavailable' &&
 					recipient.unavailableReason === 'transport_outcome_unknown'
 			)
-		).toHaveLength(40);
+		).toHaveLength(30);
+		expect(alert).toMatchObject({
+			compactedRecipientOutcomes: {
+				sent: 40,
+				transportOutcomeUnknown: 10,
+				earliestSentAt: 1,
+			},
+		});
+		expect(
+			await t.run((ctx) => ctx.db.query('deliverabilityAlertRecipientReceipts').collect())
+		).toHaveLength(50);
 	});
 
 	it('never evicts a sent receipt and does not resend when that admin rejoins at the cap', async () => {
@@ -710,6 +720,70 @@ describe('deliverability regression email state', () => {
 				}),
 			])
 		);
+	});
+
+	it('keeps exact receipts through five full roster turnovers and never reclaims a compacted send', async () => {
+		const t = convexTest(schema, modules);
+		await insertPendingAlert(t, 'full-turnovers');
+		for (let generation = 0; generation < 5; generation += 1) {
+			const recipients = Array.from({ length: 50 }, (_, index) => ({
+				userId: `turnover-${generation}-${index}`,
+				email: `turnover-${generation}-${index}@example.test`,
+			}));
+			const attemptToken = `turnover-attempt-${generation}`;
+			const prepared = await t.mutation(
+				internal.delivery.checklistAlertState.prepareRecipientAttempts,
+				{
+					organizationId: 'org',
+					identity: 'full-turnovers',
+					recipients,
+					attemptToken,
+					now: 10_000 + generation,
+				}
+			);
+			expect(prepared?.claims).toHaveLength(50);
+			await t.mutation(internal.delivery.checklistAlertState.completeRecipientAttempts, {
+				organizationId: 'org',
+				identity: 'full-turnovers',
+				attemptToken,
+				results: recipients.map((recipient, index) =>
+					index === 49
+						? { userId: recipient.userId, isSuccess: false, retryAt: 1_000_000 }
+						: { userId: recipient.userId, isSuccess: true }
+				),
+				now: 20_000 + generation,
+			});
+		}
+
+		const rejoined = await t.mutation(
+			internal.delivery.checklistAlertState.prepareRecipientAttempts,
+			{
+				organizationId: 'org',
+				identity: 'full-turnovers',
+				recipients: [
+					{ userId: 'turnover-0-0', email: 'rejoined@example.test' },
+					{ userId: 'turnover-4-49', email: 'still-retrying@example.test' },
+				],
+				attemptToken: 'rejoin',
+				now: 30_000,
+			}
+		);
+		expect(rejoined?.claims).toEqual([]);
+		const state = await readAlertState(t);
+		expect(state.recipients.length).toBeLessThanOrEqual(120);
+		expect(state.recipients).toEqual(
+			expect.arrayContaining([expect.objectContaining({ userId: 'turnover-0-0', status: 'sent' })])
+		);
+		expect(
+			await t.run((ctx) =>
+				ctx.db
+					.query('deliverabilityAlertRecipientReceipts')
+					.withIndex('by_alert_and_user', (q) =>
+						q.eq('alertId', state.alert!._id).eq('userId', 'turnover-0-0')
+					)
+					.unique()
+			)
+		).toMatchObject({ outcome: 'sent' });
 	});
 
 	it('preserves distinct anonymized ledger rows that share the deleted-account marker', async () => {

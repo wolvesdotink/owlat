@@ -9,25 +9,10 @@ import {
 	destinationProviderValidator,
 } from '../delivery/deliverabilityValidators';
 import {
-	DELIVERABILITY_ALERT_RECIPIENT_STATUSES,
-	DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS,
-	DELIVERABILITY_CHECKLIST,
-	type DeliverabilityCheckId,
-} from '@owlat/shared';
-
-const [firstDeliverabilityCheck, ...remainingDeliverabilityChecks] = DELIVERABILITY_CHECKLIST.map(
-	(item) => item.id
-) as [DeliverabilityCheckId, ...DeliverabilityCheckId[]];
-const deliverabilityCheckIdSchemaValidator = v.union(
-	v.literal(firstDeliverabilityCheck),
-	...remainingDeliverabilityChecks.map((item) => v.literal(item))
-);
-const deliverabilityAlertRecipientStatusValidator = v.union(
-	...DELIVERABILITY_ALERT_RECIPIENT_STATUSES.map((status) => v.literal(status))
-);
-const deliverabilityAlertRecipientUnavailableReasonValidator = v.union(
-	...DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS.map((reason) => v.literal(reason))
-);
+	deliverabilityAlertRecipientStatusValidator,
+	deliverabilityAlertRecipientUnavailableReasonValidator,
+	deliverabilityCheckIdSchemaValidator,
+} from './deliveryChecklistValidators';
 
 /**
  * Delivery + sending-infrastructure tables — blocklist, reputation tracking, content scanning,
@@ -417,6 +402,18 @@ export const deliveryTables = {
 			v.literal('unavailable')
 		),
 		emailNotifiedAt: v.optional(v.number()),
+		// Bounded compaction receipt for departed-recipient rows. Current admins
+		// remain exact rows; historical outcomes are folded here before eviction.
+		compactedRecipientOutcomes: v.optional(
+			v.object({
+				sent: v.number(),
+				transportOutcomeUnknown: v.number(),
+				deliveryFailed: v.number(),
+				unavailable: v.number(),
+				cancelled: v.number(),
+				earliestSentAt: v.optional(v.number()),
+			})
+		),
 		emailDirectoryAttemptCount: v.optional(v.number()),
 		acknowledgedAt: v.optional(v.number()),
 		resolvedAt: v.optional(v.number()),
@@ -445,6 +442,18 @@ export const deliveryTables = {
 		sentAt: v.optional(v.number()),
 		unavailableReason: v.optional(deliverabilityAlertRecipientUnavailableReasonValidator),
 	})
+		.index('by_alert', ['alertId'])
+		.index('by_user', ['userId']),
+
+	deliverabilityAlertRecipientReceipts: defineTable({
+		organizationId: v.string(),
+		alertId: v.id('deliverabilityRegressionAlerts'),
+		userId: v.string(),
+		outcome: v.union(v.literal('sent'), v.literal('transport_outcome_unknown')),
+		sentAt: v.optional(v.number()),
+		createdAt: v.number(),
+	})
+		.index('by_alert_and_user', ['alertId', 'userId'])
 		.index('by_alert', ['alertId'])
 		.index('by_user', ['userId']),
 

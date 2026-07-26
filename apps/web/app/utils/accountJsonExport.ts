@@ -5,12 +5,11 @@ import type { ConvexClient } from 'convex/browser';
 import {
 	jsonArray,
 	jsonObject,
-	jsonObjectWithStreamedProperties,
 	jsonValue,
 	type JsonValueWriter,
 	type TextChunkSink,
-	writeJsonDownload,
-} from './incrementalJsonDownload';
+} from './incrementalJsonSerializer';
+import { jsonObjectWithStreamedProperties, writeJsonDownload } from './incrementalJsonDownload';
 
 type ExportPageOptions = {
 	organizationId?: string;
@@ -63,8 +62,9 @@ async function* accountExportRowWriters(
 			continue;
 		}
 		const contentArtifactId = row['contentArtifactId'];
-		if (typeof contentArtifactId !== 'string') {
-			throw new Error('Account export content is missing its artifact ID');
+		const contentLeaseToken = row['contentLeaseToken'];
+		if (typeof contentArtifactId !== 'string' || typeof contentLeaseToken !== 'string') {
+			throw new Error('Account export content is missing its artifact lease');
 		}
 		const response = await fetch(contentDownloadUrl);
 		if (!response.ok || !response.body) {
@@ -73,6 +73,7 @@ async function* accountExportRowWriters(
 		const {
 			['contentDownloadUrl']: _download,
 			['contentArtifactId']: _artifact,
+			['contentLeaseToken']: _lease,
 			...metadata
 		} = row;
 		yield jsonObjectWithStreamedProperties(metadata, response.body);
@@ -80,6 +81,7 @@ async function* accountExportRowWriters(
 			userId: context.userId,
 			exportSessionId: context.exportSessionId,
 			artifactId: contentArtifactId as Id<'accountExportArtifacts'>,
+			leaseToken: contentLeaseToken,
 		});
 	}
 }

@@ -150,6 +150,28 @@ export const listTemplateContentData = internalQuery({
 	},
 });
 
+/** Resolve only media-library rows that the authorized template export names by
+ * durable asset ID. The action then requires the stored blob ID to match this
+ * projection exactly; arbitrary cross-resource storage IDs remain unavailable. */
+export const listAuthorizedTemplateMedia = internalQuery({
+	args: {
+		userId: v.string(),
+		organizationId: v.string(),
+		mediaAssetIds: v.array(v.string()),
+	},
+	handler: async (ctx, args) => {
+		if (!(await hasOrganizationExportAccess(ctx, args.userId, args.organizationId))) return [];
+		const assets: Array<{ mediaAssetId: string; storageId: string }> = [];
+		for (const candidate of args.mediaAssetIds) {
+			const assetId = ctx.db.normalizeId('mediaAssets', candidate);
+			if (!assetId) continue;
+			const asset = await ctx.db.get(assetId);
+			if (asset) assets.push({ mediaAssetId: asset._id, storageId: asset.storageId });
+		}
+		return assets;
+	},
+});
+
 export const listPersonalMailboxes = internalQuery({
 	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
@@ -239,12 +261,45 @@ export const listDeliverabilityAlertRecipientStates = internalQuery({
 	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		await requireSelf(ctx, args.userId);
+		const receiptCursorPrefix = 'receipts:';
+		if (args.paginationOpts.cursor?.startsWith(receiptCursorPrefix)) {
+			const receiptResult = await ctx.db
+				.query('deliverabilityAlertRecipientReceipts')
+				.withIndex('by_user', (q) => q.eq('userId', args.userId))
+				.paginate({
+					...args.paginationOpts,
+					cursor: args.paginationOpts.cursor.slice(receiptCursorPrefix.length) || null,
+				});
+			return {
+				...receiptResult,
+				continueCursor: receiptResult.isDone
+					? ''
+					: `${receiptCursorPrefix}${receiptResult.continueCursor}`,
+				page: receiptResult.page.map((receipt) => ({
+					alertId: receipt.alertId,
+					organizationId: receipt.organizationId,
+					state: {
+						userId: receipt.userId,
+						status: receipt.outcome === 'sent' ? ('sent' as const) : ('unavailable' as const),
+						attemptCount: 0,
+						sentAt: receipt.sentAt,
+						unavailableReason:
+							receipt.outcome === 'transport_outcome_unknown'
+								? ('transport_outcome_unknown' as const)
+								: undefined,
+					},
+					compacted: true,
+				})),
+			};
+		}
 		const result = await ctx.db
 			.query('deliverabilityAlertRecipients')
 			.withIndex('by_user', (q) => q.eq('userId', args.userId))
 			.paginate(args.paginationOpts);
 		return {
 			...result,
+			isDone: false,
+			continueCursor: result.isDone ? receiptCursorPrefix : result.continueCursor,
 			page: result.page.map((recipient) => ({
 				alertId: recipient.alertId,
 				organizationId: recipient.organizationId,

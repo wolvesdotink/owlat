@@ -39,15 +39,15 @@ export interface UploadImageDeps {
 		fileSize: number;
 		width?: number;
 		height?: number;
-	}) => Promise<unknown>;
+	}) => Promise<Id<'mediaAssets'> | undefined>;
 	/** Measure the image client-side for the media-library record. */
 	getImageDimensions: (file: File) => Promise<{ width: number; height: number } | null>;
 }
 
 /**
  * Build the `uploadImage` handler the EmailBuilder injects:
- * `generateUploadUrl` → POST the file → `storage.getUrl` → measure dimensions →
- * `mediaAssets.create`. Every uploaded image is auto-registered to the media
+ * `generateUploadUrl` → POST the file → measure dimensions → `mediaAssets.create`
+ * → `storage.getUrl`. Every uploaded image is auto-registered to the media
  * library (the easy-to-miss side effect).
  */
 export function createUploadImageHandler(
@@ -79,7 +79,7 @@ export function createUploadImageHandler(
 		// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
 		// must exist before we can mint its URL.
 		const dimensions = await deps.getImageDimensions(file);
-		await deps.createMediaAsset({
+		const mediaAssetId = await deps.createMediaAsset({
 			storageId,
 			filename: file.name,
 			mimeType: file.type,
@@ -87,6 +87,7 @@ export function createUploadImageHandler(
 			width: dimensions?.width,
 			height: dimensions?.height,
 		});
+		if (!mediaAssetId) throw new Error('Image upload did not create a media asset');
 
 		const url = await deps.getUrl(storageId);
 
@@ -94,7 +95,7 @@ export function createUploadImageHandler(
 			throw new Error('Failed to get image URL');
 		}
 
-		return { url, storageId };
+		return { url, storageId, mediaAssetId };
 	};
 }
 

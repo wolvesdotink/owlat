@@ -1,7 +1,6 @@
 'use node';
 
 import dns from 'node:dns/promises';
-import { createPublicKey } from 'node:crypto';
 import { verifyMtaStsPublication, type DeliverabilityCheckId } from '@owlat/shared';
 import type { ActionCtx } from '../_generated/server';
 import { api } from '../_generated/api';
@@ -27,56 +26,14 @@ import {
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
+import {
+	parsedDkimKeyBits,
+	resolveDkimKey,
+	type DkimKeyResolution,
+} from './checklistDkimValidation';
 
 const POSTMASTER_MAX_AGE_MS = 48 * 60 * 60 * 1_000;
 const POSTMASTER_PERIOD_MAX_AGE_MS = 4 * 24 * 60 * 60 * 1_000;
-function parsedDkimKeyBits(value: string | undefined): number | null {
-	if (!value) return null;
-	const key = /(?:^|;)\s*p=([^;\s]+)/i.exec(value)?.[1]?.replace(/\s+/g, '');
-	if (!key) return null;
-	try {
-		const publicKey = createPublicKey({
-			key: Buffer.from(key, 'base64'),
-			format: 'der',
-			type: 'spki',
-		});
-		return publicKey.asymmetricKeyType === 'rsa'
-			? (publicKey.asymmetricKeyDetails?.modulusLength ?? null)
-			: null;
-	} catch {
-		return null;
-	}
-}
-
-type DkimKeyResolution =
-	| { outcome: 'resolved'; bits: number | null }
-	| { outcome: 'unresolved'; bits: null };
-
-async function resolveDkimKey(hostname: string): Promise<DkimKeyResolution> {
-	const visited = new Set<string>();
-	let current = hostname.toLowerCase().replace(/\.$/, '');
-	for (let hop = 0; hop < 4 && !visited.has(current); hop += 1) {
-		visited.add(current);
-		try {
-			const txt = (await dns.resolveTxt(current))
-				.slice(0, 8)
-				.map((chunks) => chunks.join(''))
-				.find((value) => /\bv=DKIM1\b/i.test(value) && /(?:^|;)\s*p=/i.test(value));
-			if (txt) return { outcome: 'resolved', bits: parsedDkimKeyBits(txt) };
-		} catch {
-			// A provider-managed selector is commonly a CNAME, so continue.
-		}
-		try {
-			const cname = (await dns.resolveCname(current))[0];
-			if (!cname) return { outcome: 'unresolved', bits: null };
-			current = cname.toLowerCase().replace(/\.$/, '');
-		} catch {
-			return { outcome: 'unresolved', bits: null };
-		}
-	}
-	return { outcome: 'unresolved', bits: null };
-}
-
 function hasStrictSpfPolicy(value: string | undefined): boolean {
 	const terms = value?.trim().split(/\s+/) ?? [];
 	return terms[terms.length - 1]?.toLowerCase() === '-all';

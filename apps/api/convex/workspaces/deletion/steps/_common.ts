@@ -22,6 +22,9 @@ import type { MutationCtx } from '../../../_generated/server';
  * data must add a literal here and a sibling step module.
  */
 export type OrganizationDeletionTable =
+	| 'accountExportArtifactLeases'
+	| 'accountExportArtifacts'
+	| 'accountExportSessions'
 	| 'mediaAssets'
 	| 'semanticFileContacts'
 	| 'semanticFiles'
@@ -88,6 +91,7 @@ export type OrganizationDeletionTable =
 	| 'providerRoutes'
 	| 'deliverabilityRouteStates'
 	| 'deliverabilityAlertRecipients'
+	| 'deliverabilityAlertRecipientReceipts'
 	| 'deliverabilityRegressionAlerts'
 	| 'deliverabilityVerificationState'
 	| 'deliverabilityEvidence'
@@ -183,6 +187,9 @@ type AssertWipeCoversTenantData<_T extends never> = true;
 export type _WipeCoversAllTenantTables = AssertWipeCoversTenantData<TenantTableMissingFromWipe>;
 
 export const organizationDeletionTableValidator = v.union(
+	v.literal('accountExportArtifactLeases'),
+	v.literal('accountExportArtifacts'),
+	v.literal('accountExportSessions'),
 	v.literal('mediaAssets'),
 	v.literal('semanticFileContacts'),
 	v.literal('semanticFiles'),
@@ -249,6 +256,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('providerRoutes'),
 	v.literal('deliverabilityRouteStates'),
 	v.literal('deliverabilityAlertRecipients'),
+	v.literal('deliverabilityAlertRecipientReceipts'),
 	v.literal('deliverabilityRegressionAlerts'),
 	v.literal('deliverabilityVerificationState'),
 	v.literal('deliverabilityEvidence'),
