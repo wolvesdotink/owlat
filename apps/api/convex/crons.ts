@@ -479,6 +479,16 @@ crons.interval(
 	{ limit: 20 }
 );
 
+// Re-project stale contact engagement scores nightly so a score decays on the
+// clock, not only when the contact acts. Bounded per tick: a prefix of the
+// `by_engagement_score_updated_at` stale range, chained batch by batch.
+crons.interval(
+	'backfill contact engagement scores',
+	{ hours: 24 },
+	internal.analytics.engagementScoreSync.backfillEngagementScores,
+	{}
+);
+
 // Append every bundled plugin cron (generated catalog) after the core crons,
 // each wrapped in the host runtime so flag/grant/env are rechecked per tick and
 // every run is attributed to its plugin. No-op when no plugin contributes crons.

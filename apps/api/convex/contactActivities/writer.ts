@@ -20,6 +20,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 
 import type { ContactActivityType } from './catalog';
+import { engagementPatchForActivity } from '../analytics/engagementScoreSync';
 
 import { emailSent } from './email_sent';
 import { emailOpened } from './email_opened';
@@ -55,12 +56,25 @@ export const ACTIVITY_MODULES = {
 // If a new literal is added to the catalog without a matching module entry
 // here (or vice versa), this stops compiling.
 
-type AssertEqual<A, B> =
-	[A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 const _assert: AssertEqual<keyof typeof ACTIVITY_MODULES, ContactActivityType> = true;
 void _assert;
 
 export type ActivityModuleMap = typeof ACTIVITY_MODULES;
+
+/**
+ * Activity literals that trigger the single post-insert contact patch: the
+ * shipped `hasOpened`/`hasClicked` booleans plus the engagement-score
+ * accumulator (deliverability plan P0-2). Every other literal skips the contact
+ * read entirely, exactly as before.
+ */
+const ENGAGEMENT_DENORMALIZED_LITERALS = new Set<ContactActivityType>([
+	'email_opened',
+	'email_clicked',
+	'email_bounced',
+	'email_complained',
+	'inbound_replied',
+]);
 
 /** Metadata shape for a given activity literal (derived from the module's schema). */
 export type MetadataFor<L extends ContactActivityType> = Infer<
@@ -102,13 +116,14 @@ export async function recordContactActivity<L extends ContactActivityType>(
 		contactId: Id<'contacts'>;
 		metadata: MetadataFor<L>;
 		occurredAt?: number;
-	},
+	}
 ): Promise<Id<'contactActivities'>> {
+	const occurredAt = args.occurredAt ?? Date.now();
 	const activityId = await ctx.db.insert('contactActivities', {
 		contactId: args.contactId,
 		activityType: args.literal,
 		metadata: args.metadata as Doc<'contactActivities'>['metadata'],
-		occurredAt: args.occurredAt ?? Date.now(),
+		occurredAt,
 	});
 
 	// Denormalize email open/click engagement onto the contact row so segment +
@@ -118,13 +133,32 @@ export async function recordContactActivity<L extends ContactActivityType>(
 	// and only when not already set — the per-contact patch is idempotent and
 	// skipped on the common (already-engaged) case. Patches the contact row, not
 	// a shared document, so writes spread across contacts (no OCC hotspot).
-	if (args.literal === 'email_opened' || args.literal === 'email_clicked') {
+	//
+	// The same contact read also feeds the engagement score's INCREMENTAL update
+	// (deliverability plan P0-2): folding the new activity into the cached decayed
+	// accumulator is O(1) — no activity-timeline read on this path — and both
+	// denormalizations land in ONE patch, so the writer still performs at most a
+	// single contact write per activity.
+	if (ENGAGEMENT_DENORMALIZED_LITERALS.has(args.literal)) {
 		const contact = await ctx.db.get(args.contactId);
 		if (contact) {
-			if (args.literal === 'email_opened' && contact.hasOpened !== true) {
-				await ctx.db.patch(args.contactId, { hasOpened: true });
-			} else if (args.literal === 'email_clicked' && contact.hasClicked !== true) {
-				await ctx.db.patch(args.contactId, { hasClicked: true });
+			const flags =
+				args.literal === 'email_opened' && contact.hasOpened !== true
+					? { hasOpened: true }
+					: args.literal === 'email_clicked' && contact.hasClicked !== true
+						? { hasClicked: true }
+						: undefined;
+
+			const engagement = engagementPatchForActivity({
+				contact,
+				activityType: args.literal,
+				occurredAt,
+				bounceType: (args.metadata as { bounceType?: string } | undefined)?.bounceType,
+				now: Date.now(),
+			});
+
+			if (flags !== undefined || engagement !== null) {
+				await ctx.db.patch(args.contactId, { ...flags, ...engagement });
 			}
 		}
 	}
