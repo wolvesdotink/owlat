@@ -14,17 +14,16 @@ import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/se
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 import { assessCampaignCapacity } from './capacityPreflight';
+import type { CampaignCapacitySchedule } from './capacityPlan';
 
 /**
  * The multi-day schedule handed back instead of an error when the audience
  * provably cannot be delivered inside the MTA's message-retention horizon.
  * Capacity is a SCHEDULE, not a failure — the UI renders "Sending over N days".
+ * One shape, owned by the planner; re-declaring it here would let the two
+ * drift.
  */
-export interface PreflightCapacityPlan {
-	days: number;
-	slices: number[];
-	finishesAt: number;
-}
+export type PreflightCapacityPlan = CampaignCapacitySchedule;
 
 export type PreflightResult =
 	| { ok: true }
@@ -45,6 +44,21 @@ export type PreflightResult =
 			/** Present only on `exceeds_sending_capacity`. */
 			capacityPlan?: PreflightCapacityPlan;
 	  };
+
+/**
+ * Structured error payload for a failed pre-flight. `capacityPlan` is what
+ * turns "too big" from prose into an offer: the client can render "send over N
+ * days" straight from the refusal instead of re-deriving it.
+ */
+export function preflightErrorData(result: Extract<PreflightResult, { ok: false }>): {
+	reason: string;
+	capacityPlan?: PreflightCapacityPlan;
+} {
+	return {
+		reason: result.reason,
+		...(result.capacityPlan ? { capacityPlan: result.capacityPlan } : {}),
+	};
+}
 
 export interface PreflightOptions {
 	/**
@@ -173,20 +187,28 @@ export async function validateReadyToSend(
 	// with no relay to overflow to can otherwise start a campaign whose tail
 	// silently expires in the MTA queue. When capacity cannot be measured the
 	// assessment answers `fits: true` and nothing changes.
-	const capacity = await assessCampaignCapacity(ctx, { audience: campaign.audience, now });
+	//
+	// The projection is anchored at the moment the send actually STARTS, not at
+	// pre-flight time: warming caps grow, so judging a campaign scheduled three
+	// days out against today's cap would refuse sends that provably fit.
+	const capacity = await assessCampaignCapacity(ctx, {
+		audience: campaign.audience,
+		now,
+		...(options.scheduledAt !== undefined ? { startsAt: options.scheduledAt } : {}),
+	});
 	if (!capacity.fits) {
+		const dayWord = capacity.schedule.days === 1 ? 'day' : 'days';
 		return {
 			ok: false,
 			reason: 'exceeds_sending_capacity',
-			message:
-				`This campaign is larger than your sending capacity allows in one go. ` +
-				`At your current warm-up capacity it takes about ${capacity.days} day${capacity.days === 1 ? '' : 's'} ` +
-				`to reach everyone, so send it over ${capacity.days} days instead.`,
-			capacityPlan: {
-				days: capacity.days,
-				slices: capacity.slices,
-				finishesAt: capacity.finishesAt,
-			},
+			message: capacity.schedule.truncated
+				? `This campaign is larger than your sending capacity allows in one go. At your ` +
+					`current warm-up capacity it would take more than ${capacity.schedule.days} ${dayWord} to reach ` +
+					`everyone — send it in stages, or reduce the audience.`
+				: `This campaign is larger than your sending capacity allows in one go. At your ` +
+					`current warm-up capacity it takes about ${capacity.schedule.days} ${dayWord} to reach everyone, ` +
+					`so send it over ${capacity.schedule.days} ${dayWord} instead.`,
+			capacityPlan: capacity.schedule,
 		};
 	}
 

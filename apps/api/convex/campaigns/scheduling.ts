@@ -4,7 +4,7 @@ import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
-import { validateReadyToSend } from './preflight';
+import { preflightErrorData, validateReadyToSend } from './preflight';
 import { seedDefaultSenderIfNeeded } from './senders';
 import { assertTransitioned } from './lifecycle';
 import { recordAuditLog } from '../lib/auditLog';
@@ -168,7 +168,10 @@ export const schedule = authedMutation({
 			scheduledAt: args.scheduledAt,
 		});
 		if (!preflight.ok) {
-			throwInvalidState(preflight.message);
+			// Carry the structured refusal (and, for a capacity refusal, the
+			// multi-day plan) so the client can offer "send over N days" as a
+			// first-class choice instead of just showing prose.
+			throwInvalidState(preflight.message, preflightErrorData(preflight));
 		}
 
 		const outcome = await ctx.runMutation(internal.campaigns.lifecycle.transition, {

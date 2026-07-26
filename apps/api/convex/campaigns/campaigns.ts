@@ -13,7 +13,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getOrThrow, throwInvalidState, throwForbidden } from '../_utils/errors';
 import { campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from './audience';
-import { validateReadyToSend } from './preflight';
+import { preflightErrorData, validateReadyToSend } from './preflight';
 import {
 	seedDefaultSenderIfNeeded,
 	isCampaignSenderAllowed,
@@ -356,7 +356,10 @@ export const sendNow = authedMutation({
 
 		const preflight = await validateReadyToSend(ctx, campaign);
 		if (!preflight.ok) {
-			throwInvalidState(preflight.message);
+			// Carry the structured refusal (and, for a capacity refusal, the
+			// multi-day plan) so the client can offer "send over N days" as a
+			// first-class choice instead of just showing prose.
+			throwInvalidState(preflight.message, preflightErrorData(preflight));
 		}
 
 		const outcome = await ctx.runMutation(internal.campaigns.lifecycle.transition, {
