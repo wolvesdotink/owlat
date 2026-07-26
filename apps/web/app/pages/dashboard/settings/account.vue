@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import {
-	ACCOUNT_EXPORT_ORGANIZATION_RESOURCES,
-	type AccountExportResource,
-	sanitizeCsvCell,
-} from '@owlat/shared';
+import { sanitizeCsvCell } from '@owlat/shared';
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import Papa from 'papaparse';
 import { isValidEmail } from '~/utils/validation';
 import { authClient } from '~/lib/auth-client';
+import { writeAccountJsonExport } from '~/utils/accountJsonExport';
+import {
+	isSaveFilePickerCancellation,
+	openIncrementalJsonDownload,
+} from '~/utils/incrementalJsonDownload';
 
 useHead({ title: 'Account Settings — Owlat' });
 
@@ -183,38 +183,6 @@ const { run: cancelDeletion } = useBackendOperation(
 	}
 );
 
-async function loadAccountExportPages(
-	resource: AccountExportResource,
-	options: { organizationId?: string; mailboxId?: Id<'mailboxes'> } = {}
-): Promise<unknown[]> {
-	if (!userId.value || !convex) return [];
-	const rows: unknown[] = [];
-	let cursor: string | undefined;
-	for (;;) {
-		const result = await convex.action(api.auth.accountManagement.exportUserDataPage, {
-			userId: userId.value,
-			resource,
-			...(cursor ? { cursor } : {}),
-			...(options.organizationId ? { organizationId: options.organizationId } : {}),
-			...(options.mailboxId ? { mailboxId: options.mailboxId } : {}),
-		});
-		for (const rowJson of result.pageJson) {
-			const row = JSON.parse(rowJson) as Record<string, unknown>;
-			const contentDownloadUrl = row['contentDownloadUrl'];
-			if (typeof contentDownloadUrl !== 'string') {
-				rows.push(row);
-				continue;
-			}
-			const response = await fetch(contentDownloadUrl);
-			if (!response.ok) throw new Error('Could not download account export content');
-			const { ['contentDownloadUrl']: _download, ...metadata } = row;
-			rows.push({ ...metadata, ...((await response.json()) as Record<string, unknown>) });
-		}
-		if (result.isDone) return rows;
-		cursor = result.continueCursor;
-	}
-}
-
 // Export all data as JSON
 const handleExportJson = async () => {
 	if (!userId.value || !convex) return;
@@ -222,69 +190,15 @@ const handleExportJson = async () => {
 	isExportingJson.value = true;
 
 	try {
-		const manifest = await convex.action(api.auth.accountManagement.exportUserData, {
-			userId: userId.value,
-		});
-		const memberships = (await loadAccountExportPages('organizationMemberships')) as Array<{
-			organizationId: string;
-			role: string;
-			organization: { _id: string; name: string; slug?: string | null };
-		}>;
-		const organizations = await Promise.all(
-			memberships.map(async (membership) => ({
-				organization: membership.organization,
-				role: membership.role,
-				data: Object.fromEntries(
-					await Promise.all(
-						ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map(async (resource) => [
-							resource,
-							await loadAccountExportPages(resource, {
-								organizationId: membership.organizationId,
-							}),
-						])
-					)
-				),
-			}))
-		);
-		const mailboxes = (await loadAccountExportPages('mailboxes')) as Array<{
-			_id: Id<'mailboxes'>;
-		}>;
-		const mailMessages: unknown[] = [];
-		const mailDrafts: unknown[] = [];
-		for (const mailbox of mailboxes) {
-			mailMessages.push(
-				...(await loadAccountExportPages('mailMessages', { mailboxId: mailbox._id }))
-			);
-			mailDrafts.push(...(await loadAccountExportPages('mailDrafts', { mailboxId: mailbox._id })));
-		}
-		const data = {
-			...manifest,
-			organizations,
-			personalData: {
-				mailboxes,
-				mailMessages,
-				mailDrafts,
-				externalMailAccounts: await loadAccountExportPages('externalMailAccounts'),
-				chatMessages: await loadAccountExportPages('chatMessages'),
-				deliverabilityAlertRecipientStates: await loadAccountExportPages(
-					'deliverabilityAlertRecipientStates'
-				),
-			},
-		};
-
-		// Create and download JSON file
-		const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `owlat-data-export-${new Date().toISOString().split('T')[0]}.json`;
-		document.body.appendChild(a);
-		a.click();
-		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
+		const filename = `owlat-data-export-${new Date().toISOString().split('T')[0]}.json`;
+		// The native picker requires the original click's transient user activation,
+		// so open the destination before the first network request.
+		const sink = await openIncrementalJsonDownload(filename);
+		await writeAccountJsonExport(convex, userId.value, sink);
 
 		showNotification('Data exported successfully');
 	} catch (error) {
+		if (isSaveFilePickerCancellation(error)) return;
 		showNotification('Failed to export data', 'error');
 	} finally {
 		isExportingJson.value = false;

@@ -233,7 +233,7 @@ async function exportAllUserData(
 	userId: string,
 	onStagedContent?: (url: string) => void
 ) {
-	const manifest = await t.action(api.auth.accountManagement.exportUserData, { userId });
+	const manifest = await t.action(api.auth.accountExport.exportUserData, { userId });
 	const loadPages = async (
 		resource: AccountExportResource,
 		options: { organizationId?: string; mailboxId?: Id<'mailboxes'> } = {}
@@ -241,8 +241,9 @@ async function exportAllUserData(
 		const rows: ExportRow[] = [];
 		let cursor: string | undefined;
 		for (;;) {
-			const result = await t.action(api.auth.accountManagement.exportUserDataPage, {
+			const result = await t.action(api.auth.accountExport.exportUserDataPage, {
 				userId,
+				exportSessionId: manifest.exportSessionId as Id<'accountExportSessions'>,
 				resource,
 				...(cursor ? { cursor } : {}),
 				...options,
@@ -261,7 +262,11 @@ async function exportAllUserData(
 						? await t.fetch(`${stagedUrl.pathname}${stagedUrl.search}`)
 						: await fetch(contentDownloadUrl);
 				if (!response.ok) throw new Error('could not load staged export content');
-				const { ['contentDownloadUrl']: _download, ...metadata } = row;
+				const {
+					['contentDownloadUrl']: _download,
+					['contentArtifactId']: _artifact,
+					...metadata
+				} = row;
 				rows.push({
 					...metadata,
 					...((await response.json()) as ExportRow),
@@ -279,23 +284,25 @@ async function exportAllUserData(
 		}
 	>;
 	const organizations = await Promise.all(
-		memberships.map(async (membership) => ({
-			organization: membership.organization,
-			role: membership.role,
-			data: Object.fromEntries(
-				await Promise.all(
-					ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map(
-						async (resource) =>
-							[
-								resource,
-								await loadPages(resource, {
-									organizationId: membership.organizationId,
-								}),
-							] as const
-					)
-				)
-			) as Record<(typeof ACCOUNT_EXPORT_ORGANIZATION_RESOURCES)[number], ExportRow[]>,
-		}))
+		memberships.map(async (membership) => {
+			const resourceRows: Array<
+				readonly [(typeof ACCOUNT_EXPORT_ORGANIZATION_RESOURCES)[number], ExportRow[]]
+			> = [];
+			for (const resource of ACCOUNT_EXPORT_ORGANIZATION_RESOURCES) {
+				resourceRows.push([
+					resource,
+					await loadPages(resource, { organizationId: membership.organizationId }),
+				]);
+			}
+			return {
+				organization: membership.organization,
+				role: membership.role,
+				data: Object.fromEntries(resourceRows) as Record<
+					(typeof ACCOUNT_EXPORT_ORGANIZATION_RESOURCES)[number],
+					ExportRow[]
+				>,
+			};
+		})
 	);
 	const mailboxes = (await loadPages('mailboxes')) as Array<ExportRow & { _id: Id<'mailboxes'> }>;
 	const mailMessages: ExportRow[] = [];
@@ -328,7 +335,7 @@ describe('accountManagement.exportUserData — requireSelf', () => {
 		await seedProfile(t, 'auth-user-1');
 
 		await expect(
-			t.action(api.auth.accountManagement.exportUserData, { userId: 'someone-else' })
+			t.action(api.auth.accountExport.exportUserData, { userId: 'someone-else' })
 		).rejects.toThrow();
 	});
 
@@ -431,6 +438,183 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 			keyPrefix: 'lm_live_',
 		});
 	});
+
+	it('exports template content and attachment bytes through fail-closed staged projections', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1');
+		const orgId = await seedOrg(t);
+		await seedMember(t, orgId, 'auth-user-1', 'owner');
+
+		const { validStorageId, missingStorageId, corruptStorageId } = await t.run(async (ctx) => {
+			const now = Date.now();
+			const validBytes = new TextEncoder().encode('template attachment bytes');
+			const validStorageId = await storeSealedBlob(
+				ctx.storage,
+				validBytes,
+				'application/octet-stream'
+			);
+			const missingStorageId = await storeSealedBlob(
+				ctx.storage,
+				new TextEncoder().encode('delete me'),
+				'application/octet-stream'
+			);
+			await ctx.storage.delete(missingStorageId);
+			const sealedCorruptSource = await storeSealedBlob(
+				ctx.storage,
+				new TextEncoder().encode('corrupt me'),
+				'application/octet-stream'
+			);
+			const sealedBlob = await ctx.storage.get(sealedCorruptSource);
+			const corruptBytes = new Uint8Array(await sealedBlob!.arrayBuffer());
+			corruptBytes[corruptBytes.length - 1] = corruptBytes[corruptBytes.length - 1]! ^ 1;
+			const corruptStorageId = await ctx.storage.store(
+				new Blob([corruptBytes as unknown as BlobPart])
+			);
+			await ctx.storage.delete(sealedCorruptSource);
+
+			await ctx.db.insert('emailTemplates', {
+				name: 'Account export template',
+				subject: 'Template subject',
+				content: JSON.stringify([
+					{
+						id: 'image-1',
+						type: 'image',
+						content: {
+							alt: 'customer-authored-template-body',
+							src: 'https://capability.invalid/image?token=image-url-canary',
+							storageId: validStorageId,
+						},
+					},
+				]),
+				htmlContent: '<img src="https://capability.invalid/html-token-canary">',
+				type: 'marketing',
+				status: 'draft',
+				searchableText: 'future-field-secret-canary',
+				seedTag: 'future-seed-secret-canary',
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('transactionalEmails', {
+				name: 'Transactional export template',
+				slug: 'transactional-export-template',
+				subject: 'Transactional subject',
+				content: JSON.stringify([{ id: 'text-1', type: 'text', content: { html: 'exact body' } }]),
+				htmlContent: '<img src="https://capability.invalid/transactional-html-canary">',
+				attachments: JSON.stringify([
+					{
+						id: 'valid',
+						filename: 'valid.bin',
+						storageId: validStorageId,
+						url: 'https://capability.invalid/attachment-token-canary',
+						contentType: 'application/octet-stream',
+						fileSize: validBytes.byteLength,
+						mediaAssetId: 'media-ref-canary',
+					},
+					{
+						id: 'missing',
+						filename: 'missing.bin',
+						storageId: missingStorageId,
+						url: 'https://capability.invalid/missing-token-canary',
+					},
+					{
+						id: 'corrupt',
+						filename: 'corrupt.bin',
+						storageId: corruptStorageId,
+						url: 'https://capability.invalid/corrupt-token-canary',
+					},
+				]),
+				status: 'draft',
+				searchableText: 'future-transactional-secret-canary',
+				seedTag: 'future-transactional-seed-canary',
+				createdAt: now,
+				updatedAt: now,
+			});
+			return { validStorageId, missingStorageId, corruptStorageId };
+		});
+
+		const exported = await exportAllUserData(t, 'auth-user-1');
+		const organizationData = exported.organizations[0]!.data;
+		const emailTemplate = organizationData.emailTemplates[0]!;
+		const transactionalTemplate = organizationData.transactionalEmails[0]!;
+
+		expect(emailTemplate).toMatchObject({
+			name: 'Account export template',
+			editorContent: {
+				availability: 'available',
+				value: [
+					{
+						content: {
+							alt: 'customer-authored-template-body',
+							storedContent: {
+								contentBase64: btoa('template attachment bytes'),
+								contentEncoding: 'base64',
+								availability: 'available',
+							},
+						},
+					},
+				],
+			},
+		});
+		expect(transactionalTemplate).toMatchObject({
+			editorContent: {
+				availability: 'available',
+				value: [{ content: { html: 'exact body' } }],
+			},
+			attachments: {
+				availability: 'available',
+				items: [
+					{
+						id: 'valid',
+						filename: 'valid.bin',
+						contentBase64: btoa('template attachment bytes'),
+						contentEncoding: 'base64',
+						availability: 'available',
+					},
+					{
+						id: 'missing',
+						filename: 'missing.bin',
+						contentBase64: '',
+						availability: 'missing',
+					},
+					{
+						id: 'corrupt',
+						filename: 'corrupt.bin',
+						contentBase64: '',
+						availability: 'corrupt',
+					},
+				],
+			},
+		});
+
+		for (const row of [emailTemplate, transactionalTemplate]) {
+			expect(row).not.toHaveProperty('content');
+			expect(row).not.toHaveProperty('htmlContent');
+			expect(row).not.toHaveProperty('htmlTranslations');
+			expect(row).not.toHaveProperty('searchableText');
+			expect(row).not.toHaveProperty('seedTag');
+		}
+		const serialized = JSON.stringify(exported);
+		for (const canary of [
+			'image-url-canary',
+			'html-token-canary',
+			'transactional-html-canary',
+			'attachment-token-canary',
+			'missing-token-canary',
+			'corrupt-token-canary',
+			'media-ref-canary',
+			'future-field-secret-canary',
+			'future-seed-secret-canary',
+			'future-transactional-secret-canary',
+			'future-transactional-seed-canary',
+		]) {
+			expect(serialized).not.toContain(canary);
+		}
+		expect(serialized).not.toContain(String(validStorageId));
+		expect(serialized).not.toContain(String(missingStorageId));
+		expect(serialized).not.toContain(String(corruptStorageId));
+	});
 });
 
 describe('accountManagement.exportUserData — soft-deleted contacts', () => {
@@ -464,6 +648,255 @@ describe('accountManagement.exportUserData — soft-deleted contacts', () => {
 		expect(emails).toContain('live@example.com');
 		expect(emails).not.toContain('erased@example.com');
 		expect(res.organizations[0]!.data.contacts).toHaveLength(1);
+	});
+});
+
+describe('accountExport staging replay and quotas', () => {
+	it('reuses one active session and one staged artifact for repeated page cursors', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1');
+		const orgId = await seedOrg(t);
+		await seedMember(t, orgId, 'auth-user-1', 'owner');
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('emailTemplates', {
+				name: 'Replay-safe template',
+				subject: 'Replay subject',
+				content: JSON.stringify([{ id: 'text', type: 'text', content: { html: 'body' } }]),
+				type: 'marketing',
+				status: 'draft',
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		const firstManifest = await t.action(api.auth.accountExport.exportUserData, {
+			userId: 'auth-user-1',
+		});
+		const secondManifest = await t.action(api.auth.accountExport.exportUserData, {
+			userId: 'auth-user-1',
+		});
+		expect(secondManifest.exportSessionId).toBe(firstManifest.exportSessionId);
+
+		const pageArgs = {
+			userId: 'auth-user-1',
+			exportSessionId: firstManifest.exportSessionId as Id<'accountExportSessions'>,
+			resource: 'emailTemplates' as const,
+			organizationId: orgId,
+		};
+		const firstPage = await t.action(api.auth.accountExport.exportUserDataPage, pageArgs);
+		const replayedPage = await t.action(api.auth.accountExport.exportUserDataPage, pageArgs);
+		const stagedStorageId = (page: (typeof firstPage)['pageJson']) => {
+			const row = JSON.parse(page[0]!) as { contentDownloadUrl: string };
+			return new URL(row.contentDownloadUrl).searchParams.get('id');
+		};
+		expect(stagedStorageId(replayedPage.pageJson)).toBe(stagedStorageId(firstPage.pageJson));
+
+		const ledger = await t.run(async (ctx) => ({
+			sessions: await ctx.db.query('accountExportSessions').collect(),
+			artifacts: await ctx.db.query('accountExportArtifacts').collect(),
+		}));
+		expect(ledger.sessions).toHaveLength(1);
+		expect(ledger.artifacts).toHaveLength(1);
+		expect(ledger.sessions[0]).toMatchObject({
+			artifactCount: 1,
+			artifactBytes: ledger.artifacts[0]!.contentLength,
+		});
+
+		vi.stubEnv('INSTANCE_SECRET', undefined);
+		await expect(t.action(api.auth.accountExport.exportUserDataPage, pageArgs)).rejects.toThrow(
+			'Could not create account export artifact URL'
+		);
+	});
+
+	it('stages fresh content when a row changes during a reused session', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1');
+		const orgId = await seedOrg(t);
+		await seedMember(t, orgId, 'auth-user-1', 'owner');
+		const templateId = await t.run(async (ctx) => {
+			const now = Date.now();
+			return ctx.db.insert('emailTemplates', {
+				name: 'Mutable template',
+				subject: 'Mutable subject',
+				content: JSON.stringify([{ id: 'text', type: 'text', content: { html: 'first' } }]),
+				type: 'marketing',
+				status: 'draft',
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+
+		const firstManifest = await t.action(api.auth.accountExport.exportUserData, {
+			userId: 'auth-user-1',
+		});
+		const pageArgs = {
+			userId: 'auth-user-1',
+			exportSessionId: firstManifest.exportSessionId as Id<'accountExportSessions'>,
+			resource: 'emailTemplates' as const,
+			organizationId: orgId,
+		};
+		const firstPage = await t.action(api.auth.accountExport.exportUserDataPage, pageArgs);
+		await t.run(async (ctx) => {
+			await ctx.db.patch(templateId, {
+				content: JSON.stringify([{ id: 'text', type: 'text', content: { html: 'second' } }]),
+				updatedAt: Date.now() + 1,
+			});
+		});
+		const secondManifest = await t.action(api.auth.accountExport.exportUserData, {
+			userId: 'auth-user-1',
+		});
+		expect(secondManifest.exportSessionId).toBe(firstManifest.exportSessionId);
+		const secondPage = await t.action(api.auth.accountExport.exportUserDataPage, pageArgs);
+
+		const stagedContent = async (page: (typeof firstPage)['pageJson']) => {
+			const row = JSON.parse(page[0]!) as { contentDownloadUrl: string };
+			const stagedUrl = new URL(row.contentDownloadUrl);
+			const response = await t.fetch(`${stagedUrl.pathname}${stagedUrl.search}`);
+			expect(response.ok).toBe(true);
+			return {
+				storageId: stagedUrl.searchParams.get('id'),
+				content: await response.json(),
+			};
+		};
+		const firstContent = await stagedContent(firstPage.pageJson);
+		const secondContent = await stagedContent(secondPage.pageJson);
+		expect(firstContent.storageId).not.toBe(secondContent.storageId);
+		expect(firstContent.content).toMatchObject({
+			editorContent: {
+				availability: 'available',
+				value: [{ content: { html: 'first' } }],
+			},
+		});
+		expect(secondContent.content).toMatchObject({
+			editorContent: {
+				availability: 'available',
+				value: [{ content: { html: 'second' } }],
+			},
+		});
+		const artifacts = await t.run(async (ctx) => ctx.db.query('accountExportArtifacts').collect());
+		expect(artifacts).toHaveLength(2);
+	});
+
+	it('fails explicitly without registering another artifact when the session quota is full', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1');
+		const orgId = await seedOrg(t);
+		await seedMember(t, orgId, 'auth-user-1', 'owner');
+		const sessionId = await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('emailTemplates', {
+				name: 'Quota template',
+				subject: 'Quota subject',
+				content: '[]',
+				type: 'marketing',
+				status: 'draft',
+				createdAt: now,
+				updatedAt: now,
+			});
+			return ctx.db.insert('accountExportSessions', {
+				userId: 'auth-user-1',
+				artifactCount: 5_000,
+				artifactBytes: 0,
+				createdAt: now,
+				expiresAt: now + 60_000,
+			});
+		});
+
+		await expect(
+			t.action(api.auth.accountExport.exportUserDataPage, {
+				userId: 'auth-user-1',
+				exportSessionId: sessionId,
+				resource: 'emailTemplates',
+				organizationId: orgId,
+			})
+		).rejects.toThrow('Account export staging quota exceeded');
+		const artifacts = await t.run(async (ctx) => ctx.db.query('accountExportArtifacts').collect());
+		expect(artifacts).toHaveLength(0);
+	});
+
+	it('releases streamed artifacts so one session can stage beyond its in-flight cap', async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1');
+		const orgId = await seedOrg(t);
+		await seedMember(t, orgId, 'auth-user-1', 'owner');
+		const initialExpiry = Date.now() + 60_000;
+		const sessionId = await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('emailTemplates', {
+				name: 'In-flight quota template',
+				subject: 'Quota subject',
+				content: '[]',
+				type: 'marketing',
+				status: 'draft',
+				createdAt: now,
+				updatedAt: now,
+			});
+			return ctx.db.insert('accountExportSessions', {
+				userId: 'auth-user-1',
+				artifactCount: 4_999,
+				artifactBytes: 0,
+				createdAt: now,
+				expiresAt: initialExpiry,
+			});
+		});
+		const pageArgs = {
+			userId: 'auth-user-1',
+			exportSessionId: sessionId,
+			resource: 'emailTemplates' as const,
+			organizationId: orgId,
+		};
+		const stagedArtifact = (pageJson: string[]) => {
+			const row = JSON.parse(pageJson[0]!) as {
+				contentArtifactId: Id<'accountExportArtifacts'>;
+				contentDownloadUrl: string;
+			};
+			return {
+				artifactId: row.contentArtifactId,
+				storageId: new URL(row.contentDownloadUrl).searchParams.get('id'),
+			};
+		};
+
+		const firstPage = await t.action(api.auth.accountExport.exportUserDataPage, pageArgs);
+		const first = stagedArtifact(firstPage.pageJson);
+		expect(
+			await t.action(api.auth.accountExport.acknowledgeExportArtifact, {
+				userId: 'auth-user-1',
+				exportSessionId: sessionId,
+				artifactId: first.artifactId,
+			})
+		).toBe(true);
+
+		const secondPage = await t.action(api.auth.accountExport.exportUserDataPage, pageArgs);
+		const second = stagedArtifact(secondPage.pageJson);
+		expect(second.storageId).not.toBe(first.storageId);
+		const ledger = await t.run(async (ctx) => ({
+			session: await ctx.db.get(sessionId),
+			artifacts: await ctx.db.query('accountExportArtifacts').collect(),
+		}));
+		expect(ledger.session).toMatchObject({ artifactCount: 5_000 });
+		expect(ledger.session!.expiresAt).toBeGreaterThan(initialExpiry + 30 * 60_000);
+		expect(ledger.artifacts).toHaveLength(1);
+
+		expect(
+			await t.action(api.auth.accountExport.acknowledgeExportArtifact, {
+				userId: 'auth-user-1',
+				exportSessionId: sessionId,
+				artifactId: second.artifactId,
+			})
+		).toBe(true);
+		expect(await t.run(async (ctx) => ctx.db.get(sessionId))).toMatchObject({
+			artifactCount: 4_999,
+			artifactBytes: 0,
+		});
 	});
 });
 
@@ -796,7 +1229,8 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 			(message) => message['subject'] === 'personal subject'
 		);
 		expect(completeMessage).toMatchObject({
-			rawMessage: 'raw eml bytes',
+			rawMessage: btoa('raw eml bytes'),
+			rawMessageEncoding: 'base64',
 			textBody: 'storage-backed text body',
 			htmlBody: '<p>storage-backed html body</p>',
 			bodyAvailability: { raw: 'available', text: 'available', html: 'available' },
@@ -806,6 +1240,7 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		);
 		expect(partialMessage).toMatchObject({
 			rawMessage: '',
+			rawMessageEncoding: 'base64',
 			textBody: '',
 			htmlBody: '',
 			bodyAvailability: { raw: 'missing', text: 'corrupt', html: 'corrupt' },

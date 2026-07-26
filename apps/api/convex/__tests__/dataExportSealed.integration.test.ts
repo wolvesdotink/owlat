@@ -105,14 +105,12 @@ describe('contacts.dataExport — sealed bodies decrypt on export (c)', () => {
 		expect(JSON.parse(unified!.content).text).toBe(unifiedText);
 	});
 
-	it('does not fail the whole export when one row is an undecryptable envelope-shaped plaintext', async () => {
+	it('quarantines an undecryptable authenticated envelope without failing the export', async () => {
 		const t = convexTest(schema, allModules);
 		const now = Date.now();
 
-		// A never-sealed plaintext body that is STRUCTURALLY a valid envelope
-		// (4 parts, version 1, 12-byte IV, 16-byte ct) but is not ours — GCM auth
-		// fails. Attacker-craftable and present during the pre-back-fill window.
-		// The export must return it verbatim, never throw.
+		// A structurally valid envelope under another key is indistinguishable
+		// from tampered ciphertext. It must never cross the export boundary.
 		const iv = Buffer.from(new Uint8Array(12)).toString('base64');
 		const ct = Buffer.from(new Uint8Array(16)).toString('base64');
 		const craftedEnvelope = `atrest:1:${iv}:${ct}`;
@@ -132,6 +130,7 @@ describe('contacts.dataExport — sealed bodies decrypt on export (c)', () => {
 				to: 'me@example.com',
 				subject: 's',
 				textBody: craftedEnvelope,
+				htmlBody: 'atrest:1:truncated',
 				processingStatus: 'received',
 				receivedAt: now,
 				contactId: cId,
@@ -162,7 +161,8 @@ describe('contacts.dataExport — sealed bodies decrypt on export (c)', () => {
 
 		const bundle = await t.query(api.contacts.dataExport.exportContactData, { contactId });
 
-		expect(bundle.inboundMessages.rows[0]!.textBody).toBe(craftedEnvelope);
-		expect(bundle.unifiedMessages.rows[0]!.content).toBe(craftedEnvelope);
+		expect(bundle.inboundMessages.rows[0]!.textBody).toBe('');
+		expect(bundle.inboundMessages.rows[0]!.htmlBody).toBe('');
+		expect(bundle.unifiedMessages.rows[0]!.content).toBe('');
 	});
 });

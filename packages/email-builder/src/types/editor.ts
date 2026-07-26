@@ -41,7 +41,8 @@ export interface EmailBuilderConfig {
  */
 export interface ImageUploadResult {
 	url: string;
-	storageId?: string;
+	/** Durable blob identity; capability URLs are display-only and may expire. */
+	storageId: string;
 }
 
 /**

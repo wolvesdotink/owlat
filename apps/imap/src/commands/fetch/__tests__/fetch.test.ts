@@ -11,11 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchModule, type FetchArgs } from '../index.js';
-import {
-	formatBodySection,
-	parseBodySectionItem,
-	splitHeaderText,
-} from '../bodySection.js';
+import { formatBodySection, parseBodySectionItem, splitHeaderText } from '../bodySection.js';
 import type { FetchEnvelope } from '../format.js';
 import type { CommandDeps, ConnectionState, StartArgs } from '../../types.js';
 
@@ -53,6 +49,7 @@ interface Harness {
 	convex: {
 		query: ReturnType<typeof vi.fn>;
 		mutation: ReturnType<typeof vi.fn>;
+		action: ReturnType<typeof vi.fn>;
 	};
 }
 
@@ -62,7 +59,7 @@ function run(
 		readOnly = false,
 		msg = envelope(),
 		raw = Buffer.from(RAW, 'utf8'),
-	}: { readOnly?: boolean; msg?: FetchEnvelope; raw?: Buffer } = {},
+	}: { readOnly?: boolean; msg?: FetchEnvelope; raw?: Buffer } = {}
 ): Promise<Harness> {
 	const sent: Buffer[] = [];
 	// Serve the raw RFC822 bytes as an ArrayBuffer, mirroring the real
@@ -71,9 +68,8 @@ function run(
 		'fetch',
 		vi.fn(async () => ({
 			ok: true,
-			arrayBuffer: async () =>
-				raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
-		})),
+			arrayBuffer: async () => raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
+		}))
 	);
 	const convex = {
 		query: vi.fn(async (ref: string) => {
@@ -82,11 +78,12 @@ function run(
 			// command is UID-based or not.
 			if (ref.endsWith(':listFolderUids')) return [1, 2, 3, 4, 5, 6, 7];
 			if (ref.endsWith(':fetchEnvelopes')) return [msg];
-			if (ref.endsWith(':fetchRawStorageId'))
-				return { storageId: 's1', rawSize: raw.byteLength };
-			if (ref.endsWith(':getRawStorageUrl')) return 'https://storage.test/raw';
+			if (ref.endsWith(':fetchRawStorageId')) return { storageId: 's1', rawSize: raw.byteLength };
 			return null;
 		}),
+		action: vi.fn(async (ref: string) =>
+			ref.endsWith(':getRawStorageUrl') ? 'https://storage.test/raw' : null
+		),
 		mutation: vi.fn(async () => ({
 			updated: [{ uid: msg.uid, modseq: msg.modseq + 1, flags: ['\\Seen'] }],
 			unchanged: [],
@@ -170,14 +167,14 @@ describe('formatBodySection', () => {
 		const req = parseBodySectionItem('BODY[]<0.5>')!;
 		// RAW begins with the header, so the first 5 octets are "Subje".
 		expect(formatBodySection(req, Buffer.from(RAW, 'utf8')).toString('latin1')).toBe(
-			'BODY[]<0> {5}\r\nSubje',
+			'BODY[]<0> {5}\r\nSubje'
 		);
 	});
 
 	it('emits a TEXT partial scoped to the section, not the whole message', () => {
 		const req = parseBodySectionItem('BODY[TEXT]<0.5>')!;
 		expect(formatBodySection(req, Buffer.from(RAW, 'utf8')).toString('latin1')).toBe(
-			'BODY[TEXT]<0> {5}\r\nHello',
+			'BODY[TEXT]<0> {5}\r\nHello'
 		);
 	});
 

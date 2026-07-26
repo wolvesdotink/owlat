@@ -117,11 +117,10 @@ export const exportContactData = authedQuery({
 		// leaves the store). Decrypt only up to the cap we actually return.
 		//
 		// Use the FAIL-SAFE openers: a single row that looks sealed but fails to
-		// decrypt (genuine tamper, or an attacker-crafted plaintext that happens
-		// to be a structurally valid envelope during the pre-back-fill mixed-state
-		// window) exports its stored value verbatim instead of throwing — one
-		// crafted inbound message must not DoS the whole GDPR export. No plaintext
-		// leaks either way (a real ciphertext exports as ciphertext).
+		// decrypt (tamper, key mismatch, or a structurally valid attacker-crafted
+		// envelope) is quarantined as blank instead of throwing. Ordinary legacy
+		// plaintext still passes through, while ciphertext never crosses the
+		// export boundary or turns one damaged row into a whole-export failure.
 		const decryptedInbound = await Promise.all(
 			inboundMessages.slice(0, CAP).map(async (row) => {
 				const body = await openInboundBodyPreservingLegacyForContactExport(row);

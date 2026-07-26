@@ -6,17 +6,8 @@ import type { ImapCommandModule } from '../types.js';
 import { asyncSession, syncSession } from '../helpers/session.js';
 import { requireAuth, requireSelect } from '../helpers/auth.js';
 import { buildSeqMap, resolveSet } from '../helpers/seqMap.js';
-import {
-	type FetchEnvelope,
-	formatEnvelope,
-	formatFlags,
-	formatInternalDate,
-} from './format.js';
-import {
-	type BodySectionRequest,
-	formatBodySection,
-	parseBodySectionItem,
-} from './bodySection.js';
+import { type FetchEnvelope, formatEnvelope, formatFlags, formatInternalDate } from './format.js';
+import { type BodySectionRequest, formatBodySection, parseBodySectionItem } from './bodySection.js';
 
 export interface FetchArgs {
 	readonly set: string;
@@ -76,8 +67,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 		const needsRaw = bodyRequests.length > 0;
 		// A non-PEEK body retrieval implicitly sets \Seen on a read-write
 		// mailbox (§7.4.2). EXAMINE / read-only selects never mutate flags.
-		const setsSeen =
-			!state.selected!.readOnly && bodyRequests.some((b) => !b.peek);
+		const setsSeen = !state.selected!.readOnly && bodyRequests.some((b) => !b.peek);
 
 		const label = args.byUid ? 'UID FETCH' : 'FETCH';
 
@@ -89,7 +79,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				// sequence number and carries the UID to fetch.
 				const folderUids = (await deps.convex.query(
 					fn.listFolderUids as never,
-					{ folderId: state.selected!.folderId } as never,
+					{ folderId: state.selected!.folderId } as never
 				)) as number[];
 				const seqMap = buildSeqMap(folderUids);
 				const resolved = resolveSet(seqMap, args.set, args.byUid);
@@ -103,11 +93,14 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 				// by UID so each resolved {uid, seq} can be emitted in true
 				// sequence order even across gaps.
 				const uids = resolved.map((r) => r.uid);
-				const slice = (await deps.convex.query(fn.fetchEnvelopes as never, {
-					folderId: state.selected!.folderId,
-					uidLow: Math.min(...uids),
-					uidHigh: Math.max(...uids),
-				} as never)) as FetchEnvelope[];
+				const slice = (await deps.convex.query(
+					fn.fetchEnvelopes as never,
+					{
+						folderId: state.selected!.folderId,
+						uidLow: Math.min(...uids),
+						uidHigh: Math.max(...uids),
+					} as never
+				)) as FetchEnvelope[];
 				const byUidMap = new Map<number, FetchEnvelope>();
 				for (const m of slice) byUidMap.set(m.uid, m);
 
@@ -148,7 +141,7 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 							const parts: Buffer[] = [
 								Buffer.from(
 									`* ${seq} FETCH (${fields.length > 0 ? `${fields.join(' ')} ` : ''}`,
-									'utf8',
+									'utf8'
 								),
 							];
 							bodyRequests.forEach((req, i) => {
@@ -190,15 +183,15 @@ function formatFlagsWithSeen(m: FetchEnvelope, setsSeen: boolean): string {
  * if the mutation reports no update (e.g. the row vanished) so the caller
  * falls back to the envelope's own flags.
  */
-async function markSeen(
-	convex: ConvexClient,
-	messageId: string,
-): Promise<string | undefined> {
-	const result = (await convex.mutation(fn.storeFlags as never, {
-		messageIds: [messageId],
-		flags: ['\\Seen'],
-		mode: 'add',
-	} as never)) as StoreFlagsResult;
+async function markSeen(convex: ConvexClient, messageId: string): Promise<string | undefined> {
+	const result = (await convex.mutation(
+		fn.storeFlags as never,
+		{
+			messageIds: [messageId],
+			flags: ['\\Seen'],
+			mode: 'add',
+		} as never
+	)) as StoreFlagsResult;
 	const row = result.updated[0];
 	return row ? row.flags.join(' ') : undefined;
 }
@@ -213,19 +206,22 @@ async function markSeen(
  * replace invalid bytes with U+FFFD and inflate/shrink the octet count,
  * breaking the FETCH literal framing.
  */
-async function fetchRawBody(
-	convex: ConvexClient,
-	messageId: string,
-): Promise<Buffer | null> {
+async function fetchRawBody(convex: ConvexClient, messageId: string): Promise<Buffer | null> {
 	try {
-		const meta = (await convex.query(fn.fetchRawStorageId as never, {
-			messageId,
-		} as never)) as { storageId: string; rawSize: number } | null;
+		const meta = (await convex.query(
+			fn.fetchRawStorageId as never,
+			{
+				messageId,
+			} as never
+		)) as { storageId: string; rawSize: number } | null;
 		if (!meta) return null;
 		const url = (await convex
-			.query(fn.getRawStorageUrl as never, {
-				storageId: meta.storageId,
-			} as never)
+			.action(
+				fn.getRawStorageUrl as never,
+				{
+					storageId: meta.storageId,
+				} as never
+			)
 			.catch(() => null)) as string | null;
 		if (!url) return null;
 		const res = await fetch(url);

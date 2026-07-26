@@ -8,6 +8,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import {
+	DELIVERABILITY_ALERT_RECIPIENT_COMPACTION_TARGET,
 	DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT,
 	boundedDeliverabilityAlertRecipientRows,
 	cancelledDeliverabilityAlertRecipientPatch,
@@ -75,7 +76,8 @@ async function reserveCurrentRecipientCapacity(
 	const newCurrentCount = currentRecipients.filter(
 		(recipient) => !existingUserIds.has(recipient.userId)
 	).length;
-	const overflow = existing.length + newCurrentCount - DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT;
+	const overflow =
+		existing.length + newCurrentCount - DELIVERABILITY_ALERT_RECIPIENT_COMPACTION_TARGET;
 	if (overflow <= 0) return [...existing];
 
 	const evictable = existing.filter(
@@ -88,12 +90,13 @@ async function reserveCurrentRecipientCapacity(
 				recipient.unavailableReason === 'transport_outcome_unknown'
 			)
 	);
-	if (evictable.length < overflow) {
+	const evictedIds = new Set(evictable.slice(0, overflow).map((recipient) => recipient._id));
+	const retainedCount = existing.length - evictedIds.size;
+	if (retainedCount + newCurrentCount > DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT) {
 		throw new Error(
 			'Deliverability alert has too many protected recipient outcomes to add current admins'
 		);
 	}
-	const evictedIds = new Set(evictable.slice(0, overflow).map((recipient) => recipient._id));
 	for (const recipientId of evictedIds) await ctx.db.delete(recipientId);
 	return existing.filter((recipient) => !evictedIds.has(recipient._id));
 }

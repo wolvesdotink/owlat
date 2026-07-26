@@ -2,12 +2,12 @@
  * Lenient message-body projections for data-subject exports.
  *
  * The core storage-shape and sealing primitives remain in messageBody.ts. This
- * sibling makes two boundary policies explicit: account exports quarantine
- * malformed ciphertext as blank/corrupt, while the older contact export
- * preserves envelope-shaped legacy plaintext for mixed-state compatibility.
+ * sibling makes the export boundary policy explicit: malformed authenticated
+ * ciphertext is quarantined and its stored representation never leaves Owlat.
  */
 
 import type { Doc, Id } from '../_generated/dataModel';
+import { hasAtRestEnvelopePrefix, isSealedAtRest } from './atRestBodies';
 import {
 	openMessageBody,
 	type BodyBlobStorageReader,
@@ -15,7 +15,8 @@ import {
 	type InboundMessageBodyFields,
 	type MailMessageExportBodyFields,
 } from './messageBody';
-import { readSealedBlobTextForExport } from './sealedBlob';
+import { accountExportBytesToBase64 } from './accountExportEncoding';
+import { readSealedBlobBytesForExport, readSealedBlobTextForExport } from './sealedBlob';
 
 export type ExportBodyAvailability = 'available' | 'missing' | 'corrupt';
 
@@ -27,6 +28,9 @@ export interface ExportBodyContent {
 /** Account-export policy: malformed ciphertext becomes blank/corrupt and its
  * encrypted storage representation never crosses the account boundary. */
 export async function openAccountExportBodyContent(stored: string): Promise<ExportBodyContent> {
+	if (hasAtRestEnvelopePrefix(stored) && !isSealedAtRest(stored)) {
+		return { content: '', availability: 'corrupt' };
+	}
 	try {
 		return { content: await openMessageBody(stored), availability: 'available' };
 	} catch {
@@ -34,13 +38,15 @@ export async function openAccountExportBodyContent(stored: string): Promise<Expo
 	}
 }
 
-/** Contact-export compatibility policy: preserve an undecryptable stored value
- * because it may be legacy plaintext that merely resembles a sealed envelope. */
+/** Contact-export compatibility policy. `openMessageBody` already returns
+ * ordinary legacy plaintext unchanged. A failure therefore means an
+ * authenticated sealed envelope could not be opened; never expose it. */
 export async function openBodyPreservingLegacyForContactExport(stored: string): Promise<string> {
+	if (hasAtRestEnvelopePrefix(stored) && !isSealedAtRest(stored)) return '';
 	try {
 		return await openMessageBody(stored);
 	} catch {
-		return stored;
+		return '';
 	}
 }
 
@@ -74,14 +80,6 @@ export async function openInboundBodyPreservingLegacyForContactExport(
 	return { text, html };
 }
 
-function bytesToBase64(bytes: Uint8Array): string {
-	let binary = '';
-	for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-		binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-	}
-	return btoa(binary);
-}
-
 export async function openMailDraftForAccountExport(
 	storage: BodyBlobStorageReader,
 	draft: Doc<'mailDrafts'>
@@ -91,6 +89,7 @@ export async function openMailDraftForAccountExport(
 			Omit<Doc<'mailDrafts'>['attachments'][number], 'storageId'> & {
 				contentBase64: string | null;
 				isContentAvailable: boolean;
+				contentAvailability: ExportBodyAvailability;
 			}
 		>;
 		bodyAvailability: {
@@ -102,11 +101,13 @@ export async function openMailDraftForAccountExport(
 > {
 	const attachments = await Promise.all(
 		draft.attachments.map(async ({ storageId, ...attachment }) => {
-			const blob = await storage.get(storageId);
+			const opened = await readSealedBlobBytesForExport(storage, storageId);
 			return {
 				...attachment,
-				contentBase64: blob ? bytesToBase64(new Uint8Array(await blob.arrayBuffer())) : null,
-				isContentAvailable: blob !== null,
+				contentBase64:
+					opened.availability === 'available' ? accountExportBytesToBase64(opened.content) : null,
+				isContentAvailable: opened.availability === 'available',
+				contentAvailability: opened.availability,
 			};
 		})
 	);
@@ -136,6 +137,7 @@ export async function readMailMessageBodiesForAccountExport(
 	textBody: string;
 	htmlBody: string;
 	rawMessage: string;
+	rawMessageEncoding: 'base64';
 	bodyAvailability: {
 		text: ExportBodyAvailability;
 		html: ExportBodyAvailability;
@@ -148,17 +150,23 @@ export async function readMailMessageBodiesForAccountExport(
 		if (!storageId) return { content: '', availability: 'missing' };
 		return readSealedBlobTextForExport(storage, storageId);
 	};
-	const text = row.textBodyInline
-		? await openAccountExportBodyContent(row.textBodyInline)
-		: await readBlob(row.textBodyStorageId);
-	const html = row.htmlBodyInline
-		? await openAccountExportBodyContent(row.htmlBodyInline)
-		: await readBlob(row.htmlBodyStorageId);
-	const raw = await readBlob(row.rawStorageId);
+	const text =
+		row.textBodyInline !== undefined
+			? await openAccountExportBodyContent(row.textBodyInline)
+			: await readBlob(row.textBodyStorageId);
+	const html =
+		row.htmlBodyInline !== undefined
+			? await openAccountExportBodyContent(row.htmlBodyInline)
+			: await readBlob(row.htmlBodyStorageId);
+	const raw =
+		row.rawStorageId === undefined
+			? { content: new Uint8Array(), availability: 'missing' as const }
+			: await readSealedBlobBytesForExport(storage, row.rawStorageId);
 	return {
 		textBody: text.content,
 		htmlBody: html.content,
-		rawMessage: raw.content,
+		rawMessage: accountExportBytesToBase64(raw.content),
+		rawMessageEncoding: 'base64',
 		bodyAvailability: {
 			text: text.availability,
 			html: html.availability,

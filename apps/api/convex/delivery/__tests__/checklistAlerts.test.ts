@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	REGRESSION_EMAIL_RETRY_DELAYS_MS,
 	deliverRegressionEmailHandler,
+	loadDeliverabilityAlertAdminRecipients,
 	regressionEmailRetryDelay,
 	type RegressionEmailDependencies,
 } from '../checklistAlerts';
@@ -33,6 +34,47 @@ function failedMail(
 }
 
 describe('deliverability regression email retry policy', () => {
+	it('loads every owner and admin in an organization at the 50-member limit', async () => {
+		const members = Array.from({ length: 50 }, (_, index) => ({
+			userId: `user-${index.toString().padStart(2, '0')}`,
+			role: index < 25 ? 'owner' : 'admin',
+		}));
+		const runQuery = vi.fn(async (_query, args: Record<string, unknown>) => {
+			if (args['model'] === 'member') {
+				const where = args['where'] as Array<{ field: string; value: string }>;
+				const role = where.find((condition) => condition.field === 'role')?.value;
+				return { page: members.filter((member) => member.role === role) };
+			}
+			const where = args['where'] as Array<{ field: string; value: string }>;
+			const userId = where.find((condition) => condition.field === '_id')?.value;
+			return { email: `${userId}@example.test` };
+		});
+
+		await expect(
+			loadDeliverabilityAlertAdminRecipients({ runQuery } as never, 'org')
+		).resolves.toEqual(
+			members.map(({ userId }) => ({
+				userId,
+				email: `${userId}@example.test`,
+			}))
+		);
+		expect(runQuery).toHaveBeenCalledTimes(52);
+		expect(runQuery).toHaveBeenNthCalledWith(
+			1,
+			expect.anything(),
+			expect.objectContaining({
+				paginationOpts: { cursor: null, numItems: 50 },
+			})
+		);
+		expect(runQuery).toHaveBeenNthCalledWith(
+			2,
+			expect.anything(),
+			expect.objectContaining({
+				paginationOpts: { cursor: null, numItems: 50 },
+			})
+		);
+	});
+
 	it('uses bounded backoff before declaring transient delivery failure unavailable', () => {
 		expect(REGRESSION_EMAIL_RETRY_DELAYS_MS).toEqual([60_000, 300_000, 900_000]);
 		expect(regressionEmailRetryDelay(0)).toBe(60_000);

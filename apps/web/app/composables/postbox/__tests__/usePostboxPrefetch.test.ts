@@ -1,4 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+	consumeResolvedPostboxMessageBody,
+	resolvePostboxMessageBody,
+} from '../postboxBodyResolver';
 import { usePostboxPrefetch, type PrefetchClient } from '../usePostboxPrefetch';
 
 type BodyResult = {
@@ -8,96 +12,82 @@ type BodyResult = {
 	textUrl: string | null;
 } | null;
 
-function makeFakeClient() {
-	const subscriptions: Array<{
-		messageId: string;
-		onData: (data: BodyResult) => void;
-		onError: (e: Error) => void;
-		unsubscribe: ReturnType<typeof vi.fn>;
-	}> = [];
-	const client: PrefetchClient = {
-		onUpdate: vi.fn((_query: unknown, args: { messageId: string }, onData, onError) => {
-			const unsubscribe = vi.fn();
-			subscriptions.push({
-				messageId: args.messageId,
-				onData: onData as (data: BodyResult) => void,
-				onError: (onError ?? (() => {})) as (e: Error) => void,
-				unsubscribe,
-			});
-			return unsubscribe;
-		}) as unknown as PrefetchClient['onUpdate'],
+function makeFakeClient(result: BodyResult = null) {
+	const action = vi.fn((_action: unknown, _args: { messageId: string }) => Promise.resolve(result));
+	return {
+		client: { action } as unknown as PrefetchClient,
+		action,
 	};
-	return { client, subscriptions };
 }
 
 describe('usePostboxPrefetch', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});
+
 	afterEach(() => {
 		vi.useRealTimers();
 	});
 
-	it('warms the requested targets only after the debounce window', () => {
-		const { client, subscriptions } = makeFakeClient();
+	it('warms the requested targets only after the debounce window', async () => {
+		const { client, action } = makeFakeClient();
 		const { prefetch } = usePostboxPrefetch({ client, debounceMs: 150 });
 
 		prefetch(['next-id', 'prev-id']);
-		expect(subscriptions).toHaveLength(0);
+		expect(action).not.toHaveBeenCalled();
 
-		vi.advanceTimersByTime(149);
-		expect(subscriptions).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(149);
+		expect(action).not.toHaveBeenCalled();
 
-		vi.advanceTimersByTime(1);
-		expect(subscriptions.map((s) => s.messageId)).toEqual(['next-id', 'prev-id']);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(action.mock.calls.map((call) => call[1].messageId)).toEqual(['next-id', 'prev-id']);
 	});
 
-	it('coalesces rapid focus changes — only the last targets are warmed', () => {
-		const { client, subscriptions } = makeFakeClient();
+	it('coalesces rapid focus changes so only the last targets are warmed', async () => {
+		const { client, action } = makeFakeClient();
 		const { prefetch } = usePostboxPrefetch({ client, debounceMs: 150 });
 
-		// Holding j: each keypress reschedules; intermediate rows never fetch.
 		prefetch(['b', 'a']);
-		vi.advanceTimersByTime(100);
+		await vi.advanceTimersByTimeAsync(100);
 		prefetch(['c', 'b']);
-		vi.advanceTimersByTime(100);
+		await vi.advanceTimersByTimeAsync(100);
 		prefetch(['d', 'c']);
-		expect(subscriptions).toHaveLength(0);
+		expect(action).not.toHaveBeenCalled();
 
-		vi.advanceTimersByTime(150);
-		expect(subscriptions.map((s) => s.messageId)).toEqual(['d', 'c']);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(action.mock.calls.map((call) => call[1].messageId)).toEqual(['d', 'c']);
 	});
 
-	it('skips ids that are already warm instead of re-subscribing', () => {
-		const { client, subscriptions } = makeFakeClient();
+	it('skips ids that are already warm', async () => {
+		const { client, action } = makeFakeClient();
 		const { prefetch, isWarm } = usePostboxPrefetch({ client, debounceMs: 150 });
 
 		prefetch(['a', 'b']);
-		vi.advanceTimersByTime(150);
-		expect(subscriptions).toHaveLength(2);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(action).toHaveBeenCalledTimes(2);
 
 		prefetch(['a', 'b']);
-		vi.advanceTimersByTime(150);
-		expect(subscriptions).toHaveLength(2);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(action).toHaveBeenCalledTimes(2);
 		expect(isWarm('a')).toBe(true);
 		expect(isWarm('b')).toBe(true);
 	});
 
-	it('ignores null/undefined targets (list edges)', () => {
-		const { client, subscriptions } = makeFakeClient();
+	it('ignores null and undefined targets at list edges', async () => {
+		const { client, action } = makeFakeClient();
 		const { prefetch } = usePostboxPrefetch({ client, debounceMs: 150 });
 
-		prefetch([undefined, null]); // focused row 0 of a 1-row list
-		vi.advanceTimersByTime(150);
-		expect(subscriptions).toHaveLength(0);
+		prefetch([undefined, null]);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(action).not.toHaveBeenCalled();
 
 		prefetch(['a', undefined]);
-		vi.advanceTimersByTime(150);
-		expect(subscriptions.map((s) => s.messageId)).toEqual(['a']);
+		await vi.advanceTimersByTimeAsync(150);
+		expect(action.mock.calls.map((call) => call[1].messageId)).toEqual(['a']);
 	});
 
-	it('caps the cache at maxEntries, unsubscribing the least recently used', () => {
-		const { client, subscriptions } = makeFakeClient();
+	it('caps the warm set with least-recently-used eviction', async () => {
+		const { client } = makeFakeClient();
 		const { prefetch, isWarm, size } = usePostboxPrefetch({
 			client,
 			debounceMs: 0,
@@ -106,17 +96,15 @@ describe('usePostboxPrefetch', () => {
 
 		for (const id of ['a', 'b', 'c']) {
 			prefetch([id]);
-			vi.advanceTimersByTime(1);
+			await vi.advanceTimersByTimeAsync(1);
 		}
 		expect(size()).toBe(3);
 
 		// Re-warm 'a' so it becomes most recent, then overflow with 'd' and 'e'.
-		prefetch(['a']);
-		vi.advanceTimersByTime(1);
-		prefetch(['d']);
-		vi.advanceTimersByTime(1);
-		prefetch(['e']);
-		vi.advanceTimersByTime(1);
+		for (const id of ['a', 'd', 'e']) {
+			prefetch([id]);
+			await vi.advanceTimersByTimeAsync(1);
+		}
 
 		expect(size()).toBe(3);
 		expect(isWarm('a')).toBe(true);
@@ -124,109 +112,153 @@ describe('usePostboxPrefetch', () => {
 		expect(isWarm('e')).toBe(true);
 		expect(isWarm('b')).toBe(false);
 		expect(isWarm('c')).toBe(false);
-
-		const bySubId = (id: string) => subscriptions.find((s) => s.messageId === id && s.unsubscribe.mock.calls.length > 0);
-		expect(bySubId('b')).toBeDefined();
-		expect(bySubId('c')).toBeDefined();
-		// Survivors keep their subscription open.
-		expect(subscriptions.filter((s) => s.messageId === 'e')[0]?.unsubscribe).not.toHaveBeenCalled();
 	});
 
-	it('primes the blob URL for storage-backed bodies, once per message', async () => {
-		const { client, subscriptions } = makeFakeClient();
-		const fetchImpl = vi.fn(() => Promise.resolve({ text: () => Promise.resolve('body') }));
-		const { prefetch } = usePostboxPrefetch({ client, fetchImpl, debounceMs: 0 });
-
-		prefetch(['blob-msg']);
-		vi.advanceTimersByTime(1);
-
-		const result: BodyResult = {
+	it('shares a fully resolved storage-backed body with the reader', async () => {
+		const { client, action } = makeFakeClient({
 			htmlInline: null,
 			textInline: null,
 			htmlUrl: 'https://storage.example/signed-html',
 			textUrl: null,
-		};
-		subscriptions[0]!.onData(result);
-		subscriptions[0]!.onData(result); // live re-emit — must not double-fetch
-		await vi.runAllTimersAsync();
-
-		expect(fetchImpl).toHaveBeenCalledTimes(1);
-		expect(fetchImpl).toHaveBeenCalledWith('https://storage.example/signed-html');
-	});
-
-	it('does not fetch anything for inline bodies', async () => {
-		const { client, subscriptions } = makeFakeClient();
-		const fetchImpl = vi.fn(() => Promise.resolve({ text: () => Promise.resolve('') }));
+		});
+		const fetchImpl = vi.fn(() => Promise.resolve({ text: () => Promise.resolve('body') }));
 		const { prefetch } = usePostboxPrefetch({ client, fetchImpl, debounceMs: 0 });
 
-		prefetch(['inline-msg']);
-		vi.advanceTimersByTime(1);
-		subscriptions[0]!.onData({
+		prefetch(['blob-msg', 'blob-msg']);
+		await vi.advanceTimersByTimeAsync(1);
+		const resolved = await consumeResolvedPostboxMessageBody(client, 'blob-msg', fetchImpl);
+
+		expect(resolved).toEqual({ html: 'body', text: null });
+		expect(action).toHaveBeenCalledTimes(1);
+		expect(fetchImpl).toHaveBeenCalledTimes(1);
+		expect(fetchImpl).toHaveBeenCalledWith('https://storage.example/signed-html');
+
+		await resolvePostboxMessageBody(client, 'blob-msg', fetchImpl);
+		expect(action).toHaveBeenCalledTimes(2);
+		expect(fetchImpl).toHaveBeenCalledTimes(2);
+	});
+
+	it('does not retain an oversized decrypted body', async () => {
+		const oversizedBody = 'x'.repeat(512 * 1024 + 1);
+		const { client, action } = makeFakeClient({
+			htmlInline: oversizedBody,
+			textInline: null,
+			htmlUrl: null,
+			textUrl: null,
+		});
+		const { prefetch } = usePostboxPrefetch({ client, debounceMs: 0 });
+
+		prefetch(['oversized']);
+		await vi.advanceTimersByTimeAsync(1);
+		await resolvePostboxMessageBody(client, 'oversized');
+
+		expect(action).toHaveBeenCalledTimes(2);
+	});
+
+	it('evicts the least-recently-used bodies when the aggregate cache budget is exceeded', async () => {
+		const action = vi.fn(async () => ({
+			htmlInline: 'x'.repeat(400 * 1024),
+			textInline: null,
+			htmlUrl: null,
+			textUrl: null,
+		}));
+		const client = { action } as unknown as PrefetchClient;
+
+		for (const messageId of ['a', 'b', 'c', 'd', 'e', 'f']) {
+			await resolvePostboxMessageBody(client, messageId);
+		}
+		await resolvePostboxMessageBody(client, 'a');
+
+		expect(action).toHaveBeenCalledTimes(7);
+	});
+
+	it('does not perform a browser fetch for an inline body', async () => {
+		const { client } = makeFakeClient({
 			htmlInline: '<p>hi</p>',
 			textInline: null,
 			htmlUrl: 'https://storage.example/should-not-fetch',
 			textUrl: null,
 		});
-		await vi.runAllTimersAsync();
+		const fetchImpl = vi.fn(() => Promise.resolve({ text: () => Promise.resolve('') }));
+		const { prefetch } = usePostboxPrefetch({ client, fetchImpl, debounceMs: 0 });
+
+		prefetch(['inline-msg']);
+		await vi.advanceTimersByTimeAsync(1);
 
 		expect(fetchImpl).not.toHaveBeenCalled();
 	});
 
-	it('swallows subscription and blob-fetch errors (fail-soft)', async () => {
-		const { client, subscriptions } = makeFakeClient();
+	it('swallows action and blob-fetch errors and allows a later retry', async () => {
+		const action = vi
+			.fn()
+			.mockRejectedValueOnce(new Error('action unavailable'))
+			.mockResolvedValueOnce({
+				htmlInline: null,
+				textInline: null,
+				htmlUrl: 'https://storage.example/signed-html',
+				textUrl: null,
+			});
+		const client = { action } as unknown as PrefetchClient;
 		const fetchImpl = vi.fn(() => Promise.reject(new Error('network down')));
 		const { prefetch, isWarm } = usePostboxPrefetch({ client, fetchImpl, debounceMs: 0 });
 
 		prefetch(['err-msg']);
-		vi.advanceTimersByTime(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(isWarm('err-msg')).toBe(false);
 
-		// Subscription error callback must not throw.
-		expect(() => subscriptions[0]!.onError(new Error('query failed'))).not.toThrow();
-
-		// Blob fetch rejection is swallowed (no unhandled rejection).
-		subscriptions[0]!.onData({
-			htmlInline: null,
-			textInline: null,
-			htmlUrl: null,
-			textUrl: 'https://storage.example/signed-text',
-		});
-		await vi.runAllTimersAsync();
+		prefetch(['err-msg']);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(action).toHaveBeenCalledTimes(2);
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
-		expect(isWarm('err-msg')).toBe(true);
+		expect(isWarm('err-msg')).toBe(false);
 	});
 
-	it('swallows a throwing onUpdate (client hiccup) without warming', () => {
-		const client: PrefetchClient = {
-			onUpdate: vi.fn(() => {
-				throw new Error('client not ready');
-			}) as unknown as PrefetchClient['onUpdate'],
-		};
-		const { prefetch, size } = usePostboxPrefetch({ client, debounceMs: 0 });
+	it('never exceeds the configured action concurrency', async () => {
+		const resolvers: Array<(result: BodyResult) => void> = [];
+		const action = vi.fn(
+			() =>
+				new Promise<BodyResult>((resolve) => {
+					resolvers.push(resolve);
+				})
+		);
+		const client = { action } as unknown as PrefetchClient;
+		const { prefetch } = usePostboxPrefetch({
+			client,
+			debounceMs: 0,
+			maxConcurrent: 2,
+			maxEntries: 6,
+		});
 
-		prefetch(['a']);
-		expect(() => vi.advanceTimersByTime(1)).not.toThrow();
-		expect(size()).toBe(0);
+		prefetch(['a', 'b', 'c', 'd']);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(action).toHaveBeenCalledTimes(2);
+
+		resolvers[0]?.(null);
+		await vi.runAllTimersAsync();
+		expect(action).toHaveBeenCalledTimes(3);
 	});
 
-	it('is a no-op without a Convex client', () => {
+	it('is a no-op without a Convex client', async () => {
 		const { prefetch, size } = usePostboxPrefetch({ client: null, debounceMs: 0 });
 		prefetch(['a']);
-		expect(() => vi.advanceTimersByTime(1)).not.toThrow();
+		await vi.advanceTimersByTimeAsync(1);
 		expect(size()).toBe(0);
 	});
 
-	it('clear() cancels a pending warm-up and unsubscribes everything', () => {
-		const { client, subscriptions } = makeFakeClient();
+	it('clear cancels pending work and forgets warm entries', async () => {
+		const { client, action } = makeFakeClient();
 		const { prefetch, clear, size } = usePostboxPrefetch({ client, debounceMs: 150 });
 
 		prefetch(['a']);
-		vi.advanceTimersByTime(150);
-		prefetch(['b']); // still pending
+		await vi.advanceTimersByTimeAsync(150);
+		expect(size()).toBe(1);
+		prefetch(['b']);
 		clear();
-		vi.advanceTimersByTime(150);
+		await vi.advanceTimersByTimeAsync(150);
 
 		expect(size()).toBe(0);
-		expect(subscriptions).toHaveLength(1);
-		expect(subscriptions[0]!.unsubscribe).toHaveBeenCalledTimes(1);
+		expect(action).toHaveBeenCalledTimes(1);
+		await resolvePostboxMessageBody(client, 'a');
+		expect(action).toHaveBeenCalledTimes(2);
 	});
 });

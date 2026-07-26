@@ -15,7 +15,7 @@ const CACHE_LIMIT = 3;
 const cache = new Map<string, Promise<string | null>>();
 
 async function fetchRawEml(messageId: string): Promise<string | null> {
-	const url = await requireConvex().query(api.mail.mailbox.getMessageRawUrl, {
+	const url = await requireConvex().action(api.mail.mailbox.getMessageRawUrl, {
 		messageId: messageId as Id<'mailMessages'>,
 	});
 	if (!url) return null;

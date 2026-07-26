@@ -566,6 +566,78 @@ describe('deliverability regression email state', () => {
 		);
 	});
 
+	it('admits all 50 current admins alongside 120 protected prior outcomes without duplicates', async () => {
+		const t = convexTest(schema, modules);
+		await insertPendingAlert(t, 'protected-turnover');
+		await t.run(async (ctx) => {
+			const alert = await ctx.db.query('deliverabilityRegressionAlerts').unique();
+			if (!alert) throw new Error('missing alert');
+			for (let index = 0; index < 120; index += 1) {
+				const protectedState =
+					index < 40
+						? { status: 'sent' as const, sentAt: index + 1 }
+						: index < 80
+							? {
+									status: 'sending' as const,
+									attemptToken: `prior-attempt-${index}`,
+									attemptStartedAt: index + 1,
+								}
+							: {
+									status: 'unavailable' as const,
+									unavailableReason: 'transport_outcome_unknown' as const,
+								};
+				await ctx.db.insert('deliverabilityAlertRecipients', {
+					organizationId: 'org',
+					alertId: alert._id,
+					userId: `prior-user-${index}`,
+					attemptCount: 1,
+					...protectedState,
+				});
+			}
+		});
+		const current = Array.from({ length: 50 }, (_, index) => ({
+			userId: `current-user-${index}`,
+			email: `current-user-${index}@example.test`,
+		}));
+
+		const prepared = await t.mutation(
+			internal.delivery.checklistAlertState.prepareRecipientAttempts,
+			{
+				organizationId: 'org',
+				identity: 'protected-turnover',
+				recipients: current,
+				attemptToken: 'current-attempt',
+				now: 5_000,
+			}
+		);
+		expect(prepared?.claims).toHaveLength(50);
+
+		const repeated = await t.mutation(
+			internal.delivery.checklistAlertState.prepareRecipientAttempts,
+			{
+				organizationId: 'org',
+				identity: 'protected-turnover',
+				recipients: current,
+				attemptToken: 'repeated-attempt',
+				now: 5_001,
+			}
+		);
+		expect(repeated?.claims).toEqual([]);
+
+		const { recipients } = await readAlertState(t);
+		expect(recipients).toHaveLength(170);
+		expect(new Set(recipients.map((recipient) => recipient.userId)).size).toBe(170);
+		expect(recipients.filter((recipient) => recipient.status === 'sent')).toHaveLength(40);
+		expect(recipients.filter((recipient) => recipient.status === 'sending')).toHaveLength(90);
+		expect(
+			recipients.filter(
+				(recipient) =>
+					recipient.status === 'unavailable' &&
+					recipient.unavailableReason === 'transport_outcome_unknown'
+			)
+		).toHaveLength(40);
+	});
+
 	it('never evicts a sent receipt and does not resend when that admin rejoins at the cap', async () => {
 		const t = convexTest(schema, modules);
 		await insertPendingAlert(t, 'sent-rejoin');

@@ -7,6 +7,7 @@ import {
 	getBlockBackgroundColor,
 	blockSupportsBorderRadius,
 	getColumnWidths,
+	withPrimaryStoredImage,
 } from '../blocks';
 import type {
 	TextBlockContent,
@@ -139,6 +140,22 @@ describe('createBlock', () => {
 			const block = createBlock(type);
 			expect(block.type).toBe(type);
 		}
+	});
+});
+
+describe('withPrimaryStoredImage', () => {
+	it('keeps the capability URL and durable storage ID paired for pasted images', () => {
+		const content = createDefaultContent('image') as ImageBlockContent;
+
+		expect(
+			withPrimaryStoredImage(content, {
+				url: 'https://capability.example/image',
+				storageId: 'storage-image-1',
+			})
+		).toMatchObject({
+			src: 'https://capability.example/image',
+			storageId: 'storage-image-1',
+		});
 	});
 });
 

@@ -225,6 +225,9 @@ export const NON_TENANT_TABLES = [
 	// The deletion-tracking table itself — account deletion patches the request
 	// row to `completed`, so it must survive the wipe.
 	'accountDeletionRequests',
+	// Ephemeral per-user export state has its own one-hour expiry lifecycle.
+	'accountExportSessions',
+	'accountExportArtifacts',
 	// Instance configuration singleton — recreated by setup; reset clears it in a
 	// dedicated step.
 	'instanceSettings',
