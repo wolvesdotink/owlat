@@ -37,6 +37,10 @@ import {
 	warmingReservationsKey,
 	warmingStateKey,
 } from './warmingKeys.js';
+import {
+	decodeCanonicalPositiveSafeInteger,
+	decodeNormalizedDailyCap,
+} from './warmingStateCodec.js';
 
 export interface WarmingReservation {
 	ip: string;
@@ -132,10 +136,8 @@ export async function getDailyCap(redis: Redis, ip: string): Promise<number> {
 }
 
 async function normalizeNonGraduatedWarmingCap(redis: Redis, ip: string): Promise<number> {
-	const capRaw = String(
-		await redis.eval(NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA, 1, warmingStateKey(ip))
-	);
-	return capRaw === 'Infinity' ? Infinity : Number(capRaw);
+	const capRaw = await redis.eval(NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA, 1, warmingStateKey(ip));
+	return decodeNormalizedDailyCap(capRaw);
 }
 
 /**
@@ -160,8 +162,8 @@ export async function checkCap(
 		warmingStateKey(ip),
 		today
 	)) as [string, string];
-	const sentToday = parseInt(result[0] ?? '0', 10);
-	const dailyCap = result[1] === 'Infinity' ? Infinity : parseInt(result[1] ?? '0', 10);
+	const sentToday = Number(result[0] ?? 0);
+	const dailyCap = decodeNormalizedDailyCap(result[1]);
 
 	return {
 		allowed: sentToday < dailyCap,
@@ -478,11 +480,11 @@ export async function getWarmingState(redis: Redis, ip: string): Promise<Warming
 
 	return {
 		startedAt: parseInt(persistedFields['startedAt']!, 10),
-		currentDay: parseInt(persistedFields['currentDay'] ?? '1', 10),
-		dailyCap:
-			persistedFields['dailyCap'] === 'Infinity'
-				? Infinity
-				: parseInt(persistedFields['dailyCap'] ?? '50', 10),
+		currentDay: decodeCanonicalPositiveSafeInteger(
+			persistedFields['currentDay'],
+			'warming currentDay'
+		),
+		dailyCap: decodeNormalizedDailyCap(persistedFields['dailyCap']),
 		sentToday: parseInt(persistedFields['sentToday'] ?? '0', 10),
 		sentTodayReset: persistedFields['sentTodayReset'] ?? '',
 		lastEvaluatedDate: persistedFields['lastEvaluatedDate'] ?? '',

@@ -32,22 +32,41 @@ describe('warming', () => {
 	const config = createTestConfig();
 	const stateKey = `mta:warming:{warming:${ip}}:state`;
 	const dailyStatsKey = `mta:warming:{warming:${ip}}:daily:2026-03-22`;
+	const invalidIntegerTextRepresentations: ReadonlyArray<{
+		name: string;
+		value: string;
+	}> = [
+		{ name: 'garbage', value: 'garbage' },
+		{ name: 'NaN', value: 'NaN' },
+		{ name: 'positive Infinity', value: 'Infinity' },
+		{ name: 'negative Infinity', value: '-Infinity' },
+		{ name: 'a negative integer', value: '-1' },
+		{ name: 'zero', value: '0' },
+		{ name: 'a fraction', value: '1.5' },
+		{ name: 'scientific notation for 100', value: '1e2' },
+		{ name: 'scientific notation for 30', value: '3e1' },
+		{ name: 'scientific notation for 30,000', value: '3e4' },
+		{ name: 'a hexadecimal prefix for 100', value: '0x64' },
+		{ name: 'a hexadecimal prefix for 30', value: '0x1e' },
+		{ name: 'an explicit plus sign', value: '+1' },
+		{ name: 'a leading zero', value: '01' },
+		{ name: 'surrounding whitespace', value: ' 100 ' },
+		{ name: 'an unsafe integer', value: String(Number.MAX_SAFE_INTEGER + 1) },
+	];
 	const invalidPersistedCaps: ReadonlyArray<{
 		name: string;
 		value: string | null;
 	}> = [
 		{ name: 'a missing cap', value: null },
-		{ name: 'NaN', value: 'NaN' },
-		{ name: 'a non-numeric cap', value: 'garbage' },
-		{ name: 'positive Infinity', value: String(Infinity) },
-		{ name: 'negative Infinity', value: String(-Infinity) },
-		{ name: 'zero', value: '0' },
-		{ name: 'a negative cap', value: '-5' },
-		{ name: 'a fractional cap', value: '1.5' },
+		...invalidIntegerTextRepresentations,
 		{ name: 'an above-ceiling cap', value: String(LAST_FINITE_WARMING_CAP + 1) },
 	];
+	const invalidPersistedDays: ReadonlyArray<{
+		name: string;
+		value: string | null;
+	}> = [{ name: 'a missing day', value: null }, ...invalidIntegerTextRepresentations];
 
-	async function seedInvalidPersistedCap(value: string | null, currentDay = 2): Promise<void> {
+	async function seedInvalidPersistedCap(value: string | null, currentDay = 5): Promise<void> {
 		await redis.del(stateKey);
 		await initializeWarming(redis, ip);
 		await redis.hset(
@@ -63,6 +82,24 @@ describe('warming', () => {
 		);
 		if (value === null) await redis.hdel(stateKey, 'dailyCap');
 		else await redis.hset(stateKey, 'dailyCap', value);
+	}
+
+	async function seedInvalidPersistedDay(value: string | null): Promise<void> {
+		await redis.del(stateKey);
+		await initializeWarming(redis, ip);
+		await redis.hset(
+			stateKey,
+			'dailyCap',
+			'garbage',
+			'sentToday',
+			'0',
+			'lastEvaluatedDate',
+			'',
+			'phase',
+			'ramp'
+		);
+		if (value === null) await redis.hdel(stateKey, 'currentDay');
+		else await redis.hset(stateKey, 'currentDay', value);
 	}
 
 	async function seedLegacyUncappedRamp(options: {
@@ -183,7 +220,8 @@ describe('warming', () => {
 		it.each(invalidPersistedCaps)(
 			'repairs $name through every public state and enforcement path',
 			async ({ value }) => {
-				const expectedEarlyDayCap = getWarmingCapForDay(2);
+				const repairedDay = 5;
+				const expectedEarlyDayCap = getWarmingCapForDay(repairedDay);
 
 				await seedInvalidPersistedCap(value);
 				expect(await getDailyCap(redis, ip)).toBe(expectedEarlyDayCap);
@@ -191,7 +229,7 @@ describe('warming', () => {
 
 				await seedInvalidPersistedCap(value);
 				expect(await getWarmingState(redis, ip)).toMatchObject({
-					currentDay: 2,
+					currentDay: repairedDay,
 					dailyCap: expectedEarlyDayCap,
 					phase: 'ramp',
 				});
@@ -220,7 +258,9 @@ describe('warming', () => {
 				await redis.hset(dailyStatsKey, 'sent', '100', 'bounced', '4', 'deferred', '0');
 				await evaluateDay(redis, ip, config);
 				expect(await getWarmingState(redis, ip)).toMatchObject({
-					currentDay: 1,
+					currentDay: Math.floor(
+						repairedDay * ADAPTIVE_WARMING_POLICY.deceleration.scheduleDayMultiplier
+					),
 					dailyCap: Math.floor(
 						expectedEarlyDayCap * ADAPTIVE_WARMING_POLICY.deceleration.capMultiplier
 					),
@@ -228,6 +268,56 @@ describe('warming', () => {
 				});
 			}
 		);
+
+		it.each(invalidPersistedDays)(
+			'canonicalizes $name before concurrent enforcement and advances after repair',
+			async ({ value }) => {
+				await seedInvalidPersistedDay(value);
+
+				const [dailyCap, state, checked, reserved] = await Promise.all([
+					getDailyCap(redis, ip),
+					getWarmingState(redis, ip),
+					checkCap(redis, ip),
+					reserveWarmingSlot(redis, ip, `invalid-day-${value ?? 'missing'}`),
+				]);
+
+				expect(dailyCap).toBe(50);
+				expect(state).toMatchObject({ currentDay: 1, dailyCap: 50, phase: 'ramp' });
+				expect(checked.dailyCap).toBe(50);
+				expect(reserved.dailyCap).toBe(50);
+				expect(await redis.hmget(stateKey, 'currentDay', 'dailyCap')).toEqual(['1', '50']);
+
+				await redis.hset(dailyStatsKey, 'sent', '40', 'bounced', '1', 'deferred', '0');
+				await evaluateDay(redis, ip, config);
+
+				expect(await getWarmingState(redis, ip)).toMatchObject({
+					currentDay: 2,
+					dailyCap: 100,
+					phase: 'ramp',
+				});
+				expect(await redis.hmget(stateKey, 'currentDay', 'dailyCap')).toEqual(['2', '100']);
+			}
+		);
+
+		it('accepts the exact positive-safe-integer upper boundary for currentDay', async () => {
+			await initializeWarming(redis, ip);
+			await redis.hset(
+				stateKey,
+				'currentDay',
+				String(Number.MAX_SAFE_INTEGER),
+				'dailyCap',
+				'garbage'
+			);
+
+			expect(await getWarmingState(redis, ip)).toMatchObject({
+				currentDay: Number.MAX_SAFE_INTEGER,
+				dailyCap: LAST_FINITE_WARMING_CAP,
+			});
+			expect(await redis.hmget(stateKey, 'currentDay', 'dailyCap')).toEqual([
+				String(Number.MAX_SAFE_INTEGER),
+				String(LAST_FINITE_WARMING_CAP),
+			]);
+		});
 
 		it('keeps concurrent public readers and enforcement on one repaired cap', async () => {
 			await seedInvalidPersistedCap('garbage');
@@ -239,22 +329,26 @@ describe('warming', () => {
 				reserveWarmingSlot(redis, ip, 'concurrent-repair'),
 			]);
 
-			expect(dailyCap).toBe(100);
-			expect(state!.dailyCap).toBe(100);
-			expect(checked.dailyCap).toBe(100);
-			expect(reserved.dailyCap).toBe(100);
-			expect(await redis.hget(stateKey, 'dailyCap')).toBe('100');
+			expect(dailyCap).toBe(700);
+			expect(state!.dailyCap).toBe(700);
+			expect(checked.dailyCap).toBe(700);
+			expect(reserved.dailyCap).toBe(700);
+			expect(await redis.hget(stateKey, 'dailyCap')).toBe('700');
 		});
 
-		it('preserves graduated Infinity across public state and enforcement paths', async () => {
+		it('canonicalizes a graduated row before every public state and enforcement return', async () => {
 			await initializeWarming(redis, ip);
-			await redis.hset(stateKey, 'phase', 'graduated', 'dailyCap', String(Infinity));
+			await redis.hset(stateKey, 'phase', 'graduated', 'currentDay', '3e1', 'dailyCap', '3e4');
 
 			expect(await getDailyCap(redis, ip)).toBe(Infinity);
-			expect((await getWarmingState(redis, ip))!.dailyCap).toBe(Infinity);
+			expect(await getWarmingState(redis, ip)).toMatchObject({
+				currentDay: 1,
+				dailyCap: Infinity,
+				phase: 'graduated',
+			});
 			expect((await checkCap(redis, ip)).dailyCap).toBe(Infinity);
 			expect((await reserveWarmingSlot(redis, ip, 'graduated')).dailyCap).toBe(Infinity);
-			expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(Infinity));
+			expect(await redis.hmget(stateKey, 'currentDay', 'dailyCap')).toEqual(['1', 'Infinity']);
 		});
 	});
 
