@@ -73,6 +73,14 @@ crons.interval(
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
+// Seed-placement probe ledger: one row per shadow copy, retention-bounded at
+// 90 days so the deliverability tripwire never grows without limit.
+crons.interval(
+	'cleanup seed placement probes',
+	{ hours: 24 },
+	internal.analytics.seedPlacement.deleteExpiredSeedProbes,
+	{}
+);
 crons.interval(
 	'cleanup MTA campaign alert receipts',
 	{ hours: 24 },
