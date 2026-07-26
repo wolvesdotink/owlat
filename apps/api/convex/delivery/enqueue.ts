@@ -4,7 +4,6 @@ import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { isSuppressed } from '../lib/suppression';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
-import { selectSendProviderKind } from '../lib/sendProviders/types';
 import { recordSendAssignments } from './sendAssignments';
 
 /**
@@ -159,12 +158,18 @@ export const enqueueCampaignEmails = internalMutation({
 		// The experiment record (plan D7): one assignment row per recipient,
 		// written BEFORE any dispatch and inside THIS transaction, so the record
 		// and the sends commit or roll back together. Never throws: an
-		// unresolvable org or transport degrades to no row, never a failed send.
+		// unresolvable org or route degrades to no row, never a failed send.
+		//
+		// `args.providerType` is deliberately NOT used as the recorded
+		// transport: the orchestrator resolves it once per page from the first
+		// recipient and labels it an advisory snapshot, while the deliverability
+		// fallback is keyed per destination provider. The writer re-resolves
+		// in-transaction, memoized per destination provider.
 		await recordSendAssignments(ctx, {
 			organizationId: args.organizationId,
 			stream: 'campaign',
 			sendKind: 'campaign',
-			transport: selectSendProviderKind(args.providerType),
+			routing: { kind: 'resolve', messageType: 'campaign', from: args.from },
 			recipients: args.emails.map((recipient) => ({
 				sendId: recipient.emailSendId,
 				email: recipient.email,
@@ -310,12 +315,16 @@ export const enqueueNonCampaignSend = internalMutation({
 
 		// Experiment record (plan D7), same transaction, before dispatch. An
 		// automation step is the `automation` stream; an agent 1:1 reply is
-		// `transactional`. Both are `transactionalSends` rows.
+		// `transactional`. Both are `transactionalSends` rows, and the stream
+		// is derived ONCE so the new cell axis and the envelope's shipped
+		// `messageType` below cannot drift apart.
+		const stream =
+			args.kind === 'automation' ? ('automation' as const) : ('transactional' as const);
 		await recordSendAssignments(ctx, {
 			organizationId,
-			stream: args.kind === 'automation' ? 'automation' : 'transactional',
+			stream,
 			sendKind: 'transactional',
-			transport: selectSendProviderKind(args.providerType),
+			routing: { kind: 'resolve', messageType: stream, from: args.from },
 			recipients: [{ sendId, email: args.email }],
 		});
 
@@ -326,8 +335,7 @@ export const enqueueNonCampaignSend = internalMutation({
 				envelopeInput: {
 					kind: 'transactional' as const,
 					deliveryDomain: 'production' as const,
-					messageType:
-						args.kind === 'automation' ? ('automation' as const) : ('transactional' as const),
+					messageType: stream,
 					emailPurpose:
 						args.kind === 'automation' ? ('marketing' as const) : ('transactional' as const),
 					to: args.email,
