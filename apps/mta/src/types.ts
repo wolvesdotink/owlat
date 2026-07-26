@@ -224,11 +224,43 @@ export interface MtaWebhookEvent {
 	timestamp: number;
 }
 
+/** One delivery-error category's share of a domain's traffic on one day. */
+export interface GooglePostmasterDeliveryErrorShare {
+	/** Google's error-category token (for example `RATE_LIMIT_EXCEEDED`). */
+	category: string;
+	ratio: number;
+}
+
 export interface GooglePostmasterStatsEvent extends MtaWebhookEvent {
 	event: 'postmaster.stats';
 	domain: string;
 	date: string;
 	userReportedSpamRatio: number;
+	// Every field below is optional on purpose: Google returns a metric only
+	// when the domain had enough traffic that day, so a partial response is
+	// normal operation and must never be treated as an error.
+	spfSuccessRatio?: number;
+	dkimSuccessRatio?: number;
+	dmarcSuccessRatio?: number;
+	deliveryErrorRatio?: number;
+	deliveryErrors?: GooglePostmasterDeliveryErrorShare[];
+}
+
+/** One Compliance Status check as reported by Postmaster Tools v2. */
+export interface GooglePostmasterComplianceCheck {
+	name: string;
+	state: 'passing' | 'failing' | 'unknown';
+}
+
+/**
+ * Compliance Status is a point-in-time verdict rather than a daily metric, so
+ * it travels as its own event keyed by the UTC day it was observed.
+ */
+export interface GooglePostmasterComplianceEvent extends MtaWebhookEvent {
+	event: 'postmaster.compliance';
+	domain: string;
+	date: string;
+	checks: GooglePostmasterComplianceCheck[];
 }
 
 export interface GooglePostmasterDomainAuthorizationEvent extends MtaWebhookEvent {
@@ -238,7 +270,8 @@ export interface GooglePostmasterDomainAuthorizationEvent extends MtaWebhookEven
 
 export type GooglePostmasterWebhookEvent =
 	| GooglePostmasterDomainAuthorizationEvent
-	| GooglePostmasterStatsEvent;
+	| GooglePostmasterStatsEvent
+	| GooglePostmasterComplianceEvent;
 
 /**
  * RFC 8601 inbound authentication verdicts plus the DMARC alignment inputs, as

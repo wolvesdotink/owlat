@@ -2,7 +2,7 @@
 
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import type { GooglePostmasterStatsEvent } from '../types.js';
+import type { GooglePostmasterComplianceCheck } from '../types.js';
 
 const TOKEN_KEY = 'mta:postmaster:oauth-access-token';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -12,6 +12,54 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 export const GOOGLE_POSTMASTER_API_BASE = 'https://gmailpostmastertools.googleapis.com/v2';
 export const GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME = 'userReportedSpamRatio';
+
+/**
+ * The ratio metrics requested in one v2 `domainStats:query`. `name` is OUR
+ * label: the API echoes each `metricDefinitions[].name` back on every
+ * `DomainStat`, so the response parser keys on names this module owns rather
+ * than on Google's enum spelling. Adding a metric here is the only change
+ * needed to collect it — the parser is name-driven and forward-compatible.
+ */
+export const POSTMASTER_RATIO_METRICS = [
+	{ name: GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME, standardMetric: 'SPAM_RATE' },
+	{ name: 'spfSuccessRatio', standardMetric: 'SPF_SUCCESS_RATE' },
+	{ name: 'dkimSuccessRatio', standardMetric: 'DKIM_SUCCESS_RATE' },
+	{ name: 'dmarcSuccessRatio', standardMetric: 'DMARC_SUCCESS_RATE' },
+	{ name: 'deliveryErrorRatio', standardMetric: 'DELIVERY_ERROR_RATE' },
+] as const;
+
+const RATIO_METRIC_NAMES: ReadonlySet<string> = new Set(
+	POSTMASTER_RATIO_METRICS.map((metric) => metric.name)
+);
+
+/**
+ * Delivery-error categories broken out of `DELIVERY_ERROR_RATE` by dimension.
+ * The breakdown is collected by a SEPARATE, best-effort query so that a
+ * rejected dimension filter can never cost us the aggregate ratios above.
+ */
+export const POSTMASTER_DELIVERY_ERROR_CATEGORIES = [
+	'RATE_LIMIT_EXCEEDED',
+	'SUSPECTED_SPAM',
+	'CONTENT_SPAMMY',
+	'BAD_ATTACHMENT',
+	'BAD_DMARC_POLICY',
+	'LOW_IP_REPUTATION',
+	'LOW_DOMAIN_REPUTATION',
+	'IP_IN_RBL',
+	'DOMAIN_IN_RBL',
+	'BAD_PTR_RECORD',
+] as const;
+
+export const DELIVERY_ERROR_METRIC_PREFIX = 'deliveryError.';
+
+const DELIVERY_ERROR_METRIC_NAMES: ReadonlySet<string> = new Set(
+	POSTMASTER_DELIVERY_ERROR_CATEGORIES.map(
+		(category) => `${DELIVERY_ERROR_METRIC_PREFIX}${category}`
+	)
+);
+
+/** Upper bound on the Compliance Status checks retained from one response. */
+export const POSTMASTER_COMPLIANCE_CHECK_LIMIT = 32;
 
 /** Scopes that must be granted when the operator creates the offline refresh token. */
 export const GOOGLE_POSTMASTER_AUTHORIZATION_SCOPES = [
@@ -75,22 +123,78 @@ function parseGoogleDate(value: unknown): string | null {
 		: null;
 }
 
-/** Normalize one v2 `DomainStat` for the requested SPAM_RATE metric. */
-export function normalizeDomainStat(
-	domain: string,
-	raw: DomainStatWire
-): GooglePostmasterStatsEvent | null {
-	if (raw.metric !== GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME || !isRecord(raw.value)) return null;
+/** `YYYY-MM-DD` → the `google.type.Date` object the v2 query body expects. */
+export function googleDateObject(date: string): { year: number; month: number; day: number } {
+	const [year, month, day] = date.split('-').map(Number);
+	return { year: year ?? 0, month: month ?? 0, day: day ?? 0 };
+}
+
+/** One `(date, metric)` ratio observation lifted off a v2 `DomainStat`. */
+export interface DomainStatObservation {
+	date: string;
+	metric: string;
+	ratio: number;
+}
+
+/**
+ * Normalize one v2 `DomainStat`. Metric names this collector did not request
+ * are dropped rather than rejected: Google may add metrics to a response at
+ * any time and an unknown name must never fail a sweep.
+ */
+export function normalizeDomainStat(raw: DomainStatWire): DomainStatObservation | null {
+	const metric = raw.metric;
+	if (typeof metric !== 'string' || !isRecord(raw.value)) return null;
+	if (!RATIO_METRIC_NAMES.has(metric) && !DELIVERY_ERROR_METRIC_NAMES.has(metric)) return null;
 	const date = parseGoogleDate(raw.date);
 	const ratio = raw.value['doubleValue'] ?? raw.value['floatValue'];
 	if (!date || !isRatio(ratio)) return null;
-	return {
-		event: 'postmaster.stats',
-		domain,
-		date,
-		userReportedSpamRatio: ratio,
-		timestamp: Date.now(),
+	return { date, metric, ratio };
+}
+
+const COMPLIANCE_STATE_BY_WIRE: Readonly<Record<string, GooglePostmasterComplianceCheck['state']>> =
+	{
+		PASSING: 'passing',
+		PASS: 'passing',
+		COMPLIANT: 'passing',
+		OK: 'passing',
+		FAILING: 'failing',
+		FAIL: 'failing',
+		NON_COMPLIANT: 'failing',
 	};
+
+function normalizeCheckName(value: unknown): string | null {
+	if (typeof value !== 'string' || value.length > 128) return null;
+	const name = value.trim().toUpperCase();
+	// Deliberately strict: the name is stored and rendered, so only an opaque
+	// enum-shaped token is accepted. Anything else is dropped, never escaped.
+	return /^[A-Z0-9_]{1,64}$/.test(name) ? name : null;
+}
+
+/**
+ * Parse a v2 Compliance Status payload into de-duplicated, bounded checks.
+ *
+ * Forward-compatible by construction: an unrecognised check name is retained
+ * verbatim (the UI has a generic renderer for it) and an unrecognised state
+ * degrades to `'unknown'`. Never throws — a malformed payload yields `[]`.
+ */
+export function parseComplianceStatus(value: unknown): GooglePostmasterComplianceCheck[] {
+	if (!isRecord(value)) return [];
+	const rawChecks = value['checks'] ?? value['complianceChecks'];
+	if (!Array.isArray(rawChecks)) return [];
+	const byName = new Map<string, GooglePostmasterComplianceCheck>();
+	for (const raw of rawChecks) {
+		if (byName.size >= POSTMASTER_COMPLIANCE_CHECK_LIMIT) break;
+		if (!isRecord(raw)) continue;
+		const name = normalizeCheckName(raw['name'] ?? raw['checkName']);
+		if (name === null || byName.has(name)) continue;
+		const wireState = raw['state'] ?? raw['status'];
+		const state =
+			typeof wireState === 'string' && wireState.length <= 64
+				? (COMPLIANCE_STATE_BY_WIRE[wireState.trim().toUpperCase()] ?? 'unknown')
+				: 'unknown';
+		byName.set(name, { name, state });
+	}
+	return [...byName.values()];
 }
 
 function retryAfterMs(response: Response, retryIndex: number): number {

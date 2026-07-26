@@ -76,17 +76,14 @@ describe('Google Postmaster v2 response normalization', () => {
 	});
 
 	it('accepts only a finite daily SPAM_RATE value', () => {
-		expect(normalizeDomainStat('example.com', spamStat())).toMatchObject({
-			event: 'postmaster.stats',
-			domain: 'example.com',
+		expect(normalizeDomainStat(spamStat())).toEqual({
 			date: '2026-07-20',
-			userReportedSpamRatio: 0.0005,
+			metric: 'userReportedSpamRatio',
+			ratio: 0.0005,
 		});
-		expect(normalizeDomainStat('example.com', spamStat('2026-02-30'))).toBeNull();
-		expect(normalizeDomainStat('example.com', spamStat('2026-07-20', 2))).toBeNull();
-		expect(
-			normalizeDomainStat('example.com', { ...spamStat(), metric: 'anotherMetric' })
-		).toBeNull();
+		expect(normalizeDomainStat(spamStat('2026-02-30'))).toBeNull();
+		expect(normalizeDomainStat(spamStat('2026-07-20', 2))).toBeNull();
+		expect(normalizeDomainStat({ ...spamStat(), metric: 'anotherMetric' })).toBeNull();
 	});
 });
 
@@ -126,8 +123,8 @@ describe('Google Postmaster v2 collection', () => {
 
 		await fetchPostmasterData(redis, config);
 
-		expect(statsRequests).toHaveLength(1);
-		expect(statsRequests[0]).toContain('/domains/example.com/');
+		expect(statsRequests.length).toBeGreaterThan(0);
+		expect(statsRequests.every((url) => url.includes('/domains/example.com/'))).toBe(true);
 		expect(await redis.keys('*')).not.toEqual(
 			expect.arrayContaining([expect.stringContaining(unrelatedDomain)])
 		);
@@ -253,18 +250,22 @@ describe('Google Postmaster v2 collection', () => {
 				expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
 				return response({ domains: [verifiedDomain()] });
 			}
+			if (url.endsWith('/v2/domains/example.com/complianceStatus')) {
+				return response({ checks: [] });
+			}
 			if (url.endsWith('/v2/domains/example.com/domainStats:query')) {
 				expect(init?.method).toBe('POST');
-				expect(JSON.parse(String(init?.body))).toMatchObject({
-					metricDefinitions: [
-						{
-							name: 'userReportedSpamRatio',
-							baseMetric: { standardMetric: 'SPAM_RATE' },
-						},
-					],
-					aggregationGranularity: 'DAILY',
-					pageSize: 200,
-				});
+				const body = JSON.parse(String(init?.body)) as {
+					metricDefinitions: Array<{ name: string; baseMetric: { standardMetric: string } }>;
+				};
+				expect(body).toMatchObject({ aggregationGranularity: 'DAILY', pageSize: 200 });
+				expect(body.metricDefinitions).toEqual([
+					{ name: 'userReportedSpamRatio', baseMetric: { standardMetric: 'SPAM_RATE' } },
+					{ name: 'spfSuccessRatio', baseMetric: { standardMetric: 'SPF_SUCCESS_RATE' } },
+					{ name: 'dkimSuccessRatio', baseMetric: { standardMetric: 'DKIM_SUCCESS_RATE' } },
+					{ name: 'dmarcSuccessRatio', baseMetric: { standardMetric: 'DMARC_SUCCESS_RATE' } },
+					{ name: 'deliveryErrorRatio', baseMetric: { standardMetric: 'DELIVERY_ERROR_RATE' } },
+				]);
 				return response({ domainStats: [spamStat()] });
 			}
 			throw new Error(`Unexpected URL: ${url}`);

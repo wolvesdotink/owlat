@@ -11,24 +11,29 @@
 import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import type { GooglePostmasterStatsEvent } from '../types.js';
+import type { GooglePostmasterDeliveryErrorShare, GooglePostmasterStatsEvent } from '../types.js';
 import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
 import {
+	type DomainStatObservation,
 	GOOGLE_POSTMASTER_API_BASE,
 	GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME,
 	GoogleApiError,
 	GooglePostmasterClient,
+	POSTMASTER_RATIO_METRICS,
+	googleDateObject,
 	isRecord,
 	normalizeDomainStat,
 	parseReadableVerifiedDomain,
 	type PostmasterDomainWire,
 } from './googlePostmasterApi.js';
 import { logger } from './logger.js';
+import { fetchComplianceChecks, fetchDeliveryErrorShares } from './postmasterExtras.js';
 
 const COLLECTION_LOCK_KEY = 'mta:postmaster:collection-lock';
 const DOMAIN_CURSOR_KEY = 'mta:postmaster:domain-cursor';
 const STATS_CURSOR_PREFIX = 'mta:postmaster:stats-cursor:';
 const PUSHED_PREFIX = 'mta:postmaster:pushed:';
+const COMPLIANCE_PUSHED_PREFIX = 'mta:postmaster:compliance-pushed:';
 const DOMAIN_STATE_INDEX_KEY = 'mta:postmaster:domain-state-index';
 const DISCOVERY_GENERATION_KEY = 'mta:postmaster:discovery-generation';
 const BACKFILL_DAYS = 7;
@@ -57,11 +62,6 @@ interface StatsCursor {
 	pageToken: string;
 	startDate: string;
 	endDate: string;
-}
-
-function dateObject(date: string): { year: number; month: number; day: number } {
-	const [year, month, day] = date.split('-').map(Number);
-	return { year: year!, month: month!, day: day! };
 }
 
 function utcDateDaysAgo(daysAgo: number): string {
@@ -126,21 +126,60 @@ async function fetchDomainPageWithCursorRecovery(
 
 function queryBody(startDate: string, endDate: string, pageToken?: string) {
 	return {
-		metricDefinitions: [
-			{
-				name: GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME,
-				baseMetric: { standardMetric: 'SPAM_RATE' },
-			},
-		],
+		metricDefinitions: POSTMASTER_RATIO_METRICS.map((metric) => ({
+			name: metric.name,
+			baseMetric: { standardMetric: metric.standardMetric },
+		})),
 		timeQuery: {
 			dateRanges: {
-				dateRanges: [{ start: dateObject(startDate), end: dateObject(endDate) }],
+				dateRanges: [{ start: googleDateObject(startDate), end: googleDateObject(endDate) }],
 			},
 		},
 		pageSize: STATS_PAGE_SIZE,
 		...(pageToken ? { pageToken } : {}),
 		aggregationGranularity: 'DAILY',
 	};
+}
+
+/**
+ * Fold the flat `(date, metric)` observations of one page into one event per
+ * UTC day. `SPAM_RATE` is the one metric Convex requires, so a day Google has
+ * not reported it for is skipped and picked up by a later sweep; every other
+ * metric is attached only when present, because Google withholds a metric on
+ * days a domain had too little traffic and that is normal operation.
+ */
+function buildStatsEvents(
+	domain: string,
+	observations: DomainStatObservation[],
+	timestamp: number
+): GooglePostmasterStatsEvent[] {
+	const ratiosByDate = new Map<string, Map<string, number>>();
+	for (const observation of observations) {
+		const ratios = ratiosByDate.get(observation.date) ?? new Map<string, number>();
+		if (!ratios.has(observation.metric)) ratios.set(observation.metric, observation.ratio);
+		ratiosByDate.set(observation.date, ratios);
+	}
+	const events: GooglePostmasterStatsEvent[] = [];
+	for (const [date, ratios] of ratiosByDate) {
+		const userReportedSpamRatio = ratios.get(GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME);
+		if (userReportedSpamRatio === undefined) continue;
+		const spfSuccessRatio = ratios.get('spfSuccessRatio');
+		const dkimSuccessRatio = ratios.get('dkimSuccessRatio');
+		const dmarcSuccessRatio = ratios.get('dmarcSuccessRatio');
+		const deliveryErrorRatio = ratios.get('deliveryErrorRatio');
+		events.push({
+			event: 'postmaster.stats',
+			domain,
+			date,
+			userReportedSpamRatio,
+			...(spfSuccessRatio !== undefined ? { spfSuccessRatio } : {}),
+			...(dkimSuccessRatio !== undefined ? { dkimSuccessRatio } : {}),
+			...(dmarcSuccessRatio !== undefined ? { dmarcSuccessRatio } : {}),
+			...(deliveryErrorRatio !== undefined ? { deliveryErrorRatio } : {}),
+			timestamp,
+		});
+	}
+	return events;
 }
 
 async function fetchStatsPage(
@@ -160,16 +199,18 @@ async function fetchStatsPage(
 		}
 	);
 	if (!isRecord(payload)) throw new GoogleApiError('domains.domainStats.query', 200, 'request');
-	const events = new Map<string, GooglePostmasterStatsEvent>();
+	const observations: DomainStatObservation[] = [];
 	if (Array.isArray(payload['domainStats'])) {
 		for (const raw of payload['domainStats']) {
 			if (!isRecord(raw)) continue;
-			const event = normalizeDomainStat(domain, raw);
-			if (event && event.date >= startDate && event.date <= endDate) events.set(event.date, event);
+			const observation = normalizeDomainStat(raw);
+			if (observation && observation.date >= startDate && observation.date <= endDate) {
+				observations.push(observation);
+			}
 		}
 	}
 	return {
-		events: [...events.values()],
+		events: buildStatsEvents(domain, observations, Date.now()),
 		nextPageToken: optionalPageToken(payload, 'domains.domainStats.query'),
 	};
 }
@@ -218,10 +259,12 @@ async function checkpointStatsCursor(
 function receiptKeysForCleanup(domain: string): string[] {
 	// A live receipt was written less than one TTL ago for an observation no
 	// older than the backfill window, so every possible key is in this range.
-	return Array.from(
-		{ length: MAX_RECEIPT_AGE_DAYS + 1 },
-		(_, daysAgo) => `${PUSHED_PREFIX}${domain}:${utcDateDaysAgo(daysAgo)}`
-	);
+	return Array.from({ length: MAX_RECEIPT_AGE_DAYS + 1 }, (_, daysAgo) =>
+		utcDateDaysAgo(daysAgo)
+	).flatMap((date) => [
+		`${PUSHED_PREFIX}${domain}:${date}`,
+		`${COMPLIANCE_PUSHED_PREFIX}${domain}:${date}`,
+	]);
 }
 
 async function clearDomainOperationalState(redis: Redis, domain: string): Promise<void> {
@@ -276,6 +319,9 @@ async function pushDomainStats(
 	let pageToken = await readStatsCursor(redis, cursorKey, startDate, endDate);
 	const seenTokens = new Set<string>(pageToken ? [pageToken] : []);
 	let mayRecoverPersistedCursor = pageToken !== undefined;
+	// Fetched lazily and at most once per domain per sweep: there is no point
+	// asking Google to break down errors that did not happen.
+	let deliveryErrorsByDate: Map<string, GooglePostmasterDeliveryErrorShare[]> | null = null;
 
 	for (let pageIndex = 0; pageIndex < STATS_PAGES_PER_DOMAIN_PER_SWEEP; pageIndex++) {
 		let page: StatsPage;
@@ -305,7 +351,22 @@ async function pushDomainStats(
 		for (const event of page.events) {
 			const receiptKey = `${PUSHED_PREFIX}${domainName}:${event.date}`;
 			if (await redis.exists(receiptKey)) continue;
-			const acknowledgement = await notifyPostmasterConvex(event, config, { deadline });
+			if (deliveryErrorsByDate === null && (event.deliveryErrorRatio ?? 0) > 0) {
+				// Best-effort and never fatal: an empty breakdown just means the
+				// day's event carries the aggregate ratio without its categories.
+				deliveryErrorsByDate = await fetchDeliveryErrorShares(
+					client,
+					domainName,
+					startDate,
+					endDate
+				);
+			}
+			const deliveryErrors = deliveryErrorsByDate?.get(event.date);
+			const acknowledgement = await notifyPostmasterConvex(
+				deliveryErrors && deliveryErrors.length > 0 ? { ...event, deliveryErrors } : event,
+				config,
+				{ deadline }
+			);
 			if (acknowledgement.disposition === 'delivery_failed') {
 				throw new Error('Google Postmaster webhook delivery did not complete');
 			}
@@ -331,6 +392,34 @@ async function pushDomainStats(
 		pageToken = nextPageToken;
 	}
 	return 'completed';
+}
+
+/**
+ * Push today's Compliance Status verdict once per UTC day.
+ *
+ * Additive-only: an unavailable verdict, a rejected push or a lost
+ * authorization all leave the receipt unwritten and return quietly. The
+ * statistics sweep is never interrupted by compliance collection.
+ */
+async function pushComplianceStatus(
+	redis: Redis,
+	config: MtaConfig,
+	client: GooglePostmasterClient,
+	domainName: string,
+	deadline: number
+): Promise<void> {
+	const date = utcDateDaysAgo(0);
+	const receiptKey = `${COMPLIANCE_PUSHED_PREFIX}${domainName}:${date}`;
+	if (await redis.exists(receiptKey)) return;
+	const checks = await fetchComplianceChecks(client, domainName);
+	if (checks.length === 0) return;
+	const acknowledgement = await notifyPostmasterConvex(
+		{ event: 'postmaster.compliance', domain: domainName, date, checks, timestamp: Date.now() },
+		config,
+		{ deadline }
+	);
+	if (acknowledgement.disposition !== 'accepted_authorized') return;
+	await redis.set(receiptKey, '1', 'EX', PUSH_RECEIPT_TTL_SECONDS);
 }
 
 async function authorizeDomainCollection(
@@ -404,6 +493,7 @@ export async function fetchPostmasterData(redis: Redis, config: MtaConfig): Prom
 				}
 				await redis.zadd(DOMAIN_STATE_INDEX_KEY, generation, domainName);
 				await pushDomainStats(redis, config, client, domain, deadline);
+				await pushComplianceStatus(redis, config, client, domainName, deadline);
 			}
 
 			const nextPageToken = result.page.nextPageToken;
