@@ -32,6 +32,7 @@ function isSensitiveInternalPayload(rawBody: string): boolean {
 			isRecord(payload) &&
 			(payload['event'] === 'postmaster.authorize_domain' ||
 				payload['event'] === 'postmaster.stats' ||
+				payload['event'] === 'postmaster.compliance' ||
 				payload['event'] === 'deliverability.probe_observed')
 		);
 	} catch {
@@ -378,6 +379,32 @@ export const mtaAdapter: InboundAdapter = {
 					domain: payload.domain,
 					date: payload.date,
 					userReportedSpamRatio: payload.userReportedSpamRatio,
+					...(payload.spfSuccessRatio !== undefined
+						? { spfSuccessRatio: payload.spfSuccessRatio }
+						: {}),
+					...(payload.dkimSuccessRatio !== undefined
+						? { dkimSuccessRatio: payload.dkimSuccessRatio }
+						: {}),
+					...(payload.dmarcSuccessRatio !== undefined
+						? { dmarcSuccessRatio: payload.dmarcSuccessRatio }
+						: {}),
+					...(payload.deliveryErrorRatio !== undefined
+						? { deliveryErrorRatio: payload.deliveryErrorRatio }
+						: {}),
+					...(payload.deliveryErrors !== undefined
+						? { deliveryErrors: payload.deliveryErrors }
+						: {}),
+					fetchedAt: payload.timestamp,
+				};
+			}
+			case 'postmaster.compliance': {
+				// The shared contract already bounded and shape-checked `checks`.
+				if (!payload.domain || !payload.date || payload.checks === undefined) return null;
+				return {
+					kind: 'internal.postmaster_compliance',
+					domain: payload.domain,
+					date: payload.date,
+					checks: payload.checks,
 					fetchedAt: payload.timestamp,
 				};
 			}
@@ -405,7 +432,8 @@ export const mtaAdapter: InboundAdapter = {
 		}
 		if (
 			event.kind === 'internal.postmaster_authorize_domain' ||
-			event.kind === 'internal.postmaster_stats'
+			event.kind === 'internal.postmaster_stats' ||
+			event.kind === 'internal.postmaster_compliance'
 		) {
 			return postmasterAcknowledgement(event, dispatchResult);
 		}

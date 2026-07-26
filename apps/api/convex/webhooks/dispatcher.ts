@@ -446,6 +446,19 @@ const DISPATCH: DispatchTable = {
 			domain: e.domain,
 			date: e.date,
 			userReportedSpamRatio: e.userReportedSpamRatio,
+			...(e.spfSuccessRatio !== undefined ? { spfSuccessRatio: e.spfSuccessRatio } : {}),
+			...(e.dkimSuccessRatio !== undefined ? { dkimSuccessRatio: e.dkimSuccessRatio } : {}),
+			...(e.dmarcSuccessRatio !== undefined ? { dmarcSuccessRatio: e.dmarcSuccessRatio } : {}),
+			...(e.deliveryErrorRatio !== undefined ? { deliveryErrorRatio: e.deliveryErrorRatio } : {}),
+			...(e.deliveryErrors !== undefined ? { deliveryErrors: e.deliveryErrors } : {}),
+			fetchedAt: e.fetchedAt,
+		});
+	},
+	'internal.postmaster_compliance': async (ctx, e) => {
+		return ctx.runMutation(internal.delivery.postmaster.ingestCompliance, {
+			domain: e.domain,
+			date: e.date,
+			checks: e.checks,
 			fetchedAt: e.fetchedAt,
 		});
 	},

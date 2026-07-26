@@ -185,6 +185,22 @@ export type InboundEvent =
 			domain: string;
 			date: string;
 			userReportedSpamRatio: number;
+			// Google withholds a metric on days a domain had too little traffic,
+			// so every widened v2 field is optional by design.
+			spfSuccessRatio?: number;
+			dkimSuccessRatio?: number;
+			dmarcSuccessRatio?: number;
+			deliveryErrorRatio?: number;
+			deliveryErrors?: Array<{ category: string; ratio: number }>;
+			fetchedAt: number;
+	  }
+	| {
+			// The v2 Compliance Status verdict for one domain/day. Additive-only:
+			// an operator with no Google account simply never produces one.
+			kind: 'internal.postmaster_compliance';
+			domain: string;
+			date: string;
+			checks: Array<{ name: string; state: 'passing' | 'failing' | 'unknown' }>;
 			fetchedAt: number;
 	  }
 	| {

@@ -8,6 +8,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
 const RETENTION_MS = 90 * DAY_MS;
 export const POSTMASTER_CLEANUP_BATCH_SIZE = 128;
+/** Hard bounds on collector-supplied lists, so a hostile payload stays small. */
+export const MAX_DELIVERY_ERROR_CATEGORIES = 24;
+export const MAX_COMPLIANCE_CHECKS = 32;
 const FETCHED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
 
 export function parseGoogleStatsDate(date: string): number | null {
@@ -47,11 +50,55 @@ export const authorizeDomain = internalMutation({
 	}),
 });
 
+/** Bounded, sanitized delivery-error breakdown; anything unusable is dropped. */
+function sanitizeDeliveryErrors(
+	raw: Array<{ category: string; ratio: number }> | undefined
+): Array<{ category: string; ratio: number }> | undefined {
+	if (raw === undefined) return undefined;
+	const byCategory = new Map<string, number>();
+	for (const entry of raw) {
+		if (byCategory.size >= MAX_DELIVERY_ERROR_CATEGORIES) break;
+		// The category is rendered, so only an opaque enum-shaped token is kept.
+		if (!/^[A-Z0-9_]{1,64}$/.test(entry.category) || !isRatio(entry.ratio)) continue;
+		if (!byCategory.has(entry.category)) byCategory.set(entry.category, entry.ratio);
+	}
+	return byCategory.size === 0
+		? undefined
+		: [...byCategory].map(([category, ratio]) => ({ category, ratio }));
+}
+
+/**
+ * De-duplicated, bounded Compliance Status checks. A check name that is not an
+ * opaque enum-shaped token is dropped rather than escaped: the name is stored
+ * and rendered, and nothing but `[A-Z0-9_]` ever needs to be.
+ */
+function sanitizeComplianceChecks(
+	raw: Array<{ name: string; state: 'passing' | 'failing' | 'unknown' }>
+): Array<{ name: string; state: 'passing' | 'failing' | 'unknown' }> {
+	const byName = new Map<string, 'passing' | 'failing' | 'unknown'>();
+	for (const check of raw) {
+		if (byName.size >= MAX_COMPLIANCE_CHECKS) break;
+		if (!/^[A-Z0-9_]{1,64}$/.test(check.name) || byName.has(check.name)) continue;
+		byName.set(check.name, check.state);
+	}
+	return [...byName].map(([name, state]) => ({ name, state }));
+}
+
+/** An optional ratio that is dropped rather than stored when out of range. */
+function optionalRatio(value: number | undefined): number | undefined {
+	return value !== undefined && isRatio(value) ? value : undefined;
+}
+
 export const ingest = internalMutation({
 	args: {
 		domain: v.string(),
 		date: v.string(),
 		userReportedSpamRatio: v.number(),
+		spfSuccessRatio: v.optional(v.number()),
+		dkimSuccessRatio: v.optional(v.number()),
+		dmarcSuccessRatio: v.optional(v.number()),
+		deliveryErrorRatio: v.optional(v.number()),
+		deliveryErrors: v.optional(v.array(v.object({ category: v.string(), ratio: v.number() }))),
 		fetchedAt: v.number(),
 	},
 	handler: async (ctx, args) => {
@@ -74,11 +121,24 @@ export const ingest = internalMutation({
 			return { ingested: false, authorized: true, reason: 'invalid_observation' as const };
 		}
 
+		// A metric Google withheld for the day, or one that arrives out of range,
+		// is simply absent from the row — never a rejected observation, because
+		// the spam ratio it travels with is still worth keeping.
+		const spfSuccessRatio = optionalRatio(args.spfSuccessRatio);
+		const dkimSuccessRatio = optionalRatio(args.dkimSuccessRatio);
+		const dmarcSuccessRatio = optionalRatio(args.dmarcSuccessRatio);
+		const deliveryErrorRatio = optionalRatio(args.deliveryErrorRatio);
+		const deliveryErrors = sanitizeDeliveryErrors(args.deliveryErrors);
 		const values = {
 			domainId: domain._id,
 			domain: args.domain,
 			periodStart,
 			userReportedSpamRatio: args.userReportedSpamRatio,
+			...(spfSuccessRatio !== undefined ? { spfSuccessRatio } : {}),
+			...(dkimSuccessRatio !== undefined ? { dkimSuccessRatio } : {}),
+			...(dmarcSuccessRatio !== undefined ? { dmarcSuccessRatio } : {}),
+			...(deliveryErrorRatio !== undefined ? { deliveryErrorRatio } : {}),
+			...(deliveryErrors !== undefined ? { deliveryErrors } : {}),
 			fetchedAt: args.fetchedAt,
 			ingestedAt: now,
 		};
@@ -94,8 +154,76 @@ export const ingest = internalMutation({
 		if (existing && existing.fetchedAt === args.fetchedAt) {
 			return { ingested: true, authorized: true, updated: false, replayed: true };
 		}
-		if (existing) await ctx.db.patch(existing._id, values);
+		// `replace`, not `patch`: a metric Google stops reporting for the day must
+		// disappear from the row rather than linger from the previous fetch.
+		if (existing) await ctx.db.replace(existing._id, values);
 		else await ctx.db.insert('googlePostmasterStats', values);
+		return { ingested: true, authorized: true, updated: existing !== null };
+	},
+});
+
+/**
+ * The v2 Compliance Status verdict for one domain/day.
+ *
+ * Shares the statistics path's authorization and freshness rules so a forged
+ * or replayed verdict cannot land, and stores at most
+ * `MAX_COMPLIANCE_CHECKS` de-duplicated, enum-shaped check names.
+ */
+export const ingestCompliance = internalMutation({
+	args: {
+		domain: v.string(),
+		date: v.string(),
+		checks: v.array(
+			v.object({
+				name: v.string(),
+				state: v.union(v.literal('passing'), v.literal('failing'), v.literal('unknown')),
+			})
+		),
+		fetchedAt: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const now = Date.now();
+		const periodStart = parseGoogleStatsDate(args.date);
+		const domain = await findVerifiedDomain(ctx, args.domain);
+		if (!domain) {
+			return { ingested: false, authorized: false, reason: 'domain_not_verified' as const };
+		}
+		const checks = sanitizeComplianceChecks(args.checks);
+		if (
+			periodStart === null ||
+			periodStart > now ||
+			periodStart < now - INGEST_MAX_AGE_MS ||
+			!Number.isFinite(args.fetchedAt) ||
+			args.fetchedAt < periodStart ||
+			args.fetchedAt > now + FETCHED_AT_FUTURE_TOLERANCE_MS ||
+			!isCanonicalDomain(args.domain) ||
+			checks.length === 0
+		) {
+			return { ingested: false, authorized: true, reason: 'invalid_observation' as const };
+		}
+
+		const values = {
+			domainId: domain._id,
+			domain: args.domain,
+			periodStart,
+			checks,
+			fetchedAt: args.fetchedAt,
+			ingestedAt: now,
+		};
+		const existing = await ctx.db
+			.query('googlePostmasterCompliance')
+			.withIndex('by_domain_period', (q) =>
+				q.eq('domain', args.domain).eq('periodStart', periodStart)
+			)
+			.unique();
+		if (existing && existing.fetchedAt > args.fetchedAt) {
+			return { ingested: false, authorized: true, reason: 'stale_observation' as const };
+		}
+		if (existing && existing.fetchedAt === args.fetchedAt) {
+			return { ingested: true, authorized: true, updated: false, replayed: true };
+		}
+		if (existing) await ctx.db.replace(existing._id, values);
+		else await ctx.db.insert('googlePostmasterCompliance', values);
 		return { ingested: true, authorized: true, updated: existing !== null };
 	},
 });
@@ -103,12 +231,20 @@ export const ingest = internalMutation({
 export const cleanup = internalMutation({
 	args: {},
 	handler: async (ctx) => {
+		const horizon = Date.now() - RETENTION_MS;
 		const expired = await ctx.db
 			.query('googlePostmasterStats')
-			.withIndex('by_period', (q) => q.lt('periodStart', Date.now() - RETENTION_MS))
+			.withIndex('by_period', (q) => q.lt('periodStart', horizon))
 			.take(POSTMASTER_CLEANUP_BATCH_SIZE);
 		for (const row of expired) await ctx.db.delete(row._id);
-		const hasMore = expired.length === POSTMASTER_CLEANUP_BATCH_SIZE;
+		const expiredCompliance = await ctx.db
+			.query('googlePostmasterCompliance')
+			.withIndex('by_period', (q) => q.lt('periodStart', horizon))
+			.take(POSTMASTER_CLEANUP_BATCH_SIZE);
+		for (const row of expiredCompliance) await ctx.db.delete(row._id);
+		const hasMore =
+			expired.length === POSTMASTER_CLEANUP_BATCH_SIZE ||
+			expiredCompliance.length === POSTMASTER_CLEANUP_BATCH_SIZE;
 		if (hasMore) await ctx.scheduler.runAfter(0, internal.delivery.postmaster.cleanup, {});
 		return { deleted: expired.length, continuationScheduled: hasMore };
 	},

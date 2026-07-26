@@ -18,6 +18,7 @@ export const MTA_WEBHOOK_EVENT_TYPES = [
 	'all_ips_blocked',
 	'postmaster.authorize_domain',
 	'postmaster.stats',
+	'postmaster.compliance',
 	'dkim.rotated',
 	'inbound.received',
 	'routing.reentry',
@@ -53,6 +54,12 @@ interface EventBase<K extends MtaWebhookEventType> {
 	complaintRate?: number;
 	date?: string;
 	userReportedSpamRatio?: number;
+	spfSuccessRatio?: number;
+	dkimSuccessRatio?: number;
+	dmarcSuccessRatio?: number;
+	deliveryErrorRatio?: number;
+	deliveryErrors?: Array<{ category: string; ratio: number }>;
+	checks?: Array<{ name: string; state: 'passing' | 'failing' | 'unknown' }>;
 	inboundPayload?: object;
 	mailboxPayload?: object;
 	routingReentryToken?: string;
@@ -102,6 +109,16 @@ export type SharedMtaWebhookEvent =
 			domain: string;
 			date: string;
 			userReportedSpamRatio: number;
+			spfSuccessRatio?: number;
+			dkimSuccessRatio?: number;
+			dmarcSuccessRatio?: number;
+			deliveryErrorRatio?: number;
+			deliveryErrors?: Array<{ category: string; ratio: number }>;
+	  })
+	| (EventBase<'postmaster.compliance'> & {
+			domain: string;
+			date: string;
+			checks: Array<{ name: string; state: 'passing' | 'failing' | 'unknown' }>;
 	  })
 	| (EventBase<'dkim.rotated'> & {
 			domain: string;
@@ -199,7 +216,12 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 		(value['blocklists'] !== undefined && !boundedStrings(value['blocklists'], 100, 253)) ||
 		!optionalRatio(value['bounceRate']) ||
 		!optionalRatio(value['complaintRate']) ||
-		!optionalRatio(value['userReportedSpamRatio'])
+		!optionalRatio(value['userReportedSpamRatio']) ||
+		!optionalRatio(value['spfSuccessRatio']) ||
+		!optionalRatio(value['dkimSuccessRatio']) ||
+		!optionalRatio(value['dmarcSuccessRatio']) ||
+		!optionalRatio(value['deliveryErrorRatio']) ||
+		(value['deliveryErrors'] !== undefined && !isDeliveryErrorBreakdown(value['deliveryErrors']))
 	) {
 		return false;
 	}
@@ -251,6 +273,13 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 				typeof value['date'] === 'string' &&
 				DATE.test(value['date']) &&
 				ratio(value['userReportedSpamRatio'])
+			);
+		case 'postmaster.compliance':
+			return (
+				bounded(value['domain'], 253) &&
+				typeof value['date'] === 'string' &&
+				DATE.test(value['date']) &&
+				isComplianceChecks(value['checks'])
 			);
 		case 'dkim.rotated':
 			return (
@@ -341,6 +370,41 @@ function bounded(value: unknown, maximum: number): value is string {
 
 function optionalBounded(value: unknown, maximum: number): boolean {
 	return value === undefined || bounded(value, maximum);
+}
+
+const COMPLIANCE_CHECK_NAME = /^[A-Z0-9_]{1,64}$/;
+const MAX_COMPLIANCE_CHECKS = 32;
+const MAX_DELIVERY_ERROR_CATEGORIES = 24;
+
+/** Bounded `{ category, ratio }` list — the Postmaster delivery-error breakdown. */
+function isDeliveryErrorBreakdown(value: unknown): boolean {
+	return (
+		Array.isArray(value) &&
+		value.length <= MAX_DELIVERY_ERROR_CATEGORIES &&
+		value.every(
+			(item) =>
+				isRecord(item) &&
+				typeof item['category'] === 'string' &&
+				COMPLIANCE_CHECK_NAME.test(item['category']) &&
+				ratio(item['ratio'])
+		)
+	);
+}
+
+/** Bounded Compliance Status checks with enum-shaped names. */
+function isComplianceChecks(value: unknown): boolean {
+	return (
+		Array.isArray(value) &&
+		value.length > 0 &&
+		value.length <= MAX_COMPLIANCE_CHECKS &&
+		value.every(
+			(item) =>
+				isRecord(item) &&
+				typeof item['name'] === 'string' &&
+				COMPLIANCE_CHECK_NAME.test(item['name']) &&
+				(item['state'] === 'passing' || item['state'] === 'failing' || item['state'] === 'unknown')
+		)
+	);
 }
 
 function boundedStrings(value: unknown, maximumItems: number, maximumLength: number): boolean {
