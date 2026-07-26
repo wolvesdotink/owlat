@@ -6,11 +6,16 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
 
 const MAX_ALERT_RECIPIENTS = 20;
+export const REGRESSION_EMAIL_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000] as const;
 
 type RegressionEmailResult = {
 	sent: boolean;
-	reason?: 'not_pending' | 'no_admin_recipient';
+	reason?: 'not_pending' | 'no_admin_recipient' | 'retry_scheduled' | 'delivery_failed';
 };
+
+export function regressionEmailRetryDelay(attempt: number): number | null {
+	return REGRESSION_EMAIL_RETRY_DELAYS_MS[attempt] ?? null;
+}
 
 function escapeHtml(value: string): string {
 	return value
@@ -59,41 +64,118 @@ async function adminEmails(ctx: ActionCtx, organizationId: string): Promise<stri
 	];
 }
 
-export const deliverRegressionEmail = internalAction({
-	args: { organizationId: v.string(), identity: v.string() },
-	handler: async (ctx, args): Promise<RegressionEmailResult> => {
-		const alert = (await ctx.runQuery(internal.delivery.checklistAlertState.getPending, args)) as {
-			message: string;
-		} | null;
-		if (!alert) return { sent: false, reason: 'not_pending' as const };
-		const recipients = await adminEmails(ctx, args.organizationId);
-		const fromEmail =
-			getOptional('DEFAULT_FROM_EMAIL') ??
-			`noreply@${getOptional('DEFAULT_FROM_DOMAIN') ?? 'mail.owlat.app'}`;
-		if (recipients.length === 0) {
-			await ctx.runMutation(internal.delivery.checklistAlertState.markEmailState, {
+async function scheduleTransientFailure(
+	ctx: ActionCtx,
+	args: { organizationId: string; identity: string },
+	attempt: number
+): Promise<RegressionEmailResult> {
+	const delayMs = regressionEmailRetryDelay(attempt);
+	if (delayMs !== null) {
+		await ctx.scheduler.runAfter(
+			delayMs,
+			internal.delivery.checklistAlerts.deliverRegressionEmail,
+			{
 				...args,
-				state: 'unavailable',
-				now: Date.now(),
-			});
-			return { sent: false, reason: 'no_admin_recipient' as const };
-		}
-		const deliveries: PromiseSettledResult<unknown>[] = await Promise.allSettled(
-			recipients.map((to) =>
-				ctx.runAction(internal.systemMail.sendSystemEmail, {
-					to,
-					from: `Owlat <${fromEmail}>`,
-					subject: 'Owlat deliverability regression detected',
-					html: `<p>Owlat detected that a previously verified deliverability check regressed.</p><p>${escapeHtml(alert.message)}</p><p>Open the Deliverability Center to review the live evidence and remediation guidance.</p>`,
-				})
-			)
+				attempt: attempt + 1,
+			}
 		);
-		const sent = deliveries.some((delivery) => delivery.status === 'fulfilled');
+		return { sent: false, reason: 'retry_scheduled' };
+	}
+	await ctx.runMutation(internal.delivery.checklistAlertState.markEmailState, {
+		...args,
+		state: 'unavailable',
+		now: Date.now(),
+	});
+	return { sent: false, reason: 'delivery_failed' };
+}
+
+type RegressionEmailArgs = {
+	organizationId: string;
+	identity: string;
+	attempt?: number;
+};
+
+type RegressionEmailPayload = {
+	to: string;
+	from: string;
+	subject: string;
+	html: string;
+};
+
+export type RegressionEmailDependencies = {
+	loadRecipients: (ctx: ActionCtx, organizationId: string) => Promise<string[]>;
+	sendEmail: (ctx: ActionCtx, payload: RegressionEmailPayload) => Promise<unknown>;
+};
+
+const regressionEmailDependencies: RegressionEmailDependencies = {
+	loadRecipients: adminEmails,
+	sendEmail: (ctx, payload) => ctx.runAction(internal.systemMail.sendSystemEmail, payload),
+};
+
+export async function deliverRegressionEmailHandler(
+	ctx: ActionCtx,
+	args: RegressionEmailArgs,
+	dependencies: RegressionEmailDependencies = regressionEmailDependencies
+): Promise<RegressionEmailResult> {
+	const attempt = Math.max(0, Math.trunc(args.attempt ?? 0));
+	const alert = (await ctx.runQuery(internal.delivery.checklistAlertState.getPending, {
+		organizationId: args.organizationId,
+		identity: args.identity,
+	})) as { message: string } | null;
+	if (!alert) return { sent: false, reason: 'not_pending' };
+	let recipients: string[];
+	try {
+		recipients = await dependencies.loadRecipients(ctx, args.organizationId);
+	} catch {
+		return scheduleTransientFailure(
+			ctx,
+			{ organizationId: args.organizationId, identity: args.identity },
+			attempt
+		);
+	}
+	const fromEmail =
+		getOptional('DEFAULT_FROM_EMAIL') ??
+		`noreply@${getOptional('DEFAULT_FROM_DOMAIN') ?? 'mail.owlat.app'}`;
+	if (recipients.length === 0) {
 		await ctx.runMutation(internal.delivery.checklistAlertState.markEmailState, {
-			...args,
-			state: sent ? 'sent' : 'unavailable',
+			organizationId: args.organizationId,
+			identity: args.identity,
+			state: 'unavailable',
 			now: Date.now(),
 		});
-		return { sent };
+		return { sent: false, reason: 'no_admin_recipient' };
+	}
+	const deliveries = await Promise.allSettled(
+		recipients.map((to) =>
+			dependencies.sendEmail(ctx, {
+				to,
+				from: `Owlat <${fromEmail}>`,
+				subject: 'Owlat deliverability regression detected',
+				html: `<p>Owlat detected that a previously verified deliverability check regressed.</p><p>${escapeHtml(alert.message)}</p><p>Open the Deliverability Center to review the live evidence and remediation guidance.</p>`,
+			})
+		)
+	);
+	if (!deliveries.some((delivery) => delivery.status === 'fulfilled')) {
+		return scheduleTransientFailure(
+			ctx,
+			{ organizationId: args.organizationId, identity: args.identity },
+			attempt
+		);
+	}
+	await ctx.runMutation(internal.delivery.checklistAlertState.markEmailState, {
+		organizationId: args.organizationId,
+		identity: args.identity,
+		state: 'sent',
+		now: Date.now(),
+	});
+	return { sent: true };
+}
+
+export const deliverRegressionEmail = internalAction({
+	args: {
+		organizationId: v.string(),
+		identity: v.string(),
+		attempt: v.optional(v.number()),
 	},
+	handler: (ctx, args): Promise<RegressionEmailResult> => deliverRegressionEmailHandler(ctx, args),
 });

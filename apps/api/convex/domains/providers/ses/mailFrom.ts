@@ -90,6 +90,9 @@ export function buildSesMailFromRecords(host: string, region: string): DnsRecord
 		{
 			type: 'TXT',
 			host,
+			// AWS requires this exact soft-fail policy for a custom MAIL FROM
+			// domain. The strict checklist policy applies to the From-domain
+			// apex SPF record, not this provider-managed bounce identity.
 			value: 'v=spf1 include:amazonses.com ~all',
 		},
 	];

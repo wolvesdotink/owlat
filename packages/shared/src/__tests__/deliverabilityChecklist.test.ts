@@ -28,7 +28,8 @@ function item(
 			observedValues: [],
 			diagnostic: status,
 			attemptId: `attempt-${domainId}-${definition.id}`,
-		}
+		},
+		10
 	);
 }
 
@@ -51,10 +52,55 @@ describe('deliverability checklist reducer', () => {
 		const result = materializeChecklistItem(
 			domainSpf,
 			{ kind: 'domain', domainId: 'a', domain: 'a' },
-			null
+			null,
+			10
 		);
 		expect(result).toMatchObject({ status: 'fail' });
 		expect(result).not.toHaveProperty('lastCheckedAt');
+	});
+
+	it('demotes stale passes according to the item sweep cadence', () => {
+		const now = Date.UTC(2026, 6, 26, 12);
+		const hourly = DELIVERABILITY_CHECKLIST.find((entry) => entry.id === 'deployment.ptr')!;
+		const hourlyEvidence = {
+			provenance: 'validator' as const,
+			validator: 'test',
+			status: 'pass' as const,
+			observedAt: now - 76 * 60_000,
+			observedValues: [],
+			diagnostic: 'PTR passed.',
+			attemptId: 'hourly',
+		};
+		const dailyEvidence = { ...hourlyEvidence, attemptId: 'daily' };
+
+		const staleHourly = materializeChecklistItem(
+			hourly,
+			{ kind: 'deployment' },
+			hourlyEvidence,
+			now
+		);
+		expect(staleHourly).toMatchObject({
+			status: 'warn',
+			lastCheckedAt: hourlyEvidence.observedAt,
+			failureReason: expect.stringContaining('older than'),
+		});
+		expect(deriveDeliverabilityGrade([staleHourly])).toBe('needs_attention');
+		expect(
+			materializeChecklistItem(
+				domainSpf,
+				{ kind: 'domain', domainId: 'a', domain: 'a' },
+				dailyEvidence,
+				now
+			)
+		).toMatchObject({ status: 'pass' });
+		expect(
+			materializeChecklistItem(
+				domainSpf,
+				{ kind: 'domain', domainId: 'a', domain: 'a' },
+				{ ...dailyEvidence, observedAt: now - 25 * 60 * 60_000 - 1 },
+				now
+			)
+		).toMatchObject({ status: 'warn' });
 	});
 
 	it('derives the status sentence grade from consequence and live status', () => {

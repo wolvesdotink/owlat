@@ -216,6 +216,7 @@ import type * as delivery_checklistRecords from "../delivery/checklistRecords.js
 import type * as delivery_checklistRetention from "../delivery/checklistRetention.js";
 import type * as delivery_checklistSweep from "../delivery/checklistSweep.js";
 import type * as delivery_checklistSweepState from "../delivery/checklistSweepState.js";
+import type * as delivery_checklistTraits from "../delivery/checklistTraits.js";
 import type * as delivery_checklistValidatorTypes from "../delivery/checklistValidatorTypes.js";
 import type * as delivery_checklistVerification from "../delivery/checklistVerification.js";
 import type * as delivery_complianceTelemetry from "../delivery/complianceTelemetry.js";
@@ -956,12 +957,19 @@ declare const fullApi: ApiFromModules<{
   "delivery/checklistAlertManagement": typeof delivery_checklistAlertManagement;
   "delivery/checklistAlertState": typeof delivery_checklistAlertState;
   "delivery/checklistAlerts": typeof delivery_checklistAlerts;
+  "delivery/checklistDeploymentValidators": typeof delivery_checklistDeploymentValidators;
+  "delivery/checklistDomainValidators": typeof delivery_checklistDomainValidators;
   "delivery/checklistEvidence": typeof delivery_checklistEvidence;
+  "delivery/checklistGuidance": typeof delivery_checklistGuidance;
   "delivery/checklistLoopback": typeof delivery_checklistLoopback;
   "delivery/checklistLoopbackState": typeof delivery_checklistLoopbackState;
+  "delivery/checklistProviderDetection": typeof delivery_checklistProviderDetection;
+  "delivery/checklistRecords": typeof delivery_checklistRecords;
   "delivery/checklistRetention": typeof delivery_checklistRetention;
   "delivery/checklistSweep": typeof delivery_checklistSweep;
   "delivery/checklistSweepState": typeof delivery_checklistSweepState;
+  "delivery/checklistTraits": typeof delivery_checklistTraits;
+  "delivery/checklistValidatorTypes": typeof delivery_checklistValidatorTypes;
   "delivery/checklistVerification": typeof delivery_checklistVerification;
   "delivery/complianceTelemetry": typeof delivery_complianceTelemetry;
   "delivery/deliverabilityRouting": typeof delivery_deliverabilityRouting;

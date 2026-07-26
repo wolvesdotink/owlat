@@ -20,7 +20,7 @@ import { adminQuery } from '../lib/authedFunctions';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { v } from 'convex/values';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { deliverabilityTargetKey } from './checklistEvidence';
+import { deliverabilityCheckIdValidator, deliverabilityTargetKey } from './checklistEvidence';
 import { guidanceForCheck, type DnsProvider, type VpsProvider } from './checklistGuidance';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
@@ -29,8 +29,16 @@ import {
 	type CopyableRecord,
 } from './checklistRecords';
 
-const DOMAIN_LIMIT = 100;
-const STATE_LIMIT = 1_500;
+export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
+const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
+const DEPLOYMENT_CHECK_COUNT = DELIVERABILITY_CHECKLIST.filter((item) =>
+	item.id.startsWith('deployment.')
+).length;
+const DOMAIN_CHECK_COUNT = DELIVERABILITY_CHECKLIST.filter((item) =>
+	item.id.startsWith('domain.')
+).length;
+export const CENTER_MATERIALIZATION_ACTIVE_ALERT_LIMIT =
+	DEPLOYMENT_CHECK_COUNT + CENTER_MATERIALIZATION_DOMAIN_LIMIT * DOMAIN_CHECK_COUNT;
 
 type CenterItem = Omit<DeliverabilityChecklistItem, 'scope'> & {
 	scope: { kind: 'deployment' } | { kind: 'domain'; domainId: Id<'domains'>; domain: string };
@@ -40,6 +48,61 @@ type CenterItem = Omit<DeliverabilityChecklistItem, 'scope'> & {
 	verification?: { nextCheckAt?: number; attempt: number };
 	lockedReason?: string;
 };
+
+export function completeRowsOrThrow<T>(rows: readonly T[], limit: number, resource: string): T[] {
+	if (rows.length > limit) {
+		throw new Error(
+			`Deliverability Center cannot safely materialize more than ${limit} ${resource}; no partial readiness result was returned.`
+		);
+	}
+	return [...rows];
+}
+
+async function loadCenterDomains(ctx: QueryCtx): Promise<Doc<'domains'>[]> {
+	const rows = await ctx.db.query('domains').take(CENTER_MATERIALIZATION_DOMAIN_LIMIT + 1);
+	return completeRowsOrThrow(rows, CENTER_MATERIALIZATION_DOMAIN_LIMIT, 'sending domains');
+}
+
+async function loadTrackingDomains(ctx: QueryCtx): Promise<Doc<'trackingDomains'>[]> {
+	const rows = await ctx.db
+		.query('trackingDomains')
+		.take(CENTER_MATERIALIZATION_TRACKING_LIMIT + 1);
+	return completeRowsOrThrow(rows, CENTER_MATERIALIZATION_TRACKING_LIMIT, 'tracking domains');
+}
+
+async function loadVerificationStatesForTarget(
+	ctx: QueryCtx,
+	organizationId: string,
+	targetKey: string,
+	itemLimit: number
+): Promise<Doc<'deliverabilityVerificationState'>[]> {
+	const rows = await ctx.db
+		.query('deliverabilityVerificationState')
+		.withIndex('by_org_target_item', (q) =>
+			q.eq('organizationId', organizationId).eq('targetKey', targetKey)
+		)
+		.take(itemLimit + 1);
+	return completeRowsOrThrow(rows, itemLimit, `verification states for ${targetKey}`);
+}
+
+async function loadRelayIdentities(
+	ctx: QueryCtx,
+	domain: Doc<'domains'> | null
+): Promise<Doc<'sendingDomainSesIdentities'>[]> {
+	const domains = domain ? [domain] : await loadCenterDomains(ctx);
+	const identities = await Promise.all(
+		domains.map(async (candidate) => {
+			const rows = await ctx.db
+				.query('sendingDomainSesIdentities')
+				.withIndex('by_domain', (q) => q.eq('domainId', candidate._id))
+				.take(2);
+			return completeRowsOrThrow(rows, 1, `SES relay identities for ${candidate.domain}`)[0];
+		})
+	);
+	return identities.filter(
+		(identity): identity is Doc<'sendingDomainSesIdentities'> => identity !== undefined
+	);
+}
 
 export function loopbackDomains(
 	items: readonly Pick<CenterItem, 'scope' | 'severity' | 'status'>[],
@@ -156,14 +219,22 @@ function summaryFor(grade: 'ready' | 'needs_attention' | 'at_risk', recommended:
 async function buildCenter(ctx: QueryCtx) {
 	const session = await requireOrgPermission(ctx, 'organization:manage');
 	const organizationId = session.activeOrganizationId;
-	const [domains, verificationStates, trackingDomains, settings, warming, routes, activeAlerts] =
+	const domains = await loadCenterDomains(ctx);
+	const targetKeys = [
+		{ key: deliverabilityTargetKey(organizationId), itemLimit: DEPLOYMENT_CHECK_COUNT },
+		...domains.map((domain) => ({
+			key: deliverabilityTargetKey(organizationId, domain._id),
+			itemLimit: DOMAIN_CHECK_COUNT,
+		})),
+	];
+	const [statePages, trackingDomains, settings, warming, routes, activeAlertRows] =
 		await Promise.all([
-			ctx.db.query('domains').take(DOMAIN_LIMIT),
-			ctx.db
-				.query('deliverabilityVerificationState')
-				.withIndex('by_org_target_item', (q) => q.eq('organizationId', organizationId))
-				.take(STATE_LIMIT),
-			ctx.db.query('trackingDomains').take(DOMAIN_LIMIT),
+			Promise.all(
+				targetKeys.map((target) =>
+					loadVerificationStatesForTarget(ctx, organizationId, target.key, target.itemLimit)
+				)
+			),
+			loadTrackingDomains(ctx),
 			ctx.db.query('instanceSettings').first(), // bounded: singleton row
 			ctx.db.query('warmingState').first(), // bounded: singleton row
 			ctx.db.query('providerRoutes').take(10), // bounded: three message-type rows
@@ -173,8 +244,14 @@ async function buildCenter(ctx: QueryCtx) {
 					q.eq('organizationId', organizationId).eq('resolvedAt', undefined)
 				)
 				.order('desc')
-				.take(50),
+				.take(CENTER_MATERIALIZATION_ACTIVE_ALERT_LIMIT + 1),
 		]);
+	const activeAlerts = completeRowsOrThrow(
+		activeAlertRows,
+		CENTER_MATERIALIZATION_ACTIVE_ALERT_LIMIT,
+		'active regression alerts'
+	);
+	const verificationStates = statePages.flat();
 
 	const evidenceRows = await Promise.all(
 		verificationStates.map((state) =>
@@ -191,6 +268,7 @@ async function buildCenter(ctx: QueryCtx) {
 		verificationStates.map((row) => [scopedItemKey(row.targetKey, row.itemId), row] as const)
 	);
 
+	const now = Date.now();
 	const items: CenterItem[] = [];
 	for (const definition of DELIVERABILITY_CHECKLIST) {
 		const scopedDomains = definition.id.startsWith('domain.') ? domains : [null];
@@ -203,6 +281,7 @@ async function buildCenter(ctx: QueryCtx) {
 					? { kind: 'domain', domainId: domain._id, domain: domain.domain }
 					: { kind: 'deployment' },
 				evidenceDto(evidence),
+				now,
 				definition.severity === 'blocking' ? 'fail' : 'warn'
 			);
 			const verification = stateByItem.get(scopedItemKey(targetKey, definition.id));
@@ -216,7 +295,7 @@ async function buildCenter(ctx: QueryCtx) {
 						? 'Owlat will check again automatically; you can also verify now.'
 						: DELIVERABILITY_NEXT_ACTIONS[definition.id],
 				records: domain
-					? domainRecordsForItem(definition.id, domain, trackingDomains, settings, warming)
+					? domainRecordsForItem(definition.id, domain, trackingDomains, settings)
 					: deploymentRecordsForItem(definition.id, warming),
 				instructions: guidanceForCheck(
 					definition.id,
@@ -303,7 +382,7 @@ async function buildCenter(ctx: QueryCtx) {
 		checkedAt:
 			evidenceRows.reduce((latest, evidence) => Math.max(latest, evidence?.observedAt ?? 0), 0) ||
 			null,
-		statusRefreshedAt: Date.now(),
+		statusRefreshedAt: now,
 		alerts: activeAlerts.map((alert) => ({
 			id: alert._id,
 			itemId: alert.itemId,
@@ -367,16 +446,22 @@ export const getVerificationContext = internalQuery({
 	args: {
 		organizationId: v.string(),
 		domainId: v.optional(v.id('domains')),
+		itemId: deliverabilityCheckIdValidator,
 	},
 	handler: async (ctx, args) => {
 		const domain = args.domainId ? await ctx.db.get(args.domainId) : null;
+		const isDeploymentCheck = args.itemId.startsWith('deployment.');
+		const needsRelay = args.itemId === 'deployment.relay';
+		const needsTracking = args.itemId === 'domain.tracking';
+		const needsPostmaster =
+			args.itemId === 'domain.postmaster' || args.itemId === 'domain.spam_rate';
 		const [settings, warming, routes, relayIdentities, tracking, postmaster] = await Promise.all([
-			ctx.db.query('instanceSettings').first(), // bounded: singleton row
-			ctx.db.query('warmingState').first(), // bounded: singleton row
-			ctx.db.query('providerRoutes').take(10), // bounded: three message-type rows
-			ctx.db.query('sendingDomainSesIdentities').take(DOMAIN_LIMIT),
-			args.domainId ? ctx.db.query('trackingDomains').take(DOMAIN_LIMIT) : Promise.resolve([]),
-			domain
+			isDeploymentCheck ? ctx.db.query('instanceSettings').first() : Promise.resolve(null),
+			isDeploymentCheck ? ctx.db.query('warmingState').first() : Promise.resolve(null),
+			needsRelay ? ctx.db.query('providerRoutes').take(10) : Promise.resolve([]),
+			needsRelay ? loadRelayIdentities(ctx, null) : Promise.resolve([]),
+			needsTracking ? loadTrackingDomains(ctx) : Promise.resolve([]),
+			domain && needsPostmaster
 				? ctx.db
 						.query('googlePostmasterStats')
 						.withIndex('by_domain_period', (q) => q.eq('domain', domain.domain))

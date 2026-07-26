@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DELIVERABILITY_CHECKLIST, materializeChecklistItem } from '@owlat/shared';
 import type { Id } from '../../_generated/dataModel';
 import { loopbackDomains } from '../checklist';
 
@@ -30,6 +31,41 @@ describe('Deliverability Center loopback eligibility', () => {
 		expect(result).toEqual([
 			{ id: domainA, domain: 'a.example', eligible: true },
 			expect.objectContaining({ id: domainB, eligible: false }),
+		]);
+	});
+
+	it('refuses loopback when a blocking pass is older than its hourly cadence', () => {
+		const domainId = 'domain-a' as Id<'domains'>;
+		const now = Date.UTC(2026, 6, 26, 12);
+		const ptr = DELIVERABILITY_CHECKLIST.find((item) => item.id === 'deployment.ptr')!;
+		const stalePtr = materializeChecklistItem(
+			ptr,
+			{ kind: 'deployment' },
+			{
+				provenance: 'validator',
+				validator: 'test',
+				status: 'pass',
+				observedAt: now - 76 * 60_000,
+				observedValues: [],
+				diagnostic: 'PTR passed.',
+				attemptId: 'stale-ptr',
+			},
+			now
+		);
+
+		expect(stalePtr.status).toBe('warn');
+		expect(
+			loopbackDomains(
+				[stalePtr] as never,
+				[{ _id: domainId, domain: 'a.example', providerType: 'mta' }] as never,
+				true
+			)
+		).toEqual([
+			expect.objectContaining({
+				id: domainId,
+				eligible: false,
+				blockedReason: expect.stringContaining('server identity'),
+			}),
 		]);
 	});
 });

@@ -45,6 +45,46 @@ export const DOMAIN_CHECK_IDS = [
 export type DeploymentCheckId = (typeof DEPLOYMENT_CHECK_IDS)[number];
 export type DomainCheckId = (typeof DOMAIN_CHECK_IDS)[number];
 export type DeliverabilityCheckId = DeploymentCheckId | DomainCheckId;
+
+export const HOURLY_DELIVERABILITY_CHECK_IDS = [
+	'deployment.ptr',
+	'deployment.fcrdns',
+	'deployment.ptr_nongeneric',
+	'deployment.ehlo_ptr',
+	'deployment.dnsbl',
+	'deployment.ipv6_ptr',
+	'deployment.ipv6_aaaa',
+] as const satisfies readonly DeliverabilityCheckId[];
+
+export const DELIVERABILITY_EVIDENCE_CADENCE_MS = {
+	hourly: 60 * 60_000,
+	daily: 24 * 60 * 60_000,
+} as const;
+
+// Scheduled work can start slightly after its nominal interval. This grace
+// prevents a passing item from flickering stale while its next sweep is
+// already queued, without allowing an old result to remain green indefinitely.
+export const DELIVERABILITY_EVIDENCE_SWEEP_GRACE_MS = 15 * 60_000;
+
+const HOURLY_DELIVERABILITY_CHECKS = new Set<DeliverabilityCheckId>(
+	HOURLY_DELIVERABILITY_CHECK_IDS
+);
+
+export function deliverabilityEvidenceMaxAgeMs(itemId: DeliverabilityCheckId): number {
+	const cadence = HOURLY_DELIVERABILITY_CHECKS.has(itemId)
+		? DELIVERABILITY_EVIDENCE_CADENCE_MS.hourly
+		: DELIVERABILITY_EVIDENCE_CADENCE_MS.daily;
+	return cadence + DELIVERABILITY_EVIDENCE_SWEEP_GRACE_MS;
+}
+
+export function isDeliverabilityEvidenceFresh(
+	itemId: DeliverabilityCheckId,
+	observedAt: number,
+	now: number
+): boolean {
+	return now - observedAt <= deliverabilityEvidenceMaxAgeMs(itemId);
+}
+
 export const DELIVERABILITY_NEXT_ACTIONS: Record<DeliverabilityCheckId, string> = {
 	'deployment.ptr': 'Set the sending address PTR to the exact mail hostname Owlat shows.',
 	'deployment.fcrdns': 'Publish the matching A record so the PTR hostname resolves back.',
@@ -388,22 +428,27 @@ export function materializeChecklistItem(
 	definition: DeliverabilityChecklistDefinition,
 	scope: DeliverabilityScope,
 	evidence: DeliverabilityValidatorEvidence | null,
+	now: number,
 	fallbackStatus: Exclude<DeliverabilityChecklistStatus, 'pass'> = 'fail'
 ): DeliverabilityChecklistItem {
-	const status = evidence?.status ?? fallbackStatus;
+	const isStalePass =
+		evidence?.status === 'pass' &&
+		!isDeliverabilityEvidenceFresh(definition.id, evidence.observedAt, now);
+	const status = isStalePass ? 'warn' : (evidence?.status ?? fallbackStatus);
 	if (status === 'pass' && evidence?.provenance !== 'validator') {
 		throw new Error(`Checklist pass for ${definition.id} requires validator evidence`);
 	}
+	const diagnostic = isStalePass
+		? 'The last successful verification is older than this check’s sweep cadence. Verify again before relying on it.'
+		: (evidence?.diagnostic ?? 'No validator evidence has been recorded yet.');
 	return {
 		...definition,
 		scope,
 		status,
 		...(evidence ? { lastCheckedAt: evidence.observedAt } : {}),
 		observed: evidence?.observedValues ?? [],
-		...(status === 'fail' || status === 'warn'
-			? { failureReason: evidence?.diagnostic ?? 'No successful verification has been recorded.' }
-			: {}),
-		diagnosticReport: evidence?.diagnostic ?? 'No validator evidence has been recorded yet.',
+		...(status === 'fail' || status === 'warn' ? { failureReason: diagnostic } : {}),
+		diagnosticReport: diagnostic,
 	};
 }
 

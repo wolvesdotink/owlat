@@ -8,6 +8,7 @@ import {
 	type DeliverabilityProviderGuidance,
 	type DeliverabilityVpsProvider,
 } from '@owlat/shared/deliverabilityProviderGuidance';
+import { checklistTraits } from './checklistTraits';
 
 export type VpsProvider = DeliverabilityVpsProvider;
 export type DnsProvider = DeliverabilityDnsProvider;
@@ -45,43 +46,27 @@ export function guidanceForCheck(
 	itemId: DeliverabilityCheckId,
 	detected: { vps: VpsProvider | null; dns: DnsProvider | null }
 ): ProviderGuidance {
-	const vpsConsoleItems: readonly DeliverabilityCheckId[] = [
-		'deployment.ptr',
-		'deployment.fcrdns',
-		'deployment.ptr_nongeneric',
-		'deployment.port25',
-		'deployment.ipv6_address',
-		'deployment.ipv6_ptr',
-	];
-	const dnsConsoleItems: readonly DeliverabilityCheckId[] = [
-		'domain.spf',
-		'domain.dkim',
-		'domain.dmarc',
-		'domain.return_path',
-		'domain.mta_sts',
-		'domain.tls_rpt',
-		'domain.tlsa',
-		'domain.tracking',
-		'deployment.ipv6_aaaa',
-		'deployment.ipv6_spf',
-	];
-	if (vpsConsoleItems.includes(itemId) && detected.vps) {
-		if (itemId === 'deployment.port25') {
+	const guidance = checklistTraits(itemId).providerGuidance;
+	if (
+		(guidance === 'vps_reverse_dns' || guidance === 'vps_port_25' || guidance === 'vps_ipv6') &&
+		detected.vps
+	) {
+		if (guidance === 'vps_port_25') {
 			return DELIVERABILITY_VPS_PORT25_GUIDANCE[detected.vps];
 		}
-		if (itemId === 'deployment.ipv6_address') {
+		if (guidance === 'vps_ipv6') {
 			return DELIVERABILITY_VPS_IPV6_GUIDANCE[detected.vps];
 		}
 		return DELIVERABILITY_VPS_GUIDANCE[detected.vps];
 	}
-	if (dnsConsoleItems.includes(itemId) && detected.dns) {
+	if (guidance === 'dns' && detected.dns) {
 		return DELIVERABILITY_DNS_GUIDANCE[detected.dns];
 	}
 	return {
 		provider: 'generic',
 		providerLabel: 'Your provider',
 		summary:
-			vpsConsoleItems.includes(itemId) || dnsConsoleItems.includes(itemId)
+			guidance !== null
 				? 'Owlat could not identify the provider from authoritative data.'
 				: DELIVERABILITY_NEXT_ACTIONS[itemId],
 		steps: [
