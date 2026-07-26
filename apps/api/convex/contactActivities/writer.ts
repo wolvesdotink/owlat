@@ -149,11 +149,19 @@ export async function recordContactActivity<L extends ContactActivityType>(
 						? { hasClicked: true }
 						: undefined;
 
+			// Widen to the documented per-literal union — the same correlated-union
+			// cast this module already sanctions for its callers — and then narrow
+			// on the literal for real. The metadata shape is never asserted; it is
+			// read from the union member the discriminant selects.
+			const narrowed = args as RecordContactActivityArgs;
+			const bounceType =
+				narrowed.literal === 'email_bounced' ? narrowed.metadata.bounceType : undefined;
+
 			const engagement = engagementPatchForActivity({
 				contact,
 				activityType: args.literal,
 				occurredAt,
-				bounceType: (args.metadata as { bounceType?: string } | undefined)?.bounceType,
+				bounceType,
 				now: Date.now(),
 			});
 
