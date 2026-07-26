@@ -101,8 +101,10 @@ const SIGNED_HEADERS = [
 	'content-transfer-encoding',
 	'list-unsubscribe',
 	'list-unsubscribe-post',
+	'cfbl-address',
+	'cfbl-feedback-id',
 ];
-const OVERSIGNED_HEADERS = ['from', 'subject', 'to'];
+const OVERSIGNED_HEADERS = ['from', 'subject', 'to', 'cfbl-address'];
 
 function splitHeadersAndBody(raw: Buffer): { headerBuf: Buffer; bodyBuf: Buffer } {
 	let idx = raw.indexOf('\r\n\r\n');

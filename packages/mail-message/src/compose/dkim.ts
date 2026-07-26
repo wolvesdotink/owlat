@@ -69,6 +69,13 @@ export interface DkimSigningKey {
  * aligns with From, or Gmail suppresses the one-click unsubscribe button
  * (the 2024 bulk-sender rule). Dropping the `-post` entry re-introduces that
  * regression.
+ *
+ * The RFC 9477 CFBL pair is here for the same class of reason: §3.1.4 says both
+ * fields MUST appear in the `h=` tag of the signature whose `d=` matches the
+ * CFBL address domain, and that "if the header field is not covered by the `h=`
+ * tag, the Mailbox Provider SHALL NOT send a report message". Uncovered, the
+ * advertised complaint address is both inert (no provider will use it) and
+ * rewritable in transit (an intermediary could redirect complaints).
  */
 export const SIGNED_HEADERS: readonly string[] = [
 	'from',
@@ -84,15 +91,20 @@ export const SIGNED_HEADERS: readonly string[] = [
 	'content-transfer-encoding',
 	'list-unsubscribe',
 	'list-unsubscribe-post',
+	'cfbl-address',
+	'cfbl-feedback-id',
 ];
 
 /**
  * Headers we OVERSIGN: each gets one extra slot in `h=` beyond its occurrences
  * in the message. From/Subject/To are the DMARC- and display-critical headers
  * an attacker would re-prepend; oversigning them makes any added instance break
- * the signature. (RFC 6376 §8.15; M3AAWG oversigning.)
+ * the signature. `cfbl-address` joins them because RFC 9477 defines no tiebreak
+ * between duplicate CFBL fields: oversigning turns an added second instance into
+ * a signature failure instead of an ambiguity a report generator resolves in the
+ * attacker's favour. (RFC 6376 §8.15; M3AAWG oversigning.)
  */
-const OVERSIGNED_HEADERS: readonly string[] = ['from', 'subject', 'to'];
+const OVERSIGNED_HEADERS: readonly string[] = ['from', 'subject', 'to', 'cfbl-address'];
 
 /**
  * RFC 6376 §3.5 tag ordering for a `DKIM-Signature`. Mirrors `mailauth`'s
