@@ -2,15 +2,15 @@
 import type {
 	DeliverabilityChecklistGroup,
 	DeliverabilityChecklistItem,
-} from "~/utils/deliverabilityCenter";
-import DeliverabilityDnsRecords from "./DeliverabilityDnsRecords.vue";
-import DeliverabilityGuidance from "./DeliverabilityGuidance.vue";
+} from '~/utils/deliverabilityCenter';
+import DeliverabilitySetupValues from './DeliverabilitySetupValues.vue';
+import DeliverabilityGuidance from './DeliverabilityGuidance.vue';
 import {
 	checklistItemDomId,
 	DELIVERABILITY_STATUS_PRESENTATION,
 	formatVerificationAge,
 	itemKey,
-} from "~/utils/deliverabilityCenter";
+} from '~/utils/deliverabilityCenter';
 
 defineProps<{
 	groups: DeliverabilityChecklistGroup[];
@@ -24,9 +24,9 @@ const emit = defineEmits<{
 const { copy, isCopied } = useCopyToClipboard();
 
 const groupIcon = {
-	blocking: "lucide:shield-alert",
-	reputation: "lucide:trending-up",
-	recommended: "lucide:sparkles",
+	blocking: 'lucide:shield-alert',
+	reputation: 'lucide:trending-up',
+	recommended: 'lucide:sparkles',
 } as const;
 </script>
 
@@ -98,13 +98,13 @@ const groupIcon = {
 								v-if="item.observed.length"
 								class="mt-2 break-words font-mono text-xs text-text-tertiary"
 							>
-								Observed: {{ item.observed.join(" · ") }}
+								Observed: {{ item.observed.join(' · ') }}
 							</p>
 						</div>
 
-						<DeliverabilityDnsRecords
-							v-if="item.records?.length"
-							:records="item.records"
+						<DeliverabilitySetupValues
+							v-if="item.setupValues?.length"
+							:setup-values="item.setupValues"
 							:scope-key="itemKey(item.scope, item.id)"
 						/>
 						<DeliverabilityGuidance
@@ -142,8 +142,8 @@ const groupIcon = {
 								>
 									{{
 										isCopied(`${itemKey(item.scope, item.id)}:diagnostic`)
-											? "Diagnostic copied"
-											: "Copy diagnostic"
+											? 'Diagnostic copied'
+											: 'Copy diagnostic'
 									}}
 								</button>
 								<a

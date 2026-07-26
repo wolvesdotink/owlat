@@ -4,20 +4,14 @@ import type {
 	DeliverabilityChecklistStatus,
 	DeliverabilityGrade as CanonicalDeliverabilityGrade,
 	DeliverabilitySeverity as CanonicalDeliverabilitySeverity,
+	DeliverabilitySetupValue as CanonicalDeliverabilitySetupValue,
 } from '@owlat/shared';
 
 export type DeliverabilityGrade = CanonicalDeliverabilityGrade;
 export type DeliverabilityItemStatus = DeliverabilityChecklistStatus;
 export type DeliverabilitySeverity = CanonicalDeliverabilitySeverity;
 
-export interface DeliverabilityDnsRecord {
-	id: string;
-	label: string;
-	name: string;
-	type: string;
-	value: string;
-	ttl: number;
-}
+export type DeliverabilitySetupValue = CanonicalDeliverabilitySetupValue;
 
 export interface DeliverabilityInstructions {
 	provider?: string;
@@ -35,7 +29,7 @@ export interface DeliverabilityChecklistItem extends Omit<CanonicalChecklistItem
 	scope: DeliverabilityScope;
 	nextStep?: string;
 	instructions?: DeliverabilityInstructions;
-	records?: DeliverabilityDnsRecord[];
+	setupValues?: DeliverabilitySetupValue[];
 	verification?: {
 		nextCheckAt?: number;
 		attempt?: number;

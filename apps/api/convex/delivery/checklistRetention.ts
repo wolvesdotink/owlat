@@ -13,6 +13,7 @@ import type { Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { loopbackTimeoutPatch } from './checklistLoopbackState';
+import { checklistTraits } from './checklistTraits';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 export const DELIVERABILITY_EVIDENCE_RETENTION_MS = 90 * DAY_MS;
@@ -119,7 +120,7 @@ export const sweepOrphanVerificationStates = internalMutation({
 		let deleted = 0;
 		for (const state of page.page) {
 			if (
-				!state.itemId.startsWith('domain.') ||
+				checklistTraits(state.itemId).scope !== 'domain' ||
 				state.domainId === undefined ||
 				(await ctx.db.get(state.domainId)) !== null
 			) {

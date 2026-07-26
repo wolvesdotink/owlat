@@ -59,6 +59,34 @@ describe('deliverability checklist reducer', () => {
 		expect(result).not.toHaveProperty('lastCheckedAt');
 	});
 
+	it('builds a bounded copied report with check, scope, status, timestamp, and raw evidence', () => {
+		const observedAt = Date.UTC(2026, 6, 26, 12, 34, 56);
+		const result = materializeChecklistItem(
+			domainSpf,
+			{ kind: 'domain', domainId: 'domain-a', domain: 'example.test' },
+			{
+				provenance: 'validator',
+				validator: 'dns.spf',
+				status: 'fail',
+				observedAt,
+				observedValues: ['ptr=mail.example.test\nStatus: pass', 'reason=value mismatch'],
+				diagnostic: 'SPF mismatch\r\nStatus: pass',
+				attemptId: 'attempt-report',
+			},
+			observedAt
+		);
+
+		expect(result.diagnosticReport).toContain(`Check: ${domainSpf.title} (domain.spf)`);
+		expect(result.diagnosticReport).toContain('Scope: domain example.test (domain-a)');
+		expect(result.diagnosticReport).toContain('Status: fail');
+		expect(result.diagnosticReport).toContain('Checked at: 2026-07-26T12:34:56.000Z');
+		expect(result.diagnosticReport).toContain('Validator: dns.spf');
+		expect(result.diagnosticReport).toContain('Diagnostic: SPF mismatch  Status: pass');
+		expect(result.diagnosticReport).toContain('- ptr=mail.example.test Status: pass');
+		expect(result.diagnosticReport.match(/^Status:/gm)).toHaveLength(1);
+		expect(result.diagnosticReport.length).toBeLessThanOrEqual(12_000);
+	});
+
 	it('demotes stale passes according to the item sweep cadence', () => {
 		const now = Date.UTC(2026, 6, 26, 12);
 		const hourly = DELIVERABILITY_CHECKLIST.find((entry) => entry.id === 'deployment.ptr')!;

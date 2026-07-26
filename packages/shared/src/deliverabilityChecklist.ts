@@ -1,9 +1,6 @@
-/**
- * Canonical Deliverability Center taxonomy and reducer.
- *
- * `pass` is intentionally evidence-only: configuration presence may explain a
- * failure, but only a validator observation can prove a check.
- */
+/** Canonical Deliverability Center taxonomy and evidence-only reducer. */
+
+import { deliverabilityDiagnosticReport } from './deliverabilityDiagnostics';
 
 export const DELIVERABILITY_CHECKLIST_STATUSES = ['pass', 'warn', 'fail', 'pending-dns'] as const;
 export type DeliverabilityChecklistStatus = (typeof DELIVERABILITY_CHECKLIST_STATUSES)[number];
@@ -448,7 +445,13 @@ export function materializeChecklistItem(
 		...(evidence ? { lastCheckedAt: evidence.observedAt } : {}),
 		observed: evidence?.observedValues ?? [],
 		...(status === 'fail' || status === 'warn' ? { failureReason: diagnostic } : {}),
-		diagnosticReport: diagnostic,
+		diagnosticReport: deliverabilityDiagnosticReport(
+			definition,
+			scope,
+			status,
+			evidence,
+			diagnostic
+		),
 	};
 }
 

@@ -1,8 +1,9 @@
-import type { DeliverabilityCheckId } from '@owlat/shared';
+import type { DeliverabilityCheckId, DeliverabilitySetupValue } from '@owlat/shared';
 import { reverseIpAddressForDns } from '@owlat/shared/ipAddress';
 import { buildMtaStsTxtValue, mtaStsPolicyId } from '@owlat/shared/mtaStsPolicy';
 import type { Doc } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
+import { checklistTraits } from './checklistTraits';
 
 export type ChecklistDnsRecord = {
 	type?: 'TXT' | 'CNAME' | 'MX' | 'TLSA';
@@ -10,15 +11,6 @@ export type ChecklistDnsRecord = {
 	hostname?: string;
 	value: string;
 	priority?: number;
-};
-
-export type CopyableRecord = {
-	id: string;
-	label: string;
-	name: string;
-	type: string;
-	value: string;
-	ttl: number;
 };
 
 export function absoluteDnsRecordName(record: ChecklistDnsRecord, domain: string): string {
@@ -37,29 +29,30 @@ export function hardenedSpfRecordValue(value: string): string {
 	return /(?:^|\s)[+?~]?all$/i.test(trimmed) ? trimmed.replace(/[+?~]?all$/i, '-all') : trimmed;
 }
 
-function copyableRecord(
+function dnsSetupValue(
 	itemId: DeliverabilityCheckId,
 	domain: string,
 	record: ChecklistDnsRecord,
 	index: number
-): CopyableRecord {
-	const type = record.type ?? 'TXT';
+): DeliverabilitySetupValue {
+	const recordType = record.type ?? 'TXT';
 	return {
+		kind: 'dns_record',
 		id: `${itemId}:${index}`,
-		label: `${type} record`,
+		label: `${recordType} record`,
 		name: absoluteDnsRecordName(record, domain),
-		type,
+		recordType,
 		value: record.priority === undefined ? record.value : `${record.priority} ${record.value}`,
 		ttl: 3_600,
 	};
 }
 
-export function domainRecordsForItem(
+export function domainSetupValuesForItem(
 	itemId: DeliverabilityCheckId,
 	domain: Doc<'domains'>,
 	trackingDomains: readonly Doc<'trackingDomains'>[],
 	settings: Doc<'instanceSettings'> | null
-): CopyableRecord[] {
+): DeliverabilitySetupValue[] {
 	let records: ChecklistDnsRecord[] = [];
 	switch (itemId) {
 		case 'domain.spf':
@@ -126,7 +119,7 @@ export function domainRecordsForItem(
 		default:
 			break;
 	}
-	return records.map((record, index) => copyableRecord(itemId, domain.domain, record, index));
+	return records.map((record, index) => dnsSetupValue(itemId, domain.domain, record, index));
 }
 
 function ptrRecordName(ip: string): string | null {
@@ -136,12 +129,12 @@ function ptrRecordName(ip: string): string | null {
 }
 
 /** Exact deployment-side values derived from the live MTA identity snapshot. */
-export function deploymentRecordsForItem(
+export function deploymentSetupValuesForItem(
 	itemId: DeliverabilityCheckId,
 	warming: Doc<'warmingState'> | null
-): CopyableRecord[] {
+): DeliverabilitySetupValue[] {
 	if (!warming) return [];
-	const ipv6Item = itemId.startsWith('deployment.ipv6_');
+	const ipv6Item = checklistTraits(itemId).addressFamily === 'ipv6';
 	const ips = warming.ips.filter((entry) => entry.ip.includes(':') === ipv6Item);
 	if (itemId === 'deployment.ipv6_spf') {
 		const addressesByDomain = new Map<string, Set<string>>();
@@ -153,18 +146,16 @@ export function deploymentRecordsForItem(
 			addressesByDomain.set(domain, addresses);
 		}
 		return [...addressesByDomain.entries()].map(([domain, addresses], index) => ({
+			kind: 'spf_mechanisms',
 			id: `${itemId}:${index}`,
 			label: 'SPF mechanisms to add',
-			name: domain,
-			type: 'TXT fragment',
-			value: [...addresses]
-				.sort()
-				.map((address) => `ip6:${address}`)
-				.join(' '),
-			ttl: 3_600,
+			domain,
+			mechanisms: [...addresses].sort().map((address) => `ip6:${address}`),
+			instruction:
+				'Add these mechanisms to the existing SPF policy immediately before its terminal all mechanism. Do not publish a second SPF record.',
 		}));
 	}
-	return ips.flatMap((entry, index): CopyableRecord[] => {
+	return ips.flatMap((entry, index): DeliverabilitySetupValue[] => {
 		const ehlo = entry.fcrdns?.ehlo;
 		const id = `${itemId}:${index}`;
 		switch (itemId) {
@@ -174,10 +165,11 @@ export function deploymentRecordsForItem(
 				return name && ehlo
 					? [
 							{
+								kind: 'dns_record',
 								id,
 								label: 'PTR record',
 								name,
-								type: 'PTR',
+								recordType: 'PTR',
 								value: ehlo,
 								ttl: 3_600,
 							},
@@ -189,10 +181,11 @@ export function deploymentRecordsForItem(
 				return ehlo
 					? [
 							{
+								kind: 'dns_record',
 								id,
 								label: ipv6Item ? 'AAAA record' : 'A record',
 								name: ehlo,
-								type: ipv6Item ? 'AAAA' : 'A',
+								recordType: ipv6Item ? 'AAAA' : 'A',
 								value: entry.ip,
 								ttl: 3_600,
 							},
@@ -202,12 +195,11 @@ export function deploymentRecordsForItem(
 				return ehlo
 					? [
 							{
+								kind: 'smtp_setting',
 								id,
 								label: 'SMTP EHLO hostname',
-								name: 'EHLO',
-								type: 'SMTP',
+								setting: 'ehlo_hostname',
 								value: ehlo,
-								ttl: 0,
 							},
 						]
 					: [];

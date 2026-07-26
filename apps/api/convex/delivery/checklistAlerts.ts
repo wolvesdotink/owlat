@@ -66,7 +66,11 @@ async function adminEmails(ctx: ActionCtx, organizationId: string): Promise<stri
 
 async function scheduleTransientFailure(
 	ctx: ActionCtx,
-	args: { organizationId: string; identity: string },
+	args: {
+		organizationId: string;
+		identity: string;
+		pendingRecipients?: string[];
+	},
 	attempt: number
 ): Promise<RegressionEmailResult> {
 	const delayMs = regressionEmailRetryDelay(attempt);
@@ -82,7 +86,8 @@ async function scheduleTransientFailure(
 		return { sent: false, reason: 'retry_scheduled' };
 	}
 	await ctx.runMutation(internal.delivery.checklistAlertState.markEmailState, {
-		...args,
+		organizationId: args.organizationId,
+		identity: args.identity,
 		state: 'unavailable',
 		now: Date.now(),
 	});
@@ -93,6 +98,7 @@ type RegressionEmailArgs = {
 	organizationId: string;
 	identity: string;
 	attempt?: number;
+	pendingRecipients?: string[];
 };
 
 type RegressionEmailPayload = {
@@ -112,6 +118,13 @@ const regressionEmailDependencies: RegressionEmailDependencies = {
 	sendEmail: (ctx, payload) => ctx.runAction(internal.systemMail.sendSystemEmail, payload),
 };
 
+function normalizedRecipients(recipients: readonly string[]): string[] {
+	return [...new Set(recipients.map((email) => email.trim().toLowerCase()).filter(Boolean))].slice(
+		0,
+		MAX_ALERT_RECIPIENTS
+	);
+}
+
 export async function deliverRegressionEmailHandler(
 	ctx: ActionCtx,
 	args: RegressionEmailArgs,
@@ -123,27 +136,41 @@ export async function deliverRegressionEmailHandler(
 		identity: args.identity,
 	})) as { message: string } | null;
 	if (!alert) return { sent: false, reason: 'not_pending' };
-	let recipients: string[];
+	let currentRecipients: string[];
 	try {
-		recipients = await dependencies.loadRecipients(ctx, args.organizationId);
+		currentRecipients = normalizedRecipients(
+			await dependencies.loadRecipients(ctx, args.organizationId)
+		);
 	} catch {
 		return scheduleTransientFailure(
 			ctx,
-			{ organizationId: args.organizationId, identity: args.identity },
+			{
+				organizationId: args.organizationId,
+				identity: args.identity,
+				...(args.pendingRecipients
+					? { pendingRecipients: normalizedRecipients(args.pendingRecipients) }
+					: {}),
+			},
 			attempt
 		);
 	}
+	const recipients = args.pendingRecipients
+		? normalizedRecipients(args.pendingRecipients).filter((recipient) =>
+				currentRecipients.includes(recipient)
+			)
+		: currentRecipients;
 	const fromEmail =
 		getOptional('DEFAULT_FROM_EMAIL') ??
 		`noreply@${getOptional('DEFAULT_FROM_DOMAIN') ?? 'mail.owlat.app'}`;
 	if (recipients.length === 0) {
+		const state = args.pendingRecipients ? 'sent' : 'unavailable';
 		await ctx.runMutation(internal.delivery.checklistAlertState.markEmailState, {
 			organizationId: args.organizationId,
 			identity: args.identity,
-			state: 'unavailable',
+			state,
 			now: Date.now(),
 		});
-		return { sent: false, reason: 'no_admin_recipient' };
+		return args.pendingRecipients ? { sent: true } : { sent: false, reason: 'no_admin_recipient' };
 	}
 	const deliveries = await Promise.allSettled(
 		recipients.map((to) =>
@@ -155,10 +182,17 @@ export async function deliverRegressionEmailHandler(
 			})
 		)
 	);
-	if (!deliveries.some((delivery) => delivery.status === 'fulfilled')) {
+	const failedRecipients = recipients.filter(
+		(_recipient, index) => deliveries[index]?.status === 'rejected'
+	);
+	if (failedRecipients.length > 0) {
 		return scheduleTransientFailure(
 			ctx,
-			{ organizationId: args.organizationId, identity: args.identity },
+			{
+				organizationId: args.organizationId,
+				identity: args.identity,
+				pendingRecipients: failedRecipients,
+			},
 			attempt
 		);
 	}
@@ -176,6 +210,7 @@ export const deliverRegressionEmail = internalAction({
 		organizationId: v.string(),
 		identity: v.string(),
 		attempt: v.optional(v.number()),
+		pendingRecipients: v.optional(v.array(v.string())),
 	},
 	handler: (ctx, args): Promise<RegressionEmailResult> => deliverRegressionEmailHandler(ctx, args),
 });

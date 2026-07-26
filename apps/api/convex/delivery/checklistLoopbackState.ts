@@ -11,6 +11,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import { deliverabilityTargetKey } from './checklistEvidence';
+import { checklistTraits } from './checklistTraits';
 
 const EVIDENCE_LIMIT = 1_500;
 
@@ -92,7 +93,7 @@ export const getStartContext = internalQuery({
 					ctx,
 					args.organizationId,
 					item.id,
-					item.id.startsWith('domain.') ? args.domainId : undefined
+					checklistTraits(item.id).scope === 'domain' ? args.domainId : undefined
 				)
 			)
 		);

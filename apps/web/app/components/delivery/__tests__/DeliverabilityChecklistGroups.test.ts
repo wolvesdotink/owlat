@@ -46,7 +46,7 @@ describe('DeliverabilityChecklistGroups', () => {
 				stubs: {
 					Icon: { template: '<i />' },
 					UiButton: { template: '<button><slot /></button>' },
-					DeliverabilityDnsRecords: true,
+					DeliverabilitySetupValues: true,
 				},
 			},
 		});

@@ -37,12 +37,13 @@ function item(status: DeliverabilityChecklistItem['status']): DeliverabilityChec
 		observed: ['static.7.113.0.203.example'],
 		failureReason: status === 'fail' ? 'The address still has a provider-default name.' : undefined,
 		nextStep: 'Set the reverse DNS name at your VPS provider.',
-		records: [
+		setupValues: [
 			{
+				kind: 'dns_record',
 				id: 'ptr',
 				label: 'Reverse DNS',
 				name: '203.0.113.7',
-				type: 'PTR',
+				recordType: 'PTR',
 				value: 'mail.example.com',
 				ttl: 3600,
 			},
@@ -99,6 +100,22 @@ describe('DeliverabilityNextActionCard', () => {
 		expect(button).toBeDefined();
 		await button!.trigger('click');
 		expect(wrapper.emitted('verify')).toEqual([[check]]);
+	});
+
+	it('copies the complete diagnostic report verbatim', async () => {
+		const check = item('fail');
+		check.diagnosticReport =
+			'Check: PTR\nScope: deployment\nStatus: fail\nChecked at: 2026-07-26T12:00:00.000Z\nDiagnostic: mismatch\nRaw observations:\n- ptr=old.example';
+		const wrapper = mountCard(check);
+		await wrapper
+			.findAll('button')
+			.find((candidate) => candidate.text().includes('Copy diagnostic report'))!
+			.trigger('click');
+
+		expect(copy).toHaveBeenCalledWith(
+			check.diagnosticReport,
+			'deployment:deployment.ptr:diagnostic'
+		);
 	});
 
 	it('keeps two domains distinct even when the checklist id is identical', async () => {

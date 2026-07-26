@@ -206,6 +206,7 @@ import type * as delivery_checklistAlertManagement from "../delivery/checklistAl
 import type * as delivery_checklistAlertState from "../delivery/checklistAlertState.js";
 import type * as delivery_checklistAlerts from "../delivery/checklistAlerts.js";
 import type * as delivery_checklistDeploymentValidators from "../delivery/checklistDeploymentValidators.js";
+import type * as delivery_checklistDnsObservations from "../delivery/checklistDnsObservations.js";
 import type * as delivery_checklistDomainValidators from "../delivery/checklistDomainValidators.js";
 import type * as delivery_checklistEvidence from "../delivery/checklistEvidence.js";
 import type * as delivery_checklistGuidance from "../delivery/checklistGuidance.js";
@@ -958,6 +959,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/checklistAlertState": typeof delivery_checklistAlertState;
   "delivery/checklistAlerts": typeof delivery_checklistAlerts;
   "delivery/checklistDeploymentValidators": typeof delivery_checklistDeploymentValidators;
+  "delivery/checklistDnsObservations": typeof delivery_checklistDnsObservations;
   "delivery/checklistDomainValidators": typeof delivery_checklistDomainValidators;
   "delivery/checklistEvidence": typeof delivery_checklistEvidence;
   "delivery/checklistGuidance": typeof delivery_checklistGuidance;

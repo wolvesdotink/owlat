@@ -13,6 +13,47 @@ const deliveryGlob = Object.fromEntries(
 const modules = { ...rootGlob, ...deliveryGlob };
 
 describe('Deliverability Center regression evidence', () => {
+	it('preserves an active propagation generation when an hourly sweep arrives first', async () => {
+		const t = convexTest(schema, modules);
+		const organizationId = 'org-hourly';
+		const targetKey = `${organizationId.length}:${organizationId}|deployment`;
+		const stateId = await t.run((ctx) =>
+			ctx.db.insert('deliverabilityVerificationState', {
+				organizationId,
+				itemId: 'deployment.ptr',
+				targetKey,
+				attemptId: 'retry-attempt',
+				generation: 7,
+				retryIndex: 4,
+				nextCheckAt: 81_000,
+				leaseToken: 'retry-lease',
+				leaseExpiresAt: 21_000,
+				updatedAt: 21_000,
+			})
+		);
+
+		await expect(
+			t.mutation(internal.delivery.checklistEvidence.claimVerification, {
+				organizationId,
+				itemId: 'deployment.ptr',
+				attemptId: 'hourly-sweep',
+				leaseToken: 'sweep-lease',
+				now: 60_000,
+				preserveScheduledRetry: true,
+			})
+		).resolves.toEqual({
+			claimed: false,
+			reason: 'scheduled_retry',
+			nextCheckAt: 81_000,
+		});
+		await expect(t.run((ctx) => ctx.db.get(stateId))).resolves.toMatchObject({
+			attemptId: 'retry-attempt',
+			generation: 7,
+			retryIndex: 4,
+			nextCheckAt: 81_000,
+		});
+	});
+
 	it('alerts pass → transient warn → confirmed fail and resolves on recovery', async () => {
 		const t = convexTest(schema, modules);
 		const organizationId = 'org-regression';
