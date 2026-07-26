@@ -188,6 +188,40 @@ describe('evaluateIpAudit — the three outcomes', () => {
 		expect(report.findings.map((finding) => finding.id)).toContain('audit_incomplete');
 	});
 
+	it('keeps an unconfirmed port 25 advisory: clean verdict, low confidence', () => {
+		const report = evaluateIpAudit(input({ port25: 'unknown' }));
+		expect(report.verdict).toBe('clean');
+		expect(report.confidence).toBe('low');
+		const finding = report.findings.find((entry) => entry.id === 'port25_unknown');
+		expect(finding?.severity).toBe('advisory');
+		expect(finding?.nextAction).toMatch(/re-run/i);
+	});
+
+	it('still reports a Spamhaus listing whose return code it cannot decode', () => {
+		const observation = zone('spamhaus', 'listed', ['127.0.0.99']);
+		expect(observation.sublists).toEqual([]);
+		const report = evaluateIpAudit(input({ zones: [observation] }));
+		expect(report.verdict).toBe('action_required');
+		const listed = report.findings.filter((finding) => finding.id === 'zone_listed');
+		expect(listed).toHaveLength(1);
+		expect(listed[0]?.zoneId).toBe('spamhaus');
+		expect(listed[0]?.severity).toBe('fixable');
+	});
+
+	it('keeps a non-Spamhaus zone that did not answer advisory only', () => {
+		const report = evaluateIpAudit(
+			input({
+				zones: [zone('spamhaus', 'clean'), zone('barracuda', 'unknown'), zone('spamcop', 'unknown')],
+			})
+		);
+		expect(report.verdict).toBe('clean');
+		expect(report.confidence).toBe('low');
+		const incomplete = report.findings.find((finding) => finding.id === 'audit_incomplete');
+		expect(incomplete?.severity).toBe('advisory');
+		expect(incomplete?.zoneId).toBeUndefined();
+		expect(incomplete?.message).toMatch(/2 blocklists did not answer/);
+	});
+
 	it('treats a skipped credential-gated feed as inert', () => {
 		const report = evaluateIpAudit(
 			input({
