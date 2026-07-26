@@ -18,7 +18,8 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 import { resolve4 } from 'dns/promises';
-import { checkDnsbl, runDnsblCheck } from '../dnsbl.js';
+import { runDnsblCheck } from '../dnsbl.js';
+import { checkDnsbl } from '../dnsblLookup.js';
 import { initializePools, setIpPoolBlock } from '../../scaling/ipPool.js';
 import { createDnsblTestConfig, createRecordingLookupDeps, dnsError } from './dnsblFixtures.js';
 

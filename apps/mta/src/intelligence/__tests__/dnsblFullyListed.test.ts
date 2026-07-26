@@ -22,7 +22,8 @@ vi.mock('../../smtp/connectionPool.js', () => ({
 
 import { resolve4 } from 'dns/promises';
 import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
-import { ALERT_MESSAGE_MAX_LENGTH, runDnsblCheck } from '../dnsbl.js';
+import { runDnsblCheck } from '../dnsbl.js';
+import { ALERT_MESSAGE_MAX_LENGTH } from '../dnsblAlert.js';
 import { notifyConvex } from '../../webhooks/convexNotifier.js';
 import { initializePools, selectIp, selectIpWithLease } from '../../scaling/ipPool.js';
 import { createDnsblTestConfig, createRecordingLookupDeps, dnsError } from './dnsblFixtures.js';

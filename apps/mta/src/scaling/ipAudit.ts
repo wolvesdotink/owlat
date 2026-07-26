@@ -30,7 +30,7 @@ import { ipAddressFamily, type IpAddressFamily } from '@owlat/shared/ipAddress';
 import { DNSBL_LISTS, dnsblZoneHost } from '@owlat/shared/dnsbl';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
-import { lookupDnsblZone, type DnsblLookupResult } from '../intelligence/dnsbl.js';
+import { lookupDnsblZone, type DnsblLookupResult } from '../intelligence/dnsblLookup.js';
 import { logger } from '../monitoring/logger.js';
 import { verifyFcrdns } from './fcrdns.js';
 import { probePort25Egress, type Port25ProbeResult } from './port25Probe.js';

@@ -20,7 +20,8 @@ import {
 	LOOKUP_MAX_ATTEMPTS,
 	LOOKUP_RETRY_BASE_DELAY_MS,
 	LOOKUP_TOTAL_BUDGET_MS,
-} from '../dnsbl.js';
+} from '../dnsblLookup.js';
+import { logger } from '../../monitoring/logger.js';
 import { createRecordingLookupDeps, dnsError } from './dnsblFixtures.js';
 
 describe('DNSBL bounded retry', () => {
@@ -95,6 +96,45 @@ describe('DNSBL bounded retry', () => {
 		expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('unknown');
 		expect(resolve4).toHaveBeenCalledTimes(1);
 		expect(delays).toEqual([]);
+	});
+
+	it('never starts an attempt that cannot also finish inside the declared budget', async () => {
+		// The budget bounds the WHOLE conversation, so the next attempt's own
+		// LOOKUP_TIMEOUT_MS counts against it. At 10.2s elapsed a third attempt
+		// would finish at 15.6s — 30% past the declared 12s bound — so it is never
+		// started, even though 10.2s + the 400ms backoff still fits on its own.
+		vi.mocked(resolve4).mockRejectedValue(dnsError('ETIMEOUT'));
+		const { deps, delays } = createRecordingLookupDeps([0, 5000, 10_200]);
+
+		expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('unknown');
+		expect(resolve4).toHaveBeenCalledTimes(2);
+		expect(delays).toEqual([LOOKUP_RETRY_BASE_DELAY_MS]);
+	});
+
+	it('logs one conclusion per lookup, not one final-sounding verdict per attempt', async () => {
+		vi.mocked(resolve4).mockRejectedValue(dnsError('ESERVFAIL'));
+		const { deps } = createRecordingLookupDeps();
+
+		expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('unknown');
+		expect(resolve4).toHaveBeenCalledTimes(LOOKUP_MAX_ATTEMPTS);
+		expect(logger.warn).toHaveBeenCalledTimes(1);
+		expect(logger.warn).toHaveBeenCalledWith(
+			{
+				ip: '10.0.0.1',
+				listId: 'spamhaus',
+				errorCode: 'ESERVFAIL',
+				attempts: LOOKUP_MAX_ATTEMPTS,
+			},
+			'DNSBL check is unknown'
+		);
+	});
+
+	it('stays silent when the lookup concludes with an answer', async () => {
+		vi.mocked(resolve4).mockRejectedValue(dnsError('ENOTFOUND'));
+		const { deps } = createRecordingLookupDeps();
+
+		expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('clean');
+		expect(logger.warn).not.toHaveBeenCalled();
 	});
 
 	it('treats a backwards clock as budget exhaustion rather than waiting forever', async () => {

@@ -5,7 +5,6 @@
  * Auto-removes blocked IPs from the active pool and alerts Convex.
  */
 
-import { resolve4 } from 'dns/promises';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import {
@@ -13,14 +12,15 @@ import {
 	DNSBL_LISTS,
 	dnsblZoneHost,
 	type DnsblListDefinition,
-	type DnsblListId,
 } from '@owlat/shared/dnsbl';
-import type { IpAuditZoneId } from '@owlat/shared/ipAudit';
+import { ipAddressFamily, type IpAddressFamily } from '@owlat/shared/ipAddress';
 import {
-	ipAddressFamily,
-	reverseIpAddressForDns,
-	type IpAddressFamily,
-} from '@owlat/shared/ipAddress';
+	checkDnsbl,
+	defaultLookupDeps,
+	type DnsblLookupDeps,
+	type DnsblStatus,
+} from './dnsblLookup.js';
+import { ALERT_MESSAGE_MAX_LENGTH, boundedListingDetail, type DnsblListing } from './dnsblAlert.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
 import { pool } from '../smtp/connectionPool.js';
@@ -31,49 +31,15 @@ import {
 } from '../scaling/ipPool.js';
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-const LOOKUP_TIMEOUT_MS = 5000;
-/**
- * A transient resolver failure is retried, because concluding `unknown` costs
- * real ramp progress (unknown preserves quarantine and holds the controller).
- * The retry budget is hard-bounded so a dead resolver cannot stall the sweep:
- * at most `LOOKUP_MAX_ATTEMPTS` attempts, and no attempt starts after the
- * per-zone deadline has passed.
- */
-export const LOOKUP_MAX_ATTEMPTS = 3;
-export const LOOKUP_RETRY_BASE_DELAY_MS = 200;
-export const LOOKUP_TOTAL_BUDGET_MS = 12_000;
 const DNSBL_PREFIX = 'mta:dnsbl:';
 const IP_POOL_BLOCKED = 'mta:ip-pool:blocked';
-const CLEAN_DNS_ERROR_CODES = new Set(['ENOTFOUND', 'ENODATA']);
-const SAFE_DNS_ERROR_CODES = new Set([
-	...CLEAN_DNS_ERROR_CODES,
-	'ESERVFAIL',
-	'ETIMEOUT',
-	'ECANCELLED',
-	'EREFUSED',
-	'EFORMERR',
-	'ENOTIMP',
-	'EBADQUERY',
-	'EBADNAME',
-	'EBADFAMILY',
-	'EBADRESP',
-	'ECONNREFUSED',
-	'ECONNRESET',
-	'EAI_AGAIN',
-]);
 
 interface DnsblResult extends Pick<DnsblListDefinition, 'id' | 'name' | 'severity'> {
-	status: 'listed' | 'clean' | 'unknown';
+	status: DnsblStatus;
 }
 
 interface DnsblZone extends DnsblListDefinition {
 	zone: string;
-}
-
-function safeDnsErrorCode(error: unknown): string {
-	if (typeof error !== 'object' || error === null || !('code' in error)) return 'unknown';
-	const code = error.code;
-	return typeof code === 'string' && SAFE_DNS_ERROR_CODES.has(code) ? code : 'unknown';
 }
 
 /** Only Spamhaus is allowed to eject; every added feed stays advisory. */
@@ -95,160 +61,6 @@ export function configuredDnsblZones(
 		: zones;
 }
 
-/** Build the family-correct DNSBL query name for one canonical address. */
-export function dnsblQueryName(ip: string, zone: string): string {
-	const reversed = reverseIpAddressForDns(ip);
-	if (!reversed) throw new Error(`Cannot build a DNSBL query for invalid IP address ${ip}`);
-	return `${reversed}.${zone}`;
-}
-
-/**
- * Resolver seam so callers (and tests) can supply their own DNS transport, plus
- * the injected clock + delay that make the bounded retry deterministic.
- */
-export interface DnsblLookupDeps {
-	/** DNS transport; defaults to the platform `dns/promises` resolver. */
-	resolve4?: (hostname: string) => Promise<string[]>;
-	timeoutMs?: number;
-	/**
-	 * Advisory callers (the /24 neighbourhood sample) set this so a resolver
-	 * outage logs at debug instead of emitting one warn per probed address. The
-	 * warn exists because ROUTING keeps a stale decision on `unknown`; a probe
-	 * that gates nothing has no such consequence to announce.
-	 */
-	quiet?: boolean;
-	/** Retry backoff delay; defaults to a real timer. */
-	sleep?: (ms: number) => Promise<void>;
-	/** Retry budget clock; defaults to `Date.now`. */
-	now?: () => number;
-}
-
-const defaultLookupDeps: DnsblLookupDeps = {
-	resolve4,
-	sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
-	now: () => Date.now(),
-};
-
-export interface DnsblLookupResult {
-	status: DnsblResult['status'];
-	/** Bounded copy of the raw A answers, for callers that decode return codes. */
-	answers: string[];
-	/**
-	 * `retryable` separates "the resolver failed to answer" (worth another
-	 * attempt) from "the resolver answered, and the answer is not usable
-	 * evidence" — an answered 127.255.255.x reserved code is terminal, and
-	 * re-querying a zone that just told us we are rate limited only aggravates
-	 * the limiting.
-	 */
-	retryable: boolean;
-}
-
-/** A hostile or misconfigured zone can answer with an unbounded RRset. */
-const MAX_RETAINED_ANSWERS = 16;
-const MAX_ANSWER_LENGTH = 45;
-
-function boundedAnswers(answers: readonly string[]): string[] {
-	return answers
-		.slice(0, MAX_RETAINED_ANSWERS)
-		.map((answer) => String(answer).slice(0, MAX_ANSWER_LENGTH));
-}
-
-/**
- * Look one IP up in one DNSBL zone and return both the verdict and the raw
- * answers. This is the single DNSBL lookup path in the MTA: the periodic
- * routing checker and the pre-flight IP audit both go through it. It performs
- * exactly one attempt; `checkDnsbl` layers the bounded retry on top.
- */
-export async function lookupDnsblZone(
-	ip: string,
-	listId: DnsblListId | IpAuditZoneId,
-	zone: string,
-	deps: DnsblLookupDeps = { resolve4 }
-): Promise<DnsblLookupResult> {
-	const lookup = dnsblQueryName(ip, zone);
-	const resolver = deps.resolve4 ?? resolve4;
-	const timeoutMs = deps.timeoutMs ?? LOOKUP_TIMEOUT_MS;
-	const logUnknown = (fields: { ip: string; listId: string; errorCode: string }) => {
-		if (deps.quiet) logger.debug(fields, 'DNSBL check is unknown');
-		else logger.warn(fields, 'DNSBL check is unknown');
-	};
-
-	let timeout: ReturnType<typeof setTimeout> | undefined;
-	try {
-		const result = await Promise.race([
-			resolver(lookup),
-			new Promise<never>(
-				(_, reject) =>
-					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), timeoutMs))
-			),
-		]);
-		// 127.255.255.x is the reserved return-code block: resolver policy refusal,
-		// open-resolver rejection and query-rate limiting. Spamhaus documents it and
-		// the other public feeds follow the same convention, so it is read the same
-		// way for every zone — it is neither listing nor delisting evidence, and it
-		// must preserve a prior quarantine just like SERVFAIL/timeout.
-		if (result.some((addr) => addr.startsWith('127.255.255.'))) {
-			logUnknown({ ip, listId, errorCode: 'resolver_policy' });
-			return { status: 'unknown', answers: boundedAnswers(result), retryable: false };
-		}
-		// An answer we cannot interpret is still an answer: terminal, not retried.
-		return {
-			status: result.some((addr) => addr.startsWith('127.')) ? 'listed' : 'unknown',
-			answers: boundedAnswers(result),
-			retryable: false,
-		};
-	} catch (err: unknown) {
-		const errorCode = safeDnsErrorCode(err);
-		// NXDOMAIN/ENOTFOUND = not listed (this is the expected "clean" result)
-		if (CLEAN_DNS_ERROR_CODES.has(errorCode)) {
-			return { status: 'clean', answers: [], retryable: false };
-		}
-		// Resolver availability is not evidence of delisting. Preserve the last
-		// confirmed decision (and fail closed for a never-observed address).
-		// Never log `zone` or the resolver message: keyed providers such as Abusix
-		// embed a credential in the queried hostname and resolver errors often echo it.
-		logUnknown({ ip, listId, errorCode });
-		return { status: 'unknown', answers: [], retryable: true };
-	} finally {
-		if (timeout) clearTimeout(timeout);
-	}
-}
-
-/**
- * Check a single IP against a single applicable DNSBL zone, retrying transient
- * failures with exponential backoff inside a bounded budget.
- *
- * Only a THROWN transient failure is retried: `listed`, `clean` (NXDOMAIN) and
- * an answered reserved code are answers, not failures. A budget exhaustion
- * concludes `unknown` — never `clean`.
- */
-export async function checkDnsbl(
-	ip: string,
-	listId: DnsblListDefinition['id'],
-	zone: string,
-	deps: DnsblLookupDeps = defaultLookupDeps
-): Promise<DnsblResult['status']> {
-	const now = deps.now ?? Date.now;
-	const sleep =
-		deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-	const startedAt = now();
-	let status: DnsblResult['status'] = 'unknown';
-	for (let attempt = 1; attempt <= LOOKUP_MAX_ATTEMPTS; attempt += 1) {
-		const outcome = await lookupDnsblZone(ip, listId, zone, deps);
-		status = outcome.status;
-		if (!outcome.retryable) return status;
-		if (attempt === LOOKUP_MAX_ATTEMPTS) break;
-		const delay = LOOKUP_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
-		const elapsed = now() - startedAt;
-		// Clock skew (a non-monotonic `now`) must never extend the budget.
-		if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed + delay >= LOOKUP_TOTAL_BUDGET_MS) {
-			break;
-		}
-		await sleep(delay);
-	}
-	return status;
-}
-
 /**
  * Check an IP against all configured DNSBL zones
  */
@@ -268,41 +80,6 @@ async function checkAllZones(
 		}))
 	);
 	return results;
-}
-
-/**
- * Convex ingress validates `message` with `optionalBounded(message, 512)` and
- * rejects the entire webhook event when it is longer (see
- * packages/shared/src/mtaWebhookEvent.ts). The halt alert is the one alert that
- * must never be dropped, so it is built to fit by construction.
- */
-export const ALERT_MESSAGE_MAX_LENGTH = 512;
-
-/**
- * Render `<ip> on <zones>` clauses for as many addresses as fit in `budget`,
- * closing with `and K more` when the pool is larger than the budget allows.
- */
-function boundedListingDetail(
-	listings: readonly { ip: string; zones: string[] }[],
-	budget: number
-): string {
-	const clauses = listings.map(
-		({ ip, zones }) =>
-			`${ip} on ${zones.length > 0 ? zones.join(', ') : 'an unmeasured blocklist status'}`
-	);
-	const rendered: string[] = [];
-	for (const [index, clause] of clauses.entries()) {
-		const remaining = clauses.length - index - 1;
-		const candidate =
-			[...rendered, clause].join('; ') + (remaining > 0 ? `; and ${remaining} more` : '');
-		if (candidate.length > budget) break;
-		rendered.push(clause);
-	}
-	const omitted = clauses.length - rendered.length;
-	// Even one clause can overflow a pathologically long zone list: fall back to
-	// the count, which always fits and still tells the operator the scale.
-	if (rendered.length === 0) return `${clauses.length} sending addresses`;
-	return omitted > 0 ? `${rendered.join('; ')}; and ${omitted} more` : rendered.join('; ');
 }
 
 /**
@@ -466,7 +243,10 @@ export async function runDnsblCheck(
 			// `selectIpWithLease` has no eligible address and delivery stays queued —
 			// there is deliberately no "send anyway" path out of a fully listed pool.
 			// The operator alert names the addresses and the zones that listed them.
-			const listings = uniqueIps.map((ip) => ({ ip, zones: listedZonesByIp.get(ip) ?? [] }));
+			const listings: DnsblListing[] = uniqueIps.map((ip) => ({
+				ip,
+				zones: listedZonesByIp.get(ip) ?? [],
+			}));
 			const blocklists = [...new Set(listings.flatMap((listing) => listing.zones))];
 			// Say which it is: a confirmed listing on every address is a different
 			// operator task from "we could not measure and therefore held".
@@ -474,8 +254,8 @@ export async function runDnsblCheck(
 				? 'All sending IPs are blocklisted. Email sending is paused. Listed: '
 				: 'All sending IPs are unavailable. Email sending is paused. Blocklist status: ';
 			// The critical alert MUST survive Convex ingress, which rejects the whole
-			// event when `message` exceeds 512 characters — a truncated alert in front
-			// of the operator beats a complete one in the dead-letter queue. Zone names
+			// event when `message` exceeds the shared ingress bound — a truncated alert
+			// in front of the operator beats a complete one in the dead-letter queue. Zone names
 			// also travel structurally in `blocklists`, so nothing is actually lost.
 			const message =
 				prefix + boundedListingDetail(listings, ALERT_MESSAGE_MAX_LENGTH - prefix.length);
