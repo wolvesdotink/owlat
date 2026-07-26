@@ -52,6 +52,20 @@ describe('probeSmtpReachability', () => {
 		]);
 	});
 
+	it('resolves an AAAA target and binds IPv6 to an IPv6 destination', async () => {
+		const d = deps({
+			resolve6: vi.fn().mockResolvedValue(['2001:4860:4860::25']),
+		});
+		await probeSmtpReachability(['2001:db8::10'], d);
+		expect(d.resolve6).toHaveBeenCalledWith('mx10.example.net');
+		expect(d.connect).toHaveBeenCalledWith(
+			expect.objectContaining({
+				host: '2001:4860:4860::25',
+				localAddress: '2001:db8::10',
+			})
+		);
+	});
+
 	it('reports every source IP failed when MX resolution fails', async () => {
 		const result = await probeSmtpReachability(
 			['203.0.113.10'],

@@ -53,6 +53,10 @@
 			"types": "./src/outboundTlsMode.ts",
 			"import": "./src/outboundTlsMode.ts"
 		},
+		"./outboundIdentity": {
+			"types": "./src/outboundIdentity.ts",
+			"import": "./src/outboundIdentity.ts"
+		},
 		"./dane": {
 			"types": "./src/dane.ts",
 			"import": "./src/dane.ts"
@@ -164,6 +168,14 @@
 		"./fcrdns": {
 			"types": "./src/fcrdns.ts",
 			"import": "./src/fcrdns.ts"
+		},
+		"./ipAddress": {
+			"types": "./src/ipAddress.ts",
+			"import": "./src/ipAddress.ts"
+		},
+		"./ipReadiness": {
+			"types": "./src/ipReadiness.ts",
+			"import": "./src/ipReadiness.ts"
 		},
 		"./ipReadinessSync": {
 			"types": "./src/ipReadinessSync.ts",

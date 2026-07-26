@@ -2,6 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { isMtaWebhookEvent } from '../mtaWebhookEvent.js';
 
 describe('MTA webhook event runtime contract', () => {
+	it('accepts only confirmed canonical IPv6 readiness regressions', () => {
+		const event = {
+			event: 'ip.readiness_regressed',
+			eventId: 'ipv6-readiness-v1:spf:2001:db8::10:7',
+			ip: '2001:db8::10',
+			readinessCheck: 'spf',
+			readinessReason: 'missing-ip6-mechanism',
+			eligibilityGeneration: 7,
+			message: 'IPv6 SPF regressed',
+			timestamp: 1,
+		};
+		expect(isMtaWebhookEvent(event)).toBe(true);
+		expect(isMtaWebhookEvent({ ...event, readinessReason: 'lookup-error' })).toBe(false);
+		expect(isMtaWebhookEvent({ ...event, ip: '2001:0DB8:0:0:0:0:0:10' })).toBe(false);
+	});
+
 	it('accepts event-specific protected payloads', () => {
 		expect(isMtaWebhookEvent({ event: 'sent', messageId: 'message-1', timestamp: 1 })).toBe(true);
 		expect(

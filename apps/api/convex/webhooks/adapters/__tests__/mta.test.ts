@@ -56,6 +56,32 @@ describe('verifyMtaHeaders', () => {
 });
 
 describe('mtaAdapter.parseEvent', () => {
+	it('parses a confirmed IPv6 readiness regression into a persistent incident event', () => {
+		expect(
+			mtaAdapter.parseEvent(
+				JSON.stringify({
+					event: 'ip.readiness_regressed',
+					eventId: 'ipv6-readiness-v1:spf:2001:db8::10:7',
+					ip: '2001:db8::10',
+					readinessCheck: 'spf',
+					readinessReason: 'missing-ip6-mechanism',
+					eligibilityGeneration: 7,
+					message: 'IPv6 SPF regressed',
+					timestamp: 1_700_000_000_000,
+				})
+			)
+		).toEqual({
+			kind: 'internal.ip_readiness_regressed',
+			eventId: 'ipv6-readiness-v1:spf:2001:db8::10:7',
+			ip: '2001:db8::10',
+			readinessCheck: 'spf',
+			readinessReason: 'missing-ip6-mechanism',
+			eligibilityGeneration: 7,
+			observedAt: 1_700_000_000_000,
+			message: 'IPv6 SPF regressed',
+		});
+	});
+
 	it('parses an authenticated accepted-job routing re-entry with the same Send/idempotency', () => {
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({

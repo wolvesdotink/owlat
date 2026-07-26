@@ -67,6 +67,7 @@ export {
 	type ReverseDnsProvider,
 	type ReverseDnsGuidance,
 	FCRDNS_FAILURE_REASONS,
+	FCRDNS_VERDICTS,
 	DEFAULT_GENERIC_PTR_SUFFIXES,
 	normalizeDnsName,
 	isFqdn,
@@ -75,6 +76,45 @@ export {
 	reverseDnsGuidance,
 	fcrdnsReasonMessage,
 } from './fcrdns';
+export {
+	IP_ADDRESS_FAMILIES,
+	type IpAddressFamily,
+	type ParsedIpAddress,
+	parseIpAddress,
+	normalizeIpAddress,
+	ipAddressFamily,
+	parseIpv6Enabled,
+	isIpv4MappedIpv6,
+	hasIpv4FallbackForIpv6,
+	ipv6HexNibbles,
+	reverseIpAddressForDns,
+} from './ipAddress';
+export {
+	assertValidOutboundEhloHostname,
+	parseCanonicalEhloHostnames,
+	projectCanonicalMtaRuntimeEnv,
+} from './outboundIdentity';
+export {
+	IP_READINESS_BLOCK_REASONS,
+	type IpReadinessBlockReason,
+	DNSBL_STATUSES,
+	type DnsblStatus,
+	IPV6_SPF_VERDICTS,
+	type Ipv6SpfVerdict,
+	IPV6_SPF_FAILURE_REASONS,
+	type Ipv6SpfFailureReason,
+	type Ipv6SpfReadiness,
+	SOURCE_ADDRESS_VERDICTS,
+	type SourceAddressVerdict,
+	SOURCE_ADDRESS_FAILURE_REASONS,
+	type SourceAddressFailureReason,
+	isIpReadinessBlockReason,
+	isDnsblStatus,
+	isIpv6SpfFailureReason,
+	isSourceAddressFailureReason,
+	evaluateIpv6SpfRecords,
+	observeIpv6SpfReadiness,
+} from './ipReadiness';
 // NOTE: `./dane` is intentionally NOT re-exported here. It depends on `node:crypto`
 // (certificate hashing) which does not resolve in the Nuxt web client bundle that
 // consumes this barrel. Server code (apps/api, apps/mta) imports it directly from
@@ -120,7 +160,12 @@ export {
 	buildMtaStsPolicy,
 	verifyMtaStsPublication,
 } from './mtaStsPolicy';
-export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from './spf';
+export {
+	isSpfRecord,
+	parseSpfMechanisms,
+	mergeSpfRecords,
+	spfRecordHasExactIpMechanism,
+} from './spf';
 export {
 	GOVERNED_MESSAGE_TYPES,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,

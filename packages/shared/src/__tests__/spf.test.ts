@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from '../spf';
+import {
+	isSpfRecord,
+	parseSpfMechanisms,
+	mergeSpfRecords,
+	spfRecordHasExactIpMechanism,
+} from '../spf';
 
 describe('isSpfRecord', () => {
 	it('recognises an SPF record, case-insensitively and with leading whitespace', () => {
@@ -11,6 +16,9 @@ describe('isSpfRecord', () => {
 		expect(isSpfRecord('v=DMARC1; p=none')).toBe(false);
 		expect(isSpfRecord('google-site-verification=abc')).toBe(false);
 		expect(isSpfRecord('')).toBe(false);
+		expect(isSpfRecord('v=spf1:invalid')).toBe(false);
+		expect(isSpfRecord('v=spf1/invalid')).toBe(false);
+		expect(isSpfRecord('v=spf1;invalid')).toBe(false);
 	});
 });
 
@@ -37,7 +45,7 @@ describe('parseSpfMechanisms', () => {
 describe('mergeSpfRecords', () => {
 	it('inserts a foreign SES include before the existing Google record trailing all', () => {
 		expect(
-			mergeSpfRecords('v=spf1 include:_spf.google.com ~all', 'v=spf1 include:amazonses.com ~all'),
+			mergeSpfRecords('v=spf1 include:_spf.google.com ~all', 'v=spf1 include:amazonses.com ~all')
 		).toBe('v=spf1 include:_spf.google.com include:amazonses.com ~all');
 	});
 
@@ -45,8 +53,8 @@ describe('mergeSpfRecords', () => {
 		expect(
 			mergeSpfRecords(
 				'v=spf1 ip4:198.51.100.5 -all',
-				'v=spf1 include:spf.protection.outlook.com -all',
-			),
+				'v=spf1 include:spf.protection.outlook.com -all'
+			)
 		).toBe('v=spf1 ip4:198.51.100.5 include:spf.protection.outlook.com -all');
 	});
 
@@ -59,28 +67,58 @@ describe('mergeSpfRecords', () => {
 		expect(
 			mergeSpfRecords(
 				'v=spf1 ip4:198.51.100.5 -all',
-				'v=spf1 a:mail.example.com ip4:203.0.113.10 include:amazonses.com -all',
-			),
+				'v=spf1 a:mail.example.com ip4:203.0.113.10 include:amazonses.com -all'
+			)
 		).toBe(
-			'v=spf1 ip4:198.51.100.5 a:mail.example.com ip4:203.0.113.10 include:amazonses.com -all',
+			'v=spf1 ip4:198.51.100.5 a:mail.example.com ip4:203.0.113.10 include:amazonses.com -all'
 		);
 	});
 
 	it("preserves the existing record's trailing qualifier (hard-fail stays -all)", () => {
-		const merged = mergeSpfRecords('v=spf1 include:_spf.google.com -all', 'v=spf1 a:mail.example.com ~all');
+		const merged = mergeSpfRecords(
+			'v=spf1 include:_spf.google.com -all',
+			'v=spf1 a:mail.example.com ~all'
+		);
 		expect(merged).toBe('v=spf1 include:_spf.google.com a:mail.example.com -all');
 		expect(merged.endsWith(' -all')).toBe(true);
 	});
 
 	it('appends when the existing record has no all mechanism', () => {
 		expect(mergeSpfRecords('v=spf1 ip4:198.51.100.5', 'v=spf1 include:amazonses.com')).toBe(
-			'v=spf1 ip4:198.51.100.5 include:amazonses.com',
+			'v=spf1 ip4:198.51.100.5 include:amazonses.com'
 		);
 	});
 
 	it('compares mechanisms case-insensitively (no duplicate for a cased match)', () => {
 		expect(
-			mergeSpfRecords('v=spf1 INCLUDE:amazonses.com ~all', 'v=spf1 include:amazonses.com ~all'),
+			mergeSpfRecords('v=spf1 INCLUDE:amazonses.com ~all', 'v=spf1 include:amazonses.com ~all')
 		).toBe('v=spf1 INCLUDE:amazonses.com ~all');
+	});
+});
+
+describe('spfRecordHasExactIpMechanism', () => {
+	it('matches canonical equivalent IPv6 and refuses another address or CIDR', () => {
+		const record = 'v=spf1 ip4:203.0.113.10 ip6:2001:db8::10 -all';
+		expect(spfRecordHasExactIpMechanism(record, '2001:0DB8:0:0:0:0:0:10')).toBe(true);
+		expect(spfRecordHasExactIpMechanism(record, '2001:db8::11')).toBe(false);
+		expect(spfRecordHasExactIpMechanism('v=spf1 ip6:2001:db8::/64 -all', '2001:db8::10')).toBe(
+			false
+		);
+	});
+
+	it('accepts only positive exact address mechanisms and never follows indirection', () => {
+		expect(spfRecordHasExactIpMechanism('v=spf1 +ip6:2001:db8::10 -all', '2001:db8::10')).toBe(
+			true
+		);
+		for (const record of [
+			'v=spf1 -ip6:2001:db8::10 -all',
+			'v=spf1 ~ip6:2001:db8::10 -all',
+			'v=spf1 ?ip6:2001:db8::10 -all',
+			'v=spf1 include:2001:db8::10 -all',
+			'v=spf1 redirect=2001:db8::10',
+			'v=spf1 ip6:2001:db8::/64 -all',
+		]) {
+			expect(spfRecordHasExactIpMechanism(record, '2001:db8::10')).toBe(false);
+		}
 	});
 });

@@ -17,6 +17,7 @@ services:
       MTA_WEBHOOK_SECRET: dev-webhook-secret
       IP_POOLS_TRANSACTIONAL: '127.0.0.1'
       IP_POOLS_CAMPAIGN: '127.0.0.1'
+      MTA_IPV6_ENABLED: 'false'
       DKIM_KEYS: '{}'
       WORKER_CONCURRENCY: 10
       LOG_LEVEL: debug
@@ -55,3 +56,7 @@ services:
 volumes:
   redis-data:
   clamav-data:
+
+networks:
+  default:
+    enable_ipv6: false

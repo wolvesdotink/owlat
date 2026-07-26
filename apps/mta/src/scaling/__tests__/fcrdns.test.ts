@@ -15,7 +15,11 @@ vi.mock('../../monitoring/logger.js', () => ({
  *  - fwd:   hostname → A records
  * Missing keys throw ENOTFOUND, matching Node's dns/promises behaviour.
  */
-function makeDeps(ptr: Record<string, string[]>, fwd: Record<string, string[]>): FcrdnsDeps {
+function makeDeps(
+	ptr: Record<string, string[]>,
+	fwd: Record<string, string[]>,
+	fwd6: Record<string, string[]> = {}
+): FcrdnsDeps {
 	const notFound = (target: string) =>
 		Object.assign(new Error(`ENOTFOUND ${target}`), { code: 'ENOTFOUND' });
 	return {
@@ -26,6 +30,10 @@ function makeDeps(ptr: Record<string, string[]>, fwd: Record<string, string[]>):
 		resolve4: vi.fn(async (hostname: string) => {
 			if (!(hostname in fwd)) throw notFound(hostname);
 			return fwd[hostname]!;
+		}),
+		resolve6: vi.fn(async (hostname: string) => {
+			if (!(hostname in fwd6)) throw notFound(hostname);
+			return fwd6[hostname]!;
 		}),
 	};
 }
@@ -126,6 +134,18 @@ describe('verifyFcrdns', () => {
 		const result = await verifyFcrdns('1.2.3.4', ['mail.example.com'], deps);
 		expect(result.ok).toBe(false);
 		expect(result.reason).toBe('lookup-error');
+	});
+
+	it('uses AAAA and canonical comparison for an IPv6 identity', async () => {
+		const deps = makeDeps(
+			{ '2001:db8::1': ['mail6.example.com'] },
+			{},
+			{ 'mail6.example.com': ['2001:0DB8:0:0:0:0:0:1'] }
+		);
+		const result = await verifyFcrdns('2001:db8::1', ['mail6.example.com'], deps);
+		expect(result).toMatchObject({ ok: true, addressFamily: 'ipv6', verdict: 'pass' });
+		expect(deps.resolve4).not.toHaveBeenCalled();
+		expect(deps.resolve6).toHaveBeenCalledWith('mail6.example.com');
 	});
 });
 
@@ -285,6 +305,91 @@ describe('runFcrdnsReadinessCheck', () => {
 		expect(await getFcrdnsReadiness(redis, '1.2.3.4')).toMatchObject({
 			verdict: 'error',
 			reason: 'lookup-error',
+		});
+	});
+
+	it('admits a ready IPv6 address only while every IPv4 identity is green', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		const mixedConfig = {
+			...config,
+			ipPools: {
+				transactional: ['203.0.113.10'],
+				campaign: ['203.0.113.10', '2001:db8::10'],
+			},
+			ehloHostnames: {
+				'203.0.113.10': 'mail4.example.com',
+				'2001:db8::10': 'mail6.example.com',
+			},
+		};
+		await initializePools(redis, mixedConfig.ipPools);
+		await runFcrdnsReadinessCheck(
+			redis,
+			mixedConfig,
+			makeDeps(
+				{
+					'203.0.113.10': ['mail4.example.com'],
+					'2001:db8::10': ['mail6.example.com'],
+				},
+				{ 'mail4.example.com': ['203.0.113.10'] },
+				{ 'mail6.example.com': ['2001:0db8:0:0:0:0:0:10'] }
+			)
+		);
+		expect(await redis.sismember('mta:ip-pool:active', '203.0.113.10')).toBe(1);
+		expect(await redis.sismember('mta:ip-pool:active', '2001:db8::10')).toBe(1);
+
+		await runFcrdnsReadinessCheck(
+			redis,
+			mixedConfig,
+			makeDeps(
+				{ '2001:db8::10': ['mail6.example.com'] },
+				{},
+				{ 'mail6.example.com': ['2001:db8::10'] }
+			)
+		);
+		expect(await redis.sismember('mta:ip-pool:active', '2001:db8::10')).toBe(0);
+		expect(await redis.hkeys('mta:ip-pool:block-reasons:2001:db8::10')).toContain('ipv4-identity');
+	});
+
+	it('quarantines missing or regressed IPv6 PTR even with the IPv4 lab override', async () => {
+		const redis = new Redis();
+		await redis.flushall();
+		const mixedConfig = {
+			...config,
+			allowUnverifiedFcrdns: true,
+			ipPools: {
+				transactional: ['203.0.113.10'],
+				campaign: ['203.0.113.10', '2001:db8::10'],
+			},
+			ehloHostnames: {
+				'203.0.113.10': 'mail4.example.com',
+				'2001:db8::10': 'mail6.example.com',
+			},
+		};
+		await initializePools(redis, mixedConfig.ipPools, true);
+		const ready = makeDeps(
+			{
+				'203.0.113.10': ['mail4.example.com'],
+				'2001:db8::10': ['mail6.example.com'],
+			},
+			{ 'mail4.example.com': ['203.0.113.10'] },
+			{ 'mail6.example.com': ['2001:db8::10'] }
+		);
+		await runFcrdnsReadinessCheck(redis, mixedConfig, ready);
+		expect(await redis.sismember('mta:ip-pool:active', '2001:db8::10')).toBe(1);
+
+		await runFcrdnsReadinessCheck(
+			redis,
+			mixedConfig,
+			makeDeps({ '203.0.113.10': ['mail4.example.com'] }, { 'mail4.example.com': ['203.0.113.10'] })
+		);
+		expect(await redis.sismember('mta:ip-pool:active', '203.0.113.10')).toBe(1);
+		expect(await redis.sismember('mta:ip-pool:active', '2001:db8::10')).toBe(0);
+		expect(await getFcrdnsReadiness(redis, '2001:db8::10')).toMatchObject({
+			addressFamily: 'ipv6',
+			verdict: 'fail',
+			reason: 'no-ptr',
+			overridden: false,
 		});
 	});
 });

@@ -29,7 +29,7 @@ import {
 describe('buildSpfRecordValue', () => {
 	it('defaults the trailing mechanism to the soft-fail ~all', () => {
 		expect(buildSpfRecordValue({ include: '_spf.owlat.example' })).toBe(
-			'v=spf1 include:_spf.owlat.example ~all',
+			'v=spf1 include:_spf.owlat.example ~all'
 		);
 		expect(DEFAULT_SPF_QUALIFIER).toBe('~all');
 	});
@@ -46,14 +46,25 @@ describe('buildSpfRecordValue', () => {
 				ip4: ['203.0.113.10', '203.0.113.11'],
 				include: '_spf.owlat.example',
 				qualifier: '-all',
-			}),
+			})
 		).toBe('v=spf1 ip4:203.0.113.10 ip4:203.0.113.11 include:_spf.owlat.example -all');
 	});
 
 	it('skips blank ip4 entries and an empty include', () => {
 		expect(buildSpfRecordValue({ ip4: ['203.0.113.10', '', '  '], include: '   ' })).toBe(
-			'v=spf1 ip4:203.0.113.10 ~all',
+			'v=spf1 ip4:203.0.113.10 ~all'
 		);
+	});
+
+	it('emits mixed ip4 and ip6 mechanisms in deterministic order', () => {
+		expect(
+			buildSpfRecordValue({
+				ip4: ['203.0.113.10'],
+				ip6: ['2001:db8::10'],
+				include: '_spf.owlat.example',
+				qualifier: '-all',
+			})
+		).toBe('v=spf1 ip4:203.0.113.10 ip6:2001:db8::10 include:_spf.owlat.example -all');
 	});
 });
 
@@ -83,12 +94,22 @@ describe('resolveSpfQualifier / isSpfQualifier', () => {
 describe('buildReturnPathSpfRecord', () => {
 	it('authorizes each pool IP and soft-fails by default', () => {
 		expect(buildReturnPathSpfRecord(['203.0.113.10', '203.0.113.11'])).toBe(
-			'v=spf1 ip4:203.0.113.10 ip4:203.0.113.11 ~all',
+			'v=spf1 ip4:203.0.113.10 ip4:203.0.113.11 ~all'
 		);
 	});
 
 	it('hard-fails when the qualifier is -all', () => {
 		expect(buildReturnPathSpfRecord(['203.0.113.10'], '-all')).toBe('v=spf1 ip4:203.0.113.10 -all');
+	});
+
+	it('authorizes mixed IPv4 and canonicalized IPv6 pool addresses', () => {
+		expect(buildReturnPathSpfRecord(['203.0.113.10', '2001:0DB8:0:0:0:0:0:10'], '-all')).toBe(
+			'v=spf1 ip4:203.0.113.10 ip6:2001:db8::10 -all'
+		);
+	});
+
+	it('rejects invalid or mechanism-injection pool tokens', () => {
+		expect(() => buildReturnPathSpfRecord(['203.0.113.10 -all'])).toThrow('Invalid MTA pool IP');
 	});
 });
 
@@ -99,19 +120,19 @@ describe('detectMultipleSpf / countSpfRecords', () => {
 				'v=spf1 ip4:203.0.113.10 -all',
 				'  V=SPF1 include:other -all',
 				'google-site-verification=abc',
-			]),
+			])
 		).toBe(2);
 	});
 
 	it('flags a host that already publishes more than one SPF record', () => {
 		expect(
-			detectMultipleSpf(['v=spf1 ip4:203.0.113.10 -all', 'v=spf1 include:_spf.google.com ~all']),
+			detectMultipleSpf(['v=spf1 ip4:203.0.113.10 -all', 'v=spf1 include:_spf.google.com ~all'])
 		).toBe(true);
 	});
 
 	it('does not flag a single SPF record (with unrelated TXT records present)', () => {
 		expect(
-			detectMultipleSpf(['v=spf1 ip4:203.0.113.10 -all', 'google-site-verification=abc']),
+			detectMultipleSpf(['v=spf1 ip4:203.0.113.10 -all', 'google-site-verification=abc'])
 		).toBe(false);
 		expect(detectMultipleSpf([])).toBe(false);
 	});
@@ -121,7 +142,7 @@ describe('mergeSpfIncludeGuidance / insertIncludeIntoExisting', () => {
 	it('returns merge guidance when an SPF record already exists', () => {
 		const guidance = mergeSpfIncludeGuidance(
 			['v=spf1 ip4:198.51.100.5 -all'],
-			'_spf.owlat.example',
+			'_spf.owlat.example'
 		);
 		expect(guidance).toMatch(/merge include into existing record/i);
 		expect(guidance).toContain('include:_spf.owlat.example');
@@ -130,20 +151,20 @@ describe('mergeSpfIncludeGuidance / insertIncludeIntoExisting', () => {
 
 	it('returns null when there is no existing SPF record (safe to publish)', () => {
 		expect(mergeSpfIncludeGuidance(['google-site-verification=abc'], '_spf.owlat.example')).toBe(
-			null,
+			null
 		);
 		expect(mergeSpfIncludeGuidance([], '_spf.owlat.example')).toBe(null);
 	});
 
 	it('splices include before the trailing all mechanism', () => {
 		expect(insertIncludeIntoExisting('v=spf1 ip4:198.51.100.5 -all', '_spf.x')).toBe(
-			'v=spf1 ip4:198.51.100.5 include:_spf.x -all',
+			'v=spf1 ip4:198.51.100.5 include:_spf.x -all'
 		);
 	});
 
 	it('appends include when there is no all mechanism', () => {
 		expect(insertIncludeIntoExisting('v=spf1 ip4:198.51.100.5', '_spf.x')).toBe(
-			'v=spf1 ip4:198.51.100.5 include:_spf.x',
+			'v=spf1 ip4:198.51.100.5 include:_spf.x'
 		);
 	});
 });
@@ -156,7 +177,7 @@ describe('isSpfRecord / mergeSpfRecords (shared, re-exported)', () => {
 
 	it('folds our include into an existing Google SPF record, before its all', () => {
 		expect(
-			mergeSpfRecords('v=spf1 include:_spf.google.com ~all', 'v=spf1 include:amazonses.com ~all'),
+			mergeSpfRecords('v=spf1 include:_spf.google.com ~all', 'v=spf1 include:amazonses.com ~all')
 		).toBe('v=spf1 include:_spf.google.com include:amazonses.com ~all');
 	});
 

@@ -6,6 +6,8 @@
  * through these same types and labels instead of inventing parallel checks.
  */
 
+import { ipAddressFamily, normalizeIpAddress, type IpAddressFamily } from './ipAddress';
+
 export const FCRDNS_FAILURE_REASONS = [
 	'no-ptr',
 	'ptr-not-fqdn',
@@ -15,14 +17,15 @@ export const FCRDNS_FAILURE_REASONS = [
 ] as const;
 
 export type FcrdnsFailureReason = (typeof FCRDNS_FAILURE_REASONS)[number];
-export type FcrdnsVerdict = 'pass' | 'warn' | 'fail' | 'error';
+export const FCRDNS_VERDICTS = ['pass', 'warn', 'fail', 'error'] as const;
+export type FcrdnsVerdict = (typeof FCRDNS_VERDICTS)[number];
 
 export function isFcrdnsFailureReason(value: string): value is FcrdnsFailureReason {
 	return FCRDNS_FAILURE_REASONS.includes(value as FcrdnsFailureReason);
 }
 
 export function isFcrdnsVerdict(value: string): value is FcrdnsVerdict {
-	return value === 'pass' || value === 'warn' || value === 'fail' || value === 'error';
+	return FCRDNS_VERDICTS.some((verdict) => verdict === value);
 }
 
 export interface FcrdnsChecklist {
@@ -34,6 +37,7 @@ export interface FcrdnsChecklist {
 
 export interface FcrdnsReadiness {
 	ip: string;
+	addressFamily: IpAddressFamily;
 	ehlo: string;
 	ptrNames: string[];
 	checklist: FcrdnsChecklist;
@@ -48,6 +52,7 @@ export interface FcrdnsReadiness {
 export interface FcrdnsDnsDeps {
 	reverse: (ip: string) => Promise<string[]>;
 	resolve4: (hostname: string) => Promise<string[]>;
+	resolve6?: (hostname: string) => Promise<string[]>;
 }
 
 export type FcrdnsVerification = Omit<FcrdnsReadiness, 'checkedAt' | 'overridden'>;
@@ -129,6 +134,7 @@ function isMissingDnsRecord(err: unknown): boolean {
 
 function failedVerification(
 	ip: string,
+	addressFamily: IpAddressFamily,
 	ehlo: string,
 	ptrNames: string[],
 	reason: FcrdnsFailureReason,
@@ -136,6 +142,7 @@ function failedVerification(
 ): FcrdnsVerification {
 	return {
 		ip,
+		addressFamily,
 		ehlo,
 		ptrNames,
 		checklist,
@@ -156,6 +163,8 @@ async function performFcrdnsVerification(
 	deps: FcrdnsDnsDeps,
 	extraGenericSuffixes: readonly string[] = []
 ): Promise<FcrdnsVerification> {
+	const normalizedIp = normalizeIpAddress(ip);
+	const addressFamily = ipAddressFamily(ip);
 	const ehlo = normalizeDnsName(ehloHostname);
 	const emptyChecklist: FcrdnsChecklist = {
 		ptrExists: false,
@@ -163,13 +172,17 @@ async function performFcrdnsVerification(
 		forwardConfirmed: false,
 		ehloMatches: false,
 	};
+	if (!normalizedIp || !addressFamily) {
+		return failedVerification(ip, 'ipv4', ehlo, [], 'lookup-error', emptyChecklist);
+	}
 
 	let rawPtrNames: string[];
 	try {
 		rawPtrNames = await deps.reverse(ip);
 	} catch (err) {
 		return failedVerification(
-			ip,
+			normalizedIp,
+			addressFamily,
 			ehlo,
 			[],
 			isMissingDnsRecord(err) ? 'no-ptr' : 'lookup-error',
@@ -179,11 +192,18 @@ async function performFcrdnsVerification(
 
 	const ptrNames = [...new Set(rawPtrNames.map(normalizeDnsName).filter(Boolean))];
 	if (ptrNames.length === 0) {
-		return failedVerification(ip, ehlo, ptrNames, 'no-ptr', emptyChecklist);
+		return failedVerification(
+			normalizedIp,
+			addressFamily,
+			ehlo,
+			ptrNames,
+			'no-ptr',
+			emptyChecklist
+		);
 	}
 	const fqdnPtrNames = ptrNames.filter(isFqdn);
 	if (fqdnPtrNames.length === 0) {
-		return failedVerification(ip, ehlo, ptrNames, 'ptr-not-fqdn', {
+		return failedVerification(normalizedIp, addressFamily, ehlo, ptrNames, 'ptr-not-fqdn', {
 			...emptyChecklist,
 			ptrExists: true,
 		});
@@ -193,15 +213,23 @@ async function performFcrdnsVerification(
 	let transientForwardError = false;
 	for (const name of fqdnPtrNames) {
 		try {
-			const addresses = await deps.resolve4(name);
-			if (addresses.includes(ip)) confirmedPtrNames.push(name);
+			const resolveForward = addressFamily === 'ipv4' ? deps.resolve4 : deps.resolve6;
+			if (!resolveForward) {
+				transientForwardError = true;
+				continue;
+			}
+			const addresses = await resolveForward(name);
+			if (addresses.some((address) => normalizeIpAddress(address) === normalizedIp)) {
+				confirmedPtrNames.push(name);
+			}
 		} catch (err) {
 			if (!isMissingDnsRecord(err)) transientForwardError = true;
 		}
 	}
 	if (confirmedPtrNames.length === 0) {
 		return failedVerification(
-			ip,
+			normalizedIp,
+			addressFamily,
 			ehlo,
 			ptrNames,
 			transientForwardError ? 'lookup-error' : 'forward-mismatch',
@@ -211,7 +239,7 @@ async function performFcrdnsVerification(
 
 	const ehloMatches = confirmedPtrNames.includes(ehlo);
 	if (!ehloMatches) {
-		return failedVerification(ip, ehlo, ptrNames, 'ehlo-mismatch', {
+		return failedVerification(normalizedIp, addressFamily, ehlo, ptrNames, 'ehlo-mismatch', {
 			ptrExists: true,
 			ptrIsFqdn: true,
 			forwardConfirmed: true,
@@ -222,7 +250,8 @@ async function performFcrdnsVerification(
 		isGenericPtrHostname(name, extraGenericSuffixes)
 	);
 	return {
-		ip,
+		ip: normalizedIp,
+		addressFamily,
 		ehlo,
 		ptrNames,
 		checklist: {
@@ -247,16 +276,18 @@ export async function verifyFcrdnsIdentity(
 	extraGenericSuffixes: readonly string[] = [],
 	timeoutMs = FCRDNS_DNS_TIMEOUT_MS
 ): Promise<FcrdnsVerification> {
+	const normalizedIp = normalizeIpAddress(ip) ?? ip;
+	const addressFamily = ipAddressFamily(ip) ?? 'ipv4';
 	const ehlo = normalizeDnsName(ehloHostname);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	try {
 		return await Promise.race([
-			performFcrdnsVerification(ip, ehlo, deps, extraGenericSuffixes),
+			performFcrdnsVerification(normalizedIp, ehlo, deps, extraGenericSuffixes),
 			new Promise<FcrdnsVerification>((resolve) => {
 				timer = setTimeout(
 					() =>
 						resolve(
-							failedVerification(ip, ehlo, [], 'lookup-error', {
+							failedVerification(normalizedIp, addressFamily, ehlo, [], 'lookup-error', {
 								ptrExists: false,
 								ptrIsFqdn: false,
 								forwardConfirmed: false,

@@ -15,6 +15,8 @@ export interface DnsblListDefinition {
 	name: string;
 	severity: DnsblSeverity;
 	runbookPath: string;
+	/** Address families for which the provider documents this DNS zone. */
+	addressFamilies: readonly ('ipv4' | 'ipv6')[];
 }
 
 export const DNSBL_LISTS: Record<DnsblListId, DnsblListDefinition> = {
@@ -23,24 +25,28 @@ export const DNSBL_LISTS: Record<DnsblListId, DnsblListDefinition> = {
 		name: 'Spamhaus',
 		severity: 'critical',
 		runbookPath: '/developer/dnsbl-delisting#spamhaus',
+		addressFamilies: ['ipv4', 'ipv6'],
 	},
 	barracuda: {
 		id: 'barracuda',
 		name: 'Barracuda',
 		severity: 'warning',
 		runbookPath: '/developer/dnsbl-delisting#barracuda',
+		addressFamilies: ['ipv4'],
 	},
 	spamcop: {
 		id: 'spamcop',
 		name: 'SpamCop',
 		severity: 'warning',
 		runbookPath: '/developer/dnsbl-delisting#spamcop',
+		addressFamilies: ['ipv4'],
 	},
 	abusix: {
 		id: 'abusix',
 		name: 'Abusix',
 		severity: 'warning',
 		runbookPath: '/developer/dnsbl-delisting#abusix',
+		addressFamilies: ['ipv4', 'ipv6'],
 	},
 };
 
