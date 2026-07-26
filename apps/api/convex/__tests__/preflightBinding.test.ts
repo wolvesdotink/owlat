@@ -21,6 +21,8 @@ import {
 	createTestTopic,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { validateReadyToSend } from '../campaigns/preflight';
+import { toAssessment } from '../campaigns/capacityPreflight';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -149,9 +151,12 @@ describe('pre-flight capacity gate — binding refusal', () => {
 		expect(result.reason).toBe('exceeds_sending_capacity');
 		// 600 recipients against 0 / 100 / 200 / 200 / 700 …
 		expect(result.capacityPlan).toEqual({
+			fits: false,
 			days: 5,
 			slices: [0, 100, 200, 200, 100],
 			finishesAt: MIDNIGHT + 5 * 24 * 60 * 60 * 1000,
+			covered: 600,
+			truncated: false,
 		});
 		// The copy is a schedule, not an error.
 		expect(result.message).toContain('5 days');
@@ -266,5 +271,104 @@ describe('getCampaignCapacityPlan — the UI preview', () => {
 		});
 
 		expect(plan).toEqual({ fits: true, capacityKnown: false });
+	});
+
+	it("assesses a future start against the capacity it will have THEN, not today's", async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		let topicId: Id<'topics'>;
+		await t.run(async (ctx) => {
+			topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
+			for (let i = 0; i < 600; i += 1) {
+				const contactId = await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: `person-${i}@subscriber.example.com`, doiStatus: 'confirmed' })
+				);
+				await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: MIDNIGHT });
+			}
+		});
+		const audience = { kind: 'topic' as const, topicId: topicId! };
+
+		// Anchored at now, a day-1 IP projects 0 / 100 / 200 / 200 = 500 over the
+		// four-day retention horizon, so 600 recipients do not fit.
+		const today = await t.query(api.campaigns.capacityPreflight.getCampaignCapacityPlan, {
+			audience,
+		});
+		expect(today.fits).toBe(false);
+
+		// Anchored three days out the same IP is on schedule day 4: 200 / 700 /
+		// 700 / 1500 = 3100. The send provably fits and must NOT be refused.
+		const later = await t.query(api.campaigns.capacityPreflight.getCampaignCapacityPlan, {
+			audience,
+			startsAt: MIDNIGHT + 3 * 24 * 60 * 60 * 1000,
+		});
+		expect(later).toEqual({ capacityKnown: true, fits: true });
+	});
+});
+
+describe('pre-flight capacity gate — scheduled sends', () => {
+	it('does not refuse a future-scheduled campaign that fits its fire-time window', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+
+		await t.run(async (ctx) => {
+			const campaign = await ctx.db.get(campaignId);
+			if (!campaign) throw new Error('campaign missing');
+
+			// Same campaign, same instant, two different anchors.
+			const immediate = await validateReadyToSend(ctx, campaign, { now: MIDNIGHT });
+			expect(immediate.ok).toBe(false);
+			if (!immediate.ok) expect(immediate.reason).toBe('exceeds_sending_capacity');
+
+			const scheduled = await validateReadyToSend(ctx, campaign, {
+				now: MIDNIGHT,
+				scheduledAt: MIDNIGHT + 3 * 24 * 60 * 60 * 1000,
+			});
+			expect(scheduled.ok).toBe(true);
+		});
+	});
+});
+
+describe('toAssessment — the planner-verdict mapping', () => {
+	it('treats the days === 0 sentinel as UNKNOWN capacity and allows the send', () => {
+		expect(
+			toAssessment({
+				fits: false,
+				days: 0,
+				slices: [],
+				finishesAt: MIDNIGHT,
+				covered: 0,
+				truncated: false,
+			})
+		).toEqual({ capacityKnown: false, fits: true });
+	});
+
+	it('passes a real schedule through as a measured refusal', () => {
+		expect(
+			toAssessment({
+				fits: false,
+				days: 2,
+				slices: [100, 50],
+				finishesAt: MIDNIGHT + 2 * 24 * 60 * 60 * 1000,
+				covered: 150,
+				truncated: false,
+			})
+		).toEqual({
+			capacityKnown: true,
+			fits: false,
+			schedule: {
+				fits: false,
+				days: 2,
+				slices: [100, 50],
+				finishesAt: MIDNIGHT + 2 * 24 * 60 * 60 * 1000,
+				covered: 150,
+				truncated: false,
+			},
+		});
+	});
+
+	it('reports a fitting plan as measured', () => {
+		expect(toAssessment({ fits: true })).toEqual({ capacityKnown: true, fits: true });
 	});
 });

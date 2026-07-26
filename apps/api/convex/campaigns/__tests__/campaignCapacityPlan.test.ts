@@ -76,7 +76,14 @@ describe('planCampaignCapacity — the table', () => {
 			maxMessageAgeMs: FOUR_DAYS,
 			now: MIDNIGHT,
 		});
-		expect(plan).toEqual({ fits: false, days: 0, slices: [], finishesAt: MIDNIGHT });
+		expect(plan).toEqual({
+			fits: false,
+			days: 0,
+			slices: [],
+			finishesAt: MIDNIGHT,
+			covered: 0,
+			truncated: false,
+		});
 	});
 
 	it('zero capacity TODAY but growth tomorrow still yields a schedule', () => {
@@ -140,6 +147,62 @@ describe('planCampaignCapacity — the table', () => {
 		if (plan.fits) return;
 		expect(plan.days).toBe(MAX_PLAN_DAYS);
 		expect(plan.slices).toHaveLength(MAX_PLAN_DAYS);
+		// The plan does NOT reach everyone, and says so rather than letting the
+		// caller quote `days` as a finish date (D14 honesty).
+		expect(plan.truncated).toBe(true);
+		expect(plan.covered).toBe(10 * MAX_PLAN_DAYS);
+		expect(plan.covered).toBeLessThan(10_000_000);
+	});
+
+	it('a schedule that reaches everyone is never marked truncated', () => {
+		const plan = planCampaignCapacity({
+			audienceSize: 401,
+			remainingCapacityByDay: [100, 100, 100, 100, 100],
+			maxMessageAgeMs: FOUR_DAYS,
+			now: MIDNIGHT,
+		});
+		expect(plan.fits).toBe(false);
+		if (plan.fits) return;
+		expect(plan.truncated).toBe(false);
+		expect(plan.covered).toBe(401);
+	});
+
+	it('a projection that plateaus at ZERO can never cover the audience: sentinel, not a partial plan', () => {
+		// The regression this pins: [100, 0] with 300 recipients used to return
+		// { days: 1, slices: [100] } — a "plan" that silently dropped 200 people.
+		const plan = planCampaignCapacity({
+			audienceSize: 300,
+			remainingCapacityByDay: [100, 0],
+			maxMessageAgeMs: FOUR_DAYS,
+			now: MIDNIGHT,
+		});
+		expect(plan).toEqual({
+			fits: false,
+			days: 0,
+			slices: [],
+			finishesAt: MIDNIGHT,
+			covered: 0,
+			truncated: false,
+		});
+	});
+
+	it('a plateau at zero AFTER the audience is covered still yields a real schedule', () => {
+		// Same trailing zero, but the projected days do cover everyone — this must
+		// stay a genuine multi-day plan and must NOT collapse to the sentinel.
+		const plan = planCampaignCapacity({
+			audienceSize: 150,
+			remainingCapacityByDay: [100, 100, 0],
+			maxMessageAgeMs: MS_PER_DAY,
+			now: MIDNIGHT,
+		});
+		expect(plan).toEqual({
+			fits: false,
+			days: 2,
+			slices: [100, 50],
+			finishesAt: MIDNIGHT + 2 * MS_PER_DAY,
+			covered: 150,
+			truncated: false,
+		});
 	});
 });
 
@@ -175,7 +238,14 @@ describe('planCampaignCapacity — adversarial', () => {
 			maxMessageAgeMs: FOUR_DAYS,
 			now: MIDNIGHT,
 		});
-		expect(plan).toEqual({ fits: false, days: 0, slices: [], finishesAt: MIDNIGHT });
+		expect(plan).toEqual({
+			fits: false,
+			days: 0,
+			slices: [],
+			finishesAt: MIDNIGHT,
+			covered: 0,
+			truncated: false,
+		});
 	});
 
 	it('NaN / negative / Infinity capacities are treated as zero, not as capacity', () => {
