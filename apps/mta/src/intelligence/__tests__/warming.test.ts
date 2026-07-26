@@ -13,7 +13,11 @@ import {
 	reserveWarmingSlot,
 } from '../warming.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
-import { ADAPTIVE_WARMING_POLICY, getWarmingCapForDay } from '@owlat/shared/warming';
+import {
+	ADAPTIVE_WARMING_POLICY,
+	getWarmingCapForDay,
+	LAST_FINITE_WARMING_CAP,
+} from '@owlat/shared/warming';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -26,6 +30,34 @@ describe('warming', () => {
 	let redis: RealRedis;
 	const ip = '10.0.0.1';
 	const config = createTestConfig();
+	const stateKey = `mta:warming:{warming:${ip}}:state`;
+	const dailyStatsKey = `mta:warming:{warming:${ip}}:daily:2026-03-22`;
+
+	async function seedLegacyUncappedRamp(options: {
+		sent: number;
+		bounced: number;
+		deferred?: number;
+	}): Promise<void> {
+		await initializeWarming(redis, ip);
+		await redis.hset(
+			stateKey,
+			'currentDay',
+			String(ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay),
+			'dailyCap',
+			String(Infinity),
+			'phase',
+			'ramp'
+		);
+		await redis.hset(
+			dailyStatsKey,
+			'sent',
+			String(options.sent),
+			'bounced',
+			String(options.bounced),
+			'deferred',
+			String(options.deferred ?? 0)
+		);
+	}
 
 	beforeEach(() => {
 		redis = new Redis() as unknown as RealRedis;
@@ -105,6 +137,13 @@ describe('warming', () => {
 
 			const cap = await getDailyCap(redis, ip);
 			expect(cap).toBe(Infinity);
+		});
+
+		it('atomically repairs a non-graduated legacy Infinity cap', async () => {
+			await seedLegacyUncappedRamp({ sent: 1000, bounced: 20 });
+
+			expect(await getDailyCap(redis, ip)).toBe(LAST_FINITE_WARMING_CAP);
+			expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(LAST_FINITE_WARMING_CAP));
 		});
 	});
 
@@ -374,6 +413,90 @@ describe('warming', () => {
 			expect(state!.dailyCap).toBe(lastFiniteCap);
 			expect(Number.isFinite(state!.dailyCap)).toBe(true);
 		});
+
+		it('repairs a legacy day-30 Infinity row at the exclusive 2% boundary', async () => {
+			await seedLegacyUncappedRamp({ sent: 1000, bounced: 20 });
+
+			await evaluateDay(redis, ip, config);
+
+			const state = await getWarmingState(redis, ip);
+			expect(state).toMatchObject({
+				currentDay: ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay + 1,
+				phase: 'ramp',
+				dailyCap: LAST_FINITE_WARMING_CAP,
+			});
+			expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(LAST_FINITE_WARMING_CAP));
+
+			await redis.hset(stateKey, 'sentToday', String(LAST_FINITE_WARMING_CAP));
+			expect(await checkCap(redis, ip)).toEqual({
+				allowed: false,
+				sentToday: LAST_FINITE_WARMING_CAP,
+				dailyCap: LAST_FINITE_WARMING_CAP,
+			});
+		});
+
+		it('repairs a legacy day-30 Infinity row before a critical halt', async () => {
+			await seedLegacyUncappedRamp({ sent: 1000, bounced: 100 });
+
+			await evaluateDay(redis, ip, config);
+
+			expect(await getWarmingState(redis, ip)).toMatchObject({
+				currentDay: ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay,
+				phase: 'plateau',
+				dailyCap: LAST_FINITE_WARMING_CAP,
+			});
+		});
+
+		it('keeps a repaired legacy row finite on the following evaluation', async () => {
+			await seedLegacyUncappedRamp({ sent: 1000, bounced: 20 });
+			await evaluateDay(redis, ip, config);
+
+			vi.setSystemTime(new Date('2026-03-23T12:00:00Z'));
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-23',
+				'sent',
+				'1000',
+				'bounced',
+				'40',
+				'deferred',
+				'0'
+			);
+			await evaluateDay(redis, ip, config);
+
+			const state = await getWarmingState(redis, ip);
+			expect(state!.phase).toBe('ramp');
+			expect(state!.dailyCap).toBe(
+				Math.floor(LAST_FINITE_WARMING_CAP * ADAPTIVE_WARMING_POLICY.deceleration.capMultiplier)
+			);
+			expect(Number.isFinite(state!.dailyCap)).toBe(true);
+			await redis.hset(
+				stateKey,
+				'sentToday',
+				String(state!.dailyCap),
+				'sentTodayReset',
+				'2026-03-23'
+			);
+			expect(await checkCap(redis, ip)).toMatchObject({
+				allowed: false,
+				dailyCap: state!.dailyCap,
+			});
+		});
+
+		it('still graduates a healthy legacy day-30 Infinity row', async () => {
+			await seedLegacyUncappedRamp({ sent: 1000, bounced: 5 });
+
+			await evaluateDay(redis, ip, config);
+
+			expect(await getWarmingState(redis, ip)).toMatchObject({
+				phase: 'graduated',
+				dailyCap: Infinity,
+			});
+			expect(await checkCap(redis, ip)).toEqual({
+				allowed: true,
+				sentToday: 0,
+				dailyCap: Infinity,
+			});
+		});
 	});
 
 	describe('evaluateDay per-UTC-day idempotency', () => {
@@ -518,6 +641,27 @@ describe('warming', () => {
 	});
 
 	describe('checkCap atomic day-rollover reset', () => {
+		it('atomically repairs legacy Infinity before checking or reserving capacity', async () => {
+			await seedLegacyUncappedRamp({ sent: 1000, bounced: 20 });
+			await redis.hset(stateKey, 'sentToday', String(LAST_FINITE_WARMING_CAP));
+
+			expect(await checkCap(redis, ip)).toEqual({
+				allowed: false,
+				sentToday: LAST_FINITE_WARMING_CAP,
+				dailyCap: LAST_FINITE_WARMING_CAP,
+			});
+			expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(LAST_FINITE_WARMING_CAP));
+
+			await redis.hset(stateKey, 'dailyCap', String(Infinity));
+			const reservation = await reserveWarmingSlot(redis, ip, 'legacy-over-cap');
+			expect(reservation).toMatchObject({
+				allowed: false,
+				sentToday: LAST_FINITE_WARMING_CAP,
+				dailyCap: LAST_FINITE_WARMING_CAP,
+			});
+			expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(LAST_FINITE_WARMING_CAP));
+		});
+
 		it('resets sentToday exactly once when two checkCap calls race at a rolled-over date', async () => {
 			await initializeWarming(redis, ip);
 			// Simulate yesterday's leftover counter.

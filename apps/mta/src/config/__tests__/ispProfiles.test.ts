@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
+import { DESTINATION_PROVIDER_PROFILES as SHARED_DESTINATION_PROVIDER_PROFILES } from '@owlat/shared/deliverabilityPolicy';
 import { DESTINATION_PROVIDER_PROFILES } from '../../config.js';
 import { deleteProfile, getProfile, listProfiles, setProfile } from '../ispProfiles.js';
 import { logger } from '../../monitoring/logger.js';
@@ -15,6 +16,14 @@ describe('destination-provider profile persistence', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		redis = new Redis() as unknown as RealRedis;
+	});
+
+	it('re-exports the exact immutable shared profile defaults', () => {
+		expect(DESTINATION_PROVIDER_PROFILES).toBe(SHARED_DESTINATION_PROVIDER_PROFILES);
+		expect(Object.isFrozen(DESTINATION_PROVIDER_PROFILES)).toBe(true);
+		for (const profile of Object.values(DESTINATION_PROVIDER_PROFILES)) {
+			expect(Object.isFrozen(profile)).toBe(true);
+		}
 	});
 
 	it('fills fields missing from a legacy Redis profile with checked-in defaults', async () => {

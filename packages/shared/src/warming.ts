@@ -28,6 +28,12 @@ export const BASE_WARMING_SCHEDULE: ReadonlyArray<{ day: number; cap: number }> 
  */
 export const GRADUATED_DISPLAY_CAP = 200_000;
 
+/** Last schedule cap that can be enforced before health-gated graduation. */
+export const LAST_FINITE_WARMING_CAP = BASE_WARMING_SCHEDULE.reduce(
+	(lastFiniteCap, entry) => (Number.isFinite(entry.cap) ? entry.cap : lastFiniteCap),
+	BASE_WARMING_SCHEDULE[0]!.cap
+);
+
 /**
  * Adaptive warming policy enforced by the MTA.
  *
