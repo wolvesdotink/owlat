@@ -34,6 +34,13 @@ export const envelopeInputValidator = v.union(
 		viewInBrowserUrl: v.optional(v.string()),
 		listId: v.optional(v.string()),
 		engagementScore: v.optional(v.number()),
+		// Deliverability SEED PROBE marker. Set ONLY on a shadow copy addressed
+		// to an operator-owned seed mailbox (see `delivery/seedShadowCopy.ts`);
+		// the campaign composer stamps it as `X-Owlat-Seed-Probe` so the IMAP
+		// poller can find the message again. An opaque id — never a recipient
+		// address, contact id, or campaign name — and never present on an
+		// envelope bound for a real recipient.
+		seedProbeId: v.optional(v.string()),
 	}),
 	v.object({
 		kind: v.literal('transactional'),

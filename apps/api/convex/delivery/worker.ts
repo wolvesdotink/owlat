@@ -146,6 +146,9 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 		listId: envelopeInput.listId,
 		trackingBaseUrl,
 		viewInBrowserUrl: envelopeInput.viewInBrowserUrl,
+		// Seed shadow copies only — stamps `X-Owlat-Seed-Probe`. Absent on every
+		// envelope bound for a real recipient.
+		seedProbeId: envelopeInput.seedProbeId,
 	};
 	return composeInput;
 }

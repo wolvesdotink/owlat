@@ -17,14 +17,12 @@
  *    get the full footer + List-Unsubscribe header.
  */
 
+import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import { buildFeedbackId } from '../feedbackId';
 import { personalize } from '../personalization';
 import { getTrackingPixelUrl } from '../trackingUrl';
 import type { TransformConfig } from '../transform';
-import type {
-	CampaignComposeInput,
-	ComposerOutput,
-} from '../types';
+import type { CampaignComposeInput, ComposerOutput } from '../types';
 
 export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	const subject = personalize(input.template.subject, input.contactInfo, { escape: 'header' });
@@ -69,17 +67,21 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 		}
 	}
 
+	// Deliverability seed probe: the ONLY header that distinguishes a shadow
+	// copy from the real send it mirrors. Opaque id, no recipient or campaign
+	// PII, and only ever set by the seed shadow-copy builder — a real
+	// recipient's envelope never carries `seedProbeId`.
+	if (input.seedProbeId) {
+		headers[SEED_PROBE_HEADER] = input.seedProbeId;
+	}
+
 	const transformConfig: TransformConfig = {};
 
 	if (input.viewInBrowserUrl) {
 		transformConfig.viewInBrowserUrl = input.viewInBrowserUrl;
 	}
 
-	if (
-		input.audienceType !== 'segment' &&
-		input.unsubscribeUrl &&
-		input.preferenceUrl
-	) {
+	if (input.audienceType !== 'segment' && input.unsubscribeUrl && input.preferenceUrl) {
 		transformConfig.unsubscribeUrl = input.unsubscribeUrl;
 		transformConfig.preferenceUrl = input.preferenceUrl;
 	}
@@ -87,7 +89,7 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	if (input.emailSendId && input.trackingBaseUrl) {
 		transformConfig.trackingPixelUrl = getTrackingPixelUrl(
 			input.trackingBaseUrl,
-			input.emailSendId,
+			input.emailSendId
 		);
 		transformConfig.trackedLinkBase = {
 			siteUrl: input.trackingBaseUrl,
