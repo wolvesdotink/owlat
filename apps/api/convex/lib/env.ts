@@ -32,6 +32,15 @@ export type EnvKey =
 	| 'ALLOWED_ORIGINS'
 	// Email defaults
 	| 'EMAIL_PROVIDER'
+	// Additional NAMED transport instances, beyond the one default instance each
+	// transport kind gets for free. Comma-separated `<kind>#<instanceKey>` entries
+	// (e.g. `smtp#backup,resend#trial`). Each named instance reads its own config
+	// from the same variables as its kind, suffixed with `__<INSTANCEKEY>` —
+	// `smtp#backup` reads `SMTP_RELAY_HOST__BACKUP`, `SMTP_RELAY_USERNAME__BACKUP`,
+	// and so on. Instance keys are lowercase `[a-z0-9][a-z0-9_-]{0,31}`; malformed
+	// entries are ignored rather than crashing dispatch. Unset ⇒ exactly one
+	// transport per kind, which is the shipped single-transport deployment.
+	| 'SEND_TRANSPORT_INSTANCES'
 	| 'DEFAULT_FROM_DOMAIN'
 	| 'DEFAULT_FROM_EMAIL'
 	| 'DEFAULT_FROM_NAME'
@@ -224,6 +233,26 @@ export function getBoolean(key: EnvKey): boolean {
 export function isEnvPresent(key: string): boolean {
 	const value = process.env[key];
 	return value !== undefined && value !== '';
+}
+
+/**
+ * Read one send-transport configuration variable by its INSTANCE-RESOLVED name.
+ *
+ * Accepts an arbitrary key (not the typed `EnvKey` union) because a named
+ * transport instance reads its kind's variables under an `__<INSTANCEKEY>`
+ * suffix (`SMTP_RELAY_HOST__BACKUP`) — a name derived at runtime from
+ * `SEND_TRANSPORT_INSTANCES`, so it cannot be enumerated in the union. Reading
+ * through this module keeps the no-raw-`process.env` lint satisfied. Returns
+ * `undefined` when unset or empty so the transport resolver fails closed; the
+ * value is only ever handed to the adapter that owns it, never logged and never
+ * returned to a client.
+ *
+ * The UNSUFFIXED default instance keeps reading through the typed accessors
+ * above — this is only the extra-instance path.
+ */
+export function getSendTransportEnv(key: string): string | undefined {
+	const value = process.env[key];
+	return value === undefined || value === '' ? undefined : value;
 }
 
 /**
