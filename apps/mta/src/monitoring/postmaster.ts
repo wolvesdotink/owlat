@@ -14,9 +14,9 @@ import type { MtaConfig } from '../config.js';
 import type { GooglePostmasterDeliveryErrorShare, GooglePostmasterStatsEvent } from '../types.js';
 import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
 import {
+	buildStatsEvents,
 	type DomainStatObservation,
 	GOOGLE_POSTMASTER_API_BASE,
-	GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME,
 	GoogleApiError,
 	GooglePostmasterClient,
 	POSTMASTER_RATIO_METRICS,
@@ -27,13 +27,16 @@ import {
 	type PostmasterDomainWire,
 } from './googlePostmasterApi.js';
 import { logger } from './logger.js';
-import { fetchComplianceChecks, fetchDeliveryErrorShares } from './postmasterExtras.js';
+import {
+	COMPLIANCE_PUSHED_PREFIX,
+	fetchDeliveryErrorShares,
+	pushComplianceStatus,
+} from './postmasterExtras.js';
 
 const COLLECTION_LOCK_KEY = 'mta:postmaster:collection-lock';
 const DOMAIN_CURSOR_KEY = 'mta:postmaster:domain-cursor';
 const STATS_CURSOR_PREFIX = 'mta:postmaster:stats-cursor:';
 const PUSHED_PREFIX = 'mta:postmaster:pushed:';
-const COMPLIANCE_PUSHED_PREFIX = 'mta:postmaster:compliance-pushed:';
 const DOMAIN_STATE_INDEX_KEY = 'mta:postmaster:domain-state-index';
 const DISCOVERY_GENERATION_KEY = 'mta:postmaster:discovery-generation';
 const BACKFILL_DAYS = 7;
@@ -139,47 +142,6 @@ function queryBody(startDate: string, endDate: string, pageToken?: string) {
 		...(pageToken ? { pageToken } : {}),
 		aggregationGranularity: 'DAILY',
 	};
-}
-
-/**
- * Fold the flat `(date, metric)` observations of one page into one event per
- * UTC day. `SPAM_RATE` is the one metric Convex requires, so a day Google has
- * not reported it for is skipped and picked up by a later sweep; every other
- * metric is attached only when present, because Google withholds a metric on
- * days a domain had too little traffic and that is normal operation.
- */
-function buildStatsEvents(
-	domain: string,
-	observations: DomainStatObservation[],
-	timestamp: number
-): GooglePostmasterStatsEvent[] {
-	const ratiosByDate = new Map<string, Map<string, number>>();
-	for (const observation of observations) {
-		const ratios = ratiosByDate.get(observation.date) ?? new Map<string, number>();
-		if (!ratios.has(observation.metric)) ratios.set(observation.metric, observation.ratio);
-		ratiosByDate.set(observation.date, ratios);
-	}
-	const events: GooglePostmasterStatsEvent[] = [];
-	for (const [date, ratios] of ratiosByDate) {
-		const userReportedSpamRatio = ratios.get(GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME);
-		if (userReportedSpamRatio === undefined) continue;
-		const spfSuccessRatio = ratios.get('spfSuccessRatio');
-		const dkimSuccessRatio = ratios.get('dkimSuccessRatio');
-		const dmarcSuccessRatio = ratios.get('dmarcSuccessRatio');
-		const deliveryErrorRatio = ratios.get('deliveryErrorRatio');
-		events.push({
-			event: 'postmaster.stats',
-			domain,
-			date,
-			userReportedSpamRatio,
-			...(spfSuccessRatio !== undefined ? { spfSuccessRatio } : {}),
-			...(dkimSuccessRatio !== undefined ? { dkimSuccessRatio } : {}),
-			...(dmarcSuccessRatio !== undefined ? { dmarcSuccessRatio } : {}),
-			...(deliveryErrorRatio !== undefined ? { deliveryErrorRatio } : {}),
-			timestamp,
-		});
-	}
-	return events;
 }
 
 async function fetchStatsPage(
@@ -392,34 +354,6 @@ async function pushDomainStats(
 		pageToken = nextPageToken;
 	}
 	return 'completed';
-}
-
-/**
- * Push today's Compliance Status verdict once per UTC day.
- *
- * Additive-only: an unavailable verdict, a rejected push or a lost
- * authorization all leave the receipt unwritten and return quietly. The
- * statistics sweep is never interrupted by compliance collection.
- */
-async function pushComplianceStatus(
-	redis: Redis,
-	config: MtaConfig,
-	client: GooglePostmasterClient,
-	domainName: string,
-	deadline: number
-): Promise<void> {
-	const date = utcDateDaysAgo(0);
-	const receiptKey = `${COMPLIANCE_PUSHED_PREFIX}${domainName}:${date}`;
-	if (await redis.exists(receiptKey)) return;
-	const checks = await fetchComplianceChecks(client, domainName);
-	if (checks.length === 0) return;
-	const acknowledgement = await notifyPostmasterConvex(
-		{ event: 'postmaster.compliance', domain: domainName, date, checks, timestamp: Date.now() },
-		config,
-		{ deadline }
-	);
-	if (acknowledgement.disposition !== 'accepted_authorized') return;
-	await redis.set(receiptKey, '1', 'EX', PUSH_RECEIPT_TTL_SECONDS);
 }
 
 async function authorizeDomainCollection(

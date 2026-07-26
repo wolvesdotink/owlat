@@ -10,10 +10,13 @@
  * @see https://developers.google.com/workspace/gmail/postmaster/reference/rest/v2/domains.domainStats/query
  */
 
+import type Redis from 'ioredis';
+import type { MtaConfig } from '../config.js';
 import type {
 	GooglePostmasterComplianceCheck,
 	GooglePostmasterDeliveryErrorShare,
 } from '../types.js';
+import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
 import {
 	DELIVERY_ERROR_METRIC_PREFIX,
 	GOOGLE_POSTMASTER_API_BASE,
@@ -27,6 +30,12 @@ import {
 import { logger } from './logger.js';
 
 const DELIVERY_ERROR_PAGE_SIZE = 200;
+export const COMPLIANCE_PUSHED_PREFIX = 'mta:postmaster:compliance-pushed:';
+const PUSH_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
+
+function utcToday(): string {
+	return new Date(Date.now()).toISOString().slice(0, 10);
+}
 
 /** The current Compliance Status verdict for one domain; `[]` when unavailable. */
 export async function fetchComplianceChecks(
@@ -115,4 +124,32 @@ export async function fetchDeliveryErrorShares(
 		byDate.set(observation.date, shares);
 	}
 	return byDate;
+}
+
+/**
+ * Push today's Compliance Status verdict once per UTC day.
+ *
+ * Additive-only: an unavailable verdict, a rejected push or a lost
+ * authorization all leave the receipt unwritten and return quietly. The
+ * statistics sweep is never interrupted by compliance collection.
+ */
+export async function pushComplianceStatus(
+	redis: Redis,
+	config: MtaConfig,
+	client: GooglePostmasterClient,
+	domainName: string,
+	deadline: number
+): Promise<void> {
+	const date = utcToday();
+	const receiptKey = `${COMPLIANCE_PUSHED_PREFIX}${domainName}:${date}`;
+	if (await redis.exists(receiptKey)) return;
+	const checks = await fetchComplianceChecks(client, domainName);
+	if (checks.length === 0) return;
+	const acknowledgement = await notifyPostmasterConvex(
+		{ event: 'postmaster.compliance', domain: domainName, date, checks, timestamp: Date.now() },
+		config,
+		{ deadline }
+	);
+	if (acknowledgement.disposition !== 'accepted_authorized') return;
+	await redis.set(receiptKey, '1', 'EX', PUSH_RECEIPT_TTL_SECONDS);
 }

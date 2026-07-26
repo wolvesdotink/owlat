@@ -2,7 +2,7 @@
 
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import type { GooglePostmasterComplianceCheck } from '../types.js';
+import type { GooglePostmasterComplianceCheck, GooglePostmasterStatsEvent } from '../types.js';
 
 const TOKEN_KEY = 'mta:postmaster:oauth-access-token';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -386,4 +386,45 @@ export function parseReadableVerifiedDomain(value: unknown): PostmasterDomainWir
 		permission: value['permission'],
 		verificationState: 'VERIFIED',
 	};
+}
+
+/**
+ * Fold the flat `(date, metric)` observations of one page into one event per
+ * UTC day. `SPAM_RATE` is the one metric Convex requires, so a day Google has
+ * not reported it for is skipped and picked up by a later sweep; every other
+ * metric is attached only when present, because Google withholds a metric on
+ * days a domain had too little traffic and that is normal operation.
+ */
+export function buildStatsEvents(
+	domain: string,
+	observations: DomainStatObservation[],
+	timestamp: number
+): GooglePostmasterStatsEvent[] {
+	const ratiosByDate = new Map<string, Map<string, number>>();
+	for (const observation of observations) {
+		const ratios = ratiosByDate.get(observation.date) ?? new Map<string, number>();
+		if (!ratios.has(observation.metric)) ratios.set(observation.metric, observation.ratio);
+		ratiosByDate.set(observation.date, ratios);
+	}
+	const events: GooglePostmasterStatsEvent[] = [];
+	for (const [date, ratios] of ratiosByDate) {
+		const userReportedSpamRatio = ratios.get(GOOGLE_POSTMASTER_SPAM_RATE_METRIC_NAME);
+		if (userReportedSpamRatio === undefined) continue;
+		const spfSuccessRatio = ratios.get('spfSuccessRatio');
+		const dkimSuccessRatio = ratios.get('dkimSuccessRatio');
+		const dmarcSuccessRatio = ratios.get('dmarcSuccessRatio');
+		const deliveryErrorRatio = ratios.get('deliveryErrorRatio');
+		events.push({
+			event: 'postmaster.stats',
+			domain,
+			date,
+			userReportedSpamRatio,
+			...(spfSuccessRatio !== undefined ? { spfSuccessRatio } : {}),
+			...(dkimSuccessRatio !== undefined ? { dkimSuccessRatio } : {}),
+			...(dmarcSuccessRatio !== undefined ? { dmarcSuccessRatio } : {}),
+			...(deliveryErrorRatio !== undefined ? { deliveryErrorRatio } : {}),
+			timestamp,
+		});
+	}
+	return events;
 }
