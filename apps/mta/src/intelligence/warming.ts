@@ -25,6 +25,7 @@ import {
 } from './warmingOutcomeStore.js';
 import {
 	CHECK_WARMING_CAP_ROLLOVER_LUA,
+	GET_NORMALIZED_WARMING_STATE_LUA,
 	NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA,
 	RECORD_RESERVED_WARMING_SEND_LUA,
 	RESERVE_WARMING_SLOT_LUA,
@@ -67,8 +68,7 @@ export async function reserveWarmingSlot(
 		today,
 		now,
 		expiresAt,
-		messageId,
-		LAST_FINITE_WARMING_CAP
+		messageId
 	)) as Array<number | string>;
 	const allowed = Number(result[0]) === 1;
 	// An IP that is not warming (or has graduated) is uncapped and reserves
@@ -133,12 +133,7 @@ export async function getDailyCap(redis: Redis, ip: string): Promise<number> {
 
 async function normalizeNonGraduatedWarmingCap(redis: Redis, ip: string): Promise<number> {
 	const capRaw = String(
-		await redis.eval(
-			NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA,
-			1,
-			warmingStateKey(ip),
-			LAST_FINITE_WARMING_CAP
-		)
+		await redis.eval(NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA, 1, warmingStateKey(ip))
 	);
 	return capRaw === 'Infinity' ? Infinity : Number(capRaw);
 }
@@ -163,8 +158,7 @@ export async function checkCap(
 		CHECK_WARMING_CAP_ROLLOVER_LUA,
 		1,
 		warmingStateKey(ip),
-		today,
-		LAST_FINITE_WARMING_CAP
+		today
 	)) as [string, string];
 	const sentToday = parseInt(result[0] ?? '0', 10);
 	const dailyCap = result[1] === 'Infinity' ? Infinity : parseInt(result[1] ?? '0', 10);
@@ -296,7 +290,6 @@ export async function initializeWarming(redis: Redis, ip: string): Promise<void>
  * Should be called at end of each day or periodically.
  */
 export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): Promise<void> {
-	await normalizeNonGraduatedWarmingCap(redis, ip);
 	const state = await getWarmingState(redis, ip);
 	if (!state || state.phase === 'graduated') return;
 
@@ -472,19 +465,29 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
  * Get the current warming state for an IP
  */
 export async function getWarmingState(redis: Redis, ip: string): Promise<WarmingState | null> {
-	const hashKey = warmingStateKey(ip);
-	const data = await redis.hgetall(hashKey);
-	if (!data['startedAt']) return null;
+	const entries = (await redis.eval(
+		GET_NORMALIZED_WARMING_STATE_LUA,
+		1,
+		warmingStateKey(ip)
+	)) as Array<number | string>;
+	if (entries.length === 0) return null;
+	const persistedFields: Record<string, string> = {};
+	for (let index = 0; index < entries.length; index += 2) {
+		persistedFields[String(entries[index])] = String(entries[index + 1]);
+	}
 
 	return {
-		startedAt: parseInt(data['startedAt'], 10),
-		currentDay: parseInt(data['currentDay'] ?? '1', 10),
-		dailyCap: data['dailyCap'] === 'Infinity' ? Infinity : parseInt(data['dailyCap'] ?? '50', 10),
-		sentToday: parseInt(data['sentToday'] ?? '0', 10),
-		sentTodayReset: data['sentTodayReset'] ?? '',
-		lastEvaluatedDate: data['lastEvaluatedDate'] ?? '',
-		bounceRate: parseFloat(data['bounceRate'] ?? '0'),
-		deferralRate: parseFloat(data['deferralRate'] ?? '0'),
-		phase: (data['phase'] as WarmingPhase) ?? 'ramp',
+		startedAt: parseInt(persistedFields['startedAt']!, 10),
+		currentDay: parseInt(persistedFields['currentDay'] ?? '1', 10),
+		dailyCap:
+			persistedFields['dailyCap'] === 'Infinity'
+				? Infinity
+				: parseInt(persistedFields['dailyCap'] ?? '50', 10),
+		sentToday: parseInt(persistedFields['sentToday'] ?? '0', 10),
+		sentTodayReset: persistedFields['sentTodayReset'] ?? '',
+		lastEvaluatedDate: persistedFields['lastEvaluatedDate'] ?? '',
+		bounceRate: parseFloat(persistedFields['bounceRate'] ?? '0'),
+		deferralRate: parseFloat(persistedFields['deferralRate'] ?? '0'),
+		phase: (persistedFields['phase'] as WarmingPhase) ?? 'ramp',
 	};
 }

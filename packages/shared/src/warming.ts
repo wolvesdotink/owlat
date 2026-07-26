@@ -65,6 +65,16 @@ export const ADAPTIVE_WARMING_POLICY = {
 	},
 } as const;
 
+/**
+ * Persisted caps for an IP that has not graduated must stay within this domain.
+ * Keeping the invariant here gives Redis enforcement and non-Redis consumers
+ * one source of truth.
+ */
+export const NON_GRADUATED_WARMING_CAP_RANGE = Object.freeze({
+	minimum: ADAPTIVE_WARMING_POLICY.deceleration.minimumCap,
+	maximum: LAST_FINITE_WARMING_CAP,
+});
+
 /** The enforced daily send cap for a warming day (Infinity once graduated). */
 export function getWarmingCapForDay(day: number): number {
 	let cap = BASE_WARMING_SCHEDULE[0]!.cap;
@@ -73,6 +83,37 @@ export function getWarmingCapForDay(day: number): number {
 		else break;
 	}
 	return cap;
+}
+
+/** Whether a persisted non-graduated cap is safe to enforce. */
+export function isValidNonGraduatedWarmingCap(cap: unknown): cap is number {
+	return (
+		typeof cap === 'number' &&
+		Number.isFinite(cap) &&
+		Number.isInteger(cap) &&
+		cap >= NON_GRADUATED_WARMING_CAP_RANGE.minimum &&
+		cap <= NON_GRADUATED_WARMING_CAP_RANGE.maximum
+	);
+}
+
+/**
+ * Conservative repair for an invalid persisted cap. Invalid days fail closed
+ * to day 1; valid days use their finite schedule cap, clamped at the final
+ * enforceable cap rather than crossing into graduated Infinity.
+ */
+export function getNonGraduatedWarmingCapRepairFallback(currentDay: number): number {
+	const normalizedDay = Number.isFinite(currentDay) && currentDay >= 1 ? Math.floor(currentDay) : 1;
+	const scheduledCap = getWarmingCapForDay(normalizedDay);
+	return Number.isFinite(scheduledCap)
+		? Math.min(scheduledCap, NON_GRADUATED_WARMING_CAP_RANGE.maximum)
+		: NON_GRADUATED_WARMING_CAP_RANGE.maximum;
+}
+
+/** Normalize an untrusted persisted cap using the shared warming contract. */
+export function normalizeNonGraduatedWarmingCap(cap: unknown, currentDay: number): number {
+	return isValidNonGraduatedWarmingCap(cap)
+		? cap
+		: getNonGraduatedWarmingCapRepairFallback(currentDay);
 }
 
 /** Display-safe cap: the graduated Infinity is clamped to GRADUATED_DISPLAY_CAP. */
