@@ -11,6 +11,8 @@ import {
 	type RiskLevel,
 } from './sendingReputation';
 import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
+import { loadRemainingCapacityByDay } from '../campaigns/capacityPreflight';
+import { MAX_PLAN_DAYS, planCampaignCapacity } from '../campaigns/capacityPlan';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
 type ReputationDto = {
@@ -148,27 +150,54 @@ export const getCampaignSendEstimate = authedQuery({
 			};
 		}
 
-		// Project forward: assume daily cap roughly doubles each day (conservative estimate)
-		let remaining = recipientCount - remainingToday;
-		let days = 1;
-		let projectedDailyCap = totalDailyCap;
-
-		while (remaining > 0 && days < 30) {
-			days++;
-			// Conservative: cap increases ~1.5x per day during warmup
-			projectedDailyCap = Math.min(projectedDailyCap * 1.5, 200000);
-			remaining -= projectedDailyCap;
+		// Project forward off the SAME published warming schedule the binding
+		// pre-flight gate uses (campaigns/capacityPlan.ts). The previous ad-hoc
+		// "cap grows ~1.5x/day" heuristic could disagree with the gate about the
+		// day count, so the advisory estimate and the refusal told the operator
+		// two different stories. One projection, one answer.
+		const now = Date.now();
+		const remainingCapacityByDay = await loadRemainingCapacityByDay(ctx, now);
+		if (remainingCapacityByDay === null) {
+			return {
+				totalDailyCap,
+				remainingToday,
+				estimatedDays: 1,
+				isFullyWarmed: false,
+				message: 'Warming data not available yet. Your emails will be paced automatically.',
+			};
 		}
 
-		const message =
-			days >= 30
-				? 'Campaign will take approximately 30+ days based on current warmup progress.'
-				: `Based on your IP warmup progress, this campaign will take approximately ${days} day${days === 1 ? '' : 's'} to complete.`;
+		// We want the SCHEDULE, not the fits/does-not-fit verdict — this is the
+		// advisory readout, not the binding gate. A single-day horizon makes the
+		// planner skip its short-circuit and enumerate the day slices; the branch
+		// above already established the campaign does not fit inside day zero.
+		const plan = planCampaignCapacity({
+			audienceSize: recipientCount,
+			remainingCapacityByDay,
+			maxMessageAgeMs: 1,
+			now,
+		});
+
+		// `fits` means it lands inside the projection window; `days === 0` is the
+		// planner's "cannot be planned" sentinel (no positive projected capacity).
+		if (plan.fits || plan.days <= 1) {
+			return {
+				totalDailyCap,
+				remainingToday,
+				estimatedDays: 1,
+				isFullyWarmed: false,
+				message: 'Your emails will be paced automatically against your current warm-up capacity.',
+			};
+		}
+
+		const message = plan.truncated
+			? `Campaign will take approximately ${MAX_PLAN_DAYS}+ days based on current warmup progress.`
+			: `Based on your IP warmup progress, this campaign will take approximately ${plan.days} day${plan.days === 1 ? '' : 's'} to complete.`;
 
 		return {
 			totalDailyCap,
 			remainingToday,
-			estimatedDays: days,
+			estimatedDays: plan.days,
 			isFullyWarmed: false,
 			message,
 		};
