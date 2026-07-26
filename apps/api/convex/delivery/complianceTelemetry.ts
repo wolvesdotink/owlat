@@ -5,6 +5,13 @@ import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { startOfDayUtc } from '../analytics/sendingReputation';
+import { UNSUBSCRIBE_HONOR_WINDOW_MS } from '@owlat/shared/deliverabilityPolicy';
+
+export {
+	GMAIL_BULK_SENDER_THRESHOLD,
+	GMAIL_PROXIMITY_WARNING_THRESHOLD,
+	UNSUBSCRIBE_HONOR_WINDOW_MS,
+} from '@owlat/shared/deliverabilityPolicy';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -19,10 +26,6 @@ export const GMAIL_VOLUME_SHARDS = 8;
 export const GMAIL_ROLLUP_REFRESH_DELAY_MS = 60 * 1000;
 const GMAIL_ROLLUP_JOB_STALE_MS = 10 * 60 * 1000;
 const GMAIL_MAX_BUCKETS_PER_WINDOW = (GMAIL_WINDOW_MS / HOUR_MS + 1) * GMAIL_VOLUME_SHARDS;
-
-export const GMAIL_BULK_SENDER_THRESHOLD = 5_000;
-export const GMAIL_PROXIMITY_WARNING_THRESHOLD = 4_000;
-export const UNSUBSCRIBE_HONOR_WINDOW_MS = 48 * HOUR_MS;
 
 /** Inclusive histogram upper bounds; the last bucket catches all larger values. */
 export const UNSUBSCRIBE_LATENCY_BOUNDS_MS = [

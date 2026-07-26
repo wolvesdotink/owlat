@@ -28,6 +28,37 @@ export const BASE_WARMING_SCHEDULE: ReadonlyArray<{ day: number; cap: number }> 
  */
 export const GRADUATED_DISPLAY_CAP = 200_000;
 
+/**
+ * Adaptive warming policy enforced by the MTA.
+ *
+ * This lives beside the base schedule so operational documentation and other
+ * consumers can use the same named policy instead of copying numeric literals.
+ * All rate boundaries are fractions (for example, 0.01 means 1%).
+ */
+export const ADAPTIVE_WARMING_POLICY = {
+	acceleration: {
+		bounceRateExclusiveMax: 0.01,
+		deferralRateExclusiveMax: 0.05,
+		usageRateMinimum: 0.8,
+		scheduleDayMultiplier: 1.5,
+	},
+	deceleration: {
+		bounceRateExclusiveMin: 0.03,
+		deferralRateExclusiveMin: 0.1,
+		scheduleDayMultiplier: 0.5,
+		capMultiplier: 0.7,
+		minimumCap: 50,
+	},
+	halt: {
+		bounceRateExclusiveMin: 0.08,
+		deferralRateExclusiveMin: 0.25,
+	},
+	graduation: {
+		minimumScheduleDay: 30,
+		bounceRateExclusiveMax: 0.02,
+	},
+} as const;
+
 /** The enforced daily send cap for a warming day (Infinity once graduated). */
 export function getWarmingCapForDay(day: number): number {
 	let cap = BASE_WARMING_SCHEDULE[0]!.cap;

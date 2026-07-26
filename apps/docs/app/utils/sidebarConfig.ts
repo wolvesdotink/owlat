@@ -129,6 +129,7 @@ export const sidebarConfig: SidebarGroup[] = [
 		section: 'guide',
 		items: [
 			{ label: 'Deliverability', to: '/guide/deliverability' },
+			{ label: 'Sending from a VPS', to: '/guide/sending-from-a-vps' },
 			{ label: 'Security & Scanning', to: '/guide/security-scanning' },
 			{
 				label: 'API Keys & Webhooks',
