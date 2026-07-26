@@ -11,6 +11,7 @@ import { authTables } from './schema/auth';
 import { instanceTables } from './schema/instance';
 import { templateTables } from './schema/templates';
 import { deliveryTables } from './schema/delivery';
+import { seedPlacementTables } from './schema/seedPlacement';
 import { inboxTables } from './schema/inbox';
 import { autonomyTables } from './schema/autonomy';
 import { askEagernessTables } from './schema/askEagerness';
@@ -41,6 +42,7 @@ export default defineSchema({
 	...instanceTables,
 	...templateTables,
 	...deliveryTables,
+	...seedPlacementTables,
 	...inboxTables,
 	...autonomyTables,
 	...askEagernessTables,

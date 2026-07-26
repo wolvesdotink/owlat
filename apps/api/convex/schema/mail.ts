@@ -201,6 +201,34 @@ export const mailTables = {
 		// the inbox itself follows `mailboxes.userId` via mailboxMembers.
 		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
 
+		// What the connection is FOR. undefined ⇒ 'mail' (every pre-seed row): an
+		// ordinary BYO mailbox synced into Postbox. 'seed' ⇒ a deliverability SEED
+		// mailbox: a free consumer account the operator owns purely so Owlat can
+		// mail itself a shadow copy and see which folder it lands in (gate 5 of
+		// the deliverability controller). A seed account reuses this table's
+		// sealed-credential handling and the shipped IMAP client verbatim — there
+		// is no second credential model — but it is NOT a user inbox: it is
+		// excluded from the personal-external surfaces and its mail is never
+		// indexed. Zero seed accounts is a SUPPORTED configuration.
+		purpose: v.optional(v.union(v.literal('mail'), v.literal('seed'))),
+		// Mailbox provider of a seed account, on the routing cell's destination
+		// axis. Set at connect time from the account's domain/host; drives the
+		// per-provider placement roll-up. Seed rows only.
+		seedProvider: v.optional(
+			v.union(
+				v.literal('gmail'),
+				v.literal('microsoft'),
+				v.literal('yahoo'),
+				v.literal('apple'),
+				v.literal('other')
+			)
+		),
+		// Last time the operator was reminded to rotate this seed (consumer
+		// mailboxes go stale). Absent ⇒ never reminded; the reminder clock then
+		// runs from `createdAt`. A reminder is a nudge on a connected seed, never
+		// a blocking warning or a "setup incomplete" state.
+		seedRotationRemindedAt: v.optional(v.number()),
+
 		// IMAP (receive). isImapSecure=true ⇒ implicit TLS (993); false ⇒ STARTTLS (143).
 		imapHost: v.string(),
 		imapPort: v.number(),
@@ -245,7 +273,10 @@ export const mailTables = {
 	})
 		.index('by_user', ['userId'])
 		.index('by_mailbox', ['mailboxId'])
-		.index('by_status', ['status']),
+		.index('by_status', ['status'])
+		// Seed-mailbox lookup for the placement prober. Legacy rows carry no
+		// `purpose`, so this index only ever returns explicitly-tagged accounts.
+		.index('by_org_and_purpose', ['organizationId', 'purpose']),
 
 	// Per-(account, folder) IMAP sync cursor. Separate from mailFolders' own
 	// uidValidity/uidNext (those track Owlat-as-IMAP-server); these track
