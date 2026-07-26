@@ -88,9 +88,10 @@ export async function sendProviderDispatch(
 	const transport = resolveSendTransport(transportId);
 	const kind = transport.kind;
 	// Core adapters and hosted (plugin) adapters share the send-side shape but
-	// not the same interface. The loop below only ever needs that shared shape,
-	// so it is narrowed once here instead of at every use.
-	const module = providerFor(kind) as unknown as DispatchableSendModule;
+	// not the same interface. `providerFor`'s non-literal overload returns that
+	// shared supertype, so this needs no cast — the module shape is still
+	// checked here.
+	const module: DispatchableSendModule = providerFor(kind);
 	const pluginId = transport.pluginId;
 	const pluginHost = pluginId ? createSendTransportHost(pluginId) : null;
 	const startTime = Date.now();
