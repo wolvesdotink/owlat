@@ -11,8 +11,8 @@ import {
 	type RiskLevel,
 } from './sendingReputation';
 import { summarizeDomainSpamRateGroups, type SpamRateSummary } from './spamRate';
-import { loadRemainingCapacityByDay } from '../campaigns/capacityPreflight';
-import { MAX_PLAN_DAYS, planCampaignCapacity } from '../campaigns/capacityPlan';
+import { loadRemainingCapacityByDay } from '../delivery/warmingCapacity';
+import { MAX_PLAN_DAYS, buildCapacitySchedule } from '../campaigns/capacityPlan';
 
 /** The reputation card's UI shape, or `null` when there's no in-window activity. */
 type ReputationDto = {
@@ -156,7 +156,7 @@ export const getCampaignSendEstimate = authedQuery({
 		// day count, so the advisory estimate and the refusal told the operator
 		// two different stories. One projection, one answer.
 		const now = Date.now();
-		const remainingCapacityByDay = await loadRemainingCapacityByDay(ctx, now);
+		const remainingCapacityByDay = await loadRemainingCapacityByDay(ctx, { now });
 		if (remainingCapacityByDay === null) {
 			return {
 				totalDailyCap,
@@ -168,19 +168,18 @@ export const getCampaignSendEstimate = authedQuery({
 		}
 
 		// We want the SCHEDULE, not the fits/does-not-fit verdict — this is the
-		// advisory readout, not the binding gate. A single-day horizon makes the
-		// planner skip its short-circuit and enumerate the day slices; the branch
-		// above already established the campaign does not fit inside day zero.
-		const plan = planCampaignCapacity({
+		// advisory readout, not the binding gate — so call the schedule builder
+		// directly rather than the horizon-gated planner.
+		const plan = buildCapacitySchedule({
 			audienceSize: recipientCount,
 			remainingCapacityByDay,
-			maxMessageAgeMs: 1,
 			now,
 		});
 
-		// `fits` means it lands inside the projection window; `days === 0` is the
-		// planner's "cannot be planned" sentinel (no positive projected capacity).
-		if (plan.fits || plan.days <= 1) {
+		// `days === 0` is the builder's "cannot be planned" sentinel (no positive
+		// projected capacity). The branch above already established the campaign
+		// does not fit inside day zero, so a real schedule always spans ≥ 2 days.
+		if (plan.days === 0) {
 			return {
 				totalDailyCap,
 				remainingToday,
