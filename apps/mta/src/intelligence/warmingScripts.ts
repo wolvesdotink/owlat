@@ -15,25 +15,42 @@ const VALID_WARMING_CAP_FALLBACK_LOOKUP_LUA = BASE_WARMING_SCHEDULE.filter((entr
 	)
 	.join('\n  ');
 
-const NORMALIZE_WARMING_CAP_FUNCTION_LUA = `
-local function normalizeWarmingCap(hashKey)
+const NORMALIZE_WARMING_STATE_FUNCTION_LUA = `
+local function isCanonicalPositiveSafeInteger(raw)
+  if not raw or not string.match(raw, '^[1-9][0-9]*$') then return false end
+  local value = tonumber(raw)
+  return value and value <= ${Number.MAX_SAFE_INTEGER} and value % 1 == 0
+end
+
+local function normalizeWarmingState(hashKey, graduated)
   local minimumCap = ${NON_GRADUATED_WARMING_CAP_RANGE.minimum}
   local maximumCap = ${NON_GRADUATED_WARMING_CAP_RANGE.maximum}
-  local currentDay = tonumber(redis.call('HGET', hashKey, 'currentDay') or '1')
-  if not currentDay or currentDay ~= currentDay or currentDay == math.huge or currentDay == -math.huge or currentDay < 1 then
-    currentDay = 1
+  local currentDayRaw = redis.call('HGET', hashKey, 'currentDay')
+  local currentDay
+  if isCanonicalPositiveSafeInteger(currentDayRaw) then
+    currentDay = tonumber(currentDayRaw)
   else
-    currentDay = math.floor(currentDay)
+    currentDay = 1
+    redis.call('HSET', hashKey, 'currentDay', '1')
   end
+
+  if graduated then
+    if redis.call('HGET', hashKey, 'dailyCap') ~= 'Infinity' then
+      redis.call('HSET', hashKey, 'dailyCap', 'Infinity')
+    end
+    return currentDay, 'Infinity'
+  end
+
   local fallbackCap = minimumCap
   ${VALID_WARMING_CAP_FALLBACK_LOOKUP_LUA}
   local capRaw = redis.call('HGET', hashKey, 'dailyCap')
-  local cap = tonumber(capRaw)
-  if not cap or cap ~= cap or cap == math.huge or cap == -math.huge or cap < minimumCap or cap > maximumCap or cap % 1 ~= 0 then
+  local cap
+  if isCanonicalPositiveSafeInteger(capRaw) then cap = tonumber(capRaw) end
+  if not cap or cap < minimumCap or cap > maximumCap then
     cap = fallbackCap
     redis.call('HSET', hashKey, 'dailyCap', tostring(cap))
   end
-  return cap
+  return currentDay, tostring(cap)
 end
 `;
 
@@ -43,33 +60,28 @@ end
  * cannot overwrite a concurrent graduation.
  */
 export const NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA = `
-${NORMALIZE_WARMING_CAP_FUNCTION_LUA}
+${NORMALIZE_WARMING_STATE_FUNCTION_LUA}
 local hashKey = KEYS[1]
 local startedAt = redis.call('HGET', hashKey, 'startedAt')
 local phase = redis.call('HGET', hashKey, 'phase')
-if not startedAt or phase == 'graduated' then return 'Infinity' end
-return tostring(normalizeWarmingCap(hashKey))
+if not startedAt then return 'Infinity' end
+local currentDay, dailyCap = normalizeWarmingState(hashKey, phase == 'graduated')
+return dailyCap
 `;
 
 /** Atomically repairs and returns one coherent warming-state snapshot. */
 export const GET_NORMALIZED_WARMING_STATE_LUA = `
-${NORMALIZE_WARMING_CAP_FUNCTION_LUA}
+${NORMALIZE_WARMING_STATE_FUNCTION_LUA}
 local hashKey = KEYS[1]
 local startedAt = redis.call('HGET', hashKey, 'startedAt')
 if not startedAt then return {} end
 local phase = redis.call('HGET', hashKey, 'phase')
-if phase == 'graduated' then
-  if redis.call('HGET', hashKey, 'dailyCap') ~= 'Infinity' then
-    redis.call('HSET', hashKey, 'dailyCap', 'Infinity')
-  end
-else
-  normalizeWarmingCap(hashKey)
-end
+normalizeWarmingState(hashKey, phase == 'graduated')
 return redis.call('HGETALL', hashKey)
 `;
 
 export const RESERVE_WARMING_SLOT_LUA = `
-${NORMALIZE_WARMING_CAP_FUNCTION_LUA}
+${NORMALIZE_WARMING_STATE_FUNCTION_LUA}
 local hashKey = KEYS[1]
 local reservationsKey = KEYS[2]
 local today = ARGV[1]
@@ -79,7 +91,9 @@ local messageId = ARGV[4]
 
 local startedAt = redis.call('HGET', hashKey, 'startedAt')
 local phase = redis.call('HGET', hashKey, 'phase')
-if not startedAt or phase == 'graduated' then return { 1, 0, -1, 0 } end
+if not startedAt then return { 1, 0, -1, 0 } end
+local currentDay, dailyCap = normalizeWarmingState(hashKey, phase == 'graduated')
+if phase == 'graduated' then return { 1, 0, -1, 0 } end
 
 local reset = redis.call('HGET', hashKey, 'sentTodayReset')
 if reset ~= today then redis.call('HSET', hashKey, 'sentToday', '0', 'sentTodayReset', today) end
@@ -87,7 +101,7 @@ redis.call('ZREMRANGEBYSCORE', reservationsKey, '-inf', now)
 local existing = redis.call('ZSCORE', reservationsKey, messageId)
 local sent = tonumber(redis.call('HGET', hashKey, 'sentToday') or '0')
 local reserved = tonumber(redis.call('ZCARD', reservationsKey))
-local cap = normalizeWarmingCap(hashKey)
+local cap = tonumber(dailyCap)
 if existing then return { 1, sent, cap, reserved } end
 if sent + reserved >= cap then return { 0, sent, cap, reserved } end
 redis.call('ZADD', reservationsKey, expiresAt, messageId)
@@ -114,15 +128,16 @@ return 1
 
 /** Atomically rolls a stale UTC-day counter before returning the cap. */
 export const CHECK_WARMING_CAP_ROLLOVER_LUA = `
-${NORMALIZE_WARMING_CAP_FUNCTION_LUA}
+${NORMALIZE_WARMING_STATE_FUNCTION_LUA}
 local hashKey = KEYS[1]
 local today = ARGV[1]
 
 local startedAt = redis.call('HGET', hashKey, 'startedAt')
 local phase = redis.call('HGET', hashKey, 'phase')
-if not startedAt or phase == 'graduated' then return { '0', 'Infinity' } end
+if not startedAt then return { '0', 'Infinity' } end
+local currentDay, dailyCap = normalizeWarmingState(hashKey, phase == 'graduated')
+if phase == 'graduated' then return { '0', dailyCap } end
 local reset = redis.call('HGET', hashKey, 'sentTodayReset')
-local dailyCap = tostring(normalizeWarmingCap(hashKey))
 
 if reset ~= today then
   redis.call('HSET', hashKey, 'sentToday', '0', 'sentTodayReset', today)
