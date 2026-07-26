@@ -23,7 +23,13 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import { parseMessage } from '@owlat/mail-message';
 import { parseFblOrDsnPhase } from '../phases/parseFblOrDsn.js';
-import { buildCfblAddress, buildCfblToken, parseCfblAddress } from '../cfblAddress.js';
+import {
+	ACCEPTED_PAST_WINDOWS,
+	CFBL_TOKEN_ACCEPTANCE_SECONDS,
+	buildCfblAddress,
+	buildCfblToken,
+	parseCfblAddress,
+} from '../cfblAddress.js';
 import { completeComplaint, resolveCfblAttribution } from '../fblProcessor.js';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
 import { cfblRejectionsTotal } from '../../monitoring/collector.js';
@@ -223,6 +229,57 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 			expect(replay).toEqual({ kind: 'dropSilently', reason: 'duplicate_fbl_complaint' });
 		});
 
+		it('keeps the dedup record alive for LONGER than the token stays verifiable', async () => {
+			const cfblAddress = buildCfblAddress(VICTIM_MESSAGE_ID, HOST, KEY)!;
+			const attempt = attemptOf(
+				await parseFblOrDsnPhase.run(deps, ctxFor(arfReport(BASE_FIELDS), cfblAddress))
+			);
+			if (attempt.kind !== 'fbl') throw new Error('expected an fbl attempt');
+			await completeComplaint(redis, attempt.dedupReservation);
+
+			// The gap between the two lifetimes is the whole replay window: if the
+			// record expired first, a captured report replayed inside the remaining
+			// token validity would be counted a SECOND time and would move the cell's
+			// complaint rate by pure repetition.
+			const ttl = await redis.ttl(attempt.dedupReservation.key);
+			expect(ttl).toBeGreaterThan(CFBL_TOKEN_ACCEPTANCE_SECONDS);
+		});
+
+		it('deduplicates a replay long after the OLD seven-day retention would have lapsed', async () => {
+			const cfblAddress = buildCfblAddress(VICTIM_MESSAGE_ID, HOST, KEY)!;
+			const raw = arfReport(BASE_FIELDS);
+
+			const attempt = attemptOf(await parseFblOrDsnPhase.run(deps, ctxFor(raw, cfblAddress)));
+			if (attempt.kind !== 'fbl') throw new Error('expected an fbl attempt');
+			await completeComplaint(redis, attempt.dedupReservation);
+
+			// Day 10: past the seven-day retention this store used to keep, still
+			// well inside the 14-day token acceptance horizon. Only `Date` is faked —
+			// the timers ioredis-mock and the phase pipeline rely on stay real.
+			vi.useFakeTimers({ toFake: ['Date'] });
+			try {
+				vi.setSystemTime(Date.now() + 10 * 24 * 60 * 60 * 1000);
+				// The captured token is still perfectly valid at this point…
+				expect(parseCfblAddress(cfblAddress, KEY).ok).toBe(true);
+				// …so the dedup record is what has to stop it.
+				const replay = await parseFblOrDsnPhase.run(deps, ctxFor(raw, cfblAddress));
+				expect(replay).toEqual({ kind: 'dropSilently', reason: 'duplicate_fbl_complaint' });
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it('the acceptance horizon is what it claims to be (the last accepted window verifies)', () => {
+			const now = Date.UTC(2026, 6, 27, 12, 0, 0);
+			const address = buildCfblAddress(VICTIM_MESSAGE_ID, HOST, KEY, now)!;
+			const lastAccepted = now + ACCEPTED_PAST_WINDOWS * 24 * 60 * 60 * 1000;
+			expect(parseCfblAddress(address, KEY, lastAccepted).ok).toBe(true);
+			expect(parseCfblAddress(address, KEY, lastAccepted + 24 * 60 * 60 * 1000)).toEqual({
+				ok: false,
+				reason: 'expired',
+			});
+		});
+
 		it('deduplicates a replay whose BODY was mutated — the key is the signed send', async () => {
 			const cfblAddress = buildCfblAddress(VICTIM_MESSAGE_ID, HOST, KEY)!;
 
@@ -277,6 +334,27 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 			expect(enriched.arf.organizationId).toBe('org_attacker');
 		});
 
+		it('never trusts the report’s Original-Rcpt-To once the send is identified', async () => {
+			await recordFeedbackProvenance(redis, jobFor(VICTIM_MESSAGE_ID, 'org_victim'));
+
+			// Holding a valid CFBL token proves only that the reporter received ONE
+			// message from this tenant — which, for a published complaint address, is
+			// true of every recipient. Trusting the recipient it names would let any
+			// one of them have an ARBITRARY address suppressed inside the tenant.
+			const cfblAddress = buildCfblAddress(VICTIM_MESSAGE_ID, HOST, KEY)!;
+			const raw = arfReport('Feedback-Type: abuse\r\nOriginal-Rcpt-To: <ceo@example.net>\r\n');
+
+			const outcome = await parseFblOrDsnPhase.run(deps, ctxFor(raw, cfblAddress));
+			const enriched = await attachFeedbackProvenance(redis, attemptOf(outcome));
+
+			if (enriched.kind !== 'fbl') throw new Error('expected an fbl attempt');
+			expect(enriched.arf.originalMessageId).toBe(VICTIM_MESSAGE_ID);
+			expect(enriched.arf.organizationId).toBe('org_victim');
+			// The recipient comes from the record we wrote at send time.
+			expect(enriched.arf.recipient).toBe('victim@example.net');
+			expect(enriched.arf.feedbackProvenance).toBe('production');
+		});
+
 		it('an unsigned X-Owlat-Org-Id / X-Owlat-Message-Id scrape is never trusted', async () => {
 			await recordFeedbackProvenance(redis, jobFor(VICTIM_MESSAGE_ID, 'org_victim'));
 			const raw = arfReport(
@@ -310,9 +388,9 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 		});
 
 		it('a base64url payload that decodes to control bytes is malformed, not attributed', () => {
-			const encoded = Buffer.from('').toString('base64url');
+			const encoded = Buffer.from('\x01\x02\x03').toString('base64url');
 			// Sign it properly so only the PAYLOAD check can reject it.
-			const address = `fbl+${encoded}+${buildCfblToken('', KEY)?.split('+')[1] ?? ''}@${HOST}`;
+			const address = `fbl+${encoded}+${buildCfblToken('\x01\x02\x03', KEY)?.split('+')[1] ?? ''}@${HOST}`;
 			expect(parseCfblAddress(address, KEY)).toEqual({ ok: false, reason: 'malformed_payload' });
 		});
 	});

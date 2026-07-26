@@ -159,7 +159,15 @@ describe('P2-7 (b) — CFBL signature', () => {
 			expect(isCfblSigningEnabled('')).toBe(false);
 			expect(buildCfblToken('send_abc123', '', NOW)).toBeNull();
 			expect(buildCfblAddress('send_abc123', HOST, '', NOW)).toBeNull();
-			expect(buildCfblHeaders('send_abc123', HOST, '', NOW)).toEqual({});
+			expect(
+				buildCfblHeaders({
+					messageId: 'send_abc123',
+					cfblHost: HOST,
+					fromDomain: HOST,
+					key: '',
+					now: NOW,
+				})
+			).toEqual({});
 		});
 
 		it('builds nothing for an empty or implausibly long message id', () => {

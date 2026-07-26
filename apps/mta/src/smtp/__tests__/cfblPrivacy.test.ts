@@ -121,8 +121,13 @@ function cfblHeaderLines(): string[] {
 describe('P2-7 (e) — CFBL header privacy', () => {
 	let redis: RealRedis;
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		redis = new Redis() as unknown as RealRedis;
+		dkimStore.clearCache();
+		// RFC 9477 §3.1.2: the header is only emitted when the CFBL host aligns
+		// with the From domain, so register the per-domain return-path host — the
+		// privacy assertions below must not be vacuously true on absent headers.
+		await dkimStore.setReturnPathHost(redis, 'acme.com', 'bounce.acme.com');
 		dkimStore.clearCache();
 		connectMock.mockReset();
 		connectMock.mockResolvedValue({ secured: true });
@@ -146,6 +151,7 @@ describe('P2-7 (e) — CFBL header privacy', () => {
 		await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
 		const headers = cfblHeaderLines().join('\n');
+		expect(cfblHeaderLines()).toHaveLength(2);
 		expect(headers).not.toContain(RECIPIENT);
 		expect(headers).not.toContain('alice.example');
 		expect(headers).not.toContain('remote.test');
@@ -180,7 +186,12 @@ describe('P2-7 (e) — CFBL header privacy', () => {
 	});
 
 	it('the decoded token is EXACTLY the opaque message id and nothing more', () => {
-		const built = buildCfblHeaders('send_abc123', 'bounces.owlat.com', SIGNING_KEY);
+		const built = buildCfblHeaders({
+			messageId: 'send_abc123',
+			cfblHost: 'bounce.acme.com',
+			fromDomain: 'acme.com',
+			key: SIGNING_KEY,
+		});
 		const token = built['CFBL-Feedback-ID']!;
 		const encodedId = token.split('+')[0]!;
 
@@ -210,8 +221,15 @@ describe('P2-7 (e) — CFBL header privacy', () => {
 
 	it('the same message id mints the same token — no hidden nonce that could encode state', () => {
 		const now = Date.UTC(2026, 6, 27, 12, 0, 0);
-		const a = buildCfblHeaders('send_abc123', 'bounces.owlat.com', SIGNING_KEY, now);
-		const b = buildCfblHeaders('send_abc123', 'bounces.owlat.com', SIGNING_KEY, now);
+		const input = {
+			messageId: 'send_abc123',
+			cfblHost: 'bounce.acme.com',
+			fromDomain: 'acme.com',
+			key: SIGNING_KEY,
+			now,
+		};
+		const a = buildCfblHeaders(input);
+		const b = buildCfblHeaders(input);
 		expect(a).toEqual(b);
 	});
 });

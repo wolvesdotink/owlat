@@ -1,18 +1,31 @@
 /**
  * P2-7 (a) — the RFC 9477 `CFBL-Address` header is EMITTED, correctly SIGNED,
- * stays within RFC 5322 line limits, and appears on every outbound stream that
- * should carry it.
+ * covered by the DKIM `h=` tag, stays within RFC 5322 line limits, and appears
+ * on every outbound stream that should carry it.
  *
  * The real `sendToMx` runs; only the transport/MX/DANE/STS/pool seams are
  * stubbed (the harness shape is copied from `returnPathPerDomain.test.ts`), so
  * the assertions are made against the ACTUAL wire bytes handed to
  * `sendEnvelope`. `bounce/cfblAddress.js` is deliberately NOT mocked — the point
  * is to verify the signature the sender really produced.
+ *
+ * Two RFC 9477 conformance rules shape most of what follows:
+ *
+ *   §3.1.2/§3.1.3 — the CFBL host must be the `RFC5322.From` domain or a child
+ *   of it, unless the message carries a SECOND DKIM signature aligned with the
+ *   CFBL host. Owlat signs once, so the header is emitted only on the aligned
+ *   branch; both branches are pinned below.
+ *
+ *   §3.1.4 — both CFBL fields MUST appear in the `h=` tag, or "the Mailbox
+ *   Provider SHALL NOT send a report message". That is asserted against a real
+ *   RSA key with an independent verifier, not against our own signer alone.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { generateKeyPairSync } from 'crypto';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
+import { dkimVerify } from 'mailauth';
 
 const { connectMock, sendEnvelopeMock } = vi.hoisted(() => ({
 	connectMock: vi.fn(),
@@ -72,21 +85,20 @@ vi.mock('../../monitoring/logger.js', () => ({
 }));
 
 import { sendToMx } from '../sender.js';
-import {
-	MAX_HEADER_LINE_OCTETS,
-	RECOMMENDED_HEADER_LINE_OCTETS,
-	buildCfblHeaders,
-	extractCfblAddressFromHeaderValue,
-	foldCfblHeaderLine,
-	parseCfblAddress,
-	parseCfblToken,
-} from '../../bounce/cfblAddress.js';
+import { getDkimOptions } from '../dkim.js';
+import { buildCfblHeaders, parseCfblAddress, parseCfblToken } from '../../bounce/cfblAddress.js';
 import * as dkimStore from '../dkimStore.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 
 const SIGNING_KEY = 'cfbl-header-test-key';
 const GLOBAL_RETURN_PATH = 'bounces.owlat.com';
+/** The From domain of every job below; the aligned CFBL host is a child of it. */
+const FROM_DOMAIN = 'acme.com';
+const ALIGNED_RETURN_PATH = 'bounce.acme.com';
+
+/** RFC 5322 §2.1.1 hard cap on a physical header line, excluding CRLF. */
+const MAX_HEADER_LINE_OCTETS = 998;
 
 function createConfig(): MtaConfig {
 	return {
@@ -103,12 +115,12 @@ function createJob(overrides: Partial<EmailJob> = {}): EmailJob {
 	return {
 		messageId: 'send_abc123',
 		to: 'user@remote.test',
-		from: 'sender@acme.com',
+		from: `sender@${FROM_DOMAIN}`,
 		subject: 'Test',
 		html: '<p>Hello</p>',
 		ipPool: 'transactional',
 		organizationId: 'org-1',
-		dkimDomain: 'acme.com',
+		dkimDomain: FROM_DOMAIN,
 		...overrides,
 	};
 }
@@ -132,8 +144,47 @@ function headerValue(name: string): string | undefined {
 	return line?.slice(name.length + 2);
 }
 
+/**
+ * Recover the bare address from a `CFBL-Address` value, ignoring the parameter
+ * list. Test-local on purpose: the sender emits the header unfolded and nothing
+ * in production re-reads its own header, so this is an assertion helper, not a
+ * production duty dressed up as one.
+ */
+function cfblAddressOf(value: string): string {
+	const head = value.split(';', 1)[0] ?? '';
+	const flattened = head.replace(/\s+/g, '');
+	return flattened.match(/^<(.+)>$/)?.[1] ?? flattened;
+}
+
+/**
+ * A header value with its RFC 5322 continuation lines joined back together —
+ * the DKIM-Signature is folded, so its `h=` tag rarely sits on the first line.
+ */
+function foldedHeaderValue(name: string): string | undefined {
+	const match = new RegExp(`^${name}:([\\s\\S]*?)(?:\\r?\\n(?![ \\t]))`, 'im').exec(
+		`${wireBytes()}\r\n`
+	);
+	return match?.[1]?.replace(/\r?\n[ \t]+/g, ' ').trim();
+}
+
+/** How many CFBL-Address field lines the wire actually carries. */
+function cfblAddressLines(): string[] {
+	return wireBytes()
+		.split('\r\n')
+		.filter((line) => line.toLowerCase().startsWith('cfbl-address:'));
+}
+
 describe('P2-7 (a) — CFBL-Address header emission', () => {
 	let redis: RealRedis;
+
+	/**
+	 * Register the per-domain return-path host so the CFBL host aligns with the
+	 * From domain (RFC 9477 §3.1.2) — the branch on which the header is emitted.
+	 */
+	async function alignReturnPath(host = ALIGNED_RETURN_PATH): Promise<void> {
+		await dkimStore.setReturnPathHost(redis, FROM_DOMAIN, host);
+		dkimStore.clearCache();
+	}
 
 	beforeEach(() => {
 		redis = new Redis() as unknown as RealRedis;
@@ -147,6 +198,8 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 			response: { code: 250, text: '2.0.0 OK', lines: ['2.0.0 OK'] },
 		});
 		process.env['BOUNCE_VERP_KEY'] = SIGNING_KEY;
+		// Unsigned by default; the §3.1.4 block below swaps in a real RSA key.
+		vi.mocked(getDkimOptions).mockResolvedValue(undefined);
 	});
 
 	afterEach(async () => {
@@ -157,6 +210,8 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 	});
 
 	it('emits a correctly SIGNED CFBL-Address that verifies back to the send', async () => {
+		await alignReturnPath();
+
 		const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 		expect(result.success).toBe(true);
 
@@ -165,17 +220,19 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		// RFC 9477 §4.1: address + mandatory report format parameter.
 		expect(value).toMatch(/; report=arf$/);
 
-		const address = extractCfblAddressFromHeaderValue(value!);
-		expect(address).not.toBeNull();
-		expect(address!.endsWith(`@${GLOBAL_RETURN_PATH}`)).toBe(true);
-		expect(address!.startsWith('fbl+')).toBe(true);
+		const address = cfblAddressOf(value!);
+		expect(address.endsWith(`@${ALIGNED_RETURN_PATH}`)).toBe(true);
+		expect(address.startsWith('fbl+')).toBe(true);
 
 		// The signature verifies and recovers the exact send it was minted for.
-		const parsed = parseCfblAddress(address!, SIGNING_KEY);
-		expect(parsed).toEqual({ ok: true, messageId: 'send_abc123' });
+		expect(parseCfblAddress(address, SIGNING_KEY)).toEqual({
+			ok: true,
+			messageId: 'send_abc123',
+		});
 	});
 
 	it('emits the signed CFBL-Feedback-ID companion carrying the same token', async () => {
+		await alignReturnPath();
 		await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
 		const token = headerValue('CFBL-Feedback-ID');
@@ -184,28 +241,66 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 
 		// It is the SAME token as the address local-part — one signature, two
 		// carriers, so a provider may echo either one.
-		const address = extractCfblAddressFromHeaderValue(headerValue('CFBL-Address')!);
-		expect(address).toBe(`fbl+${token}@${GLOBAL_RETURN_PATH}`);
+		expect(cfblAddressOf(headerValue('CFBL-Address')!)).toBe(`fbl+${token}@${ALIGNED_RETURN_PATH}`);
 	});
 
-	it('rides the per-domain return-path host when one is registered', async () => {
-		await dkimStore.setReturnPathHost(redis, 'acme.com', 'bounce.acme.com');
-		dkimStore.clearCache();
+	describe('RFC 9477 §3.1.2/§3.1.3 — the CFBL host must align with RFC5322.From', () => {
+		it('emits on a per-domain return-path host that is a CHILD of the From domain', async () => {
+			await alignReturnPath('bounce.acme.com');
 
-		await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
-		const address = extractCfblAddressFromHeaderValue(headerValue('CFBL-Address')!);
-		expect(address!.endsWith('@bounce.acme.com')).toBe(true);
-		// Attribution never covers the host, so the token still verifies.
-		expect(parseCfblAddress(address!, SIGNING_KEY)).toEqual({
-			ok: true,
-			messageId: 'send_abc123',
+			const address = cfblAddressOf(headerValue('CFBL-Address')!);
+			expect(address.endsWith('@bounce.acme.com')).toBe(true);
+			// Attribution never covers the host, so the token still verifies.
+			expect(parseCfblAddress(address, SIGNING_KEY)).toEqual({
+				ok: true,
+				messageId: 'send_abc123',
+			});
+		});
+
+		it('emits when the return-path host IS the From domain exactly', async () => {
+			await alignReturnPath(FROM_DOMAIN);
+
+			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+
+			expect(cfblAddressOf(headerValue('CFBL-Address')!).endsWith(`@${FROM_DOMAIN}`)).toBe(true);
+		});
+
+		it('stays SILENT on the shared global host (a third-party domain, §3.1.3)', async () => {
+			// No per-domain host registered → fbl+…@bounces.owlat.com while From is
+			// @acme.com. Without the second `d=bounces.owlat.com` signature a
+			// conforming provider discards the header, so publishing it would be a
+			// decorative field producing no complaint signal at all.
+			const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+
+			// D2: the absence is silent and non-blocking — the send still succeeds.
+			expect(result.success).toBe(true);
+			expect(headerLine('CFBL-Address')).toBeUndefined();
+			expect(headerLine('CFBL-Feedback-ID')).toBeUndefined();
+			// The VERP return path is untouched by the CFBL decision.
+			const envelope = sendEnvelopeMock.mock.calls[0]?.[1] as { from: string } | undefined;
+			expect(envelope?.from.endsWith(`@${GLOBAL_RETURN_PATH}`)).toBe(true);
+		});
+
+		it('is not fooled by a host that merely ENDS WITH the From domain', () => {
+			// `bouncenotacme.com` is not a child of `acme.com`; only a dot boundary
+			// counts as a subdomain.
+			expect(
+				buildCfblHeaders({
+					messageId: 'send_abc123',
+					cfblHost: 'bouncenotacme.com',
+					fromDomain: FROM_DOMAIN,
+					key: SIGNING_KEY,
+				})
+			).toEqual({});
 		});
 	});
 
 	it.each(['transactional', 'campaign'] as const)(
 		'appears on the %s stream (every composed outbound message carries it)',
 		async (ipPool) => {
+			await alignReturnPath();
 			await sendToMx(createJob({ ipPool }), createConfig(), redis, '10.0.0.1');
 			expect(headerLine('CFBL-Address')).toBeDefined();
 			expect(headerLine('CFBL-Feedback-ID')).toBeDefined();
@@ -213,6 +308,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 	);
 
 	it('coexists with the Gmail Feedback-ID header rather than replacing it', async () => {
+		await alignReturnPath();
 		await sendToMx(
 			createJob({ headers: { 'Feedback-ID': 'campaign:cmp1:topic:abc12' } }),
 			createConfig(),
@@ -226,25 +322,85 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		expect(headerLine('CFBL-Address')).toBeDefined();
 	});
 
-	it('a caller-supplied CFBL-Address can NEVER displace the signed one', async () => {
-		await sendToMx(
-			createJob({ headers: { 'CFBL-Address': 'attacker@evil.test; report=arf' } }),
-			createConfig(),
-			redis,
-			'10.0.0.1'
-		);
+	describe('a caller-supplied CFBL field never reaches the wire', () => {
+		it.each([
+			['exact case', 'CFBL-Address'],
+			['lowercase', 'cfbl-address'],
+			['mixed case', 'Cfbl-AdDrEsS'],
+		])('strips a %s caller key, leaving exactly one signed line', async (_label, key) => {
+			await alignReturnPath();
+			await sendToMx(
+				createJob({ headers: { [key]: 'attacker@evil.test; report=arf' } }),
+				createConfig(),
+				redis,
+				'10.0.0.1'
+			);
 
-		const lines = wireBytes()
-			.split('\r\n')
-			.filter((line) => line.toLowerCase().startsWith('cfbl-address:'));
-		expect(lines).toHaveLength(1);
-		expect(lines[0]).not.toContain('evil.test');
-		const address = extractCfblAddressFromHeaderValue(headerValue('CFBL-Address')!);
-		expect(parseCfblAddress(address!, SIGNING_KEY).ok).toBe(true);
+			// RFC 5322 field names are case-insensitive and RFC 9477 defines no
+			// tiebreak between duplicates, so a second line would let a tenant
+			// redirect (or void) its own complaint feedback.
+			const lines = cfblAddressLines();
+			expect(lines).toHaveLength(1);
+			expect(lines[0]).not.toContain('evil.test');
+			expect(parseCfblAddress(cfblAddressOf(headerValue('CFBL-Address')!), SIGNING_KEY).ok).toBe(
+				true
+			);
+		});
+
+		it('strips a caller CFBL-Feedback-ID too', async () => {
+			await alignReturnPath();
+			await sendToMx(
+				createJob({ headers: { 'cfbl-feedback-id': 'attacker-token' } }),
+				createConfig(),
+				redis,
+				'10.0.0.1'
+			);
+
+			expect(wireBytes()).not.toContain('attacker-token');
+			expect(parseCfblToken(headerValue('CFBL-Feedback-ID')!, SIGNING_KEY).ok).toBe(true);
+		});
+
+		it('strips it even when WE emit nothing (no signing key)', async () => {
+			delete process.env['BOUNCE_VERP_KEY'];
+			await alignReturnPath();
+
+			const result = await sendToMx(
+				createJob({
+					headers: {
+						'CFBL-Address': 'attacker@evil.test; report=arf',
+						'cfbl-feedback-id': 'attacker-token',
+					},
+				}),
+				createConfig(),
+				redis,
+				'10.0.0.1'
+			);
+
+			// An unsigned complaint handle we cannot verify is strictly worse than
+			// none, so the strip is unconditional rather than a side effect of
+			// overwriting our own pair.
+			expect(result.success).toBe(true);
+			expect(cfblAddressLines()).toHaveLength(0);
+			expect(wireBytes()).not.toContain('evil.test');
+			expect(wireBytes()).not.toContain('attacker-token');
+		});
+
+		it('leaves every other caller header untouched', async () => {
+			await alignReturnPath();
+			await sendToMx(
+				createJob({ headers: { 'X-Custom': 'kept', 'CFBL-Address': 'a@evil.test' } }),
+				createConfig(),
+				redis,
+				'10.0.0.1'
+			);
+
+			expect(headerValue('X-Custom')).toBe('kept');
+		});
 	});
 
 	it('emits NO header when no signing key is configured (unsigned is worse than absent)', async () => {
 		delete process.env['BOUNCE_VERP_KEY'];
+		await alignReturnPath();
 
 		const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
@@ -255,6 +411,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 	});
 
 	it('leaves sealed-mail raw bytes untouched (no header injected into signed MIME)', async () => {
+		await alignReturnPath();
 		const sealed = Buffer.from(
 			'From: sender@acme.com\r\nTo: user@remote.test\r\nSubject: Sealed\r\n\r\nbody\r\n',
 			'utf-8'
@@ -271,8 +428,82 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		expect(wireBytes()).not.toContain('CFBL-Address');
 	});
 
+	describe('RFC 9477 §3.1.4 — both fields are covered by the DKIM h= tag', () => {
+		const SELECTOR = 'cfbl2026';
+
+		/**
+		 * Feed the production signing seam a REAL RSA key and serve the matching
+		 * public key through an in-memory resolver, so the signature is verified by
+		 * an independent implementation rather than by our own signer.
+		 */
+		function useRealDkimKey(): (name: string, rrtype: string) => Promise<string[][]> {
+			const { publicKey, privateKey } = generateKeyPairSync('rsa', {
+				modulusLength: 2048,
+				publicKeyEncoding: { type: 'spki', format: 'pem' },
+				privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+			});
+			vi.mocked(getDkimOptions).mockResolvedValue({
+				domainName: FROM_DOMAIN,
+				keySelector: SELECTOR,
+				privateKey,
+			});
+			const record = `v=DKIM1; k=rsa; p=${publicKey
+				.replace('-----BEGIN PUBLIC KEY-----', '')
+				.replace('-----END PUBLIC KEY-----', '')
+				.replace(/\s/g, '')}`;
+			const expected = `${SELECTOR}._domainkey.${FROM_DOMAIN}`;
+			return (name, rrtype) =>
+				Promise.resolve(rrtype === 'TXT' && name === expected ? [[record]] : []);
+		}
+
+		function signedHeaderList(): string[] {
+			const sig = foldedHeaderValue('DKIM-Signature');
+			expect(sig).toBeDefined();
+			const h = /(?:^|;|\s)h=([^;]+)/.exec(sig!);
+			expect(h).not.toBeNull();
+			return h![1]!.split(':').map((name) => name.trim().toLowerCase());
+		}
+
+		it('lists cfbl-address and cfbl-feedback-id in h=, and the signature verifies', async () => {
+			const resolver = useRealDkimKey();
+			await alignReturnPath();
+
+			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+
+			// Uncovered, RFC 9477 §3.1.4 says the provider "SHALL NOT send a report
+			// message" — the whole feature would be inert.
+			const signed = signedHeaderList();
+			expect(signed).toContain('cfbl-address');
+			expect(signed).toContain('cfbl-feedback-id');
+
+			const result = await dkimVerify(wireBytes(), { resolver });
+			const dkim = result.results[0];
+			expect(dkim?.status?.result).toBe('pass');
+			expect(dkim?.signingDomain).toBe(FROM_DOMAIN);
+		});
+
+		it('OVERSIGNS cfbl-address, so an added second instance breaks the signature', async () => {
+			const resolver = useRealDkimKey();
+			await alignReturnPath();
+
+			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+
+			// Two slots for one instance: the extra one is the RFC 6376 §5.4 null
+			// header that a later-prepended CFBL-Address would have to occupy.
+			expect(signedHeaderList().filter((name) => name === 'cfbl-address')).toHaveLength(2);
+
+			const tampered = wireBytes().replace(
+				/^CFBL-Address:/m,
+				'CFBL-Address: attacker@evil.test; report=arf\r\nCFBL-Address:'
+			);
+			const result = await dkimVerify(tampered, { resolver });
+			expect(result.results[0]?.status?.result).not.toBe('pass');
+		});
+	});
+
 	describe('RFC 5322 line geometry', () => {
 		it('the rendered header line never crosses the 998-octet hard cap', async () => {
+			await alignReturnPath();
 			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
 			const line = headerLine('CFBL-Address')!;
@@ -281,34 +512,28 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 			expect(line).not.toMatch(/[\r\n]/);
 		});
 
-		it('holds the hard cap even for a maximal message id and a long host', async () => {
-			const headers = buildCfblHeaders('m'.repeat(200), `${'sub.'.repeat(15)}bounces.example.com`);
+		it('holds the hard cap even for a maximal message id and a long host', () => {
+			const longHost = `${'sub.'.repeat(15)}bounces.example.com`;
+			const headers = buildCfblHeaders({
+				messageId: 'm'.repeat(200),
+				cfblHost: longHost,
+				fromDomain: longHost,
+				key: SIGNING_KEY,
+			});
 			// Over the RFC 5321 320-octet path cap → no header at all rather than a
 			// truncated (and therefore unverifiable) address.
 			expect(headers).toEqual({});
 
-			const long = buildCfblHeaders('m'.repeat(120), 'bounces.example.com');
+			const long = buildCfblHeaders({
+				messageId: 'm'.repeat(120),
+				cfblHost: 'bounces.example.com',
+				fromDomain: 'bounces.example.com',
+				key: SIGNING_KEY,
+			});
 			const value = long['CFBL-Address'];
 			expect(value).toBeDefined();
 			expect(Buffer.byteLength(`CFBL-Address: ${value!}`, 'utf-8')).toBeLessThanOrEqual(
 				MAX_HEADER_LINE_OCTETS
-			);
-		});
-
-		it('folds on the parameter FWS so every physical line honours the 78-octet SHOULD', async () => {
-			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
-
-			const folded = foldCfblHeaderLine('CFBL-Address', headerValue('CFBL-Address')!);
-			for (const line of folded) {
-				expect(Buffer.byteLength(line, 'utf-8')).toBeLessThanOrEqual(
-					RECOMMENDED_HEADER_LINE_OCTETS
-				);
-			}
-			// Unfolding the rendering reproduces the emitted value exactly, so the
-			// signature survives a receiver that folds or unfolds the header.
-			const unfolded = folded.join('').replace(/^CFBL-Address: /, '');
-			expect(extractCfblAddressFromHeaderValue(unfolded)).toBe(
-				extractCfblAddressFromHeaderValue(headerValue('CFBL-Address')!)
 			);
 		});
 	});
