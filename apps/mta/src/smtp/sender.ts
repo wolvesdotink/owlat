@@ -26,7 +26,11 @@ import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
 import { resolveTlsRequirements } from './tlsPolicy.js';
 import { resolveOutboundTlsMode } from './outboundTlsOverrides.js';
 import { buildVerpAddress } from '../bounce/verp.js';
-import { buildCfblHeaders } from '../bounce/cfblAddress.js';
+import {
+	CFBL_ADDRESS_HEADER,
+	CFBL_FEEDBACK_ID_HEADER,
+	buildCfblHeaders,
+} from '../bounce/cfblAddress.js';
 import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull, strictestOutboundTlsMode } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
@@ -118,6 +122,38 @@ function buildSignedBytes(
 	}
 }
 
+/** Lowercased CFBL field names the caller may never set (RFC 9477 §4). */
+const RESERVED_CFBL_HEADER_KEYS: ReadonlySet<string> = new Set([
+	CFBL_ADDRESS_HEADER.toLowerCase(),
+	CFBL_FEEDBACK_ID_HEADER.toLowerCase(),
+]);
+
+/**
+ * Drop every caller-supplied CFBL field, whatever its letter case.
+ *
+ * RFC 5322 field names are case-INSENSITIVE, so merging `{...job.headers,
+ * ...feedbackHeaders}` is not enough on its own: a `cfbl-address` key is a
+ * different object key from `CFBL-Address` and survives the spread, and the
+ * composer only de-duplicates structural headers. The wire would then carry an
+ * attacker-chosen complaint address ALONGSIDE the signed one, and RFC 9477
+ * defines no tiebreak for duplicates — a provider may pick either, or discard
+ * both. Either outcome hands a tenant the ability to redirect or silence its own
+ * complaint feedback.
+ *
+ * The strip is UNCONDITIONAL: it runs even when we emit no CFBL pair of our own
+ * (no signing key, unaligned host), because an unsigned complaint handle that we
+ * cannot verify is strictly worse than no handle at all.
+ */
+function withoutCfblHeaders(
+	headers: Record<string, string> | undefined
+): Record<string, string> | undefined {
+	if (!headers) return undefined;
+	const entries = Object.entries(headers).filter(
+		([name]) => !RESERVED_CFBL_HEADER_KEYS.has(name.toLowerCase())
+	);
+	return entries.length === Object.keys(headers).length ? headers : Object.fromEntries(entries);
+}
+
 /**
  * Compose a structured (non-sealed) job into RFC 822 bytes via
  * `@owlat/mail-message`. Preserves the historic payload: html/text (with an
@@ -125,9 +161,9 @@ function buildSignedBytes(
  * headers, the VERP envelope, and a From-aligned Message-ID (a caller-supplied
  * Message-ID header wins).
  *
- * `feedbackHeaders` carries the RFC 9477 CFBL pair. It is applied AFTER the
- * caller's `job.headers` so a supplied `CFBL-Address` can never displace the
- * signed one — an unsigned complaint handle would be a forgery vector.
+ * `feedbackHeaders` carries the RFC 9477 CFBL pair. Any caller-supplied CFBL
+ * field is STRIPPED from `job.headers` first — see {@link withoutCfblHeaders} —
+ * so a tenant can neither displace nor duplicate the signed one.
  */
 function composeStructured(
 	job: EmailJob,
@@ -151,6 +187,8 @@ function composeStructured(
 				}))
 			: undefined;
 
+	const callerHeaders = withoutCfblHeaders(job.headers);
+
 	return composeMessage({
 		from: job.from,
 		to: [job.to],
@@ -164,7 +202,7 @@ function composeStructured(
 		...(job.replyTo ? { replyTo: job.replyTo } : {}),
 		...(attachments ? { attachments } : {}),
 		headers: {
-			...job.headers,
+			...callerHeaders,
 			...feedbackHeaders,
 			'X-Owlat-Message-Id': job.messageId,
 			'X-Owlat-Org-Id': job.organizationId,
@@ -280,7 +318,17 @@ export async function sendToMx(
 	// already accepted at RCPT time — so no new DNS, no new listener and, above
 	// all, no bilateral enrollment with any mailbox provider. Sealed-mail raw
 	// bytes are shipped verbatim and are deliberately untouched.
-	const feedbackHeaders = buildCfblHeaders(job.messageId, feedbackHost);
+	//
+	// RFC 9477 §3.1.3: when the CFBL host is not the From domain (or a child of
+	// it) the message must carry a SECOND DKIM signature aligned with that host,
+	// and we sign once. So the pair is emitted only for a sending domain that has
+	// registered its own return-path host; on the shared global host we stay
+	// silent rather than publish a header every conforming provider ignores.
+	const feedbackHeaders = buildCfblHeaders({
+		messageId: job.messageId,
+		cfblHost: feedbackHost,
+		fromDomain: extractDomainOrNull(job.from) ?? '',
+	});
 
 	// Compose + sign ONCE per job (W2/W3). The exact wire bytes are built a single
 	// time and the SAME signed bytes are retried across every MX host and TLS
