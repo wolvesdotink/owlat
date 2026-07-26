@@ -9,7 +9,30 @@ const stubs = {
 	UiIconBox: { template: '<i />' },
 };
 
-function mountCard(props: Record<string, unknown>) {
+interface CardProps {
+	status:
+		| {
+				connected: boolean;
+				domains: Array<{
+					domain: string;
+					periodStart: number | null;
+					compliancePeriodStart: number | null;
+					cards: Array<{
+						id: string;
+						severity: 'critical' | 'warning' | 'info';
+						title: string;
+						detail: string;
+						remedy: string;
+						check: string;
+					}>;
+				}>;
+		  }
+		| null
+		| undefined;
+	isLoading: boolean;
+}
+
+function mountCard(props: CardProps) {
 	return mount(PostmasterComplianceCard, { props, global: { stubs } });
 }
 
