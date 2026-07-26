@@ -197,8 +197,7 @@ export async function runCommandLoop<S, T>(
 		return 'continue';
 	};
 
-	// Greeting + optional connect hook. onConnect takes only the session, so it
-	// is adapted to the (arg, session) shape invokeHandler expects.
+	// Greeting + optional connect hook.
 	write(Reply.greeting(config.banner));
 	const onConnect = opts.onConnect;
 	const connect = onConnect
@@ -229,14 +228,12 @@ export async function runCommandLoop<S, T>(
 			return;
 		}
 		if (verb === 'NOOP') {
-			// Free, stateless command: never resets the bad-command budget (see the
-			// `noteBadCommand` rationale) so it cannot launder the amplification bound.
+			// Never reset the bad-command budget for a free, stateless command.
 			write(Reply.ok());
 			continue;
 		}
 		if (verb === 'RSET') {
-			// Resets the TRANSACTION per RFC 5321, but not the bad-command budget: a
-			// bare RSET is free and makes no forward progress.
+			// Reset the transaction, but not the bad-command budget.
 			resetTransaction();
 			write(Reply.ok());
 			continue;
@@ -410,6 +407,10 @@ export async function runCommandLoop<S, T>(
 			// plaintext bytes the peer pipelined behind STARTTLS (injection guard).
 			resetSessionForTls();
 			session.secure = true;
+			session.tlsProtocol =
+				'getProtocol' in tlsSocket && typeof tlsSocket.getProtocol === 'function'
+					? (tlsSocket.getProtocol() ?? undefined)
+					: undefined;
 			// Fully disarm the plaintext socket's idle timer AND detach its handler
 			// before rebinding: the handler's closure calls `writeThenDestroy`, which
 			// dereferences the mutable `activeSocket`, so a stale timer left attached

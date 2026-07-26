@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isMtaWebhookEvent } from '../mtaWebhookEvent.js';
+import { createDeliverabilityProbeToken } from '../deliverabilityProbeToken';
 
 describe('MTA webhook event runtime contract', () => {
 	it('accepts only confirmed canonical IPv6 readiness regressions', () => {
@@ -30,6 +31,26 @@ describe('MTA webhook event runtime contract', () => {
 				timestamp: 1,
 			})
 		).toBe(true);
+	});
+
+	it('accepts only precisely formatted deliverability probe evidence and bounded verdicts', () => {
+		const event = {
+			event: 'deliverability.probe_observed',
+			eventId:
+				'deliverability-probe:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+			probeToken: createDeliverabilityProbeToken('secret', 1_800_000_900_000, Buffer.alloc(9, 7)),
+			spfResult: 'softfail',
+			dkimResult: 'temperror',
+			dmarcResult: 'none',
+			ip: '203.0.113.10',
+			tlsVersion: 'TLSv1.3',
+			ptr: 'mail.example',
+			timestamp: 1_800_000_000_000,
+		};
+		expect(isMtaWebhookEvent(event)).toBe(true);
+		expect(isMtaWebhookEvent({ ...event, probeToken: 'a'.repeat(32) })).toBe(false);
+		expect(isMtaWebhookEvent({ ...event, dmarcResult: 'neutral' })).toBe(false);
+		expect(isMtaWebhookEvent({ ...event, spfResult: 'mystery' })).toBe(false);
 	});
 
 	it.each([

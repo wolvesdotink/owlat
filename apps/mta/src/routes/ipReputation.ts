@@ -22,6 +22,7 @@ import {
 	DESTINATION_PROVIDER_KEYS,
 	type DeliverabilitySignal,
 } from '@owlat/shared/deliverabilityRouting';
+import { ipAddressFamily } from '@owlat/shared/ipAddress';
 
 const PERSISTENT_DEFER_MIN = 5;
 const PERSISTENT_DEFER_RATIO = 0.5;
@@ -96,6 +97,22 @@ function listedDnsblIds(config: MtaConfig, dnsbl: Record<string, string> | null)
 		.map((list) => list.id);
 }
 
+export function dnsblCheckedAt(
+	config: MtaConfig,
+	ip: string,
+	dnsbl: Record<string, string> | null
+): number | undefined {
+	if (!dnsbl) return undefined;
+	const family = ipAddressFamily(ip);
+	if (!family) return undefined;
+	const timestamps = configuredDnsblZones(config, family).map((list) =>
+		Number(dnsbl[`${list.id}At`])
+	);
+	return timestamps.length > 0 && timestamps.every(Number.isFinite)
+		? Math.min(...timestamps)
+		: undefined;
+}
+
 export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono {
 	const app = new Hono();
 
@@ -165,6 +182,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 			sourceAddress,
 			dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 			dnsblListings: listedDnsblIds(config, dnsbl),
+			dnsblCheckedAt: dnsblCheckedAt(config, ip, dnsbl),
 		});
 	});
 
@@ -207,6 +225,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 					sourceAddress,
 					dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 					dnsblListings: listedDnsblIds(config, dnsbl),
+					dnsblCheckedAt: dnsblCheckedAt(config, ip, dnsbl),
 				};
 			})
 		);

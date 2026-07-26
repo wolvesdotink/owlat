@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { ADAPTIVE_WARMING_POLICY, BASE_WARMING_SCHEDULE } from '@owlat/shared/warming';
 import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
 import {
+	DELIVERABILITY_DNS_GUIDANCE,
+	DELIVERABILITY_VPS_GUIDANCE,
+} from '@owlat/shared/deliverabilityProviderGuidance';
+import {
 	CAMPAIGN_COMPLAINT_POLICY,
 	CIRCUIT_BREAKER_POLICY,
 	DESTINATION_PROVIDER_PROFILES,
@@ -138,6 +142,23 @@ describe('Sending from a VPS navigation and claims', () => {
 		expect(vpsGuide).toMatch(/Hetzner.{0,180}case-by-case/is);
 		expect(vpsGuide).toMatch(/OVHcloud VPS.{0,160}ask support/is);
 		expect(vpsGuide).toMatch(/do not document reverse-zone delegation/i);
+	});
+
+	it('renders the canonical provider guidance at the checklist documentation anchors', () => {
+		expect(vpsGuide).toContain('## VPS provider comparison');
+		expect(vpsGuide).toContain('::deliverability-provider-guidance{kind="vps"}');
+		expect(deliverabilityGuide).toContain('### Required DNS records');
+		expect(deliverabilityGuide).toContain('::deliverability-provider-guidance{kind="dns"}');
+		expect(Object.values(DELIVERABILITY_VPS_GUIDANCE).map((entry) => entry.providerLabel)).toEqual([
+			'Hetzner Cloud',
+			'DigitalOcean',
+			'OVHcloud',
+		]);
+		expect(Object.values(DELIVERABILITY_DNS_GUIDANCE).map((entry) => entry.providerLabel)).toEqual([
+			'Cloudflare DNS',
+			'Hetzner DNS',
+			'Amazon Route 53',
+		]);
 	});
 });
 

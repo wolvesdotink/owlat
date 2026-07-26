@@ -213,3 +213,4 @@ export type {
 	PropertyCompatibility,
 	BlockCompatibilityScore,
 } from './compatibility/index';
+export * from './deliverabilityChecklist';

@@ -32,6 +32,17 @@ const snapshotValidator = v.object({
 			ips: v.array(ipResultValidator),
 		})
 	),
+	smtpTls: v.optional(
+		v.object({
+			status: v.union(v.literal('pass'), v.literal('warn'), v.literal('fail')),
+			hostname: v.string(),
+			isHostnameMatched: v.boolean(),
+			validFrom: v.optional(v.number()),
+			validTo: v.optional(v.number()),
+			reason: v.optional(v.string()),
+			checkedAt: v.number(),
+		})
+	),
 	observedAt: v.number(),
 });
 
@@ -46,6 +57,15 @@ type Snapshot = {
 		checkedAt: number;
 		ips: Array<{ ip: string; status: 'ok' | 'failed'; reason?: string }>;
 	};
+	smtpTls?: {
+		status: 'pass' | 'warn' | 'fail';
+		hostname: string;
+		isHostnameMatched: boolean;
+		validFrom?: number;
+		validTo?: number;
+		reason?: string;
+		checkedAt: number;
+	};
 	observedAt: number;
 };
 
@@ -58,6 +78,7 @@ function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 	const worker = isRecord(value['worker']) ? value['worker'] : null;
 	const emergency = isRecord(value['emergency']) ? value['emergency'] : null;
 	const smtp = isRecord(value['smtpOutbound']) ? value['smtpOutbound'] : null;
+	const smtpTls = isRecord(value['smtpTls']) ? value['smtpTls'] : null;
 	if (
 		(value['status'] !== 'ok' && value['status'] !== 'degraded') ||
 		(value['redis'] !== 'connected' && value['redis'] !== 'disconnected') ||
@@ -67,6 +88,17 @@ function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 		(smtp?.['status'] !== 'ok' && smtp?.['status'] !== 'degraded') ||
 		typeof smtp['checkedAt'] !== 'number' ||
 		!Array.isArray(smtp['ips'])
+	) {
+		return null;
+	}
+	if (
+		smtpTls &&
+		((smtpTls['status'] !== 'pass' &&
+			smtpTls['status'] !== 'warn' &&
+			smtpTls['status'] !== 'fail') ||
+			typeof smtpTls['hostname'] !== 'string' ||
+			typeof smtpTls['isHostnameMatched'] !== 'boolean' ||
+			typeof smtpTls['checkedAt'] !== 'number')
 	) {
 		return null;
 	}
@@ -82,6 +114,17 @@ function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 		});
 	}
 
+	const parsedTls: Snapshot['smtpTls'] | undefined = smtpTls
+		? {
+				status: smtpTls['status'] as 'pass' | 'warn' | 'fail',
+				hostname: smtpTls['hostname'] as string,
+				isHostnameMatched: smtpTls['isHostnameMatched'] as boolean,
+				...(typeof smtpTls['validFrom'] === 'number' ? { validFrom: smtpTls['validFrom'] } : {}),
+				...(typeof smtpTls['validTo'] === 'number' ? { validTo: smtpTls['validTo'] } : {}),
+				...(typeof smtpTls['reason'] === 'string' ? { reason: smtpTls['reason'] } : {}),
+				checkedAt: smtpTls['checkedAt'] as number,
+			}
+		: undefined;
 	return {
 		status: value['status'],
 		isRedisConnected: value['redis'] === 'connected',
@@ -89,6 +132,7 @@ function parseHealth(value: unknown, observedAt: number): Snapshot | null {
 		isDnsReachable: value['dns'] === 'ok',
 		isAllIpsBlocked: emergency['allIpsBlocked'],
 		smtpOutbound: { status: smtp['status'], checkedAt: smtp['checkedAt'], ips },
+		...(parsedTls ? { smtpTls: parsedTls } : {}),
 		observedAt,
 	};
 }

@@ -87,6 +87,10 @@ export type OrganizationDeletionTable =
 	| 'providerHealth'
 	| 'providerRoutes'
 	| 'deliverabilityRouteStates'
+	| 'deliverabilityRegressionAlerts'
+	| 'deliverabilityVerificationState'
+	| 'deliverabilityEvidence'
+	| 'deliverabilityLoopbackAttempts'
 	| 'destinationProviderDomains'
 	| 'domains'
 	| 'onboardingProgress'
@@ -243,6 +247,10 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('providerHealth'),
 	v.literal('providerRoutes'),
 	v.literal('deliverabilityRouteStates'),
+	v.literal('deliverabilityRegressionAlerts'),
+	v.literal('deliverabilityVerificationState'),
+	v.literal('deliverabilityEvidence'),
+	v.literal('deliverabilityLoopbackAttempts'),
 	v.literal('destinationProviderDomains'),
 	v.literal('domains'),
 	v.literal('onboardingProgress'),
