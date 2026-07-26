@@ -17,7 +17,7 @@ import { getInboundChannelAdapter } from '@owlat/channels';
 import { getOptional } from '../../lib/env';
 import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
-import type { InboundEvent } from '../types';
+import { type InboundEvent, postmasterStatsMetrics } from '../types';
 import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
 import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
 
@@ -379,21 +379,7 @@ export const mtaAdapter: InboundAdapter = {
 					domain: payload.domain,
 					date: payload.date,
 					userReportedSpamRatio: payload.userReportedSpamRatio,
-					...(payload.spfSuccessRatio !== undefined
-						? { spfSuccessRatio: payload.spfSuccessRatio }
-						: {}),
-					...(payload.dkimSuccessRatio !== undefined
-						? { dkimSuccessRatio: payload.dkimSuccessRatio }
-						: {}),
-					...(payload.dmarcSuccessRatio !== undefined
-						? { dmarcSuccessRatio: payload.dmarcSuccessRatio }
-						: {}),
-					...(payload.deliveryErrorRatio !== undefined
-						? { deliveryErrorRatio: payload.deliveryErrorRatio }
-						: {}),
-					...(payload.deliveryErrors !== undefined
-						? { deliveryErrors: payload.deliveryErrors }
-						: {}),
+					...postmasterStatsMetrics(payload),
 					fetchedAt: payload.timestamp,
 				};
 			}

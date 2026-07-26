@@ -22,7 +22,12 @@ import { isPostboxMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
 import { logError, logWarn } from '../lib/runtimeLog';
-import type { InboundEvent, InboundEventKind, InboundEventOf } from './types';
+import {
+	type InboundEvent,
+	type InboundEventKind,
+	type InboundEventOf,
+	postmasterStatsMetrics,
+} from './types';
 
 /** Max time to wait for the SNS subscription-confirm GET before giving up. */
 const SNS_CONFIRM_FETCH_TIMEOUT_MS = 10_000;
@@ -446,11 +451,7 @@ const DISPATCH: DispatchTable = {
 			domain: e.domain,
 			date: e.date,
 			userReportedSpamRatio: e.userReportedSpamRatio,
-			...(e.spfSuccessRatio !== undefined ? { spfSuccessRatio: e.spfSuccessRatio } : {}),
-			...(e.dkimSuccessRatio !== undefined ? { dkimSuccessRatio: e.dkimSuccessRatio } : {}),
-			...(e.dmarcSuccessRatio !== undefined ? { dmarcSuccessRatio: e.dmarcSuccessRatio } : {}),
-			...(e.deliveryErrorRatio !== undefined ? { deliveryErrorRatio: e.deliveryErrorRatio } : {}),
-			...(e.deliveryErrors !== undefined ? { deliveryErrors: e.deliveryErrors } : {}),
+			...postmasterStatsMetrics(e),
 			fetchedAt: e.fetchedAt,
 		});
 	},
