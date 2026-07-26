@@ -1,14 +1,13 @@
 /**
- * messageBody — the single module for reading a message's body out of the
- * three storage shapes Owlat keeps mail/message bodies in. Every direct reader
- * (agent context, knowledge extraction, mail AI / needs-reply / voice-profile,
- * timeline/export, preview builders) goes through here so there is ONE place
- * that knows how a body is laid out. The `scripts/check-body-access.sh` ratchet
- * fails the build on any direct body-field read outside this module.
+ * messageBody — the core module for reading a message's body out of the three
+ * storage shapes Owlat keeps mail/message bodies in. Runtime readers go through
+ * here; the cohesive messageBodyExport sibling builds lenient export
+ * projections from these primitives. The `scripts/check-body-access.sh`
+ * ratchet fails the build on direct body reads outside this module family.
  *
  * Why one accessor matters for Sealed Mail: E8b later seals ALL bodies at rest.
- * When every body read funnels through this module, the "unseal on read" hook
- * has a single choke point instead of ~30 scattered field accesses. This piece
+ * When every body read funnels through this family, the "unseal on read" hook
+ * stays centralized instead of spreading across ~30 call sites. This piece
  * (E8a) is the behaviour-neutral refactor that creates that choke point — it
  * changes no output; the proof is the existing api suite passing unmodified.
  *
@@ -111,52 +110,12 @@ async function openMaybe(stored: string | undefined): Promise<string | undefined
 	return stored === undefined ? undefined : openMessageBody(stored);
 }
 
-/**
- * Fail-safe body open for the GDPR export bundle: like {@link openMessageBody},
- * but if a value LOOKS sealed yet fails to decrypt (a genuine tamper, OR a
- * never-sealed plaintext row whose text happens to be a structurally valid
- * envelope — attacker-craftable during the mixed-state window before the E8b
- * back-fill runs), it returns the stored string VERBATIM instead of throwing.
- * No plaintext leaks either way (a real ciphertext exports as ciphertext), and
- * one crafted inbound message can no longer DoS the whole export. Once the
- * back-fill has sealed every row this branch is unreachable.
- */
-export async function openMessageBodyForExport(stored: string): Promise<string> {
-	try {
-		return await openMessageBody(stored);
-	} catch {
-		return stored;
-	}
-}
-
 /** Open a denormalized conversation preview before returning a thread row. */
 export async function openConversationThreadPreview<T extends { lastPreview?: string | null }>(
 	row: T
 ): Promise<T> {
 	if (row.lastPreview === undefined || row.lastPreview === null) return row;
 	return { ...row, lastPreview: await openMessageBody(row.lastPreview) };
-}
-
-/** Lenient export sibling: tampered ciphertext is exported as stored, never fatal. */
-export async function openConversationThreadPreviewForExport<
-	T extends { lastPreview?: string | null },
->(row: T): Promise<T> {
-	if (row.lastPreview === undefined || row.lastPreview === null) return row;
-	return { ...row, lastPreview: await openMessageBodyForExport(row.lastPreview) };
-}
-
-async function openMaybeLenient(stored: string | undefined): Promise<string | undefined> {
-	return stored === undefined ? undefined : openMessageBodyForExport(stored);
-}
-
-/** Fail-safe sibling of {@link openInboundMessageBody} for the export bundle. */
-export async function openInboundMessageBodyForExport(
-	row: InboundMessageBodyFields
-): Promise<InboundMessageBody> {
-	return {
-		text: await openMaybeLenient(row.textBody ?? undefined),
-		html: await openMaybeLenient(row.htmlBody ?? undefined),
-	};
 }
 
 // ── Seal-patch builders (E8b migration) ──────────────────────────────────────
@@ -359,6 +318,12 @@ export interface BodyBlobStorageReader {
 export interface MailMessageTextFields {
 	textBodyInline?: string;
 	textBodyStorageId?: Id<'_storage'>;
+}
+
+export interface MailMessageExportBodyFields extends MailMessageTextFields {
+	htmlBodyInline?: string;
+	htmlBodyStorageId?: Id<'_storage'>;
+	rawStorageId: Id<'_storage'>;
 }
 
 /**

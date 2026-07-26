@@ -21,11 +21,29 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ACCOUNT_EXPORT_ORGANIZATION_RESOURCES, type AccountExportResource } from '@owlat/shared';
 import schema from '../schema';
 import betterAuthSchema from '../betterAuth/schema';
 import { api, internal, components } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { isSealedBytesAtRest } from '../lib/atRestBodies';
+import { sealBodyAtWrite } from '../lib/messageBody';
+import { storeSealedBlob } from '../lib/sealedBlob';
+
+const EXPORT_TEST_SECRET = 'gdpr-export-test-instance-secret-for-sealed-artifacts';
+const EXPORT_TEST_SITE = 'https://gdpr-export-test.convex.site';
+
+function tamperSealedTextBody(sealed: string): string {
+	const envelopeParts = sealed.split(':');
+	const ciphertextIndex = envelopeParts.length - 1;
+	const ciphertext = Uint8Array.from(atob(envelopeParts[ciphertextIndex]!), (char) =>
+		char.charCodeAt(0)
+	);
+	ciphertext[ciphertext.length - 1] = ciphertext[ciphertext.length - 1]! ^ 1;
+	envelopeParts[ciphertextIndex] = btoa(String.fromCharCode(...ciphertext));
+	return envelopeParts.join(':');
+}
 
 // The session is parameterized per test: requireSelf passes only for the
 // fixed session user, and the caller's role (owner/admin/editor) decides
@@ -97,6 +115,9 @@ beforeEach(() => {
 	sessionMock.userId = 'auth-user-1';
 	sessionMock.role = 'owner';
 });
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 /** Seed a userProfiles row for the BetterAuth user id. */
 async function seedProfile(
@@ -116,11 +137,20 @@ async function seedProfile(
 }
 
 /** Create a BetterAuth organization via the adapter; returns its _id. */
-async function seedOrg(t: TestConvex<typeof schema>, name = 'Acme'): Promise<string> {
+async function seedOrg(
+	t: TestConvex<typeof schema>,
+	name = 'Acme',
+	metadata?: string
+): Promise<string> {
 	const org = (await t.mutation(components.betterAuth.adapter.create, {
 		input: {
 			model: 'organization',
-			data: { name, slug: name.toLowerCase(), createdAt: Date.now() },
+			data: {
+				name,
+				slug: name.toLowerCase(),
+				...(metadata === undefined ? {} : { metadata }),
+				createdAt: Date.now(),
+			},
 		},
 	} as never)) as { _id: string };
 	return org._id;
@@ -196,6 +226,98 @@ async function seedDeliverabilityAlertRecipients(
 	});
 }
 
+type ExportRow = Record<string, unknown>;
+
+async function exportAllUserData(
+	t: TestConvex<typeof schema>,
+	userId: string,
+	onStagedContent?: (url: string) => void
+) {
+	const manifest = await t.action(api.auth.accountManagement.exportUserData, { userId });
+	const loadPages = async (
+		resource: AccountExportResource,
+		options: { organizationId?: string; mailboxId?: Id<'mailboxes'> } = {}
+	): Promise<ExportRow[]> => {
+		const rows: ExportRow[] = [];
+		let cursor: string | undefined;
+		for (;;) {
+			const result = await t.action(api.auth.accountManagement.exportUserDataPage, {
+				userId,
+				resource,
+				...(cursor ? { cursor } : {}),
+				...options,
+			});
+			for (const rowJson of result.pageJson) {
+				const row = JSON.parse(rowJson) as ExportRow;
+				const contentDownloadUrl = row['contentDownloadUrl'];
+				if (typeof contentDownloadUrl !== 'string') {
+					rows.push(row);
+					continue;
+				}
+				onStagedContent?.(contentDownloadUrl);
+				const stagedUrl = new URL(contentDownloadUrl);
+				const response =
+					stagedUrl.origin === EXPORT_TEST_SITE
+						? await t.fetch(`${stagedUrl.pathname}${stagedUrl.search}`)
+						: await fetch(contentDownloadUrl);
+				if (!response.ok) throw new Error('could not load staged export content');
+				const { ['contentDownloadUrl']: _download, ...metadata } = row;
+				rows.push({
+					...metadata,
+					...((await response.json()) as ExportRow),
+				});
+			}
+			if (result.isDone) return rows;
+			cursor = result.continueCursor;
+		}
+	};
+	const memberships = (await loadPages('organizationMemberships')) as Array<
+		ExportRow & {
+			organizationId: string;
+			role: string;
+			organization: { _id: string; name: string; slug?: string | null };
+		}
+	>;
+	const organizations = await Promise.all(
+		memberships.map(async (membership) => ({
+			organization: membership.organization,
+			role: membership.role,
+			data: Object.fromEntries(
+				await Promise.all(
+					ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map(
+						async (resource) =>
+							[
+								resource,
+								await loadPages(resource, {
+									organizationId: membership.organizationId,
+								}),
+							] as const
+					)
+				)
+			) as Record<(typeof ACCOUNT_EXPORT_ORGANIZATION_RESOURCES)[number], ExportRow[]>,
+		}))
+	);
+	const mailboxes = (await loadPages('mailboxes')) as Array<ExportRow & { _id: Id<'mailboxes'> }>;
+	const mailMessages: ExportRow[] = [];
+	const mailDrafts: ExportRow[] = [];
+	for (const mailbox of mailboxes) {
+		mailMessages.push(...(await loadPages('mailMessages', { mailboxId: mailbox._id })));
+		mailDrafts.push(...(await loadPages('mailDrafts', { mailboxId: mailbox._id })));
+	}
+	return {
+		...manifest,
+		organizations,
+		personalData: {
+			mailboxes,
+			mailMessages,
+			mailDrafts,
+			externalMailAccounts: await loadPages('externalMailAccounts'),
+			chatMessages: await loadPages('chatMessages'),
+			deliverabilityAlertRecipientStates: await loadPages('deliverabilityAlertRecipientStates'),
+		},
+	};
+}
+
 // ============================================================
 // exportUserData
 // ============================================================
@@ -206,25 +328,29 @@ describe('accountManagement.exportUserData — requireSelf', () => {
 		await seedProfile(t, 'auth-user-1');
 
 		await expect(
-			t.query(api.auth.accountManagement.exportUserData, { userId: 'someone-else' })
+			t.action(api.auth.accountManagement.exportUserData, { userId: 'someone-else' })
 		).rejects.toThrow();
 	});
 
 	it('returns the caller-owned profile + org for their own userId', async () => {
 		const t = newHarness();
 		await seedProfile(t, 'auth-user-1', 'owner@example.com');
-		const orgId = await seedOrg(t, 'Acme');
+		const orgId = await seedOrg(t, 'Acme', 'private organization metadata');
 		await seedMember(t, orgId, 'auth-user-1', 'owner');
 
-		const res = await t.query(api.auth.accountManagement.exportUserData, {
-			userId: 'auth-user-1',
-		});
+		const res = await exportAllUserData(t, 'auth-user-1');
 
 		expect(res.userProfile.email).toBe('owner@example.com');
 		expect(res.organizations).toHaveLength(1);
 		expect(res.organizations[0]!.organization.name).toBe('Acme');
+		expect(res.organizations[0]!.organization).toEqual({
+			_id: orgId,
+			name: 'Acme',
+			slug: 'acme',
+		});
 		expect(res.organizations[0]!.role).toBe('owner');
 		expect(typeof res.exportedAt).toBe('number');
+		expect(JSON.stringify(res)).not.toContain('private organization metadata');
 	});
 });
 
@@ -237,6 +363,24 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 		await seedMember(t, orgId, 'auth-user-1', 'owner');
 
 		await t.run(async (ctx) => {
+			await ctx.db.insert('contacts', {
+				email: 'customer@example.com',
+				source: 'api',
+				doiStatus: 'pending',
+				doiConfirmationToken: 'doi-confirmation-capability-canary',
+				doiTokenExpiresAt: Date.now() + 60_000,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('campaigns', {
+				name: 'Campaign with public archive',
+				status: 'sent',
+				archiveEnabled: true,
+				archiveToken: 'campaign-archive-capability-canary',
+				archiveSubject: 'Archive subject',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
 			await ctx.db.insert('webhooks', {
 				name: 'hook',
 				url: 'https://example.com/hook',
@@ -257,20 +401,29 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 			});
 		});
 
-		const res = await t.query(api.auth.accountManagement.exportUserData, {
-			userId: 'auth-user-1',
-		});
+		const res = await exportAllUserData(t, 'auth-user-1');
 
 		const orgExport = res.organizations[0]!;
 		expect(orgExport.data.webhooks).toHaveLength(1);
 		expect(orgExport.data.apiKeys).toHaveLength(1);
+		expect(orgExport.data.contacts).toHaveLength(1);
+		expect(orgExport.data.campaigns).toHaveLength(1);
 
 		// No `secret` on any exported webhook.
 		const serialized = JSON.stringify(res);
 		expect(serialized).not.toContain('super-secret-signing-key');
 		expect(serialized).not.toContain('deadbeef-hash-value');
+		expect(serialized).not.toContain('doi-confirmation-capability-canary');
+		expect(serialized).not.toContain('campaign-archive-capability-canary');
 
 		expect(orgExport.data.webhooks[0]).not.toHaveProperty('secret');
+		expect(orgExport.data.contacts[0]).not.toHaveProperty('doiConfirmationToken');
+		expect(orgExport.data.contacts[0]).toHaveProperty('doiTokenExpiresAt');
+		expect(orgExport.data.campaigns[0]).not.toHaveProperty('archiveToken');
+		expect(orgExport.data.campaigns[0]).toMatchObject({
+			archiveEnabled: true,
+			archiveSubject: 'Archive subject',
+		});
 		// api-key export carries only safe metadata (name/prefix/timestamps).
 		expect(orgExport.data.apiKeys[0]).not.toHaveProperty('keyHash');
 		expect(orgExport.data.apiKeys[0]).toMatchObject({
@@ -305,11 +458,9 @@ describe('accountManagement.exportUserData — soft-deleted contacts', () => {
 			});
 		});
 
-		const res = await t.query(api.auth.accountManagement.exportUserData, {
-			userId: 'auth-user-1',
-		});
+		const res = await exportAllUserData(t, 'auth-user-1');
 
-		const emails = res.organizations[0]!.data.contacts.map((c) => c.email);
+		const emails = res.organizations[0]!.data.contacts.map((contact) => contact['email']);
 		expect(emails).toContain('live@example.com');
 		expect(emails).not.toContain('erased@example.com');
 		expect(res.organizations[0]!.data.contacts).toHaveLength(1);
@@ -345,9 +496,7 @@ describe('accountManagement.exportUserData — admin-only metadata gating', () =
 			});
 		});
 
-		const res = await t.query(api.auth.accountManagement.exportUserData, {
-			userId: 'auth-user-1',
-		});
+		const res = await exportAllUserData(t, 'auth-user-1');
 
 		expect(res.organizations[0]!.data.apiKeys).toHaveLength(1);
 		expect(res.organizations[0]!.data.webhooks).toHaveLength(1);
@@ -362,6 +511,18 @@ describe('accountManagement.exportUserData — admin-only metadata gating', () =
 		await seedMember(t, orgId, 'auth-user-1', 'editor');
 
 		await t.run(async (ctx) => {
+			await ctx.db.insert('contacts', {
+				email: 'customer@example.com',
+				source: 'api',
+				doiStatus: 'not_required',
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('blockedEmails', {
+				email: 'blocked-customer@example.com',
+				reason: 'manual',
+				createdAt: Date.now(),
+			});
 			await ctx.db.insert('webhooks', {
 				name: 'hook',
 				url: 'https://example.com/hook',
@@ -381,20 +542,22 @@ describe('accountManagement.exportUserData — admin-only metadata gating', () =
 			});
 		});
 
-		const res = await t.query(api.auth.accountManagement.exportUserData, {
-			userId: 'auth-user-1',
-		});
+		const res = await exportAllUserData(t, 'auth-user-1');
 
 		// Editor self-export can't enumerate key prefixes / webhook endpoints.
 		expect(res.organizations[0]!.data.apiKeys).toHaveLength(0);
 		expect(res.organizations[0]!.data.webhooks).toHaveLength(0);
-		// But non-privileged org data (contacts etc.) is still present.
-		expect(res.organizations[0]!.data).toHaveProperty('contacts');
+		expect(res.organizations[0]!.data.contacts).toHaveLength(0);
+		expect(Object.values(res.organizations[0]!.data).every((rows) => rows.length === 0)).toBe(true);
+		expect(JSON.stringify(res)).not.toContain('customer@example.com');
+		expect(JSON.stringify(res)).not.toContain('blocked-customer@example.com');
 	});
 });
 
 describe('accountManagement.exportUserData — personal data (right-to-access mirror)', () => {
 	it("includes the caller's own mailbox, mail, drafts, external account and chat, with secrets/blob handles redacted", async () => {
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		vi.stubEnv('CONVEX_SITE_URL', EXPORT_TEST_SITE);
 		const t = newHarness();
 		await seedProfile(t, 'auth-user-1', 'me@example.com');
 		const orgId = await seedOrg(t);
@@ -408,9 +571,21 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 				organizationId: 'org-x',
 				address: 'me@example.com',
 				domain: 'example.com',
-				status: 'active' as const,
+				status: 'suspended' as const,
 				usedBytes: 0,
 				uidValidity: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+			await ctx.db.insert('mailboxes', {
+				userId: 'auth-user-1',
+				organizationId: 'org-x',
+				address: 'team@example.com',
+				domain: 'example.com',
+				scope: 'shared',
+				status: 'active',
+				usedBytes: 0,
+				uidValidity: now + 1,
 				createdAt: now,
 				updatedAt: now,
 			});
@@ -445,22 +620,55 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 				createdAt: now,
 				updatedAt: now,
 			});
-			const rawStorageId = await ctx.storage.store(new Blob(['raw eml bytes']));
-			await ctx.db.insert('mailMessages', {
+			const encoder = new TextEncoder();
+			const rawStorageId = await storeSealedBlob(
+				ctx.storage,
+				encoder.encode('raw eml bytes'),
+				'message/rfc822'
+			);
+			const textBodyStorageId = await storeSealedBlob(
+				ctx.storage,
+				encoder.encode('storage-backed text body'),
+				'text/plain'
+			);
+			const htmlBodyStorageId = await storeSealedBlob(
+				ctx.storage,
+				encoder.encode('<p>storage-backed html body</p>'),
+				'text/html'
+			);
+			const missingStorageId = await storeSealedBlob(
+				ctx.storage,
+				encoder.encode('deleted before export'),
+				'text/plain'
+			);
+			await ctx.storage.delete(missingStorageId);
+			const validBeforeTamperingId = await storeSealedBlob(
+				ctx.storage,
+				encoder.encode('tamper this ciphertext'),
+				'text/html'
+			);
+			const validBeforeTampering = await ctx.storage.get(validBeforeTamperingId);
+			const tamperedBytes = new Uint8Array(await validBeforeTampering!.arrayBuffer());
+			const finalByteIndex = tamperedBytes.length - 1;
+			tamperedBytes[finalByteIndex] = tamperedBytes[finalByteIndex]! ^ 1;
+			const corruptStorageId = await ctx.storage.store(
+				new Blob([tamperedBytes as unknown as BlobPart], { type: 'text/html' })
+			);
+			await ctx.storage.delete(validBeforeTamperingId);
+			const corruptInlineBody = tamperSealedTextBody(
+				await sealBodyAtWrite('tamper this inline body')
+			);
+			const messageFields = {
 				mailboxId,
 				folderId,
-				uid: 1,
 				modseq: 1,
-				rfc822MessageId: '<m1@example.com>',
 				threadId,
 				fromAddress: 'a@example.com',
 				toAddresses: ['me@example.com'],
 				ccAddresses: [],
 				bccAddresses: [],
-				subject: 'personal subject',
 				normalizedSubject: 'personal subject',
 				snippet: 'personal body snippet',
-				rawStorageId,
 				rawSize: 13,
 				attachments: [],
 				hasAttachments: false,
@@ -475,7 +683,28 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 				internalDate: now,
 				createdAt: now,
 				updatedAt: now,
+			};
+			await ctx.db.insert('mailMessages', {
+				...messageFields,
+				uid: 1,
+				rfc822MessageId: '<m1@example.com>',
+				subject: 'personal subject',
+				rawStorageId,
+				textBodyStorageId,
+				htmlBodyStorageId,
 			});
+			await ctx.db.insert('mailMessages', {
+				...messageFields,
+				uid: 2,
+				rfc822MessageId: '<m2@example.com>',
+				subject: 'partially unavailable message',
+				rawStorageId: missingStorageId,
+				textBodyStorageId: corruptStorageId,
+				htmlBodyInline: corruptInlineBody,
+			});
+			const draftAttachmentStorageId = await ctx.storage.store(
+				new Blob(['draft attachment bytes'], { type: 'text/plain' })
+			);
 			await ctx.db.insert('mailDrafts', {
 				mailboxId,
 				toAddresses: ['draft-recipient@example.com'],
@@ -483,10 +712,32 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 				bccAddresses: [],
 				fromAddress: 'me@example.com',
 				subject: 'draft subject',
-				bodyHtml: '<p>draft</p>',
-				attachments: [],
+				bodyHtml: await sealBodyAtWrite('<p>draft body</p>'),
+				bodyText: await sealBodyAtWrite('draft text body'),
+				attachments: [
+					{
+						storageId: draftAttachmentStorageId,
+						filename: 'notes.txt',
+						contentType: 'text/plain',
+						size: 22,
+						isInline: false,
+					},
+				],
 				state: 'draft' as const,
 				lastEditedAt: now,
+				createdAt: now,
+			});
+			await ctx.db.insert('mailDrafts', {
+				mailboxId,
+				toAddresses: ['draft-recipient@example.com'],
+				ccAddresses: [],
+				bccAddresses: [],
+				fromAddress: 'me@example.com',
+				subject: 'corrupt draft',
+				bodyHtml: corruptInlineBody,
+				attachments: [],
+				state: 'draft' as const,
+				lastEditedAt: now + 1,
 				createdAt: now,
 			});
 			await ctx.db.insert('externalMailAccounts', {
@@ -534,28 +785,67 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 			});
 		});
 
-		const res = await t.query(api.auth.accountManagement.exportUserData, {
-			userId: 'auth-user-1',
-		});
+		const stagedContentUrls: string[] = [];
+		const res = await exportAllUserData(t, 'auth-user-1', (url) => stagedContentUrls.push(url));
 
 		// Personal sections are populated for the caller's own data.
 		expect(res.personalData.mailboxes).toHaveLength(1);
-		expect(res.personalData.mailMessages).toHaveLength(1);
-		expect(res.personalData.mailMessages[0]!.subject).toBe('personal subject');
-		expect(res.personalData.mailDrafts).toHaveLength(1);
-		expect(res.personalData.mailDrafts[0]!.subject).toBe('draft subject');
+		expect(res.personalData.mailboxes[0]!['status']).toBe('suspended');
+		expect(res.personalData.mailMessages).toHaveLength(2);
+		const completeMessage = res.personalData.mailMessages.find(
+			(message) => message['subject'] === 'personal subject'
+		);
+		expect(completeMessage).toMatchObject({
+			rawMessage: 'raw eml bytes',
+			textBody: 'storage-backed text body',
+			htmlBody: '<p>storage-backed html body</p>',
+			bodyAvailability: { raw: 'available', text: 'available', html: 'available' },
+		});
+		const partialMessage = res.personalData.mailMessages.find(
+			(message) => message['subject'] === 'partially unavailable message'
+		);
+		expect(partialMessage).toMatchObject({
+			rawMessage: '',
+			textBody: '',
+			htmlBody: '',
+			bodyAvailability: { raw: 'missing', text: 'corrupt', html: 'corrupt' },
+		});
+		expect(res.personalData.mailDrafts).toHaveLength(2);
+		const completeDraft = res.personalData.mailDrafts.find(
+			(draft) => draft['subject'] === 'draft subject'
+		);
+		expect(completeDraft).toMatchObject({
+			bodyHtml: '<p>draft body</p>',
+			bodyText: 'draft text body',
+			bodyAvailability: { html: 'available', text: 'available', blocks: 'missing' },
+			attachments: [
+				{
+					filename: 'notes.txt',
+					contentBase64: btoa('draft attachment bytes'),
+					isContentAvailable: true,
+				},
+			],
+		});
+		const corruptDraft = res.personalData.mailDrafts.find(
+			(draft) => draft['subject'] === 'corrupt draft'
+		);
+		expect(corruptDraft).toMatchObject({
+			bodyHtml: '',
+			bodyAvailability: { html: 'corrupt', text: 'missing', blocks: 'missing' },
+			attachments: [],
+		});
 		expect(res.personalData.externalMailAccounts).toHaveLength(1);
 
 		// Chat: only the caller's own authorship is exported, not others'.
 		expect(res.personalData.chatMessages).toHaveLength(1);
-		expect(res.personalData.chatMessages[0]!.text).toBe('my chat message');
+		expect(res.personalData.chatMessages[0]!['text']).toBe('my chat message');
 		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(1);
-		expect(res.personalData.deliverabilityAlertRecipientStates[0]!.state).toMatchObject({
+		expect(res.personalData.deliverabilityAlertRecipientStates[0]!['state']).toMatchObject({
 			userId: 'auth-user-1',
 			status: 'sent',
 			attemptCount: 1,
 		});
-		expect(res.personalData.deliverabilityAlertRecipientStates[0]!.state).not.toHaveProperty(
+		expect(res.personalData.deliverabilityAlertRecipientStates[0]!['state']).not.toHaveProperty(
 			'email'
 		);
 
@@ -572,6 +862,22 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		expect(serialized).not.toContain('super-secret-ciphertext');
 		expect(serialized).not.toContain('super-secret-iv');
 		expect(serialized).not.toContain('super-secret-tag');
+
+		expect(stagedContentUrls).toHaveLength(4);
+		for (const contentUrl of stagedContentUrls) {
+			const storageId = new URL(contentUrl).searchParams.get('id') as Id<'_storage'> | null;
+			expect(storageId).not.toBeNull();
+			const storedBytes = new Uint8Array(
+				await t.run(async (ctx) => {
+					const blob = await ctx.storage.get(storageId!);
+					return await blob!.arrayBuffer();
+				})
+			);
+			expect(isSealedBytesAtRest(storedBytes)).toBe(true);
+			const storedText = new TextDecoder().decode(storedBytes);
+			expect(storedText).not.toContain('raw eml bytes');
+			expect(storedText).not.toContain('draft attachment bytes');
+		}
 	});
 
 	it('returns empty personal-data sections when the caller owns no mail or chat', async () => {
@@ -580,9 +886,7 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		const orgId = await seedOrg(t);
 		await seedMember(t, orgId, 'auth-user-1', 'owner');
 
-		const res = await t.query(api.auth.accountManagement.exportUserData, {
-			userId: 'auth-user-1',
-		});
+		const res = await exportAllUserData(t, 'auth-user-1');
 
 		expect(res.personalData.mailboxes).toHaveLength(0);
 		expect(res.personalData.mailMessages).toHaveLength(0);
@@ -590,6 +894,16 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		expect(res.personalData.externalMailAccounts).toHaveLength(0);
 		expect(res.personalData.chatMessages).toHaveLength(0);
 		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(0);
+	});
+
+	it('paginates recipient history beyond one export page without truncation', async () => {
+		const t = newHarness();
+		await seedProfile(t, 'auth-user-1');
+		await seedDeliverabilityAlertRecipients(t, 'auth-user-1', 101);
+
+		const res = await exportAllUserData(t, 'auth-user-1');
+
+		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(101);
 	});
 });
 

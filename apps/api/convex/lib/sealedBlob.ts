@@ -150,6 +150,31 @@ export async function readSealedBlobText(
 	return bytes === null ? '' : new TextDecoder().decode(bytes);
 }
 
+/** Single-read, fail-safe text projection for GDPR export. Missing and corrupt
+ * blobs are reported explicitly so one damaged message cannot abort its page. */
+export async function readSealedBlobTextForExport(
+	storage: BlobGet,
+	storageId: Id<'_storage'>
+): Promise<{
+	content: string;
+	availability: 'available' | 'missing' | 'corrupt';
+}> {
+	const blob = await storage.get(storageId);
+	if (!blob) return { content: '', availability: 'missing' };
+	try {
+		const storedBytes = new Uint8Array(await blob.arrayBuffer());
+		const secret = getOptional('INSTANCE_SECRET');
+		const openedBytes =
+			secret === undefined ? storedBytes : await openBytesAtRest(secret, storedBytes);
+		return {
+			content: new TextDecoder().decode(openedBytes),
+			availability: 'available',
+		};
+	} catch {
+		return { content: '', availability: 'corrupt' };
+	}
+}
+
 /**
  * Mint a URL a consumer can fetch to get the blob's PLAINTEXT bytes. When the
  * instance has a key and a site URL, this is the decrypt-serving proxy URL

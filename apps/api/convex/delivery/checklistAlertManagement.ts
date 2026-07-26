@@ -3,6 +3,7 @@ import { adminMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
+import { resolveDeliverabilityAlert } from './checklistAlertResolution';
 
 async function activeAlert(ctx: MutationCtx, alertId: Id<'deliverabilityRegressionAlerts'>) {
 	const session = await requireOrgPermission(ctx, 'organization:manage');
@@ -29,10 +30,7 @@ export const resolve = adminMutation({
 	handler: async (ctx, args) => {
 		const alert = await activeAlert(ctx, args.alertId);
 		const now = Date.now();
-		await ctx.db.patch(alert._id, {
-			acknowledgedAt: alert.acknowledgedAt ?? now,
-			resolvedAt: now,
-		});
+		await resolveDeliverabilityAlert(ctx, alert, now, { acknowledge: true });
 		return true;
 	},
 });

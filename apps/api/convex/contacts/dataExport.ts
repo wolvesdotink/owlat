@@ -14,10 +14,10 @@ import { authedQuery } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import {
-	openConversationThreadPreviewForExport,
-	openInboundMessageBodyForExport,
-	openMessageBodyForExport,
-} from '../lib/messageBody';
+	openBodyPreservingLegacyForContactExport,
+	openConversationPreviewPreservingLegacyForContactExport,
+	openInboundBodyPreservingLegacyForContactExport,
+} from '../lib/messageBodyExport';
 
 const CAP = 1000;
 
@@ -124,18 +124,18 @@ export const exportContactData = authedQuery({
 		// leaks either way (a real ciphertext exports as ciphertext).
 		const decryptedInbound = await Promise.all(
 			inboundMessages.slice(0, CAP).map(async (row) => {
-				const body = await openInboundMessageBodyForExport(row);
+				const body = await openInboundBodyPreservingLegacyForContactExport(row);
 				return { ...row, textBody: body.text, htmlBody: body.html };
 			})
 		);
 		const decryptedUnified = await Promise.all(
 			unifiedMessages.slice(0, CAP).map(async (row) => ({
 				...row,
-				content: await openMessageBodyForExport(row.content),
+				content: await openBodyPreservingLegacyForContactExport(row.content),
 			}))
 		);
 		const decryptedThreads = await Promise.all(
-			threads.slice(0, CAP).map(openConversationThreadPreviewForExport)
+			threads.slice(0, CAP).map(openConversationPreviewPreservingLegacyForContactExport)
 		);
 
 		return {

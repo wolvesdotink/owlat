@@ -1,6 +1,11 @@
 <script setup lang="ts">
-import { sanitizeCsvCell } from '@owlat/shared';
+import {
+	ACCOUNT_EXPORT_ORGANIZATION_RESOURCES,
+	type AccountExportResource,
+	sanitizeCsvCell,
+} from '@owlat/shared';
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import Papa from 'papaparse';
 import { isValidEmail } from '~/utils/validation';
 import { authClient } from '~/lib/auth-client';
@@ -35,7 +40,7 @@ watch(
 	(u) => {
 		if (u && !nameDraft.value) nameDraft.value = u.name ?? '';
 	},
-	{ immediate: true },
+	{ immediate: true }
 );
 const savingProfile = ref(false);
 async function saveProfile() {
@@ -165,12 +170,50 @@ const isDeleting = ref(false);
 const isCancelling = ref(false);
 
 // Mutations
-const { run: requestDeletion } = useBackendOperation(api.auth.accountManagement.requestAccountDeletion, {
-	label: 'Request account deletion',
-});
-const { run: cancelDeletion } = useBackendOperation(api.auth.accountManagement.cancelAccountDeletion, {
-	label: 'Cancel account deletion',
-});
+const { run: requestDeletion } = useBackendOperation(
+	api.auth.accountManagement.requestAccountDeletion,
+	{
+		label: 'Request account deletion',
+	}
+);
+const { run: cancelDeletion } = useBackendOperation(
+	api.auth.accountManagement.cancelAccountDeletion,
+	{
+		label: 'Cancel account deletion',
+	}
+);
+
+async function loadAccountExportPages(
+	resource: AccountExportResource,
+	options: { organizationId?: string; mailboxId?: Id<'mailboxes'> } = {}
+): Promise<unknown[]> {
+	if (!userId.value || !convex) return [];
+	const rows: unknown[] = [];
+	let cursor: string | undefined;
+	for (;;) {
+		const result = await convex.action(api.auth.accountManagement.exportUserDataPage, {
+			userId: userId.value,
+			resource,
+			...(cursor ? { cursor } : {}),
+			...(options.organizationId ? { organizationId: options.organizationId } : {}),
+			...(options.mailboxId ? { mailboxId: options.mailboxId } : {}),
+		});
+		for (const rowJson of result.pageJson) {
+			const row = JSON.parse(rowJson) as Record<string, unknown>;
+			const contentDownloadUrl = row['contentDownloadUrl'];
+			if (typeof contentDownloadUrl !== 'string') {
+				rows.push(row);
+				continue;
+			}
+			const response = await fetch(contentDownloadUrl);
+			if (!response.ok) throw new Error('Could not download account export content');
+			const { ['contentDownloadUrl']: _download, ...metadata } = row;
+			rows.push({ ...metadata, ...((await response.json()) as Record<string, unknown>) });
+		}
+		if (result.isDone) return rows;
+		cursor = result.continueCursor;
+	}
+}
 
 // Export all data as JSON
 const handleExportJson = async () => {
@@ -179,9 +222,55 @@ const handleExportJson = async () => {
 	isExportingJson.value = true;
 
 	try {
-		const data = await convex.query(api.auth.accountManagement.exportUserData, {
+		const manifest = await convex.action(api.auth.accountManagement.exportUserData, {
 			userId: userId.value,
 		});
+		const memberships = (await loadAccountExportPages('organizationMemberships')) as Array<{
+			organizationId: string;
+			role: string;
+			organization: { _id: string; name: string; slug?: string | null };
+		}>;
+		const organizations = await Promise.all(
+			memberships.map(async (membership) => ({
+				organization: membership.organization,
+				role: membership.role,
+				data: Object.fromEntries(
+					await Promise.all(
+						ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map(async (resource) => [
+							resource,
+							await loadAccountExportPages(resource, {
+								organizationId: membership.organizationId,
+							}),
+						])
+					)
+				),
+			}))
+		);
+		const mailboxes = (await loadAccountExportPages('mailboxes')) as Array<{
+			_id: Id<'mailboxes'>;
+		}>;
+		const mailMessages: unknown[] = [];
+		const mailDrafts: unknown[] = [];
+		for (const mailbox of mailboxes) {
+			mailMessages.push(
+				...(await loadAccountExportPages('mailMessages', { mailboxId: mailbox._id }))
+			);
+			mailDrafts.push(...(await loadAccountExportPages('mailDrafts', { mailboxId: mailbox._id })));
+		}
+		const data = {
+			...manifest,
+			organizations,
+			personalData: {
+				mailboxes,
+				mailMessages,
+				mailDrafts,
+				externalMailAccounts: await loadAccountExportPages('externalMailAccounts'),
+				chatMessages: await loadAccountExportPages('chatMessages'),
+				deliverabilityAlertRecipientStates: await loadAccountExportPages(
+					'deliverabilityAlertRecipientStates'
+				),
+			},
+		};
 
 		// Create and download JSON file
 		const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -335,15 +424,20 @@ const daysRemaining = computed(() => {
 			<!-- Profile -->
 			<div class="card">
 				<h2 class="text-lg font-semibold text-text-primary mb-1">Profile</h2>
-				<p class="text-sm text-text-secondary mb-4">Your display name, used as the sender identity.</p>
+				<p class="text-sm text-text-secondary mb-4">
+					Your display name, used as the sender identity.
+				</p>
 				<div class="flex items-end gap-3 max-w-md">
 					<div class="flex-1">
 						<UiInput id="profile-name" v-model="nameDraft" label="Name" placeholder="Your name" />
 					</div>
-					<UiButton :loading="savingProfile" :disabled="!nameDraft.trim()" @click="saveProfile">Save</UiButton>
+					<UiButton :loading="savingProfile" :disabled="!nameDraft.trim()" @click="saveProfile"
+						>Save</UiButton
+					>
 				</div>
 				<p class="text-xs text-text-tertiary mt-3">
-					Signed in as <span class="font-medium text-text-secondary">{{ user?.email }}</span>.
+					Signed in as <span class="font-medium text-text-secondary">{{ user?.email }}</span
+					>.
 				</p>
 			</div>
 
@@ -351,13 +445,13 @@ const daysRemaining = computed(() => {
 			<div class="card">
 				<h2 class="text-lg font-semibold text-text-primary mb-1">Login email</h2>
 				<p v-if="isEmailVerified" class="text-sm text-text-secondary mb-4">
-					Change the email address you use to sign in. We send an approval link to your
-					current address; once you follow it we send a final confirmation link to the new
-					address. Your login email only changes after that last link is followed.
+					Change the email address you use to sign in. We send an approval link to your current
+					address; once you follow it we send a final confirmation link to the new address. Your
+					login email only changes after that last link is followed.
 				</p>
 				<p v-else class="text-sm text-text-secondary mb-4">
-					Change the email address you use to sign in. We send a confirmation link to the
-					new address — your login email only changes once you follow it.
+					Change the email address you use to sign in. We send a confirmation link to the new
+					address — your login email only changes once you follow it.
 				</p>
 				<form class="space-y-3 max-w-md" @submit.prevent="changeEmail">
 					<UiInput
@@ -373,7 +467,8 @@ const daysRemaining = computed(() => {
 					</UiButton>
 				</form>
 				<p v-if="emailRequested" class="text-xs text-success mt-3">
-					We sent a confirmation link to <span class="font-medium">{{ confirmationSentTo }}</span>. Follow it to {{ isEmailVerified ? 'approve' : 'finish' }} changing your login email.
+					We sent a confirmation link to <span class="font-medium">{{ confirmationSentTo }}</span
+					>. Follow it to {{ isEmailVerified ? 'approve' : 'finish' }} changing your login email.
 				</p>
 			</div>
 
@@ -382,9 +477,27 @@ const daysRemaining = computed(() => {
 				<h2 class="text-lg font-semibold text-text-primary mb-1">Change password</h2>
 				<p class="text-sm text-text-secondary mb-4">Update your password without signing out.</p>
 				<form class="space-y-3 max-w-md" @submit.prevent="changePassword">
-					<UiInput id="cur-pw" v-model="currentPassword" type="password" label="Current password" autocomplete="current-password" />
-					<UiInput id="new-pw" v-model="newPassword" type="password" label="New password" autocomplete="new-password" />
-					<UiInput id="confirm-pw" v-model="confirmPassword" type="password" label="Confirm new password" autocomplete="new-password" />
+					<UiInput
+						id="cur-pw"
+						v-model="currentPassword"
+						type="password"
+						label="Current password"
+						autocomplete="current-password"
+					/>
+					<UiInput
+						id="new-pw"
+						v-model="newPassword"
+						type="password"
+						label="New password"
+						autocomplete="new-password"
+					/>
+					<UiInput
+						id="confirm-pw"
+						v-model="confirmPassword"
+						type="password"
+						label="Confirm new password"
+						autocomplete="new-password"
+					/>
 					<UiButton type="submit" :loading="savingPassword">Change password</UiButton>
 				</form>
 			</div>
@@ -451,8 +564,9 @@ const daysRemaining = computed(() => {
 				<div class="p-6">
 					<p class="text-text-secondary text-sm mb-6">
 						You can export your data at any time. The export includes your profile information, your
-						personal mailbox and mail, drafts, connected external accounts, your chat messages, and —
-						for the teams you belong to — contacts, campaigns, automations, and other associated data.
+						personal mailbox and mail, drafts, connected external accounts, your chat messages, and
+						your team memberships. For teams where you are an owner or admin, it also includes
+						contacts, campaigns, automations, and other associated data.
 					</p>
 
 					<div class="grid gap-4 sm:grid-cols-2">
@@ -464,14 +578,18 @@ const daysRemaining = computed(() => {
 									<h3 class="font-medium text-text-primary mb-1">Complete Data Export</h3>
 									<p class="text-xs text-text-tertiary mb-3">
 										JSON format with all your data: your mailbox, mail, drafts, chat, connected
-										accounts, plus your teams, contacts, campaigns, and more.
+										accounts, and memberships, plus team data where you are an owner or admin.
 									</p>
 									<button
 										class="btn btn-secondary btn-sm gap-2"
 										:disabled="isExportingJson"
 										@click="handleExportJson"
 									>
-										<Icon v-if="isExportingJson" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+										<Icon
+											v-if="isExportingJson"
+											name="lucide:loader-2"
+											class="w-4 h-4 animate-spin"
+										/>
 										<Icon v-else name="lucide:download" class="w-4 h-4" />
 										{{ isExportingJson ? 'Exporting...' : 'Export JSON' }}
 									</button>
@@ -493,7 +611,11 @@ const daysRemaining = computed(() => {
 										:disabled="isExportingCsv || !hasActiveOrganization"
 										@click="handleExportCsv"
 									>
-										<Icon v-if="isExportingCsv" name="lucide:loader-2" class="w-4 h-4 animate-spin" />
+										<Icon
+											v-if="isExportingCsv"
+											name="lucide:loader-2"
+											class="w-4 h-4 animate-spin"
+										/>
 										<Icon v-else name="lucide:download" class="w-4 h-4" />
 										{{ isExportingCsv ? 'Exporting...' : 'Export CSV' }}
 									</button>
@@ -551,8 +673,8 @@ const daysRemaining = computed(() => {
 							<li>Your chat messages and team memberships</li>
 						</ul>
 						<p v-if="!isOwner" class="text-xs text-text-tertiary mt-3">
-							Data owned by your teams — contacts, campaigns, API keys, webhooks, and
-							analytics — belongs to the team and is not removed by deleting your account.
+							Data owned by your teams — contacts, campaigns, API keys, webhooks, and analytics —
+							belongs to the team and is not removed by deleting your account.
 						</p>
 					</div>
 
@@ -573,7 +695,11 @@ const daysRemaining = computed(() => {
 			size="lg"
 			:closable="!isDeleting"
 			:persistent="isDeleting"
-			@update:open="(v) => { if (!v) showDeleteModal = false; }"
+			@update:open="
+				(v) => {
+					if (!v) showDeleteModal = false;
+				}
+			"
 		>
 			<!-- Header -->
 			<div class="flex items-center gap-3 mb-6">
@@ -587,8 +713,8 @@ const daysRemaining = computed(() => {
 			<!-- Content -->
 			<div class="p-4 rounded-xl bg-error/5 border border-error/20 mb-6">
 				<p class="text-sm text-error">
-					<strong>Warning:</strong> After the 30-day grace period, your account and all
-					associated data will be permanently deleted. This action cannot be undone.
+					<strong>Warning:</strong> After the 30-day grace period, your account and all associated
+					data will be permanently deleted. This action cannot be undone.
 				</p>
 			</div>
 

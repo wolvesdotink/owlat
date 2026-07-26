@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';
 import { internal } from '../../_generated/api';
 import schema from '../../schema';
+import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../../lib/constants';
 
 const rootGlob = import.meta.glob('../../**/*.*s');
 const deliveryGlob = Object.fromEntries(
@@ -156,15 +157,77 @@ describe('Deliverability Center regression evidence', () => {
 			});
 		};
 		await record('pass', 'pass', 'mta.fcrdns', 1_000);
+		expect(
+			await t.run((ctx) =>
+				ctx.db
+					.query('deliverabilityEvidence')
+					.withIndex('by_org_attempt', (q) =>
+						q.eq('organizationId', organizationId).eq('attemptId', 'pass')
+					)
+					.unique()
+			)
+		).toMatchObject({
+			observedValuesVersion: CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION,
+		});
 		await record('transient', 'warn', 'checklist.orchestrator', 2_000);
 		await record('fail', 'fail', 'mta.fcrdns', 3_000);
 		const alert = await t.run((ctx) => ctx.db.query('deliverabilityRegressionAlerts').unique());
 		expect(alert?.message).toContain('Prove you own your server');
 		expect(alert?.message).not.toContain('deployment.ptr');
 		expect(alert?.resolvedAt).toBeUndefined();
+		if (!alert) throw new Error('alert was not created');
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityAlertRecipients', {
+				organizationId,
+				alertId: alert._id,
+				userId: 'pending-user',
+				status: 'pending',
+				attemptCount: 1,
+				nextAttemptAt: 9_000,
+			});
+			await ctx.db.insert('deliverabilityAlertRecipients', {
+				organizationId,
+				alertId: alert._id,
+				userId: 'sending-user',
+				status: 'sending',
+				attemptCount: 1,
+				attemptToken: 'in-flight',
+				attemptStartedAt: 3_500,
+			});
+		});
 		await record('recovered', 'pass', 'mta.fcrdns', 4_000);
+		const recovered = await t.run(async (ctx) => ({
+			alert: await ctx.db.query('deliverabilityRegressionAlerts').unique(),
+			recipients: await ctx.db.query('deliverabilityAlertRecipients').collect(),
+		}));
+		expect(recovered.alert).toMatchObject({
+			resolvedAt: 4_000,
+			emailNotificationState: 'pending',
+		});
+		expect(recovered.recipients).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					userId: 'pending-user',
+					status: 'cancelled',
+				}),
+				expect.objectContaining({
+					userId: 'sending-user',
+					status: 'sending',
+					attemptToken: 'in-flight',
+				}),
+			])
+		);
 		expect(
-			await t.run((ctx) => ctx.db.query('deliverabilityRegressionAlerts').unique())
-		).toMatchObject({ resolvedAt: 4_000 });
+			recovered.recipients.find((recipient) => recipient.userId === 'pending-user')
+		).not.toHaveProperty('nextAttemptAt');
+		await expect(
+			t.mutation(internal.delivery.checklistAlertState.completeRecipientAttempts, {
+				organizationId,
+				identity: alert.identity,
+				attemptToken: 'in-flight',
+				results: [{ userId: 'sending-user', isSuccess: true }],
+				now: 4_100,
+			})
+		).resolves.toEqual({ state: 'sent', retryScheduled: false });
 	});
 });

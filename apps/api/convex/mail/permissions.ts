@@ -112,6 +112,19 @@ export async function loadReadableMailbox(
 	return owned.ok ? owned.mailbox : null;
 }
 
+/** Personal-mailbox gate for internal self-scoped GDPR jobs whose caller
+ * identity was already verified before crossing a query/action boundary.
+ * Inactive mailboxes remain readable here because retained personal data is
+ * still part of a subject-access export. */
+export async function loadPersonalMailboxForUser(
+	ctx: Pick<QueryCtx, 'db'>,
+	mailboxId: Id<'mailboxes'>,
+	userId: string
+): Promise<Doc<'mailboxes'> | null> {
+	const mailbox = await ctx.db.get(mailboxId);
+	return mailbox?.scope !== 'shared' && mailbox?.userId === userId ? mailbox : null;
+}
+
 export type MessageAccessOutcome =
 	| {
 			ok: true;

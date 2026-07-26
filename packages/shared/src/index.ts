@@ -224,4 +224,5 @@ export type {
 } from './compatibility/index';
 export * from './deliverabilityChecklist';
 export * from './deliverabilityDiagnostics';
+export * from './accountExport';
 export * from './deliverabilitySetup';

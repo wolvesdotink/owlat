@@ -31,12 +31,14 @@ import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
-	DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT,
+	DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT,
+	boundedDeliverabilityAlertRecipientRows,
 	deliverabilityAlertNotificationPatch,
 } from '../delivery/checklistAlertRecipients';
 
 const MESSAGE_BATCH = 100;
 const CHAT_PAGE = 200;
+const ALERT_RECIPIENT_ERASURE_PAGE_SIZE = 100;
 const DELETED_ACCOUNT_ID = '[deleted account]';
 
 export const eraseMemberData = internalMutation({
@@ -241,15 +243,15 @@ export const eraseMemberData = internalMutation({
 
 		// ── Phase 3: Deliverability alert recipient ledger ──
 		if (args.isAlertErasureDone !== true) {
-			const alertPage = await ctx.db
+			const recipientPage = await ctx.db
 				.query('deliverabilityAlertRecipients')
 				.withIndex('by_user', (q) => q.eq('userId', args.authUserId))
 				.paginate({
 					cursor: args.alertCursor ?? null,
-					numItems: DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT,
+					numItems: ALERT_RECIPIENT_ERASURE_PAGE_SIZE,
 				});
 			const touchedAlertIds = new Set<Id<'deliverabilityRegressionAlerts'>>();
-			for (const recipient of alertPage.page) {
+			for (const recipient of recipientPage.page) {
 				touchedAlertIds.add(recipient.alertId);
 				await ctx.db.patch(recipient._id, {
 					userId: DELETED_ACCOUNT_ID,
@@ -272,17 +274,18 @@ export const eraseMemberData = internalMutation({
 			for (const alertId of touchedAlertIds) {
 				const alert = await ctx.db.get(alertId);
 				if (!alert) continue;
-				const states = await ctx.db
-					.query('deliverabilityAlertRecipients')
-					.withIndex('by_alert', (q) => q.eq('alertId', alertId))
-					.take(DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT + 1);
-				if (states.length > DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT) {
-					throw new Error('Deliverability alert recipient history exceeds its bounded limit');
-				}
+				const states = boundedDeliverabilityAlertRecipientRows(
+					await ctx.db
+						.query('deliverabilityAlertRecipients')
+						.withIndex('by_alert', (q) => q.eq('alertId', alertId))
+						.take(DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT + 1)
+				);
 				await ctx.db.patch(alert._id, deliverabilityAlertNotificationPatch(states));
 			}
 			await reschedule(
-				alertPage.isDone ? { isAlertErasureDone: true } : { alertCursor: alertPage.continueCursor }
+				recipientPage.isDone
+					? { isAlertErasureDone: true }
+					: { alertCursor: recipientPage.continueCursor }
 			);
 			return;
 		}

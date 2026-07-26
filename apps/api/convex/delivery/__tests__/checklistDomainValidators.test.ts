@@ -1,4 +1,5 @@
 import dns from 'node:dns/promises';
+import { generateKeyPairSync } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../checklistProviderDetection', () => ({
@@ -31,6 +32,12 @@ function context(
 		tracking: [],
 		postmaster: null,
 	} as unknown as ChecklistVerificationContext;
+}
+
+function rsaDkimRecord(modulusLength: number): string {
+	const { publicKey } = generateKeyPairSync('rsa', { modulusLength });
+	const encoded = publicKey.export({ format: 'der', type: 'spki' }).toString('base64');
+	return `v=DKIM1; k=rsa; p=${encoded}`;
 }
 
 describe('domain checklist validation', () => {
@@ -215,6 +222,77 @@ describe('domain checklist validation', () => {
 		).resolves.toMatchObject({
 			status: 'warn',
 			diagnostic: expect.stringContaining('message-level proof'),
+		});
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
+	});
+
+	it('fails a provider CNAME that resolves to a known 1024-bit DKIM key', async () => {
+		const weakRecord = rsaDkimRecord(1_024);
+		const resolveTxt = vi.spyOn(dns, 'resolveTxt').mockResolvedValue([[weakRecord]]);
+		const resolveCname = vi.spyOn(dns, 'resolveCname').mockRejectedValue(new Error('not found'));
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [{ verified: true, foundValue: 'selector.provider.test.' }],
+		} as never);
+		const dkimContext = context(
+			{},
+			{
+				dkim: [
+					{
+						type: 'CNAME',
+						host: 's1._domainkey',
+						value: 'selector.provider.test',
+					},
+				],
+			}
+		);
+
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, false)
+		).resolves.toMatchObject({ status: 'pending-dns' });
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, true)
+		).resolves.toMatchObject({
+			status: 'fail',
+			diagnostic: expect.stringContaining('shorter than 2048 bits'),
+			observedValues: expect.arrayContaining(['key-bits=1024']),
+		});
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
+	});
+
+	it('fails mixed unresolved provider CNAME and unparseable direct DKIM evidence', async () => {
+		const resolveTxt = vi.spyOn(dns, 'resolveTxt').mockRejectedValue(new Error('not found'));
+		const resolveCname = vi.spyOn(dns, 'resolveCname').mockRejectedValue(new Error('not found'));
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [
+				{ verified: true, foundValue: 'selector.provider.test.' },
+				{ verified: true, foundValue: 'v=DKIM1; p=unparseable' },
+			],
+		} as never);
+		const dkimContext = context(
+			{},
+			{
+				dkim: [
+					{
+						type: 'CNAME',
+						host: 'provider._domainkey',
+						value: 'selector.provider.test',
+					},
+					{
+						type: 'TXT',
+						host: 'direct._domainkey',
+						value: 'v=DKIM1; p=unparseable',
+					},
+				],
+			}
+		);
+
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, true)
+		).resolves.toMatchObject({
+			status: 'fail',
+			observedValues: expect.arrayContaining(['key-bits=unresolved', 'key-bits=unparseable']),
 		});
 		resolveTxt.mockRestore();
 		resolveCname.mockRestore();

@@ -8,6 +8,7 @@ import {
 	completeRowsOrThrow,
 } from '../checklist';
 import { deliverabilityTargetKey } from '../checklistEvidence';
+import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../../lib/constants';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -126,6 +127,67 @@ describe('Deliverability Center complete materialization', () => {
 			.find((item) => item.id === 'deployment.ptr');
 		expect(ptr).toMatchObject({ status: 'pass', lastCheckedAt: now });
 	}, 20_000);
+
+	it('reads legacy and current observation versions but quarantines unknown versions', async () => {
+		const t = convexTest(schema, modules);
+		const targetKey = deliverabilityTargetKey(ORGANIZATION_ID);
+		await t.run(async (ctx) => {
+			for (const [index, item] of [
+				{
+					itemId: 'deployment.ptr' as const,
+					observedValues: ['legacy-value'],
+					observedValuesVersion: undefined,
+				},
+				{
+					itemId: 'deployment.fcrdns' as const,
+					observedValues: ['current-value'],
+					observedValuesVersion: CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION,
+				},
+				{
+					itemId: 'deployment.port25' as const,
+					observedValues: ['future-value'],
+					observedValuesVersion: CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION + 1,
+				},
+			].entries()) {
+				const evidenceId = await ctx.db.insert('deliverabilityEvidence', {
+					organizationId: ORGANIZATION_ID,
+					itemId: item.itemId,
+					scopeKind: 'deployment',
+					targetKey,
+					attemptId: `attempt-${index}`,
+					validator: 'test',
+					status: 'pass',
+					observedValues: item.observedValues,
+					...(item.observedValuesVersion === undefined
+						? {}
+						: { observedValuesVersion: item.observedValuesVersion }),
+					diagnostic: 'verified',
+					observedAt: index + 1,
+					createdAt: index + 1,
+				});
+				await ctx.db.insert('deliverabilityVerificationState', {
+					organizationId: ORGANIZATION_ID,
+					itemId: item.itemId,
+					targetKey,
+					attemptId: `attempt-${index}`,
+					generation: 1,
+					retryIndex: 0,
+					leaseToken: `lease-${index}`,
+					leaseExpiresAt: 0,
+					currentEvidenceId: evidenceId,
+					updatedAt: index + 1,
+				});
+			}
+		});
+
+		const center = await t.query(api.delivery.checklist.getCenter, {});
+		const items = center.groups.flatMap((group) => group.items);
+		expect(items.find((item) => item.id === 'deployment.ptr')?.observed).toEqual(['legacy-value']);
+		expect(items.find((item) => item.id === 'deployment.fcrdns')?.observed).toEqual([
+			'current-value',
+		]);
+		expect(items.find((item) => item.id === 'deployment.port25')?.observed).toEqual([]);
+	});
 
 	it('refuses more domains than can be safely materialized instead of grading a prefix', async () => {
 		const t = convexTest(schema, modules);
