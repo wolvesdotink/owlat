@@ -107,7 +107,8 @@ export function dnsblQueryName(ip: string, zone: string): string {
  * the injected clock + delay that make the bounded retry deterministic.
  */
 export interface DnsblLookupDeps {
-	resolve4: (hostname: string) => Promise<string[]>;
+	/** DNS transport; defaults to the platform `dns/promises` resolver. */
+	resolve4?: (hostname: string) => Promise<string[]>;
 	timeoutMs?: number;
 	/**
 	 * Advisory callers (the /24 neighbourhood sample) set this so a resolver
@@ -157,6 +158,7 @@ export async function lookupDnsblZone(
 	deps: DnsblLookupDeps = { resolve4 }
 ): Promise<DnsblLookupResult> {
 	const lookup = dnsblQueryName(ip, zone);
+	const resolver = deps.resolve4 ?? resolve4;
 	const timeoutMs = deps.timeoutMs ?? LOOKUP_TIMEOUT_MS;
 	const logUnknown = (fields: { ip: string; listId: string; errorCode: string }) => {
 		if (deps.quiet) logger.debug(fields, 'DNSBL check is unknown');
@@ -166,16 +168,18 @@ export async function lookupDnsblZone(
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
 		const result = await Promise.race([
-			deps.resolve4(lookup),
+			resolver(lookup),
 			new Promise<never>(
 				(_, reject) =>
 					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), timeoutMs))
 			),
 		]);
-		// Spamhaus reserves 127.255.255.x for resolver/configuration errors. That
-		// is neither listing nor delisting evidence, so it must preserve a prior
-		// quarantine just like SERVFAIL/timeout.
-		if (listId === 'spamhaus' && result.some((addr) => addr.startsWith('127.255.255.'))) {
+		// 127.255.255.x is the reserved return-code block: resolver policy refusal,
+		// open-resolver rejection and query-rate limiting. Spamhaus documents it and
+		// the other public feeds follow the same convention, so it is read the same
+		// way for every zone — it is neither listing nor delisting evidence, and it
+		// must preserve a prior quarantine just like SERVFAIL/timeout.
+		if (result.some((addr) => addr.startsWith('127.255.255.'))) {
 			logUnknown({ ip, listId, errorCode: 'resolver_policy' });
 			return { status: 'unknown', answers: boundedAnswers(result) };
 		}
@@ -418,18 +422,26 @@ export async function runDnsblCheck(
 			const listings = uniqueIps.map((ip) => ({ ip, zones: listedZonesByIp.get(ip) ?? [] }));
 			const blocklists = [...new Set(listings.flatMap((listing) => listing.zones))];
 			const detail = listings
-				.map(({ ip, zones }) => `${ip} on ${zones.length > 0 ? zones.join(', ') : 'unknown zone'}`)
+				.map(
+					({ ip, zones }) =>
+						`${ip} on ${zones.length > 0 ? zones.join(', ') : 'an unmeasured blocklist status'}`
+				)
 				.join('; ');
+			// Say which it is: a confirmed listing on every address is a different
+			// operator task from "we could not measure and therefore held".
+			const message = listings.every((listing) => listing.zones.length > 0)
+				? `All sending IPs are blocklisted. Email sending is paused. Listed: ${detail}`
+				: `All sending IPs are unavailable. Email sending is paused. Blocklist status: ${detail}`;
 			logger.error(
 				{ ips: uniqueIps, blocklists },
-				'ALL IPs blocklisted — sending halted, nothing leaves the pool'
+				'ALL IPs blocklisted or unmeasurable — sending halted, nothing leaves the pool'
 			);
 			await notifyConvex(
 				{
 					event: 'all_ips_blocked',
 					severity: 'critical',
 					blocklists,
-					message: `All sending IPs are blocklisted. Email sending is paused. Listed: ${detail}`,
+					message,
 					timestamp: Date.now(),
 				},
 				config,
