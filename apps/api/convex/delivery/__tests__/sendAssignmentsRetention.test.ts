@@ -8,7 +8,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import {
@@ -35,11 +35,16 @@ function assignment(sendId: string, assignedAt: number) {
 		cell: 'campaign:gmail',
 		transport: 'mta',
 		arm: 'own' as const,
-		calibration: false,
+		isCalibration: false,
 		mixVersion: 0,
 		assignedAt,
 	};
 }
+
+// A failing assertion must not leak fake timers into the next test.
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 describe('sendAssignments retention sweep', () => {
 	it('retains 90 days and deletes only what is older', async () => {
@@ -72,6 +77,13 @@ describe('sendAssignments retention sweep', () => {
 
 	it('is bounded per tick and resumes until the backlog drains', async () => {
 		const t = convexTest(schema, modules);
+		// `finishInProgressScheduledFunctions` only drains functions already
+		// running; the sweep's `runAfter(0)` follow-up is still PENDING at that
+		// point, so the resume would never execute and the assertion below would
+		// pass vacuously. Fake timers + `finishAllScheduledFunctions(runAllTimers)`
+		// actually advance the scheduler to the follow-up. Timers must be faked
+		// BEFORE the first mutation so the scheduler sees the fake clock.
+		vi.useFakeTimers();
 		const total = SEND_ASSIGNMENT_CLEANUP_BATCH_SIZE + 25;
 		await t.run(async (ctx) => {
 			for (let index = 0; index < total; index += 1) {
@@ -91,11 +103,17 @@ describe('sendAssignments retention sweep', () => {
 			await t.run(async (ctx) => (await ctx.db.query('sendAssignments').collect()).length)
 		).toBe(total + 1 - SEND_ASSIGNMENT_CLEANUP_BATCH_SIZE);
 
-		// The tick came back full, so it rescheduled itself; run the follow-up.
-		await t.finishInProgressScheduledFunctions();
+		// The tick came back full, so it rescheduled itself; drain the follow-up.
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		vi.useRealTimers();
 
 		const remaining = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
 		expect(remaining.map((row) => row.sendId)).toEqual(['fresh']);
+		// And the backlog really did drain through a SECOND tick, not one big one.
+		const scheduled = await t.run(async (ctx) =>
+			ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled.every((job) => job.state.kind === 'success')).toBe(true);
 	});
 
 	it('does not reschedule when the tick comes back short', async () => {

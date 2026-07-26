@@ -34,7 +34,7 @@ function assignment(organizationId: string, sendId: string, assignedAt: number) 
 		cell: CELL,
 		transport: 'mta',
 		arm: 'own' as const,
-		calibration: false,
+		isCalibration: false,
 		mixVersion: 0,
 		assignedAt,
 	};
@@ -109,10 +109,16 @@ describe('sendAssignments tenant isolation', () => {
 
 	it('declares every caller-reachable index org-leading', async () => {
 		const source = await import('node:fs/promises').then((fs) =>
-			fs.readFile(new URL('../../schema/delivery.ts', import.meta.url), 'utf8')
+			fs.readFile(new URL('../../schema/sendAssignments.ts', import.meta.url), 'utf8')
 		);
-		const table = source.slice(source.indexOf('sendAssignments: defineTable('));
-		const indexBlock = table.slice(0, table.indexOf('// Provider Health'));
+		const tableStart = source.indexOf('sendAssignments: defineTable(');
+		expect(tableStart).toBeGreaterThanOrEqual(0);
+		const table = source.slice(tableStart);
+		// Anchor the end of the block on the NEXT table definition, not on a prose
+		// comment: a reworded comment would silently widen the scanned block to the
+		// rest of the file and make this guard pass vacuously.
+		const nextTable = table.indexOf('defineTable(', 'sendAssignments: defineTable('.length);
+		const indexBlock = nextTable === -1 ? table : table.slice(0, nextTable);
 		const declared = [...indexBlock.matchAll(/\.index\('([^']+)',\s*\[([^\]]*)\]\)/g)].map(
 			(match) => ({
 				name: match[1] ?? '',

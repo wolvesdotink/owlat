@@ -20,7 +20,11 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestCampaign, createTestContact } from '../../__tests__/factories';
-import { armForTransport, ROUTER_ONLY_MIX_VERSION } from '../sendAssignments';
+import {
+	armForTransport,
+	destinationProvidersForEmails,
+	ROUTER_ONLY_MIX_VERSION,
+} from '../sendAssignments';
 
 // `vi.hoisted` so the mock factory below (hoisted above the imports) can close
 // over these without hitting the temporal dead zone.
@@ -151,7 +155,7 @@ describe('sendAssignments — campaign write path', () => {
 			expect(row.sendKind).toBe('campaign');
 			expect(row.transport).toBe('mta');
 			expect(row.arm).toBe('own');
-			expect(row.calibration).toBe(false);
+			expect(row.isCalibration).toBe(false);
 			expect(row.mixVersion).toBe(ROUTER_ONLY_MIX_VERSION);
 			expect(row.engagementRank).toBeUndefined();
 			expect(row.assignedAt).toBeGreaterThan(0);
@@ -297,6 +301,67 @@ describe('sendAssignments — campaign write path', () => {
 		);
 		expect(source).not.toMatch(/\.collect\(\)/);
 		expect(source).toMatch(/withIndex\('by_org_domain'/);
+	});
+
+	it('issues exactly one by_org_domain read per DISTINCT recipient domain', async () => {
+		// Behavioural, not source-shaped: the static guard above cannot tell a
+		// memoized lookup from a per-recipient one when every recipient shares a
+		// domain. A counting stub context can, so a regression that drops the
+		// memo map fails here instead of passing quietly.
+		interface IndexQueryStub {
+			eq: (field: string, value: string) => IndexQueryStub;
+		}
+		const reads: string[] = [];
+		const tables: string[] = [];
+		const indexes: string[] = [];
+		const countingCtx = {
+			db: {
+				query: (table: string) => {
+					tables.push(table);
+					return {
+						withIndex: (indexName: string, build: (q: IndexQueryStub) => IndexQueryStub) => {
+							indexes.push(indexName);
+							const bound: Record<string, string> = {};
+							const q: IndexQueryStub = {
+								eq: (field: string, value: string) => {
+									bound[field] = value;
+									return q;
+								},
+							};
+							build(q);
+							reads.push(bound['domain'] ?? '');
+							return { first: async () => null };
+						},
+					};
+				},
+			},
+		};
+
+		const emails = [
+			'a@gmail.com',
+			'b@gmail.com',
+			'c@gmail.com',
+			'd@outlook.com',
+			'e@outlook.com',
+			'f@example.org',
+			'not-an-address',
+		];
+		const providers = await destinationProvidersForEmails(
+			countingCtx as unknown as Parameters<typeof destinationProvidersForEmails>[0],
+			ORG,
+			emails,
+			Date.now()
+		);
+
+		// Three distinct domains ⇒ three indexed point reads, for seven recipients.
+		// The unparseable address costs no read at all.
+		expect(reads).toEqual(['gmail.com', 'outlook.com', 'example.org']);
+		expect(new Set(tables)).toEqual(new Set(['destinationProviderDomains']));
+		expect(new Set(indexes)).toEqual(new Set(['by_org_domain']));
+		expect(providers.get('a@gmail.com')).toBe('gmail');
+		expect(providers.get('d@outlook.com')).toBe('microsoft');
+		expect(providers.get('f@example.org')).toBe('other');
+		expect(providers.get('not-an-address')).toBe('other');
 	});
 });
 
