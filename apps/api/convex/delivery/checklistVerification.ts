@@ -54,6 +54,7 @@ async function executeVerification(
 			internal.delivery.checklist.getVerificationContext,
 			{
 				organizationId: request.organizationId,
+				itemId: request.itemId,
 				...(request.domainId ? { domainId: request.domainId } : {}),
 			}
 		);

@@ -2,12 +2,40 @@
 
 import { SES_RELAY_PROOF_MAX_AGE_MS, type DeliverabilityCheckId } from '@owlat/shared';
 import { detectIpProvider } from './checklistProviderDetection';
+import { checklistTraits } from './checklistTraits';
 import {
 	checklistObservation,
 	pendingDnsStatus,
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
+
+function identityObservations(
+	addresses: NonNullable<ChecklistVerificationContext['warming']>['ips']
+): string[] {
+	return addresses.slice(0, 20).flatMap((entry) => {
+		const identity = entry.fcrdns;
+		return [
+			`ip=${entry.ip}`,
+			`ptr=${identity?.ptrNames.slice(0, 4).join(',') || 'missing'}`,
+			`ehlo=${identity?.ehlo ?? 'missing'}`,
+			`reason=${identity?.reason ?? 'none'}`,
+			`checked-at=${identity?.checkedAt ?? 'missing'}`,
+		].map((value) => value.slice(0, 512));
+	});
+}
+
+function identityMismatchDiagnostic(
+	addresses: NonNullable<ChecklistVerificationContext['warming']>['ips'],
+	fallback: string
+): string {
+	const mismatch = addresses.find((entry) => entry.fcrdns?.isForwardConfirmed !== true);
+	if (!mismatch?.fcrdns) return fallback;
+	return `${fallback} ${mismatch.ip}: PTR ${mismatch.fcrdns.ptrNames.slice(0, 4).join(', ') || 'missing'}; EHLO ${mismatch.fcrdns.ehlo}; reason ${mismatch.fcrdns.reason ?? 'forward confirmation mismatch'}; checked ${mismatch.fcrdns.checkedAt}.`.slice(
+		0,
+		2_048
+	);
+}
 
 export async function observeDeploymentCheck(
 	itemId: DeliverabilityCheckId,
@@ -17,22 +45,35 @@ export async function observeDeploymentCheck(
 	const ips = context.warming?.ips ?? [];
 	const ipv4 = ips.filter((entry) => !entry.ip.includes(':'));
 	const ipv6 = ips.filter((entry) => entry.ip.includes(':'));
-	const selected = itemId.startsWith('deployment.ipv6_') ? ipv6 : ipv4;
-	const needsVpsProvider =
-		itemId === 'deployment.ptr' ||
-		itemId === 'deployment.fcrdns' ||
-		itemId === 'deployment.ptr_nongeneric' ||
-		itemId === 'deployment.port25' ||
-		itemId === 'deployment.ipv6_address' ||
-		itemId === 'deployment.ipv6_ptr';
-	const provider = needsVpsProvider ? await detectIpProvider(selected[0]?.ip) : null;
-	const providerValues = provider ? [`vps-provider=${provider}`] : [];
-	const observedIps = selected.map((entry) => `ip=${entry.ip}`);
+	const traits = checklistTraits(itemId);
+	const selectedAddresses =
+		traits.addressFamily === 'ipv6' ? ipv6 : traits.addressFamily === 'ipv4' ? ipv4 : ips;
+	const needsVpsProvider = traits.providerGuidance?.startsWith('vps_') === true;
+	const detectedProviders = needsVpsProvider
+		? await Promise.all(selectedAddresses.map((entry) => detectIpProvider(entry.ip)))
+		: [];
+	const commonProvider =
+		detectedProviders.length > 0 &&
+		detectedProviders[0] !== null &&
+		detectedProviders.every((candidate) => candidate === detectedProviders[0])
+			? detectedProviders[0]
+			: null;
+	const providerValues = needsVpsProvider
+		? [
+				...(commonProvider
+					? [`vps-provider=${commonProvider}`]
+					: ['vps-provider=mixed-or-unknown']),
+				...selectedAddresses.map(
+					(entry, index) => `vps-provider-ip=${entry.ip}:${detectedProviders[index] ?? 'unknown'}`
+				),
+			]
+		: [];
+	const observedIps = selectedAddresses.map((entry) => `ip=${entry.ip}`);
 	const now = Date.now();
 	const warmingFresh = context.warming !== null && now - context.warming.syncedAt <= 10 * 60_000;
 	const identityFresh =
 		warmingFresh &&
-		selected.every(
+		selectedAddresses.every(
 			(entry) => entry.fcrdns !== undefined && now - entry.fcrdns.checkedAt <= 15 * 60_000
 		);
 	const mtaHealthFresh =
@@ -42,8 +83,8 @@ export async function observeDeploymentCheck(
 	const staleHealth = 'The MTA health snapshot is missing or too old to verify this check.';
 	const dnsblFresh =
 		warmingFresh &&
-		selected.length > 0 &&
-		selected.every(
+		selectedAddresses.length > 0 &&
+		selectedAddresses.every(
 			(entry) => entry.dnsblCheckedAt !== undefined && now - entry.dnsblCheckedAt <= 30 * 60_000
 		);
 
@@ -51,8 +92,8 @@ export async function observeDeploymentCheck(
 		case 'deployment.ptr': {
 			const pass =
 				identityFresh &&
-				selected.length > 0 &&
-				selected.every((entry) => entry.fcrdns?.isPtrPresent);
+				selectedAddresses.length > 0 &&
+				selectedAddresses.every((entry) => entry.fcrdns?.isPtrPresent);
 			return checklistObservation(
 				'mta.fcrdns',
 				pass ? 'pass' : identityFresh ? pendingDnsStatus(isFinalDnsRetry) : 'warn',
@@ -67,24 +108,27 @@ export async function observeDeploymentCheck(
 		case 'deployment.fcrdns': {
 			const pass =
 				identityFresh &&
-				selected.length > 0 &&
-				selected.every((entry) => entry.fcrdns?.isForwardConfirmed);
+				selectedAddresses.length > 0 &&
+				selectedAddresses.every((entry) => entry.fcrdns?.isForwardConfirmed);
 			return checklistObservation(
 				'mta.fcrdns',
-				pass ? 'pass' : identityFresh ? 'fail' : 'warn',
+				pass ? 'pass' : identityFresh ? pendingDnsStatus(isFinalDnsRetry) : 'warn',
 				pass
 					? 'Every PTR hostname resolves back to its sending address.'
 					: identityFresh
-						? 'Forward DNS does not resolve back to the sending address.'
+						? identityMismatchDiagnostic(
+								selectedAddresses,
+								'Forward DNS does not resolve back to the sending address.'
+							)
 						: staleIdentity,
-				[...providerValues, ...observedIps]
+				[...providerValues, ...identityObservations(selectedAddresses)]
 			);
 		}
 		case 'deployment.ptr_nongeneric': {
 			const pass =
 				identityFresh &&
-				selected.length > 0 &&
-				selected.every((entry) => entry.fcrdns?.isGenericPtr === false);
+				selectedAddresses.length > 0 &&
+				selectedAddresses.every((entry) => entry.fcrdns?.isGenericPtr === false);
 			return checklistObservation(
 				'mta.fcrdns-generic-patterns',
 				pass ? 'pass' : 'warn',
@@ -99,8 +143,8 @@ export async function observeDeploymentCheck(
 		case 'deployment.ehlo_ptr': {
 			const pass =
 				identityFresh &&
-				selected.length > 0 &&
-				selected.every((entry) => entry.fcrdns?.isEhloMatched);
+				selectedAddresses.length > 0 &&
+				selectedAddresses.every((entry) => entry.fcrdns?.isEhloMatched);
 			return checklistObservation(
 				'mta.ehlo-ptr',
 				pass ? 'pass' : identityFresh ? 'fail' : 'warn',
@@ -116,8 +160,14 @@ export async function observeDeploymentCheck(
 			const probe = context.settings?.mtaHealth?.smtpOutbound;
 			const probeFresh =
 				mtaHealthFresh && probe !== undefined && now - probe.checkedAt <= 5 * 60_000;
+			const selectedIpSet = new Set(selectedAddresses.map((entry) => entry.ip));
+			const selectedProbeAddresses =
+				probe?.ips.filter((entry) => !entry.ip.includes(':') && selectedIpSet.has(entry.ip)) ?? [];
 			const pass =
-				probeFresh && probe?.status === 'ok' && probe.ips.every((entry) => entry.status === 'ok');
+				probeFresh &&
+				selectedAddresses.length > 0 &&
+				selectedProbeAddresses.length === selectedAddresses.length &&
+				selectedProbeAddresses.every((entry) => entry.status === 'ok');
 			return checklistObservation(
 				'mta.smtp-reachability',
 				pass ? 'pass' : probeFresh ? 'fail' : 'warn',
@@ -126,7 +176,7 @@ export async function observeDeploymentCheck(
 					: probeFresh
 						? 'The live port-25 probe failed for at least one source address.'
 						: staleHealth,
-				probe?.ips.map((entry) => `${entry.ip}=${entry.status}`) ?? []
+				selectedProbeAddresses.map((entry) => `${entry.ip}=${entry.status}`)
 			);
 		}
 		case 'deployment.tls': {
@@ -142,12 +192,12 @@ export async function observeDeploymentCheck(
 			);
 		}
 		case 'deployment.dnsbl': {
-			const pass = dnsblFresh && selected.every((entry) => entry.dnsbl === 'clean');
+			const pass = dnsblFresh && selectedAddresses.every((entry) => entry.dnsbl === 'clean');
 			const status = !dnsblFresh
 				? 'warn'
 				: pass
 					? 'pass'
-					: selected.some((entry) => entry.dnsbl === 'unknown')
+					: selectedAddresses.some((entry) => entry.dnsbl === 'unknown')
 						? 'warn'
 						: 'fail';
 			return checklistObservation(
@@ -158,7 +208,7 @@ export async function observeDeploymentCheck(
 					: dnsblFresh
 						? 'At least one outbound address is listed or has unknown standing.'
 						: 'The MTA blocklist snapshot is missing or too old to verify this check.',
-				selected.flatMap((entry) => [
+				selectedAddresses.flatMap((entry) => [
 					`${entry.ip}=${entry.dnsbl ?? 'unknown'}`,
 					`${entry.ip}:checked-at=${entry.dnsblCheckedAt ?? 'missing'}`,
 				])
@@ -260,13 +310,16 @@ export async function observeDeploymentCheck(
 				identityFresh && ipv6.length > 0 && ipv6.every((entry) => entry.fcrdns?.isForwardConfirmed);
 			return checklistObservation(
 				'mta.ipv6-fcrdns',
-				pass ? 'pass' : identityFresh ? 'fail' : 'warn',
+				pass ? 'pass' : identityFresh ? pendingDnsStatus(isFinalDnsRetry) : 'warn',
 				pass
 					? 'Every IPv6 PTR hostname resolves back through AAAA.'
 					: identityFresh
-						? 'IPv6 AAAA forward confirmation failed.'
+						? identityMismatchDiagnostic(
+								selectedAddresses,
+								'IPv6 AAAA forward confirmation failed.'
+							)
 						: staleIdentity,
-				observedIps
+				identityObservations(selectedAddresses)
 			);
 		}
 		case 'deployment.ipv6_spf': {

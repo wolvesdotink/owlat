@@ -1,5 +1,9 @@
 import { v } from 'convex/values';
-import { DELIVERABILITY_CHECKLIST, type DeliverabilityCheckId } from '@owlat/shared';
+import {
+	DELIVERABILITY_CHECKLIST,
+	isDeliverabilityEvidenceFresh,
+	type DeliverabilityCheckId,
+} from '@owlat/shared';
 import { parseIpAddress } from '@owlat/shared/ipAddress';
 import { isDnsLabel } from '@owlat/shared/dnsZone';
 import { isFqdn } from '@owlat/shared/fcrdns';
@@ -93,7 +97,13 @@ export const getStartContext = internalQuery({
 			)
 		);
 		const missing = required
-			.filter((_item, index) => evidence[index]?.status !== 'pass')
+			.filter((item, index) => {
+				const observation = evidence[index];
+				return (
+					observation?.status !== 'pass' ||
+					!isDeliverabilityEvidenceFresh(item.id, observation.observedAt, Date.now())
+				);
+			})
 			.map((item) => item.id);
 		return missing.length === 0
 			? {

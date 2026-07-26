@@ -1,20 +1,18 @@
 import { v } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
-import { DELIVERABILITY_CHECKLIST, type DeliverabilityCheckId } from '@owlat/shared';
+import {
+	DELIVERABILITY_CHECKLIST,
+	HOURLY_DELIVERABILITY_CHECK_IDS,
+	type DeliverabilityCheckId,
+} from '@owlat/shared';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../_generated/server';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 
 const DOMAIN_BATCH_SIZE = 5;
-export const HOURLY_DEPLOYMENT_CHECKS = new Set<DeliverabilityCheckId>([
-	'deployment.ptr',
-	'deployment.fcrdns',
-	'deployment.ptr_nongeneric',
-	'deployment.ehlo_ptr',
-	'deployment.dnsbl',
-	'deployment.ipv6_ptr',
-	'deployment.ipv6_aaaa',
-]);
+export const HOURLY_DEPLOYMENT_CHECKS = new Set<DeliverabilityCheckId>(
+	HOURLY_DELIVERABILITY_CHECK_IDS
+);
 
 export const schedulePage = internalMutation({
 	args: {

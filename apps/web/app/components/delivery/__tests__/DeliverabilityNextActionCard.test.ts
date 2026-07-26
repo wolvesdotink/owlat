@@ -118,4 +118,17 @@ describe('DeliverabilityNextActionCard', () => {
 			.trigger('click');
 		expect(copy).toHaveBeenCalledWith('mail.example.com', 'domain:domain-a:domain.spf:ptr:value');
 	});
+
+	it('does not claim to have detected a provider for generic guidance', () => {
+		const check = item('fail');
+		check.instructions = {
+			provider: 'generic',
+			providerLabel: 'Your provider',
+			summary: 'Use the generic provider workflow.',
+			steps: ['Open the relevant provider console.'],
+		};
+		const wrapper = mountCard(check);
+		expect(wrapper.text()).toContain('Provider detection unavailable.');
+		expect(wrapper.text()).not.toContain('We detected Your provider.');
+	});
 });

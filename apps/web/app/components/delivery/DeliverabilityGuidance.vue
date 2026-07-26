@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { DeliverabilityChecklistItem } from "~/utils/deliverabilityCenter";
+import type { DeliverabilityChecklistItem } from '~/utils/deliverabilityCenter';
 
 defineProps<{
-	instructions: NonNullable<DeliverabilityChecklistItem["instructions"]>;
+	instructions: NonNullable<DeliverabilityChecklistItem['instructions']>;
 	scopeKey: string;
 }>();
 </script>
@@ -10,7 +10,10 @@ defineProps<{
 <template>
 	<div class="rounded-lg bg-bg-surface p-4">
 		<p class="text-sm font-medium text-text-primary">
-			We detected {{ instructions.providerLabel }}.
+			<template v-if="instructions.provider !== 'generic'">
+				We detected {{ instructions.providerLabel }}.
+			</template>
+			<template v-else> Provider detection unavailable. </template>
 		</p>
 		<p class="mt-1 text-sm text-text-secondary">{{ instructions.summary }}</p>
 		<ol class="mt-3 space-y-2 text-sm text-text-secondary">

@@ -10,7 +10,9 @@ export const getPending = internalQuery({
 				q.eq('organizationId', args.organizationId).eq('identity', args.identity)
 			)
 			.unique();
-		return alert?.emailNotificationState === 'pending' ? alert : null;
+		return alert?.emailNotificationState === 'pending' && alert.resolvedAt === undefined
+			? alert
+			: null;
 	},
 });
 

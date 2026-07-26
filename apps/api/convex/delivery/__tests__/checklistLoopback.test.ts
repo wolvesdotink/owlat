@@ -4,6 +4,7 @@ import { DELIVERABILITY_CHECKLIST } from '@owlat/shared';
 import { createDeliverabilityProbeToken } from '@owlat/shared/deliverabilityProbeToken';
 import { createHash } from 'node:crypto';
 import { internal } from '../../_generated/api';
+import type { Id } from '../../_generated/dataModel';
 import schema from '../../schema';
 
 const rootGlob = import.meta.glob('../../**/*.*s');
@@ -216,7 +217,8 @@ describe('Deliverability Center loopback state', () => {
 				updatedAt: now,
 			})
 		);
-		await t.run(async (ctx) => {
+		const ptrEvidenceId = await t.run(async (ctx) => {
+			let ptrEvidenceId: Id<'deliverabilityEvidence'> | null = null;
 			for (const item of DELIVERABILITY_CHECKLIST.filter(
 				(entry) => entry.severity === 'blocking'
 			)) {
@@ -238,6 +240,7 @@ describe('Deliverability Center loopback state', () => {
 					observedAt: now,
 					createdAt: now,
 				});
+				if (item.id === 'deployment.ptr') ptrEvidenceId = evidenceId;
 				await ctx.db.insert('deliverabilityVerificationState', {
 					organizationId,
 					itemId: item.id,
@@ -252,6 +255,7 @@ describe('Deliverability Center loopback state', () => {
 					updatedAt: now,
 				});
 			}
+			return ptrEvidenceId;
 		});
 		await expect(
 			t.query(internal.delivery.checklistLoopbackState.getStartContext, {
@@ -259,5 +263,20 @@ describe('Deliverability Center loopback state', () => {
 				domainId,
 			})
 		).resolves.toMatchObject({ allowed: true, domain: 'legacy.example' });
+		await t.run((ctx) =>
+			ctx.db.patch(ptrEvidenceId!, {
+				observedAt: now - 76 * 60_000,
+			})
+		);
+		await expect(
+			t.query(internal.delivery.checklistLoopbackState.getStartContext, {
+				organizationId,
+				domainId,
+			})
+		).resolves.toMatchObject({
+			allowed: false,
+			reason: 'prerequisites',
+			missing: expect.arrayContaining(['deployment.ptr']),
+		});
 	});
 });

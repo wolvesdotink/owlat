@@ -46,7 +46,17 @@ describe('checklist validator dependencies', () => {
 	it('does not run RDAP for warm-up but does for a provider-console PTR check', async () => {
 		await observeDeploymentCheck('deployment.warmup', domainContext, false);
 		expect(detectIpProvider).not.toHaveBeenCalled();
-		await observeDeploymentCheck('deployment.ptr', domainContext, false);
+		await observeDeploymentCheck(
+			'deployment.ptr',
+			{
+				...domainContext,
+				warming: {
+					syncedAt: Date.now(),
+					ips: [{ ip: '203.0.113.10' }],
+				},
+			} as ChecklistVerificationContext,
+			false
+		);
 		expect(detectIpProvider).toHaveBeenCalledTimes(1);
 	});
 });
