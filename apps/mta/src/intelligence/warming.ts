@@ -9,7 +9,7 @@
 
 import type Redis from 'ioredis';
 import { BASE_WARMING_SCHEDULE } from '../config.js';
-import { getWarmingCapForDay } from '@owlat/shared/warming';
+import { ADAPTIVE_WARMING_POLICY, getWarmingCapForDay } from '@owlat/shared/warming';
 import type { MtaConfig } from '../config.js';
 import type { WarmingPhase, WarmingState } from '../types.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
@@ -116,17 +116,6 @@ export async function ensureWarmingReservation(
 	const renewed = await reserveWarmingSlot(redis, reservation.ip, reservation.messageId, now);
 	return renewed.allowed ? { allowed: true, reservation: renewed.reservation } : { allowed: false };
 }
-
-// Adaptive thresholds
-const ACCELERATE_BOUNCE_MAX = 0.01; // <1% bounce rate to accelerate
-const ACCELERATE_DEFER_MAX = 0.05; // <5% deferral rate to accelerate
-const ACCELERATE_USAGE_MIN = 0.8; // Must use >80% of daily cap
-const DECELERATE_BOUNCE_MIN = 0.03; // >3% bounce triggers slowdown
-const DECELERATE_DEFER_MIN = 0.1; // >10% deferral triggers slowdown
-const HALT_BOUNCE = 0.08; // >8% bounce halts warming
-const HALT_DEFER = 0.25; // >25% deferral halts warming
-const GRADUATION_MIN_DAYS = 30;
-const GRADUATION_MAX_BOUNCE = 0.02; // <2% bounce to graduate
 
 /**
  * Get the daily send cap for an IP based on its warming schedule
@@ -327,7 +316,10 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	await redis.hset(hashKey, 'lastEvaluatedDate', today);
 
 	// CRITICAL HALT
-	if (bounceRate > HALT_BOUNCE || deferralRate > HALT_DEFER) {
+	if (
+		bounceRate > ADAPTIVE_WARMING_POLICY.halt.bounceRateExclusiveMin ||
+		deferralRate > ADAPTIVE_WARMING_POLICY.halt.deferralRateExclusiveMin
+	) {
 		await redis.hset(
 			hashKey,
 			'phase',
@@ -355,9 +347,18 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	}
 
 	// DECELERATE
-	if (bounceRate > DECELERATE_BOUNCE_MIN || deferralRate > DECELERATE_DEFER_MIN) {
-		const newDay = Math.max(1, state.currentDay * 0.5);
-		const newCap = Math.max(50, Math.floor(state.dailyCap * 0.7));
+	if (
+		bounceRate > ADAPTIVE_WARMING_POLICY.deceleration.bounceRateExclusiveMin ||
+		deferralRate > ADAPTIVE_WARMING_POLICY.deceleration.deferralRateExclusiveMin
+	) {
+		const newDay = Math.max(
+			1,
+			state.currentDay * ADAPTIVE_WARMING_POLICY.deceleration.scheduleDayMultiplier
+		);
+		const newCap = Math.max(
+			ADAPTIVE_WARMING_POLICY.deceleration.minimumCap,
+			Math.floor(state.dailyCap * ADAPTIVE_WARMING_POLICY.deceleration.capMultiplier)
+		);
 
 		await redis.hset(
 			hashKey,
@@ -379,17 +380,28 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 
 	// ACCELERATE (all conditions must be met)
 	if (
-		bounceRate < ACCELERATE_BOUNCE_MAX &&
-		deferralRate < ACCELERATE_DEFER_MAX &&
-		usageRate >= ACCELERATE_USAGE_MIN
+		bounceRate < ADAPTIVE_WARMING_POLICY.acceleration.bounceRateExclusiveMax &&
+		deferralRate < ADAPTIVE_WARMING_POLICY.acceleration.deferralRateExclusiveMax &&
+		usageRate >= ADAPTIVE_WARMING_POLICY.acceleration.usageRateMinimum
 	) {
-		const newDay = Math.min(state.currentDay * 1.5, GRADUATION_MIN_DAYS + 1);
-		const newCap = getWarmingCapForDay(Math.floor(newDay));
+		// Multiplication alone floors day 1 back to day 1 forever. A qualifying
+		// day must always make at least the normal one-day progress.
+		const newDay = Math.min(
+			Math.max(
+				state.currentDay + 1,
+				Math.floor(state.currentDay * ADAPTIVE_WARMING_POLICY.acceleration.scheduleDayMultiplier)
+			),
+			ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay + 1
+		);
+		const scheduledCap = getWarmingCapForDay(newDay);
+		// Infinity is the graduated state, not merely the day-30 checkpoint.
+		// Keep the last finite cap until the health gate below actually passes.
+		const newCap = Number.isFinite(scheduledCap) ? scheduledCap : state.dailyCap;
 
 		await redis.hset(
 			hashKey,
 			'currentDay',
-			String(Math.floor(newDay)),
+			String(newDay),
 			'dailyCap',
 			String(newCap),
 			'bounceRate',
@@ -398,11 +410,13 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 			String(deferralRate)
 		);
 
-		logger.info({ ip, newDay: Math.floor(newDay), newCap }, 'Warming accelerated');
+		logger.info({ ip, newDay, newCap }, 'Warming accelerated');
 	} else {
 		// NORMAL: advance by 1 day
 		const newDay = state.currentDay + 1;
-		const newCap = getWarmingCapForDay(newDay);
+		const scheduledCap = getWarmingCapForDay(newDay);
+		// A day-30 schedule position is still capped until graduation passes.
+		const newCap = Number.isFinite(scheduledCap) ? scheduledCap : state.dailyCap;
 
 		await redis.hset(
 			hashKey,
@@ -421,8 +435,8 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	const updatedState = await getWarmingState(redis, ip);
 	if (
 		updatedState &&
-		updatedState.currentDay >= GRADUATION_MIN_DAYS &&
-		bounceRate < GRADUATION_MAX_BOUNCE &&
+		updatedState.currentDay >= ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay &&
+		bounceRate < ADAPTIVE_WARMING_POLICY.graduation.bounceRateExclusiveMax &&
 		updatedState.phase !== 'plateau'
 	) {
 		await redis.hset(hashKey, 'phase', 'graduated', 'dailyCap', String(Infinity));

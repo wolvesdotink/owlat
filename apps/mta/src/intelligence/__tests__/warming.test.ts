@@ -13,7 +13,7 @@ import {
 	reserveWarmingSlot,
 } from '../warming.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
-import { getWarmingCapForDay } from '@owlat/shared/warming';
+import { ADAPTIVE_WARMING_POLICY, getWarmingCapForDay } from '@owlat/shared/warming';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -275,6 +275,25 @@ describe('warming', () => {
 			expect(state!.currentDay).toBe(7);
 		});
 
+		it('ACCELERATE: a clean, fully used first day advances instead of stalling at day 1', async () => {
+			await initializeWarming(redis, ip);
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'50',
+				'bounced',
+				'0',
+				'deferred',
+				'0'
+			);
+
+			await evaluateDay(redis, ip, config);
+
+			const state = await getWarmingState(redis, ip);
+			expect(state!.currentDay).toBe(2);
+			expect(state!.dailyCap).toBe(getWarmingCapForDay(2));
+		});
+
 		it('NORMAL: advances day by 1', async () => {
 			await initializeWarming(redis, ip);
 			await redis.hset(`mta:warming:{warming:${ip}}:state`, 'dailyCap', '200', 'currentDay', '5');
@@ -323,6 +342,37 @@ describe('warming', () => {
 			const state = await getWarmingState(redis, ip);
 			expect(state!.phase).toBe('graduated');
 			expect(state!.dailyCap).toBe(Infinity);
+		});
+
+		it('keeps the last finite cap at the exclusive 2% graduation boundary', async () => {
+			await initializeWarming(redis, ip);
+			const lastFiniteCap = getWarmingCapForDay(
+				ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay - 1
+			);
+			await redis.hset(
+				`mta:warming:{warming:${ip}}:state`,
+				'dailyCap',
+				String(lastFiniteCap),
+				'currentDay',
+				String(ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay - 1)
+			);
+			await redis.hset(
+				'mta:warming:{warming:10.0.0.1}:daily:2026-03-22',
+				'sent',
+				'1000',
+				'bounced',
+				'20',
+				'deferred',
+				'0'
+			);
+
+			await evaluateDay(redis, ip, config);
+
+			const state = await getWarmingState(redis, ip);
+			expect(state!.currentDay).toBe(ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay);
+			expect(state!.phase).toBe('ramp');
+			expect(state!.dailyCap).toBe(lastFiniteCap);
+			expect(Number.isFinite(state!.dailyCap)).toBe(true);
 		});
 	});
 
