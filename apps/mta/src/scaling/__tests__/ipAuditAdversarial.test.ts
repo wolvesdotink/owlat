@@ -9,6 +9,7 @@ import {
 	runIpAuditSweep,
 	type IpAuditConfig,
 	type IpAuditDeps,
+	type IpAuditRecord,
 } from '../ipAudit.js';
 import type { Port25ProbeResult } from '../port25Probe.js';
 
@@ -77,6 +78,20 @@ function fakeRedis(failSetFor: string[] = []): { redis: Redis; store: Map<string
 	return { redis, store };
 }
 
+/**
+ * With every resolver down, each zone we actually query must report `unknown`
+ * — never `clean`. The credential-gated feeds carry no key in this fixture, so
+ * they must stay `skipped`: a dead resolver may not turn an inert feed into a
+ * signal (D2).
+ */
+function expectEveryReachableZoneUnknown(record: IpAuditRecord): void {
+	const keyed = record.zones.filter((zone) => zone.status === 'skipped');
+	expect(keyed.map((zone) => zone.zoneId).sort()).toEqual(['abusix', 'invaluement']);
+	const queried = record.zones.filter((zone) => zone.status !== 'skipped');
+	expect(queried.length).toBeGreaterThan(0);
+	expect(queried.every((zone) => zone.status === 'unknown')).toBe(true);
+}
+
 describe('resolver failures are unknown, never clean', () => {
 	it('treats SERVFAIL from every zone as an incomplete audit', async () => {
 		const record = await auditIp(
@@ -89,7 +104,7 @@ describe('resolver failures are unknown, never clean', () => {
 				},
 			})
 		);
-		expect(record.zones.every((zone) => zone.status === 'unknown')).toBe(true);
+		expectEveryReachableZoneUnknown(record);
 		expect(record.verdict).not.toBe('clean');
 		expect(record.confidence).toBe('low');
 		expect(record.findings.map((finding) => finding.id)).toContain('audit_incomplete');
@@ -160,7 +175,7 @@ describe('hostile and degenerate DNS responses are bounded', () => {
 				},
 			})
 		);
-		expect(record.zones.every((zone) => zone.status === 'unknown')).toBe(true);
+		expectEveryReachableZoneUnknown(record);
 		expect(record.verdict).not.toBe('clean');
 	});
 
