@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildMtaStsTxtValue, mtaStsPolicyId } from '@owlat/shared/mtaStsPolicy';
 import type { Doc } from '../../_generated/dataModel';
-import { deploymentRecordsForItem, domainRecordsForItem } from '../checklistRecords';
+import { deploymentSetupValuesForItem, domainSetupValuesForItem } from '../checklistRecords';
 
-describe('Deliverability Center copyable records', () => {
+describe('Deliverability Center setup values', () => {
 	afterEach(() => vi.unstubAllEnvs());
 
 	it('represents TLS-RPT and TLSA independently when both are configured', () => {
@@ -22,11 +22,11 @@ describe('Deliverability Center copyable records', () => {
 				},
 			},
 		} as unknown as Doc<'domains'>;
-		expect(domainRecordsForItem('domain.tls_rpt', domain, [], null)).toMatchObject([
-			{ type: 'TXT', name: '_smtp._tls.example.test' },
+		expect(domainSetupValuesForItem('domain.tls_rpt', domain, [], null)).toMatchObject([
+			{ kind: 'dns_record', recordType: 'TXT', name: '_smtp._tls.example.test' },
 		]);
-		expect(domainRecordsForItem('domain.tlsa', domain, [], null)).toMatchObject([
-			{ type: 'TLSA', name: '_25._tcp.mail.example.test' },
+		expect(domainSetupValuesForItem('domain.tlsa', domain, [], null)).toMatchObject([
+			{ kind: 'dns_record', recordType: 'TLSA', name: '_25._tcp.mail.example.test' },
 		]);
 	});
 
@@ -37,16 +37,22 @@ describe('Deliverability Center copyable records', () => {
 				{ ip: '2001:db8::1', ipv6Spf: { domain: 'bounce.example.test' } },
 			],
 		} as unknown as Doc<'warmingState'>;
-		const records = deploymentRecordsForItem('deployment.ipv6_spf', warming);
+		const records = deploymentSetupValuesForItem('deployment.ipv6_spf', warming);
 		expect(records).toEqual([
 			expect.objectContaining({
-				name: 'bounce.example.test',
-				type: 'TXT fragment',
-				value: 'ip6:2001:db8::1 ip6:2001:db8::2',
+				kind: 'spf_mechanisms',
+				domain: 'bounce.example.test',
+				mechanisms: ['ip6:2001:db8::1', 'ip6:2001:db8::2'],
+				instruction: expect.stringContaining('existing SPF policy'),
 			}),
 		]);
-		expect(records.filter((record) => record.name === 'bounce.example.test')).toHaveLength(1);
-		expect(records[0]?.value).not.toContain('v=spf1');
+		expect(
+			records.filter(
+				(record) => record.kind === 'spf_mechanisms' && record.domain === 'bounce.example.test'
+			)
+		).toHaveLength(1);
+		expect(records[0]).not.toHaveProperty('recordType');
+		expect(records[0]).not.toHaveProperty('ttl');
 	});
 
 	it.each(['~all', 'all'])(
@@ -63,10 +69,11 @@ describe('Deliverability Center copyable records', () => {
 				},
 			} as unknown as Doc<'domains'>;
 
-			expect(domainRecordsForItem('domain.spf', domain, [], null)).toMatchObject([
+			expect(domainSetupValuesForItem('domain.spf', domain, [], null)).toMatchObject([
 				{
+					kind: 'dns_record',
 					name: 'example.test',
-					type: 'TXT',
+					recordType: 'TXT',
 					value: 'v=spf1 include:sender.example -all',
 				},
 			]);
@@ -83,14 +90,18 @@ describe('Deliverability Center copyable records', () => {
 		const warming = {
 			ips: [{ ip: '203.0.113.10', fcrdns: { ehlo: 'per-ip.example.test' } }],
 		} as unknown as Doc<'warmingState'>;
-		expect(deploymentRecordsForItem('deployment.fcrdns', warming)[0]?.name).toBe(
+		expect(deploymentSetupValuesForItem('deployment.fcrdns', warming)[0]).toMatchObject({
+			kind: 'dns_record',
+			name: 'per-ip.example.test',
+		});
+		const records = domainSetupValuesForItem('domain.mta_sts', domain, [], settings);
+		expect(records).toHaveLength(1);
+		expect(records[0]).toMatchObject({
+			kind: 'dns_record',
+			value: buildMtaStsTxtValue(mtaStsPolicyId('enforce', ['canonical.example.test'])),
+		});
+		expect(records[0]?.kind === 'dns_record' ? records[0].value : '').not.toContain(
 			'per-ip.example.test'
 		);
-		const records = domainRecordsForItem('domain.mta_sts', domain, [], settings);
-		expect(records).toHaveLength(1);
-		expect(records[0]?.value).toBe(
-			buildMtaStsTxtValue(mtaStsPolicyId('enforce', ['canonical.example.test']))
-		);
-		expect(records[0]?.value).not.toContain('per-ip.example.test');
 	});
 });

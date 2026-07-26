@@ -2,17 +2,19 @@ import { v, type Validator } from 'convex/values';
 import {
 	DELIVERABILITY_CHECKLIST,
 	DELIVERABILITY_CHECKLIST_STATUSES,
+	DELIVERABILITY_DIAGNOSTIC_LENGTH,
+	DELIVERABILITY_OBSERVED_VALUE_LENGTH,
+	DELIVERABILITY_OBSERVED_VALUE_LIMIT,
+	sanitizeDeliverabilityText,
 	type DeliverabilityCheckId,
 	type DeliverabilityChecklistStatus,
 } from '@owlat/shared';
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
+import { checklistTraits } from './checklistTraits';
 
 const LEASE_MS = 2 * 60_000;
-const MAX_DIAGNOSTIC_LENGTH = 2_048;
-const MAX_OBSERVED_VALUES = 16;
-const MAX_OBSERVED_VALUE_LENGTH = 512;
 export const DNS_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000] as const;
 
 export function nextDnsRetry(
@@ -24,7 +26,7 @@ export function nextDnsRetry(
 	const retryableDns = status === 'pending-dns' && isDnsBacked;
 	const retryableValidator = status === 'warn' && validator === 'checklist.orchestrator';
 	if (!retryableDns && !retryableValidator) return null;
-	if (retryableValidator && retryIndex >= DNS_RETRY_DELAYS_MS.length) return null;
+	if (retryIndex >= DNS_RETRY_DELAYS_MS.length) return null;
 	const delayIndex = Math.max(0, Math.min(retryIndex, DNS_RETRY_DELAYS_MS.length - 1));
 	return {
 		delayMs: DNS_RETRY_DELAYS_MS[delayIndex]!,
@@ -54,15 +56,20 @@ export function deliverabilityTargetKey(organizationId: string, domainId?: Id<'d
 }
 
 function boundedDiagnostic(value: string): string {
-	return value
-		.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
-		.slice(0, MAX_DIAGNOSTIC_LENGTH);
+	return sanitizeDeliverabilityText(value).slice(0, DELIVERABILITY_DIAGNOSTIC_LENGTH);
 }
 
-function boundedObservedValues(values: readonly string[]): string[] {
-	return values
-		.slice(0, MAX_OBSERVED_VALUES)
-		.map((value) => boundedDiagnostic(value).slice(0, MAX_OBSERVED_VALUE_LENGTH));
+export function boundedObservedValues(values: readonly string[]): string[] {
+	const truncated =
+		values.length > DELIVERABILITY_OBSERVED_VALUE_LIMIT
+			? values.length - (DELIVERABILITY_OBSERVED_VALUE_LIMIT - 1)
+			: 0;
+	const retained =
+		truncated > 0 ? values.slice(0, DELIVERABILITY_OBSERVED_VALUE_LIMIT - 1) : values;
+	const bounded = retained.map((value) =>
+		boundedDiagnostic(value).slice(0, DELIVERABILITY_OBSERVED_VALUE_LENGTH)
+	);
+	return truncated > 0 ? [...bounded, `truncated-observations=${truncated}`] : bounded;
 }
 
 export const claimVerification = internalMutation({
@@ -74,11 +81,12 @@ export const claimVerification = internalMutation({
 		leaseToken: v.string(),
 		now: v.number(),
 		expectedGeneration: v.optional(v.number()),
+		preserveScheduledRetry: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
 		const definition = DELIVERABILITY_CHECKLIST.find((item) => item.id === args.itemId);
 		if (!definition) throw new Error('Unknown deliverability checklist item');
-		if (definition.id.startsWith('domain.') !== Boolean(args.domainId)) {
+		if ((checklistTraits(definition.id).scope === 'domain') !== Boolean(args.domainId)) {
 			throw new Error('Checklist scope does not match the requested target');
 		}
 		if (args.domainId && !(await ctx.db.get(args.domainId))) {
@@ -95,10 +103,17 @@ export const claimVerification = internalMutation({
 					.eq('itemId', args.itemId)
 			)
 			.unique();
-		const currentEvidence = existing?.currentEvidenceId
-			? await ctx.db.get(existing.currentEvidenceId)
-			: null;
-		const hadConfirmedPass = currentEvidence?.status === 'pass';
+		if (
+			args.expectedGeneration === undefined &&
+			args.preserveScheduledRetry === true &&
+			existing?.nextCheckAt !== undefined
+		) {
+			return {
+				claimed: false as const,
+				reason: 'scheduled_retry' as const,
+				nextCheckAt: existing.nextCheckAt,
+			};
+		}
 		if (args.expectedGeneration !== undefined) {
 			if (
 				!existing ||
@@ -127,7 +142,6 @@ export const claimVerification = internalMutation({
 				generation: existing.generation,
 				targetKey,
 				retryIndex: existing.retryIndex,
-				hadConfirmedPass,
 			};
 		}
 		if (existing && existing.leaseExpiresAt > args.now) {
@@ -159,7 +173,6 @@ export const claimVerification = internalMutation({
 			generation,
 			targetKey,
 			retryIndex: 0,
-			hadConfirmedPass,
 		};
 	},
 });

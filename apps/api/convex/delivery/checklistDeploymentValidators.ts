@@ -10,18 +10,26 @@ import {
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
 
+function boundedIdentityField(value: string, maxLength: number): string {
+	if (value.length <= maxLength) return value;
+	const marker = `…[length=${value.length}]`;
+	return `${value.slice(0, Math.max(0, maxLength - marker.length))}${marker}`;
+}
+
 function identityObservations(
-	addresses: NonNullable<ChecklistVerificationContext['warming']>['ips']
+	addresses: NonNullable<ChecklistVerificationContext['warming']>['ips'],
+	providers: readonly (string | null)[] = []
 ): string[] {
-	return addresses.slice(0, 20).flatMap((entry) => {
+	return addresses.slice(0, 20).map((entry, index) => {
 		const identity = entry.fcrdns;
 		return [
-			`ip=${entry.ip}`,
-			`ptr=${identity?.ptrNames.slice(0, 4).join(',') || 'missing'}`,
-			`ehlo=${identity?.ehlo ?? 'missing'}`,
-			`reason=${identity?.reason ?? 'none'}`,
+			`ip=${boundedIdentityField(entry.ip, 64)}`,
+			`provider=${boundedIdentityField(providers[index] ?? 'unknown', 32)}`,
+			`ptr=${boundedIdentityField(identity?.ptrNames.slice(0, 4).join(',') || 'missing', 160)}`,
+			`ehlo=${boundedIdentityField(identity?.ehlo ?? 'missing', 64)}`,
+			`reason=${boundedIdentityField(identity?.reason ?? 'none', 96)}`,
 			`checked-at=${identity?.checkedAt ?? 'missing'}`,
-		].map((value) => value.slice(0, 512));
+		].join('; ');
 	});
 }
 
@@ -58,15 +66,10 @@ export async function observeDeploymentCheck(
 		detectedProviders.every((candidate) => candidate === detectedProviders[0])
 			? detectedProviders[0]
 			: null;
-	const providerValues = needsVpsProvider
-		? [
-				...(commonProvider
-					? [`vps-provider=${commonProvider}`]
-					: ['vps-provider=mixed-or-unknown']),
-				...selectedAddresses.map(
-					(entry, index) => `vps-provider-ip=${entry.ip}:${detectedProviders[index] ?? 'unknown'}`
-				),
-			]
+	const providerSummaryValues = needsVpsProvider
+		? commonProvider
+			? [`vps-provider=${commonProvider}`]
+			: ['vps-provider=mixed-or-unknown']
 		: [];
 	const observedIps = selectedAddresses.map((entry) => `ip=${entry.ip}`);
 	const now = Date.now();
@@ -102,7 +105,7 @@ export async function observeDeploymentCheck(
 					: identityFresh
 						? 'An outbound address has no PTR record.'
 						: staleIdentity,
-				[...providerValues, ...observedIps]
+				[...providerSummaryValues, ...identityObservations(selectedAddresses, detectedProviders)]
 			);
 		}
 		case 'deployment.fcrdns': {
@@ -121,7 +124,7 @@ export async function observeDeploymentCheck(
 								'Forward DNS does not resolve back to the sending address.'
 							)
 						: staleIdentity,
-				[...providerValues, ...identityObservations(selectedAddresses)]
+				[...providerSummaryValues, ...identityObservations(selectedAddresses, detectedProviders)]
 			);
 		}
 		case 'deployment.ptr_nongeneric': {
@@ -137,7 +140,7 @@ export async function observeDeploymentCheck(
 					: identityFresh
 						? 'An outbound PTR is provider-generic.'
 						: staleIdentity,
-				[...providerValues, ...observedIps]
+				[...providerSummaryValues, ...identityObservations(selectedAddresses, detectedProviders)]
 			);
 		}
 		case 'deployment.ehlo_ptr': {
@@ -153,7 +156,7 @@ export async function observeDeploymentCheck(
 					: identityFresh
 						? 'An outbound EHLO does not match its PTR.'
 						: staleIdentity,
-				observedIps
+				identityObservations(selectedAddresses)
 			);
 		}
 		case 'deployment.port25': {
@@ -302,7 +305,7 @@ export async function observeDeploymentCheck(
 					: identityFresh
 						? 'An IPv6 sender has no PTR.'
 						: staleIdentity,
-				[...providerValues, ...observedIps]
+				[...providerSummaryValues, ...identityObservations(selectedAddresses, detectedProviders)]
 			);
 		}
 		case 'deployment.ipv6_aaaa': {
@@ -332,7 +335,7 @@ export async function observeDeploymentCheck(
 				);
 			return checklistObservation(
 				'mta.ipv6-spf',
-				pass ? 'pass' : warmingFresh ? 'fail' : 'warn',
+				pass ? 'pass' : warmingFresh ? pendingDnsStatus(isFinalDnsRetry) : 'warn',
 				pass
 					? 'Every IPv6 address has an exact ip6 SPF mechanism.'
 					: warmingFresh

@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import type { DeliverabilityChecklistItem } from "~/utils/deliverabilityCenter";
-import DeliverabilityDnsRecords from "./DeliverabilityDnsRecords.vue";
-import DeliverabilityGuidance from "./DeliverabilityGuidance.vue";
+import type { DeliverabilityChecklistItem } from '~/utils/deliverabilityCenter';
+import DeliverabilitySetupValues from './DeliverabilitySetupValues.vue';
+import DeliverabilityGuidance from './DeliverabilityGuidance.vue';
 import {
 	DELIVERABILITY_STATUS_PRESENTATION,
 	formatRecheckCountdown,
 	formatVerificationAge,
 	itemKey,
-} from "~/utils/deliverabilityCenter";
+} from '~/utils/deliverabilityCenter';
 
 const props = defineProps<{
 	item: DeliverabilityChecklistItem | null;
@@ -30,9 +30,9 @@ onMounted(() => {
 onUnmounted(() => clearInterval(timer));
 
 const status = computed(() =>
-	props.item ? DELIVERABILITY_STATUS_PRESENTATION[props.item.status] : null,
+	props.item ? DELIVERABILITY_STATUS_PRESENTATION[props.item.status] : null
 );
-const scopedItemKey = computed(() => (props.item ? itemKey(props.item.scope, props.item.id) : ""));
+const scopedItemKey = computed(() => (props.item ? itemKey(props.item.scope, props.item.id) : ''));
 const nextCheckLabel = computed(() => {
 	const nextCheckAt = props.item?.verification?.nextCheckAt;
 	return nextCheckAt ? formatRecheckCountdown(nextCheckAt, clock.value) : null;
@@ -113,13 +113,13 @@ async function copyValue(value: string, key: string) {
 					</p>
 				</template>
 				<p v-if="item.observed.length" class="mt-2 break-words text-xs text-text-tertiary">
-					Last observed: <span class="font-mono">{{ item.observed.join(" · ") }}</span>
+					Last observed: <span class="font-mono">{{ item.observed.join(' · ') }}</span>
 				</p>
 			</div>
 
-			<DeliverabilityDnsRecords
-				v-if="item.records?.length"
-				:records="item.records"
+			<DeliverabilitySetupValues
+				v-if="item.setupValues?.length"
+				:setup-values="item.setupValues"
 				:scope-key="scopedItemKey"
 			/>
 
@@ -140,7 +140,7 @@ async function copyValue(value: string, key: string) {
 					<template #iconLeft>
 						<Icon v-if="!isVerifying" name="lucide:refresh-cw" class="h-4 w-4" />
 					</template>
-					{{ item.status === "pending-dns" ? "Check again now" : "I’ve set it — verify now" }}
+					{{ item.status === 'pending-dns' ? 'Check again now' : 'I’ve set it — verify now' }}
 				</UiButton>
 				<p v-if="item.lockedReason" class="text-xs text-text-secondary">
 					{{ item.lockedReason }}
@@ -156,8 +156,8 @@ async function copyValue(value: string, key: string) {
 					>
 						{{
 							isCopied(`${scopedItemKey}:diagnostic`)
-								? "Diagnostic copied"
-								: "Copy diagnostic report"
+								? 'Diagnostic copied'
+								: 'Copy diagnostic report'
 						}}
 					</button>
 					<a

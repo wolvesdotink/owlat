@@ -2,11 +2,7 @@
 
 import dns from 'node:dns/promises';
 import { createPublicKey } from 'node:crypto';
-import {
-	verifyMtaStsPublication,
-	type DeliverabilityCheckId,
-	type DeliverabilityChecklistStatus,
-} from '@owlat/shared';
+import { verifyMtaStsPublication, type DeliverabilityCheckId } from '@owlat/shared';
 import type { ActionCtx } from '../_generated/server';
 import { api } from '../_generated/api';
 import { runDnsLookups } from '../domains/dnsVerification';
@@ -17,6 +13,13 @@ import { assertMarketingOneClickSigningContract } from './marketingCompliance';
 import { detectDomainDnsProvider, dnsProviderObservation } from './checklistProviderDetection';
 import { checklistTraits } from './checklistTraits';
 import { absoluteDnsRecordName, hardenedSpfRecordValue } from './checklistRecords';
+import {
+	dnsBundleObservations,
+	dnsBundleStatus,
+	dnsRecordObservation,
+	dnsResultStatus,
+	isSuccessfulDnsResult,
+} from './checklistDnsObservations';
 import {
 	checklistObservation,
 	pendingDnsStatus,
@@ -69,39 +72,6 @@ async function resolveDkimKeyBits(hostname: string): Promise<number | null> {
 	return null;
 }
 
-function dnsResultStatus(
-	result: { verified: boolean; error?: string } | undefined,
-	isFinalDnsRetry: boolean
-): DeliverabilityChecklistStatus {
-	if (result?.verified && !result.error) return 'pass';
-	return isPendingDnsResult(result) ? pendingDnsStatus(isFinalDnsRetry) : 'fail';
-}
-
-function isSuccessfulDnsResult(result: { verified: boolean; error?: string } | undefined): boolean {
-	return result?.verified === true && !result.error;
-}
-
-function isPendingDnsResult(result: { verified: boolean; error?: string } | undefined): boolean {
-	return (
-		!result ||
-		!result.error ||
-		result.error.includes('No DNS record') ||
-		result.error.includes('No matching') ||
-		result.error.includes('try again later')
-	);
-}
-
-function dnsBundleStatus(
-	results: readonly { verified: boolean; error?: string }[] | undefined,
-	isFinalDnsRetry: boolean
-): DeliverabilityChecklistStatus {
-	if (!results || results.length === 0) return pendingDnsStatus(isFinalDnsRetry);
-	if (results.some((result) => result.verified && result.error)) return 'fail';
-	const unresolved = results.filter((result) => !result.verified);
-	if (unresolved.length === 0) return 'pass';
-	return unresolved.every(isPendingDnsResult) ? pendingDnsStatus(isFinalDnsRetry) : 'fail';
-}
-
 function hasStrictSpfPolicy(value: string | undefined): boolean {
 	const terms = value?.trim().split(/\s+/) ?? [];
 	return terms[terms.length - 1]?.toLowerCase() === '-all';
@@ -138,8 +108,6 @@ export async function observeDomainCheck(
 	const results = traits.needsDomainDnsBundle
 		? await runDnsLookups(domain.domain, dnsRecords)
 		: null;
-	const checkedValues = (result?: { foundValue?: string }) =>
-		result?.foundValue ? [...providerValues, `observed=${result.foundValue}`] : providerValues;
 
 	switch (itemId) {
 		case 'domain.spf': {
@@ -149,7 +117,7 @@ export async function observeDomainCheck(
 			const status = isSuccessfulDnsResult(results.spf)
 				? isStrict
 					? 'pass'
-					: 'fail'
+					: pendingDnsStatus(isFinalDnsRetry)
 				: dnsResultStatus(results.spf, isFinalDnsRetry);
 			return checklistObservation(
 				'dns.spf',
@@ -157,14 +125,16 @@ export async function observeDomainCheck(
 				isSuccessfulDnsResult(results.spf) && !isStrict
 					? 'SPF is published, but it must end in -all for this checklist.'
 					: (results.spf?.error ?? 'SPF is live and ends in -all.'),
-				checkedValues(results.spf)
+				[...providerValues, dnsRecordObservation('spf', domain.domain, dnsRecords.spf, results.spf)]
 			);
 		}
 		case 'domain.dkim': {
 			if (!results) throw new Error('DKIM DNS observation was not loaded');
 			const configured = domain.dnsRecords.dkim ?? [];
 			const verified =
-				results.dkim?.every((result) => isSuccessfulDnsResult(result)) && configured.length > 0;
+				results.dkim?.length === configured.length &&
+				configured.length > 0 &&
+				results.dkim.every((result) => isSuccessfulDnsResult(result));
 			const keyBits = await Promise.all(
 				configured.map((record) => resolveDkimKeyBits(`${record.host}.${domain.domain}`))
 			);
@@ -175,8 +145,8 @@ export async function observeDomainCheck(
 					? 'pass'
 					: hasProviderManagedCname
 						? 'warn'
-						: 'fail'
-				: dnsBundleStatus(results.dkim, isFinalDnsRetry);
+						: pendingDnsStatus(isFinalDnsRetry)
+				: dnsBundleStatus(results.dkim, isFinalDnsRetry, configured.length);
 			return checklistObservation(
 				'dns.dkim',
 				status,
@@ -186,14 +156,19 @@ export async function observeDomainCheck(
 						? 'The live DKIM key is shorter than 2048 bits or could not be parsed.'
 						: (results.dkim?.find((result) => result.error)?.error ??
 							'Every DKIM selector is live with a 2048-bit-or-stronger key.'),
-				[...providerValues, ...keyBits.map((bits) => `key-bits=${bits ?? 'unknown'}`)]
+				[
+					...providerValues,
+					...dnsBundleObservations('dkim', domain.domain, configured, results.dkim),
+					...keyBits.map((bits) => `key-bits=${bits ?? 'unknown'}`),
+				]
 			);
 		}
 		case 'domain.dmarc': {
 			if (!results) throw new Error('DMARC DNS observation was not loaded');
 			const authenticationReady =
 				isSuccessfulDnsResult(results.spf) &&
-				(results.dkim?.length ?? 0) > 0 &&
+				(domain.dnsRecords.dkim?.length ?? 0) > 0 &&
+				results.dkim?.length === (domain.dnsRecords.dkim?.length ?? 0) &&
 				results.dkim?.every((result) => isSuccessfulDnsResult(result)) === true;
 			const pass = isSuccessfulDnsResult(results.dmarc) && authenticationReady;
 			const authenticationInputsPresent =
@@ -201,7 +176,8 @@ export async function observeDomainCheck(
 			const authenticationStatus = authenticationInputsPresent
 				? dnsBundleStatus(
 						[...(results.spf ? [results.spf] : []), ...(results.dkim ?? [])],
-						isFinalDnsRetry
+						isFinalDnsRetry,
+						1 + (domain.dnsRecords.dkim?.length ?? 0)
 					)
 				: pendingDnsStatus(isFinalDnsRetry);
 			return checklistObservation(
@@ -214,7 +190,17 @@ export async function observeDomainCheck(
 				pass
 					? 'DMARC is live and the domain has verified SPF and DKIM alignment evidence.'
 					: (results.dmarc?.error ?? 'DMARC or its authentication dependencies are missing.'),
-				checkedValues(results.dmarc)
+				[
+					...providerValues,
+					dnsRecordObservation('spf', domain.domain, dnsRecords.spf, results.spf),
+					...dnsBundleObservations(
+						'dkim',
+						domain.domain,
+						domain.dnsRecords.dkim ?? [],
+						results.dkim
+					),
+					dnsRecordObservation('dmarc', domain.domain, dnsRecords.dmarc, results.dmarc),
+				]
 			);
 		}
 		case 'domain.return_path': {
@@ -237,6 +223,7 @@ export async function observeDomainCheck(
 				);
 			const dnsPublished =
 				Boolean(results.mailFrom?.length) &&
+				results.mailFrom?.length === mailFromRecords.length &&
 				results.mailFrom?.every((result) => result.verified) === true;
 			const dnsVerified =
 				dnsPublished && results.mailFrom?.every((result) => !result.error) === true;
@@ -253,13 +240,14 @@ export async function observeDomainCheck(
 					? 'pass'
 					: !hasActiveContract || !providerSyncReady
 						? 'fail'
-						: dnsBundleStatus(results.mailFrom, isFinalDnsRetry),
+						: dnsBundleStatus(results.mailFrom, isFinalDnsRetry, mailFromRecords.length),
 				pass
 					? 'The configured return-path host and every required DNS record are live.'
 					: (diagnostic ?? 'No verified per-domain return path is available.'),
 				[
 					...providerValues,
 					...(domain.returnPathHost ? [`return-path=${domain.returnPathHost}`] : []),
+					...dnsBundleObservations('return-path', domain.domain, mailFromRecords, results.mailFrom),
 				]
 			);
 		}
@@ -287,7 +275,11 @@ export async function observeDomainCheck(
 				pass
 					? 'The MTA-STS TXT id and HTTPS policy body match.'
 					: 'The MTA-STS TXT id or HTTPS policy body does not match.',
-				providerValues
+				[
+					...providerValues,
+					`mta-sts-txt=expected:${verification.expectedId};observed:${verification.observedId ?? 'missing'};valid:${verification.txtRecordValid}`,
+					`mta-sts-policy=served-valid:${verification.policyServedValid}`,
+				]
 			);
 		}
 		case 'domain.tls_rpt':
@@ -304,7 +296,10 @@ export async function observeDomainCheck(
 				'dns.tls-rpt',
 				dnsResultStatus(results.tlsRpt, isFinalDnsRetry),
 				results.tlsRpt?.error ?? 'The TLS-RPT record is live.',
-				checkedValues(results.tlsRpt)
+				[
+					...providerValues,
+					dnsRecordObservation('tls-rpt', domain.domain, domain.dnsRecords.tlsRpt, results.tlsRpt),
+				]
 			);
 		case 'domain.tlsa':
 			if (!results) throw new Error('TLSA DNS observation was not loaded');
@@ -320,7 +315,16 @@ export async function observeDomainCheck(
 				'dns.tlsa',
 				dnsResultStatus(results.tlsa, isFinalDnsRetry),
 				results.tlsa?.error ?? 'The configured TLSA association is live.',
-				checkedValues(results.tlsa)
+				[
+					...providerValues,
+					dnsRecordObservation(
+						'tlsa',
+						domain.domain,
+						domain.dnsRecords.tlsa ??
+							(domain.dnsRecords.tlsRpt?.type === 'TLSA' ? domain.dnsRecords.tlsRpt : undefined),
+						results.tlsa
+					),
+				]
 			);
 		case 'domain.tracking': {
 			const row = context.tracking.find(
@@ -336,6 +340,7 @@ export async function observeDomainCheck(
 				);
 			}
 			try {
+				const checkedAt = Date.now();
 				const answers = (await dns.resolveCname(row.domain)).map((value) =>
 					value.toLowerCase().replace(/\.$/, '')
 				);
@@ -343,18 +348,44 @@ export async function observeDomainCheck(
 				const pass = answers.includes(expected);
 				return checklistObservation(
 					'dns.tracking-cname',
-					pass ? 'pass' : 'fail',
+					pass ? 'pass' : pendingDnsStatus(isFinalDnsRetry),
 					pass
 						? 'The tracking CNAME resolves to the configured Owlat endpoint.'
 						: 'The tracking CNAME points somewhere else.',
-					[...providerValues, ...answers.map((answer) => `observed=${answer}`)]
+					[
+						...providerValues,
+						dnsRecordObservation(
+							'tracking',
+							domain.domain,
+							{ type: 'CNAME', hostname: row.domain, value: expected },
+							{
+								verified: pass,
+								foundValue: answers.join(',') || undefined,
+								...(pass ? {} : { error: 'The CNAME points somewhere else.' }),
+								lastChecked: checkedAt,
+							}
+						),
+					]
 				);
-			} catch {
+			} catch (error) {
+				const checkedAt = Date.now();
 				return checklistObservation(
 					'dns.tracking-cname',
 					pendingDnsStatus(isFinalDnsRetry),
 					'The tracking CNAME is not visible yet.',
-					providerValues
+					[
+						...providerValues,
+						dnsRecordObservation(
+							'tracking',
+							domain.domain,
+							{ type: 'CNAME', hostname: row.domain, value: row.cnameTarget },
+							{
+								verified: false,
+								error: error instanceof Error ? error.message : 'lookup failed',
+								lastChecked: checkedAt,
+							}
+						),
+					]
 				);
 			}
 		}

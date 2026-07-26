@@ -14,6 +14,7 @@ import {
 	materializeChecklistItem,
 	selectNextDeliverabilityItem,
 	type DeliverabilityChecklistItem,
+	type DeliverabilitySetupValue,
 	type DeliverabilityValidatorEvidence,
 } from '@owlat/shared';
 import { adminQuery } from '../lib/authedFunctions';
@@ -23,27 +24,20 @@ import { requireOrgPermission } from '../lib/sessionOrganization';
 import { deliverabilityCheckIdValidator, deliverabilityTargetKey } from './checklistEvidence';
 import { guidanceForCheck, type DnsProvider, type VpsProvider } from './checklistGuidance';
 import type { Doc, Id } from '../_generated/dataModel';
-import {
-	deploymentRecordsForItem,
-	domainRecordsForItem,
-	type CopyableRecord,
-} from './checklistRecords';
+import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
+import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
-const DEPLOYMENT_CHECK_COUNT = DELIVERABILITY_CHECKLIST.filter((item) =>
-	item.id.startsWith('deployment.')
-).length;
-const DOMAIN_CHECK_COUNT = DELIVERABILITY_CHECKLIST.filter((item) =>
-	item.id.startsWith('domain.')
-).length;
+const DEPLOYMENT_CHECK_COUNT = DEPLOYMENT_CHECK_IDS.length;
+const DOMAIN_CHECK_COUNT = DOMAIN_CHECK_IDS.length;
 export const CENTER_MATERIALIZATION_ACTIVE_ALERT_LIMIT =
 	DEPLOYMENT_CHECK_COUNT + CENTER_MATERIALIZATION_DOMAIN_LIMIT * DOMAIN_CHECK_COUNT;
 
 type CenterItem = Omit<DeliverabilityChecklistItem, 'scope'> & {
 	scope: { kind: 'deployment' } | { kind: 'domain'; domainId: Id<'domains'>; domain: string };
 	nextStep: string;
-	records: CopyableRecord[];
+	setupValues: DeliverabilitySetupValue[];
 	instructions: ReturnType<typeof guidanceForCheck>;
 	verification?: { nextCheckAt?: number; attempt: number };
 	lockedReason?: string;
@@ -271,7 +265,7 @@ async function buildCenter(ctx: QueryCtx) {
 	const now = Date.now();
 	const items: CenterItem[] = [];
 	for (const definition of DELIVERABILITY_CHECKLIST) {
-		const scopedDomains = definition.id.startsWith('domain.') ? domains : [null];
+		const scopedDomains = checklistTraits(definition.id).scope === 'domain' ? domains : [null];
 		for (const domain of scopedDomains) {
 			const targetKey = deliverabilityTargetKey(organizationId, domain?._id);
 			const evidence = latestEvidence.get(scopedItemKey(targetKey, definition.id));
@@ -294,9 +288,9 @@ async function buildCenter(ctx: QueryCtx) {
 					materialized.status === 'pending-dns'
 						? 'Owlat will check again automatically; you can also verify now.'
 						: DELIVERABILITY_NEXT_ACTIONS[definition.id],
-				records: domain
-					? domainRecordsForItem(definition.id, domain, trackingDomains, settings)
-					: deploymentRecordsForItem(definition.id, warming),
+				setupValues: domain
+					? domainSetupValuesForItem(definition.id, domain, trackingDomains, settings)
+					: deploymentSetupValuesForItem(definition.id, warming),
 				instructions: guidanceForCheck(
 					definition.id,
 					providerFromEvidence(evidence?.observedValues ?? [])
@@ -450,14 +444,15 @@ export const getVerificationContext = internalQuery({
 	},
 	handler: async (ctx, args) => {
 		const domain = args.domainId ? await ctx.db.get(args.domainId) : null;
-		const isDeploymentCheck = args.itemId.startsWith('deployment.');
-		const needsRelay = args.itemId === 'deployment.relay';
-		const needsTracking = args.itemId === 'domain.tracking';
-		const needsPostmaster =
-			args.itemId === 'domain.postmaster' || args.itemId === 'domain.spam_rate';
+		const dependencies = checklistTraits(args.itemId).contextDependencies;
+		const needsWarming = dependencies.includes('warming');
+		const needsMtaHealth = dependencies.includes('mta_health');
+		const needsRelay = dependencies.includes('relay');
+		const needsTracking = dependencies.includes('tracking');
+		const needsPostmaster = dependencies.includes('postmaster');
 		const [settings, warming, routes, relayIdentities, tracking, postmaster] = await Promise.all([
-			isDeploymentCheck ? ctx.db.query('instanceSettings').first() : Promise.resolve(null),
-			isDeploymentCheck ? ctx.db.query('warmingState').first() : Promise.resolve(null),
+			needsMtaHealth ? ctx.db.query('instanceSettings').first() : Promise.resolve(null),
+			needsWarming ? ctx.db.query('warmingState').first() : Promise.resolve(null),
 			needsRelay ? ctx.db.query('providerRoutes').take(10) : Promise.resolve([]),
 			needsRelay ? loadRelayIdentities(ctx, null) : Promise.resolve([]),
 			needsTracking ? loadTrackingDomains(ctx) : Promise.resolve([]),

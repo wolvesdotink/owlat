@@ -1,3 +1,4 @@
+import dns from 'node:dns/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../checklistProviderDetection', () => ({
@@ -37,7 +38,7 @@ describe('domain checklist validation', () => {
 	afterEach(() => vi.unstubAllEnvs());
 
 	it.each(['~all', '?all', 'all'])(
-		'fails a verified SPF policy ending in %s',
+		'retries a live non-strict SPF policy ending in %s before failing',
 		async (qualifier) => {
 			const policy = `v=spf1 include:sender.example ${qualifier}`;
 			vi.mocked(runDnsLookups).mockResolvedValue({
@@ -51,9 +52,17 @@ describe('domain checklist validation', () => {
 					false
 				)
 			).resolves.toMatchObject({
-				status: 'fail',
+				status: 'pending-dns',
 				diagnostic: expect.stringContaining('must end in -all'),
 			});
+			await expect(
+				observeDomainCheck(
+					{} as never,
+					'domain.spf',
+					context({}, { spf: { type: 'TXT', host: '@', value: policy } }),
+					true
+				)
+			).resolves.toMatchObject({ status: 'fail' });
 		}
 	);
 
@@ -83,7 +92,7 @@ describe('domain checklist validation', () => {
 		);
 	});
 
-	it('does not pass strict SPF when the DNS result carries a failure diagnostic', async () => {
+	it('retries strict SPF carrying a failure diagnostic before failing', async () => {
 		vi.mocked(runDnsLookups).mockResolvedValue({
 			spf: {
 				verified: true,
@@ -101,10 +110,21 @@ describe('domain checklist validation', () => {
 				),
 				false
 			)
+		).resolves.toMatchObject({ status: 'pending-dns' });
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.spf',
+				context(
+					{},
+					{ spf: { type: 'TXT', host: '@', value: 'v=spf1 include:sender.example -all' } }
+				),
+				true
+			)
 		).resolves.toMatchObject({ status: 'fail' });
 	});
 
-	it('does not pass DKIM when a later selector has a definite mismatch', async () => {
+	it('retries an existing DKIM selector mismatch before failing', async () => {
 		vi.mocked(runDnsLookups).mockResolvedValue({
 			dkim: [
 				{ verified: true, foundValue: 'v=DKIM1; p=first' },
@@ -126,7 +146,46 @@ describe('domain checklist validation', () => {
 				),
 				false
 			)
+		).resolves.toMatchObject({ status: 'pending-dns' });
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.dkim',
+				context(
+					{},
+					{
+						dkim: [
+							{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; p=first' },
+							{ type: 'TXT', host: 's2._domainkey', value: 'v=DKIM1; p=second' },
+						],
+					}
+				),
+				true
+			)
 		).resolves.toMatchObject({ status: 'fail' });
+	});
+
+	it('retries a verified but unparseable DKIM key before failing', async () => {
+		const resolveTxt = vi.spyOn(dns, 'resolveTxt').mockRejectedValue(new Error('not found'));
+		const resolveCname = vi.spyOn(dns, 'resolveCname').mockRejectedValue(new Error('not found'));
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [{ verified: true, foundValue: 'v=DKIM1; p=unparseable' }],
+		} as never);
+		const dkimContext = context(
+			{},
+			{
+				dkim: [{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; p=unparseable' }],
+			}
+		);
+
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, false)
+		).resolves.toMatchObject({ status: 'pending-dns' });
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, true)
+		).resolves.toMatchObject({ status: 'fail' });
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
 	});
 
 	it('does not pass DMARC solely because its own record is verified', async () => {
@@ -148,6 +207,21 @@ describe('domain checklist validation', () => {
 					}
 				),
 				false
+			)
+		).resolves.toMatchObject({ status: 'pending-dns' });
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.dmarc',
+				context(
+					{},
+					{
+						spf: { type: 'TXT', host: '@', value: 'v=spf1 -all' },
+						dkim: [{ type: 'TXT', host: 's1._domainkey', value: 'v=DKIM1; p=key' }],
+						dmarc: { type: 'TXT', host: '_dmarc', value: 'v=DMARC1; p=reject' },
+					}
+				),
+				true
 			)
 		).resolves.toMatchObject({ status: 'fail' });
 	});
@@ -226,7 +300,7 @@ describe('domain checklist validation', () => {
 		});
 	});
 
-	it('rejects verified legacy records carrying a failure diagnostic', async () => {
+	it('retries a live legacy return-path mismatch before failing', async () => {
 		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounce.global.test');
 		vi.mocked(runDnsLookups).mockResolvedValue({
 			mailFrom: [
@@ -254,8 +328,27 @@ describe('domain checklist validation', () => {
 			),
 			false
 		);
-		expect(observation.status).toBe('fail');
+		expect(observation.status).toBe('pending-dns');
 		expect(observation.diagnostic).toContain('does not authorize');
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.return_path',
+				context(
+					{},
+					{
+						mailFrom: [
+							{
+								type: 'TXT',
+								hostname: 'bounce.global.test',
+								value: 'v=spf1 ip4:203.0.113.10 -all',
+							},
+						],
+					}
+				),
+				true
+			)
+		).resolves.toMatchObject({ status: 'fail' });
 	});
 
 	it('accepts a verified active legacy MTA return-path contract', async () => {
@@ -372,7 +465,7 @@ describe('domain checklist validation', () => {
 		expect(observation.diagnostic).toContain('active provider return-path');
 	});
 
-	it('fails when MAIL FROM MX passes but SPF has a definite mismatch', async () => {
+	it('retries when MAIL FROM MX passes but SPF has an existing mismatch', async () => {
 		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounce.global.test');
 		vi.mocked(runDnsLookups).mockResolvedValue({
 			mailFrom: [
@@ -398,7 +491,37 @@ describe('domain checklist validation', () => {
 			),
 			false
 		);
-		expect(observation.status).toBe('fail');
+		expect(observation.status).toBe('pending-dns');
+		expect(observation.observedValues).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining('dns=return-path[0]'),
+				expect.stringContaining('dns=return-path[1]'),
+			])
+		);
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.return_path',
+				context(
+					{},
+					{
+						mailFrom: [
+							{
+								type: 'MX',
+								hostname: 'bounce.global.test',
+								value: 'mail.example.test',
+							},
+							{
+								type: 'TXT',
+								hostname: 'bounce.global.test',
+								value: 'v=spf1 ip4:203.0.113.10 -all',
+							},
+						],
+					}
+				),
+				true
+			)
+		).resolves.toMatchObject({ status: 'fail' });
 	});
 
 	it('keeps an unresolved MAIL FROM SPF record pending until the final retry', async () => {
@@ -428,5 +551,29 @@ describe('domain checklist validation', () => {
 		await expect(
 			observeDomainCheck({} as never, 'domain.return_path', returnPathContext, true)
 		).resolves.toMatchObject({ status: 'fail' });
+	});
+
+	it('retries an existing wrong tracking CNAME before failing', async () => {
+		const resolveCname = vi.spyOn(dns, 'resolveCname').mockResolvedValue(['old.owlat.example']);
+		const trackingContext = context({}, {});
+		trackingContext.tracking = [
+			{
+				domain: 'track.example.test',
+				cnameTarget: 'active.owlat.example',
+			},
+		] as ChecklistVerificationContext['tracking'];
+
+		await expect(
+			observeDomainCheck({} as never, 'domain.tracking', trackingContext, false)
+		).resolves.toMatchObject({
+			status: 'pending-dns',
+			observedValues: expect.arrayContaining([
+				expect.stringContaining('observed=old.owlat.example'),
+			]),
+		});
+		await expect(
+			observeDomainCheck({} as never, 'domain.tracking', trackingContext, true)
+		).resolves.toMatchObject({ status: 'fail' });
+		resolveCname.mockRestore();
 	});
 });

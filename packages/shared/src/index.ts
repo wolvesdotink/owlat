@@ -214,3 +214,5 @@ export type {
 	BlockCompatibilityScore,
 } from './compatibility/index';
 export * from './deliverabilityChecklist';
+export * from './deliverabilityDiagnostics';
+export * from './deliverabilitySetup';
