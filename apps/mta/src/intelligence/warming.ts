@@ -9,7 +9,11 @@
 
 import type Redis from 'ioredis';
 import { BASE_WARMING_SCHEDULE } from '../config.js';
-import { ADAPTIVE_WARMING_POLICY, getWarmingCapForDay } from '@owlat/shared/warming';
+import {
+	ADAPTIVE_WARMING_POLICY,
+	getWarmingCapForDay,
+	LAST_FINITE_WARMING_CAP,
+} from '@owlat/shared/warming';
 import type { MtaConfig } from '../config.js';
 import type { WarmingPhase, WarmingState } from '../types.js';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
@@ -21,6 +25,7 @@ import {
 } from './warmingOutcomeStore.js';
 import {
 	CHECK_WARMING_CAP_ROLLOVER_LUA,
+	NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA,
 	RECORD_RESERVED_WARMING_SEND_LUA,
 	RESERVE_WARMING_SLOT_LUA,
 	WARMING_RESERVATION_TTL_MS,
@@ -62,7 +67,8 @@ export async function reserveWarmingSlot(
 		today,
 		now,
 		expiresAt,
-		messageId
+		messageId,
+		LAST_FINITE_WARMING_CAP
 	)) as Array<number | string>;
 	const allowed = Number(result[0]) === 1;
 	// An IP that is not warming (or has graduated) is uncapped and reserves
@@ -122,11 +128,19 @@ export async function ensureWarmingReservation(
  * Returns Infinity if the IP has graduated (warming complete)
  */
 export async function getDailyCap(redis: Redis, ip: string): Promise<number> {
-	const state = await getWarmingState(redis, ip);
-	if (!state) return Infinity; // No warming state = no limit
-	if (state.phase === 'graduated') return Infinity;
+	return normalizeNonGraduatedWarmingCap(redis, ip);
+}
 
-	return state.dailyCap;
+async function normalizeNonGraduatedWarmingCap(redis: Redis, ip: string): Promise<number> {
+	const capRaw = String(
+		await redis.eval(
+			NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA,
+			1,
+			warmingStateKey(ip),
+			LAST_FINITE_WARMING_CAP
+		)
+	);
+	return capRaw === 'Infinity' ? Infinity : Number(capRaw);
 }
 
 /**
@@ -140,11 +154,6 @@ export async function checkCap(
 	sentToday: number;
 	dailyCap: number;
 }> {
-	const state = await getWarmingState(redis, ip);
-	if (!state || state.phase === 'graduated') {
-		return { allowed: true, sentToday: 0, dailyCap: Infinity };
-	}
-
 	const today = new Date().toISOString().split('T')[0]!;
 
 	// Atomic day-rollover reset: read the stored reset date, the cap, and
@@ -154,7 +163,8 @@ export async function checkCap(
 		CHECK_WARMING_CAP_ROLLOVER_LUA,
 		1,
 		warmingStateKey(ip),
-		today
+		today,
+		LAST_FINITE_WARMING_CAP
 	)) as [string, string];
 	const sentToday = parseInt(result[0] ?? '0', 10);
 	const dailyCap = result[1] === 'Infinity' ? Infinity : parseInt(result[1] ?? '0', 10);
@@ -286,6 +296,7 @@ export async function initializeWarming(redis: Redis, ip: string): Promise<void>
  * Should be called at end of each day or periodically.
  */
 export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): Promise<void> {
+	await normalizeNonGraduatedWarmingCap(redis, ip);
 	const state = await getWarmingState(redis, ip);
 	if (!state || state.phase === 'graduated') return;
 
@@ -309,7 +320,8 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 
 	const bounceRate = bounced / sent;
 	const deferralRate = deferred / sent;
-	const usageRate = sent / state.dailyCap;
+	const enforcedCap = Number.isFinite(state.dailyCap) ? state.dailyCap : LAST_FINITE_WARMING_CAP;
+	const usageRate = sent / enforcedCap;
 
 	// Mark the day evaluated up front: every branch below performs exactly one
 	// schedule adjustment, after which the hourly cron must not re-advance today.
@@ -357,7 +369,7 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 		);
 		const newCap = Math.max(
 			ADAPTIVE_WARMING_POLICY.deceleration.minimumCap,
-			Math.floor(state.dailyCap * ADAPTIVE_WARMING_POLICY.deceleration.capMultiplier)
+			Math.floor(enforcedCap * ADAPTIVE_WARMING_POLICY.deceleration.capMultiplier)
 		);
 
 		await redis.hset(
@@ -396,7 +408,7 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 		const scheduledCap = getWarmingCapForDay(newDay);
 		// Infinity is the graduated state, not merely the day-30 checkpoint.
 		// Keep the last finite cap until the health gate below actually passes.
-		const newCap = Number.isFinite(scheduledCap) ? scheduledCap : state.dailyCap;
+		const newCap = Number.isFinite(scheduledCap) ? scheduledCap : enforcedCap;
 
 		await redis.hset(
 			hashKey,
@@ -416,7 +428,7 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 		const newDay = state.currentDay + 1;
 		const scheduledCap = getWarmingCapForDay(newDay);
 		// A day-30 schedule position is still capped until graduation passes.
-		const newCap = Number.isFinite(scheduledCap) ? scheduledCap : state.dailyCap;
+		const newCap = Number.isFinite(scheduledCap) ? scheduledCap : enforcedCap;
 
 		await redis.hset(
 			hashKey,

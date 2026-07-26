@@ -1,12 +1,41 @@
 export const WARMING_RESERVATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+const NORMALIZE_WARMING_CAP_FUNCTION_LUA = `
+local function normalizeWarmingCap(hashKey, fallbackCap)
+  local capRaw = redis.call('HGET', hashKey, 'dailyCap') or '0'
+  local cap = tonumber(capRaw)
+  if not cap or cap ~= cap or cap == math.huge or cap == -math.huge then
+    cap = fallbackCap
+    redis.call('HSET', hashKey, 'dailyCap', tostring(cap))
+  end
+  return cap
+end
+`;
+
+/**
+ * Repairs an old non-graduated row whose schedule persisted Infinity before
+ * graduation was health-gated. The phase check and write are one Redis command,
+ * so this cannot overwrite a concurrent graduation.
+ */
+export const NORMALIZE_NON_GRADUATED_WARMING_CAP_LUA = `
+${NORMALIZE_WARMING_CAP_FUNCTION_LUA}
+local hashKey = KEYS[1]
+local fallbackCap = tonumber(ARGV[1])
+local startedAt = redis.call('HGET', hashKey, 'startedAt')
+local phase = redis.call('HGET', hashKey, 'phase')
+if not startedAt or phase == 'graduated' then return 'Infinity' end
+return tostring(normalizeWarmingCap(hashKey, fallbackCap))
+`;
+
 export const RESERVE_WARMING_SLOT_LUA = `
+${NORMALIZE_WARMING_CAP_FUNCTION_LUA}
 local hashKey = KEYS[1]
 local reservationsKey = KEYS[2]
 local today = ARGV[1]
 local now = tonumber(ARGV[2])
 local expiresAt = tonumber(ARGV[3])
 local messageId = ARGV[4]
+local fallbackCap = tonumber(ARGV[5])
 
 local startedAt = redis.call('HGET', hashKey, 'startedAt')
 local phase = redis.call('HGET', hashKey, 'phase')
@@ -17,13 +46,8 @@ if reset ~= today then redis.call('HSET', hashKey, 'sentToday', '0', 'sentTodayR
 redis.call('ZREMRANGEBYSCORE', reservationsKey, '-inf', now)
 local existing = redis.call('ZSCORE', reservationsKey, messageId)
 local sent = tonumber(redis.call('HGET', hashKey, 'sentToday') or '0')
-local capRaw = redis.call('HGET', hashKey, 'dailyCap') or '0'
 local reserved = tonumber(redis.call('ZCARD', reservationsKey))
--- A plateaued/accelerated IP past the schedule writes the literal 'Infinity'.
--- tonumber() turns that into a Lua inf, which Redis truncates to a nonsense
--- integer on the way back. Report the uncapped sentinel instead.
-if capRaw == 'Infinity' or capRaw == 'inf' then return { 1, sent, -1, reserved } end
-local cap = tonumber(capRaw) or 0
+local cap = normalizeWarmingCap(hashKey, fallbackCap)
 if existing then return { 1, sent, cap, reserved } end
 if sent + reserved >= cap then return { 0, sent, cap, reserved } end
 redis.call('ZADD', reservationsKey, expiresAt, messageId)
@@ -50,11 +74,16 @@ return 1
 
 /** Atomically rolls a stale UTC-day counter before returning the cap. */
 export const CHECK_WARMING_CAP_ROLLOVER_LUA = `
+${NORMALIZE_WARMING_CAP_FUNCTION_LUA}
 local hashKey = KEYS[1]
 local today = ARGV[1]
+local fallbackCap = tonumber(ARGV[2])
 
+local startedAt = redis.call('HGET', hashKey, 'startedAt')
+local phase = redis.call('HGET', hashKey, 'phase')
+if not startedAt or phase == 'graduated' then return { '0', 'Infinity' } end
 local reset = redis.call('HGET', hashKey, 'sentTodayReset')
-local dailyCap = redis.call('HGET', hashKey, 'dailyCap') or '0'
+local dailyCap = tostring(normalizeWarmingCap(hashKey, fallbackCap))
 
 if reset ~= today then
   redis.call('HSET', hashKey, 'sentToday', '0', 'sentTodayReset', today)

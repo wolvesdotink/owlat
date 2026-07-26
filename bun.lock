@@ -109,6 +109,7 @@
         "@nuxt/fonts": "catalog:vue",
         "@nuxtjs/color-mode": "catalog:vue",
         "@nuxtjs/seo": "^5.1.0",
+        "@owlat/shared": "workspace:*",
         "@tailwindcss/vite": "catalog:vue",
         "@vitest/coverage-v8": "catalog:",
         "@vue/server-renderer": "^3.5.30",
