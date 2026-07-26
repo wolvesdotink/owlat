@@ -330,6 +330,18 @@ export const mtaAdapter: InboundAdapter = {
 					...(payload.message ? { message: payload.message } : {}),
 				};
 			}
+			case 'ip.readiness_regressed': {
+				return {
+					kind: 'internal.ip_readiness_regressed',
+					eventId: payload.eventId,
+					ip: payload.ip,
+					readinessCheck: payload.readinessCheck,
+					readinessReason: payload.readinessReason,
+					eligibilityGeneration: payload.eligibilityGeneration,
+					observedAt: payload.timestamp,
+					message: payload.message,
+				};
+			}
 			case 'postmaster.stats': {
 				if (
 					!payload.domain ||

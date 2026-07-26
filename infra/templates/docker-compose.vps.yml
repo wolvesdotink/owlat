@@ -205,6 +205,10 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       MTA_API_KEY: ${MTA_API_KEY}
       EHLO_HOSTNAME: ${EHLO_HOSTNAME:-mail.localhost}
+      EHLO_HOSTNAMES: ${EHLO_HOSTNAMES:-}
+      MTA_GENERIC_PTR_SUFFIXES: ${MTA_GENERIC_PTR_SUFFIXES:-}
+      MTA_ALLOW_UNVERIFIED_FCRDNS: ${MTA_ALLOW_UNVERIFIED_FCRDNS:-false}
+      MTA_IPV6_ENABLED: ${MTA_IPV6_ENABLED:-false}
       RETURN_PATH_DOMAIN: ${RETURN_PATH_DOMAIN:-bounces.localhost}
       BOUNCE_VERP_KEY: ${BOUNCE_VERP_KEY:?BOUNCE_VERP_KEY is required}
       CONVEX_SITE_URL: http://convex:3211
@@ -462,6 +466,7 @@ services:
 # further would require an allowlisted egress proxy rather than the open bridge.
 networks:
   default:
+    enable_ipv6: ${MTA_IPV6_ENABLED:-false}
   code-worker:
 
 volumes:

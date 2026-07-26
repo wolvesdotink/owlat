@@ -289,6 +289,21 @@ export const deliveryTables = {
 		consecutiveFailures: v.number(),
 	}).index('by_provider_type', ['providerType']),
 
+	// Durable, idempotent operator alerts for confirmed IPv6 identity/SPF
+	// regressions. Retained for 90 days and exposed only through an admin query.
+	mtaIpReadinessAlerts: defineTable({
+		eventId: v.string(),
+		ip: v.string(),
+		readinessCheck: v.union(v.literal('fcrdns'), v.literal('spf')),
+		readinessReason: v.string(),
+		eligibilityGeneration: v.number(),
+		observedAt: v.number(),
+		message: v.string(),
+		createdAt: v.number(),
+	})
+		.index('by_event_id', ['eventId'])
+		.index('by_observed_at', ['observedAt']),
+
 	// IP warming state — cached from MTA's /ip-reputation endpoint every 5 minutes
 	warmingState: defineTable({
 		phase: v.string(), // overall: 'ramp' | 'plateau' | 'graduated'

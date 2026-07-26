@@ -3,7 +3,6 @@
  */
 
 import { hostname } from 'os';
-import { isIPv4 } from 'node:net';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
 import { isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
@@ -16,6 +15,7 @@ import {
 	type GovernedDeliveryConfig,
 } from './governedDeliveryConfig.js';
 import type { PoolCoordinationProtocol } from './smtp/poolGlobalCap.js';
+import { loadOutboundIpConfig } from './outboundIpConfig.js';
 
 // EHLO hostname validation + per-IP resolution live in ehloConfig.ts (to keep
 // this module under the file-size gate); re-exported so existing importers are
@@ -52,6 +52,8 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	genericPtrSuffixes: string[];
 	/** Lab-only bypass for unverified FCrDNS. Never enable on an internet sender. */
 	allowUnverifiedFcrdns: boolean;
+	/** Explicit opt-in for native IPv6 source addresses in IP_POOLS_*. */
+	ipv6Enabled: boolean;
 	/** Domain for VERP return-path addresses */
 	returnPathDomain: string;
 	/** Convex site URL for webhook callbacks */
@@ -303,24 +305,7 @@ export function loadConfig(): MtaConfig {
 		throw new Error('SMTP_POOL_COORDINATION_PROTOCOL must be legacy-v0 or leases-v1');
 	}
 
-	// Parse IP pools from comma-separated env vars
-	const transactionalIps = requiredEnv('IP_POOLS_TRANSACTIONAL')
-		.split(',')
-		.map((s) => s.trim())
-		.filter(Boolean);
-	const campaignIps = requiredEnv('IP_POOLS_CAMPAIGN')
-		.split(',')
-		.map((s) => s.trim())
-		.filter(Boolean);
-
-	if (transactionalIps.length === 0)
-		throw new Error('IP_POOLS_TRANSACTIONAL must contain at least one IP');
-	if (campaignIps.length === 0) throw new Error('IP_POOLS_CAMPAIGN must contain at least one IP');
-	for (const ip of [...transactionalIps, ...campaignIps]) {
-		if (!isIPv4(ip)) {
-			throw new Error(`${ip} is not a valid IPv4 address in IP_POOLS_*`);
-		}
-	}
+	const outboundIp = loadOutboundIpConfig(requiredEnv);
 
 	// MTA_SECRET seals DKIM keys + relay credentials at rest. Fail the boot fast
 	// if it is absent or too weak rather than sealing under a guessable key.
@@ -337,29 +322,6 @@ export function loadConfig(): MtaConfig {
 	// EHLO hostname must be a real FQDN that can match a PTR record.
 	const ehloHostname = requiredEnv('EHLO_HOSTNAME');
 	assertValidEhloHostname(ehloHostname, 'EHLO_HOSTNAME');
-
-	// Parse per-IP EHLO hostname overrides from JSON env var.
-	// {"1.2.3.4":"a.example.com","5.6.7.8":"b.example.com"}
-	let ehloHostnames: Record<string, string> = {};
-	const ehloHostnamesRaw = process.env['EHLO_HOSTNAMES'];
-	if (ehloHostnamesRaw && ehloHostnamesRaw.trim().length > 0) {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(ehloHostnamesRaw);
-		} catch {
-			throw new Error('EHLO_HOSTNAMES must be valid JSON: {"1.2.3.4":"mail1.example.com"}');
-		}
-		if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-			throw new Error('EHLO_HOSTNAMES must be a JSON object mapping IP to hostname');
-		}
-		for (const [ip, name] of Object.entries(parsed as Record<string, unknown>)) {
-			if (typeof name !== 'string') {
-				throw new Error(`EHLO_HOSTNAMES value for ${ip} must be a string`);
-			}
-			assertValidEhloHostname(name, `EHLO_HOSTNAMES[${ip}]`);
-			ehloHostnames[ip.trim()] = name.trim();
-		}
-	}
 
 	const genericPtrSuffixes = parseGenericPtrSuffixes(process.env['MTA_GENERIC_PTR_SUFFIXES']);
 	const allowUnverifiedFcrdns = parseUnverifiedFcrdnsOverride(
@@ -422,9 +384,10 @@ export function loadConfig(): MtaConfig {
 		apiKey: requiredEnv('MTA_API_KEY'),
 		mtaSecret,
 		ehloHostname,
-		ehloHostnames,
+		ehloHostnames: outboundIp.ehloHostnames,
 		genericPtrSuffixes,
 		allowUnverifiedFcrdns,
+		ipv6Enabled: outboundIp.ipv6Enabled,
 		returnPathDomain: requiredEnv('RETURN_PATH_DOMAIN'),
 		convexSiteUrl: requiredEnv('CONVEX_SITE_URL'),
 		webhookSecret: requiredEnv('MTA_WEBHOOK_SECRET'),
@@ -433,7 +396,7 @@ export function loadConfig(): MtaConfig {
 		// caught by the TLS-RPT system route and forwarded to Convex. Optional —
 		// omitted when the operator does not collect TLS reports.
 		tlsRptRua: process.env['MTA_TLSRPT_RUA'],
-		ipPools: { transactional: transactionalIps, campaign: campaignIps },
+		ipPools: outboundIp.ipPools,
 		dkimKeys,
 		workerConcurrency: parseInt(optionalEnv('WORKER_CONCURRENCY', '50'), 10),
 		serverId: optionalEnv('MTA_SERVER_ID', hostname()),

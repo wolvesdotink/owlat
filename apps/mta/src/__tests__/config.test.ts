@@ -113,11 +113,44 @@ describe('loadConfig', () => {
 		expect(config.ipPools.transactional).toEqual(['10.0.0.1', '10.0.0.2', '10.0.0.3']);
 	});
 
-	it('rejects invalid or IPv6 pool entries until the IPv6 delivery phase is enabled', () => {
+	it('rejects invalid entries and keeps IPv6 off by default', () => {
 		process.env.IP_POOLS_TRANSACTIONAL = 'not-an-ip';
-		expect(() => loadConfig()).toThrow('not a valid IPv4');
+		expect(() => loadConfig()).toThrow('not a valid bare IP');
 		process.env.IP_POOLS_TRANSACTIONAL = '2001:db8::1';
-		expect(() => loadConfig()).toThrow('not a valid IPv4');
+		expect(() => loadConfig()).toThrow('MTA_IPV6_ENABLED is false');
+	});
+
+	it('accepts IPv6 only by explicit opt-in and canonicalizes equivalent pool entries', () => {
+		process.env.MTA_IPV6_ENABLED = 'true';
+		process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1,2001:0DB8:0:0:0:0:0:1,2001:db8::1';
+		const config = loadConfig();
+		expect(config.ipv6Enabled).toBe(true);
+		expect(config.ipPools.transactional).toEqual(['10.0.0.1', '2001:db8::1']);
+	});
+
+	it('requires a safe IPv4 fallback and rejects ambiguous IPv6 source syntax', () => {
+		process.env.MTA_IPV6_ENABLED = 'true';
+		process.env.IP_POOLS_TRANSACTIONAL = '2001:db8::1';
+		process.env.IP_POOLS_CAMPAIGN = '2001:db8::2';
+		expect(() => loadConfig()).toThrow(
+			'transactional pool requires an IPv4 fallback in that same pool'
+		);
+
+		process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1,::';
+		process.env.IP_POOLS_CAMPAIGN = '10.0.0.2';
+		expect(() => loadConfig()).toThrow('cannot select an outbound source');
+
+		for (const invalid of ['[2001:db8::1]', 'fe80::1%eth0', '::ffff:192.0.2.1']) {
+			process.env.IP_POOLS_TRANSACTIONAL = `10.0.0.1,${invalid}`;
+			expect(() => loadConfig()).toThrow();
+		}
+	});
+
+	it('parses MTA_IPV6_ENABLED strictly', () => {
+		delete process.env.MTA_IPV6_ENABLED;
+		expect(loadConfig().ipv6Enabled).toBe(false);
+		process.env.MTA_IPV6_ENABLED = 'yes';
+		expect(() => loadConfig()).toThrow('MTA_IPV6_ENABLED must be true or false');
 	});
 
 	it('defaults to a fail-closed identity gate and parses safe custom PTR suffixes', () => {
@@ -276,6 +309,21 @@ describe('loadConfig', () => {
 				'10.0.0.1': 'mail1.example.com',
 				'10.0.0.2': 'mail2.example.com',
 			});
+		});
+
+		it('canonicalizes IPv6 keys and rejects conflicting equivalent mappings', () => {
+			process.env.MTA_IPV6_ENABLED = 'true';
+			process.env.IP_POOLS_TRANSACTIONAL = '10.0.0.1,2001:db8::1';
+			process.env.EHLO_HOSTNAMES = JSON.stringify({
+				'2001:0DB8:0:0:0:0:0:1': 'mail6.example.com',
+			});
+			expect(loadConfig().ehloHostnames).toEqual({ '2001:db8::1': 'mail6.example.com' });
+
+			process.env.EHLO_HOSTNAMES = JSON.stringify({
+				'2001:0DB8:0:0:0:0:0:1': 'mail6.example.com',
+				'2001:db8::1': 'other.example.com',
+			});
+			expect(() => loadConfig()).toThrow('conflicting names');
 		});
 
 		it('throws on invalid JSON', () => {

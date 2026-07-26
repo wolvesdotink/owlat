@@ -7,6 +7,7 @@
  * re-exported from `config.ts` so existing importers are unaffected.
  */
 
+import { assertValidOutboundEhloHostname } from '@owlat/shared/outboundIdentity';
 import type { MtaConfig } from './config.js';
 
 /**
@@ -19,35 +20,7 @@ import type { MtaConfig } from './config.js';
  * shipping mail that fails authentication.
  */
 export function assertValidEhloHostname(value: string, source: string): void {
-	const trimmed = value.trim();
-
-	if (trimmed.length === 0 || /\s/.test(value)) {
-		throw new Error(
-			`${source} must be a hostname with no whitespace, got: ${JSON.stringify(value)}`
-		);
-	}
-	if (trimmed === 'localhost') {
-		throw new Error(`${source} must be a public FQDN, not 'localhost'`);
-	}
-	// Reject IPv4/IPv6 literals — EHLO must be a name, not an address.
-	if (/^[0-9.]+$/.test(trimmed) || trimmed.includes(':')) {
-		throw new Error(
-			`${source} must be a hostname, not an IP address, got: ${JSON.stringify(value)}`
-		);
-	}
-	// Require at least two labels (a dot) — bare hostnames like 'mta1' are not FQDNs.
-	if (!trimmed.includes('.')) {
-		throw new Error(
-			`${source} must be a fully qualified domain name with a dot, got: ${JSON.stringify(value)}`
-		);
-	}
-	// Each label: alphanumeric + hyphens, 1-63 chars, no leading/trailing hyphen.
-	const labelOk = trimmed
-		.split('.')
-		.every((label) => /^(?!-)[A-Za-z0-9-]{1,63}(?<!-)$/.test(label));
-	if (!labelOk) {
-		throw new Error(`${source} is not a valid FQDN, got: ${JSON.stringify(value)}`);
-	}
+	assertValidOutboundEhloHostname(value, source);
 }
 
 /**

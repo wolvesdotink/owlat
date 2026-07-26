@@ -233,6 +233,7 @@ export const NON_TENANT_TABLES = [
 	'providerRoutes',
 	'providerHealth',
 	'warmingState',
+	'mtaIpReadinessAlerts',
 	// Inbound TLS-RPT (RFC 8460) aggregate reports from partner MX — operator
 	// deliverability telemetry keyed by the partner's own report-id, not org
 	// business data. Regenerable (partners re-send daily); not personal data of

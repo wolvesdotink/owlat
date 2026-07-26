@@ -234,6 +234,26 @@ set_convex_var() {
   fi
 }
 
+# Stable transactional-first union of the two canonical MTA pool variables for
+# the Convex function-runtime alias consumed by return-path SPF generation.
+derive_mta_ip_pools() {
+  local transactional="$1"
+  local campaign="$2"
+  local combined=""
+  local entry trimmed
+  declare -A seen=()
+  IFS=',' read -ra entries <<< "${transactional},${campaign}"
+  for entry in "${entries[@]}"; do
+    trimmed="${entry#"${entry%%[![:space:]]*}"}"
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    [[ -z "$trimmed" || -n "${seen[$trimmed]:-}" ]] && continue
+    seen[$trimmed]=1
+    [[ -n "$combined" ]] && combined+=","
+    combined+="$trimmed"
+  done
+  printf '%s' "$combined"
+}
+
 # Store a self-host env var (tracks order)
 set_selfhost_var() {
   local key="$1"
@@ -1138,6 +1158,7 @@ configure_selfhost_mta() {
 
   prompt_default "Return path domain (for VERP bounces)" "bounces.example.com" return_path_domain
   set_selfhost_var "RETURN_PATH_DOMAIN" "$return_path_domain"
+  set_convex_var "MTA_RETURN_PATH_DOMAIN" "$return_path_domain"
 
   echo ""
 
@@ -1152,6 +1173,10 @@ configure_selfhost_mta() {
 
   prompt_default "Campaign IP pool" "127.0.0.1" ip_campaign
   set_selfhost_var "IP_POOLS_CAMPAIGN" "$ip_campaign"
+  set_convex_var "MTA_IP_POOLS" "$(derive_mta_ip_pools "$ip_transactional" "$ip_campaign")"
+  # The legacy wizard keeps the safe default. Guided IPv6 enablement belongs to
+  # the verified setup flow; advanced operators may set this after setup.
+  set_selfhost_var "MTA_IPV6_ENABLED" "false"
 
   echo ""
 
@@ -1280,6 +1305,7 @@ write_selfhost_env() {
     echo ""
     echo "IP_POOLS_TRANSACTIONAL=${SELFHOST_VARS[IP_POOLS_TRANSACTIONAL]:-127.0.0.1}"
     echo "IP_POOLS_CAMPAIGN=${SELFHOST_VARS[IP_POOLS_CAMPAIGN]:-127.0.0.1}"
+    echo "MTA_IPV6_ENABLED=${SELFHOST_VARS[MTA_IPV6_ENABLED]:-false}"
     echo ""
     echo "DKIM_KEYS=${SELFHOST_VARS[DKIM_KEYS]:-{}}"
     echo ""

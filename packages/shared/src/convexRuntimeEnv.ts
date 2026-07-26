@@ -27,6 +27,7 @@
  */
 
 import { createEnvBackupBox, isEnvBackupSealedValue, type EnvBackupBox } from './envBackupBox';
+import { projectCanonicalMtaRuntimeEnv } from './outboundIdentity';
 
 /**
  * Function-runtime env keys — the single source of truth is the `EnvKey` union
@@ -186,16 +187,17 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
  * silently break the path that reads it (e.g. SMTP relay auth).
  */
 export function selectRuntimeEnvVars(env: Record<string, string>): Array<[string, string]> {
+	const projectedEnv = projectCanonicalMtaRuntimeEnv(env);
 	const out: Array<[string, string]> = [];
 	let box: EnvBackupBox | null = null;
 	for (const key of CONVEX_RUNTIME_ENV_KEYS) {
-		const value = env[key];
+		const value = projectedEnv[key];
 		if (value === undefined || value === '') continue;
 		if (!isEnvBackupSealedValue(value)) {
 			out.push([key, value]);
 			continue;
 		}
-		const instanceSecret = env['INSTANCE_SECRET'];
+		const instanceSecret = projectedEnv['INSTANCE_SECRET'];
 		if (!instanceSecret) {
 			throw new Error(
 				`Refusing to push ${key}: its .env value is sealed (envsealed:v1:…) but INSTANCE_SECRET is missing from the same .env, so it cannot be unsealed. Restore INSTANCE_SECRET or re-enter the credential.`

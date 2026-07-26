@@ -163,6 +163,7 @@ services:
       EHLO_HOSTNAMES: ${EHLO_HOSTNAMES:-}
       MTA_GENERIC_PTR_SUFFIXES: ${MTA_GENERIC_PTR_SUFFIXES:-}
       MTA_ALLOW_UNVERIFIED_FCRDNS: ${MTA_ALLOW_UNVERIFIED_FCRDNS:-false}
+      MTA_IPV6_ENABLED: ${MTA_IPV6_ENABLED:-false}
       RETURN_PATH_DOMAIN: ${RETURN_PATH_DOMAIN:-bounces.localhost}
       BOUNCE_VERP_KEY: ${BOUNCE_VERP_KEY:?BOUNCE_VERP_KEY is required}
       CONVEX_SITE_URL: http://convex:3211
@@ -646,6 +647,9 @@ services:
 # can reach the Docker socket proxy even if compromised.
 networks:
   default:
+    # IPv4-only remains zero-config. This flag enables bridge plumbing only;
+    # runtime readiness still requires IPv4 identity, PTR/AAAA, and SPF.
+    enable_ipv6: ${MTA_IPV6_ENABLED:-false}
   docker-proxy:
     internal: true
   # Isolated bridge for the untrusted code-worker executor. Only convex (which

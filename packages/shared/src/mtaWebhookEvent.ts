@@ -1,6 +1,7 @@
 /** Exhaustive runtime contract shared by the MTA durable outbox and Convex ingress. */
 
 import { isDestinationProviderKey, type DestinationProviderKey } from './deliverabilityRouting';
+import { parseIpAddress } from './ipAddress';
 import { isDeliveryDomain, type DeliveryDomain } from './routingDispatch';
 
 export const MTA_WEBHOOK_EVENT_TYPES = [
@@ -20,6 +21,7 @@ export const MTA_WEBHOOK_EVENT_TYPES = [
 	'inbound.received',
 	'routing.reentry',
 	'inbound.mailbox.received',
+	'ip.readiness_regressed',
 ] as const;
 
 export type MtaWebhookEventType = (typeof MTA_WEBHOOK_EVENT_TYPES)[number];
@@ -58,6 +60,9 @@ interface EventBase<K extends MtaWebhookEventType> {
 		| 'routing_lease_stale'
 		| 'circuit_breaker_changed'
 		| 'warming_capacity_changed';
+	readinessCheck?: 'fcrdns' | 'spf';
+	readinessReason?: string;
+	eligibilityGeneration?: number;
 }
 
 export type SharedMtaWebhookEvent =
@@ -110,6 +115,14 @@ export type SharedMtaWebhookEvent =
 	| (EventBase<'inbound.mailbox.received'> & {
 			organizationId: string;
 			mailboxPayload: object;
+	  })
+	| (EventBase<'ip.readiness_regressed'> & {
+			eventId: string;
+			ip: string;
+			readinessCheck: 'fcrdns' | 'spf';
+			readinessReason: string;
+			eligibilityGeneration: number;
+			message: string;
 	  });
 
 const EVENT_TYPES = new Set<string>(MTA_WEBHOOK_EVENT_TYPES);
@@ -224,6 +237,32 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 			);
 		case 'inbound.mailbox.received':
 			return bounded(value['organizationId'], 128) && isRecord(value['mailboxPayload']);
+		case 'ip.readiness_regressed': {
+			const parsedIp = typeof value['ip'] === 'string' ? parseIpAddress(value['ip']) : null;
+			const check = value['readinessCheck'];
+			const reason = value['readinessReason'];
+			const confirmedReason =
+				(check === 'fcrdns' &&
+					(reason === 'no-ptr' ||
+						reason === 'ptr-not-fqdn' ||
+						reason === 'forward-mismatch' ||
+						reason === 'ehlo-mismatch')) ||
+				(check === 'spf' &&
+					(reason === 'no-spf-record' ||
+						reason === 'multiple-spf-records' ||
+						reason === 'missing-ip6-mechanism'));
+			return (
+				typeof value['eventId'] === 'string' &&
+				EVENT_ID.test(value['eventId']) &&
+				parsedIp?.family === 'ipv6' &&
+				parsedIp.address === value['ip'] &&
+				confirmedReason &&
+				typeof value['eligibilityGeneration'] === 'number' &&
+				Number.isSafeInteger(value['eligibilityGeneration']) &&
+				value['eligibilityGeneration'] >= 1 &&
+				bounded(value['message'], 512)
+			);
+		}
 	}
 }
 
