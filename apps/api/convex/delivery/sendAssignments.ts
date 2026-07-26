@@ -16,8 +16,8 @@
  *     degrades to "no row" (or `other`), never a throw.
  *   - Every read is org-leading. `sendAssignments` is cell-keyed, and a
  *     cell-keyed table readable across tenants would be a security defect.
- *   - O(N) narrow writes for N recipients. No wide `.collect()` anywhere on
- *     this path (ADR-0042's post-mortem).
+ *   - O(N) narrow writes for N recipients, and no unbounded table read
+ *     anywhere on this path (ADR-0042's post-mortem).
  *
  * What this piece does NOT do: choose the arm. Today the row records what the
  * SHIPPED router already decided (`mta` → `own`, anything else → `reference`).
