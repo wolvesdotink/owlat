@@ -38,18 +38,19 @@ function decodeCanonicalBase64(value: string): Buffer | null {
 
 export function parsedDkimKeyBits(value: string | undefined): number | null {
 	if (!value) return null;
+	const tagSpecs = value.split(';').map((candidate) => candidate.trim());
+	if (tagSpecs[tagSpecs.length - 1] === '') tagSpecs.pop();
+	if (tagSpecs.length === 0 || tagSpecs.some((tagSpec) => tagSpec === '')) return null;
+
 	const tags = new Map<string, string>();
-	for (const part of value
-		.split(';')
-		.map((candidate) => candidate.trim())
-		.filter(Boolean)) {
-		const separator = part.indexOf('=');
+	for (const tagSpec of tagSpecs) {
+		const separator = tagSpec.indexOf('=');
 		if (separator < 1) return null;
-		const name = part.slice(0, separator).trim();
+		const name = tagSpec.slice(0, separator).trim();
 		if (!DKIM_TAG_NAME.test(name)) return null;
 		if (name === 'v' && tags.size > 0) return null;
 		if (tags.has(name)) return null;
-		tags.set(name, part.slice(separator + 1).trim());
+		tags.set(name, tagSpec.slice(separator + 1).trim());
 	}
 	if (tags.has('v') && tags.get('v') !== 'DKIM1') return null;
 	if ((tags.get('k') ?? 'rsa').toLowerCase() !== 'rsa') return null;

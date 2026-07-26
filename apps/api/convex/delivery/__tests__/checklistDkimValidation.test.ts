@@ -43,6 +43,17 @@ describe('parsedDkimKeyBits', () => {
 		).toBeNull();
 	});
 
+	it('rejects empty tag specs while allowing one optional trailing semicolon', () => {
+		const record = rsaDkimRecord().replace('; k=rsa', '');
+		expect(parsedDkimKeyBits(`; ${record}`)).toBeNull();
+		expect(parsedDkimKeyBits(record.replace('; p=', ';; p='))).toBeNull();
+		expect(parsedDkimKeyBits(`${record};;`)).toBeNull();
+		expect(parsedDkimKeyBits(`${record};`)).toBe(2_048);
+		expect(parsedDkimKeyBits(`${record}; \t `)).toBe(2_048);
+		expect(parsedDkimKeyBits(record.replace('; p=', '; \t ; p='))).toBeNull();
+		expect(parsedDkimKeyBits(`${record}; \t ; \t `)).toBeNull();
+	});
+
 	it('accepts compatible service and hash lists', () => {
 		expect(parsedDkimKeyBits(`${rsaDkimRecord()}; s=calendar:email; h=sha1:sha256`)).toBe(2_048);
 		expect(parsedDkimKeyBits(`${rsaDkimRecord()}; s=*; h=sha256`)).toBe(2_048);
