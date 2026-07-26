@@ -127,6 +127,32 @@ describe('doctor — evaluateMtaHealth', () => {
 		expect(failed[0]?.message).toContain('network unreachable');
 	});
 
+	it('adds one short provider note when TCP/25 is blocked, and none when it is open', () => {
+		const blocked = {
+			...healthy,
+			status: 'degraded',
+			smtpOutbound: {
+				status: 'degraded',
+				ips: [
+					{ ip: '192.0.2.10', status: 'ok' },
+					{ ip: '192.0.2.11', status: 'failed', reason: 'timeout' },
+				],
+			},
+		};
+		const withHint = evaluateMtaHealth(blocked, { MTA_VPS_PROVIDER: 'digitalocean' });
+		const failed = withHint.filter((finding) => !finding.ok);
+		expect(failed[0]?.message).toContain('DigitalOcean blocks SMTP ports');
+
+		const generic = evaluateMtaHealth(blocked, {});
+		expect(generic.filter((finding) => !finding.ok)[0]?.message).toMatch(/block/i);
+
+		expect(
+			evaluateMtaHealth(healthy, { MTA_VPS_PROVIDER: 'digitalocean' }).every(
+				(finding) => !finding.message.includes('DigitalOcean')
+			)
+		).toBe(true);
+	});
+
 	it('fails closed on an incomplete response', () => {
 		expect(evaluateMtaHealth({ status: 'ok' })).toEqual([
 			{ ok: false, message: 'MTA returned an incomplete health response' },

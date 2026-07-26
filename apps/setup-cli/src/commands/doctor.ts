@@ -31,6 +31,7 @@ import {
 	reverseDnsGuidance,
 	type FcrdnsFailureReason,
 } from '@owlat/shared/fcrdns';
+import { installerProviderNote } from '@owlat/shared/ipAuditProviders';
 
 interface DoctorOptions {
 	owlatDir: string;
@@ -127,7 +128,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Pure interpretation of the MTA health body, separated for unit tests. */
-export function evaluateMtaHealth(value: unknown): MtaHealthFinding[] {
+export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFinding[] {
 	if (!isRecord(value)) return [{ ok: false, message: 'MTA returned an invalid health response' }];
 	const worker = isRecord(value['worker']) ? value['worker'] : null;
 	const emergency = isRecord(value['emergency']) ? value['emergency'] : null;
@@ -157,9 +158,13 @@ export function evaluateMtaHealth(value: unknown): MtaHealthFinding[] {
 		}
 		const detail =
 			typeof item['reason'] === 'string' ? ` (${item['reason'].replaceAll('_', ' ')})` : '';
+		const ok = item['status'] === 'ok';
+		// A blocked TCP/25 is nearly always the provider, not the install. Add one
+		// short factual note — a nudge, not a lecture — and only on failure.
+		const nudge = ok ? '' : ` — ${installerProviderNote(env['MTA_VPS_PROVIDER'] ?? '').note}`;
 		findings.push({
-			ok: item['status'] === 'ok',
-			message: `TCP/25 is reachable from ${item['ip']}${detail}`,
+			ok,
+			message: `TCP/25 is reachable from ${item['ip']}${detail}${nudge}`,
 		});
 	}
 	return findings;
@@ -181,9 +186,12 @@ async function fetchMtaHealth(baseUrl: string): Promise<unknown> {
 }
 
 /** Single-shot full infrastructure probe of the MTA `/health` endpoint. */
-export async function probeMtaHealth(baseUrl: string): Promise<MtaHealthFinding[]> {
+export async function probeMtaHealth(
+	baseUrl: string,
+	env: EnvMap = {}
+): Promise<MtaHealthFinding[]> {
 	try {
-		return evaluateMtaHealth(await fetchMtaHealth(baseUrl));
+		return evaluateMtaHealth(await fetchMtaHealth(baseUrl), env);
 	} catch (err) {
 		return [{ ok: false, message: (err as Error).message }];
 	}
@@ -236,7 +244,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 	// not ready to send. Treat every infrastructure finding as a real doctor
 	// failure, including the source-IP-bound TCP/25 checks.
 	if (needsDeliveryProvider(flags) && env['EMAIL_PROVIDER'] === 'mta' && env['MTA_API_URL']) {
-		for (const finding of await probeMtaHealth(env['MTA_API_URL'])) {
+		for (const finding of await probeMtaHealth(env['MTA_API_URL'], env)) {
 			check(finding.ok, `SEND PATH: ${finding.message}`);
 		}
 	}
