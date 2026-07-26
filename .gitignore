@@ -68,9 +68,19 @@ scripts/ralph/archive/
 # Email preview output
 previews/
 
-# Review reports & internal working notes — kept uncommitted by convention
+# Review reports & internal working notes — kept uncommitted by convention.
+# Root-level only (the leading slash), so documentation under apps/docs is
+# unaffected. Plans and pipelines are written as either Markdown or a
+# self-contained HTML page, hence both extensions.
 /*_REVIEW_*.md
 /*_AUDIT_*.md
+/*_PLAN_*.md
+/*_PLAN_*.html
+/*-plan.html
+/*-pipeline.html
+
+# Playwright MCP session artifacts (distinct from playwright-report/ above)
+.playwright-mcp/
 
 # AI
 .planning/
