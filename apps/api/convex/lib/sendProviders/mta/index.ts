@@ -8,7 +8,6 @@
  * code derived from the HTTP response.
  */
 
-import { getOptional } from '../../env';
 import {
 	extractDomainOrNull,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,
@@ -48,23 +47,35 @@ export type MtaRoutingDecision =
 	  }
 	| { kind: 'defer'; retryAfterMs: number };
 
-export async function resolveMtaRoutingDecision(input: {
-	messageId: string;
-	workAttemptId: string;
-	routingReentryToken: string;
-	startedAt: number;
-	deliveryDomain: DeliveryDomain;
-	messageType: GovernedMessageType;
-	organizationId: string;
-	recipient: string;
-	from: string;
-	candidateProvider: 'mta' | 'relay';
-	ipPool?: MtaExtras['ipPool'];
-	allowWarmupOverflow: boolean;
-	requireProviderProbe?: boolean;
-}): Promise<MtaRoutingDecision> {
-	const baseUrl = getOptional('MTA_API_URL');
-	const apiKey = getOptional('MTA_API_KEY');
+/**
+ * Take a last-mile routing lease from ONE configured MTA transport.
+ *
+ * `transport` names WHICH one, for the same reason `sendEmail` takes it: a
+ * lease is granted by the MTA that will be asked to honour it, so taking it
+ * from the default instance and then presenting it to `mta#secondary` would be
+ * presenting one server's decision to another. The caller passes the transport
+ * it is about to send through.
+ */
+export async function resolveMtaRoutingDecision(
+	transport: SendTransportRecord,
+	input: {
+		messageId: string;
+		workAttemptId: string;
+		routingReentryToken: string;
+		startedAt: number;
+		deliveryDomain: DeliveryDomain;
+		messageType: GovernedMessageType;
+		organizationId: string;
+		recipient: string;
+		from: string;
+		candidateProvider: 'mta' | 'relay';
+		ipPool?: MtaExtras['ipPool'];
+		allowWarmupOverflow: boolean;
+		requireProviderProbe?: boolean;
+	}
+): Promise<MtaRoutingDecision> {
+	const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
+	const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
 	if (!baseUrl || !apiKey) return { kind: 'defer', retryAfterMs: 60_000 };
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), MTA_DECISION_TIMEOUT_MS);

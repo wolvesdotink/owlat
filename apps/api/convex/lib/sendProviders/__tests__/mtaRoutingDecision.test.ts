@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EmailErrorCode } from '../types';
 import { mtaSendProvider, resolveMtaRoutingDecision } from '../mta';
 import { ROUTING_LEASE_TOKEN_MAX_LENGTH } from '@owlat/shared';
+import { resolveSendTransport } from '../transports';
+
+const MTA_TRANSPORT = resolveSendTransport('mta');
 
 const decisionInput = {
 	messageId: 'send-1',
@@ -38,7 +41,7 @@ describe('MTA routing decision client', () => {
 		new Response(JSON.stringify({ unexpected: true }), { status: 200 }),
 	])('fails closed on a non-2xx or malformed routing decision', async (response) => {
 		global.fetch = vi.fn().mockResolvedValue(response);
-		expect(await resolveMtaRoutingDecision(decisionInput)).toEqual({
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
 			kind: 'defer',
 			retryAfterMs: 60_000,
 		});
@@ -53,7 +56,7 @@ describe('MTA routing decision client', () => {
 					init.signal.addEventListener('abort', () => reject(new Error('aborted')));
 				})
 		) as typeof fetch;
-		const pending = resolveMtaRoutingDecision(decisionInput);
+		const pending = resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput);
 		await vi.advanceTimersByTimeAsync(5_001);
 		expect(await pending).toEqual({ kind: 'defer', retryAfterMs: 60_000 });
 	});
@@ -69,7 +72,7 @@ describe('MTA routing decision client', () => {
 		{ decision: 'defer', reason: 'global_safety' },
 	])('rejects an inexact decision response: %j', async (body) => {
 		global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
-		expect(await resolveMtaRoutingDecision(decisionInput)).toEqual({
+		expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual({
 			kind: 'defer',
 			retryAfterMs: 60_000,
 		});
@@ -103,7 +106,7 @@ describe('MTA routing decision client', () => {
 			],
 		] as const) {
 			global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
-			expect(await resolveMtaRoutingDecision(decisionInput)).toEqual(expected);
+			expect(await resolveMtaRoutingDecision(MTA_TRANSPORT, decisionInput)).toEqual(expected);
 		}
 	});
 
