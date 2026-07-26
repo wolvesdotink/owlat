@@ -95,6 +95,7 @@ export const sidebarConfig: SidebarGroup[] = [
 			{ label: 'Smart Inbox', to: '/guide/smart-inbox' },
 			{ label: 'Calendar Availability', to: '/guide/calendar-availability' },
 			{ label: 'Postbox Settings', to: '/guide/postbox-settings' },
+			{ label: 'Secure Email, Explained', to: '/guide/secure-email' },
 			{ label: 'Sealed Mail', to: '/guide/sealed-mail' },
 			{ label: 'Sealed Mail Recovery Kit', to: '/guide/sealed-mail-recovery-kit' },
 			{ label: 'Migrate from Google', to: '/guide/migrate-from-google' },
