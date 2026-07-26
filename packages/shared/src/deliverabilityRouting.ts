@@ -2,12 +2,67 @@ export const DESTINATION_PROVIDER_KEYS = ['gmail', 'microsoft', 'yahoo', 'apple'
 
 export type DestinationProviderKey = (typeof DESTINATION_PROVIDER_KEYS)[number];
 export type DeliverabilitySignalProvider = DestinationProviderKey | 'all';
-export type DeliverabilitySignalSource =
-	| 'ip_quarantined'
-	| 'dnsbl_listed'
-	| 'breaker_open'
-	| 'persistent_defers';
+export const DELIVERABILITY_SIGNAL_SOURCES = [
+	'ip_quarantined',
+	'dnsbl_listed',
+	'dnsbl_partial',
+	'dnsbl_unknown',
+	'breaker_open',
+	'persistent_defers',
+] as const;
+export type DeliverabilitySignalSource = (typeof DELIVERABILITY_SIGNAL_SOURCES)[number];
+
+/**
+ * Advisory sources describe what the MTA could MEASURE, not a routing verdict.
+ *
+ * `dnsbl_unknown` means a blocklist lookup could not be completed (timeout,
+ * SERVFAIL, REFUSED, resolver policy, rate limit) — that is explicitly NOT
+ * evidence of health, and it is equally not evidence of harm, so it must never
+ * be laundered into "clean" and must never by itself flip a cell to the relay.
+ * `dnsbl_partial` means at least one — but not every — configured pool address
+ * is blocklist-ejected; the pool still has healthy addresses to send from, so
+ * shipped routing keeps sending, while the reading stays visible to the ramp
+ * controller's blocklist hard stop.
+ *
+ * Advisory signals are recorded and readable; only actionable sources drive the
+ * shipped fallback + hysteresis transition.
+ */
+export const ADVISORY_DELIVERABILITY_SIGNAL_SOURCES = ['dnsbl_partial', 'dnsbl_unknown'] as const;
+export type AdvisoryDeliverabilitySignalSource =
+	(typeof ADVISORY_DELIVERABILITY_SIGNAL_SOURCES)[number];
+export type ActionableDeliverabilitySignalSource = Exclude<
+	DeliverabilitySignalSource,
+	AdvisoryDeliverabilitySignalSource
+>;
 export type DeliverabilitySignalSeverity = 'warning' | 'critical';
+
+export function isDeliverabilitySignalSource(value: unknown): value is DeliverabilitySignalSource {
+	return (
+		typeof value === 'string' &&
+		(DELIVERABILITY_SIGNAL_SOURCES as readonly string[]).includes(value)
+	);
+}
+
+export function isAdvisoryDeliverabilitySignalSource(
+	value: DeliverabilitySignalSource
+): value is AdvisoryDeliverabilitySignalSource {
+	return (ADVISORY_DELIVERABILITY_SIGNAL_SOURCES as readonly string[]).includes(value);
+}
+
+export function isActionableDeliverabilitySignalSource(
+	value: DeliverabilitySignalSource
+): value is ActionableDeliverabilitySignalSource {
+	return !isAdvisoryDeliverabilitySignalSource(value);
+}
+
+/** True when at least one pool address is blocklist-ejected, wholly or partly. */
+export function hasCriticalBlocklistSignal(signals: readonly DeliverabilitySignal[]): boolean {
+	return signals.some(
+		(signal) =>
+			signal.severity === 'critical' &&
+			(signal.source === 'dnsbl_listed' || signal.source === 'dnsbl_partial')
+	);
+}
 
 export interface DeliverabilitySignal {
 	provider: DeliverabilitySignalProvider;
@@ -49,10 +104,7 @@ function isSignal(value: unknown, generatedAt: number, now: number): value is De
 	const observedAt = value['observedAt'];
 	return (
 		(provider === 'all' || isDestinationProviderKey(provider)) &&
-		(source === 'ip_quarantined' ||
-			source === 'dnsbl_listed' ||
-			source === 'breaker_open' ||
-			source === 'persistent_defers') &&
+		isDeliverabilitySignalSource(source) &&
 		(severity === 'warning' || severity === 'critical') &&
 		typeof observedAt === 'number' &&
 		Number.isFinite(observedAt) &&

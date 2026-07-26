@@ -17,6 +17,10 @@ export const deliverabilitySignalProviderValidator = v.union(
 export const deliverabilitySignalSourceValidator = v.union(
 	v.literal('ip_quarantined'),
 	v.literal('dnsbl_listed'),
+	// Advisory measurement sources (see ADVISORY_DELIVERABILITY_SIGNAL_SOURCES):
+	// recorded and readable, never a fallback trigger on their own.
+	v.literal('dnsbl_partial'),
+	v.literal('dnsbl_unknown'),
 	v.literal('breaker_open'),
 	v.literal('persistent_defers')
 );

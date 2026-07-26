@@ -24,7 +24,10 @@ import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { getOptional } from '../env';
 import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
-import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
+import {
+	destinationProviderForDomain,
+	isActionableDeliverabilitySignalSource,
+} from '@owlat/shared/deliverabilityRouting';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
@@ -149,7 +152,13 @@ async function deliverabilityInput(
 	const freshActive = [globalState, providerState].filter(
 		(state) => state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
 	);
-	const activeReasons = freshActive.flatMap((state) => state?.signals.map((s) => s.source) ?? []);
+	// Advisory readings ("blocklist lookup unavailable", "part of the pool is
+	// ejected") are recorded on the state row for measurement, but they are not
+	// routing reasons and must never appear as the cause of a relay fallback.
+	const activeReasons = freshActive.flatMap(
+		(state) =>
+			state?.signals.map((s) => s.source).filter(isActionableDeliverabilitySignalSource) ?? []
+	);
 	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
 	const isWarmupOverflow = Boolean(
 		addressContext.forceRelayReason === 'warmup_overflow' ||
