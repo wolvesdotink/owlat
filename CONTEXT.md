@@ -305,6 +305,35 @@ _Avoid_: Activity alone (overloaded with audit logs and agent
 actions), Contact event (collides with **Inbound event** / **Webhook
 event**), Timeline entry (names the surface, not the row).
 
+**Contact engagement score (module)**:
+The 0-100, recency-weighted measure of how engaged a Contact is with our
+mail, split into a PURE core and a thin Convex shell:
+- `convex/analytics/engagementScore.ts` — the pure core. One
+  exponentially-decayed accumulator over the **Contact activity**
+  timeline (clicks outweigh opens, replies outweigh clicks, soft bounces
+  apply a decaying multiplicative penalty, a hard bounce or complaint
+  suppresses to 0, and a decaying tenure prior keeps a brand-new Contact
+  out of the coldest band). No db reads, no `Date.now()`, no env reads —
+  the clock is a parameter, so the fixture matrix is deterministic.
+  Exports `engagementBand` (cuts at 80/50/20, mirroring the MTA's
+  `PRIORITY_BANDS`) and `engagementPercentile`, the seam stratified
+  assignment consumes — the scoring logic is never duplicated.
+- `convex/analytics/engagementScoreSync.ts` — the shell. The single
+  **Contact activity** writer folds each relevant activity into the
+  cached accumulator in O(1) on the same contact read it already makes
+  for `hasOpened`/`hasClicked`, so one activity still costs at most one
+  contact write. A nightly cron re-projects stale rows so a score decays
+  on the clock too, walking a bounded prefix of the
+  `by_engagement_score_updated_at` range — recomputing a row stamps it
+  out of that range, so the range IS the cursor and there is no
+  `.collect()` over `contacts`.
+
+Cached on the Contact as three additive optional fields
+(`engagementScore`, `engagementScoreUpdatedAt`, `engagementScoreState`).
+Absent means UNMEASURED, never zero — legacy rows keep working.
+_Avoid_: Engagement level (collides with the derived band), Contact
+score (ambiguous with lead scoring).
+
 **Contact activity (module)**:
 One activity literal's full surface, physically split into two halves
 keyed by literal — same shape as Block module, Step module, Condition
