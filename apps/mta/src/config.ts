@@ -146,6 +146,12 @@ export interface MtaConfig extends GovernedDeliveryConfig {
 	};
 	/** Optional Abusix Guardian Mail DNS namespace key (warning-only checks). */
 	abusixDnsblApiKey?: string;
+	/**
+	 * Optional subscriber-specific Invaluement ivmSIP query zone, used by the
+	 * pre-flight IP audit only. Absent means the feed is skipped, which is inert:
+	 * it never blocks a send and never surfaces as a setup warning.
+	 */
+	invaluementDnsblZone?: string;
 	/** Global max SMTP connections per MX host across all instances */
 	smtpPoolGlobalMaxPerHost: number;
 	/** Rolling-upgrade gate for the distributed pool accounting protocol. */
@@ -247,6 +253,13 @@ export function loadConfig(): MtaConfig {
 		!/^[a-zA-Z0-9](?:[a-zA-Z0-9-]{30}[a-zA-Z0-9])$/.test(abusixDnsblApiKey)
 	) {
 		throw new Error('ABUSIX_DNSBL_API_KEY must be a 32-character DNS-label key');
+	}
+	const invaluementDnsblZone = process.env['INVALUEMENT_DNSBL_ZONE']?.trim().toLowerCase();
+	if (
+		invaluementDnsblZone &&
+		!/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/.test(invaluementDnsblZone)
+	) {
+		throw new Error('INVALUEMENT_DNSBL_ZONE must be a DNS hostname');
 	}
 	const poolCoordinationProtocol = optionalEnv('SMTP_POOL_COORDINATION_PROTOCOL', 'legacy-v0');
 	if (poolCoordinationProtocol !== 'legacy-v0' && poolCoordinationProtocol !== 'leases-v1') {
@@ -401,6 +414,7 @@ export function loadConfig(): MtaConfig {
 				}
 			: undefined,
 		abusixDnsblApiKey,
+		invaluementDnsblZone,
 		smtpPoolGlobalMaxPerHost: parseInt(optionalEnv('SMTP_POOL_GLOBAL_MAX_PER_HOST', '10'), 10),
 		smtpPoolCoordinationProtocol: poolCoordinationProtocol,
 		outboundTlsMode,

@@ -10,7 +10,7 @@
  * all render the same copy.
  */
 
-import type { IpAuditZoneId, SpamhausSublist } from './ipAudit';
+import type { IpAuditFinding, IpAuditZoneId, SpamhausSublist } from './ipAudit';
 
 export interface DelistingMetrics {
 	/** Hard bounces as a percentage of delivered mail in the recent window. */
@@ -116,7 +116,11 @@ function requestBody(context: DelistingContext, remediation: string[]): string {
 		...remediation.map((step) => `- ${step}`),
 	];
 	if (evidence.length > 0) {
-		lines.push('', 'Current measurements from our own logs:', ...evidence.map((item) => `- ${item}`));
+		lines.push(
+			'',
+			'Current measurements from our own logs:',
+			...evidence.map((item) => `- ${item}`)
+		);
 	}
 	if (context.contactEmail) {
 		lines.push('', `Contact: ${context.contactEmail}`);
@@ -254,7 +258,8 @@ const ZONE_TEMPLATES: Record<Exclude<IpAuditZoneId, 'spamhaus'>, ZoneTemplate> =
 		removalUrl: 'https://lookup.abusix.com/',
 		selfService: true,
 		causeKind: 'complaint',
-		fallbackCause: 'Abusix listings usually follow spam-trap hits observed in their sensor network.',
+		fallbackCause:
+			'Abusix listings usually follow spam-trap hits observed in their sensor network.',
 		remediation: [
 			'Suppressed the affected segment and re-verified list hygiene.',
 			'Confirmed authentication and reverse DNS for this address.',
@@ -290,4 +295,25 @@ export function delistingGuidanceFor(
 		likelyCause,
 		prefilledRequest: requestBody(context, [...template.remediation]),
 	};
+}
+
+/** One guidance entry per listing an audit found, deduplicated and ordered. */
+export function delistingGuidanceForFindings(
+	findings: readonly IpAuditFinding[],
+	context: DelistingContext
+): DelistingGuidance[] {
+	const guidance: DelistingGuidance[] = [];
+	const seen = new Set<string>();
+	for (const finding of findings) {
+		if (!finding.zoneId) continue;
+		if (finding.id === 'audit_incomplete') continue;
+		const entry = delistingGuidanceFor(
+			{ zoneId: finding.zoneId, ...(finding.sublist ? { sublist: finding.sublist } : {}) },
+			context
+		);
+		if (seen.has(entry.key)) continue;
+		seen.add(entry.key);
+		guidance.push(entry);
+	}
+	return guidance;
 }

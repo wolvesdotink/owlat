@@ -201,7 +201,8 @@ const SUBLIST_FINDINGS: Record<
 		id: 'spamhaus_drop',
 		severity: 'blocking',
 		message: 'Spamhaus DROP covers this whole range: the network itself is not deliverable.',
-		nextAction: 'Ask your provider for an address outside this range. Delisting is not available to you.',
+		nextAction:
+			'Ask your provider for an address outside this range. Delisting is not available to you.',
 	},
 	sbl: {
 		id: 'spamhaus_sbl',
@@ -249,7 +250,8 @@ function fcrdnsFinding(input: IpAuditInput): IpAuditFinding | undefined {
 			id: 'no_ptr',
 			severity: 'fixable',
 			message: 'This address has no usable PTR record.',
-			nextAction: 'Set reverse DNS for this address to your sending hostname in your provider’s console.',
+			nextAction:
+				'Set reverse DNS for this address to your sending hostname in your provider’s console.',
 		};
 	}
 	return {
@@ -275,7 +277,8 @@ function port25Finding(status: Port25EgressStatus): IpAuditFinding | undefined {
 		id: 'port25_unknown',
 		severity: 'advisory',
 		message: 'Outbound port 25 could not be confirmed from this address.',
-		nextAction: 'Re-run the audit once the network settles; the result is inconclusive, not a failure.',
+		nextAction:
+			'Re-run the audit once the network settles; the result is inconclusive, not a failure.',
 	};
 }
 
@@ -391,7 +394,8 @@ export function evaluateIpAudit(input: IpAuditInput): IpAuditReport {
 
 	findings.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
 	const worst = findings.reduce<IpAuditFindingSeverity>(
-		(acc, finding) => (SEVERITY_RANK[finding.severity] > SEVERITY_RANK[acc] ? finding.severity : acc),
+		(acc, finding) =>
+			SEVERITY_RANK[finding.severity] > SEVERITY_RANK[acc] ? finding.severity : acc,
 		'advisory'
 	);
 	const verdict: IpAuditVerdict =
@@ -454,5 +458,7 @@ export function decodeSpamhausAnswers(answers: readonly string[]): SpamhausSubli
 
 /** The shipped DNSBL ids the audit shares with the routing checker. */
 export function isSharedDnsblZone(zoneId: IpAuditZoneId): zoneId is IpAuditZoneId & DnsblListId {
-	return zoneId === 'spamhaus' || zoneId === 'barracuda' || zoneId === 'spamcop' || zoneId === 'abusix';
+	return (
+		zoneId === 'spamhaus' || zoneId === 'barracuda' || zoneId === 'spamcop' || zoneId === 'abusix'
+	);
 }
