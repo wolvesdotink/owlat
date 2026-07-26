@@ -211,12 +211,24 @@ export function getWithDefault(key: EnvKey, fallback: string): string {
 }
 
 /**
+ * The truthy set, applied to an already-read value.
+ *
+ * Exported so the per-transport-instance reader in
+ * `lib/sendProviders/transportEnv.ts` — which resolves its own variable name at
+ * runtime and so cannot go through `getBoolean`'s typed `EnvKey` — parses with
+ * the SAME set instead of restating it. One definition, no drift.
+ */
+export function parseBooleanEnv(value: string | undefined): boolean {
+	const normalized = value?.toLowerCase();
+	return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on';
+}
+
+/**
  * Boolean parse of an environment variable. Treats 'true', '1', 'yes', 'on'
  * (case-insensitive) as true; anything else (including unset) as false.
  */
 export function getBoolean(key: EnvKey): boolean {
-	const value = process.env[key]?.toLowerCase();
-	return value === 'true' || value === '1' || value === 'yes' || value === 'on';
+	return parseBooleanEnv(process.env[key]);
 }
 
 /**
@@ -236,6 +248,23 @@ export function isEnvPresent(key: string): boolean {
 }
 
 /**
+ * The one untyped-key read. Both escape hatches below delegate here so
+ * "unset or empty means absent" has a single definition.
+ */
+function readNonEmptyEnv(key: string): string | undefined {
+	const value = process.env[key];
+	return value === undefined || value === '' ? undefined : value;
+}
+
+/**
+ * `<BASE>__<INSTANCEKEY>` — the only key shape a named send-transport instance
+ * may read. Fencing the shape keeps this untyped escape hatch from being used
+ * (by a future caller, or by a crafted instance key) to read unrelated
+ * deployment configuration.
+ */
+const SEND_TRANSPORT_ENV_KEY_PATTERN = /^[A-Z0-9_]+__[A-Z0-9_]+$/;
+
+/**
  * Read one send-transport configuration variable by its INSTANCE-RESOLVED name.
  *
  * Accepts an arbitrary key (not the typed `EnvKey` union) because a named
@@ -243,16 +272,16 @@ export function isEnvPresent(key: string): boolean {
  * suffix (`SMTP_RELAY_HOST__BACKUP`) — a name derived at runtime from
  * `SEND_TRANSPORT_INSTANCES`, so it cannot be enumerated in the union. Reading
  * through this module keeps the no-raw-`process.env` lint satisfied. Returns
- * `undefined` when unset or empty so the transport resolver fails closed; the
- * value is only ever handed to the adapter that owns it, never logged and never
- * returned to a client.
+ * `undefined` when unset, empty, or not of the suffixed instance shape, so the
+ * transport resolver fails closed; the value is only ever handed to the adapter
+ * that owns it, never logged and never returned to a client.
  *
  * The UNSUFFIXED default instance keeps reading through the typed accessors
  * above — this is only the extra-instance path.
  */
 export function getSendTransportEnv(key: string): string | undefined {
-	const value = process.env[key];
-	return value === undefined || value === '' ? undefined : value;
+	if (!SEND_TRANSPORT_ENV_KEY_PATTERN.test(key)) return undefined;
+	return readNonEmptyEnv(key);
 }
 
 /**
@@ -265,6 +294,5 @@ export function getSendTransportEnv(key: string): string | undefined {
  * ever fed into a constant-time HMAC comparison, never logged.
  */
 export function getPluginSecret(key: string): string | undefined {
-	const value = process.env[key];
-	return value === undefined || value === '' ? undefined : value;
+	return readNonEmptyEnv(key);
 }

@@ -12,7 +12,7 @@
  * client.
  */
 
-import { getOptional, getSendTransportEnv, type EnvKey } from '../env';
+import { getOptional, getSendTransportEnv, parseBooleanEnv, type EnvKey } from '../env';
 import { sendTransportEnvName, type SendTransportRecord } from './transports';
 
 /** Read an optional config value for this transport instance. */
@@ -40,10 +40,10 @@ export function transportEnvRequired(transport: SendTransportRecord, key: EnvKey
 }
 
 /**
- * Boolean parse for this transport instance. Same truthy set as `getBoolean`:
- * 'true', '1', 'yes', 'on' (case-insensitive); anything else is false.
+ * Boolean parse for this transport instance. Delegates to the SAME
+ * `parseBooleanEnv` `getBoolean` uses, so the truthy set cannot drift between
+ * the default instance and a named one.
  */
 export function transportEnvBoolean(transport: SendTransportRecord, key: EnvKey): boolean {
-	const value = transportEnvOptional(transport, key)?.toLowerCase();
-	return value === 'true' || value === '1' || value === 'yes' || value === 'on';
+	return parseBooleanEnv(transportEnvOptional(transport, key));
 }
