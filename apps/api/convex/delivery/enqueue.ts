@@ -4,6 +4,8 @@ import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { isSuppressed } from '../lib/suppression';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
+import { selectSendProviderKind } from '../lib/sendProviders/types';
+import { recordSendAssignments } from './sendAssignments';
 
 /**
  * Error thrown by `enqueueNonCampaignSend` when the recipient is on the
@@ -154,6 +156,21 @@ export const enqueueCampaignEmails = internalMutation({
 		listId: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		// The experiment record (plan D7): one assignment row per recipient,
+		// written BEFORE any dispatch and inside THIS transaction, so the record
+		// and the sends commit or roll back together. Never throws: an
+		// unresolvable org or transport degrades to no row, never a failed send.
+		await recordSendAssignments(ctx, {
+			organizationId: args.organizationId,
+			stream: 'campaign',
+			sendKind: 'campaign',
+			transport: selectSendProviderKind(args.providerType) ?? undefined,
+			recipients: args.emails.map((recipient) => ({
+				sendId: recipient.emailSendId,
+				email: recipient.email,
+			})),
+		});
+
 		for (const recipient of args.emails) {
 			await campaignEmailPool.enqueueAction(
 				ctx,
@@ -290,6 +307,17 @@ export const enqueueNonCampaignSend = internalMutation({
 			internal.campaigns.sendQueries.getSingletonOrganizationId,
 			{}
 		);
+
+		// Experiment record (plan D7), same transaction, before dispatch. An
+		// automation step is the `automation` stream; an agent 1:1 reply is
+		// `transactional`. Both are `transactionalSends` rows.
+		await recordSendAssignments(ctx, {
+			organizationId,
+			stream: args.kind === 'automation' ? 'automation' : 'transactional',
+			sendKind: 'transactional',
+			transport: selectSendProviderKind(args.providerType) ?? undefined,
+			recipients: [{ sendId, email: args.email }],
+		});
 
 		await transactionalEmailPool.enqueueAction(
 			ctx,
