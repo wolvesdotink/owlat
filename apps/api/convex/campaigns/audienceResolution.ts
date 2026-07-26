@@ -259,6 +259,33 @@ async function resolveRecipientPageImpl(
 }
 
 /**
+ * A budget on rows EXAMINED (not candidates yielded). `COUNT_CEILING` bounds
+ * candidates, which for a topic also bounds the scan — memberships ARE the
+ * population — but for a SEGMENT does not: a narrow segment streams every live
+ * contact before it ever reaches a candidate ceiling. A caller that runs inside
+ * a MUTATION (the binding capacity pre-flight) cannot afford that: it would
+ * blow the Convex per-execution read limit and drag the whole live contacts
+ * table into the mutation's OCC read set. Such callers pass a budget and treat
+ * `exhausted` as "could not measure" rather than as a count.
+ */
+interface ExamineBudget {
+	readonly limit: number;
+	examined: number;
+	exhausted: boolean;
+}
+
+/** Charge one examined row. `false` ⇒ the budget is spent; stop streaming. */
+function spendExamine(budget: ExamineBudget | undefined): boolean {
+	if (!budget) return true;
+	if (budget.examined >= budget.limit) {
+		budget.exhausted = true;
+		return false;
+	}
+	budget.examined += 1;
+	return true;
+}
+
+/**
  * Async-stream every CANDIDATE of an Audience — one yield per raw candidate the
  * page walk would examine (the `pageCandidates` unit), carrying the eligible
  * `recipient` or `null` — WITHOUT `.paginate()`. Convex permits a single
@@ -270,7 +297,8 @@ async function resolveRecipientPageImpl(
  */
 async function* streamAudienceCandidates(
 	ctx: QueryCtx,
-	audience: StoredAudience
+	audience: StoredAudience,
+	budget?: ExamineBudget
 ): AsyncGenerator<{ recipient: CampaignRecipient | null }> {
 	const blockedEmails = await loadSuppressionSet(ctx);
 
@@ -280,6 +308,7 @@ async function* streamAudienceCandidates(
 		for await (const membership of ctx.db
 			.query('contactTopics')
 			.withIndex('by_topic', (q) => q.eq('topicId', audience.topicId))) {
+			if (!spendExamine(budget)) return;
 			const contact = await ctx.db.get(membership.contactId);
 			// Every membership is a candidate (mirrors `pageCandidates: page.length`);
 			// an orphan membership (contact hard-deleted) is still a candidate but
@@ -320,6 +349,9 @@ async function* streamAudienceCandidates(
 	for await (const contact of ctx.db
 		.query('contacts')
 		.withIndex('by_deleted_at', (q) => q.eq('deletedAt', undefined))) {
+		// Every live contact is a row READ even when it is not a candidate, so the
+		// examine budget is spent here — before the predicate — not on matches.
+		if (!spendExamine(budget)) return;
 		if (!matches(contact)) continue;
 		yield { recipient: selectRecipient(contact, gate) };
 	}
@@ -373,6 +405,14 @@ export interface AudienceCount {
 	total: number;
 	eligible: number;
 	capped: boolean;
+	/**
+	 * Present (and `true`) only when the caller supplied an `examineCeiling` and
+	 * the stream hit it before exhausting the audience. The returned counts are
+	 * then NOT a bounded under-count of a known audience — they are a partial
+	 * scan of an unknown one, and the caller must treat the audience size as
+	 * UNMEASURED rather than as a number.
+	 */
+	examineCeilingHit?: boolean;
 }
 
 /**
@@ -380,24 +420,33 @@ export interface AudienceCount {
  * `MutationCtx`, which is one) call this DIRECTLY — no `ctx.runQuery` hop, no
  * sub-transaction, no session to launder.
  *
- * `ceiling` lets a caller bound its own read cost below `COUNT_CEILING` when it
- * only needs to know "at least N": the binding capacity pre-flight stops
- * counting as soon as the audience provably exceeds everything the deployment
- * could send, so its hot-path cost is bounded by capacity, not audience size.
+ * `ceiling` lets a caller bound its own CANDIDATE count below `COUNT_CEILING`
+ * when it only needs to know "at least N": the binding capacity pre-flight
+ * stops counting as soon as the audience provably exceeds everything the
+ * deployment could send, so its cost is bounded by capacity, not audience size.
+ *
+ * `examineCeiling` bounds rows EXAMINED, which is the only bound that holds for
+ * a segment audience (see `ExamineBudget`). Hitting it sets `examineCeilingHit`
+ * and the counts must then be read as "unmeasured", not as a lower bound.
  */
 export async function countAudience(
 	ctx: QueryCtx,
 	audience: StoredAudience,
-	options: { ceiling?: number } = {}
+	options: { ceiling?: number; examineCeiling?: number } = {}
 ): Promise<AudienceCount> {
 	const requested = options.ceiling;
 	const ceiling =
 		requested !== undefined && Number.isFinite(requested) && requested > 0
 			? Math.min(COUNT_CEILING, Math.ceil(requested))
 			: COUNT_CEILING;
+	const requestedExamine = options.examineCeiling;
+	const budget: ExamineBudget | undefined =
+		requestedExamine !== undefined && Number.isFinite(requestedExamine) && requestedExamine > 0
+			? { limit: Math.ceil(requestedExamine), examined: 0, exhausted: false }
+			: undefined;
 	let total = 0;
 	let eligible = 0;
-	for await (const { recipient } of streamAudienceCandidates(ctx, audience)) {
+	for await (const { recipient } of streamAudienceCandidates(ctx, audience, budget)) {
 		total += 1;
 		if (recipient) eligible += 1;
 		if (total >= ceiling) {
@@ -406,6 +455,7 @@ export async function countAudience(
 			return { total: ceiling, eligible: Math.min(eligible, ceiling), capped: true };
 		}
 	}
+	if (budget?.exhausted) return { total, eligible, capped: false, examineCeilingHit: true };
 	return { total, eligible, capped: false };
 }
 
