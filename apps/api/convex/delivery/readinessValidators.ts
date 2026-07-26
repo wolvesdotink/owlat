@@ -22,6 +22,7 @@ export const ipReadinessFieldValidators = {
 	blockReasons: v.optional(v.array(literalUnion(IP_READINESS_BLOCK_REASONS))),
 	dnsblListings: v.optional(v.array(literalUnion(DNSBL_LIST_IDS))),
 	dnsbl: v.optional(literalUnion(DNSBL_STATUSES)),
+	dnsblCheckedAt: v.optional(v.number()),
 	fcrdns: v.optional(
 		v.object({
 			ehlo: v.string(),

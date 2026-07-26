@@ -429,6 +429,18 @@ const DISPATCH: DispatchTable = {
 			message: e.message,
 		});
 	},
+	'internal.deliverability_probe_observed': async (ctx, e) => {
+		return ctx.runAction(internal.delivery.checklistLoopback.recordInbound, {
+			token: e.token,
+			spf: e.spf,
+			dkim: e.dkim,
+			dmarc: e.dmarc,
+			...(e.dkimSelector ? { dkimSelector: e.dkimSelector } : {}),
+			tlsVersion: e.tlsVersion,
+			sendingIp: e.sendingIp,
+			ptr: e.ptr,
+		});
+	},
 	'internal.postmaster_stats': async (ctx, e) => {
 		return ctx.runMutation(internal.delivery.postmaster.ingest, {
 			domain: e.domain,

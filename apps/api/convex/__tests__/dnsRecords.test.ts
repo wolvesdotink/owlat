@@ -52,7 +52,7 @@ describe('buildTlsRptRecordValue', () => {
 
 	it('trims surrounding whitespace from the destination', () => {
 		expect(buildTlsRptRecordValue('  https://owlat.example/tlsrpt  ')).toBe(
-			'v=TLSRPTv1; rua=https://owlat.example/tlsrpt',
+			'v=TLSRPTv1; rua=https://owlat.example/tlsrpt'
 		);
 	});
 });
@@ -105,6 +105,11 @@ describe('dnsRecordValidator — TLSA (DANE, RFC 6698)', () => {
 				status: 'pending',
 				dnsRecords: {
 					tlsRpt: {
+						type: 'TXT',
+						host: '_smtp._tls',
+						value: 'v=TLSRPTv1; rua=mailto:tls@example.com',
+					},
+					tlsa: {
 						type: 'TLSA',
 						host: '_25._tcp',
 						value: '3 1 1 0123456789abcdef',
@@ -115,16 +120,17 @@ describe('dnsRecordValidator — TLSA (DANE, RFC 6698)', () => {
 				},
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 
 		const stored = await t.run(async (ctx) => ctx.db.get(domainId));
-		expect(stored!.dnsRecords.tlsRpt!.type).toBe('TLSA');
-		expect(stored!.dnsRecords.tlsRpt!.host).toBe('_25._tcp');
-		expect(stored!.dnsRecords.tlsRpt!.value).toBe('3 1 1 0123456789abcdef');
+		expect(stored!.dnsRecords.tlsRpt!.type).toBe('TXT');
+		expect(stored!.dnsRecords.tlsa!.type).toBe('TLSA');
+		expect(stored!.dnsRecords.tlsa!.host).toBe('_25._tcp');
+		expect(stored!.dnsRecords.tlsa!.value).toBe('3 1 1 0123456789abcdef');
 	});
 
-	it('accepts a minimal TLSA record where the value carries the full payload', async () => {
+	it('keeps accepting a legacy TLSA-in-tlsRpt row during migration', async () => {
 		const t = convexTest(schema, modules);
 
 		const domainId = await t.run(async (ctx) =>
@@ -140,7 +146,7 @@ describe('dnsRecordValidator — TLSA (DANE, RFC 6698)', () => {
 				},
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 
 		const stored = await t.run(async (ctx) => ctx.db.get(domainId));

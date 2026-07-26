@@ -6,6 +6,7 @@
 import type { Context } from 'hono';
 import type Redis from 'ioredis';
 import { resolve as dnsResolve } from 'dns/promises';
+import { X509Certificate } from 'node:crypto';
 import type { MtaConfig } from '../config.js';
 import { isRedisHealthy } from '../redis.js';
 import { getPoolStatus } from '../scaling/ipPool.js';
@@ -18,6 +19,83 @@ import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 import { getSourceAddressReadiness } from '../scaling/sourceAddressReadiness.js';
 
 const startTime = Date.now();
+const CERTIFICATE_EXPIRY_WARNING_MS = 14 * 24 * 60 * 60 * 1_000;
+
+export type SmtpTlsReadiness = {
+	status: 'pass' | 'warn' | 'fail';
+	hostname: string;
+	isHostnameMatched: boolean;
+	validFrom?: number;
+	validTo?: number;
+	reason?: string;
+	checkedAt: number;
+};
+
+export function classifySmtpTlsCertificate(
+	input: {
+		hostname: string;
+		isHostnameMatched: boolean;
+		validFrom: number;
+		validTo: number;
+	},
+	now: number
+): SmtpTlsReadiness {
+	if (!input.isHostnameMatched) {
+		return { ...input, status: 'fail', reason: 'hostname-mismatch', checkedAt: now };
+	}
+	if (input.validFrom > now) {
+		return { ...input, status: 'fail', reason: 'not-yet-valid', checkedAt: now };
+	}
+	if (input.validTo <= now) {
+		return { ...input, status: 'fail', reason: 'expired', checkedAt: now };
+	}
+	if (input.validTo - now < CERTIFICATE_EXPIRY_WARNING_MS) {
+		return { ...input, status: 'warn', reason: 'expires-within-14-days', checkedAt: now };
+	}
+	return { ...input, status: 'pass', checkedAt: now };
+}
+
+/** Parse the configured STARTTLS certificate without exposing its PEM or subject. */
+export function inspectSmtpTlsCertificate(
+	certificatePem: string | undefined,
+	hostname: string,
+	now = Date.now()
+): SmtpTlsReadiness {
+	if (!certificatePem) {
+		return {
+			status: 'fail',
+			hostname,
+			isHostnameMatched: false,
+			reason: 'certificate-not-configured',
+			checkedAt: now,
+		};
+	}
+	try {
+		const certificate = new X509Certificate(certificatePem);
+		const validFrom = Date.parse(certificate.validFrom);
+		const validTo = Date.parse(certificate.validTo);
+		if (!Number.isFinite(validFrom) || !Number.isFinite(validTo)) {
+			throw new Error('Certificate dates are invalid');
+		}
+		return classifySmtpTlsCertificate(
+			{
+				hostname,
+				isHostnameMatched: certificate.checkHost(hostname) !== undefined,
+				validFrom,
+				validTo,
+			},
+			now
+		);
+	} catch {
+		return {
+			status: 'fail',
+			hostname,
+			isHostnameMatched: false,
+			reason: 'certificate-invalid',
+			checkedAt: now,
+		};
+	}
+}
 
 // Worker heartbeat tracking
 const WORKER_HEARTBEAT_KEY = 'mta:worker:heartbeat';
@@ -84,6 +162,7 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 		// probe module so normal health polling does not hammer the remote MX.
 		const sendingIps = [...new Set([...config.ipPools.transactional, ...config.ipPools.campaign])];
 		const smtpProbe = await getSmtpReachability(sendingIps);
+		const smtpTls = inspectSmtpTlsCertificate(config.bounceServerTlsCert, config.ehloHostname);
 
 		// Determine overall status
 		const identityNotReady = ipStatus.some(
@@ -98,7 +177,8 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 			!workerStatus.alive ||
 			!dnsOk ||
 			smtpProbe.status !== 'ok';
-		const status = degraded ? 'degraded' : 'ok';
+		const tlsDegraded = smtpTls.status === 'fail';
+		const status = degraded || tlsDegraded ? 'degraded' : 'ok';
 
 		return c.json({
 			status,
@@ -110,6 +190,7 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 			worker: workerStatus,
 			dns: dnsOk ? 'ok' : 'unreachable',
 			smtpOutbound: smtpProbe,
+			smtpTls,
 		});
 	};
 }

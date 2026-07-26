@@ -29,6 +29,7 @@ describe('normalizeIpReputationPayload', () => {
 					active: false,
 					blockReasons: ['fcrdns'],
 					dnsbl: 'clean',
+					dnsblCheckedAt: 122,
 					fcrdns: {
 						ehlo: 'mail.example.com',
 						ptrNames: ['provider.invalid'],
@@ -51,8 +52,26 @@ describe('normalizeIpReputationPayload', () => {
 			active: false,
 			blockReasons: ['fcrdns'],
 			dnsbl: 'clean',
+			dnsblCheckedAt: 122,
 			fcrdns: { verdict: 'fail', isEhloMatched: false, reason: 'ehlo-mismatch' },
 		});
+	});
+
+	it('rejects malformed DNSBL timestamps while accepting finite IPv4 and IPv6 timestamps', () => {
+		for (const ip of ['203.0.113.10', '2001:db8::10']) {
+			expect(
+				normalizeIpReputationPayload({
+					date: '2026-07-21',
+					ips: [{ ...legacyIp, ip, dnsbl: 'clean', dnsblCheckedAt: 456 }],
+				})?.ips[0]
+			).toMatchObject({ ip, dnsblCheckedAt: 456 });
+		}
+		expect(
+			normalizeIpReputationPayload({
+				date: '2026-07-21',
+				ips: [{ ...legacyIp, dnsbl: 'clean', dnsblCheckedAt: Number.NaN }],
+			})
+		).toBeNull();
 	});
 
 	it('normalizes IPv6 prerequisite blocks and the return-path SPF verdict', () => {

@@ -1,8 +1,6 @@
 import { v, type Infer } from 'convex/values';
 
-// Unified-message channel union (unifiedMessages.channel, channelConfigs.channel,
-// and every internalMutation/query arg that names a channel). Single source of
-// truth — the literal set + order here MUST match the schema columns it backs.
+// Unified-message channel union shared by stored rows and function arguments.
 export const unifiedMessageChannelValidator = v.union(
 	v.literal('email'),
 	v.literal('sms'),
@@ -202,6 +200,7 @@ export const dnsRecordsValidator = v.object({
 	// Operator's own SMTP TLS Reporting record (`_smtp._tls`, RFC 8460 §3).
 	// Only present when the operator opts in via MTA_TLSRPT_RUA.
 	tlsRpt: v.optional(dnsRecordValidator),
+	tlsa: v.optional(dnsRecordValidator),
 });
 
 // Verification results
@@ -217,6 +216,7 @@ export const verificationResultsValidator = v.object({
 	dmarc: v.optional(verificationResultValidator),
 	mailFrom: v.optional(v.array(verificationResultValidator)),
 	tlsRpt: v.optional(verificationResultValidator),
+	tlsa: v.optional(verificationResultValidator),
 	sesStatus: v.optional(v.string()),
 });
 

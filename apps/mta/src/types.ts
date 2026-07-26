@@ -213,6 +213,13 @@ export interface MtaWebhookEvent {
 	readinessCheck?: 'fcrdns' | 'spf';
 	readinessReason?: string;
 	eligibilityGeneration?: number;
+	/** End-to-end Deliverability Center probe observation. */
+	probeToken?: string;
+	spfResult?: string;
+	dkimResult?: string;
+	dmarcResult?: string;
+	tlsVersion?: string;
+	ptr?: string;
 	/** Timestamp */
 	timestamp: number;
 }

@@ -157,6 +157,17 @@ export type InboundEvent =
 			message: string;
 	  }
 	| {
+			kind: 'internal.deliverability_probe_observed';
+			token: string;
+			spf: 'pass' | 'fail' | 'unknown';
+			dkim: 'pass' | 'fail' | 'unknown';
+			dmarc: 'pass' | 'fail' | 'unknown';
+			dkimSelector?: string;
+			tlsVersion: string;
+			sendingIp: string;
+			ptr: string;
+	  }
+	| {
 			kind: 'internal.routing_reentry';
 			providerMessageId: string;
 			token: string;
