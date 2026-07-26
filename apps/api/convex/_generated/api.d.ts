@@ -63,6 +63,7 @@ import type * as analytics_reputationQueries from "../analytics/reputationQuerie
 import type * as analytics_reputationSnapshots from "../analytics/reputationSnapshots.js";
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
 import type * as analytics_spamRate from "../analytics/spamRate.js";
+import type * as analytics_seedPlacement from "../analytics/seedPlacement.js";
 import type * as analytics_spendBudget from "../analytics/spendBudget.js";
 import type * as assistant_conversations from "../assistant/conversations.js";
 import type * as assistant_insights from "../assistant/insights.js";
@@ -263,6 +264,7 @@ import type * as delivery_sendComposition_transactional_index from "../delivery/
 import type * as delivery_sendComposition_transform from "../delivery/sendComposition/transform.js";
 import type * as delivery_sendComposition_types from "../delivery/sendComposition/types.js";
 import type * as delivery_sendLifecycle from "../delivery/sendLifecycle.js";
+import type * as delivery_seedShadowCopy from "../delivery/seedShadowCopy.js";
 import type * as delivery_sendLifecycle_deliveryObservation from "../delivery/sendLifecycle/deliveryObservation.js";
 import type * as delivery_sendLifecycle_effects from "../delivery/sendLifecycle/effects.js";
 import type * as delivery_sendLifecycle_feedbackReducers from "../delivery/sendLifecycle/feedbackReducers.js";
@@ -666,6 +668,7 @@ import type * as schema_codeWork from "../schema/codeWork.js";
 import type * as schema_contacts from "../schema/contacts.js";
 import type * as schema_dashboard from "../schema/dashboard.js";
 import type * as schema_delivery from "../schema/delivery.js";
+import type * as schema_seedPlacement from "../schema/seedPlacement.js";
 import type * as schema_deliveryChecklistValidators from "../schema/deliveryChecklistValidators.js";
 import type * as schema_domains from "../schema/domains.js";
 import type * as schema_draftStream from "../schema/draftStream.js";
@@ -836,6 +839,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/reputationSnapshots": typeof analytics_reputationSnapshots;
   "analytics/sendingReputation": typeof analytics_sendingReputation;
   "analytics/spamRate": typeof analytics_spamRate;
+  "analytics/seedPlacement": typeof analytics_seedPlacement;
   "analytics/spendBudget": typeof analytics_spendBudget;
   "assistant/conversations": typeof assistant_conversations;
   "assistant/insights": typeof assistant_insights;
@@ -1036,6 +1040,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/sendComposition/transform": typeof delivery_sendComposition_transform;
   "delivery/sendComposition/types": typeof delivery_sendComposition_types;
   "delivery/sendLifecycle": typeof delivery_sendLifecycle;
+  "delivery/seedShadowCopy": typeof delivery_seedShadowCopy;
   "delivery/sendLifecycle/deliveryObservation": typeof delivery_sendLifecycle_deliveryObservation;
   "delivery/sendLifecycle/effects": typeof delivery_sendLifecycle_effects;
   "delivery/sendLifecycle/feedbackReducers": typeof delivery_sendLifecycle_feedbackReducers;
@@ -1439,6 +1444,7 @@ declare const fullApi: ApiFromModules<{
   "schema/contacts": typeof schema_contacts;
   "schema/dashboard": typeof schema_dashboard;
   "schema/delivery": typeof schema_delivery;
+  "schema/seedPlacement": typeof schema_seedPlacement;
   "schema/deliveryChecklistValidators": typeof schema_deliveryChecklistValidators;
   "schema/domains": typeof schema_domains;
   "schema/draftStream": typeof schema_draftStream;
