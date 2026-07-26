@@ -9,6 +9,12 @@ import {
 import { components, internal } from '../_generated/api';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { getOptional } from '../lib/env';
+import { EmailErrorCode } from '../lib/sendProviders';
+import {
+	systemMailRetryDisposition,
+	type SystemMailAttemptOutcome,
+	type SystemMailRetryDisposition,
+} from '../lib/systemMailOutcome';
 
 export const REGRESSION_EMAIL_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000] as const;
 
@@ -100,14 +106,21 @@ export type RegressionEmailDependencies = {
 		ctx: ActionCtx,
 		organizationId: string
 	) => Promise<DeliverabilityAlertAdminRecipient[]>;
-	sendEmail: (ctx: ActionCtx, payload: RegressionEmailPayload) => Promise<unknown>;
+	sendEmail: (ctx: ActionCtx, payload: RegressionEmailPayload) => Promise<SystemMailAttemptOutcome>;
+	boundaryFailureRetryDisposition: (payload: RegressionEmailPayload) => SystemMailRetryDisposition;
 	now: () => number;
 	randomId: () => string;
 };
 
 const regressionEmailDependencies: RegressionEmailDependencies = {
 	loadRecipients: adminRecipients,
-	sendEmail: (ctx, payload) => ctx.runAction(internal.systemMail.sendSystemEmail, payload),
+	sendEmail: (ctx, payload) => ctx.runAction(internal.systemMail.trySendSystemEmail, payload),
+	boundaryFailureRetryDisposition: (payload) =>
+		systemMailRetryDisposition(
+			getOptional('EMAIL_PROVIDER'),
+			payload.idempotencyKey,
+			EmailErrorCode.AMBIGUOUS_TIMEOUT
+		),
 	now: Date.now,
 	randomId: crypto.randomUUID,
 };
@@ -125,11 +138,33 @@ function recipientIdempotencyKey(
 		.digest('hex')}`;
 }
 
-function retryAtForFailure(attemptCount: number, now: number, error: unknown): number | undefined {
-	const code = error instanceof Error ? /\(([A-Z_]+)\):/.exec(error.message)?.[1] : undefined;
-	if (code !== 'RATE_LIMIT' && code !== 'SERVER_ERROR') return undefined;
+function retryAtForFailure(
+	attemptCount: number,
+	now: number,
+	retryDisposition: SystemMailRetryDisposition
+): number | undefined {
+	if (retryDisposition !== 'safe_to_retry') return undefined;
 	const delay = regressionEmailRetryDelay(attemptCount - 1);
 	return delay === null ? undefined : now + delay;
+}
+
+async function attemptRegressionEmail(
+	ctx: ActionCtx,
+	payload: RegressionEmailPayload,
+	dependencies: RegressionEmailDependencies
+): Promise<SystemMailAttemptOutcome> {
+	try {
+		return await dependencies.sendEmail(ctx, payload);
+	} catch (error) {
+		return {
+			status: 'failed',
+			provider: null,
+			errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
+			errorMessage:
+				error instanceof Error ? error.message : 'System mail action failed without a receipt',
+			retryDisposition: dependencies.boundaryFailureRetryDisposition(payload),
+		};
+	}
 }
 
 export async function deliverRegressionEmailHandler(
@@ -186,9 +221,9 @@ export async function deliverRegressionEmailHandler(
 	const fromEmail =
 		getOptional('DEFAULT_FROM_EMAIL') ??
 		`noreply@${getOptional('DEFAULT_FROM_DOMAIN') ?? 'mail.owlat.app'}`;
-	const deliveries = await Promise.allSettled(
-		prepared.claims.map((claim) =>
-			dependencies.sendEmail(ctx, {
+	const deliveries = await Promise.all(
+		prepared.claims.map((claim) => {
+			const payload = {
 				to: claim.email,
 				from: `Owlat <${fromEmail}>`,
 				subject: 'Owlat deliverability regression detected',
@@ -199,16 +234,17 @@ export async function deliverRegressionEmailHandler(
 					claim.userId,
 					claim.email
 				),
-			})
-		)
+			};
+			return attemptRegressionEmail(ctx, payload, dependencies);
+		})
 	);
 	const completedAt = dependencies.now();
 	const results = prepared.claims.map((claim, index) => {
 		const delivery = deliveries[index]!;
-		const isSuccess = delivery.status === 'fulfilled';
+		const isSuccess = delivery.status === 'accepted';
 		const retryAt = isSuccess
 			? undefined
-			: retryAtForFailure(claim.attemptCount, completedAt, delivery.reason);
+			: retryAtForFailure(claim.attemptCount, completedAt, delivery.retryDisposition);
 		return {
 			userId: claim.userId,
 			isSuccess,

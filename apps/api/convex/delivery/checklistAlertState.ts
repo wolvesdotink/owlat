@@ -8,7 +8,9 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
 import {
-	DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT,
+	DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT,
+	boundedDeliverabilityAlertRecipientRows,
+	cancelledDeliverabilityAlertRecipientPatch,
 	deliverabilityAlertNotificationPatch,
 	toDeliverabilityAlertRecipientState,
 } from './checklistAlertRecipients';
@@ -16,6 +18,10 @@ import {
 export const ALERT_SEND_BOUNDARY_GRACE_MS = 5 * 60_000;
 
 type RecipientDoc = Doc<'deliverabilityAlertRecipients'>;
+type RecipientEntry = {
+	document?: RecipientDoc;
+	state: DeliverabilityAlertRecipientState;
+};
 
 function recipientFields(state: DeliverabilityAlertRecipientState) {
 	return {
@@ -37,32 +43,59 @@ async function loadRecipientDocs(
 	const rows = await ctx.db
 		.query('deliverabilityAlertRecipients')
 		.withIndex('by_alert', (q) => q.eq('alertId', alertId))
-		.take(DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT + 1);
-	if (rows.length > DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT) {
-		throw new Error('Deliverability alert recipient history exceeds its bounded limit');
-	}
-	return rows;
+		.take(DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT + 1);
+	return boundedDeliverabilityAlertRecipientRows(rows);
 }
 
 async function persistRecipientStates(
 	ctx: MutationCtx,
 	alert: Doc<'deliverabilityRegressionAlerts'>,
-	existing: readonly RecipientDoc[],
-	states: readonly DeliverabilityAlertRecipientState[]
+	entries: readonly RecipientEntry[]
 ): Promise<void> {
-	for (let index = 0; index < states.length; index += 1) {
-		const state = states[index]!;
-		const row = existing[index];
-		if (row) {
-			await ctx.db.patch(row._id, recipientFields(state));
+	for (const entry of entries) {
+		if (entry.document) {
+			await ctx.db.patch(entry.document._id, recipientFields(entry.state));
 		} else {
 			await ctx.db.insert('deliverabilityAlertRecipients', {
 				organizationId: alert.organizationId,
 				alertId: alert._id,
-				...recipientFields(state),
+				...recipientFields(entry.state),
 			});
 		}
 	}
+}
+
+async function reserveCurrentRecipientCapacity(
+	ctx: MutationCtx,
+	existing: readonly RecipientDoc[],
+	currentRecipients: readonly DeliverabilityAlertAdminRecipient[]
+): Promise<RecipientDoc[]> {
+	const currentUserIds = new Set(currentRecipients.map((recipient) => recipient.userId));
+	const existingUserIds = new Set(existing.map((recipient) => recipient.userId));
+	const newCurrentCount = currentRecipients.filter(
+		(recipient) => !existingUserIds.has(recipient.userId)
+	).length;
+	const overflow = existing.length + newCurrentCount - DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT;
+	if (overflow <= 0) return [...existing];
+
+	const evictable = existing.filter(
+		(recipient) =>
+			!currentUserIds.has(recipient.userId) &&
+			recipient.status !== 'sending' &&
+			recipient.status !== 'sent' &&
+			!(
+				recipient.status === 'unavailable' &&
+				recipient.unavailableReason === 'transport_outcome_unknown'
+			)
+	);
+	if (evictable.length < overflow) {
+		throw new Error(
+			'Deliverability alert has too many protected recipient outcomes to add current admins'
+		);
+	}
+	const evictedIds = new Set(evictable.slice(0, overflow).map((recipient) => recipient._id));
+	for (const recipientId of evictedIds) await ctx.db.delete(recipientId);
+	return existing.filter((recipient) => !evictedIds.has(recipient._id));
 }
 
 async function notificationAlert(ctx: MutationCtx, organizationId: string, identity: string) {
@@ -81,45 +114,71 @@ async function pendingAlert(ctx: MutationCtx, organizationId: string, identity: 
 }
 
 function reconcileRecipientStates(
-	existing: readonly DeliverabilityAlertRecipientState[],
+	existing: readonly RecipientEntry[],
 	currentRecipients: readonly DeliverabilityAlertAdminRecipient[]
-): DeliverabilityAlertRecipientState[] {
+): RecipientEntry[] {
 	const currentByUserId = new Map(
 		currentRecipients.map((recipient) => [recipient.userId, recipient])
 	);
-	const knownUserIds = new Set(existing.map((state) => state.userId));
-	const states = existing.map((state) => {
+	const knownUserIds = new Set(existing.map((entry) => entry.state.userId));
+	const entries = existing.map((entry): RecipientEntry => {
+		const state = entry.state;
 		const current = currentByUserId.get(state.userId);
-		if (state.status === 'sent' || state.status === 'unavailable') return state;
-		if (state.status === 'sending') return state;
+		if (state.status === 'sent') return entry;
+		if (state.status === 'unavailable' && state.unavailableReason !== 'missing_email') {
+			return entry;
+		}
+		if (state.status === 'sending') return entry;
 		if (!current) {
-			return { ...state, status: 'cancelled' as const, nextAttemptAt: undefined };
+			return {
+				...entry,
+				state: {
+					...state,
+					...cancelledDeliverabilityAlertRecipientPatch(),
+				},
+			};
 		}
 		if (!current.email) {
 			return {
-				...state,
-				status: 'unavailable' as const,
-				unavailableReason: 'missing_email' as const,
-				nextAttemptAt: undefined,
+				...entry,
+				state: {
+					...state,
+					status: 'unavailable',
+					unavailableReason: 'missing_email',
+					nextAttemptAt: undefined,
+				},
 			};
 		}
-		return { ...state, status: 'pending' as const, unavailableReason: undefined };
+		if (state.status === 'pending') return entry;
+		return {
+			...entry,
+			state: {
+				...state,
+				status: 'pending',
+				attemptToken: undefined,
+				attemptStartedAt: undefined,
+				nextAttemptAt: undefined,
+				unavailableReason: undefined,
+			},
+		};
 	});
 	for (const recipient of currentByUserId.values()) {
 		if (knownUserIds.has(recipient.userId)) continue;
-		if (states.length >= DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT) break;
-		states.push(
-			recipient.email
+		if (entries.length >= DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT) {
+			throw new Error('Deliverability alert could not represent every current admin');
+		}
+		entries.push({
+			state: recipient.email
 				? { userId: recipient.userId, status: 'pending', attemptCount: 0 }
 				: {
 						userId: recipient.userId,
 						status: 'unavailable',
 						attemptCount: 0,
 						unavailableReason: 'missing_email',
-					}
-		);
+					},
+		});
 	}
-	return states;
+	return entries;
 }
 
 export const getPending = internalQuery({
@@ -149,11 +208,19 @@ export const prepareRecipientAttempts = internalMutation({
 		const alert = await pendingAlert(ctx, args.organizationId, args.identity);
 		if (!alert) return null;
 		const recipients = args.recipients.slice(0, DELIVERABILITY_ALERT_RECIPIENT_LIMIT);
-		const existing = await loadRecipientDocs(ctx, alert._id);
-		const states = reconcileRecipientStates(
-			existing.map(toDeliverabilityAlertRecipientState),
+		const existing = await reserveCurrentRecipientCapacity(
+			ctx,
+			await loadRecipientDocs(ctx, alert._id),
 			recipients
 		);
+		const entries = reconcileRecipientStates(
+			existing.map((document) => ({
+				document,
+				state: toDeliverabilityAlertRecipientState(document),
+			})),
+			recipients
+		);
+		const states = entries.map((entry) => entry.state);
 		const currentByUserId = new Map(recipients.map((recipient) => [recipient.userId, recipient]));
 		const claims: Array<{ userId: string; email: string; attemptCount: number }> = [];
 		for (const state of states) {
@@ -176,7 +243,7 @@ export const prepareRecipientAttempts = internalMutation({
 				attemptCount: state.attemptCount,
 			});
 		}
-		await persistRecipientStates(ctx, alert, existing, states);
+		await persistRecipientStates(ctx, alert, entries);
 		await ctx.db.patch(alert._id, {
 			...deliverabilityAlertNotificationPatch(states),
 			emailDirectoryAttemptCount: 0,
@@ -218,7 +285,11 @@ export const completeRecipientAttempts = internalMutation({
 		const alert = await notificationAlert(ctx, args.organizationId, args.identity);
 		if (!alert) return { state: 'not_pending' as const, retryScheduled: false };
 		const docs = await loadRecipientDocs(ctx, alert._id);
-		const states = docs.map(toDeliverabilityAlertRecipientState);
+		const entries = docs.map((document) => ({
+			document,
+			state: toDeliverabilityAlertRecipientState(document),
+		}));
+		const states = entries.map((entry) => entry.state);
 		const resultByUserId = new Map(args.results.map((result) => [result.userId, result]));
 		for (const state of states) {
 			const result = resultByUserId.get(state.userId);
@@ -252,7 +323,7 @@ export const completeRecipientAttempts = internalMutation({
 					: earliest,
 			undefined
 		);
-		await persistRecipientStates(ctx, alert, docs, states);
+		await persistRecipientStates(ctx, alert, entries);
 		await ctx.db.patch(alert._id, notificationPatch);
 		if (state === 'pending' && earliestRetryAt !== undefined) {
 			await ctx.scheduler.runAt(
@@ -275,7 +346,11 @@ export const expireRecipientAttempts = internalMutation({
 		const alert = await notificationAlert(ctx, args.organizationId, args.identity);
 		if (!alert) return { state: 'not_pending' as const, expired: 0 };
 		const docs = await loadRecipientDocs(ctx, alert._id);
-		const states = docs.map(toDeliverabilityAlertRecipientState);
+		const entries = docs.map((document) => ({
+			document,
+			state: toDeliverabilityAlertRecipientState(document),
+		}));
+		const states = entries.map((entry) => entry.state);
 		let expired = 0;
 		for (const state of states) {
 			if (state.status !== 'sending' || state.attemptToken !== args.attemptToken) continue;
@@ -286,7 +361,7 @@ export const expireRecipientAttempts = internalMutation({
 			state.attemptStartedAt = undefined;
 			state.nextAttemptAt = undefined;
 		}
-		await persistRecipientStates(ctx, alert, docs, states);
+		await persistRecipientStates(ctx, alert, entries);
 		const notificationPatch = deliverabilityAlertNotificationPatch(states);
 		await ctx.db.patch(alert._id, notificationPatch);
 		return { state: notificationPatch.emailNotificationState, expired };
@@ -314,17 +389,23 @@ export const deferRecipientDirectory = internalMutation({
 			return { state: 'pending' as const, retryScheduled: true };
 		}
 		const docs = await loadRecipientDocs(ctx, alert._id);
-		const states = docs.map(toDeliverabilityAlertRecipientState).map((state) =>
-			state.status === 'pending'
-				? {
-						...state,
-						status: 'unavailable' as const,
-						nextAttemptAt: undefined,
-						unavailableReason: 'recipient_directory_unavailable' as const,
-					}
-				: state
-		);
-		await persistRecipientStates(ctx, alert, docs, states);
+		const entries = docs.map((document): RecipientEntry => {
+			const state = toDeliverabilityAlertRecipientState(document);
+			return {
+				document,
+				state:
+					state.status === 'pending'
+						? {
+								...state,
+								status: 'unavailable',
+								nextAttemptAt: undefined,
+								unavailableReason: 'recipient_directory_unavailable',
+							}
+						: state,
+			};
+		});
+		const states = entries.map((entry) => entry.state);
+		await persistRecipientStates(ctx, alert, entries);
 		const notificationPatch = deliverabilityAlertNotificationPatch(states);
 		await ctx.db.patch(alert._id, notificationPatch);
 		return {

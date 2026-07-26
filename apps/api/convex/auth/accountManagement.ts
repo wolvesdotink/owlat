@@ -1,189 +1,77 @@
 import { v } from 'convex/values';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { authedQuery, authedMutation, publicMutation } from '../lib/authedFunctions';
+import {
+	ACCOUNT_EXPORT_ORGANIZATION_RESOURCES,
+	ACCOUNT_EXPORT_PERSONAL_RESOURCES,
+	isAccountExportOrganizationResource,
+	serializeAccountExportPage,
+	type AccountExportManifest,
+	type SerializedAccountExportPage,
+} from '@owlat/shared';
+import type { PaginationResult } from 'convex/server';
+import type { ActionCtx, MutationCtx } from '../_generated/server';
+import { authedAction, authedQuery, authedMutation, publicMutation } from '../lib/authedFunctions';
 import { components, internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { BULK_QUERY_LIMIT } from '../lib/constants';
 import { randomToken } from '../lib/randomToken';
 import { getOptional } from '../lib/env';
-import {
-	requireOrgPermission,
-	requireSelf,
-	loadOwnUserProfile,
-	hasPermission,
-} from '../lib/sessionOrganization';
-import type { OrganizationRole } from '../lib/sessionOrganization';
+import { requireOrgPermission, requireSelf, loadOwnUserProfile } from '../lib/sessionOrganization';
 import { throwNotFound, throwInvalidState } from '../_utils/errors';
-import { toDeliverabilityAlertRecipientState } from '../delivery/checklistAlertRecipients';
+import {
+	openMailDraftForAccountExport,
+	readMailMessageBodiesForAccountExport,
+} from '../lib/messageBodyExport';
+import { sealedBlobUrl, storeSealedBlob } from '../lib/sealedBlob';
 
-// Type for organization data export
-interface OrganizationExport {
-	organization: { _id: string; name: string; slug?: string | null };
-	role: string;
-	data: {
-		contacts: Doc<'contacts'>[];
-		contactProperties: Doc<'contactProperties'>[];
-		topics: Doc<'topics'>[];
-		emailTemplates: Doc<'emailTemplates'>[];
-		campaigns: Doc<'campaigns'>[];
-		automations: Doc<'automations'>[];
-		transactionalEmails: Doc<'transactionalEmails'>[];
-		segments: Doc<'segments'>[];
-		apiKeys: { name: string; keyPrefix: string; createdAt: number; lastUsedAt?: number }[];
-		webhooks: Omit<Doc<'webhooks'>, 'secret'>[];
-		domains: Doc<'domains'>[];
-		formEndpoints: Doc<'formEndpoints'>[];
-		blockedEmails: Doc<'blockedEmails'>[];
-	};
-}
+const ACCOUNT_EXPORT_PAGE_SIZE = 100;
+const ACCOUNT_EXPORT_BODY_PAGE_SIZE = 1;
+const ACCOUNT_EXPORT_CONTENT_TTL_MS = 60 * 60 * 1_000;
+const accountExportResourceValidator = v.union(
+	v.literal('organizationMemberships'),
+	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map((resource) => v.literal(resource)),
+	...ACCOUNT_EXPORT_PERSONAL_RESOURCES.map((resource) => v.literal(resource))
+);
 
-// The requesting user's OWN personal data — the exact records the right-to-
-// erasure walk (auth/memberErasure.ts) deletes, so right-to-access mirrors
-// right-to-erasure. Credential/secret material is redacted: the encrypted
-// external-account envelope (secretCiphertext/iv/authTag) and storage-blob
-// handles (rawStorageId etc.) are stripped, just like webhook secrets above.
-interface PersonalDataExport {
-	mailboxes: Doc<'mailboxes'>[];
-	mailMessages: Omit<
-		Doc<'mailMessages'>,
-		'rawStorageId' | 'textBodyStorageId' | 'htmlBodyStorageId'
-	>[];
-	mailDrafts: Doc<'mailDrafts'>[];
-	externalMailAccounts: Omit<
-		Doc<'externalMailAccounts'>,
-		'secretCiphertext' | 'secretIv' | 'secretAuthTag'
-	>[];
-	chatMessages: Doc<'chatMessages'>[];
-	deliverabilityAlertRecipientStates: Array<{
-		alertId: Doc<'deliverabilityAlertRecipients'>['alertId'];
-		organizationId: string;
-		state: Omit<
-			Doc<'deliverabilityAlertRecipients'>,
-			'_id' | '_creationTime' | 'alertId' | 'organizationId'
-		>;
-	}>;
+async function stageAccountExportContent(
+	ctx: ActionCtx,
+	content: Record<string, unknown>
+): Promise<string> {
+	const bytes = new TextEncoder().encode(JSON.stringify(content));
+	const storageId = await storeSealedBlob(ctx.storage, bytes, 'application/json');
+	try {
+		await ctx.scheduler.runAt(
+			Date.now() + ACCOUNT_EXPORT_CONTENT_TTL_MS,
+			internal.auth.accountExport.deleteStagedContent,
+			{ storageId }
+		);
+	} catch (error) {
+		await ctx.storage.delete(storageId);
+		throw error;
+	}
+	const url = await sealedBlobUrl(ctx.storage, storageId, 'application/json');
+	if (!url) {
+		await ctx.storage.delete(storageId);
+		throw new Error('Could not stage account export content');
+	}
+	return url;
 }
 
 /**
  * Get all data for a user (for GDPR data export)
  * Returns all teams the user belongs to and all data within those teams
  */
-export const exportUserData = authedQuery({
+// authz: self — every internal export page rechecks args.userId against the session.
+export const exportUserData = authedAction({
 	args: {
 		userId: v.string(),
 	},
-	handler: async (ctx, args) => {
-		await requireSelf(ctx, args.userId);
-
-		// Get user profile by authUserId
-		const userProfile = await loadOwnUserProfile(ctx, args.userId);
-		if (!userProfile) {
-			throwNotFound('User profile');
-		}
-
-		// Get all organization memberships from BetterAuth's member table
-		// Need to use authUserId to query BetterAuth
-		const membershipResult = await ctx.runQuery(components.betterAuth.adapter.findMany, {
-			model: 'member',
-			where: [{ field: 'userId', value: userProfile.authUserId }],
-			paginationOpts: { cursor: null, numItems: BULK_QUERY_LIMIT },
-		});
-		const organizationMemberships = (membershipResult?.page ?? []) as Array<{
-			_id: string;
-			organizationId: string;
-			userId: string;
-			role: string;
-		}>;
-
-		// Get all organizations the user belongs to
-		const organizations: OrganizationExport[] = [];
-
-		for (const membership of organizationMemberships) {
-			const organizationId = membership.organizationId;
-			// Query organization from BetterAuth's organization table
-			const organization = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-				model: 'organization',
-				where: [{ field: '_id', value: organizationId }],
-			})) as { _id: string; name: string; slug?: string | null } | null;
-			if (!organization) continue;
-
-			// Fetch all data.
-			// Each scan is intentionally unbounded: this is a user-initiated GDPR-style
-			// export that must include every record. Large deployments hit Convex
-			// runtime limits and fail loudly — migrating to a streamed/paginated
-			// action is tracked but out of scope for the lint-baseline pass.
-			// Exclude soft-deleted (GDPR-erased) contacts from the export — ride
-			// the soft-delete browse index so erased rows never re-surface.
-			const contacts = await ctx.db
-				.query('contacts')
-				.withIndex('by_deleted_at_and_created_at', (q) => q.eq('deletedAt', undefined))
-				.collect(); // bounded: account-export
-			const contactProperties = await ctx.db.query('contactProperties').collect(); // bounded: account-export
-			const topics = await ctx.db.query('topics').collect(); // bounded: account-export
-			const emailTemplates = await ctx.db.query('emailTemplates').collect(); // bounded: account-export
-			const campaigns = await ctx.db.query('campaigns').collect(); // bounded: account-export
-			const automations = await ctx.db.query('automations').collect(); // bounded: account-export
-			const transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: account-export
-			const segments = await ctx.db.query('segments').collect(); // bounded: account-export
-
-			// API-key and webhook metadata are admin-only org configuration (the
-			// dedicated queries are adminQuery-gated). A GDPR self-export is about
-			// the requesting *user's* personal data — only surface this org-admin
-			// metadata when the caller is themselves an admin/owner of this org,
-			// so a plain member's self-export can't enumerate key prefixes or
-			// webhook endpoints. Secrets/hashes are never included regardless.
-			const isOrgAdmin = hasPermission(membership.role as OrganizationRole, 'organization:manage');
-
-			// For API keys, only return non-sensitive info (no hash)
-			const rawApiKeys = isOrgAdmin
-				? await ctx.db.query('apiKeys').collect() // bounded: account-export
-				: [];
-			const apiKeys = rawApiKeys.map((key) => ({
-				name: key.name,
-				keyPrefix: key.keyPrefix,
-				createdAt: key.createdAt,
-				lastUsedAt: key.lastUsedAt,
-			}));
-
-			const rawWebhooks = isOrgAdmin
-				? await ctx.db.query('webhooks').collect() // bounded: account-export
-				: [];
-			// Redact webhook signing secrets from export data
-			const webhooks = rawWebhooks.map(({ secret: _secret, ...webhook }) => webhook);
-
-			const domains = await ctx.db.query('domains').collect(); // bounded: account-export
-			const formEndpoints = await ctx.db.query('formEndpoints').collect(); // bounded: account-export
-			const blockedEmails = await ctx.db.query('blockedEmails').collect(); // bounded: account-export
-
-			organizations.push({
-				organization,
-				role: membership.role,
-				data: {
-					contacts,
-					contactProperties,
-					topics,
-					emailTemplates,
-					campaigns,
-					automations,
-					transactionalEmails,
-					segments,
-					apiKeys,
-					webhooks,
-					domains,
-					formEndpoints,
-					blockedEmails,
-				},
-			});
-		}
-
-		// ── The requesting user's OWN personal data ──
-		// The org sections above are tenant data identical for every member; for
-		// a plain editor it isn't even "their" data. Right-to-access must also
-		// hand the user the personal data the erasure walk would delete: their
-		// mailbox(es), mail, drafts, external account connections, and chat
-		// authorship. Each read is keyed by `authUserId` (the same indexes
-		// auth/memberErasure.ts walks). Secrets/blob handles are redacted.
-		const personalData = await collectPersonalData(ctx, userProfile.authUserId);
+	handler: async (ctx, args): Promise<AccountExportManifest> => {
+		const userProfile: Doc<'userProfiles'> = await ctx.runQuery(
+			internal.auth.accountExport.getProfile,
+			{
+				userId: args.userId,
+			}
+		);
 
 		return {
 			userProfile: {
@@ -193,97 +81,165 @@ export const exportUserData = authedQuery({
 				createdAt: userProfile.createdAt,
 				updatedAt: userProfile.updatedAt,
 			},
-			organizations,
-			personalData,
 			exportedAt: Date.now(),
 		};
 	},
 });
 
-/**
- * Collect the requesting user's own personal data for the GDPR access export —
- * the mirror of the right-to-erasure walk in auth/memberErasure.ts. Reads are
- * keyed by BetterAuth `authUserId` and intentionally unbounded per the same
- * "user-initiated export must include every record; large deployments fail
- * loudly" rationale as the org sections (these are per-user, far smaller).
- * Credential ciphertext and raw storage-blob handles are stripped.
- */
-async function collectPersonalData(ctx: QueryCtx, authUserId: string): Promise<PersonalDataExport> {
-	// A `scope='shared'` team inbox is org infrastructure the user merely
-	// custodies (`userId`), not their personal data — exclude it (and all its team
-	// mail) from the personal-data export, mirroring the erasure walk that now
-	// preserves it. Only genuinely personal mailboxes belong in this export.
-	const mailboxes = (
-		await ctx.db
-			.query('mailboxes')
-			.withIndex('by_user', (q) => q.eq('userId', authUserId))
-			.collect()
-	) // bounded: account-export, one user's own mailboxes (+ any team inboxes they created)
-		.filter((m) => m.scope !== 'shared');
-
-	const mailMessages: PersonalDataExport['mailMessages'] = [];
-	const mailDrafts: Doc<'mailDrafts'>[] = [];
-	for (const mailbox of mailboxes) {
-		const messages = await ctx.db
-			.query('mailMessages')
-			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', mailbox._id))
-			.collect(); // bounded: account-export, one mailbox's messages
-		for (const msg of messages) {
-			// Strip storage-blob handles (internal references, not personal data).
-			const {
-				rawStorageId: _raw,
-				textBodyStorageId: _text,
-				htmlBodyStorageId: _html,
-				...rest
-			} = msg;
-			mailMessages.push(rest);
+// authz: self — every page rechecks args.userId before reading export data.
+export const exportUserDataPage = authedAction({
+	args: {
+		userId: v.string(),
+		resource: accountExportResourceValidator,
+		cursor: v.optional(v.string()),
+		organizationId: v.optional(v.string()),
+		mailboxId: v.optional(v.id('mailboxes')),
+	},
+	handler: async (ctx, args): Promise<SerializedAccountExportPage> => {
+		const profile: Doc<'userProfiles'> = await ctx.runQuery(
+			internal.auth.accountExport.getProfile,
+			{ userId: args.userId }
+		);
+		const bodyResource = args.resource === 'mailMessages' || args.resource === 'mailDrafts';
+		const paginationOpts = {
+			cursor: args.cursor ?? null,
+			numItems: bodyResource ? ACCOUNT_EXPORT_BODY_PAGE_SIZE : ACCOUNT_EXPORT_PAGE_SIZE,
+		};
+		if (args.resource === 'organizationMemberships') {
+			const result: {
+				page?: unknown[];
+				isDone?: boolean;
+				continueCursor?: string;
+			} | null = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+				model: 'member',
+				where: [{ field: 'userId', value: profile.authUserId }],
+				paginationOpts,
+			});
+			const memberships = (result?.page ?? []) as Array<{
+				organizationId: string;
+				role: string;
+			}>;
+			const page = (
+				await Promise.all(
+					memberships.map(async (membership) => {
+						const organization = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+							model: 'organization',
+							where: [{ field: '_id', value: membership.organizationId }],
+						})) as { _id: string; name: string; slug?: string | null } | null;
+						return organization
+							? {
+									organizationId: membership.organizationId,
+									role: membership.role,
+									organization: {
+										_id: organization._id,
+										name: organization.name,
+										slug: organization.slug,
+									},
+								}
+							: null;
+					})
+				)
+			).filter((row) => row !== null);
+			return serializeAccountExportPage({
+				page,
+				isDone: result?.isDone ?? true,
+				continueCursor: result?.continueCursor ?? '',
+			});
 		}
-
-		const drafts = await ctx.db
-			.query('mailDrafts')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailbox._id))
-			.collect(); // bounded: account-export, one mailbox's drafts
-		mailDrafts.push(...drafts);
-	}
-
-	const rawExternalAccounts = (
-		await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', authUserId))
-			.collect()
-	) // bounded: account-export, a user connects a handful of accounts
-		.filter((a) => a.scope !== 'shared'); // shared = the org's team-inbox credentials, not personal data
-	// Redact the encrypted credential envelope (same posture as webhook secrets).
-	const externalMailAccounts = rawExternalAccounts.map(
-		({ secretCiphertext: _ct, secretIv: _iv, secretAuthTag: _tag, ...account }) => account
-	);
-
-	const chatMessages = await ctx.db
-		.query('chatMessages')
-		.withIndex('by_author', (q) => q.eq('authorId', authUserId))
-		.collect(); // bounded: account-export, messages this user authored
-
-	const deliverabilityAlertRecipientStates = (
-		await ctx.db
-			.query('deliverabilityAlertRecipients')
-			.withIndex('by_user', (q) => q.eq('userId', authUserId))
-			.collect()
-	) // bounded: account-export
-		.map((recipient) => ({
-			alertId: recipient.alertId,
-			organizationId: recipient.organizationId,
-			state: toDeliverabilityAlertRecipientState(recipient),
-		}));
-
-	return {
-		mailboxes,
-		mailMessages,
-		mailDrafts,
-		externalMailAccounts,
-		chatMessages,
-		deliverabilityAlertRecipientStates,
-	};
-}
+		if (isAccountExportOrganizationResource(args.resource)) {
+			if (!args.organizationId) throw new Error('Organization export page requires organizationId');
+			return (await ctx.runQuery(internal.auth.accountExport.listOrganizationData, {
+				userId: args.userId,
+				organizationId: args.organizationId,
+				table: args.resource,
+				paginationOpts,
+			})) as SerializedAccountExportPage;
+		}
+		if (args.resource === 'mailboxes') {
+			const result = (await ctx.runQuery(internal.auth.accountExport.listPersonalMailboxes, {
+				userId: args.userId,
+				paginationOpts,
+			})) as PaginationResult<Doc<'mailboxes'>>;
+			return serializeAccountExportPage(result);
+		}
+		if (args.resource === 'mailMessages') {
+			if (!args.mailboxId) throw new Error('Mail message export page requires mailboxId');
+			const result = (await ctx.runQuery(internal.auth.accountExport.listMailboxMessages, {
+				userId: args.userId,
+				mailboxId: args.mailboxId,
+				paginationOpts,
+			})) as PaginationResult<Doc<'mailMessages'>>;
+			const page = await Promise.all(
+				result.page.map(async (message) => {
+					const bodies = await readMailMessageBodiesForAccountExport(ctx.storage, message);
+					const contentDownloadUrl = await stageAccountExportContent(ctx, bodies);
+					const {
+						rawStorageId: _raw,
+						textBodyStorageId: _textStorage,
+						htmlBodyStorageId: _htmlStorage,
+						textBodyInline: _textInline,
+						htmlBodyInline: _htmlInline,
+						...safeMessage
+					} = message;
+					return { ...safeMessage, contentDownloadUrl };
+				})
+			);
+			return serializeAccountExportPage({ ...result, page });
+		}
+		if (args.resource === 'mailDrafts') {
+			if (!args.mailboxId) throw new Error('Mail draft export page requires mailboxId');
+			const result = (await ctx.runQuery(internal.auth.accountExport.listMailboxDrafts, {
+				userId: args.userId,
+				mailboxId: args.mailboxId,
+				paginationOpts,
+			})) as PaginationResult<Doc<'mailDrafts'>>;
+			const page = await Promise.all(
+				result.page.map(async (draft) => {
+					const opened = await openMailDraftForAccountExport(ctx.storage, draft);
+					const { bodyHtml, bodyText, bodyBlocks, bodyAvailability, attachments, ...safeDraft } =
+						opened;
+					const contentDownloadUrl = await stageAccountExportContent(ctx, {
+						bodyHtml,
+						...(bodyText === undefined ? {} : { bodyText }),
+						...(bodyBlocks === undefined ? {} : { bodyBlocks }),
+						bodyAvailability,
+						attachments,
+					});
+					return {
+						...safeDraft,
+						attachments: attachments.map(
+							({ contentBase64: _content, ...attachment }) => attachment
+						),
+						contentDownloadUrl,
+					};
+				})
+			);
+			return serializeAccountExportPage({ ...result, page });
+		}
+		if (args.resource === 'externalMailAccounts') {
+			const result = (await ctx.runQuery(internal.auth.accountExport.listPersonalExternalAccounts, {
+				userId: args.userId,
+				paginationOpts,
+			})) as PaginationResult<Record<string, unknown>>;
+			return serializeAccountExportPage(result);
+		}
+		if (args.resource === 'chatMessages') {
+			const result = (await ctx.runQuery(internal.auth.accountExport.listPersonalChatMessages, {
+				userId: args.userId,
+				paginationOpts,
+			})) as PaginationResult<Doc<'chatMessages'>>;
+			return serializeAccountExportPage(result);
+		}
+		const result = (await ctx.runQuery(
+			internal.auth.accountExport.listDeliverabilityAlertRecipientStates,
+			{
+				userId: args.userId,
+				paginationOpts,
+			}
+		)) as PaginationResult<Record<string, unknown>>;
+		return serializeAccountExportPage(result);
+	},
+});
 
 /**
  * Get contacts export data with property values (CSV format).

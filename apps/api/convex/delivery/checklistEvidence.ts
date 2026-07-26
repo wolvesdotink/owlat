@@ -12,7 +12,9 @@ import {
 import { internal } from '../_generated/api';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
+import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 import { checklistTraits } from './checklistTraits';
+import { resolveDeliverabilityAlert } from './checklistAlertResolution';
 
 const LEASE_MS = 2 * 60_000;
 export const SCHEDULED_RETRY_GRACE_MS = 60_000;
@@ -248,7 +250,7 @@ async function resolveRecoveredAlerts(
 		)
 		.take(50);
 	for (const alert of alerts) {
-		await ctx.db.patch(alert._id, { resolvedAt });
+		await resolveDeliverabilityAlert(ctx, alert, resolvedAt, { acknowledge: false });
 	}
 }
 
@@ -317,6 +319,7 @@ export const recordEvidence = internalMutation({
 			validator: boundedDiagnostic(args.validator).slice(0, 128),
 			status: args.status,
 			observedValues: boundedObservedValues(args.observedValues),
+			observedValuesVersion: CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION,
 			diagnostic: boundedDiagnostic(args.diagnostic),
 			observedAt: args.observedAt,
 			createdAt: args.observedAt,

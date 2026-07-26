@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Enforce the single message-body accessor (lib/messageBody.ts). A message body
+# Enforce the message-body accessor family (lib/messageBody*.ts). A message body
 # lives in one of three shapes — inboundMessages inline `textBody`/`htmlBody`,
 # mailMessages inline `textBodyInline`/`htmlBodyInline` (or a `*BodyStorageId`
 # blob), unifiedMessages `content` JSON — and every STORED-ROW read of a body
-# must go through lib/messageBody.ts so that Sealed Mail's "unseal on read" hook
-# (E8b) has one choke point instead of ~30 scattered field accesses.
+# must go through the cohesive core/export sibling modules so Sealed Mail's
+# "unseal on read" hook stays centralized.
 #
 # Like check-boolean-naming.sh / check-errors.sh this is a build gate, but with a
 # BASELINE OF ZERO from day one (piece E8a migrated every reader): a single
@@ -31,7 +31,7 @@
 #      `=` and never match; only `{ … } =` (a binding target) does.
 #
 # Excluded paths: _generated, __tests__, *.test.ts, schema/ (type declarations,
-# not reads), lib/messageBody.ts (the accessor itself), and webhooks/dispatcher.ts
+# not reads), lib/messageBody*.ts (the accessor family), and webhooks/dispatcher.ts
 # (the webhook-event dispatcher — its `e.mail` payload is wire input translated
 # straight into a mutation call, never a stored DB row).
 #
@@ -55,6 +55,7 @@ files=$(
 		! -name '*.test.ts' \
 		-not -path '*/schema/*' \
 		-not -path '*/lib/messageBody.ts' \
+		-not -path '*/lib/messageBodyExport.ts' \
 		-not -path '*/webhooks/dispatcher.ts' \
 		2>/dev/null | sort
 )
@@ -80,11 +81,11 @@ done < <(printf '%s\n' "$files")
 
 if [ -n "$read_violations" ]; then
 	count=$(printf '%s' "$read_violations" | grep -c .)
-	echo "FAIL: $count direct message-body read(s) outside lib/messageBody.ts:"
+	echo "FAIL: $count direct message-body read(s) outside lib/messageBody*.ts:"
 	echo ""
 	printf '%s' "$read_violations"
 	echo ""
-	echo "Read the body through lib/messageBody.ts instead:"
+	echo "Read the body through the lib/messageBody*.ts accessor family instead:"
 	echo "  inboundMessages inline  -> inboundMessageBody(row).text / .html"
 	echo "  mailMessages inline     -> mailMessageInlineBody(row).text / .html"
 	echo "  mailMessages inline+blob-> await readMailMessageText(ctx.storage, row)"
@@ -104,7 +105,7 @@ done < <(printf '%s\n' "$files")
 
 if [ -n "$blob_violations" ]; then
 	count=$(printf '%s' "$blob_violations" | grep -c .)
-	echo "FAIL: $count body-blob content read(s) outside lib/messageBody.ts:"
+	echo "FAIL: $count body-blob content read(s) outside lib/messageBody*.ts:"
 	echo ""
 	printf '%s' "$blob_violations"
 	echo ""
@@ -127,14 +128,14 @@ done < <(printf '%s\n' "$files")
 
 if [ -n "$destructure_violations" ]; then
 	count=$(printf '%s' "$destructure_violations" | grep -c .)
-	echo "FAIL: $count destructuring body-field read(s) outside lib/messageBody.ts:"
+	echo "FAIL: $count destructuring body-field read(s) outside lib/messageBody*.ts:"
 	echo ""
 	printf '%s' "$destructure_violations"
 	echo ""
-	echo "Read the body through lib/messageBody.ts instead of destructuring the row."
+	echo "Read the body through the lib/messageBody*.ts accessor family instead."
 	fail=1
 fi
 
 [ "$fail" -eq 1 ] && exit 1
 
-echo "ok:   message bodies read only through lib/messageBody.ts (baseline 0)"
+echo "ok:   message bodies read only through lib/messageBody*.ts (baseline 0)"

@@ -1,8 +1,15 @@
 import type { DeliverabilityAlertRecipientState } from '@owlat/shared';
 
-export const DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT = 100;
+export const DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT = 120;
 
 type AlertNotificationState = 'pending' | 'sent' | 'unavailable';
+
+export function boundedDeliverabilityAlertRecipientRows<T>(rows: readonly T[]): T[] {
+	if (rows.length > DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT) {
+		throw new Error('Deliverability alert recipient ledger exceeds its bounded limit');
+	}
+	return [...rows];
+}
 
 export function toDeliverabilityAlertRecipientState(
 	recipient: DeliverabilityAlertRecipientState
@@ -18,6 +25,22 @@ export function toDeliverabilityAlertRecipientState(
 		...(recipient.nextAttemptAt !== undefined ? { nextAttemptAt: recipient.nextAttemptAt } : {}),
 		...(recipient.sentAt !== undefined ? { sentAt: recipient.sentAt } : {}),
 		...(recipient.unavailableReason ? { unavailableReason: recipient.unavailableReason } : {}),
+	};
+}
+
+export function cancelledDeliverabilityAlertRecipientPatch(): {
+	status: 'cancelled';
+	attemptToken: undefined;
+	attemptStartedAt: undefined;
+	nextAttemptAt: undefined;
+	unavailableReason: undefined;
+} {
+	return {
+		status: 'cancelled',
+		attemptToken: undefined,
+		attemptStartedAt: undefined,
+		nextAttemptAt: undefined,
+		unavailableReason: undefined,
 	};
 }
 

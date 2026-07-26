@@ -365,11 +365,11 @@ export const deliveryTables = {
 			v.literal('pending-dns')
 		),
 		observedValues: v.array(v.string()),
+		observedValuesVersion: v.optional(v.number()),
 		diagnostic: v.string(),
 		observedAt: v.number(),
 		createdAt: v.number(),
 	})
-		.index('by_org_target_item_observed', ['organizationId', 'targetKey', 'itemId', 'observedAt'])
 		.index('by_org_target_item_status_observed', [
 			'organizationId',
 			'targetKey',
@@ -378,7 +378,6 @@ export const deliveryTables = {
 			'observedAt',
 		])
 		.index('by_org_attempt', ['organizationId', 'attemptId'])
-		.index('by_org_observed', ['organizationId', 'observedAt'])
 		.index('by_observed_at', ['observedAt']),
 
 	// One fenced orchestration row per target/check. The immutable evidence row
@@ -399,8 +398,7 @@ export const deliveryTables = {
 	})
 		.index('by_org_target_item', ['organizationId', 'targetKey', 'itemId'])
 		.index('by_current_evidence', ['currentEvidenceId'])
-		.index('by_domain_id', ['domainId'])
-		.index('by_next_check', ['nextCheckAt']),
+		.index('by_domain_id', ['domainId']),
 
 	// Deduplicated operator incidents when a confirmed pass regresses.
 	deliverabilityRegressionAlerts: defineTable({
@@ -448,8 +446,7 @@ export const deliveryTables = {
 		unavailableReason: v.optional(deliverabilityAlertRecipientUnavailableReasonValidator),
 	})
 		.index('by_alert', ['alertId'])
-		.index('by_user', ['userId'])
-		.index('by_org', ['organizationId']),
+		.index('by_user', ['userId']),
 
 	// Honest end-to-end probe seam. A row starts at `sending`, moves to
 	// `awaiting_inbound` only after the real outbound provider accepts it, and
@@ -482,7 +479,6 @@ export const deliveryTables = {
 	})
 		.index('by_org_attempt', ['organizationId', 'attemptId'])
 		.index('by_org_domain_started', ['organizationId', 'domainId', 'startedAt'])
-		.index('by_org_started', ['organizationId', 'startedAt'])
 		.index('by_token_hash', ['correlationTokenHash'])
 		.index('by_completed_at', ['completedAt'])
 		.index('by_expires_at', ['expiresAt']),

@@ -26,6 +26,7 @@ import { guidanceForCheck, type DnsProvider, type VpsProvider } from './checklis
 import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
+import { CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION } from '../lib/constants';
 
 export const CENTER_MATERIALIZATION_DOMAIN_LIMIT = 100;
 const CENTER_MATERIALIZATION_TRACKING_LIMIT = 100;
@@ -177,6 +178,13 @@ function providerFromEvidence(values: readonly string[]): {
 	return { vps, dns };
 }
 
+function compatibleObservedValues(row: Doc<'deliverabilityEvidence'>): string[] {
+	return row.observedValuesVersion === undefined ||
+		row.observedValuesVersion === CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION
+		? row.observedValues
+		: [];
+}
+
 function evidenceDto(
 	row: Doc<'deliverabilityEvidence'> | undefined
 ): DeliverabilityValidatorEvidence | null {
@@ -186,7 +194,7 @@ function evidenceDto(
 		validator: row.validator,
 		status: row.status,
 		observedAt: row.observedAt,
-		observedValues: row.observedValues,
+		observedValues: compatibleObservedValues(row),
 		diagnostic: row.diagnostic,
 		attemptId: row.attemptId,
 	};
@@ -269,12 +277,13 @@ async function buildCenter(ctx: QueryCtx) {
 		for (const domain of scopedDomains) {
 			const targetKey = deliverabilityTargetKey(organizationId, domain?._id);
 			const evidence = latestEvidence.get(scopedItemKey(targetKey, definition.id));
+			const evidenceView = evidenceDto(evidence);
 			const materialized = materializeChecklistItem(
 				definition,
 				domain
 					? { kind: 'domain', domainId: domain._id, domain: domain.domain }
 					: { kind: 'deployment' },
-				evidenceDto(evidence),
+				evidenceView,
 				now,
 				definition.severity === 'blocking' ? 'fail' : 'warn'
 			);
@@ -293,7 +302,7 @@ async function buildCenter(ctx: QueryCtx) {
 					: deploymentSetupValuesForItem(definition.id, warming),
 				instructions: guidanceForCheck(
 					definition.id,
-					providerFromEvidence(evidence?.observedValues ?? [])
+					providerFromEvidence(evidenceView?.observedValues ?? [])
 				),
 				...(verification
 					? {

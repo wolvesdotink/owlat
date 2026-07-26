@@ -48,7 +48,11 @@ function parsedDkimKeyBits(value: string | undefined): number | null {
 	}
 }
 
-async function resolveDkimKeyBits(hostname: string): Promise<number | null> {
+type DkimKeyResolution =
+	| { outcome: 'resolved'; bits: number | null }
+	| { outcome: 'unresolved'; bits: null };
+
+async function resolveDkimKey(hostname: string): Promise<DkimKeyResolution> {
 	const visited = new Set<string>();
 	let current = hostname.toLowerCase().replace(/\.$/, '');
 	for (let hop = 0; hop < 4 && !visited.has(current); hop += 1) {
@@ -58,19 +62,19 @@ async function resolveDkimKeyBits(hostname: string): Promise<number | null> {
 				.slice(0, 8)
 				.map((chunks) => chunks.join(''))
 				.find((value) => /\bv=DKIM1\b/i.test(value) && /(?:^|;)\s*p=/i.test(value));
-			if (txt) return parsedDkimKeyBits(txt);
+			if (txt) return { outcome: 'resolved', bits: parsedDkimKeyBits(txt) };
 		} catch {
 			// A provider-managed selector is commonly a CNAME, so continue.
 		}
 		try {
 			const cname = (await dns.resolveCname(current))[0];
-			if (!cname) return null;
+			if (!cname) return { outcome: 'unresolved', bits: null };
 			current = cname.toLowerCase().replace(/\.$/, '');
 		} catch {
-			return null;
+			return { outcome: 'unresolved', bits: null };
 		}
 	}
-	return null;
+	return { outcome: 'unresolved', bits: null };
 }
 
 function hasStrictSpfPolicy(value: string | undefined): boolean {
@@ -136,15 +140,43 @@ export async function observeDomainCheck(
 				results.dkim?.length === configured.length &&
 				configured.length > 0 &&
 				results.dkim.every((result) => isSuccessfulDnsResult(result));
-			const keyBits = await Promise.all(
-				configured.map((record) => resolveDkimKeyBits(`${record.host}.${domain.domain}`))
+			const keyResolutions = await Promise.all(
+				configured.map(async (record, index): Promise<DkimKeyResolution> => {
+					if (record.type !== 'CNAME') {
+						return {
+							outcome: 'resolved',
+							bits: parsedDkimKeyBits(results.dkim?.[index]?.foundValue ?? record.value),
+						};
+					}
+					return resolveDkimKey(`${record.host}.${domain.domain}`);
+				})
 			);
-			const strong = keyBits.length > 0 && keyBits.every((bits) => bits !== null && bits >= 2_048);
-			const hasProviderManagedCname = configured.some((record) => record.type === 'CNAME');
+			const hasKnownWeakKey = keyResolutions.some(
+				(resolution) =>
+					resolution.outcome === 'resolved' && (resolution.bits === null || resolution.bits < 2_048)
+			);
+			const hasUnresolvedProviderCname = keyResolutions.some(
+				(resolution) => resolution.outcome === 'unresolved'
+			);
+			const everyResolvedKeyIsStrong = keyResolutions.every(
+				(resolution) =>
+					resolution.outcome === 'unresolved' ||
+					(resolution.bits !== null && resolution.bits >= 2_048)
+			);
+			const strong =
+				keyResolutions.length > 0 &&
+				keyResolutions.every(
+					(resolution) =>
+						resolution.outcome === 'resolved' &&
+						resolution.bits !== null &&
+						resolution.bits >= 2_048
+				);
+			const needsProviderMessageProof =
+				hasUnresolvedProviderCname && everyResolvedKeyIsStrong && !hasKnownWeakKey;
 			const status = verified
 				? strong
 					? 'pass'
-					: hasProviderManagedCname
+					: needsProviderMessageProof
 						? isFinalDnsRetry
 							? 'warn'
 							: 'pending-dns'
@@ -153,7 +185,7 @@ export async function observeDomainCheck(
 			return checklistObservation(
 				'dns.dkim',
 				status,
-				verified && hasProviderManagedCname && !strong
+				verified && needsProviderMessageProof
 					? 'The provider-managed DKIM CNAME is live, but key strength needs message-level proof.'
 					: verified && !strong
 						? 'The live DKIM key is shorter than 2048 bits or could not be parsed.'
@@ -162,7 +194,11 @@ export async function observeDomainCheck(
 				[
 					...providerValues,
 					...dnsBundleObservations('dkim', domain.domain, configured, results.dkim),
-					...keyBits.map((bits) => `key-bits=${bits ?? 'unknown'}`),
+					...keyResolutions.map((resolution) =>
+						resolution.outcome === 'resolved'
+							? `key-bits=${resolution.bits ?? 'unparseable'}`
+							: 'key-bits=unresolved'
+					),
 				]
 			);
 		}

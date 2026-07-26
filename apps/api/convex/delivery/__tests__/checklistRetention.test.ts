@@ -87,20 +87,61 @@ describe('Deliverability Center retention', () => {
 				await ctx.db.insert('deliverabilityEvidence', evidenceValues(now, 'regressed-deleted')),
 			] as const;
 		});
-		await insertAlert(t, {
+		const alertId = await insertAlert(t, {
 			identity: 'deleted-domain',
 			previousEvidenceId,
 			regressedEvidenceId,
 			observedAt: now,
 			domainId,
 		});
-		await t.run((ctx) => ctx.db.delete(domainId));
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityAlertRecipients', {
+				organizationId: ORGANIZATION_ID,
+				alertId,
+				userId: 'pending-user',
+				status: 'pending',
+				attemptCount: 0,
+				nextAttemptAt: now + 1_000,
+			});
+			await ctx.db.insert('deliverabilityAlertRecipients', {
+				organizationId: ORGANIZATION_ID,
+				alertId,
+				userId: 'sending-user',
+				status: 'sending',
+				attemptCount: 1,
+				attemptToken: 'in-flight',
+				attemptStartedAt: now - 100,
+			});
+			await ctx.db.delete(domainId);
+		});
 		await expect(
 			t.mutation(internal.delivery.checklistRetention.sweepOrphanAlerts, { startedAt: now })
 		).resolves.toMatchObject({ resolved: 1 });
+		const state = await t.run(async (ctx) => ({
+			alert: await ctx.db.query('deliverabilityRegressionAlerts').unique(),
+			recipients: await ctx.db.query('deliverabilityAlertRecipients').collect(),
+		}));
+		expect(state.alert).toMatchObject({
+			resolvedAt: now,
+			emailNotificationState: 'pending',
+		});
+		expect(state.recipients).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ userId: 'pending-user', status: 'cancelled' }),
+				expect.objectContaining({
+					userId: 'sending-user',
+					status: 'sending',
+					attemptToken: 'in-flight',
+				}),
+			])
+		);
 		await expect(
-			t.run((ctx) => ctx.db.query('deliverabilityRegressionAlerts').unique())
-		).resolves.toMatchObject({ resolvedAt: now });
+			t.mutation(internal.delivery.checklistAlertState.expireRecipientAttempts, {
+				organizationId: ORGANIZATION_ID,
+				identity: 'deleted-domain',
+				attemptToken: 'in-flight',
+			})
+		).resolves.toEqual({ state: 'unavailable', expired: 1 });
 	});
 
 	it('boundedly removes deleted-domain state before releasing its old current evidence', async () => {

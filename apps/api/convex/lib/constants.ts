@@ -1,6 +1,7 @@
 /**
  * Shared constants for the Convex backend.
  */
+import { DELIVERABILITY_OBSERVATION_SCHEMA_VERSION } from '@owlat/shared';
 
 // Default pagination sizes by context
 export const PAGE_SIZE_DEFAULT = 25;
@@ -101,6 +102,10 @@ export const CURRENT_UNIFIED_MESSAGE_CONTENT_VERSION = 1;
 
 /** pluginStorageEntries.valueJson canonical JSON shape. */
 export const CURRENT_PLUGIN_STORAGE_VALUE_JSON_VERSION = 1;
+
+/** deliverabilityEvidence.observedValues structured JSON observation contract. */
+export const CURRENT_DELIVERABILITY_OBSERVED_VALUES_VERSION =
+	DELIVERABILITY_OBSERVATION_SCHEMA_VERSION;
 
 /**
  * connectedApps sealed hook-signing secret envelope (AES-256-GCM blob) shape.

@@ -8,6 +8,7 @@ import type {
 export const DELIVERABILITY_DIAGNOSTIC_LENGTH = 2_048;
 export const DELIVERABILITY_OBSERVED_VALUE_LIMIT = 16;
 export const DELIVERABILITY_OBSERVED_VALUE_LENGTH = 512;
+export const DELIVERABILITY_OBSERVATION_SCHEMA_VERSION = 1;
 
 type MutableStringSlot = {
 	value: string;
@@ -33,6 +34,7 @@ function observationStringSlots(value: unknown): MutableStringSlot[] {
 	} else if (value !== null && typeof value === 'object') {
 		for (const [key, child] of Object.entries(value)) {
 			if (typeof child === 'string') {
+				if (key === 'kind') continue;
 				slots.push({
 					value: child,
 					replace: (replacement) => {
@@ -67,7 +69,15 @@ function prefixWithinEncodedLength(value: string, maxEncodedLength: number): str
 }
 
 export function serializeDeliverabilityObservation(value: Record<string, unknown>): string {
-	const mutableValue = JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+	if (typeof value['kind'] !== 'string' || value['kind'].length === 0) {
+		throw new Error('Deliverability observation kind is required');
+	}
+	const mutableValue = JSON.parse(
+		JSON.stringify({
+			...value,
+			schemaVersion: DELIVERABILITY_OBSERVATION_SCHEMA_VERSION,
+		})
+	) as Record<string, unknown>;
 	let serialized = JSON.stringify(mutableValue);
 	while (serialized.length > DELIVERABILITY_OBSERVED_VALUE_LENGTH) {
 		const slot = observationStringSlots(mutableValue).sort(

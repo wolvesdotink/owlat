@@ -5,7 +5,6 @@ convex/analytics/dashboard.ts:getStats
 convex/analytics/reputationQueries.ts:getCampaignSendEstimate
 convex/analytics/reputationQueries.ts:getDomainReputations
 convex/analytics/reputationQueries.ts:getSendingOverview
-convex/auth/accountManagement.ts:exportUserData
 convex/auth/accountManagement.ts:getPendingDeletionRequest
 convex/auth/onboarding.ts:getWithActualProgress
 convex/automations/analytics.ts:getAutomationRuns

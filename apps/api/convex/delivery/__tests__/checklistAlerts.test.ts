@@ -5,6 +5,32 @@ import {
 	regressionEmailRetryDelay,
 	type RegressionEmailDependencies,
 } from '../checklistAlerts';
+import type { SystemMailAttemptOutcome } from '../../lib/systemMailOutcome';
+import { EmailErrorCode } from '../../lib/sendProviders';
+
+function acceptedMail(): SystemMailAttemptOutcome {
+	return {
+		status: 'accepted',
+		provider: 'mta',
+		providerMessageId: 'message-id',
+		latencyMs: 1,
+		attempts: 1,
+	};
+}
+
+function failedMail(
+	provider: 'mta' | 'resend' | 'ses',
+	errorCode: EmailErrorCode,
+	retryDisposition: 'safe_to_retry' | 'terminal'
+): SystemMailAttemptOutcome {
+	return {
+		status: 'failed',
+		provider,
+		errorCode,
+		errorMessage: 'send failed',
+		retryDisposition,
+	};
+}
 
 describe('deliverability regression email retry policy', () => {
 	it('uses bounded backoff before declaring transient delivery failure unavailable', () => {
@@ -22,6 +48,7 @@ describe('deliverability regression email retry policy', () => {
 		preparedState?: 'pending' | 'sent' | 'unavailable';
 		completion?: { state: 'pending' | 'sent' | 'unavailable'; retryScheduled: boolean };
 		sendEmail?: RegressionEmailDependencies['sendEmail'];
+		boundaryFailureRetryDisposition?: RegressionEmailDependencies['boundaryFailureRetryDisposition'];
 	}) {
 		const runQuery = vi.fn(
 			async (): Promise<{ emailDirectoryAttemptCount?: number } | null> => ({
@@ -39,7 +66,9 @@ describe('deliverability regression email retry policy', () => {
 		const ctx = { runQuery, runMutation } as never;
 		const dependencies: RegressionEmailDependencies = {
 			loadRecipients: vi.fn(async () => options?.recipients ?? []),
-			sendEmail: options?.sendEmail ?? vi.fn(async () => undefined),
+			sendEmail: options?.sendEmail ?? vi.fn(async () => acceptedMail()),
+			boundaryFailureRetryDisposition:
+				options?.boundaryFailureRetryDisposition ?? vi.fn((): 'terminal' => 'terminal'),
 			now: vi.fn(() => 10_000),
 			randomId: vi.fn(() => 'attempt-token'),
 		};
@@ -91,8 +120,9 @@ describe('deliverability regression email retry policy', () => {
 	it('persists partial results and retries only the failed stable user id', async () => {
 		const sendEmail = vi.fn(async (_ctx, payload: { to: string }) => {
 			if (payload.to === 'failed@example.test') {
-				throw new Error('System email send failed via mta (SERVER_ERROR): busy');
+				return failedMail('mta', EmailErrorCode.SERVER_ERROR, 'safe_to_retry');
 			}
+			return acceptedMail();
 		});
 		const test = harness({
 			recipients: [
@@ -131,9 +161,7 @@ describe('deliverability regression email retry policy', () => {
 			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
 			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
 			completion: { state: 'unavailable', retryScheduled: false },
-			sendEmail: vi.fn(async () => {
-				throw new Error('System email send failed via ses (AMBIGUOUS_TIMEOUT): timed out');
-			}),
+			sendEmail: vi.fn(async () => failedMail('ses', EmailErrorCode.AMBIGUOUS_TIMEOUT, 'terminal')),
 		});
 
 		await expect(
@@ -151,14 +179,35 @@ describe('deliverability regression email retry policy', () => {
 		);
 	});
 
+	it('retries a typed SES server rejection known to occur before acceptance', async () => {
+		const test = harness({
+			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
+			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
+			completion: { state: 'pending', retryScheduled: true },
+			sendEmail: vi.fn(async () => failedMail('ses', EmailErrorCode.SERVER_ERROR, 'safe_to_retry')),
+		});
+
+		await expect(
+			deliverRegressionEmailHandler(
+				test.ctx,
+				{ organizationId: 'org', identity: 'incident' },
+				test.dependencies
+			)
+		).resolves.toEqual({ sent: false, reason: 'retry_scheduled' });
+		expect(test.runMutation).toHaveBeenLastCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				results: [{ userId: 'user-1', isSuccess: false, retryAt: 70_000 }],
+			})
+		);
+	});
+
 	it('does not retry a permanent recipient rejection', async () => {
 		const test = harness({
 			recipients: [{ userId: 'user-1', email: 'invalid@example.test' }],
 			claims: [{ userId: 'user-1', email: 'invalid@example.test', attemptCount: 1 }],
 			completion: { state: 'unavailable', retryScheduled: false },
-			sendEmail: vi.fn(async () => {
-				throw new Error('System email send failed via mta (INVALID_RECIPIENT): rejected');
-			}),
+			sendEmail: vi.fn(async () => failedMail('mta', EmailErrorCode.INVALID_RECIPIENT, 'terminal')),
 		});
 
 		await deliverRegressionEmailHandler(
@@ -175,30 +224,48 @@ describe('deliverability regression email retry policy', () => {
 	});
 
 	it.each([
-		'System email send failed via plugin (UNKNOWN): uncertain',
-		'action boundary failed without a provider receipt',
-	])('does not retry an unconfirmed transport outcome: %s', async (message) => {
-		const test = harness({
-			recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
-			claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
-			completion: { state: 'unavailable', retryScheduled: false },
-			sendEmail: vi.fn(async () => {
-				throw new Error(message);
-			}),
-		});
+		{ provider: 'mta', disposition: 'safe_to_retry' as const, isRetried: true },
+		{ provider: 'resend', disposition: 'safe_to_retry' as const, isRetried: true },
+		{ provider: 'ses', disposition: 'terminal' as const, isRetried: false },
+		{ provider: 'plugin', disposition: 'terminal' as const, isRetried: false },
+	])(
+		'classifies a generic $provider action-boundary failure without parsing its message',
+		async ({ disposition, isRetried }) => {
+			const test = harness({
+				recipients: [{ userId: 'user-1', email: 'admin@example.test' }],
+				claims: [{ userId: 'user-1', email: 'admin@example.test', attemptCount: 1 }],
+				completion: isRetried
+					? { state: 'pending', retryScheduled: true }
+					: { state: 'unavailable', retryScheduled: false },
+				sendEmail: vi.fn(async () => {
+					throw new Error('generic action boundary failure');
+				}),
+				boundaryFailureRetryDisposition: vi.fn(() => disposition),
+			});
 
-		await deliverRegressionEmailHandler(
-			test.ctx,
-			{ organizationId: 'org', identity: 'incident' },
-			test.dependencies
-		);
-		expect(test.runMutation).toHaveBeenLastCalledWith(
-			expect.anything(),
-			expect.objectContaining({
-				results: [{ userId: 'user-1', isSuccess: false }],
-			})
-		);
-	});
+			await expect(
+				deliverRegressionEmailHandler(
+					test.ctx,
+					{ organizationId: 'org', identity: 'incident' },
+					test.dependencies
+				)
+			).resolves.toMatchObject(
+				isRetried ? { reason: 'retry_scheduled' } : { reason: 'delivery_failed' }
+			);
+			expect(test.runMutation).toHaveBeenLastCalledWith(
+				expect.anything(),
+				expect.objectContaining({
+					results: [
+						{
+							userId: 'user-1',
+							isSuccess: false,
+							...(isRetried ? { retryAt: 70_000 } : {}),
+						},
+					],
+				})
+			);
+		}
+	);
 
 	it('durably schedules recipient-directory retries and stops at the bound', async () => {
 		const retrying = harness();
