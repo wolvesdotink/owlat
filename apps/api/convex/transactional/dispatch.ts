@@ -30,6 +30,7 @@ import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import { transactionalEmailPool } from '../delivery/workpool';
+import { recordSendAssignments } from '../delivery/sendAssignments';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
@@ -304,6 +305,21 @@ export const dispatch = internalMutation({
 			internal.campaigns.sendQueries.getSingletonOrganizationId,
 			{}
 		);
+
+		// Experiment record (plan D7): the Template API is the primary producer
+		// of the `transactional` stream, so its cell axis would otherwise be
+		// populated only by agent 1:1 replies. Written inside THIS transaction,
+		// before the workpool enqueue, reusing the route already resolved for
+		// this exact recipient at step 8 rather than resolving it twice on a
+		// latency-sensitive path.
+		await recordSendAssignments(ctx, {
+			organizationId,
+			stream: 'transactional',
+			sendKind: 'transactional',
+			routing: { kind: 'preResolved', transport: resolvedRoute?.providerType },
+			recipients: [{ sendId, email: args.email }],
+		});
+
 		await transactionalEmailPool.enqueueAction(
 			ctx,
 			internal.delivery.worker.sendSingleEmail,
