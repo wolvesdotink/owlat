@@ -115,7 +115,7 @@ function tlsModeLabel(mode: DestinationProviderProfile['tlsMode']): string {
 
 describe('Sending from a VPS navigation and claims', () => {
 	it('uses the next numbered guide slot', () => {
-		expect(vpsGuide).toMatch(/^---\ntitle: "Sending from a VPS"/);
+		expect(vpsGuide).toMatch(/^---\ntitle: ['"]Sending from a VPS['"]/);
 	});
 
 	it('links every shipped readiness and recovery surface used by the checklist', () => {
