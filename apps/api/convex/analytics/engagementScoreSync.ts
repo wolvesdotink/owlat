@@ -176,10 +176,27 @@ export function engagementPatchForActivity(args: {
 	const base = cached ?? EMPTY_ENGAGEMENT_STATE;
 	const baseAt = cached !== undefined && cachedAt !== undefined ? cachedAt : activity.occurredAt;
 
-	const folded = applyActivity(decayState(base, baseAt, activity.occurredAt), activity.kind);
+	// Fold at max(baseAt, occurredAt) so a LATE-ARRIVING activity (a backfilled
+	// open, an out-of-order webhook) is decayed forward to the accumulator's
+	// instant instead of the accumulator being decayed backwards to the
+	// activity's. Arrival order therefore cannot change the answer — the
+	// incremental path stays equal to a full recompute.
+	const foldAt = Math.max(baseAt, activity.occurredAt);
+	const decayedBase = decayState(base, baseAt, foldAt);
+	const contribution = decayState(
+		applyActivity(EMPTY_ENGAGEMENT_STATE, activity.kind),
+		activity.occurredAt,
+		foldAt
+	);
+	const folded: EngagementScoreState = {
+		raw: decayedBase.raw + contribution.raw,
+		softBounceRaw: decayedBase.softBounceRaw + contribution.softBounceRaw,
+		suppressed: decayedBase.suppressed || contribution.suppressed,
+	};
+
 	const projected = scoreFromState({
 		state: folded,
-		stateAt: activity.occurredAt,
+		stateAt: foldAt,
 		tenureStartedAt: args.contact.createdAt,
 		now,
 	});
