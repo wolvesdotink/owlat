@@ -73,9 +73,13 @@ export function armForTransport(transport: string): SendAssignmentArm {
  * observation wins, otherwise the conservative address-domain fallback. One
  * indexed point read per DISTINCT domain (memoized across the batch), never a
  * table scan and never a second domain map.
+ *
+ * Exported so the write-amplification regression can assert the read count
+ * BEHAVIOURALLY (k distinct domains ⇒ exactly k `by_org_domain` reads),
+ * rather than only inspecting the source for a memo map.
  */
-async function destinationProvidersForEmails(
-	ctx: MutationCtx,
+export async function destinationProvidersForEmails(
+	ctx: Pick<MutationCtx, 'db'>,
 	organizationId: string,
 	emails: readonly string[],
 	now: number
@@ -112,12 +116,20 @@ async function destinationProvidersForEmails(
  * producer usually supplies one; otherwise fall back to the singleton org.
  * An unresolvable org yields `null` and the caller skips the row — recording
  * the experiment must never be able to block a send.
+ *
+ * `explicit` is deliberately `string | null | undefined`: an optional value
+ * returned by a Convex query crosses the function boundary as `null`, not
+ * `undefined` (`enqueueNonCampaignSend` resolves its org through
+ * `campaigns.sendQueries.getSingletonOrganizationId`). Treating only
+ * `undefined` as absent let that `null` through as an organization id, which
+ * silently dropped every non-campaign assignment row and made the singleton
+ * fallback below dead code on that path.
  */
 async function resolveAssignmentOrganizationId(
 	ctx: MutationCtx,
-	explicit: string | undefined
+	explicit: string | null | undefined
 ): Promise<string | null> {
-	if (explicit !== undefined && explicit !== '') return explicit;
+	if (explicit != null && explicit !== '') return explicit;
 	try {
 		return await getSingletonOrganizationId(ctx);
 	} catch {
@@ -134,14 +146,18 @@ export interface SendAssignmentRecipient {
 }
 
 export interface RecordSendAssignmentsInput {
-	readonly organizationId: string | undefined;
+	/**
+	 * `null` is accepted alongside `undefined`: an optional string returned by
+	 * a Convex query arrives as `null` at the call site.
+	 */
+	readonly organizationId: string | null | undefined;
 	readonly stream: DeliverabilityStream;
 	readonly sendKind: SendAssignmentKind;
-	/** The transport the router resolved for this enqueue. */
-	readonly transport: string | undefined;
+	/** The transport the router resolved for this enqueue (`null` = unresolved). */
+	readonly transport: string | null | undefined;
 	readonly recipients: readonly SendAssignmentRecipient[];
 	readonly mixVersion?: number;
-	readonly calibration?: boolean;
+	readonly isCalibration?: boolean;
 	readonly now?: number;
 }
 
@@ -156,7 +172,7 @@ export async function recordSendAssignments(
 ): Promise<number> {
 	if (input.recipients.length === 0) return 0;
 	const transport = input.transport;
-	if (transport === undefined || transport === '') return 0;
+	if (transport == null || transport === '') return 0;
 	const organizationId = await resolveAssignmentOrganizationId(ctx, input.organizationId);
 	if (organizationId === null) return 0;
 
@@ -169,7 +185,7 @@ export async function recordSendAssignments(
 	);
 	const arm = armForTransport(transport);
 	const mixVersion = input.mixVersion ?? ROUTER_ONLY_MIX_VERSION;
-	const calibration = input.calibration ?? false;
+	const isCalibration = input.isCalibration ?? false;
 
 	let written = 0;
 	for (const recipient of input.recipients) {
@@ -185,7 +201,7 @@ export async function recordSendAssignments(
 			cell,
 			transport,
 			arm,
-			calibration,
+			isCalibration,
 			mixVersion,
 			...(recipient.engagementRank !== undefined
 				? { engagementRank: recipient.engagementRank }
