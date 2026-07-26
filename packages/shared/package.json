@@ -197,6 +197,10 @@
 			"types": "./src/deliverabilityRouting.ts",
 			"import": "./src/deliverabilityRouting.ts"
 		},
+		"./deliverabilityCell": {
+			"types": "./src/deliverabilityCell.ts",
+			"import": "./src/deliverabilityCell.ts"
+		},
 		"./dnsbl": {
 			"types": "./src/dnsbl.ts",
 			"import": "./src/dnsbl.ts"
