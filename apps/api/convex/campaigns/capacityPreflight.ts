@@ -1,32 +1,27 @@
 /**
  * Binding capacity pre-flight — the ctx-bound half of the P0-5 capacity gate
- * (deliverability plan rev 3). The pure predicate lives in `capacityPlan.ts`;
- * this module only LOADS its inputs (warming state, audience size) and maps
- * "we could not measure" onto "allow the send".
+ * (deliverability plan rev 3). The pure predicate lives in `capacityPlan.ts`
+ * and the warming projection in `../delivery/warmingCapacity.ts`; this module
+ * only LOADS the inputs (projection, audience size) and maps "we could not
+ * measure" onto "allow the send".
  *
- * Two rules govern everything here:
- *
- *  - NEVER refuse on missing data (plan D2/D10). No warming state, stale
- *    warming state, a graduated deployment with no cap, or a projection with
- *    no positive capacity at all all resolve to "capacity unknown → allow".
- *    Blocking a campaign because we could not read warming state would be
- *    exactly the false blocker the plan forbids.
- *  - The projection is an UPPER bound. Per-IP caps come from the published
- *    warming schedule, which the MTA treats as a ceiling, and every active IP
- *    is counted regardless of pool. Refusing against an optimistic projection
- *    is sound: if the best case cannot finish, reality cannot either.
+ * The governing rule: NEVER refuse on missing data (plan D2/D10). No warming
+ * state, stale warming state, a graduated deployment with no cap, an audience
+ * too large to count inside the read budget, or a projection with no positive
+ * capacity at all ALL resolve to "capacity unknown → allow". Blocking a
+ * campaign because we could not read warming state, or because we ran out of
+ * budget counting it, would be exactly the false blocker the plan forbids.
  */
 
 import { v } from 'convex/values';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
-import { getWarmingDisplayCapForDay } from '@owlat/shared/warming';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
+import { loadRemainingCapacityByDay } from '../delivery/warmingCapacity';
 import { audienceValidator, type StoredAudience } from './audience';
 import { countAudience } from './audienceResolution';
 import {
 	MAX_PLAN_DAYS,
-	MS_PER_DAY,
 	planCampaignCapacity,
 	type CampaignCapacityPlan,
 	type CampaignCapacitySchedule,
@@ -34,15 +29,15 @@ import {
 
 type Ctx = MutationCtx | QueryCtx;
 
-/** How many days of capacity the projection covers. */
-export const CAPACITY_PROJECTION_DAYS = 30;
-
 /**
- * Warming state older than this is not trustworthy enough to refuse a send on.
- * The sync runs every five minutes, so a day of silence means the pipe is
- * broken — and a broken measurement pipe must never block sending.
+ * Rows the gate may EXAMINE while sizing the audience. The gate runs inside
+ * `campaigns.scheduling.schedule` and `campaigns.campaigns.sendNow`, where an
+ * unbounded segment scan would both exceed the Convex per-execution read limit
+ * — turning a failure to MEASURE into a blocked SEND — and pull the whole live
+ * contacts table into the mutation's OCC read set (D16). Well under the read
+ * limit; exceeding it means "unknown capacity", never "too big".
  */
-export const WARMING_STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const AUDIENCE_EXAMINE_CEILING = 8_000;
 
 /**
  * Multi-day plan plus whether capacity could be measured at all.
@@ -57,77 +52,10 @@ export type CampaignCapacityAssessment =
 	| { capacityKnown: true; fits: false; schedule: CampaignCapacitySchedule };
 
 /**
- * Project sendable volume per day from the cached MTA warming state.
- * Returns `null` whenever capacity is UNKNOWN or effectively unbounded.
- *
- * `anchorAt` is the instant the send actually starts (the scheduled fire time,
- * or now for an immediate send). Index 0 of the returned array is the capacity
- * available on the anchor's UTC day: the remainder of today when the anchor is
- * today, or a whole projected day when the anchor is in the future — a send
- * scheduled three days out must be judged against the cap it will have THEN,
- * not against today's. Anchoring at `now` for a future send is strictly
- * pessimistic under a monotonically growing warming schedule and would refuse
- * campaigns that provably fit.
- */
-export async function loadRemainingCapacityByDay(
-	ctx: Ctx,
-	now: number,
-	anchorAt: number = now
-): Promise<number[] | null> {
-	const warmingState = await ctx.db.query('warmingState').first();
-	if (!warmingState) return null;
-
-	// Stale state: the MTA sync has stopped. Unknown, not zero.
-	if (
-		!Number.isFinite(warmingState.syncedAt) ||
-		now - warmingState.syncedAt > WARMING_STATE_MAX_AGE_MS
-	) {
-		return null;
-	}
-
-	// Graduated deployments have no warming cap at all — nothing to bind against.
-	if (warmingState.phase === 'graduated') return null;
-
-	const activeIps = warmingState.ips.filter(
-		(ip) => ip.active && ip.phase !== 'graduated' && Number.isFinite(ip.currentDay)
-	);
-	if (activeIps.length === 0) return null;
-
-	// Whole UTC days between now and the anchor. Clock skew (an anchor in the
-	// past, a non-finite anchor) collapses to 0 — i.e. "starts today".
-	const anchorDayOffset = Number.isFinite(anchorAt)
-		? Math.max(0, Math.floor(anchorAt / MS_PER_DAY) - Math.floor(now / MS_PER_DAY))
-		: 0;
-
-	const byDay: number[] = [];
-	if (anchorDayOffset === 0) {
-		const totalDailyCap = Number.isFinite(warmingState.totalDailyCap)
-			? warmingState.totalDailyCap
-			: 0;
-		const totalSentToday = Number.isFinite(warmingState.totalSentToday)
-			? warmingState.totalSentToday
-			: 0;
-		// Only today's slice is partially consumed; every later day is whole.
-		byDay.push(Math.max(0, totalDailyCap - totalSentToday));
-	}
-	for (
-		let day = Math.max(1, anchorDayOffset);
-		day < CAPACITY_PROJECTION_DAYS + anchorDayOffset;
-		day += 1
-	) {
-		let projected = 0;
-		for (const ip of activeIps) {
-			projected += getWarmingDisplayCapForDay(Math.floor(ip.currentDay) + day);
-		}
-		byDay.push(projected);
-	}
-	return byDay;
-}
-
-/**
  * Decide whether `audience` can be delivered inside the message-retention
- * horizon. Unknown capacity and unplannable projections both answer
- * `{ fits: true, capacityKnown: false }` — hold and allow.
+ * horizon. Unknown capacity, an uncountable audience and unplannable
+ * projections all answer `{ fits: true, capacityKnown: false }` — hold and
+ * allow.
  *
  * `startsAt` (default `now`) is when the send begins; the projection AND the
  * retention horizon are both anchored there so a future-scheduled campaign is
@@ -137,22 +65,35 @@ export async function assessCampaignCapacity(
 	ctx: Ctx,
 	options: { audience: StoredAudience; now: number; startsAt?: number }
 ): Promise<CampaignCapacityAssessment> {
-	const startsAt = Math.max(options.now, options.startsAt ?? options.now);
-	const remainingCapacityByDay = await loadRemainingCapacityByDay(ctx, options.now, startsAt);
+	// Normalize the anchor ONCE, here at the boundary: a hostile or stale
+	// `startsAt` (NaN, a timestamp in the past) collapses to `now`, so neither
+	// the projection nor the pure planner has to defend against it.
+	const requestedStart = options.startsAt;
+	const startsAt =
+		requestedStart !== undefined && Number.isFinite(requestedStart)
+			? Math.max(options.now, requestedStart)
+			: options.now;
+	const remainingCapacityByDay = await loadRemainingCapacityByDay(ctx, {
+		now: options.now,
+		startsAt,
+	});
 	if (remainingCapacityByDay === null) return { capacityKnown: false, fits: true };
 
-	// Bound the hot-path read cost by CAPACITY, not by audience size. The verdict
+	// Bound the CANDIDATE count by CAPACITY, not by audience size. The verdict
 	// is already decided once the count exceeds everything the deployment could
 	// possibly send across the whole plan window, so there is no reason to stream
-	// tens of thousands of audience documents inside a send mutation. A capped
-	// count is a sound lower bound and refusing on a lower bound is sound.
+	// tens of thousands of audience documents inside a send mutation.
 	const trailingRate = remainingCapacityByDay[remainingCapacityByDay.length - 1] ?? 0;
 	const projectedTotal =
 		remainingCapacityByDay.reduce((sum, day) => sum + day, 0) +
 		Math.max(0, MAX_PLAN_DAYS - remainingCapacityByDay.length) * trailingRate;
 	const counted = await countAudience(ctx, options.audience, {
-		ceiling: Math.min(Number.MAX_SAFE_INTEGER, projectedTotal + 1),
+		ceiling: projectedTotal + 1,
+		examineCeiling: AUDIENCE_EXAMINE_CEILING,
 	});
+	// Ran out of read budget before the audience was sized: we did not measure
+	// it, so we do not get to refuse it.
+	if (counted.examineCeilingHit) return { capacityKnown: false, fits: true };
 
 	const plan = planCampaignCapacity({
 		// `eligible` is a lower bound when the count is capped, and refusing on a
@@ -163,7 +104,7 @@ export async function assessCampaignCapacity(
 		now: startsAt,
 	});
 
-	return toAssessment(plan);
+	return toAssessment(plan, { audienceUnderCounted: counted.capped });
 }
 
 /**
@@ -171,14 +112,24 @@ export async function assessCampaignCapacity(
  * "unplannable → allow" branch is directly testable: real warming caps are
  * never zero, so the sentinel is unreachable through seeded integration state
  * and would otherwise ship untested.
+ *
+ * `audienceUnderCounted` marks a schedule built from a CAPPED count. The cap
+ * trips on total candidates, so `eligible` is then a strict under-count and the
+ * enumerated slices cannot be the whole story — the schedule is forced
+ * `truncated` so the copy says "more than N days" instead of quoting a finish
+ * date for an audience we never finished counting (D14 honesty).
  */
-export function toAssessment(plan: CampaignCapacityPlan): CampaignCapacityAssessment {
+export function toAssessment(
+	plan: CampaignCapacityPlan,
+	options: { audienceUnderCounted?: boolean } = {}
+): CampaignCapacityAssessment {
 	if (plan.fits) return { capacityKnown: true, fits: true };
 	// `days === 0` is the planner's "no capacity to schedule against" sentinel:
 	// nothing could be scheduled, or the projection plateaus at zero before the
 	// audience is covered. Either way it is missing data, not a refusal.
 	if (plan.days === 0) return { capacityKnown: false, fits: true };
-	return { capacityKnown: true, fits: false, schedule: plan };
+	const schedule = options.audienceUnderCounted ? { ...plan, truncated: true } : plan;
+	return { capacityKnown: true, fits: false, schedule };
 }
 
 /**

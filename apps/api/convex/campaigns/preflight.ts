@@ -14,16 +14,7 @@ import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/se
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
 import { assessCampaignCapacity } from './capacityPreflight';
-import type { CampaignCapacitySchedule } from './capacityPlan';
-
-/**
- * The multi-day schedule handed back instead of an error when the audience
- * provably cannot be delivered inside the MTA's message-retention horizon.
- * Capacity is a SCHEDULE, not a failure — the UI renders "Sending over N days".
- * One shape, owned by the planner; re-declaring it here would let the two
- * drift.
- */
-export type PreflightCapacityPlan = CampaignCapacitySchedule;
+import { MAX_PLAN_DAYS, type CampaignCapacitySchedule } from './capacityPlan';
 
 export type PreflightResult =
 	| { ok: true }
@@ -42,17 +33,22 @@ export type PreflightResult =
 				| 'exceeds_sending_capacity';
 			message: string;
 			/** Present only on `exceeds_sending_capacity`. */
-			capacityPlan?: PreflightCapacityPlan;
+			capacityPlan?: CampaignCapacitySchedule;
 	  };
+
+/** The discriminant a failed pre-flight carries, for clients that branch on it. */
+export type PreflightFailureReason = Extract<PreflightResult, { ok: false }>['reason'];
 
 /**
  * Structured error payload for a failed pre-flight. `capacityPlan` is what
  * turns "too big" from prose into an offer: the client can render "send over N
- * days" straight from the refusal instead of re-deriving it.
+ * days" straight from the refusal instead of re-deriving it. `reason` keeps its
+ * union type — widening it to `string` would throw away the discriminant the
+ * client needs to branch on.
  */
 export function preflightErrorData(result: Extract<PreflightResult, { ok: false }>): {
-	reason: string;
-	capacityPlan?: PreflightCapacityPlan;
+	reason: PreflightFailureReason;
+	capacityPlan?: CampaignCapacitySchedule;
 } {
 	return {
 		reason: result.reason,
@@ -70,6 +66,43 @@ export interface PreflightOptions {
 	 * Override the current time — used by tests. Defaults to `Date.now()`.
 	 */
 	now?: number;
+	/**
+	 * Run the BINDING capacity gate (default `true`).
+	 *
+	 * The gate is a pre-flight-TIME decision: it exists so the operator is
+	 * offered a multi-day schedule instead of starting a campaign whose tail
+	 * will silently expire in the MTA queue. The fire-time re-validation
+	 * (`validateReadyToSendQuery`) has no operator in the loop — a failure there
+	 * becomes `{ skipped: true }` and leaves the campaign `scheduled` for the
+	 * per-minute cron to re-skip forever, trading "the tail silently expires"
+	 * for "the campaign silently never starts". That path passes `false`; every
+	 * shipped fire-time check still runs.
+	 */
+	checkCapacity?: boolean;
+}
+
+/**
+ * One sentence describing a multi-day capacity schedule. Both refusal messages
+ * open the same way; only the tail differs, and a TRUNCATED plan must never
+ * quote its own `days` as a finish date — the enumeration stopped at
+ * `MAX_PLAN_DAYS` with recipients still unscheduled, so the real finish is
+ * later than any number the plan carries.
+ */
+export function describeCapacitySchedule(schedule: CampaignCapacitySchedule): string {
+	const opening =
+		'This campaign is larger than your sending capacity allows in one go. At your ' +
+		'current warm-up capacity ';
+	if (schedule.truncated) {
+		return (
+			`${opening}it would take more than ${MAX_PLAN_DAYS} days to reach everyone — ` +
+			`send it in stages, or reduce the audience.`
+		);
+	}
+	const dayWord = schedule.days === 1 ? 'day' : 'days';
+	return (
+		`${opening}it takes about ${schedule.days} ${dayWord} to reach everyone, ` +
+		`so send it over ${schedule.days} ${dayWord} instead.`
+	);
 }
 
 type Ctx = MutationCtx | QueryCtx;
@@ -191,25 +224,20 @@ export async function validateReadyToSend(
 	// The projection is anchored at the moment the send actually STARTS, not at
 	// pre-flight time: warming caps grow, so judging a campaign scheduled three
 	// days out against today's cap would refuse sends that provably fit.
-	const capacity = await assessCampaignCapacity(ctx, {
-		audience: campaign.audience,
-		now,
-		...(options.scheduledAt !== undefined ? { startsAt: options.scheduledAt } : {}),
-	});
-	if (!capacity.fits) {
-		const dayWord = capacity.schedule.days === 1 ? 'day' : 'days';
-		return {
-			ok: false,
-			reason: 'exceeds_sending_capacity',
-			message: capacity.schedule.truncated
-				? `This campaign is larger than your sending capacity allows in one go. At your ` +
-					`current warm-up capacity it would take more than ${capacity.schedule.days} ${dayWord} to reach ` +
-					`everyone — send it in stages, or reduce the audience.`
-				: `This campaign is larger than your sending capacity allows in one go. At your ` +
-					`current warm-up capacity it takes about ${capacity.schedule.days} ${dayWord} to reach everyone, ` +
-					`so send it over ${capacity.schedule.days} ${dayWord} instead.`,
-			capacityPlan: capacity.schedule,
-		};
+	if (options.checkCapacity !== false) {
+		const capacity = await assessCampaignCapacity(ctx, {
+			audience: campaign.audience,
+			now,
+			...(options.scheduledAt !== undefined ? { startsAt: options.scheduledAt } : {}),
+		});
+		if (!capacity.fits) {
+			return {
+				ok: false,
+				reason: 'exceeds_sending_capacity',
+				message: describeCapacitySchedule(capacity.schedule),
+				capacityPlan: capacity.schedule,
+			};
+		}
 	}
 
 	return { ok: true };
@@ -237,6 +265,11 @@ export const validateReadyToSendQuery = internalQuery({
 				message: 'Campaign not found',
 			};
 		}
-		return await validateReadyToSend(ctx, campaign);
+		// The BINDING capacity gate is deliberately NOT re-run here: see
+		// `PreflightOptions.checkCapacity`. A capacity refusal at fire time has no
+		// consumer — it becomes `{ skipped: true }` and the campaign sits
+		// `scheduled` forever, which is strictly worse than the expiring tail this
+		// gate exists to prevent. Every shipped fire-time check still runs.
+		return await validateReadyToSend(ctx, campaign, { checkCapacity: false });
 	},
 });
