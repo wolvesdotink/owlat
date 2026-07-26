@@ -17,7 +17,11 @@ import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
 import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 import { getSourceAddressReadiness } from '../scaling/sourceAddressReadiness.js';
-import { configuredDnsblZones, getDnsblStatus } from '../intelligence/dnsbl.js';
+import {
+	configuredDnsblZones,
+	getDnsblStatus,
+	hasUnmeasuredDnsblZone,
+} from '../intelligence/dnsbl.js';
 import {
 	DESTINATION_PROVIDER_KEYS,
 	type DeliverabilitySignal,
@@ -31,7 +35,7 @@ async function routingSignals(
 	redis: Redis,
 	organizationId: string | undefined,
 	poolStatuses: Awaited<ReturnType<typeof getPoolStatus>>,
-	dnsblStatusByIp: ReadonlyMap<string, string>,
+	dnsblUnmeasuredByIp: ReadonlyMap<string, boolean>,
 	now: number
 ): Promise<DeliverabilitySignal[]> {
 	const signals: DeliverabilitySignal[] = [];
@@ -74,7 +78,10 @@ async function routingSignals(
 	// An unfinished lookup (timeout, SERVFAIL, REFUSED, resolver policy, rate
 	// limit) or an address never swept yet is reported as unknown, never as
 	// clean: absence of a listing we could not look up is not evidence of health.
-	if (poolStatuses.some((pool) => (dnsblStatusByIp.get(pool.ip) ?? 'unknown') === 'unknown')) {
+	// This reads the per-zone `unknownOn` record, NOT the priority-collapsed
+	// `overallStatus` — otherwise a warning-severity listing on one zone would
+	// mask an uncompleted lookup on another and the three-state would collapse.
+	if (poolStatuses.some((pool) => dnsblUnmeasuredByIp.get(pool.ip) ?? true)) {
 		signals.push({
 			provider: 'all',
 			source: 'dnsbl_unknown',
@@ -211,6 +218,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 			sourceAddress,
 			dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 			dnsblListings: listedDnsblIds(config, dnsbl),
+			dnsblUnmeasured: hasUnmeasuredDnsblZone(config, ip, dnsbl),
 			dnsblCheckedAt: dnsblCheckedAt(config, ip, dnsbl),
 		});
 	});
@@ -254,18 +262,21 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 					sourceAddress,
 					dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 					dnsblListings: listedDnsblIds(config, dnsbl),
+					dnsblUnmeasured: hasUnmeasuredDnsblZone(config, ip, dnsbl),
 					dnsblCheckedAt: dnsblCheckedAt(config, ip, dnsbl),
 				};
 			})
 		);
 
 		const organizationId = c.req.query('organizationId');
-		const dnsblStatusByIp = new Map(summaries.map((summary) => [summary.ip, summary.dnsbl]));
+		const dnsblUnmeasuredByIp = new Map(
+			summaries.map((summary) => [summary.ip, summary.dnsblUnmeasured])
+		);
 		const signals = await routingSignals(
 			redis,
 			organizationId && organizationId.length <= 128 ? organizationId : undefined,
 			poolStatuses,
-			dnsblStatusByIp,
+			dnsblUnmeasuredByIp,
 			now
 		);
 		return c.json({ date: today, ips: summaries, routing: { generatedAt: now, signals } });

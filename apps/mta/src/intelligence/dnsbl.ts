@@ -133,6 +133,14 @@ export interface DnsblLookupResult {
 	status: DnsblResult['status'];
 	/** Bounded copy of the raw A answers, for callers that decode return codes. */
 	answers: string[];
+	/**
+	 * `retryable` separates "the resolver failed to answer" (worth another
+	 * attempt) from "the resolver answered, and the answer is not usable
+	 * evidence" — an answered 127.255.255.x reserved code is terminal, and
+	 * re-querying a zone that just told us we are rate limited only aggravates
+	 * the limiting.
+	 */
+	retryable: boolean;
 }
 
 /** A hostile or misconfigured zone can answer with an unbounded RRset. */
@@ -181,24 +189,26 @@ export async function lookupDnsblZone(
 		// must preserve a prior quarantine just like SERVFAIL/timeout.
 		if (result.some((addr) => addr.startsWith('127.255.255.'))) {
 			logUnknown({ ip, listId, errorCode: 'resolver_policy' });
-			return { status: 'unknown', answers: boundedAnswers(result) };
+			return { status: 'unknown', answers: boundedAnswers(result), retryable: false };
 		}
+		// An answer we cannot interpret is still an answer: terminal, not retried.
 		return {
 			status: result.some((addr) => addr.startsWith('127.')) ? 'listed' : 'unknown',
 			answers: boundedAnswers(result),
+			retryable: false,
 		};
 	} catch (err: unknown) {
 		const errorCode = safeDnsErrorCode(err);
 		// NXDOMAIN/ENOTFOUND = not listed (this is the expected "clean" result)
 		if (CLEAN_DNS_ERROR_CODES.has(errorCode)) {
-			return { status: 'clean', answers: [] };
+			return { status: 'clean', answers: [], retryable: false };
 		}
 		// Resolver availability is not evidence of delisting. Preserve the last
 		// confirmed decision (and fail closed for a never-observed address).
 		// Never log `zone` or the resolver message: keyed providers such as Abusix
 		// embed a credential in the queried hostname and resolver errors often echo it.
 		logUnknown({ ip, listId, errorCode });
-		return { status: 'unknown', answers: [] };
+		return { status: 'unknown', answers: [], retryable: true };
 	} finally {
 		if (timeout) clearTimeout(timeout);
 	}
@@ -208,8 +218,9 @@ export async function lookupDnsblZone(
  * Check a single IP against a single applicable DNSBL zone, retrying transient
  * failures with exponential backoff inside a bounded budget.
  *
- * Only `unknown` is retried: `listed` and `clean` (NXDOMAIN) are answers, not
- * failures. A budget exhaustion concludes `unknown` — never `clean`.
+ * Only a THROWN transient failure is retried: `listed`, `clean` (NXDOMAIN) and
+ * an answered reserved code are answers, not failures. A budget exhaustion
+ * concludes `unknown` — never `clean`.
  */
 export async function checkDnsbl(
 	ip: string,
@@ -223,8 +234,9 @@ export async function checkDnsbl(
 	const startedAt = now();
 	let status: DnsblResult['status'] = 'unknown';
 	for (let attempt = 1; attempt <= LOOKUP_MAX_ATTEMPTS; attempt += 1) {
-		status = (await lookupDnsblZone(ip, listId, zone, deps)).status;
-		if (status !== 'unknown') return status;
+		const outcome = await lookupDnsblZone(ip, listId, zone, deps);
+		status = outcome.status;
+		if (!outcome.retryable) return status;
 		if (attempt === LOOKUP_MAX_ATTEMPTS) break;
 		const delay = LOOKUP_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
 		const elapsed = now() - startedAt;
@@ -256,6 +268,41 @@ async function checkAllZones(
 		}))
 	);
 	return results;
+}
+
+/**
+ * Convex ingress validates `message` with `optionalBounded(message, 512)` and
+ * rejects the entire webhook event when it is longer (see
+ * packages/shared/src/mtaWebhookEvent.ts). The halt alert is the one alert that
+ * must never be dropped, so it is built to fit by construction.
+ */
+export const ALERT_MESSAGE_MAX_LENGTH = 512;
+
+/**
+ * Render `<ip> on <zones>` clauses for as many addresses as fit in `budget`,
+ * closing with `and K more` when the pool is larger than the budget allows.
+ */
+function boundedListingDetail(
+	listings: readonly { ip: string; zones: string[] }[],
+	budget: number
+): string {
+	const clauses = listings.map(
+		({ ip, zones }) =>
+			`${ip} on ${zones.length > 0 ? zones.join(', ') : 'an unmeasured blocklist status'}`
+	);
+	const rendered: string[] = [];
+	for (const [index, clause] of clauses.entries()) {
+		const remaining = clauses.length - index - 1;
+		const candidate =
+			[...rendered, clause].join('; ') + (remaining > 0 ? `; and ${remaining} more` : '');
+		if (candidate.length > budget) break;
+		rendered.push(clause);
+	}
+	const omitted = clauses.length - rendered.length;
+	// Even one clause can overflow a pathologically long zone list: fall back to
+	// the count, which always fits and still tells the operator the scale.
+	if (rendered.length === 0) return `${clauses.length} sending addresses`;
+	return omitted > 0 ? `${rendered.join('; ')}; and ${omitted} more` : rendered.join('; ');
 }
 
 /**
@@ -421,17 +468,17 @@ export async function runDnsblCheck(
 			// The operator alert names the addresses and the zones that listed them.
 			const listings = uniqueIps.map((ip) => ({ ip, zones: listedZonesByIp.get(ip) ?? [] }));
 			const blocklists = [...new Set(listings.flatMap((listing) => listing.zones))];
-			const detail = listings
-				.map(
-					({ ip, zones }) =>
-						`${ip} on ${zones.length > 0 ? zones.join(', ') : 'an unmeasured blocklist status'}`
-				)
-				.join('; ');
 			// Say which it is: a confirmed listing on every address is a different
 			// operator task from "we could not measure and therefore held".
-			const message = listings.every((listing) => listing.zones.length > 0)
-				? `All sending IPs are blocklisted. Email sending is paused. Listed: ${detail}`
-				: `All sending IPs are unavailable. Email sending is paused. Blocklist status: ${detail}`;
+			const prefix = listings.every((listing) => listing.zones.length > 0)
+				? 'All sending IPs are blocklisted. Email sending is paused. Listed: '
+				: 'All sending IPs are unavailable. Email sending is paused. Blocklist status: ';
+			// The critical alert MUST survive Convex ingress, which rejects the whole
+			// event when `message` exceeds 512 characters — a truncated alert in front
+			// of the operator beats a complete one in the dead-letter queue. Zone names
+			// also travel structurally in `blocklists`, so nothing is actually lost.
+			const message =
+				prefix + boundedListingDetail(listings, ALERT_MESSAGE_MAX_LENGTH - prefix.length);
 			logger.error(
 				{ ips: uniqueIps, blocklists },
 				'ALL IPs blocklisted or unmeasurable — sending halted, nothing leaves the pool'
@@ -482,6 +529,34 @@ export async function startDnsblChecker(
 	return setInterval(() => {
 		void runIfLeader();
 	}, CHECK_INTERVAL_MS);
+}
+
+/**
+ * True when at least one configured zone could not be measured for this address.
+ *
+ * `overallStatus` is a PRIORITY roll-up (critical > degraded > unknown), so a
+ * warning-severity listing on one zone hides an uncompleted lookup on another.
+ * Readers that care about measurement honesty — the routing signal, and through
+ * it the ramp controller — must use the explicitly recorded `unknownOn` field
+ * instead, never the collapsed status.
+ */
+export function hasUnmeasuredDnsblZone(
+	config: Pick<MtaConfig, 'abusixDnsblApiKey'>,
+	ip: string,
+	dnsbl: Record<string, string> | null
+): boolean {
+	// Never swept: nothing about this address has been measured at all.
+	if (!dnsbl) return true;
+	const unknownOn = dnsbl['unknownOn'];
+	if (unknownOn !== undefined) return unknownOn.length > 0;
+	// Rows written before `unknownOn` existed: read the per-zone statuses, and
+	// only then fall back to the collapsed status.
+	const family = ipAddressFamily(ip);
+	if (family && configuredDnsblZones(config, family).some((zone) => dnsbl[zone.id] === 'unknown')) {
+		return true;
+	}
+	const overallStatus = dnsbl['overallStatus'];
+	return overallStatus === undefined || overallStatus === 'unknown';
 }
 
 /**
