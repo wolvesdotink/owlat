@@ -15,8 +15,9 @@
  *                              (test/asserts only), bounded by COUNT_CEILING.
  *   - `countRecipients`      — public query, accumulates integers by streaming,
  *                              capped at COUNT_CEILING.
- *   - `countRecipientsInternal` — the same count without a session, for the
- *                              binding capacity pre-flight (campaigns/capacityPreflight.ts).
+ *   - `countAudience`        — the ctx-bound counting core the query wraps, called
+ *                              directly by the binding capacity pre-flight
+ *                              (campaigns/capacityPreflight.ts) with its own ceiling.
  */
 
 import { v } from 'convex/values';
@@ -374,17 +375,35 @@ export interface AudienceCount {
 	capped: boolean;
 }
 
-/** Shared counting core — one predicate, one ceiling, two entry points. */
-async function countAudienceImpl(ctx: QueryCtx, audience: StoredAudience): Promise<AudienceCount> {
+/**
+ * The ctx-bound counting core. Callers that already hold a `QueryCtx` (or a
+ * `MutationCtx`, which is one) call this DIRECTLY — no `ctx.runQuery` hop, no
+ * sub-transaction, no session to launder.
+ *
+ * `ceiling` lets a caller bound its own read cost below `COUNT_CEILING` when it
+ * only needs to know "at least N": the binding capacity pre-flight stops
+ * counting as soon as the audience provably exceeds everything the deployment
+ * could send, so its hot-path cost is bounded by capacity, not audience size.
+ */
+export async function countAudience(
+	ctx: QueryCtx,
+	audience: StoredAudience,
+	options: { ceiling?: number } = {}
+): Promise<AudienceCount> {
+	const requested = options.ceiling;
+	const ceiling =
+		requested !== undefined && Number.isFinite(requested) && requested > 0
+			? Math.min(COUNT_CEILING, Math.ceil(requested))
+			: COUNT_CEILING;
 	let total = 0;
 	let eligible = 0;
 	for await (const { recipient } of streamAudienceCandidates(ctx, audience)) {
 		total += 1;
 		if (recipient) eligible += 1;
-		if (total >= COUNT_CEILING) {
+		if (total >= ceiling) {
 			// Cap reached — clamp to the ceiling and stop streaming. There may be
 			// more candidates, so the readout is "at least CEILING".
-			return { total: COUNT_CEILING, eligible: Math.min(eligible, COUNT_CEILING), capped: true };
+			return { total: ceiling, eligible: Math.min(eligible, ceiling), capped: true };
 		}
 	}
 	return { total, eligible, capped: false };
@@ -394,17 +413,6 @@ export const countRecipients = authedQuery({
 	args: { audience: v.optional(audienceValidator) },
 	handler: async (ctx, { audience }): Promise<AudienceCount> => {
 		if (!audience) return { total: 0, eligible: 0, capped: false };
-		return await countAudienceImpl(ctx, audience);
-	},
-});
-
-// ── Entry 2b: the same count, session-free. The binding capacity pre-flight
-// (`campaigns/capacityPreflight.ts`) runs at schedule time AND at scheduler-tick
-// fire time, where there is no user session to authorize against; the calling
-// pre-flight has already gated on the caller's permission. ──
-export const countRecipientsInternal = internalQuery({
-	args: { audience: audienceValidator },
-	handler: async (ctx, { audience }): Promise<AudienceCount> => {
-		return await countAudienceImpl(ctx, audience);
+		return await countAudience(ctx, audience);
 	},
 });
