@@ -1,6 +1,7 @@
 /** Atomic idempotent persistence for circuit-breaker outcome markers. */
 
 import type Redis from 'ioredis';
+import { CIRCUIT_BREAKER_POLICY } from '@owlat/shared/deliverabilityPolicy';
 import type { MtaConfig } from '../config.js';
 import {
 	DURABLE_EFFECT_IDEMPOTENCY_TTL_MS,
@@ -13,13 +14,13 @@ const BREAKER_PREFIX = 'mta:breaker:';
 const OUTCOMES_SUFFIX = ':outcomes';
 const OUTCOME_EFFECTS_SUFFIX = ':outcome-effects';
 
-export const FAST_WINDOW = 50;
-export const FAST_THRESHOLD = 0.15;
-export const SLOW_WINDOW = 100;
-export const SLOW_THRESHOLD = 0.08;
-export const COMPLAINT_FAST_THRESHOLD = 0.04;
-export const COMPLAINT_SLOW_THRESHOLD = 0.002;
-export const COOLDOWN_MS = 30 * 60 * 1000;
+export const FAST_WINDOW = CIRCUIT_BREAKER_POLICY.bounce.fast.windowSize;
+export const FAST_THRESHOLD = CIRCUIT_BREAKER_POLICY.bounce.fast.rateExclusiveMax;
+export const SLOW_WINDOW = CIRCUIT_BREAKER_POLICY.bounce.sustained.windowSize;
+export const SLOW_THRESHOLD = CIRCUIT_BREAKER_POLICY.bounce.sustained.rateExclusiveMax;
+export const COMPLAINT_FAST_THRESHOLD = CIRCUIT_BREAKER_POLICY.complaint.fast.rateExclusiveMax;
+export const COMPLAINT_SLOW_THRESHOLD = CIRCUIT_BREAKER_POLICY.complaint.sustained.rateExclusiveMax;
+export const COOLDOWN_MS = CIRCUIT_BREAKER_POLICY.cooldownMs;
 const OUTCOME_TTL_SECONDS = 6 * 3600;
 
 const RECORD_OUTCOME_ONCE_LUA = `

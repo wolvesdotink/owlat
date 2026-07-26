@@ -330,24 +330,7 @@ export interface InboundEmailPayload extends Pick<
 
 // ============ Domain Throttle Types ============
 
-export interface DestinationProviderProfile {
-	/** Default sending rate (emails per minute) */
-	defaultRate: number;
-	/** Maximum rate ceiling */
-	ceiling: number;
-	/** Minimum rate floor */
-	floor: number;
-	/** Multiplier on 4xx (e.g., 0.5 = halve the rate) */
-	backoffFactor: number;
-	/** Multiplier on sustained success (e.g., 1.1 = +10%) */
-	recoveryFactor: number;
-	/** Provider TLS floor composed with local, MTA-STS, and DANE policy. */
-	tlsMode: import('@owlat/shared').OutboundTlsMode;
-	/** Maximum live SMTP connection lineages for this provider. */
-	maxConnections: number;
-	/** Deliveries allowed over one SMTP connection before a clean recycle. */
-	maxDeliveriesPerConnection: number;
-}
+export type { DestinationProviderProfile } from '@owlat/shared/deliverabilityPolicy';
 
 export type DomainHealthStatus = 'healthy' | 'degraded' | 'blocking';
 

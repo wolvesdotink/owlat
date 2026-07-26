@@ -28,6 +28,53 @@ export const BASE_WARMING_SCHEDULE: ReadonlyArray<{ day: number; cap: number }> 
  */
 export const GRADUATED_DISPLAY_CAP = 200_000;
 
+/** Last schedule cap that can be enforced before health-gated graduation. */
+export const LAST_FINITE_WARMING_CAP = BASE_WARMING_SCHEDULE.reduce(
+	(lastFiniteCap, entry) => (Number.isFinite(entry.cap) ? entry.cap : lastFiniteCap),
+	BASE_WARMING_SCHEDULE[0]!.cap
+);
+
+/**
+ * Adaptive warming policy enforced by the MTA.
+ *
+ * This lives beside the base schedule so operational documentation and other
+ * consumers can use the same named policy instead of copying numeric literals.
+ * All rate boundaries are fractions (for example, 0.01 means 1%).
+ */
+export const ADAPTIVE_WARMING_POLICY = {
+	acceleration: {
+		bounceRateExclusiveMax: 0.01,
+		deferralRateExclusiveMax: 0.05,
+		usageRateMinimum: 0.8,
+		scheduleDayMultiplier: 1.5,
+	},
+	deceleration: {
+		bounceRateExclusiveMin: 0.03,
+		deferralRateExclusiveMin: 0.1,
+		scheduleDayMultiplier: 0.5,
+		capMultiplier: 0.7,
+		minimumCap: 50,
+	},
+	halt: {
+		bounceRateExclusiveMin: 0.08,
+		deferralRateExclusiveMin: 0.25,
+	},
+	graduation: {
+		minimumScheduleDay: 30,
+		bounceRateExclusiveMax: 0.02,
+	},
+} as const;
+
+/**
+ * Persisted caps for an IP that has not graduated must stay within this domain.
+ * Keeping the invariant here gives Redis enforcement and non-Redis consumers
+ * one source of truth.
+ */
+export const NON_GRADUATED_WARMING_CAP_RANGE = Object.freeze({
+	minimum: ADAPTIVE_WARMING_POLICY.deceleration.minimumCap,
+	maximum: LAST_FINITE_WARMING_CAP,
+});
+
 /** The enforced daily send cap for a warming day (Infinity once graduated). */
 export function getWarmingCapForDay(day: number): number {
 	let cap = BASE_WARMING_SCHEDULE[0]!.cap;
@@ -36,6 +83,37 @@ export function getWarmingCapForDay(day: number): number {
 		else break;
 	}
 	return cap;
+}
+
+/** Whether a persisted non-graduated cap is safe to enforce. */
+export function isValidNonGraduatedWarmingCap(cap: unknown): cap is number {
+	return (
+		typeof cap === 'number' &&
+		Number.isFinite(cap) &&
+		Number.isInteger(cap) &&
+		cap >= NON_GRADUATED_WARMING_CAP_RANGE.minimum &&
+		cap <= NON_GRADUATED_WARMING_CAP_RANGE.maximum
+	);
+}
+
+/**
+ * Conservative repair for an invalid persisted cap. Invalid days fail closed
+ * to day 1; valid days use their finite schedule cap, clamped at the final
+ * enforceable cap rather than crossing into graduated Infinity.
+ */
+export function getNonGraduatedWarmingCapRepairFallback(currentDay: number): number {
+	const normalizedDay = Number.isFinite(currentDay) && currentDay >= 1 ? Math.floor(currentDay) : 1;
+	const scheduledCap = getWarmingCapForDay(normalizedDay);
+	return Number.isFinite(scheduledCap)
+		? Math.min(scheduledCap, NON_GRADUATED_WARMING_CAP_RANGE.maximum)
+		: NON_GRADUATED_WARMING_CAP_RANGE.maximum;
+}
+
+/** Normalize an untrusted persisted cap using the shared warming contract. */
+export function normalizeNonGraduatedWarmingCap(cap: unknown, currentDay: number): number {
+	return isValidNonGraduatedWarmingCap(cap)
+		? cap
+		: getNonGraduatedWarmingCapRepairFallback(currentDay);
 }
 
 /** Display-safe cap: the graduated Infinity is clamped to GRADUATED_DISPLAY_CAP. */

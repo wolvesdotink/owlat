@@ -165,6 +165,10 @@
 			"types": "./src/warming.ts",
 			"import": "./src/warming.ts"
 		},
+		"./deliverabilityPolicy": {
+			"types": "./src/deliverabilityPolicy.ts",
+			"import": "./src/deliverabilityPolicy.ts"
+		},
 		"./fcrdns": {
 			"types": "./src/fcrdns.ts",
 			"import": "./src/fcrdns.ts"
