@@ -21,12 +21,13 @@ vi.mock('../logger.js', () => ({
 }));
 
 import { notifyPostmasterConvex } from '../../webhooks/convexNotifier.js';
+import { POSTMASTER_MAX_COMPLIANCE_CHECKS } from '@owlat/shared/mtaWebhookEvent';
 import {
-	POSTMASTER_COMPLIANCE_CHECK_LIMIT,
 	POSTMASTER_RATIO_METRICS,
 	normalizeDomainStat,
 	parseComplianceStatus,
 } from '../googlePostmasterApi.js';
+import { logger } from '../logger.js';
 import { fetchPostmasterData } from '../postmaster.js';
 
 const config = {
@@ -156,7 +157,7 @@ describe('Postmaster v2 compliance status parsing', () => {
 			],
 		};
 		const checks = parseComplianceStatus(hostile);
-		expect(checks).toHaveLength(POSTMASTER_COMPLIANCE_CHECK_LIMIT);
+		expect(checks).toHaveLength(POSTMASTER_MAX_COMPLIANCE_CHECKS);
 		expect(checks.every((check) => /^[A-Z0-9_]{1,64}$/.test(check.name))).toBe(true);
 		expect(new Set(checks.map((check) => check.name)).size).toBe(checks.length);
 	});
@@ -273,5 +274,100 @@ describe('Postmaster v2 collection into the stored shape', () => {
 		expect(stats).toHaveLength(1);
 		expect(stats[0]).toMatchObject({ deliveryErrorRatio: 0.05 });
 		expect(stats[0]).not.toHaveProperty('deliveryErrors');
+	});
+});
+
+describe('Postmaster v2 compliance collection is additive, never load-bearing', () => {
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		// Restated rather than inherited: one case below replaces the disposition.
+		vi.mocked(notifyPostmasterConvex).mockResolvedValue({
+			disposition: 'accepted_authorized',
+			retained: true,
+		});
+		vi.spyOn(Date, 'now').mockReturnValue(FROZEN_NOW);
+		await new Redis().flushall();
+	});
+
+	it('does not ask Google about a domain whose authorization was just lost', async () => {
+		vi.mocked(notifyPostmasterConvex).mockImplementation(async (event) =>
+			event.event === 'postmaster.stats'
+				? { disposition: 'ignored_unowned', retained: false }
+				: { disposition: 'accepted_authorized', retained: false }
+		);
+		const requestedUrls: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.includes('/token')) return response({ access_token: 'token', expires_in: 3600 });
+				requestedUrls.push(url);
+				if (url.includes('/domains?')) return response({ domains: [verifiedDomain()] });
+				if (url.endsWith('/complianceStatus')) {
+					return response({ checks: [{ name: 'SPAM_RATE', state: 'FAILING' }] });
+				}
+				return response({ domainStats: [stat('userReportedSpamRatio', 0.001)] });
+			})
+		);
+
+		await fetchPostmasterData(new Redis(), config);
+
+		expect(requestedUrls.some((url) => url.endsWith('/complianceStatus'))).toBe(false);
+		expect(collected().some((event) => event.event === 'postmaster.compliance')).toBe(false);
+	});
+
+	it('reports an unavailable Compliance Status once a day rather than every sweep', async () => {
+		const redis = new Redis();
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.includes('/token')) return response({ access_token: 'token', expires_in: 3600 });
+				if (url.includes('/domains?')) return response({ domains: [verifiedDomain()] });
+				if (url.endsWith('/complianceStatus')) {
+					return response({ error: { code: 403, status: 'PERMISSION_DENIED' } }, 403);
+				}
+				return response({ domainStats: [stat('userReportedSpamRatio', 0.001)] });
+			})
+		);
+
+		await fetchPostmasterData(redis, config);
+		await fetchPostmasterData(redis, config);
+
+		const complianceWarnings = vi
+			.mocked(logger.warn)
+			.mock.calls.filter((call) => JSON.stringify(call).includes('domains.complianceStatus'));
+		expect(complianceWarnings).toHaveLength(1);
+		expect(logger.error).not.toHaveBeenCalled();
+		// The statistics half of the sweep is untouched by the missing permission.
+		expect(collected().filter((event) => event.event === 'postmaster.stats')).toHaveLength(1);
+	});
+
+	it('lets run-budget exhaustion stop the sweep instead of swallowing it', async () => {
+		let now = FROZEN_NOW;
+		vi.spyOn(Date, 'now').mockImplementation(() => now);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string | URL | Request) => {
+				const url = String(input);
+				if (url.includes('/token')) return response({ access_token: 'token', expires_in: 3600 });
+				if (url.includes('/domains?')) {
+					return response({
+						domains: [verifiedDomain(), verifiedDomain('second.example.com')],
+					});
+				}
+				// The statistics push consumed the whole run budget.
+				now = FROZEN_NOW + 10 * 60 * 1_000;
+				return response({ domainStats: [stat('userReportedSpamRatio', 0.001)] });
+			})
+		);
+
+		await fetchPostmasterData(new Redis(), config);
+
+		expect(logger.error).toHaveBeenCalledWith(
+			expect.objectContaining({ category: 'budget' }),
+			'Google Postmaster fetch stopped'
+		);
+		expect(vi.mocked(logger.warn).mock.calls).toEqual([]);
 	});
 });

@@ -11,7 +11,8 @@
 import { randomUUID } from 'node:crypto';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import type { GooglePostmasterDeliveryErrorShare, GooglePostmasterStatsEvent } from '../types.js';
+import type { PostmasterDeliveryError } from '@owlat/shared/mtaWebhookEvent';
+import type { GooglePostmasterStatsEvent } from '../types.js';
 import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
 import {
 	buildStatsEvents,
@@ -25,18 +26,23 @@ import {
 	normalizeDomainStat,
 	parseReadableVerifiedDomain,
 	type PostmasterDomainWire,
+	utcDateDaysAgo,
 } from './googlePostmasterApi.js';
 import { logger } from './logger.js';
 import {
 	COMPLIANCE_PUSHED_PREFIX,
 	fetchDeliveryErrorShares,
 	pushComplianceStatus,
-} from './postmasterExtras.js';
+} from './postmasterCompliance.js';
 
 const COLLECTION_LOCK_KEY = 'mta:postmaster:collection-lock';
 const DOMAIN_CURSOR_KEY = 'mta:postmaster:domain-cursor';
 const STATS_CURSOR_PREFIX = 'mta:postmaster:stats-cursor:';
-const PUSHED_PREFIX = 'mta:postmaster:pushed:';
+// Versioned: a receipt written by an earlier collector describes a NARROWER
+// observation than this one pushes. Bumping the version makes the first sweep
+// after an upgrade re-push the whole backfill window with the widened metrics
+// instead of skipping days whose v1 receipt outlives the window itself.
+const PUSHED_PREFIX = 'mta:postmaster:pushed:v2:';
 const DOMAIN_STATE_INDEX_KEY = 'mta:postmaster:domain-state-index';
 const DISCOVERY_GENERATION_KEY = 'mta:postmaster:discovery-generation';
 const BACKFILL_DAYS = 7;
@@ -65,10 +71,6 @@ interface StatsCursor {
 	pageToken: string;
 	startDate: string;
 	endDate: string;
-}
-
-function utcDateDaysAgo(daysAgo: number): string {
-	return new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1_000).toISOString().slice(0, 10);
 }
 
 function optionalPageToken(
@@ -283,7 +285,7 @@ async function pushDomainStats(
 	let mayRecoverPersistedCursor = pageToken !== undefined;
 	// Fetched lazily and at most once per domain per sweep: there is no point
 	// asking Google to break down errors that did not happen.
-	let deliveryErrorsByDate: Map<string, GooglePostmasterDeliveryErrorShare[]> | null = null;
+	let deliveryErrorsByDate: Map<string, PostmasterDeliveryError[]> | null = null;
 
 	for (let pageIndex = 0; pageIndex < STATS_PAGES_PER_DOMAIN_PER_SWEEP; pageIndex++) {
 		let page: StatsPage;
@@ -317,6 +319,7 @@ async function pushDomainStats(
 				// Best-effort and never fatal: an empty breakdown just means the
 				// day's event carries the aggregate ratio without its categories.
 				deliveryErrorsByDate = await fetchDeliveryErrorShares(
+					redis,
 					client,
 					domainName,
 					startDate,
@@ -426,7 +429,11 @@ export async function fetchPostmasterData(redis: Redis, config: MtaConfig): Prom
 					continue;
 				}
 				await redis.zadd(DOMAIN_STATE_INDEX_KEY, generation, domainName);
-				await pushDomainStats(redis, config, client, domain, deadline);
+				const outcome = await pushDomainStats(redis, config, client, domain, deadline);
+				// Convex just told us this domain is not ours and its local state
+				// has been wiped; asking Google about it again would be a wasted
+				// call and a webhook that can only be rejected.
+				if (outcome === 'authorization_lost') continue;
 				await pushComplianceStatus(redis, config, client, domainName, deadline);
 			}
 

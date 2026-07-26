@@ -1,56 +1,97 @@
 /**
- * Best-effort Google Postmaster Tools v2 extras: the point-in-time Compliance
- * Status verdict and the delivery-error breakdown by category.
+ * The compliance-side Google Postmaster Tools v2 collectors: the point-in-time
+ * Compliance Status verdict and the delivery-error breakdown by category.
  *
- * Both are strictly ADDITIVE. Every failure here — a permission the operator
- * did not grant, a dimension filter Google rejects, a shape we do not
- * recognise — is logged once and swallowed, so the sweep still delivers the
- * daily ratio metrics the collector already collects today.
+ * Both are strictly ADDITIVE. A permission the operator did not grant, a
+ * dimension filter Google rejects, a shape we do not recognise — each is
+ * reported once and swallowed, so the sweep still delivers the daily ratio
+ * metrics the collector already collects today.
+ *
+ * The one failure that is NOT swallowed is budget exhaustion: it is the
+ * sweep's own stop signal rather than an upstream problem, so it propagates.
  *
  * @see https://developers.google.com/workspace/gmail/postmaster/reference/rest/v2/domains.domainStats/query
  */
 
 import type Redis from 'ioredis';
-import type { MtaConfig } from '../config.js';
 import type {
-	GooglePostmasterComplianceCheck,
-	GooglePostmasterDeliveryErrorShare,
-} from '../types.js';
+	PostmasterComplianceCheck,
+	PostmasterDeliveryError,
+} from '@owlat/shared/mtaWebhookEvent';
+import type { MtaConfig } from '../config.js';
 import { notifyPostmasterConvex } from '../webhooks/convexNotifier.js';
 import {
 	DELIVERY_ERROR_METRIC_PREFIX,
 	GOOGLE_POSTMASTER_API_BASE,
+	GoogleApiError,
 	type GooglePostmasterClient,
 	POSTMASTER_DELIVERY_ERROR_CATEGORIES,
 	googleDateObject,
 	isRecord,
 	normalizeDomainStat,
 	parseComplianceStatus,
+	utcDateDaysAgo,
 } from './googlePostmasterApi.js';
 import { logger } from './logger.js';
 
 const DELIVERY_ERROR_PAGE_SIZE = 200;
 export const COMPLIANCE_PUSHED_PREFIX = 'mta:postmaster:compliance-pushed:';
 const PUSH_RECEIPT_TTL_SECONDS = 14 * 24 * 60 * 60;
+const UNAVAILABLE_WARN_PREFIX = 'mta:postmaster:unavailable-warned:';
+/** One warning per operation per domain per day, not one per hourly sweep. */
+const UNAVAILABLE_WARN_TTL_SECONDS = 24 * 60 * 60;
 
-function utcToday(): string {
-	return new Date(Date.now()).toISOString().slice(0, 10);
+/**
+ * Report an unavailable best-effort collector once per day per domain.
+ *
+ * A permission the operator never granted is a permanent condition: without
+ * this marker it would produce a warning for every domain on every sweep,
+ * forever, and drown the signal an operator actually needs to see.
+ */
+async function warnUnavailable(
+	redis: Redis,
+	operation: string,
+	domain: string,
+	message: string
+): Promise<void> {
+	try {
+		const claimed = await redis.set(
+			`${UNAVAILABLE_WARN_PREFIX}${operation}:${domain}`,
+			'1',
+			'EX',
+			UNAVAILABLE_WARN_TTL_SECONDS,
+			'NX'
+		);
+		if (claimed !== 'OK') return;
+	} catch {
+		// A Redis hiccup must not silence an operator-facing warning.
+	}
+	logger.warn({ operation }, message);
+}
+
+/** Budget exhaustion stops the whole sweep; everything else is swallowed. */
+function rethrowIfBudgetExhausted(error: unknown): void {
+	if (error instanceof GoogleApiError && error.category === 'budget') throw error;
 }
 
 /** The current Compliance Status verdict for one domain; `[]` when unavailable. */
-export async function fetchComplianceChecks(
+async function fetchComplianceChecks(
+	redis: Redis,
 	client: GooglePostmasterClient,
 	domain: string
-): Promise<GooglePostmasterComplianceCheck[]> {
+): Promise<PostmasterComplianceCheck[]> {
 	try {
 		const payload = await client.json(
 			'domains.complianceStatus',
 			`${GOOGLE_POSTMASTER_API_BASE}/domains/${encodeURIComponent(domain)}/complianceStatus`
 		);
 		return parseComplianceStatus(payload);
-	} catch {
-		logger.warn(
-			{ operation: 'domains.complianceStatus' },
+	} catch (error) {
+		rethrowIfBudgetExhausted(error);
+		await warnUnavailable(
+			redis,
+			'domains.complianceStatus',
+			domain,
 			'Google Postmaster compliance status unavailable'
 		);
 		return [];
@@ -80,12 +121,13 @@ function deliveryErrorQueryBody(startDate: string, endDate: string) {
  * and one page already covers every category over the backfill window.
  */
 export async function fetchDeliveryErrorShares(
+	redis: Redis,
 	client: GooglePostmasterClient,
 	domain: string,
 	startDate: string,
 	endDate: string
-): Promise<Map<string, GooglePostmasterDeliveryErrorShare[]>> {
-	const byDate = new Map<string, GooglePostmasterDeliveryErrorShare[]>();
+): Promise<Map<string, PostmasterDeliveryError[]>> {
+	const byDate = new Map<string, PostmasterDeliveryError[]>();
 	let payload: unknown;
 	try {
 		payload = await client.json(
@@ -97,9 +139,12 @@ export async function fetchDeliveryErrorShares(
 				body: JSON.stringify(deliveryErrorQueryBody(startDate, endDate)),
 			}
 		);
-	} catch {
-		logger.warn(
-			{ operation: 'domains.domainStats.query.deliveryErrors' },
+	} catch (error) {
+		rethrowIfBudgetExhausted(error);
+		await warnUnavailable(
+			redis,
+			'domains.domainStats.query.deliveryErrors',
+			domain,
 			'Google Postmaster delivery-error breakdown unavailable'
 		);
 		return byDate;
@@ -140,10 +185,10 @@ export async function pushComplianceStatus(
 	domainName: string,
 	deadline: number
 ): Promise<void> {
-	const date = utcToday();
+	const date = utcDateDaysAgo(0);
 	const receiptKey = `${COMPLIANCE_PUSHED_PREFIX}${domainName}:${date}`;
 	if (await redis.exists(receiptKey)) return;
-	const checks = await fetchComplianceChecks(client, domainName);
+	const checks = await fetchComplianceChecks(redis, client, domainName);
 	if (checks.length === 0) return;
 	const acknowledgement = await notifyPostmasterConvex(
 		{ event: 'postmaster.compliance', domain: domainName, date, checks, timestamp: Date.now() },
