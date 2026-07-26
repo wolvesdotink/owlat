@@ -107,35 +107,39 @@ export function usableDayCount(now: number, maxMessageAgeMs: number): number {
 	return days;
 }
 
+/** Inputs to the schedule builder — the planner minus the retention horizon. */
+export interface CapacityScheduleInput {
+	/** Eligible recipients. A lower bound is fine — refusing on one is sound. */
+	audienceSize: number;
+	/**
+	 * Projected sendable volume per day, index 0 = the REMAINDER of today,
+	 * index k = the whole of the k-th day after today (UTC day boundaries).
+	 */
+	remainingCapacityByDay: readonly number[];
+	/** Current wall-clock time (ms since epoch). */
+	now: number;
+}
+
 /**
- * Decide whether a campaign can finish inside the message-retention horizon,
- * and if not, what the multi-day schedule looks like.
+ * Enumerate the day-by-day schedule that delivers `audienceSize` against the
+ * projected capacity — with NO retention-horizon short-circuit. Callers that
+ * only want the advisory day count (the campaign wizard's send estimate) call
+ * this directly; `planCampaignCapacity` calls it once it has established the
+ * campaign cannot finish inside the horizon.
  *
- * Degenerate inputs deliberately answer `{ fits: true }` — an empty audience,
- * a hostile audience size, or a non-sensical retention horizon are never
- * grounds to block a send (D2: absence of measurement never blocks).
+ * The schedule extends past the projected window at the last projected day's
+ * rate (the warming schedule plateaus, so this neither invents growth nor
+ * pretends at zero). A day with no capacity is still a real day of the
+ * schedule, so slices are indexed by calendar day from `now` (a leading 0
+ * means "nothing goes out today"). The plan is truncated at `MAX_PLAN_DAYS`.
+ *
+ * Returns the `days: 0` sentinel when no schedule can reach everyone — see
+ * `CampaignCapacitySchedule.days`.
  */
-export function planCampaignCapacity(input: CampaignCapacityPlanInput): CampaignCapacityPlan {
+export function buildCapacitySchedule(input: CapacityScheduleInput): CampaignCapacitySchedule {
 	const audienceSize = sanitizeCount(input.audienceSize);
-	if (audienceSize === 0) return { fits: true };
-
 	const capacities = input.remainingCapacityByDay.map(sanitizeCount);
-	const horizonDays = usableDayCount(input.now, input.maxMessageAgeMs);
-	if (horizonDays === 0) return { fits: true };
-
-	// Does it finish inside the horizon? Only the days the message survives count.
-	let withinHorizon = 0;
-	for (let day = 0; day < horizonDays; day += 1) {
-		withinHorizon += capacities[day] ?? 0;
-		if (withinHorizon >= audienceSize) return { fits: true };
-	}
-
-	// It does not fit. Build the schedule over the full projection, extending
-	// past the projected window at the last projected day's rate (the warming
-	// schedule plateaus, so this neither invents growth nor pretends at zero).
-	// A day with no capacity is still a real day of the schedule, so slices are
-	// indexed by calendar day from today (a leading 0 means "nothing goes out
-	// today"). The plan is truncated at MAX_PLAN_DAYS.
+	const now = Number.isFinite(input.now) ? input.now : 0;
 	const trailingRate = capacities.length > 0 ? (capacities[capacities.length - 1] ?? 0) : 0;
 	const slices: number[] = [];
 	let remaining = audienceSize;
@@ -161,7 +165,7 @@ export function planCampaignCapacity(input: CampaignCapacityPlanInput): Campaign
 			fits: false,
 			days: 0,
 			slices: [],
-			finishesAt: input.now,
+			finishesAt: now,
 			covered: 0,
 			truncated: false,
 		};
@@ -172,6 +176,36 @@ export function planCampaignCapacity(input: CampaignCapacityPlanInput): Campaign
 	const truncated = remaining > 0;
 
 	const days = slices.length;
-	const finishesAt = utcDayStart(input.now) + days * MS_PER_DAY;
+	const finishesAt = utcDayStart(now) + days * MS_PER_DAY;
 	return { fits: false, days, slices, finishesAt, covered, truncated };
+}
+
+/**
+ * Decide whether a campaign can finish inside the message-retention horizon,
+ * and if not, what the multi-day schedule looks like.
+ *
+ * Degenerate inputs deliberately answer `{ fits: true }` — an empty audience,
+ * a hostile audience size, or a non-sensical retention horizon are never
+ * grounds to block a send (D2: absence of measurement never blocks).
+ */
+export function planCampaignCapacity(input: CampaignCapacityPlanInput): CampaignCapacityPlan {
+	const audienceSize = sanitizeCount(input.audienceSize);
+	if (audienceSize === 0) return { fits: true };
+
+	const capacities = input.remainingCapacityByDay.map(sanitizeCount);
+	const horizonDays = usableDayCount(input.now, input.maxMessageAgeMs);
+	if (horizonDays === 0) return { fits: true };
+
+	// Does it finish inside the horizon? Only the days the message survives count.
+	let withinHorizon = 0;
+	for (let day = 0; day < horizonDays; day += 1) {
+		withinHorizon += capacities[day] ?? 0;
+		if (withinHorizon >= audienceSize) return { fits: true };
+	}
+
+	return buildCapacitySchedule({
+		audienceSize,
+		remainingCapacityByDay: input.remainingCapacityByDay,
+		now: input.now,
+	});
 }
