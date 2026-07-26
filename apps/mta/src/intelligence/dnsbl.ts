@@ -32,6 +32,16 @@ import {
 
 const CHECK_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 const LOOKUP_TIMEOUT_MS = 5000;
+/**
+ * A transient resolver failure is retried, because concluding `unknown` costs
+ * real ramp progress (unknown preserves quarantine and holds the controller).
+ * The retry budget is hard-bounded so a dead resolver cannot stall the sweep:
+ * at most `LOOKUP_MAX_ATTEMPTS` attempts, and no attempt starts after the
+ * per-zone deadline has passed.
+ */
+export const LOOKUP_MAX_ATTEMPTS = 3;
+export const LOOKUP_RETRY_BASE_DELAY_MS = 200;
+export const LOOKUP_TOTAL_BUDGET_MS = 12_000;
 const DNSBL_PREFIX = 'mta:dnsbl:';
 const IP_POOL_BLOCKED = 'mta:ip-pool:blocked';
 const CLEAN_DNS_ERROR_CODES = new Set(['ENOTFOUND', 'ENODATA']);
@@ -92,7 +102,10 @@ export function dnsblQueryName(ip: string, zone: string): string {
 	return `${reversed}.${zone}`;
 }
 
-/** Resolver seam so callers (and tests) can supply their own DNS transport. */
+/**
+ * Resolver seam so callers (and tests) can supply their own DNS transport, plus
+ * the injected clock + delay that make the bounded retry deterministic.
+ */
 export interface DnsblLookupDeps {
 	resolve4: (hostname: string) => Promise<string[]>;
 	timeoutMs?: number;
@@ -103,7 +116,17 @@ export interface DnsblLookupDeps {
 	 * that gates nothing has no such consequence to announce.
 	 */
 	quiet?: boolean;
+	/** Retry backoff delay; defaults to a real timer. */
+	sleep?: (ms: number) => Promise<void>;
+	/** Retry budget clock; defaults to `Date.now`. */
+	now?: () => number;
 }
+
+const defaultLookupDeps: DnsblLookupDeps = {
+	resolve4,
+	sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+	now: () => Date.now(),
+};
 
 export interface DnsblLookupResult {
 	status: DnsblResult['status'];
@@ -124,7 +147,8 @@ function boundedAnswers(answers: readonly string[]): string[] {
 /**
  * Look one IP up in one DNSBL zone and return both the verdict and the raw
  * answers. This is the single DNSBL lookup path in the MTA: the periodic
- * routing checker and the pre-flight IP audit both go through it.
+ * routing checker and the pre-flight IP audit both go through it. It performs
+ * exactly one attempt; `checkDnsbl` layers the bounded retry on top.
  */
 export async function lookupDnsblZone(
 	ip: string,
@@ -176,19 +200,47 @@ export async function lookupDnsblZone(
 	}
 }
 
-/** Check a single IP against a single applicable DNSBL zone. */
-async function checkDnsbl(
+/**
+ * Check a single IP against a single applicable DNSBL zone, retrying transient
+ * failures with exponential backoff inside a bounded budget.
+ *
+ * Only `unknown` is retried: `listed` and `clean` (NXDOMAIN) are answers, not
+ * failures. A budget exhaustion concludes `unknown` — never `clean`.
+ */
+export async function checkDnsbl(
 	ip: string,
 	listId: DnsblListDefinition['id'],
-	zone: string
+	zone: string,
+	deps: DnsblLookupDeps = defaultLookupDeps
 ): Promise<DnsblResult['status']> {
-	return (await lookupDnsblZone(ip, listId, zone)).status;
+	const now = deps.now ?? Date.now;
+	const sleep =
+		deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+	const startedAt = now();
+	let status: DnsblResult['status'] = 'unknown';
+	for (let attempt = 1; attempt <= LOOKUP_MAX_ATTEMPTS; attempt += 1) {
+		status = (await lookupDnsblZone(ip, listId, zone, deps)).status;
+		if (status !== 'unknown') return status;
+		if (attempt === LOOKUP_MAX_ATTEMPTS) break;
+		const delay = LOOKUP_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1);
+		const elapsed = now() - startedAt;
+		// Clock skew (a non-monotonic `now`) must never extend the budget.
+		if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed + delay >= LOOKUP_TOTAL_BUDGET_MS) {
+			break;
+		}
+		await sleep(delay);
+	}
+	return status;
 }
 
 /**
  * Check an IP against all configured DNSBL zones
  */
-async function checkAllZones(ip: string, config: MtaConfig): Promise<DnsblResult[]> {
+async function checkAllZones(
+	ip: string,
+	config: MtaConfig,
+	deps: DnsblLookupDeps
+): Promise<DnsblResult[]> {
 	const family = ipAddressFamily(ip);
 	if (!family) throw new Error(`Configured DNSBL address is invalid: ${ip}`);
 	const results = await Promise.all(
@@ -196,7 +248,7 @@ async function checkAllZones(ip: string, config: MtaConfig): Promise<DnsblResult
 			id: zone.id,
 			name: zone.name,
 			severity: zone.severity,
-			status: await checkDnsbl(ip, zone.id, zone.zone),
+			status: await checkDnsbl(ip, zone.id, zone.zone, deps),
 		}))
 	);
 	return results;
@@ -205,7 +257,11 @@ async function checkAllZones(ip: string, config: MtaConfig): Promise<DnsblResult
 /**
  * Run a full DNSBL check for all IPs and update Redis state
  */
-export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<void> {
+export async function runDnsblCheck(
+	redis: Redis,
+	config: MtaConfig,
+	deps: DnsblLookupDeps = defaultLookupDeps
+): Promise<void> {
 	const allIps = [...config.ipPools.transactional, ...config.ipPools.campaign];
 	const uniqueIps = [...new Set(allIps)];
 
@@ -214,9 +270,13 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 	const observations = await Promise.all(
 		uniqueIps.map(async (ip) => {
 			const generation = await nextIpPoolObservationGeneration(redis, ip, 'dnsbl');
-			return { ip, generation, results: await checkAllZones(ip, config) };
+			return { ip, generation, results: await checkAllZones(ip, config, deps) };
 		})
 	);
+
+	// Zone names per address, kept for the halt-and-alert payload so the operator
+	// is told exactly which addresses are listed and on which blocklists.
+	const listedZonesByIp = new Map<string, string[]>();
 
 	for (const { ip, generation, results } of observations) {
 		const hashKey = `${DNSBL_PREFIX}${ip}`;
@@ -236,9 +296,17 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 			}
 		}
 
+		listedZonesByIp.set(ip, listedOn);
 		const spamhaus = results.find((result) => result.id === 'spamhaus');
 		if (!spamhaus) throw new Error('Spamhaus DNSBL observation is missing');
-		const hasUnknown = results.some((result) => result.status === 'unknown');
+		const unknownOn = results
+			.filter((result) => result.status === 'unknown')
+			.map((result) => result.name);
+		const hasUnknown = unknownOn.length > 0;
+		// Unmeasured zones are recorded explicitly so no reader has to infer
+		// "unknown" from the absence of a listing.
+		updates.push('unknownOn', unknownOn.join(','));
+		updates.push('listedOn', listedOn.join(','));
 		const previousSpamhausStatus = await redis.hget(hashKey, 'spamhaus');
 		const previousStatus = await redis.hget(hashKey, 'overallStatus');
 		const newStatus =
@@ -341,20 +409,34 @@ export async function runDnsblCheck(redis: Redis, config: MtaConfig): Promise<vo
 	// The pool transition owns the configured-only emergency aggregate; this
 	// module only decides whether the specialized all-blocklisted alert applies.
 	if ((await redis.get('mta:emergency:all_ips_blocked')) === '1') {
-		logger.error('ALL IPs unavailable — emergency state');
-		await redis.set('mta:emergency:all_ips_blocked', '1');
 		const reasonSets = await Promise.all(uniqueIps.map((ip) => getIpPoolBlockReasons(redis, ip)));
 		if (reasonSets.every((reasons) => reasons.includes('dnsbl'))) {
+			// Every configured address is blocklisted. The pool is already empty, so
+			// `selectIpWithLease` has no eligible address and delivery stays queued —
+			// there is deliberately no "send anyway" path out of a fully listed pool.
+			// The operator alert names the addresses and the zones that listed them.
+			const listings = uniqueIps.map((ip) => ({ ip, zones: listedZonesByIp.get(ip) ?? [] }));
+			const blocklists = [...new Set(listings.flatMap((listing) => listing.zones))];
+			const detail = listings
+				.map(({ ip, zones }) => `${ip} on ${zones.length > 0 ? zones.join(', ') : 'unknown zone'}`)
+				.join('; ');
+			logger.error(
+				{ ips: uniqueIps, blocklists },
+				'ALL IPs blocklisted — sending halted, nothing leaves the pool'
+			);
 			await notifyConvex(
 				{
 					event: 'all_ips_blocked',
 					severity: 'critical',
-					message: 'All sending IPs are blocklisted. Email sending is paused.',
+					blocklists,
+					message: `All sending IPs are blocklisted. Email sending is paused. Listed: ${detail}`,
 					timestamp: Date.now(),
 				},
 				config,
 				redis
 			).catch(() => {});
+		} else {
+			logger.error({ ips: uniqueIps }, 'ALL IPs unavailable — emergency state');
 		}
 	}
 }

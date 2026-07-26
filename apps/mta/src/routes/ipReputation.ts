@@ -31,6 +31,7 @@ async function routingSignals(
 	redis: Redis,
 	organizationId: string | undefined,
 	poolStatuses: Awaited<ReturnType<typeof getPoolStatus>>,
+	dnsblStatusByIp: ReadonlyMap<string, string>,
 	now: number
 ): Promise<DeliverabilitySignal[]> {
 	const signals: DeliverabilitySignal[] = [];
@@ -52,6 +53,34 @@ async function routingSignals(
 				observedAt: now,
 			});
 		}
+	}
+
+	// A partly blocklisted pool still has addresses to send from, so shipped
+	// routing deliberately keeps sending — but "one of our addresses is listed"
+	// must not be silently collapsed into "clean". It travels as an advisory
+	// signal the ramp controller reads for its blocklist hard stop.
+	const dnsblBlockedCount = poolStatuses.filter((pool) =>
+		(pool.blockReasons ?? []).includes('dnsbl')
+	).length;
+	if (dnsblBlockedCount > 0 && dnsblBlockedCount < poolStatuses.length) {
+		signals.push({
+			provider: 'all',
+			source: 'dnsbl_partial',
+			severity: 'critical',
+			observedAt: now,
+		});
+	}
+
+	// An unfinished lookup (timeout, SERVFAIL, REFUSED, resolver policy, rate
+	// limit) or an address never swept yet is reported as unknown, never as
+	// clean: absence of a listing we could not look up is not evidence of health.
+	if (poolStatuses.some((pool) => (dnsblStatusByIp.get(pool.ip) ?? 'unknown') === 'unknown')) {
+		signals.push({
+			provider: 'all',
+			source: 'dnsbl_unknown',
+			severity: 'warning',
+			observedAt: now,
+		});
 	}
 
 	const today = new Date(now).toISOString().split('T')[0]!;
@@ -231,10 +260,12 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 		);
 
 		const organizationId = c.req.query('organizationId');
+		const dnsblStatusByIp = new Map(summaries.map((summary) => [summary.ip, summary.dnsbl]));
 		const signals = await routingSignals(
 			redis,
 			organizationId && organizationId.length <= 128 ? organizationId : undefined,
 			poolStatuses,
+			dnsblStatusByIp,
 			now
 		);
 		return c.json({ date: today, ips: summaries, routing: { generatedAt: now, signals } });
