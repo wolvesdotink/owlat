@@ -63,23 +63,23 @@ describe('monotonicity', () => {
 	});
 
 	it('halves the accumulator over exactly one half-life', () => {
-		const state: EngagementScoreState = { raw: 64, softBounceRaw: 8, suppressed: false };
+		const state: EngagementScoreState = { raw: 64, softBounceRaw: 8, isSuppressed: false };
 		const decayed = decayState(state, NOW, NOW + ENGAGEMENT_HALF_LIFE_DAYS * DAY);
 		expect(decayed.raw).toBeCloseTo(32, 9);
 		expect(decayed.softBounceRaw).toBeCloseTo(4, 9);
 	});
 
-	it('never lets a suppressed contact recover through decay alone', () => {
-		const suppressed: EngagementScoreState = { raw: 40, softBounceRaw: 0, suppressed: true };
+	it('never lets a isSuppressed contact recover through decay alone', () => {
+		const isSuppressed: EngagementScoreState = { raw: 40, softBounceRaw: 0, isSuppressed: true };
 		for (const days of [0, 30, 400, 5000]) {
 			const projected = scoreFromState({
-				state: suppressed,
+				state: isSuppressed,
 				stateAt: NOW,
 				tenureStartedAt: TENURE_STARTED_AT,
 				now: NOW + days * DAY,
 			});
 			expect(projected.score).toBe(0);
-			expect(projected.state.suppressed).toBe(true);
+			expect(projected.state.isSuppressed).toBe(true);
 		}
 	});
 });
@@ -162,7 +162,7 @@ describe('fold/increment equivalence', () => {
 		});
 
 		const ordered = [...TIMELINE].sort((a, b) => a.occurredAt - b.occurredAt);
-		let state: EngagementScoreState = { raw: 0, softBounceRaw: 0, suppressed: false };
+		let state: EngagementScoreState = { raw: 0, softBounceRaw: 0, isSuppressed: false };
 		let stateAt = ordered[0]?.occurredAt ?? NOW;
 		for (const activity of ordered) {
 			state = applyActivity(decayState(state, stateAt, activity.occurredAt), activity.kind);

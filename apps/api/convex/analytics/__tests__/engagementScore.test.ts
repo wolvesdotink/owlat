@@ -156,7 +156,7 @@ describe('computeEngagementScore — band fixture matrix', () => {
 				now: NOW,
 			});
 			expect(score).toBe(0);
-			expect(state.suppressed).toBe(true);
+			expect(state.isSuppressed).toBe(true);
 		}
 	});
 });

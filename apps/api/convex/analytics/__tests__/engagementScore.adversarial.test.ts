@@ -78,7 +78,7 @@ describe('clock skew', () => {
 	});
 
 	it('treats a backwards `now` as a no-op decay, never an amplification', () => {
-		const state: EngagementScoreState = { raw: 30, softBounceRaw: 1, suppressed: false };
+		const state: EngagementScoreState = { raw: 30, softBounceRaw: 1, isSuppressed: false };
 		const backwards = decayState(state, NOW, NOW - 90 * DAY);
 		expect(backwards.raw).toBe(30);
 		expect(backwards.softBounceRaw).toBe(1);
@@ -176,10 +176,10 @@ describe('NaN / negative guards', () => {
 
 	it('survives a corrupt cached accumulator (NaN / negative / non-boolean)', () => {
 		const corrupt = [
-			{ raw: Number.NaN, softBounceRaw: 0, suppressed: false },
-			{ raw: Number.POSITIVE_INFINITY, softBounceRaw: 0, suppressed: false },
-			{ raw: -500, softBounceRaw: -3, suppressed: false },
-			{ raw: 12, softBounceRaw: Number.NaN, suppressed: false },
+			{ raw: Number.NaN, softBounceRaw: 0, isSuppressed: false },
+			{ raw: Number.POSITIVE_INFINITY, softBounceRaw: 0, isSuppressed: false },
+			{ raw: -500, softBounceRaw: -3, isSuppressed: false },
+			{ raw: 12, softBounceRaw: Number.NaN, isSuppressed: false },
 		] satisfies EngagementScoreState[];
 
 		for (const state of corrupt) {

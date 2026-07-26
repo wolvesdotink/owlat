@@ -114,16 +114,42 @@ export type EngagementScoreState = {
 	raw: number;
 	softBounceRaw: number;
 	/** A hard bounce or a spam complaint. Terminal — never cleared. */
-	suppressed: boolean;
+	isSuppressed: boolean;
+	/**
+	 * `engagementActivityKey` of the most recently folded activity. The hot path
+	 * collapses an immediately-repeated (kind, occurredAt) — a redelivered
+	 * provider webhook is one engagement, not two — which is what the full
+	 * recompute does for the whole window. Absent on legacy rows and on a state
+	 * that has never folded anything.
+	 */
+	lastFoldedKey?: string | undefined;
 };
 
-export type EngagementScoreInputs = {
+/** One tally per activity kind. */
+export type EngagementActivityCounts = {
 	openCount: number;
 	clickCount: number;
 	replyCount: number;
 	softBounceCount: number;
 	hardBounceCount: number;
 	complaintCount: number;
+};
+
+/**
+ * The ONE place a kind is mapped to its tally. `applyActivity` walks the same
+ * discriminant for the arithmetic; adding a kind must touch a table, not two
+ * cascading switches.
+ */
+const COUNT_KEY_BY_KIND = {
+	open: 'openCount',
+	click: 'clickCount',
+	reply: 'replyCount',
+	soft_bounce: 'softBounceCount',
+	hard_bounce: 'hardBounceCount',
+	complaint: 'complaintCount',
+} as const satisfies Record<EngagementActivityKind, keyof EngagementActivityCounts>;
+
+export type EngagementScoreInputs = EngagementActivityCounts & {
 	/** Activities dropped as non-finite, or as exact (kind, occurredAt) dupes. */
 	discardedCount: number;
 	tenureDays: number;
@@ -144,8 +170,16 @@ export type EngagementScoreResult = {
 export const EMPTY_ENGAGEMENT_STATE: EngagementScoreState = {
 	raw: 0,
 	softBounceRaw: 0,
-	suppressed: false,
+	isSuppressed: false,
 };
+
+/**
+ * Identity of one folded activity. Two activities sharing a key are the same
+ * event recorded twice (a webhook redelivery), never two engagements.
+ */
+export function engagementActivityKey(kind: EngagementActivityKind, occurredAt: number): string {
+	return `${kind}:${occurredAt}`;
+}
 
 // ─── Primitives ─────────────────────────────────────────────────────────────
 
@@ -173,7 +207,10 @@ export function decayState(
 	return {
 		raw: Math.max(0, finite(state.raw) * factor),
 		softBounceRaw: Math.max(0, finite(state.softBounceRaw) * factor),
-		suppressed: state.suppressed === true,
+		isSuppressed: state.isSuppressed === true,
+		// Spread conditionally: an explicit `undefined` is not a storable Convex
+		// value, and this state is written straight onto the contact document.
+		...(state.lastFoldedKey !== undefined ? { lastFoldedKey: state.lastFoldedKey } : {}),
 	};
 }
 
@@ -196,7 +233,7 @@ export function applyActivity(
 			return { ...state, softBounceRaw: state.softBounceRaw + SOFT_BOUNCE_WEIGHT };
 		case 'hard_bounce':
 		case 'complaint':
-			return { ...state, suppressed: true };
+			return { ...state, isSuppressed: true };
 		default: {
 			const exhaustive: never = kind;
 			void exhaustive;
@@ -216,7 +253,7 @@ export function scoreFromState(args: {
 	now: number;
 }): { score: number; state: EngagementScoreState; tenurePrior: number; penalty: number } {
 	const state = decayState(args.state, args.stateAt, args.now);
-	if (state.suppressed) {
+	if (state.isSuppressed) {
 		return { score: 0, state, tenurePrior: 0, penalty: 0 };
 	}
 
@@ -256,7 +293,7 @@ function normalizeActivities(
 			continue;
 		}
 		const occurredAt = Math.min(activity.occurredAt, now);
-		const key = `${activity.kind}:${occurredAt}`;
+		const key = engagementActivityKey(activity.kind, occurredAt);
 		if (seen.has(key)) {
 			discarded += 1;
 			continue;
@@ -286,7 +323,7 @@ export function computeEngagementScore(args: {
 	const now = Number.isFinite(args.now) ? args.now : 0;
 	const { ordered, discarded } = normalizeActivities(args.activities, now);
 
-	const counts = {
+	const counts: EngagementActivityCounts = {
 		openCount: 0,
 		clickCount: 0,
 		replyCount: 0,
@@ -301,31 +338,14 @@ export function computeEngagementScore(args: {
 	for (const activity of ordered) {
 		state = applyActivity(decayState(state, stateAt, activity.occurredAt), activity.kind);
 		stateAt = activity.occurredAt;
-		switch (activity.kind) {
-			case 'open':
-				counts.openCount += 1;
-				break;
-			case 'click':
-				counts.clickCount += 1;
-				break;
-			case 'reply':
-				counts.replyCount += 1;
-				break;
-			case 'soft_bounce':
-				counts.softBounceCount += 1;
-				break;
-			case 'hard_bounce':
-				counts.hardBounceCount += 1;
-				break;
-			case 'complaint':
-				counts.complaintCount += 1;
-				break;
-			default: {
-				const exhaustive: never = activity.kind;
-				void exhaustive;
-				break;
-			}
-		}
+		counts[COUNT_KEY_BY_KIND[activity.kind]] += 1;
+	}
+
+	// The newest folded activity's identity, so a hot-path fold of the very same
+	// (kind, occurredAt) after this recompute is collapsed rather than doubled.
+	const newest = ordered[ordered.length - 1];
+	if (newest !== undefined) {
+		state = { ...state, lastFoldedKey: engagementActivityKey(newest.kind, newest.occurredAt) };
 	}
 
 	const projected = scoreFromState({

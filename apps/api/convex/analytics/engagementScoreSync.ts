@@ -10,7 +10,13 @@
  *    timestamp and folds the new term in — O(1), no activity-timeline read, no
  *    extra document write beyond the contact patch the writer already makes.
  *    Because a sum of exponentially-decayed terms itself decays exponentially,
- *    this is arithmetically identical to a full recompute.
+ *    this is arithmetically identical to a full recompute — with one bounded
+ *    exception. The full recompute sees the whole window and drops EVERY exact
+ *    (kind, occurredAt) duplicate; the hot path only remembers the last fold
+ *    (`lastFoldedKey`), so it collapses a redelivered webhook — the realistic
+ *    case — but a duplicate separated by another activity still counts twice
+ *    until the next full recompute corrects it (at most 20h later, and the
+ *    error is one activity's decayed weight).
  *  - NIGHTLY BACKFILL. `backfillEngagementScores` re-projects stale contacts so
  *    a score decays on the clock, not only when the contact does something. It
  *    walks a bounded prefix of the `by_engagement_score_updated_at` range —
@@ -33,6 +39,7 @@ import {
 	applyActivity,
 	computeEngagementScore,
 	decayState,
+	engagementActivityKey,
 	scoreFromState,
 	toEngagementActivity,
 	type EngagementActivity,
@@ -56,7 +63,11 @@ export const ENGAGEMENT_SCORE_STALE_MS = 20 * 60 * 60 * 1000;
 /** Newest activities loaded for a full recompute. Older terms are ~0 anyway. */
 export const MAX_ACTIVITIES_PER_RECOMPUTE = 500;
 
-/** Lookback window for a full recompute (~5 half-lives — beyond it, noise). */
+/**
+ * Lookback window for a full recompute: 400 days, ~8.9 engagement half-lives.
+ * A term that old is worth 2^-8.9 ≈ 0.2% of its original weight — below the
+ * rounding step of the 0-100 score, so the truncation is invisible.
+ */
 export const RECOMPUTE_LOOKBACK_MS = 400 * 24 * 60 * 60 * 1000;
 
 // ─── Shared write helper ────────────────────────────────────────────────────
@@ -127,9 +138,9 @@ export async function recomputeContactEngagementScore(
 	// the cached state survives a recompute whose window no longer reaches it.
 	const state: EngagementScoreState = {
 		...result.state,
-		suppressed: result.state.suppressed || contact.engagementScoreState?.suppressed === true,
+		isSuppressed: result.state.isSuppressed || contact.engagementScoreState?.isSuppressed === true,
 	};
-	const score = state.suppressed ? 0 : result.score;
+	const score = state.isSuppressed ? 0 : result.score;
 
 	const { patch, changed } = buildScorePatch(contact, { score, state }, now);
 	await ctx.db.patch(contact._id, patch);
@@ -144,10 +155,23 @@ export async function recomputeContactEngagementScore(
  * writer already patches the contact for the hasOpened/hasClicked
  * denormalization — one document write, not two).
  *
- * Returns `null` when the activity does not move the score, or when no cached
- * accumulator exists yet: in that case the nightly backfill picks the contact up
- * (it sorts first in the staleness index), rather than paying for a timeline
- * read on the send hot path.
+ * Returns `null` in exactly three cases, and otherwise ALWAYS returns a patch
+ * (even when the rounded score is unchanged — the accumulator and its as-of
+ * stamp still advance, and `buildScorePatch` omits the score field itself):
+ *
+ *  - the contact is soft-deleted;
+ *  - the activity literal is one the score does not react to
+ *    (`toEngagementActivity` returns null);
+ *  - the activity is an exact repeat of the last one folded (same kind, same
+ *    clamped `occurredAt`) — a redelivered webhook is one engagement.
+ *
+ * COLD CACHE. When no accumulator exists yet the fold seeds from
+ * `EMPTY_ENGAGEMENT_STATE` rather than reading the timeline (no unbounded read
+ * on the send hot path), so a contact with pre-existing history is UNDER-counted
+ * from this write until a full recompute re-derives it. That patch stamps the
+ * row fresh, so it only re-enters the stale range — and gets corrected — after
+ * `ENGAGEMENT_SCORE_STALE_MS` (20h); the score is optional and advisory
+ * everywhere it is consumed, and only ever errs low.
  */
 export function engagementPatchForActivity(args: {
 	contact: Doc<'contacts'>;
@@ -158,21 +182,38 @@ export function engagementPatchForActivity(args: {
 }): ScorePatch | null {
 	if (args.contact.deletedAt !== undefined) return null;
 
-	const activity = toEngagementActivity({
+	const mapped = toEngagementActivity({
 		activityType: args.activityType,
 		occurredAt: args.occurredAt,
 		bounceType: args.bounceType,
 	});
-	if (!activity) return null;
+	if (!mapped) return null;
 
-	const now = Math.max(args.now, activity.occurredAt);
+	// Clamp a future timestamp to `now` exactly as the pure core's
+	// `normalizeActivities` does. A malformed provider date or a skewed caller
+	// clock must not fold a term at full never-decayed weight, and must never
+	// stamp `engagementScoreUpdatedAt` ahead of the wall clock — that would pin
+	// the row outside the backfill's stale range until real time caught up, so
+	// nothing could correct the inflated score.
+	const now = args.now;
+	const activity: EngagementActivity = {
+		kind: mapped.kind,
+		occurredAt: Number.isFinite(mapped.occurredAt) ? Math.min(mapped.occurredAt, now) : now,
+	};
+
 	const cached = args.contact.engagementScoreState;
-	const cachedAt = args.contact.engagementScoreUpdatedAt;
+	// Likewise clamp the accumulator's as-of stamp: a legacy row stamped in the
+	// future would otherwise fold at an instant we are not allowed to stamp.
+	const cachedAt =
+		args.contact.engagementScoreUpdatedAt === undefined
+			? undefined
+			: Math.min(args.contact.engagementScoreUpdatedAt, now);
 
-	// No accumulator yet → seed from empty. For a contact with real history this
-	// under-counts until the nightly backfill re-derives it from the timeline;
-	// that is the deliberate trade (no unbounded read on the hot path), and the
-	// score is optional/advisory everywhere it is consumed.
+	// Same event recorded twice → one engagement, matching the full recompute.
+	const key = engagementActivityKey(activity.kind, activity.occurredAt);
+	if (cached?.lastFoldedKey === key) return null;
+
+	// No accumulator yet → seed from empty (see the cold-cache note above).
 	const base = cached ?? EMPTY_ENGAGEMENT_STATE;
 	const baseAt = cached !== undefined && cachedAt !== undefined ? cachedAt : activity.occurredAt;
 
@@ -191,7 +232,8 @@ export function engagementPatchForActivity(args: {
 	const folded: EngagementScoreState = {
 		raw: decayedBase.raw + contribution.raw,
 		softBounceRaw: decayedBase.softBounceRaw + contribution.softBounceRaw,
-		suppressed: decayedBase.suppressed || contribution.suppressed,
+		isSuppressed: decayedBase.isSuppressed || contribution.isSuppressed,
+		lastFoldedKey: key,
 	};
 
 	const projected = scoreFromState({

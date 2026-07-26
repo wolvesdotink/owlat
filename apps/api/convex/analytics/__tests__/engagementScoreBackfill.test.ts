@@ -56,10 +56,15 @@ async function seedContacts(
 	});
 }
 
-async function scoresOf(t: Harness, ids: Id<'contacts'>[]): Promise<Array<number | undefined>> {
+/**
+ * Cached scores in `ids` order. Unscored rows come back as `null`, not
+ * `undefined` — a `t.run` return value crosses the Convex value boundary and
+ * `undefined` is not a storable Convex value inside an array.
+ */
+async function scoresOf(t: Harness, ids: Id<'contacts'>[]): Promise<Array<number | null>> {
 	return t.run(async (ctx) => {
-		const out: Array<number | undefined> = [];
-		for (const id of ids) out.push((await ctx.db.get(id))?.engagementScore);
+		const out: Array<number | null> = [];
+		for (const id of ids) out.push((await ctx.db.get(id))?.engagementScore ?? null);
 		return out;
 	});
 }
@@ -75,7 +80,7 @@ describe('backfillEngagementScores — boundedness', () => {
 		);
 
 		expect(first).toEqual({ scanned: 3, rescored: 3, isDone: false });
-		const scored = (await scoresOf(t, ids)).filter((s) => s !== undefined);
+		const scored = (await scoresOf(t, ids)).filter((s) => s !== null);
 		expect(scored).toHaveLength(3);
 	});
 
@@ -101,7 +106,7 @@ describe('backfillEngagementScores — resumption', () => {
 		const t = harness();
 		const ids = await seedContacts(t, 7);
 
-		const seen: Array<number | undefined> = [];
+		const seen: Array<number | null> = [];
 		for (const expected of [3, 3, 1]) {
 			const before = await scoresOf(t, ids);
 			const result = await t.mutation(
@@ -113,13 +118,13 @@ describe('backfillEngagementScores — resumption', () => {
 			// range shrinks monotonically, so no row is visited twice.
 			expect(result.rescored).toBe(expected);
 			const after = await scoresOf(t, ids);
-			const newlyScored = after.filter((s, i) => s !== undefined && before[i] === undefined);
+			const newlyScored = after.filter((s, i) => s !== null && before[i] === null);
 			expect(newlyScored).toHaveLength(expected);
 			seen.push(...newlyScored);
 		}
 
 		expect(seen).toHaveLength(7);
-		expect((await scoresOf(t, ids)).every((s) => s !== undefined)).toBe(true);
+		expect((await scoresOf(t, ids)).every((s) => s !== null)).toBe(true);
 
 		// Nothing is stale any more.
 		const drained = await t.mutation(
@@ -137,7 +142,7 @@ describe('backfillEngagementScores — resumption', () => {
 			await ctx.db.patch(stale, {
 				engagementScore: 7,
 				engagementScoreUpdatedAt: Date.now() - 5 * DAY,
-				engagementScoreState: { raw: 1, softBounceRaw: 0, suppressed: false },
+				engagementScoreState: { raw: 1, softBounceRaw: 0, isSuppressed: false },
 			});
 		});
 		const [fresh] = await seedContacts(t, 1);
@@ -149,7 +154,7 @@ describe('backfillEngagementScores — resumption', () => {
 		});
 
 		const [freshScore] = await scoresOf(t, [fresh]);
-		expect(freshScore).toBeDefined();
+		expect(freshScore).not.toBeNull();
 	});
 });
 
@@ -267,7 +272,7 @@ describe('the acceptance criteria, end to end', () => {
 		expect(engagementBand(score ?? -1)).toBe('cold');
 	});
 
-	it('marks a hard-bounced contact suppressed on the writer hot path', async () => {
+	it('marks a hard-bounced contact isSuppressed on the writer hot path', async () => {
 		const t = harness();
 		const [id] = await seedContacts(t, 1, 200);
 		if (!id) throw new Error('seed failed');
@@ -288,7 +293,7 @@ describe('the acceptance criteria, end to end', () => {
 
 		const doc = await t.run(async (ctx) => ctx.db.get(id));
 		expect(doc?.engagementScore).toBe(0);
-		expect(doc?.engagementScoreState?.suppressed).toBe(true);
+		expect(doc?.engagementScoreState?.isSuppressed).toBe(true);
 	});
 
 	it('preserves the shipped hasOpened/hasClicked denormalization', async () => {
@@ -330,5 +335,109 @@ describe('the acceptance criteria, end to end', () => {
 		const doc = await t.run(async (ctx) => ctx.db.get(id));
 		expect(doc?.engagementScore).toBeUndefined();
 		expect(doc?.engagementScoreUpdatedAt).toBeUndefined();
+	});
+});
+
+describe('the incremental hot path — hostile inputs', () => {
+	it('clamps a far-future activity instead of folding it at full weight', async () => {
+		const t = harness();
+		const [skewed] = await seedContacts(t, 1, 400);
+		const [sane] = await seedContacts(t, 1, 400);
+		if (!skewed || !sane) throw new Error('seed failed');
+
+		const before = Date.now();
+		await t.run(async (ctx) => {
+			// A malformed provider webhook date / skewed caller clock.
+			await recordContactActivity(ctx, {
+				literal: 'email_clicked',
+				contactId: skewed,
+				metadata: { campaignId: 'c1', linkUrl: 'https://example.com' },
+				occurredAt: before + 365 * DAY,
+			});
+			// The same click, honestly dated.
+			await recordContactActivity(ctx, {
+				literal: 'email_clicked',
+				contactId: sane,
+				metadata: { campaignId: 'c1', linkUrl: 'https://example.com' },
+				occurredAt: before,
+			});
+		});
+
+		const [skewedDoc, saneDoc] = await t.run(
+			async (ctx) => [await ctx.db.get(skewed), await ctx.db.get(sane)] as const
+		);
+
+		// Clamped to `now`: the skewed row cannot out-score the honest one…
+		expect(skewedDoc?.engagementScore).toBe(saneDoc?.engagementScore);
+		// …and its freshness stamp stays in the present, so the nightly backfill
+		// can still reach it (a future stamp would pin it out of the stale range).
+		expect(skewedDoc?.engagementScoreUpdatedAt ?? 0).toBeLessThanOrEqual(Date.now());
+		expect(skewedDoc?.engagementScoreUpdatedAt ?? 0).toBeGreaterThanOrEqual(before);
+	});
+
+	it('folds a redelivered webhook once', async () => {
+		const t = harness();
+		const [dupe] = await seedContacts(t, 1, 400);
+		const [once] = await seedContacts(t, 1, 400);
+		if (!dupe || !once) throw new Error('seed failed');
+
+		const at = Date.now() - DAY;
+		await t.run(async (ctx) => {
+			for (const _attempt of [0, 1, 2]) {
+				await recordContactActivity(ctx, {
+					literal: 'email_opened',
+					contactId: dupe,
+					metadata: { campaignId: 'c1' },
+					occurredAt: at,
+				});
+			}
+			await recordContactActivity(ctx, {
+				literal: 'email_opened',
+				contactId: once,
+				metadata: { campaignId: 'c1' },
+				occurredAt: at,
+			});
+		});
+
+		const [dupeDoc, onceDoc] = await t.run(
+			async (ctx) => [await ctx.db.get(dupe), await ctx.db.get(once)] as const
+		);
+		expect(dupeDoc?.engagementScore).toBe(onceDoc?.engagementScore);
+
+		// And the full recompute — which dedupes the whole window — agrees.
+		const recomputed = await t.mutation(
+			internal.analytics.engagementScoreSync.recomputeContactScore,
+			{ contactId: dupe }
+		);
+		expect(recomputed).toBe(onceDoc?.engagementScore);
+	});
+
+	it('still folds a genuinely distinct second open at the same instant-1ms', async () => {
+		const t = harness();
+		const [id] = await seedContacts(t, 1, 400);
+		if (!id) throw new Error('seed failed');
+
+		const at = Date.now() - DAY;
+		await t.run(async (ctx) => {
+			await recordContactActivity(ctx, {
+				literal: 'email_opened',
+				contactId: id,
+				metadata: { campaignId: 'c1' },
+				occurredAt: at,
+			});
+		});
+		const afterFirst = await t.run(async (ctx) => (await ctx.db.get(id))?.engagementScore ?? -1);
+
+		await t.run(async (ctx) => {
+			await recordContactActivity(ctx, {
+				literal: 'email_opened',
+				contactId: id,
+				metadata: { campaignId: 'c1' },
+				occurredAt: at + 1,
+			});
+		});
+		const afterSecond = await t.run(async (ctx) => (await ctx.db.get(id))?.engagementScore ?? -1);
+
+		expect(afterSecond).toBeGreaterThan(afterFirst);
 	});
 });

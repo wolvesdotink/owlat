@@ -82,7 +82,12 @@ export const contactTables = {
 			v.object({
 				raw: v.number(),
 				softBounceRaw: v.number(),
-				suppressed: v.boolean(),
+				isSuppressed: v.boolean(),
+				// Identity (`kind:occurredAt`) of the newest activity folded into
+				// the accumulator, so an immediately-redelivered provider webhook
+				// is collapsed on the hot path exactly as the full recompute
+				// collapses it. Absent until the first fold.
+				lastFoldedKey: v.optional(v.string()),
 			})
 		),
 		// Contact-level double opt-in status. Non-optional per ADR-0009 —
