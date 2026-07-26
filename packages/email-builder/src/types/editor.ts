@@ -43,6 +43,8 @@ export interface ImageUploadResult {
 	url: string;
 	/** Durable blob identity; capability URLs are display-only and may expire. */
 	storageId: string;
+	/** Durable media-library provenance paired with storageId. */
+	mediaAssetId: string;
 }
 
 /**

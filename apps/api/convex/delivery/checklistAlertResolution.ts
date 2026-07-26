@@ -31,6 +31,6 @@ export async function resolveDeliverabilityAlert(
 	await ctx.db.patch(alert._id, {
 		...(options.acknowledge ? { acknowledgedAt: alert.acknowledgedAt ?? resolvedAt } : {}),
 		resolvedAt,
-		...deliverabilityAlertNotificationPatch(states),
+		...deliverabilityAlertNotificationPatch(states, alert.compactedRecipientOutcomes),
 	});
 }

@@ -50,6 +50,7 @@ describe('image property storage identity', () => {
 		select({
 			url: 'https://capability.example/library-image',
 			storageId: 'storage-library-1',
+			mediaAssetId: 'asset-library-1',
 		});
 		await nextTick();
 
@@ -58,6 +59,7 @@ describe('image property storage identity', () => {
 				{
 					url: 'https://capability.example/library-image',
 					storageId: 'storage-library-1',
+					mediaAssetId: 'asset-library-1',
 				},
 			],
 		]);
@@ -69,6 +71,7 @@ describe('image property storage identity', () => {
 		const uploadImage = vi.fn().mockResolvedValue({
 			url: 'https://capability.example/uploaded-image',
 			storageId: 'storage-upload-1',
+			mediaAssetId: 'asset-upload-1',
 		});
 		const wrapper = mount(ImageField, {
 			props: { value: '' },
@@ -90,6 +93,7 @@ describe('image property storage identity', () => {
 				{
 					url: 'https://capability.example/uploaded-image',
 					storageId: 'storage-upload-1',
+					mediaAssetId: 'asset-upload-1',
 				},
 			],
 		]);
@@ -99,16 +103,18 @@ describe('image property storage identity', () => {
 		{
 			sourceKey: 'src' as const,
 			storageKey: 'storageId',
+			assetKey: 'mediaAssetId',
 			storageId: 'storage-primary-1',
 		},
 		{
 			sourceKey: 'darkSrc' as const,
 			storageKey: 'darkStorageId',
+			assetKey: 'darkMediaAssetId',
 			storageId: 'storage-dark-1',
 		},
 	])(
 		'writes and clears $storageKey through the real $sourceKey property schema',
-		async ({ sourceKey, storageKey, storageId }) => {
+		async ({ sourceKey, storageKey, assetKey, storageId }) => {
 			const wrapper = shallowMount(PropertyField, {
 				props: {
 					field: actualImageProperty(sourceKey),
@@ -122,11 +128,15 @@ describe('image property storage identity', () => {
 			imageField.vm.$emit('select', {
 				url: `https://capability.example/${sourceKey}`,
 				storageId,
+				mediaAssetId: `asset-${sourceKey}`,
 			});
 			await nextTick();
 
 			expect(wrapper.emitted('update')).toEqual([[`https://capability.example/${sourceKey}`]]);
-			expect(wrapper.emitted('update-keyed')).toEqual([[storageKey, storageId]]);
+			expect(wrapper.emitted('update-keyed')).toEqual([
+				[storageKey, storageId],
+				[assetKey, `asset-${sourceKey}`],
+			]);
 
 			imageField.vm.$emit('update', `https://images.example/manual-${sourceKey}.png`);
 			await nextTick();
@@ -134,7 +144,10 @@ describe('image property storage identity', () => {
 			expect(wrapper.emitted('update')?.at(-1)).toEqual([
 				`https://images.example/manual-${sourceKey}.png`,
 			]);
-			expect(wrapper.emitted('update-keyed')?.at(-1)).toEqual([storageKey, undefined]);
+			expect(wrapper.emitted('update-keyed')?.slice(-2)).toEqual([
+				[storageKey, undefined],
+				[assetKey, undefined],
+			]);
 		}
 	);
 });

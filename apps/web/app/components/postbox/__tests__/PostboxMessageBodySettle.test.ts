@@ -26,6 +26,7 @@ vi.mock('@owlat/api', () => {
 });
 
 const action = vi.fn();
+const loadBody = vi.fn(async (_messageId: string) => null);
 
 beforeAll(() => {
 	vi.stubGlobal('requireConvex', () => ({ action }));
@@ -39,22 +40,21 @@ beforeAll(() => {
 	vi.stubGlobal('usePostboxOfflineCache', () => ({
 		isOffline: ref(false),
 		persistBody: vi.fn(async () => {}),
-		loadBody: vi.fn(async () => null),
+		loadBody,
 	}));
 });
 
 beforeEach(() => {
 	action.mockReset();
+	loadBody.mockReset();
+	loadBody.mockResolvedValue(null);
 });
 
 const iconStub = { props: ['name'], template: '<span />' };
 
-function mountBody() {
+function mountBody(message = { _id: 'msg-1', htmlBodyStorageId: 'blob-1' }) {
 	return mount(PostboxMessageBody, {
-		props: {
-			// No inline body + a storage id → needsBodyFetch is true.
-			message: { _id: 'msg-1', htmlBodyStorageId: 'blob-1' },
-		},
+		props: { message },
 		global: {
 			components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
 		},
@@ -159,5 +159,34 @@ describe('PostboxMessageBody lazy-fetch settling', () => {
 		await flushPromises();
 		expect(w.find('iframe').attributes('srcdoc')).toContain('new body');
 		expect(w.find('iframe').attributes('srcdoc')).not.toContain('stale downloaded body');
+	});
+
+	it('ignores a stale offline body after switching to a message without a live body', async () => {
+		let resolveFirstOfflineBody:
+			| ((value: { srcdoc: string; cachedAt: number } | null) => void)
+			| undefined;
+		loadBody
+			.mockImplementationOnce(
+				() =>
+					new Promise((resolve) => {
+						resolveFirstOfflineBody = resolve;
+					})
+			)
+			.mockResolvedValueOnce(null);
+
+		const w = mountBody({ _id: 'offline-msg-1' });
+		await w.setProps({ message: { _id: 'offline-msg-2' } });
+		await flushPromises();
+
+		resolveFirstOfflineBody?.({
+			srcdoc: '<!doctype html><html><body>stale offline body</body></html>',
+			cachedAt: Date.now(),
+		});
+		await flushPromises();
+
+		const srcdoc = w.find('iframe').attributes('srcdoc');
+		expect(loadBody).toHaveBeenNthCalledWith(1, 'offline-msg-1');
+		expect(loadBody).toHaveBeenNthCalledWith(2, 'offline-msg-2');
+		expect(srcdoc).not.toContain('stale offline body');
 	});
 });

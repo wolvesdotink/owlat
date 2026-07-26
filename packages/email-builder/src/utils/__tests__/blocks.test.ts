@@ -151,10 +151,12 @@ describe('withPrimaryStoredImage', () => {
 			withPrimaryStoredImage(content, {
 				url: 'https://capability.example/image',
 				storageId: 'storage-image-1',
+				mediaAssetId: 'media-image-1',
 			})
 		).toMatchObject({
 			src: 'https://capability.example/image',
 			storageId: 'storage-image-1',
+			mediaAssetId: 'media-image-1',
 		});
 	});
 });

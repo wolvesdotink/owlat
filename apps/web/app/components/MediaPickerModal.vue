@@ -26,6 +26,7 @@ const emit = defineEmits<{
 		value: {
 			url: string;
 			storageId: string;
+			mediaAssetId: string;
 			width?: number;
 			height?: number;
 			filename?: string;
@@ -94,6 +95,7 @@ const selectAsset = (asset: (typeof assets.value)[0]) => {
 	emit('select', {
 		url: asset.url,
 		storageId: asset.storageId as string,
+		mediaAssetId: asset._id,
 		width: asset.width,
 		height: asset.height,
 		filename: asset.filename,
@@ -133,6 +135,7 @@ const handleUploadAndSelect = async (files: File[]) => {
 			emit('select', {
 				url,
 				storageId,
+				mediaAssetId: created,
 				width: dimensions?.width,
 				height: dimensions?.height,
 				filename: file.name,

@@ -70,13 +70,17 @@ const { isDark } = useAppTheme();
 // never stores raw mail — only the sanitized document the iframe already shows.
 const { isOffline, persistBody, loadBody } = usePostboxOfflineCache(() => props.message.mailboxId);
 const cachedSrcdoc = ref<string | null>(null);
+let offlineBodyRequestSequence = 0;
 watch(
 	() => props.message._id,
 	async (id) => {
+		const requestSequence = ++offlineBodyRequestSequence;
 		// Clear synchronously so switching messages never briefly shows the prior
 		// message's cached body while the async load resolves.
 		cachedSrcdoc.value = null;
-		cachedSrcdoc.value = id ? ((await loadBody(id))?.srcdoc ?? null) : null;
+		const cachedBody = id ? await loadBody(id) : null;
+		if (requestSequence !== offlineBodyRequestSequence) return;
+		cachedSrcdoc.value = cachedBody?.srcdoc ?? null;
 	},
 	{ immediate: true }
 );

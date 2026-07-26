@@ -1,64 +1,14 @@
-export interface TextChunkSink {
-	write(chunk: string): Promise<void>;
-	close(): Promise<void>;
-	abort(reason?: unknown): Promise<void>;
-}
+import {
+	writeJsonObjectPropertiesPrefix,
+	type JsonValueWriter,
+	type TextChunkSink,
+} from './incrementalJsonSerializer';
 
-export type JsonValueWriter = (sink: TextChunkSink) => Promise<void>;
-
-type JsonObjectEntry = readonly [key: string, value: JsonValueWriter];
-const WRITE_BUFFER_SIZE = 64 * 1024;
-
-function asAsyncIterable<T>(values: Iterable<T> | AsyncIterable<T>): AsyncIterable<T> {
-	if (Symbol.asyncIterator in values) return values;
-	return {
-		async *[Symbol.asyncIterator]() {
-			yield* values;
-		},
-	};
-}
-
-export function jsonValue(value: unknown): JsonValueWriter {
-	return async (sink) => {
-		const serialized = JSON.stringify(value);
-		if (serialized === undefined) {
-			throw new TypeError('Account export contains a value that cannot be serialized');
-		}
-		await sink.write(serialized);
-	};
-}
-
-export function jsonArray(
-	items: Iterable<JsonValueWriter> | AsyncIterable<JsonValueWriter>
-): JsonValueWriter {
-	return async (sink) => {
-		await sink.write('[');
-		let needsComma = false;
-		for await (const item of asAsyncIterable(items)) {
-			if (needsComma) await sink.write(',');
-			await item(sink);
-			needsComma = true;
-		}
-		await sink.write(']');
-	};
-}
-
-export function jsonObject(
-	entries: Iterable<JsonObjectEntry> | AsyncIterable<JsonObjectEntry>
-): JsonValueWriter {
-	return async (sink) => {
-		await sink.write('{');
-		let needsComma = false;
-		for await (const [key, value] of asAsyncIterable(entries)) {
-			if (needsComma) await sink.write(',');
-			await sink.write(`${JSON.stringify(key)}:`);
-			await value(sink);
-			needsComma = true;
-		}
-		await sink.write('}');
-	};
-}
-
+const MAX_DESTINATION_WRITE_BYTES = 64 * 1024;
+const OPFS_EXPORT_PREFIX = '.owlat-account-export-';
+const OPFS_STALE_EXPORT_AGE_MS = 24 * 60 * 60 * 1000;
+const OPFS_STALE_SCAN_LIMIT = 64;
+const OPFS_STALE_REMOVE_LIMIT = 16;
 function firstNonWhitespaceIndex(value: string): number {
 	return value.search(/\S/);
 }
@@ -68,9 +18,7 @@ export function jsonObjectWithStreamedProperties(
 	content: ReadableStream<Uint8Array>
 ): JsonValueWriter {
 	return async (sink) => {
-		const serializedMetadata = JSON.stringify(metadata);
-		await sink.write(serializedMetadata.slice(0, -1));
-		const metadataHasProperties = serializedMetadata !== '{}';
+		const metadataHasProperties = await writeJsonObjectPropertiesPrefix(sink, metadata);
 		const reader = content.getReader();
 		const decoder = new TextDecoder('utf-8', { fatal: true });
 		let opened = false;
@@ -141,6 +89,17 @@ interface SaveFilePickerWindow extends Window {
 }
 
 export function isSaveFilePickerCancellation(error: unknown): boolean {
+	return error instanceof SaveFilePickerCancellation;
+}
+
+class SaveFilePickerCancellation extends Error {
+	constructor() {
+		super('Account export destination selection was cancelled');
+		this.name = 'SaveFilePickerCancellation';
+	}
+}
+
+function isAbortError(error: unknown): boolean {
 	return (
 		error !== null && typeof error === 'object' && 'name' in error && error.name === 'AbortError'
 	);
@@ -164,15 +123,21 @@ function downloadFile(file: File, filename: string): void {
 async function openPickerSink(filename: string): Promise<TextChunkSink | null> {
 	const pickerWindow = window as SaveFilePickerWindow;
 	if (!pickerWindow.showSaveFilePicker) return null;
-	const handle = await pickerWindow.showSaveFilePicker({
-		suggestedName: filename,
-		types: [
-			{
-				description: 'JSON data',
-				accept: { 'application/json': ['.json'] },
-			},
-		],
-	});
+	let handle: FileSystemFileHandle;
+	try {
+		handle = await pickerWindow.showSaveFilePicker({
+			suggestedName: filename,
+			types: [
+				{
+					description: 'JSON data',
+					accept: { 'application/json': ['.json'] },
+				},
+			],
+		});
+	} catch (error) {
+		if (isAbortError(error)) throw new SaveFilePickerCancellation();
+		throw error;
+	}
 	const writable = await handle.createWritable();
 	return {
 		write: (chunk) => writable.write(chunk),
@@ -181,12 +146,52 @@ async function openPickerSink(filename: string): Promise<TextChunkSink | null> {
 	};
 }
 
+type IterableFileSystemDirectoryHandle = FileSystemDirectoryHandle & {
+	entries?: () => AsyncIterableIterator<[string, FileSystemHandle]>;
+};
+
+async function removeStaleOriginPrivateFileSystemExports(
+	directory: FileSystemDirectoryHandle
+): Promise<void> {
+	const entries = (directory as IterableFileSystemDirectoryHandle).entries;
+	if (typeof entries !== 'function') return;
+
+	let scanned = 0;
+	let removalAttempts = 0;
+	try {
+		for await (const [name, entry] of entries.call(directory)) {
+			scanned += 1;
+			if (
+				name.startsWith(OPFS_EXPORT_PREFIX) &&
+				entry.kind === 'file' &&
+				removalAttempts < OPFS_STALE_REMOVE_LIMIT
+			) {
+				try {
+					const file = await (entry as FileSystemFileHandle).getFile();
+					if (Date.now() - file.lastModified >= OPFS_STALE_EXPORT_AGE_MS) {
+						removalAttempts += 1;
+						await directory.removeEntry(name);
+					}
+				} catch {
+					// One unreadable or concurrently removed entry must not block a new export.
+				}
+			}
+			if (scanned >= OPFS_STALE_SCAN_LIMIT || removalAttempts >= OPFS_STALE_REMOVE_LIMIT) {
+				break;
+			}
+		}
+	} catch {
+		// Enumeration is best-effort; opening the requested export remains the priority.
+	}
+}
+
 async function openOriginPrivateFileSystemSink(filename: string): Promise<TextChunkSink | null> {
 	const storage = navigator.storage;
 	if (typeof storage?.getDirectory !== 'function') return null;
 
 	const directory = await storage.getDirectory();
-	const temporaryName = `.owlat-account-export-${crypto.randomUUID()}.json`;
+	await removeStaleOriginPrivateFileSystemExports(directory);
+	const temporaryName = `${OPFS_EXPORT_PREFIX}${crypto.randomUUID()}.json`;
 	const handle = await directory.getFileHandle(temporaryName, { create: true });
 	const removeTemporaryFile = async () => {
 		try {
@@ -242,22 +247,38 @@ export async function openIncrementalJsonDownload(filename: string): Promise<Tex
 }
 
 function bufferedSink(destination: TextChunkSink): TextChunkSink {
+	const encoder = new TextEncoder();
+	const encodedScratch = new Uint8Array(MAX_DESTINATION_WRITE_BYTES);
 	let buffer = '';
+	let bufferedBytes = 0;
 	const flush = async () => {
 		if (!buffer) return;
 		const chunk = buffer;
 		buffer = '';
+		bufferedBytes = 0;
 		await destination.write(chunk);
 	};
 	return {
 		async write(chunk) {
-			if (chunk.length >= WRITE_BUFFER_SIZE) {
-				await flush();
-				await destination.write(chunk);
-				return;
+			let remaining = chunk;
+			while (remaining) {
+				const availableBytes = MAX_DESTINATION_WRITE_BYTES - bufferedBytes;
+				const encodingTarget =
+					availableBytes === MAX_DESTINATION_WRITE_BYTES
+						? encodedScratch
+						: encodedScratch.subarray(0, availableBytes);
+				const { read, written } = encoder.encodeInto(remaining, encodingTarget);
+				if (read === 0) {
+					await flush();
+					continue;
+				}
+				buffer += remaining.slice(0, read);
+				bufferedBytes += written;
+				remaining = remaining.slice(read);
+				if (bufferedBytes === MAX_DESTINATION_WRITE_BYTES || remaining) {
+					await flush();
+				}
 			}
-			if (buffer.length + chunk.length > WRITE_BUFFER_SIZE) await flush();
-			buffer += chunk;
 		},
 		async close() {
 			await flush();
@@ -265,6 +286,7 @@ function bufferedSink(destination: TextChunkSink): TextChunkSink {
 		},
 		async abort(reason) {
 			buffer = '';
+			bufferedBytes = 0;
 			await destination.abort(reason);
 		},
 	};

@@ -88,6 +88,7 @@ export const withPrimaryStoredImage = (
 	...content,
 	src: result.url,
 	storageId: result.storageId,
+	mediaAssetId: result.mediaAssetId,
 });
 
 /**

@@ -116,7 +116,7 @@ describe('Organization deletion walker — STEPS list invariants', () => {
 
 describe('Organization deletion walker — nextTable', () => {
 	it('returns the table at STEPS[i+1] for a non-terminal step', () => {
-		expect(nextTable('mediaAssets')).toBe(STEPS[1]);
+		expect(nextTable('mediaAssets')).toBe(STEPS[STEPS.indexOf('mediaAssets') + 1]);
 	});
 
 	it('returns null for the terminal step', () => {
@@ -217,6 +217,55 @@ describe('Organization deletion step modules — hard-delete shape', () => {
 // ────────────────────────────────────────────────────────────────────
 
 describe('Organization deletion step modules — storage purge', () => {
+	it('purges account-export leases, artifact blobs, and sessions in dependency order', async () => {
+		const t = convexTest(schema, modules);
+		const { storageId } = await t.run(async (ctx) => {
+			const now = Date.now();
+			const storageId = await ctx.storage.store(new Blob(['staged-export']));
+			const sessionId = await ctx.db.insert('accountExportSessions', {
+				userId: 'user',
+				artifactCount: 1,
+				artifactBytes: 13,
+				leaseCount: 1,
+				createdAt: now,
+				expiresAt: now + 60_000,
+			});
+			const artifactId = await ctx.db.insert('accountExportArtifacts', {
+				sessionId,
+				artifactKey: 'artifact',
+				storageId,
+				contentLength: 13,
+				activeLeaseCount: 1,
+				createdAt: now,
+			});
+			await ctx.db.insert('accountExportArtifactLeases', {
+				sessionId,
+				artifactId,
+				leaseToken: 'lease',
+				createdAt: now,
+			});
+			return { storageId };
+		});
+
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
+			table: 'accountExportArtifactLeases',
+		});
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
+			table: 'accountExportArtifacts',
+		});
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
+			table: 'accountExportSessions',
+		});
+		await drainAndCancel(t);
+
+		await t.run(async (ctx) => {
+			expect(await ctx.storage.get(storageId)).toBeNull();
+			expect(await ctx.db.query('accountExportArtifactLeases').collect()).toHaveLength(0);
+			expect(await ctx.db.query('accountExportArtifacts').collect()).toHaveLength(0);
+			expect(await ctx.db.query('accountExportSessions').collect()).toHaveLength(0);
+		});
+	});
+
 	it('mediaAssets step purges blob before row delete', async () => {
 		const t = convexTest(schema, modules);
 		let storageId: Id<'_storage'>;

@@ -8,6 +8,14 @@ export const DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT =
 	DELIVERABILITY_ALERT_RECIPIENT_COMPACTION_TARGET + DELIVERABILITY_ALERT_RECIPIENT_LIMIT;
 
 type AlertNotificationState = 'pending' | 'sent' | 'unavailable';
+export type CompactedDeliverabilityAlertOutcomes = {
+	sent: number;
+	transportOutcomeUnknown: number;
+	deliveryFailed: number;
+	unavailable: number;
+	cancelled: number;
+	earliestSentAt?: number;
+};
 
 export function boundedDeliverabilityAlertRecipientRows<T>(rows: readonly T[]): T[] {
 	if (rows.length > DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT) {
@@ -50,7 +58,8 @@ export function cancelledDeliverabilityAlertRecipientPatch(): {
 }
 
 export function deliverabilityAlertNotificationPatch(
-	states: readonly DeliverabilityAlertRecipientState[]
+	states: readonly DeliverabilityAlertRecipientState[],
+	compacted?: CompactedDeliverabilityAlertOutcomes
 ): {
 	emailNotificationState: AlertNotificationState;
 	emailNotifiedAt: number | undefined;
@@ -65,7 +74,7 @@ export function deliverabilityAlertNotificationPatch(
 					? recipient.sentAt
 					: Math.min(earliest, recipient.sentAt)
 				: earliest,
-		undefined
+		compacted?.earliestSentAt
 	);
 	return {
 		emailNotificationState: hasInFlightRecipient

@@ -265,6 +265,7 @@ async function exportAllUserData(
 				const {
 					['contentDownloadUrl']: _download,
 					['contentArtifactId']: _artifact,
+					['contentLeaseToken']: _lease,
 					...metadata
 				} = row;
 				rows.push({
@@ -473,6 +474,25 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 				new Blob([corruptBytes as unknown as BlobPart])
 			);
 			await ctx.storage.delete(sealedCorruptSource);
+			const personalMailStorageId = await storeSealedBlob(
+				ctx.storage,
+				new TextEncoder().encode('cross-resource-personal-mail-secret'),
+				'text/plain'
+			);
+			const insertAsset = (storageId: Id<'_storage'>, filename: string) =>
+				ctx.db.insert('mediaAssets', {
+					storageId,
+					filename,
+					mimeType: 'application/octet-stream',
+					fileSize: validBytes.byteLength,
+					url: 'https://capability.invalid/asset',
+					uploadedBy: 'auth-user-1',
+					createdAt: now,
+					updatedAt: now,
+				});
+			const validAssetId = await insertAsset(validStorageId, 'valid.bin');
+			const missingAssetId = await insertAsset(missingStorageId, 'missing.bin');
+			const corruptAssetId = await insertAsset(corruptStorageId, 'corrupt.bin');
 
 			await ctx.db.insert('emailTemplates', {
 				name: 'Account export template',
@@ -485,6 +505,16 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 							alt: 'customer-authored-template-body',
 							src: 'https://capability.invalid/image?token=image-url-canary',
 							storageId: validStorageId,
+							mediaAssetId: validAssetId,
+						},
+					},
+					{
+						id: 'cross-resource-image',
+						type: 'image',
+						content: {
+							src: 'https://capability.invalid/personal-mail',
+							storageId: personalMailStorageId,
+							mediaAssetId: validAssetId,
 						},
 					},
 				]),
@@ -510,18 +540,20 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 						url: 'https://capability.invalid/attachment-token-canary',
 						contentType: 'application/octet-stream',
 						fileSize: validBytes.byteLength,
-						mediaAssetId: 'media-ref-canary',
+						mediaAssetId: validAssetId,
 					},
 					{
 						id: 'missing',
 						filename: 'missing.bin',
 						storageId: missingStorageId,
+						mediaAssetId: missingAssetId,
 						url: 'https://capability.invalid/missing-token-canary',
 					},
 					{
 						id: 'corrupt',
 						filename: 'corrupt.bin',
 						storageId: corruptStorageId,
+						mediaAssetId: corruptAssetId,
 						url: 'https://capability.invalid/corrupt-token-canary',
 					},
 				]),
@@ -551,6 +583,15 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 								contentBase64: btoa('template attachment bytes'),
 								contentEncoding: 'base64',
 								availability: 'available',
+							},
+						},
+					},
+					{
+						content: {
+							storedContent: {
+								contentBase64: '',
+								contentEncoding: 'base64',
+								availability: 'missing',
 							},
 						},
 					},
@@ -596,6 +637,7 @@ describe('accountManagement.exportUserData — secret redaction', () => {
 			expect(row).not.toHaveProperty('seedTag');
 		}
 		const serialized = JSON.stringify(exported);
+		expect(serialized).not.toContain('cross-resource-personal-mail-secret');
 		for (const canary of [
 			'image-url-canary',
 			'html-token-canary',
@@ -688,18 +730,42 @@ describe('accountExport staging replay and quotas', () => {
 		};
 		const firstPage = await t.action(api.auth.accountExport.exportUserDataPage, pageArgs);
 		const replayedPage = await t.action(api.auth.accountExport.exportUserDataPage, pageArgs);
-		const stagedStorageId = (page: (typeof firstPage)['pageJson']) => {
-			const row = JSON.parse(page[0]!) as { contentDownloadUrl: string };
-			return new URL(row.contentDownloadUrl).searchParams.get('id');
+		const staged = (page: (typeof firstPage)['pageJson']) => {
+			const row = JSON.parse(page[0]!) as {
+				contentDownloadUrl: string;
+				contentArtifactId: Id<'accountExportArtifacts'>;
+				contentLeaseToken: string;
+			};
+			return {
+				...row,
+				storageId: new URL(row.contentDownloadUrl).searchParams.get('id'),
+			};
 		};
-		expect(stagedStorageId(replayedPage.pageJson)).toBe(stagedStorageId(firstPage.pageJson));
+		const first = staged(firstPage.pageJson);
+		const replay = staged(replayedPage.pageJson);
+		expect(replay.storageId).toBe(first.storageId);
+		expect(replay.contentLeaseToken).not.toBe(first.contentLeaseToken);
+		await expect(
+			t.action(api.auth.accountExport.acknowledgeExportArtifact, {
+				userId: 'auth-user-1',
+				exportSessionId: firstManifest.exportSessionId as Id<'accountExportSessions'>,
+				artifactId: first.contentArtifactId,
+				leaseToken: first.contentLeaseToken,
+			})
+		).resolves.toBe(true);
+		const replayUrl = new URL(replay.contentDownloadUrl);
+		await expect(t.fetch(`${replayUrl.pathname}${replayUrl.search}`)).resolves.toMatchObject({
+			ok: true,
+		});
 
 		const ledger = await t.run(async (ctx) => ({
 			sessions: await ctx.db.query('accountExportSessions').collect(),
 			artifacts: await ctx.db.query('accountExportArtifacts').collect(),
+			leases: await ctx.db.query('accountExportArtifactLeases').collect(),
 		}));
 		expect(ledger.sessions).toHaveLength(1);
 		expect(ledger.artifacts).toHaveLength(1);
+		expect(ledger.leases).toHaveLength(1);
 		expect(ledger.sessions[0]).toMatchObject({
 			artifactCount: 1,
 			artifactBytes: ledger.artifacts[0]!.contentLength,
@@ -709,6 +775,47 @@ describe('accountExport staging replay and quotas', () => {
 		await expect(t.action(api.auth.accountExport.exportUserDataPage, pageArgs)).rejects.toThrow(
 			'Could not create account export artifact URL'
 		);
+		await expect(
+			t.run(async (ctx) => ({
+				artifacts: await ctx.db.query('accountExportArtifacts').collect(),
+				leases: await ctx.db.query('accountExportArtifactLeases').collect(),
+			}))
+		).resolves.toMatchObject({
+			artifacts: [expect.objectContaining({ activeLeaseCount: 1 })],
+			leases: [expect.objectContaining({ leaseToken: replay.contentLeaseToken })],
+		});
+		vi.stubEnv('INSTANCE_SECRET', EXPORT_TEST_SECRET);
+		await expect(
+			t.action(api.auth.accountExport.acknowledgeExportArtifact, {
+				userId: 'auth-user-1',
+				exportSessionId: firstManifest.exportSessionId as Id<'accountExportSessions'>,
+				artifactId: replay.contentArtifactId,
+				leaseToken: 'wrong-token',
+			})
+		).resolves.toBe(false);
+		await expect(
+			t.action(api.auth.accountExport.acknowledgeExportArtifact, {
+				userId: 'auth-user-1',
+				exportSessionId: firstManifest.exportSessionId as Id<'accountExportSessions'>,
+				artifactId: replay.contentArtifactId,
+				leaseToken: replay.contentLeaseToken,
+			})
+		).resolves.toBe(true);
+		await expect(
+			t.action(api.auth.accountExport.acknowledgeExportArtifact, {
+				userId: 'auth-user-1',
+				exportSessionId: firstManifest.exportSessionId as Id<'accountExportSessions'>,
+				artifactId: replay.contentArtifactId,
+				leaseToken: replay.contentLeaseToken,
+			})
+		).resolves.toBe(false);
+		await expect(
+			t.run(async (ctx) => ({
+				artifact: await ctx.db.get(replay.contentArtifactId),
+				leases: await ctx.db.query('accountExportArtifactLeases').collect(),
+				blob: await ctx.storage.get(replay.storageId as Id<'_storage'>),
+			}))
+		).resolves.toEqual({ artifact: null, leases: [], blob: null });
 	});
 
 	it('stages fresh content when a row changes during a reused session', async () => {
@@ -858,10 +965,12 @@ describe('accountExport staging replay and quotas', () => {
 			const row = JSON.parse(pageJson[0]!) as {
 				contentArtifactId: Id<'accountExportArtifacts'>;
 				contentDownloadUrl: string;
+				contentLeaseToken: string;
 			};
 			return {
 				artifactId: row.contentArtifactId,
 				storageId: new URL(row.contentDownloadUrl).searchParams.get('id'),
+				leaseToken: row.contentLeaseToken,
 			};
 		};
 
@@ -872,6 +981,7 @@ describe('accountExport staging replay and quotas', () => {
 				userId: 'auth-user-1',
 				exportSessionId: sessionId,
 				artifactId: first.artifactId,
+				leaseToken: first.leaseToken,
 			})
 		).toBe(true);
 
@@ -891,6 +1001,7 @@ describe('accountExport staging replay and quotas', () => {
 				userId: 'auth-user-1',
 				exportSessionId: sessionId,
 				artifactId: second.artifactId,
+				leaseToken: second.leaseToken,
 			})
 		).toBe(true);
 		expect(await t.run(async (ctx) => ctx.db.get(sessionId))).toMatchObject({
@@ -1416,6 +1527,7 @@ describe('accountManagement.deleteAccountForRequest — non-owner member', () =>
 			authUserId: 'auth-user-1',
 			requestId,
 			isAlertErasureDone: true,
+			isAlertReceiptErasureDone: true,
 		});
 		await t.run(async (ctx) => {
 			const request = await ctx.db.get(requestId);
@@ -1438,17 +1550,25 @@ describe('memberErasure.eraseMemberData', () => {
 		// Bounded loop — every hop either deletes a batch (and reschedules) or
 		// reaches phase 4. A handful of hops covers the seeded data.
 		for (let i = 0; i < 20; i++) {
-			const isAlertErasureDone = await t.run(async (ctx) => {
+			const erasureState = await t.run(async (ctx) => {
 				const recipient = await ctx.db
 					.query('deliverabilityAlertRecipients')
 					.withIndex('by_user', (q) => q.eq('userId', authUserId))
 					.first();
-				return recipient === null;
+				const receipt = await ctx.db
+					.query('deliverabilityAlertRecipientReceipts')
+					.withIndex('by_user', (q) => q.eq('userId', authUserId))
+					.first();
+				return {
+					isAlertErasureDone: recipient === null,
+					isAlertReceiptErasureDone: receipt === null,
+				};
 			});
 			await t.mutation(internal.auth.memberErasure.eraseMemberData, {
 				authUserId,
 				requestId,
-				...(isAlertErasureDone ? { isAlertErasureDone: true } : {}),
+				...(erasureState.isAlertErasureDone ? { isAlertErasureDone: true } : {}),
+				...(erasureState.isAlertReceiptErasureDone ? { isAlertReceiptErasureDone: true } : {}),
 			});
 			const done = await t.run(async (ctx) => {
 				const r = await ctx.db.get(requestId);
@@ -1755,11 +1875,66 @@ describe('memberErasure.eraseMemberData', () => {
 			authUserId,
 			requestId,
 			isAlertErasureDone: true,
+			isAlertReceiptErasureDone: true,
 		});
 
 		await t.run(async (ctx) => {
 			const request = await ctx.db.get(requestId);
 			expect(request?.status).toBe('completed');
+		});
+	});
+
+	it('purges staged export leases, artifacts, and blobs in bounded member-erasure hops', async () => {
+		const t = newHarness();
+		const authUserId = 'auth-user-export-staging';
+		const profileId = await seedProfile(t, authUserId);
+		const { requestId, storageIds } = await t.run(async (ctx) => {
+			const now = Date.now();
+			const requestId = await ctx.db.insert('accountDeletionRequests', {
+				userProfileId: profileId,
+				email: 'staging@example.com',
+				requestedAt: now,
+				scheduledForDeletion: now,
+				cancellationToken: 'staging-token',
+				status: 'pending',
+				createdAt: now,
+			});
+			const sessionId = await ctx.db.insert('accountExportSessions', {
+				userId: authUserId,
+				artifactCount: 26,
+				artifactBytes: 26,
+				leaseCount: 26,
+				createdAt: now,
+				expiresAt: now + 60_000,
+			});
+			const storageIds: Id<'_storage'>[] = [];
+			for (let index = 0; index < 26; index += 1) {
+				const storageId = await ctx.storage.store(new Blob([new Uint8Array([index])]));
+				storageIds.push(storageId);
+				const artifactId = await ctx.db.insert('accountExportArtifacts', {
+					sessionId,
+					artifactKey: `artifact-${index}`,
+					storageId,
+					contentLength: 1,
+					activeLeaseCount: 1,
+					createdAt: now,
+				});
+				await ctx.db.insert('accountExportArtifactLeases', {
+					sessionId,
+					artifactId,
+					leaseToken: `lease-${index}`,
+					createdAt: now,
+				});
+			}
+			return { requestId, storageIds };
+		});
+
+		await drainWalk(t, authUserId, requestId);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('accountExportSessions').collect()).toHaveLength(0);
+			expect(await ctx.db.query('accountExportArtifacts').collect()).toHaveLength(0);
+			expect(await ctx.db.query('accountExportArtifactLeases').collect()).toHaveLength(0);
+			for (const storageId of storageIds) expect(await ctx.storage.get(storageId)).toBeNull();
 		});
 	});
 });

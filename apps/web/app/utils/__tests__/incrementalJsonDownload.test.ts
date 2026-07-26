@@ -4,13 +4,15 @@ import { writeAccountJsonExport } from '../accountJsonExport';
 import {
 	jsonArray,
 	jsonObject,
-	jsonObjectWithStreamedProperties,
 	jsonValue,
+	type JsonValueWriter,
+	type TextChunkSink,
+} from '../incrementalJsonSerializer';
+import {
+	jsonObjectWithStreamedProperties,
 	isSaveFilePickerCancellation,
 	openIncrementalJsonDownload,
 	revokeObjectUrlAfterDownloadNavigation,
-	type JsonValueWriter,
-	type TextChunkSink,
 	writeJsonDownload,
 } from '../incrementalJsonDownload';
 
@@ -32,13 +34,61 @@ afterEach(() => {
 });
 
 describe('incremental JSON downloads', () => {
-	it('recognizes a save-picker cancellation without swallowing real failures', () => {
+	it('does not classify an arbitrary AbortError as a save-picker cancellation', () => {
 		const cancellation = new Error('The user aborted a request');
 		cancellation.name = 'AbortError';
 
-		expect(isSaveFilePickerCancellation(cancellation)).toBe(true);
+		expect(isSaveFilePickerCancellation(cancellation)).toBe(false);
 		expect(isSaveFilePickerCancellation(new Error('disk full'))).toBe(false);
 		expect(isSaveFilePickerCancellation(null)).toBe(false);
+	});
+
+	it('marks only an AbortError thrown by the save picker as a neutral cancellation', async () => {
+		const cancellation = new Error('The user closed the picker');
+		cancellation.name = 'AbortError';
+		vi.stubGlobal('window', {
+			showSaveFilePicker: vi.fn(async () => {
+				throw cancellation;
+			}),
+		});
+
+		let caught: unknown;
+		try {
+			await openIncrementalJsonDownload('account-export.json');
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(isSaveFilePickerCancellation(caught)).toBe(true);
+	});
+
+	it('does not mark a later AbortError from the destination stream as picker cancellation', async () => {
+		const streamFailure = new Error('The destination stream aborted');
+		streamFailure.name = 'AbortError';
+		const abort = vi.fn(async () => undefined);
+		vi.stubGlobal('window', {
+			showSaveFilePicker: vi.fn(async () => ({
+				createWritable: vi.fn(async () => ({
+					write: vi.fn(async () => {
+						throw streamFailure;
+					}),
+					close: vi.fn(async () => undefined),
+					abort,
+				})),
+			})),
+		});
+		const sink = await openIncrementalJsonDownload('account-export.json');
+
+		let caught: unknown;
+		try {
+			await writeJsonDownload(sink, jsonValue({ exported: true }));
+		} catch (error) {
+			caught = error;
+		}
+
+		expect(caught).toBe(streamFailure);
+		expect(isSaveFilePickerCancellation(caught)).toBe(false);
+		expect(abort).toHaveBeenCalledWith(streamFailure);
 	});
 
 	it('defers object URL revocation until after the download navigation task', () => {
@@ -79,6 +129,128 @@ describe('incremental JSON downloads', () => {
 		expect(removeEntry).toHaveBeenCalledWith(createdTemporaryName);
 	});
 
+	it('removes old OPFS export files but leaves recent and unrelated files alone', async () => {
+		const staleName = '.owlat-account-export-stale.json';
+		const recentName = '.owlat-account-export-recent.json';
+		const unrelatedName = 'other-file.json';
+		const createWritable = vi.fn(async () => ({
+			write: vi.fn(async () => undefined),
+			close: vi.fn(async () => undefined),
+			abort: vi.fn(async () => undefined),
+		}));
+		const currentHandle = { createWritable };
+		const entries = vi.fn(async function* () {
+			yield [
+				staleName,
+				{
+					kind: 'file',
+					getFile: vi.fn(async () => ({ lastModified: Date.now() - 25 * 60 * 60 * 1000 })),
+				},
+			] as const;
+			yield [
+				recentName,
+				{
+					kind: 'file',
+					getFile: vi.fn(async () => ({ lastModified: Date.now() })),
+				},
+			] as const;
+			yield [
+				unrelatedName,
+				{
+					kind: 'file',
+					getFile: vi.fn(async () => ({ lastModified: 0 })),
+				},
+			] as const;
+		});
+		const removeEntry = vi.fn(async () => undefined);
+		vi.stubGlobal('navigator', {
+			storage: {
+				getDirectory: vi.fn(async () => ({
+					entries,
+					getFileHandle: vi.fn(async () => currentHandle),
+					removeEntry,
+				})),
+			},
+		});
+
+		await openIncrementalJsonDownload('account-export.json');
+
+		expect(removeEntry).toHaveBeenCalledWith(staleName);
+		expect(removeEntry).not.toHaveBeenCalledWith(recentName);
+		expect(removeEntry).not.toHaveBeenCalledWith(unrelatedName);
+	});
+
+	it('bounds an error-tolerant OPFS stale-export sweep', async () => {
+		let visitedEntries = 0;
+		const entries = vi.fn(async function* () {
+			for (let index = 0; index < 100; index += 1) {
+				visitedEntries += 1;
+				yield [
+					`.owlat-account-export-stale-${index}.json`,
+					{
+						kind: 'file',
+						getFile: vi.fn(async () => ({ lastModified: 0 })),
+					},
+				] as const;
+			}
+		});
+		const removeEntry = vi.fn(async () => {
+			throw new Error('concurrent cleanup');
+		});
+		vi.stubGlobal('navigator', {
+			storage: {
+				getDirectory: vi.fn(async () => ({
+					entries,
+					getFileHandle: vi.fn(async () => ({
+						createWritable: vi.fn(async () => ({
+							write: vi.fn(async () => undefined),
+							close: vi.fn(async () => undefined),
+							abort: vi.fn(async () => undefined),
+						})),
+					})),
+					removeEntry,
+				})),
+			},
+		});
+
+		await expect(openIncrementalJsonDownload('account-export.json')).resolves.toBeDefined();
+
+		expect(visitedEntries).toBeLessThanOrEqual(64);
+		expect(removeEntry).toHaveBeenCalledTimes(16);
+	});
+
+	it('continues opening the export when OPFS inspection or enumeration fails', async () => {
+		const entries = vi.fn(async function* () {
+			yield [
+				'.owlat-account-export-unreadable.json',
+				{
+					kind: 'file',
+					getFile: vi.fn(async () => {
+						throw new Error('file disappeared');
+					}),
+				},
+			] as const;
+			throw new Error('directory enumeration failed');
+		});
+		const createWritable = vi.fn(async () => ({
+			write: vi.fn(async () => undefined),
+			close: vi.fn(async () => undefined),
+			abort: vi.fn(async () => undefined),
+		}));
+		vi.stubGlobal('navigator', {
+			storage: {
+				getDirectory: vi.fn(async () => ({
+					entries,
+					getFileHandle: vi.fn(async () => ({ createWritable })),
+					removeEntry: vi.fn(async () => undefined),
+				})),
+			},
+		});
+
+		await expect(openIncrementalJsonDownload('account-export.json')).resolves.toBeDefined();
+		expect(createWritable).toHaveBeenCalledOnce();
+	});
+
 	it('writes a large export incrementally without constructing one export-sized chunk', async () => {
 		const rowCount = 50_000;
 		let generatedRows = 0;
@@ -116,6 +288,74 @@ describe('incremental JSON downloads', () => {
 			index: rowCount - 1,
 			value: `row-${rowCount - 1}`,
 		});
+	});
+
+	it('splits oversized rows by encoded UTF-8 bytes without corrupting Unicode', async () => {
+		const oversizedRow = {
+			ascii: 'x'.repeat(150_000),
+			unicode: '🙂'.repeat(40_000),
+		};
+		const { chunks, sink } = createRecordingSink();
+		const stringify = vi.spyOn(JSON, 'stringify');
+
+		await writeJsonDownload(sink, jsonArray([jsonValue(oversizedRow)]));
+
+		expect(stringify).not.toHaveBeenCalled();
+		expect(chunks.length).toBeGreaterThan(4);
+		for (const chunk of chunks) {
+			expect(new TextEncoder().encode(chunk).byteLength).toBeLessThanOrEqual(64 * 1024);
+		}
+		expect(JSON.parse(chunks.join(''))).toEqual([oversizedRow]);
+		stringify.mockRestore();
+	});
+
+	it('preserves JSON edge-case semantics in the bounded serializer', async () => {
+		const { chunks, sink } = createRecordingSink();
+		const arrayValues = [
+			undefined,
+			undefined,
+			Number.NaN,
+			Number.POSITIVE_INFINITY,
+			Number.NEGATIVE_INFINITY,
+		];
+		delete arrayValues[1];
+		const value = {
+			controls: '\b\t\n\f\r\u0000"\\',
+			surrogatePair: '🙂',
+			loneHighSurrogate: '\ud800',
+			loneLowSurrogate: '\udfff',
+			omittedUndefined: undefined,
+			omittedFunction: () => undefined,
+			omittedSymbol: Symbol('omitted'),
+			arrayValues,
+		};
+
+		await writeJsonDownload(sink, jsonValue(value));
+
+		expect(JSON.parse(chunks.join(''))).toEqual({
+			controls: value.controls,
+			surrogatePair: value.surrogatePair,
+			loneHighSurrogate: value.loneHighSurrogate,
+			loneLowSurrogate: value.loneLowSurrogate,
+			arrayValues: [null, null, null, null, null],
+		});
+	});
+
+	it('rejects circular values and non-plain objects', async () => {
+		const circular: Record<string, unknown> = {};
+		circular['self'] = circular;
+		const circularDestination = createRecordingSink();
+		const nonPlainDestination = createRecordingSink();
+
+		await expect(writeJsonDownload(circularDestination.sink, jsonValue(circular))).rejects.toThrow(
+			'circular'
+		);
+		await expect(
+			writeJsonDownload(nonPlainDestination.sink, jsonValue(new Date()))
+		).rejects.toThrow('non-plain');
+
+		expect(circularDestination.sink.abort).toHaveBeenCalledOnce();
+		expect(nonPlainDestination.sink.abort).toHaveBeenCalledOnce();
 	});
 
 	it('aborts the destination instead of leaving a silently truncated file', async () => {
@@ -266,6 +506,7 @@ describe('account JSON export', () => {
 							name: 'Welcome',
 							contentDownloadUrl: 'https://example.test/export-content',
 							contentArtifactId: artifactId,
+							contentLeaseToken: 'lease-1',
 						}),
 					],
 					isDone: true,
