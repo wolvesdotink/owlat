@@ -3,6 +3,13 @@
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { authedQuery } from '../lib/authedFunctions';
+import { getUserIdFromSession } from '../lib/sessionOrganization';
+import {
+	derivePostmasterCards,
+	type PostmasterCard,
+	type PostmasterDomainSignals,
+} from './postmasterCards';
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
@@ -247,5 +254,78 @@ export const cleanup = internalMutation({
 			expiredCompliance.length === POSTMASTER_CLEANUP_BATCH_SIZE;
 		if (hasMore) await ctx.scheduler.runAfter(0, internal.delivery.postmaster.cleanup, {});
 		return { deleted: expired.length, continuationScheduled: hasMore };
+	},
+});
+
+/** One sending domain's latest Postmaster observation, plus its action cards. */
+export interface PostmasterDomainStatus extends PostmasterDomainSignals {
+	/** Start of the UTC day the statistics describe, or `null` when there are none. */
+	periodStart: number | null;
+	/** Start of the UTC day the Compliance Status verdict describes. */
+	compliancePeriodStart: number | null;
+	cards: PostmasterCard[];
+}
+
+export interface PostmasterStatus {
+	/**
+	 * Whether ANY Postmaster data has ever arrived. `false` is a supported
+	 * configuration — the operator simply has not connected a Google account —
+	 * and the UI renders it as an invitation, never as an error.
+	 */
+	connected: boolean;
+	domains: PostmasterDomainStatus[];
+}
+
+// all-members: Postmaster verdicts and provider-measured rates for the org's own
+// sending domains are operational status, member-visible — no credentials, no
+// per-recipient data.
+export const getPostmasterStatus = authedQuery({
+	args: {},
+	handler: async (ctx): Promise<PostmasterStatus> => {
+		await getUserIdFromSession(ctx);
+
+		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
+		const statuses = await Promise.all(
+			domains.map(async (domainRecord): Promise<PostmasterDomainStatus> => {
+				const [stats, compliance] = await Promise.all([
+					ctx.db
+						.query('googlePostmasterStats')
+						.withIndex('by_domain_period', (q) => q.eq('domain', domainRecord.domain))
+						.order('desc')
+						.first(),
+					ctx.db
+						.query('googlePostmasterCompliance')
+						.withIndex('by_domain_period', (q) => q.eq('domain', domainRecord.domain))
+						.order('desc')
+						.first(),
+				]); // bounded: two indexed point lookups per sending domain
+				const signals: PostmasterDomainSignals = {
+					domain: domainRecord.domain,
+					userReportedSpamRatio: stats?.userReportedSpamRatio ?? null,
+					spfSuccessRatio: stats?.spfSuccessRatio ?? null,
+					dkimSuccessRatio: stats?.dkimSuccessRatio ?? null,
+					dmarcSuccessRatio: stats?.dmarcSuccessRatio ?? null,
+					deliveryErrorRatio: stats?.deliveryErrorRatio ?? null,
+					deliveryErrors: stats?.deliveryErrors ?? [],
+					checks: compliance?.checks ?? [],
+				};
+				return {
+					...signals,
+					periodStart: stats?.periodStart ?? null,
+					compliancePeriodStart: compliance?.periodStart ?? null,
+					cards: derivePostmasterCards(signals),
+				};
+			})
+		);
+
+		return {
+			connected: statuses.some(
+				(status) => status.periodStart !== null || status.compliancePeriodStart !== null
+			),
+			// Domains with something to say first, then alphabetically for stability.
+			domains: statuses.sort(
+				(a, b) => b.cards.length - a.cards.length || a.domain.localeCompare(b.domain)
+			),
+		};
 	},
 });
