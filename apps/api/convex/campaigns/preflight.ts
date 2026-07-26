@@ -13,6 +13,18 @@ import { api } from '../_generated/api';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isCampaignSenderAllowed, senderNotAllowedMessage } from './senders';
+import { assessCampaignCapacity } from './capacityPreflight';
+
+/**
+ * The multi-day schedule handed back instead of an error when the audience
+ * provably cannot be delivered inside the MTA's message-retention horizon.
+ * Capacity is a SCHEDULE, not a failure — the UI renders "Sending over N days".
+ */
+export interface PreflightCapacityPlan {
+	days: number;
+	slices: number[];
+	finishesAt: number;
+}
 
 export type PreflightResult =
 	| { ok: true }
@@ -27,8 +39,11 @@ export type PreflightResult =
 				| 'domain_not_verified'
 				| 'sender_not_allowed'
 				| 'sending_not_allowed'
-				| 'scheduled_in_past';
+				| 'scheduled_in_past'
+				| 'exceeds_sending_capacity';
 			message: string;
+			/** Present only on `exceeds_sending_capacity`. */
+			capacityPlan?: PreflightCapacityPlan;
 	  };
 
 export interface PreflightOptions {
@@ -141,8 +156,9 @@ export async function validateReadyToSend(
 		};
 	}
 
+	const now = options.now ?? Date.now();
+
 	if (options.scheduledAt !== undefined) {
-		const now = options.now ?? Date.now();
 		if (options.scheduledAt <= now) {
 			return {
 				ok: false,
@@ -150,6 +166,28 @@ export async function validateReadyToSend(
 				message: 'Scheduled time must be in the future',
 			};
 		}
+	}
+
+	// BINDING capacity check (deliverability plan rev 3, P0-5) — added LAST so
+	// every shipped check keeps its first-failure surface. A warming deployment
+	// with no relay to overflow to can otherwise start a campaign whose tail
+	// silently expires in the MTA queue. When capacity cannot be measured the
+	// assessment answers `fits: true` and nothing changes.
+	const capacity = await assessCampaignCapacity(ctx, { audience: campaign.audience, now });
+	if (!capacity.fits) {
+		return {
+			ok: false,
+			reason: 'exceeds_sending_capacity',
+			message:
+				`This campaign is larger than your sending capacity allows in one go. ` +
+				`At your current warm-up capacity it takes about ${capacity.days} day${capacity.days === 1 ? '' : 's'} ` +
+				`to reach everyone, so send it over ${capacity.days} days instead.`,
+			capacityPlan: {
+				days: capacity.days,
+				slices: capacity.slices,
+				finishesAt: capacity.finishesAt,
+			},
+		};
 	}
 
 	return { ok: true };
