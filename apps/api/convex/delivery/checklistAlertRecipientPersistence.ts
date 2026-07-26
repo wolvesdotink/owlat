@@ -120,7 +120,7 @@ export async function reserveCurrentRecipientCapacity(
 	}
 	for (const recipientId of evictedIds) await ctx.db.delete(recipientId);
 	if (evicted.length > 0) {
-		const receipt: CompactedDeliverabilityAlertOutcomes = {
+		const compactedOutcomes: CompactedDeliverabilityAlertOutcomes = {
 			sent: alert.compactedRecipientOutcomes?.sent ?? 0,
 			transportOutcomeUnknown: alert.compactedRecipientOutcomes?.transportOutcomeUnknown ?? 0,
 			deliveryFailed: alert.compactedRecipientOutcomes?.deliveryFailed ?? 0,
@@ -132,12 +132,12 @@ export async function reserveCurrentRecipientCapacity(
 			if (recipient.status === 'sent') {
 				const created = await persistProtectedRecipientReceipt(ctx, alert, recipient, 'sent');
 				if (!created) continue;
-				receipt.sent += 1;
+				compactedOutcomes.sent += 1;
 				if (recipient.sentAt !== undefined) {
-					receipt.earliestSentAt =
-						receipt.earliestSentAt === undefined
+					compactedOutcomes.earliestSentAt =
+						compactedOutcomes.earliestSentAt === undefined
 							? recipient.sentAt
-							: Math.min(receipt.earliestSentAt, recipient.sentAt);
+							: Math.min(compactedOutcomes.earliestSentAt, recipient.sentAt);
 				}
 			} else if (
 				recipient.status === 'unavailable' &&
@@ -149,22 +149,22 @@ export async function reserveCurrentRecipientCapacity(
 					recipient,
 					'transport_outcome_unknown'
 				);
-				if (created) receipt.transportOutcomeUnknown += 1;
+				if (created) compactedOutcomes.transportOutcomeUnknown += 1;
 			} else if (
 				recipient.status === 'unavailable' &&
 				recipient.unavailableReason === 'delivery_failed'
 			) {
-				receipt.deliveryFailed += 1;
+				compactedOutcomes.deliveryFailed += 1;
 			} else if (recipient.status === 'unavailable') {
-				receipt.unavailable += 1;
+				compactedOutcomes.unavailable += 1;
 			} else {
 				// A departed pending row becomes historical cancellation rather
 				// than pretending a delivery outcome occurred.
-				receipt.cancelled += 1;
+				compactedOutcomes.cancelled += 1;
 			}
 		}
-		await ctx.db.patch(alert._id, { compactedRecipientOutcomes: receipt });
-		alert.compactedRecipientOutcomes = receipt;
+		await ctx.db.patch(alert._id, { compactedRecipientOutcomes: compactedOutcomes });
+		alert.compactedRecipientOutcomes = compactedOutcomes;
 	}
 	return existing.filter((recipient) => !evictedIds.has(recipient._id));
 }

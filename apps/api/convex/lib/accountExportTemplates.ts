@@ -259,17 +259,23 @@ export function projectTransactionalEmailMetadata(template: Doc<'transactionalEm
 	};
 }
 
-export async function openEmailTemplateContent(
-	storage: BodyBlobStorageReader,
-	template: Doc<'emailTemplates'>,
-	authorizedAssets: readonly AccountExportMediaAsset[] = []
-) {
-	const context: TemplateExportContext = {
+function templateExportContext(
+	authorizedAssets: readonly AccountExportMediaAsset[]
+): TemplateExportContext {
+	return {
 		authorizedAssets: new Map(
 			authorizedAssets.map((asset) => [asset.mediaAssetId, asset.storageId])
 		),
 		decodedMediaBytes: 0,
 	};
+}
+
+export async function openEmailTemplateContent(
+	storage: BodyBlobStorageReader,
+	template: Doc<'emailTemplates'>,
+	authorizedAssets: readonly AccountExportMediaAsset[] = []
+) {
+	const context = templateExportContext(authorizedAssets);
 	return {
 		editorContent: await sanitizeEditorJson(storage, template.content, context),
 		translations: await sanitizeEditorJson(storage, template.translations, context),
@@ -281,12 +287,7 @@ export async function openTransactionalEmailContent(
 	template: Doc<'transactionalEmails'>,
 	authorizedAssets: readonly AccountExportMediaAsset[] = []
 ) {
-	const context: TemplateExportContext = {
-		authorizedAssets: new Map(
-			authorizedAssets.map((asset) => [asset.mediaAssetId, asset.storageId])
-		),
-		decodedMediaBytes: 0,
-	};
+	const context = templateExportContext(authorizedAssets);
 	return {
 		editorContent: await sanitizeEditorJson(storage, template.content, context),
 		translations: await sanitizeEditorJson(storage, template.translations, context),

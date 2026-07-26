@@ -64,6 +64,20 @@ interface StagedAccountExportContent {
 	contentLeaseToken: string;
 }
 
+async function releaseStagedArtifactLease(
+	ctx: ActionCtx,
+	args: {
+		userId: string;
+		sessionId: Id<'accountExportSessions'>;
+		artifactId: Id<'accountExportArtifacts'>;
+		leaseToken: string;
+	}
+): Promise<void> {
+	await ctx
+		.runMutation(internal.auth.accountExportArtifacts.releaseArtifact, args)
+		.catch(() => undefined);
+}
+
 async function stageAccountExportContent(
 	ctx: ActionCtx,
 	args: {
@@ -102,14 +116,12 @@ async function stageAccountExportContent(
 					contentLeaseToken: leaseToken,
 				};
 			} catch (error) {
-				await ctx
-					.runMutation(internal.auth.accountExportArtifacts.releaseArtifact, {
-						userId: args.userId,
-						sessionId: args.sessionId,
-						artifactId: leasedArtifact._id,
-						leaseToken,
-					})
-					.catch(() => undefined);
+				await releaseStagedArtifactLease(ctx, {
+					userId: args.userId,
+					sessionId: args.sessionId,
+					artifactId: leasedArtifact._id,
+					leaseToken,
+				});
 				throw error;
 			}
 		}
@@ -136,14 +148,12 @@ async function stageAccountExportContent(
 				contentLeaseToken: leaseToken,
 			};
 		} catch (error) {
-			await ctx
-				.runMutation(internal.auth.accountExportArtifacts.releaseArtifact, {
-					userId: args.userId,
-					sessionId: args.sessionId,
-					artifactId: registered.artifact._id,
-					leaseToken,
-				})
-				.catch(() => undefined);
+			await releaseStagedArtifactLease(ctx, {
+				userId: args.userId,
+				sessionId: args.sessionId,
+				artifactId: registered.artifact._id,
+				leaseToken,
+			});
 			throw error;
 		}
 	} catch (error) {

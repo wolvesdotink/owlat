@@ -54,6 +54,9 @@ export async function resolveDkimKey(hostname: string): Promise<DkimKeyResolutio
 			// More than one key-bearing TXT record at a selector is ambiguous.
 			// Never choose whichever answer the resolver happened to return first.
 			if (candidates.length > 1) return { outcome: 'resolved', bits: null };
+			// A successful terminal TXT lookup with no DKIM key is definitive
+			// invalid evidence. Only resolver failure can indicate a CNAME hop.
+			return { outcome: 'resolved', bits: null };
 		} catch {
 			// A provider-managed selector is commonly a CNAME, so continue.
 		}

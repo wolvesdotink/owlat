@@ -129,13 +129,13 @@ async function handleFileUpload(files: FileList | File[]) {
 			// Register in media library FIRST: `storage.getUrl` only resolves blobs
 			// backed by a `mediaAssets` row (cross-resource IDOR guard), so the
 			// asset must exist before we can mint its URL.
-			const created = await createMediaAsset({
+			const mediaAssetId = await createMediaAsset({
 				storageId,
 				filename: file.name,
 				mimeType: file.type || 'application/octet-stream',
 				fileSize: file.size,
 			});
-			if (created === undefined) break;
+			if (mediaAssetId === undefined) break;
 
 			const url = await requireConvex().query(api.storage.getUrl, { storageId });
 			if (!url) {
@@ -147,6 +147,7 @@ async function handleFileUpload(files: FileList | File[]) {
 				id: generateAttachmentId(),
 				filename: file.name,
 				storageId,
+				mediaAssetId,
 				url,
 				contentType: file.type || 'application/octet-stream',
 				fileSize: file.size,
@@ -166,11 +167,12 @@ async function handleFileUpload(files: FileList | File[]) {
 function handleMediaPickerSelect(result: {
 	url: string;
 	storageId?: string;
+	mediaAssetId?: string;
 	filename?: string;
 	contentType?: string;
 	fileSize?: number;
 }) {
-	if (!result.storageId || !result.url) return;
+	if (!result.storageId || !result.mediaAssetId || !result.url) return;
 
 	const fileSize = result.fileSize ?? 0;
 	if (totalSize.value + fileSize > MAX_TOTAL_SIZE) {
@@ -187,6 +189,7 @@ function handleMediaPickerSelect(result: {
 		id: generateAttachmentId(),
 		filename: result.filename ?? 'file',
 		storageId: result.storageId,
+		mediaAssetId: result.mediaAssetId,
 		url: result.url,
 		contentType: result.contentType ?? 'application/octet-stream',
 		fileSize,

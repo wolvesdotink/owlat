@@ -78,8 +78,9 @@ export const createBlock = (type: BlockType, theme?: EmailTheme): EditorBlock =>
 /**
  * Pair an uploaded image's render URL with its durable storage identity.
  *
- * The URL is a short-lived capability used by the preview. The storage ID is
- * the durable source of truth used by export and other byte-exact workflows.
+ * The URL is a short-lived capability used by the preview. Matching storage
+ * and media-asset identities are the durable source of truth used by export
+ * and other byte-exact workflows.
  */
 export const withPrimaryStoredImage = (
 	content: ImageBlockContent,

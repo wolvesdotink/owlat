@@ -227,6 +227,42 @@ describe('domain checklist validation', () => {
 		resolveCname.mockRestore();
 	});
 
+	it('fails a provider CNAME whose terminal TXT answer contains no DKIM key', async () => {
+		const resolveTxt = vi
+			.spyOn(dns, 'resolveTxt')
+			.mockRejectedValueOnce(new Error('CNAME has no TXT data'))
+			.mockResolvedValueOnce([['google-site-verification=unrelated']]);
+		const resolveCname = vi
+			.spyOn(dns, 'resolveCname')
+			.mockResolvedValueOnce(['selector.provider.test.']);
+		vi.mocked(runDnsLookups).mockResolvedValue({
+			dkim: [{ verified: true, foundValue: 'selector.provider.test.' }],
+		} as never);
+		const dkimContext = context(
+			{},
+			{
+				dkim: [
+					{
+						type: 'CNAME',
+						host: 's1._domainkey',
+						value: 'selector.provider.test',
+					},
+				],
+			}
+		);
+
+		await expect(
+			observeDomainCheck({} as never, 'domain.dkim', dkimContext, true)
+		).resolves.toMatchObject({
+			status: 'fail',
+			diagnostic: expect.stringContaining('could not be parsed'),
+			observedValues: expect.arrayContaining(['key-bits=unparseable']),
+		});
+		expect(resolveCname).toHaveBeenCalledTimes(1);
+		resolveTxt.mockRestore();
+		resolveCname.mockRestore();
+	});
+
 	it('fails a provider CNAME that resolves to a known 1024-bit DKIM key', async () => {
 		const weakRecord = rsaDkimRecord(1_024);
 		const resolveTxt = vi.spyOn(dns, 'resolveTxt').mockResolvedValue([[weakRecord]]);
