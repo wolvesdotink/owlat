@@ -6,6 +6,11 @@ export {
 	MTA_WEBHOOK_EVENT_TYPES,
 	type MtaWebhookEventType,
 	type SharedMtaWebhookEvent,
+	type PostmasterComplianceCheck,
+	type PostmasterDeliveryError,
+	POSTMASTER_TOKEN,
+	POSTMASTER_MAX_COMPLIANCE_CHECKS,
+	POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES,
 	isMtaWebhookEventType,
 	isMtaWebhookEvent,
 } from './mtaWebhookEvent';

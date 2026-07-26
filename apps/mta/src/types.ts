@@ -2,6 +2,11 @@
  * Core types for the owlat-mta service
  */
 
+import type {
+	PostmasterComplianceCheck,
+	PostmasterDeliveryError,
+} from '@owlat/shared/mtaWebhookEvent';
+
 // ============ Email Job Types ============
 
 export interface EmailJob {
@@ -224,13 +229,6 @@ export interface MtaWebhookEvent {
 	timestamp: number;
 }
 
-/** One delivery-error category's share of a domain's traffic on one day. */
-export interface GooglePostmasterDeliveryErrorShare {
-	/** Google's error-category token (for example `RATE_LIMIT_EXCEEDED`). */
-	category: string;
-	ratio: number;
-}
-
 export interface GooglePostmasterStatsEvent extends MtaWebhookEvent {
 	event: 'postmaster.stats';
 	domain: string;
@@ -243,13 +241,7 @@ export interface GooglePostmasterStatsEvent extends MtaWebhookEvent {
 	dkimSuccessRatio?: number;
 	dmarcSuccessRatio?: number;
 	deliveryErrorRatio?: number;
-	deliveryErrors?: GooglePostmasterDeliveryErrorShare[];
-}
-
-/** One Compliance Status check as reported by Postmaster Tools v2. */
-export interface GooglePostmasterComplianceCheck {
-	name: string;
-	state: 'passing' | 'failing' | 'unknown';
+	deliveryErrors?: PostmasterDeliveryError[];
 }
 
 /**
@@ -260,7 +252,7 @@ export interface GooglePostmasterComplianceEvent extends MtaWebhookEvent {
 	event: 'postmaster.compliance';
 	domain: string;
 	date: string;
-	checks: GooglePostmasterComplianceCheck[];
+	checks: PostmasterComplianceCheck[];
 }
 
 export interface GooglePostmasterDomainAuthorizationEvent extends MtaWebhookEvent {

@@ -2,7 +2,12 @@
 
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import type { GooglePostmasterComplianceCheck, GooglePostmasterStatsEvent } from '../types.js';
+import {
+	POSTMASTER_MAX_COMPLIANCE_CHECKS,
+	POSTMASTER_TOKEN,
+	type PostmasterComplianceCheck,
+} from '@owlat/shared/mtaWebhookEvent';
+import type { GooglePostmasterStatsEvent } from '../types.js';
 
 const TOKEN_KEY = 'mta:postmaster:oauth-access-token';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -57,9 +62,6 @@ const DELIVERY_ERROR_METRIC_NAMES: ReadonlySet<string> = new Set(
 		(category) => `${DELIVERY_ERROR_METRIC_PREFIX}${category}`
 	)
 );
-
-/** Upper bound on the Compliance Status checks retained from one response. */
-export const POSTMASTER_COMPLIANCE_CHECK_LIMIT = 32;
 
 /** Scopes that must be granted when the operator creates the offline refresh token. */
 export const GOOGLE_POSTMASTER_AUTHORIZATION_SCOPES = [
@@ -123,6 +125,11 @@ function parseGoogleDate(value: unknown): string | null {
 		: null;
 }
 
+/** The UTC calendar day `daysAgo` days before now, as `YYYY-MM-DD`. */
+export function utcDateDaysAgo(daysAgo: number): string {
+	return new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1_000).toISOString().slice(0, 10);
+}
+
 /** `YYYY-MM-DD` → the `google.type.Date` object the v2 query body expects. */
 export function googleDateObject(date: string): { year: number; month: number; day: number } {
 	const [year, month, day] = date.split('-').map(Number);
@@ -151,23 +158,24 @@ export function normalizeDomainStat(raw: DomainStatWire): DomainStatObservation 
 	return { date, metric, ratio };
 }
 
-const COMPLIANCE_STATE_BY_WIRE: Readonly<Record<string, GooglePostmasterComplianceCheck['state']>> =
-	{
-		PASSING: 'passing',
-		PASS: 'passing',
-		COMPLIANT: 'passing',
-		OK: 'passing',
-		FAILING: 'failing',
-		FAIL: 'failing',
-		NON_COMPLIANT: 'failing',
-	};
+const COMPLIANCE_STATE_BY_WIRE: Readonly<Record<string, PostmasterComplianceCheck['state']>> = {
+	PASSING: 'passing',
+	PASS: 'passing',
+	COMPLIANT: 'passing',
+	OK: 'passing',
+	FAILING: 'failing',
+	FAIL: 'failing',
+	NON_COMPLIANT: 'failing',
+};
 
 function normalizeCheckName(value: unknown): string | null {
 	if (typeof value !== 'string' || value.length > 128) return null;
 	const name = value.trim().toUpperCase();
 	// Deliberately strict: the name is stored and rendered, so only an opaque
 	// enum-shaped token is accepted. Anything else is dropped, never escaped.
-	return /^[A-Z0-9_]{1,64}$/.test(name) ? name : null;
+	// The shape is the shared wire contract's, so the collector can never keep
+	// a name the Convex ingress would reject the whole event over.
+	return POSTMASTER_TOKEN.test(name) ? name : null;
 }
 
 /**
@@ -177,13 +185,13 @@ function normalizeCheckName(value: unknown): string | null {
  * verbatim (the UI has a generic renderer for it) and an unrecognised state
  * degrades to `'unknown'`. Never throws — a malformed payload yields `[]`.
  */
-export function parseComplianceStatus(value: unknown): GooglePostmasterComplianceCheck[] {
+export function parseComplianceStatus(value: unknown): PostmasterComplianceCheck[] {
 	if (!isRecord(value)) return [];
 	const rawChecks = value['checks'] ?? value['complianceChecks'];
 	if (!Array.isArray(rawChecks)) return [];
-	const byName = new Map<string, GooglePostmasterComplianceCheck>();
+	const byName = new Map<string, PostmasterComplianceCheck>();
 	for (const raw of rawChecks) {
-		if (byName.size >= POSTMASTER_COMPLIANCE_CHECK_LIMIT) break;
+		if (byName.size >= POSTMASTER_MAX_COMPLIANCE_CHECKS) break;
 		if (!isRecord(raw)) continue;
 		const name = normalizeCheckName(raw['name'] ?? raw['checkName']);
 		if (name === null || byName.has(name)) continue;

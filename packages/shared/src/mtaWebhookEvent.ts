@@ -29,6 +29,36 @@ export const MTA_WEBHOOK_EVENT_TYPES = [
 
 export type MtaWebhookEventType = (typeof MTA_WEBHOOK_EVENT_TYPES)[number];
 
+// ─── Google Postmaster Tools contract ──────────────────────────────────────
+// One definition of the shapes and of the sanitization bounds, imported by the
+// MTA collector and by the Convex ingest. Each end still re-VALIDATES at its
+// own trust boundary; what must never drift is the numbers it validates
+// against — a collector that kept more checks than this guard accepts would
+// have the whole event rejected and the day's verdict silently lost.
+
+/** One Compliance Status check as Google reports it, normalized. */
+export interface PostmasterComplianceCheck {
+	name: string;
+	state: 'passing' | 'failing' | 'unknown';
+}
+
+/** One delivery-error category's share of a domain's traffic for a day. */
+export interface PostmasterDeliveryError {
+	category: string;
+	ratio: number;
+}
+
+/**
+ * The only shape a Postmaster check name or delivery-error category may take.
+ * Both are stored and rendered verbatim, so anything else is DROPPED rather
+ * than escaped.
+ */
+export const POSTMASTER_TOKEN = /^[A-Z0-9_]{1,64}$/;
+/** Upper bound on the Compliance Status checks carried for one domain/day. */
+export const POSTMASTER_MAX_COMPLIANCE_CHECKS = 32;
+/** Upper bound on the delivery-error categories carried for one domain/day. */
+export const POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES = 24;
+
 interface EventBase<K extends MtaWebhookEventType> {
 	event: K;
 	timestamp: number;
@@ -58,8 +88,8 @@ interface EventBase<K extends MtaWebhookEventType> {
 	dkimSuccessRatio?: number;
 	dmarcSuccessRatio?: number;
 	deliveryErrorRatio?: number;
-	deliveryErrors?: Array<{ category: string; ratio: number }>;
-	checks?: Array<{ name: string; state: 'passing' | 'failing' | 'unknown' }>;
+	deliveryErrors?: PostmasterDeliveryError[];
+	checks?: PostmasterComplianceCheck[];
 	inboundPayload?: object;
 	mailboxPayload?: object;
 	routingReentryToken?: string;
@@ -113,12 +143,12 @@ export type SharedMtaWebhookEvent =
 			dkimSuccessRatio?: number;
 			dmarcSuccessRatio?: number;
 			deliveryErrorRatio?: number;
-			deliveryErrors?: Array<{ category: string; ratio: number }>;
+			deliveryErrors?: PostmasterDeliveryError[];
 	  })
 	| (EventBase<'postmaster.compliance'> & {
 			domain: string;
 			date: string;
-			checks: Array<{ name: string; state: 'passing' | 'failing' | 'unknown' }>;
+			checks: PostmasterComplianceCheck[];
 	  })
 	| (EventBase<'dkim.rotated'> & {
 			domain: string;
@@ -221,7 +251,8 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 		!optionalRatio(value['dkimSuccessRatio']) ||
 		!optionalRatio(value['dmarcSuccessRatio']) ||
 		!optionalRatio(value['deliveryErrorRatio']) ||
-		(value['deliveryErrors'] !== undefined && !isDeliveryErrorBreakdown(value['deliveryErrors']))
+		(value['deliveryErrors'] !== undefined && !isDeliveryErrorBreakdown(value['deliveryErrors'])) ||
+		(value['checks'] !== undefined && !isComplianceChecks(value['checks']))
 	) {
 		return false;
 	}
@@ -274,13 +305,18 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 				DATE.test(value['date']) &&
 				ratio(value['userReportedSpamRatio'])
 			);
-		case 'postmaster.compliance':
+		case 'postmaster.compliance': {
+			// Shape and bounds are already enforced above for every kind; a
+			// verdict with nothing in it is what this one kind additionally rejects.
+			const checks = value['checks'];
 			return (
 				bounded(value['domain'], 253) &&
 				typeof value['date'] === 'string' &&
 				DATE.test(value['date']) &&
-				isComplianceChecks(value['checks'])
+				Array.isArray(checks) &&
+				checks.length > 0
 			);
+		}
 		case 'dkim.rotated':
 			return (
 				bounded(value['domain'], 253) &&
@@ -372,36 +408,36 @@ function optionalBounded(value: unknown, maximum: number): boolean {
 	return value === undefined || bounded(value, maximum);
 }
 
-const COMPLIANCE_CHECK_NAME = /^[A-Z0-9_]{1,64}$/;
-const MAX_COMPLIANCE_CHECKS = 32;
-const MAX_DELIVERY_ERROR_CATEGORIES = 24;
-
 /** Bounded `{ category, ratio }` list — the Postmaster delivery-error breakdown. */
 function isDeliveryErrorBreakdown(value: unknown): boolean {
 	return (
 		Array.isArray(value) &&
-		value.length <= MAX_DELIVERY_ERROR_CATEGORIES &&
+		value.length <= POSTMASTER_MAX_DELIVERY_ERROR_CATEGORIES &&
 		value.every(
 			(item) =>
 				isRecord(item) &&
 				typeof item['category'] === 'string' &&
-				COMPLIANCE_CHECK_NAME.test(item['category']) &&
+				POSTMASTER_TOKEN.test(item['category']) &&
 				ratio(item['ratio'])
 		)
 	);
 }
 
-/** Bounded Compliance Status checks with enum-shaped names. */
+/**
+ * Bounded Compliance Status checks with enum-shaped names. An EMPTY list is
+ * well-formed here: `checks` rides on {@link EventBase} for every event kind,
+ * so it is bounded at the top level for all of them and only the
+ * `postmaster.compliance` case additionally requires a non-empty verdict.
+ */
 function isComplianceChecks(value: unknown): boolean {
 	return (
 		Array.isArray(value) &&
-		value.length > 0 &&
-		value.length <= MAX_COMPLIANCE_CHECKS &&
+		value.length <= POSTMASTER_MAX_COMPLIANCE_CHECKS &&
 		value.every(
 			(item) =>
 				isRecord(item) &&
 				typeof item['name'] === 'string' &&
-				COMPLIANCE_CHECK_NAME.test(item['name']) &&
+				POSTMASTER_TOKEN.test(item['name']) &&
 				(item['state'] === 'passing' || item['state'] === 'failing' || item['state'] === 'unknown')
 		)
 	);
