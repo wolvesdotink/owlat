@@ -31,6 +31,12 @@ const { data: domainRows, isLoading: domainsLoading } = useOrganizationQuery(
 	api.analytics.reputationQueries.getDeliveryDomainTable
 );
 
+// Google Postmaster Tools: additive-only, so an unconnected account renders a
+// calm invitation rather than a warning.
+const { data: postmasterStatus, isLoading: postmasterLoading } = useOrganizationQuery(
+	api.delivery.postmaster.getPostmasterStatus
+);
+
 // Delivery-rate history for the trend chart.
 const { data: snapshots } = useOrganizationQuery(
 	api.analytics.reputationSnapshots.getDeliverySnapshots
@@ -270,6 +276,11 @@ const sendingDetail = computed(() => {
 					</p>
 				</div>
 			</UiCard>
+
+			<DeliveryPostmasterComplianceCard
+				:status="postmasterStatus"
+				:is-loading="postmasterLoading"
+			/>
 
 			<!-- Domain table -->
 			<DeliveryDomainTable v-if="!domainsLoading" :rows="domainRows ?? []" />
