@@ -55,6 +55,36 @@ describe('normalizeIpReputationPayload', () => {
 		});
 	});
 
+	it('normalizes IPv6 prerequisite blocks and the return-path SPF verdict', () => {
+		const result = normalizeIpReputationPayload({
+			date: '2026-07-21',
+			ips: [
+				{
+					...legacyIp,
+					ip: '2001:db8::10',
+					active: false,
+					blockReasons: ['ipv4-identity', 'spf'],
+					ipv6Spf: {
+						domain: 'bounces.example.com',
+						verdict: 'fail',
+						reason: 'missing-ip6-mechanism',
+						checkedAt: 456,
+					},
+				},
+			],
+		});
+
+		expect(result?.ips[0]).toMatchObject({
+			blockReasons: ['ipv4-identity', 'spf'],
+			ipv6Spf: {
+				domain: 'bounces.example.com',
+				verdict: 'fail',
+				reason: 'missing-ip6-mechanism',
+				checkedAt: 456,
+			},
+		});
+	});
+
 	it('rejects a malformed top-level payload without mutating existing state', () => {
 		expect(normalizeIpReputationPayload({ ips: 'not-an-array' })).toBeNull();
 	});
@@ -73,6 +103,17 @@ describe('normalizeIpReputationPayload', () => {
 		['reason', { fcrdns: { verdict: 'fail', reason: 'dns-ish' } }],
 		['DNSBL status', { dnsbl: 'ready' }],
 		['block reason', { blockReasons: ['reputation-ish'] }],
+		[
+			'IPv6 SPF reason',
+			{
+				ipv6Spf: {
+					domain: 'bounces.example.com',
+					verdict: 'fail',
+					reason: 'spf-ish',
+					checkedAt: 123,
+				},
+			},
+		],
 	])('rejects an unknown %s instead of presenting it as ready', (_name, fields) => {
 		expect(
 			normalizeIpReputationPayload({

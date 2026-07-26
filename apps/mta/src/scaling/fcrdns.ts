@@ -6,7 +6,7 @@
  * composed eligibility gate. Generic provider PTRs remain deliverable but warn.
  */
 
-import { resolve4, reverse } from 'dns/promises';
+import { resolve4, resolve6, reverse } from 'dns/promises';
 import {
 	normalizeDnsName,
 	isFcrdnsFailureReason,
@@ -15,6 +15,7 @@ import {
 	type FcrdnsFailureReason,
 	type FcrdnsReadiness,
 } from '@owlat/shared/fcrdns';
+import { ipAddressFamily } from '@owlat/shared/ipAddress';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
@@ -27,6 +28,7 @@ import {
 } from './ipPool.js';
 
 const FCRDNS_PREFIX = 'mta:fcrdns:';
+const IPV4_IDENTITY_PREFIX = 'mta:ipv4-identity:';
 
 export type { FcrdnsFailureReason, FcrdnsReadiness } from '@owlat/shared/fcrdns';
 
@@ -42,7 +44,7 @@ export interface FcrdnsDeps extends FcrdnsDnsDeps {
 	timeoutMs?: number;
 }
 
-const DEFAULT_DEPS: FcrdnsDeps = { reverse, resolve4 };
+const DEFAULT_DEPS: FcrdnsDeps = { reverse, resolve4, resolve6 };
 
 type FcrdnsConfig = Pick<MtaConfig, 'ipPools' | 'ehloHostname' | 'ehloHostnames'> &
 	Partial<Pick<MtaConfig, 'genericPtrSuffixes' | 'allowUnverifiedFcrdns'>>;
@@ -57,6 +59,7 @@ function failedResult(
 ): FcrdnsResult {
 	return {
 		ip,
+		addressFamily: ipAddressFamily(ip) ?? 'ipv4',
 		ehlo,
 		ptrNames,
 		checklist,
@@ -70,7 +73,7 @@ function failedResult(
 	};
 }
 
-/** Verify one IPv4 sending identity from live DNS observations. */
+/** Verify one canonical IPv4 or IPv6 sending identity from live DNS observations. */
 export async function verifyFcrdns(
 	ip: string,
 	expectedNames: string[],
@@ -99,6 +102,7 @@ export async function verifyFcrdns(
 function readinessHash(result: FcrdnsResult): Record<string, string> {
 	return {
 		ip: result.ip,
+		addressFamily: result.addressFamily,
 		ehlo: result.ehlo,
 		ptrNames: JSON.stringify(result.ptrNames),
 		ptrExists: String(result.checklist.ptrExists),
@@ -130,6 +134,7 @@ export async function getFcrdnsReadiness(
 	const reason = data['reason'];
 	return {
 		ip,
+		addressFamily: data['addressFamily'] === 'ipv6' ? 'ipv6' : 'ipv4',
 		ehlo: data['ehlo'] ?? '',
 		ptrNames,
 		checklist: {
@@ -210,19 +215,67 @@ export async function runFcrdnsReadinessCheck(
 			// Allocate before DNS starts: a later sweep always has a higher fencing
 			// generation even if its resolver finishes first.
 			const generation = await nextIpPoolObservationGeneration(redis, ip, 'fcrdns');
-			return { generation, observed: await observeFcrdnsIdentity(config, ip, deps) };
+			const prerequisiteGeneration =
+				ipAddressFamily(ip) === 'ipv6'
+					? await nextIpPoolObservationGeneration(redis, ip, 'ipv4-identity')
+					: undefined;
+			return {
+				generation,
+				prerequisiteGeneration,
+				observed: await observeFcrdnsIdentity(config, ip, deps),
+			};
 		})
 	);
-	return Promise.all(
+	const ipv4Observations = observations
+		.map((observation) => observation.observed)
+		.filter((result) => result.addressFamily === 'ipv4');
+	const ipv4IdentityDecision: IpPoolObservationDecision = ipv4Observations.some(
+		(result) => result.verdict === 'fail'
+	)
+		? 'block'
+		: ipv4Observations.some((result) => result.verdict === 'error')
+			? 'preserve'
+			: ipv4Observations.length > 0
+				? 'clear'
+				: 'block';
+	const applyIpv4IdentityPrerequisite = async () => {
+		await Promise.all(
+			observations.flatMap(({ prerequisiteGeneration, observed }) => {
+				if (prerequisiteGeneration === undefined || observed.addressFamily !== 'ipv6') return [];
+				return [
+					applyIpPoolObservation(redis, {
+						ip: observed.ip,
+						reason: 'ipv4-identity',
+						generation: prerequisiteGeneration,
+						decision: ipv4IdentityDecision,
+						stateKey: `${IPV4_IDENTITY_PREFIX}${observed.ip}`,
+						stateFields: {
+							ready: String(ipv4IdentityDecision === 'clear'),
+							checkedAt: String(deps.now?.() ?? Date.now()),
+						},
+					}).then((transition) => {
+						if (transition.becameBlocked) pool.invalidateBindIp(observed.ip);
+					}),
+				];
+			})
+		);
+	};
+	// Install/preserve a prerequisite block before an FCrDNS pass could admit
+	// IPv6. A clear is applied afterward so a never-observed FCrDNS state cannot
+	// be made active by clearing this independent reason.
+	if (ipv4IdentityDecision !== 'clear') await applyIpv4IdentityPrerequisite();
+	const results = await Promise.all(
 		observations.map(async ({ generation, observed }) => {
 			const decision: IpPoolObservationDecision =
 				observed.verdict === 'fail' ? 'block' : observed.verdict === 'error' ? 'preserve' : 'clear';
+			const allowIpv4LabOverride =
+				observed.addressFamily === 'ipv4' && config.allowUnverifiedFcrdns === true;
 			const transition = await applyIpPoolObservation(redis, {
 				ip: observed.ip,
 				reason: 'fcrdns',
 				generation,
 				decision,
-				override: config.allowUnverifiedFcrdns === true,
+				override: allowIpv4LabOverride,
 				stateKey: `${FCRDNS_PREFIX}${observed.ip}`,
 				stateFields: readinessHash(observed),
 			});
@@ -239,8 +292,14 @@ export async function runFcrdnsReadinessCheck(
 			}
 			return {
 				...observed,
-				overridden: transition.wouldBlockWithoutOverride && config.allowUnverifiedFcrdns === true,
+				overridden: transition.wouldBlockWithoutOverride && allowIpv4LabOverride,
 			};
 		})
 	);
+
+	// IPv6 is an earned upgrade: every configured IPv4 identity must remain
+	// green. A transient IPv4 resolver failure preserves the previous decision;
+	// a confirmed regression quarantines IPv6 while IPv4 delivery can continue.
+	if (ipv4IdentityDecision === 'clear') await applyIpv4IdentityPrerequisite();
+	return results;
 }

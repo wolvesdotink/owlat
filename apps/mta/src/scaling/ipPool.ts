@@ -8,6 +8,7 @@
  */
 
 import type Redis from 'ioredis';
+import { normalizeIpAddress } from '@owlat/shared/ipAddress';
 import type { IpPoolConfig, IpPoolType } from '../types.js';
 import { logger } from '../monitoring/logger.js';
 
@@ -22,6 +23,8 @@ const APPLIED_OBSERVATIONS_PREFIX = 'mta:ip-pool:applied-observations:';
 const UNDERLYING_BLOCKS_PREFIX = 'mta:ip-pool:underlying-blocks:';
 const FCRDNS_PREFIX = 'mta:fcrdns:';
 const DNSBL_PREFIX = 'mta:dnsbl:';
+const IPV4_IDENTITY_PREFIX = 'mta:ipv4-identity:';
+const SPF_PREFIX = 'mta:ipv6-spf:';
 const VALIDATE_LEASE_SCRIPT = `
 return redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1
   and redis.call('SISMEMBER', KEYS[2], ARGV[1]) == 1
@@ -29,7 +32,7 @@ return redis.call('SISMEMBER', KEYS[1], ARGV[1]) == 1
   and 1 or 0
 `;
 
-export const IP_POOL_BLOCK_REASONS = ['dnsbl', 'fcrdns'] as const;
+export const IP_POOL_BLOCK_REASONS = ['dnsbl', 'fcrdns', 'ipv4-identity', 'spf'] as const;
 export type IpPoolBlockReason = (typeof IP_POOL_BLOCK_REASONS)[number];
 export type IpPoolObservationDecision = 'block' | 'clear' | 'preserve';
 
@@ -146,14 +149,20 @@ local generationKey = KEYS[3]
 local emergencyKey = KEYS[4]
 local fcrdnsAppliedKey = KEYS[5]
 local dnsblAppliedKey = KEYS[6]
-local fcrdnsUnderlyingKey = KEYS[7]
-local dnsblUnderlyingKey = KEYS[8]
+local ipv4IdentityAppliedKey = KEYS[7]
+local spfAppliedKey = KEYS[8]
+local fcrdnsUnderlyingKey = KEYS[9]
+local dnsblUnderlyingKey = KEYS[10]
+local ipv4IdentityUnderlyingKey = KEYS[11]
+local spfUnderlyingKey = KEYS[12]
 local fcrdnsPrefix = ARGV[1]
 local blockPrefix = ARGV[2]
 local dnsblPrefix = ARGV[3]
-local allowUnverifiedFcrdns = ARGV[4] == '1'
+local ipv4IdentityPrefix = ARGV[4]
+local spfPrefix = ARGV[5]
+local allowUnverifiedFcrdns = ARGV[6] == '1'
 local newIps = {}
-for index = 5, #ARGV do newIps[ARGV[index]] = true end
+for index = 7, #ARGV do newIps[ARGV[index]] = true end
 
 local previousIps = redis.call('SMEMBERS', configuredKey)
 for _, ip in ipairs(previousIps) do
@@ -163,11 +172,17 @@ for _, ip in ipairs(previousIps) do
     redis.call('SREM', activeKey, ip)
     redis.call('DEL', fcrdnsPrefix .. ip)
     redis.call('DEL', dnsblPrefix .. ip)
+    redis.call('DEL', ipv4IdentityPrefix .. ip)
+    redis.call('DEL', spfPrefix .. ip)
     redis.call('DEL', blockPrefix .. ip)
     redis.call('HDEL', fcrdnsAppliedKey, ip)
     redis.call('HDEL', dnsblAppliedKey, ip)
+    redis.call('HDEL', ipv4IdentityAppliedKey, ip)
+    redis.call('HDEL', spfAppliedKey, ip)
     redis.call('HDEL', fcrdnsUnderlyingKey, ip)
     redis.call('HDEL', dnsblUnderlyingKey, ip)
+    redis.call('HDEL', ipv4IdentityUnderlyingKey, ip)
+    redis.call('HDEL', spfUnderlyingKey, ip)
     if wasActive then redis.call('HINCRBY', generationKey, ip, 1) end
   end
 end
@@ -186,7 +201,8 @@ for ip, _ in pairs(newIps) do
   local verdict = redis.call('HGET', readinessKey, 'verdict')
   local checkedAt = redis.call('HGET', readinessKey, 'checkedAt')
   local wouldBlockWithoutOverride = redis.call('HGET', readinessKey, 'wouldBlockWithoutOverride') == 'true'
-  local ready = checkedAt and (verdict == 'pass' or verdict == 'warn' or (allowUnverifiedFcrdns and wouldBlockWithoutOverride))
+  local isIpv6 = string.find(ip, ':', 1, true) ~= nil
+  local ready = checkedAt and (verdict == 'pass' or verdict == 'warn' or (allowUnverifiedFcrdns and not isIpv6 and wouldBlockWithoutOverride))
   local shouldBeActive = ready and redis.call('HLEN', blockPrefix .. ip) == 0
   local wasActive = redis.call('SISMEMBER', activeKey, ip) == 1
   if shouldBeActive then redis.call('SADD', activeKey, ip) else redis.call('SREM', activeKey, ip) end
@@ -204,8 +220,15 @@ return {#configuredIps, eligibleCount}
 `;
 
 export function isIpPoolBlockReason(value: string): value is IpPoolBlockReason {
-	return value === 'dnsbl' || value === 'fcrdns';
+	return value === 'dnsbl' || value === 'fcrdns' || value === 'ipv4-identity' || value === 'spf';
 }
+
+const STATE_PREFIX_BY_BLOCK_REASON: Record<IpPoolBlockReason, string> = {
+	dnsbl: DNSBL_PREFIX,
+	fcrdns: FCRDNS_PREFIX,
+	'ipv4-identity': IPV4_IDENTITY_PREFIX,
+	spf: SPF_PREFIX,
+};
 
 export async function nextIpPoolObservationGeneration(
 	redis: Redis,
@@ -264,7 +287,7 @@ export async function setIpPoolBlock(
 		reason,
 		generation,
 		decision: blocked ? 'block' : 'clear',
-		stateKey: `${reason === 'dnsbl' ? DNSBL_PREFIX : FCRDNS_PREFIX}${ip}`,
+		stateKey: `${STATE_PREFIX_BY_BLOCK_REASON[reason]}${ip}`,
 		stateFields: {},
 	});
 	return transition.active;
@@ -308,8 +331,14 @@ export async function selectIpWithLease(
 	let selectedIp: string | undefined;
 
 	if (dedicatedIp) {
-		if (configuredLocally.has(dedicatedIp) && activeIps.has(dedicatedIp)) selectedIp = dedicatedIp;
-		else {
+		const normalizedDedicatedIp = normalizeIpAddress(dedicatedIp);
+		if (
+			normalizedDedicatedIp &&
+			configuredLocally.has(normalizedDedicatedIp) &&
+			activeIps.has(normalizedDedicatedIp)
+		) {
+			selectedIp = normalizedDedicatedIp;
+		} else {
 			logger.error({ dedicatedIp }, 'Dedicated IP is unavailable; delivery remains queued');
 			return null;
 		}
@@ -385,18 +414,24 @@ export async function initializePools(
 	const allIps = [...new Set([...config.transactional, ...config.campaign])];
 	await redis.eval(
 		INITIALIZE_POOLS_SCRIPT,
-		8,
+		12,
 		IP_POOL_CONFIGURED,
 		IP_POOL_ACTIVE,
 		IP_POOL_ELIGIBILITY_GENERATIONS,
 		EMERGENCY_KEY,
 		`${APPLIED_OBSERVATIONS_PREFIX}fcrdns`,
 		`${APPLIED_OBSERVATIONS_PREFIX}dnsbl`,
+		`${APPLIED_OBSERVATIONS_PREFIX}ipv4-identity`,
+		`${APPLIED_OBSERVATIONS_PREFIX}spf`,
 		`${UNDERLYING_BLOCKS_PREFIX}fcrdns`,
 		`${UNDERLYING_BLOCKS_PREFIX}dnsbl`,
+		`${UNDERLYING_BLOCKS_PREFIX}ipv4-identity`,
+		`${UNDERLYING_BLOCKS_PREFIX}spf`,
 		FCRDNS_PREFIX,
 		BLOCK_REASONS_PREFIX,
 		DNSBL_PREFIX,
+		IPV4_IDENTITY_PREFIX,
+		SPF_PREFIX,
 		allowUnverifiedFcrdns ? '1' : '0',
 		...allIps
 	);

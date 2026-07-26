@@ -165,6 +165,10 @@
 			"types": "./src/fcrdns.ts",
 			"import": "./src/fcrdns.ts"
 		},
+		"./ipAddress": {
+			"types": "./src/ipAddress.ts",
+			"import": "./src/ipAddress.ts"
+		},
 		"./ipReadinessSync": {
 			"types": "./src/ipReadinessSync.ts",
 			"import": "./src/ipReadinessSync.ts"

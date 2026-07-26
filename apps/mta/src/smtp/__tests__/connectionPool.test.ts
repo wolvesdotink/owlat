@@ -48,6 +48,14 @@ describe('SmtpConnectionPool', () => {
 		expect(result.config.timeouts?.data).toBe(12_345);
 	});
 
+	it('binds IPv6 explicitly and emits a valid address-literal EHLO fallback', async () => {
+		const result = await pool.acquire('mx1.example.com', '2001:db8::10', { port: 25 });
+
+		expect(result.config.localAddress).toBe('2001:db8::10');
+		expect(result.config.ehloName).toBe('[IPv6:2001:db8::10]');
+		expect(result.key).toBe('mx1.example.com:2001:db8::10:none:rt0ru0');
+	});
+
 	it('reuses the existing config for the same key', async () => {
 		const first = await pool.acquire('mx1.example.com', '10.0.0.1', { port: 25 });
 		pool.release(first.key);

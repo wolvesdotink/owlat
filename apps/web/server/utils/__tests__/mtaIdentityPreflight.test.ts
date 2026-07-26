@@ -74,4 +74,46 @@ describe('preflightMtaIdentities', () => {
 		expect(result).toMatchObject({ ok: true });
 		expect(result.identities[0]).toMatchObject({ verdict: 'fail', overridden: true });
 	});
+
+	it('keeps IPv6 opt-in explicit and validates it through AAAA', async () => {
+		const mixed = baseEnv({
+			MTA_IPV6_ENABLED: 'true',
+			IP_POOLS_CAMPAIGN: '203.0.113.10,2001:0DB8:0:0:0:0:0:10',
+			EHLO_HOSTNAMES: JSON.stringify({ '2001:db8::10': 'mail6.example.com' }),
+		});
+		const deps = {
+			reverse: vi.fn(async (ip: string) => [
+				ip.includes(':') ? 'mail6.example.com' : 'mail.example.com',
+			]),
+			resolve4: vi.fn(async () => ['203.0.113.10']),
+			resolve6: vi.fn(async () => ['2001:db8::10']),
+		};
+		expect(await preflightMtaIdentities(mixed, deps)).toMatchObject({ ok: true });
+		expect(deps.resolve6).toHaveBeenCalledWith('mail6.example.com');
+
+		expect(
+			await preflightMtaIdentities({ ...mixed, MTA_IPV6_ENABLED: 'false' }, deps)
+		).toMatchObject({ ok: false, message: expect.stringContaining('explicit') });
+	});
+
+	it('does not let the IPv4 lab override unlock IPv6', async () => {
+		const result = await preflightMtaIdentities(
+			baseEnv({
+				MTA_IPV6_ENABLED: 'true',
+				MTA_ALLOW_UNVERIFIED_FCRDNS: 'true',
+				IP_POOLS_CAMPAIGN: '203.0.113.10,2001:db8::10',
+				EHLO_HOSTNAMES: JSON.stringify({ '2001:db8::10': 'mail6.example.com' }),
+			}),
+			{
+				reverse: vi.fn(async (ip: string) => {
+					if (ip.includes(':')) return ['mail6.example.com'];
+					throw Object.assign(new Error('missing'), { code: 'ENOTFOUND' });
+				}),
+				resolve4: vi.fn(),
+				resolve6: vi.fn(async () => ['2001:db8::10']),
+			}
+		);
+		expect(result.ok).toBe(false);
+		expect(result.message).toContain('every configured IPv4 identity');
+	});
 });

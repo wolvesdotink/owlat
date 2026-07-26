@@ -31,4 +31,52 @@ describe('IP readiness DNSBL detail', () => {
 			})
 		).toBeNull();
 	});
+
+	it('carries the IPv6 prerequisite blocks and exact return-path SPF verdict', () => {
+		expect(
+			normalizeIpReputationPayload({
+				date: '2026-07-21',
+				ips: [
+					{
+						...baseIp,
+						ip: '2001:db8::10',
+						active: false,
+						blockReasons: ['ipv4-identity', 'spf'],
+						ipv6Spf: {
+							domain: 'bounces.example.com',
+							verdict: 'fail',
+							reason: 'missing-ip6-mechanism',
+							checkedAt: 123,
+						},
+					},
+				],
+			})?.ips[0]
+		).toMatchObject({
+			blockReasons: ['ipv4-identity', 'spf'],
+			ipv6Spf: {
+				domain: 'bounces.example.com',
+				verdict: 'fail',
+				reason: 'missing-ip6-mechanism',
+				checkedAt: 123,
+			},
+		});
+	});
+
+	it('rejects malformed IPv6 SPF state instead of presenting it as ready', () => {
+		expect(
+			normalizeIpReputationPayload({
+				date: '2026-07-21',
+				ips: [
+					{
+						...baseIp,
+						ipv6Spf: {
+							domain: 'bounces.example.com',
+							verdict: 'almost',
+							checkedAt: 123,
+						},
+					},
+				],
+			})
+		).toBeNull();
+	});
 });

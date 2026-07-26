@@ -1152,6 +1152,9 @@ configure_selfhost_mta() {
 
   prompt_default "Campaign IP pool" "127.0.0.1" ip_campaign
   set_selfhost_var "IP_POOLS_CAMPAIGN" "$ip_campaign"
+  # The legacy wizard keeps the safe default. Guided IPv6 enablement belongs to
+  # the verified setup flow; advanced operators may set this after setup.
+  set_selfhost_var "MTA_IPV6_ENABLED" "false"
 
   echo ""
 
@@ -1280,6 +1283,7 @@ write_selfhost_env() {
     echo ""
     echo "IP_POOLS_TRANSACTIONAL=${SELFHOST_VARS[IP_POOLS_TRANSACTIONAL]:-127.0.0.1}"
     echo "IP_POOLS_CAMPAIGN=${SELFHOST_VARS[IP_POOLS_CAMPAIGN]:-127.0.0.1}"
+    echo "MTA_IPV6_ENABLED=${SELFHOST_VARS[MTA_IPV6_ENABLED]:-false}"
     echo ""
     echo "DKIM_KEYS=${SELFHOST_VARS[DKIM_KEYS]:-{}}"
     echo ""

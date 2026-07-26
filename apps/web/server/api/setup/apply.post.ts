@@ -116,6 +116,7 @@ export default defineEventHandler(
 			// mail. Mirrors the setup-cli applySetupDefaults (http://mta:3100).
 			MTA_API_URL: 'http://mta:3100',
 			MTA_INTERNAL_URL: 'http://mta:3100',
+			MTA_IPV6_ENABLED: 'false',
 			OWLAT_DEV_MODE: 'false',
 		})) {
 			if (!merged[key]) merged[key] = value;

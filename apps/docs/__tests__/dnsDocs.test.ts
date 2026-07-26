@@ -22,11 +22,11 @@ const repoRoot = resolve(here, '../../..');
 
 const dnsDoc = readFileSync(
 	resolve(repoRoot, 'apps/docs/content/3.developer/32.self-hosting-dns-email.md'),
-	'utf8',
+	'utf8'
 );
 const mtaProvider = readFileSync(
 	resolve(repoRoot, 'apps/api/convex/domains/providers/mta/index.ts'),
-	'utf8',
+	'utf8'
 );
 const mtaEnvExample = readFileSync(resolve(repoRoot, 'apps/mta/.env.example'), 'utf8');
 
@@ -38,10 +38,7 @@ describe('DNS doc: single DKIM path (PR-66)', () => {
 	});
 
 	it('does NOT present hand-rolled openssl key generation as the DKIM path', () => {
-		const dkimSection = dnsDoc.slice(
-			dnsDoc.indexOf('## DKIM'),
-			dnsDoc.indexOf('## DMARC'),
-		);
+		const dkimSection = dnsDoc.slice(dnsDoc.indexOf('## DKIM'), dnsDoc.indexOf('## DMARC'));
 		expect(dkimSection.length).toBeGreaterThan(0);
 		// The old contradictory instruction was `openssl genrsa` to make the key.
 		expect(dkimSection).not.toMatch(/openssl genrsa/);
@@ -109,9 +106,7 @@ describe('DNS doc: PTR / reverse-DNS guidance (PR-64)', () => {
 		// The PTR record lives with the IP owner — the hosting/cloud provider —
 		// not the authoritative DNS provider; operators routinely look in the
 		// wrong place, so the doc must call this out explicitly.
-		const ptrSection = dnsDoc.slice(
-			dnsDoc.search(/^#{1,6}\s+.*\b(PTR|Reverse DNS)\b/im),
-		);
+		const ptrSection = dnsDoc.slice(dnsDoc.search(/^#{1,6}\s+.*\b(PTR|Reverse DNS)\b/im));
 		expect(ptrSection).toMatch(/hosting provider/i);
 	});
 });
@@ -122,5 +117,31 @@ describe('MTA env example: EHLO_HOSTNAME ↔ PTR comment (PR-64)', () => {
 		// editing the env file see the PTR requirement inline.
 		expect(mtaEnvExample).toMatch(/EHLO_HOSTNAME=/);
 		expect(mtaEnvExample).toMatch(/must match the rDNS PTR record/i);
+	});
+});
+
+describe('DNS doc: outbound IPv6 is an earned, reversible upgrade', () => {
+	const ipv6Section = dnsDoc.slice(dnsDoc.indexOf('### Optional outbound IPv6'));
+
+	it('keeps IPv6 disabled until routing, PTR, AAAA, and return-path SPF are ready', () => {
+		expect(ipv6Section).toMatch(/off by default/i);
+		expect(ipv6Section).toMatch(/publicly routed IPv6/i);
+		expect(ipv6Section).toMatch(/PTR/);
+		expect(ipv6Section).toMatch(/AAAA/);
+		expect(ipv6Section).toMatch(/ip6:/);
+		expect(ipv6Section).toMatch(/RETURN_PATH_DOMAIN|return-path SPF/i);
+		expect(ipv6Section).toMatch(/MTA_IPV6_ENABLED=true/);
+	});
+
+	it('documents automatic quarantine on identity or SPF regression', () => {
+		expect(ipv6Section).toMatch(/rechecked hourly/i);
+		expect(ipv6Section).toMatch(/quarantines IPv6/i);
+		expect(ipv6Section).toMatch(/IPv4 continues/i);
+	});
+
+	it('links current provider instructions for routing and reverse DNS', () => {
+		expect(ipv6Section).toMatch(/docs\.hetzner\.com\/cloud\/servers\/cloud-server-rdns/);
+		expect(ipv6Section).toMatch(/docs\.digitalocean\.com\/products\/networking\/ipv6/);
+		expect(ipv6Section).toMatch(/help\.ovhcloud\.com/);
 	});
 });
