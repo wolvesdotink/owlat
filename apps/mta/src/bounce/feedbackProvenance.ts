@@ -141,8 +141,16 @@ export async function attachFeedbackProvenance(
 		}
 	}
 	if (exact) {
+		// EVERY trusted field comes from the record we wrote at send time, never
+		// from the report. The recipient matters most: a verified message id proves
+		// only that the reporter holds a token we signed — with a CFBL address that
+		// is true of anyone who received one message from the tenant — so trusting
+		// the report's `Original-Rcpt-To` would let such a reporter have an
+		// arbitrary address suppressed inside that tenant. The record already knows
+		// who the message went to.
 		const enriched = {
 			...classification,
+			recipient: exact.recipient,
 			organizationId: exact.organizationId,
 			campaignId: exact.campaignId,
 			deliveryDomain: exact.deliveryDomain,
