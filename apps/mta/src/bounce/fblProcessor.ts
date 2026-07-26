@@ -105,14 +105,18 @@ export interface CfblAttribution {
 }
 
 /**
- * Bytes of report text scanned for a `CFBL-Feedback-ID` / `Feedback-ID` field.
+ * UTF-16 code units of report text scanned for a `CFBL-Feedback-ID` /
+ * `Feedback-ID` field.
  *
- * Inbound reports are attacker-reachable and may be arbitrarily large. The
+ * Units, not bytes: the bound is applied with `String.prototype.slice`, which
+ * counts code units. Since a UTF-8 encoding is never SHORTER than the unit
+ * count, the byte-wise bound it implies is at least as tight — the point is that
+ * inbound reports are attacker-reachable and may be arbitrarily large, and the
  * fields we want are header-shaped and sit at the top of the machine-readable
  * part, so a bounded prefix is sufficient and a multi-megabyte report cannot
  * turn a regex scan into a CPU/allocation amplifier.
  */
-const MAX_CFBL_SCAN_BYTES = 64 * 1024;
+const MAX_CFBL_SCAN_UNITS = 64 * 1024;
 
 /**
  * Resolve a TRUSTED RFC 9477 attribution for an inbound report.
@@ -142,10 +146,19 @@ export function resolveCfblAttribution(
 		record(viaRcpt.reason);
 	}
 
-	const scanned = input.reportText.slice(0, MAX_CFBL_SCAN_BYTES);
+	const scanned = input.reportText.slice(0, MAX_CFBL_SCAN_UNITS);
 	for (const field of ['CFBL-Feedback-ID', 'Feedback-ID'] as const) {
 		const presented = matchField(scanned, field);
 		if (!presented) continue;
+		// Every token we emit carries the `{encodedId}+{mac}` separator. On this
+		// path the field name proves nothing about intent — `Feedback-ID` is also
+		// Gmail's own unrelated aggregation anchor, and a plain alnum/dash value
+		// from a non-participating provider is ordinary traffic. Counting it as
+		// `unsigned` would let routine FBL mail inflate the very metric that exists
+		// to surface forged complaints, so a MAC-less value is simply not one of
+		// ours. (The `fbl+…@` envelope path keeps `unsigned`: there the prefix is
+		// ours, so a missing MAC IS a hand-built address.)
+		if (!presented.includes('+')) continue;
 		const viaFeedbackId = parseCfblToken(presented, key, now);
 		if (viaFeedbackId.ok) {
 			return { messageId: viaFeedbackId.messageId, source: 'feedback_id', rejections };
