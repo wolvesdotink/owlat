@@ -32,6 +32,12 @@ vi.mock('../../scaling/sourceAddressReadiness.js', () => ({
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+// ipReputation reaches intelligence/dnsbl, which pulls in the real SMTP
+// connection pool (and its Prometheus registry) purely for `invalidateBindIp`.
+// The sibling DNSBL suites stub it the same way.
+vi.mock('../../smtp/connectionPool.js', () => ({
+	pool: { invalidateBindIp: vi.fn() },
+}));
 
 import { createIpReputationRoutes } from '../ipReputation.js';
 import { initializePools, setIpPoolBlock } from '../../scaling/ipPool.js';
@@ -64,7 +70,22 @@ describe('DNSBL routing signal honesty', () => {
 		await redis.flushall();
 		for (const ip of [...config.ipPools.transactional, ...config.ipPools.campaign]) {
 			await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
-			await redis.hset(`mta:dnsbl:${ip}`, 'overallStatus', 'clean');
+			// A realistic completed sweep: every zone answered, nothing unmeasured.
+			await redis.hset(
+				`mta:dnsbl:${ip}`,
+				'spamhaus',
+				'clean',
+				'barracuda',
+				'clean',
+				'spamcop',
+				'clean',
+				'listedOn',
+				'',
+				'unknownOn',
+				'',
+				'overallStatus',
+				'clean'
+			);
 		}
 		await initializePools(redis, config.ipPools);
 	});
@@ -77,7 +98,15 @@ describe('DNSBL routing signal honesty', () => {
 	});
 
 	it('reports an unmeasurable address as unknown, never as clean', async () => {
-		await redis.hset('mta:dnsbl:10.0.0.1', 'overallStatus', 'unknown');
+		await redis.hset(
+			'mta:dnsbl:10.0.0.1',
+			'spamcop',
+			'unknown',
+			'unknownOn',
+			'SpamCop',
+			'overallStatus',
+			'unknown'
+		);
 
 		const signals = await readSignals(redis);
 
@@ -90,6 +119,51 @@ describe('DNSBL routing signal honesty', () => {
 
 	it('reports a never-swept address as unknown', async () => {
 		await redis.del('mta:dnsbl:10.0.0.2');
+
+		const signals = await readSignals(redis);
+
+		expect(signals.some((signal) => signal.source === 'dnsbl_unknown')).toBe(true);
+	});
+
+	it('reports an uncompleted lookup that a warning-severity listing would otherwise mask', async () => {
+		// overallStatus is a PRIORITY roll-up (critical > degraded > unknown), so a
+		// Barracuda listing on one zone collapses a SpamCop timeout on another into
+		// 'degraded'. The signal must still say "we could not measure this address".
+		await redis.hset(
+			'mta:dnsbl:10.0.0.1',
+			'barracuda',
+			'listed',
+			'listedOn',
+			'Barracuda',
+			'spamcop',
+			'unknown',
+			'unknownOn',
+			'SpamCop',
+			'overallStatus',
+			'degraded'
+		);
+
+		const signals = await readSignals(redis);
+
+		expect(signals.find((signal) => signal.source === 'dnsbl_unknown')).toMatchObject({
+			provider: 'all',
+			severity: 'warning',
+		});
+		// A warning-severity listing does not eject, so no blocklist hard stop.
+		expect(hasCriticalBlocklistSignal(signals)).toBe(false);
+	});
+
+	it('falls back to the per-zone statuses for rows written before unknownOn existed', async () => {
+		await redis.hdel('mta:dnsbl:10.0.0.1', 'unknownOn', 'listedOn');
+		await redis.hset(
+			'mta:dnsbl:10.0.0.1',
+			'barracuda',
+			'listed',
+			'spamcop',
+			'unknown',
+			'overallStatus',
+			'degraded'
+		);
 
 		const signals = await readSignals(redis);
 

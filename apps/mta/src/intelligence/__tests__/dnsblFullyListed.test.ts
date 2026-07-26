@@ -21,7 +21,8 @@ vi.mock('../../smtp/connectionPool.js', () => ({
 }));
 
 import { resolve4 } from 'dns/promises';
-import { runDnsblCheck } from '../dnsbl.js';
+import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
+import { ALERT_MESSAGE_MAX_LENGTH, runDnsblCheck } from '../dnsbl.js';
 import { notifyConvex } from '../../webhooks/convexNotifier.js';
 import { initializePools, selectIp, selectIpWithLease } from '../../scaling/ipPool.js';
 import { createDnsblTestConfig, createRecordingLookupDeps, dnsError } from './dnsblFixtures.js';
@@ -108,5 +109,53 @@ describe('DNSBL fully listed pool halts and alerts', () => {
 				.some((event) => event.event === 'all_ips_blocked')
 		).toBe(false);
 		expect(await selectIp(redis, 'campaign', config.ipPools)).toBe('10.0.0.2');
+	});
+});
+
+describe('DNSBL halt alert survives Convex ingress for a large pool', () => {
+	// Convex rejects the WHOLE event when `message` exceeds 512 characters, so an
+	// unbounded '<ip> on <zones>' clause per address would 400, exhaust the retry
+	// budget and land the one alert the operator must see in the DLQ.
+	const largePoolConfig = createDnsblTestConfig({
+		ipPools: {
+			transactional: Array.from({ length: 12 }, (_, index) => `10.1.0.${index + 1}`),
+			campaign: Array.from({ length: 12 }, (_, index) => `10.2.0.${index + 1}`),
+		},
+	});
+	let redis: InstanceType<typeof Redis>;
+
+	beforeEach(async () => {
+		vi.clearAllMocks();
+		redis = new Redis();
+		await redis.flushall();
+		for (const ip of [
+			...largePoolConfig.ipPools.transactional,
+			...largePoolConfig.ipPools.campaign,
+		]) {
+			await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
+		}
+		await initializePools(redis, largePoolConfig.ipPools);
+	});
+
+	it('truncates the listing detail to the ingress bound and stays a valid webhook event', async () => {
+		allIpsListedOnSpamhaus();
+		const { deps } = createRecordingLookupDeps();
+
+		await runDnsblCheck(redis, largePoolConfig, deps);
+
+		const alert = vi
+			.mocked(notifyConvex)
+			.mock.calls.map((call) => call[0])
+			.find((event) => event.event === 'all_ips_blocked');
+		expect(alert).toBeDefined();
+		const message = (alert as unknown as { message?: string } | undefined)?.message ?? '';
+		expect(message.length).toBeLessThanOrEqual(ALERT_MESSAGE_MAX_LENGTH);
+		// Truncated, but still actionable: named addresses plus an explicit count.
+		expect(message).toContain('10.1.0.1 on Spamhaus');
+		expect(message).toMatch(/; and \d+ more$/);
+		// Zone names are never lost — they travel structurally.
+		expect(alert).toMatchObject({ blocklists: ['Spamhaus'] });
+		// The bound that actually matters: Convex ingress accepts the event.
+		expect(isMtaWebhookEvent(alert)).toBe(true);
 	});
 });

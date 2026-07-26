@@ -64,6 +64,30 @@ describe('DNSBL bounded retry', () => {
 		expect(listed.delays).toEqual([]);
 	});
 
+	it('never re-queries a zone that answered with a reserved code', async () => {
+		// 127.255.255.x is an ANSWER ("policy refusal" / "you are rate limited"),
+		// not a resolver failure. Retrying it only aggravates the rate limiting and
+		// buys sleeps the sweep cannot spend.
+		for (const answer of ['127.255.255.252', '127.255.255.254', '127.255.255.255']) {
+			vi.clearAllMocks();
+			vi.mocked(resolve4).mockResolvedValue([answer]);
+			const { deps, delays } = createRecordingLookupDeps();
+
+			expect(await checkDnsbl('10.0.0.1', 'spamcop', 'bl.spamcop.net', deps)).toBe('unknown');
+			expect(resolve4).toHaveBeenCalledTimes(1);
+			expect(delays).toEqual([]);
+		}
+	});
+
+	it('never re-queries an uninterpretable answer', async () => {
+		vi.mocked(resolve4).mockResolvedValue(['10.11.12.13']);
+		const { deps, delays } = createRecordingLookupDeps();
+
+		expect(await checkDnsbl('10.0.0.1', 'spamhaus', 'zen.spamhaus.org', deps)).toBe('unknown');
+		expect(resolve4).toHaveBeenCalledTimes(1);
+		expect(delays).toEqual([]);
+	});
+
 	it('stops retrying once the elapsed budget leaves no room for the next backoff', async () => {
 		vi.mocked(resolve4).mockRejectedValue(dnsError('ESERVFAIL'));
 		const { deps, delays } = createRecordingLookupDeps([0, LOOKUP_TOTAL_BUDGET_MS]);

@@ -23,48 +23,9 @@ import { notifyConvex } from '../../webhooks/convexNotifier.js';
 import { logger } from '../../monitoring/logger.js';
 import type { MtaConfig } from '../../config.js';
 import { initializePools, setIpPoolBlock } from '../../scaling/ipPool.js';
+import { createDnsblTestConfig } from './dnsblFixtures.js';
 
 const ABUSIX_API_KEY = '0123456789abcdef0123456789abcdef';
-
-function createConfig(overrides: Partial<MtaConfig> = {}): MtaConfig {
-	return {
-		port: 3100,
-		bouncePort: 25,
-		redisUrl: 'redis://localhost:6379',
-		apiKey: 'test-key',
-		ehloHostname: 'mail.owlat.com',
-		ehloHostnames: {},
-		returnPathDomain: 'bounces.owlat.com',
-		convexSiteUrl: 'https://test.convex.site',
-		webhookSecret: 'secret',
-		ipPools: { transactional: ['10.0.0.1'], campaign: ['10.0.0.2'] },
-		dkimKeys: {},
-		workerConcurrency: 50,
-		serverId: 'test-server',
-		smtpPool: {
-			maxPerHost: 3,
-			idleTimeoutMs: 30000,
-			maxAgeMs: 300000,
-			maxMessagesPerConnection: 100,
-		},
-		orgLimits: { defaultDailyLimit: 50000, defaultHourlyLimit: 5000 },
-		submissionPort: 587,
-		submissionEnabled: false,
-		contentScreeningEnabled: true,
-		contentMaxSizeKb: 500,
-		deliveryLogMaxLen: 100000,
-		deliveryLogTtlHours: 72,
-		webhookDlqMaxSize: 10000,
-		bounceMaxConnectionsPerIp: 10,
-		bounceMaxClients: 200,
-		bounceTarpitEnabled: false,
-		bounceTarpitDelayMs: 5000,
-		inboundSpfEnabled: false,
-		rspamdRejectThreshold: 15,
-		smtpPoolGlobalMaxPerHost: 10,
-		...overrides,
-	};
-}
 
 describe('DNSBL checking', () => {
 	let redis: InstanceType<typeof Redis>;
@@ -74,7 +35,7 @@ describe('DNSBL checking', () => {
 		vi.clearAllMocks();
 		redis = new Redis();
 		await redis.flushall();
-		config = createConfig();
+		config = createDnsblTestConfig();
 		for (const ip of [...config.ipPools.transactional, ...config.ipPools.campaign]) {
 			await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
 		}
@@ -97,7 +58,7 @@ describe('DNSBL checking', () => {
 		});
 
 		it('quarantines an IPv6 Spamhaus listing without querying IPv4-only providers', async () => {
-			config = createConfig({
+			config = createDnsblTestConfig({
 				ipPools: {
 					transactional: ['203.0.113.10'],
 					campaign: ['203.0.113.10', '2001:db8::1'],
