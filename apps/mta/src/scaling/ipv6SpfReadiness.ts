@@ -7,8 +7,14 @@
  */
 
 import { resolveTxt } from 'node:dns/promises';
-import { isSpfRecord, spfRecordHasExactIpMechanism } from '@owlat/shared/spf';
 import { ipAddressFamily } from '@owlat/shared/ipAddress';
+import {
+	IPV6_SPF_FAILURE_REASONS,
+	isIpv6SpfFailureReason,
+	observeIpv6SpfReadiness,
+	type Ipv6SpfFailureReason,
+	type Ipv6SpfReadiness,
+} from '@owlat/shared/ipReadiness';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { pool } from '../smtp/connectionPool.js';
@@ -20,21 +26,10 @@ import {
 
 const IPV6_SPF_PREFIX = 'mta:ipv6-spf:';
 
-export const IPV6_SPF_FAILURE_REASONS = [
-	'no-spf-record',
-	'multiple-spf-records',
-	'missing-ip6-mechanism',
-	'lookup-error',
-] as const;
-export type Ipv6SpfFailureReason = (typeof IPV6_SPF_FAILURE_REASONS)[number];
+export { IPV6_SPF_FAILURE_REASONS };
+export type { Ipv6SpfFailureReason };
 
-export interface Ipv6SpfReadiness {
-	ip: string;
-	domain: string;
-	verdict: 'pass' | 'fail' | 'error';
-	reason?: Ipv6SpfFailureReason;
-	checkedAt: number;
-}
+export type { Ipv6SpfReadiness };
 
 export interface Ipv6SpfDeps {
 	resolveTxt: (hostname: string) => Promise<string[][]>;
@@ -43,39 +38,12 @@ export interface Ipv6SpfDeps {
 
 const DEFAULT_DEPS: Ipv6SpfDeps = { resolveTxt };
 
-function isMissingRecord(error: unknown): boolean {
-	const code = (error as { code?: string }).code;
-	return code === 'ENOTFOUND' || code === 'ENODATA';
-}
-
 export async function verifyIpv6SpfReadiness(
 	ip: string,
 	domain: string,
 	deps: Ipv6SpfDeps = DEFAULT_DEPS
 ): Promise<Ipv6SpfReadiness> {
-	const checkedAt = deps.now?.() ?? Date.now();
-	try {
-		const records = (await deps.resolveTxt(domain)).map((chunks) => chunks.join(''));
-		const spfRecords = records.filter(isSpfRecord);
-		if (spfRecords.length === 0) {
-			return { ip, domain, verdict: 'fail', reason: 'no-spf-record', checkedAt };
-		}
-		if (spfRecords.length > 1) {
-			return { ip, domain, verdict: 'fail', reason: 'multiple-spf-records', checkedAt };
-		}
-		if (!spfRecordHasExactIpMechanism(spfRecords[0]!, ip)) {
-			return { ip, domain, verdict: 'fail', reason: 'missing-ip6-mechanism', checkedAt };
-		}
-		return { ip, domain, verdict: 'pass', checkedAt };
-	} catch (error) {
-		return {
-			ip,
-			domain,
-			verdict: isMissingRecord(error) ? 'fail' : 'error',
-			reason: isMissingRecord(error) ? 'no-spf-record' : 'lookup-error',
-			checkedAt,
-		};
-	}
+	return observeIpv6SpfReadiness(ip, domain, deps.resolveTxt, deps.now ?? Date.now);
 }
 
 export async function getIpv6SpfReadiness(
@@ -89,9 +57,7 @@ export async function getIpv6SpfReadiness(
 		ip,
 		domain: data['domain'],
 		verdict: data['verdict'] === 'pass' || data['verdict'] === 'fail' ? data['verdict'] : 'error',
-		...(reason && IPV6_SPF_FAILURE_REASONS.includes(reason as Ipv6SpfFailureReason)
-			? { reason: reason as Ipv6SpfFailureReason }
-			: {}),
+		...(reason && isIpv6SpfFailureReason(reason) ? { reason: reason as Ipv6SpfFailureReason } : {}),
 		checkedAt: Number(data['checkedAt']),
 	};
 }
@@ -134,6 +100,16 @@ export async function runIpv6SpfReadinessCheck(
 					reason: readiness.reason ?? '',
 					checkedAt: String(readiness.checkedAt),
 				},
+				...(readiness.verdict === 'fail' && readiness.reason
+					? {
+							regressionAlert: {
+								check: 'spf' as const,
+								reason: readiness.reason,
+								timestamp: readiness.checkedAt,
+								message: `IPv6 source ${readiness.ip} was quarantined after return-path SPF regressed (${readiness.reason}).`,
+							},
+						}
+					: {}),
 			});
 			if (transition.becameBlocked) pool.invalidateBindIp(readiness.ip);
 			if (!transition.applied) {

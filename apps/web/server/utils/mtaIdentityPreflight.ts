@@ -1,4 +1,4 @@
-import { resolve4, resolve6, reverse } from 'node:dns/promises';
+import { resolve4, resolve6, resolveTxt, reverse } from 'node:dns/promises';
 import {
 	fcrdnsReasonMessage,
 	isFqdn,
@@ -10,12 +10,25 @@ import {
 	type FcrdnsDnsDeps,
 	type FcrdnsVerification,
 } from '@owlat/shared/fcrdns';
-import { isIpv4MappedIpv6, parseIpAddress, parseIpv6Enabled } from '@owlat/shared/ipAddress';
+import {
+	hasIpv4FallbackForIpv6,
+	isIpv4MappedIpv6,
+	parseIpAddress,
+	parseIpv6Enabled,
+} from '@owlat/shared/ipAddress';
+import { parseCanonicalEhloHostnames } from '@owlat/shared/outboundIdentity';
+import { evaluateIpv6SpfRecords, type Ipv6SpfReadiness } from '@owlat/shared/ipReadiness';
 
 export interface MtaIdentityPreflightResult {
 	ok: boolean;
 	message: string;
 	identities: Array<FcrdnsVerification & { overridden: boolean }>;
+	ipv6Spf?: Ipv6SpfReadiness[];
+}
+
+export interface MtaIdentityPreflightDeps extends FcrdnsDnsDeps {
+	resolveTxt?: (hostname: string) => Promise<string[][]>;
+	now?: () => number;
 }
 
 function commaList(value: string | undefined): string[] {
@@ -32,7 +45,7 @@ function commaList(value: string | undefined): string[] {
  */
 export async function preflightMtaIdentities(
 	env: Record<string, string>,
-	deps: FcrdnsDnsDeps = { reverse, resolve4, resolve6 }
+	deps: MtaIdentityPreflightDeps = { reverse, resolve4, resolve6, resolveTxt }
 ): Promise<MtaIdentityPreflightResult> {
 	const ips = [
 		...new Set([
@@ -80,38 +93,29 @@ export async function preflightMtaIdentities(
 			identities: [],
 		};
 	}
-	if (
-		normalizedIps.some((ip) => ip.family === 'ipv6') &&
-		!normalizedIps.some((ip) => ip.family === 'ipv4')
-	) {
-		return {
-			ok: false,
-			message: 'Outbound IPv6 requires at least one configured IPv4 address as a safe fallback.',
-			identities: [],
-		};
+	for (const [name, rawPool] of [
+		['transactional', commaList(env['IP_POOLS_TRANSACTIONAL'])],
+		['campaign', commaList(env['IP_POOLS_CAMPAIGN'])],
+	] as const) {
+		const addresses = rawPool.flatMap((ip) => {
+			const parsed = parseIpAddress(ip);
+			return parsed ? [parsed.address] : [];
+		});
+		if (!hasIpv4FallbackForIpv6(addresses)) {
+			return {
+				ok: false,
+				message: `Outbound IPv6 in the ${name} pool requires an IPv4 fallback in that same pool.`,
+				identities: [],
+			};
+		}
 	}
 
 	const defaultEhlo = normalizeDnsName(env['EHLO_HOSTNAME'] ?? '');
 	let perIpEhlo: Record<string, string> = {};
-	if (env['EHLO_HOSTNAMES']?.trim()) {
-		try {
-			const parsed: unknown = JSON.parse(env['EHLO_HOSTNAMES']);
-			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error();
-			const entries = Object.entries(parsed as Record<string, unknown>);
-			if (entries.some(([, hostname]) => typeof hostname !== 'string')) throw new Error();
-			perIpEhlo = Object.fromEntries(
-				(entries as Array<[string, string]>).map(([ip, hostname]) => [
-					parseIpAddress(ip)?.address ?? ip,
-					hostname,
-				])
-			);
-		} catch {
-			return {
-				ok: false,
-				message: 'EHLO_HOSTNAMES must be a JSON object mapping IP addresses to hostnames.',
-				identities: [],
-			};
-		}
+	try {
+		perIpEhlo = parseCanonicalEhloHostnames(env['EHLO_HOSTNAMES']);
+	} catch (error) {
+		return { ok: false, message: (error as Error).message, identities: [] };
 	}
 	let extraSuffixes: string[];
 	let allowOverride: boolean;
@@ -162,6 +166,52 @@ export async function preflightMtaIdentities(
 	if (failures.length > 0) {
 		return { ok: false, message: failures.join('\n'), identities };
 	}
+	let ipv6Spf: Ipv6SpfReadiness[] | undefined;
+	const ipv6Ips = normalizedIps.filter((ip) => ip.family === 'ipv6').map((ip) => ip.address);
+	if (ipv6Ips.length > 0) {
+		const returnPathDomain = normalizeDnsName(env['RETURN_PATH_DOMAIN'] ?? '');
+		if (!isFqdn(returnPathDomain)) {
+			return {
+				ok: false,
+				message: 'RETURN_PATH_DOMAIN must be a valid FQDN before outbound IPv6 can be enabled.',
+				identities,
+			};
+		}
+		if (!deps.resolveTxt) {
+			return {
+				ok: false,
+				message: 'Live return-path SPF validation is unavailable.',
+				identities,
+			};
+		}
+		try {
+			const checkedAt = deps.now?.() ?? Date.now();
+			const records = (await deps.resolveTxt(returnPathDomain)).map((chunks) => chunks.join(''));
+			ipv6Spf = ipv6Ips.map((ip) =>
+				evaluateIpv6SpfRecords(ip, returnPathDomain, records, checkedAt)
+			);
+		} catch {
+			return {
+				ok: false,
+				message: `Could not resolve the live SPF TXT record for ${returnPathDomain}.`,
+				identities,
+			};
+		}
+		const spfFailures = ipv6Spf.filter((readiness) => readiness.verdict !== 'pass');
+		if (spfFailures.length > 0) {
+			return {
+				ok: false,
+				message: spfFailures
+					.map(
+						(readiness) =>
+							`Outbound IP ${readiness.ip}: return-path SPF on ${returnPathDomain} failed (${readiness.reason}).`
+					)
+					.join('\n'),
+				identities,
+				ipv6Spf,
+			};
+		}
+	}
 	return {
 		ok: true,
 		message:
@@ -169,5 +219,6 @@ export async function preflightMtaIdentities(
 				? 'Outbound IP identity failures are bypassed by MTA_ALLOW_UNVERIFIED_FCRDNS (lab use only).'
 				: 'Every outbound IP passed the live FCrDNS preflight.',
 		identities,
+		...(ipv6Spf ? { ipv6Spf } : {}),
 	};
 }

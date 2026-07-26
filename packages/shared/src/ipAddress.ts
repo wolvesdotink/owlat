@@ -82,6 +82,12 @@ export function isIpv4MappedIpv6(value: string): boolean {
 	return parsed?.family === 'ipv6' && parsed.address.startsWith('::ffff:');
 }
 
+/** True unless an IPv6-capable pool lacks an IPv4 address for the same workload. */
+export function hasIpv4FallbackForIpv6(addresses: readonly string[]): boolean {
+	const families = new Set(addresses.map(ipAddressFamily).filter(Boolean));
+	return !families.has('ipv6') || families.has('ipv4');
+}
+
 /**
  * Expand a canonical IPv6 address to its 32 hexadecimal nibbles.
  * Exported for DNS protocols that encode an address one nibble at a time.

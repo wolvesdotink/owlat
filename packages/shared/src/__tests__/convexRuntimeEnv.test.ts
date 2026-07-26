@@ -94,6 +94,31 @@ describe('selectRuntimeEnvVars', () => {
 		expect(CONVEX_RUNTIME_ENV_KEYS).toContain('AWS_SES_SECRET_ACCESS_KEY');
 		expect(CONVEX_RUNTIME_ENV_KEYS).toContain('AWS_SES_REGION');
 	});
+
+	it('projects canonical MTA pools and return path into the Convex aliases', () => {
+		const out = Object.fromEntries(
+			selectRuntimeEnvVars({
+				IP_POOLS_TRANSACTIONAL: '203.0.113.10, 2001:0DB8:0:0:0:0:0:10',
+				IP_POOLS_CAMPAIGN: '203.0.113.10,203.0.113.11,2001:db8::10',
+				RETURN_PATH_DOMAIN: ' bounces.example.com ',
+				MTA_IP_POOLS: 'stale',
+				MTA_RETURN_PATH_DOMAIN: 'stale.example.com',
+			})
+		);
+		expect(out['MTA_IP_POOLS']).toBe('203.0.113.10,2001:db8::10,203.0.113.11');
+		expect(out['MTA_RETURN_PATH_DOMAIN']).toBe('bounces.example.com');
+	});
+
+	it('preserves legacy aliases when canonical MTA variables are absent', () => {
+		const out = Object.fromEntries(
+			selectRuntimeEnvVars({
+				MTA_IP_POOLS: '203.0.113.20',
+				MTA_RETURN_PATH_DOMAIN: 'legacy.example.com',
+			})
+		);
+		expect(out['MTA_IP_POOLS']).toBe('203.0.113.20');
+		expect(out['MTA_RETURN_PATH_DOMAIN']).toBe('legacy.example.com');
+	});
 });
 
 describe('deriveConvexAdminUrl', () => {

@@ -8,8 +8,9 @@
  * issuing an SMTP command or sending a message.
  */
 
-import { resolveMx } from 'node:dns/promises';
+import { resolve4, resolve6, resolveMx } from 'node:dns/promises';
 import { createConnection } from 'node:net';
+import { ipAddressFamily } from '@owlat/shared/ipAddress';
 
 const PROBE_DOMAIN = 'gmail.com';
 const PROBE_PORT = 25;
@@ -21,6 +22,7 @@ export type SmtpProbeFailureReason =
 	| 'connection_refused'
 	| 'source_ip_unavailable'
 	| 'network_unreachable'
+	| 'target_resolution_error'
 	| 'connection_error';
 
 export interface SmtpIpReachability {
@@ -41,6 +43,8 @@ export interface SmtpReachabilityResult {
 
 export interface SmtpReachabilityDeps {
 	resolveMx: typeof resolveMx;
+	resolve4?: typeof resolve4;
+	resolve6?: typeof resolve6;
 	connect: (args: {
 		host: string;
 		port: number;
@@ -52,6 +56,8 @@ export interface SmtpReachabilityDeps {
 
 const defaultDeps: SmtpReachabilityDeps = {
 	resolveMx,
+	resolve4,
+	resolve6,
 	now: Date.now,
 	connect: ({ host, port, localAddress, timeoutMs }) =>
 		new Promise<void>((resolve, reject) => {
@@ -130,19 +136,38 @@ export async function probeSmtpReachability(
 		ips.map(async (ip): Promise<SmtpIpReachability> => {
 			const connectStartedAt = deps.now();
 			try {
+				const family = ipAddressFamily(ip);
+				const targetAddresses =
+					family === 'ipv6'
+						? await deps.resolve6?.(targetMx)
+						: family === 'ipv4'
+							? await deps.resolve4?.(targetMx)
+							: undefined;
+				if (targetAddresses && targetAddresses.length === 0) {
+					return {
+						ip,
+						status: 'failed',
+						connectMs: deps.now() - connectStartedAt,
+						reason: 'target_resolution_error',
+					};
+				}
 				await deps.connect({
-					host: targetMx,
+					host: targetAddresses?.[0] ?? targetMx,
 					port: PROBE_PORT,
 					localAddress: ip,
 					timeoutMs: CONNECT_TIMEOUT_MS,
 				});
 				return { ip, status: 'ok', connectMs: deps.now() - connectStartedAt };
 			} catch (err) {
+				const code = err && typeof err === 'object' ? (err as { code?: string }).code : undefined;
 				return {
 					ip,
 					status: 'failed',
 					connectMs: deps.now() - connectStartedAt,
-					reason: failureReason(err),
+					reason:
+						code === 'ENODATA' || code === 'ENOTFOUND'
+							? 'target_resolution_error'
+							: failureReason(err),
 				};
 			}
 		})

@@ -30,6 +30,7 @@ async function initializedRedis() {
 	for (const ip of [IPV4, IPV6]) {
 		await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
 	}
+	await redis.hset(`mta:source-address-readiness:${IPV6}`, 'verdict', 'pass', 'checkedAt', '1');
 	await initializePools(redis, config.ipPools);
 	return redis;
 }
@@ -74,6 +75,11 @@ describe('IPv6 SPF readiness', () => {
 		await runIpv6SpfReadinessCheck(redis, config, dns([`v=spf1 ip4:${IPV4} -all`]));
 		expect(await redis.sismember('mta:ip-pool:active', IPV6)).toBe(0);
 		expect(await redis.sismember('mta:ip-pool:active', IPV4)).toBe(1);
+		const alerts = await redis.hvals('mta:ip-readiness-alerts:pending');
+		expect(alerts).toHaveLength(1);
+		expect(alerts.map((raw) => raw.split('\x1f'))).toContainEqual(
+			expect.arrayContaining(['spf', 'missing-ip6-mechanism', IPV6])
+		);
 	});
 
 	it('preserves the last eligibility decision through transient DNS failure', async () => {

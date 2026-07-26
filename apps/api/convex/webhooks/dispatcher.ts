@@ -418,6 +418,17 @@ const DISPATCH: DispatchTable = {
 			}
 		}
 	},
+	'internal.ip_readiness_regressed': async (ctx, e) => {
+		return await ctx.runMutation(internal.delivery.ipReadinessAlerts.recordRegression, {
+			eventId: e.eventId,
+			ip: e.ip,
+			readinessCheck: e.readinessCheck,
+			readinessReason: e.readinessReason,
+			eligibilityGeneration: e.eligibilityGeneration,
+			observedAt: e.observedAt,
+			message: e.message,
+		});
+	},
 	'internal.postmaster_stats': async (ctx, e) => {
 		return ctx.runMutation(internal.delivery.postmaster.ingest, {
 			domain: e.domain,

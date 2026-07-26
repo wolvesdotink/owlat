@@ -200,6 +200,12 @@ crons.interval(
 	internal.delivery.complianceTelemetry.cleanupComplianceTelemetry,
 	{}
 );
+crons.interval(
+	'cleanup MTA IP readiness alerts',
+	{ hours: 24 },
+	internal.delivery.ipReadinessAlerts.cleanupExpired,
+	{}
+);
 
 crons.interval(
 	'cleanup Google Postmaster telemetry',
