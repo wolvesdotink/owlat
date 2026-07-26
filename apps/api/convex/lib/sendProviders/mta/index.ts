@@ -23,6 +23,8 @@ import {
 	type MtaExtras,
 	type SendProviderModule,
 } from '../types';
+import { transportEnvOptional } from '../transportEnv';
+import { sendTransportEnvName, type SendTransportRecord } from '../transports';
 
 /**
  * Default retry schedule. The **Send dispatch (helper)** consumes this; the
@@ -149,20 +151,24 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	kind: 'mta',
 	retryDelays: MTA_RETRY_DELAYS,
 
-	async sendEmail(params: EmailSendParams, extras?: MtaExtras): Promise<EmailSendAttempt> {
-		const baseUrl = getOptional('MTA_API_URL');
+	async sendEmail(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		extras?: MtaExtras
+	): Promise<EmailSendAttempt> {
+		const baseUrl = transportEnvOptional(transport, 'MTA_API_URL');
 		if (!baseUrl) {
 			return {
 				success: false,
-				errorMessage: 'MTA_API_URL environment variable is not set',
+				errorMessage: `${sendTransportEnvName('MTA_API_URL', transport.instanceKey)} environment variable is not set`,
 				errorCode: EmailErrorCode.AUTH_FAILED,
 			};
 		}
-		const apiKey = getOptional('MTA_API_KEY');
+		const apiKey = transportEnvOptional(transport, 'MTA_API_KEY');
 		if (!apiKey) {
 			return {
 				success: false,
-				errorMessage: 'MTA_API_KEY environment variable is not set',
+				errorMessage: `${sendTransportEnvName('MTA_API_KEY', transport.instanceKey)} environment variable is not set`,
 				errorCode: EmailErrorCode.AUTH_FAILED,
 			};
 		}

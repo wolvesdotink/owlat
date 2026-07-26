@@ -35,8 +35,17 @@ export type {
 	EmailSendParams,
 	EmailAttachment,
 	DispatchResult,
+	SendProviderExtras,
 } from './types';
 export { EmailErrorCode, isRetryableErrorCode, isSendProviderKind } from './types';
+export type { SendTransportId, SendTransportRecord } from './transports';
+export {
+	SendTransportResolutionError,
+	defaultSendTransportId,
+	listSendTransports,
+	namedSendTransportId,
+	resolveSendTransport,
+} from './transports';
 
 // Registry — keyed by `SendProviderKind`. The dispatch helper calls
 // `providerFor(kind)` to get the adapter; no caller imports adapters directly.
