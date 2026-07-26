@@ -244,6 +244,7 @@ import type * as delivery_preferencesQueries from "../delivery/preferencesQuerie
 import type * as delivery_postmaster from "../delivery/postmaster.js";
 import type * as delivery_readinessValidators from "../delivery/readinessValidators.js";
 import type * as delivery_routingReentry from "../delivery/routingReentry.js";
+import type * as delivery_sendAssignments from "../delivery/sendAssignments.js";
 import type * as delivery_sendCompletion from "../delivery/sendCompletion.js";
 import type * as delivery_sendComposition_archive_snapshot_index from "../delivery/sendComposition/archive_snapshot/index.js";
 import type * as delivery_sendComposition_automation_index from "../delivery/sendComposition/automation/index.js";
@@ -672,6 +673,7 @@ import type * as schema_knowledge from "../schema/knowledge.js";
 import type * as schema_mail from "../schema/mail.js";
 import type * as schema_messaging from "../schema/messaging.js";
 import type * as schema_plugins from "../schema/plugins.js";
+import type * as schema_sendAssignments from "../schema/sendAssignments.js";
 import type * as schema_templates from "../schema/templates.js";
 import type * as schema_topics from "../schema/topics.js";
 import type * as schema_webhooks from "../schema/webhooks.js";
@@ -1010,6 +1012,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/postmaster": typeof delivery_postmaster;
   "delivery/readinessValidators": typeof delivery_readinessValidators;
   "delivery/routingReentry": typeof delivery_routingReentry;
+  "delivery/sendAssignments": typeof delivery_sendAssignments;
   "delivery/sendCompletion": typeof delivery_sendCompletion;
   "delivery/sendComposition/archive_snapshot/index": typeof delivery_sendComposition_archive_snapshot_index;
   "delivery/sendComposition/automation/index": typeof delivery_sendComposition_automation_index;
@@ -1438,6 +1441,7 @@ declare const fullApi: ApiFromModules<{
   "schema/mail": typeof schema_mail;
   "schema/messaging": typeof schema_messaging;
   "schema/plugins": typeof schema_plugins;
+  "schema/sendAssignments": typeof schema_sendAssignments;
   "schema/templates": typeof schema_templates;
   "schema/topics": typeof schema_topics;
   "schema/webhooks": typeof schema_webhooks;
