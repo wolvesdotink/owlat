@@ -32,6 +32,38 @@ describe('warming', () => {
 	const config = createTestConfig();
 	const stateKey = `mta:warming:{warming:${ip}}:state`;
 	const dailyStatsKey = `mta:warming:{warming:${ip}}:daily:2026-03-22`;
+	const invalidPersistedCaps: ReadonlyArray<{
+		name: string;
+		value: string | null;
+	}> = [
+		{ name: 'a missing cap', value: null },
+		{ name: 'NaN', value: 'NaN' },
+		{ name: 'a non-numeric cap', value: 'garbage' },
+		{ name: 'positive Infinity', value: String(Infinity) },
+		{ name: 'negative Infinity', value: String(-Infinity) },
+		{ name: 'zero', value: '0' },
+		{ name: 'a negative cap', value: '-5' },
+		{ name: 'a fractional cap', value: '1.5' },
+		{ name: 'an above-ceiling cap', value: String(LAST_FINITE_WARMING_CAP + 1) },
+	];
+
+	async function seedInvalidPersistedCap(value: string | null, currentDay = 2): Promise<void> {
+		await redis.del(stateKey);
+		await initializeWarming(redis, ip);
+		await redis.hset(
+			stateKey,
+			'currentDay',
+			String(currentDay),
+			'sentToday',
+			'0',
+			'lastEvaluatedDate',
+			'',
+			'phase',
+			'ramp'
+		);
+		if (value === null) await redis.hdel(stateKey, 'dailyCap');
+		else await redis.hset(stateKey, 'dailyCap', value);
+	}
 
 	async function seedLegacyUncappedRamp(options: {
 		sent: number;
@@ -144,6 +176,85 @@ describe('warming', () => {
 
 			expect(await getDailyCap(redis, ip)).toBe(LAST_FINITE_WARMING_CAP);
 			expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(LAST_FINITE_WARMING_CAP));
+		});
+	});
+
+	describe('persisted daily-cap normalization', () => {
+		it.each(invalidPersistedCaps)(
+			'repairs $name through every public state and enforcement path',
+			async ({ value }) => {
+				const expectedEarlyDayCap = getWarmingCapForDay(2);
+
+				await seedInvalidPersistedCap(value);
+				expect(await getDailyCap(redis, ip)).toBe(expectedEarlyDayCap);
+				expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(expectedEarlyDayCap));
+
+				await seedInvalidPersistedCap(value);
+				expect(await getWarmingState(redis, ip)).toMatchObject({
+					currentDay: 2,
+					dailyCap: expectedEarlyDayCap,
+					phase: 'ramp',
+				});
+				expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(expectedEarlyDayCap));
+
+				await seedInvalidPersistedCap(value);
+				expect(await checkCap(redis, ip)).toEqual({
+					allowed: true,
+					sentToday: 0,
+					dailyCap: expectedEarlyDayCap,
+				});
+				expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(expectedEarlyDayCap));
+
+				await seedInvalidPersistedCap(value);
+				expect(
+					await reserveWarmingSlot(redis, ip, `invalid-cap-${value ?? 'missing'}`)
+				).toMatchObject({
+					allowed: true,
+					sentToday: 0,
+					dailyCap: expectedEarlyDayCap,
+					reserved: 1,
+				});
+				expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(expectedEarlyDayCap));
+
+				await seedInvalidPersistedCap(value);
+				await redis.hset(dailyStatsKey, 'sent', '100', 'bounced', '4', 'deferred', '0');
+				await evaluateDay(redis, ip, config);
+				expect(await getWarmingState(redis, ip)).toMatchObject({
+					currentDay: 1,
+					dailyCap: Math.floor(
+						expectedEarlyDayCap * ADAPTIVE_WARMING_POLICY.deceleration.capMultiplier
+					),
+					phase: 'ramp',
+				});
+			}
+		);
+
+		it('keeps concurrent public readers and enforcement on one repaired cap', async () => {
+			await seedInvalidPersistedCap('garbage');
+
+			const [dailyCap, state, checked, reserved] = await Promise.all([
+				getDailyCap(redis, ip),
+				getWarmingState(redis, ip),
+				checkCap(redis, ip),
+				reserveWarmingSlot(redis, ip, 'concurrent-repair'),
+			]);
+
+			expect(dailyCap).toBe(100);
+			expect(state!.dailyCap).toBe(100);
+			expect(checked.dailyCap).toBe(100);
+			expect(reserved.dailyCap).toBe(100);
+			expect(await redis.hget(stateKey, 'dailyCap')).toBe('100');
+		});
+
+		it('preserves graduated Infinity across public state and enforcement paths', async () => {
+			await initializeWarming(redis, ip);
+			await redis.hset(stateKey, 'phase', 'graduated', 'dailyCap', String(Infinity));
+
+			expect(await getDailyCap(redis, ip)).toBe(Infinity);
+			expect((await getWarmingState(redis, ip))!.dailyCap).toBe(Infinity);
+			expect((await checkCap(redis, ip)).dailyCap).toBe(Infinity);
+			expect((await reserveWarmingSlot(redis, ip, 'graduated')).dailyCap).toBe(Infinity);
+			expect(await redis.hget(stateKey, 'dailyCap')).toBe(String(Infinity));
 		});
 	});
 

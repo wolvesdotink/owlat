@@ -14,22 +14,22 @@ export const GMAIL_PROXIMITY_WARNING_THRESHOLD = 4_000;
 export const MICROSOFT_HIGH_VOLUME_SENDER_THRESHOLD = 5_000;
 export const UNSUBSCRIBE_HONOR_WINDOW_MS = 48 * HOUR_MS;
 
-export const CIRCUIT_BREAKER_POLICY = {
-	bounce: {
-		fast: { windowSize: 50, rateExclusiveMax: 0.15 },
-		sustained: { windowSize: 100, rateExclusiveMax: 0.08 },
-	},
-	complaint: {
-		fast: { windowSize: 50, rateExclusiveMax: 0.04 },
-		sustained: { windowSize: 100, rateExclusiveMax: 0.002 },
-	},
+export const CIRCUIT_BREAKER_POLICY = Object.freeze({
+	bounce: Object.freeze({
+		fast: Object.freeze({ windowSize: 50, rateExclusiveMax: 0.15 }),
+		sustained: Object.freeze({ windowSize: 100, rateExclusiveMax: 0.08 }),
+	}),
+	complaint: Object.freeze({
+		fast: Object.freeze({ windowSize: 50, rateExclusiveMax: 0.04 }),
+		sustained: Object.freeze({ windowSize: 100, rateExclusiveMax: 0.002 }),
+	}),
 	cooldownMs: 30 * 60 * 1000,
-} as const;
+});
 
-export const CAMPAIGN_COMPLAINT_POLICY = {
+export const CAMPAIGN_COMPLAINT_POLICY = Object.freeze({
 	rateExclusiveMax: 0.003,
 	minimumDeliveries: 100,
-} as const;
+});
 
 export interface DestinationProviderProfile {
 	/** Default sending rate in emails per minute. */
