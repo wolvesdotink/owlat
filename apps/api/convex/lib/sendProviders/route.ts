@@ -24,7 +24,8 @@ import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { getOptional } from '../env';
 import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
-import { destinationProviderForDomain } from '@owlat/shared/deliverabilityRouting';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import { resolveDestinationProvider } from './destinationProvider';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
@@ -39,6 +40,26 @@ export const messageTypeValidator = v.union(
 );
 
 /**
+ * Per-message inputs the deliverability layer keys off. Shared by
+ * `resolveSendRouteFromDb` and its internal `deliverabilityInput` so the two
+ * shapes cannot drift.
+ */
+export interface SendRouteAddressContext {
+	to?: string;
+	from?: string;
+	now?: number;
+	baseOnly?: boolean;
+	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+	/**
+	 * Pre-classified destination provider for `to`. Purely an optimisation:
+	 * when omitted the resolver classifies `to` itself. A batch caller that
+	 * has already memoized one classification per distinct domain passes it
+	 * so the classifier point read stays O(distinct domains).
+	 */
+	destinationProvider?: DestinationProviderKey;
+}
+
+/**
  * Resolve the send route for a message type from the current transaction.
  * Reads the route config (indexed) + all provider health, maps health rows
  * to the strategy-facing shape, and returns the resolved route. Pure
@@ -47,13 +68,7 @@ export const messageTypeValidator = v.union(
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
 	messageType: MessageType,
-	addressContext?: {
-		to?: string;
-		from?: string;
-		now?: number;
-		baseOnly?: boolean;
-		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	}
+	addressContext?: SendRouteAddressContext
 ): Promise<ResolvedRoute | null> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
@@ -101,13 +116,7 @@ async function deliverabilityInput(
 	ctx: QueryCtx | MutationCtx,
 	routeConfig: Doc<'providerRoutes'> | null,
 	messageType: MessageType,
-	addressContext?: {
-		to?: string;
-		from?: string;
-		now?: number;
-		baseOnly?: boolean;
-		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	}
+	addressContext?: SendRouteAddressContext
 ) {
 	if (!addressContext?.to) return undefined;
 	const toDomain = extractDomainOrNull(addressContext.to);
@@ -119,16 +128,12 @@ async function deliverabilityInput(
 	} catch {
 		return undefined;
 	}
-	const learnedProvider = await ctx.db
-		.query('destinationProviderDomains')
-		.withIndex('by_org_domain', (q) =>
-			q.eq('organizationId', organizationId).eq('domain', toDomain)
-		)
-		.first();
+	// A caller that has ALREADY classified this recipient (the send-assignment
+	// writer memoizes one classification per distinct domain across a batch)
+	// passes the provider in so this resolver does not repeat the point read.
 	const provider =
-		learnedProvider && learnedProvider.expiresAt >= now
-			? learnedProvider.destinationProvider
-			: destinationProviderForDomain(toDomain);
+		addressContext.destinationProvider ??
+		(await resolveDestinationProvider(ctx, organizationId, toDomain, now));
 	const [providerState, globalState, warmingState] = await Promise.all([
 		ctx.db
 			.query('deliverabilityRouteStates')
