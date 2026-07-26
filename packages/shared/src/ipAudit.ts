@@ -15,7 +15,7 @@
  * a missing optional feed into an error state.
  */
 
-import { DNSBL_LISTS, type DnsblListId } from './dnsbl';
+import { DNSBL_LISTS } from './dnsbl';
 import type { FcrdnsFailureReason, FcrdnsVerdict } from './fcrdns';
 
 export const IP_AUDIT_ZONE_IDS = [
@@ -87,10 +87,6 @@ export const IP_AUDIT_ZONES: readonly IpAuditZoneDefinition[] = [
 		addressFamilies: ['ipv4', 'ipv6'],
 	},
 ];
-
-export function isIpAuditZoneId(value: string): value is IpAuditZoneId {
-	return IP_AUDIT_ZONE_IDS.includes(value as IpAuditZoneId);
-}
 
 /** Spamhaus ZEN is several lists behind one zone; each needs different advice. */
 export const SPAMHAUS_SUBLISTS = ['sbl', 'css', 'xbl', 'pbl', 'drop'] as const;
@@ -454,11 +450,4 @@ export function decodeSpamhausAnswers(answers: readonly string[]): SpamhausSubli
 		if (sublist && !sublists.includes(sublist)) sublists.push(sublist);
 	}
 	return sublists;
-}
-
-/** The shipped DNSBL ids the audit shares with the routing checker. */
-export function isSharedDnsblZone(zoneId: IpAuditZoneId): zoneId is IpAuditZoneId & DnsblListId {
-	return (
-		zoneId === 'spamhaus' || zoneId === 'barracuda' || zoneId === 'spamcop' || zoneId === 'abusix'
-	);
 }
