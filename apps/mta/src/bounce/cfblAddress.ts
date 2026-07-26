@@ -48,7 +48,13 @@
  * throwing. A rejection is a returned reason the caller COUNTS.
  */
 
-import { createHmac, timingSafeEqual } from 'crypto';
+import {
+	SIGNED_TOKEN_WINDOW_MS,
+	computeSignedTokenMac,
+	currentSignedTokenWindow,
+	findSignedTokenWindowAge,
+	resolveSignedTokenKey,
+} from './signedToken.js';
 
 /** Envelope local-part prefix for the complaint feedback address. */
 export const CFBL_LOCAL_PREFIX = 'fbl';
@@ -56,11 +62,13 @@ export const CFBL_LOCAL_PREFIX = 'fbl';
 /** RFC 9477 §4.1 `report=` parameter value: we accept RFC 5965 ARF reports. */
 export const CFBL_REPORT_FORMAT = 'arf';
 
-/** Length (chars) of the base64url-encoded truncated HMAC carried in the token. */
-const MAC_B64URL_LEN = 14; // ~84 bits
-
-/** Window granularity: one bucket per UTC day. */
-const WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * Domain-separation label for the complaint MAC. The VERP bounce token signs
+ * `{encodedId}:{window}` with no label, so this prefix is what makes a captured
+ * bounce token unusable as a complaint token and vice versa (see
+ * `bounce/signedToken.ts`, where both MACs are built).
+ */
+const CFBL_MAC_LABEL = 'cfbl:';
 
 /**
  * Past windows accepted in addition to the current one. Complaints are a
@@ -70,26 +78,46 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
 export const ACCEPTED_PAST_WINDOWS = 13;
 
 /** One future window absorbs signer/verifier clock skew around a day boundary. */
-const ACCEPTED_FUTURE_WINDOWS = 1;
+export const ACCEPTED_FUTURE_WINDOWS = 1;
+
+/**
+ * The full span, in seconds, over which a signed CFBL token still verifies:
+ * the future skew window, the current window and every accepted past window.
+ *
+ * The COMPLAINT DEDUPLICATION RETENTION IS DERIVED FROM THIS
+ * (`bounce/complaintDedupStore.ts`) and must never be shorter. If a token
+ * outlives its dedup record, a captured report replayed in the gap verifies
+ * again, finds no record of the first delivery, and is counted a second time —
+ * which is exactly the "a replay must not move a cell's complaint rate" property
+ * this token exists to protect. Keeping the two derived from ONE constant means
+ * widening the acceptance horizon cannot silently reopen that window.
+ */
+export const CFBL_TOKEN_ACCEPTANCE_SECONDS =
+	(ACCEPTED_FUTURE_WINDOWS + 1 + ACCEPTED_PAST_WINDOWS) * (SIGNED_TOKEN_WINDOW_MS / 1000);
 
 /**
  * How far back verification will probe PURELY to classify a rejection as
- * `expired` rather than `bad_signature`. Bounded (90 HMACs worst case) so a
- * flood of junk reports cannot turn this into a CPU amplifier.
+ * `expired` rather than `bad_signature`.
+ *
+ * Bounded so a flood of junk reports cannot turn verification into a CPU
+ * amplifier: one `parseCfblToken` call costs at most
+ * `EXPIRY_PROBE_WINDOWS + ACCEPTED_FUTURE_WINDOWS + 1` HMACs (see
+ * {@link MAX_HMACS_PER_TOKEN_PARSE}), and `resolveCfblAttribution` parses at
+ * most three candidate tokens per report.
  */
 const EXPIRY_PROBE_WINDOWS = 90;
+
+/**
+ * Worst-case HMAC count for ONE {@link parseCfblToken} call, derived from the
+ * constants rather than restated in prose so it cannot drift away from them.
+ */
+export const MAX_HMACS_PER_TOKEN_PARSE = EXPIRY_PROBE_WINDOWS + ACCEPTED_FUTURE_WINDOWS + 1;
 
 /** RFC 5321 §4.5.3.1.3 caps a forward-path at 256 octets; 320 is the whole path. */
 const MAX_ADDRESS_LENGTH = 320;
 
 /** Upper bound on an internal message id we are willing to encode or decode. */
 const MAX_MESSAGE_ID_LENGTH = 200;
-
-/** RFC 5322 §2.1.1 hard cap on a physical header line, excluding CRLF. */
-export const MAX_HEADER_LINE_OCTETS = 998;
-
-/** RFC 5322 §2.1.1 SHOULD cap on a physical header line, excluding CRLF. */
-export const RECOMMENDED_HEADER_LINE_OCTETS = 78;
 
 /** Why a presented CFBL address did not yield a trusted attribution. */
 export type CfblRejectionReason =
@@ -117,8 +145,7 @@ export type CfblParseResult =
  * is domain-separated, so one secret safely serves both tokens.
  */
 function resolveCfblKey(explicit?: string): string | undefined {
-	const key = explicit ?? process.env['BOUNCE_VERP_KEY'];
-	return key && key.length > 0 ? key : undefined;
+	return resolveSignedTokenKey(explicit);
 }
 
 /**
@@ -128,33 +155,6 @@ function resolveCfblKey(explicit?: string): string | undefined {
  */
 export function isCfblSigningEnabled(key?: string): boolean {
 	return resolveCfblKey(key) !== undefined;
-}
-
-function currentWindow(now: number): number {
-	return Math.floor(now / WINDOW_MS);
-}
-
-/**
- * Truncated base64url MAC over `cfbl:{encodedId}:{window}`.
- *
- * The `cfbl:` label is the domain separator against `verp.ts`'s
- * `{encodedId}:{window}`; signing the ALREADY base64url-encoded id keeps the MAC
- * input free of `@`/`+`/`=` so the token grammar stays unambiguous.
- */
-function computeMac(encodedId: string, window: number, key: string): string {
-	return createHmac('sha256', key)
-		.update(`cfbl:${encodedId}:${window}`)
-		.digest('base64url')
-		.slice(0, MAC_B64URL_LEN);
-}
-
-/** Constant-time compare that never throws on a length mismatch. */
-function macsEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	const ab = Buffer.from(a);
-	const bb = Buffer.from(b);
-	if (ab.length !== bb.length) return false;
-	return timingSafeEqual(ab, bb);
 }
 
 /**
@@ -172,7 +172,12 @@ export function buildCfblToken(
 	const signingKey = resolveCfblKey(key);
 	if (!signingKey) return null;
 	const encoded = Buffer.from(messageId).toString('base64url');
-	const mac = computeMac(encoded, currentWindow(now), signingKey);
+	const mac = computeSignedTokenMac(
+		CFBL_MAC_LABEL,
+		encoded,
+		currentSignedTokenWindow(now),
+		signingKey
+	);
 	return `${encoded}+${mac}`;
 }
 
@@ -205,39 +210,6 @@ export function buildCfblHeaderValue(address: string): string {
 	return `${address}; report=${CFBL_REPORT_FORMAT}`;
 }
 
-/**
- * Recover the address from a `CFBL-Address` header value, ignoring the
- * parameter list. Bounded and non-throwing — this reads internet-supplied bytes
- * when we inspect our own echoed header inside a report.
- */
-export function extractCfblAddressFromHeaderValue(value: string): string | null {
-	if (value.length === 0 || value.length > MAX_ADDRESS_LENGTH + 64) return null;
-	const head = value.split(';', 1)[0];
-	if (head === undefined) return null;
-	// Unfold any folding white space a receiver left in place, then unwrap <addr>.
-	const flattened = head.replace(/\s+/g, '');
-	const angle = flattened.match(/^<(.+)>$/);
-	const address = angle?.[1] ?? flattened;
-	return address.length > 0 && address.length <= MAX_ADDRESS_LENGTH ? address : null;
-}
-
-/**
- * Render `Name: value` as RFC 5322 physical lines, folding on the folding white
- * space that follows the `;` parameter separator.
- *
- * The address token itself contains no FWS and therefore cannot be folded — the
- * only legal fold point in a CFBL header is before `report=…`. This helper
- * exists so the emitted value's line geometry is ASSERTABLE: the hard 998-octet
- * cap always holds, and the 78-octet SHOULD holds for realistic domains.
- */
-export function foldCfblHeaderLine(name: string, value: string): string[] {
-	const single = `${name}: ${value}`;
-	if (Buffer.byteLength(single, 'utf-8') <= RECOMMENDED_HEADER_LINE_OCTETS) return [single];
-	const separator = value.indexOf('; ');
-	if (separator === -1) return [single];
-	return [`${name}: ${value.slice(0, separator + 1)}`, ` ${value.slice(separator + 2)}`];
-}
-
 /** RFC 9477 §4.1 header advertising where to send complaint reports. */
 export const CFBL_ADDRESS_HEADER = 'CFBL-Address';
 
@@ -245,13 +217,57 @@ export const CFBL_ADDRESS_HEADER = 'CFBL-Address';
 export const CFBL_FEEDBACK_ID_HEADER = 'CFBL-Feedback-ID';
 
 /**
+ * Whether a CFBL host may be advertised for a message whose `RFC5322.From`
+ * carries `fromDomain`.
+ *
+ * RFC 9477 §3.1.2 lets the CFBL address sit on the From domain or on a SUBDOMAIN
+ * of it under the signature that already covers From. §3.1.3 permits any other
+ * domain ONLY if the message carries an ADDITIONAL valid DKIM signature whose
+ * `d=` matches the CFBL host — and if neither holds, the mailbox provider
+ * "SHALL NOT send a report message".
+ *
+ * Owlat signs once, with `d=` aligned to the sending domain, so the second
+ * signature of §3.1.3 does not exist. Advertising a header on the shared global
+ * return-path host would therefore publish a complaint handle that every
+ * conforming provider discards — the worst outcome available, because it looks
+ * like a shipped feature and produces no signal. So the header is emitted only
+ * on the aligned branch: a tenant that registers a per-domain return-path host
+ * (`smtp/dkimStore.ts`) gets RFC 9477 complaint feedback, and one that has not
+ * gets silence rather than a decorative header.
+ *
+ * Absence is not an error state (D2): no throw, no warning, no nag — the send
+ * proceeds byte-for-byte as it did before the header existed.
+ */
+export function isCfblHostAlignedWithFrom(cfblHost: string, fromDomain: string): boolean {
+	if (cfblHost.length === 0 || fromDomain.length === 0) return false;
+	const host = cfblHost.toLowerCase();
+	const from = fromDomain.toLowerCase();
+	return host === from || host.endsWith(`.${from}`);
+}
+
+/** Inputs for {@link buildCfblHeaders}. */
+export interface CfblHeaderInput {
+	/** The send's internal message id — the attribution handle inside the token. */
+	readonly messageId: string;
+	/** Host that receives complaint reports (the VERP return-path host). */
+	readonly cfblHost: string;
+	/** Domain of `RFC5322.From`, which the CFBL host must align with. */
+	readonly fromDomain: string;
+	/** Signing key (defaults to `BOUNCE_VERP_KEY`). */
+	readonly key?: string | undefined;
+	/** Injectable clock for the signing window. */
+	readonly now?: number | undefined;
+}
+
+/**
  * Build the outbound RFC 9477 header set for one send.
  *
- * Returns an EMPTY record when the header cannot be emitted safely (no signing
- * key, no return-path host, an implausible message id). Emitting the header is
- * unconditional and free otherwise — it depends on no third-party account, no
- * enrollment and no credential, so its absence is never an error state and its
- * presence never blocks a send.
+ * Returns an EMPTY record when the header cannot be emitted safely: no signing
+ * key, no return-path host, an implausible message id, or a CFBL host that is
+ * not aligned with the From domain (see {@link isCfblHostAlignedWithFrom}).
+ * Emitting the header is unconditional and free otherwise — it depends on no
+ * third-party account, no enrollment and no credential, so its absence is never
+ * an error state and its presence never blocks a send.
  *
  * `CFBL-Feedback-ID` carries the SAME signed token as the address local-part.
  * RFC 9477 §4.2 asks a report generator to copy it into the ARF's `Feedback-ID`
@@ -260,14 +276,15 @@ export const CFBL_FEEDBACK_ID_HEADER = 'CFBL-Feedback-ID';
  * `Feedback-ID` (a stable per-stream aggregation anchor, built in
  * `delivery/sendComposition/feedbackId.ts`) — the two headers answer different
  * questions and coexist.
+ *
+ * Both fields are covered by the DKIM `h=` tag (`SIGNED_HEADERS` in
+ * `@owlat/mail-message`), which RFC 9477 §3.1.4 requires: an uncovered field is
+ * one a provider must ignore, and one an intermediary could rewrite to redirect
+ * complaints.
  */
-export function buildCfblHeaders(
-	messageId: string,
-	cfblDomain: string,
-	key?: string,
-	now: number = Date.now()
-): Record<string, string> {
-	const address = buildCfblAddress(messageId, cfblDomain, key, now);
+export function buildCfblHeaders(input: CfblHeaderInput): Record<string, string> {
+	if (!isCfblHostAlignedWithFrom(input.cfblHost, input.fromDomain)) return {};
+	const address = buildCfblAddress(input.messageId, input.cfblHost, input.key, input.now);
 	if (!address) return {};
 	// Reuse the address's local-part suffix rather than signing twice.
 	const token = address.slice(CFBL_LOCAL_PREFIX.length + 1, address.lastIndexOf('@'));
@@ -301,16 +318,17 @@ export function parseCfblToken(
 	if (!signingKey) return { ok: false, reason: 'unverifiable' };
 	if (!presentedMac) return { ok: false, reason: 'unsigned' };
 
-	const base = currentWindow(now);
-	let verifiedWindow: number | null = null;
-	for (let i = -ACCEPTED_FUTURE_WINDOWS; i <= EXPIRY_PROBE_WINDOWS; i++) {
-		if (macsEqual(computeMac(encodedId, base - i, signingKey), presentedMac)) {
-			verifiedWindow = i;
-			break;
-		}
-	}
-	if (verifiedWindow === null) return { ok: false, reason: 'bad_signature' };
-	if (verifiedWindow > ACCEPTED_PAST_WINDOWS) return { ok: false, reason: 'expired' };
+	const windowAge = findSignedTokenWindowAge({
+		label: CFBL_MAC_LABEL,
+		encodedId,
+		presentedMac,
+		key: signingKey,
+		now,
+		pastWindows: EXPIRY_PROBE_WINDOWS,
+		futureWindows: ACCEPTED_FUTURE_WINDOWS,
+	});
+	if (windowAge === null) return { ok: false, reason: 'bad_signature' };
+	if (windowAge > ACCEPTED_PAST_WINDOWS) return { ok: false, reason: 'expired' };
 
 	const decoded = decodeMessageId(encodedId);
 	return decoded === null
