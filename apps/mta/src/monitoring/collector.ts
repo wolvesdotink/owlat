@@ -107,6 +107,34 @@ export const fblComplaintsByCampaignTotal = new Counter({
 });
 
 /**
+ * RFC 9477 CFBL reports that produced a TRUSTED attribution, by the signed
+ * source that carried it (`rcpt_to` — the report was delivered to the signed
+ * address itself; `feedback_id` — the report echoed our signed
+ * `CFBL-Feedback-ID`). Distinct from `fblComplaintsTotal`, which counts every
+ * ARF regardless of how (or whether) it attributed.
+ */
+export const cfblAttributionsTotal = new Counter({
+	name: 'mta_cfbl_attributions_total',
+	help: 'RFC 9477 CFBL complaint reports attributed via a verified signed address',
+	labelNames: ['source'] as const,
+	registers: [registry],
+});
+
+/**
+ * CFBL signed-address verification REJECTIONS, by bounded reason
+ * (`bad_signature`, `unsigned`, `expired`, `malformed_payload`, `oversized`,
+ * `unverifiable`). The header invites unauthenticated parties to mail us, so a
+ * forged-complaint campaign must be VISIBLE as a metric — rejections are
+ * counted here and dropped, never thrown and never attributed.
+ */
+export const cfblRejectionsTotal = new Counter({
+	name: 'mta_cfbl_rejections_total',
+	help: 'CFBL signed-address verifications rejected, by reason',
+	labelNames: ['reason'] as const,
+	registers: [registry],
+});
+
+/**
  * Record a delivery outcome in both Redis (persistent) and Prometheus (in-memory)
  */
 export async function record(
