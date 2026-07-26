@@ -1,0 +1,265 @@
+import { describe, expect, it, vi } from 'vitest';
+import type Redis from 'ioredis';
+import {
+	auditIp,
+	auditZonesFor,
+	getIpAuditRecord,
+	ipAuditIsDue,
+	neighbourAddresses,
+	runIpAuditSweep,
+	type IpAuditConfig,
+	type IpAuditDeps,
+} from '../ipAudit.js';
+import type { Port25ProbeResult } from '../port25Probe.js';
+
+vi.mock('../../monitoring/logger.js', () => ({
+	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
+const IP = '203.0.113.10';
+
+function codedError(code: string): Error & { code: string } {
+	const error = new Error(code) as Error & { code: string };
+	error.code = code;
+	return error;
+}
+
+function config(overrides: Partial<IpAuditConfig> = {}): IpAuditConfig {
+	return {
+		ipPools: { transactional: [IP], campaign: [] },
+		ehloHostname: 'mail.example.com',
+		ehloHostnames: {},
+		...overrides,
+	};
+}
+
+function openPort25(ip: string): Promise<Port25ProbeResult> {
+	return Promise.resolve({
+		ip,
+		status: 'open',
+		reason: 'connected',
+		checkedAt: 1,
+		targets: [],
+	});
+}
+
+function deps(overrides: Partial<IpAuditDeps> = {}): IpAuditDeps {
+	return {
+		now: () => 1_700_000_000_000,
+		dns: {
+			// Everything NXDOMAINs (the clean DNSBL answer) except the forward
+			// lookup that confirms our own PTR.
+			resolve4: (hostname: string) =>
+				hostname === 'mail.example.com'
+					? Promise.resolve([IP])
+					: Promise.reject(codedError('ENOTFOUND')),
+			reverse: () => Promise.resolve(['mail.example.com']),
+			resolve6: () => Promise.resolve([]),
+		},
+		port25: openPort25,
+		zoneTimeoutMs: 50,
+		...overrides,
+	};
+}
+
+function fakeRedis(failSetFor: string[] = []): { redis: Redis; store: Map<string, string> } {
+	const store = new Map<string, string>();
+	const redis = {
+		get: (key: string) => Promise.resolve(store.get(key) ?? null),
+		set: (key: string, value: string) => {
+			if (failSetFor.some((ip) => key.endsWith(ip))) {
+				return Promise.reject(new Error('redis unavailable'));
+			}
+			store.set(key, value);
+			return Promise.resolve('OK');
+		},
+	} as unknown as Redis;
+	return { redis, store };
+}
+
+describe('resolver failures are unknown, never clean', () => {
+	it('treats SERVFAIL from every zone as an incomplete audit', async () => {
+		const record = await auditIp(
+			IP,
+			config(),
+			deps({
+				dns: {
+					resolve4: () => Promise.reject(codedError('ESERVFAIL')),
+					reverse: () => Promise.resolve(['mail.example.com']),
+				},
+			})
+		);
+		expect(record.zones.every((zone) => zone.status === 'unknown')).toBe(true);
+		expect(record.verdict).not.toBe('clean');
+		expect(record.confidence).toBe('low');
+		expect(record.findings.map((finding) => finding.id)).toContain('audit_incomplete');
+	});
+
+	it('treats a reverse-DNS resolver failure as unverified, not as a pass', async () => {
+		const record = await auditIp(
+			IP,
+			config(),
+			deps({
+				dns: {
+					resolve4: () => Promise.reject(codedError('ENOTFOUND')),
+					reverse: () => Promise.reject(codedError('ESERVFAIL')),
+				},
+			})
+		);
+		expect(record.fcrdns.verdict).not.toBe('pass');
+		expect(record.verdict).not.toBe('clean');
+	});
+
+	it('survives a reverse-DNS verifier that throws outright', async () => {
+		const record = await auditIp(
+			IP,
+			config(),
+			deps({
+				dns: {
+					resolve4: () => Promise.reject(codedError('ENOTFOUND')),
+					reverse: () => {
+						throw new Error('boom');
+					},
+				},
+			})
+		);
+		expect(record.fcrdns.verdict).toBe('error');
+		expect(record.verdict).not.toBe('clean');
+	});
+});
+
+describe('hostile and degenerate DNS responses are bounded', () => {
+	it('caps a huge RRset and a single oversized answer', async () => {
+		const flood = Array.from({ length: 5_000 }, (_, index) => `127.0.0.${index % 255}`);
+		flood.push('1'.repeat(5_000));
+		const record = await auditIp(
+			IP,
+			config(),
+			deps({
+				dns: {
+					resolve4: () => Promise.resolve(flood),
+					reverse: () => Promise.resolve(['mail.example.com']),
+				},
+			})
+		);
+		for (const zone of record.zones) {
+			expect(zone.answers.length).toBeLessThanOrEqual(16);
+			for (const answer of zone.answers) expect(answer.length).toBeLessThanOrEqual(45);
+		}
+	});
+
+	it('terminates when a resolver never answers', async () => {
+		const record = await auditIp(
+			IP,
+			config(),
+			deps({
+				zoneTimeoutMs: 20,
+				dns: {
+					resolve4: () => new Promise<string[]>(() => undefined),
+					reverse: () => Promise.resolve(['mail.example.com']),
+				},
+			})
+		);
+		expect(record.zones.every((zone) => zone.status === 'unknown')).toBe(true);
+		expect(record.verdict).not.toBe('clean');
+	});
+
+	it('does not throw when the port-25 probe itself rejects', async () => {
+		const record = await auditIp(
+			IP,
+			config(),
+			deps({ port25: () => Promise.reject(new Error('probe exploded')) })
+		);
+		expect(record.port25).toBe('unknown');
+		expect(record.confidence).toBe('low');
+	});
+
+	it('produces a report for an IPv6 address with no /24 to sample', async () => {
+		const record = await auditIp(
+			'2001:db8::25',
+			config({ ipPools: { transactional: ['2001:db8::25'], campaign: [] } }),
+			deps({ neighbourSampleSize: 16 })
+		);
+		expect(record.neighbourhoodStatus).toBe('insufficient_data');
+		expect(record.neighbourhood).toEqual({ sampled: 0, listed: 0 });
+	});
+
+	it('samples the /24 without ever probing the address itself', () => {
+		const neighbours = neighbourAddresses('203.0.113.33', 16);
+		expect(neighbours).not.toContain('203.0.113.33');
+		expect(neighbours.every((ip) => ip.startsWith('203.0.113.'))).toBe(true);
+		expect(neighbourAddresses('2001:db8::25', 16)).toEqual([]);
+		expect(neighbourAddresses('not-an-ip', 16)).toEqual([]);
+		expect(neighbourAddresses('203.0.113.33', 0)).toEqual([]);
+	});
+});
+
+describe('missing third-party credentials are inert', () => {
+	it('skips keyed feeds instead of failing or warning', async () => {
+		const zones = auditZonesFor({}, 'ipv4');
+		expect(zones.find((zone) => zone.zoneId === 'abusix')?.zone).toBeNull();
+		expect(zones.find((zone) => zone.zoneId === 'invaluement')?.zone).toBeNull();
+
+		const record = await auditIp(IP, config(), deps());
+		const skipped = record.zones.filter((zone) => zone.status === 'skipped');
+		expect(skipped.map((zone) => zone.zoneId).sort()).toEqual(['abusix', 'invaluement']);
+		expect(record.verdict).toBe('clean');
+		expect(record.confidence).toBe('high');
+	});
+
+	it('queries the keyed feeds once their credentials exist', () => {
+		const zones = auditZonesFor(
+			{
+				abusixDnsblApiKey: 'abcdefghijklmnopqrstuvwxyz012345',
+				invaluementDnsblZone: 'sip.example.invaluement.com',
+			},
+			'ipv4'
+		);
+		expect(zones.find((zone) => zone.zoneId === 'abusix')?.zone).toContain(
+			'abcdefghijklmnopqrstuvwxyz012345.'
+		);
+		expect(zones.find((zone) => zone.zoneId === 'invaluement')?.zone).toBe(
+			'sip.example.invaluement.com'
+		);
+	});
+});
+
+describe('the sweep is advisory and always terminates', () => {
+	it('persists a record per configured address', async () => {
+		const { redis, store } = fakeRedis();
+		const records = await runIpAuditSweep(
+			redis,
+			config({ ipPools: { transactional: [IP], campaign: ['203.0.113.11'] } }),
+			deps()
+		);
+		expect(records).toHaveLength(2);
+		expect(store.size).toBe(2);
+		expect((await getIpAuditRecord(redis, IP))?.ip).toBe(IP);
+	});
+
+	it('keeps going when one address fails to persist', async () => {
+		const { redis, store } = fakeRedis([IP]);
+		const records = await runIpAuditSweep(
+			redis,
+			config({ ipPools: { transactional: [IP], campaign: ['203.0.113.11'] } }),
+			deps()
+		);
+		expect(records.map((record) => record.ip)).toEqual(['203.0.113.11']);
+		expect(store.size).toBe(1);
+	});
+
+	it('returns no record rather than throwing on corrupt stored JSON', async () => {
+		const { redis, store } = fakeRedis();
+		store.set('mta:ip-audit:203.0.113.10', '{not json');
+		expect(await getIpAuditRecord(redis, IP)).toBeNull();
+	});
+
+	it('is due when nothing is stored and not due again within the day', async () => {
+		const { redis } = fakeRedis();
+		const now = 1_700_000_000_000;
+		expect(await ipAuditIsDue(redis, config(), now)).toBe(true);
+		await runIpAuditSweep(redis, config(), deps({ now: () => now }));
+		expect(await ipAuditIsDue(redis, config(), now + 60_000)).toBe(false);
+		expect(await ipAuditIsDue(redis, config(), now + 25 * 60 * 60 * 1000)).toBe(true);
+	});
+});
