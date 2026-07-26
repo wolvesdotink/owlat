@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { formatDateTime } from "~/utils/formatters";
+import { formatDateTime } from '~/utils/formatters';
 import type {
 	DeliverabilityAlertOperation,
 	DeliverabilityChecklistGroup,
 	DeliverabilityRegressionAlert,
-} from "~/utils/deliverabilityCenter";
-import { findDeliverabilityItem } from "~/utils/deliverabilityCenter";
+} from '~/utils/deliverabilityCenter';
+import { findDeliverabilityItem } from '~/utils/deliverabilityCenter';
 
 const props = defineProps<{
 	alerts: DeliverabilityRegressionAlert[];
@@ -23,10 +23,10 @@ const rows = computed(() =>
 	props.alerts.map((alert) => ({
 		alert,
 		item: findDeliverabilityItem(props.groups, alert),
-	})),
+	}))
 );
 
-function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertOperation["kind"]) {
+function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertOperation['kind']) {
 	return props.activeOperation?.alertId === alert.id && props.activeOperation.kind === kind;
 }
 </script>
@@ -42,7 +42,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 			<UiIconBox icon="lucide:siren" size="sm" variant="error" rounded="lg" />
 			<div>
 				<h2 id="deliverability-alerts-heading" class="font-semibold text-text-primary">
-					Deliverability regression{{ rows.length === 1 ? "" : "s" }} detected
+					Deliverability regression{{ rows.length === 1 ? '' : 's' }} detected
 				</h2>
 				<p class="mt-0.5 text-sm text-text-secondary">
 					A check that previously passed is failing again. Review it before your next send.

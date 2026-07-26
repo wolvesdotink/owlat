@@ -1,6 +1,10 @@
 'use node';
 
-import { SES_RELAY_PROOF_MAX_AGE_MS, type DeliverabilityCheckId } from '@owlat/shared';
+import {
+	SES_RELAY_PROOF_MAX_AGE_MS,
+	serializeDeliverabilityObservation,
+	type DeliverabilityCheckId,
+} from '@owlat/shared';
 import { detectIpProvider } from './checklistProviderDetection';
 import { checklistTraits } from './checklistTraits';
 import {
@@ -22,14 +26,17 @@ function identityObservations(
 ): string[] {
 	return addresses.slice(0, 20).map((entry, index) => {
 		const identity = entry.fcrdns;
-		return [
-			`ip=${boundedIdentityField(entry.ip, 64)}`,
-			`provider=${boundedIdentityField(providers[index] ?? 'unknown', 32)}`,
-			`ptr=${boundedIdentityField(identity?.ptrNames.slice(0, 4).join(',') || 'missing', 160)}`,
-			`ehlo=${boundedIdentityField(identity?.ehlo ?? 'missing', 64)}`,
-			`reason=${boundedIdentityField(identity?.reason ?? 'none', 96)}`,
-			`checked-at=${identity?.checkedAt ?? 'missing'}`,
-		].join('; ');
+		return serializeDeliverabilityObservation({
+			kind: 'outbound_identity',
+			ip: boundedIdentityField(entry.ip, 64),
+			provider: boundedIdentityField(providers[index] ?? 'unknown', 32),
+			ptrNames: (identity?.ptrNames ?? [])
+				.slice(0, 4)
+				.map((name) => boundedIdentityField(name, 40)),
+			ehlo: boundedIdentityField(identity?.ehlo ?? 'missing', 64),
+			reason: boundedIdentityField(identity?.reason ?? 'none', 96),
+			checkedAt: identity?.checkedAt ?? 'missing',
+		});
 	});
 }
 

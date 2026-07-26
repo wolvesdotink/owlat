@@ -40,6 +40,15 @@ export {
 export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
 export { SES_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
 export {
+	DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
+	DELIVERABILITY_ALERT_RECIPIENT_STATUSES,
+	DELIVERABILITY_ALERT_RECIPIENT_UNAVAILABLE_REASONS,
+	type DeliverabilityAlertRecipientStatus,
+	type DeliverabilityAlertRecipientUnavailableReason,
+	type DeliverabilityAlertRecipientState,
+	type DeliverabilityAlertAdminRecipient,
+} from './deliverabilityAlerts';
+export {
 	SEND_TRANSPORT_KINDS,
 	type SendTransportKind,
 	type CoreSendTransportKind,

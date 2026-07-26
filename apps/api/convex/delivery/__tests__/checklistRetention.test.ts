@@ -6,6 +6,7 @@ import schema from '../../schema';
 import {
 	DELIVERABILITY_COMPLETED_RETENTION_MS,
 	DELIVERABILITY_EVIDENCE_RETENTION_MS,
+	DELIVERABILITY_ALERT_RETENTION_BATCH_SIZE,
 	DELIVERABILITY_RETENTION_BATCH_SIZE,
 } from '../checklistRetention';
 
@@ -254,6 +255,73 @@ describe('Deliverability Center retention', () => {
 		);
 		expect(remainingIds).not.toContain(staleResolvedId);
 		expect(remainingIds).toEqual(expect.arrayContaining([unresolvedId, recentResolvedId]));
+	});
+
+	it('boundedly deletes full recipient histories before their parent alerts', async () => {
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		const old = now - DELIVERABILITY_COMPLETED_RETENTION_MS - 10;
+		const [previousEvidenceId, regressedEvidenceId] = await t.run(async (ctx) => [
+			await ctx.db.insert('deliverabilityEvidence', evidenceValues(now, 'parent-page-previous')),
+			await ctx.db.insert('deliverabilityEvidence', evidenceValues(now, 'parent-page-regressed')),
+		]);
+		await t.run(async (ctx) => {
+			for (
+				let alertIndex = 0;
+				alertIndex < DELIVERABILITY_ALERT_RETENTION_BATCH_SIZE + 1;
+				alertIndex++
+			) {
+				const alertId = await ctx.db.insert('deliverabilityRegressionAlerts', {
+					organizationId: ORGANIZATION_ID,
+					identity: `recipient-history-${alertIndex}`,
+					itemId: 'deployment.ptr',
+					targetKey: TARGET_KEY,
+					previousEvidenceId,
+					regressedEvidenceId,
+					observedAt: old + alertIndex,
+					message: 'PTR regressed',
+					emailNotificationState: 'sent',
+					emailNotifiedAt: old + alertIndex,
+					resolvedAt: old + alertIndex,
+					createdAt: old + alertIndex,
+				});
+				const recipientCount = alertIndex === 0 ? 100 : 1;
+				for (let recipientIndex = 0; recipientIndex < recipientCount; recipientIndex++) {
+					await ctx.db.insert('deliverabilityAlertRecipients', {
+						organizationId: ORGANIZATION_ID,
+						alertId,
+						userId: `user-${alertIndex}-${recipientIndex}`,
+						status: 'sent',
+						attemptCount: 1,
+						sentAt: old + alertIndex,
+					});
+				}
+			}
+		});
+
+		await expect(
+			t.mutation(internal.delivery.checklistRetention.sweepAlerts, { startedAt: now })
+		).resolves.toEqual({
+			examined: DELIVERABILITY_ALERT_RETENTION_BATCH_SIZE,
+			deleted: DELIVERABILITY_ALERT_RETENTION_BATCH_SIZE,
+			continuationScheduled: true,
+		});
+		await expect(
+			t.run(async (ctx) => ({
+				alerts: (await ctx.db.query('deliverabilityRegressionAlerts').collect()).length,
+				recipients: (await ctx.db.query('deliverabilityAlertRecipients').collect()).length,
+			}))
+		).resolves.toEqual({ alerts: 1, recipients: 1 });
+
+		await expect(
+			t.mutation(internal.delivery.checklistRetention.sweepAlerts, { startedAt: now })
+		).resolves.toMatchObject({ examined: 1, deleted: 1 });
+		await expect(
+			t.run(async (ctx) => ({
+				alerts: (await ctx.db.query('deliverabilityRegressionAlerts').collect()).length,
+				recipients: (await ctx.db.query('deliverabilityAlertRecipients').collect()).length,
+			}))
+		).resolves.toEqual({ alerts: 0, recipients: 0 });
 	});
 
 	it('deletes only old terminal loopback attempts', async () => {

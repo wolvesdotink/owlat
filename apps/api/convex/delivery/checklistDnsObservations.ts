@@ -1,4 +1,7 @@
-import type { DeliverabilityChecklistStatus } from '@owlat/shared';
+import {
+	serializeDeliverabilityObservation,
+	type DeliverabilityChecklistStatus,
+} from '@owlat/shared';
 import { absoluteDnsRecordName, type ChecklistDnsRecord } from './checklistRecords';
 import { pendingDnsStatus } from './checklistValidatorTypes';
 
@@ -40,6 +43,18 @@ function boundedDnsField(value: string | number | boolean, maxLength: number): s
 	return `${text.slice(0, Math.max(0, maxLength - marker.length))}${marker}`;
 }
 
+type DnsRecordObservation = {
+	kind: 'dns_record';
+	label: string;
+	name: string;
+	recordType: string;
+	expected: string;
+	observed: string;
+	isVerified: boolean;
+	reason: string;
+	checkedAt: number | 'missing';
+};
+
 export function dnsRecordObservation(
 	label: string,
 	domain: string,
@@ -51,16 +66,17 @@ export function dnsRecordObservation(
 			? record.value
 			: `${record.priority} ${record.value}`
 		: 'missing';
-	return [
-		`dns=${boundedDnsField(label, 24)}`,
-		`name=${boundedDnsField(record ? absoluteDnsRecordName(record, domain) : 'missing', 64)}`,
-		`type=${boundedDnsField(record?.type ?? 'TXT', 8)}`,
-		`expected=${boundedDnsField(expectedValue, 72)}`,
-		`observed=${boundedDnsField(result?.foundValue ?? 'missing', 72)}`,
-		`verified=${result?.verified ?? false}`,
-		`reason=${boundedDnsField(result?.error ?? 'none', 64)}`,
-		`checked-at=${result?.lastChecked ?? 'missing'}`,
-	].join('; ');
+	return serializeDeliverabilityObservation({
+		kind: 'dns_record',
+		label: boundedDnsField(label, 24),
+		name: boundedDnsField(record ? absoluteDnsRecordName(record, domain) : 'missing', 64),
+		recordType: boundedDnsField(record?.type ?? 'TXT', 8),
+		expected: boundedDnsField(expectedValue, 72),
+		observed: boundedDnsField(result?.foundValue ?? 'missing', 72),
+		isVerified: result?.verified ?? false,
+		reason: boundedDnsField(result?.error ?? 'none', 64),
+		checkedAt: result?.lastChecked ?? 'missing',
+	} satisfies DnsRecordObservation);
 }
 
 export function dnsBundleObservations(
@@ -73,4 +89,19 @@ export function dnsBundleObservations(
 	return Array.from({ length: count }, (_, index) =>
 		dnsRecordObservation(`${label}[${index}]`, domain, records[index], results?.[index])
 	);
+}
+
+export function mtaStsObservation(input: {
+	expectedId: string;
+	observedId: string;
+	isTxtRecordValid: boolean;
+	isPolicyServedValid: boolean;
+}): string {
+	return serializeDeliverabilityObservation({
+		kind: 'mta_sts',
+		expectedId: boundedDnsField(input.expectedId, 160),
+		observedId: boundedDnsField(input.observedId, 160),
+		isTxtRecordValid: input.isTxtRecordValid,
+		isPolicyServedValid: input.isPolicyServedValid,
+	});
 }

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { api } from "@owlat/api";
-import type { Id } from "@owlat/api/dataModel";
+import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import type {
 	DeliverabilityAlertOperation,
 	DeliverabilityCenter,
 	DeliverabilityChecklistItem,
 	DeliverabilityRegressionAlert,
-} from "~/utils/deliverabilityCenter";
+} from '~/utils/deliverabilityCenter';
 import {
 	buildDeliverabilityReport,
 	checklistItemDomId,
@@ -15,13 +15,13 @@ import {
 	findDeliverabilityItem,
 	formatVerificationAge,
 	itemKey,
-} from "~/utils/deliverabilityCenter";
+} from '~/utils/deliverabilityCenter';
 
-useHead({ title: "Deliverability — Owlat" });
+useHead({ title: 'Deliverability — Owlat' });
 
 definePageMeta({
-	layout: "dashboard",
-	middleware: "auth",
+	layout: 'dashboard',
+	middleware: 'auth',
 });
 
 const { showToast } = useToast();
@@ -36,33 +36,33 @@ const {
 const center = computed<DeliverabilityCenter | null>(() => centerData.value ?? null);
 const counts = computed(() => countDeliverabilityItems(center.value?.groups ?? []));
 const grade = computed(() =>
-	center.value ? DELIVERABILITY_GRADE_PRESENTATION[center.value.grade] : null,
+	center.value ? DELIVERABILITY_GRADE_PRESENTATION[center.value.grade] : null
 );
 
 const activeAlertOperation = ref<DeliverabilityAlertOperation | null>(null);
 const { run: acknowledgeRegressionAlert } = useBackendOperation(
 	api.delivery.checklistAlertManagement.acknowledge,
-	{ label: "Acknowledge deliverability regression" },
+	{ label: 'Acknowledge deliverability regression' }
 );
 const { run: resolveRegressionAlert } = useBackendOperation(
 	api.delivery.checklistAlertManagement.resolve,
-	{ label: "Resolve deliverability regression" },
+	{ label: 'Resolve deliverability regression' }
 );
 
 async function updateRegressionAlert(
 	alert: DeliverabilityRegressionAlert,
-	kind: DeliverabilityAlertOperation["kind"],
+	kind: DeliverabilityAlertOperation['kind']
 ) {
 	activeAlertOperation.value = { alertId: alert.id, kind };
 	try {
 		const result =
-			kind === "acknowledge"
+			kind === 'acknowledge'
 				? await acknowledgeRegressionAlert({ alertId: alert.id })
 				: await resolveRegressionAlert({ alertId: alert.id });
 		if (result) {
 			showToast(
-				kind === "acknowledge" ? "Regression acknowledged" : "Regression resolved",
-				"success",
+				kind === 'acknowledge' ? 'Regression acknowledged' : 'Regression resolved',
+				'success'
 			);
 		}
 	} finally {
@@ -74,27 +74,27 @@ async function openRegressionCheck(alert: DeliverabilityRegressionAlert) {
 	if (!center.value) return;
 	const item = findDeliverabilityItem(center.value.groups, alert);
 	if (!item) {
-		showToast("This check is no longer part of the active sending setup", "warning");
+		showToast('This check is no longer part of the active sending setup', 'warning');
 		return;
 	}
 	await nextTick();
 	const details = document.getElementById(checklistItemDomId(item));
 	if (!details) return;
-	if (details.tagName === "DETAILS") {
+	if (details.tagName === 'DETAILS') {
 		(details as HTMLDetailsElement).open = true;
 	}
-	const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 	details.scrollIntoView({
-		behavior: reducedMotion ? "auto" : "smooth",
-		block: "center",
+		behavior: reducedMotion ? 'auto' : 'smooth',
+		block: 'center',
 	});
-	(details.querySelector("summary") as HTMLElement | null)?.focus({ preventScroll: true });
+	(details.querySelector('summary') as HTMLElement | null)?.focus({ preventScroll: true });
 }
 
 const verifyingItemKey = ref<string | null>(null);
 const { run: verifyNow } = useBackendOperation(api.delivery.checklistVerification.verifyNow, {
-	label: "Verify deliverability check",
-	type: "action",
+	label: 'Verify deliverability check',
+	type: 'action',
 });
 
 async function verify(item: DeliverabilityChecklistItem) {
@@ -102,15 +102,15 @@ async function verify(item: DeliverabilityChecklistItem) {
 	try {
 		const result = await verifyNow({
 			itemId: item.id,
-			...(item.scope.kind === "domain" ? { domainId: item.scope.domainId } : {}),
+			...(item.scope.kind === 'domain' ? { domainId: item.scope.domainId } : {}),
 		});
 		if (!result) return;
-		if (result.status === "pass") {
-			showToast(`${item.title} is verified`, "success");
-		} else if (result.status === "pending-dns") {
-			showToast("We’ll keep checking while DNS spreads");
+		if (result.status === 'pass') {
+			showToast(`${item.title} is verified`, 'success');
+		} else if (result.status === 'pending-dns') {
+			showToast('We’ll keep checking while DNS spreads');
 		} else {
-			showToast("The check still needs attention", "warning");
+			showToast('The check still needs attention', 'warning');
 		}
 	} finally {
 		verifyingItemKey.value = null;
@@ -119,32 +119,32 @@ async function verify(item: DeliverabilityChecklistItem) {
 
 const { run: startLoopback, isLoading: isStartingLoopback } = useBackendOperation(
 	api.delivery.checklistLoopback.start,
-	{ label: "Run deliverability proof", type: "action" },
+	{ label: 'Run deliverability proof', type: 'action' }
 );
 
-async function startProof(domainId: Id<"domains">) {
+async function startProof(domainId: Id<'domains'>) {
 	const result = await startLoopback({ domainId });
 	if (!result) return;
 	showToast(
-		result.status === "passed"
-			? "End-to-end proof passed"
-			: result.status === "sending" || result.status === "awaiting_inbound"
-				? "Probe sent — waiting for the receiving check"
-				: "The end-to-end proof found a problem",
-		result.status === "passed"
-			? "success"
-			: result.status === "failed" || result.status === "timed_out"
-				? "warning"
-				: "info",
+		result.status === 'passed'
+			? 'End-to-end proof passed'
+			: result.status === 'sending' || result.status === 'awaiting_inbound'
+				? 'Probe sent — waiting for the receiving check'
+				: 'The end-to-end proof found a problem',
+		result.status === 'passed'
+			? 'success'
+			: result.status === 'failed' || result.status === 'timed_out'
+				? 'warning'
+				: 'info'
 	);
 }
 
 async function copyReport() {
 	if (!center.value) return;
-	const copied = await copy(buildDeliverabilityReport(center.value), "deliverability-report");
+	const copied = await copy(buildDeliverabilityReport(center.value), 'deliverability-report');
 	showToast(
-		copied ? "Setup report copied" : "Could not copy the report",
-		copied ? "success" : "error",
+		copied ? 'Setup report copied' : 'Could not copy the report',
+		copied ? 'success' : 'error'
 	);
 }
 </script>
@@ -172,7 +172,7 @@ async function copyReport() {
 					:name="isCopied('deliverability-report') ? 'lucide:check' : 'lucide:clipboard-copy'"
 					class="h-4 w-4"
 				/>
-				{{ isCopied("deliverability-report") ? "Report copied" : "Copy setup report" }}
+				{{ isCopied('deliverability-report') ? 'Report copied' : 'Copy setup report' }}
 			</button>
 		</header>
 
@@ -236,7 +236,7 @@ async function copyReport() {
 									{{
 										center.checkedAt
 											? `Latest live check ${formatVerificationAge(center.checkedAt)}`
-											: "No live check has completed yet"
+											: 'No live check has completed yet'
 									}}
 								</p>
 							</div>

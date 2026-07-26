@@ -203,6 +203,7 @@ import type * as crons from "../crons.js";
 import type * as delivery_contactToken from "../delivery/contactToken.js";
 import type * as delivery_checklist from "../delivery/checklist.js";
 import type * as delivery_checklistAlertManagement from "../delivery/checklistAlertManagement.js";
+import type * as delivery_checklistAlertRecipients from "../delivery/checklistAlertRecipients.js";
 import type * as delivery_checklistAlertState from "../delivery/checklistAlertState.js";
 import type * as delivery_checklistAlerts from "../delivery/checklistAlerts.js";
 import type * as delivery_checklistDeploymentValidators from "../delivery/checklistDeploymentValidators.js";
@@ -956,6 +957,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/contactToken": typeof delivery_contactToken;
   "delivery/checklist": typeof delivery_checklist;
   "delivery/checklistAlertManagement": typeof delivery_checklistAlertManagement;
+  "delivery/checklistAlertRecipients": typeof delivery_checklistAlertRecipients;
   "delivery/checklistAlertState": typeof delivery_checklistAlertState;
   "delivery/checklistAlerts": typeof delivery_checklistAlerts;
   "delivery/checklistDeploymentValidators": typeof delivery_checklistDeploymentValidators;

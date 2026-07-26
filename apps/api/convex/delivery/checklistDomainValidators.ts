@@ -19,6 +19,7 @@ import {
 	dnsRecordObservation,
 	dnsResultStatus,
 	isSuccessfulDnsResult,
+	mtaStsObservation,
 } from './checklistDnsObservations';
 import {
 	checklistObservation,
@@ -144,7 +145,9 @@ export async function observeDomainCheck(
 				? strong
 					? 'pass'
 					: hasProviderManagedCname
-						? 'warn'
+						? isFinalDnsRetry
+							? 'warn'
+							: 'pending-dns'
 						: pendingDnsStatus(isFinalDnsRetry)
 				: dnsBundleStatus(results.dkim, isFinalDnsRetry, configured.length);
 			return checklistObservation(
@@ -277,8 +280,12 @@ export async function observeDomainCheck(
 					: 'The MTA-STS TXT id or HTTPS policy body does not match.',
 				[
 					...providerValues,
-					`mta-sts-txt=expected:${verification.expectedId};observed:${verification.observedId ?? 'missing'};valid:${verification.txtRecordValid}`,
-					`mta-sts-policy=served-valid:${verification.policyServedValid}`,
+					mtaStsObservation({
+						expectedId: verification.expectedId,
+						observedId: verification.observedId ?? 'missing',
+						isTxtRecordValid: verification.txtRecordValid,
+						isPolicyServedValid: verification.policyServedValid,
+					}),
 				]
 			);
 		}

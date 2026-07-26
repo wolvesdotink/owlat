@@ -1,0 +1,50 @@
+import type { DeliverabilityAlertRecipientState } from '@owlat/shared';
+
+export const DELIVERABILITY_ALERT_RECIPIENT_HISTORY_LIMIT = 100;
+
+type AlertNotificationState = 'pending' | 'sent' | 'unavailable';
+
+export function toDeliverabilityAlertRecipientState(
+	recipient: DeliverabilityAlertRecipientState
+): DeliverabilityAlertRecipientState {
+	return {
+		userId: recipient.userId,
+		status: recipient.status,
+		attemptCount: recipient.attemptCount,
+		...(recipient.attemptToken ? { attemptToken: recipient.attemptToken } : {}),
+		...(recipient.attemptStartedAt !== undefined
+			? { attemptStartedAt: recipient.attemptStartedAt }
+			: {}),
+		...(recipient.nextAttemptAt !== undefined ? { nextAttemptAt: recipient.nextAttemptAt } : {}),
+		...(recipient.sentAt !== undefined ? { sentAt: recipient.sentAt } : {}),
+		...(recipient.unavailableReason ? { unavailableReason: recipient.unavailableReason } : {}),
+	};
+}
+
+export function deliverabilityAlertNotificationPatch(
+	states: readonly DeliverabilityAlertRecipientState[]
+): {
+	emailNotificationState: AlertNotificationState;
+	emailNotifiedAt: number | undefined;
+} {
+	const hasInFlightRecipient = states.some(
+		(state) => state.status === 'pending' || state.status === 'sending'
+	);
+	const earliestSentAt = states.reduce<number | undefined>(
+		(earliest, recipient) =>
+			recipient.status === 'sent' && recipient.sentAt !== undefined
+				? earliest === undefined
+					? recipient.sentAt
+					: Math.min(earliest, recipient.sentAt)
+				: earliest,
+		undefined
+	);
+	return {
+		emailNotificationState: hasInFlightRecipient
+			? 'pending'
+			: earliestSentAt !== undefined
+				? 'sent'
+				: 'unavailable',
+		emailNotifiedAt: earliestSentAt,
+	};
+}

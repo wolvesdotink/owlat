@@ -6,7 +6,23 @@ vi.mock('../checklistProviderDetection', () => ({
 
 import { detectIpProvider } from '../checklistProviderDetection';
 import { observeDeploymentCheck } from '../checklistDeploymentValidators';
+import { boundedObservedValues } from '../checklistEvidence';
 import type { ChecklistVerificationContext } from '../checklistValidatorTypes';
+
+function parsedIdentityObservation(
+	values: readonly string[],
+	ip: string
+): Record<string, unknown> | undefined {
+	return values
+		.map((value) => {
+			try {
+				return JSON.parse(value) as Record<string, unknown>;
+			} catch {
+				return undefined;
+			}
+		})
+		.find((value) => value?.['kind'] === 'outbound_identity' && value['ip'] === ip);
+}
 
 function context(dnsblCheckedAt?: number): ChecklistVerificationContext {
 	return {
@@ -42,7 +58,10 @@ function context(dnsblCheckedAt?: number): ChecklistVerificationContext {
 }
 
 describe('deployment checklist validator freshness', () => {
-	beforeEach(() => vi.clearAllMocks());
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.mocked(detectIpProvider).mockResolvedValue(null);
+	});
 
 	it('does not pass clean DNSBL state without a recent underlying check timestamp', async () => {
 		vi.useFakeTimers();
@@ -125,11 +144,13 @@ describe('deployment checklist validator freshness', () => {
 		];
 		const pending = await observeDeploymentCheck(itemId, mismatch, false);
 		expect(pending.status).toBe('pending-dns');
-		const raw = pending.observedValues.find((value) => value.startsWith(`ip=${ip};`));
-		expect(raw).toContain('ptr=ptr.example.test');
-		expect(raw).toContain('ehlo=mail.example.test');
-		expect(raw).toContain('reason=forward-mismatch');
-		expect(raw).toContain(`checked-at=${now}`);
+		const raw = parsedIdentityObservation(pending.observedValues, ip);
+		expect(raw).toMatchObject({
+			ptrNames: ['ptr.example.test'],
+			ehlo: 'mail.example.test',
+			reason: 'forward-mismatch',
+			checkedAt: now,
+		});
 		expect(pending.diagnostic).toContain('PTR ptr.example.test');
 		await expect(observeDeploymentCheck(itemId, mismatch, true)).resolves.toMatchObject({
 			status: 'fail',
@@ -150,6 +171,59 @@ describe('deployment checklist validator freshness', () => {
 		expect(observation.observedValues).not.toContain('vps-provider=hetzner');
 		expect(observation.observedValues).not.toContain('vps-provider=digitalocean');
 		expect(detectIpProvider).toHaveBeenCalledTimes(2);
+	});
+
+	it('keeps DNS-controlled identity delimiters inside structured fields', async () => {
+		const now = Date.now();
+		const spoofed = context(now);
+		spoofed.warming!.ips[0]!.fcrdns = {
+			...spoofed.warming!.ips[0]!.fcrdns!,
+			ptrNames: ['ptr.example.test; reason=pass'],
+			reason: 'mismatch; checkedAt=0' as never,
+			checkedAt: now,
+		};
+
+		const observation = await observeDeploymentCheck('deployment.ptr', spoofed, false);
+		expect(parsedIdentityObservation(observation.observedValues, '203.0.113.10')).toMatchObject({
+			ptrNames: ['ptr.example.test; reason=pass'],
+			reason: 'mismatch; checkedAt=0',
+			checkedAt: now,
+		});
+	});
+
+	it('keeps escape-heavy identity JSON parseable through persistence bounds', async () => {
+		const now = Date.now();
+		const escapeHeavy = '\\"'.repeat(200);
+		const identity = context(now);
+		identity.warming!.ips[0] = {
+			...identity.warming!.ips[0]!,
+			ip: escapeHeavy,
+			fcrdns: {
+				ehlo: escapeHeavy,
+				ptrNames: Array.from({ length: 4 }, () => escapeHeavy),
+				isPtrPresent: true,
+				isPtrFqdn: true,
+				isForwardConfirmed: false,
+				isEhloMatched: false,
+				verdict: 'fail',
+				isGenericPtr: false,
+				reason: escapeHeavy as never,
+				checkedAt: now,
+				isOverridden: false,
+			},
+		};
+
+		const observation = await observeDeploymentCheck('deployment.ptr', identity, false);
+		const structured = boundedObservedValues(observation.observedValues).find((value) => {
+			try {
+				return (JSON.parse(value) as Record<string, unknown>)['kind'] === 'outbound_identity';
+			} catch {
+				return false;
+			}
+		});
+		expect(structured).toBeDefined();
+		expect(structured!.length).toBeLessThanOrEqual(512);
+		expect(() => JSON.parse(structured!)).not.toThrow();
 	});
 
 	it.each([
@@ -184,14 +258,25 @@ describe('deployment checklist validator freshness', () => {
 		];
 
 		const observation = await observeDeploymentCheck(itemId, identity, false);
-		const raw = observation.observedValues.find((value) => value.startsWith(`ip=${ip};`));
-		expect(raw).toBeDefined();
-		expect(raw!.length).toBeLessThanOrEqual(512);
-		expect(raw).toContain('ptr=');
-		expect(raw).toContain('ehlo=');
-		expect(raw).toContain('reason=');
-		expect(raw).toContain(`checked-at=${now}`);
-		expect(raw).toContain('…[length=');
+		const serialized = observation.observedValues.find((value) => {
+			try {
+				return (JSON.parse(value) as Record<string, unknown>)['ip'] === ip;
+			} catch {
+				return false;
+			}
+		});
+		expect(serialized).toBeDefined();
+		expect(serialized!.length).toBeLessThanOrEqual(512);
+		const raw = JSON.parse(serialized!) as Record<string, unknown>;
+		expect(raw).toMatchObject({
+			kind: 'outbound_identity',
+			ip,
+			checkedAt: now,
+		});
+		expect(raw).toHaveProperty('ptrNames');
+		expect(raw).toHaveProperty('ehlo');
+		expect(raw).toHaveProperty('reason');
+		expect(serialized).toContain('…[length=');
 	});
 
 	it('retries a fresh IPv6 SPF mismatch before failing', async () => {
@@ -240,9 +325,13 @@ describe('deployment checklist validator freshness', () => {
 
 		const observation = await observeDeploymentCheck('deployment.ptr', many, false);
 		expect(observation.observedValues[0]).toBe('vps-provider=mixed-or-unknown');
-		expect(observation.observedValues.slice(1, 16).every((value) => value.startsWith('ip='))).toBe(
-			true
-		);
+		expect(
+			observation.observedValues
+				.slice(1, 16)
+				.every(
+					(value) => (JSON.parse(value) as Record<string, unknown>)['kind'] === 'outbound_identity'
+				)
+		).toBe(true);
 		expect(observation.observedValues).not.toEqual(
 			expect.arrayContaining([expect.stringContaining('vps-provider-ip=')])
 		);
