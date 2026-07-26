@@ -14,6 +14,7 @@ import { getWarmingState } from '../intelligence/warming.js';
 import { registry } from '../monitoring/collector.js';
 import { getSmtpReachability } from './smtpReachability.js';
 import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
+import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 
 const startTime = Date.now();
 
@@ -45,11 +46,13 @@ export function createHealthHandler(redis: Redis, config: MtaConfig) {
 				const dnsbl = await getDnsblStatus(redis, pool.ip);
 				const warmingState = await getWarmingState(redis, pool.ip);
 				const fcrdns = await getFcrdnsReadiness(redis, pool.ip);
+				const ipv6Spf = await getIpv6SpfReadiness(redis, pool.ip);
 
 				return {
 					...pool,
 					dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 					fcrdns,
+					ipv6Spf,
 					warming: warmingState
 						? {
 								phase: warmingState.phase,

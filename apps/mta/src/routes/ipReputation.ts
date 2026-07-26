@@ -15,6 +15,7 @@ import { getState as getCircuitBreakerState } from '../intelligence/circuitBreak
 import { getPoolStatus } from '../scaling/ipPool.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { getFcrdnsReadiness } from '../scaling/fcrdns.js';
+import { getIpv6SpfReadiness } from '../scaling/ipv6SpfReadiness.js';
 import { configuredDnsblZones, getDnsblStatus } from '../intelligence/dnsbl.js';
 import {
 	DESTINATION_PROVIDER_KEYS,
@@ -106,11 +107,12 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 		const today = new Date().toISOString().split('T')[0]!;
 
 		// Gather data from multiple systems in parallel
-		const [todayMetrics, warmingState, poolStatuses, fcrdns, dnsbl] = await Promise.all([
+		const [todayMetrics, warmingState, poolStatuses, fcrdns, ipv6Spf, dnsbl] = await Promise.all([
 			getIpMetrics(redis, ip, today),
 			getWarmingState(redis, ip),
 			getPoolStatus(redis, config.ipPools),
 			getFcrdnsReadiness(redis, ip),
+			getIpv6SpfReadiness(redis, ip),
 			getDnsblStatus(redis, ip),
 		]);
 
@@ -156,6 +158,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 					}
 				: null,
 			fcrdns,
+			ipv6Spf,
 			dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 			dnsblListings: listedDnsblIds(config, dnsbl),
 		});
@@ -170,10 +173,11 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 
 		const summaries = await Promise.all(
 			allIps.map(async (ip) => {
-				const [metrics, warmingState, fcrdns, dnsbl] = await Promise.all([
+				const [metrics, warmingState, fcrdns, ipv6Spf, dnsbl] = await Promise.all([
 					getIpMetrics(redis, ip, today),
 					getWarmingState(redis, ip),
 					getFcrdnsReadiness(redis, ip),
+					getIpv6SpfReadiness(redis, ip),
 					getDnsblStatus(redis, ip),
 				]);
 
@@ -194,6 +198,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 					active: ipPoolEntry?.active ?? false,
 					blockReasons: ipPoolEntry?.blockReasons ?? [],
 					fcrdns,
+					ipv6Spf,
 					dnsbl: dnsbl?.['overallStatus'] ?? 'unknown',
 					dnsblListings: listedDnsblIds(config, dnsbl),
 				};

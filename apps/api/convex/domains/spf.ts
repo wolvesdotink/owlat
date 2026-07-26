@@ -51,6 +51,7 @@ export { type AlignmentMode, isSpfAligned, emailDomain } from '@owlat/shared/spf
 export { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
 
 import { isSpfRecord, mergeSpfRecords } from '@owlat/shared/spf';
+import { parseIpAddress } from '@owlat/shared/ipAddress';
 
 export const SPF_QUALIFIERS = ['~all', '-all', '?all', '+all'] as const;
 
@@ -82,6 +83,8 @@ export type SpfRecordParts = {
 	include?: string;
 	/** `ip4:` addresses to authorize directly (e.g. each IP pool address). */
 	ip4?: readonly string[];
+	/** `ip6:` addresses to authorize directly after explicit IPv6 enablement. */
+	ip6?: readonly string[];
 	/** Trailing mechanism qualifier; defaults to the soft-fail `~all`. */
 	qualifier?: SpfQualifier;
 };
@@ -89,7 +92,7 @@ export type SpfRecordParts = {
 /**
  * Build a `v=spf1 …` record value.
  *
- * Mechanisms are emitted in the order ip4 → include → all. The trailing
+ * Mechanisms are emitted in the order ip4 → ip6 → include → all. The trailing
  * mechanism is `<qualifier>all` where the qualifier defaults to `~all`.
  */
 export function buildSpfRecordValue(parts: SpfRecordParts): string {
@@ -98,6 +101,10 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
 	for (const ip of parts.ip4 ?? []) {
 		const trimmed = ip.trim();
 		if (trimmed) mechanisms.push(`ip4:${trimmed}`);
+	}
+	for (const ip of parts.ip6 ?? []) {
+		const trimmed = ip.trim();
+		if (trimmed) mechanisms.push(`ip6:${trimmed}`);
 	}
 	if (parts.include?.trim()) {
 		mechanisms.push(`include:${parts.include.trim()}`);
@@ -112,10 +119,17 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
  * that check MAIL FROM. Authorizes each IP-pool address directly.
  */
 export function buildReturnPathSpfRecord(
-	ip4: readonly string[],
+	poolIps: readonly string[],
 	qualifier: SpfQualifier = DEFAULT_SPF_QUALIFIER
 ): string {
-	return buildSpfRecordValue({ ip4, qualifier });
+	const ip4: string[] = [];
+	const ip6: string[] = [];
+	for (const value of poolIps) {
+		const parsed = parseIpAddress(value);
+		if (!parsed) throw new Error(`Invalid MTA pool IP address: ${value}`);
+		(parsed.family === 'ipv4' ? ip4 : ip6).push(parsed.address);
+	}
+	return buildSpfRecordValue({ ip4, ip6, qualifier });
 }
 
 /**
@@ -193,10 +207,16 @@ export function buildReturnPathMailFromRecords(
  * and the return-path edit so both read the env the same way.
  */
 export function parsePoolIps(raw: string | undefined | null): string[] {
-	return (raw ?? '')
+	const result: string[] = [];
+	for (const entry of (raw ?? '')
 		.split(',')
 		.map((ip) => ip.trim())
-		.filter(Boolean);
+		.filter(Boolean)) {
+		const parsed = parseIpAddress(entry);
+		if (!parsed) throw new Error(`MTA_IP_POOLS contains an invalid bare IP address: ${entry}`);
+		if (!result.includes(parsed.address)) result.push(parsed.address);
+	}
+	return result;
 }
 
 // ─── Duplicate / existing-record detection ──────────────────────────────────

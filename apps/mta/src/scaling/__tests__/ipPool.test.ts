@@ -69,8 +69,12 @@ describe('ipPool', () => {
 		it('clears retired readiness observations so re-adding an IP requires fresh verification', async () => {
 			await initializePools(redis, testConfig);
 			await redis.hset('mta:dnsbl:10.0.0.1', 'overallStatus', 'critical');
-			await redis.hset('mta:ip-pool:applied-observations:dnsbl', '10.0.0.1', '7');
-			await redis.hset('mta:ip-pool:underlying-blocks:dnsbl', '10.0.0.1', '1');
+			for (const reason of ['dnsbl', 'fcrdns', 'ipv4-identity', 'spf']) {
+				await redis.hset(`mta:ip-pool:applied-observations:${reason}`, '10.0.0.1', '7');
+				await redis.hset(`mta:ip-pool:underlying-blocks:${reason}`, '10.0.0.1', '1');
+			}
+			await redis.hset('mta:ipv4-identity:10.0.0.1', 'ready', 'false');
+			await redis.hset('mta:ipv6-spf:10.0.0.1', 'verdict', 'fail');
 			await initializePools(redis, {
 				transactional: testConfig.transactional.slice(1),
 				campaign: testConfig.campaign,
@@ -78,7 +82,14 @@ describe('ipPool', () => {
 
 			expect(await redis.exists('mta:fcrdns:10.0.0.1')).toBe(0);
 			expect(await redis.exists('mta:dnsbl:10.0.0.1')).toBe(0);
-			expect(await redis.hget('mta:ip-pool:applied-observations:dnsbl', '10.0.0.1')).toBeNull();
+			expect(await redis.exists('mta:ipv4-identity:10.0.0.1')).toBe(0);
+			expect(await redis.exists('mta:ipv6-spf:10.0.0.1')).toBe(0);
+			for (const reason of ['dnsbl', 'fcrdns', 'ipv4-identity', 'spf']) {
+				expect(
+					await redis.hget(`mta:ip-pool:applied-observations:${reason}`, '10.0.0.1')
+				).toBeNull();
+				expect(await redis.hget(`mta:ip-pool:underlying-blocks:${reason}`, '10.0.0.1')).toBeNull();
+			}
 
 			await initializePools(redis, testConfig);
 			expect(await redis.sismember('mta:ip-pool:active', '10.0.0.1')).toBe(0);

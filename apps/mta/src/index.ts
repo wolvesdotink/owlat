@@ -18,6 +18,7 @@ import {
 } from './smtp/submissionServer.js';
 import { initializePools } from './scaling/ipPool.js';
 import { runFcrdnsReadinessCheck } from './scaling/fcrdns.js';
+import { runIpv6SpfReadinessCheck } from './scaling/ipv6SpfReadiness.js';
 import { startDnsblChecker } from './intelligence/dnsbl.js';
 import { initializeWarming, evaluateDay } from './intelligence/warming.js';
 import * as orgLimits from './intelligence/orgLimits.js';
@@ -104,6 +105,7 @@ export async function main() {
 	// Complete the first observation before a worker can select an IP. A fresh,
 	// never-verified address therefore cannot race its quarantine at startup.
 	await runFcrdnsReadinessCheck(redis, config);
+	await runIpv6SpfReadinessCheck(redis, config);
 
 	// ── 4c. Finish this process's first DNSBL sweep, then elect the cron leader ──
 	// The boot sweep is unconditional because an existing leader in a rolling
@@ -191,9 +193,9 @@ export async function main() {
 	const fcrdnsInterval = setInterval(
 		() => {
 			if (!isLeader()) return;
-			runFcrdnsReadinessCheck(redis, config).catch((err) =>
-				logger.error({ err }, 'Periodic FCrDNS readiness check failed')
-			);
+			void runFcrdnsReadinessCheck(redis, config)
+				.then(() => runIpv6SpfReadinessCheck(redis, config))
+				.catch((err) => logger.error({ err }, 'Periodic outbound-IP readiness check failed'));
 		},
 		60 * 60 * 1000
 	);

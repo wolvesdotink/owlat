@@ -34,11 +34,19 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 		ip.blockReasons?.includes('fcrdns') === true ||
 		(identityFailed && identity?.isOverridden !== true);
 	const dnsblBlocked = ip.blockReasons?.includes('dnsbl') === true || ip.dnsbl === 'critical';
+	const ipv4IdentityBlocked = ip.blockReasons?.includes('ipv4-identity') === true;
+	const spfBlocked = ip.blockReasons?.includes('spf') === true;
 	const dnsblUnavailable = ip.dnsbl === 'unknown';
 	const dnsblDegraded = ip.dnsbl === 'degraded';
 	let tone: HealthTone;
 	let label: string;
-	if (identityBlocked && dnsblBlocked) {
+	if (spfBlocked) {
+		tone = 'error';
+		label = 'IPv6 SPF prerequisite';
+	} else if (ipv4IdentityBlocked) {
+		tone = 'error';
+		label = 'IPv4 prerequisite';
+	} else if (identityBlocked && dnsblBlocked) {
 		tone = 'error';
 		label = 'Identity + blocklist';
 	} else if (dnsblBlocked) {
@@ -82,18 +90,24 @@ export function outboundIpPresentation(ip: OutboundIpIdentityInput): OutboundIpP
 				? 'A non-critical DNS blocklist currently lists this IP.'
 				: 'A critical DNS blocklist currently excludes this IP from delivery.';
 	const hasBlocklistConcern = dnsblBlocked || dnsblUnavailable || dnsblDegraded;
-	const detail =
-		identityBlocked && dnsblBlocked
-			? `${identityDetail} ${blocklistDetail}`
-			: hasBlocklistConcern
-				? blocklistDetail
-				: identityDetail;
-	const remediation =
-		identityBlocked && identity
-			? reverseDnsGuidance(identity.ptrNames).instruction
-			: hasBlocklistConcern
-				? 'Review the MTA blocklist details, resolve the listing cause, and request delisting.'
-				: null;
+	const detail = spfBlocked
+		? 'Outbound IPv6 stays quarantined until the return-path SPF record authorizes its exact ip6: address.'
+		: ipv4IdentityBlocked
+			? 'Outbound IPv6 stays quarantined until every configured IPv4 identity passes FCrDNS.'
+			: identityBlocked && dnsblBlocked
+				? `${identityDetail} ${blocklistDetail}`
+				: hasBlocklistConcern
+					? blocklistDetail
+					: identityDetail;
+	const remediation = spfBlocked
+		? 'Publish the generated ip6: mechanism on the return-path domain, then verify again.'
+		: ipv4IdentityBlocked
+			? 'Repair the IPv4 PTR, forward A record, and EHLO alignment before enabling IPv6.'
+			: identityBlocked && identity
+				? reverseDnsGuidance(identity.ptrNames).instruction
+				: hasBlocklistConcern
+					? 'Review the MTA blocklist details, resolve the listing cause, and request delisting.'
+					: null;
 
 	return { tone, label, detail, remediation };
 }

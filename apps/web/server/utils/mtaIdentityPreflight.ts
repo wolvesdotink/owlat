@@ -1,5 +1,4 @@
-import { isIPv4 } from 'node:net';
-import { resolve4, reverse } from 'node:dns/promises';
+import { resolve4, resolve6, reverse } from 'node:dns/promises';
 import {
 	fcrdnsReasonMessage,
 	isFqdn,
@@ -11,6 +10,7 @@ import {
 	type FcrdnsDnsDeps,
 	type FcrdnsVerification,
 } from '@owlat/shared/fcrdns';
+import { isIpv4MappedIpv6, parseIpAddress, parseIpv6Enabled } from '@owlat/shared/ipAddress';
 
 export interface MtaIdentityPreflightResult {
 	ok: boolean;
@@ -32,7 +32,7 @@ function commaList(value: string | undefined): string[] {
  */
 export async function preflightMtaIdentities(
 	env: Record<string, string>,
-	deps: FcrdnsDnsDeps = { reverse, resolve4 }
+	deps: FcrdnsDnsDeps = { reverse, resolve4, resolve6 }
 ): Promise<MtaIdentityPreflightResult> {
 	const ips = [
 		...new Set([
@@ -47,11 +47,46 @@ export async function preflightMtaIdentities(
 			identities: [],
 		};
 	}
-	const invalidIp = ips.find((ip) => !isIPv4(ip));
-	if (invalidIp) {
+	let ipv6Enabled: boolean;
+	try {
+		ipv6Enabled = parseIpv6Enabled(env['MTA_IPV6_ENABLED']);
+	} catch (err) {
+		return { ok: false, message: (err as Error).message, identities: [] };
+	}
+	const parsedIps = ips.map((ip) => ({ raw: ip, parsed: parseIpAddress(ip) }));
+	const invalidIp = parsedIps.find(({ parsed }) => !parsed);
+	if (invalidIp?.parsed === null) {
 		return {
 			ok: false,
-			message: `${invalidIp} is not a valid IPv4 sending address.`,
+			message: `${invalidIp.raw} is not a valid bare sending IP address.`,
+			identities: [],
+		};
+	}
+	const normalizedIps = parsedIps.map(({ parsed }) => parsed!);
+	const invalidIpv6 = normalizedIps.find(
+		(ip) => ip.family === 'ipv6' && (ip.address === '::' || isIpv4MappedIpv6(ip.address))
+	);
+	if (invalidIpv6) {
+		return {
+			ok: false,
+			message: `${invalidIpv6.address} is not a stable native IPv6 source address.`,
+			identities: [],
+		};
+	}
+	if (normalizedIps.some((ip) => ip.family === 'ipv6') && !ipv6Enabled) {
+		return {
+			ok: false,
+			message: 'IPv6 pool entries require the explicit MTA_IPV6_ENABLED=true opt-in.',
+			identities: [],
+		};
+	}
+	if (
+		normalizedIps.some((ip) => ip.family === 'ipv6') &&
+		!normalizedIps.some((ip) => ip.family === 'ipv4')
+	) {
+		return {
+			ok: false,
+			message: 'Outbound IPv6 requires at least one configured IPv4 address as a safe fallback.',
 			identities: [],
 		};
 	}
@@ -64,7 +99,12 @@ export async function preflightMtaIdentities(
 			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new Error();
 			const entries = Object.entries(parsed as Record<string, unknown>);
 			if (entries.some(([, hostname]) => typeof hostname !== 'string')) throw new Error();
-			perIpEhlo = Object.fromEntries(entries as Array<[string, string]>);
+			perIpEhlo = Object.fromEntries(
+				(entries as Array<[string, string]>).map(([ip, hostname]) => [
+					parseIpAddress(ip)?.address ?? ip,
+					hostname,
+				])
+			);
 		} catch {
 			return {
 				ok: false,
@@ -82,7 +122,7 @@ export async function preflightMtaIdentities(
 		return { ok: false, message: (err as Error).message, identities: [] };
 	}
 	const findings = await Promise.all(
-		ips.map(async (ip) => {
+		normalizedIps.map(async ({ address: ip, family }) => {
 			const ehlo = normalizeDnsName(perIpEhlo[ip] ?? defaultEhlo);
 			if (!isFqdn(ehlo)) {
 				return {
@@ -91,8 +131,9 @@ export async function preflightMtaIdentities(
 			}
 			const result = await verifyFcrdnsIdentity(ip, ehlo, deps, extraSuffixes);
 			const hardFailure = result.verdict === 'fail' || result.verdict === 'error';
-			const identity = { ...result, overridden: hardFailure && allowOverride };
-			if (hardFailure && !allowOverride) {
+			const overridden = family === 'ipv4' && hardFailure && allowOverride;
+			const identity = { ...result, overridden };
+			if (hardFailure && !overridden) {
 				const guidance = reverseDnsGuidance(result.ptrNames);
 				return {
 					identity,
@@ -106,6 +147,18 @@ export async function preflightMtaIdentities(
 	);
 	const identities = findings.flatMap((finding) => (finding.identity ? [finding.identity] : []));
 	const failures = findings.flatMap((finding) => (finding.failure ? [finding.failure] : []));
+	if (
+		normalizedIps.some((ip) => ip.family === 'ipv6') &&
+		identities.some(
+			(identity) =>
+				identity.addressFamily === 'ipv4' &&
+				(identity.verdict === 'fail' || identity.verdict === 'error')
+		)
+	) {
+		failures.push(
+			'Outbound IPv6 stays locked until every configured IPv4 identity passes FCrDNS without a lab override.'
+		);
+	}
 	if (failures.length > 0) {
 		return { ok: false, message: failures.join('\n'), identities };
 	}

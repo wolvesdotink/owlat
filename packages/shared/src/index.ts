@@ -75,6 +75,18 @@ export {
 	reverseDnsGuidance,
 	fcrdnsReasonMessage,
 } from './fcrdns';
+export {
+	IP_ADDRESS_FAMILIES,
+	type IpAddressFamily,
+	type ParsedIpAddress,
+	parseIpAddress,
+	normalizeIpAddress,
+	ipAddressFamily,
+	parseIpv6Enabled,
+	isIpv4MappedIpv6,
+	ipv6HexNibbles,
+	reverseIpAddressForDns,
+} from './ipAddress';
 // NOTE: `./dane` is intentionally NOT re-exported here. It depends on `node:crypto`
 // (certificate hashing) which does not resolve in the Nuxt web client bundle that
 // consumes this barrel. Server code (apps/api, apps/mta) imports it directly from
@@ -120,7 +132,12 @@ export {
 	buildMtaStsPolicy,
 	verifyMtaStsPublication,
 } from './mtaStsPolicy';
-export { isSpfRecord, parseSpfMechanisms, mergeSpfRecords } from './spf';
+export {
+	isSpfRecord,
+	parseSpfMechanisms,
+	mergeSpfRecords,
+	spfRecordHasExactIpMechanism,
+} from './spf';
 export {
 	GOVERNED_MESSAGE_TYPES,
 	ROUTING_LEASE_TOKEN_MAX_LENGTH,

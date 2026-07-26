@@ -9,6 +9,11 @@ import { resolve4 } from 'dns/promises';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { DNSBL_LISTS, type DnsblListDefinition } from '@owlat/shared/dnsbl';
+import {
+	ipAddressFamily,
+	reverseIpAddressForDns,
+	type IpAddressFamily,
+} from '@owlat/shared/ipAddress';
 import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
 import { pool } from '../smtp/connectionPool.js';
@@ -55,7 +60,10 @@ function safeDnsErrorCode(error: unknown): string {
 }
 
 /** Only Spamhaus is allowed to eject; every added feed stays advisory. */
-export function configuredDnsblZones(config: Pick<MtaConfig, 'abusixDnsblApiKey'>): DnsblZone[] {
+export function configuredDnsblZones(
+	config: Pick<MtaConfig, 'abusixDnsblApiKey'>,
+	addressFamily?: IpAddressFamily
+): DnsblZone[] {
 	const zones: DnsblZone[] = [
 		{ ...DNSBL_LISTS.spamhaus, zone: 'zen.spamhaus.org' },
 		{ ...DNSBL_LISTS.barracuda, zone: 'b.barracudacentral.org' },
@@ -67,19 +75,25 @@ export function configuredDnsblZones(config: Pick<MtaConfig, 'abusixDnsblApiKey'
 			zone: `${config.abusixDnsblApiKey}.combined.mail.abusix.zone`,
 		});
 	}
-	return zones;
+	return addressFamily
+		? zones.filter((zone) => zone.addressFamilies.includes(addressFamily))
+		: zones;
 }
 
-/**
- * Check a single IP against a single DNSBL zone
- */
+/** Build the family-correct DNSBL query name for one canonical address. */
+export function dnsblQueryName(ip: string, zone: string): string {
+	const reversed = reverseIpAddressForDns(ip);
+	if (!reversed) throw new Error(`Cannot build a DNSBL query for invalid IP address ${ip}`);
+	return `${reversed}.${zone}`;
+}
+
+/** Check a single IP against a single applicable DNSBL zone. */
 async function checkDnsbl(
 	ip: string,
 	listId: DnsblListDefinition['id'],
 	zone: string
 ): Promise<DnsblResult['status']> {
-	const reversed = ip.split('.').reverse().join('.');
-	const lookup = `${reversed}.${zone}`;
+	const lookup = dnsblQueryName(ip, zone);
 
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
@@ -119,8 +133,10 @@ async function checkDnsbl(
  * Check an IP against all configured DNSBL zones
  */
 async function checkAllZones(ip: string, config: MtaConfig): Promise<DnsblResult[]> {
+	const family = ipAddressFamily(ip);
+	if (!family) throw new Error(`Configured DNSBL address is invalid: ${ip}`);
 	const results = await Promise.all(
-		configuredDnsblZones(config).map(async (zone) => ({
+		configuredDnsblZones(config, family).map(async (zone) => ({
 			id: zone.id,
 			name: zone.name,
 			severity: zone.severity,

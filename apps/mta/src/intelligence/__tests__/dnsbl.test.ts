@@ -13,6 +13,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import {
 	configuredDnsblZones,
+	dnsblQueryName,
 	runDnsblCheck,
 	getDnsblStatus,
 	startDnsblChecker,
@@ -83,6 +84,48 @@ describe('DNSBL checking', () => {
 	afterEach(() => vi.useRealTimers());
 
 	describe('runDnsblCheck', () => {
+		it('uses exact IPv6 nibble reversal and only queries documented IPv6-capable zones', async () => {
+			expect(dnsblQueryName('2001:db8::1', 'zen.spamhaus.org')).toBe(
+				'1.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.zen.spamhaus.org'
+			);
+			expect(configuredDnsblZones(config, 'ipv6').map((zone) => zone.id)).toEqual(['spamhaus']);
+			expect(
+				configuredDnsblZones({ ...config, abusixDnsblApiKey: ABUSIX_API_KEY }, 'ipv6').map(
+					(zone) => zone.id
+				)
+			).toEqual(['spamhaus', 'abusix']);
+		});
+
+		it('quarantines an IPv6 Spamhaus listing without querying IPv4-only providers', async () => {
+			config = createConfig({
+				ipPools: {
+					transactional: ['203.0.113.10'],
+					campaign: ['203.0.113.10', '2001:db8::1'],
+				},
+			});
+			for (const ip of [...config.ipPools.transactional, ...config.ipPools.campaign]) {
+				await redis.hset(`mta:fcrdns:${ip}`, 'verdict', 'pass', 'checkedAt', '1');
+			}
+			await initializePools(redis, config.ipPools);
+			const queried: string[] = [];
+			vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
+				queried.push(hostname);
+				if (hostname.startsWith('1.0.0.0.') && hostname.endsWith('.zen.spamhaus.org')) {
+					return ['127.0.0.2'];
+				}
+				throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+			});
+
+			await runDnsblCheck(redis, config);
+
+			expect(await redis.sismember('mta:ip-pool:active', '2001:db8::1')).toBe(0);
+			const ipv6Queries = queried.filter((hostname) => hostname.startsWith('1.0.0.0.'));
+			expect(ipv6Queries).toHaveLength(1);
+			expect(ipv6Queries[0]).toContain('zen.spamhaus.org');
+			expect(ipv6Queries[0]).not.toContain('barracudacentral');
+			expect(ipv6Queries[0]).not.toContain('spamcop');
+		});
+
 		it('keeps Spamhaus as the sole ejecting feed and adds keyed Abusix as warning-only', () => {
 			const defaults = configuredDnsblZones(config);
 			expect(defaults.filter((zone) => zone.severity === 'critical')).toEqual([

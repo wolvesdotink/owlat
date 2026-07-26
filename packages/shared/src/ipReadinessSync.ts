@@ -7,13 +7,13 @@ import {
 } from './fcrdns';
 import { isDnsblListId, type DnsblListId } from './dnsbl';
 
-export const IP_READINESS_BLOCK_REASONS = ['dnsbl', 'fcrdns'] as const;
+export const IP_READINESS_BLOCK_REASONS = ['dnsbl', 'fcrdns', 'ipv4-identity', 'spf'] as const;
 export type IpReadinessBlockReason = (typeof IP_READINESS_BLOCK_REASONS)[number];
 export const DNSBL_STATUSES = ['unknown', 'clean', 'degraded', 'critical'] as const;
 export type DnsblStatus = (typeof DNSBL_STATUSES)[number];
 
 export function isIpReadinessBlockReason(value: string): value is IpReadinessBlockReason {
-	return value === 'dnsbl' || value === 'fcrdns';
+	return value === 'dnsbl' || value === 'fcrdns' || value === 'ipv4-identity' || value === 'spf';
 }
 
 export function isDnsblStatus(value: string): value is DnsblStatus {
@@ -48,6 +48,12 @@ export interface MtaIpReputationPayload {
 			reason?: FcrdnsFailureReason;
 			checkedAt: number;
 			overridden: boolean;
+		} | null;
+		ipv6Spf?: {
+			domain: string;
+			verdict: 'pass' | 'fail' | 'error';
+			reason?: 'no-spf-record' | 'multiple-spf-records' | 'missing-ip6-mechanism' | 'lookup-error';
+			checkedAt: number;
 		} | null;
 	}>;
 }
@@ -92,6 +98,21 @@ function isFcrdnsPayload(value: unknown): value is MtaFcrdnsPayload {
 	);
 }
 
+function isIpv6SpfPayload(value: unknown): value is NonNullable<MtaIpReputationRow['ipv6Spf']> {
+	return (
+		isRecord(value) &&
+		typeof value['domain'] === 'string' &&
+		(value['verdict'] === 'pass' || value['verdict'] === 'fail' || value['verdict'] === 'error') &&
+		(value['reason'] === undefined ||
+			value['reason'] === 'no-spf-record' ||
+			value['reason'] === 'multiple-spf-records' ||
+			value['reason'] === 'missing-ip6-mechanism' ||
+			value['reason'] === 'lookup-error') &&
+		typeof value['checkedAt'] === 'number' &&
+		Number.isFinite(value['checkedAt'])
+	);
+}
+
 function isIpReputationRow(value: unknown): value is MtaIpReputationRow {
 	return (
 		isRecord(value) &&
@@ -111,7 +132,12 @@ function isIpReputationRow(value: unknown): value is MtaIpReputationRow {
 		(value['dnsbl'] === undefined ||
 			(typeof value['dnsbl'] === 'string' && isDnsblStatus(value['dnsbl']))) &&
 		(value['dnsblListings'] === undefined || isDnsblListingArray(value['dnsblListings'])) &&
-		(value['fcrdns'] === undefined || value['fcrdns'] === null || isFcrdnsPayload(value['fcrdns']))
+		(value['fcrdns'] === undefined ||
+			value['fcrdns'] === null ||
+			isFcrdnsPayload(value['fcrdns'])) &&
+		(value['ipv6Spf'] === undefined ||
+			value['ipv6Spf'] === null ||
+			isIpv6SpfPayload(value['ipv6Spf']))
 	);
 }
 
@@ -171,6 +197,16 @@ export function normalizeIpReputationPayload(value: unknown) {
 							...(ip.fcrdns.reason ? { reason: ip.fcrdns.reason } : {}),
 							checkedAt: ip.fcrdns.checkedAt,
 							isOverridden: ip.fcrdns.overridden,
+						},
+					}
+				: {}),
+			...(ip.ipv6Spf
+				? {
+						ipv6Spf: {
+							domain: ip.ipv6Spf.domain,
+							verdict: ip.ipv6Spf.verdict,
+							...(ip.ipv6Spf.reason ? { reason: ip.ipv6Spf.reason } : {}),
+							checkedAt: ip.ipv6Spf.checkedAt,
 						},
 					}
 				: {}),

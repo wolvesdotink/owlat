@@ -11,6 +11,8 @@
  * rather than added alongside.
  */
 
+import { parseIpAddress } from './ipAddress';
+
 /** Matches an SPF record: `v=spf1` (case-insensitive, leading whitespace ok). */
 const SPF_RECORD_RE = /^\s*v=spf1\b/i;
 
@@ -52,13 +54,35 @@ export function parseSpfMechanisms(record: string): string[] {
  * `existing` (whitespace-normalised).
  */
 export function mergeSpfRecords(existing: string, ours: string): string {
-	const tokens = existing.trim().split(/\s+/).filter((token) => token !== '');
+	const tokens = existing
+		.trim()
+		.split(/\s+/)
+		.filter((token) => token !== '');
 	const present = new Set(tokens.map((token) => token.toLowerCase()));
 	const allIndex = tokens.findIndex((token) => ALL_MECHANISM_RE.test(token));
 	const insertAt = allIndex === -1 ? tokens.length : allIndex;
 	const additions = parseSpfMechanisms(ours).filter(
-		(mechanism) => !present.has(mechanism.toLowerCase()),
+		(mechanism) => !present.has(mechanism.toLowerCase())
 	);
 	tokens.splice(insertAt, 0, ...additions);
 	return tokens.join(' ');
+}
+
+/**
+ * Machine-check the exact ip4/ip6 mechanism emitted for a source address.
+ *
+ * This deliberately does not claim to be a complete SPF evaluator (which would
+ * need recursive includes, macros, CIDR math, and DNS lookup limits). It is the
+ * conservative Phase-6 readiness check for Owlat's own generated pool record:
+ * only an exact mechanism proves that this address was intentionally enabled.
+ */
+export function spfRecordHasExactIpMechanism(record: string, address: string): boolean {
+	const parsed = parseIpAddress(address);
+	if (!parsed || !isSpfRecord(record)) return false;
+	const prefix = `${parsed.family === 'ipv4' ? 'ip4' : 'ip6'}:`;
+	return parseSpfMechanisms(record).some((mechanism) => {
+		const normalizedMechanism = mechanism.toLowerCase();
+		if (!normalizedMechanism.startsWith(prefix)) return false;
+		return parseIpAddress(normalizedMechanism.slice(prefix.length))?.address === parsed.address;
+	});
 }
