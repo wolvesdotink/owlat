@@ -11,9 +11,28 @@ import {
 	type EffectLeaseOptions,
 } from '../lib/effectCheckpoint.js';
 import { TransientFeedbackProcessingError } from './transientFeedbackError.js';
+import { CFBL_TOKEN_ACCEPTANCE_SECONDS } from './cfblAddress.js';
 
 const OWNED_FBL_DEDUP_PREFIX = 'mta:fbl:dedup:owned-v2:';
-const FBL_DEDUP_TTL_SECONDS = 7 * 86400;
+
+/**
+ * One extra day of slack on top of the token acceptance horizon, covering clock
+ * skew between the signer, the reporting provider and this store.
+ */
+const DEDUP_SKEW_SLACK_SECONDS = 86400;
+
+/**
+ * How long a completed complaint stays deduplicated.
+ *
+ * DERIVED, not chosen: the retention must outlive the longest window in which a
+ * captured report can still be VERIFIED, or a replay landing in the gap finds no
+ * record of the first delivery and is counted a second time — inflating a
+ * complaint rate by pure repetition. `CFBL_TOKEN_ACCEPTANCE_SECONDS` is the
+ * longest such window (the signed VERP bounce token expires sooner), so the two
+ * move together and widening the acceptance horizon can never silently reopen
+ * the replay gap.
+ */
+export const FBL_DEDUP_TTL_SECONDS = CFBL_TOKEN_ACCEPTANCE_SECONDS + DEDUP_SKEW_SLACK_SECONDS;
 const FBL_RESERVATION_TTL_SECONDS = 15 * 60;
 
 export interface ComplaintDedupReservation {
