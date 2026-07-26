@@ -56,4 +56,18 @@ describe('sidebarGroupsForSection', () => {
 			}
 		}
 	});
+
+	it('places the VPS sending guide directly after Deliverability', () => {
+		const operations = sidebarConfig.find(
+			(group) => group.section === 'guide' && group.label === 'Operations'
+		);
+		const deliverabilityIndex = operations?.items.findIndex(
+			(item) => item.to === '/guide/deliverability'
+		);
+		expect(deliverabilityIndex).toBeGreaterThanOrEqual(0);
+		expect(operations?.items[deliverabilityIndex! + 1]).toEqual({
+			label: 'Sending from a VPS',
+			to: '/guide/sending-from-a-vps',
+		});
+	});
 });

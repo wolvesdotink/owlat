@@ -21,19 +21,20 @@
 
 import { createHash } from 'crypto';
 import type Redis from 'ioredis';
+import { CAMPAIGN_COMPLAINT_POLICY } from '@owlat/shared/deliverabilityPolicy';
 import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
 
 const PREFIX = 'mta:campaign-complaints:';
 const ALERTED_SUFFIX = ':alerted';
 
 /** Gmail 2024: keep spam complaint rate below 0.3%. */
-export const CAMPAIGN_COMPLAINT_THRESHOLD = 0.003;
+export const CAMPAIGN_COMPLAINT_THRESHOLD = CAMPAIGN_COMPLAINT_POLICY.rateExclusiveMax;
 
 /**
  * Minimum deliveries before the rate is meaningful. A single complaint against
  * a handful of sends is 100% — require a floor so we don't alert on noise.
  */
-export const CAMPAIGN_MIN_DELIVERIES = 100;
+export const CAMPAIGN_MIN_DELIVERIES = CAMPAIGN_COMPLAINT_POLICY.minimumDeliveries;
 
 /** 30-day TTL — matches the delivery-metrics retention window. */
 const TTL_SECONDS = 30 * 86400;

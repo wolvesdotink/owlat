@@ -142,6 +142,6 @@ describe('DNS doc: outbound IPv6 is an earned, reversible upgrade', () => {
 	it('links current provider instructions for routing and reverse DNS', () => {
 		expect(ipv6Section).toMatch(/docs\.hetzner\.com\/cloud\/servers\/cloud-server-rdns/);
 		expect(ipv6Section).toMatch(/docs\.digitalocean\.com\/products\/networking\/ipv6/);
-		expect(ipv6Section).toMatch(/help\.ovhcloud\.com/);
+		expect(ipv6Section).toMatch(/docs\.ovhcloud\.com/);
 	});
 });
