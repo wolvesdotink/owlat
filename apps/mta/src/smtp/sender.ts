@@ -26,6 +26,7 @@ import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
 import { resolveTlsRequirements } from './tlsPolicy.js';
 import { resolveOutboundTlsMode } from './outboundTlsOverrides.js';
 import { buildVerpAddress } from '../bounce/verp.js';
+import { buildCfblHeaders } from '../bounce/cfblAddress.js';
 import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull, strictestOutboundTlsMode } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
@@ -99,11 +100,12 @@ function strictestDeliveryProviderPolicy(
 function buildSignedBytes(
 	job: EmailJob,
 	dkimConfig: DkimSigningKey | undefined,
-	verpAddress: string
+	verpAddress: string,
+	feedbackHeaders: Record<string, string>
 ): Buffer {
 	const raw = job.sealedMimeBase64
 		? Buffer.from(job.sealedMimeBase64, 'base64')
-		: composeStructured(job, verpAddress).raw;
+		: composeStructured(job, verpAddress, feedbackHeaders).raw;
 	if (!dkimConfig) return raw;
 	try {
 		return signMessage(raw, dkimConfig);
@@ -122,8 +124,16 @@ function buildSignedBytes(
  * HTML-derived fallback), the AMP alternative, decoded attachments, the tracing
  * headers, the VERP envelope, and a From-aligned Message-ID (a caller-supplied
  * Message-ID header wins).
+ *
+ * `feedbackHeaders` carries the RFC 9477 CFBL pair. It is applied AFTER the
+ * caller's `job.headers` so a supplied `CFBL-Address` can never displace the
+ * signed one — an unsigned complaint handle would be a forgery vector.
  */
-function composeStructured(job: EmailJob, verpAddress: string): { raw: Buffer } {
+function composeStructured(
+	job: EmailJob,
+	verpAddress: string,
+	feedbackHeaders: Record<string, string>
+): { raw: Buffer } {
 	const suppliedMessageIdKey = job.headers
 		? Object.keys(job.headers).find((h) => h.toLowerCase() === 'message-id')
 		: undefined;
@@ -155,6 +165,7 @@ function composeStructured(job: EmailJob, verpAddress: string): { raw: Buffer } 
 		...(attachments ? { attachments } : {}),
 		headers: {
 			...job.headers,
+			...feedbackHeaders,
 			'X-Owlat-Message-Id': job.messageId,
 			'X-Owlat-Org-Id': job.organizationId,
 		},
@@ -260,17 +271,23 @@ export async function sendToMx(
 	// ANY host — so a DSN arriving at the per-domain host still verifies and
 	// suppresses the right recipient (see bounce/verp.ts, bounce/server.ts).
 	const perDomainReturnPath = await getReturnPathHost(redis, job.dkimDomain.toLowerCase());
-	const verpAddress = buildVerpAddress(
-		job.messageId,
-		perDomainReturnPath ?? config.returnPathDomain
-	);
+	const feedbackHost = perDomainReturnPath ?? config.returnPathDomain;
+	const verpAddress = buildVerpAddress(job.messageId, feedbackHost);
+
+	// RFC 9477 CFBL-Address (P2-7): advertise a SIGNED complaint address on every
+	// composed outbound message. It rides the same host as the VERP return path —
+	// that host's MX already points at the bounce SMTP server and `fbl+…` is
+	// already accepted at RCPT time — so no new DNS, no new listener and, above
+	// all, no bilateral enrollment with any mailbox provider. Sealed-mail raw
+	// bytes are shipped verbatim and are deliberately untouched.
+	const feedbackHeaders = buildCfblHeaders(job.messageId, feedbackHost);
 
 	// Compose + sign ONCE per job (W2/W3). The exact wire bytes are built a single
 	// time and the SAME signed bytes are retried across every MX host and TLS
 	// profile — byte-identical, DKIM-stable retries (a strict improvement over the
 	// historic per-attempt recomposition). Both the structured-compose path and
 	// the sealed-mail raw path flow through the one signer.
-	const signedBytes = buildSignedBytes(job, dkimConfig, verpAddress);
+	const signedBytes = buildSignedBytes(job, dkimConfig, verpAddress, feedbackHeaders);
 
 	// Announce the EHLO name that matches THIS bind IP's PTR record. In a
 	// multi-IP deployment each IP has its own reverse DNS, so a single static
