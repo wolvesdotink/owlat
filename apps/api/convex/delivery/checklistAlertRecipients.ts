@@ -1,6 +1,11 @@
-import type { DeliverabilityAlertRecipientState } from '@owlat/shared';
+import {
+	DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
+	type DeliverabilityAlertRecipientState,
+} from '@owlat/shared';
 
-export const DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT = 120;
+export const DELIVERABILITY_ALERT_RECIPIENT_COMPACTION_TARGET = 120;
+export const DELIVERABILITY_ALERT_RECIPIENT_ROW_LIMIT =
+	DELIVERABILITY_ALERT_RECIPIENT_COMPACTION_TARGET + DELIVERABILITY_ALERT_RECIPIENT_LIMIT;
 
 type AlertNotificationState = 'pending' | 'sent' | 'unavailable';
 

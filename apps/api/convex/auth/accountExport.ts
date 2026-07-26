@@ -1,248 +1,367 @@
-import { paginationOptsValidator } from 'convex/server';
+import type { PaginationResult } from 'convex/server';
 import { v } from 'convex/values';
-import { ACCOUNT_EXPORT_ORGANIZATION_RESOURCES, serializeAccountExportPage } from '@owlat/shared';
-import { components } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
-import { internalMutation, internalQuery } from '../_generated/server';
-import { toDeliverabilityAlertRecipientState } from '../delivery/checklistAlertRecipients';
-import { hasPermission, loadOwnUserProfile, requireSelf } from '../lib/sessionOrganization';
-import type { OrganizationRole } from '../lib/sessionOrganization';
-import { loadPersonalMailboxForUser } from '../mail/permissions';
-import { throwNotFound } from '../_utils/errors';
+import {
+	ACCOUNT_EXPORT_ORGANIZATION_RESOURCES,
+	ACCOUNT_EXPORT_PERSONAL_RESOURCES,
+	isAccountExportOrganizationResource,
+	serializeAccountExportPage,
+	type AccountExportManifest,
+	type SerializedAccountExportPage,
+} from '@owlat/shared';
+import { components, internal } from '../_generated/api';
+import type { Doc, Id } from '../_generated/dataModel';
+import type { ActionCtx } from '../_generated/server';
+import { authedAction } from '../lib/authedFunctions';
+import {
+	openEmailTemplateContent,
+	openTransactionalEmailContent,
+	projectEmailTemplateMetadata,
+	projectTransactionalEmailMetadata,
+} from '../lib/accountExportTemplates';
+import {
+	openMailDraftForAccountExport,
+	readMailMessageBodiesForAccountExport,
+} from '../lib/messageBodyExport';
+import { sealedBlobUrl, storeSealedBlob } from '../lib/sealedBlob';
 
-const organizationExportTableValidator = v.union(
-	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map((resource) => v.literal(resource))
+const ACCOUNT_EXPORT_PAGE_SIZE = 100;
+const ACCOUNT_EXPORT_CONTENT_PAGE_SIZE = 1;
+const accountExportResourceValidator = v.union(
+	v.literal('organizationMemberships'),
+	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES.map((resource) => v.literal(resource)),
+	...ACCOUNT_EXPORT_PERSONAL_RESOURCES.map((resource) => v.literal(resource))
 );
-async function exportMembership(
-	ctx: Parameters<typeof requireSelf>[0],
-	userId: string,
-	organizationId: string
-): Promise<{ role: string } | null> {
-	await requireSelf(ctx, userId);
-	return (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-		model: 'member',
-		where: [
-			{ field: 'organizationId', value: organizationId },
-			{ field: 'userId', value: userId },
-		],
-	})) as { role: string } | null;
+
+function isContentResource(resource: string): boolean {
+	return (
+		resource === 'mailMessages' ||
+		resource === 'mailDrafts' ||
+		resource === 'emailTemplates' ||
+		resource === 'transactionalEmails'
+	);
 }
 
-export const getProfile = internalQuery({
-	args: { userId: v.string() },
-	handler: async (ctx, args) => {
-		await requireSelf(ctx, args.userId);
-		const profile = await loadOwnUserProfile(ctx, args.userId);
-		if (!profile) throwNotFound('User profile');
-		return profile;
-	},
-});
+function artifactScope(resource: string, rowId: string): string {
+	return `${resource}:${rowId}`;
+}
 
-export const deleteStagedContent = internalMutation({
-	args: { storageId: v.id('_storage') },
-	handler: async (ctx, args) => {
-		await ctx.storage.delete(args.storageId);
-	},
-});
+async function contentAddressedArtifactKey(scope: string, bytes: Uint8Array): Promise<string> {
+	const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource));
+	const digestHex = [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+	return `${scope}:${digestHex}`;
+}
 
-export const listOrganizationData = internalQuery({
+async function artifactUrl(ctx: ActionCtx, storageId: Id<'_storage'>): Promise<string> {
+	const url = await sealedBlobUrl(ctx.storage, storageId, 'application/json');
+	if (!url) throw new Error('Could not create account export artifact URL');
+	return url;
+}
+
+interface StagedAccountExportContent {
+	contentDownloadUrl: string;
+	contentArtifactId: Id<'accountExportArtifacts'>;
+}
+
+async function stageAccountExportContent(
+	ctx: ActionCtx,
 	args: {
-		userId: v.string(),
-		organizationId: v.string(),
-		table: organizationExportTableValidator,
-		paginationOpts: paginationOptsValidator,
-	},
-	handler: async (ctx, args) => {
-		const membership = await exportMembership(ctx, args.userId, args.organizationId);
-		const isAdmin =
-			membership !== null &&
-			hasPermission(membership.role as OrganizationRole, 'organization:manage');
-		if (!isAdmin) {
-			return {
-				pageJson: [],
-				isDone: true,
-				continueCursor: args.paginationOpts.cursor ?? '',
-			};
-		}
-		if (args.table === 'contacts') {
-			const result = await ctx.db
-				.query('contacts')
-				.withIndex('by_deleted_at_and_created_at', (q) => q.eq('deletedAt', undefined))
-				.paginate(args.paginationOpts);
-			return serializeAccountExportPage({
-				...result,
-				page: result.page.map(
-					({ doiConfirmationToken: _confirmationCapability, ...contact }) => contact
-				),
-			});
-		}
-		if (args.table === 'apiKeys') {
-			const result = await ctx.db.query('apiKeys').paginate(args.paginationOpts);
-			return serializeAccountExportPage({
-				...result,
-				page: result.page.map((key) => ({
-					name: key.name,
-					keyPrefix: key.keyPrefix,
-					createdAt: key.createdAt,
-					lastUsedAt: key.lastUsedAt,
-				})),
-			});
-		}
-		if (args.table === 'webhooks') {
-			const result = await ctx.db.query('webhooks').paginate(args.paginationOpts);
-			return serializeAccountExportPage({
-				...result,
-				page: result.page.map(({ secret: _secret, ...webhook }) => webhook),
-			});
-		}
-		switch (args.table) {
-			case 'contactProperties':
-				return serializeAccountExportPage(
-					await ctx.db.query('contactProperties').paginate(args.paginationOpts)
-				);
-			case 'topics':
-				return serializeAccountExportPage(
-					await ctx.db.query('topics').paginate(args.paginationOpts)
-				);
-			case 'emailTemplates':
-				return serializeAccountExportPage(
-					await ctx.db.query('emailTemplates').paginate(args.paginationOpts)
-				);
-			case 'campaigns': {
-				const result = await ctx.db.query('campaigns').paginate(args.paginationOpts);
-				return serializeAccountExportPage({
-					...result,
-					page: result.page.map(({ archiveToken: _archiveCapability, ...campaign }) => campaign),
-				});
-			}
-			case 'automations':
-				return serializeAccountExportPage(
-					await ctx.db.query('automations').paginate(args.paginationOpts)
-				);
-			case 'transactionalEmails':
-				return serializeAccountExportPage(
-					await ctx.db.query('transactionalEmails').paginate(args.paginationOpts)
-				);
-			case 'segments':
-				return serializeAccountExportPage(
-					await ctx.db.query('segments').paginate(args.paginationOpts)
-				);
-			case 'domains':
-				return serializeAccountExportPage(
-					await ctx.db.query('domains').paginate(args.paginationOpts)
-				);
-			case 'formEndpoints':
-				return serializeAccountExportPage(
-					await ctx.db.query('formEndpoints').paginate(args.paginationOpts)
-				);
-			case 'blockedEmails':
-				return serializeAccountExportPage(
-					await ctx.db.query('blockedEmails').paginate(args.paginationOpts)
-				);
-		}
-	},
-});
-
-export const listPersonalMailboxes = internalQuery({
-	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
-	handler: async (ctx, args) => {
-		await requireSelf(ctx, args.userId);
-		const result = await ctx.db
-			.query('mailboxes')
-			.withIndex('by_user', (q) => q.eq('userId', args.userId))
-			.paginate(args.paginationOpts);
-		return { ...result, page: result.page.filter((mailbox) => mailbox.scope !== 'shared') };
-	},
-});
-
-async function ownedPersonalMailbox(
-	ctx: Parameters<typeof requireSelf>[0],
-	userId: string,
-	mailboxId: Doc<'mailboxes'>['_id']
-): Promise<Doc<'mailboxes'>> {
-	await requireSelf(ctx, userId);
-	const mailbox = await loadPersonalMailboxForUser(ctx, mailboxId, userId);
-	if (!mailbox) {
-		throwNotFound('Personal mailbox');
+		userId: string;
+		sessionId: Id<'accountExportSessions'>;
+		artifactScope: string;
+		content: Record<string, unknown>;
 	}
-	return mailbox;
+): Promise<StagedAccountExportContent> {
+	const bytes = new TextEncoder().encode(JSON.stringify(args.content));
+	const artifactKey = await contentAddressedArtifactKey(args.artifactScope, bytes);
+	const existing: Doc<'accountExportArtifacts'> | null = await ctx.runQuery(
+		internal.auth.accountExportArtifacts.findArtifact,
+		{
+			userId: args.userId,
+			sessionId: args.sessionId,
+			artifactKey,
+		}
+	);
+	if (existing) {
+		return {
+			contentDownloadUrl: await artifactUrl(ctx, existing.storageId),
+			contentArtifactId: existing._id,
+		};
+	}
+
+	const storageId = await storeSealedBlob(ctx.storage, bytes, 'application/json');
+	try {
+		const registered: { artifact: Doc<'accountExportArtifacts'>; created: boolean } =
+			await ctx.runMutation(internal.auth.accountExportArtifacts.registerArtifact, {
+				userId: args.userId,
+				sessionId: args.sessionId,
+				artifactKey,
+				storageId,
+				contentLength: bytes.byteLength,
+			});
+		if (!registered.created) await ctx.storage.delete(storageId);
+		return {
+			contentDownloadUrl: await artifactUrl(ctx, registered.artifact.storageId),
+			contentArtifactId: registered.artifact._id,
+		};
+	} catch (error) {
+		try {
+			const registered = await ctx.runQuery(internal.auth.accountExportArtifacts.findArtifact, {
+				userId: args.userId,
+				sessionId: args.sessionId,
+				artifactKey,
+			});
+			if (!registered || registered.storageId !== storageId) await ctx.storage.delete(storageId);
+		} catch {
+			await ctx.storage.delete(storageId);
+		}
+		throw error;
+	}
 }
 
-export const listMailboxMessages = internalQuery({
-	args: {
-		userId: v.string(),
-		mailboxId: v.id('mailboxes'),
-		paginationOpts: paginationOptsValidator,
-	},
-	handler: async (ctx, args) => {
-		await ownedPersonalMailbox(ctx, args.userId, args.mailboxId);
-		return ctx.db
-			.query('mailMessages')
-			.withIndex('by_mailbox_and_received', (q) => q.eq('mailboxId', args.mailboxId))
-			.paginate(args.paginationOpts);
-	},
-});
-
-export const listMailboxDrafts = internalQuery({
-	args: {
-		userId: v.string(),
-		mailboxId: v.id('mailboxes'),
-		paginationOpts: paginationOptsValidator,
-	},
-	handler: async (ctx, args) => {
-		await ownedPersonalMailbox(ctx, args.userId, args.mailboxId);
-		return ctx.db
-			.query('mailDrafts')
-			.withIndex('by_mailbox', (q) => q.eq('mailboxId', args.mailboxId))
-			.paginate(args.paginationOpts);
-	},
-});
-
-export const listPersonalExternalAccounts = internalQuery({
-	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
-	handler: async (ctx, args) => {
-		await requireSelf(ctx, args.userId);
-		const result = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_user', (q) => q.eq('userId', args.userId))
-			.paginate(args.paginationOpts);
+/** Start or resume the caller's bounded, short-lived GDPR export session. */
+// authz: self — beginSession and getProfile both enforce args.userId.
+export const exportUserData = authedAction({
+	args: { userId: v.string() },
+	handler: async (ctx, args): Promise<AccountExportManifest> => {
+		const userProfile: Doc<'userProfiles'> = await ctx.runQuery(
+			internal.auth.accountExportQueries.getProfile,
+			{ userId: args.userId }
+		);
+		const sessionId: Id<'accountExportSessions'> = await ctx.runMutation(
+			internal.auth.accountExportArtifacts.beginSession,
+			{ userId: args.userId }
+		);
 		return {
-			...result,
-			page: result.page
-				.filter((account) => account.scope !== 'shared')
-				.map(
-					({ secretCiphertext: _ct, secretIv: _iv, secretAuthTag: _tag, ...account }) => account
-				),
+			exportSessionId: sessionId,
+			userProfile: {
+				email: userProfile.email,
+				name: userProfile.name,
+				image: userProfile.image,
+				createdAt: userProfile.createdAt,
+				updatedAt: userProfile.updatedAt,
+			},
+			exportedAt: Date.now(),
 		};
 	},
 });
 
-export const listPersonalChatMessages = internalQuery({
-	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
-	handler: async (ctx, args) => {
-		await requireSelf(ctx, args.userId);
-		return ctx.db
-			.query('chatMessages')
-			.withIndex('by_author', (q) => q.eq('authorId', args.userId))
-			.paginate(args.paginationOpts);
+/** Delete a staged artifact after the caller has streamed it successfully.
+ * Repeated acknowledgements are harmless and still renew active progress. */
+// authz: self — releaseArtifact verifies both session and artifact ownership.
+export const acknowledgeExportArtifact = authedAction({
+	args: {
+		userId: v.string(),
+		exportSessionId: v.id('accountExportSessions'),
+		artifactId: v.id('accountExportArtifacts'),
 	},
+	handler: async (ctx, args): Promise<boolean> =>
+		ctx.runMutation(internal.auth.accountExportArtifacts.releaseArtifact, {
+			userId: args.userId,
+			sessionId: args.exportSessionId,
+			artifactId: args.artifactId,
+		}),
 });
 
-export const listDeliverabilityAlertRecipientStates = internalQuery({
-	args: { userId: v.string(), paginationOpts: paginationOptsValidator },
-	handler: async (ctx, args) => {
-		await requireSelf(ctx, args.userId);
-		const result = await ctx.db
-			.query('deliverabilityAlertRecipients')
-			.withIndex('by_user', (q) => q.eq('userId', args.userId))
-			.paginate(args.paginationOpts);
-		return {
-			...result,
-			page: result.page.map((recipient) => ({
-				alertId: recipient.alertId,
-				organizationId: recipient.organizationId,
-				state: toDeliverabilityAlertRecipientState(recipient),
-			})),
+// authz: self — every query and artifact mutation rechecks user + export session ownership.
+export const exportUserDataPage = authedAction({
+	args: {
+		userId: v.string(),
+		exportSessionId: v.id('accountExportSessions'),
+		resource: accountExportResourceValidator,
+		cursor: v.optional(v.string()),
+		organizationId: v.optional(v.string()),
+		mailboxId: v.optional(v.id('mailboxes')),
+	},
+	handler: async (ctx, args): Promise<SerializedAccountExportPage> => {
+		const profile: Doc<'userProfiles'> = await ctx.runQuery(
+			internal.auth.accountExportQueries.getProfile,
+			{ userId: args.userId }
+		);
+		await ctx.runMutation(internal.auth.accountExportArtifacts.validateActiveSession, {
+			userId: args.userId,
+			sessionId: args.exportSessionId,
+		});
+		const paginationOpts = {
+			cursor: args.cursor ?? null,
+			numItems: isContentResource(args.resource)
+				? ACCOUNT_EXPORT_CONTENT_PAGE_SIZE
+				: ACCOUNT_EXPORT_PAGE_SIZE,
 		};
+		if (args.resource === 'organizationMemberships') {
+			const result: {
+				page?: unknown[];
+				isDone?: boolean;
+				continueCursor?: string;
+			} | null = await ctx.runQuery(components.betterAuth.adapter.findMany, {
+				model: 'member',
+				where: [{ field: 'userId', value: profile.authUserId }],
+				paginationOpts,
+			});
+			const memberships = (result?.page ?? []) as Array<{
+				organizationId: string;
+				role: string;
+			}>;
+			const page = (
+				await Promise.all(
+					memberships.map(async (membership) => {
+						const organization = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+							model: 'organization',
+							where: [{ field: '_id', value: membership.organizationId }],
+						})) as { _id: string; name: string; slug?: string | null } | null;
+						return organization
+							? {
+									organizationId: membership.organizationId,
+									role: membership.role,
+									organization: {
+										_id: organization._id,
+										name: organization.name,
+										slug: organization.slug,
+									},
+								}
+							: null;
+					})
+				)
+			).filter((row) => row !== null);
+			return serializeAccountExportPage({
+				page,
+				isDone: result?.isDone ?? true,
+				continueCursor: result?.continueCursor ?? '',
+			});
+		}
+		if (args.resource === 'emailTemplates' || args.resource === 'transactionalEmails') {
+			if (!args.organizationId) throw new Error('Template export page requires organizationId');
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listTemplateContentData,
+				{
+					userId: args.userId,
+					organizationId: args.organizationId,
+					table: args.resource,
+					paginationOpts,
+				}
+			)) as PaginationResult<Doc<'emailTemplates'>> | PaginationResult<Doc<'transactionalEmails'>>;
+			const page = await Promise.all(
+				result.page.map(async (template) => {
+					const isEmailTemplate = args.resource === 'emailTemplates';
+					const content = isEmailTemplate
+						? await openEmailTemplateContent(ctx.storage, template as Doc<'emailTemplates'>)
+						: await openTransactionalEmailContent(
+								ctx.storage,
+								template as Doc<'transactionalEmails'>
+							);
+					const stagedContent = await stageAccountExportContent(ctx, {
+						userId: args.userId,
+						sessionId: args.exportSessionId,
+						artifactScope: artifactScope(args.resource, template._id),
+						content,
+					});
+					return {
+						...(isEmailTemplate
+							? projectEmailTemplateMetadata(template as Doc<'emailTemplates'>)
+							: projectTransactionalEmailMetadata(template as Doc<'transactionalEmails'>)),
+						...stagedContent,
+					};
+				})
+			);
+			return serializeAccountExportPage({ ...result, page });
+		}
+		if (isAccountExportOrganizationResource(args.resource)) {
+			if (!args.organizationId) throw new Error('Organization export page requires organizationId');
+			return (await ctx.runQuery(internal.auth.accountExportQueries.listOrganizationData, {
+				userId: args.userId,
+				organizationId: args.organizationId,
+				table: args.resource,
+				paginationOpts,
+			})) as SerializedAccountExportPage;
+		}
+		if (args.resource === 'mailboxes') {
+			const result = (await ctx.runQuery(internal.auth.accountExportQueries.listPersonalMailboxes, {
+				userId: args.userId,
+				paginationOpts,
+			})) as PaginationResult<Doc<'mailboxes'>>;
+			return serializeAccountExportPage(result);
+		}
+		if (args.resource === 'mailMessages') {
+			if (!args.mailboxId) throw new Error('Mail message export page requires mailboxId');
+			const result = (await ctx.runQuery(internal.auth.accountExportQueries.listMailboxMessages, {
+				userId: args.userId,
+				mailboxId: args.mailboxId,
+				paginationOpts,
+			})) as PaginationResult<Doc<'mailMessages'>>;
+			const page = await Promise.all(
+				result.page.map(async (message) => {
+					const bodies = await readMailMessageBodiesForAccountExport(ctx.storage, message);
+					const stagedContent = await stageAccountExportContent(ctx, {
+						userId: args.userId,
+						sessionId: args.exportSessionId,
+						artifactScope: artifactScope(args.resource, message._id),
+						content: bodies,
+					});
+					const {
+						rawStorageId: _raw,
+						textBodyStorageId: _textStorage,
+						htmlBodyStorageId: _htmlStorage,
+						textBodyInline: _textInline,
+						htmlBodyInline: _htmlInline,
+						...safeMessage
+					} = message;
+					return { ...safeMessage, ...stagedContent };
+				})
+			);
+			return serializeAccountExportPage({ ...result, page });
+		}
+		if (args.resource === 'mailDrafts') {
+			if (!args.mailboxId) throw new Error('Mail draft export page requires mailboxId');
+			const result = (await ctx.runQuery(internal.auth.accountExportQueries.listMailboxDrafts, {
+				userId: args.userId,
+				mailboxId: args.mailboxId,
+				paginationOpts,
+			})) as PaginationResult<Doc<'mailDrafts'>>;
+			const page = await Promise.all(
+				result.page.map(async (draft) => {
+					const opened = await openMailDraftForAccountExport(ctx.storage, draft);
+					const { bodyHtml, bodyText, bodyBlocks, bodyAvailability, attachments, ...safeDraft } =
+						opened;
+					const stagedContent = await stageAccountExportContent(ctx, {
+						userId: args.userId,
+						sessionId: args.exportSessionId,
+						artifactScope: artifactScope(args.resource, draft._id),
+						content: {
+							bodyHtml,
+							...(bodyText === undefined ? {} : { bodyText }),
+							...(bodyBlocks === undefined ? {} : { bodyBlocks }),
+							bodyAvailability,
+							attachments,
+						},
+					});
+					return {
+						...safeDraft,
+						attachments: attachments.map(
+							({ contentBase64: _content, ...attachment }) => attachment
+						),
+						...stagedContent,
+					};
+				})
+			);
+			return serializeAccountExportPage({ ...result, page });
+		}
+		if (args.resource === 'externalMailAccounts') {
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listPersonalExternalAccounts,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Record<string, unknown>>;
+			return serializeAccountExportPage(result);
+		}
+		if (args.resource === 'chatMessages') {
+			const result = (await ctx.runQuery(
+				internal.auth.accountExportQueries.listPersonalChatMessages,
+				{ userId: args.userId, paginationOpts }
+			)) as PaginationResult<Doc<'chatMessages'>>;
+			return serializeAccountExportPage(result);
+		}
+		const result = (await ctx.runQuery(
+			internal.auth.accountExportQueries.listDeliverabilityAlertRecipientStates,
+			{ userId: args.userId, paginationOpts }
+		)) as PaginationResult<Record<string, unknown>>;
+		return serializeAccountExportPage(result);
 	},
 });

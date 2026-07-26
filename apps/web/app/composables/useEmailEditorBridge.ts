@@ -69,7 +69,11 @@ export function createUploadImageHandler(
 			throw new Error('Failed to upload image');
 		}
 
-		const { storageId } = await response.json();
+		const uploadResult = (await response.json()) as { storageId?: unknown };
+		if (typeof uploadResult.storageId !== 'string' || uploadResult.storageId.length === 0) {
+			throw new Error('Image upload did not return a storage ID');
+		}
+		const storageId = uploadResult.storageId as Id<'_storage'>;
 
 		// Auto-save to media library FIRST: `storage.getUrl` only resolves blobs
 		// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
@@ -261,7 +265,7 @@ export function useEmailEditorBridge<S>(
 	const showMediaPicker = ref(false);
 	let mediaPickerCallback: ((result: ImageUploadResult) => void) | null = null;
 	const onMediaPickerSelect = (result: ImageUploadResult) => {
-		mediaPickerCallback?.({ url: result.url, storageId: result.storageId });
+		mediaPickerCallback?.(result);
 		mediaPickerCallback = null;
 		showMediaPicker.value = false;
 	};

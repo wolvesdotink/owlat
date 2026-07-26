@@ -40,8 +40,7 @@ import {
 	postboxRenderKey,
 	type PostboxRenderEntry,
 } from '~/utils/postboxRenderCache';
-import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
+import { consumeResolvedPostboxMessageBody } from '~/composables/postbox/postboxBodyResolver';
 
 const props = defineProps<{
 	message: {
@@ -69,9 +68,7 @@ const { isDark } = useAppTheme();
 // (so it stays readable without a connection) and, when offline, serve the
 // cached srcdoc if the live body can't be fetched. Best-effort + fail-soft;
 // never stores raw mail — only the sanitized document the iframe already shows.
-const { isOffline, persistBody, loadBody } = usePostboxOfflineCache(
-	() => props.message.mailboxId
-);
+const { isOffline, persistBody, loadBody } = usePostboxOfflineCache(() => props.message.mailboxId);
 const cachedSrcdoc = ref<string | null>(null);
 watch(
 	() => props.message._id,
@@ -79,7 +76,7 @@ watch(
 		// Clear synchronously so switching messages never briefly shows the prior
 		// message's cached body while the async load resolves.
 		cachedSrcdoc.value = null;
-		cachedSrcdoc.value = id ? (await loadBody(id))?.srcdoc ?? null : null;
+		cachedSrcdoc.value = id ? ((await loadBody(id))?.srcdoc ?? null) : null;
 	},
 	{ immediate: true }
 );
@@ -110,50 +107,47 @@ const needsBodyFetch = computed(
 		!!(props.message.htmlBodyStorageId || props.message.textBodyStorageId)
 );
 
-const { data: bodyData, error: bodyError } = useConvexQuery(
-	api.mail.mailbox.getMessageBody,
-	() =>
-		needsBodyFetch.value && props.message._id
-			? { messageId: props.message._id as Id<'mailMessages'> }
-			: 'skip'
-);
-
 // Flips once the lazy body fetch has resolved (with content, empty, or a
 // failed blob download) so the loading skeleton can't outlive the fetch.
 const bodyFetchSettled = ref(false);
+const bodyError = ref<unknown>(null);
+let bodyRequestSequence = 0;
 
 watch(
-	() => bodyData.value,
-	async (data) => {
-		if (data === undefined) return;
-		if (data === null) {
-			// Message deleted/unreadable — the query resolved empty, so settle
-			// and let the reader degrade to the "(empty message)" iframe.
+	[needsBodyFetch, () => props.message._id],
+	async ([shouldFetch, messageId]) => {
+		const requestSequence = ++bodyRequestSequence;
+		fetchedHtml.value = null;
+		fetchedText.value = null;
+		bodyError.value = null;
+
+		if (!shouldFetch || !messageId) {
 			bodyFetchSettled.value = true;
 			return;
 		}
-		const d = data as {
-			htmlInline: string | null;
-			textInline: string | null;
-			htmlUrl: string | null;
-			textUrl: string | null;
-		};
+
+		bodyFetchSettled.value = false;
 		try {
-			if (d.htmlInline) fetchedHtml.value = d.htmlInline;
-			else if (d.textInline) fetchedText.value = d.textInline;
-			else if (d.htmlUrl) fetchedHtml.value = await (await fetch(d.htmlUrl)).text();
-			else if (d.textUrl) fetchedText.value = await (await fetch(d.textUrl)).text();
-		} catch {
+			const resolvedBody = await consumeResolvedPostboxMessageBody(requireConvex(), messageId);
+			if (requestSequence !== bodyRequestSequence) return;
+			if (resolvedBody === null) return;
+			fetchedHtml.value = resolvedBody.html;
+			fetchedText.value = resolvedBody.text;
+		} catch (error) {
+			if (requestSequence !== bodyRequestSequence) return;
+			bodyError.value = error;
 			// Leave empty — the reader shows "(empty message)".
 		} finally {
-			bodyFetchSettled.value = true;
+			if (requestSequence === bodyRequestSequence) {
+				bodyFetchSettled.value = true;
+			}
 		}
 	},
 	{ immediate: true }
 );
 
 // Paragraph-bar skeleton while a blob-stored body loads. Degrades to the
-// normal "(empty message)" iframe if the query errors or the download fails.
+// normal "(empty message)" iframe if the action errors or the download fails.
 const bodyLoading = computed(
 	() =>
 		needsBodyFetch.value &&
@@ -164,7 +158,9 @@ const bodyLoading = computed(
 		!(isOffline.value && !!cachedSrcdoc.value)
 );
 
-const effectiveHtml = computed(() => props.message.htmlBodyInline ?? fetchedHtml.value ?? undefined);
+const effectiveHtml = computed(
+	() => props.message.htmlBodyInline ?? fetchedHtml.value ?? undefined
+);
 const effectiveText = computed(() => props.message.textBodyInline ?? fetchedText.value ?? '');
 
 function sanitize(html: string): string {
@@ -173,15 +169,12 @@ function sanitize(html: string): string {
 
 function gateImages(html: string, allow: boolean): string {
 	if (allow) return html;
-	return html.replace(
-		/<img\s+([^>]*)>/gi,
-		(match, attrs: string) => {
-			const srcMatch = attrs.match(/src=(["'])(?<url>[^"']+)\1/);
-			const url = srcMatch?.groups?.['url'];
-			if (!url || url.startsWith('data:') || url.startsWith('cid:')) return match;
-			return `<span data-blocked-img="${url}" style="display:inline-block;padding:4px 8px;background:#eee;color:#666;font-size:11px;border-radius:3px;">[image]</span>`;
-		}
-	);
+	return html.replace(/<img\s+([^>]*)>/gi, (match, attrs: string) => {
+		const srcMatch = attrs.match(/src=(["'])(?<url>[^"']+)\1/);
+		const url = srcMatch?.groups?.['url'];
+		if (!url || url.startsWith('data:') || url.startsWith('cid:')) return match;
+		return `<span data-blocked-img="${url}" style="display:inline-block;padding:4px 8px;background:#eee;color:#666;font-size:11px;border-radius:3px;">[image]</span>`;
+	});
 }
 
 function rewriteLinks(html: string): string {
@@ -282,7 +275,7 @@ const hasLiveContent = computed(() => !!(effectiveHtml.value || effectiveText.va
 // The document the iframe renders: the live render when we have real content,
 // otherwise the cached srcdoc (offline/degraded), otherwise the live render.
 const displaySrcdoc = computed(() =>
-	hasLiveContent.value ? srcdoc.value : cachedSrcdoc.value ?? srcdoc.value
+	hasLiveContent.value ? srcdoc.value : (cachedSrcdoc.value ?? srcdoc.value)
 );
 
 // Persist the rendered srcdoc once the body is final and non-empty. Best-effort
@@ -302,11 +295,7 @@ const renderScheme = computed(() => render.value.renderScheme);
 const trackerDetection = computed<TrackerDetection>(() => render.value.detection);
 const hasTrackers = computed(() => trackerDetection.value.pixelCount > 0);
 
-watch(
-	trackerDetection,
-	(detection) => emit('trackers', detection),
-	{ immediate: true }
-);
+watch(trackerDetection, (detection) => emit('trackers', detection), { immediate: true });
 
 const hasBlockedImages = computed(
 	() => !showImages.value && /<img\s/i.test(effectiveHtml.value ?? '')
@@ -322,7 +311,7 @@ const presetHeight = ref<number | null>(null);
 watch(
 	renderKey,
 	(key) => {
-		presetHeight.value = key ? getPostboxRenderCache().get(key)?.height ?? null : null;
+		presetHeight.value = key ? (getPostboxRenderCache().get(key)?.height ?? null) : null;
 	},
 	{ immediate: true }
 );
@@ -365,9 +354,7 @@ watch([showQuoted, showImages, loadEverything], () => {
 					Images blocked —
 					{{ trackerPixelLabel(trackerDetection.pixelCount) }} detected.
 				</template>
-				<template v-else>
-					Images blocked to protect your privacy.
-				</template>
+				<template v-else> Images blocked to protect your privacy. </template>
 			</span>
 			<button
 				type="button"
@@ -418,10 +405,7 @@ watch([showQuoted, showImages, loadEverything], () => {
 			class="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface"
 			@click="showQuoted = !showQuoted"
 		>
-			<Icon
-				:name="showQuoted ? 'lucide:chevron-up' : 'lucide:chevron-down'"
-				class="w-3.5 h-3.5"
-			/>
+			<Icon :name="showQuoted ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="w-3.5 h-3.5" />
 			{{ showQuoted ? 'Hide quoted text' : 'Show quoted text' }}
 		</button>
 	</div>

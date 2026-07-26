@@ -72,6 +72,8 @@ import type * as auditLogs from "../auditLogs.js";
 import type * as auth_accessRequest from "../auth/accessRequest.js";
 import type * as auth_accountDeletion from "../auth/accountDeletion.js";
 import type * as auth_accountExport from "../auth/accountExport.js";
+import type * as auth_accountExportArtifacts from "../auth/accountExportArtifacts.js";
+import type * as auth_accountExportQueries from "../auth/accountExportQueries.js";
 import type * as auth_accountManagement from "../auth/accountManagement.js";
 import type * as auth_apiAuth from "../auth/apiAuth.js";
 import type * as auth_apiKeys from "../auth/apiKeys.js";
@@ -431,6 +433,8 @@ import type * as lib_llmProviders_openrouter from "../lib/llmProviders/openroute
 import type * as lib_llmProviders_types from "../lib/llmProviders/types.js";
 import type * as lib_mailHost from "../lib/mailHost.js";
 import type * as lib_mailSnooze from "../lib/mailSnooze.js";
+import type * as lib_accountExportEncoding from "../lib/accountExportEncoding.js";
+import type * as lib_accountExportTemplates from "../lib/accountExportTemplates.js";
 import type * as lib_messageBody from "../lib/messageBody.js";
 import type * as lib_messageBodyExport from "../lib/messageBodyExport.js";
 import type * as lib_outboundAlignment from "../lib/outboundAlignment.js";
@@ -830,6 +834,8 @@ declare const fullApi: ApiFromModules<{
   "auth/accessRequest": typeof auth_accessRequest;
   "auth/accountDeletion": typeof auth_accountDeletion;
   "auth/accountExport": typeof auth_accountExport;
+  "auth/accountExportArtifacts": typeof auth_accountExportArtifacts;
+  "auth/accountExportQueries": typeof auth_accountExportQueries;
   "auth/accountManagement": typeof auth_accountManagement;
   "auth/apiAuth": typeof auth_apiAuth;
   "auth/apiKeys": typeof auth_apiKeys;
@@ -1189,6 +1195,8 @@ declare const fullApi: ApiFromModules<{
   "lib/llmProviders/types": typeof lib_llmProviders_types;
   "lib/mailHost": typeof lib_mailHost;
   "lib/mailSnooze": typeof lib_mailSnooze;
+  "lib/accountExportEncoding": typeof lib_accountExportEncoding;
+  "lib/accountExportTemplates": typeof lib_accountExportTemplates;
   "lib/messageBody": typeof lib_messageBody;
   "lib/messageBodyExport": typeof lib_messageBodyExport;
   "lib/outboundAlignment": typeof lib_outboundAlignment;

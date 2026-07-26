@@ -149,6 +149,12 @@ export function isSealedAtRest(stored: string): boolean {
 	return parseEnvelope(stored) !== null;
 }
 
+/** Whether a value claims the reserved text-envelope namespace, even if
+ * truncation or version damage makes the strict envelope parser reject it. */
+export function hasAtRestEnvelopePrefix(stored: string): boolean {
+	return stored.startsWith(`${ENVELOPE_PREFIX}:`);
+}
+
 /**
  * Seal a plaintext body into the versioned envelope string. The empty string is
  * returned verbatim (there is nothing to hide, and an empty inline field is a
@@ -271,6 +277,13 @@ function parseBlobEnvelope(bytes: Uint8Array): ParsedEnvelope | null {
  * legacy plaintext (read verbatim), never "fail". */
 export function isSealedBytesAtRest(bytes: Uint8Array): boolean {
 	return parseBlobEnvelope(bytes) !== null;
+}
+
+/** Whether bytes claim the reserved blob-envelope namespace, even if the
+ * remaining header or ciphertext is truncated/corrupt. */
+export function hasAtRestBlobMagic(bytes: Uint8Array): boolean {
+	if (bytes.length < BLOB_MAGIC.length) return false;
+	return BLOB_MAGIC.every((byte, index) => bytes[index] === byte);
 }
 
 /**

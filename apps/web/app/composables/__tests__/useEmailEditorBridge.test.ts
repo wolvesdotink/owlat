@@ -94,6 +94,15 @@ describe('createUploadImageHandler', () => {
 		expect(deps.getUrl).not.toHaveBeenCalled();
 	});
 
+	it('rejects an upload response without a durable storage ID', async () => {
+		fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });
+		const upload = createUploadImageHandler(deps);
+
+		await expect(upload(makeFile())).rejects.toThrow('Image upload did not return a storage ID');
+		expect(deps.createMediaAsset).not.toHaveBeenCalled();
+		expect(deps.getUrl).not.toHaveBeenCalled();
+	});
+
 	it('throws when the registered asset has no resolvable URL', async () => {
 		deps.getUrl.mockResolvedValue(null);
 		const upload = createUploadImageHandler(deps);

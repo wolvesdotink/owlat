@@ -32,16 +32,22 @@
  * through verbatim, so the proxy serves a not-yet-migrated blob correctly too —
  * the store can hold a mix of sealed and plaintext blobs during the back-fill.
  *
- * FALLBACK. Sealing only happens when `INSTANCE_SECRET` is configured, so an
- * instance without that secret can safely return the direct signed storage URL.
- * If the secret exists but `CONVEX_SITE_URL` does not, the blob may be
- * ciphertext: URL minting therefore fails closed instead of exposing unusable
- * ciphertext and bypassing the decrypt-serving boundary.
+ * FALLBACK. An instance without `INSTANCE_SECRET` may return a direct signed
+ * storage URL only for a legacy plaintext blob. A structurally sealed blob can
+ * outlive the key (for example during a bad rotation), so URL minting probes the
+ * stored envelope and fails closed instead of exposing ciphertext. If the
+ * secret exists but `CONVEX_SITE_URL` does not, URL minting likewise fails
+ * closed because the blob may be ciphertext.
  */
 
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from './env';
-import { sealBytesAtRest, openBytesAtRest } from './atRestBodies';
+import {
+	hasAtRestBlobMagic,
+	isSealedBytesAtRest,
+	sealBytesAtRest,
+	openBytesAtRest,
+} from './atRestBodies';
 
 /** Proxy route path (registered in `http.ts`). */
 export const SEALED_BLOB_PATH = '/sealed-blob';
@@ -62,6 +68,14 @@ export interface BlobGet {
 /** Minimal storage surface for minting a signed URL (query/mutation/action ctx). */
 export interface BlobGetUrl {
 	getUrl(storageId: Id<'_storage'>): Promise<string | null>;
+}
+
+/** Enough bytes to recognize the fixed blob envelope header plus its minimum
+ * authentication tag, without loading a potentially large message into memory. */
+const SEALED_BLOB_PROBE_BYTES = 64;
+
+function canReadBlob(storage: BlobGetUrl): storage is BlobGetUrl & BlobGet {
+	return 'get' in storage && typeof storage.get === 'function';
 }
 
 /** base64url without padding — matches the tracking-HMAC encoding used elsewhere. */
@@ -133,6 +147,9 @@ export async function readSealedBlobBytes(
 	const blob = await storage.get(storageId);
 	if (!blob) return null;
 	const bytes = new Uint8Array(await blob.arrayBuffer());
+	if (hasAtRestBlobMagic(bytes) && !isSealedBytesAtRest(bytes)) {
+		throw new Error('Stored blob has a corrupt at-rest envelope');
+	}
 	const secret = getOptional('INSTANCE_SECRET');
 	if (secret === undefined) return bytes;
 	return openBytesAtRest(secret, bytes);
@@ -159,11 +176,17 @@ export async function readSealedBlobTextForExport(
 	content: string;
 	availability: 'available' | 'missing' | 'corrupt';
 }> {
-	const blob = await storage.get(storageId);
-	if (!blob) return { content: '', availability: 'missing' };
 	try {
+		const blob = await storage.get(storageId);
+		if (!blob) return { content: '', availability: 'missing' };
 		const storedBytes = new Uint8Array(await blob.arrayBuffer());
+		if (hasAtRestBlobMagic(storedBytes) && !isSealedBytesAtRest(storedBytes)) {
+			return { content: '', availability: 'corrupt' };
+		}
 		const secret = getOptional('INSTANCE_SECRET');
+		if (secret === undefined && isSealedBytesAtRest(storedBytes)) {
+			return { content: '', availability: 'corrupt' };
+		}
 		const openedBytes =
 			secret === undefined ? storedBytes : await openBytesAtRest(secret, storedBytes);
 		return {
@@ -175,12 +198,43 @@ export async function readSealedBlobTextForExport(
 	}
 }
 
+/** Single-read, fail-safe binary projection for GDPR export. Unlike the text
+ * helper, this preserves every byte so RFC822 messages and attachments can be
+ * represented losslessly as base64 by the caller. */
+export async function readSealedBlobBytesForExport(
+	storage: BlobGet,
+	storageId: Id<'_storage'>
+): Promise<{
+	content: Uint8Array;
+	availability: 'available' | 'missing' | 'corrupt';
+}> {
+	try {
+		const blob = await storage.get(storageId);
+		if (!blob) return { content: new Uint8Array(), availability: 'missing' };
+		const storedBytes = new Uint8Array(await blob.arrayBuffer());
+		if (hasAtRestBlobMagic(storedBytes) && !isSealedBytesAtRest(storedBytes)) {
+			return { content: new Uint8Array(), availability: 'corrupt' };
+		}
+		const secret = getOptional('INSTANCE_SECRET');
+		if (secret === undefined && isSealedBytesAtRest(storedBytes)) {
+			return { content: new Uint8Array(), availability: 'corrupt' };
+		}
+		return {
+			content: secret === undefined ? storedBytes : await openBytesAtRest(secret, storedBytes),
+			availability: 'available',
+		};
+	} catch {
+		return { content: new Uint8Array(), availability: 'corrupt' };
+	}
+}
+
 /**
  * Mint a URL a consumer can fetch to get the blob's PLAINTEXT bytes. When the
  * instance has a key and a site URL, this is the decrypt-serving proxy URL
  * (capability token bound to the blob + content-type + expiry). Without a key,
- * blobs are plaintext and the direct signed storage URL is safe. With a key but
- * no proxy origin, return `null`: a direct URL could expose sealed ciphertext.
+ * inspect the stored envelope before returning a direct signed URL: legacy
+ * plaintext is safe, while sealed bytes fail closed. With a key but no proxy
+ * origin, return `null`: a direct URL could expose sealed ciphertext.
  */
 export async function sealedBlobUrl(
 	storage: BlobGetUrl,
@@ -190,6 +244,14 @@ export async function sealedBlobUrl(
 	const secret = getOptional('INSTANCE_SECRET');
 	const siteUrl = getOptional('CONVEX_SITE_URL');
 	if (secret === undefined) {
+		// All runtime URL-minting call sites use action/mutation storage. Refuse
+		// any surface that cannot inspect the envelope rather than returning an
+		// unverified direct URL after key loss.
+		if (!canReadBlob(storage)) return null;
+		const blob = await storage.get(storageId);
+		if (!blob) return null;
+		const probe = new Uint8Array(await blob.slice(0, SEALED_BLOB_PROBE_BYTES).arrayBuffer());
+		if (hasAtRestBlobMagic(probe)) return null;
 		return storage.getUrl(storageId);
 	}
 	if (!siteUrl) return null;

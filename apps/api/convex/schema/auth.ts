@@ -105,6 +105,26 @@ export const authTables = {
 		.index('by_scheduled_for_deletion', ['scheduledForDeletion'])
 		.index('by_cancellation_token', ['cancellationToken']),
 
+	// Short-lived, per-user GDPR export sessions. A single active session is
+	// reused so repeated clicks cannot create unbounded scheduler/storage work.
+	accountExportSessions: defineTable({
+		userId: v.string(),
+		artifactCount: v.number(),
+		artifactBytes: v.number(),
+		createdAt: v.number(),
+		expiresAt: v.number(),
+	}).index('by_user_and_expires_at', ['userId', 'expiresAt']),
+
+	// Idempotent staged body/template artifacts, keyed by a content-addressed
+	// row payload within a session. Storage handles never cross the public boundary.
+	accountExportArtifacts: defineTable({
+		sessionId: v.id('accountExportSessions'),
+		artifactKey: v.string(),
+		storageId: v.id('_storage'),
+		contentLength: v.number(),
+		createdAt: v.number(),
+	}).index('by_session_and_key', ['sessionId', 'artifactKey']),
+
 	// Onboarding dismissal — INSTANCE-SCOPED (single org per deployment).
 	// Step progress is derived live from real instance data in
 	// `auth/onboarding.getWithActualProgress`, so the only thing worth storing is

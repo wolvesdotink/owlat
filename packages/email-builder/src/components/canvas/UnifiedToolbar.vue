@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch, onMounted, onUnmounted, type Component, type Ref } from 'vue';
+import {
+	computed,
+	ref,
+	shallowRef,
+	watch,
+	onMounted,
+	onUnmounted,
+	type Component,
+	type Ref,
+} from 'vue';
 import type { EditorBlock, BlockType, Variable, EmailTheme } from '../../types';
 import { getSchema } from '../../schema';
 import type { BlockAttributeSchema, PropertyGroup as PropertyGroupType } from '../../schema/types';
@@ -12,10 +21,22 @@ import ToolbarField from './ToolbarField.vue';
 import IconButton from '../ui/IconButton.vue';
 import ToolbarDivider from '../ui/ToolbarDivider.vue';
 import {
-	Bold, Italic, Underline, Link,
-	AlignLeft, AlignCenter, AlignRight,
-	FileText, Palette, Move, SlidersHorizontal,
-	Copy, Trash2, Link2, Unlink, Bookmark,
+	Bold,
+	Italic,
+	Underline,
+	Link,
+	AlignLeft,
+	AlignCenter,
+	AlignRight,
+	FileText,
+	Palette,
+	Move,
+	SlidersHorizontal,
+	Copy,
+	Trash2,
+	Link2,
+	Unlink,
+	Bookmark,
 } from '@lucide/vue';
 
 // ---------------------------------------------------------------------------
@@ -74,7 +95,6 @@ const props = defineProps<{
 	isInlineEditing: boolean;
 	variables?: Variable[];
 	theme: Required<EmailTheme>;
-	onUploadImage?: (file: File) => Promise<{ url: string; storageId?: string }>;
 	isLinked?: boolean;
 	linkedBlockName?: string | null;
 	/** Whether the host wired a savedBlocks.save handler (shows "Save as block"). */
@@ -114,7 +134,7 @@ const { positionStyles } = useToolbarPosition({
 const schema = computed<BlockAttributeSchema | undefined>(() => getSchema(props.block.type));
 
 const isContainerType = computed(() =>
-	['columns', 'container', 'hero', 'accordion'].includes(props.block.type),
+	['columns', 'container', 'hero', 'accordion'].includes(props.block.type)
 );
 
 const toolbarFields = computed(() => getToolbarFields(props.schema));
@@ -155,13 +175,19 @@ function toggleCategory(catId: string) {
 }
 
 // Close sub-popover on block change or inline edit toggle
-watch(() => props.block.id, () => {
-	activeCategory.value = null;
-});
+watch(
+	() => props.block.id,
+	() => {
+		activeCategory.value = null;
+	}
+);
 
-watch(() => props.isInlineEditing, () => {
-	activeCategory.value = null;
-});
+watch(
+	() => props.isInlineEditing,
+	() => {
+		activeCategory.value = null;
+	}
+);
 
 // ---------------------------------------------------------------------------
 // Sub-popover positioning (centered below toolbar)
@@ -242,26 +268,65 @@ onUnmounted(() => {
 			<!-- ===== Inline editing mode: formatting controls ===== -->
 			<template v-if="isInlineEditing && block.type === 'text'">
 				<IconButton :icon="Bold" title="Bold" aria-label="Bold" @click="emit('format', 'bold')" />
-				<IconButton :icon="Italic" title="Italic" aria-label="Italic" @click="emit('format', 'italic')" />
-				<IconButton :icon="Underline" title="Underline" aria-label="Underline" @click="emit('format', 'underline')" />
-				<IconButton :icon="Link" title="Link" aria-label="Link" @click="emit('format', 'createLink')" />
+				<IconButton
+					:icon="Italic"
+					title="Italic"
+					aria-label="Italic"
+					@click="emit('format', 'italic')"
+				/>
+				<IconButton
+					:icon="Underline"
+					title="Underline"
+					aria-label="Underline"
+					@click="emit('format', 'underline')"
+				/>
+				<IconButton
+					:icon="Link"
+					title="Link"
+					aria-label="Link"
+					@click="emit('format', 'createLink')"
+				/>
 				<ToolbarDivider />
-				<IconButton :icon="AlignLeft" title="Align left" aria-label="Align left" @click="emit('update', block.id, 'textAlign', 'left')" />
-				<IconButton :icon="AlignCenter" title="Align center" aria-label="Align center" @click="emit('update', block.id, 'textAlign', 'center')" />
-				<IconButton :icon="AlignRight" title="Align right" aria-label="Align right" @click="emit('update', block.id, 'textAlign', 'right')" />
+				<IconButton
+					:icon="AlignLeft"
+					title="Align left"
+					aria-label="Align left"
+					@click="emit('update', block.id, 'textAlign', 'left')"
+				/>
+				<IconButton
+					:icon="AlignCenter"
+					title="Align center"
+					aria-label="Align center"
+					@click="emit('update', block.id, 'textAlign', 'center')"
+				/>
+				<IconButton
+					:icon="AlignRight"
+					title="Align right"
+					aria-label="Align right"
+					@click="emit('update', block.id, 'textAlign', 'right')"
+				/>
 			</template>
 
 			<!-- ===== Linked block mode ===== -->
 			<template v-else-if="isLinked">
 				<div class="flex items-center gap-1.5 px-1.5">
 					<Link2 :size="12" class="text-brand/60 shrink-0" />
-					<span class="text-[11px] font-medium text-text-secondary whitespace-nowrap max-w-[140px] overflow-hidden text-ellipsis">
+					<span
+						class="text-[11px] font-medium text-text-secondary whitespace-nowrap max-w-[140px] overflow-hidden text-ellipsis"
+					>
 						{{ linkedBlockName || 'Linked block' }}
 					</span>
 				</div>
 				<ToolbarDivider />
 				<IconButton :icon="Unlink" title="Detach" aria-label="Detach" @click="emit('detach')" />
-				<IconButton :icon="Trash2" title="Delete" aria-label="Delete" size="sm" variant="destructive" @click="emit('delete')" />
+				<IconButton
+					:icon="Trash2"
+					title="Delete"
+					aria-label="Delete"
+					size="sm"
+					variant="destructive"
+					@click="emit('delete')"
+				/>
 			</template>
 
 			<!-- ===== Normal mode: category icons + quick fields + actions ===== -->
@@ -300,8 +365,21 @@ onUnmounted(() => {
 					size="sm"
 					@click="emit('save-block')"
 				/>
-				<IconButton :icon="Copy" title="Duplicate" aria-label="Duplicate" size="sm" @click="emit('duplicate')" />
-				<IconButton :icon="Trash2" title="Delete" aria-label="Delete" size="sm" variant="destructive" @click="emit('delete')" />
+				<IconButton
+					:icon="Copy"
+					title="Duplicate"
+					aria-label="Duplicate"
+					size="sm"
+					@click="emit('duplicate')"
+				/>
+				<IconButton
+					:icon="Trash2"
+					title="Delete"
+					aria-label="Delete"
+					size="sm"
+					variant="destructive"
+					@click="emit('delete')"
+				/>
 			</template>
 		</div>
 
@@ -322,7 +400,6 @@ onUnmounted(() => {
 					:block="block"
 					:theme="theme"
 					:variables="variables"
-					:on-upload-image="onUploadImage"
 					:hide-header="activeGroups.length === 1"
 					@update="handleFieldUpdate"
 				/>

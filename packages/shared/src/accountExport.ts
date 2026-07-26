@@ -40,6 +40,7 @@ export type SerializedAccountExportPage = {
 };
 
 export type AccountExportManifest = {
+	exportSessionId: string;
 	userProfile: {
 		email: string;
 		name?: string;

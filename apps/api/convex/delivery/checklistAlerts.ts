@@ -46,7 +46,7 @@ function normalizedEmail(value: string | undefined): string | undefined {
 	return email || undefined;
 }
 
-async function adminRecipients(
+export async function loadDeliverabilityAlertAdminRecipients(
 	ctx: ActionCtx,
 	organizationId: string
 ): Promise<DeliverabilityAlertAdminRecipient[]> {
@@ -113,7 +113,7 @@ export type RegressionEmailDependencies = {
 };
 
 const regressionEmailDependencies: RegressionEmailDependencies = {
-	loadRecipients: adminRecipients,
+	loadRecipients: loadDeliverabilityAlertAdminRecipients,
 	sendEmail: (ctx, payload) => ctx.runAction(internal.systemMail.trySendSystemEmail, payload),
 	boundaryFailureRetryDisposition: (payload) =>
 		systemMailRetryDisposition(

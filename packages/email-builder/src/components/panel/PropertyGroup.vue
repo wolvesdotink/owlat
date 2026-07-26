@@ -12,7 +12,6 @@ const props = defineProps<{
 	block: EditorBlock;
 	theme: Required<EmailTheme>;
 	variables?: Variable[];
-	onUploadImage?: (file: File) => Promise<{ url: string; storageId?: string }>;
 	/** Hide the collapsible header (used when the parent already shows the group title) */
 	hideHeader?: boolean;
 }>();
@@ -81,7 +80,6 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 						:block="block"
 						:theme="theme"
 						:variables="variables"
-						:on-upload-image="onUploadImage"
 						@update="(value) => emit('update', field.key, value)"
 						@update-keyed="(key, value) => emit('update', key, value)"
 					/>
