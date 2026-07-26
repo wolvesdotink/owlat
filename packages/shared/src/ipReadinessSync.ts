@@ -40,6 +40,7 @@ export interface MtaIpReputationPayload {
 		blockReasons?: IpReadinessBlockReason[];
 		dnsbl?: DnsblStatus;
 		dnsblListings?: DnsblListId[];
+		dnsblCheckedAt?: number;
 		fcrdns?: {
 			ehlo: string;
 			ptrNames: string[];
@@ -155,6 +156,8 @@ function isIpReputationRow(value: unknown): value is MtaIpReputationRow {
 		(value['dnsbl'] === undefined ||
 			(typeof value['dnsbl'] === 'string' && isDnsblStatus(value['dnsbl']))) &&
 		(value['dnsblListings'] === undefined || isDnsblListingArray(value['dnsblListings'])) &&
+		(value['dnsblCheckedAt'] === undefined ||
+			(typeof value['dnsblCheckedAt'] === 'number' && Number.isFinite(value['dnsblCheckedAt']))) &&
 		(value['fcrdns'] === undefined ||
 			value['fcrdns'] === null ||
 			isFcrdnsPayload(value['fcrdns'])) &&
@@ -209,6 +212,7 @@ export function normalizeIpReputationPayload(value: unknown) {
 			...(Array.isArray(ip.blockReasons) ? { blockReasons: ip.blockReasons } : {}),
 			...(typeof ip.dnsbl === 'string' ? { dnsbl: ip.dnsbl } : {}),
 			...(Array.isArray(ip.dnsblListings) ? { dnsblListings: ip.dnsblListings } : {}),
+			...(typeof ip.dnsblCheckedAt === 'number' ? { dnsblCheckedAt: ip.dnsblCheckedAt } : {}),
 			...(ip.fcrdns
 				? {
 						fcrdns: {

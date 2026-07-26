@@ -44,7 +44,7 @@ import { usePreview } from '../composables/usePreview';
 import type { PreviewRenderOptions } from '@owlat/email-previewer';
 
 // Utilities
-import { createBlock, createColumnItem } from '../utils/blocks';
+import { createBlock, createColumnItem, withPrimaryStoredImage } from '../utils/blocks';
 import { htmlToBlocks } from '../utils/htmlToBlocks';
 import { generateId } from '../utils/id';
 import { setByPath } from '../utils/propertyPath';
@@ -746,11 +746,6 @@ function handleReorderChildren(blockId: string, children: unknown[]) {
 	handleBlockPropertyUpdate(blockId, 'items', children);
 }
 
-// Image upload handler for PropertyPanel
-async function handleUploadImage(file: File) {
-	return handlers.uploadImage(file);
-}
-
 // Toolbar event handlers
 function handleToolbarUpdate(blockId: string, key: string, value: unknown) {
 	handleBlockPropertyUpdate(blockId, key, value);
@@ -860,7 +855,10 @@ async function handlePasteImage(file: File) {
 		if (idx !== -1) {
 			canvasBlocks.value[idx] = {
 				...canvasBlocks.value[idx]!,
-				content: { ...canvasBlocks.value[idx]!.content, src: result.url },
+				content: withPrimaryStoredImage(
+					canvasBlocks.value[idx]!.content as ImageBlockContent,
+					result
+				),
 			} as EditorBlock;
 		}
 	} catch (error) {
@@ -1050,7 +1048,6 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 			:is-inline-editing="isInlineEditing"
 			:variables="variables"
 			:theme="theme"
-			:on-upload-image="handleUploadImage"
 			:is-linked="isActiveBlockLinked"
 			:linked-block-name="activeLinkedBlockName"
 			:can-save-as-block="canSaveAsBlock && !!selectedBlockId"

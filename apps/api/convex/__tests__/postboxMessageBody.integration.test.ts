@@ -7,10 +7,13 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { storeSealedBlob } from '../lib/sealedBlob';
+
+const INSTANCE_SECRET = 'postbox-message-body-test-instance-secret';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -26,12 +29,17 @@ vi.mock('../lib/sessionOrganization', async () => {
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) =>
-		!path.includes('sesActions') &&
-		!path.includes('agentSecurity') &&
-		!path.includes('llmProvider')
+	Object.entries(allModules).filter(
+		([path]) =>
+			!path.includes('sesActions') &&
+			!path.includes('agentSecurity') &&
+			!path.includes('llmProvider')
 	)
 );
+
+afterEach(() => {
+	vi.unstubAllEnvs();
+});
 
 async function seedMailboxAndFolder(t: ReturnType<typeof convexTest>) {
 	let mailboxId!: Id<'mailboxes'>;
@@ -137,7 +145,7 @@ describe('mail.mailbox.getMessageBody', () => {
 		const id = await insertMessage(t, mailboxId, folderId, {
 			htmlBodyInline: '<p>small</p>',
 		});
-		const body = await t.query(api.mail.mailbox.getMessageBody, { messageId: id });
+		const body = await t.action(api.mail.mailbox.getMessageBody, { messageId: id });
 		expect(body?.htmlInline).toBe('<p>small</p>');
 		expect(body?.htmlUrl).toBeNull();
 	});
@@ -147,14 +155,51 @@ describe('mail.mailbox.getMessageBody', () => {
 		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
 		let storageId!: Id<'_storage'>;
 		await t.run(async (ctx) => {
-			storageId = await ctx.storage.store(
-				new Blob(['<p>big</p>'], { type: 'text/html' })
-			);
+			storageId = await ctx.storage.store(new Blob(['<p>big</p>'], { type: 'text/html' }));
 		});
 		const id = await insertMessage(t, mailboxId, folderId, { htmlBodyStorageId: storageId });
-		const body = await t.query(api.mail.mailbox.getMessageBody, { messageId: id });
+		const body = await t.action(api.mail.mailbox.getMessageBody, { messageId: id });
 		expect(body?.htmlInline).toBeNull();
 		expect(body?.htmlUrl).toBeTruthy();
+	});
+
+	it('fails closed for a sealed blob after key loss while preserving legacy plaintext', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
+		vi.stubEnv('INSTANCE_SECRET', INSTANCE_SECRET);
+		const sealedStorageId = await t.run((ctx) =>
+			storeSealedBlob(ctx.storage, new TextEncoder().encode('<p>sealed</p>'), 'text/html')
+		);
+		const sealedMessageId = await insertMessage(t, mailboxId, folderId, {
+			htmlBodyStorageId: sealedStorageId,
+		});
+		vi.stubEnv('INSTANCE_SECRET', undefined);
+
+		const sealedBody = await t.action(api.mail.mailbox.getMessageBody, {
+			messageId: sealedMessageId,
+		});
+		expect(sealedBody?.htmlUrl).toBeNull();
+		expect(
+			await t.action(internal.mail.imap.getRawStorageUrl, {
+				storageId: sealedStorageId,
+			})
+		).toBeNull();
+
+		const legacyStorageId = await t.run((ctx) =>
+			ctx.storage.store(new Blob(['<p>legacy</p>'], { type: 'text/html' }))
+		);
+		const legacyMessageId = await insertMessage(t, mailboxId, folderId, {
+			htmlBodyStorageId: legacyStorageId,
+		});
+		const legacyBody = await t.action(api.mail.mailbox.getMessageBody, {
+			messageId: legacyMessageId,
+		});
+		expect(legacyBody?.htmlUrl).toBeTruthy();
+		expect(
+			await t.action(internal.mail.imap.getRawStorageUrl, {
+				storageId: legacyStorageId,
+			})
+		).toBeTruthy();
 	});
 });
 

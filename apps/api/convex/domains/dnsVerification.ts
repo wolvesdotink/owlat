@@ -59,6 +59,7 @@ type VerificationResults = {
 	dmarc?: VerificationResult;
 	mailFrom?: VerificationResult[];
 	tlsRpt?: VerificationResult;
+	tlsa?: VerificationResult;
 	sesStatus?: string;
 };
 
@@ -311,6 +312,7 @@ export async function runDnsLookups(
 		dmarc?: DnsRecord;
 		mailFrom?: DnsRecord[];
 		tlsRpt?: DnsRecord;
+		tlsa?: DnsRecord;
 	}
 ): Promise<VerificationResults> {
 	const results: VerificationResults = {};
@@ -356,15 +358,17 @@ export async function runDnsLookups(
 		}
 	}
 
-	if (dnsRecords.tlsRpt) {
+	if (dnsRecords.tlsRpt && dnsRecords.tlsRpt.type !== 'TLSA') {
 		const tlsRptHostname =
 			dnsRecords.tlsRpt.host === '@' ? domain : `${dnsRecords.tlsRpt.host}.${domain}`;
-		// `_smtp._tls` is a TXT record (RFC 8460 §3); a TLSA association published
-		// under the same union (RFC 6698) is verified with the DANE resolver.
-		results.tlsRpt =
-			dnsRecords.tlsRpt.type === 'TLSA'
-				? await verifyTlsaRecord(tlsRptHostname, dnsRecords.tlsRpt)
-				: await verifyTxtRecord(tlsRptHostname, dnsRecords.tlsRpt.value);
+		results.tlsRpt = await verifyTxtRecord(tlsRptHostname, dnsRecords.tlsRpt.value);
+	}
+
+	const tlsa =
+		dnsRecords.tlsa ?? (dnsRecords.tlsRpt?.type === 'TLSA' ? dnsRecords.tlsRpt : undefined);
+	if (tlsa) {
+		const hostname = tlsa.host === '@' ? domain : `${tlsa.host}.${domain}`;
+		results.tlsa = await verifyTlsaRecord(hostname, tlsa);
 	}
 
 	return results;

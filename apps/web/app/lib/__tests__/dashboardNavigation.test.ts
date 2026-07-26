@@ -153,6 +153,11 @@ function referenceSections(on: ReadonlySet<string>, isDesktop: boolean): Navigat
 		icon: 'lucide:truck',
 		items: [
 			{ name: 'Health', href: '/dashboard/delivery', icon: 'lucide:activity' },
+			{
+				name: 'Deliverability',
+				href: '/dashboard/delivery/deliverability',
+				icon: 'lucide:shield-check',
+			},
 			{ name: 'Setup', href: '/dashboard/delivery/setup', icon: 'lucide:settings-2' },
 		],
 	});

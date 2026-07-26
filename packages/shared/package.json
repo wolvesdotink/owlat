@@ -2,8 +2,8 @@
 	"name": "@owlat/shared",
 	"version": "0.3.3",
 	"private": true,
-	"license": "Apache-2.0",
 	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
 	"type": "module",
 	"main": "./src/index.ts",
 	"module": "./src/index.ts",
@@ -104,6 +104,14 @@
 		"./mtaWebhookEvent": {
 			"types": "./src/mtaWebhookEvent.ts",
 			"import": "./src/mtaWebhookEvent.ts"
+		},
+		"./deliverabilityProbeToken": {
+			"types": "./src/deliverabilityProbeToken.ts",
+			"import": "./src/deliverabilityProbeToken.ts"
+		},
+		"./deliverabilityProviderGuidance": {
+			"types": "./src/deliverabilityProviderGuidance.ts",
+			"import": "./src/deliverabilityProviderGuidance.ts"
 		},
 		"./postboxSanitize": {
 			"types": "./src/postboxSanitize.ts",
@@ -218,16 +226,6 @@
 			"import": "./src/dnsZone.ts"
 		}
 	},
-	"dependencies": {
-		"@owlat/mail-message": "workspace:*",
-		"tldts": "^7.0.30"
-	},
-	"peerDependencies": {
-		"sanitize-html": "^2.13.0"
-	},
-	"peerDependenciesMeta": {
-		"sanitize-html": { "optional": true }
-	},
 	"scripts": {
 		"test": "vitest run",
 		"test:watch": "vitest watch",
@@ -237,10 +235,22 @@
 		"typecheck": "tsc --noEmit",
 		"update-caniemail": "bun run scripts/update-caniemail-data.ts"
 	},
+	"dependencies": {
+		"@owlat/mail-message": "workspace:*",
+		"tldts": "^7.0.30"
+	},
 	"devDependencies": {
 		"@types/node": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
+	},
+	"peerDependencies": {
+		"sanitize-html": "^2.13.0"
+	},
+	"peerDependenciesMeta": {
+		"sanitize-html": {
+			"optional": true
+		}
 	}
 }

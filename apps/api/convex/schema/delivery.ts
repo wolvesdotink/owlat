@@ -8,6 +8,11 @@ import {
 	deliverabilitySignalProviderValidator,
 	destinationProviderValidator,
 } from '../delivery/deliverabilityValidators';
+import {
+	deliverabilityAlertRecipientStatusValidator,
+	deliverabilityAlertRecipientUnavailableReasonValidator,
+	deliverabilityCheckIdSchemaValidator,
+} from './deliveryChecklistValidators';
 
 /**
  * Delivery + sending-infrastructure tables — blocklist, reputation tracking, content scanning,
@@ -326,4 +331,164 @@ export const deliveryTables = {
 		),
 		syncedAt: v.number(),
 	}),
+
+	// Immutable observations produced by Deliverability Center validators.
+	// Checklist state is reduced from these rows; no table stores a mutable
+	// "completed" flag, so a caller cannot manufacture a green item.
+	deliverabilityEvidence: defineTable({
+		organizationId: v.string(),
+		itemId: deliverabilityCheckIdSchemaValidator,
+		scopeKind: v.union(v.literal('deployment'), v.literal('domain')),
+		targetKey: v.string(),
+		domainId: v.optional(v.id('domains')),
+		attemptId: v.string(),
+		validator: v.string(),
+		status: v.union(
+			v.literal('pass'),
+			v.literal('warn'),
+			v.literal('fail'),
+			v.literal('pending-dns')
+		),
+		observedValues: v.array(v.string()),
+		observedValuesVersion: v.optional(v.number()),
+		diagnostic: v.string(),
+		observedAt: v.number(),
+		createdAt: v.number(),
+	})
+		.index('by_org_target_item_status_observed', [
+			'organizationId',
+			'targetKey',
+			'itemId',
+			'status',
+			'observedAt',
+		])
+		.index('by_org_attempt', ['organizationId', 'attemptId'])
+		.index('by_observed_at', ['observedAt']),
+
+	// One fenced orchestration row per target/check. The immutable evidence row
+	// remains the result; this row owns retry timing and stale-worker rejection.
+	deliverabilityVerificationState: defineTable({
+		organizationId: v.string(),
+		itemId: deliverabilityCheckIdSchemaValidator,
+		targetKey: v.string(),
+		domainId: v.optional(v.id('domains')),
+		attemptId: v.string(),
+		generation: v.number(),
+		retryIndex: v.number(),
+		nextCheckAt: v.optional(v.number()),
+		leaseToken: v.string(),
+		leaseExpiresAt: v.number(),
+		currentEvidenceId: v.optional(v.id('deliverabilityEvidence')),
+		updatedAt: v.number(),
+	})
+		.index('by_org_target_item', ['organizationId', 'targetKey', 'itemId'])
+		.index('by_current_evidence', ['currentEvidenceId'])
+		.index('by_domain_id', ['domainId']),
+
+	// Deduplicated operator incidents when a confirmed pass regresses.
+	deliverabilityRegressionAlerts: defineTable({
+		organizationId: v.string(),
+		identity: v.string(),
+		itemId: deliverabilityCheckIdSchemaValidator,
+		targetKey: v.string(),
+		domainId: v.optional(v.id('domains')),
+		previousEvidenceId: v.id('deliverabilityEvidence'),
+		regressedEvidenceId: v.id('deliverabilityEvidence'),
+		observedAt: v.number(),
+		message: v.string(),
+		emailNotificationState: v.union(
+			v.literal('pending'),
+			v.literal('sent'),
+			v.literal('unavailable')
+		),
+		emailNotifiedAt: v.optional(v.number()),
+		// Bounded compaction receipt for departed-recipient rows. Current admins
+		// remain exact rows; historical outcomes are folded here before eviction.
+		compactedRecipientOutcomes: v.optional(
+			v.object({
+				sent: v.number(),
+				transportOutcomeUnknown: v.number(),
+				deliveryFailed: v.number(),
+				unavailable: v.number(),
+				cancelled: v.number(),
+				earliestSentAt: v.optional(v.number()),
+			})
+		),
+		emailDirectoryAttemptCount: v.optional(v.number()),
+		acknowledgedAt: v.optional(v.number()),
+		resolvedAt: v.optional(v.number()),
+		createdAt: v.number(),
+	})
+		.index('by_org_identity', ['organizationId', 'identity'])
+		.index('by_org_resolved_observed', ['organizationId', 'resolvedAt', 'observedAt'])
+		.index('by_org_target_item_resolved', ['organizationId', 'targetKey', 'itemId', 'resolvedAt'])
+		.index('by_previous_evidence_resolved', ['previousEvidenceId', 'resolvedAt'])
+		.index('by_regressed_evidence_resolved', ['regressedEvidenceId', 'resolvedAt'])
+		.index('by_domain_id', ['domainId'])
+		.index('by_resolved_at', ['resolvedAt'])
+		.index('by_observed_at', ['observedAt']),
+
+	// Stable per-user delivery identity for one regression alert. Mutable email
+	// addresses are resolved immediately before sending and never persisted.
+	deliverabilityAlertRecipients: defineTable({
+		organizationId: v.string(),
+		alertId: v.id('deliverabilityRegressionAlerts'),
+		userId: v.string(),
+		status: deliverabilityAlertRecipientStatusValidator,
+		attemptCount: v.number(),
+		attemptToken: v.optional(v.string()),
+		attemptStartedAt: v.optional(v.number()),
+		nextAttemptAt: v.optional(v.number()),
+		sentAt: v.optional(v.number()),
+		unavailableReason: v.optional(deliverabilityAlertRecipientUnavailableReasonValidator),
+	})
+		.index('by_alert', ['alertId'])
+		.index('by_user', ['userId']),
+
+	deliverabilityAlertRecipientReceipts: defineTable({
+		organizationId: v.string(),
+		alertId: v.id('deliverabilityRegressionAlerts'),
+		userId: v.string(),
+		outcome: v.union(v.literal('sent'), v.literal('transport_outcome_unknown')),
+		sentAt: v.optional(v.number()),
+		createdAt: v.number(),
+	})
+		.index('by_alert_and_user', ['alertId', 'userId'])
+		.index('by_alert', ['alertId'])
+		.index('by_user', ['userId']),
+
+	// Honest end-to-end probe seam. A row starts at `sending`, moves to
+	// `awaiting_inbound` only after the real outbound provider accepts it, and
+	// reaches `passed` solely from a correlated inbound-auth observation.
+	deliverabilityLoopbackAttempts: defineTable({
+		organizationId: v.string(),
+		attemptId: v.string(),
+		domainId: v.id('domains'),
+		domain: v.string(),
+		correlationTokenHash: v.string(),
+		status: v.union(
+			v.literal('sending'),
+			v.literal('awaiting_inbound'),
+			v.literal('passed'),
+			v.literal('failed'),
+			v.literal('timed_out')
+		),
+		providerMessageId: v.optional(v.string()),
+		spf: v.optional(v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown'))),
+		dkim: v.optional(v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown'))),
+		dmarc: v.optional(v.union(v.literal('pass'), v.literal('fail'), v.literal('unknown'))),
+		dkimSelector: v.optional(v.string()),
+		tlsVersion: v.optional(v.string()),
+		sendingIp: v.optional(v.string()),
+		ptr: v.optional(v.string()),
+		detail: v.optional(v.string()),
+		startedAt: v.number(),
+		completedAt: v.optional(v.number()),
+		expiresAt: v.number(),
+	})
+		.index('by_org_attempt', ['organizationId', 'attemptId'])
+		.index('by_org_domain_started', ['organizationId', 'domainId', 'startedAt'])
+		.index('by_token_hash', ['correlationTokenHash'])
+		.index('by_completed_at', ['completedAt'])
+		.index('by_expires_at', ['expiresAt']),
 };

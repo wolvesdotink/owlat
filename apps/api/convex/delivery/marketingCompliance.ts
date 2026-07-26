@@ -15,6 +15,21 @@ export type EmailPurpose = 'marketing' | 'transactional';
 
 const REQUIRED_ONE_CLICK_HEADERS = ['list-unsubscribe', 'list-unsubscribe-post'] as const;
 
+/**
+ * Assert the static half of the production pre-dispatch gate. The worker calls
+ * {@link assertMarketingOneClickHeaders} for every marketing envelope; this
+ * check proves the signer contract still covers the two headers that gate
+ * requires, without manufacturing a pretend message observation.
+ */
+export function assertMarketingOneClickSigningContract(): void {
+	const signedHeaders = new Set(SIGNED_HEADERS.map((name) => name.toLowerCase()));
+	for (const requiredHeader of REQUIRED_ONE_CLICK_HEADERS) {
+		if (!signedHeaders.has(requiredHeader)) {
+			throw new Error(`DKIM signed-header contract is missing ${requiredHeader}`);
+		}
+	}
+}
+
 function normalizedHeaders(headers: Readonly<Record<string, string>>): Map<string, string> {
 	return new Map(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
 }
@@ -27,13 +42,10 @@ export function assertMarketingOneClickHeaders(
 	if (purpose !== 'marketing') return;
 
 	const presentHeaders = normalizedHeaders(headers);
-	const signedHeaders = new Set(SIGNED_HEADERS.map((name) => name.toLowerCase()));
+	assertMarketingOneClickSigningContract();
 	for (const requiredHeader of REQUIRED_ONE_CLICK_HEADERS) {
 		if (!presentHeaders.has(requiredHeader)) {
 			throw new Error(`Marketing email is missing required ${requiredHeader} header`);
-		}
-		if (!signedHeaders.has(requiredHeader)) {
-			throw new Error(`DKIM signed-header contract is missing ${requiredHeader}`);
 		}
 	}
 

@@ -1,27 +1,44 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
+import {
+	registerUploadedMediaReference,
+	type StoredMediaReference,
+} from '~/utils/mediaAssetReference';
 
-const props = withDefaults(defineProps<{
-	open: boolean;
-	/** Title override for the modal */
-	title?: string;
-	/** Accepted file types. Default: images only */
-	accept?: string;
-	/** Whether to allow any file type (overrides accept) */
-	allowAllFiles?: boolean;
-}>(), {
-	title: 'Select Image',
-	accept: 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml',
-	allowAllFiles: false,
-});
+const props = withDefaults(
+	defineProps<{
+		open: boolean;
+		/** Title override for the modal */
+		title?: string;
+		/** Accepted file types. Default: images only */
+		accept?: string;
+		/** Whether to allow any file type (overrides accept) */
+		allowAllFiles?: boolean;
+	}>(),
+	{
+		title: 'Select Image',
+		accept: 'image/jpeg,image/png,image/gif,image/webp,image/svg+xml',
+		allowAllFiles: false,
+	}
+);
 
 const emit = defineEmits<{
 	(e: 'update:open', value: boolean): void;
-	(e: 'select', value: { url: string; storageId?: string; width?: number; height?: number; filename?: string; contentType?: string; fileSize?: number }): void;
+	(
+		e: 'select',
+		value: StoredMediaReference & {
+			width?: number;
+			height?: number;
+			filename?: string;
+			contentType?: string;
+			fileSize?: number;
+		}
+	): void;
 }>();
 
-const resolvedAccept = computed(() => props.allowAllFiles ? '*/*' : props.accept);
+const resolvedAccept = computed(() => (props.allowAllFiles ? '*/*' : props.accept));
 
 // Debounced so each keystroke doesn't re-subscribe the paginated query.
 const { searchQuery, debouncedSearch } = useDebouncedSearch(300);
@@ -79,7 +96,8 @@ const { isDragOver, handleDragOver, handleDragLeave, handleDrop } = useDropZone(
 const selectAsset = (asset: (typeof assets.value)[0]) => {
 	emit('select', {
 		url: asset.url,
-		storageId: asset.storageId as string,
+		storageId: asset.storageId as Id<'_storage'>,
+		mediaAssetId: asset._id,
 		width: asset.width,
 		height: asset.height,
 		filename: asset.filename,
@@ -103,22 +121,24 @@ const handleUploadAndSelect = async (files: File[]) => {
 		const isImage = file.type.startsWith('image/');
 		const dimensions = isImage ? await getImageDimensions(file) : null;
 
-		const created = await createMediaAsset({
-			storageId,
-			filename: file.name,
-			mimeType: file.type,
-			fileSize: file.size,
-			width: dimensions?.width,
-			height: dimensions?.height,
-		});
-		if (created === undefined) return;
-
-		// Get the URL and select it
-		const url = await requireConvex().query(api.storage.getUrl, { storageId });
-		if (url) {
-			emit('select', {
-				url,
+		const registered = await registerUploadedMediaReference(
+			{
+				createMediaAsset: (metadata) => createMediaAsset(metadata),
+				getUrl: (registeredStorageId) =>
+					requireConvex().query(api.storage.getUrl, { storageId: registeredStorageId }),
+			},
+			{
 				storageId,
+				filename: file.name,
+				mimeType: file.type,
+				fileSize: file.size,
+				width: dimensions?.width,
+				height: dimensions?.height,
+			}
+		);
+		if (registered.ok) {
+			emit('select', {
+				...registered.reference,
 				width: dimensions?.width,
 				height: dimensions?.height,
 				filename: file.name,
@@ -140,30 +160,42 @@ const handleFileInput = (event: Event) => {
 	}
 };
 
-
 const getFileIcon = (mimeType: string) => {
 	if (mimeType === 'application/pdf') return 'lucide:file-text';
 	if (mimeType.startsWith('video/')) return 'lucide:film';
 	if (mimeType.startsWith('audio/')) return 'lucide:music';
 	return 'lucide:file';
 };
-
 </script>
 
 <template>
-	<UiModal :open="open" :title="title" size="xl" :z-index="10001" @update:open="emit('update:open', $event)">
+	<UiModal
+		:open="open"
+		:title="title"
+		size="xl"
+		:z-index="10001"
+		@update:open="emit('update:open', $event)"
+	>
 		<!-- Tabs -->
 		<div class="flex border-b border-border-subtle mb-4">
 			<button
 				class="px-4 py-2 text-sm font-medium transition-colors"
-				:class="activeTab === 'library' ? 'text-brand border-b-2 border-brand' : 'text-text-secondary hover:text-text-primary'"
+				:class="
+					activeTab === 'library'
+						? 'text-brand border-b-2 border-brand'
+						: 'text-text-secondary hover:text-text-primary'
+				"
 				@click="activeTab = 'library'"
 			>
 				Library
 			</button>
 			<button
 				class="px-4 py-2 text-sm font-medium transition-colors"
-				:class="activeTab === 'upload' ? 'text-brand border-b-2 border-brand' : 'text-text-secondary hover:text-text-primary'"
+				:class="
+					activeTab === 'upload'
+						? 'text-brand border-b-2 border-brand'
+						: 'text-text-secondary hover:text-text-primary'
+				"
 				@click="activeTab = 'upload'"
 			>
 				Upload
@@ -202,11 +234,18 @@ const getFileIcon = (mimeType: string) => {
 						class="w-full h-full object-contain"
 						loading="lazy"
 					/>
-					<div v-else class="w-full h-full flex flex-col items-center justify-center gap-2 bg-bg-surface p-3">
+					<div
+						v-else
+						class="w-full h-full flex flex-col items-center justify-center gap-2 bg-bg-surface p-3"
+					>
 						<Icon :name="getFileIcon(asset.mimeType || '')" class="w-8 h-8 text-text-tertiary" />
-						<span class="text-[10px] text-text-secondary text-center truncate max-w-full px-1">{{ asset.filename }}</span>
+						<span class="text-[10px] text-text-secondary text-center truncate max-w-full px-1">{{
+							asset.filename
+						}}</span>
 					</div>
-					<div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+					<div
+						class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+					>
 						<p class="text-[10px] text-white truncate">{{ asset.filename }}</p>
 						<p class="text-[9px] text-white/70">{{ formatCompactFileSize(asset.fileSize) }}</p>
 					</div>
@@ -229,7 +268,9 @@ const getFileIcon = (mimeType: string) => {
 				@drop="handleDrop"
 			>
 				<Icon name="lucide:upload-cloud" class="w-10 h-10 text-text-tertiary" />
-				<p class="text-sm text-text-secondary">Drag and drop {{ allowAllFiles ? 'a file' : 'an image' }}, or</p>
+				<p class="text-sm text-text-secondary">
+					Drag and drop {{ allowAllFiles ? 'a file' : 'an image' }}, or
+				</p>
 				<UiButton variant="outline" size="sm" :loading="isUploading" @click="fileInputRef?.click()">
 					Browse files
 				</UiButton>

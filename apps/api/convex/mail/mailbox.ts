@@ -13,8 +13,8 @@
 import { v } from 'convex/values';
 import { openMailMessageInlineBody } from '../lib/messageBody';
 import { sealedBlobUrl } from '../lib/sealedBlob';
-import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { authedMutation, publicQuery } from '../lib/authedFunctions';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { authedMutation, publicAction, publicQuery } from '../lib/authedFunctions';
 import type { Id, Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
@@ -958,25 +958,55 @@ export const latestReplyState = publicQuery({
  * and are fetched lazily via the returned signed URLs — previously they had no
  * inline value and rendered blank.
  */
-// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
-export const getMessageBody = publicQuery({
+type ReadableMessageBodySource = {
+	htmlInline: string | null;
+	textInline: string | null;
+	htmlBodyStorageId: Id<'_storage'> | null;
+	textBodyStorageId: Id<'_storage'> | null;
+} | null;
+
+export const getReadableMessageBodySource = internalQuery({
 	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<ReadableMessageBodySource> => {
 		const message = await loadReadableMessage(ctx, args.messageId);
 		if (!message) return null;
 		const { text, html } = await openMailMessageInlineBody(message);
-		// E8b: the over-threshold body blobs are sealed at rest, so hand the reader
-		// a decrypt-serving proxy URL (falls back to the direct signed URL when the
-		// instance has no key, i.e. the blob is plaintext). `fetch(url).text()` on
-		// the web side yields the same plaintext body it did before.
 		return {
 			htmlInline: html ?? null,
 			textInline: text ?? null,
-			htmlUrl: message.htmlBodyStorageId
-				? await sealedBlobUrl(ctx.storage, message.htmlBodyStorageId, 'text/html; charset=utf-8')
+			htmlBodyStorageId: message.htmlBodyStorageId ?? null,
+			textBodyStorageId: message.textBodyStorageId ?? null,
+		};
+	},
+});
+
+type ReadableMessageBody = {
+	htmlInline: string | null;
+	textInline: string | null;
+	htmlUrl: string | null;
+	textUrl: string | null;
+} | null;
+
+// public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
+export const getMessageBody = publicAction({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<ReadableMessageBody> => {
+		const source: ReadableMessageBodySource = await ctx.runQuery(
+			internal.mail.mailbox.getReadableMessageBodySource,
+			args
+		);
+		if (!source) return null;
+		// E8b: the over-threshold body blobs are sealed at rest, so hand the reader
+		// a decrypt-serving proxy URL. Action storage can inspect a keyless blob
+		// before minting a direct legacy-plaintext URL, so key loss fails closed.
+		return {
+			htmlInline: source.htmlInline,
+			textInline: source.textInline,
+			htmlUrl: source.htmlBodyStorageId
+				? await sealedBlobUrl(ctx.storage, source.htmlBodyStorageId, 'text/html; charset=utf-8')
 				: null,
-			textUrl: message.textBodyStorageId
-				? await sealedBlobUrl(ctx.storage, message.textBodyStorageId, 'text/plain; charset=utf-8')
+			textUrl: source.textBodyStorageId
+				? await sealedBlobUrl(ctx.storage, source.textBodyStorageId, 'text/plain; charset=utf-8')
 				: null,
 		};
 	},
@@ -988,15 +1018,27 @@ export const getMessageBody = publicQuery({
  * "download original". Ownership-checked.
  */
 // public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
-export const getMessageRawUrl = publicQuery({
+export const getReadableMessageRawStorageId = internalQuery({
 	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<Id<'_storage'> | null> => {
 		const message = await loadReadableMessage(ctx, args.messageId);
-		if (!message) return null;
+		return message?.rawStorageId ?? null;
+	},
+});
+
+// public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
+export const getMessageRawUrl = publicAction({
+	args: { messageId: v.id('mailMessages') },
+	handler: async (ctx, args): Promise<string | null> => {
+		const storageId: Id<'_storage'> | null = await ctx.runQuery(
+			internal.mail.mailbox.getReadableMessageRawStorageId,
+			args
+		);
+		if (!storageId) return null;
 		// E8b: the raw `.eml` is sealed at rest; serve it through the decrypt proxy
 		// so the reader's client-side attachment extraction / "download original"
 		// receives the plaintext RFC822 bytes.
-		return await sealedBlobUrl(ctx.storage, message.rawStorageId, 'message/rfc822');
+		return await sealedBlobUrl(ctx.storage, storageId, 'message/rfc822');
 	},
 });
 

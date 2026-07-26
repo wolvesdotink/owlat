@@ -2,10 +2,15 @@
 
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
-import { internalAction } from './_generated/server';
+import { internalAction, type ActionCtx } from './_generated/server';
 import { getOptional } from './lib/env';
-import { isSendProviderKind, type SendProviderKind } from './lib/sendProviders';
+import { EmailErrorCode, isSendProviderKind, type SendProviderKind } from './lib/sendProviders';
 import { sendProviderDispatch } from './lib/sendProviders/dispatch';
+import {
+	systemMailRetryDisposition,
+	type SystemMailAttemptOutcome,
+	type SystemMailFailureCode,
+} from './lib/systemMailOutcome';
 
 /**
  * Single transport for every system / auth / DOI email (password reset,
@@ -31,35 +36,71 @@ import { sendProviderDispatch } from './lib/sendProviders/dispatch';
  * and the BetterAuth hooks, all of which have an ActionCtx) reach it via
  * `ctx.runAction(internal.systemMail.sendSystemEmail, …)`.
  */
-export const sendSystemEmail = internalAction({
-	args: {
-		to: v.string(),
-		from: v.string(),
-		subject: v.string(),
-		html: v.string(),
-	},
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		// Registry-aware: a bundled plugin can contribute a send provider, so the
-		// receipt carries whatever kind dispatch actually used, not a fixed union.
-		provider: SendProviderKind;
-		providerMessageId: string;
-		latencyMs: number;
-		attempts: number;
-	}> => {
-		const provider = getOptional('EMAIL_PROVIDER');
-		const providerReady = await ctx.runQuery(
+const systemMailArgs = {
+	to: v.string(),
+	from: v.string(),
+	subject: v.string(),
+	html: v.string(),
+	idempotencyKey: v.optional(v.string()),
+};
+
+type SystemMailArgs = {
+	to: string;
+	from: string;
+	subject: string;
+	html: string;
+	idempotencyKey?: string;
+};
+
+function failedAttempt(
+	provider: SendProviderKind | null,
+	args: SystemMailArgs,
+	errorCode: SystemMailFailureCode,
+	errorMessage: string
+): SystemMailAttemptOutcome {
+	return {
+		status: 'failed',
+		provider,
+		errorCode,
+		errorMessage,
+		retryDisposition: systemMailRetryDisposition(
+			provider ?? undefined,
+			args.idempotencyKey,
+			errorCode
+		),
+	};
+}
+
+export async function attemptSystemEmail(
+	ctx: ActionCtx,
+	args: SystemMailArgs
+): Promise<SystemMailAttemptOutcome> {
+	const configuredProvider = getOptional('EMAIL_PROVIDER');
+	const provider = isSendProviderKind(configuredProvider) ? configuredProvider : null;
+	let providerReady: boolean;
+	try {
+		providerReady = await ctx.runQuery(
 			internal.lib.sendProviders.capability.environmentSendProviderReady,
 			{}
 		);
-		if (!isSendProviderKind(provider) || !providerReady) {
-			throw new Error(
-				'No system email transport configured: set EMAIL_PROVIDER to a registered transport and configure its requirements. System/auth emails (password reset, invitations, double opt-in) require a transport.'
-			);
-		}
+	} catch (error) {
+		return failedAttempt(
+			provider,
+			args,
+			EmailErrorCode.SERVER_ERROR,
+			error instanceof Error ? error.message : 'System mail readiness check failed'
+		);
+	}
+	if (!provider || !providerReady) {
+		return failedAttempt(
+			provider,
+			args,
+			'CONFIGURATION',
+			'No system email transport configured: set EMAIL_PROVIDER to a registered transport and configure its requirements. System/auth emails (password reset, invitations, double opt-in) require a transport.'
+		);
+	}
 
+	try {
 		if (provider === 'mta') {
 			// Behavior-preserving MTA path — routes through the shared provider
 			// dispatch just like every other kind. `mtaSendProvider` defaults
@@ -76,12 +117,23 @@ export const sendSystemEmail = internalAction({
 					html: args.html,
 					headers: { 'Auto-Submitted': 'auto-generated' },
 				},
-				{ ipPool: 'transactional', organizationId: 'system', intakePath: 'system' }
+				{
+					ipPool: 'transactional',
+					organizationId: 'system',
+					intakePath: 'system',
+					...(args.idempotencyKey ? { messageId: args.idempotencyKey } : {}),
+				}
 			);
 			if (!dispatched.result.success) {
-				throw new Error(`System email send failed via mta: ${dispatched.result.errorMessage}`);
+				return failedAttempt(
+					provider,
+					args,
+					dispatched.result.errorCode,
+					dispatched.result.errorMessage
+				);
 			}
 			return {
+				status: 'accepted',
 				provider: dispatched.providerType,
 				providerMessageId: dispatched.result.id,
 				latencyMs: dispatched.latencyMs,
@@ -102,18 +154,49 @@ export const sendSystemEmail = internalAction({
 				html: args.html,
 				headers: { 'Auto-Submitted': 'auto-generated' },
 			},
-			{}
+			provider === 'resend' && args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : {}
 		);
 		if (!dispatched.result.success) {
-			throw new Error(
-				`System email send failed via ${provider}: ${dispatched.result.errorMessage}`
+			return failedAttempt(
+				provider,
+				args,
+				dispatched.result.errorCode,
+				dispatched.result.errorMessage
 			);
 		}
 		return {
+			status: 'accepted',
 			provider: dispatched.providerType,
 			providerMessageId: dispatched.result.id,
 			latencyMs: dispatched.latencyMs,
 			attempts: dispatched.attempts,
 		};
+	} catch (error) {
+		return failedAttempt(
+			provider,
+			args,
+			EmailErrorCode.AMBIGUOUS_TIMEOUT,
+			error instanceof Error ? error.message : 'System mail action failed without a receipt'
+		);
+	}
+}
+
+export const trySendSystemEmail = internalAction({
+	args: systemMailArgs,
+	handler: attemptSystemEmail,
+});
+
+export const sendSystemEmail = internalAction({
+	args: systemMailArgs,
+	handler: async (ctx, args) => {
+		const outcome = await attemptSystemEmail(ctx, args);
+		if (outcome.status === 'failed') {
+			throw new Error(
+				outcome.provider
+					? `System email send failed via ${outcome.provider} (${outcome.errorCode}): ${outcome.errorMessage}`
+					: outcome.errorMessage
+			);
+		}
+		return outcome;
 	},
 });

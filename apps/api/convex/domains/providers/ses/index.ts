@@ -59,7 +59,7 @@ export const sesProvider: SendingDomainProviderModule<'ses'> = {
 			spf: {
 				type: 'TXT',
 				host: '@',
-				value: 'v=spf1 include:amazonses.com ~all',
+				value: 'v=spf1 include:amazonses.com -all',
 			},
 			dkim: dkimRecords,
 			// New domains start in monitor-only mode (`p=none`); the customer

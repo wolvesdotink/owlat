@@ -9,6 +9,10 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
+import {
+	registerUploadedMediaReference,
+	type StoredMediaReference,
+} from '~/utils/mediaAssetReference';
 
 export interface StoredAttachment {
 	id: string;
@@ -129,26 +133,30 @@ async function handleFileUpload(files: FileList | File[]) {
 			// Register in media library FIRST: `storage.getUrl` only resolves blobs
 			// backed by a `mediaAssets` row (cross-resource IDOR guard), so the
 			// asset must exist before we can mint its URL.
-			const created = await createMediaAsset({
-				storageId,
-				filename: file.name,
-				mimeType: file.type || 'application/octet-stream',
-				fileSize: file.size,
-			});
-			if (created === undefined) break;
-
-			const url = await requireConvex().query(api.storage.getUrl, { storageId });
-			if (!url) {
+			const contentType = file.type || 'application/octet-stream';
+			const registered = await registerUploadedMediaReference(
+				{
+					createMediaAsset: (metadata) => createMediaAsset(metadata),
+					getUrl: (registeredStorageId) =>
+						requireConvex().query(api.storage.getUrl, { storageId: registeredStorageId }),
+				},
+				{
+					storageId,
+					filename: file.name,
+					mimeType: contentType,
+					fileSize: file.size,
+				}
+			);
+			if (!registered.ok && registered.reason === 'url-unavailable') {
 				showToast('Failed to get file URL', 'error');
-				break;
 			}
+			if (!registered.ok) break;
 
 			newAttachments.push({
 				id: generateAttachmentId(),
 				filename: file.name,
-				storageId,
-				url,
-				contentType: file.type || 'application/octet-stream',
+				...registered.reference,
+				contentType,
 				fileSize: file.size,
 			});
 
@@ -163,14 +171,14 @@ async function handleFileUpload(files: FileList | File[]) {
 	}
 }
 
-function handleMediaPickerSelect(result: {
-	url: string;
-	storageId?: string;
-	filename?: string;
-	contentType?: string;
-	fileSize?: number;
-}) {
-	if (!result.storageId || !result.url) return;
+function handleMediaPickerSelect(
+	result: Partial<StoredMediaReference> & {
+		filename?: string;
+		contentType?: string;
+		fileSize?: number;
+	}
+) {
+	if (!result.storageId || !result.mediaAssetId || !result.url) return;
 
 	const fileSize = result.fileSize ?? 0;
 	if (totalSize.value + fileSize > MAX_TOTAL_SIZE) {
@@ -187,6 +195,7 @@ function handleMediaPickerSelect(result: {
 		id: generateAttachmentId(),
 		filename: result.filename ?? 'file',
 		storageId: result.storageId,
+		mediaAssetId: result.mediaAssetId,
 		url: result.url,
 		contentType: result.contentType ?? 'application/octet-stream',
 		fileSize,

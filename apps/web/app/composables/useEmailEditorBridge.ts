@@ -8,6 +8,10 @@ import {
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
+import {
+	registerUploadedMediaReference,
+	type MediaAssetReferenceDeps,
+} from '~/utils/mediaAssetReference';
 
 /**
  * Email editor bridge (module) — the app-side owner that backs the
@@ -26,28 +30,17 @@ import { getImageDimensions } from '~/utils/getImageDimensions';
 // without mounting a page.
 // ---------------------------------------------------------------------------
 
-export interface UploadImageDeps {
+export interface UploadImageDeps extends MediaAssetReferenceDeps {
 	/** Mint a one-shot upload URL (Convex `storage.generateUploadUrl`). */
 	generateUploadUrl: () => Promise<string | null | undefined>;
-	/** Resolve a stored file's public URL (Convex `storage.getUrl`). */
-	getUrl: (storageId: Id<'_storage'>) => Promise<string | null>;
-	/** Register the uploaded file in the media library (Convex `mediaAssets.create`). */
-	createMediaAsset: (asset: {
-		storageId: Id<'_storage'>;
-		filename: string;
-		mimeType: string;
-		fileSize: number;
-		width?: number;
-		height?: number;
-	}) => Promise<unknown>;
 	/** Measure the image client-side for the media-library record. */
 	getImageDimensions: (file: File) => Promise<{ width: number; height: number } | null>;
 }
 
 /**
  * Build the `uploadImage` handler the EmailBuilder injects:
- * `generateUploadUrl` → POST the file → `storage.getUrl` → measure dimensions →
- * `mediaAssets.create`. Every uploaded image is auto-registered to the media
+ * `generateUploadUrl` → POST the file → measure dimensions → `mediaAssets.create`
+ * → `storage.getUrl`. Every uploaded image is auto-registered to the media
  * library (the easy-to-miss side effect).
  */
 export function createUploadImageHandler(
@@ -69,13 +62,17 @@ export function createUploadImageHandler(
 			throw new Error('Failed to upload image');
 		}
 
-		const { storageId } = await response.json();
+		const uploadResult = (await response.json()) as { storageId?: unknown };
+		if (typeof uploadResult.storageId !== 'string' || uploadResult.storageId.length === 0) {
+			throw new Error('Image upload did not return a storage ID');
+		}
+		const storageId = uploadResult.storageId as Id<'_storage'>;
 
 		// Auto-save to media library FIRST: `storage.getUrl` only resolves blobs
 		// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
 		// must exist before we can mint its URL.
 		const dimensions = await deps.getImageDimensions(file);
-		await deps.createMediaAsset({
+		const registered = await registerUploadedMediaReference(deps, {
 			storageId,
 			filename: file.name,
 			mimeType: file.type,
@@ -83,14 +80,14 @@ export function createUploadImageHandler(
 			width: dimensions?.width,
 			height: dimensions?.height,
 		});
-
-		const url = await deps.getUrl(storageId);
-
-		if (!url) {
+		if (!registered.ok && registered.reason === 'media-registration-failed') {
+			throw new Error('Image upload did not create a media asset');
+		}
+		if (!registered.ok) {
 			throw new Error('Failed to get image URL');
 		}
 
-		return { url, storageId };
+		return registered.reference;
 	};
 }
 
@@ -261,7 +258,7 @@ export function useEmailEditorBridge<S>(
 	const showMediaPicker = ref(false);
 	let mediaPickerCallback: ((result: ImageUploadResult) => void) | null = null;
 	const onMediaPickerSelect = (result: ImageUploadResult) => {
-		mediaPickerCallback?.({ url: result.url, storageId: result.storageId });
+		mediaPickerCallback?.(result);
 		mediaPickerCallback = null;
 		showMediaPicker.value = false;
 	};

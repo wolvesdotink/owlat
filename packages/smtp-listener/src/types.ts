@@ -57,6 +57,8 @@ export interface SmtpSession<S = unknown, T = unknown> {
 	 * handler cannot forge it (mutated internally via {@link MutableSmtpSession}).
 	 */
 	readonly secure: boolean;
+	/** Negotiated TLS protocol (for example `TLSv1.3`), absent on plaintext. */
+	readonly tlsProtocol?: string;
 	/**
 	 * Whether AUTH has succeeded on this connection. `readonly` in the public
 	 * type so a handler cannot forge an authenticated session.
@@ -90,6 +92,7 @@ export interface MutableSmtpSession<S = unknown, T = unknown> extends Omit<
 	'secure' | 'authenticated' | 'user'
 > {
 	secure: boolean;
+	tlsProtocol?: string;
 	authenticated: boolean;
 	user?: string;
 }

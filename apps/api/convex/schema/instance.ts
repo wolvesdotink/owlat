@@ -112,6 +112,17 @@ export const instanceTables = {
 						),
 					})
 				),
+				smtpTls: v.optional(
+					v.object({
+						status: v.union(v.literal('pass'), v.literal('warn'), v.literal('fail')),
+						hostname: v.string(),
+						isHostnameMatched: v.boolean(),
+						validFrom: v.optional(v.number()),
+						validTo: v.optional(v.number()),
+						reason: v.optional(v.string()),
+						checkedAt: v.number(),
+					})
+				),
 				observedAt: v.number(),
 			})
 		),

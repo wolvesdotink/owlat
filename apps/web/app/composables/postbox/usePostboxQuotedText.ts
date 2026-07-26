@@ -13,11 +13,11 @@
  */
 
 import sanitizeHtml from 'sanitize-html';
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ComposerSpec } from '~/composables/postbox/usePostboxComposerStack';
+import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
 
 // The quote-boundary splitters are shared with the Convex server (voice-profile
 // sampling strips quoted text from SENT bodies with the identical heuristics).
@@ -84,19 +84,13 @@ export interface ReplyQuoteTarget extends QuoteSource {
  * PostboxMessageBody renders from). Falls back to the input on any error so
  * the composer always opens. Shared by the thread reader and the Reply Queue.
  */
-export async function resolveBodyFields<T extends { _id: string } & QuoteSource>(
-	t: T
-): Promise<T> {
+export async function resolveBodyFields<T extends { _id: string } & QuoteSource>(t: T): Promise<T> {
 	if (t.htmlBodyInline || t.textBodyInline) return t;
 	try {
-		const data = await requireConvex().query(api.mail.mailbox.getMessageBody, {
-			messageId: t._id as Id<'mailMessages'>,
-		});
+		const data = await consumeResolvedPostboxMessageBody(requireConvex(), t._id);
 		if (!data) return t;
-		let html = data.htmlInline ?? undefined;
-		let text = data.textInline ?? undefined;
-		if (!html && data.htmlUrl) html = await (await fetch(data.htmlUrl)).text();
-		else if (!text && data.textUrl) text = await (await fetch(data.textUrl)).text();
+		const html = data.html ?? undefined;
+		const text = data.text ?? undefined;
 		return { ...t, htmlBodyInline: html, textBodyInline: text };
 	} catch {
 		return t;
@@ -140,4 +134,3 @@ export function buildForwardedBody(msg: QuoteSource): string {
 		(to ? `To: ${to}<br>` : '');
 	return `<br><br><div class="gmail_quote">${header}<br>${originalAsHtml(msg)}</div>`;
 }
-

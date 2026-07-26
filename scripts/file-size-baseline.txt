@@ -1,5 +1,4 @@
 apps/api/convex/agentHealth.ts
-apps/api/convex/auth/accountManagement.ts
 apps/api/convex/campaigns/lifecycle.ts
 apps/api/convex/campaigns/send.ts
 apps/api/convex/contacts/contacts.ts

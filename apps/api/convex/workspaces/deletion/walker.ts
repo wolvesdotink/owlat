@@ -26,6 +26,7 @@ import {
 // Every other table is a pure `take + delete` sweep, expressed inline below via
 // makeSweepStep — no per-table file needed.
 import { mediaAssetsStep } from './steps/mediaAssets';
+import { accountExportArtifactsStep } from './steps/accountExportArtifacts';
 import { semanticFilesStep } from './steps/semanticFiles';
 import { mailMessagesStep } from './steps/mailMessages';
 import { mailDraftsStep } from './steps/mailDrafts';
@@ -47,6 +48,9 @@ import { makeSweepStep } from './steps/sweep';
  * soft-mark-sends loop is a no-op index lookup, no waste.
  */
 export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletionTable[]] = [
+	'accountExportArtifactLeases',
+	'accountExportArtifacts',
+	'accountExportSessions',
 	// Storage-bearing leaves: storage hooks fire before row delete
 	'mediaAssets',
 	'semanticFileContacts', // junction mirror — clear before its parent files
@@ -187,6 +191,12 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'providerHealth',
 	'providerRoutes',
 	'deliverabilityRouteStates',
+	'deliverabilityAlertRecipients',
+	'deliverabilityAlertRecipientReceipts',
+	'deliverabilityRegressionAlerts',
+	'deliverabilityVerificationState',
+	'deliverabilityEvidence',
+	'deliverabilityLoopbackAttempts',
 	'destinationProviderDomains',
 	'domains',
 	'sendingDomainMtaIdentities',
@@ -251,6 +261,9 @@ export type _StepsCoverEveryTable = AssertStepsExhaustive<TableMissingFromSteps>
  * the union.
  */
 export const ORGANIZATION_DELETION_STEPS = {
+	accountExportArtifactLeases: makeSweepStep('accountExportArtifactLeases'),
+	accountExportArtifacts: accountExportArtifactsStep,
+	accountExportSessions: makeSweepStep('accountExportSessions'),
 	mediaAssets: mediaAssetsStep,
 	semanticFileContacts: makeSweepStep('semanticFileContacts'),
 	semanticFiles: semanticFilesStep,
@@ -310,6 +323,12 @@ export const ORGANIZATION_DELETION_STEPS = {
 	providerHealth: makeSweepStep('providerHealth'),
 	providerRoutes: makeSweepStep('providerRoutes'),
 	deliverabilityRouteStates: makeSweepStep('deliverabilityRouteStates'),
+	deliverabilityAlertRecipients: makeSweepStep('deliverabilityAlertRecipients'),
+	deliverabilityAlertRecipientReceipts: makeSweepStep('deliverabilityAlertRecipientReceipts'),
+	deliverabilityRegressionAlerts: makeSweepStep('deliverabilityRegressionAlerts'),
+	deliverabilityVerificationState: makeSweepStep('deliverabilityVerificationState'),
+	deliverabilityEvidence: makeSweepStep('deliverabilityEvidence'),
+	deliverabilityLoopbackAttempts: makeSweepStep('deliverabilityLoopbackAttempts'),
 	destinationProviderDomains: makeSweepStep('destinationProviderDomains'),
 	domains: domainsStep,
 	onboardingProgress: makeSweepStep('onboardingProgress'),
