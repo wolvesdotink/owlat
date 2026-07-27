@@ -76,14 +76,12 @@ function guideFor(
 	record: YahooCflEnrollmentRecord,
 	state: YahooCflEnrollmentState,
 	precondition: YahooCflDkimPrecondition = PRECONDITION,
-	nowMs = T0
+	nowMs = T0,
+	silentMs = 0
 ) {
 	return {
-		domain: precondition.domain,
 		state,
-		silentMs: 0,
-		enrollment: record,
-		precondition,
+		silentMs,
 		steps: yahooCflGuidedSteps(record, precondition, nowMs),
 		// The affordances come from the pure core exactly as the query serves them —
 		// the panel renders this verbatim and derives no status of its own.
@@ -102,7 +100,8 @@ const LAPSED = guideFor(
 	{ state: 'enrolled', enrolledAt: T0, lastReportAt: T0 },
 	'lapsed',
 	PRECONDITION,
-	T0 + YAHOO_CFL_LAPSE_SILENCE_MS
+	T0 + YAHOO_CFL_LAPSE_SILENCE_MS,
+	YAHOO_CFL_LAPSE_SILENCE_MS
 );
 
 let queryArgs: unknown;
@@ -339,6 +338,23 @@ describe('D2 — never enrolling is a supported configuration', () => {
 		expect(w.get('[data-testid="yahoocfl-confidence"]').text()).toContain(
 			'Measurement confidence: high'
 		);
+	});
+
+	it('states the MEASURED silence, not the threshold from the constant', () => {
+		// The lapsed step's copy is written from the 90-day constant, so on its own
+		// it says "90 days" however long the real silence is. The panel reports the
+		// figure the backend actually measured.
+		const days = Math.floor(YAHOO_CFL_LAPSE_SILENCE_MS / 86_400_000);
+		expect(mountPanel(LAPSED).get('[data-testid="yahoocfl-silence"]').text()).toContain(
+			`No Yahoo complaint in the last ${days} days`
+		);
+	});
+
+	it('says nothing about silence when there is none to report', () => {
+		// `silentMs` is 0 for every state but `enrolled`/`lapsed`, and a sub-day
+		// silence rounds to nothing worth a sentence.
+		expect(mountPanel(NOT_STARTED).find('[data-testid="yahoocfl-silence"]').exists()).toBe(false);
+		expect(mountPanel(ENROLLED).find('[data-testid="yahoocfl-silence"]').exists()).toBe(false);
 	});
 
 	it('renders nothing at all rather than a placeholder while the guide is absent', () => {

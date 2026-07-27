@@ -101,7 +101,24 @@ const canReset = computed(() => props.canManage && actions.value?.canReset === t
 // Yahoo will not accept an enrollment for a domain it cannot see our signature
 // on, so Submit stays disabled until the domain is verified AND signing. This
 // gates only the WIZARD — mail to Yahoo keeps flowing either way.
-const isDkimReady = computed(() => actions.value?.submitBlockedByDkim !== true);
+const submitBlockedByDkim = computed(() => actions.value?.submitBlockedByDkim === true);
+
+/**
+ * How long the Yahoo feed has actually been silent, in whole days.
+ *
+ * The `lapsed` step's copy is written from the CONSTANT (90 days), so on its own
+ * it can only ever say "90 days" whether the true figure is 91 or 400. The
+ * backend measures the real silence; rendering it is what makes the sentence
+ * true rather than merely nominal. `null` whenever there is no silence to
+ * report — the backend returns 0 for every state but `enrolled`/`lapsed`, and
+ * a same-day report rounds to nothing worth saying.
+ */
+const silentDays = computed(() => {
+	const silentMs = guide.value?.silentMs;
+	if (typeof silentMs !== 'number' || !Number.isFinite(silentMs) || silentMs <= 0) return null;
+	const days = Math.floor(silentMs / 86_400_000);
+	return days >= 1 ? days : null;
+});
 
 /**
  * "Start over" clears OUR record — and, once the ramp's substitution table
@@ -195,8 +212,8 @@ async function reset() {
 				type="button"
 				class="btn btn-primary text-sm py-1.5 px-3"
 				data-testid="yahoocfl-submit"
-				:disabled="isBusy || !isDkimReady"
-				:aria-describedby="isDkimReady ? undefined : 'yahoocfl-submit-blocked'"
+				:disabled="isBusy || submitBlockedByDkim"
+				:aria-describedby="submitBlockedByDkim ? 'yahoocfl-submit-blocked' : undefined"
 				@click="submit"
 			>
 				{{ isSubmitting ? 'Saving…' : "I submitted Yahoo's form" }}
@@ -204,7 +221,7 @@ async function reset() {
 			<!-- The reason a control is disabled must be VISIBLE: a `title` on a
 			     disabled button is neither focusable nor announced. -->
 			<p
-				v-if="canSubmit && !isDkimReady"
+				v-if="canSubmit && submitBlockedByDkim"
 				id="yahoocfl-submit-blocked"
 				class="text-xs text-text-secondary"
 				data-testid="yahoocfl-submit-blocked-reason"
@@ -233,6 +250,16 @@ async function reset() {
 				{{ isResetting ? 'Saving…' : 'Start over' }}
 			</button>
 		</div>
+
+		<!-- The measured silence, when there is one. The lapsed step states the
+		     THRESHOLD; this states the FACT. -->
+		<p
+			v-if="silentDays !== null"
+			class="mt-3 text-xs text-text-tertiary"
+			data-testid="yahoocfl-silence"
+		>
+			No Yahoo complaint in the last {{ silentDays }} {{ silentDays === 1 ? 'day' : 'days' }}.
+		</p>
 
 		<!-- D14: say the quiet part. Which signal the yahoo cell actually runs on,
 		     and how confident it is. A caveat, never a warning and never a nag. -->
