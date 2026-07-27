@@ -5,8 +5,9 @@ import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackP
 import { reduce } from '../outcome.js';
 import type { EmailJob } from '../../types.js';
 import type { BounceAttempt } from '../types.js';
+import { FEEDBACK_RECORD_RETENTION_SECONDS } from '../signedToken.js';
 
-const EIGHT_DAYS_MS = 8 * 24 * 60 * 60 * 1_000;
+const RETENTION_MS = FEEDBACK_RECORD_RETENTION_SECONDS * 1_000;
 
 function job(
 	messageId: string,
@@ -196,18 +197,20 @@ describe('delayed feedback provenance', () => {
 		expect(reduce(attributed, {} as never).effects).toEqual([]);
 	});
 
-	it('expires exact and redacted indexes after the documented eight-day horizon', async () => {
+	it('expires exact and redacted indexes after the shared feedback retention', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 		await recordFeedbackProvenance(redis, job('expires-1', 'member_test'));
 		const keys = await redis.keys('mta:{feedback}:*');
 		expect(keys).toHaveLength(2);
+		// Derived, not chosen: the record must outlive any token that still
+		// verifies, or a late complaint attributes to nothing (bounce/signedToken).
 		expect(await Promise.all(keys.map((key) => redis.ttl(key)))).toEqual([
-			8 * 24 * 60 * 60,
-			8 * 24 * 60 * 60,
+			FEEDBACK_RECORD_RETENTION_SECONDS,
+			FEEDBACK_RECORD_RETENTION_SECONDS,
 		]);
 
-		vi.advanceTimersByTime(EIGHT_DAYS_MS + 1);
+		vi.advanceTimersByTime(RETENTION_MS + 1);
 		const exact = await attachFeedbackProvenance(redis, dsn('expires-1'));
 		const recipientOnly = await attachFeedbackProvenance(redis, redacted());
 		expect(exact.kind === 'dsn_attributed' && exact.bounce.feedbackProvenance).toBe('unknown');

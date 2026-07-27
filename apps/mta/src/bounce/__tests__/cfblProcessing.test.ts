@@ -172,6 +172,35 @@ describe('P2-7 (c) — inbound CFBL report processing', () => {
 		expect(enriched.arf.feedbackProvenance).toBe('production');
 	});
 
+	it('still resolves the org and campaign on day TEN, inside the token horizon', async () => {
+		// The regression this pins: the provenance record used to expire after
+		// eight days while the CFBL token stayed valid for fifteen, so a genuine
+		// complaint arriving on days 9-15 VERIFIED but attributed to nothing —
+		// silently unusable for the complaint gate. Both retentions now derive
+		// from one constant in `bounce/signedToken.ts`.
+		await recordFeedbackProvenance(redis, jobFor());
+		const cfblAddress = buildCfblAddress(MESSAGE_ID, HOST, KEY)!;
+
+		// Only `Date` is faked — the real timers ioredis-mock and the phase
+		// pipeline rely on stay untouched.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(Date.now() + 10 * 24 * 60 * 60 * 1000);
+
+			const outcome = await parseFblOrDsnPhase.run(deps, ctxFor(arfReport(), cfblAddress));
+			const enriched = await attachFeedbackProvenance(redis, attemptOf(outcome));
+
+			expect(enriched.kind).toBe('fbl');
+			if (enriched.kind !== 'fbl') return;
+			expect(enriched.arf.originalMessageId).toBe(MESSAGE_ID);
+			expect(enriched.arf.organizationId).toBe('org_acme');
+			expect(enriched.arf.campaignId).toBe(CAMPAIGN_ID);
+			expect(enriched.arf.feedbackProvenance).toBe('production');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('does NOT weaken the shipped VERP Original-Mail-From path', async () => {
 		const verp = buildVerpAddress(MESSAGE_ID, HOST, KEY);
 		// Bare addr-spec, matching what the shipped `parseVerpAddress` anchors on
