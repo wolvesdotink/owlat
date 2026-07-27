@@ -101,6 +101,20 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
+	// Microsoft SNDS: poll the operator's Automated Data Access feeds for per-IP
+	// complaint BANDS, spam-trap hits and filter results. Microsoft refreshes the
+	// feed a few times a day, so six-hourly is as fresh as the data gets. A
+	// deployment with no feed configured is a supported configuration: the poller
+	// returns immediately, writes nothing and raises nothing (D2).
+	crons.interval('poll Microsoft SNDS data feeds', { hours: 6 }, internal.delivery.snds.poll, {});
+
+	crons.interval(
+		'cleanup Microsoft SNDS telemetry',
+		{ hours: 24 },
+		internal.delivery.snds.cleanup,
+		{}
+	);
+
 	crons.interval(
 		'check critical deliverability DNS and blocklists',
 		{ hours: 1 },
