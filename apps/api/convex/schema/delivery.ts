@@ -236,25 +236,20 @@ export const deliveryTables = {
 	deliverabilityRouteStates: defineTable({
 		organizationId: v.string(),
 		destinationProvider: deliverabilitySignalProviderValidator,
-		// Sending stream of the ramp cell `(stream, destinationProvider)`. ABSENT
-		// means a legacy, stream-less row that serves every stream — the shipped
-		// MTA snapshot writes exactly those rows.
+		// Ramp cell = (stream, destinationProvider). An ABSENT stream is a legacy,
+		// stream-less row serving every stream — what the MTA snapshot writes.
 		stream: v.optional(deliverabilityStreamValidator),
-		// Shipped boolean, KEPT as a derived view of `ownShare`. Every reader
-		// resolves `ownShare ?? (isFallbackActive ? 0 : 1)` through
-		// `resolveOwnShare` in @owlat/shared/deliverabilityRouting (D1).
+		// Kept as a derived view of `ownShare`: every reader resolves
+		// `ownShare ?? (isFallbackActive ? 0 : 1)` through `resolveOwnShare` in
+		// @owlat/shared/deliverabilityRouting.
 		isFallbackActive: v.boolean(),
-		// Fraction in [0,1] of this cell's traffic carried by the own MTA. Absent
-		// on every row written before the migration; written by the ramp
-		// controller only.
+		// Share in [0,1] of the cell carried by the own MTA, absent on every
+		// pre-migration row; the ramp phase ceiling (0.25/0.5/0.8/1); the
+		// consecutive all-gates-green window count; and the mix generation that
+		// salts per-recipient assignment. Written by the ramp controller only.
 		ownShare: v.optional(v.number()),
-		// Highest share the current ramp phase permits (0.25 -> 0.5 -> 0.8 -> 1).
 		phaseCeiling: v.optional(v.number()),
-		// Consecutive all-gates-green evaluation windows; `healthySince` remains
-		// the clean-streak clock, no parallel timestamp.
 		cleanStreak: v.optional(v.number()),
-		// Bumped whenever the share changes; part of the per-recipient assignment
-		// salt so a re-mix produces a fresh, comparable cohort.
 		mixVersion: v.optional(v.number()),
 		signals: v.array(
 			v.object({
@@ -263,8 +258,7 @@ export const deliveryTables = {
 				observedAt: v.number(),
 			})
 		),
-		// Reused as the AIMD freeze clock (`fallbackActiveSince`) and the
-		// clean-streak clock (`healthySince`) — deliberately no parallel fields.
+		// Also the AIMD freeze clock / clean-streak clock: no parallel fields.
 		fallbackActiveSince: v.optional(v.number()),
 		healthySince: v.optional(v.number()),
 		snapshotGeneratedAt: v.number(),

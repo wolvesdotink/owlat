@@ -337,6 +337,47 @@ describe('DB-backed deliverability route verification', () => {
 		).toMatchObject({ route: null, deferralCode: 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED' });
 	});
 
+	// Boolean -> share widening (D1). Legacy rows carry no `ownShare`, so every
+	// case above already asserts the no-behaviour-change requirement; these two
+	// pin the resolution contract itself at the resolver boundary.
+	it('routes a legacy row exactly as the stored boolean, with no share written', async () => {
+		const t = await seedRouteState({ withSesIdentity: true });
+		const rows = await t.run((ctx) => ctx.db.query('deliverabilityRouteStates').collect());
+		expect(rows.every((row) => row.ownShare === undefined && row.stream === undefined)).toBe(true);
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({ providerType: 'ses', source: 'deliverability_fallback' });
+	});
+
+	it('lets an explicit whole-cell share supersede the legacy boolean', async () => {
+		const t = await seedRouteState({ withSesIdentity: true });
+		await t.run(async (ctx) => {
+			const state = await ctx.db
+				.query('deliverabilityRouteStates')
+				.withIndex('by_org_provider', (q) =>
+					q.eq('organizationId', 'org-a').eq('destinationProvider', 'gmail')
+				)
+				.first();
+			if (!state) throw new Error('missing gmail route state');
+			await ctx.db.patch(state._id, { ownShare: 1 });
+		});
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({ providerType: 'mta', source: 'org_config' });
+	});
+
 	it('ignores an expired signal instead of creating a new relay decision', async () => {
 		const t = await seedRouteState({ withSesIdentity: true });
 		expect(
