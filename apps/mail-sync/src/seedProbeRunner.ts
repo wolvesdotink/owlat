@@ -43,10 +43,6 @@ function buildSeedProbeDeps(convex: ConvexClient): SeedProbeDeps {
 			(await convex.mutation(fn.recordSeedProbeClassification as never, input as never)) as Awaited<
 				ReturnType<SeedProbeDeps['recordClassification']>
 			>,
-		emitRotationReminder: async (input) =>
-			(await convex.mutation(fn.emitSeedRotationReminder as never, input as never)) as Awaited<
-				ReturnType<SeedProbeDeps['emitRotationReminder']>
-			>,
 		click: async (url) => {
 			// The target has already been constrained to one of this deployment's
 			// OWN origins (`chooseHygieneClickTarget` + the work item's

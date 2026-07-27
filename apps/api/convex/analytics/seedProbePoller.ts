@@ -17,11 +17,7 @@ import { v } from 'convex/values';
 import { internalQuery, type DatabaseReader } from '../_generated/server';
 import { CONNECTABLE_ACCOUNT_STATUSES, seedProviderOf } from '../mail/externalAccountShared';
 import { getOptional } from '../lib/env';
-import {
-	shouldRemindSeedRotation,
-	type SeedProbeWorkItem,
-	type SeedProbeWorkPage,
-} from '@owlat/shared/seedPlacement';
+import type { SeedProbeWorkItem, SeedProbeWorkPage } from '@owlat/shared/seedPlacement';
 
 /**
  * How long after DISPATCH a probe becomes worth looking for. Filters run on
@@ -98,6 +94,12 @@ async function resolveClickHosts(db: DatabaseReader): Promise<string[]> {
  * skipped (a seed whose credentials the operator has not fixed is skipped, not
  * an error), which is a per-row filter rather than an index selection precisely
  * because the cursor, not the page, is what guarantees progress.
+ *
+ * Strictly IMAP work: an account with nothing to look for yields no item. The
+ * rotation nudge deliberately does NOT ride along here — it is a timestamp
+ * decision, and hanging it off this selection meant an idle or `auth_error`
+ * seed could never be nudged. It has its own cron
+ * (`analytics/seedRotationSweep.ts`).
  */
 export const listSeedProbeWork = internalQuery({
 	args: { now: v.number(), cursor: v.optional(v.union(v.string(), v.null())) },
@@ -151,11 +153,6 @@ export const listSeedProbeWork = internalQuery({
 				provider: seedProviderOf(account),
 				probeIds,
 				expiredProbeIds,
-				rotationReminderDue: shouldRemindSeedRotation({
-					connectedAt: account.createdAt,
-					lastAcknowledgedAt: account.seedRotationAcknowledgedAt,
-					now: args.now,
-				}),
 				clickHosts,
 			});
 		}

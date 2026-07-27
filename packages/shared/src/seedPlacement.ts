@@ -89,8 +89,6 @@ export interface SeedProbeWorkItem {
 	probeIds: string[];
 	/** Probes past the give-up horizon — report MISSING without searching. */
 	expiredProbeIds: string[];
-	/** Advisory nudge; never a blocking warning (D2). */
-	rotationReminderDue: boolean;
 	/**
 	 * The ONLY hosts the hygiene click may be issued against — this deployment's
 	 * own tracking/site origins. The click target is chosen from links found

@@ -1,7 +1,8 @@
 /**
  * (d)/(step 3) The seed-probe sweep: the poller walks seed accounts, reports
  * folders, and EXECUTES the hygiene the backend planned — marks read, fires
- * the occasional click, and surfaces the rotation reminder.
+ * the occasional click. The rotation nudge is NOT here: it is a timestamp
+ * decision owned by a Convex cron (`analytics/seedRotationSweep.ts`).
  *
  * Every dependency is injected, so this exercises the real sweep with no IMAP
  * server and no network at all.
@@ -33,14 +34,11 @@ function buildDeps(overrides: {
 	folders?: Record<string, string>;
 	hygiene?: Record<string, { markRead: boolean; click: boolean }>;
 	placements?: Record<string, 'inbox' | 'category' | 'spam' | 'deleted' | 'missing'>;
-	/** What the backend reports back from the rotation-reminder emission. */
-	reminderEmitted?: boolean;
 }): {
 	deps: SeedProbeDeps;
 	recorded: Recorded[];
 	markedRead: SeedProbeLocation[];
 	clicked: string[];
-	reminded: string[];
 	// Counters are read through getters: a plain number is snapshotted at build
 	// time and every assertion against it silently passes.
 	opened: () => number;
@@ -49,7 +47,6 @@ function buildDeps(overrides: {
 	const recorded: Recorded[] = [];
 	const markedRead: SeedProbeLocation[] = [];
 	const clicked: string[] = [];
-	const reminded: string[] = [];
 	let opened = 0;
 	let foldersSearched = 0;
 
@@ -86,10 +83,6 @@ function buildDeps(overrides: {
 				hygiene: overrides.hygiene?.[probeId] ?? { markRead: true, click: false },
 			};
 		},
-		emitRotationReminder: async ({ accountId }) => {
-			reminded.push(accountId);
-			return { emitted: overrides.reminderEmitted ?? true };
-		},
 		click: async (url) => {
 			clicked.push(url);
 		},
@@ -99,7 +92,6 @@ function buildDeps(overrides: {
 		recorded,
 		markedRead,
 		clicked,
-		reminded,
 		opened: () => opened,
 		searches: () => foldersSearched,
 	};
@@ -112,7 +104,6 @@ const account: SeedProbeWorkItem = {
 	provider: 'gmail',
 	probeIds: ['sp_a'],
 	expiredProbeIds: [],
-	rotationReminderDue: false,
 	clickHosts: [HOST],
 };
 
@@ -193,28 +184,15 @@ describe('runSeedProbeSweep — the hygiene EXECUTOR', () => {
 		expect(h.clicked).toEqual([]);
 	});
 
-	it('surfaces the rotation reminder on schedule', async () => {
-		const h = buildDeps({
-			work: [{ ...account, rotationReminderDue: true }],
-			folders: { sp_a: 'INBOX' },
-		});
+	it("carries no rotation concern at all — that is the backend cron's job", async () => {
+		// The nudge used to ride along on this sweep, which meant it could only ever
+		// reach a seed that happened to have outstanding probe work. It now lives on
+		// `analytics/seedRotationSweep.sweepSeedRotationReminders`, so there is
+		// nothing here to couple it to: the IMAP sweep classifies probes, full stop.
+		const h = buildDeps({ work: [account], folders: { sp_a: 'INBOX' } });
 		const result = await runSeedProbeSweep(h.deps);
-		expect(h.reminded).toEqual(['acct_1']);
-		expect(result.rotationReminders).toBe(1);
-	});
-
-	it('counts NO reminder when the backend emitted nothing', async () => {
-		// The sweep does not decide whether a reminder is due and it does not clear
-		// the flag: it offers the backend the chance, and the backend only records
-		// the reminder when it really emitted one. A tick that emits nothing leaves
-		// the flag standing for the next tick.
-		const h = buildDeps({
-			work: [{ ...account, rotationReminderDue: true }],
-			folders: { sp_a: 'INBOX' },
-			reminderEmitted: false,
-		});
-		const result = await runSeedProbeSweep(h.deps);
-		expect(result.rotationReminders).toBe(0);
+		expect(Object.keys(result)).not.toContain('rotationReminders');
+		expect(Object.keys(h.deps)).not.toContain('emitRotationReminder');
 	});
 });
 
@@ -251,7 +229,6 @@ describe('runSeedProbeSweep — D2: absence is a supported configuration', () =>
 			missing: 0,
 			markedRead: 0,
 			clicked: 0,
-			rotationReminders: 0,
 			unopened: 0,
 			cursor: null,
 		});
@@ -313,15 +290,6 @@ describe('runSeedProbeSweep — a mailbox that could not be OPENED', () => {
 		await runSeedProbeSweep(deps);
 		expect(h.markedRead).toEqual([]);
 		expect(h.clicked).toEqual([]);
-	});
-
-	it('still offers the rotation reminder — an unreachable seed is the stalest of all', async () => {
-		const { h, deps } = unopenableDeps([
-			{ ...account, probeIds: ['sp_a'], rotationReminderDue: true },
-		]);
-		const result = await runSeedProbeSweep(deps);
-		expect(h.reminded).toEqual(['acct_1']);
-		expect(result.rotationReminders).toBe(1);
 	});
 });
 

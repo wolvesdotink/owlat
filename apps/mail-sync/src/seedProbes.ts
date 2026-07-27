@@ -82,16 +82,6 @@ export interface SeedProbeDeps {
 		now: number;
 		clickRoll: number;
 	}): Promise<{ recorded: boolean; placement?: SeedPlacement; hygiene?: SeedHygienePlan }>;
-	/**
-	 * Ask the backend to EMIT the rotation nudge. It re-checks due-ness against
-	 * the stored timestamps and only records the reminder if it actually emitted
-	 * one, so a sweep that produces no notification leaves the flag standing.
-	 */
-	emitRotationReminder(input: {
-		organizationId: string;
-		accountId: string;
-		now: number;
-	}): Promise<{ emitted: boolean }>;
 	/** Perform the occasional click. Best-effort; a failure is never fatal. */
 	click(url: string): Promise<void>;
 }
@@ -102,7 +92,6 @@ export interface SeedProbeSweepResult {
 	missing: number;
 	markedRead: number;
 	clicked: number;
-	rotationReminders: number;
 	/** Accounts whose mailbox could not be opened — skipped, never classified. */
 	unopened: number;
 }
@@ -206,7 +195,6 @@ export async function runSeedProbeSweep(
 		missing: 0,
 		markedRead: 0,
 		clicked: 0,
-		rotationReminders: 0,
 		unopened: 0,
 	};
 	const page = await deps.listWork(deps.now(), cursor);
@@ -240,18 +228,6 @@ export async function runSeedProbeSweep(
 						await classifyOne(deps, item, session, probeId, located.get(probeId) ?? null, result);
 					}
 				}
-			}
-			if (item.rotationReminderDue) {
-				// The backend decides whether a reminder is really due and EMITS the
-				// operator-visible artifact before recording that it did; the sweep
-				// only offers it the chance. A tick that emits nothing leaves the flag
-				// standing for the next one.
-				const { emitted } = await deps.emitRotationReminder({
-					organizationId: item.organizationId,
-					accountId: item.accountId,
-					now: deps.now(),
-				});
-				if (emitted) result.rotationReminders += 1;
 			}
 		} catch (err) {
 			// Never log the address, the credentials, or anything from the mailbox.
