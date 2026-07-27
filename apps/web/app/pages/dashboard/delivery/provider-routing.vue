@@ -338,9 +338,9 @@ async function handleReset() {
 			<div class="space-y-5">
 				<!-- Strategy -->
 				<div>
-					<label for="route-strategy" class="label">Strategy</label>
 					<template v-if="isEditStrategyManaged">
-						<p id="route-strategy" class="input flex items-center gap-2">
+						<span class="label">Strategy</span>
+						<p class="input flex items-center gap-2">
 							<span>{{ strategyLabel(editStrategy) }}</span>
 							<span class="rounded-full border px-2 py-0.5 text-xs font-medium">Managed</span>
 						</p>
@@ -350,6 +350,7 @@ async function handleReset() {
 						</p>
 					</template>
 					<template v-else>
+						<label for="route-strategy" class="label">Strategy</label>
 						<select id="route-strategy" v-model="editStrategy" class="input">
 							<option v-for="strategy in STRATEGIES" :key="strategy.value" :value="strategy.value">
 								{{ strategy.label }}
