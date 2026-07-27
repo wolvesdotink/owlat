@@ -4,6 +4,9 @@ import type { DestinationProviderKey } from '../types.js';
 
 const WARMING_PREFIX = 'mta:warming:';
 
+/** One UTC day in milliseconds — how far back `utcDateKey` steps for yesterday. */
+export const MS_PER_UTC_DAY = 24 * 60 * 60 * 1000;
+
 /**
  * The UTC date every warming key is bucketed by, as `YYYY-MM-DD`.
  *

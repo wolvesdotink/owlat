@@ -32,6 +32,7 @@ import {
 	WARMING_RESERVATION_TTL_MS,
 } from './warmingScripts.js';
 import {
+	MS_PER_UTC_DAY,
 	utcDateKey,
 	warmingDailyStatsKey,
 	warmingReservationReceiptKey,
@@ -296,7 +297,8 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	const state = await getWarmingState(redis, ip);
 	if (!state || state.phase === 'graduated') return;
 
-	const today = utcDateKey();
+	const now = Date.now();
+	const today = utcDateKey(now);
 
 	// Per-UTC-day idempotency guard. The cron calls evaluateDay hourly, but a
 	// schedule advance must happen AT MOST once per UTC day — otherwise a clean
@@ -326,7 +328,16 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	// Re-shape the per-(IP x mailbox provider) caps under the SAME per-UTC-day
 	// guard. This narrows or widens a provider's share of the per-IP cap; it
 	// never changes the per-IP schedule the branches below advance.
-	await evaluateProviderWarmingDay(redis, ip, today);
+	//
+	// The window is YESTERDAY, not `today`: the guard above arms at the FIRST
+	// hourly tick with any traffic, so `today` is a minutes-old partial window
+	// that keeps every provider below `minimumSampleSends` (D10 =>
+	// `insufficient_data`, which HOLDS) and whose daily `pressure` counter is
+	// still almost entirely in the future. The completed previous UTC day is a
+	// whole window and is still live under PROVIDER_DAILY_STATS_TTL_SECONDS (48h).
+	// Accepted consequence: a zero-send day returns above, so a fully idle day
+	// defers yesterday's provider evaluation to the next day that sends anything.
+	await evaluateProviderWarmingDay(redis, ip, utcDateKey(now - MS_PER_UTC_DAY));
 
 	// The four-way schedule adjustment and the graduation gate live in
 	// `warmingScheduleAdjustment.ts`; both are unchanged from the shipped
