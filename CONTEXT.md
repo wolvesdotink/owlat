@@ -322,11 +322,15 @@ mail, split into a PURE core and a thin Convex shell:
   **Contact activity** writer folds each relevant activity into the
   cached accumulator in O(1) on the same contact read it already makes
   for `hasOpened`/`hasClicked`, so one activity still costs at most one
-  contact write. A nightly cron re-projects stale rows so a score decays
+  contact write. An HOURLY cron re-projects stale rows so a score decays
   on the clock too, walking a bounded prefix of the
   `by_engagement_score_updated_at` range — recomputing a row stamps it
   out of that range, so the range IS the cursor and there is no
-  `.collect()` over `contacts`.
+  `.collect()` over `contacts`. The per-tick bound is sized in
+  DOCUMENTS, not contacts (each recompute reads up to 500 activity
+  rows), so capacity comes from ticks: `BACKFILL_CONTACTS_PER_HOUR`
+  states the ceiling, and a book larger than that re-projects on a
+  longer cycle — which the cron logs rather than hides.
 
 Cached on the Contact as three additive optional fields
 (`engagementScore`, `engagementScoreUpdatedAt`, `engagementScoreState`).
