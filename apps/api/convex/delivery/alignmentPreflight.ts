@@ -355,6 +355,61 @@ export const getAlignmentGateState = internalQuery({
 });
 
 /**
+ * The two ARMS for one sending domain, for the transport connection wizard's
+ * live alignment step (P2-4).
+ *
+ * The wizard runs the SHIPPED pure evaluator in the browser against live DNS
+ * (DNS-over-HTTPS — Convex queries cannot resolve DNS), so it needs the same
+ * arm descriptors the sweep builds. Those are assembled HERE from the same
+ * `ownSpfMechanisms` / `referenceFor` helpers the sweep uses, rather than
+ * re-derived on the client, so the wizard's verdict and the controller's gate
+ * can never be computed from two different pictures of the configuration.
+ *
+ * Nothing secret crosses this seam: domain names, DKIM selectors and SPF
+ * mechanisms are all published DNS facts. No credential, sealed or otherwise,
+ * is read or returned.
+ *
+ * D2: a domain with no reference transport returns `{ kind: 'none' }` — the
+ * evaluator turns that into a `single_arm` PASS, so a standalone deployment
+ * walks the wizard cleanly instead of meeting an error.
+ */
+// all-members: published DNS facts only (domain, selectors, SPF mechanisms) —
+// the same member-visible floor as the readiness read below.
+export const getAlignmentArms = authedQuery({
+	args: { domain: v.string() },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ ownArm: AlignmentArm; reference: ReferenceArmInput } | null> => {
+		const fromDomain = normalizeDomain(args.domain);
+		const domain = await ctx.db
+			.query('domains')
+			.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
+			.unique();
+		if (domain === null) return null;
+		const mtaIdentity = await ctx.db
+			.query('sendingDomainMtaIdentities')
+			.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+			.unique();
+		if (mtaIdentity === null) return null;
+		const sesIdentity = await ctx.db
+			.query('sendingDomainSesIdentities')
+			.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
+			.unique();
+		return {
+			ownArm: {
+				label: 'own MTA',
+				fromDomain: domain.domain,
+				dkimDomain: domain.domain,
+				dkimSelectors: [mtaIdentity.dkimSelector],
+				spfMechanisms: ownSpfMechanisms(),
+			},
+			reference: referenceFor(domain, sesIdentity, await configuredRelayKinds(ctx)),
+		};
+	},
+});
+
+/**
  * Readiness-card view of the alignment pre-flight, consumed by the delivery
  * readiness panel (`apps/web/app/utils/deliveryReadiness.ts`). A standalone
  * domain has no row here at all, so it contributes nothing to the card — the

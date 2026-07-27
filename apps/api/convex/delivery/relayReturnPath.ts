@@ -20,6 +20,7 @@ import { extractDomainOrNull } from '@owlat/shared';
 import { normalizeReturnPathDomain } from '@owlat/shared/verpNormalize';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
+import { authedQuery } from '../lib/authedFunctions';
 import {
 	isCustomReturnPathSupported,
 	resolveReturnPathCapability,
@@ -391,3 +392,25 @@ export async function relayReturnPathHostFor(
 		? host
 		: undefined;
 }
+
+/**
+ * The recorded return-path posture, for the transport connection wizard's
+ * fourth step (P2-4).
+ *
+ * The same answer {@link transportReturnPathCapability} gives the ramp, exposed
+ * to the delivery UI: one resolver, so the wizard and the dashboard can never
+ * report different measurement quality for the same transport. Read-only, and
+ * total — an unconfigured or unknown transport id resolves to the unresolvable
+ * posture (`unknown`, degraded), never to an error (D2).
+ *
+ * The wizard RECORDS this; it never gates on it. `unsupported` is a supported
+ * configuration with coarser bounce attribution, not a step to fix.
+ */
+// all-members: a capability verdict and its reason code — no credential, no
+// endpoint, no secret. The same member-visible floor as the delivery readiness
+// reads.
+export const getReturnPathReadiness = authedQuery({
+	args: { transportId: v.string() },
+	handler: async (ctx, args): Promise<ResolvedReturnPathCapability> =>
+		returnPathCapabilityFor(ctx, args.transportId, Date.now()),
+});
