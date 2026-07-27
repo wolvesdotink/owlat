@@ -28,18 +28,16 @@
  * `role="alert"` region.
  */
 import { computed, nextTick, ref, watch } from 'vue';
-import type {
-	AlignmentArm,
-	AlignmentPreflightResult,
-	ReferenceArmInput,
-} from '@owlat/shared/deliverabilityAlignment';
+import type { AlignmentArm, ReferenceArmInput } from '@owlat/shared/deliverabilityAlignment';
 import {
+	RETURN_PATH_NO_REFERENCE_NOTE,
 	RETURN_PATH_SETTLES_NOTE,
 	TRANSPORT_WIZARD_ENTRY,
 	TRANSPORT_WIZARD_STEPS,
 	advanceStep,
 	alignmentFindings,
 	alignmentStepStatus,
+	alignmentVerdictSummary,
 	canAdvance,
 	canGoBack,
 	createTransportWizardState,
@@ -66,12 +64,23 @@ import WizardFindingRow from './WizardFindingRow.vue';
 const props = defineProps<{
 	/**
 	 * The two arms for the sending domain being checked, from
-	 * `delivery.alignmentPreflight.getAlignmentArms`. Null while loading, or when
-	 * the domain has no own-MTA identity — step 3 then says so plainly instead of
-	 * guessing.
+	 * `delivery.alignmentPreflight.getAlignmentArms`.
+	 *
+	 * `undefined` and `null` are DIFFERENT answers and must not be collapsed:
+	 * `undefined` is the read still in flight, `null` is the resolved "no
+	 * verified sending domain has an own-MTA signing identity". Rendering the
+	 * second while the first is true states a negative finding about a question
+	 * nobody has answered yet.
 	 */
 	alignmentArms?: { domain: string; ownArm: AlignmentArm; reference: ReferenceArmInput } | null;
-	/** P2-3's recorded posture for the configured transport; null while loading. */
+	/**
+	 * The REFERENCE transport step 4 describes, from
+	 * `delivery.relayReturnPath.getReturnPathReadiness`. `undefined` is the read
+	 * in flight; `null` is the resolved answer "there is no single second arm",
+	 * which is a supported configuration, not a fault (D2).
+	 */
+	returnPathTransportId?: string | null;
+	/** P2-3's recorded posture for the reference transport; undefined while loading. */
 	returnPathCapability?: ReturnPathCapabilityValue | null;
 	/** Whether a test send is possible at all (a transport is configured). */
 	canSend?: boolean;
@@ -153,19 +162,6 @@ const alignmentFindingRows = ref<WizardFinding[]>([]);
 const alignmentSummary = ref('');
 const alignmentDegradedReason = ref('');
 
-function summarizeVerdict(verdict: AlignmentPreflightResult['verdict']): string {
-	switch (verdict) {
-		case 'single_arm':
-			return 'No second transport is configured, so there is nothing to align yet.';
-		case 'aligned':
-			return 'Both arms are indistinguishable to the receiver apart from the sending infrastructure.';
-		case 'unknown':
-			return 'DNS could not be resolved for every check. Nothing is wrong yet — try again shortly.';
-		case 'blocked':
-			return 'Some checks did not pass. Each one below names the DNS change to make.';
-	}
-}
-
 async function checkAlignment() {
 	const arms = props.alignmentArms;
 	if (!arms) return;
@@ -180,7 +176,7 @@ async function checkAlignment() {
 		const result = await runAlignmentProbe(arms.ownArm, arms.reference, Date.now());
 		alignmentFindingRows.value = alignmentFindings(result);
 		alignmentDegradedReason.value = result.measurementDegradedReason ?? '';
-		alignmentSummary.value = summarizeVerdict(result.verdict);
+		alignmentSummary.value = alignmentVerdictSummary(result);
 		setStatus('alignment', alignmentStepStatus(result));
 	} catch {
 		// A throw here (a malformed arm, an unexpected evaluator shape) must not
@@ -195,6 +191,13 @@ async function checkAlignment() {
 }
 
 // ── Step 4: return-path capability ───────────────────────────────────────────
+/**
+ * The resolved answer "there is no single second arm" — no relay configured, or
+ * more than one. Distinct from the read still being in flight, so the step never
+ * promises a bounce-settled verdict for a provider that does not exist.
+ */
+const hasNoReferenceTransport = computed(() => props.returnPathTransportId === null);
+
 const returnPathRow = computed<WizardFinding | null>(() =>
 	props.returnPathCapability ? returnPathFinding(props.returnPathCapability) : null
 );
@@ -284,7 +287,10 @@ watch(
 
 			<!-- Step 3: alignment -->
 			<div v-if="state.current === 'alignment'" class="space-y-4">
-				<p v-if="!alignmentArms" class="text-sm text-text-secondary">
+				<p v-if="alignmentArms === undefined" class="text-sm text-text-secondary">
+					Reading the sending domain…
+				</p>
+				<p v-else-if="alignmentArms === null" class="text-sm text-text-secondary">
 					No verified sending domain with an own-MTA signing identity was found, so there is nothing
 					to compare yet. Verify a sending domain first.
 				</p>
@@ -313,11 +319,16 @@ watch(
 
 			<!-- Step 4: return-path capability -->
 			<div v-if="state.current === 'return_path'" class="space-y-3">
-				<p v-if="!returnPathRow" class="text-sm text-text-secondary">
-					Reading the recorded return-path capability…
+				<p v-if="hasNoReferenceTransport" class="text-sm text-text-secondary">
+					{{ RETURN_PATH_NO_REFERENCE_NOTE }}
 				</p>
-				<WizardFindingRow v-else :finding="returnPathRow" />
-				<p class="text-sm text-text-secondary">{{ RETURN_PATH_SETTLES_NOTE }}</p>
+				<template v-else>
+					<p v-if="!returnPathRow" class="text-sm text-text-secondary">
+						Reading the recorded return-path capability…
+					</p>
+					<WizardFindingRow v-else :finding="returnPathRow" />
+					<p class="text-sm text-text-secondary">{{ RETURN_PATH_SETTLES_NOTE }}</p>
+				</template>
 			</div>
 
 			<!-- Navigation -->

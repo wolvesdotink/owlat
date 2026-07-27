@@ -76,6 +76,10 @@ const { copy, isCopied } = useCopyToClipboard();
 // Both are total: no verified signing domain answers `null`, and no relay
 // answers `transportId: null` with the unresolvable posture. Neither is an
 // error, and neither renders one.
+//
+// Both are passed through UNCHANGED, `undefined` included: `undefined` is the
+// read in flight and `null` is a resolved negative answer, and collapsing the
+// two renders a finding about a question that has not been answered yet.
 const { data: alignmentArms } = useOrganizationQuery(
 	api.delivery.alignmentPreflight.getAlignmentArms
 );
@@ -243,8 +247,9 @@ const {
 			     deployment fully functional on its own MTA (plan D2), so it renders as
 			     a plain offer with no warning state of any kind. -->
 			<DeliveryTransportConnectionWizard
-				:alignment-arms="alignmentArms ?? null"
-				:return-path-capability="returnPathReadiness?.capability ?? null"
+				:alignment-arms="alignmentArms"
+				:return-path-transport-id="returnPathReadiness?.transportId"
+				:return-path-capability="returnPathReadiness?.capability"
 				:can-send="canSend"
 				@applied="refetchStatus"
 			/>
