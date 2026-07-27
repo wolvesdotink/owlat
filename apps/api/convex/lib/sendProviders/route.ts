@@ -20,20 +20,17 @@ import {
 	type ProviderHealthStatus,
 	type ResolvedRoute,
 } from './routing';
-import { isDeterministicRouteStrategy } from './strategies';
-import { isSendProviderReady } from './capability';
-import { isSendProviderKind, type SendProviderKind } from './types';
-import { getOptional } from '../env';
 import { extractDomainOrNull } from '@owlat/shared';
-import {
-	isActionableDeliverabilitySignalSource,
-	type ActionableDeliverabilitySignalSource,
-	type DestinationProviderKey,
-} from '@owlat/shared/deliverabilityRouting';
 import { resolveDestinationProvider } from './destinationProvider';
-import { relayDomainVerified } from './relayDomainVerification';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
+import {
+	deliverabilityRouteStatesFor,
+	freshFallbackReasons,
+	isGlobalBreakerOpenState,
+	readySendProviderKinds,
+	relayDomainVerifiedFor,
+} from './routeInputs';
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
@@ -100,196 +97,6 @@ export async function resolveSendRouteFromDb(
 				),
 			}
 		: null;
-}
-
-/**
- * Which provider kinds are runtime-ready for this route config (credentials +
- * flag + capability grant). Shared by the full resolver and the cell seam so
- * the two cannot disagree about what "enabled" means.
- */
-async function readySendProviderKinds(
-	ctx: QueryCtx | MutationCtx,
-	routeConfig: Doc<'providerRoutes'> | null
-): Promise<Set<SendProviderKind>> {
-	const candidateKinds = new Set<SendProviderKind>();
-	for (const provider of routeConfig?.providers ?? []) {
-		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
-	}
-	const envProvider = getOptional('EMAIL_PROVIDER');
-	if (isSendProviderKind(envProvider)) candidateKinds.add(envProvider);
-	const readyKinds = new Set<SendProviderKind>();
-	for (const kind of candidateKinds) {
-		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
-	}
-	return readyKinds;
-}
-
-/**
- * The two `deliverabilityRouteStates` rows a decision keys off: the
- * destination-provider row and the org-wide `all` row. Both indexed point
- * reads (`by_org_provider`).
- */
-async function deliverabilityRouteStatesFor(
-	ctx: QueryCtx | MutationCtx,
-	organizationId: string,
-	provider: DestinationProviderKey
-): Promise<[Doc<'deliverabilityRouteStates'> | null, Doc<'deliverabilityRouteStates'> | null]> {
-	return await Promise.all([
-		ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', provider)
-			)
-			.first(),
-		ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', 'all')
-			)
-			.first(),
-	]);
-}
-
-/**
- * Fallback reasons carried by the FRESH active route states, in order.
- *
- * Advisory readings ("blocklist lookup unavailable", "part of the pool is
- * ejected") are recorded on the state row for measurement, but they are not
- * routing reasons and must never appear as the cause of a relay fallback —
- * nor as the cause of a `reference` arm on a send assignment. One filter,
- * both call sites.
- */
-function freshFallbackReasons(
-	states: ReadonlyArray<Doc<'deliverabilityRouteStates'> | null>,
-	now: number
-): ActionableDeliverabilitySignalSource[] {
-	return states
-		.filter(
-			(state) =>
-				state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
-		)
-		.flatMap(
-			(state) =>
-				state?.signals
-					.map((signal) => signal.source)
-					.filter(isActionableDeliverabilitySignalSource) ?? []
-		);
-}
-
-/** True when the org-wide state carries a fresh `breaker_open` signal. */
-function isGlobalBreakerOpenState(
-	globalState: Doc<'deliverabilityRouteStates'> | null,
-	now: number
-): boolean {
-	return Boolean(
-		globalState?.isFallbackActive &&
-		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-		globalState.signals.some((signal) => signal.source === 'breaker_open')
-	);
-}
-
-/** Relay-domain verification for the envelope From, when a relay is configured. */
-async function relayDomainVerifiedFor(
-	ctx: QueryCtx | MutationCtx,
-	routeConfig: Doc<'providerRoutes'> | null,
-	from: string | undefined,
-	now: number
-): Promise<boolean> {
-	const fromDomain = from ? extractDomainOrNull(from) : null;
-	if (!fromDomain || !routeConfig?.deliverabilityFallback?.isEnabled) return false;
-	return await relayDomainVerified(
-		ctx,
-		fromDomain,
-		routeConfig.deliverabilityFallback.relayProviderType,
-		now
-	);
-}
-
-/** Per-CELL inputs for {@link resolveCellRouteFromDb}. */
-export interface CellRouteContext {
-	/** The cell's destination provider — the axis the fallback is keyed on. */
-	readonly destinationProvider: DestinationProviderKey;
-	/** Envelope From; feeds the shipped relay-domain verification input. */
-	readonly from?: string;
-	readonly now: number;
-	readonly organizationId: string;
-}
-
-/**
- * Per-CELL route resolution for BATCH callers, from cold/warm inputs only.
- *
- * `resolveSendRouteFromDb` is the authoritative per-message resolution and it
- * reads `providerHealth` — a document that is read-modify-written once per
- * dispatch (`health.ts recordSendResult`). Pulling that hotspot into a
- * campaign enqueue transaction (which also performs ~50 workpool enqueues)
- * would make every concurrent dispatch invalidate the enqueue's read set and
- * drive OCC retries on a transaction that must not fail. So this seam answers
- * the DELIVERABILITY question — "does this cell relay, and to which
- * transport?" — from inputs that no send patches:
- *
- *   - `providerRoutes` (indexed, admin-written),
- *   - `deliverabilityRouteStates` (`by_org_provider`, written by the
- *     ip-reputation sync cron),
- *   - the relay-domain verification (`domains` /
- *     `sendingDomainSesIdentities`, both admin/verification-written).
- *
- * Deliberately NOT read here:
- *   - `providerHealth` — health-driven failover stays with the worker's
- *     authoritative re-resolution at dispatch (`governedDispatch.ts`);
- *   - `warmingState` — warm-up overflow is a point-in-time volume condition,
- *     and the timezone branch enqueues up to 24h before dispatch, so an
- *     enqueue-time reading of it would predict nothing.
- *
- * Returns `null` when nothing can be recorded honestly:
- *   - no route at all;
- *   - the org-wide delivery circuit is open (the message is not going
- *     anywhere right now);
- *   - the route resolved through a NON-DETERMINISTIC strategy
- *     (`workload_split` draws at random per call). This seam resolves once
- *     per cell, but the worker draws again independently per recipient at
- *     dispatch, so one draw stamped on N rows would be wrong for roughly
- *     half of them. P2-5 replaces the draw with the deterministic
- *     per-recipient hash; until then the honest record is silence.
- *
- * In every case: a guessed arm is worse than a missing row.
- */
-export async function resolveCellRouteFromDb(
-	ctx: QueryCtx | MutationCtx,
-	messageType: MessageType,
-	context: CellRouteContext
-): Promise<ResolvedRoute | null> {
-	const routeConfig = await ctx.db
-		.query('providerRoutes')
-		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
-		.first();
-	const [providerState, globalState] = await deliverabilityRouteStatesFor(
-		ctx,
-		context.organizationId,
-		context.destinationProvider
-	);
-	if (isGlobalBreakerOpenState(globalState, context.now)) return null;
-	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
-	const resolved = resolveRoute(
-		routeConfig as ProviderRouteConfig | null,
-		undefined,
-		(kind) => readyKinds.has(kind),
-		{
-			activeReasons: freshFallbackReasons([globalState, providerState], context.now),
-			isWarmupOverflow: false,
-			isRelayDomainVerified: await relayDomainVerifiedFor(
-				ctx,
-				routeConfig,
-				context.from,
-				context.now
-			),
-		}
-	);
-	// Only an `org_config` selection came out of the strategy; a deliverability
-	// fallback and the env fallback are both deterministic by construction.
-	if (resolved?.source === 'org_config' && !isDeterministicRouteStrategy(routeConfig?.strategy)) {
-		return null;
-	}
-	return resolved;
 }
 
 async function deliverabilityInput(
