@@ -13,8 +13,8 @@ import { getOptional } from '../env';
 import { isSendProviderKind } from './types';
 import type { SendProviderKind } from './types';
 import { strategyFor, isSendRouteStrategyKind } from './strategies';
+import type { MixContext } from './strategies';
 import type {
-	MixAssignmentInput,
 	ProviderEntry,
 	ProviderHealthStatus,
 	ResolvedRoute,
@@ -93,10 +93,11 @@ export function resolveRoute(
 	isReady: (kind: SendProviderKind) => boolean = () => true,
 	deliverability?: DeliverabilityRouteInput,
 	/**
-	 * Per-recipient mix context. Only `adaptive_mix` reads it; every other
-	 * strategy ignores it, so threading it through is inert for shipped routes.
+	 * Per-recipient mix context — a recipient to decide for, or a recorded arm
+	 * to replay. Only `adaptive_mix` reads it; every other strategy ignores it,
+	 * so threading it through is inert for shipped routes.
 	 */
-	mix?: MixAssignmentInput
+	mix?: MixContext
 ): ResolvedRoute | null {
 	if (deliverability?.isGlobalBreakerOpen) throw new GlobalDeliveryCircuitOpenError();
 	if (!routeConfig) return fallback(isReady);

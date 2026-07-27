@@ -23,6 +23,9 @@ import {
 import { extractDomainOrNull } from '@owlat/shared';
 import { resolveDestinationProvider } from './destinationProvider';
 import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
+import { resolveOwnShare } from '@owlat/shared/deliverabilityRouting';
+import type { MixContext } from './strategies';
+import { readAssignmentForSend } from '../../delivery/sendAssignments';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
@@ -55,6 +58,83 @@ export interface SendRouteAddressContext {
 	now?: number;
 	baseOnly?: boolean;
 	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+	/**
+	 * The durable Send id, when the caller has one. THIS is what makes the
+	 * dispatched transport and the recorded arm the same answer under
+	 * `adaptive_mix`: the arm was decided and recorded at enqueue, and this
+	 * resolution replays that record rather than re-deriving a decision whose
+	 * stratification input (the recipient's percentile within the enqueue
+	 * batch's cohort) no single message can reconstruct. Without it a split
+	 * cell would dispatch every recipient on one transport while the assignment
+	 * rows described an `s`-proportioned split, and every rate derived from
+	 * those denominators would describe an experiment that never ran.
+	 */
+	sendId?: string;
+}
+
+/**
+ * The mix context for ONE message, in priority order:
+ *
+ *   1. THE RECORDED ARM. When the caller carries a Send id and an assignment
+ *      row exists, that row is the answer. It is the row every rate in the
+ *      measurement plane is joined on, and one of its inputs — the recipient's
+ *      engagement percentile within the enqueue batch's cohort — is a property
+ *      of that batch, so it cannot be reconstructed from a single message.
+ *      Replaying the record is therefore the ONLY way the dispatched transport
+ *      and the recorded arm can be the same answer.
+ *   2. A DERIVED DECISION. No row (a send that predates the experiment, or a
+ *      recording that degraded — it is allowed to, since recording must never
+ *      fail a send) and no batch to rank against: decide from the cell's share
+ *      with the most stable identity in hand. Nothing is joined against this
+ *      one, so nothing can disagree with it, and it still realises the cell's
+ *      configured share.
+ *
+ * The identity of last resort is the recipient address, which is what the
+ * ADVISORY pre-resolutions hold (campaign sending resolves one route per page
+ * from the first recipient, before any Send row exists). They get a
+ * share-proportioned answer rather than a null one — a null there would stall a
+ * campaign walk — and the authoritative dispatch resolution, which does carry
+ * the Send id, still replays the record.
+ *
+ * Costs nothing on any shipped route: it short-circuits unless the org has
+ * explicitly selected the controller-owned `adaptive_mix` strategy.
+ */
+async function mixContextFor(
+	ctx: QueryCtx | MutationCtx,
+	routeConfig: Doc<'providerRoutes'> | null,
+	messageType: MessageType,
+	addressContext: SendRouteAddressContext | undefined
+): Promise<MixContext | undefined> {
+	if (routeConfig?.strategy !== 'adaptive_mix') return undefined;
+	const sendId = addressContext?.sendId;
+	const to = addressContext?.to;
+	if (sendId === undefined && to === undefined) return undefined;
+	let organizationId: string;
+	try {
+		organizationId = await getSingletonOrganizationId(ctx);
+	} catch {
+		return undefined;
+	}
+	if (sendId !== undefined) {
+		const recorded = await readAssignmentForSend(ctx.db, organizationId, sendId);
+		if (recorded) return { kind: 'assigned', arm: recorded.arm };
+	}
+	const toDomain = to ? extractDomainOrNull(to) : null;
+	if (toDomain === null) return undefined;
+	const now = addressContext?.now ?? Date.now();
+	const destinationProvider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
+	const cell = await loadRouteStateCell(ctx, organizationId, {
+		stream: messageType,
+		destinationProvider,
+	});
+	const shareRow = cell.perStream ?? cell.streamless;
+	return {
+		kind: 'decide',
+		input: {
+			cell: { ownShare: resolveOwnShare(shareRow), mixVersion: shareRow?.mixVersion },
+			recipient: { fallbackKey: sendId ?? to ?? '' },
+		},
+	};
 }
 
 /**
@@ -106,11 +186,14 @@ export async function resolveSendRouteFromDb(
 		? undefined
 		: await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
 
+	const mix = await mixContextFor(ctx, routeConfig, messageType, addressContext);
+
 	const resolved = resolveRoute(
 		routeConfig as ProviderRouteConfig | null,
 		healthStatuses,
 		(kind) => readyKinds.has(kind),
-		deliverability
+		deliverability,
+		mix
 	);
 	return resolved
 		? {
@@ -215,6 +298,7 @@ export const resolveSendRoute = internalQuery({
 		from: v.optional(v.string()),
 		baseOnly: v.optional(v.boolean()),
 		forceRelayReason: v.optional(v.union(v.literal('breaker_open'), v.literal('warmup_overflow'))),
+		sendId: v.optional(v.string()),
 	},
 	handler: async (ctx, args): Promise<ResolvedRoute | null> => {
 		return await resolveSendRouteFromDb(ctx, args.messageType, {
@@ -222,6 +306,7 @@ export const resolveSendRoute = internalQuery({
 			from: args.from,
 			baseOnly: args.baseOnly,
 			forceRelayReason: args.forceRelayReason,
+			sendId: args.sendId,
 		});
 	},
 });
@@ -235,7 +320,7 @@ export const resolveSendRoute = internalQuery({
 export async function resolveLastMileRoutePlanFromDb(
 	ctx: QueryCtx,
 	messageType: MessageType,
-	addressContext: { to: string; from: string; now?: number }
+	addressContext: { to: string; from: string; now?: number; sendId?: string }
 ): Promise<{
 	route: ResolvedRoute | null;
 	baseRoute: ResolvedRoute | null;
@@ -313,6 +398,9 @@ export const resolveLastMileRoutePlan = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.string(),
 		from: v.string(),
+		// The durable Send id, so the dispatch-time resolution replays the arm
+		// the enqueue transaction recorded (see `SendRouteAddressContext`).
+		sendId: v.optional(v.string()),
 		// No clock argument, deliberately — the sibling `resolveSendRoute` exposes
 		// none either. `now` lives on the …FromDb helper for tests, which call it
 		// directly; accepting one over the wire would let a backdated value revive
@@ -322,6 +410,7 @@ export const resolveLastMileRoutePlan = internalQuery({
 		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, {
 			to: args.to,
 			from: args.from,
+			...(args.sendId !== undefined ? { sendId: args.sendId } : {}),
 		}),
 });
 
@@ -337,6 +426,7 @@ export async function resolveGovernedRelayRouteFromDb(
 	options: {
 		to?: string;
 		from?: string;
+		sendId?: string;
 		forceRelayReason: 'breaker_open' | 'warmup_overflow';
 	}
 ): Promise<{ route: ResolvedRoute | null; deferralCode?: RoutingDeferralCode }> {
@@ -354,12 +444,14 @@ export const resolveGovernedRelayRoute = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.optional(v.string()),
 		from: v.optional(v.string()),
+		sendId: v.optional(v.string()),
 		forceRelayReason: v.union(v.literal('breaker_open'), v.literal('warmup_overflow')),
 	},
 	handler: async (ctx, args) =>
 		await resolveGovernedRelayRouteFromDb(ctx, args.messageType, {
 			to: args.to,
 			from: args.from,
+			sendId: args.sendId,
 			forceRelayReason: args.forceRelayReason,
 		}),
 });

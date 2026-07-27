@@ -43,8 +43,8 @@
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { resolveRoute, type ProviderRouteConfig, type ResolvedRoute } from './routing';
-import { decideMixAssignment, isDeterministicRouteStrategy } from './strategies';
-import type { MixAssignment, MixAssignmentInput, MixRecipientIdentity } from './strategies';
+import { isDeterministicRouteStrategy } from './strategies';
+import type { MixAssignment, MixContext, MixRecipientIdentity } from './strategies';
 import {
 	resolveOwnShare,
 	type DeliverabilityStream,
@@ -114,12 +114,10 @@ export type CellMixResolver = (
  * transaction does not carry. The cell's own two route-state rows are memoized
  * per destination provider for the same reason.
  *
- * The mix decision is computed HERE rather than read back out of
- * `resolveRoute`: `decideMixAssignment` is pure and total (plan D15), so
- * evaluating it once for the record and once inside the strategy yields the
- * identical answer by construction. The one input that is not a function of the
- * arguments — the random draw for a recipient with no stable identity at all —
- * is therefore drawn ONCE here and passed to both.
+ * The mix decision is taken exactly ONCE, inside the strategy, and travels back
+ * on the resolved route (`ResolvedRoute.mix`). Evaluating the same pure function
+ * a second time here would give the identical answer — and would be a second
+ * place that has to keep agreeing with the first one forever.
  */
 export async function prepareCellMixResolver(
 	ctx: QueryCtx | MutationCtx,
@@ -169,18 +167,28 @@ export async function prepareCellMixResolver(
 		// documents. The stream-less row carries no share of its own, so on a
 		// pre-controller cell this resolves to exactly the shipped boolean.
 		const shareRow = providerCell.perStream ?? providerCell.streamless;
-		const mixInput: MixAssignmentInput | undefined =
+		const mixContext: MixContext | undefined =
 			isAdaptiveMix && recipient !== undefined
 				? {
-						cell: {
-							ownShare: resolveOwnShare(shareRow),
-							mixVersion: shareRow?.mixVersion,
+						kind: 'decide',
+						input: {
+							cell: {
+								ownShare: resolveOwnShare(shareRow),
+								mixVersion: shareRow?.mixVersion,
+							},
+							recipient,
+							// The ONLY non-reproducible input the decision can take,
+							// and only for a recipient with neither a contact id nor
+							// a fallback key. Every production caller supplies the
+							// send id as a fallback key, so this is drawn solely for
+							// the theoretical caller that supplies neither —
+							// spending a draw per recipient that nothing consumes
+							// would also make the seam gratuitously irreproducible
+							// on an OCC retry.
+							...(recipient.contactId === undefined && recipient.fallbackKey === undefined
+								? { randomUnit: Math.random() }
+								: {}),
 						},
-						recipient,
-						// Only consumed when the recipient has neither a contact id
-						// nor a fallback key; drawn once so the record and the
-						// strategy see the same value.
-						randomUnit: Math.random(),
 					}
 				: undefined;
 		const resolved = resolveRoute(
@@ -195,17 +203,18 @@ export async function prepareCellMixResolver(
 				isWarmupOverflow: false,
 				isRelayDomainVerified,
 			},
-			mixInput
+			mixContext
 		);
 		// Only an `org_config` selection came out of the strategy; a
 		// deliverability fallback and the env fallback are both deterministic by
 		// construction.
 		if (resolved === null) return null;
 		if (resolved.source === 'org_config' && !isDeterministic) return null;
-		const mix =
-			mixInput !== undefined && resolved.source === 'org_config'
-				? decideMixAssignment(mixInput)
-				: null;
+		// The decision the strategy actually took, read back rather than redone.
+		// A deliverability fallback and the env fallback carry none, because no
+		// per-recipient decision produced them.
+		const mix: MixAssignment | null =
+			resolved.source === 'org_config' ? (resolved.mix ?? null) : null;
 		return { route: resolved, mix };
 	};
 }
