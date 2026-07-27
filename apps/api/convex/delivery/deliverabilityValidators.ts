@@ -22,7 +22,21 @@ export const deliverabilitySignalSourceValidator = v.union(
 	v.literal('dnsbl_partial'),
 	v.literal('dnsbl_unknown'),
 	v.literal('breaker_open'),
-	v.literal('persistent_defers')
+	v.literal('persistent_defers'),
+	// Outcome-derived sources (see OUTCOME_DELIVERABILITY_SIGNAL_SOURCES): what
+	// happened to mail that was ACCEPTED. They move the ramp controller's share;
+	// they are never a shipped relay-fallback trigger on their own.
+	v.literal('bounce_rate'),
+	v.literal('complaint_rate'),
+	v.literal('engagement_ratio'),
+	v.literal('seed_placement')
+);
+
+/** Sending stream — mirrors DELIVERABILITY_STREAM_KEYS in @owlat/shared. */
+export const deliverabilityStreamValidator = v.union(
+	v.literal('campaign'),
+	v.literal('automation'),
+	v.literal('transactional')
 );
 
 export const deliverabilitySignalSeverityValidator = v.union(
