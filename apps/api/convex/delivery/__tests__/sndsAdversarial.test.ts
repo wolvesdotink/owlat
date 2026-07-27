@@ -60,24 +60,24 @@ function sndsStamp(at: Date): string {
 	return `${at.getUTCMonth() + 1}/${at.getUTCDate()}/${at.getUTCFullYear()} ${hour}:00 ${hours24 < 12 ? 'AM' : 'PM'}`;
 }
 
-function yesterday(hour: number): Date {
+function dayBefore(days: number, hour: number): Date {
 	const base = new Date(NOW);
 	return new Date(
-		Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() - 1, hour, 0, 0)
+		Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() - days, hour, 0, 0)
 	);
 }
 
-function row(ip: string): string {
+function row(ip: string, daysAgo = 1): string {
 	return [
 		ip,
-		sndsStamp(yesterday(0)),
-		sndsStamp(yesterday(8)),
+		sndsStamp(dayBefore(daysAgo, 0)),
+		sndsStamp(dayBefore(daysAgo, 8)),
 		'10',
 		'10',
 		'10',
 		'GREEN',
 		'< 0.1%',
-		sndsStamp(yesterday(0)),
+		sndsStamp(dayBefore(daysAgo, 0)),
 		'0',
 		'mail.example.test',
 		'bounces@example.test',
@@ -334,6 +334,34 @@ describe('poll fan-out bounds', () => {
 		expect(summary.ingested).toBe(SNDS_MAX_OBSERVATIONS_PER_POLL);
 		const stored = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
 		expect(stored).toHaveLength(SNDS_MAX_OBSERVATIONS_PER_POLL);
+	});
+
+	it('spends the observation cap on the NEWEST days', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
+		// The same overflow as above, except the rows now span two days: a handful
+		// of stale ones and a full cap's worth from yesterday. Whatever the cap
+		// discards is never stored, and a day we never stored reads later as a day
+		// with nothing wrong in it — so the stale days are the ones that must go.
+		const stale = 25;
+		const over = SNDS_MAX_OBSERVATIONS_PER_POLL + stale;
+		const body = Array.from({ length: over }, (_, index) =>
+			row(
+				`10.${Math.floor(index / 65536) % 256}.${Math.floor(index / 256) % 256}.${index % 256}`,
+				index < stale ? 5 : 1
+			)
+		).join('\n');
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(body, { status: 200 }))
+		);
+
+		const summary = await t.action(internal.delivery.snds.poll, {});
+		expect(summary.capped).toBe(stale);
+		const stored = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
+		expect(stored).toHaveLength(SNDS_MAX_OBSERVATIONS_PER_POLL);
+		const staleDay = Math.floor((NOW - 5 * DAY_MS) / DAY_MS) * DAY_MS;
+		expect(stored.some((observed) => observed.periodStart === staleDay)).toBe(false);
 	});
 
 	it('refuses an oversized body while reading it, never after', async () => {

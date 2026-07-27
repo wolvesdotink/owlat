@@ -285,6 +285,37 @@ describe('SNDS feed parsing', () => {
 		expect(aggregateSndsDays(parsed.rows)[0]?.trapHits).toBe(0);
 	});
 
+	it('orders folded days NEWEST FIRST, so a capped poll drops the oldest', () => {
+		// The poll caps how many observations it dispatches. Whatever the cap
+		// discards is never stored, and a day that was never stored reads later as
+		// a day with nothing wrong in it — so the cap must fall on the OLDEST days,
+		// never on whichever addresses happen to sort last.
+		const parsed = parseSndsFeed(
+			[
+				feedRow({
+					ip: '203.0.113.99',
+					start: new Date(Date.UTC(2026, 6, 18)),
+					end: new Date(Date.UTC(2026, 6, 18, 8)),
+				}),
+				feedRow({
+					ip: '203.0.113.10',
+					start: new Date(Date.UTC(2026, 6, 20)),
+					end: new Date(Date.UTC(2026, 6, 20, 8)),
+				}),
+				feedRow({
+					ip: '203.0.113.11',
+					start: new Date(Date.UTC(2026, 6, 20)),
+					end: new Date(Date.UTC(2026, 6, 20, 8)),
+				}),
+			].join('\n')
+		);
+		expect(aggregateSndsDays(parsed.rows).map((day) => [day.periodStart, day.ip])).toEqual([
+			[Date.UTC(2026, 6, 20), '203.0.113.10'],
+			[Date.UTC(2026, 6, 20), '203.0.113.11'],
+			[Date.UTC(2026, 6, 18), '203.0.113.99'],
+		]);
+	});
+
 	it('round-trips an (IP, day) cell key, IPv6 included', () => {
 		for (const ip of ['203.0.113.10', '2001:db8::1', '2001:db8:0:0:0:0:0:beef']) {
 			const day = Date.UTC(2026, 6, 20);

@@ -8,7 +8,7 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { DAY_MS, SNDS_COMPLAINT_BANDS } from '../sndsFeed';
@@ -23,7 +23,21 @@ import { SNDS_GATE_MAX_ROWS } from '../snds';
 
 import { modules } from './helpers/convexModules';
 
+/**
+ * A fixed, mid-day simulated instant. The Convex fixtures below seed rows
+ * relative to "today" while the query derives its cutoff from `Date.now()`;
+ * on the real clock those two reads can land on opposite sides of UTC midnight
+ * and shift the cutoff relative to the seeded days.
+ */
+const NOW = Date.UTC(2026, 6, 22, 12, 0, 0);
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(NOW);
+});
+
 afterEach(() => {
+	vi.useRealTimers();
 	delete process.env['SNDS_DATA_FEED_URLS'];
 	delete process.env['MTA_IP_POOLS'];
 });
@@ -39,8 +53,17 @@ function observation(overrides: Partial<SndsGateObservation> = {}): SndsGateObse
 	};
 }
 
-function gateInput(observations: SndsGateObservation[]) {
-	return buildSndsGateInput({ enrolled: true, windowDays: 7, observations });
+function gateInput(
+	observations: SndsGateObservation[],
+	flags: { truncated?: boolean; attributed?: boolean } = {}
+) {
+	return buildSndsGateInput({
+		enrolled: true,
+		windowDays: 7,
+		observations,
+		truncated: flags.truncated ?? false,
+		attributed: flags.attributed ?? true,
+	});
 }
 
 /**
@@ -104,12 +127,15 @@ describe('SNDS gate verdict', () => {
 		}
 	});
 
-	it('passes below the breach band', () => {
-		for (const band of ['lt_0_1'] as const) {
+	it('passes below the breach band, and only below it', () => {
+		for (const band of SNDS_COMPLAINT_BANDS) {
 			const verdict = evaluateSndsGate(gateInput([observation({ complaintBand: band })]));
-			expect(verdict.verdict, band).toBe('pass');
-			expect(verdict.reason).toContain(band);
+			const expected =
+				band === 'unknown' ? 'insufficient_data' : band === 'lt_0_1' ? 'pass' : 'fail';
+			expect(verdict.verdict, band).toBe(expected);
 		}
+		const clean = evaluateSndsGate(gateInput([observation({ complaintBand: 'lt_0_1' })]));
+		expect(clean.reason).toContain('lt_0_1');
 	});
 
 	it('never derives a percentage from a band, for ANY band', () => {
@@ -146,18 +172,51 @@ describe('SNDS gate verdict', () => {
 		expect(verdict.verdict === 'fail' && verdict.failedGate).toBe('spam_traps');
 	});
 
+	it('HOLDS on trap hits it cannot attribute, and says so in the reason', () => {
+		// No declared pool: the window folds every address in the SNDS key's
+		// registered range, so a trap hit may be a neighbour's. Unattributable
+		// evidence must not move the share in EITHER direction (D10).
+		const traps = evaluateSndsGate(
+			gateInput([observation({ trapHits: 2 })], { attributed: false })
+		);
+		expect(traps.verdict).toBe('insufficient_data');
+		expect(traps.reason).toContain('MTA_IP_POOLS');
+
+		// Corroborated by a banded breach, the same window fails — the trap count
+		// is no longer the only breaching evidence.
+		const corroborated = evaluateSndsGate(
+			gateInput([observation({ trapHits: 2, complaintBand: 'gte_0_9' })], { attributed: false })
+		);
+		expect(corroborated.verdict).toBe('fail');
+		expect(corroborated.verdict === 'fail' && corroborated.failedGate).toBe('spam_traps');
+		expect(corroborated.reason).toContain('MTA_IP_POOLS');
+
+		// Attributed to a declared address, one trap hit fails outright.
+		const attributed = evaluateSndsGate(gateInput([observation({ trapHits: 2 })]));
+		expect(attributed.verdict).toBe('fail');
+		expect(attributed.reason).not.toContain('MTA_IP_POOLS');
+	});
+
+	it('carries the attribution caveat on every unattributed verdict (D12/D14)', () => {
+		for (const observed of [
+			observation({ complaintBand: 'lt_0_1' }),
+			observation({ complaintBand: 'gte_0_9' }),
+			observation({ filterResult: 'red' }),
+		]) {
+			const verdict = evaluateSndsGate(gateInput([observed], { attributed: false }));
+			expect(verdict.reason, verdict.reason).toContain('MTA_IP_POOLS');
+			// The caveat names a remedy, never a fabricated rate.
+			expect(verdict.reason).not.toMatch(FABRICATED_RATE_RE);
+		}
+	});
+
 	it('is a low-confidence signal when the read was truncated, and never promotes', () => {
 		const clean = [
 			observation({ complaintBand: 'lt_0_1', periodStart: Date.UTC(2026, 6, 20) }),
 			observation({ complaintBand: 'lt_0_1', periodStart: Date.UTC(2026, 6, 21) }),
 		];
-		const whole = buildSndsGateInput({ enrolled: true, windowDays: 7, observations: clean });
-		const cut = buildSndsGateInput({
-			enrolled: true,
-			windowDays: 7,
-			observations: clean,
-			truncated: true,
-		});
+		const whole = gateInput(clean);
+		const cut = gateInput(clean, { truncated: true });
 		expect(whole.available && cut.available).toBe(true);
 		if (!whole.available || !cut.available) return;
 		// Same rows, and the only difference is that the read was cut short.
@@ -188,7 +247,15 @@ describe('SNDS gate verdict', () => {
 		expect(sndsPromotionPass(gateInput([observation({ complaintBand: 'lt_0_1' })]))).toBe(false);
 		// Absence never promotes — and never demotes either (D2/D10).
 		expect(
-			sndsPromotionPass(buildSndsGateInput({ enrolled: false, windowDays: 7, observations: [] }))
+			sndsPromotionPass(
+				buildSndsGateInput({
+					enrolled: false,
+					windowDays: 7,
+					observations: [],
+					truncated: false,
+					attributed: false,
+				})
+			)
 		).toBe(false);
 	});
 
@@ -203,7 +270,7 @@ describe('getMicrosoftGateInput', () => {
 	it('reads the stored bands straight out of the table', async () => {
 		const t = convexTest(schema, modules);
 		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
-		const now = Date.now();
+		const now = NOW;
 		await t.run(async (ctx) => {
 			await ctx.db.insert('sndsIpDailyStats', {
 				ip: '203.0.113.10',
@@ -244,7 +311,7 @@ describe('getMicrosoftGateInput', () => {
 	it('reads the NEWEST days first, so a same-day breach survives the row cap', async () => {
 		const t = convexTest(schema, modules);
 		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
-		const now = Date.now();
+		const now = NOW;
 		const today = Math.floor(now / DAY_MS) * DAY_MS;
 		// More rows than one read may return, with the BREACH on the newest day.
 		// An ascending scan would spend the cap on the oldest days and answer
@@ -288,7 +355,7 @@ describe('getMicrosoftGateInput — attribution', () => {
 	 * is unbanded (the normal state early in a ramp); theirs is clean on two days.
 	 */
 	async function seedNeighbourEvidence(t: TestConvex<typeof schema>): Promise<void> {
-		const now = Date.now();
+		const now = NOW;
 		const today = Math.floor(now / DAY_MS) * DAY_MS;
 		await t.run(async (ctx) => {
 			for (const [ip, band] of [
@@ -355,7 +422,7 @@ describe('getMicrosoftGateInput — attribution', () => {
 		const t = convexTest(schema, modules);
 		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
 		process.env['MTA_IP_POOLS'] = '203.0.113.10, 198.51.100.7';
-		const now = Date.now();
+		const now = NOW;
 		await t.run(async (ctx) => {
 			await ctx.db.insert('sndsIpDailyStats', {
 				ip: '198.51.100.7',
