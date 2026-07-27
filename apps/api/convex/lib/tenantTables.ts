@@ -85,6 +85,7 @@ export const TENANT_TABLES = [
 	'gmailDomainVolumeRollups',
 	'gmailDomainVolumeRollupJobs',
 	'googlePostmasterStats',
+	'googlePostmasterCompliance',
 	'unsubscribeLatencyBuckets',
 	'deliverabilityRouteStates',
 	'deliverabilityAlertRecipients',

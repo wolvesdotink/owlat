@@ -2,6 +2,11 @@
  * Core types for the owlat-mta service
  */
 
+import type {
+	PostmasterComplianceCheck,
+	PostmasterDeliveryError,
+} from '@owlat/shared/mtaWebhookEvent';
+
 // ============ Email Job Types ============
 
 export interface EmailJob {
@@ -229,6 +234,25 @@ export interface GooglePostmasterStatsEvent extends MtaWebhookEvent {
 	domain: string;
 	date: string;
 	userReportedSpamRatio: number;
+	// Every field below is optional on purpose: Google returns a metric only
+	// when the domain had enough traffic that day, so a partial response is
+	// normal operation and must never be treated as an error.
+	spfSuccessRatio?: number;
+	dkimSuccessRatio?: number;
+	dmarcSuccessRatio?: number;
+	deliveryErrorRatio?: number;
+	deliveryErrors?: PostmasterDeliveryError[];
+}
+
+/**
+ * Compliance Status is a point-in-time verdict rather than a daily metric, so
+ * it travels as its own event keyed by the UTC day it was observed.
+ */
+export interface GooglePostmasterComplianceEvent extends MtaWebhookEvent {
+	event: 'postmaster.compliance';
+	domain: string;
+	date: string;
+	checks: PostmasterComplianceCheck[];
 }
 
 export interface GooglePostmasterDomainAuthorizationEvent extends MtaWebhookEvent {
@@ -238,7 +262,8 @@ export interface GooglePostmasterDomainAuthorizationEvent extends MtaWebhookEven
 
 export type GooglePostmasterWebhookEvent =
 	| GooglePostmasterDomainAuthorizationEvent
-	| GooglePostmasterStatsEvent;
+	| GooglePostmasterStatsEvent
+	| GooglePostmasterComplianceEvent;
 
 /**
  * RFC 8601 inbound authentication verdicts plus the DMARC alignment inputs, as
