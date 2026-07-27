@@ -9,8 +9,10 @@ import {
 	transportLabel,
 } from '~/utils/providerRouting';
 import {
+	isControllerOwnedStrategy,
 	PROVIDER_ROUTE_MESSAGE_TYPES as MESSAGE_TYPES,
 	PROVIDER_ROUTE_STRATEGIES as STRATEGIES,
+	PROVIDER_ROUTE_STRATEGY_LABELS as STRATEGY_LABELS,
 	type ProviderRouteMessageType as MessageType,
 	type ProviderRouteStrategy as Strategy,
 } from '~/utils/providerRouteOptions';
@@ -41,7 +43,7 @@ interface DeliverabilityFallback {
 }
 
 const strategyLabel = (strategy: string): string =>
-	STRATEGIES.find((s) => s.value === strategy)?.label ?? strategy;
+	STRATEGY_LABELS[strategy as Strategy] ?? strategy;
 
 // ── Data ────────────────────────────────────────────────────────────
 const { data: routesData, isLoading: routesLoading } = useOrganizationQuery(
@@ -150,6 +152,10 @@ function moveProvider(index: number, direction: -1 | 1) {
 	next.splice(target, 0, moved);
 	editProviders.value = next;
 }
+
+// A controller-owned strategy is displayed, never picked — and it is written
+// back unchanged, so an unrelated edit cannot downgrade the route.
+const isEditStrategyManaged = computed(() => isControllerOwnedStrategy(editStrategy.value));
 
 const enabledProviderCount = computed(() => editProviders.value.filter((p) => p.isEnabled).length);
 const enabledRelays = computed(() =>
@@ -333,14 +339,26 @@ async function handleReset() {
 				<!-- Strategy -->
 				<div>
 					<label for="route-strategy" class="label">Strategy</label>
-					<select id="route-strategy" v-model="editStrategy" class="input">
-						<option v-for="strategy in STRATEGIES" :key="strategy.value" :value="strategy.value">
-							{{ strategy.label }}
-						</option>
-					</select>
-					<p class="mt-1 text-xs text-text-tertiary">
-						{{ STRATEGIES.find((s) => s.value === editStrategy)?.description }}
-					</p>
+					<template v-if="isEditStrategyManaged">
+						<p id="route-strategy" class="input flex items-center gap-2">
+							<span>{{ strategyLabel(editStrategy) }}</span>
+							<span class="rounded-full border px-2 py-0.5 text-xs font-medium">Managed</span>
+						</p>
+						<p class="mt-1 text-xs text-text-tertiary">
+							The sending-share controller manages this route's strategy. Everything else on this
+							route stays editable, and saving keeps the managed strategy.
+						</p>
+					</template>
+					<template v-else>
+						<select id="route-strategy" v-model="editStrategy" class="input">
+							<option v-for="strategy in STRATEGIES" :key="strategy.value" :value="strategy.value">
+								{{ strategy.label }}
+							</option>
+						</select>
+						<p class="mt-1 text-xs text-text-tertiary">
+							{{ STRATEGIES.find((s) => s.value === editStrategy)?.description }}
+						</p>
+					</template>
 				</div>
 
 				<!-- Providers -->

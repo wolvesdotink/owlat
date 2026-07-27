@@ -1,5 +1,30 @@
 export type ProviderRouteMessageType = 'campaign' | 'transactional' | 'automation';
-export type ProviderRouteStrategy = 'single' | 'priority_failover' | 'workload_split';
+export type ProviderRouteStrategy =
+	| 'single'
+	| 'priority_failover'
+	| 'workload_split'
+	| 'adaptive_mix';
+
+/**
+ * Strategies the ramp controller owns. They are never offered in the picker —
+ * an operator cannot meaningfully choose a strategy whose control variable
+ * (the per-cell own-MTA share) is written by the controller — but a route
+ * already using one must still render, and must survive an unrelated edit
+ * instead of being silently downgraded to the first pickable option.
+ */
+export const CONTROLLER_OWNED_STRATEGIES: readonly ProviderRouteStrategy[] = ['adaptive_mix'];
+
+export function isControllerOwnedStrategy(strategy: string): boolean {
+	return CONTROLLER_OWNED_STRATEGIES.includes(strategy as ProviderRouteStrategy);
+}
+
+/** Label for any strategy, pickable or not. */
+export const PROVIDER_ROUTE_STRATEGY_LABELS: Record<ProviderRouteStrategy, string> = {
+	single: 'Single provider',
+	priority_failover: 'Priority failover',
+	workload_split: 'Workload split',
+	adaptive_mix: 'Adaptive mix (managed)',
+};
 
 export const PROVIDER_ROUTE_MESSAGE_TYPES: {
 	value: ProviderRouteMessageType;
@@ -27,6 +52,7 @@ export const PROVIDER_ROUTE_MESSAGE_TYPES: {
 	},
 ];
 
+/** The operator-selectable strategies. Controller-owned kinds are excluded. */
 export const PROVIDER_ROUTE_STRATEGIES: {
 	value: ProviderRouteStrategy;
 	label: string;
