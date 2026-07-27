@@ -24,7 +24,7 @@
  */
 
 import { evaluateCeilingGate, withinTolerance, type CeilingGateSpec } from './ceilingGate';
-import type { RampGateThresholds } from './gateConfig';
+import type { PercentagePoints, RampGateThresholds } from './gateConfig';
 import {
 	armEvidence,
 	evidenceFreshness,
@@ -34,8 +34,10 @@ import {
 	type ArmEvidence,
 } from './gateEvidence';
 import { DIRECT_MEASUREMENT, SEED_TRIPWIRE } from './gateGrades';
+import { oneArmedMeasurement } from './gateMeasurement';
 import type {
 	RampGateEvaluationInput,
+	RampGateGrade,
 	RampGateResult,
 	SeedPlacementObservation,
 } from './gateTypes';
@@ -96,14 +98,11 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 	const minSample = sampleFloors.deferral;
 	const ownSample = safeOutcomeCount(input.own.sent);
 	const ownRate = safeRate(input.own.deferralRate);
-	const shape = {
-		referenceRate: null,
+	const shape = oneArmedMeasurement({
 		thresholdRate: thresholds.deferralMax as number,
-		toleranceValuePp: null,
 		ownSample,
-		referenceSample: null,
 		minSample,
-	} as const;
+	});
 
 	const evidence = armEvidence(
 		input.own,
@@ -192,7 +191,7 @@ function seedEvidence(
  * the aggregate evaluation flags `requiresCorroboration` when it decides.
  */
 export function evaluateSeedPlacementGate(input: RampGateEvaluationInput): RampGateResult {
-	return evaluateSeedGate(input, 'compare_reference');
+	return evaluateSeedGate(REFERENCE_SEED_SPEC, input);
 }
 
 /**
@@ -211,24 +210,51 @@ export function evaluateSeedPlacementGate(input: RampGateEvaluationInput): RampG
 export function evaluateStandaloneSeedPlacementGate(
 	input: RampGateEvaluationInput
 ): RampGateResult {
-	return evaluateSeedGate(input, 'absolute_only');
+	return evaluateSeedGate(STANDALONE_SEED_SPEC, input);
 }
 
-function evaluateSeedGate(
-	input: RampGateEvaluationInput,
-	mode: 'compare_reference' | 'absolute_only'
-): RampGateResult {
+/**
+ * The second seed sweep a placement gate compares against, and by how much.
+ *
+ * Bundled rather than left as two independently-nullable fields, for the reason
+ * `CeilingSecondSeries` states: a tolerance with no sweep to apply it to, or a
+ * sweep with no tolerance, is a comparison that is not happening described in two
+ * contradictory ways.
+ */
+interface SeedComparison {
+	readonly referenceOf: (input: RampGateEvaluationInput) => SeedPlacementObservation | null;
+	readonly toleranceOf: (thresholds: RampGateThresholds) => PercentagePoints;
+}
+
+interface SeedGateSpec {
+	/** `null` for the ABSOLUTE-ONLY gate: a standalone cell has no second sweep. */
+	readonly comparison: SeedComparison | null;
+	readonly grade: RampGateGrade;
+}
+
+const REFERENCE_SEED_SPEC: SeedGateSpec = {
+	comparison: {
+		referenceOf: (input) => input.referenceSeeds ?? null,
+		toleranceOf: (thresholds) => thresholds.seedInboxTolerance,
+	},
+	grade: SEED_TRIPWIRE,
+};
+
+const STANDALONE_SEED_SPEC: SeedGateSpec = { comparison: null, grade: SEED_TRIPWIRE };
+
+function evaluateSeedGate(spec: SeedGateSpec, input: RampGateEvaluationInput): RampGateResult {
 	const { thresholds, sampleFloors } = input.config;
 	const minSample = sampleFloors.seedPlacement;
-	const compare = mode === 'compare_reference';
+	const { comparison } = spec;
+	const reference = comparison ? comparison.referenceOf(input) : null;
 	const ownRate = seedInboxRate(input.ownSeeds);
-	const referenceRate = compare ? seedInboxRate(input.referenceSeeds) : null;
+	const referenceRate = seedInboxRate(reference);
 	const shape = {
 		referenceRate,
 		thresholdRate: thresholds.seedInboxMin as number,
-		toleranceValuePp: compare ? (thresholds.seedInboxTolerance as number) : null,
+		toleranceValuePp: comparison ? (comparison.toleranceOf(thresholds) as number) : null,
 		ownSample: seedTotal(input.ownSeeds),
-		referenceSample: compare && input.referenceSeeds ? seedTotal(input.referenceSeeds) : null,
+		referenceSample: reference ? seedTotal(reference) : null,
 		minSample,
 	} as const;
 
@@ -238,7 +264,7 @@ function evaluateSeedGate(
 			'seed_placement',
 			evidenceReason(ownEvidence, 'own'),
 			{ ...shape, ownRate },
-			SEED_TRIPWIRE
+			spec.grade
 		);
 	}
 
@@ -248,34 +274,36 @@ function evaluateSeedGate(
 			status: 'fail',
 			reason: 'absolute_threshold_breached',
 			measurement: { ...shape, ownRate },
-			...SEED_TRIPWIRE,
+			...spec.grade,
 		};
 	}
 
-	if (!compare) {
+	// An absolute-only gate has nothing left to consult: the sweep is fresh, large
+	// enough and above the inbox floor, which is the whole check.
+	if (comparison === null) {
 		return {
 			gate: 'seed_placement',
 			status: 'pass',
 			reason: 'within_threshold',
 			measurement: { ...shape, ownRate },
-			...SEED_TRIPWIRE,
+			...spec.grade,
 		};
 	}
 
-	const referenceEvidence = seedEvidence(input.referenceSeeds, minSample, input.now, thresholds);
+	const referenceEvidence = seedEvidence(reference, minSample, input.now, thresholds);
 	if (referenceEvidence !== 'fresh' || referenceRate === null) {
 		return insufficient(
 			'seed_placement',
 			evidenceReason(referenceEvidence, 'reference'),
 			{ ...shape, ownRate },
-			SEED_TRIPWIRE
+			spec.grade
 		);
 	}
 
 	const within = withinTolerance(
 		ownRate,
 		referenceRate,
-		thresholds.seedInboxTolerance,
+		comparison.toleranceOf(thresholds),
 		'own_must_not_fall_below'
 	);
 	return within
@@ -284,13 +312,13 @@ function evaluateSeedGate(
 				status: 'pass',
 				reason: 'within_threshold',
 				measurement: { ...shape, ownRate },
-				...SEED_TRIPWIRE,
+				...spec.grade,
 			}
 		: {
 				gate: 'seed_placement',
 				status: 'fail',
 				reason: 'reference_tolerance_breached',
 				measurement: { ...shape, ownRate },
-				...SEED_TRIPWIRE,
+				...spec.grade,
 			};
 }

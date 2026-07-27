@@ -98,16 +98,6 @@ export interface EngagementGateThresholds {
 	 * gate that carries it may never justify an INCREASE, only a decrease.
 	 */
 	readonly trailingBaselineRatio: number;
-	/**
-	 * The window width the trailing variant contracts for, in days. Widened from
-	 * the concurrent gate's evaluation window for the same reason the threshold was
-	 * relaxed: a weaker comparison needs more of it before it means anything.
-	 *
-	 * Stated here rather than assumed by the gate — the gate takes the windows as
-	 * parameters (plan D15) and this constant is what the P3 cron builds them from,
-	 * so the two cannot drift.
-	 */
-	readonly trailingWindowDays: number;
 }
 
 export const ENGAGEMENT_GATE_THRESHOLDS: EngagementGateThresholds = {
@@ -115,5 +105,4 @@ export const ENGAGEMENT_GATE_THRESHOLDS: EngagementGateThresholds = {
 	absoluteFloorRatio: 0.7,
 	baselineMinSample: 1200,
 	trailingBaselineRatio: 0.85,
-	trailingWindowDays: 7,
 };
