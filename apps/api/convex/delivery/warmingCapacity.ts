@@ -19,7 +19,7 @@
  *    cannot either.
  */
 
-import { getWarmingDisplayCapForDay } from '@owlat/shared/warming';
+import { getWarmingCapForDay } from '@owlat/shared/warming';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 
 type Ctx = MutationCtx | QueryCtx;
@@ -57,10 +57,15 @@ export interface WarmingCapacityOptions {
  * Project sendable campaign volume per day. Returns `null` whenever capacity
  * is UNKNOWN or effectively unbounded.
  *
- * ONE population throughout: active IPs in the CAMPAIGN pool. That is exactly
- * the population `totalDailyCap` / `totalSentToday` are summed over
- * (`packages/shared/src/ipReadinessSync.ts`), so index 0 (today's remainder)
- * and index k>0 (the projected schedule) can never count different IPs.
+ * ONE population throughout: active IPs in the CAMPAIGN pool, every one of
+ * them placeable on the warming schedule. Index 0 (today's remainder) is summed
+ * per-IP over that SAME list rather than taken from `warmingState.totalDailyCap`
+ * / `totalSentToday` — those roll up every campaign-pool IP regardless of
+ * `active` (`packages/shared/src/ipReadinessSync.ts` has no `active` test), so a
+ * deactivated campaign IP would inflate index 0 alone and the two halves of one
+ * array would count different IPs. If any IP in the population cannot be placed
+ * on the schedule (a non-finite `currentDay`), the projection would silently
+ * drop it for k>0 while index 0 still counted it: unknown, not partial.
  *
  * A graduated campaign IP has no warming ceiling at all — it is counted in
  * `totalDailyCap` at `GRADUATED_DISPLAY_CAP`, a display sentinel, not a real
@@ -95,8 +100,8 @@ export async function loadRemainingCapacityByDay(
 	// Any graduated campaign IP ⇒ effectively unbounded capacity (see above).
 	if (campaignIps.some((ip) => ip.phase === 'graduated')) return null;
 
-	const projectableIps = campaignIps.filter((ip) => Number.isFinite(ip.currentDay));
-	if (projectableIps.length === 0) return null;
+	// One unplaceable IP makes the whole population unprojectable (see above).
+	if (campaignIps.some((ip) => !Number.isFinite(ip.currentDay))) return null;
 
 	// Whole UTC days between now and the anchor. Clock skew (an anchor in the
 	// past, a non-finite anchor) collapses to 0 — i.e. "starts today".
@@ -108,14 +113,16 @@ export async function loadRemainingCapacityByDay(
 
 	const byDay: number[] = [];
 	if (anchorDayOffset === 0) {
-		const totalDailyCap = Number.isFinite(warmingState.totalDailyCap)
-			? warmingState.totalDailyCap
-			: 0;
-		const totalSentToday = Number.isFinite(warmingState.totalSentToday)
-			? warmingState.totalSentToday
-			: 0;
-		// Only today's slice is partially consumed; every later day is whole.
-		byDay.push(Math.max(0, totalDailyCap - totalSentToday));
+		// Only today's slice is partially consumed; every later day is whole. Summed
+		// per-IP over the SAME population index k>0 projects, and floored per-IP so
+		// one over-sent IP cannot eat another's headroom.
+		let remainingToday = 0;
+		for (const ip of campaignIps) {
+			const dailyCap = Number.isFinite(ip.dailyCap) ? ip.dailyCap : 0;
+			const sentToday = Number.isFinite(ip.sentToday) ? ip.sentToday : 0;
+			remainingToday += Math.max(0, dailyCap - sentToday);
+		}
+		byDay.push(remainingToday);
 	}
 	for (
 		let day = Math.max(1, anchorDayOffset);
@@ -123,8 +130,14 @@ export async function loadRemainingCapacityByDay(
 		day += 1
 	) {
 		let projected = 0;
-		for (const ip of projectableIps) {
-			projected += getWarmingDisplayCapForDay(Math.floor(ip.currentDay) + day);
+		for (const ip of campaignIps) {
+			const cap = getWarmingCapForDay(Math.floor(ip.currentDay) + day);
+			// Schedule day 30 is `Infinity`: the MTA stops throttling there. That is
+			// UNBOUNDED capacity, not `GRADUATED_DISPLAY_CAP` — clamping it would turn
+			// the projection into a LOWER bound and let the gate refuse a campaign
+			// that actually fits. Unknown, not a number.
+			if (!Number.isFinite(cap)) return null;
+			projected += cap;
 		}
 		byDay.push(projected);
 	}
