@@ -14,10 +14,10 @@
 
 import { describe, expect, it } from 'vitest';
 import { evaluateEngagementGate, evaluateEngagementRatioGate } from '../engagementGate';
-import { engagementArm, engagementInput } from './gateFixtures';
+import { arm, engagementInput } from './gateFixtures';
 
 /** Stratified: 50% opens. Calibration slice: 10% opens. */
-const OWN_FLATTERED_BY_STRATIFICATION = engagementArm({
+const OWN_FLATTERED_BY_STRATIFICATION = arm({
 	sent: 10_000,
 	opened: 5_000,
 	clicked: 2_000,
@@ -27,7 +27,7 @@ const OWN_FLATTERED_BY_STRATIFICATION = engagementArm({
 });
 
 /** Stratified: 10% opens. Calibration slice: 20% opens. */
-const REFERENCE_UNDERSOLD_BY_STRATIFICATION = engagementArm({
+const REFERENCE_UNDERSOLD_BY_STRATIFICATION = arm({
 	sent: 10_000,
 	opened: 1_000,
 	clicked: 400,
@@ -72,7 +72,7 @@ describe('gate 4 — calibration slice only', () => {
 		const baseline = evaluateEngagementRatioGate(INPUT);
 		const generalCountersInverted = evaluateEngagementRatioGate(
 			engagementInput({
-				own: engagementArm({
+				own: arm({
 					sent: 10_000,
 					opened: 100,
 					clicked: 10,
@@ -80,7 +80,7 @@ describe('gate 4 — calibration slice only', () => {
 					calibrationOpened: 100,
 					calibrationClicked: 40,
 				}),
-				reference: engagementArm({
+				reference: arm({
 					sent: 10_000,
 					opened: 9_000,
 					clicked: 5_000,
@@ -100,13 +100,13 @@ describe('gate 4 — calibration slice only', () => {
 	it('a cell whose slice is healthy PASSES even when its stratified numbers are poor', () => {
 		const result = evaluateEngagementRatioGate(
 			engagementInput({
-				own: engagementArm({
+				own: arm({
 					sent: 10_000,
 					opened: 200,
 					calibrationSent: 1_000,
 					calibrationOpened: 200,
 				}),
-				reference: engagementArm({
+				reference: arm({
 					sent: 10_000,
 					opened: 8_000,
 					calibrationSent: 1_000,

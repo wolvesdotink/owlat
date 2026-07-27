@@ -10,11 +10,11 @@
 import { describe, expect, it } from 'vitest';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../engagementConfig';
 import { evaluateEngagementRatioGate } from '../engagementGate';
-import { engagementArm, engagementInput } from './gateFixtures';
+import { arm, engagementInput } from './gateFixtures';
 
 /** 1000 calibration sends with `opened` of them opened. */
 function slice(opened: number) {
-	return engagementArm({ sent: 20_000, calibrationSent: 1000, calibrationOpened: opened });
+	return arm({ sent: 20_000, calibrationSent: 1000, calibrationOpened: opened });
 }
 
 function verdict(ownOpened: number, referenceOpened: number) {
@@ -68,6 +68,13 @@ describe('gate 4 — engagement ratio matrix', () => {
 		expect(result.measurement.ownRate).toBe(0);
 	});
 
+	it('reports no absolute floor on a hold — the floor is a multiple of a rate it refused', () => {
+		const result = verdict(200, 0);
+		expect(result.status).toBe('insufficient_data');
+		expect(result.measurement.thresholdRate).toBe(0);
+		expect(result.measurement.ratioFloor).toBe(ENGAGEMENT_GATE_THRESHOLDS.minRatio);
+	});
+
 	it('HOLDS when the reference arm is at zero — a zero denominator is not a pass', () => {
 		const result = verdict(200, 0);
 		expect(result.status).toBe('insufficient_data');
@@ -88,9 +95,14 @@ describe('gate 4 — engagement ratio matrix', () => {
 		expect(result.reason).toBe('evidence_absent');
 	});
 
-	it('carries the threshold and both samples with every verdict (plan D12)', () => {
+	it('carries the threshold IN BOTH UNITS and both samples with every verdict (D12)', () => {
 		const result = verdict(100, 200);
-		expect(result.measurement.thresholdRate).toBe(ENGAGEMENT_GATE_THRESHOLDS.minRatio);
+		// The dimensionless floor and the absolute rate it works out to are
+		// different numbers in different units, so they are different fields: an
+		// audit row that cannot tell "a ratio floor of 0.95" from "an engagement
+		// floor of 95%" is a record nobody can act on.
+		expect(result.measurement.ratioFloor).toBe(ENGAGEMENT_GATE_THRESHOLDS.minRatio);
+		expect(result.measurement.thresholdRate).toBeCloseTo(0.2 * 0.95, 10);
 		expect(result.measurement.toleranceValuePp).toBeNull();
 		expect(result.measurement.ownSample).toBe(1000);
 		expect(result.measurement.referenceSample).toBe(1000);

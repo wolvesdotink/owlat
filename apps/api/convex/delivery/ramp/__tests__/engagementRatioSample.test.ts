@@ -11,13 +11,13 @@
 import { describe, expect, it } from 'vitest';
 import { RAMP_GATE_SAMPLE_FLOORS } from '../gateConfig';
 import { evaluateEngagementRatioGate } from '../engagementGate';
-import { engagementArm, engagementInput } from './gateFixtures';
+import { arm, engagementInput } from './gateFixtures';
 
 const FLOOR = RAMP_GATE_SAMPLE_FLOORS.engagement;
 
 /** A slice of `calibrationSent` sends engaging at 20%. */
 function slice(calibrationSent: number) {
-	return engagementArm({
+	return arm({
 		sent: 50_000,
 		opened: 25_000,
 		calibrationSent,
@@ -67,7 +67,7 @@ describe('gate 4 — minimum sample', () => {
 	});
 
 	it('a huge stratified volume does not lift a thin calibration slice over the floor', () => {
-		const own = engagementArm({
+		const own = arm({
 			sent: 500_000,
 			opened: 250_000,
 			calibrationSent: 12,

@@ -21,21 +21,21 @@ import {
 	type EngagementMetricOverrides,
 } from '../engagementConfig';
 import { evaluateEngagementRatioGate } from '../engagementGate';
-import { engagementArm, engagementInput } from './gateFixtures';
+import { arm, engagementCell, engagementInput } from './gateFixtures';
 
 /**
  * The own arm's OPENS collapse while its CLICKS hold. On an opens-gated cell
  * that is a fail; on the Apple cell — where the opens are MPP noise — it is a
  * pass. One fixture, two answers, and the ONLY difference is the cell.
  */
-const OWN = engagementArm({
+const OWN = arm({
 	sent: 20_000,
 	calibrationSent: 2_000,
 	calibrationOpened: 100, // 5%
 	calibrationClicked: 200, // 10%
 });
 
-const REFERENCE = engagementArm({
+const REFERENCE = arm({
 	sent: 20_000,
 	calibrationSent: 2_000,
 	calibrationOpened: 800, // 40%
@@ -50,7 +50,7 @@ function verdictFor(
 		engagementInput({
 			own: OWN,
 			reference: REFERENCE,
-			destinationProvider,
+			cell: engagementCell(destinationProvider),
 			...(metricOverrides === undefined ? {} : { metricOverrides }),
 		})
 	);
@@ -101,16 +101,16 @@ describe('gate 4 — MPP metric substitution', () => {
 		// Both arms inflated 4x by the same proxy: the RATIO is unchanged.
 		const inflated = evaluateEngagementRatioGate(
 			engagementInput({
-				own: engagementArm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 400 }),
-				reference: engagementArm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 400 }),
-				destinationProvider: 'gmail',
+				own: arm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 400 }),
+				reference: arm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 400 }),
+				cell: engagementCell('gmail'),
 			})
 		);
 		const plain = evaluateEngagementRatioGate(
 			engagementInput({
-				own: engagementArm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 100 }),
-				reference: engagementArm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 100 }),
-				destinationProvider: 'gmail',
+				own: arm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 100 }),
+				reference: arm({ sent: 20_000, calibrationSent: 2_000, calibrationOpened: 100 }),
+				cell: engagementCell('gmail'),
 			})
 		);
 		expect(inflated.status).toBe('pass');

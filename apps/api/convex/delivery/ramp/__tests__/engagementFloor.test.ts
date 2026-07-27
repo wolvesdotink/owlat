@@ -4,14 +4,19 @@
  * Every concurrent gate compares the own arm against something measured at the
  * same time, so damage that accumulates SMOOTHLY — both arms drifting down
  * together, week after week, nothing ever breaching a threshold — passes all of
- * them. The weekly absolute-floor check compares this window against the cell's
- * OWN 30-day trailing engagement, and it is the only thing in the gate set that
- * can see that.
+ * them. The absolute-floor check compares the cell's RECENT window against its
+ * OWN PRIOR 30-day window, and it is the only thing in the gate set that can see
+ * that.
  *
  * It is also the check most likely to fire for the wrong reason (plan D14: a
  * redesigned newsletter looks exactly like a placement loss), so the suite pins
  * both halves: it fires on a LARGE smooth decay, and it stays quiet on a small
  * one and on a young cell with no baseline.
+ *
+ * AND THE WINDOW CONTRACT. `ownPriorBaseline` must EXCLUDE the recent window.
+ * The last case below is the reason: an overlapping baseline is dragged down by
+ * the very decay it is supposed to reveal, so the same decay that trips the
+ * tripwire against a prior window passes against a trailing one.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -21,11 +26,11 @@ import {
 	evaluateEngagementGate,
 	evaluateEngagementRatioGate,
 } from '../engagementGate';
-import { NOW, engagementArm, engagementInput } from './gateFixtures';
+import { NOW, arm, engagementCell, engagementInput } from './gateFixtures';
 
 /** A window of `calibrationSent` calibration sends opening at `rate`. */
 function engagementWindow(calibrationSent: number, rate: number, lastRecordedAt: number = NOW) {
-	return engagementArm({
+	return arm({
 		sent: calibrationSent * 20,
 		calibrationSent,
 		calibrationOpened: Math.round(calibrationSent * rate),
@@ -36,14 +41,14 @@ function engagementWindow(calibrationSent: number, rate: number, lastRecordedAt:
 const BASELINE_30D = engagementWindow(4_000, 0.1);
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-describe('gate 4b — weekly absolute floor', () => {
+describe("gate 4b — the absolute floor against the cell's own past", () => {
 	it('fires on a smooth decay that every concurrent gate passes', () => {
 		// Both arms decayed together, so the RATIO is a clean 1.0 …
 		const decayed = engagementWindow(1_000, 0.06);
 		const input = engagementInput({
 			own: decayed,
 			reference: engagementWindow(1_000, 0.06),
-			ownTrailingBaseline: BASELINE_30D,
+			ownPriorBaseline: BASELINE_30D,
 		});
 		expect(evaluateEngagementRatioGate(input).status).toBe('pass');
 
@@ -64,7 +69,7 @@ describe('gate 4b — weekly absolute floor', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0.08),
 			reference: engagementWindow(1_000, 0.08),
-			ownTrailingBaseline: BASELINE_30D,
+			ownPriorBaseline: BASELINE_30D,
 		});
 		expect(evaluateEngagementFloorGate(input).status).toBe('pass');
 		expect(evaluateEngagementGate(input).status).toBe('pass');
@@ -78,14 +83,14 @@ describe('gate 4b — weekly absolute floor', () => {
 		expect(atFloor).toBe(0.35);
 
 		const onTheLine = evaluateEngagementFloorGate(
-			engagementInput({ own: engagementWindow(1_000, 0.35), ownTrailingBaseline: baseline })
+			engagementInput({ own: engagementWindow(1_000, 0.35), ownPriorBaseline: baseline })
 		);
 		expect(onTheLine.measurement.thresholdRate).toBe(0.35);
 		expect(onTheLine.measurement.ownRate).toBe(0.35);
 		expect(onTheLine.status).toBe('pass');
 
 		const oneBelow = evaluateEngagementFloorGate(
-			engagementInput({ own: engagementWindow(1_000, 0.349), ownTrailingBaseline: baseline })
+			engagementInput({ own: engagementWindow(1_000, 0.349), ownPriorBaseline: baseline })
 		);
 		expect(oneBelow.status).toBe('fail');
 	});
@@ -105,17 +110,17 @@ describe('gate 4b — weekly absolute floor', () => {
 	it('HOLDS on a baseline below its own minimum sample', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0.01),
-			ownTrailingBaseline: engagementWindow(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample - 1, 0.1),
+			ownPriorBaseline: engagementWindow(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample - 1, 0.1),
 		});
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
-		expect(floor.reason).toBe('reference_sample_below_floor');
+		expect(floor.reason).toBe('baseline_sample_below_floor');
 	});
 
 	it('decides at exactly the baseline minimum sample', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0.01),
-			ownTrailingBaseline: engagementWindow(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample, 0.1),
+			ownPriorBaseline: engagementWindow(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample, 0.1),
 		});
 		expect(evaluateEngagementFloorGate(input).status).toBe('fail');
 	});
@@ -123,17 +128,17 @@ describe('gate 4b — weekly absolute floor', () => {
 	it('HOLDS on a stale baseline rather than trusting three-week-old evidence', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0.01),
-			ownTrailingBaseline: engagementWindow(4_000, 0.1, NOW - 21 * DAY_MS),
+			ownPriorBaseline: engagementWindow(4_000, 0.1, NOW - 21 * DAY_MS),
 		});
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
-		expect(floor.reason).toBe('reference_evidence_stale');
+		expect(floor.reason).toBe('baseline_evidence_stale');
 	});
 
 	it('HOLDS on a thin recent window — the floor obeys the same sample rule (D10)', () => {
 		const input = engagementInput({
 			own: engagementWindow(399, 0.01),
-			ownTrailingBaseline: BASELINE_30D,
+			ownPriorBaseline: BASELINE_30D,
 		});
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
@@ -143,64 +148,98 @@ describe('gate 4b — weekly absolute floor', () => {
 	it('HOLDS when the baseline itself engaged at zero — there is nothing to decay from', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0),
-			ownTrailingBaseline: engagementWindow(4_000, 0),
+			ownPriorBaseline: engagementWindow(4_000, 0),
 		});
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
-		expect(floor.reason).toBe('reference_rate_unmeasurable');
+		expect(floor.reason).toBe('baseline_rate_unmeasurable');
 	});
 
-	it('compares the explicit weekly window when one is supplied', () => {
+	it('compares the explicit RECENT window, not the evaluation window', () => {
 		const input = engagementInput({
 			// The evaluation window is healthy …
 			own: engagementWindow(1_000, 0.1),
-			// … but the last SEVEN DAYS have collapsed.
-			ownWeekly: engagementWindow(1_000, 0.02),
-			ownTrailingBaseline: BASELINE_30D,
+			// … but the recent window has collapsed.
+			ownRecent: engagementWindow(1_000, 0.02),
+			ownPriorBaseline: BASELINE_30D,
 		});
 		expect(evaluateEngagementFloorGate(input).status).toBe('fail');
 	});
 
+	it('an OVERLAPPING baseline damps the decay it is supposed to reveal', () => {
+		// 23 prior days at 10%, then 7 recent days at ~6.8% — a real decay just past
+		// the 0.7 floor.
+		const prior = arm({ sent: 92_000, calibrationSent: 4_600, calibrationOpened: 460 });
+		const recent = arm({ sent: 28_000, calibrationSent: 1_400, calibrationOpened: 95 });
+		expect(prior.calibrationOpenRate).toBeCloseTo(0.1, 10);
+
+		const againstPrior = evaluateEngagementFloorGate(
+			engagementInput({ own: recent, ownRecent: recent, ownPriorBaseline: prior })
+		);
+		expect(againstPrior.status).toBe('fail');
+
+		// The SAME 30 days, summed as one trailing window that contains the decayed
+		// week: the baseline has been dragged down with the cell, the floor drops
+		// with it, and the tripwire stays silent. That is why the field is the PRIOR
+		// window and why its disjointness is a contract rather than a detail.
+		const trailingIncludingRecent = arm({
+			sent: 120_000,
+			calibrationSent: 6_000,
+			calibrationOpened: 555,
+		});
+		const againstTrailing = evaluateEngagementFloorGate(
+			engagementInput({
+				own: recent,
+				ownRecent: recent,
+				ownPriorBaseline: trailingIncludingRecent,
+			})
+		);
+		expect(againstTrailing.status).toBe('pass');
+		expect(againstTrailing.measurement.thresholdRate).toBeLessThan(
+			againstPrior.measurement.thresholdRate
+		);
+	});
+
 	it('applies the metric substitution to the floor too — apple decays on clicks', () => {
-		const own = engagementArm({
+		const own = arm({
 			sent: 20_000,
 			calibrationSent: 1_000,
 			calibrationOpened: 500, // opens look great …
 			calibrationClicked: 20, // … clicks have collapsed
 		});
-		const baseline = engagementArm({
+		const baseline = arm({
 			sent: 80_000,
 			calibrationSent: 4_000,
 			calibrationOpened: 400,
 			calibrationClicked: 400, // 10% baseline click rate
 		});
 		const apple = evaluateEngagementFloorGate(
-			engagementInput({ own, ownTrailingBaseline: baseline, destinationProvider: 'apple' })
+			engagementInput({ own, ownPriorBaseline: baseline, cell: engagementCell('apple') })
 		);
 		expect(apple.status).toBe('fail');
 		expect(apple.measurement.ownRate).toBeCloseTo(0.02, 10);
 
 		const gmail = evaluateEngagementFloorGate(
-			engagementInput({ own, ownTrailingBaseline: baseline, destinationProvider: 'gmail' })
+			engagementInput({ own, ownPriorBaseline: baseline, cell: engagementCell('gmail') })
 		);
 		expect(gmail.status).toBe('pass');
 	});
 
 	it('reads the CALIBRATION slice, not stratified traffic, on both sides', () => {
-		const own = engagementArm({
+		const own = arm({
 			sent: 20_000,
 			opened: 200, // stratified collapse …
 			calibrationSent: 1_000,
 			calibrationOpened: 100, // … slice healthy against the baseline
 		});
-		const input = engagementInput({ own, ownTrailingBaseline: BASELINE_30D });
+		const input = engagementInput({ own, ownPriorBaseline: BASELINE_30D });
 		expect(evaluateEngagementFloorGate(input).status).toBe('pass');
 	});
 
 	it('is pure — the same input evaluates identically twice', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0.06),
-			ownTrailingBaseline: BASELINE_30D,
+			ownPriorBaseline: BASELINE_30D,
 		});
 		expect(evaluateEngagementFloorGate(input)).toStrictEqual(evaluateEngagementFloorGate(input));
 	});
