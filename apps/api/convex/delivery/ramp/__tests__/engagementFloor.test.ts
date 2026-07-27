@@ -31,7 +31,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../engagementConfig';
-import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
+import { RAMP_GATE_SAMPLE_FLOORS, RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import {
 	evaluateEngagementFloorGate,
 	evaluateEngagementGate,
@@ -107,6 +107,11 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		expect(onTheLine.measurement.thresholdRate).toBe(0.35);
 		expect(onTheLine.measurement.ownRate).toBe(0.35);
 		expect(onTheLine.status).toBe('pass');
+		// A PASS carries both floors as well, each against the sample it governs.
+		expect(onTheLine.measurement.minSample).toBe(RAMP_GATE_SAMPLE_FLOORS.engagementRecent);
+		expect(onTheLine.measurement.referenceMinSample).toBe(
+			ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample
+		);
 
 		const oneBelow = evaluateEngagementFloorGate(
 			engagementInput({ own: engagementWindow(1_000, 0.349), ownPriorBaseline: baseline })
@@ -138,11 +143,15 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
 		expect(floor.reason).toBe('baseline_sample_below_floor');
-		// The audit row (plan D12) must name the floor that governed the arm the
-		// hold names. The recent window's floor is 400 here, and reporting THAT
-		// next to `baseline_sample_below_floor` would tell an operator the sample
-		// is below a floor it is three times above.
-		expect(floor.measurement.minSample).toBe(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample);
+		// The audit row (plan D12) must report BOTH floors, each beside the sample
+		// it governs. The two differ by 3x here, so a measurement carrying only one
+		// of them would tell an operator something false about the other arm —
+		// either that a 1,000-send recent window is below a 1,200 floor, or that a
+		// 1,199-send baseline is above a 400 one.
+		expect(floor.measurement.minSample).toBe(RAMP_GATE_SAMPLE_FLOORS.engagementRecent);
+		expect(floor.measurement.referenceMinSample).toBe(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample);
+		expect(floor.measurement.minSample).not.toBe(floor.measurement.referenceMinSample);
+		expect(floor.measurement.ownSample).toBe(1_000);
 		expect(floor.measurement.referenceSample).toBe(
 			ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample - 1
 		);
@@ -157,7 +166,13 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 				BASELINE_AGE
 			),
 		});
-		expect(evaluateEngagementFloorGate(input).status).toBe('fail');
+		const floor = evaluateEngagementFloorGate(input);
+		expect(floor.status).toBe('fail');
+		// A DECIDED verdict reports both governing floors too — the baseline's is
+		// what a reader needs to judge how much the comparison is worth, and it is
+		// invisible in `reason` on a pass or a fail.
+		expect(floor.measurement.minSample).toBe(RAMP_GATE_SAMPLE_FLOORS.engagementRecent);
+		expect(floor.measurement.referenceMinSample).toBe(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample);
 	});
 
 	it('accepts a baseline aged as its window contract requires, and one at the allowance', () => {
