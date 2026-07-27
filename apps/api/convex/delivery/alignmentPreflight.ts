@@ -9,8 +9,14 @@
  * runtime, where Convex forbids queries and mutations.
  *
  * D2: a deployment with NO reference transport has no second arm. That is a
- * SUPPORTED CONFIGURATION — the pre-flight records `single_arm`, the gate opens,
- * and nothing anywhere renders an error or a "setup incomplete" nag.
+ * SUPPORTED CONFIGURATION, and the sweep does nothing at all for it: `buildTarget`
+ * returns null, no DNS is gathered and no verdict row is written. The gate opens
+ * anyway, because it answers "is there a second arm?" from the LIVE transport
+ * surface rather than from a stored row — so a standalone deployment ramps
+ * without waiting for a sweep, and no error or "setup incomplete" nag is
+ * rendered anywhere. Not writing the row is also what keeps the answer honest:
+ * a stored `single_arm` verdict could not go stale and be misread the day a
+ * relay is configured.
  *
  * The one thing that is NOT allowed is to answer "no second arm" for a relay we
  * merely failed to describe: a configured relay whose signing identity we cannot
@@ -350,8 +356,11 @@ export const getAlignmentGateState = internalQuery({
 
 /**
  * Readiness-card view of the alignment pre-flight, consumed by the delivery
- * readiness panel (`apps/web/app/utils/deliveryReadiness.ts`). `single_arm` is
- * reported as a PASS with plain copy — never a warning, never a nag (D2).
+ * readiness panel (`apps/web/app/utils/deliveryReadiness.ts`). A standalone
+ * domain has no row here at all, so it contributes nothing to the card — the
+ * panel renders a gate only when a reference transport is really in play (D2).
+ * A leftover `single_arm` row (written before the sweep stopped producing them)
+ * is reported as a PASS with plain copy — never a warning, never a nag.
  */
 // all-members: non-secret DNS-facing alignment state (domain names, per-check
 // pass/fail and the published-record remedy text) — the same member-visible
