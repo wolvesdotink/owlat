@@ -1,6 +1,9 @@
+import { convexTest } from 'convex-test';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import schema from '../../schema';
+import { loadSeedAccounts } from '../seedPlacement';
 import {
 	isSeedProbeId,
 	SEED_PROBE_HEADER,
@@ -14,9 +17,51 @@ import type { Id } from '../../_generated/dataModel';
 
 const here = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url));
 
-const seedPlacementSource = readFileSync(here('../seedPlacement.ts'), 'utf8');
-const shadowCopySource = readFileSync(here('../../delivery/seedShadowCopy.ts'), 'utf8');
 const schemaSource = readFileSync(here('../../schema/seedPlacement.ts'), 'utf8');
+
+const modules = import.meta.glob('../../**/*.*s');
+const NOW = 1_800_000_000_000;
+const ORG = 'org_seed_secrets';
+
+/**
+ * A connected seed mailbox, credentials and all — so the projection assertion
+ * below is made against a row that really does hold a sealed secret.
+ */
+async function seedFixture(t: ReturnType<typeof convexTest>): Promise<void> {
+	await t.run(async (ctx) => {
+		const mailboxId = await ctx.db.insert('mailboxes', {
+			organizationId: ORG,
+			address: 'owlat.seed.01@gmail.example',
+			domain: 'gmail.example',
+			kind: 'external',
+			status: 'active',
+			createdAt: NOW,
+			updatedAt: NOW,
+		} as never);
+		await ctx.db.insert('externalMailAccounts', {
+			userId: 'user_1',
+			organizationId: ORG,
+			mailboxId,
+			purpose: 'seed',
+			seedProvider: 'gmail',
+			imapHost: 'imap.gmail.example',
+			imapPort: 993,
+			isImapSecure: true,
+			smtpHost: 'smtp.gmail.example',
+			smtpPort: 587,
+			isSmtpSecure: false,
+			authMethod: 'password',
+			imapUsername: 'seed-login-01',
+			secretCiphertext: 'CIPHERTEXT_MUST_NEVER_LEAK',
+			secretIv: 'IV_MUST_NEVER_LEAK',
+			secretAuthTag: 'TAG_MUST_NEVER_LEAK',
+			secretEnvelopeVersion: 1,
+			status: 'connected',
+			createdAt: NOW,
+			updatedAt: NOW,
+		} as never);
+	});
+}
 
 const PREV_SECRET = process.env['UNSUBSCRIBE_SECRET'];
 beforeAll(() => {
@@ -29,14 +74,25 @@ afterAll(() => {
 
 /** (e) Credentials are sealed and never logged. */
 describe('seed credentials', () => {
-	it('reuses the shipped sealed envelope — no seed module reads a credential field', () => {
-		for (const source of [seedPlacementSource, shadowCopySource, schemaSource]) {
-			expect(source).not.toContain('secretCiphertext');
-			expect(source).not.toContain('secretIv');
-			expect(source).not.toContain('secretAuthTag');
-			expect(source).not.toContain('imapPassword');
-			expect(source).not.toContain('smtpPassword');
+	it('never leaves the sealed envelope: the seed projection carries no secret', async () => {
+		const t = convexTest(schema, modules);
+		await seedFixture(t);
+		const accounts = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, NOW));
+		expect(accounts).toHaveLength(1);
+		const projected = JSON.stringify(accounts);
+		for (const secret of ['CIPHERTEXT', 'IV_MUST', 'TAG_MUST', 'seed-login-01']) {
+			expect(projected).not.toContain(secret);
 		}
+		// Only the fields the prober actually needs, and the ADDRESS comes from
+		// the linked mailbox — never the IMAP login.
+		expect(Object.keys(accounts[0] ?? {}).sort()).toEqual([
+			'accountId',
+			'address',
+			'connectedAt',
+			'provider',
+			'rotationReminderDue',
+		]);
+		expect(accounts[0]?.address).toBe('owlat.seed.01@gmail.example');
 	});
 
 	it('defines no second credential model — seeds are ordinary external accounts', () => {
@@ -70,9 +126,26 @@ describe('seed mailbox contents', () => {
 		expect(schemaSource).toContain('folderName');
 	});
 
-	it('is never console-logged by either seed module', () => {
-		for (const source of [seedPlacementSource, shadowCopySource]) {
-			expect(source).not.toMatch(/console\.(log|info|warn|error|debug)\(/);
+	it('is not part of the ledger row a classification writes', async () => {
+		const t = convexTest(schema, modules);
+		const stored = await t.run(async (ctx) => {
+			const id = await ctx.db.insert('seedPlacementProbes', {
+				organizationId: ORG,
+				probeId: 'sp_abcdefghij0123456789kl',
+				accountId: 'x' as never,
+				provider: 'gmail',
+				stream: 'campaign',
+				sentAt: NOW,
+				expiresAt: NOW + 1,
+				placement: 'spam',
+				folderName: '[Gmail]/Spam',
+				classifiedAt: NOW,
+			});
+			return ctx.db.get(id);
+		});
+		const keys = Object.keys(stored ?? {});
+		for (const field of ['subject', 'bodyHtml', 'bodyText', 'snippet', 'rawMessage']) {
+			expect(keys).not.toContain(field);
 		}
 	});
 });
@@ -99,6 +172,7 @@ describe('the probe header', () => {
 	const shadow = buildSeedShadowEnvelope(realSend, {
 		address: 'owlat.seed.01@gmail.example',
 		probeId,
+		probeRef: 'probe1' as Id<'seedPlacementProbes'>,
 	});
 	const headerValue = composeForSend(buildComposeInput(shadow)).headers[SEED_PROBE_HEADER];
 

@@ -1,4 +1,10 @@
+import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
+import { internal } from '../../_generated/api';
+import schema from '../../schema';
+import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { loadSeedAccounts } from '../seedPlacement';
+import type { Id } from '../../_generated/dataModel';
 import {
 	planSeedHygiene,
 	shouldRemindSeedRotation,
@@ -130,5 +136,185 @@ describe('shouldRemindSeedRotation', () => {
 
 	it('does not fire on clock skew (a "now" before the connection)', () => {
 		expect(shouldRemindSeedRotation({ connectedAt, now: connectedAt - DAY })).toBe(false);
+	});
+});
+
+// ── The EXECUTOR side: the plan is carried out, not merely computed ────────
+
+const modules = import.meta.glob('../../**/*.*s');
+const NOW = 1_800_000_000_000;
+const ORG = 'org_hygiene';
+const PROBE_ID = 'sp_abcdefghij0123456789kl';
+
+const CREDS = {
+	emailAddress: 'owlat.seed.02@outlook.example',
+	imapHost: 'imap.outlook.example',
+	imapPort: 993,
+	isImapSecure: true,
+	smtpHost: 'smtp.outlook.example',
+	smtpPort: 587,
+	isSmtpSecure: false,
+	imapUsername: 'seed-login-02',
+	authMethod: 'password' as const,
+	secretCiphertext: 'ct',
+	secretIv: 'iv',
+	secretAuthTag: 'tag',
+	secretEnvelopeVersion: 1,
+};
+
+/** Step 1 (connect): tag an external account as a deliverability seed. */
+async function connectSeed(t: ReturnType<typeof convexTest>): Promise<{
+	accountId: Id<'externalMailAccounts'>;
+}> {
+	return t.run(async (ctx) => {
+		const mailboxId = await ctx.db.insert('mailboxes', {
+			organizationId: ORG,
+			address: 'owlat.seed.02@outlook.example',
+			domain: 'outlook.example',
+			kind: 'external',
+			status: 'active',
+			createdAt: NOW,
+			updatedAt: NOW,
+		} as never);
+		const accountId = await insertExternalAccountRow(ctx, {
+			userId: 'user_1',
+			organizationId: ORG,
+			mailboxId,
+			address: 'owlat.seed.02@outlook.example',
+			seed: { seedProvider: 'microsoft' },
+			fields: CREDS,
+			now: NOW,
+		});
+		return { accountId };
+	});
+}
+
+describe('step 1 — connecting a seed mailbox tags it', () => {
+	it('writes purpose=seed and the mailbox provider, and the prober finds it', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+		const row = await t.run(async (ctx) => ctx.db.get(accountId));
+		expect(row?.purpose).toBe('seed');
+		expect(row?.seedProvider).toBe('microsoft');
+
+		const accounts = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, NOW));
+		expect(accounts.map((a) => a.provider)).toEqual(['microsoft']);
+	});
+});
+
+describe('the hygiene plan is EXECUTED against the ledger row', () => {
+	async function withProbe(
+		t: ReturnType<typeof convexTest>,
+		accountId: Id<'externalMailAccounts'>
+	): Promise<Id<'seedPlacementProbes'>> {
+		return t.run(async (ctx) =>
+			ctx.db.insert('seedPlacementProbes', {
+				organizationId: ORG,
+				probeId: PROBE_ID,
+				accountId,
+				provider: 'microsoft',
+				stream: 'campaign',
+				sentAt: NOW,
+				expiresAt: NOW + 1_000,
+			})
+		);
+	}
+
+	it('marks a found probe read and fires the occasional click', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+		const probeRef = await withProbe(t, accountId);
+		const outcome = await t.mutation(
+			internal.analytics.seedPlacement.recordSeedProbeClassification,
+			{
+				organizationId: ORG,
+				probeId: PROBE_ID,
+				folderName: 'Junk E-mail',
+				now: NOW + 10,
+				clickRoll: 0, // below SEED_CLICK_PROBABILITY — the click fires
+			}
+		);
+		expect(outcome).toMatchObject({ recorded: true, placement: 'spam' });
+		const row = await t.run(async (ctx) => ctx.db.get(probeRef));
+		expect(row?.markedReadAt).toBe(NOW + 10);
+		expect(row?.clickedAt).toBe(NOW + 10);
+	});
+
+	it('does not click on the common roll, and never touches a MISSING probe', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+		const probeRef = await withProbe(t, accountId);
+		await t.mutation(internal.analytics.seedPlacement.recordSeedProbeClassification, {
+			organizationId: ORG,
+			probeId: PROBE_ID,
+			folderName: null,
+			now: NOW + 10,
+			clickRoll: 0,
+		});
+		const row = await t.run(async (ctx) => ctx.db.get(probeRef));
+		expect(row?.placement).toBe('missing');
+		expect(row?.markedReadAt).toBeUndefined();
+		expect(row?.clickedAt).toBeUndefined();
+	});
+
+	it('refuses a classification from another organization', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+		const probeRef = await withProbe(t, accountId);
+		const outcome = await t.mutation(
+			internal.analytics.seedPlacement.recordSeedProbeClassification,
+			{
+				organizationId: 'org_other',
+				probeId: PROBE_ID,
+				folderName: 'INBOX',
+				now: NOW + 10,
+				clickRoll: 0.9,
+			}
+		);
+		expect(outcome).toEqual({ recorded: false });
+		const row = await t.run(async (ctx) => ctx.db.get(probeRef));
+		expect(row?.placement).toBeUndefined();
+	});
+});
+
+describe('the rotation reminder surfaces on schedule', () => {
+	it('is due after the interval and is recorded, org-scoped', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+
+		const before = await t.query(internal.analytics.seedPlacement.listSeedAccounts, {
+			organizationId: ORG,
+			now: NOW,
+		});
+		expect(before[0]?.rotationReminderDue).toBe(false);
+
+		const due = await t.query(internal.analytics.seedPlacement.listSeedAccounts, {
+			organizationId: ORG,
+			now: later,
+		});
+		expect(due[0]?.rotationReminderDue).toBe(true);
+
+		expect(
+			await t.mutation(internal.analytics.seedPlacement.markSeedRotationReminded, {
+				organizationId: 'org_other',
+				accountId,
+				now: later,
+			})
+		).toEqual({ updated: false });
+
+		expect(
+			await t.mutation(internal.analytics.seedPlacement.markSeedRotationReminded, {
+				organizationId: ORG,
+				accountId,
+				now: later,
+			})
+		).toEqual({ updated: true });
+
+		const after = await t.query(internal.analytics.seedPlacement.listSeedAccounts, {
+			organizationId: ORG,
+			now: later,
+		});
+		expect(after[0]?.rotationReminderDue).toBe(false);
 	});
 });

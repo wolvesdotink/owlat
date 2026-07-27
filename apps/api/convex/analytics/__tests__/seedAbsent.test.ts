@@ -1,24 +1,20 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import schema from '../../schema';
 import {
 	loadSeedAccounts,
 	summarizeSeedPlacementWindow,
 	SEED_PLACEMENT_WINDOW_MS,
 } from '../seedPlacement';
+import { enqueueSeedShadowCopies } from '../../delivery/seedShadowCopy';
 import { evaluateSeedPlacementGate } from '@owlat/shared/seedPlacement';
+import type { Id } from '../../_generated/dataModel';
 
 const modules = import.meta.glob('../../**/*.*s');
 
 const NOW = 1_800_000_000_000;
 const ORG = 'org_standalone';
 const NO_CORROBORATION = { deferralGateBreached: false, bounceGateBreached: false };
-
-const here = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url));
-const seedPlacementSource = readFileSync(here('../seedPlacement.ts'), 'utf8');
-const shadowCopySource = readFileSync(here('../../delivery/seedShadowCopy.ts'), 'utf8');
 
 /**
  * (f) THE D2 PROOF — a fresh install with zero seed mailboxes.
@@ -109,19 +105,72 @@ describe('zero seed mailboxes is a supported configuration', () => {
 });
 
 /**
- * (f) Absence must be structurally incapable of blocking anything: neither
- * seed module throws, and neither renders a warning or an error state.
+ * (f) Absence must be structurally incapable of blocking anything — asserted
+ * as BEHAVIOUR through the real enqueue path, not by grepping module source
+ * (a source grep is blind to a throw that lives one module over).
  */
 describe('absence is never load-bearing', () => {
-	it('neither seed module throws', () => {
-		for (const source of [seedPlacementSource, shadowCopySource]) {
-			expect(source).not.toMatch(/\bthrow\s+new\b/);
-			expect(source).not.toMatch(/\bConvexError\b/);
-		}
+	const base = {
+		kind: 'campaign' as const,
+		deliveryDomain: 'production' as const,
+		to: 'jane@example.com',
+		from: 'news@org.example',
+		template: { subject: 'Hi', htmlContent: '<p>Hi</p>' },
+		contactInfo: { email: 'jane@example.com', contactId: 'c1' as Id<'contacts'> },
+		emailSendId: 's1' as Id<'emailSends'>,
+		organizationId: ORG,
+	};
+
+	it('enqueues nothing, schedules nothing and writes nothing with zero seeds', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await t.run(async (ctx) =>
+			ctx.db.insert('campaigns', {
+				name: 'March',
+				subject: 'Hi',
+				status: 'sending',
+				organizationId: ORG,
+				createdAt: NOW,
+				updatedAt: NOW,
+			} as never)
+		);
+		const outcome = await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				stream: 'campaign',
+				base: { ...base, campaignId },
+				now: NOW,
+			})
+		);
+		expect(outcome).toEqual({ enqueued: 0 });
+
+		const probes = await t.run(async (ctx) => ctx.db.query('seedPlacementProbes').collect());
+		expect(probes).toEqual([]);
 	});
 
-	it('the shadow-copy enqueue short-circuits on an empty seed list', () => {
-		expect(shadowCopySource).toContain('args.seeds.length === 0');
-		expect(shadowCopySource).toContain('return { enqueued: 0 }');
+	it('is idempotent and still silent when called again', async () => {
+		const t = convexTest(schema, modules);
+		const campaignId = await t.run(async (ctx) =>
+			ctx.db.insert('campaigns', {
+				name: 'March',
+				subject: 'Hi',
+				status: 'sending',
+				organizationId: ORG,
+				createdAt: NOW,
+				updatedAt: NOW,
+			} as never)
+		);
+		for (let i = 0; i < 3; i += 1) {
+			const outcome = await t.run(async (ctx) =>
+				enqueueSeedShadowCopies(ctx, {
+					organizationId: ORG,
+					campaignId,
+					stream: 'campaign',
+					base: { ...base, campaignId },
+					now: NOW + i,
+				})
+			);
+			expect(outcome).toEqual({ enqueued: 0 });
+		}
 	});
 });

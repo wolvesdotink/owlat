@@ -1,25 +1,36 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+/**
+ * (b) The seed shadow copy goes through the IDENTICAL composer and the
+ * IDENTICAL transport, carries the probe id, clears the worker's pre-dispatch
+ * gates, and is EXCLUDED from analytics and reputation denominators (D18).
+ *
+ * The secret is set at MODULE scope, before any `describe` body runs: vitest
+ * executes describe bodies at collection time, so a `beforeAll` would be too
+ * late for the composition performed there and the whole file would fail to
+ * collect (which is exactly what happened in review round 1).
+ */
+import { describe, it, expect, afterAll } from 'vitest';
 import { buildSeedShadowEnvelope, isSeedShadowEnvelope } from '../seedShadowCopy';
 import type { CampaignEnvelopeInput } from '../seedShadowCopy';
-import { buildComposeInput } from '../worker';
+import { assertSeedShadowExclusion, buildComposeInput } from '../worker';
+import { assertMarketingOneClickHeaders } from '../marketingCompliance';
 import { composeForSend } from '../sendComposition';
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
 
-const CONTACT_ID = 'contact1' as Id<'contacts'>;
-const SEND_ID = 'send1' as Id<'emailSends'>;
-const CAMPAIGN_ID = 'campaign1' as Id<'campaigns'>;
-const PROBE_ID = 'sp_abcdefghij0123456789kl';
-const SEED_ADDRESS = 'owlat.seed.01@gmail.example';
-
 const PREV_SECRET = process.env['UNSUBSCRIBE_SECRET'];
-beforeAll(() => {
-	process.env['UNSUBSCRIBE_SECRET'] = 'test-unsubscribe-secret';
-});
+process.env['UNSUBSCRIBE_SECRET'] = 'test-unsubscribe-secret';
+
 afterAll(() => {
 	if (PREV_SECRET === undefined) delete process.env['UNSUBSCRIBE_SECRET'];
 	else process.env['UNSUBSCRIBE_SECRET'] = PREV_SECRET;
 });
+
+const CONTACT_ID = 'contact1' as Id<'contacts'>;
+const SEND_ID = 'send1' as Id<'emailSends'>;
+const CAMPAIGN_ID = 'campaign1' as Id<'campaigns'>;
+const PROBE_REF = 'probe1' as Id<'seedPlacementProbes'>;
+const PROBE_ID = 'sp_abcdefghij0123456789kl';
+const SEED_ADDRESS = 'owlat.seed.01@gmail.example';
 
 // A real campaign envelope. The template carries no personalization tokens so
 // the byte-identity assertions below compare composition, not substitution.
@@ -31,7 +42,10 @@ const realSend: CampaignEnvelopeInput = {
 	replyTo: 'hello@org.example',
 	providerType: 'mta',
 	ipPool: 'marketing',
-	template: { subject: 'March newsletter', htmlContent: '<p>Hello there</p>' },
+	template: {
+		subject: 'March newsletter',
+		htmlContent: '<p>Hello there <a href="https://org.example/read">read</a></p>',
+	},
 	contactInfo: {
 		contactId: CONTACT_ID,
 		email: 'jane@example.com',
@@ -52,44 +66,30 @@ const realSend: CampaignEnvelopeInput = {
 const shadow = buildSeedShadowEnvelope(realSend, {
 	address: SEED_ADDRESS,
 	probeId: PROBE_ID,
+	probeRef: PROBE_REF,
 });
 
-/** (b) The shadow copy rides the IDENTICAL composer and the IDENTICAL transport. */
 describe('buildSeedShadowEnvelope — identical transport', () => {
 	it('keeps the same kind, so it goes through the same worker and composer', () => {
 		expect(shadow.kind).toBe('campaign');
 	});
 
-	it('keeps the sending identity byte-for-byte (D11 — never a different identity)', () => {
+	it('keeps every routing field that decides HOW the mail leaves', () => {
 		expect(shadow.from).toBe(realSend.from);
 		expect(shadow.replyTo).toBe(realSend.replyTo);
+		expect(shadow.providerType).toBe(realSend.providerType);
+		expect(shadow.ipPool).toBe(realSend.ipPool);
 		expect(shadow.deliveryDomain).toBe(realSend.deliveryDomain);
 	});
 
-	it('keeps the same transport selection — provider and IP pool', () => {
-		expect(shadow.providerType).toBe('mta');
-		expect(shadow.ipPool).toBe('marketing');
-	});
-
-	it('keeps the same template bytes', () => {
-		expect(shadow.template).toEqual(realSend.template);
-	});
-
-	it('re-addresses only the recipient', () => {
+	it('addresses the seed mailbox and nobody else', () => {
 		expect(shadow.to).toBe(SEED_ADDRESS);
 		expect(shadow.contactInfo.email).toBe(SEED_ADDRESS);
 	});
 
-	it('does not mutate the real send envelope', () => {
+	it('never mutates the real envelope', () => {
 		expect(realSend.to).toBe('jane@example.com');
 		expect(realSend.seedProbeId).toBeUndefined();
-		expect(realSend.emailSendId).toBe(SEND_ID);
-	});
-});
-
-describe('buildSeedShadowEnvelope — the probe id', () => {
-	it('carries the probe id', () => {
-		expect(shadow.seedProbeId).toBe(PROBE_ID);
 	});
 
 	it('reaches the wire as the probe header, and only on the shadow copy', () => {
@@ -122,7 +122,17 @@ describe('shadow composition is identical apart from the probe header', () => {
 		expect(shadowOut.headers['Feedback-ID']).toBe(realOut.headers['Feedback-ID']);
 	});
 
-	it('adds exactly one header and drops only the contact-scoped List-Unsubscribe pair', () => {
+	it('carries the SAME one-click contract, differing only in the token target', () => {
+		expect(shadowOut.headers['List-Unsubscribe-Post']).toBe(
+			realOut.headers['List-Unsubscribe-Post']
+		);
+		// A probe's target is probe-scoped: a real subscriber's one-click token
+		// must never land in an operator mailbox.
+		expect(shadowOut.headers['List-Unsubscribe']).not.toBe(realOut.headers['List-Unsubscribe']);
+		expect(shadowOut.headers['List-Unsubscribe']).toContain('/unsub/probe/');
+	});
+
+	it('adds exactly one header and re-targets exactly one', () => {
 		const differing = new Set<string>();
 		for (const key of new Set([
 			...Object.keys(shadowOut.headers),
@@ -130,14 +140,51 @@ describe('shadow composition is identical apart from the probe header', () => {
 		])) {
 			if (shadowOut.headers[key] !== realOut.headers[key]) differing.add(key);
 		}
-		// List-Unsubscribe pair is contact-scoped and intentionally absent from the
-		// shadow (it would put a real subscriber's one-click token in an operator
-		// mailbox); the probe header is the only ADDED header.
-		expect([...differing].sort()).toEqual([
-			'List-Unsubscribe',
-			'List-Unsubscribe-Post',
-			SEED_PROBE_HEADER,
-		]);
+		expect([...differing].sort()).toEqual(['List-Unsubscribe', SEED_PROBE_HEADER]);
+	});
+
+	it('carries the same wire features a filter weighs: pixel and wrapped links', () => {
+		expect(shadowOut.transformConfig?.trackingPixelUrl).toBeDefined();
+		expect(shadowOut.transformConfig?.trackedLinkBase).toBeDefined();
+		expect(realOut.transformConfig?.trackingPixelUrl).toBeDefined();
+	});
+});
+
+/** (b) A probe must clear the two pre-dispatch gates that used to throw. */
+describe('dispatch path — the probe clears every pre-dispatch gate', () => {
+	it('passes the marketing one-click assertion the campaign worker applies', () => {
+		const composed = composeForSend(buildComposeInput(shadow));
+		expect(() => assertMarketingOneClickHeaders('marketing', composed.headers)).not.toThrow();
+	});
+
+	it('passes the seed-shadow exclusion invariant, as does a real send', () => {
+		expect(() => assertSeedShadowExclusion(shadow)).not.toThrow();
+		expect(() => assertSeedShadowExclusion(realSend)).not.toThrow();
+	});
+
+	it('carries a durable dispatch reference, so the governed boundary accepts it', () => {
+		// `governedDispatch` refuses a dispatch with no durable reference. The
+		// probe supplies its ledger row instead of a Send.
+		expect(shadow.seedProbeRef).toBe(PROBE_REF);
+		expect(shadow.emailSendId).toBeUndefined();
+	});
+
+	it('rejects an envelope that would be both a probe and a countable Send', () => {
+		expect(() => assertSeedShadowExclusion({ ...shadow, emailSendId: SEND_ID })).toThrow(
+			/must not carry a countable Send/
+		);
+		expect(() =>
+			assertSeedShadowExclusion({
+				...shadow,
+				contactInfo: { email: SEED_ADDRESS, contactId: CONTACT_ID },
+			})
+		).toThrow(/must not carry a countable Send/);
+	});
+
+	it('rejects a probe envelope with no ledger reference', () => {
+		const orphan: CampaignEnvelopeInput = { ...shadow };
+		delete orphan.seedProbeRef;
+		expect(() => assertSeedShadowExclusion(orphan)).toThrow(/probe ledger reference/);
 	});
 });
 
@@ -151,26 +198,19 @@ describe('D18 exclusion — a shadow copy is not a Send', () => {
 		expect(shadow.contactInfo.contactId).toBeUndefined();
 	});
 
-	it('carries no tracking pixel and no wrapped links — a probe open can never land in a campaign open rate', () => {
+	it('tracks under the opaque probe id, never under a countable Send id', () => {
 		const composed = composeForSend(buildComposeInput(shadow));
-		expect(composed.transformConfig?.trackingPixelUrl).toBeUndefined();
-		expect(composed.transformConfig?.trackedLinkBase).toBeUndefined();
-		// The real send it mirrors DOES carry them — the difference is the point.
-		const realComposed = composeForSend(buildComposeInput(realSend));
-		expect(realComposed.transformConfig?.trackingPixelUrl).toBeDefined();
+		expect(composed.transformConfig?.trackingPixelUrl).toContain(PROBE_ID);
+		expect(composed.transformConfig?.trackingPixelUrl).not.toContain(SEND_ID);
+		expect(composed.transformConfig?.trackedLinkBase?.emailSendId).toBe(PROBE_ID);
 	});
 
-	it('drops every tracking/site URL the tracked send carries', () => {
-		expect(shadow.trackingBaseUrl).toBeUndefined();
-		expect(shadow.convexSiteUrl).toBeUndefined();
+	it('drops the contact-scoped footer and archive URLs', () => {
 		expect(shadow.siteUrl).toBeUndefined();
 		expect(shadow.viewInBrowserUrl).toBeUndefined();
 	});
 
 	it('keeps the campaign attribution needed for Feedback-ID without becoming countable', () => {
-		// campaignId is composition input (Feedback-ID); emailSendId is what makes
-		// a Send countable. Keeping the first and dropping the second is exactly
-		// what "identical mail, uncounted" means.
 		expect(shadow.campaignId).toBe(CAMPAIGN_ID);
 		expect(shadow.emailSendId).toBeUndefined();
 	});
