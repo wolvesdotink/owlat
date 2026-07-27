@@ -18,7 +18,7 @@ import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { loadWarmingCapacity } from '../delivery/warmingCapacity';
-import { campaignWarmingCapBinds } from '../lib/sendProviders/route';
+import { campaignWarmingCapBinds } from '../lib/sendProviders/warmingCapGate';
 import { audienceValidator, type StoredAudience } from './audience';
 import { countAudience } from './audienceCandidates';
 import {
