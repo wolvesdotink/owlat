@@ -39,6 +39,44 @@ export function resolveSignedTokenKey(explicit?: string): string | undefined {
 	return key && key.length > 0 ? key : undefined;
 }
 
+/**
+ * One future window absorbs signer/verifier clock skew around a day boundary.
+ * Shared by both token families so the skew allowance cannot drift apart.
+ */
+export const SIGNED_TOKEN_FUTURE_WINDOWS = 1;
+
+/**
+ * The LONGEST span over which any feedback token Owlat publishes to the
+ * internet still verifies — today, the accepted past windows and the future
+ * skew window. Complaints are a human-latency signal (a subscriber may report a
+ * two-week-old newsletter), so this is deliberately wide: 14 days of acceptance
+ * plus one day of skew.
+ *
+ * THIS IS THE ONE VALUE THREE RETENTIONS DERIVE FROM, and it lives here rather
+ * than in either token module because it constrains both of them plus the two
+ * stores that must outlive them:
+ *   1. `cfblAddress.ts` turns it into its accepted-window count;
+ *   2. `complaintDedupStore.ts` keeps a completed complaint at least this long —
+ *      a replay landing after the dedup record expired but while the token still
+ *      verifies would be counted a second time, inflating a complaint rate by
+ *      pure repetition;
+ *   3. `feedbackProvenance.ts` keeps the send record at least this long — it is
+ *      the only source of organizationId/campaignId/deliveryDomain, so a report
+ *      that verifies but outlives its record attributes to nothing and cannot
+ *      feed the complaint gate.
+ *
+ * Widening the horizon therefore widens all three together, by construction.
+ */
+export const MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS = 15 * 24 * 60 * 60;
+
+/**
+ * Retention for state that must OUTLIVE a verifiable token: the acceptance
+ * horizon plus one day of slack for clock skew between the signer, the
+ * reporting provider and the store.
+ */
+export const FEEDBACK_RECORD_RETENTION_SECONDS =
+	MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS + 24 * 60 * 60;
+
 /** Current coarse time bucket (UTC day number). Injectable for tests. */
 export function currentSignedTokenWindow(now: number): number {
 	return Math.floor(now / SIGNED_TOKEN_WINDOW_MS);

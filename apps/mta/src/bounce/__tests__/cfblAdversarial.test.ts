@@ -25,13 +25,13 @@ import { parseMessage } from '@owlat/mail-message';
 import { parseFblOrDsnPhase } from '../phases/parseFblOrDsn.js';
 import {
 	ACCEPTED_PAST_WINDOWS,
-	CFBL_TOKEN_ACCEPTANCE_SECONDS,
 	buildCfblAddress,
 	buildCfblToken,
 	parseCfblAddress,
 } from '../cfblAddress.js';
 import { completeComplaint, resolveCfblAttribution } from '../fblProcessor.js';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
+import { MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS } from '../signedToken.js';
 import { cfblRejectionsTotal } from '../../monitoring/collector.js';
 import type { BasePhaseCtx, BounceAttempt, PhaseDeps } from '../types.js';
 import type { MtaConfig } from '../../config.js';
@@ -242,7 +242,7 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 			// token validity would be counted a SECOND time and would move the cell's
 			// complaint rate by pure repetition.
 			const ttl = await redis.ttl(attempt.dedupReservation.key);
-			expect(ttl).toBeGreaterThan(CFBL_TOKEN_ACCEPTANCE_SECONDS);
+			expect(ttl).toBeGreaterThan(MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS);
 		});
 
 		it('deduplicates a replay long after the OLD seven-day retention would have lapsed', async () => {

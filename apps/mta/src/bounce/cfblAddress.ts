@@ -49,6 +49,8 @@
  */
 
 import {
+	MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS,
+	SIGNED_TOKEN_FUTURE_WINDOWS,
 	SIGNED_TOKEN_WINDOW_MS,
 	computeSignedTokenMac,
 	currentSignedTokenWindow,
@@ -70,30 +72,20 @@ export const CFBL_REPORT_FORMAT = 'arf';
  */
 const CFBL_MAC_LABEL = 'cfbl:';
 
-/**
- * Past windows accepted in addition to the current one. Complaints are a
- * human-latency signal: a subscriber may report a two-week-old newsletter.
- * 13 prior days + today ≈ a 14-day acceptance horizon.
- */
-export const ACCEPTED_PAST_WINDOWS = 13;
-
 /** One future window absorbs signer/verifier clock skew around a day boundary. */
-export const ACCEPTED_FUTURE_WINDOWS = 1;
+export const ACCEPTED_FUTURE_WINDOWS = SIGNED_TOKEN_FUTURE_WINDOWS;
 
 /**
- * The full span, in seconds, over which a signed CFBL token still verifies:
- * the future skew window, the current window and every accepted past window.
- *
- * The COMPLAINT DEDUPLICATION RETENTION IS DERIVED FROM THIS
- * (`bounce/complaintDedupStore.ts`) and must never be shorter. If a token
- * outlives its dedup record, a captured report replayed in the gap verifies
- * again, finds no record of the first delivery, and is counted a second time —
- * which is exactly the "a replay must not move a cell's complaint rate" property
- * this token exists to protect. Keeping the two derived from ONE constant means
- * widening the acceptance horizon cannot silently reopen that window.
+ * Past windows accepted in addition to the current one, DERIVED from the shared
+ * acceptance horizon in `bounce/signedToken.ts` — that constant, not this count,
+ * is where the 14-day complaint latency allowance is decided, because the dedup
+ * and provenance retentions that must outlive a verifiable token read it too.
+ * (13 prior days + today + one skew day = the shared 15-day span.)
  */
-export const CFBL_TOKEN_ACCEPTANCE_SECONDS =
-	(ACCEPTED_FUTURE_WINDOWS + 1 + ACCEPTED_PAST_WINDOWS) * (SIGNED_TOKEN_WINDOW_MS / 1000);
+export const ACCEPTED_PAST_WINDOWS =
+	MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS / (SIGNED_TOKEN_WINDOW_MS / 1000) -
+	1 -
+	ACCEPTED_FUTURE_WINDOWS;
 
 /**
  * How far back verification will probe PURELY to classify a rejection as
