@@ -87,7 +87,6 @@ describe('observeTxt failure mapping', () => {
 
 describe('gatherAlignmentDns', () => {
 	const target: AlignmentTarget = {
-		organizationId: 'org-a',
 		domain: 'acme.com',
 		ownArm: {
 			label: 'own MTA',
