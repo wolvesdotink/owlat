@@ -25,6 +25,8 @@ import {
 	DAY_MS,
 	MIDNIGHT,
 	runPreflight,
+	seedCampaignRoute,
+	seedVerifiedRelayIdentity,
 	seedWarmingState,
 	useMtaPreflightEnv,
 	warmingIp,
@@ -66,6 +68,7 @@ async function assessCampaign(
 		if (!campaign?.audience) throw new Error('campaign missing its audience');
 		return await assessCampaignCapacity(ctx, {
 			audience: campaign.audience,
+			fromEmail: campaign.fromEmail,
 			now: MIDNIGHT,
 			...options,
 		});
@@ -219,6 +222,105 @@ describe('pre-flight capacity gate — never a false blocker (D2/D10)', () => {
 		const result = await runPreflight(t, campaignId);
 
 		expect(result.ok).toBe(true);
+	});
+});
+
+/**
+ * The gate exists for ONE configuration: campaigns on the own MTA with no relay
+ * to overflow to. Everywhere else the warming cap cannot strand a campaign, and
+ * a refusal would be a false blocker on traffic that ships fine today.
+ *
+ * Every fixture below is the SAME 600-recipient audience against the SAME
+ * day-1 IP that the binding suite proves is refused — only the campaign route
+ * differs, so the route really is what decides.
+ */
+describe('pre-flight capacity gate — the cap must actually bind campaign traffic', () => {
+	it('allows the send when warm-up overflow to a VERIFIED relay absorbs the tail', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		await seedVerifiedRelayIdentity(t, 'verified.example.com');
+		await seedCampaignRoute(t, {
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: false },
+			],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: true,
+			},
+		});
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	it('allows the send when campaigns do not dispatch through the own MTA at all', async () => {
+		const t = convexTest(schema, modules);
+		// The MTA still carries transactional mail, so `warmingState` keeps syncing
+		// — but no campaign byte is subject to its per-IP cap.
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		await seedCampaignRoute(t, {
+			providers: [
+				{ providerType: 'ses', isEnabled: true },
+				{ providerType: 'mta', isEnabled: false },
+			],
+		});
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
+	/**
+	 * Overflow that is CONFIGURED but cannot actually happen — the From-domain
+	 * carries no relay proof — leaves the tail deferring exactly as it does
+	 * without a relay, so the gate must still bind.
+	 */
+	it('still refuses when overflow is enabled but the relay domain is unverified', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		await seedCampaignRoute(t, {
+			providers: [{ providerType: 'mta', isEnabled: true }],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: true,
+			},
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+	});
+
+	/**
+	 * A verified relay that is NOT wired to warm-up overflow only catches
+	 * infrastructure signals (dnsbl, breaker); the warming cap still defers.
+	 */
+	it('still refuses when a verified relay is configured without warm-up overflow', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		await seedVerifiedRelayIdentity(t, 'verified.example.com');
+		await seedCampaignRoute(t, {
+			providers: [{ providerType: 'mta', isEnabled: true }],
+			deliverabilityFallback: {
+				isEnabled: true,
+				relayProviderType: 'ses',
+				isWarmupOverflowEnabled: false,
+			},
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
 	});
 });
 

@@ -18,6 +18,7 @@ import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { loadWarmingCapacity } from '../delivery/warmingCapacity';
+import { campaignWarmingCapBinds } from '../lib/sendProviders/route';
 import { audienceValidator, type StoredAudience } from './audience';
 import { countAudience } from './audienceCandidates';
 import {
@@ -77,6 +78,19 @@ const AUDIENCE_DOCUMENT_BUDGET = 6_000;
  * the unrepresentable "we refused, but we could not measure capacity" state
  * cannot be constructed: an unmeasured assessment is ALWAYS `fits: true`.
  */
+/** What the gate needs to know about the send it is judging. */
+export interface CampaignCapacityOptions {
+	audience: StoredAudience;
+	/**
+	 * The campaign's From address. Used ONLY to re-verify the relay domain when
+	 * deciding whether warm-up overflow can absorb the tail — never to gate the
+	 * send on an external account.
+	 */
+	fromEmail?: string | undefined;
+	now: number;
+	startsAt?: number | undefined;
+}
+
 export type CampaignCapacityAssessment =
 	| { capacityKnown: false; fits: true }
 	| { capacityKnown: true; fits: true }
@@ -94,7 +108,7 @@ export type CampaignCapacityAssessment =
  */
 export async function assessCampaignCapacity(
 	ctx: Ctx,
-	options: { audience: StoredAudience; now: number; startsAt?: number }
+	options: CampaignCapacityOptions
 ): Promise<CampaignCapacityAssessment> {
 	// FAIL OPEN, unconditionally. This runs inside `campaigns.scheduling.schedule`
 	// and `campaigns.campaigns.sendNow`: an exception escaping here would not
@@ -112,8 +126,18 @@ export async function assessCampaignCapacity(
 
 async function measureCampaignCapacity(
 	ctx: Ctx,
-	options: { audience: StoredAudience; now: number; startsAt?: number }
+	options: CampaignCapacityOptions
 ): Promise<CampaignCapacityAssessment> {
+	// FIRST, and before any projection is loaded: does the warming cap actually
+	// bind THIS deployment's campaign traffic? Warm-up overflow to a verified
+	// relay absorbs the tail instead of deferring it, and a campaign route that
+	// does not dispatch through the own MTA has no warming cap at all — in both
+	// shipped configurations the failure this gate exists to prevent cannot
+	// happen, and refusing would be a false blocker on traffic that ships fine.
+	if (!(await campaignWarmingCapBinds(ctx, { fromEmail: options.fromEmail, now: options.now }))) {
+		return { capacityKnown: false, fits: true };
+	}
+
 	// Normalize the anchor ONCE, here at the boundary: a hostile or stale
 	// `startsAt` (NaN, a timestamp in the past) collapses to `now`, so neither
 	// the projection nor the pure planner has to defend against it.
@@ -223,11 +247,16 @@ export function toAssessment(
 // and the caller supplies the audience it is about to preview. No row is read
 // that a member cannot already read through countRecipients / the warming pages.
 export const getCampaignCapacityPlan = authedQuery({
-	args: { audience: v.optional(audienceValidator), startsAt: v.optional(v.number()) },
+	args: {
+		audience: v.optional(audienceValidator),
+		fromEmail: v.optional(v.string()),
+		startsAt: v.optional(v.number()),
+	},
 	handler: async (ctx, args): Promise<CampaignCapacityAssessment> => {
 		if (!args.audience) return { capacityKnown: false, fits: true };
 		return await assessCampaignCapacity(ctx, {
 			audience: args.audience,
+			fromEmail: args.fromEmail,
 			now: Date.now(),
 			...(args.startsAt !== undefined ? { startsAt: args.startsAt } : {}),
 		});

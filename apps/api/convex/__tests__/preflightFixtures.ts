@@ -120,6 +120,82 @@ export async function seedWarmingState(
 }
 
 /**
+ * A `providerRoutes` row for `messageType: 'campaign'`. Absent one, route
+ * resolution falls through to the `EMAIL_PROVIDER` env default (`'mta'` in
+ * these suites), which is the configuration the capacity gate binds.
+ */
+export async function seedCampaignRoute(
+	t: TestRunner,
+	config: {
+		providers: Array<{ providerType: string; isEnabled: boolean }>;
+		deliverabilityFallback?: {
+			isEnabled: boolean;
+			relayProviderType: string;
+			isWarmupOverflowEnabled: boolean;
+		};
+	}
+): Promise<void> {
+	await t.run(async (ctx) => {
+		await ctx.db.insert('providerRoutes', {
+			messageType: 'campaign',
+			strategy: 'priority_failover',
+			providers: config.providers,
+			...(config.deliverabilityFallback
+				? { deliverabilityFallback: config.deliverabilityFallback }
+				: {}),
+			createdAt: MIDNIGHT,
+			updatedAt: MIDNIGHT,
+		});
+	});
+}
+
+/**
+ * Fully verified SES relay proof for an existing domain row, so
+ * `relayDomainVerified` answers true and warm-up overflow is genuinely
+ * available for that From-domain.
+ */
+export async function seedVerifiedRelayIdentity(t: TestRunner, domain: string): Promise<void> {
+	await t.run(async (ctx) => {
+		const domainRow = await ctx.db
+			.query('domains')
+			.withIndex('by_domain', (q) => q.eq('domain', domain))
+			.first();
+		if (!domainRow) throw new Error(`domain ${domain} must be seeded before its relay identity`);
+		const tokens = ['one', 'two', 'three'];
+		await ctx.db.insert('sendingDomainSesIdentities', {
+			domainId: domainRow._id,
+			dkimTokens: tokens,
+			verificationToken: 'verified-token',
+			dnsRecords: {
+				spf: { type: 'TXT', host: '@', value: 'v=spf1 include:amazonses.com ~all' },
+				dkim: tokens.map((token) => ({
+					type: 'CNAME' as const,
+					host: `${token}._domainkey`,
+					value: `${token}.dkim.amazonses.com`,
+				})),
+				mailFrom: [
+					{ type: 'MX' as const, host: 'mail', value: 'feedback-smtp.example.com', priority: 10 },
+					{ type: 'TXT' as const, host: 'mail', value: 'v=spf1 include:amazonses.com ~all' },
+				],
+			},
+			verificationResults: {
+				spf: { verified: true, lastChecked: MIDNIGHT },
+				dkim: tokens.map(() => ({ verified: true, lastChecked: MIDNIGHT })),
+				mailFrom: [
+					{ verified: true, lastChecked: MIDNIGHT },
+					{ verified: true, lastChecked: MIDNIGHT },
+				],
+				sesStatus: 'Success',
+			},
+			isProviderVerified: true,
+			verifiedAt: MIDNIGHT,
+			createdAt: MIDNIGHT,
+			updatedAt: MIDNIGHT,
+		});
+	});
+}
+
+/**
  * Run the real pre-flight against a stored campaign with the BINDING capacity
  * gate enabled. `validateReadyToSendQuery` deliberately disables it (a
  * capacity refusal at fire time has no consumer), so a suite that wants to

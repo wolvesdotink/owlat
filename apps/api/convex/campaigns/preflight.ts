@@ -238,6 +238,7 @@ export async function validateReadyToSend(
 	if (options.checkCapacity !== false) {
 		const capacity = await assessCampaignCapacity(ctx, {
 			audience: campaign.audience,
+			fromEmail: campaign.fromEmail,
 			now,
 			...(options.scheduledAt !== undefined ? { startsAt: options.scheduledAt } : {}),
 		});

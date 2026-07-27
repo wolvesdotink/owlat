@@ -186,6 +186,66 @@ async function deliverabilityInput(
 	return { activeReasons, isWarmupOverflow, isRelayDomainVerified, isGlobalBreakerOpen };
 }
 
+/**
+ * Does the own-MTA warming cap actually BIND campaign traffic?
+ *
+ * The P0-5 pre-flight capacity gate exists for ONE shipped configuration: a
+ * warming deployment sending campaigns through its own MTA with NO relay to
+ * overflow to, where exceeding the per-IP warming cap defers the tail until it
+ * expires at `maxMessageAgeMs`. In every other configuration the cap cannot
+ * strand a campaign, and a gate that refused anyway would be a false blocker on
+ * traffic that ships fine today (plan D2 — never block on a measurement that
+ * does not apply). Answering `false` therefore means "unknown / not subject to
+ * the cap → allow".
+ *
+ * Two shipped configurations answer `false`:
+ *
+ * (a) WARM-UP OVERFLOW TO A VERIFIED RELAY. With `deliverabilityFallback`
+ *     enabled, `isWarmupOverflowEnabled` set and the From-domain verified for
+ *     the relay, exceeding the cap routes to the relay
+ *     (`deliverabilityReason: 'warmup_overflow'`) instead of deferring, so no
+ *     tail ever reaches the expiry deadline.
+ *
+ * (b) CAMPAIGN TRAFFIC IS NOT ON THE OWN MTA. A deployment whose MTA carries
+ *     transactional mail (and so keeps syncing `warmingState`) while campaigns
+ *     dispatch through SES/Resend/SMTP has no warming cap on campaign traffic
+ *     at all. Any enabled non-MTA campaign provider is enough: part of the
+ *     audience then bypasses the cap, the projection is no longer an upper
+ *     bound on what the campaign can send, and refusing on it would be unsound.
+ *
+ * Lives here rather than in the gate because this module already owns both
+ * reads — the campaign route row and the relay-domain re-verification.
+ */
+export async function campaignWarmingCapBinds(
+	ctx: QueryCtx | MutationCtx,
+	options: { fromEmail?: string | undefined; now: number }
+): Promise<boolean> {
+	const routeConfig = await ctx.db
+		.query('providerRoutes')
+		.withIndex('by_message_type', (q) => q.eq('messageType', 'campaign'))
+		.first();
+
+	const enabledKinds = (routeConfig?.providers ?? [])
+		.filter((provider) => provider.isEnabled && isSendProviderKind(provider.providerType))
+		.map((provider) => provider.providerType);
+	// No usable route row: `resolveRoute` falls through to the `EMAIL_PROVIDER`
+	// env default, so that is what campaigns dispatch through.
+	const campaignKinds = enabledKinds.length > 0 ? enabledKinds : [getOptional('EMAIL_PROVIDER')];
+	if (!campaignKinds.every((kind) => kind === 'mta')) return false;
+
+	const fallbackConfig = routeConfig?.deliverabilityFallback;
+	if (!fallbackConfig?.isEnabled || !fallbackConfig.isWarmupOverflowEnabled) return true;
+	const fromDomain = options.fromEmail ? extractDomainOrNull(options.fromEmail) : null;
+	if (!fromDomain) return true;
+	const overflowAvailable = await relayDomainVerified(
+		ctx,
+		fromDomain,
+		fallbackConfig.relayProviderType,
+		options.now
+	);
+	return !overflowAvailable;
+}
+
 async function relayDomainVerified(
 	ctx: QueryCtx | MutationCtx,
 	domainName: string,
