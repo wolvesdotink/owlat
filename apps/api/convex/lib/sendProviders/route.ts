@@ -29,7 +29,7 @@ import {
 	isActionableDeliverabilitySignalSource,
 	isRouteStateFallbackActive,
 } from '@owlat/shared/deliverabilityRouting';
-import { loadRouteStateForCell } from '../deliverabilityRouteState';
+import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
@@ -134,11 +134,14 @@ async function deliverabilityInput(
 		learnedProvider && learnedProvider.expiresAt >= now
 			? learnedProvider.destinationProvider
 			: destinationProviderForDomain(toDomain);
-	const [providerState, globalState, warmingState] = await Promise.all([
-		// Cell lookup: the per-stream row when the controller has written one,
-		// otherwise the legacy stream-less row the MTA snapshot maintains.
-		loadRouteStateForCell(ctx, organizationId, provider, messageType),
-		loadRouteStateForCell(ctx, organizationId, 'all', messageType),
+	const [providerCell, globalState, warmingState] = await Promise.all([
+		// Cell lookup: BOTH the controller's per-stream row and the stream-less row
+		// the MTA snapshot maintains, so neither can shadow the other.
+		loadRouteStateCell(ctx, organizationId, { stream: messageType, destinationProvider: provider }),
+		// The global slice is infrastructure-wide and never per-stream: read the
+		// stream-less row directly so a per-stream `all` row could never hide the
+		// breaker_open signal the snapshot writes there.
+		loadStreamlessRouteState(ctx, organizationId, 'all'),
 		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
@@ -147,7 +150,11 @@ async function deliverabilityInput(
 	// resolved share (D1: `ownShare ?? (isFallbackActive ? 0 : 1)`) is below 1.
 	// A legacy row resolves to exactly its stored boolean, so this is unchanged
 	// today, and a stored share can never mask an infrastructure verdict.
-	const freshActive = [globalState, providerState].filter(
+	//
+	// EVERY row of the cell is considered, not just the most specific one: the
+	// per-stream row carries the share and the stream-less row carries the
+	// infrastructure signals, so reading only one would drop a hard stop.
+	const freshActive = [globalState, providerCell.streamless, providerCell.perStream].filter(
 		(state): state is Doc<'deliverabilityRouteStates'> =>
 			state !== null &&
 			isRouteStateFallbackActive(state) &&
