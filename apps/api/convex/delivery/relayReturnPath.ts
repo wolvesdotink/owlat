@@ -18,11 +18,14 @@ import { internalMutation, internalQuery, type QueryCtx } from '../_generated/se
 import {
 	isProbeDue,
 	isProbeTimedOut,
+	nextProbeAttempts,
 	nextProbeState,
 	resolveReturnPathCapability,
+	settledVerdictOf,
 	unresolvableReturnPathCapability,
 	type ResolvedReturnPathCapability,
 	type ReturnPathProbeState,
+	type SettledReturnPathVerdict,
 } from '../lib/sendProviders/returnPathCapability';
 import { tryResolveSendTransport } from '../lib/sendProviders/transports';
 import { probeIdFromMessageId } from './messageIdRouting';
@@ -37,6 +40,7 @@ interface ProbeRow {
 	readonly startedAt: number;
 	readonly settledAt?: number;
 	readonly attempts?: number;
+	readonly lastSettled?: SettledReturnPathVerdict;
 }
 
 function toProbeState(row: ProbeRow): ReturnPathProbeState {
@@ -50,6 +54,7 @@ function toProbeState(row: ProbeRow): ReturnPathProbeState {
 		startedAt: row.startedAt,
 		...(row.settledAt === undefined ? {} : { settledAt: row.settledAt }),
 		...(row.attempts === undefined ? {} : { attempts: row.attempts }),
+		...(row.lastSettled === undefined ? {} : { lastSettled: row.lastSettled }),
 	};
 }
 
@@ -78,9 +83,10 @@ export async function returnPathCapabilityFor(
 ): Promise<ResolvedReturnPathCapability> {
 	const transport = tryResolveSendTransport(transportId);
 	if (!transport) return unresolvableReturnPathCapability;
-	// An open probe already resolves to `unknown` (= unsupported, degraded), so a
-	// timed-out one needs no special case here; the expiry is materialized by
-	// `expireTimedOutProbes`, never by a write from a read path.
+	// An open probe resolves to whatever the transport last SETTLED on (or to
+	// `unknown` when it has settled nothing), and a TIMED-OUT open probe resolves
+	// to `unknown` regardless — so no special case is needed here; the expiry is
+	// materialized by `expireTimedOutProbes`, never by a write from a read path.
 	const probe = await loadProbeState(ctx, transportId);
 	return resolveReturnPathCapability(transport.kind, probe, now);
 }
@@ -106,8 +112,13 @@ export const isReturnPathProbeDue = internalQuery({
  * the probe OPEN — it is deliberately not a verdict, because a relay may
  * accept our envelope sender and rewrite it.
  *
- * `attempts` accumulates across re-probes and drives the retry backoff, so a
- * relay that will never support us is re-probed monthly rather than daily.
+ * `attempts` counts CONSECUTIVE probes since the last `supported` verdict and
+ * drives the retry backoff, so a relay that will never support us is re-probed
+ * monthly rather than daily — while one that has been working keeps the fast
+ * first retry for the day it breaks (see `nextProbeAttempts`).
+ *
+ * The verdict the transport currently stands on is CARRIED onto the reopened
+ * row, so a re-probe never revokes the capability it is re-checking.
  */
 export const recordProbeSubmission = internalMutation({
 	args: {
@@ -128,19 +139,27 @@ export const recordProbeSubmission = internalMutation({
 			.query('sendTransportReturnPathProbes')
 			.withIndex('by_transport', (q) => q.eq('transportId', args.transportId))
 			.first();
-		const attempts = (existing?.attempts ?? 0) + 1;
+		const previous = existing ? toProbeState(existing) : null;
+		const attempts = nextProbeAttempts(previous);
+		// What the transport currently stands on. Carried onto the reopened row so
+		// resolution keeps honouring it until THIS probe settles.
+		const carried = settledVerdictOf(previous);
 		const opened: ReturnPathProbeState = {
 			status: 'awaiting_delivery',
 			reason: 'awaiting_delivery',
 			sentEnvelopeSender: args.sentEnvelopeSender,
 			startedAt: args.at,
 			attempts,
+			...(carried === undefined ? {} : { lastSettled: carried }),
 		};
 		const state = nextProbeState(opened, {
 			kind: 'submitted',
 			accepted: args.accepted,
 			at: args.at,
 		});
+		// Only an OPEN row needs the carry: once the row itself is settled, its own
+		// status is the verdict and a leftover copy could only ever go stale.
+		const carryForward = state.status === 'awaiting_delivery' ? carried : undefined;
 		const values = {
 			transportId: args.transportId,
 			probeId: args.probeId,
@@ -150,13 +169,19 @@ export const recordProbeSubmission = internalMutation({
 			startedAt: state.startedAt,
 			attempts,
 			...(state.settledAt === undefined ? {} : { settledAt: state.settledAt }),
+			...(carryForward === undefined ? {} : { lastSettled: carryForward }),
 			updatedAt: args.at,
 		};
 		// One row per transport: a new probe REPLACES the previous verdict rather
 		// than accumulating history, so the table stays bounded by the number of
 		// configured transports.
 		if (existing) {
-			await ctx.db.patch(existing._id, { ...values, observedEnvelopeSender: undefined });
+			await ctx.db.patch(existing._id, {
+				...values,
+				observedEnvelopeSender: undefined,
+				// Explicit (not spread) so a settled row CLEARS a stale carry.
+				lastSettled: carryForward,
+			});
 		} else {
 			await ctx.db.insert('sendTransportReturnPathProbes', values);
 		}
@@ -210,6 +235,9 @@ export const recordProbeObservation = internalMutation({
 				? {}
 				: { observedEnvelopeSender: state.observedEnvelopeSender }),
 			...(state.settledAt === undefined ? {} : { settledAt: state.settledAt }),
+			// This probe has now settled: its own status IS the verdict, so drop the
+			// verdict it was carrying from the previous round.
+			lastSettled: undefined,
 			updatedAt: args.at,
 		});
 		return { applied: true as const, status: state.status };
@@ -241,6 +269,8 @@ export const expireTimedOutProbes = internalMutation({
 				status: state.status,
 				reason: state.reason,
 				...(state.settledAt === undefined ? {} : { settledAt: state.settledAt }),
+				// Settled now — the carried verdict from the previous round is spent.
+				lastSettled: undefined,
 				updatedAt: args.at,
 			});
 			expired++;
