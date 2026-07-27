@@ -61,7 +61,7 @@ export const SUNSET_SUPPRESS_AFTER_DAYS = 270;
  * ENABLED out of the box — pinned by `__tests__/sunsetDefaults.test.ts`.
  */
 export const SUNSET_POLICY_DEFAULTS: Readonly<SunsetPolicy> = Object.freeze({
-	enabled: true,
+	isEnabled: true,
 	reengageAfterDays: SUNSET_REENGAGE_AFTER_DAYS,
 	suppressAfterDays: SUNSET_SUPPRESS_AFTER_DAYS,
 });
@@ -72,14 +72,14 @@ export const SUNSET_MIN_WINDOW_DAYS = 30;
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export type SunsetPolicy = {
-	enabled: boolean;
+	isEnabled: boolean;
 	reengageAfterDays: number;
 	suppressAfterDays: number;
 };
 
 /** A stored override row: every field optional, absent means "inherit". */
 export type SunsetPolicyOverride = {
-	enabled?: boolean | undefined;
+	isEnabled?: boolean | undefined;
 	reengageAfterDays?: number | undefined;
 	suppressAfterDays?: number | undefined;
 };
@@ -138,16 +138,36 @@ export type SunsetFacts = {
 	stage: SunsetStage;
 };
 
-export type SunsetVerdict = {
-	action: SunsetAction;
+/**
+ * A verdict that changes nothing. A hold is reached from guards that run BEFORE
+ * any arithmetic, so it deliberately carries no day counts: there is no honest
+ * number to report when the reason for holding is "we could not measure".
+ */
+export type SunsetHoldVerdict = {
+	action: 'hold';
+	/** The stage the contact stays in. */
+	stage: SunsetStage;
+	reason: SunsetReason;
+};
+
+/**
+ * A verdict that moves the contact. Every one of these is reached only after
+ * the guards passed, so the day counts are always real numbers — which is why
+ * they are non-optional here and there is no sentinel anywhere downstream.
+ */
+export type SunsetMeasuredVerdict = {
+	action: 'enter_reengagement' | 'suppress' | 'resume';
 	/** The stage the contact should be in after `action` is applied. */
 	stage: SunsetStage;
 	reason: SunsetReason;
-	/** Days since the last engagement (or since the first send). `null` when unmeasurable. */
-	quietDays: number | null;
-	/** Days since the contact row was created. `null` when unmeasurable. */
-	tenureDays: number | null;
+	/** Days since the last engagement, or since the first send if it never engaged. */
+	quietDays: number;
+	/** Days since the contact row was created. */
+	tenureDays: number;
 };
+
+/** Discriminated on `action`: measured verdicts carry numbers, holds do not. */
+export type SunsetVerdict = SunsetHoldVerdict | SunsetMeasuredVerdict;
 
 // ─── Policy resolution ──────────────────────────────────────────────────────
 
@@ -162,7 +182,7 @@ function applyOverride(
 ): SunsetPolicy {
 	if (override === undefined) return base;
 	return {
-		enabled: override.enabled ?? base.enabled,
+		isEnabled: override.isEnabled ?? base.isEnabled,
 		reengageAfterDays: isPositiveFinite(override.reengageAfterDays)
 			? override.reengageAfterDays
 			: base.reengageAfterDays,
@@ -186,6 +206,12 @@ function applyOverride(
  * `globalOverride` is the deployment-wide row (`sunsetPolicies.topicId ===
  * undefined`); each topic override is layered on top of it. A contact in no
  * topics at all is judged by the global policy alone.
+ *
+ * A DEPLOYMENT-WIDE OPT-OUT IS ABSOLUTE. The global row is itself one of the
+ * applicable policies, so "most lenient wins" makes an operator who turned the
+ * engine off deployment-wide beat a topic row that left it on — the engine is
+ * off everywhere, for members of a topic and non-members alike. Only turning
+ * the engine back on globally re-enables it.
  */
 export function resolveSunsetPolicy(args: {
 	globalOverride?: SunsetPolicyOverride | undefined;
@@ -195,16 +221,19 @@ export function resolveSunsetPolicy(args: {
 	const topicOverrides = args.topicOverrides ?? [];
 	if (topicOverrides.length === 0) return base;
 
-	let enabled = true;
+	// Seeded from the deployment-wide policy, not from `true`: the global row is
+	// an applicable policy in its own right, so a global opt-out survives every
+	// topic override rather than being overwritten by the first one that is on.
+	let isEnabled = base.isEnabled;
 	let reengageAfterDays = 0;
 	let suppressAfterDays = 0;
 	for (const override of topicOverrides) {
 		const effective = applyOverride(base, override);
-		if (!effective.enabled) enabled = false;
+		if (!effective.isEnabled) isEnabled = false;
 		reengageAfterDays = Math.max(reengageAfterDays, effective.reengageAfterDays);
 		suppressAfterDays = Math.max(suppressAfterDays, effective.suppressAfterDays);
 	}
-	return { enabled, reengageAfterDays, suppressAfterDays };
+	return { isEnabled, reengageAfterDays, suppressAfterDays };
 }
 
 /**
@@ -224,21 +253,21 @@ export function isSunsetPolicyValid(policy: SunsetPolicy): boolean {
 
 // ─── The decision ───────────────────────────────────────────────────────────
 
-function hold(
-	reason: SunsetReason,
-	stage: SunsetStage,
-	quiet: number | null,
-	tenure: number | null
-): SunsetVerdict {
-	return { action: 'hold', stage, reason, quietDays: quiet, tenureDays: tenure };
+function hold(reason: SunsetReason, stage: SunsetStage): SunsetHoldVerdict {
+	return { action: 'hold', stage, reason };
 }
 
 /**
  * A timestamp is trustworthy only if it is a finite, positive instant that is
  * not in the future. Anything else means the clock (ours or the writer's) is
  * wrong, and a wrong clock must never be able to suppress anybody.
+ *
+ * ABSENCE PASSES, and the name says so: an unmeasured instant is not a skewed
+ * one. The three call sites all treat "we never saw this fact" separately —
+ * `hasSendHistory` for the send side, `lastEngagementAt ?? firstMessagedAt` for
+ * the engagement side — so absence must not be mistaken for a bad clock here.
  */
-function isSaneInstant(value: number | undefined, now: number): boolean {
+function isTrustworthyInstantOrAbsent(value: number | undefined, now: number): boolean {
 	if (value === undefined) return true;
 	return Number.isFinite(value) && value > 0 && value <= now;
 }
@@ -252,32 +281,32 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 
 	// 1. The clock itself. A non-finite or non-positive `now` disqualifies every
 	//    later comparison, so nothing downstream may run.
-	if (!Number.isFinite(facts.now) || facts.now <= 0) return hold('clock_skew', stage, null, null);
+	if (!Number.isFinite(facts.now) || facts.now <= 0) return hold('clock_skew', stage);
 
 	// 2. Operator intent beats everything the engine might infer.
-	if (!policy.enabled) return hold('policy_disabled', stage, null, null);
-	if (!isSunsetPolicyValid(policy)) return hold('invalid_policy', stage, null, null);
-	if (facts.isExempt) return hold('operator_override', stage, null, null);
+	if (!policy.isEnabled) return hold('policy_disabled', stage);
+	if (!isSunsetPolicyValid(policy)) return hold('invalid_policy', stage);
+	if (facts.isExempt) return hold('operator_override', stage);
 
 	// 3. Nothing to suppress / nothing that would benefit from suppressing.
-	if (!facts.hasEmail) return hold('no_email', stage, null, null);
-	if (facts.isGloballyUnsubscribed) return hold('globally_unsubscribed', stage, null, null);
+	if (!facts.hasEmail) return hold('no_email', stage);
+	if (facts.isGloballyUnsubscribed) return hold('globally_unsubscribed', stage);
 
 	// 4. Skewed or future-dated inputs. Checked before any subtraction so a
 	//    future `createdAt` can never present as a huge negative tenure.
 	if (
-		!isSaneInstant(facts.createdAt, facts.now) ||
-		!isSaneInstant(facts.lastEngagementAt, facts.now) ||
-		!isSaneInstant(facts.firstMessagedAt, facts.now)
+		!isTrustworthyInstantOrAbsent(facts.createdAt, facts.now) ||
+		!isTrustworthyInstantOrAbsent(facts.lastEngagementAt, facts.now) ||
+		!isTrustworthyInstantOrAbsent(facts.firstMessagedAt, facts.now)
 	) {
-		return hold('clock_skew', stage, null, null);
+		return hold('clock_skew', stage);
 	}
 
 	// 5. ABSENCE OF HISTORY IS NOT EVIDENCE OF DISENGAGEMENT. A contact we have
 	//    never sent to has produced no opportunity to engage, so it can never be
 	//    "unengaged" — regardless of how old the row is.
 	if (!facts.hasSendHistory || facts.firstMessagedAt === undefined) {
-		return hold('no_send_history', stage, null, null);
+		return hold('no_send_history', stage);
 	}
 
 	const tenureDays = (facts.now - facts.createdAt) / MS_PER_DAY;
@@ -305,11 +334,11 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 				tenureDays,
 			};
 		}
-		return hold('engaged_recently', stage, quietDays, tenureDays);
+		return hold('engaged_recently', stage);
 	}
 
 	if (stage === 'suppressed' || facts.isAlreadySuppressed) {
-		return hold('already_suppressed', stage, quietDays, tenureDays);
+		return hold('already_suppressed', stage);
 	}
 
 	const covers = (windowDays: number): boolean =>
@@ -327,7 +356,7 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 
 	if (covers(policy.reengageAfterDays)) {
 		if (stage === 'reengagement') {
-			return hold('quiet_past_reengage_window', stage, quietDays, tenureDays);
+			return hold('quiet_past_reengage_window', stage);
 		}
 		return {
 			action: 'enter_reengagement',
@@ -340,5 +369,5 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 
 	// Quiet long enough on paper, but the contact has not existed / been
 	// measurable long enough for that to mean anything.
-	return hold('insufficient_tenure', stage, quietDays, tenureDays);
+	return hold('insufficient_tenure', stage);
 }
