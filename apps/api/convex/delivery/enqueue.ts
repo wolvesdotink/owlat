@@ -1,9 +1,10 @@
-import { v } from 'convex/values';
+import { type Infer, v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { isSuppressed } from '../lib/suppression';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
+import { normalizeEngagementScore } from './workerEnvelope';
 
 /**
  * Error thrown by `enqueueNonCampaignSend` when the recipient is on the
@@ -124,22 +125,31 @@ export const deleteExpiredTestSend = internalMutation({
  * Send completion module can translate worker outcomes into Send lifecycle
  * transitions uniformly across kinds.
  */
+/**
+ * One element of `enqueueCampaignEmails.emails` — the per-recipient slice of a
+ * campaign enqueue. THE VALIDATOR IS THE SINGLE DEFINITION: producers
+ * (`campaigns/send.ts`) build their batches against `CampaignEnqueueEmail`
+ * rather than hand-duplicating the shape, so adding a field here is one edit
+ * and a drift is a type error rather than a silently dropped value.
+ */
+export const campaignEnqueueEmailValidator = v.object({
+	emailSendId: v.id('emailSends'),
+	contactId: v.id('contacts'),
+	email: v.string(),
+	firstName: v.optional(v.string()),
+	lastName: v.optional(v.string()),
+	// `contacts.engagementScore` (0-100) as projected by audience
+	// resolution. Absent for an unscored contact; carried on the
+	// envelope so dispatch never re-reads the contact row.
+	engagementScore: v.optional(v.number()),
+});
+
+export type CampaignEnqueueEmail = Infer<typeof campaignEnqueueEmailValidator>;
+
 export const enqueueCampaignEmails = internalMutation({
 	args: {
 		campaignId: v.id('campaigns'),
-		emails: v.array(
-			v.object({
-				emailSendId: v.id('emailSends'),
-				contactId: v.id('contacts'),
-				email: v.string(),
-				firstName: v.optional(v.string()),
-				lastName: v.optional(v.string()),
-				// `contacts.engagementScore` (0-100) as projected by audience
-				// resolution. Absent for an unscored contact; carried on the
-				// envelope so dispatch never re-reads the contact row.
-				engagementScore: v.optional(v.number()),
-			})
-		),
+		emails: v.array(campaignEnqueueEmailValidator),
 		from: v.string(),
 		replyTo: v.optional(v.string()),
 		subject: v.string(),
@@ -159,6 +169,13 @@ export const enqueueCampaignEmails = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		for (const recipient of args.emails) {
+			// Narrow at the WRITE boundary, not only where dispatch reads it: a
+			// degenerate stored score (NaN / out-of-range, i.e. an upstream
+			// scorer defect) must never reach the DURABLE envelope. It would be
+			// persisted into `routingReentry.envelopeInput`, round-trip through
+			// the MTA's JSON (NaN → null), and be rejected by
+			// `envelopeInputValidator` on re-entry — dropping the deferred send.
+			const engagementScore = normalizeEngagementScore(recipient.engagementScore);
 			await campaignEmailPool.enqueueAction(
 				ctx,
 				internal.delivery.worker.sendSingleEmail,
@@ -190,9 +207,7 @@ export const enqueueCampaignEmails = internalMutation({
 						trackingBaseUrl: args.trackingBaseUrl,
 						viewInBrowserUrl: args.viewInBrowserUrl,
 						listId: args.listId,
-						...(recipient.engagementScore !== undefined
-							? { engagementScore: recipient.engagementScore }
-							: {}),
+						...(engagementScore !== undefined ? { engagementScore } : {}),
 					},
 				},
 				{
@@ -297,8 +312,11 @@ export const enqueueNonCampaignSend = internalMutation({
 		// contact per send. A send with no contact record (test previews, agent
 		// replies to an unknown address) does no read at all and carries no
 		// score, which the MTA reads as "unknown" rather than "cold".
+		//
+		// Normalised HERE, at the DB read, so a degenerate stored score never
+		// enters the durable envelope (see the campaign producer above).
 		const engagementScore = args.contactId
-			? (await ctx.db.get(args.contactId))?.engagementScore
+			? normalizeEngagementScore((await ctx.db.get(args.contactId))?.engagementScore)
 			: undefined;
 
 		// Gmail FBL — singleton org id anchors the stable `txn`-stream
