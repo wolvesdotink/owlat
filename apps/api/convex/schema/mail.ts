@@ -275,7 +275,15 @@ export const mailTables = {
 		.index('by_status', ['status'])
 		// Seed-mailbox lookup for the placement prober. Legacy rows carry no
 		// `purpose`, so this index only ever returns explicitly-tagged accounts.
-		.index('by_org_and_purpose', ['organizationId', 'purpose'])
+		//
+		// `status` is IN the index, not filtered after a bounded page, because
+		// disconnecting an account is a SOFT status change (`mail/mailbox.ts`'s
+		// `remove` patches the row to 'disconnected' and keeps it). Filtering a
+		// `.take(cap)` page would let retired rows eat slots — the per-org connect
+		// cap would read short and stop refusing, and the roll-up would silently
+		// drop live seeds off the end of the page. Selecting the LIVE statuses
+		// through the index is the only shape where both are exact.
+		.index('by_org_purpose_and_status', ['organizationId', 'purpose', 'status'])
 		// The prober's GLOBAL sweep selects on exactly `purpose` and PAGINATES with
 		// a cursor the worker carries across ticks. Filtering a bounded `by_status`
 		// page for seeds after the fact goes silently dark on any deployment with

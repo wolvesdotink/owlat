@@ -9,8 +9,8 @@
  * (mailbox re-activation, audit prefixes) that differ between personal and shared.
  */
 
-import type { MutationCtx } from '../_generated/server';
-import type { Id } from '../_generated/dataModel';
+import type { DatabaseReader, MutationCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 
 /**
  * The account statuses a worker should hold (or retry) a connection for.
@@ -24,6 +24,44 @@ import type { Id } from '../_generated/dataModel';
 export const CONNECTABLE_ACCOUNT_STATUSES = ['pending', 'connected', 'error'] as const;
 
 export type ConnectableAccountStatus = (typeof CONNECTABLE_ACCOUNT_STATUSES)[number];
+
+/**
+ * Every account status that is NOT retired — i.e. a row the operator still owns
+ * and expects to be counted. Wider than `CONNECTABLE_ACCOUNT_STATUSES`:
+ * `auth_error` is a seed the operator has to re-authenticate, not a seed they
+ * removed, and it must still occupy a slot against the per-org cap.
+ */
+const LIVE_ACCOUNT_STATUSES = ['pending', 'connected', 'auth_error', 'error'] as const;
+
+/**
+ * The org's LIVE seed accounts, up to `max` rows.
+ *
+ * Selects status THROUGH the `by_org_purpose_and_status` index rather than
+ * filtering a bounded page afterwards. Disconnecting is a soft status change
+ * (the row stays), so a post-filter is wrong in both directions: the connect
+ * cap would under-count and stop refusing, and the roll-up would drop live
+ * seeds off the end of its page. One bounded read per live status; the whole
+ * walk is capped at `max` rows.
+ */
+export async function takeLiveSeedAccounts(
+	db: DatabaseReader,
+	organizationId: string,
+	max: number
+): Promise<Doc<'externalMailAccounts'>[]> {
+	const rows: Doc<'externalMailAccounts'>[] = [];
+	for (const status of LIVE_ACCOUNT_STATUSES) {
+		const remaining = max - rows.length;
+		if (remaining <= 0) break;
+		const page = await db
+			.query('externalMailAccounts')
+			.withIndex('by_org_purpose_and_status', (q) =>
+				q.eq('organizationId', organizationId).eq('purpose', 'seed').eq('status', status)
+			)
+			.take(remaining);
+		rows.push(...page);
+	}
+	return rows;
+}
 
 /**
  * The non-secret IMAP/SMTP settings + the encrypted-password envelope that every

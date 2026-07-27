@@ -43,6 +43,7 @@ import {
 	type SeedProviderRollup,
 } from '@owlat/shared/seedPlacement';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import { takeLiveSeedAccounts } from '../mail/externalAccountShared';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -105,16 +106,11 @@ export async function loadSeedAccounts(
 	organizationId: string,
 	now: number
 ): Promise<SeedAccountView[]> {
-	const rows = await db
-		.query('externalMailAccounts')
-		.withIndex('by_org_and_purpose', (q) =>
-			q.eq('organizationId', organizationId).eq('purpose', 'seed')
-		)
-		// NOT a silent truncation: `mail/externalAccountsSeed.ts` refuses the
-		// (limit+1)th seed at CONNECT time, so this page can only ever be short of
-		// the cap. A seed the operator connected is always measured.
-		.take(SEED_ACCOUNTS_PER_ORG_LIMIT);
-	const live = rows.filter((row) => row.status !== 'disconnected');
+	// NOT a silent truncation: `mail/externalAccountsSeed.ts` refuses the
+	// (limit+1)th LIVE seed at CONNECT time and this read selects the same LIVE
+	// rows through the same index, so the page can only ever be short of the cap.
+	// A seed the operator connected is always measured.
+	const live = await takeLiveSeedAccounts(db, organizationId, SEED_ACCOUNTS_PER_ORG_LIMIT);
 	const views: SeedAccountView[] = [];
 	for (const row of live) {
 		// `imapUsername` is the LOGIN, which for several providers is not an email

@@ -16,7 +16,7 @@
 import { internalMutation } from '../_generated/server';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
-import { insertExternalAccountRow } from './externalAccountShared';
+import { insertExternalAccountRow, takeLiveSeedAccounts } from './externalAccountShared';
 import { connectFieldsValidator } from './externalAccounts';
 import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
@@ -60,13 +60,16 @@ export const _connectSeedInternal = internalMutation({
 		// Refuse the (limit+1)th seed rather than letting the roll-up's bounded
 		// read page drop it silently. An operator who connected a seed must be
 		// able to trust that it is being measured.
-		const existingSeeds = await ctx.db
-			.query('externalMailAccounts')
-			.withIndex('by_org_and_purpose', (q) =>
-				q.eq('organizationId', s.activeOrganizationId).eq('purpose', 'seed')
-			)
-			.take(SEED_ACCOUNTS_PER_ORG_LIMIT + 1);
-		const liveSeeds = existingSeeds.filter((row) => row.status !== 'disconnected');
+		//
+		// Counts LIVE rows through the index (`takeLiveSeedAccounts`), not a
+		// bounded page filtered afterwards: disconnecting is a soft status change,
+		// so retired rows in a post-filtered page would push the observed count
+		// permanently below the cap and disable it outright.
+		const liveSeeds = await takeLiveSeedAccounts(
+			ctx.db,
+			s.activeOrganizationId,
+			SEED_ACCOUNTS_PER_ORG_LIMIT
+		);
 		if (liveSeeds.length >= SEED_ACCOUNTS_PER_ORG_LIMIT) {
 			throwInvalidInput(
 				`This organization already has the maximum of ${SEED_ACCOUNTS_PER_ORG_LIMIT} seed mailboxes. Disconnect one before connecting another.`
