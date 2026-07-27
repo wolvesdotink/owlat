@@ -13,6 +13,7 @@ import {
 	totalPlannableCapacity,
 	usableDayCount,
 	MAX_PLAN_DAYS,
+	MAX_HORIZON_DAYS,
 } from '../capacityPlan';
 import { MS_PER_DAY } from '../../lib/constants';
 
@@ -37,6 +38,16 @@ describe('usableDayCount', () => {
 		expect(usableDayCount(MIDNIGHT, -1)).toBe(0);
 		expect(usableDayCount(MIDNIGHT, Number.NaN)).toBe(0);
 		expect(usableDayCount(Number.NaN, FOUR_DAYS)).toBe(0);
+	});
+
+	/**
+	 * The horizon walk has its OWN bound. Sharing `MAX_PLAN_DAYS` (60) would
+	 * silently truncate the horizon the day `maxMessageAgeMs` was raised past it
+	 * — and start allowing sends whose tail expires.
+	 */
+	it('is bounded by MAX_HORIZON_DAYS, not by MAX_PLAN_DAYS', () => {
+		expect(usableDayCount(MIDNIGHT, 90 * MS_PER_DAY)).toBe(90);
+		expect(usableDayCount(MIDNIGHT, 10_000 * MS_PER_DAY)).toBe(MAX_HORIZON_DAYS);
 	});
 });
 
@@ -428,6 +439,38 @@ describe('capacityWithinHorizon', () => {
 				now: MIDNIGHT,
 			})
 		).toBe(0);
+	});
+
+	/**
+	 * The horizon sum and the schedule builder must agree about EVERY day, so
+	 * both go through `capacityForDay` — which extends past the end of the
+	 * projection at the trailing rate. Summing the raw array instead treated
+	 * past-the-end as zero, and the two then disagreed.
+	 */
+	it('extends past the end of the projection at the trailing rate', () => {
+		expect(
+			capacityWithinHorizon({
+				remainingCapacityByDay: [100, 100],
+				maxMessageAgeMs: FOUR_DAYS,
+				now: MIDNIGHT,
+			})
+		).toBe(400); // days 2 and 3 continue at 100, they are not zero
+	});
+
+	/**
+	 * The consequence, stated as the invariant it protects: the planner may never
+	 * answer `fits: false` and hand back a schedule that finishes INSIDE the
+	 * horizon. 300 recipients against 100/day over a four-day horizon fit.
+	 */
+	it('never lets planCampaignCapacity refuse a schedule that finishes inside the horizon', () => {
+		expect(
+			planCampaignCapacity({
+				audienceSize: 300,
+				remainingCapacityByDay: [100, 100],
+				maxMessageAgeMs: FOUR_DAYS,
+				now: MIDNIGHT,
+			})
+		).toEqual({ fits: true });
 	});
 
 	it('is zero for a non-sensical horizon rather than NaN', () => {

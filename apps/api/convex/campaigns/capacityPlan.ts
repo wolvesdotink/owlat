@@ -34,7 +34,21 @@ import { MS_PER_DAY } from '../lib/constants';
  */
 export const MAX_PLAN_DAYS = 60;
 
-export interface CampaignCapacityPlanInput {
+/**
+ * Hard bound on how many days the RETENTION HORIZON walk may span — a different
+ * quantity from `MAX_PLAN_DAYS` ("how long a plan may be"). It exists only to
+ * keep `usableDayCount` finite against a hostile `maxMessageAgeMs`; sharing
+ * `MAX_PLAN_DAYS` for it would silently truncate the horizon — and start
+ * allowing sends whose tail expires — the day `maxMessageAgeMs` is raised past
+ * that bound.
+ *
+ * INVARIANT: this must stay comfortably above the largest `maxMessageAgeMs` the
+ * MTA can be configured with (`GOVERNED_MTA_MAX_MESSAGE_AGE_MS` is 4 days).
+ */
+export const MAX_HORIZON_DAYS = 400;
+
+/** Inputs to the schedule builder — the planner minus the retention horizon. */
+export interface CapacityScheduleInput {
 	/** Eligible recipients. A lower bound is fine — refusing on one is sound. */
 	audienceSize: number;
 	/**
@@ -42,10 +56,18 @@ export interface CampaignCapacityPlanInput {
 	 * index k = the whole of the k-th day after today (UTC day boundaries).
 	 */
 	remainingCapacityByDay: readonly number[];
-	/** How long a queued message survives before the MTA expires it. */
-	maxMessageAgeMs: number;
 	/** Current wall-clock time (ms since epoch). */
 	now: number;
+}
+
+/**
+ * The schedule builder's inputs plus the retention horizon. Declared as an
+ * EXTENSION rather than a second copy of the clump so each field's meaning is
+ * stated exactly once.
+ */
+export interface CampaignCapacityPlanInput extends CapacityScheduleInput {
+	/** How long a queued message survives before the MTA expires it. */
+	maxMessageAgeMs: number;
 }
 
 /**
@@ -114,7 +136,7 @@ export function usableDayCount(now: number, maxMessageAgeMs: number): number {
 	const expiresAt = now + maxMessageAgeMs;
 	const dayZeroStart = utcDayStart(now);
 	let days = 1; // the remainder of today
-	while (days < MAX_PLAN_DAYS && dayZeroStart + days * MS_PER_DAY < expiresAt) {
+	while (days < MAX_HORIZON_DAYS && dayZeroStart + days * MS_PER_DAY < expiresAt) {
 		days += 1;
 	}
 	return days;
@@ -130,15 +152,17 @@ export function usableDayCount(now: number, maxMessageAgeMs: number): number {
  * more than the horizon can carry?" A floor above it is a sound refusal (the
  * real audience can only be larger); a floor below it decides nothing.
  */
-export function capacityWithinHorizon(input: {
-	remainingCapacityByDay: readonly number[];
-	maxMessageAgeMs: number;
-	now: number;
-}): number {
+export function capacityWithinHorizon(
+	input: Omit<CampaignCapacityPlanInput, 'audienceSize'>
+): number {
 	const horizonDays = usableDayCount(input.now, input.maxMessageAgeMs);
 	let total = 0;
 	for (let day = 0; day < horizonDays; day += 1) {
-		total += sanitizeCount(input.remainingCapacityByDay[day] ?? 0);
+		// Through `capacityForDay`, never by indexing: the schedule builder extends
+		// past the end of the projection at the trailing rate, and a horizon sum
+		// that treated past-the-end as zero could answer `fits: false` while
+		// handing back a schedule that finishes INSIDE the horizon.
+		total += capacityForDay(input.remainingCapacityByDay, day);
 	}
 	return total;
 }
@@ -180,19 +204,6 @@ export function totalPlannableCapacity(remainingCapacityByDay: readonly number[]
 		total += capacityForDay(remainingCapacityByDay, day);
 	}
 	return total;
-}
-
-/** Inputs to the schedule builder — the planner minus the retention horizon. */
-export interface CapacityScheduleInput {
-	/** Eligible recipients. A lower bound is fine — refusing on one is sound. */
-	audienceSize: number;
-	/**
-	 * Projected sendable volume per day, index 0 = the REMAINDER of today,
-	 * index k = the whole of the k-th day after today (UTC day boundaries).
-	 */
-	remainingCapacityByDay: readonly number[];
-	/** Current wall-clock time (ms since epoch). */
-	now: number;
 }
 
 /**
