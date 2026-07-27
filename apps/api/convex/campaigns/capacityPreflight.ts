@@ -71,13 +71,6 @@ type Ctx = MutationCtx | QueryCtx;
  */
 const AUDIENCE_DOCUMENT_BUDGET = 6_000;
 
-/**
- * Multi-day plan plus whether capacity could be measured at all.
- *
- * Modelled as a discriminated union rather than `plan & { capacityKnown }` so
- * the unrepresentable "we refused, but we could not measure capacity" state
- * cannot be constructed: an unmeasured assessment is ALWAYS `fits: true`.
- */
 /** What the gate needs to know about the send it is judging. */
 export interface CampaignCapacityOptions {
 	audience: StoredAudience;
@@ -91,6 +84,13 @@ export interface CampaignCapacityOptions {
 	startsAt?: number | undefined;
 }
 
+/**
+ * Multi-day plan plus whether capacity could be measured at all.
+ *
+ * Modelled as a discriminated union rather than `plan & { capacityKnown }` so
+ * the unrepresentable "we refused, but we could not measure capacity" state
+ * cannot be constructed: an unmeasured assessment is ALWAYS `fits: true`.
+ */
 export type CampaignCapacityAssessment =
 	| { capacityKnown: false; fits: true }
 	| { capacityKnown: true; fits: true }
@@ -241,6 +241,15 @@ export function toAssessment(
  * "Sending over N days" as a first-class choice before the operator hits send.
  * A multi-day send is a normal, visible state for a warming deployment — never
  * an error, never a surprise.
+ *
+ * `fromEmail` is REQUIRED even though the assessment tolerates its absence. The
+ * From-domain is what decides whether warm-up overflow to a verified relay can
+ * absorb the tail, so omitting it yields the conservative answer — the preview
+ * would quote "Sending over N days" for a send the binding gate then lets
+ * through in one go. The preview and the gate must never give the operator two
+ * different answers; pre-flight already refuses `no_from_email` before ever
+ * reaching the capacity check, so the wizard always has the address by the time
+ * it can preview a plan.
  */
 // all-members: deployment-wide sending capacity is not per-user data — it is the
 // same warming projection every delivery screen already renders to any member,
@@ -249,7 +258,7 @@ export function toAssessment(
 export const getCampaignCapacityPlan = authedQuery({
 	args: {
 		audience: v.optional(audienceValidator),
-		fromEmail: v.optional(v.string()),
+		fromEmail: v.string(),
 		startsAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<CampaignCapacityAssessment> => {
