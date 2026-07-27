@@ -38,7 +38,7 @@ describe('classifySeedFolder — the four outcomes', () => {
 		expect(classifySeedFolder('   ', 'microsoft')).toEqual({ placement: 'missing' });
 	});
 
-	it('only ever returns one of the four declared placements', () => {
+	it('only ever returns one of the declared placements', () => {
 		const samples: (string | null)[] = [
 			'INBOX',
 			'Spam',
@@ -47,6 +47,7 @@ describe('classifySeedFolder — the four outcomes', () => {
 			'[Gmail]/Spam',
 			'CATEGORY_UPDATES',
 			'Archive',
+			'Deleted Items',
 			null,
 		];
 		for (const sample of samples) {
@@ -69,6 +70,11 @@ describe('classifySeedFolder — provider-specific folder naming', () => {
 		{ provider: 'yahoo', folder: 'Bulk Mail', placement: 'spam' },
 		{ provider: 'apple', folder: 'Junk', placement: 'spam' },
 		{ provider: 'other', folder: 'INBOX.Junk', placement: 'spam' },
+		{ provider: 'gmail', folder: '[Gmail]/Trash', placement: 'deleted' },
+		{ provider: 'microsoft', folder: 'Deleted Items', placement: 'deleted' },
+		{ provider: 'yahoo', folder: 'Trash', placement: 'deleted' },
+		{ provider: 'other', folder: 'Bin', placement: 'deleted' },
+		{ provider: 'other', folder: 'Deleted Messages', placement: 'deleted' },
 		{ provider: 'other', folder: 'INBOX/Spam', placement: 'spam' },
 		{ provider: 'other', folder: 'Quarantine', placement: 'spam' },
 		{ provider: 'microsoft', folder: 'Inbox', placement: 'inbox' },

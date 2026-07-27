@@ -76,9 +76,28 @@ describe('the roll-up is a status, not a gauge (D17)', () => {
 	it('reads a partial slide as mixed, not a collapse', () => {
 		const mixed = summarizeSeedProvider(
 			'gmail',
-			observations('gmail', ['inbox', 'spam', 'spam', 'missing'])
+			observations('gmail', ['inbox', 'inbox', 'spam', 'missing'])
 		);
 		expect(mixed.status).toBe('mixed');
+	});
+
+	it('reads MOSTLY spam as a collapse even when one probe still lands (D17)', () => {
+		// 7-of-8 in spam is plainly "mostly spam"; an all-or-nothing detector
+		// would miss it entirely. The corroboration gate, not the detector, is
+		// what protects the eight-mailbox case.
+		const mostlySpam = summarizeSeedProvider(
+			'gmail',
+			observations('gmail', ['inbox', 'spam', 'spam', 'spam', 'spam', 'spam', 'spam', 'spam'])
+		);
+		expect(mostlySpam.status).toBe('collapse_suspected');
+	});
+
+	it('treats a probe the provider auto-deleted as NOT reaching the mailbox', () => {
+		const binned = summarizeSeedProvider(
+			'gmail',
+			observations('gmail', ['deleted', 'deleted', 'deleted'])
+		);
+		expect(binned.status).toBe('collapse_suspected');
 	});
 
 	it('treats a Gmail tab as reaching the mailbox', () => {
@@ -124,11 +143,47 @@ describe('the corroboration rule (D17)', () => {
 		const both = { deferralGateBreached: true, bounceGateBreached: true };
 		for (const rollup of [
 			summarizeSeedProvider('gmail', observations('gmail', ['inbox', 'inbox', 'inbox'])),
-			summarizeSeedProvider('gmail', observations('gmail', ['inbox', 'spam', 'spam', 'spam'])),
+			summarizeSeedProvider('gmail', observations('gmail', ['inbox', 'inbox', 'spam', 'spam'])),
 			summarizeSeedProvider('gmail', observations('gmail', ['spam'])),
 		]) {
 			expect(resolveSeedTripwire(rollup, both).action).toBe('hold');
 		}
+	});
+});
+
+/** (c) MISSING is the most alarming outcome — and it is load-bearing. */
+describe('a degraded provider that is also LOSING probes', () => {
+	const missingMixed = summarizeSeedProvider(
+		'gmail',
+		observations('gmail', ['inbox', 'inbox', 'spam', 'missing'])
+	);
+
+	it('is mixed, and records that a probe vanished', () => {
+		expect(missingMixed.status).toBe('mixed');
+		expect(missingMixed.anyMissing).toBe(true);
+	});
+
+	it('HOLDS while nothing corroborates it', () => {
+		expect(resolveSeedTripwire(missingMixed, NO_CORROBORATION)).toEqual({
+			action: 'hold',
+			reason: 'seed_probes_missing_awaiting_corroboration',
+		});
+	});
+
+	it('acts once the bounce gate corroborates', () => {
+		expect(
+			resolveSeedTripwire(missingMixed, { deferralGateBreached: false, bounceGateBreached: true })
+		).toEqual({ action: 'act', reason: 'seed_probes_missing_corroborated' });
+	});
+
+	it('stays a plain hold when the same mix loses no probes', () => {
+		const noMissing = summarizeSeedProvider(
+			'gmail',
+			observations('gmail', ['inbox', 'inbox', 'spam', 'spam'])
+		);
+		expect(
+			resolveSeedTripwire(noMissing, { deferralGateBreached: true, bounceGateBreached: true })
+		).toEqual({ action: 'hold', reason: 'seeds_mixed_no_collapse' });
 	});
 });
 

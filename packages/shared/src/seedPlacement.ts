@@ -46,8 +46,17 @@ export function isSeedProbeId(value: string): boolean {
 
 // ============ PLACEMENT CLASSIFICATION ============
 
-export const SEED_PLACEMENTS = ['inbox', 'category', 'spam', 'missing'] as const;
+export const SEED_PLACEMENTS = ['inbox', 'category', 'spam', 'deleted', 'missing'] as const;
 export type SeedPlacement = (typeof SEED_PLACEMENTS)[number];
+
+/**
+ * The placements that mean "the message survived to somewhere the recipient
+ * could plausibly read it". Everything else — spam, an auto-deleted probe, or
+ * one that could not be found at all — is NOT reached.
+ */
+function isSeedPlacementReached(placement: SeedPlacement): boolean {
+	return placement === 'inbox' || placement === 'category';
+}
 
 export interface SeedFolderClassification {
 	placement: SeedPlacement;
@@ -60,31 +69,13 @@ export interface SeedFolderClassification {
 	categoryLabel?: string;
 }
 
-/** Spam/junk folder names across the providers an operator can realistically seed. */
-const SPAM_FOLDER_NAMES = new Set([
-	'spam',
-	'junk',
-	'junk e-mail',
-	'junk email',
-	'junkmail',
-	'bulk',
-	'bulk mail',
-	'unwanted',
-	'quarantine',
-]);
-
-/** Gmail tab labels, in the two shapes IMAP surfaces them. */
-const GMAIL_CATEGORY_LABELS: Record<string, string> = {
-	promotions: 'Promotions',
-	updates: 'Updates',
-	forums: 'Forums',
-	social: 'Social',
-	personal: 'Personal',
-};
-
 /**
  * Strip the provider-specific folder-hierarchy prefixes so `[Gmail]/Spam`,
  * `INBOX.Junk` and `Junk E-mail` all normalize to a comparable leaf name.
+ *
+ * Every folder-name SET below is built by mapping its literals through this
+ * same function, so a normalization rule can never silently make an entry
+ * unreachable (the `Junk E-mail` → `junk e mail` trap).
  */
 function normalizeFolderName(folderName: string): string {
 	let name = folderName.trim();
@@ -96,6 +87,45 @@ function normalizeFolderName(folderName: string): string {
 	name = name.replace(/^category[_/]/i, '');
 	return name.toLowerCase().replace(/[_-]+/g, ' ').trim();
 }
+
+function normalizedFolderSet(names: readonly string[]): ReadonlySet<string> {
+	return new Set(names.map(normalizeFolderName));
+}
+
+/** Spam/junk folder names across the providers an operator can realistically seed. */
+const SPAM_FOLDER_NAMES = normalizedFolderSet([
+	'Spam',
+	'Junk',
+	'Junk E-mail',
+	'Junk Email',
+	'JunkMail',
+	'Bulk',
+	'Bulk Mail',
+	'Unwanted',
+	'Quarantine',
+]);
+
+/**
+ * Deleted-mail folders. A probe the provider swept straight into the bin has
+ * NOT reached the mailbox in any useful sense — treating it as a filtered
+ * "category" would read as healthy, which is precisely backwards.
+ */
+const DELETED_FOLDER_NAMES = normalizedFolderSet([
+	'Trash',
+	'Deleted',
+	'Deleted Items',
+	'Deleted Messages',
+	'Bin',
+]);
+
+/** Gmail tab labels, in the two shapes IMAP surfaces them. */
+const GMAIL_CATEGORY_LABELS: Record<string, string> = {
+	promotions: 'Promotions',
+	updates: 'Updates',
+	forums: 'Forums',
+	social: 'Social',
+	personal: 'Personal',
+};
 
 /**
  * Classify one probe observation.
@@ -123,6 +153,9 @@ export function classifySeedFolder(
 	if (SPAM_FOLDER_NAMES.has(normalized)) {
 		return { placement: 'spam' };
 	}
+	if (DELETED_FOLDER_NAMES.has(normalized)) {
+		return { placement: 'deleted' };
+	}
 	if (provider === 'gmail') {
 		const label = GMAIL_CATEGORY_LABELS[normalized];
 		if (label !== undefined) {
@@ -148,17 +181,30 @@ export interface SeedObservation {
  */
 export const SEED_MIN_OBSERVATIONS = 3;
 
-/** Share of probes that must reach the inbox or a tab for a provider to read healthy. */
+/**
+ * Share of probes that must reach the inbox or a tab for a provider to read
+ * healthy. Below it the provider reads `mixed`, which — unlike `inbox_dominant`
+ * — can act once corroborated if any probe is also MISSING.
+ */
 const SEED_REACHED_THRESHOLD = 0.8;
+
+/**
+ * At or below this share of reached probes the provider reads as a COLLAPSE.
+ * D17's collapse is "mostly-inbox → mostly-spam", not "every single probe" — a
+ * 7-of-8 spam reading is plainly mostly spam and must reach the tripwire. The
+ * corroboration gate in front of it, not an all-or-nothing detector, is what
+ * protects the eight-mailbox case from acting on noise.
+ */
+const SEED_COLLAPSE_THRESHOLD = 1 / 3;
 
 export type SeedPlacementStatus =
 	/** Fewer than SEED_MIN_OBSERVATIONS classified probes — no verdict. */
 	| 'insufficient_data'
 	/** Effectively everything reached the inbox or a tab. */
 	| 'inbox_dominant'
-	/** Some probes are being filtered to spam or vanishing. */
+	/** Some probes are being filtered to spam, binned, or vanishing. */
 	| 'mixed'
-	/** NOTHING reached the inbox: a provider-wide collapse. SUSPECT until corroborated. */
+	/** MOSTLY not reaching: a provider-wide collapse. SUSPECT until corroborated. */
 	| 'collapse_suspected';
 
 /**
@@ -200,11 +246,12 @@ export function summarizeSeedProvider(
 		};
 	}
 
-	const reached = mine.filter((o) => o.placement === 'inbox' || o.placement === 'category').length;
+	const reached = mine.filter((o) => isSeedPlacementReached(o.placement)).length;
+	const reachedShare = reached / sampleSize;
 	const status: SeedPlacementStatus =
-		reached === 0
+		reachedShare <= SEED_COLLAPSE_THRESHOLD
 			? 'collapse_suspected'
-			: reached / sampleSize >= SEED_REACHED_THRESHOLD
+			: reachedShare >= SEED_REACHED_THRESHOLD
 				? 'inbox_dominant'
 				: 'mixed';
 
@@ -239,23 +286,43 @@ export interface SeedTripwireResolution {
 		| 'insufficient_seed_sample'
 		| 'seeds_reaching_inbox'
 		| 'seeds_mixed_no_collapse'
+		| 'seed_probes_missing_awaiting_corroboration'
+		| 'seed_probes_missing_corroborated'
 		| 'seed_collapse_awaiting_corroboration'
 		| 'seed_collapse_corroborated';
+}
+
+/** True for every reason that is a suspicion the corroboration gate is holding. */
+function isAwaitingSeedCorroboration(reason: SeedTripwireResolution['reason']): boolean {
+	return (
+		reason === 'seed_collapse_awaiting_corroboration' ||
+		reason === 'seed_probes_missing_awaiting_corroboration'
+	);
 }
 
 export function resolveSeedTripwire(
 	rollup: SeedProviderRollup,
 	corroboration: SeedCorroboration
 ): SeedTripwireResolution {
+	const corroborated = corroboration.deferralGateBreached || corroboration.bounceGateBreached;
 	switch (rollup.status) {
 		case 'insufficient_data':
 			return { action: 'hold', reason: 'insufficient_seed_sample' };
 		case 'inbox_dominant':
+			// Above SEED_REACHED_THRESHOLD the provider is healthy enough that a
+			// single stray disappearance is noise, not a signal.
 			return { action: 'hold', reason: 'seeds_reaching_inbox' };
 		case 'mixed':
-			return { action: 'hold', reason: 'seeds_mixed_no_collapse' };
+			// D17 calls MISSING the most alarming outcome and the one no other
+			// signal surfaces at all — so a degraded provider that is also LOSING
+			// probes is actionable, behind the same corroboration gate a collapse
+			// sits behind. Degradation without disappearance stays a hold.
+			if (!rollup.anyMissing) return { action: 'hold', reason: 'seeds_mixed_no_collapse' };
+			return corroborated
+				? { action: 'act', reason: 'seed_probes_missing_corroborated' }
+				: { action: 'hold', reason: 'seed_probes_missing_awaiting_corroboration' };
 		case 'collapse_suspected':
-			return corroboration.deferralGateBreached || corroboration.bounceGateBreached
+			return corroborated
 				? { action: 'act', reason: 'seed_collapse_corroborated' }
 				: { action: 'hold', reason: 'seed_collapse_awaiting_corroboration' };
 	}
@@ -301,7 +368,7 @@ export function evaluateSeedPlacementGate(input: {
 	for (const rollup of usable) {
 		const resolution = resolveSeedTripwire(rollup, input.corroboration);
 		if (resolution.action === 'act') failedProviders.push(rollup.provider);
-		else if (resolution.reason === 'seed_collapse_awaiting_corroboration') {
+		else if (isAwaitingSeedCorroboration(resolution.reason)) {
 			suspectProviders.push(rollup.provider);
 		}
 	}
