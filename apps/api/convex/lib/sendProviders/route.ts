@@ -26,6 +26,7 @@ import {
 	loadRouteStateCell,
 	loadStreamlessRouteState,
 	mixCellStateFor,
+	type RouteStateCellRows,
 } from '../deliverabilityRouteState';
 import type { MixContext } from './strategies';
 import { readAssignmentForSend } from '../../delivery/sendAssignments';
@@ -105,38 +106,68 @@ export interface SendRouteAddressContext {
 async function mixContextFor(
 	ctx: QueryCtx | MutationCtx,
 	routeConfig: Doc<'providerRoutes'> | null,
-	messageType: MessageType,
-	addressContext: SendRouteAddressContext | undefined
+	addressContext: SendRouteAddressContext | undefined,
+	resolved: ResolvedAddressCell | null
 ): Promise<MixContext | undefined> {
 	if (routeConfig?.strategy !== 'adaptive_mix') return undefined;
+	if (resolved === null) return undefined;
 	const sendId = addressContext?.sendId;
 	const to = addressContext?.to;
-	if (sendId === undefined && to === undefined) return undefined;
+	if (sendId !== undefined) {
+		const recorded = await readAssignmentForSend(ctx.db, resolved.organizationId, sendId);
+		if (recorded) return { kind: 'assigned', arm: recorded.arm };
+	}
+	if (resolved.cell === null) return undefined;
+	return {
+		kind: 'decide',
+		input: {
+			cell: mixCellStateFor(resolved.cell),
+			recipient: { fallbackKey: sendId ?? to ?? '' },
+		},
+	};
+}
+
+/**
+ * The tenant + cell identity BOTH per-message consumers key off, resolved
+ * ONCE per resolution.
+ *
+ * `mixContextFor` and `deliverabilityInput` used to derive this pair
+ * independently — the same singleton-organization lookup, the same domain
+ * parse, the same classifier read and the same route-state cell read, with the
+ * same arguments. Two copies of "which tenant is this and which cell is the
+ * recipient in" have to agree forever, and under `adaptive_mix` they also
+ * doubled the indexed reads on the authoritative per-message path.
+ *
+ * `cell` is null when there is no recipient address, or none that parses: the
+ * tenant is still known, which is all the recorded-arm replay needs.
+ */
+interface ResolvedAddressCell {
+	readonly organizationId: string;
+	readonly cell: RouteStateCellRows | null;
+	readonly now: number;
+}
+
+async function resolveAddressCell(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType,
+	addressContext: SendRouteAddressContext | undefined
+): Promise<ResolvedAddressCell | null> {
+	const now = addressContext?.now ?? Date.now();
 	let organizationId: string;
 	try {
 		organizationId = await getSingletonOrganizationId(ctx);
 	} catch {
-		return undefined;
+		return null;
 	}
-	if (sendId !== undefined) {
-		const recorded = await readAssignmentForSend(ctx.db, organizationId, sendId);
-		if (recorded) return { kind: 'assigned', arm: recorded.arm };
-	}
+	const to = addressContext?.to;
 	const toDomain = to ? extractDomainOrNull(to) : null;
-	if (toDomain === null) return undefined;
-	const now = addressContext?.now ?? Date.now();
+	if (toDomain === null) return { organizationId, cell: null, now };
 	const destinationProvider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
 	const cell = await loadRouteStateCell(ctx, organizationId, {
 		stream: messageType,
 		destinationProvider,
 	});
-	return {
-		kind: 'decide',
-		input: {
-			cell: mixCellStateFor(cell),
-			recipient: { fallbackKey: sendId ?? to ?? '' },
-		},
-	};
+	return { organizationId, cell, now };
 }
 
 /**
@@ -169,8 +200,34 @@ function probeableCandidateKind(
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
 	messageType: MessageType,
-	addressContext?: SendRouteAddressContext
+	addressContext?: SendRouteAddressContext,
+	precomputed?: PrecomputedRouteInputs
 ): Promise<ResolvedRoute | null> {
+	return (await resolveSendRouteWithInputs(ctx, messageType, addressContext, precomputed)).route;
+}
+
+/**
+ * Inputs a caller has already paid for and can hand back, so a second
+ * resolution of the SAME message does not re-read them. Presence of the object
+ * is the signal — a present object with `mix: undefined` means "there is no mix
+ * context", not "compute one".
+ */
+export interface PrecomputedRouteInputs {
+	readonly mix: MixContext | undefined;
+}
+
+interface SendRouteResolution {
+	readonly route: ResolvedRoute | null;
+	/** Reusable by a second resolution of the same message (see `PrecomputedRouteInputs`). */
+	readonly mix: MixContext | undefined;
+}
+
+async function resolveSendRouteWithInputs(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType,
+	addressContext: SendRouteAddressContext | undefined,
+	precomputed: PrecomputedRouteInputs | undefined
+): Promise<SendRouteResolution> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
@@ -184,11 +241,26 @@ export async function resolveSendRouteFromDb(
 	}));
 	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
 
-	const deliverability = addressContext?.baseOnly
-		? undefined
-		: await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
+	// One resolution of tenant + cell for BOTH consumers below, and only when
+	// one of them can actually use it — an unaddressed base-only resolution on a
+	// shipped strategy still costs nothing.
+	const wantsDeliverability = !addressContext?.baseOnly && Boolean(addressContext?.to);
+	const wantsMix =
+		precomputed === undefined &&
+		routeConfig?.strategy === 'adaptive_mix' &&
+		(addressContext?.sendId !== undefined || addressContext?.to !== undefined);
+	const resolvedCell =
+		wantsDeliverability || wantsMix
+			? await resolveAddressCell(ctx, messageType, addressContext)
+			: null;
 
-	const mix = await mixContextFor(ctx, routeConfig, messageType, addressContext);
+	const deliverability = wantsDeliverability
+		? await deliverabilityInput(ctx, routeConfig, messageType, addressContext, resolvedCell)
+		: undefined;
+
+	const mix = precomputed
+		? precomputed.mix
+		: await mixContextFor(ctx, routeConfig, addressContext, resolvedCell);
 
 	const resolved = resolveRoute(
 		routeConfig as ProviderRouteConfig | null,
@@ -197,37 +269,36 @@ export async function resolveSendRouteFromDb(
 		deliverability,
 		mix
 	);
-	return resolved
-		? {
-				...resolved,
-				warmupOverflowEnabled: Boolean(
-					messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
-				),
-			}
-		: null;
+	return {
+		route: resolved
+			? {
+					...resolved,
+					warmupOverflowEnabled: Boolean(
+						messageType === 'campaign' &&
+						routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
+					),
+				}
+			: null,
+		mix,
+	};
 }
 
 async function deliverabilityInput(
 	ctx: QueryCtx | MutationCtx,
 	routeConfig: Doc<'providerRoutes'> | null,
 	messageType: MessageType,
-	addressContext?: SendRouteAddressContext
+	addressContext: SendRouteAddressContext | undefined,
+	resolved: ResolvedAddressCell | null
 ) {
 	if (!addressContext?.to) return undefined;
-	const toDomain = extractDomainOrNull(addressContext.to);
-	if (!toDomain) return undefined;
-	const now = addressContext.now ?? Date.now();
-	let organizationId: string;
-	try {
-		organizationId = await getSingletonOrganizationId(ctx);
-	} catch {
-		return undefined;
-	}
-	const provider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
-	const [providerCell, globalState, warmingState] = await Promise.all([
-		// Cell lookup: BOTH the controller's per-stream row and the stream-less row
-		// the MTA snapshot maintains, so neither can shadow the other.
-		loadRouteStateCell(ctx, organizationId, { stream: messageType, destinationProvider: provider }),
+	// The tenant, the recipient's cell and the resolution clock all come from
+	// the ONE `resolveAddressCell` the caller already ran; a null bundle (no
+	// tenant) or a null cell (no parseable recipient domain) means there is no
+	// deliverability input to give, exactly as before.
+	if (resolved === null || resolved.cell === null) return undefined;
+	const { organizationId, now } = resolved;
+	const providerCell = resolved.cell;
+	const [globalState, warmingState] = await Promise.all([
 		// The global slice is infrastructure-wide and never per-stream: read the
 		// stream-less row directly so a per-stream `all` row could never hide the
 		// breaker_open signal the snapshot writes there.
@@ -371,11 +442,25 @@ export async function resolveLastMileRoutePlanFromDb(
 		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
 	);
 	try {
-		const route = await resolveSendRouteFromDb(ctx, messageType, addressContext);
-		const baseRoute = await resolveSendRouteFromDb(ctx, messageType, {
-			...addressContext,
-			baseOnly: true,
-		});
+		// TWO resolutions of ONE message: the governed route and the base route
+		// the fallback is measured against. The mix context is a property of the
+		// message, not of the resolution, so it is resolved once by the first
+		// call and handed to the second — otherwise every governed send under
+		// `adaptive_mix` would pay a second assignment lookup and a second
+		// singleton-organization lookup for an answer it already has.
+		const resolution = await resolveSendRouteWithInputs(
+			ctx,
+			messageType,
+			addressContext,
+			undefined
+		);
+		const route = resolution.route;
+		const baseRoute = await resolveSendRouteFromDb(
+			ctx,
+			messageType,
+			{ ...addressContext, baseOnly: true },
+			{ mix: resolution.mix }
+		);
 		return {
 			route,
 			baseRoute,
