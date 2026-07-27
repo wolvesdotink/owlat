@@ -250,7 +250,13 @@ function evaluateEngagementComparison(
 		toleranceValuePp: null,
 		ownSample: recent.sample,
 		referenceSample: reference?.sample ?? null,
+		// `minSample` always names the OWN arm's floor and `referenceMinSample`
+		// always names the second series' — on every path, hold and decided alike.
+		// On gate 4b the two differ by 3x, so a D12 audit row or a dashboard cell
+		// that reported only one of them would state something false about the
+		// other arm whichever one it picked.
 		minSample,
+		referenceMinSample,
 	} as const;
 
 	const recentEvidence = armEvidence(
@@ -288,12 +294,6 @@ function evaluateEngagementComparison(
 	) {
 		return insufficient('engagement_ratio', evidenceReason(referenceEvidence, spec.referenceArm), {
 			...holdShape,
-			// A hold that NAMES the second series must report the floor that
-			// governed the second series. `holdShape.minSample` is the recent
-			// window's, and on the floor gate the two differ by 3x — an audit row
-			// (plan D12) reading `baseline_sample_below_floor` next to a floor the
-			// sample comfortably clears is a record an operator cannot act on.
-			minSample: referenceMinSample,
 			ownRate: recent.rate,
 			referenceRate: reference?.rate ?? null,
 		});

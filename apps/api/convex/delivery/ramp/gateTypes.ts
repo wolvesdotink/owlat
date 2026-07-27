@@ -101,8 +101,26 @@ interface RampGateMeasurementBase {
 	readonly ownSample: number;
 	/** Denominator behind `referenceRate`, or `null` when absent. */
 	readonly referenceSample: number | null;
-	/** Minimum sample this gate requires per arm before it may return a verdict. */
+	/**
+	 * Minimum sample the gate requires of the OWN (recent) arm — the denominator
+	 * behind `ownSample` — before it may return a verdict. It means the same
+	 * thing on every verdict of every gate, so a generic renderer can print it
+	 * next to `ownSample` without branching on `reason`.
+	 */
 	readonly minSample: number;
+	/**
+	 * Minimum sample the gate requires of the SECOND series — the denominator
+	 * behind `referenceSample` — when that series has a floor of its own.
+	 *
+	 * A separate field rather than an overloaded `minSample`: the engagement
+	 * family's two sub-gates compare against different second series (the
+	 * concurrent reference arm, and the cell's own 30-day trailing baseline)
+	 * whose floors differ by 3x, and an audit row (plan D12) that reports one
+	 * arm's floor beside the other arm's sample asserts something false about
+	 * both. Only the engagement family sets it; the ceiling gates leave it
+	 * absent, as do one-armed gates.
+	 */
+	readonly referenceMinSample?: number;
 }
 
 /**
