@@ -233,7 +233,14 @@ const DISPATCH: DispatchTable = {
 					reason: 'complained',
 				});
 			}
-		} else if (!isPostboxMessageId(e.providerMessageId)) {
+		} else if (isPostboxMessageId(e.providerMessageId)) {
+			// SHIPPED SHORT-CIRCUIT, PRESERVED. A postbox-attributed complaint is not a
+			// campaign send, so the shipped handler returned here without doing anything
+			// further — and the feedback-loop observation must not become the one thing
+			// that now runs on this path. Enrollment liveness is proved by ordinary
+			// production complaints; this branch stays exactly as it shipped.
+			return;
+		} else {
 			const outcome = (await ctx.runMutation(
 				e.providerType === 'mta'
 					? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
