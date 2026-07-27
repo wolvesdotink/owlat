@@ -4,8 +4,10 @@ import {
 	RETURN_PATH_PROBE_RETRY_SCHEDULE_MS,
 	RETURN_PATH_PROBE_TIMEOUT_MS,
 	RETURN_PATH_PROBE_TTL_MS,
+	isCustomReturnPathSupported,
 	isProbeDue,
 	isProbeTimedOut,
+	measurementQualityOf,
 	nextProbeAttempts,
 	nextProbeState,
 	resolveReturnPathCapability,
@@ -23,7 +25,9 @@ import {
  *
  * The adversarial case is the one this whole mechanism exists for: a relay that
  * ACCEPTS our envelope sender and silently rewrites it must be detected as
- * unsupported, not trusted. Acceptance is deliberately not a verdict.
+ * unsupported, not trusted. Acceptance is deliberately not a verdict, and a
+ * rewrite presents as SILENCE — the DSN goes to whatever address the relay
+ * substituted, so the probe ages out rather than observing a mismatch.
  */
 
 const T0 = Date.UTC(2026, 6, 1, 0, 0, 0);
@@ -51,49 +55,26 @@ describe('probe state machine', () => {
 		expect(state.settledAt).toBe(T0 + 1);
 	});
 
-	it('an observed bounce carrying OUR envelope sender proves support', () => {
-		const state = nextProbeState(openProbe(), {
-			kind: 'observed',
-			envelopeSender: SENT,
-			at: T0 + 5,
-		});
+	it('a bounce that reached OUR bounce server proves support', () => {
+		const state = nextProbeState(openProbe(), { kind: 'observed', at: T0 + 5 });
 		expect(state.status).toBe('supported');
 		expect(state.reason).toBe('observed_match');
 	});
 
-	it('is whitespace tolerant, and case tolerant on the DOMAIN only', () => {
-		const state = nextProbeState(openProbe(), {
-			kind: 'observed',
-			envelopeSender: `  bounce+abc+mac@BOUNCES.EXAMPLE.COM `,
-			at: T0 + 5,
-		});
-		expect(state.status).toBe('supported');
-	});
-
-	it('ADVERSARIAL: a relay that CASE-FOLDS the VERP token has rewritten it', () => {
-		// The local part is a base64url token whose case is significant and whose
-		// MAC is checked case-sensitively: a case-folded DSN can never decode, so
-		// grading this `supported` would declare an arm comparable whose bounce
-		// stream is in fact silently empty.
-		const state = nextProbeState(openProbe(), {
-			kind: 'observed',
-			envelopeSender: SENT.toUpperCase(),
-			at: T0 + 5,
-		});
-		expect(state.status).toBe('unsupported');
-		expect(state.reason).toBe('rewritten_by_relay');
-	});
-
 	it('ADVERSARIAL: a relay that accepts then REWRITES the sender is unsupported', () => {
+		// The signed VERP token IS the address the DSN is sent to, so a rewritten
+		// (or merely case-folded — the token's case is significant and its MAC is
+		// checked case-sensitively) envelope sender routes the DSN somewhere else
+		// entirely. There is no mismatch to observe: the probe simply never hears
+		// anything and ages out. Grading such a relay `supported` would declare an
+		// arm comparable whose bounce stream is in fact silently empty.
 		const accepted = nextProbeState(openProbe(), { kind: 'submitted', accepted: true, at: T0 });
 		const state = nextProbeState(accepted, {
-			kind: 'observed',
-			envelopeSender: 'bounces@relay-provider.example',
-			at: T0 + 60_000,
+			kind: 'expired',
+			at: T0 + RETURN_PATH_PROBE_TIMEOUT_MS,
 		});
 		expect(state.status).toBe('unsupported');
-		expect(state.reason).toBe('rewritten_by_relay');
-		expect(state.observedEnvelopeSender).toBe('bounces@relay-provider.example');
+		expect(state.reason).toBe('no_bounce_observed');
 	});
 
 	it('settles as unsupported when no bounce is ever observed', () => {
@@ -104,9 +85,7 @@ describe('probe state machine', () => {
 
 	it('ignores late events for an already-settled probe', () => {
 		const settled = nextProbeState(openProbe(), { kind: 'expired', at: T0 + 1 });
-		expect(nextProbeState(settled, { kind: 'observed', envelopeSender: SENT, at: T0 + 2 })).toBe(
-			settled
-		);
+		expect(nextProbeState(settled, { kind: 'observed', at: T0 + 2 })).toBe(settled);
 	});
 
 	it('times out only after the timeout window', () => {
@@ -120,13 +99,12 @@ describe('re-probe schedule', () => {
 		status: 'supported',
 		reason: 'observed_match',
 		sentEnvelopeSender: SENT,
-		observedEnvelopeSender: SENT,
 		startedAt: T0,
 		settledAt: T0,
 	};
 	const unsupported: ReturnPathProbeState = {
 		status: 'unsupported',
-		reason: 'rewritten_by_relay',
+		reason: 'no_bounce_observed',
 		sentEnvelopeSender: SENT,
 		startedAt: T0,
 		settledAt: T0,
@@ -198,16 +176,16 @@ describe('resolveReturnPathCapability', () => {
 	it('our own MTA is declared supported without any probe', () => {
 		const resolved = resolveReturnPathCapability('mta', null, T0);
 		expect(resolved.capability).toBe('supported');
-		expect(resolved.stampVerpReturnPath).toBe(true);
-		expect(resolved.degraded).toBe(false);
+		expect(isCustomReturnPathSupported(resolved)).toBe(true);
+		expect(measurementQualityOf(resolved)).toBe('comparable');
 	});
 
 	it('an API transport that owns its envelope sender is unsupported but not degraded-blind', () => {
 		for (const kind of ['ses', 'resend'] as const) {
 			const resolved = resolveReturnPathCapability(kind, null, T0);
 			expect(resolved.capability).toBe('unsupported');
-			expect(resolved.stampVerpReturnPath).toBe(false);
-			expect(resolved.degraded).toBe(true);
+			expect(isCustomReturnPathSupported(resolved)).toBe(false);
+			expect(measurementQualityOf(resolved)).toBe('degraded');
 			// It has its own feedback channel, so its tolerance widens less than a
 			// relay with no feedback at all.
 			expect(resolved.bounceToleranceMultiplier).toBe(2);
@@ -217,8 +195,8 @@ describe('resolveReturnPathCapability', () => {
 	it('an UNPROBED relay resolves to unknown — treated as unsupported, never an error', () => {
 		const resolved = resolveReturnPathCapability('smtp', null, T0);
 		expect(resolved.capability).toBe('unknown');
-		expect(resolved.stampVerpReturnPath).toBe(false);
-		expect(resolved.degraded).toBe(true);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
+		expect(measurementQualityOf(resolved)).toBe('degraded');
 		expect(resolved.bounceToleranceMultiplier).toBe(4);
 	});
 
@@ -239,8 +217,8 @@ describe('resolveReturnPathCapability', () => {
 			T0 + 1000
 		);
 		expect(resolved.capability).toBe('supported');
-		expect(resolved.stampVerpReturnPath).toBe(true);
-		expect(resolved.measurement).toBe('comparable');
+		expect(isCustomReturnPathSupported(resolved)).toBe(true);
+		expect(measurementQualityOf(resolved)).toBe('comparable');
 		expect(resolved.bounceToleranceMultiplier).toBe(1);
 	});
 
@@ -257,7 +235,7 @@ describe('resolveReturnPathCapability', () => {
 			T0 + RETURN_PATH_PROBE_TTL_MS
 		);
 		expect(resolved.capability).toBe('unknown');
-		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
 	});
 
 	it('ADVERSARIAL: clock skew (a verdict from the future) never grants support', () => {
@@ -280,11 +258,11 @@ describe('resolveReturnPathCapability', () => {
 		// probeable-but-unprobed transport resolves to.
 		expect(unresolvableReturnPathCapability).toMatchObject({
 			capability: 'unknown',
-			stampVerpReturnPath: false,
-			degraded: true,
 			bounceToleranceMultiplier: resolveReturnPathCapability('smtp', null, T0)
 				.bounceToleranceMultiplier,
 		});
+		expect(isCustomReturnPathSupported(unresolvableReturnPathCapability)).toBe(false);
+		expect(measurementQualityOf(unresolvableReturnPathCapability)).toBe('degraded');
 	});
 
 	it('is total — no input combination throws', () => {
@@ -325,8 +303,8 @@ describe('a RE-PROBE does not revoke the verdict it is re-checking', () => {
 			T0 + RETURN_PATH_PROBE_TTL_MS + 60_000
 		);
 		expect(resolved.capability).toBe('supported');
-		expect(resolved.stampVerpReturnPath).toBe(true);
-		expect(resolved.degraded).toBe(false);
+		expect(isCustomReturnPathSupported(resolved)).toBe(true);
+		expect(measurementQualityOf(resolved)).toBe('comparable');
 		expect(resolved.reason).toBe('observed_match');
 		// The row is still honestly reported as open.
 		expect(resolved.probeStatus).toBe('awaiting_delivery');
@@ -336,13 +314,13 @@ describe('a RE-PROBE does not revoke the verdict it is re-checking', () => {
 		const resolved = resolveReturnPathCapabilityForEntry(
 			probeOnly,
 			reProbe({
-				lastSettled: { status: 'unsupported', reason: 'rewritten_by_relay', settledAt: T0 },
+				lastSettled: { status: 'unsupported', reason: 'no_bounce_observed', settledAt: T0 },
 			}),
 			T0 + RETURN_PATH_PROBE_TTL_MS + 60_000
 		);
 		expect(resolved.capability).toBe('unsupported');
-		expect(resolved.stampVerpReturnPath).toBe(false);
-		expect(resolved.reason).toBe('rewritten_by_relay');
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
+		expect(resolved.reason).toBe('no_bounce_observed');
 	});
 
 	it('the carry is BOUNDED by the probe timeout — a broken relay is demoted', () => {
@@ -353,8 +331,8 @@ describe('a RE-PROBE does not revoke the verdict it is re-checking', () => {
 			start + RETURN_PATH_PROBE_TIMEOUT_MS
 		);
 		expect(resolved.capability).toBe('unknown');
-		expect(resolved.stampVerpReturnPath).toBe(false);
-		expect(resolved.degraded).toBe(true);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
+		expect(measurementQualityOf(resolved)).toBe('degraded');
 	});
 
 	it('ADVERSARIAL: a degenerate clock can never pin a stale verdict', () => {
@@ -383,8 +361,8 @@ describe('a RE-PROBE does not revoke the verdict it is re-checking', () => {
 			start + 1_000
 		);
 		expect(resolved.capability).toBe('unknown');
-		expect(resolved.stampVerpReturnPath).toBe(false);
-		expect(resolved.degraded).toBe(true);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
+		expect(measurementQualityOf(resolved)).toBe('degraded');
 	});
 
 	it('a first-ever open probe still resolves to unknown', () => {
@@ -445,5 +423,35 @@ describe('attempts count CONSECUTIVE probes since the last supported verdict', (
 		}
 		expect(settledVerdictOf(null)).toBeUndefined();
 		expect(settledVerdictOf(undefined)).toBeUndefined();
+	});
+});
+
+describe('settledVerdictOf — a corrupt row is re-probed, not laundered', () => {
+	it('reports NO verdict for a settled row carrying the in-flight reason', () => {
+		// Presenting `no_bounce_observed` here would show the operator a reason the
+		// system never observed. Reporting nothing makes the transport read as
+		// never-settled, so it is simply re-probed and the answer comes from
+		// evidence.
+		expect(
+			settledVerdictOf({
+				status: 'unsupported',
+				reason: 'awaiting_delivery',
+				sentEnvelopeSender: SENT,
+				startedAt: T0,
+				settledAt: T0,
+			})
+		).toBeUndefined();
+	});
+
+	it('reports a healthy settled row unchanged', () => {
+		expect(
+			settledVerdictOf({
+				status: 'supported',
+				reason: 'observed_match',
+				sentEnvelopeSender: SENT,
+				startedAt: T0,
+				settledAt: T0 + 5,
+			})
+		).toEqual({ status: 'supported', reason: 'observed_match', settledAt: T0 + 5 });
 	});
 });

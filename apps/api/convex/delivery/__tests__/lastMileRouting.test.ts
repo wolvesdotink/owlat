@@ -151,12 +151,21 @@ describe('last-mile governance boundary', () => {
 			expect(
 				await resolveLastMileRouting(
 					context(
-						{ route, baseRoute: route, isMtaGoverned: false, relayStampVerpReturnPath: true },
+						{
+							route,
+							baseRoute: route,
+							isMtaGoverned: false,
+							relayReturnPathHost: 'bounces.example.com',
+						},
 						'org-1'
 					),
 					input
 				)
-			).toMatchObject({ kind: 'ready', providerKind: 'smtp', stampRelayVerpReturnPath: true });
+			).toMatchObject({
+				kind: 'ready',
+				providerKind: 'smtp',
+				relayReturnPathHost: 'bounces.example.com',
+			});
 		});
 
 		it('carries it on a Convex deliverability-fallback route', async () => {
@@ -169,12 +178,16 @@ describe('last-mile governance boundary', () => {
 			expect(
 				await resolveLastMileRouting(
 					context(
-						{ route, baseRoute, isMtaGoverned: true, relayStampVerpReturnPath: true },
+						{ route, baseRoute, isMtaGoverned: true, relayReturnPathHost: 'bounces.example.com' },
 						'org-1'
 					),
 					input
 				)
-			).toMatchObject({ kind: 'ready', providerKind: 'smtp', stampRelayVerpReturnPath: true });
+			).toMatchObject({
+				kind: 'ready',
+				providerKind: 'smtp',
+				relayReturnPathHost: 'bounces.example.com',
+			});
 		});
 
 		// THE route that carries most relay traffic during a ramp: the MTA
@@ -199,7 +212,7 @@ describe('last-mile governance boundary', () => {
 							route: baseRoute,
 							baseRoute,
 							isMtaGoverned: true,
-							relayStampVerpReturnPath: true,
+							relayReturnPathHost: 'bounces.example.com',
 						},
 						{ route: relayRoute }
 					),
@@ -209,7 +222,7 @@ describe('last-mile governance boundary', () => {
 					kind: 'ready',
 					providerKind: 'smtp',
 					route: relayRoute,
-					stampRelayVerpReturnPath: true,
+					relayReturnPathHost: 'bounces.example.com',
 				});
 			}
 		);
@@ -233,7 +246,7 @@ describe('last-mile governance boundary', () => {
 							route: baseRoute,
 							baseRoute,
 							isMtaGoverned: true,
-							relayStampVerpReturnPath: false,
+							relayReturnPathHost: undefined,
 						},
 						{ route: relayRoute }
 					),
@@ -242,7 +255,7 @@ describe('last-mile governance boundary', () => {
 			).toMatchObject({
 				kind: 'ready',
 				providerKind: 'smtp',
-				stampRelayVerpReturnPath: false,
+				relayReturnPathHost: undefined,
 			});
 		});
 	});

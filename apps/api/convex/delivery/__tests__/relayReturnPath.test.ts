@@ -6,7 +6,10 @@ import {
 	RETURN_PATH_PROBE_RETRY_SCHEDULE_MS,
 	RETURN_PATH_PROBE_TIMEOUT_MS,
 	RETURN_PATH_PROBE_TTL_MS,
+	isCustomReturnPathSupported,
+	measurementQualityOf,
 } from '../../lib/sendProviders/returnPathCapability';
+import { buildReturnPathSpfRecord } from '../../domains/spf';
 import { returnPathProbeMessageId } from '../messageIdRouting';
 import { returnPathCapabilityFor } from '../relayReturnPath';
 import { resolveLastMileRoutePlanFromDb } from '../../lib/sendProviders/route';
@@ -77,8 +80,8 @@ describe('relay return-path probe persistence', () => {
 		const t = convexTest(schema, modules);
 		const resolved = await capability(t);
 		expect(resolved.capability).toBe('unknown');
-		expect(resolved.stampVerpReturnPath).toBe(false);
-		expect(resolved.degraded).toBe(true);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
+		expect(measurementQualityOf(resolved)).toBe('degraded');
 	});
 
 	it('acceptance keeps the verdict open — it does NOT enable the stamp', async () => {
@@ -86,7 +89,7 @@ describe('relay return-path probe persistence', () => {
 		expect((await submit(t)).status).toBe('awaiting_delivery');
 		const resolved = await capability(t);
 		expect(resolved.capability).toBe('unknown');
-		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
 	});
 
 	it('an observed bounce for the probe records supported and enables the stamp', async () => {
@@ -100,8 +103,8 @@ describe('relay return-path probe persistence', () => {
 		expect(applied).toMatchObject({ applied: true, status: 'supported' });
 		const resolved = await capability(t);
 		expect(resolved.capability).toBe('supported');
-		expect(resolved.stampVerpReturnPath).toBe(true);
-		expect(resolved.measurement).toBe('comparable');
+		expect(isCustomReturnPathSupported(resolved)).toBe(true);
+		expect(measurementQualityOf(resolved)).toBe('comparable');
 	});
 
 	it('a supported verdict DECAYS back to unknown once its TTL passes', async () => {
@@ -111,9 +114,9 @@ describe('relay return-path probe persistence', () => {
 			probeMessageId: returnPathProbeMessageId(PROBE_ID),
 			at: Date.now(),
 		});
-		expect((await capability(t)).stampVerpReturnPath).toBe(true);
+		expect(isCustomReturnPathSupported(await capability(t))).toBe(true);
 		vi.setSystemTime(T0 + RETURN_PATH_PROBE_TTL_MS);
-		expect((await capability(t)).stampVerpReturnPath).toBe(false);
+		expect(isCustomReturnPathSupported(await capability(t))).toBe(false);
 	});
 
 	it('ADVERSARIAL: a relay that accepts then REWRITES the sender goes SILENT', async () => {
@@ -125,7 +128,7 @@ describe('relay return-path probe persistence', () => {
 		// out, and is graded unsupported. Acceptance never becomes a verdict.
 		const t = convexTest(schema, modules);
 		expect((await submit(t, true)).status).toBe('awaiting_delivery');
-		expect((await capability(t)).stampVerpReturnPath).toBe(false);
+		expect(isCustomReturnPathSupported(await capability(t))).toBe(false);
 
 		vi.setSystemTime(T0 + RETURN_PATH_PROBE_TIMEOUT_MS);
 		const { expired } = await t.mutation(
@@ -136,14 +139,14 @@ describe('relay return-path probe persistence', () => {
 		const resolved = await capability(t);
 		expect(resolved.capability).toBe('unsupported');
 		expect(resolved.reason).toBe('no_bounce_observed');
-		expect(resolved.stampVerpReturnPath).toBe(false);
-		expect(resolved.degraded).toBe(true);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
+		expect(measurementQualityOf(resolved)).toBe('degraded');
 	});
 
 	it('a refused MAIL FROM settles unsupported at submission time', async () => {
 		const t = convexTest(schema, modules);
 		expect((await submit(t, false)).status).toBe('unsupported');
-		expect((await capability(t)).stampVerpReturnPath).toBe(false);
+		expect(isCustomReturnPathSupported(await capability(t))).toBe(false);
 	});
 
 	it('an observation for an unknown probe is a no-op, not an error', async () => {
@@ -296,7 +299,7 @@ describe('a scheduled RE-PROBE never switches off the stamp it is confirming', (
 	it('keeps stamping across the TTL re-probe, and resets the backoff count', async () => {
 		const t = convexTest(schema, modules);
 		await prove(t);
-		expect((await capability(t)).stampVerpReturnPath).toBe(true);
+		expect(isCustomReturnPathSupported(await capability(t))).toBe(true);
 
 		// 30 days later the verdict is due a re-check; the sweep reopens the row.
 		const reprobeAt = T0 + RETURN_PATH_PROBE_TTL_MS;
@@ -319,8 +322,8 @@ describe('a scheduled RE-PROBE never switches off the stamp it is confirming', (
 		// attributable, and the cell does not silently flip to degraded.
 		const during = await capability(t);
 		expect(during.capability).toBe('supported');
-		expect(during.stampVerpReturnPath).toBe(true);
-		expect(during.degraded).toBe(false);
+		expect(isCustomReturnPathSupported(during)).toBe(true);
+		expect(measurementQualityOf(during)).toBe('comparable');
 
 		const [row] = await t.run(
 			async (ctx) => await ctx.db.query('sendTransportReturnPathProbes').collect()
@@ -355,7 +358,7 @@ describe('a scheduled RE-PROBE never switches off the stamp it is confirming', (
 		const resolved = await capability(t);
 		expect(resolved.capability).toBe('unsupported');
 		expect(resolved.reason).toBe('no_bounce_observed');
-		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
 		const [row] = await t.run(
 			async (ctx) => await ctx.db.query('sendTransportReturnPathProbes').collect()
 		);
@@ -416,6 +419,52 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
 		});
 	}
 
+	const RELAY_TERM = 'include:relay.example.net';
+	const RETURN_PATH_HOST = 'bounces.example.com';
+	const PUBLISHED_SPF = buildReturnPathSpfRecord(['203.0.113.10'], '~all', [RELAY_TERM]);
+
+	/**
+	 * The deployment-side half of the stamp decision: a bounce host whose
+	 * PUBLISHED, VERIFIED SPF authorises the relay. Without it the stamp would
+	 * make the receiver evaluate SPF for the bounce domain against the relay's
+	 * address and fail it, degrading the arm being measured — so the resolver
+	 * refuses, which is asserted on its own below.
+	 */
+	async function authorizeReturnPath(
+		t: ReturnType<typeof convexTest>,
+		options: { host?: string; verified?: boolean; foundValue?: string } = {}
+	) {
+		const host = options.host ?? RETURN_PATH_HOST;
+		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', RETURN_PATH_HOST);
+		vi.stubEnv('MTA_RETURN_PATH_RELAY_SPF', RELAY_TERM);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('domains', {
+				domain: 'example.com',
+				status: 'verified',
+				providerType: 'mta',
+				...(options.host ? { returnPathHost: options.host } : {}),
+				dnsRecords: {
+					mailFrom: [
+						{ type: 'MX', hostname: host, value: 'mail.example.com', priority: 10 },
+						{ type: 'TXT', hostname: host, value: PUBLISHED_SPF },
+					],
+				},
+				verificationResults: {
+					mailFrom: [
+						{ verified: true, lastChecked: T0 - 1_000 },
+						{
+							verified: options.verified ?? true,
+							lastChecked: T0 - 1_000,
+							...(options.foundValue === undefined ? {} : { foundValue: options.foundValue }),
+						},
+					],
+				},
+				createdAt: T0,
+				updatedAt: T0,
+			});
+		});
+	}
+
 	async function plan(t: ReturnType<typeof convexTest>) {
 		return await t.run(
 			async (ctx) =>
@@ -434,7 +483,8 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
 		const t = convexTest(schema, modules);
 		await seedRoute(t, [{ providerType: 'smtp', isEnabled: true }]);
 		await proveRelay(t);
-		expect((await plan(t)).relayStampVerpReturnPath).toBe(true);
+		await authorizeReturnPath(t);
+		expect((await plan(t)).relayReturnPathHost).toBe(RETURN_PATH_HOST);
 	});
 
 	it('the ENV-fallback relay stamps too — no providerRoutes row exists', async () => {
@@ -446,10 +496,11 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
 		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
 		const t = convexTest(schema, modules);
 		await proveRelay(t);
+		await authorizeReturnPath(t);
 		expect(await t.run(async (ctx) => await ctx.db.query('providerRoutes').collect())).toHaveLength(
 			0
 		);
-		expect((await plan(t)).relayStampVerpReturnPath).toBe(true);
+		expect((await plan(t)).relayReturnPathHost).toBe(RETURN_PATH_HOST);
 	});
 
 	it('an mta-only route does NOT stamp, even with a proven relay on file', async () => {
@@ -457,7 +508,8 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
 		const t = convexTest(schema, modules);
 		await seedRoute(t, [{ providerType: 'mta', isEnabled: true }]);
 		await proveRelay(t);
-		expect((await plan(t)).relayStampVerpReturnPath).toBe(false);
+		await authorizeReturnPath(t);
+		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
 	});
 
 	it('a DISABLED smtp entry is not a candidate', async () => {
@@ -468,12 +520,58 @@ describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state'
 			{ providerType: 'smtp', isEnabled: false },
 		]);
 		await proveRelay(t);
-		expect((await plan(t)).relayStampVerpReturnPath).toBe(false);
+		await authorizeReturnPath(t);
+		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
 	});
 
 	it('an UNPROVEN relay never stamps — absence is silent, not an error (D2)', async () => {
 		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
 		const t = convexTest(schema, modules);
-		expect((await plan(t)).relayStampVerpReturnPath).toBe(false);
+		await authorizeReturnPath(t);
+		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
+	});
+
+	it("stamps the From domain's OWN return-path host, not the global one (D11)", async () => {
+		// The direct-MX arm keys the host by the sending domain
+		// (apps/mta/src/smtp/sender.ts). A relay arm that stamped the global host
+		// instead would put the two arms of one cell on DIFFERENT SPF-evaluation
+		// domains for the same From domain, which is exactly the comparability
+		// D11 protects.
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		const t = convexTest(schema, modules);
+		await proveRelay(t);
+		await authorizeReturnPath(t, { host: 'bounces.news.example.com' });
+		expect((await plan(t)).relayReturnPathHost).toBe('bounces.news.example.com');
+	});
+
+	it('refuses the stamp when the bounce host does not authorise the relay', async () => {
+		// The shipped record authorises the MTA pool only. Stamping it on a relay
+		// send would fail SPF for the bounce domain at the receiver — degrading
+		// the very arm under measurement — so the host is withheld and the cell is
+		// simply graded degraded-measurement. Nothing is blocked (D2).
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		const t = convexTest(schema, modules);
+		await proveRelay(t);
+		await authorizeReturnPath(t, {
+			foundValue: buildReturnPathSpfRecord(['203.0.113.10'], '~all'),
+		});
+		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
+	});
+
+	it('refuses the stamp until the return-path record is actually verified', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		const t = convexTest(schema, modules);
+		await proveRelay(t);
+		await authorizeReturnPath(t, { verified: false });
+		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
+	});
+
+	it('refuses the stamp when no relay authorisation is configured at all', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		const t = convexTest(schema, modules);
+		await proveRelay(t);
+		await authorizeReturnPath(t);
+		vi.stubEnv('MTA_RETURN_PATH_RELAY_SPF', '');
+		expect((await plan(t)).relayReturnPathHost).toBeUndefined();
 	});
 });

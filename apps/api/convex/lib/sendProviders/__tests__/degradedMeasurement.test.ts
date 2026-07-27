@@ -3,6 +3,8 @@ import {
 	BOUNCE_TOLERANCE_MULTIPLIER_COMPARABLE,
 	BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK,
 	BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK,
+	isCustomReturnPathSupported,
+	measurementQualityOf,
 	resolveReturnPathCapability,
 	resolveReturnPathCapabilityForEntry,
 	widenBounceTolerance,
@@ -25,8 +27,8 @@ const T0 = Date.UTC(2026, 6, 27, 0, 0, 0);
 describe('degraded measurement — the flag', () => {
 	it('an unprobed relay is degraded with the widest tolerance', () => {
 		const resolved = resolveReturnPathCapability('smtp', null, T0);
-		expect(resolved.measurement).toBe('degraded');
-		expect(resolved.degraded).toBe(true);
+		expect(measurementQualityOf(resolved)).toBe('degraded');
+		expect(measurementQualityOf(resolved)).toBe('degraded');
 		expect(widenBounceTolerance(0.02, resolved)).toBeCloseTo(
 			0.02 * BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK
 		);
@@ -46,7 +48,7 @@ describe('degraded measurement — the flag', () => {
 
 	it('a comparable arm is never widened', () => {
 		const resolved = resolveReturnPathCapability('mta', null, T0);
-		expect(resolved.measurement).toBe('comparable');
+		expect(measurementQualityOf(resolved)).toBe('comparable');
 		expect(resolved.bounceToleranceMultiplier).toBe(BOUNCE_TOLERANCE_MULTIPLIER_COMPARABLE);
 		expect(widenBounceTolerance(0.02, resolved)).toBe(0.02);
 	});
@@ -77,15 +79,15 @@ describe('D2 — absence blocks nothing', () => {
 		// something — which is true of every core entry today.
 		const resolved = resolveReturnPathCapabilityForEntry({}, null, T0);
 		expect(resolved.capability).toBe('unsupported');
-		expect(resolved.stampVerpReturnPath).toBe(false);
-		expect(resolved.degraded).toBe(true);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
+		expect(measurementQualityOf(resolved)).toBe('degraded');
 		// No declared feedback channel either ⇒ the widest tolerance, never a throw.
 		expect(resolved.bounceToleranceMultiplier).toBe(BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK);
 	});
 
 	it('an undeclared transport that DOES report feedback still fails closed on the stamp', () => {
 		const resolved = resolveReturnPathCapabilityForEntry({ hasProviderFeedback: true }, null, T0);
-		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
 		expect(resolved.bounceToleranceMultiplier).toBe(BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK);
 	});
 
@@ -93,8 +95,7 @@ describe('D2 — absence blocks nothing', () => {
 		const { envelopeFrom, isVerp } = resolveRelayEnvelopeSender({
 			composedEnvelopeFrom: 'news@example.com',
 			messageId: 'msg-1',
-			customReturnPath: false,
-			returnPathDomain: undefined,
+			returnPathHost: undefined,
 			verpKey: undefined,
 			now: T0,
 		});
@@ -109,8 +110,8 @@ describe('D2 — absence blocks nothing', () => {
 	// simply switched off.
 	it('a degraded cell is still a SENDING cell — degradation carries no blocking signal', () => {
 		const resolved = resolveReturnPathCapability('smtp', null, T0);
-		expect(resolved.degraded).toBe(true);
-		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(measurementQualityOf(resolved)).toBe('degraded');
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
 		expect(Number.isFinite(resolved.bounceToleranceMultiplier)).toBe(true);
 		expect(resolved.bounceToleranceMultiplier).toBeGreaterThan(0);
 		// The send this posture governs still leaves, with the composer's own
@@ -118,8 +119,7 @@ describe('D2 — absence blocks nothing', () => {
 		const { envelopeFrom, isVerp } = resolveRelayEnvelopeSender({
 			composedEnvelopeFrom: 'news@example.com',
 			messageId: 'msg-degraded',
-			customReturnPath: resolved.stampVerpReturnPath,
-			returnPathDomain: 'bounces.example.com',
+			returnPathHost: isCustomReturnPathSupported(resolved) ? 'bounces.example.com' : undefined,
 			verpKey: 'k'.repeat(32),
 			now: T0,
 		});

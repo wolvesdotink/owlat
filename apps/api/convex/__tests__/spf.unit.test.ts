@@ -14,6 +14,7 @@ import {
 	DEFAULT_SPF_QUALIFIER,
 	buildReturnPathSpfRecord,
 	buildSpfRecordValue,
+	parseReturnPathRelaySpfTerms,
 	countSpfRecords,
 	detectMultipleSpf,
 	emailDomain,
@@ -220,5 +221,58 @@ describe('emailDomain', () => {
 
 	it('returns empty string for a malformed address', () => {
 		expect(emailDomain('no-at-sign')).toBe('');
+	});
+});
+
+/**
+ * Relay authorisation on the return-path host (plan G-08).
+ *
+ * The generated record authorises the MTA pool IPs, so a relay send stamped
+ * with `bounce+…@<host>` would be evaluated against the RELAY's address and
+ * fail SPF — degrading the very arm under measurement. These terms are how the
+ * operator closes that gap. The parser is read on the SEND path, so it is total:
+ * garbage is dropped, never thrown, because a typo must not block mail (D2).
+ */
+describe('parseReturnPathRelaySpfTerms', () => {
+	it('accepts the mechanism forms a relay is actually authorised with', () => {
+		expect(parseReturnPathRelaySpfTerms('include:relay.example.net ip4:198.51.100.7')).toEqual([
+			'include:relay.example.net',
+			'ip4:198.51.100.7',
+		]);
+		expect(parseReturnPathRelaySpfTerms('a:relay.example.net,mx:relay.example.net')).toEqual([
+			'a:relay.example.net',
+			'mx:relay.example.net',
+		]);
+	});
+
+	it('is total on absent, blank and garbage input', () => {
+		expect(parseReturnPathRelaySpfTerms(undefined)).toEqual([]);
+		expect(parseReturnPathRelaySpfTerms('   ')).toEqual([]);
+		// Dropped, not thrown: an unrecognised term simply leaves the stamp off.
+		expect(parseReturnPathRelaySpfTerms('ptr redirect=evil.test -all')).toEqual([]);
+		expect(parseReturnPathRelaySpfTerms('include:ok.example nonsense')).toEqual([
+			'include:ok.example',
+		]);
+	});
+
+	it('normalises case and de-duplicates', () => {
+		expect(
+			parseReturnPathRelaySpfTerms('INCLUDE:Relay.Example.Net include:relay.example.net')
+		).toEqual(['include:relay.example.net']);
+	});
+
+	it('emits the terms into the published record, after the pool IPs', () => {
+		const record = buildReturnPathSpfRecord(
+			['203.0.113.10'],
+			DEFAULT_SPF_QUALIFIER,
+			parseReturnPathRelaySpfTerms('include:relay.example.net')
+		);
+		expect(record).toBe('v=spf1 ip4:203.0.113.10 include:relay.example.net ~all');
+	});
+
+	it('leaves the shipped record byte-identical when nothing is configured', () => {
+		expect(buildReturnPathSpfRecord(['203.0.113.10'], DEFAULT_SPF_QUALIFIER, [])).toBe(
+			buildReturnPathSpfRecord(['203.0.113.10'], DEFAULT_SPF_QUALIFIER)
+		);
 	});
 });

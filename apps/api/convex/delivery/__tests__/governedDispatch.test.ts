@@ -351,13 +351,13 @@ describe('dispatchGovernedEmail', () => {
 		}
 	);
 	describe('relay arm — the custom return path (plan G-08)', () => {
-		function relayRouting(stampRelayVerpReturnPath: boolean) {
+		function relayRouting(relayReturnPathHost: string | undefined) {
 			resolveLastMileRouting.mockResolvedValue({
 				kind: 'ready',
 				providerKind: 'smtp',
 				route: null,
 				organizationId: 'org-1',
-				stampRelayVerpReturnPath,
+				relayReturnPathHost,
 			});
 			sendProviderDispatch.mockResolvedValue({
 				result: { success: true, id: 'relay-message-id' },
@@ -374,26 +374,26 @@ describe('dispatchGovernedEmail', () => {
 			return calls[calls.length - 1]?.[3];
 		}
 
-		it('passes customReturnPath through to SmtpExtras when the relay is PROVEN', async () => {
-			relayRouting(true);
+		it('passes the authorised return-path host through to SmtpExtras', async () => {
+			relayRouting('bounces.example.com');
 			await dispatchGovernedEmail(ctx, baseRequest);
 			expect(sendProviderDispatch).toHaveBeenCalledWith(ctx, 'smtp', expect.anything(), {
-				customReturnPath: true,
+				returnPathHost: 'bounces.example.com',
 			});
-			expect(dispatchedExtras()).toEqual({ customReturnPath: true });
+			expect(dispatchedExtras()).toEqual({ returnPathHost: 'bounces.example.com' });
 		});
 
-		it('fails closed to the composer envelope sender when it is not proven', async () => {
-			relayRouting(false);
+		it('fails closed to the composer envelope sender when no host was authorised', async () => {
+			relayRouting(undefined);
 			await dispatchGovernedEmail(ctx, baseRequest);
-			expect(dispatchedExtras()).toEqual({ customReturnPath: false });
+			expect(dispatchedExtras()).toEqual({});
 		});
 
 		it('reads the capability from the ROUTING result — no extra query per send', async () => {
 			// The routing pass already ran a query; a second round trip on the hot
 			// send path to read a deployment-scoped fact would be pure overhead. The
 			// ctx here deliberately has NO runQuery, so a reintroduced read throws.
-			relayRouting(true);
+			relayRouting('bounces.example.com');
 			await expect(dispatchGovernedEmail(ctx, baseRequest)).resolves.toMatchObject({
 				success: true,
 				providerType: 'smtp',

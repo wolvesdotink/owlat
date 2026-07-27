@@ -71,9 +71,9 @@ afterEach(() => {
 });
 
 describe('smtpSendProvider.sendEmail — the custom return path on the wire', () => {
-	it('stamps the VERP envelope sender when the capability is proven', async () => {
+	it('stamps the VERP envelope sender at the host the routing pass authorised', async () => {
 		const attempt = await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, {
-			customReturnPath: true,
+			returnPathHost: 'bounces.example.com',
 		});
 		// Narrows EmailSendAttempt to its success arm — `id` only exists there, and
 		// the assertion below is this file's strongest claim, so it must not rest on
@@ -86,8 +86,8 @@ describe('smtpSendProvider.sendEmail — the custom return path on the wire', ()
 		expect(parseVerpAddress(envelope.from, KEY, NOW)).toBe(attempt.id);
 	});
 
-	it('leaves the composed envelope sender alone when it is NOT proven', async () => {
-		await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, { customReturnPath: false });
+	it('leaves the composed envelope sender alone when no host was authorised', async () => {
+		await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, {});
 		expect(lastEnvelope().from).toBe('news@example.com');
 		// …and with no extras at all — the exact shipped behaviour.
 		await smtpSendProvider.sendEmail(TRANSPORT, PARAMS);
@@ -98,8 +98,8 @@ describe('smtpSendProvider.sendEmail — the custom return path on the wire', ()
 		// Same Message-ID on both runs, so any byte difference is caused by the
 		// return path and nothing else. (A real pair of sends differs only in the
 		// Message-ID and Date the composer generates.)
-		const withVerp = await runAndCapture({ customReturnPath: true });
-		const withoutVerp = await runAndCapture({ customReturnPath: false });
+		const withVerp = await runAndCapture({ returnPathHost: 'bounces.example.com' });
+		const withoutVerp = await runAndCapture({});
 
 		expect(withVerp.data.equals(withoutVerp.data)).toBe(true);
 		expect(withVerp.to).toEqual(withoutVerp.to);
@@ -113,13 +113,13 @@ describe('smtpSendProvider.sendEmail — the custom return path on the wire', ()
 
 	it('does not stamp when the deployment configured no signing key', async () => {
 		vi.stubEnv('MTA_BOUNCE_VERP_KEY', '');
-		await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, { customReturnPath: true });
+		await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, { returnPathHost: 'bounces.example.com' });
 		expect(lastEnvelope().from).toBe('news@example.com');
 	});
 
 	it('does not stamp under a key SHORTER than the MTA would accept', async () => {
 		vi.stubEnv('MTA_BOUNCE_VERP_KEY', 'x'.repeat(VERP_KEY_MIN_BYTES - 1));
-		await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, { customReturnPath: true });
+		await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, { returnPathHost: 'bounces.example.com' });
 		expect(lastEnvelope().from).toBe('news@example.com');
 	});
 });
@@ -131,7 +131,7 @@ describe('smtpSendProvider.sendEmail — the custom return path on the wire', ()
  * path or not; everything else must not, which is what D11 asserts.
  */
 async function runAndCapture(extras: {
-	customReturnPath: boolean;
+	returnPathHost?: string;
 }): Promise<{ from: string; to: string[]; data: Buffer }> {
 	await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, extras);
 	const envelope = lastEnvelope();

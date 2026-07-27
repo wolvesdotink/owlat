@@ -18,8 +18,7 @@ function stamp(overrides: Partial<Parameters<typeof resolveRelayEnvelopeSender>[
 	return resolveRelayEnvelopeSender({
 		composedEnvelopeFrom: 'news@example.com',
 		messageId: 'msg-abc-123',
-		customReturnPath: true,
-		returnPathDomain: DOMAIN,
+		returnPathHost: DOMAIN,
 		verpKey: KEY,
 		now: NOW,
 		...overrides,
@@ -50,8 +49,8 @@ describe('resolveRelayEnvelopeSender — VERP on the relay arm', () => {
 		expect(parseVerpAddress(envelopeFrom, 'other-key', NOW)).toBeNull();
 	});
 
-	it('keeps the composed envelope sender when the capability is unproven', () => {
-		const { envelopeFrom, isVerp } = stamp({ customReturnPath: false });
+	it('keeps the composed envelope sender when no host was authorised', () => {
+		const { envelopeFrom, isVerp } = stamp({ returnPathHost: undefined });
 		expect(isVerp).toBe(false);
 		expect(envelopeFrom).toBe('news@example.com');
 	});
@@ -70,16 +69,6 @@ describe('resolveRelayEnvelopeSender — VERP on the relay arm', () => {
 		expect(isVerp).toBe(false);
 		expect(envelopeFrom).toBe('news@example.com');
 		expect(stamp({ verpKey: 'x'.repeat(VERP_KEY_MIN_BYTES) }).isVerp).toBe(true);
-	});
-
-	it('keeps the composed envelope sender when no return-path domain is set', () => {
-		expect(stamp({ returnPathDomain: undefined }).envelopeFrom).toBe('news@example.com');
-		expect(stamp({ returnPathDomain: '   ' }).envelopeFrom).toBe('news@example.com');
-	});
-
-	it('tolerates a trailing-dot (absolute) return-path domain', () => {
-		const { envelopeFrom } = stamp({ returnPathDomain: `${DOMAIN}.` });
-		expect(envelopeFrom.endsWith(`@${DOMAIN}`)).toBe(true);
 	});
 
 	it('degenerates safely on an empty message id rather than signing nothing', () => {
