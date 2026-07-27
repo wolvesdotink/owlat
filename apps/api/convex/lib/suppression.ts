@@ -81,6 +81,13 @@ export async function suppressEmail(
 		reason: BlockReason;
 		bounceType?: 'hard' | 'soft' | undefined;
 		notes?: string | undefined;
+		/**
+		 * The instant to stamp on the row. Callers that already hold a decision
+		 * clock pass it, so the blocklist row and whatever else that decision
+		 * writes cannot disagree about when it happened — and their fixtures stay
+		 * deterministic. Defaults to `Date.now()`.
+		 */
+		now?: number | undefined;
 	}
 ): Promise<Id<'blockedEmails'> | null> {
 	const normalized = normalizeEmail(args.email);
@@ -95,7 +102,7 @@ export async function suppressEmail(
 		reason: args.reason,
 		...(args.bounceType ? { bounceType: args.bounceType } : {}),
 		...(args.notes ? { notes: args.notes } : {}),
-		createdAt: Date.now(),
+		createdAt: args.now ?? Date.now(),
 	});
 
 	await scheduleSuppressionMirror(ctx, {
