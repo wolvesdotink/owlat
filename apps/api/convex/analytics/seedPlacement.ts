@@ -28,6 +28,7 @@
  */
 
 import { v } from 'convex/values';
+import { internal } from '../_generated/api';
 import { internalMutation, internalQuery, type DatabaseReader } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import {
@@ -48,6 +49,9 @@ export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 /** Hard page bound — the ledger is never `.collect()`ed (D16). */
 const SEED_PROBE_SCAN_LIMIT = 500;
 
+/** Rows a single cleanup pass deletes before rescheduling itself. */
+const SEED_PROBE_CLEANUP_BATCH = 200;
+
 // ============ SEED ACCOUNTS ============
 
 /**
@@ -63,11 +67,15 @@ export interface SeedAccountView {
 	rotationReminderDue: boolean;
 }
 
-function toSeedAccountView(account: Doc<'externalMailAccounts'>, now: number): SeedAccountView {
+function toSeedAccountView(
+	account: Doc<'externalMailAccounts'>,
+	address: string,
+	now: number
+): SeedAccountView {
 	return {
 		accountId: account._id,
 		provider: account.seedProvider ?? 'other',
-		address: account.imapUsername,
+		address,
 		connectedAt: account.createdAt,
 		rotationReminderDue: shouldRemindSeedRotation({
 			connectedAt: account.createdAt,
@@ -88,9 +96,16 @@ export async function loadSeedAccounts(
 			q.eq('organizationId', organizationId).eq('purpose', 'seed')
 		)
 		.take(50);
-	return rows
-		.filter((row) => row.status !== 'disconnected')
-		.map((row) => toSeedAccountView(row, now));
+	const live = rows.filter((row) => row.status !== 'disconnected');
+	const views: SeedAccountView[] = [];
+	for (const row of live) {
+		// `imapUsername` is the LOGIN, which for several providers is not an email
+		// address at all. The deliverable address is the linked mailbox's.
+		const mailbox = await db.get(row.mailboxId);
+		if (!mailbox) continue;
+		views.push(toSeedAccountView(row, mailbox.address, now));
+	}
+	return views;
 }
 
 export const listSeedAccounts = internalQuery({
@@ -104,10 +119,17 @@ export const listSeedAccounts = internalQuery({
  * is advisory: it never blocks a send, a promotion, or a screen.
  */
 export const markSeedRotationReminded = internalMutation({
-	args: { accountId: v.id('externalMailAccounts'), now: v.number() },
+	args: {
+		organizationId: v.string(),
+		accountId: v.id('externalMailAccounts'),
+		now: v.number(),
+	},
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
 		if (!account || account.purpose !== 'seed') return { updated: false };
+		// Defense in depth at the poller boundary: an org may only ever touch its
+		// own seed accounts, even through an internal function.
+		if (account.organizationId !== args.organizationId) return { updated: false };
 		await ctx.db.patch(args.accountId, {
 			seedRotationRemindedAt: args.now,
 			updatedAt: args.now,
@@ -125,6 +147,7 @@ export const markSeedRotationReminded = internalMutation({
  */
 export const recordSeedProbeClassification = internalMutation({
 	args: {
+		organizationId: v.string(),
 		probeId: v.string(),
 		folderName: v.union(v.string(), v.null()),
 		now: v.number(),
@@ -137,6 +160,8 @@ export const recordSeedProbeClassification = internalMutation({
 			.withIndex('by_probe_id', (q) => q.eq('probeId', args.probeId))
 			.unique();
 		if (!probe) return { recorded: false as const };
+		// Defense in depth at the poller boundary.
+		if (probe.organizationId !== args.organizationId) return { recorded: false as const };
 
 		const classification = classifySeedFolder(args.folderName, probe.provider);
 		const hygiene = planSeedHygiene({
@@ -162,6 +187,46 @@ export const recordSeedProbeClassification = internalMutation({
 			placement: classification.placement,
 			hygiene,
 		};
+	},
+});
+
+/**
+ * Record which arm actually carried a shadow copy, written by the worker once
+ * the governed route resolved. Attribution is the whole point of a placement
+ * observation, and the requested `providerType` is not the resolved one.
+ */
+export const recordSeedProbeDispatch = internalMutation({
+	args: {
+		probeRef: v.id('seedPlacementProbes'),
+		transportArm: v.union(v.literal('own'), v.literal('reference')),
+		now: v.number(),
+	},
+	handler: async (ctx, args) => {
+		const probe = await ctx.db.get(args.probeRef);
+		if (!probe) return { recorded: false };
+		await ctx.db.patch(args.probeRef, {
+			transportArm: args.transportArm,
+			dispatchedAt: args.now,
+		});
+		return { recorded: true };
+	},
+});
+
+/**
+ * The probe's RFC 8058 one-click target was exercised. There is no contact to
+ * unsubscribe — this only timestamps the probe row, so the operator can see
+ * that the seed's one-click endpoint really works end to end.
+ */
+export const recordSeedProbeUnsubscribe = internalMutation({
+	args: { probeId: v.string(), now: v.number() },
+	handler: async (ctx, args) => {
+		const probe = await ctx.db
+			.query('seedPlacementProbes')
+			.withIndex('by_probe_id', (q) => q.eq('probeId', args.probeId))
+			.unique();
+		if (!probe || probe.unsubscribedAt !== undefined) return { recorded: false };
+		await ctx.db.patch(probe._id, { unsubscribedAt: args.now });
+		return { recorded: true };
 	},
 });
 
@@ -192,6 +257,9 @@ export async function summarizeSeedPlacementWindow(
 		.withIndex('by_org_and_sent_at', (q) =>
 			q.eq('organizationId', organizationId).gte('sentAt', windowStart)
 		)
+		// Newest first: under volume the tripwire must truncate the OLDEST
+		// evidence, never the freshest.
+		.order('desc')
 		.take(SEED_PROBE_SCAN_LIMIT);
 
 	const observations: SeedObservation[] = [];
@@ -255,10 +323,17 @@ export const deleteExpiredSeedProbes = internalMutation({
 		const expired = await ctx.db
 			.query('seedPlacementProbes')
 			.withIndex('by_expires_at', (q) => q.lte('expiresAt', now))
-			.take(200);
+			.take(SEED_PROBE_CLEANUP_BATCH);
 		for (const row of expired) {
 			await ctx.db.delete(row._id);
 		}
-		return { deleted: expired.length };
+		// A full batch means there is more to drop. Continue immediately rather
+		// than waiting 24h — ten seeds x twenty campaigns a day outpaces a single
+		// bounded pass, and an unbounded ledger is not "retention-bounded" (D16).
+		// Same self-rescheduling idiom as `webhooks/cleanup.ts`.
+		if (expired.length === SEED_PROBE_CLEANUP_BATCH) {
+			await ctx.scheduler.runAfter(0, internal.analytics.seedPlacement.deleteExpiredSeedProbes, {});
+		}
+		return { deleted: expired.length, hasMore: expired.length === SEED_PROBE_CLEANUP_BATCH };
 	},
 });
