@@ -60,7 +60,12 @@ import { dnsRecordsValidator, verificationResultsValidator } from '../lib/convex
 import { getOptional, getRequired } from '../lib/env';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { buildDmarcRecordValue, DEFAULT_DMARC_POLICY, dmarcPolicyValidator } from './dmarc';
-import { buildReturnPathMailFromRecords, parsePoolIps, resolveSpfQualifier } from './spf';
+import {
+	buildReturnPathMailFromRecords,
+	parsePoolIps,
+	parseReturnPathRelaySpfTerms,
+	resolveSpfQualifier,
+} from './spf';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './providers/ses/mailFrom';
 import { logWarn } from '../lib/runtimeLog';
 import {
@@ -883,7 +888,17 @@ function buildReturnPathMailFrom(
 				`[MTA] return-path host ${host} set for ${domainName} but EHLO_HOSTNAME is empty — no bounce MX emitted; remote MTAs cannot deliver DSNs to bounce+…@${host}.`
 			);
 		}
-		return buildReturnPathMailFromRecords(host, poolIps, qualifier, mailHost);
+		// The SAME bundle the registration path emits — including the relay
+		// authorisation terms. A return-path EDIT that dropped them would
+		// republish a record the relay is no longer covered by, silently
+		// withdrawing the VERP stamp on the next verification.
+		return buildReturnPathMailFromRecords(
+			host,
+			poolIps,
+			qualifier,
+			mailHost,
+			parseReturnPathRelaySpfTerms(getOptional('MTA_RETURN_PATH_RELAY_SPF'))
+		);
 	}
 	const sesMailFrom = resolveSesMailFrom(domainName, host);
 	if (!sesMailFrom) return undefined;
