@@ -132,6 +132,38 @@ describe('warming regression — schedule semantics are unchanged', () => {
 		expect(await redis.keys(`mta:warming:{warming:${ip}}:provider:*:state`)).toEqual([]);
 	});
 
+	/**
+	 * D1/D19: the additive dimension must not make the AUTHORITATIVE schedule more
+	 * fragile. The per-UTC-day guard is armed before the shipped cascade runs, so
+	 * anything that throws before that cascade completes would cost this IP its
+	 * whole day of schedule progress — including the critical HALT branch — with
+	 * nothing to retry it. The provider evaluation therefore runs last and its
+	 * failure is swallowed.
+	 */
+	it('advances the per-IP schedule exactly once even if the provider evaluation fails', async () => {
+		const today = await seedCleanDay(700);
+		await redis.hset(warmingProviderDailyStatsKey(ip, 'gmail', YESTERDAY), 'sent', '700');
+		// Only the provider evaluation goes through a pipeline; the shipped
+		// cascade issues plain commands.
+		const pipeline = vi.spyOn(redis, 'pipeline').mockImplementation(() => {
+			throw new Error('MOVED 1234 10.0.0.9:6379');
+		});
+
+		await expect(evaluateDay(redis, ip, config)).resolves.toBeUndefined();
+
+		const state = await getWarmingState(redis, ip);
+		expect(pipeline).toHaveBeenCalled();
+		expect(state?.lastEvaluatedDate).toBe(today);
+		expect(state?.currentDay).toBe(7);
+		expect(state?.dailyCap).toBe(getWarmingCapForDay(7));
+
+		// And the guard still holds for the rest of the day: the failure does not
+		// buy the schedule a second advance either.
+		pipeline.mockRestore();
+		await evaluateDay(redis, ip, config);
+		expect((await getWarmingState(redis, ip))?.currentDay).toBe(7);
+	});
+
 	it('advances again once the UTC date rolls over', async () => {
 		const today = await seedCleanDay(700);
 		await evaluateDay(redis, ip, config);

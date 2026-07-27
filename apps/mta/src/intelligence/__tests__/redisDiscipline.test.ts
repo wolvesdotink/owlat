@@ -6,11 +6,11 @@ import {
 	recordProviderWarmingOutcome,
 	recordProviderWarmingSend,
 	evaluateProviderWarmingDay,
-	checkProviderCap,
 	providerCapVerdict,
-	readBulkSentToday,
+	readProviderVolumePressure,
 	readWarmingCapGateInputs,
 } from '../warmingProviderStore.js';
+import { resolveProviderCap } from './helpers/providerCapGate.js';
 import {
 	PROVIDER_DAILY_STATS_TTL_SECONDS,
 	PROVIDER_STATE_TTL_SECONDS,
@@ -83,7 +83,7 @@ describe('per-provider warming Redis discipline', () => {
 	it('creates no bulk key at all for transactional traffic', async () => {
 		await recordProviderWarmingSend(redis, ref('gmail'), 'transactional');
 		expect(await redis.exists(warmingBulkDailyKey(ip, utcDate))).toBe(0);
-		expect(await readBulkSentToday(redis, ip, utcDate)).toBe(0);
+		expect((await readWarmingCapGateInputs(redis, ref('gmail'))).bulkSentToday).toBe(0);
 	});
 
 	it('refreshes rather than multiplies keys as traffic flows', async () => {
@@ -98,7 +98,7 @@ describe('per-provider warming Redis discipline', () => {
 			warmingProviderStateKey(ip, 'gmail'),
 		]);
 		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'sentToday')).toBe('250');
-		expect(await readBulkSentToday(redis, ip, utcDate)).toBe(250);
+		expect((await readWarmingCapGateInputs(redis, ref('gmail'))).bulkSentToday).toBe(250);
 	});
 
 	it('bounds the key space by provider and by day, never by message', async () => {
@@ -110,7 +110,7 @@ describe('per-provider warming Redis discipline', () => {
 	});
 
 	it('reads a cap without creating a key for a provider that has never sent', async () => {
-		await checkProviderCap(redis, ref('apple'), 500);
+		await resolveProviderCap(redis, ref('apple'), 500);
 		expect(await redis.exists(warmingProviderStateKey(ip, 'apple'))).toBe(0);
 		expect(await warmingKeys()).toEqual([]);
 	});
@@ -129,12 +129,10 @@ describe('per-provider warming Redis discipline', () => {
 		);
 		await redis.expire(warmingProviderStateKey(ip, 'gmail'), 60);
 
-		const gate = await checkProviderCap(redis, ref('gmail'), 1000);
-		const batched = await readWarmingCapGateInputs(redis, ref('gmail'));
+		const gate = await resolveProviderCap(redis, ref('gmail'), 1000);
 
 		// The stale counter reads as zero...
-		expect(gate.sentToday).toBe(0);
-		expect(providerCapVerdict(batched, 1000)).toEqual(gate);
+		expect(gate).toMatchObject({ sentToday: 0, capMultiplier: 0.5, allowed: true });
 		// ...without the read having touched the row or its TTL.
 		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'sentToday')).toBe('900');
 		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'sentTodayReset')).toBe(
@@ -147,7 +145,7 @@ describe('per-provider warming Redis discipline', () => {
 		expect(await redis.ttl(warmingProviderStateKey(ip, 'gmail'))).toBe(PROVIDER_STATE_TTL_SECONDS);
 	});
 
-	it('reads the whole cap-gate input set in ONE pipelined round trip', async () => {
+	it('reads the whole cap-gate input set in one tick, without a pipeline object', async () => {
 		await recordProviderWarmingSend(redis, ref('microsoft'), 'campaign');
 		await recordProviderVolumePressure(
 			redis,
@@ -155,14 +153,50 @@ describe('per-provider warming Redis discipline', () => {
 			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
 		);
 		const before = await warmingKeys();
+		// The three commands are issued in the SAME tick, which ioredis
+		// auto-pipelines into one write to the socket. They must NOT go through
+		// `redis.pipeline()`: this read runs on every dispatch attempt, and
+		// coupling it to that object makes it collide with any unrelated caller
+		// that stubs pipelines.
+		const pipeline = vi.spyOn(redis, 'pipeline');
 
 		const inputs = await readWarmingCapGateInputs(redis, ref('microsoft'));
 
+		expect(pipeline).not.toHaveBeenCalled();
 		expect(inputs.bulkSentToday).toBe(1);
 		expect(inputs.volumePressure).toBe(1);
 		expect(providerCapVerdict(inputs, 1000)).toMatchObject({ allowed: true, sentToday: 1 });
 		// One read, and it created nothing.
 		expect(await warmingKeys()).toEqual(before);
+		pipeline.mockRestore();
+	});
+
+	it('degrades an ADVISORY read failure to exactly the shipped behaviour', async () => {
+		// Gates 2 and 3 are advisory counters; the per-IP cap above them is the
+		// authoritative gate. A Redis blip on this read must therefore never
+		// withhold an attempt gate 1 would have allowed.
+		const broken = {
+			hmget: vi.fn().mockRejectedValue(new Error('READONLY')),
+			get: vi.fn().mockRejectedValue(new Error('READONLY')),
+		} as unknown as RealRedis;
+
+		const inputs = await readWarmingCapGateInputs(broken, ref('gmail'));
+
+		expect(inputs).toEqual({
+			ref: ref('gmail'),
+			providerState: [],
+			bulkSentToday: 0,
+			volumePressure: 0,
+		});
+		// The empty state resolves to the FULL per-IP cap — the degenerate case.
+		expect(providerCapVerdict(inputs, 1000)).toEqual({
+			allowed: true,
+			sentToday: 0,
+			capMultiplier: 1,
+			providerCap: 1000,
+		});
+		// The narrow reservation-path read fails open the same way.
+		expect(await readProviderVolumePressure(broken, ip, 'gmail')).toBe(0);
 	});
 
 	it('creates no key when the daily evaluation has nothing to evaluate', async () => {
@@ -177,7 +211,7 @@ describe('per-provider warming Redis discipline', () => {
 		await recordProviderWarmingSend(redis, ref('gmail'), 'campaign', identity);
 		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'sentToday')).toBe('1');
 		expect(await redis.hget(warmingProviderDailyStatsKey(ip, 'gmail', utcDate), 'sent')).toBe('1');
-		expect(await readBulkSentToday(redis, ip, utcDate)).toBe(1);
+		expect((await readWarmingCapGateInputs(redis, ref('gmail'))).bulkSentToday).toBe(1);
 	});
 
 	it('keeps a replayed deferral and a replayed pressure verdict counted once', async () => {

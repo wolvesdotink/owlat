@@ -3,7 +3,6 @@ import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import { checkCap, evaluateDay, initializeWarming, recordSend } from '../warming.js';
 import {
-	checkProviderCap,
 	recordProviderVolumePressure,
 	recordProviderWarmingOutcome,
 	recordProviderWarmingSend,
@@ -24,6 +23,7 @@ import {
 	warmingProviderStateKey,
 	warmingStateKey,
 } from '../warmingKeys.js';
+import { resolveProviderCap } from './helpers/providerCapGate.js';
 import type { DestinationProviderKey } from '../../types.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -76,7 +76,7 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 
 	it('gives an untouched provider the full per-IP cap (shipped behaviour is the degenerate case)', async () => {
 		await seedIpCap(1000);
-		const gmail = await checkProviderCap(redis, ref('gmail'), 1000);
+		const gmail = await resolveProviderCap(redis, ref('gmail'), 1000);
 		expect(gmail).toMatchObject({ allowed: true, sentToday: 0, providerCap: 1000 });
 		expect(gmail.capMultiplier).toBe(PROVIDER_WARMING_POLICY.defaultCapMultiplier);
 	});
@@ -85,18 +85,18 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 		await seedIpCap(1000);
 		await narrowProvider('microsoft', 0.05);
 
-		expect((await checkProviderCap(redis, ref('gmail'), 1000)).providerCap).toBe(1000);
-		expect((await checkProviderCap(redis, ref('microsoft'), 1000)).providerCap).toBe(50);
+		expect((await resolveProviderCap(redis, ref('gmail'), 1000)).providerCap).toBe(1000);
+		expect((await resolveProviderCap(redis, ref('microsoft'), 1000)).providerCap).toBe(50);
 
 		for (let index = 0; index < 50; index += 1) {
 			await recordProviderWarmingSend(redis, ref('microsoft'), 'campaign');
 		}
-		expect(await checkProviderCap(redis, ref('microsoft'), 1000)).toMatchObject({
+		expect(await resolveProviderCap(redis, ref('microsoft'), 1000)).toMatchObject({
 			allowed: false,
 			sentToday: 50,
 		});
 		// Microsoft crawling must not cost Google a single send.
-		expect(await checkProviderCap(redis, ref('gmail'), 1000)).toMatchObject({
+		expect(await resolveProviderCap(redis, ref('gmail'), 1000)).toMatchObject({
 			allowed: true,
 			sentToday: 0,
 		});
@@ -108,9 +108,9 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 		for (let index = 0; index < 40; index += 1) {
 			await recordProviderWarmingSend(redis, ref('yahoo'), 'campaign');
 		}
-		expect((await checkProviderCap(redis, ref('yahoo'), 1000)).sentToday).toBe(40);
-		expect((await checkProviderCap(redis, ref('apple'), 1000)).sentToday).toBe(0);
-		expect((await checkProviderCap(redis, ref('other'), 1000)).sentToday).toBe(0);
+		expect((await resolveProviderCap(redis, ref('yahoo'), 1000)).sentToday).toBe(40);
+		expect((await resolveProviderCap(redis, ref('apple'), 1000)).sentToday).toBe(0);
+		expect((await resolveProviderCap(redis, ref('other'), 1000)).sentToday).toBe(0);
 	});
 
 	it('never lets the union of provider sends exceed the per-IP daily cap', async () => {
@@ -124,7 +124,7 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 			const provider = providers[attempt % providers.length]!;
 			const ipGate = await checkCap(redis, ip);
 			if (!ipGate.allowed) break;
-			const providerGate = await checkProviderCap(redis, ref(provider), ipGate.dailyCap);
+			const providerGate = await resolveProviderCap(redis, ref(provider), ipGate.dailyCap);
 			if (!providerGate.allowed) continue;
 			await recordSend(redis, ip);
 			await recordProviderWarmingSend(redis, ref(provider), 'campaign');
@@ -563,7 +563,7 @@ describe('per-provider caps as the hourly cron actually drives them', () => {
 		// Gmail's state key exists (it sent), but nothing narrowed it.
 		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'capMultiplier')).toBeNull();
 		expect(
-			(await checkProviderCap(redis, { ip, provider: 'gmail', utcDate: DAY_N1 }, 700)).providerCap
+			(await resolveProviderCap(redis, { ip, provider: 'gmail', utcDate: DAY_N1 }, 700)).providerCap
 		).toBe(700);
 	});
 

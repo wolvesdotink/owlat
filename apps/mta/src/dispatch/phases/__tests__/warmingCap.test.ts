@@ -182,11 +182,25 @@ describe('warmingCapPhase', () => {
 			allowed: true,
 			reservation,
 		});
+		await recordProviderVolumePressure(
+			redis,
+			{ ip: IP, provider: 'microsoft', utcDate: UTC_DATE },
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
+		);
+		// Gates 2 and 3 are skipped by design here, so their inputs must not even
+		// be read: two wasted keys and two extra chances to fail on the one path
+		// the phase has already promised capacity to.
+		const hmget = vi.spyOn(redis, 'hmget');
 
 		const out = await warmingCapPhase.run(deps, ctx);
 
 		expect(out.kind).toBe('continue');
+		if (out.kind !== 'continue') return;
 		expect(warming.checkCap).not.toHaveBeenCalled();
+		expect(hmget).not.toHaveBeenCalled();
+		// ...but the retry-backoff signal still reaches the outcome reducer.
+		expect(out.ctx.providerVolumePressure).toBe(1);
+		hmget.mockRestore();
 	});
 
 	describe('gate 2 — the per-(IP x mailbox provider) cap', () => {

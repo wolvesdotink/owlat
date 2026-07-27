@@ -2,7 +2,8 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import { checkCap, getWarmingState, recordSend, reserveWarmingSlot } from '../warming.js';
-import { checkProviderCap, recordProviderWarmingSend } from '../warmingProviderStore.js';
+import { recordProviderWarmingSend } from '../warmingProviderStore.js';
+import { resolveProviderCap } from './helpers/providerCapGate.js';
 import {
 	warmingProviderDailyStatsKey,
 	warmingProviderStateKey,
@@ -81,7 +82,7 @@ describe('warming key/codec migration', () => {
 
 	it('resolves the per-provider cap from the legacy per-IP cap without a reset', async () => {
 		await seedLegacyPerIpState();
-		const gmail = await checkProviderCap(redis, { ip, provider: 'gmail', utcDate: today }, 1500);
+		const gmail = await resolveProviderCap(redis, { ip, provider: 'gmail', utcDate: today }, 1500);
 		expect(gmail).toMatchObject({ allowed: true, sentToday: 0, providerCap: 1500 });
 		// Reading the provider dimension must not have touched the per-IP row.
 		expect(await redis.hget(warmingStateKey(ip), 'sentToday')).toBe('400');
@@ -132,7 +133,7 @@ describe('warming key/codec migration', () => {
 			'capMultiplier',
 			'0.5'
 		);
-		const yahoo = await checkProviderCap(redis, { ip, provider: 'yahoo', utcDate: today }, 1500);
+		const yahoo = await resolveProviderCap(redis, { ip, provider: 'yahoo', utcDate: today }, 1500);
 		expect(yahoo.sentToday).toBe(0);
 		expect(yahoo.capMultiplier).toBe(0.5);
 		expect(await redis.hget(warmingStateKey(ip), 'sentToday')).toBe('400');
@@ -146,7 +147,7 @@ describe('warming key/codec migration', () => {
 			'sentTodayReset',
 			today
 		);
-		const apple = await checkProviderCap(redis, { ip, provider: 'apple', utcDate: today }, 800);
+		const apple = await resolveProviderCap(redis, { ip, provider: 'apple', utcDate: today }, 800);
 		expect(apple).toMatchObject({
 			allowed: true,
 			sentToday: 3,
