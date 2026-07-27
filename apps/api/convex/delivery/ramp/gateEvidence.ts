@@ -68,16 +68,26 @@ export type ArmEvidence = 'fresh' | 'thin' | 'stale' | 'absent';
  * A large window recorded three weeks ago says nothing about the share we are
  * about to raise today, and future-dated evidence (clock skew between the MTA
  * and Convex) is not trusted at all.
+ *
+ * THE MAX AGE IS A PARAMETER, NOT A CONSTANT READ OFF `thresholds`. Almost every
+ * series a gate reads is CONCURRENT, and for those the age allowance is
+ * `thresholds.maxEvidenceAgeMs`. The slow-poison floor's second series is not:
+ * its window ends a week ago by contract, so judging it by the concurrent rule
+ * marks it stale on every real input and silently deletes the gate. The caller
+ * therefore states which allowance applies, so a series with an unusual window
+ * cannot inherit a rule that does not describe it. The skew tolerance stays on
+ * `thresholds` — a future-dated observation is untrustworthy for every series.
  */
 export function evidenceFreshness(
 	recordedAt: number | null | undefined,
 	now: number,
-	thresholds: RampGateThresholds
+	thresholds: RampGateThresholds,
+	maxAgeMs: number
 ): 'fresh' | 'stale' {
 	if (typeof recordedAt !== 'number' || !Number.isFinite(recordedAt)) return 'stale';
 	if (!Number.isFinite(now)) return 'stale';
 	if (recordedAt > now + thresholds.maxFutureSkewMs) return 'stale';
-	if (now - recordedAt > thresholds.maxEvidenceAgeMs) return 'stale';
+	if (now - recordedAt > maxAgeMs) return 'stale';
 	return 'fresh';
 }
 
@@ -87,11 +97,12 @@ export function armEvidence(
 	sample: number,
 	minSample: number,
 	now: number,
-	thresholds: RampGateThresholds
+	thresholds: RampGateThresholds,
+	maxAgeMs: number
 ): ArmEvidence {
 	if (!summary) return 'absent';
 	if (!(sample >= minSample)) return 'thin';
-	return evidenceFreshness(summary.lastRecordedAt, now, thresholds);
+	return evidenceFreshness(summary.lastRecordedAt, now, thresholds, maxAgeMs);
 }
 
 export function insufficient(

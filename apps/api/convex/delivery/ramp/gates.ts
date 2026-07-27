@@ -134,7 +134,14 @@ function evaluateCeilingGate(
 		minSample,
 	} as const;
 
-	const ownEvidence = armEvidence(input.own, ownSample, minSample, input.now, thresholds);
+	const ownEvidence = armEvidence(
+		input.own,
+		ownSample,
+		minSample,
+		input.now,
+		thresholds,
+		thresholds.maxEvidenceAgeMs
+	);
 	if (ownEvidence !== 'fresh' || ownRate === null) {
 		return insufficient(spec.gate, evidenceReason(ownEvidence, 'own'), {
 			...shape,
@@ -157,7 +164,8 @@ function evaluateCeilingGate(
 		referenceSample ?? 0,
 		minSample,
 		input.now,
-		thresholds
+		thresholds,
+		thresholds.maxEvidenceAgeMs
 	);
 	if (referenceEvidence !== 'fresh' || referenceRate === null) {
 		return insufficient(spec.gate, evidenceReason(referenceEvidence, 'reference'), {
@@ -217,7 +225,14 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 		minSample,
 	} as const;
 
-	const evidence = armEvidence(input.own, ownSample, minSample, input.now, thresholds);
+	const evidence = armEvidence(
+		input.own,
+		ownSample,
+		minSample,
+		input.now,
+		thresholds,
+		thresholds.maxEvidenceAgeMs
+	);
 	if (evidence !== 'fresh' || ownRate === null) {
 		return insufficient('deferral', evidenceReason(evidence, 'own'), { ...shape, ownRate });
 	}
@@ -270,7 +285,7 @@ function seedEvidence(
 	if (!observation) return 'absent';
 	const total = seedTotal(observation);
 	if (total <= 0 || total < minSeeds) return 'thin';
-	return evidenceFreshness(observation.observedAt, now, thresholds);
+	return evidenceFreshness(observation.observedAt, now, thresholds, thresholds.maxEvidenceAgeMs);
 }
 
 /**

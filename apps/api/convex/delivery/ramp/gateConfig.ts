@@ -137,6 +137,24 @@ export interface RampGateThresholds {
 	 */
 	readonly maxEvidenceAgeMs: number;
 	/**
+	 * The SAME rule for a series whose window is HISTORICAL BY CONTRACT.
+	 *
+	 * `maxEvidenceAgeMs` encodes "never increase a share on an observation older
+	 * than one clean window" — a statement about CONCURRENT evidence, and the only
+	 * kind gates 1/2/3/5 and gate 4a ever read. The slow-poison floor (gate 4b)
+	 * compares the recent window against the cell's PRIOR 30-day window, which
+	 * ENDS a week ago and may have gone quiet at its own start, so its newest
+	 * observation is between 7 and 30 days old on every healthy input. Judged by
+	 * the concurrent rule it is unconditionally stale and the tripwire never
+	 * actuates.
+	 *
+	 * So the baseline gets its own allowance — 33 days, the full width of the
+	 * contracted window plus slack — rather than `maxEvidenceAgeMs` being widened,
+	 * which would loosen "never increase without fresh evidence" (plan D9/D10) for
+	 * every gate that legitimately depends on it.
+	 */
+	readonly maxBaselineAgeMs: number;
+	/**
 	 * Clock skew tolerance for `lastRecordedAt` in the future. Beyond it the
 	 * evidence is not trusted and the gate holds.
 	 *
@@ -149,6 +167,7 @@ export interface RampGateThresholds {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 	hardBounceMax: rateFraction(0.02),
@@ -160,6 +179,7 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 	seedInboxMin: rateFraction(0.9),
 	seedInboxTolerance: percentagePoints(5),
 	maxEvidenceAgeMs: 48 * HOUR_MS,
+	maxBaselineAgeMs: 33 * DAY_MS,
 	maxFutureSkewMs: DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS,
 };
 
