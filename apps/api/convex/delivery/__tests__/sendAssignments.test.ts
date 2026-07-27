@@ -32,7 +32,8 @@ import {
 	destinationProvidersForEmails,
 	ROUTER_ONLY_MIX_VERSION,
 } from '../sendAssignments';
-import { sendProviderCatalogEntry } from '../../lib/sendProviders/catalog';
+import { SEND_PROVIDER_KINDS, sendProviderCatalogEntry } from '../../lib/sendProviders/catalog';
+import { resolveDestinationProvider } from '../../lib/sendProviders/destinationProvider';
 import type { SendProviderKind } from '../../lib/sendProviders/types';
 
 // `vi.hoisted` so the mock factory below (hoisted above the imports) can close
@@ -46,17 +47,29 @@ const { enqueueCampaignAction, enqueueTransactionalAction } = vi.hoisted(() => (
 // in-transaction resolution at "one per distinct destination provider"
 // (rather than one per recipient) is invisible to a behavioural assertion on
 // the written rows, so it is asserted here on the call log instead.
-const { routeResolutions } = vi.hoisted(() => ({ routeResolutions: [] as string[] }));
+//
+// `seamPreparations` additionally pins the prepare-once shape: the route
+// config, the configured-kind set and the relay-domain verification are
+// destination-provider INDEPENDENT, so a mixed page must prepare the seam ONCE
+// however many cells it touches.
+const { routeResolutions, seamPreparations } = vi.hoisted(() => ({
+	routeResolutions: [] as string[],
+	seamPreparations: [] as string[],
+}));
 
-vi.mock('../../lib/sendProviders/route', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sendProviders/route')>();
+vi.mock('../../lib/sendProviders/cellRoute', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/sendProviders/cellRoute')>();
 	return {
 		...actual,
-		resolveCellRouteFromDb: async (
-			...args: Parameters<typeof actual.resolveCellRouteFromDb>
-		): ReturnType<typeof actual.resolveCellRouteFromDb> => {
-			routeResolutions.push(args[2].destinationProvider);
-			return await actual.resolveCellRouteFromDb(...args);
+		prepareCellRouteResolver: async (
+			...args: Parameters<typeof actual.prepareCellRouteResolver>
+		): ReturnType<typeof actual.prepareCellRouteResolver> => {
+			seamPreparations.push(args[1]);
+			const resolve = await actual.prepareCellRouteResolver(...args);
+			return async (destinationProvider) => {
+				routeResolutions.push(destinationProvider);
+				return await resolve(destinationProvider);
+			};
 		},
 	};
 });
@@ -113,6 +126,7 @@ function stubTransportEnv(kind: SendProviderKind): void {
 
 beforeEach(() => {
 	routeResolutions.length = 0;
+	seamPreparations.length = 0;
 	enqueueCampaignAction.mockReset();
 	enqueueCampaignAction.mockResolvedValue(undefined);
 	enqueueTransactionalAction.mockReset();
@@ -599,10 +613,18 @@ describe('sendAssignments — campaign write path', () => {
 	});
 
 	it('maps every catalog transport to an arm', () => {
-		expect(armForTransport('mta')).toBe('own');
-		expect(armForTransport('ses')).toBe('reference');
-		expect(armForTransport('resend')).toBe('reference');
-		expect(armForTransport('smtp')).toBe('reference');
+		// Iterate the CATALOG, not a hand-list: `SEND_PROVIDER_KINDS` is core +
+		// the bundled plugin send transports, and `armForTransport` is the
+		// function that decides which arm a row is filed under. A hand-list would
+		// keep passing under a name promising exhaustiveness the moment a bundled
+		// plugin transport ships (plan D4 makes the catalog the transport model).
+		expect(SEND_PROVIDER_KINDS).toContain('mta'); // the loop cannot go empty
+		for (const kind of SEND_PROVIDER_KINDS) {
+			expect(armForTransport(kind), kind).toBe(kind === 'mta' ? 'own' : 'reference');
+		}
+		// The four core kinds are named explicitly so a catalog that silently
+		// LOSES one still fails here.
+		expect(SEND_PROVIDER_KINDS).toEqual(expect.arrayContaining(['mta', 'ses', 'resend', 'smtp']));
 	});
 
 	it('prefers the MX-learned destination provider over the address-domain fallback', async () => {
@@ -741,23 +763,60 @@ describe('sendAssignments — campaign write path', () => {
 		expect(classifier).not.toMatch(/\.collect\(\)/);
 		expect(classifier).toMatch(/withIndex\('by_org_domain'/);
 
+		// The seam spans two modules: `cellRoute.ts` (the resolver) and
+		// `routeInputs.ts` (the inputs it shares with the per-message resolver).
+		const seamModuleSource = (
+			await Promise.all(
+				['../../lib/sendProviders/cellRoute.ts', '../../lib/sendProviders/routeInputs.ts'].map(
+					async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8')
+				)
+			)
+		).join('\n');
+		// The per-message resolver must never become reachable from here.
 		const routeSource = await fs.readFile(
 			new URL('../../lib/sendProviders/route.ts', import.meta.url),
 			'utf8'
 		);
-		for (const fn of [
-			'resolveCellRouteFromDb',
-			'readySendProviderKinds',
-			'deliverabilityRouteStatesFor',
+		expect(routeSource).toMatch(/providerHealth/);
+		expect(seamModuleSource).not.toMatch(/resolveSendRouteFromDb\(/);
+		// EVERY top-level function the cell seam transits. Kept in one place so
+		// the two guards below cannot cover different sets.
+		const seamFunctions = [
+			'prepareCellRouteResolver',
+			'candidateSendProviderKinds',
+			'configuredSendProviderKinds',
+			'deliverabilityRouteStateFor',
 			'freshFallbackReasons',
 			'isGlobalBreakerOpenState',
 			'relayDomainVerifiedFor',
-		]) {
-			const body = topLevelFunctionBody(routeSource, fn);
+		];
+		for (const fn of seamFunctions) {
+			const body = topLevelFunctionBody(seamModuleSource, fn);
 			expect(body, `${fn} must not scan a table`).not.toMatch(/\.collect\(\)/);
 			expect(body, `${fn} must not read providerHealth`).not.toMatch(/providerHealth/);
+			// READINESS. `isSendProviderReady` resolves the mutable plugin
+			// capability grant, and that path reaches a deployment singleton the
+			// transactional send path patches on EVERY send. The seam must answer
+			// readiness from the environment only. This is the assertion the
+			// previous, table-name-shaped guard structurally could not make: the
+			// hot read is not a `.query('table')` in any of these bodies, it is
+			// two calls away.
+			expect(body, `${fn} must not use a DB-reading readiness helper`).not.toMatch(
+				/isSendProviderReady|readySendProviderKinds|selectedSendProviderReady|isDeliveryConfigured/
+			);
 		}
-		expect(topLevelFunctionBody(routeSource, 'resolveCellRouteFromDb')).not.toMatch(/warmingState/);
+		expect(topLevelFunctionBody(seamModuleSource, 'prepareCellRouteResolver')).not.toMatch(
+			/warmingState/
+		);
+		// …and the predicate it DOES use touches no context at all.
+		const capabilitySource = await fs.readFile(
+			new URL('../../lib/sendProviders/capability.ts', import.meta.url),
+			'utf8'
+		);
+		const configuredPredicate = topLevelFunctionBody(capabilitySource, 'providerKindConfigured');
+		expect(configuredPredicate, 'providerKindConfigured must be env-only').not.toMatch(
+			/\bctx\b|\bdb\b|await/
+		);
 		const relayVerification = await fs.readFile(
 			new URL('../../lib/sendProviders/relayDomainVerification.ts', import.meta.url),
 			'utf8'
@@ -792,15 +851,11 @@ describe('sendAssignments — campaign write path', () => {
 			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
 		);
 		const seamSource = [
-			'resolveCellRouteFromDb',
-			'readySendProviderKinds',
-			'deliverabilityRouteStatesFor',
-			'freshFallbackReasons',
-			'isGlobalBreakerOpenState',
-			'relayDomainVerifiedFor',
-		]
-			.map((fn) => topLevelFunctionBody(routeSource, fn))
-			.join('\n');
+			...seamFunctions.map((fn) => topLevelFunctionBody(seamModuleSource, fn)),
+			// The readiness predicate the seam calls, included so its read set is
+			// inventoried here rather than assumed.
+			configuredPredicate,
+		].join('\n');
 		const readTables = new Set<string>();
 		for (const source of [...readSetSources, seamSource]) {
 			for (const match of source.matchAll(/\.query\('([A-Za-z]+)'\)/g)) {
@@ -856,6 +911,10 @@ describe('sendAssignments — campaign write path', () => {
 		);
 
 		expect([...routeResolutions].sort()).toEqual(['gmail', 'microsoft', 'other']);
+		// And the provider-INDEPENDENT prologue (route config, configured-kind
+		// set, relay-domain verification) is paid for ONCE for the whole page,
+		// not once per cell.
+		expect(seamPreparations).toEqual(['campaign']);
 		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
 		expect(rows).toHaveLength(emails.length);
 	});
@@ -898,9 +957,9 @@ describe('sendAssignments — campaign write path', () => {
 			'a@gmail.com',
 			'b@gmail.com',
 			'c@gmail.com',
-			// Same domain, different casing: learned observations are stored
-			// lowercase, so this must share the memo slot AND the stored row
-			// rather than costing a second (missing) read.
+			// Same domain, different casing. NOTE: `parseAddress` already
+			// lowercases, so this case pins the ADDRESS path, not the normalizer —
+			// the normalizer itself is exercised directly in the test below.
 			'D@Gmail.COM',
 			'd@outlook.com',
 			'e@Outlook.com',
@@ -928,6 +987,47 @@ describe('sendAssignments — campaign write path', () => {
 		// Omitted, not guessed: an address whose domain does not parse has no
 		// cell we can name, so the caller writes no row for it.
 		expect(providers.has('not-an-address')).toBe(false);
+	});
+
+	it('case-folds a RAW domain before the classifier point read', async () => {
+		// The casing case above cannot fail if the normalizer is deleted:
+		// `extractDomainOrNull` → `parseAddress` already lowercases every
+		// address. `resolveDestinationProvider` takes a bare `domain: string`
+		// though, so the normalization is load-bearing for any caller that does
+		// not arrive via an address. Exercise THAT path, so the assertion is
+		// about the normalizer rather than about `parseAddress`.
+		const reads: string[] = [];
+		const countingCtx = {
+			db: {
+				query: () => ({
+					withIndex: (
+						_indexName: string,
+						build: (q: { eq: (field: string, value: string) => unknown }) => unknown
+					) => {
+						const bound: Record<string, string> = {};
+						const q = {
+							eq: (field: string, value: string) => {
+								bound[field] = value;
+								return q;
+							},
+						};
+						build(q);
+						reads.push(bound['domain'] ?? '');
+						return { first: async () => null };
+					},
+				}),
+			},
+		};
+
+		const provider = await resolveDestinationProvider(
+			countingCtx as unknown as Parameters<typeof resolveDestinationProvider>[0],
+			ORG,
+			'  Gmail.COM  ',
+			Date.now()
+		);
+
+		expect(reads).toEqual(['gmail.com']);
+		expect(provider).toBe('gmail');
 	});
 });
 
