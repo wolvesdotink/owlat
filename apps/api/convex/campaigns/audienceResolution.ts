@@ -43,6 +43,13 @@ export interface CampaignRecipient {
 	lastName?: string;
 	timezone?: string;
 	language?: string;
+	/**
+	 * `contacts.engagementScore` (0-100) at resolution time. Projected here so
+	 * the enqueue path can put it on the send envelope for the MTA's
+	 * enqueue-time priority bands without a second read of the contact row.
+	 * Absent for a contact the scorer has not reached yet.
+	 */
+	engagementScore?: number;
 }
 
 /**
@@ -57,6 +64,7 @@ function projectRecipient(contact: Doc<'contacts'>): CampaignRecipient {
 		lastName: contact.lastName,
 		timezone: contact.timezone,
 		language: contact.language,
+		engagementScore: contact.engagementScore,
 	};
 }
 
@@ -90,7 +98,7 @@ function projectRecipient(contact: Doc<'contacts'>): CampaignRecipient {
 export function selectRecipient(
 	contact: Doc<'contacts'>,
 	gate: { requiresDoi: boolean; blockedEmails: ReadonlySet<string> },
-	membershipPendingDoi?: boolean,
+	membershipPendingDoi?: boolean
 ): CampaignRecipient | null {
 	if (contact.deletedAt !== undefined) return null; // live-contact
 	if (!contact.email) return null; // email-present
@@ -164,7 +172,7 @@ export interface ResolvedPage {
  */
 async function resolveRecipientPageImpl(
 	ctx: QueryCtx,
-	args: { audience: StoredAudience; cursor: string; numItems: number },
+	args: { audience: StoredAudience; cursor: string; numItems: number }
 ): Promise<ResolvedPage> {
 	const { audience, cursor, numItems } = args;
 
@@ -186,7 +194,7 @@ async function resolveRecipientPageImpl(
 
 		const contacts = await batchGet<Doc<'contacts'>>(
 			ctx,
-			page.map((membership) => membership.contactId),
+			page.map((membership) => membership.contactId)
 		);
 		const recipients: CampaignRecipient[] = [];
 		for (const membership of page) {
@@ -222,10 +230,7 @@ async function resolveRecipientPageImpl(
 	try {
 		parsedFilters = parseSegmentFilters(filters);
 	} catch (err) {
-		logWarn(
-			'audienceResolution: segment filters failed to parse; resolving zero recipients',
-			err,
-		);
+		logWarn('audienceResolution: segment filters failed to parse; resolving zero recipients', err);
 		return { recipients: [], nextCursor: null, pageCandidates: 0 };
 	}
 
@@ -270,7 +275,7 @@ async function resolveRecipientPageImpl(
  */
 async function* streamAudienceCandidates(
 	ctx: QueryCtx,
-	audience: StoredAudience,
+	audience: StoredAudience
 ): AsyncGenerator<{ recipient: CampaignRecipient | null }> {
 	const blockedEmails = await loadSuppressionSet(ctx);
 
@@ -373,7 +378,7 @@ export const countRecipients = authedQuery({
 	args: { audience: v.optional(audienceValidator) },
 	handler: async (
 		ctx,
-		{ audience },
+		{ audience }
 	): Promise<{ total: number; eligible: number; capped: boolean }> => {
 		if (!audience) return { total: 0, eligible: 0, capped: false };
 		let total = 0;

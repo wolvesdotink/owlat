@@ -7,6 +7,7 @@ import type { CampaignRecipient } from './audienceResolution';
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
+import type { CampaignEnqueueEmail } from '../delivery/enqueue';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import { getListIdHeader } from '../delivery/sendComposition/listId';
 import { nanoid } from 'nanoid';
@@ -469,14 +470,10 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 		created.map((c) => [String(c.contactId), c.emailSendId])
 	);
 
-	type EmailEnqueueData = {
-		emailSendId: Id<'emailSends'>;
-		contactId: Id<'contacts'>;
-		email: string;
-		firstName?: string;
-		lastName?: string;
-		timezone?: string;
-	};
+	// The enqueue payload shape is owned by `delivery/enqueue.ts`'s validator —
+	// `timezone` is the one local-only field (it picks the send instant here and
+	// is not part of the envelope).
+	type EmailEnqueueData = CampaignEnqueueEmail & { timezone?: string };
 
 	const emailsToEnqueue: EmailEnqueueData[] = [];
 	for (const r of args.recipients) {
@@ -489,10 +486,46 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 			firstName: r.firstName,
 			lastName: r.lastName,
 			timezone: r.timezone,
+			// Projected by audience resolution from the already-loaded contact:
+			// the engagement score rides the envelope to the MTA's priority
+			// bands. Undefined for an unscored contact and simply omitted.
+			engagementScore: r.engagementScore,
 		});
 	}
 
 	let totalEnqueued = 0;
+
+	// ONE enqueue payload, two call sites (timezone-grouped and chunked). The
+	// two branches differ only in the recipient slice and the delay, so the
+	// payload — and every future envelope field on it — lives here once.
+	const scheduleEnqueue = async (recipients: EmailEnqueueData[], delayMs: number) => {
+		await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
+			campaignId: args.campaignId,
+			emails: recipients.map(
+				({ emailSendId, contactId, email, firstName, lastName, engagementScore }) => ({
+					emailSendId,
+					contactId,
+					email,
+					firstName,
+					lastName,
+					engagementScore,
+				})
+			),
+			from: args.from,
+			replyTo: args.replyTo,
+			subject: args.subject,
+			htmlContent: args.htmlContent,
+			convexSiteUrl: args.convexSiteUrl,
+			siteUrl: args.siteUrl,
+			audienceType: args.audienceType,
+			viewInBrowserUrl: args.viewInBrowserUrl,
+			providerType: args.providerType,
+			ipPool: args.ipPool,
+			trackingBaseUrl: args.trackingBaseUrl,
+			organizationId: args.organizationId,
+			listId: args.listId,
+		});
+	};
 
 	if (args.useTimezone) {
 		// Group by the recipient's IANA zone, then resolve the next
@@ -513,58 +546,14 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 		for (const [zone, recipientsForZone] of recipientsByZone) {
 			const target = resolveNextSendTime(zone, args.scheduledHour!, args.scheduledMinute!, now);
 			const delayMs = Math.max(0, target - now);
-			await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
-				campaignId: args.campaignId,
-				emails: recipientsForZone.map((r) => ({
-					emailSendId: r.emailSendId,
-					contactId: r.contactId,
-					email: r.email,
-					firstName: r.firstName,
-					lastName: r.lastName,
-				})),
-				from: args.from,
-				replyTo: args.replyTo,
-				subject: args.subject,
-				htmlContent: args.htmlContent,
-				convexSiteUrl: args.convexSiteUrl,
-				siteUrl: args.siteUrl,
-				audienceType: args.audienceType,
-				viewInBrowserUrl: args.viewInBrowserUrl,
-				providerType: args.providerType,
-				ipPool: args.ipPool,
-				trackingBaseUrl: args.trackingBaseUrl,
-				organizationId: args.organizationId,
-				listId: args.listId,
-			});
+			await scheduleEnqueue(recipientsForZone, delayMs);
 			totalEnqueued += recipientsForZone.length;
 		}
 	} else {
 		const CHUNK_SIZE = 50;
 		for (let i = 0; i < emailsToEnqueue.length; i += CHUNK_SIZE) {
 			const chunk = emailsToEnqueue.slice(i, i + CHUNK_SIZE);
-			await ctx.scheduler.runAfter(0, internal.delivery.enqueue.enqueueCampaignEmails, {
-				campaignId: args.campaignId,
-				emails: chunk.map((r) => ({
-					emailSendId: r.emailSendId,
-					contactId: r.contactId,
-					email: r.email,
-					firstName: r.firstName,
-					lastName: r.lastName,
-				})),
-				from: args.from,
-				replyTo: args.replyTo,
-				subject: args.subject,
-				htmlContent: args.htmlContent,
-				convexSiteUrl: args.convexSiteUrl,
-				siteUrl: args.siteUrl,
-				audienceType: args.audienceType,
-				viewInBrowserUrl: args.viewInBrowserUrl,
-				providerType: args.providerType,
-				ipPool: args.ipPool,
-				trackingBaseUrl: args.trackingBaseUrl,
-				organizationId: args.organizationId,
-				listId: args.listId,
-			});
+			await scheduleEnqueue(chunk, 0);
 		}
 		totalEnqueued += emailsToEnqueue.length;
 	}
