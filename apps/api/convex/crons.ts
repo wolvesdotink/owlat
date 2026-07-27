@@ -1,6 +1,7 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
+import { registerDeliveryRetentionCrons } from './delivery/cronRegistration';
 
 const crons = cronJobs();
 
@@ -173,13 +174,6 @@ crons.interval(
 	{ minutes: 5 },
 	internal.delivery.warmingSync.syncWarmingState
 );
-crons.interval(
-	'cleanup deliverability route state',
-	{ minutes: 5 },
-	internal.delivery.deliverabilityRouting.cleanupExpired,
-	{}
-);
-
 // Keep the built-in MTA's infrastructure readiness visible to reactive
 // Delivery surfaces. The MTA internally caches its TCP/25 probes, so this
 // cadence does not create a connection storm against the probe target.
@@ -197,35 +191,6 @@ crons.interval(
 	'cleanup sending reputation',
 	{ hours: 1 },
 	internal.analytics.sendingReputation.recalculateAll,
-	{}
-);
-
-crons.interval(
-	'cleanup delivery compliance telemetry',
-	{ hours: 1 },
-	internal.delivery.complianceTelemetry.cleanupComplianceTelemetry,
-	{}
-);
-// Send assignments are one row per recipient per send (the experiment record),
-// so their retention sweep is not optional. 90 days, deleted in bounded,
-// indexed batches that resume via self-scheduling while a tick comes back full.
-crons.interval(
-	'cleanup send assignments',
-	{ hours: 6 },
-	internal.delivery.sendAssignments.cleanupExpiredAssignments,
-	{}
-);
-crons.interval(
-	'cleanup MTA IP readiness alerts',
-	{ hours: 24 },
-	internal.delivery.ipReadinessAlerts.cleanupExpired,
-	{}
-);
-
-crons.interval(
-	'cleanup Google Postmaster telemetry',
-	{ hours: 24 },
-	internal.delivery.postmaster.cleanup,
 	{}
 );
 
@@ -499,6 +464,9 @@ crons.interval(
 	internal.analytics.engagementScoreSync.backfillEngagementScores,
 	{}
 );
+
+// Every delivery table whose rows expire is swept from one place.
+registerDeliveryRetentionCrons(crons);
 
 // Append every bundled plugin cron (generated catalog) after the core crons,
 // each wrapped in the host runtime so flag/grant/env are rechecked per tick and
