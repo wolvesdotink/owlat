@@ -383,3 +383,97 @@ describe('a scheduled RE-PROBE never switches off the stamp it is confirming', (
 		expect(row?.lastSettled).toBeUndefined();
 	});
 });
+
+/**
+ * The END-TO-END link named surface (a) actually promises: a probe verdict that
+ * was PERSISTED by the mutations above reaches the routing plan the send path
+ * runs. Every other test of the flag injects it into a mocked plan, which only
+ * proves a field is copied — it cannot see the gate being narrower than route
+ * resolution, which is precisely the failure this block exists to catch.
+ */
+describe('resolveLastMileRoutePlanFromDb derives the stamp from persisted state', () => {
+	/** Drive the real mutations to a persisted `supported` verdict for `smtp`. */
+	async function proveRelay(t: ReturnType<typeof convexTest>) {
+		await submit(t);
+		await t.mutation(internal.delivery.relayReturnPath.recordProbeObservation, {
+			probeMessageId: returnPathProbeMessageId(PROBE_ID),
+			at: Date.now(),
+		});
+	}
+
+	async function seedRoute(
+		t: ReturnType<typeof convexTest>,
+		providers: Array<{ providerType: string; isEnabled: boolean }>
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign',
+				strategy: 'single',
+				providers,
+				createdAt: T0,
+				updatedAt: T0,
+			});
+		});
+	}
+
+	async function plan(t: ReturnType<typeof convexTest>) {
+		return await t.run(
+			async (ctx) =>
+				await resolveLastMileRoutePlanFromDb(ctx, 'campaign', {
+					to: 'subscriber@gmail.com',
+					from: 'news@example.com',
+					now: Date.now(),
+				})
+		);
+	}
+
+	it('an enabled smtp route + a proven relay stamps', async () => {
+		// EMAIL_PROVIDER names the MTA, so the `true` below can only have come
+		// from the saved routing row.
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+		await seedRoute(t, [{ providerType: 'smtp', isEnabled: true }]);
+		await proveRelay(t);
+		expect((await plan(t)).relayStampVerpReturnPath).toBe(true);
+	});
+
+	it('the ENV-fallback relay stamps too — no providerRoutes row exists', async () => {
+		// The canonical bring-your-own-relay install: EMAIL_PROVIDER=smtp and
+		// nothing saved on the routing screen, so `resolveRoute` reaches the relay
+		// through its env fallback. Gating the capability read on the routing row
+		// alone left every one of these sends unstamped while the sweep went on
+		// proving the capability.
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		const t = convexTest(schema, modules);
+		await proveRelay(t);
+		expect(await t.run(async (ctx) => await ctx.db.query('providerRoutes').collect())).toHaveLength(
+			0
+		);
+		expect((await plan(t)).relayStampVerpReturnPath).toBe(true);
+	});
+
+	it('an mta-only route does NOT stamp, even with a proven relay on file', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+		await seedRoute(t, [{ providerType: 'mta', isEnabled: true }]);
+		await proveRelay(t);
+		expect((await plan(t)).relayStampVerpReturnPath).toBe(false);
+	});
+
+	it('a DISABLED smtp entry is not a candidate', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'mta');
+		const t = convexTest(schema, modules);
+		await seedRoute(t, [
+			{ providerType: 'mta', isEnabled: true },
+			{ providerType: 'smtp', isEnabled: false },
+		]);
+		await proveRelay(t);
+		expect((await plan(t)).relayStampVerpReturnPath).toBe(false);
+	});
+
+	it('an UNPROVEN relay never stamps — absence is silent, not an error (D2)', async () => {
+		vi.stubEnv('EMAIL_PROVIDER', 'smtp');
+		const t = convexTest(schema, modules);
+		expect((await plan(t)).relayStampVerpReturnPath).toBe(false);
+	});
+});
