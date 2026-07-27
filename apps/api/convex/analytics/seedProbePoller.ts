@@ -9,14 +9,18 @@
  * Nothing here reads or returns a credential, and nothing here reads mailbox
  * CONTENTS — a probe id and a folder NAME are the entire vocabulary.
  *
- * D2: with no seed mailboxes connected this returns an empty list forever and
+ * D2: with no seed mailboxes connected this returns an empty page forever and
  * the worker's sweep is a no-op. Absence is a supported configuration.
  */
 
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
-import { shouldRemindSeedRotation, type SeedProbeWorkItem } from '@owlat/shared/seedPlacement';
+import { CONNECTABLE_ACCOUNT_STATUSES } from '../mail/externalAccountShared';
+import {
+	shouldRemindSeedRotation,
+	type SeedProbeWorkItem,
+	type SeedProbeWorkPage,
+} from '@owlat/shared/seedPlacement';
 
 /**
  * How long after DISPATCH a probe becomes worth looking for. Filters run on
@@ -39,48 +43,59 @@ const SEED_PROBE_SETTLE_MS = 15 * 60 * 1000;
  */
 const SEED_PROBE_GIVE_UP_MS = 24 * 60 * 60 * 1000;
 
-/** Bound on accounts walked in one sweep — a deployment has a handful of seeds. */
-const SEED_ACCOUNT_SCAN_LIMIT = 50;
+/**
+ * Seed accounts examined per tick. NOT a cap on the seed set: the sweep is
+ * PAGINATED and the worker carries the cursor across ticks, so every seed in
+ * every org is reached in bounded time. A bare bounded page with no cursor
+ * starves whichever orgs sort last, permanently and silently.
+ */
+const SEED_ACCOUNT_PAGE_SIZE = 25;
 
 /** Bound on probe ids handed to the worker per account per sweep. */
 const SEED_PROBE_WORK_LIMIT = 50;
 
+const connectableStatuses = new Set<string>(CONNECTABLE_ACCOUNT_STATUSES);
+
 /**
- * Every seed mailbox with outstanding probe work.
+ * One page of the seed mailboxes with outstanding probe work.
  *
- * Selects on exactly (purpose, status): the same three connectable statuses
- * `listConnectableAccounts` uses — so a seed the operator has not fixed
- * credentials for is skipped rather than erroring — but through an index keyed
- * on `purpose`, so a deployment with many ordinary external accounts cannot
- * push every seed off the end of a bounded page and take gate 5 dark.
+ * Selects on `purpose` through its own index — a deployment with many ordinary
+ * external accounts cannot push every seed off the end of a page and take gate
+ * 5 dark — and pages with a CURSOR so a multi-org deployment cannot starve the
+ * orgs that sort last. Statuses outside `CONNECTABLE_ACCOUNT_STATUSES` are
+ * skipped (a seed whose credentials the operator has not fixed is skipped, not
+ * an error), which is a per-row filter rather than an index selection precisely
+ * because the cursor, not the page, is what guarantees progress.
  */
 export const listSeedProbeWork = internalQuery({
-	args: { now: v.number() },
-	handler: async (ctx, args): Promise<SeedProbeWorkItem[]> => {
-		const groups = await Promise.all(
-			(['pending', 'connected', 'error'] as const).map((status) =>
-				ctx.db
-					.query('externalMailAccounts')
-					.withIndex('by_purpose_and_status', (q) => q.eq('purpose', 'seed').eq('status', status))
-					.take(SEED_ACCOUNT_SCAN_LIMIT)
-			)
-		);
-		const accounts: Doc<'externalMailAccounts'>[] = groups.flat();
+	args: { now: v.number(), cursor: v.optional(v.union(v.string(), v.null())) },
+	handler: async (ctx, args): Promise<SeedProbeWorkPage> => {
+		const page = await ctx.db
+			.query('externalMailAccounts')
+			.withIndex('by_purpose', (q) => q.eq('purpose', 'seed'))
+			.paginate({ numItems: SEED_ACCOUNT_PAGE_SIZE, cursor: args.cursor ?? null });
 
-		const work: SeedProbeWorkItem[] = [];
-		for (const account of accounts) {
+		const items: SeedProbeWorkItem[] = [];
+		for (const account of page.page) {
+			if (!connectableStatuses.has(account.status)) continue;
 			const mailbox = await ctx.db.get(account.mailboxId);
 			if (!mailbox) continue;
-			// DISPATCHED probes only, oldest handoff first. `gte(0)` is what excludes
-			// the never-dispatched rows: `undefined` sorts below every number in a
-			// Convex index, so an undispatched probe is not merely filtered out
-			// afterwards — it is outside the range entirely and can never be
+			// UNCLASSIFIED, DISPATCHED probes only, oldest handoff first.
+			//
+			// `eq('placement', undefined)` is load-bearing twice over. It retires a
+			// row from the range the moment the poller classifies it — without it the
+			// page fills with already-classified probes (they stay in range for the
+			// whole 90-day retention) and the account goes permanently dark after
+			// roughly one page. And `gte(0)` excludes the never-dispatched rows:
+			// `undefined` sorts below every number in a Convex index, so an
+			// undispatched probe is outside the range entirely and can never be
 			// classified.
 			const probes = await ctx.db
 				.query('seedPlacementProbes')
-				.withIndex('by_account_and_dispatched_at', (q) =>
+				.withIndex('by_account_placement_and_dispatched_at', (q) =>
 					q
 						.eq('accountId', account._id)
+						.eq('placement', undefined)
 						.gte('dispatchedAt', 0)
 						.lte('dispatchedAt', args.now - SEED_PROBE_SETTLE_MS)
 				)
@@ -89,7 +104,6 @@ export const listSeedProbeWork = internalQuery({
 			const probeIds: string[] = [];
 			const expiredProbeIds: string[] = [];
 			for (const probe of probes) {
-				if (probe.placement !== undefined) continue;
 				const dispatchedAt = probe.dispatchedAt;
 				if (dispatchedAt === undefined) continue;
 				if (args.now - dispatchedAt >= SEED_PROBE_GIVE_UP_MS) expiredProbeIds.push(probe.probeId);
@@ -97,7 +111,7 @@ export const listSeedProbeWork = internalQuery({
 			}
 			if (probeIds.length === 0 && expiredProbeIds.length === 0) continue;
 
-			work.push({
+			items.push({
 				organizationId: account.organizationId,
 				accountId: account._id,
 				address: mailbox.address,
@@ -111,6 +125,10 @@ export const listSeedProbeWork = internalQuery({
 				}),
 			});
 		}
-		return work;
+		return {
+			items,
+			cursor: page.isDone ? null : page.continueCursor,
+			isDone: page.isDone,
+		};
 	},
 });

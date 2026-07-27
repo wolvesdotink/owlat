@@ -13,6 +13,19 @@ import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 
 /**
+ * The account statuses a worker should hold (or retry) a connection for.
+ *
+ * `auth_error` is excluded — it waits on the user to re-enter credentials — and
+ * so is `disconnected`. Declared once because BOTH sweeps select on it: the
+ * inbound AccountManager's `listConnectableAccounts` and the deliverability
+ * prober's seed sweep (`analytics/seedProbePoller.ts`). Two copies behind a
+ * "these must agree" comment is the drift this constant removes.
+ */
+export const CONNECTABLE_ACCOUNT_STATUSES = ['pending', 'connected', 'error'] as const;
+
+export type ConnectableAccountStatus = (typeof CONNECTABLE_ACCOUNT_STATUSES)[number];
+
+/**
  * The non-secret IMAP/SMTP settings + the encrypted-password envelope that every
  * external-account write persists — the single source of truth for the row's
  * credential shape, so adding a field (e.g. an `oauth` authMethod) is one edit

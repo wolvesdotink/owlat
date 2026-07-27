@@ -85,8 +85,14 @@ export const mailTables = {
 		// whose access is governed by explicit `mailboxMembers` rows rather than
 		// by the owning `userId` alone. NOTE: distinct from `kind` below, which
 		// discriminates the *transport* (hosted vs external), not the sharing
-		// model — the two are orthogonal.
-		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'))),
+		// model — the two are orthogonal. 'seed' ⇒ the mailbox row behind a
+		// DELIVERABILITY SEED account: org infrastructure that is NOT anybody's
+		// inbox. It is filtered out of every caller-visible mailbox surface
+		// (`mail/permissions.ts::loadAccessibleMailboxes`,
+		// `mail/mailbox.ts::getActiveMailboxForUser`), so connecting a seed can
+		// never put the operator's consumer address in their own Postbox nor make
+		// the fresh-start flow believe they already have a mailbox.
+		scope: v.optional(v.union(v.literal('personal'), v.literal('shared'), v.literal('seed'))),
 		// Transport discriminator. undefined ⇒ 'hosted' (Owlat-hosted mailbox;
 		// back-compat for pre-external rows). 'external' ⇒ backed by a
 		// user-connected IMAP/SMTP account (see externalMailAccounts).
@@ -270,10 +276,12 @@ export const mailTables = {
 		// Seed-mailbox lookup for the placement prober. Legacy rows carry no
 		// `purpose`, so this index only ever returns explicitly-tagged accounts.
 		.index('by_org_and_purpose', ['organizationId', 'purpose'])
-		// The prober's GLOBAL sweep selects on exactly (purpose, status). Filtering
-		// a bounded `by_status` page for seeds after the fact goes silently dark
-		// on any deployment with more connectable accounts than the page bound.
-		.index('by_purpose_and_status', ['purpose', 'status']),
+		// The prober's GLOBAL sweep selects on exactly `purpose` and PAGINATES with
+		// a cursor the worker carries across ticks. Filtering a bounded `by_status`
+		// page for seeds after the fact goes silently dark on any deployment with
+		// more connectable accounts than the page bound; a bounded page of seeds
+		// with no cursor starves whichever orgs sort last, permanently.
+		.index('by_purpose', ['purpose']),
 
 	// Per-(account, folder) IMAP sync cursor. Separate from mailFolders' own
 	// uidValidity/uidNext (those track Owlat-as-IMAP-server); these track

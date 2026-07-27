@@ -116,8 +116,15 @@ export const seedPlacementTables = {
 		// probe row is only ever reachable through the org that owns it).
 		.index('by_org_campaign_and_variant', ['organizationId', 'campaignId', 'abVariant'])
 		.index('by_org_and_sent_at', ['organizationId', 'sentAt'])
-		// Poller work selection: DISPATCHED probes only, oldest dispatch first.
-		.index('by_account_and_dispatched_at', ['accountId', 'dispatchedAt'])
+		// Poller work selection: UNCLASSIFIED, DISPATCHED probes only, oldest
+		// dispatch first. `placement` leads the range fields on purpose. Keyed on
+		// `(accountId, dispatchedAt)` alone, a bounded page of one account's probes
+		// fills up with rows the poller already classified — they stay in the range
+		// for the whole 90-day retention — and the account goes permanently dark
+		// after roughly one page. `eq('placement', undefined)` retires a row from
+		// the range the moment it is classified, so the page is always outstanding
+		// work.
+		.index('by_account_placement_and_dispatched_at', ['accountId', 'placement', 'dispatchedAt'])
 		// The abandonment sweep: probes not yet written off AND never dispatched.
 		// `undefined` is an ordinary index value in Convex, so both are exact
 		// matches; a row leaves the range the moment it is written off, which is
