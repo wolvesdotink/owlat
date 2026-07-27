@@ -22,15 +22,11 @@
  * operator-facing UX lands in the Sending-transport settings surface (a4).
  */
 
-import os from 'node:os';
 import { composeMessage } from '@owlat/mail-message';
-import { buildVerpAddressWithKey } from '@owlat/shared/verp';
 import {
 	isSmtpError,
 	sendMessage,
-	type AuthConfig,
 	type SmtpClientRefusal,
-	type SmtpConnectOptions,
 	type SmtpPhase,
 } from '@owlat/smtp-client';
 import { getOptional } from '../../env';
@@ -42,9 +38,25 @@ import {
 	type SendProviderModule,
 	type SmtpExtras,
 } from '../types';
-import { transportEnvBoolean, transportEnvOptional, transportEnvRequired } from '../transportEnv';
-import { sendTransportEnvName, type SendTransportRecord } from '../transports';
+import type { SendTransportRecord } from '../transports';
 import { RETRY_DELAYS_MS } from '../../constants';
+import { getClientConfig, type RelayClientConfig } from './config';
+import { resolveRelayEnvelopeSender } from './returnPath';
+
+// The adapter's public surface is one module: the config and return-path halves
+// are internal siblings, split for size and cohesion, not a new API.
+export {
+	buildRelayClientConfig,
+	relayEhloName,
+	_resetSmtpConfigCacheForTests,
+	type RelayClientConfig,
+	type RelayClientInput,
+} from './config';
+export {
+	resolveRelayEnvelopeSender,
+	type RelayEnvelopeSender,
+	type RelayEnvelopeSenderInput,
+} from './returnPath';
 
 /**
  * Upper bound on a single relay send. As with SES, a generic SMTP relay has no
@@ -56,190 +68,6 @@ import { RETRY_DELAYS_MS } from '../../constants';
  */
 const SMTP_SEND_TIMEOUT_MS = 30_000;
 const SMTP_SEND_TIMEOUT_MESSAGE = 'SMTP relay send timed out';
-
-/** Default submission port when `SMTP_RELAY_PORT` is unset (STARTTLS on 587). */
-const DEFAULT_SMTP_PORT = 587;
-
-/**
- * Bound the pre-acceptance phase (TCP connect + server greeting) well under
- * `SMTP_SEND_TIMEOUT_MS` so an unreachable relay fails in a pre-wire phase
- * (`connect`/`greeting`) — which is retryable (nothing reached the wire) —
- * rather than tripping the ambiguous outer `withTimeout` that has to be treated
- * as terminal.
- */
-const SMTP_CONNECTION_TIMEOUT_MS = 15_000;
-
-/** Resolved, non-secret relay client config: how to connect + how to AUTH. */
-export interface RelayClientConfig {
-	connect: SmtpConnectOptions;
-	auth: AuthConfig;
-}
-
-// One resolved config per CONFIGURED TRANSPORT, not one per deployment: two
-// `smtp` transports point at different relays with different credentials, so a
-// single cached config would send the second instance's mail through the first
-// instance's relay.
-const cachedConfigs = new Map<string, RelayClientConfig>();
-
-/** Resolved, non-secret relay client inputs (env-derived). */
-export interface RelayClientInput {
-	host: string;
-	port: number;
-	/** true ⇒ implicit TLS (465); false ⇒ STARTTLS upgrade (587). */
-	secure: boolean;
-	user: string;
-	pass: string;
-	/** EHLO identity announced to the relay. */
-	ehloName: string;
-}
-
-/**
- * Assemble the in-house SMTP-client config for a relay send. Pure and exported
- * so the TLS floor and STARTTLS-enforcement invariants are pinned by a test
- * rather than living only inside the network path.
- *
- * - `requireTls: !secure` — on the STARTTLS path demand the upgrade so a relay
- *   that omits STARTTLS (or a MITM stripping it) can't silently downgrade the
- *   AUTH credentials + body to cleartext; the client fails closed
- *   (`starttls-unavailable`) instead of proceeding cleartext. `implicit` is TLS
- *   from byte zero and trivially satisfies the floor.
- * - `tls.minVersion: 'TLSv1.2'` — pin the floor (RFC 8996 deprecates TLS 1.0/1.1,
- *   RFC 9325 mandates 1.2+). The direct-MX pool already pins this; without it the
- *   relay path's floor was Node's env-fragile process default.
- * - the connect/greeting timeout is bounded so an unreachable relay fails in a
- *   pre-wire phase (retryable) rather than tripping the ambiguous outer timeout.
- */
-export function buildRelayClientConfig(input: RelayClientInput): RelayClientConfig {
-	return {
-		connect: {
-			host: input.host,
-			port: input.port,
-			ehloName: input.ehloName,
-			tlsMode: input.secure ? 'implicit' : 'starttls',
-			// Fail closed if the STARTTLS relay omits the upgrade — credentials + body
-			// must never reach a cleartext channel.
-			requireTls: !input.secure,
-			tls: { minVersion: 'TLSv1.2' as const },
-			// Fail a merely-unreachable relay fast and retryably (see the constant).
-			timeouts: {
-				connect: SMTP_CONNECTION_TIMEOUT_MS,
-				greeting: SMTP_CONNECTION_TIMEOUT_MS,
-			},
-		},
-		auth: {
-			credentials: { username: input.user, password: input.pass },
-		},
-	};
-}
-
-/**
- * The name announced in EHLO to the relay when `EHLO_HOSTNAME` is unset. A bare
- * `os.hostname()` is a dotless hex token in a container, which strict relays
- * reject (`reject_non_fqdn_helo_hostname`), so fall back to the RFC 5321 §4.1.3
- * address literal `[127.0.0.1]` when the hostname is not an FQDN, and bracket a
- * bare IPv4 hostname. This mirrors mail-sync's `ehloName()` and the old
- * nodemailer `_getHostname()` fallback the outbound path preserved.
- */
-export function relayEhloName(): string {
-	let host: string;
-	try {
-		host = os.hostname() || '';
-	} catch {
-		host = '';
-	}
-	if (host === '' || !host.includes('.')) {
-		return '[127.0.0.1]';
-	}
-	if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) {
-		return `[${host}]`;
-	}
-	return host;
-}
-
-/**
- * Resolve (once per transport) the relay client config for ONE configured
- * `smtp` transport. `SMTP_RELAY_SECURE=true` opens an implicit-TLS connection
- * (typically 465); unset/false connects cleartext and upgrades via STARTTLS
- * (587). Auth credentials are required — this deployment authenticates to the
- * relay. A named instance reads the same variables under its `__<KEY>` suffix.
- */
-function getClientConfig(transport: SendTransportRecord): RelayClientConfig {
-	const cached = cachedConfigs.get(transport.id);
-	if (cached) return cached;
-	const host = transportEnvRequired(transport, 'SMTP_RELAY_HOST');
-	const portRaw = transportEnvOptional(transport, 'SMTP_RELAY_PORT');
-	const port = portRaw ? Number.parseInt(portRaw, 10) : DEFAULT_SMTP_PORT;
-	if (!Number.isFinite(port) || port <= 0) {
-		throw new Error(
-			`Invalid ${sendTransportEnvName('SMTP_RELAY_PORT', transport.instanceKey)}: ${portRaw}`
-		);
-	}
-	const secure = transportEnvBoolean(transport, 'SMTP_RELAY_SECURE');
-	const config = buildRelayClientConfig({
-		host,
-		port,
-		secure,
-		user: transportEnvRequired(transport, 'SMTP_RELAY_USERNAME'),
-		pass: transportEnvRequired(transport, 'SMTP_RELAY_PASSWORD'),
-		ehloName: getOptional('EHLO_HOSTNAME') ?? relayEhloName(),
-	});
-	cachedConfigs.set(transport.id, config);
-	return config;
-}
-
-/** Inputs to the relay envelope-sender decision. All explicit — no clock, no env. */
-export interface RelayEnvelopeSenderInput {
-	/** What the composer built: the From address, i.e. the shipped behaviour. */
-	readonly composedEnvelopeFrom: string;
-	/** The id the VERP token encodes (the composed Message-ID for a real send). */
-	readonly messageId: string;
-	/** Has this transport's `supportsCustomReturnPath` resolved to `supported`? */
-	readonly customReturnPath: boolean;
-	/** Our bounce domain (MTA_RETURN_PATH_DOMAIN). */
-	readonly returnPathDomain: string | undefined;
-	/** The MTA's VERP signing key (MTA_BOUNCE_VERP_KEY). */
-	readonly verpKey: string | undefined;
-	readonly now: number;
-}
-
-export interface RelayEnvelopeSender {
-	/** The RFC5321.MailFrom to put on the wire. */
-	readonly envelopeFrom: string;
-	/** True ⇒ it is our signed VERP address, so relayed bounces come back here. */
-	readonly isVerp: boolean;
-}
-
-/**
- * Decide the relay send's envelope sender (plan G-08, D11).
- *
- * ONLY the RFC5321.MailFrom is affected. The From header, the DKIM `d=` and
- * therefore DMARC alignment are untouched — the composed message bytes are not
- * even read here. Giving the two arms different sending identities is what D11
- * forbids; giving them different *envelope senders* is what makes their bounce
- * data comparable in the first place.
- *
- * Falls back to the composed envelope sender — the exact shipped behaviour —
- * whenever the capability is unproven or the deployment has not configured a
- * return-path domain + signing key. An UNSIGNED VERP address would be a forgery
- * surface on the bounce path, so a missing key means no stamp, never an
- * unsigned token.
- */
-export function resolveRelayEnvelopeSender(input: RelayEnvelopeSenderInput): RelayEnvelopeSender {
-	const domain = input.returnPathDomain?.trim().replace(/\.$/, '');
-	const key = input.verpKey?.trim();
-	if (!input.customReturnPath || !domain || !key || input.messageId.length === 0) {
-		return { envelopeFrom: input.composedEnvelopeFrom, isVerp: false };
-	}
-	return {
-		envelopeFrom: buildVerpAddressWithKey(input.messageId, domain, key, input.now),
-		isVerp: true,
-	};
-}
-
-/** Clears the per-transport relay config cache. Tests only. */
-export function _resetSmtpConfigCacheForTests(): void {
-	cachedConfigs.clear();
-}
 
 /**
  * Catch-side classification for a structured {@link SmtpError} from the SMTP
@@ -315,6 +143,165 @@ function mentionsRateLimit(lowerMessage: string): boolean {
 	);
 }
 
+/** Per-send knobs of the relay adapter's INTERNAL entry point. */
+export interface RelaySendOptions {
+	/** Has this transport's capability resolved to `supported`? */
+	readonly customReturnPath: boolean;
+	/**
+	 * Overrides the id the VERP token encodes.
+	 *
+	 * The return-path PROBE is the only caller: it has no Send row, so it needs
+	 * the token to encode its own probe id. Deliberately NOT part of
+	 * {@link SmtpExtras} — as a public per-send knob it would let any caller
+	 * decouple the VERP token from the id stored as `providerMessageId` and
+	 * silently break bounce attribution for a real send.
+	 */
+	readonly verpMessageId?: string;
+}
+
+export interface RelaySendOutcome {
+	readonly attempt: EmailSendAttempt;
+	/**
+	 * The RFC5321.MailFrom actually put on the wire. Returned rather than
+	 * recomputed by the caller: the VERP window rolls at UTC midnight, so a
+	 * caller that rebuilt the address a moment later could record an address
+	 * that differs from the one sent and misread it as a relay rewrite.
+	 */
+	readonly envelopeSender: string;
+	readonly isVerp: boolean;
+}
+
+/**
+ * The relay adapter's real send. `smtpSendProvider.sendEmail` is the
+ * {@link SendProviderModule} face of it; the return-path probe calls it
+ * directly because it needs the envelope sender back.
+ */
+export async function sendViaRelay(
+	transport: SendTransportRecord,
+	params: EmailSendParams,
+	options: RelaySendOptions
+): Promise<RelaySendOutcome> {
+	/** Nothing reached the wire, so no envelope sender was chosen. */
+	const unsent = (attempt: EmailSendAttempt): RelaySendOutcome => ({
+		attempt,
+		envelopeSender: params.from,
+		isVerp: false,
+	});
+	let config: RelayClientConfig;
+	try {
+		config = getClientConfig(transport);
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+		return unsent({
+			success: false,
+			errorMessage,
+			errorCode: EmailErrorCode.AUTH_FAILED,
+		});
+	}
+
+	// Compose OUTSIDE the wire timeout: composition is pure and local (no
+	// socket), so a failure here is a terminal, unambiguous local error —
+	// nothing ever reached the relay.
+	let composed: ReturnType<typeof composeMessage>;
+	try {
+		composed = composeMessage({
+			from: params.from,
+			to: [params.to],
+			subject: params.subject,
+			html: params.html,
+			text: params.text,
+			replyTo: params.replyTo,
+			headers:
+				params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
+			attachments: params.attachments?.map((a) => ({
+				filename: a.filename,
+				contentType: a.contentType ?? 'application/octet-stream',
+				isInline: false,
+				data: a.content,
+			})),
+		});
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+		// A composition failure never touched the wire — classify it via the
+		// text taxonomy (envelope/content wording), terminal by default.
+		return unsent({
+			success: false,
+			errorMessage,
+			errorCode: categorizeSmtpError(errorMessage),
+		});
+	}
+
+	// Stamp our VERP envelope sender where the relay is PROVEN to honour it, so
+	// a bounce the relay generates reaches our own bounce server and this arm
+	// produces bounce data comparable with the direct-MX arm. The composed
+	// bytes — From, DKIM, Message-ID, body — are identical either way (D11).
+	const envelopeSender = resolveRelayEnvelopeSender({
+		composedEnvelopeFrom: composed.envelope.from,
+		messageId: options.verpMessageId ?? composed.messageId,
+		customReturnPath: options.customReturnPath,
+		returnPathDomain: getOptional('MTA_RETURN_PATH_DOMAIN'),
+		verpKey: getOptional('MTA_BOUNCE_VERP_KEY'),
+		now: Date.now(),
+	});
+	const sent = (attempt: EmailSendAttempt): RelaySendOutcome => ({
+		attempt,
+		envelopeSender: envelopeSender.envelopeFrom,
+		isVerp: envelopeSender.isVerp,
+	});
+
+	const sendAbort = new AbortController();
+	try {
+		await withTimeout(
+			sendMessage({
+				connect: config.connect,
+				auth: config.auth,
+				signal: sendAbort.signal,
+				envelope: {
+					from: envelopeSender.envelopeFrom,
+					to: composed.envelope.to,
+					data: composed.raw,
+				},
+			}),
+			SMTP_SEND_TIMEOUT_MS,
+			SMTP_SEND_TIMEOUT_MESSAGE
+		);
+
+		return sent({ success: true, id: composed.messageId });
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+		// A structured SmtpError carries the protocol phase + reply code — the
+		// only inputs the retry-vs-terminal decision is allowed to read.
+		if (isSmtpError(error)) {
+			return sent({
+				success: false,
+				errorMessage,
+				errorCode: classifySmtpError({
+					phase: error.phase,
+					replyCode: error.replyCode,
+					message: errorMessage,
+					clientRefusal: error.clientRefusal,
+				}),
+			});
+		}
+
+		// Anything else escaping the send — the outer `withTimeout` sentinel, or
+		// an unexpected throw — happened somewhere in the send with no structured
+		// phase to prove it was pre-acceptance. The message MAY have been
+		// delivered, so treat it as ambiguous and TERMINAL (never auto-retry).
+		return sent({
+			success: false,
+			errorMessage,
+			errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
+		});
+	} finally {
+		// Promise.race cannot cancel its losing branch. Close any live SMTP
+		// socket when the outer deadline wins so the send does not continue in
+		// the background and later deliver after we reported a timeout.
+		sendAbort.abort();
+	}
+}
+
 export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	kind: 'smtp',
 	retryDelays: RETRY_DELAYS_MS,
@@ -324,114 +311,11 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 		params: EmailSendParams,
 		extras?: SmtpExtras
 	): Promise<EmailSendAttempt> {
-		let config: RelayClientConfig;
-		try {
-			config = getClientConfig(transport);
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-			return {
-				success: false,
-				errorMessage,
-				errorCode: EmailErrorCode.AUTH_FAILED,
-			};
-		}
-
-		// Compose OUTSIDE the wire timeout: composition is pure and local (no
-		// socket), so a failure here is a terminal, unambiguous local error —
-		// nothing ever reached the relay.
-		let composed: ReturnType<typeof composeMessage>;
-		try {
-			composed = composeMessage({
-				from: params.from,
-				to: [params.to],
-				subject: params.subject,
-				html: params.html,
-				text: params.text,
-				replyTo: params.replyTo,
-				headers:
-					params.headers && Object.keys(params.headers).length > 0 ? params.headers : undefined,
-				attachments: params.attachments?.map((a) => ({
-					filename: a.filename,
-					contentType: a.contentType ?? 'application/octet-stream',
-					isInline: false,
-					data: a.content,
-				})),
-			});
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-			// A composition failure never touched the wire — classify it via the
-			// text taxonomy (envelope/content wording), terminal by default.
-			return {
-				success: false,
-				errorMessage,
-				errorCode: categorizeSmtpError(errorMessage),
-			};
-		}
-
-		// Stamp our VERP envelope sender where the relay is PROVEN to honour it, so
-		// a bounce the relay generates reaches our own bounce server and this arm
-		// produces bounce data comparable with the direct-MX arm. The composed
-		// bytes — From, DKIM, Message-ID, body — are identical either way (D11).
-		const envelopeSender = resolveRelayEnvelopeSender({
-			composedEnvelopeFrom: composed.envelope.from,
-			messageId: extras?.verpMessageId ?? composed.messageId,
-			customReturnPath: extras?.customReturnPath === true,
-			returnPathDomain: getOptional('MTA_RETURN_PATH_DOMAIN'),
-			verpKey: getOptional('MTA_BOUNCE_VERP_KEY'),
-			now: Date.now(),
-		});
-
-		const sendAbort = new AbortController();
-		try {
-			await withTimeout(
-				sendMessage({
-					connect: config.connect,
-					auth: config.auth,
-					signal: sendAbort.signal,
-					envelope: {
-						from: envelopeSender.envelopeFrom,
-						to: composed.envelope.to,
-						data: composed.raw,
-					},
-				}),
-				SMTP_SEND_TIMEOUT_MS,
-				SMTP_SEND_TIMEOUT_MESSAGE
-			);
-
-			return { success: true, id: composed.messageId };
-		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-			// A structured SmtpError carries the protocol phase + reply code — the
-			// only inputs the retry-vs-terminal decision is allowed to read.
-			if (isSmtpError(error)) {
-				return {
-					success: false,
-					errorMessage,
-					errorCode: classifySmtpError({
-						phase: error.phase,
-						replyCode: error.replyCode,
-						message: errorMessage,
-						clientRefusal: error.clientRefusal,
-					}),
-				};
-			}
-
-			// Anything else escaping the send — the outer `withTimeout` sentinel, or
-			// an unexpected throw — happened somewhere in the send with no structured
-			// phase to prove it was pre-acceptance. The message MAY have been
-			// delivered, so treat it as ambiguous and TERMINAL (never auto-retry).
-			return {
-				success: false,
-				errorMessage,
-				errorCode: EmailErrorCode.AMBIGUOUS_TIMEOUT,
-			};
-		} finally {
-			// Promise.race cannot cancel its losing branch. Close any live SMTP
-			// socket when the outer deadline wins so the send does not continue in
-			// the background and later deliver after we reported a timeout.
-			sendAbort.abort();
-		}
+		return (
+			await sendViaRelay(transport, params, {
+				customReturnPath: extras?.customReturnPath === true,
+			})
+		).attempt;
 	},
 
 	categorizeError(message: string, smtpReplyCode?: number): EmailErrorCode {

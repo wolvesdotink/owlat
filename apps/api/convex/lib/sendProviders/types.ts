@@ -145,13 +145,6 @@ export interface SmtpExtras {
 	 * cell's bounce data as degraded — never an error, never a blocker (D2).
 	 */
 	customReturnPath?: boolean;
-	/**
-	 * Overrides the message id the VERP token encodes. Only the return-path
-	 * probe sets it; a normal send encodes the composed Message-ID, which is
-	 * the same value stored as `providerMessageId`, so a bounce attributes to
-	 * the right send.
-	 */
-	verpMessageId?: string;
 }
 
 export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
