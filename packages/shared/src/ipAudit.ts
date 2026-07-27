@@ -15,7 +15,7 @@
  * a missing optional feed into an error state.
  */
 
-import { DNSBL_LISTS } from './dnsbl';
+import { DNSBL_LISTS, type DnsblListId } from './dnsbl';
 import type { FcrdnsFailureReason, FcrdnsVerdict } from './fcrdns';
 
 export const IP_AUDIT_ZONE_IDS = [
@@ -38,33 +38,27 @@ export interface IpAuditZoneDefinition {
 	addressFamilies: readonly ('ipv4' | 'ipv6')[];
 }
 
+/** Adopt a shipped DNSBL list verbatim: same zone, same families, one source. */
+function fromDnsblList(id: DnsblListId): IpAuditZoneDefinition {
+	const list = DNSBL_LISTS[id];
+	return {
+		id,
+		name: list.name,
+		zone: list.zone,
+		requiresCredential: list.requiresCredential,
+		addressFamilies: list.addressFamilies,
+	};
+}
+
 /**
- * Audit zones. The first three mirror the shipped DNSBL checker exactly (same
- * zones, same client); SORBS and Invaluement are audit-only additions that
- * never feed routing.
+ * Audit zones. Four of them mirror the shipped DNSBL checker exactly (same zone
+ * definitions, same client); SORBS and Invaluement are audit-only additions
+ * that never feed routing.
  */
 export const IP_AUDIT_ZONES: readonly IpAuditZoneDefinition[] = [
-	{
-		id: 'spamhaus',
-		name: DNSBL_LISTS.spamhaus.name,
-		zone: 'zen.spamhaus.org',
-		requiresCredential: false,
-		addressFamilies: ['ipv4', 'ipv6'],
-	},
-	{
-		id: 'barracuda',
-		name: DNSBL_LISTS.barracuda.name,
-		zone: 'b.barracudacentral.org',
-		requiresCredential: false,
-		addressFamilies: ['ipv4'],
-	},
-	{
-		id: 'spamcop',
-		name: DNSBL_LISTS.spamcop.name,
-		zone: 'bl.spamcop.net',
-		requiresCredential: false,
-		addressFamilies: ['ipv4'],
-	},
+	fromDnsblList('spamhaus'),
+	fromDnsblList('barracuda'),
+	fromDnsblList('spamcop'),
 	{
 		id: 'sorbs',
 		name: 'SORBS',
@@ -79,13 +73,7 @@ export const IP_AUDIT_ZONES: readonly IpAuditZoneDefinition[] = [
 		requiresCredential: true,
 		addressFamilies: ['ipv4'],
 	},
-	{
-		id: 'abusix',
-		name: DNSBL_LISTS.abusix.name,
-		zone: 'combined.mail.abusix.zone',
-		requiresCredential: true,
-		addressFamilies: ['ipv4', 'ipv6'],
-	},
+	fromDnsblList('abusix'),
 ];
 
 /** Spamhaus ZEN is several lists behind one zone; each needs different advice. */

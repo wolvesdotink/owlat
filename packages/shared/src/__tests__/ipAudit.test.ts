@@ -7,6 +7,7 @@ import {
 	type IpAuditInput,
 	type IpAuditZoneObservation,
 } from '../ipAudit';
+import { DNSBL_LISTS, dnsblZoneHost } from '../dnsbl';
 
 const CHECKED_AT = 1_800_000_000_000;
 
@@ -48,6 +49,20 @@ describe('audit zone catalogue', () => {
 		expect(byId.get('spamhaus')?.zone).toBe('zen.spamhaus.org');
 		expect(byId.get('barracuda')?.zone).toBe('b.barracudacentral.org');
 		expect(byId.get('spamcop')?.zone).toBe('bl.spamcop.net');
+	});
+
+	it('reads the shipped zones from DNSBL_LISTS rather than re-declaring them', () => {
+		// One source of truth: changing a zone in DNSBL_LISTS must move the audit
+		// with it, and the keyed composition lives beside the zone it belongs to.
+		for (const id of ['spamhaus', 'barracuda', 'spamcop', 'abusix'] as const) {
+			const audit = IP_AUDIT_ZONES.find((entry) => entry.id === id);
+			expect(audit?.zone).toBe(DNSBL_LISTS[id].zone);
+			expect(audit?.addressFamilies).toBe(DNSBL_LISTS[id].addressFamilies);
+			expect(audit?.requiresCredential).toBe(DNSBL_LISTS[id].requiresCredential);
+		}
+		expect(dnsblZoneHost(DNSBL_LISTS.abusix, 'key123')).toBe('key123.combined.mail.abusix.zone');
+		expect(dnsblZoneHost(DNSBL_LISTS.abusix, undefined)).toBeNull();
+		expect(dnsblZoneHost(DNSBL_LISTS.spamhaus, undefined)).toBe('zen.spamhaus.org');
 	});
 
 	it('marks the keyed feeds as credential-gated and IPv4-aware', () => {
