@@ -23,14 +23,7 @@ import {
 	type SndsComplaintBand,
 } from '../sndsFeed';
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const deliveryGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
-		path.replace(/^\.\.\//, '../../delivery/'),
-		module,
-	])
-);
-const modules = { ...rootGlob, ...deliveryGlob };
+import { modules } from './helpers/convexModules';
 
 const FEED_URL = 'https://sendersupport.olc.protection.outlook.com/snds/ada/example-key';
 
@@ -108,10 +101,36 @@ describe('SNDS feed parsing', () => {
 	});
 
 	it('is forward-compatible: an unrecognised band value is unknown, never a throw', () => {
-		for (const raw of ['SOMETHING NEW', 'n/a', '—', 'ØØ', 'unbanded', '%%%']) {
-			expect(() => parseComplaintBand(raw)).not.toThrow();
-			expect(parseComplaintBand(raw)).toBe('unknown');
+		for (const raw of [
+			'SOMETHING NEW',
+			'n/a',
+			'—',
+			'ØØ',
+			'unbanded',
+			'%%%',
+			// Relational spellings whose bound is NOT a band edge. These are the
+			// dangerous ones: reading `<` as "the cleanest band" would let reworded
+			// feed text turn a breach into a pass and let the share rise.
+			'<0.5%',
+			'< 0.5%',
+			'<0.9%',
+			'< 1%',
+			'>0.1%',
+			'> 0.2%',
+			// A relational prefix with no readable bound names nothing at all.
+			'<',
+			'> ',
+			'<abc',
+		]) {
+			expect(() => parseComplaintBand(raw), raw).not.toThrow();
+			expect(parseComplaintBand(raw), raw).toBe('unknown');
 		}
+		// The band EDGES still read exactly as Microsoft spells them.
+		expect(parseComplaintBand('< 0.1%')).toBe('lt_0_1');
+		expect(parseComplaintBand('<0.05%')).toBe('lt_0_1');
+		expect(parseComplaintBand('> 0.9%')).toBe('gte_0_9');
+		expect(parseComplaintBand('>= 0.9%')).toBe('gte_0_9');
+		expect(parseComplaintBand('> 5%')).toBe('gte_0_9');
 		// `unknown` is deliberately NOT the cleanest band — it has no severity.
 		expect(complaintBandSeverity('unknown')).toBeNull();
 		expect(complaintBandSeverity('lt_0_1')).toBe(0);
@@ -281,7 +300,7 @@ describe('SNDS poll', () => {
 		expect(await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect())).toEqual([]);
 	});
 
-	it('drops rows for days outside the ingest window', async () => {
+	it('drops days outside the ingest window BEFORE paying for a round trip', async () => {
 		const t = convexTest(schema, modules);
 		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
 		vi.stubGlobal(
@@ -300,6 +319,26 @@ describe('SNDS poll', () => {
 
 		const summary = await t.action(internal.delivery.snds.poll, {});
 		expect(summary.ingested).toBe(0);
-		expect(summary.rejected).toBe(2);
+		// Filtered in the action, so the ingest mutation is never called for them.
+		expect(summary.outOfWindow).toBe(2);
+		expect(summary.observations).toBe(0);
+		expect(summary.rejected).toBe(0);
+	});
+
+	it('counts replays instead of hiding them behind a quiet feed', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					new Response(feedRow({ ip: '203.0.113.10', start: dayAgo(1, 0), end: dayAgo(1, 8) }), {
+						status: 200,
+					})
+			)
+		);
+
+		const first = await t.action(internal.delivery.snds.poll, {});
+		expect(first).toMatchObject({ ingested: 1, replayed: 0 });
 	});
 });

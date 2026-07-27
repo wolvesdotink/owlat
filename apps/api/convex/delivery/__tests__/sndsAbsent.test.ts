@@ -13,16 +13,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { parseSndsFeedUrls } from '../snds';
-import { evaluateSndsGate, SNDS_ABSENT_SUBSTITUTION } from '../sndsGate';
+import { evaluateSndsGate, sndsPromotionPass, SNDS_ABSENT_SUBSTITUTION } from '../sndsGate';
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const deliveryGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
-		path.replace(/^\.\.\//, '../../delivery/'),
-		module,
-	])
-);
-const modules = { ...rootGlob, ...deliveryGlob };
+import { modules } from './helpers/convexModules';
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -44,8 +37,11 @@ describe('SNDS absent — the poller', () => {
 			observations: 0,
 			ingested: 0,
 			rejected: 0,
+			replayed: 0,
 			droppedRows: 0,
 			foreignIps: 0,
+			outOfWindow: 0,
+			capped: 0,
 			truncated: false,
 		});
 		// Not "a failed feed" — no feed was ever contacted.
@@ -98,6 +94,8 @@ describe('SNDS absent — the gate', () => {
 		// "setup incomplete", no instruction that the operator MUST do anything.
 		expect(verdict.reason).toMatch(/SMTP reply classification/);
 		expect(verdict.reason).not.toMatch(/error|failed|invalid|incomplete|required|must/i);
+		// Absence never promotes — and, just as importantly, never demotes.
+		expect(sndsPromotionPass(input)).toBe(false);
 	});
 
 	it('an enrolled deployment with no data yet takes the SAME substitution path', async () => {

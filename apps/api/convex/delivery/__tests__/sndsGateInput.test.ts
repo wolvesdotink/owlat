@@ -11,24 +11,17 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import { SNDS_COMPLAINT_BANDS } from '../sndsFeed';
+import { DAY_MS, SNDS_COMPLAINT_BANDS } from '../sndsFeed';
 import {
 	buildSndsGateInput,
 	DEFAULT_SNDS_GATE_THRESHOLDS,
 	evaluateSndsGate,
+	sndsPromotionPass,
 	type SndsGateObservation,
 } from '../sndsGate';
+import { SNDS_GATE_MAX_ROWS } from '../snds';
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const deliveryGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
-		path.replace(/^\.\.\//, '../../delivery/'),
-		module,
-	])
-);
-const modules = { ...rootGlob, ...deliveryGlob };
-
-const DAY_MS = 24 * 60 * 60 * 1_000;
+import { modules } from './helpers/convexModules';
 
 afterEach(() => {
 	delete process.env['SNDS_DATA_FEED_URLS'];
@@ -93,19 +86,19 @@ describe('SNDS gate input', () => {
 });
 
 describe('SNDS gate verdict', () => {
-	it('breaches at or above the breach band and names the BAND, never a rate', () => {
-		for (const band of ['0_3_to_0_4', '0_5_to_0_6', 'gte_0_9'] as const) {
+	it('fails at or above the breach band and names the BAND, never a rate', () => {
+		for (const band of ['0_1_to_0_2', '0_3_to_0_4', '0_5_to_0_6', 'gte_0_9'] as const) {
 			const verdict = evaluateSndsGate(gateInput([observation({ complaintBand: band })]));
-			expect(verdict.verdict, band).toBe('breach');
-			if (verdict.verdict !== 'breach') continue;
-			expect(verdict.failedSignal).toBe('complaint_band');
+			expect(verdict.verdict, band).toBe('fail');
+			if (verdict.verdict !== 'fail') continue;
+			expect(verdict.failedGate).toBe('complaint_band');
 			expect(verdict.reason).toContain(band);
 			expect(verdict.reason).not.toMatch(FABRICATED_RATE_RE);
 		}
 	});
 
 	it('passes below the breach band', () => {
-		for (const band of ['lt_0_1', '0_1_to_0_2', '0_2_to_0_3'] as const) {
+		for (const band of ['lt_0_1'] as const) {
 			const verdict = evaluateSndsGate(gateInput([observation({ complaintBand: band })]));
 			expect(verdict.verdict, band).toBe('pass');
 			expect(verdict.reason).toContain(band);
@@ -119,10 +112,10 @@ describe('SNDS gate verdict', () => {
 		}
 	});
 
-	it('breaches on a red filter result but not on yellow by default', () => {
+	it('fails on a red filter result but not on yellow by default', () => {
 		const red = evaluateSndsGate(gateInput([observation({ filterResult: 'red' })]));
-		expect(red.verdict).toBe('breach');
-		expect(red.verdict === 'breach' && red.failedSignal).toBe('filter_result');
+		expect(red.verdict).toBe('fail');
+		expect(red.verdict === 'fail' && red.failedGate).toBe('filter_result');
 
 		const yellow = evaluateSndsGate(gateInput([observation({ filterResult: 'yellow' })]));
 		expect(yellow.verdict).toBe('pass');
@@ -131,15 +124,61 @@ describe('SNDS gate verdict', () => {
 			...DEFAULT_SNDS_GATE_THRESHOLDS,
 			breachOnYellow: true,
 		});
-		expect(strict.verdict).toBe('breach');
+		expect(strict.verdict).toBe('fail');
 	});
 
-	it('breaches on a spam-trap hit, ahead of every other signal', () => {
+	it('fails on a spam-trap hit, ahead of every other signal', () => {
 		const verdict = evaluateSndsGate(
 			gateInput([observation({ trapHits: 1, complaintBand: 'lt_0_1', filterResult: 'green' })])
 		);
-		expect(verdict.verdict).toBe('breach');
-		expect(verdict.verdict === 'breach' && verdict.failedSignal).toBe('spam_traps');
+		expect(verdict.verdict).toBe('fail');
+		expect(verdict.verdict === 'fail' && verdict.failedGate).toBe('spam_traps');
+	});
+
+	it('is a low-confidence signal when the read was truncated, and never promotes', () => {
+		const clean = [
+			observation({ complaintBand: 'lt_0_1', periodStart: Date.UTC(2026, 6, 20) }),
+			observation({ complaintBand: 'lt_0_1', periodStart: Date.UTC(2026, 6, 21) }),
+		];
+		const whole = buildSndsGateInput({ enrolled: true, windowDays: 7, observations: clean });
+		const cut = buildSndsGateInput({
+			enrolled: true,
+			windowDays: 7,
+			observations: clean,
+			truncated: true,
+		});
+		expect(whole.available && cut.available).toBe(true);
+		if (!whole.available || !cut.available) return;
+		// Same rows, and the only difference is that the read was cut short.
+		expect(whole.signal.truncated).toBe(false);
+		expect(whole.signal.confidence).toBe('high');
+		expect(sndsPromotionPass(whole)).toBe(true);
+		expect(cut.signal.truncated).toBe(true);
+		expect(cut.signal.confidence).toBe('low');
+		// A truncated window is still allowed to REPORT a pass — it just cannot be
+		// the positive evidence a promotion needs.
+		expect(evaluateSndsGate(cut).verdict).toBe('pass');
+		expect(sndsPromotionPass(cut)).toBe(false);
+	});
+
+	it('promotes only on a banded, multi-day, whole window below the breach band', () => {
+		// One fixture row per band: exactly the cleanest band may promote.
+		for (const band of SNDS_COMPLAINT_BANDS) {
+			const input = gateInput([
+				observation({ complaintBand: band, periodStart: Date.UTC(2026, 6, 20) }),
+				observation({ complaintBand: band, periodStart: Date.UTC(2026, 6, 21) }),
+			]);
+			expect(sndsPromotionPass(input), band).toBe(band === 'lt_0_1');
+		}
+		// A single clean day is a pass, but not yet positive evidence.
+		expect(evaluateSndsGate(gateInput([observation({ complaintBand: 'lt_0_1' })])).verdict).toBe(
+			'pass'
+		);
+		expect(sndsPromotionPass(gateInput([observation({ complaintBand: 'lt_0_1' })]))).toBe(false);
+		// Absence never promotes — and never demotes either (D2/D10).
+		expect(
+			sndsPromotionPass(buildSndsGateInput({ enrolled: false, windowDays: 7, observations: [] }))
+		).toBe(false);
 	});
 
 	it('HOLDS on an unbanded window: insufficient_data, never a decrease (D10)', () => {
@@ -187,6 +226,46 @@ describe('getMicrosoftGateInput', () => {
 		if (!input.available) return;
 		expect(input.signal.worstComplaintBand).toBe('0_4_to_0_5');
 		expect(input.signal.trapHits).toBe(0);
-		expect(evaluateSndsGate(input).verdict).toBe('breach');
+		expect(evaluateSndsGate(input).verdict).toBe('fail');
+		expect(input.signal.truncated).toBe(false);
+	});
+
+	it('reads the NEWEST days first, so a same-day breach survives the row cap', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
+		const now = Date.now();
+		const today = Math.floor(now / DAY_MS) * DAY_MS;
+		// More rows than one read may return, with the BREACH on the newest day.
+		// An ascending scan would spend the cap on the oldest days and answer
+		// `pass` from a window that no longer contains the breach.
+		await t.run(async (ctx) => {
+			for (let index = 0; index <= SNDS_GATE_MAX_ROWS; index += 1) {
+				const newest = index === SNDS_GATE_MAX_ROWS;
+				await ctx.db.insert('sndsIpDailyStats', {
+					ip: `203.0.113.${index % 250}`,
+					// Oldest rows first in insertion order; the newest day is last.
+					periodStart: newest ? today : today - (1 + (index % 6)) * DAY_MS,
+					complaintBand: newest ? 'gte_0_9' : 'lt_0_1',
+					filterResult: newest ? 'red' : 'green',
+					trapHits: 0,
+					messageRecipients: 10,
+					rcptCommands: 10,
+					dataCommands: 10,
+					fetchedAt: now,
+					ingestedAt: now,
+				});
+			}
+		});
+
+		const input = await t.query(internal.delivery.snds.getMicrosoftGateInput, { windowDays: 7 });
+		expect(input.available).toBe(true);
+		if (!input.available) return;
+		expect(input.signal.worstFilterResult).toBe('red');
+		expect(input.signal.worstComplaintBand).toBe('gte_0_9');
+		expect(evaluateSndsGate(input).verdict).toBe('fail');
+		// The window is a subset, so it can never justify an increase.
+		expect(input.signal.truncated).toBe(true);
+		expect(input.signal.confidence).toBe('low');
+		expect(sndsPromotionPass(input)).toBe(false);
 	});
 });

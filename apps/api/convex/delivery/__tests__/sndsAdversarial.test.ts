@@ -13,23 +13,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import {
+	DAY_MS,
 	normalizeSndsIp,
 	parseSndsFeed,
+	SNDS_MAX_FEED_BYTES,
 	SNDS_MAX_ROWS,
 	type SndsDayObservation,
 } from '../sndsFeed';
-import { parsePoolAllowlist, parseSndsFeedUrls, SNDS_MAX_FEEDS } from '../snds';
+import {
+	parsePoolAllowlist,
+	parseSndsFeedUrls,
+	SNDS_INGEST_BATCH_SIZE,
+	SNDS_MAX_FEEDS,
+	SNDS_MAX_OBSERVATIONS_PER_POLL,
+} from '../snds';
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const deliveryGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
-		path.replace(/^\.\.\//, '../../delivery/'),
-		module,
-	])
-);
-const modules = { ...rootGlob, ...deliveryGlob };
-
-const DAY_MS = 24 * 60 * 60 * 1_000;
+import { modules } from './helpers/convexModules';
 const FEED_URL = 'https://snds.example.test/feed';
 
 afterEach(() => {
@@ -128,6 +127,30 @@ describe('oversized and malformed feeds', () => {
 		expect(normalizeSndsIp('2001:db8::1')).toBe('2001:db8::1');
 	});
 
+	it('canonicalizes IPv6 so two spellings of one address are ONE table key', () => {
+		// Two spellings, one address: without canonicalization these become two
+		// rows, trap hits double-count in the gate fold, and MTA_IP_POOLS matching
+		// starts depending on how the operator typed the address.
+		expect(normalizeSndsIp('2001:0db8::1')).toBe('2001:db8::1');
+		expect(normalizeSndsIp('2001:0DB8:0000:0000:0000:0000:0000:0001')).toBe('2001:db8::1');
+		expect(normalizeSndsIp('2001:db8:0:0:0:0:0:1')).toBe('2001:db8::1');
+		expect(parsePoolAllowlist('2001:0db8::1, 2001:db8:0:0:0:0:0:1')).toEqual(
+			new Set(['2001:db8::1'])
+		);
+
+		// Near-misses the old permissive grammar accepted.
+		for (const junk of [
+			'::::',
+			':::',
+			'1:2:3',
+			'2001:db8::1::2',
+			'[2001:db8::1]',
+			'2001:db8::1%eth0',
+		]) {
+			expect(normalizeSndsIp(junk), junk).toBeNull();
+		}
+	});
+
 	it('bounds and sanitizes the configured feed list', () => {
 		const many = Array.from({ length: SNDS_MAX_FEEDS + 5 }, (_, i) => `https://f${i}.test/x`);
 		expect(parseSndsFeedUrls(many.join(','))).toHaveLength(SNDS_MAX_FEEDS);
@@ -210,10 +233,84 @@ describe('replay, staleness and foreign IPs', () => {
 		expect(rows.map((stored) => stored.ip)).toEqual(['203.0.113.10']);
 	});
 
+	it('counts the overflow when a caller oversends a batch, instead of slicing it away', async () => {
+		const t = convexTest(schema, modules);
+		const fetchedAt = Date.now();
+		const over = SNDS_INGEST_BATCH_SIZE + 36;
+		const result = await t.mutation(internal.delivery.snds.ingestDays, {
+			observations: Array.from({ length: over }, (_, index) =>
+				observation({ ip: `203.0.113.${index % 250}` })
+			),
+			fetchedAt,
+		});
+		// Every row the caller passed is accounted for in exactly one bucket.
+		expect(result.ingested + result.rejected + result.replayed).toBe(over);
+		expect(result.rejected).toBeGreaterThanOrEqual(36);
+	});
+
 	it('never throws on a malformed pool declaration', () => {
 		expect(parsePoolAllowlist('203.0.113.10, oops, , 203.0.113.11')).toEqual(
 			new Set(['203.0.113.10', '203.0.113.11'])
 		);
 		expect(parsePoolAllowlist(undefined).size).toBe(0);
+	});
+});
+
+describe('poll fan-out bounds', () => {
+	it('caps observations per poll and counts what the cap dropped (D16)', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
+		// One row per address: more distinct (IP, day) pairs than one tick may
+		// dispatch. Unbounded, this would be thousands of sequential mutations.
+		const over = SNDS_MAX_OBSERVATIONS_PER_POLL + 25;
+		const body = Array.from({ length: over }, (_, index) =>
+			row(`10.${Math.floor(index / 65536) % 256}.${Math.floor(index / 256) % 256}.${index % 256}`)
+		).join('\n');
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(body, { status: 200 }))
+		);
+
+		const summary = await t.action(internal.delivery.snds.poll, {});
+		expect(summary.observations).toBe(SNDS_MAX_OBSERVATIONS_PER_POLL);
+		expect(summary.capped).toBe(25);
+		expect(summary.ingested).toBe(SNDS_MAX_OBSERVATIONS_PER_POLL);
+		const stored = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
+		expect(stored).toHaveLength(SNDS_MAX_OBSERVATIONS_PER_POLL);
+	});
+
+	it('refuses an oversized body while reading it, never after', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
+		// A server that declares no content-length and streams past the cap. The
+		// read must abort mid-stream: `await response.text()` would materialise
+		// the whole thing before any size check could run.
+		let delivered = 0;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => {
+				const chunk = new TextEncoder().encode(`${row('203.0.113.10')}\n`.repeat(64));
+				return new Response(
+					new ReadableStream({
+						pull(controller) {
+							if (delivered > SNDS_MAX_FEED_BYTES * 4) {
+								controller.close();
+								return;
+							}
+							delivered += chunk.byteLength;
+							controller.enqueue(chunk);
+						},
+					}),
+					{ status: 200 }
+				);
+			})
+		);
+
+		const summary = await t.action(internal.delivery.snds.poll, {});
+		// A feed that overruns is a FAILED feed, not a truncated one.
+		expect(summary).toMatchObject({ enrolled: true, feedsFailed: 1, ingested: 0 });
+		// The reader stopped near the cap rather than draining the whole stream.
+		expect(delivered).toBeLessThan(SNDS_MAX_FEED_BYTES * 3);
+		expect(await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect())).toEqual([]);
 	});
 });
