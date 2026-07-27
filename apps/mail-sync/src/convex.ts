@@ -41,8 +41,10 @@ export const fn = {
 	listSeedProbeWork: 'analytics/seedProbePoller:listSeedProbeWork' as FnRef,
 	// Report one probe's folder + run the planned hygiene (internalMutation).
 	recordSeedProbeClassification: 'analytics/seedPlacement:recordSeedProbeClassification' as FnRef,
-	// Advisory "rotate this seed" nudge (internalMutation).
-	markSeedRotationReminded: 'analytics/seedPlacement:markSeedRotationReminded' as FnRef,
+	// Emit the advisory "rotate this seed" nudge and record that it was emitted
+	// (internalMutation). Returns `{ emitted }`; the flag is only cleared when it
+	// really produced an operator-visible artifact.
+	emitSeedRotationReminder: 'analytics/seedPlacement:emitSeedRotationReminder' as FnRef,
 
 	// ── Historical backfill (migration) ──────────────────────────────────
 	// Whether a migration is importing + each folder's backfill cursor (internalQuery).

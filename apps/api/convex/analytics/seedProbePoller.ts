@@ -14,8 +14,9 @@
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
-import { CONNECTABLE_ACCOUNT_STATUSES } from '../mail/externalAccountShared';
+import { internalQuery, type DatabaseReader } from '../_generated/server';
+import { CONNECTABLE_ACCOUNT_STATUSES, seedProviderOf } from '../mail/externalAccountShared';
+import { getOptional } from '../lib/env';
 import {
 	shouldRemindSeedRotation,
 	type SeedProbeWorkItem,
@@ -57,6 +58,37 @@ const SEED_PROBE_WORK_LIMIT = 50;
 const connectableStatuses = new Set<string>(CONNECTABLE_ACCOUNT_STATUSES);
 
 /**
+ * The hosts the worker's hygiene click may be issued against.
+ *
+ * The click target is picked out of links found INSIDE a message sitting on a
+ * mail server we do not run, so the permitted set is supplied by the backend
+ * rather than inferred from the content: this deployment's own tracking domain
+ * and its own site/Convex origins, and nothing else. Anything not on the list
+ * is simply not clicked — a skipped click is a missing data point, which is a
+ * far cheaper outcome than an outbound request the worker was talked into.
+ */
+async function resolveClickHosts(db: DatabaseReader): Promise<string[]> {
+	const hosts = new Set<string>();
+	const add = (value: string | undefined): void => {
+		if (!value) return;
+		try {
+			hosts.add(new URL(value.includes('://') ? value : `https://${value}`).host.toLowerCase());
+		} catch {
+			// A malformed configured URL contributes nothing; it is never a failure.
+		}
+	};
+	add(getOptional('CONVEX_SITE_URL'));
+	add(getOptional('SITE_URL'));
+	// Tracking domains are few per deployment and the shipped resolver collects
+	// them the same way (`domains/trackingDomains.getActiveTrackingDomain`).
+	const trackingDomains = await db.query('trackingDomains').collect();
+	for (const domain of trackingDomains) {
+		if (domain.isVerified) add(domain.domain);
+	}
+	return [...hosts];
+}
+
+/**
  * One page of the seed mailboxes with outstanding probe work.
  *
  * Selects on `purpose` through its own index — a deployment with many ordinary
@@ -76,6 +108,7 @@ export const listSeedProbeWork = internalQuery({
 			.paginate({ numItems: SEED_ACCOUNT_PAGE_SIZE, cursor: args.cursor ?? null });
 
 		const items: SeedProbeWorkItem[] = [];
+		const clickHosts = await resolveClickHosts(ctx.db);
 		for (const account of page.page) {
 			if (!connectableStatuses.has(account.status)) continue;
 			const mailbox = await ctx.db.get(account.mailboxId);
@@ -115,7 +148,7 @@ export const listSeedProbeWork = internalQuery({
 				organizationId: account.organizationId,
 				accountId: account._id,
 				address: mailbox.address,
-				provider: account.seedProvider ?? 'other',
+				provider: seedProviderOf(account),
 				probeIds,
 				expiredProbeIds,
 				rotationReminderDue: shouldRemindSeedRotation({
@@ -123,6 +156,7 @@ export const listSeedProbeWork = internalQuery({
 					lastRemindedAt: account.seedRotationRemindedAt,
 					now: args.now,
 				}),
+				clickHosts,
 			});
 		}
 		return {

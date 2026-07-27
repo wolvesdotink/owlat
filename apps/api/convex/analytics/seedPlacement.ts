@@ -43,7 +43,11 @@ import {
 	type SeedProviderRollup,
 } from '@owlat/shared/seedPlacement';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import { takeLiveSeedAccounts } from '../mail/externalAccountShared';
+import {
+	seedProviderOf,
+	takeConnectableSeedAccounts,
+	takeLiveSeedAccounts,
+} from '../mail/externalAccountShared';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -68,6 +72,36 @@ const SEED_PROBE_ABANDON_BATCH = 200;
  */
 export const SEED_PROBE_DISPATCH_HORIZON_MS = 48 * 60 * 60 * 1000;
 
+/**
+ * Maximum stored length of a remote folder name (and of the category label
+ * derived from it).
+ *
+ * A folder name arrives from an IMAP server whose software the operator does
+ * not choose, so it is remote input like any other: bounded at the mutation
+ * boundary rather than stored verbatim. IMAP mailbox names are modified UTF-7
+ * paths and real ones are far shorter than this; the bound exists so a
+ * pathological name cannot inflate a ledger row that is written once per seed
+ * per campaign. Truncation is display-only — no decision reads the string.
+ */
+const SEED_FOLDER_NAME_MAX_LENGTH = 256;
+
+/**
+ * Clamp a remote folder name to something safe to store and render: control
+ * characters (including the CR/LF that would let a folder name forge a line in
+ * an operator-facing log) are dropped, and the result is length-bounded.
+ */
+function clampRemoteFolderName(value: string): string {
+	// Character codes rather than a control-character regex: the regex form is a
+	// lint error in this repo, and the intent reads more plainly this way.
+	const bounded = value.slice(0, SEED_FOLDER_NAME_MAX_LENGTH);
+	let out = '';
+	for (const char of bounded) {
+		const code = char.codePointAt(0) ?? 0;
+		out += code < 0x20 || code === 0x7f ? ' ' : char;
+	}
+	return out;
+}
+
 // ============ SEED ACCOUNTS ============
 
 /**
@@ -90,7 +124,7 @@ function toSeedAccountView(
 ): SeedAccountView {
 	return {
 		accountId: account._id,
-		provider: account.seedProvider ?? 'other',
+		provider: seedProviderOf(account),
 		address,
 		connectedAt: account.createdAt,
 		rotationReminderDue: shouldRemindSeedRotation({
@@ -101,18 +135,33 @@ function toSeedAccountView(
 	};
 }
 
+/**
+ * The org's seed mailboxes, projected.
+ *
+ * `reach: 'live'` is every seed the operator still owns — the honest
+ * denominator for the roll-up and for the connect cap, `auth_error` seeds
+ * included. `reach: 'connectable'` is the strictly smaller set the POLLER will
+ * walk, and it is the only set anything is allowed to MAIL: a shadow copy to a
+ * seed whose credentials expired is real volume against the warming cap that
+ * can never be observed, plus a ledger row that sits unclassified for the whole
+ * retention window.
+ */
 export async function loadSeedAccounts(
 	db: DatabaseReader,
 	organizationId: string,
-	now: number
+	now: number,
+	reach: 'live' | 'connectable' = 'live'
 ): Promise<SeedAccountView[]> {
 	// NOT a silent truncation: `mail/externalAccountsSeed.ts` refuses the
-	// (limit+1)th LIVE seed at CONNECT time and this read selects the same LIVE
-	// rows through the same index, so the page can only ever be short of the cap.
-	// A seed the operator connected is always measured.
-	const live = await takeLiveSeedAccounts(db, organizationId, SEED_ACCOUNTS_PER_ORG_LIMIT);
+	// (limit+1)th LIVE seed at CONNECT time and this read selects through the
+	// same index, so the page can only ever be short of the cap. A seed the
+	// operator connected is always measured.
+	const rows =
+		reach === 'connectable'
+			? await takeConnectableSeedAccounts(db, organizationId, SEED_ACCOUNTS_PER_ORG_LIMIT)
+			: await takeLiveSeedAccounts(db, organizationId, SEED_ACCOUNTS_PER_ORG_LIMIT);
 	const views: SeedAccountView[] = [];
-	for (const row of live) {
+	for (const row of rows) {
 		// `imapUsername` is the LOGIN, which for several providers is not an email
 		// address at all. The deliverable address is the linked mailbox's.
 		const mailbox = await db.get(row.mailboxId);
@@ -123,10 +172,25 @@ export async function loadSeedAccounts(
 }
 
 /**
- * Record that the operator has been nudged to rotate a stale seed. A reminder
- * is advisory: it never blocks a send, a promotion, or a screen.
+ * EMIT the "rotate this seed" nudge, and only then record that it was sent.
+ *
+ * The order is the whole point. An earlier shape had the sweep clear the
+ * reminder flag and nothing actually deliver anything, so the 90-day clock
+ * restarted every time and the reminder could never reach a human. Here the
+ * operator-visible artifact — a `mailAuditLog` entry on the seed's mailbox, the
+ * same trail the account's connect event lands in — is written FIRST, and
+ * `seedRotationRemindedAt` is stamped only because it was written. A caller
+ * that decides not to emit leaves the flag standing for the next tick.
+ *
+ * The due-ness is re-derived HERE from the stored timestamps rather than
+ * trusted from the worker: the worker's copy is a page that may be minutes old,
+ * and two replicas sweeping the same account must not produce two reminders.
+ *
+ * D2: advisory only. It never blocks a send, a promotion, or a screen, and it
+ * is not a "setup incomplete" nag — a seed that is never rotated keeps being
+ * measured, it just measures less well.
  */
-export const markSeedRotationReminded = internalMutation({
+export const emitSeedRotationReminder = internalMutation({
 	args: {
 		organizationId: v.string(),
 		accountId: v.id('externalMailAccounts'),
@@ -134,15 +198,31 @@ export const markSeedRotationReminded = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const account = await ctx.db.get(args.accountId);
-		if (!account || account.purpose !== 'seed') return { updated: false };
+		if (!account || account.purpose !== 'seed') return { emitted: false as const };
 		// Defense in depth at the poller boundary: an org may only ever touch its
 		// own seed accounts, even through an internal function.
-		if (account.organizationId !== args.organizationId) return { updated: false };
+		if (account.organizationId !== args.organizationId) return { emitted: false as const };
+		// Re-check against the stored timestamps, not the worker's stale page.
+		const due = shouldRemindSeedRotation({
+			connectedAt: account.createdAt,
+			lastRemindedAt: account.seedRotationRemindedAt,
+			now: args.now,
+		});
+		if (!due) return { emitted: false as const };
+
+		const ageDays = Math.floor((args.now - account.createdAt) / (24 * 60 * 60 * 1000));
+		// Provider + age only. No address, no credential, no mailbox contents.
+		await ctx.db.insert('mailAuditLog', {
+			mailboxId: account.mailboxId,
+			event: 'seed_account.rotation_reminder',
+			details: `deliverability seed mailbox (${account.seedProvider ?? 'other'}) has been in use for ${ageDays} days — rotating it keeps placement readings representative`,
+			occurredAt: args.now,
+		});
 		await ctx.db.patch(args.accountId, {
 			seedRotationRemindedAt: args.now,
 			updatedAt: args.now,
 		});
-		return { updated: true };
+		return { emitted: true as const };
 	},
 });
 
@@ -193,7 +273,17 @@ export const recordSeedProbeClassification = internalMutation({
 			return { recorded: false as const, reason: 'already_classified' as const };
 		}
 
+		// The folder name is REMOTE input — it comes off an IMAP server whose
+		// software the operator does not choose — so it is bounded before it is
+		// stored. Classification still runs on the raw name: clamping is about what
+		// we persist and render, not about what we decide.
 		const classification = classifySeedFolder(args.folderName, probe.provider);
+		const storedFolderName =
+			args.folderName !== null ? clampRemoteFolderName(args.folderName) : null;
+		const storedCategoryLabel =
+			classification.categoryLabel !== undefined
+				? clampRemoteFolderName(classification.categoryLabel)
+				: undefined;
 		const hygiene = planSeedHygiene({
 			placement: classification.placement,
 			alreadyMarkedRead: probe.markedReadAt !== undefined,
@@ -204,10 +294,8 @@ export const recordSeedProbeClassification = internalMutation({
 		await ctx.db.patch(probe._id, {
 			placement: classification.placement,
 			classifiedAt: args.now,
-			...(args.folderName !== null ? { folderName: args.folderName } : {}),
-			...(classification.categoryLabel !== undefined
-				? { categoryLabel: classification.categoryLabel }
-				: {}),
+			...(storedFolderName !== null ? { folderName: storedFolderName } : {}),
+			...(storedCategoryLabel !== undefined ? { categoryLabel: storedCategoryLabel } : {}),
 			...(hygiene.markRead ? { markedReadAt: args.now } : {}),
 			...(hygiene.click ? { clickedAt: args.now } : {}),
 		});
@@ -261,15 +349,19 @@ export const recordSeedProbeUnsubscribe = internalMutation({
 			.withIndex('by_probe_id', (q) => q.eq('probeId', args.probeId))
 			.unique();
 		if (!probe) return { recorded: false as const, reason: 'unknown_probe' as const };
-		if (probe.unsubscribedAt !== undefined) {
-			return { recorded: false as const, reason: 'already_recorded' as const };
-		}
-		// The same org boundary its three siblings hold. The caller's claim here is
-		// the SIGNED one-click token, which carries the organization alongside the
-		// probe id precisely so this assertion has something independent to check
-		// rather than reading the answer off the row it is about to write.
+		// The same org boundary its three siblings hold, and — like them — held
+		// FIRST. The caller's claim here is the SIGNED one-click token, which
+		// carries the organization alongside the probe id precisely so this
+		// assertion has something independent to check rather than reading the
+		// answer off the row it is about to write. Checking `already_recorded`
+		// ahead of it would make one branch of the boundary reachable only for
+		// un-recorded probes and turn "already recorded" into a cross-tenant
+		// existence answer.
 		if (probe.organizationId !== args.organizationId) {
 			return { recorded: false as const, reason: 'foreign_organization' as const };
+		}
+		if (probe.unsubscribedAt !== undefined) {
+			return { recorded: false as const, reason: 'already_recorded' as const };
 		}
 		await ctx.db.patch(probe._id, { unsubscribedAt: args.now });
 		return { recorded: true as const };
@@ -313,7 +405,14 @@ export async function summarizeSeedPlacementWindow(
 		const placement = probe.placement;
 		// Unclassified probes are not yet evidence in either direction.
 		if (placement === undefined) continue;
-		observations.push({ provider: probe.provider, placement });
+		// Which arm carried it is gate 5's second clause. A row with no recorded
+		// arm reads as `own`: standalone is the default configuration, and s === 1
+		// means every probe went through our own MTA.
+		observations.push({
+			provider: probe.provider,
+			arm: probe.transportArm ?? 'own',
+			placement,
+		});
 	}
 
 	const accounts = await loadSeedAccounts(db, organizationId, now);
