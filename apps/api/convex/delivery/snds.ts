@@ -36,7 +36,7 @@ import {
 import { buildSndsGateInput, type SndsGateInput, type SndsGateObservation } from './sndsGate';
 import { parsePoolIpsLenient } from '../domains/spf';
 import { observationVerdict } from './observationFreshness';
-import { sweepExpiredObservations } from './observationRetention';
+import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
 
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
 const RETENTION_MS = 90 * DAY_MS;
@@ -372,9 +372,19 @@ export const ingestDays = internalMutation({
 	},
 });
 
+/**
+ * The return type is ANNOTATED, not inferred, and that annotation is load-bearing.
+ *
+ * `scheduleContinuation` names this very mutation through the generated API, so
+ * an inferred handler return type would have to resolve `internal.delivery.snds.cleanup`
+ * in order to type the argument it is being inferred from. TypeScript answers
+ * that circularity with `any`, which then propagates through `fullApi` and
+ * collapses `ctx.db` inference across the whole app. Stating the type cuts the
+ * cycle at its only load-bearing edge.
+ */
 export const cleanup = internalMutation({
 	args: {},
-	handler: async (ctx) =>
+	handler: async (ctx): Promise<ObservationSweepResult> =>
 		sweepExpiredObservations(ctx, {
 			now: Date.now(),
 			retentionMs: RETENTION_MS,

@@ -13,7 +13,7 @@ import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { observationVerdict } from './observationFreshness';
-import { sweepExpiredObservations } from './observationRetention';
+import { type ObservationSweepResult, sweepExpiredObservations } from './observationRetention';
 import {
 	derivePostmasterCards,
 	type PostmasterCard,
@@ -257,9 +257,14 @@ export const ingestCompliance = internalMutation({
 	},
 });
 
+/**
+ * The return type is ANNOTATED, not inferred: `scheduleContinuation` names this
+ * mutation through the generated API, so an inferred handler return type would
+ * be defined in terms of itself. See the same note on `delivery/snds.ts`.
+ */
 export const cleanup = internalMutation({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx): Promise<ObservationSweepResult> => {
 		return sweepExpiredObservations(ctx, {
 			now: Date.now(),
 			retentionMs: RETENTION_MS,
