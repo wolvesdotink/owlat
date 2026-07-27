@@ -2,7 +2,6 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import {
 	destinationProviderValidator,
-	mailStreamValidator,
 	seedPlacementValidator,
 } from '../delivery/deliverabilityValidators';
 
@@ -43,8 +42,14 @@ export const seedPlacementTables = {
 		accountId: v.id('externalMailAccounts'),
 		/** Mailbox provider of the seed account (the cell's destination axis). */
 		provider: destinationProviderValidator,
-		/** The cell's stream axis — which mail stream this probe measures. */
-		stream: mailStreamValidator,
+		/**
+		 * The cell's stream axis. This piece only ever drops a probe on a CAMPAIGN
+		 * send, so the column is narrowed to what is actually produced (D20 — no
+		 * speculative seams). Widening it to the full `automation` /
+		 * `transactional` union is a purely additive schema change for whichever
+		 * piece ships a scheduled transactional probe.
+		 */
+		stream: v.literal('campaign'),
 		/**
 		 * Which arm actually carried the shadow copy, so placement is
 		 * attributable. Written by the worker AFTER dispatch resolves the route —
@@ -52,8 +57,25 @@ export const seedPlacementTables = {
 		 * is why it is optional rather than guessed at enqueue time.
 		 */
 		transportArm: v.optional(v.union(v.literal('own'), v.literal('reference'))),
-		/** Set when the worker handed the shadow copy to a provider. */
+		/**
+		 * Set when the worker actually handed the shadow copy to a provider.
+		 * Everything downstream keys off THIS, never off `sentAt`: a probe that is
+		 * still sitting in the rate-limited workpool, was deferred by the governed
+		 * router, or was suppressed has not been mailed, and "not mailed" is not a
+		 * filter verdict.
+		 */
 		dispatchedAt: v.optional(v.number()),
+		/**
+		 * The NEVER-DISPATCHED disposition — deliberately not a `placement`.
+		 *
+		 * Set by the abandonment sweep on a probe that was enqueued but never
+		 * handed to a transport within the dispatch horizon (warming caps, a
+		 * deferral, a suppressed recipient). Such a probe is NON-EVIDENCE: it is
+		 * never classified, never rolled up, and can never become the `missing`
+		 * reading that feeds the collapse tripwire. Recording it explicitly is
+		 * what keeps our own queue from manufacturing gate 5's alarm.
+		 */
+		notDispatchedAt: v.optional(v.number()),
 		/** Present when the probe shadowed a campaign send. */
 		campaignId: v.optional(v.id('campaigns')),
 		/**
@@ -87,12 +109,18 @@ export const seedPlacementTables = {
 		expiresAt: v.number(),
 	})
 		.index('by_probe_id', ['probeId'])
-		// Org-scoped idempotency for the per-campaign probe set (defense in depth
-		// at the poller/scheduler boundary — a probe row is only ever reachable
-		// through the org that owns it).
-		.index('by_org_and_campaign', ['organizationId', 'campaignId'])
+		// Org-scoped idempotency key for the per-campaign, per-A/B-arm probe set.
+		// The variant is part of the INDEX, not of a linear scan over a bounded
+		// page, so the answer cannot change with the number of probes a campaign
+		// has accumulated (defense in depth at the scheduler boundary too — a
+		// probe row is only ever reachable through the org that owns it).
+		.index('by_org_campaign_and_variant', ['organizationId', 'campaignId', 'abVariant'])
 		.index('by_org_and_sent_at', ['organizationId', 'sentAt'])
-		.index('by_org_provider_and_sent_at', ['organizationId', 'provider', 'sentAt'])
-		.index('by_account_and_sent_at', ['accountId', 'sentAt'])
+		// Poller work selection: DISPATCHED probes only, oldest dispatch first.
+		.index('by_account_and_dispatched_at', ['accountId', 'dispatchedAt'])
+		// The abandonment sweep: probes with no `dispatchedAt` at all. `undefined`
+		// sorts before every number in a Convex index, so this is an exact-match
+		// lookup rather than a scan.
+		.index('by_dispatched_at_and_sent_at', ['dispatchedAt', 'sentAt'])
 		.index('by_expires_at', ['expiresAt']),
 };

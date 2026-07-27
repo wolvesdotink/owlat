@@ -269,7 +269,11 @@ export const mailTables = {
 		.index('by_status', ['status'])
 		// Seed-mailbox lookup for the placement prober. Legacy rows carry no
 		// `purpose`, so this index only ever returns explicitly-tagged accounts.
-		.index('by_org_and_purpose', ['organizationId', 'purpose']),
+		.index('by_org_and_purpose', ['organizationId', 'purpose'])
+		// The prober's GLOBAL sweep selects on exactly (purpose, status). Filtering
+		// a bounded `by_status` page for seeds after the fact goes silently dark
+		// on any deployment with more connectable accounts than the page bound.
+		.index('by_purpose_and_status', ['purpose', 'status']),
 
 	// Per-(account, folder) IMAP sync cursor. Separate from mailFolders' own
 	// uidValidity/uidNext (those track Owlat-as-IMAP-server); these track

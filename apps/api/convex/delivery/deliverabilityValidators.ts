@@ -1,4 +1,5 @@
 import { v } from 'convex/values';
+import { SEED_PLACEMENTS } from '@owlat/shared/seedPlacement';
 
 /** Convex validators for the shared, fixed deliverability taxonomy. */
 export const destinationProviderValidator = v.union(
@@ -10,22 +11,12 @@ export const destinationProviderValidator = v.union(
 );
 
 /**
- * The routing cell's STREAM axis (D6). One source of truth: the schema, the
- * probe ledger and every mutation argument share this validator.
+ * Where a seed probe was found. DERIVED from `SEED_PLACEMENTS` rather than
+ * restated: the pure core owns the taxonomy, and a placement added there
+ * becomes storable here without a second edit that could be forgotten.
  */
-export const mailStreamValidator = v.union(
-	v.literal('campaign'),
-	v.literal('automation'),
-	v.literal('transactional')
-);
-
-/** Where a seed probe was found. Mirrors `SEED_PLACEMENTS` in @owlat/shared. */
 export const seedPlacementValidator = v.union(
-	v.literal('inbox'),
-	v.literal('category'),
-	v.literal('spam'),
-	v.literal('deleted'),
-	v.literal('missing')
+	...SEED_PLACEMENTS.map((placement) => v.literal(placement))
 );
 
 export const deliverabilitySignalProviderValidator = v.union(
