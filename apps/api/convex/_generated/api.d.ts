@@ -245,6 +245,7 @@ import type * as delivery_ipReadinessAlerts from "../delivery/ipReadinessAlerts.
 import type * as delivery_lastMileRouting from "../delivery/lastMileRouting.js";
 import type * as delivery_marketingCompliance from "../delivery/marketingCompliance.js";
 import type * as delivery_mtaHealth from "../delivery/mtaHealth.js";
+import type * as delivery_observationFreshness from "../delivery/observationFreshness.js";
 import type * as delivery_messageIdRouting from "../delivery/messageIdRouting.js";
 import type * as delivery_preferences from "../delivery/preferences.js";
 import type * as delivery_preferencesHttp from "../delivery/preferencesHttp.js";
@@ -257,6 +258,9 @@ import type * as delivery_readinessValidators from "../delivery/readinessValidat
 import type * as delivery_routingReentry from "../delivery/routingReentry.js";
 import type * as delivery_sendAssignments from "../delivery/sendAssignments.js";
 import type * as delivery_sendCompletion from "../delivery/sendCompletion.js";
+import type * as delivery_snds from "../delivery/snds.js";
+import type * as delivery_sndsFeed from "../delivery/sndsFeed.js";
+import type * as delivery_sndsGate from "../delivery/sndsGate.js";
 import type * as delivery_sendComposition_archive_snapshot_index from "../delivery/sendComposition/archive_snapshot/index.js";
 import type * as delivery_sendComposition_automation_index from "../delivery/sendComposition/automation/index.js";
 import type * as delivery_sendComposition_campaign_index from "../delivery/sendComposition/campaign/index.js";
@@ -702,6 +706,7 @@ import type * as schema_plugins from "../schema/plugins.js";
 import type * as schema_postmaster from "../schema/postmaster.js";
 import type * as schema_returnPath from "../schema/returnPath.js";
 import type * as schema_sendAssignments from "../schema/sendAssignments.js";
+import type * as schema_snds from "../schema/snds.js";
 import type * as schema_templates from "../schema/templates.js";
 import type * as schema_topics from "../schema/topics.js";
 import type * as schema_transportOutcomes from "../schema/transportOutcomes.js";
@@ -1042,6 +1047,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/lastMileRouting": typeof delivery_lastMileRouting;
   "delivery/marketingCompliance": typeof delivery_marketingCompliance;
   "delivery/mtaHealth": typeof delivery_mtaHealth;
+  "delivery/observationFreshness": typeof delivery_observationFreshness;
   "delivery/messageIdRouting": typeof delivery_messageIdRouting;
   "delivery/preferences": typeof delivery_preferences;
   "delivery/preferencesHttp": typeof delivery_preferencesHttp;
@@ -1054,6 +1060,9 @@ declare const fullApi: ApiFromModules<{
   "delivery/routingReentry": typeof delivery_routingReentry;
   "delivery/sendAssignments": typeof delivery_sendAssignments;
   "delivery/sendCompletion": typeof delivery_sendCompletion;
+  "delivery/snds": typeof delivery_snds;
+  "delivery/sndsFeed": typeof delivery_sndsFeed;
+  "delivery/sndsGate": typeof delivery_sndsGate;
   "delivery/sendComposition/archive_snapshot/index": typeof delivery_sendComposition_archive_snapshot_index;
   "delivery/sendComposition/automation/index": typeof delivery_sendComposition_automation_index;
   "delivery/sendComposition/campaign/index": typeof delivery_sendComposition_campaign_index;
@@ -1499,6 +1508,7 @@ declare const fullApi: ApiFromModules<{
   "schema/postmaster": typeof schema_postmaster;
   "schema/returnPath": typeof schema_returnPath;
   "schema/sendAssignments": typeof schema_sendAssignments;
+  "schema/snds": typeof schema_snds;
   "schema/templates": typeof schema_templates;
   "schema/topics": typeof schema_topics;
   "schema/transportOutcomes": typeof schema_transportOutcomes;

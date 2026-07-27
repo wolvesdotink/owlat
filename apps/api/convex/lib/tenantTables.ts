@@ -262,6 +262,11 @@ export const NON_TENANT_TABLES = [
 	// it is regenerable telemetry about infrastructure, so it is out of the tenant
 	// wipe (wiping it would only force a needless re-probe).
 	'sendTransportReturnPathProbes',
+	// Microsoft SNDS per-IP daily telemetry. Keyed by the deployment's SENDING
+	// IPs, not by anything of this org's: bands, filter results and trap counts
+	// Microsoft attributes to the infrastructure. Regenerable by re-polling the
+	// feed, so it is out of the tenant wipe like `warmingState` / `tlsReports`.
+	'sndsIpDailyStats',
 	// Inbound TLS-RPT (RFC 8460) aggregate reports from partner MX — operator
 	// deliverability telemetry keyed by the partner's own report-id, not org
 	// business data. Regenerable (partners re-send daily); not personal data of
