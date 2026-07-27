@@ -186,12 +186,23 @@ export function planSeedHygiene(input: {
 	return { markRead, click };
 }
 
+/**
+ * Is this seed due for rotation?
+ *
+ * The clock runs from the last OPERATOR ACKNOWLEDGEMENT, never from the last
+ * time a background sweep noticed. Deriving due-ness from an emission stamp
+ * makes the sweep itself extinguish the signal: the reminder becomes true for
+ * at most one 15-minute tick and any screen reading it essentially never sees
+ * a due seed. Only a human dismissing the nudge (or connecting the seed in the
+ * first place) restarts the interval.
+ */
 export function shouldRemindSeedRotation(input: {
 	connectedAt: number;
-	lastRemindedAt?: number;
+	/** When the operator last acknowledged the nudge. Absent ⇒ never. */
+	lastAcknowledgedAt?: number;
 	now: number;
 }): boolean {
-	const since = input.lastRemindedAt ?? input.connectedAt;
+	const since = input.lastAcknowledgedAt ?? input.connectedAt;
 	return input.now - since >= SEED_ROTATION_INTERVAL_MS;
 }
 

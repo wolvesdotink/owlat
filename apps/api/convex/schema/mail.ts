@@ -222,11 +222,16 @@ export const mailTables = {
 		// axis. Set at connect time from the account's domain/host; drives the
 		// per-provider placement roll-up. Seed rows only.
 		seedProvider: v.optional(destinationProviderValidator),
-		// Last time the operator was reminded to rotate this seed (consumer
-		// mailboxes go stale). Absent ⇒ never reminded; the reminder clock then
-		// runs from `createdAt`. A reminder is a nudge on a connected seed, never
-		// a blocking warning or a "setup incomplete" state.
+		// Last time the rotation nudge was EMITTED into the audit log. Purely a
+		// de-duplication stamp for the background sweep — it does NOT gate
+		// due-ness, or a sweep tick would extinguish the very signal it exists to
+		// raise. Absent ⇒ never emitted for the current cycle.
 		seedRotationRemindedAt: v.optional(v.number()),
+		// Last time an OPERATOR acknowledged the rotation nudge. This is what the
+		// 90-day clock runs from (absent ⇒ it runs from `createdAt`), so the
+		// reminder stands until a human acts on it. A reminder is a nudge on a
+		// connected seed, never a blocking warning or a "setup incomplete" state.
+		seedRotationAcknowledgedAt: v.optional(v.number()),
 
 		// IMAP (receive). isImapSecure=true ⇒ implicit TLS (993); false ⇒ STARTTLS (143).
 		imapHost: v.string(),
