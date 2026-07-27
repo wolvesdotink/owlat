@@ -19,6 +19,7 @@ import { normalizeReturnPathDomain } from '@owlat/shared/verpNormalize';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import {
+	isCustomReturnPathSupported,
 	isProbeDue,
 	isProbeTimedOut,
 	nextProbeAttempts,
@@ -30,7 +31,6 @@ import {
 	type ReturnPathProbeState,
 	type ReturnPathProbeStatus,
 } from '../lib/sendProviders/returnPathCapability';
-import { isCustomReturnPathSupported } from '../lib/sendProviders/returnPathCapability';
 import {
 	returnPathAuthorizesRelay,
 	type ReturnPathSpfProof,
@@ -91,6 +91,24 @@ export async function returnPathCapabilityFor(
 	const probe = await loadProbeState(ctx, transportId);
 	return resolveReturnPathCapability(transport.kind, probe, now);
 }
+
+/**
+ * The resolved return-path posture for one transport, as a callable query.
+ *
+ * {@link returnPathCapabilityFor} already serves callers that hold a `ctx`; this
+ * is the same answer for callers that do not — the ramp dashboard and the
+ * measurement-quality read seam, which need to say "this cell is degraded, and
+ * here is why" without reaching into the send path.
+ *
+ * Read-only and total, like the resolver it wraps: an id this deployment no
+ * longer configures resolves to the unresolvable posture (degraded), never to
+ * an error. Absence is a supported configuration (plan D2).
+ */
+export const transportReturnPathCapability = internalQuery({
+	args: { transportId: v.string(), at: v.number() },
+	handler: async (ctx, args): Promise<ResolvedReturnPathCapability> =>
+		returnPathCapabilityFor(ctx, args.transportId, args.at),
+});
 
 /**
  * Is this transport due a (re-)probe? Never probed → yes; supported verdicts

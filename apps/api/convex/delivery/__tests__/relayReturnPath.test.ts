@@ -181,6 +181,35 @@ describe('relay return-path probe persistence', () => {
 		expect(again).toMatchObject({ applied: false, reason: 'already_settled' });
 	});
 
+	it('exposes the same posture through the callable query as through the resolver', async () => {
+		const t = convexTest(schema, modules);
+		await submit(t);
+		vi.setSystemTime(T0 + 60_000);
+		await t.mutation(internal.delivery.relayReturnPath.recordProbeObservation, {
+			probeMessageId: returnPathProbeMessageId(PROBE_ID),
+			at: Date.now(),
+		});
+		const viaQuery = await t.query(
+			internal.delivery.relayReturnPath.transportReturnPathCapability,
+			{ transportId: TRANSPORT_ID, at: Date.now() }
+		);
+		// One resolution, two entry points — a dashboard read and the send path
+		// can never disagree about whether a cell is degraded.
+		expect(viaQuery).toEqual(await capability(t));
+		expect(viaQuery.capability).toBe('supported');
+	});
+
+	it('answers the callable query for an unconfigured transport without erroring', async () => {
+		// D2: absence is a supported configuration. An id this deployment does not
+		// configure resolves to the degraded posture, never to a thrown error.
+		const t = convexTest(schema, modules);
+		const resolved = await t.query(
+			internal.delivery.relayReturnPath.transportReturnPathCapability,
+			{ transportId: 'not-a-transport', at: Date.now() }
+		);
+		expect(resolved.capability).toBe('unknown');
+	});
+
 	it('rejects a transport id nothing resolves, rather than persisting it', async () => {
 		const t = convexTest(schema, modules);
 		const result = await t.mutation(internal.delivery.relayReturnPath.recordProbeSubmission, {
