@@ -243,7 +243,10 @@ export async function recordSendAssignments(
 	});
 	const fallbackMixVersion = input.mixVersion ?? DEFAULT_MIX_VERSION;
 	const fallbackIsCalibration = input.isCalibration ?? false;
-	const rankFor = buildEngagementRanker(input.recipients);
+	// The ranker is partitioned by the SAME classification the cell key is built
+	// from, so a recipient's percentile and the share it is cut against describe
+	// the same population.
+	const rankFor = buildEngagementRanker(input.recipients, providers);
 
 	let written = 0;
 	for (const recipient of input.recipients) {

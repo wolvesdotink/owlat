@@ -42,14 +42,11 @@ import type { SendAssignmentRecipient, SendAssignmentRouting } from './sendAssig
  * evidence that does not exist. Below this the recipient carries NO rank and
  * the split falls back to the unbiased random bucket.
  *
- * Counted over the WHOLE BATCH, not per destination provider. The score
- * distribution is a property of the audience, not of who runs their mailbox, so
- * ranking a gmail recipient against the batch's microsoft recipients is not a
- * distortion — while a per-provider cohort would be: a mixed page spread over
- * five providers rarely puts 20 recipients in any one of them, so per-provider
- * cohorts would silently never reach this threshold and stratification, which
- * D8 makes the DEFAULT, would never engage at all. The CELL remains the
- * assignment axis; only the ranking cohort is batch-wide.
+ * Counted PER CELL, because the cohort is per cell (see
+ * `buildEngagementRanker`). A cell below the minimum yields no rank at all and
+ * every one of its recipients falls back to the hash bucket, which realises the
+ * cell's configured share EXACTLY — so the thin-cell fallback is strictly
+ * harmless, while a mis-realised stratified cut is not.
  */
 export const MIN_STRATIFICATION_COHORT = 20;
 
@@ -96,13 +93,29 @@ export async function destinationProvidersForEmails(
 }
 
 /**
- * Engagement percentile over the batch (D8's stratification input).
+ * Engagement percentile WITHIN THE RECIPIENT'S CELL (D8's stratification
+ * input; the piece card's "the recipient's engagement percentile in this
+ * cell").
  *
- * The cohort is the batch's own scored recipients: stratification asks "is this
- * recipient in the top `s` of this traffic", and a page of a campaign is the
- * sample we have in hand for free. Ranking against the batch costs no extra
- * read — the scores are already on the envelope the producer built — and reuses
- * the shipped percentile helper rather than re-implementing scoring.
+ * The cohort is the batch's own scored recipients, PARTITIONED BY DESTINATION
+ * PROVIDER: stratification asks "is this recipient in the top `s` of this
+ * cell's traffic", and a page of a campaign is the sample we have in hand for
+ * free. Ranking costs no extra read — the scores are already on the envelope
+ * the producer built, and the provider classification is already resolved for
+ * the cell key — and reuses the shipped percentile helper rather than
+ * re-implementing scoring.
+ *
+ * THE PARTITION IS LOAD-BEARING, not tidiness. The stratified cut
+ * (`rank >= 1 - s`) is taken against the CELL's share, so a rank measured
+ * against the whole batch only realises `s` if every cell's rank distribution
+ * is uniform over `[0,1)`. It is not, the moment engagement correlates with
+ * who runs the mailbox — an entirely ordinary correlation (consumer gmail vs
+ * corporate microsoft vs a legacy `other` tail). With disjoint score bands a
+ * batch-wide cohort at `s = 0.5` sends ~83% of the gmail cell own and 0% of
+ * every other cell: the own MTA carries far more than the controller's set
+ * point in one cell and nothing in the rest, so every rate the controller
+ * derives sits over denominators describing a split nobody configured, and the
+ * AIMD loop chases a number that does not mean what it says.
  *
  * TIES ARE DISPERSED, and that is the load-bearing part. `engagementPercentile`
  * gives every member of a tied group the group's UPPER percentile, so a cohort
@@ -127,23 +140,39 @@ export async function destinationProvidersForEmails(
  * "unknown" and falls back to the random bucket — never to the own arm.
  */
 export function buildEngagementRanker(
-	recipients: readonly SendAssignmentRecipient[]
+	recipients: readonly SendAssignmentRecipient[],
+	providers: ReadonlyMap<string, DestinationProviderKey>
 ): (recipient: SendAssignmentRecipient) => number | undefined {
-	const cohort: number[] = [];
+	const cohorts = new Map<DestinationProviderKey, number[]>();
 	for (const recipient of recipients) {
 		const score = recipient.engagementScore;
 		if (score === undefined || !Number.isFinite(score)) continue;
-		cohort.push(score);
+		// An address whose domain did not parse has no cell, so it has no cohort
+		// to belong to — the caller skips it for the same reason.
+		const provider = providers.get(recipient.email);
+		if (provider === undefined) continue;
+		const cohort = cohorts.get(provider);
+		if (cohort === undefined) cohorts.set(provider, [score]);
+		else cohort.push(score);
 	}
-	cohort.sort((a, b) => a - b);
-	// Constant for the life of the ranker, so it is answered once here rather
-	// than once per recipient: too thin a batch to rank at all (D10 — thin data
-	// holds), and every recipient falls back to the random bucket.
-	if (cohort.length < MIN_STRATIFICATION_COHORT) return () => undefined;
+	// Sorted once per cell, and cells too thin to rank (D10 — thin data holds)
+	// are dropped here rather than re-tested per recipient. A dropped cell ranks
+	// nobody, so all of it falls back to the random bucket.
+	const rankable = new Map<DestinationProviderKey, readonly number[]>();
+	for (const [provider, cohort] of cohorts) {
+		if (cohort.length < MIN_STRATIFICATION_COHORT) continue;
+		cohort.sort((a, b) => a - b);
+		rankable.set(provider, cohort);
+	}
+	if (rankable.size === 0) return () => undefined;
 
 	return (recipient) => {
 		const score = recipient.engagementScore;
 		if (score === undefined || !Number.isFinite(score)) return undefined;
+		const provider = providers.get(recipient.email);
+		if (provider === undefined) return undefined;
+		const cohort = rankable.get(provider);
+		if (cohort === undefined) return undefined;
 		const { lower, upper } = engagementPercentileRange(cohort, score);
 		// Every DISTINCT score occupies its own interval, and those intervals are
 		// disjoint, so dispersing inside one can never reorder two distinct

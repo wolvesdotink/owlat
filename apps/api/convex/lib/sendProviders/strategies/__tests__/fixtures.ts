@@ -17,6 +17,7 @@ import {
 	type MixRecipientIdentity,
 } from '../adaptive_mix';
 import { buildEngagementRanker } from '../../../../delivery/sendAssignmentRouting';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 /** Deterministic, structured ids — the adversarial shape, not random noise. */
 export function syntheticContactIds(count: number, prefix = 'jd7'): string[] {
@@ -100,7 +101,13 @@ export function ranksFromScores(
 		email: `u${index}@gmail.com`,
 		...(scores[index] !== undefined ? { engagementScore: scores[index] } : {}),
 	}));
-	const rankFor = buildEngagementRanker(recipients);
+	// One cell, because these fixtures rank one homogeneous audience; the ranker
+	// partitions its cohort by destination provider, so the classification it
+	// would get from the shipped resolver is supplied directly here.
+	const providers = new Map<string, DestinationProviderKey>(
+		recipients.map((recipient) => [recipient.email, 'gmail'])
+	);
+	const rankFor = buildEngagementRanker(recipients, providers);
 	return recipients.map((recipient) => rankFor(recipient));
 }
 
