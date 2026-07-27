@@ -96,7 +96,15 @@ function clampFraction(value: number): number {
  */
 export function bulkDailyCeiling(dailyCap: number): number {
 	if (!Number.isFinite(dailyCap)) return Infinity;
-	const headroom = Math.ceil(dailyCap * INTRADAY_PACING_POLICY.transactionalHeadroomFraction);
+	// FLOOR, not ceil: the shipped acceleration gate needs
+	// `sent / dailyCap >= ADAPTIVE_WARMING_POLICY.acceleration.usageRateMinimum`
+	// (0.8), and rounding the headroom UP puts the bulk ceiling strictly below
+	// 0.8 * cap for every cap where 0.2 * cap is not an integer — e.g. a
+	// decelerated cap of 343 would top out at 274/343 = 0.799. Flooring keeps the
+	// ceiling at or above 0.8 * cap for every cap, so a bulk-only IP running at
+	// its ceiling can still accelerate; the headroom only ever rounds in the
+	// bulk pool's favour, never the transactional pool's.
+	const headroom = Math.floor(dailyCap * INTRADAY_PACING_POLICY.transactionalHeadroomFraction);
 	return Math.min(
 		dailyCap,
 		Math.max(INTRADAY_PACING_POLICY.minimumBulkCeiling, dailyCap - headroom)
