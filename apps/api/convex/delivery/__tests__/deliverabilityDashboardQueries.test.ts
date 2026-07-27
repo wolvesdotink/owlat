@@ -251,7 +251,10 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 		const day = startOfDayUtc(Date.now()) - 24 * 60 * 60 * 1000;
 		await t.run(async (ctx) => {
 			await seedRelayRoute(ctx);
-			await ctx.db.insert('transportOutcomes', bucket({ periodStart: day, sent: 12, delivered: 12 }));
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucket({ periodStart: day, sent: 12, delivered: 12 })
+			);
 		});
 
 		const dashboard = await t.query(
