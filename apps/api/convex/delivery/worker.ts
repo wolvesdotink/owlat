@@ -163,8 +163,8 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 		: undefined;
 
 	// Tracking is keyed by the Send for real mail and by the opaque probe id for
-	// a shadow copy (see the composer — a probe id is not a Convex document id,
-	// so the shipped `/t/o` and `/t/c` handlers record nothing for it).
+	// a shadow copy; the shipped `/t/o` and `/t/c` handlers reject a probe id by
+	// name (`isSeedProbeId`) and record nothing for it.
 	const trackingBaseUrl =
 		(envelopeInput.emailSendId ?? envelopeInput.seedProbeId) && envelopeInput.convexSiteUrl
 			? (envelopeInput.trackingBaseUrl ?? envelopeInput.convexSiteUrl)

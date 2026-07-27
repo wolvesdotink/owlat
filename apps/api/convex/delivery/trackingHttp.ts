@@ -5,6 +5,7 @@ import { getClientIp } from '../publicRateLimit';
 import { isValidConvexId, isSafeRedirectUrl } from '../lib/inputGuards';
 import { getOptional } from '../lib/env';
 import { logError } from '../lib/runtimeLog';
+import { isSeedProbeId } from '@owlat/shared/seedPlacement';
 
 // Base64url-encode raw bytes WITHOUT padding, matching Node's
 // `createHmac(...).digest('base64url')` used on the encode side (transform.ts).
@@ -33,7 +34,7 @@ function timingSafeStrEqual(a: string, b: string): boolean {
 async function verifyTrackingSignature(
 	emailSendId: string,
 	encodedUrl: string,
-	signature: string,
+	signature: string
 ): Promise<boolean> {
 	const secret = getOptional('UNSUBSCRIBE_SECRET');
 	if (!secret || !signature) return false;
@@ -43,12 +44,12 @@ async function verifyTrackingSignature(
 			new TextEncoder().encode(secret),
 			{ name: 'HMAC', hash: 'SHA-256' },
 			false,
-			['sign'],
+			['sign']
 		);
 		const mac = await crypto.subtle.sign(
 			'HMAC',
 			key,
-			new TextEncoder().encode(`${emailSendId}.${encodedUrl}`),
+			new TextEncoder().encode(`${emailSendId}.${encodedUrl}`)
 		);
 		const expected = bytesToBase64Url(new Uint8Array(mac));
 		return timingSafeStrEqual(expected, signature);
@@ -108,7 +109,13 @@ export const trackOpen = httpAction(async (ctx, request) => {
 		Expires: '0',
 	};
 
-	if (!emailSendId || !isValidConvexId(emailSendId)) {
+	// A deliverability SEED PROBE tracks under its opaque probe id, which is NOT
+	// a Convex document id — but it does satisfy `isValidConvexId`'s shape, so it
+	// has to be rejected by name. Without this the probe's open would consume the
+	// rate-limit bucket and then throw inside `sendLifecycle.transition`'s
+	// `v.id('emailSends')` validator, logging an error on every single probe.
+	// A probe open is a measurement of the mailbox, never an analytics event.
+	if (!emailSendId || isSeedProbeId(emailSendId) || !isValidConvexId(emailSendId)) {
 		// Return pixel anyway to avoid broken images
 		return new Response(TRACKING_PIXEL, {
 			status: 200,
@@ -159,6 +166,19 @@ export const trackClick = httpAction(async (ctx, request) => {
 	// Default redirect URL if something goes wrong
 	let redirectUrl = '/';
 	let hasValidTarget = false;
+
+	// A seed probe's wrapped link. Its HMAC verifies (it was signed with the
+	// probe id), and the probe id passes `isValidConvexId`'s shape check, so
+	// without an explicit rejection here the handler would call
+	// `getEmailSendForTracking` with a non-id OUTSIDE any try/catch and 500 the
+	// public endpoint. Nothing is recorded and nothing is logged: the probe's
+	// click exists to exercise the mailbox, not to enter a click rate.
+	if (emailSendId !== undefined && isSeedProbeId(emailSendId)) {
+		return new Response(null, {
+			status: 302,
+			headers: { Location: '/', 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+		});
+	}
 
 	if (emailSendId && encodedUrl && signature) {
 		try {
