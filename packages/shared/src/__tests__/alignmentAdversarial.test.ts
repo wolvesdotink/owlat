@@ -33,7 +33,6 @@ describe('DNS that could not answer is UNKNOWN, never aligned', () => {
 				alignedInput({ dns: alignedDns({ fromDomainTxt: { state: 'unknown', failure } }) })
 			);
 			expect(result.verdict).toBe('unknown');
-			expect(result.allowsShareAboveZero).toBe(false);
 			expect(result.nextCheckDueAt).toBe(CHECKED_AT + ALIGNMENT_UNKNOWN_RETRY_MS);
 		});
 	}

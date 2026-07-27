@@ -29,7 +29,6 @@ describe('the aligned baseline', () => {
 	it('passes all four checks and allows a share above zero', () => {
 		const result = evaluateAlignmentPreflight(alignedInput());
 		expect(result.verdict).toBe('aligned');
-		expect(result.allowsShareAboveZero).toBe(true);
 		expect(result.checks.map((entry) => entry.id)).toEqual([...ALIGNMENT_CHECK_IDS]);
 		for (const id of ALIGNMENT_CHECK_IDS) {
 			const entry = check(result, id);
@@ -53,7 +52,7 @@ describe('each check fails independently, with its own remedy', () => {
 			expect(entry.status).toBe(testCase.expected);
 			expect(entry.detail).toContain(testCase.detail);
 			expect(entry.remedy).toContain(testCase.remedy);
-			expect(result.allowsShareAboveZero).toBe(false);
+			expect(result.verdict).toBe(testCase.expected === 'fail' ? 'blocked' : 'unknown');
 			expect(result.verdict).toBe(testCase.expected === 'fail' ? 'blocked' : 'unknown');
 		});
 	}
@@ -88,7 +87,6 @@ describe('the Return-Path state is recorded, never blocking', () => {
 			})
 		);
 		expect(result.verdict).toBe('aligned');
-		expect(result.allowsShareAboveZero).toBe(true);
 		expect(result.isMeasurementDegraded).toBe(true);
 		expect(result.measurementDegradedReason).toContain('the ramp is not blocked');
 	});
@@ -105,7 +103,6 @@ describe('a relay we cannot describe HOLDS, and is never called single arm', () 
 			})
 		);
 		expect(result.verdict).toBe('unknown');
-		expect(result.allowsShareAboveZero).toBe(false);
 		for (const entry of result.checks) {
 			expect(entry.status).toBe('unknown');
 			expect(entry.remedy).toContain('Verify the relay for this sending domain');

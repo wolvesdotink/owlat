@@ -46,172 +46,38 @@
  *
  * Pure: no DNS, no clock, no Convex — every input, including `checkedAt`, is a
  * parameter (D15).
+ *
+ * The VOCABULARY this speaks — the types, the four check ids, the remedy copy, the
+ * DNS-name spellings and the check-result constructors — lives in
+ * `./deliverabilityAlignmentVocabulary` and is re-exported from here, so this file
+ * is only the four checks and the verdict, and consumers still have one import
+ * path.
  */
 
 import { organizationalDomain } from './spfAlignment';
 import { evaluateSpfCoexistence } from './spfCoexistence';
 import type { SpfCoexistenceFailure } from './spfCoexistence';
+import {
+	ALIGNMENT_CHECK_IDS,
+	ALIGNMENT_RECHECK_INTERVAL_MS,
+	ALIGNMENT_REMEDIES,
+	ALIGNMENT_UNKNOWN_RETRY_MS,
+	dkimRecordName,
+	fail,
+	normalizeDomain,
+	pass,
+	unknownCheck,
+	type AlignmentArm,
+	type AlignmentCheckResult,
+	type AlignmentDnsFacts,
+	type AlignmentPreflightInput,
+	type AlignmentPreflightResult,
+	type AlignmentVerdict,
+} from './deliverabilityAlignmentVocabulary';
 
-export const ALIGNMENT_CHECK_IDS = ['from_domain', 'spf', 'dkim', 'dmarc'] as const;
-export type AlignmentCheckId = (typeof ALIGNMENT_CHECK_IDS)[number];
-
-/** `unknown` is the DNS-could-not-answer state: hold, never pass, never fail. */
-export type AlignmentCheckStatus = 'pass' | 'fail' | 'unknown';
-
-export type AlignmentVerdict = 'aligned' | 'single_arm' | 'blocked' | 'unknown';
-
-/** Daily re-check cadence, and the faster retry for an unresolved lookup. */
-export const ALIGNMENT_RECHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-export const ALIGNMENT_UNKNOWN_RETRY_MS = 60 * 60 * 1000;
-
-/** Domains re-checked per sweep page, so the cron stays bounded (D16). */
-export const ALIGNMENT_SWEEP_PAGE_SIZE = 5;
-/** Pages one sweep run walks before handing off to a scheduled continuation. */
-export const ALIGNMENT_SWEEP_MAX_PAGES = 5;
-
-export type DnsLookupFailure = 'timeout' | 'servfail' | 'refused' | 'error';
-
-/**
- * A DNS observation. `absent` is an authoritative "no such record" (NXDOMAIN or
- * an empty answer); `unknown` is "we could not find out" and is never laundered
- * into either of the other two.
- */
-export type DnsTxtObservation =
-	| { state: 'found'; records: readonly string[] }
-	| { state: 'absent' }
-	| { state: 'unknown'; failure: DnsLookupFailure };
-
-/** One sending arm's identity configuration, as it is actually configured. */
-export interface AlignmentArm {
-	/** Human-readable arm label used in remedies, e.g. `own MTA` / `SES relay`. */
-	label: string;
-	/** RFC5322.From domain this arm sends with. */
-	fromDomain: string;
-	/** The DKIM `d=` this arm signs with. */
-	dkimDomain: string;
-	/** Selectors this arm may sign with; at least one must be live. */
-	dkimSelectors: readonly string[];
-	/** SPF mechanisms this arm needs authorized, e.g. `ip4:…` / `include:…`. */
-	spfMechanisms: readonly string[];
-}
-
-/**
- * The reference arm additionally declares whether it can carry our VERP return
- * path (P2-3). The own MTA always can, so the flag lives HERE rather than on
- * every arm — a field only one shape can meaningfully answer.
- */
-export interface ReferenceAlignmentArm extends AlignmentArm {
-	/** False when the transport cannot carry our VERP return path. */
-	supportsCustomReturnPath: boolean;
-}
-
-/**
- * How the second arm stands. Three states, not a boolean:
- *  - `none`    — no reference transport at all. The supported standalone
- *                deployment (D2): nothing to align, the gate opens.
- *  - `unknown` — a relay IS configured but we cannot describe its signing
- *                identity. HOLD; never laundered into `none`.
- *  - `arm`     — the relay's identity is known and can be checked.
- */
-export type ReferenceArmInput =
-	| { kind: 'none' }
-	| { kind: 'unknown'; detail: string }
-	| { kind: 'arm'; arm: ReferenceAlignmentArm };
-
-export interface AlignmentDnsFacts {
-	/** TXT at the From domain (the SPF record lives here). */
-	fromDomainTxt: DnsTxtObservation;
-	/** TXT at `_dmarc.<fromDomain>`. */
-	dmarcTxt: DnsTxtObservation;
-	/** TXT keyed by the FULL name `${selector}._domainkey.${dkimDomain}`. */
-	dkimTxt: Readonly<Record<string, DnsTxtObservation>>;
-}
-
-export interface AlignmentPreflightInput {
-	ownArm: AlignmentArm;
-	reference: ReferenceArmInput;
-	dns: AlignmentDnsFacts;
-	checkedAt: number;
-}
-
-export interface AlignmentCheckResult {
-	id: AlignmentCheckId;
-	status: AlignmentCheckStatus;
-	/** What was observed, in readiness-card voice. */
-	detail: string;
-	/** What to do about it. Empty only when the check passes. */
-	remedy: string;
-}
-
-export interface AlignmentPreflightResult {
-	verdict: AlignmentVerdict;
-	checks: AlignmentCheckResult[];
-	/** The gate: may the controller move this cell above s=0? */
-	allowsShareAboveZero: boolean;
-	/** Return-Path could not be aligned — measurement is degraded, not blocked. */
-	isMeasurementDegraded: boolean;
-	measurementDegradedReason: string | null;
-	checkedAt: number;
-	nextCheckDueAt: number;
-}
-
-/** Base remedy copy, keyed by failure reason, so the UI and tests share one source. */
-export const ALIGNMENT_REMEDIES = {
-	from_domain_mismatch:
-		'Send both arms from the same From domain. Per-transport subdomains split domain reputation and make the two arms incomparable; use per-stream subdomains instead.',
-	spf_no_record: 'Publish one v=spf1 TXT record on the From domain that authorizes both arms.',
-	spf_multiple_records:
-		'Remove the extra v=spf1 TXT record — RFC 7208 allows exactly one per host, and a second one fails SPF for every sender on this domain.',
-	spf_missing_mechanism:
-		'Add the missing mechanism to the existing v=spf1 record instead of publishing a second record.',
-	spf_lookup_limit:
-		'The merged SPF record exceeds the RFC 7208 10-lookup limit and will PermError.',
-	spf_own_arm_unknown:
-		'Set MTA_IP_POOLS so the pre-flight knows which addresses the own MTA sends from. Until then the SPF check cannot prove your own IPs are authorized, and the cell holds.',
-	dkim_missing_record: 'Publish the DKIM public key for this selector before ramping.',
-	dkim_revoked: 'The published DKIM key is empty (revoked). Republish the public key.',
-	dkim_domain_mismatch:
-		'Sign both arms with the same DKIM d= domain. A per-transport signing domain throws away the reputation the other arm built.',
-	dkim_selector_collision:
-		'Give each arm its own DKIM selector — one selector cannot hold two different public keys.',
-	dkim_unaligned:
-		'Align the DKIM d= with the From domain, otherwise DMARC cannot pass on this arm.',
-	dmarc_missing_record: 'Publish a _dmarc TXT record for the From domain.',
-	dmarc_multiple_records: 'Remove the extra _dmarc TXT record — only one DMARC record is valid.',
-	dmarc_strict_alignment:
-		'This domain publishes adkim=s, so every arm must sign with d= exactly equal to the From domain.',
-	dns_unknown:
-		'DNS could not be resolved. The cell holds at its current share until the lookup succeeds; no configuration change is implied.',
-	reference_arm_unknown:
-		'A relay is configured but we cannot see the domain it signs and bounces as, so the two arms cannot be compared. Verify the relay for this sending domain (or turn the relay off to run on the own MTA alone).',
-} as const;
-
-/** Trim, lowercase and drop a trailing root dot. ONE spelling of a DNS name. */
-export function normalizeDomain(domain: string): string {
-	return domain.trim().toLowerCase().replace(/\.$/, '');
-}
-
-/**
- * The FULL TXT name a DKIM key is published at. The gather keys its observations
- * by exactly this string and the evaluator looks them up by it, so both sides
- * must call this one function — a second spelling silently turns every DKIM
- * check into `unknown`.
- */
-export function dkimRecordName(selector: string, dkimDomain: string): string {
-	return `${selector.trim().toLowerCase()}._domainkey.${normalizeDomain(dkimDomain)}`;
-}
-
-function unknownCheck(id: AlignmentCheckId, detail: string, remedy?: string): AlignmentCheckResult {
-	return { id, status: 'unknown', detail, remedy: remedy ?? ALIGNMENT_REMEDIES.dns_unknown };
-}
-
-function pass(id: AlignmentCheckId, detail: string): AlignmentCheckResult {
-	return { id, status: 'pass', detail, remedy: '' };
-}
-
-function fail(id: AlignmentCheckId, detail: string, remedy: string): AlignmentCheckResult {
-	return { id, status: 'fail', detail, remedy };
-}
+// The vocabulary is re-exported so `@owlat/shared/deliverabilityAlignment` stays
+// the single import path for everything this feature speaks.
+export * from './deliverabilityAlignmentVocabulary';
 
 function checkFromDomain(own: AlignmentArm, reference: AlignmentArm): AlignmentCheckResult {
 	const ownDomain = normalizeDomain(own.fromDomain);
@@ -226,31 +92,39 @@ function checkFromDomain(own: AlignmentArm, reference: AlignmentArm): AlignmentC
 	);
 }
 
-function spfRemedy(result: SpfCoexistenceFailure): string {
+/**
+ * ONE switch over `SpfCoexistenceFailure`, returning both halves of the copy.
+ *
+ * Two switches over the same union — one for the detail, one for the remedy —
+ * are two places a new failure variant has to be remembered in, and the compiler
+ * cannot tell you that you handled it in only one of them. They were always
+ * called from the same statement, so they are one function.
+ */
+function spfFailureCopy(result: SpfCoexistenceFailure): { detail: string; remedy: string } {
 	switch (result.kind) {
 		case 'no_record':
-			return ALIGNMENT_REMEDIES.spf_no_record;
+			return {
+				detail: 'No v=spf1 record is published on the From domain.',
+				remedy: ALIGNMENT_REMEDIES.spf_no_record,
+			};
 		case 'multiple_records':
-			return ALIGNMENT_REMEDIES.spf_multiple_records;
+			return {
+				detail: `${result.recordCount} v=spf1 records are published on the From domain; RFC 7208 allows one.`,
+				remedy: ALIGNMENT_REMEDIES.spf_multiple_records,
+			};
 		case 'missing_mechanism':
-			return `${ALIGNMENT_REMEDIES.spf_missing_mechanism} Missing: ${result.missingMechanisms.join(', ')}.`;
+			return {
+				detail: `The published SPF record does not authorize ${result.missingMechanisms.join(', ')}.`,
+				remedy: `${ALIGNMENT_REMEDIES.spf_missing_mechanism} Missing: ${result.missingMechanisms.join(', ')}.`,
+			};
 		case 'lookup_limit':
-			return result.flattenCandidate === null
-				? ALIGNMENT_REMEDIES.spf_lookup_limit
-				: `${ALIGNMENT_REMEDIES.spf_lookup_limit} Flatten ${result.flattenCandidate} to ip4/ip6 mechanisms to get back under the limit.`;
-	}
-}
-
-function spfDetail(result: SpfCoexistenceFailure): string {
-	switch (result.kind) {
-		case 'no_record':
-			return 'No v=spf1 record is published on the From domain.';
-		case 'multiple_records':
-			return `${result.recordCount} v=spf1 records are published on the From domain; RFC 7208 allows one.`;
-		case 'missing_mechanism':
-			return `The published SPF record does not authorize ${result.missingMechanisms.join(', ')}.`;
-		case 'lookup_limit':
-			return `The merged SPF record needs ${result.lookupCount} DNS lookups; RFC 7208 allows 10.`;
+			return {
+				detail: `The merged SPF record needs ${result.lookupCount} DNS lookups; RFC 7208 allows 10.`,
+				remedy:
+					result.flattenCandidate === null
+						? ALIGNMENT_REMEDIES.spf_lookup_limit
+						: `${ALIGNMENT_REMEDIES.spf_lookup_limit} Flatten ${result.flattenCandidate} to ip4/ip6 mechanisms to get back under the limit.`,
+			};
 	}
 }
 
@@ -279,7 +153,8 @@ function checkSpf(input: AlignmentPreflightInput, reference: AlignmentArm): Alig
 			`One SPF record authorizes both arms (${result.lookupCount} of 10 DNS lookups used).`
 		);
 	}
-	return fail('spf', spfDetail(result), spfRemedy(result));
+	const copy = spfFailureCopy(result);
+	return fail('spf', copy.detail, copy.remedy);
 }
 
 /**
@@ -447,7 +322,6 @@ export function evaluateAlignmentPreflight(
 			checks: ALIGNMENT_CHECK_IDS.map((id) =>
 				pass(id, 'Single arm — no reference transport is configured, so there is nothing to align.')
 			),
-			allowsShareAboveZero: true,
 			isMeasurementDegraded: false,
 			measurementDegradedReason: null,
 			checkedAt: input.checkedAt,
@@ -460,7 +334,6 @@ export function evaluateAlignmentPreflight(
 			checks: ALIGNMENT_CHECK_IDS.map((id) =>
 				unknownCheck(id, reference.detail, ALIGNMENT_REMEDIES.reference_arm_unknown)
 			),
-			allowsShareAboveZero: false,
 			isMeasurementDegraded: false,
 			measurementDegradedReason: null,
 			checkedAt: input.checkedAt,
@@ -479,7 +352,6 @@ export function evaluateAlignmentPreflight(
 	return {
 		verdict,
 		checks,
-		allowsShareAboveZero: verdict === 'aligned',
 		isMeasurementDegraded,
 		measurementDegradedReason: isMeasurementDegraded
 			? `${arm.label} cannot carry our custom return path, so bounce attribution on that arm is coarser. Measurement confidence is lowered; the ramp is not blocked.`

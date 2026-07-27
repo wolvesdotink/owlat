@@ -46,7 +46,6 @@ describe('a per-transport From subdomain is a hard failure', () => {
 		expect(fromDomain.detail).toContain('SES relay sends from acme.com');
 		expect(fromDomain.remedy).toBe(ALIGNMENT_REMEDIES.from_domain_mismatch);
 		expect(result.verdict).toBe('blocked');
-		expect(result.allowsShareAboveZero).toBe(false);
 	});
 
 	it('fails when the RELAY arm is the one given the subdomain', () => {
@@ -56,7 +55,7 @@ describe('a per-transport From subdomain is a hard failure', () => {
 			})
 		);
 		expect(check(result, 'from_domain').status).toBe('fail');
-		expect(result.allowsShareAboveZero).toBe(false);
+		expect(result.verdict).toBe('blocked');
 	});
 });
 
@@ -103,6 +102,5 @@ describe('a per-STREAM subdomain on BOTH arms is legitimate', () => {
 			checkedAt: 1_800_000_000_000,
 		});
 		expect(result.verdict).toBe('aligned');
-		expect(result.allowsShareAboveZero).toBe(true);
 	});
 });
