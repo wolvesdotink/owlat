@@ -7,14 +7,18 @@
  * failure still wins, in the same order, with the same reason, and the
  * capacity gate only speaks once every shipped check has passed.
  *
+ * They go through `validateReadyToSend` (via `runPreflight`) rather than
+ * `validateReadyToSendQuery`, because the query path deliberately disables the
+ * capacity gate — running the ladder with the gate ENABLED is the whole point.
+ *
  * `campaignPreflight.integration.test.ts` keeps its per-reason assertions;
  * this file adds the ordering proof.
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
-import { api, internal } from '../_generated/api';
+import { api } from '../_generated/api';
 import {
 	createTestCampaign,
 	createTestCampaignSender,
@@ -23,74 +27,26 @@ import {
 	createTestEmailTemplate,
 	createTestTopic,
 } from './factories';
+import {
+	MIDNIGHT,
+	runPreflight,
+	seedTightWarmingState,
+	useMtaPreflightEnv,
+	type TestRunner,
+} from './preflightFixtures';
 import type { Id } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual('../lib/sessionOrganization');
-	return {
-		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
-			subject: 'test-user',
-			issuer: 'test',
-			tokenIdentifier: 'test|test-user',
-		}),
-	};
+	const { sessionOrganizationMock } = await import('./preflightFixtures');
+	return await sessionOrganizationMock();
 });
 
 const modules = import.meta.glob('../**/*.*s');
 
-type TestRunner = ReturnType<typeof convexTest>;
-
-const MIDNIGHT = Date.UTC(2026, 6, 27, 0, 0, 0);
-
 /** An audience far larger than the seeded warming capacity can deliver. */
 const OVERSIZED_AUDIENCE = 600;
 
-beforeEach(() => {
-	process.env['EMAIL_PROVIDER'] = 'mta';
-	process.env['MTA_API_URL'] = 'http://mta:3100';
-	process.env['MTA_API_KEY'] = 'test-key';
-	vi.useFakeTimers();
-	vi.setSystemTime(MIDNIGHT);
-});
-
-afterEach(() => {
-	vi.useRealTimers();
-	delete process.env['EMAIL_PROVIDER'];
-	delete process.env['MTA_API_URL'];
-	delete process.env['MTA_API_KEY'];
-});
-
-/** One day-1 warming IP: 0 today, then 100 / 200 / 200 across the horizon. */
-async function seedTightWarmingState(t: TestRunner): Promise<void> {
-	await t.run(async (ctx) => {
-		await ctx.db.insert('warmingState', {
-			phase: 'ramp',
-			totalDailyCap: 50,
-			totalSentToday: 50,
-			ipCount: 1,
-			ips: [
-				{
-					ip: '203.0.113.10',
-					phase: 'ramp',
-					currentDay: 1,
-					dailyCap: 50,
-					sentToday: 50,
-					bounceRate: 0,
-					deferralRate: 0,
-					pool: 'campaign',
-					active: true,
-				},
-			],
-			syncedAt: MIDNIGHT,
-		});
-	});
-}
+useMtaPreflightEnv();
 
 async function seedOversizedTopic(t: TestRunner): Promise<Id<'topics'>> {
 	let topicId: Id<'topics'>;
@@ -125,9 +81,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 			);
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId: campaignId!,
-		});
+		const result = await runPreflight(t, campaignId!);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('no_template');
@@ -146,9 +100,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 			);
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId: campaignId!,
-		});
+		const result = await runPreflight(t, campaignId!);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('no_audience');
@@ -178,9 +130,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 			);
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId: campaignId!,
-		});
+		const result = await runPreflight(t, campaignId!);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('no_from_email');
@@ -210,9 +160,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 			);
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId: campaignId!,
-		});
+		const result = await runPreflight(t, campaignId!);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('sending_not_allowed');
@@ -239,9 +187,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 			);
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId: campaignId!,
-		});
+		const result = await runPreflight(t, campaignId!);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('no_delivery_provider');
@@ -265,9 +211,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 			);
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId: campaignId!,
-		});
+		const result = await runPreflight(t, campaignId!);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('domain_not_verified');
@@ -304,9 +248,7 @@ describe('pre-flight ladder — shipped checks still win over the capacity gate'
 			);
 		});
 
-		const result = await t.query(internal.campaigns.preflight.validateReadyToSendQuery, {
-			campaignId: campaignId!,
-		});
+		const result = await runPreflight(t, campaignId!);
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('sender_not_allowed');

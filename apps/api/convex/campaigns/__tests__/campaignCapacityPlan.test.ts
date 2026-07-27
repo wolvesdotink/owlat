@@ -6,7 +6,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { planCampaignCapacity, usableDayCount, MS_PER_DAY, MAX_PLAN_DAYS } from '../capacityPlan';
+import {
+	buildCapacitySchedule,
+	planCampaignCapacity,
+	usableDayCount,
+	MS_PER_DAY,
+	MAX_PLAN_DAYS,
+} from '../capacityPlan';
 
 /** A UTC midnight, so day boundaries in assertions are exact. */
 const MIDNIGHT = Date.UTC(2026, 6, 27, 0, 0, 0);
@@ -293,5 +299,93 @@ describe('planCampaignCapacity — adversarial', () => {
 		expect(plan.fits).toBe(false);
 		if (plan.fits) return;
 		expect(plan.finishesAt).toBeGreaterThan(-MS_PER_DAY);
+	});
+});
+
+describe('planCampaignCapacity — the MAX_PLAN_DAYS boundary', () => {
+	/**
+	 * The twin of the truncation row. An audience covered EXACTLY on the last
+	 * enumerable day is a COMPLETE schedule; one recipient more is truncated.
+	 * These two rows together pin the off-by-one between "60 days is enough"
+	 * and "60 days is not enough".
+	 */
+	it('an audience covered exactly on day MAX_PLAN_DAYS is complete, not truncated', () => {
+		const plan = planCampaignCapacity({
+			audienceSize: 10 * MAX_PLAN_DAYS,
+			remainingCapacityByDay: [10],
+			maxMessageAgeMs: FOUR_DAYS,
+			now: MIDNIGHT,
+		});
+		expect(plan.fits).toBe(false);
+		if (plan.fits) return;
+		expect(plan.days).toBe(MAX_PLAN_DAYS);
+		expect(plan.truncated).toBe(false);
+		expect(plan.covered).toBe(10 * MAX_PLAN_DAYS);
+		expect(plan.finishesAt).toBe(MIDNIGHT + MAX_PLAN_DAYS * MS_PER_DAY);
+	});
+
+	it('one recipient past the last enumerable day flips it to truncated', () => {
+		const plan = planCampaignCapacity({
+			audienceSize: 10 * MAX_PLAN_DAYS + 1,
+			remainingCapacityByDay: [10],
+			maxMessageAgeMs: FOUR_DAYS,
+			now: MIDNIGHT,
+		});
+		expect(plan.fits).toBe(false);
+		if (plan.fits) return;
+		expect(plan.days).toBe(MAX_PLAN_DAYS);
+		expect(plan.truncated).toBe(true);
+		expect(plan.covered).toBe(10 * MAX_PLAN_DAYS);
+	});
+});
+
+describe('buildCapacitySchedule — the horizon-free enumeration', () => {
+	it('enumerates a schedule the horizon-gated planner would have short-circuited', () => {
+		// planCampaignCapacity answers `{ fits: true }` here (200 lands inside the
+		// four-day horizon); the advisory readout still wants the day slices.
+		expect(
+			planCampaignCapacity({
+				audienceSize: 200,
+				remainingCapacityByDay: [100, 100, 100],
+				maxMessageAgeMs: FOUR_DAYS,
+				now: MIDNIGHT,
+			})
+		).toEqual({ fits: true });
+
+		expect(
+			buildCapacitySchedule({
+				audienceSize: 200,
+				remainingCapacityByDay: [100, 100, 100],
+				now: MIDNIGHT,
+			})
+		).toEqual({
+			fits: false,
+			days: 2,
+			slices: [100, 100],
+			finishesAt: MIDNIGHT + 2 * MS_PER_DAY,
+			covered: 200,
+			truncated: false,
+		});
+	});
+
+	it('returns the days === 0 sentinel when no schedule can reach everyone', () => {
+		const schedule = buildCapacitySchedule({
+			audienceSize: 300,
+			remainingCapacityByDay: [100, 0],
+			now: MIDNIGHT,
+		});
+		expect(schedule.days).toBe(0);
+		expect(schedule.slices).toEqual([]);
+		expect(schedule.covered).toBe(0);
+	});
+
+	it('is inert on an empty audience', () => {
+		const schedule = buildCapacitySchedule({
+			audienceSize: 0,
+			remainingCapacityByDay: [100],
+			now: MIDNIGHT,
+		});
+		expect(schedule.days).toBe(0);
+		expect(schedule.covered).toBe(0);
 	});
 });
