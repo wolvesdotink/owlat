@@ -13,12 +13,35 @@
  *    Missing state, stale state, no active campaign IPs, or an effectively
  *    unbounded (graduated) pool all answer `null` — "capacity unknown" — and
  *    every caller maps that onto "allow the send".
- *  - The projection is an UPPER bound. Per-IP caps come from the published
- *    warming schedule, which the MTA treats as a ceiling. Refusing against an
- *    optimistic projection is sound: if the best case cannot finish, reality
- *    cannot either. To stay an upper bound the array ENDS at the last day it can
- *    bound — schedule day 30 lifts the cap entirely — so callers must treat a
- *    short array as "unknown beyond here", never as "zero beyond here".
+ *  - STATE THE BOUND HONESTLY (plan D14). The projection is the PUBLISHED BASE
+ *    SCHEDULE walked at ONE schedule day per calendar day, summed over the
+ *    active campaign IPs. That is not an upper bound in general, and this file
+ *    does not claim one. The error runs in BOTH directions, and each direction
+ *    is deliberate:
+ *
+ *      · OPTIMISTIC — it assumes the whole per-IP cap is available to THIS
+ *        campaign. Transactional and automation traffic share those IPs, so a
+ *        busy deployment really has less. This is the direction that matters
+ *        for the gate: it is what keeps the refusal conservative. A campaign
+ *        the projection says cannot finish will not finish.
+ *      · CONSERVATIVE UNDER ACCELERATION — the shipped MTA evaluator may
+ *        advance the schedule day faster than the calendar, by
+ *        `ADAPTIVE_WARMING_POLICY.acceleration.scheduleDayMultiplier` (1.5,
+ *        `apps/mta/src/intelligence/warming.ts`), on any day that qualifies. A
+ *        healthy, accelerating pool therefore ends up with MORE capacity than
+ *        projected, and the gate can hand back a multi-day schedule for a
+ *        campaign that would in fact have finished inside the horizon.
+ *
+ *    Acceleration is deliberately NOT modelled: it is conditional on future
+ *    health signals, so projecting it would inflate capacity on exactly the
+ *    days a pool stops qualifying — an error in the UNSOUND direction, where
+ *    the gate lets through a campaign whose tail then expires. Over-scheduling
+ *    a send is a visible, correctable inconvenience; a silently expired tail is
+ *    not.
+ *
+ *    The array ENDS at the last day it can bound — schedule day 30 lifts the
+ *    cap entirely — so callers must treat a short array as "unknown beyond
+ *    here", never as "zero beyond here".
  */
 
 import { getWarmingCapForDay } from '@owlat/shared/warming';
@@ -79,15 +102,6 @@ function sumRemainingToday(campaignIps: readonly WarmingIp[]): number {
 		remainingToday += Math.max(0, dailyCap - sentToday);
 	}
 	return remainingToday;
-}
-
-/** {@link loadWarmingCapacity}, projection only — the binding gate's input. */
-export async function loadRemainingCapacityByDay(
-	ctx: Ctx,
-	options: WarmingCapacityOptions
-): Promise<number[] | null> {
-	const projection = await loadWarmingCapacity(ctx, options);
-	return projection === null ? null : projection.byDay;
 }
 
 /**

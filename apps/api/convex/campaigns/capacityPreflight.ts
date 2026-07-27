@@ -17,7 +17,7 @@ import { v } from 'convex/values';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
-import { loadRemainingCapacityByDay } from '../delivery/warmingCapacity';
+import { loadWarmingCapacity } from '../delivery/warmingCapacity';
 import { audienceValidator, type StoredAudience } from './audience';
 import { countAudience } from './audienceCandidates';
 import {
@@ -122,11 +122,9 @@ async function measureCampaignCapacity(
 		requestedStart !== undefined && Number.isFinite(requestedStart)
 			? Math.max(options.now, requestedStart)
 			: options.now;
-	const remainingCapacityByDay = await loadRemainingCapacityByDay(ctx, {
-		now: options.now,
-		startsAt,
-	});
-	if (remainingCapacityByDay === null) return { capacityKnown: false, fits: true };
+	const projection = await loadWarmingCapacity(ctx, { now: options.now, startsAt });
+	if (projection === null) return { capacityKnown: false, fits: true };
+	const remainingCapacityByDay = projection.byDay;
 
 	// The projection stops at the last day it can BOUND: schedule day 30 removes
 	// the warming cap altogether, and clamping that to a display sentinel would
