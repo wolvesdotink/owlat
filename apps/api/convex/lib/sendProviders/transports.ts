@@ -125,22 +125,17 @@ export class SendTransportResolutionError extends Error {
 	}
 }
 
-/** The id of the deployment-default instance of a kind. */
+/**
+ * The id of the deployment-default instance of a kind.
+ *
+ * This is also the instance a GOVERNED send dispatches a resolved provider kind
+ * to — which matters because two sites have to agree on it: the last-mile
+ * routing pass grades a relay's return-path capability (plan G-08) and the
+ * dispatcher sends through it. Both call this function with the resolved kind,
+ * so a named relay instance can never be graded on the default instance's probe.
+ */
 export function defaultSendTransportId(kind: SendProviderKind): SendTransportId {
 	return kind;
-}
-
-/**
- * The transport instance the governed send path dispatches a resolved provider
- * kind to.
- *
- * ONE definition, because TWO sites have to agree on it: the last-mile routing
- * pass grades a relay's return-path capability (plan G-08) and the dispatcher
- * sends through it. If they derived the id differently, a named relay instance
- * would be graded on the default instance's probe — and nothing would say so.
- */
-export function governedDispatchTransportId(kind: SendProviderKind): SendTransportId {
-	return defaultSendTransportId(kind);
 }
 
 /** The id of a NAMED instance of a kind. */

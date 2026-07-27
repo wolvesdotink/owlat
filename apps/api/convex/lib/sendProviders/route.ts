@@ -31,7 +31,8 @@ import {
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 import { returnPathCapabilityFor } from '../../delivery/relayReturnPath';
-import { governedDispatchTransportId } from './transports';
+import { SEND_PROVIDER_CATALOG } from './catalog';
+import { defaultSendTransportId } from './transports';
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
@@ -42,6 +43,52 @@ export const messageTypeValidator = v.union(
 	v.literal('transactional'),
 	v.literal('automation')
 );
+
+/**
+ * Every provider kind route resolution may pick for this message type.
+ *
+ * BOTH sources, because resolution has both: the saved routing row AND
+ * `EMAIL_PROVIDER`. A deployment only ever gets a `providerRoutes` row once an
+ * operator saves the routing screen, so on the canonical bring-your-own-relay
+ * install (`EMAIL_PROVIDER=smtp` + `SMTP_RELAY_*`, no routing row) the relay is
+ * reached exclusively through `resolveRoute`'s env fallback. Anything that asks
+ * "could this message go out over kind X?" must ask THIS function, or it will
+ * be narrower than what `resolveRoute` can actually return.
+ */
+function sendRouteCandidateKinds(
+	routeConfig: ProviderRouteConfig | null
+): ReadonlySet<SendProviderKind> {
+	const kinds = new Set<SendProviderKind>();
+	for (const provider of routeConfig?.providers ?? []) {
+		// Disabled entries are dropped by `resolveRoute` before readiness is ever
+		// asked, so they are not candidates.
+		if (provider.isEnabled && isSendProviderKind(provider.providerType)) {
+			kinds.add(provider.providerType);
+		}
+	}
+	const envProvider = getOptional('EMAIL_PROVIDER');
+	if (isSendProviderKind(envProvider)) kinds.add(envProvider);
+	return kinds;
+}
+
+/**
+ * The one candidate kind whose envelope-sender control is decided by a PROBE
+ * rather than by the catalog (`yes` stamps its own VERP, `no` owns the envelope
+ * sender and would never honour ours). `null` when this route has none.
+ *
+ * Iterates the CATALOG rather than the candidate set so the answer does not
+ * depend on the order an operator happened to list providers in.
+ */
+function probeableCandidateKind(
+	candidateKinds: ReadonlySet<SendProviderKind>
+): SendProviderKind | null {
+	for (const entry of SEND_PROVIDER_CATALOG) {
+		if (entry.supportsCustomReturnPath === 'probe' && candidateKinds.has(entry.kind)) {
+			return entry.kind;
+		}
+	}
+	return null;
+}
 
 /**
  * Resolve the send route for a message type from the current transaction.
@@ -71,12 +118,7 @@ export async function resolveSendRouteFromDb(
 		status: h.status,
 		successRate: h.successRate,
 	}));
-	const candidateKinds = new Set<SendProviderKind>();
-	for (const provider of routeConfig?.providers ?? []) {
-		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
-	}
-	const envProvider = getOptional('EMAIL_PROVIDER');
-	if (isSendProviderKind(envProvider)) candidateKinds.add(envProvider);
+	const candidateKinds = sendRouteCandidateKinds(routeConfig as ProviderRouteConfig | null);
 	const readyKinds = new Set<SendProviderKind>();
 	for (const kind of candidateKinds) {
 		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
@@ -319,22 +361,31 @@ export async function resolveLastMileRoutePlanFromDb(
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
 		.first();
-	// Only a RELAY send can carry our own envelope sender, so only a route that
-	// actually has an enabled SMTP relay pays for the probe read: an
-	// mta/ses/resend-only route — and every deployment with no relay configured
-	// at all — skips it entirely. The test is answered from the route config we
-	// already hold rather than from the resolved route, because the warm-up
-	// overflow / breaker-open fallback selects its relay AFTER this query
-	// returns, and that route must still be stamped.
-	const hasRelayCandidate = Boolean(
-		routeConfig?.providers.some(
-			(provider) => provider.isEnabled && provider.providerType === 'smtp'
-		)
+	// Only a relay whose envelope-sender control is decided by OBSERVATION can
+	// carry our VERP address, so the gate is derived — not hard-coded — from the
+	// candidate set resolution itself uses: any kind the catalog marks `probe`.
+	// Deriving it from `sendRouteCandidateKinds` is what keeps it from being
+	// narrower than what `resolveRoute` may return; the bring-your-own-relay
+	// install reaches its relay through the ENV fallback with no `providerRoutes`
+	// row at all, and gating on the row alone left every one of those sends
+	// unstamped while the sweep kept proving the capability.
+	//
+	// Candidates rather than the resolved route, because the warm-up overflow /
+	// breaker-open fallback selects its relay AFTER this query returns, and that
+	// route must still be stamped. An mta/ses/resend-only route resolves no probe
+	// kind and pays for no read.
+	//
+	// `defaultSendTransportId` is the instance the GOVERNED dispatcher sends
+	// through (`delivery/governedDispatch.ts`), so the transport graded here and
+	// the transport used on the wire are the same one by construction.
+	const relayCandidateKind = probeableCandidateKind(
+		sendRouteCandidateKinds(routeConfig as ProviderRouteConfig | null)
 	);
-	const relayStampVerpReturnPath = hasRelayCandidate
-		? (await returnPathCapabilityFor(ctx, governedDispatchTransportId('smtp'), now))
-				.stampVerpReturnPath
-		: false;
+	const relayStampVerpReturnPath =
+		relayCandidateKind === null
+			? false
+			: (await returnPathCapabilityFor(ctx, defaultSendTransportId(relayCandidateKind), now))
+					.stampVerpReturnPath;
 	const isHybrid = Boolean(
 		routeConfig?.deliverabilityFallback?.isEnabled &&
 		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
@@ -369,13 +420,15 @@ export const resolveLastMileRoutePlan = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.string(),
 		from: v.string(),
-		now: v.optional(v.number()),
+		// No clock argument, deliberately — the sibling `resolveSendRoute` exposes
+		// none either. `now` lives on the …FromDb helper for tests, which call it
+		// directly; accepting one over the wire would let a backdated value revive
+		// a TTL-expired return-path verdict.
 	},
 	handler: async (ctx, args) =>
 		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, {
 			to: args.to,
 			from: args.from,
-			...(args.now === undefined ? {} : { now: args.now }),
 		}),
 });
 
