@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { returnPathTables } from './returnPath';
 import { contentScanFlagValidator } from '../lib/convexValidators';
 import { ipReadinessFieldValidators } from '../delivery/readinessValidators';
 import {
@@ -21,6 +22,8 @@ import {
  * Spread into `defineSchema()` from schema.ts via `...deliveryTables`.
  */
 export const deliveryTables = {
+	...returnPathTables,
+
 	// Blocked Emails - email addresses that should not receive emails
 	// Used to protect sender reputation by excluding bounced, complained, or manually blocked addresses
 	blockedEmails: defineTable({
@@ -264,40 +267,6 @@ export const deliveryTables = {
 	})
 		.index('by_org_domain', ['organizationId', 'domain'])
 		.index('by_expires_at', ['expiresAt']),
-
-	// Custom return-path (VERP envelope sender) capability, observed per
-	// CONFIGURED TRANSPORT. Deployment-scoped, exactly like the transport
-	// configuration itself (env-resolved, see lib/sendProviders/transports.ts),
-	// so there is deliberately no organizationId here.
-	//
-	// A row only reaches `supported` from an OBSERVED delivered bounce whose
-	// envelope sender still matched the one we set — mirroring the loopback
-	// probe below, and for the same reason: a relay that ACCEPTS our MAIL FROM
-	// and silently rewrites it would otherwise be recorded as comparable, on
-	// exactly the deployments this gate exists to protect.
-	sendTransportReturnPathProbes: defineTable({
-		transportId: v.string(),
-		probeId: v.string(),
-		status: v.union(
-			v.literal('awaiting_delivery'),
-			v.literal('supported'),
-			v.literal('unsupported')
-		),
-		reason: v.union(
-			v.literal('awaiting_delivery'),
-			v.literal('observed_match'),
-			v.literal('rewritten_by_relay'),
-			v.literal('rejected_by_relay'),
-			v.literal('no_bounce_observed')
-		),
-		sentEnvelopeSender: v.string(),
-		observedEnvelopeSender: v.optional(v.string()),
-		startedAt: v.number(),
-		settledAt: v.optional(v.number()),
-		updatedAt: v.number(),
-	})
-		.index('by_transport', ['transportId'])
-		.index('by_probe_id', ['probeId']),
 
 	// Provider Health - tracks email provider health for failover decisions
 	providerHealth: defineTable({
