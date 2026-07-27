@@ -3,10 +3,12 @@ import {
 	evaluateSunset,
 	isSunsetPolicyValid,
 	resolveSunsetPolicy,
+	SUNSET_MAX_CLOCK_LEAD_MS,
 	SUNSET_POLICY_DEFAULTS,
 	type SunsetVerdict,
 } from '../sunsetPolicy';
-import { daysAgo, facts, measured, policy } from './sunsetFixtures';
+import { SUNSET_QUIET_RESETTING_LITERALS } from '../sunsetEngine';
+import { NOW, daysAgo, facts, measured, policy } from './sunsetFixtures';
 
 /**
  * The N/M thresholds, per topic, across the five states a contact can be in
@@ -188,5 +190,100 @@ describe('isSunsetPolicyValid', () => {
 		);
 		expect(v.action).toBe('hold');
 		expect(v.reason).toBe('invalid_policy');
+	});
+});
+
+/**
+ * THE QUIET CLOCK IS RESET BY MORE THAN THE ENGAGEMENT SCORE'S LITERALS.
+ *
+ * The score is an accumulator for warmth, so signing up, confirming a double
+ * opt-in and writing to us all map to `null` in the P0-2 table — correctly, for
+ * the score. The sunset clock asks a different question ("is anyone home"), and
+ * reading it off the score's literals alone auto-suppresses a contact who
+ * explicitly re-subscribed an hour ago.
+ */
+describe('the quiet-clock-resetting literal set', () => {
+	it('is exactly the engagement literals plus the explicit-consent/inbound ones', () => {
+		// Pinned exhaustively and in catalog order: a catalog change that silently
+		// drops one of these re-arms auto-suppression for people who just told us
+		// they are here, so it has to fail the build rather than the customer.
+		expect([...SUNSET_QUIET_RESETTING_LITERALS]).toEqual([
+			'email_opened',
+			'email_clicked',
+			'topic_subscribed',
+			'topic_confirmed',
+			'doi_attested',
+			'inbound_received',
+			'inbound_replied',
+		]);
+	});
+
+	it('contains no negative or outbound literal', () => {
+		for (const literal of ['email_sent', 'email_bounced', 'email_complained'] as const) {
+			expect(SUNSET_QUIET_RESETTING_LITERALS).not.toContain(literal);
+		}
+	});
+
+	// The behavioural half — a contact whose ONLY recent activity is a consent or
+	// inbound row — needs the real loader, so it lives in sunsetSafety.test.ts.
+});
+
+/**
+ * A CLOCK CANNOT VALIDATE ITSELF. Every other guard checks a fact against `now`;
+ * these check `now` against the caller's independent observation, which is the
+ * only thing standing between an NTP glitch and the whole book qualifying for
+ * suppression in one pass.
+ */
+describe('evaluateSunset — forward clock skew', () => {
+	it('suppresses normally when the observed instant corroborates the clock', () => {
+		const v = verdict({
+			lastEngagementAt: daysAgo(400),
+			corroboratingInstant: daysAgo(0.02),
+		});
+		expect(v.action).toBe('suppress');
+	});
+
+	it('holds when now runs implausibly far ahead of the observed instant', () => {
+		const v = verdict({
+			lastEngagementAt: daysAgo(400),
+			corroboratingInstant: daysAgo(400),
+		});
+		expect(v.action).toBe('hold');
+		expect(v.reason).toBe('clock_skew');
+	});
+
+	it('holds at one tick past the tolerance and passes just inside it', () => {
+		const inside = verdict({
+			lastEngagementAt: daysAgo(400),
+			corroboratingInstant: NOW - SUNSET_MAX_CLOCK_LEAD_MS,
+		});
+		expect(inside.action).toBe('suppress');
+
+		const outside = verdict({
+			lastEngagementAt: daysAgo(400),
+			corroboratingInstant: NOW - SUNSET_MAX_CLOCK_LEAD_MS - 1,
+		});
+		expect(outside.reason).toBe('clock_skew');
+	});
+
+	it('holds when the observed instant is AHEAD of now (the clock went backwards)', () => {
+		const v = verdict({
+			lastEngagementAt: daysAgo(400),
+			corroboratingInstant: NOW + 1,
+		});
+		expect(v.action).toBe('hold');
+		expect(v.reason).toBe('clock_skew');
+	});
+
+	it('holds on a non-finite or non-positive observed instant', () => {
+		for (const corroboratingInstant of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+			const v = verdict({ lastEngagementAt: daysAgo(400), corroboratingInstant });
+			expect(v.reason).toBe('clock_skew');
+		}
+	});
+
+	it('does not hold when no observation is available — the sweep ceiling covers that', () => {
+		const v = verdict({ lastEngagementAt: daysAgo(400) });
+		expect(v.action).toBe('suppress');
 	});
 });

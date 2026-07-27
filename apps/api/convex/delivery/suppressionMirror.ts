@@ -81,7 +81,7 @@ export type MtaSuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
  */
 export function toMtaSuppressionReason(
 	reason: MirroredBlockReason,
-	bounceType?: 'hard' | 'soft',
+	bounceType?: 'hard' | 'soft'
 ): MtaSuppressionReason {
 	if (reason === 'complained') return 'complaint';
 	if (reason === 'bounced') {
@@ -107,7 +107,7 @@ export function toMtaSuppressionReason(
  */
 export async function scheduleSuppressionMirror(
 	ctx: MutationCtx,
-	args: { email: string; reason: MirroredBlockReason; bounceType?: 'hard' | 'soft' },
+	args: { email: string; reason: MirroredBlockReason; bounceType?: 'hard' | 'soft' }
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.mirror, {
 		email: args.email,
@@ -127,11 +127,7 @@ export async function scheduleSuppressionMirror(
 export const mirror = internalAction({
 	args: {
 		email: v.string(),
-		reason: v.union(
-			v.literal('bounced'),
-			v.literal('complained'),
-			v.literal('manual'),
-		),
+		reason: v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual')),
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 	},
 	handler: async (_ctx, args) => {
@@ -159,9 +155,7 @@ export const mirror = internalAction({
 				}),
 			});
 			if (!res.ok) {
-				logError(
-					`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`,
-				);
+				logError(`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`);
 				return;
 			}
 			logInfo(`[suppressionMirror] mirrored ${args.email} (${mtaReason}) to MTA`);

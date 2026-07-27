@@ -337,3 +337,159 @@ describe('sunset safety — a backfilled activity history never fakes disengagem
 		expect(applied.verdict.action).toBe('suppress');
 	});
 });
+
+/**
+ * ABSENCE OF OPENS IS NOT ABSENCE OF PEOPLE. These go through the real loader,
+ * because the defect they guard against was in WHICH activity literals the
+ * loader looks at — a pure-fact fixture cannot reproduce it.
+ */
+describe('sunset safety — an explicit act by the contact resets the quiet clock', () => {
+	async function evaluateWithNewestActivity(
+		activityType: 'topic_subscribed' | 'topic_confirmed' | 'doi_attested' | 'inbound_received',
+		occurredAt: number
+	) {
+		const t = harness();
+		const contactId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: `${activityType}@example.com`,
+					createdAt: daysAgo(500),
+					updatedAt: daysAgo(500),
+				})
+			);
+			await ctx.db.insert('contactActivities', {
+				contactId: id,
+				activityType: 'email_sent',
+				occurredAt: daysAgo(480),
+			});
+			// The last time they opened anything was 300 days ago.
+			await ctx.db.insert('contactActivities', {
+				contactId: id,
+				activityType: 'email_opened',
+				occurredAt: daysAgo(300),
+			});
+			await ctx.db.insert('contactActivities', { contactId: id, activityType, occurredAt });
+			return id;
+		});
+
+		return await t.run(async (ctx) => {
+			const contact = await ctx.db.get(contactId);
+			if (!contact) throw new Error('fixture contact missing');
+			return await evaluateAndApplySunset(ctx, {
+				contact,
+				policy: { ...SUNSET_POLICY_DEFAULTS },
+				now: NOW,
+			});
+		});
+	}
+
+	for (const activityType of [
+		'topic_subscribed',
+		'topic_confirmed',
+		'doi_attested',
+		'inbound_received',
+	] as const) {
+		it(`holds a 300-day-quiet contact who did ${activityType} two days ago`, async () => {
+			const applied = await evaluateWithNewestActivity(activityType, daysAgo(2));
+			// Without this the contact is suppressed within the hour — and the
+			// confirmation mail they are owed is then blocked as well.
+			expect(applied.verdict.action).toBe('hold');
+			expect(applied.verdict.reason).toBe('engaged_recently');
+			expect(applied.applied).toBe(false);
+		});
+	}
+
+	it('still suppresses when the consent act is itself older than the window', async () => {
+		const applied = await evaluateWithNewestActivity('topic_confirmed', daysAgo(400));
+		expect(applied.verdict.action).toBe('suppress');
+	});
+});
+
+/**
+ * A PLAUSIBLE-BUT-WRONG CLOCK. The suite above covers malformed values of `now`;
+ * this covers the dangerous case — a `now` that is perfectly well-formed and
+ * simply wrong, which makes tenure, quiet days and the measurable span all look
+ * covered at the same moment.
+ */
+describe('sunset safety — a jumped clock never fires', () => {
+	async function evaluateAt(now: number, corroboratingInstant: number | undefined) {
+		const t = harness();
+		const contactId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'jumped@example.com',
+					createdAt: daysAgo(500),
+					updatedAt: daysAgo(500),
+				})
+			);
+			await ctx.db.insert('contactActivities', {
+				contactId: id,
+				activityType: 'email_sent',
+				occurredAt: daysAgo(480),
+			});
+			return id;
+		});
+
+		return await t.run(async (ctx) => {
+			const contact = await ctx.db.get(contactId);
+			if (!contact) throw new Error('fixture contact missing');
+			return await evaluateAndApplySunset(ctx, {
+				contact,
+				policy: { ...SUNSET_POLICY_DEFAULTS },
+				now,
+				corroboratingInstant,
+			});
+		});
+	}
+
+	it('holds when the host clock has jumped a year ahead of the deployment record', async () => {
+		const applied = await evaluateAt(NOW + 365 * DAY, NOW);
+		expect(applied.verdict.action).toBe('hold');
+		expect(applied.verdict.reason).toBe('clock_skew');
+		expect(applied.applied).toBe(false);
+	});
+
+	it('writes nothing at all on a jumped clock', async () => {
+		const t = harness();
+		const contactId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'untouched@example.com',
+					createdAt: daysAgo(500),
+					updatedAt: daysAgo(500),
+				})
+			);
+			await ctx.db.insert('contactActivities', {
+				contactId: id,
+				activityType: 'email_sent',
+				occurredAt: daysAgo(480),
+			});
+			return id;
+		});
+		await t.run(async (ctx) => {
+			const contact = await ctx.db.get(contactId);
+			if (!contact) throw new Error('fixture contact missing');
+			await evaluateAndApplySunset(ctx, {
+				contact,
+				policy: { ...SUNSET_POLICY_DEFAULTS },
+				now: NOW + 365 * DAY,
+				corroboratingInstant: NOW,
+			});
+		});
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(0);
+			expect(await ctx.db.query('auditLogs').collect()).toHaveLength(0);
+			const contact = await ctx.db.get(contactId);
+			expect(contact?.sunsetStage).toBeUndefined();
+		});
+	});
+
+	it('acts normally when the deployment record corroborates the clock', async () => {
+		const applied = await evaluateAt(NOW, NOW - DAY);
+		expect(applied.verdict.action).toBe('suppress');
+	});
+});

@@ -23,6 +23,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { api } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
+import { requireOrgPermission } from '../../lib/sessionOrganization';
 import { SUNSET_MIN_WINDOW_DAYS } from '../sunsetPolicy';
 import { daysAgo, harness, type Harness } from './sunsetFixtures';
 
@@ -458,5 +459,181 @@ describe('blockedEmails.getCountsByReason — the unengaged class is counted', (
 			.withIdentity(identity)
 			.query(api.blockedEmails.listByTeam, { reason: 'unengaged' });
 		expect(rows.map((row) => row.email)).toEqual(['b@example.com']);
+	});
+});
+
+/**
+ * THE ONE-ACTION RESTORE, THROUGH THE AUTHED MUTATION — not just the ctx-level
+ * helper. The card's promise is that an operator can put a contact back in one
+ * action; that promise includes the permission gate standing in front of it, so
+ * the gate is proven here rather than assumed.
+ */
+describe('restoreSunsetContact / setSunsetContactExemption', () => {
+	async function seedSuppressed(t: Harness, email: string): Promise<Id<'contacts'>> {
+		return await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email,
+					createdAt: daysAgo(500),
+					updatedAt: daysAgo(500),
+					sunsetStage: 'suppressed',
+					sunsetStageAt: daysAgo(1),
+				})
+			);
+			await ctx.db.insert('blockedEmails', { email, reason: 'unengaged', createdAt: daysAgo(1) });
+			return id;
+		});
+	}
+
+	it('restores in one call, removes the row and audits the restore', async () => {
+		const t = harness();
+		const contactId = await seedSuppressed(t, 'one-action@example.com');
+
+		const result = await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.restoreSunsetContact, { contactId });
+		expect(result).toMatchObject({ restored: true, removedSuppression: true, outcome: 'restored' });
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(0);
+			const contact = await ctx.db.get(contactId);
+			expect(contact?.sunsetStage).toBe('engaged');
+			expect(contact?.sunsetExemptAt).toBeTypeOf('number');
+			const logs = await ctx.db.query('auditLogs').collect();
+			const entry = logs.find((log) => log.action === 'contact.sunset_restored');
+			expect(entry?.userId).toBe('operator-1');
+		});
+	});
+
+	it('reports not_suppressed rather than quietly exempting an unsuppressed contact', async () => {
+		const t = harness();
+		const contactId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({
+						email: 'clean@example.com',
+						createdAt: daysAgo(500),
+						updatedAt: daysAgo(500),
+					})
+				)
+		);
+
+		const result = await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.restoreSunsetContact, { contactId });
+		expect(result.outcome).toBe('not_suppressed');
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(contactId))?.sunsetExemptAt).toBeUndefined();
+		});
+	});
+
+	it('toggles the per-contact override in both directions and audits both', async () => {
+		const t = harness();
+		const contactId = await seedSuppressed(t, 'toggle@example.com');
+
+		await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.setSunsetContactExemption, { contactId, exempt: true });
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(contactId))?.sunsetExemptAt).toBeTypeOf('number');
+		});
+
+		await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.setSunsetContactExemption, { contactId, exempt: false });
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(contactId))?.sunsetExemptAt).toBeUndefined();
+			const logs = await ctx.db.query('auditLogs').collect();
+			expect(logs.filter((log) => log.action === 'contact.sunset_exemption_changed')).toHaveLength(
+				2
+			);
+		});
+	});
+
+	it('refuses a caller without contacts:manage, on both mutations', async () => {
+		const t = harness();
+		const contactId = await seedSuppressed(t, 'unauthorised@example.com');
+
+		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('permission denied'));
+		await expect(
+			t.withIdentity(identity).mutation(api.contacts.sunset.restoreSunsetContact, { contactId })
+		).rejects.toThrow(/permission denied/);
+
+		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('permission denied'));
+		await expect(
+			t
+				.withIdentity(identity)
+				.mutation(api.contacts.sunset.setSunsetContactExemption, { contactId, exempt: true })
+		).rejects.toThrow(/permission denied/);
+
+		// Nothing happened on either refused call.
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(1);
+			expect((await ctx.db.get(contactId))?.sunsetExemptAt).toBeUndefined();
+		});
+	});
+});
+
+/** An override that can be set but never cleared is a one-way door. */
+describe('setSunsetPolicy — clearing an override back to inherited', () => {
+	it('removes the named fields from the stored row', async () => {
+		const t = harness();
+		const topicId = await t.run(
+			async (ctx) => await ctx.db.insert('topics', { name: 'Product news', createdAt: daysAgo(30) })
+		);
+
+		await t.withIdentity(identity).mutation(api.contacts.sunset.setSunsetPolicy, {
+			topicId,
+			reengageAfterDays: 200,
+			suppressAfterDays: 400,
+		});
+		await t.withIdentity(identity).mutation(api.contacts.sunset.setSunsetPolicy, {
+			topicId,
+			clearFields: ['reengageAfterDays'],
+		});
+
+		const rows = await readPolicyRows(t);
+		const row = rows.find((candidate) => candidate.topicId === topicId);
+		expect(row?.reengageAfterDays).toBeUndefined();
+		expect(row?.suppressAfterDays).toBe(400);
+
+		// The effective policy falls back to the deployment-wide window.
+		const effective = await t
+			.withIdentity(identity)
+			.query(api.contacts.sunset.getSunsetPolicies, {});
+		const topic = effective.topics.find((candidate) => candidate.topicId === topicId);
+		expect(topic?.policy.reengageAfterDays).toBe(180);
+	});
+
+	it('records the cleared fields in the audit entry', async () => {
+		const t = harness();
+		await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.setSunsetPolicy, { isEnabled: false });
+		await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.setSunsetPolicy, { clearFields: ['isEnabled'] });
+
+		const audits = await readPolicyAudits(t);
+		expect(audits.at(-1)?.details?.['clearedFields']).toBe('isEnabled');
+		expect(audits.at(-1)?.details?.['isEnabled']).toBeNull();
+		const rows = await readPolicyRows(t);
+		expect(rows[0]?.isEnabled).toBeUndefined();
+	});
+
+	it('lets a clear win over a set in the same call rather than storing both', async () => {
+		const t = harness();
+		await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.setSunsetPolicy, { reengageAfterDays: 200 });
+		await t.withIdentity(identity).mutation(api.contacts.sunset.setSunsetPolicy, {
+			reengageAfterDays: 210,
+			clearFields: ['reengageAfterDays'],
+		});
+
+		const rows = await readPolicyRows(t);
+		expect(rows[0]?.reengageAfterDays).toBeUndefined();
 	});
 });

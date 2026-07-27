@@ -2,11 +2,8 @@ import { describe, it, expect } from 'vitest';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
 import { SUNSET_POLICY_DEFAULTS } from '../sunsetPolicy';
-import {
-	evaluateAndApplySunset,
-	restoreSunsetSuppression,
-	setSunsetExemption,
-} from '../sunsetEngine';
+import { evaluateAndApplySunset } from '../sunsetEngine';
+import { restoreSunsetSuppression, setSunsetExemption } from '../sunsetRestore';
 import { NOW, daysAgo, harness, type Harness } from './sunsetFixtures';
 
 /**
@@ -277,5 +274,39 @@ describe('sunset operator exemption', () => {
 
 		const logs = await auditEntries(t);
 		expect(logs.filter((log) => log.action === 'contact.sunset_exemption_changed')).toHaveLength(2);
+	});
+});
+
+describe('sunset restore is a restore, not an exemption toggle', () => {
+	it('reports not_suppressed and writes nothing when there is no blocklist row', async () => {
+		const t = harness();
+		const contactId = await seedContact(t, {
+			email: 'never-blocked@example.com',
+			tenureDays: 400,
+			firstSendDaysAgo: 390,
+			lastEngagementDaysAgo: 5,
+		});
+
+		const result = await t.run(
+			async (ctx) =>
+				await restoreSunsetSuppression(ctx, {
+					contactId,
+					actorUserId: 'user_operator_1',
+					now: NOW,
+				})
+		);
+		expect(result).toEqual({
+			restored: false,
+			removedSuppression: false,
+			outcome: 'not_suppressed',
+		});
+
+		await t.run(async (ctx) => {
+			const contact = await ctx.db.get(contactId);
+			// No silent exemption, no stage change, no audit entry claiming a restore.
+			expect(contact?.sunsetExemptAt).toBeUndefined();
+			expect(contact?.sunsetStage).toBeUndefined();
+		});
+		expect(await auditEntries(t)).toHaveLength(0);
 	});
 });

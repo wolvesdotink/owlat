@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
-import { SUNSET_BATCH_SIZE, SUNSET_STALE_MS } from '../sunset';
+import { SUNSET_BATCH_SIZE, SUNSET_STALE_MS } from '../sunsetSweep';
 import { DAY, harness, type Harness } from './sunsetFixtures';
 
 /**
@@ -38,7 +38,7 @@ describe('sunset sweep — boundedness', () => {
 		const t = harness();
 		await seedQuietContacts(t, SUNSET_BATCH_SIZE + 5);
 
-		const result = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			// A caller asking for an unbounded batch is clamped, not obeyed: the
 			// clamp is what keeps the transaction inside the read budget.
 			batchSize: 100_000,
@@ -54,7 +54,7 @@ describe('sunset sweep — boundedness', () => {
 		const t = harness();
 		await seedQuietContacts(t, 3);
 
-		const result = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 10,
 			batchesRemaining: 1,
 		});
@@ -69,15 +69,15 @@ describe('sunset sweep — the cursor', () => {
 		const t = harness();
 		await seedQuietContacts(t, 5);
 
-		const first = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const first = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 2,
 			batchesRemaining: 1,
 		});
-		const second = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const second = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 2,
 			batchesRemaining: 1,
 		});
-		const third = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const third = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 2,
 			batchesRemaining: 1,
 		});
@@ -96,11 +96,11 @@ describe('sunset sweep — the cursor', () => {
 		const t = harness();
 		await seedQuietContacts(t, 4);
 
-		await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 10,
 			batchesRemaining: 1,
 		});
-		const again = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const again = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 10,
 			batchesRemaining: 1,
 		});
@@ -112,7 +112,7 @@ describe('sunset sweep — the cursor', () => {
 	it('re-scans a contact once its stamp goes stale', async () => {
 		const t = harness();
 		const ids = await seedQuietContacts(t, 1);
-		await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 10,
 			batchesRemaining: 1,
 		});
@@ -123,7 +123,7 @@ describe('sunset sweep — the cursor', () => {
 			await ctx.db.patch(id, { sunsetEvaluatedAt: Date.now() - SUNSET_STALE_MS - 1000 });
 		});
 
-		const again = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const again = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 10,
 			batchesRemaining: 1,
 		});
@@ -139,13 +139,13 @@ describe('sunset sweep — the cursor', () => {
 			await ctx.db.patch(id, { deletedAt: Date.now() });
 		});
 
-		const first = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const first = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 10,
 			batchesRemaining: 1,
 		});
 		expect(first.scanned).toBe(1);
 
-		const second = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const second = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 10,
 			batchesRemaining: 1,
 		});
@@ -191,7 +191,7 @@ describe('sunset sweep — it actually transitions contacts', () => {
 			});
 		});
 
-		const result = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: 10,
 			batchesRemaining: 1,
 		});
@@ -220,7 +220,7 @@ describe('sunset sweep — self-scheduling', () => {
 		const t = harness();
 		await seedQuietContacts(t, SUNSET_BATCH_SIZE + 5);
 
-		const result = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: SUNSET_BATCH_SIZE,
 			batchesRemaining: 2,
 		});
@@ -239,7 +239,7 @@ describe('sunset sweep — self-scheduling', () => {
 		const t = harness();
 		await seedQuietContacts(t, SUNSET_BATCH_SIZE + 5);
 
-		const result = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: SUNSET_BATCH_SIZE,
 			batchesRemaining: 1,
 		});
@@ -259,7 +259,7 @@ describe('sunset sweep — self-scheduling', () => {
 		const t = harness();
 		await seedQuietContacts(t, 2);
 
-		await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
 			batchSize: SUNSET_BATCH_SIZE,
 			batchesRemaining: 5,
 		});
@@ -268,5 +268,145 @@ describe('sunset sweep — self-scheduling', () => {
 			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
 		);
 		expect(scheduled).toHaveLength(0);
+	});
+});
+
+/**
+ * THE BLAST-RADIUS CEILING. Every per-contact guard answers "is THIS contact
+ * quiet". None of them can notice that the answer became "yes" for the whole
+ * book at once — a jumped clock, a bad import, a mis-saved policy. The ceiling
+ * is the bound on that entire class of mistake.
+ */
+describe('sunset sweep — the per-tick suppression ceiling', () => {
+	async function seedSuppressibleContacts(t: Harness, count: number): Promise<void> {
+		await t.run(async (ctx) => {
+			for (let i = 0; i < count; i += 1) {
+				const id = await ctx.db.insert(
+					'contacts',
+					createTestContact({
+						email: `ceiling-${i}@example.com`,
+						createdAt: agoReal(500),
+						updatedAt: agoReal(500),
+					})
+				);
+				await ctx.db.insert('contactActivities', {
+					contactId: id,
+					activityType: 'email_sent',
+					occurredAt: agoReal(480),
+				});
+			}
+		});
+	}
+
+	it('stops at the ceiling instead of suppressing the whole batch', async () => {
+		const t = harness();
+		await seedSuppressibleContacts(t, 6);
+
+		const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+			maxSuppressions: 2,
+		});
+
+		expect(result.suppressed).toBe(2);
+		expect(result.deferredSuppressions).toBe(1);
+		expect(result.isSuppressionCeilingHit).toBe(true);
+
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(2);
+		});
+	});
+
+	it('leaves the refused contact in the stale range so the next tick retries it', async () => {
+		const t = harness();
+		await seedSuppressibleContacts(t, 4);
+
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+			maxSuppressions: 1,
+		});
+
+		// One suppressed, one refused-and-unstamped, two never reached.
+		const unsettled = await t.run(async (ctx) => {
+			const rows = await ctx.db.query('contacts').collect();
+			return rows.filter((row) => row.sunsetEvaluatedAt === undefined).length;
+		});
+		expect(unsettled).toBe(3);
+
+		const second = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+			maxSuppressions: 1,
+		});
+		expect(second.suppressed).toBe(1);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(2);
+		});
+	});
+
+	it('stops chaining once the ceiling is hit', async () => {
+		const t = harness();
+		await seedSuppressibleContacts(t, 6);
+
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 2,
+			batchesRemaining: 10,
+			maxSuppressions: 1,
+		});
+
+		const scheduled = await t.run(
+			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled).toHaveLength(0);
+	});
+
+	it('records an operator-readable summary naming the ceiling', async () => {
+		const t = harness();
+		await seedSuppressibleContacts(t, 4);
+
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+			maxSuppressions: 1,
+		});
+
+		const summary = await t.run(async (ctx) => {
+			const logs = await ctx.db.query('auditLogs').collect();
+			return logs.find((log) => log.action === 'contact.sunset_sweep_summary');
+		});
+		expect(summary).toBeDefined();
+		expect(summary?.userId).toBe('system');
+		expect(summary?.details?.['suppressed']).toBe(1);
+		expect(summary?.details?.['deferredSuppressions']).toBe(1);
+		expect(summary?.details?.['isSuppressionCeilingHit']).toBe(true);
+		expect(String(summary?.details?.['message'])).toMatch(/Auto-suppression paused/);
+	});
+
+	it('summarises an ordinary suppressing tick too, and stays silent on a quiet one', async () => {
+		const t = harness();
+		await seedSuppressibleContacts(t, 2);
+
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+		});
+		const afterSuppressing = await t.run(async (ctx) => {
+			const logs = await ctx.db.query('auditLogs').collect();
+			return logs.filter((log) => log.action === 'contact.sunset_sweep_summary');
+		});
+		expect(afterSuppressing).toHaveLength(1);
+		expect(String(afterSuppressing[0]?.details?.['message'])).toMatch(/auto-suppressed/);
+
+		// A second tick has nothing left to do — and writes no summary.
+		await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+		});
+		const afterQuiet = await t.run(async (ctx) => {
+			const logs = await ctx.db.query('auditLogs').collect();
+			return logs.filter((log) => log.action === 'contact.sunset_sweep_summary');
+		});
+		expect(afterQuiet).toHaveLength(1);
 	});
 });

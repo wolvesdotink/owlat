@@ -60,7 +60,7 @@ export type SuppressionScope = 'marketing' | 'transactional';
 export async function isSuppressed(
 	ctx: QueryCtx | MutationCtx,
 	rawEmail: string,
-	options?: { scope?: SuppressionScope | undefined },
+	options?: { scope?: SuppressionScope | undefined }
 ): Promise<boolean> {
 	const blocked = await ctx.db
 		.query('blockedEmails')
@@ -84,7 +84,7 @@ export async function isSuppressed(
  * same way (`normalizeEmail`) so the comparison agrees with the stored keys.
  */
 export async function loadSuppressionSet(
-	ctx: QueryCtx | MutationCtx,
+	ctx: QueryCtx | MutationCtx
 ): Promise<ReadonlySet<string>> {
 	const records = await ctx.db.query('blockedEmails').collect(); // bounded: suppression list, one per blocked address
 	return new Set(records.map((b) => normalizeEmail(b.email)));
