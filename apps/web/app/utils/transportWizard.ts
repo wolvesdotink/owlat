@@ -241,22 +241,47 @@ export function alignmentFindings(result: AlignmentPreflightResult): WizardFindi
 }
 
 /**
- * The step status a pre-flight verdict implies.
+ * What each pre-flight verdict MEANS to the wizard: the step status it implies
+ * and the sentence shown above the findings.
+ *
+ * ONE table rather than two parallel switches over the same four literals (a
+ * second one lived in the component, where no unit test could reach the copy).
+ * A fifth verdict added to the evaluator fails to typecheck here, once.
  *
  * `single_arm` — no reference transport at all — is a PASS with plain copy, not
- * a warning (D2). It is reachable here when an operator opens the wizard and
- * walks to step 3 without connecting anything.
+ * a warning (D2). It is reachable when an operator opens the wizard and walks to
+ * step 3 without connecting anything.
  */
+export const ALIGNMENT_VERDICT_PRESENTATION: Readonly<
+	Record<AlignmentPreflightResult['verdict'], { status: WizardStepStatus; summary: string }>
+> = Object.freeze({
+	aligned: {
+		status: 'passed',
+		summary:
+			'Both arms are indistinguishable to the receiver apart from the sending infrastructure.',
+	},
+	single_arm: {
+		status: 'passed',
+		summary: 'No second transport is configured, so there is nothing to align yet.',
+	},
+	blocked: {
+		status: 'failed',
+		summary: 'Some checks did not pass. Each one below names the DNS change to make.',
+	},
+	unknown: {
+		status: 'unknown',
+		summary: 'DNS could not be resolved for every check. Nothing is wrong yet — try again shortly.',
+	},
+});
+
+/** The step status a pre-flight verdict implies. */
 export function alignmentStepStatus(result: AlignmentPreflightResult): WizardStepStatus {
-	switch (result.verdict) {
-		case 'aligned':
-		case 'single_arm':
-			return 'passed';
-		case 'blocked':
-			return 'failed';
-		case 'unknown':
-			return 'unknown';
-	}
+	return ALIGNMENT_VERDICT_PRESENTATION[result.verdict].status;
+}
+
+/** The sentence shown above the findings for a pre-flight verdict. */
+export function alignmentVerdictSummary(result: AlignmentPreflightResult): string {
+	return ALIGNMENT_VERDICT_PRESENTATION[result.verdict].summary;
 }
 
 /**
@@ -317,6 +342,19 @@ export function returnPathFinding(capability: ReturnPathCapabilityValue): Wizard
  */
 export const RETURN_PATH_SETTLES_NOTE =
 	'This one is observed rather than asked for: it settles the first time a bounce comes back through this provider, so a transport you connected a moment ago reads “not known yet”. Nothing waits on it.';
+
+/**
+ * What step 4 says when there is no REFERENCE transport to describe —
+ * `getReturnPathReadiness` answered `transportId: null` because none is
+ * configured, or because more than one is and there is no single second arm.
+ *
+ * The capability that comes back with it is `unknown`, but rendering the
+ * settles-after-a-bounce copy for a deployment that has no provider at all would
+ * describe a wait that will never end. Naming the actual situation is both
+ * honest and, per D2, not a fault: standalone is a supported configuration.
+ */
+export const RETURN_PATH_NO_REFERENCE_NOTE =
+	'No second transport is connected yet, so there is nothing to record here.';
 
 /** The probe never blocks: any resolved posture finishes the step. */
 export function returnPathStepStatus(capability: ReturnPathCapabilityValue): WizardStepStatus {
