@@ -17,14 +17,7 @@ import {
 	SEND_ASSIGNMENT_RETENTION_MS,
 } from '../sendAssignments';
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const deliveryGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../delivery/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...deliveryGlob };
+import { modules } from './testModules';
 
 const NOW = 1_800_000_000_000;
 

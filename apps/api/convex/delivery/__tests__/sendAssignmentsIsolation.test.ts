@@ -16,6 +16,8 @@ import { createTestSendAssignment } from '../../__tests__/factories';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from '../../workspaces/deletion/walker';
 
+import { modules } from './testModules';
+
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
 	return {
@@ -26,15 +28,6 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 	};
 });
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const deliveryGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../delivery/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...deliveryGlob };
 
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';

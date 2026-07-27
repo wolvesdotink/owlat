@@ -36,6 +36,8 @@ import { SEND_PROVIDER_KINDS, sendProviderCatalogEntry } from '../../lib/sendPro
 import { resolveDestinationProvider } from '../../lib/sendProviders/destinationProvider';
 import type { SendProviderKind } from '../../lib/sendProviders/types';
 
+import { modules } from './testModules';
+
 // `vi.hoisted` so the mock factory below (hoisted above the imports) can close
 // over these without hitting the temporal dead zone.
 const { enqueueCampaignAction, enqueueTransactionalAction } = vi.hoisted(() => ({
@@ -90,15 +92,6 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_experiment') };
 });
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const deliveryGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../delivery/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...deliveryGlob };
 
 const ORG = 'org_experiment';
 
