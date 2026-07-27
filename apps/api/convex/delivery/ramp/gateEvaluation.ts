@@ -37,17 +37,26 @@ import {
 	evaluateDeferralGate,
 	evaluateHardBounceGate,
 	evaluateSeedPlacementGate,
+	evaluateStandaloneSeedPlacementGate,
 } from './gates';
-import type {
-	RampGateAggregationInput,
-	RampGateEvaluation,
-	RampGateEvaluationInput,
-	RampGateEvaluator,
-	RampGateId,
-	RampGateResult,
-	RampGateStatus,
-	RampVerdict,
+import {
+	weakestConfidence,
+	type RampGateAggregationInput,
+	type RampGateConfidence,
+	type RampGateEvaluation,
+	type RampGateEvaluationInput,
+	type RampGateEvaluator,
+	type RampGateId,
+	type RampGateResult,
+	type RampGateStatus,
+	type RampVerdict,
 } from './gateTypes';
+import {
+	asTrailingEngagement,
+	evaluateStandaloneComplaintGate,
+	evaluateStandaloneDeferralGate,
+	evaluateTrailingHardBounceGate,
+} from './trailingBaselineGates';
 
 const STATUS_RANK: Readonly<Record<RampGateStatus, number>> = {
 	halt: 3,
@@ -77,10 +86,14 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 	let contributedVerdict: RampVerdict = 'pass';
 	let failedGate: RampGateId | undefined;
 	let rank = -1;
+	let increaseEvidence = false;
+	const confidences: RampGateConfidence[] = [];
 
 	for (const result of perGate) {
 		if (!contributes(result)) continue;
 		contributed = true;
+		confidences.push(result.confidence);
+		if (result.status === 'pass' && result.mayJustifyIncrease) increaseEvidence = true;
 		const resultRank = STATUS_RANK[result.status];
 		if (resultRank > rank) {
 			rank = resultRank;
@@ -91,7 +104,14 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 
 	// An evaluation nothing contributed to is evidence-free, and evidence-free is
 	// exactly the state `pass` must not be reachable from.
-	const verdict: RampVerdict = contributed ? contributedVerdict : 'insufficient_data';
+	const contributedOrHold: RampVerdict = contributed ? contributedVerdict : 'insufficient_data';
+
+	// THE ASYMMETRY (plan D14). A window in which everything that passed was a
+	// low-confidence gate is not a clean window — it is a window with no evidence
+	// for going UP, and it holds. The same gate's FAIL is untouched by this: a weak
+	// signal is allowed to retreat a share, it is just never allowed to advance one.
+	const verdict: RampVerdict =
+		contributedOrHold === 'pass' && !increaseEvidence ? 'insufficient_data' : contributedOrHold;
 
 	const previous =
 		Number.isFinite(previousCleanStreak) && previousCleanStreak > 0
@@ -114,6 +134,10 @@ export function aggregateRampGates(args: RampGateAggregationInput): RampGateEval
 		requiresCorroboration,
 		cleanStreak,
 		perGate,
+		// No contribution means no measurement, and "we measured nothing" is the
+		// lowest confidence there is — never the `high` an empty list would fold to.
+		confidence: contributed ? weakestConfidence(confidences) : 'low',
+		increaseEvidence,
 		evaluatedAt: now,
 	};
 }
@@ -138,6 +162,52 @@ export const referenceArmGateEvaluator: RampGateEvaluator = {
 		// measured this window", which contributes nothing rather than holding.
 		if (input.engagement) perGate.push(input.engagement);
 		perGate.push(evaluateSeedPlacementGate(input));
+		return aggregateRampGates({
+			perGate,
+			previousCleanStreak: input.previousCleanStreak,
+			now: input.now,
+		});
+	},
+};
+
+/**
+ * The STANDALONE evaluator (plan D2, D3, D14): no reference transport, and no
+ * apology for it.
+ *
+ * SAME INTERFACE, SAME PRECEDENCE, SAME AGGREGATOR. The five gates are evaluated
+ * in the plan's numbering and folded by `aggregateRampGates` exactly as the
+ * reference-arm ones are, so halt-over-fail-over-hold-over-pass, the optional-gate
+ * rule, the clean-streak rule and the corroboration flag are shared rather than
+ * reimplemented. What differs is entirely inside the specs: which second series
+ * each gate compares against, in which unit, and what its verdict is worth.
+ *
+ * TWO THINGS THIS EVALUATOR ENFORCES AT THE BOUNDARY, both of them because the
+ * degraded path is the one nobody runs by hand:
+ *
+ *   1. `input.reference` IS IGNORED. Not asserted against, not thrown on —
+ *      ignored. Every gate here reads the cell's own history, so a caller that
+ *      wires a reference arm into this evaluator gets standalone behaviour rather
+ *      than a silent hybrid nobody designed.
+ *   2. The pre-computed gate-4 result is RE-GRADED to the weak trailing signal
+ *      (`asTrailingEngagement`), so the concurrent ratio's high-confidence,
+ *      increase-justifying verdict cannot be smuggled into a deployment that has
+ *      no second arm to have measured it with.
+ */
+export const trailingBaselineGateEvaluator: RampGateEvaluator = {
+	kind: 'trailing_baseline',
+	evaluate(input: RampGateEvaluationInput): RampGateEvaluation {
+		const perGate: RampGateResult[] = [
+			evaluateTrailingHardBounceGate(input),
+			evaluateStandaloneDeferralGate(input),
+			evaluateStandaloneComplaintGate(input),
+		];
+		// Gate 4, exactly as the reference-arm evaluator treats it: absent means
+		// "not measured this window", which contributes nothing rather than holding.
+		// Holding here instead would freeze every standalone cell that has not yet
+		// accumulated 2000 calibration sends — turning an ABSENT weak signal into a
+		// blocker, which is the one thing plan D2 forbids it from being.
+		if (input.engagement) perGate.push(asTrailingEngagement(input.engagement));
+		perGate.push(evaluateStandaloneSeedPlacementGate(input));
 		return aggregateRampGates({
 			perGate,
 			previousCleanStreak: input.previousCleanStreak,
