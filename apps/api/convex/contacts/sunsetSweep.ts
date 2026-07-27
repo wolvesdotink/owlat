@@ -25,6 +25,7 @@ import {
 	loadSunsetPolicyRows,
 	resolveSunsetPolicyForContact,
 } from './sunsetEngine';
+import { isClockCorroborated } from './sunsetPolicy';
 
 /** A contact is re-evaluated at most once a day. */
 export const SUNSET_STALE_MS = 24 * 60 * 60 * 1000;
@@ -63,6 +64,20 @@ export const SUNSET_CONTACTS_PER_TICK = SUNSET_BATCH_SIZE * SUNSET_MAX_BATCHES;
  * with an audit trail at every step, which is the pace this decision deserves.
  */
 export const SUNSET_MAX_SUPPRESSIONS_PER_TICK = 100;
+
+/**
+ * ONE statement of how a caller-supplied bound is coerced: clamped into
+ * `[min, max]`, and — this is the part that matters — replaced by `fallback`
+ * when it is not a finite number. `Math.min(NaN, n)` is `NaN`, and a `NaN`
+ * batch size reaches `.take()` as undefined behaviour inside a mutation that
+ * must not throw (a rollback here re-presents the identical head next tick and
+ * wedges the chain permanently). Stated once so the four bounds cannot drift.
+ */
+function clampArg(value: number | undefined, fallback: number, min: number, max: number): number {
+	const candidate = value ?? fallback;
+	if (!Number.isFinite(candidate)) return fallback;
+	return Math.max(min, Math.min(candidate, max));
+}
 
 // ─── The sweep ──────────────────────────────────────────────────────────────
 
@@ -104,41 +119,102 @@ export const sweepSunsetPolicy = internalMutation({
 		isDone: v.boolean(),
 		isBudgetExhausted: v.boolean(),
 		isSuppressionCeilingHit: v.boolean(),
+		/** The tick aborted before evaluating anything: `now` was not corroborated. */
+		isClockSkewed: v.boolean(),
 	}),
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		const staleBefore = now - SUNSET_STALE_MS;
-		const batchSize = Math.max(1, Math.min(args.batchSize ?? SUNSET_BATCH_SIZE, SUNSET_BATCH_SIZE));
-		const batchesRemaining = Math.max(
+		const batchSize = clampArg(args.batchSize, SUNSET_BATCH_SIZE, 1, SUNSET_BATCH_SIZE);
+		const batchesRemaining = clampArg(
+			args.batchesRemaining,
+			SUNSET_MAX_BATCHES,
 			0,
-			Math.min(args.batchesRemaining ?? SUNSET_MAX_BATCHES, SUNSET_MAX_BATCHES)
+			SUNSET_MAX_BATCHES
 		);
-		const suppressedSoFar = Math.max(0, args.suppressedSoFar ?? 0);
-		const maxSuppressions = Math.max(
+		// Fallback is the CEILING, not zero: an unreadable count of what earlier
+		// batches already suppressed must read as "budget spent", never as "none".
+		const suppressedSoFar = clampArg(
+			args.suppressedSoFar,
+			SUNSET_MAX_SUPPRESSIONS_PER_TICK,
 			0,
-			Math.min(
-				args.maxSuppressions ?? SUNSET_MAX_SUPPRESSIONS_PER_TICK,
-				SUNSET_MAX_SUPPRESSIONS_PER_TICK
-			)
+			SUNSET_MAX_SUPPRESSIONS_PER_TICK
 		);
-
-		const candidates = await ctx.db
-			.query('contacts')
-			.withIndex('by_sunset_evaluated_at', (q) => q.lt('sunsetEvaluatedAt', staleBefore))
-			.order('asc')
-			.take(batchSize);
+		const maxSuppressions = clampArg(
+			args.maxSuppressions,
+			SUNSET_MAX_SUPPRESSIONS_PER_TICK,
+			0,
+			SUNSET_MAX_SUPPRESSIONS_PER_TICK
+		);
 
 		// THE SECOND READING OF TIME (see `SunsetFacts.corroboratingInstant`): the
 		// freshest evaluation stamp in the table, written by an earlier tick under
 		// an earlier reading of the clock. Same index, opposite end, one row — so
 		// the guard against a jumped host clock costs a single point read per
 		// batch. Absent on a deployment that has never swept, which is exactly the
-		// case the ceiling below covers instead.
+		// case the blast-radius ceiling covers instead.
 		const newestEvaluated =
 			args.corroboratingInstant === undefined
 				? await ctx.db.query('contacts').withIndex('by_sunset_evaluated_at').order('desc').first()
 				: null;
 		const corroboratingInstant = args.corroboratingInstant ?? newestEvaluated?.sunsetEvaluatedAt;
+
+		// THE SKEW CHECK IS A HEAD-OF-TICK ABORT, NOT A PER-CONTACT HOLD.
+		//
+		// It has to be, because the sweep's own freshness stamps ARE the
+		// corroboration source. Checking per contact — after the row has already
+		// been stamped with the suspect `now` — protects exactly one tick: the
+		// next one reads back the stamps this one wrote, finds them an hour old,
+		// and concludes the clock is fine. So: decide once, before any write, and
+		// on failure return having written NOTHING to `sunsetEvaluatedAt`. The
+		// corroboration source stays uncontaminated and every later tick
+		// re-detects the same skew until an operator fixes the clock.
+		if (!isClockCorroborated(now, corroboratingInstant)) {
+			logWarn(
+				`[sunsetSweep] tick aborted: the host clock is not corroborated by the ` +
+					`freshest stored evaluation stamp; no contacts were evaluated and nothing ` +
+					`was suppressed. Check NTP on this deployment.`
+			);
+			await recordAuditLog(ctx, {
+				userId: 'system',
+				action: 'contact.sunset_sweep_summary',
+				resource: 'settings',
+				resourceId: 'sunset_sweep',
+				details: {
+					actor: 'sunset_engine',
+					scanned: 0,
+					suppressed: 0,
+					reengaged: 0,
+					resumed: 0,
+					deferredSuppressions: 0,
+					suppressionCeiling: maxSuppressions,
+					isSuppressionCeilingHit: false,
+					isClockSkewed: true,
+					message:
+						`Sunset sweep skipped: this deployment's clock disagrees with the ` +
+						`timestamps it wrote earlier, so no contact was evaluated and none was ` +
+						`suppressed. Nothing changed. Sweeps resume automatically once the ` +
+						`clock is correct.`,
+				},
+			});
+			return {
+				scanned: 0,
+				reengaged: 0,
+				suppressed: 0,
+				resumed: 0,
+				deferredSuppressions: 0,
+				isDone: false,
+				isBudgetExhausted: false,
+				isSuppressionCeilingHit: false,
+				isClockSkewed: true,
+			};
+		}
+
+		const candidates = await ctx.db
+			.query('contacts')
+			.withIndex('by_sunset_evaluated_at', (q) => q.lt('sunsetEvaluatedAt', staleBefore))
+			.order('asc')
+			.take(batchSize);
 
 		const policyRows = await loadSunsetPolicyRows(ctx);
 
@@ -253,6 +329,7 @@ export const sweepSunsetPolicy = internalMutation({
 			isDone,
 			isBudgetExhausted,
 			isSuppressionCeilingHit,
+			isClockSkewed: false,
 		};
 	},
 });

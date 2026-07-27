@@ -91,10 +91,15 @@ export async function restoreSunsetSuppression(
 
 	await ctx.db.delete(blocked._id);
 
+	// NOTE: `sunsetEvaluatedAt` is deliberately NOT written here. It is the
+	// sweep's cursor AND its corroboration source for the host clock (see
+	// `sunsetSweep.ts`), so an operator action performed while the clock is wrong
+	// must not stamp a bad instant into it. The exemption below is what stops the
+	// engine acting on this contact; leaving the cursor alone only means the next
+	// sweep looks at the row once and holds on `operator_override`.
 	await ctx.db.patch(contact._id, {
 		sunsetStage: 'engaged',
 		sunsetStageAt: args.now,
-		sunsetEvaluatedAt: args.now,
 		sunsetExemptAt: args.now,
 	});
 
