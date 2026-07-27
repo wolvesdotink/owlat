@@ -26,19 +26,34 @@ import {
 	type IpAuditRecord,
 } from '../scaling/ipAudit.js';
 
+/** How long a stored sweep counts as fresh enough to answer `POST /run` with. */
+const RUN_COALESCE_WINDOW_MS = 5 * 60 * 1000;
+
 function numericParam(value: string | undefined): number | undefined {
 	if (value === undefined || value.trim() === '') return undefined;
 	const parsed = Number(value);
 	return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+/** Percentages are quoted verbatim in a removal request: keep them in range. */
+function percentParam(value: string | undefined): number | undefined {
+	const parsed = numericParam(value);
+	return parsed === undefined ? undefined : Math.min(100, Math.max(0, parsed));
+}
+
+/** A negative count is nonsense in operator-facing copy: treat it as absent. */
+function countParam(value: string | undefined): number | undefined {
+	const parsed = numericParam(value);
+	return parsed === undefined || parsed < 0 ? undefined : parsed;
+}
+
 function metricsFromQuery(query: Record<string, string | undefined>): DelistingMetrics {
 	const metrics: DelistingMetrics = {};
-	const hardBouncePct = numericParam(query['hardBouncePct']);
-	const complaintPct = numericParam(query['complaintPct']);
-	const sends24h = numericParam(query['sends24h']);
-	const volumeRampMultiplier = numericParam(query['volumeRampMultiplier']);
-	const sendingDays = numericParam(query['sendingDays']);
+	const hardBouncePct = percentParam(query['hardBouncePct']);
+	const complaintPct = percentParam(query['complaintPct']);
+	const sends24h = countParam(query['sends24h']);
+	const volumeRampMultiplier = countParam(query['volumeRampMultiplier']);
+	const sendingDays = countParam(query['sendingDays']);
 	if (hardBouncePct !== undefined) metrics.hardBouncePct = hardBouncePct;
 	if (complaintPct !== undefined) metrics.complaintPct = complaintPct;
 	if (sends24h !== undefined) metrics.sends24h = sends24h;
@@ -61,6 +76,36 @@ function decorate(record: IpAuditRecord, config: MtaConfig, metrics: DelistingMe
 export function createIpAuditRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
 
+	// A sweep opens a TCP/25 connection per target MX per address FROM THE SENDING
+	// IP, so it is not something a caller may loop on. Coalesce concurrent runs
+	// and serve a recent sweep instead of re-probing, in the shape of
+	// getSmtpReachability.
+	let inFlightSweep: Promise<IpAuditRecord[]> | undefined;
+
+	const storedRecords = async (): Promise<IpAuditRecord[]> => {
+		const records = await Promise.all(
+			configuredAuditIps(config).map((ip) => getIpAuditRecord(redis, ip))
+		);
+		return records.filter((record): record is IpAuditRecord => record !== null);
+	};
+
+	const sweepOrReuse = async (): Promise<IpAuditRecord[]> => {
+		const ips = configuredAuditIps(config);
+		const stored = await storedRecords();
+		const fresh =
+			ips.length > 0 &&
+			stored.length === ips.length &&
+			stored.every((record) => Date.now() - record.checkedAt < RUN_COALESCE_WINDOW_MS);
+		if (fresh) return stored;
+		if (inFlightSweep) return inFlightSweep;
+		inFlightSweep = runIpAuditSweep(redis, config, defaultIpAuditDeps());
+		try {
+			return await inFlightSweep;
+		} finally {
+			inFlightSweep = undefined;
+		}
+	};
+
 	app.use('*', masterKeyAuth(config));
 
 	// Provider guidance for the installer. Static copy: no probe, no credentials.
@@ -70,20 +115,15 @@ export function createIpAuditRoutes(redis: Redis, config: MtaConfig) {
 
 	app.get('/', async (c) => {
 		const metrics = metricsFromQuery(c.req.query());
-		const records = await Promise.all(
-			configuredAuditIps(config).map((ip) => getIpAuditRecord(redis, ip))
-		);
-		return c.json({
-			audits: records
-				.filter((record): record is IpAuditRecord => record !== null)
-				.map((record) => decorate(record, config, metrics)),
-		});
+		const records = await storedRecords();
+		return c.json({ audits: records.map((record) => decorate(record, config, metrics)) });
 	});
 
-	// Force a fresh sweep. Advisory only: it never changes pool eligibility.
+	// Request a fresh sweep. Advisory only: it never changes pool eligibility, and
+	// a sweep from the last few minutes is served as-is rather than repeated.
 	app.post('/run', async (c) => {
 		const metrics = metricsFromQuery(c.req.query());
-		const records = await runIpAuditSweep(redis, config, defaultIpAuditDeps());
+		const records = await sweepOrReuse();
 		return c.json({ audits: records.map((record) => decorate(record, config, metrics)) });
 	});
 
