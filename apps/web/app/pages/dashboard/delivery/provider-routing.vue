@@ -12,7 +12,7 @@ import {
 	isControllerOwnedStrategy,
 	PROVIDER_ROUTE_MESSAGE_TYPES as MESSAGE_TYPES,
 	PROVIDER_ROUTE_STRATEGIES as STRATEGIES,
-	PROVIDER_ROUTE_STRATEGY_LABELS as STRATEGY_LABELS,
+	strategyLabelFor as strategyLabel,
 	type ProviderRouteMessageType as MessageType,
 	type ProviderRouteStrategy as Strategy,
 } from '~/utils/providerRouteOptions';
@@ -41,9 +41,6 @@ interface DeliverabilityFallback {
 	relayProviderType: string;
 	isWarmupOverflowEnabled: boolean;
 }
-
-const strategyLabel = (strategy: string): string =>
-	STRATEGY_LABELS[strategy as Strategy] ?? strategy;
 
 // ── Data ────────────────────────────────────────────────────────────
 const { data: routesData, isLoading: routesLoading } = useOrganizationQuery(
