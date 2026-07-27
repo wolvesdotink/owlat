@@ -81,7 +81,7 @@ async function resolveClickHosts(db: DatabaseReader): Promise<string[]> {
 	add(getOptional('SITE_URL'));
 	// Tracking domains are few per deployment and the shipped resolver collects
 	// them the same way (`domains/trackingDomains.getActiveTrackingDomain`).
-	const trackingDomains = await db.query('trackingDomains').collect();
+	const trackingDomains = await db.query('trackingDomains').collect(); // bounded: tracking domains (a handful per deployment), same read as domains/trackingDomains.ts
 	for (const domain of trackingDomains) {
 		if (domain.isVerified) add(domain.domain);
 	}
