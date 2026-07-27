@@ -22,6 +22,7 @@ import {
 	createTestTopic,
 } from './factories';
 import {
+	configureSesEnv,
 	DAY_MS,
 	MIDNIGHT,
 	runPreflight,
@@ -239,6 +240,7 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
 		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
 		await seedVerifiedRelayIdentity(t, 'verified.example.com');
 		await seedCampaignRoute(t, {
 			providers: [
@@ -256,12 +258,86 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		expect((await runPreflight(t, campaignId)).ok).toBe(true);
 	});
 
+	/**
+	 * ENABLED IS NOT READY. A half-set-up SES entry alongside the MTA is the most
+	 * common shape of a warming deployment mid-configuration — and it is exactly
+	 * the shape that used to turn this gate off. `resolveRoute` filters route
+	 * entries through `isSendProviderReady`, so every campaign byte really does
+	 * still go through the capped MTA and really can strand.
+	 */
+	it('still refuses when the only non-MTA campaign provider is enabled but NOT READY', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		// Deliberately NO `configureSesEnv()`: the entry is enabled, uncredentialed.
+		await seedCampaignRoute(t, {
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+	});
+
+	/**
+	 * Under `priority_failover` a second READY provider is a HEALTH failover, not
+	 * a traffic split: with the MTA selected and healthy, 100% of campaign
+	 * traffic still goes through it, so the cap binds exactly as it does with no
+	 * second provider at all.
+	 */
+	it('still refuses under priority_failover when a ready SES is only a failover', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+	});
+
+	/**
+	 * `workload_split` is the one strategy where an enabled second provider
+	 * really does carry a share of the audience, so part of the send bypasses
+	 * the cap and the projection stops being an upper bound.
+	 */
+	it('allows the send under workload_split when a ready SES carries part of the audience', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
+		await seedCampaignRoute(t, {
+			strategy: 'workload_split',
+			providers: [
+				{ providerType: 'mta', isEnabled: true },
+				{ providerType: 'ses', isEnabled: true },
+			],
+		});
+
+		expect(await assessCampaign(t, campaignId)).toEqual({ capacityKnown: false, fits: true });
+		expect((await runPreflight(t, campaignId)).ok).toBe(true);
+	});
+
 	it('allows the send when campaigns do not dispatch through the own MTA at all', async () => {
 		const t = convexTest(schema, modules);
 		// The MTA still carries transactional mail, so `warmingState` keeps syncing
 		// — but no campaign byte is subject to its per-IP cap.
 		await seedWarmingState(t);
 		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
 		await seedCampaignRoute(t, {
 			providers: [
 				{ providerType: 'ses', isEnabled: true },
@@ -282,6 +358,7 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
 		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
 		await seedCampaignRoute(t, {
 			providers: [
 				{ providerType: 'mta', isEnabled: true },
@@ -309,6 +386,7 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
 		const campaignId = await seedSendableCampaign(t, 600);
+		configureSesEnv();
 		await seedVerifiedRelayIdentity(t, 'verified.example.com');
 		await seedCampaignRoute(t, {
 			providers: [
@@ -340,6 +418,7 @@ describe('getCampaignCapacityPlan — the UI preview', () => {
 
 		const plan = await t.query(api.campaigns.capacityPreflight.getCampaignCapacityPlan, {
 			audience: { kind: 'topic', topicId: topicId! },
+			fromEmail: 'sender@verified.example.com',
 		});
 
 		expect(plan).toEqual({ fits: true, capacityKnown: false });
@@ -365,6 +444,7 @@ describe('getCampaignCapacityPlan — the UI preview', () => {
 		// four-day retention horizon, so 600 recipients do not fit.
 		const today = await t.query(api.campaigns.capacityPreflight.getCampaignCapacityPlan, {
 			audience,
+			fromEmail: 'sender@verified.example.com',
 		});
 		expect(today.fits).toBe(false);
 
@@ -372,6 +452,7 @@ describe('getCampaignCapacityPlan — the UI preview', () => {
 		// 700 / 1500 = 3100. The send provably fits and must NOT be refused.
 		const later = await t.query(api.campaigns.capacityPreflight.getCampaignCapacityPlan, {
 			audience,
+			fromEmail: 'sender@verified.example.com',
 			startsAt: MIDNIGHT + 3 * 24 * 60 * 60 * 1000,
 		});
 		expect(later).toEqual({ capacityKnown: true, fits: true });

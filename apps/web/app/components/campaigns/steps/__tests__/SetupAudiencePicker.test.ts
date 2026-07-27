@@ -8,19 +8,21 @@
  */
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
 import SetupAudiencePicker from '../SetupAudiencePicker.vue';
 
-type Completeness =
-	| 'exact'
-	| 'candidate_capped'
-	| 'read_budget_exhausted'
-	| 'suppression_truncated';
+/**
+ * Derived from the query, exactly as the component derives it — never
+ * hand-restated. A fifth `completeness` value added on the server must be a
+ * COMPILE ERROR in the suite that decides what each value renders as, not a
+ * silent gap.
+ */
+type RecipientCount = FunctionReturnType<typeof api.campaigns.audienceResolution.countRecipients>;
 
 const stubs = { Icon: { template: '<i />' } };
 
-function renderCount(
-	audienceCount: { eligible: number; total: number; completeness: Completeness } | null
-): string {
+function renderCount(audienceCount: RecipientCount | null): string {
 	const wrapper = mount(SetupAudiencePicker, {
 		props: {
 			topics: [],
