@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { conditionsLookupReadsPerContact } from '..';
+import { conditionsLookupReadsPerContact, conditionsLookupReadsPerBatch } from '..';
 import type { Condition } from '../types';
 
 const topic = (topicId: string): Condition => ({
@@ -61,5 +61,61 @@ describe('conditionsLookupReadsPerContact', () => {
 		expect(
 			conditionsLookupReadsPerContact([topic('t1'), topic('t2'), property('plan'), activity()])
 		).toBe(3);
+	});
+});
+
+/**
+ * `conditionsLookupReadsPerBatch` — the FIXED per-preload-call document cost,
+ * charged once per batch on top of the per-contact multiplier.
+ *
+ * Same failure mode as its sibling, one level up: a batched scan pays each
+ * kind's set-up cost on every batch, so leaving it out under-charges the budget
+ * by a constant times the batch count — which is exactly how a "bounded" scan
+ * overruns the Convex per-execution read limit on the large audiences the gate
+ * exists for.
+ */
+describe('conditionsLookupReadsPerBatch', () => {
+	it('is zero with no conditions', () => {
+		expect(conditionsLookupReadsPerBatch([])).toBe(0);
+	});
+
+	it('charges nothing for kinds with no per-batch set-up', () => {
+		// `email_activity` reads flags off the contact row, and built-in property
+		// fields are columns on it — neither preloads anything per batch.
+		expect(conditionsLookupReadsPerBatch([activity(), property('email')])).toBe(0);
+	});
+
+	it('charges nothing for topic_membership — its cost is entirely per contact', () => {
+		expect(conditionsLookupReadsPerBatch([topic('t1')])).toBe(0);
+		expect(conditionsLookupReadsPerBatch([topic('t1'), topic('t2')])).toBe(0);
+	});
+
+	it('charges one read per DISTINCT custom property', () => {
+		expect(conditionsLookupReadsPerBatch([property('plan')])).toBe(1);
+		expect(conditionsLookupReadsPerBatch([property('plan'), property('plan')])).toBe(1);
+		expect(conditionsLookupReadsPerBatch([property('plan'), property('tier')])).toBe(2);
+	});
+
+	it('sums across kinds', () => {
+		expect(
+			conditionsLookupReadsPerBatch([topic('t1'), topic('t2'), property('plan'), activity()])
+		).toBe(1);
+	});
+
+	it('matches the per-contact charge for contact_property — one distinct-key set', () => {
+		// Both dimensions resolve the SAME distinct custom-field set, so the budget
+		// depends on them agreeing. Pin the relationship, not just the two numbers.
+		const cases: Condition[][] = [
+			[],
+			[property('plan')],
+			[property('plan'), property('plan')],
+			[property('plan'), property('tier')],
+			[property('email'), property('plan')],
+		];
+		for (const conditions of cases) {
+			expect(conditionsLookupReadsPerBatch(conditions)).toBe(
+				conditionsLookupReadsPerContact(conditions)
+			);
+		}
 	});
 });
