@@ -1,12 +1,12 @@
 DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=owlat.test;
- h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to;
+ h=From:Subject:Date:Message-ID:To:MIME-Version:Content-Type:from:subject:to:cfbl-address;
  q=dns/txt; s=golden2026; t=1760000000;
  bh=nilNcbO0hxfjjUTt2quDrA6GtSQEetEiWSUFWe+H9Io=;
- b=fPalhf5XQBB2B3VIzz0YzWWsKCM+PH4J1aaE0v327gwUY8adQPWU+apOyb0UPvtEMvTosYrbZ
- MPulDFyjm+wM4D0lylrAS3U7Pbli0SOIKAitFoi+OQ0985ow8hbDqc/W3VBkxtl//G8dTsbEaiL
- DP/n7n3NQ1SxPJ21otJWopHUoBkGA+h+HcKX/NFosaegCpQQW1BlPNP5fn5cX2jeAwr+q8U7PaX
- v2cI+KlFtfBdzhbQjQXHyMd9gNq3Edfh8S3FJ0DZoxbrEd27JbJeKAzvBlFHZzVNVFMwVqLo+XU
- QLfzrmYEANHPVtfKqHMzZhiYmJWN9ZtNNOeQNigWA4fw==
+ b=gAleP5hS8Ti/CpqdrzHPYPuSgBYJGNRAk0la0E3L9JFPr4hX033rQpypk7wcRwiphK6oiVHa1
+ vp76jN+tIRDCGQ5axHTVa4OtT6KZalhpa5NMiTPN9H0YFYrTBoHv9Ndgh574OQ2+rcUCuQgEW1c
+ PoJ5Jko/i8rfIIsZu1JN6ExXqcZSPsCTi3uVnkV3lGH9yKLmA+jmlFeHE7t0c+gCTBxuzk6tLyq
+ AcQGlCzVBNm4Rzwj4rIiAryN7bcgntin+NaGVNzPTs6GGSsjzz49MJSoYdTt6gyPZbWEcwfVQOT
+ XxuMYw2WIlfyBvf+5ZuUpyy7c0SYKxKQeySDGIfg+wLQ==
 Message-ID: <corpus-26@owlat.test>
 Date: Sat, 11 Jul 2026 09:30:00 +0000
 From: sender@owlat.test
