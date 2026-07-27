@@ -142,10 +142,24 @@ describe('sendAssignments tenant isolation', () => {
 			'by_org_cell_time',
 			'by_org_send',
 		]);
+		// The ONE index that is not org-leading is exempt only because of where
+		// it is used, and the module exports `cleanupExpiredAssignments`, so the
+		// exemption is asserted rather than asserted-in-a-comment: `by_assigned_at`
+		// must appear exactly once in the module, inside the retention sweep.
+		// The day someone reaches for it from a caller-facing query, this fails.
+		const moduleSource = await import('node:fs/promises').then((fs) =>
+			fs.readFile(new URL('../sendAssignments.ts', import.meta.url), 'utf8')
+		);
+		const uses = [...moduleSource.matchAll(/withIndex\('by_assigned_at'/g)];
+		expect(uses).toHaveLength(1);
+		const sweepStart = moduleSource.indexOf('export const cleanupExpiredAssignments');
+		expect(sweepStart).toBeGreaterThanOrEqual(0);
+		expect(uses[0]?.index ?? -1).toBeGreaterThan(sweepStart);
+
 		for (const index of declared) {
-			// `by_assigned_at` serves the internal retention sweep only and is
-			// reachable from no exported function. Every index a caller can reach
-			// with a cell or a send id must start at the organization.
+			// `by_assigned_at` serves the internal retention sweep only (pinned
+			// just above). Every index a caller can reach with a cell or a send
+			// id must start at the organization.
 			if (index.name === 'by_assigned_at') {
 				expect(index.fields).toEqual(['assignedAt']);
 				continue;

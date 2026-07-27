@@ -32,6 +32,8 @@ import {
 	destinationProvidersForEmails,
 	ROUTER_ONLY_MIX_VERSION,
 } from '../sendAssignments';
+import { sendProviderCatalogEntry } from '../../lib/sendProviders/catalog';
+import type { SendProviderKind } from '../../lib/sendProviders/types';
 
 // `vi.hoisted` so the mock factory below (hoisted above the imports) can close
 // over these without hitting the temporal dead zone.
@@ -87,6 +89,28 @@ const modules = { ...rootGlob, ...deliveryGlob };
 
 const ORG = 'org_experiment';
 
+/** Shapes that matter; everything else gets a generated placeholder. */
+const ENV_VALUE_OVERRIDES: Readonly<Record<string, string>> = { MTA_API_URL: 'https://mta.test' };
+
+/**
+ * Configure a transport by stubbing EVERY env var the CATALOG says it
+ * requires, rather than a hand-written list.
+ *
+ * This is load-bearing, not tidiness. `isSendProviderReady` is what decides
+ * whether a provider is a candidate at all, and a fixture that misses one
+ * variable does not fail — it silently removes the relay from the route, so
+ * `priority_failover` degenerates to a single candidate and every assertion
+ * that a cell resolves to the REFERENCE arm turns vacuous or red. Exactly
+ * that happened when the catalog gained `AWS_SES_REGION`. Reading the list
+ * from the catalog makes the next such change fail loudly, at the provider
+ * that changed, instead of quietly defanging half the suite.
+ */
+function stubTransportEnv(kind: SendProviderKind): void {
+	for (const name of sendProviderCatalogEntry(kind).requiredEnvVars) {
+		vi.stubEnv(name, ENV_VALUE_OVERRIDES[name] ?? `test-${name.toLowerCase()}`);
+	}
+}
+
 beforeEach(() => {
 	routeResolutions.length = 0;
 	enqueueCampaignAction.mockReset();
@@ -94,11 +118,8 @@ beforeEach(() => {
 	enqueueTransactionalAction.mockReset();
 	enqueueTransactionalAction.mockResolvedValue(undefined);
 	vi.stubEnv('EMAIL_PROVIDER', 'mta');
-	vi.stubEnv('MTA_API_URL', 'https://mta.test');
-	vi.stubEnv('MTA_API_KEY', 'test-key');
-	vi.stubEnv('SMTP_RELAY_HOST', 'relay.test');
-	vi.stubEnv('SMTP_RELAY_USERNAME', 'user');
-	vi.stubEnv('SMTP_RELAY_PASSWORD', 'pass');
+	stubTransportEnv('mta');
+	stubTransportEnv('smtp');
 });
 
 afterEach(() => {
@@ -161,6 +182,38 @@ async function seedVerifiedSesRelay(ctx: { db: DatabaseWriter }, domain: string)
 		verifiedAt: now,
 		createdAt: now,
 		updatedAt: now,
+	});
+}
+
+/** Minimum instance state the transactional Template API needs to dispatch. */
+async function seedTransactionalTemplate(t: Harness): Promise<Id<'transactionalEmails'>> {
+	return await t.run(async (ctx) => {
+		await ctx.db.insert(
+			'instanceSettings',
+			createTestInstanceSettings({
+				abuseStatus: 'clean' as const,
+				defaultFromEmail: 'noreply@example.com',
+				defaultFromName: 'Owlat',
+			})
+		);
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({
+				domain: 'example.com',
+				status: 'verified' as const,
+				lastVerifiedAt: Date.now(),
+			})
+		);
+		return await ctx.db.insert(
+			'transactionalEmails',
+			createTestTransactionalEmail({
+				status: 'published' as const,
+				htmlContent: '<p>Hello</p>',
+				subject: 'Welcome',
+				supportedLanguages: ['en'],
+				defaultLanguage: 'en',
+			})
+		);
 	});
 }
 
@@ -243,8 +296,7 @@ describe('sendAssignments — campaign write path', () => {
 		// every other cell. Here gmail is in fallback and microsoft is not; the
 		// page-level snapshot says `mta` for everyone.
 		const t = convexTest(schema, modules);
-		vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
-		vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+		stubTransportEnv('ses');
 		const { campaignId, recipients } = await seedRecipients(t, ['a@gmail.com', 'b@outlook.com']);
 		await t.run(async (ctx) => {
 			await seedVerifiedSesRelay(ctx, 'example.com');
@@ -308,8 +360,7 @@ describe('sendAssignments — campaign write path', () => {
 			// downstream comparison. One filter, both call sites
 			// (`route.ts freshFallbackReasons`).
 			const t = convexTest(schema, modules);
-			vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
-			vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+			stubTransportEnv('ses');
 			const { campaignId, recipients } = await seedRecipients(t, ['a@gmail.com']);
 			await t.run(async (ctx) => {
 				await seedVerifiedSesRelay(ctx, 'example.com');
@@ -361,8 +412,7 @@ describe('sendAssignments — campaign write path', () => {
 		// row, so the honest record is silence until P2-5's deterministic
 		// per-recipient hash replaces the draw. The sends must still enqueue.
 		const t = convexTest(schema, modules);
-		vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
-		vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+		stubTransportEnv('ses');
 		const emails = Array.from({ length: 8 }, (_, index) => `w${index}@gmail.com`);
 		const { campaignId, recipients } = await seedRecipients(t, emails);
 		await t.run(async (ctx) => {
@@ -398,8 +448,7 @@ describe('sendAssignments — campaign write path', () => {
 		// row records the DELIVERABILITY decision for the cell, which health does
 		// not participate in.
 		const t = convexTest(schema, modules);
-		vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
-		vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+		stubTransportEnv('ses');
 		const { campaignId, recipients } = await seedRecipients(t, ['a@gmail.com']);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('providerRoutes', {
@@ -442,8 +491,7 @@ describe('sendAssignments — campaign write path', () => {
 		// (which would resolve with the deliverability layer disabled and
 		// record `own` for a recipient the router will relay).
 		const t = convexTest(schema, modules);
-		vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
-		vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+		stubTransportEnv('ses');
 		const { campaignId, recipients } = await seedRecipients(t, ['not-an-address', 'x@example.org']);
 		await t.run(async (ctx) => {
 			await seedVerifiedSesRelay(ctx, 'example.com');
@@ -503,8 +551,7 @@ describe('sendAssignments — campaign write path', () => {
 		// that as a deferral; the assignment writer must swallow it — a missing
 		// measurement row can never be allowed to burn a send.
 		const t = convexTest(schema, modules);
-		vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
-		vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+		stubTransportEnv('ses');
 		const { campaignId, recipients } = await seedRecipients(t, ['a@gmail.com']);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('providerRoutes', {
@@ -769,6 +816,18 @@ describe('sendAssignments — campaign write path', () => {
 			'sendAssignments',
 			'sendingDomainSesIdentities',
 		]);
+		// `.query('table')` is not the only way into the read set, and the two
+		// it misses are the dangerous ones: `ctx.db.get(id)` takes a read
+		// dependency on ONE document — exactly the shape of a hot singleton like
+		// `instanceSettings`, which every transactional send patches — and
+		// `ctx.runQuery` hides an arbitrary read set behind a function
+		// reference. Neither is enumerable by table name, so both are banned
+		// outright on this path rather than inventoried.
+		for (const source of [...readSetSources, seamSource]) {
+			expect(source, 'no ctx.db.get on the enqueue path').not.toMatch(/ctx\.db\.get\(/);
+			expect(source, 'no ctx.runQuery on the enqueue path').not.toMatch(/runQuery\(/);
+			expect(source, 'no ctx.db.system read on the enqueue path').not.toMatch(/db\.system\b/);
+		}
 		// And the one entry above whose writer is send-driven must stay cooled.
 		const routingSource = await fs.readFile(
 			new URL('../deliverabilityRouting.ts', import.meta.url),
@@ -948,34 +1007,7 @@ describe('sendAssignments — non-campaign write path', () => {
 		// `delivery/enqueue.ts` entirely. Without a row here the `transactional`
 		// cell axis would be populated only by agent 1:1 replies.
 		const t = convexTest(schema, modules);
-		const templateId = await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'instanceSettings',
-				createTestInstanceSettings({
-					abuseStatus: 'clean' as const,
-					defaultFromEmail: 'noreply@example.com',
-					defaultFromName: 'Owlat',
-				})
-			);
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'example.com',
-					status: 'verified' as const,
-					lastVerifiedAt: Date.now(),
-				})
-			);
-			return await ctx.db.insert(
-				'transactionalEmails',
-				createTestTransactionalEmail({
-					status: 'published' as const,
-					htmlContent: '<p>Hello</p>',
-					subject: 'Welcome',
-					supportedLanguages: ['en'],
-					defaultLanguage: 'en',
-				})
-			);
-		});
+		const templateId = await seedTransactionalTemplate(t);
 
 		const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
 			templateLookup: { kind: 'id' as const, id: templateId },
@@ -988,11 +1020,50 @@ describe('sendAssignments — non-campaign write path', () => {
 		expect(rows[0]?.organizationId).toBe(ORG);
 		expect(rows[0]?.sendKind).toBe('transactional');
 		expect(rows[0]?.cell).toBe('transactional:gmail');
-		// The transport the route resolver returned for THIS recipient, reused
-		// from step 8 of the dispatch rather than re-resolved.
+		// Re-resolved through the health-free cell seam, NOT the envelope's
+		// authoritative resolution from step 8 of the dispatch.
 		expect(rows[0]?.transport).toBe('mta');
 		expect(rows[0]?.arm).toBe('own');
 		expect(rows[0]?.mixVersion).toBe(ROUTER_ONLY_MIX_VERSION);
+	});
+
+	it('writes NO row for the Template API under the non-deterministic workload_split strategy', async () => {
+		// The Template API resolves a route for its envelope through the
+		// AUTHORITATIVE per-message resolver, which draws with `Math.random()`
+		// under `workload_split` — and the worker draws again, independently, at
+		// dispatch. Recording that draw made roughly half the `transactional:*`
+		// rows name an arm the message never used. The determinism gate lives in
+		// the cell seam, and this producer goes through the same seam as every
+		// other one, so the honest record here is silence — while the send is
+		// completely unaffected.
+		const t = convexTest(schema, modules);
+		stubTransportEnv('ses');
+		const templateId = await seedTransactionalTemplate(t);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'transactional' as const,
+				strategy: 'workload_split' as const,
+				providers: [
+					{ providerType: 'mta', isEnabled: true, weight: 50 },
+					{ providerType: 'ses', isEnabled: true, weight: 50 },
+				],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		// Repeated so a lucky single draw cannot make a coin flip look stable.
+		for (let index = 0; index < 12; index += 1) {
+			const outcome = await t.mutation(internal.transactional.dispatch.dispatch, {
+				templateLookup: { kind: 'id' as const, id: templateId },
+				email: `buyer${index}@gmail.com`,
+			});
+			expect(outcome.ok).toBe(true);
+		}
+
+		expect(await t.run(async (ctx) => ctx.db.query('sendAssignments').collect())).toEqual([]);
+		// Silence in the experiment record, never a blocked send.
+		expect(enqueueTransactionalAction).toHaveBeenCalledTimes(12);
 	});
 
 	it('writes no assignment row when the send is suppressed before insert', async () => {
