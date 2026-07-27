@@ -28,7 +28,7 @@ describe('degraded measurement — the flag', () => {
 	it('an unprobed relay is degraded with the widest tolerance', () => {
 		const resolved = resolveReturnPathCapability('smtp', null, T0);
 		expect(measurementQualityOf(resolved)).toBe('degraded');
-		expect(measurementQualityOf(resolved)).toBe('degraded');
+		expect(isCustomReturnPathSupported(resolved)).toBe(false);
 		expect(widenBounceTolerance(0.02, resolved)).toBeCloseTo(
 			0.02 * BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK
 		);
