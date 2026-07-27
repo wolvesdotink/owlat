@@ -140,15 +140,6 @@ const RETENTION_MS = 60 * DAY_MS; // cleanup horizon
  */
 const SHARD_COUNT = 8;
 
-/**
- * Start-of-day timestamp (midnight UTC). The implementation lives in the
- * dependency-free `lib/clock` so a pure module can bucket by day without
- * importing this Convex function module (and its generated API graph);
- * re-exported here because this module's existing importers reach for it
- * through this path.
- */
-export { startOfDayUtc };
-
 // ============ READ-SIDE SEAM (the only window summarizer) ============
 
 /**
