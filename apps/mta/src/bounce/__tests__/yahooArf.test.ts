@@ -400,6 +400,16 @@ describe('adversarial reports', () => {
 		expect(attributed.arf.organizationId).toBeUndefined();
 		expect(attributed.arf.campaignId).toBeUndefined();
 		expect(attributed.arf.feedbackProvenance).toBe('unknown');
+		// THE OTHER END OF THE COUPLING. `deliveryDomain` on the complaint event is
+		// what the Convex-side observation gates on, and this reducer is its ONLY
+		// writer: an `unknown`-provenance report emits NO effects at all, so it can
+		// never produce an event carrying `deliveryDomain: 'production'` and can
+		// never reach the CFL enrollment bookkeeping. The matching assertion from
+		// the Convex side is in
+		// `apps/api/convex/webhooks/__tests__/dispatcher.test.ts`. If a future change
+		// to the reducer's recipient-only fallback opened this path, this fails here
+		// rather than silently widening what can mark an enrollment live.
+		expect(reduce(attributed, makeCtx()).effects).toEqual([]);
 	});
 
 	it('deduplicates a replayed report through the SHIPPED reservation path', async () => {

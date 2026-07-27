@@ -1252,6 +1252,28 @@ describe('dispatchInboundEvent — Yahoo CFL report observation', () => {
 		expect(calls).not.toContain(OBSERVE);
 	});
 
+	it('does NOT observe an UNATTRIBUTED complaint', async () => {
+		const { ctx, calls } = makeSelectiveCtx();
+		// THE COUPLING THIS PINS, from the Convex side. `deliveryDomain` is written
+		// onto the complaint event by exactly one writer — `applyFeedbackProvenancePolicy`
+		// in `apps/mta/src/bounce/outcome.ts` — which drops the whole effect list when
+		// provenance is `unknown`. So "a production deliveryDomain" IS "an exactly
+		// VERP-attributed report", which is the property this observation's docblock
+		// claims and the property that makes a report unable to manufacture an
+		// enrollment. That coupling lives two apps away, so it is asserted from both
+		// ends: here (an event with no provenance never reaches the bookkeeping) and
+		// in `apps/mta/src/bounce/__tests__/yahooArf.test.ts` (an `unknown`-provenance
+		// FBL attempt emits no notify_convex effect to carry one).
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.complained',
+			recipient: 'complainer@yahoo.com',
+			at: 7000,
+			reportedDomain: 'mail.owlat.test',
+			sourceIsp: 'yahoo',
+		});
+		expect(calls).not.toContain(OBSERVE);
+	});
+
 	it.each([
 		{ name: 'a non-yahoo ISP', patch: { sourceIsp: 'gmail' as const } },
 		{ name: 'no reported domain', patch: { reportedDomain: undefined } },

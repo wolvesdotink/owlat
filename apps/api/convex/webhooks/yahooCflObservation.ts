@@ -24,9 +24,17 @@ import type { InboundEventOf } from './types';
  *    rejects when a deployment has zero or several organizations, and any write
  *    can conflict; either would otherwise abort the whole complaint dispatch and
  *    cost us the complaint. A failure is logged and swallowed;
- *  - PRODUCTION ONLY. Member-preview mail is deliberately excluded from every
- *    measurement counter (`applyFeedbackProvenancePolicy` in the MTA), so preview
- *    traffic must never mark an enrollment live or hold confidence at `high`.
+ *  - PRODUCTION ONLY, which is also how the ATTRIBUTION property is asserted.
+ *    `deliveryDomain` has exactly ONE writer — `applyFeedbackProvenancePolicy` in
+ *    `apps/mta/src/bounce/outcome.ts` — and it drops the entire effect list when
+ *    the report's provenance is `unknown`. So a `production` delivery domain on a
+ *    complaint event IS an exactly-VERP-attributed report, and member-preview mail
+ *    (excluded from every measurement counter) is excluded here too. That coupling
+ *    lives two apps away, so it is PINNED FROM BOTH ENDS rather than assumed: an
+ *    unattributed complaint cannot reach this function
+ *    (`webhooks/__tests__/dispatcher.test.ts`), and an `unknown`-provenance FBL
+ *    attempt emits no event at all to carry one
+ *    (`apps/mta/src/bounce/__tests__/yahooArf.test.ts`).
  *
  * It also CANNOT create an enrollment. Every fact reachable here is
  * report-supplied, so `applyYahooCflEvent` refuses a report against a
