@@ -30,9 +30,8 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
-import { returnPathCapabilityFor } from '../../delivery/relayReturnPath';
-import { SEND_PROVIDER_CATALOG } from './catalog';
-import { defaultSendTransportId } from './transports';
+import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
+import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
@@ -77,13 +76,15 @@ function sendRouteCandidateKinds(
  * sender and would never honour ours). `null` when this route has none.
  *
  * Iterates the CATALOG rather than the candidate set so the answer does not
- * depend on the order an operator happened to list providers in.
+ * depend on the order an operator happened to list providers in, and asks the
+ * catalog's own predicate so this gate and the probe sweep can never disagree
+ * about what is probe-decided.
  */
 function probeableCandidateKind(
 	candidateKinds: ReadonlySet<SendProviderKind>
 ): SendProviderKind | null {
 	for (const entry of SEND_PROVIDER_CATALOG) {
-		if (entry.supportsCustomReturnPath === 'probe' && candidateKinds.has(entry.kind)) {
+		if (isProbeDecidedReturnPathKind(entry.kind) && candidateKinds.has(entry.kind)) {
 			return entry.kind;
 		}
 	}
@@ -349,12 +350,12 @@ export async function resolveLastMileRoutePlanFromDb(
 	isMtaGoverned: boolean;
 	deferralCode?: RoutingDeferralCode;
 	/**
-	 * May a relay send stamp OUR VERP envelope sender (plan G-08)? Answered
-	 * HERE, inside the routing query the send path already runs, rather than in
-	 * a second round trip from the dispatcher — the hot send path should not
-	 * grow a query per message to read a deployment-scoped fact.
+	 * The return-path host a RELAY send may stamp as its VERP envelope sender
+	 * (plan G-08), or `undefined` to keep the composer's — the shipped
+	 * behaviour. Answered HERE, inside the routing query the send path already
+	 * runs, rather than in a second round trip from the dispatcher.
 	 */
-	relayStampVerpReturnPath: boolean;
+	relayReturnPathHost?: string | undefined;
 }> {
 	const now = addressContext.now ?? Date.now();
 	const routeConfig = await ctx.db
@@ -372,20 +373,22 @@ export async function resolveLastMileRoutePlanFromDb(
 	//
 	// Candidates rather than the resolved route, because the warm-up overflow /
 	// breaker-open fallback selects its relay AFTER this query returns, and that
-	// route must still be stamped. An mta/ses/resend-only route resolves no probe
-	// kind and pays for no read.
+	// route must still be stamped.
 	//
-	// `defaultSendTransportId` is the instance the GOVERNED dispatcher sends
-	// through (`delivery/governedDispatch.ts`), so the transport graded here and
-	// the transport used on the wire are the same one by construction.
+	// COST: a route with NO probe-decided candidate (mta/ses/resend only) pays
+	// nothing. A route that CAN reach the relay — including a hybrid mta+smtp
+	// one, whose sends mostly resolve to the MTA — pays one indexed read of the
+	// transport's probe row on every governed send. That read is what
+	// `relayReturnPathHostFor` short-circuits on: only a relay already PROVEN to
+	// honour a custom return path goes on to read the From domain, so the
+	// common hybrid case stays at exactly one row.
 	const relayCandidateKind = probeableCandidateKind(
 		sendRouteCandidateKinds(routeConfig as ProviderRouteConfig | null)
 	);
-	const relayStampVerpReturnPath =
+	const relayReturnPathHost =
 		relayCandidateKind === null
-			? false
-			: (await returnPathCapabilityFor(ctx, defaultSendTransportId(relayCandidateKind), now))
-					.stampVerpReturnPath;
+			? undefined
+			: await relayReturnPathHostFor(ctx, relayCandidateKind, addressContext.from, now);
 	const isHybrid = Boolean(
 		routeConfig?.deliverabilityFallback?.isEnabled &&
 		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
@@ -400,7 +403,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			route,
 			baseRoute,
 			isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta',
-			relayStampVerpReturnPath,
+			relayReturnPathHost,
 		};
 	} catch (error) {
 		const deferralCode = routingDeferralCode(error);
@@ -410,7 +413,7 @@ export async function resolveLastMileRoutePlanFromDb(
 			baseRoute: null,
 			isMtaGoverned: isHybrid,
 			deferralCode,
-			relayStampVerpReturnPath,
+			relayReturnPathHost,
 		};
 	}
 }

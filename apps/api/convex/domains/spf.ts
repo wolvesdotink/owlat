@@ -85,6 +85,13 @@ export type SpfRecordParts = {
 	ip4?: readonly string[];
 	/** `ip6:` addresses to authorize directly after explicit IPv6 enablement. */
 	ip6?: readonly string[];
+	/**
+	 * Extra, already-validated mechanism terms emitted verbatim after
+	 * `include:` and before the trailing `all` — e.g. the relay authorisation
+	 * terms a return-path host needs so a relay-stamped bounce envelope passes
+	 * SPF. Callers hand these in already parsed; nothing here re-validates them.
+	 */
+	extra?: readonly string[];
 	/** Trailing mechanism qualifier; defaults to the soft-fail `~all`. */
 	qualifier?: SpfQualifier;
 };
@@ -109,18 +116,62 @@ export function buildSpfRecordValue(parts: SpfRecordParts): string {
 	if (parts.include?.trim()) {
 		mechanisms.push(`include:${parts.include.trim()}`);
 	}
+	for (const term of parts.extra ?? []) {
+		const trimmed = term.trim();
+		if (trimmed && !mechanisms.includes(trimmed)) mechanisms.push(trimmed);
+	}
 	mechanisms.push(qualifier);
 	return mechanisms.join(' ');
 }
 
 /**
+ * SPF mechanism terms accepted as RELAY AUTHORISATION on a return-path host.
+ *
+ * Deliberately narrow: `include`/`a`/`mx` each cost a DNS lookup against RFC
+ * 7208 §4.6.4's budget of ten, and `ptr`/`exists`/`redirect` are either
+ * deprecated or capable of relocating the whole evaluation. Anything else in
+ * the configured value is IGNORED, never rejected — this value is read on the
+ * send path, where throwing would turn a typo into blocked mail (plan D2).
+ */
+const RELAY_SPF_TERM_PATTERN =
+	/^(?:include:[A-Za-z0-9._-]+|a:[A-Za-z0-9._-]+|mx:[A-Za-z0-9._-]+|ip4:[0-9./]+|ip6:[0-9A-Fa-f:./]+)$/;
+
+/**
+ * Parse `MTA_RETURN_PATH_RELAY_SPF` — the mechanism terms that authorise a
+ * third-party RELAY to send with a `bounce+…@<return-path host>` envelope
+ * sender.
+ *
+ * The generated return-path SPF record authorises the MTA pool IPs only, so
+ * stamping that address on a send leaving through a relay would make receivers
+ * evaluate SPF for the bounce domain against the RELAY's IP and fail it. These
+ * terms are what closes that gap; until they are configured AND published, the
+ * relay VERP stamp stays off and the arm is graded degraded-measurement.
+ *
+ * Total: comma- or whitespace-separated, case-normalised, de-duplicated,
+ * unrecognised terms dropped. Never throws.
+ */
+export function parseReturnPathRelaySpfTerms(raw: string | undefined | null): string[] {
+	const terms: string[] = [];
+	for (const entry of (raw ?? '').split(/[\s,]+/)) {
+		const term = entry.trim().toLowerCase();
+		if (!term || !RELAY_SPF_TERM_PATTERN.test(term) || terms.includes(term)) continue;
+		terms.push(term);
+	}
+	return terms;
+}
+
+/**
  * Build the SPF record an operator must publish on `RETURN_PATH_DOMAIN` so the
  * VERP bounce envelope (`bounce+…@RETURN_PATH_DOMAIN`) passes SPF at receivers
- * that check MAIL FROM. Authorizes each IP-pool address directly.
+ * that check MAIL FROM. Authorizes each IP-pool address directly, plus any
+ * configured relay-authorisation terms (see
+ * {@link parseReturnPathRelaySpfTerms}) so the SAME bounce envelope also passes
+ * when the message leaves through the relay arm.
  */
 export function buildReturnPathSpfRecord(
 	poolIps: readonly string[],
-	qualifier: SpfQualifier = DEFAULT_SPF_QUALIFIER
+	qualifier: SpfQualifier = DEFAULT_SPF_QUALIFIER,
+	relaySpfTerms: readonly string[] = []
 ): string {
 	const ip4: string[] = [];
 	const ip6: string[] = [];
@@ -129,7 +180,7 @@ export function buildReturnPathSpfRecord(
 		if (!parsed) throw new Error(`Invalid MTA pool IP address: ${value}`);
 		(parsed.family === 'ipv4' ? ip4 : ip6).push(parsed.address);
 	}
-	return buildSpfRecordValue({ ip4, ip6, qualifier });
+	return buildSpfRecordValue({ ip4, ip6, extra: relaySpfTerms, qualifier });
 }
 
 /**
@@ -175,7 +226,8 @@ export function buildReturnPathMailFromRecords(
 	returnPathHost: string | undefined,
 	poolIps: readonly string[],
 	qualifier: SpfQualifier,
-	mailHost: string | undefined
+	mailHost: string | undefined,
+	relaySpfTerms: readonly string[] = []
 ): ReturnPathMailFromRecord[] | undefined {
 	if (!returnPathHost) return undefined;
 	const records: ReturnPathMailFromRecord[] = [];
@@ -190,11 +242,11 @@ export function buildReturnPathMailFromRecords(
 		});
 	}
 
-	if (poolIps.length > 0) {
+	if (poolIps.length > 0 || relaySpfTerms.length > 0) {
 		records.push({
 			type: 'TXT',
 			hostname: returnPathHost,
-			value: buildReturnPathSpfRecord(poolIps, qualifier),
+			value: buildReturnPathSpfRecord(poolIps, qualifier, relaySpfTerms),
 		});
 	}
 

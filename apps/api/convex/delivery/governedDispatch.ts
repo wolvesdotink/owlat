@@ -197,7 +197,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		};
 	}
 
-	const { providerKind, route, routingLease, stampRelayVerpReturnPath } = routing;
+	const { providerKind, route, routingLease, relayReturnPathHost } = routing;
 	if (providerKind === 'mta') {
 		const binding = await ctx.runMutation(internal.delivery.sendLifecycle.bindMtaProviderIdentity, {
 			send: request.sendRef,
@@ -231,14 +231,17 @@ export async function dispatchGovernedEmail<TEnvelope>(
 			: providerKind === 'resend'
 				? ({ idempotencyKey } satisfies ResendExtras)
 				: providerKind === 'smtp'
-					? // Relay arm (plan G-08): stamp OUR VERP envelope sender when — and
-						// only when — this transport is PROVEN to honour a custom return
-						// path, so relayed bounces reach our own bounce server. Resolved
-						// by the routing pass, not by a second query on the send path. An
-						// unproven relay simply keeps the composer's envelope sender: the
-						// send is unchanged and its cell is graded degraded-measurement,
-						// never blocked (plan D2).
-						({ customReturnPath: stampRelayVerpReturnPath } satisfies SmtpExtras)
+					? // Relay arm (plan G-08): stamp OUR VERP envelope sender at the
+						// return-path host the routing pass authorised — the SAME host the
+						// direct-MX arm stamps for this From domain — so relayed bounces
+						// reach our own bounce server and both arms present the same
+						// envelope-sender domain. Resolved by the routing pass, not by a
+						// second query on the send path. No authorised host simply keeps
+						// the composer's envelope sender: the send is unchanged and its
+						// cell is graded degraded-measurement, never blocked (plan D2).
+						relayReturnPathHost === undefined
+						? ({} satisfies SmtpExtras)
+						: ({ returnPathHost: relayReturnPathHost } satisfies SmtpExtras)
 					: {};
 	const dispatched = await sendProviderDispatch(
 		ctx,

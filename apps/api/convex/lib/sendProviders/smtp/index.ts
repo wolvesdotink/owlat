@@ -145,8 +145,12 @@ function mentionsRateLimit(lowerMessage: string): boolean {
 
 /** Per-send knobs of the relay adapter's INTERNAL entry point. */
 export interface RelaySendOptions {
-	/** Has this transport's capability resolved to `supported`? */
-	readonly customReturnPath: boolean;
+	/**
+	 * The return-path host to stamp as the VERP envelope sender, or `undefined`
+	 * to keep the composer's (the shipped behaviour). The caller owns every
+	 * condition behind that answer — see {@link SmtpExtras.returnPathHost}.
+	 */
+	readonly returnPathHost: string | undefined;
 	/**
 	 * Overrides the id the VERP token encodes.
 	 *
@@ -238,8 +242,7 @@ export async function sendViaRelay(
 	const envelopeSender = resolveRelayEnvelopeSender({
 		composedEnvelopeFrom: composed.envelope.from,
 		messageId: options.verpMessageId ?? composed.messageId,
-		customReturnPath: options.customReturnPath,
-		returnPathDomain: getOptional('MTA_RETURN_PATH_DOMAIN'),
+		returnPathHost: options.returnPathHost,
 		verpKey: getOptional('MTA_BOUNCE_VERP_KEY'),
 		now: Date.now(),
 	});
@@ -313,7 +316,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	): Promise<EmailSendAttempt> {
 		return (
 			await sendViaRelay(transport, params, {
-				customReturnPath: extras?.customReturnPath === true,
+				returnPathHost: extras?.returnPathHost,
 			})
 		).attempt;
 	},

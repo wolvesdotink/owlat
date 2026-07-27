@@ -32,13 +32,14 @@ export interface LastMileRoutingReady {
 	organizationId: string;
 	routingLease?: string;
 	/**
-	 * May a relay send stamp OUR VERP envelope sender, so a bounce the relay
-	 * generates reaches our own bounce server (plan G-08)? Carried on the
-	 * routing result because the routing query already read it — the send path
-	 * must not grow a second round trip per message for a deployment-scoped
-	 * fact. False unless the transport is PROVEN to honour a custom return path.
+	 * The return-path host a relay send may stamp as its VERP envelope sender,
+	 * so a bounce the relay generates reaches our own bounce server (plan G-08).
+	 * Carried on the routing result because the routing query already resolved
+	 * it — the send path must not grow a second round trip per message.
+	 * `undefined` unless the transport is PROVEN to honour a custom return path
+	 * AND the From domain's return-path host authorises it.
 	 */
-	stampRelayVerpReturnPath: boolean;
+	relayReturnPathHost?: string | undefined;
 }
 
 export interface LastMileRoutingDeferred {
@@ -117,7 +118,7 @@ export async function resolveLastMileRouting(
 				providerKind,
 				route,
 				organizationId,
-				stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+				relayReturnPathHost: plan.relayReturnPathHost,
 			},
 			input.mtaReconciliation
 		);
@@ -131,7 +132,7 @@ export async function resolveLastMileRouting(
 				providerKind,
 				route,
 				organizationId,
-				stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+				relayReturnPathHost: plan.relayReturnPathHost,
 			},
 			input.mtaReconciliation
 		);
@@ -187,7 +188,7 @@ export async function resolveLastMileRouting(
 					providerKind,
 					route,
 					organizationId,
-					stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+					relayReturnPathHost: plan.relayReturnPathHost,
 				},
 				input.mtaReconciliation
 			);
@@ -198,7 +199,7 @@ export async function resolveLastMileRouting(
 			route: plan.baseRoute,
 			organizationId,
 			routingLease: decision.leaseToken,
-			stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+			relayReturnPathHost: plan.relayReturnPathHost,
 		};
 	}
 	if (input.mtaReconciliation) {
@@ -233,7 +234,7 @@ export async function resolveLastMileRouting(
 			providerKind,
 			route,
 			organizationId,
-			stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+			relayReturnPathHost: plan.relayReturnPathHost,
 		},
 		input.mtaReconciliation
 	);

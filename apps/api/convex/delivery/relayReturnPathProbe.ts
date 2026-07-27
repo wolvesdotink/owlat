@@ -29,12 +29,19 @@
 
 import { randomUUID } from 'node:crypto';
 import { v } from 'convex/values';
-import { isUsableVerpKey, normalizeReturnPathDomain, normalizeVerpKey } from '@owlat/shared/verp';
+import {
+	isUsableVerpKey,
+	normalizeReturnPathDomain,
+	normalizeVerpKey,
+	returnPathProbeRecipient,
+} from '@owlat/shared/verp';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { getOptional } from '../lib/env';
-import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
+import { providerKindConfigured } from '../lib/sendProviders/capability';
+import { isProbeDecidedReturnPathKind } from '../lib/sendProviders/catalog';
 import { sendViaRelay } from '../lib/sendProviders/smtp';
+import { EmailErrorCode } from '../lib/sendProviders/types';
 import {
 	listSendTransports,
 	tryResolveSendTransport,
@@ -49,7 +56,41 @@ import { returnPathProbeMessageId } from './messageIdRouting';
  * the single-transport run and the sweep must agree on what is worth probing.
  */
 function isProbeableTransport(transport: SendTransportRecord): boolean {
-	return sendProviderCatalogEntry(transport.kind).supportsCustomReturnPath === 'probe';
+	return isProbeDecidedReturnPathKind(transport.kind);
+}
+
+/**
+ * Is this transport's relay actually CONFIGURED on this deployment?
+ *
+ * The default `smtp` transport record always exists (transports.ts lists
+ * default instances unconditionally), so without this check the hourly sweep
+ * probes it on a plain built-in-MTA install with no relay at all: the send
+ * fails on the missing credentials and the transport is recorded `unsupported`
+ * / `rejected_by_relay` — a permanently misleading operator-facing verdict
+ * about a relay that does not exist. Absence is a supported configuration
+ * (plan D2), so the probe simply does not run.
+ */
+function isConfiguredTransport(transport: SendTransportRecord): boolean {
+	return providerKindConfigured(transport.kind);
+}
+
+/**
+ * Failure codes that mean the probe never got a MAIL FROM verdict out of the
+ * relay — a missing/invalid credential, a DNS or TLS failure, a timeout, an
+ * upstream 4xx. Recording these as `rejected_by_relay` would render the
+ * operator a verdict blaming their relay for our own configuration; instead the
+ * probe is left UNRECORDED and the retry interval applies unchanged.
+ */
+const PRE_WIRE_ERROR_CODES: ReadonlySet<EmailErrorCode> = new Set([
+	EmailErrorCode.AUTH_FAILED,
+	EmailErrorCode.SERVER_ERROR,
+	EmailErrorCode.RATE_LIMIT,
+	EmailErrorCode.AMBIGUOUS_TIMEOUT,
+]);
+
+/** Did this attempt fail BEFORE the relay ever ruled on our MAIL FROM? */
+function isPreWireFailure(errorCode: EmailErrorCode | undefined): boolean {
+	return errorCode !== undefined && PRE_WIRE_ERROR_CODES.has(errorCode);
 }
 
 /** Why a probe run did nothing. All benign — see the D2 note above. */
@@ -57,6 +98,7 @@ export type ReturnPathProbeSkipReason =
 	| 'unresolvable_transport'
 	| 'not_probeable'
 	| 'not_configured'
+	| 'transport_error'
 	| 'not_due';
 
 export type ReturnPathProbeRunResult =
@@ -73,6 +115,7 @@ export const runReturnPathProbe = internalAction({
 		const transport = tryResolveSendTransport(args.transportId);
 		if (!transport) return { ran: false, reason: 'unresolvable_transport' };
 		if (!isProbeableTransport(transport)) return { ran: false, reason: 'not_probeable' };
+		if (!isConfiguredTransport(transport)) return { ran: false, reason: 'not_configured' };
 
 		const returnPathDomain = normalizeReturnPathDomain(getOptional('MTA_RETURN_PATH_DOMAIN'));
 		const verpKey = normalizeVerpKey(getOptional('MTA_BOUNCE_VERP_KEY'));
@@ -107,7 +150,11 @@ export const runReturnPathProbe = internalAction({
 		// A never-provisioned mailbox at our OWN bounce domain: the rejection comes
 		// from our own MX, no human ever receives this message, and the DSN the
 		// relay generates is the evidence.
-		const probeRecipient = `return-path-probe-${probeId}@${returnPathDomain}`;
+		// The reserved probe convention, refused explicitly by the MTA's recipient
+		// gate (see `@owlat/shared/verp`) rather than incidentally by "no mailbox
+		// exists here" — a catch-all at the bounce domain must not be able to
+		// swallow every probe and grade every relay unsupported forever.
+		const probeRecipient = returnPathProbeRecipient(probeId, returnPathDomain);
 		let accepted = false;
 		// Fall back to the address we ASKED for if the send never reached the wire;
 		// a refusal is recorded as unsupported either way.
@@ -128,14 +175,20 @@ export const runReturnPathProbe = internalAction({
 					text: 'Automated return-path capability probe. No action is required.',
 					headers: { 'X-Owlat-Return-Path-Probe': probeId },
 				},
-				{ customReturnPath: true, verpMessageId: probeMessageId }
+				{ returnPathHost: returnPathDomain, verpMessageId: probeMessageId }
 			);
+			// A failure that never reached a MAIL FROM verdict is NO EVIDENCE, not a
+			// refusal: recording it would persist `rejected_by_relay` — rendered to
+			// operators verbatim — for our own missing credential or a DNS blip.
+			if (!outcome.attempt.success && isPreWireFailure(outcome.attempt.errorCode)) {
+				return { ran: false, reason: 'transport_error' };
+			}
 			accepted = outcome.attempt.success;
 			sentEnvelopeSender = outcome.envelopeSender;
 		} catch {
-			// A probe that cannot even reach the relay is not an error state; it is
-			// simply no evidence, recorded as a refusal so the retry interval applies.
-			accepted = false;
+			// Same rule for a throw that escaped the adapter entirely: no verdict
+			// was observed, so nothing is written and the retry interval applies.
+			return { ran: false, reason: 'transport_error' };
 		}
 
 		await ctx.runMutation(internal.delivery.relayReturnPath.recordProbeSubmission, {
@@ -187,7 +240,7 @@ export const sweepReturnPathProbes = internalAction({
 		let probed = 0;
 		for (const transport of listSendTransports()) {
 			if (probed >= MAX_PROBES_PER_SWEEP) break;
-			if (!isProbeableTransport(transport)) continue;
+			if (!isProbeableTransport(transport) || !isConfiguredTransport(transport)) continue;
 			const result: ReturnPathProbeRunResult = await ctx.runAction(
 				internal.delivery.relayReturnPathProbe.runReturnPathProbe,
 				{ transportId: transport.id }

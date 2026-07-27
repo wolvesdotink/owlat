@@ -139,12 +139,18 @@ export interface ResendExtras {
  */
 export interface SmtpExtras {
 	/**
-	 * The caller has resolved this transport's `supportsCustomReturnPath`
-	 * capability to `supported`. Absent/false ⇒ leave the envelope sender
-	 * exactly as the composer built it (the shipped behaviour) and treat the
-	 * cell's bounce data as degraded — never an error, never a blocker (D2).
+	 * The return-path host to stamp as the VERP envelope sender on this send.
+	 *
+	 * Present ONLY when the routing seam has resolved all three conditions at
+	 * once: this transport's `supportsCustomReturnPath` capability is
+	 * `supported`, the From domain has a return-path host (its own override, or
+	 * the deployment-global one — the SAME host the direct-MX arm stamps, so the
+	 * two arms present the same envelope-sender domain, D11), and that host's
+	 * published SPF authorises this transport. Absent ⇒ leave the envelope
+	 * sender exactly as the composer built it (the shipped behaviour) and treat
+	 * the cell's bounce data as degraded — never an error, never a blocker (D2).
 	 */
-	customReturnPath?: boolean;
+	returnPathHost?: string;
 }
 
 export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'

@@ -14,6 +14,8 @@
  */
 
 import { v } from 'convex/values';
+import { extractDomainOrNull } from '@owlat/shared';
+import { normalizeReturnPathDomain } from '@owlat/shared/verp';
 import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import {
@@ -28,7 +30,15 @@ import {
 	type ReturnPathProbeState,
 	type ReturnPathProbeStatus,
 } from '../lib/sendProviders/returnPathCapability';
-import { tryResolveSendTransport } from '../lib/sendProviders/transports';
+import { isCustomReturnPathSupported } from '../lib/sendProviders/returnPathCapability';
+import {
+	returnPathAuthorizesRelay,
+	type ReturnPathSpfProof,
+} from '../lib/sendProviders/smtp/returnPath';
+import { defaultSendTransportId, tryResolveSendTransport } from '../lib/sendProviders/transports';
+import type { SendProviderKind } from '../lib/sendProviders/types';
+import { parseReturnPathRelaySpfTerms } from '../domains/spf';
+import { getOptional } from '../lib/env';
 import { probeIdFromMessageId } from './messageIdRouting';
 
 /**
@@ -42,9 +52,6 @@ function toProbeState(row: ProbeRow): ReturnPathProbeState {
 		status: row.status,
 		reason: row.reason,
 		sentEnvelopeSender: row.sentEnvelopeSender,
-		...(row.observedEnvelopeSender === undefined
-			? {}
-			: { observedEnvelopeSender: row.observedEnvelopeSender }),
 		startedAt: row.startedAt,
 		...(row.settledAt === undefined ? {} : { settledAt: row.settledAt }),
 		...(row.attempts === undefined ? {} : { attempts: row.attempts }),
@@ -177,10 +184,7 @@ export const recordProbeSubmission = internalMutation({
 		// than accumulating history, so the table stays bounded by the number of
 		// configured transports.
 		if (existing) {
-			await ctx.db.patch(existing._id, {
-				...values,
-				observedEnvelopeSender: undefined,
-			});
+			await ctx.db.patch(existing._id, values);
 		} else {
 			await ctx.db.insert('sendTransportReturnPathProbes', values);
 		}
@@ -199,10 +203,10 @@ export const recordProbeSubmission = internalMutation({
  * case-folds the token) sends the DSN to its own address instead: we see
  * nothing at all, the probe ages out, and `expireTimedOutProbes` settles it
  * `unsupported` / `no_bounce_observed`. That is why a rewrite manifests here as
- * SILENCE rather than as a mismatch, and why this mutation takes no observed
- * address: there is no production source for one that could differ, and an
- * optional parameter defaulted to the sent address would be a match by
- * construction dressed up as a check.
+ * SILENCE rather than as a mismatch, and why neither this mutation nor the
+ * event it raises carries an observed address: there is no production source
+ * for one that could differ, and a parameter defaulted to the sent address
+ * would be a match by construction dressed up as a check.
  */
 export const recordProbeObservation = internalMutation({
 	args: {
@@ -219,20 +223,13 @@ export const recordProbeObservation = internalMutation({
 		if (!row) return { applied: false as const, reason: 'probe_not_found' as const };
 
 		const current = toProbeState(row);
-		const state = nextProbeState(current, {
-			kind: 'observed',
-			envelopeSender: current.sentEnvelopeSender,
-			at: args.at,
-		});
+		const state = nextProbeState(current, { kind: 'observed', at: args.at });
 		if (state.status === current.status) {
 			return { applied: false as const, reason: 'already_settled' as const };
 		}
 		await ctx.db.patch(row._id, {
 			status: state.status,
 			reason: state.reason,
-			...(state.observedEnvelopeSender === undefined
-				? {}
-				: { observedEnvelopeSender: state.observedEnvelopeSender }),
 			...(state.settledAt === undefined ? {} : { settledAt: state.settledAt }),
 			// This probe has now settled: its own status IS the verdict, so drop the
 			// verdict it was carrying from the previous round.
@@ -279,3 +276,90 @@ export const expireTimedOutProbes = internalMutation({
 		return { expired };
 	},
 });
+
+/**
+ * The generated return-path SPF record for `host` on this domain, with the
+ * verification result recorded for it.
+ *
+ * `dnsRecords.mailFrom` and `verificationResults.mailFrom` are positionally
+ * aligned by the verifier, so the proof is read at the SAME index as the
+ * record — never by "the first verified mailFrom result", which on a domain
+ * carrying both an MX and a TXT entry would answer about the wrong record.
+ */
+function returnPathSpfProof(
+	domain: Doc<'domains'> | null,
+	host: string
+): { generatedSpfValue: string | undefined; proof: ReturnPathSpfProof | undefined } {
+	const records = domain?.dnsRecords?.mailFrom ?? [];
+	const index = records.findIndex(
+		(record) => record.type === 'TXT' && record.hostname?.toLowerCase() === host.toLowerCase()
+	);
+	if (index < 0) return { generatedSpfValue: undefined, proof: undefined };
+	const generated = records[index]?.value;
+	const result = domain?.verificationResults?.mailFrom?.[index];
+	return {
+		generatedSpfValue: generated,
+		proof: result
+			? {
+					verified: result.verified,
+					lastChecked: result.lastChecked,
+					foundValue: result.foundValue,
+				}
+			: undefined,
+	};
+}
+
+/**
+ * The return-path host a RELAY send from `fromAddress` may stamp as its VERP
+ * envelope sender — or `undefined`, which means "keep the composer's envelope
+ * sender", the shipped behaviour (plan G-08, D2, D11).
+ *
+ * Three conditions, all required, evaluated cheapest-first so an unproven relay
+ * costs exactly one indexed read:
+ *
+ *  1. the transport is PROVEN to honour a custom return path (the probe);
+ *  2. the From domain HAS a return-path host — its own `returnPathHost`
+ *     override when set, else the deployment-global `MTA_RETURN_PATH_DOMAIN`.
+ *     This is the SAME resolution the direct-MX arm performs (the MTA's sender
+ *     keys it by the DKIM signing domain), so both arms of a cell present the
+ *     same RFC5321.MailFrom domain for the same From domain — which is what
+ *     makes their SPF evaluation, DMARC SPF alignment and therefore their
+ *     bounce data comparable at all (D11);
+ *  3. that host's PUBLISHED SPF authorises this transport — otherwise the
+ *     stamp would make the receiver evaluate SPF for the bounce domain against
+ *     the relay's IP and fail it, degrading the very arm being measured.
+ *
+ * Any of them missing is a degraded measurement, never an error (D2).
+ */
+export async function relayReturnPathHostFor(
+	ctx: QueryCtx,
+	relayKind: SendProviderKind,
+	fromAddress: string | undefined,
+	now: number
+): Promise<string | undefined> {
+	const capability = await returnPathCapabilityFor(ctx, defaultSendTransportId(relayKind), now);
+	if (!isCustomReturnPathSupported(capability)) return undefined;
+
+	const fromDomain = fromAddress ? extractDomainOrNull(fromAddress) : null;
+	const domain = fromDomain
+		? await ctx.db
+				.query('domains')
+				.withIndex('by_domain', (q) => q.eq('domain', fromDomain.toLowerCase()))
+				.first()
+		: null;
+	const host = normalizeReturnPathDomain(
+		domain?.returnPathHost ?? getOptional('MTA_RETURN_PATH_DOMAIN')
+	);
+	if (!host) return undefined;
+
+	const { generatedSpfValue, proof } = returnPathSpfProof(domain, host);
+	return returnPathAuthorizesRelay({
+		host,
+		relaySpfTerms: parseReturnPathRelaySpfTerms(getOptional('MTA_RETURN_PATH_RELAY_SPF')),
+		generatedSpfValue,
+		proof,
+		now,
+	})
+		? host
+		: undefined;
+}
