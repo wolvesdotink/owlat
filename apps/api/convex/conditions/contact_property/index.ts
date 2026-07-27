@@ -1,10 +1,6 @@
 import type { DatabaseReader } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
-import type {
-	ConditionTypeModule,
-	ContactPropertyCondition,
-	PropertyOperator,
-} from '../types';
+import type { ConditionTypeModule, ContactPropertyCondition, PropertyOperator } from '../types';
 
 const BUILT_IN_FIELDS = new Set(['email', 'firstName', 'lastName', 'source']);
 
@@ -35,13 +31,9 @@ function applyOperator(
 ): boolean {
 	switch (operator) {
 		case 'equals':
-			return (
-				String(fieldValue ?? '').toLowerCase() === String(conditionValue ?? '').toLowerCase()
-			);
+			return String(fieldValue ?? '').toLowerCase() === String(conditionValue ?? '').toLowerCase();
 		case 'not_equals':
-			return (
-				String(fieldValue ?? '').toLowerCase() !== String(conditionValue ?? '').toLowerCase()
-			);
+			return String(fieldValue ?? '').toLowerCase() !== String(conditionValue ?? '').toLowerCase();
 		case 'contains':
 			return String(fieldValue ?? '')
 				.toLowerCase()
@@ -85,7 +77,10 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 		if (typeof r['field'] !== 'string') {
 			throw new Error('contact_property: field must be a string');
 		}
-		if (typeof r['operator'] !== 'string' || !VALID_OPERATORS.has(r['operator'] as PropertyOperator)) {
+		if (
+			typeof r['operator'] !== 'string' ||
+			!VALID_OPERATORS.has(r['operator'] as PropertyOperator)
+		) {
 			throw new Error(`contact_property: unknown operator "${r['operator'] as string}"`);
 		}
 		return {
@@ -158,7 +153,7 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 				const row = await ctx.db
 					.query('contactPropertyValues')
 					.withIndex('by_contact_and_property', (q) =>
-						q.eq('contactId', contact._id).eq('propertyId', propertyId),
+						q.eq('contactId', contact._id).eq('propertyId', propertyId)
 					)
 					.unique();
 				if (row) lookup.values.set(`${contact._id}:${propertyId}`, row.value);
@@ -166,6 +161,15 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 		}
 
 		return lookup;
+	},
+	lookupReadsPerContact(conditions) {
+		// One `by_contact_and_property` point read per (contact × distinct CUSTOM
+		// property). Built-in fields live on the contact row and read nothing.
+		const customFields = new Set<string>();
+		for (const c of conditions) {
+			if (!BUILT_IN_FIELDS.has(c.field)) customFields.add(c.field);
+		}
+		return customFields.size;
 	},
 	evaluate(condition, contact, lookup) {
 		let fieldValue: unknown;

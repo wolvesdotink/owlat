@@ -1,7 +1,4 @@
-import type {
-	ConditionTypeModule,
-	EmailActivityCondition,
-} from '../types';
+import type { ConditionTypeModule, EmailActivityCondition } from '../types';
 
 /**
  * No preloaded lookup. `email_activity` is evaluated directly off the
@@ -53,11 +50,12 @@ export const emailActivityConditionModule: ConditionTypeModule<
 		// No scan — evaluation reads the denormalized contact flags directly.
 		return {};
 	},
+	lookupReadsPerContact() {
+		return 0; // denormalized onto the contact row; nothing to read.
+	},
 	evaluate(condition, contact) {
 		const hasActivity =
-			condition.field === 'opened'
-				? contact.hasOpened === true
-				: contact.hasClicked === true;
+			condition.field === 'opened' ? contact.hasOpened === true : contact.hasClicked === true;
 		return condition.operator === 'is_true' ? hasActivity : !hasActivity;
 	},
 };

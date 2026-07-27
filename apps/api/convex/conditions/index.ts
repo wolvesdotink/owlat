@@ -70,16 +70,43 @@ type ConditionsLookup = {
  * O(1) per condition. Group conditions by kind, hand each batch to the kind's
  * module, and store the typed lookup keyed by kind.
  */
-export async function preloadConditionsLookup(
-	ctx: { db: DatabaseReader },
-	conditions: Condition[]
-): Promise<ConditionsLookup> {
+function groupByKind(conditions: readonly Condition[]): Map<ConditionKind, Condition[]> {
 	const grouped = new Map<ConditionKind, Condition[]>();
 	for (const c of conditions) {
 		const list = grouped.get(c.kind);
 		if (list) list.push(c);
 		else grouped.set(c.kind, [c]);
 	}
+	return grouped;
+}
+
+/**
+ * How many DOCUMENT reads {@link preloadConditionsLookupForContacts} costs PER
+ * CONTACT for `conditions` — the sum of each kind's own per-contact fan-out.
+ *
+ * The binding capacity pre-flight budgets its audience scan in DOCUMENTS
+ * (Convex caps a function execution at 16,384 of them), and a segment carrying
+ * two `topic_membership` conditions costs three documents per contact, not one.
+ * Charging rows instead of documents is how a "bounded" scan quietly blows the
+ * limit; this is the multiplier that makes the budget honest.
+ */
+export function conditionsLookupReadsPerContact(conditions: readonly Condition[]): number {
+	let reads = 0;
+	for (const [kind, list] of groupByKind(conditions)) {
+		reads += (
+			conditionTypeModuleFor(kind).lookupReadsPerContact as (
+				conds: ConditionOfKind<typeof kind>[]
+			) => number
+		)(list as ConditionOfKind<typeof kind>[]);
+	}
+	return reads;
+}
+
+export async function preloadConditionsLookup(
+	ctx: { db: DatabaseReader },
+	conditions: Condition[]
+): Promise<ConditionsLookup> {
+	const grouped = groupByKind(conditions);
 
 	const out: ConditionsLookup = {};
 	for (const [kind, list] of grouped) {
@@ -106,12 +133,7 @@ export async function preloadConditionsLookupForContacts(
 	conditions: Condition[],
 	contacts: readonly Doc<'contacts'>[]
 ): Promise<ConditionsLookup> {
-	const grouped = new Map<ConditionKind, Condition[]>();
-	for (const c of conditions) {
-		const list = grouped.get(c.kind);
-		if (list) list.push(c);
-		else grouped.set(c.kind, [c]);
-	}
+	const grouped = groupByKind(conditions);
 
 	const out: ConditionsLookup = {};
 	for (const [kind, list] of grouped) {

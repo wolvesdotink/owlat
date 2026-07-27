@@ -1,8 +1,5 @@
 import type { Id } from '../../_generated/dataModel';
-import type {
-	ConditionTypeModule,
-	TopicMembershipCondition,
-} from '../types';
+import type { ConditionTypeModule, TopicMembershipCondition } from '../types';
 
 export interface TopicMembershipLookup {
 	/** Map of topicId → set of contactIds in the topic. */
@@ -47,10 +44,7 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 				.query('contactTopics')
 				.withIndex('by_topic', (q) => q.eq('topicId', topicId as Id<'topics'>))
 				.collect();
-			lookup.membersByTopic.set(
-				topicId,
-				new Set(memberships.map((m) => m.contactId as string))
-			);
+			lookup.membersByTopic.set(topicId, new Set(memberships.map((m) => m.contactId as string)));
 		}
 
 		return lookup;
@@ -71,7 +65,7 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 				const membership = await ctx.db
 					.query('contactTopics')
 					.withIndex('by_contact_and_topic', (q) =>
-						q.eq('contactId', contact._id).eq('topicId', topicId as Id<'topics'>),
+						q.eq('contactId', contact._id).eq('topicId', topicId as Id<'topics'>)
 					)
 					.unique();
 				if (membership) lookup.membersByTopic.get(topicId)!.add(contact._id as string);
@@ -79,6 +73,12 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 		}
 
 		return lookup;
+	},
+	lookupReadsPerContact(conditions) {
+		// One `by_contact_and_topic` point read per (contact × distinct topic).
+		const topicIds = new Set<string>();
+		for (const c of conditions) topicIds.add(c.topicId as string);
+		return topicIds.size;
 	},
 	evaluate(condition, contact, lookup) {
 		const members = lookup.membersByTopic.get(condition.topicId as string);
