@@ -125,6 +125,16 @@ async function save() {
 				<strong class="text-text-primary">{{ currentHost ?? 'the default return-path' }}</strong
 				>.
 			</p>
+			<!-- Informational only. The return-path host is optional and stays
+			     optional: this sentence exists because a per-domain host is also what
+			     enables RFC 9477 complaint feedback, which is otherwise invisible from
+			     the product. It is never a warning, a checklist item or a "setup
+			     incomplete" state. -->
+			<p class="mt-1 text-xs text-text-tertiary" data-testid="returnpath-cfbl-note">
+				A per-domain host also enables RFC 9477 complaint feedback (<code>CFBL-Address</code>),
+				letting participating mailbox providers report spam complaints straight back to Owlat.
+				Optional either way.
+			</p>
 			<!-- Terminal marker: D2 sets `returnPathHostSyncError` only AFTER its
 			     bounded retry budget is exhausted, so this is a give-up the user must
 			     act on — not an in-progress retry. No spinner. -->
