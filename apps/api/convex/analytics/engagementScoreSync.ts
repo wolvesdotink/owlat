@@ -4,7 +4,7 @@
  *
  * Two write paths, one scoring model:
  *
- *  - INCREMENTAL (hot path). `applyEngagementActivity` is called by the single
+ *  - INCREMENTAL (hot path). `engagementPatchForActivity` is called by the single
  *    contact-activity writer (`contactActivities/writer.ts`) when a relevant
  *    activity lands. It decays the CACHED accumulator forward to the activity's
  *    timestamp and folds the new term in — O(1), no activity-timeline read, no
@@ -17,7 +17,7 @@
  *    case — but a duplicate separated by another activity still counts twice
  *    until the next full recompute corrects it (at most 20h later, and the
  *    error is one activity's decayed weight).
- *  - NIGHTLY BACKFILL. `backfillEngagementScores` re-projects stale contacts so
+ *  - HOURLY BACKFILL. `backfillEngagementScores` re-projects stale contacts so
  *    a score decays on the clock, not only when the contact does something. It
  *    walks a bounded prefix of the `by_engagement_score_updated_at` range —
  *    never a `.collect()` over the table (ADR-0042).
@@ -28,40 +28,78 @@
  * opaque cursor that could be invalidated by a concurrent write. Never-scored
  * rows sort first (a missing field precedes every number in a Convex index), so
  * a fresh deployment converges from the front.
+ *
+ * BACKFILL CAPACITY IS BOUNDED AND STATED. The tick bound is sized in DOCUMENTS,
+ * not contacts, because each contact re-read costs up to
+ * `MAX_ACTIVITIES_PER_RECOMPUTE` activity rows — a batch sized in contacts alone
+ * can blow the Convex per-transaction read limit and wedge the chain forever on
+ * the same stalest head. See `BACKFILL_BATCH_SIZE` for the arithmetic and
+ * `BACKFILL_CONTACTS_PER_HOUR` for the resulting deployment capacity.
  */
 
 import { v } from 'convex/values';
 import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
+import type { ContactActivityType } from '../contactActivities/catalog';
+import { toEngagementActivity } from './engagementActivity';
 import {
 	EMPTY_ENGAGEMENT_STATE,
-	applyActivity,
 	computeEngagementScore,
-	decayState,
 	engagementActivityKey,
+	foldActivity,
 	scoreFromState,
-	toEngagementActivity,
 	type EngagementActivity,
 	type EngagementScoreState,
 } from './engagementScore';
 
 // ─── Bounds ─────────────────────────────────────────────────────────────────
 
-/** Contacts re-projected per batch. */
-export const BACKFILL_BATCH_SIZE = 100;
-
-/** Batches a single nightly run chains through. Bounds the whole tick. */
-export const BACKFILL_MAX_BATCHES = 50;
-
-/**
- * A cached score older than this is stale. Slightly under 24h so a nightly run
- * always reconsiders everything the previous run touched.
- */
-export const ENGAGEMENT_SCORE_STALE_MS = 20 * 60 * 60 * 1000;
-
 /** Newest activities loaded for a full recompute. Older terms are ~0 anyway. */
 export const MAX_ACTIVITIES_PER_RECOMPUTE = 500;
+
+/**
+ * Documents ONE backfill transaction may read. A Convex mutation dies somewhere
+ * around ~32k document reads (the same limit `contacts/analytics.ts` and
+ * `campaigns/audienceResolution.ts` are written against); we stay an order of
+ * magnitude under it because a throw here is not a lost batch, it is a WEDGE —
+ * the transaction rolls back, no row is stamped, and the identical stalest head
+ * is re-selected on the next tick forever.
+ */
+export const BACKFILL_READ_BUDGET_DOCS = 5_000;
+
+/**
+ * Contacts re-projected per batch, sized in DOCUMENTS: one contact row plus up
+ * to `MAX_ACTIVITIES_PER_RECOMPUTE` activity rows each. 9 x 501 = 4,509 reads
+ * worst case, comfortably inside the budget above. This lands on the same order
+ * as the repo's other crons with a per-item sub-scan (`checklistSweepState.ts`
+ * uses 5, `segments.ts` uses 10) — deliberately small, because the cost of a
+ * batch is set by the heaviest contact in it, not the average one.
+ */
+export const BACKFILL_BATCH_SIZE = Math.max(
+	1,
+	Math.floor(BACKFILL_READ_BUDGET_DOCS / (MAX_ACTIVITIES_PER_RECOMPUTE + 1))
+);
+
+/** Batches a single run chains through. Bounds the whole tick. */
+export const BACKFILL_MAX_BATCHES = 200;
+
+/**
+ * Deployment capacity, stated because "hourly" is a claim about convergence and
+ * a bounded cron only converges up to its bound: 9 x 200 = 1,800 contacts per
+ * tick, ~43,200 per day. A book larger than that re-projects on a longer cycle
+ * than `ENGAGEMENT_SCORE_STALE_MS` — scores stay correct, they just decay in
+ * coarser steps, and the hot path keeps every ACTIVE contact fresh regardless.
+ * The cron logs when a tick ends with work still queued, so the operator can
+ * see it rather than infer it.
+ */
+export const BACKFILL_CONTACTS_PER_HOUR = BACKFILL_BATCH_SIZE * BACKFILL_MAX_BATCHES;
+
+/**
+ * A cached score older than this is stale. Slightly under 24h so a daily cycle
+ * always reconsiders everything the previous one touched.
+ */
+export const ENGAGEMENT_SCORE_STALE_MS = 20 * 60 * 60 * 1000;
 
 /**
  * Lookback window for a full recompute: 400 days, ~8.9 engagement half-lives.
@@ -134,12 +172,24 @@ export async function recomputeContactEngagementScore(
 		tenureStartedAt: contact.createdAt,
 		now,
 	});
-	// A hard bounce / complaint is terminal, so a suppression already recorded on
-	// the cached state survives a recompute whose window no longer reaches it.
-	const state: EngagementScoreState = {
-		...result.state,
-		isSuppressed: result.state.isSuppressed || contact.engagementScoreState?.isSuppressed === true,
-	};
+
+	// STICKY, BUT NOT UNCLEARABLE. `.take(MAX_ACTIVITIES_PER_RECOMPUTE)` reads the
+	// NEWEST rows, so a chatty contact's hard bounce can fall out of view while
+	// still being inside the lookback window; carrying the cached suppression
+	// forward keeps such a contact suppressed. It is scoped to the window on
+	// purpose: once the suppressing event is older than `RECOMPUTE_LOOKBACK_MS`
+	// — or once its row is corrected/removed and
+	// `clearEngagementSuppression` forces a recompute — the contact recovers.
+	// Without that scope a bounce recorded in error would pin the contact to 0
+	// forever with no reversal path anywhere in the module.
+	const cached = contact.engagementScoreState;
+	const cachedSuppressedAt =
+		cached !== undefined && cached.isSuppressed ? cached.suppressedAt : undefined;
+
+	const state: EngagementScoreState =
+		result.state.isSuppressed || cachedSuppressedAt === undefined || cachedSuppressedAt < since
+			? result.state
+			: { ...result.state, isSuppressed: true, suppressedAt: cachedSuppressedAt };
 	const score = state.isSuppressed ? 0 : result.score;
 
 	const { patch, changed } = buildScorePatch(contact, { score, state }, now);
@@ -175,7 +225,7 @@ export async function recomputeContactEngagementScore(
  */
 export function engagementPatchForActivity(args: {
 	contact: Doc<'contacts'>;
-	activityType: string;
+	activityType: ContactActivityType;
 	occurredAt: number;
 	bounceType?: string | undefined;
 	now: number;
@@ -217,28 +267,13 @@ export function engagementPatchForActivity(args: {
 	const base = cached ?? EMPTY_ENGAGEMENT_STATE;
 	const baseAt = cached !== undefined && cachedAt !== undefined ? cachedAt : activity.occurredAt;
 
-	// Fold at max(baseAt, occurredAt) so a LATE-ARRIVING activity (a backfilled
-	// open, an out-of-order webhook) is decayed forward to the accumulator's
-	// instant instead of the accumulator being decayed backwards to the
-	// activity's. Arrival order therefore cannot change the answer — the
-	// incremental path stays equal to a full recompute.
-	const foldAt = Math.max(baseAt, activity.occurredAt);
-	const decayedBase = decayState(base, baseAt, foldAt);
-	const contribution = decayState(
-		applyActivity(EMPTY_ENGAGEMENT_STATE, activity.kind),
-		activity.occurredAt,
-		foldAt
-	);
-	const folded: EngagementScoreState = {
-		raw: decayedBase.raw + contribution.raw,
-		softBounceRaw: decayedBase.softBounceRaw + contribution.softBounceRaw,
-		isSuppressed: decayedBase.isSuppressed || contribution.isSuppressed,
-		lastFoldedKey: key,
-	};
+	// THE SAME fold the full recompute runs — `foldActivity` is the single
+	// implementation, so the hot path cannot drift from the backfill.
+	const folded = foldActivity(base, baseAt, activity);
 
 	const projected = scoreFromState({
-		state: folded,
-		stateAt: foldAt,
+		state: folded.state,
+		stateAt: folded.stateAt,
 		tenureStartedAt: args.contact.createdAt,
 		now,
 	});
@@ -247,12 +282,19 @@ export function engagementPatchForActivity(args: {
 		.patch;
 }
 
-// ─── Nightly backfill ───────────────────────────────────────────────────────
+// ─── Hourly backfill ────────────────────────────────────────────────────────
 
 /**
- * Re-project the stalest contacts. Bounded per invocation; chains itself while
- * work remains and `batchesRemaining` allows, so a single nightly tick converges
- * up to `BACKFILL_BATCH_SIZE * BACKFILL_MAX_BATCHES` contacts and then stops.
+ * Re-project the stalest contacts. Bounded per invocation IN DOCUMENTS (see
+ * `BACKFILL_BATCH_SIZE`), chaining itself while work remains and
+ * `batchesRemaining` allows, so one tick converges up to
+ * `BACKFILL_CONTACTS_PER_HOUR` contacts and then stops.
+ *
+ * `batchSize` is caller-supplied only so tests can shrink it; it is clamped to
+ * `BACKFILL_BATCH_SIZE` because the clamp is what keeps a single transaction
+ * inside the read budget. An unclamped caller could otherwise hand the cron a
+ * batch big enough to throw — and a throw wedges the chain permanently, since
+ * the rollback re-presents the identical stalest head next tick.
  */
 export const backfillEngagementScores = internalMutation({
 	args: {
@@ -263,11 +305,16 @@ export const backfillEngagementScores = internalMutation({
 		scanned: v.number(),
 		rescored: v.number(),
 		isDone: v.boolean(),
+		/** True when this batch stopped on the batch budget, not on empty work. */
+		isBudgetExhausted: v.boolean(),
 	}),
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		const staleBefore = now - ENGAGEMENT_SCORE_STALE_MS;
-		const batchSize = Math.max(1, Math.min(args.batchSize ?? BACKFILL_BATCH_SIZE, 500));
+		const batchSize = Math.max(
+			1,
+			Math.min(args.batchSize ?? BACKFILL_BATCH_SIZE, BACKFILL_BATCH_SIZE)
+		);
 		const batchesRemaining = Math.max(
 			0,
 			Math.min(args.batchesRemaining ?? BACKFILL_MAX_BATCHES, BACKFILL_MAX_BATCHES)
@@ -295,6 +342,7 @@ export const backfillEngagementScores = internalMutation({
 		}
 
 		const isDone = candidates.length < batchSize;
+		const isBudgetExhausted = !isDone && batchesRemaining <= 1;
 		if (!isDone && batchesRemaining > 1) {
 			await ctx.scheduler.runAfter(
 				0,
@@ -306,13 +354,27 @@ export const backfillEngagementScores = internalMutation({
 			);
 		}
 
-		return { scanned, rescored, isDone };
+		if (isBudgetExhausted) {
+			// The chain's return value is dropped, so the only way an operator can
+			// see "the book is bigger than one tick's capacity" is a log line.
+			console.warn(
+				`[engagementScoreBackfill] tick exhausted its ${BACKFILL_MAX_BATCHES}-batch budget ` +
+					`(~${BACKFILL_CONTACTS_PER_HOUR} contacts) with stale contacts still queued; ` +
+					`scores re-project on a longer cycle than ${ENGAGEMENT_SCORE_STALE_MS}ms`
+			);
+		}
+
+		return { scanned, rescored, isDone, isBudgetExhausted };
 	},
 });
 
 /**
- * Force a full recompute for one contact. Internal-only escape hatch for tests
- * and for the incremental path's cold-cache case.
+ * Force a full recompute for one contact. Internal-only escape hatch: tests
+ * drive it, and an operator can invoke it from the Convex dashboard to
+ * re-derive one contact immediately instead of waiting for the backfill to
+ * reach it (for example right after correcting a mis-recorded bounce — see
+ * `clearEngagementSuppression`, which is that flow with the sticky suppression
+ * dropped first).
  */
 export const recomputeContactScore = internalMutation({
 	args: { contactId: v.id('contacts') },
@@ -321,6 +383,46 @@ export const recomputeContactScore = internalMutation({
 		const contact = await ctx.db.get(args.contactId);
 		if (!contact || contact.deletedAt !== undefined) return null;
 		const { score } = await recomputeContactEngagementScore(ctx, contact, Date.now());
+		return score;
+	},
+});
+
+/**
+ * THE REVERSAL PATH for suppression. A hard bounce or complaint recorded in
+ * error zeroes a healthy contact, and the recompute deliberately carries that
+ * suppression forward while its instant is inside the lookback window — so
+ * deleting or correcting the offending `contactActivities` row is not, on its
+ * own, enough. This drops the cached suppression and re-derives the score from
+ * whatever the timeline now says. If the offending row is still there, the
+ * recompute simply re-suppresses; fix the row first.
+ *
+ * Returns the score after the recompute, or `null` for a missing/soft-deleted
+ * contact.
+ */
+export const clearEngagementSuppression = internalMutation({
+	args: { contactId: v.id('contacts') },
+	returns: v.union(v.number(), v.null()),
+	handler: async (ctx, args) => {
+		const contact = await ctx.db.get(args.contactId);
+		if (!contact || contact.deletedAt !== undefined) return null;
+
+		const cached = contact.engagementScoreState;
+		if (cached !== undefined) {
+			// Rebuild the state WITHOUT `suppressedAt` — an explicit `undefined` is
+			// not a storable Convex value, so the field has to be absent, not nulled.
+			await ctx.db.patch(args.contactId, {
+				engagementScoreState: {
+					raw: cached.raw,
+					softBounceRaw: cached.softBounceRaw,
+					isSuppressed: false,
+					...(cached.lastFoldedKey !== undefined ? { lastFoldedKey: cached.lastFoldedKey } : {}),
+				},
+			});
+		}
+
+		const reloaded = await ctx.db.get(args.contactId);
+		if (!reloaded) return null;
+		const { score } = await recomputeContactEngagementScore(ctx, reloaded, Date.now());
 		return score;
 	},
 });

@@ -479,12 +479,14 @@ crons.interval(
 	{ limit: 20 }
 );
 
-// Re-project stale contact engagement scores nightly so a score decays on the
-// clock, not only when the contact acts. Bounded per tick: a prefix of the
-// `by_engagement_score_updated_at` stale range, chained batch by batch.
+// Re-project stale contact engagement scores so a score decays on the clock,
+// not only when the contact acts. Bounded per tick IN DOCUMENTS (each contact
+// costs up to 500 activity reads), which is why this is hourly rather than
+// nightly: capacity comes from ticks, and `BACKFILL_CONTACTS_PER_HOUR` states
+// the resulting ceiling.
 crons.interval(
 	'backfill contact engagement scores',
-	{ hours: 24 },
+	{ hours: 1 },
 	internal.analytics.engagementScoreSync.backfillEngagementScores,
 	{}
 );
