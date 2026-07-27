@@ -204,6 +204,10 @@ describe('NaN / negative guards', () => {
 		});
 		expect(EMPTY_ENGAGEMENT_STATE).toEqual(before);
 	});
+
+	it('is frozen, so the language enforces that and not only this test', () => {
+		expect(Object.isFrozen(EMPTY_ENGAGEMENT_STATE)).toBe(true);
+	});
 });
 
 describe('bounded work', () => {

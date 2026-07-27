@@ -1,11 +1,18 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
 import { recordContactActivity } from '../../contactActivities/writer';
-import { BACKFILL_BATCH_SIZE, ENGAGEMENT_SCORE_STALE_MS } from '../engagementScoreSync';
+import {
+	BACKFILL_BATCH_SIZE,
+	BACKFILL_CONTACTS_PER_HOUR,
+	BACKFILL_MAX_BATCHES,
+	BACKFILL_READ_BUDGET_DOCS,
+	ENGAGEMENT_SCORE_STALE_MS,
+	MAX_ACTIVITIES_PER_RECOMPUTE,
+} from '../engagementScoreSync';
 import { engagementBand } from '../engagementScore';
 
 /**
@@ -79,7 +86,7 @@ describe('backfillEngagementScores — boundedness', () => {
 			{ batchSize: 3, batchesRemaining: 1 }
 		);
 
-		expect(first).toEqual({ scanned: 3, rescored: 3, isDone: false });
+		expect(first).toEqual({ scanned: 3, rescored: 3, isDone: false, isBudgetExhausted: true });
 		const scored = (await scoresOf(t, ids)).filter((s) => s !== null);
 		expect(scored).toHaveLength(3);
 	});
@@ -89,15 +96,130 @@ describe('backfillEngagementScores — boundedness', () => {
 		expect(BACKFILL_BATCH_SIZE).toBeLessThanOrEqual(500);
 	});
 
-	it('clamps an absurd caller-supplied batch size', async () => {
+	it('clamps an absurd caller-supplied batch size to the document budget', async () => {
 		const t = harness();
-		await seedContacts(t, 3);
+		// One more contact than the clamp allows, so an unclamped batchSize would
+		// visibly scan them all in a single transaction.
+		await seedContacts(t, BACKFILL_BATCH_SIZE + 1);
 		const result = await t.mutation(
 			internal.analytics.engagementScoreSync.backfillEngagementScores,
 			{ batchSize: 1_000_000, batchesRemaining: 1 }
 		);
-		expect(result.scanned).toBe(3);
-		expect(result.isDone).toBe(true);
+		expect(result.scanned).toBe(BACKFILL_BATCH_SIZE);
+		expect(result.isDone).toBe(false);
+	});
+
+	it('keeps the batch bound sized in DOCUMENTS, not contacts', () => {
+		// The bound that matters is the transaction's document-read count: each
+		// contact costs one contact row plus up to MAX_ACTIVITIES_PER_RECOMPUTE
+		// activity rows. Sizing the batch in contacts alone is what lets one tick
+		// blow the Convex per-transaction read limit and wedge the chain forever.
+		expect(BACKFILL_BATCH_SIZE * (MAX_ACTIVITIES_PER_RECOMPUTE + 1)).toBeLessThanOrEqual(
+			BACKFILL_READ_BUDGET_DOCS
+		);
+	});
+
+	it('stays inside its read budget with a full batch of maximally heavy contacts', async () => {
+		const t = harness();
+		const ids = await seedContacts(t, BACKFILL_BATCH_SIZE, 300);
+
+		// Every contact in the batch carries the most activities a recompute will
+		// ever read. This is the shape that used to throw (and roll back, and
+		// re-present the identical stalest head next tick, forever).
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			for (const id of ids) {
+				for (let i = 0; i < MAX_ACTIVITIES_PER_RECOMPUTE; i += 1) {
+					await ctx.db.insert('contactActivities', {
+						contactId: id,
+						activityType: 'email_opened',
+						metadata: { campaignId: 'c1' },
+						// Distinct instants: the recompute must not dedupe them away.
+						occurredAt: now - i * 60_000,
+					});
+				}
+			}
+		});
+
+		const result = await t.mutation(
+			internal.analytics.engagementScoreSync.backfillEngagementScores,
+			{ batchesRemaining: 1 }
+		);
+
+		expect(result.scanned).toBe(BACKFILL_BATCH_SIZE);
+		expect(result.rescored).toBe(BACKFILL_BATCH_SIZE);
+		expect((await scoresOf(t, ids)).every((s) => s !== null)).toBe(true);
+	});
+});
+
+describe('backfillEngagementScores — the self-chaining bound', () => {
+	it('clamps batchesRemaining to BACKFILL_MAX_BATCHES and terminates', async () => {
+		const t = harness();
+		// More contacts than one batch, far fewer than the batch budget, so the
+		// chain must stop because the WORK ran out rather than because the budget
+		// did — and it must stop at all, which is the property under test.
+		const ids = await seedContacts(t, BACKFILL_BATCH_SIZE * 3);
+
+		// Fake timers + runAllTimers is convex-test's pattern for draining a
+		// self-chaining `runAfter(0)`.
+		vi.useFakeTimers();
+		try {
+			const first = await t.mutation(
+				internal.analytics.engagementScoreSync.backfillEngagementScores,
+				{ batchesRemaining: BACKFILL_MAX_BATCHES * 1000 }
+			);
+			expect(first.scanned).toBe(BACKFILL_BATCH_SIZE);
+			expect(first.isDone).toBe(false);
+			// It chained rather than declaring victory, and it did NOT report the
+			// budget as exhausted — the clamp left plenty of batches.
+			expect(first.isBudgetExhausted).toBe(false);
+
+			// The chain drains the rest and then STOPS. If a future edit made it
+			// unbounded, this would never settle.
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		expect((await scoresOf(t, ids)).every((s) => s !== null)).toBe(true);
+
+		const afterwards = await t.mutation(
+			internal.analytics.engagementScoreSync.backfillEngagementScores,
+			{ batchesRemaining: 1 }
+		);
+		expect(afterwards).toEqual({
+			scanned: 0,
+			rescored: 0,
+			isDone: true,
+			isBudgetExhausted: false,
+		});
+	});
+
+	it('stops chaining when the batch budget runs out, with work still queued', async () => {
+		const t = harness();
+		const ids = await seedContacts(t, BACKFILL_BATCH_SIZE * 3);
+
+		// Two batches for three batches' worth of work: the chain must run exactly
+		// twice and then give up rather than scheduling itself forever.
+		vi.useFakeTimers();
+		try {
+			const first = await t.mutation(
+				internal.analytics.engagementScoreSync.backfillEngagementScores,
+				{ batchesRemaining: 2 }
+			);
+			expect(first.isBudgetExhausted).toBe(false);
+
+			await t.finishAllScheduledFunctions(vi.runAllTimers);
+		} finally {
+			vi.useRealTimers();
+		}
+
+		const scored = (await scoresOf(t, ids)).filter((s) => s !== null);
+		expect(scored).toHaveLength(BACKFILL_BATCH_SIZE * 2);
+	});
+
+	it('states its per-tick capacity', () => {
+		expect(BACKFILL_CONTACTS_PER_HOUR).toBe(BACKFILL_BATCH_SIZE * BACKFILL_MAX_BATCHES);
 	});
 });
 
@@ -131,7 +253,7 @@ describe('backfillEngagementScores — resumption', () => {
 			internal.analytics.engagementScoreSync.backfillEngagementScores,
 			{ batchSize: 3, batchesRemaining: 1 }
 		);
-		expect(drained).toEqual({ scanned: 0, rescored: 0, isDone: true });
+		expect(drained).toEqual({ scanned: 0, rescored: 0, isDone: true, isBudgetExhausted: false });
 	});
 
 	it('sorts never-scored contacts ahead of merely-stale ones', async () => {
@@ -204,7 +326,7 @@ describe('backfillEngagementScores — idempotence', () => {
 			internal.analytics.engagementScoreSync.backfillEngagementScores,
 			{ batchSize: 10, batchesRemaining: 1 }
 		);
-		expect(result).toEqual({ scanned: 1, rescored: 0, isDone: true });
+		expect(result).toEqual({ scanned: 1, rescored: 0, isDone: true, isBudgetExhausted: false });
 
 		const doc = await t.run(async (ctx) => ctx.db.get(id));
 		expect(doc?.engagementScore).toBeUndefined();
@@ -270,6 +392,62 @@ describe('the acceptance criteria, end to end', () => {
 		});
 		expect(score).not.toBeNull();
 		expect(engagementBand(score ?? -1)).toBe('cold');
+	});
+
+	it('gives a suppression recorded in error a way back', async () => {
+		const t = harness();
+		const [id] = await seedContacts(t, 1, 200);
+		if (!id) throw new Error('seed failed');
+
+		const bounceId = await t.run(async (ctx) => {
+			await recordContactActivity(ctx, {
+				literal: 'email_clicked',
+				contactId: id,
+				metadata: { campaignId: 'c1', linkUrl: 'https://example.com' },
+				occurredAt: Date.now() - DAY,
+			});
+			return recordContactActivity(ctx, {
+				literal: 'email_bounced',
+				contactId: id,
+				metadata: { campaignId: 'c1', bounceType: 'hard' },
+			});
+		});
+
+		// Clearing alone is not enough while the offending row is still there —
+		// the recompute simply sees it again.
+		const stillSuppressed = await t.mutation(
+			internal.analytics.engagementScoreSync.clearEngagementSuppression,
+			{ contactId: id }
+		);
+		expect(stillSuppressed).toBe(0);
+
+		// Correct the record, then clear: the contact recovers.
+		await t.run(async (ctx) => {
+			await ctx.db.delete(bounceId);
+			return null;
+		});
+		const recovered = await t.mutation(
+			internal.analytics.engagementScoreSync.clearEngagementSuppression,
+			{ contactId: id }
+		);
+		expect(recovered).toBeGreaterThan(0);
+
+		const doc = await t.run(async (ctx) => ctx.db.get(id));
+		expect(doc?.engagementScoreState?.isSuppressed).toBe(false);
+		expect(doc?.engagementScoreState?.suppressedAt).toBeUndefined();
+
+		// And the nightly backfill does not resurrect it.
+		await t.run(async (ctx) => {
+			await ctx.db.patch(id, {
+				engagementScoreUpdatedAt: Date.now() - 2 * ENGAGEMENT_SCORE_STALE_MS,
+			});
+		});
+		await t.mutation(internal.analytics.engagementScoreSync.backfillEngagementScores, {
+			batchesRemaining: 1,
+		});
+		const afterBackfill = await t.run(async (ctx) => ctx.db.get(id));
+		expect(afterBackfill?.engagementScoreState?.isSuppressed).toBe(false);
+		expect(afterBackfill?.engagementScore ?? 0).toBeGreaterThan(0);
 	});
 
 	it('marks a hard-bounced contact isSuppressed on the writer hot path', async () => {

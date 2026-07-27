@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { ENGAGEMENT_BAND_CUTS } from '@owlat/shared/engagementBands';
+import type { ContactActivityType } from '../../contactActivities/catalog';
+import { toEngagementActivity } from '../engagementActivity';
 import {
 	ENGAGEMENT_BANDS,
 	ENGAGEMENT_WEIGHTS,
 	computeEngagementScore,
 	engagementBand,
 	engagementPercentile,
-	toEngagementActivity,
 	type EngagementActivity,
 	type EngagementActivityKind,
 	type EngagementBand,
@@ -224,13 +226,39 @@ describe('computeEngagementScore — weighting', () => {
 			'raw',
 		];
 		for (const key of expected) expect(inputs[key]).toBeTypeOf('number');
+		expect(inputs.isSuppressed).toBeTypeOf('boolean');
 		expect(inputs.clickCount).toBe(3);
 		expect(inputs.openCount).toBe(5);
+	});
+
+	it('reports the real penalty for a suppressed contact, not a zero', () => {
+		// A hard-bounced contact and a maximally soft-bounced one both score 0; the
+		// inputs blob an operator reads has to tell them apart.
+		const suppressed = computeEngagementScore({
+			activities: [...at('open', 5), ...at('soft_bounce', 6, 7), ...at('hard_bounce', 2)],
+			tenureStartedAt: NOW - 300 * DAY,
+			now: NOW,
+		});
+		expect(suppressed.score).toBe(0);
+		expect(suppressed.inputs.isSuppressed).toBe(true);
+		expect(suppressed.inputs.penalty).toBeLessThan(1);
+		expect(suppressed.inputs.penalty).toBeGreaterThan(0);
+		expect(suppressed.inputs.raw).toBeGreaterThan(0);
+
+		const notSuppressed = computeEngagementScore({
+			activities: at('open', 5),
+			tenureStartedAt: NOW - 300 * DAY,
+			now: NOW,
+		});
+		expect(notSuppressed.inputs.isSuppressed).toBe(false);
 	});
 });
 
 describe('engagementBand', () => {
 	it('cuts exactly where the MTA priority bands cut', () => {
+		// The ONE definition, imported by the MTA's `mapToPriority` too — not a
+		// hand-copied literal that lets the two sides drift apart.
+		expect(ENGAGEMENT_BANDS).toBe(ENGAGEMENT_BAND_CUTS);
 		expect(ENGAGEMENT_BANDS).toEqual({ high: 80, medium: 50, low: 20 });
 		expect(engagementBand(100)).toBe('high');
 		expect(engagementBand(80)).toBe('high');
@@ -294,7 +322,7 @@ describe('toEngagementActivity', () => {
 	});
 
 	it('ignores activity types that are not contact engagement', () => {
-		for (const activityType of [
+		const ignored: ContactActivityType[] = [
 			'email_sent',
 			'created',
 			'property_updated',
@@ -303,9 +331,17 @@ describe('toEngagementActivity', () => {
 			'topic_confirmed',
 			'doi_attested',
 			'inbound_received',
-			'nonsense',
-		]) {
+		];
+		for (const activityType of ignored) {
 			expect(toEngagementActivity({ activityType, occurredAt: 1 })).toBeNull();
 		}
+	});
+
+	it('ignores a literal that is not in the catalog at all', () => {
+		// `activityType` is the catalog union, so a rename breaks the BUILD rather
+		// than silently stopping the score reacting. Reaching the runtime default
+		// therefore needs a deliberate cast at the call site.
+		const nonsense = 'nonsense' as ContactActivityType;
+		expect(toEngagementActivity({ activityType: nonsense, occurredAt: 1 })).toBeNull();
 	});
 });

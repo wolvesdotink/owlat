@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import type { Doc } from '../../_generated/dataModel';
+import type { ContactActivityType } from '../../contactActivities/catalog';
 import {
 	ENGAGEMENT_HALF_LIFE_DAYS,
-	applyActivity,
 	computeEngagementScore,
 	decayState,
 	engagementBand,
@@ -9,6 +10,7 @@ import {
 	type EngagementActivity,
 	type EngagementScoreState,
 } from '../engagementScore';
+import { engagementPatchForActivity } from '../engagementScoreSync';
 
 /**
  * Decay properties of the engagement score (deliverability plan P0-2).
@@ -69,11 +71,15 @@ describe('monotonicity', () => {
 		expect(decayed.softBounceRaw).toBeCloseTo(4, 9);
 	});
 
-	it('never lets a isSuppressed contact recover through decay alone', () => {
-		const isSuppressed: EngagementScoreState = { raw: 40, softBounceRaw: 0, isSuppressed: true };
+	it('never lets a suppressed contact recover through decay alone', () => {
+		const suppressedState: EngagementScoreState = {
+			raw: 40,
+			softBounceRaw: 0,
+			isSuppressed: true,
+		};
 		for (const days of [0, 30, 400, 5000]) {
 			const projected = scoreFromState({
-				state: isSuppressed,
+				state: suppressedState,
 				stateAt: NOW,
 				tenureStartedAt: TENURE_STARTED_AT,
 				now: NOW + days * DAY,
@@ -153,30 +159,126 @@ describe('no UTC-day-boundary cliff', () => {
 	});
 });
 
-describe('fold/increment equivalence', () => {
-	it('matches a full recompute when the same activities are folded one at a time', () => {
-		const full = computeEngagementScore({
-			activities: TIMELINE,
-			tenureStartedAt: TENURE_STARTED_AT,
-			now: NOW,
-		});
+/**
+ * The divergence that actually matters is between the SYNC LAYER's hot path and
+ * the pure core's full recompute — not between the core and a re-implementation
+ * of its own loop. So this drives `engagementPatchForActivity`, the real
+ * function `contactActivities/writer.ts` calls, over the same timeline and
+ * compares the contact document it produces against `computeEngagementScore`.
+ * `engagementPatchForActivity` is pure, so a plain contact stub is enough.
+ */
+describe('fold/increment equivalence — sync hot path vs full recompute', () => {
+	type ContactFields = {
+		createdAt: number;
+		deletedAt?: number | undefined;
+		engagementScore?: number | undefined;
+		engagementScoreUpdatedAt?: number | undefined;
+		engagementScoreState?: EngagementScoreState | undefined;
+	};
 
-		const ordered = [...TIMELINE].sort((a, b) => a.occurredAt - b.occurredAt);
-		let state: EngagementScoreState = { raw: 0, softBounceRaw: 0, isSuppressed: false };
-		let stateAt = ordered[0]?.occurredAt ?? NOW;
-		for (const activity of ordered) {
-			state = applyActivity(decayState(state, stateAt, activity.occurredAt), activity.kind);
-			stateAt = activity.occurredAt;
+	const asContact = (fields: ContactFields): Doc<'contacts'> =>
+		fields as unknown as Doc<'contacts'>;
+
+	/** The activity literal + bounce label the writer would pass for each kind. */
+	const WRITER_ARGS: Record<
+		EngagementActivity['kind'],
+		{ activityType: ContactActivityType; bounceType?: string }
+	> = {
+		open: { activityType: 'email_opened' },
+		click: { activityType: 'email_clicked' },
+		reply: { activityType: 'inbound_replied' },
+		soft_bounce: { activityType: 'email_bounced', bounceType: 'soft' },
+		hard_bounce: { activityType: 'email_bounced', bounceType: 'hard' },
+		complaint: { activityType: 'email_complained' },
+	};
+
+	/**
+	 * Replay a timeline through the sync layer in `arrival` order, each activity
+	 * observed at `observedAt` (never before it happened), and return the contact
+	 * as the writer would have left it.
+	 */
+	function replayThroughSyncLayer(arrival: readonly EngagementActivity[]): ContactFields {
+		let contact: ContactFields = { createdAt: TENURE_STARTED_AT };
+		let clock = arrival[0]?.occurredAt ?? NOW;
+
+		for (const activity of arrival) {
+			clock = Math.max(clock, activity.occurredAt);
+			const writerArgs = WRITER_ARGS[activity.kind];
+			const patch = engagementPatchForActivity({
+				contact: asContact(contact),
+				activityType: writerArgs.activityType,
+				occurredAt: activity.occurredAt,
+				bounceType: writerArgs.bounceType,
+				now: clock,
+			});
+			if (patch === null) continue;
+			contact = { ...contact, ...patch };
 		}
-		const incremental = scoreFromState({
-			state,
-			stateAt,
+		return contact;
+	}
+
+	function projectToNow(contact: ContactFields) {
+		return scoreFromState({
+			state: contact.engagementScoreState ?? { raw: 0, softBounceRaw: 0, isSuppressed: false },
+			stateAt: contact.engagementScoreUpdatedAt ?? NOW,
+			tenureStartedAt: TENURE_STARTED_AT,
+			now: NOW,
+		});
+	}
+
+	const full = computeEngagementScore({
+		activities: TIMELINE,
+		tenureStartedAt: TENURE_STARTED_AT,
+		now: NOW,
+	});
+
+	it('agrees with a full recompute when activities arrive in order', () => {
+		const chronological = [...TIMELINE].sort((a, b) => a.occurredAt - b.occurredAt);
+		const projected = projectToNow(replayThroughSyncLayer(chronological));
+
+		expect(projected.score).toBe(full.score);
+		expect(projected.state.raw).toBeCloseTo(full.state.raw, 9);
+		expect(projected.state.softBounceRaw).toBeCloseTo(full.state.softBounceRaw, 9);
+	});
+
+	it('agrees with a full recompute when activities arrive out of order', () => {
+		// Newest first: every later fold is a LATE-ARRIVING activity, the case the
+		// hot path handles by folding forward to the accumulator's instant.
+		const newestFirst = [...TIMELINE].sort((a, b) => b.occurredAt - a.occurredAt);
+		const projected = projectToNow(replayThroughSyncLayer(newestFirst));
+
+		expect(projected.score).toBe(full.score);
+		expect(projected.state.raw).toBeCloseTo(full.state.raw, 9);
+	});
+
+	it('agrees with a full recompute after a redelivered webhook', () => {
+		const chronological = [...TIMELINE].sort((a, b) => a.occurredAt - b.occurredAt);
+		const withRedelivery: EngagementActivity[] = [];
+		for (const activity of chronological) {
+			withRedelivery.push(activity, { ...activity });
+		}
+		const projected = projectToNow(replayThroughSyncLayer(withRedelivery));
+
+		expect(projected.score).toBe(full.score);
+		expect(projected.state.raw).toBeCloseTo(full.state.raw, 9);
+	});
+
+	it('suppresses through the hot path exactly as the recompute does', () => {
+		const timeline: EngagementActivity[] = [
+			{ kind: 'click', occurredAt: NOW - 3 * DAY },
+			{ kind: 'hard_bounce', occurredAt: NOW - DAY },
+		];
+		const contact = replayThroughSyncLayer(timeline);
+		const recomputed = computeEngagementScore({
+			activities: timeline,
 			tenureStartedAt: TENURE_STARTED_AT,
 			now: NOW,
 		});
 
-		expect(incremental.score).toBe(full.score);
-		expect(incremental.state.raw).toBeCloseTo(full.state.raw, 9);
-		expect(incremental.state.softBounceRaw).toBeCloseTo(full.state.softBounceRaw, 9);
+		expect(contact.engagementScore).toBe(0);
+		expect(contact.engagementScoreState?.isSuppressed).toBe(true);
+		expect(contact.engagementScoreState?.suppressedAt).toBe(NOW - DAY);
+		expect(recomputed.score).toBe(0);
+		expect(recomputed.state.suppressedAt).toBe(NOW - DAY);
 	});
 });
