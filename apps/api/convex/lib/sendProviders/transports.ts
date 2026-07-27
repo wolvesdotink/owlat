@@ -308,6 +308,26 @@ export function resolveSendTransport(transportId: string): SendTransportRecord {
 	return record;
 }
 
+/**
+ * {@link resolveSendTransport} as a QUESTION rather than an assertion: `null`
+ * instead of a throw for an id this deployment does not configure.
+ *
+ * Dispatch must keep failing closed and loudly — that is what the throwing form
+ * is for. But a read path that merely wants to know something ABOUT a transport
+ * (its capabilities, its measurement quality) has no business using an
+ * exception as control flow, and every caller that did was hand-rolling the
+ * same try/catch plus an unchecked `as SendTransportId` cast. One definition,
+ * no cast: the string is validated, not asserted.
+ */
+export function tryResolveSendTransport(transportId: string): SendTransportRecord | null {
+	try {
+		return resolveSendTransport(transportId);
+	} catch (error) {
+		if (error instanceof SendTransportResolutionError) return null;
+		throw error;
+	}
+}
+
 /** Clears the `SEND_TRANSPORT_INSTANCES` parse cache. Tests only. */
 export function _resetSendTransportCacheForTests(): void {
 	cachedDeclarationSource = null;
