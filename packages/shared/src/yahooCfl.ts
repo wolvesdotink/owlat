@@ -44,18 +44,6 @@ export type YahooCflStoredState = (typeof YAHOO_CFL_STORED_STATES)[number];
 export const YAHOO_CFL_ENROLLMENT_STATES = [...YAHOO_CFL_STORED_STATES, 'lapsed'] as const;
 export type YahooCflEnrollmentState = (typeof YAHOO_CFL_ENROLLMENT_STATES)[number];
 
-export function isYahooCflStoredState(value: unknown): value is YahooCflStoredState {
-	return (
-		typeof value === 'string' && (YAHOO_CFL_STORED_STATES as readonly string[]).includes(value)
-	);
-}
-
-export function isYahooCflEnrollmentState(value: unknown): value is YahooCflEnrollmentState {
-	return (
-		typeof value === 'string' && (YAHOO_CFL_ENROLLMENT_STATES as readonly string[]).includes(value)
-	);
-}
-
 /** Where the operator performs the enrollment. Informational only. */
 export const YAHOO_CFL_ENROLLMENT_URL = 'https://senders.yahooinc.com/complaint-feedback-loop/';
 
@@ -74,6 +62,23 @@ export const YAHOO_CFL_LAPSE_SILENCE_MS = 90 * 24 * 60 * 60 * 1000;
  * suggests re-submitting. Yahoo's review is manual and typically days.
  */
 export const YAHOO_CFL_SUBMISSION_PATIENCE_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * How much `lastReportAt` must ADVANCE before a report is worth a write.
+ *
+ * D16 / ADR-0042: complaints arrive in bursts, and every report for a domain
+ * lands on the SAME enrollment row — patching it per complaint is exactly the
+ * single-document OCC contention ADR-0042 was written about, and on the complaint
+ * hot path a write conflict costs a complaint. The row exists only to prove
+ * liveness against a 90-day lapse window, so one write per hour carries all the
+ * information the derived verdict can use; the rest is coalesced away.
+ */
+export const YAHOO_CFL_REPORT_COALESCE_MS = 60 * 60 * 1000;
+
+/** The lapse / patience windows in whole days, for operator-facing copy. */
+function inDays(ms: number): number {
+	return Math.round(ms / (24 * 60 * 60 * 1000));
+}
 
 /** The persisted enrollment record, as a plain value the pure core operates on. */
 export interface YahooCflEnrollmentRecord {
@@ -152,9 +157,13 @@ export type YahooCflTransitionReason =
 	| 'report_recorded'
 	| 'reset'
 	| 'dkim_domain_not_ready'
+	/** The domain was deleted underneath the wizard. Not the operator's problem to fix. */
+	| 'domain_missing'
 	| 'not_submitted'
 	| 'already_enrolled'
-	| 'nothing_to_reset';
+	| 'nothing_to_reset'
+	/** A non-finite or non-positive `at`. Refused rather than absorbed. */
+	| 'invalid_timestamp';
 
 export interface YahooCflTransition {
 	record: YahooCflEnrollmentRecord;
@@ -180,6 +189,12 @@ export function applyYahooCflEvent(
 	event: YahooCflEvent,
 	precondition: YahooCflDkimPrecondition
 ): YahooCflTransition {
+	// A garbage clock never reaches the record. `Math.max` below would happily
+	// absorb `Infinity` or a negative value and pin the row permanently `enrolled`
+	// (or permanently un-lapsable), which would hold the yahoo complaint gate on
+	// the looser direct threshold forever. Refuse it instead — refusing is not an
+	// error, it is a reason (D2).
+	if (!Number.isFinite(event.at) || event.at <= 0) return unchanged(record, 'invalid_timestamp');
 	switch (event.kind) {
 		case 'submit': {
 			if (!yahooCflPreconditionMet(precondition)) {
@@ -214,7 +229,12 @@ export function applyYahooCflEvent(
 			// state is a function of exactly this timestamp.
 			const lastReportAt = Math.max(record.lastReportAt ?? 0, event.at);
 			if (record.state === 'enrolled') {
-				if (lastReportAt === record.lastReportAt) return unchanged(record, 'report_recorded');
+				// COALESCED (D16): an already-enrolled row is only patched once the
+				// liveness timestamp moves by a full coalesce window, so a burst of
+				// complaints for one domain is a single write instead of one per report.
+				if (lastReportAt - (record.lastReportAt ?? 0) < YAHOO_CFL_REPORT_COALESCE_MS) {
+					return unchanged(record, 'report_recorded');
+				}
 				return { record: { ...record, lastReportAt }, changed: true, reason: 'report_recorded' };
 			}
 			return {
@@ -302,7 +322,7 @@ export function yahooCflGuidedSteps(
 			id: 'confirm_enrollment',
 			title: 'Confirm Yahoo accepted the domain',
 			action: waitedTooLong
-				? 'Yahoo has not confirmed in two weeks. Re-submit the form — a submission that was never acknowledged is the usual cause.'
+				? `Yahoo has not confirmed in ${inDays(YAHOO_CFL_SUBMISSION_PATIENCE_MS)} days. Re-submit the form — a submission that was never acknowledged is the usual cause.`
 				: "Mark the enrollment confirmed once Yahoo's acceptance mail arrives.",
 			verification:
 				'The first Yahoo complaint that arrives confirms it automatically — you do not have to wait for it to mark this done.',
@@ -315,7 +335,7 @@ export function yahooCflGuidedSteps(
 				? "Re-check the enrollment at Yahoo's sender site — a dropped enrollment is the usual cause of a long silence."
 				: 'Nothing to do. Yahoo complaints land through the same ARF pipeline as every other feedback loop.',
 			verification: lapsed
-				? 'No Yahoo complaint has arrived in 90 days. The enrollment may have been dropped — re-check it at Yahoo.'
+				? `No Yahoo complaint has arrived in ${inDays(YAHOO_CFL_LAPSE_SILENCE_MS)} days. The enrollment may have been dropped — re-check it at Yahoo.`
 				: record.lastReportAt !== undefined
 					? 'Yahoo complaints are being attributed to this domain.'
 					: 'A Yahoo complaint will appear on the delivery screens with source "yahoo".',
@@ -381,6 +401,14 @@ export interface YahooComplaintSubstitution {
  *
  * A `lapsed` enrollment is treated exactly like no enrollment — the point of the
  * derived lapse is that we can no longer trust the feed to be live.
+ *
+ * SCOPE NOTE (D3): P3-8 owns the ONE substitution table for every gate. When it
+ * lands it SUBSUMES this function, and `YAHOO_CFL_COMPLAINT_THRESHOLD` /
+ * `YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD` move into it — they must not be
+ * re-declared there, or the controller and this wizard would end up with two
+ * disagreeing definitions of the yahoo complaint gate. Until then this is the
+ * only definition, and it exists so the wizard can state the live source
+ * honestly rather than showing a blank gate.
  */
 export function yahooComplaintSubstitution(input: {
 	enrollmentState: YahooCflEnrollmentState;
