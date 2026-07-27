@@ -6,6 +6,7 @@ import { hostname } from 'os';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
 import { isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
+import { normalizeVerpKey } from '@owlat/shared/verp';
 import type { IpPoolConfig, DkimKeyConfig } from './types.js';
 import { assertMtaSecretStrength } from './lib/secretBox.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
@@ -272,7 +273,11 @@ export function loadConfig(): MtaConfig {
 	// if it is absent or too weak rather than sealing under a guessable key.
 	const mtaSecret = requiredEnv('MTA_SECRET');
 	assertMtaSecretStrength(mtaSecret);
-	const bounceVerpKey = requiredEnv('BOUNCE_VERP_KEY');
+	// Validate the key the SIGNERS will actually use: `normalizeVerpKey` trims it
+	// on both sides of the wire, so a whitespace-padded value must not be able to
+	// clear the 32-byte floor here and then be rejected — or, worse, silently
+	// disagree with Convex's copy — at signing time.
+	const bounceVerpKey = normalizeVerpKey(requiredEnv('BOUNCE_VERP_KEY')) ?? '';
 	if (isKnownPlaceholderSecret(bounceVerpKey)) {
 		throw new Error('BOUNCE_VERP_KEY must be a generated secret, not a placeholder');
 	}

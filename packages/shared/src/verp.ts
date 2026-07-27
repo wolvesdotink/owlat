@@ -45,9 +45,32 @@ export const VERP_LOCAL_PART_PREFIX = 'bounce';
  */
 export const VERP_KEY_MIN_BYTES = 32;
 
-/** Is this a key both sides will accept? A short/typo'd copy is not. */
+/**
+ * Normalise a configured VERP signing key: trim surrounding whitespace, treat
+ * blank as unset.
+ *
+ * ONE definition, because the key is ONE secret with two independent readers
+ * that must derive the SAME HMAC key from the SAME configured value. A quoted
+ * `.env` value, a docker-compose `environment:` entry or a dashboard paste with
+ * a trailing newline all carry surrounding whitespace; if one side trimmed it
+ * and the other did not, the two sides would sign with different keys and every
+ * relay-stamped token would fail verification at the MTA — failing safe (the
+ * transport merely grades unsupported) but for an invisible reason.
+ */
+export function normalizeVerpKey(key: string | undefined): string | undefined {
+	const normalized = key?.trim();
+	return normalized !== undefined && normalized.length > 0 ? normalized : undefined;
+}
+
+/**
+ * Is this a key both sides will accept? A short/typo'd copy is not.
+ *
+ * Measured AFTER {@link normalizeVerpKey}, so surrounding whitespace can never
+ * pad a too-short key over the floor on one side of the wire.
+ */
 export function isUsableVerpKey(key: string | undefined): key is string {
-	return key !== undefined && Buffer.byteLength(key, 'utf8') >= VERP_KEY_MIN_BYTES;
+	const normalized = normalizeVerpKey(key);
+	return normalized !== undefined && Buffer.byteLength(normalized, 'utf8') >= VERP_KEY_MIN_BYTES;
 }
 
 /**
@@ -97,9 +120,13 @@ function macsEqual(a: string, b: string): boolean {
 export function buildVerpAddress(
 	messageId: string,
 	returnPathDomain: string,
-	key: string | undefined,
+	rawKey: string | undefined,
 	now: number
 ): string {
+	// Normalise HERE as well as at the config seams: this is the one place both
+	// sides' HMAC input is assembled, so it is the one place that can guarantee
+	// a whitespace-padded copy of the same secret signs identically.
+	const key = normalizeVerpKey(rawKey);
 	const encoded = Buffer.from(messageId).toString('base64url');
 	if (!key) {
 		return `${VERP_LOCAL_PART_PREFIX}+${encoded}@${returnPathDomain}`;
@@ -116,9 +143,10 @@ export function buildVerpAddress(
  */
 export function parseVerpAddress(
 	address: string,
-	key: string | undefined,
+	rawKey: string | undefined,
 	now: number
 ): string | null {
+	const key = normalizeVerpKey(rawKey);
 	// Grammar: bounce+<encodedId>[+<mac>]@… — `+` separates id and mac, so the
 	// encodedId capture must be `+`-free; the mac (when present) follows it.
 	const match = address.match(/^bounce\+([A-Za-z0-9_-]+)(?:\+([A-Za-z0-9_-]+))?@/);

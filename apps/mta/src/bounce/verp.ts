@@ -31,6 +31,7 @@
 
 import {
 	buildVerpAddress as buildVerpAddressWithKey,
+	normalizeVerpKey,
 	parseVerpAddress as parseVerpAddressWithKey,
 } from '@owlat/shared/verp';
 
@@ -42,8 +43,12 @@ import {
  * production startup rejects that configuration.
  */
 function resolveVerpKey(explicit?: string): string | undefined {
-	const key = explicit ?? process.env['BOUNCE_VERP_KEY'];
-	return key && key.length > 0 ? key : undefined;
+	// Normalised through the SHARED helper: Convex projects
+	// `MTA_BOUNCE_VERP_KEY` through the same one, so a `.env` value carrying a
+	// trailing newline or surrounding quotes-stripped whitespace resolves to the
+	// SAME HMAC key on both sides. Without this, every relay-stamped token would
+	// fail verification here — safely, but invisibly.
+	return normalizeVerpKey(explicit ?? process.env['BOUNCE_VERP_KEY']);
 }
 
 /**

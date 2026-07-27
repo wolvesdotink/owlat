@@ -7,7 +7,12 @@
  * a parameter.
  */
 
-import { buildVerpAddress, isUsableVerpKey, normalizeReturnPathDomain } from '@owlat/shared/verp';
+import {
+	buildVerpAddress,
+	isUsableVerpKey,
+	normalizeReturnPathDomain,
+	normalizeVerpKey,
+} from '@owlat/shared/verp';
 
 /** Inputs to the relay envelope-sender decision. All explicit — no clock, no env. */
 export interface RelayEnvelopeSenderInput {
@@ -50,7 +55,7 @@ export interface RelayEnvelopeSender {
  */
 export function resolveRelayEnvelopeSender(input: RelayEnvelopeSenderInput): RelayEnvelopeSender {
 	const domain = normalizeReturnPathDomain(input.returnPathDomain);
-	const key = input.verpKey?.trim();
+	const key = normalizeVerpKey(input.verpKey);
 	if (!input.customReturnPath || !domain || !isUsableVerpKey(key) || input.messageId.length === 0) {
 		return { envelopeFrom: input.composedEnvelopeFrom, isVerp: false };
 	}
