@@ -27,6 +27,11 @@ import type { InboundEventOf } from './types';
  *  - PRODUCTION ONLY. Member-preview mail is deliberately excluded from every
  *    measurement counter (`applyFeedbackProvenancePolicy` in the MTA), so preview
  *    traffic must never mark an enrollment live or hold confidence at `high`.
+ *
+ * It also CANNOT create an enrollment. Every fact reachable here is
+ * report-supplied, so `applyYahooCflEvent` refuses a report against a
+ * `not_started` domain: the observation confirms and refreshes an enrollment the
+ * operator started, and nothing else.
  */
 export async function observeYahooCflReport(
 	ctx: ActionCtx,

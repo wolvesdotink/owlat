@@ -247,6 +247,13 @@ export const resetEnrollment = authedMutation({
  * is a silent no-op, never a throw, because it runs on the complaint path and
  * a complaint must always reach the blocklist regardless of what this records.
  *
+ * A report can only ever CONFIRM an enrollment the operator started: every fact
+ * this path could gate on arrives in the report itself, so the pure core refuses
+ * a `not_started` domain (`reason: 'not_submitted'`) and no row is created here.
+ * Otherwise one crafted message to the FBL address would manufacture an
+ * enrollment, and with it the looser direct complaint threshold at
+ * `confidence: 'high'` for a domain with no Yahoo feed at all.
+ *
  * This write is also the whole of the re-check: `lapsed` is derived from
  * `lastReportAt`, so a report both records the complaint and un-lapses the cell
  * with no second pass, no cron, and no chance of a stale verdict. The write is

@@ -222,11 +222,29 @@ export function applyYahooCflEvent(
 			};
 		}
 		case 'report_observed': {
-			// A report is ground truth: it proves Yahoo is sending us CFL mail for
-			// this domain regardless of what the operator told us. Keep the newest
-			// observation; an out-of-order replay must never rewind the clock. A
-			// report also silently un-lapses the derived state, because the derived
-			// state is a function of exactly this timestamp.
+			// OPERATOR INTENT IS REQUIRED BEFORE A REPORT MAY PROMOTE ANYTHING.
+			//
+			// Everything this branch could gate on is REPORT-SUPPLIED, not
+			// authenticated: the source-ISP token is derived from the report's own
+			// `User-Agent` and `Reported-Domain` is the report's own RFC 5965 field.
+			// The only real authentication upstream is a VERP-attributed
+			// `originalMessageId`, and every recipient of every send already holds a
+			// valid one in their copy's Return-Path. So a single crafted message to
+			// the FBL address would otherwise MANUFACTURE an enrollment for a domain
+			// the operator never enrolled — and with it `confidence: 'high'` and the
+			// looser direct complaint threshold, silencing the yahoo cell's complaint
+			// gate with a signal that reads ~0 forever (the confident wrong signal
+			// D14 exists to forbid).
+			//
+			// A report may therefore CONFIRM and REFRESH an enrollment, never create
+			// one. `not_started` is refused — which is not an error, it is a reason
+			// (D2) — so no row is ever written by an internet-triggered path. The
+			// step-4 promise ("the first Yahoo complaint that arrives confirms it
+			// automatically") is attached to `awaiting_yahoo`, and keeps working.
+			if (record.state === 'not_started') return unchanged(record, 'not_submitted');
+			// Keep the newest observation; an out-of-order replay must never rewind
+			// the clock. A report also silently un-lapses the derived state, because
+			// the derived state is a function of exactly this timestamp.
 			const lastReportAt = Math.max(record.lastReportAt ?? 0, event.at);
 			if (record.state === 'enrolled') {
 				// COALESCED (D16): an already-enrolled row is only patched once the
@@ -379,8 +397,16 @@ export interface YahooComplaintSubstitution {
 	thresholdRate: number;
 	confidence: 'high' | 'medium' | 'low';
 	/**
-	 * Plain-language caveat shown on the cell. Present whenever confidence is
-	 * below `high`; it is a CAVEAT, never a warning and never a nag.
+	 * The confidence sentence shown on the cell, ALWAYS present — including the
+	 * `high` branch. One family of operator copy with ONE home: a UI that had to
+	 * supply the `high` sentence itself would be a second definition of the same
+	 * fact, free to drift from this one.
+	 */
+	confidenceNote: string;
+	/**
+	 * The optional follow-on sentence suggesting how to IMPROVE the measurement.
+	 * Present only when there is something to suggest (i.e. confidence is below
+	 * `high`). It is a suggestion, never a warning and never a nag.
 	 */
 	caveat?: string;
 	/**
@@ -395,8 +421,9 @@ export interface YahooComplaintSubstitution {
  *
  * Enrollment present → Yahoo's own CFL (high confidence). Otherwise fall back
  * to the RFC 9477 CFBL-Address feed when the send carried one (medium), and
- * failing that to the unsubscribe-rate proxy at the tightened threshold (low,
- * with the caveat spelled out). There is no fourth branch: the gate ALWAYS has
+ * failing that to the unsubscribe-rate proxy at the tightened threshold (low).
+ * The confidence sentence is ALWAYS returned — a UI that had to supply the `high`
+ * one itself would be a second home for the same copy, free to drift. There is no fourth branch: the gate ALWAYS has
  * a source, so absence can never surface as an error or an unresolvable warning.
  *
  * A `lapsed` enrollment is treated exactly like no enrollment — the point of the
@@ -419,6 +446,8 @@ export function yahooComplaintSubstitution(input: {
 			source: 'yahoo_cfl',
 			thresholdRate: YAHOO_CFL_COMPLAINT_THRESHOLD,
 			confidence: 'high',
+			confidenceNote:
+				'Measurement confidence: high — Yahoo complaints for this domain are measured directly.',
 			isBlocking: false,
 		};
 	}
@@ -427,8 +456,10 @@ export function yahooComplaintSubstitution(input: {
 			source: 'cfbl_address',
 			thresholdRate: YAHOO_CFL_COMPLAINT_THRESHOLD,
 			confidence: 'medium',
+			confidenceNote:
+				'Measurement confidence: medium — Yahoo complaints are counted from the CFBL-Address feed.',
 			caveat:
-				'Measurement confidence: medium — Yahoo complaints are counted from the CFBL-Address feed. Enrolling this domain in Yahoo’s Complaint Feedback Loop would measure them directly.',
+				'Enrolling this domain in Yahoo’s Complaint Feedback Loop would measure complaints directly.',
 			isBlocking: false,
 		};
 	}
@@ -436,8 +467,10 @@ export function yahooComplaintSubstitution(input: {
 		source: 'unsubscribe_rate_proxy',
 		thresholdRate: YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD,
 		confidence: 'low',
+		confidenceNote:
+			'Measurement confidence: low — no Yahoo complaint feed, so unsubscribes stand in for complaints at a tighter threshold.',
 		caveat:
-			'Measurement confidence: low — no Yahoo complaint feed, so unsubscribes stand in for complaints at a tighter threshold. Enrolling this domain in Yahoo’s Complaint Feedback Loop would measure complaints directly.',
+			'Enrolling this domain in Yahoo’s Complaint Feedback Loop would measure complaints directly.',
 		isBlocking: false,
 	};
 }
