@@ -169,6 +169,10 @@
 			"types": "./src/emailLimits.ts",
 			"import": "./src/emailLimits.ts"
 		},
+		"./engagementBands": {
+			"types": "./src/engagementBands.ts",
+			"import": "./src/engagementBands.ts"
+		},
 		"./reputation": {
 			"types": "./src/reputation.ts",
 			"import": "./src/reputation.ts"
