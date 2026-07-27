@@ -73,7 +73,10 @@ describe('sendLifecycle.transition — worker path', () => {
 		let campaignId: Id<'campaigns'>;
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsSent: 0 }));
+			campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({ statsSent: 0 })
+			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -184,7 +187,10 @@ describe('sendLifecycle.transition — delivered', () => {
 		let campaignId: Id<'campaigns'>;
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsDelivered: 0 }));
+			campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({ statsDelivered: 0 })
+			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -223,7 +229,10 @@ describe('sendLifecycle.transition — opened/clicked', () => {
 		let campaignId: Id<'campaigns'>;
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsOpened: 0 }));
+			campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({ statsOpened: 0 })
+			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -263,7 +272,10 @@ describe('sendLifecycle.transition — opened/clicked', () => {
 		let campaignId: Id<'campaigns'>;
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsClicked: 0 }));
+			campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({ statsClicked: 0 })
+			);
 			const contactId = await ctx.db.insert('contacts', createTestContact());
 			sendId = await ctx.db.insert(
 				'emailSends',
@@ -480,7 +492,10 @@ describe('sendLifecycle.transition — bounced', () => {
 		let campaignId: Id<'campaigns'>;
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
-			campaignId = await ctx.db.insert('campaigns', createTestCampaign({ statsBounced: 0 }));
+			campaignId = await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({ statsBounced: 0 })
+			);
 			const contactId = await ctx.db.insert(
 				'contacts',
 				createTestContact({ email: 'dup@example.com' })
@@ -541,7 +556,10 @@ describe('sendLifecycle.transition — soft-bounce suppression', () => {
 				'campaigns',
 				createTestCampaign({ statsBounced: 0, statsSoftBounced: 0 })
 			);
-			contactId = await ctx.db.insert('contacts', createTestContact({ email }));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email })
+			);
 		});
 
 		// Helper: fresh send (one per delivery attempt) to the SAME recipient,
@@ -665,7 +683,10 @@ describe('sendLifecycle.transition — soft-bounce suppression', () => {
 				'campaigns',
 				createTestCampaign({ statsBounced: 0, statsHardBounced: 0, statsSoftBounced: 0 })
 			);
-			const contactId = await ctx.db.insert('contacts', createTestContact({ email }));
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email })
+			);
 			sendId = await ctx.db.insert(
 				'emailSends',
 				createTestEmailSend({
@@ -835,7 +856,10 @@ describe('sendLifecycle.transition — complained', () => {
 		let sendId: Id<'emailSends'>;
 		await t.run(async (ctx) => {
 			campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-			contactId = await ctx.db.insert('contacts', createTestContact({ email: 'spam@example.com' }));
+			contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'spam@example.com' })
+			);
 			sendId = await ctx.db.insert(
 				'emailSends',
 				createTestEmailSend({
@@ -1179,7 +1203,10 @@ describe('async-DSN attribution end-to-end (PR-01)', () => {
 
 		await t.run(async (ctx) => {
 			const campaignId = await ctx.db.insert('campaigns', createTestCampaign());
-			const contactId = await ctx.db.insert('contacts', createTestContact({ email: bouncedEmail }));
+			const contactId = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: bouncedEmail })
+			);
 			emailSendId = await ctx.db.insert(
 				'emailSends',
 				createTestEmailSend({
