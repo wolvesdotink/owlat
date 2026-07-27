@@ -21,6 +21,7 @@
 import { v, type Infer } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { authedAction } from '../lib/authedFunctions';
+import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { encryptSecret, decryptSecret } from '../lib/credentialCrypto';
@@ -144,6 +145,32 @@ export const connect = authedAction({
 			internal.mail.externalAccounts._connectInternal,
 			toConnectFields(args)
 		);
+	},
+});
+
+/**
+ * Connect a DELIVERABILITY SEED mailbox: validate -> encrypt -> persist, with
+ * `purpose: 'seed'` and the mailbox provider recorded.
+ *
+ * Same validation and the same sealed-credential envelope as `connect` — a
+ * seed is an ordinary external account that happens to exist so Owlat can mail
+ * itself and see where the copy lands. Entirely optional: an install with zero
+ * seeds sends normally and every delivery screen renders cleanly (D2).
+ */
+// authz: seed mailbox connect — authedAction (authenticated member) +
+// assertExternalEnabled gate; persistence in internal._connectSeedInternal.
+export const connectSeed = authedAction({
+	args: { ...credentialArgs, seedProvider: destinationProviderValidator },
+	handler: async (
+		ctx,
+		args
+	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
+		await assertExternalEnabled(ctx);
+		validateShape(args);
+		return await ctx.runMutation(internal.mail.externalAccounts._connectSeedInternal, {
+			...toConnectFields(args),
+			seedProvider: args.seedProvider,
+		});
 	},
 });
 

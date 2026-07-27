@@ -52,6 +52,8 @@ export async function insertExternalAccountRow(
 		mailboxId: Id<'mailboxes'>;
 		address: string;
 		scope?: 'shared';
+		/** Deliverability SEED mailbox (not a user inbox). Tagged at connect time. */
+		seed?: { seedProvider: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other' };
 		auditPrefix?: string;
 		fields: ExternalConnectFields;
 		now: number;
@@ -63,6 +65,7 @@ export async function insertExternalAccountRow(
 		organizationId: params.organizationId,
 		mailboxId: params.mailboxId,
 		...(params.scope ? { scope: params.scope } : {}),
+		...(params.seed ? { purpose: 'seed' as const, seedProvider: params.seed.seedProvider } : {}),
 		imapHost: fields.imapHost,
 		imapPort: fields.imapPort,
 		isImapSecure: fields.isImapSecure,

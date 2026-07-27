@@ -41,6 +41,7 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
 import { insertExternalAccountRow, applyCredentialRotation } from './externalAccountShared';
 import { markOnboardingStep } from '../auth/userOnboarding';
+import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -54,7 +55,10 @@ const PURGE_CHUNK = 200;
 
 /** A shared account backs a team inbox; it is never the caller's PERSONAL account. */
 function isPersonalAccount(a: Doc<'externalMailAccounts'>): boolean {
-	return a.scope !== 'shared';
+	// A deliverability SEED mailbox is org infrastructure the operator connects
+	// so Owlat can mail itself: it is never the caller's personal inbox, so it
+	// must not mask one, block a connect, or appear on a personal surface.
+	return a.scope !== 'shared' && a.purpose !== 'seed';
 }
 
 /**
@@ -381,6 +385,53 @@ export const _updateCredentialsInternal = internalMutation({
 			await ctx.db.patch(account.mailboxId, { status: 'active', updatedAt: now });
 		}
 		return { mailboxId: account.mailboxId, externalAccountId: account._id };
+	},
+});
+
+/**
+ * Connect a DELIVERABILITY SEED mailbox — step 1 of the placement probe.
+ *
+ * Deliberately the same table, the same sealed-credential envelope and the
+ * same IMAP client as every other external account (D4/no second credential
+ * model); it differs only in what it is FOR. Unlike `_connectInternal` there
+ * is no one-live-per-user guard: an operator connects a handful of seeds, and
+ * a seed is not a personal inbox. Zero seed accounts stays a fully supported
+ * configuration (D2) — this is opt-in, never a setup step.
+ */
+export const _connectSeedInternal = internalMutation({
+	args: { ...connectFieldsValidator, seedProvider: destinationProviderValidator },
+	handler: async (ctx, args) => {
+		const s = await getBetterAuthSessionWithRole(ctx);
+		if (!s || !s.activeOrganizationId || !s.role) throwForbidden('Not authenticated');
+		const address = canonicalAddress(args.emailAddress);
+		const [, domain] = address.split('@');
+		if (!domain) throwInvalidInput('Invalid email address');
+
+		const existingMailbox = await resolveDeliverableMailbox(ctx, address);
+		if (existingMailbox) {
+			throwAlreadyExists(`A mailbox for ${address} already exists.`);
+		}
+
+		const now = Date.now();
+		const mailboxId = await provisionMailbox(ctx, {
+			userId: s.userId,
+			organizationId: s.activeOrganizationId,
+			address,
+			domain,
+			displayName: args.emailAddress,
+			kind: 'external',
+		});
+		const accountId = await insertExternalAccountRow(ctx, {
+			userId: s.userId,
+			organizationId: s.activeOrganizationId,
+			mailboxId,
+			address,
+			seed: { seedProvider: args.seedProvider },
+			auditPrefix: 'deliverability seed ',
+			fields: args,
+			now,
+		});
+		return { mailboxId, externalAccountId: accountId };
 	},
 });
 
