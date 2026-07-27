@@ -380,7 +380,12 @@ describe('sunset sweep — the per-tick suppression ceiling', () => {
 		expect(summary?.details?.['suppressed']).toBe(1);
 		expect(summary?.details?.['deferredSuppressions']).toBe(1);
 		expect(summary?.details?.['isSuppressionCeilingHit']).toBe(true);
-		expect(String(summary?.details?.['message'])).toMatch(/Auto-suppression paused/);
+		// The message is worded off the ACTUAL counts, not off the ceiling flag: it
+		// states what this tick did, what it held back, and what the ceiling was.
+		const message = String(summary?.details?.['message']);
+		expect(message).toMatch(/1 contact\(s\) auto-suppressed/);
+		expect(message).toMatch(/1 more were held back/);
+		expect(message).toMatch(/ceiling of 1 suppressions/);
 	});
 
 	it('summarises an ordinary suppressing tick too, and stays silent on a quiet one', async () => {
@@ -599,6 +604,44 @@ describe('sunset sweep — hostile arguments', () => {
 		expect(result.deferredSuppressions).toBe(1);
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(0);
+		});
+	});
+
+	/**
+	 * ABSENT IS NOT UNREADABLE. The registered cron calls this mutation with NO
+	 * arguments at all, so if "argument absent" were folded into the safe
+	 * fallback for `suppressedSoFar` (the ceiling), every tick in production
+	 * would start with the budget already spent and auto-suppression would be
+	 * dead everywhere while reporting a ceiling hit. This is the fixture that
+	 * pins the distinction.
+	 */
+	it('suppresses normally when called with no arguments at all, like the cron does', async () => {
+		const t = harness();
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 2; i += 1) {
+				const id = await ctx.db.insert(
+					'contacts',
+					createTestContact({
+						email: `cron-default-${i}@example.com`,
+						createdAt: agoReal(500),
+						updatedAt: agoReal(500),
+					})
+				);
+				await ctx.db.insert('contactActivities', {
+					contactId: id,
+					activityType: 'email_sent',
+					occurredAt: agoReal(480),
+				});
+			}
+		});
+
+		const result = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {});
+
+		expect(result.suppressed).toBe(2);
+		expect(result.deferredSuppressions).toBe(0);
+		expect(result.isSuppressionCeilingHit).toBe(false);
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(2);
 		});
 	});
 });

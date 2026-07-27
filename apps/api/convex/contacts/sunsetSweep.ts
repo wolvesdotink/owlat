@@ -66,17 +66,34 @@ export const SUNSET_CONTACTS_PER_TICK = SUNSET_BATCH_SIZE * SUNSET_MAX_BATCHES;
 export const SUNSET_MAX_SUPPRESSIONS_PER_TICK = 100;
 
 /**
- * ONE statement of how a caller-supplied bound is coerced: clamped into
- * `[min, max]`, and — this is the part that matters — replaced by `fallback`
- * when it is not a finite number. `Math.min(NaN, n)` is `NaN`, and a `NaN`
- * batch size reaches `.take()` as undefined behaviour inside a mutation that
- * must not throw (a rollback here re-presents the identical head next tick and
- * wedges the chain permanently). Stated once so the four bounds cannot drift.
+ * ONE statement of how a caller-supplied bound is coerced. THE TWO FAILURE
+ * MODES ARE DIFFERENT AND MUST NOT BE COLLAPSED:
+ *
+ *  - ABSENT (`undefined`) is the ORDINARY case — the hourly cron calls this
+ *    mutation with no arguments at all — and means "use the argument's true
+ *    default". Substituting a *safe* value here would be catastrophic for
+ *    `suppressedSoFar`, whose safe value is the ceiling: every first tick would
+ *    start with the budget already spent and the engine would suppress nothing,
+ *    forever, while reporting a ceiling hit.
+ *  - UNREADABLE (present but not a finite number) is the adversarial case and
+ *    takes the SAFE value: `Math.min(NaN, n)` is `NaN`, and a `NaN` batch size
+ *    reaches `.take()` as undefined behaviour inside a mutation that must not
+ *    throw (a rollback here re-presents the identical head next tick and wedges
+ *    the chain permanently); an unreadable count of what earlier batches already
+ *    suppressed must read as "budget spent", never as "none".
+ *
+ * Stated once so the four bounds cannot drift.
  */
-function clampArg(value: number | undefined, fallback: number, min: number, max: number): number {
-	const candidate = value ?? fallback;
-	if (!Number.isFinite(candidate)) return fallback;
-	return Math.max(min, Math.min(candidate, max));
+function clampArg(
+	value: number | undefined,
+	whenAbsent: number,
+	whenUnreadable: number,
+	min: number,
+	max: number
+): number {
+	if (value === undefined) return whenAbsent;
+	if (!Number.isFinite(value)) return whenUnreadable;
+	return Math.max(min, Math.min(value, max));
 }
 
 // ─── The sweep ──────────────────────────────────────────────────────────────
@@ -125,23 +142,34 @@ export const sweepSunsetPolicy = internalMutation({
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		const staleBefore = now - SUNSET_STALE_MS;
-		const batchSize = clampArg(args.batchSize, SUNSET_BATCH_SIZE, 1, SUNSET_BATCH_SIZE);
+		const batchSize = clampArg(
+			args.batchSize,
+			SUNSET_BATCH_SIZE,
+			SUNSET_BATCH_SIZE,
+			1,
+			SUNSET_BATCH_SIZE
+		);
 		const batchesRemaining = clampArg(
 			args.batchesRemaining,
+			SUNSET_MAX_BATCHES,
 			SUNSET_MAX_BATCHES,
 			0,
 			SUNSET_MAX_BATCHES
 		);
-		// Fallback is the CEILING, not zero: an unreadable count of what earlier
-		// batches already suppressed must read as "budget spent", never as "none".
+		// ABSENT means this is the HEAD of the chain: nothing has been suppressed
+		// yet, so the true default is 0. Only an UNREADABLE value falls back to the
+		// ceiling — a count of what earlier batches already did that we cannot read
+		// must be treated as "budget spent", never as "none".
 		const suppressedSoFar = clampArg(
 			args.suppressedSoFar,
+			0,
 			SUNSET_MAX_SUPPRESSIONS_PER_TICK,
 			0,
 			SUNSET_MAX_SUPPRESSIONS_PER_TICK
 		);
 		const maxSuppressions = clampArg(
 			args.maxSuppressions,
+			SUNSET_MAX_SUPPRESSIONS_PER_TICK,
 			SUNSET_MAX_SUPPRESSIONS_PER_TICK,
 			0,
 			SUNSET_MAX_SUPPRESSIONS_PER_TICK
@@ -302,11 +330,19 @@ export const sweepSunsetPolicy = internalMutation({
 					deferredSuppressions,
 					suppressionCeiling: maxSuppressions,
 					isSuppressionCeilingHit,
+					// WORDED OFF THE COUNTS, NOT OFF THE FLAG. A tick that suppressed
+					// nothing and merely refused one contact must not tell the operator
+					// that a hundred suppressions just happened — the ceiling can be hit
+					// with zero suppressions in this tick whenever an earlier batch in the
+					// same chain spent the budget, or a caller passed a small ceiling.
 					message: isSuppressionCeilingHit
-						? `Auto-suppression paused: this sweep reached its ceiling of ` +
-							`${maxSuppressions} suppressions. Review the suppressed ` +
-							`contacts and the sunset policy before the next hourly sweep resumes; ` +
-							`restore any contact from the suppression list in one action.`
+						? `${suppressed} contact(s) auto-suppressed after the configured quiet ` +
+							`window; ${deferredSuppressions} more were held back because this ` +
+							`sweep reached its ceiling of ${maxSuppressions} suppressions ` +
+							`(${suppressedSoFar + suppressed} used so far this sweep). The held-back ` +
+							`contacts are retried on the next hourly sweep. Review the suppressed ` +
+							`contacts and the sunset policy first; any contact can be restored ` +
+							`from the suppression list in one action.`
 						: `${suppressed} contact(s) auto-suppressed after the configured quiet ` +
 							`window. Review or restore them from the suppression list.`,
 				},
