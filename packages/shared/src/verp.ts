@@ -21,6 +21,11 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { normalizeReturnPathDomain, normalizeVerpKey } from './verpNormalize';
+
+// Re-exported so every existing `@owlat/shared/verp` import site keeps working
+// while the crypto-free definitions stay out of the browser bundle's graph.
+export { normalizeReturnPathDomain, normalizeVerpKey };
 
 /** Length (chars) of the base64url-encoded truncated HMAC carried in the token. */
 export const VERP_MAC_B64URL_LEN = 14; // ~84 bits
@@ -46,23 +51,6 @@ export const VERP_LOCAL_PART_PREFIX = 'bounce';
 export const VERP_KEY_MIN_BYTES = 32;
 
 /**
- * Normalise a configured VERP signing key: trim surrounding whitespace, treat
- * blank as unset.
- *
- * ONE definition, because the key is ONE secret with two independent readers
- * that must derive the SAME HMAC key from the SAME configured value. A quoted
- * `.env` value, a docker-compose `environment:` entry or a dashboard paste with
- * a trailing newline all carry surrounding whitespace; if one side trimmed it
- * and the other did not, the two sides would sign with different keys and every
- * relay-stamped token would fail verification at the MTA — failing safe (the
- * transport merely grades unsupported) but for an invisible reason.
- */
-export function normalizeVerpKey(key: string | undefined): string | undefined {
-	const normalized = key?.trim();
-	return normalized !== undefined && normalized.length > 0 ? normalized : undefined;
-}
-
-/**
  * Is this a key both sides will accept? A short/typo'd copy is not.
  *
  * Measured AFTER {@link normalizeVerpKey}, so surrounding whitespace can never
@@ -71,17 +59,6 @@ export function normalizeVerpKey(key: string | undefined): string | undefined {
 export function isUsableVerpKey(key: string | undefined): key is string {
 	const normalized = normalizeVerpKey(key);
 	return normalized !== undefined && Buffer.byteLength(normalized, 'utf8') >= VERP_KEY_MIN_BYTES;
-}
-
-/**
- * Normalise a configured return-path domain: trim, drop a trailing root dot
- * (an absolute FQDN is legal in DNS config and illegal in an address), and
- * treat blank as unset. One definition — the MTA, the relay adapter and the
- * capability probe must all build the SAME address for the same configuration.
- */
-export function normalizeReturnPathDomain(value: string | undefined): string | undefined {
-	const normalized = value?.trim().replace(/\.$/, '');
-	return normalized !== undefined && normalized.length > 0 ? normalized : undefined;
 }
 
 /** Current coarse time bucket (UTC day number). */

@@ -7,7 +7,7 @@
  */
 
 import { parseIpAddress } from './ipAddress';
-import { normalizeVerpKey } from './verp';
+import { normalizeVerpKey } from './verpNormalize';
 
 export function assertValidOutboundEhloHostname(value: string, source: string): void {
 	const trimmed = value.trim();
