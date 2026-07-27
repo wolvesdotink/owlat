@@ -275,6 +275,7 @@ import type * as delivery_sendLifecycle_deliveryObservation from "../delivery/se
 import type * as delivery_sendLifecycle_effects from "../delivery/sendLifecycle/effects.js";
 import type * as delivery_sendLifecycle_feedbackReducers from "../delivery/sendLifecycle/feedbackReducers.js";
 import type * as delivery_sendLifecycle_lookups from "../delivery/sendLifecycle/lookups.js";
+import type * as delivery_sendLifecycle_outcomeAccounting from "../delivery/sendLifecycle/outcomeAccounting.js";
 import type * as delivery_sendLifecycle_reducers from "../delivery/sendLifecycle/reducers.js";
 import type * as delivery_sendLifecycle_types from "../delivery/sendLifecycle/types.js";
 import type * as delivery_sends from "../delivery/sends.js";
@@ -1071,6 +1072,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/sendLifecycle/effects": typeof delivery_sendLifecycle_effects;
   "delivery/sendLifecycle/feedbackReducers": typeof delivery_sendLifecycle_feedbackReducers;
   "delivery/sendLifecycle/lookups": typeof delivery_sendLifecycle_lookups;
+  "delivery/sendLifecycle/outcomeAccounting": typeof delivery_sendLifecycle_outcomeAccounting;
   "delivery/sendLifecycle/reducers": typeof delivery_sendLifecycle_reducers;
   "delivery/sendLifecycle/types": typeof delivery_sendLifecycle_types;
   "delivery/sends": typeof delivery_sends;

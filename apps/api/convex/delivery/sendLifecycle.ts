@@ -18,7 +18,12 @@ import {
 	type TransitionInput,
 	type TransitionOutcome,
 } from './sendLifecycle/reducers';
-import { applyEffects, transportOutcomeEffect, type Effect } from './sendLifecycle/effects';
+import { applyEffects, type Effect } from './sendLifecycle/effects';
+import {
+	hasOutboundAttemptEvidence,
+	queuedTerminalSendAccountingEffects,
+	transitionOutcomeEffects,
+} from './sendLifecycle/outcomeAccounting';
 import {
 	canAttributeRemoteAcceptance,
 	reduceDeliveryObservation,
@@ -32,7 +37,6 @@ import {
 	senderDomainFor,
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
-import { transportOutcomeEventForTransition } from '../analytics/transportOutcomeSummary';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
 
 // ============================================================================
@@ -44,9 +48,11 @@ import { mirrorEmailSendWrite } from '../unifiedMessages';
 // the 7 pure reducers and the legal-edges DAG live in `./sendLifecycle/reducers`
 // (no `ctx`, directly unit-testable); the effect runner lives in
 // `./sendLifecycle/effects`; the DB lookups (load/resolve/provenance) live in
-// `./sendLifecycle/lookups`. Splitting per CONVENTIONS.md "Split only above
-// ~500 LOC" — the reducer/runner boundary that already existed conceptually is
-// now a file boundary.
+// `./sendLifecycle/lookups`; the volume-denominator and deliverability-outcome
+// effects of a transition live in `./sendLifecycle/outcomeAccounting`.
+// Splitting per CONVENTIONS.md "Split only above ~500 LOC" — the
+// reducer/runner boundary that already existed conceptually is now a file
+// boundary.
 //
 // Public surface:
 //   - transition({ send, transition })                — worker / direct path
@@ -104,22 +110,6 @@ const transitionInputValidator = v.union(
 	}),
 	v.object({ to: v.literal('complained'), at: v.number() })
 );
-
-/**
- * Whether an MTA terminal callback proves that an SMTP envelope was attempted.
- *
- * Bounce and complaint evidence necessarily follows an outbound attempt.
- * `ambiguous_post_data` is the one failed disposition emitted after message
- * data reached the wire. Other failed codes describe local policy, routing, or
- * intake failures and must not inflate sent-volume denominators.
- */
-function hasOutboundAttemptEvidence(input: TransitionInput): boolean {
-	return (
-		input.to === 'bounced' ||
-		input.to === 'complained' ||
-		(input.to === 'failed' && input.errorCode === 'ambiguous_post_data')
-	);
-}
 
 // ─── Dispatcher — the one place that fans transition kinds to reducers ─────
 
@@ -230,44 +220,20 @@ async function dispatch(
 		}
 	}
 
-	// An SMTP rejection or post-DATA ambiguity goes `queued -> terminal` without
-	// passing through `sent`, so `reduceSent`'s outbound accounting never runs.
-	// Preserve the rate denominator only when the callback proves an envelope
-	// attempt. Local screening, suppression, routing exhaustion, and intake
-	// uncertainty are terminal non-deliveries, not sent volume. The `email.sent`
-	// customer webhook deliberately stays with `reduceSent`: nothing here was
-	// accepted for delivery.
+	// Volume denominator and deliverability outcome — see
+	// `./sendLifecycle/outcomeAccounting`. Appended to the SAME effect list the
+	// reducers produced, so both inherit the duplicate suppression and the
+	// test-send stripping below.
 	const queuedTerminalSendAccounting: Effect[] =
 		isBoundQueuedMtaTerminal && result.applied !== 'duplicate' && hasOutboundAttemptEvidence(input)
-			? [
-					...(ref.kind === 'campaign'
-						? ([
-								{ kind: 'campaign_stats_sent', campaignId: (send as EmailSendDoc).campaignId },
-							] as Effect[])
-						: []),
-					{ kind: 'daily_stats_bump', field: 'sent', at: input.at },
-					{
-						kind: 'reputation_update',
-						eventType: 'send',
-						domain: deliverySenderDomain ?? (await senderDomainFor(ctx, send, ref)),
-					},
-					// Same evidence rule as the reputation counter above it.
-					transportOutcomeEffect(ref, 'sent', input.at),
-				]
+			? await queuedTerminalSendAccountingEffects(ctx, {
+					send,
+					ref,
+					input,
+					senderDomain: deliverySenderDomain,
+				})
 			: [];
-
-	// Per-cell, per-arm DELIVERABILITY outcome (plan D5, fixing G-05: acceptance
-	// is not delivery). Appended to the SAME effect list, so it inherits the
-	// lifecycle's duplicate suppression and the test-send stripping below.
-	// `failed` maps to no event (a local non-delivery is not a transport
-	// outcome), and neither do `opened`/`clicked` — the reducers emit those under
-	// the shipped UNIQUE gate. Cell and arm are resolved by the effect runner.
-	const outcomeEvent = transportOutcomeEventForTransition(
-		input.to,
-		input.to === 'bounced' ? input.bounceType : undefined
-	);
-	const outcomeEffects: Effect[] =
-		outcomeEvent === null ? [] : [transportOutcomeEffect(ref, outcomeEvent, input.at)];
+	const outcomeEffects = transitionOutcomeEffects(ref, input);
 
 	result = withoutTestSendEffects(send, ref, {
 		...result,
