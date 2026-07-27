@@ -12,7 +12,7 @@ import {
 } from './smtpOutcomeJournal.js';
 import type { SmtpOutcomeJournalEntry } from './smtpOutcomeJournal.js';
 import { classifyResult, reduce } from '../dispatch/outcome.js';
-import type { CtxWithIp } from '../dispatch/types.js';
+import type { CtxWithProviderPressure } from '../dispatch/types.js';
 
 type SendArguments = Parameters<typeof sendToMx>;
 type EligibilityLease = SendArguments[4];
@@ -30,7 +30,7 @@ export async function runJournaledSmtpAttempt(options: {
 	jobId: string;
 	job: EmailJob;
 	eligibilityLease: EligibilityLease;
-	attempt: CtxWithIp;
+	attempt: CtxWithProviderPressure;
 	startedAt: number;
 }): Promise<JournaledSmtpAttempt> {
 	const reservation = await reserveSmtpOutcome(

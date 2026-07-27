@@ -243,8 +243,8 @@ export const ZERO_TRANSPORT_OUTCOME_TOTALS: TransportOutcomeTotals = {
  * document must not turn an entire cell's rate into NaN and make every gate
  * "insufficient data" forever.
  */
-export function safeOutcomeCount(value: number | undefined): number {
-	return value !== undefined && Number.isFinite(value) && value > 0 ? value : 0;
+export function safeOutcomeCount(value: number | undefined | null): number {
+	return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }
 
 /** Zero-denominator guard — the one place a division happens. */
