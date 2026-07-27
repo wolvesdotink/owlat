@@ -26,6 +26,7 @@ import {
 	type SndsComplaintBand,
 	type SndsFilterResult,
 } from './sndsFeed';
+import type { RampGateId, RampGateStatus } from './ramp/gateTypes';
 
 /**
  * The substitution the Microsoft cell applies when SNDS data is unavailable.
@@ -187,7 +188,25 @@ export const DEFAULT_SNDS_GATE_THRESHOLDS: SndsGateThresholds = {
 	trapHitLimit: 0,
 };
 
-export type SndsGateFailure = 'complaint_band' | 'filter_result' | 'spam_traps';
+/**
+ * WHICH SNDS SIGNAL BROKE — a sub-axis of ONE gate, never a fourth gate id.
+ *
+ * The plan's gate table has exactly one complaint gate, and `RampGateId` names
+ * it `complaint`. SNDS is a per-cell INPUT to that gate, not a parallel one, so
+ * a breach here is always reported as `gate: 'complaint'` (that is the id the
+ * audit row and the admin notification key off, per D12) with this value
+ * attached as the detail that makes the sentence actionable: "the band", "the
+ * filter result" and "a trap hit" are three different things for an operator to
+ * do something about, and collapsing them would throw that away.
+ */
+export type SndsGateFailureSignal = 'complaint_band' | 'filter_result' | 'spam_traps';
+
+/**
+ * The one gate id every SNDS breach reports under (see `SndsGateFailureSignal`).
+ * Written as an `Extract` so the day `RampGateId` renames `complaint`, this
+ * stops compiling rather than drifting.
+ */
+export const SNDS_GATE_ID: Extract<RampGateId, 'complaint'> = 'complaint';
 
 /**
  * Appended to every verdict derived from a window we could not attribute.
@@ -201,14 +220,38 @@ export const UNATTRIBUTED_CAVEAT =
 	"This covers every address in the SNDS key's registered range, not only ours — declare MTA_IP_POOLS to attribute it to your own addresses.";
 
 /**
- * The gate's verdict, in the controller's shared vocabulary
- * (`pass` / `fail` / `insufficient_data`) so P3's controller consumes this gate
- * through the one gate interface with no per-gate shim.
+ * The gate's verdict.
+ *
+ * ITS RELATIONSHIP TO THE SHIPPED `RampGateResult`, STATED EXACTLY — because
+ * "shared vocabulary" is true of one half of it and false of the other:
+ *
+ *  - THE STATUS LITERALS ARE SHARED. Each variant's discriminant is `Extract`ed
+ *    from `RampGateStatus`, so the two unions cannot drift: a rename there is a
+ *    compile error here. `halt` is `Exclude`d DELIBERATELY — only the deferral
+ *    gate hard-stops, and an SNDS band never should (D9's hard stops are
+ *    infrastructure, not third-party bands).
+ *  - THE MEASUREMENT SHAPE IS NOT SHARED, and cannot be. `RampGateMeasurement`
+ *    is rate-shaped (`thresholdRate` / `ownRate` / `referenceRate`), and SNDS
+ *    publishes a BAND. Filling those fields would mean inventing the percentage
+ *    the feed refuses to publish, which is the one thing this module exists to
+ *    avoid. So this gate hands back the band's own vocabulary instead, and the
+ *    controller consumes it as a per-cell input to the `complaint` gate rather
+ *    than as a `RampGateResult` of its own.
  */
 export type SndsGateVerdict =
-	| { verdict: 'pass'; reason: string }
-	| { verdict: 'fail'; reason: string; failedGate: SndsGateFailure }
-	| { verdict: 'insufficient_data'; reason: string; substitution: SndsSubstitution };
+	| { verdict: Extract<RampGateStatus, 'pass'>; reason: string }
+	| {
+			verdict: Extract<RampGateStatus, 'fail'>;
+			reason: string;
+			/** Always `complaint`: SNDS is an input to that gate, not a gate of its own. */
+			gate: typeof SNDS_GATE_ID;
+			failedSignal: SndsGateFailureSignal;
+	  }
+	| {
+			verdict: Extract<RampGateStatus, 'insufficient_data'>;
+			reason: string;
+			substitution: SndsSubstitution;
+	  };
 
 /**
  * Evaluate gate 3 for the Microsoft cell.
@@ -254,12 +297,18 @@ export function evaluateSndsGate(
 				substitution: SNDS_ABSENT_SUBSTITUTION,
 			};
 		}
-		return { verdict: 'fail', failedGate: 'spam_traps', reason: `${traps}${caveat}` };
+		return {
+			verdict: 'fail',
+			gate: SNDS_GATE_ID,
+			failedSignal: 'spam_traps',
+			reason: `${traps}${caveat}`,
+		};
 	}
 	if (filterBreached) {
 		return {
 			verdict: 'fail',
-			failedGate: 'filter_result',
+			gate: SNDS_GATE_ID,
+			failedSignal: 'filter_result',
 			reason: `Microsoft's SNDS filter result for at least one sending IP is ${signal.worstFilterResult}.${caveat}`,
 		};
 	}
@@ -274,7 +323,8 @@ export function evaluateSndsGate(
 	if (bandBreached) {
 		return {
 			verdict: 'fail',
-			failedGate: 'complaint_band',
+			gate: SNDS_GATE_ID,
+			failedSignal: 'complaint_band',
 			// The BAND is named, never a percentage: SNDS never published one.
 			reason: `Microsoft's complaint band for at least one sending IP is ${signal.worstComplaintBand}, at or above ${thresholds.breachBand}.${caveat}`,
 		};

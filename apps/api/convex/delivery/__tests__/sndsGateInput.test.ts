@@ -121,7 +121,9 @@ describe('SNDS gate verdict', () => {
 			const verdict = evaluateSndsGate(gateInput([observation({ complaintBand: band })]));
 			expect(verdict.verdict, band).toBe('fail');
 			if (verdict.verdict !== 'fail') continue;
-			expect(verdict.failedGate).toBe('complaint_band');
+			expect(verdict.failedSignal).toBe('complaint_band');
+			// Every SNDS breach reports under the ONE shipped complaint gate id (D12).
+			expect(verdict.gate).toBe('complaint');
 			expect(verdict.reason).toContain(band);
 			expect(verdict.reason).not.toMatch(FABRICATED_RATE_RE);
 		}
@@ -148,7 +150,7 @@ describe('SNDS gate verdict', () => {
 	it('fails on a red filter result, never on yellow', () => {
 		const red = evaluateSndsGate(gateInput([observation({ filterResult: 'red' })]));
 		expect(red.verdict).toBe('fail');
-		expect(red.verdict === 'fail' && red.failedGate).toBe('filter_result');
+		expect(red.verdict === 'fail' && red.failedSignal).toBe('filter_result');
 
 		// Yellow moves often; on its own it would make the ramp chatter, so `red` is
 		// the only breaching filter result and there is no knob that changes that.
@@ -169,7 +171,7 @@ describe('SNDS gate verdict', () => {
 			gateInput([observation({ trapHits: 1, complaintBand: 'lt_0_1', filterResult: 'green' })])
 		);
 		expect(verdict.verdict).toBe('fail');
-		expect(verdict.verdict === 'fail' && verdict.failedGate).toBe('spam_traps');
+		expect(verdict.verdict === 'fail' && verdict.failedSignal).toBe('spam_traps');
 	});
 
 	it('HOLDS on trap hits it cannot attribute, and says so in the reason', () => {
@@ -188,7 +190,7 @@ describe('SNDS gate verdict', () => {
 			gateInput([observation({ trapHits: 2, complaintBand: 'gte_0_9' })], { attributed: false })
 		);
 		expect(corroborated.verdict).toBe('fail');
-		expect(corroborated.verdict === 'fail' && corroborated.failedGate).toBe('spam_traps');
+		expect(corroborated.verdict === 'fail' && corroborated.failedSignal).toBe('spam_traps');
 		expect(corroborated.reason).toContain('MTA_IP_POOLS');
 
 		// Attributed to a declared address, one trap hit fails outright.
