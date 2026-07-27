@@ -67,6 +67,22 @@ describe('every threshold is stored as a FRACTION, never as a percentage', () =>
 		expect(RAMP_GATE_THRESHOLDS.maxFutureSkewMs).toBe(DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS);
 	});
 
+	it('gives the historical baseline its own age allowance, wider than the concurrent one', () => {
+		const DAY_MS = 24 * 60 * 60 * 1000;
+		// The concurrent rule: one clean window plus slack.
+		expect(RAMP_GATE_THRESHOLDS.maxEvidenceAgeMs).toBe(48 * 60 * 60 * 1000);
+		// The baseline's window is `[now - 30d, now - 7d)`, so its allowance must
+		// cover the whole width of that window or the slow-poison floor is dead on
+		// every input that respects the contract.
+		expect(RAMP_GATE_THRESHOLDS.maxBaselineAgeMs).toBeGreaterThan(30 * DAY_MS);
+		// …and it must stay a SEPARATE knob: widening the concurrent rule to reach
+		// a month would loosen "never increase without fresh evidence" (D9/D10) for
+		// every other gate.
+		expect(RAMP_GATE_THRESHOLDS.maxBaselineAgeMs).toBeGreaterThan(
+			RAMP_GATE_THRESHOLDS.maxEvidenceAgeMs
+		);
+	});
+
 	it('pins the three tolerances as PERCENTAGE POINTS', () => {
 		expect(RAMP_GATE_THRESHOLDS.hardBounceTolerance).toBe(0.5);
 		expect(RAMP_GATE_THRESHOLDS.complaintTolerance).toBe(0.05);

@@ -41,6 +41,7 @@ describe('gate 4 — minimum sample', () => {
 		expect(result.status).toBe('insufficient_data');
 		expect(result.reason).toBe('own_sample_below_floor');
 		expect(result.measurement.ownSample).toBe(399);
+		expect(result.measurement.minSample).toBe(RAMP_GATE_SAMPLE_FLOORS.engagement);
 	});
 
 	it('decides at exactly 400 own-arm calibration sends', () => {
@@ -54,6 +55,10 @@ describe('gate 4 — minimum sample', () => {
 		expect(result.status).toBe('insufficient_data');
 		expect(result.reason).toBe('reference_sample_below_floor');
 		expect(result.measurement.referenceSample).toBe(399);
+		// The reported floor is the one that governed the arm the hold names. Both
+		// arms of the concurrent ratio happen to share a floor, so this pins the
+		// coincidence rather than assuming it — the floor gate's two differ by 3x.
+		expect(result.measurement.minSample).toBe(RAMP_GATE_SAMPLE_FLOORS.engagement);
 	});
 
 	it('decides at exactly 400 reference-arm calibration sends', () => {

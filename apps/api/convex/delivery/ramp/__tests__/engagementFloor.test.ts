@@ -14,13 +14,24 @@
  * one and on a young cell with no baseline.
  *
  * AND THE WINDOW CONTRACT. `ownPriorBaseline` must EXCLUDE the recent window.
- * The last case below is the reason: an overlapping baseline is dragged down by
- * the very decay it is supposed to reveal, so the same decay that trips the
- * tripwire against a prior window passes against a trailing one.
+ * The overlapping-baseline case below is the reason: an overlapping baseline is
+ * dragged down by the very decay it is supposed to reveal, so the same decay
+ * that trips the tripwire against a prior window passes against a trailing one.
+ *
+ * AND ITS AGE, which is the other half of that contract and the half that is
+ * easy to fake. A window `[now - 30d, now - 7d)` has a NEWEST observation at
+ * most a week old and, if the cell went quiet, up to thirty days old. Every
+ * baseline in this suite is therefore dated at `BASELINE_AGE`, not at `NOW`: a
+ * baseline dated `NOW` is impossible at runtime, and a suite built out of them
+ * would pin its headline claim against a branch production never takes. That is
+ * exactly how the concurrent 48h freshness rule came to be applied to a series
+ * that is a week old by construction — which made this whole gate return
+ * `insufficient_data` on every real input while the suite stayed green.
  */
 
 import { describe, expect, it } from 'vitest';
 import { ENGAGEMENT_GATE_THRESHOLDS } from '../engagementConfig';
+import { RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import {
 	evaluateEngagementFloorGate,
 	evaluateEngagementGate,
@@ -38,8 +49,16 @@ function engagementWindow(calibrationSent: number, rate: number, lastRecordedAt:
 	});
 }
 
-const BASELINE_30D = engagementWindow(4_000, 0.1);
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The age a prior-window summary actually carries: its window ENDS at
+ * `now - 7d`, so its newest bucket is a week old. Anything younger than this is
+ * not a prior baseline.
+ */
+const BASELINE_AGE = NOW - 7 * DAY_MS;
+
+const BASELINE_30D = engagementWindow(4_000, 0.1, BASELINE_AGE);
 
 describe("gate 4b — the absolute floor against the cell's own past", () => {
 	it('fires on a smooth decay that every concurrent gate passes', () => {
@@ -78,7 +97,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 	it('passes exactly AT the floor, and fails one send below it', () => {
 		// 0.5 and 0.7 multiply EXACTLY in float64, so this really is the boundary
 		// rather than a value that happens to sit near it.
-		const baseline = engagementWindow(4_000, 0.5);
+		const baseline = engagementWindow(4_000, 0.5, BASELINE_AGE);
 		const atFloor = 0.5 * ENGAGEMENT_GATE_THRESHOLDS.absoluteFloorRatio;
 		expect(atFloor).toBe(0.35);
 
@@ -110,29 +129,91 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 	it('HOLDS on a baseline below its own minimum sample', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0.01),
-			ownPriorBaseline: engagementWindow(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample - 1, 0.1),
+			ownPriorBaseline: engagementWindow(
+				ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample - 1,
+				0.1,
+				BASELINE_AGE
+			),
 		});
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
 		expect(floor.reason).toBe('baseline_sample_below_floor');
+		// The audit row (plan D12) must name the floor that governed the arm the
+		// hold names. The recent window's floor is 400 here, and reporting THAT
+		// next to `baseline_sample_below_floor` would tell an operator the sample
+		// is below a floor it is three times above.
+		expect(floor.measurement.minSample).toBe(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample);
+		expect(floor.measurement.referenceSample).toBe(
+			ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample - 1
+		);
 	});
 
 	it('decides at exactly the baseline minimum sample', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0.01),
-			ownPriorBaseline: engagementWindow(ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample, 0.1),
+			ownPriorBaseline: engagementWindow(
+				ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample,
+				0.1,
+				BASELINE_AGE
+			),
 		});
 		expect(evaluateEngagementFloorGate(input).status).toBe('fail');
 	});
 
-	it('HOLDS on a stale baseline rather than trusting three-week-old evidence', () => {
-		const input = engagementInput({
-			own: engagementWindow(1_000, 0.01),
-			ownPriorBaseline: engagementWindow(4_000, 0.1, NOW - 21 * DAY_MS),
-		});
-		const floor = evaluateEngagementFloorGate(input);
+	it('accepts a baseline aged as its window contract requires, and one at the allowance', () => {
+		// A week old — the youngest a prior window can be — decides.
+		expect(
+			evaluateEngagementFloorGate(
+				engagementInput({ own: engagementWindow(1_000, 0.06), ownPriorBaseline: BASELINE_30D })
+			).status
+		).toBe('fail');
+
+		// Thirty days old — a cell that went quiet at the START of its prior window —
+		// still decides, because the allowance covers the whole contracted window.
+		const wentQuiet = engagementWindow(4_000, 0.1, NOW - 30 * DAY_MS);
+		expect(NOW - 30 * DAY_MS).toBeGreaterThan(NOW - RAMP_GATE_THRESHOLDS.maxBaselineAgeMs);
+		expect(
+			evaluateEngagementFloorGate(
+				engagementInput({ own: engagementWindow(1_000, 0.06), ownPriorBaseline: wentQuiet })
+			).status
+		).toBe('fail');
+	});
+
+	it('HOLDS on a baseline older than its own allowance — not on the concurrent 48h rule', () => {
+		// 48h is the CONCURRENT rule; a prior window is a week old by contract, so
+		// judging it by that rule would hold on every real input and delete the gate.
+		const aWeekOld = engagementWindow(4_000, 0.1, BASELINE_AGE);
+		expect(NOW - BASELINE_AGE).toBeGreaterThan(RAMP_GATE_THRESHOLDS.maxEvidenceAgeMs);
+		expect(
+			evaluateEngagementFloorGate(
+				engagementInput({ own: engagementWindow(1_000, 0.06), ownPriorBaseline: aWeekOld })
+			).status
+		).toBe('fail');
+
+		// Past the baseline allowance it is genuinely stale.
+		const tooOld = engagementWindow(
+			4_000,
+			0.1,
+			NOW - RAMP_GATE_THRESHOLDS.maxBaselineAgeMs - DAY_MS
+		);
+		const floor = evaluateEngagementFloorGate(
+			engagementInput({ own: engagementWindow(1_000, 0.01), ownPriorBaseline: tooOld })
+		);
 		expect(floor.status).toBe('insufficient_data');
 		expect(floor.reason).toBe('baseline_evidence_stale');
+	});
+
+	it("does NOT widen the concurrent ratio's freshness rule", () => {
+		// Gate 4a's reference arm is the other half of the same send: a week-old
+		// reference is stale there, and the baseline's allowance must not leak.
+		const ratio = evaluateEngagementRatioGate(
+			engagementInput({
+				own: engagementWindow(1_000, 0.1),
+				reference: engagementWindow(1_000, 0.1, BASELINE_AGE),
+			})
+		);
+		expect(ratio.status).toBe('insufficient_data');
+		expect(ratio.reason).toBe('reference_evidence_stale');
 	});
 
 	it('HOLDS on a thin recent window — the floor obeys the same sample rule (D10)', () => {
@@ -148,7 +229,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 	it('HOLDS when the baseline itself engaged at zero — there is nothing to decay from', () => {
 		const input = engagementInput({
 			own: engagementWindow(1_000, 0),
-			ownPriorBaseline: engagementWindow(4_000, 0),
+			ownPriorBaseline: engagementWindow(4_000, 0, BASELINE_AGE),
 		});
 		const floor = evaluateEngagementFloorGate(input);
 		expect(floor.status).toBe('insufficient_data');
@@ -169,7 +250,12 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 	it('an OVERLAPPING baseline damps the decay it is supposed to reveal', () => {
 		// 23 prior days at 10%, then 7 recent days at ~6.8% — a real decay just past
 		// the 0.7 floor.
-		const prior = arm({ sent: 92_000, calibrationSent: 4_600, calibrationOpened: 460 });
+		const prior = arm({
+			sent: 92_000,
+			calibrationSent: 4_600,
+			calibrationOpened: 460,
+			lastRecordedAt: BASELINE_AGE,
+		});
 		const recent = arm({ sent: 28_000, calibrationSent: 1_400, calibrationOpened: 95 });
 		expect(prior.calibrationOpenRate).toBeCloseTo(0.1, 10);
 
@@ -186,6 +272,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 			sent: 120_000,
 			calibrationSent: 6_000,
 			calibrationOpened: 555,
+			lastRecordedAt: BASELINE_AGE,
 		});
 		const againstTrailing = evaluateEngagementFloorGate(
 			engagementInput({
@@ -212,6 +299,7 @@ describe("gate 4b — the absolute floor against the cell's own past", () => {
 			calibrationSent: 4_000,
 			calibrationOpened: 400,
 			calibrationClicked: 400, // 10% baseline click rate
+			lastRecordedAt: BASELINE_AGE,
 		});
 		const apple = evaluateEngagementFloorGate(
 			engagementInput({ own, ownPriorBaseline: baseline, cell: engagementCell('apple') })
