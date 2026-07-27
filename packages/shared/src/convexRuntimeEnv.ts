@@ -93,6 +93,10 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// Mail sync worker
 	'MAIL_SYNC_API_URL',
 	'MAIL_SYNC_API_KEY',
+	// Named send-transport instances. The Convex-side transport resolver reads
+	// this at runtime to derive each extra instance's `__<INSTANCEKEY>` config
+	// names, so it has to be pushed with the rest of the runtime config.
+	'SEND_TRANSPORT_INSTANCES',
 	// Provider: Resend
 	'RESEND_API_KEY',
 	'RESEND_WEBHOOK_SECRET',
