@@ -987,11 +987,17 @@ async function seedProbeRow(
 	});
 }
 
+/**
+ * `t.run` hands its result back through the Convex value codec, which has no
+ * `undefined`: an unstamped row's absent `unsubscribedAt` arrives as `null`.
+ * Normalize here so the assertions below read "nothing was recorded" rather
+ * than encoding a serialization detail.
+ */
 async function readUnsubscribedAt(
 	t: ReturnType<typeof setupTest>,
 	ref: Id<'seedPlacementProbes'>
-): Promise<number | undefined> {
-	return await t.run(async (ctx) => (await ctx.db.get(ref))?.unsubscribedAt);
+): Promise<number | null> {
+	return await t.run(async (ctx) => (await ctx.db.get(ref))?.unsubscribedAt ?? null);
 }
 
 describe('handleSeedProbeUnsubscribe (POST /unsub/probe/...)', () => {
@@ -1015,7 +1021,7 @@ describe('handleSeedProbeUnsubscribe (POST /unsub/probe/...)', () => {
 
 		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
 		expect(res.status).toBe(200);
-		expect(await readUnsubscribedAt(t, ref)).toBeUndefined();
+		expect(await readUnsubscribedAt(t, ref)).toBeNull();
 	});
 
 	it('refuses a CONTACT unsubscribe token replayed at /unsub/probe/', async () => {
@@ -1026,7 +1032,7 @@ describe('handleSeedProbeUnsubscribe (POST /unsub/probe/...)', () => {
 
 		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
 		expect(res.status).toBe(400);
-		expect(await readUnsubscribedAt(t, ref)).toBeUndefined();
+		expect(await readUnsubscribedAt(t, ref)).toBeNull();
 	});
 
 	it('refuses a PROBE token replayed at the contact endpoint /unsub/', async () => {
@@ -1036,7 +1042,7 @@ describe('handleSeedProbeUnsubscribe (POST /unsub/probe/...)', () => {
 
 		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
 		expect(res.status).toBe(400);
-		expect(await readUnsubscribedAt(t, ref)).toBeUndefined();
+		expect(await readUnsubscribedAt(t, ref)).toBeNull();
 	});
 
 	it('refuses the degraded empty-organization token as invalid_format', async () => {
@@ -1052,6 +1058,6 @@ describe('handleSeedProbeUnsubscribe (POST /unsub/probe/...)', () => {
 		expect(res.status).toBe(400);
 		const json = (await res.json()) as { error?: { message: string } };
 		expect(json.error).toBeDefined();
-		expect(await readUnsubscribedAt(t, ref)).toBeUndefined();
+		expect(await readUnsubscribedAt(t, ref)).toBeNull();
 	});
 });
