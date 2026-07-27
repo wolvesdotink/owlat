@@ -86,14 +86,20 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 		transformConfig.preferenceUrl = input.preferenceUrl;
 	}
 
-	if (input.emailSendId && input.trackingBaseUrl) {
-		transformConfig.trackingPixelUrl = getTrackingPixelUrl(
-			input.trackingBaseUrl,
-			input.emailSendId
-		);
+	// A seed shadow copy has no `emailSendId` (that is what keeps it out of
+	// every denominator, D18) but must still carry the tracking pixel and the
+	// wrapped redirect links a subscriber's copy carries — those are exactly the
+	// features spam filters weigh, so a probe without them measures a different
+	// message. It therefore tracks under its OPAQUE PROBE ID, which is not a
+	// Convex document id: the shipped `/t/o` and `/t/c` handlers reject it via
+	// `isValidConvexId` and record nothing, so a probe open or click can never
+	// enter a campaign's open/click rate.
+	const trackingId = input.emailSendId ?? input.seedProbeId;
+	if (trackingId && input.trackingBaseUrl) {
+		transformConfig.trackingPixelUrl = getTrackingPixelUrl(input.trackingBaseUrl, trackingId);
 		transformConfig.trackedLinkBase = {
 			siteUrl: input.trackingBaseUrl,
-			emailSendId: input.emailSendId,
+			emailSendId: trackingId,
 		};
 	}
 

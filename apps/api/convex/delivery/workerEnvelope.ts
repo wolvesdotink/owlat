@@ -41,6 +41,12 @@ export const envelopeInputValidator = v.union(
 		// address, contact id, or campaign name — and never present on an
 		// envelope bound for a real recipient.
 		seedProbeId: v.optional(v.string()),
+		// The probe's durable ledger row. Present exactly when `seedProbeId` is:
+		// it is the shadow copy's dispatch reference (the governed boundary needs
+		// a durable, org-scoped id for its idempotency key and re-entry token),
+		// and it is deliberately NOT an `emailSends` row — no Send lifecycle, no
+		// completion handler, no stat shard, no reputation event.
+		seedProbeRef: v.optional(v.id('seedPlacementProbes')),
 	}),
 	v.object({
 		kind: v.literal('transactional'),
