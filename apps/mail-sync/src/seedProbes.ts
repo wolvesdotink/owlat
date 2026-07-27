@@ -25,12 +25,13 @@ import type {
 	SeedHygienePlan,
 	SeedPlacement,
 	SeedProbeWorkItem,
+	SeedProbeWorkPage,
 } from '@owlat/shared/seedPlacement';
 import { logger } from './logger.js';
 
 // The wire contract with the Convex poller surface lives in @owlat/shared, so
 // there is exactly one declaration of it across the two deployables.
-export type { SeedHygienePlan, SeedPlacement, SeedProbeWorkItem };
+export type { SeedHygienePlan, SeedPlacement, SeedProbeWorkItem, SeedProbeWorkPage };
 
 export interface SeedProbeLocation {
 	folderName: string;
@@ -42,8 +43,12 @@ export interface SeedProbeLocation {
  * production and by a fixture in tests — this module never speaks IMAP itself.
  */
 export interface SeedMailboxSession {
-	/** Locate a probe by its header value across every folder. `null` ⇒ MISSING. */
-	findProbe(probeId: string): Promise<SeedProbeLocation | null>;
+	/**
+	 * Locate a BATCH of probes by header value. One pass per folder, not one pass
+	 * per probe: an absent key is MISSING. Batched because the per-probe shape
+	 * costs O(probes x folders) mailbox SELECTs.
+	 */
+	findProbes(probeIds: readonly string[]): Promise<Map<string, SeedProbeLocation>>;
 	markRead(location: SeedProbeLocation): Promise<void>;
 	/** Link targets inside the probe. Used only to exercise ONE click. */
 	linkTargets(location: SeedProbeLocation): Promise<string[]>;
@@ -54,7 +59,11 @@ export interface SeedProbeDeps {
 	now(): number;
 	/** Uniform [0,1) draw handed to the backend so the decision stays pure. */
 	random(): number;
-	listWork(now: number): Promise<SeedProbeWorkItem[]>;
+	/**
+	 * One PAGE of work. `cursor` is carried between ticks so a multi-org
+	 * deployment cannot starve the orgs that sort last behind a fixed top-N.
+	 */
+	listWork(now: number, cursor: string | null): Promise<SeedProbeWorkPage>;
 	openMailbox(item: SeedProbeWorkItem): Promise<SeedMailboxSession | null>;
 	recordClassification(input: {
 		organizationId: string;
@@ -109,9 +118,9 @@ async function classifyOne(
 	item: SeedProbeWorkItem,
 	session: SeedMailboxSession | null,
 	probeId: string,
+	location: SeedProbeLocation | null,
 	result: SeedProbeSweepResult
 ): Promise<void> {
-	const location = session ? await session.findProbe(probeId) : null;
 	const outcome = await deps.recordClassification({
 		organizationId: item.organizationId,
 		probeId,
@@ -138,13 +147,22 @@ async function classifyOne(
 	}
 }
 
+/** What one sweep tick returns: its counters plus where to resume next tick. */
+export interface SeedProbeSweepOutcome extends SeedProbeSweepResult {
+	/** Feed back into the next tick. `null` restarts the sweep from the top. */
+	cursor: string | null;
+}
+
 /**
- * Walk every seed mailbox with outstanding probes exactly once.
+ * Walk one PAGE of seed mailboxes with outstanding probes exactly once.
  *
  * A failure on one account is logged and skipped: a probe is a measurement,
  * never a reason to fail anything else the worker is doing.
  */
-export async function runSeedProbeSweep(deps: SeedProbeDeps): Promise<SeedProbeSweepResult> {
+export async function runSeedProbeSweep(
+	deps: SeedProbeDeps,
+	cursor: string | null = null
+): Promise<SeedProbeSweepOutcome> {
 	const result: SeedProbeSweepResult = {
 		accounts: 0,
 		classified: 0,
@@ -153,19 +171,23 @@ export async function runSeedProbeSweep(deps: SeedProbeDeps): Promise<SeedProbeS
 		clicked: 0,
 		rotationReminders: 0,
 	};
-	const work = await deps.listWork(deps.now());
-	for (const item of work) {
+	const page = await deps.listWork(deps.now(), cursor);
+	for (const item of page.items) {
 		result.accounts += 1;
 		let session: SeedMailboxSession | null = null;
 		try {
 			// Probes past the give-up horizon are reported MISSING without a walk.
 			for (const probeId of item.expiredProbeIds) {
-				await classifyOne(deps, item, null, probeId, result);
+				await classifyOne(deps, item, null, probeId, null, result);
 			}
 			if (item.probeIds.length > 0) {
 				session = await deps.openMailbox(item);
+				// ONE pass over the folders for the whole batch (see `findProbes`).
+				const located: Map<string, SeedProbeLocation> = session
+					? await session.findProbes(item.probeIds)
+					: new Map();
 				for (const probeId of item.probeIds) {
-					await classifyOne(deps, item, session, probeId, result);
+					await classifyOne(deps, item, session, probeId, located.get(probeId) ?? null, result);
 				}
 			}
 			if (item.rotationReminderDue) {
@@ -186,5 +208,5 @@ export async function runSeedProbeSweep(deps: SeedProbeDeps): Promise<SeedProbeS
 			if (session) await session.close().catch(() => undefined);
 		}
 	}
-	return result;
+	return { ...result, cursor: page.cursor };
 }

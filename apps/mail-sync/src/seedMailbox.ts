@@ -12,6 +12,7 @@
  */
 
 import { ImapFlow } from 'imapflow';
+import { parseBody } from '@owlat/mail-message';
 // The header is the feature's ONLY join key between the send and the IMAP
 // observation, so both ends read the same constant rather than two copies
 // behind a "must match" comment.
@@ -22,7 +23,7 @@ import type { WorkerCredentials } from './convex.js';
 /** Folders never worth walking: our own copies, not the provider's verdict. */
 const SKIPPED_FOLDER_FLAGS = new Set(['\\Sent', '\\Drafts', '\\All']);
 
-/** Extract `href` targets from a probe body without parsing the whole message. */
+/** Extract `href` targets from an already-DECODED HTML body. */
 export function extractLinkTargets(html: string): string[] {
 	const targets: string[] = [];
 	const pattern = /href\s*=\s*"(https?:\/\/[^"]+)"/gi;
@@ -35,31 +36,62 @@ export function extractLinkTargets(html: string): string[] {
 	return targets;
 }
 
+/**
+ * Link targets inside a RAW RFC 822 probe.
+ *
+ * The raw source CANNOT be scanned for hrefs directly. Campaign HTML with
+ * wrapped tracking links is emitted quoted-printable
+ * (`@owlat/mail-message` → `compose/encoding.ts`), which breaks every long URL
+ * across `=\r\n` soft line breaks; the corrupted fragment still looks like a
+ * URL to `chooseHygieneClickTarget`, so the click is fired at an address that
+ * does not exist and the failure is swallowed — the hygiene click silently
+ * never happens in production. Transfer-decoding the MIME tree first is what
+ * makes the click real.
+ */
+export function extractProbeLinkTargets(rawSource: string): string[] {
+	const body = parseBody(rawSource);
+	if (body.html === false) return [];
+	return extractLinkTargets(body.html);
+}
+
 class ImapSeedMailboxSession implements SeedMailboxSession {
 	constructor(
 		private readonly client: ImapFlow,
 		private readonly folders: string[]
 	) {}
 
-	async findProbe(probeId: string): Promise<SeedProbeLocation | null> {
+	/**
+	 * One pass per FOLDER, searching for every outstanding probe id at once.
+	 *
+	 * The obvious loop — for each probe, walk every folder — costs
+	 * O(probes x folders) SELECTs, which against a Gmail label set and a full
+	 * page of probes is hundreds of mailbox SELECTs per sweep. Inverted, a sweep
+	 * costs O(folders) SELECTs: each folder is locked once and answers for the
+	 * whole batch, and folders stop being opened at all once every probe is
+	 * located.
+	 */
+	async findProbes(probeIds: readonly string[]): Promise<Map<string, SeedProbeLocation>> {
+		const found = new Map<string, SeedProbeLocation>();
 		for (const folderName of this.folders) {
+			const outstanding = probeIds.filter((id) => !found.has(id));
+			if (outstanding.length === 0) break;
 			const lock = await this.client.getMailboxLock(folderName);
 			try {
-				const uids = await this.client.search(
-					{ header: { [SEED_PROBE_HEADER]: probeId } },
-					{
-						uid: true,
-					}
-				);
-				const uid = Array.isArray(uids) ? uids[uids.length - 1] : undefined;
-				if (typeof uid === 'number') return { folderName, uid };
+				for (const probeId of outstanding) {
+					const uids = await this.client.search(
+						{ header: { [SEED_PROBE_HEADER]: probeId } },
+						{ uid: true }
+					);
+					const uid = Array.isArray(uids) ? uids[uids.length - 1] : undefined;
+					if (typeof uid === 'number') found.set(probeId, { folderName, uid });
+				}
 			} catch {
 				// A folder we cannot open is not evidence of anything; keep walking.
 			} finally {
 				lock.release();
 			}
 		}
-		return null;
+		return found;
 	}
 
 	async markRead(location: SeedProbeLocation): Promise<void> {
@@ -83,7 +115,7 @@ class ImapSeedMailboxSession implements SeedMailboxSession {
 			);
 			const source = message === false ? undefined : message.source;
 			if (!source) return [];
-			return extractLinkTargets(source.toString('utf8'));
+			return extractProbeLinkTargets(source.toString('utf8'));
 		} finally {
 			lock.release();
 		}
