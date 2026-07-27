@@ -222,7 +222,7 @@ describe('computeEngagementScore — weighting', () => {
 			'decayedSoftBounce',
 			'tenurePrior',
 			'penalty',
-			'raw',
+			'curveInput',
 		];
 		for (const key of expected) expect(inputs[key]).toBeTypeOf('number');
 		expect(inputs.isSuppressed).toBeTypeOf('boolean');
@@ -242,7 +242,7 @@ describe('computeEngagementScore — weighting', () => {
 		expect(suppressed.inputs.isSuppressed).toBe(true);
 		expect(suppressed.inputs.penalty).toBeLessThan(1);
 		expect(suppressed.inputs.penalty).toBeGreaterThan(0);
-		expect(suppressed.inputs.raw).toBeGreaterThan(0);
+		expect(suppressed.inputs.curveInput).toBeGreaterThan(0);
 
 		const notSuppressed = computeEngagementScore({
 			activities: at('open', 5),

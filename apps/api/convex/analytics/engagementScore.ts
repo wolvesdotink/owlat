@@ -174,8 +174,13 @@ export type EngagementScoreInputs = EngagementActivityCounts & {
 	 * from a maximally soft-bounced one.
 	 */
 	penalty: number;
-	/** The saturating curve's argument — `(decayedEngagement + prior) * penalty`. */
-	raw: number;
+	/**
+	 * The saturating curve's argument — `(decayedEngagement + prior) * penalty`.
+	 * NOT the same quantity as `EngagementScoreState.raw` (the decayed engagement
+	 * accumulator, reported here as `decayedEngagement`); they travel on the same
+	 * result object, so they do not share a name.
+	 */
+	curveInput: number;
 	/**
 	 * True when a hard bounce or complaint forced the score to 0. When set, the
 	 * other fields describe what the score WOULD have been.
@@ -342,21 +347,22 @@ export function scoreFromState(args: {
 	state: EngagementScoreState;
 	tenurePrior: number;
 	penalty: number;
-	raw: number;
+	/** The saturating curve's argument. See `EngagementScoreInputs.curveInput`. */
+	curveInput: number;
 } {
 	const state = decayState(args.state, args.stateAt, args.now);
 
 	// Computed unconditionally, even when suppressed: the caller reports these as
 	// `inputs`, and an operator looking at a zeroed contact needs to see WHY it is
-	// zero (suppression) separately from what the curve said (raw/penalty).
+	// zero (suppression) separately from what the curve said (curveInput/penalty).
 	const tenureMs = Math.max(0, finite(args.now) - finite(args.tenureStartedAt, args.now));
 	const tenurePrior = TENURE_PRIOR_WEIGHT * decayFactor(tenureMs, TENURE_PRIOR_HALF_LIFE_DAYS);
 	const penalty = Math.pow(SOFT_BOUNCE_PENALTY_BASE, state.softBounceRaw);
-	const raw = (state.raw + tenurePrior) * penalty;
-	const curve = Math.round(100 * (1 - Math.exp(-raw / SATURATION_K)));
+	const curveInput = (state.raw + tenurePrior) * penalty;
+	const curve = Math.round(100 * (1 - Math.exp(-curveInput / SATURATION_K)));
 	const score = state.isSuppressed ? 0 : Math.min(100, Math.max(0, finite(curve)));
 
-	return { score, state, tenurePrior, penalty, raw };
+	return { score, state, tenurePrior, penalty, curveInput };
 }
 
 // ─── Full recompute ─────────────────────────────────────────────────────────
@@ -451,7 +457,7 @@ export function computeEngagementScore(args: {
 			decayedSoftBounce: projected.state.softBounceRaw,
 			tenurePrior: projected.tenurePrior,
 			penalty: projected.penalty,
-			raw: projected.raw,
+			curveInput: projected.curveInput,
 			isSuppressed: projected.state.isSuppressed,
 		},
 	};
