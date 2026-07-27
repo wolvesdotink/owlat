@@ -149,9 +149,7 @@ export function useRelayCredentialDraft(
 
 	const enteredSecrets = computed(() => [resendKey.value, sesSecret.value, smtpPassword.value]);
 
-	const canValidateLive = computed(
-		() => provider.value === 'resend' || provider.value === 'smtp'
-	);
+	const canValidateLive = computed(() => provider.value === 'resend' || provider.value === 'smtp');
 
 	function clearEnteredSecrets(): void {
 		resendKey.value = '';

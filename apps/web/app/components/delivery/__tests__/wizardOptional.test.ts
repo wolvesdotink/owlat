@@ -17,6 +17,7 @@ import {
 	returnPathFinding,
 	skippingWizardImpact,
 } from '~/utils/transportWizard';
+import { deriveDeliveryReadiness, type ReadinessInput } from '~/utils/deliveryReadiness';
 import { buttonByText, mountWizard } from './wizardHarness';
 
 /** Words that would turn an offer into a chore. None may appear on the card. */
@@ -88,6 +89,47 @@ describe('connecting a transport is optional (D2)', () => {
 		const row = returnPathFinding('unsupported');
 		expect(row.status).toBe('info');
 		expect(row.remedy).toBeNull();
-		expect(row.detail).toContain('Sending is unaffected');
+		expect(row.detail).toContain('Measurement confidence is lower; sending is unaffected');
+	});
+});
+
+/**
+ * The card's claim is about SCREENS, not only about the wizard: with no ESP
+ * connected, the delivery readiness verdict every delivery screen renders from
+ * must be a clean "ready", with no gate and no nag anywhere in its copy.
+ */
+describe('a standalone deployment renders a clean delivery screen (D2)', () => {
+	const STANDALONE: ReadinessInput = {
+		// The own MTA IS a configured transport. "No ESP" is not "no transport".
+		transportConfigured: true,
+		hasDomains: true,
+		domainVerified: true,
+		authComplete: true,
+		authMissing: [],
+		// No reference transport, so the ramp's alignment pre-flight has nothing to
+		// say and contributes no gate at all.
+		dualArmAlignment: undefined,
+	};
+
+	it('is ready, with no gate contributed by the absent second arm', () => {
+		const readiness = deriveDeliveryReadiness(STANDALONE);
+		expect(readiness.canSend).toBe(true);
+		expect(readiness.level).toBe('ready');
+		expect(readiness.gates.some((gate) => gate.key === 'dual-arm-alignment')).toBe(false);
+		expect(readiness.gates.every((gate) => gate.status === 'ready')).toBe(true);
+	});
+
+	it('uses no nag vocabulary anywhere in the verdict it renders', () => {
+		const readiness = deriveDeliveryReadiness(STANDALONE);
+		const rendered = [
+			readiness.headline,
+			readiness.summary,
+			...readiness.gates.flatMap((gate) => [gate.title, gate.detail]),
+		]
+			.join(' ')
+			.toLowerCase();
+		for (const word of NAG_VOCABULARY) {
+			expect(rendered).not.toContain(word);
+		}
 	});
 });

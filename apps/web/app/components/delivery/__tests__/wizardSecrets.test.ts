@@ -14,20 +14,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import { REDACTED_PLACEHOLDER, redactSecrets } from '~/utils/transportWizard';
-import { buttonByText, mountWizard, openWizard } from './wizardHarness';
+import { buttonByText, fillCredentials, mountWizard, openWizard } from './wizardHarness';
 
 const SECRET = 're_live_9f3c2b7a41';
+
+/** The ONLY two endpoints a credential is ever allowed to reach. */
+const SEALED_ENDPOINTS = ['/api/delivery/validate-transport', '/api/delivery/apply-transport'];
 
 let fetchMock: ReturnType<typeof vi.fn>;
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-	fetchMock = vi.fn(async () => ({
-		ok: true,
-		message: 'Applied.',
-		applied: true,
-		requiresRestart: false,
-	}));
+	fetchMock = vi.fn(async (url: string) =>
+		url === '/api/delivery/validate-transport'
+			? { ok: true, message: 'Credentials verified.' }
+			: { ok: true, message: 'Applied.', applied: true, requiresRestart: false }
+	);
 	vi.stubGlobal('$fetch', fetchMock);
 	consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -40,7 +42,7 @@ afterEach(() => {
 async function enterAndApply() {
 	const wrapper = mountWizard();
 	await openWizard(wrapper);
-	await wrapper.find('#field-resend-api-key').setValue(SECRET);
+	await fillCredentials(wrapper, 'resend', SECRET);
 	await buttonByText(wrapper, 'Save credentials').trigger('click');
 	await flushPromises();
 	return wrapper;
@@ -65,14 +67,23 @@ describe('redactSecrets', () => {
 });
 
 describe('wizard credentials — the sealed path', () => {
-	it('sends the credential only to the shipped apply-transport endpoint', async () => {
+	it('sends the credential only to the two shipped sealed endpoints', async () => {
 		const wrapper = await enterAndApply();
-		expect(fetchMock).toHaveBeenCalledTimes(1);
-		const [url, options] = fetchMock.mock.calls[0] as [string, { body: { providerEnv: unknown } }];
-		expect(url).toBe('/api/delivery/apply-transport');
-		const providerEnv = options.body.providerEnv as Record<string, string>;
+		// The shipped live handshake, then the sealed env patch — and nothing else.
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(SEALED_ENDPOINTS);
+		const applyCall = fetchMock.mock.calls[1] as [string, { body: { providerEnv: unknown } }];
+		const providerEnv = applyCall[1].body.providerEnv as Record<string, string>;
 		expect(providerEnv['EMAIL_PROVIDER']).toBe('resend');
 		expect(providerEnv['RESEND_API_KEY']).toBe(SECRET);
+		wrapper.unmount();
+	});
+
+	it('never lets the credential reach a URL, a query string or any other endpoint', async () => {
+		const wrapper = await enterAndApply();
+		for (const [url] of fetchMock.mock.calls as [string, unknown][]) {
+			expect(SEALED_ENDPOINTS).toContain(url);
+			expect(url).not.toContain(SECRET);
+		}
 		wrapper.unmount();
 	});
 
@@ -86,12 +97,16 @@ describe('wizard credentials — the sealed path', () => {
 	});
 
 	it('redacts a provider error that quotes the key back', async () => {
-		fetchMock.mockImplementation(async () => ({
-			ok: false,
-			message: `Resend rejected API key ${SECRET}`,
-			applied: false,
-			requiresRestart: false,
-		}));
+		fetchMock.mockImplementation(async (url: string) =>
+			url === '/api/delivery/validate-transport'
+				? { ok: true, message: 'Credentials verified.' }
+				: {
+						ok: false,
+						message: `Resend rejected API key ${SECRET}`,
+						applied: false,
+						requiresRestart: false,
+					}
+		);
 		const wrapper = await enterAndApply();
 		expect(wrapper.text()).toContain('Resend rejected API key');
 		expect(wrapper.text()).not.toContain(SECRET);
@@ -109,5 +124,48 @@ describe('wizard credentials — the sealed path', () => {
 		const logged = consoleErrorSpy.mock.calls.flat().join(' ');
 		expect(logged).not.toContain(SECRET);
 		wrapper.unmount();
+	});
+
+	it('redacts the live handshake message too, and the restart notice', async () => {
+		fetchMock.mockImplementation(async (url: string) =>
+			url === '/api/delivery/validate-transport'
+				? { ok: false, message: `Resend says: ${SECRET} is not a key` }
+				: { ok: true, message: 'Applied.', applied: true, requiresRestart: false }
+		);
+		const wrapper = await enterAndApply();
+		expect(wrapper.text()).not.toContain(SECRET);
+		expect(wrapper.text()).toContain(REDACTED_PLACEHOLDER);
+		wrapper.unmount();
+
+		fetchMock.mockImplementation(async (url: string) =>
+			url === '/api/delivery/validate-transport'
+				? { ok: true, message: 'Credentials verified.' }
+				: {
+						ok: true,
+						message: `Restart to pick up ${SECRET}`,
+						applied: true,
+						requiresRestart: true,
+					}
+		);
+		const restarted = await enterAndApply();
+		expect(restarted.text()).not.toContain(SECRET);
+		expect(restarted.text()).toContain(REDACTED_PLACEHOLDER);
+		restarted.unmount();
+	});
+
+	it('exercises the SES and SMTP branches through the same sealed path', async () => {
+		for (const kind of ['ses', 'smtp'] as const) {
+			fetchMock.mockClear();
+			const wrapper = mountWizard();
+			await openWizard(wrapper);
+			await fillCredentials(wrapper, kind, SECRET);
+			await buttonByText(wrapper, 'Save credentials').trigger('click');
+			await flushPromises();
+			for (const [url] of fetchMock.mock.calls as [string, unknown][]) {
+				expect(SEALED_ENDPOINTS).toContain(url);
+			}
+			expect(wrapper.html()).not.toContain(SECRET);
+			wrapper.unmount();
+		}
 	});
 });

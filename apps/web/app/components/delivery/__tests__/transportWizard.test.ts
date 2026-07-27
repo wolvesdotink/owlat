@@ -17,22 +17,30 @@ import {
 	createTransportWizardState,
 	goBackStep,
 	isLastStep,
-	isWizardComplete,
 	returnPathStepStatus,
 	setStepStatus,
 	stepAt,
+	stepById,
 	stepIndex,
 	type TransportWizardState,
 } from '~/utils/transportWizard';
+import { runAlignmentProbe } from '~/utils/transportAlignmentProbe';
 import {
 	ALIGNED_DNS,
-	OWN_ARM,
+	armsFixture,
 	buttonByText,
+	fillCredentials,
 	mountWizard,
 	openWizard,
-	referenceArm,
 	stubDoh,
 } from './wizardHarness';
+
+// The real probe, wrapped so ONE case can make it throw. Everything else runs
+// the shipped gather + evaluator against the DNS fixture.
+vi.mock('~/utils/transportAlignmentProbe', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('~/utils/transportAlignmentProbe')>();
+	return { ...actual, runAlignmentProbe: vi.fn(actual.runAlignmentProbe) };
+});
 
 function pass(state: TransportWizardState, ...ids: Parameters<typeof setStepStatus>[1][]) {
 	return ids.reduce((acc, id) => setStepStatus(acc, id, 'passed'), state);
@@ -99,8 +107,19 @@ describe('transport wizard — pure state machine', () => {
 	});
 
 	it('lets the non-blocking return-path step finish on any resolved posture', () => {
-		const state = setStepStatus(createTransportWizardState(), 'return_path', 'unknown');
-		expect(isWizardComplete(pass(state, 'credentials', 'test_send', 'alignment'))).toBe(true);
+		// It is the LAST step, so "finished" is about the step's own status rather
+		// than about advancing: `unknown` on the informational step is a resolved
+		// posture, where the same status on a blocking step would hold.
+		const walked = pass(createTransportWizardState(), 'credentials');
+		expect(canAdvance(setStepStatus(walked, 'credentials', 'unknown'))).toBe(false);
+		expect(stepById('return_path').blocking).toBe(false);
+		expect(returnPathStepStatus('unknown')).toBe('unknown');
+	});
+
+	it('resolves every step id totally, unlike an array index', () => {
+		for (const step of TRANSPORT_WIZARD_STEPS) {
+			expect(stepById(step.id)).toBe(step);
+		}
 	});
 
 	it('maps every pre-flight verdict onto a step status', () => {
@@ -146,16 +165,18 @@ describe('transport wizard — mounted flow', () => {
 
 	async function walkToAlignment() {
 		const wrapper = mountWizard({
-			alignmentArms: { ownArm: OWN_ARM, reference: referenceArm() },
+			alignmentArms: armsFixture(),
 			returnPathCapability: 'supported',
 		});
 		await openWizard(wrapper);
-		await wrapper.find('#field-resend-api-key').setValue('re_live_secret');
+		await fillCredentials(wrapper, 'resend', 're_live_secret');
 		await buttonByText(wrapper, 'Save credentials').trigger('click');
 		await flushPromises();
 		await buttonByText(wrapper, 'Next').trigger('click');
+		await flushPromises();
 		await wrapper.find('.test-pass').trigger('click');
 		await buttonByText(wrapper, 'Next').trigger('click');
+		await flushPromises();
 		return wrapper;
 	}
 
@@ -166,6 +187,7 @@ describe('transport wizard — mounted flow', () => {
 		await flushPromises();
 		expect(wrapper.text()).toContain('indistinguishable to the receiver');
 		await buttonByText(wrapper, 'Next').trigger('click');
+		await flushPromises();
 		expect(wrapper.text()).toContain('Return path');
 		// The last step has no Next; it offers Done instead.
 		expect(wrapper.findAll('button').some((b) => b.text().trim() === 'Next')).toBe(false);
@@ -176,10 +198,11 @@ describe('transport wizard — mounted flow', () => {
 	it('holds on a failed live send test and releases once it passes', async () => {
 		const wrapper = mountWizard({ returnPathCapability: 'unknown' });
 		await openWizard(wrapper);
-		await wrapper.find('#field-resend-api-key').setValue('re_live_secret');
+		await fillCredentials(wrapper, 'resend', 're_live_secret');
 		await buttonByText(wrapper, 'Save credentials').trigger('click');
 		await flushPromises();
 		await buttonByText(wrapper, 'Next').trigger('click');
+		await flushPromises();
 		await wrapper.find('.test-fail').trigger('click');
 		expect(buttonByText(wrapper, 'Next').attributes('disabled')).toBeDefined();
 		await wrapper.find('.test-pass').trigger('click');
@@ -192,8 +215,10 @@ describe('transport wizard — mounted flow', () => {
 		await buttonByText(wrapper, 'Check alignment').trigger('click');
 		await flushPromises();
 		await buttonByText(wrapper, 'Back').trigger('click');
+		await flushPromises();
 		expect(wrapper.text()).toContain('Live send test');
 		await buttonByText(wrapper, 'Next').trigger('click');
+		await flushPromises();
 		// The alignment findings survived the round trip — no re-run required.
 		expect(wrapper.text()).toContain('One SPF record authorizes both arms');
 		wrapper.unmount();
@@ -202,20 +227,98 @@ describe('transport wizard — mounted flow', () => {
 	it('surfaces a failed credential apply without advancing', async () => {
 		vi.stubGlobal(
 			'$fetch',
-			vi.fn(async () => ({
-				ok: false,
-				message: 'The provider rejected the key.',
-				applied: false,
-				requiresRestart: false,
-			}))
+			vi.fn(async (url: string) =>
+				url === '/api/delivery/validate-transport'
+					? { ok: true, message: 'Credentials verified.' }
+					: {
+							ok: false,
+							message: 'The provider rejected the key.',
+							applied: false,
+							requiresRestart: false,
+						}
+			)
 		);
 		const wrapper = mountWizard();
 		await openWizard(wrapper);
-		await wrapper.find('#field-resend-api-key').setValue('re_live_secret');
+		await fillCredentials(wrapper, 'resend', 're_live_secret');
 		await buttonByText(wrapper, 'Save credentials').trigger('click');
 		await flushPromises();
 		expect(wrapper.text()).toContain('The provider rejected the key.');
 		expect(buttonByText(wrapper, 'Next').attributes('disabled')).toBeDefined();
+		wrapper.unmount();
+	});
+
+	it('stops at the live handshake when the provider rejects the key, before applying', async () => {
+		const fetchMock = vi.fn(async (url: string) =>
+			url === '/api/delivery/validate-transport'
+				? { ok: false, message: 'Resend says: invalid API key.' }
+				: { ok: true, message: 'Applied.', applied: true, requiresRestart: false }
+		);
+		vi.stubGlobal('$fetch', fetchMock);
+		const wrapper = mountWizard();
+		await openWizard(wrapper);
+		await fillCredentials(wrapper, 'resend', 're_live_secret');
+		await buttonByText(wrapper, 'Save credentials').trigger('click');
+		await flushPromises();
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+			'/api/delivery/validate-transport',
+		]);
+		expect(wrapper.text()).toContain('Resend says: invalid API key.');
+		expect(buttonByText(wrapper, 'Next').attributes('disabled')).toBeDefined();
+		wrapper.unmount();
+	});
+
+	it('applies the SMTP branch through the same two shipped endpoints', async () => {
+		const fetchMock = vi.fn(async (url: string) =>
+			url === '/api/delivery/validate-transport'
+				? { ok: true, message: 'Connected.' }
+				: { ok: true, message: 'Applied.', applied: true, requiresRestart: false }
+		);
+		vi.stubGlobal('$fetch', fetchMock);
+		const wrapper = mountWizard();
+		await openWizard(wrapper);
+		await fillCredentials(wrapper, 'smtp');
+		await buttonByText(wrapper, 'Save credentials').trigger('click');
+		await flushPromises();
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+			'/api/delivery/validate-transport',
+			'/api/delivery/apply-transport',
+		]);
+		expect(buttonByText(wrapper, 'Next').attributes('disabled')).toBeUndefined();
+		wrapper.unmount();
+	});
+
+	it('applies the SES branch, which has no pre-apply handshake to run', async () => {
+		const fetchMock = vi.fn(async () => ({
+			ok: true,
+			message: 'Applied.',
+			applied: true,
+			requiresRestart: false,
+		}));
+		vi.stubGlobal('$fetch', fetchMock);
+		const wrapper = mountWizard();
+		await openWizard(wrapper);
+		await fillCredentials(wrapper, 'ses');
+		await buttonByText(wrapper, 'Save credentials').trigger('click');
+		await flushPromises();
+		expect(fetchMock.mock.calls.map((call) => call[0])).toEqual(['/api/delivery/apply-transport']);
+		expect(buttonByText(wrapper, 'Next').attributes('disabled')).toBeUndefined();
+		wrapper.unmount();
+	});
+
+	it('does not strand the operator when the alignment probe throws', async () => {
+		vi.mocked(runAlignmentProbe).mockRejectedValueOnce(new Error('malformed arm'));
+		const wrapper = await walkToAlignment();
+		await buttonByText(wrapper, 'Check alignment').trigger('click');
+		await flushPromises();
+		// Not pinned at "running": the button is live again, the step says so, and
+		// a second attempt runs the real probe through to a verdict.
+		expect(wrapper.text()).toContain('The check could not run');
+		expect(buttonByText(wrapper, 'Check alignment').attributes('disabled')).toBeUndefined();
+		await buttonByText(wrapper, 'Check alignment').trigger('click');
+		await flushPromises();
+		expect(wrapper.text()).toContain('indistinguishable to the receiver');
+		expect(wrapper.text()).not.toContain('The check could not run');
 		wrapper.unmount();
 	});
 });

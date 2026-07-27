@@ -6,9 +6,14 @@
  * against rendered output, because the properties under test (an offer that
  * never nags, a secret that never reaches the screen, focus that follows the
  * step) are properties of what an operator actually sees.
+ *
+ * The credentials step and the finding row are NOT stubbed and are not
+ * registered here either: the wizard imports both explicitly, precisely so a
+ * mount cannot silently resolve them to nothing and leave four suites asserting
+ * against a step that never rendered.
  */
 import { vi } from 'vitest';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import type {
 	AlignmentArm,
 	ReferenceAlignmentArm,
@@ -87,6 +92,15 @@ export function referenceArm(overrides: Partial<ReferenceAlignmentArm> = {}): Re
 	};
 }
 
+/** The `alignmentArms` prop as the query returns it — domain included. */
+export function armsFixture(reference: ReferenceArmInput = referenceArm()): {
+	domain: string;
+	ownArm: AlignmentArm;
+	reference: ReferenceArmInput;
+} {
+	return { domain: OWN_ARM.fromDomain, ownArm: OWN_ARM, reference };
+}
+
 /** Live DNS with everything published correctly for both arms. */
 export const ALIGNED_DNS: TxtFixture = {
 	'example.com': ['v=spf1 ip4:203.0.113.10 include:amazonses.com ~all'],
@@ -148,7 +162,7 @@ export const wizardStubs = {
 };
 
 export interface WizardProps {
-	alignmentArms?: { ownArm: AlignmentArm; reference: ReferenceArmInput } | null;
+	alignmentArms?: { domain: string; ownArm: AlignmentArm; reference: ReferenceArmInput } | null;
 	returnPathCapability?: ReturnPathCapabilityValue | null;
 	canSend?: boolean;
 }
@@ -173,4 +187,40 @@ export function buttonByText(wrapper: WizardWrapper, text: string) {
 /** Open the wizard from its collapsed entry-point card. */
 export async function openWizard(wrapper: WizardWrapper): Promise<void> {
 	await buttonByText(wrapper, 'Connect a provider').trigger('click');
+	await flushPromises();
+}
+
+/** Select one of the three relay kinds on the credentials step. */
+export async function chooseProvider(
+	wrapper: WizardWrapper,
+	value: 'resend' | 'ses' | 'smtp'
+): Promise<void> {
+	const radio = wrapper.find(`input[type="radio"][value="${value}"]`);
+	if (!radio.exists()) throw new Error(`No provider radio for "${value}" is rendered`);
+	await radio.setValue();
+}
+
+/**
+ * Fill in whichever credential fields the chosen kind needs. Deliberately not a
+ * single "type the secret" helper: the SES and SMTP branches have their own
+ * fields, and a suite that only ever exercises Resend proves nothing about them.
+ */
+export async function fillCredentials(
+	wrapper: WizardWrapper,
+	value: 'resend' | 'ses' | 'smtp',
+	secret = 'super-secret-value'
+): Promise<void> {
+	await chooseProvider(wrapper, value);
+	if (value === 'resend') {
+		await wrapper.find('#field-resend-api-key').setValue(secret);
+		return;
+	}
+	if (value === 'ses') {
+		await wrapper.find('#field-region').setValue('us-east-1');
+		await wrapper.find('#field-access-key-id').setValue('AKIAEXAMPLE');
+		await wrapper.find('#field-secret-access-key').setValue(secret);
+		return;
+	}
+	await wrapper.find('#field-username').setValue('postmaster@example.com');
+	await wrapper.find('#field-password').setValue(secret);
 }
