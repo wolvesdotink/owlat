@@ -18,6 +18,20 @@ export const DELIVERABILITY_MIN_HEALTHY_MS = 15 * 60 * 1000;
 export const DELIVERABILITY_FALLBACK_COOLDOWN_MS = 30 * 60 * 1000;
 const STATE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const DOMAIN_CLASSIFICATION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * How stale a CONFIRMING observation has to be before it is worth a write.
+ *
+ * The classifier row is a read dependency of the campaign enqueue transaction
+ * (`delivery/sendAssignments.ts` keys the cell off it), while
+ * {@link recordDestinationProviderDomain} runs once per delivered message. A
+ * gmail-heavy campaign would otherwise patch `gmail.com` continuously and
+ * invalidate the read set of every in-flight enqueue page, driving OCC retries
+ * on a transaction that must not fail. A repeat observation of the SAME
+ * provider carries no new information, so it is skipped inside this interval;
+ * a CHANGED provider or an aged row always writes, leaving self-correction
+ * untouched.
+ */
+const DOMAIN_CLASSIFICATION_REFRESH_MS = 60 * 60 * 1000;
 const PROVIDERS = ['all', ...DESTINATION_PROVIDER_KEYS] as const;
 
 /**
@@ -140,6 +154,15 @@ export const recordDestinationProviderDomain = internalMutation({
 			)
 			.first();
 		if (existing && existing.observedAt >= args.observedAt) return { recorded: false };
+		// Cooled write: a confirming observation inside the refresh interval is a
+		// no-op (see DOMAIN_CLASSIFICATION_REFRESH_MS). Fixture-pinned.
+		if (
+			existing &&
+			existing.destinationProvider === args.destinationProvider &&
+			args.observedAt - existing.observedAt < DOMAIN_CLASSIFICATION_REFRESH_MS
+		) {
+			return { recorded: false };
+		}
 		const fields = {
 			organizationId,
 			domain,

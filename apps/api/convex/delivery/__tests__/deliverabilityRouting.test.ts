@@ -130,6 +130,70 @@ describe('deliverability routing hysteresis', () => {
 		});
 	});
 
+	it('cools CONFIRMING observations so the classifier row is not patched once per delivery', async () => {
+		// The classifier row is a read dependency of the campaign enqueue
+		// transaction (`delivery/sendAssignments.ts` keys the cell off it). This
+		// mutation runs on every `email.delivered`, so an uncooled patch would
+		// invalidate the read set of every in-flight enqueue page and drive OCC
+		// retries on a transaction that must not fail. A repeat observation of
+		// the SAME provider inside DOMAIN_CLASSIFICATION_REFRESH_MS (1h) carries
+		// no new information and must be a no-op; a CHANGED provider or an aged
+		// row must still write, so self-correction is untouched.
+		const t = convexTest(schema, modules);
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('transactionalSends', {
+				kind: 'transactional',
+				email: 'user@cooled.example',
+				status: 'delivered',
+				providerType: 'mta',
+				providerMessageId: 'mta-cooled',
+			});
+		});
+		const record = async (destinationProvider: 'gmail' | 'microsoft', observedAt: number) =>
+			await t.mutation(internal.delivery.deliverabilityRouting.recordDestinationProviderDomain, {
+				providerMessageId: 'mta-cooled',
+				destinationProvider,
+				observedAt,
+			});
+		const rowFor = async () =>
+			await t.run(
+				async (ctx) =>
+					await ctx.db
+						.query('destinationProviderDomains')
+						.withIndex('by_org_domain', (q) =>
+							q.eq('organizationId', 'org-a').eq('domain', 'cooled.example')
+						)
+						.first()
+			);
+
+		// First observation inserts.
+		expect(await record('gmail', now - 3 * 60 * 60 * 1000)).toEqual({ recorded: true });
+		const inserted = await rowFor();
+		expect(inserted?.destinationProvider).toBe('gmail');
+
+		// A hundred confirming deliveries in the following half hour: one write
+		// happened, none of these do.
+		for (let i = 1; i <= 100; i++) {
+			expect(await record('gmail', now - 3 * 60 * 60 * 1000 + i * 1000)).toEqual({
+				recorded: false,
+			});
+		}
+		expect((await rowFor())?._id).toBe(inserted?._id);
+		expect((await rowFor())?.observedAt).toBe(inserted?.observedAt);
+
+		// A CHANGED provider writes immediately, cooling or not — a domain's
+		// mail-hosting migration must self-correct without waiting an hour.
+		expect(await record('microsoft', now - 3 * 60 * 60 * 1000 + 60_000)).toEqual({
+			recorded: true,
+		});
+		expect((await rowFor())?.destinationProvider).toBe('microsoft');
+
+		// And an AGED confirming observation refreshes the row (and its expiry).
+		expect(await record('microsoft', now)).toEqual({ recorded: true });
+		expect((await rowFor())?.observedAt).toBe(now);
+	});
+
 	it('rejects future, non-MTA, and unresolvable Postbox observations', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
