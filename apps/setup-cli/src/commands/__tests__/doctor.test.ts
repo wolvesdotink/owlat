@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateMtaHealth, evaluateMtaIdentityHealth, evaluateSendPath } from '../doctor';
+import {
+	evaluateIpAuditReport,
+	evaluateMtaHealth,
+	evaluateMtaIdentityHealth,
+	evaluateSendPath,
+} from '../doctor';
 import type { FeatureFlagState } from '@owlat/shared/featureFlags';
 
 /**
@@ -179,6 +184,121 @@ describe('doctor — evaluateMtaHealth', () => {
 		expect(evaluateMtaHealth({ status: 'ok' })).toEqual([
 			{ ok: false, message: 'MTA returned an incomplete health response' },
 		]);
+	});
+});
+
+/**
+ * The installer surface of the pre-flight IP audit: the operator must see the
+ * verdict and the delisting path before investing hours in DNS, and an install
+ * with no audit at all must stay completely silent (additive-only).
+ */
+describe('doctor — pre-flight IP audit verdict', () => {
+	it('passes and states the verdict for a clean address', () => {
+		const findings = evaluateIpAuditReport({
+			audits: [
+				{
+					ip: '203.0.113.10',
+					verdict: 'clean',
+					confidence: 'high',
+					headline: 'This address looks clean and ready to set up.',
+					nextAction: 'Continue with DNS setup: publish SPF, DKIM, and DMARC.',
+					delisting: [],
+				},
+			],
+		});
+		expect(findings).toHaveLength(1);
+		expect(findings[0]?.ok).toBe(true);
+		expect(findings[0]?.message).toContain('203.0.113.10');
+		expect(findings[0]?.message).toContain('looks clean');
+		expect(findings[0]?.message).not.toContain('confidence');
+	});
+
+	it('shows the zone-specific removal URL and next action for a PBL listing', () => {
+		const findings = evaluateIpAuditReport({
+			audits: [
+				{
+					ip: '203.0.113.11',
+					verdict: 'action_required',
+					confidence: 'high',
+					headline: 'This address can work once you fix one thing.',
+					nextAction: 'Request a PBL exclusion for this address, or ask your provider to do it.',
+					delisting: [
+						{
+							key: 'spamhaus:pbl',
+							label: 'Spamhaus PBL',
+							removalUrl: 'https://www.spamhaus.org/pbl/removal/',
+						},
+					],
+				},
+			],
+		});
+		expect(findings).toHaveLength(1);
+		// Fixable, so it does not fail the install — but it is never silent.
+		expect(findings[0]?.ok).toBe(true);
+		expect(findings[0]?.message).toContain('PBL exclusion');
+		expect(findings[0]?.message).toContain('https://www.spamhaus.org/pbl/removal/');
+	});
+
+	it('FAILS doctor on an unusable address so the installer cannot proceed silently', () => {
+		const findings = evaluateIpAuditReport({
+			audits: [
+				{
+					ip: '203.0.113.12',
+					verdict: 'unusable',
+					confidence: 'high',
+					headline: 'This address will not work for sending mail.',
+					nextAction: 'Ask your provider for an address outside this range.',
+					delisting: [
+						{
+							key: 'spamhaus:drop',
+							label: 'Spamhaus DROP',
+							removalUrl: 'https://www.spamhaus.org/drop/',
+						},
+					],
+				},
+			],
+		});
+		expect(findings[0]?.ok).toBe(false);
+		expect(findings[0]?.message).toContain('will not work');
+		expect(findings[0]?.message).toContain('https://www.spamhaus.org/drop/');
+	});
+
+	it('names low measurement confidence rather than hiding it', () => {
+		const findings = evaluateIpAuditReport({
+			audits: [
+				{
+					ip: '203.0.113.13',
+					verdict: 'clean',
+					confidence: 'low',
+					headline: 'This address looks clean and ready to set up.',
+					nextAction: 'Re-run the audit later.',
+				},
+			],
+		});
+		expect(findings[0]?.ok).toBe(true);
+		expect(findings[0]?.message).toContain('measurement confidence: low');
+	});
+
+	it('prints nothing when no audit exists, the payload is unreadable, or a row is malformed', () => {
+		expect(evaluateIpAuditReport({ audits: [] })).toEqual([]);
+		expect(evaluateIpAuditReport({})).toEqual([]);
+		expect(evaluateIpAuditReport(null)).toEqual([]);
+		expect(evaluateIpAuditReport('not json at all')).toEqual([]);
+		expect(evaluateIpAuditReport({ audits: [{ ip: 203 }, { verdict: 'unusable' }] })).toEqual([]);
+		// A verdict we do not recognise is ignored rather than reported as broken.
+		expect(evaluateIpAuditReport({ audits: [{ ip: '203.0.113.14', verdict: 'weird' }] })).toEqual(
+			[]
+		);
+	});
+
+	it('reports every configured address', () => {
+		const findings = evaluateIpAuditReport({
+			audits: [
+				{ ip: '203.0.113.10', verdict: 'clean', headline: 'ok', confidence: 'high' },
+				{ ip: '203.0.113.11', verdict: 'unusable', headline: 'no', confidence: 'high' },
+			],
+		});
+		expect(findings.map((finding) => finding.ok)).toEqual([true, false]);
 	});
 });
 

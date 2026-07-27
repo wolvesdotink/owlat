@@ -8,6 +8,9 @@
  *   3. SEND PATH: a sending feature is enabled AND a delivery provider
  *      (EMAIL_PROVIDER + its credentials) is actually configured — so doctor
  *      never green-lights an install that cannot send any mail.
+ *   3b. SEND PATH: the pre-flight IP audit verdict for each sending address,
+ *       with its next action and any delisting URL — advisory, and silent when
+ *       no audit has been recorded.
  *   4. docker-compose.override.yml exists and matches the stored flags.
  *   5. Containers are running (best-effort: `docker compose ps` parse).
  *
@@ -174,6 +177,68 @@ export function evaluateMtaHealth(value: unknown, env: EnvMap = {}): MtaHealthFi
 	return findings;
 }
 
+/**
+ * Render the pre-flight IP audit for the installer.
+ *
+ * This is the operator-facing surface of the audit: three plainly-worded
+ * verdicts, each with its next action, and — when the address is listed — the
+ * zone-specific removal URL. Only `unusable` fails doctor; `action_required`
+ * tells the operator exactly what to fix before investing hours in DNS.
+ *
+ * ADDITIVE-ONLY: no record, no endpoint, or a payload we cannot read prints
+ * NOTHING. The audit is advisory, so its absence is a supported configuration
+ * and can never be an error or a "setup incomplete" nag.
+ */
+export function evaluateIpAuditReport(value: unknown): MtaHealthFinding[] {
+	if (!isRecord(value) || !Array.isArray(value['audits'])) return [];
+	const findings: MtaHealthFinding[] = [];
+	for (const audit of value['audits']) {
+		if (!isRecord(audit) || typeof audit['ip'] !== 'string') continue;
+		const verdict = audit['verdict'];
+		if (verdict !== 'clean' && verdict !== 'action_required' && verdict !== 'unusable') continue;
+		const headline = typeof audit['headline'] === 'string' ? audit['headline'] : '';
+		const nextAction = typeof audit['nextAction'] === 'string' ? ` ${audit['nextAction']}` : '';
+		const removals = Array.isArray(audit['delisting'])
+			? audit['delisting']
+					.filter(isRecord)
+					.filter(
+						(entry) => typeof entry['label'] === 'string' && typeof entry['removalUrl'] === 'string'
+					)
+					.map((entry) => `${String(entry['label'])}: ${String(entry['removalUrl'])}`)
+			: [];
+		const links = removals.length > 0 ? ` Delisting — ${removals.join('; ')}.` : '';
+		const confidence =
+			audit['confidence'] === 'low' ? ' (measurement confidence: low — re-run to confirm)' : '';
+		findings.push({
+			ok: verdict !== 'unusable',
+			message: `IP audit for ${audit['ip']}: ${headline}${nextAction}${links}${confidence}`,
+		});
+	}
+	return findings;
+}
+
+/**
+ * Read the stored audit from the MTA. Every failure path — unreachable, 401,
+ * 404, unparseable — yields no findings rather than a doctor failure.
+ */
+export async function probeIpAudit(baseUrl: string, apiKey?: string): Promise<MtaHealthFinding[]> {
+	const url = `${baseUrl.replace(/\/+$/, '')}/ip-audit`;
+	const ctrl = new AbortController();
+	const timer = setTimeout(() => ctrl.abort(), 3000);
+	try {
+		const resp = await fetch(url, {
+			signal: ctrl.signal,
+			headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+		});
+		if (!resp.ok) return [];
+		return evaluateIpAuditReport(await resp.json());
+	} catch {
+		return [];
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 async function fetchMtaHealth(baseUrl: string): Promise<unknown> {
 	const url = `${baseUrl.replace(/\/+$/, '')}/health`;
 	const ctrl = new AbortController();
@@ -249,6 +314,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
 	// failure, including the source-IP-bound TCP/25 checks.
 	if (needsDeliveryProvider(flags) && env['EMAIL_PROVIDER'] === 'mta' && env['MTA_API_URL']) {
 		for (const finding of await probeMtaHealth(env['MTA_API_URL'], env)) {
+			check(finding.ok, `SEND PATH: ${finding.message}`);
+		}
+		// Pre-flight IP audit: the operator sees the verdict and the delisting path
+		// BEFORE investing hours in DNS. Silent when no audit exists yet.
+		for (const finding of await probeIpAudit(env['MTA_API_URL'], env['MTA_API_KEY'])) {
 			check(finding.ok, `SEND PATH: ${finding.message}`);
 		}
 	}
