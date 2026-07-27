@@ -32,7 +32,10 @@
  */
 
 import type { FunctionReturnType } from 'convex/server';
-import { api } from '@owlat/api';
+// Type-only: the generated API module is referenced solely inside a
+// `FunctionReturnType<typeof api…>` position, so it must not be pulled into the
+// bundle graph.
+import type { api } from '@owlat/api';
 import type {
 	AlignmentCheckId,
 	AlignmentCheckResult,
