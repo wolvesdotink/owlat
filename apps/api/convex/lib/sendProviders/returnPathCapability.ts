@@ -20,12 +20,15 @@
  * It never throws, never blocks a send, never blocks a promotion and never
  * renders an error. Every function in this module is total.
  *
- * The reviewer's question — "what about a relay that ACCEPTS our MAIL FROM and
- * silently rewrites it?" — is why acceptance alone is NOT a verdict. The probe
- * state machine below only reaches `supported` from an OBSERVED delivered
- * bounce whose envelope sender still matches what we sent, mirroring the
- * shipped loopback probe (`deliverabilityLoopbackAttempts`), which likewise
- * only reaches `passed` from a correlated inbound observation.
+ * "What about a relay that ACCEPTS our MAIL FROM and silently rewrites it?" is
+ * why acceptance alone is NOT a verdict. The probe state machine below reaches
+ * `supported` only from an OBSERVED bounce — and a bounce can only reach our
+ * own bounce server if the relay preserved the signed token in the envelope
+ * sender byte for byte, because that token IS the address the DSN goes to. A
+ * rewrite therefore presents as SILENCE: the probe ages out and settles
+ * `unsupported`. This mirrors the shipped loopback probe
+ * (`deliverabilityLoopbackAttempts`), which likewise only reaches `passed`
+ * from a correlated inbound observation.
  *
  * Pure module: no db, no clock, no env. Every input is a parameter.
  */
@@ -42,9 +45,10 @@ import {
  * Lifecycle of ONE return-path probe for ONE configured transport.
  *
  *   awaiting_delivery  the relay accepted our MAIL FROM; nothing proven yet
- *   supported          a delivered bounce carried the envelope sender we set
- *   unsupported        the relay refused it, or rewrote it, or the probe aged
- *                      out without a bounce ever arriving
+ *   supported          a bounce for the probe reached OUR bounce server
+ *   unsupported        the relay refused our MAIL FROM, or the probe aged out
+ *                      without a bounce ever arriving (which is how a rewritten
+ *                      envelope sender presents — the DSN goes elsewhere)
  */
 export const RETURN_PATH_PROBE_STATUSES = [
 	'awaiting_delivery',
@@ -57,7 +61,6 @@ export type ReturnPathProbeStatus = (typeof RETURN_PATH_PROBE_STATUSES)[number];
 export const RETURN_PATH_PROBE_REASONS = [
 	'awaiting_delivery',
 	'observed_match',
-	'rewritten_by_relay',
 	'rejected_by_relay',
 	'no_bounce_observed',
 ] as const;
@@ -87,8 +90,6 @@ export interface ReturnPathProbeState {
 	readonly reason: ReturnPathProbeReason;
 	/** The envelope sender we asked the relay to use. */
 	readonly sentEnvelopeSender: string;
-	/** What actually came back, once anything did. */
-	readonly observedEnvelopeSender?: string;
 	/** When the probe was put on the wire. */
 	readonly startedAt: number;
 	/** When the status last changed. */
@@ -117,8 +118,15 @@ export interface ReturnPathProbeState {
 export type ReturnPathProbeEvent =
 	/** The relay's SMTP conversation accepted (or refused) MAIL FROM. */
 	| { readonly kind: 'submitted'; readonly accepted: boolean; readonly at: number }
-	/** A bounce for the probe arrived; this is the envelope sender it carried. */
-	| { readonly kind: 'observed'; readonly envelopeSender: string; readonly at: number }
+	/**
+	 * A bounce for the probe reached OUR bounce server. Arrival IS the evidence
+	 * — the signed VERP token lives in the address the DSN was sent to, so a
+	 * relay that rewrote (or merely case-folded) the envelope sender routes the
+	 * DSN somewhere else entirely and we observe nothing. There is deliberately
+	 * no observed-address payload: no production source could supply one that
+	 * differed, so comparing it would be a tautology dressed up as a check.
+	 */
+	| { readonly kind: 'observed'; readonly at: number }
 	/** The probe aged out with nothing observed. */
 	| { readonly kind: 'expired'; readonly at: number };
 
@@ -175,12 +183,15 @@ export function settledVerdictOf(
 ): SettledReturnPathVerdict | undefined {
 	if (!state) return undefined;
 	if (state.status === 'awaiting_delivery') return state.lastSettled;
+	// A settled row cannot legitimately carry the in-flight reason. Rewriting one
+	// that does into `no_bounce_observed` would present the operator with a
+	// reason the system never observed; reporting NO verdict instead makes the
+	// transport read as never-settled, so it is simply re-probed and the answer
+	// comes from evidence rather than from laundering a corrupt row.
+	if (state.reason === 'awaiting_delivery') return undefined;
 	return {
 		status: state.status,
-		// A settled row cannot legitimately carry the in-flight reason; a corrupt
-		// one is read as the honest equivalent — it settled without observing a
-		// bounce — rather than widening the verdict type to admit an impossibility.
-		reason: state.reason === 'awaiting_delivery' ? 'no_bounce_observed' : state.reason,
+		reason: state.reason,
 		settledAt: state.settledAt ?? state.startedAt,
 	};
 }
@@ -199,30 +210,6 @@ export function nextProbeAttempts(previous: ReturnPathProbeState | null | undefi
 	const raw = previous?.attempts;
 	const base = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.trunc(raw)) : 0;
 	return base + 1;
-}
-
-/**
- * Envelope-sender comparison for the rewrite check.
- *
- * The DOMAIN is compared case-insensitively (RFC 5321 §2.4). The LOCAL PART is
- * NOT: ours is a base64url VERP token whose case is significant — `bounce+cHJv`
- * and `bounce+CHJV` decode to different bytes, and the MAC grammar in
- * `@owlat/shared/verp` is itself case-sensitive. A relay that case-folds the
- * local part produces a DSN our own bounce server can never decode, so grading
- * it `supported` would declare that arm's bounce data comparable when in fact
- * it is silently empty. Case-folding IS a rewrite.
- */
-function sameEnvelopeSender(a: string, b: string): boolean {
-	const split = (address: string): { local: string; domain: string } => {
-		const trimmed = address.trim();
-		const at = trimmed.lastIndexOf('@');
-		return at < 0
-			? { local: trimmed, domain: '' }
-			: { local: trimmed.slice(0, at), domain: trimmed.slice(at + 1).toLowerCase() };
-	};
-	const left = split(a);
-	const right = split(b);
-	return left.local === right.local && left.domain === right.domain;
 }
 
 /**
@@ -248,23 +235,15 @@ export function nextProbeState(
 						settledAt: event.at,
 					};
 		case 'observed':
-			// THE point of the probe: a relay may accept our MAIL FROM and rewrite
-			// it to its own bounce address. A mismatch is unsupported, not trusted.
-			return sameEnvelopeSender(event.envelopeSender, state.sentEnvelopeSender)
-				? {
-						...state,
-						status: 'supported',
-						reason: 'observed_match',
-						observedEnvelopeSender: event.envelopeSender,
-						settledAt: event.at,
-					}
-				: {
-						...state,
-						status: 'unsupported',
-						reason: 'rewritten_by_relay',
-						observedEnvelopeSender: event.envelopeSender,
-						settledAt: event.at,
-					};
+			// THE point of the probe: the DSN came back to the address we set, so
+			// the relay preserved our envelope sender. A relay that rewrote it
+			// cannot reach here at all — it settles through 'expired' instead.
+			return {
+				...state,
+				status: 'supported',
+				reason: 'observed_match',
+				settledAt: event.at,
+			};
 		case 'expired':
 			return {
 				...state,
@@ -346,13 +325,15 @@ export const BOUNCE_TOLERANCE_MULTIPLIER_COMPARABLE = 1;
 export const BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK = 2;
 export const BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK = 4;
 
+/**
+ * The resolved posture. `capability` is the ONE bit: whether this transport is
+ * proven to honour a custom return path. Everything a consumer wants to know
+ * from it — may we stamp, is the measurement degraded — is DERIVED from it by
+ * the helpers below rather than stored alongside it, because four stored fields
+ * that can only ever agree are four chances to disagree.
+ */
 export interface ResolvedReturnPathCapability {
 	readonly capability: ReturnPathCapability;
-	/** May the send path stamp our VERP envelope sender on this transport? */
-	readonly stampVerpReturnPath: boolean;
-	readonly measurement: MeasurementQuality;
-	/** True ⇒ surface "measurement confidence: low" on cells using this arm. */
-	readonly degraded: boolean;
 	readonly bounceToleranceMultiplier: number;
 	readonly declared: DeclaredCustomReturnPathSupport;
 	readonly probeStatus: ReturnPathProbeStatus | 'never_probed';
@@ -461,9 +442,6 @@ function grade(
 	const supported = capability === 'supported';
 	return {
 		capability,
-		stampVerpReturnPath: supported,
-		measurement: supported ? 'comparable' : 'degraded',
-		degraded: !supported,
 		bounceToleranceMultiplier: supported
 			? BOUNCE_TOLERANCE_MULTIPLIER_COMPARABLE
 			: options.hasProviderFeedback
@@ -484,6 +462,27 @@ function grade(
 export const unresolvableReturnPathCapability: ResolvedReturnPathCapability = Object.freeze(
 	grade('unknown', 'probe', 'never_probed', 'awaiting_delivery', { hasProviderFeedback: false })
 );
+
+/**
+ * Is this transport proven to honour a custom return path — i.e. may the send
+ * path stamp our VERP envelope sender on it, and is its bounce data comparable
+ * with the direct-MX arm's? `unknown` behaves exactly like `unsupported`.
+ *
+ * The one derived predicate, so a consumer can never set "supported" and
+ * "comparable" to different answers.
+ */
+export function isCustomReturnPathSupported(
+	resolved: Pick<ResolvedReturnPathCapability, 'capability'>
+): boolean {
+	return resolved.capability === 'supported';
+}
+
+/** Measurement confidence for a cell sending through this transport. */
+export function measurementQualityOf(
+	resolved: Pick<ResolvedReturnPathCapability, 'capability'>
+): MeasurementQuality {
+	return isCustomReturnPathSupported(resolved) ? 'comparable' : 'degraded';
+}
 
 /**
  * Widen a bounce-gate tolerance for a degraded arm. Separate from the gate

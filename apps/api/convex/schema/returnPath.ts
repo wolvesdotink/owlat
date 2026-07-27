@@ -16,11 +16,12 @@ export const returnPathTables = {
 	// configuration itself (env-resolved, see lib/sendProviders/transports.ts),
 	// so there is deliberately no organizationId here.
 	//
-	// A row only reaches `supported` from an OBSERVED delivered bounce whose
-	// envelope sender still matched the one we set — mirroring the loopback
-	// probe in `schema/delivery.ts`, and for the same reason: a relay that ACCEPTS our MAIL FROM
-	// and silently rewrites it would otherwise be recorded as comparable, on
-	// exactly the deployments this gate exists to protect.
+	// A row only reaches `supported` from a bounce that actually reached OUR
+	// bounce server — mirroring the loopback probe in `schema/delivery.ts`, and
+	// for the same reason: a relay that ACCEPTS our MAIL FROM and silently
+	// rewrites it would otherwise be recorded as comparable, on exactly the
+	// deployments this gate exists to protect. Such a relay sends the DSN
+	// somewhere else, so it presents here as silence and ages out unsupported.
 	sendTransportReturnPathProbes: defineTable({
 		transportId: v.string(),
 		probeId: v.string(),
@@ -32,12 +33,10 @@ export const returnPathTables = {
 		reason: v.union(
 			v.literal('awaiting_delivery'),
 			v.literal('observed_match'),
-			v.literal('rewritten_by_relay'),
 			v.literal('rejected_by_relay'),
 			v.literal('no_bounce_observed')
 		),
 		sentEnvelopeSender: v.string(),
-		observedEnvelopeSender: v.optional(v.string()),
 		startedAt: v.number(),
 		settledAt: v.optional(v.number()),
 		// Probe count for this transport. Drives the retry BACKOFF: each probe
@@ -58,7 +57,6 @@ export const returnPathTables = {
 				// flight, and a SETTLED verdict can never carry it.
 				reason: v.union(
 					v.literal('observed_match'),
-					v.literal('rewritten_by_relay'),
 					v.literal('rejected_by_relay'),
 					v.literal('no_bounce_observed')
 				),

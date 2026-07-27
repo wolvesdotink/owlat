@@ -118,3 +118,18 @@ export function sendProviderCatalogEntry(kind: SendProviderKind): SendProviderCa
 	if (!entry) throw new TypeError('Unknown send provider kind');
 	return entry;
 }
+
+/**
+ * Is this kind's envelope-sender control decided by a PROBE rather than by the
+ * catalog? `yes` and `no` are settled declarations, so probing them would prove
+ * nothing and — since every probe deliberately manufactures a bounce on the
+ * operator's relay — would spend real sender reputation doing it.
+ *
+ * ONE definition, because two consumers must agree or the feature silently
+ * half-works: the sweep decides what is worth PROVING and the routing gate
+ * decides what a proof is worth READING. If they disagreed, the sweep would go
+ * on proving a capability the routing gate never consults.
+ */
+export function isProbeDecidedReturnPathKind(kind: SendProviderKind): boolean {
+	return catalogByKind.get(kind)?.supportsCustomReturnPath === 'probe';
+}
