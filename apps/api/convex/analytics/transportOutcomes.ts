@@ -29,9 +29,12 @@
  *     horizon, so the per-cell read set stays bounded.
  *
  * WHAT FEEDS IT: the SHIPPED Send lifecycle. `delivery/sendLifecycle.ts` emits a
- * `transport_outcome` effect for every non-duplicate transition and the existing
- * effect runner applies it. There is no parallel event stream, and no existing
- * effect changed what it does.
+ * `transport_outcome` effect for every non-duplicate delivery transition, and
+ * the `opened`/`clicked` twins are emitted by the reducers themselves from
+ * inside the shipped UNIQUE-open/click gate, so an outcome counter always means
+ * the same thing as the dashboard counter next to it. The existing effect runner
+ * applies both. There is no parallel event stream, and no existing effect
+ * changed what it does.
  *
  * WHAT IS EXCLUDED: anything with no `sendAssignments` row records NOTHING. That
  * is the seam seed shadow copies rely on (plan D18 — a seed probe is a shadow
@@ -49,10 +52,15 @@ import {
 	type MutationCtx,
 } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { parseDeliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
+import {
+	deliverabilityCellKey,
+	parseDeliverabilityCellKey,
+	type DeliverabilityCellKey,
+} from '@owlat/shared/deliverabilityRouting';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { logWarn } from '../lib/runtimeLog';
-import { startOfDayUtc } from './sendingReputation';
+import { resolveNow, startOfDayUtc } from '../lib/clock';
+import { readAssignmentForSend } from '../delivery/sendAssignments';
 import {
 	safeOutcomeCount,
 	summarizeTransportOutcomeBuckets,
@@ -96,7 +104,7 @@ export const TRANSPORT_OUTCOME_CLEANUP_BATCH_SIZE = 200;
 
 export interface CellArmWindowQuery extends TransportOutcomeWindow {
 	readonly organizationId: string;
-	readonly cell: string;
+	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
 }
 
@@ -149,7 +157,10 @@ export async function summarizeTransportOutcomes(
  */
 export async function summarizeTransportOutcomeArms(
 	db: DatabaseReader,
-	input: TransportOutcomeWindow & { readonly organizationId: string; readonly cell: string }
+	input: TransportOutcomeWindow & {
+		readonly organizationId: string;
+		readonly cell: DeliverabilityCellKey;
+	}
 ): Promise<{ own: TransportOutcomeSummary; reference: TransportOutcomeSummary }> {
 	const own = await summarizeTransportOutcomes(db, { ...input, arm: 'own' });
 	const reference = await summarizeTransportOutcomes(db, { ...input, arm: 'reference' });
@@ -157,8 +168,11 @@ export async function summarizeTransportOutcomeArms(
 }
 
 /**
- * Org-scoped, window-bounded cell summary — the seam the ramp controller and the
- * delivery dashboard read through, so both see one derivation of one number.
+ * Org-scoped, window-bounded cell summary. `internalQuery`, so it is NOT
+ * client-callable: its consumers are the ramp controller cron and the
+ * session-authed query shell a later piece adds for the dashboard. Do not wire a
+ * Vue page to it — wire the page to that shell, which comes through here, so
+ * both still see one derivation of one number.
  */
 export const getCellOutcomeSummary = internalQuery({
 	args: {
@@ -167,30 +181,43 @@ export const getCellOutcomeSummary = internalQuery({
 		since: v.optional(v.number()),
 		until: v.optional(v.number()),
 	},
-	handler: async (ctx, args) =>
-		await summarizeTransportOutcomeArms(ctx.db, {
-			organizationId: args.organizationId,
-			cell: args.cell,
+	handler: async (ctx, args) => {
+		// The wire type is a string; the branded key is narrowed ONCE, here at the
+		// boundary. An unparseable key addresses no bucket, so it summarizes to
+		// the empty window rather than reading with a key no writer can produce.
+		const parsedCell = parseDeliverabilityCellKey(args.cell);
+		const window = {
 			...(args.since !== undefined ? { since: args.since } : {}),
 			...(args.until !== undefined ? { until: args.until } : {}),
-		}),
+		};
+		if (parsedCell === null) {
+			const empty = summarizeTransportOutcomeBuckets([], window);
+			return { own: empty, reference: empty };
+		}
+		return await summarizeTransportOutcomeArms(ctx.db, {
+			organizationId: args.organizationId,
+			cell: deliverabilityCellKey(parsedCell),
+			...window,
+		});
+	},
 });
 
 // ============ WRITER (the hot path) ============
 
 interface BucketKey {
 	readonly organizationId: string;
-	readonly cell: string;
+	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
 	readonly periodStart: number;
 	readonly shardKey: number;
 }
 
 /**
- * Today's shard row for a (org, cell, arm) bucket, created on the first event
- * that lands on it. Every index component is pinned, so this is a point read.
+ * Today's shard row for a (org, cell, arm) bucket, CREATED on the first event
+ * that lands on it — hence `ensure`, not a getter. Every index component is
+ * pinned, so the lookup is a point read.
  */
-async function outcomeShardBucket(
+async function ensureOutcomeShardBucket(
 	ctx: MutationCtx,
 	key: BucketKey,
 	now: number
@@ -224,7 +251,7 @@ async function outcomeShardBucket(
 
 export interface RecordTransportOutcomeInput {
 	readonly organizationId: string;
-	readonly cell: string;
+	readonly cell: DeliverabilityCellKey;
 	readonly arm: TransportOutcomeArm;
 	readonly event: TransportOutcomeEvent;
 	readonly isCalibration: boolean;
@@ -242,8 +269,8 @@ export async function recordTransportOutcomeForCell(
 	ctx: MutationCtx,
 	input: RecordTransportOutcomeInput
 ): Promise<void> {
-	const now = input.now !== undefined && Number.isFinite(input.now) ? input.now : Date.now();
-	const bucket = await outcomeShardBucket(
+	const now = resolveNow(input.now);
+	const bucket = await ensureOutcomeShardBucket(
 		ctx,
 		{
 			organizationId: input.organizationId,
@@ -288,22 +315,21 @@ export async function recordTransportOutcomeForSend(
 		return 'no_organization';
 	}
 
-	const assignment = await ctx.db
-		.query('sendAssignments')
-		.withIndex('by_org_send', (q) =>
-			q.eq('organizationId', organizationId).eq('sendId', input.sendId)
-		)
-		.first();
+	// ONE tenant-scoped join, shared with `getAssignmentForSend`.
+	const assignment = await readAssignmentForSend(ctx.db, organizationId, input.sendId);
 	// No assignment row ⇒ this send is outside the experiment (seed shadow
 	// copies, legacy sends). It must never enter a denominator.
 	if (!assignment) return 'no_assignment';
 	// `cell` is a plain string in the schema; a malformed one would create a
-	// bucket no reader can ever address.
-	if (parseDeliverabilityCellKey(assignment.cell) === null) return 'invalid_cell';
+	// bucket no reader can ever address. Parse ONCE here and hand the branded,
+	// re-canonicalized key down, so a variant spelling can neither reach a
+	// bucket nor be invented by a caller.
+	const parsedCell = parseDeliverabilityCellKey(assignment.cell);
+	if (parsedCell === null) return 'invalid_cell';
 
 	await recordTransportOutcomeForCell(ctx, {
 		organizationId,
-		cell: assignment.cell,
+		cell: deliverabilityCellKey(parsedCell),
 		arm: assignment.arm,
 		event: input.event,
 		isCalibration: assignment.isCalibration,
@@ -347,7 +373,7 @@ export async function applyTransportOutcomeEffect(
 export const cleanupExpiredOutcomes = internalMutation({
 	args: { now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const now = args.now !== undefined && Number.isFinite(args.now) ? args.now : Date.now();
+		const now = resolveNow(args.now);
 		const cutoff = now - TRANSPORT_OUTCOME_RETENTION_MS;
 		const expired = await ctx.db
 			.query('transportOutcomes')

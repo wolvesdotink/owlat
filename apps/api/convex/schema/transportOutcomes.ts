@@ -62,6 +62,10 @@ export const transportOutcomeTables = {
 		calibrationOpened: v.number(),
 		calibrationClicked: v.number(),
 
+		// Freshness of this shard, surfaced by the summarizer as the window's
+		// newest `lastRecordedAt`. The ramp controller may only INCREASE on fresh
+		// evidence, and it reads that through the same seam as every counter
+		// rather than making a second pass over the raw rows.
 		lastRecordedAt: v.number(),
 	})
 		// Org-leading, then the cell/arm/day/shard prefix the plan names. The
