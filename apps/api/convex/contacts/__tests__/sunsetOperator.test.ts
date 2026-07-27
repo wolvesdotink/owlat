@@ -37,6 +37,10 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn(async () => session()),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('operator-1'),
+		// `authedMutation` gates on this one, not on `requireOrgMember`; leaving it
+		// real makes every authed mutation in the suite reject before its handler
+		// runs, which is a very confusing way to fail.
+		getMutationContext: vi.fn(async () => session()),
 		requireOrgPermission: vi.fn(async () => session()),
 	};
 });
