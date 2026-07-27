@@ -28,7 +28,8 @@ import {
 	utcDayStart,
 	type SndsDayObservation,
 } from './sndsFeed';
-import { buildSndsGateInput, type SndsGateInput } from './sndsGate';
+import { buildSndsGateInput, type SndsGateInput, type SndsGateObservation } from './sndsGate';
+import { parsePoolIpsLenient } from '../domains/spf';
 import { observationVerdict } from './observationFreshness';
 import { sweepExpiredObservations } from './observationRetention';
 
@@ -51,8 +52,16 @@ export const SNDS_INGEST_BATCH_SIZE = 64;
  */
 export const SNDS_MAX_OBSERVATIONS_PER_POLL = 2_000;
 export const SNDS_CLEANUP_BATCH_SIZE = 128;
-/** How many stored days one gate evaluation may read. */
+/** How many stored days one UNSCOPED gate evaluation may read. */
 export const SNDS_GATE_MAX_ROWS = 512;
+/**
+ * How many declared pool addresses one gate evaluation walks, and how many days
+ * it reads for each. A pool-scoped read is bounded by the pool rather than by
+ * the table, so it never reports `truncated` merely for having a lot of history:
+ * the per-IP cap is comfortably above the 90-day retention ceiling.
+ */
+export const SNDS_GATE_MAX_POOL_IPS = 64;
+export const SNDS_GATE_MAX_ROWS_PER_IP = 96;
 export const SNDS_GATE_WINDOW_DAYS = 7;
 
 /**
@@ -66,8 +75,9 @@ export const SNDS_GATE_WINDOW_DAYS = 7;
 export function parseSndsFeedUrls(raw: string | undefined): string[] {
 	const urls: string[] = [];
 	for (const entry of (raw ?? '').split(/[,\s]+/)) {
+		if (urls.length >= SNDS_MAX_FEEDS) break;
 		const candidate = entry.trim();
-		if (candidate.length === 0 || urls.length >= SNDS_MAX_FEEDS) continue;
+		if (candidate.length === 0) continue;
 		let parsed: URL;
 		try {
 			parsed = new URL(candidate);
@@ -85,18 +95,16 @@ export function parseSndsFeedUrls(raw: string | undefined): string[] {
  *
  * An SNDS key can cover a whole registered range, so a feed may legitimately
  * carry addresses that are not ours. When the operator declares their pool we
- * treat it as an allowlist and drop everything else; when they do not, the
- * feed's own scoping is the only bound available and we keep what it sends.
- * Unlike `domains/spf.ts:parsePoolIps` this never throws — a typo in the pool
- * must not take the poller down.
+ * treat it as an allowlist and drop everything else; when they do not, the feed
+ * is stored unattributed and the GATE refuses to read it as positive evidence
+ * (see {@link getMicrosoftGateInput}).
+ *
+ * The grammar is `domains/spf.ts`'s, read leniently: one parser for one env var,
+ * because a typo in the pool must not take the poller down but it also must not
+ * mean the poller accepts addresses registration would have refused.
  */
 export function parsePoolAllowlist(raw: string | undefined): Set<string> {
-	const ips = new Set<string>();
-	for (const entry of (raw ?? '').split(',')) {
-		const ip = normalizeSndsIp(entry);
-		if (ip !== null) ips.add(ip);
-	}
-	return ips;
+	return new Set(parsePoolIpsLenient(raw).ips);
 }
 
 export interface SndsPollSummary {
@@ -120,7 +128,13 @@ export interface SndsPollSummary {
 	truncated: boolean;
 }
 
-const NOT_ENROLLED: SndsPollSummary = {
+/**
+ * The zero summary — both the not-enrolled return value and the starting point
+ * the enrolled path spreads. FROZEN: it is module-level shared state, so a
+ * caller that mutated what `poll` handed back would corrupt every later poll in
+ * the isolate. Callers get a copy; the freeze is the belt to that's braces.
+ */
+const NOT_ENROLLED: SndsPollSummary = Object.freeze({
 	enrolled: false,
 	feeds: 0,
 	feedsFailed: 0,
@@ -134,7 +148,7 @@ const NOT_ENROLLED: SndsPollSummary = {
 	capped: 0,
 	overflowed: 0,
 	truncated: false,
-};
+});
 
 /**
  * Fetch one feed's body, bounded in time and in size. `null` on any failure,
@@ -194,7 +208,7 @@ export const poll = internalAction({
 	handler: async (ctx): Promise<SndsPollSummary> => {
 		const urls = parseSndsFeedUrls(getOptional('SNDS_DATA_FEED_URLS'));
 		// D2: not enrolled is a supported configuration. Return, write nothing.
-		if (urls.length === 0) return NOT_ENROLLED;
+		if (urls.length === 0) return { ...NOT_ENROLLED };
 
 		const allowlist = parsePoolAllowlist(getOptional('MTA_IP_POOLS'));
 		const fetchedAt = Date.now();
@@ -299,6 +313,12 @@ function isStorableObservation(
  * replaces the row, an identical read is an acknowledged replay, an older one
  * is refused. `replace`, not `patch`, so a value the feed stops reporting
  * disappears instead of lingering.
+ *
+ * BATCHING IS THE CALLER'S CONTRACT. `poll` slices at
+ * {@link SNDS_INGEST_BATCH_SIZE} before it calls, and it is the only caller. A
+ * second cap here would be a seam with no user (D20) and — since the argument
+ * validator cannot bound an array's length — it would not protect the
+ * transaction from a large argument anyway, only from a large loop.
  */
 export const ingestDays = internalMutation({
 	args: { observations: v.array(observationValidator), fetchedAt: v.number() },
@@ -307,11 +327,7 @@ export const ingestDays = internalMutation({
 		let ingested = 0;
 		let rejected = 0;
 		let replayed = 0;
-		// A caller that oversends is a caller with a bug. The batch cap still holds,
-		// but the overflow is COUNTED as refused — slicing it away silently means a
-		// caller passing 100 sees ingested + rejected < 100 and never learns why.
-		rejected += Math.max(0, args.observations.length - SNDS_INGEST_BATCH_SIZE);
-		for (const observation of args.observations.slice(0, SNDS_INGEST_BATCH_SIZE)) {
+		for (const observation of args.observations) {
 			if (!isStorableObservation(now, args.fetchedAt, observation)) {
 				rejected += 1;
 				continue;
@@ -365,6 +381,18 @@ export const cleanup = internalMutation({
  * Returns `available: false` with the documented substitution when the
  * operator never enrolled OR when the window is empty — the caller treats both
  * the same way, which is the point of the substitution table.
+ *
+ * THE READ IS SCOPED THE WAY THE INGEST IS SCOPED. An SNDS key is issued per
+ * REGISTERED RANGE, so the table can legitimately hold days belonging to other
+ * senders in that range — the poller only drops them when the operator has
+ * declared `MTA_IP_POOLS`, and rows ingested before they declared it stay for
+ * the full retention. Folding those in would let a neighbour's clean band
+ * satisfy OUR promotion criterion, because the worst-of fold only protects the
+ * DOWN direction. So: with a declared pool the query walks the pool and reads
+ * nothing else; with no declared pool the window is read whole but marked
+ * UNATTRIBUTED, which caps confidence at `low` and makes promotion impossible
+ * while leaving pass/fail — and therefore every ability to slow the ramp —
+ * exactly as it was. D2 holds: nothing here blocks, errors or nags.
  */
 export const getMicrosoftGateInput = internalQuery({
 	args: { windowDays: v.optional(v.number()) },
@@ -377,28 +405,61 @@ export const getMicrosoftGateInput = internalQuery({
 		if (!enrolled) return buildSndsGateInput({ enrolled, windowDays, observations: [] });
 
 		const cutoff = Date.now() - windowDays * DAY_MS;
-		// NEWEST FIRST. The read is capped, and an ascending scan spends the cap on
-		// the OLDEST days — so above ~73 pool IPs a red filter result recorded today
-		// is exactly the row that falls off the end, and the gate answers `pass`
-		// from a window that no longer contains the breach. Descending keeps today's
-		// evidence inside the cap, and `truncated` then tells the gate that what it
-		// did NOT see must never be read as cleanliness.
-		const rows = await ctx.db
-			.query('sndsIpDailyStats')
-			.withIndex('by_period', (q) => q.gte('periodStart', cutoff))
-			.order('desc')
-			.take(SNDS_GATE_MAX_ROWS);
-		return buildSndsGateInput({
-			enrolled,
-			windowDays,
-			truncated: rows.length >= SNDS_GATE_MAX_ROWS,
-			observations: rows.map((row) => ({
-				ip: row.ip,
-				periodStart: row.periodStart,
-				complaintBand: row.complaintBand,
-				filterResult: row.filterResult,
-				trapHits: row.trapHits,
-			})),
-		});
+		const pool = [...parsePoolAllowlist(getOptional('MTA_IP_POOLS'))].sort();
+		const observations: SndsGateObservation[] = [];
+		let truncated = false;
+
+		if (pool.length === 0) {
+			// NEWEST FIRST. The read is capped, and an ascending scan spends the cap on
+			// the OLDEST days — so above ~73 stored IPs a red filter result recorded
+			// today is exactly the row that falls off the end, and the gate answers
+			// `pass` from a window that no longer contains the breach. Descending keeps
+			// today's evidence inside the cap, and `truncated` then tells the gate that
+			// what it did NOT see must never be read as cleanliness.
+			const rows = await ctx.db
+				.query('sndsIpDailyStats')
+				.withIndex('by_period', (q) => q.gte('periodStart', cutoff))
+				.order('desc')
+				.take(SNDS_GATE_MAX_ROWS);
+			truncated = rows.length >= SNDS_GATE_MAX_ROWS;
+			for (const row of rows) observations.push(projectGateObservation(row));
+			return buildSndsGateInput({
+				enrolled,
+				windowDays,
+				truncated,
+				attributed: false,
+				observations,
+			});
+		}
+
+		// A pool larger than this reads as truncated rather than as a long query:
+		// the window is then a subset, which the gate already knows how to hold.
+		truncated = pool.length > SNDS_GATE_MAX_POOL_IPS;
+		for (const ip of pool.slice(0, SNDS_GATE_MAX_POOL_IPS)) {
+			const rows = await ctx.db
+				.query('sndsIpDailyStats')
+				.withIndex('by_ip_period', (q) => q.eq('ip', ip).gte('periodStart', cutoff))
+				.order('desc')
+				.take(SNDS_GATE_MAX_ROWS_PER_IP);
+			if (rows.length >= SNDS_GATE_MAX_ROWS_PER_IP) truncated = true;
+			for (const row of rows) observations.push(projectGateObservation(row));
+		}
+		return buildSndsGateInput({ enrolled, windowDays, truncated, observations });
 	},
 });
+
+function projectGateObservation(row: {
+	ip: string;
+	periodStart: number;
+	complaintBand: SndsGateObservation['complaintBand'];
+	filterResult: SndsGateObservation['filterResult'];
+	trapHits: number;
+}): SndsGateObservation {
+	return {
+		ip: row.ip,
+		periodStart: row.periodStart,
+		complaintBand: row.complaintBand,
+		filterResult: row.filterResult,
+		trapHits: row.trapHits,
+	};
+}
