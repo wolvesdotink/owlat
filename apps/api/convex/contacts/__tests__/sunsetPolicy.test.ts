@@ -158,6 +158,37 @@ describe('resolveSunsetPolicy', () => {
 		expect(resolved.isEnabled).toBe(false);
 	});
 
+	/**
+	 * THE GLOBAL ROW IS ONE OF THE APPLICABLE POLICIES — for the windows too, not
+	 * only for the enable flag. A topic asking for a shorter window must not make
+	 * a contact judged more strictly than the deployment-wide policy allows.
+	 */
+	it('does not let a topic window undercut a longer deployment-wide one', () => {
+		const resolved = resolveSunsetPolicy({
+			globalOverride: { reengageAfterDays: 365, suppressAfterDays: 500 },
+			topicOverrides: [{ reengageAfterDays: 60, suppressAfterDays: 90 }],
+		});
+		expect(resolved.reengageAfterDays).toBe(365);
+		expect(resolved.suppressAfterDays).toBe(500);
+	});
+
+	it('still takes a topic window that is MORE patient than the global one', () => {
+		const resolved = resolveSunsetPolicy({
+			globalOverride: { reengageAfterDays: 200, suppressAfterDays: 300 },
+			topicOverrides: [{ reengageAfterDays: 400, suppressAfterDays: 600 }],
+		});
+		expect(resolved.reengageAfterDays).toBe(400);
+		expect(resolved.suppressAfterDays).toBe(600);
+	});
+
+	it('keeps a deployment-wide opt-out absolute across topic overrides', () => {
+		const resolved = resolveSunsetPolicy({
+			globalOverride: { isEnabled: false },
+			topicOverrides: [{ isEnabled: true }],
+		});
+		expect(resolved.isEnabled).toBe(false);
+	});
+
 	it('ignores a non-positive or non-finite override value', () => {
 		const resolved = resolveSunsetPolicy({
 			globalOverride: { reengageAfterDays: 0, suppressAfterDays: Number.NaN },

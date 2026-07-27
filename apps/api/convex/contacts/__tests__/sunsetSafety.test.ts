@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { createTestContact } from '../../__tests__/factories';
-import { evaluateSunset, SUNSET_POLICY_DEFAULTS } from '../sunsetPolicy';
+import {
+	evaluateSunset,
+	isClockCorroborated,
+	latestSunsetInstant,
+	SUNSET_MAX_CLOCK_LEAD_MS,
+	SUNSET_POLICY_DEFAULTS,
+} from '../sunsetPolicy';
 import { evaluateAndApplySunset } from '../sunsetEngine';
 import { DAY, NOW, daysAgo, facts, harness, policy } from './sunsetFixtures';
 
@@ -491,5 +497,46 @@ describe('sunset safety — a jumped clock never fires', () => {
 	it('acts normally when the deployment record corroborates the clock', async () => {
 		const applied = await evaluateAt(NOW, NOW - DAY);
 		expect(applied.verdict.action).toBe('suppress');
+	});
+});
+
+/**
+ * THE CORROBORATION PREDICATE, exercised directly. It is the one guard that
+ * validates `now` itself rather than a fact against `now`, and the sweep calls
+ * it once per tick before writing anything, so its edges are worth pinning
+ * without going through a fixture book.
+ */
+describe('sunset safety — the clock-corroboration predicate', () => {
+	it('trusts a deployment that has never swept (nothing to check against)', () => {
+		expect(isClockCorroborated(NOW, undefined)).toBe(true);
+	});
+
+	it('rejects a `now` that is not a usable instant', () => {
+		expect(isClockCorroborated(Number.NaN, NOW - DAY)).toBe(false);
+		expect(isClockCorroborated(0, NOW - DAY)).toBe(false);
+		expect(isClockCorroborated(-1, NOW - DAY)).toBe(false);
+	});
+
+	it('rejects an unusable corroborating instant rather than ignoring it', () => {
+		expect(isClockCorroborated(NOW, Number.NaN)).toBe(false);
+		expect(isClockCorroborated(NOW, 0)).toBe(false);
+	});
+
+	it('rejects a clock that moved BACKWARDS since the stamp was written', () => {
+		expect(isClockCorroborated(NOW, NOW + DAY)).toBe(false);
+	});
+
+	it('accepts a lead inside the tolerance and rejects one beyond it', () => {
+		expect(isClockCorroborated(NOW, NOW - SUNSET_MAX_CLOCK_LEAD_MS)).toBe(true);
+		expect(isClockCorroborated(NOW, NOW - SUNSET_MAX_CLOCK_LEAD_MS - 1)).toBe(false);
+	});
+
+	it('takes the LATER of the two corroboration sources, ignoring unusable ones', () => {
+		expect(latestSunsetInstant(undefined, undefined)).toBeUndefined();
+		expect(latestSunsetInstant(NOW - DAY, undefined)).toBe(NOW - DAY);
+		expect(latestSunsetInstant(undefined, NOW - DAY)).toBe(NOW - DAY);
+		expect(latestSunsetInstant(NOW - 100 * DAY, NOW - DAY)).toBe(NOW - DAY);
+		expect(latestSunsetInstant(Number.NaN, NOW - DAY)).toBe(NOW - DAY);
+		expect(latestSunsetInstant(Number.NaN, Number.NaN)).toBeUndefined();
 	});
 });

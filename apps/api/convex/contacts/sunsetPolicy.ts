@@ -89,8 +89,16 @@ export const SUNSET_MIN_WINDOW_DAYS = 30;
  * 30 DAYS IS DELIBERATELY GENEROUS. The corroborating instant is a stamp this
  * deployment wrote earlier, so a legitimately idle or paused install can be
  * weeks behind. Being generous costs nothing: the failure mode of the guard is
- * HOLDING, which is always safe, and a false hold clears itself as soon as the
- * deployment writes fresh stamps.
+ * HOLDING, which is always safe.
+ *
+ * A FALSE HOLD DOES NOT CLEAR ITSELF, and pretending otherwise would be the
+ * dangerous half-truth here. The sweep is the only writer of those stamps, so a
+ * deployment paused for longer than this tolerance cannot refresh them by
+ * running: no tick runs, so no stamp is written, so no tick ever runs again.
+ * That is why there is an explicit, audited operator re-arm
+ * (`contacts/sunset.ts#confirmSunsetClock`) whose stamp is a second
+ * corroboration source, and why the sweep surfaces the stall rather than
+ * failing quietly.
  */
 export const SUNSET_MAX_CLOCK_LEAD_MS = 30 * MS_PER_DAY;
 
@@ -116,6 +124,23 @@ export function isClockCorroborated(
 	// Ahead of `now`: the clock moved BACKWARDS since that stamp was written.
 	if (corroboratingInstant > now) return false;
 	return now - corroboratingInstant <= SUNSET_MAX_CLOCK_LEAD_MS;
+}
+
+/**
+ * The LATER of two optional readings of time, ignoring absent and non-finite
+ * ones. PURE, and shared so the sweep and the operator surface cannot disagree
+ * about which corroboration source is current: the freshest evaluation stamp
+ * and the operator's re-arm stamp are both evidence, and the newest wins.
+ */
+export function latestSunsetInstant(
+	a: number | undefined,
+	b: number | undefined
+): number | undefined {
+	const readings = [a, b].filter(
+		(value): value is number => value !== undefined && Number.isFinite(value)
+	);
+	if (readings.length === 0) return undefined;
+	return Math.max(...readings);
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -262,18 +287,20 @@ function applyOverride(
  * a topic whose operator disabled sunsetting must not be suppressed because a
  * second topic left the default on — the conservative reading of two
  * conflicting operator intents is "don't suppress". Likewise the windows are
- * the MAXIMUM across the applicable topics, so the contact is judged by the
+ * the MAXIMUM across the applicable policies, so the contact is judged by the
  * most patient policy it is covered by.
  *
  * `globalOverride` is the deployment-wide row (`sunsetPolicies.topicId ===
  * undefined`); each topic override is layered on top of it. A contact in no
  * topics at all is judged by the global policy alone.
  *
- * A DEPLOYMENT-WIDE OPT-OUT IS ABSOLUTE. The global row is itself one of the
- * applicable policies, so "most lenient wins" makes an operator who turned the
- * engine off deployment-wide beat a topic row that left it on — the engine is
- * off everywhere, for members of a topic and non-members alike. Only turning
- * the engine back on globally re-enables it.
+ * THE GLOBAL ROW IS ITSELF ONE OF THE APPLICABLE POLICIES — for the enable flag
+ * AND for the windows, consistently. So a deployment-wide opt-out is absolute
+ * (an operator who turned the engine off deployment-wide beats a topic row that
+ * left it on, and only turning it back on globally re-enables it), and a
+ * deployment-wide window of 365 days is not undercut by a topic that asks for
+ * 60: the contact is judged by the most patient policy that covers it, and the
+ * global policy covers everyone.
  */
 export function resolveSunsetPolicy(args: {
 	globalOverride?: SunsetPolicyOverride | undefined;
@@ -283,12 +310,14 @@ export function resolveSunsetPolicy(args: {
 	const topicOverrides = args.topicOverrides ?? [];
 	if (topicOverrides.length === 0) return base;
 
-	// Seeded from the deployment-wide policy, not from `true`: the global row is
-	// an applicable policy in its own right, so a global opt-out survives every
-	// topic override rather than being overwritten by the first one that is on.
+	// EVERY accumulator is seeded from the deployment-wide policy, not from `true`
+	// / `0`: the global row is an applicable policy in its own right, so a global
+	// opt-out survives every topic override rather than being overwritten by the
+	// first one that is on, and a long global window is not undercut by a topic
+	// that asks for a shorter one.
 	let isEnabled = base.isEnabled;
-	let reengageAfterDays = 0;
-	let suppressAfterDays = 0;
+	let reengageAfterDays = base.reengageAfterDays;
+	let suppressAfterDays = base.suppressAfterDays;
 	for (const override of topicOverrides) {
 		const effective = applyOverride(base, override);
 		if (!effective.isEnabled) isEnabled = false;
