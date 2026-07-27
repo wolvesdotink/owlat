@@ -90,10 +90,9 @@ function probeableCandidateKind(
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
 	messageType: MessageType,
-	addressContext?: SendRouteAddressContext,
-	precomputed?: PrecomputedRouteInputs
+	addressContext?: SendRouteAddressContext
 ): Promise<ResolvedRoute | null> {
-	return (await resolveSendRouteWithInputs(ctx, messageType, addressContext, precomputed)).route;
+	return (await resolveSendRouteWithInputs(ctx, messageType, addressContext, undefined)).route;
 }
 
 interface SendRouteResolution {
@@ -335,7 +334,9 @@ export async function resolveLastMileRoutePlanFromDb(
 		// message, not of the resolution, so it is resolved once by the first
 		// call and handed to the second — otherwise every governed send under
 		// `adaptive_mix` would pay a second assignment lookup and a second
-		// singleton-organization lookup for an answer it already has.
+		// singleton-organization lookup for an answer it already has. Both go
+		// through the PRIVATE resolver: hand-off is an in-module concern, so the
+		// exported helper never has to widen for it.
 		const resolution = await resolveSendRouteWithInputs(
 			ctx,
 			messageType,
@@ -343,12 +344,14 @@ export async function resolveLastMileRoutePlanFromDb(
 			undefined
 		);
 		const route = resolution.route;
-		const baseRoute = await resolveSendRouteFromDb(
-			ctx,
-			messageType,
-			{ ...addressContext, baseOnly: true },
-			{ mix: resolution.mix }
-		);
+		const baseRoute = (
+			await resolveSendRouteWithInputs(
+				ctx,
+				messageType,
+				{ ...addressContext, baseOnly: true },
+				{ mix: resolution.mix }
+			)
+		).route;
 		return {
 			route,
 			baseRoute,
