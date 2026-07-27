@@ -20,6 +20,7 @@ import {
 	type ProviderHealthStatus,
 	type ResolvedRoute,
 } from './routing';
+import { isDeterministicRouteStrategy } from './strategies';
 import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { getOptional } from '../env';
@@ -55,13 +56,6 @@ export interface SendRouteAddressContext {
 	now?: number;
 	baseOnly?: boolean;
 	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	/**
-	 * Pre-classified destination provider for `to`. Purely an optimisation:
-	 * when omitted the resolver classifies `to` itself. A batch caller that
-	 * has already memoized one classification per distinct domain passes it
-	 * so the classifier point read stays O(distinct domains).
-	 */
-	destinationProvider?: DestinationProviderKey;
 }
 
 /**
@@ -246,9 +240,18 @@ export interface CellRouteContext {
  *     and the timezone branch enqueues up to 24h before dispatch, so an
  *     enqueue-time reading of it would predict nothing.
  *
- * Returns `null` when nothing can be recorded honestly (no route, or the
- * org-wide delivery circuit is open — the message is not going anywhere
- * right now, and a guessed arm is worse than a missing row).
+ * Returns `null` when nothing can be recorded honestly:
+ *   - no route at all;
+ *   - the org-wide delivery circuit is open (the message is not going
+ *     anywhere right now);
+ *   - the route resolved through a NON-DETERMINISTIC strategy
+ *     (`workload_split` draws at random per call). This seam resolves once
+ *     per cell, but the worker draws again independently per recipient at
+ *     dispatch, so one draw stamped on N rows would be wrong for roughly
+ *     half of them. P2-5 replaces the draw with the deterministic
+ *     per-recipient hash; until then the honest record is silence.
+ *
+ * In every case: a guessed arm is worse than a missing row.
  */
 export async function resolveCellRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
@@ -266,7 +269,7 @@ export async function resolveCellRouteFromDb(
 	);
 	if (isGlobalBreakerOpenState(globalState, context.now)) return null;
 	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
-	return resolveRoute(
+	const resolved = resolveRoute(
 		routeConfig as ProviderRouteConfig | null,
 		undefined,
 		(kind) => readyKinds.has(kind),
@@ -281,6 +284,12 @@ export async function resolveCellRouteFromDb(
 			),
 		}
 	);
+	// Only an `org_config` selection came out of the strategy; a deliverability
+	// fallback and the env fallback are both deterministic by construction.
+	if (resolved?.source === 'org_config' && !isDeterministicRouteStrategy(routeConfig?.strategy)) {
+		return null;
+	}
+	return resolved;
 }
 
 async function deliverabilityInput(
@@ -299,12 +308,7 @@ async function deliverabilityInput(
 	} catch {
 		return undefined;
 	}
-	// A caller that has ALREADY classified this recipient (the send-assignment
-	// writer memoizes one classification per distinct domain across a batch)
-	// passes the provider in so this resolver does not repeat the point read.
-	const provider =
-		addressContext.destinationProvider ??
-		(await resolveDestinationProvider(ctx, organizationId, toDomain, now));
+	const provider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
 	const [[providerState, globalState], warmingState] = await Promise.all([
 		deliverabilityRouteStatesFor(ctx, organizationId, provider),
 		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled

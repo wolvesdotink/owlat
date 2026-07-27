@@ -10,12 +10,11 @@ import type { SendRouteStrategyModule } from '../types';
 
 export const priorityFailoverStrategy: SendRouteStrategyModule<'priority_failover'> = {
 	kind: 'priority_failover',
+	isDeterministic: true,
 	select(entries, ipPool, healthStatuses) {
 		if (healthStatuses && healthStatuses.length > 0) {
 			for (const entry of entries) {
-				const health = healthStatuses.find(
-					(h) => h.providerType === entry.providerType,
-				);
+				const health = healthStatuses.find((h) => h.providerType === entry.providerType);
 				if (!health || health.status !== 'down') {
 					return { providerType: entry.providerType, ipPool, source: 'org_config' };
 				}

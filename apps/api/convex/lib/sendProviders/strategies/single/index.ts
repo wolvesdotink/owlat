@@ -10,6 +10,7 @@ import type { SendRouteStrategyModule } from '../types';
 
 export const singleStrategy: SendRouteStrategyModule<'single'> = {
 	kind: 'single',
+	isDeterministic: true,
 	select(entries, ipPool) {
 		const first = entries[0];
 		if (!first) return null;
