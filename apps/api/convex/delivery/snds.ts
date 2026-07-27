@@ -28,6 +28,7 @@ import {
 } from './sndsFeed';
 import { buildSndsGateInput, type SndsGateInput } from './sndsGate';
 import { observationVerdict } from './observationFreshness';
+import { sweepExpiredObservations } from './observationRetention';
 
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
 const RETENTION_MS = 90 * DAY_MS;
@@ -329,17 +330,20 @@ export const ingestDays = internalMutation({
 
 export const cleanup = internalMutation({
 	args: {},
-	handler: async (ctx) => {
-		const horizon = Date.now() - RETENTION_MS;
-		const expired = await ctx.db
-			.query('sndsIpDailyStats')
-			.withIndex('by_period', (q) => q.lt('periodStart', horizon))
-			.take(SNDS_CLEANUP_BATCH_SIZE);
-		for (const row of expired) await ctx.db.delete(row._id);
-		const hasMore = expired.length === SNDS_CLEANUP_BATCH_SIZE;
-		if (hasMore) await ctx.scheduler.runAfter(0, internal.delivery.snds.cleanup, {});
-		return { deleted: expired.length, continuationScheduled: hasMore };
-	},
+	handler: async (ctx) =>
+		sweepExpiredObservations(ctx, {
+			now: Date.now(),
+			retentionMs: RETENTION_MS,
+			batchSize: SNDS_CLEANUP_BATCH_SIZE,
+			scans: [
+				(horizon, limit) =>
+					ctx.db
+						.query('sndsIpDailyStats')
+						.withIndex('by_period', (q) => q.lt('periodStart', horizon))
+						.take(limit),
+			],
+			scheduleContinuation: () => ctx.scheduler.runAfter(0, internal.delivery.snds.cleanup, {}),
+		}),
 });
 
 /**

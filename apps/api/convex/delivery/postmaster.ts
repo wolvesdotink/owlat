@@ -13,6 +13,7 @@ import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { observationVerdict } from './observationFreshness';
+import { sweepExpiredObservations } from './observationRetention';
 import {
 	derivePostmasterCards,
 	type PostmasterCard,
@@ -259,22 +260,25 @@ export const ingestCompliance = internalMutation({
 export const cleanup = internalMutation({
 	args: {},
 	handler: async (ctx) => {
-		const horizon = Date.now() - RETENTION_MS;
-		const expired = await ctx.db
-			.query('googlePostmasterStats')
-			.withIndex('by_period', (q) => q.lt('periodStart', horizon))
-			.take(POSTMASTER_CLEANUP_BATCH_SIZE);
-		for (const row of expired) await ctx.db.delete(row._id);
-		const expiredCompliance = await ctx.db
-			.query('googlePostmasterCompliance')
-			.withIndex('by_period', (q) => q.lt('periodStart', horizon))
-			.take(POSTMASTER_CLEANUP_BATCH_SIZE);
-		for (const row of expiredCompliance) await ctx.db.delete(row._id);
-		const hasMore =
-			expired.length === POSTMASTER_CLEANUP_BATCH_SIZE ||
-			expiredCompliance.length === POSTMASTER_CLEANUP_BATCH_SIZE;
-		if (hasMore) await ctx.scheduler.runAfter(0, internal.delivery.postmaster.cleanup, {});
-		return { deleted: expired.length + expiredCompliance.length, continuationScheduled: hasMore };
+		return sweepExpiredObservations(ctx, {
+			now: Date.now(),
+			retentionMs: RETENTION_MS,
+			batchSize: POSTMASTER_CLEANUP_BATCH_SIZE,
+			scans: [
+				(horizon, limit) =>
+					ctx.db
+						.query('googlePostmasterStats')
+						.withIndex('by_period', (q) => q.lt('periodStart', horizon))
+						.take(limit),
+				(horizon, limit) =>
+					ctx.db
+						.query('googlePostmasterCompliance')
+						.withIndex('by_period', (q) => q.lt('periodStart', horizon))
+						.take(limit),
+			],
+			scheduleContinuation: () =>
+				ctx.scheduler.runAfter(0, internal.delivery.postmaster.cleanup, {}),
+		});
 	},
 });
 
