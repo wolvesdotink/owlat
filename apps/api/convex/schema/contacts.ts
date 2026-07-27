@@ -71,7 +71,7 @@ export const contactTables = {
 		// treats "absent" as "unmeasured", never as zero.
 		engagementScore: v.optional(v.number()),
 		// The timestamp `engagementScoreState` is as-of. Also the freshness stamp
-		// the nightly backfill ranges over — the two are ALWAYS patched together,
+		// the hourly backfill ranges over — the two are ALWAYS patched together,
 		// because the cached accumulator is only meaningful relative to this
 		// instant (see `decayState`).
 		engagementScoreUpdatedAt: v.optional(v.number()),
@@ -83,6 +83,11 @@ export const contactTables = {
 				raw: v.number(),
 				softBounceRaw: v.number(),
 				isSuppressed: v.boolean(),
+				// `occurredAt` of the newest suppressing activity. Scopes the sticky
+				// suppression to the recompute lookback window, which is what makes a
+				// bounce recorded in error reversible (`clearEngagementSuppression`)
+				// instead of pinning the contact to 0 forever.
+				suppressedAt: v.optional(v.number()),
 				// Identity (`kind:occurredAt`) of the newest activity folded into
 				// the accumulator, so an immediately-redelivered provider webhook
 				// is collapsed on the hot path exactly as the full recompute
@@ -132,7 +137,7 @@ export const contactTables = {
 		// leads so `deletedAt === undefined` rides the index range and createdAt
 		// orders within it — the page is never thinned by a post-filter.
 		.index('by_deleted_at_and_created_at', ['deletedAt', 'createdAt'])
-		// Staleness index for the nightly engagement-score backfill. Ascending
+		// Staleness index for the hourly engagement-score backfill. Ascending
 		// order puts never-scored rows first (a missing field sorts before every
 		// number in a Convex index), then the stalest, so the cron walks a bounded
 		// prefix of a range instead of collecting the table. Recomputing a contact
