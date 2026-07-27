@@ -107,6 +107,63 @@ export const fblComplaintsByCampaignTotal = new Counter({
 });
 
 /**
+ * RFC 9477 CFBL reports that produced a TRUSTED attribution, by the signed
+ * source that carried it (`rcpt_to` — the report was delivered to the signed
+ * address itself; `feedback_id` — the report echoed our signed
+ * `CFBL-Feedback-ID`). Distinct from `fblComplaintsTotal`, which counts every
+ * ARF regardless of how (or whether) it attributed.
+ */
+export const cfblAttributionsTotal = new Counter({
+	name: 'mta_cfbl_attributions_total',
+	help: 'RFC 9477 CFBL complaint reports attributed via a verified signed address',
+	labelNames: ['source'] as const,
+	registers: [registry],
+});
+
+/**
+ * Outbound RFC 9477 emission outcomes, by bounded reason.
+ *
+ * The §3.1.3 alignment rule makes SILENCE the default branch: a sending domain
+ * that has not registered its own return-path host carries no CFBL pair at all.
+ * That is a correct, D2-clean outcome — no error, no warning, no setup nag — but
+ * an invisible one, so it is counted here. `host_unaligned` dominating this
+ * counter is how an operator learns that CFBL is off for their domains and what
+ * would turn it on.
+ *
+ * `outcome` is bounded to the `CfblEmissionOutcome` union: `emitted`,
+ * `host_unaligned`, `no_signature`, `no_key`, `no_address`, `sealed_raw`.
+ * `emitted` means the pair is genuinely on the wire — sealed-mail sends ship raw
+ * MIME verbatim and are counted as `sealed_raw`, never as `emitted`, and a
+ * message with no DKIM signature over its From domain is counted
+ * `no_signature` because RFC 9477 §3.1.4 forbids a provider from acting on the
+ * pair without one. `no_signature` covers BOTH ways a send ends up unsigned:
+ * no key was configured, and a configured key threw during signing (the sender
+ * ships the unsigned bytes rather than a corrupt signature, and the pair the
+ * composer already embedded rides along inert). The label is therefore derived
+ * from the bytes that were actually built, not from the configuration.
+ */
+export const cfblEmissionsTotal = new Counter({
+	name: 'mta_cfbl_emissions_total',
+	help: 'Outbound RFC 9477 CFBL header emissions, by outcome',
+	labelNames: ['outcome'] as const,
+	registers: [registry],
+});
+
+/**
+ * CFBL signed-address verification REJECTIONS, by bounded reason
+ * (`bad_signature`, `unsigned`, `expired`, `malformed_payload`, `oversized`,
+ * `unverifiable`). The header invites unauthenticated parties to mail us, so a
+ * forged-complaint campaign must be VISIBLE as a metric — rejections are
+ * counted here and dropped, never thrown and never attributed.
+ */
+export const cfblRejectionsTotal = new Counter({
+	name: 'mta_cfbl_rejections_total',
+	help: 'CFBL signed-address verifications rejected, by reason',
+	labelNames: ['reason'] as const,
+	registers: [registry],
+});
+
+/**
  * Record a delivery outcome in both Redis (persistent) and Prometheus (in-memory)
  */
 export async function record(

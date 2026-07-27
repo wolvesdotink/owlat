@@ -5,8 +5,9 @@ import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackP
 import { reduce } from '../outcome.js';
 import type { EmailJob } from '../../types.js';
 import type { BounceAttempt } from '../types.js';
+import { FEEDBACK_RECORD_RETENTION_SECONDS } from '../signedToken.js';
 
-const EIGHT_DAYS_MS = 8 * 24 * 60 * 60 * 1_000;
+const RETENTION_MS = FEEDBACK_RECORD_RETENTION_SECONDS * 1_000;
 
 function job(
 	messageId: string,
@@ -196,24 +197,55 @@ describe('delayed feedback provenance', () => {
 		expect(reduce(attributed, {} as never).effects).toEqual([]);
 	});
 
-	it('expires exact and redacted indexes after the documented eight-day horizon', async () => {
+	it('expires exact and redacted indexes after the shared feedback retention', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 		await recordFeedbackProvenance(redis, job('expires-1', 'member_test'));
 		const keys = await redis.keys('mta:{feedback}:*');
 		expect(keys).toHaveLength(2);
+		// Derived, not chosen: the record must outlive any token that still
+		// verifies, or a late complaint attributes to nothing (bounce/signedToken).
 		expect(await Promise.all(keys.map((key) => redis.ttl(key)))).toEqual([
-			8 * 24 * 60 * 60,
-			8 * 24 * 60 * 60,
+			FEEDBACK_RECORD_RETENTION_SECONDS,
+			FEEDBACK_RECORD_RETENTION_SECONDS,
 		]);
 
-		vi.advanceTimersByTime(EIGHT_DAYS_MS + 1);
+		vi.advanceTimersByTime(RETENTION_MS + 1);
 		const exact = await attachFeedbackProvenance(redis, dsn('expires-1'));
 		const recipientOnly = await attachFeedbackProvenance(redis, redacted());
 		expect(exact.kind === 'dsn_attributed' && exact.bounce.feedbackProvenance).toBe('unknown');
 		expect(recipientOnly.kind === 'fbl' && recipientOnly.arf.feedbackProvenance).toBe('unknown');
 		expect(reduce(exact, {} as never).effects).toEqual([]);
 		expect(reduce(recipientOnly, {} as never).effects).toEqual([]);
+	});
+
+	it('prefers the RECORDED recipient over a DSN Final-Recipient that differs', async () => {
+		// Intentional hardening of the shipped DSN path, not only the FBL one: for
+		// an alias or forwarder the DSN's Final-Recipient is the FORWARDED mailbox,
+		// while the address we actually sent to — and the only one suppression may
+		// legitimately act on — is the recorded one. A verified signed token proves
+		// which SEND the report is about; it proves nothing about which address the
+		// reporter is entitled to name, so the report's own recipient never wins.
+		await recordFeedbackProvenance(redis, job('alias-dsn', 'production', 'list@example.com'));
+
+		const attempt: BounceAttempt = {
+			kind: 'dsn_attributed',
+			bounce: {
+				type: 'bounced',
+				bounceType: 'hard',
+				message: '550 no such user',
+				originalMessageId: 'alias-dsn',
+				recipient: 'forwarded@mailbox.example',
+			},
+		};
+		const attributed = await attachFeedbackProvenance(redis, attempt);
+
+		expect(attributed.kind === 'dsn_attributed' && attributed.bounce.recipient).toBe(
+			'list@example.com'
+		);
+		expect(attributed.kind === 'dsn_attributed' && attributed.bounce.feedbackProvenance).toBe(
+			'production'
+		);
 	});
 
 	it('places exact and recipient indexes in one Redis Cluster slot', async () => {

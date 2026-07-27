@@ -33,7 +33,10 @@ export const parseFblOrDsnPhase: Phase<BasePhaseCtx, BasePhaseCtx> = {
 
 		// 1. Try ARF/FBL (complaints) first — they're the highest-signal
 		//    classification and have an authoritative duplicate-check.
-		const arfResult = tryParseARF(parsed, reportParts);
+		// `rcptTo` is threaded in so an RFC 9477 report delivered to our SIGNED
+		// `fbl+…@` complaint address attributes to the send even when the provider
+		// redacted the original message (the common case for consumer FBLs).
+		const arfResult = tryParseARF(parsed, reportParts, { rcptTo });
 		if (arfResult) {
 			const dedupKey = generateDedupKey(parsed, arfResult.originalMessageId);
 			const dedup = await reserveComplaint(deps.redis, dedupKey);

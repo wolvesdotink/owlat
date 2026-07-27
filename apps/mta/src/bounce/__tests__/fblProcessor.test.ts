@@ -16,6 +16,10 @@ import {
 	generateDedupKey,
 } from '../fblProcessor.js';
 import { buildVerpAddress } from '../verp.js';
+import {
+	FEEDBACK_RECORD_RETENTION_SECONDS,
+	MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS,
+} from '../signedToken.js';
 import { extractReportParts, type ReportPart } from '../reportParts.js';
 import { reportPartsOf } from './helpers/reportParts.js';
 
@@ -711,14 +715,18 @@ describe('complaint deduplication reservations', () => {
 		);
 	});
 
-	it('keeps completed deduplication state for seven days', async () => {
+	it('keeps completed deduplication state past the CFBL token acceptance horizon', async () => {
 		const result = await reserveOwned(redis, 'msg-ttl');
 		if (result.kind !== 'reserved') throw new Error('expected reservation');
 		await completeComplaint(redis, result.reservation);
 		const ttl = await redis.ttl(result.reservation.key);
-		const SEVEN_DAYS = 7 * 86400;
-		expect(ttl).toBeGreaterThan(SEVEN_DAYS - 5);
-		expect(ttl).toBeLessThanOrEqual(SEVEN_DAYS);
+		expect(ttl).toBeGreaterThan(FEEDBACK_RECORD_RETENTION_SECONDS - 5);
+		expect(ttl).toBeLessThanOrEqual(FEEDBACK_RECORD_RETENTION_SECONDS);
+		// The retention must outlive token validity, or a replay in the gap is
+		// counted a second time.
+		expect(FEEDBACK_RECORD_RETENTION_SECONDS).toBeGreaterThan(
+			MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS
+		);
 	});
 
 	it('does not let a stale owner release a newer reservation', async () => {

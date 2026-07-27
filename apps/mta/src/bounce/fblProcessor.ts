@@ -15,6 +15,8 @@ import { logger } from '../monitoring/logger.js';
 import { parseVerpAddress, isVerpSigningEnabled } from './verp.js';
 import { addressText } from '../inbound/parsedAddress.js';
 import type { ReportPart } from './reportParts.js';
+import { parseCfblAddress, parseCfblToken, type CfblRejectionReason } from './cfblAddress.js';
+import { cfblAttributionsTotal, cfblRejectionsTotal } from '../monitoring/collector.js';
 import { createHash } from 'crypto';
 export {
 	completeComplaint,
@@ -79,12 +81,133 @@ function flattenContentType(raw: unknown): string {
 }
 
 /**
+ * Where a verified RFC 9477 attribution came from.
+ *
+ * - `rcpt_to` — the report was DELIVERED TO the signed CFBL address. Strongest:
+ *   the address is unguessable, so possession of it is proof the sender saw our
+ *   message (or a report generator acting on it).
+ * - `feedback_id` — the report echoed the signed `CFBL-Feedback-ID` we emitted,
+ *   which RFC 9477 §4.2 asks report generators to copy into the ARF's
+ *   `Feedback-ID` field. Same MAC, so the same forgery resistance.
+ */
+export type CfblAttributionSource = 'rcpt_to' | 'feedback_id';
+
+/**
+ * The verdict for one inbound report.
+ *
+ * A DISCRIMINATED UNION rather than a record of co-varying optionals: a message
+ * id and the source it came from are always both present or both absent, and
+ * `attributed` is what lets the consumer narrow to that pair exhaustively
+ * instead of re-deriving it from a two-field truthiness check the type system
+ * cannot verify. (`CfblParseResult` in `cfblAddress.ts` has the same shape.)
+ *
+ * `rejections` rides BOTH arms: a report may present several candidate tokens,
+ * so an attribution can succeed on one and still have counted a failure on
+ * another. A value that simply isn't a CFBL token (`not_cfbl`) is NOT listed —
+ * a DSN arriving at `bounce+…`, or an ARF carrying Gmail's unrelated
+ * `Feedback-ID`, is normal traffic, not an attack.
+ */
+export type CfblAttribution =
+	| {
+			readonly attributed: true;
+			/** The attributed internal message id. */
+			readonly messageId: string;
+			readonly source: CfblAttributionSource;
+			readonly rejections: readonly CfblRejectionReason[];
+	  }
+	| { readonly attributed: false; readonly rejections: readonly CfblRejectionReason[] };
+
+/**
+ * UTF-16 code units of report text scanned for a `CFBL-Feedback-ID` /
+ * `Feedback-ID` field.
+ *
+ * Units, not bytes: the bound is applied with `String.prototype.slice`, which
+ * counts code units. Since a UTF-8 encoding is never SHORTER than the unit
+ * count, the byte-wise bound it implies is at least as tight — the point is that
+ * inbound reports are attacker-reachable and may be arbitrarily large, and the
+ * fields we want are header-shaped and sit at the top of the machine-readable
+ * part, so a bounded prefix is sufficient and a multi-megabyte report cannot
+ * turn a regex scan into a CPU/allocation amplifier.
+ */
+const MAX_CFBL_SCAN_UNITS = 64 * 1024;
+
+/**
+ * Resolve a TRUSTED RFC 9477 attribution for an inbound report.
+ *
+ * Pure: takes the (already bounded) inputs plus an injectable clock/key and
+ * returns a verdict. Never throws — a hostile input yields a counted rejection.
+ *
+ * The precedence is strongest-evidence-first: the envelope recipient the report
+ * was actually delivered to, then the echoed signed feedback id.
+ */
+export function resolveCfblAttribution(
+	input: { rcptTo?: string | undefined; reportText: string },
+	key?: string,
+	now?: number
+): CfblAttribution {
+	const rejections: CfblRejectionReason[] = [];
+
+	const record = (reason: CfblRejectionReason): void => {
+		// `not_cfbl` means "this simply isn't one of our tokens" — ordinary
+		// traffic, not a verification failure worth alerting on.
+		if (reason !== 'not_cfbl') rejections.push(reason);
+	};
+
+	if (input.rcptTo) {
+		const viaRcpt = parseCfblAddress(input.rcptTo, key, now);
+		if (viaRcpt.ok) {
+			return { attributed: true, messageId: viaRcpt.messageId, source: 'rcpt_to', rejections };
+		}
+		record(viaRcpt.reason);
+	}
+
+	const scanned = input.reportText.slice(0, MAX_CFBL_SCAN_UNITS);
+	for (const field of ['CFBL-Feedback-ID', 'Feedback-ID'] as const) {
+		const presented = matchField(scanned, field);
+		if (!presented) continue;
+		// Every token we emit carries the `{encodedId}+{mac}` separator. On this
+		// path the field name proves nothing about intent — `Feedback-ID` is also
+		// Gmail's own unrelated aggregation anchor, and a plain alnum/dash value
+		// from a non-participating provider is ordinary traffic. Counting it as
+		// `unsigned` would let routine FBL mail inflate the very metric that exists
+		// to surface forged complaints, so a MAC-less value is simply not one of
+		// ours. (The `fbl+…@` envelope path keeps `unsigned`: there the prefix is
+		// ours, so a missing MAC IS a hand-built address.)
+		if (!presented.includes('+')) continue;
+		const viaFeedbackId = parseCfblToken(presented, key, now);
+		if (viaFeedbackId.ok) {
+			return {
+				attributed: true,
+				messageId: viaFeedbackId.messageId,
+				source: 'feedback_id',
+				rejections,
+			};
+		}
+		record(viaFeedbackId.reason);
+	}
+
+	return { attributed: false, rejections };
+}
+
+/** Options threaded from the intake pipeline into ARF classification. */
+export interface TryParseArfOptions {
+	/**
+	 * The SMTP envelope recipient this report was delivered to. When it is a
+	 * verified `fbl+…@` CFBL address it is the highest-trust attribution handle
+	 * available, and the ONLY one that works when the mailbox provider redacts
+	 * the original message entirely.
+	 */
+	readonly rcptTo?: string | undefined;
+}
+
+/**
  * Attempt to parse an incoming email as an ARF feedback report.
  * Returns the classification if it's an ARF report, null otherwise.
  */
 export function tryParseARF(
 	parsed: ParsedMessage,
-	reportParts: ReportPart[]
+	reportParts: ReportPart[],
+	options: TryParseArfOptions = {}
 ): BounceClassification | null {
 	// Check for ARF content type indicator. mailparser returns the parsed
 	// `content-type` header as a structured object (`{ value, params }`), so a
@@ -127,11 +250,29 @@ export function tryParseARF(
 	// suppress a healthy recipient.
 	let originalMessageId: string | undefined;
 
-	// First, prefer the authenticated VERP return-path (Original-Mail-From). Per
-	// RFC 5965 §3.2 this lives in the structured feedback-report part. It is the
-	// only source verified against the HMAC, so it is always trusted.
+	// RFC 9477 first: a report delivered to our SIGNED `fbl+…@` address (or
+	// echoing our signed `CFBL-Feedback-ID`) is authenticated by the same
+	// BATV-style MAC the VERP token uses, and — unlike `Original-Mail-From` — it
+	// survives providers that redact the original message. Rejections are
+	// COUNTED, never thrown, so a forged-complaint campaign is observable.
+	const cfbl = resolveCfblAttribution({
+		rcptTo: options.rcptTo,
+		reportText: parts.feedbackReport,
+	});
+	for (const reason of cfbl.rejections) {
+		cfblRejectionsTotal.inc({ reason });
+	}
+	if (cfbl.attributed) {
+		originalMessageId = cfbl.messageId;
+		cfblAttributionsTotal.inc({ source: cfbl.source });
+	}
+
+	// Then the authenticated VERP return-path (Original-Mail-From). Per RFC 5965
+	// §3.2 this lives in the structured feedback-report part. It is verified
+	// against the HMAC, so it is trusted — but it is weaker evidence than the
+	// CFBL envelope, so it only fills a gap CFBL left.
 	const originalMailFrom = matchField(parts.feedbackReport, 'Original-Mail-From');
-	if (isVerpSigningEnabled() && originalMailFrom) {
+	if (!originalMessageId && isVerpSigningEnabled() && originalMailFrom) {
 		const verifiedId = parseVerpAddress(originalMailFrom);
 		if (verifiedId) {
 			originalMessageId = verifiedId;
@@ -169,6 +310,8 @@ export function tryParseARF(
 		{
 			feedbackType,
 			originalMessageId,
+			cfblSource: cfbl.attributed ? cfbl.source : undefined,
+			cfblRejections: cfbl.rejections,
 			recipient,
 			sourceIsp,
 			reportedDomain,

@@ -27,13 +27,21 @@
  * unsigned helper result as attribution evidence.
  */
 
-import { createHmac, timingSafeEqual } from 'crypto';
+import {
+	currentSignedTokenWindow,
+	computeSignedTokenMac,
+	findSignedTokenWindowAge,
+	resolveSignedTokenKey,
+} from './signedToken.js';
 
-/** Length (chars) of the base64url-encoded truncated HMAC carried in the token. */
-const MAC_B64URL_LEN = 14; // ~84 bits — comfortably above the audit's 10-char floor
-
-/** Window granularity: one bucket per day. */
-const WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * Domain-separation label for the VERP MAC. Empty by construction: the shipped
+ * bounce tokens were signed over `{encodedId}:{window}` with no prefix, and
+ * changing it would invalidate every token already in flight. The complaint
+ * token in `cfblAddress.ts` carries a non-empty label, which is what keeps the
+ * two families un-replayable against each other.
+ */
+const VERP_MAC_LABEL = '';
 
 /**
  * How many *past* windows verification will accept in addition to the current
@@ -42,18 +50,6 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
  * verify and the bounce is dropped as unattributed.
  */
 const WINDOW_TOLERANCE = 6;
-
-/**
- * Resolve the VERP signing key. Reading the env here (rather than threading it
- * through every caller) keeps `buildVerpAddress`/`parseVerpAddress` drop-in for
- * the existing call sites; tests pass the key explicitly. An empty/undefined
- * key enables the unsigned compatibility helper used only by isolated tests;
- * production startup rejects that configuration.
- */
-function resolveVerpKey(explicit?: string): string | undefined {
-	const key = explicit ?? process.env['BOUNCE_VERP_KEY'];
-	return key && key.length > 0 ? key : undefined;
-}
 
 /**
  * Whether VERP token signing/verification is active for this deployment.
@@ -68,33 +64,7 @@ function resolveVerpKey(explicit?: string): string | undefined {
  * @param key optional explicit key (defaults to BOUNCE_VERP_KEY)
  */
 export function isVerpSigningEnabled(key?: string): boolean {
-	return resolveVerpKey(key) !== undefined;
-}
-
-/** Current coarse time bucket (UTC day number). Injectable for tests. */
-function currentWindow(now: number): number {
-	return Math.floor(now / WINDOW_MS);
-}
-
-/**
- * Compute the truncated, base64url-encoded MAC over `encodedId || ':' || window`.
- * Signing the *already base64url-encoded* id (not the raw id) keeps the MAC
- * input free of `@`/`+`/`=` so the token grammar is unambiguous.
- */
-function computeMac(encodedId: string, window: number, key: string): string {
-	return createHmac('sha256', key)
-		.update(`${encodedId}:${window}`)
-		.digest('base64url')
-		.slice(0, MAC_B64URL_LEN);
-}
-
-/** Constant-time string compare that never throws on length mismatch. */
-function macsEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	const ab = Buffer.from(a);
-	const bb = Buffer.from(b);
-	if (ab.length !== bb.length) return false;
-	return timingSafeEqual(ab, bb);
+	return resolveSignedTokenKey(key) !== undefined;
 }
 
 /**
@@ -116,11 +86,16 @@ export function buildVerpAddress(
 	now: number = Date.now()
 ): string {
 	const encoded = Buffer.from(messageId).toString('base64url');
-	const signingKey = resolveVerpKey(key);
+	const signingKey = resolveSignedTokenKey(key);
 	if (!signingKey) {
 		return `bounce+${encoded}@${returnPathDomain}`;
 	}
-	const mac = computeMac(encoded, currentWindow(now), signingKey);
+	const mac = computeSignedTokenMac(
+		VERP_MAC_LABEL,
+		encoded,
+		currentSignedTokenWindow(now),
+		signingKey
+	);
 	return `bounce+${encoded}+${mac}@${returnPathDomain}`;
 }
 
@@ -148,7 +123,7 @@ export function parseVerpAddress(
 
 	const encodedId = match[1];
 	const presentedMac = match[2];
-	const signingKey = resolveVerpKey(key);
+	const signingKey = resolveSignedTokenKey(key);
 
 	if (signingKey) {
 		// Signed mode: a token with no MAC is unforgeable-proof-of-origin missing
@@ -156,16 +131,16 @@ export function parseVerpAddress(
 		// accepted window range; any tamper of the id changes the encodedId the
 		// MAC was computed over, so a wrong MAC and a tampered id both fail here.
 		if (!presentedMac) return null;
-		const base = currentWindow(now);
-		let verified = false;
-		for (let i = 0; i <= WINDOW_TOLERANCE; i++) {
-			const expected = computeMac(encodedId, base - i, signingKey);
-			if (macsEqual(expected, presentedMac)) {
-				verified = true;
-				break;
-			}
-		}
-		if (!verified) return null;
+		const age = findSignedTokenWindowAge({
+			label: VERP_MAC_LABEL,
+			encodedId,
+			presentedMac,
+			key: signingKey,
+			now,
+			pastWindows: WINDOW_TOLERANCE,
+			futureWindows: 0,
+		});
+		if (age === null) return null;
 	}
 
 	// Decode the (now-authenticated, when signed) id back to the messageId.
