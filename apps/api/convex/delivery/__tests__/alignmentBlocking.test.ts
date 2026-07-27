@@ -250,7 +250,7 @@ describe('what counts as a second arm comes from the transport surface', () => {
 		);
 		const target = page.targets[0];
 		expect(target?.reference.kind).toBe('arm');
-		if (target?.reference.kind !== 'arm') throw new Error('expected a reference arm');
+		if (!target || target.reference.kind !== 'arm') throw new Error('expected a reference arm');
 		expect(target.reference.arm.dkimSelectors).toEqual(['ses-token-1']);
 		expect(target.ownArm.spfMechanisms).toEqual([`ip4:${POOL_IP}`]);
 	});

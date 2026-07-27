@@ -68,7 +68,7 @@ describe('observeTxt failure mapping', () => {
 		// the bound is ours, and the verdict it produces is a HOLD, not a fail.
 		const observation = await observeTxt(
 			'acme.com',
-			{ resolveTxt: () => new Promise(() => {}) },
+			{ resolveTxt: () => new Promise<string[][]>(() => {}) },
 			5
 		);
 		expect(observation).toEqual({ state: 'unknown', failure: 'timeout' });
