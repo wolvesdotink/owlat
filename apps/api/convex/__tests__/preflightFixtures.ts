@@ -53,13 +53,21 @@ export async function sessionOrganizationMock(): Promise<Record<string, unknown>
 /**
  * Register the delivery-provider env and a frozen clock at `MIDNIGHT`. Call
  * once at the top level of a suite file.
+ *
+ * ONLY `Date` is faked. These suites need a frozen clock (the queries under
+ * test read `Date.now()`) and never advance timers, but the default
+ * `useFakeTimers()` also replaces `setTimeout`/`setInterval`/`setImmediate` for
+ * the whole file — and `convex-test` yields to the macrotask queue while
+ * walking a large table, so a seeded audience of a few thousand rows waits
+ * forever on a timer nothing will ever fire. The suites still passed while the
+ * fixtures were small, which is exactly how this hid.
  */
 export function useMtaPreflightEnv(): void {
 	beforeEach(() => {
 		process.env['EMAIL_PROVIDER'] = 'mta';
 		process.env['MTA_API_URL'] = 'http://mta:3100';
 		process.env['MTA_API_KEY'] = 'test-key';
-		vi.useFakeTimers();
+		vi.useFakeTimers({ toFake: ['Date'] });
 		vi.setSystemTime(MIDNIGHT);
 	});
 
