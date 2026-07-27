@@ -46,11 +46,30 @@ function acceptedResponse(id: string): Response {
 	});
 }
 
-/** The `/send` POST body — call index 1; index 0 is the routing decision. */
+function requestUrl(input: unknown): string {
+	if (typeof input === 'string') return input;
+	if (input instanceof URL) return input.toString();
+	if (input instanceof Request) return input.url;
+	return String(input);
+}
+
+/**
+ * The `/send` POST body, selected BY URL rather than by call index. Indexing
+ * (`calls[1]`, "index 0 is the routing decision") would silently start reading
+ * the routing-decision body the day the router makes a second call — and the
+ * `'engagementScore' in body === false` assertions would then pass vacuously.
+ * Asserting exactly one `/send` call is part of the guard.
+ */
 function sentBody(fetchSpy: ReturnType<typeof vi.fn>): Record<string, unknown> {
-	const call = fetchSpy.mock.calls[1];
-	expect(call).toBeDefined();
-	return JSON.parse((call![1] as RequestInit).body as string) as Record<string, unknown>;
+	// The MTA adapter's INTAKE paths. `/send/decision` (the routing decision the
+	// same adapter posts first) is deliberately NOT one of them.
+	const intakePaths = new Set(['/send', '/send/system']);
+	const sendCalls = fetchSpy.mock.calls.filter((call) =>
+		intakePaths.has(new URL(requestUrl(call[0])).pathname)
+	);
+	expect(sendCalls).toHaveLength(1);
+	const call = sendCalls[0]!;
+	return JSON.parse((call[1] as RequestInit).body as string) as Record<string, unknown>;
 }
 
 function mtaFetchSpy(id: string, lease: string): ReturnType<typeof vi.fn> {
@@ -123,7 +142,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 		}));
 		const fetchSpy = mtaFetchSpy('mta-automation-scored', 'lease-automation');
 
-		await t.action(internal.delivery.worker.sendSingleEmail, {
+		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
 			envelopeInput: {
 				kind: 'transactional' as const,
 				messageType: 'automation' as const,
@@ -141,6 +160,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 			},
 		});
 
+		expect(result.success).toBe(true);
 		expect(sentBody(fetchSpy)['engagementScore']).toBe(42);
 	});
 
@@ -159,7 +179,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 		});
 		const fetchSpy = mtaFetchSpy('mta-campaign-cold', 'lease-cold');
 
-		await t.action(internal.delivery.worker.sendSingleEmail, {
+		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
 			envelopeInput: {
 				kind: 'campaign' as const,
 				to: 'rcpt@example.com',
@@ -174,6 +194,7 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 			},
 		});
 
+		expect(result.success).toBe(true);
 		const body = sentBody(fetchSpy);
 		expect(body['engagementScore']).toBe(0);
 		expect('engagementScore' in body).toBe(true);
@@ -214,6 +235,44 @@ describe('engagementScore threading — envelope → MtaExtras → MTA intake', 
 		// Omitted — NOT 0 (which means cold) and NOT null. The MTA reads the
 		// missing field as "unknown" and applies PRIORITY_BANDS.DEFAULT.
 		expect('engagementScore' in body).toBe(false);
+	});
+
+	it('an UNSCORED AUTOMATION recipient omits the field entirely and still dispatches', async () => {
+		// Symmetric with the campaign case above, and the more load-bearing of
+		// the two: the automation producer is the one that does the point read
+		// of the contact, so it is the path that could plausibly coerce a miss
+		// into `0` ("cold") instead of leaving it unknown.
+		const t = convexTest(schema, modules);
+		const { contactId, sendId } = await t.run(async (ctx) => ({
+			// No engagementScore on the contact — the scorer has not reached it.
+			contactId: await ctx.db.insert('contacts', createTestContact()),
+			sendId: await ctx.db.insert('transactionalSends', {
+				kind: 'automation' as const,
+				email: 'rcpt@example.com',
+				status: 'queued' as const,
+			}),
+		}));
+		const fetchSpy = mtaFetchSpy('mta-automation-unscored', 'lease-automation-unscored');
+
+		const result = await t.action(internal.delivery.worker.sendSingleEmail, {
+			envelopeInput: {
+				kind: 'transactional' as const,
+				messageType: 'automation' as const,
+				emailPurpose: 'marketing' as const,
+				to: 'rcpt@example.com',
+				from: 'sender@example.com',
+				providerType: 'mta',
+				organizationId: 'org-test',
+				sendId,
+				template: { subject: 'drip', htmlContent: '<p>drip</p>' },
+				contactId,
+				listUnsubscribe: true,
+				convexSiteUrl: 'https://convex.example',
+			},
+		});
+
+		expect(result.success).toBe(true);
+		expect('engagementScore' in sentBody(fetchSpy)).toBe(false);
 	});
 
 	it('a TRANSACTIONAL send with no contact record dispatches unscored and does not throw', async () => {
