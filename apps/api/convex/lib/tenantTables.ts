@@ -77,6 +77,7 @@ export const TENANT_TABLES = [
 
 	// ── Sending domains & deliverability ──
 	'sendingDomainMtaIdentities',
+	'yahooCflEnrollments',
 	'sendingDomainSesIdentities',
 	'trackingDomains',
 	'sendingReputation',

@@ -126,6 +126,40 @@ export const domainTables = {
 		updatedAt: v.number(),
 	}).index('by_domain', ['domainId']),
 
+	// Yahoo Complaint Feedback Loop (CFL) enrollment — 1:0..1 with `domains`.
+	// Yahoo's CFL is DKIM-DOMAIN based (no API, no credential), so the whole
+	// integration is a guided operator flow plus this recorded state. The state
+	// machine itself is pure and lives in `@owlat/shared/yahooCfl`; this table
+	// only persists its record. Written by `domains/yahooCfl.ts`.
+	//
+	// D2: absence is a SUPPORTED CONFIGURATION. A domain with no row here is
+	// simply `not_started` — the yahoo cell's complaint gate substitutes the
+	// CFBL feed or the tightened unsubscribe proxy and carries a confidence
+	// caveat. It is never an error and never blocks a send or a promotion.
+	yahooCflEnrollments: defineTable({
+		// Scoped to the caller's active organization so a report or an operator
+		// action can never cross tenants, even though this deployment hosts a
+		// single organization today.
+		organizationId: v.string(),
+		domainId: v.id('domains'),
+		// Only the three PERSISTED states. `lapsed` is DERIVED on read from
+		// `lastReportAt` + the clock (ADR-0042's derive-on-read rule), so no cron
+		// and no write are needed to keep it current and it can never go stale.
+		state: v.union(v.literal('not_started'), v.literal('awaiting_yahoo'), v.literal('enrolled')),
+		// The DKIM domain as submitted to Yahoo (snapshot of the domain name).
+		dkimDomain: v.optional(v.string()),
+		submittedAt: v.optional(v.number()),
+		enrolledAt: v.optional(v.number()),
+		// Last Yahoo ARF report observed for this domain — the liveness proof the
+		// derived `lapsed` verdict reads. Never rewound by an out-of-order replay.
+		lastReportAt: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	})
+		// Every read is org-scoped: scoping the LOOKUP is what makes a foreign
+		// tenant's row invisible rather than merely filtered after the fact.
+		.index('by_org_domain', ['organizationId', 'domainId']),
+
 	// Custom Tracking Domains - branded domains for click/open tracking
 	trackingDomains: defineTable({
 		domain: v.string(),

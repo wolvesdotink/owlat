@@ -98,6 +98,7 @@ export type OrganizationDeletionTable =
 	| 'deliverabilityEvidence'
 	| 'deliverabilityLoopbackAttempts'
 	| 'destinationProviderDomains'
+	| 'yahooCflEnrollments'
 	| 'domains'
 	| 'onboardingProgress'
 	| 'auditLogs'
@@ -264,6 +265,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('deliverabilityEvidence'),
 	v.literal('deliverabilityLoopbackAttempts'),
 	v.literal('destinationProviderDomains'),
+	v.literal('yahooCflEnrollments'),
 	v.literal('domains'),
 	v.literal('onboardingProgress'),
 	v.literal('auditLogs'),
