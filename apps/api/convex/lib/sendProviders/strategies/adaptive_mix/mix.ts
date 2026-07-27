@@ -263,7 +263,8 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 		};
 	}
 
-	const rank = input.cell.isStratified === false ? null : normalizeRank(input.recipient.engagementRank);
+	const rank =
+		input.cell.isStratified === false ? null : normalizeRank(input.recipient.engagementRank);
 	if (rank !== null) {
 		// The TOP `s` fraction. The plan sketch writes this as `rank < s`, which
 		// assumes a DESCENDING rank (0 = most engaged); the shipped
