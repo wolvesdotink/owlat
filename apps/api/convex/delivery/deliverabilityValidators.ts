@@ -32,7 +32,11 @@ export const deliverabilitySignalSourceValidator = v.union(
 	v.literal('seed_placement')
 );
 
-/** Sending stream — mirrors DELIVERABILITY_STREAM_KEYS in @owlat/shared. */
+/**
+ * Sending stream — mirrors DELIVERABILITY_STREAM_KEYS in @owlat/shared, which
+ * is itself an alias of the shipped GOVERNED_MESSAGE_TYPES. Parity with that
+ * union is asserted in delivery/__tests__/routeStateMigration.test.ts.
+ */
 export const deliverabilityStreamValidator = v.union(
 	v.literal('campaign'),
 	v.literal('automation'),

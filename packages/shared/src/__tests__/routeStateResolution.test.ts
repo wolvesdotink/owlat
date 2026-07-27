@@ -4,32 +4,37 @@ import {
 	DESTINATION_PROVIDER_KEYS,
 	clampOwnShare,
 	deliverabilityCellKey,
-	isDeliverabilityStream,
 	isFallbackActiveForShare,
 	isRouteStateFallbackActive,
 	parseDeliverabilityCellKey,
 	resolveOwnShare,
 	type DeliverabilityRouteShareState,
 } from '../deliverabilityRouting';
+import { GOVERNED_MESSAGE_TYPES, isGovernedMessageType } from '../routingDispatch';
 
 describe('own-share resolution (D1)', () => {
 	it('resolves the migration table exactly', () => {
-		const cases: Array<{ state: DeliverabilityRouteShareState; share: number }> = [
+		const cases: Array<{
+			state: DeliverabilityRouteShareState;
+			share: number;
+			fallback: boolean;
+		}> = [
 			// Legacy rows: no ownShare, the boolean is the degenerate case.
-			{ state: { isFallbackActive: false }, share: 1 },
-			{ state: { isFallbackActive: true }, share: 0 },
-			// Migrated rows: ownShare wins regardless of the stored boolean.
-			{ state: { isFallbackActive: false, ownShare: 0.37 }, share: 0.37 },
-			{ state: { isFallbackActive: true, ownShare: 0.37 }, share: 0.37 },
-			{ state: { isFallbackActive: false, ownShare: 0 }, share: 0 },
-			{ state: { isFallbackActive: true, ownShare: 0 }, share: 0 },
-			{ state: { isFallbackActive: true, ownShare: 1 }, share: 1 },
-			{ state: { isFallbackActive: false, ownShare: 1 }, share: 1 },
+			{ state: { isFallbackActive: false }, share: 1, fallback: false },
+			{ state: { isFallbackActive: true }, share: 0, fallback: true },
+			// Migrated rows: ownShare wins the SHARE regardless of the boolean...
+			{ state: { isFallbackActive: false, ownShare: 0.37 }, share: 0.37, fallback: true },
+			{ state: { isFallbackActive: true, ownShare: 0.37 }, share: 0.37, fallback: true },
+			{ state: { isFallbackActive: false, ownShare: 0 }, share: 0, fallback: true },
+			{ state: { isFallbackActive: true, ownShare: 0 }, share: 0, fallback: true },
+			// ...but the boolean is an independent INFRASTRUCTURE verdict written on
+			// a different cadence, so it still engages the relay at ownShare = 1.
+			{ state: { isFallbackActive: true, ownShare: 1 }, share: 1, fallback: true },
+			{ state: { isFallbackActive: false, ownShare: 1 }, share: 1, fallback: false },
 		];
-		for (const { state, share } of cases) {
+		for (const { state, share, fallback } of cases) {
 			expect(resolveOwnShare(state)).toBe(share);
-			// The derived isFallbackActive view agrees with the share in every case.
-			expect(isRouteStateFallbackActive(state)).toBe(share < 1);
+			expect(isRouteStateFallbackActive(state)).toBe(fallback);
 			expect(isFallbackActiveForShare(resolveOwnShare(state))).toBe(share < 1);
 		}
 	});
@@ -53,14 +58,23 @@ describe('own-share resolution (D1)', () => {
 		expect(resolveOwnShare({ isFallbackActive: false, ownShare: undefined })).toBe(1);
 	});
 
-	it('clamps hostile and degenerate shares into [0,1]', () => {
+	it('clamps hostile and degenerate shares into [0,1], failing CLOSED', () => {
 		expect(clampOwnShare(-1)).toBe(0);
 		expect(clampOwnShare(2)).toBe(1);
 		expect(clampOwnShare(0.5)).toBe(0.5);
-		// A NaN/Infinity share must never be laundered into a fallback decision:
-		// it is not a measurement, so the un-migrated default (own MTA) applies.
-		expect(clampOwnShare(Number.NaN)).toBe(1);
-		expect(clampOwnShare(Number.POSITIVE_INFINITY)).toBe(1);
+		// Degenerate evidence must never be laundered into "the own MTA carries
+		// 100% of this cell". A zero-volume cell computing 0/0 is the obvious
+		// producer, so every non-finite input resolves to the FLOOR.
+		expect(clampOwnShare(Number.NaN)).toBe(0);
+		expect(clampOwnShare(Number.POSITIVE_INFINITY)).toBe(0);
+		expect(clampOwnShare(Number.NEGATIVE_INFINITY)).toBe(0);
+		// ...and a non-finite share therefore reads as "relay engaged", never as
+		// "no relay needed".
+		expect(isFallbackActiveForShare(Number.NaN)).toBe(true);
+		expect(isFallbackActiveForShare(Number.POSITIVE_INFINITY)).toBe(true);
+		expect(isFallbackActiveForShare(Number.NEGATIVE_INFINITY)).toBe(true);
+		// `resolveOwnShare` treats a non-finite STORED share as absent and falls
+		// back to the row's boolean, which is the D1 contract for a corrupt row.
 		expect(resolveOwnShare({ isFallbackActive: true, ownShare: Number.NaN })).toBe(0);
 		expect(resolveOwnShare({ isFallbackActive: false, ownShare: Number.NaN })).toBe(1);
 		expect(resolveOwnShare({ isFallbackActive: false, ownShare: -0.2 })).toBe(0);
@@ -78,7 +92,7 @@ describe('ramp cell keys (D6)', () => {
 	it('round-trips every stream x destination provider cell', () => {
 		for (const stream of DELIVERABILITY_STREAM_KEYS) {
 			for (const provider of DESTINATION_PROVIDER_KEYS) {
-				const key = deliverabilityCellKey(stream, provider);
+				const key = deliverabilityCellKey({ stream, destinationProvider: provider });
 				expect(key).toBe(`${stream}:${provider}`);
 				expect(parseDeliverabilityCellKey(key)).toEqual({
 					stream,
@@ -97,12 +111,18 @@ describe('ramp cell keys (D6)', () => {
 		expect(parseDeliverabilityCellKey('')).toBeNull();
 	});
 
-	it('recognizes exactly the three streams', () => {
-		expect(DELIVERABILITY_STREAM_KEYS).toEqual(['campaign', 'automation', 'transactional']);
+	it('is the shipped governed message type, not a parallel taxonomy', () => {
+		// Same array identity, not merely the same members: a fifth governed
+		// message type widens the stream axis with it, so a per-stream lookup can
+		// never silently miss and fall through to the legacy row.
+		expect(DELIVERABILITY_STREAM_KEYS).toBe(GOVERNED_MESSAGE_TYPES);
+		expect([...DELIVERABILITY_STREAM_KEYS].sort()).toEqual(
+			['automation', 'campaign', 'transactional'].sort()
+		);
 		for (const stream of DELIVERABILITY_STREAM_KEYS)
-			expect(isDeliverabilityStream(stream)).toBe(true);
-		expect(isDeliverabilityStream('marketing')).toBe(false);
-		expect(isDeliverabilityStream(undefined)).toBe(false);
-		expect(isDeliverabilityStream(1)).toBe(false);
+			expect(isGovernedMessageType(stream)).toBe(true);
+		expect(isGovernedMessageType('marketing')).toBe(false);
+		expect(isGovernedMessageType(undefined)).toBe(false);
+		expect(isGovernedMessageType(1)).toBe(false);
 	});
 });

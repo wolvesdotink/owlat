@@ -1,3 +1,9 @@
+import {
+	GOVERNED_MESSAGE_TYPES,
+	isGovernedMessageType,
+	type GovernedMessageType,
+} from './routingDispatch';
+
 export const DESTINATION_PROVIDER_KEYS = ['gmail', 'microsoft', 'yahoo', 'apple', 'other'] as const;
 
 export type DestinationProviderKey = (typeof DESTINATION_PROVIDER_KEYS)[number];
@@ -6,34 +12,39 @@ export type DeliverabilitySignalProvider = DestinationProviderKey | 'all';
 /**
  * Sending streams. A ramp cell is `(stream, destinationProvider)`; the stream
  * axis is what lets transactional mail ramp on different constants from bulk
- * campaign mail. Defined once here so the schema validator, the cell key and
- * the controller cannot drift.
+ * campaign mail.
+ *
+ * The stream axis is not a new taxonomy: it IS the shipped governed message
+ * type, which is what lets `route.ts` pass a `MessageType` straight into a cell
+ * lookup. Aliasing rather than re-declaring is what makes that safe — a fifth
+ * governed message type widens the stream axis with it instead of silently
+ * missing every per-stream row.
  */
-export const DELIVERABILITY_STREAM_KEYS = ['campaign', 'automation', 'transactional'] as const;
-export type DeliverabilityStream = (typeof DELIVERABILITY_STREAM_KEYS)[number];
+export const DELIVERABILITY_STREAM_KEYS = GOVERNED_MESSAGE_TYPES;
+export type DeliverabilityStream = GovernedMessageType;
 
-export function isDeliverabilityStream(value: unknown): value is DeliverabilityStream {
-	return (
-		typeof value === 'string' && (DELIVERABILITY_STREAM_KEYS as readonly string[]).includes(value)
-	);
+/** A ramp cell: the `(stream, destinationProvider)` pair the controller drives. */
+export interface DeliverabilityCell {
+	stream: DeliverabilityStream;
+	destinationProvider: DestinationProviderKey;
 }
 
-/** Canonical cell key: `${stream}:${destinationProvider}`. */
-export function deliverabilityCellKey(
-	stream: DeliverabilityStream,
-	destinationProvider: DestinationProviderKey
-): string {
-	return `${stream}:${destinationProvider}`;
+/**
+ * Canonical cell key `${stream}:${destinationProvider}`, branded so a cell key
+ * cannot be confused with any other string that happens to hold a colon.
+ */
+export type DeliverabilityCellKey = string & { readonly __brand: 'DeliverabilityCellKey' };
+
+export function deliverabilityCellKey(cell: DeliverabilityCell): DeliverabilityCellKey {
+	return `${cell.stream}:${cell.destinationProvider}` as DeliverabilityCellKey;
 }
 
-export function parseDeliverabilityCellKey(
-	value: string
-): { stream: DeliverabilityStream; destinationProvider: DestinationProviderKey } | null {
+export function parseDeliverabilityCellKey(value: string): DeliverabilityCell | null {
 	const separator = value.indexOf(':');
 	if (separator < 0) return null;
 	const stream = value.slice(0, separator);
 	const destinationProvider = value.slice(separator + 1);
-	if (!isDeliverabilityStream(stream) || !isDestinationProviderKey(destinationProvider)) return null;
+	if (!isGovernedMessageType(stream) || !isDestinationProviderKey(destinationProvider)) return null;
 	return { stream, destinationProvider };
 }
 
