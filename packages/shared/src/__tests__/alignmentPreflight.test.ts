@@ -53,7 +53,6 @@ describe('each check fails independently, with its own remedy', () => {
 			expect(entry.detail).toContain(testCase.detail);
 			expect(entry.remedy).toContain(testCase.remedy);
 			expect(result.verdict).toBe(testCase.expected === 'fail' ? 'blocked' : 'unknown');
-			expect(result.verdict).toBe(testCase.expected === 'fail' ? 'blocked' : 'unknown');
 		});
 	}
 
