@@ -277,7 +277,13 @@ export function loadConfig(): MtaConfig {
 	// on both sides of the wire, so a whitespace-padded value must not be able to
 	// clear the 32-byte floor here and then be rejected — or, worse, silently
 	// disagree with Convex's copy — at signing time.
-	const bounceVerpKey = normalizeVerpKey(requiredEnv('BOUNCE_VERP_KEY')) ?? '';
+	// A whitespace-only value CLEARS `requiredEnv` (it is present) and then
+	// normalises away entirely. Say that, rather than reporting it as a
+	// too-short key and sending the operator to count bytes in an empty string.
+	const bounceVerpKey = normalizeVerpKey(requiredEnv('BOUNCE_VERP_KEY'));
+	if (!bounceVerpKey) {
+		throw new Error('BOUNCE_VERP_KEY must not be blank or whitespace-only');
+	}
 	if (isKnownPlaceholderSecret(bounceVerpKey)) {
 		throw new Error('BOUNCE_VERP_KEY must be a generated secret, not a placeholder');
 	}
