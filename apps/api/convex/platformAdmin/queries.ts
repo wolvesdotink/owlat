@@ -77,7 +77,7 @@ export const getOrganizationDetail = authedQuery({
 
 		// Get blocked email counts via `by_reason` index. Each .collect() is
 		// bounded to one reason class — far smaller than the global table.
-		const [bouncedRows, complainedRows, manualRows] = await Promise.all([
+		const [bouncedRows, complainedRows, manualRows, unengagedRows] = await Promise.all([
 			ctx.db
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'bounced'))
@@ -90,13 +90,19 @@ export const getOrganizationDetail = authedQuery({
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'manual'))
 				.collect(), // bounded: per-reason slice (admin-curated)
+			ctx.db
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', 'unengaged'))
+				.collect(), // bounded: per-reason slice (sunset engine, P4-4)
 		]);
 
 		const blockedCounts = {
-			total: bouncedRows.length + complainedRows.length + manualRows.length,
+			total:
+				bouncedRows.length + complainedRows.length + manualRows.length + unengagedRows.length,
 			bounced: bouncedRows.length,
 			complained: complainedRows.length,
 			manual: manualRows.length,
+			unengaged: unengagedRows.length,
 		};
 
 		// Get recent campaigns

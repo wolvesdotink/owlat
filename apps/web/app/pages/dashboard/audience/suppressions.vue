@@ -14,7 +14,7 @@ definePageMeta({
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
 
 // Filter state
-const reasonFilter = ref<'all' | 'bounced' | 'complained' | 'manual'>('all');
+const reasonFilter = ref<'all' | 'bounced' | 'complained' | 'manual' | 'unengaged'>('all');
 
 // Get blocked emails with real-time updates
 const {
@@ -150,6 +150,8 @@ const getReasonBadgeClass = (reason: string) => {
 			return 'bg-error/20 text-error border-error/30';
 		case 'complained':
 			return 'bg-warning/20 text-warning border-warning/30';
+		case 'unengaged':
+			return 'bg-surface-raised text-text-secondary border-border';
 		default: // manual
 			return 'bg-brand/20 text-brand border-brand/30';
 	}
@@ -162,6 +164,8 @@ const getReasonIcon = (reason: string) => {
 			return 'lucide:mail';
 		case 'complained':
 			return 'lucide:message-square-warning';
+		case 'unengaged':
+			return 'lucide:moon';
 		default: // manual
 			return 'lucide:user-x';
 	}
@@ -174,6 +178,8 @@ const getReasonLabel = (reason: string) => {
 			return "Bounced — mailbox doesn't exist";
 		case 'complained':
 			return 'Complained — marked a send as spam';
+		case 'unengaged':
+			return 'Unengaged — ignored every message for months';
 		default: // manual
 			return 'Manually suppressed';
 	}
@@ -297,6 +303,7 @@ const getReasonLabel = (reason: string) => {
 							<option value="bounced">Bounced</option>
 							<option value="complained">Complained</option>
 							<option value="manual">Manually suppressed</option>
+							<option value="unengaged">Unengaged</option>
 						</select>
 					</div>
 				</div>

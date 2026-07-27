@@ -8,6 +8,7 @@ import { isValidEmail, normalizeEmail } from './lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/errors';
 import { scheduleSuppressionMirror } from './delivery/suppressionMirror';
 import { recordAuditLog } from './lib/auditLog';
+import { restoreSunsetSuppression } from './contacts/sunsetEngine';
 
 // Look up a blocklist row by email. Normalizes (lowercase + trim) so every
 // caller hits the `by_email` index with the same key, then returns the first
@@ -46,7 +47,18 @@ const BLOCKLIST_VIEW_LIMIT = 1000;
 // List the most recent blocked emails (most-recent-first) with optional reason filter.
 export const listByTeam = authedQuery({
 	args: {
-		reason: v.optional(v.union(v.literal('bounced'), v.literal('complained'), v.literal('manual'))),
+		reason: v.optional(
+			v.union(
+				v.literal('bounced'),
+				v.literal('complained'),
+				v.literal('manual'),
+				// The sunset engine's own reason (P4-4). Filterable like the rest:
+				// an operator looking at the blocklist has to be able to separate
+				// "we stopped mailing this address because it never engaged" from a
+				// bounce, a complaint, or a human decision.
+				v.literal('unengaged')
+			)
+		),
 	},
 	handler: async (ctx, args) => {
 		const reason = args.reason;
@@ -162,6 +174,31 @@ export const remove = authedMutation({
 		);
 		const blockedEmail = await getOrThrow(ctx, args.blockedEmailId, 'Blocked email');
 
+		// A SUNSET SUPPRESSION IS UNDONE BY THE SUNSET RESTORE PATH, NOT BY A
+		// DELETE. Deleting the row alone leaves the contact's stage and quiet
+		// window exactly as the engine found them, so the next sweep re-suppresses
+		// it within the day with a fresh audit entry and no explanation — the
+		// visible "Remove" action would undo itself. Routing through
+		// `restoreSunsetSuppression` deletes the same row AND sets the operator
+		// override that stops the engine touching the contact again, and it emits
+		// its own `contact.sunset_restored` audit entry.
+		if (blockedEmail.reason === 'unengaged') {
+			const contact = await ctx.db
+				.query('contacts')
+				.withIndex('by_email', (q) => q.eq('email', blockedEmail.email))
+				.first();
+			if (contact !== null && contact.deletedAt === undefined) {
+				await restoreSunsetSuppression(ctx, {
+					contactId: contact._id,
+					actorUserId: session.userId,
+					now: Date.now(),
+				});
+				return { success: true };
+			}
+			// No contact row behind the address (imported, merged away, hard-deleted):
+			// there is no stage to reset, so the plain delete below is the whole job.
+		}
+
 		await ctx.db.delete(args.blockedEmailId);
 
 		await recordAuditLog(ctx, {
@@ -246,7 +283,7 @@ export const getCountsByReason = authedQuery({
 		// is append-only with no expiry, so bounced/complained reach tens of
 		// thousands and three uncapped collects would trip the per-query read limit
 		// before the (already-capped) list view does. Counts saturate at the cap.
-		const [bounced, complained, manual] = await Promise.all([
+		const [bounced, complained, manual, unengaged] = await Promise.all([
 			ctx.db
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'bounced'))
@@ -259,13 +296,18 @@ export const getCountsByReason = authedQuery({
 				.query('blockedEmails')
 				.withIndex('by_reason', (q) => q.eq('reason', 'manual'))
 				.take(BLOCKLIST_VIEW_LIMIT),
+			ctx.db
+				.query('blockedEmails')
+				.withIndex('by_reason', (q) => q.eq('reason', 'unengaged'))
+				.take(BLOCKLIST_VIEW_LIMIT),
 		]);
 
 		return {
-			total: bounced.length + complained.length + manual.length,
+			total: bounced.length + complained.length + manual.length + unengaged.length,
 			bounced: bounced.length,
 			complained: complained.length,
 			manual: manual.length,
+			unengaged: unengaged.length,
 		};
 	},
 });

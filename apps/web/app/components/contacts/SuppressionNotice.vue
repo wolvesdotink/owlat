@@ -10,7 +10,7 @@
  * `canManage` here for affordance; the backend re-checks `contacts:manage`.
  */
 const props = defineProps<{
-	reason: 'bounced' | 'complained' | 'manual';
+	reason: 'bounced' | 'complained' | 'manual' | 'unengaged';
 	/** Pre-formatted human date the address was suppressed (e.g. "Mar 3"). */
 	dateLabel: string;
 	/** Whether the viewer may remove suppressions (contacts:manage). */
@@ -28,6 +28,8 @@ const reasonPhrase = computed(() => {
 			return `bounced on ${props.dateLabel}`;
 		case 'complained':
 			return `complained on ${props.dateLabel}`;
+		case 'unengaged':
+			return `paused on ${props.dateLabel} after months with no opens or clicks`;
 		default:
 			return `manually suppressed on ${props.dateLabel}`;
 	}

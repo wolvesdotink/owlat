@@ -42,7 +42,7 @@ const { data: snapshots } = useOrganizationQuery(
 	api.analytics.reputationSnapshots.getDeliverySnapshots
 );
 
-// Suppression roll-up (bounced/complained/manual) for the quiet summary line.
+// Suppression roll-up (bounced/complained/manual/unengaged) for the summary line.
 const { data: suppressionCounts } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
 
 const isLoading = computed(() => teamLoading.value || overviewLoading.value);
@@ -133,6 +133,7 @@ const suppressionParts = computed(() => {
 	if (c.bounced > 0) parts.push(`${c.bounced.toLocaleString()} bounced`);
 	if (c.complained > 0) parts.push(`${c.complained.toLocaleString()} complained`);
 	if (c.manual > 0) parts.push(`${c.manual.toLocaleString()} manual`);
+	if (c.unengaged > 0) parts.push(`${c.unengaged.toLocaleString()} unengaged`);
 	return { total: c.total, breakdown: parts.join(' · ') };
 });
 
