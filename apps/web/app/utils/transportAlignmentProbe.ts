@@ -82,15 +82,15 @@ async function gatherAlignmentDns(
 	// Nested rather than one flat `Promise.all([a, b, ...spread])`: the spread
 	// erases the tuple type, and the two named facts would come back as
 	// `DnsTxtObservation | undefined`.
-	const [[fromDomainTxt, dmarcTxt], dkimObservations] = await Promise.all([
+	// The DKIM lookups carry their own name through, so there is no index-zip to
+	// get wrong: pairing two parallel arrays by position needed an
+	// `!== undefined` guard that could only ever DROP a name, turning a
+	// resolvable DKIM record into an absent one. Same concurrency, no zip.
+	const [[fromDomainTxt, dmarcTxt], dkimEntries] = await Promise.all([
 		Promise.all([observeTxt(fromDomain), observeTxt(`_dmarc.${fromDomain}`)]),
-		Promise.all(dkimNames.map((name) => observeTxt(name))),
+		Promise.all(dkimNames.map(async (name) => [name, await observeTxt(name)] as const)),
 	]);
-	const dkimTxt: Record<string, DnsTxtObservation> = {};
-	dkimNames.forEach((name, index) => {
-		const observation = dkimObservations[index];
-		if (observation !== undefined) dkimTxt[name] = observation;
-	});
+	const dkimTxt: Record<string, DnsTxtObservation> = Object.fromEntries(dkimEntries);
 	return { fromDomainTxt, dmarcTxt, dkimTxt };
 }
 
