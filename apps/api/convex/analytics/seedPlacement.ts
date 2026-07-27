@@ -21,6 +21,17 @@
  * `getGateVerdict` answers `insufficient_data`, the controller HOLDS, and
  * nothing errors, warns, or nags.
  *
+ * WHAT THIS MODULE OWNS, AND WHAT IT HANDS ON. It owns the probe ledger, the
+ * per-provider roll-up, gate 5's verdict, and the two operator-visible
+ * artifacts the hygiene rule requires (the mailAuditLog rotation reminder, and
+ * `getSeedPlacementSummary` for a screen to read). It does NOT own the CELL
+ * DASHBOARD that renders the status or the confidence line beside it — that is
+ * P3-6 (Independence & Cells UI) and P3-8 (confidence surfacing), which consume
+ * `getSeedPlacementSummary` as it stands. The scheduled TRANSACTIONAL-stream
+ * probe is P4-7's (`delivery/seedShadowCopy.ts` shadows a campaign send only);
+ * the `stream` column is already the cell axis, so that is an additive widening
+ * rather than a reshaping.
+ *
  * SECURITY. Seed credentials are the SAME sealed envelope every other external
  * account uses; this module never reads, returns, or logs them. Seed mailbox
  * CONTENTS are never read into Convex — the poller reports a folder NAME and

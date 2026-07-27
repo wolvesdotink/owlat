@@ -281,7 +281,9 @@ describe('the shipped gate query acts on a corroborated collapse', () => {
 			now: NOW,
 			...NO_CORROBORATION,
 		});
-		expect(verdict.verdict).toBe('pass');
+		// HOLD, not pass: an uncorroborated collapse may not pull the share down,
+		// and it may not count towards the clean streak that pushes it up either.
+		expect(verdict.verdict).toBe('insufficient_data');
 		expect(verdict.failedProviders).toEqual([]);
 		expect(verdict.suspectProviders).toEqual(['gmail']);
 		expect(verdict.seedAccountCount).toBe(SEEDS);

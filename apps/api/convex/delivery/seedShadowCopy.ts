@@ -185,9 +185,13 @@ export async function enqueueSeedShadowCopies(
 			probeId,
 			accountId: seed.accountId,
 			provider: seed.provider,
-			// This module only ever shadows a CAMPAIGN send; a scheduled
-			// transactional probe is a different construction site and a purely
-			// additive widening of the column when it ships.
+			// This module only ever shadows a CAMPAIGN send. The card's other half
+			// — "or on a schedule for transactional streams" — is a different
+			// construction site (a cron, not a campaign transaction) and is picked
+			// up by P4-7, the seed-placement adapter piece, which is where gate 5
+			// gains its pluggable sources. Widening this column to the other two
+			// streams is purely additive when it lands; `stream` is already the
+			// cell axis, so nothing here has to change shape for it.
 			stream: 'campaign',
 			campaignId: args.campaignId,
 			...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
