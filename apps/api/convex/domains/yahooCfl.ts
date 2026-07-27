@@ -39,17 +39,61 @@ import { yahooComplaintSubstitution } from '../delivery/ramp/yahooComplaintSigna
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
+import { recordAuditLog } from '../lib/auditLog';
 import { getSingletonOrganizationId, requireOrgPermission } from '../lib/sessionOrganization';
+
+/**
+ * The enrollment's optional fields, declared ONCE.
+ *
+ * Three call sites project over exactly these four names in two directions
+ * (row → record, record → insert, record → patch). Deriving all three from one
+ * list means a fifth optional field is added in one place: forgetting the insert
+ * site would otherwise drop the field on a FRESH row only, which is the kind of
+ * bug that survives every test that starts from an existing row.
+ */
+const YAHOO_CFL_OPTIONAL_FIELDS = [
+	'dkimDomain',
+	'submittedAt',
+	'enrolledAt',
+	'lastReportAt',
+] as const;
+
+type YahooCflOptionalFields = Pick<
+	YahooCflEnrollmentRecord,
+	(typeof YAHOO_CFL_OPTIONAL_FIELDS)[number]
+>;
+
+/**
+ * The optional fields that are actually SET — absent keys stay absent. Used for
+ * the record projection and for the insert, neither of which may depend on an
+ * explicit `undefined` being accepted for an optional field.
+ */
+function definedOptionalFields(source: YahooCflOptionalFields): YahooCflOptionalFields {
+	const out: Record<string, unknown> = {};
+	for (const key of YAHOO_CFL_OPTIONAL_FIELDS) {
+		const value = source[key];
+		if (value !== undefined) out[key] = value;
+	}
+	return out as YahooCflOptionalFields;
+}
+
+/**
+ * EVERY optional field, each explicitly present — `undefined` included.
+ *
+ * Convex's `patch` deletes a field given an explicit `undefined`, which is
+ * exactly what a `reset` needs: its record carries no timestamps and the row
+ * must not keep the old ones. Spelled out here because it is the one Convex
+ * behaviour this module depends on that is not obvious from the call site.
+ */
+function explicitOptionalFields(source: YahooCflOptionalFields): YahooCflOptionalFields {
+	const out: Record<string, unknown> = {};
+	for (const key of YAHOO_CFL_OPTIONAL_FIELDS) out[key] = source[key];
+	return out as YahooCflOptionalFields;
+}
 
 function recordOf(row: Doc<'yahooCflEnrollments'> | null): YahooCflEnrollmentRecord {
 	if (!row) return emptyYahooCflEnrollment();
-	return {
-		state: row.state,
-		...(row.dkimDomain === undefined ? {} : { dkimDomain: row.dkimDomain }),
-		...(row.submittedAt === undefined ? {} : { submittedAt: row.submittedAt }),
-		...(row.enrolledAt === undefined ? {} : { enrolledAt: row.enrolledAt }),
-		...(row.lastReportAt === undefined ? {} : { lastReportAt: row.lastReportAt }),
-	};
+	return { state: row.state, ...definedOptionalFields(row) };
 }
 
 /**
@@ -107,46 +151,64 @@ async function persist(
 	now: number
 ): Promise<void> {
 	if (slot.existing) {
-		// PATCH deletes a field given an explicit `undefined`, which is exactly what
-		// a `reset` needs: its record carries no timestamps and the row must not keep
-		// the old ones. Spelled out here because it is the one Convex behaviour this
-		// function depends on that is not obvious from the call site.
 		await ctx.db.patch(slot.existing._id, {
 			state: record.state,
-			dkimDomain: record.dkimDomain,
-			submittedAt: record.submittedAt,
-			enrolledAt: record.enrolledAt,
-			lastReportAt: record.lastReportAt,
+			...explicitOptionalFields(record),
 			updatedAt: now,
 		});
 		return;
 	}
-	// INSERT writes only the fields the record actually carries (the repo's
-	// spread-when-present idiom, same as `recordOf` above), so a fresh row never
-	// depends on insert accepting an explicit `undefined` for an optional field.
 	await ctx.db.insert('yahooCflEnrollments', {
 		organizationId: slot.organizationId,
 		domainId: slot.domainId,
 		state: record.state,
-		...(record.dkimDomain === undefined ? {} : { dkimDomain: record.dkimDomain }),
-		...(record.submittedAt === undefined ? {} : { submittedAt: record.submittedAt }),
-		...(record.enrolledAt === undefined ? {} : { enrolledAt: record.enrolledAt }),
-		...(record.lastReportAt === undefined ? {} : { lastReportAt: record.lastReportAt }),
+		...definedOptionalFields(record),
 		createdAt: now,
 		updatedAt: now,
 	});
 }
 
 /**
+ * Reasons only the CONVEX SHELL can produce.
+ *
+ * `applyYahooCflEvent` cannot see a domain deleted underneath the wizard — that
+ * is a fact about the environment, resolved by the shell before the pure core is
+ * ever called — so it is NOT a member of `YahooCflTransitionReason`. Kept as its
+ * own union rather than folded into the pure module's, so a reader of the pure
+ * core can take that union at face value.
+ *
+ * `invalid_timestamp` is deliberately NOT here: the pure core returns it too
+ * (`applyYahooCflEvent` refuses an unusable `at` rather than absorbing it), and
+ * `observeReport`'s own pre-check exists only to reject before touching the
+ * database. One reason, one meaning, one home in the pure module.
+ */
+export type YahooCflShellReason = 'domain_missing';
+
+export type YahooCflReason = YahooCflTransitionReason | YahooCflShellReason;
+
+export interface YahooCflEventResult {
+	state: YahooCflStoredState;
+	changed: boolean;
+	reason: YahooCflReason;
+}
+
+/**
  * Run one guided-flow event against a domain. Shared by every operator-facing
- * mutation so the auth floor, the precondition and the persistence are written
- * exactly once.
+ * mutation so the auth floor, the precondition, the persistence and the AUDIT
+ * TRAIL are written exactly once.
+ *
+ * Every event is audited, including the refusals: these are `organization:manage`
+ * writes to domain-level sending configuration, and `reset` in particular is
+ * destructive (it clears the submitted/enrolled dates) AND downgrades the yahoo
+ * cell's complaint measurement from Yahoo's own feed to the tightened
+ * unsubscribe proxy. A downgrade of a gate's strictness that no one can trace to
+ * an actor is exactly the kind of change that gets experienced as a bug.
  */
 async function runEvent(
 	ctx: MutationCtx,
 	domainId: Id<'domains'>,
 	event: YahooCflEvent
-): Promise<{ state: YahooCflStoredState; changed: boolean; reason: YahooCflTransitionReason }> {
+): Promise<YahooCflEventResult> {
 	const session = await requireOrgPermission(ctx, 'organization:manage');
 	const domain = await ctx.db.get(domainId);
 	// An unknown domain is not an error state for the operator to resolve — it
@@ -163,11 +225,34 @@ async function runEvent(
 	if (transition.changed) {
 		await persist(ctx, slot, transition.record, event.at);
 	}
-	return {
+	const result: YahooCflEventResult = {
 		state: transition.record.state,
 		changed: transition.changed,
 		reason: transition.reason,
 	};
+	await recordAuditLog(ctx, {
+		userId: session.userId,
+		organizationId: session.activeOrganizationId,
+		action: 'sending_domain.yahoo_cfl_changed',
+		resource: 'sending_domain',
+		resourceId: domainId,
+		details: {
+			domain: domain.domain,
+			event: event.kind,
+			changed: result.changed,
+			state: result.state,
+			reason: result.reason,
+			// The consequence, recorded alongside the transition: which complaint
+			// source the yahoo cell runs on AFTER this event. A reset reads
+			// `unsubscribe_rate_proxy` here, which is the fact an operator reviewing
+			// the log actually needs.
+			complaintSource: yahooComplaintSubstitution({
+				enrollmentState: deriveYahooCflState(transition.record, event.at).state,
+				hasCfblAddress: false,
+			}).source,
+		},
+	});
+	return result;
 }
 
 // ─── Operator surface ───────────────────────────────────────────────────────
@@ -193,14 +278,16 @@ export const getGuide = authedQuery({
 		// report and the clock, so this verdict is always current (ADR-0042).
 		const { state, silentMs } = deriveYahooCflState(record, now);
 		return {
-			domain: domain.domain,
-			// The DERIVED state (`lapsed` included) is the only state reported —
-			// `enrollment.state` carries the stored one, so a consumer can never read
-			// two sources for the same fact.
+			// The DERIVED state (`lapsed` included) is the only state reported. The
+			// stored record, the resolved precondition and the domain name are NOT on
+			// the wire: the steps already interpolate the domain and the selector, so
+			// a second copy would be payload with no consumer (D20).
 			state,
+			// How long the feed has actually been silent. The one fact the steps
+			// cannot state for themselves — the lapsed step is written from the
+			// CONSTANT, so without this the panel could only ever say "90 days"
+			// whether the true figure is 91 days or 400. The panel renders it.
 			silentMs,
-			enrollment: record,
-			precondition,
 			steps: yahooCflGuidedSteps(record, precondition, now),
 			// WHICH CONTROLS TO OFFER, decided by the pure core alongside the state
 			// machine that will service them. The panel renders this verbatim: a
@@ -278,7 +365,7 @@ export const observeReport = internalMutation({
 		/** A row was actually written. `false` for every refusal and every coalesced report. */
 		changed: boolean;
 		state?: YahooCflStoredState;
-		reason?: YahooCflTransitionReason;
+		reason?: YahooCflReason;
 	}> => {
 		// This mutation is reachable from an internet-triggered path (an ARF report),
 		// so the clock it is handed is untrusted. A non-finite or non-positive `at`
