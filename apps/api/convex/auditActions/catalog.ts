@@ -123,6 +123,10 @@ export const AUDIT_ACTION_LITERALS = [
 	action('sending_domain.return_path_changed'),
 	action('sending_domain.dkim_rotated'),
 	action('sending_domain.deleted'),
+	// Deliverability seed mailbox — the placement probe's operator-visible
+	// hygiene trail (`analytics/seedPlacement.ts`). Advisory only (D2).
+	action('seed_mailbox.rotation_reminder'),
+	action('seed_mailbox.rotation_acknowledged'),
 	// Blocklist
 	action('blocklist.added'),
 	action('blocklist.removed'),
@@ -243,6 +247,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'api_key',
 	'webhook',
 	'sending_domain',
+	'seed_mailbox',
 	'blocklist',
 	'segment',
 	'platform_admin',

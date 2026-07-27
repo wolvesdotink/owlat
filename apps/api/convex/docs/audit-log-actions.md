@@ -60,6 +60,8 @@ All inserts must go through `recordAuditLog(ctx, {...})` in
 | `sending_domain.dmarc_policy_changed` | `sending_domain` | `{ domain, previousPolicy, newPolicy, newSubdomainPolicy, newPct, applied }` |
 | `sending_domain.dkim_rotated` | `sending_domain` | `{ domain, selector, phase, applied }` |
 | `sending_domain.return_path_changed` | `sending_domain` | `{ domain, previousReturnPathHost, newReturnPathHost, applied }` on edit; `{ domain, returnPathHost, applied: 'sync_failed', attempts, error }` when the MTA push permanently fails |
+| `seed_mailbox.rotation_reminder` | `seed_mailbox` | `{ provider, ageDays }` — advisory rotation nudge for a deliverability seed mailbox, emitted by the placement sweep. Provider and age only: never the seed address, never a credential, never mailbox contents. |
+| `seed_mailbox.rotation_acknowledged` | `seed_mailbox` | `{ provider, ageDays }` — the operator dismissed the nudge; the 90-day clock restarts from here. |
 | `blocklist.added` / `blocklist.removed` | `blocklist` | `{ email, reason }` |
 | `segment.created` / `segment.updated` / `segment.deleted` | `segment` | `{ name }` |
 | `platform_admin.org_status_changed` | `platform_admin` | `{ previousStatus, newStatus, reason }` |
