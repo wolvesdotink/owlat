@@ -304,6 +304,15 @@ export function reduceOpened(
 	if (isFirstOpen) {
 		// Unique opens — drives the dashboard openRate denominator.
 		effects.push({ kind: 'daily_stats_bump', field: 'opened', at: args.at });
+		// The per-cell, per-arm outcome counter (plan D5) is emitted from INSIDE
+		// this uniqueness gate on purpose: it has to mean the same thing as the
+		// dashboard counter one line above it. A re-fire (image prefetch reopens a
+		// message several times) must not bump it, or the cell's open rate would
+		// exceed 1.0 and disagree with the campaign dashboard over the same
+		// traffic. Note this cannot be hoisted to the dispatcher and gated on
+		// `applied === 'transitioned'`: a genuine FIRST open on an already-bounced
+		// row does not move the status and would be silently under-counted.
+		effects.push({ kind: 'transport_outcome', sendId: ref.id, event: 'opened', at: args.at });
 		// Customer webhook — first open only; re-opens just bump openCount.
 		effects.push({
 			kind: 'customer_webhook',
@@ -350,6 +359,9 @@ export function reduceClicked(
 	if (isFirstClick) {
 		// Unique clicks — drives the dashboard clickRate denominator.
 		effects.push({ kind: 'daily_stats_bump', field: 'clicked', at: args.at });
+		// Unique clicks here too — same reasoning as `reduceOpened`: the per-cell
+		// outcome counter must agree with the dashboard counter beside it.
+		effects.push({ kind: 'transport_outcome', sendId: ref.id, event: 'clicked', at: args.at });
 	}
 
 	// Customer webhook — every click, not just the first: each carries its own
