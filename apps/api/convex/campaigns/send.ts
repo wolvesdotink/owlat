@@ -476,6 +476,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 		firstName?: string;
 		lastName?: string;
 		timezone?: string;
+		engagementScore?: number;
 	};
 
 	const emailsToEnqueue: EmailEnqueueData[] = [];
@@ -489,6 +490,10 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 			firstName: r.firstName,
 			lastName: r.lastName,
 			timezone: r.timezone,
+			// Projected by audience resolution from the already-loaded contact:
+			// the engagement score rides the envelope to the MTA's priority
+			// bands. Undefined for an unscored contact and simply omitted.
+			engagementScore: r.engagementScore,
 		});
 	}
 
@@ -521,6 +526,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 					email: r.email,
 					firstName: r.firstName,
 					lastName: r.lastName,
+					engagementScore: r.engagementScore,
 				})),
 				from: args.from,
 				replyTo: args.replyTo,
@@ -550,6 +556,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 					email: r.email,
 					firstName: r.firstName,
 					lastName: r.lastName,
+					engagementScore: r.engagementScore,
 				})),
 				from: args.from,
 				replyTo: args.replyTo,

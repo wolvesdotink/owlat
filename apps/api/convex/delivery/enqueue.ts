@@ -134,6 +134,10 @@ export const enqueueCampaignEmails = internalMutation({
 				email: v.string(),
 				firstName: v.optional(v.string()),
 				lastName: v.optional(v.string()),
+				// `contacts.engagementScore` (0-100) as projected by audience
+				// resolution. Absent for an unscored contact; carried on the
+				// envelope so dispatch never re-reads the contact row.
+				engagementScore: v.optional(v.number()),
 			})
 		),
 		from: v.string(),
@@ -186,6 +190,9 @@ export const enqueueCampaignEmails = internalMutation({
 						trackingBaseUrl: args.trackingBaseUrl,
 						viewInBrowserUrl: args.viewInBrowserUrl,
 						listId: args.listId,
+						...(recipient.engagementScore !== undefined
+							? { engagementScore: recipient.engagementScore }
+							: {}),
 					},
 				},
 				{
@@ -284,6 +291,16 @@ export const enqueueNonCampaignSend = internalMutation({
 			...(args.providerType ? { providerType: args.providerType } : {}),
 		});
 
+		// Recipient engagement score for the MTA's enqueue-time priority bands.
+		// A single indexed point read HERE, in the enqueue transaction, is the
+		// cheap place to pay for it — the dispatch action must never read a
+		// contact per send. A send with no contact record (test previews, agent
+		// replies to an unknown address) does no read at all and carries no
+		// score, which the MTA reads as "unknown" rather than "cold".
+		const engagementScore = args.contactId
+			? (await ctx.db.get(args.contactId))?.engagementScore
+			: undefined;
+
 		// Gmail FBL — singleton org id anchors the stable `txn`-stream
 		// Feedback-ID SenderId for automation + agent-reply sends.
 		const organizationId = await ctx.runQuery(
@@ -324,6 +341,7 @@ export const enqueueNonCampaignSend = internalMutation({
 					...(args.contactId ? { contactId: args.contactId } : {}),
 					...(args.listUnsubscribe ? { listUnsubscribe: args.listUnsubscribe } : {}),
 					...(args.convexSiteUrl ? { convexSiteUrl: args.convexSiteUrl } : {}),
+					...(engagementScore !== undefined ? { engagementScore } : {}),
 				},
 			},
 			{
