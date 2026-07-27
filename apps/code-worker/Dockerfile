@@ -9,7 +9,6 @@ FROM oven/bun:1.3-alpine AS builder
 WORKDIR /build
 
 COPY package.json bun.lock* ./
-COPY patches/ patches/
 # ALL workspace manifests — bun validates the frozen lockfile against the full
 # workspace shape (same idiom as apps/web/Dockerfile), examples/* and
 # examples/plugins/* included.
@@ -36,7 +35,6 @@ FROM oven/bun:1.3-alpine AS proddeps
 WORKDIR /build
 
 COPY package.json bun.lock* ./
-COPY patches/ patches/
 # examples/* and examples/plugins/* are workspaces too — bun's frozen-lockfile
 # check needs their manifests to see the full workspace shape.
 COPY --parents apps/*/package.json packages/*/package.json examples/*/package.json examples/plugins/*/package.json ./
