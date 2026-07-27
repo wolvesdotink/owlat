@@ -176,6 +176,19 @@ export interface MtaWebhookEvent {
 	bounceRate?: number;
 	/** Sending domain (for dkim.rotated events) */
 	domain?: string;
+	/**
+	 * ARF `Reported-Domain` (for `complained` events) — OUR sending/DKIM domain
+	 * the report was filed against, bounded to a strict FQDN at the emission site
+	 * in `bounce/outcome.ts`. Convex uses it to keep a DKIM-domain-based
+	 * feedback-loop enrollment (Yahoo's CFL) marked live.
+	 */
+	reportedDomain?: string;
+	/**
+	 * The feedback-loop source ISP (for `complained` events), mapped from the ARF
+	 * processor's own token enum onto the shipped destination-provider CELL key so
+	 * a consumer comparing it to `'yahoo'` compares against a checked constant.
+	 */
+	sourceIsp?: DestinationProviderKey;
 	/** New DKIM selector (for dkim.rotated events) */
 	selector?: string;
 	/** New DKIM public-key DNS TXT record value (for dkim.rotated events) */

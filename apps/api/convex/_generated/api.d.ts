@@ -760,6 +760,7 @@ import type * as webhooks_pipeline from "../webhooks/pipeline.js";
 import type * as webhooks_scheduleFanout from "../webhooks/scheduleFanout.js";
 import type * as webhooks_security from "../webhooks/security.js";
 import type * as webhooks_types from "../webhooks/types.js";
+import type * as webhooks_yahooCflObservation from "../webhooks/yahooCflObservation.js";
 import type * as workspaces_abuseGate from "../workspaces/abuseGate.js";
 import type * as workspaces_abuseStatus from "../workspaces/abuseStatus.js";
 import type * as workspaces_deletion_steps__common from "../workspaces/deletion/steps/_common.js";
@@ -1535,6 +1536,7 @@ declare const fullApi: ApiFromModules<{
   "webhooks/scheduleFanout": typeof webhooks_scheduleFanout;
   "webhooks/security": typeof webhooks_security;
   "webhooks/types": typeof webhooks_types;
+  "webhooks/yahooCflObservation": typeof webhooks_yahooCflObservation;
   "workspaces/abuseGate": typeof workspaces_abuseGate;
   "workspaces/abuseStatus": typeof workspaces_abuseStatus;
   "workspaces/deletion/steps/_common": typeof workspaces_deletion_steps__common;
