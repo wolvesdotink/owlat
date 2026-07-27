@@ -6,15 +6,25 @@
  */
 
 import { beforeEach, afterEach, vi } from 'vitest';
-import type { convexTest } from 'convex-test';
+import type { TestConvex } from 'convex-test';
 import {
 	validateReadyToSend,
 	type PreflightOptions,
 	type PreflightResult,
 } from '../campaigns/preflight';
 import type { Doc, Id } from '../_generated/dataModel';
+import type schema from '../schema';
 
-export type TestRunner = ReturnType<typeof convexTest>;
+/**
+ * The convex-test runner PARAMETERIZED by this app's schema.
+ *
+ * The unparameterized `ReturnType<typeof convexTest>` hands `t.run` a
+ * `GenericDatabaseWriter<GenericDataModel>`, which carries no index metadata:
+ * table names still resolve structurally but `.withIndex('by_domain', ...)`
+ * falls back to `SystemIndexes` and fails to typecheck. Binding the schema here
+ * types every fixture in this file against the real tables and indexes.
+ */
+export type TestRunner = TestConvex<typeof schema>;
 
 /** UTC midnight — pins the retention horizon at exactly four usable days. */
 export const MIDNIGHT = Date.UTC(2026, 6, 27, 0, 0, 0);
@@ -47,7 +57,30 @@ export function useMtaPreflightEnv(): void {
 		delete process.env['EMAIL_PROVIDER'];
 		delete process.env['MTA_API_URL'];
 		delete process.env['MTA_API_KEY'];
+		for (const key of SES_ENV_KEYS) delete process.env[key];
 	});
+}
+
+const SES_ENV_KEYS = [
+	'AWS_SES_REGION',
+	'AWS_SES_ACCESS_KEY_ID',
+	'AWS_SES_SECRET_ACCESS_KEY',
+] as const;
+
+/**
+ * Give the SES provider its credentials for the current test, so route
+ * resolution treats an enabled `ses` route entry as a REAL route.
+ *
+ * Enabled is not ready: `resolveRoute` filters entries through
+ * `isSendProviderReady`, so without this an enabled-but-credential-less SES
+ * entry is not a route at all. A fixture that means "the relay is genuinely
+ * available" must say so here; one that means "half set up" must NOT call this.
+ * `useMtaPreflightEnv`'s `afterEach` clears the keys either way.
+ */
+export function configureSesEnv(): void {
+	process.env['AWS_SES_REGION'] = 'us-east-1';
+	process.env['AWS_SES_ACCESS_KEY_ID'] = 'test-access-key-id';
+	process.env['AWS_SES_SECRET_ACCESS_KEY'] = 'test-secret-access-key';
 }
 
 /** One entry of `warmingState.ips` — anchored to the schema row itself. */
@@ -128,6 +161,13 @@ export async function seedCampaignRoute(
 	t: TestRunner,
 	config: {
 		providers: Array<{ providerType: string; isEnabled: boolean }>;
+		/**
+		 * Defaults to `priority_failover`, where a second provider is a HEALTH
+		 * failover rather than a traffic split. Pass `workload_split` for the one
+		 * strategy under which an enabled second provider really does carry part
+		 * of the audience.
+		 */
+		strategy?: 'single' | 'priority_failover' | 'workload_split';
 		deliverabilityFallback?: {
 			isEnabled: boolean;
 			relayProviderType: string;
@@ -138,7 +178,7 @@ export async function seedCampaignRoute(
 	await t.run(async (ctx) => {
 		await ctx.db.insert('providerRoutes', {
 			messageType: 'campaign',
-			strategy: 'priority_failover',
+			strategy: config.strategy ?? 'priority_failover',
 			providers: config.providers,
 			...(config.deliverabilityFallback
 				? { deliverabilityFallback: config.deliverabilityFallback }
