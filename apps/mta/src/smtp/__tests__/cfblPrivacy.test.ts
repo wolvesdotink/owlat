@@ -65,7 +65,7 @@ vi.mock('../mtaSts.js', async (importOriginal) => {
 	};
 });
 vi.mock('../dkim.js', () => ({
-	getDkimOptions: vi.fn().mockResolvedValue(undefined),
+	getDkimOptions: vi.fn(),
 }));
 vi.mock('../daneResolver.js', () => ({
 	lookupTlsaRecords: vi.fn().mockResolvedValue({ status: 'no-tlsa' }),
@@ -76,7 +76,9 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import { createHash } from 'crypto';
 import { sendToMx } from '../sender.js';
+import { getDkimOptions } from '../dkim.js';
 import { buildCfblHeaders } from '../../bounce/cfblAddress.js';
+import { dkimTestOptions } from '../../__tests__/helpers/dkimTestKey.js';
 import * as dkimStore from '../dkimStore.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
@@ -138,6 +140,10 @@ describe('P2-7 (e) — CFBL header privacy', () => {
 			response: { code: 250, text: '2.0.0 OK', lines: ['2.0.0 OK'] },
 		});
 		process.env['BOUNCE_VERP_KEY'] = SIGNING_KEY;
+		// RFC 9477 §3.1 also requires a valid DKIM signature over the From domain,
+		// so the sender emits nothing for an unsigned message — sign, or the
+		// privacy assertions below would be vacuously true on absent headers.
+		vi.mocked(getDkimOptions).mockResolvedValue(dkimTestOptions('acme.com'));
 	});
 
 	afterEach(async () => {
@@ -191,6 +197,7 @@ describe('P2-7 (e) — CFBL header privacy', () => {
 			cfblHost: 'bounce.acme.com',
 			fromDomain: 'acme.com',
 			key: SIGNING_KEY,
+			dkimSigned: true,
 		});
 		const token = built.headers['CFBL-Feedback-ID']!;
 		const encodedId = token.split('+')[0]!;
@@ -227,6 +234,7 @@ describe('P2-7 (e) — CFBL header privacy', () => {
 			fromDomain: 'acme.com',
 			key: SIGNING_KEY,
 			now,
+			dkimSigned: true,
 		};
 		const a = buildCfblHeaders(input);
 		const b = buildCfblHeaders(input);

@@ -33,6 +33,7 @@ import { completeComplaint, resolveCfblAttribution } from '../fblProcessor.js';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
 import { MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS } from '../signedToken.js';
 import { cfblRejectionsTotal } from '../../monitoring/collector.js';
+import { counterTotal } from '../../__tests__/helpers/counters.js';
 import type { BasePhaseCtx, BounceAttempt, PhaseDeps } from '../types.js';
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
@@ -85,11 +86,8 @@ function attemptOf(outcome: PhaseOutcome): BounceAttempt {
 }
 
 /** Total value of the rejection counter for one reason. */
-async function rejectionCount(reason: string): Promise<number> {
-	const metric = await cfblRejectionsTotal.get();
-	return metric.values
-		.filter((value) => value.labels['reason'] === reason)
-		.reduce((sum, value) => sum + value.value, 0);
+function rejectionCount(reason: string): Promise<number> {
+	return counterTotal(cfblRejectionsTotal, 'reason', reason);
 }
 
 const BASE_FIELDS = 'Feedback-Type: abuse\r\nOriginal-Rcpt-To: <victim@example.net>\r\n';
@@ -173,7 +171,7 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 
 			const attribution = resolveCfblAttribution({ reportText: buried }, KEY);
 
-			expect(attribution.messageId).toBeUndefined();
+			expect(attribution.attributed).toBe(false);
 			expect(attribution.rejections).toEqual([]);
 		});
 
@@ -383,7 +381,7 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 		});
 
 		it('an empty / whitespace envelope recipient is simply not a CFBL handle', () => {
-			expect(resolveCfblAttribution({ rcptTo: '', reportText: '' }, KEY).messageId).toBeUndefined();
+			expect(resolveCfblAttribution({ rcptTo: '', reportText: '' }, KEY).attributed).toBe(false);
 			expect(resolveCfblAttribution({ rcptTo: '   ', reportText: '' }, KEY).rejections).toEqual([]);
 		});
 

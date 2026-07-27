@@ -22,7 +22,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { generateKeyPairSync } from 'crypto';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import { dkimVerify } from 'mailauth';
@@ -91,6 +90,8 @@ import { cfblEmissionsTotal } from '../../monitoring/collector.js';
 import * as dkimStore from '../dkimStore.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
+import { counterTotal } from '../../__tests__/helpers/counters.js';
+import { dkimTestOptions, dkimTestResolver } from '../../__tests__/helpers/dkimTestKey.js';
 
 const SIGNING_KEY = 'cfbl-header-test-key';
 const GLOBAL_RETURN_PATH = 'bounces.owlat.com';
@@ -169,11 +170,8 @@ function foldedHeaderValue(name: string): string | undefined {
 }
 
 /** Total value of the emission counter for one bounded outcome. */
-async function emissionCount(outcome: string): Promise<number> {
-	const metric = await cfblEmissionsTotal.get();
-	return metric.values
-		.filter((value) => value.labels['outcome'] === outcome)
-		.reduce((sum, value) => sum + value.value, 0);
+function emissionCount(outcome: string): Promise<number> {
+	return counterTotal(cfblEmissionsTotal, 'outcome', outcome);
 }
 
 /** How many CFBL-Address field lines the wire actually carries. */
@@ -208,8 +206,11 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		});
 		process.env['BOUNCE_VERP_KEY'] = SIGNING_KEY;
 		cfblEmissionsTotal.reset();
-		// Unsigned by default; the §3.1.4 block below swaps in a real RSA key.
-		vi.mocked(getDkimOptions).mockResolvedValue(undefined);
+		// Signed by default (RFC 9477 §3.1): the pair is only meaningful on a
+		// message whose From domain carries a valid DKIM signature, so every
+		// emission assertion below runs against one. The §3.1 block swaps in
+		// `undefined` to pin the unsigned branch.
+		vi.mocked(getDkimOptions).mockResolvedValue(dkimTestOptions(FROM_DOMAIN));
 	});
 
 	afterEach(async () => {
@@ -302,6 +303,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 					cfblHost: 'bouncenotacme.com',
 					fromDomain: FROM_DOMAIN,
 					key: SIGNING_KEY,
+					dkimSigned: true,
 				})
 			).toEqual({ outcome: 'host_unaligned', headers: {} });
 		});
@@ -335,6 +337,43 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 			expect(headerLine('CFBL-Address')).toBeUndefined();
 			expect(await emissionCount('no_key')).toBe(1);
 			expect(await emissionCount('host_unaligned')).toBe(0);
+		});
+	});
+
+	describe('RFC 9477 §3.1/§3.1.4 — the From domain must carry a DKIM signature', () => {
+		it('stays SILENT on a message this deployment cannot DKIM-sign', async () => {
+			// A single-domain self-host whose return-path host aligns with From but
+			// which has registered no DKIM key sends unsigned. §3.1 requires the
+			// From domain to be matched by a valid signature and §3.1.4 says the
+			// provider "SHALL NOT send a report message" otherwise — so emitting
+			// here would publish exactly the inert, provider-discarded header the
+			// unaligned branch already refuses to publish.
+			await alignReturnPath();
+			vi.mocked(getDkimOptions).mockResolvedValue(undefined);
+
+			const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+
+			// D2: absence is silent and non-blocking — the send still succeeds.
+			expect(result.success).toBe(true);
+			expect(headerLine('CFBL-Address')).toBeUndefined();
+			expect(headerLine('CFBL-Feedback-ID')).toBeUndefined();
+			expect(await emissionCount('no_signature')).toBe(1);
+			expect(await emissionCount('emitted')).toBe(0);
+			expect(await emissionCount('host_unaligned')).toBe(0);
+			expect(await emissionCount('no_key')).toBe(0);
+		});
+
+		it('emits again as soon as a DKIM key exists for the domain', async () => {
+			await alignReturnPath();
+			vi.mocked(getDkimOptions).mockResolvedValue(undefined);
+			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+			expect(await emissionCount('no_signature')).toBe(1);
+
+			vi.mocked(getDkimOptions).mockResolvedValue(dkimTestOptions(FROM_DOMAIN));
+			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+
+			expect(await emissionCount('emitted')).toBe(1);
+			expect(await emissionCount('no_signature')).toBe(1);
 		});
 	});
 
@@ -495,33 +534,6 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 	});
 
 	describe('RFC 9477 §3.1.4 — both fields are covered by the DKIM h= tag', () => {
-		const SELECTOR = 'cfbl2026';
-
-		/**
-		 * Feed the production signing seam a REAL RSA key and serve the matching
-		 * public key through an in-memory resolver, so the signature is verified by
-		 * an independent implementation rather than by our own signer.
-		 */
-		function useRealDkimKey(): (name: string, rrtype: string) => Promise<string[][]> {
-			const { publicKey, privateKey } = generateKeyPairSync('rsa', {
-				modulusLength: 2048,
-				publicKeyEncoding: { type: 'spki', format: 'pem' },
-				privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-			});
-			vi.mocked(getDkimOptions).mockResolvedValue({
-				domainName: FROM_DOMAIN,
-				keySelector: SELECTOR,
-				privateKey,
-			});
-			const record = `v=DKIM1; k=rsa; p=${publicKey
-				.replace('-----BEGIN PUBLIC KEY-----', '')
-				.replace('-----END PUBLIC KEY-----', '')
-				.replace(/\s/g, '')}`;
-			const expected = `${SELECTOR}._domainkey.${FROM_DOMAIN}`;
-			return (name, rrtype) =>
-				Promise.resolve(rrtype === 'TXT' && name === expected ? [[record]] : []);
-		}
-
 		function signedHeaderList(): string[] {
 			const sig = foldedHeaderValue('DKIM-Signature');
 			expect(sig).toBeDefined();
@@ -531,7 +543,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		}
 
 		it('lists cfbl-address and cfbl-feedback-id in h=, and the signature verifies', async () => {
-			const resolver = useRealDkimKey();
+			const resolver = dkimTestResolver(FROM_DOMAIN);
 			await alignReturnPath();
 
 			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
@@ -549,7 +561,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		});
 
 		it('OVERSIGNS cfbl-address, so an added second instance breaks the signature', async () => {
-			const resolver = useRealDkimKey();
+			const resolver = dkimTestResolver(FROM_DOMAIN);
 			await alignReturnPath();
 
 			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
@@ -585,6 +597,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 				cfblHost: longHost,
 				fromDomain: longHost,
 				key: SIGNING_KEY,
+				dkimSigned: true,
 			});
 			// Over the RFC 5321 320-octet path cap → no header at all rather than a
 			// truncated (and therefore unverifiable) address.
@@ -595,6 +608,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 				cfblHost: 'bounces.example.com',
 				fromDomain: 'bounces.example.com',
 				key: SIGNING_KEY,
+				dkimSigned: true,
 			});
 			const value = long.headers['CFBL-Address'];
 			expect(value).toBeDefined();
