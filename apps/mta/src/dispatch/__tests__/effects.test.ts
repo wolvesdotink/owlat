@@ -179,14 +179,12 @@ describe('applyEffects — per-effect dispatch', () => {
 					ip: '10.0.0.2',
 					result: 'bounce',
 					providerKey: 'gmail',
-					pool: 'campaign',
 				},
 				{
 					kind: 'warming_record',
 					ip: '10.0.0.3',
 					result: 'deferral',
 					providerKey: 'gmail',
-					pool: 'campaign',
 				},
 			],
 			deps
@@ -309,7 +307,6 @@ describe('applyEffects — ordering', () => {
 				ip: '10.0.0.1',
 				result: 'bounce',
 				providerKey: 'gmail',
-				pool: 'campaign',
 			},
 			{ kind: 'suppress_recipient', address: 'a@b.c', reason: 'hard_bounce' },
 		];

@@ -159,7 +159,7 @@ function reduceHardBounce(
 				enhancedCode: outcome.enhancedCode,
 			},
 			{ kind: 'domain_throttle_reject', ip, throttleKey },
-			{ kind: 'warming_record', ip, result: 'bounce', providerKey, pool: ctx.pool },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey },
 			{
 				kind: 'metrics_record',
 				domain,
@@ -230,7 +230,7 @@ function reduceDeferred(
 				smtpCode: outcome.smtpCode,
 				enhancedCode: outcome.enhancedCode,
 			},
-			{ kind: 'warming_record', ip, result: 'deferral', providerKey, pool: ctx.pool },
+			{ kind: 'warming_record', ip, result: 'deferral', providerKey },
 			...(volumePressure
 				? [
 						{
@@ -299,7 +299,7 @@ function reduceNonRetryableDeferral(
 				enhancedCode: outcome.enhancedCode,
 			},
 			{ kind: 'domain_throttle_reject', ip, throttleKey },
-			{ kind: 'warming_record', ip, result: 'bounce', providerKey, pool: ctx.pool },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey },
 			{
 				kind: 'metrics_record',
 				domain,
@@ -375,7 +375,7 @@ function reduceSoftBounce(
 				providerKey,
 				...probeReceipt(job),
 			},
-			{ kind: 'warming_record', ip, result: 'bounce', providerKey, pool: ctx.pool },
+			{ kind: 'warming_record', ip, result: 'bounce', providerKey },
 			{ kind: 'domain_failure_record', domain },
 			{
 				kind: 'metrics_record',

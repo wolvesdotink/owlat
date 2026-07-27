@@ -79,9 +79,16 @@ export type DispatchEffect =
 			campaignId: string;
 	  }
 	| {
+			/**
+			 * A DELIVERED send. This is the only outcome that consumes warming
+			 * capacity, so it is the only one carrying the reservation it consumes
+			 * and the pool that decides whether it counts toward the bulk pacing
+			 * curve — the union says so rather than threading dead payload (and
+			 * journalling it) through the three non-delivery branches.
+			 */
 			kind: 'warming_record';
 			ip: string;
-			result: 'send' | 'bounce' | 'deferral';
+			result: 'send';
 			reservation?: WarmingReservation;
 			/**
 			 * Mirrors the outcome into the per-(IP x mailbox provider) warming
@@ -90,11 +97,18 @@ export type DispatchEffect =
 			 */
 			providerKey: DestinationProviderKey;
 			/**
-			 * The pool the attempt used. Only `campaign` sends count toward the
-			 * bulk pacing curve; transactional volume is exempt from pacing and
-			 * holds its own headroom out of the same daily cap.
+			 * Only `campaign` sends count toward the bulk pacing curve;
+			 * transactional volume is exempt from pacing and holds its own
+			 * headroom out of the same daily cap.
 			 */
 			pool: IpPoolType;
+	  }
+	| {
+			/** A bounce or a deferral: counted, but it consumes no capacity. */
+			kind: 'warming_record';
+			ip: string;
+			result: 'bounce' | 'deferral';
+			providerKey: DestinationProviderKey;
 	  }
 	| {
 			/**
@@ -331,7 +345,7 @@ function applyOne(
 			return recordProviderVolumePressure(
 				deps.redis,
 				{ ip: effect.ip, provider: effect.providerKey, utcDate: utcDateKey() },
-				PROVIDER_WARMING_POLICY.pressureTtlSeconds,
+				PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds,
 				downstreamIdentity
 			);
 		case 'metrics_record':
