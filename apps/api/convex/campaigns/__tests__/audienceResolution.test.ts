@@ -641,12 +641,12 @@ describe('countRecipients — capped at the ceiling', () => {
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience: { kind: 'topic', topicId },
 		});
-		expect(count.capped).toBe(false);
+		expect(count.completeness).toBe('exact');
 		expect(count.total).toBe(6);
 		expect(count.eligible).toBe(2);
 	});
 
-	it('an audience over the ceiling reports capped=true clamped to 25,000', async () => {
+	it('an audience over the ceiling reports candidate_capped clamped to 25,000', async () => {
 		const t = convexTest(schema, modules);
 		// Seed > 25,000 matching live contacts so the stream hits COUNT_CEILING.
 		const OVER = 25_010;
@@ -673,7 +673,7 @@ describe('countRecipients — capped at the ceiling', () => {
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience: { kind: 'segment', segmentId },
 		});
-		expect(count.capped).toBe(true);
+		expect(count.completeness).toBe('candidate_capped');
 		expect(count.total).toBe(25_000); // clamped to the ceiling
 		expect(count.eligible).toBeLessThanOrEqual(25_000);
 	});
@@ -683,7 +683,7 @@ describe('countRecipients — capped at the ceiling', () => {
 		const count = await t.query(api.campaigns.audienceResolution.countRecipients, {
 			audience: undefined,
 		});
-		expect(count).toEqual({ total: 0, eligible: 0, capped: false });
+		expect(count).toEqual({ total: 0, eligible: 0, completeness: 'exact' });
 	});
 });
 

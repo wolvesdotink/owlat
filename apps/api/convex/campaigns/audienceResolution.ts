@@ -129,8 +129,8 @@ const PAGE_SIZE = 500;
 /**
  * Ceiling for `countRecipients`. The wizard readout streams until it has either
  * exhausted the audience or accumulated this many CANDIDATES (topic memberships,
- * or segment MATCHES), then stops and returns `capped: true` (the UI renders
- * `25,000+`).
+ * or segment MATCHES), then stops and returns `completeness: 'candidate_capped'` (the UI
+ * renders `25,000+`).
  *
  * NOTE — this caps candidates, NOT rows examined. For a topic it also bounds the
  * scan (memberships ARE the population). For a SEGMENT it does not: a narrow
@@ -400,19 +400,27 @@ export const resolveRecipients = internalQuery({
 // the IDENTICAL predicate (via the same page resolver) as resolveRecipients,
 // so `eligible` equals the delivered count; `total - eligible` is the honest
 // excluded gap. Capped at COUNT_CEILING — past the cap it stops streaming and
-// returns `capped: true` so the wizard renders e.g. `25,000+`. ──
+// reports `completeness: 'candidate_capped'` so the wizard renders `25,000+`. ──
+/**
+ * How complete a count is — ONE discriminated field rather than two booleans
+ * that could encode the impossible "capped AND budget-exhausted" state.
+ *
+ *  - `exact`                — the audience was enumerated to the end.
+ *  - `candidate_capped`     — `ceiling` candidates were reached; the counts are
+ *                             clamped to it and the audience is "at least" that.
+ *  - `read_budget_exhausted` — `examineCeiling` rows were examined first; the
+ *                             counts are a LOWER bound on an audience whose real
+ *                             size is unknown (the scan stopped mid-stream).
+ *
+ * Both non-`exact` states mean "at least"; only `exact` licenses quoting the
+ * number as the audience size.
+ */
+export type AudienceCountCompleteness = 'exact' | 'candidate_capped' | 'read_budget_exhausted';
+
 export interface AudienceCount {
 	total: number;
 	eligible: number;
-	capped: boolean;
-	/**
-	 * Present (and `true`) only when the caller supplied an `examineCeiling` and
-	 * the stream hit it before exhausting the audience. The returned counts are
-	 * then NOT a bounded under-count of a known audience — they are a partial
-	 * scan of an unknown one, and the caller must treat the audience size as
-	 * UNMEASURED rather than as a number.
-	 */
-	examineCeilingHit?: boolean;
+	completeness: AudienceCountCompleteness;
 }
 
 /**
@@ -426,8 +434,9 @@ export interface AudienceCount {
  * deployment could send, so its cost is bounded by capacity, not audience size.
  *
  * `examineCeiling` bounds rows EXAMINED, which is the only bound that holds for
- * a segment audience (see `ExamineBudget`). Hitting it sets `examineCeilingHit`
- * and the counts must then be read as "unmeasured", not as a lower bound.
+ * a segment audience (see `ExamineBudget`). Hitting it yields
+ * `completeness: 'read_budget_exhausted'` — the counts are then a LOWER bound on
+ * an audience of unknown size, never the size itself.
  */
 export async function countAudience(
 	ctx: QueryCtx,
@@ -452,17 +461,21 @@ export async function countAudience(
 		if (total >= ceiling) {
 			// Cap reached — clamp to the ceiling and stop streaming. There may be
 			// more candidates, so the readout is "at least CEILING".
-			return { total: ceiling, eligible: Math.min(eligible, ceiling), capped: true };
+			return {
+				total: ceiling,
+				eligible: Math.min(eligible, ceiling),
+				completeness: 'candidate_capped',
+			};
 		}
 	}
-	if (budget?.exhausted) return { total, eligible, capped: false, examineCeilingHit: true };
-	return { total, eligible, capped: false };
+	if (budget?.exhausted) return { total, eligible, completeness: 'read_budget_exhausted' };
+	return { total, eligible, completeness: 'exact' };
 }
 
 export const countRecipients = authedQuery({
 	args: { audience: v.optional(audienceValidator) },
 	handler: async (ctx, { audience }): Promise<AudienceCount> => {
-		if (!audience) return { total: 0, eligible: 0, capped: false };
+		if (!audience) return { total: 0, eligible: 0, completeness: 'exact' };
 		return await countAudience(ctx, audience);
 	},
 });

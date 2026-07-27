@@ -41,7 +41,8 @@ const selectedSegment = computed(
 
 const formattedEligibleRecipients = computed(() => {
 	const eligible = props.audienceCount?.eligible ?? 0;
-	const suffix = props.audienceCount?.capped ? '+' : '';
+	// Anything other than an exact enumeration is an "at least" reading.
+	const suffix = props.audienceCount && props.audienceCount.completeness !== 'exact' ? '+' : '';
 	return `${eligible.toLocaleString()}${suffix}`;
 });
 
