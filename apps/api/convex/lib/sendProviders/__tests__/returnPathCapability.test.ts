@@ -6,9 +6,12 @@ import {
 	RETURN_PATH_PROBE_TTL_MS,
 	isProbeDue,
 	isProbeTimedOut,
+	nextProbeAttempts,
 	nextProbeState,
 	resolveReturnPathCapability,
+	resolveReturnPathCapabilityForEntry,
 	returnPathProbeRetryMs,
+	settledVerdictOf,
 	unresolvableReturnPathCapability,
 	type ReturnPathProbeState,
 } from '../returnPathCapability';
@@ -288,5 +291,145 @@ describe('resolveReturnPathCapability', () => {
 		expect(() =>
 			resolveReturnPathCapability('smtp', openProbe(Number.NaN), Number.NaN)
 		).not.toThrow();
+	});
+});
+
+describe('a RE-PROBE does not revoke the verdict it is re-checking', () => {
+	const probeOnly = { supportsCustomReturnPath: 'probe' } as const;
+	const settledSupported = {
+		status: 'supported',
+		reason: 'observed_match',
+		settledAt: T0,
+	} as const;
+
+	function reProbe(overrides: Partial<ReturnPathProbeState> = {}): ReturnPathProbeState {
+		return {
+			status: 'awaiting_delivery',
+			reason: 'awaiting_delivery',
+			sentEnvelopeSender: SENT,
+			startedAt: T0 + RETURN_PATH_PROBE_TTL_MS,
+			attempts: 2,
+			lastSettled: settledSupported,
+			...overrides,
+		};
+	}
+
+	it('keeps stamping while the re-probe is open — the stamp is not switched off', () => {
+		// Without the carry, the 30d TTL re-probe would flip a PROVEN relay to
+		// `unknown` for up to the probe timeout, twelve times a year: relayed
+		// bounces in that window would be unattributable and the cell would
+		// silently read degraded.
+		const resolved = resolveReturnPathCapabilityForEntry(
+			probeOnly,
+			reProbe(),
+			T0 + RETURN_PATH_PROBE_TTL_MS + 60_000
+		);
+		expect(resolved.capability).toBe('supported');
+		expect(resolved.stampVerpReturnPath).toBe(true);
+		expect(resolved.degraded).toBe(false);
+		expect(resolved.reason).toBe('observed_match');
+		// The row is still honestly reported as open.
+		expect(resolved.probeStatus).toBe('awaiting_delivery');
+	});
+
+	it('carries an UNSUPPORTED verdict too — it never upgrades on silence', () => {
+		const resolved = resolveReturnPathCapabilityForEntry(
+			probeOnly,
+			reProbe({
+				lastSettled: { status: 'unsupported', reason: 'rewritten_by_relay', settledAt: T0 },
+			}),
+			T0 + RETURN_PATH_PROBE_TTL_MS + 60_000
+		);
+		expect(resolved.capability).toBe('unsupported');
+		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(resolved.reason).toBe('rewritten_by_relay');
+	});
+
+	it('the carry is BOUNDED by the probe timeout — a broken relay is demoted', () => {
+		const start = T0 + RETURN_PATH_PROBE_TTL_MS;
+		const resolved = resolveReturnPathCapabilityForEntry(
+			probeOnly,
+			reProbe(),
+			start + RETURN_PATH_PROBE_TIMEOUT_MS
+		);
+		expect(resolved.capability).toBe('unknown');
+		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(resolved.degraded).toBe(true);
+	});
+
+	it('ADVERSARIAL: a degenerate clock can never pin a stale verdict', () => {
+		for (const degenerate of [Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(
+				resolveReturnPathCapabilityForEntry(probeOnly, reProbe({ startedAt: degenerate }), T0)
+					.capability
+			).toBe('unknown');
+			expect(
+				resolveReturnPathCapabilityForEntry(
+					probeOnly,
+					reProbe({ lastSettled: { ...settledSupported, settledAt: degenerate } }),
+					T0 + RETURN_PATH_PROBE_TTL_MS + 60_000
+				).capability
+			).toBe('unknown');
+		}
+	});
+
+	it('a first-ever open probe still resolves to unknown', () => {
+		expect(
+			resolveReturnPathCapabilityForEntry(probeOnly, reProbe({ lastSettled: undefined }), T0)
+				.capability
+		).toBe('unknown');
+	});
+});
+
+describe('attempts count CONSECUTIVE probes since the last supported verdict', () => {
+	const settled = (
+		status: 'supported' | 'unsupported',
+		attempts: number
+	): ReturnPathProbeState => ({
+		status,
+		reason: status === 'supported' ? 'observed_match' : 'no_bounce_observed',
+		sentEnvelopeSender: SENT,
+		startedAt: T0,
+		settledAt: T0,
+		attempts,
+	});
+
+	it('a relay that has been WORKING keeps the fast first retry for the day it breaks', () => {
+		// A relay supported for a year is re-probed twelve times at the 30d TTL. If
+		// the count accumulated, its documented "1st retry: next day" would in fact
+		// be 30 days on exactly the day the relay broke.
+		expect(nextProbeAttempts(settled('supported', 12))).toBe(1);
+		expect(returnPathProbeRetryMs(nextProbeAttempts(settled('supported', 12)))).toBe(
+			RETURN_PATH_PROBE_RETRY_MS
+		);
+	});
+
+	it('accumulates while the verdict stays unsupported', () => {
+		expect(nextProbeAttempts(null)).toBe(1);
+		expect(nextProbeAttempts(settled('unsupported', 1))).toBe(2);
+		expect(nextProbeAttempts(settled('unsupported', 2))).toBe(3);
+	});
+
+	it('resets through a carried verdict on an OPEN re-probe too', () => {
+		const open: ReturnPathProbeState = {
+			status: 'awaiting_delivery',
+			reason: 'awaiting_delivery',
+			sentEnvelopeSender: SENT,
+			startedAt: T0,
+			attempts: 9,
+			lastSettled: { status: 'supported', reason: 'observed_match', settledAt: T0 },
+		};
+		expect(settledVerdictOf(open)?.status).toBe('supported');
+		expect(nextProbeAttempts(open)).toBe(1);
+	});
+
+	it('ADVERSARIAL: a degenerate stored count never produces NaN', () => {
+		for (const degenerate of [Number.NaN, Number.POSITIVE_INFINITY, -7]) {
+			const next = nextProbeAttempts(settled('unsupported', degenerate));
+			expect(Number.isFinite(next)).toBe(true);
+			expect(next).toBeGreaterThanOrEqual(1);
+		}
+		expect(settledVerdictOf(null)).toBeUndefined();
+		expect(settledVerdictOf(undefined)).toBeUndefined();
 	});
 });

@@ -270,3 +270,104 @@ describe('relay return-path probe persistence', () => {
 		expect(await due(T0 + first + second)).toBe(true);
 	});
 });
+
+describe('a scheduled RE-PROBE never switches off the stamp it is confirming', () => {
+	/** Drive one transport all the way to a persisted `supported` verdict. */
+	async function prove(t: ReturnType<typeof convexTest>) {
+		await submit(t);
+		await t.mutation(internal.delivery.relayReturnPath.recordProbeObservation, {
+			probeMessageId: returnPathProbeMessageId(PROBE_ID),
+			at: Date.now(),
+		});
+	}
+
+	it('keeps stamping across the TTL re-probe, and resets the backoff count', async () => {
+		const t = convexTest(schema, modules);
+		await prove(t);
+		expect((await capability(t)).stampVerpReturnPath).toBe(true);
+
+		// 30 days later the verdict is due a re-check; the sweep reopens the row.
+		const reprobeAt = T0 + RETURN_PATH_PROBE_TTL_MS;
+		vi.setSystemTime(reprobeAt);
+		expect(
+			await t.query(internal.delivery.relayReturnPath.isReturnPathProbeDue, {
+				transportId: TRANSPORT_ID,
+				at: Date.now(),
+			})
+		).toBe(true);
+		await t.mutation(internal.delivery.relayReturnPath.recordProbeSubmission, {
+			transportId: TRANSPORT_ID,
+			probeId: 'probe-2',
+			sentEnvelopeSender: SENT,
+			accepted: true,
+			at: Date.now(),
+		});
+
+		// The whole point: relayed bounces during the re-probe window stay
+		// attributable, and the cell does not silently flip to degraded.
+		const during = await capability(t);
+		expect(during.capability).toBe('supported');
+		expect(during.stampVerpReturnPath).toBe(true);
+		expect(during.degraded).toBe(false);
+
+		const [row] = await t.run(
+			async (ctx) => await ctx.db.query('sendTransportReturnPathProbes').collect()
+		);
+		expect(row?.status).toBe('awaiting_delivery');
+		expect(row?.lastSettled).toMatchObject({ status: 'supported', reason: 'observed_match' });
+		// A relay proven a moment ago starts its backoff over, so the day it
+		// breaks it gets the documented next-day retry, not the 30d cap.
+		expect(row?.attempts).toBe(1);
+	});
+
+	it('the re-probe REPLACES the carried verdict once it settles', async () => {
+		const t = convexTest(schema, modules);
+		await prove(t);
+		const reprobeAt = T0 + RETURN_PATH_PROBE_TTL_MS;
+		vi.setSystemTime(reprobeAt);
+		await t.mutation(internal.delivery.relayReturnPath.recordProbeSubmission, {
+			transportId: TRANSPORT_ID,
+			probeId: 'probe-2',
+			sentEnvelopeSender: SENT,
+			accepted: true,
+			at: Date.now(),
+		});
+
+		// The relay has broken: no bounce ever arrives and the probe ages out.
+		vi.setSystemTime(reprobeAt + RETURN_PATH_PROBE_TIMEOUT_MS);
+		const { expired } = await t.mutation(internal.delivery.relayReturnPath.expireTimedOutProbes, {
+			at: Date.now(),
+		});
+		expect(expired).toBe(1);
+
+		const resolved = await capability(t);
+		expect(resolved.capability).toBe('unsupported');
+		expect(resolved.reason).toBe('no_bounce_observed');
+		expect(resolved.stampVerpReturnPath).toBe(false);
+		const [row] = await t.run(
+			async (ctx) => await ctx.db.query('sendTransportReturnPathProbes').collect()
+		);
+		// The carry is spent — a settled row's own status IS the verdict.
+		expect(row?.lastSettled).toBeUndefined();
+	});
+
+	it('a MAIL FROM refusal on the re-probe clears the carry immediately', async () => {
+		const t = convexTest(schema, modules);
+		await prove(t);
+		vi.setSystemTime(T0 + RETURN_PATH_PROBE_TTL_MS);
+		await t.mutation(internal.delivery.relayReturnPath.recordProbeSubmission, {
+			transportId: TRANSPORT_ID,
+			probeId: 'probe-2',
+			sentEnvelopeSender: SENT,
+			accepted: false,
+			at: Date.now(),
+		});
+		const resolved = await capability(t);
+		expect(resolved.capability).toBe('unsupported');
+		expect(resolved.reason).toBe('rejected_by_relay');
+		const [row] = await t.run(
+			async (ctx) => await ctx.db.query('sendTransportReturnPathProbes').collect()
+		);
+		expect(row?.lastSettled).toBeUndefined();
+	});
+});

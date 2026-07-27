@@ -7,6 +7,7 @@ import {
 	buildVerpAddress,
 	isUsableVerpKey,
 	normalizeReturnPathDomain,
+	normalizeVerpKey,
 	parseVerpAddress,
 } from '../verp';
 
@@ -116,5 +117,41 @@ describe('key and domain hygiene', () => {
 		expect(normalizeReturnPathDomain('   ')).toBeUndefined();
 		expect(normalizeReturnPathDomain('.')).toBeUndefined();
 		expect(normalizeReturnPathDomain(undefined)).toBeUndefined();
+	});
+});
+
+describe('key normalisation is ONE definition for both signers', () => {
+	// The MTA reads BOUNCE_VERP_KEY and Convex reads the projected copy. If one
+	// side trimmed the configured value and the other did not, the two sides
+	// would sign with DIFFERENT keys and every relay-stamped token would fail
+	// verification at the MTA — safely, but for an invisible reason.
+	const KEY = 'k'.repeat(VERP_KEY_MIN_BYTES);
+	const PADDED = ` ${KEY}\n`;
+	const NOW = Date.UTC(2026, 6, 27, 12, 0, 0);
+
+	it('trims, and treats blank as unset', () => {
+		expect(normalizeVerpKey(PADDED)).toBe(KEY);
+		expect(normalizeVerpKey(undefined)).toBeUndefined();
+		expect(normalizeVerpKey('')).toBeUndefined();
+		expect(normalizeVerpKey('   \n\t ')).toBeUndefined();
+	});
+
+	it('a padded copy of the key mints the SAME token', () => {
+		expect(buildVerpAddress('mid@example.com', 'bounces.example.com', PADDED, NOW)).toBe(
+			buildVerpAddress('mid@example.com', 'bounces.example.com', KEY, NOW)
+		);
+	});
+
+	it('a token minted with a padded key verifies against the bare key', () => {
+		const address = buildVerpAddress('mid@example.com', 'bounces.example.com', PADDED, NOW);
+		expect(parseVerpAddress(address, KEY, NOW)).toBe('mid@example.com');
+		expect(parseVerpAddress(address, PADDED, NOW)).toBe('mid@example.com');
+	});
+
+	it('whitespace can never pad a too-short key over the floor', () => {
+		const short = 'x'.repeat(VERP_KEY_MIN_BYTES - 1);
+		expect(isUsableVerpKey(short)).toBe(false);
+		expect(isUsableVerpKey(` ${short} `)).toBe(false);
+		expect(isUsableVerpKey(PADDED)).toBe(true);
 	});
 });
