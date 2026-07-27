@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
 type AudienceType = 'topic' | 'segment';
@@ -13,12 +15,12 @@ interface SegmentOption {
 	name: string;
 	description?: string | null;
 }
-interface RecipientCount {
-	eligible: number;
-	total: number;
-	/** Mirrors `AudienceCount.completeness` (apps/api/convex/campaigns/audienceCandidates.ts). */
-	completeness?: 'exact' | 'candidate_capped' | 'read_budget_exhausted' | 'suppression_truncated';
-}
+/**
+ * Derived from the query itself rather than hand-restated, so a new
+ * `completeness` value is a COMPILE error here (the suffix mapping below has to
+ * decide what it means) instead of silently falling through to "exact".
+ */
+type RecipientCount = FunctionReturnType<typeof api.campaigns.audienceResolution.countRecipients>;
 
 const props = defineProps<{
 	topics: readonly TopicOption[] | null;
@@ -181,9 +183,11 @@ const nonEligibleRecipients = computed(() => {
 					<Icon name="lucide:users" class="w-5 h-5 text-text-tertiary" />
 					<span class="text-text-secondary">Estimated recipients</span>
 				</div>
-				<span class="text-xl font-semibold text-text-primary">{{
-					formattedEligibleRecipients
-				}}</span>
+				<span
+					data-testid="audience-eligible-count"
+					class="text-xl font-semibold text-text-primary"
+					>{{ formattedEligibleRecipients }}</span
+				>
 			</div>
 			<p v-if="audienceType === 'topic'" class="mt-1 text-sm text-text-tertiary">
 				Eligible recipients for this topic.
