@@ -11,8 +11,7 @@ import { enqueueSeedShadowCopies } from '../../delivery/seedShadowCopy';
 import { evaluateSeedPlacementGate } from '@owlat/shared/seedPlacement';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
-
-const modules = import.meta.glob('../../**/*.*s');
+import { modules } from './testModules';
 
 const NOW = 1_800_000_000_000;
 const ORG = 'org_standalone';

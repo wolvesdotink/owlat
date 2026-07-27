@@ -20,15 +20,7 @@ import { internal } from '../../_generated/api';
 import { summarizeSeedPlacementWindow } from '../seedPlacement';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const analyticsGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
-		path.replace(/^\.\.\//, '../../analytics/'),
-		module,
-	])
-);
-const modules = { ...rootGlob, ...analyticsGlob };
+import { modules } from './testModules';
 
 const HOUR = 60 * 60 * 1000;
 const NOW = 1_800_000_000_000;

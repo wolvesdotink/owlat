@@ -14,12 +14,12 @@ import type { CampaignEnvelopeInput } from '../../delivery/seedShadowCopy';
 import { buildComposeInput } from '../../delivery/worker';
 import { composeForSend } from '../../delivery/sendComposition';
 import type { Id } from '../../_generated/dataModel';
+import { modules } from './testModules';
 
 const here = (relative: string): string => fileURLToPath(new URL(relative, import.meta.url));
 
 const schemaSource = readFileSync(here('../../schema/seedPlacement.ts'), 'utf8');
 
-const modules = import.meta.glob('../../**/*.*s');
 const NOW = 1_800_000_000_000;
 const ORG = 'org_seed_secrets';
 

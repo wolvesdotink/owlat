@@ -5,6 +5,7 @@ import schema from '../../schema';
 import { insertExternalAccountRow } from '../../mail/externalAccountShared';
 import { loadSeedAccounts } from '../seedPlacement';
 import type { Id } from '../../_generated/dataModel';
+import { modules } from './testModules';
 import {
 	planSeedHygiene,
 	shouldRemindSeedRotation,
@@ -141,14 +142,6 @@ describe('shouldRemindSeedRotation', () => {
 
 // ── The EXECUTOR side: the plan is carried out, not merely computed ────────
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const analyticsGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
-		path.replace(/^\.\.\//, '../../analytics/'),
-		module,
-	])
-);
-const modules = { ...rootGlob, ...analyticsGlob };
 const NOW = 1_800_000_000_000;
 const ORG = 'org_hygiene';
 const PROBE_ID = 'sp_abcdefghij0123456789kl';
