@@ -38,8 +38,8 @@ describe('the aligned baseline', () => {
 			expect(entry.remedy).toBe('');
 			expect(entry.detail).not.toBe('');
 		}
-		expect(result.degradedMeasurement).toBe(false);
-		expect(result.degradedMeasurementReason).toBeNull();
+		expect(result.isMeasurementDegraded).toBe(false);
+		expect(result.measurementDegradedReason).toBeNull();
 		expect(result.checkedAt).toBe(CHECKED_AT);
 		expect(result.nextCheckDueAt).toBe(CHECKED_AT + ALIGNMENT_RECHECK_INTERVAL_MS);
 	});
@@ -89,8 +89,8 @@ describe('the Return-Path state is recorded, never blocking', () => {
 		);
 		expect(result.verdict).toBe('aligned');
 		expect(result.allowsShareAboveZero).toBe(true);
-		expect(result.degradedMeasurement).toBe(true);
-		expect(result.degradedMeasurementReason).toContain('the ramp is not blocked');
+		expect(result.isMeasurementDegraded).toBe(true);
+		expect(result.measurementDegradedReason).toContain('the ramp is not blocked');
 	});
 });
 

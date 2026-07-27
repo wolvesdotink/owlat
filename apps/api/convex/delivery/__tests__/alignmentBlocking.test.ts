@@ -147,7 +147,7 @@ async function record(
 		domain: options.domain ?? DOMAIN,
 		verdict: options.verdict,
 		checks: options.checks,
-		degradedMeasurement: false,
+		isMeasurementDegraded: false,
 		checkedAt: options.checkedAt,
 		nextCheckDueAt: options.nextCheckDueAt,
 	});
@@ -440,7 +440,7 @@ describe('the readiness read', () => {
 		expect(rows).toHaveLength(1);
 		expect(rows[0]?.domain).toBe(DOMAIN);
 		expect(rows[0]?.verdict).toBe('blocked');
-		expect(rows[0]?.degradedMeasurementReason).toBeNull();
+		expect(rows[0]?.measurementDegradedReason).toBeNull();
 		expect(rows[0]?.checks.find((check) => check.id === 'spf')?.remedy).toContain('Flatten');
 	});
 
@@ -452,14 +452,14 @@ describe('the readiness read', () => {
 			domain: DOMAIN,
 			verdict: 'aligned',
 			checks: PASSING_CHECKS,
-			degradedMeasurement: true,
-			degradedMeasurementReason: 'SES relay cannot carry our custom return path.',
+			isMeasurementDegraded: true,
+			measurementDegradedReason: 'SES relay cannot carry our custom return path.',
 			checkedAt: NOW,
 			nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 		});
 		const rows = await t.query(api.delivery.alignmentPreflight.getAlignmentReadiness, {});
-		expect(rows[0]?.degradedMeasurement).toBe(true);
-		expect(rows[0]?.degradedMeasurementReason).toContain('custom return path');
+		expect(rows[0]?.isMeasurementDegraded).toBe(true);
+		expect(rows[0]?.measurementDegradedReason).toContain('custom return path');
 	});
 
 	it('reports single_arm as a plain verdict with no remedy copy (D2)', async () => {
@@ -523,7 +523,7 @@ describe('every read is scoped to one organization', () => {
 				domain: DOMAIN,
 				verdict: 'aligned',
 				checks: PASSING_CHECKS,
-				degradedMeasurement: false,
+				isMeasurementDegraded: false,
 				checkedAt: NOW,
 				nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 				updatedAt: NOW,
@@ -533,7 +533,7 @@ describe('every read is scoped to one organization', () => {
 				domain: 'foreign.example',
 				verdict: 'blocked',
 				checks: BLOCKING_CHECKS,
-				degradedMeasurement: false,
+				isMeasurementDegraded: false,
 				checkedAt: NOW,
 				nextCheckDueAt: NOW + ALIGNMENT_RECHECK_INTERVAL_MS,
 				updatedAt: NOW,

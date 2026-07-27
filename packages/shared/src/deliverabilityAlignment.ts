@@ -149,8 +149,8 @@ export interface AlignmentPreflightResult {
 	/** The gate: may the controller move this cell above s=0? */
 	allowsShareAboveZero: boolean;
 	/** Return-Path could not be aligned — measurement is degraded, not blocked. */
-	degradedMeasurement: boolean;
-	degradedMeasurementReason: string | null;
+	isMeasurementDegraded: boolean;
+	measurementDegradedReason: string | null;
 	checkedAt: number;
 	nextCheckDueAt: number;
 }
@@ -448,8 +448,8 @@ export function evaluateAlignmentPreflight(
 				pass(id, 'Single arm — no reference transport is configured, so there is nothing to align.')
 			),
 			allowsShareAboveZero: true,
-			degradedMeasurement: false,
-			degradedMeasurementReason: null,
+			isMeasurementDegraded: false,
+			measurementDegradedReason: null,
 			checkedAt: input.checkedAt,
 			nextCheckDueAt: input.checkedAt + ALIGNMENT_RECHECK_INTERVAL_MS,
 		};
@@ -461,8 +461,8 @@ export function evaluateAlignmentPreflight(
 				unknownCheck(id, reference.detail, ALIGNMENT_REMEDIES.reference_arm_unknown)
 			),
 			allowsShareAboveZero: false,
-			degradedMeasurement: false,
-			degradedMeasurementReason: null,
+			isMeasurementDegraded: false,
+			measurementDegradedReason: null,
 			checkedAt: input.checkedAt,
 			nextCheckDueAt: input.checkedAt + ALIGNMENT_UNKNOWN_RETRY_MS,
 		};
@@ -475,13 +475,13 @@ export function evaluateAlignmentPreflight(
 		checkDmarc(input, arm),
 	];
 	const verdict = verdictFor(checks);
-	const degradedMeasurement = !arm.supportsCustomReturnPath;
+	const isMeasurementDegraded = !arm.supportsCustomReturnPath;
 	return {
 		verdict,
 		checks,
 		allowsShareAboveZero: verdict === 'aligned',
-		degradedMeasurement,
-		degradedMeasurementReason: degradedMeasurement
+		isMeasurementDegraded,
+		measurementDegradedReason: isMeasurementDegraded
 			? `${arm.label} cannot carry our custom return path, so bounce attribution on that arm is coarser. Measurement confidence is lowered; the ramp is not blocked.`
 			: null,
 		checkedAt: input.checkedAt,

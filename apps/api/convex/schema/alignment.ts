@@ -26,8 +26,8 @@ export const alignmentTables = {
 		checks: v.array(alignmentCheckValidator),
 		// True when the reference transport cannot carry our custom return path:
 		// measurement confidence is lowered, the ramp is NOT blocked (P2-3).
-		degradedMeasurement: v.boolean(),
-		degradedMeasurementReason: v.optional(v.string()),
+		isMeasurementDegraded: v.boolean(),
+		measurementDegradedReason: v.optional(v.string()),
 		checkedAt: v.number(),
 		// Daily re-check, or ~1h when a lookup could not be resolved. Read per
 		// domain by the sweep (which paginates `domains`, the table that decides

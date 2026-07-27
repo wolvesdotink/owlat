@@ -47,8 +47,8 @@ describe('the standalone matrix: the whole four-check table with no reference ar
 				expect(check.detail).toContain('Single arm');
 			}
 			// No degraded-measurement nag either.
-			expect(result.degradedMeasurement).toBe(false);
-			expect(result.degradedMeasurementReason).toBeNull();
+			expect(result.isMeasurementDegraded).toBe(false);
+			expect(result.measurementDegradedReason).toBeNull();
 			// And the ordinary daily cadence, not the unknown retry.
 			expect(result.nextCheckDueAt).toBe(CHECKED_AT + ALIGNMENT_RECHECK_INTERVAL_MS);
 		});

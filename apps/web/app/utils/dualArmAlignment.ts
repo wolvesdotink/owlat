@@ -26,8 +26,8 @@ export interface ReadinessDualArmRow {
 		detail: string;
 		remedy: string;
 	}[];
-	degradedMeasurement: boolean;
-	degradedMeasurementReason: string | null;
+	isMeasurementDegraded: boolean;
+	measurementDegradedReason: string | null;
 }
 
 /** What the dual-arm gate should say, or `not_applicable` for "say nothing". */
@@ -71,7 +71,7 @@ export function summarizeDualArmAlignment(
 		return { state: 'not_applicable', domains: [], remedy: null, degradedReason: null };
 	}
 	const degradedReason =
-		relevant.find((row) => row.degradedMeasurement)?.degradedMeasurementReason ?? null;
+		relevant.find((row) => row.isMeasurementDegraded)?.measurementDegradedReason ?? null;
 	const blocked = relevant.filter((row) => row.verdict === 'blocked');
 	if (blocked.length > 0) {
 		const remedy =

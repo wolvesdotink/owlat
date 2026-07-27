@@ -180,10 +180,10 @@ export const runAlignmentPreflightSweep = internalAction({
 						domain: target.domain,
 						verdict: result.verdict,
 						checks: result.checks,
-						degradedMeasurement: result.degradedMeasurement,
-						...(result.degradedMeasurementReason === null
+						isMeasurementDegraded: result.isMeasurementDegraded,
+						...(result.measurementDegradedReason === null
 							? {}
-							: { degradedMeasurementReason: result.degradedMeasurementReason }),
+							: { measurementDegradedReason: result.measurementDegradedReason }),
 						checkedAt: result.checkedAt,
 						nextCheckDueAt: result.nextCheckDueAt,
 					});

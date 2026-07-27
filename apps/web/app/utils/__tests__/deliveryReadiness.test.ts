@@ -403,8 +403,8 @@ function dualArmRow(overrides: Partial<ReadinessDualArmRow> = {}): ReadinessDual
 			{ id: 'dkim', status: 'pass', detail: 'distinct selectors', remedy: '' },
 			{ id: 'dmarc', status: 'pass', detail: 'aligned', remedy: '' },
 		],
-		degradedMeasurement: false,
-		degradedMeasurementReason: null,
+		isMeasurementDegraded: false,
+		measurementDegradedReason: null,
 		...overrides,
 	};
 }
@@ -443,7 +443,7 @@ describe('summarizeDualArmAlignment', () => {
 
 	it('carries the first failing remedy and the degraded reason', () => {
 		const summary = summarizeDualArmAlignment([
-			{ ...BLOCKED_ROW, degradedMeasurement: true, degradedMeasurementReason: 'coarser bounces' },
+			{ ...BLOCKED_ROW, isMeasurementDegraded: true, measurementDegradedReason: 'coarser bounces' },
 		]);
 		expect(summary.remedy).toContain('Flatten include:j.example');
 		expect(summary.degradedReason).toBe('coarser bounces');
@@ -509,8 +509,8 @@ describe('the dual-transport alignment gate', () => {
 		const readiness = deriveDeliveryReadiness(
 			readinessInputFromSources({ canSend: true }, [verifiedRow()], null, null, [
 				dualArmRow({
-					degradedMeasurement: true,
-					degradedMeasurementReason: 'Measurement confidence is lowered; the ramp is not blocked.',
+					isMeasurementDegraded: true,
+					measurementDegradedReason: 'Measurement confidence is lowered; the ramp is not blocked.',
 				}),
 			])
 		);
