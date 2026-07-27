@@ -422,6 +422,12 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? mailFromHos
 						</div>
 					</template>
 
+					<!-- Yahoo's CFL is enrolled against the DKIM DOMAIN, so its guided flow
+					     belongs on the domain. Never enrolling is supported (D2). -->
+					<div class="mt-4 pt-4 border-t border-border-subtle">
+						<DomainsYahooCflPanel :domain-id="domain._id" :can-manage="canManageDomains" />
+					</div>
+
 					<!-- Receiving (inbound MX) — renders whenever the deployment exposes a
 					     mail host, whether or not inbound is enabled yet; the section
 					     itself shows a "not turned on yet" state when off so setup
