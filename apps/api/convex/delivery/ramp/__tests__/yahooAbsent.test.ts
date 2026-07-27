@@ -24,10 +24,11 @@ import {
 	emptyYahooCflEnrollment,
 	type YahooCflEnrollmentState,
 } from '@owlat/shared/yahooCfl';
-import { RAMP_GATE_THRESHOLDS, UNSUBSCRIBE_PROXY_COMPLAINT_MAX } from '../gateConfig';
+import { RAMP_GATE_THRESHOLDS, UNSUBSCRIBE_PROXY_COMPLAINT_MAX, rateFraction } from '../gateConfig';
 import { evaluateComplaintGate } from '../gates';
 import {
 	YAHOO_COMPLAINT_SIGNAL_SOURCES,
+	yahooComplaintGateFails,
 	yahooComplaintSubstitution,
 } from '../yahooComplaintSignal';
 import { arm, input } from './gateFixtures';
@@ -123,11 +124,16 @@ describe('the substitution table always yields a usable gate', () => {
 });
 
 /**
- * `thresholdRate` is the contract P3-8 consumes, and the shipped gate publishes
- * a field of the same name — so the comparison boundary is pinned rather than
- * left to the reader. Gate 3 is `complaint <= 0.1%`: exactly the threshold
- * PASSES, anything above it fails. The rates here are injected as summary
- * overrides because an integer numerator cannot express "one ulp over".
+ * `thresholdRate` + `yahooComplaintGateFails` are the contract P3-8 consumes,
+ * and the shipped gate publishes a field of the same name — so the comparison
+ * boundary is pinned rather than left to the reader. Gate 3 is
+ * `complaint <= 0.1%`: exactly the threshold PASSES, anything above it fails.
+ * The rates here are injected as summary overrides because an integer numerator
+ * cannot express a rate a hair over the threshold.
+ *
+ * The proxy half calls the SHIPPED comparator, not a local re-declaration of
+ * `>`: a helper that re-implements the operator under test compares `a > b`
+ * against itself and can never fail.
  */
 describe('the comparison boundary is inclusive on the pass side', () => {
 	/**
@@ -144,14 +150,18 @@ describe('the comparison boundary is inclusive on the pass side', () => {
 		).status;
 	}
 
-	/** The substitution's own semantics: fail iff `rate > thresholdRate`. */
-	function substitutionFails(thresholdRate: number, rate: number): boolean {
-		return rate > thresholdRate;
+	/** The shipped comparator, applied to the substitution the given state selects. */
+	function substitutionFails(enrollmentState: YahooCflEnrollmentState, rate: number): boolean {
+		return yahooComplaintGateFails(
+			rateFraction(rate),
+			yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: false })
+		);
 	}
 
 	const DIRECT = RAMP_GATE_THRESHOLDS.complaintMax as number;
 	const PROXY = UNSUBSCRIBE_PROXY_COMPLAINT_MAX as number;
-	const ONE_ULP = 0.0000000001;
+	/** A hair over a threshold — far more than one ulp, small enough to be a boundary probe. */
+	const JUST_ABOVE = 0.0000000001;
 
 	it('publishes the same threshold the shipped gate compares against', () => {
 		expect(
@@ -166,17 +176,17 @@ describe('the comparison boundary is inclusive on the pass side', () => {
 
 	it('passes at exactly the direct threshold and fails just above it', () => {
 		expect(complaintVerdict(DIRECT)).toBe('pass');
-		expect(complaintVerdict(DIRECT + ONE_ULP)).toBe('fail');
-		expect(substitutionFails(DIRECT, DIRECT)).toBe(false);
-		expect(substitutionFails(DIRECT, DIRECT + ONE_ULP)).toBe(true);
+		expect(complaintVerdict(DIRECT + JUST_ABOVE)).toBe('fail');
+		expect(substitutionFails('enrolled', DIRECT)).toBe(false);
+		expect(substitutionFails('enrolled', DIRECT + JUST_ABOVE)).toBe(true);
 	});
 
 	it('passes at exactly the proxy threshold and fails just above it', () => {
-		expect(substitutionFails(PROXY, PROXY)).toBe(false);
-		expect(substitutionFails(PROXY, PROXY + ONE_ULP)).toBe(true);
+		expect(substitutionFails('not_started', PROXY)).toBe(false);
+		expect(substitutionFails('not_started', PROXY + JUST_ABOVE)).toBe(true);
 		// The proxy substitutes only the NUMBER, never the comparison — and it is
 		// genuinely stricter: a rate the direct threshold passes trips the proxy.
-		expect(substitutionFails(DIRECT, PROXY + ONE_ULP)).toBe(false);
+		expect(substitutionFails('enrolled', PROXY + JUST_ABOVE)).toBe(false);
 		expect(complaintVerdict(PROXY)).toBe('pass');
 	});
 });

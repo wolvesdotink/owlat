@@ -48,7 +48,8 @@ export interface YahooComplaintSubstitution {
 	 * when it subsumes this function, and because the shipped gate publishes a
 	 * field of the SAME NAME with the SAME semantics (`evaluateCeilingGate` in
 	 * `./gates` fails on `ownRate > threshold`, strictly). A rate of exactly the
-	 * threshold PASSES, in both places.
+	 * threshold PASSES, in both places. `yahooComplaintGateFails` below is that
+	 * sentence as code — consume it rather than re-deriving the `>`.
 	 */
 	thresholdRate: RateFraction;
 	confidence: 'high' | 'medium' | 'low';
@@ -70,6 +71,27 @@ export interface YahooComplaintSubstitution {
 	 * invariant is asserted by a test rather than assumed by a reader.
 	 */
 	isBlocking: false;
+}
+
+/**
+ * Does gate 3 FAIL the yahoo cell at this complaint rate, under this substitution?
+ *
+ * The COMPARATOR that goes with `thresholdRate`. Published rather than left to
+ * each caller for the reason a threshold without a comparator is only half a
+ * contract: `thresholdRate`'s docblock promises "pass iff `rate <= thresholdRate`",
+ * and until that sentence had an executable owner every consumer — P3-8's
+ * substitution table, the dashboard, the tests — re-derived the same `>` and
+ * could disagree about the boundary. Now there is one implementation to consume
+ * and one to break if the boundary ever moves.
+ *
+ * Strict `>`, matching `evaluateCeilingGate` in `./gates` exactly: a rate of
+ * EXACTLY the threshold PASSES.
+ */
+export function yahooComplaintGateFails(
+	rate: RateFraction,
+	substitution: YahooComplaintSubstitution
+): boolean {
+	return (rate as number) > (substitution.thresholdRate as number);
 }
 
 /**
