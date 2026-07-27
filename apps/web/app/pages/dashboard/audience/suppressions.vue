@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '~/utils/validation';
+import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
 
 useHead({ title: 'Suppressions — Owlat' });
 
@@ -14,7 +15,7 @@ definePageMeta({
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
 
 // Filter state
-const reasonFilter = ref<'all' | 'bounced' | 'complained' | 'manual' | 'unengaged'>('all');
+const reasonFilter = ref<'all' | BlockReason>('all');
 
 // Get blocked emails with real-time updates
 const {
@@ -143,42 +144,16 @@ const handleDeleteBlockedEmail = async () => {
 	emailToDelete.value = null;
 };
 
-// One table per reason instead of three parallel switches — badge, icon and
-// label are the same decision made three times, and they drifted the moment a
-// fourth reason ('unengaged', the sunset engine's) was added to the schema.
-// Plain language, no jargon: the label explains WHY.
-const REASON_PRESENTATION = {
-	bounced: {
-		badge: 'bg-error/20 text-error border-error/30',
-		tone: 'text-error',
-		icon: 'lucide:mail',
-		label: "Bounced — mailbox doesn't exist",
-	},
-	complained: {
-		badge: 'bg-warning/20 text-warning border-warning/30',
-		tone: 'text-warning',
-		icon: 'lucide:message-square-warning',
-		label: 'Complained — marked a send as spam',
-	},
-	unengaged: {
-		badge: 'bg-surface-raised text-text-secondary border-border',
-		tone: 'text-text-secondary',
-		icon: 'lucide:moon',
-		label: 'Unengaged — ignored every message for months',
-	},
-	manual: {
-		badge: 'bg-brand/20 text-brand border-brand/30',
-		tone: 'text-brand',
-		icon: 'lucide:user-x',
-		label: 'Manually suppressed',
-	},
-} as const;
+// The reason -> badge/icon/label decision lives in ONE place (see
+// `~/utils/suppressionReasons`), shared with the contact-profile notice. The
+// parameter is the closed `BlockReason` union, so the lookup is total: a fifth
+// schema literal fails the build instead of silently rendering as "manual".
+const presentation = (reason: BlockReason) => suppressionReasonPresentation(reason);
 
-const presentation = (reason: string) =>
-	REASON_PRESENTATION[reason as keyof typeof REASON_PRESENTATION] ?? REASON_PRESENTATION.manual;
-
-// The stat row, driven by the table above rather than four hand-written cards.
-const reasonTiles = computed(() => {
+// The stat row, driven by the shared reason table rather than four hand-written
+// cards. Typed as `BlockReason` so the icons and tones come from that same
+// total lookup instead of a widened string.
+const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[]>(() => {
 	const c = countsData.value;
 	if (!c) return [];
 	return [

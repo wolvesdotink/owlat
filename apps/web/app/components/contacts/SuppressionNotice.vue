@@ -9,8 +9,10 @@
  * reason, a human date label, and the permission flag in. The action is gated on
  * `canManage` here for affordance; the backend re-checks `contacts:manage`.
  */
+import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
+
 const props = defineProps<{
-	reason: 'bounced' | 'complained' | 'manual' | 'unengaged';
+	reason: BlockReason;
 	/** Pre-formatted human date the address was suppressed (e.g. "Mar 3"). */
 	dateLabel: string;
 	/** Whether the viewer may remove suppressions (contacts:manage). */
@@ -21,19 +23,13 @@ const props = defineProps<{
 
 const emit = defineEmits<{ remove: [] }>();
 
-// Plain language, reason-specific — no jargon, explains WHY in one line.
-const reasonPhrase = computed(() => {
-	switch (props.reason) {
-		case 'bounced':
-			return `bounced on ${props.dateLabel}`;
-		case 'complained':
-			return `complained on ${props.dateLabel}`;
-		case 'unengaged':
-			return `paused on ${props.dateLabel} after months with no opens or clicks`;
-		default:
-			return `manually suppressed on ${props.dateLabel}`;
-	}
-});
+// Plain language, reason-specific — no jargon, explains WHY in one line. The
+// wording comes from the SAME table the suppression list renders from, so the
+// two surfaces cannot describe the same reason differently, and a new schema
+// literal is a compile error rather than a silent "manually suppressed".
+const reasonPhrase = computed(() =>
+	suppressionReasonPresentation(props.reason).phrase(props.dateLabel)
+);
 </script>
 
 <template>
