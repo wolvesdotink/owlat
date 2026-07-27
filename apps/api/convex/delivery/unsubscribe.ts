@@ -47,7 +47,9 @@ export const SEED_PROBE_TOKEN_PREFIX = 'seedprobe:';
  *
  * `.` is a safe separator because the org id is matched up to the LAST one, so
  * only the probe id's shape has to be constrained — and a probe id is
- * `sp_` + 22 lowercase base32 chars (`delivery/seedShadowCopy.ts`).
+ * `sp_` + 22 lowercase HEX chars — `newProbeId` (`delivery/seedShadowCopy.ts`)
+ * slices a hyphen-stripped UUIDv4, and `SEED_PROBE_ID_PATTERN` accepts exactly
+ * that set.
  *
  * `:` is the codec's OWN field separator, and `makeContactToken` does not
  * forbid it — it interpolates whatever it is handed, and `verifyContactToken`'s
