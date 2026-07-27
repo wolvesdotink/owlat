@@ -254,8 +254,11 @@ function laterSuppression(a: number | undefined, b: number | undefined): number 
  * Fold one activity into an accumulator that is ALREADY decayed to the
  * activity's own timestamp. Prefer `foldActivity`, which does the decaying for
  * you and is the only fold both call sites use.
+ *
+ * Module-private on purpose: `foldActivity` is the ONE fold this module offers,
+ * so there is no second way to advance an accumulator.
  */
-export function applyActivity(
+function applyActivity(
 	state: Readonly<EngagementScoreState>,
 	activity: EngagementActivity
 ): EngagementScoreState {
@@ -393,8 +396,8 @@ function normalizeActivities(
 
 /**
  * Full recompute from a timeline. Equivalent — up to float rounding — to
- * folding the same activities incrementally through `decayState` +
- * `applyActivity`, which is what the hot path does.
+ * folding the same activities incrementally through `foldActivity`, which is
+ * what the hot path does.
  *
  * Work is O(n log n) in the number of activities supplied and allocates one
  * array plus one Set of that size; callers are responsible for bounding the
