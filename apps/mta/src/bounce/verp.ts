@@ -13,13 +13,15 @@
  * recipient blocklisted. The HMAC makes the token unforgeable: the MTA only
  * attributes (and therefore only suppresses on) tokens it actually signed.
  *
- * Signed format:  bounce+{base64url(messageId)}+{hmac}@bounces.owlat.com
- *   hmac = base64url( HMAC-SHA256(base64url(id) || ':' || window, key) )[:MAC_B64URL_LEN]
+ * The token grammar, the MAC and the acceptance window now live in
+ * `@owlat/shared/verp` because the Convex relay adapter has to stamp the SAME
+ * envelope sender on relayed sends (otherwise the relay arm produces no bounce
+ * data of its own and the transport comparison is biased toward whichever side
+ * reports fewer bounces). This module is the MTA-side wrapper: it keeps the
+ * env-resolved key and the ambient clock the existing MTA call sites rely on.
+ * Behaviour is unchanged.
  *
- * `window` is a coarse, monotonically-increasing time bucket so that a captured
- * token does not stay replayable forever. Verification accepts the current
- * window and a bounded number of recent windows to cover the days-long DSN
- * delivery delay (RFC 5321 §4.5.4.1 retry horizon is 4–5 days).
+ * Signed format:  bounce+{base64url(messageId)}+{hmac}@bounces.owlat.com
  *
  * The legacy/unsigned format (`bounce+{base64url(id)}@`) remains available only
  * to isolated compatibility tests that deliberately omit a key. Production
@@ -27,21 +29,7 @@
  * unsigned helper result as attribution evidence.
  */
 
-import { createHmac, timingSafeEqual } from 'crypto';
-
-/** Length (chars) of the base64url-encoded truncated HMAC carried in the token. */
-const MAC_B64URL_LEN = 14; // ~84 bits — comfortably above the audit's 10-char floor
-
-/** Window granularity: one bucket per day. */
-const WINDOW_MS = 24 * 60 * 60 * 1000;
-
-/**
- * How many *past* windows verification will accept in addition to the current
- * one. 6 prior days + today ≈ 7-day acceptance, covering the 4–5 day retry
- * horizon plus clock skew / late forwards. Tokens older than this no longer
- * verify and the bounce is dropped as unattributed.
- */
-const WINDOW_TOLERANCE = 6;
+import { buildVerpAddressWithKey, parseVerpAddressWithKey } from '@owlat/shared/verp';
 
 /**
  * Resolve the VERP signing key. Reading the env here (rather than threading it
@@ -71,32 +59,6 @@ export function isVerpSigningEnabled(key?: string): boolean {
 	return resolveVerpKey(key) !== undefined;
 }
 
-/** Current coarse time bucket (UTC day number). Injectable for tests. */
-function currentWindow(now: number): number {
-	return Math.floor(now / WINDOW_MS);
-}
-
-/**
- * Compute the truncated, base64url-encoded MAC over `encodedId || ':' || window`.
- * Signing the *already base64url-encoded* id (not the raw id) keeps the MAC
- * input free of `@`/`+`/`=` so the token grammar is unambiguous.
- */
-function computeMac(encodedId: string, window: number, key: string): string {
-	return createHmac('sha256', key)
-		.update(`${encodedId}:${window}`)
-		.digest('base64url')
-		.slice(0, MAC_B64URL_LEN);
-}
-
-/** Constant-time string compare that never throws on length mismatch. */
-function macsEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	const ab = Buffer.from(a);
-	const bb = Buffer.from(b);
-	if (ab.length !== bb.length) return false;
-	return timingSafeEqual(ab, bb);
-}
-
 /**
  * Build a VERP return-path address encoding the message ID.
  *
@@ -115,13 +77,7 @@ export function buildVerpAddress(
 	key?: string,
 	now: number = Date.now()
 ): string {
-	const encoded = Buffer.from(messageId).toString('base64url');
-	const signingKey = resolveVerpKey(key);
-	if (!signingKey) {
-		return `bounce+${encoded}@${returnPathDomain}`;
-	}
-	const mac = computeMac(encoded, currentWindow(now), signingKey);
-	return `bounce+${encoded}+${mac}@${returnPathDomain}`;
+	return buildVerpAddressWithKey(messageId, returnPathDomain, resolveVerpKey(key), now);
 }
 
 /**
@@ -141,38 +97,5 @@ export function parseVerpAddress(
 	key?: string,
 	now: number = Date.now()
 ): string | null {
-	// Grammar: bounce+<encodedId>[+<mac>]@... — `+` separates id and mac, so the
-	// encodedId capture must be `+`-free; the mac (when present) follows it.
-	const match = address.match(/^bounce\+([A-Za-z0-9_-]+)(?:\+([A-Za-z0-9_-]+))?@/);
-	if (!match?.[1]) return null;
-
-	const encodedId = match[1];
-	const presentedMac = match[2];
-	const signingKey = resolveVerpKey(key);
-
-	if (signingKey) {
-		// Signed mode: a token with no MAC is unforgeable-proof-of-origin missing
-		// → reject (forged unsigned DSN). Otherwise verify the MAC across the
-		// accepted window range; any tamper of the id changes the encodedId the
-		// MAC was computed over, so a wrong MAC and a tampered id both fail here.
-		if (!presentedMac) return null;
-		const base = currentWindow(now);
-		let verified = false;
-		for (let i = 0; i <= WINDOW_TOLERANCE; i++) {
-			const expected = computeMac(encodedId, base - i, signingKey);
-			if (macsEqual(expected, presentedMac)) {
-				verified = true;
-				break;
-			}
-		}
-		if (!verified) return null;
-	}
-
-	// Decode the (now-authenticated, when signed) id back to the messageId.
-	try {
-		const decoded = Buffer.from(encodedId, 'base64url').toString('utf-8');
-		return decoded.length > 0 ? decoded : null;
-	} catch {
-		return null;
-	}
+	return parseVerpAddressWithKey(address, resolveVerpKey(key), now);
 }

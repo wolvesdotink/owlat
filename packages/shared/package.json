@@ -41,6 +41,10 @@
 			"types": "./src/setupValidators.ts",
 			"import": "./src/setupValidators.ts"
 		},
+		"./verp": {
+			"types": "./src/verp.ts",
+			"import": "./src/verp.ts"
+		},
 		"./returnPathHost": {
 			"types": "./src/returnPathHost.ts",
 			"import": "./src/returnPathHost.ts"
