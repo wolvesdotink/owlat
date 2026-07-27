@@ -131,9 +131,12 @@ export const cfblAttributionsTotal = new Counter({
  * would turn it on.
  *
  * `outcome` is bounded to the `CfblEmissionOutcome` union: `emitted`,
- * `host_unaligned`, `no_key`, `no_address`, `sealed_raw`. `emitted` means the
- * pair is genuinely on the wire — sealed-mail sends ship raw MIME verbatim and
- * are counted as `sealed_raw`, never as `emitted`.
+ * `host_unaligned`, `no_signature`, `no_key`, `no_address`, `sealed_raw`.
+ * `emitted` means the pair is genuinely on the wire — sealed-mail sends ship raw
+ * MIME verbatim and are counted as `sealed_raw`, never as `emitted`, and a
+ * message with no DKIM signature over its From domain is counted
+ * `no_signature` because RFC 9477 §3.1.4 forbids a provider from acting on the
+ * pair without one.
  */
 export const cfblEmissionsTotal = new Counter({
 	name: 'mta_cfbl_emissions_total',

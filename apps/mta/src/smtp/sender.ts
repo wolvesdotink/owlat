@@ -337,12 +337,21 @@ export async function sendToMx(
 	// composed header set can ride those bytes. Counting such a send as
 	// `emitted` would report a CFBL-Address that is provably not on the wire, so
 	// it gets its own bounded label and the builder is not consulted at all.
+	//
+	// RFC 9477 §3.1 also requires the RFC5322.From domain to be matched by a
+	// VALID DKIM signature, and §3.1.4 says a provider "SHALL NOT send a report
+	// message" otherwise. A single-domain self-host whose global return-path
+	// domain happens to align with From but which has registered no DKIM key
+	// sends unsigned, so `dkimConfig` presence gates emission too — otherwise we
+	// would publish exactly the inert, provider-discarded header the unaligned
+	// branch already refuses to publish.
 	const cfbl: CfblHeaderResult = job.sealedMimeBase64
 		? { outcome: 'sealed_raw', headers: {} }
 		: buildCfblHeaders({
 				messageId: job.messageId,
 				cfblHost: feedbackHost,
 				fromDomain: extractDomainOrNull(job.from) ?? '',
+				dkimSigned: dkimConfig !== undefined,
 			});
 	cfblEmissionsTotal.inc({ outcome: cfbl.outcome });
 	const feedbackHeaders = cfbl.headers;
