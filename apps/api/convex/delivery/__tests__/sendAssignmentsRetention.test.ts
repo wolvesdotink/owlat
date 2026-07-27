@@ -11,6 +11,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
+import { createTestSendAssignment } from '../../__tests__/factories';
 import {
 	SEND_ASSIGNMENT_CLEANUP_BATCH_SIZE,
 	SEND_ASSIGNMENT_RETENTION_MS,
@@ -28,17 +29,7 @@ const modules = { ...rootGlob, ...deliveryGlob };
 const NOW = 1_800_000_000_000;
 
 function assignment(sendId: string, assignedAt: number) {
-	return {
-		organizationId: 'org_a',
-		sendId,
-		sendKind: 'campaign' as const,
-		cell: 'campaign:gmail',
-		transport: 'mta',
-		arm: 'own' as const,
-		isCalibration: false,
-		mixVersion: 0,
-		assignedAt,
-	};
+	return createTestSendAssignment({ organizationId: 'org_a', sendId, assignedAt });
 }
 
 // A failing assertion must not leak fake timers into the next test.
@@ -142,6 +133,27 @@ describe('sendAssignments retention sweep', () => {
 			now: NOW,
 		});
 		expect(result.deleted).toBe(0);
+	});
+
+	it('falls back to the real clock on a non-finite `now`', async () => {
+		// A NaN `now` would make the cutoff NaN and every comparison false, so
+		// the sweep would silently delete nothing forever.
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'sendAssignments',
+				assignment('ancient', Date.now() - SEND_ASSIGNMENT_RETENTION_MS - 86_400_000)
+			);
+			await ctx.db.insert('sendAssignments', assignment('fresh', Date.now() - 1_000));
+		});
+
+		const result = await t.mutation(internal.delivery.sendAssignments.cleanupExpiredAssignments, {
+			now: Number.NaN,
+		});
+
+		expect(result).toEqual({ deleted: 1 });
+		const remaining = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
+		expect(remaining.map((row) => row.sendId)).toEqual(['fresh']);
 	});
 
 	it('is registered as a cron so retention actually runs', async () => {

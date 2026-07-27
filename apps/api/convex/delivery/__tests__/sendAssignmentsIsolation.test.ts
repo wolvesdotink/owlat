@@ -12,6 +12,7 @@ import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
+import { createTestSendAssignment } from '../../__tests__/factories';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from '../../workspaces/deletion/walker';
 
@@ -43,17 +44,7 @@ const CELL = 'campaign:gmail';
 const WINDOW = { since: 0, until: 2_000_000_000_000 };
 
 function assignment(organizationId: string, sendId: string, assignedAt: number) {
-	return {
-		organizationId,
-		sendId,
-		sendKind: 'campaign' as const,
-		cell: CELL,
-		transport: 'mta',
-		arm: 'own' as const,
-		isCalibration: false,
-		mixVersion: 0,
-		assignedAt,
-	};
+	return createTestSendAssignment({ organizationId, sendId, cell: CELL, assignedAt });
 }
 
 describe('sendAssignments tenant isolation', () => {
@@ -178,6 +169,37 @@ describe('sendAssignments tenant isolation', () => {
 				})
 			).toEqual([]);
 		}
+	});
+
+	it('never unbounds the read on hostile numeric arguments', async () => {
+		// Convex `v.number()` is a float64: NaN and Infinity are valid wire
+		// values. An unguarded NaN reaches `.take(NaN)` and makes the range
+		// bound meaningless, which on a per-recipient table (D16) is the exact
+		// hazard the bounded read exists to prevent.
+		const t = convexTest(schema, modules);
+		const now = 1_800_000_000_000;
+		await t.run(async (ctx) => {
+			for (let index = 0; index < 5; index += 1) {
+				await ctx.db.insert('sendAssignments', assignment(ORG_A, `send_${index}`, now + index));
+			}
+		});
+		const read = async (overrides: { since?: number; until?: number; limit?: number }) =>
+			await t.query(internal.delivery.sendAssignments.listCellAssignments, {
+				organizationId: ORG_A,
+				cell: CELL,
+				...WINDOW,
+				...overrides,
+			});
+
+		// A non-finite window bound cannot be honoured — return nothing.
+		expect(await read({ since: Number.NaN })).toEqual([]);
+		expect(await read({ until: Number.NaN })).toEqual([]);
+		// A non-finite / out-of-range limit falls back to the bounded default.
+		expect(await read({ limit: Number.NaN })).toHaveLength(5);
+		expect(await read({ limit: Number.POSITIVE_INFINITY })).toHaveLength(5);
+		expect(await read({ limit: 0 })).toHaveLength(1);
+		expect(await read({ limit: -10 })).toHaveLength(1);
+		expect(await read({ limit: 2.7 })).toHaveLength(2);
 	});
 
 	it('is wiped by the organization-deletion walker (GDPR scoping)', async () => {

@@ -40,6 +40,25 @@ const { enqueueCampaignAction, enqueueTransactionalAction } = vi.hoisted(() => (
 	enqueueTransactionalAction: vi.fn(),
 }));
 
+// A pass-through spy on the cell route seam. The memo that keeps the
+// in-transaction resolution at "one per distinct destination provider"
+// (rather than one per recipient) is invisible to a behavioural assertion on
+// the written rows, so it is asserted here on the call log instead.
+const { routeResolutions } = vi.hoisted(() => ({ routeResolutions: [] as string[] }));
+
+vi.mock('../../lib/sendProviders/route', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/sendProviders/route')>();
+	return {
+		...actual,
+		resolveCellRouteFromDb: async (
+			...args: Parameters<typeof actual.resolveCellRouteFromDb>
+		): ReturnType<typeof actual.resolveCellRouteFromDb> => {
+			routeResolutions.push(args[2].destinationProvider);
+			return await actual.resolveCellRouteFromDb(...args);
+		},
+	};
+});
+
 vi.mock('../workpool', () => ({
 	campaignEmailPool: {
 		enqueueAction: (...args: unknown[]) => enqueueCampaignAction(...args),
@@ -69,6 +88,7 @@ const modules = { ...rootGlob, ...deliveryGlob };
 const ORG = 'org_experiment';
 
 beforeEach(() => {
+	routeResolutions.length = 0;
 	enqueueCampaignAction.mockReset();
 	enqueueCampaignAction.mockResolvedValue(undefined);
 	enqueueTransactionalAction.mockReset();
@@ -142,6 +162,18 @@ async function seedVerifiedSesRelay(ctx: { db: DatabaseWriter }, domain: string)
 		createdAt: now,
 		updatedAt: now,
 	});
+}
+
+/**
+ * The source text of one top-level function, so a static guard can be scoped
+ * to the functions the write path actually reaches instead of the whole file.
+ */
+function topLevelFunctionBody(source: string, name: string): string {
+	const start = source.search(new RegExp(`^(?:export )?(?:async )?function ${name}\\b`, 'm'));
+	expect(start, `${name} not found`).toBeGreaterThanOrEqual(0);
+	const end = source.indexOf('\n}\n', start);
+	expect(end, `${name} body not delimited`).toBeGreaterThan(start);
+	return source.slice(start, end);
 }
 
 function campaignArgs(
@@ -262,6 +294,68 @@ describe('sendAssignments — campaign write path', () => {
 		expect(byCell.get('campaign:gmail')?.arm).toBe('reference');
 		expect(byCell.get('campaign:microsoft')?.transport).toBe('mta');
 		expect(byCell.get('campaign:microsoft')?.arm).toBe('own');
+	});
+
+	it('lets an UNPARSEABLE recipient poison neither the cell nor the real recipient rows', async () => {
+		// Degenerate input: a garbage address in the same batch as a real one.
+		// The garbage address has no nameable cell, so it gets no row at all —
+		// and it must not be the address the cell's route is resolved from
+		// (which would resolve with the deliverability layer disabled and
+		// record `own` for a recipient the router will relay).
+		const t = convexTest(schema, modules);
+		vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
+		vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+		const { campaignId, recipients } = await seedRecipients(t, ['not-an-address', 'x@example.org']);
+		await t.run(async (ctx) => {
+			await seedVerifiedSesRelay(ctx, 'example.com');
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign' as const,
+				strategy: 'single' as const,
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'ses', isEnabled: true },
+				],
+				deliverabilityFallback: {
+					isEnabled: true,
+					relayProviderType: 'ses',
+					isWarmupOverflowEnabled: false,
+				},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			// The `other` cell — the one BOTH recipients classify into — is in
+			// fallback, so the real recipient must carry the relay arm.
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'other' as const,
+				isFallbackActive: true,
+				signals: [
+					{
+						source: 'dnsbl_listed' as const,
+						severity: 'critical' as const,
+						observedAt: Date.now(),
+					},
+				],
+				snapshotGeneratedAt: Date.now(),
+				expiresAt: Date.now() + 600_000,
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(
+			internal.delivery.enqueue.enqueueCampaignEmails,
+			campaignArgs(campaignId, recipients)
+		);
+
+		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
+		expect(rows).toHaveLength(1);
+		const real = recipients.find((r) => r.email === 'x@example.org');
+		expect(rows[0]?.sendId).toBe(real?.emailSendId);
+		expect(rows[0]?.cell).toBe('campaign:other');
+		expect(rows[0]?.transport).toBe('ses');
+		expect(rows[0]?.arm).toBe('reference');
+		// Both sends still went out: measurement never blocks delivery.
+		expect(enqueueCampaignAction).toHaveBeenCalledTimes(2);
 	});
 
 	it('never fails the enqueue when route resolution THROWS', async () => {
@@ -445,16 +539,68 @@ describe('sendAssignments — campaign write path', () => {
 
 		// Static guard: the write path must not introduce a wide table scan,
 		// and the classifier read stays an indexed point read in the ONE shared
-		// helper both this module and the route resolver call.
+		// helper both this module and the route resolver call. The guard covers
+		// every module the write path TRANSITS, not just this one: the route
+		// module also contains the full per-message resolver, which does read
+		// `providerHealth` whole — a document patched once per dispatch — and
+		// must never be reachable from an enqueue transaction.
 		const fs = await import('node:fs/promises');
 		const source = await fs.readFile(new URL('../sendAssignments.ts', import.meta.url), 'utf8');
 		expect(source).not.toMatch(/\.collect\(\)/);
+		expect(source).not.toMatch(/resolveSendRouteFromDb/);
 		const classifier = await fs.readFile(
 			new URL('../../lib/sendProviders/destinationProvider.ts', import.meta.url),
 			'utf8'
 		);
 		expect(classifier).not.toMatch(/\.collect\(\)/);
 		expect(classifier).toMatch(/withIndex\('by_org_domain'/);
+
+		const routeSource = await fs.readFile(
+			new URL('../../lib/sendProviders/route.ts', import.meta.url),
+			'utf8'
+		);
+		for (const fn of [
+			'resolveCellRouteFromDb',
+			'readySendProviderKinds',
+			'deliverabilityRouteStatesFor',
+			'freshFallbackReasons',
+			'isGlobalBreakerOpenState',
+			'relayDomainVerifiedFor',
+		]) {
+			const body = topLevelFunctionBody(routeSource, fn);
+			expect(body, `${fn} must not scan a table`).not.toMatch(/\.collect\(\)/);
+			expect(body, `${fn} must not read providerHealth`).not.toMatch(/providerHealth/);
+		}
+		expect(topLevelFunctionBody(routeSource, 'resolveCellRouteFromDb')).not.toMatch(/warmingState/);
+		const relayVerification = await fs.readFile(
+			new URL('../../lib/sendProviders/relayDomainVerification.ts', import.meta.url),
+			'utf8'
+		);
+		expect(relayVerification).not.toMatch(/\.collect\(\)/);
+	});
+
+	it('resolves the route ONCE per distinct destination provider, not per recipient', async () => {
+		// The only thing keeping the in-transaction resolution off O(N) is the
+		// per-destination-provider memo. Rows alone cannot show it: a
+		// per-recipient regression writes exactly the same rows.
+		const t = convexTest(schema, modules);
+		const emails = [
+			...Array.from({ length: 20 }, (_, i) => `g${i}@gmail.com`),
+			...Array.from({ length: 15 }, (_, i) => `m${i}@outlook.com`),
+			...Array.from({ length: 5 }, (_, i) => `o${i}@example.org`),
+			// A second `other` domain: the memo keys on the CELL, not the domain.
+			'p@another.example',
+		];
+		const { campaignId, recipients } = await seedRecipients(t, emails);
+
+		await t.mutation(
+			internal.delivery.enqueue.enqueueCampaignEmails,
+			campaignArgs(campaignId, recipients)
+		);
+
+		expect([...routeResolutions].sort()).toEqual(['gmail', 'microsoft', 'other']);
+		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
+		expect(rows).toHaveLength(emails.length);
 	});
 
 	it('issues exactly one by_org_domain read per DISTINCT recipient domain', async () => {
@@ -522,7 +668,9 @@ describe('sendAssignments — campaign write path', () => {
 		expect(providers.get('d@outlook.com')).toBe('microsoft');
 		expect(providers.get('e@Outlook.com')).toBe('microsoft');
 		expect(providers.get('f@example.org')).toBe('other');
-		expect(providers.get('not-an-address')).toBe('other');
+		// Omitted, not guessed: an address whose domain does not parse has no
+		// cell we can name, so the caller writes no row for it.
+		expect(providers.has('not-an-address')).toBe(false);
 	});
 });
 
