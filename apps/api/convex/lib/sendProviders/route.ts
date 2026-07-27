@@ -20,17 +20,15 @@ import {
 	type ProviderHealthStatus,
 	type ResolvedRoute,
 } from './routing';
-import { extractDomainOrNull } from '@owlat/shared';
-import { resolveDestinationProvider } from './destinationProvider';
-import {
-	loadRouteStateCell,
-	loadStreamlessRouteState,
-	mixCellStateFor,
-	type RouteStateCellRows,
-} from '../deliverabilityRouteState';
+import { loadStreamlessRouteState } from '../deliverabilityRouteState';
 import type { MixContext } from './strategies';
-import { readAssignmentForSend } from '../../delivery/sendAssignments';
-import { getSingletonOrganizationId } from '../sessionOrganization';
+import {
+	mixContextFor,
+	resolveAddressCell,
+	type MixAddressIdentity,
+	type PrecomputedRouteInputs,
+	type ResolvedAddressCell,
+} from './routeMixContext';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
 import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
@@ -56,118 +54,10 @@ export { messageTypeValidator, type MessageType };
  * `resolveSendRouteFromDb` and its internal `deliverabilityInput` so the two
  * shapes cannot drift.
  */
-export interface SendRouteAddressContext {
-	to?: string;
+export interface SendRouteAddressContext extends MixAddressIdentity {
 	from?: string;
-	now?: number;
 	baseOnly?: boolean;
 	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	/**
-	 * The durable Send id, when the caller has one. THIS is what makes the
-	 * dispatched transport and the recorded arm the same answer under
-	 * `adaptive_mix`: the arm was decided and recorded at enqueue, and this
-	 * resolution replays that record rather than re-deriving a decision whose
-	 * stratification input (the recipient's percentile within the enqueue
-	 * batch's cohort) no single message can reconstruct. Without it a split
-	 * cell would dispatch every recipient on one transport while the assignment
-	 * rows described an `s`-proportioned split, and every rate derived from
-	 * those denominators would describe an experiment that never ran.
-	 */
-	sendId?: string;
-}
-
-/**
- * The mix context for ONE message, in priority order:
- *
- *   1. THE RECORDED ARM. When the caller carries a Send id and an assignment
- *      row exists, that row is the answer. It is the row every rate in the
- *      measurement plane is joined on, and one of its inputs — the recipient's
- *      engagement percentile within the enqueue batch's cohort — is a property
- *      of that batch, so it cannot be reconstructed from a single message.
- *      Replaying the record is therefore the ONLY way the dispatched transport
- *      and the recorded arm can be the same answer.
- *   2. A DERIVED DECISION. No row (a send that predates the experiment, or a
- *      recording that degraded — it is allowed to, since recording must never
- *      fail a send) and no batch to rank against: decide from the cell's share
- *      with the most stable identity in hand. Nothing is joined against this
- *      one, so nothing can disagree with it, and it still realises the cell's
- *      configured share.
- *
- * The identity of last resort is the recipient address, which is what the
- * ADVISORY pre-resolutions hold (campaign sending resolves one route per page
- * from the first recipient, before any Send row exists). They get a
- * share-proportioned answer rather than a null one — a null there would stall a
- * campaign walk — and the authoritative dispatch resolution, which does carry
- * the Send id, still replays the record.
- *
- * Costs nothing on any shipped route: it short-circuits unless the org has
- * explicitly selected the controller-owned `adaptive_mix` strategy.
- */
-async function mixContextFor(
-	ctx: QueryCtx | MutationCtx,
-	routeConfig: Doc<'providerRoutes'> | null,
-	addressContext: SendRouteAddressContext | undefined,
-	resolved: ResolvedAddressCell | null
-): Promise<MixContext | undefined> {
-	if (routeConfig?.strategy !== 'adaptive_mix') return undefined;
-	if (resolved === null) return undefined;
-	const sendId = addressContext?.sendId;
-	const to = addressContext?.to;
-	if (sendId !== undefined) {
-		const recorded = await readAssignmentForSend(ctx.db, resolved.organizationId, sendId);
-		if (recorded) return { kind: 'assigned', arm: recorded.arm };
-	}
-	if (resolved.cell === null) return undefined;
-	return {
-		kind: 'decide',
-		input: {
-			cell: mixCellStateFor(resolved.cell),
-			recipient: { fallbackKey: sendId ?? to ?? '' },
-		},
-	};
-}
-
-/**
- * The tenant + cell identity BOTH per-message consumers key off, resolved
- * ONCE per resolution.
- *
- * `mixContextFor` and `deliverabilityInput` used to derive this pair
- * independently — the same singleton-organization lookup, the same domain
- * parse, the same classifier read and the same route-state cell read, with the
- * same arguments. Two copies of "which tenant is this and which cell is the
- * recipient in" have to agree forever, and under `adaptive_mix` they also
- * doubled the indexed reads on the authoritative per-message path.
- *
- * `cell` is null when there is no recipient address, or none that parses: the
- * tenant is still known, which is all the recorded-arm replay needs.
- */
-interface ResolvedAddressCell {
-	readonly organizationId: string;
-	readonly cell: RouteStateCellRows | null;
-	readonly now: number;
-}
-
-async function resolveAddressCell(
-	ctx: QueryCtx | MutationCtx,
-	messageType: MessageType,
-	addressContext: SendRouteAddressContext | undefined
-): Promise<ResolvedAddressCell | null> {
-	const now = addressContext?.now ?? Date.now();
-	let organizationId: string;
-	try {
-		organizationId = await getSingletonOrganizationId(ctx);
-	} catch {
-		return null;
-	}
-	const to = addressContext?.to;
-	const toDomain = to ? extractDomainOrNull(to) : null;
-	if (toDomain === null) return { organizationId, cell: null, now };
-	const destinationProvider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
-	const cell = await loadRouteStateCell(ctx, organizationId, {
-		stream: messageType,
-		destinationProvider,
-	});
-	return { organizationId, cell, now };
 }
 
 /**
@@ -204,16 +94,6 @@ export async function resolveSendRouteFromDb(
 	precomputed?: PrecomputedRouteInputs
 ): Promise<ResolvedRoute | null> {
 	return (await resolveSendRouteWithInputs(ctx, messageType, addressContext, precomputed)).route;
-}
-
-/**
- * Inputs a caller has already paid for and can hand back, so a second
- * resolution of the SAME message does not re-read them. Presence of the object
- * is the signal — a present object with `mix: undefined` means "there is no mix
- * context", not "compute one".
- */
-export interface PrecomputedRouteInputs {
-	readonly mix: MixContext | undefined;
 }
 
 interface SendRouteResolution {
@@ -254,13 +134,17 @@ async function resolveSendRouteWithInputs(
 			? await resolveAddressCell(ctx, messageType, addressContext)
 			: null;
 
-	const deliverability = wantsDeliverability
-		? await deliverabilityInput(ctx, routeConfig, messageType, addressContext, resolvedCell)
-		: undefined;
-
-	const mix = precomputed
-		? precomputed.mix
-		: await mixContextFor(ctx, routeConfig, addressContext, resolvedCell);
+	// The two consumers then run CONCURRENTLY, each awaiting the still-pending
+	// cell read inside its own parallel read set: one resolution of tenant +
+	// cell, and the same overlap between the cell, the stream-less route state
+	// and the warming state that the deliverability input had before the pair
+	// was hoisted out of it.
+	const [deliverability, mix] = await Promise.all([
+		wantsDeliverability
+			? deliverabilityInput(ctx, routeConfig, messageType, addressContext, resolvedCell)
+			: undefined,
+		precomputed ? precomputed.mix : mixContextFor(ctx, routeConfig, addressContext, resolvedCell),
+	]);
 
 	const resolved = resolveRoute(
 		routeConfig as ProviderRouteConfig | null,
@@ -293,12 +177,13 @@ async function deliverabilityInput(
 	if (!addressContext?.to) return undefined;
 	// The tenant, the recipient's cell and the resolution clock all come from
 	// the ONE `resolveAddressCell` the caller already ran; a null bundle (no
-	// tenant) or a null cell (no parseable recipient domain) means there is no
-	// deliverability input to give, exactly as before.
-	if (resolved === null || resolved.cell === null) return undefined;
+	// tenant) means there is no deliverability input to give, exactly as before.
+	if (resolved === null) return undefined;
 	const { organizationId, now } = resolved;
-	const providerCell = resolved.cell;
-	const [globalState, warmingState] = await Promise.all([
+	// The cell read is still in flight, so it overlaps the other two — the shape
+	// this function had when it issued the cell read itself.
+	const [providerCell, globalState, warmingState] = await Promise.all([
+		resolved.cell,
 		// The global slice is infrastructure-wide and never per-stream: read the
 		// stream-less row directly so a per-stream `all` row could never hide the
 		// breaker_open signal the snapshot writes there.
@@ -307,6 +192,9 @@ async function deliverabilityInput(
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
+	// A null cell (no parseable recipient domain) means there is nothing to key
+	// the deliverability signals off, exactly as before.
+	if (providerCell === null) return undefined;
 	// EVERY row of the cell is considered, not just the most specific one: the
 	// per-stream row carries the controller's share and the stream-less row
 	// carries the infrastructure signals, so reading only one would drop a hard
