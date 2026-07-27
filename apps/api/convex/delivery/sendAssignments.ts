@@ -12,12 +12,18 @@
  *     transaction (never a scheduled follow-up). If the enqueue transaction
  *     rolls back, no assignment row survives — the record and the send agree.
  *   - Writing an assignment must NEVER be able to fail a send. Everything here
- *     is defensive: an unresolvable organization or an unknown transport
- *     degrades to "no row" (or `other`), never a throw.
+ *     is defensive: an unresolvable organization, an unparseable address or
+ *     an unknown transport degrades to "no row", never a throw.
  *   - Every read is org-leading. `sendAssignments` is cell-keyed, and a
  *     cell-keyed table readable across tenants would be a security defect.
  *   - O(N) narrow writes for N recipients, and no unbounded table read
- *     anywhere on this path (ADR-0042's post-mortem).
+ *     anywhere on this path (ADR-0042's post-mortem). In particular the
+ *     recorded route comes from the health-free cell seam: the full
+ *     per-message resolver reads `providerHealth`, which is patched once per
+ *     dispatch, and a campaign enqueue transaction that took a read
+ *     dependency on it would OCC-retry against its own campaign's dispatches.
+ *     Health-driven failover is re-resolved authoritatively at dispatch, so
+ *     what this table records is the DELIVERABILITY decision for the cell.
  *
  * What this piece does NOT do: choose the arm. Today the row records what the
  * SHIPPED router already decided (`mta` → `own`, anything else → `reference`).
@@ -42,14 +48,21 @@ import {
 	normalizeDestinationDomain,
 	resolveDestinationProvider,
 } from '../lib/sendProviders/destinationProvider';
-import { resolveSendRouteFromDb, type MessageType } from '../lib/sendProviders/route';
+import { resolveCellRouteFromDb, type MessageType } from '../lib/sendProviders/route';
 import type { SendProviderKind } from '../lib/sendProviders/types';
+import { logWarn } from '../lib/runtimeLog';
 
 /** Assignment rows age out after 90 days (D16 — write amplification is bounded). */
 export const SEND_ASSIGNMENT_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
 /** Rows deleted per retention tick; the sweep re-schedules itself while full. */
 export const SEND_ASSIGNMENT_CLEANUP_BATCH_SIZE = 200;
+
+/** Page size for the cell/window read when the caller does not ask for one. */
+export const DEFAULT_CELL_PAGE_SIZE = 100;
+
+/** Hard ceiling on the cell/window read — a per-recipient table (D16). */
+export const MAX_CELL_PAGE_SIZE = 500;
 
 /**
  * Mix version 0 = "no controller-driven mix in effect". The row records the
@@ -85,6 +98,10 @@ export function armForTransport(transport: SendProviderKind): SendAssignmentArm 
  * Exported so the write-amplification regression can assert the read count
  * BEHAVIOURALLY (k distinct domains ⇒ exactly k `by_org_domain` reads),
  * rather than only inspecting the source for a memo map.
+ *
+ * An address whose domain does not parse is OMITTED from the map rather than
+ * classified as `other`: we cannot say which cell it belongs to, and a
+ * guessed cell is worse than a missing row. The caller skips it.
  */
 export async function destinationProvidersForEmails(
 	ctx: Pick<MutationCtx, 'db'>,
@@ -96,10 +113,7 @@ export async function destinationProvidersForEmails(
 	const byEmail = new Map<string, DestinationProviderKey>();
 	for (const email of emails) {
 		const rawDomain = extractDomainOrNull(email);
-		if (rawDomain === null) {
-			byEmail.set(email, 'other');
-			continue;
-		}
+		if (rawDomain === null) continue;
 		// `extractDomainOrNull` does no case folding, and learned observations
 		// are stored lowercase: normalize once so `@Gmail.com` hits the same
 		// memo slot AND the same stored row as `@gmail.com`.
@@ -159,8 +173,10 @@ export interface SendAssignmentRecipient {
  * first recipient's route onto every other cell. A row could then read
  * `arm: 'own'` while the message actually went through the relay, which
  * makes the experiment record worse than useless. So the writer re-resolves
- * in-transaction, memoized per destination provider (at most one resolution
- * per `DESTINATION_PROVIDER_KEYS` entry, not per recipient).
+ * in-transaction through the health-free cell seam
+ * (`lib/sendProviders/route.ts resolveCellRouteFromDb`), once per DISTINCT
+ * destination provider (at most `DESTINATION_PROVIDER_KEYS.length`
+ * resolutions, never one per recipient).
  *
  * `preResolved` exists for the ONE producer that already resolved the route
  * for its single recipient in the same transaction (the transactional
@@ -216,19 +232,20 @@ export async function recordSendAssignments(
 		input.recipients.map((recipient) => recipient.email),
 		now
 	);
-	const transportFor = await transportResolver(
-		ctx,
-		input.routing,
-		input.recipients,
-		providers,
-		now
-	);
+	const transportFor = await buildTransportLookup(ctx, {
+		routing: input.routing,
+		organizationId,
+		destinationProviders: new Set(providers.values()),
+		now,
+	});
 	const mixVersion = input.mixVersion ?? ROUTER_ONLY_MIX_VERSION;
 	const isCalibration = input.isCalibration ?? false;
 
 	let written = 0;
 	for (const recipient of input.recipients) {
-		const destinationProvider = providers.get(recipient.email) ?? 'other';
+		const destinationProvider = providers.get(recipient.email);
+		// An address whose domain does not parse has no cell we can name.
+		if (destinationProvider === undefined) continue;
 		const transport = transportFor(destinationProvider);
 		// An unresolvable route means we do not know what the worker will do,
 		// and a guessed arm is worse than a missing row.
@@ -256,47 +273,67 @@ export async function recordSendAssignments(
 	return written;
 }
 
+interface TransportLookupInput {
+	readonly routing: SendAssignmentRouting;
+	readonly organizationId: string;
+	/** The DISTINCT destination providers present in the batch. */
+	readonly destinationProviders: ReadonlySet<DestinationProviderKey>;
+	readonly now: number;
+}
+
 /**
  * Build the destination-provider → transport lookup for one batch.
  *
- * The route resolution depends on the recipient address ONLY through its
- * destination-provider classification (`deliverabilityRouteStates` is keyed
- * `by_org_provider`; every other input — relay-domain verification, the
- * global breaker, warm-up overflow — is per-message or org-wide). So one
- * resolution per DISTINCT destination provider in the batch is exactly
- * equivalent to one per recipient, and is bounded by
- * `DESTINATION_PROVIDER_KEYS.length` no matter how large the batch is.
+ * The route decision this record needs depends on the recipient ONLY through
+ * its destination-provider classification: `deliverabilityRouteStates` is
+ * keyed `by_org_provider`, and every other input the cell seam reads
+ * (`providerRoutes`, the relay-domain verification, the org-wide state) is
+ * per-batch or org-wide. Taking the DISTINCT provider set — rather than the
+ * recipients — makes the "one resolution per cell" bound structural: this
+ * function cannot issue more than `DESTINATION_PROVIDER_KEYS.length`
+ * resolutions no matter how large the batch is.
+ *
+ * The resolution goes through `resolveCellRouteFromDb`, NOT the full
+ * per-message resolver: the full one reads `providerHealth`, a document
+ * patched once per dispatch, and pulling that hotspot into a campaign enqueue
+ * transaction would make concurrent dispatches force OCC retries of a
+ * transaction that must not fail. Health-driven failover is re-resolved
+ * authoritatively by the worker at dispatch time.
  *
  * Route resolution can THROW (`DeliverabilityRouteError`,
  * `GlobalDeliveryCircuitOpenError`). Recording the experiment must never be
  * able to fail a send, so a throw degrades that provider to "unresolved" —
  * no row — and the enqueue proceeds untouched.
  */
-async function transportResolver(
+async function buildTransportLookup(
 	ctx: MutationCtx,
-	routing: SendAssignmentRouting,
-	recipients: readonly SendAssignmentRecipient[],
-	providers: ReadonlyMap<string, DestinationProviderKey>,
-	now: number
+	input: TransportLookupInput
 ): Promise<(destinationProvider: DestinationProviderKey) => SendProviderKind | null> {
+	const { routing } = input;
 	if (routing.kind === 'preResolved') {
 		const transport = routing.transport ?? null;
 		return () => transport;
 	}
 	const byProvider = new Map<DestinationProviderKey, SendProviderKind | null>();
-	for (const recipient of recipients) {
-		const destinationProvider = providers.get(recipient.email) ?? 'other';
-		if (byProvider.has(destinationProvider)) continue;
+	for (const destinationProvider of input.destinationProviders) {
 		let resolvedTransport: SendProviderKind | null = null;
 		try {
-			const resolved = await resolveSendRouteFromDb(ctx, routing.messageType, {
-				to: recipient.email,
-				...(routing.from !== undefined ? { from: routing.from } : {}),
-				now,
+			const resolved = await resolveCellRouteFromDb(ctx, routing.messageType, {
 				destinationProvider,
+				...(routing.from !== undefined ? { from: routing.from } : {}),
+				now: input.now,
+				organizationId: input.organizationId,
 			});
 			resolvedTransport = resolved?.providerType ?? null;
-		} catch {
+		} catch (error) {
+			// Never the recipient address and never `from`: an assignment log
+			// line must not become a PII sink. Provider + error name is enough
+			// to tell "this cell is unroutable today" from "the resolver is
+			// systematically throwing and the experiment record is empty".
+			logWarn(
+				`[sendAssignments] route resolution failed for cell provider ${destinationProvider}:`,
+				error instanceof Error ? error.name : 'UnknownError'
+			);
 			resolvedTransport = null;
 		}
 		byProvider.set(destinationProvider, resolvedTransport);
@@ -341,7 +378,15 @@ export const listCellAssignments = internalQuery({
 	},
 	handler: async (ctx, args) => {
 		if (!isDeliverabilityCellKey(args.cell)) return [];
-		const limit = Math.min(Math.max(args.limit ?? 100, 1), 500);
+		// Convex `v.number()` is a float64: `NaN`/`Infinity` are valid arguments.
+		// An unguarded NaN reaches `.take(NaN)` and makes the range bound
+		// meaningless, so every numeric argument is checked before it is used.
+		if (!Number.isFinite(args.since) || !Number.isFinite(args.until)) return [];
+		const requested = args.limit;
+		const limit =
+			requested === undefined || !Number.isFinite(requested)
+				? DEFAULT_CELL_PAGE_SIZE
+				: Math.min(Math.max(Math.floor(requested), 1), MAX_CELL_PAGE_SIZE);
 		return await ctx.db
 			.query('sendAssignments')
 			.withIndex('by_org_cell_time', (q) =>
@@ -364,7 +409,10 @@ export const listCellAssignments = internalQuery({
 export const cleanupExpiredAssignments = internalMutation({
 	args: { now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
-		const cutoff = (args.now ?? Date.now()) - SEND_ASSIGNMENT_RETENTION_MS;
+		// A non-finite `now` would make `cutoff` NaN and the sweep a silent
+		// no-op forever: fall back to the real clock instead.
+		const now = args.now !== undefined && Number.isFinite(args.now) ? args.now : Date.now();
+		const cutoff = now - SEND_ASSIGNMENT_RETENTION_MS;
 		const expired = await ctx.db
 			.query('sendAssignments')
 			.withIndex('by_assigned_at', (q) => q.lt('assignedAt', cutoff))
