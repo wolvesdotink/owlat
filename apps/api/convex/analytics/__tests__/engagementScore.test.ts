@@ -6,13 +6,13 @@ import {
 	ENGAGEMENT_WEIGHTS,
 	computeEngagementScore,
 	engagementBand,
-	engagementPercentile,
 	type EngagementActivity,
 	type EngagementActivityKind,
 	type EngagementBand,
 	type EngagementScoreInputs,
 	type EngagementScoreResult,
 } from '../engagementScore';
+import { engagementPercentile } from '../engagementPercentile';
 
 /**
  * The band-distribution fixture matrix for the contact engagement score

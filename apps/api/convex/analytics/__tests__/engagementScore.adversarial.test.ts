@@ -4,11 +4,11 @@ import {
 	computeEngagementScore,
 	decayState,
 	engagementBand,
-	engagementPercentile,
 	scoreFromState,
 	type EngagementActivity,
 	type EngagementScoreState,
 } from '../engagementScore';
+import { engagementPercentile } from '../engagementPercentile';
 
 /**
  * Hostile and degenerate inputs to the engagement score (deliverability plan

@@ -197,8 +197,7 @@ export const deliveryTables = {
 		expiresAt: v.number(), // 24h for clean, 1h for flagged
 	}).index('by_url_hash', ['urlHash']),
 
-	// Provider Routes - email provider routing configuration
-	// Determines which email provider (mta, ses, resend, smtp) to use per message type
+	// Provider Routes - which email provider (mta, ses, resend, smtp) per message type
 	providerRoutes: defineTable({
 		messageType: v.union(
 			v.literal('campaign'),
@@ -209,10 +208,7 @@ export const deliveryTables = {
 			v.literal('single'), // Use one provider only
 			v.literal('priority_failover'), // Try providers in order, failover on error
 			v.literal('workload_split'), // Split traffic by weight across providers
-			// Deterministic per-RECIPIENT split against the cell's controlled
-			// share (plan D7). Additive: no shipped row carries it, and the
-			// degenerate shares reproduce the shipped routing exactly.
-			v.literal('adaptive_mix')
+			v.literal('adaptive_mix') // Deterministic per-recipient split by the cell's share (D7)
 		),
 		// Ordered list of providers for this route
 		providers: v.array(

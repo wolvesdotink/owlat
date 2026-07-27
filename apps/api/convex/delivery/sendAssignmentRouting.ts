@@ -29,7 +29,7 @@ import {
 	type CellRouteOutcome,
 } from '../lib/sendProviders/cellRoute';
 import { rankTieBreakUnit, type MixRecipientIdentity } from '../lib/sendProviders/strategies';
-import { engagementPercentileRange } from '../analytics/engagementScore';
+import { engagementPercentileRange } from '../analytics/engagementPercentile';
 import { logWarn } from '../lib/runtimeLog';
 // Type-only, so the pair of modules has no runtime import cycle.
 import type { SendAssignmentRecipient, SendAssignmentRouting } from './sendAssignments';
