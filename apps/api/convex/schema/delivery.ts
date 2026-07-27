@@ -3,8 +3,6 @@ import { v } from 'convex/values';
 import { contentScanFlagValidator } from '../lib/convexValidators';
 import { ipReadinessFieldValidators } from '../delivery/readinessValidators';
 import {
-	alignmentCheckValidator,
-	alignmentVerdictValidator,
 	deliverabilitySignalSeverityValidator,
 	deliverabilitySignalSourceValidator,
 	deliverabilitySignalProviderValidator,
@@ -270,31 +268,6 @@ export const deliveryTables = {
 		.index('by_org_provider', ['organizationId', 'destinationProvider'])
 		.index('by_org_provider_stream', ['organizationId', 'destinationProvider', 'stream'])
 		.index('by_expires_at', ['expiresAt']),
-
-	// Dual-transport alignment pre-flight results (P3-5). One row per sending
-	// domain: the last live-DNS verdict on whether the own-MTA arm and the
-	// reference-transport arm are indistinguishable to the receiver (same From
-	// domain, one SPF record inside the 10-lookup limit, same DKIM d= with
-	// distinct selectors, DMARC alignment on both). A cell may not be ramped
-	// above s=0 while its domain's verdict is anything other than `aligned` or
-	// `single_arm`. `single_arm` — no reference transport configured — is a
-	// SUPPORTED CONFIGURATION, never an error state (D2).
-	deliverabilityAlignmentStates: defineTable({
-		organizationId: v.string(),
-		domain: v.string(),
-		verdict: alignmentVerdictValidator,
-		checks: v.array(alignmentCheckValidator),
-		// True when the reference transport cannot carry our custom return path:
-		// measurement confidence is lowered, the ramp is NOT blocked (P2-3).
-		degradedMeasurement: v.boolean(),
-		degradedMeasurementReason: v.optional(v.string()),
-		checkedAt: v.number(),
-		// Daily re-check, or sooner when a lookup could not be resolved.
-		nextCheckDueAt: v.number(),
-		updatedAt: v.number(),
-	})
-		.index('by_org_domain', ['organizationId', 'domain'])
-		.index('by_next_check_due_at', ['nextCheckDueAt']),
 
 	// Recipient-domain provider classifications learned from successful MTA
 	// deliveries. This lets pre-send routing reuse the MTA's authoritative MX
