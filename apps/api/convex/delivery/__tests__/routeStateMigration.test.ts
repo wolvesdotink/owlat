@@ -26,14 +26,7 @@ import {
 	deliverabilityStreamValidator,
 } from '../deliverabilityValidators';
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const deliveryGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
-		path.replace(/^\.\.\//, '../../delivery/'),
-		module,
-	])
-);
-const modules = { ...rootGlob, ...deliveryGlob };
+import { modules } from './testModules';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
