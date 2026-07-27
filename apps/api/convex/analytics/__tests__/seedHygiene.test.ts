@@ -1,10 +1,10 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect } from 'vitest';
-import { internal } from '../../_generated/api';
+import { describe, it, expect, vi } from 'vitest';
+import { api, internal } from '../../_generated/api';
 import schema from '../../schema';
 import { insertExternalAccountRow } from '../../mail/externalAccountShared';
-import { loadSeedAccounts } from '../seedPlacement';
-import type { Doc, Id } from '../../_generated/dataModel';
+import { loadSeedAccounts, summarizeSeedPlacementWindow } from '../seedPlacement';
+import type { Id } from '../../_generated/dataModel';
 import { modules } from './testModules';
 import {
 	planSeedHygiene,
@@ -12,6 +12,30 @@ import {
 	SEED_CLICK_PROBABILITY,
 	SEED_ROTATION_INTERVAL_MS,
 } from '@owlat/shared/seedPlacement';
+
+/**
+ * The rotation nudge has to be readable through a query the PRODUCT exposes,
+ * and dismissable only by a human — so this suite drives `auditLogs.list`
+ * (adminQuery) and `mail.externalAccountsSeed.acknowledgeSeedRotation`
+ * (adminMutation) for real. Both sit behind the org session, which convex-test
+ * has no identity for; the mock is the shipped pattern from
+ * `__tests__/auditLogsRead.integration.test.ts`. The internal mutations this
+ * file also exercises never touch the session, so they are unaffected.
+ */
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../../lib/sessionOrganization');
+	const session = { userId: 'admin-1', activeOrganizationId: 'org_hygiene', role: 'owner' };
+	return {
+		...actual,
+		requireOrgMember: vi.fn().mockResolvedValue(session),
+		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getUserIdFromSession: vi.fn().mockResolvedValue(session.userId),
+		getMutationContext: vi.fn().mockResolvedValue(session),
+		requireOrgPermission: vi.fn().mockResolvedValue(session),
+		requireAdminContext: vi.fn().mockResolvedValue(session),
+		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue(session),
+	};
+});
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -121,16 +145,20 @@ describe('shouldRemindSeedRotation', () => {
 		).toBe(true);
 	});
 
-	it('restarts the clock from the last reminder, so it does not nag', () => {
-		const lastRemindedAt = connectedAt + SEED_ROTATION_INTERVAL_MS;
+	it('restarts the clock from the operator ACKNOWLEDGEMENT, so it does not nag', () => {
+		const lastAcknowledgedAt = connectedAt + SEED_ROTATION_INTERVAL_MS;
 		expect(
-			shouldRemindSeedRotation({ connectedAt, lastRemindedAt, now: lastRemindedAt + DAY })
+			shouldRemindSeedRotation({
+				connectedAt,
+				lastAcknowledgedAt,
+				now: lastAcknowledgedAt + DAY,
+			})
 		).toBe(false);
 		expect(
 			shouldRemindSeedRotation({
 				connectedAt,
-				lastRemindedAt,
-				now: lastRemindedAt + SEED_ROTATION_INTERVAL_MS,
+				lastAcknowledgedAt,
+				now: lastAcknowledgedAt + SEED_ROTATION_INTERVAL_MS,
 			})
 		).toBe(true);
 	});
@@ -163,14 +191,18 @@ const CREDS = {
 };
 
 /** Step 1 (connect): tag an external account as a deliverability seed. */
-async function connectSeed(t: ReturnType<typeof convexTest>): Promise<{
+async function connectSeed(
+	t: ReturnType<typeof convexTest>,
+	organizationId: string = ORG,
+	address: string = 'owlat.seed.02@outlook.example'
+): Promise<{
 	accountId: Id<'externalMailAccounts'>;
 }> {
 	return t.run(async (ctx) => {
 		const mailboxId = await ctx.db.insert('mailboxes', {
 			userId: 'user_1',
-			organizationId: ORG,
-			address: 'owlat.seed.02@outlook.example',
+			organizationId,
+			address,
 			domain: 'outlook.example',
 			kind: 'external' as const,
 			status: 'active' as const,
@@ -181,9 +213,9 @@ async function connectSeed(t: ReturnType<typeof convexTest>): Promise<{
 		});
 		const accountId = await insertExternalAccountRow(ctx, {
 			userId: 'user_1',
-			organizationId: ORG,
+			organizationId,
 			mailboxId,
-			address: 'owlat.seed.02@outlook.example',
+			address,
 			seed: { seedProvider: 'microsoft' },
 			fields: CREDS,
 			now: NOW,
@@ -285,15 +317,45 @@ describe('the hygiene plan is EXECUTED against the ledger row', () => {
 });
 
 describe('the rotation reminder surfaces on schedule', () => {
-	/** Every rotation reminder written against the seed's mailbox. */
-	async function reminders(t: ReturnType<typeof convexTest>): Promise<Doc<'mailAuditLog'>[]> {
-		return t.run(async (ctx) => {
-			const rows = await ctx.db.query('mailAuditLog').collect();
-			return rows.filter((row) => row.event === 'seed_account.rotation_reminder');
-		});
+	/**
+	 * The reminders an OPERATOR can actually see — read back through
+	 * `auditLogs.list`, the admin query the product ships, not through a raw
+	 * table scan. An artifact only a test can find is not a reminder.
+	 */
+	async function reminders(t: ReturnType<typeof convexTest>) {
+		const res = await t.query(api.auditLogs.list, { action: 'seed_mailbox.rotation_reminder' });
+		return res.logs;
 	}
 
-	it('is due after the interval and EMITS an operator-visible artifact, org-scoped', async () => {
+	/** The other readable surface: what P3-6's cell screen renders. */
+	async function remindersDue(t: ReturnType<typeof convexTest>, now: number): Promise<number> {
+		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, now));
+		return summary.rotationRemindersDue;
+	}
+
+	/**
+	 * The OPERATOR dismisses the nudge, at a stated instant.
+	 *
+	 * `acknowledgeSeedRotation` stamps `Date.now()` (a user-facing mutation has no
+	 * business taking a clock from its caller), so the wall clock is pinned for
+	 * the call — otherwise the synthetic timeline these cases run on would land
+	 * the acknowledgement BEFORE the reminder it answers and the assertions would
+	 * be measuring the test's own clock skew.
+	 */
+	async function acknowledge(
+		t: ReturnType<typeof convexTest>,
+		accountId: Id<'externalMailAccounts'>,
+		at: number
+	): Promise<void> {
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(at);
+		try {
+			await t.mutation(api.mail.externalAccountsSeed.acknowledgeSeedRotation, { accountId });
+		} finally {
+			clock.mockRestore();
+		}
+	}
+
+	it('is due after the interval and EMITS an artifact the operator can read, org-scoped', async () => {
 		const t = convexTest(schema, modules);
 		const { accountId } = await connectSeed(t);
 		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
@@ -313,8 +375,7 @@ describe('the rotation reminder surfaces on schedule', () => {
 		).toEqual({ emitted: false });
 		// A refused call emits nothing AND leaves the flag standing.
 		expect(await reminders(t)).toEqual([]);
-		const stillDue = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
-		expect(stillDue[0]?.rotationReminderDue).toBe(true);
+		expect(await remindersDue(t, later)).toBe(1);
 
 		expect(
 			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
@@ -324,18 +385,40 @@ describe('the rotation reminder surfaces on schedule', () => {
 			})
 		).toEqual({ emitted: true });
 
-		// THE ARTIFACT. A reminder that only flipped a timestamp is a reminder no
-		// human ever sees — the flag is cleared precisely because something was
-		// written to the trail the operator can read.
+		// THE ARTIFACT, through the shipped admin query.
 		const emitted = await reminders(t);
 		expect(emitted).toHaveLength(1);
-		expect(emitted[0]?.occurredAt).toBe(later);
-		expect(emitted[0]?.details).toContain('rotat');
+		expect(emitted[0]?.resource).toBe('seed_mailbox');
+		expect(emitted[0]?.resourceId).toBe(accountId);
+		expect(emitted[0]?.details).toEqual({ provider: 'microsoft', ageDays: 91 });
 		// Advisory, and carrying no address or credential (D2 + the security rule).
-		expect(emitted[0]?.details ?? '').not.toContain('owlat.seed.02@outlook.example');
+		expect(JSON.stringify(emitted[0])).not.toContain('owlat.seed.02@outlook.example');
+	});
 
-		const after = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
-		expect(after[0]?.rotationReminderDue).toBe(false);
+	it('does NOT extinguish the due count — only an operator can (the round-2 defect)', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+		expect(await remindersDue(t, later)).toBe(1);
+
+		// Three sweep ticks, i.e. 45 minutes of the mail-sync worker doing its job
+		// with no human anywhere near it.
+		for (const now of [later, later + 1000, later + 2000]) {
+			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
+				organizationId: ORG,
+				accountId,
+				now,
+			});
+		}
+		// One audit row, not one per tick...
+		expect(await reminders(t)).toHaveLength(1);
+		// ...and the readable count is still standing. A background worker must
+		// never be able to clear the signal it just raised.
+		expect(await remindersDue(t, later + 2000)).toBe(1);
+
+		// The operator dismisses it — and only that restarts the 90-day clock.
+		await acknowledge(t, accountId, later + 3000);
+		expect(await remindersDue(t, later + 4000)).toBe(0);
 	});
 
 	it('emits NOTHING and clears NOTHING when the reminder is not yet due', async () => {
@@ -353,22 +436,41 @@ describe('the rotation reminder surfaces on schedule', () => {
 
 		// The clock was never restarted, so the reminder still arrives on schedule.
 		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
-		const due = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
-		expect(due[0]?.rotationReminderDue).toBe(true);
+		expect(await remindersDue(t, later)).toBe(1);
 	});
 
-	it('is emitted once, not once per sweep tick', async () => {
+	it('re-arms after an acknowledgement, one artifact per un-acknowledged cycle', async () => {
 		const t = convexTest(schema, modules);
 		const { accountId } = await connectSeed(t);
-		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+		const first = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+		await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
+			organizationId: ORG,
+			accountId,
+			now: first,
+		});
+		const acknowledgedAt = first + DAY;
+		await acknowledge(t, accountId, acknowledgedAt);
+		expect(
+			await t.run(async (ctx) => (await ctx.db.get(accountId))?.seedRotationAcknowledgedAt)
+		).toBe(acknowledgedAt);
 
-		for (const now of [later, later + 1000, later + 2000]) {
+		const second = acknowledgedAt + SEED_ROTATION_INTERVAL_MS + DAY;
+		expect(await remindersDue(t, second)).toBe(1);
+		expect(
 			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
 				organizationId: ORG,
 				accountId,
-				now,
-			});
-		}
-		expect(await reminders(t)).toHaveLength(1);
+				now: second,
+			})
+		).toEqual({ emitted: true });
+		expect(await reminders(t)).toHaveLength(2);
+	});
+
+	it('refuses to acknowledge another org’s seed', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t, 'org_other', 'seed@other.example');
+		await expect(
+			t.mutation(api.mail.externalAccountsSeed.acknowledgeSeedRotation, { accountId })
+		).rejects.toThrow();
 	});
 });
