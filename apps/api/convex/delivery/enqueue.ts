@@ -6,6 +6,7 @@ import { isSuppressed } from '../lib/suppression';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
 import { normalizeEngagementScore } from './workerEnvelope';
 import { enqueueSeedShadowCopies, type CampaignEnvelopeInput } from './seedShadowCopy';
+import { logError } from '../lib/runtimeLog';
 
 /**
  * Error thrown by `enqueueNonCampaignSend` when the recipient is on the
@@ -234,18 +235,34 @@ export const enqueueCampaignEmails = internalMutation({
 
 		// Deliverability seed probe (gate 5): CLONE the real envelope this page
 		// just enqueued into every operator-owned seed mailbox, in this same
-		// transaction. Idempotent per (org, campaign, variant), so the walker's
-		// page fan-out produces exactly one probe set per arm. With no seed
-		// mailboxes connected — the default — it is a no-op (D2) and can never
-		// fail the campaign it is measuring.
+		// transaction — the probe has to be written where the send is decided, not
+		// from a scheduled call that could observe a different world. Idempotent
+		// per (org, campaign, variant), so the walker's page fan-out produces
+		// exactly one probe set per arm. With no seed mailboxes connected — the
+		// default — it is a no-op (D2).
+		//
+		// The measurement may never take the send down with it. Running inline is
+		// the right shape, but it puts up to one workpool enqueue per seed into
+		// this page's transaction, and a throw from any of them (workpool
+		// capacity, an OCC conflict on the pool component) would otherwise roll
+		// back every recipient on the page. A probe-side failure degrades the
+		// measurement — this page simply goes unprobed, and the next campaign
+		// probes again — and nothing else.
 		if (probeBaseEnvelope && args.organizationId) {
-			await enqueueSeedShadowCopies(ctx, {
-				organizationId: args.organizationId,
-				campaignId: args.campaignId,
-				...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
-				base: probeBaseEnvelope,
-				now: Date.now(),
-			});
+			try {
+				await enqueueSeedShadowCopies(ctx, {
+					organizationId: args.organizationId,
+					campaignId: args.campaignId,
+					...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
+					base: probeBaseEnvelope,
+					now: Date.now(),
+				});
+			} catch (error) {
+				logError('seed shadow copy enqueue failed', error, {
+					campaignId: args.campaignId,
+					organizationId: args.organizationId,
+				});
+			}
 		}
 
 		return { enqueued: args.emails.length };

@@ -121,8 +121,11 @@ export function buildSeedShadowEnvelope(
 }
 
 /**
- * Generate an opaque probe id. Randomness lives here, at the edge — the pure
- * core never draws one.
+ * Generate an opaque probe id: `sp_` + 22 lowercase HEX characters, sliced out
+ * of a hyphen-stripped UUIDv4. Randomness lives here, at the edge — the pure
+ * core never draws one. `isSeedProbeId` accepts exactly this alphabet and
+ * length and nothing wider, because it is what the two public tracking
+ * endpoints use to tell a probe from a Send.
  */
 function newProbeId(): string {
 	return `sp_${crypto.randomUUID().replace(/-/g, '').slice(0, 22)}`;
@@ -166,7 +169,13 @@ export async function enqueueSeedShadowCopies(
 		.first();
 	if (existing !== null) return { enqueued: 0 };
 
-	const seeds = await loadSeedAccounts(ctx.db, args.organizationId, args.now);
+	// CONNECTABLE seeds only — the exact set `analytics/seedProbePoller.ts` will
+	// walk. A seed sitting in `auth_error` still occupies a slot against the
+	// connect cap and still counts in the roll-up's denominator, but mailing it
+	// would burn real volume against the warming cap and the IP on a message
+	// nothing can ever observe, and leave an unclassified ledger row for the
+	// whole retention window.
+	const seeds = await loadSeedAccounts(ctx.db, args.organizationId, args.now, 'connectable');
 	if (seeds.length === 0) return { enqueued: 0 };
 
 	for (const seed of seeds) {
