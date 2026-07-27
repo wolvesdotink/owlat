@@ -48,7 +48,8 @@ import {
 	normalizeDestinationDomain,
 	resolveDestinationProvider,
 } from '../lib/sendProviders/destinationProvider';
-import { resolveCellRouteFromDb, type MessageType } from '../lib/sendProviders/route';
+import { prepareCellRouteResolver, type CellRouteResolver } from '../lib/sendProviders/cellRoute';
+import type { MessageType } from '../lib/sendProviders/route';
 import type { SendProviderKind } from '../lib/sendProviders/types';
 import { logWarn } from '../lib/runtimeLog';
 
@@ -120,9 +121,12 @@ export async function destinationProvidersForEmails(
 	for (const email of emails) {
 		const rawDomain = extractDomainOrNull(email);
 		if (rawDomain === null) continue;
-		// `extractDomainOrNull` does no case folding, and learned observations
-		// are stored lowercase: normalize once so `@Gmail.com` hits the same
-		// memo slot AND the same stored row as `@gmail.com`.
+		// Defence in depth, not a correction: `extractDomainOrNull` goes through
+		// `parseAddress`, which already lowercases, so this is a no-op for every
+		// address that arrives here today. It is applied anyway because the memo
+		// key must agree with the key `resolveDestinationProvider` normalizes to
+		// internally — otherwise a future non-address caller (that helper takes a
+		// bare `domain: string`) would split one domain across two memo slots.
 		const domain = normalizeDestinationDomain(rawDomain);
 		let provider = byDomain.get(domain);
 		if (provider === undefined) {
@@ -173,7 +177,7 @@ export interface SendAssignmentRecipient {
  *
  * There is exactly ONE way, deliberately: the writer always re-resolves
  * in-transaction through the health-free cell seam
- * (`lib/sendProviders/route.ts resolveCellRouteFromDb`), once per DISTINCT
+ * (`lib/sendProviders/route.ts prepareCellRouteResolver`), once per DISTINCT
  * destination provider (at most `DESTINATION_PROVIDER_KEYS.length`
  * resolutions, never one per recipient).
  *
@@ -186,7 +190,7 @@ export interface SendAssignmentRecipient {
  *     first recipient and explicitly labels an advisory snapshot — stamps the
  *     first recipient's route onto every other cell.
  *   - The determinism verdict and the health-free semantics live INSIDE
- *     `resolveCellRouteFromDb`. A producer that resolved through the
+ *     the prepared cell seam. A producer that resolved through the
  *     AUTHORITATIVE per-message resolver (the transactional Template API does,
  *     for the envelope) holds a HEALTH-INFLUENCED answer drawn with
  *     `Math.random()` under `workload_split` — and the worker draws again
@@ -301,17 +305,25 @@ interface TransportLookupInput {
  * function cannot issue more than `DESTINATION_PROVIDER_KEYS.length`
  * resolutions no matter how large the batch is.
  *
- * The resolution goes through `resolveCellRouteFromDb`, NOT the full
- * per-message resolver: the full one reads `providerHealth`, a document
- * patched once per dispatch, and pulling that hotspot into a campaign enqueue
- * transaction would make concurrent dispatches force OCC retries of a
- * transaction that must not fail. Health-driven failover is re-resolved
- * authoritatively by the worker at dispatch time.
+ * The resolution goes through the cell seam, NOT the full per-message
+ * resolver: the full one reads `providerHealth`, a document patched once per
+ * dispatch, and pulling that hotspot into a campaign enqueue transaction would
+ * make concurrent dispatches force OCC retries of a transaction that must not
+ * fail. Health-driven failover is re-resolved authoritatively by the worker at
+ * dispatch time.
+ *
+ * The seam is PREPARED once for the batch (`prepareCellRouteResolver`) and
+ * then invoked per distinct provider: the route config, the configured-kind
+ * set and the relay-domain verification are destination-provider independent,
+ * so preparing once turns "at most 5 resolutions" into "at most 5 point reads
+ * plus one fixed prologue" rather than 5 copies of everything.
  *
  * Route resolution can THROW (`DeliverabilityRouteError`,
  * `GlobalDeliveryCircuitOpenError`). Recording the experiment must never be
  * able to fail a send, so a throw degrades that provider to "unresolved" —
- * no row — and the enqueue proceeds untouched.
+ * no row — and the enqueue proceeds untouched. The prologue is wrapped for the
+ * same reason: if preparing the seam throws, the whole batch degrades to "no
+ * rows", never to a failed enqueue.
  */
 async function buildTransportLookup(
 	ctx: MutationCtx,
@@ -319,15 +331,24 @@ async function buildTransportLookup(
 ): Promise<(destinationProvider: DestinationProviderKey) => SendProviderKind | null> {
 	const { routing } = input;
 	const byProvider = new Map<DestinationProviderKey, SendProviderKind | null>();
+	let resolveCell: CellRouteResolver;
+	try {
+		resolveCell = await prepareCellRouteResolver(ctx, routing.messageType, {
+			...(routing.from !== undefined ? { from: routing.from } : {}),
+			now: input.now,
+			organizationId: input.organizationId,
+		});
+	} catch (error) {
+		logWarn(
+			'[sendAssignments] cell route seam unavailable; recording no assignments:',
+			error instanceof Error ? error.name : 'UnknownError'
+		);
+		return () => null;
+	}
 	for (const destinationProvider of input.destinationProviders) {
 		let resolvedTransport: SendProviderKind | null = null;
 		try {
-			const resolved = await resolveCellRouteFromDb(ctx, routing.messageType, {
-				destinationProvider,
-				...(routing.from !== undefined ? { from: routing.from } : {}),
-				now: input.now,
-				organizationId: input.organizationId,
-			});
+			const resolved = await resolveCell(destinationProvider);
 			resolvedTransport = resolved?.providerType ?? null;
 		} catch (error) {
 			// Never the recipient address and never `from`: an assignment log
@@ -368,10 +389,26 @@ export const getAssignmentForSend = internalQuery({
  * bounded evaluation window, and an open-ended read of a per-recipient table
  * is the write-amplification hazard D16 exists to prevent.
  *
- * A malformed `cell` returns `[]` rather than scanning an empty index
+ * A malformed `cell` returns an empty page rather than scanning an empty index
  * partition: `cell` is a plain string in the schema, so the parse is the only
  * thing standing between a typo and a silently empty result set.
+ *
+ * TRUNCATION IS EXPLICIT. The index range is ASCENDING on `assignedAt`, so a
+ * window holding more than `limit` rows would otherwise hand back the OLDEST
+ * `limit` of them as a bare array — indistinguishable from a complete window.
+ * A per-recipient table exceeds any sane page size routinely, and every named
+ * consumer of this seam (the ramp controller's gates, the dashboard) computes
+ * RATIOS over the window; a truncated denominator that looks complete is
+ * exactly how the controller and the dashboard come to disagree about a number
+ * (D5). So the page is returned as `{ rows, hasMore }`, computed by taking one
+ * row more than asked for: a caller must handle `hasMore` to ignore it.
  */
+export interface CellAssignmentPage {
+	readonly rows: Array<Doc<'sendAssignments'>>;
+	/** True when the window holds more rows than this page returned. */
+	readonly hasMore: boolean;
+}
+
 export const listCellAssignments = internalQuery({
 	args: {
 		organizationId: v.string(),
@@ -380,18 +417,20 @@ export const listCellAssignments = internalQuery({
 		until: v.number(),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		if (!isDeliverabilityCellKey(args.cell)) return [];
+	handler: async (ctx, args): Promise<CellAssignmentPage> => {
+		if (!isDeliverabilityCellKey(args.cell)) return { rows: [], hasMore: false };
 		// Convex `v.number()` is a float64: `NaN`/`Infinity` are valid arguments.
 		// An unguarded NaN reaches `.take(NaN)` and makes the range bound
 		// meaningless, so every numeric argument is checked before it is used.
-		if (!Number.isFinite(args.since) || !Number.isFinite(args.until)) return [];
+		if (!Number.isFinite(args.since) || !Number.isFinite(args.until)) {
+			return { rows: [], hasMore: false };
+		}
 		const requested = args.limit;
 		const limit =
 			requested === undefined || !Number.isFinite(requested)
 				? DEFAULT_CELL_PAGE_SIZE
 				: Math.min(Math.max(Math.floor(requested), 1), MAX_CELL_PAGE_SIZE);
-		return await ctx.db
+		const page = await ctx.db
 			.query('sendAssignments')
 			.withIndex('by_org_cell_time', (q) =>
 				q
@@ -400,7 +439,8 @@ export const listCellAssignments = internalQuery({
 					.gte('assignedAt', args.since)
 					.lt('assignedAt', args.until)
 			)
-			.take(limit);
+			.take(limit + 1);
+		return { rows: page.slice(0, limit), hasMore: page.length > limit };
 	},
 });
 

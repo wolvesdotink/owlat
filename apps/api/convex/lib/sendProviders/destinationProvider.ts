@@ -10,10 +10,13 @@
  * ("adopt the shipped classifier, do not re-implement it"). Both now call
  * this.
  *
- * Domains are normalized (trimmed + lowercased) before the point read:
- * observations are stored lowercase, so `A@Gmail.com` would otherwise miss a
- * learned row that `a@gmail.com` hits, and a batch mixing the two casings
- * would issue two reads for one domain.
+ * Domains are normalized (trimmed + lowercased) before the point read, because
+ * observations are stored lowercase. This is DEFENCE IN DEPTH, not a fix for a
+ * live bug: callers that derive the domain from an address arrive through
+ * `parseAddress` (`@owlat/shared`), which already lowercases. But
+ * `resolveDestinationProvider` takes a bare `domain: string` — an MX-learning
+ * writer, a backfill or an admin tool can hand it a raw, mixed-case label — and
+ * such a caller would otherwise miss the learned row it should hit.
  */
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
