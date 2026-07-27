@@ -33,6 +33,7 @@ import {
 } from './sendLifecycle/lookups';
 import { withoutTestSendEffects } from './sendLifecycle/types';
 import { transportOutcomeEventForTransition } from '../analytics/transportOutcomeSummary';
+import type { TransportOutcomeEvent } from '../analytics/transportOutcomeSummary';
 import { mirrorEmailSendWrite } from '../unifiedMessages';
 
 // ============================================================================
@@ -230,6 +231,14 @@ async function dispatch(
 		}
 	}
 
+	// One constructor for the per-cell outcome effect; both sites below use it.
+	const outcomeEffect = (event: TransportOutcomeEvent): Effect => ({
+		kind: 'transport_outcome',
+		sendId: ref.id,
+		event,
+		at: input.at,
+	});
+
 	// An SMTP rejection or post-DATA ambiguity goes `queued -> terminal` without
 	// passing through `sent`, so `reduceSent`'s outbound accounting never runs.
 	// Preserve the rate denominator only when the callback proves an envelope
@@ -251,28 +260,22 @@ async function dispatch(
 						eventType: 'send',
 						domain: deliverySenderDomain ?? (await senderDomainFor(ctx, send, ref)),
 					},
-					// The per-cell outcome denominator follows the same evidence
-					// rule as the reputation one: an envelope provably reached the
-					// wire, so the arm comparison must count it as sent.
-					{ kind: 'transport_outcome', sendId: ref.id, event: 'sent', at: input.at },
+					// Same evidence rule as the reputation counter above it.
+					outcomeEffect('sent'),
 				]
 			: [];
 
 	// Per-cell, per-arm DELIVERABILITY outcome (plan D5, fixing G-05: acceptance
-	// is not delivery). Derived purely from the transition and appended to the
-	// SAME effect list, so it inherits the lifecycle's duplicate suppression and
-	// the test-send stripping below rather than reimplementing either. A `failed`
-	// transition maps to no event — a local non-delivery is not a transport
-	// outcome. The cell and arm are resolved by the effect runner, by joining the
-	// send to its `sendAssignments` row.
+	// is not delivery). Appended to the SAME effect list, so it inherits the
+	// lifecycle's duplicate suppression and the test-send stripping below.
+	// `failed` maps to no event (a local non-delivery is not a transport
+	// outcome), and neither do `opened`/`clicked` — the reducers emit those under
+	// the shipped UNIQUE gate. Cell and arm are resolved by the effect runner.
 	const outcomeEvent = transportOutcomeEventForTransition(
 		input.to,
 		input.to === 'bounced' ? input.bounceType : undefined
 	);
-	const transportOutcomeEffects: Effect[] =
-		outcomeEvent === null
-			? []
-			: [{ kind: 'transport_outcome', sendId: ref.id, event: outcomeEvent, at: input.at }];
+	const outcomeEffects: Effect[] = outcomeEvent === null ? [] : [outcomeEffect(outcomeEvent)];
 
 	result = withoutTestSendEffects(send, ref, {
 		...result,
@@ -281,7 +284,7 @@ async function dispatch(
 			...queuedTerminalSendAccounting,
 			...deliveryObservation.effects,
 			...result.effects,
-			...transportOutcomeEffects,
+			...outcomeEffects,
 		],
 		applied:
 			deliveryObservation.isNewObservation && result.applied === 'duplicate'

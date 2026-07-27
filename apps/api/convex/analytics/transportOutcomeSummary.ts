@@ -17,7 +17,7 @@
  */
 
 import type { Doc } from '../_generated/dataModel';
-import { startOfDayUtc } from './sendingReputation';
+import { startOfDayUtc } from '../lib/clock';
 
 export type TransportOutcomeBucket = Doc<'transportOutcomes'>;
 export type TransportOutcomeArm = TransportOutcomeBucket['arm'];
@@ -102,6 +102,18 @@ export function transportOutcomeCounters(
  * transport outcome would put our own refusals into the arm comparison. The
  * lifecycle's queued→terminal MTA path already re-supplies the `sent`
  * denominator where an envelope provably reached the wire.
+ *
+ * `opened` and `clicked` are unmapped HERE ON PURPOSE, and this is the one
+ * subtlety in the module. Every shipped engagement counter in the product
+ * (`daily_stats_bump`, `campaign_stats_opened`/`_clicked`) counts UNIQUES — it
+ * is gated on `isFirstOpen` / `isFirstClick` inside the reducer — while a
+ * transition is emitted for every re-fire (image prefetch reopens a message 3-5
+ * times). Mapping the transition would make `openRate` an opens-per-delivered
+ * number that routinely exceeds 1.0 and disagrees with the campaign dashboard
+ * over the same traffic, which is precisely what plan D5 exists to prevent.
+ * So the engagement outcome effects are pushed by `reduceOpened`/`reduceClicked`
+ * from inside their existing uniqueness gate, next to the shipped counter they
+ * must agree with. Do not re-add them here.
  */
 export function transportOutcomeEventForTransition(
 	to: 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained',
@@ -112,14 +124,12 @@ export function transportOutcomeEventForTransition(
 			return 'sent';
 		case 'delivered':
 			return 'delivered';
-		case 'opened':
-			return 'opened';
-		case 'clicked':
-			return 'clicked';
 		case 'complained':
 			return 'complained';
 		case 'bounced':
 			return bounceType === 'hard' ? 'hard_bounced' : 'soft_bounced';
+		case 'opened':
+		case 'clicked':
 		case 'failed':
 			return null;
 	}
@@ -142,6 +152,25 @@ export interface TransportOutcomeTotals {
 	readonly calibrationClicked: number;
 }
 
+/**
+ * A window's summed counters plus every rate derived from them.
+ *
+ * DENOMINATORS ARE NOT ALL THE SAME, and a gate that compares two of these
+ * numbers must know which it is holding:
+ *
+ *   - `deliveryRate`, `deferralRate`, `bounceRate`, `hardBounceRate` and
+ *     `complaintRate` are denominated on `sent`;
+ *   - `openRate`, `clickRate` and `unsubscribeRate` are denominated on
+ *     `delivered`. The plan makes unsubscribe the complaint-equivalent for the
+ *     standalone arm (no feedback loop to report complaints), so a standalone
+ *     gate comparing `unsubscribeRate` against `complaintRate` is comparing two
+ *     differently-denominated numbers — convert, or compare like for like.
+ *
+ * Every rate here is bounded to [0, 1]: the open/click numerators count UNIQUE
+ * opens and clicks, because the effects that feed them are emitted from inside
+ * the lifecycle reducers' `isFirstOpen` / `isFirstClick` gate, exactly like the
+ * shipped dashboard counters. See `transportOutcomeEventForTransition`.
+ */
 export interface TransportOutcomeSummary extends TransportOutcomeTotals {
 	/** softBounced + hardBounced — summed, never stored. */
 	readonly bounced: number;
@@ -157,6 +186,13 @@ export interface TransportOutcomeSummary extends TransportOutcomeTotals {
 	/** The calibration slice's own rates — the engagement-ratio gate's input. */
 	readonly calibrationOpenRate: number;
 	readonly calibrationClickRate: number;
+	/**
+	 * Freshness: the newest `lastRecordedAt` across the summed buckets, or
+	 * `null` when the window is empty. The controller may only INCREASE on fresh
+	 * evidence (plan D9/D10), and it learns how fresh the evidence is through
+	 * this one read seam rather than by re-reading the raw rows.
+	 */
+	readonly lastRecordedAt: number | null;
 }
 
 /** A zeroed counter set — the insert shape and the summation identity. */
@@ -228,9 +264,19 @@ export function summarizeTransportOutcomeBuckets(
 		...ZERO_TRANSPORT_OUTCOME_TOTALS,
 	};
 
+	let lastRecordedAt: number | null = null;
+
 	for (const bucket of buckets) {
 		if (!Number.isFinite(bucket.periodStart)) continue;
 		if (bucket.periodStart < sinceDay || bucket.periodStart >= until) continue;
+		const recordedAt = bucket.lastRecordedAt;
+		if (
+			recordedAt !== undefined &&
+			Number.isFinite(recordedAt) &&
+			(lastRecordedAt === null || recordedAt > lastRecordedAt)
+		) {
+			lastRecordedAt = recordedAt;
+		}
 		totals.sent += safeOutcomeCount(bucket.sent);
 		totals.delivered += safeOutcomeCount(bucket.delivered);
 		totals.deferred += safeOutcomeCount(bucket.deferred);
@@ -259,5 +305,6 @@ export function summarizeTransportOutcomeBuckets(
 		unsubscribeRate: rate(totals.unsubscribed, totals.delivered),
 		calibrationOpenRate: rate(totals.calibrationOpened, totals.calibrationSent),
 		calibrationClickRate: rate(totals.calibrationClicked, totals.calibrationSent),
+		lastRecordedAt,
 	};
 }
