@@ -191,6 +191,14 @@ export type SharedMtaWebhookEvent =
 			selector?: string;
 	  });
 
+/**
+ * The ingress bound on every human-readable `message` field. Convex rejects the
+ * WHOLE event when it is exceeded, so producers that must not be dropped (the
+ * DNSBL halt alert) build their message to fit against this exact number rather
+ * than a duplicated literal.
+ */
+export const MTA_WEBHOOK_MESSAGE_MAX_LENGTH = 512;
+
 const EVENT_TYPES = new Set<string>(MTA_WEBHOOK_EVENT_TYPES);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const CAMPAIGN_ID = /^[a-z0-9]{16,64}$/;
@@ -222,7 +230,7 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 	if (
 		!optionalBounded(value['recipient'], 320) ||
 		!optionalBounded(value['organizationId'], 128) ||
-		!optionalBounded(value['message'], 512) ||
+		!optionalBounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH) ||
 		!optionalBounded(value['errorCode'], 128) ||
 		!optionalBounded(value['ip'], 64) ||
 		!optionalBounded(value['domain'], 253) ||
@@ -274,7 +282,7 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 			return (
 				bounded(value['organizationId'], 128) &&
 				ratio(value['bounceRate']) &&
-				bounded(value['message'], 512)
+				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH)
 			);
 		case 'campaign.complaint_rate':
 			return (
@@ -283,19 +291,19 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 				typeof value['campaignId'] === 'string' &&
 				CAMPAIGN_ID.test(value['campaignId']) &&
 				ratio(value['complaintRate']) &&
-				bounded(value['message'], 512)
+				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH)
 			);
 		case 'ip.blocklisted':
 			return (
 				bounded(value['ip'], 64) &&
-				bounded(value['message'], 512) &&
+				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH) &&
 				(value['blocklists'] === undefined || boundedStrings(value['blocklists'], 100, 253))
 			);
 		case 'ip.delisted':
 		case 'ip.warming_complete':
-			return bounded(value['ip'], 64) && bounded(value['message'], 512);
+			return bounded(value['ip'], 64) && bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH);
 		case 'all_ips_blocked':
-			return bounded(value['message'], 512);
+			return bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH);
 		case 'postmaster.authorize_domain':
 			return bounded(value['domain'], 253);
 		case 'postmaster.stats':
@@ -361,7 +369,7 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 				typeof value['eligibilityGeneration'] === 'number' &&
 				Number.isSafeInteger(value['eligibilityGeneration']) &&
 				value['eligibilityGeneration'] >= 1 &&
-				bounded(value['message'], 512)
+				bounded(value['message'], MTA_WEBHOOK_MESSAGE_MAX_LENGTH)
 			);
 		}
 		case 'deliverability.probe_observed':

@@ -1,6 +1,9 @@
 import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
-import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
+import {
+	DESTINATION_PROVIDER_KEYS,
+	isAdvisoryDeliverabilitySignalSource,
+} from '@owlat/shared/deliverabilityRouting';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
@@ -41,7 +44,14 @@ export const applySnapshot = internalMutation({
 			const signals = args.signals
 				.filter((signal) => signal.provider === provider)
 				.map(({ source, severity, observedAt }) => ({ source, severity, observedAt }));
-			const degraded = signals.length > 0;
+			// Advisory sources report measurement state (a blocklist lookup that
+			// could not be completed, a partially ejected pool). They are persisted
+			// so the ramp controller and the dashboard can read them, but they must
+			// never on their own flip a provider slice onto the relay: "we could not
+			// measure" is neither evidence of health nor a routing verdict.
+			const degraded = signals.some(
+				(signal) => !isAdvisoryDeliverabilitySignalSource(signal.source)
+			);
 			let persistedSignals = signals;
 			let isFallbackActive = existing?.isFallbackActive ?? false;
 			let fallbackActiveSince = existing?.fallbackActiveSince;
@@ -54,7 +64,14 @@ export const applySnapshot = internalMutation({
 				// Preserve the triggering reasons while hysteresis deliberately keeps
 				// fallback active. Route resolution uses these reasons as its decision
 				// input, so clearing them before failback would bypass the cooldown.
-				persistedSignals = existing?.signals ?? [];
+				// Advisory readings are refreshed rather than preserved: they carry no
+				// routing weight and must reflect the latest snapshot.
+				persistedSignals = [
+					...(existing?.signals ?? []).filter(
+						(signal) => !isAdvisoryDeliverabilitySignalSource(signal.source)
+					),
+					...signals.filter((signal) => isAdvisoryDeliverabilitySignalSource(signal.source)),
+				];
 				healthySince ??= args.appliedAt;
 				const healthyLongEnough = args.appliedAt - healthySince >= DELIVERABILITY_MIN_HEALTHY_MS;
 				const cooldownComplete =
@@ -62,7 +79,7 @@ export const applySnapshot = internalMutation({
 					args.appliedAt - fallbackActiveSince >= DELIVERABILITY_FALLBACK_COOLDOWN_MS;
 				if (healthyLongEnough && cooldownComplete) {
 					isFallbackActive = false;
-					persistedSignals = [];
+					persistedSignals = signals;
 					fallbackActiveSince = undefined;
 					healthySince = undefined;
 				}
