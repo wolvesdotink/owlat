@@ -325,20 +325,6 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	// schedule adjustment, after which the hourly cron must not re-advance today.
 	await redis.hset(hashKey, 'lastEvaluatedDate', today);
 
-	// Re-shape the per-(IP x mailbox provider) caps under the SAME per-UTC-day
-	// guard. This narrows or widens a provider's share of the per-IP cap; it
-	// never changes the per-IP schedule the branches below advance.
-	//
-	// The window is YESTERDAY, not `today`: the guard above arms at the FIRST
-	// hourly tick with any traffic, so `today` is a minutes-old partial window
-	// that keeps every provider below `minimumSampleSends` (D10 =>
-	// `insufficient_data`, which HOLDS) and whose daily `pressure` counter is
-	// still almost entirely in the future. The completed previous UTC day is a
-	// whole window and is still live under PROVIDER_DAILY_STATS_TTL_SECONDS (48h).
-	// Accepted consequence: a zero-send day returns above, so a fully idle day
-	// defers yesterday's provider evaluation to the next day that sends anything.
-	await evaluateProviderWarmingDay(redis, ip, utcDateKey(now - MS_PER_UTC_DAY));
-
 	// The four-way schedule adjustment and the graduation gate live in
 	// `warmingScheduleAdjustment.ts`; both are unchanged from the shipped
 	// cascade and run exactly once, under the guard armed above.
@@ -351,14 +337,41 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	});
 	// As shipped: a halt or a deceleration ends the day here; only an advance is
 	// followed by the graduation check.
-	if (adjustment !== 'advanced') return;
-	await applyWarmingGraduation(
-		redis,
-		ip,
-		hashKey,
-		config,
-		await getWarmingState(redis, ip),
-		bounceRate
+	if (adjustment === 'advanced') {
+		await applyWarmingGraduation(
+			redis,
+			ip,
+			hashKey,
+			config,
+			await getWarmingState(redis, ip),
+			bounceRate
+		);
+	}
+
+	// Re-shape the per-(IP x mailbox provider) caps under the SAME per-UTC-day
+	// guard. This narrows or widens a provider's share of the per-IP cap; it
+	// never changes the per-IP schedule applied above.
+	//
+	// It runs LAST and it CANNOT FAIL THE CALLER. The guard was armed before the
+	// shipped cascade, so anything that throws between arming it and completing
+	// that cascade would cost this IP its entire UTC day of schedule progress —
+	// including the critical HALT branch — with no retry. The additive dimension
+	// therefore runs after the authoritative schedule is durable, and its failure
+	// is logged and swallowed (D1/D19: the shipped path is untouched by the
+	// additive one).
+	//
+	// The window is YESTERDAY, not `today`: the guard above arms at the FIRST
+	// hourly tick with any traffic, so `today` is a minutes-old partial window
+	// that keeps every provider below `minimumSampleSends` (D10 =>
+	// `insufficient_data`, which HOLDS) and whose daily `pressure` counter is
+	// still almost entirely in the future. The completed previous UTC day is a
+	// whole window and is still live under PROVIDER_DAILY_STATS_TTL_SECONDS (48h).
+	// Accepted consequence: a zero-send day returns above, so a fully idle day
+	// defers yesterday's provider evaluation to the next day that sends anything.
+	await evaluateProviderWarmingDay(redis, ip, utcDateKey(now - MS_PER_UTC_DAY)).catch(
+		(err: unknown) => {
+			logger.warn({ err, ip }, 'Per-provider warming evaluation failed');
+		}
 	);
 }
 
