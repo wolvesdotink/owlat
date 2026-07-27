@@ -109,6 +109,20 @@ describe('selectRuntimeEnvVars', () => {
 		expect(out['MTA_RETURN_PATH_DOMAIN']).toBe('bounces.example.com');
 	});
 
+	it('projects the MTA VERP signing key so relay sends can be attributed', () => {
+		// ONE secret, two readers: the MTA verifies the tokens it minted and Convex
+		// mints the same tokens on relay sends. An operator must never have to
+		// hand-copy a signing key into a second variable.
+		const out = Object.fromEntries(
+			selectRuntimeEnvVars({ BOUNCE_VERP_KEY: `  ${'k'.repeat(32)}  ` })
+		);
+		expect(out['MTA_BOUNCE_VERP_KEY']).toBe('k'.repeat(32));
+	});
+
+	it('pushes the VERP signing key — a key left out of the deployment is a dead feature', () => {
+		expect(CONVEX_RUNTIME_ENV_KEYS).toContain('MTA_BOUNCE_VERP_KEY');
+	});
+
 	it('preserves legacy aliases when canonical MTA variables are absent', () => {
 		const out = Object.fromEntries(
 			selectRuntimeEnvVars({

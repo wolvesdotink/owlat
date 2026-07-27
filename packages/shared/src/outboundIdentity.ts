@@ -99,5 +99,12 @@ export function projectCanonicalMtaRuntimeEnv(env: Record<string, string>): Reco
 	if (env['RETURN_PATH_DOMAIN'] !== undefined) {
 		projected['MTA_RETURN_PATH_DOMAIN'] = env['RETURN_PATH_DOMAIN'].trim();
 	}
+	// The VERP signing key is ONE secret with two readers: the MTA verifies the
+	// tokens it minted, and Convex mints the same tokens on relay sends. Project
+	// it rather than making an operator hand-copy a signing key into a second
+	// variable — a silent typo there mints tokens the MTA will never verify.
+	if (env['BOUNCE_VERP_KEY'] !== undefined) {
+		projected['MTA_BOUNCE_VERP_KEY'] = env['BOUNCE_VERP_KEY'].trim();
+	}
 	return projected;
 }

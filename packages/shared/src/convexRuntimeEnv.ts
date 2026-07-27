@@ -85,6 +85,10 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'MTA_WEBHOOK_SECRET',
 	'MTA_IP_POOLS',
 	'MTA_RETURN_PATH_DOMAIN',
+	// The MTA's VERP signing key. Pushed because the Convex relay adapter stamps
+	// the SAME signed envelope sender on relay sends — without it in the
+	// deployment the relay arm produces no bounce data of its own.
+	'MTA_BOUNCE_VERP_KEY',
 	// The active transport's effective DKIM d= domain, when it isn't the per-message
 	// From-domain. Read by the outbound DMARC-alignment guard at Convex function
 	// runtime (delivery status + campaign From-picker), so it must be pushed.
