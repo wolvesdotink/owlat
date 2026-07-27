@@ -19,15 +19,16 @@ import { getOptional } from '../lib/env';
 import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
 import {
 	aggregateSndsDays,
+	DAY_MS,
 	normalizeSndsIp,
 	parseSndsFeed,
 	SNDS_MAX_FEED_BYTES,
+	utcDayStart,
 	type SndsDayObservation,
 } from './sndsFeed';
 import { buildSndsGateInput, type SndsGateInput } from './sndsGate';
 import { observationVerdict } from './observationFreshness';
 
-const DAY_MS = 24 * 60 * 60 * 1_000;
 const INGEST_MAX_AGE_MS = 14 * DAY_MS;
 const RETENTION_MS = 90 * DAY_MS;
 const FETCHED_AT_FUTURE_TOLERANCE_MS = 5 * 60 * 1_000;
@@ -36,6 +37,16 @@ const FEED_TIMEOUT_MS = 20_000;
 /** Bounds on the operator-supplied configuration and on each poll's fan-out. */
 export const SNDS_MAX_FEEDS = 8;
 export const SNDS_INGEST_BATCH_SIZE = 64;
+/**
+ * The hard ceiling on one poll's ingest fan-out (D16 — write amplification is a
+ * design constraint). Every observation past it costs a `runMutation` round trip
+ * carrying indexed reads and writes, and the feed decides how many there are:
+ * {@link SNDS_MAX_FEEDS} feeds x {@link SNDS_MAX_ROWS} rows can fold to six
+ * figures of (IP, day) pairs. This bounds the tick at ~32 batched mutations for
+ * a pool far larger than any real deployment, and the overflow is COUNTED rather
+ * than silently dropped.
+ */
+export const SNDS_MAX_OBSERVATIONS_PER_POLL = 2_000;
 export const SNDS_CLEANUP_BATCH_SIZE = 128;
 /** How many stored days one gate evaluation may read. */
 export const SNDS_GATE_MAX_ROWS = 512;
@@ -89,11 +100,18 @@ export interface SndsPollSummary {
 	enrolled: boolean;
 	feeds: number;
 	feedsFailed: number;
+	/** Observations actually dispatched to the ingest mutation. */
 	observations: number;
 	ingested: number;
 	rejected: number;
+	/** Reads the store acknowledged as byte-identical replays of what it holds. */
+	replayed: number;
 	droppedRows: number;
 	foreignIps: number;
+	/** Days the feed reported outside the ingest window, dropped before dispatch. */
+	outOfWindow: number;
+	/** Observations dropped by {@link SNDS_MAX_OBSERVATIONS_PER_POLL}. */
+	capped: number;
 	truncated: boolean;
 }
 
@@ -104,12 +122,25 @@ const NOT_ENROLLED: SndsPollSummary = {
 	observations: 0,
 	ingested: 0,
 	rejected: 0,
+	replayed: 0,
 	droppedRows: 0,
 	foreignIps: 0,
+	outOfWindow: 0,
+	capped: 0,
 	truncated: false,
 };
 
-/** Fetch one feed's body, bounded in time and size. `null` on any failure. */
+/**
+ * Fetch one feed's body, bounded in time and in size. `null` on any failure,
+ * which the caller counts as `feedsFailed`.
+ *
+ * THE SIZE BOUND IS ENFORCED WHILE READING, not after. `await response.text()`
+ * would materialise whatever the server chose to send before any check could
+ * run, and `content-length` is a hint only a well-behaved server volunteers —
+ * so the body is drained through a reader and the connection is cancelled the
+ * moment it crosses {@link SNDS_MAX_FEED_BYTES}. A feed that overruns is a
+ * FAILED feed, never a truncated one: half a CSV row is not evidence.
+ */
 async function fetchFeed(url: string): Promise<string | null> {
 	try {
 		const response = await fetch(url, {
@@ -119,12 +150,37 @@ async function fetchFeed(url: string): Promise<string | null> {
 		if (!response.ok) return null;
 		const declaredLength = Number(response.headers.get('content-length') ?? '');
 		if (Number.isFinite(declaredLength) && declaredLength > SNDS_MAX_FEED_BYTES) return null;
-		const body = await response.text();
-		// The row cap in the parser bounds the rest; this bounds the string.
-		return body.length > SNDS_MAX_FEED_BYTES ? body.slice(0, SNDS_MAX_FEED_BYTES) : body;
+		return await readBounded(response, SNDS_MAX_FEED_BYTES);
 	} catch {
 		return null;
 	}
+}
+
+/** Drain a response body up to `maxBytes`, or `null` if it exceeds that. */
+async function readBounded(response: Response, maxBytes: number): Promise<string | null> {
+	const body = response.body;
+	if (body === null) return '';
+	const reader = body.getReader();
+	const decoder = new TextDecoder();
+	let received = 0;
+	let text = '';
+	try {
+		for (;;) {
+			const chunk = await reader.read();
+			if (chunk.done) break;
+			const value: Uint8Array | undefined = chunk.value;
+			if (value === undefined) continue;
+			received += value.byteLength;
+			if (received > maxBytes) {
+				await reader.cancel();
+				return null;
+			}
+			text += decoder.decode(value, { stream: true });
+		}
+	} finally {
+		reader.releaseLock();
+	}
+	return text + decoder.decode();
 }
 
 export const poll = internalAction({
@@ -138,6 +194,10 @@ export const poll = internalAction({
 		const fetchedAt = Date.now();
 		const summary: SndsPollSummary = { ...NOT_ENROLLED, enrolled: true, feeds: urls.length };
 		const observations: SndsDayObservation[] = [];
+		// EVERY filter the mutation would apply is applied HERE first: the round
+		// trip is the expensive part of ingest, so a day we already know will be
+		// refused must never be paid for (D16).
+		const oldestDay = utcDayStart(fetchedAt) - INGEST_MAX_AGE_MS;
 
 		for (const url of urls) {
 			const body = await fetchFeed(url);
@@ -153,6 +213,14 @@ export const poll = internalAction({
 					summary.foreignIps += 1;
 					continue;
 				}
+				if (day.periodStart < oldestDay || day.periodStart > fetchedAt) {
+					summary.outOfWindow += 1;
+					continue;
+				}
+				if (observations.length >= SNDS_MAX_OBSERVATIONS_PER_POLL) {
+					summary.capped += 1;
+					continue;
+				}
 				observations.push(day);
 			}
 		}
@@ -166,6 +234,7 @@ export const poll = internalAction({
 			});
 			summary.ingested += result.ingested;
 			summary.rejected += result.rejected;
+			summary.replayed += result.replayed;
 		}
 		return summary;
 	},
@@ -184,21 +253,14 @@ const observationValidator = v.object({
 });
 
 /** A counter that survived the wire: finite, non-negative, integral. */
-function isCount(value: number): boolean {
+function isNonNegativeSafeInteger(value: number): boolean {
 	return Number.isSafeInteger(value) && value >= 0;
 }
 
 function isStorableObservation(
 	now: number,
 	fetchedAt: number,
-	observation: {
-		ip: string;
-		periodStart: number;
-		trapHits: number;
-		messageRecipients: number;
-		rcptCommands: number;
-		dataCommands: number;
-	}
+	observation: SndsDayObservation
 ): boolean {
 	return (
 		normalizeSndsIp(observation.ip) === observation.ip &&
@@ -209,10 +271,10 @@ function isStorableObservation(
 		Number.isFinite(fetchedAt) &&
 		fetchedAt >= observation.periodStart &&
 		fetchedAt <= now + FETCHED_AT_FUTURE_TOLERANCE_MS &&
-		isCount(observation.trapHits) &&
-		isCount(observation.messageRecipients) &&
-		isCount(observation.rcptCommands) &&
-		isCount(observation.dataCommands)
+		isNonNegativeSafeInteger(observation.trapHits) &&
+		isNonNegativeSafeInteger(observation.messageRecipients) &&
+		isNonNegativeSafeInteger(observation.rcptCommands) &&
+		isNonNegativeSafeInteger(observation.dataCommands)
 	);
 }
 
@@ -231,6 +293,10 @@ export const ingestDays = internalMutation({
 		let ingested = 0;
 		let rejected = 0;
 		let replayed = 0;
+		// A caller that oversends is a caller with a bug. The batch cap still holds,
+		// but the overflow is COUNTED as refused — slicing it away silently means a
+		// caller passing 100 sees ingested + rejected < 100 and never learns why.
+		rejected += Math.max(0, args.observations.length - SNDS_INGEST_BATCH_SIZE);
 		for (const observation of args.observations.slice(0, SNDS_INGEST_BATCH_SIZE)) {
 			if (!isStorableObservation(now, args.fetchedAt, observation)) {
 				rejected += 1;
@@ -248,19 +314,9 @@ export const ingestDays = internalMutation({
 				else rejected += 1;
 				continue;
 			}
-			const values = {
-				ip: observation.ip,
-				periodStart: observation.periodStart,
-				complaintBand: observation.complaintBand,
-				filterResult: observation.filterResult,
-				trapHits: observation.trapHits,
-				messageRecipients: observation.messageRecipients,
-				rcptCommands: observation.rcptCommands,
-				dataCommands: observation.dataCommands,
-				...(observation.sampleHelo !== undefined ? { sampleHelo: observation.sampleHelo } : {}),
-				fetchedAt: args.fetchedAt,
-				ingestedAt: now,
-			};
+			// Spread the validated observation: it IS the row's shape, so respelling
+			// its eight fields here would be a fourth place to keep them in step.
+			const values = { ...observation, fetchedAt: args.fetchedAt, ingestedAt: now };
 			if (existing) await ctx.db.replace(existing._id, values);
 			else await ctx.db.insert('sndsIpDailyStats', values);
 			ingested += 1;
@@ -304,13 +360,21 @@ export const getMicrosoftGateInput = internalQuery({
 		if (!enrolled) return buildSndsGateInput({ enrolled, windowDays, observations: [] });
 
 		const cutoff = Date.now() - windowDays * DAY_MS;
+		// NEWEST FIRST. The read is capped, and an ascending scan spends the cap on
+		// the OLDEST days — so above ~73 pool IPs a red filter result recorded today
+		// is exactly the row that falls off the end, and the gate answers `pass`
+		// from a window that no longer contains the breach. Descending keeps today's
+		// evidence inside the cap, and `truncated` then tells the gate that what it
+		// did NOT see must never be read as cleanliness.
 		const rows = await ctx.db
 			.query('sndsIpDailyStats')
 			.withIndex('by_period', (q) => q.gte('periodStart', cutoff))
-			.take(SNDS_GATE_MAX_ROWS); // bounded: pool IPs x window days
+			.order('desc')
+			.take(SNDS_GATE_MAX_ROWS);
 		return buildSndsGateInput({
 			enrolled,
 			windowDays,
+			truncated: rows.length >= SNDS_GATE_MAX_ROWS,
 			observations: rows.map((row) => ({
 				ip: row.ip,
 				periodStart: row.periodStart,
