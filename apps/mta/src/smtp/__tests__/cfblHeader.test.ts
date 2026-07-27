@@ -375,6 +375,28 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 			expect(await emissionCount('emitted')).toBe(1);
 			expect(await emissionCount('no_signature')).toBe(1);
 		});
+
+		it('reports no_signature when a configured key FAILS to sign', async () => {
+			// A key being configured is not the same as the bytes being signed: the
+			// sender ships unsigned rather than corrupt-signed when the signer
+			// throws, and the composer has already embedded the CFBL pair by then.
+			// That is exactly the §3.1.4 state `no_signature` exists to surface, so
+			// the outcome is derived from the bytes, not from the configuration.
+			await alignReturnPath();
+			vi.mocked(getDkimOptions).mockResolvedValue({
+				domainName: FROM_DOMAIN,
+				keySelector: 'broken',
+				privateKey: '-----BEGIN PRIVATE KEY-----\nnot-a-key\n-----END PRIVATE KEY-----\n',
+			});
+
+			const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+
+			// D2: the failure is silent and non-blocking — the send still succeeds.
+			expect(result.success).toBe(true);
+			expect(wireBytes()).not.toContain('DKIM-Signature');
+			expect(await emissionCount('no_signature')).toBe(1);
+			expect(await emissionCount('emitted')).toBe(0);
+		});
 	});
 
 	it.each(['transactional', 'campaign'] as const)(
@@ -560,20 +582,27 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 			expect(dkim?.signingDomain).toBe(FROM_DOMAIN);
 		});
 
-		it('OVERSIGNS cfbl-address, so an added second instance breaks the signature', async () => {
+		// Both CFBL fields are oversigned, so the tamper assertion is parameterised
+		// over both: an `h=` slot count alone proves the null header exists, not
+		// that a prepended duplicate actually fails verification.
+		it.each([
+			['CFBL-Address', 'attacker@evil.test; report=arf'],
+			['CFBL-Feedback-ID', 'AAAA+BBBB'],
+		])('OVERSIGNS %s, so an added second instance breaks the signature', async (field, forged) => {
 			const resolver = dkimTestResolver(FROM_DOMAIN);
 			await alignReturnPath();
 
 			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
 
 			// Two slots for one instance: the extra one is the RFC 6376 §5.4 null
-			// header that a later-prepended CFBL-Address would have to occupy.
-			expect(signedHeaderList().filter((name) => name === 'cfbl-address')).toHaveLength(2);
+			// header that a later-prepended instance of the field would occupy.
+			expect(signedHeaderList().filter((name) => name === field.toLowerCase())).toHaveLength(2);
 
 			const tampered = wireBytes().replace(
-				/^CFBL-Address:/m,
-				'CFBL-Address: attacker@evil.test; report=arf\r\nCFBL-Address:'
+				new RegExp(`^${field}:`, 'm'),
+				`${field}: ${forged}\r\n${field}:`
 			);
+			expect(tampered).not.toBe(wireBytes());
 			const result = await dkimVerify(tampered, { resolver });
 			expect(result.results[0]?.status?.result).not.toBe('pass');
 		});
