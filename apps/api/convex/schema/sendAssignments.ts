@@ -33,7 +33,15 @@ export const sendAssignmentTables = {
 		sendKind: v.union(v.literal('campaign'), v.literal('transactional')),
 		// `${stream}:${destinationProvider}` — see @owlat/shared/deliverabilityCell.
 		cell: v.string(),
-		// Plugin/core transport key from the shipped send-transport catalog.
+		// The provider KIND from the shipped send-transport catalog (`mta`,
+		// `ses`, `resend`, `smtp`, a plugin transport kind) — deliberately NOT a
+		// `SendTransportId` (`lib/sendProviders/transports.ts`, `<kind>` or
+		// `<kind>#<instanceKey>`). The routing layer's own verdict
+		// (`ResolvedRoute.providerType`) is a kind, so a kind is the most
+		// specific thing this column can honestly hold; two configured instances
+		// of one kind therefore both record e.g. `ses`. That is the right grain
+		// for the arm question this table exists to answer — `own` vs
+		// `reference` is a property of the kind, not of the instance.
 		transport: v.string(),
 		arm: v.union(v.literal('own'), v.literal('reference')),
 		// `is*` prefix per CONVENTIONS.md boolean naming (the plan sketch called

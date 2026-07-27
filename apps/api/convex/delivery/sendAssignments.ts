@@ -84,6 +84,12 @@ export type SendAssignmentKind = Doc<'sendAssignments'>['sendKind'];
  * Pure: which arm a transport belongs to. The own MTA is the `own` arm; every
  * other catalog transport (SES, Resend, SMTP relay, plugin transports) is the
  * `reference` arm we measure against.
+ *
+ * `transport` here is the provider KIND, not a `SendTransportId`
+ * (`lib/sendProviders/transports.ts`): the routing layer's verdict
+ * (`ResolvedRoute.providerType`) is a kind, and the arm question is a property
+ * of the kind — two configured `ses` instances are both `reference`. The
+ * `sendAssignments.transport` column stores the same kind for the same reason.
  */
 export function armForTransport(transport: SendProviderKind): SendAssignmentArm {
 	return transport === OWN_TRANSPORT_KEY ? 'own' : 'reference';
