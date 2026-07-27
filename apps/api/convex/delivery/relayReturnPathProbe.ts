@@ -35,8 +35,22 @@ import { internalAction } from '../_generated/server';
 import { getOptional } from '../lib/env';
 import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
 import { sendViaRelay } from '../lib/sendProviders/smtp';
-import { listSendTransports, tryResolveSendTransport } from '../lib/sendProviders/transports';
+import {
+	listSendTransports,
+	tryResolveSendTransport,
+	type SendTransportRecord,
+} from '../lib/sendProviders/transports';
 import { returnPathProbeMessageId } from './messageIdRouting';
+
+/**
+ * Is this transport's return-path support decided by OBSERVATION rather than by
+ * declaration? `yes` and `no` are settled by the catalog, so probing them would
+ * prove nothing and would spend a real bounce doing it. One definition, because
+ * the single-transport run and the sweep must agree on what is worth probing.
+ */
+function isProbeableTransport(transport: SendTransportRecord): boolean {
+	return sendProviderCatalogEntry(transport.kind).supportsCustomReturnPath === 'probe';
+}
 
 /** Why a probe run did nothing. All benign — see the D2 note above. */
 export type ReturnPathProbeSkipReason =
@@ -58,10 +72,7 @@ export const runReturnPathProbe = internalAction({
 	handler: async (ctx, args): Promise<ReturnPathProbeRunResult> => {
 		const transport = tryResolveSendTransport(args.transportId);
 		if (!transport) return { ran: false, reason: 'unresolvable_transport' };
-		if (sendProviderCatalogEntry(transport.kind).supportsCustomReturnPath !== 'probe') {
-			// `yes` and `no` are settled by the catalog; probing would prove nothing.
-			return { ran: false, reason: 'not_probeable' };
-		}
+		if (!isProbeableTransport(transport)) return { ran: false, reason: 'not_probeable' };
 
 		const returnPathDomain = normalizeReturnPathDomain(getOptional('MTA_RETURN_PATH_DOMAIN'));
 		const verpKey = normalizeVerpKey(getOptional('MTA_BOUNCE_VERP_KEY'));
@@ -176,7 +187,7 @@ export const sweepReturnPathProbes = internalAction({
 		let probed = 0;
 		for (const transport of listSendTransports()) {
 			if (probed >= MAX_PROBES_PER_SWEEP) break;
-			if (sendProviderCatalogEntry(transport.kind).supportsCustomReturnPath !== 'probe') continue;
+			if (!isProbeableTransport(transport)) continue;
 			const result: ReturnPathProbeRunResult = await ctx.runAction(
 				internal.delivery.relayReturnPathProbe.runReturnPathProbe,
 				{ transportId: transport.id }

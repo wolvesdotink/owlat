@@ -76,7 +76,9 @@ export type ReturnPathProbeReason = (typeof RETURN_PATH_PROBE_REASONS)[number];
  */
 export interface SettledReturnPathVerdict {
 	readonly status: Exclude<ReturnPathProbeStatus, 'awaiting_delivery'>;
-	readonly reason: ReturnPathProbeReason;
+	// `awaiting_delivery` is the reason of a probe still in flight; a SETTLED
+	// verdict can never carry it, so the type does not admit it either.
+	readonly reason: Exclude<ReturnPathProbeReason, 'awaiting_delivery'>;
 	readonly settledAt: number;
 }
 
@@ -152,8 +154,14 @@ export const RETURN_PATH_PROBE_RETRY_MS: number = RETURN_PATH_PROBE_RETRY_SCHEDU
 
 /** Retry interval for the Nth (1-based) settled attempt. */
 export function returnPathProbeRetryMs(attempts: number | undefined): number {
-	const index = Number.isFinite(attempts) ? Math.max(1, Math.trunc(attempts ?? 1)) - 1 : 0;
-	const capped = Math.min(index, RETURN_PATH_PROBE_RETRY_SCHEDULE_MS.length - 1);
+	// ONE normalisation, applied to the argument itself: a missing, non-numeric
+	// or non-finite count is the first attempt. (Testing `Number.isFinite` on the
+	// possibly-undefined argument made the legacy-row rule hold by accident.)
+	const n =
+		typeof attempts === 'number' && Number.isFinite(attempts)
+			? Math.max(1, Math.trunc(attempts))
+			: 1;
+	const capped = Math.min(n - 1, RETURN_PATH_PROBE_RETRY_SCHEDULE_MS.length - 1);
 	return RETURN_PATH_PROBE_RETRY_SCHEDULE_MS[capped] ?? RETURN_PATH_PROBE_RETRY_MS;
 }
 
@@ -169,7 +177,10 @@ export function settledVerdictOf(
 	if (state.status === 'awaiting_delivery') return state.lastSettled;
 	return {
 		status: state.status,
-		reason: state.reason,
+		// A settled row cannot legitimately carry the in-flight reason; a corrupt
+		// one is read as the honest equivalent — it settled without observing a
+		// bounce — rather than widening the verdict type to admit an impossibility.
+		reason: state.reason === 'awaiting_delivery' ? 'no_bounce_observed' : state.reason,
 		settledAt: state.settledAt ?? state.startedAt,
 	};
 }
@@ -410,8 +421,12 @@ export function resolveReturnPathCapabilityForEntry(
 		// only once IT settles. The carry is bounded by the timeout, so a broken
 		// relay is demoted within RETURN_PATH_PROBE_TIMEOUT_MS of its TTL, not
 		// indefinitely.
+		// Evidence is judged by ONE rule everywhere in this function: a timestamp
+		// must be finite AND not in the future (a skewed clock is not evidence),
+		// the same test the freshness check below applies to a settled row.
 		const carried = probe.lastSettled;
-		if (carried && Number.isFinite(carried.settledAt) && !isProbeTimedOut(probe, now)) {
+		const carriedAge = carried ? now - carried.settledAt : Number.NaN;
+		if (carried && Number.isFinite(carriedAge) && carriedAge >= 0 && !isProbeTimedOut(probe, now)) {
 			return grade(carried.status, declared, probe.status, carried.reason, {
 				hasProviderFeedback,
 			});

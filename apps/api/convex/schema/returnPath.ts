@@ -54,8 +54,9 @@ export const returnPathTables = {
 		lastSettled: v.optional(
 			v.object({
 				status: v.union(v.literal('supported'), v.literal('unsupported')),
+				// No `awaiting_delivery`: that is the reason of a probe still in
+				// flight, and a SETTLED verdict can never carry it.
 				reason: v.union(
-					v.literal('awaiting_delivery'),
 					v.literal('observed_match'),
 					v.literal('rewritten_by_relay'),
 					v.literal('rejected_by_relay'),

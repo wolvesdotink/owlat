@@ -14,6 +14,7 @@
  */
 
 import { v } from 'convex/values';
+import type { Doc } from '../_generated/dataModel';
 import { internalMutation, internalQuery, type QueryCtx } from '../_generated/server';
 import {
 	isProbeDue,
@@ -25,23 +26,16 @@ import {
 	unresolvableReturnPathCapability,
 	type ResolvedReturnPathCapability,
 	type ReturnPathProbeState,
-	type SettledReturnPathVerdict,
+	type ReturnPathProbeStatus,
 } from '../lib/sendProviders/returnPathCapability';
 import { tryResolveSendTransport } from '../lib/sendProviders/transports';
 import { probeIdFromMessageId } from './messageIdRouting';
 
-interface ProbeRow {
-	readonly transportId: string;
-	readonly probeId: string;
-	readonly status: ReturnPathProbeState['status'];
-	readonly reason: ReturnPathProbeState['reason'];
-	readonly sentEnvelopeSender: string;
-	readonly observedEnvelopeSender?: string;
-	readonly startedAt: number;
-	readonly settledAt?: number;
-	readonly attempts?: number;
-	readonly lastSettled?: SettledReturnPathVerdict;
-}
+/**
+ * The stored row, minus the system fields. Derived from the schema rather than
+ * hand-copied, so the table and its only reader cannot drift apart in silence.
+ */
+type ProbeRow = Omit<Doc<'sendTransportReturnPathProbes'>, '_id' | '_creationTime'>;
 
 function toProbeState(row: ProbeRow): ReturnPathProbeState {
 	return {
@@ -128,12 +122,17 @@ export const recordProbeSubmission = internalMutation({
 		accepted: v.boolean(),
 		at: v.number(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (
+		ctx,
+		args
+	): Promise<
+		{ ok: false; reason: 'unresolvable_transport' } | { ok: true; status: ReturnPathProbeStatus }
+	> => {
 		// Reject an id the transport registry cannot parse at the BOUNDARY rather
 		// than persisting whatever string arrived — a row keyed by an id nothing
 		// resolves is unreadable by every consumer and invisible to the operator.
 		if (!tryResolveSendTransport(args.transportId)) {
-			return { status: 'unresolvable_transport' as const };
+			return { ok: false as const, reason: 'unresolvable_transport' as const };
 		}
 		const existing = await ctx.db
 			.query('sendTransportReturnPathProbes')
@@ -169,7 +168,9 @@ export const recordProbeSubmission = internalMutation({
 			startedAt: state.startedAt,
 			attempts,
 			...(state.settledAt === undefined ? {} : { settledAt: state.settledAt }),
-			...(carryForward === undefined ? {} : { lastSettled: carryForward }),
+			// Set ONCE, explicitly: `undefined` is how a settled row CLEARS a stale
+			// carry on patch, and Convex strips it on insert.
+			lastSettled: carryForward,
 			updatedAt: args.at,
 		};
 		// One row per transport: a new probe REPLACES the previous verdict rather
@@ -179,13 +180,11 @@ export const recordProbeSubmission = internalMutation({
 			await ctx.db.patch(existing._id, {
 				...values,
 				observedEnvelopeSender: undefined,
-				// Explicit (not spread) so a settled row CLEARS a stale carry.
-				lastSettled: carryForward,
 			});
 		} else {
 			await ctx.db.insert('sendTransportReturnPathProbes', values);
 		}
-		return { status: state.status };
+		return { ok: true as const, status: state.status };
 	},
 });
 
@@ -260,6 +259,8 @@ export const expireTimedOutProbes = internalMutation({
 			.query('sendTransportReturnPathProbes')
 			.withIndex('by_status_started_at', (q) => q.eq('status', 'awaiting_delivery'))
 			.collect();
+		// bounded: at most one row per configured send transport, and only those
+		// still 'awaiting_delivery' — the index range, not a comment, is the bound.
 		let expired = 0;
 		for (const row of open) {
 			const current = toProbeState(row);
