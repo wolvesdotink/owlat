@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { type FeatureFlagKey } from '@owlat/shared/featureFlags';
-import type { GenericActionCtx, GenericMutationCtx } from 'convex/server';
-import type { DataModel, Id, TableNames } from '../_generated/dataModel';
+import type { GenericActionCtx, GenericMutationCtx, WithoutSystemFields } from 'convex/server';
+import type { DataModel, Doc, Id, TableNames } from '../_generated/dataModel';
 import { FEATURE_FLAG_REGISTRY } from '../plugins/featureFlagRegistry';
 
 /**
@@ -814,4 +814,27 @@ export function createTestEmailSendWithHistory(
 	});
 
 	return baseData;
+}
+
+/**
+ * A `sendAssignments` row — the experiment record (plan D7/D16).
+ *
+ * Typed against the schema so a field added later cannot leave one of the
+ * assignment test suites behind with a stale row shape.
+ */
+export function createTestSendAssignment(
+	overrides: Partial<WithoutSystemFields<Doc<'sendAssignments'>>> = {}
+): WithoutSystemFields<Doc<'sendAssignments'>> {
+	return {
+		organizationId: 'org_test',
+		sendId: faker.string.uuid(),
+		sendKind: 'campaign',
+		cell: 'campaign:gmail',
+		transport: 'mta',
+		arm: 'own',
+		isCalibration: false,
+		mixVersion: 0,
+		assignedAt: Date.now(),
+		...overrides,
+	};
 }
