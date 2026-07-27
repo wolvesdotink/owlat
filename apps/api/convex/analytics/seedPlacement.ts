@@ -108,12 +108,6 @@ export async function loadSeedAccounts(
 	return views;
 }
 
-export const listSeedAccounts = internalQuery({
-	args: { organizationId: v.string(), now: v.number() },
-	handler: async (ctx, args): Promise<SeedAccountView[]> =>
-		loadSeedAccounts(ctx.db, args.organizationId, args.now),
-});
-
 /**
  * Record that the operator has been nudged to rotate a stale seed. A reminder
  * is advisory: it never blocks a send, a promotion, or a screen.

@@ -98,6 +98,44 @@ export function assertSeedShadowExclusion(envelopeInput: WorkerEnvelopeInput): v
 	}
 }
 
+interface ListUnsubscribePair {
+	listUnsubscribe: string;
+	listUnsubscribePost: string;
+}
+
+/**
+ * Who the RFC 8058 one-click pair on a CAMPAIGN message belongs to.
+ *
+ * Three genuinely different cases, and the discriminant says which: a real
+ * subscriber's contact-scoped token; a seed shadow copy's PROBE-scoped token
+ * (same header shape, its own token namespace, no contact to unsubscribe — the
+ * pre-dispatch marketing gate and Gmail/Yahoo's bulk-sender rules require the
+ * pair on every campaign-shaped message, and a probe without it would measure
+ * a materially different message); or neither, when there is no site URL to
+ * build one against.
+ */
+type ListUnsubscribeResolution =
+	| { scope: 'none' }
+	| { scope: 'contact'; header: ListUnsubscribePair }
+	| { scope: 'seedProbe'; header: ListUnsubscribePair };
+
+export function resolveListUnsubscribeHeader(
+	envelopeInput: Extract<WorkerEnvelopeInput, { kind: 'campaign' }>
+): ListUnsubscribeResolution {
+	const convexSiteUrl = envelopeInput.convexSiteUrl;
+	if (convexSiteUrl === undefined) return { scope: 'none' };
+	const seedProbeId = envelopeInput.seedProbeId;
+	if (seedProbeId !== undefined) {
+		return {
+			scope: 'seedProbe',
+			header: getSeedProbeListUnsubscribeHeader(convexSiteUrl, seedProbeId),
+		};
+	}
+	const contactId = envelopeInput.contactInfo.contactId;
+	if (contactId === undefined) return { scope: 'none' };
+	return { scope: 'contact', header: getListUnsubscribeHeader(convexSiteUrl, contactId) };
+}
+
 export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeInput {
 	if (envelopeInput.kind === 'transactional') {
 		// Build the unsubscribe + preference footer URLs only when the template
@@ -147,20 +185,9 @@ export function buildComposeInput(envelopeInput: WorkerEnvelopeInput): ComposeIn
 		isTopic && hasContact && envelopeInput.siteUrl
 			? getPreferenceUrl(envelopeInput.siteUrl, envelopeInput.contactInfo.contactId!)
 			: undefined;
-	// A seed shadow copy has no contact, but the pre-dispatch marketing gate
-	// (and Gmail/Yahoo's bulk-sender rules) require the RFC 8058 pair on every
-	// campaign-shaped message. It gets a PROBE-SCOPED one-click target: same
-	// header shape, its own token namespace, no contact to unsubscribe.
-	const listUnsubscribeHeader = envelopeInput.convexSiteUrl
-		? envelopeInput.seedProbeId !== undefined
-			? getSeedProbeListUnsubscribeHeader(envelopeInput.convexSiteUrl, envelopeInput.seedProbeId)
-			: hasContact
-				? getListUnsubscribeHeader(
-						envelopeInput.convexSiteUrl,
-						envelopeInput.contactInfo.contactId!
-					)
-				: undefined
-		: undefined;
+	const listUnsubscribe = resolveListUnsubscribeHeader(envelopeInput);
+	const listUnsubscribeHeader =
+		listUnsubscribe.scope === 'none' ? undefined : listUnsubscribe.header;
 
 	// Tracking is keyed by the Send for real mail and by the opaque probe id for
 	// a shadow copy; the shipped `/t/o` and `/t/c` handlers reject a probe id by

@@ -19,6 +19,7 @@
 	},
 	"dependencies": {
 		"@owlat/mail-message": "workspace:*",
+		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"convex": "catalog:convex",
 		"hono": "^4.12.25",

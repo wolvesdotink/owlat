@@ -44,6 +44,28 @@ export function isSeedProbeId(value: string): boolean {
 	return SEED_PROBE_ID_PATTERN.test(value);
 }
 
+/**
+ * One seed mailbox's outstanding probe work — the WIRE CONTRACT between the
+ * Convex poller surface (`analytics/seedProbePoller.listSeedProbeWork`) and the
+ * mail-sync worker that walks the mailbox. Declared here, once, because both
+ * ends are separate deployables: two hand-kept copies of a wire shape drift.
+ *
+ * Carries no credential and nothing from inside a mailbox — an address the
+ * worker must connect to, and opaque probe ids to look for.
+ */
+export interface SeedProbeWorkItem {
+	organizationId: string;
+	accountId: string;
+	address: string;
+	provider: DestinationProviderKey;
+	/** Probes dispatched, settled, and still unclassified. */
+	probeIds: string[];
+	/** Probes past the give-up horizon — report MISSING without searching. */
+	expiredProbeIds: string[];
+	/** Advisory nudge; never a blocking warning (D2). */
+	rotationReminderDue: boolean;
+}
+
 // ============ PLACEMENT CLASSIFICATION ============
 
 export const SEED_PLACEMENTS = ['inbox', 'category', 'spam', 'deleted', 'missing'] as const;

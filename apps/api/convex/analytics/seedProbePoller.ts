@@ -16,8 +16,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
-import { shouldRemindSeedRotation } from '@owlat/shared/seedPlacement';
-import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import { shouldRemindSeedRotation, type SeedProbeWorkItem } from '@owlat/shared/seedPlacement';
 
 /**
  * How long after DISPATCH a probe becomes worth looking for. Filters run on
@@ -45,19 +44,6 @@ const SEED_ACCOUNT_SCAN_LIMIT = 50;
 
 /** Bound on probe ids handed to the worker per account per sweep. */
 const SEED_PROBE_WORK_LIMIT = 50;
-
-export interface SeedProbeWorkItem {
-	organizationId: string;
-	accountId: string;
-	address: string;
-	provider: DestinationProviderKey;
-	/** Probes still unclassified and old enough to look for. */
-	probeIds: string[];
-	/** Probes past the give-up horizon — report MISSING without searching further. */
-	expiredProbeIds: string[];
-	/** Advisory nudge; never a blocking warning (D2). */
-	rotationReminderDue: boolean;
-}
 
 /**
  * Every seed mailbox with outstanding probe work.

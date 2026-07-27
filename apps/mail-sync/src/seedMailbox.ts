@@ -12,11 +12,12 @@
  */
 
 import { ImapFlow } from 'imapflow';
+// The header is the feature's ONLY join key between the send and the IMAP
+// observation, so both ends read the same constant rather than two copies
+// behind a "must match" comment.
+import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import type { SeedMailboxSession, SeedProbeLocation, SeedProbeWorkItem } from './seedProbes.js';
 import type { WorkerCredentials } from './convex.js';
-
-/** The header the shadow copy carries. Must match `SEED_PROBE_HEADER`. */
-export const SEED_PROBE_HEADER = 'X-Owlat-Seed-Probe';
 
 /** Folders never worth walking: our own copies, not the provider's verdict. */
 const SKIPPED_FOLDER_FLAGS = new Set(['\\Sent', '\\Drafts', '\\All']);

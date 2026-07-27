@@ -21,26 +21,16 @@
  *     never throws, never warns, and never blocks anything.
  */
 
+import type {
+	SeedHygienePlan,
+	SeedPlacement,
+	SeedProbeWorkItem,
+} from '@owlat/shared/seedPlacement';
 import { logger } from './logger.js';
 
-/** Where the backend says a probe ended up. Mirrors `SEED_PLACEMENTS`. */
-export type SeedPlacement = 'inbox' | 'category' | 'spam' | 'deleted' | 'missing';
-
-export interface SeedProbeWorkItem {
-	organizationId: string;
-	accountId: string;
-	address: string;
-	provider: string;
-	probeIds: string[];
-	expiredProbeIds: string[];
-	rotationReminderDue: boolean;
-}
-
-/** What the backend decided should happen to a probe after classification. */
-export interface SeedHygienePlan {
-	markRead: boolean;
-	click: boolean;
-}
+// The wire contract with the Convex poller surface lives in @owlat/shared, so
+// there is exactly one declaration of it across the two deployables.
+export type { SeedHygienePlan, SeedPlacement, SeedProbeWorkItem };
 
 export interface SeedProbeLocation {
 	folderName: string;
@@ -91,6 +81,29 @@ export interface SeedProbeSweepResult {
 	rotationReminders: number;
 }
 
+/** Path fragments that are never a CONTENT link, in the order they appear. */
+const NON_CONTENT_LINK_FRAGMENTS = ['/unsub', '/unsubscribe', '/preferences', '/t/o/'];
+
+/**
+ * Pick the link the hygiene click should exercise.
+ *
+ * "The occasional click" is supposed to look like a subscriber reading the
+ * mail, so it must be a CONTENT link: the first href in a template is just as
+ * likely to be the footer's one-click unsubscribe or the open pixel, and
+ * clicking those teaches the provider the opposite of what we want (and, for
+ * the unsubscribe target, exercises a mutation rather than a read). When
+ * nothing content-shaped is left we click NOTHING — a skipped click is a
+ * missing data point; a clicked unsubscribe is a wrong one.
+ */
+export function chooseHygieneClickTarget(targets: readonly string[]): string | undefined {
+	return targets.find((target) => {
+		if (!/^https?:\/\//i.test(target)) return false;
+		if (/\.(?:gif|png|jpe?g|webp)(?:\?|$)/i.test(target)) return false;
+		const lowered = target.toLowerCase();
+		return !NON_CONTENT_LINK_FRAGMENTS.some((fragment) => lowered.includes(fragment));
+	});
+}
+
 async function classifyOne(
 	deps: SeedProbeDeps,
 	item: SeedProbeWorkItem,
@@ -117,7 +130,7 @@ async function classifyOne(
 	}
 	if (outcome.hygiene.click) {
 		const targets = await session.linkTargets(location);
-		const target = targets[0];
+		const target = chooseHygieneClickTarget(targets);
 		if (target !== undefined) {
 			await deps.click(target);
 			result.clicked += 1;

@@ -13,6 +13,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { publicTokenEndpoint } from '../lib/publicTokenEndpoint';
 import type { TokenValidation } from './tokenValidation';
+import type { SeedProbeTokenValidation } from './unsubscribe';
 import { logWarn } from '../lib/runtimeLog';
 
 interface ContactUnsubInfo {
@@ -163,20 +164,20 @@ export const handleSeedProbeUnsubscribe = publicTokenEndpoint(
 		resultMode: 'action',
 	},
 	async (ctx, { token }) => {
-		const validation = await ctx.runAction<TokenValidation>(
+		const validation = await ctx.runAction<SeedProbeTokenValidation>(
 			internal.delivery.unsubscribe.validateSeedProbeToken,
 			{ token }
 		);
 		if (!validation.valid) {
 			return {
 				ok: false,
-				reason: validation.reason ?? 'invalid_token',
+				reason: validation.reason,
 				message: 'Invalid or expired unsubscribe link',
 				status: 400,
 			};
 		}
 		await ctx.runMutation(internal.analytics.seedPlacement.recordSeedProbeUnsubscribe, {
-			probeId: validation.contactId,
+			probeId: validation.probeId,
 			now: Date.now(),
 		});
 		return { ok: true, data: { message: 'Unsubscribed' } };

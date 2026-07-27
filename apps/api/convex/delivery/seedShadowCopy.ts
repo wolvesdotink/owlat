@@ -12,7 +12,8 @@
  *
  * Only three things change, and each is forced by a rule in the plan:
  *
- *   1. `to` / `contactInfo` — the seed address instead of a subscriber.
+ *   1. `to` / `contactInfo` — the seed address instead of a subscriber, with
+ *      NEUTRAL PLACEHOLDER merge-tag values in place of the subscriber's name.
  *   2. `contactId` and `emailSendId` are STRIPPED. `emailSendId` is what makes
  *      a Send countable: without it there is no `emailSends` row, no workpool
  *      `onComplete` -> no Send lifecycle -> no campaign stat-shard bump and no
@@ -25,6 +26,18 @@
  *   3. `seedProbeId` + `seedProbeRef` are added — the `X-Owlat-Seed-Probe`
  *      header the IMAP poller looks for, and the probe's durable ledger row.
  *      The header value is opaque; no recipient or campaign PII.
+ *
+ * RESIDUAL WIRE DELTAS — the complete list, because "identical" is the claim
+ * this whole measurement rests on:
+ *
+ *   a. `siteUrl` (the in-body unsubscribe/preference footer) and
+ *      `viewInBrowserUrl` (a contact-scoped archive token) are dropped: both
+ *      are only meaningful with a `contactId`. The RFC 8058 header pair and
+ *      the tracking pixel / wrapped links are NOT dropped — they are re-keyed
+ *      to the probe id, because those are the features a filter weighs.
+ *   b. Merge tags render the neutral placeholders above rather than the
+ *      subscriber's own name.
+ *   c. The `X-Owlat-Seed-Probe` header is added.
  *
  * D2: zero seed mailboxes is a supported configuration. With an empty seed
  * list this enqueues nothing and reports `{ enqueued: 0 }`; it never throws
@@ -41,7 +54,18 @@ import { SEED_PROBE_RETENTION_MS } from '../schema/seedPlacement';
 
 export type CampaignEnvelopeInput = Extract<WorkerEnvelopeInput, { kind: 'campaign' }>;
 
-type MailStream = 'campaign' | 'automation' | 'transactional';
+/**
+ * Merge-tag values a shadow copy renders with.
+ *
+ * A probe must not carry the last real recipient's name (that is the whole
+ * point of stripping `contactInfo`), but rendering every merge tag EMPTY is
+ * not neutral either: "Hi ," is both a visible difference from the mail
+ * subscribers receive and, on its own, something filters notice. Neutral
+ * placeholders keep the rendered shape identical to a personalized send while
+ * carrying no subscriber data.
+ */
+const SEED_PLACEHOLDER_FIRST_NAME = 'Seed';
+const SEED_PLACEHOLDER_LAST_NAME = 'Mailbox';
 
 /**
  * Build the shadow-copy envelope from the REAL send's envelope.
@@ -61,7 +85,11 @@ export function buildSeedShadowEnvelope(
 		to: seed.address,
 		from: base.from,
 		template: base.template,
-		contactInfo: { email: seed.address },
+		contactInfo: {
+			email: seed.address,
+			firstName: SEED_PLACEHOLDER_FIRST_NAME,
+			lastName: SEED_PLACEHOLDER_LAST_NAME,
+		},
 		seedProbeId: seed.probeId,
 		seedProbeRef: seed.probeRef,
 	};
@@ -124,18 +152,24 @@ export async function enqueueSeedShadowCopies(
 		organizationId: string;
 		campaignId: Id<'campaigns'>;
 		abVariant?: 'A' | 'B';
-		stream: MailStream;
 		base: CampaignEnvelopeInput;
 		now: number;
 	}
 ): Promise<{ enqueued: number }> {
+	// The whole idempotency key is in the INDEX. A bounded page plus a linear
+	// `.some()` over it silently starts answering "no probe set yet" once one
+	// campaign accumulates more probe rows than the page bound, and the failure
+	// mode is a duplicate probe set on every subsequent page of the walker.
 	const existing = await ctx.db
 		.query('seedPlacementProbes')
-		.withIndex('by_org_and_campaign', (q) =>
-			q.eq('organizationId', args.organizationId).eq('campaignId', args.campaignId)
+		.withIndex('by_org_campaign_and_variant', (q) =>
+			q
+				.eq('organizationId', args.organizationId)
+				.eq('campaignId', args.campaignId)
+				.eq('abVariant', args.abVariant)
 		)
-		.take(200);
-	if (existing.some((row) => row.abVariant === args.abVariant)) return { enqueued: 0 };
+		.first();
+	if (existing !== null) return { enqueued: 0 };
 
 	const seeds = await loadSeedAccounts(ctx.db, args.organizationId, args.now);
 	if (seeds.length === 0) return { enqueued: 0 };
@@ -147,7 +181,10 @@ export async function enqueueSeedShadowCopies(
 			probeId,
 			accountId: seed.accountId,
 			provider: seed.provider,
-			stream: args.stream,
+			// This module only ever shadows a CAMPAIGN send; a scheduled
+			// transactional probe is a different construction site and a purely
+			// additive widening of the column when it ships.
+			stream: 'campaign',
 			campaignId: args.campaignId,
 			...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
 			sentAt: args.now,

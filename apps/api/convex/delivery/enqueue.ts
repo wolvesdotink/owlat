@@ -238,7 +238,6 @@ export const enqueueCampaignEmails = internalMutation({
 				organizationId: args.organizationId,
 				campaignId: args.campaignId,
 				...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
-				stream: 'campaign',
 				base: lastEnvelope,
 				now: Date.now(),
 			});

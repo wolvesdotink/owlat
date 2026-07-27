@@ -49,10 +49,26 @@ export function getSeedProbeListUnsubscribeHeader(
 	};
 }
 
+/**
+ * The result of validating a seed-probe one-click token. Deliberately NOT
+ * `TokenValidation`: the payload of a probe token is a PROBE id, and reading it
+ * out of a field called `contactId` would erase at the boundary exactly the
+ * namespace separation that makes the token safe.
+ */
+export type SeedProbeTokenValidation =
+	| { valid: true; probeId: string }
+	| { valid: false; reason: string };
+
 /** Validate a seed-probe one-click token (called by the httpAction handler). */
 export const validateSeedProbeToken = internalAction({
 	args: { token: v.string() },
-	handler: async (_ctx, args) => verifyContactToken(SEED_PROBE_TOKEN_PREFIX, args.token),
+	handler: async (_ctx, args): Promise<SeedProbeTokenValidation> => {
+		const result = verifyContactToken(SEED_PROBE_TOKEN_PREFIX, args.token);
+		// Map at the boundary: the codec's field is named for the contact tokens
+		// it was written for; this namespace carries a probe id and nothing else.
+		if (!result.valid) return { valid: false, reason: result.reason ?? 'invalid_token' };
+		return { valid: true, probeId: result.contactId };
+	},
 });
 
 // Generate List-Unsubscribe header value (RFC 8058 one-click unsubscribe)
