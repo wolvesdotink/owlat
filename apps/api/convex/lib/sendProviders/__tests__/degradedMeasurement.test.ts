@@ -103,10 +103,27 @@ describe('D2 — absence blocks nothing', () => {
 		expect(envelopeFrom).toBe('news@example.com');
 	});
 
+	// D2 stated behaviourally: an unprobed relay is a SUPPORTED configuration, so
+	// the degraded posture must still hand the send path everything it needs —
+	// a usable envelope sender, a finite positive bounce tolerance, and the stamp
+	// simply switched off.
 	it('a degraded cell is still a SENDING cell — degradation carries no blocking signal', () => {
 		const resolved = resolveReturnPathCapability('smtp', null, T0);
-		expect(Object.keys(resolved)).not.toContain('blocked');
-		expect(Object.keys(resolved)).not.toContain('error');
+		expect(resolved.degraded).toBe(true);
 		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(Number.isFinite(resolved.bounceToleranceMultiplier)).toBe(true);
+		expect(resolved.bounceToleranceMultiplier).toBeGreaterThan(0);
+		// The send this posture governs still leaves, with the composer's own
+		// envelope sender rather than a VERP one.
+		const { envelopeFrom, isVerp } = resolveRelayEnvelopeSender({
+			composedEnvelopeFrom: 'news@example.com',
+			messageId: 'msg-degraded',
+			customReturnPath: resolved.stampVerpReturnPath,
+			returnPathDomain: 'bounces.example.com',
+			verpKey: 'k'.repeat(32),
+			now: T0,
+		});
+		expect(isVerp).toBe(false);
+		expect(envelopeFrom).toBe('news@example.com');
 	});
 });

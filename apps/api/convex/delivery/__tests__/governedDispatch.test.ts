@@ -368,7 +368,10 @@ describe('dispatchGovernedEmail', () => {
 		}
 
 		function dispatchedExtras(): unknown {
-			return sendProviderDispatch.mock.calls.at(-1)?.[3];
+			// Indexed rather than `.at(-1)`: convex/tsconfig.json's `lib` stops at
+			// ES2021, so `Array.prototype.at` is not in the type set here.
+			const calls = sendProviderDispatch.mock.calls;
+			return calls[calls.length - 1]?.[3];
 		}
 
 		it('passes customReturnPath through to SmtpExtras when the relay is PROVEN', async () => {

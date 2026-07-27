@@ -373,6 +373,20 @@ describe('a RE-PROBE does not revoke the verdict it is re-checking', () => {
 		}
 	});
 
+	// ONE rule for what counts as evidence: the carry is judged by the same
+	// clock-skew test the freshness check applies to a settled row.
+	it('ADVERSARIAL: a carried verdict stamped in the FUTURE is not evidence', () => {
+		const start = T0 + RETURN_PATH_PROBE_TTL_MS;
+		const resolved = resolveReturnPathCapabilityForEntry(
+			probeOnly,
+			reProbe({ lastSettled: { ...settledSupported, settledAt: start + 60_000 } }),
+			start + 1_000
+		);
+		expect(resolved.capability).toBe('unknown');
+		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(resolved.degraded).toBe(true);
+	});
+
 	it('a first-ever open probe still resolves to unknown', () => {
 		expect(
 			resolveReturnPathCapabilityForEntry(probeOnly, reProbe({ lastSettled: undefined }), T0)

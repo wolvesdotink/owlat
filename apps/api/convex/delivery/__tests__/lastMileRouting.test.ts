@@ -141,6 +141,112 @@ describe('last-mile governance boundary', () => {
 		).toMatchObject({ kind: 'defer', isPolicyHold: true });
 	});
 
+	// Every `kind: 'ready'` return has to carry the relay return-path verdict:
+	// `governedDispatch` reads it straight off the routing result, so a branch
+	// that forgets it silently sends without our VERP envelope sender and the
+	// relay arm's bounces become invisible (plan G-08).
+	describe('the relay return-path verdict survives every ready route', () => {
+		it('carries it on an external-only relay route', async () => {
+			const route = { providerType: 'smtp' as const, source: 'org_config' as const };
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{ route, baseRoute: route, isMtaGoverned: false, relayStampVerpReturnPath: true },
+						'org-1'
+					),
+					input
+				)
+			).toMatchObject({ kind: 'ready', providerKind: 'smtp', stampRelayVerpReturnPath: true });
+		});
+
+		it('carries it on a Convex deliverability-fallback route', async () => {
+			const route = {
+				providerType: 'smtp' as const,
+				source: 'deliverability_fallback' as const,
+				deliverabilityReason: 'dnsbl_listed' as const,
+			};
+			const baseRoute = { providerType: 'mta' as const, source: 'org_config' as const };
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{ route, baseRoute, isMtaGoverned: true, relayStampVerpReturnPath: true },
+						'org-1'
+					),
+					input
+				)
+			).toMatchObject({ kind: 'ready', providerKind: 'smtp', stampRelayVerpReturnPath: true });
+		});
+
+		// THE route that carries most relay traffic during a ramp: the MTA
+		// declines the message for warm-up overflow (or an open breaker) and the
+		// relay absorbs it. It is resolved AFTER the routing plan, which is
+		// exactly why it was the branch that lost the flag.
+		it.each(['warmup_overflow', 'breaker_open'] as const)(
+			'carries it on the %s relay fallback the MTA hands off to',
+			async (reason) => {
+				vi.stubEnv('MTA_API_URL', 'https://mta.test');
+				vi.stubEnv('MTA_API_KEY', 'key');
+				resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason });
+				const baseRoute = {
+					providerType: 'mta' as const,
+					source: 'org_config' as const,
+					warmupOverflowEnabled: true,
+				};
+				const relayRoute = { providerType: 'smtp' as const, source: 'org_config' as const };
+				const result = await resolveLastMileRouting(
+					context(
+						{
+							route: baseRoute,
+							baseRoute,
+							isMtaGoverned: true,
+							relayStampVerpReturnPath: true,
+						},
+						{ route: relayRoute }
+					),
+					input
+				);
+				expect(result).toMatchObject({
+					kind: 'ready',
+					providerKind: 'smtp',
+					route: relayRoute,
+					stampRelayVerpReturnPath: true,
+				});
+			}
+		);
+
+		// D2: an unproven / unprobed / absent relay is a SUPPORTED configuration.
+		// The overflow route still sends — it just does not stamp.
+		it('carries an unproven verdict through the overflow fallback without blocking', async () => {
+			vi.stubEnv('MTA_API_URL', 'https://mta.test');
+			vi.stubEnv('MTA_API_KEY', 'key');
+			resolveMtaRoutingDecision.mockResolvedValue({ kind: 'relay', reason: 'warmup_overflow' });
+			const baseRoute = {
+				providerType: 'mta' as const,
+				source: 'org_config' as const,
+				warmupOverflowEnabled: true,
+			};
+			const relayRoute = { providerType: 'smtp' as const, source: 'org_config' as const };
+			expect(
+				await resolveLastMileRouting(
+					context(
+						{
+							route: baseRoute,
+							baseRoute,
+							isMtaGoverned: true,
+							relayStampVerpReturnPath: false,
+						},
+						{ route: relayRoute }
+					),
+					input
+				)
+			).toMatchObject({
+				kind: 'ready',
+				providerKind: 'smtp',
+				stampRelayVerpReturnPath: false,
+			});
+		});
+	});
+
 	// An acceptance-unknown retry may be racing an MTA job that was actually
 	// committed. Only the owned-MTA path deduplicates it (on the reused
 	// workAttemptId); a relay carries no idempotency key at all, so relaying

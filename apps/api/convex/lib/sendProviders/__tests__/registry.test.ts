@@ -33,24 +33,32 @@ describe('Send provider registry', () => {
 				label: 'Owlat MTA',
 				retryDelays: [1_000, 5_000],
 				requiredEnvVars: ['MTA_API_URL', 'MTA_API_KEY'],
+				supportsCustomReturnPath: 'yes',
+				hasProviderFeedback: true,
 			},
 			{
 				kind: 'ses',
 				label: 'Amazon SES',
 				retryDelays: [1_000, 5_000, 30_000],
 				requiredEnvVars: ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
+				supportsCustomReturnPath: 'no',
+				hasProviderFeedback: true,
 			},
 			{
 				kind: 'resend',
 				label: 'Resend',
 				retryDelays: [1_000, 5_000, 30_000],
 				requiredEnvVars: ['RESEND_API_KEY'],
+				supportsCustomReturnPath: 'no',
+				hasProviderFeedback: true,
 			},
 			{
 				kind: 'smtp',
 				label: 'SMTP relay',
 				retryDelays: [1_000, 5_000, 30_000],
 				requiredEnvVars: ['SMTP_RELAY_HOST', 'SMTP_RELAY_USERNAME', 'SMTP_RELAY_PASSWORD'],
+				supportsCustomReturnPath: 'probe',
+				hasProviderFeedback: false,
 			},
 		]);
 	});

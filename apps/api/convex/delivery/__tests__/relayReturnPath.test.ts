@@ -175,7 +175,7 @@ describe('relay return-path probe persistence', () => {
 			accepted: true,
 			at: Date.now(),
 		});
-		expect(result).toMatchObject({ status: 'unresolvable_transport' });
+		expect(result).toEqual({ ok: false, reason: 'unresolvable_transport' });
 		const rows = await t.run(
 			async (ctx) => await ctx.db.query('sendTransportReturnPathProbes').collect()
 		);
