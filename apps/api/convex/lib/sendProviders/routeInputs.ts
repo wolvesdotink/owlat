@@ -132,16 +132,13 @@ export function freshFallbackReasons(
 ): ActionableDeliverabilitySignalSource[] {
 	return states
 		.filter(
-			(state) =>
+			(state): state is Doc<'deliverabilityRouteStates'> =>
 				state !== null &&
 				isRouteStateFallbackActive(state) &&
 				now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
 		)
-		.flatMap(
-			(state) =>
-				state?.signals
-					.map((signal) => signal.source)
-					.filter(isActionableDeliverabilitySignalSource) ?? []
+		.flatMap((state) =>
+			state.signals.map((signal) => signal.source).filter(isActionableDeliverabilitySignalSource)
 		);
 }
 
