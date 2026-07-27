@@ -15,6 +15,7 @@ import {
 	type TransportOutcomeBucket,
 	type TransportOutcomeSummary,
 } from '../../../analytics/transportOutcomeSummary';
+import type { EngagementGateInput } from '../engagementGate';
 import { RAMP_STREAM_CONFIGS, type RampStreamConfig } from '../gateConfig';
 import type { RampGateEvaluationInput, SeedPlacementObservation } from '../gateTypes';
 
@@ -117,6 +118,37 @@ export function input(
 		config: CAMPAIGN_CONFIG,
 		reference: null,
 		previousCleanStreak: 0,
+		now: NOW,
+		...overrides,
+	};
+}
+
+/**
+ * An arm carrying BOTH a stratified (general) engagement story and a
+ * calibration-slice one, so a suite can make the two disagree on purpose. That
+ * disagreement is the whole point of `engagementRatioCalibration.test.ts`: gate
+ * 4 must read the calibration numbers and ignore the general ones.
+ */
+export function engagementArm(counts: {
+	readonly sent: number;
+	readonly opened?: number;
+	readonly clicked?: number;
+	readonly calibrationSent: number;
+	readonly calibrationOpened?: number;
+	readonly calibrationClicked?: number;
+	readonly lastRecordedAt?: number | null;
+}): TransportOutcomeSummary {
+	return arm(counts);
+}
+
+/** Gate 4's input. Gmail (an opens-gated cell) and no reference arm by default. */
+export function engagementInput(
+	overrides: Partial<EngagementGateInput> & { readonly own: TransportOutcomeSummary }
+): EngagementGateInput {
+	return {
+		destinationProvider: 'gmail',
+		config: CAMPAIGN_CONFIG,
+		reference: null,
 		now: NOW,
 		...overrides,
 	};
