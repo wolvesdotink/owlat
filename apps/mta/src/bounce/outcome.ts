@@ -80,6 +80,23 @@ function applyFeedbackProvenancePolicy(
 	return { effects: events.filter((effect) => effect.kind === 'notify_convex') };
 }
 
+/**
+ * An ARF `Reported-Domain` that is safe to forward to Convex, else undefined.
+ *
+ * The value is internet-controlled report text. It is only ever used to LOOK UP
+ * one of our own sending domains, so anything that cannot be a DNS name is
+ * dropped rather than sanitised — a dropped hint costs a feedback-loop liveness
+ * observation, while an oversized one would invalidate the whole complaint event
+ * and the complaint itself would never reach the blocklist.
+ */
+const DNS_NAME_SHAPE = /^[a-z0-9.-]+$/;
+
+function safeReportedDomain(value: string | undefined): string | undefined {
+	const candidate = value?.trim().toLowerCase();
+	if (!candidate || candidate.length > 253) return undefined;
+	return DNS_NAME_SHAPE.test(candidate) ? candidate : undefined;
+}
+
 function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeReduction {
 	const { arf } = attempt;
 	const sourceIsp = arf.message?.match(/from (\w+)/)?.[1] ?? 'unknown';
@@ -126,6 +143,9 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 	// Without this fallback a redacted complaint would only bump a metric and
 	// never reach the blocklist/reputation path — silently inflating the
 	// complaint rate past the Gmail <0.3% threshold.
+	const reportedDomain = safeReportedDomain(arf.reportedDomain);
+	const reportSourceIsp = arf.sourceIsp && arf.sourceIsp.length <= 32 ? arf.sourceIsp : undefined;
+
 	if (arf.originalMessageId || arf.recipient) {
 		effects.push({
 			kind: 'notify_convex',
@@ -135,6 +155,15 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 				...(arf.recipient ? { recipient: arf.recipient } : {}),
 				organizationId: arf.organizationId,
 				message: arf.message,
+				// RFC 5965 `Reported-Domain` (OUR sending/DKIM domain) plus the
+				// resolved feedback-loop ISP. Convex uses the pair to keep a
+				// DKIM-domain-based feedback-loop enrollment (Yahoo's CFL) marked
+				// live. Both are BOUNDED here, not downstream: the reported domain
+				// is internet-controlled ARF text, and an oversized value that
+				// failed the webhook event validator would drop the whole
+				// complaint — a complaint must always reach the blocklist.
+				...(reportedDomain ? { reportedDomain } : {}),
+				...(reportSourceIsp ? { sourceIsp: reportSourceIsp } : {}),
 				timestamp: Date.now(),
 			},
 		});
