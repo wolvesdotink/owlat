@@ -6,9 +6,10 @@
  *
  * WHAT IT REUSES RATHER THAN REBUILDS:
  *   - "which activities count as engagement" — `analytics/engagementActivity.ts`
- *     (the P0-2 mapping table). This module derives its probe literals from
- *     that table, so adding a new engagement activity type reaches the sunset
- *     engine automatically and no second definition of "engaged" exists.
+ *     (the P0-2 mapping table). This module derives its literals from that
+ *     table BY EXCLUSION, so adding a new positive engagement activity type
+ *     reaches the sunset engine automatically and no second definition of
+ *     "engaged" exists.
  *   - suppression — `lib/suppression.ts`'s `suppressEmail`, i.e. the SHIPPED
  *     `blockedEmails` row plus the MTA mirror. There is no parallel suppression
  *     concept, no second list, and every existing send-time gate already
@@ -17,9 +18,10 @@
  *     `userId: 'system'` and an explicit `actor: 'sunset_engine'` detail, so
  *     "the engine did it" is a first-class answer to "who".
  *
- * BOUNDED READS. Every fact is fetched through an index with a fixed take, so
- * the per-contact cost is a small constant regardless of how long the contact's
- * timeline is. Nothing here collects a table.
+ * BOUNDED READS. Every fact is a single-row read on an index whose key ends in
+ * the field being ordered by, so the per-contact cost is a small constant
+ * regardless of how long the contact's timeline is. Nothing here collects a
+ * table.
  */
 
 import type { Doc, Id } from '../_generated/dataModel';
@@ -37,6 +39,7 @@ import {
 	resolveSunsetPolicy,
 	type SunsetFacts,
 	type SunsetPolicy,
+	type SunsetMeasuredVerdict,
 	type SunsetPolicyOverride,
 	type SunsetStage,
 	type SunsetVerdict,
@@ -44,24 +47,21 @@ import {
 
 /**
  * The activity literals that count as the contact ENGAGING with us, derived
- * from the P0-2 mapping table. `email_sent` is deliberately excluded there (a
- * send is our action, not theirs) and bounces/complaints are negative signals
- * with their own suppression path, so only open/click/reply remain.
+ * from the P0-2 mapping table.
+ *
+ * DEFINED BY EXCLUSION, ON PURPOSE. The rule is "every literal the engagement
+ * machinery reacts to, except the two NEGATIVE ones", not an allow-list of the
+ * kinds that exist today. An allow-list would silently drop a future positive
+ * kind out of the sunset engine while `ENGAGEMENT_ACTIVITY_MAP` counted it —
+ * two disagreeing definitions of "engaged", which is exactly what this module
+ * exists not to have. `null` literals (a send is our action, not theirs) are
+ * excluded by the same expression.
  */
 export const SUNSET_ENGAGEMENT_LITERALS: readonly ContactActivityType[] =
 	CONTACT_ACTIVITY_TYPE_LITERALS.filter((literal) => {
 		const mapped = ENGAGEMENT_ACTIVITY_MAP[literal];
-		return mapped === 'open' || mapped === 'click' || mapped === 'reply';
+		return mapped !== null && mapped !== 'bounce' && mapped !== 'complaint';
 	});
-
-/**
- * How many rows per engagement literal the fact loader inspects. The
- * `by_contact_and_type` index orders by insertion, not by `occurredAt`, so a
- * backfilled activity can land behind a newer row; probing a few and taking the
- * maximum `occurredAt` costs a constant and removes that skew. It can only ever
- * make a contact look MORE engaged, which is the safe direction.
- */
-export const SUNSET_ACTIVITY_PROBE = 3;
 
 export type SunsetTransition = {
 	verdict: SunsetVerdict;
@@ -73,10 +73,17 @@ export type SunsetTransition = {
 
 export type SunsetPolicyRow = Doc<'sunsetPolicies'>;
 
-function toOverride(row: SunsetPolicyRow | undefined): SunsetPolicyOverride | undefined {
+/**
+ * Project a stored row onto the pure core's override shape. Exported because
+ * the operator query renders effective policies through the same resolver and
+ * must not re-spell this projection.
+ */
+export function toSunsetOverride(
+	row: SunsetPolicyRow | undefined
+): SunsetPolicyOverride | undefined {
 	if (row === undefined) return undefined;
 	return {
-		enabled: row.enabled,
+		isEnabled: row.isEnabled,
 		reengageAfterDays: row.reengageAfterDays,
 		suppressAfterDays: row.suppressAfterDays,
 	};
@@ -104,10 +111,17 @@ export async function resolveSunsetPolicyForContact(
 	rows: readonly SunsetPolicyRow[]
 ): Promise<SunsetPolicy> {
 	const globalRow = rows.find((row) => row.topicId === undefined);
+	const globalOverride = toSunsetOverride(globalRow);
 	const byTopic = new Map<string, SunsetPolicyRow>();
 	for (const row of rows) {
 		if (row.topicId !== undefined) byTopic.set(row.topicId, row);
 	}
+
+	// SHORT-CIRCUIT ON THE SHIPPED DEFAULT. With no per-topic override stored —
+	// the out-of-the-box configuration — a contact's memberships cannot change
+	// the answer, so reading them would be one wasted index query per contact per
+	// batch for every install that never tuned a topic.
+	if (byTopic.size === 0) return resolveSunsetPolicy({ globalOverride });
 
 	const memberships = await ctx.db
 		.query('contactTopics')
@@ -115,35 +129,44 @@ export async function resolveSunsetPolicyForContact(
 		.collect(); // bounded: one row per topic the contact subscribes to
 
 	const topicOverrides = memberships.map((membership) =>
-		toOverride(byTopic.get(membership.topicId))
+		toSunsetOverride(byTopic.get(membership.topicId))
 	);
 
 	return resolveSunsetPolicy({
-		globalOverride: toOverride(globalRow),
+		globalOverride,
 		...(topicOverrides.length > 0 ? { topicOverrides } : {}),
 	});
 }
 
 // ─── Fact loading ───────────────────────────────────────────────────────────
 
-/** Newest `occurredAt` across the contact's engagement activities, or undefined. */
+/**
+ * Newest `occurredAt` across the contact's engagement activities, or undefined.
+ *
+ * EXACT, NOT PROBED. The read goes through `by_contact_type_and_occurred_at`,
+ * whose key ends in `occurredAt`, so `.order('desc').first()` per literal IS the
+ * newest engagement of that kind — one row each, a fixed handful of reads, and
+ * no dependence on insertion order. `by_contact_and_type` would order by
+ * `_creationTime` instead, which a CSV import or a replayed webhook batch
+ * backfilling historical opens reorders arbitrarily; under-reporting the newest
+ * engagement inflates the quiet window and can auto-suppress an actively
+ * engaged contact, so this read has to be exact rather than approximately right.
+ */
 async function loadLastEngagementAt(
 	ctx: QueryCtx | MutationCtx,
 	contactId: Id<'contacts'>
 ): Promise<number | undefined> {
 	let newest: number | undefined;
 	for (const literal of SUNSET_ENGAGEMENT_LITERALS) {
-		const rows = await ctx.db
+		const row = await ctx.db
 			.query('contactActivities')
-			.withIndex('by_contact_and_type', (q) =>
+			.withIndex('by_contact_type_and_occurred_at', (q) =>
 				q.eq('contactId', contactId).eq('activityType', literal)
 			)
 			.order('desc')
-			.take(SUNSET_ACTIVITY_PROBE);
-		for (const row of rows) {
-			if (!Number.isFinite(row.occurredAt)) continue;
-			if (newest === undefined || row.occurredAt > newest) newest = row.occurredAt;
-		}
+			.first();
+		if (row === null || !Number.isFinite(row.occurredAt)) continue;
+		if (newest === undefined || row.occurredAt > newest) newest = row.occurredAt;
 	}
 	return newest;
 }
@@ -163,9 +186,11 @@ export async function loadSunsetFacts(
 	const isAlreadySuppressed =
 		hasEmail && email !== undefined ? await isSuppressed(ctx, email) : false;
 
+	// Same index, same reason as `loadLastEngagementAt`: the OLDEST send by
+	// `occurredAt`, not the first one that happened to be written.
 	const firstSend = await ctx.db
 		.query('contactActivities')
-		.withIndex('by_contact_and_type', (q) =>
+		.withIndex('by_contact_type_and_occurred_at', (q) =>
 			q.eq('contactId', contact._id).eq('activityType', 'email_sent')
 		)
 		.order('asc')
@@ -189,9 +214,14 @@ export async function loadSunsetFacts(
 
 // ─── Applying a verdict ─────────────────────────────────────────────────────
 
+/**
+ * Only a MEASURED verdict is ever audited — a hold changes nothing and has no
+ * day counts to report — so every number below is real and none of them needs a
+ * sentinel.
+ */
 function auditDetails(
 	contact: Doc<'contacts'>,
-	verdict: SunsetVerdict
+	verdict: SunsetMeasuredVerdict
 ): Record<string, string | number | boolean | null> {
 	return {
 		actor: 'sunset_engine',
@@ -199,8 +229,8 @@ function auditDetails(
 		reason: verdict.reason,
 		fromStage: contact.sunsetStage ?? 'engaged',
 		toStage: verdict.stage,
-		quietDays: verdict.quietDays === null ? -1 : Math.round(verdict.quietDays),
-		tenureDays: verdict.tenureDays === null ? -1 : Math.round(verdict.tenureDays),
+		quietDays: Math.round(verdict.quietDays),
+		tenureDays: Math.round(verdict.tenureDays),
 	};
 }
 
@@ -274,9 +304,10 @@ export async function evaluateAndApplySunset(
 			await suppressEmail(ctx, {
 				email,
 				reason: 'unengaged',
-				notes: `Sunset policy: no engagement for ${
-					verdict.quietDays === null ? '?' : Math.round(verdict.quietDays)
-				} days (threshold ${policy.suppressAfterDays})`,
+				notes:
+					`Sunset policy: no engagement for ${Math.round(verdict.quietDays)} days ` +
+					`(threshold ${policy.suppressAfterDays})`,
+				now,
 			});
 			await setStage(ctx, contact._id, 'suppressed', now);
 			await recordAuditLog(ctx, {
@@ -306,7 +337,12 @@ export type SunsetRestoreResult = {
 	restored: boolean;
 	/** True when a `reason: 'unengaged'` blocklist row was removed. */
 	removedSuppression: boolean;
-	reason: 'restored' | 'not_found' | 'no_email' | 'not_sunset_suppressed';
+	/**
+	 * WHAT HAPPENED, not why. Named `outcome` rather than `reason` because this
+	 * module also exports `SunsetReason` — the engine's decision vocabulary —
+	 * and the two are different vocabularies for different questions.
+	 */
+	outcome: 'restored' | 'not_found' | 'no_email' | 'not_sunset_suppressed';
 };
 
 /**
@@ -327,11 +363,11 @@ export async function restoreSunsetSuppression(
 ): Promise<SunsetRestoreResult> {
 	const contact = await ctx.db.get(args.contactId);
 	if (!contact || contact.deletedAt !== undefined) {
-		return { restored: false, removedSuppression: false, reason: 'not_found' };
+		return { restored: false, removedSuppression: false, outcome: 'not_found' };
 	}
 	const email = contact.email;
 	if (email === undefined || email.trim().length === 0) {
-		return { restored: false, removedSuppression: false, reason: 'no_email' };
+		return { restored: false, removedSuppression: false, outcome: 'no_email' };
 	}
 
 	const blocked = await ctx.db
@@ -340,7 +376,7 @@ export async function restoreSunsetSuppression(
 		.first();
 
 	if (blocked !== null && blocked.reason !== 'unengaged') {
-		return { restored: false, removedSuppression: false, reason: 'not_sunset_suppressed' };
+		return { restored: false, removedSuppression: false, outcome: 'not_sunset_suppressed' };
 	}
 
 	let removedSuppression = false;
@@ -369,7 +405,7 @@ export async function restoreSunsetSuppression(
 		},
 	});
 
-	return { restored: true, removedSuppression, reason: 'restored' };
+	return { restored: true, removedSuppression, outcome: 'restored' };
 }
 
 /** Toggle the operator override for one contact. Audited either way. */
