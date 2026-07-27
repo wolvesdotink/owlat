@@ -18,8 +18,10 @@ import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
 import {
-	aggregateSndsDays,
+	createSndsDayFold,
 	DAY_MS,
+	foldedSndsDays,
+	foldSndsDays,
 	normalizeSndsIp,
 	parseSndsFeed,
 	SNDS_MAX_FEED_BYTES,
@@ -113,6 +115,8 @@ export interface SndsPollSummary {
 	outOfWindow: number;
 	/** Observations dropped by {@link SNDS_MAX_OBSERVATIONS_PER_POLL}. */
 	capped: number;
+	/** Feed rows dropped because the fold hit its distinct-(IP, day) cap. */
+	overflowed: number;
 	truncated: boolean;
 }
 
@@ -128,6 +132,7 @@ const NOT_ENROLLED: SndsPollSummary = {
 	foreignIps: 0,
 	outOfWindow: 0,
 	capped: 0,
+	overflowed: 0,
 	truncated: false,
 };
 
@@ -195,6 +200,11 @@ export const poll = internalAction({
 		const fetchedAt = Date.now();
 		const summary: SndsPollSummary = { ...NOT_ENROLLED, enrolled: true, feeds: urls.length };
 		const observations: SndsDayObservation[] = [];
+		// ONE fold across ALL feeds. SNDS keys are per registered range and ranges
+		// overlap, so two feeds can both report an IP-day; folding per feed would
+		// dispatch that day twice and the second copy — same `fetchedAt` — would be
+		// stored as a replay, silently dropping one feed's counters.
+		const fold = createSndsDayFold();
 		// EVERY filter the mutation would apply is applied HERE first: the round
 		// trip is the expensive part of ingest, so a day we already know will be
 		// refused must never be paid for (D16).
@@ -209,21 +219,24 @@ export const poll = internalAction({
 			const parsed = parseSndsFeed(body);
 			summary.droppedRows += parsed.dropped;
 			summary.truncated ||= parsed.truncated;
-			for (const day of aggregateSndsDays(parsed.rows)) {
-				if (allowlist.size > 0 && !allowlist.has(day.ip)) {
-					summary.foreignIps += 1;
-					continue;
-				}
-				if (day.periodStart < oldestDay || day.periodStart > fetchedAt) {
-					summary.outOfWindow += 1;
-					continue;
-				}
-				if (observations.length >= SNDS_MAX_OBSERVATIONS_PER_POLL) {
-					summary.capped += 1;
-					continue;
-				}
-				observations.push(day);
+			foldSndsDays(fold, parsed.rows);
+		}
+		summary.overflowed = fold.overflowed;
+
+		for (const day of foldedSndsDays(fold)) {
+			if (allowlist.size > 0 && !allowlist.has(day.ip)) {
+				summary.foreignIps += 1;
+				continue;
 			}
+			if (day.periodStart < oldestDay || day.periodStart > fetchedAt) {
+				summary.outOfWindow += 1;
+				continue;
+			}
+			if (observations.length >= SNDS_MAX_OBSERVATIONS_PER_POLL) {
+				summary.capped += 1;
+				continue;
+			}
+			observations.push(day);
 		}
 
 		summary.observations = observations.length;

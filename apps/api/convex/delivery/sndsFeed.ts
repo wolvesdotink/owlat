@@ -323,6 +323,44 @@ export function utcDayStart(timestamp: number): number {
 }
 
 /**
+ * The distinct (IP, day) cells one fold may hold.
+ *
+ * A fold spans every configured feed, and the feeds decide how many cells they
+ * describe, so the accumulator is bounded like everything else fed by
+ * externally-supplied input. Rows for a cell beyond the cap are counted, not
+ * folded — dropping them silently would make a poll's numbers unexplainable.
+ */
+export const SNDS_MAX_DAY_CELLS = 8_000;
+
+/**
+ * An in-progress fold of feed rows into (IP, UTC day) observations.
+ *
+ * It exists so that several feeds fold into ONE result. SNDS keys are per
+ * registered range and ranges overlap, so the same IP and day legitimately
+ * appears in two feeds. Folding each feed on its own would emit that day twice,
+ * and the second copy — carrying the same `fetchedAt` as the first — would be
+ * stored as a replay, quietly discarding one feed's counters instead of adding
+ * them to the other's.
+ */
+export interface SndsDayFold {
+	readonly byCell: Map<string, SndsDayObservation>;
+	readonly maxCells: number;
+	/** Rows dropped because the fold was already holding `maxCells` cells. */
+	overflowed: number;
+}
+
+export function createSndsDayFold(maxCells: number = SNDS_MAX_DAY_CELLS): SndsDayFold {
+	return { byCell: new Map(), maxCells, overflowed: 0 };
+}
+
+/** The fold's observations, ordered by IP then day. */
+export function foldedSndsDays(fold: SndsDayFold): SndsDayObservation[] {
+	return [...fold.byCell.values()].sort(
+		(a, b) => a.ip.localeCompare(b.ip) || a.periodStart - b.periodStart
+	);
+}
+
+/**
  * Fold sub-day rows into one observation per (IP, UTC day).
  *
  * Counters SUM; the band and the filter result take the WORST value seen that
@@ -330,12 +368,23 @@ export function utcDayStart(timestamp: number): number {
  * eight-hour block followed by a quiet one is still a bad day.
  */
 export function aggregateSndsDays(rows: readonly SndsFeedRow[]): SndsDayObservation[] {
-	const byCell = new Map<string, SndsDayObservation>();
+	const fold = createSndsDayFold();
+	foldSndsDays(fold, rows);
+	return foldedSndsDays(fold);
+}
+
+/** Fold one feed's rows into a shared accumulator. Never throws. */
+export function foldSndsDays(fold: SndsDayFold, rows: readonly SndsFeedRow[]): void {
+	const byCell = fold.byCell;
 	for (const row of rows) {
 		const periodStart = utcDayStart(row.activityStart);
 		const key = `${row.ip} ${periodStart}`;
 		const existing = byCell.get(key);
 		if (existing === undefined) {
+			if (byCell.size >= fold.maxCells) {
+				fold.overflowed += 1;
+				continue;
+			}
 			byCell.set(key, {
 				ip: row.ip,
 				periodStart,
@@ -359,7 +408,4 @@ export function aggregateSndsDays(rows: readonly SndsFeedRow[]): SndsDayObservat
 			existing.sampleHelo = row.sampleHelo;
 		}
 	}
-	return [...byCell.values()].sort(
-		(a, b) => a.ip.localeCompare(b.ip) || a.periodStart - b.periodStart
-	);
 }
