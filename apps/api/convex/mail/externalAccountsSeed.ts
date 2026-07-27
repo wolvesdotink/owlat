@@ -121,6 +121,14 @@ export const _connectSeedInternal = internalMutation({
  * D2: acknowledging is advisory housekeeping. Not acknowledging blocks nothing,
  * and a never-rotated seed keeps being measured — it just measures less well.
  *
+ * WHO CALLS IT. Nothing in `apps/web` yet, and that is a recorded handoff, not
+ * an omission: the dismiss control belongs beside the count it clears, which is
+ * `getSeedPlacementSummary.rotationRemindersDue` on the cell screen P3-6 ships
+ * (the same piece that renders every other seed status). Until then the nudge
+ * is readable — `auditLogs.list({ action: 'seed_mailbox.rotation_reminder' })`
+ * on the shipped audit screen — and, being advisory, an un-dismissed one costs
+ * the operator nothing.
+ *
  * authz: adminMutation, matching `_connectSeedInternal` — a seed is org
  * infrastructure, so its hygiene state is admin-owned.
  */
