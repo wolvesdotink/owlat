@@ -905,3 +905,153 @@ describe('seedAdmin (POST /seed/admin)', () => {
 		expect(second.status).toBe(409);
 	});
 });
+
+// ============================================================================
+// Seed-probe one-click unsubscribe — POST /unsub/probe/{token}
+//
+// A public, unauthenticated, ORG-SCOPED write surface: the signed token is the
+// only claim the recording mutation gets, and the organization travels inside
+// it precisely so the mutation has something independent to check. Everything
+// below is driven through `t.fetch` so the longest-prefix routing in `http.ts`
+// (`/unsub/probe/` must win over `/unsub/`) is exercised too.
+// ============================================================================
+
+const PROBE_ORG = 'org_probe_links';
+const PROBE_ID = 'sp_tokenlinks000000000';
+
+// Probe token: payload is `{organizationId}.{probeId}`, signed in the
+// `seedprobe:` namespace — `{payload}:{timestamp}:{HMAC(secret, "seedprobe:{payload}:{timestamp}")}`.
+async function makeProbeToken(
+	organizationId: string,
+	probeId: string,
+	timestamp = Date.now()
+): Promise<string> {
+	const payload = `${organizationId}.${probeId}`;
+	const ts = String(timestamp);
+	const sig = await hmacBase64Url(SECRET, `seedprobe:${payload}:${ts}`);
+	return `${payload}:${ts}:${sig}`;
+}
+
+async function seedProbeRow(
+	t: ReturnType<typeof setupTest>,
+	organizationId = PROBE_ORG,
+	probeId = PROBE_ID
+): Promise<Id<'seedPlacementProbes'>> {
+	const now = Date.now();
+	return await t.run(async (ctx) => {
+		const mailboxId = await ctx.db.insert('mailboxes', {
+			userId: 'user_1',
+			organizationId,
+			kind: 'external',
+			scope: 'seed',
+			address: 'owlat.seed.0@gmail.example',
+			domain: 'gmail.example',
+			status: 'active',
+			usedBytes: 0,
+			uidValidity: now,
+			createdAt: now,
+			updatedAt: now,
+		} as never);
+		const accountId = await ctx.db.insert('externalMailAccounts', {
+			userId: 'user_1',
+			organizationId,
+			mailboxId,
+			purpose: 'seed',
+			seedProvider: 'gmail',
+			imapHost: 'imap.gmail.example',
+			imapPort: 993,
+			isImapSecure: true,
+			smtpHost: 'smtp.gmail.example',
+			smtpPort: 465,
+			isSmtpSecure: true,
+			authMethod: 'password',
+			imapUsername: 'login-0',
+			secretCiphertext: 'ct',
+			secretIv: 'iv',
+			secretAuthTag: 'tag',
+			secretEnvelopeVersion: 1,
+			status: 'connected',
+			createdAt: now,
+			updatedAt: now,
+		} as never);
+		return ctx.db.insert('seedPlacementProbes', {
+			organizationId,
+			probeId,
+			accountId,
+			provider: 'gmail',
+			stream: 'campaign',
+			sentAt: now,
+			dispatchedAt: now,
+			expiresAt: now + 90 * 24 * 60 * 60 * 1000,
+		} as never);
+	});
+}
+
+async function readUnsubscribedAt(
+	t: ReturnType<typeof setupTest>,
+	ref: Id<'seedPlacementProbes'>
+): Promise<number | undefined> {
+	return await t.run(async (ctx) => (await ctx.db.get(ref))?.unsubscribedAt);
+}
+
+describe('handleSeedProbeUnsubscribe (POST /unsub/probe/...)', () => {
+	it('stamps the probe row for a valid token (200, ok:true)', async () => {
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		const token = await makeProbeToken(PROBE_ORG, PROBE_ID);
+
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(200);
+		const json = (await res.json()) as { ok: boolean };
+		expect(json.ok).toBe(true);
+		expect(await readUnsubscribedAt(t, ref)).toEqual(expect.any(Number));
+	});
+
+	it('records nothing for a token minted by a DIFFERENT organization', async () => {
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		// Correctly signed, but its org claim does not own the probe.
+		const token = await makeProbeToken('org_someone_else', PROBE_ID);
+
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(200);
+		expect(await readUnsubscribedAt(t, ref)).toBeUndefined();
+	});
+
+	it('refuses a CONTACT unsubscribe token replayed at /unsub/probe/', async () => {
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		const contactId = await seedContact(t);
+		const token = await makeUnsubToken(contactId);
+
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(400);
+		expect(await readUnsubscribedAt(t, ref)).toBeUndefined();
+	});
+
+	it('refuses a PROBE token replayed at the contact endpoint /unsub/', async () => {
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		const token = await makeProbeToken(PROBE_ORG, PROBE_ID);
+
+		const res = await t.fetch(`/unsub/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(400);
+		expect(await readUnsubscribedAt(t, ref)).toBeUndefined();
+	});
+
+	it('refuses the degraded empty-organization token as invalid_format', async () => {
+		// `delivery/worker.ts` builds the header with `organizationId ?? ''` so a
+		// campaign-shaped message never loses its RFC 8058 pair. The resulting
+		// token is unattributable and must record NOTHING rather than fall back
+		// to the row's own organization.
+		const t = setupTest();
+		const ref = await seedProbeRow(t);
+		const token = await makeProbeToken('', PROBE_ID);
+
+		const res = await t.fetch(`/unsub/probe/${encodeURIComponent(token)}`, { method: 'POST' });
+		expect(res.status).toBe(400);
+		const json = (await res.json()) as { error?: { message: string } };
+		expect(json.error).toBeDefined();
+		expect(await readUnsubscribedAt(t, ref)).toBeUndefined();
+	});
+});

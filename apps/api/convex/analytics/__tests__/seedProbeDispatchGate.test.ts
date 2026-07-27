@@ -33,6 +33,8 @@ const modules = { ...rootGlob, ...analyticsGlob };
 const HOUR = 60 * 60 * 1000;
 const NOW = 1_800_000_000_000;
 const ORG = 'org_dispatch_gate';
+/** A SECOND tenant, for the cross-org starvation regression. */
+const ORG_B = 'org_dispatch_gate_b';
 
 // The clock is pinned for the WHOLE suite: this file is specifically about
 // horizons, and a fixture built on the real `Date.now()` while the assertions
@@ -55,13 +57,14 @@ async function seedAccount(
 	// explicit `undefined` triggers the default, which is exactly how the
 	// page-pressure regression below ended up tagging all 60 of its "ordinary"
 	// accounts as seeds and testing nothing.
-	purpose: 'seed' | 'mail' | null = 'seed'
+	purpose: 'seed' | 'mail' | null = 'seed',
+	organizationId: string = ORG
 ): Promise<Id<'externalMailAccounts'>> {
 	return t.run(async (ctx) => {
 		const address = `owlat.seed.${index}@gmail.example`;
 		const mailboxId = await ctx.db.insert('mailboxes', {
 			userId: 'user_1',
-			organizationId: ORG,
+			organizationId,
 			address,
 			domain: 'gmail.example',
 			kind: 'external' as const,
@@ -73,7 +76,7 @@ async function seedAccount(
 		});
 		return ctx.db.insert('externalMailAccounts', {
 			userId: 'user_1',
-			organizationId: ORG,
+			organizationId,
 			mailboxId,
 			...(purpose !== null ? { purpose } : {}),
 			...(purpose === 'seed' ? { seedProvider: 'gmail' as const } : {}),
@@ -104,11 +107,12 @@ async function probe(
 		sentAt: number;
 		dispatchedAt?: number;
 		placement?: 'inbox' | 'spam';
+		organizationId?: string;
 	}
 ): Promise<Id<'seedPlacementProbes'>> {
 	return t.run(async (ctx) =>
 		ctx.db.insert('seedPlacementProbes', {
-			organizationId: ORG,
+			organizationId: fields.organizationId ?? ORG,
 			probeId: fields.probeId,
 			accountId,
 			provider: 'gmail' as const,
@@ -131,13 +135,13 @@ async function probe(
 async function listWork(
 	t: ReturnType<typeof convexTest>,
 	now: number = NOW
-): Promise<Array<{ probeIds: string[]; expiredProbeIds: string[] }>> {
-	const all: Array<{ probeIds: string[]; expiredProbeIds: string[] }> = [];
+): Promise<Array<{ organizationId: string; probeIds: string[]; expiredProbeIds: string[] }>> {
+	const all: Array<{ organizationId: string; probeIds: string[]; expiredProbeIds: string[] }> = [];
 	let cursor: string | null = null;
 	// Hard bound so a cursor that never advances fails loudly instead of hanging.
 	for (let page = 0; page < 50; page += 1) {
 		const result: {
-			items: Array<{ probeIds: string[]; expiredProbeIds: string[] }>;
+			items: Array<{ organizationId: string; probeIds: string[]; expiredProbeIds: string[] }>;
 			cursor: string | null;
 			isDone: boolean;
 		} = await t.query(internal.analytics.seedProbePoller.listSeedProbeWork, { now, cursor });
@@ -247,21 +251,37 @@ describe('work selection keys off dispatch, never off enqueue', () => {
 
 	it('reaches every organization rather than starving whoever sorts last', async () => {
 		const t = convexTest(schema, modules);
-		// More seed accounts than a single page holds; each one carries work.
-		const probeIds: string[] = [];
+		// More seed accounts than a single page holds, spread across TWO tenants:
+		// a bounded top-N with no cursor drains whichever org sorts first and
+		// starves the other one permanently, which is the regression this pins —
+		// a single-org fixture would only prove the cursor advances.
+		const expected = new Map<string, string[]>([
+			[ORG, []],
+			[ORG_B, []],
+		]);
 		for (let i = 0; i < 40; i += 1) {
-			const accountId = await seedAccount(t, i + 500);
+			const organizationId = i % 2 === 0 ? ORG : ORG_B;
+			const accountId = await seedAccount(t, i + 500, 'seed', organizationId);
 			const probeId = `sp_multi${String(i).padStart(16, '0')}`;
-			probeIds.push(probeId);
+			expected.get(organizationId)?.push(probeId);
 			await probe(t, accountId, {
 				probeId,
 				sentAt: NOW - 12 * HOUR,
 				dispatchedAt: NOW - HOUR,
+				organizationId,
 			});
 		}
 
 		const work = await listWork(t);
-		expect(work.flatMap((w) => w.probeIds).sort()).toEqual([...probeIds].sort());
+		// Named claim, asserted: BOTH tenants are represented in the drained work,
+		// and every probe of each comes back.
+		for (const [organizationId, probeIds] of expected) {
+			const seen = work
+				.filter((item) => item.organizationId === organizationId)
+				.flatMap((item) => item.probeIds)
+				.sort();
+			expect(seen).toEqual([...probeIds].sort());
+		}
 	});
 });
 

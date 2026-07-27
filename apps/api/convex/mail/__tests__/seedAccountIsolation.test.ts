@@ -28,6 +28,8 @@ import { modules } from './helpers.testlib';
 import { loadAccessibleMailboxes } from '../permissions';
 import { getActiveMailboxForUser } from '../mailbox';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
+import type { DatabaseWriter } from '../../_generated/server';
+import { loadSeedAccounts } from '../../analytics/seedPlacement';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'admin-user',
@@ -234,6 +236,40 @@ describe('a seed mailbox is never the connecting admin’s own inbox', () => {
 	});
 });
 
+/** Insert one seed row (mailbox + account) directly, bypassing the connect guard. */
+async function insertSeedRow(
+	ctx: { db: DatabaseWriter },
+	options: { label: string; status: 'pending' | 'disconnected'; createdAt: number }
+): Promise<void> {
+	const address = `owlat.seed.${options.label}@gmail.example`;
+	const retired = options.status === 'disconnected';
+	const mailboxId = await ctx.db.insert('mailboxes', {
+		userId: 'admin-user',
+		organizationId: 'org-1',
+		address,
+		domain: 'gmail.example',
+		kind: 'external' as const,
+		scope: 'seed' as const,
+		// A disconnected account's mailbox is soft-deleted by `mail/mailbox.ts`.
+		status: retired ? ('deleted' as const) : ('active' as const),
+		usedBytes: 0,
+		uidValidity: 1,
+		createdAt: options.createdAt,
+		updatedAt: options.createdAt,
+	});
+	await ctx.db.insert('externalMailAccounts', {
+		userId: 'admin-user',
+		organizationId: 'org-1',
+		mailboxId,
+		purpose: 'seed' as const,
+		seedProvider: 'gmail' as const,
+		...CREDS,
+		status: options.status,
+		createdAt: options.createdAt,
+		updatedAt: options.createdAt,
+	});
+}
+
 describe('the seed set is bounded at connect time, never silently truncated', () => {
 	it('refuses the seed past the per-organization limit', async () => {
 		const t = convexTest(schema, modules);
@@ -242,34 +278,39 @@ describe('the seed set is bounded at connect time, never silently truncated', ()
 		// @owlat/shared so the connect guard and the read page cannot disagree.
 		await t.run(async (ctx) => {
 			for (let i = 0; i < SEED_ACCOUNTS_PER_ORG_LIMIT; i += 1) {
-				const address = `owlat.seed.filler.${i}@gmail.example`;
-				const mailboxId = await ctx.db.insert('mailboxes', {
-					userId: 'admin-user',
-					organizationId: 'org-1',
-					address,
-					domain: 'gmail.example',
-					kind: 'external' as const,
-					scope: 'seed' as const,
-					status: 'active' as const,
-					usedBytes: 0,
-					uidValidity: 1,
-					createdAt: 1,
-					updatedAt: 1,
-				});
-				await ctx.db.insert('externalMailAccounts', {
-					userId: 'admin-user',
-					organizationId: 'org-1',
-					mailboxId,
-					purpose: 'seed' as const,
-					seedProvider: 'gmail' as const,
-					...CREDS,
-					status: 'pending' as const,
-					createdAt: 1,
-					updatedAt: 1,
-				});
+				await insertSeedRow(ctx, { label: `filler.${i}`, status: 'pending', createdAt: 1 });
 			}
 		});
 
 		await expect(connectSeed(t, 'owlat.seed.overflow@gmail.example')).rejects.toThrow(/maximum/);
+	});
+
+	// REGRESSION (review round 4). Disconnecting is a SOFT status change — the
+	// row stays. When the guard and the roll-up took a bounded page and filtered
+	// `status !== 'disconnected'` AFTERWARDS, retired rows ate slots: the cap
+	// read short and stopped refusing forever, and live seeds fell off the read
+	// page. Both now select the live statuses THROUGH the index.
+	it('counts and reads every LIVE seed even when the org has retired seeds', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin');
+		await t.run(async (ctx) => {
+			// The retired rows sort FIRST, so a bounded page would hand them out.
+			await insertSeedRow(ctx, { label: 'retired.0', status: 'disconnected', createdAt: 1 });
+			await insertSeedRow(ctx, { label: 'retired.1', status: 'disconnected', createdAt: 2 });
+			for (let i = 0; i < SEED_ACCOUNTS_PER_ORG_LIMIT; i += 1) {
+				await insertSeedRow(ctx, { label: `live.${i}`, status: 'pending', createdAt: 10 + i });
+			}
+		});
+
+		// The cap still holds: 50 LIVE seeds is the maximum, disconnected or not.
+		await expect(connectSeed(t, 'owlat.seed.overflow@gmail.example')).rejects.toThrow(/maximum/);
+
+		// And every live seed is still measured — none is displaced by a retired row.
+		const measured = await t.run(async (ctx) =>
+			loadSeedAccounts(ctx.db, 'org-1', Date.parse('2026-01-01T00:00:00Z'))
+		);
+		expect(measured).toHaveLength(SEED_ACCOUNTS_PER_ORG_LIMIT);
+		expect(new Set(measured.map((view) => view.address)).size).toBe(SEED_ACCOUNTS_PER_ORG_LIMIT);
+		expect(measured.every((view) => view.address.includes('live.'))).toBe(true);
 	});
 });
