@@ -5,6 +5,7 @@ import { campaignEmailPool, transactionalEmailPool } from './workpool';
 import { isSuppressed } from '../lib/suppression';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
 import { normalizeEngagementScore } from './workerEnvelope';
+import { enqueueSeedShadowCopies, type CampaignEnvelopeInput } from './seedShadowCopy';
 
 /**
  * Error thrown by `enqueueNonCampaignSend` when the recipient is on the
@@ -166,8 +167,12 @@ export const enqueueCampaignEmails = internalMutation({
 		// RFC 2919 List-Id header value for a TOPIC campaign, pre-built by the
 		// orchestrator via `getListIdHeader`. Absent for segment campaigns.
 		listId: v.optional(v.string()),
+		// A/B arm this page belongs to. Only used to key the seed-probe set: the
+		// two arms are different messages and each deserves its own reading.
+		abVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
 	},
 	handler: async (ctx, args) => {
+		let lastEnvelope: CampaignEnvelopeInput | undefined;
 		for (const recipient of args.emails) {
 			// Narrow at the WRITE boundary, not only where dispatch reads it: a
 			// degenerate stored score (NaN / out-of-range, i.e. an upstream
@@ -176,40 +181,40 @@ export const enqueueCampaignEmails = internalMutation({
 			// the MTA's JSON (NaN → null), and be rejected by
 			// `envelopeInputValidator` on re-entry — dropping the deferred send.
 			const engagementScore = normalizeEngagementScore(recipient.engagementScore);
+			const envelopeInput: CampaignEnvelopeInput = {
+				kind: 'campaign' as const,
+				deliveryDomain: 'production' as const,
+				to: recipient.email,
+				from: args.from,
+				replyTo: args.replyTo,
+				providerType: args.providerType,
+				ipPool: args.ipPool,
+				template: {
+					subject: args.subject,
+					htmlContent: args.htmlContent,
+				},
+				contactInfo: {
+					contactId: recipient.contactId,
+					email: recipient.email,
+					firstName: recipient.firstName,
+					lastName: recipient.lastName,
+				},
+				audienceType: args.audienceType,
+				emailSendId: recipient.emailSendId,
+				campaignId: args.campaignId,
+				organizationId: args.organizationId,
+				siteUrl: args.siteUrl,
+				convexSiteUrl: args.convexSiteUrl,
+				trackingBaseUrl: args.trackingBaseUrl,
+				viewInBrowserUrl: args.viewInBrowserUrl,
+				listId: args.listId,
+				...(engagementScore !== undefined ? { engagementScore } : {}),
+			};
+			lastEnvelope = envelopeInput;
 			await campaignEmailPool.enqueueAction(
 				ctx,
 				internal.delivery.worker.sendSingleEmail,
-				{
-					envelopeInput: {
-						kind: 'campaign' as const,
-						deliveryDomain: 'production' as const,
-						to: recipient.email,
-						from: args.from,
-						replyTo: args.replyTo,
-						providerType: args.providerType,
-						ipPool: args.ipPool,
-						template: {
-							subject: args.subject,
-							htmlContent: args.htmlContent,
-						},
-						contactInfo: {
-							contactId: recipient.contactId,
-							email: recipient.email,
-							firstName: recipient.firstName,
-							lastName: recipient.lastName,
-						},
-						audienceType: args.audienceType,
-						emailSendId: recipient.emailSendId,
-						campaignId: args.campaignId,
-						organizationId: args.organizationId,
-						siteUrl: args.siteUrl,
-						convexSiteUrl: args.convexSiteUrl,
-						trackingBaseUrl: args.trackingBaseUrl,
-						viewInBrowserUrl: args.viewInBrowserUrl,
-						listId: args.listId,
-						...(engagementScore !== undefined ? { engagementScore } : {}),
-					},
-				},
+				{ envelopeInput },
 				{
 					onComplete: internal.delivery.sendCompletion.completeSend,
 					context: {
@@ -220,6 +225,23 @@ export const enqueueCampaignEmails = internalMutation({
 					},
 				}
 			);
+		}
+
+		// Deliverability seed probe (gate 5): CLONE the real envelope this page
+		// just enqueued into every operator-owned seed mailbox, in this same
+		// transaction. Idempotent per (org, campaign, variant), so the walker's
+		// page fan-out produces exactly one probe set per arm. With no seed
+		// mailboxes connected — the default — it is a no-op (D2) and can never
+		// fail the campaign it is measuring.
+		if (lastEnvelope && args.organizationId) {
+			await enqueueSeedShadowCopies(ctx, {
+				organizationId: args.organizationId,
+				campaignId: args.campaignId,
+				...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
+				stream: 'campaign',
+				base: lastEnvelope,
+				now: Date.now(),
+			});
 		}
 
 		return { enqueued: args.emails.length };

@@ -2,44 +2,46 @@
  * Seed shadow copy — the SEND half of the seed-placement probe (D18).
  *
  * A shadow copy goes to an operator-owned seed mailbox through the IDENTICAL
- * composer and the IDENTICAL transport as the real send it mirrors: same
- * `sendSingleEmail` worker, same campaign composer, same `from`, same
- * `providerType`/`ipPool`, same template bytes. Only three things change, and
- * each is forced by a rule in the plan:
+ * composer and the IDENTICAL transport as the real send it mirrors: it is
+ * CLONED from a real campaign envelope inside the very transaction that
+ * enqueues that campaign's mail (`delivery/enqueue.ts`), so there is exactly
+ * one construction site and no second, hand-rolled envelope to drift from it.
+ * Same `sendSingleEmail` worker, same composer, same `from`, same
+ * `providerType`/`ipPool`, same template bytes, same tracking pixel and
+ * wrapped links, same RFC 8058 one-click pair.
  *
- *   1. `to` / `contactInfo.email` — the seed address instead of a subscriber.
+ * Only three things change, and each is forced by a rule in the plan:
+ *
+ *   1. `to` / `contactInfo` — the seed address instead of a subscriber.
  *   2. `contactId` and `emailSendId` are STRIPPED. `emailSendId` is what makes
- *      a Send countable: without it there is no `emailSends` row, no
- *      `sendRef`, hence no workpool `onComplete` → no Send lifecycle → no
- *      campaign stat-shard bump and no `sendingReputation` event. That is the
- *      D18 exclusion, enforced by construction rather than by a filter
- *      somewhere downstream. Dropping `contactId` additionally keeps a real
- *      subscriber's unsubscribe/preference HMAC URLs out of a mailbox that is
- *      not theirs. As a consequence the probe carries no tracking pixel and no
- *      wrapped links — a probe open must never land in a campaign's open rate.
- *   3. `seedProbeId` is added — the `X-Owlat-Seed-Probe` header the IMAP
- *      poller looks for. Opaque; no recipient or campaign PII.
+ *      a Send countable: without it there is no `emailSends` row, no workpool
+ *      `onComplete` -> no Send lifecycle -> no campaign stat-shard bump and no
+ *      `sendingReputation` event. That is the D18 exclusion, enforced by
+ *      construction rather than by a filter somewhere downstream. Dropping
+ *      `contactId` additionally keeps a real subscriber's unsubscribe HMAC out
+ *      of a mailbox that is not theirs — the probe carries a PROBE-SCOPED
+ *      one-click target and PROBE-SCOPED tracking URLs instead, and neither
+ *      resolves to anything countable (see `delivery/worker.ts`).
+ *   3. `seedProbeId` + `seedProbeRef` are added — the `X-Owlat-Seed-Probe`
+ *      header the IMAP poller looks for, and the probe's durable ledger row.
+ *      The header value is opaque; no recipient or campaign PII.
  *
- * Everything else is copied verbatim, so the shadow copy is authenticated,
- * signed, and routed exactly like the mail it is measuring — which is the only
- * reason its placement means anything.
- *
- * D2: zero seed mailboxes is a supported configuration. `enqueueSeedShadowCopies`
- * with an empty seed list enqueues nothing and reports `{ enqueued: 0 }`; it
- * never throws and never affects the real send.
+ * D2: zero seed mailboxes is a supported configuration. With an empty seed
+ * list this enqueues nothing and reports `{ enqueued: 0 }`; it never throws
+ * and never affects the real send.
  */
 
-import { v } from 'convex/values';
-import { internalMutation } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
+import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { campaignEmailPool } from './workpool';
-import { envelopeInputValidator, type WorkerEnvelopeInput } from './workerEnvelope';
+import type { WorkerEnvelopeInput } from './workerEnvelope';
 import { loadSeedAccounts } from '../analytics/seedPlacement';
+import { SEED_PROBE_RETENTION_MS } from '../schema/seedPlacement';
 
 export type CampaignEnvelopeInput = Extract<WorkerEnvelopeInput, { kind: 'campaign' }>;
 
-/** Retention bound for the probe ledger (D16 — write amplification is a design constraint). */
-export const SEED_PROBE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+type MailStream = 'campaign' | 'automation' | 'transactional';
 
 /**
  * Build the shadow-copy envelope from the REAL send's envelope.
@@ -49,7 +51,7 @@ export const SEED_PROBE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
  */
 export function buildSeedShadowEnvelope(
 	base: CampaignEnvelopeInput,
-	seed: { address: string; probeId: string }
+	seed: { address: string; probeId: string; probeRef: Id<'seedPlacementProbes'> }
 ): CampaignEnvelopeInput {
 	// Explicitly rebuilt (not spread-and-delete) so a future field added to the
 	// campaign envelope has to be considered here rather than silently leaking
@@ -61,6 +63,7 @@ export function buildSeedShadowEnvelope(
 		template: base.template,
 		contactInfo: { email: seed.address },
 		seedProbeId: seed.probeId,
+		seedProbeRef: seed.probeRef,
 	};
 	if (base.deliveryDomain !== undefined) shadow.deliveryDomain = base.deliveryDomain;
 	if (base.replyTo !== undefined) shadow.replyTo = base.replyTo;
@@ -70,79 +73,29 @@ export function buildSeedShadowEnvelope(
 	if (base.campaignId !== undefined) shadow.campaignId = base.campaignId;
 	if (base.organizationId !== undefined) shadow.organizationId = base.organizationId;
 	if (base.listId !== undefined) shadow.listId = base.listId;
-	// `siteUrl` / `convexSiteUrl` / `trackingBaseUrl` / `viewInBrowserUrl` are
-	// deliberately dropped: every one of them is only consumed together with a
-	// `contactId` or an `emailSendId`, both of which a shadow copy does not have.
+	// Kept so the shadow carries the same wire features a subscriber's copy
+	// does — the one-click header pair and the tracking pixel / wrapped links
+	// are exactly what a filter weighs. Both are keyed by the opaque probe id,
+	// so neither can reach a contact record or a campaign denominator.
+	if (base.convexSiteUrl !== undefined) shadow.convexSiteUrl = base.convexSiteUrl;
+	if (base.trackingBaseUrl !== undefined) shadow.trackingBaseUrl = base.trackingBaseUrl;
+	// `siteUrl` (the in-body unsubscribe/preference footer) and
+	// `viewInBrowserUrl` (a contact-scoped archive token) are deliberately
+	// dropped: both are only meaningful with a `contactId`, which a shadow copy
+	// does not have. This is the piece's one residual wire delta from a real
+	// send, and it is documented on the card.
 	return shadow;
 }
 
 /**
  * True when this envelope is a seed shadow copy. A shadow copy must never be
- * countable, and a countable Send must never carry the probe header — this is
- * the invariant both sides are checked against.
+ * countable, and a countable Send must never carry the probe header — the
+ * invariant is ASSERTED on the composition path by
+ * `delivery/worker.ts#assertSeedShadowExclusion`.
  */
 export function isSeedShadowEnvelope(envelope: WorkerEnvelopeInput): boolean {
 	return envelope.kind === 'campaign' && envelope.seedProbeId !== undefined;
 }
-
-/**
- * Enqueue one shadow copy per seed mailbox and write its ledger row, inside
- * the caller's transaction. Deliberately enqueued WITHOUT the `onComplete` /
- * `sendRef` wiring every real Send carries: there is no Send to complete, so
- * the lifecycle (and with it every analytics and reputation denominator) is
- * never entered.
- */
-export const enqueueSeedShadowCopies = internalMutation({
-	args: {
-		organizationId: v.string(),
-		stream: v.union(v.literal('campaign'), v.literal('automation'), v.literal('transactional')),
-		transportArm: v.union(v.literal('own'), v.literal('reference')),
-		envelopeInput: envelopeInputValidator,
-		seeds: v.array(
-			v.object({
-				accountId: v.id('externalMailAccounts'),
-				address: v.string(),
-				provider: v.union(
-					v.literal('gmail'),
-					v.literal('microsoft'),
-					v.literal('yahoo'),
-					v.literal('apple'),
-					v.literal('other')
-				),
-				probeId: v.string(),
-			})
-		),
-		now: v.number(),
-	},
-	handler: async (ctx, args) => {
-		const base = args.envelopeInput;
-		// Only campaign-shaped envelopes are shadowed; a transactional stream is
-		// probed on a schedule with its own campaign-shaped probe envelope.
-		if (base.kind !== 'campaign' || args.seeds.length === 0) {
-			return { enqueued: 0 };
-		}
-
-		for (const seed of args.seeds) {
-			const shadow = buildSeedShadowEnvelope(base, seed);
-			await ctx.db.insert('seedPlacementProbes', {
-				organizationId: args.organizationId,
-				probeId: seed.probeId,
-				accountId: seed.accountId,
-				provider: seed.provider,
-				stream: args.stream,
-				transportArm: args.transportArm,
-				...(base.campaignId ? { campaignId: base.campaignId } : {}),
-				sentAt: args.now,
-				expiresAt: args.now + SEED_PROBE_RETENTION_MS,
-			});
-			await campaignEmailPool.enqueueAction(ctx, internal.delivery.worker.sendSingleEmail, {
-				envelopeInput: shadow,
-			});
-		}
-
-		return { enqueued: args.seeds.length };
-	},
-});
 
 /**
  * Generate an opaque probe id. Randomness lives here, at the edge — the pure
@@ -153,73 +106,62 @@ function newProbeId(): string {
 }
 
 /**
- * Drop one shadow copy per seed mailbox for a campaign that is going out.
+ * Enqueue one shadow copy per seed mailbox and write its ledger row, INSIDE
+ * the caller's transaction (the campaign enqueue mutation).
  *
- * Scheduled (never inline) by the campaign send walker, and IDEMPOTENT per
- * campaign: the walker fans out over pages and time zones, so this checks the
- * ledger for an existing probe before doing anything. With no seed mailboxes —
- * the default — it is a no-op that reports `{ enqueued: 0 }`; it cannot fail
- * the campaign it is measuring.
+ * Deliberately enqueued WITHOUT the `onComplete` / `sendRef` wiring every real
+ * Send carries: there is no Send to complete, so the lifecycle — and with it
+ * every analytics and reputation denominator — is never entered.
+ *
+ * IDEMPOTENT per (organization, campaign, A/B variant): the campaign walker
+ * fans out over pages and time zones and calls this once per page, so the
+ * ledger is checked first. The variant is part of the key because the two arms
+ * of an A/B campaign are DIFFERENT MESSAGES and each deserves its own reading.
  */
-export const probeCampaignSend = internalMutation({
+export async function enqueueSeedShadowCopies(
+	ctx: MutationCtx,
 	args: {
-		campaignId: v.id('campaigns'),
-		organizationId: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		subject: v.string(),
-		htmlContent: v.string(),
-		providerType: v.optional(v.string()),
-		ipPool: v.optional(v.string()),
-		audienceType: v.optional(v.union(v.literal('topic'), v.literal('segment'))),
-		listId: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const existing = await ctx.db
-			.query('seedPlacementProbes')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.first();
-		if (existing) return { enqueued: 0 };
+		organizationId: string;
+		campaignId: Id<'campaigns'>;
+		abVariant?: 'A' | 'B';
+		stream: MailStream;
+		base: CampaignEnvelopeInput;
+		now: number;
+	}
+): Promise<{ enqueued: number }> {
+	const existing = await ctx.db
+		.query('seedPlacementProbes')
+		.withIndex('by_org_and_campaign', (q) =>
+			q.eq('organizationId', args.organizationId).eq('campaignId', args.campaignId)
+		)
+		.take(200);
+	if (existing.some((row) => row.abVariant === args.abVariant)) return { enqueued: 0 };
 
-		const now = Date.now();
-		const seeds = await loadSeedAccounts(ctx.db, args.organizationId, now);
-		if (seeds.length === 0) return { enqueued: 0 };
+	const seeds = await loadSeedAccounts(ctx.db, args.organizationId, args.now);
+	if (seeds.length === 0) return { enqueued: 0 };
 
-		const base: CampaignEnvelopeInput = {
-			kind: 'campaign',
-			deliveryDomain: 'production',
-			to: '',
-			from: args.from,
-			template: { subject: args.subject, htmlContent: args.htmlContent },
-			contactInfo: { email: '' },
-			campaignId: args.campaignId,
+	for (const seed of seeds) {
+		const probeId = newProbeId();
+		const probeRef = await ctx.db.insert('seedPlacementProbes', {
 			organizationId: args.organizationId,
-			...(args.replyTo !== undefined ? { replyTo: args.replyTo } : {}),
-			...(args.providerType !== undefined ? { providerType: args.providerType } : {}),
-			...(args.ipPool !== undefined ? { ipPool: args.ipPool } : {}),
-			...(args.audienceType !== undefined ? { audienceType: args.audienceType } : {}),
-			...(args.listId !== undefined ? { listId: args.listId } : {}),
-		};
+			probeId,
+			accountId: seed.accountId,
+			provider: seed.provider,
+			stream: args.stream,
+			campaignId: args.campaignId,
+			...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
+			sentAt: args.now,
+			expiresAt: args.now + SEED_PROBE_RETENTION_MS,
+		});
+		const shadow = buildSeedShadowEnvelope(args.base, {
+			address: seed.address,
+			probeId,
+			probeRef,
+		});
+		await campaignEmailPool.enqueueAction(ctx, internal.delivery.worker.sendSingleEmail, {
+			envelopeInput: shadow,
+		});
+	}
 
-		for (const seed of seeds) {
-			const probeId = newProbeId();
-			const shadow = buildSeedShadowEnvelope(base, { address: seed.address, probeId });
-			await ctx.db.insert('seedPlacementProbes', {
-				organizationId: args.organizationId,
-				probeId,
-				accountId: seed.accountId,
-				provider: seed.provider,
-				stream: 'campaign',
-				transportArm: args.providerType === 'mta' ? 'own' : 'reference',
-				campaignId: args.campaignId,
-				sentAt: now,
-				expiresAt: now + SEED_PROBE_RETENTION_MS,
-			});
-			await campaignEmailPool.enqueueAction(ctx, internal.delivery.worker.sendSingleEmail, {
-				envelopeInput: shadow,
-			});
-		}
-
-		return { enqueued: seeds.length };
-	},
-});
+	return { enqueued: seeds.length };
+}

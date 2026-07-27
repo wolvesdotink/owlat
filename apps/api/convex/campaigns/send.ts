@@ -524,6 +524,9 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 			trackingBaseUrl: args.trackingBaseUrl,
 			organizationId: args.organizationId,
 			listId: args.listId,
+			// Keys the deliverability seed-probe set: the two A/B arms are
+			// different messages and each gets its own placement reading.
+			abVariant: args.abVariant,
 		});
 	};
 
@@ -556,27 +559,6 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 			await scheduleEnqueue(chunk, 0);
 		}
 		totalEnqueued += emailsToEnqueue.length;
-	}
-
-	// Deliverability seed probe: drop a shadow copy of this campaign into every
-	// operator-owned seed mailbox so the IMAP poller can report which folder it
-	// landed in. Scheduled separately and idempotent per campaign, so the page
-	// fan-out above produces exactly one probe set. With no seed mailboxes
-	// connected — the default — it is a no-op (D2), and it can never fail the
-	// campaign it is measuring.
-	if (totalEnqueued > 0 && args.organizationId) {
-		await ctx.scheduler.runAfter(0, internal.delivery.seedShadowCopy.probeCampaignSend, {
-			campaignId: args.campaignId,
-			organizationId: args.organizationId,
-			from: args.from,
-			replyTo: args.replyTo,
-			subject: args.subject,
-			htmlContent: args.htmlContent,
-			providerType: args.providerType,
-			ipPool: args.ipPool,
-			audienceType: args.audienceType,
-			listId: args.listId,
-		});
 	}
 
 	return totalEnqueued;
