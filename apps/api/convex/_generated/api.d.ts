@@ -208,6 +208,8 @@ import type * as contacts_resolution from "../contacts/resolution.js";
 import type * as contacts_sunset from "../contacts/sunset.js";
 import type * as contacts_sunsetEngine from "../contacts/sunsetEngine.js";
 import type * as contacts_sunsetPolicy from "../contacts/sunsetPolicy.js";
+import type * as contacts_sunsetRestore from "../contacts/sunsetRestore.js";
+import type * as contacts_sunsetSweep from "../contacts/sunsetSweep.js";
 import type * as contacts_timeline from "../contacts/timeline.js";
 import type * as crons from "../crons.js";
 import type * as delivery_contactToken from "../delivery/contactToken.js";
@@ -985,6 +987,8 @@ declare const fullApi: ApiFromModules<{
   "contacts/sunset": typeof contacts_sunset;
   "contacts/sunsetEngine": typeof contacts_sunsetEngine;
   "contacts/sunsetPolicy": typeof contacts_sunsetPolicy;
+  "contacts/sunsetRestore": typeof contacts_sunsetRestore;
+  "contacts/sunsetSweep": typeof contacts_sunsetSweep;
   "contacts/timeline": typeof contacts_timeline;
   crons: typeof crons;
   "delivery/contactToken": typeof delivery_contactToken;

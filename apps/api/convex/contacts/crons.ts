@@ -55,7 +55,7 @@ export function registerContactHygieneCrons(crons: Crons): void {
 	crons.interval(
 		'sweep contact sunset policy',
 		{ hours: 1 },
-		internal.contacts.sunset.sweepSunsetPolicy,
+		internal.contacts.sunsetSweep.sweepSunsetPolicy,
 		{}
 	);
 }

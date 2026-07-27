@@ -8,7 +8,7 @@ import { isValidEmail, normalizeEmail } from './lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwAlreadyExists } from './_utils/errors';
 import { scheduleSuppressionMirror } from './delivery/suppressionMirror';
 import { recordAuditLog } from './lib/auditLog';
-import { restoreSunsetSuppression } from './contacts/sunsetEngine';
+import { restoreSunsetSuppression } from './contacts/sunsetRestore';
 
 // Look up a blocklist row by email. Normalizes (lowercase + trim) so every
 // caller hits the `by_email` index with the same key, then returns the first
