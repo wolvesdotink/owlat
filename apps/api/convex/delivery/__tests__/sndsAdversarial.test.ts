@@ -9,7 +9,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import {
@@ -34,7 +34,21 @@ import {
 import { modules } from './helpers/convexModules';
 const FEED_URL = 'https://snds.example.test/feed';
 
+/**
+ * A FIXED simulated instant. The ingest window's edges are UTC midnights and
+ * every fixture below is a UTC day, so a suite built on the real clock changes
+ * meaning when a run straddles midnight. Only `Date` is faked, leaving
+ * convex-test's own scheduling on real timers.
+ */
+const NOW = Date.UTC(2026, 6, 22, 12, 0, 0);
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(NOW);
+});
+
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 	delete process.env['SNDS_DATA_FEED_URLS'];
 	delete process.env['MTA_IP_POOLS'];
@@ -47,9 +61,9 @@ function sndsStamp(at: Date): string {
 }
 
 function yesterday(hour: number): Date {
-	const now = new Date();
+	const base = new Date(NOW);
 	return new Date(
-		Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1, hour, 0, 0)
+		Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() - 1, hour, 0, 0)
 	);
 }
 
@@ -72,7 +86,7 @@ function row(ip: string): string {
 }
 
 function observation(overrides: Partial<SndsDayObservation> = {}): SndsDayObservation {
-	const periodStart = Math.floor((Date.now() - DAY_MS) / DAY_MS) * DAY_MS;
+	const periodStart = Math.floor((NOW - DAY_MS) / DAY_MS) * DAY_MS;
 	return {
 		ip: '203.0.113.10',
 		periodStart,
@@ -215,10 +229,10 @@ describe('replay, staleness and foreign IPs', () => {
 		const fetchedAt = Date.now();
 		const result = await t.mutation(internal.delivery.snds.ingestDays, {
 			observations: [
-				observation({ periodStart: Date.now() + 5 * DAY_MS }),
-				observation({ periodStart: Date.now() - 60 * DAY_MS }),
+				observation({ periodStart: NOW + 5 * DAY_MS }),
+				observation({ periodStart: NOW - 60 * DAY_MS }),
 				observation({
-					periodStart: Math.floor((Date.now() - DAY_MS) / DAY_MS) * DAY_MS + 3_600_000,
+					periodStart: Math.floor((NOW - DAY_MS) / DAY_MS) * DAY_MS + 3_600_000,
 				}), // not a UTC midnight
 				observation({ trapHits: -1 }),
 				observation({ messageRecipients: 1.5 }),
@@ -252,19 +266,43 @@ describe('replay, staleness and foreign IPs', () => {
 		expect(rows.map((stored) => stored.ip)).toEqual(['203.0.113.10']);
 	});
 
-	it('counts the overflow when a caller oversends a batch, instead of slicing it away', async () => {
+	it('accounts for every observation it is given, and the POLL is what batches', async () => {
 		const t = convexTest(schema, modules);
-		const fetchedAt = Date.now();
 		const over = SNDS_INGEST_BATCH_SIZE + 36;
 		const result = await t.mutation(internal.delivery.snds.ingestDays, {
 			observations: Array.from({ length: over }, (_, index) =>
 				observation({ ip: `203.0.113.${index % 250}` })
 			),
-			fetchedAt,
+			fetchedAt: NOW,
 		});
-		// Every row the caller passed is accounted for in exactly one bucket.
+		// Every row the caller passed is accounted for in exactly one bucket, and
+		// none is silently dropped: batching is the caller's contract, and `poll` is
+		// the only caller. A second cap here would be a seam with no user (D20).
 		expect(result.ingested + result.rejected + result.replayed).toBe(over);
-		expect(result.rejected).toBeGreaterThanOrEqual(36);
+		expect(result.ingested).toBe(over);
+
+		const stored = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
+		expect(stored).toHaveLength(over);
+	});
+
+	it('the poll dispatches more observations than one batch holds, in batches', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
+		const cells = SNDS_INGEST_BATCH_SIZE * 2 + 5;
+		const body = Array.from({ length: cells }, (_, index) => row(`203.0.113.${index % 256}`)).join(
+			'\n'
+		);
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(body, { status: 200 }))
+		);
+
+		const summary = await t.action(internal.delivery.snds.poll, {});
+		expect(summary.observations).toBe(cells);
+		expect(summary.ingested).toBe(cells);
+		expect(await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect())).toHaveLength(
+			cells
+		);
 	});
 
 	it('never throws on a malformed pool declaration', () => {

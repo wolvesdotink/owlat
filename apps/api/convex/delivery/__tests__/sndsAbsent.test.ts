@@ -30,23 +30,21 @@ describe('SNDS absent — the poller', () => {
 
 		const summary = await t.action(internal.delivery.snds.poll, {});
 
-		expect(summary).toEqual({
-			enrolled: false,
-			feeds: 0,
-			feedsFailed: 0,
-			observations: 0,
-			ingested: 0,
-			rejected: 0,
-			replayed: 0,
-			droppedRows: 0,
-			foreignIps: 0,
-			outOfWindow: 0,
-			capped: 0,
-			truncated: false,
-		});
+		// The invariant is "nothing happened", NOT an exhaustive summary shape:
+		// asserting every key would make adding a diagnostic counter break the D2
+		// proof, which is exactly the wrong thing for this test to be sensitive to.
+		expect(summary).toMatchObject({ enrolled: false, feeds: 0, observations: 0, ingested: 0 });
+		expect(summary.enrolled).toBe(false);
+		expect(summary.ingested).toBe(0);
 		// Not "a failed feed" — no feed was ever contacted.
+		expect(summary.feedsFailed).toBe(0);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect())).toEqual([]);
+		// Polling again reports the same zeros: the not-enrolled summary is a fresh
+		// copy each time, so nothing a caller does to one poll's result can carry
+		// into the next through the module-level constant.
+		const again = await t.action(internal.delivery.snds.poll, {});
+		expect(again).toEqual(summary);
 	});
 
 	it('treats an empty, blank or malformed configuration as not enrolled', () => {

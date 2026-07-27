@@ -7,7 +7,7 @@
  * controller that compares numbers, and Microsoft never published it.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, describe, expect, it } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
@@ -25,6 +25,7 @@ import { modules } from './helpers/convexModules';
 
 afterEach(() => {
 	delete process.env['SNDS_DATA_FEED_URLS'];
+	delete process.env['MTA_IP_POOLS'];
 });
 
 function observation(overrides: Partial<SndsGateObservation> = {}): SndsGateObservation {
@@ -42,8 +43,14 @@ function gateInput(observations: SndsGateObservation[]) {
 	return buildSndsGateInput({ enrolled: true, windowDays: 7, observations });
 }
 
-/** A percentage the feed never published, e.g. `0.15%` or `0.0015`. */
-const FABRICATED_RATE_RE = /\d+\.\d+\s*%|0\.00\d+/;
+/**
+ * A percentage the feed never published, e.g. `0.15%`, `1 %` or `0.0015`.
+ *
+ * The fractional part is OPTIONAL on purpose: `above 1%` is just as fabricated a
+ * precision as `above 0.15%`, and a regex that only caught decimals would let
+ * the next reason string say exactly the thing this test forbids.
+ */
+const FABRICATED_RATE_RE = /\d+(?:\.\d+)?\s*%|0\.00\d+/;
 
 describe('SNDS gate input', () => {
 	it('folds the window to the worst band, worst filter result and total traps', () => {
@@ -112,19 +119,23 @@ describe('SNDS gate verdict', () => {
 		}
 	});
 
-	it('fails on a red filter result but not on yellow by default', () => {
+	it('fails on a red filter result, never on yellow', () => {
 		const red = evaluateSndsGate(gateInput([observation({ filterResult: 'red' })]));
 		expect(red.verdict).toBe('fail');
 		expect(red.verdict === 'fail' && red.failedGate).toBe('filter_result');
 
+		// Yellow moves often; on its own it would make the ramp chatter, so `red` is
+		// the only breaching filter result and there is no knob that changes that.
 		const yellow = evaluateSndsGate(gateInput([observation({ filterResult: 'yellow' })]));
 		expect(yellow.verdict).toBe('pass');
+	});
 
-		const strict = evaluateSndsGate(gateInput([observation({ filterResult: 'yellow' })]), {
-			...DEFAULT_SNDS_GATE_THRESHOLDS,
-			breachOnYellow: true,
-		});
-		expect(strict.verdict).toBe('fail');
+	it('a stricter breach band tightens the gate without a second code path', () => {
+		const clean = gateInput([observation({ complaintBand: 'lt_0_1' })]);
+		expect(evaluateSndsGate(clean).verdict).toBe('pass');
+		expect(
+			evaluateSndsGate(clean, { ...DEFAULT_SNDS_GATE_THRESHOLDS, breachBand: 'lt_0_1' }).verdict
+		).toBe('fail');
 	});
 
 	it('fails on a spam-trap hit, ahead of every other signal', () => {
@@ -267,5 +278,103 @@ describe('getMicrosoftGateInput', () => {
 		expect(input.signal.truncated).toBe(true);
 		expect(input.signal.confidence).toBe('low');
 		expect(sndsPromotionPass(input)).toBe(false);
+	});
+});
+
+describe('getMicrosoftGateInput — attribution', () => {
+	/**
+	 * The setup that makes attribution load-bearing: an SNDS key covers a
+	 * REGISTERED RANGE, so the table can hold days for a neighbouring sender. Ours
+	 * is unbanded (the normal state early in a ramp); theirs is clean on two days.
+	 */
+	async function seedNeighbourEvidence(t: TestConvex<typeof schema>): Promise<void> {
+		const now = Date.now();
+		const today = Math.floor(now / DAY_MS) * DAY_MS;
+		await t.run(async (ctx) => {
+			for (const [ip, band] of [
+				['203.0.113.10', 'unknown'],
+				['198.51.100.7', 'lt_0_1'],
+			] as const) {
+				for (const dayOffset of [1, 2]) {
+					await ctx.db.insert('sndsIpDailyStats', {
+						ip,
+						periodStart: today - dayOffset * DAY_MS,
+						complaintBand: band,
+						filterResult: 'green',
+						trapHits: 0,
+						messageRecipients: 100,
+						rcptCommands: 100,
+						dataCommands: 100,
+						fetchedAt: now,
+						ingestedAt: now,
+					});
+				}
+			}
+		});
+	}
+
+	it('reads ONLY the declared pool, so a neighbour cannot supply our evidence', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
+		process.env['MTA_IP_POOLS'] = '203.0.113.10';
+		await seedNeighbourEvidence(t);
+
+		const input = await t.query(internal.delivery.snds.getMicrosoftGateInput, { windowDays: 7 });
+		expect(input.available).toBe(true);
+		if (!input.available) return;
+		// The neighbour's two clean days are not in the window at all.
+		expect(input.signal.observedIps).toBe(1);
+		expect(input.signal.worstComplaintBand).toBe('unknown');
+		expect(input.signal.attributed).toBe(true);
+		// Our own IP is simply unbanded, which HOLDS (D10) — it never promotes.
+		expect(evaluateSndsGate(input).verdict).toBe('insufficient_data');
+		expect(sndsPromotionPass(input)).toBe(false);
+		// A pool-scoped read is bounded by the pool, not by the table.
+		expect(input.signal.truncated).toBe(false);
+	});
+
+	it('marks an undeclared-pool read UNATTRIBUTED, so it can never promote', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
+		await seedNeighbourEvidence(t);
+
+		const input = await t.query(internal.delivery.snds.getMicrosoftGateInput, { windowDays: 7 });
+		expect(input.available).toBe(true);
+		if (!input.available) return;
+		// Without a declared pool the rows ARE read — pass/fail keeps working and can
+		// still slow the ramp — but nothing about them can be attributed to us.
+		expect(input.signal.observedIps).toBe(2);
+		expect(input.signal.attributed).toBe(false);
+		expect(input.signal.confidence).toBe('low');
+		expect(sndsPromotionPass(input)).toBe(false);
+		// The DOWN direction is untouched: a breach anywhere in the range still fails.
+		expect(evaluateSndsGate(input).verdict).toBe('pass');
+	});
+
+	it('still fails on a breach recorded against a declared address', async () => {
+		const t = convexTest(schema, modules);
+		process.env['SNDS_DATA_FEED_URLS'] = 'https://snds.example.test/feed';
+		process.env['MTA_IP_POOLS'] = '203.0.113.10, 198.51.100.7';
+		const now = Date.now();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('sndsIpDailyStats', {
+				ip: '198.51.100.7',
+				periodStart: Math.floor(now / DAY_MS) * DAY_MS - DAY_MS,
+				complaintBand: 'gte_0_9',
+				filterResult: 'red',
+				trapHits: 0,
+				messageRecipients: 100,
+				rcptCommands: 100,
+				dataCommands: 100,
+				fetchedAt: now,
+				ingestedAt: now,
+			});
+		});
+
+		const input = await t.query(internal.delivery.snds.getMicrosoftGateInput, { windowDays: 7 });
+		expect(input.available).toBe(true);
+		if (!input.available) return;
+		expect(input.signal.worstComplaintBand).toBe('gte_0_9');
+		expect(evaluateSndsGate(input).verdict).toBe('fail');
 	});
 });

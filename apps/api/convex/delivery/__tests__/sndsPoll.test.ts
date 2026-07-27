@@ -8,7 +8,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import {
@@ -17,8 +17,10 @@ import {
 	parseComplaintBand,
 	parseFilterResult,
 	parseSndsFeed,
+	parseSndsCellKey,
 	parseSndsTimestamp,
 	SNDS_COMPLAINT_BANDS,
+	sndsCellKey,
 	utcDayStart,
 	type SndsComplaintBand,
 } from '../sndsFeed';
@@ -27,7 +29,23 @@ import { modules } from './helpers/convexModules';
 
 const FEED_URL = 'https://sendersupport.olc.protection.outlook.com/snds/ada/example-key';
 
+/**
+ * A FIXED simulated instant, mid-day and mid-month.
+ *
+ * Every fixture here is a UTC DAY, and the ingest window's edges are UTC
+ * midnights: a suite that builds its days from the real clock puts a fixture on
+ * the wrong side of the window whenever a run straddles midnight. Only `Date` is
+ * faked, so convex-test's own scheduling still runs on real timers.
+ */
+const NOW = Date.UTC(2026, 6, 22, 12, 0, 0);
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(NOW);
+});
+
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 	delete process.env['SNDS_DATA_FEED_URLS'];
 	delete process.env['MTA_IP_POOLS'];
@@ -70,10 +88,11 @@ function feedRow(fields: {
 	].join(',');
 }
 
+/** A UTC hour on the day `days` before {@link NOW} — never before "today". */
 function dayAgo(days: number, hour: number): Date {
-	const now = new Date();
+	const base = new Date(NOW);
 	return new Date(
-		Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days, hour, 0, 0)
+		Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() - days, hour, 0, 0)
 	);
 }
 
@@ -237,6 +256,19 @@ describe('SNDS feed parsing', () => {
 		expect(aggregateSndsDays(parsed.rows)[0]?.trapHits).toBe(0);
 	});
 
+	it('round-trips an (IP, day) cell key, IPv6 included', () => {
+		for (const ip of ['203.0.113.10', '2001:db8::1', '2001:db8:0:0:0:0:0:beef']) {
+			const day = Date.UTC(2026, 6, 20);
+			expect(parseSndsCellKey(sndsCellKey(ip, day))).toEqual({ ip, periodStart: day });
+		}
+		// A key that is not one of ours is refused rather than half-parsed.
+		expect(parseSndsCellKey('203.0.113.10')).toBeNull();
+		expect(parseSndsCellKey('|123')).toBeNull();
+		expect(parseSndsCellKey('203.0.113.10|not-a-day')).toBeNull();
+		// Distinct cells never collide.
+		expect(sndsCellKey('203.0.113.1', 0)).not.toBe(sndsCellKey('203.0.113.10', 0));
+	});
+
 	it('returns an empty result for an empty day, with no throw', () => {
 		for (const body of ['', '\n\n', '   \r\n  \r\n']) {
 			const parsed = parseSndsFeed(body);
@@ -273,8 +305,13 @@ describe('SNDS poll', () => {
 		expect(first.ingested).toBe(2);
 		expect(first.feedsFailed).toBe(0);
 
+		// A LATER read of the same days: fresher `fetchedAt`, so both rows are
+		// rewritten rather than acknowledged as replays. The advance is explicit —
+		// on the real clock the two polls could land in the same millisecond.
+		vi.setSystemTime(NOW + 60_000);
 		const second = await t.action(internal.delivery.snds.poll, {});
 		expect(second.ingested).toBe(2);
+		expect(second.replayed).toBe(0);
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
 		expect(rows).toHaveLength(2);
@@ -359,7 +396,7 @@ describe('SNDS poll', () => {
 		expect(rows[0]?.complaintBand).toBe('0_2_to_0_3');
 	});
 
-	it('counts replays instead of hiding them behind a quiet feed', async () => {
+	it('counts a re-poll at the SAME instant as a replay, not as a second write', async () => {
 		const t = convexTest(schema, modules);
 		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;
 		vi.stubGlobal(
@@ -374,5 +411,14 @@ describe('SNDS poll', () => {
 
 		const first = await t.action(internal.delivery.snds.poll, {});
 		expect(first).toMatchObject({ ingested: 1, replayed: 0 });
+
+		// The clock does NOT advance: the second poll stamps the identical
+		// `fetchedAt`, which is byte-for-byte the read already stored. It is
+		// acknowledged and counted, never written twice and never silently dropped.
+		const second = await t.action(internal.delivery.snds.poll, {});
+		expect(second).toMatchObject({ observations: 1, ingested: 0, replayed: 1, rejected: 0 });
+
+		const rows = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
+		expect(rows).toHaveLength(1);
 	});
 });
