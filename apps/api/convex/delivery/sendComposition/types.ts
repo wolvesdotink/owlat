@@ -165,7 +165,4 @@ export type ComposeInput =
 	| ArchiveSnapshotComposeInput
 	| AutomationComposeInput;
 
-export type ComposeInputForKind<K extends SendCompositionKind> = Extract<
-	ComposeInput,
-	{ kind: K }
->;
+export type ComposeInputForKind<K extends SendCompositionKind> = Extract<ComposeInput, { kind: K }>;

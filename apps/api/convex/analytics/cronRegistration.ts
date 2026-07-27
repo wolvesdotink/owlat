@@ -26,7 +26,7 @@ export function registerSeedPlacementCrons(crons: Crons): void {
 	crons.interval(
 		'cleanup seed placement probes',
 		{ hours: 24 },
-		internal.analytics.seedPlacement.deleteExpiredSeedProbes,
+		internal.analytics.seedProbeLedger.deleteExpiredSeedProbes,
 		{}
 	);
 	// Write off seed probes that were enqueued but never handed to a transport, so
@@ -34,7 +34,7 @@ export function registerSeedPlacementCrons(crons: Crons): void {
 	crons.interval(
 		'abandon undispatched seed probes',
 		{ hours: 6 },
-		internal.analytics.seedPlacement.abandonUndispatchedSeedProbes,
+		internal.analytics.seedProbeLedger.abandonUndispatchedSeedProbes,
 		{}
 	);
 }

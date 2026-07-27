@@ -34,7 +34,7 @@ function timingSafeStrEqual(a: string, b: string): boolean {
 async function verifyTrackingSignature(
 	emailSendId: string,
 	encodedUrl: string,
-	signature: string,
+	signature: string
 ): Promise<boolean> {
 	const secret = getOptional('UNSUBSCRIBE_SECRET');
 	if (!secret || !signature) return false;
@@ -44,12 +44,12 @@ async function verifyTrackingSignature(
 			new TextEncoder().encode(secret),
 			{ name: 'HMAC', hash: 'SHA-256' },
 			false,
-			['sign'],
+			['sign']
 		);
 		const mac = await crypto.subtle.sign(
 			'HMAC',
 			key,
-			new TextEncoder().encode(`${emailSendId}.${encodedUrl}`),
+			new TextEncoder().encode(`${emailSendId}.${encodedUrl}`)
 		);
 		const expected = bytesToBase64Url(new Uint8Array(mac));
 		return timingSafeStrEqual(expected, signature);

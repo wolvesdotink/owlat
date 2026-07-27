@@ -357,7 +357,7 @@ describe('the abandonment sweep writes off what was never sent', () => {
 		});
 
 		const result = await t.mutation(
-			internal.analytics.seedPlacement.abandonUndispatchedSeedProbes,
+			internal.analytics.seedProbeLedger.abandonUndispatchedSeedProbes,
 			{}
 		);
 		expect(result.abandoned).toBe(1);
@@ -379,9 +379,9 @@ describe('the abandonment sweep writes off what was never sent', () => {
 			probeId: 'sp_abandoned0000000000',
 			sentAt: NOW - 96 * HOUR,
 		});
-		await t.mutation(internal.analytics.seedPlacement.abandonUndispatchedSeedProbes, {});
+		await t.mutation(internal.analytics.seedProbeLedger.abandonUndispatchedSeedProbes, {});
 		const second = await t.mutation(
-			internal.analytics.seedPlacement.abandonUndispatchedSeedProbes,
+			internal.analytics.seedProbeLedger.abandonUndispatchedSeedProbes,
 			{}
 		);
 		expect(second.abandoned).toBe(0);
@@ -394,7 +394,7 @@ describe('the abandonment sweep writes off what was never sent', () => {
 			probeId: 'sp_abandoned0000000000',
 			sentAt: NOW - 96 * HOUR,
 		});
-		await t.mutation(internal.analytics.seedPlacement.abandonUndispatchedSeedProbes, {});
+		await t.mutation(internal.analytics.seedProbeLedger.abandonUndispatchedSeedProbes, {});
 
 		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
 		expect(summary.rollups).toEqual([]);
