@@ -237,8 +237,16 @@ export function parseSndsTimestamp(raw: string): number | null {
  *
  * Both are ANCHORED at both ends. An unanchored match would let any text that
  * merely CONTAINS a number name a band — which is the same failure as guessing.
+ *
+ * The relational spelling is STRICT, and deliberately so. `=` is not accepted:
+ * `<= 0.1%` means "at most 0.1%", and a rate of exactly 0.1% belongs to
+ * `0_1_to_0_2`, so reading it as `lt_0_1` would hand the cleanest band — the
+ * only one that is positive promotion evidence — to a value that does not
+ * warrant it. The `%` is mandatory for the same reason: a bare `< 0.1` is a
+ * spelling this feed does not document, and an undocumented spelling must read
+ * as `unknown` rather than as the cleanest possible band.
  */
-const RELATIONAL_BAND_RE = /^([<>])\s*=?\s*(\d+(?:\.\d+)?)\s*%?$/;
+const RELATIONAL_BAND_RE = /^([<>])\s*(\d+(?:\.\d+)?)\s*%$/;
 const RANGE_BAND_RE = /^(\d+(?:\.\d+)?)\s*%\s*-\s*<\s*(\d+(?:\.\d+)?)\s*%$/;
 
 /** The width of one band, in percentage points. */

@@ -117,6 +117,25 @@ describe('SNDS feed parsing', () => {
 		}
 		// Every enumerated band is reachable from some feed spelling.
 		expect(new Set(cases.map(([, band]) => band)).size).toBe(SNDS_COMPLAINT_BANDS.length);
+
+		// …and ONLY those spellings. The relational grammar is strict at both the
+		// operator and the unit, because both loosenings resolve to a band the
+		// value does not warrant:
+		//  - `<= 0.1%` means "at most 0.1%", and exactly 0.1% is `0_1_to_0_2`, not
+		//    `lt_0_1` — the cleanest band and the only positive promotion evidence;
+		//  - a bare `< 0.1` has no unit, so it is not a documented spelling at all.
+		for (const raw of [
+			'<= 0.1%',
+			'<=0.1%',
+			'>= 0.9%',
+			'>=0.9%',
+			'< 0.1',
+			'<0.1',
+			'> 0.9',
+			'>0.9',
+		]) {
+			expect(parseComplaintBand(raw), raw).toBe('unknown');
+		}
 	});
 
 	it('is forward-compatible: an unrecognised band value is unknown, never a throw', () => {
@@ -174,7 +193,6 @@ describe('SNDS feed parsing', () => {
 		expect(parseComplaintBand('< 0.1%')).toBe('lt_0_1');
 		expect(parseComplaintBand('<0.05%')).toBe('lt_0_1');
 		expect(parseComplaintBand('> 0.9%')).toBe('gte_0_9');
-		expect(parseComplaintBand('>= 0.9%')).toBe('gte_0_9');
 		expect(parseComplaintBand('> 5%')).toBe('gte_0_9');
 		// A one-band-wide range at either end of the scale is still that band.
 		expect(parseComplaintBand('0% - < 0.1%')).toBe('lt_0_1');
