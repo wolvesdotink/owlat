@@ -99,7 +99,6 @@ export interface SeedProbeWorkPage {
 export {
 	SEED_PLACEMENTS,
 	classifySeedFolder,
-	isSeedPlacementReached,
 	type SeedPlacement,
 	type SeedFolderClassification,
 } from './seedPlacementFolders';
