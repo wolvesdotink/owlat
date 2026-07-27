@@ -132,7 +132,7 @@ describe('the other failure variants carry only what they mean', () => {
 		expect(result.recordCount).toBe(2);
 	});
 
-	it('missing_mechanism names only what is absent, qualifier-insensitively', () => {
+	it('accepts an explicit + qualifier, which has the same pass semantics as the default', () => {
 		const result = evaluateSpfCoexistence({
 			publishedTxtRecords: [published(`+${OWN}`)],
 			requiredMechanisms: [OWN, RELAY],
@@ -140,5 +140,34 @@ describe('the other failure variants carry only what they mean', () => {
 		expect(result.kind).toBe('missing_mechanism');
 		if (result.kind !== 'missing_mechanism') throw new Error('expected missing_mechanism');
 		expect(result.missingMechanisms).toEqual([RELAY]);
+	});
+
+	// COSTING is qualifier-insensitive; AUTHORIZATION is not. `-ip4:…`, `~include:…`
+	// and `?ip4:…` match the same senders and cost the same lookup, but they are the
+	// OPPOSITE of an authorization — a record that names both arms negatively
+	// SPF-FAILS both of them, so it must never read as covering them.
+	for (const qualifier of ['-', '~', '?'] as const) {
+		it(`treats a ${qualifier}-qualified mechanism as absent, not as authorization`, () => {
+			const result = evaluateSpfCoexistence({
+				publishedTxtRecords: [published(`${qualifier}${OWN}`, `${qualifier}${RELAY}`)],
+				requiredMechanisms: [OWN, RELAY],
+			});
+			expect(result.kind).toBe('missing_mechanism');
+			if (result.kind !== 'missing_mechanism') throw new Error('expected missing_mechanism');
+			expect(result.missingMechanisms).toEqual([OWN, RELAY]);
+		});
+	}
+
+	it('still COSTS a negatively-qualified include its DNS lookup', () => {
+		// Ten negative includes plus the relay's own: over the limit, even though not
+		// one of them authorizes anybody.
+		const negatives = Array.from({ length: 10 }, (_, index) => `-include:n${index}.example`);
+		const result = evaluateSpfCoexistence({
+			publishedTxtRecords: [published(...negatives, OWN)],
+			requiredMechanisms: [OWN, RELAY],
+		});
+		expect(result.kind).toBe('lookup_limit');
+		if (result.kind !== 'lookup_limit') throw new Error('expected a lookup_limit');
+		expect(result.lookupCount).toBe(11);
 	});
 });

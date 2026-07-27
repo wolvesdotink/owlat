@@ -155,6 +155,22 @@ export const ALIGNMENT_FAILURE_TABLE: readonly AlignmentFailureCase[] = [
 		}),
 	},
 	{
+		// A negative qualifier MATCHES the same sources and costs the same DNS
+		// lookup, but it authorizes nothing: this record SPF-fails both arms. Reading
+		// the qualifier-stripped token as "present" would start the ramp on it.
+		name: 'the published record names both arms under a negative qualifier',
+		check: 'spf',
+		expected: 'fail',
+		detail: OWN_SPF_MECHANISM,
+		remedy: 'Add the missing mechanism',
+		mutate: (input) => ({
+			...input,
+			dns: alignedDns({
+				fromDomainTxt: found(`v=spf1 -${OWN_SPF_MECHANISM} ~${RELAY_SPF_MECHANISM} ~all`),
+			}),
+		}),
+	},
+	{
 		name: 'merging the relay include pushes the record past 10 lookups',
 		check: 'spf',
 		expected: 'fail',

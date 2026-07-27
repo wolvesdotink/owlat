@@ -13,7 +13,7 @@
  * Pure: no DNS, no clock, no Convex. The caller supplies the published TXT set.
  */
 
-import { isSpfRecord, mergeSpfRecords, parseSpfMechanisms } from './spf';
+import { isSpfRecord, mergeSpfRecords, parseSpfMechanisms, spfMechanismAuthorizes } from './spf';
 
 /** RFC 7208 §4.6.4 — at most 10 DNS-lookup terms per evaluation. */
 export const SPF_MAX_DNS_LOOKUPS = 10;
@@ -55,9 +55,36 @@ export type SpfCoexistenceResult =
 /** Every variant that is not a pass. */
 export type SpfCoexistenceFailure = Exclude<SpfCoexistenceResult, { kind: 'pass' }>;
 
-/** Strip the optional qualifier and lowercase a mechanism token. */
+/**
+ * Strip the optional qualifier and lowercase a mechanism token.
+ *
+ * Correct for COSTING (a `-include:` still costs its DNS lookup) and for naming
+ * a mechanism in operator copy. It is NOT correct for the authorization
+ * judgement — see `authorizedMechanisms`.
+ */
 function normalizeMechanism(token: string): string {
 	return token.replace(/^[~+?-]/, '').toLowerCase();
+}
+
+/**
+ * The mechanisms a record actually AUTHORIZES, qualifier-stripped for comparison.
+ *
+ * A negative qualifier matches the same sources and costs the same DNS lookup,
+ * but it is the opposite of an authorization: `v=spf1 -ip4:<pool ip>
+ * -include:amazonses.com ~all` SPF-FAILS both arms. Building the presence set
+ * from the stripped token would read that record as covering both of them and
+ * start the ramp on a record that fails everywhere — so presence is judged with
+ * `spfMechanismAuthorizes` (the same rule the shipped
+ * `spfRecordHasExactIpMechanism` applies) while costing stays
+ * qualifier-insensitive.
+ */
+function authorizedMechanisms(record: string): Set<string> {
+	const authorized = new Set<string>();
+	for (const token of parseSpfMechanisms(record)) {
+		if (!spfMechanismAuthorizes(token)) continue;
+		authorized.add(normalizeMechanism(token));
+	}
+	return authorized;
 }
 
 /** The `include:` target of a token, or null when it is not an include. */
@@ -110,9 +137,10 @@ function pickFlattenCandidate(record: string, essential: ReadonlySet<string>): s
  * Can both arms coexist in the domain's single SPF record?
  *
  * Fails when: no `v=spf1` record is published, MORE THAN ONE is (a PermError in
- * itself), the PUBLISHED record does not already authorize a required mechanism,
- * or the merged record exceeds the 10-lookup limit — in which case the result
- * names the include to flatten.
+ * itself), the PUBLISHED record does not already authorize a required mechanism
+ * — including the case where it names it under a `-`/`~`/`?` qualifier, which
+ * authorizes nothing — or the merged record exceeds the 10-lookup limit, in
+ * which case the result names the include to flatten.
  *
  * The judgement is on what is PUBLISHED, not on what we could merge: `ours ∪
  * theirs` is only the operator's remedy text. The lookup-limit verdict is
@@ -128,7 +156,7 @@ export function evaluateSpfCoexistence(input: SpfCoexistenceInput): SpfCoexisten
 		return { kind: 'multiple_records', recordCount: spfRecords.length };
 	}
 	const published = spfRecords[0] ?? '';
-	const present = new Set(parseSpfMechanisms(published).map((token) => normalizeMechanism(token)));
+	const present = authorizedMechanisms(published);
 	const missing = input.requiredMechanisms.filter(
 		(mechanism) => !present.has(normalizeMechanism(mechanism))
 	);
