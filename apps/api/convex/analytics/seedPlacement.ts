@@ -167,9 +167,14 @@ export const recordSeedProbeClassification = internalMutation({
 			.query('seedPlacementProbes')
 			.withIndex('by_probe_id', (q) => q.eq('probeId', args.probeId))
 			.unique();
-		if (!probe) return { recorded: false as const };
+		// EVERY failure branch names its reason: the mail-sync worker has to be
+		// able to tell "not yours" (a bug in the sweep's org scoping — loud) from
+		// "gone" (the retention cleanup won the race — expected, drop it).
+		if (!probe) return { recorded: false as const, reason: 'unknown_probe' as const };
 		// Defense in depth at the poller boundary.
-		if (probe.organizationId !== args.organizationId) return { recorded: false as const };
+		if (probe.organizationId !== args.organizationId) {
+			return { recorded: false as const, reason: 'foreign_organization' as const };
+		}
 		// A probe we never handed to a transport is NOT evidence — it was never
 		// mailed, so no folder is the right answer and `missing` is the wrong one.
 		// The work selection already excludes it; this is the load-bearing check,
@@ -229,15 +234,17 @@ export const recordSeedProbeDispatch = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		const probe = await ctx.db.get(args.probeRef);
-		if (!probe) return { recorded: false };
+		if (!probe) return { recorded: false as const, reason: 'unknown_probe' as const };
 		// Same defense in depth as its two siblings: a probe row is only ever
 		// writable through the organization that owns it.
-		if (probe.organizationId !== args.organizationId) return { recorded: false };
+		if (probe.organizationId !== args.organizationId) {
+			return { recorded: false as const, reason: 'foreign_organization' as const };
+		}
 		await ctx.db.patch(args.probeRef, {
 			transportArm: args.transportArm,
 			dispatchedAt: args.now,
 		});
-		return { recorded: true };
+		return { recorded: true as const };
 	},
 });
 
@@ -253,14 +260,19 @@ export const recordSeedProbeUnsubscribe = internalMutation({
 			.query('seedPlacementProbes')
 			.withIndex('by_probe_id', (q) => q.eq('probeId', args.probeId))
 			.unique();
-		if (!probe || probe.unsubscribedAt !== undefined) return { recorded: false };
+		if (!probe) return { recorded: false as const, reason: 'unknown_probe' as const };
+		if (probe.unsubscribedAt !== undefined) {
+			return { recorded: false as const, reason: 'already_recorded' as const };
+		}
 		// The same org boundary its three siblings hold. The caller's claim here is
 		// the SIGNED one-click token, which carries the organization alongside the
 		// probe id precisely so this assertion has something independent to check
 		// rather than reading the answer off the row it is about to write.
-		if (probe.organizationId !== args.organizationId) return { recorded: false };
+		if (probe.organizationId !== args.organizationId) {
+			return { recorded: false as const, reason: 'foreign_organization' as const };
+		}
 		await ctx.db.patch(probe._id, { unsubscribedAt: args.now });
-		return { recorded: true };
+		return { recorded: true as const };
 	},
 });
 

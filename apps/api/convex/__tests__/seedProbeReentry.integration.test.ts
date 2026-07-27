@@ -383,7 +383,7 @@ describe('recordSeedProbeDispatch — arm attribution', () => {
 				transportArm: 'own',
 				now: Date.now(),
 			})
-		).toEqual({ recorded: false });
+		).toEqual({ recorded: false, reason: 'foreign_organization' });
 		const probe = await f.t.run(async (ctx) => ctx.db.get(f.probeRef));
 		expect(probe?.dispatchedAt).toBeUndefined();
 	});

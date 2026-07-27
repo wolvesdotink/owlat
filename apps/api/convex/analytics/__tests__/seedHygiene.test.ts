@@ -283,7 +283,9 @@ describe('the hygiene plan is EXECUTED against the ledger row', () => {
 				clickRoll: 0.9,
 			}
 		);
-		expect(outcome).toEqual({ recorded: false });
+		// Named reason, not a bare refusal: the worker has to be able to tell
+		// "not yours" from "gone".
+		expect(outcome).toEqual({ recorded: false, reason: 'foreign_organization' });
 		const row = await t.run(async (ctx) => ctx.db.get(probeRef));
 		expect(row?.placement).toBeUndefined();
 	});
