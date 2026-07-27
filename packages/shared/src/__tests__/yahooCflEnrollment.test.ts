@@ -23,7 +23,6 @@ import {
 	type YahooCflDkimPrecondition,
 	type YahooCflEnrollmentRecord,
 } from '../yahooCfl';
-import { yahooComplaintSubstitution } from '../yahooComplaintSignal';
 
 const READY: YahooCflDkimPrecondition = {
 	domain: 'mail.example.com',
@@ -298,11 +297,12 @@ describe('a report is ground truth', () => {
 			READY
 		);
 		const { state } = deriveYahooCflState(forged.record, T0 + DAY);
+		// The derived state is what the substitution keys off, and it stays
+		// `not_started` — so the yahoo cell keeps the tightened proxy with its
+		// confidence caveat instead of asserting direct measurement. The
+		// substitution itself is pinned next to the ramp thresholds it reads, in
+		// `apps/api/convex/delivery/ramp/__tests__/yahooAbsent.test.ts`.
 		expect(state).toBe('not_started');
-		const signal = yahooComplaintSubstitution({ enrollmentState: state, hasCfblAddress: false });
-		expect(signal.source).toBe('unsubscribe_rate_proxy');
-		expect(signal.confidence).toBe('low');
-		expect(signal.confidenceNote).toContain('Measurement confidence: low');
 	});
 });
 

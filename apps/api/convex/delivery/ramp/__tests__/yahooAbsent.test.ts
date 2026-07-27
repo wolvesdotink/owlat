@@ -10,9 +10,11 @@
  * 0.05% equivalent threshold) and says so as a confidence caveat.
  *
  * SCOPE: `yahooComplaintSubstitution` is the yahoo cell's only definition today.
- * P3-8 lands the ONE substitution table for every gate and SUBSUMES it, taking
- * the two thresholds with it — so these assertions move there rather than being
- * duplicated, or we end up with two disagreeing yahoo complaint gates (D3).
+ * P3-8 lands the ONE substitution table for every gate and SUBSUMES it — so
+ * these assertions move there rather than being duplicated, or we end up with
+ * two disagreeing yahoo complaint gates (D3). The THRESHOLDS do not move: they
+ * already live in `../gateConfig` alongside every other ramp threshold, which is
+ * why this suite reads them from there rather than from a second declaration.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -21,13 +23,14 @@ import {
 	yahooCflGuidedSteps,
 	emptyYahooCflEnrollment,
 	type YahooCflEnrollmentState,
-} from '../yahooCfl';
+} from '@owlat/shared/yahooCfl';
+import { RAMP_GATE_THRESHOLDS, UNSUBSCRIBE_PROXY_COMPLAINT_MAX } from '../gateConfig';
+import { evaluateComplaintGate } from '../gates';
 import {
-	YAHOO_CFL_COMPLAINT_THRESHOLD,
 	YAHOO_COMPLAINT_SIGNAL_SOURCES,
-	YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD,
 	yahooComplaintSubstitution,
 } from '../yahooComplaintSignal';
+import { arm, input } from './gateFixtures';
 
 const UNENROLLED_STATES: YahooCflEnrollmentState[] = ['not_started', 'awaiting_yahoo', 'lapsed'];
 
@@ -45,7 +48,7 @@ describe('the substitution table always yields a usable gate', () => {
 			yahooComplaintSubstitution({ enrollmentState: 'enrolled', hasCfblAddress: false })
 		).toEqual({
 			source: 'yahoo_cfl',
-			thresholdRate: YAHOO_CFL_COMPLAINT_THRESHOLD,
+			thresholdRate: RAMP_GATE_THRESHOLDS.complaintMax,
 			confidence: 'high',
 			confidenceNote:
 				'Measurement confidence: high — Yahoo complaints for this domain are measured directly.',
@@ -58,7 +61,7 @@ describe('the substitution table always yields a usable gate', () => {
 			const result = yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: true });
 			expect(result.source).toBe('cfbl_address');
 			expect(result.confidence).toBe('medium');
-			expect(result.thresholdRate).toBe(YAHOO_CFL_COMPLAINT_THRESHOLD);
+			expect(result.thresholdRate).toBe(RAMP_GATE_THRESHOLDS.complaintMax);
 			expect(result.confidenceNote).toContain('Measurement confidence: medium');
 		}
 	});
@@ -68,15 +71,15 @@ describe('the substitution table always yields a usable gate', () => {
 			const result = yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: false });
 			expect(result.source).toBe('unsubscribe_rate_proxy');
 			expect(result.confidence).toBe('low');
-			expect(result.thresholdRate).toBe(YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD);
+			expect(result.thresholdRate).toBe(UNSUBSCRIBE_PROXY_COMPLAINT_MAX);
 			expect(result.confidenceNote).toContain('Measurement confidence: low');
 		}
 	});
 
 	it('tightens the proxy to the 0.05% equivalent of the 0.1% direct threshold', () => {
-		expect(YAHOO_CFL_COMPLAINT_THRESHOLD).toBe(0.001);
-		expect(YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD).toBe(0.0005);
-		expect(YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD).toBeLessThan(YAHOO_CFL_COMPLAINT_THRESHOLD);
+		expect(RAMP_GATE_THRESHOLDS.complaintMax).toBe(0.001);
+		expect(UNSUBSCRIBE_PROXY_COMPLAINT_MAX).toBe(0.0005);
+		expect(UNSUBSCRIBE_PROXY_COMPLAINT_MAX).toBeLessThan(RAMP_GATE_THRESHOLDS.complaintMax);
 	});
 
 	it('never blocks and never errors, in EVERY state and both feed configurations', () => {
@@ -116,6 +119,65 @@ describe('the substitution table always yields a usable gate', () => {
 				yahooComplaintSubstitution({ enrollmentState, hasCfblAddress: true }).confidence
 			).not.toBe('high');
 		}
+	});
+});
+
+/**
+ * `thresholdRate` is the contract P3-8 consumes, and the shipped gate publishes
+ * a field of the same name — so the comparison boundary is pinned rather than
+ * left to the reader. Gate 3 is `complaint <= 0.1%`: exactly the threshold
+ * PASSES, anything above it fails. The rates here are injected as summary
+ * overrides because an integer numerator cannot express "one ulp over".
+ */
+describe('the comparison boundary is inclusive on the pass side', () => {
+	/**
+	 * The shipped gate 3, evaluated at a chosen own-arm complaint rate. Both arms
+	 * carry the SAME rate so the comparative half is always satisfied and the only
+	 * thing under test is the absolute-ceiling comparison.
+	 */
+	function complaintVerdict(rate: number) {
+		return evaluateComplaintGate(
+			input({
+				own: arm({ sent: 100_000 }, { complaintRate: rate }),
+				reference: arm({ sent: 100_000 }, { complaintRate: rate }),
+			})
+		).status;
+	}
+
+	/** The substitution's own semantics: fail iff `rate > thresholdRate`. */
+	function substitutionFails(thresholdRate: number, rate: number): boolean {
+		return rate > thresholdRate;
+	}
+
+	const DIRECT = RAMP_GATE_THRESHOLDS.complaintMax as number;
+	const PROXY = UNSUBSCRIBE_PROXY_COMPLAINT_MAX as number;
+	const ONE_ULP = 0.0000000001;
+
+	it('publishes the same threshold the shipped gate compares against', () => {
+		expect(
+			yahooComplaintSubstitution({ enrollmentState: 'enrolled', hasCfblAddress: false })
+				.thresholdRate as number
+		).toBe(DIRECT);
+		expect(
+			yahooComplaintSubstitution({ enrollmentState: 'not_started', hasCfblAddress: false })
+				.thresholdRate as number
+		).toBe(PROXY);
+	});
+
+	it('passes at exactly the direct threshold and fails just above it', () => {
+		expect(complaintVerdict(DIRECT)).toBe('pass');
+		expect(complaintVerdict(DIRECT + ONE_ULP)).toBe('fail');
+		expect(substitutionFails(DIRECT, DIRECT)).toBe(false);
+		expect(substitutionFails(DIRECT, DIRECT + ONE_ULP)).toBe(true);
+	});
+
+	it('passes at exactly the proxy threshold and fails just above it', () => {
+		expect(substitutionFails(PROXY, PROXY)).toBe(false);
+		expect(substitutionFails(PROXY, PROXY + ONE_ULP)).toBe(true);
+		// The proxy substitutes only the NUMBER, never the comparison — and it is
+		// genuinely stricter: a rate the direct threshold passes trips the proxy.
+		expect(substitutionFails(DIRECT, PROXY + ONE_ULP)).toBe(false);
+		expect(complaintVerdict(PROXY)).toBe('pass');
 	});
 });
 

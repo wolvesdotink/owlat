@@ -35,7 +35,7 @@ import {
 	type YahooCflStoredState,
 	type YahooCflTransitionReason,
 } from '@owlat/shared/yahooCfl';
-import { yahooComplaintSubstitution } from '@owlat/shared/yahooComplaintSignal';
+import { yahooComplaintSubstitution } from '../delivery/ramp/yahooComplaintSignal';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';

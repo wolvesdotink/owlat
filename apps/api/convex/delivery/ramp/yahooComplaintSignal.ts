@@ -1,17 +1,31 @@
 /**
  * Which complaint signal the `yahoo` cell's gate 3 actually runs on (D2 / P3-8).
  *
- * Split out of `yahooCfl.ts` because it is a different concern with a different
- * owner: that module is the enrollment STATE MACHINE, this one is the gate-input
- * SUBSTITUTION the ramp reads — and P3-8's substitution table subsumes exactly
- * this file, not the state machine.
+ * Split out of `packages/shared/src/yahooCfl.ts` because it is a different
+ * concern with a different owner: that module is the enrollment STATE MACHINE,
+ * this one is the gate-input SUBSTITUTION the ramp reads — and P3-8's
+ * substitution table subsumes exactly this file, not the state machine.
+ *
+ * It lives HERE, under `delivery/ramp/`, rather than in `@owlat/shared`, for one
+ * reason: the threshold it substitutes for is gate 3's, and gate 3's threshold
+ * has exactly one home — `RAMP_GATE_THRESHOLDS.complaintMax` in `./gateConfig`.
+ * `packages/shared` cannot import from `apps/api`, so a copy in shared would be
+ * a SECOND declaration of that number, and D5 is explicit that the controller
+ * and the dashboard must never be able to disagree about a number. Both trip
+ * points are branded `RateFraction` for the same reason units are a type-level
+ * concern throughout the ramp.
  *
  * ONE complaint pipeline, three sources. Absence of an enrollment substitutes a
  * weaker source with an honest confidence caveat; it never blanks the gate out,
  * never blocks anything, and never surfaces an error (D2 / D14).
  */
 
-import type { YahooCflEnrollmentState } from './yahooCfl';
+import type { YahooCflEnrollmentState } from '@owlat/shared/yahooCfl';
+import {
+	RAMP_GATE_THRESHOLDS,
+	UNSUBSCRIBE_PROXY_COMPLAINT_MAX,
+	type RateFraction,
+} from './gateConfig';
 
 /**
  * Which complaint signal the `yahoo` cell's gate 3 is actually running on.
@@ -24,20 +38,19 @@ export const YAHOO_COMPLAINT_SIGNAL_SOURCES = [
 ] as const;
 export type YahooComplaintSignalSource = (typeof YAHOO_COMPLAINT_SIGNAL_SOURCES)[number];
 
-/** Direct complaint evidence: the shipped 0.1% complaint-rate threshold. */
-export const YAHOO_CFL_COMPLAINT_THRESHOLD = 0.001;
-
-/**
- * The proxy threshold when no complaint feed exists at all. An unsubscribe is a
- * much weaker, much more common signal than a spam report, so the equivalent
- * trip point is TIGHTENED to 0.05% rather than reused at 0.1%.
- */
-export const YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD = 0.0005;
-
 export interface YahooComplaintSubstitution {
 	source: YahooComplaintSignalSource;
-	/** The rate at or above which gate 3 fails for the yahoo cell. */
-	thresholdRate: number;
+	/**
+	 * The rate ABOVE which gate 3 fails for the yahoo cell — pass iff
+	 * `rate <= thresholdRate`, fail iff `rate > thresholdRate`.
+	 *
+	 * The boundary is stated explicitly because it is the contract P3-8 consumes
+	 * when it subsumes this function, and because the shipped gate publishes a
+	 * field of the SAME NAME with the SAME semantics (`evaluateCeilingGate` in
+	 * `./gates` fails on `ownRate > threshold`, strictly). A rate of exactly the
+	 * threshold PASSES, in both places.
+	 */
+	thresholdRate: RateFraction;
 	confidence: 'high' | 'medium' | 'low';
 	/**
 	 * The confidence sentence shown on the cell, ALWAYS present — including the
@@ -66,19 +79,16 @@ export interface YahooComplaintSubstitution {
  * to the RFC 9477 CFBL-Address feed when the send carried one (medium), and
  * failing that to the unsubscribe-rate proxy at the tightened threshold (low).
  * The confidence sentence is ALWAYS returned — a UI that had to supply the `high`
- * one itself would be a second home for the same copy, free to drift. There is no fourth branch: the gate ALWAYS has
- * a source, so absence can never surface as an error or an unresolvable warning.
+ * one itself would be a second home for the same copy, free to drift. There is
+ * no fourth branch: the gate ALWAYS has a source, so absence can never surface
+ * as an error or an unresolvable warning.
  *
  * A `lapsed` enrollment is treated exactly like no enrollment — the point of the
  * derived lapse is that we can no longer trust the feed to be live.
  *
  * SCOPE NOTE (D3): P3-8 owns the ONE substitution table for every gate. When it
- * lands it SUBSUMES this function, and `YAHOO_CFL_COMPLAINT_THRESHOLD` /
- * `YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD` move into it — they must not be
- * re-declared there, or the controller and this wizard would end up with two
- * disagreeing definitions of the yahoo complaint gate. Until then this is the
- * only definition, and it exists so the wizard can state the live source
- * honestly rather than showing a blank gate.
+ * lands it SUBSUMES this function; the thresholds do NOT move with it, because
+ * they already live in `./gateConfig` where the rest of the ramp reads them.
  */
 export function yahooComplaintSubstitution(input: {
 	enrollmentState: YahooCflEnrollmentState;
@@ -87,7 +97,7 @@ export function yahooComplaintSubstitution(input: {
 	if (input.enrollmentState === 'enrolled') {
 		return {
 			source: 'yahoo_cfl',
-			thresholdRate: YAHOO_CFL_COMPLAINT_THRESHOLD,
+			thresholdRate: RAMP_GATE_THRESHOLDS.complaintMax,
 			confidence: 'high',
 			confidenceNote:
 				'Measurement confidence: high — Yahoo complaints for this domain are measured directly.',
@@ -97,7 +107,7 @@ export function yahooComplaintSubstitution(input: {
 	if (input.hasCfblAddress) {
 		return {
 			source: 'cfbl_address',
-			thresholdRate: YAHOO_CFL_COMPLAINT_THRESHOLD,
+			thresholdRate: RAMP_GATE_THRESHOLDS.complaintMax,
 			confidence: 'medium',
 			confidenceNote:
 				'Measurement confidence: medium — Yahoo complaints are counted from the CFBL-Address feed.',
@@ -108,7 +118,7 @@ export function yahooComplaintSubstitution(input: {
 	}
 	return {
 		source: 'unsubscribe_rate_proxy',
-		thresholdRate: YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD,
+		thresholdRate: UNSUBSCRIBE_PROXY_COMPLAINT_MAX,
 		confidence: 'low',
 		confidenceNote:
 			'Measurement confidence: low — no Yahoo complaint feed, so unsubscribes stand in for complaints at a tighter threshold.',

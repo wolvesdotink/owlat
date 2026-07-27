@@ -23,9 +23,11 @@
  * complaint gate. It never throws, never blocks a send, never blocks a phase
  * promotion, and never produces an error state or a "setup incomplete" nag.
  *
- * WHICH complaint signal that substitution picks lives in the sibling module
- * `./yahooComplaintSignal` — a different concern with a different owner (P3-8's
- * substitution table subsumes that file, not this state machine).
+ * WHICH complaint signal that substitution picks lives in
+ * `apps/api/convex/delivery/ramp/yahooComplaintSignal.ts` — a different concern
+ * with a different owner (P3-8's substitution table subsumes that file, not this
+ * state machine), and it lives next to the ramp because gate 3's threshold has
+ * exactly one home there.
  */
 
 /**

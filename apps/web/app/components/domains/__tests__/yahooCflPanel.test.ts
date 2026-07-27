@@ -26,7 +26,6 @@ import {
 	type YahooCflEnrollmentRecord,
 	type YahooCflEnrollmentState,
 } from '@owlat/shared/yahooCfl';
-import { yahooComplaintSubstitution } from '@owlat/shared/yahooComplaintSignal';
 
 const PRECONDITION: YahooCflDkimPrecondition = {
 	domain: 'mail.example.com',
@@ -35,6 +34,39 @@ const PRECONDITION: YahooCflDkimPrecondition = {
 };
 
 const T0 = Date.UTC(2026, 6, 1);
+
+/**
+ * The complaint-signal half of the guide, inlined.
+ *
+ * `yahooComplaintSubstitution` lives in `apps/api/convex/delivery/ramp/` — next
+ * to the ONE declaration of gate 3's threshold, which is the only place that
+ * number is allowed to exist — and the web app cannot import from `apps/api`.
+ * So this fixture states the WIRE SHAPE the query serves rather than re-running
+ * the function; the function's own behaviour is pinned by
+ * `apps/api/convex/delivery/ramp/__tests__/yahooAbsent.test.ts`. The panel is
+ * only ever asked to render these strings verbatim.
+ */
+function complaintSignalFor(state: YahooCflEnrollmentState) {
+	return state === 'enrolled'
+		? {
+				source: 'yahoo_cfl' as const,
+				thresholdRate: 0.001,
+				confidence: 'high' as const,
+				confidenceNote:
+					'Measurement confidence: high — Yahoo complaints for this domain are measured directly.',
+				isBlocking: false as const,
+			}
+		: {
+				source: 'unsubscribe_rate_proxy' as const,
+				thresholdRate: 0.0005,
+				confidence: 'low' as const,
+				confidenceNote:
+					'Measurement confidence: low — no Yahoo complaint feed, so unsubscribes stand in for complaints at a tighter threshold.',
+				caveat:
+					'Enrolling this domain in Yahoo’s Complaint Feedback Loop would measure complaints directly.',
+				isBlocking: false as const,
+			};
+}
 
 /**
  * Build the guide EXACTLY as the backend does — same pure functions — so the
@@ -56,10 +88,7 @@ function guideFor(
 		// The affordances come from the pure core exactly as the query serves them —
 		// the panel renders this verbatim and derives no status of its own.
 		actions: yahooCflAvailableActions(record, precondition, nowMs),
-		complaintSignal: yahooComplaintSubstitution({
-			enrollmentState: state,
-			hasCfblAddress: false,
-		}),
+		complaintSignal: complaintSignalFor(state),
 	};
 }
 
