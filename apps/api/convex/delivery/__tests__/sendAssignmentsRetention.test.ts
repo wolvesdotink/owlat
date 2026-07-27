@@ -158,16 +158,19 @@ describe('sendAssignments retention sweep', () => {
 
 	it('is registered as a cron so retention actually runs', async () => {
 		const fs = await import('node:fs/promises');
-		// The delivery retention sweeps are registered as a group from a domain
-		// module (same pattern as `plugins/cronRegistration.ts`); `crons.ts` owns
-		// the schedule object and calls it. Assert BOTH halves, so neither the
-		// registration nor the call into it can be dropped unnoticed.
+		// Every delivery cron is registered from one domain module (same pattern
+		// as `plugins/cronRegistration.ts`); `crons.ts` owns the schedule object
+		// and calls it. Assert BOTH halves, so neither the registration nor the
+		// call into it can be dropped unnoticed — and assert the cron NAME, so a
+		// module reshuffle that keeps the handler reference but loses the
+		// `crons.interval` entry still fails here.
 		const registration = await fs.readFile(
 			new URL('../cronRegistration.ts', import.meta.url),
 			'utf8'
 		);
+		expect(registration).toContain("'cleanup send assignments'");
 		expect(registration).toContain('internal.delivery.sendAssignments.cleanupExpiredAssignments');
 		const crons = await fs.readFile(new URL('../../crons.ts', import.meta.url), 'utf8');
-		expect(crons).toContain('registerDeliveryRetentionCrons(crons)');
+		expect(crons).toContain('registerDeliveryCrons(crons)');
 	});
 });

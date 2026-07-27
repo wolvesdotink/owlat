@@ -234,7 +234,6 @@ import type * as delivery_checklistTraits from "../delivery/checklistTraits.js";
 import type * as delivery_checklistValidatorTypes from "../delivery/checklistValidatorTypes.js";
 import type * as delivery_checklistVerification from "../delivery/checklistVerification.js";
 import type * as delivery_complianceTelemetry from "../delivery/complianceTelemetry.js";
-import type * as delivery_cronRegistration from "../delivery/cronRegistration.js";
 import type * as delivery_deliverabilityRouting from "../delivery/deliverabilityRouting.js";
 import type * as delivery_deliverabilityValidators from "../delivery/deliverabilityValidators.js";
 import type * as delivery_enqueue from "../delivery/enqueue.js";
@@ -1017,7 +1016,6 @@ declare const fullApi: ApiFromModules<{
   "delivery/checklistValidatorTypes": typeof delivery_checklistValidatorTypes;
   "delivery/checklistVerification": typeof delivery_checklistVerification;
   "delivery/complianceTelemetry": typeof delivery_complianceTelemetry;
-  "delivery/cronRegistration": typeof delivery_cronRegistration;
   "delivery/deliverabilityRouting": typeof delivery_deliverabilityRouting;
   "delivery/deliverabilityValidators": typeof delivery_deliverabilityValidators;
   "delivery/enqueue": typeof delivery_enqueue;
