@@ -22,7 +22,10 @@ import { buildFeedbackId } from '../feedbackId';
 import { personalize } from '../personalization';
 import { getTrackingPixelUrl } from '../trackingUrl';
 import type { TransformConfig } from '../transform';
-import type { CampaignComposeInput, ComposerOutput } from '../types';
+import type {
+	CampaignComposeInput,
+	ComposerOutput,
+} from '../types';
 
 export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	const subject = personalize(input.template.subject, input.contactInfo, { escape: 'header' });
@@ -81,7 +84,11 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 		transformConfig.viewInBrowserUrl = input.viewInBrowserUrl;
 	}
 
-	if (input.audienceType !== 'segment' && input.unsubscribeUrl && input.preferenceUrl) {
+	if (
+		input.audienceType !== 'segment' &&
+		input.unsubscribeUrl &&
+		input.preferenceUrl
+	) {
 		transformConfig.unsubscribeUrl = input.unsubscribeUrl;
 		transformConfig.preferenceUrl = input.preferenceUrl;
 	}
