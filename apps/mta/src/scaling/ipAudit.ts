@@ -330,9 +330,16 @@ export async function ipAuditIsDue(
 }
 
 /**
- * Start the auditor: audit at install (as soon as this process holds the cron
- * lease) and daily thereafter. Fire-and-forget by design — unlike the DNSBL
- * sweep it gates nothing, so it must never delay or fail startup.
+ * Start the auditor: audit at install and daily thereafter. Fire-and-forget by
+ * design — unlike the DNSBL sweep it gates nothing, so it must never delay or
+ * fail startup.
+ *
+ * The BOOT sweep is unconditional, mirroring startDnsblChecker: leadership is
+ * acquired asynchronously, so a leader-gated first tick would always no-op and
+ * the earliest audit would be an hour after install — precisely the window this
+ * audit exists to serve. `ipAuditIsDue` keeps a rolling restart from re-probing
+ * an address that was audited minutes ago. Only the PERIODIC tick is
+ * leader-gated.
  */
 export function startIpAuditor(
 	redis: Redis,
@@ -340,16 +347,16 @@ export function startIpAuditor(
 	isLeader: () => boolean,
 	deps: IpAuditDeps
 ): NodeJS.Timeout {
-	const tick = async () => {
-		if (!isLeader()) return;
+	const tick = async (leaderGated: boolean) => {
+		if (leaderGated && !isLeader()) return;
 		if (!(await ipAuditIsDue(redis, config, deps.now()))) return;
 		await runIpAuditSweep(redis, config, deps);
 	};
-	const runSafely = () => {
-		void tick().catch(() =>
+	const runSafely = (leaderGated: boolean) => {
+		void tick(leaderGated).catch(() =>
 			logger.warn({ operation: 'ip_audit_sweep' }, 'Pre-flight IP audit sweep failed')
 		);
 	};
-	runSafely();
-	return setInterval(runSafely, AUDIT_DUE_CHECK_INTERVAL_MS);
+	runSafely(false);
+	return setInterval(() => runSafely(true), AUDIT_DUE_CHECK_INTERVAL_MS);
 }
