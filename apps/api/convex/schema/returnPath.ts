@@ -46,6 +46,24 @@ export const returnPathTables = {
 		// unsupported verdict is re-checked 24h → 7d → 30d rather than daily
 		// forever. Absent on rows written before the backoff existed.
 		attempts: v.optional(v.number()),
+		// The verdict this transport last SETTLED on, carried across an open
+		// re-probe. Without it a re-probe would reopen the row, resolution would
+		// read `unknown`, and a PROVEN relay would stop being VERP-stamped for up
+		// to the probe timeout every time the 30d TTL came round — the re-probe
+		// periodically switching off the very stamp it exists to confirm.
+		lastSettled: v.optional(
+			v.object({
+				status: v.union(v.literal('supported'), v.literal('unsupported')),
+				reason: v.union(
+					v.literal('awaiting_delivery'),
+					v.literal('observed_match'),
+					v.literal('rewritten_by_relay'),
+					v.literal('rejected_by_relay'),
+					v.literal('no_bounce_observed')
+				),
+				settledAt: v.number(),
+			})
+		),
 		updatedAt: v.number(),
 	})
 		.index('by_transport', ['transportId'])

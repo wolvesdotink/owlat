@@ -63,6 +63,23 @@ export const RETURN_PATH_PROBE_REASONS = [
 ] as const;
 export type ReturnPathProbeReason = (typeof RETURN_PATH_PROBE_REASONS)[number];
 
+/**
+ * A verdict a probe already reached, carried across a later RE-PROBE.
+ *
+ * A re-probe reopens the row (`awaiting_delivery`), and an open probe resolves
+ * to `unknown` — so without this, a relay PROVEN to honour our return path
+ * would stop being stamped for up to {@link RETURN_PATH_PROBE_TIMEOUT_MS} every
+ * time its TTL came round: relayed bounces in that window would be
+ * unattributable and the cell would silently flip to degraded, twelve times a
+ * year. The re-probe periodically switching OFF the very stamp it exists to
+ * confirm is the opposite of what it is for.
+ */
+export interface SettledReturnPathVerdict {
+	readonly status: Exclude<ReturnPathProbeStatus, 'awaiting_delivery'>;
+	readonly reason: ReturnPathProbeReason;
+	readonly settledAt: number;
+}
+
 export interface ReturnPathProbeState {
 	readonly status: ReturnPathProbeStatus;
 	readonly reason: ReturnPathProbeReason;
@@ -80,8 +97,19 @@ export interface ReturnPathProbeState {
 	 * fixed daily retry against a relay that will never support us is one
 	 * deliberate hard bounce a day, forever, on an account whose bounce rate can
 	 * get the operator suspended. Legacy rows carry no count and are read as 1.
+	 *
+	 * It counts CONSECUTIVE probes since the last `supported` verdict, not every
+	 * probe the transport has ever had — see {@link nextProbeAttempts}. Counting
+	 * the latter would push a long-supported relay to the 30d cap, so the day it
+	 * broke its documented "1st retry: next day" would in fact be a month.
 	 */
 	readonly attempts?: number;
+	/**
+	 * The verdict this transport last SETTLED on, kept while a re-probe is open
+	 * so a proven relay keeps its stamp. Replaced (not merged) when the new probe
+	 * settles; absent until a first verdict exists.
+	 */
+	readonly lastSettled?: SettledReturnPathVerdict;
 }
 
 export type ReturnPathProbeEvent =
@@ -127,6 +155,39 @@ export function returnPathProbeRetryMs(attempts: number | undefined): number {
 	const index = Number.isFinite(attempts) ? Math.max(1, Math.trunc(attempts ?? 1)) - 1 : 0;
 	const capped = Math.min(index, RETURN_PATH_PROBE_RETRY_SCHEDULE_MS.length - 1);
 	return RETURN_PATH_PROBE_RETRY_SCHEDULE_MS[capped] ?? RETURN_PATH_PROBE_RETRY_MS;
+}
+
+/**
+ * The verdict a transport currently STANDS ON, whether or not a re-probe is in
+ * flight: the row's own status once it has settled, otherwise the verdict it
+ * carried into the open probe. `undefined` ⇒ never settled anything.
+ */
+export function settledVerdictOf(
+	state: ReturnPathProbeState | null | undefined
+): SettledReturnPathVerdict | undefined {
+	if (!state) return undefined;
+	if (state.status === 'awaiting_delivery') return state.lastSettled;
+	return {
+		status: state.status,
+		reason: state.reason,
+		settledAt: state.settledAt ?? state.startedAt,
+	};
+}
+
+/**
+ * The attempt number a NEW probe for this transport should carry.
+ *
+ * Counts consecutive probes since the last `supported` verdict: a relay that is
+ * currently proven starts over at 1, so if it later breaks it gets the schedule
+ * its docstring promises (next day, then next week, then monthly) rather than
+ * inheriting a count accumulated over a year of successful TTL re-checks. A
+ * non-finite legacy count is read as none.
+ */
+export function nextProbeAttempts(previous: ReturnPathProbeState | null | undefined): number {
+	if (settledVerdictOf(previous)?.status === 'supported') return 1;
+	const raw = previous?.attempts;
+	const base = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.trunc(raw)) : 0;
+	return base + 1;
 }
 
 /**
@@ -342,6 +403,19 @@ export function resolveReturnPathCapabilityForEntry(
 		});
 	}
 	if (probe.status === 'awaiting_delivery') {
+		// A RE-probe must not revoke the verdict it is re-checking. While the probe
+		// is legitimately open (it has not aged past the timeout — a degenerate
+		// clock reads as timed out, so it can never pin a stale verdict forever)
+		// the transport stands on what it last settled; the new probe replaces that
+		// only once IT settles. The carry is bounded by the timeout, so a broken
+		// relay is demoted within RETURN_PATH_PROBE_TIMEOUT_MS of its TTL, not
+		// indefinitely.
+		const carried = probe.lastSettled;
+		if (carried && Number.isFinite(carried.settledAt) && !isProbeTimedOut(probe, now)) {
+			return grade(carried.status, declared, probe.status, carried.reason, {
+				hasProviderFeedback,
+			});
+		}
 		return grade('unknown', declared, probe.status, 'awaiting_delivery', { hasProviderFeedback });
 	}
 	const settledAt = probe.settledAt ?? probe.startedAt;
