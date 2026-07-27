@@ -246,6 +246,13 @@ export const NON_TENANT_TABLES = [
 	'providerHealth',
 	'warmingState',
 	'mtaIpReadinessAlerts',
+	// Deployment-scoped transport capability fact: does this send transport let us
+	// set a custom VERP return path? Keyed by transport id with no organizationId,
+	// no credentials and no contact business data — a re-probeable property of the
+	// relay itself, shared by every org on the deployment. Like `providerHealth`,
+	// it is regenerable telemetry about infrastructure, so it is out of the tenant
+	// wipe (wiping it would only force a needless re-probe).
+	'sendTransportReturnPathProbes',
 	// Inbound TLS-RPT (RFC 8460) aggregate reports from partner MX — operator
 	// deliverability telemetry keyed by the partner's own report-id, not org
 	// business data. Regenerable (partners re-send daily); not personal data of
