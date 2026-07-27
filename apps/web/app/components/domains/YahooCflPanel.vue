@@ -18,7 +18,10 @@
  *
  * Every decision shown here is DERIVED by the backend's pure core
  * (`@owlat/shared/yahooCfl`): this component renders `getGuide` and never
- * recomputes a status of its own, so the panel can never disagree with the row.
+ * recomputes a status or an affordance of its own, so the panel can never
+ * disagree with the row — and can never offer a control the state machine would
+ * refuse. WHICH controls to show is `guide.actions`; `canManage` is the only
+ * thing layered on top, because permission is a property of the viewer.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
@@ -86,24 +89,19 @@ const STEP_CLASSES = {
 	blocked: 'text-text-tertiary',
 } as const;
 
-// Which controls make sense right now, derived from the same state the steps are.
-const canSubmit = computed(
-	() => props.canManage && (state.value === 'not_started' || state.value === 'lapsed')
-);
-const canConfirm = computed(() => props.canManage && state.value === 'awaiting_yahoo');
-const canReset = computed(
-	() => props.canManage && state.value !== null && state.value !== 'not_started'
-);
+// WHICH CONTROLS TO OFFER — read straight off the guide, never re-derived here.
+// The pure core decides them next to the state machine that services them
+// (`yahooCflAvailableActions`), so this component cannot offer a control the
+// backend would refuse. `canManage` is the only thing layered on top, because
+// permission is a property of the viewer rather than of the enrollment.
+const actions = computed(() => guide.value?.actions ?? null);
+const canSubmit = computed(() => props.canManage && actions.value?.canSubmit === true);
+const canConfirm = computed(() => props.canManage && actions.value?.canConfirm === true);
+const canReset = computed(() => props.canManage && actions.value?.canReset === true);
 // Yahoo will not accept an enrollment for a domain it cannot see our signature
 // on, so Submit stays disabled until the domain is verified AND signing. This
 // gates only the WIZARD — mail to Yahoo keeps flowing either way.
-//
-// The precondition is READ OFF THE GUIDE, not recomputed here: the backend
-// already expresses it as the submit step being `blocked`, and a second
-// definition in the component is a second thing to keep in sync.
-const isDkimReady = computed(
-	() => guide.value?.steps.find((s) => s.id === 'submit_enrollment')?.status !== 'blocked'
-);
+const isDkimReady = computed(() => actions.value?.submitBlockedByDkim !== true);
 
 /**
  * "Start over" clears OUR record — and, once the ramp's substitution table
