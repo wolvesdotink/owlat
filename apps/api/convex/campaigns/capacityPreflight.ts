@@ -21,11 +21,13 @@ import { loadRemainingCapacityByDay } from '../delivery/warmingCapacity';
 import { audienceValidator, type StoredAudience } from './audience';
 import { countAudience } from './audienceResolution';
 import {
+	capacityWithinHorizon,
 	MAX_PLAN_DAYS,
 	planCampaignCapacity,
 	type CampaignCapacityPlan,
 	type CampaignCapacitySchedule,
 } from './capacityPlan';
+import { logWarn } from '../lib/runtimeLog';
 
 type Ctx = MutationCtx | QueryCtx;
 
@@ -34,8 +36,23 @@ type Ctx = MutationCtx | QueryCtx;
  * `campaigns.scheduling.schedule` and `campaigns.campaigns.sendNow`, where an
  * unbounded segment scan would both exceed the Convex per-execution read limit
  * — turning a failure to MEASURE into a blocked SEND — and pull the whole live
- * contacts table into the mutation's OCC read set (D16). Well under the read
- * limit; exceeding it means "unknown capacity", never "too big".
+ * contacts table into the mutation's OCC read set (D16).
+ *
+ * DERIVATION. Convex allows 16,384 documents read per function execution. The
+ * gate's scan costs up to TWO documents per examined row on its most expensive
+ * shape (a topic membership plus its contact; a segment carrying a
+ * `topic_membership` condition costs the contact plus one point-read per
+ * referenced topic), and it is not the only reader in the mutation — the
+ * enclosing `schedule` / `sendNow` also loads the campaign, template, domain,
+ * sender and the suppression set. 8,000 examined rows leaves roughly half the
+ * budget for everything else, which is the margin this number is chosen for.
+ *
+ * Exhausting it is NOT a refusal and NOT a silent pass: the partial count is
+ * kept as a LOWER BOUND on the audience and compared against the capacity
+ * inside the retention horizon (see `assessCampaignCapacity`). A floor already
+ * above that capacity is a sound refusal; only a floor below it is genuinely
+ * unmeasured. That is why this ceiling can never quietly become the binding
+ * constraint on whether the gate fires.
  */
 const AUDIENCE_EXAMINE_CEILING = 8_000;
 
@@ -65,6 +82,24 @@ export async function assessCampaignCapacity(
 	ctx: Ctx,
 	options: { audience: StoredAudience; now: number; startsAt?: number }
 ): Promise<CampaignCapacityAssessment> {
+	// FAIL OPEN, unconditionally. This runs inside `campaigns.scheduling.schedule`
+	// and `campaigns.campaigns.sendNow`: an exception escaping here would not
+	// refuse the campaign, it would make the send mutation THROW — a failure to
+	// MEASURE blocking a SEND, exactly what D2 forbids. Every measurement fault
+	// (a read limit, a corrupt segment, an unreadable row) degrades to "capacity
+	// unknown → allow".
+	try {
+		return await measureCampaignCapacity(ctx, options);
+	} catch (err) {
+		logWarn('capacityPreflight: capacity could not be measured; allowing the send', err);
+		return { capacityKnown: false, fits: true };
+	}
+}
+
+async function measureCampaignCapacity(
+	ctx: Ctx,
+	options: { audience: StoredAudience; now: number; startsAt?: number }
+): Promise<CampaignCapacityAssessment> {
 	// Normalize the anchor ONCE, here at the boundary: a hostile or stale
 	// `startsAt` (NaN, a timestamp in the past) collapses to `now`, so neither
 	// the projection nor the pure planner has to defend against it.
@@ -91,20 +126,34 @@ export async function assessCampaignCapacity(
 		ceiling: projectedTotal + 1,
 		examineCeiling: AUDIENCE_EXAMINE_CEILING,
 	});
-	// Ran out of read budget before the audience was sized: we did not measure
-	// it, so we do not get to refuse it.
-	if (counted.examineCeilingHit) return { capacityKnown: false, fits: true };
+	// Ran out of read budget before the audience was sized. The partial count is
+	// still a valid LOWER BOUND on the audience, and a lower bound answers one
+	// question soundly: if even the floor already exceeds everything the horizon
+	// can carry, the real audience — which can only be bigger — cannot finish
+	// either, so refusing is sound. A floor at or below horizon capacity decides
+	// nothing, and undecided means allow. Throwing the partial count away instead
+	// would turn the read budget into an OFF switch for the gate on exactly the
+	// large audiences it exists to catch.
+	if (counted.completeness === 'read_budget_exhausted') {
+		const horizonCapacity = capacityWithinHorizon({
+			remainingCapacityByDay,
+			maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
+			now: startsAt,
+		});
+		if (counted.eligible <= horizonCapacity) return { capacityKnown: false, fits: true };
+	}
 
 	const plan = planCampaignCapacity({
-		// `eligible` is a lower bound when the count is capped, and refusing on a
-		// lower bound is sound: a bigger audience fits even less well.
+		// `eligible` is a lower bound whenever the count did not run to completion,
+		// and refusing on a lower bound is sound: a bigger audience fits even less
+		// well.
 		audienceSize: counted.eligible,
 		remainingCapacityByDay,
 		maxMessageAgeMs: GOVERNED_MTA_MAX_MESSAGE_AGE_MS,
 		now: startsAt,
 	});
 
-	return toAssessment(plan, { audienceUnderCounted: counted.capped });
+	return toAssessment(plan, { audienceUnderCounted: counted.completeness !== 'exact' });
 }
 
 /**

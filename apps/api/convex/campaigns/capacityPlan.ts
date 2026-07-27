@@ -107,6 +107,29 @@ export function usableDayCount(now: number, maxMessageAgeMs: number): number {
 	return days;
 }
 
+/**
+ * Total projected capacity inside the retention horizon — everything the
+ * deployment could send before a message queued at `now` expires.
+ *
+ * This is the threshold `planCampaignCapacity` compares the audience against,
+ * exported so a caller holding only a LOWER BOUND on the audience can ask the
+ * one question a lower bound can answer soundly: "is even the floor already
+ * more than the horizon can carry?" A floor above it is a sound refusal (the
+ * real audience can only be larger); a floor below it decides nothing.
+ */
+export function capacityWithinHorizon(input: {
+	remainingCapacityByDay: readonly number[];
+	maxMessageAgeMs: number;
+	now: number;
+}): number {
+	const horizonDays = usableDayCount(input.now, input.maxMessageAgeMs);
+	let total = 0;
+	for (let day = 0; day < horizonDays; day += 1) {
+		total += sanitizeCount(input.remainingCapacityByDay[day] ?? 0);
+	}
+	return total;
+}
+
 /** Inputs to the schedule builder — the planner minus the retention horizon. */
 export interface CapacityScheduleInput {
 	/** Eligible recipients. A lower bound is fine — refusing on one is sound. */
