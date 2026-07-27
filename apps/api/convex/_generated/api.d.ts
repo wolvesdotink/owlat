@@ -311,6 +311,7 @@ import type * as domains_tlsReportsHttp from "../domains/tlsReportsHttp.js";
 import type * as domains_tlsReportsNode from "../domains/tlsReportsNode.js";
 import type * as domains_tlsRpt from "../domains/tlsRpt.js";
 import type * as domains_trackingDomains from "../domains/trackingDomains.js";
+import type * as domains_yahooCfl from "../domains/yahooCfl.js";
 import type * as e2ee_discovery from "../e2ee/discovery.js";
 import type * as e2ee_inboundSeal from "../e2ee/inboundSeal.js";
 import type * as e2ee_keys from "../e2ee/keys.js";
@@ -1085,6 +1086,7 @@ declare const fullApi: ApiFromModules<{
   "domains/tlsReportsNode": typeof domains_tlsReportsNode;
   "domains/tlsRpt": typeof domains_tlsRpt;
   "domains/trackingDomains": typeof domains_trackingDomains;
+  "domains/yahooCfl": typeof domains_yahooCfl;
   "e2ee/discovery": typeof e2ee_discovery;
   "e2ee/inboundSeal": typeof e2ee_inboundSeal;
   "e2ee/keys": typeof e2ee_keys;
