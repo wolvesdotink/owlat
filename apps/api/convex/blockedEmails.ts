@@ -188,15 +188,20 @@ export const remove = authedMutation({
 				.withIndex('by_email', (q) => q.eq('email', blockedEmail.email))
 				.first();
 			if (contact !== null && contact.deletedAt === undefined) {
-				await restoreSunsetSuppression(ctx, {
+				const restore = await restoreSunsetSuppression(ctx, {
 					contactId: contact._id,
 					actorUserId: session.userId,
 					now: Date.now(),
 				});
-				return { success: true };
+				// Only short-circuit when the restore actually took the row away. If
+				// the contact's stored address normalizes differently from the
+				// blocklist key it will have removed nothing, and the operator's
+				// "Remove" must still remove the row they clicked on.
+				if (restore.removedSuppression) return { success: true };
 			}
-			// No contact row behind the address (imported, merged away, hard-deleted):
-			// there is no stage to reset, so the plain delete below is the whole job.
+			// No contact row behind the address (imported, merged away,
+			// hard-deleted), or the restore did not match this row: there is no
+			// stage to reset, so the plain delete below is the whole job.
 		}
 
 		await ctx.db.delete(args.blockedEmailId);
