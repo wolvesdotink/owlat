@@ -77,6 +77,18 @@ describe('resolveRelayEnvelopeSender — VERP on the relay arm', () => {
 		expect(envelopeFrom).toBe('news@example.com');
 	});
 
+	it('refuses a degenerate clock rather than minting an unverifiable token', () => {
+		// The time window is part of the signed material, so a non-finite `now`
+		// mints a token that can never verify at the MTA — which reads downstream
+		// as "this arm produced no bounces", the bias G-08 removes. Fall back to
+		// the composed sender instead, exactly as for a missing key.
+		for (const now of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			const { envelopeFrom, isVerp } = stamp({ now });
+			expect(isVerp).toBe(false);
+			expect(envelopeFrom).toBe('news@example.com');
+		}
+	});
+
 	it('gives two sends distinct, individually attributable return paths', () => {
 		const a = stamp({ messageId: 'send-a' }).envelopeFrom;
 		const b = stamp({ messageId: 'send-b' }).envelopeFrom;

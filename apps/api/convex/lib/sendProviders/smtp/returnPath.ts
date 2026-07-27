@@ -49,16 +49,22 @@ export interface RelayEnvelopeSender {
  * it is proven to authorise this transport.
  *
  * Falls back to the composed envelope sender — the exact shipped behaviour —
- * whenever there is no authorised host or no USABLE signing key. An UNSIGNED
- * VERP address would be a forgery surface on the bounce path, and a key shorter
- * than the floor the MTA enforces at startup mints tokens the MTA will never
- * verify — which reads downstream as "this arm produced no bounces", the exact
- * measurement bias this whole change exists to remove. Both mean no stamp,
- * never a bad token.
+ * whenever there is no authorised host, no USABLE signing key, or a
+ * non-finite clock. An UNSIGNED VERP address would be a forgery surface on the
+ * bounce path; a key shorter than the floor the MTA enforces at startup, or a
+ * degenerate `now` (the window is part of the signed material), mints tokens
+ * the MTA will never verify — which reads downstream as "this arm produced no
+ * bounces", the exact measurement bias this whole change exists to remove. All
+ * of them mean no stamp, never a bad token.
  */
 export function resolveRelayEnvelopeSender(input: RelayEnvelopeSenderInput): RelayEnvelopeSender {
 	const key = normalizeVerpKey(input.verpKey);
-	if (!input.returnPathHost || !isUsableVerpKey(key) || input.messageId.length === 0) {
+	if (
+		!input.returnPathHost ||
+		!isUsableVerpKey(key) ||
+		input.messageId.length === 0 ||
+		!Number.isFinite(input.now)
+	) {
 		return { envelopeFrom: input.composedEnvelopeFrom, isVerp: false };
 	}
 	return {
