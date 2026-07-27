@@ -35,7 +35,6 @@ vi.mock('crypto', async (importOriginal) => {
 });
 
 import {
-	ACCEPTED_FUTURE_WINDOWS,
 	ACCEPTED_PAST_WINDOWS,
 	MAX_HMACS_PER_TOKEN_PARSE,
 	buildCfblAddress,
@@ -45,7 +44,11 @@ import {
 	parseCfblAddress,
 	parseCfblToken,
 } from '../cfblAddress.js';
-import { MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS, SIGNED_TOKEN_WINDOW_MS } from '../signedToken.js';
+import {
+	MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS,
+	SIGNED_TOKEN_FUTURE_WINDOWS,
+	SIGNED_TOKEN_WINDOW_MS,
+} from '../signedToken.js';
 import { buildVerpAddress, parseVerpAddress } from '../verp.js';
 
 const KEY = 'cfbl-signature-test-key';
@@ -189,6 +192,7 @@ describe('P2-7 (b) — CFBL signature', () => {
 					fromDomain: HOST,
 					key: '',
 					now: NOW,
+					dkimSigned: true,
 				})
 			).toEqual({ outcome: 'no_key', headers: {} });
 		});
@@ -215,7 +219,7 @@ describe('P2-7 (b) — CFBL signature', () => {
 
 	describe('verification cost is BOUNDED (the CPU-amplifier defence)', () => {
 		/** The oldest window verification will probe at all, in whole days back. */
-		const oldestProbedWindow = MAX_HMACS_PER_TOKEN_PARSE - ACCEPTED_FUTURE_WINDOWS - 1;
+		const oldestProbedWindow = MAX_HMACS_PER_TOKEN_PARSE - SIGNED_TOKEN_FUTURE_WINDOWS - 1;
 
 		it('costs exactly MAX_HMACS_PER_TOKEN_PARSE on a maximally-old token', () => {
 			// The worst case for a token we really signed: it matches only on the
@@ -249,7 +253,7 @@ describe('P2-7 (b) — CFBL signature', () => {
 
 			// Windows are probed newest-first from the future skew window, so a
 			// legitimate fresh report costs two, not ninety-two.
-			expect(hmacCalls.count).toBe(ACCEPTED_FUTURE_WINDOWS + 1);
+			expect(hmacCalls.count).toBe(SIGNED_TOKEN_FUTURE_WINDOWS + 1);
 		});
 	});
 
@@ -267,7 +271,7 @@ describe('P2-7 (b) — CFBL signature', () => {
 		it('never accepts a token older than the shared horizon in signedToken.ts', () => {
 			// today + past windows + the skew window must fit inside the one constant
 			// that the dedup and provenance retentions are also derived from.
-			const spanDays = 1 + ACCEPTED_PAST_WINDOWS + ACCEPTED_FUTURE_WINDOWS;
+			const spanDays = 1 + ACCEPTED_PAST_WINDOWS + SIGNED_TOKEN_FUTURE_WINDOWS;
 			const horizonDays = MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS / (SIGNED_TOKEN_WINDOW_MS / 1000);
 			expect(spanDays).toBeLessThanOrEqual(horizonDays);
 		});

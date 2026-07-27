@@ -72,9 +72,6 @@ export const CFBL_REPORT_FORMAT = 'arf';
  */
 const CFBL_MAC_LABEL = 'cfbl:';
 
-/** One future window absorbs signer/verifier clock skew around a day boundary. */
-export const ACCEPTED_FUTURE_WINDOWS = SIGNED_TOKEN_FUTURE_WINDOWS;
-
 /**
  * Past windows accepted in addition to the current one, DERIVED from the shared
  * acceptance horizon in `bounce/signedToken.ts` — that constant, not this count,
@@ -87,11 +84,15 @@ export const ACCEPTED_FUTURE_WINDOWS = SIGNED_TOKEN_FUTURE_WINDOWS;
  * span, never leave a fractional window that shifts the `age <=
  * ACCEPTED_PAST_WINDOWS` boundary half a day while every derived integer (and
  * therefore every cost test) stays put.
+ *
+ * The one future window subtracted here absorbs signer/verifier clock skew
+ * around a day boundary and is shared with the VERP token family
+ * (`SIGNED_TOKEN_FUTURE_WINDOWS`) so the skew allowance cannot drift apart.
  */
 export const ACCEPTED_PAST_WINDOWS = Math.floor(
 	MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS / (SIGNED_TOKEN_WINDOW_MS / 1000) -
 		1 -
-		ACCEPTED_FUTURE_WINDOWS
+		SIGNED_TOKEN_FUTURE_WINDOWS
 );
 
 /**
@@ -100,7 +101,7 @@ export const ACCEPTED_PAST_WINDOWS = Math.floor(
  *
  * Bounded so a flood of junk reports cannot turn verification into a CPU
  * amplifier: one `parseCfblToken` call costs at most
- * `EXPIRY_PROBE_WINDOWS + ACCEPTED_FUTURE_WINDOWS + 1` HMACs (see
+ * `EXPIRY_PROBE_WINDOWS + SIGNED_TOKEN_FUTURE_WINDOWS + 1` HMACs (see
  * {@link MAX_HMACS_PER_TOKEN_PARSE}), and `resolveCfblAttribution` parses at
  * most three candidate tokens per report.
  */
@@ -110,7 +111,7 @@ const EXPIRY_PROBE_WINDOWS = 90;
  * Worst-case HMAC count for ONE {@link parseCfblToken} call, derived from the
  * constants rather than restated in prose so it cannot drift away from them.
  */
-export const MAX_HMACS_PER_TOKEN_PARSE = EXPIRY_PROBE_WINDOWS + ACCEPTED_FUTURE_WINDOWS + 1;
+export const MAX_HMACS_PER_TOKEN_PARSE = EXPIRY_PROBE_WINDOWS + SIGNED_TOKEN_FUTURE_WINDOWS + 1;
 
 /** RFC 5321 §4.5.3.1.3 caps a forward-path at 256 octets; 320 is the whole path. */
 const MAX_ADDRESS_LENGTH = 320;
@@ -140,20 +141,12 @@ export type CfblParseResult =
 	| { readonly ok: false; readonly reason: CfblRejectionReason };
 
 /**
- * Resolve the signing key. Shared with VERP (`BOUNCE_VERP_KEY`) — the MAC input
- * is domain-separated, so one secret safely serves both tokens.
- */
-function resolveCfblKey(explicit?: string): string | undefined {
-	return resolveSignedTokenKey(explicit);
-}
-
-/**
  * Whether this deployment can emit and verify CFBL addresses. Without a signing
  * key we emit NO header at all rather than an unsigned, forgeable one — an
  * unsigned complaint handle is strictly worse than none.
  */
 export function isCfblSigningEnabled(key?: string): boolean {
-	return resolveCfblKey(key) !== undefined;
+	return resolveSignedTokenKey(key) !== undefined;
 }
 
 /**
@@ -168,7 +161,7 @@ export function buildCfblToken(
 	now: number = Date.now()
 ): string | null {
 	if (messageId.length === 0 || messageId.length > MAX_MESSAGE_ID_LENGTH) return null;
-	const signingKey = resolveCfblKey(key);
+	const signingKey = resolveSignedTokenKey(key);
 	if (!signingKey) return null;
 	const encoded = Buffer.from(messageId).toString('base64url');
 	const mac = computeSignedTokenMac(
@@ -194,6 +187,8 @@ export function buildCfblAddress(
 	key?: string,
 	now: number = Date.now()
 ): string | null {
+	// The one-shot helper: {@link buildCfblHeaders} assembles the same address
+	// over the same token builder so both fields come from a single signature.
 	if (cfblDomain.length === 0) return null;
 	const token = buildCfblToken(messageId, key, now);
 	if (!token) return null;
@@ -256,6 +251,13 @@ export interface CfblHeaderInput {
 	readonly key?: string | undefined;
 	/** Injectable clock for the signing window. */
 	readonly now?: number | undefined;
+	/**
+	 * Whether this message will carry a DKIM signature whose `d=` covers the
+	 * From domain. RFC 9477 §3.1 requires exactly that, and §3.1.4 tells the
+	 * mailbox provider it "SHALL NOT send a report message" without it — so an
+	 * unsigned message must not carry the pair.
+	 */
+	readonly dkimSigned: boolean;
 }
 
 /** Why a send did or did not carry the RFC 9477 pair. A bounded metric label. */
@@ -266,6 +268,13 @@ export type CfblEmissionOutcome =
 	| 'host_unaligned'
 	/** No `BOUNCE_VERP_KEY`: an unsigned complaint handle is worse than none. */
 	| 'no_key'
+	/**
+	 * §3.1/§3.1.4: the message carries no DKIM signature covering the From
+	 * domain, so a conforming provider must not act on the pair. Reachable on a
+	 * self-host whose return-path host aligns with From but which has no DKIM
+	 * key registered for that domain.
+	 */
+	| 'no_signature'
 	/**
 	 * Sealed mail: the raw MIME is shipped verbatim, so no composed header set
 	 * rides the bytes and {@link buildCfblHeaders} is never consulted. Reported
@@ -292,7 +301,8 @@ export interface CfblHeaderResult {
  *
  * Returns an EMPTY header record — never an error — when the pair cannot be
  * emitted safely: no signing key, no return-path host, an implausible message
- * id, or a CFBL host that is not aligned with the From domain (see
+ * id, no DKIM signature over the From domain (RFC 9477 §3.1.4), or a CFBL host
+ * that is not aligned with the From domain (see
  * {@link isCfblHostAlignedWithFrom}). Emitting requires no third-party account,
  * no enrollment and no credential, so its absence is never an error state and
  * its presence never blocks a send.
@@ -320,11 +330,17 @@ export function buildCfblHeaders(input: CfblHeaderInput): CfblHeaderResult {
 	if (!isCfblHostAlignedWithFrom(input.cfblHost, input.fromDomain)) {
 		return { outcome: 'host_unaligned', headers: {} };
 	}
-	if (!resolveCfblKey(input.key)) return { outcome: 'no_key', headers: {} };
-	const address = buildCfblAddress(input.messageId, input.cfblHost, input.key, input.now);
-	if (!address) return { outcome: 'no_address', headers: {} };
-	// Reuse the address's local-part suffix rather than signing twice.
-	const token = address.slice(CFBL_LOCAL_PREFIX.length + 1, address.lastIndexOf('@'));
+	if (!input.dkimSigned) return { outcome: 'no_signature', headers: {} };
+	if (!resolveSignedTokenKey(input.key)) return { outcome: 'no_key', headers: {} };
+	// Sign ONCE and assemble both fields from that one token, rather than
+	// building the address and reverse-parsing its local-part to recover the
+	// token: string surgery on our own output would silently depend on the
+	// local-part grammar, and a change to it would corrupt CFBL-Feedback-ID
+	// without a type error.
+	const token = buildCfblToken(input.messageId, input.key, input.now);
+	if (!token) return { outcome: 'no_address', headers: {} };
+	const address = `${CFBL_LOCAL_PREFIX}+${token}@${input.cfblHost}`;
+	if (address.length > MAX_ADDRESS_LENGTH) return { outcome: 'no_address', headers: {} };
 	return {
 		outcome: 'emitted',
 		headers: {
@@ -352,7 +368,7 @@ export function parseCfblToken(
 	if (!encodedId) return { ok: false, reason: 'not_cfbl' };
 	const presentedMac = match?.[2];
 
-	const signingKey = resolveCfblKey(key);
+	const signingKey = resolveSignedTokenKey(key);
 	// No key → we cannot distinguish our own token from a forgery, so nothing is
 	// trusted. This is a deployment misconfiguration, not a report defect.
 	if (!signingKey) return { ok: false, reason: 'unverifiable' };
@@ -365,7 +381,7 @@ export function parseCfblToken(
 		key: signingKey,
 		now,
 		pastWindows: EXPIRY_PROBE_WINDOWS,
-		futureWindows: ACCEPTED_FUTURE_WINDOWS,
+		futureWindows: SIGNED_TOKEN_FUTURE_WINDOWS,
 	});
 	if (windowAge === null) return { ok: false, reason: 'bad_signature' };
 	if (windowAge > ACCEPTED_PAST_WINDOWS) return { ok: false, reason: 'expired' };
