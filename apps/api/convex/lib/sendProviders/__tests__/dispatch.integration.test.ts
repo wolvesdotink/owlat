@@ -147,7 +147,9 @@ describe('sendProviderDispatch — retry semantics', () => {
 		});
 
 		expect(sendSpy).toHaveBeenCalledTimes(3);
-		expect(sendSpy.mock.calls.every((call) => call[1]?.workAttemptId === 'work-stable')).toBe(true);
+		// Args are (transport, params, extras) since dispatch became transport-keyed.
+		expect(sendSpy.mock.calls.every((call) => call[0]?.id === 'mta')).toBe(true);
+		expect(sendSpy.mock.calls.every((call) => call[2]?.workAttemptId === 'work-stable')).toBe(true);
 		expect(out.result).toEqual(lost);
 		expect(scheduled).toHaveLength(1);
 	});

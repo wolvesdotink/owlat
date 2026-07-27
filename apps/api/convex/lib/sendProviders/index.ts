@@ -35,8 +35,23 @@ export type {
 	EmailSendParams,
 	EmailAttachment,
 	DispatchResult,
+	SendProviderExtras,
 } from './types';
 export { EmailErrorCode, isRetryableErrorCode, isSendProviderKind } from './types';
+export type {
+	SendTransportId,
+	SendTransportRecord,
+	// Exported alongside the error class so a caller catching it can narrow
+	// `reason` without restating the union.
+	SendTransportResolutionReason,
+} from './transports';
+export {
+	SendTransportResolutionError,
+	defaultSendTransportId,
+	listSendTransports,
+	namedSendTransportId,
+	resolveSendTransport,
+} from './transports';
 
 // Registry — keyed by `SendProviderKind`. The dispatch helper calls
 // `providerFor(kind)` to get the adapter; no caller imports adapters directly.
@@ -84,13 +99,22 @@ if (
 /**
  * Look up the adapter for a provider kind. Throws on unknown kinds —
  * callers validate the kind as a literal union before this is called.
+ *
+ * Two overloads, so neither caller has to cast. A LITERAL core kind gets that
+ * kind's full adapter (`categorizeError`, `runProviderCheck`, typed extras); a
+ * NON-LITERAL `SendProviderKind` — what the dispatch helper has once it has
+ * resolved a transport id — gets the shared supertype, which is exactly the
+ * send-side shape the retry loop needs.
  */
-export function providerFor<K extends SendProviderKind>(
-	kind: K
-): K extends CoreSendProviderKind ? SendProviderModule<K> : HostedSendProviderModule {
-	const mod = isCoreSendProviderKind(kind)
-		? SEND_PROVIDERS[kind as CoreSendProviderKind]
-		: hostedProviders.get(kind);
+export function providerFor<K extends CoreSendProviderKind>(kind: K): SendProviderModule<K>;
+export function providerFor(
+	kind: SendProviderKind
+): SendProviderModule<SendProviderKind> | HostedSendProviderModule;
+export function providerFor(
+	kind: SendProviderKind
+): SendProviderModule<SendProviderKind> | HostedSendProviderModule {
+	const mod: SendProviderModule<SendProviderKind> | HostedSendProviderModule | undefined =
+		isCoreSendProviderKind(kind) ? SEND_PROVIDERS[kind] : hostedProviders.get(kind);
 	if (!mod) throw new TypeError('Unknown send provider');
-	return mod as K extends CoreSendProviderKind ? SendProviderModule<K> : HostedSendProviderModule;
+	return mod;
 }

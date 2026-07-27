@@ -44,6 +44,16 @@ function response(body: unknown, status = 200, headers: HeadersInit = {}): Respo
 	});
 }
 
+/**
+ * Every sweep asks each authorized domain for its Compliance Status. Tests that
+ * do not exercise compliance answer it inertly here: a mock that instead
+ * REJECTS the call would be classified as a transient network failure and burn
+ * the collector's real exponential backoff until the vitest timeout.
+ */
+function inertComplianceStatus(url: string): Response | undefined {
+	return url.endsWith('/complianceStatus') ? response({ checks: [] }) : undefined;
+}
+
 function verifiedDomain(name = 'example.com', permission: 'OWNER' | 'ADMIN' | 'READER' = 'OWNER') {
 	return {
 		name: `domains/${name}`,
@@ -76,17 +86,14 @@ describe('Google Postmaster v2 response normalization', () => {
 	});
 
 	it('accepts only a finite daily SPAM_RATE value', () => {
-		expect(normalizeDomainStat('example.com', spamStat())).toMatchObject({
-			event: 'postmaster.stats',
-			domain: 'example.com',
+		expect(normalizeDomainStat(spamStat())).toEqual({
 			date: '2026-07-20',
-			userReportedSpamRatio: 0.0005,
+			metric: 'userReportedSpamRatio',
+			ratio: 0.0005,
 		});
-		expect(normalizeDomainStat('example.com', spamStat('2026-02-30'))).toBeNull();
-		expect(normalizeDomainStat('example.com', spamStat('2026-07-20', 2))).toBeNull();
-		expect(
-			normalizeDomainStat('example.com', { ...spamStat(), metric: 'anotherMetric' })
-		).toBeNull();
+		expect(normalizeDomainStat(spamStat('2026-02-30'))).toBeNull();
+		expect(normalizeDomainStat(spamStat('2026-07-20', 2))).toBeNull();
+		expect(normalizeDomainStat({ ...spamStat(), metric: 'anotherMetric' })).toBeNull();
 	});
 });
 
@@ -101,7 +108,7 @@ describe('Google Postmaster v2 collection', () => {
 		const redis = new Redis();
 		const unrelatedDomain = 'unrelated-private.example';
 		await redis.set(`mta:postmaster:stats-cursor:${unrelatedDomain}`, 'legacy-cursor');
-		await redis.set(`mta:postmaster:pushed:${unrelatedDomain}:2026-07-20`, '1');
+		await redis.set(`mta:postmaster:pushed:v2:${unrelatedDomain}:2026-07-20`, '1');
 		vi.mocked(notifyPostmasterConvex).mockImplementation(async (event) => {
 			if (event.domain === unrelatedDomain) {
 				return { disposition: 'ignored_unowned', retained: false };
@@ -119,6 +126,8 @@ describe('Google Postmaster v2 collection', () => {
 						domains: [verifiedDomain(), verifiedDomain(unrelatedDomain)],
 					});
 				}
+				const compliance = inertComplianceStatus(url);
+				if (compliance) return compliance;
 				statsRequests.push(url);
 				return response({ domainStats: [spamStat()] });
 			})
@@ -126,8 +135,8 @@ describe('Google Postmaster v2 collection', () => {
 
 		await fetchPostmasterData(redis, config);
 
-		expect(statsRequests).toHaveLength(1);
-		expect(statsRequests[0]).toContain('/domains/example.com/');
+		expect(statsRequests.length).toBeGreaterThan(0);
+		expect(statsRequests.every((url) => url.includes('/domains/example.com/'))).toBe(true);
 		expect(await redis.keys('*')).not.toEqual(
 			expect.arrayContaining([expect.stringContaining(unrelatedDomain)])
 		);
@@ -150,12 +159,12 @@ describe('Google Postmaster v2 collection', () => {
 				if (url.includes('/domains?')) {
 					return response({ domains: domainIsListed ? [verifiedDomain()] : [] });
 				}
-				return response({ domainStats: [spamStat()] });
+				return inertComplianceStatus(url) ?? response({ domainStats: [spamStat()] });
 			})
 		);
 
 		await fetchPostmasterData(redis, config);
-		expect(await redis.get('mta:postmaster:pushed:example.com:2026-07-20')).toBe('1');
+		expect(await redis.get('mta:postmaster:pushed:v2:example.com:2026-07-20')).toBe('1');
 		expect(await redis.zscore('mta:postmaster:domain-state-index', 'example.com')).toBe('1');
 		await expectNoPostmasterDomainMetric('example.com');
 
@@ -163,7 +172,7 @@ describe('Google Postmaster v2 collection', () => {
 		domainIsListed = false;
 		await fetchPostmasterData(new Redis(), config);
 
-		expect(await redis.get('mta:postmaster:pushed:example.com:2026-07-20')).toBeNull();
+		expect(await redis.get('mta:postmaster:pushed:v2:example.com:2026-07-20')).toBeNull();
 		expect(await redis.get('mta:postmaster:stats-cursor:example.com')).toBeNull();
 		expect(await redis.zscore('mta:postmaster:domain-state-index', 'example.com')).toBeNull();
 		await expectNoPostmasterDomainMetric('example.com');
@@ -175,7 +184,7 @@ describe('Google Postmaster v2 collection', () => {
 			.mocked(notifyPostmasterConvex)
 			.mock.calls.filter(([event]) => event.event === 'postmaster.stats');
 		expect(deliveredStats).toHaveLength(2);
-		expect(await redis.get('mta:postmaster:pushed:example.com:2026-07-20')).toBe('1');
+		expect(await redis.get('mta:postmaster:pushed:v2:example.com:2026-07-20')).toBe('1');
 	});
 
 	it('bounds indexed stale-domain cleanup without scanning unrelated Redis keys', async () => {
@@ -187,7 +196,7 @@ describe('Google Postmaster v2 collection', () => {
 			const domain = `unowned-${index}.example`;
 			seed.zadd('mta:postmaster:domain-state-index', 0, domain);
 			seed.set(`mta:postmaster:stats-cursor:${domain}`, 'stale');
-			seed.set(`mta:postmaster:pushed:${domain}:2026-07-20`, '1');
+			seed.set(`mta:postmaster:pushed:v2:${domain}:2026-07-20`, '1');
 		}
 		for (let index = 0; index < unrelatedKeyCount; index++) {
 			seed.set(`unrelated:${index}`, 'keep');
@@ -226,7 +235,7 @@ describe('Google Postmaster v2 collection', () => {
 				if (url.includes('/domains?')) {
 					return response({ domains: [verifiedDomain('admin.example.com', 'ADMIN')] });
 				}
-				return response({ domainStats: [spamStat()] });
+				return inertComplianceStatus(url) ?? response({ domainStats: [spamStat()] });
 			})
 		);
 
@@ -253,18 +262,21 @@ describe('Google Postmaster v2 collection', () => {
 				expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer access-token');
 				return response({ domains: [verifiedDomain()] });
 			}
+			const compliance = inertComplianceStatus(url);
+			if (compliance) return compliance;
 			if (url.endsWith('/v2/domains/example.com/domainStats:query')) {
 				expect(init?.method).toBe('POST');
-				expect(JSON.parse(String(init?.body))).toMatchObject({
-					metricDefinitions: [
-						{
-							name: 'userReportedSpamRatio',
-							baseMetric: { standardMetric: 'SPAM_RATE' },
-						},
-					],
-					aggregationGranularity: 'DAILY',
-					pageSize: 200,
-				});
+				const body = JSON.parse(String(init?.body)) as {
+					metricDefinitions: Array<{ name: string; baseMetric: { standardMetric: string } }>;
+				};
+				expect(body).toMatchObject({ aggregationGranularity: 'DAILY', pageSize: 200 });
+				expect(body.metricDefinitions).toEqual([
+					{ name: 'userReportedSpamRatio', baseMetric: { standardMetric: 'SPAM_RATE' } },
+					{ name: 'spfSuccessRatio', baseMetric: { standardMetric: 'SPF_SUCCESS_RATE' } },
+					{ name: 'dkimSuccessRatio', baseMetric: { standardMetric: 'DKIM_SUCCESS_RATE' } },
+					{ name: 'dmarcSuccessRatio', baseMetric: { standardMetric: 'DMARC_SUCCESS_RATE' } },
+					{ name: 'deliveryErrorRatio', baseMetric: { standardMetric: 'DELIVERY_ERROR_RATE' } },
+				]);
 				return response({ domainStats: [spamStat()] });
 			}
 			throw new Error(`Unexpected URL: ${url}`);
@@ -303,6 +315,8 @@ describe('Google Postmaster v2 collection', () => {
 					domains: [verifiedDomain('second.example.com')],
 				});
 			}
+			const compliance = inertComplianceStatus(url);
+			if (compliance) return compliance;
 			if (url.includes('/domainStats:query')) {
 				const request = JSON.parse(String(init?.body)) as { pageToken?: string };
 				return request.pageToken
@@ -396,6 +410,8 @@ describe('Google Postmaster v2 collection', () => {
 				const url = String(input);
 				if (url.includes('/token')) return response({ access_token: 'token', expires_in: 3600 });
 				if (url.includes('/domains?')) return response({ domains: [verifiedDomain()] });
+				const compliance = inertComplianceStatus(url);
+				if (compliance) return compliance;
 				const request = JSON.parse(String(init?.body)) as { pageToken?: string };
 				requestedStatsTokens.push(request.pageToken);
 				const index = request.pageToken ? Number(request.pageToken.slice(5)) : 0;
@@ -445,6 +461,8 @@ describe('Google Postmaster v2 collection', () => {
 				const url = String(input);
 				if (url.includes('/token')) return response({ access_token: 'token', expires_in: 3600 });
 				if (url.includes('/domains?')) return response({ domains: [verifiedDomain()] });
+				const compliance = inertComplianceStatus(url);
+				if (compliance) return compliance;
 				const request = JSON.parse(String(init?.body)) as { pageToken?: string };
 				requestedStatsTokens.push(request.pageToken);
 				return request.pageToken
@@ -877,7 +895,7 @@ describe('Google Postmaster v2 collection', () => {
 				const url = String(input);
 				if (url.includes('/token')) return response({ access_token: 'token', expires_in: 3600 });
 				if (url.includes('/domains?')) return response({ domains: [verifiedDomain()] });
-				return response({ domainStats: [spamStat()] });
+				return inertComplianceStatus(url) ?? response({ domainStats: [spamStat()] });
 			})
 		);
 

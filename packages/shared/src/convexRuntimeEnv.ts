@@ -112,6 +112,11 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	'SMTP_RELAY_SECURE',
 	'SMTP_RELAY_USERNAME',
 	'SMTP_RELAY_PASSWORD',
+	// Named send-transport instances (`smtp#backup`) — parsed at Convex function
+	// runtime by lib/sendProviders/transports.ts via getOptional(), so the
+	// declaration list must reach the deployment. Left in the compose .env only,
+	// every extra instance is undeclared and dispatch to it fails closed.
+	'SEND_TRANSPORT_INSTANCES',
 	// LLM
 	'LLM_PROVIDER',
 	'LLM_API_KEY',

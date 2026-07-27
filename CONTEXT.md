@@ -2790,9 +2790,12 @@ already "Send"), Send-side provider adapter (over-qualified).
 
 **Send dispatch (helper)**:
 The function at `convex/lib/sendProviders/dispatch.ts` exporting
-`sendProviderDispatch(kind, params, extras?) → { result, providerType,
-latencyMs }` that owns the per-attempt orchestration around a **Send
-provider adapter (module)**'s single-attempt `sendEmail`. Three concerns
+`sendProviderDispatch(transportId, params, extras?) → { result,
+providerType, transportId, latencyMs }` that owns the per-attempt
+orchestration around a **Send provider adapter (module)**'s
+single-attempt `sendEmail`. The dispatch unit is a **Send transport
+(record)** — one configured instance of a kind, resolved fail-closed
+from `convex/lib/sendProviders/transports.ts` — not a bare kind. Three concerns
 inside one helper, all "post-attempt" in scope:
 - Retry loop driven by the module's `retryDelays` and
   `categorizeError(message, httpStatus?) → EmailErrorCode`. The

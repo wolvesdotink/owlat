@@ -27,20 +27,19 @@ import {
 	type PluginHost,
 	type PluginUntrustedTextPolicy,
 } from '@owlat/plugin-host';
-import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
+import { PLUGIN_SEND_TRANSPORT_CAPABILITY, type PluginId } from '@owlat/plugin-kit';
 import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import { isEnvPresent } from '../env';
 import { getBundledPluginManifest } from '../../plugins/authorization';
-import { sendProviderCatalogEntry } from './catalog';
 import { providerFor } from './index';
+import { resolveSendTransport, type SendTransportId, type SendTransportRecord } from './transports';
 import {
 	EmailErrorCode,
 	isRetryableErrorCode,
 	type DispatchResult,
 	type EmailSendParams,
-	type ExtrasFor,
-	type SendProviderKind,
+	type SendProviderExtras,
 } from './types';
 
 function delay(ms: number): Promise<void> {
@@ -55,15 +54,45 @@ const NON_TEXT_TRANSPORT_POLICY: PluginUntrustedTextPolicy = Object.freeze({
 	scrubPromptInjection: () => '',
 });
 
-export async function sendProviderDispatch<K extends SendProviderKind>(
+/** The send-side surface the dispatch loop needs, shared by core and hosted adapters. */
+interface DispatchableSendModule {
+	readonly retryDelays: readonly number[];
+	sendEmail(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		extras?: unknown
+	): Promise<DispatchResult['result']>;
+}
+
+/**
+ * Dispatch through ONE CONFIGURED TRANSPORT, named by its transport id.
+ *
+ * The id — not a bare kind — is the dispatch unit, so a deployment can hold two
+ * transports of the same kind with different configuration and send through
+ * them independently. Each adapter resolves its own credentials from the
+ * resolved record; nothing secret passes through this helper.
+ *
+ * Resolution FAILS CLOSED: an unknown, malformed, undeclared or de-configured
+ * id throws `SendTransportResolutionError` BEFORE any attempt, any health write
+ * or any authorization call. It never falls through to another transport.
+ *
+ * `extras` is the kind-agnostic union — pin it at the call site with
+ * `satisfies MtaExtras` / `satisfies ResendExtras`.
+ */
+export async function sendProviderDispatch(
 	ctx: ActionCtx,
-	kind: K,
+	transportId: SendTransportId,
 	params: EmailSendParams,
-	extras?: ExtrasFor<K>
+	extras?: SendProviderExtras
 ): Promise<DispatchResult> {
-	const module = providerFor(kind);
-	const catalogEntry = sendProviderCatalogEntry(kind);
-	const pluginId = catalogEntry.pluginId;
+	const transport = resolveSendTransport(transportId);
+	const kind = transport.kind;
+	// Core adapters and hosted (plugin) adapters share the send-side shape but
+	// not the same interface. `providerFor`'s non-literal overload returns that
+	// shared supertype, so this needs no cast — the module shape is still
+	// checked here.
+	const module: DispatchableSendModule = providerFor(kind);
+	const pluginId = transport.pluginId;
 	const pluginHost = pluginId ? createSendTransportHost(pluginId) : null;
 	const startTime = Date.now();
 	let attempts = 0;
@@ -75,7 +104,7 @@ export async function sendProviderDispatch<K extends SendProviderKind>(
 				{ pluginId, providerKind: kind, priorAttempts: attempts }
 			);
 			if (!authorized) {
-				return await terminalResult(ctx, kind, startTime, attempts, {
+				return await terminalResult(ctx, transport, startTime, attempts, {
 					success: false,
 					errorCode: EmailErrorCode.AUTH_FAILED,
 					errorMessage: 'Bundled send transport access denied',
@@ -83,21 +112,18 @@ export async function sendProviderDispatch<K extends SendProviderKind>(
 			}
 		}
 		attempts++;
-		const sendEmail = module.sendEmail.bind(module) as (
-			params: EmailSendParams,
-			extras?: unknown
-		) => Promise<DispatchResult['result']>;
-		const result = await runAttempt(pluginHost, sendEmail, params, extras);
+		const sendEmail = module.sendEmail.bind(module);
+		const result = await runAttempt(pluginHost, sendEmail, transport, params, extras);
 
 		if (result.success) {
-			return await terminalResult(ctx, kind, startTime, attempts, result, pluginId);
+			return await terminalResult(ctx, transport, startTime, attempts, result, pluginId);
 		}
 
 		const isLastAttempt = attempt === module.retryDelays.length;
 		const retryable = isRetryableErrorCode(result.errorCode);
 
 		if (!retryable || isLastAttempt) {
-			return await terminalResult(ctx, kind, startTime, attempts, result, pluginId);
+			return await terminalResult(ctx, transport, startTime, attempts, result, pluginId);
 		}
 
 		const delayMs = module.retryDelays[attempt]!;
@@ -108,9 +134,7 @@ export async function sendProviderDispatch<K extends SendProviderKind>(
 	throw new Error('sendProviderDispatch: invariant violated — loop exhausted without returning');
 }
 
-function createSendTransportHost(
-	pluginId: NonNullable<ReturnType<typeof sendProviderCatalogEntry>['pluginId']>
-): PluginHost {
+function createSendTransportHost(pluginId: PluginId): PluginHost {
 	return createPluginHost({
 		manifest: getBundledPluginManifest(pluginId),
 		capabilityGrants: [{ capability: PLUGIN_SEND_TRANSPORT_CAPABILITY, granted: true }],
@@ -122,14 +146,19 @@ function createSendTransportHost(
 
 async function runAttempt(
 	host: PluginHost | null,
-	sendEmail: (params: EmailSendParams, extras?: unknown) => Promise<DispatchResult['result']>,
+	sendEmail: (
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		extras?: unknown
+	) => Promise<DispatchResult['result']>,
+	transport: SendTransportRecord,
 	params: EmailSendParams,
 	extras: unknown
 ): Promise<DispatchResult['result']> {
 	try {
 		return host
-			? await host.run(PLUGIN_SEND_TRANSPORT_CAPABILITY, () => sendEmail(params, extras))
-			: await sendEmail(params, extras);
+			? await host.run(PLUGIN_SEND_TRANSPORT_CAPABILITY, () => sendEmail(transport, params, extras))
+			: await sendEmail(transport, params, extras);
 	} catch {
 		return {
 			success: false,
@@ -141,25 +170,28 @@ async function runAttempt(
 
 async function terminalResult(
 	ctx: ActionCtx,
-	kind: SendProviderKind,
+	transport: SendTransportRecord,
 	startTime: number,
 	attempts: number,
 	result: DispatchResult['result'],
-	pluginId?: ReturnType<typeof sendProviderCatalogEntry>['pluginId']
+	pluginId?: PluginId
 ): Promise<DispatchResult> {
 	const latencyMs = Date.now() - startTime;
+	// Health stays keyed by provider KIND: `providerHealth` holds one row per
+	// kind and the routing strategies compare against that field. Instances of a
+	// kind therefore share a health row, exactly as before this refactor.
 	await ctx.scheduler.runAfter(0, internal.lib.sendProviders.health.recordSendResult, {
-		providerType: kind,
+		providerType: transport.kind,
 		success: result.success,
 		latencyMs,
 	});
 	if (pluginId) {
 		await ctx.scheduler.runAfter(0, internal.plugins.sendTransportAuthorization.recordOutcome, {
 			pluginId,
-			providerKind: kind,
+			providerKind: transport.kind,
 			attempts,
 			outcome: result.success ? 'completed' : 'failed',
 		});
 	}
-	return { result, providerType: kind, latencyMs, attempts };
+	return { result, providerType: transport.kind, transportId: transport.id, latencyMs, attempts };
 }

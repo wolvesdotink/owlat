@@ -99,22 +99,29 @@ function failureReason(err: unknown): SmtpProbeFailureReason {
 	}
 }
 
-/** Run one uncached probe. Exported for deterministic unit tests. */
+/**
+ * Run one uncached probe. Exported for deterministic unit tests.
+ *
+ * `targetDomain` defaults to the health probe's single well-known MX; the
+ * pre-flight port-25 audit varies it so a silent provider block can be told
+ * apart from one unreachable recipient.
+ */
 export async function probeSmtpReachability(
 	configuredIps: string[],
-	deps: SmtpReachabilityDeps = defaultDeps
+	deps: SmtpReachabilityDeps = defaultDeps,
+	targetDomain: string = PROBE_DOMAIN
 ): Promise<SmtpReachabilityResult> {
 	const startedAt = deps.now();
 	const ips = [...new Set(configuredIps)];
 	let records: Awaited<ReturnType<typeof resolveMx>>;
 
 	try {
-		records = await deps.resolveMx(PROBE_DOMAIN);
+		records = await deps.resolveMx(targetDomain);
 	} catch {
 		return {
 			status: 'degraded',
 			checkedAt: deps.now(),
-			targetDomain: PROBE_DOMAIN,
+			targetDomain,
 			mxResolutionMs: deps.now() - startedAt,
 			ips: ips.map((ip) => ({ ip, status: 'failed', connectMs: 0, reason: 'connection_error' })),
 		};
@@ -126,7 +133,7 @@ export async function probeSmtpReachability(
 		return {
 			status: 'degraded',
 			checkedAt: mxResolvedAt,
-			targetDomain: PROBE_DOMAIN,
+			targetDomain,
 			mxResolutionMs: mxResolvedAt - startedAt,
 			ips: ips.map((ip) => ({ ip, status: 'failed', connectMs: 0, reason: 'connection_error' })),
 		};
@@ -176,7 +183,7 @@ export async function probeSmtpReachability(
 	return {
 		status: results.every((result) => result.status === 'ok') ? 'ok' : 'degraded',
 		checkedAt: deps.now(),
-		targetDomain: PROBE_DOMAIN,
+		targetDomain,
 		targetMx,
 		mxResolutionMs: mxResolvedAt - startedAt,
 		ips: results,

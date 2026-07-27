@@ -12,8 +12,7 @@
  */
 
 import { SESClient, SendEmailCommand, SendRawEmailCommand } from '@aws-sdk/client-ses';
-import { resolveSesClient } from '../../emailProviders/sesIdentity';
-import { getOptional } from '../../env';
+import { buildSesClient } from '../../emailProviders/sesIdentity';
 import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
@@ -24,6 +23,8 @@ import {
 	type SendProviderModule,
 	type SesExtras,
 } from '../types';
+import { transportEnvOptional, transportEnvRequired } from '../transportEnv';
+import type { SendTransportRecord } from '../transports';
 import { RETRY_DELAYS_MS } from '../../constants';
 
 /**
@@ -55,14 +56,23 @@ function isAmbiguousSesTimeout(name: string | undefined, message: string): boole
 	);
 }
 
-let cachedClient: SESClient | null = null;
+// One client per CONFIGURED TRANSPORT, not one per deployment: two `ses`
+// transports carry different credential triples, so caching by kind would leak
+// the first instance's credentials into the second one's sends.
+const cachedClients = new Map<string, SESClient>();
 
-function getSesClient(): SESClient {
-	if (cachedClient) return cachedClient;
-	// Shared client builder lives in sesIdentity.resolveSesClient; cache the
+function getSesClient(transport: SendTransportRecord): SESClient {
+	const cached = cachedClients.get(transport.id);
+	if (cached) return cached;
+	// Shared client builder lives in sesIdentity.buildSesClient; cache the
 	// result here so the send hot path doesn't re-read env / rebuild per send.
-	cachedClient = resolveSesClient();
-	return cachedClient;
+	const client = buildSesClient({
+		region: transportEnvRequired(transport, 'AWS_SES_REGION'),
+		accessKeyId: transportEnvRequired(transport, 'AWS_SES_ACCESS_KEY_ID'),
+		secretAccessKey: transportEnvRequired(transport, 'AWS_SES_SECRET_ACCESS_KEY'),
+	});
+	cachedClients.set(transport.id, client);
+	return client;
 }
 
 /**
@@ -176,10 +186,14 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 	kind: 'ses',
 	retryDelays: RETRY_DELAYS_MS,
 
-	async sendEmail(params: EmailSendParams, _extras?: SesExtras): Promise<EmailSendAttempt> {
+	async sendEmail(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		_extras?: SesExtras
+	): Promise<EmailSendAttempt> {
 		let client: SESClient;
 		try {
-			client = getSesClient();
+			client = getSesClient(transport);
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			return {
@@ -205,7 +219,7 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 			// Tag every send with the Configuration Set (when configured) so SES
 			// event-publishing attributes the resulting bounce/complaint/delivery
 			// feedback back to this send. Undefined ⇒ the field is omitted.
-			const configurationSetName = getOptional('SES_CONFIGURATION_SET');
+			const configurationSetName = transportEnvOptional(transport, 'SES_CONFIGURATION_SET');
 
 			let messageId: string | undefined;
 			if (hasAttachments || hasHeaders) {
@@ -354,5 +368,5 @@ export const sesSendProvider: SendProviderModule<'ses'> = {
 
 // Exported for tests that need to bypass the lazy-init cache between cases.
 export function _resetSesClientCacheForTests(): void {
-	cachedClient = null;
+	cachedClients.clear();
 }

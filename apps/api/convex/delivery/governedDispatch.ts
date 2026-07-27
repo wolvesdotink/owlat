@@ -9,6 +9,7 @@ import {
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
+import { defaultSendTransportId } from '../lib/sendProviders/transports';
 import {
 	type EmailSendParams,
 	type ExtrasFor,
@@ -231,7 +232,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 				: {};
 	const dispatched = await sendProviderDispatch(
 		ctx,
-		providerKind,
+		defaultSendTransportId(providerKind),
 		{
 			to: request.to,
 			from: request.from,

@@ -6,8 +6,9 @@ import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
 import type { MtaIpPool, SendProviderKind } from '../lib/sendProviders';
 import { resolveMtaRoutingDecision } from '../lib/sendProviders/mta';
 import type { ResolvedRoute } from '../lib/sendProviders/routing';
+import { transportEnvOptional } from '../lib/sendProviders/transportEnv';
+import { defaultSendTransportId, resolveSendTransport } from '../lib/sendProviders/transports';
 import { selectSendProviderKind } from '../lib/sendProviders/types';
-import { getOptional } from '../lib/env';
 
 interface LastMileInput {
 	messageType: GovernedMessageType;
@@ -115,7 +116,14 @@ export async function resolveLastMileRouting(
 			input.mtaReconciliation
 		);
 	}
-	if (!getOptional('MTA_API_URL') || !getOptional('MTA_API_KEY')) {
+	// The governed last mile leases from — and sends through — the DEFAULT MTA
+	// transport. Reading its configuration through the record keeps the gate and
+	// the lease pointed at the same instance.
+	const mtaTransport = resolveSendTransport(defaultSendTransportId('mta'));
+	if (
+		!transportEnvOptional(mtaTransport, 'MTA_API_URL') ||
+		!transportEnvOptional(mtaTransport, 'MTA_API_KEY')
+	) {
 		return { kind: 'defer', retryAfterMs: 60_000 };
 	}
 	const baseProviderKind = selectSendProviderKind(
@@ -128,7 +136,7 @@ export async function resolveLastMileRouting(
 		return { kind: 'defer', retryAfterMs: 60_000 };
 	}
 
-	const decision = await resolveMtaRoutingDecision({
+	const decision = await resolveMtaRoutingDecision(mtaTransport, {
 		messageId: input.idempotencyKey,
 		workAttemptId: input.workAttemptId,
 		routingReentryToken: input.routingReentryToken,

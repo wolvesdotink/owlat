@@ -2,8 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { parsePluginId, pluginNamespacedKind } from '@owlat/plugin-kit';
 import { createHostedSendProvider, parseHostedSendTransportModule } from '../pluginProvider';
 import { EmailErrorCode } from '../types';
+import type { SendTransportRecord } from '../transports';
 
 const kind = pluginNamespacedKind(parsePluginId('mail-pack'), 'postmark');
+const transport: SendTransportRecord = Object.freeze({
+	id: kind,
+	kind,
+	instanceKey: null,
+	label: 'Postmark',
+	retryDelays: [10],
+	requiredEnvVars: [],
+	pluginId: parsePluginId('mail-pack'),
+});
 const params = {
 	to: 'to@example.com',
 	from: 'from@example.com',
@@ -17,7 +27,7 @@ describe('bundled plugin send transport boundary', () => {
 		const send = vi.fn(async () => ({ success: true as const, id: 'provider-id' }));
 		const provider = createHostedSendProvider(kind, [10], { parseExtras, send });
 
-		await expect(provider.sendEmail(params, 'opaque')).resolves.toEqual({
+		await expect(provider.sendEmail(transport, params, 'opaque')).resolves.toEqual({
 			success: true,
 			id: 'provider-id',
 		});
@@ -40,7 +50,7 @@ describe('bundled plugin send transport boundary', () => {
 			parseExtras: () => undefined,
 			send: async () => ({ success: false, code }),
 		});
-		await expect(provider.sendEmail(params)).resolves.toEqual({
+		await expect(provider.sendEmail(transport, params)).resolves.toEqual({
 			success: false,
 			errorCode,
 			errorMessage: 'Bundled send transport failed',
@@ -65,7 +75,7 @@ describe('bundled plugin send transport boundary', () => {
 			{ parseExtras: () => undefined, send: async () => ({ success: false, code: 'invented' }) },
 		]) {
 			const provider = createHostedSendProvider(kind, [], module);
-			await expect(provider.sendEmail(params)).resolves.toEqual({
+			await expect(provider.sendEmail(transport, params)).resolves.toEqual({
 				success: false,
 				errorCode: EmailErrorCode.UNKNOWN,
 				errorMessage: 'Bundled send transport failed',

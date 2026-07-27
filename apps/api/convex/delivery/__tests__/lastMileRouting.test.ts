@@ -92,6 +92,8 @@ describe('last-mile governance boundary', () => {
 		});
 		expect(resolveMtaRoutingDecision).toHaveBeenCalledOnce();
 		expect(resolveMtaRoutingDecision).toHaveBeenCalledWith(
+			// The lease is taken from the transport the send will go through.
+			expect.objectContaining({ id: 'mta', kind: 'mta', instanceKey: null }),
 			expect.objectContaining({ requireProviderProbe: true })
 		);
 	});
