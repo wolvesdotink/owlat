@@ -88,6 +88,7 @@ export const TENANT_TABLES = [
 	'googlePostmasterCompliance',
 	'unsubscribeLatencyBuckets',
 	'deliverabilityRouteStates',
+	'deliverabilityAlignmentStates',
 	'deliverabilityAlertRecipients',
 	'deliverabilityAlertRecipientReceipts',
 	'deliverabilityRegressionAlerts',

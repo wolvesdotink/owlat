@@ -7,6 +7,7 @@ import type { CampaignRecipient } from './audienceResolution';
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
+import type { CampaignEnqueueEmail } from '../delivery/enqueue';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import { getListIdHeader } from '../delivery/sendComposition/listId';
 import { nanoid } from 'nanoid';
@@ -480,14 +481,10 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 		created.map((c) => [String(c.contactId), c.emailSendId])
 	);
 
-	type EmailEnqueueData = {
-		emailSendId: Id<'emailSends'>;
-		contactId: Id<'contacts'>;
-		email: string;
-		firstName?: string;
-		lastName?: string;
-		timezone?: string;
-	};
+	// The enqueue payload shape is owned by `delivery/enqueue.ts`'s validator —
+	// `timezone` is the one local-only field (it picks the send instant here and
+	// is not part of the envelope).
+	type EmailEnqueueData = CampaignEnqueueEmail & { timezone?: string };
 
 	const emailsToEnqueue: EmailEnqueueData[] = [];
 	for (const r of args.recipients) {
@@ -500,23 +497,36 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 			firstName: r.firstName,
 			lastName: r.lastName,
 			timezone: r.timezone,
+			// Projected by audience resolution from the already-loaded contact:
+			// the engagement score rides the envelope to the MTA's priority
+			// bands. Undefined for an unscored contact and simply omitted.
+			engagementScore: r.engagementScore,
 		});
 	}
 
 	let totalEnqueued = 0;
 
+	// ONE enqueue payload, two call sites (timezone-grouped and chunked). The
+	// two branches differ only in the recipient slice and the delay, so the
+	// payload — and every future envelope field on it — lives here once.
+	// Every call site chunks: one scheduled `enqueueCampaignEmails` per
+	// `CAMPAIGN_ENQUEUE_CHUNK_SIZE` recipients keeps each transaction (and its
+	// per-recipient assignment writes) bounded.
 	const scheduleChunks = async (recipients: EmailEnqueueData[], delayMs: number) => {
 		for (let i = 0; i < recipients.length; i += CAMPAIGN_ENQUEUE_CHUNK_SIZE) {
 			const chunk = recipients.slice(i, i + CAMPAIGN_ENQUEUE_CHUNK_SIZE);
 			await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
 				campaignId: args.campaignId,
-				emails: chunk.map((r) => ({
-					emailSendId: r.emailSendId,
-					contactId: r.contactId,
-					email: r.email,
-					firstName: r.firstName,
-					lastName: r.lastName,
-				})),
+				emails: chunk.map(
+					({ emailSendId, contactId, email, firstName, lastName, engagementScore }) => ({
+						emailSendId,
+						contactId,
+						email,
+						firstName,
+						lastName,
+						engagementScore,
+					})
+				),
 				from: args.from,
 				replyTo: args.replyTo,
 				subject: args.subject,

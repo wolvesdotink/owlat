@@ -31,7 +31,7 @@ export const sendAssignmentTables = {
 		// table can reference either kind.
 		sendId: v.string(),
 		sendKind: v.union(v.literal('campaign'), v.literal('transactional')),
-		// `${stream}:${destinationProvider}` — see @owlat/shared/deliverabilityCell.
+		// `${stream}:${destinationProvider}` — see @owlat/shared/deliverabilityRouting.
 		cell: v.string(),
 		// The provider KIND from the shipped send-transport catalog (`mta`,
 		// `ses`, `resend`, `smtp`, a plugin transport kind) — deliberately NOT a

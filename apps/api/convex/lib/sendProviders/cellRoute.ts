@@ -11,8 +11,8 @@
  * this cell relay, and to which transport?" — from inputs that no send patches:
  *
  *   - `providerRoutes` (indexed, admin-written),
- *   - `deliverabilityRouteStates` (`by_org_provider`, written by the
- *     ip-reputation sync cron),
+ *   - `deliverabilityRouteStates` (`by_org_provider_stream`, written by the
+ *     ip-reputation sync cron and the ramp controller),
  *   - the relay-domain verification (`domains` /
  *     `sendingDomainSesIdentities`, both admin/verification-written).
  *
@@ -43,14 +43,17 @@
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { resolveRoute, type ProviderRouteConfig, type ResolvedRoute } from './routing';
 import { isDeterministicRouteStrategy } from './strategies';
-import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
-import type { MessageType } from './route';
+import type {
+	DeliverabilityStream,
+	DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
+import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
 import {
 	configuredSendProviderKinds,
-	deliverabilityRouteStateFor,
 	freshFallbackReasons,
 	isGlobalBreakerOpenState,
 	relayDomainVerifiedFor,
+	type MessageType,
 } from './routeInputs';
 
 /** Batch-wide inputs for {@link prepareCellRouteResolver}. */
@@ -59,11 +62,19 @@ export interface CellRouteContext {
 	readonly from?: string;
 	readonly now: number;
 	readonly organizationId: string;
+	/**
+	 * The cell's stream axis. A cell is `(stream, destinationProvider)` and the
+	 * route-state cell has TWO rows — the controller's per-stream row and the
+	 * MTA snapshot's stream-less row — so the stream is required to read the
+	 * same documents the authoritative resolver reads.
+	 */
+	readonly stream: DeliverabilityStream;
 }
 
 /**
- * Resolve one cell, given a batch's already-read inputs. Issues at most ONE
- * document read per call (the cell's `deliverabilityRouteStates` row).
+ * Resolve one cell, given a batch's already-read inputs. Issues at most TWO
+ * document reads per call — the cell's per-stream and stream-less
+ * `deliverabilityRouteStates` rows, both indexed point reads.
  */
 export type CellRouteResolver = (
 	destinationProvider: DestinationProviderKey
@@ -88,7 +99,9 @@ export async function prepareCellRouteResolver(
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
 		.first();
-	const globalState = await deliverabilityRouteStateFor(ctx, context.organizationId, 'all');
+	// The org-wide slice is infrastructure-wide and never per-stream: read the
+	// stream-less row directly, exactly as `route.ts` does.
+	const globalState = await loadStreamlessRouteState(ctx, context.organizationId, 'all');
 	// The org-wide circuit answers for every cell, so settle it before paying
 	// for the relay-verification reads none of them would use.
 	if (isGlobalBreakerOpenState(globalState, context.now)) return async () => null;
@@ -101,17 +114,25 @@ export async function prepareCellRouteResolver(
 	);
 	const isDeterministic = isDeterministicRouteStrategy(routeConfig?.strategy);
 	return async (destinationProvider) => {
-		const providerState = await deliverabilityRouteStateFor(
-			ctx,
-			context.organizationId,
-			destinationProvider
-		);
+		// BOTH rows of the cell: the per-stream row carries the controller's
+		// share, the stream-less row carries the infrastructure signals. Reading
+		// only one would let an empty per-stream row shadow a fresh
+		// `dnsbl_listed` / `breaker_open` verdict and record `own` for a cell the
+		// shipped router is relaying — wrong about exactly the case this table
+		// exists to measure.
+		const providerCell = await loadRouteStateCell(ctx, context.organizationId, {
+			stream: context.stream,
+			destinationProvider,
+		});
 		const resolved = resolveRoute(
 			routeConfig as ProviderRouteConfig | null,
 			undefined,
 			(kind) => configuredKinds.has(kind),
 			{
-				activeReasons: freshFallbackReasons([globalState, providerState], context.now),
+				activeReasons: freshFallbackReasons(
+					[globalState, providerCell.streamless, providerCell.perStream],
+					context.now
+				),
 				isWarmupOverflow: false,
 				isRelayDomainVerified,
 			}

@@ -337,6 +337,189 @@ describe('DB-backed deliverability route verification', () => {
 		).toMatchObject({ route: null, deferralCode: 'DELIVERABILITY_RELAY_DOMAIN_UNVERIFIED' });
 	});
 
+	// Boolean -> share widening (D1). Legacy rows carry no `ownShare`, so every
+	// case above already asserts the no-behaviour-change requirement; these two
+	// pin the resolution contract itself at the resolver boundary.
+	it('routes a legacy row exactly as the stored boolean, with no share written', async () => {
+		const t = await seedRouteState({ withSesIdentity: true });
+		const rows = await t.run((ctx) => ctx.db.query('deliverabilityRouteStates').collect());
+		expect(rows.every((row) => row.ownShare === undefined && row.stream === undefined)).toBe(true);
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({ providerType: 'ses', source: 'deliverability_fallback' });
+	});
+
+	async function patchShare(
+		t: Awaited<ReturnType<typeof seedRouteState>>,
+		destinationProvider: 'gmail' | 'microsoft',
+		ownShare: number
+	) {
+		await t.run(async (ctx) => {
+			const state = await ctx.db
+				.query('deliverabilityRouteStates')
+				.withIndex('by_org_provider', (q) =>
+					q.eq('organizationId', 'org-a').eq('destinationProvider', destinationProvider)
+				)
+				.first();
+			if (!state) throw new Error(`missing ${destinationProvider} route state`);
+			await ctx.db.patch(state._id, { ownShare });
+		});
+	}
+
+	it('keeps honouring the infrastructure verdict when a whole-cell share is stored', async () => {
+		// The MTA snapshot writes `isFallbackActive` from infrastructure health on
+		// a ~10-minute cadence; the ramp controller writes `ownShare` hourly. A
+		// stored ownShare = 1 must therefore NOT mask a live critical breaker for a
+		// whole controller tick — the hard stop wins.
+		const t = await seedRouteState({ withSesIdentity: true });
+		await patchShare(t, 'gmail', 1);
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({
+			providerType: 'ses',
+			source: 'deliverability_fallback',
+			deliverabilityReason: 'breaker_open',
+		});
+	});
+
+	it('routes a whole-cell share on a HEALTHY row straight to the own MTA', async () => {
+		const t = await seedRouteState({ withSesIdentity: true });
+		await patchShare(t, 'microsoft', 1);
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@outlook.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({ providerType: 'mta', source: 'org_config' });
+	});
+
+	it('relays a partial share as a WHOLE cell today, and never on the share alone', async () => {
+		// Pinning the pre-controller semantics explicitly so P3-2's per-message
+		// split has to change an assertion rather than silently reinterpret the
+		// field: a partial share on a degraded cell relays everything...
+		const degraded = await seedRouteState({ withSesIdentity: true });
+		await patchShare(degraded, 'gmail', 0.5);
+		expect(
+			await degraded.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({
+			providerType: 'ses',
+			source: 'deliverability_fallback',
+			deliverabilityReason: 'breaker_open',
+		});
+		// ...and a partial share on a HEALTHY cell relays nothing, because nothing
+		// in this piece turns a share into a routing reason.
+		const healthy = await seedRouteState({ withSesIdentity: true });
+		await patchShare(healthy, 'microsoft', 0.5);
+		expect(
+			await healthy.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@outlook.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({ providerType: 'mta', source: 'org_config' });
+	});
+
+	async function insertPerStreamRow(
+		t: Awaited<ReturnType<typeof seedRouteState>>,
+		destinationProvider: 'gmail' | 'all',
+		ownShare: number
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: 'org-a',
+				destinationProvider,
+				stream: 'campaign',
+				ownShare,
+				// The controller's row carries the share and NOTHING else: signals are
+				// the MTA snapshot's, written on the stream-less row.
+				isFallbackActive: false,
+				signals: [],
+				snapshotGeneratedAt: NOW,
+				expiresAt: NOW + 86_400_000,
+				updatedAt: NOW,
+			});
+		});
+	}
+
+	it('still surfaces the stream-less infrastructure verdict when a per-stream row exists', async () => {
+		// Row-selection shadowing: a per-stream (org, gmail, campaign) row must not
+		// hide the stream-less gmail row the MTA snapshot writes the critical
+		// breaker signal onto. Reading only the most specific row would silently
+		// stop the relay fallback for campaign traffic.
+		const t = await seedRouteState({ withSesIdentity: true });
+		await insertPerStreamRow(t, 'gmail', 0.25);
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({
+			providerType: 'ses',
+			source: 'deliverability_fallback',
+			deliverabilityReason: 'breaker_open',
+		});
+	});
+
+	it('still defers on the org-wide circuit when a per-stream `all` row exists', async () => {
+		const t = await seedRouteState({ withSesIdentity: true });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: 'org-a',
+				destinationProvider: 'all',
+				isFallbackActive: true,
+				signals: [{ source: 'breaker_open', severity: 'critical', observedAt: NOW }],
+				fallbackActiveSince: NOW,
+				snapshotGeneratedAt: NOW,
+				expiresAt: NOW + 86_400_000,
+				updatedAt: NOW,
+			});
+		});
+		// The global slice is infrastructure-wide and read stream-lessly, so this
+		// per-stream `all` row is invisible to it and cannot hide the breaker.
+		await insertPerStreamRow(t, 'all', 1);
+
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		try {
+			expect(
+				await t.run((ctx) =>
+					resolveLastMileRoutePlanFromDb(ctx, 'campaign', {
+						to: 'person@gmail.com',
+						from: 'sender@example.com',
+					})
+				)
+			).toMatchObject({ route: null, deferralCode: 'GLOBAL_DELIVERY_CIRCUIT_OPEN' });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('ignores an expired signal instead of creating a new relay decision', async () => {
 		const t = await seedRouteState({ withSesIdentity: true });
 		expect(

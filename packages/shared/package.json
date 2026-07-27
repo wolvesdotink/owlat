@@ -213,9 +213,17 @@
 			"types": "./src/deliverabilityRouting.ts",
 			"import": "./src/deliverabilityRouting.ts"
 		},
-		"./deliverabilityCell": {
-			"types": "./src/deliverabilityCell.ts",
-			"import": "./src/deliverabilityCell.ts"
+		"./deliverabilityAlignment": {
+			"types": "./src/deliverabilityAlignment.ts",
+			"import": "./src/deliverabilityAlignment.ts"
+		},
+		"./deliverabilityAlignmentGate": {
+			"types": "./src/deliverabilityAlignmentGate.ts",
+			"import": "./src/deliverabilityAlignmentGate.ts"
+		},
+		"./spfCoexistence": {
+			"types": "./src/spfCoexistence.ts",
+			"import": "./src/spfCoexistence.ts"
 		},
 		"./dnsbl": {
 			"types": "./src/dnsbl.ts",

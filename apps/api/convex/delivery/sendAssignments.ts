@@ -36,20 +36,20 @@ import { internalMutation, internalQuery, type MutationCtx } from '../_generated
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { extractDomainOrNull } from '@owlat/shared';
-import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import {
-	formatCellKey,
-	isDeliverabilityCellKey,
+	deliverabilityCellKey,
+	parseDeliverabilityCellKey,
 	type DeliverabilityCellKey,
 	type DeliverabilityStream,
-} from '@owlat/shared/deliverabilityCell';
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import {
 	normalizeDestinationDomain,
 	resolveDestinationProvider,
 } from '../lib/sendProviders/destinationProvider';
 import { prepareCellRouteResolver, type CellRouteResolver } from '../lib/sendProviders/cellRoute';
-import type { MessageType } from '../lib/sendProviders/route';
+import type { MessageType } from '../lib/sendProviders/routeInputs';
 import type { SendProviderKind } from '../lib/sendProviders/types';
 import { logWarn } from '../lib/runtimeLog';
 
@@ -177,7 +177,7 @@ export interface SendAssignmentRecipient {
  *
  * There is exactly ONE way, deliberately: the writer always re-resolves
  * in-transaction through the health-free cell seam
- * (`lib/sendProviders/route.ts prepareCellRouteResolver`), once per DISTINCT
+ * (`lib/sendProviders/cellRoute.ts prepareCellRouteResolver`), once per DISTINCT
  * destination provider (at most `DESTINATION_PROVIDER_KEYS.length`
  * resolutions, never one per recipient).
  *
@@ -185,7 +185,7 @@ export interface SendAssignmentRecipient {
  * learned the hard way:
  *
  *   - The deliverability fallback is keyed PER DESTINATION PROVIDER
- *     (`deliverabilityRouteStates.by_org_provider`), so a producer-supplied
+ *     (`deliverabilityRouteStates.by_org_provider_stream`), so a producer-supplied
  *     `providerType` — which campaign sending resolves ONCE per page from the
  *     first recipient and explicitly labels an advisory snapshot — stamps the
  *     first recipient's route onto every other cell.
@@ -246,6 +246,7 @@ export async function recordSendAssignments(
 	);
 	const transportFor = await buildTransportLookup(ctx, {
 		routing: input.routing,
+		stream: input.stream,
 		organizationId,
 		destinationProviders: new Set(providers.values()),
 		now,
@@ -262,7 +263,7 @@ export async function recordSendAssignments(
 		// An unresolvable route means we do not know what the worker will do,
 		// and a guessed arm is worse than a missing row.
 		if (transport === null) continue;
-		const cell: DeliverabilityCellKey = formatCellKey({
+		const cell: DeliverabilityCellKey = deliverabilityCellKey({
 			stream: input.stream,
 			destinationProvider,
 		});
@@ -287,6 +288,7 @@ export async function recordSendAssignments(
 
 interface TransportLookupInput {
 	readonly routing: SendAssignmentRouting;
+	readonly stream: DeliverabilityStream;
 	readonly organizationId: string;
 	/** The DISTINCT destination providers present in the batch. */
 	readonly destinationProviders: ReadonlySet<DestinationProviderKey>;
@@ -298,7 +300,8 @@ interface TransportLookupInput {
  *
  * The route decision this record needs depends on the recipient ONLY through
  * its destination-provider classification: `deliverabilityRouteStates` is
- * keyed `by_org_provider`, and every other input the cell seam reads
+ * keyed `by_org_provider_stream` and the stream is fixed for the batch, and
+ * every other input the cell seam reads
  * (`providerRoutes`, the relay-domain verification, the org-wide state) is
  * per-batch or org-wide. Taking the DISTINCT provider set — rather than the
  * recipients — makes the "one resolution per cell" bound structural: this
@@ -337,6 +340,7 @@ async function buildTransportLookup(
 			...(routing.from !== undefined ? { from: routing.from } : {}),
 			now: input.now,
 			organizationId: input.organizationId,
+			stream: input.stream,
 		});
 	} catch (error) {
 		logWarn(
@@ -418,7 +422,7 @@ export const listCellAssignments = internalQuery({
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<CellAssignmentPage> => {
-		if (!isDeliverabilityCellKey(args.cell)) return { rows: [], hasMore: false };
+		if (parseDeliverabilityCellKey(args.cell) === null) return { rows: [], hasMore: false };
 		// Convex `v.number()` is a float64: `NaN`/`Infinity` are valid arguments.
 		// An unguarded NaN reaches `.take(NaN)` and makes the range bound
 		// meaningless, so every numeric argument is checked before it is used.

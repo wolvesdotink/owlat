@@ -362,6 +362,76 @@ describe('sendAssignments — campaign write path', () => {
 		expect(byCell.get('campaign:microsoft')?.arm).toBe('own');
 	});
 
+	it('reads BOTH rows of a cell: a per-stream row cannot shadow the stream-less verdict', async () => {
+		// A ramp cell has TWO route-state rows with DIFFERENT writers: the
+		// controller's per-stream row (the share) and the MTA snapshot's
+		// stream-less row (the infrastructure verdict + its signals). A lookup
+		// that took only the most specific row would let an empty per-stream row
+		// hide a fresh critical listing, and the assignment table would record
+		// `own` for exactly the cell the shipped router is relaying — wrong about
+		// the one case it exists to measure.
+		const t = convexTest(schema, modules);
+		stubTransportEnv('ses');
+		const { campaignId, recipients } = await seedRecipients(t, ['a@gmail.com']);
+		await t.run(async (ctx) => {
+			await seedVerifiedSesRelay(ctx, 'example.com');
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign' as const,
+				strategy: 'single' as const,
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'ses', isEnabled: true },
+				],
+				deliverabilityFallback: {
+					isEnabled: true,
+					relayProviderType: 'ses',
+					isWarmupOverflowEnabled: false,
+				},
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			// The controller's row: healthy, full own share, NO signals.
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'gmail' as const,
+				stream: 'campaign' as const,
+				isFallbackActive: false,
+				ownShare: 1,
+				signals: [],
+				snapshotGeneratedAt: Date.now(),
+				expiresAt: Date.now() + 600_000,
+				updatedAt: Date.now(),
+			});
+			// The MTA snapshot's row for the same provider slice: relaying.
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: ORG,
+				destinationProvider: 'gmail' as const,
+				isFallbackActive: true,
+				signals: [
+					{
+						source: 'dnsbl_listed' as const,
+						severity: 'critical' as const,
+						observedAt: Date.now(),
+					},
+				],
+				snapshotGeneratedAt: Date.now(),
+				expiresAt: Date.now() + 600_000,
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(
+			internal.delivery.enqueue.enqueueCampaignEmails,
+			campaignArgs(campaignId, recipients)
+		);
+
+		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.cell).toBe('campaign:gmail');
+		expect(rows[0]?.transport).toBe('ses');
+		expect(rows[0]?.arm).toBe('reference');
+	});
+
 	it.each(['dnsbl_unknown', 'dnsbl_partial'] as const)(
 		'records mta/own for a cell whose only fresh signal is the ADVISORY %s',
 		async (source) => {
@@ -372,7 +442,7 @@ describe('sendAssignments — campaign write path', () => {
 			// to agree: one unfiltered reason here would stamp `reference` on a
 			// cell whose lookup merely timed out and silently corrupt every
 			// downstream comparison. One filter, both call sites
-			// (`route.ts freshFallbackReasons`).
+			// (`routeInputs.ts freshFallbackReasons`).
 			const t = convexTest(schema, modules);
 			stubTransportEnv('ses');
 			const { campaignId, recipients } = await seedRecipients(t, ['a@gmail.com']);
@@ -763,21 +833,32 @@ describe('sendAssignments — campaign write path', () => {
 		expect(classifier).not.toMatch(/\.collect\(\)/);
 		expect(classifier).toMatch(/withIndex\('by_org_domain'/);
 
-		// The seam spans two modules: `cellRoute.ts` (the resolver) and
-		// `routeInputs.ts` (the inputs it shares with the per-message resolver).
-		const seamModuleSource = (
-			await Promise.all(
-				['../../lib/sendProviders/cellRoute.ts', '../../lib/sendProviders/routeInputs.ts'].map(
+		// The seam spans three modules: `cellRoute.ts` (the resolver),
+		// `routeInputs.ts` (the inputs it shares with the per-message resolver)
+		// and `lib/deliverabilityRouteState.ts` (the route-state lookup both
+		// resolvers go through, so the stream widening cannot fork into
+		// per-caller rules).
+		const cellRouteSource = await fs.readFile(
+			new URL('../../lib/sendProviders/cellRoute.ts', import.meta.url),
+			'utf8'
+		);
+		const seamModuleSource = [
+			cellRouteSource,
+			...(await Promise.all(
+				['../../lib/sendProviders/routeInputs.ts', '../../lib/deliverabilityRouteState.ts'].map(
 					async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8')
 				)
-			)
-		).join('\n');
-		// The per-message resolver must never become reachable from here.
+			)),
+		].join('\n');
+		// The per-message resolver must never become reachable from here. This is
+		// now a STRUCTURAL guarantee rather than a textual one: `cellRoute.ts`
+		// has no import edge to `route.ts` at all, so there is nothing to reach.
 		const routeSource = await fs.readFile(
 			new URL('../../lib/sendProviders/route.ts', import.meta.url),
 			'utf8'
 		);
 		expect(routeSource).toMatch(/providerHealth/);
+		expect(cellRouteSource).not.toMatch(/from '\.\/route'/);
 		expect(seamModuleSource).not.toMatch(/resolveSendRouteFromDb\(/);
 		// EVERY top-level function the cell seam transits. Kept in one place so
 		// the two guards below cannot cover different sets.
@@ -785,7 +866,8 @@ describe('sendAssignments — campaign write path', () => {
 			'prepareCellRouteResolver',
 			'candidateSendProviderKinds',
 			'configuredSendProviderKinds',
-			'deliverabilityRouteStateFor',
+			'loadStreamlessRouteState',
+			'loadRouteStateCell',
 			'freshFallbackReasons',
 			'isGlobalBreakerOpenState',
 			'relayDomainVerifiedFor',

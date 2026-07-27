@@ -22,25 +22,23 @@ import {
 } from './routing';
 import { extractDomainOrNull } from '@owlat/shared';
 import { resolveDestinationProvider } from './destinationProvider';
+import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 import {
-	deliverabilityRouteStatesFor,
 	freshFallbackReasons,
 	isGlobalBreakerOpenState,
+	messageTypeValidator,
 	readySendProviderKinds,
 	relayDomainVerifiedFor,
+	type MessageType,
 } from './routeInputs';
 
-export type MessageType = Doc<'providerRoutes'>['messageType'];
-
-// Single source of truth for the message-type literal set (imported by
-// providerRoutes.ts so the two can't drift).
-export const messageTypeValidator = v.union(
-	v.literal('campaign'),
-	v.literal('transactional'),
-	v.literal('automation')
-);
+// `MessageType` and `messageTypeValidator` live in `routeInputs.ts` — the module
+// that holds what BOTH resolvers read — and are re-exported here for existing
+// importers, so the health-free cell seam never needs an import edge to this
+// module.
+export { messageTypeValidator, type MessageType };
 
 /**
  * Per-message inputs the deliverability layer keys off. Shared by
@@ -116,13 +114,27 @@ async function deliverabilityInput(
 		return undefined;
 	}
 	const provider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
-	const [[providerState, globalState], warmingState] = await Promise.all([
-		deliverabilityRouteStatesFor(ctx, organizationId, provider),
+	const [providerCell, globalState, warmingState] = await Promise.all([
+		// Cell lookup: BOTH the controller's per-stream row and the stream-less row
+		// the MTA snapshot maintains, so neither can shadow the other.
+		loadRouteStateCell(ctx, organizationId, { stream: messageType, destinationProvider: provider }),
+		// The global slice is infrastructure-wide and never per-stream: read the
+		// stream-less row directly so a per-stream `all` row could never hide the
+		// breaker_open signal the snapshot writes there.
+		loadStreamlessRouteState(ctx, organizationId, 'all'),
 		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
-	const activeReasons = freshFallbackReasons([globalState, providerState], now);
+	// EVERY row of the cell is considered, not just the most specific one: the
+	// per-stream row carries the controller's share and the stream-less row
+	// carries the infrastructure signals, so reading only one would drop a hard
+	// stop. `freshFallbackReasons` applies D1's share resolution and the
+	// advisory-signal filter for both call sites.
+	const activeReasons = freshFallbackReasons(
+		[globalState, providerCell.streamless, providerCell.perStream],
+		now
+	);
 	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
 	const isWarmupOverflow = Boolean(
 		addressContext.forceRelayReason === 'warmup_overflow' ||

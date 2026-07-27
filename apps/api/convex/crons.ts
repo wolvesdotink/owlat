@@ -1,7 +1,7 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
+import { registerDeliveryCrons } from './delivery/cronRegistration';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
-import { registerDeliveryRetentionCrons } from './delivery/cronRegistration';
 
 const crons = cronJobs();
 
@@ -168,74 +168,12 @@ crons.interval(
 	{}
 );
 
-// Sync IP warming state from MTA every 5 minutes
-crons.interval(
-	'sync warming state',
-	{ minutes: 5 },
-	internal.delivery.warmingSync.syncWarmingState
-);
-// Keep the built-in MTA's infrastructure readiness visible to reactive
-// Delivery surfaces. The MTA internally caches its TCP/25 probes, so this
-// cadence does not create a connection storm against the probe target.
-crons.interval('sync MTA health', { minutes: 2 }, internal.delivery.mtaHealth.sync, {});
-crons.interval(
-	'refresh SES relay verification proofs',
-	{ hours: 24 },
-	internal.domains.sesRelayMutations.scheduleVerificationRefresh,
-	{}
-);
-
-// Clean up sending-reputation buckets older than 60 days every hour (both
-// scopes). Risk is derived on read (ADR-0042), so no periodic recalculation.
-crons.interval(
-	'cleanup sending reputation',
-	{ hours: 1 },
-	internal.analytics.sendingReputation.recalculateAll,
-	{}
-);
-
-crons.interval(
-	'check critical deliverability DNS and blocklists',
-	{ hours: 1 },
-	internal.delivery.checklistSweep.runHourly,
-	{}
-);
-
-crons.interval(
-	'check complete deliverability posture',
-	{ hours: 24 },
-	internal.delivery.checklistSweep.runDaily,
-	{}
-);
-
-// Evaluate the org reputation window hourly and auto-escalate Abuse status when
-// risk is high/critical. Moved off the per-send-event hot path (FIX 3a-1): the
-// wide org-window summarize runs once per cron tick instead of once per
-// recipient. Abuse status dedupes transitions, so the deliverability gate still
-// trips — just on the cron cadence rather than per event.
-crons.interval(
-	'evaluate reputation auto-enforce',
-	{ hours: 1 },
-	internal.analytics.sendingReputation.evaluateAutoEnforce,
-	{}
-);
-
-// Write one daily reputation snapshot (delivery/bounce/complaint rate + sent
-// count of the rolling window) so the Delivery health page has a history to
-// draw its 30-day delivery-rate trend from, and prune points older than ~90
-// days in the same run. `summarize` only derives the current window, so without
-// this cron there is no time series to chart.
-//
-// Anchored to a fixed 00:05 UTC rather than a 24h interval: `crons.interval`
-// re-anchors to deploy/edit time, so a redeploy that drifts across midnight UTC
-// could skip a calendar day and leave a gap in the trend. A fixed daily slot
-// keeps exactly one snapshot per UTC day.
-crons.daily(
-	'write delivery snapshot',
-	{ hourUTC: 0, minuteUTC: 5 },
-	internal.analytics.reputationSnapshots.writeDailySnapshot,
-	{}
-);
+// Every delivery / deliverability cron (warming sync, route-state cleanup, MTA
+// health, reputation, checklist sweeps, snapshots, dual-transport alignment)
+// lives in one delivery-owned module, mirroring `registerBundledPluginCrons`
+// below — this file was at the 500-LOC cap and a flat list of a dozen
+// delivery registrations is exactly what that cap is for.
+registerDeliveryCrons(crons);
 
 // Daily knowledge graph confidence decay and expiration cleanup
 crons.interval(
@@ -464,9 +402,6 @@ crons.interval(
 	internal.analytics.engagementScoreSync.backfillEngagementScores,
 	{}
 );
-
-// Every delivery table whose rows expire is swept from one place.
-registerDeliveryRetentionCrons(crons);
 
 // Append every bundled plugin cron (generated catalog) after the core crons,
 // each wrapped in the host runtime so flag/grant/env are rechecked per tick and

@@ -33,6 +33,7 @@ export const envelopeInputValidator = v.union(
 		trackingBaseUrl: v.optional(v.string()),
 		viewInBrowserUrl: v.optional(v.string()),
 		listId: v.optional(v.string()),
+		engagementScore: v.optional(v.number()),
 	}),
 	v.object({
 		kind: v.literal('transactional'),
@@ -56,10 +57,34 @@ export const envelopeInputValidator = v.union(
 		organizationId: v.optional(v.string()),
 		listUnsubscribe: v.optional(v.boolean()),
 		convexSiteUrl: v.optional(v.string()),
+		engagementScore: v.optional(v.number()),
 	})
 );
 
 export type WorkerEnvelopeInput = Infer<typeof envelopeInputValidator>;
+
+/**
+ * The recipient's contact engagement score (`contacts.engagementScore`, 0-100,
+ * written by `analytics/engagementScore.ts`) rides the envelope so the dispatch
+ * boundary can stamp it onto `MtaExtras` without a per-recipient database read
+ * on the hot path. The MTA maps it through `mapToPriority` at enqueue time.
+ *
+ * ABSENCE IS NOT AN ERROR and must never be coerced to a number: `0` means
+ * "cold" (deprioritised behind every scored recipient), while an ABSENT score
+ * means "unknown" and the MTA applies `PRIORITY_BANDS.DEFAULT`. A transactional
+ * send with no contact record, an unscored contact, and a legacy envelope
+ * queued before this field existed all resolve to `undefined`.
+ *
+ * Non-finite and out-of-band values are treated as unknown rather than clamped:
+ * a `NaN` or `-1` score is a defect upstream, and inventing a band for it would
+ * silently mis-order real mail.
+ */
+export function normalizeEngagementScore(score: number | undefined): number | undefined {
+	if (score === undefined) return undefined;
+	if (!Number.isFinite(score)) return undefined;
+	if (score < 0 || score > 100) return undefined;
+	return score;
+}
 
 export const retryStateValidator = v.object({
 	attempt: v.number(),

@@ -1,5 +1,15 @@
 import { summarizeOutboundAlignment, type OutboundTransportFacts } from '@owlat/shared';
 import type { HealthTone } from '~/utils/healthTone';
+import {
+	dualArmAlignmentGate,
+	summarizeDualArmAlignment,
+	type ReadinessDualArmRow,
+	type ReadinessDualArmSummary,
+} from '~/utils/dualArmAlignment';
+import type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus } from '~/utils/readinessGate';
+
+export type { ReadinessDualArmRow, ReadinessDualArmSummary };
+export type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
 
 /**
  * The single source of truth for "can this instance actually send mail, and if
@@ -19,39 +29,6 @@ import type { HealthTone } from '~/utils/healthTone';
  * mapping is unit-testable without mounting anything or reaching the Convex
  * client.
  */
-
-/**
- * The readiness gates, in the order the panel renders them. `mta-sts` is a
- * conditional gate — it appears only when the deployment is publishing an
- * MTA-STS policy in `enforce` mode whose DNS/policy isn't verified yet, so that
- * an unfinished inbound-TLS hardening step is surfaced without adding noise to
- * deployments that don't publish a policy.
- */
-export type ReadinessGateKey = 'transport' | 'domain' | 'authentication' | 'alignment' | 'mta-sts';
-
-/**
- * A gate's state:
- *  - `ready`     — satisfied.
- *  - `attention` — needs an action from the operator (a fix link is offered).
- *  - `pending`   — waiting on something external (DNS propagation) or not yet
- *                  applicable; no action the operator can take right now.
- */
-export type ReadinessGateStatus = 'ready' | 'attention' | 'pending';
-
-export interface ReadinessGate {
-	key: ReadinessGateKey;
-	/** Human title of the gate. */
-	title: string;
-	/** One plain-language line on where this gate stands. No jargon, no lecture. */
-	detail: string;
-	status: ReadinessGateStatus;
-	/** Shared health tone → token classes (see `healthTone.ts`). */
-	tone: HealthTone;
-	/** In-app route that resolves this gate, or `null` when there's nothing to do. */
-	actionHref: string | null;
-	/** Label for the fix link, or `null` when `actionHref` is `null`. */
-	actionLabel: string | null;
-}
 
 /** Overall readiness level for the panel's headline chip. */
 export type ReadinessLevel = 'ready' | 'blocked' | 'incomplete';
@@ -108,6 +85,13 @@ export interface ReadinessInput {
 	misalignedDomains?: string[];
 	/** One plain-language line on WHY the transport is misaligned (per-transport guidance). */
 	alignmentReason?: string | null;
+	/**
+	 * The dual-transport ramp's alignment pre-flight (P3-5), or `undefined` when
+	 * there is nothing to say — no reference transport, no verdict yet, or every
+	 * domain reporting `single_arm`. Undefined renders NO gate at all: running on
+	 * the own MTA alone is a supported configuration, never an unfinished setup.
+	 */
+	dualArmAlignment?: ReadinessDualArmSummary | undefined;
 }
 
 /**
@@ -176,7 +160,8 @@ export function readinessInputFromSources(
 	summary: ReadinessTransportSummary,
 	rows: readonly ReadinessDomainRow[],
 	mtaSts?: ReadinessMtaStsSource | null,
-	alignment?: ReadinessAlignmentSource | null
+	alignment?: ReadinessAlignmentSource | null,
+	dualArmRows?: readonly ReadinessDualArmRow[] | null
 ): ReadinessInput {
 	const verified = rows.filter((row) => row.status === 'verified');
 	const primary = verified[0] ?? rows[0] ?? null;
@@ -193,6 +178,7 @@ export function readinessInputFromSources(
 		transportMisaligned: alignmentSummary?.misaligned ?? false,
 		misalignedDomains: alignmentSummary?.misalignedDomains ?? [],
 		alignmentReason: alignmentSummary?.reason ?? null,
+		dualArmAlignment: summarizeDualArmAlignment(dualArmRows),
 	};
 }
 
@@ -373,6 +359,13 @@ export function deriveDeliveryReadiness(input: ReadinessInput): DeliveryReadines
 	// same three gates as before.
 	if (input.mtaStsEnforceWithoutRecord) {
 		gates.push(mtaStsGate());
+	}
+	// The dual-transport alignment gate is conditional AND advisory: it appears
+	// only when a reference transport is really in play, and it deliberately does
+	// NOT feed `level` below — what it gates is the ramp, not the send path, so it
+	// can never turn a ready instance into an unfinished one.
+	if (input.dualArmAlignment !== undefined) {
+		gates.push(dualArmAlignmentGate(input.dualArmAlignment));
 	}
 
 	const canSend = input.transportConfigured && input.domainVerified;

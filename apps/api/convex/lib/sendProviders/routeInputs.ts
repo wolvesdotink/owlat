@@ -11,6 +11,7 @@
  * the batch seam may not. See the two predicates below.
  */
 
+import { v } from 'convex/values';
 import type { Doc } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { isSendProviderReady, providerKindConfigured } from './capability';
@@ -19,11 +20,30 @@ import { getOptional } from '../env';
 import { extractDomainOrNull } from '@owlat/shared';
 import {
 	isActionableDeliverabilitySignalSource,
+	isRouteStateFallbackActive,
 	type ActionableDeliverabilitySignalSource,
-	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import { relayDomainVerified } from './relayDomainVerification';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
+
+/**
+ * The route table a message resolves against. It lives HERE, next to the
+ * inputs both resolvers share, rather than in `route.ts`: the health-free cell
+ * seam needs it too, and importing it from the per-message resolver would give
+ * the seam an import edge to the one module it must never call. `route.ts`
+ * re-exports both for existing importers.
+ */
+export type MessageType = Doc<'providerRoutes'>['messageType'];
+
+/**
+ * Single source of truth for the message-type literal set (imported by
+ * `providerRoutes.ts` so the two can't drift).
+ */
+export const messageTypeValidator = v.union(
+	v.literal('campaign'),
+	v.literal('transactional'),
+	v.literal('automation')
+);
 
 /**
  * The provider kinds this route config could select: the ones named on the
@@ -90,36 +110,6 @@ export function configuredSendProviderKinds(
 	return configured;
 }
 
-/** One `deliverabilityRouteStates` row: an indexed point read (`by_org_provider`). */
-export async function deliverabilityRouteStateFor(
-	ctx: QueryCtx | MutationCtx,
-	organizationId: string,
-	provider: DestinationProviderKey | 'all'
-): Promise<Doc<'deliverabilityRouteStates'> | null> {
-	return await ctx.db
-		.query('deliverabilityRouteStates')
-		.withIndex('by_org_provider', (q) =>
-			q.eq('organizationId', organizationId).eq('destinationProvider', provider)
-		)
-		.first();
-}
-
-/**
- * The two `deliverabilityRouteStates` rows a decision keys off: the
- * destination-provider row and the org-wide `all` row. Both indexed point
- * reads (`by_org_provider`).
- */
-export async function deliverabilityRouteStatesFor(
-	ctx: QueryCtx | MutationCtx,
-	organizationId: string,
-	provider: DestinationProviderKey
-): Promise<[Doc<'deliverabilityRouteStates'> | null, Doc<'deliverabilityRouteStates'> | null]> {
-	return await Promise.all([
-		deliverabilityRouteStateFor(ctx, organizationId, provider),
-		deliverabilityRouteStateFor(ctx, organizationId, 'all'),
-	]);
-}
-
 /**
  * Fallback reasons carried by the FRESH active route states, in order.
  *
@@ -136,7 +126,9 @@ export function freshFallbackReasons(
 	return states
 		.filter(
 			(state) =>
-				state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
+				state !== null &&
+				isRouteStateFallbackActive(state) &&
+				now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
 		)
 		.flatMap(
 			(state) =>
@@ -152,7 +144,8 @@ export function isGlobalBreakerOpenState(
 	now: number
 ): boolean {
 	return Boolean(
-		globalState?.isFallbackActive &&
+		globalState &&
+		isRouteStateFallbackActive(globalState) &&
 		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
 		globalState.signals.some((signal) => signal.source === 'breaker_open')
 	);
