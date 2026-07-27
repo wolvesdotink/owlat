@@ -338,14 +338,9 @@ describe('buildDashboardCellView', () => {
 			trend: [],
 		});
 		expect(view.own).toBe(own);
-		expect(view.gates).toEqual([
-			{
-				gate: 'hard_bounce',
-				status: 'pass',
-				reason: 'within_threshold',
-				measurement: evaluation.perGate[0]?.measurement,
-			},
-		]);
+		// The gate results travel WHOLE, so `status` still discriminates `reason`
+		// and `measurement` on the wire.
+		expect(view.gates).toBe(evaluation.perGate);
 		expect(view.failedGate).toBeNull();
 	});
 

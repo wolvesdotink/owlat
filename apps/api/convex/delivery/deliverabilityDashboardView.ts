@@ -220,13 +220,18 @@ export function dashboardConfidence(input: {
 
 // ============ CELL VIEW ============
 
-export interface DashboardGateView {
-	readonly gate: RampGateResult['gate'];
-	readonly status: RampGateResult['status'];
-	readonly reason: RampGateResult['reason'];
-	/** The numbers that produced the verdict — rendered beside it, never re-derived. */
-	readonly measurement: RampGateResult['measurement'];
-}
+/**
+ * A gate's verdict as it goes on the wire — the gate result itself.
+ *
+ * DELIBERATELY AN ALIAS, NOT A COPY. `RampGateResult` is already exactly
+ * `{ gate, status, reason, measurement }` and is DISCRIMINATED on `status`;
+ * re-declaring it field by field flattens the discriminant, so the screen loses
+ * the guarantee that a hold reason belongs to a hold and a decided reason to a
+ * decision — and its explanation switch can no longer be checked for
+ * exhaustiveness. The numbers behind the verdict travel with it and are rendered
+ * beside it, never re-derived.
+ */
+export type DashboardGateView = RampGateResult;
 
 export interface DashboardCellView {
 	readonly cell: DeliverabilityCell;
@@ -280,12 +285,7 @@ export function buildDashboardCellView(input: {
 		verdict: evaluation.verdict,
 		failedGate: evaluation.failedGate ?? null,
 		requiresCorroboration: evaluation.requiresCorroboration,
-		gates: evaluation.perGate.map((result) => ({
-			gate: result.gate,
-			status: result.status,
-			reason: result.reason,
-			measurement: result.measurement,
-		})),
+		gates: evaluation.perGate,
 		confidence: dashboardConfidence({
 			own: input.own,
 			reference: input.reference,
