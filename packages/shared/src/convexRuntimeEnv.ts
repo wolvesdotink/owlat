@@ -89,6 +89,10 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// the SAME signed envelope sender on relay sends — without it in the
 	// deployment the relay arm produces no bounce data of its own.
 	'MTA_BOUNCE_VERP_KEY',
+	// SPF terms authorising the relay on the return-path host. Read by the
+	// routing seam before it lets a relay send carry our VERP envelope sender,
+	// so it must be present in the deployment, not just in the MTA's env.
+	'MTA_RETURN_PATH_RELAY_SPF',
 	// The active transport's effective DKIM d= domain, when it isn't the per-message
 	// From-domain. Read by the outbound DMARC-alignment guard at Convex function
 	// runtime (delivery status + campaign From-picker), so it must be pushed.
