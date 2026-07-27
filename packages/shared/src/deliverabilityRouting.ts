@@ -49,6 +49,21 @@ export function parseDeliverabilityCellKey(value: string): DeliverabilityCell | 
 }
 
 /**
+ * Every cell, in a stable order (stream-major). The ramp axes are both small,
+ * closed sets, so the full product is enumerable — dashboards iterate it and
+ * tests use it to assert exhaustively rather than spot-checking.
+ */
+export function allDeliverabilityCells(): DeliverabilityCell[] {
+	const cells: DeliverabilityCell[] = [];
+	for (const stream of DELIVERABILITY_STREAM_KEYS) {
+		for (const destinationProvider of DESTINATION_PROVIDER_KEYS) {
+			cells.push({ stream, destinationProvider });
+		}
+	}
+	return cells;
+}
+
+/**
  * Infrastructure sources are the SHIPPED fallback triggers: they, and only
  * they, flip a provider slice onto the relay through the shipped hysteresis.
  */

@@ -20,6 +20,17 @@ import { nanoid } from 'nanoid';
 // while an admin re-configures the provider; the stuck-send watchdog backstops
 // a lost reschedule.
 const NO_PROVIDER_RETRY_MS = 5 * 60 * 1000; // 5 minutes
+/**
+ * Recipients handed to ONE `enqueueCampaignEmails` mutation.
+ *
+ * Both enqueue branches page through this same size. That mutation writes at
+ * least one workpool document AND one `sendAssignments` row per recipient in a
+ * single transaction, so an unchunked batch walks toward Convex's
+ * per-transaction write ceiling. The timezone branch used to hand an entire
+ * IANA-zone group over unchunked, which for a single-zone audience is the
+ * whole campaign in one mutation.
+ */
+const CAMPAIGN_ENQUEUE_CHUNK_SIZE = 50;
 const LIFECYCLE_USER_SCHEDULER_TICK = 'system:scheduler_tick';
 const LIFECYCLE_USER_CONTENT_SCAN = 'system:content_scan';
 const LIFECYCLE_USER_ORCHESTRATOR = 'system:orchestrator';
@@ -498,36 +509,42 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 	// ONE enqueue payload, two call sites (timezone-grouped and chunked). The
 	// two branches differ only in the recipient slice and the delay, so the
 	// payload — and every future envelope field on it — lives here once.
-	const scheduleEnqueue = async (recipients: EmailEnqueueData[], delayMs: number) => {
-		await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
-			campaignId: args.campaignId,
-			emails: recipients.map(
-				({ emailSendId, contactId, email, firstName, lastName, engagementScore }) => ({
-					emailSendId,
-					contactId,
-					email,
-					firstName,
-					lastName,
-					engagementScore,
-				})
-			),
-			from: args.from,
-			replyTo: args.replyTo,
-			subject: args.subject,
-			htmlContent: args.htmlContent,
-			convexSiteUrl: args.convexSiteUrl,
-			siteUrl: args.siteUrl,
-			audienceType: args.audienceType,
-			viewInBrowserUrl: args.viewInBrowserUrl,
-			providerType: args.providerType,
-			ipPool: args.ipPool,
-			trackingBaseUrl: args.trackingBaseUrl,
-			organizationId: args.organizationId,
-			listId: args.listId,
-			// Keys the deliverability seed-probe set: the two A/B arms are
-			// different messages and each gets its own placement reading.
-			abVariant: args.abVariant,
-		});
+	// Every call site chunks: one scheduled `enqueueCampaignEmails` per
+	// `CAMPAIGN_ENQUEUE_CHUNK_SIZE` recipients keeps each transaction (and its
+	// per-recipient assignment writes) bounded.
+	const scheduleChunks = async (recipients: EmailEnqueueData[], delayMs: number) => {
+		for (let i = 0; i < recipients.length; i += CAMPAIGN_ENQUEUE_CHUNK_SIZE) {
+			const chunk = recipients.slice(i, i + CAMPAIGN_ENQUEUE_CHUNK_SIZE);
+			await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
+				campaignId: args.campaignId,
+				emails: chunk.map(
+					({ emailSendId, contactId, email, firstName, lastName, engagementScore }) => ({
+						emailSendId,
+						contactId,
+						email,
+						firstName,
+						lastName,
+						engagementScore,
+					})
+				),
+				from: args.from,
+				replyTo: args.replyTo,
+				subject: args.subject,
+				htmlContent: args.htmlContent,
+				convexSiteUrl: args.convexSiteUrl,
+				siteUrl: args.siteUrl,
+				audienceType: args.audienceType,
+				viewInBrowserUrl: args.viewInBrowserUrl,
+				providerType: args.providerType,
+				ipPool: args.ipPool,
+				trackingBaseUrl: args.trackingBaseUrl,
+				organizationId: args.organizationId,
+				listId: args.listId,
+				// Keys the deliverability seed-probe set: the two A/B arms are
+				// different messages and each gets its own placement reading.
+				abVariant: args.abVariant,
+			});
+		}
 	};
 
 	if (args.useTimezone) {
@@ -549,15 +566,11 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 		for (const [zone, recipientsForZone] of recipientsByZone) {
 			const target = resolveNextSendTime(zone, args.scheduledHour!, args.scheduledMinute!, now);
 			const delayMs = Math.max(0, target - now);
-			await scheduleEnqueue(recipientsForZone, delayMs);
+			await scheduleChunks(recipientsForZone, delayMs);
 			totalEnqueued += recipientsForZone.length;
 		}
 	} else {
-		const CHUNK_SIZE = 50;
-		for (let i = 0; i < emailsToEnqueue.length; i += CHUNK_SIZE) {
-			const chunk = emailsToEnqueue.slice(i, i + CHUNK_SIZE);
-			await scheduleEnqueue(chunk, 0);
-		}
+		await scheduleChunks(emailsToEnqueue, 0);
 		totalEnqueued += emailsToEnqueue.length;
 	}
 

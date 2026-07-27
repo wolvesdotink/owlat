@@ -53,6 +53,17 @@ export function registerDeliveryCrons(crons: Crons): void {
 		internal.delivery.complianceTelemetry.cleanupComplianceTelemetry,
 		{}
 	);
+	// Send assignments are one row per recipient per send (the experiment
+	// record), so their retention sweep is not optional. 90 days, deleted in
+	// bounded indexed batches that resume via self-scheduling while a tick
+	// comes back full.
+	crons.interval(
+		'cleanup send assignments',
+		{ hours: 6 },
+		internal.delivery.sendAssignments.cleanupExpiredAssignments,
+		{}
+	);
+
 	crons.interval(
 		'cleanup MTA IP readiness alerts',
 		{ hours: 24 },

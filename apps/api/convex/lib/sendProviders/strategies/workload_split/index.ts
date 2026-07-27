@@ -12,12 +12,11 @@ import type { SendRouteStrategyModule } from '../types';
 
 export const workloadSplitStrategy: SendRouteStrategyModule<'workload_split'> = {
 	kind: 'workload_split',
+	isDeterministic: false,
 	select(entries, ipPool, healthStatuses) {
 		const candidates = healthStatuses
 			? entries.filter((p) => {
-					const health = healthStatuses.find(
-						(s) => s.providerType === p.providerType,
-					);
+					const health = healthStatuses.find((s) => s.providerType === p.providerType);
 					return !health || health.status !== 'down';
 				})
 			: entries;

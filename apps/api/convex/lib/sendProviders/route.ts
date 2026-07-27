@@ -20,28 +20,38 @@ import {
 	type ProviderHealthStatus,
 	type ResolvedRoute,
 } from './routing';
-import { isSendProviderReady } from './capability';
-import { isSendProviderKind, type SendProviderKind } from './types';
-import { getOptional } from '../env';
-import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
-import {
-	destinationProviderForDomain,
-	isActionableDeliverabilitySignalSource,
-	isRouteStateFallbackActive,
-} from '@owlat/shared/deliverabilityRouting';
+import { extractDomainOrNull } from '@owlat/shared';
+import { resolveDestinationProvider } from './destinationProvider';
 import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
+import {
+	freshFallbackReasons,
+	isGlobalBreakerOpenState,
+	messageTypeValidator,
+	readySendProviderKinds,
+	relayDomainVerifiedFor,
+	type MessageType,
+} from './routeInputs';
 
-export type MessageType = Doc<'providerRoutes'>['messageType'];
+// `MessageType` and `messageTypeValidator` live in `routeInputs.ts` — the module
+// that holds what BOTH resolvers read — and are re-exported here for existing
+// importers, so the health-free cell seam never needs an import edge to this
+// module.
+export { messageTypeValidator, type MessageType };
 
-// Single source of truth for the message-type literal set (imported by
-// providerRoutes.ts so the two can't drift).
-export const messageTypeValidator = v.union(
-	v.literal('campaign'),
-	v.literal('transactional'),
-	v.literal('automation')
-);
+/**
+ * Per-message inputs the deliverability layer keys off. Shared by
+ * `resolveSendRouteFromDb` and its internal `deliverabilityInput` so the two
+ * shapes cannot drift.
+ */
+export interface SendRouteAddressContext {
+	to?: string;
+	from?: string;
+	now?: number;
+	baseOnly?: boolean;
+	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+}
 
 /**
  * Resolve the send route for a message type from the current transaction.
@@ -52,13 +62,7 @@ export const messageTypeValidator = v.union(
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
 	messageType: MessageType,
-	addressContext?: {
-		to?: string;
-		from?: string;
-		now?: number;
-		baseOnly?: boolean;
-		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	}
+	addressContext?: SendRouteAddressContext
 ): Promise<ResolvedRoute | null> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
@@ -71,16 +75,7 @@ export async function resolveSendRouteFromDb(
 		status: h.status,
 		successRate: h.successRate,
 	}));
-	const candidateKinds = new Set<SendProviderKind>();
-	for (const provider of routeConfig?.providers ?? []) {
-		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
-	}
-	const envProvider = getOptional('EMAIL_PROVIDER');
-	if (isSendProviderKind(envProvider)) candidateKinds.add(envProvider);
-	const readyKinds = new Set<SendProviderKind>();
-	for (const kind of candidateKinds) {
-		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
-	}
+	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
 
 	const deliverability = addressContext?.baseOnly
 		? undefined
@@ -106,13 +101,7 @@ async function deliverabilityInput(
 	ctx: QueryCtx | MutationCtx,
 	routeConfig: Doc<'providerRoutes'> | null,
 	messageType: MessageType,
-	addressContext?: {
-		to?: string;
-		from?: string;
-		now?: number;
-		baseOnly?: boolean;
-		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	}
+	addressContext?: SendRouteAddressContext
 ) {
 	if (!addressContext?.to) return undefined;
 	const toDomain = extractDomainOrNull(addressContext.to);
@@ -124,16 +113,7 @@ async function deliverabilityInput(
 	} catch {
 		return undefined;
 	}
-	const learnedProvider = await ctx.db
-		.query('destinationProviderDomains')
-		.withIndex('by_org_domain', (q) =>
-			q.eq('organizationId', organizationId).eq('domain', toDomain)
-		)
-		.first();
-	const provider =
-		learnedProvider && learnedProvider.expiresAt >= now
-			? learnedProvider.destinationProvider
-			: destinationProviderForDomain(toDomain);
+	const provider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
 	const [providerCell, globalState, warmingState] = await Promise.all([
 		// Cell lookup: BOTH the controller's per-stream row and the stream-less row
 		// the MTA snapshot maintains, so neither can shadow the other.
@@ -146,25 +126,14 @@ async function deliverabilityInput(
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
-	// The relay is engaged when the infrastructure boolean says so OR when the
-	// resolved share (D1: `ownShare ?? (isFallbackActive ? 0 : 1)`) is below 1.
-	// A legacy row resolves to exactly its stored boolean, so this is unchanged
-	// today, and a stored share can never mask an infrastructure verdict.
-	//
 	// EVERY row of the cell is considered, not just the most specific one: the
-	// per-stream row carries the share and the stream-less row carries the
-	// infrastructure signals, so reading only one would drop a hard stop.
-	const freshActive = [globalState, providerCell.streamless, providerCell.perStream].filter(
-		(state): state is Doc<'deliverabilityRouteStates'> =>
-			state !== null &&
-			isRouteStateFallbackActive(state) &&
-			now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
-	);
-	// Advisory readings ("blocklist lookup unavailable", "part of the pool is
-	// ejected") are recorded on the state row for measurement, but they are not
-	// routing reasons and must never appear as the cause of a relay fallback.
-	const activeReasons = freshActive.flatMap((state) =>
-		state.signals.map((s) => s.source).filter(isActionableDeliverabilitySignalSource)
+	// per-stream row carries the controller's share and the stream-less row
+	// carries the infrastructure signals, so reading only one would drop a hard
+	// stop. `freshFallbackReasons` applies D1's share resolution and the
+	// advisory-signal filter for both call sites.
+	const activeReasons = freshFallbackReasons(
+		[globalState, providerCell.streamless, providerCell.perStream],
+		now
 	);
 	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
 	const isWarmupOverflow = Boolean(
@@ -175,79 +144,14 @@ async function deliverabilityInput(
 			warmingState.totalDailyCap > 0 &&
 			warmingState.totalSentToday >= warmingState.totalDailyCap)
 	);
-	const fromDomain = addressContext.from ? extractDomainOrNull(addressContext.from) : null;
-	const isRelayDomainVerified =
-		fromDomain && routeConfig?.deliverabilityFallback?.isEnabled
-			? await relayDomainVerified(
-					ctx,
-					fromDomain,
-					routeConfig.deliverabilityFallback.relayProviderType,
-					now
-				)
-			: false;
-	const isGlobalBreakerOpen = Boolean(
-		globalState &&
-		isRouteStateFallbackActive(globalState) &&
-		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-		globalState.signals.some((signal) => signal.source === 'breaker_open')
+	const isRelayDomainVerified = await relayDomainVerifiedFor(
+		ctx,
+		routeConfig,
+		addressContext.from,
+		now
 	);
+	const isGlobalBreakerOpen = isGlobalBreakerOpenState(globalState, now);
 	return { activeReasons, isWarmupOverflow, isRelayDomainVerified, isGlobalBreakerOpen };
-}
-
-async function relayDomainVerified(
-	ctx: QueryCtx | MutationCtx,
-	domainName: string,
-	relayProviderType: string,
-	now: number
-): Promise<boolean> {
-	if (relayProviderType !== 'ses') return false;
-	const domain = await ctx.db
-		.query('domains')
-		.withIndex('by_domain', (q) => q.eq('domain', domainName.toLowerCase()))
-		.first();
-	if (!domain) return false;
-	const identity = await ctx.db
-		.query('sendingDomainSesIdentities')
-		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-		.first();
-	if (
-		!identity?.dnsRecords ||
-		!identity.verificationResults ||
-		!identity.isProviderVerified ||
-		!identity.verifiedAt ||
-		now - identity.verifiedAt > SES_RELAY_PROOF_MAX_AGE_MS
-	)
-		return false;
-	const proof = identity.verificationResults;
-	const spfProofState =
-		identity.spfProofState ??
-		(identity.dnsRecords.spf ? 'dns_required' : 'not_applicable_manual_primary');
-	const spfSatisfied =
-		spfProofState === 'dns_required'
-			? Boolean(identity.dnsRecords.spf && proof.spf?.verified)
-			: domain.providerType === 'mta' &&
-				domain.status === 'verified' &&
-				!identity.dnsRecords.spf &&
-				!proof.spf;
-	const results = [
-		...(spfProofState === 'dns_required' ? [proof.spf] : []),
-		...(proof.dkim ?? []),
-		...(proof.mailFrom ?? []),
-	];
-	return Boolean(
-		spfSatisfied &&
-		identity.dkimTokens.length > 0 &&
-		proof.dkim?.length === identity.dkimTokens.length &&
-		proof.dkim.every((result) => result.verified) &&
-		identity.dnsRecords.mailFrom?.length &&
-		proof.mailFrom?.length === identity.dnsRecords.mailFrom.length &&
-		proof.mailFrom.every((result) => result.verified) &&
-		results.every((result) => {
-			if (!result || !Number.isFinite(result.lastChecked)) return false;
-			const age = now - result.lastChecked;
-			return age >= 0 && age <= SES_RELAY_PROOF_MAX_AGE_MS;
-		})
-	);
 }
 
 /**
