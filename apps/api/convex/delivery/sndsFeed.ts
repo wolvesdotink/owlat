@@ -45,7 +45,13 @@ const BAND_SEVERITY_ORDER: readonly SndsComplaintBand[] = SNDS_COMPLAINT_BANDS.s
 /**
  * Rank a band for comparison. `null` for `unknown` — deliberately not `0`, so a
  * caller cannot accidentally treat "no data" as "the cleanest band".
+ *
+ * The overload says the same thing in the type system: a caller holding a value
+ * that is statically NOT `unknown` gets a `number` and needs no null branch, so
+ * "handle the impossible null" never has to be written as a silent fallback.
  */
+export function complaintBandSeverity(band: Exclude<SndsComplaintBand, 'unknown'>): number;
+export function complaintBandSeverity(band: SndsComplaintBand): number | null;
 export function complaintBandSeverity(band: SndsComplaintBand): number | null {
 	const index = BAND_SEVERITY_ORDER.indexOf(band);
 	return index === -1 ? null : index;
@@ -100,6 +106,37 @@ export interface SndsDayObservation {
 	rcptCommands: number;
 	dataCommands: number;
 	sampleHelo?: string;
+}
+
+/**
+ * The separator between the two components of an (IP, UTC day) cell key.
+ *
+ * A space, a colon and a dot all occur inside an address; `|` never does in any
+ * spelling {@link normalizeSndsIp} accepts, so the key round-trips.
+ */
+const SNDS_CELL_KEY_SEPARATOR = '|';
+
+/**
+ * The string form of an (IP, UTC day) cell.
+ *
+ * A cell is a PAIR, not a string — but a `Map` needs a scalar key, so the
+ * conversion lives here rather than being open-coded at each fold. P3 keys on
+ * `(stream, destinationProvider)` cells with exactly this shape, and a separator
+ * chosen inline at the call site is how two readers of one key end up
+ * disagreeing about where it splits.
+ */
+export function sndsCellKey(ip: string, periodStart: number): string {
+	return `${ip}${SNDS_CELL_KEY_SEPARATOR}${periodStart}`;
+}
+
+/** The inverse of {@link sndsCellKey}; `null` when the key is not one of ours. */
+export function parseSndsCellKey(key: string): { ip: string; periodStart: number } | null {
+	const separator = key.lastIndexOf(SNDS_CELL_KEY_SEPARATOR);
+	if (separator <= 0) return null;
+	const ip = key.slice(0, separator);
+	const periodStart = Number(key.slice(separator + 1));
+	if (!Number.isFinite(periodStart)) return null;
+	return { ip, periodStart };
 }
 
 export interface SndsParseResult {
@@ -378,7 +415,7 @@ export function foldSndsDays(fold: SndsDayFold, rows: readonly SndsFeedRow[]): v
 	const byCell = fold.byCell;
 	for (const row of rows) {
 		const periodStart = utcDayStart(row.activityStart);
-		const key = `${row.ip} ${periodStart}`;
+		const key = sndsCellKey(row.ip, periodStart);
 		const existing = byCell.get(key);
 		if (existing === undefined) {
 			if (byCell.size >= fold.maxCells) {
