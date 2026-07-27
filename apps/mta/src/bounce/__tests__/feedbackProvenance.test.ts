@@ -219,6 +219,35 @@ describe('delayed feedback provenance', () => {
 		expect(reduce(recipientOnly, {} as never).effects).toEqual([]);
 	});
 
+	it('prefers the RECORDED recipient over a DSN Final-Recipient that differs', async () => {
+		// Intentional hardening of the shipped DSN path, not only the FBL one: for
+		// an alias or forwarder the DSN's Final-Recipient is the FORWARDED mailbox,
+		// while the address we actually sent to — and the only one suppression may
+		// legitimately act on — is the recorded one. A verified signed token proves
+		// which SEND the report is about; it proves nothing about which address the
+		// reporter is entitled to name, so the report's own recipient never wins.
+		await recordFeedbackProvenance(redis, job('alias-dsn', 'production', 'list@example.com'));
+
+		const attempt: BounceAttempt = {
+			kind: 'dsn_attributed',
+			bounce: {
+				type: 'bounced',
+				bounceType: 'hard',
+				message: '550 no such user',
+				originalMessageId: 'alias-dsn',
+				recipient: 'forwarded@mailbox.example',
+			},
+		};
+		const attributed = await attachFeedbackProvenance(redis, attempt);
+
+		expect(attributed.kind === 'dsn_attributed' && attributed.bounce.recipient).toBe(
+			'list@example.com'
+		);
+		expect(attributed.kind === 'dsn_attributed' && attributed.bounce.feedbackProvenance).toBe(
+			'production'
+		);
+	});
+
 	it('places exact and recipient indexes in one Redis Cluster slot', async () => {
 		await recordFeedbackProvenance(redis, job('cluster-1', 'production'));
 		const keys = await redis.keys('mta:{feedback}:*');

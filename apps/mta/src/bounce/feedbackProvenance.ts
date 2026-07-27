@@ -156,6 +156,13 @@ export async function attachFeedbackProvenance(
 		// the report's `Original-Rcpt-To` would let such a reporter have an
 		// arbitrary address suppressed inside that tenant. The record already knows
 		// who the message went to.
+		//
+		// This branch covers `dsn_attributed` as well as `fbl`, so it is also an
+		// intentional hardening of the shipped bounce path: for an alias or
+		// forwarder the DSN's `Final-Recipient` is the FORWARDED mailbox, and the
+		// address suppression may legitimately act on is the one we actually sent
+		// to. A verified token proves which SEND the report is about; it never
+		// proves which address the reporter is entitled to name.
 		const enriched = {
 			...classification,
 			recipient: exact.recipient,
