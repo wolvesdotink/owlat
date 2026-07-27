@@ -19,6 +19,7 @@ import { logWarn } from '../lib/runtimeLog';
 import { normalizeEmail } from '../lib/inputGuards';
 import { loadSuppressionSet, loadSuppressionSetBounded } from '../lib/suppression';
 import {
+	conditionsLookupReadsPerBatch,
 	conditionsLookupReadsPerContact,
 	preloadConditionsLookup,
 	preloadConditionsLookupForContacts,
@@ -206,12 +207,18 @@ async function loadBudgetedSuppression(
 	budget: ExamineBudget | undefined
 ): Promise<ReadonlySet<string>> {
 	if (!budget) return await loadSuppressionSet(ctx);
-	const { blockedEmails, truncated } = await loadSuppressionSetBounded(ctx, SUPPRESSION_SCAN_LIMIT);
+	const { blockedEmails, truncated, rowsRead } = await loadSuppressionSetBounded(
+		ctx,
+		SUPPRESSION_SCAN_LIMIT
+	);
 	if (truncated) budget.suppressionTruncated = true;
-	// Charge what was actually read. `spendDocuments` returning false only means
-	// the scan is already over budget; the read happened either way, and the
-	// per-candidate charges below will see `exhausted` and stop immediately.
-	spendDocuments(budget, blockedEmails.size);
+	// Charge the ROWS the query read, not the de-duplicated set that survived it:
+	// `.take(bound + 1)` reads every row it returns, duplicates and the truncation
+	// probe included, and charging the smaller number would let the "bound" under-
+	// count exactly the reads it exists to cap. `spendDocuments` returning false
+	// only means the scan is already over budget; the read happened either way, and
+	// the per-candidate charges below will see `exhausted` and stop immediately.
+	spendDocuments(budget, rowsRead);
 	return blockedEmails;
 }
 
@@ -232,12 +239,20 @@ async function* streamSegmentMatchesBounded(
 	// The contact row itself, plus whatever the batched lookup point-reads for it.
 	// The parsed conditions are already in hand, so this is exact, not a guess.
 	const documentsPerContact = 1 + conditionsLookupReadsPerContact(parsedFilters.conditions);
+	// The preload's FIXED set-up, paid once per batch rather than per contact
+	// (resolving a custom property key to its id, say). Left uncharged it is a
+	// per-batch hole in a budget whose whole job is to be a real ceiling.
+	const documentsPerBatch = conditionsLookupReadsPerBatch(parsedFilters.conditions);
 	let batch: Doc<'contacts'>[] = [];
 
 	async function* drain(): AsyncGenerator<{ recipient: CampaignRecipient | null }> {
 		if (batch.length === 0) return;
 		const pending = batch;
 		batch = [];
+		// Charged BEFORE the preload runs, like every other read on this path. It
+		// may push the scan over budget; the flush below still yields what was
+		// already read, and the contact loop stops on the next `spendDocuments`.
+		spendDocuments(budget, documentsPerBatch);
 		const lookup = await preloadConditionsLookupForContacts(ctx, parsedFilters.conditions, pending);
 		const matches = makeSegmentPredicate(parsedFilters, lookup);
 		for (const contact of pending) {

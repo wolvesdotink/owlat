@@ -70,6 +70,13 @@ export interface BoundedSuppressionSet {
 	 * justify.
 	 */
 	truncated: boolean;
+	/**
+	 * ROWS actually read, including the truncation probe. Distinct from
+	 * `blockedEmails.size`, which is the DE-DUPLICATED, truncated set: a caller
+	 * charging a read budget must charge what the query read, not what survived
+	 * it, or the "bound" under-counts exactly the reads it exists to cap.
+	 */
+	rowsRead: number;
 }
 
 /**
@@ -91,5 +98,9 @@ export async function loadSuppressionSetBounded(
 	const records = await ctx.db.query('blockedEmails').take(bound + 1);
 	const truncated = records.length > bound;
 	const kept = truncated ? records.slice(0, bound) : records;
-	return { blockedEmails: new Set(kept.map((b) => normalizeEmail(b.email))), truncated };
+	return {
+		blockedEmails: new Set(kept.map((b) => normalizeEmail(b.email))),
+		truncated,
+		rowsRead: records.length,
+	};
 }
