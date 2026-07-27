@@ -9,9 +9,22 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
+import { TENANT_TABLES } from '../../lib/tenantTables';
+import { ORGANIZATION_DELETION_STEPS, STEPS } from '../../workspaces/deletion/walker';
+
+vi.mock('../../lib/sessionOrganization', async () => {
+	const actual = await vi.importActual('../../lib/sessionOrganization');
+	return {
+		...actual,
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+	};
+});
 
 const rootGlob = import.meta.glob('../../**/*.*s');
 const deliveryGlob = Object.fromEntries(
@@ -25,6 +38,9 @@ const modules = { ...rootGlob, ...deliveryGlob };
 const ORG_A = 'org_a';
 const ORG_B = 'org_b';
 const CELL = 'campaign:gmail';
+// A window wide enough to contain every fixture timestamp below. The read is
+// a REQUIRED half-open [since, until) pair, so every caller states one.
+const WINDOW = { since: 0, until: 2_000_000_000_000 };
 
 function assignment(organizationId: string, sendId: string, assignedAt: number) {
 	return {
@@ -54,6 +70,7 @@ describe('sendAssignments tenant isolation', () => {
 		const aRows = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
 			organizationId: ORG_A,
 			cell: CELL,
+			...WINDOW,
 		});
 		expect(aRows).toHaveLength(2);
 		expect(aRows.every((row) => row.organizationId === ORG_A)).toBe(true);
@@ -62,6 +79,7 @@ describe('sendAssignments tenant isolation', () => {
 		const bRows = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
 			organizationId: ORG_B,
 			cell: CELL,
+			...WINDOW,
 		});
 		expect(bRows.map((row) => row.sendId).sort()).toEqual(['send_b1', 'send_b2']);
 	});
@@ -145,6 +163,56 @@ describe('sendAssignments tenant isolation', () => {
 		}
 	});
 
+	it('returns nothing for a malformed cell key instead of scanning', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('sendAssignments', assignment(ORG_A, 'send_a1', 1_800_000_000_000));
+		});
+
+		for (const cell of ['campaign', 'campaign:', 'campaign:gmail:extra', 'newsletter:gmail', '']) {
+			expect(
+				await t.query(internal.delivery.sendAssignments.listCellAssignments, {
+					organizationId: ORG_A,
+					cell,
+					...WINDOW,
+				})
+			).toEqual([]);
+		}
+	});
+
+	it('is wiped by the organization-deletion walker (GDPR scoping)', async () => {
+		// The experiment record is per-recipient tenant business data. Account
+		// deletion and 'Delete organization' must not leave it on disk, so the
+		// table is registered in TENANT_TABLES and has a walker step.
+		expect(TENANT_TABLES).toContain('sendAssignments');
+		expect(STEPS).toContain('sendAssignments');
+		expect(ORGANIZATION_DELETION_STEPS).toHaveProperty('sendAssignments');
+
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('sendAssignments', assignment(ORG_A, 'send_a1', 1_800_000_000_000));
+			await ctx.db.insert('sendAssignments', assignment(ORG_B, 'send_b1', 1_800_000_000_000));
+		});
+
+		await t.mutation(internal.workspaces.deletion.walker.runStep, {
+			table: 'sendAssignments',
+		});
+		// The walker chains follow-up hops; drain then cancel so no scheduled
+		// job outlives the test.
+		await t.finishInProgressScheduledFunctions();
+		await t.run(async (ctx) => {
+			for (const job of await ctx.db.system.query('_scheduled_functions').collect()) {
+				if (job.state.kind === 'pending' || job.state.kind === 'inProgress') {
+					await ctx.scheduler.cancel(job._id);
+				}
+			}
+		});
+
+		// This deployment hosts one organization, so the wipe is total.
+		const remaining = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
+		expect(remaining).toHaveLength(0);
+	});
+
 	it('never mixes tenants when the same cell is written concurrently', async () => {
 		const t = convexTest(schema, modules);
 		const now = 1_800_000_000_000;
@@ -160,6 +228,7 @@ describe('sendAssignments tenant isolation', () => {
 		const aRows = await t.query(internal.delivery.sendAssignments.listCellAssignments, {
 			organizationId: ORG_A,
 			cell: CELL,
+			...WINDOW,
 			limit: 500,
 		});
 		expect(aRows).toHaveLength(1);

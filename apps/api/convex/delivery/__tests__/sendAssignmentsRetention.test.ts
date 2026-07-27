@@ -113,6 +113,10 @@ describe('sendAssignments retention sweep', () => {
 		const scheduled = await t.run(async (ctx) =>
 			ctx.db.system.query('_scheduled_functions').collect()
 		);
+		// Exactly one follow-up tick was scheduled and it completed. Asserting
+		// the length first matters: `[].every(...)` is vacuously true, so the
+		// success check alone would pass even if nothing had been rescheduled.
+		expect(scheduled).toHaveLength(1);
 		expect(scheduled.every((job) => job.state.kind === 'success')).toBe(true);
 	});
 
