@@ -74,6 +74,14 @@ export interface ReturnPathProbeState {
 	readonly startedAt: number;
 	/** When the status last changed. */
 	readonly settledAt?: number;
+	/**
+	 * How many probes this transport has had. Drives the retry BACKOFF: every
+	 * probe deliberately manufactures a bounce on the operator's relay, and a
+	 * fixed daily retry against a relay that will never support us is one
+	 * deliberate hard bounce a day, forever, on an account whose bounce rate can
+	 * get the operator suspended. Legacy rows carry no count and are read as 1.
+	 */
+	readonly attempts?: number;
 }
 
 export type ReturnPathProbeEvent =
@@ -90,13 +98,59 @@ export const RETURN_PATH_PROBE_TIMEOUT_MS = 6 * 60 * 60 * 1000; // 6h
 /** How long a settled verdict is trusted before the transport is re-probed. */
 export const RETURN_PATH_PROBE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30d
 
-/** How soon an UNSUPPORTED verdict is retried (relay config changes). */
-export const RETURN_PATH_PROBE_RETRY_MS = 24 * 60 * 60 * 1000; // 24h
+/**
+ * How soon an UNSUPPORTED verdict is retried, by attempt number.
+ *
+ * A probe is not free: it deliberately manufactures a bounce ON THE OPERATOR'S
+ * RELAY, and a relay's bounce rate is exactly what gets an ESP account
+ * suspended. A relay that does not honour a custom return path today usually
+ * will not tomorrow either, so retrying it daily forever spends the operator's
+ * sender reputation to re-learn a fact we already know. Back off instead:
+ * a config change is still detected, just at a cost of one bounce a month
+ * rather than 365.
+ *
+ * The last entry repeats — this is the cap. We never stop entirely, because a
+ * transport frozen at `unsupported` forever could never recover from an
+ * operator fixing their relay.
+ */
+export const RETURN_PATH_PROBE_RETRY_SCHEDULE_MS = [
+	24 * 60 * 60 * 1000, // 1st retry: next day
+	7 * 24 * 60 * 60 * 1000, // 2nd retry: next week
+	30 * 24 * 60 * 60 * 1000, // thereafter: monthly (the cap)
+] as const;
 
-/** Case/whitespace-insensitive envelope-sender comparison (RFC 5321 domains
- *  are case-insensitive; we generate lower-case local parts ourselves). */
+/** The FIRST retry interval — the shortest wait any unsupported verdict gets. */
+export const RETURN_PATH_PROBE_RETRY_MS: number = RETURN_PATH_PROBE_RETRY_SCHEDULE_MS[0];
+
+/** Retry interval for the Nth (1-based) settled attempt. */
+export function returnPathProbeRetryMs(attempts: number | undefined): number {
+	const index = Number.isFinite(attempts) ? Math.max(1, Math.trunc(attempts ?? 1)) - 1 : 0;
+	const capped = Math.min(index, RETURN_PATH_PROBE_RETRY_SCHEDULE_MS.length - 1);
+	return RETURN_PATH_PROBE_RETRY_SCHEDULE_MS[capped] ?? RETURN_PATH_PROBE_RETRY_MS;
+}
+
+/**
+ * Envelope-sender comparison for the rewrite check.
+ *
+ * The DOMAIN is compared case-insensitively (RFC 5321 §2.4). The LOCAL PART is
+ * NOT: ours is a base64url VERP token whose case is significant — `bounce+cHJv`
+ * and `bounce+CHJV` decode to different bytes, and the MAC grammar in
+ * `@owlat/shared/verp` is itself case-sensitive. A relay that case-folds the
+ * local part produces a DSN our own bounce server can never decode, so grading
+ * it `supported` would declare that arm's bounce data comparable when in fact
+ * it is silently empty. Case-folding IS a rewrite.
+ */
 function sameEnvelopeSender(a: string, b: string): boolean {
-	return a.trim().toLowerCase() === b.trim().toLowerCase();
+	const split = (address: string): { local: string; domain: string } => {
+		const trimmed = address.trim();
+		const at = trimmed.lastIndexOf('@');
+		return at < 0
+			? { local: trimmed, domain: '' }
+			: { local: trimmed.slice(0, at), domain: trimmed.slice(at + 1).toLowerCase() };
+	};
+	const left = split(a);
+	const right = split(b);
+	return left.local === right.local && left.domain === right.domain;
 }
 
 /**
@@ -153,25 +207,46 @@ export function nextProbeState(
 	}
 }
 
-/** Has an open probe waited longer than the timeout? */
+/**
+ * Elapsed time between two instants, or `null` when either is unusable.
+ *
+ * A NaN or Infinite timestamp (a corrupt row, a skewed clock, a hand-written
+ * fixture) makes every `>=` comparison FALSE, which would wedge the scheduler
+ * permanently: the open probe never times out, the transport is never
+ * re-probed, and the capability is stuck at `unknown` with no path to recovery.
+ * Callers treat `null` as "assume it is due", so a degenerate row heals itself
+ * on the next sweep instead of becoming a silent dead end.
+ */
+function elapsedSince(instant: number, now: number): number | null {
+	if (!Number.isFinite(instant) || !Number.isFinite(now)) return null;
+	return now - instant;
+}
+
+/** Has an open probe waited longer than the timeout? Degenerate ⇒ yes. */
 export function isProbeTimedOut(state: ReturnPathProbeState, now: number): boolean {
-	return (
-		state.status === 'awaiting_delivery' && now - state.startedAt >= RETURN_PATH_PROBE_TIMEOUT_MS
-	);
+	if (state.status !== 'awaiting_delivery') return false;
+	const elapsed = elapsedSince(state.startedAt, now);
+	return elapsed === null || elapsed >= RETURN_PATH_PROBE_TIMEOUT_MS;
 }
 
 /**
  * Is it time to (re-)probe this transport? Never probed → yes. Open probe →
- * no (one in flight is enough). Supported → after the TTL. Unsupported →
- * after the shorter retry interval, because relay configuration changes.
+ * no (one in flight is enough) until it times out. Supported → after the TTL.
+ * Unsupported → after a BACKING-OFF retry interval, because relay configuration
+ * does change but each probe costs the operator a real bounce.
+ *
+ * A degenerate timestamp is due, never wedged (see {@link elapsedSince}).
  */
 export function isProbeDue(state: ReturnPathProbeState | null, now: number): boolean {
 	if (!state) return true;
 	if (state.status === 'awaiting_delivery') return isProbeTimedOut(state, now);
-	const settledAt = state.settledAt ?? state.startedAt;
+	const elapsed = elapsedSince(state.settledAt ?? state.startedAt, now);
+	if (elapsed === null) return true;
 	const interval =
-		state.status === 'supported' ? RETURN_PATH_PROBE_TTL_MS : RETURN_PATH_PROBE_RETRY_MS;
-	return now - settledAt >= interval;
+		state.status === 'supported'
+			? RETURN_PATH_PROBE_TTL_MS
+			: returnPathProbeRetryMs(state.attempts);
+	return elapsed >= interval;
 }
 
 // ─── Resolved capability ───────────────────────────────────────────────────
@@ -223,7 +298,29 @@ export function resolveReturnPathCapability(
 	probe: ReturnPathProbeState | null,
 	now: number
 ): ResolvedReturnPathCapability {
-	const entry = sendProviderCatalogEntry(kind);
+	return resolveReturnPathCapabilityForEntry(sendProviderCatalogEntry(kind), probe, now);
+}
+
+/** The two catalog fields the resolution actually depends on. */
+export type ReturnPathCatalogDeclaration = Readonly<{
+	supportsCustomReturnPath?: DeclaredCustomReturnPathSupport;
+	hasProviderFeedback?: boolean;
+}>;
+
+/**
+ * The same resolution against a DECLARATION rather than a catalogued kind.
+ *
+ * Exists so the fail-closed path — a transport (a plugin-contributed one, or a
+ * future core kind) that declares NOTHING — is testable against an explicit
+ * fixture instead of depending on the bundled catalog happening to contain an
+ * undeclared entry. A test that searches the live catalog for such an entry
+ * passes vacuously the day every entry declares one.
+ */
+export function resolveReturnPathCapabilityForEntry(
+	entry: ReturnPathCatalogDeclaration,
+	probe: ReturnPathProbeState | null,
+	now: number
+): ResolvedReturnPathCapability {
 	const declared: DeclaredCustomReturnPathSupport = entry.supportsCustomReturnPath ?? 'no';
 	const hasProviderFeedback = entry.hasProviderFeedback ?? false;
 
@@ -288,6 +385,16 @@ function grade(
 		reason,
 	};
 }
+
+/**
+ * The posture for a transport we cannot resolve AT ALL — an id this deployment
+ * no longer configures. Same shape, same grading function, so it can never
+ * drift from what {@link resolveReturnPathCapability} returns for a transport
+ * that simply has no evidence yet. Never an error (plan D2).
+ */
+export const unresolvableReturnPathCapability: ResolvedReturnPathCapability = Object.freeze(
+	grade('unknown', 'probe', 'never_probed', 'awaiting_delivery', { hasProviderFeedback: false })
+);
 
 /**
  * Widen a bounce-gate tolerance for a degraded arm. Separate from the gate
