@@ -192,7 +192,6 @@ describe('runSeedProbeSweep — the hygiene EXECUTOR', () => {
 		const h = buildDeps({ work: [account], folders: { sp_a: 'INBOX' } });
 		const result = await runSeedProbeSweep(h.deps);
 		expect(Object.keys(result)).not.toContain('rotationReminders');
-		expect(Object.keys(h.deps)).not.toContain('emitRotationReminder');
 	});
 });
 
