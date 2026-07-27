@@ -191,6 +191,18 @@ crons.interval(
 	{}
 );
 
+// Relay return-path capability (plan G-08): settle probes that saw no bounce
+// inside the timeout — exactly how a relay that REWRITES our envelope sender
+// presents itself — then re-probe whatever is due. Idempotent, and backing off
+// (24h → 7d → 30d) because each probe costs the operator a real bounce. With no
+// bring-your-own relay it is a no-op (plan D2).
+crons.interval(
+	'sweep relay return-path probes',
+	{ hours: 1 },
+	internal.delivery.relayReturnPathProbe.sweepReturnPathProbes,
+	{}
+);
+
 // Clean up sending-reputation buckets older than 60 days every hour (both
 // scopes). Risk is derived on read (ADR-0042), so no periodic recalculation.
 crons.interval(

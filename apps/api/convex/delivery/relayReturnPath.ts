@@ -20,37 +20,12 @@ import {
 	isProbeTimedOut,
 	nextProbeState,
 	resolveReturnPathCapability,
+	unresolvableReturnPathCapability,
 	type ResolvedReturnPathCapability,
 	type ReturnPathProbeState,
 } from '../lib/sendProviders/returnPathCapability';
-import { resolveSendTransport, type SendTransportId } from '../lib/sendProviders/transports';
-
-/**
- * Prefix on the message id a return-path probe sends under. The MTA bounce
- * path attributes a DSN by decoding the signed VERP token, so a bounce that
- * carries this id proves the relay preserved our envelope sender byte for byte
- * (any rewrite sends the DSN somewhere we never see). The webhook dispatcher
- * routes these to {@link recordProbeObservation} instead of the Send lifecycle
- * — a probe is not a Send and must never touch a campaign's numbers.
- */
-export const RETURN_PATH_PROBE_MESSAGE_ID_PREFIX = 'rp-probe.';
-
-/** The message id a probe sends under. */
-export function returnPathProbeMessageId(probeId: string): string {
-	return `${RETURN_PATH_PROBE_MESSAGE_ID_PREFIX}${probeId}`;
-}
-
-/** Is this attributed message id one of our return-path probes? */
-export function isReturnPathProbeMessageId(messageId: string | undefined): boolean {
-	return messageId !== undefined && messageId.startsWith(RETURN_PATH_PROBE_MESSAGE_ID_PREFIX);
-}
-
-/** The probe id carried by a probe message id, or null. */
-export function probeIdFromMessageId(messageId: string): string | null {
-	if (!isReturnPathProbeMessageId(messageId)) return null;
-	const probeId = messageId.slice(RETURN_PATH_PROBE_MESSAGE_ID_PREFIX.length);
-	return probeId.length > 0 ? probeId : null;
-}
+import { tryResolveSendTransport } from '../lib/sendProviders/transports';
+import { probeIdFromMessageId } from './messageIdRouting';
 
 interface ProbeRow {
 	readonly transportId: string;
@@ -61,6 +36,7 @@ interface ProbeRow {
 	readonly observedEnvelopeSender?: string;
 	readonly startedAt: number;
 	readonly settledAt?: number;
+	readonly attempts?: number;
 }
 
 function toProbeState(row: ProbeRow): ReturnPathProbeState {
@@ -73,6 +49,7 @@ function toProbeState(row: ProbeRow): ReturnPathProbeState {
 			: { observedEnvelopeSender: row.observedEnvelopeSender }),
 		startedAt: row.startedAt,
 		...(row.settledAt === undefined ? {} : { settledAt: row.settledAt }),
+		...(row.attempts === undefined ? {} : { attempts: row.attempts }),
 	};
 }
 
@@ -89,72 +66,48 @@ async function loadProbeState(
 }
 
 /**
- * Resolve the transport's kind without letting an unresolvable id become an
- * error surface: an id this deployment no longer configures simply has no
- * capability, which reads as `unknown` (= unsupported, degraded).
+ * Shared resolver used by the routing read seam and by callers holding a ctx.
+ *
+ * An id this deployment no longer configures is not an error surface: it simply
+ * has no capability, which reads as `unknown` (= unsupported, degraded).
  */
-function transportKind(
-	transportId: string
-): ReturnType<typeof resolveSendTransport>['kind'] | null {
-	try {
-		return resolveSendTransport(transportId as SendTransportId).kind;
-	} catch {
-		return null;
-	}
-}
-
-/** The unresolvable/unknown posture. Never an error — plan D2. */
-const UNKNOWN_CAPABILITY: ResolvedReturnPathCapability = Object.freeze({
-	capability: 'unknown',
-	stampVerpReturnPath: false,
-	measurement: 'degraded',
-	degraded: true,
-	bounceToleranceMultiplier: 4,
-	declared: 'no',
-	probeStatus: 'never_probed',
-	reason: 'declared_unsupported',
-});
-
-/** Shared resolver used by the query and by callers holding a ctx already. */
 export async function returnPathCapabilityFor(
 	ctx: QueryCtx,
 	transportId: string,
 	now: number
 ): Promise<ResolvedReturnPathCapability> {
-	const kind = transportKind(transportId);
-	if (!kind) return UNKNOWN_CAPABILITY;
+	const transport = tryResolveSendTransport(transportId);
+	if (!transport) return unresolvableReturnPathCapability;
 	// An open probe already resolves to `unknown` (= unsupported, degraded), so a
 	// timed-out one needs no special case here; the expiry is materialized by
 	// `expireTimedOutProbes`, never by a write from a read path.
 	const probe = await loadProbeState(ctx, transportId);
-	return resolveReturnPathCapability(kind, probe, now);
+	return resolveReturnPathCapability(transport.kind, probe, now);
 }
 
 /**
- * The send path's read: may we stamp our VERP envelope sender on this
- * transport, and how comparable is its bounce data?
- */
-export const transportReturnPathCapability = internalQuery({
-	args: { transportId: v.string() },
-	handler: async (ctx, args): Promise<ResolvedReturnPathCapability> =>
-		await returnPathCapabilityFor(ctx, args.transportId, Date.now()),
-});
-
-/**
  * Is this transport due a (re-)probe? Never probed → yes; supported verdicts
- * are re-checked after the TTL, unsupported ones sooner (relay configuration
- * changes), and an open probe holds the slot until it times out.
+ * are re-checked after the TTL, unsupported ones on a BACKING-OFF schedule
+ * (every probe costs the operator a real bounce), and an open probe holds the
+ * slot until it times out.
+ *
+ * An id that does not resolve is never due — probing it would send nothing.
  */
 export const isReturnPathProbeDue = internalQuery({
 	args: { transportId: v.string(), at: v.number() },
-	handler: async (ctx, args): Promise<boolean> =>
-		isProbeDue(await loadProbeState(ctx, args.transportId), args.at),
+	handler: async (ctx, args): Promise<boolean> => {
+		if (!tryResolveSendTransport(args.transportId)) return false;
+		return isProbeDue(await loadProbeState(ctx, args.transportId), args.at);
+	},
 });
 
 /**
  * Record that a probe went out (or was refused at MAIL FROM). Acceptance keeps
  * the probe OPEN — it is deliberately not a verdict, because a relay may
  * accept our envelope sender and rewrite it.
+ *
+ * `attempts` accumulates across re-probes and drives the retry backoff, so a
+ * relay that will never support us is re-probed monthly rather than daily.
  */
 export const recordProbeSubmission = internalMutation({
 	args: {
@@ -165,21 +118,29 @@ export const recordProbeSubmission = internalMutation({
 		at: v.number(),
 	},
 	handler: async (ctx, args) => {
+		// Reject an id the transport registry cannot parse at the BOUNDARY rather
+		// than persisting whatever string arrived — a row keyed by an id nothing
+		// resolves is unreadable by every consumer and invisible to the operator.
+		if (!tryResolveSendTransport(args.transportId)) {
+			return { status: 'unresolvable_transport' as const };
+		}
+		const existing = await ctx.db
+			.query('sendTransportReturnPathProbes')
+			.withIndex('by_transport', (q) => q.eq('transportId', args.transportId))
+			.first();
+		const attempts = (existing?.attempts ?? 0) + 1;
 		const opened: ReturnPathProbeState = {
 			status: 'awaiting_delivery',
 			reason: 'awaiting_delivery',
 			sentEnvelopeSender: args.sentEnvelopeSender,
 			startedAt: args.at,
+			attempts,
 		};
 		const state = nextProbeState(opened, {
 			kind: 'submitted',
 			accepted: args.accepted,
 			at: args.at,
 		});
-		const existing = await ctx.db
-			.query('sendTransportReturnPathProbes')
-			.withIndex('by_transport', (q) => q.eq('transportId', args.transportId))
-			.first();
 		const values = {
 			transportId: args.transportId,
 			probeId: args.probeId,
@@ -187,6 +148,7 @@ export const recordProbeSubmission = internalMutation({
 			reason: state.reason,
 			sentEnvelopeSender: state.sentEnvelopeSender,
 			startedAt: state.startedAt,
+			attempts,
 			...(state.settledAt === undefined ? {} : { settledAt: state.settledAt }),
 			updatedAt: args.at,
 		};
@@ -205,18 +167,22 @@ export const recordProbeSubmission = internalMutation({
 /**
  * Apply an observed bounce for a probe.
  *
- * `observedEnvelopeSender` is what the bounce was actually addressed to when
- * the caller knows it. When it is omitted the arrival itself is the evidence:
- * the MTA only attributes a DSN whose signed VERP token verifies, which is
- * impossible unless the relay preserved the envelope sender exactly — so the
- * observation is recorded against the address we sent. A caller that DOES see
- * a different address (a relay that rewrote it) records a mismatch and the
- * transport is marked unsupported.
+ * ARRIVAL IS THE EVIDENCE, and it is stronger evidence than an address
+ * comparison would be. Our bounce server only attributes a DSN whose signed
+ * VERP token verifies, and the MAC covers the base64url-encoded id in the LOCAL
+ * PART — so a DSN can only reach this mutation if the relay preserved the
+ * envelope sender we set, byte for byte. A relay that rewrites it (or merely
+ * case-folds the token) sends the DSN to its own address instead: we see
+ * nothing at all, the probe ages out, and `expireTimedOutProbes` settles it
+ * `unsupported` / `no_bounce_observed`. That is why a rewrite manifests here as
+ * SILENCE rather than as a mismatch, and why this mutation takes no observed
+ * address: there is no production source for one that could differ, and an
+ * optional parameter defaulted to the sent address would be a match by
+ * construction dressed up as a check.
  */
 export const recordProbeObservation = internalMutation({
 	args: {
 		probeMessageId: v.string(),
-		observedEnvelopeSender: v.optional(v.string()),
 		at: v.number(),
 	},
 	handler: async (ctx, args) => {
@@ -231,10 +197,12 @@ export const recordProbeObservation = internalMutation({
 		const current = toProbeState(row);
 		const state = nextProbeState(current, {
 			kind: 'observed',
-			envelopeSender: args.observedEnvelopeSender ?? current.sentEnvelopeSender,
+			envelopeSender: current.sentEnvelopeSender,
 			at: args.at,
 		});
-		if (state === current) return { applied: false as const, reason: 'already_settled' as const };
+		if (state.status === current.status) {
+			return { applied: false as const, reason: 'already_settled' as const };
+		}
 		await ctx.db.patch(row._id, {
 			status: state.status,
 			reason: state.reason,
@@ -249,16 +217,21 @@ export const recordProbeObservation = internalMutation({
 });
 
 /**
- * Settle probes that waited past the timeout with nothing observed. Idempotent
- * and bounded by the number of configured transports.
+ * Settle probes that waited past the timeout with nothing observed — the case
+ * a rewritten envelope sender actually presents as. Idempotent.
+ *
+ * Range-scanned on `by_status_started_at` rather than collecting the table: the
+ * bound must live in an index, not in a comment about how many transports a
+ * deployment "should" have.
  */
 export const expireTimedOutProbes = internalMutation({
-	args: { at: v.number() },
-	handler: async (ctx, args) => {
+	args: { at: v.optional(v.number()) },
+	handler: async (ctx, rawArgs) => {
+		const args = { at: rawArgs.at ?? Date.now() };
 		const open = await ctx.db
 			.query('sendTransportReturnPathProbes')
-			.withIndex('by_transport')
-			.collect(); // bounded: one row per configured transport
+			.withIndex('by_status_started_at', (q) => q.eq('status', 'awaiting_delivery'))
+			.collect();
 		let expired = 0;
 		for (const row of open) {
 			const current = toProbeState(row);

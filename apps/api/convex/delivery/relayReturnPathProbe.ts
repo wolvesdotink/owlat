@@ -15,6 +15,12 @@
  * the deployment this gate exists to protect, and trusting acceptance would
  * hand it a false "comparable" flag.
  *
+ * The probe is NOT free — it deliberately manufactures a bounce on the
+ * operator's relay account, and a relay's bounce rate is exactly what gets that
+ * account suspended. So it is rate-limited by the backing-off retry schedule in
+ * the pure core (24h → 7d → 30d), and it is only ever run for transports whose
+ * catalog declaration is `probe`.
+ *
  * Plan D2: the probe is additive. A relay that is not configured, a deployment
  * with no return-path domain or VERP key, a probe that fails on the wire — all
  * simply leave the capability `unknown`, which reads as unsupported + degraded
@@ -23,17 +29,14 @@
 
 import { randomUUID } from 'node:crypto';
 import { v } from 'convex/values';
+import { isUsableVerpKey, normalizeReturnPathDomain } from '@owlat/shared/verp';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { getOptional } from '../lib/env';
 import { sendProviderCatalogEntry } from '../lib/sendProviders/catalog';
-import { resolveRelayEnvelopeSender, smtpSendProvider } from '../lib/sendProviders/smtp';
-import {
-	resolveSendTransport,
-	type SendTransportId,
-	type SendTransportRecord,
-} from '../lib/sendProviders/transports';
-import { returnPathProbeMessageId } from './relayReturnPath';
+import { sendViaRelay } from '../lib/sendProviders/smtp';
+import { listSendTransports, tryResolveSendTransport } from '../lib/sendProviders/transports';
+import { returnPathProbeMessageId } from './messageIdRouting';
 
 /** Why a probe run did nothing. All benign — see the D2 note above. */
 export type ReturnPathProbeSkipReason =
@@ -46,14 +49,6 @@ export type ReturnPathProbeRunResult =
 	| { readonly ran: false; readonly reason: ReturnPathProbeSkipReason }
 	| { readonly ran: true; readonly probeId: string; readonly accepted: boolean };
 
-function resolveTransport(transportId: string): SendTransportRecord | null {
-	try {
-		return resolveSendTransport(transportId as SendTransportId);
-	} catch {
-		return null;
-	}
-}
-
 /**
  * Run one capability probe for one configured transport. Idempotent per
  * schedule: it no-ops unless the stored verdict is missing, stale or expired.
@@ -61,16 +56,21 @@ function resolveTransport(transportId: string): SendTransportRecord | null {
 export const runReturnPathProbe = internalAction({
 	args: { transportId: v.string(), force: v.optional(v.boolean()) },
 	handler: async (ctx, args): Promise<ReturnPathProbeRunResult> => {
-		const transport = resolveTransport(args.transportId);
+		const transport = tryResolveSendTransport(args.transportId);
 		if (!transport) return { ran: false, reason: 'unresolvable_transport' };
 		if (sendProviderCatalogEntry(transport.kind).supportsCustomReturnPath !== 'probe') {
 			// `yes` and `no` are settled by the catalog; probing would prove nothing.
 			return { ran: false, reason: 'not_probeable' };
 		}
 
-		const returnPathDomain = getOptional('MTA_RETURN_PATH_DOMAIN')?.trim().replace(/\.$/, '');
+		const returnPathDomain = normalizeReturnPathDomain(getOptional('MTA_RETURN_PATH_DOMAIN'));
 		const verpKey = getOptional('MTA_BOUNCE_VERP_KEY')?.trim();
-		if (!returnPathDomain || !verpKey) return { ran: false, reason: 'not_configured' };
+		// A key the MTA would reject at startup can never verify the token this
+		// probe mints, so the DSN would arrive unattributable and the transport
+		// would be graded unsupported for the wrong reason. Don't spend a bounce.
+		if (!returnPathDomain || !isUsableVerpKey(verpKey)) {
+			return { ran: false, reason: 'not_configured' };
+		}
 
 		const at = Date.now();
 		if (args.force !== true) {
@@ -83,23 +83,21 @@ export const runReturnPathProbe = internalAction({
 
 		const probeId = randomUUID();
 		const probeMessageId = returnPathProbeMessageId(probeId);
-		// The adapter builds the VERP envelope sender from this id with the SAME
-		// shipped scheme a real send uses — there is exactly one VERP builder.
-		const sentEnvelopeSender = resolveRelayEnvelopeSender({
-			composedEnvelopeFrom: `postmaster@${returnPathDomain}`,
-			messageId: probeMessageId,
-			customReturnPath: true,
-			returnPathDomain,
-			verpKey,
-			now: at,
-		}).envelopeFrom;
-
-		// A never-provisioned mailbox at our own bounce domain: the rejection is
-		// the point, and no human ever receives this message.
+		// A never-provisioned mailbox at our OWN bounce domain: the rejection comes
+		// from our own MX, no human ever receives this message, and the DSN the
+		// relay generates is the evidence.
 		const probeRecipient = `return-path-probe-${probeId}@${returnPathDomain}`;
 		let accepted = false;
+		// Fall back to the address we ASKED for if the send never reached the wire;
+		// a refusal is recorded as unsupported either way.
+		let sentEnvelopeSender = `postmaster@${returnPathDomain}`;
 		try {
-			const attempt = await smtpSendProvider.sendEmail(
+			// The adapter builds the VERP envelope sender with the SAME shipped
+			// scheme a real send uses — there is exactly one VERP builder — and
+			// hands back the address it actually put on the wire. Recomputing it
+			// here would risk straddling the UTC VERP window boundary and recording
+			// an address that differs from the one sent.
+			const outcome = await sendViaRelay(
 				transport,
 				{
 					to: probeRecipient,
@@ -111,7 +109,8 @@ export const runReturnPathProbe = internalAction({
 				},
 				{ customReturnPath: true, verpMessageId: probeMessageId }
 			);
-			accepted = attempt.success;
+			accepted = outcome.attempt.success;
+			sentEnvelopeSender = outcome.envelopeSender;
 		} catch {
 			// A probe that cannot even reach the relay is not an error state; it is
 			// simply no evidence, recorded as a refusal so the retry interval applies.
@@ -126,5 +125,38 @@ export const runReturnPathProbe = internalAction({
 			at,
 		});
 		return { ran: true, probeId, accepted };
+	},
+});
+
+/**
+ * Expire stale probes, then probe every configured transport that could support
+ * a custom return path.
+ *
+ * This is what makes the capability REACHABLE in production: without a caller,
+ * no relay ever leaves `unknown`, the VERP stamp is never enabled and the relay
+ * arm keeps producing no bounce data of its own. Runs on a cron AND is safe to
+ * call from a transport-verification path, because `runReturnPathProbe` is
+ * idempotent per schedule — a transport that is not due is a no-op.
+ *
+ * Expiry runs FIRST: a probe that just aged out is immediately re-probeable, so
+ * one sweep both settles the verdict and schedules the next question.
+ */
+export const sweepReturnPathProbes = internalAction({
+	args: {},
+	handler: async (ctx): Promise<{ expired: number; probed: number }> => {
+		const { expired } = await ctx.runMutation(
+			internal.delivery.relayReturnPath.expireTimedOutProbes,
+			{}
+		);
+		let probed = 0;
+		for (const transport of listSendTransports()) {
+			if (sendProviderCatalogEntry(transport.kind).supportsCustomReturnPath !== 'probe') continue;
+			const result: ReturnPathProbeRunResult = await ctx.runAction(
+				internal.delivery.relayReturnPathProbe.runReturnPathProbe,
+				{ transportId: transport.id }
+			);
+			if (result.ran) probed++;
+		}
+		return { expired, probed };
 	},
 });
