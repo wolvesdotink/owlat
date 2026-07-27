@@ -281,7 +281,6 @@ async function connectSeeds(t: ReturnType<typeof convexTest>): Promise<void> {
 				address: seed.address,
 				seed: { seedProvider: seed.provider },
 				fields: {
-					emailAddress: seed.address,
 					imapHost: 'imap.example',
 					imapPort: 993,
 					isImapSecure: true,

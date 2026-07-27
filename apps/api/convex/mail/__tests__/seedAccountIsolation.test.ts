@@ -12,6 +12,12 @@
  *   2. Connecting a seed makes every campaign the org sends deliver a full copy
  *      into a mailbox the connecting member controls. That is an ADMIN action,
  *      exactly as connecting a shared team inbox is.
+ *   3. A seed's `mailboxes` row has to name an owning `userId` (there is no
+ *      other), so without the `scope='seed'` discriminator the operator's own
+ *      consumer address shows up in THEIR Postbox as a mailbox that never
+ *      syncs — and an admin who connects a seed before having a mailbox is read
+ *      by `getActiveMailboxForUser` as already having one, silently changing
+ *      the shipped fresh-start flow.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -19,6 +25,9 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from './helpers.testlib';
+import { loadAccessibleMailboxes } from '../permissions';
+import { getActiveMailboxForUser } from '../mailbox';
+import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
 
 const sessionMock = vi.hoisted(() => ({
 	userId: 'admin-user',
@@ -79,7 +88,7 @@ const CREDS = {
 };
 
 async function connectSeed(t: TestConvex<typeof schema>, emailAddress: string): Promise<void> {
-	await t.mutation(internal.mail.externalAccounts._connectSeedInternal, {
+	await t.mutation(internal.mail.externalAccountsSeed._connectSeedInternal, {
 		...CREDS,
 		emailAddress,
 		seedProvider: 'gmail',
@@ -160,5 +169,107 @@ describe('a seed mailbox is never handed to the inbound sync worker', () => {
 
 		const connectable = await t.query(internal.mail.externalAccounts.listConnectableAccounts, {});
 		expect(connectable.map((a) => a.accountId)).toEqual([ordinaryId]);
+	});
+});
+
+describe('a seed mailbox is never the connecting admin’s own inbox', () => {
+	it('is absent from loadAccessibleMailboxes', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin');
+		await connectSeed(t, 'owlat.seed.01@gmail.example');
+
+		const visible = await t.run(async (ctx) => loadAccessibleMailboxes(ctx, 'admin-user', 'org-1'));
+		expect(visible).toEqual([]);
+	});
+
+	it('does not make an admin without a mailbox look like they already have one', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin');
+		await connectSeed(t, 'owlat.seed.01@gmail.example');
+
+		const active = await t.run(async (ctx) => getActiveMailboxForUser(ctx, 'admin-user'));
+		expect(active).toBeNull();
+	});
+
+	it('still surfaces the admin’s REAL mailbox alongside a connected seed', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin');
+		const realMailboxId = await t.run(async (ctx) => {
+			const mailboxId = await ctx.db.insert('mailboxes', {
+				userId: 'admin-user',
+				organizationId: 'org-1',
+				address: 'admin@owlat.example',
+				domain: 'owlat.example',
+				kind: 'hosted' as const,
+				status: 'active' as const,
+				usedBytes: 0,
+				uidValidity: 1,
+				createdAt: 1,
+				updatedAt: 1,
+			});
+			await ctx.db.insert('mailboxMembers', {
+				mailboxId,
+				authUserId: 'admin-user',
+				role: 'owner' as const,
+				addedBy: 'admin-user',
+				createdAt: 1,
+			});
+			return mailboxId;
+		});
+		await connectSeed(t, 'owlat.seed.01@gmail.example');
+
+		const visible = await t.run(async (ctx) => loadAccessibleMailboxes(ctx, 'admin-user', 'org-1'));
+		expect(visible.map((m) => m._id)).toEqual([realMailboxId]);
+		const active = await t.run(async (ctx) => getActiveMailboxForUser(ctx, 'admin-user'));
+		expect(active?._id).toBe(realMailboxId);
+	});
+
+	it('tags the provisioned mailbox row with scope=seed', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin');
+		await connectSeed(t, 'owlat.seed.01@gmail.example');
+		const mailboxes = await t.run(async (ctx) => ctx.db.query('mailboxes').collect());
+		expect(mailboxes).toHaveLength(1);
+		expect(mailboxes[0]?.scope).toBe('seed');
+	});
+});
+
+describe('the seed set is bounded at connect time, never silently truncated', () => {
+	it('refuses the seed past the per-organization limit', async () => {
+		const t = convexTest(schema, modules);
+		setSession('admin');
+		// Fill the ledger straight to the cap; the cap itself lives in
+		// @owlat/shared so the connect guard and the read page cannot disagree.
+		await t.run(async (ctx) => {
+			for (let i = 0; i < SEED_ACCOUNTS_PER_ORG_LIMIT; i += 1) {
+				const address = `owlat.seed.filler.${i}@gmail.example`;
+				const mailboxId = await ctx.db.insert('mailboxes', {
+					userId: 'admin-user',
+					organizationId: 'org-1',
+					address,
+					domain: 'gmail.example',
+					kind: 'external' as const,
+					scope: 'seed' as const,
+					status: 'active' as const,
+					usedBytes: 0,
+					uidValidity: 1,
+					createdAt: 1,
+					updatedAt: 1,
+				});
+				await ctx.db.insert('externalMailAccounts', {
+					userId: 'admin-user',
+					organizationId: 'org-1',
+					mailboxId,
+					purpose: 'seed' as const,
+					seedProvider: 'gmail' as const,
+					...CREDS,
+					status: 'pending' as const,
+					createdAt: 1,
+					updatedAt: 1,
+				});
+			}
+		});
+
+		await expect(connectSeed(t, 'owlat.seed.overflow@gmail.example')).rejects.toThrow(/maximum/);
 	});
 });

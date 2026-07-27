@@ -14,7 +14,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { summarizeSeedPlacementWindow } from '../seedPlacement';
@@ -34,10 +34,28 @@ const HOUR = 60 * 60 * 1000;
 const NOW = 1_800_000_000_000;
 const ORG = 'org_dispatch_gate';
 
+// The clock is pinned for the WHOLE suite: this file is specifically about
+// horizons, and a fixture built on the real `Date.now()` while the assertions
+// run against `NOW` measures nothing.
+// Only `Date` is faked — convex-test drives its own scheduler through real
+// timers, and faking those would deadlock the harness rather than pin a clock.
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(NOW);
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
+
 async function seedAccount(
 	t: ReturnType<typeof convexTest>,
 	index = 0,
-	purpose: 'seed' | undefined = 'seed'
+	// 'mail' is an ORDINARY connected account; `null` is a LEGACY row that predates
+	// the column. Deliberately not an optional parameter defaulting to 'seed': an
+	// explicit `undefined` triggers the default, which is exactly how the
+	// page-pressure regression below ended up tagging all 60 of its "ordinary"
+	// accounts as seeds and testing nothing.
+	purpose: 'seed' | 'mail' | null = 'seed'
 ): Promise<Id<'externalMailAccounts'>> {
 	return t.run(async (ctx) => {
 		const address = `owlat.seed.${index}@gmail.example`;
@@ -57,7 +75,8 @@ async function seedAccount(
 			userId: 'user_1',
 			organizationId: ORG,
 			mailboxId,
-			...(purpose ? { purpose, seedProvider: 'gmail' as const } : {}),
+			...(purpose !== null ? { purpose } : {}),
+			...(purpose === 'seed' ? { seedProvider: 'gmail' as const } : {}),
 			imapHost: 'imap.gmail.example',
 			imapPort: 993,
 			isImapSecure: true,
@@ -80,7 +99,12 @@ async function seedAccount(
 async function probe(
 	t: ReturnType<typeof convexTest>,
 	accountId: Id<'externalMailAccounts'>,
-	fields: { probeId: string; sentAt: number; dispatchedAt?: number }
+	fields: {
+		probeId: string;
+		sentAt: number;
+		dispatchedAt?: number;
+		placement?: 'inbox' | 'spam';
+	}
 ): Promise<Id<'seedPlacementProbes'>> {
 	return t.run(async (ctx) =>
 		ctx.db.insert('seedPlacementProbes', {
@@ -91,9 +115,37 @@ async function probe(
 			stream: 'campaign' as const,
 			sentAt: fields.sentAt,
 			...(fields.dispatchedAt !== undefined ? { dispatchedAt: fields.dispatchedAt } : {}),
+			...(fields.placement !== undefined
+				? { placement: fields.placement, classifiedAt: fields.sentAt }
+				: {}),
 			expiresAt: fields.sentAt + SEED_PROBE_RETENTION_MS,
 		})
 	);
+}
+
+/**
+ * Drain the CURSORED sweep the way the worker does — page after page until the
+ * server says it wrapped around — so a regression that hides work behind a page
+ * boundary still fails these assertions.
+ */
+async function listWork(
+	t: ReturnType<typeof convexTest>,
+	now: number = NOW
+): Promise<Array<{ probeIds: string[]; expiredProbeIds: string[] }>> {
+	const all: Array<{ probeIds: string[]; expiredProbeIds: string[] }> = [];
+	let cursor: string | null = null;
+	// Hard bound so a cursor that never advances fails loudly instead of hanging.
+	for (let page = 0; page < 50; page += 1) {
+		const result: {
+			items: Array<{ probeIds: string[]; expiredProbeIds: string[] }>;
+			cursor: string | null;
+			isDone: boolean;
+		} = await t.query(internal.analytics.seedProbePoller.listSeedProbeWork, { now, cursor });
+		all.push(...result.items);
+		if (result.isDone) return all;
+		cursor = result.cursor;
+	}
+	throw new Error('seed probe sweep never reported isDone');
 }
 
 describe('work selection keys off dispatch, never off enqueue', () => {
@@ -102,7 +154,7 @@ describe('work selection keys off dispatch, never off enqueue', () => {
 		const accountId = await seedAccount(t);
 		await probe(t, accountId, { probeId: 'sp_queued00000000000000', sentAt: NOW - 12 * HOUR });
 
-		const work = await t.query(internal.analytics.seedProbePoller.listSeedProbeWork, { now: NOW });
+		const work = await listWork(t);
 		expect(work).toEqual([]);
 	});
 
@@ -115,7 +167,7 @@ describe('work selection keys off dispatch, never off enqueue', () => {
 			dispatchedAt: NOW - HOUR,
 		});
 
-		const work = await t.query(internal.analytics.seedProbePoller.listSeedProbeWork, { now: NOW });
+		const work = await listWork(t);
 		expect(work).toHaveLength(1);
 		expect(work[0]?.probeIds).toEqual(['sp_sent0000000000000000']);
 		expect(work[0]?.expiredProbeIds).toEqual([]);
@@ -137,14 +189,23 @@ describe('work selection keys off dispatch, never off enqueue', () => {
 			dispatchedAt: NOW - 48 * HOUR,
 		});
 
-		const work = await t.query(internal.analytics.seedProbePoller.listSeedProbeWork, { now: NOW });
+		const work = await listWork(t);
 		expect(work[0]?.probeIds).toEqual(['sp_slowqueue00000000000']);
 		expect(work[0]?.expiredProbeIds).toEqual(['sp_reallygone000000000']);
 	});
 
 	it('does not go dark behind a page of ordinary external accounts', async () => {
 		const t = convexTest(schema, modules);
-		for (let i = 0; i < 60; i += 1) await seedAccount(t, i + 100, undefined);
+		// 60 genuinely NON-seed accounts: half tagged 'mail', half legacy rows that
+		// predate the column entirely. Either shape must be invisible to the seed
+		// sweep no matter how many of them a deployment has.
+		for (let i = 0; i < 30; i += 1) await seedAccount(t, i + 100, 'mail');
+		for (let i = 0; i < 30; i += 1) await seedAccount(t, i + 200, null);
+		const ordinary = await t.run(async (ctx) =>
+			(await ctx.db.query('externalMailAccounts').collect()).filter((a) => a.purpose === 'seed')
+		);
+		expect(ordinary).toHaveLength(0);
+
 		const accountId = await seedAccount(t, 1);
 		await probe(t, accountId, {
 			probeId: 'sp_findme00000000000000',
@@ -152,8 +213,55 @@ describe('work selection keys off dispatch, never off enqueue', () => {
 			dispatchedAt: NOW - HOUR,
 		});
 
-		const work = await t.query(internal.analytics.seedProbePoller.listSeedProbeWork, { now: NOW });
+		const work = await listWork(t);
 		expect(work.map((w) => w.probeIds)).toEqual([['sp_findme00000000000000']]);
+	});
+
+	/**
+	 * The "goes dark" class, one level down. `by_account_*` pages are bounded, and
+	 * a CLASSIFIED probe stays in the ledger for the whole 90-day retention: keyed
+	 * on `(accountId, dispatchedAt)` alone the page fills with rows the poller
+	 * already answered and every new probe becomes invisible. The index leads with
+	 * `placement`, so a classified row leaves the range the moment it is written.
+	 */
+	it('still offers a fresh probe on an account holding a page of CLASSIFIED ones', async () => {
+		const t = convexTest(schema, modules);
+		const accountId = await seedAccount(t);
+		for (let i = 0; i < 60; i += 1) {
+			await probe(t, accountId, {
+				probeId: `sp_done${String(i).padStart(17, '0')}`,
+				sentAt: NOW - 72 * HOUR,
+				dispatchedAt: NOW - 71 * HOUR,
+				placement: 'inbox',
+			});
+		}
+		await probe(t, accountId, {
+			probeId: 'sp_fresh00000000000000',
+			sentAt: NOW - 2 * HOUR,
+			dispatchedAt: NOW - HOUR,
+		});
+
+		const work = await listWork(t);
+		expect(work.map((w) => w.probeIds)).toEqual([['sp_fresh00000000000000']]);
+	});
+
+	it('reaches every organization rather than starving whoever sorts last', async () => {
+		const t = convexTest(schema, modules);
+		// More seed accounts than a single page holds; each one carries work.
+		const probeIds: string[] = [];
+		for (let i = 0; i < 40; i += 1) {
+			const accountId = await seedAccount(t, i + 500);
+			const probeId = `sp_multi${String(i).padStart(16, '0')}`;
+			probeIds.push(probeId);
+			await probe(t, accountId, {
+				probeId,
+				sentAt: NOW - 12 * HOUR,
+				dispatchedAt: NOW - HOUR,
+			});
+		}
+
+		const work = await listWork(t);
+		expect(work.flatMap((w) => w.probeIds).sort()).toEqual([...probeIds].sort());
 	});
 });
 
@@ -183,17 +291,57 @@ describe('an undispatched probe can never be classified', () => {
 	});
 });
 
+describe('the classification mutation is the single arbiter', () => {
+	it('no-ops on an already-classified probe, so a second replica cannot re-click', async () => {
+		const t = convexTest(schema, modules);
+		const accountId = await seedAccount(t);
+		const ref = await probe(t, accountId, {
+			probeId: 'sp_raced000000000000000',
+			sentAt: NOW - 12 * HOUR,
+			dispatchedAt: NOW - HOUR,
+		});
+
+		const first = await t.mutation(internal.analytics.seedPlacement.recordSeedProbeClassification, {
+			organizationId: ORG,
+			probeId: 'sp_raced000000000000000',
+			folderName: 'INBOX',
+			now: NOW,
+			clickRoll: 0,
+		});
+		expect(first).toMatchObject({ recorded: true, placement: 'inbox' });
+
+		// A second mail-sync replica sweeping the same probe. It must not be told
+		// to mark read or CLICK again — a second click is a real request a real
+		// provider sees, and no subscriber produces that pattern.
+		const second = await t.mutation(
+			internal.analytics.seedPlacement.recordSeedProbeClassification,
+			{
+				organizationId: ORG,
+				probeId: 'sp_raced000000000000000',
+				folderName: '[Gmail]/Spam',
+				now: NOW + 1000,
+				clickRoll: 0,
+			}
+		);
+		expect(second).toEqual({ recorded: false, reason: 'already_classified' });
+
+		const row = await t.run(async (ctx) => ctx.db.get(ref));
+		expect(row?.placement).toBe('inbox');
+		expect(row?.classifiedAt).toBe(NOW);
+	});
+});
+
 describe('the abandonment sweep writes off what was never sent', () => {
 	it('stamps the non-evidence disposition and never a placement', async () => {
 		const t = convexTest(schema, modules);
 		const accountId = await seedAccount(t);
 		const stale = await probe(t, accountId, {
 			probeId: 'sp_abandoned0000000000',
-			sentAt: Date.now() - 96 * HOUR,
+			sentAt: NOW - 96 * HOUR,
 		});
 		const fresh = await probe(t, accountId, {
 			probeId: 'sp_stillwaiting0000000',
-			sentAt: Date.now() - HOUR,
+			sentAt: NOW - HOUR,
 		});
 
 		const result = await t.mutation(
@@ -217,7 +365,7 @@ describe('the abandonment sweep writes off what was never sent', () => {
 		const accountId = await seedAccount(t);
 		await probe(t, accountId, {
 			probeId: 'sp_abandoned0000000000',
-			sentAt: Date.now() - 96 * HOUR,
+			sentAt: NOW - 96 * HOUR,
 		});
 		await t.mutation(internal.analytics.seedPlacement.abandonUndispatchedSeedProbes, {});
 		const second = await t.mutation(
@@ -232,13 +380,11 @@ describe('the abandonment sweep writes off what was never sent', () => {
 		const accountId = await seedAccount(t);
 		await probe(t, accountId, {
 			probeId: 'sp_abandoned0000000000',
-			sentAt: Date.now() - 96 * HOUR,
+			sentAt: NOW - 96 * HOUR,
 		});
 		await t.mutation(internal.analytics.seedPlacement.abandonUndispatchedSeedProbes, {});
 
-		const summary = await t.run(async (ctx) =>
-			summarizeSeedPlacementWindow(ctx.db, ORG, Date.now())
-		);
+		const summary = await t.run(async (ctx) => summarizeSeedPlacementWindow(ctx.db, ORG, NOW));
 		expect(summary.rollups).toEqual([]);
 	});
 });
