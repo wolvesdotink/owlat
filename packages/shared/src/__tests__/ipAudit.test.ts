@@ -276,3 +276,59 @@ describe('evaluateIpAudit — the three outcomes', () => {
 		expect(report.port25).toBe('open');
 	});
 });
+
+/**
+ * An audit that queried nothing must never read as a pass. `zones: []` is
+ * reachable in production: the MTA skips the zone sweep entirely when it cannot
+ * classify the address family.
+ */
+describe('evaluateIpAudit — an audit that asked nothing is not clean', () => {
+	it('treats zero zone observations as unverified, not as clean', () => {
+		const report = evaluateIpAudit(input({ zones: [] }));
+		expect(report.verdict).toBe('action_required');
+		expect(report.confidence).toBe('low');
+		expect(report.headline).not.toContain('clean');
+		const incomplete = report.findings.find((finding) => finding.id === 'audit_incomplete');
+		expect(incomplete?.severity).toBe('fixable');
+		expect(incomplete?.zoneId).toBe('spamhaus');
+		expect(incomplete?.message).toContain('not checked');
+		expect(incomplete?.nextAction).toContain('Re-run the audit');
+	});
+
+	it('treats a missing Spamhaus observation the same way even when others are clean', () => {
+		const report = evaluateIpAudit(
+			input({ zones: [zone('barracuda', 'clean'), zone('spamcop', 'clean')] })
+		);
+		expect(report.verdict).toBe('action_required');
+		expect(report.confidence).toBe('low');
+		expect(report.findings.filter((finding) => finding.id === 'audit_incomplete')).toHaveLength(1);
+	});
+
+	it('keeps the wording distinct from a Spamhaus that answered nothing', () => {
+		const report = evaluateIpAudit(input({ zones: [zone('spamhaus', 'unknown')] }));
+		const incomplete = report.findings.find((finding) => finding.id === 'audit_incomplete');
+		expect(incomplete?.message).toContain('did not answer');
+		expect(report.confidence).toBe('low');
+	});
+});
+
+/**
+ * Confidence must be reachable. A structural gap the operator cannot close —
+ * an address with no /24 to sample — is inert, exactly like a skipped feed.
+ */
+describe('evaluateIpAudit — an unsampleable neighbourhood is inert', () => {
+	it('keeps confidence high when no /24 sample was even attempted', () => {
+		const report = evaluateIpAudit(
+			input({ neighbourhood: { sampled: 0, listed: 0 }, neighbourhoodApplicable: false })
+		);
+		expect(report.neighbourhoodStatus).toBe('insufficient_data');
+		expect(report.confidence).toBe('high');
+		expect(report.verdict).toBe('clean');
+	});
+
+	it('still lowers confidence when a sample was attempted and came back thin', () => {
+		const report = evaluateIpAudit(input({ neighbourhood: { sampled: 2, listed: 0 } }));
+		expect(report.neighbourhoodStatus).toBe('insufficient_data');
+		expect(report.confidence).toBe('low');
+	});
+});

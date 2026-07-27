@@ -157,6 +157,13 @@ export interface IpAuditInput {
 	zones: readonly IpAuditZoneObservation[];
 	fcrdns: { verdict: FcrdnsVerdict; reason?: FcrdnsFailureReason };
 	neighbourhood: IpAuditNeighbourhood;
+	/**
+	 * False when this address has no /24 to sample at all (IPv6), or the sample
+	 * was deliberately disabled. Structural unavailability must be INERT: an
+	 * IPv6 address can otherwise never reach high confidence, with no action the
+	 * operator could take to raise it.
+	 */
+	neighbourhoodApplicable?: boolean;
 }
 
 export interface IpAuditReport {
@@ -356,15 +363,20 @@ export function evaluateIpAudit(input: IpAuditInput): IpAuditReport {
 	const neighbour = neighbourhoodFinding(neighbourStatus);
 	if (neighbour) findings.push(neighbour);
 
-	// A zone we could not reach is not evidence of cleanliness.
+	// A zone we could not reach is not evidence of cleanliness — and neither is a
+	// zone we never queried. An audit that asked Spamhaus nothing must not read
+	// as a pass, so a MISSING observation is treated exactly like an unknown one.
 	const unknownZones = input.zones.filter((zone) => zone.status === 'unknown');
 	const spamhaus = input.zones.find((zone) => zone.zoneId === 'spamhaus');
-	if (spamhaus?.status === 'unknown') {
+	const spamhausAnswered = spamhaus !== undefined && spamhaus.status !== 'unknown';
+	if (!spamhausAnswered) {
 		findings.push({
 			id: 'audit_incomplete',
 			severity: 'fixable',
 			zoneId: 'spamhaus',
-			message: 'Spamhaus did not answer, so this address is unverified rather than clean.',
+			message: spamhaus
+				? 'Spamhaus did not answer, so this address is unverified rather than clean.'
+				: 'Spamhaus was not checked, so this address is unverified rather than clean.',
 			nextAction: 'Re-run the audit before you start sending.',
 		});
 	} else if (unknownZones.length > 0) {
@@ -391,11 +403,16 @@ export function evaluateIpAudit(input: IpAuditInput): IpAuditReport {
 					? 'action_required'
 					: 'clean';
 
+	// Only a sample we actually attempted can lower confidence: an address with
+	// no /24 is a fact about the address, not a gap the operator can close.
+	const neighbourhoodInconclusive =
+		input.neighbourhoodApplicable !== false && neighbourStatus === 'insufficient_data';
 	const confidence: 'high' | 'low' =
 		input.port25 === 'unknown' ||
 		unknownZones.length > 0 ||
+		!spamhausAnswered ||
 		input.fcrdns.verdict === 'error' ||
-		neighbourStatus === 'insufficient_data'
+		neighbourhoodInconclusive
 			? 'low'
 			: 'high';
 
