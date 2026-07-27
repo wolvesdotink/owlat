@@ -1,6 +1,7 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
+import { registerContactHygieneCrons } from './contacts/crons';
 
 const crons = cronJobs();
 
@@ -450,15 +451,6 @@ crons.interval('build daily briefs', { hours: 24 }, internal.mail.dailyBrief.bui
 // unseen. Fail-soft; never sends mail.
 crons.interval('commitment reminder sweep', { minutes: 30 }, internal.mail.commitments.sweep, {});
 
-// Permanently delete soft-deleted contacts whose 30-day retention has expired.
-// Cascades to contact-owned children and nulls out FKs in append-only tables.
-crons.interval(
-	'cleanup soft-deleted contacts',
-	{ hours: 24 },
-	internal.contacts.contacts.cleanupSoftDeletedContacts,
-	{}
-);
-
 // Sealed Mail: refresh expiring recipient-key discovery rows every 30 minutes
 // (e2ee/discovery.ts). Positive hits carry a 24h TTL and negatives a 1h TTL, so
 // this picks up rotated/newly-published peer keys and retires stale negatives
@@ -470,43 +462,9 @@ crons.interval(
 	{}
 );
 
-// Auto-merge unambiguous duplicate contacts (same email/phone across two
-// contacts) every 6 hours. Single-org hygiene; bounded per run.
-crons.interval(
-	'auto-merge duplicate contacts',
-	{ hours: 6 },
-	internal.contacts.identities.autoMergeDuplicates,
-	{ limit: 20 }
-);
-
-// Re-project stale contact engagement scores so a score decays on the clock,
-// not only when the contact acts. Bounded per tick IN DOCUMENTS (each contact
-// costs up to 500 activity reads), which is why this is hourly rather than
-// nightly: capacity comes from ticks, and `BACKFILL_CONTACTS_PER_HOUR` states
-// the resulting ceiling.
-crons.interval(
-	'backfill contact engagement scores',
-	{ hours: 1 },
-	internal.analytics.engagementScoreSync.backfillEngagementScores,
-	{}
-);
-
-// Sunset policy (deliverability plan P4-4): move contacts that have ignored
-// every message for the configured window onto the re-engagement track, then
-// auto-suppress them. Unengaged recipients are the dominant source of
-// spam-folder placement and spam-trap hits, so this runs ON by default at a
-// conservative 180/270 days. Bounded per tick (`SUNSET_CONTACTS_PER_TICK`) and
-// resumable from its index cursor. HOURLY, not daily: `SUNSET_STALE_MS` already
-// pins each individual contact to at most one evaluation a day, so the cadence
-// buys THROUGHPUT — a daily tick would cap the whole deployment at
-// `SUNSET_CONTACTS_PER_TICK` (1000) contacts a day, leaving any larger list
-// permanently behind its own stale range.
-crons.interval(
-	'sweep contact sunset policy',
-	{ hours: 1 },
-	internal.contacts.sunset.sweepSunsetPolicy,
-	{}
-);
+// Contact-book hygiene (retention cascade, duplicate auto-merge, engagement
+// score decay, sunset policy). Grouped in `contacts/crons.ts`.
+registerContactHygieneCrons(crons);
 
 // Append every bundled plugin cron (generated catalog) after the core crons,
 // each wrapped in the host runtime so flag/grant/env are rechecked per tick and
