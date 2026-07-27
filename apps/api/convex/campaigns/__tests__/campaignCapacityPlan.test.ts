@@ -8,6 +8,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	buildCapacitySchedule,
+	capacityWithinHorizon,
 	planCampaignCapacity,
 	usableDayCount,
 	MS_PER_DAY,
@@ -392,5 +393,56 @@ describe('buildCapacitySchedule — the horizon-free enumeration', () => {
 		});
 		expect(schedule.days).toBe(0);
 		expect(schedule.covered).toBe(0);
+	});
+});
+
+// ── capacityWithinHorizon — the threshold a LOWER BOUND can be judged against ──
+
+describe('capacityWithinHorizon', () => {
+	it('sums exactly the days a message queued now survives', () => {
+		expect(
+			capacityWithinHorizon({
+				remainingCapacityByDay: [10, 100, 200, 200, 700, 700],
+				maxMessageAgeMs: FOUR_DAYS,
+				now: MIDNIGHT,
+			})
+		).toBe(510); // days 0..3 only — day 4 starts after expiry
+	});
+
+	it('ignores hostile day values instead of poisoning the total', () => {
+		expect(
+			capacityWithinHorizon({
+				remainingCapacityByDay: [Number.NaN, -50, Number.POSITIVE_INFINITY, 200],
+				maxMessageAgeMs: FOUR_DAYS,
+				now: MIDNIGHT,
+			})
+		).toBe(200);
+	});
+
+	it('is zero when the projection is shorter than the horizon', () => {
+		expect(
+			capacityWithinHorizon({
+				remainingCapacityByDay: [],
+				maxMessageAgeMs: FOUR_DAYS,
+				now: MIDNIGHT,
+			})
+		).toBe(0);
+	});
+
+	it('is zero for a non-sensical horizon rather than NaN', () => {
+		expect(
+			capacityWithinHorizon({
+				remainingCapacityByDay: [100, 100],
+				maxMessageAgeMs: 0,
+				now: MIDNIGHT,
+			})
+		).toBe(0);
+		expect(
+			capacityWithinHorizon({
+				remainingCapacityByDay: [100, 100],
+				maxMessageAgeMs: FOUR_DAYS,
+				now: Number.NaN,
+			})
+		).toBe(0);
 	});
 });

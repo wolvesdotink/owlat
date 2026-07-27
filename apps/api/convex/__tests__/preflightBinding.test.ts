@@ -31,7 +31,8 @@ import {
 	type TestRunner,
 } from './preflightFixtures';
 import type { Id } from '../_generated/dataModel';
-import { validateReadyToSend } from '../campaigns/preflight';
+import { describeCapacitySchedule, validateReadyToSend } from '../campaigns/preflight';
+import { MAX_PLAN_DAYS } from '../campaigns/capacityPlan';
 import { assessCampaignCapacity, toAssessment } from '../campaigns/capacityPreflight';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -309,6 +310,58 @@ describe('toAssessment — the planner-verdict mapping', () => {
 	it('reports a fitting plan as measured', () => {
 		expect(toAssessment({ fits: true })).toEqual({ capacityKnown: true, fits: true });
 	});
+
+	/**
+	 * An under-counted audience is its OWN fact, not a truncated plan. Folding
+	 * the two made a five-day schedule render as "more than 60 days" (D14).
+	 */
+	it('marks an under-counted audience without forging a truncated plan', () => {
+		const plan = {
+			fits: false as const,
+			days: 5,
+			slices: [0, 100, 200, 200, 100],
+			finishesAt: MIDNIGHT + 5 * DAY_MS,
+			covered: 600,
+			truncated: false,
+			audienceUnderCounted: false,
+		};
+
+		const assessment = toAssessment(plan, { audienceUnderCounted: true });
+
+		expect(assessment.fits).toBe(false);
+		if (assessment.fits) return;
+		expect(assessment.schedule.audienceUnderCounted).toBe(true);
+		expect(assessment.schedule.truncated).toBe(false);
+		expect(describeCapacitySchedule(assessment.schedule)).toContain('at least 5 days');
+	});
+});
+
+describe('describeCapacitySchedule — one sentence per state of knowledge', () => {
+	const base = {
+		fits: false as const,
+		days: 5,
+		slices: [0, 100, 200, 200, 100],
+		finishesAt: MIDNIGHT + 5 * DAY_MS,
+		covered: 600,
+		truncated: false,
+		audienceUnderCounted: false,
+	};
+
+	it('quotes the finish date only when both facts are known', () => {
+		expect(describeCapacitySchedule(base)).toContain('about 5 days');
+	});
+
+	it('says "at least" when the audience is only a lower bound', () => {
+		expect(describeCapacitySchedule({ ...base, audienceUnderCounted: true })).toContain(
+			'at least 5 days'
+		);
+	});
+
+	it('says "more than 60 days" only when the enumeration itself truncated', () => {
+		expect(describeCapacitySchedule({ ...base, days: MAX_PLAN_DAYS, truncated: true })).toContain(
+			`more than ${MAX_PLAN_DAYS} days`
+		);
+	});
 });
 
 describe('pre-flight capacity gate — one IP population (mixed graduated pools)', () => {
@@ -470,8 +523,10 @@ describe('pre-flight capacity gate — segment audiences', () => {
 
 	/**
 	 * The examine ceiling is the only bound that holds for a segment: the scan
-	 * walks every LIVE contact, not just matches. Running out of read budget is
-	 * a failure to MEASURE, and a failure to measure never blocks a send.
+	 * walks every LIVE contact, not just matches. Here the 8,100-row noise floor
+	 * is examined before any of the 600 matches, so the surviving lower bound is
+	 * 0 — below horizon capacity, therefore undecided, therefore allowed. A
+	 * failure to MEASURE never blocks a send.
 	 */
 	it('allows the send when the audience scan exhausts its read budget', async () => {
 		const t = convexTest(schema, modules);
@@ -565,5 +620,269 @@ describe('the fire-time path does NOT re-run the capacity gate', () => {
 		expect(atFireTime.ok).toBe(false);
 		if (atFireTime.ok) return;
 		expect(atFireTime.reason).toBe('no_template');
+	});
+});
+
+describe('pre-flight capacity gate — audiences past the read budget', () => {
+	/**
+	 * The gate's examine budget (8,000 rows) is smaller than the audiences this
+	 * piece exists to stop. Throwing the partial count away would make the budget
+	 * an OFF switch for exactly those campaigns, so the partial count is kept as a
+	 * LOWER BOUND: a floor already above the capacity inside the retention horizon
+	 * is a sound refusal, because the real audience can only be bigger.
+	 */
+	it('still REFUSES a topic audience larger than the examine budget', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await seedSendableCampaign(t, 10_000);
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+		// The plan is built from the 8,000-row floor, not from 10,000 …
+		expect(result.capacityPlan?.covered).toBe(8_000);
+		// … and it says so, rather than quoting a finish date for an audience we
+		// never finished counting.
+		expect(result.capacityPlan?.audienceUnderCounted).toBe(true);
+		expect(result.capacityPlan?.truncated).toBe(false);
+		expect(result.message).toContain('at least');
+	});
+
+	/**
+	 * The mirror case: the floor is BELOW horizon capacity, so it decides nothing
+	 * and the send is allowed. A failure to measure never blocks (D2/D10) — the
+	 * `otherContacts` noise floor exhausts the budget before the 40 matches are
+	 * reached.
+	 */
+	it('allows a small audience hidden behind a read-budget-exhausting noise floor', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarmingState(t);
+		const campaignId = await t.run(async (ctx) => {
+			const templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({
+					domain: 'verified.example.com',
+					status: 'verified',
+					lastVerifiedAt: MIDNIGHT,
+				})
+			);
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'sender@verified.example.com' })
+			);
+			for (let i = 0; i < 8_100; i += 1) {
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: `noise-${i}@other.test`, doiStatus: 'not_required' })
+				);
+			}
+			for (let i = 0; i < 40; i += 1) {
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: `member-${i}@seg.test`, doiStatus: 'not_required' })
+				);
+			}
+			const segmentId = await ctx.db.insert(
+				'segments',
+				createTestSegment({
+					name: 'seg.test folks',
+					filters: {
+						logic: 'AND',
+						conditions: [
+							{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'seg.test' },
+						],
+					},
+				})
+			);
+			return await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					status: 'draft',
+					emailTemplateId: templateId,
+					fromEmail: 'sender@verified.example.com',
+					audience: { kind: 'segment', segmentId },
+				})
+			);
+		});
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(true);
+	});
+});
+
+describe('pre-flight capacity gate — the projection horizon', () => {
+	/** Seed ONE active campaign IP at `currentDay` with an unspent daily cap. */
+	async function seedIpAtDay(t: TestRunner, currentDay: number, dailyCap: number): Promise<void> {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('warmingState', {
+				phase: 'ramp',
+				totalDailyCap: dailyCap,
+				totalSentToday: 0,
+				ipCount: 1,
+				ips: [warmingIp({ ip: '203.0.113.10', phase: 'ramp', currentDay, dailyCap })],
+				syncedAt: MIDNIGHT,
+			});
+		});
+	}
+
+	async function assess(t: TestRunner, campaignId: Id<'campaigns'>) {
+		return await t.run(async (ctx) => {
+			const campaign = await ctx.db.get(campaignId);
+			if (!campaign?.audience) throw new Error('campaign missing its audience');
+			return await assessCampaignCapacity(ctx, { audience: campaign.audience, now: MIDNIGHT });
+		});
+	}
+
+	/**
+	 * `BASE_WARMING_SCHEDULE` day 30 is `Infinity` — the MTA stops throttling. An
+	 * IP that crosses it INSIDE the four-day retention horizon has unbounded
+	 * capacity there, so the projection cannot be an upper bound and the answer
+	 * must be "unknown", never a clamped number the gate could refuse against.
+	 */
+	it('reports UNKNOWN capacity when the horizon crosses schedule day 30', async () => {
+		const t = convexTest(schema, modules);
+		await seedIpAtDay(t, 27, 30_000);
+		const campaignId = await seedSendableCampaign(t, 600);
+
+		const assessment = await assess(t, campaignId);
+
+		expect(assessment).toEqual({ capacityKnown: false, fits: true });
+	});
+
+	it('still measures when the horizon stops short of schedule day 30', async () => {
+		const t = convexTest(schema, modules);
+		await seedIpAtDay(t, 25, 30_000);
+		const campaignId = await seedSendableCampaign(t, 600);
+
+		const assessment = await assess(t, campaignId);
+
+		expect(assessment).toEqual({ capacityKnown: true, fits: true });
+	});
+});
+
+describe('pre-flight capacity gate — inactive campaign IPs', () => {
+	/**
+	 * `warmingState.totalDailyCap` / `totalSentToday` roll up EVERY campaign-pool
+	 * IP regardless of `active`, so taking today's remainder from them counted a
+	 * different population than the forward projection (active IPs only). A
+	 * deactivated IP would then inflate day 0 alone and wave through a campaign
+	 * nothing can actually send.
+	 */
+	it('does not count a deactivated campaign IP as today’s capacity', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('warmingState', {
+				phase: 'ramp',
+				// The shipped rollup includes the inactive IP — 100,000 + 50.
+				totalDailyCap: 100_050,
+				totalSentToday: 50,
+				ipCount: 2,
+				ips: [
+					warmingIp({
+						ip: '203.0.113.10',
+						phase: 'ramp',
+						currentDay: 1,
+						dailyCap: 50,
+						sentToday: 50,
+					}),
+					warmingIp({
+						ip: '203.0.113.40',
+						phase: 'ramp',
+						currentDay: 12,
+						dailyCap: 100_000,
+						active: false,
+					}),
+				],
+				syncedAt: MIDNIGHT,
+			});
+		});
+		const campaignId = await seedSendableCampaign(t, 600);
+
+		const result = await runPreflight(t, campaignId);
+
+		expect(result.ok).toBe(false);
+		if (result.ok) return;
+		expect(result.reason).toBe('exceeds_sending_capacity');
+		// The active day-1 IP alone: 0 / 100 / 200 / 200 / 700 …
+		expect(result.capacityPlan?.slices).toEqual([0, 100, 200, 200, 100]);
+	});
+});
+
+describe('the capacity gate never blocks the schedule mutation', () => {
+	/**
+	 * A segment carrying a `topic_membership` condition used to drag the WHOLE
+	 * `contactTopics.by_topic` range into `campaigns.scheduling.schedule` through
+	 * the unbounded condition preload. Past the Convex per-execution read limit
+	 * that made the mutation throw and the campaign unschedulable — a failure to
+	 * MEASURE blocking a SEND (D2). The budgeted scan now preloads per batch.
+	 */
+	it('schedules a segment campaign whose filter spans a very large topic', async () => {
+		const t = convexTest(schema, modules);
+		// Plenty of capacity, and short of schedule day 30 across the horizon.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('warmingState', {
+				phase: 'ramp',
+				totalDailyCap: 30_000,
+				totalSentToday: 0,
+				ipCount: 1,
+				ips: [warmingIp({ ip: '203.0.113.10', phase: 'ramp', currentDay: 25, dailyCap: 30_000 })],
+				syncedAt: MIDNIGHT,
+			});
+		});
+		const campaignId = await t.run(async (ctx) => {
+			const templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({
+					domain: 'verified.example.com',
+					status: 'verified',
+					lastVerifiedAt: MIDNIGHT,
+				})
+			);
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'sender@verified.example.com' })
+			);
+			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
+			for (let i = 0; i < 10_000; i += 1) {
+				const contactId = await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: `member-${i}@big.test`, doiStatus: 'not_required' })
+				);
+				await ctx.db.insert('contactTopics', { contactId, topicId, addedAt: MIDNIGHT });
+			}
+			const segmentId = await ctx.db.insert(
+				'segments',
+				createTestSegment({
+					name: 'big topic members',
+					filters: {
+						logic: 'AND',
+						conditions: [{ kind: 'topic_membership', operator: 'equals', topicId }],
+					},
+				})
+			);
+			return await ctx.db.insert(
+				'campaigns',
+				createTestCampaign({
+					status: 'draft',
+					emailTemplateId: templateId,
+					fromEmail: 'sender@verified.example.com',
+					audience: { kind: 'segment', segmentId },
+				})
+			);
+		});
+
+		// No throw: the gate measured (or declined to) without escaping the mutation.
+		await t.mutation(api.campaigns.scheduling.schedule, {
+			campaignId,
+			scheduledAt: MIDNIGHT + DAY_MS,
+		});
+
+		const scheduled = await t.run(async (ctx) => await ctx.db.get(campaignId));
+		expect(scheduled?.status).toBe('scheduled');
 	});
 });
