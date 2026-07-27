@@ -13,6 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { decideMixAssignment, type MixAssignment } from '../adaptive_mix';
+import { MIN_STRATIFICATION_COHORT } from '../../../../delivery/sendAssignmentRouting';
 import {
 	assignRanked,
 	maxOf,
@@ -130,6 +131,35 @@ describe('adaptive_mix — the calibration slice is independent of engagement', 
 		expect(Math.abs(mean(referenceRanks) - 0.5)).toBeLessThan(0.06);
 		// The slice's own-share still tracks the configured share.
 		expect(Math.abs(ownRanks.length / slice.length - 0.6)).toBeLessThan(0.06);
+	});
+
+	it('holds on a batch too thin to rank, and engages one recipient later', () => {
+		// The branch that decides whether D8's stratified DEFAULT engages at all.
+		// Thin data HOLDS (D10): below the minimum cohort nobody gets a rank, so
+		// every recipient falls through to the random bucket rather than being
+		// ranked against a handful of peers — a 5-person batch would otherwise
+		// hand its top recipient a rank of 1.0 on no evidence whatsoever.
+		const thinIds = syntheticContactIds(MIN_STRATIFICATION_COHORT - 1, 'thin');
+		const thinRanks = ranksFromScores(
+			thinIds,
+			thinIds.map((_, index) => index)
+		);
+		expect(thinRanks).toHaveLength(19);
+		expect(thinRanks.every((rank) => rank === undefined)).toBe(true);
+
+		// One more recipient and the same cohort ranks.
+		const fullIds = syntheticContactIds(MIN_STRATIFICATION_COHORT, 'thin');
+		const fullRanks = ranksFromScores(
+			fullIds,
+			fullIds.map((_, index) => index)
+		);
+		expect(fullRanks).toHaveLength(20);
+		expect(fullRanks.every((rank) => rank !== undefined && rank >= 0 && rank < 1)).toBe(true);
+
+		// And the consequence downstream: a thin batch is assigned by the hash
+		// bucket, never by rank.
+		const thinAssignments = assignRanked(thinIds, thinRanks, { ownShare: 0.6, mixVersion: 3 });
+		expect(thinAssignments.every((assignment) => assignment.basis !== 'stratified')).toBe(true);
 	});
 
 	it('a rank-correlated slice would be caught by this suite', () => {
