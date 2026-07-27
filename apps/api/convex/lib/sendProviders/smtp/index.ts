@@ -32,7 +32,7 @@ import {
 	type SmtpConnectOptions,
 	type SmtpPhase,
 } from '@owlat/smtp-client';
-import { getBoolean, getOptional, getRequired } from '../../env';
+import { getOptional } from '../../env';
 import { withTimeout } from '../../inputGuards';
 import {
 	EmailErrorCode,
@@ -41,6 +41,8 @@ import {
 	type SendProviderModule,
 	type SmtpExtras,
 } from '../types';
+import { transportEnvBoolean, transportEnvOptional, transportEnvRequired } from '../transportEnv';
+import { sendTransportEnvName, type SendTransportRecord } from '../transports';
 import { RETRY_DELAYS_MS } from '../../constants';
 
 /**
@@ -72,7 +74,11 @@ export interface RelayClientConfig {
 	auth: AuthConfig;
 }
 
-let cachedConfig: RelayClientConfig | null = null;
+// One resolved config per CONFIGURED TRANSPORT, not one per deployment: two
+// `smtp` transports point at different relays with different credentials, so a
+// single cached config would send the second instance's mail through the first
+// instance's relay.
+const cachedConfigs = new Map<string, RelayClientConfig>();
 
 /** Resolved, non-secret relay client inputs (env-derived). */
 export interface RelayClientInput {
@@ -150,29 +156,39 @@ export function relayEhloName(): string {
 }
 
 /**
- * Resolve (once) the relay client config from the instance-level env.
- * `SMTP_RELAY_SECURE=true` opens an implicit-TLS connection (typically 465);
- * unset/false connects cleartext and upgrades via STARTTLS (587). Auth
- * credentials are required — this deployment authenticates to the relay.
+ * Resolve (once per transport) the relay client config for ONE configured
+ * `smtp` transport. `SMTP_RELAY_SECURE=true` opens an implicit-TLS connection
+ * (typically 465); unset/false connects cleartext and upgrades via STARTTLS
+ * (587). Auth credentials are required — this deployment authenticates to the
+ * relay. A named instance reads the same variables under its `__<KEY>` suffix.
  */
-function getClientConfig(): RelayClientConfig {
-	if (cachedConfig) return cachedConfig;
-	const host = getRequired('SMTP_RELAY_HOST');
-	const portRaw = getOptional('SMTP_RELAY_PORT');
+function getClientConfig(transport: SendTransportRecord): RelayClientConfig {
+	const cached = cachedConfigs.get(transport.id);
+	if (cached) return cached;
+	const host = transportEnvRequired(transport, 'SMTP_RELAY_HOST');
+	const portRaw = transportEnvOptional(transport, 'SMTP_RELAY_PORT');
 	const port = portRaw ? Number.parseInt(portRaw, 10) : DEFAULT_SMTP_PORT;
 	if (!Number.isFinite(port) || port <= 0) {
-		throw new Error(`Invalid SMTP_RELAY_PORT: ${portRaw}`);
+		throw new Error(
+			`Invalid ${sendTransportEnvName('SMTP_RELAY_PORT', transport.instanceKey)}: ${portRaw}`
+		);
 	}
-	const secure = getBoolean('SMTP_RELAY_SECURE');
-	cachedConfig = buildRelayClientConfig({
+	const secure = transportEnvBoolean(transport, 'SMTP_RELAY_SECURE');
+	const config = buildRelayClientConfig({
 		host,
 		port,
 		secure,
-		user: getRequired('SMTP_RELAY_USERNAME'),
-		pass: getRequired('SMTP_RELAY_PASSWORD'),
+		user: transportEnvRequired(transport, 'SMTP_RELAY_USERNAME'),
+		pass: transportEnvRequired(transport, 'SMTP_RELAY_PASSWORD'),
 		ehloName: getOptional('EHLO_HOSTNAME') ?? relayEhloName(),
 	});
-	return cachedConfig;
+	cachedConfigs.set(transport.id, config);
+	return config;
+}
+
+/** Clears the per-transport relay config cache. Tests only. */
+export function _resetSmtpConfigCacheForTests(): void {
+	cachedConfigs.clear();
 }
 
 /**
@@ -253,10 +269,14 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	kind: 'smtp',
 	retryDelays: RETRY_DELAYS_MS,
 
-	async sendEmail(params: EmailSendParams, _extras?: SmtpExtras): Promise<EmailSendAttempt> {
+	async sendEmail(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		_extras?: SmtpExtras
+	): Promise<EmailSendAttempt> {
 		let config: RelayClientConfig;
 		try {
-			config = getClientConfig();
+			config = getClientConfig(transport);
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 			return {

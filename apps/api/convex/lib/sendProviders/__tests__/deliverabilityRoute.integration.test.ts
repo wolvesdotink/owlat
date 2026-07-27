@@ -19,6 +19,7 @@ const NOW = 10_000_000;
 beforeEach(() => {
 	vi.stubEnv('MTA_API_URL', 'https://mta.internal');
 	vi.stubEnv('MTA_API_KEY', 'test-key');
+	vi.stubEnv('AWS_SES_REGION', 'us-east-1');
 	vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'access');
 	vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
 });

@@ -16,6 +16,7 @@ const ENV_KEYS = [
 	'MTA_API_URL',
 	'MTA_API_KEY',
 	'RESEND_API_KEY',
+	'AWS_SES_REGION',
 	'AWS_SES_ACCESS_KEY_ID',
 	'AWS_SES_SECRET_ACCESS_KEY',
 	'SMTP_RELAY_HOST',
@@ -72,11 +73,20 @@ describe('deliveryConfiguredFromEnv — fail-closed', () => {
 		expect(await deliveryConfiguredFromTestEnv()).toBe(true);
 	});
 
-	it('ses: requires access key id and secret', async () => {
+	// Region included: the adapter reads it on every send, so a deployment
+	// without it is not configured however many keys it has.
+	it('ses: requires region, access key id and secret', async () => {
 		setEnv({ EMAIL_PROVIDER: 'ses', AWS_SES_ACCESS_KEY_ID: 'AKIA' });
 		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
 		setEnv({
 			EMAIL_PROVIDER: 'ses',
+			AWS_SES_ACCESS_KEY_ID: 'AKIA',
+			AWS_SES_SECRET_ACCESS_KEY: 'sk',
+		});
+		expect(await deliveryConfiguredFromTestEnv()).toBe(false);
+		setEnv({
+			EMAIL_PROVIDER: 'ses',
+			AWS_SES_REGION: 'us-east-1',
 			AWS_SES_ACCESS_KEY_ID: 'AKIA',
 			AWS_SES_SECRET_ACCESS_KEY: 'sk',
 		});

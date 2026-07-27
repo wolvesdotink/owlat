@@ -473,6 +473,8 @@ import type * as lib_sendProviders_strategies_priority_failover_index from "../l
 import type * as lib_sendProviders_strategies_single_index from "../lib/sendProviders/strategies/single/index.js";
 import type * as lib_sendProviders_strategies_types from "../lib/sendProviders/strategies/types.js";
 import type * as lib_sendProviders_strategies_workload_split_index from "../lib/sendProviders/strategies/workload_split/index.js";
+import type * as lib_sendProviders_transportEnv from "../lib/sendProviders/transportEnv.js";
+import type * as lib_sendProviders_transports from "../lib/sendProviders/transports.js";
 import type * as lib_sendProviders_types from "../lib/sendProviders/types.js";
 import type * as lib_senderHeuristicsValidator from "../lib/senderHeuristicsValidator.js";
 import type * as lib_sendingLimits from "../lib/sendingLimits.js";
@@ -1241,6 +1243,8 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/strategies/single/index": typeof lib_sendProviders_strategies_single_index;
   "lib/sendProviders/strategies/types": typeof lib_sendProviders_strategies_types;
   "lib/sendProviders/strategies/workload_split/index": typeof lib_sendProviders_strategies_workload_split_index;
+  "lib/sendProviders/transportEnv": typeof lib_sendProviders_transportEnv;
+  "lib/sendProviders/transports": typeof lib_sendProviders_transports;
   "lib/sendProviders/types": typeof lib_sendProviders_types;
   "lib/senderHeuristicsValidator": typeof lib_senderHeuristicsValidator;
   "lib/sendingLimits": typeof lib_sendingLimits;
