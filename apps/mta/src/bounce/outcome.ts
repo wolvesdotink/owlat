@@ -12,6 +12,7 @@
 
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { BounceEffect } from './effects.js';
+import type { FblSourceIspToken } from './fblProcessor.js';
 import type { BasePhaseCtx, BounceAttempt } from './types.js';
 import { addressText, firstAddress } from '../inbound/parsedAddress.js';
 import { normalizeReturnPathHost } from '../lib/returnPathHost.js';
@@ -101,9 +102,10 @@ function safeReportedDomain(value: string | undefined): string | undefined {
 }
 
 /**
- * The FBL ISP token → destination-provider CELL key. The TOTAL mapping: every
- * token `fblProcessor.isp()` can return has exactly one row here, and a token
- * that is absent is not forwarded at all.
+ * The FBL ISP token → destination-provider CELL key. The mapping is TOTAL and
+ * the COMPILER enforces it: `satisfies Record<FblSourceIspToken, …>` means a
+ * token added to `fblProcessor.isp()` without a row here fails to build, rather
+ * than silently dropping that ISP's complaints out of the ramp's cell axis.
  *
  * `fblProcessor.isp()` resolves its own fixed token enum (it doubles as a
  * bounded Prometheus label), which is NOT the ramp's cell axis: it says `google`
@@ -116,14 +118,14 @@ function safeReportedDomain(value: string | undefined): string | undefined {
  * one rather than passed through by a coincidence-of-spelling branch: a
  * passthrough would make those rows unreachable dead code (D20).
  */
-const FBL_ISP_TO_CELL: Readonly<Record<string, DestinationProviderKey>> = {
+const FBL_ISP_TO_CELL = {
 	microsoft: 'microsoft',
 	yahoo: 'yahoo',
 	aol: 'yahoo',
 	google: 'gmail',
 	comcast: 'other',
 	mailru: 'other',
-};
+} as const satisfies Record<FblSourceIspToken, DestinationProviderKey>;
 
 /**
  * The resolved feedback-loop ISP that is safe to forward, else undefined.
@@ -131,10 +133,11 @@ const FBL_ISP_TO_CELL: Readonly<Record<string, DestinationProviderKey>> = {
  * Sibling of `safeReportedDomain` so both forwarded ARF provenance fields have
  * ONE shape and one place to change. Only a key of the shipped
  * destination-provider union is forwarded — the webhook event types it as that
- * union, so an unresolved (`undefined`) or unmapped ISP is simply not sent, and
- * a consumer comparing it against `'yahoo'` compares against a checked constant.
+ * union, so an unresolved (`undefined`) ISP is simply not sent, and a consumer
+ * comparing it against `'yahoo'` compares against a checked constant. The map is
+ * total over `FblSourceIspToken`, so a resolved token ALWAYS has a cell.
  */
-function safeSourceIsp(value: string | undefined): DestinationProviderKey | undefined {
+function safeSourceIsp(value: FblSourceIspToken | undefined): DestinationProviderKey | undefined {
 	if (value === undefined) return undefined;
 	return FBL_ISP_TO_CELL[value];
 }

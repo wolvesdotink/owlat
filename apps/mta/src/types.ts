@@ -6,6 +6,7 @@ import type {
 	PostmasterComplianceCheck,
 	PostmasterDeliveryError,
 } from '@owlat/shared/mtaWebhookEvent';
+import type { FblSourceIspToken } from './bounce/fblProcessor.js';
 
 // ============ Email Job Types ============
 
@@ -485,12 +486,12 @@ export interface BounceClassification {
 	 */
 	sourceIp?: string;
 	/**
-	 * Normalized source ISP (a bounded `\w+` enum: `google`, `microsoft`,
-	 * `yahoo`, `comcast`, `aol`, `mailru`). Derived from the structured
-	 * feedback-report `User-Agent`/`Reported-Domain`/`Source-IP` fields, falling
-	 * back to the `Received` trace, rather than only guessing from `Received`.
+	 * Normalized source ISP — the bounded `\w+` enum `FblSourceIspToken` owns.
+	 * Derived from the structured feedback-report
+	 * `User-Agent`/`Reported-Domain`/`Source-IP` fields, falling back to the
+	 * `Received` trace, rather than only guessing from `Received`.
 	 */
-	sourceIsp?: string;
+	sourceIsp?: FblSourceIspToken;
 }
 
 // ============ Metrics Types ============

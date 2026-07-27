@@ -37,9 +37,15 @@ import {
 	deliverabilityCellKey,
 	DESTINATION_PROVIDER_KEYS,
 	destinationProviderForDomain,
+	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import { parseMessage, type ParsedMessage } from '@owlat/mail-message';
-import { releaseComplaint, reserveComplaint, tryParseARF } from '../fblProcessor.js';
+import {
+	releaseComplaint,
+	reserveComplaint,
+	tryParseARF,
+	type FblSourceIspToken,
+} from '../fblProcessor.js';
 import { extractReportParts, type ReportPart } from '../reportParts.js';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
 import { reduce } from '../outcome.js';
@@ -222,29 +228,27 @@ describe('a Yahoo CFL report through the shipped ARF processor', () => {
 	// `classifierDomain` pins the rows where the CELL must agree with the shipped
 	// address-domain classifier (`destinationProviderForDomain`) — a complaint that
 	// disagreed would land in a different cell than the send it complains about.
-	const ISP_ROWS: ReadonlyArray<{
-		userAgent: string;
-		token: string;
-		cell: string;
-		classifierDomain?: string;
-	}> = [
-		{ userAgent: 'Microsoft Feedback-Loop Post/1.0', token: 'microsoft', cell: 'microsoft' },
-		{ userAgent: 'Yahoo! Inc. Feedback-Loop/1.0', token: 'yahoo', cell: 'yahoo' },
-		{
-			userAgent: 'AOL Feedback-Loop Post/1.0',
-			token: 'aol',
-			cell: 'yahoo',
-			classifierDomain: 'aol.com',
-		},
-		{
+	//
+	// The table is keyed BY THE TOKEN UNION, so a token added to `isp()` without a
+	// row here fails to compile — the same totality the ISP→cell map now gets from
+	// `satisfies`, applied to its coverage.
+	const ISP_ROWS_BY_TOKEN: Record<
+		FblSourceIspToken,
+		{ userAgent: string; cell: DestinationProviderKey; classifierDomain?: string }
+	> = {
+		microsoft: { userAgent: 'Microsoft Feedback-Loop Post/1.0', cell: 'microsoft' },
+		yahoo: { userAgent: 'Yahoo! Inc. Feedback-Loop/1.0', cell: 'yahoo' },
+		aol: { userAgent: 'AOL Feedback-Loop Post/1.0', cell: 'yahoo', classifierDomain: 'aol.com' },
+		google: {
 			userAgent: 'Google-Mail-Feedback/1.0',
-			token: 'google',
 			cell: 'gmail',
 			classifierDomain: 'gmail.com',
 		},
-		{ userAgent: 'Comcast Feedback-Loop Post/1.0', token: 'comcast', cell: 'other' },
-		{ userAgent: 'mail.ru abuse reporter/1.0', token: 'mailru', cell: 'other' },
-	];
+		comcast: { userAgent: 'Comcast Feedback-Loop Post/1.0', cell: 'other' },
+		mailru: { userAgent: 'mail.ru abuse reporter/1.0', cell: 'other' },
+	};
+
+	const ISP_ROWS = Object.entries(ISP_ROWS_BY_TOKEN).map(([token, row]) => ({ token, ...row }));
 
 	it.each(ISP_ROWS)(
 		'maps the FBL `$token` token onto the `$cell` cell',
