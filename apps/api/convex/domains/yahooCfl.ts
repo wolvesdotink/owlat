@@ -27,14 +27,15 @@ import {
 	applyYahooCflEvent,
 	deriveYahooCflState,
 	emptyYahooCflEnrollment,
+	yahooCflAvailableActions,
 	yahooCflGuidedSteps,
-	yahooComplaintSubstitution,
 	type YahooCflDkimPrecondition,
 	type YahooCflEnrollmentRecord,
 	type YahooCflEvent,
 	type YahooCflStoredState,
 	type YahooCflTransitionReason,
 } from '@owlat/shared/yahooCfl';
+import { yahooComplaintSubstitution } from '@owlat/shared/yahooComplaintSignal';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
@@ -201,6 +202,11 @@ export const getGuide = authedQuery({
 			enrollment: record,
 			precondition,
 			steps: yahooCflGuidedSteps(record, precondition, now),
+			// WHICH CONTROLS TO OFFER, decided by the pure core alongside the state
+			// machine that will service them. The panel renders this verbatim: a
+			// component that re-derived the affordances could offer one the state
+			// machine refuses, which is a dead control.
+			actions: yahooCflAvailableActions(record, precondition, now),
 			// The yahoo cell's gate-3 source. Always present — absence of an
 			// enrollment substitutes, it never blanks the gate out (D2).
 			//
@@ -263,22 +269,39 @@ export const resetEnrollment = authedMutation({
  */
 export const observeReport = internalMutation({
 	args: { reportedDomain: v.string(), at: v.number() },
-	handler: async (ctx, args) => {
+	handler: async (
+		ctx,
+		args
+	): Promise<{
+		/** The report named a domain this deployment sends from. */
+		matchedDomain: boolean;
+		/** A row was actually written. `false` for every refusal and every coalesced report. */
+		changed: boolean;
+		state?: YahooCflStoredState;
+		reason?: YahooCflTransitionReason;
+	}> => {
 		// This mutation is reachable from an internet-triggered path (an ARF report),
 		// so the clock it is handed is untrusted. A non-finite or non-positive `at`
 		// would be absorbed by the pure core's `Math.max` and pin the row
 		// permanently `enrolled` / never `lapsed`, holding the yahoo complaint gate
 		// on the looser direct threshold instead of the tightened proxy.
-		if (!Number.isFinite(args.at) || args.at <= 0) return { observed: false as const };
+		// A rejected input never reached a domain lookup, so it is reported as
+		// `matchedDomain: false` with its own reason — the caller can tell "not our
+		// domain" from "unusable clock" instead of reading one conflated flag.
+		if (!Number.isFinite(args.at) || args.at <= 0) {
+			return { matchedDomain: false, changed: false, reason: 'invalid_timestamp' };
+		}
 		const name = args.reportedDomain.trim().toLowerCase();
-		if (name.length === 0 || name.length > 253) return { observed: false as const };
+		if (name.length === 0 || name.length > 253) {
+			return { matchedDomain: false, changed: false, reason: 'domain_missing' };
+		}
 		const domain = await ctx.db
 			.query('domains')
 			.withIndex('by_domain', (q) => q.eq('domain', name))
 			.first();
 		// A report naming a domain this deployment does not send from proves
 		// nothing about our enrollment; drop it rather than inventing a row.
-		if (!domain) return { observed: false as const };
+		if (!domain) return { matchedDomain: false, changed: false, reason: 'domain_missing' };
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const slot = await loadEnrollment(ctx, organizationId, domain._id);
 		const transition = applyYahooCflEvent(
@@ -289,6 +312,11 @@ export const observeReport = internalMutation({
 		if (transition.changed) {
 			await persist(ctx, slot, transition.record, args.at);
 		}
-		return { observed: true as const, state: transition.record.state, reason: transition.reason };
+		return {
+			matchedDomain: true,
+			changed: transition.changed,
+			state: transition.record.state,
+			reason: transition.reason,
+		};
 	},
 });
