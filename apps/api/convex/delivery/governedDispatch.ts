@@ -17,6 +17,7 @@ import {
 	type MtaIpPool,
 	type ResendExtras,
 	type SendProviderKind,
+	type SmtpExtras,
 } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
 import type { WorkerEnvelopeInput } from './workerEnvelope';
@@ -204,6 +205,19 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		});
 		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
 	}
+	// Relay arm (plan G-08): stamp OUR VERP envelope sender when — and only
+	// when — this transport is PROVEN to honour a custom return path, so relayed
+	// bounces reach our own bounce server. An unproven, unprobed or unsupported
+	// relay simply keeps the composer's envelope sender: the send is unchanged
+	// and its cell is graded degraded-measurement, never blocked (plan D2).
+	const relayCustomReturnPath =
+		providerKind === 'smtp'
+			? (
+					await ctx.runQuery(internal.delivery.relayReturnPath.transportReturnPathCapability, {
+						transportId: defaultSendTransportId(providerKind),
+					})
+				).stampVerpReturnPath
+			: false;
 	const extras: ExtrasFor<SendProviderKind> =
 		providerKind === 'mta'
 			? ({
@@ -229,7 +243,9 @@ export async function dispatchGovernedEmail<TEnvelope>(
 				} satisfies MtaExtras)
 			: providerKind === 'resend'
 				? ({ idempotencyKey } satisfies ResendExtras)
-				: {};
+				: providerKind === 'smtp'
+					? ({ customReturnPath: relayCustomReturnPath } satisfies SmtpExtras)
+					: {};
 	const dispatched = await sendProviderDispatch(
 		ctx,
 		defaultSendTransportId(providerKind),

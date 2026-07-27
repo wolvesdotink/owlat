@@ -24,6 +24,7 @@
 
 import os from 'node:os';
 import { composeMessage } from '@owlat/mail-message';
+import { buildVerpAddressWithKey } from '@owlat/shared/verp';
 import {
 	isSmtpError,
 	sendMessage,
@@ -186,6 +187,55 @@ function getClientConfig(transport: SendTransportRecord): RelayClientConfig {
 	return config;
 }
 
+/** Inputs to the relay envelope-sender decision. All explicit — no clock, no env. */
+export interface RelayEnvelopeSenderInput {
+	/** What the composer built: the From address, i.e. the shipped behaviour. */
+	readonly composedEnvelopeFrom: string;
+	/** The id the VERP token encodes (the composed Message-ID for a real send). */
+	readonly messageId: string;
+	/** Has this transport's `supportsCustomReturnPath` resolved to `supported`? */
+	readonly customReturnPath: boolean;
+	/** Our bounce domain (MTA_RETURN_PATH_DOMAIN). */
+	readonly returnPathDomain: string | undefined;
+	/** The MTA's VERP signing key (MTA_BOUNCE_VERP_KEY). */
+	readonly verpKey: string | undefined;
+	readonly now: number;
+}
+
+export interface RelayEnvelopeSender {
+	/** The RFC5321.MailFrom to put on the wire. */
+	readonly envelopeFrom: string;
+	/** True ⇒ it is our signed VERP address, so relayed bounces come back here. */
+	readonly isVerp: boolean;
+}
+
+/**
+ * Decide the relay send's envelope sender (plan G-08, D11).
+ *
+ * ONLY the RFC5321.MailFrom is affected. The From header, the DKIM `d=` and
+ * therefore DMARC alignment are untouched — the composed message bytes are not
+ * even read here. Giving the two arms different sending identities is what D11
+ * forbids; giving them different *envelope senders* is what makes their bounce
+ * data comparable in the first place.
+ *
+ * Falls back to the composed envelope sender — the exact shipped behaviour —
+ * whenever the capability is unproven or the deployment has not configured a
+ * return-path domain + signing key. An UNSIGNED VERP address would be a forgery
+ * surface on the bounce path, so a missing key means no stamp, never an
+ * unsigned token.
+ */
+export function resolveRelayEnvelopeSender(input: RelayEnvelopeSenderInput): RelayEnvelopeSender {
+	const domain = input.returnPathDomain?.trim().replace(/\.$/, '');
+	const key = input.verpKey?.trim();
+	if (!input.customReturnPath || !domain || !key || input.messageId.length === 0) {
+		return { envelopeFrom: input.composedEnvelopeFrom, isVerp: false };
+	}
+	return {
+		envelopeFrom: buildVerpAddressWithKey(input.messageId, domain, key, input.now),
+		isVerp: true,
+	};
+}
+
 /** Clears the per-transport relay config cache. Tests only. */
 export function _resetSmtpConfigCacheForTests(): void {
 	cachedConfigs.clear();
@@ -272,7 +322,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 	async sendEmail(
 		transport: SendTransportRecord,
 		params: EmailSendParams,
-		_extras?: SmtpExtras
+		extras?: SmtpExtras
 	): Promise<EmailSendAttempt> {
 		let config: RelayClientConfig;
 		try {
@@ -318,6 +368,19 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 			};
 		}
 
+		// Stamp our VERP envelope sender where the relay is PROVEN to honour it, so
+		// a bounce the relay generates reaches our own bounce server and this arm
+		// produces bounce data comparable with the direct-MX arm. The composed
+		// bytes — From, DKIM, Message-ID, body — are identical either way (D11).
+		const envelopeSender = resolveRelayEnvelopeSender({
+			composedEnvelopeFrom: composed.envelope.from,
+			messageId: extras?.verpMessageId ?? composed.messageId,
+			customReturnPath: extras?.customReturnPath === true,
+			returnPathDomain: getOptional('MTA_RETURN_PATH_DOMAIN'),
+			verpKey: getOptional('MTA_BOUNCE_VERP_KEY'),
+			now: Date.now(),
+		});
+
 		const sendAbort = new AbortController();
 		try {
 			await withTimeout(
@@ -326,7 +389,7 @@ export const smtpSendProvider: SendProviderModule<'smtp'> = {
 					auth: config.auth,
 					signal: sendAbort.signal,
 					envelope: {
-						from: composed.envelope.from,
+						from: envelopeSender.envelopeFrom,
 						to: composed.envelope.to,
 						data: composed.raw,
 					},
