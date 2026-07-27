@@ -31,7 +31,7 @@ import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import { startOfDayUtc } from '../lib/clock';
 import {
 	summarizeTransportOutcomeBuckets,
-	type TransportOutcomeBucket,
+	type TransportOutcomeBucketCounts,
 	type TransportOutcomeSummary,
 } from '../analytics/transportOutcomeSummary';
 import type { RampGateEvaluation, RampGateResult } from './ramp/gateTypes';
@@ -112,9 +112,9 @@ export interface DashboardTrendPoint {
  * make one dashboard load quadratic in the read span for no reason.
  */
 function bucketsByDay(
-	buckets: readonly TransportOutcomeBucket[]
-): Map<number, TransportOutcomeBucket[]> {
-	const byDay = new Map<number, TransportOutcomeBucket[]>();
+	buckets: readonly TransportOutcomeBucketCounts[]
+): Map<number, TransportOutcomeBucketCounts[]> {
+	const byDay = new Map<number, TransportOutcomeBucketCounts[]>();
 	for (const bucket of buckets) {
 		if (!Number.isFinite(bucket.periodStart)) continue;
 		const existing = byDay.get(bucket.periodStart);
@@ -131,8 +131,8 @@ function bucketsByDay(
  * out of it reads as continuous traffic.
  */
 export function buildDashboardTrend(input: {
-	readonly ownBuckets: readonly TransportOutcomeBucket[];
-	readonly referenceBuckets: readonly TransportOutcomeBucket[] | null;
+	readonly ownBuckets: readonly TransportOutcomeBucketCounts[];
+	readonly referenceBuckets: readonly TransportOutcomeBucketCounts[] | null;
 	readonly sinceDay: number;
 	readonly untilDay: number;
 }): DashboardTrendPoint[] {
