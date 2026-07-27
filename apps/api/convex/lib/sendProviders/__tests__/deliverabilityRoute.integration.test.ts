@@ -355,22 +355,72 @@ describe('DB-backed deliverability route verification', () => {
 		).toMatchObject({ providerType: 'ses', source: 'deliverability_fallback' });
 	});
 
-	it('lets an explicit whole-cell share supersede the legacy boolean', async () => {
-		const t = await seedRouteState({ withSesIdentity: true });
+	async function patchShare(
+		t: Awaited<ReturnType<typeof seedRouteState>>,
+		destinationProvider: 'gmail' | 'microsoft',
+		ownShare: number
+	) {
 		await t.run(async (ctx) => {
 			const state = await ctx.db
 				.query('deliverabilityRouteStates')
 				.withIndex('by_org_provider', (q) =>
-					q.eq('organizationId', 'org-a').eq('destinationProvider', 'gmail')
+					q.eq('organizationId', 'org-a').eq('destinationProvider', destinationProvider)
 				)
 				.first();
-			if (!state) throw new Error('missing gmail route state');
-			await ctx.db.patch(state._id, { ownShare: 1 });
+			if (!state) throw new Error(`missing ${destinationProvider} route state`);
+			await ctx.db.patch(state._id, { ownShare });
 		});
+	}
+
+	it('keeps honouring the infrastructure verdict when a whole-cell share is stored', async () => {
+		// The MTA snapshot writes `isFallbackActive` from infrastructure health on
+		// a ~10-minute cadence; the ramp controller writes `ownShare` hourly. A
+		// stored ownShare = 1 must therefore NOT mask a live critical breaker for a
+		// whole controller tick — the hard stop wins.
+		const t = await seedRouteState({ withSesIdentity: true });
+		await patchShare(t, 'gmail', 1);
 		expect(
 			await t.run((ctx) =>
 				resolveSendRouteFromDb(ctx, 'campaign', {
 					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({
+			providerType: 'ses',
+			source: 'deliverability_fallback',
+			deliverabilityReason: 'breaker_open',
+		});
+	});
+
+	it('relays a partial share as a WHOLE cell today, and never on the share alone', async () => {
+		// Pinning the pre-controller semantics explicitly so P3-2's per-message
+		// split has to change an assertion rather than silently reinterpret the
+		// field: a partial share on a degraded cell relays everything...
+		const degraded = await seedRouteState({ withSesIdentity: true });
+		await patchShare(degraded, 'gmail', 0.5);
+		expect(
+			await degraded.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({
+			providerType: 'ses',
+			source: 'deliverability_fallback',
+			deliverabilityReason: 'breaker_open',
+		});
+		// ...and a partial share on a HEALTHY cell relays nothing, because nothing
+		// in this piece turns a share into a routing reason.
+		const healthy = await seedRouteState({ withSesIdentity: true });
+		await patchShare(healthy, 'microsoft', 0.5);
+		expect(
+			await healthy.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@outlook.com',
 					from: 'sender@example.com',
 					now: NOW,
 				})

@@ -162,8 +162,14 @@ export interface DeliverabilityRouteShareState {
 export const OWN_SHARE_FLOOR = 0;
 export const OWN_SHARE_CEILING = 1;
 
+/**
+ * The write-boundary clamp. It FAILS CLOSED: a non-finite share (`NaN` from a
+ * zero-volume cell's 0/0, `±Infinity` from a division that lost its guard) is
+ * degenerate evidence, and degenerate evidence must never be able to push the
+ * own MTA's share UP. Everything unusable resolves to the floor — full relay.
+ */
 export function clampOwnShare(value: number): number {
-	if (!Number.isFinite(value)) return OWN_SHARE_CEILING;
+	if (!Number.isFinite(value)) return OWN_SHARE_FLOOR;
 	if (value < OWN_SHARE_FLOOR) return OWN_SHARE_FLOOR;
 	if (value > OWN_SHARE_CEILING) return OWN_SHARE_CEILING;
 	return value;
@@ -191,11 +197,24 @@ export function isFallbackActiveForShare(ownShare: number): boolean {
 	return clampOwnShare(ownShare) < OWN_SHARE_CEILING;
 }
 
+/**
+ * Is the relay engaged for this row?
+ *
+ * The stored boolean and the stored share have DIFFERENT WRITERS on different
+ * cadences: the MTA snapshot flips `isFallbackActive` from infrastructure
+ * health every ~10 minutes, while the ramp controller writes `ownShare` hourly.
+ * So this is a UNION, not a lookup — an infrastructure verdict (breaker open,
+ * critical DNSBL listing, quarantined IP) stays honoured even while a share is
+ * stored, instead of being ignored until the controller's next tick.
+ *
+ * `resolveOwnShare` keeps the D1 contract untouched (`ownShare ?? (isFallbackActive ? 0 : 1)`),
+ * so a legacy row still resolves to exactly its stored boolean.
+ */
 export function isRouteStateFallbackActive(
 	state: DeliverabilityRouteShareState | null | undefined
 ): boolean {
 	if (!state) return false;
-	return isFallbackActiveForShare(resolveOwnShare(state));
+	return state.isFallbackActive || isFallbackActiveForShare(resolveOwnShare(state));
 }
 
 export interface DeliverabilityRoutingSnapshot {

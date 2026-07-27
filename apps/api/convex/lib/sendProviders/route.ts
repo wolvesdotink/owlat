@@ -143,20 +143,21 @@ async function deliverabilityInput(
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
-	// `isFallbackActive` is read as a DERIVED VIEW of the share (D1): a legacy
-	// row resolves to exactly its stored boolean, so this is unchanged today.
+	// The relay is engaged when the infrastructure boolean says so OR when the
+	// resolved share (D1: `ownShare ?? (isFallbackActive ? 0 : 1)`) is below 1.
+	// A legacy row resolves to exactly its stored boolean, so this is unchanged
+	// today, and a stored share can never mask an infrastructure verdict.
 	const freshActive = [globalState, providerState].filter(
-		(state) =>
-			isRouteStateFallbackActive(state) &&
+		(state): state is Doc<'deliverabilityRouteStates'> =>
 			state !== null &&
+			isRouteStateFallbackActive(state) &&
 			now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
 	);
 	// Advisory readings ("blocklist lookup unavailable", "part of the pool is
 	// ejected") are recorded on the state row for measurement, but they are not
 	// routing reasons and must never appear as the cause of a relay fallback.
-	const activeReasons = freshActive.flatMap(
-		(state) =>
-			state?.signals.map((s) => s.source).filter(isActionableDeliverabilitySignalSource) ?? []
+	const activeReasons = freshActive.flatMap((state) =>
+		state.signals.map((s) => s.source).filter(isActionableDeliverabilitySignalSource)
 	);
 	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
 	const isWarmupOverflow = Boolean(
