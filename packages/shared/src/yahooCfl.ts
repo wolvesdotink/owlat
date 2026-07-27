@@ -328,6 +328,17 @@ export function yahooCflGuidedSteps(
 	const { state } = deriveYahooCflState(record, nowMs);
 	const enrolled = state === 'enrolled';
 	const lapsed = state === 'lapsed';
+	// "Has a complaint arrived FOR THE CURRENT SUBMISSION" — not "was one ever
+	// seen". A re-submitted lapsed record deliberately KEEPS `lastReportAt`
+	// (it is observed history the liveness verdict still needs), so keying this
+	// step on its mere existence would render the fourth step `done` — ahead of
+	// the third — and claim complaints are flowing for an enrollment we stopped
+	// believing was live one click ago. Comparing against `submittedAt` makes a
+	// re-submitted record fall through exactly like any other `awaiting_yahoo`
+	// one.
+	const reportedSinceSubmission =
+		record.lastReportAt !== undefined &&
+		(record.submittedAt === undefined || record.lastReportAt >= record.submittedAt);
 	const waitedTooLong =
 		record.state === 'awaiting_yahoo' &&
 		record.submittedAt !== undefined &&
@@ -374,12 +385,12 @@ export function yahooCflGuidedSteps(
 				: 'Nothing to do. Yahoo complaints land through the same ARF pipeline as every other feedback loop.',
 			verification: lapsed
 				? `No Yahoo complaint has arrived in ${inDays(YAHOO_CFL_LAPSE_SILENCE_MS)} days. The enrollment may have been dropped — re-check it at Yahoo.`
-				: record.lastReportAt !== undefined
+				: reportedSinceSubmission
 					? 'Yahoo complaints are being attributed to this domain.'
 					: 'A Yahoo complaint will appear on the delivery screens with source "yahoo".',
 			status: lapsed
 				? 'todo'
-				: record.lastReportAt !== undefined
+				: reportedSinceSubmission
 					? 'done'
 					: enrolled
 						? 'in_progress'
