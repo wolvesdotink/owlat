@@ -30,7 +30,7 @@ import { MIDNIGHT, runPreflight, seedWarmingState, useMtaPreflightEnv } from './
 import type { Id } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const { sessionOrganizationMock } = await import('./preflightFixtures');
+	const { sessionOrganizationMock } = await import('./sessionOrganizationMock');
 	return await sessionOrganizationMock();
 });
 

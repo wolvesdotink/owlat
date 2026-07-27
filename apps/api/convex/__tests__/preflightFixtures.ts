@@ -22,35 +22,6 @@ export const MIDNIGHT = Date.UTC(2026, 6, 27, 0, 0, 0);
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The `vi.mock` factory for `../lib/sessionOrganization`. Imported dynamically
- * from inside the mock factory (which vitest hoists above every static import),
- * so the call site reads:
- *
- * ```ts
- * vi.mock('../lib/sessionOrganization', async () => {
- *   const { sessionOrganizationMock } = await import('./preflightFixtures');
- *   return await sessionOrganizationMock();
- * });
- * ```
- */
-export async function sessionOrganizationMock(): Promise<Record<string, unknown>> {
-	const actual = await vi.importActual<Record<string, unknown>>('../lib/sessionOrganization');
-	return {
-		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
-			subject: 'test-user',
-			issuer: 'test',
-			tokenIdentifier: 'test|test-user',
-		}),
-	};
-}
-
-/**
  * Register the delivery-provider env and a frozen clock at `MIDNIGHT`. Call
  * once at the top level of a suite file.
  *
