@@ -77,16 +77,6 @@ interface EventBase<K extends MtaWebhookEventType> {
 	blocklists?: string[];
 	bounceRate?: number;
 	domain?: string;
-	/**
-	 * RFC 5965 `Reported-Domain` from an ARF complaint — OUR sending/DKIM
-	 * domain the report was filed against. Optional: many ISPs omit it.
-	 */
-	reportedDomain?: string;
-	/**
-	 * The feedback-loop source ISP the MTA's ARF processor resolved (a single
-	 * `\w+` token from its fixed provider enum, e.g. `yahoo`). Optional.
-	 */
-	sourceIsp?: string;
 	selector?: string;
 	dnsRecord?: string;
 	phase?: 'pending' | 'activated';
@@ -132,8 +122,19 @@ export type SharedMtaWebhookEvent =
 			messageId?: string;
 			recipient?: string;
 			message?: string;
+			/**
+			 * RFC 5965 `Reported-Domain` from the ARF report — OUR sending/DKIM domain
+			 * the complaint was filed against. Optional: many ISPs omit it. FBL-only,
+			 * so it lives on this variant rather than on every event shape.
+			 */
 			reportedDomain?: string;
-			sourceIsp?: string;
+			/**
+			 * The feedback-loop source ISP the MTA's ARF processor resolved. Typed as
+			 * the shipped destination-provider union rather than a free string, so a
+			 * consumer comparing it to `'yahoo'` is comparing against a checked
+			 * constant. An ISP outside the union is simply not forwarded.
+			 */
+			sourceIsp?: DestinationProviderKey;
 	  })
 	| (EventBase<'org.circuit_breaker'> & {
 			organizationId: string;
@@ -251,7 +252,6 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 		!optionalBounded(value['ip'], 64) ||
 		!optionalBounded(value['domain'], 253) ||
 		!optionalBounded(value['reportedDomain'], 253) ||
-		!optionalBounded(value['sourceIsp'], 32) ||
 		!optionalBounded(value['selector'], 128) ||
 		!optionalBounded(value['dnsRecord'], 4096) ||
 		!optionalBounded(value['probeToken'], 128) ||
@@ -265,6 +265,7 @@ export function isMtaWebhookEvent(value: unknown): value is SharedMtaWebhookEven
 		(value['deliveryDomain'] !== undefined && !isDeliveryDomain(value['deliveryDomain'])) ||
 		(value['destinationProvider'] !== undefined &&
 			!isDestinationProviderKey(value['destinationProvider'])) ||
+		(value['sourceIsp'] !== undefined && !isDestinationProviderKey(value['sourceIsp'])) ||
 		(value['severity'] !== undefined &&
 			value['severity'] !== 'info' &&
 			value['severity'] !== 'warning' &&

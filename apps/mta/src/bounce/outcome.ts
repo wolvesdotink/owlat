@@ -10,9 +10,14 @@
  * See ADR-0007 follow-up #4 and CONTEXT.md's MTA dispatch section.
  */
 
+import {
+	isDestinationProviderKey,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
 import type { BounceEffect } from './effects.js';
 import type { BasePhaseCtx, BounceAttempt } from './types.js';
 import { addressText, firstAddress } from '../inbound/parsedAddress.js';
+import { normalizeReturnPathHost } from '../lib/returnPathHost.js';
 
 /**
  * The reducer's return type. `effects` runs through `applyEffects` in the
@@ -88,18 +93,57 @@ function applyFeedbackProvenancePolicy(
  * dropped rather than sanitised — a dropped hint costs a feedback-loop liveness
  * observation, while an oversized one would invalidate the whole complaint event
  * and the complaint itself would never reach the blocklist.
+ *
+ * Acceptance goes through the SHIPPED strict FQDN validator (the one the
+ * return-path host is registered with), not a second looser regex: a laxer local
+ * check accepted `.`, `..`, `-a.example`, empty labels and over-long labels,
+ * none of which can be one of our sending domains.
  */
-const DNS_NAME_SHAPE = /^[a-z0-9.-]+$/;
-
 function safeReportedDomain(value: string | undefined): string | undefined {
-	const candidate = value?.trim().toLowerCase();
-	if (!candidate || candidate.length > 253) return undefined;
-	return DNS_NAME_SHAPE.test(candidate) ? candidate : undefined;
+	return normalizeReturnPathHost(value) ?? undefined;
+}
+
+/**
+ * The FBL ISP token → destination-provider CELL key.
+ *
+ * `fblProcessor.isp()` resolves its own fixed token enum (it doubles as a
+ * bounded Prometheus label), which is NOT the ramp's cell axis: it says `google`
+ * where the cell axis says `gmail`, and it names FBL operators the cell axis
+ * folds into `other`. `aol` maps to `yahoo` because that is exactly what the
+ * SHIPPED classifier does with `aol.com` (`destinationProviderForDomain`) — the
+ * two must agree or a Yahoo-operated complaint would land in a different cell
+ * than the send it complains about.
+ */
+const FBL_ISP_TO_CELL: Readonly<Record<string, DestinationProviderKey>> = {
+	microsoft: 'microsoft',
+	yahoo: 'yahoo',
+	aol: 'yahoo',
+	google: 'gmail',
+	comcast: 'other',
+	mailru: 'other',
+};
+
+/**
+ * The resolved feedback-loop ISP that is safe to forward, else undefined.
+ *
+ * Sibling of `safeReportedDomain` so both forwarded ARF provenance fields have
+ * ONE shape and one place to change. Only a key of the shipped
+ * destination-provider union is forwarded — the webhook event types it as that
+ * union, so an unresolved (`undefined`) or unmapped ISP is simply not sent, and
+ * a consumer comparing it against `'yahoo'` compares against a checked constant.
+ */
+function safeSourceIsp(value: string | undefined): DestinationProviderKey | undefined {
+	if (value === undefined) return undefined;
+	if (isDestinationProviderKey(value)) return value;
+	return FBL_ISP_TO_CELL[value];
 }
 
 function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeReduction {
 	const { arf } = attempt;
-	const sourceIsp = arf.message?.match(/from (\w+)/)?.[1] ?? 'unknown';
+	// The SHIPPED metric contract: the ISP label on `fbl_complaint` is re-parsed
+	// from the classifier's message text, NOT from `arf.sourceIsp`. Named for where
+	// it comes from so it cannot be confused with the forwarded provenance below.
+	const ispFromMessage = arf.message?.match(/from (\w+)/)?.[1] ?? 'unknown';
 	const effects: BounceEffect[] = [];
 
 	if (arf.organizationId) {
@@ -113,7 +157,7 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 	effects.push({
 		kind: 'metric_inc',
 		metric: 'fbl_complaint',
-		isp: sourceIsp,
+		isp: ispFromMessage,
 		attributed: arf.originalMessageId ? 'yes' : 'no',
 	});
 
@@ -127,7 +171,7 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 			kind: 'metric_inc',
 			metric: 'fbl_complaint_by_campaign',
 			campaign: arf.campaignId,
-			isp: sourceIsp,
+			isp: ispFromMessage,
 		});
 		effects.push({
 			kind: 'campaign_complaint_record',
@@ -144,7 +188,7 @@ function reduceFbl(attempt: Extract<BounceAttempt, { kind: 'fbl' }>): OutcomeRed
 	// never reach the blocklist/reputation path — silently inflating the
 	// complaint rate past the Gmail <0.3% threshold.
 	const reportedDomain = safeReportedDomain(arf.reportedDomain);
-	const reportSourceIsp = arf.sourceIsp && arf.sourceIsp.length <= 32 ? arf.sourceIsp : undefined;
+	const reportSourceIsp = safeSourceIsp(arf.sourceIsp);
 
 	if (arf.originalMessageId || arf.recipient) {
 		effects.push({
