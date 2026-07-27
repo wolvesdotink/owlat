@@ -154,6 +154,12 @@ export type YahooCflEvent =
 /**
  * Why a transition did (or did not) happen. Every value is a stable token the
  * UI maps to human-readable copy — the flow never surfaces a bare boolean.
+ *
+ * EXACTLY the reasons `applyYahooCflEvent` can return, and nothing else. Facts
+ * about the ENVIRONMENT — a domain deleted underneath the wizard — are not
+ * visible to a pure function, so they are not members here; the Convex shell
+ * declares those separately as `YahooCflShellReason` and widens its own return
+ * type. A reader of this module can therefore take the union at face value.
  */
 export type YahooCflTransitionReason =
 	| 'submitted'
@@ -163,8 +169,6 @@ export type YahooCflTransitionReason =
 	| 'report_recorded'
 	| 'reset'
 	| 'dkim_domain_not_ready'
-	/** The domain was deleted underneath the wizard. Not the operator's problem to fix. */
-	| 'domain_missing'
 	| 'not_submitted'
 	| 'already_enrolled'
 	| 'nothing_to_reset'

@@ -113,6 +113,10 @@ async function enrollmentRows(t: Harness) {
 	return await t.run(async (ctx) => ctx.db.query('yahooCflEnrollments').collect());
 }
 
+async function auditRows(t: Harness) {
+	return await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
+}
+
 beforeEach(() => {
 	mockRole = 'admin';
 	// The mutations read the wall clock (D15 keeps the clock OUT of the pure core,
@@ -178,6 +182,31 @@ describe('the guided flow, end to end', () => {
 		expect(rows[0]?.submittedAt).toBeUndefined();
 	});
 
+	it('audits every guided-flow event, naming the resulting complaint source', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedDomain(t, { domain: 'mail.audit.test' });
+		const asUser = t.withIdentity(identity);
+		await asUser.mutation(api.domains.yahooCfl.submitEnrollment, { domainId });
+		await asUser.mutation(api.domains.yahooCfl.confirmEnrollment, { domainId });
+		await asUser.mutation(api.domains.yahooCfl.resetEnrollment, { domainId });
+
+		const logged = (await auditRows(t)).filter(
+			(r) => r.action === 'sending_domain.yahoo_cfl_changed'
+		);
+		expect(logged.map((r) => r.details?.['event'])).toEqual(['submit', 'confirm', 'reset']);
+		for (const row of logged) {
+			expect(row.resource).toBe('sending_domain');
+			expect(row.resourceId).toBe(domainId);
+			expect(row.details?.['domain']).toBe('mail.audit.test');
+		}
+		// The RESET is the sharp one: it is destructive AND it downgrades the yahoo
+		// cell's complaint measurement. The consequence is recorded next to the
+		// transition, so a reviewer never has to re-derive it.
+		expect(logged[1]?.details?.['complaintSource']).toBe('yahoo_cfl');
+		expect(logged[2]?.details?.['complaintSource']).toBe('unsubscribe_rate_proxy');
+		expect(logged[2]?.details?.['reason']).toBe('reset');
+	});
+
 	it('refuses the write for a role without organization:manage', async () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedDomain(t, { domain: 'mail.d.test' });
@@ -196,12 +225,13 @@ describe('the guided flow, end to end', () => {
 		const guide = await asUser.query(api.domains.yahooCfl.getGuide, { domainId });
 		expect(guide).not.toBeNull();
 		expect(guide?.state).toBe('awaiting_yahoo');
-		expect(guide?.precondition).toMatchObject({
-			domain: 'mail.e.test',
-			isVerified: true,
-			dkimSelector: 's1711234567',
-		});
 		expect(guide?.steps.map((s) => s.status)).toEqual(['done', 'done', 'in_progress', 'blocked']);
+		// The resolved precondition is NOT on the wire — the steps interpolate the
+		// domain and the selector, so a second copy would be payload with no
+		// consumer. That the precondition was RESOLVED is proved by the step
+		// statuses above, which are a function of it.
+		const step = guide?.steps.find((s) => s.id === 'submit_enrollment');
+		expect(step?.action).toContain('mail.e.test');
 	});
 
 	it('returns null for a domain that no longer exists', async () => {
@@ -428,16 +458,15 @@ describe('the re-check, derived on read', () => {
 		vi.setSystemTime(T0 + LAPSE_MS - DAY);
 		expect(await asUser.query(api.domains.yahooCfl.getGuide, { domainId })).toMatchObject({
 			state: 'enrolled',
-			enrollment: { state: 'enrolled' },
 		});
 
 		vi.setSystemTime(T0 + LAPSE_MS);
 		const lapsed = await asUser.query(api.domains.yahooCfl.getGuide, { domainId });
-		// The DERIVED state is `lapsed` while the STORED one is still `enrolled` —
-		// reported once each, from one source (`state` vs `enrollment.state`).
+		// The DERIVED state is `lapsed` while the STORED row is still `enrolled`.
+		// Only the derived one is reported, so a consumer cannot read two sources
+		// for the same fact; `silentMs` is the measured silence the panel renders.
 		expect(lapsed).toMatchObject({
 			state: 'lapsed',
-			enrollment: { state: 'enrolled' },
 			silentMs: LAPSE_MS,
 		});
 		// The verdict is derived: the stored row was never rewritten.
