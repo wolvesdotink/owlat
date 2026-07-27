@@ -4,7 +4,12 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
-import { recordContactActivity } from '../../contactActivities/writer';
+import {
+	recordContactActivity,
+	type RecordContactActivityArgs,
+} from '../../contactActivities/writer';
+import type { ContactActivityType } from '../../contactActivities/catalog';
+import { ENGAGEMENT_ACTIVITY_LITERALS } from '../engagementActivity';
 import {
 	BACKFILL_BATCH_SIZE,
 	BACKFILL_CONTACTS_PER_HOUR,
@@ -495,6 +500,44 @@ describe('the acceptance criteria, end to end', () => {
 		const doc = await t.run(async (ctx) => ctx.db.get(id));
 		expect(doc?.hasOpened).toBe(true);
 		expect(doc?.hasClicked).toBe(true);
+	});
+
+	it('reacts on the hot path to EVERY literal the adapter maps', async () => {
+		// The writer's trigger set is DERIVED from `ENGAGEMENT_ACTIVITY_LITERALS`,
+		// so adding a mapping to the adapter cannot leave the hot path silently
+		// not folding it. This walks the whole set through the real writer and
+		// asserts the contact was stamped for each one — it fails if the two ever
+		// come apart again.
+		const metadataByLiteral: Partial<Record<ContactActivityType, unknown>> = {
+			email_opened: { campaignId: 'c1' },
+			email_clicked: { campaignId: 'c1', linkUrl: 'https://example.com' },
+			email_bounced: { campaignId: 'c1', bounceType: 'soft' },
+			email_complained: { campaignId: 'c1' },
+			inbound_replied: {},
+		};
+
+		expect(ENGAGEMENT_ACTIVITY_LITERALS.size).toBeGreaterThan(0);
+		for (const literal of ENGAGEMENT_ACTIVITY_LITERALS) {
+			const metadata = metadataByLiteral[literal];
+			// A new mapping with no fixture here is a test failure, not a skip.
+			expect(metadata, `no metadata fixture for '${literal}'`).toBeDefined();
+
+			const t = harness();
+			const [id] = await seedContacts(t, 1);
+			if (!id) throw new Error('seed failed');
+
+			await t.run(async (ctx) => {
+				await recordContactActivity(ctx, {
+					literal,
+					contactId: id,
+					metadata,
+				} as RecordContactActivityArgs);
+			});
+
+			const doc = await t.run(async (ctx) => ctx.db.get(id));
+			expect(doc?.engagementScoreUpdatedAt, literal).toBeTypeOf('number');
+			expect(doc?.engagementScoreState, literal).toBeDefined();
+		}
 	});
 
 	it('leaves contacts untouched for activity types the score ignores', async () => {

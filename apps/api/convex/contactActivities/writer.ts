@@ -20,6 +20,7 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 
 import type { ContactActivityType } from './catalog';
+import { ENGAGEMENT_ACTIVITY_LITERALS } from '../analytics/engagementActivity';
 import { engagementPatchForActivity } from '../analytics/engagementScoreSync';
 
 import { emailSent } from './email_sent';
@@ -67,14 +68,14 @@ export type ActivityModuleMap = typeof ACTIVITY_MODULES;
  * shipped `hasOpened`/`hasClicked` booleans plus the engagement-score
  * accumulator (deliverability plan P0-2). Every other literal skips the contact
  * read entirely, exactly as before.
+ *
+ * DERIVED, never re-listed: the set comes straight from the scoring adapter's
+ * mapping table (`analytics/engagementActivity.ts`), so a literal added there
+ * cannot silently fail to reach the hot path. `hasOpened`/`hasClicked` are a
+ * strict subset of it, so one gate covers both denormalizations.
  */
-const ENGAGEMENT_DENORMALIZED_LITERALS = new Set<ContactActivityType>([
-	'email_opened',
-	'email_clicked',
-	'email_bounced',
-	'email_complained',
-	'inbound_replied',
-]);
+const ENGAGEMENT_DENORMALIZED_LITERALS: ReadonlySet<ContactActivityType> =
+	ENGAGEMENT_ACTIVITY_LITERALS;
 
 /** Metadata shape for a given activity literal (derived from the module's schema). */
 export type MetadataFor<L extends ContactActivityType> = Infer<
