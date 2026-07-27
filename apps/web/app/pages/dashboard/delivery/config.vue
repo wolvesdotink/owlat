@@ -65,18 +65,22 @@ const envSetCommand = computed(() => {
 const { copy, isCopied } = useCopyToClipboard();
 
 // Transport connection wizard (P2-4) — an OFFER, never a to-do item (plan D2).
-// Both reads are DNS-facing and non-secret: the two alignment ARMS for the
-// domain we sign as, and the recorded return-path capability of the configured
-// transport. Both skip entirely when there is nothing to ask about, so a
-// standalone deployment issues neither query and sees no error.
-const wizardDomain = computed(() => status.value?.alignment.dkimDomain ?? null);
+// Both reads are DNS-facing and non-secret, and both are answered ENTIRELY on
+// the server: which domain we sign as, and which transport is the REFERENCE arm,
+// are facts about the `domains` table and the configured transport surface, not
+// something this page can derive from the transport status. Passing no arguments
+// is what keeps them right — an earlier revision derived the domain here and got
+// an inert step 3, and derived the probe target from the ACTIVE provider, which
+// on a standalone deployment is our own MTA.
+//
+// Both are total: no verified signing domain answers `null`, and no relay
+// answers `transportId: null` with the unresolvable posture. Neither is an
+// error, and neither renders one.
 const { data: alignmentArms } = useOrganizationQuery(
-	api.delivery.alignmentPreflight.getAlignmentArms,
-	() => (wizardDomain.value ? { domain: wizardDomain.value } : undefined)
+	api.delivery.alignmentPreflight.getAlignmentArms
 );
 const { data: returnPathReadiness } = useOrganizationQuery(
-	api.delivery.relayReturnPath.getReturnPathReadiness,
-	() => (status.value?.provider ? { transportId: status.value.provider } : undefined)
+	api.delivery.relayReturnPath.getReturnPathReadiness
 );
 
 // Inbound TLS-RPT (RFC 8460) roll-up — daily reports partners send us about

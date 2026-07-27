@@ -34,6 +34,7 @@ import type {
 	ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
 import {
+	RETURN_PATH_SETTLES_NOTE,
 	TRANSPORT_WIZARD_ENTRY,
 	TRANSPORT_WIZARD_STEPS,
 	advanceStep,
@@ -48,6 +49,7 @@ import {
 	returnPathStepStatus,
 	setStepStatus,
 	skippingWizardImpact,
+	stepById,
 	stepIndex,
 	type ReturnPathCapabilityValue,
 	type TransportWizardStepId,
@@ -55,6 +57,11 @@ import {
 	type WizardStepStatus,
 } from '~/utils/transportWizard';
 import { runAlignmentProbe } from '~/utils/transportAlignmentProbe';
+// Imported rather than left to Nuxt's component auto-import: these two are the
+// step's content, and a mount that silently resolves them to nothing renders a
+// wizard with no step 1 and no findings.
+import TransportCredentialsStep from './TransportCredentialsStep.vue';
+import WizardFindingRow from './WizardFindingRow.vue';
 
 const props = defineProps<{
 	/**
@@ -63,7 +70,7 @@ const props = defineProps<{
 	 * the domain has no own-MTA identity — step 3 then says so plainly instead of
 	 * guessing.
 	 */
-	alignmentArms?: { ownArm: AlignmentArm; reference: ReferenceArmInput } | null;
+	alignmentArms?: { domain: string; ownArm: AlignmentArm; reference: ReferenceArmInput } | null;
 	/** P2-3's recorded posture for the configured transport; null while loading. */
 	returnPathCapability?: ReturnPathCapabilityValue | null;
 	/** Whether a test send is possible at all (a transport is configured). */
@@ -78,9 +85,9 @@ const skipImpact = skippingWizardImpact();
 
 const steps = TRANSPORT_WIZARD_STEPS;
 const currentIndex = computed(() => stepIndex(state.value.current));
-const currentStep = computed(() => steps[currentIndex.value] ?? steps[0]);
+const currentStep = computed(() => stepById(state.value.current));
 const positionLabel = computed(
-	() => `Step ${currentIndex.value + 1} of ${steps.length}: ${currentStep.value?.title ?? ''}`
+	() => `Step ${currentIndex.value + 1} of ${steps.length}: ${currentStep.value.title}`
 );
 
 function setStatus(id: TransportWizardStepId, status: WizardStepStatus) {
@@ -88,15 +95,25 @@ function setStatus(id: TransportWizardStepId, status: WizardStepStatus) {
 }
 
 // ── Focus management ─────────────────────────────────────────────────────────
+// Every transition — including opening and dismissing, which destroy the button
+// that was just activated — moves focus somewhere deliberate. Without that, a
+// keyboard or screen-reader user is dropped on `<body>` with no announcement.
 const headingRef = ref<HTMLElement | null>(null);
+const entryActionRef = ref<HTMLElement | { $el?: unknown } | null>(null);
 
-watch(
-	() => state.value.current,
-	async () => {
-		await nextTick();
-		headingRef.value?.focus();
-	}
-);
+async function focusHeading(): Promise<void> {
+	await nextTick();
+	headingRef.value?.focus();
+}
+
+/** The entry button is a UI-kit component, so its element is behind `$el`. */
+function focusEntryAction(): void {
+	const target = entryActionRef.value;
+	const element: unknown = target instanceof HTMLElement ? target : (target?.$el ?? null);
+	if (element instanceof HTMLElement) element.focus();
+}
+
+watch(() => state.value.current, focusHeading);
 
 function goNext() {
 	state.value = advanceStep(state.value);
@@ -105,11 +122,19 @@ function goBack() {
 	state.value = goBackStep(state.value);
 }
 
-function open() {
+async function open() {
 	isOpen.value = true;
+	// `current` is unchanged, so the step watcher does not fire — focus the first
+	// step's heading here or focus falls to `<body>`.
+	await focusHeading();
 }
-function dismiss() {
+
+async function dismiss() {
 	isOpen.value = false;
+	// The whole panel (including the button that was focused) is torn down, so
+	// hand focus back to the entry action that replaces it.
+	await nextTick();
+	focusEntryAction();
 }
 
 // ── Step 1: credentials (its own component) ──────────────────────────────────
@@ -148,12 +173,22 @@ async function checkAlignment() {
 	setStatus('alignment', 'running');
 	alignmentFindingRows.value = [];
 	alignmentDegradedReason.value = '';
+	// Cleared with the findings it summarises — a stale summary must never outlive
+	// them and describe a result that is no longer on screen.
+	alignmentSummary.value = '';
 	try {
 		const result = await runAlignmentProbe(arms.ownArm, arms.reference, Date.now());
 		alignmentFindingRows.value = alignmentFindings(result);
 		alignmentDegradedReason.value = result.measurementDegradedReason ?? '';
 		alignmentSummary.value = summarizeVerdict(result.verdict);
 		setStatus('alignment', alignmentStepStatus(result));
+	} catch {
+		// A throw here (a malformed arm, an unexpected evaluator shape) must not
+		// pin the step at `running` — a blocking step that is neither passed nor
+		// resolvable strands the operator with no message and no way forward.
+		// `unknown` is the honest verdict: we could not find out.
+		alignmentSummary.value = 'The check could not run. Nothing has changed — try again.';
+		setStatus('alignment', 'unknown');
 	} finally {
 		alignmentChecking.value = false;
 	}
@@ -172,18 +207,6 @@ watch(
 	{ immediate: true }
 );
 
-const findingIcon: Record<WizardFinding['status'], string> = {
-	pass: 'lucide:check-circle-2',
-	fail: 'lucide:x-circle',
-	unknown: 'lucide:help-circle',
-	info: 'lucide:info',
-};
-const findingClass: Record<WizardFinding['status'], string> = {
-	pass: 'text-success',
-	fail: 'text-error',
-	unknown: 'text-text-tertiary',
-	info: 'text-text-secondary',
-};
 </script>
 
 <template>
@@ -200,7 +223,7 @@ const findingClass: Record<WizardFinding['status'], string> = {
 						<p class="text-sm text-text-secondary">{{ TRANSPORT_WIZARD_ENTRY.body }}</p>
 					</div>
 				</div>
-				<UiButton v-if="!isOpen" variant="secondary" size="sm" @click="open">
+				<UiButton v-if="!isOpen" ref="entryActionRef" variant="secondary" size="sm" @click="open">
 					{{ TRANSPORT_WIZARD_ENTRY.actionLabel }}
 				</UiButton>
 			</div>
@@ -243,13 +266,13 @@ const findingClass: Record<WizardFinding['status'], string> = {
 					tabindex="-1"
 					class="text-base font-semibold text-text-primary outline-none"
 				>
-					{{ currentStep?.title }}
+					{{ currentStep.title }}
 				</h3>
-				<p class="text-sm text-text-secondary">{{ currentStep?.description }}</p>
+				<p class="text-sm text-text-secondary">{{ currentStep.description }}</p>
 			</div>
 
 			<!-- Step 1: credentials — its own component; the shell never sees a secret -->
-			<DeliveryTransportCredentialsStep
+			<TransportCredentialsStep
 				v-if="state.current === 'credentials'"
 				@settled="onCredentialsSettled"
 				@applied="emit('applied')"
@@ -279,23 +302,8 @@ const findingClass: Record<WizardFinding['status'], string> = {
 						{{ alignmentSummary }}
 					</p>
 					<ul v-if="alignmentFindingRows.length" class="space-y-3">
-						<li
-							v-for="finding in alignmentFindingRows"
-							:key="finding.id"
-							class="flex items-start gap-3 rounded-lg border border-border-subtle p-3"
-						>
-							<Icon
-								:name="findingIcon[finding.status]"
-								class="w-4 h-4 mt-0.5 shrink-0"
-								:class="findingClass[finding.status]"
-							/>
-							<div class="min-w-0">
-								<p class="text-sm font-medium text-text-primary">{{ finding.label }}</p>
-								<p class="text-sm text-text-secondary">{{ finding.detail }}</p>
-								<p v-if="finding.remedy" class="text-sm text-text-primary mt-1">
-									{{ finding.remedy }}
-								</p>
-							</div>
+						<li v-for="finding in alignmentFindingRows" :key="finding.id">
+							<WizardFindingRow :finding="finding" />
 						</li>
 					</ul>
 					<p v-if="alignmentDegradedReason" class="text-sm text-text-secondary">
@@ -309,17 +317,8 @@ const findingClass: Record<WizardFinding['status'], string> = {
 				<p v-if="!returnPathRow" class="text-sm text-text-secondary">
 					Reading the recorded return-path capability…
 				</p>
-				<div v-else class="flex items-start gap-3 rounded-lg border border-border-subtle p-3">
-					<Icon
-						:name="findingIcon[returnPathRow.status]"
-						class="w-4 h-4 mt-0.5 shrink-0"
-						:class="findingClass[returnPathRow.status]"
-					/>
-					<div class="min-w-0">
-						<p class="text-sm font-medium text-text-primary">{{ returnPathRow.label }}</p>
-						<p class="text-sm text-text-secondary">{{ returnPathRow.detail }}</p>
-					</div>
-				</div>
+				<WizardFindingRow v-else :finding="returnPathRow" />
+				<p class="text-sm text-text-secondary">{{ RETURN_PATH_SETTLES_NOTE }}</p>
 			</div>
 
 			<!-- Navigation -->

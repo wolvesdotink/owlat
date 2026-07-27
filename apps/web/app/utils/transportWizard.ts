@@ -31,6 +31,8 @@
  * `components/delivery/TransportConnectionWizard.vue`.
  */
 
+import type { FunctionReturnType } from 'convex/server';
+import { api } from '@owlat/api';
 import type {
 	AlignmentCheckId,
 	AlignmentCheckResult,
@@ -117,7 +119,12 @@ export function stepAt(index: number): TransportWizardStep | null {
 	return TRANSPORT_WIZARD_STEPS[index] ?? null;
 }
 
-function stepById(id: TransportWizardStepId): TransportWizardStep {
+/**
+ * The step for an id — TOTAL, unlike an array index. Exported because the shell
+ * renders the current step's title and description, and a `| undefined` there
+ * spreads optional chaining through the template for a case that cannot happen.
+ */
+export function stepById(id: TransportWizardStepId): TransportWizardStep {
 	const step = TRANSPORT_WIZARD_STEPS.find((candidate) => candidate.id === id);
 	// The id is a member of the literal union the array is built from, so this is
 	// unreachable; it exists because the array lookup is still `| undefined`.
@@ -172,14 +179,6 @@ export function setStepStatus(
 	return { ...state, statuses: { ...state.statuses, [id]: status } };
 }
 
-/** Every BLOCKING step passed, and the informational one has been resolved. */
-export function isWizardComplete(state: TransportWizardState): boolean {
-	return TRANSPORT_WIZARD_STEPS.every((step) => {
-		const status = state.statuses[step.id];
-		return step.blocking ? status === 'passed' : status !== 'not_started' && status !== 'running';
-	});
-}
-
 /**
  * One actionable line of the results list. `remedy` is null ONLY when there is
  * nothing to do — a passing check never carries advice, and a failing one always
@@ -194,6 +193,30 @@ export interface WizardFinding {
 	readonly detail: string;
 	readonly remedy: string | null;
 }
+
+/**
+ * How one finding status PRESENTS — icon, colour and the word a screen reader
+ * hears. One map rather than three parallel ones keyed by the same union: a
+ * status added to {@link WizardFinding} then fails to compile until all three
+ * are answered, and no use site can index two maps out of step.
+ *
+ * `srLabel` is not decoration. Without it the status is carried by a glyph and a
+ * colour alone, so a screen-reader user hears "SPF" plus the detail and cannot
+ * tell a pass from a failure.
+ */
+export interface FindingPresentation {
+	readonly icon: string;
+	readonly class: string;
+	readonly srLabel: string;
+}
+
+export const FINDING_PRESENTATION: Readonly<Record<WizardFinding['status'], FindingPresentation>> =
+	{
+		pass: { icon: 'lucide:check-circle-2', class: 'text-success', srLabel: 'Passed:' },
+		fail: { icon: 'lucide:x-circle', class: 'text-error', srLabel: 'Needs a change:' },
+		unknown: { icon: 'lucide:help-circle', class: 'text-text-tertiary', srLabel: 'Not known:' },
+		info: { icon: 'lucide:info', class: 'text-text-secondary', srLabel: 'For information:' },
+	};
 
 const ALIGNMENT_CHECK_LABELS: Readonly<Record<AlignmentCheckId, string>> = {
 	from_domain: 'From domain',
@@ -236,8 +259,16 @@ export function alignmentStepStatus(result: AlignmentPreflightResult): WizardSte
 	}
 }
 
-/** The return-path posture the wizard records, as read from P2-3's resolver. */
-export type ReturnPathCapabilityValue = 'supported' | 'unsupported' | 'unknown';
+/**
+ * The return-path posture the wizard records, DERIVED from the query that
+ * answers it rather than re-declared. A fourth posture added to P2-3's resolver
+ * then breaks {@link returnPathFinding}'s exhaustive switch at compile time,
+ * which is the point — a hand-copied union would compile and silently render
+ * nothing for it.
+ */
+export type ReturnPathCapabilityValue = FunctionReturnType<
+	typeof api.delivery.relayReturnPath.getReturnPathReadiness
+>['capability'];
 
 /**
  * The return-path result row. NEVER a failure: the three postures are
@@ -275,6 +306,17 @@ export function returnPathFinding(capability: ReturnPathCapabilityValue): Wizard
 			};
 	}
 }
+
+/**
+ * WHEN this step's answer arrives, said plainly.
+ *
+ * The posture is OBSERVED, not asked for: P2-3's probe settles it the first time
+ * a real bounce comes back through the provider. A transport connected a minute
+ * ago therefore reads "not known yet" here, every time, and pretending otherwise
+ * would make the step look broken. Nothing waits on it (D2).
+ */
+export const RETURN_PATH_SETTLES_NOTE =
+	'This one is observed rather than asked for: it settles the first time a bounce comes back through this provider, so a transport you connected a moment ago reads “not known yet”. Nothing waits on it.';
 
 /** The probe never blocks: any resolved posture finishes the step. */
 export function returnPathStepStatus(capability: ReturnPathCapabilityValue): WizardStepStatus {
