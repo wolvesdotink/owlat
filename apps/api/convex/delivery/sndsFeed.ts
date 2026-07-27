@@ -117,6 +117,9 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 
 const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 const IPV6_RE = /^[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7}$/;
+/** Keeps binary floating point from turning `0.3 * 10` into `2.999…`. */
+const BAND_EPSILON = 1e-9;
+
 const HELO_RE = /^[a-z0-9](?:[a-z0-9._-]{0,251}[a-z0-9])?$/;
 
 /**
@@ -198,19 +201,36 @@ export function parseSndsTimestamp(raw: string): number | null {
  * a new band, a localized separator, an empty cell — becomes `unknown`. It
  * never throws and never guesses a neighbouring band, because a wrong band is
  * worse than no band: `unknown` holds the ramp, a fabricated band moves it.
+ *
+ * THE BOUND IS READ, NEVER ASSUMED. A relational spelling names a band only when
+ * its bound coincides with a band edge: `< 0.1%` is the cleanest band, but
+ * `< 0.5%` spans five of them and is therefore `unknown`. Treating any
+ * `<`-prefixed text as `lt_0_1` would let reworded feed input turn a breach into
+ * the cleanest possible reading — the one direction this parser must never fail.
  */
 export function parseComplaintBand(raw: string): SndsComplaintBand {
 	const text = raw.trim();
 	if (text.length === 0) return 'unknown';
-	if (text.startsWith('<')) return 'lt_0_1';
-	if (text.startsWith('>')) return 'gte_0_9';
+	const relational = text.match(/^([<>])\s*=?\s*(\d+(?:\.\d+)?)/);
+	if (relational !== null) {
+		const operator = relational[1];
+		const boundText = relational[2];
+		if (boundText === undefined) return 'unknown';
+		const bound = Number(boundText);
+		if (!Number.isFinite(bound) || bound < 0) return 'unknown';
+		// `<` names a band only at the bottom edge, `>` only at the top edge.
+		if (operator === '<') return bound <= 0.1 + BAND_EPSILON ? 'lt_0_1' : 'unknown';
+		return bound >= 0.9 - BAND_EPSILON ? 'gte_0_9' : 'unknown';
+	}
+	// A relational prefix whose bound we could not read names nothing at all.
+	if (text.startsWith('<') || text.startsWith('>')) return 'unknown';
 	const first = text.match(/\d+(?:\.\d+)?/)?.[0];
 	if (first === undefined) return 'unknown';
 	const lowerBound = Number(first);
 	if (!Number.isFinite(lowerBound) || lowerBound < 0) return 'unknown';
 	// Floor, not round: `0.05%` belongs in the band BELOW 0.1%, and the epsilon
 	// keeps binary floating point from turning 0.3 * 10 into 2.999….
-	const tenths = Math.floor(lowerBound * 10 + 1e-9);
+	const tenths = Math.floor(lowerBound * 10 + BAND_EPSILON);
 	if (tenths < 1) return 'lt_0_1';
 	if (tenths >= 9) return 'gte_0_9';
 	return SNDS_COMPLAINT_BANDS[tenths + 1] ?? 'unknown';
