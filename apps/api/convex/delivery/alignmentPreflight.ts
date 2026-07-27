@@ -40,6 +40,7 @@ import { authedQuery } from '../lib/authedFunctions';
 import { getOptional } from '../lib/env';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { parsePoolIps } from '../domains/spf';
+import { configuredRelayKinds } from './configuredRelays';
 import { alignmentCheckValidator, alignmentVerdictValidator } from './deliverabilityValidators';
 
 /** SES's SPF include, used when the relay identity carries no generated record. */
@@ -50,9 +51,6 @@ const SES_DEFAULT_SPF_MECHANISM = 'include:amazonses.com';
  * sweep page size. Two different concerns must not share one number.
  */
 const ALIGNMENT_READINESS_LIMIT = 50;
-
-/** Upper bound on the (per-messageType) route rows we inspect for a relay. */
-const PROVIDER_ROUTE_SCAN_LIMIT = 16;
 
 /**
  * A target's reference arm, minus `none`. The sweep only ever targets a domain
@@ -92,30 +90,6 @@ function ownSpfMechanisms(): string[] {
 function relaySpfMechanisms(record: string | undefined): string[] {
 	const mechanisms = parseSpfMechanisms(record ?? '');
 	return mechanisms.length > 0 ? mechanisms : [SES_DEFAULT_SPF_MECHANISM];
-}
-
-/**
- * Which non-MTA transports are actually configured, from the SHIPPED surfaces:
- * every enabled `providerRoutes` entry plus the single-transport `EMAIL_PROVIDER`
- * env. The shipped transport set is wider than SES (`mta`/`ses`/`resend`/`smtp`
- * plus `plugin.*`), so answering this question from the SES identity table alone
- * would report "single arm" for a Resend/SMTP/plugin relay and let two genuinely
- * unaligned arms ramp.
- */
-async function configuredRelayKinds(ctx: QueryCtx): Promise<string[]> {
-	// One row per messageType — tiny by construction, and bounded anyway.
-	const routes = await ctx.db.query('providerRoutes').take(PROVIDER_ROUTE_SCAN_LIMIT);
-	const kinds = new Set<string>();
-	for (const route of routes) {
-		for (const provider of route.providers) {
-			if (provider.isEnabled && provider.providerType !== 'mta') kinds.add(provider.providerType);
-		}
-	}
-	const envProvider = getOptional('EMAIL_PROVIDER')?.trim();
-	if (envProvider !== undefined && envProvider !== '' && envProvider !== 'mta') {
-		kinds.add(envProvider);
-	}
-	return [...kinds].sort();
 }
 
 /**
@@ -194,6 +168,27 @@ async function buildTarget(
 	domain: Doc<'domains'>,
 	relayKinds: readonly string[]
 ): Promise<AlignmentTarget | null> {
+	const arms = await buildArms(ctx, domain, relayKinds);
+	if (arms === null) return null;
+	const { ownArm, reference } = arms;
+	if (reference.kind === 'none') return null;
+	return { domain: domain.domain, ownArm, reference };
+}
+
+/**
+ * The two ARMS for one domain — the ONE assembly, called by the sweep
+ * ({@link buildTarget}, which then applies its two documented skips) and by the
+ * wizard's live read ({@link getAlignmentArms}, which does not).
+ *
+ * Null means the domain has no own-MTA signing identity, so there is no first
+ * arm to compare anything against. Both callers treat that as "nothing to do",
+ * never as an error.
+ */
+async function buildArms(
+	ctx: QueryCtx,
+	domain: Doc<'domains'>,
+	relayKinds: readonly string[]
+): Promise<{ ownArm: AlignmentArm; reference: ReferenceArmInput } | null> {
 	const mtaIdentity = await ctx.db
 		.query('sendingDomainMtaIdentities')
 		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
@@ -203,10 +198,7 @@ async function buildTarget(
 		.query('sendingDomainSesIdentities')
 		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
 		.unique();
-	const reference = referenceFor(domain, sesIdentity, relayKinds);
-	if (reference.kind === 'none') return null;
 	return {
-		domain: domain.domain,
 		ownArm: {
 			label: 'own MTA',
 			fromDomain: domain.domain,
@@ -214,7 +206,7 @@ async function buildTarget(
 			dkimSelectors: [mtaIdentity.dkimSelector],
 			spfMechanisms: ownSpfMechanisms(),
 		},
-		reference,
+		reference: referenceFor(domain, sesIdentity, relayKinds),
 	};
 }
 
@@ -360,10 +352,16 @@ export const getAlignmentGateState = internalQuery({
  *
  * The wizard runs the SHIPPED pure evaluator in the browser against live DNS
  * (DNS-over-HTTPS — Convex queries cannot resolve DNS), so it needs the same
- * arm descriptors the sweep builds. Those are assembled HERE from the same
- * `ownSpfMechanisms` / `referenceFor` helpers the sweep uses, rather than
- * re-derived on the client, so the wizard's verdict and the controller's gate
- * can never be computed from two different pictures of the configuration.
+ * arm descriptors the sweep builds. They come from the SAME {@link buildArms}
+ * the sweep calls, rather than a second assembly here or a re-derivation on the
+ * client, so the wizard's verdict and the controller's gate can never be
+ * computed from two different pictures of the configuration.
+ *
+ * `domain` is OPTIONAL, and omitting it is the page's normal call: the wizard
+ * asks "which domain do we sign as?", and the answer is a fact about the
+ * `domains` table, not something the client can derive from the transport
+ * status. Omitted, this picks the first verified domain that HAS an own-MTA
+ * signing identity — the only kind of domain step 3 can compare at all.
  *
  * Nothing secret crosses this seam: domain names, DKIM selectors and SPF
  * mechanisms are all published DNS facts. No credential, sealed or otherwise,
@@ -376,36 +374,34 @@ export const getAlignmentGateState = internalQuery({
 // all-members: published DNS facts only (domain, selectors, SPF mechanisms) —
 // the same member-visible floor as the readiness read below.
 export const getAlignmentArms = authedQuery({
-	args: { domain: v.string() },
+	args: { domain: v.optional(v.string()) },
 	handler: async (
 		ctx,
 		args
-	): Promise<{ ownArm: AlignmentArm; reference: ReferenceArmInput } | null> => {
-		const fromDomain = normalizeDomain(args.domain);
-		const domain = await ctx.db
+	): Promise<{ domain: string; ownArm: AlignmentArm; reference: ReferenceArmInput } | null> => {
+		const relayKinds = await configuredRelayKinds(ctx);
+		if (args.domain !== undefined) {
+			const fromDomain = normalizeDomain(args.domain);
+			const domain = await ctx.db
+				.query('domains')
+				.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
+				.unique();
+			if (domain === null) return null;
+			const arms = await buildArms(ctx, domain, relayKinds);
+			return arms === null ? null : { domain: domain.domain, ...arms };
+		}
+		// Bounded by the same page size as the readiness read: a deployment with
+		// more verified domains than this still gets an answer for the first one
+		// that can be compared, and the operator can name another explicitly.
+		const verified = await ctx.db
 			.query('domains')
-			.withIndex('by_domain', (q) => q.eq('domain', fromDomain))
-			.unique();
-		if (domain === null) return null;
-		const mtaIdentity = await ctx.db
-			.query('sendingDomainMtaIdentities')
-			.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-			.unique();
-		if (mtaIdentity === null) return null;
-		const sesIdentity = await ctx.db
-			.query('sendingDomainSesIdentities')
-			.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-			.unique();
-		return {
-			ownArm: {
-				label: 'own MTA',
-				fromDomain: domain.domain,
-				dkimDomain: domain.domain,
-				dkimSelectors: [mtaIdentity.dkimSelector],
-				spfMechanisms: ownSpfMechanisms(),
-			},
-			reference: referenceFor(domain, sesIdentity, await configuredRelayKinds(ctx)),
-		};
+			.withIndex('by_status', (q) => q.eq('status', 'verified'))
+			.take(ALIGNMENT_READINESS_LIMIT);
+		for (const domain of verified) {
+			const arms = await buildArms(ctx, domain, relayKinds);
+			if (arms !== null) return { domain: domain.domain, ...arms };
+		}
+		return null;
 	},
 });
 
