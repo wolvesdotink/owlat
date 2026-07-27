@@ -163,6 +163,12 @@ export const wizardStubs = {
 
 export interface WizardProps {
 	alignmentArms?: { domain: string; ownArm: AlignmentArm; reference: ReferenceArmInput } | null;
+	/**
+	 * The reference transport step 4 describes. Omitted is the read in flight;
+	 * `null` is the resolved "there is no single second arm". The two must render
+	 * differently, so the harness keeps them distinguishable.
+	 */
+	returnPathTransportId?: string | null;
 	returnPathCapability?: ReturnPathCapabilityValue | null;
 	canSend?: boolean;
 }

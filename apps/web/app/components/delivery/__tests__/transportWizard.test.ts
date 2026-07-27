@@ -9,9 +9,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flushPromises } from '@vue/test-utils';
 import {
+	ALIGNMENT_VERDICT_PRESENTATION,
+	RETURN_PATH_NO_REFERENCE_NOTE,
 	TRANSPORT_WIZARD_STEPS,
 	advanceStep,
 	alignmentStepStatus,
+	alignmentVerdictSummary,
 	canAdvance,
 	canGoBack,
 	createTransportWizardState,
@@ -33,6 +36,7 @@ import {
 	mountWizard,
 	openWizard,
 	stubDoh,
+	type WizardProps,
 } from './wizardHarness';
 
 // The real probe, wrapped so ONE case can make it throw. Everything else runs
@@ -132,6 +136,26 @@ describe('transport wizard — pure state machine', () => {
 		expect(alignmentStepStatus({ ...base, ...at, verdict: 'unknown' })).toBe('unknown');
 	});
 
+	it('gives every verdict a summary sentence, from the SAME table as the status', () => {
+		const base = { checks: [], isMeasurementDegraded: false, measurementDegradedReason: null };
+		const at = { checkedAt: 0, nextCheckDueAt: 0 };
+		const verdicts = ['aligned', 'single_arm', 'blocked', 'unknown'] as const;
+		// One table, so the copy is reachable from a unit test and a fifth verdict
+		// cannot acquire a status without acquiring a sentence.
+		expect(Object.keys(ALIGNMENT_VERDICT_PRESENTATION).sort()).toEqual([...verdicts].sort());
+		for (const verdict of verdicts) {
+			const result = { ...base, ...at, verdict };
+			const entry = ALIGNMENT_VERDICT_PRESENTATION[verdict];
+			expect(alignmentVerdictSummary(result)).toBe(entry.summary);
+			expect(alignmentStepStatus(result)).toBe(entry.status);
+			expect(entry.summary.length).toBeGreaterThan(0);
+		}
+		// D2 again, in the words the operator reads: nothing to align is a fact,
+		// not a fault.
+		expect(ALIGNMENT_VERDICT_PRESENTATION.single_arm.summary).toContain('nothing to align yet');
+		expect(ALIGNMENT_VERDICT_PRESENTATION.blocked.summary).toContain('names the DNS change');
+	});
+
 	it('never fails on the return-path probe — the worst posture is "not known"', () => {
 		expect(returnPathStepStatus('supported')).toBe('passed');
 		expect(returnPathStepStatus('unsupported')).toBe('passed');
@@ -163,10 +187,12 @@ describe('transport wizard — mounted flow', () => {
 		vi.unstubAllGlobals();
 	});
 
-	async function walkToAlignment() {
+	async function walkToAlignment(props: WizardProps = {}) {
 		const wrapper = mountWizard({
 			alignmentArms: armsFixture(),
+			returnPathTransportId: 'ses',
 			returnPathCapability: 'supported',
+			...props,
 		});
 		await openWizard(wrapper);
 		await fillCredentials(wrapper, 'resend', 're_live_secret');
@@ -319,6 +345,92 @@ describe('transport wizard — mounted flow', () => {
 		await flushPromises();
 		expect(wrapper.text()).toContain('indistinguishable to the receiver');
 		expect(wrapper.text()).not.toContain('The check could not run');
+		wrapper.unmount();
+	});
+});
+
+/**
+ * LOADING is not a FINDING. Both page reads resolve asynchronously, and each has
+ * a resolved negative answer that means something entirely different from "not
+ * read yet". Rendering the negative while the read is in flight states a
+ * conclusion nobody has reached.
+ */
+describe('transport wizard — in-flight reads render as reads, not as findings', () => {
+	beforeEach(() => {
+		stubDoh(ALIGNED_DNS);
+		vi.stubGlobal(
+			'$fetch',
+			vi.fn(async () => ({
+				ok: true,
+				message: 'Applied.',
+				applied: true,
+				requiresRestart: false,
+			}))
+		);
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	async function walkTo(step: 'alignment' | 'return_path', props: WizardProps) {
+		const wrapper = mountWizard(props);
+		await openWizard(wrapper);
+		await fillCredentials(wrapper, 'resend', 're_live_secret');
+		await buttonByText(wrapper, 'Save credentials').trigger('click');
+		await flushPromises();
+		await buttonByText(wrapper, 'Next').trigger('click');
+		await flushPromises();
+		await wrapper.find('.test-pass').trigger('click');
+		await buttonByText(wrapper, 'Next').trigger('click');
+		await flushPromises();
+		if (step === 'return_path') {
+			// Step 3 is blocking, so the check has to actually run before Next is live.
+			await buttonByText(wrapper, 'Check alignment').trigger('click');
+			await flushPromises();
+			await buttonByText(wrapper, 'Next').trigger('click');
+			await flushPromises();
+		}
+		return wrapper;
+	}
+
+	it('says it is reading the sending domain while the arms query is in flight', async () => {
+		const wrapper = await walkTo('alignment', { returnPathCapability: 'unknown' });
+		expect(wrapper.text()).toContain('Reading the sending domain');
+		expect(wrapper.text()).not.toContain('No verified sending domain');
+		wrapper.unmount();
+	});
+
+	it('states the nothing-to-compare finding only once the arms query resolved null', async () => {
+		const wrapper = await walkTo('alignment', {
+			alignmentArms: null,
+			returnPathCapability: 'unknown',
+		});
+		expect(wrapper.text()).toContain('No verified sending domain');
+		expect(wrapper.text()).not.toContain('Reading the sending domain');
+		wrapper.unmount();
+	});
+
+	it('says there is no second transport instead of promising a bounce that cannot come', async () => {
+		const wrapper = await walkTo('return_path', {
+			alignmentArms: armsFixture({ kind: 'none' }),
+			returnPathTransportId: null,
+			returnPathCapability: 'unknown',
+		});
+		expect(wrapper.text()).toContain(RETURN_PATH_NO_REFERENCE_NOTE);
+		// The settles-after-a-bounce note describes a provider; there is none.
+		expect(wrapper.text()).not.toContain('settles the first time a bounce comes back');
+		wrapper.unmount();
+	});
+
+	it('keeps the settles note for a transport that really is connected', async () => {
+		const wrapper = await walkTo('return_path', {
+			alignmentArms: armsFixture(),
+			returnPathTransportId: 'ses',
+			returnPathCapability: 'unknown',
+		});
+		expect(wrapper.text()).toContain('settles the first time a bounce comes back');
+		expect(wrapper.text()).not.toContain(RETURN_PATH_NO_REFERENCE_NOTE);
 		wrapper.unmount();
 	});
 });
