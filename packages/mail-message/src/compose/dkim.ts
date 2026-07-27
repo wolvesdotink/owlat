@@ -99,12 +99,24 @@ export const SIGNED_HEADERS: readonly string[] = [
  * Headers we OVERSIGN: each gets one extra slot in `h=` beyond its occurrences
  * in the message. From/Subject/To are the DMARC- and display-critical headers
  * an attacker would re-prepend; oversigning them makes any added instance break
- * the signature. `cfbl-address` joins them because RFC 9477 defines no tiebreak
+ * the signature. BOTH CFBL fields join them because RFC 9477 defines no tiebreak
  * between duplicate CFBL fields: oversigning turns an added second instance into
  * a signature failure instead of an ambiguity a report generator resolves in the
- * attacker's favour. (RFC 6376 §8.15; M3AAWG oversigning.)
+ * attacker's favour. The argument applies equally to `cfbl-feedback-id`, which
+ * §4.2 asks the report generator to copy into the report's `Feedback-ID` field
+ * and which is the second authenticated attribution path — signing it only once
+ * would let an intermediary prepend an instance the verifier never sees, so a
+ * generator picking that instance would emit a token that fails verification and
+ * the complaint signal would be silently lost. (RFC 6376 §8.15; M3AAWG
+ * oversigning.)
  */
-const OVERSIGNED_HEADERS: readonly string[] = ['from', 'subject', 'to', 'cfbl-address'];
+const OVERSIGNED_HEADERS: readonly string[] = [
+	'from',
+	'subject',
+	'to',
+	'cfbl-address',
+	'cfbl-feedback-id',
+];
 
 /**
  * RFC 6376 §3.5 tag ordering for a `DKIM-Signature`. Mirrors `mailauth`'s
