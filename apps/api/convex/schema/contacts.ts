@@ -63,6 +63,38 @@ export const contactTables = {
 		// it reaches `SOFT_BOUNCE_SUPPRESSION_THRESHOLD`, and resets it to 0 on
 		// the next `delivered`. Absent (undefined) means 0.
 		softBounceCount: v.optional(v.number()),
+		// ─── Contact engagement score (deliverability plan P0-2) ───────────────
+		// Cached 0-100 recency-weighted engagement score, produced by
+		// `analytics/engagementScore.ts` and consumed by the MTA's priority bands
+		// (80/50/20) and by the share controller's stratified assignment. ADDITIVE
+		// and optional: legacy rows carry none of these fields and every reader
+		// treats "absent" as "unmeasured", never as zero.
+		engagementScore: v.optional(v.number()),
+		// The timestamp `engagementScoreState` is as-of. Also the freshness stamp
+		// the hourly backfill ranges over — the two are ALWAYS patched together,
+		// because the cached accumulator is only meaningful relative to this
+		// instant (see `decayState`).
+		engagementScoreUpdatedAt: v.optional(v.number()),
+		// Decayed accumulator behind the score. Cached so the hot path can fold a
+		// new open/click in O(1) instead of re-reading the activity timeline
+		// (ADR-0042's write-amplification lesson).
+		engagementScoreState: v.optional(
+			v.object({
+				raw: v.number(),
+				softBounceRaw: v.number(),
+				isSuppressed: v.boolean(),
+				// `occurredAt` of the newest suppressing activity. Scopes the sticky
+				// suppression to the recompute lookback window, which is what makes a
+				// bounce recorded in error reversible (`clearEngagementSuppression`)
+				// instead of pinning the contact to 0 forever.
+				suppressedAt: v.optional(v.number()),
+				// Identity (`kind:occurredAt`) of the newest activity folded into
+				// the accumulator, so an immediately-redelivered provider webhook
+				// is collapsed on the hot path exactly as the full recompute
+				// collapses it. Absent until the first fold.
+				lastFoldedKey: v.optional(v.string()),
+			})
+		),
 		// Contact-level double opt-in status. Non-optional per ADR-0009 —
 		// the Contact resolution (module) writes 'not_required' at create
 		// time so undefined never appears in new rows. The DOI lifecycle
@@ -105,6 +137,13 @@ export const contactTables = {
 		// leads so `deletedAt === undefined` rides the index range and createdAt
 		// orders within it — the page is never thinned by a post-filter.
 		.index('by_deleted_at_and_created_at', ['deletedAt', 'createdAt'])
+		// Staleness index for the hourly engagement-score backfill. Ascending
+		// order puts never-scored rows first (a missing field sorts before every
+		// number in a Convex index), then the stalest, so the cron walks a bounded
+		// prefix of a range instead of collecting the table. Recomputing a contact
+		// stamps `engagementScoreUpdatedAt = now`, which moves it out of the stale
+		// range — the range IS the cursor, and it cannot go stale.
+		.index('by_engagement_score_updated_at', ['engagementScoreUpdatedAt'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` here indexes contact
 		// METADATA (name, email, company), not a sealed message body, so E8b at-rest
 		// body sealing does not apply to it — it is intentionally plaintext for search.
