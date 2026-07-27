@@ -23,6 +23,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { toPaginationCursor } from '../lib/paginationCursor';
 import { emitSeedRotationReminderFor } from './seedPlacement';
 
 /**
@@ -51,7 +52,10 @@ export const sweepSeedRotationReminders = internalMutation({
 		const page = await ctx.db
 			.query('externalMailAccounts')
 			.withIndex('by_purpose', (q) => q.eq('purpose', 'seed'))
-			.paginate({ cursor: args.cursor ?? null, numItems: SEED_ROTATION_PAGE_SIZE });
+			.paginate({
+				cursor: toPaginationCursor(args.cursor),
+				numItems: SEED_ROTATION_PAGE_SIZE,
+			});
 
 		let reminded = 0;
 		for (const account of page.page) {
