@@ -16,8 +16,8 @@ interface SegmentOption {
 interface RecipientCount {
 	eligible: number;
 	total: number;
-	/** Mirrors `AudienceCount.completeness` (apps/api/convex/campaigns/audienceResolution.ts). */
-	completeness?: 'exact' | 'candidate_capped' | 'read_budget_exhausted';
+	/** Mirrors `AudienceCount.completeness` (apps/api/convex/campaigns/audienceCandidates.ts). */
+	completeness?: 'exact' | 'candidate_capped' | 'read_budget_exhausted' | 'suppression_truncated';
 }
 
 const props = defineProps<{
@@ -42,9 +42,14 @@ const selectedSegment = computed(
 
 const formattedEligibleRecipients = computed(() => {
 	const eligible = props.audienceCount?.eligible ?? 0;
-	// Anything other than an exact enumeration is an "at least" reading.
+	// A capped or budget-stopped enumeration is an "at least" reading, so it earns
+	// the `+`. `suppression_truncated` is an OVER-count, not a lower bound — never
+	// render it as "at least" (it cannot reach this screen today: the wizard's
+	// `countRecipients` runs unbudgeted, and only a budgeted scan can truncate
+	// suppression. Handled anyway so the mapping stays honest if that changes).
 	const completeness = props.audienceCount?.completeness;
-	const suffix = completeness !== undefined && completeness !== 'exact' ? '+' : '';
+	const suffix =
+		completeness === 'candidate_capped' || completeness === 'read_budget_exhausted' ? '+' : '';
 	return `${eligible.toLocaleString()}${suffix}`;
 });
 
