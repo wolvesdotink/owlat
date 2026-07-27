@@ -63,6 +63,17 @@ describe('observeTxt failure mapping', () => {
 		});
 	});
 
+	it('treats a lookup that never settles as UNKNOWN once the deadline fires', async () => {
+		// A slow-drip nameserver must not be able to burn the sweep's action budget:
+		// the bound is ours, and the verdict it produces is a HOLD, not a fail.
+		const observation = await observeTxt(
+			'acme.com',
+			{ resolveTxt: () => new Promise(() => {}) },
+			5
+		);
+		expect(observation).toEqual({ state: 'unknown', failure: 'timeout' });
+	});
+
 	it('treats an unrecognised or code-less failure as UNKNOWN, not as absent', async () => {
 		expect(await observeTxt('acme.com', failing('EBADSOMETHING'))).toEqual({
 			state: 'unknown',
@@ -84,15 +95,17 @@ describe('gatherAlignmentDns', () => {
 			dkimDomain: 'acme.com',
 			dkimSelectors: ['Owlat'],
 			spfMechanisms: ['ip4:203.0.113.10'],
-			supportsCustomReturnPath: true,
 		},
-		referenceArm: {
-			label: 'SES relay',
-			fromDomain: 'acme.com',
-			dkimDomain: 'acme.com',
-			dkimSelectors: ['ses-token-1'],
-			spfMechanisms: ['include:amazonses.com'],
-			supportsCustomReturnPath: true,
+		reference: {
+			kind: 'arm',
+			arm: {
+				label: 'SES relay',
+				fromDomain: 'acme.com',
+				dkimDomain: 'acme.com',
+				dkimSelectors: ['ses-token-1'],
+				spfMechanisms: ['include:amazonses.com'],
+				supportsCustomReturnPath: true,
+			},
 		},
 	};
 
@@ -119,7 +132,7 @@ describe('gatherAlignmentDns', () => {
 	it('does not look up a second arm that does not exist', async () => {
 		const queried: string[] = [];
 		await gatherAlignmentDns(
-			{ ...target, referenceArm: null },
+			{ ...target, reference: { kind: 'none' } },
 			{
 				resolveTxt: (name) => {
 					queried.push(name);

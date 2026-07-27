@@ -7,92 +7,81 @@
  * warning, no remedy copy, no degraded-measurement nag — and the controller's
  * gate must open WITHOUT a stored verdict, so a deployment with zero
  * third-party accounts is never blocked by a sweep that has not run yet.
+ *
+ * THE STANDALONE MATRIX: this is not three hand-written cases. It re-runs the
+ * ENTIRE four-check failure table from `alignmentFixtures.ts` — every DNS
+ * misconfiguration, every timeout, every subdomain trap — with
+ * `reference: { kind: 'none' }`, and asserts every single row still passes. A row
+ * added to the table is automatically covered here too.
  */
 
 import { describe, expect, it } from 'vitest';
 import {
 	ALIGNMENT_CHECK_IDS,
 	ALIGNMENT_RECHECK_INTERVAL_MS,
+	evaluateAlignmentPreflight,
+} from '../deliverabilityAlignment';
+import {
 	ALIGNMENT_STALE_AFTER_MS,
 	alignmentGate,
 	applyAlignmentGateToShare,
-	evaluateAlignmentPreflight,
-} from '../deliverabilityAlignment';
-import { alignedDns, alignedInput, CHECKED_AT } from './alignmentFixtures';
+} from '../deliverabilityAlignmentGate';
+import { ALIGNMENT_FAILURE_TABLE, alignedInput, CHECKED_AT } from './alignmentFixtures';
 
-describe('no reference transport — the check passes trivially as "single arm"', () => {
-	const result = evaluateAlignmentPreflight(alignedInput({ referenceArm: null }));
+const NO_REFERENCE = { kind: 'none' } as const;
 
-	it('reports single_arm and allows the ramp', () => {
-		expect(result.verdict).toBe('single_arm');
-		expect(result.allowsShareAboveZero).toBe(true);
+describe('the standalone matrix: the whole four-check table with no reference arm', () => {
+	for (const testCase of ALIGNMENT_FAILURE_TABLE) {
+		it(`passes as single arm even though ${testCase.name}`, () => {
+			const result = evaluateAlignmentPreflight({
+				...testCase.mutate(alignedInput()),
+				reference: NO_REFERENCE,
+			});
+			expect(result.verdict).toBe('single_arm');
+			expect(result.allowsShareAboveZero).toBe(true);
+			expect(result.checks.map((check) => check.id)).toEqual([...ALIGNMENT_CHECK_IDS]);
+			for (const check of result.checks) {
+				expect(check.status).toBe('pass');
+				// No remedy copy anywhere: there is nothing for the operator to fix.
+				expect(check.remedy).toBe('');
+				expect(check.detail).toContain('Single arm');
+			}
+			// No degraded-measurement nag either.
+			expect(result.degradedMeasurement).toBe(false);
+			expect(result.degradedMeasurementReason).toBeNull();
+			// And the ordinary daily cadence, not the unknown retry.
+			expect(result.nextCheckDueAt).toBe(CHECKED_AT + ALIGNMENT_RECHECK_INTERVAL_MS);
+		});
+	}
+});
+
+describe('the gate opens for a standalone deployment regardless of stored state', () => {
+	it('opens with no stored verdict at all', () => {
+		const gate = alignmentGate({ referenceArm: 'none', state: null, now: CHECKED_AT });
+		expect(gate.allowsShareAboveZero).toBe(true);
+		expect(gate.reason).toBe('single_arm');
+		expect(applyAlignmentGateToShare(1, gate)).toBe(1);
 	});
 
-	it('reports every check as a pass, with no remedy and no failure', () => {
-		expect(result.checks.map((entry) => entry.id)).toEqual([...ALIGNMENT_CHECK_IDS]);
-		expect(result.checks.every((entry) => entry.status === 'pass')).toBe(true);
-		expect(result.checks.every((entry) => entry.remedy === '')).toBe(true);
-		expect(result.checks.some((entry) => entry.status === 'fail')).toBe(false);
-		expect(result.checks.some((entry) => entry.status === 'unknown')).toBe(false);
-	});
-
-	it('never flags degraded measurement for the absent arm', () => {
-		expect(result.degradedMeasurement).toBe(false);
-		expect(result.degradedMeasurementReason).toBeNull();
-	});
-
-	it('still re-checks on the ordinary daily cadence', () => {
-		expect(result.nextCheckDueAt).toBe(CHECKED_AT + ALIGNMENT_RECHECK_INTERVAL_MS);
-	});
-
-	it('says "single arm" in plain language rather than naming a fault', () => {
-		for (const entry of result.checks) {
-			expect(entry.detail).toContain('Single arm');
-			expect(entry.detail.toLowerCase()).not.toContain('error');
+	it('opens even with a stale or blocked leftover row', () => {
+		for (const verdict of ['blocked', 'unknown', 'aligned'] as const) {
+			const gate = alignmentGate({
+				referenceArm: 'none',
+				state: { verdict, checkedAt: CHECKED_AT - 10 * ALIGNMENT_STALE_AFTER_MS },
+				now: CHECKED_AT,
+			});
+			expect(gate.allowsShareAboveZero).toBe(true);
+			expect(gate.reason).toBe('single_arm');
 		}
 	});
-});
 
-describe('single arm holds even when the domain DNS is a disaster', () => {
-	it('does not turn an unresolved or empty zone into a failure', () => {
-		const result = evaluateAlignmentPreflight(
-			alignedInput({
-				referenceArm: null,
-				dns: alignedDns({
-					fromDomainTxt: { state: 'unknown', failure: 'servfail' },
-					dmarcTxt: { state: 'absent' },
-					dkimTxt: {},
-				}),
-			})
-		);
-		expect(result.verdict).toBe('single_arm');
-		expect(result.allowsShareAboveZero).toBe(true);
-	});
-});
-
-describe('the controller gate never depends on a stored verdict when there is one arm', () => {
-	it('opens with no stored state at all', () => {
-		const gate = alignmentGate({ hasReferenceArm: false, state: null, now: CHECKED_AT });
-		expect(gate).toEqual({ allowsShareAboveZero: true, reason: 'single_arm' });
-		expect(applyAlignmentGateToShare(0.25, gate)).toBe(0.25);
-	});
-
-	it('opens even when a stale blocked verdict is still on the row', () => {
+	it('opens from a stored single_arm verdict even when a relay was later added', () => {
 		const gate = alignmentGate({
-			hasReferenceArm: false,
-			state: { verdict: 'blocked', checkedAt: CHECKED_AT - ALIGNMENT_STALE_AFTER_MS * 3 },
+			referenceArm: 'configured',
+			state: { verdict: 'single_arm', checkedAt: CHECKED_AT },
 			now: CHECKED_AT,
 		});
 		expect(gate.allowsShareAboveZero).toBe(true);
 		expect(gate.reason).toBe('single_arm');
-	});
-
-	it('opens on a recorded single_arm verdict regardless of age', () => {
-		const gate = alignmentGate({
-			hasReferenceArm: true,
-			state: { verdict: 'single_arm', checkedAt: CHECKED_AT - ALIGNMENT_STALE_AFTER_MS * 5 },
-			now: CHECKED_AT,
-		});
-		expect(gate.allowsShareAboveZero).toBe(true);
 	});
 });
