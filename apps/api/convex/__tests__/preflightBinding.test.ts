@@ -473,69 +473,98 @@ describe('pre-flight capacity gate — one IP population (mixed graduated pools)
 	});
 });
 
-describe('pre-flight capacity gate — segment audiences', () => {
-	/** A narrow segment over `otherContacts` non-matching live contacts. */
-	async function seedSegmentCampaign(
-		t: TestRunner,
-		opts: { matching: number; otherContacts: number }
-	): Promise<Id<'campaigns'>> {
-		let campaignId: Id<'campaigns'>;
-		await t.run(async (ctx) => {
-			const templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
+/**
+ * A narrow segment over `otherContacts` non-matching live contacts.
+ *
+ * `lookupConditions` adds that many `topic_membership` clauses, each of which
+ * costs ONE extra document PER CONTACT on the bounded scan (a
+ * `by_contact_and_topic` point read for every contact examined). They are
+ * `not_equals` against topics with NO members, so every contact satisfies
+ * them: the clauses raise the scan's READ COST without changing which
+ * contacts match. That is the knob that exercises the per-document budget
+ * without seeding tens of thousands of rows — and it is precisely the shape
+ * that overruns the Convex per-execution limit when the budget is charged per
+ * row instead.
+ */
+async function seedSegmentCampaign(
+	t: TestRunner,
+	opts: { matching: number; otherContacts: number; lookupConditions?: number }
+): Promise<Id<'campaigns'>> {
+	let campaignId: Id<'campaigns'>;
+	await t.run(async (ctx) => {
+		const templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
+		await ctx.db.insert(
+			'domains',
+			createTestDomain({
+				domain: 'verified.example.com',
+				status: 'verified',
+				lastVerifiedAt: MIDNIGHT,
+			})
+		);
+		await ctx.db.insert(
+			'campaignSenders',
+			createTestCampaignSender({ email: 'sender@verified.example.com' })
+		);
+		const lookupHeavyConditions: {
+			kind: 'topic_membership';
+			operator: 'not_equals';
+			topicId: Id<'topics'>;
+		}[] = [];
+		for (let i = 0; i < (opts.lookupConditions ?? 0); i += 1) {
+			const emptyTopicId = await ctx.db.insert(
+				'topics',
+				createTestTopic({ requireDoubleOptIn: false })
+			);
+			lookupHeavyConditions.push({
+				kind: 'topic_membership',
+				operator: 'not_equals',
+				topicId: emptyTopicId,
+			});
+		}
+		for (let i = 0; i < opts.otherContacts; i += 1) {
 			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'verified.example.com',
-					status: 'verified',
-					lastVerifiedAt: MIDNIGHT,
-				})
+				'contacts',
+				createTestContact({ email: `noise-${i}@other.test`, doiStatus: 'not_required' })
 			);
+		}
+		for (let i = 0; i < opts.matching; i += 1) {
 			await ctx.db.insert(
-				'campaignSenders',
-				createTestCampaignSender({ email: 'sender@verified.example.com' })
+				'contacts',
+				createTestContact({ email: `member-${i}@seg.test`, doiStatus: 'not_required' })
 			);
-			for (let i = 0; i < opts.otherContacts; i += 1) {
-				await ctx.db.insert(
-					'contacts',
-					createTestContact({ email: `noise-${i}@other.test`, doiStatus: 'not_required' })
-				);
-			}
-			for (let i = 0; i < opts.matching; i += 1) {
-				await ctx.db.insert(
-					'contacts',
-					createTestContact({ email: `member-${i}@seg.test`, doiStatus: 'not_required' })
-				);
-			}
-			const segmentId = await ctx.db.insert(
-				'segments',
-				createTestSegment({
-					name: 'seg.test folks',
-					filters: {
-						logic: 'AND',
-						conditions: [
-							{
-								kind: 'contact_property',
-								field: 'email',
-								operator: 'contains',
-								value: 'seg.test',
-							},
-						],
-					},
-				})
-			);
-			campaignId = await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({
-					status: 'draft',
-					emailTemplateId: templateId,
-					fromEmail: 'sender@verified.example.com',
-					audience: { kind: 'segment', segmentId },
-				})
-			);
-		});
-		return campaignId!;
-	}
+		}
+		const segmentId = await ctx.db.insert(
+			'segments',
+			createTestSegment({
+				name: 'seg.test folks',
+				filters: {
+					logic: 'AND',
+					conditions: [
+						{
+							kind: 'contact_property',
+							field: 'email',
+							operator: 'contains',
+							value: 'seg.test',
+						},
+						...lookupHeavyConditions,
+					],
+				},
+			})
+		);
+		campaignId = await ctx.db.insert(
+			'campaigns',
+			createTestCampaign({
+				status: 'draft',
+				emailTemplateId: templateId,
+				fromEmail: 'sender@verified.example.com',
+				audience: { kind: 'segment', segmentId },
+			})
+		);
+	});
+	return campaignId!;
+}
 
+describe('pre-flight capacity gate — segment audiences', () => {
 	it('refuses an over-capacity segment audience the scan can finish reading', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
@@ -551,11 +580,15 @@ describe('pre-flight capacity gate — segment audiences', () => {
 
 	/**
 	 * The document budget is the only bound that holds for a segment: the scan
-	 * walks every LIVE contact, not just matches. This filter is on a BUILT-IN
-	 * field, so one contact costs one document and the 6,100-row noise floor is
-	 * read before any of the 600 matches — the surviving lower bound is 0, below
-	 * horizon capacity, therefore undecided, therefore allowed. A failure to
-	 * MEASURE never blocks a send.
+	 * walks every LIVE contact, not just matches. THREE `topic_membership`
+	 * clauses put the per-contact cost at four documents (the contact plus one
+	 * point read each), so 6,000 documents buys 1,500 contacts — and the 1,600-row
+	 * noise floor is read before any of the 600 matches. The surviving lower bound
+	 * is 0, below horizon capacity, therefore undecided, therefore allowed. A
+	 * failure to MEASURE never blocks a send.
+	 *
+	 * The multiplier is the point: charge per ROW and this scan reads 6,400
+	 * documents inside a send mutation, over the Convex per-execution limit.
 	 *
 	 * Asserted on the ASSESSMENT, not just on `ok`: `{ capacityKnown: false }`
 	 * distinguishes "the lower bound decided nothing" from "the scan threw and
@@ -564,7 +597,11 @@ describe('pre-flight capacity gate — segment audiences', () => {
 	it('allows the send when the audience scan exhausts its read budget', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
-		const campaignId = await seedSegmentCampaign(t, { matching: 600, otherContacts: 6_100 });
+		const campaignId = await seedSegmentCampaign(t, {
+			matching: 600,
+			otherContacts: 1_600,
+			lookupConditions: 3,
+		});
 
 		const result = await runPreflight(t, campaignId);
 		expect(result.ok).toBe(true);
@@ -695,53 +732,10 @@ describe('pre-flight capacity gate — audiences past the read budget', () => {
 	it('allows a small audience hidden behind a read-budget-exhausting noise floor', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
-		const campaignId = await t.run(async (ctx) => {
-			const templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
-			await ctx.db.insert(
-				'domains',
-				createTestDomain({
-					domain: 'verified.example.com',
-					status: 'verified',
-					lastVerifiedAt: MIDNIGHT,
-				})
-			);
-			await ctx.db.insert(
-				'campaignSenders',
-				createTestCampaignSender({ email: 'sender@verified.example.com' })
-			);
-			for (let i = 0; i < 6_100; i += 1) {
-				await ctx.db.insert(
-					'contacts',
-					createTestContact({ email: `noise-${i}@other.test`, doiStatus: 'not_required' })
-				);
-			}
-			for (let i = 0; i < 40; i += 1) {
-				await ctx.db.insert(
-					'contacts',
-					createTestContact({ email: `member-${i}@seg.test`, doiStatus: 'not_required' })
-				);
-			}
-			const segmentId = await ctx.db.insert(
-				'segments',
-				createTestSegment({
-					name: 'seg.test folks',
-					filters: {
-						logic: 'AND',
-						conditions: [
-							{ kind: 'contact_property', field: 'email', operator: 'contains', value: 'seg.test' },
-						],
-					},
-				})
-			);
-			return await ctx.db.insert(
-				'campaigns',
-				createTestCampaign({
-					status: 'draft',
-					emailTemplateId: templateId,
-					fromEmail: 'sender@verified.example.com',
-					audience: { kind: 'segment', segmentId },
-				})
-			);
+		const campaignId = await seedSegmentCampaign(t, {
+			matching: 40,
+			otherContacts: 1_600,
+			lookupConditions: 3,
 		});
 
 		const result = await runPreflight(t, campaignId);
