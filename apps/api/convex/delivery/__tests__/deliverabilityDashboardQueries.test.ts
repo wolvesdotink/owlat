@@ -17,7 +17,10 @@
  */
 
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
@@ -48,7 +51,25 @@ vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	};
 });
 
+/**
+ * THE CLOCK IS PART OF THE FIXTURE. Every row below is placed relative to a UTC
+ * day the test computes, and the query reads its own `Date.now()` to derive the
+ * window it summarizes over. A run that straddles UTC midnight would put the two
+ * on different days and the trend assertions would fail for a reason that has
+ * nothing to do with the code — so it is pinned, mid-day, well away from the
+ * boundary.
+ */
+const FIXED_NOW = new Date('2026-07-15T12:00:00.000Z');
+
+beforeEach(() => {
+	// ONLY the clock: faking timers as well would stall convex-test's own async
+	// machinery, and the thing under test here is the date, not scheduling.
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(FIXED_NOW);
+});
+
 afterEach(() => {
+	vi.useRealTimers();
 	sessionMocks.refuse = false;
 });
 
@@ -215,6 +236,41 @@ describe('getDeliverabilityDashboard — tenant isolation', () => {
 		await expect(
 			t.query(api.delivery.deliverabilityDashboard.getDeliverabilityDashboard, {})
 		).rejects.toThrow(/access/i);
+	});
+
+	/**
+	 * The case above proves the handler AWAITS the membership check; it cannot
+	 * prove the function is gated, because the check it exercises is mocked. What
+	 * makes the gate real is the WRAPPER, so that is asserted statically: the
+	 * module must build on `authedQuery` and must not reach for a bare `query`,
+	 * and it must take no `organizationId` argument a caller could forge.
+	 */
+	it('is built on the authed wrapper and takes no forgeable org argument', () => {
+		const source = readFileSync(
+			resolve(dirname(fileURLToPath(import.meta.url)), '../deliverabilityDashboard.ts'),
+			'utf8'
+		);
+		expect(source).toContain('authedQuery({');
+		expect(source).not.toMatch(/\bimport\b[^;]*\bquery\b[^;]*from '\.\.\/_generated\/server'/);
+		expect(source).not.toMatch(/^\s*organizationId: v\./m);
+	});
+});
+
+describe('getDeliverabilityDashboard — window composition', () => {
+	/**
+	 * The disjointness `dashboardWindow` guarantees is only worth anything if the
+	 * shell actually USES those two bounds. It must not re-derive a baseline from
+	 * its own offsets — that is exactly the drift that made the screen render a
+	 * slow-poison verdict the controller would never reach.
+	 */
+	it('feeds the engagement gate the window’s own baseline bounds, not its own offsets', () => {
+		const source = readFileSync(
+			resolve(dirname(fileURLToPath(import.meta.url)), '../deliverabilityDashboard.ts'),
+			'utf8'
+		);
+		expect(source).toContain('input.window.baselineSinceDay');
+		expect(source).toContain('input.window.baselineUntilDay');
+		expect(source).not.toMatch(/BASELINE_(DAYS|GAP_DAYS)/);
 	});
 });
 

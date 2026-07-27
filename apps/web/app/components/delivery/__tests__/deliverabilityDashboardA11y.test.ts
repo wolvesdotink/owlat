@@ -18,18 +18,9 @@
  */
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import MeasurementCellCard from '../MeasurementCellCard.vue';
 import MeasurementGateList from '../MeasurementGateList.vue';
 import { cellView, failingGate, holdingGate } from './measurementFixtures';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const pageSource = readFileSync(
-	resolve(here, '../../../pages/dashboard/delivery/measurement.vue'),
-	'utf8'
-);
 
 const stubs = { UiCard: { template: '<div><slot /></div>' }, Icon: { template: '<i />' } };
 
@@ -62,8 +53,9 @@ describe('measurement screen — accessibility', () => {
 		expect(wrapper.findAll('h2')).toHaveLength(0);
 		expect(wrapper.findAll('h3')).toHaveLength(1);
 		expect(wrapper.findAll('h4').length).toBeGreaterThan(0);
-		// The page owns the single h1 above these cards.
-		expect(pageSource).toContain('<h1');
+		// The page owns the single h1 above these cards; that is asserted against a
+		// real mount in pages/dashboard/delivery/__tests__/measurementPage.test.ts,
+		// because a substring check passes on a commented-out heading.
 		wrapper.unmount();
 	});
 
@@ -97,10 +89,5 @@ describe('measurement screen — accessibility', () => {
 		expect(wrapper.findAll('button')).toHaveLength(0);
 		expect(wrapper.findAll('input')).toHaveLength(0);
 		wrapper.unmount();
-	});
-
-	it('gives the page a loading label and a non-alarming error message', () => {
-		expect(pageSource).toContain('loading-label="Loading delivery measurements…"');
-		expect(pageSource).toContain('Your mail is unaffected');
 	});
 });
