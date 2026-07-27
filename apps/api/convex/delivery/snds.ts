@@ -13,7 +13,12 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, internalMutation, internalQuery } from '../_generated/server';
+import {
+	internalAction,
+	internalMutation,
+	internalQuery,
+	type QueryCtx,
+} from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { sndsComplaintBandValidator, sndsFilterResultValidator } from '../schema/snds';
@@ -129,12 +134,13 @@ export interface SndsPollSummary {
 }
 
 /**
- * The zero summary — both the not-enrolled return value and the starting point
- * the enrolled path spreads. FROZEN: it is module-level shared state, so a
- * caller that mutated what `poll` handed back would corrupt every later poll in
- * the isolate. Callers get a copy; the freeze is the belt to that's braces.
+ * The zero summary — the starting point BOTH paths spread: the not-enrolled
+ * return value and the enrolled poll's running tally. FROZEN: it is
+ * module-level shared state, so a caller that mutated what `poll` handed back
+ * would corrupt every later poll in the isolate. Callers get a copy; the freeze
+ * is the belt to that's braces.
  */
-const NOT_ENROLLED: SndsPollSummary = Object.freeze({
+const EMPTY_POLL_SUMMARY: SndsPollSummary = Object.freeze({
 	enrolled: false,
 	feeds: 0,
 	feedsFailed: 0,
@@ -149,6 +155,11 @@ const NOT_ENROLLED: SndsPollSummary = Object.freeze({
 	overflowed: 0,
 	truncated: false,
 });
+
+/** What `poll` returns when no feed is configured: a copy of the zero summary. */
+function notEnrolledSummary(): SndsPollSummary {
+	return { ...EMPTY_POLL_SUMMARY };
+}
 
 /**
  * Fetch one feed's body, bounded in time and in size. `null` on any failure,
@@ -208,11 +219,11 @@ export const poll = internalAction({
 	handler: async (ctx): Promise<SndsPollSummary> => {
 		const urls = parseSndsFeedUrls(getOptional('SNDS_DATA_FEED_URLS'));
 		// D2: not enrolled is a supported configuration. Return, write nothing.
-		if (urls.length === 0) return { ...NOT_ENROLLED };
+		if (urls.length === 0) return notEnrolledSummary();
 
 		const allowlist = parsePoolAllowlist(getOptional('MTA_IP_POOLS'));
 		const fetchedAt = Date.now();
-		const summary: SndsPollSummary = { ...NOT_ENROLLED, enrolled: true, feeds: urls.length };
+		const summary: SndsPollSummary = { ...EMPTY_POLL_SUMMARY, enrolled: true, feeds: urls.length };
 		const observations: SndsDayObservation[] = [];
 		// ONE fold across ALL feeds. SNDS keys are per registered range and ranges
 		// overlap, so two feeds can both report an IP-day; folding per feed would
@@ -237,6 +248,10 @@ export const poll = internalAction({
 		}
 		summary.overflowed = fold.overflowed;
 
+		// NEWEST DAY FIRST (`foldedSndsDays`). When the fold overflows the poll cap
+		// the days we drop are the OLDEST ones, never whichever addresses happen to
+		// sort last — a day we never store reads later as a day with nothing wrong
+		// in it, and the gate window is the newest days.
 		for (const day of foldedSndsDays(fold)) {
 			if (allowlist.size > 0 && !allowlist.has(day.ip)) {
 				summary.foreignIps += 1;
@@ -402,51 +417,65 @@ export const getMicrosoftGateInput = internalQuery({
 				? Math.min(Math.floor(args.windowDays), 90)
 				: SNDS_GATE_WINDOW_DAYS;
 		const enrolled = parseSndsFeedUrls(getOptional('SNDS_DATA_FEED_URLS')).length > 0;
-		if (!enrolled) return buildSndsGateInput({ enrolled, windowDays, observations: [] });
-
-		const cutoff = Date.now() - windowDays * DAY_MS;
-		const pool = [...parsePoolAllowlist(getOptional('MTA_IP_POOLS'))].sort();
-		const observations: SndsGateObservation[] = [];
-		let truncated = false;
-
-		if (pool.length === 0) {
-			// NEWEST FIRST. The read is capped, and an ascending scan spends the cap on
-			// the OLDEST days — so above ~73 stored IPs a red filter result recorded
-			// today is exactly the row that falls off the end, and the gate answers
-			// `pass` from a window that no longer contains the breach. Descending keeps
-			// today's evidence inside the cap, and `truncated` then tells the gate that
-			// what it did NOT see must never be read as cleanliness.
-			const rows = await ctx.db
-				.query('sndsIpDailyStats')
-				.withIndex('by_period', (q) => q.gte('periodStart', cutoff))
-				.order('desc')
-				.take(SNDS_GATE_MAX_ROWS);
-			truncated = rows.length >= SNDS_GATE_MAX_ROWS;
-			for (const row of rows) observations.push(projectGateObservation(row));
+		if (!enrolled) {
 			return buildSndsGateInput({
 				enrolled,
 				windowDays,
-				truncated,
+				observations: [],
+				truncated: false,
 				attributed: false,
-				observations,
 			});
 		}
 
-		// A pool larger than this reads as truncated rather than as a long query:
-		// the window is then a subset, which the gate already knows how to hold.
-		truncated = pool.length > SNDS_GATE_MAX_POOL_IPS;
-		for (const ip of pool.slice(0, SNDS_GATE_MAX_POOL_IPS)) {
-			const rows = await ctx.db
-				.query('sndsIpDailyStats')
-				.withIndex('by_ip_period', (q) => q.eq('ip', ip).gte('periodStart', cutoff))
-				.order('desc')
-				.take(SNDS_GATE_MAX_ROWS_PER_IP);
-			if (rows.length >= SNDS_GATE_MAX_ROWS_PER_IP) truncated = true;
-			for (const row of rows) observations.push(projectGateObservation(row));
-		}
-		return buildSndsGateInput({ enrolled, windowDays, truncated, observations });
+		const window = await readGateRows(ctx, {
+			pool: [...parsePoolAllowlist(getOptional('MTA_IP_POOLS'))].sort(),
+			cutoff: Date.now() - windowDays * DAY_MS,
+		});
+		// ONE build, ONE argument set. The two read shapes differ in HOW they walk
+		// the table, never in which disqualifiers they declare.
+		return buildSndsGateInput({ enrolled, windowDays, ...window });
 	},
 });
+
+/**
+ * Read the gate window, either pool-scoped or whole.
+ *
+ * Both shapes read NEWEST FIRST. The read is capped, and an ascending scan
+ * spends the cap on the OLDEST days — so a red filter result recorded today is
+ * exactly the row that falls off the end, and the gate would answer `pass` from
+ * a window that no longer contains the breach. Descending keeps today's evidence
+ * inside the cap, and `truncated` then tells the gate that what it did NOT see
+ * must never be read as cleanliness.
+ */
+async function readGateRows(
+	ctx: QueryCtx,
+	args: { pool: readonly string[]; cutoff: number }
+): Promise<{ observations: SndsGateObservation[]; truncated: boolean; attributed: boolean }> {
+	const observations: SndsGateObservation[] = [];
+	if (args.pool.length === 0) {
+		const rows = await ctx.db
+			.query('sndsIpDailyStats')
+			.withIndex('by_period', (q) => q.gte('periodStart', args.cutoff))
+			.order('desc')
+			.take(SNDS_GATE_MAX_ROWS);
+		for (const row of rows) observations.push(projectGateObservation(row));
+		return { observations, truncated: rows.length >= SNDS_GATE_MAX_ROWS, attributed: false };
+	}
+
+	// A pool larger than this reads as truncated rather than as a long query:
+	// the window is then a subset, which the gate already knows how to hold.
+	let truncated = args.pool.length > SNDS_GATE_MAX_POOL_IPS;
+	for (const ip of args.pool.slice(0, SNDS_GATE_MAX_POOL_IPS)) {
+		const rows = await ctx.db
+			.query('sndsIpDailyStats')
+			.withIndex('by_ip_period', (q) => q.eq('ip', ip).gte('periodStart', args.cutoff))
+			.order('desc')
+			.take(SNDS_GATE_MAX_ROWS_PER_IP);
+		if (rows.length >= SNDS_GATE_MAX_ROWS_PER_IP) truncated = true;
+		for (const row of rows) observations.push(projectGateObservation(row));
+	}
+	return { observations, truncated, attributed: true };
+}
 
 function projectGateObservation(row: {
 	ip: string;

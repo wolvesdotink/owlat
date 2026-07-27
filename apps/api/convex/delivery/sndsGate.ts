@@ -96,14 +96,13 @@ export function buildSndsGateInput(args: {
 	windowDays: number;
 	observations: readonly SndsGateObservation[];
 	/** The caller's read hit its row cap, so these are only the newest days. */
-	truncated?: boolean;
+	truncated: boolean;
 	/**
-	 * The caller scoped the read to addresses this deployment declares. Defaults
-	 * to `true` for a caller that has already filtered; the stored-row reader
-	 * passes `false` when no pool is declared and the rows therefore describe
-	 * whatever the SNDS key's registered range happens to cover.
+	 * The caller scoped the read to addresses this deployment declares. `false`
+	 * when no pool is declared and the rows therefore describe whatever the SNDS
+	 * key's registered range happens to cover.
 	 */
-	attributed?: boolean;
+	attributed: boolean;
 }): SndsGateInput {
 	if (!args.enrolled) {
 		return { available: false, reason: 'not_enrolled', substitution: SNDS_ABSENT_SUBSTITUTION };
@@ -130,8 +129,10 @@ export function buildSndsGateInput(args: {
 	// read is the same argument from the other end — we did not see every day —
 	// and an unattributed read is the third: we saw days, but not necessarily
 	// OURS. All three keep the gate working; they only forbid it from promoting.
-	const truncated = args.truncated === true;
-	const attributed = args.attributed !== false;
+	// REQUIRED, not defaulted: both are promotion-critical disqualifiers, and a
+	// caller that forgot one would silently produce a high-confidence, promotable
+	// signal. A fail-open default on a promotion gate is the wrong default.
+	const { truncated, attributed } = args;
 	const banded = complaintBandSeverity(worstComplaintBand) !== null;
 	return {
 		available: true,
@@ -189,6 +190,17 @@ export const DEFAULT_SNDS_GATE_THRESHOLDS: SndsGateThresholds = {
 export type SndsGateFailure = 'complaint_band' | 'filter_result' | 'spam_traps';
 
 /**
+ * Appended to every verdict derived from a window we could not attribute.
+ *
+ * An SNDS key is issued per REGISTERED RANGE, so without a declared pool the
+ * window folds rows for every address in that range — including a neighbour's.
+ * D12 asks that every decision carry a reason the operator can act on, and D14
+ * asks us to say the quiet part: the caveat names the limit AND the remedy.
+ */
+export const UNATTRIBUTED_CAVEAT =
+	"This covers every address in the SNDS key's registered range, not only ours — declare MTA_IP_POOLS to attribute it to your own addresses.";
+
+/**
  * The gate's verdict, in the controller's shared vocabulary
  * (`pass` / `fail` / `insufficient_data`) so P3's controller consumes this gate
  * through the one gate interface with no per-gate shim.
@@ -220,22 +232,38 @@ export function evaluateSndsGate(
 	}
 
 	const { signal } = input;
+	// D12/D14: an operator reading "Microsoft recorded 3 spam-trap hits" deserves
+	// to know whether those hits are even ours. Every verdict derived from an
+	// unattributed window says so, and says what to do about it.
+	const caveat = signal.attributed ? '' : ` ${UNATTRIBUTED_CAVEAT}`;
+	// `breachBand` excludes `unknown`, so its severity is a number by type.
+	const breachSeverity = complaintBandSeverity(thresholds.breachBand);
+	const severity = complaintBandSeverity(signal.worstComplaintBand);
+	const bandBreached = severity !== null && severity >= breachSeverity;
+	const filterBreached = signal.worstFilterResult === 'red';
+
 	if (signal.trapHits > thresholds.trapHitLimit) {
-		return {
-			verdict: 'fail',
-			failedGate: 'spam_traps',
-			reason: `Microsoft recorded ${signal.trapHits} spam-trap hit(s) in the last ${signal.windowDays} days.`,
-		};
+		const traps = `Microsoft recorded ${signal.trapHits} spam-trap hit(s) in the last ${signal.windowDays} days.`;
+		if (!signal.attributed && !bandBreached && !filterBreached) {
+			// The trap count is the ONLY breaching evidence and it may belong to a
+			// neighbouring sender in the same registered range. Unattributable
+			// evidence must not move the share in either direction (D10 holds).
+			return {
+				verdict: 'insufficient_data',
+				reason: `${traps}${caveat}`,
+				substitution: SNDS_ABSENT_SUBSTITUTION,
+			};
+		}
+		return { verdict: 'fail', failedGate: 'spam_traps', reason: `${traps}${caveat}` };
 	}
-	if (signal.worstFilterResult === 'red') {
+	if (filterBreached) {
 		return {
 			verdict: 'fail',
 			failedGate: 'filter_result',
-			reason: `Microsoft's SNDS filter result for at least one sending IP is ${signal.worstFilterResult}.`,
+			reason: `Microsoft's SNDS filter result for at least one sending IP is ${signal.worstFilterResult}.${caveat}`,
 		};
 	}
 
-	const severity = complaintBandSeverity(signal.worstComplaintBand);
 	if (severity === null) {
 		return {
 			verdict: 'insufficient_data',
@@ -243,19 +271,17 @@ export function evaluateSndsGate(
 			substitution: SNDS_ABSENT_SUBSTITUTION,
 		};
 	}
-	// `breachBand` excludes `unknown`, so its severity is a number by type.
-	const breachSeverity = complaintBandSeverity(thresholds.breachBand);
-	if (severity >= breachSeverity) {
+	if (bandBreached) {
 		return {
 			verdict: 'fail',
 			failedGate: 'complaint_band',
 			// The BAND is named, never a percentage: SNDS never published one.
-			reason: `Microsoft's complaint band for at least one sending IP is ${signal.worstComplaintBand}, at or above ${thresholds.breachBand}.`,
+			reason: `Microsoft's complaint band for at least one sending IP is ${signal.worstComplaintBand}, at or above ${thresholds.breachBand}.${caveat}`,
 		};
 	}
 	return {
 		verdict: 'pass',
-		reason: `Microsoft's worst complaint band over the last ${signal.windowDays} days is ${signal.worstComplaintBand}.`,
+		reason: `Microsoft's worst complaint band over the last ${signal.windowDays} days is ${signal.worstComplaintBand}.${caveat}`,
 	};
 }
 
@@ -282,11 +308,8 @@ export function sndsPromotionPass(
 	// Unattributed evidence is stated separately from `confidence` on purpose:
 	// it is the one disqualifier that says "this band may be someone else's".
 	if (signal.confidence !== 'high' || signal.truncated || !signal.attributed) return false;
-	if (evaluateSndsGate(input, thresholds).verdict !== 'pass') return false;
-	// Banded, and strictly below the first breaching band.
-	const severity = complaintBandSeverity(signal.worstComplaintBand);
-	if (severity === null) return false;
-	return (
-		severity < complaintBandSeverity(thresholds.breachBand) && signal.worstFilterResult !== 'red'
-	);
+	// `pass` already implies the trap count is within limit, the filter result is
+	// not red and the band is banded and strictly below the breach band — so
+	// re-deriving any of that here would be a second derivation of one rule.
+	return evaluateSndsGate(input, thresholds).verdict === 'pass';
 }

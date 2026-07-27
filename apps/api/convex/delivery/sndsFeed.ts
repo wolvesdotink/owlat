@@ -412,10 +412,19 @@ export function createSndsDayFold(maxCells: number = SNDS_MAX_DAY_CELLS): SndsDa
 	return { byCell: new Map(), maxCells, overflowed: 0 };
 }
 
-/** The fold's observations, ordered by IP then day. */
+/**
+ * The fold's observations, NEWEST DAY FIRST (IP ascending as the tiebreak, so
+ * the order is total and deterministic).
+ *
+ * The order is load-bearing, not cosmetic: a caller that has to cap how many
+ * observations it stores keeps the head of this list, and the newest days are
+ * the ones the gate window actually reads. Ordering by IP would make the cap
+ * discard whichever ADDRESSES sort last, and a day we never stored reads later
+ * as a clean day — what we did NOT see must never be read as cleanliness.
+ */
 export function foldedSndsDays(fold: SndsDayFold): SndsDayObservation[] {
 	return [...fold.byCell.values()].sort(
-		(a, b) => a.ip.localeCompare(b.ip) || a.periodStart - b.periodStart
+		(a, b) => b.periodStart - a.periodStart || a.ip.localeCompare(b.ip)
 	);
 }
 
