@@ -159,9 +159,17 @@ export async function summarizeTransportOutcomes(
 }
 
 /**
- * Both arms of one cell over the same window — the shape every arm comparison
- * (the ramp controller's gates, the dashboard) actually wants. Two bounded
- * index reads through the one summarizer; never a cross-arm scan.
+ * Both arms of one cell over ONE window — the shape the ramp controller's gates
+ * want. Two bounded index reads through the one summarizer; never a cross-arm
+ * scan.
+ *
+ * NOT for a caller that needs SEVERAL windows over the same rows: the delivery
+ * dashboard derives an evaluation window, a trailing baseline and a per-day
+ * trend from the same traffic, so it reads the rows ONCE via
+ * `readCellArmBuckets` and re-runs `summarizeTransportOutcomeBuckets` over each
+ * window. That is still exactly one derivation of one number — the summarizer —
+ * which is the invariant this module protects; what it avoids is re-reading the
+ * same index thirty times per cell.
  */
 export async function summarizeTransportOutcomeArms(
 	db: DatabaseReader,
