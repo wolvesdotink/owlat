@@ -36,6 +36,14 @@ export const fn = {
 	// Record remote→local folder mapping + initial high-water UID (internalMutation).
 	recordFolderMapping: 'mail/externalDelivery:recordFolderMapping' as FnRef,
 
+	// ── Deliverability seed-probe sweep (gate 5) ─────────────────────────
+	// Seed mailboxes with outstanding probes (internalQuery).
+	listSeedProbeWork: 'analytics/seedProbePoller:listSeedProbeWork' as FnRef,
+	// Report one probe's folder + run the planned hygiene (internalMutation).
+	recordSeedProbeClassification: 'analytics/seedPlacement:recordSeedProbeClassification' as FnRef,
+	// Advisory "rotate this seed" nudge (internalMutation).
+	markSeedRotationReminded: 'analytics/seedPlacement:markSeedRotationReminded' as FnRef,
+
 	// ── Historical backfill (migration) ──────────────────────────────────
 	// Whether a migration is importing + each folder's backfill cursor (internalQuery).
 	getBackfillWork: 'mail/migration:getBackfillWork' as FnRef,

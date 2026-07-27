@@ -10,6 +10,7 @@ import { loadConfig } from './config.js';
 import { createConvexClient } from './convex.js';
 import { AccountManager } from './accountManager.js';
 import { startServer } from './server.js';
+import { startSeedProbeSweeper } from './seedProbeRunner.js';
 import { logger } from './logger.js';
 import { pathToFileURL } from 'node:url';
 
@@ -21,10 +22,14 @@ export async function main(): Promise<void> {
 	await manager.start();
 
 	const server = startServer(config, convex);
+	// Deliverability seed-probe sweep. With no seed mailboxes connected — the
+	// default — every pass is an empty no-op (D2).
+	const stopSeedSweeper = startSeedProbeSweeper(convex);
 
 	const shutdown = (signal: string) => {
 		logger.info({ signal }, 'shutting down');
 		void manager.stop();
+		stopSeedSweeper();
 		server.close(() => process.exit(0));
 		setTimeout(() => process.exit(1), 10_000).unref();
 	};
