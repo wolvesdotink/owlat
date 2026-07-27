@@ -182,7 +182,11 @@ export const ALIGNMENT_FAILURE_TABLE: readonly AlignmentFailureCase[] = [
 		mutate: (input) => ({
 			...input,
 			dns: alignedDns({
-				dkimTxt: { 'ses-token-1._domainkey.acme.com': found(DKIM_KEY) },
+				dkimTxt: {
+					// An AUTHORITATIVE absence — NXDOMAIN, not an unresolved lookup.
+					'owlat._domainkey.acme.com': { state: 'absent' },
+					'ses-token-1._domainkey.acme.com': found(DKIM_KEY),
+				},
 			}),
 		}),
 	},
