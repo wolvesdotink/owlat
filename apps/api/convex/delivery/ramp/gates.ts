@@ -13,21 +13,18 @@
  * something the caller reconstructs (and reconstructs differently in two
  * places, which is exactly how a controller and a dashboard come to disagree).
  *
- * WHAT IS NOT HERE. Gate 4 (engagement ratio) lives in its own module because
- * of its MPP handling; the aggregator takes it as a pre-computed result. The
+ * WHAT IS NOT HERE. The ceiling cascade gates 1 and 3 share — and that the
+ * standalone substitutions reuse with a different second series — is in
+ * `ceilingGate.ts`. Gate 4 (engagement ratio) lives in its own module because of
+ * its MPP handling; the aggregator takes it as a pre-computed result. The
  * aggregator itself is in `gateEvaluation.ts`. The "is this evidence usable at
  * all" rules — freshness, clock skew, thin samples, poisoned rates — live in
  * `gateEvidence.ts`, shared with gate 4 so the safety property has exactly one
- * implementation.
+ * implementation. The confidence grades are in `gateGrades.ts`.
  */
 
-import { ppToFraction } from './gateConfig';
-import type {
-	PercentagePoints,
-	RampGateSampleFloors,
-	RampGateThresholds,
-	RateFraction,
-} from './gateConfig';
+import { evaluateCeilingGate, withinTolerance, type CeilingGateSpec } from './ceilingGate';
+import type { RampGateThresholds } from './gateConfig';
 import {
 	armEvidence,
 	evidenceFreshness,
@@ -36,160 +33,43 @@ import {
 	safeRate,
 	type ArmEvidence,
 } from './gateEvidence';
+import { DIRECT_MEASUREMENT, SEED_TRIPWIRE } from './gateGrades';
 import type {
 	RampGateEvaluationInput,
-	RampGateId,
 	RampGateResult,
 	SeedPlacementObservation,
 } from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
-import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
-
-// ================================ helpers ===================================
-
-/**
- * The comparative half of a two-armed gate: is the own arm within `tolerance`
- * PERCENTAGE POINTS of the reference arm?
- *
- * The pp -> fraction conversion happens HERE and only here, so no caller can
- * accidentally compare a percentage-point tolerance against a rate fraction.
- */
-function withinTolerance(
-	ownRate: number,
-	referenceRate: number,
-	tolerance: PercentagePoints,
-	direction: 'own_must_not_exceed' | 'own_must_not_fall_below'
-): boolean {
-	const toleranceFraction = ppToFraction(tolerance) as number;
-	return direction === 'own_must_not_exceed'
-		? ownRate <= referenceRate + toleranceFraction
-		: ownRate >= referenceRate - toleranceFraction;
-}
-
-// ========================= the ceiling gates (1 and 3) =======================
-
-/**
- * Gates 1 and 3 are the SAME gate with different numbers: "own arm under an
- * absolute ceiling AND within tolerance of the reference arm". One map both
- * sites share, rather than a copied cascade per gate — the ordering below IS
- * the safety property, and two copies would be two chances to get it subtly
- * different.
- */
-interface CeilingGateSpec {
-	readonly gate: Extract<RampGateId, 'hard_bounce' | 'complaint'>;
-	readonly rateOf: (summary: TransportOutcomeSummary) => number;
-	readonly thresholdOf: (thresholds: RampGateThresholds) => RateFraction;
-	readonly toleranceOf: (thresholds: RampGateThresholds) => PercentagePoints;
-	readonly floorOf: (floors: RampGateSampleFloors) => number;
-}
 
 const HARD_BOUNCE_SPEC: CeilingGateSpec = {
 	gate: 'hard_bounce',
 	rateOf: (summary) => summary.hardBounceRate,
 	thresholdOf: (thresholds) => thresholds.hardBounceMax,
-	toleranceOf: (thresholds) => thresholds.hardBounceTolerance,
 	floorOf: (floors) => floors.hardBounce,
+	secondSeries: {
+		of: (input) => input.reference,
+		arm: 'reference',
+		maxAgeOf: (thresholds) => thresholds.maxEvidenceAgeMs,
+		floorOf: (floors) => floors.hardBounce,
+		comparison: { kind: 'tolerance_pp', of: (t) => t.hardBounceTolerance },
+	},
+	grade: DIRECT_MEASUREMENT,
 };
 
 const COMPLAINT_SPEC: CeilingGateSpec = {
 	gate: 'complaint',
 	rateOf: (summary) => summary.complaintRate,
 	thresholdOf: (thresholds) => thresholds.complaintMax,
-	toleranceOf: (thresholds) => thresholds.complaintTolerance,
 	floorOf: (floors) => floors.complaint,
+	secondSeries: {
+		of: (input) => input.reference,
+		arm: 'reference',
+		maxAgeOf: (thresholds) => thresholds.maxEvidenceAgeMs,
+		floorOf: (floors) => floors.complaint,
+		comparison: { kind: 'tolerance_pp', of: (t) => t.complaintTolerance },
+	},
+	grade: DIRECT_MEASUREMENT,
 };
-
-/**
- * ORDERING, and why:
- *   1. Own arm thin/stale -> insufficient_data. We know nothing.
- *   2. Own arm over the absolute ceiling -> fail, EVEN IF the reference arm is
- *      thin or absent. A 20% hard-bounce rate on ample own-arm data is real
- *      evidence; making it wait for the relay's sample would be a safety hole,
- *      and plan D2 forbids an external account being load-bearing — including
- *      load-bearing for a RETREAT.
- *   3. Reference arm thin/stale/absent -> insufficient_data. The comparative
- *      half is unmeasurable, so the gate holds rather than passing on half a
- *      check.
- *   4. Otherwise, compare the arms.
- */
-function evaluateCeilingGate(
-	spec: CeilingGateSpec,
-	input: RampGateEvaluationInput
-): RampGateResult {
-	const { thresholds, sampleFloors } = input.config;
-	const minSample = spec.floorOf(sampleFloors);
-	const threshold = spec.thresholdOf(thresholds) as number;
-	const tolerance = spec.toleranceOf(thresholds);
-
-	const ownSample = safeOutcomeCount(input.own.sent);
-	const referenceSample = input.reference ? safeOutcomeCount(input.reference.sent) : null;
-	const ownRate = safeRate(spec.rateOf(input.own));
-	const referenceRate = input.reference ? safeRate(spec.rateOf(input.reference)) : null;
-
-	const shape = {
-		thresholdRate: threshold,
-		toleranceValuePp: tolerance as number,
-		ownSample,
-		referenceSample,
-		minSample,
-	} as const;
-
-	const ownEvidence = armEvidence(
-		input.own,
-		ownSample,
-		minSample,
-		input.now,
-		thresholds,
-		thresholds.maxEvidenceAgeMs
-	);
-	if (ownEvidence !== 'fresh' || ownRate === null) {
-		return insufficient(spec.gate, evidenceReason(ownEvidence, 'own'), {
-			...shape,
-			ownRate,
-			referenceRate,
-		});
-	}
-
-	if (ownRate > threshold) {
-		return {
-			gate: spec.gate,
-			status: 'fail',
-			reason: 'absolute_threshold_breached',
-			measurement: { ...shape, ownRate, referenceRate },
-		};
-	}
-
-	const referenceEvidence = armEvidence(
-		input.reference,
-		referenceSample ?? 0,
-		minSample,
-		input.now,
-		thresholds,
-		thresholds.maxEvidenceAgeMs
-	);
-	if (referenceEvidence !== 'fresh' || referenceRate === null) {
-		return insufficient(spec.gate, evidenceReason(referenceEvidence, 'reference'), {
-			...shape,
-			ownRate,
-			referenceRate,
-		});
-	}
-
-	const within = withinTolerance(ownRate, referenceRate, tolerance, 'own_must_not_exceed');
-	return within
-		? {
-				gate: spec.gate,
-				status: 'pass',
-				reason: 'within_threshold',
-				measurement: { ...shape, ownRate, referenceRate },
-			}
-		: {
-				gate: spec.gate,
-				status: 'fail',
-				reason: 'reference_tolerance_breached',
-				measurement: { ...shape, ownRate, referenceRate },
-			};
-}
 
 /** Gate 1 — HARD BOUNCE: own arm <= 2% AND <= reference arm + 0.5pp. */
 export function evaluateHardBounceGate(input: RampGateEvaluationInput): RampGateResult {
@@ -234,7 +114,12 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 		thresholds.maxEvidenceAgeMs
 	);
 	if (evidence !== 'fresh' || ownRate === null) {
-		return insufficient('deferral', evidenceReason(evidence, 'own'), { ...shape, ownRate });
+		return insufficient(
+			'deferral',
+			evidenceReason(evidence, 'own'),
+			{ ...shape, ownRate },
+			DIRECT_MEASUREMENT
+		);
 	}
 
 	if (ownRate >= (thresholds.deferralHalt as number)) {
@@ -243,6 +128,7 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 			status: 'halt',
 			reason: 'halt_threshold_breached',
 			measurement: { ...shape, ownRate },
+			...DIRECT_MEASUREMENT,
 		};
 	}
 
@@ -252,12 +138,14 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 				status: 'pass',
 				reason: 'within_threshold',
 				measurement: { ...shape, ownRate },
+				...DIRECT_MEASUREMENT,
 			}
 		: {
 				gate: 'deferral',
 				status: 'fail',
 				reason: 'absolute_threshold_breached',
 				measurement: { ...shape, ownRate },
+				...DIRECT_MEASUREMENT,
 			};
 }
 
@@ -304,25 +192,54 @@ function seedEvidence(
  * the aggregate evaluation flags `requiresCorroboration` when it decides.
  */
 export function evaluateSeedPlacementGate(input: RampGateEvaluationInput): RampGateResult {
+	return evaluateSeedGate(input, 'compare_reference');
+}
+
+/**
+ * Gate 5, STANDALONE: the ABSOLUTE inbox floor only.
+ *
+ * A deployment with no reference transport has no second seed sweep to compare
+ * against, so the comparative half is not "unmeasurable" — it does not exist.
+ * Holding on a series that is absent by design would silently delete the gate in
+ * exactly the configuration the plan promotes it from optional to RECOMMENDED
+ * (P2-6 supplies the data), which is the degraded path rotting in one line.
+ *
+ * Still a tripwire and still corroboration-required (plan D17): a collapse across
+ * 5-10 mailboxes is actionable at any sample size, and a percentage off it is not
+ * a number anyone should quote.
+ */
+export function evaluateStandaloneSeedPlacementGate(
+	input: RampGateEvaluationInput
+): RampGateResult {
+	return evaluateSeedGate(input, 'absolute_only');
+}
+
+function evaluateSeedGate(
+	input: RampGateEvaluationInput,
+	mode: 'compare_reference' | 'absolute_only'
+): RampGateResult {
 	const { thresholds, sampleFloors } = input.config;
 	const minSample = sampleFloors.seedPlacement;
+	const compare = mode === 'compare_reference';
 	const ownRate = seedInboxRate(input.ownSeeds);
-	const referenceRate = seedInboxRate(input.referenceSeeds);
+	const referenceRate = compare ? seedInboxRate(input.referenceSeeds) : null;
 	const shape = {
 		referenceRate,
 		thresholdRate: thresholds.seedInboxMin as number,
-		toleranceValuePp: thresholds.seedInboxTolerance as number,
+		toleranceValuePp: compare ? (thresholds.seedInboxTolerance as number) : null,
 		ownSample: seedTotal(input.ownSeeds),
-		referenceSample: input.referenceSeeds ? seedTotal(input.referenceSeeds) : null,
+		referenceSample: compare && input.referenceSeeds ? seedTotal(input.referenceSeeds) : null,
 		minSample,
 	} as const;
 
 	const ownEvidence = seedEvidence(input.ownSeeds, minSample, input.now, thresholds);
 	if (ownEvidence !== 'fresh' || ownRate === null) {
-		return insufficient('seed_placement', evidenceReason(ownEvidence, 'own'), {
-			...shape,
-			ownRate,
-		});
+		return insufficient(
+			'seed_placement',
+			evidenceReason(ownEvidence, 'own'),
+			{ ...shape, ownRate },
+			SEED_TRIPWIRE
+		);
 	}
 
 	if (ownRate < (thresholds.seedInboxMin as number)) {
@@ -331,15 +248,28 @@ export function evaluateSeedPlacementGate(input: RampGateEvaluationInput): RampG
 			status: 'fail',
 			reason: 'absolute_threshold_breached',
 			measurement: { ...shape, ownRate },
+			...SEED_TRIPWIRE,
+		};
+	}
+
+	if (!compare) {
+		return {
+			gate: 'seed_placement',
+			status: 'pass',
+			reason: 'within_threshold',
+			measurement: { ...shape, ownRate },
+			...SEED_TRIPWIRE,
 		};
 	}
 
 	const referenceEvidence = seedEvidence(input.referenceSeeds, minSample, input.now, thresholds);
 	if (referenceEvidence !== 'fresh' || referenceRate === null) {
-		return insufficient('seed_placement', evidenceReason(referenceEvidence, 'reference'), {
-			...shape,
-			ownRate,
-		});
+		return insufficient(
+			'seed_placement',
+			evidenceReason(referenceEvidence, 'reference'),
+			{ ...shape, ownRate },
+			SEED_TRIPWIRE
+		);
 	}
 
 	const within = withinTolerance(
@@ -354,11 +284,13 @@ export function evaluateSeedPlacementGate(input: RampGateEvaluationInput): RampG
 				status: 'pass',
 				reason: 'within_threshold',
 				measurement: { ...shape, ownRate },
+				...SEED_TRIPWIRE,
 			}
 		: {
 				gate: 'seed_placement',
 				status: 'fail',
 				reason: 'reference_tolerance_breached',
 				measurement: { ...shape, ownRate },
+				...SEED_TRIPWIRE,
 			};
 }

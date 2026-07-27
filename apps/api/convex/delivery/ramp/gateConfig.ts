@@ -90,6 +90,27 @@ export interface RampGateSampleFloors {
 	 * silently moving the other.
 	 */
 	readonly engagementRecent: number;
+	/**
+	 * Calibration-slice sends the STANDALONE trailing engagement gate requires
+	 * (plan D10's second minimum: >=2000 sends over a 7-day window).
+	 *
+	 * 5x the concurrent floor, and deliberately so. The concurrent gate compares
+	 * two arms of the SAME send, so subject, content, timing and audience are held
+	 * constant by construction and 400 per arm resolves a 5% relative move. The
+	 * trailing variant compares two DIFFERENT WEEKS, where every one of those
+	 * factors has moved; a floor that ignored the extra variance would let ordinary
+	 * editorial noise retreat a healthy cell.
+	 */
+	readonly engagementTrailing: number;
+	/**
+	 * Classified SMTP responses before the block-message hard stop may fire.
+	 *
+	 * Small (tens, not hundreds) and deliberately so: the denominator here is
+	 * FAILURE RESPONSES, not sends, and a healthy cell produces very few of them.
+	 * A floor scaled to the send counters would mean the block detector never
+	 * reached its minimum sample on precisely the cells that are working.
+	 */
+	readonly smtpBlock: number;
 	/** Seeds per arm before the placement tripwire may return a verdict (D17). */
 	readonly seedPlacement: number;
 }
@@ -100,6 +121,8 @@ export const RAMP_GATE_SAMPLE_FLOORS: RampGateSampleFloors = {
 	complaint: 1000,
 	engagement: 400,
 	engagementRecent: 400,
+	engagementTrailing: 2000,
+	smtpBlock: 20,
 	seedPlacement: 5,
 };
 
@@ -121,6 +144,38 @@ export interface RampGateThresholds {
 	readonly complaintMax: RateFraction;
 	/** Gate 3: own arm may exceed the reference arm by at most this much. */
 	readonly complaintTolerance: PercentagePoints;
+	/**
+	 * STANDALONE gate 1: the own arm's hard-bounce rate may be at most this
+	 * MULTIPLE of the cell's own 30-day trailing rate, on top of the absolute 2%
+	 * ceiling. A dimensionless multiple, not a rate and not percentage points.
+	 *
+	 * 1.5x rather than a tighter number because a trailing self-comparison carries
+	 * list-decay and seasonal noise that a concurrent arm comparison does not: the
+	 * absolute ceiling is the precise instrument here, and this one exists to catch
+	 * a cell whose bounce rate is climbing fast while still nominally "under 2%".
+	 */
+	readonly hardBounceTrailingMultiple: number;
+	/**
+	 * STANDALONE gate 3: with no feedback loop, the one-click UNSUBSCRIBE rate at
+	 * or above this multiple of the cell's own trailing unsubscribe rate is treated
+	 * as a complaint-equivalent breach.
+	 *
+	 * Wide (3x) because it is a PROXY and is labelled as one: unsubscribes move
+	 * with campaign content, so a narrow multiple would retreat the ramp for
+	 * editorial reasons. A tripling against the cell's own recent history is not
+	 * editorial.
+	 */
+	readonly unsubscribeProxyMultiple: number;
+	/**
+	 * STANDALONE gate 2: the share of classified SMTP responses that may be BLOCK
+	 * messages before the cell HALTS.
+	 *
+	 * Not zero. A single misconfigured receiver returning a policy rejection is
+	 * noise on any real volume, and a halt on one response would make the ramp
+	 * unusable. 0.5% of a window's classified responses saying "we are refusing
+	 * this sender" is not noise.
+	 */
+	readonly smtpBlockHalt: RateFraction;
 	/** Gate 5: own-arm seed inbox floor, absolute. */
 	readonly seedInboxMin: RateFraction;
 	/** Gate 5: own arm may fall below the reference arm by at most this much. */
@@ -176,6 +231,9 @@ export const RAMP_GATE_THRESHOLDS: RampGateThresholds = {
 	deferralHalt: rateFraction(0.25),
 	complaintMax: rateFraction(0.001),
 	complaintTolerance: percentagePoints(0.05),
+	hardBounceTrailingMultiple: 1.5,
+	unsubscribeProxyMultiple: 3,
+	smtpBlockHalt: rateFraction(0.005),
 	seedInboxMin: rateFraction(0.9),
 	seedInboxTolerance: percentagePoints(5),
 	maxEvidenceAgeMs: 48 * HOUR_MS,
