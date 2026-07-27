@@ -12,7 +12,13 @@ import { describe, it, expect } from 'vitest';
 import { adaptiveMixStrategy, decideMixAssignment } from '../adaptive_mix';
 import type { MixCellState } from '../adaptive_mix';
 import type { ProviderEntry } from '../types';
-import { assignAll, shareOfArm, syntheticContactIds } from './fixtures';
+import {
+	assignAll,
+	assignRanked,
+	ranksFromScores,
+	shareOfArm,
+	syntheticContactIds,
+} from './fixtures';
 
 const AUDIENCE = syntheticContactIds(5000, 'deg');
 const ENTRIES: ProviderEntry[] = [
@@ -132,9 +138,57 @@ describe('adaptive_mix — strategy-level degeneracy', () => {
 		expect(adaptiveMixStrategy.select([], undefined)).toBeNull();
 	});
 
-	it('behaves like `single` when no recipient is supplied', () => {
-		const route = adaptiveMixStrategy.select(ENTRIES, 'pool-a', undefined);
-		expect(route).toEqual({ providerType: 'mta', ipPool: 'pool-a', source: 'org_config' });
+	it('returns null when no mix context is supplied, rather than guessing', () => {
+		// A caller with no recipient and no recorded arm (a health probe, a
+		// preflight check) gets NO answer, and falls back explicitly. Answering
+		// `single`'s answer would put the whole cell on one transport while the
+		// assignment rows recorded a split — denominators describing an
+		// experiment that never ran.
+		expect(adaptiveMixStrategy.select(ENTRIES, 'pool-a', undefined)).toBeNull();
+	});
+
+	it('replays a RECORDED arm without re-deciding', () => {
+		for (const arm of ['own', 'reference'] as const) {
+			const route = adaptiveMixStrategy.select(ENTRIES, undefined, undefined, {
+				kind: 'assigned',
+				arm,
+			});
+			expect(route?.providerType).toBe(arm === 'own' ? 'mta' : 'ses');
+			// A replayed arm carries no decision: there was nothing to decide.
+			expect(route?.mix).toBeUndefined();
+		}
+	});
+
+	it('carries the decision it took back on the route', () => {
+		const route = adaptiveMixStrategy.select(ENTRIES, undefined, undefined, {
+			kind: 'decide',
+			input: {
+				cell: { ownShare: 0.5, mixVersion: 1 },
+				recipient: { contactId: 'c', campaignId: 'k' },
+			},
+		});
+		expect(route?.mix?.arm).toBe(route?.providerType === 'mta' ? 'own' : 'reference');
+	});
+
+	it('an entirely TIED cohort does not collapse the cell onto the own arm', () => {
+		// Everyone shares one engagement score — a freshly-imported list. The
+		// percentile helper gives every member the group's UPPER percentile, so
+		// an undispersed rank would send 100% of the cell own at any s > 0.
+		const sendIds = syntheticContactIds(4000, 'tiedeg');
+		const contactIds = syntheticContactIds(4000, 'tiedegc');
+		const ranks = ranksFromScores(
+			sendIds,
+			sendIds.map(() => 0)
+		);
+		const assignments = assignRanked(
+			contactIds,
+			ranks,
+			{ ownShare: 0.2, mixVersion: 1 },
+			{
+				campaignId: 'cmp-tied',
+			}
+		);
+		expect(Math.abs(shareOfArm(assignments, 'own') - 0.2)).toBeLessThan(0.04);
 	});
 
 	it('still sends when NO reference transport is configured (D2)', () => {
@@ -144,8 +198,11 @@ describe('adaptive_mix — strategy-level degeneracy', () => {
 		const ownOnly: ProviderEntry[] = [{ providerType: 'mta', isEnabled: true }];
 		for (const contactId of AUDIENCE.slice(0, 200)) {
 			const route = adaptiveMixStrategy.select(ownOnly, undefined, undefined, {
-				cell: { ownShare: 0.01, mixVersion: 1 },
-				recipient: { contactId, campaignId: 'cmp' },
+				kind: 'decide',
+				input: {
+					cell: { ownShare: 0.01, mixVersion: 1 },
+					recipient: { contactId, campaignId: 'cmp' },
+				},
 			});
 			expect(route?.providerType).toBe('mta');
 		}
@@ -154,8 +211,11 @@ describe('adaptive_mix — strategy-level degeneracy', () => {
 	it('still sends when the own MTA is not in the route', () => {
 		const referenceOnly: ProviderEntry[] = [{ providerType: 'ses', isEnabled: true }];
 		const route = adaptiveMixStrategy.select(referenceOnly, undefined, undefined, {
-			cell: { ownShare: 1, mixVersion: 1 },
-			recipient: { contactId: 'c', campaignId: 'cmp' },
+			kind: 'decide',
+			input: {
+				cell: { ownShare: 1, mixVersion: 1 },
+				recipient: { contactId: 'c', campaignId: 'cmp' },
+			},
 		});
 		expect(route?.providerType).toBe('ses');
 	});

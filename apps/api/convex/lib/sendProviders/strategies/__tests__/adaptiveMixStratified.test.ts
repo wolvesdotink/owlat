@@ -13,7 +13,16 @@
 
 import { describe, it, expect } from 'vitest';
 import { decideMixAssignment, type MixAssignment } from '../adaptive_mix';
-import { syntheticContactIds } from './fixtures';
+import {
+	assignRanked,
+	maxOf,
+	mean,
+	minOf,
+	pointBiserial,
+	ranksFromScores,
+	shareOfArm,
+	syntheticContactIds,
+} from './fixtures';
 
 const SIZE = 20_000;
 const IDS = syntheticContactIds(SIZE);
@@ -27,40 +36,6 @@ function assignStratified(ownShare: number, mixVersion = 3): MixAssignment[] {
 			recipient: { contactId, campaignId: 'cmp-strat', engagementRank: RANKS[index] },
 		})
 	);
-}
-
-/** Fold rather than `Math.min(...array)`: the audience overflows the arg limit. */
-function minOf(values: readonly number[]): number {
-	return values.reduce((low, value) => (value < low ? value : low), Number.POSITIVE_INFINITY);
-}
-
-function maxOf(values: readonly number[]): number {
-	return values.reduce((high, value) => (value > high ? value : high), Number.NEGATIVE_INFINITY);
-}
-
-function mean(values: readonly number[]): number {
-	if (values.length === 0) return 0;
-	return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-/** Pearson correlation between slice membership (0/1) and engagement rank. */
-function pointBiserial(flags: readonly boolean[], values: readonly number[]): number {
-	const n = flags.length;
-	const flagValues = flags.map((flag) => (flag ? 1 : 0));
-	const meanFlag = mean(flagValues);
-	const meanValue = mean(values);
-	let cov = 0;
-	let varFlag = 0;
-	let varValue = 0;
-	for (let index = 0; index < n; index += 1) {
-		const dFlag = (flagValues[index] ?? 0) - meanFlag;
-		const dValue = (values[index] ?? 0) - meanValue;
-		cov += dFlag * dValue;
-		varFlag += dFlag * dFlag;
-		varValue += dValue * dValue;
-	}
-	if (varFlag === 0 || varValue === 0) return 0;
-	return cov / Math.sqrt(varFlag * varValue);
 }
 
 describe('adaptive_mix — stratified assignment', () => {
@@ -82,20 +57,40 @@ describe('adaptive_mix — stratified assignment', () => {
 		expect(Math.abs(minOf(ownRanks) - 0.4)).toBeLessThan(0.01);
 	});
 
-	it('an explicit isStratified:false falls back to the unbiased hash bucket', () => {
-		const assignments = IDS.map((contactId, index) =>
-			decideMixAssignment({
-				cell: { ownShare: 0.6, mixVersion: 3, isStratified: false },
-				recipient: { contactId, campaignId: 'cmp-strat', engagementRank: RANKS[index] },
-			})
+	it('a TIED cohort still realises the configured share, not the whole cell', () => {
+		// The distribution the synthetic uniform ranks above cannot express, and
+		// the common warming case: a cold list where most recipients share one
+		// score. `engagementPercentile` hands every member of a tied group the
+		// group's UPPER percentile, so an undispersed rank would put the whole
+		// tied block above the `1 - s` cut and send it ALL to the own arm — the
+		// least engaged recipients promoted, on the flimsiest evidence.
+		const sendIds = syntheticContactIds(SIZE, 'tie');
+		const contactIds = syntheticContactIds(SIZE, 'tiec');
+		const scores = contactIds.map((_, index) => (index < SIZE * 0.6 ? 0 : 10));
+		const ranks = ranksFromScores(sendIds, scores);
+		for (const ownShare of [0.1, 0.5, 0.9]) {
+			const assignments = assignRanked(
+				contactIds,
+				ranks,
+				{ ownShare, mixVersion: 3 },
+				{
+					campaignId: 'cmp-tie',
+				}
+			);
+			expect(Math.abs(shareOfArm(assignments, 'own') - ownShare)).toBeLessThan(0.03);
+		}
+	});
+
+	it('an all-zero cohort is dispersed, not ranked at the top', () => {
+		const sendIds = syntheticContactIds(SIZE, 'zero');
+		const ranks = ranksFromScores(
+			sendIds,
+			sendIds.map(() => 0)
 		);
-		expect(assignments.some((assignment) => assignment.basis === 'stratified')).toBe(false);
-		const ownRanks = assignments
-			.map((assignment, index) => ({ assignment, rank: RANKS[index] ?? 0 }))
-			.filter((row) => row.assignment.arm === 'own')
-			.map((row) => row.rank);
-		// Unstratified: the own arm's mean rank is the population's.
-		expect(Math.abs(mean(ownRanks) - 0.5)).toBeLessThan(0.02);
+		const defined = ranks.filter((rank): rank is number => rank !== undefined);
+		expect(defined.length).toBe(SIZE);
+		expect(maxOf(defined)).toBeLessThan(1);
+		expect(Math.abs(mean(defined) - 0.5)).toBeLessThan(0.02);
 	});
 });
 

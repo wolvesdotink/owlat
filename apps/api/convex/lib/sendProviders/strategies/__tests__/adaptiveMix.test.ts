@@ -9,10 +9,29 @@
 
 import { describe, it, expect } from 'vitest';
 import { adaptiveMixStrategy, decideMixAssignment, MIX_BUCKET_SPACE } from '../adaptive_mix';
-import { assignAll, shareOfArm, syntheticContactIds } from './fixtures';
+import {
+	assignAll,
+	assignRanked,
+	ranksFromScores,
+	shareOfArm,
+	syntheticContactIds,
+} from './fixtures';
 
 const AUDIENCE = syntheticContactIds(20_000);
+const SEND_IDS = syntheticContactIds(20_000, 'snd');
 const SHARES = [0, 0.02, 0.5, 0.97, 1];
+
+/** Distinct scores: every recipient has their own percentile. */
+const DISTINCT_SCORES = AUDIENCE.map((_, index) => index / AUDIENCE.length);
+/**
+ * The realistic warming cohort: a long tie at the bottom (never opened, score
+ * 0) with a distinct-ish tail. `engagementPercentile` gives every member of the
+ * tied block the block's UPPER percentile, so without tie dispersion this
+ * cohort sends its entire bottom 70% to the own arm at any s >= 0.3.
+ */
+const TIED_SCORES = AUDIENCE.map((_, index) => (index < AUDIENCE.length * 0.7 ? 0 : index % 40));
+/** The most degenerate real list there is: nobody has engaged with anything. */
+const ALL_ZERO_SCORES = AUDIENCE.map(() => 0);
 
 describe('adaptive_mix — split matrix', () => {
 	it.each(SHARES)('realises share %s within tolerance over a large audience', (ownShare) => {
@@ -23,6 +42,49 @@ describe('adaptive_mix — split matrix', () => {
 		// exactly rather than statistically.
 		if (ownShare === 0 || ownShare === 1) expect(realised).toBe(ownShare);
 		else expect(Math.abs(realised - ownShare)).toBeLessThan(0.01);
+	});
+
+	// THE SAME MATRIX ON THE STRATIFIED PATH. Stratification is the D8 default in
+	// production, so a matrix that only exercises the random-bucket branch
+	// asserts nothing about how the share is realised for real traffic — and the
+	// tied cohorts below are the distributions where getting it wrong pushes
+	// realised own volume far ABOVE the controller's set point.
+	describe.each([
+		['distinct scores', DISTINCT_SCORES, 0.02],
+		['a mostly-tied cold cohort', TIED_SCORES, 0.03],
+		['an all-zero cohort', ALL_ZERO_SCORES, 0.03],
+	])('stratified over %s', (_label, scores, tolerance) => {
+		const ranks = ranksFromScores(SEND_IDS, scores);
+
+		it.each(SHARES)('realises share %s within tolerance', (ownShare) => {
+			const assignments = assignRanked(
+				AUDIENCE,
+				ranks,
+				{ ownShare, mixVersion: 1 },
+				{
+					campaignId: 'cmp-1',
+				}
+			);
+			const realised = shareOfArm(assignments, 'own');
+			if (ownShare === 0 || ownShare === 1) expect(realised).toBe(ownShare);
+			else expect(Math.abs(realised - ownShare)).toBeLessThan(tolerance);
+		});
+	});
+
+	it('actually takes the stratified branch when ranks are present', () => {
+		// Guard the guard: if the ranker stopped producing ranks, every assertion
+		// above would silently fall back to the random bucket and keep passing.
+		const ranks = ranksFromScores(SEND_IDS, DISTINCT_SCORES);
+		const assignments = assignRanked(
+			AUDIENCE,
+			ranks,
+			{ ownShare: 0.5, mixVersion: 1 },
+			{
+				campaignId: 'cmp-1',
+			}
+		);
+		const stratified = assignments.filter((a) => a.basis === 'stratified').length;
+		expect(stratified).toBeGreaterThan(AUDIENCE.length * 0.85);
 	});
 
 	it('realises the share per campaign, not only in aggregate', () => {
@@ -54,8 +116,11 @@ describe('adaptive_mix — split matrix', () => {
 		let own = 0;
 		for (const contactId of AUDIENCE.slice(0, 4000)) {
 			const route = adaptiveMixStrategy.select(entries, undefined, undefined, {
-				cell: { ownShare: 0.25, mixVersion: 2 },
-				recipient: { contactId, campaignId: 'cmp-1' },
+				kind: 'decide',
+				input: {
+					cell: { ownShare: 0.25, mixVersion: 2 },
+					recipient: { contactId, campaignId: 'cmp-1' },
+				},
 			});
 			expect(route).not.toBeNull();
 			if (route?.providerType === 'mta') own += 1;

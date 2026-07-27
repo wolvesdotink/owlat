@@ -7,26 +7,43 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { bucketFor, hash32, MIX_BUCKET_SPACE, decideMixAssignment } from '../adaptive_mix';
+import {
+	armBucketFor,
+	bucketFor,
+	calibrationBucketFor,
+	decideMixAssignment,
+	hash32,
+	MIX_BUCKET_SPACE,
+} from '../adaptive_mix';
 import { syntheticContactIds } from './fixtures';
 
 const SAMPLE = 100_000;
 
-/** Chi-square statistic of the bucket distribution over `binCount` equal bins. */
-function chiSquare(keys: readonly string[], binCount: number): number {
+/** Chi-square statistic of a bucket distribution over `binCount` equal bins. */
+function chiSquareOfBuckets(buckets: ReadonlyArray<number | null>, binCount: number): number {
 	const counts: number[] = Array.from({ length: binCount }, () => 0);
 	const binWidth = MIX_BUCKET_SPACE / binCount;
-	for (const key of keys) {
-		const bin = Math.min(binCount - 1, Math.floor(bucketFor(key) / binWidth));
+	let total = 0;
+	for (const bucket of buckets) {
+		if (bucket === null) continue;
+		const bin = Math.min(binCount - 1, Math.floor(bucket / binWidth));
 		counts[bin] = (counts[bin] ?? 0) + 1;
+		total += 1;
 	}
-	const expected = keys.length / binCount;
+	const expected = total / binCount;
 	let statistic = 0;
 	for (const count of counts) {
 		const delta = count - expected;
 		statistic += (delta * delta) / expected;
 	}
 	return statistic;
+}
+
+function chiSquare(keys: readonly string[], binCount: number): number {
+	return chiSquareOfBuckets(
+		keys.map((key) => bucketFor(key)),
+		binCount
+	);
 }
 
 describe('mix hash — uniformity', () => {
@@ -39,10 +56,13 @@ describe('mix hash — uniformity', () => {
 	});
 
 	it('distributes salted campaign keys uniformly', () => {
-		const keys = syntheticContactIds(SAMPLE, 'c').map(
-			(id, index) => `arm|${id}:cmp-${index % 7}:3`
+		// Through the module's OWN key builder, never a hand-rolled copy of it: a
+		// test that rebuilds the salted key keeps passing after the key shape
+		// changes, while testing a format the code no longer produces.
+		const buckets = syntheticContactIds(SAMPLE, 'c').map((contactId, index) =>
+			armBucketFor({ contactId, campaignId: `cmp-${index % 7}` }, 3)
 		);
-		expect(chiSquare(keys, 100)).toBeLessThan(148);
+		expect(chiSquareOfBuckets(buckets, 100)).toBeLessThan(148);
 	});
 
 	it('distributes timestamp-shaped keys uniformly', () => {
@@ -125,12 +145,15 @@ describe('mix hash — a caller cannot steer the arm', () => {
 
 	it('separates the arm and calibration partitions', () => {
 		// Both draws come from the same key material and MUST NOT agree, or the
-		// calibration slice would be a deterministic function of the arm.
+		// calibration slice would be a deterministic function of the arm. Asked
+		// through the exported helpers so the two partitions cannot drift into
+		// agreement behind the test's back.
 		const ids = syntheticContactIds(20_000, 'sep');
 		let agree = 0;
-		for (const id of ids) {
-			const armBucket = bucketFor(`arm|${id}:cmp:1`);
-			const sliceBucket = bucketFor(`calibration|${id}:cmp:1`);
+		for (const contactId of ids) {
+			const recipient = { contactId, campaignId: 'cmp' };
+			const armBucket = armBucketFor(recipient, 1);
+			const sliceBucket = calibrationBucketFor(recipient, 1);
 			if (armBucket === sliceBucket) agree += 1;
 		}
 		// Independent draws collide at ~1/10000.

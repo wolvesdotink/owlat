@@ -11,10 +11,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { convexTest } from 'convex-test';
 import schema from '../../../../schema';
-// The delivery suite's module map, reused rather than copied: its two-glob
-// preamble already covers the whole `convex/` tree from a `__tests__` folder,
-// and a fifth copy of that preamble is exactly what it was extracted to avoid.
-import { modules } from '../../../../delivery/__tests__/testModules';
+// THE shared module map (`convex/__tests__/testModules.ts`) — not another
+// domain suite's internal helper, and not a fifth copy of the same preamble.
+import { modules } from '../../../../__tests__/testModules';
 import { sendProviderCatalogEntry } from '../../catalog';
 import type { SendProviderKind } from '../../types';
 import {
@@ -36,14 +35,13 @@ describe('adaptive_mix — calibration slice sizing', () => {
 		expect(calibrationSliceFor(0.8)).toBe(CALIBRATION_SLICE_AT_OR_ABOVE_HALF);
 	});
 
-	it('is 0% after graduation', () => {
-		expect(calibrationSliceFor(0.3, true)).toBe(0);
-		expect(calibrationSliceFor(0.9, true)).toBe(0);
-	});
-
-	it('is 0% for a degenerate cell — both arms of the split are one arm', () => {
-		expect(calibrationSliceFor(0)).toBe(0);
+	it('is 0% after graduation, and 0% for any degenerate cell', () => {
+		// Graduation IS `s = 1` held (D9), so it needs no separate flag: a cell
+		// whose two arms are the same arm has no comparison to randomize, and
+		// marking rows calibration there would hand the engagement-ratio gate a
+		// one-armed sample.
 		expect(calibrationSliceFor(1)).toBe(0);
+		expect(calibrationSliceFor(0)).toBe(0);
 	});
 
 	it.each([
@@ -56,11 +54,13 @@ describe('adaptive_mix — calibration slice sizing', () => {
 		expect(Math.abs(calibrationShare(assignments) - expected)).toBeLessThan(0.01);
 	});
 
-	it('marks nothing as calibration once the cell has graduated', () => {
+	it('marks nothing as calibration once the cell has graduated (s = 1)', () => {
 		const assignments = assignAll(
 			AUDIENCE,
-			{ ownShare: 0.9, mixVersion: 2, isGraduated: true },
-			{ campaignId: 'cmp-c' }
+			{ ownShare: 1, mixVersion: 2 },
+			{
+				campaignId: 'cmp-c',
+			}
 		);
 		expect(calibrationShare(assignments)).toBe(0);
 	});

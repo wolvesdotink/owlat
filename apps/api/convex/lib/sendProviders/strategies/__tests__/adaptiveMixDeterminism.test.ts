@@ -82,6 +82,46 @@ describe('adaptive_mix — determinism', () => {
 		expect(arms.filter((arm) => arm === 'reference').length).toBeGreaterThan(0);
 	});
 
+	it('re-draws the arm per message when there is NO campaign (automation/transactional)', () => {
+		// The `automation` and `transactional` streams pass a contact id and NO
+		// campaign id (they are their own single-recipient experiments), so the
+		// SEND id is the salt. Two properties have to hold at once: the arm must
+		// be stable for repeated evaluations of ONE message (the enqueue record
+		// and the dispatch replay must agree), and it must be re-drawn across
+		// messages to the same contact — otherwise each contact is pinned to one
+		// arm for the life of the mix version, and the two arms of those streams
+		// become two fixed cohorts. `automation` is a first-class high-volume
+		// stream, so this is not a transactional-only edge.
+		const contactId = 'contact-no-campaign';
+		const sendIds = syntheticContactIds(2000, 'snd');
+		const armFrom = (fallbackKey: string): MixArm =>
+			decideMixAssignment({ cell: CELL, recipient: { contactId, fallbackKey } }).arm;
+
+		// Stable within one send.
+		for (const fallbackKey of sendIds.slice(0, 50)) {
+			expect(armFrom(fallbackKey)).toBe(armFrom(fallbackKey));
+		}
+		// Re-drawn across sends: at s = 0.5 both arms appear, near evenly.
+		const own = sendIds.filter((fallbackKey) => armFrom(fallbackKey) === 'own').length;
+		expect(Math.abs(own / sendIds.length - 0.5)).toBeLessThan(0.04);
+	});
+
+	it('the same contact is not pinned across two sends of the same stream', () => {
+		const contactId = 'contact-pinned-check';
+		const sendIds = syntheticContactIds(3000, 'pin');
+		let sameArmRun = 0;
+		for (const fallbackKey of sendIds) {
+			const arm = decideMixAssignment({
+				cell: CELL,
+				recipient: { contactId, fallbackKey },
+			}).arm;
+			if (arm === 'own') sameArmRun += 1;
+		}
+		// A salt that ignored the send id would make this 0 or 3000.
+		expect(sameArmRun).toBeGreaterThan(1000);
+		expect(sameArmRun).toBeLessThan(2000);
+	});
+
 	it('treats a missing mixVersion as version 0, stably', () => {
 		const withUndefined = decideMixAssignment({
 			cell: { ownShare: 0.5 },

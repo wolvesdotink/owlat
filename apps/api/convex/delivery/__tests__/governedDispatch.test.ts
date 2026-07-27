@@ -59,6 +59,10 @@ describe('dispatchGovernedEmail', () => {
 			startedAt: expect.any(Number),
 			deliveryDomain: 'production',
 			mtaReconciliation: false,
+			// The durable Send id travels with the routing request so an
+			// adaptive_mix cell dispatches on the arm the enqueue transaction
+			// recorded for this recipient.
+			sendId: 'send-row-1',
 		});
 		expect(sendProviderDispatch).not.toHaveBeenCalled();
 		expect(result).toMatchObject({

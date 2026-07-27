@@ -27,11 +27,8 @@ import {
 	createTestInstanceSettings,
 	createTestTransactionalEmail,
 } from '../../__tests__/factories';
-import {
-	armForTransport,
-	destinationProvidersForEmails,
-	ROUTER_ONLY_MIX_VERSION,
-} from '../sendAssignments';
+import { armForTransport, destinationProvidersForEmails } from '../sendAssignments';
+import { DEFAULT_MIX_VERSION } from '../../lib/sendProviders/strategies';
 import { SEND_PROVIDER_KINDS, sendProviderCatalogEntry } from '../../lib/sendProviders/catalog';
 import { resolveDestinationProvider } from '../../lib/sendProviders/destinationProvider';
 import type { SendProviderKind } from '../../lib/sendProviders/types';
@@ -309,7 +306,7 @@ describe('sendAssignments — campaign write path', () => {
 			expect(row.transport).toBe('mta');
 			expect(row.arm).toBe('own');
 			expect(row.isCalibration).toBe(false);
-			expect(row.mixVersion).toBe(ROUTER_ONLY_MIX_VERSION);
+			expect(row.mixVersion).toBe(DEFAULT_MIX_VERSION);
 			expect(row.engagementRank).toBeUndefined();
 			expect(row.assignedAt).toBeGreaterThan(0);
 		}
@@ -1227,7 +1224,7 @@ describe('sendAssignments — non-campaign write path', () => {
 		// authoritative resolution from step 8 of the dispatch.
 		expect(rows[0]?.transport).toBe('mta');
 		expect(rows[0]?.arm).toBe('own');
-		expect(rows[0]?.mixVersion).toBe(ROUTER_ONLY_MIX_VERSION);
+		expect(rows[0]?.mixVersion).toBe(DEFAULT_MIX_VERSION);
 	});
 
 	it('writes NO row for the Template API under the non-deterministic workload_split strategy', async () => {
