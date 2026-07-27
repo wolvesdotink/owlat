@@ -412,4 +412,55 @@ describe('dispatchGovernedEmail', () => {
 			}
 		}
 	);
+	describe('relay arm — the custom return path (plan G-08)', () => {
+		function relayRouting(relayReturnPathHost: string | undefined) {
+			resolveLastMileRouting.mockResolvedValue({
+				kind: 'ready',
+				providerKind: 'smtp',
+				route: null,
+				organizationId: 'org-1',
+				relayReturnPathHost,
+			});
+			sendProviderDispatch.mockResolvedValue({
+				result: { success: true, id: 'relay-message-id' },
+				providerType: 'smtp',
+				latencyMs: 7,
+				attempts: 1,
+			});
+		}
+
+		function dispatchedExtras(): unknown {
+			// Indexed rather than `.at(-1)`: convex/tsconfig.json's `lib` stops at
+			// ES2021, so `Array.prototype.at` is not in the type set here.
+			const calls = sendProviderDispatch.mock.calls;
+			return calls[calls.length - 1]?.[3];
+		}
+
+		it('passes the authorised return-path host through to SmtpExtras', async () => {
+			relayRouting('bounces.example.com');
+			await dispatchGovernedEmail(ctx, baseRequest);
+			expect(sendProviderDispatch).toHaveBeenCalledWith(ctx, 'smtp', expect.anything(), {
+				returnPathHost: 'bounces.example.com',
+			});
+			expect(dispatchedExtras()).toEqual({ returnPathHost: 'bounces.example.com' });
+		});
+
+		it('fails closed to the composer envelope sender when no host was authorised', async () => {
+			relayRouting(undefined);
+			await dispatchGovernedEmail(ctx, baseRequest);
+			expect(dispatchedExtras()).toEqual({});
+		});
+
+		it('reads the capability from the ROUTING result — no extra query per send', async () => {
+			// The routing pass already ran a query; a second round trip on the hot
+			// send path to read a deployment-scoped fact would be pure overhead. The
+			// ctx here deliberately has NO runQuery, so a reintroduced read throws.
+			relayRouting('bounces.example.com');
+			await expect(dispatchGovernedEmail(ctx, baseRequest)).resolves.toMatchObject({
+				success: true,
+				providerType: 'smtp',
+			});
+			expect((ctx as unknown as { runQuery?: unknown }).runQuery).toBeUndefined();
+		});
+	});
 });

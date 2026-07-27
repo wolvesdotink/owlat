@@ -131,10 +131,27 @@ export interface ResendExtras {
 }
 
 /**
- * A generic SMTP relay has no per-send provider knobs — the connection
- * (host/port/TLS/auth) is instance-level config, not per-message.
+ * The connection (host/port/TLS/auth) is instance-level config, not
+ * per-message, so a relay has almost no per-send knobs. The exception is the
+ * envelope sender: where the relay honours a custom RFC5321.MailFrom we stamp
+ * OUR VERP address so relayed bounces come back to our own bounce server and
+ * both transport arms produce comparable bounce data (plan G-08).
  */
-export type SmtpExtras = Record<string, never>;
+export interface SmtpExtras {
+	/**
+	 * The return-path host to stamp as the VERP envelope sender on this send.
+	 *
+	 * Present ONLY when the routing seam has resolved all three conditions at
+	 * once: this transport's `supportsCustomReturnPath` capability is
+	 * `supported`, the From domain has a return-path host (its own override, or
+	 * the deployment-global one — the SAME host the direct-MX arm stamps, so the
+	 * two arms present the same envelope-sender domain, D11), and that host's
+	 * published SPF authorises this transport. Absent ⇒ leave the envelope
+	 * sender exactly as the composer built it (the shipped behaviour) and treat
+	 * the cell's bounce data as degraded — never an error, never a blocker (D2).
+	 */
+	returnPathHost?: string;
+}
 
 export type ExtrasFor<K extends SendProviderKind> = K extends 'mta'
 	? MtaExtras

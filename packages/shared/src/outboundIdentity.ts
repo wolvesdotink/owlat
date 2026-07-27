@@ -7,6 +7,7 @@
  */
 
 import { parseIpAddress } from './ipAddress';
+import { normalizeVerpKey } from './verpNormalize';
 
 export function assertValidOutboundEhloHostname(value: string, source: string): void {
 	const trimmed = value.trim();
@@ -98,6 +99,17 @@ export function projectCanonicalMtaRuntimeEnv(env: Record<string, string>): Reco
 	}
 	if (env['RETURN_PATH_DOMAIN'] !== undefined) {
 		projected['MTA_RETURN_PATH_DOMAIN'] = env['RETURN_PATH_DOMAIN'].trim();
+	}
+	// The VERP signing key is ONE secret with two readers: the MTA verifies the
+	// tokens it minted, and Convex mints the same tokens on relay sends. Project
+	// it rather than making an operator hand-copy a signing key into a second
+	// variable — a silent typo there mints tokens the MTA will never verify.
+	// Normalised through the SAME helper both signers use (`normalizeVerpKey`),
+	// so a quoted / newline-terminated value can never become a different HMAC
+	// key on the two sides of the wire.
+	const verpKey = normalizeVerpKey(env['BOUNCE_VERP_KEY']);
+	if (verpKey !== undefined) {
+		projected['MTA_BOUNCE_VERP_KEY'] = verpKey;
 	}
 	return projected;
 }

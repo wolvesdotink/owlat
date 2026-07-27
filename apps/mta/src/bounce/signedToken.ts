@@ -20,13 +20,23 @@
  * value the caller classifies and counts.
  */
 
-import { createHmac, timingSafeEqual } from 'crypto';
+import {
+	computeSignedTokenMac as computeSharedSignedTokenMac,
+	normalizeVerpKey,
+	signedTokenMacsEqual as sharedSignedTokenMacsEqual,
+	VERP_MAC_B64URL_LEN,
+	VERP_WINDOW_MS,
+} from '@owlat/shared/verp';
 
-/** Length (chars) of the base64url-encoded truncated HMAC carried in a token. */
-export const MAC_B64URL_LEN = 14; // ~84 bits — comfortably above the audit's 10-char floor
+/**
+ * Length (chars) of the base64url-encoded truncated HMAC carried in a token,
+ * and the window granularity — both re-exported from the shared core so the
+ * MTA and Convex can never disagree about a token's shape.
+ */
+export const MAC_B64URL_LEN = VERP_MAC_B64URL_LEN;
 
 /** Window granularity: one bucket per UTC day. */
-export const SIGNED_TOKEN_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const SIGNED_TOKEN_WINDOW_MS = VERP_WINDOW_MS;
 
 /**
  * Resolve the shared signing key (`BOUNCE_VERP_KEY`). One secret safely serves
@@ -39,8 +49,13 @@ export const SIGNED_TOKEN_WINDOW_MS = 24 * 60 * 60 * 1000;
  * their existing call sites.
  */
 export function resolveSignedTokenKey(explicit?: string): string | undefined {
-	const key = explicit ?? process.env['BOUNCE_VERP_KEY'];
-	return key && key.length > 0 ? key : undefined;
+	// Normalised through the SHARED helper. The key is one secret with two
+	// signers now — the MTA here, and Convex stamping the same VERP envelope
+	// sender on relay sends — so a `.env` value carrying a trailing newline or
+	// surrounding whitespace must resolve to the SAME HMAC key on both sides.
+	// Without it every relay-stamped token would fail verification here: safely,
+	// but invisibly, which reads downstream as "that arm produced no bounces".
+	return normalizeVerpKey(explicit ?? process.env['BOUNCE_VERP_KEY']);
 }
 
 /**
@@ -99,20 +114,14 @@ export function computeSignedTokenMac(
 	window: number,
 	key: string
 ): string {
-	return createHmac('sha256', key)
-		.update(`${label}${encodedId}:${window}`)
-		.digest('base64url')
-		.slice(0, MAC_B64URL_LEN);
+	// Delegates to the SHARED primitive. Convex mints bounce tokens through the
+	// same function (`@owlat/shared/verp`), and two copies of an HMAC that must
+	// agree byte for byte across a network boundary is one copy too many.
+	return computeSharedSignedTokenMac(label, encodedId, window, key);
 }
 
 /** Constant-time compare that never throws on a length mismatch. */
-export function signedTokenMacsEqual(a: string, b: string): boolean {
-	if (a.length !== b.length) return false;
-	const ab = Buffer.from(a);
-	const bb = Buffer.from(b);
-	if (ab.length !== bb.length) return false;
-	return timingSafeEqual(ab, bb);
-}
+export const signedTokenMacsEqual = sharedSignedTokenMacsEqual;
 
 /**
  * Find the time window a presented MAC was signed in, or `null` if none in

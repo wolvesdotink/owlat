@@ -125,7 +125,15 @@ export class SendTransportResolutionError extends Error {
 	}
 }
 
-/** The id of the deployment-default instance of a kind. */
+/**
+ * The id of the deployment-default instance of a kind.
+ *
+ * This is also the instance a GOVERNED send dispatches a resolved provider kind
+ * to — which matters because two sites have to agree on it: the last-mile
+ * routing pass grades a relay's return-path capability (plan G-08) and the
+ * dispatcher sends through it. Both call this function with the resolved kind,
+ * so a named relay instance can never be graded on the default instance's probe.
+ */
 export function defaultSendTransportId(kind: SendProviderKind): SendTransportId {
 	return kind;
 }
@@ -306,6 +314,26 @@ export function resolveSendTransport(transportId: string): SendTransportRecord {
 		throw new SendTransportResolutionError(transportId, 'revoked');
 	}
 	return record;
+}
+
+/**
+ * {@link resolveSendTransport} as a QUESTION rather than an assertion: `null`
+ * instead of a throw for an id this deployment does not configure.
+ *
+ * Dispatch must keep failing closed and loudly — that is what the throwing form
+ * is for. But a read path that merely wants to know something ABOUT a transport
+ * (its capabilities, its measurement quality) has no business using an
+ * exception as control flow, and every caller that did was hand-rolling the
+ * same try/catch plus an unchecked `as SendTransportId` cast. One definition,
+ * no cast: the string is validated, not asserted.
+ */
+export function tryResolveSendTransport(transportId: string): SendTransportRecord | null {
+	try {
+		return resolveSendTransport(transportId);
+	} catch (error) {
+		if (error instanceof SendTransportResolutionError) return null;
+		throw error;
+	}
 }
 
 /** Clears the `SEND_TRANSPORT_INSTANCES` parse cache. Tests only. */
