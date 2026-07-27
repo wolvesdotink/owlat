@@ -13,7 +13,11 @@
 
 import { describe, it, expect } from 'vitest';
 import { decideMixAssignment, type MixAssignment } from '../adaptive_mix';
-import { MIN_STRATIFICATION_COHORT } from '../../../../delivery/sendAssignmentRouting';
+import {
+	buildEngagementRanker,
+	MIN_STRATIFICATION_COHORT,
+} from '../../../../delivery/sendAssignmentRouting';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import {
 	assignRanked,
 	maxOf,
@@ -160,6 +164,53 @@ describe('adaptive_mix — the calibration slice is independent of engagement', 
 		// bucket, never by rank.
 		const thinAssignments = assignRanked(thinIds, thinRanks, { ownShare: 0.6, mixVersion: 3 });
 		expect(thinAssignments.every((assignment) => assignment.basis !== 'stratified')).toBe(true);
+	});
+
+	it('ranks each cell against its OWN cohort, and holds the cells too thin to rank', () => {
+		// The cohort is PER CELL, because the cut is per cell: `rank >= 1 - s`
+		// uses the cell's share, so a rank measured against a different
+		// population does not realise that share. This batch mixes a rankable
+		// gmail cell with a microsoft cell one recipient short of the minimum,
+		// and the two answers must be independent of each other.
+		const rankable = MIN_STRATIFICATION_COHORT + 5;
+		const thin = MIN_STRATIFICATION_COHORT - 1;
+		const recipients = [
+			...Array.from({ length: rankable }, (_, index) => ({
+				sendId: `snd-g-${index}`,
+				email: `g${index}@gmail.com`,
+				// The LOW band: batch-wide ranking would push all of these to the
+				// bottom of the batch and none of them would ever be selected.
+				engagementScore: index,
+			})),
+			...Array.from({ length: thin }, (_, index) => ({
+				sendId: `snd-m-${index}`,
+				email: `m${index}@outlook.com`,
+				engagementScore: 1_000 + index,
+			})),
+		];
+		const providers = new Map<string, DestinationProviderKey>(
+			recipients.map((recipient) => [
+				recipient.email,
+				recipient.email.endsWith('@gmail.com') ? 'gmail' : 'microsoft',
+			])
+		);
+		const rankFor = buildEngagementRanker(recipients, providers);
+		const gmailRanks = recipients.slice(0, rankable).map((recipient) => rankFor(recipient));
+		const microsoftRanks = recipients.slice(rankable).map((recipient) => rankFor(recipient));
+
+		// The rankable cell ranks against ITSELF: it spans the full percentile
+		// range even though every one of its scores is below every microsoft
+		// score.
+		expect(gmailRanks.every((rank) => rank !== undefined && rank >= 0 && rank < 1)).toBe(true);
+		expect(maxOf(gmailRanks.filter((rank): rank is number => rank !== undefined))).toBeGreaterThan(
+			0.9
+		);
+		expect(minOf(gmailRanks.filter((rank): rank is number => rank !== undefined))).toBeLessThan(
+			0.1
+		);
+		// The thin cell ranks nobody (D10) and falls back to the unbiased bucket,
+		// which realises `s` exactly — a strictly harmless degradation.
+		expect(microsoftRanks.every((rank) => rank === undefined)).toBe(true);
 	});
 
 	it('a rank-correlated slice would be caught by this suite', () => {
