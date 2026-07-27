@@ -17,7 +17,7 @@ import { parseBody } from '@owlat/mail-message';
 // observation, so both ends read the same constant rather than two copies
 // behind a "must match" comment.
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
-import type { SeedMailboxSession, SeedProbeLocation, SeedProbeWorkItem } from './seedProbes.js';
+import type { SeedMailboxSession, SeedProbeLocation } from './seedProbes.js';
 import type { WorkerCredentials } from './convex.js';
 
 /** Folders never worth walking: our own copies, not the provider's verdict. */
@@ -133,7 +133,6 @@ class ImapSeedMailboxSession implements SeedMailboxSession {
  * seed whose password expired must degrade the measurement, never the worker.
  */
 export async function openSeedMailbox(
-	_item: SeedProbeWorkItem,
 	credentials: WorkerCredentials
 ): Promise<SeedMailboxSession | null> {
 	const client = new ImapFlow({

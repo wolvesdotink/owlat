@@ -9,6 +9,14 @@
  * mark the probe read, and occasionally click a link. A seed that never opens
  * anything trains the provider to distrust us.
  *
+ * WHAT THE PROVIDER ACTUALLY SEES, plainly: the IMAP `\Seen` flag. That is the
+ * hygiene signal — it is set on the provider's own store, so the provider is
+ * the one observing it. The occasional CLICK is a server-side request from the
+ * worker's IP, not from the mailbox's client, so no provider attributes it to
+ * the seed; what it does buy is a real exercise of this deployment's own
+ * tracking redirect for a message that really landed, end to end. Both are
+ * worth doing; only one of them is engagement.
+ *
  * Boundaries this module holds:
  *   - Mailbox CONTENTS never leave the worker. The only things reported back
  *     are a probe id and a folder NAME.
@@ -74,11 +82,16 @@ export interface SeedProbeDeps {
 		now: number;
 		clickRoll: number;
 	}): Promise<{ recorded: boolean; placement?: SeedPlacement; hygiene?: SeedHygienePlan }>;
-	markRotationReminded(input: {
+	/**
+	 * Ask the backend to EMIT the rotation nudge. It re-checks due-ness against
+	 * the stored timestamps and only records the reminder if it actually emitted
+	 * one, so a sweep that produces no notification leaves the flag standing.
+	 */
+	emitRotationReminder(input: {
 		organizationId: string;
 		accountId: string;
 		now: number;
-	}): Promise<void>;
+	}): Promise<{ emitted: boolean }>;
 	/** Perform the occasional click. Best-effort; a failure is never fatal. */
 	click(url: string): Promise<void>;
 }
@@ -90,6 +103,8 @@ export interface SeedProbeSweepResult {
 	markedRead: number;
 	clicked: number;
 	rotationReminders: number;
+	/** Accounts whose mailbox could not be opened — skipped, never classified. */
+	unopened: number;
 }
 
 /** Path fragments that are never a CONTENT link, in the order they appear. */
@@ -98,20 +113,40 @@ const NON_CONTENT_LINK_FRAGMENTS = ['/unsub', '/unsubscribe', '/preferences', '/
 /**
  * Pick the link the hygiene click should exercise.
  *
- * "The occasional click" is supposed to look like a subscriber reading the
- * mail, so it must be a CONTENT link: the first href in a template is just as
- * likely to be the footer's one-click unsubscribe or the open pixel, and
- * clicking those teaches the provider the opposite of what we want (and, for
- * the unsubscribe target, exercises a mutation rather than a read). When
- * nothing content-shaped is left we click NOTHING — a skipped click is a
- * missing data point; a clicked unsubscribe is a wrong one.
+ * TWO filters, and both are load-bearing.
+ *
+ * CONTENT-SHAPED. "The occasional click" is supposed to look like a subscriber
+ * reading the mail: the first href in a template is just as likely to be the
+ * footer's one-click unsubscribe or the open pixel, and clicking those teaches
+ * the provider the opposite of what we want (and, for the unsubscribe target,
+ * exercises a mutation rather than a read).
+ *
+ * OURS. The candidates come out of a message sitting on a mail server we do
+ * not run, so the target must be on one of the deployment's OWN origins, which
+ * the backend supplies with the work item. A campaign's content links are
+ * wrapped through the tracking domain, so the link we actually want already
+ * qualifies; anything else is not a link we put there in a form we recognise.
+ *
+ * When nothing qualifies we click NOTHING — a skipped click is a missing data
+ * point; a clicked unsubscribe, or a request to somewhere we were talked into,
+ * is a wrong one.
  */
-export function chooseHygieneClickTarget(targets: readonly string[]): string | undefined {
+export function chooseHygieneClickTarget(
+	targets: readonly string[],
+	allowedHosts: readonly string[]
+): string | undefined {
+	if (allowedHosts.length === 0) return undefined;
+	const allowed = new Set(allowedHosts.map((host) => host.toLowerCase()));
 	return targets.find((target) => {
 		if (!/^https?:\/\//i.test(target)) return false;
 		if (/\.(?:gif|png|jpe?g|webp)(?:\?|$)/i.test(target)) return false;
 		const lowered = target.toLowerCase();
-		return !NON_CONTENT_LINK_FRAGMENTS.some((fragment) => lowered.includes(fragment));
+		if (NON_CONTENT_LINK_FRAGMENTS.some((fragment) => lowered.includes(fragment))) return false;
+		try {
+			return allowed.has(new URL(target).host.toLowerCase());
+		} catch {
+			return false;
+		}
 	});
 }
 
@@ -141,7 +176,7 @@ async function classifyOne(
 	}
 	if (outcome.hygiene.click) {
 		const targets = await session.linkTargets(location);
-		const target = chooseHygieneClickTarget(targets);
+		const target = chooseHygieneClickTarget(targets, item.clickHosts);
 		if (target !== undefined) {
 			await deps.click(target);
 			result.clicked += 1;
@@ -172,6 +207,7 @@ export async function runSeedProbeSweep(
 		markedRead: 0,
 		clicked: 0,
 		rotationReminders: 0,
+		unopened: 0,
 	};
 	const page = await deps.listWork(deps.now(), cursor);
 	for (const item of page.items) {
@@ -184,21 +220,38 @@ export async function runSeedProbeSweep(
 			}
 			if (item.probeIds.length > 0) {
 				session = await deps.openMailbox(item);
-				// ONE pass over the folders for the whole batch (see `findProbes`).
-				const located: Map<string, SeedProbeLocation> = session
-					? await session.findProbes(item.probeIds)
-					: new Map();
-				for (const probeId of item.probeIds) {
-					await classifyOne(deps, item, session, probeId, located.get(probeId) ?? null, result);
+				if (session === null) {
+					// THE MAILBOX WAS NEVER OPENED, so nothing was observed.
+					//
+					// `openMailbox` reports a failed connect/LIST by returning null
+					// rather than throwing, and a probe we could not look for is not a
+					// probe we failed to find. Classifying this batch would record
+					// MISSING — gate 5's most alarming outcome, and a PERMANENT one
+					// (classification is once-only) — for every outstanding probe on the
+					// account, manufacturing a provider-wide `collapse_suspected` out of
+					// an expired app password or an IMAP maintenance window. The probes
+					// stay outstanding and are selected again next tick; only the
+					// give-up horizon (`expiredProbeIds`) may ever produce MISSING.
+					result.unopened += 1;
+				} else {
+					// ONE pass over the folders for the whole batch (see `findProbes`).
+					const located = await session.findProbes(item.probeIds);
+					for (const probeId of item.probeIds) {
+						await classifyOne(deps, item, session, probeId, located.get(probeId) ?? null, result);
+					}
 				}
 			}
 			if (item.rotationReminderDue) {
-				await deps.markRotationReminded({
+				// The backend decides whether a reminder is really due and EMITS the
+				// operator-visible artifact before recording that it did; the sweep
+				// only offers it the chance. A tick that emits nothing leaves the flag
+				// standing for the next one.
+				const { emitted } = await deps.emitRotationReminder({
 					organizationId: item.organizationId,
 					accountId: item.accountId,
 					now: deps.now(),
 				});
-				result.rotationReminders += 1;
+				if (emitted) result.rotationReminders += 1;
 			}
 		} catch (err) {
 			// Never log the address, the credentials, or anything from the mailbox.

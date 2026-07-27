@@ -37,21 +37,27 @@ function buildSeedProbeDeps(convex: ConvexClient): SeedProbeDeps {
 					accountId: item.accountId,
 				} as never
 			)) as WorkerCredentials;
-			return openSeedMailbox(item, credentials);
+			return openSeedMailbox(credentials);
 		},
 		recordClassification: async (input) =>
 			(await convex.mutation(fn.recordSeedProbeClassification as never, input as never)) as Awaited<
 				ReturnType<SeedProbeDeps['recordClassification']>
 			>,
-		markRotationReminded: async (input) => {
-			await convex.mutation(fn.markSeedRotationReminded as never, input as never);
-		},
+		emitRotationReminder: async (input) =>
+			(await convex.mutation(fn.emitSeedRotationReminder as never, input as never)) as Awaited<
+				ReturnType<SeedProbeDeps['emitRotationReminder']>
+			>,
 		click: async (url) => {
-			// A seed that never engages trains the provider to distrust us. The
-			// target is a link OWLAT put in its own message; failures are ignored.
+			// The target has already been constrained to one of this deployment's
+			// OWN origins (`chooseHygieneClickTarget` + the work item's
+			// `clickHosts`); redirects are NOT followed, so the one request this
+			// makes is the one request that was authorised. What it exercises is our
+			// own tracking redirect for a message that really landed — the hygiene
+			// signal a PROVIDER observes is the IMAP `\Seen` flag, not this.
+			// Failures are ignored.
 			await fetch(url, {
 				method: 'GET',
-				redirect: 'follow',
+				redirect: 'manual',
 				signal: AbortSignal.timeout(CLICK_TIMEOUT_MS),
 			}).catch(() => undefined);
 		},
