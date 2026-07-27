@@ -154,3 +154,47 @@ export function parseVerpAddress(
 		return null;
 	}
 }
+
+/**
+ * Reserved local-part prefix for a return-path capability probe.
+ *
+ * The probe addresses a message to a never-provisioned mailbox at OUR OWN
+ * return-path domain: our MX rejects it, the relay generates the DSN, and that
+ * DSN can only reach us if the relay kept the VERP envelope sender we set.
+ *
+ * The convention is reserved EXPLICITLY — the MTA's recipient gate refuses it
+ * before any mailbox or route lookup — rather than relying on "no mailbox
+ * exists at that address". An operator who later adds a catch-all route at the
+ * bounce domain would otherwise silence every probe: no DSN would ever be
+ * generated, every probe would age out, and EVERY relay would grade unsupported
+ * forever with nothing to diagnose.
+ */
+export const RETURN_PATH_PROBE_LOCAL_PART_PREFIX = 'return-path-probe-';
+
+/** The recipient one return-path capability probe is addressed to. */
+export function returnPathProbeRecipient(probeId: string, returnPathDomain: string): string {
+	return `${RETURN_PATH_PROBE_LOCAL_PART_PREFIX}${probeId}@${returnPathDomain}`;
+}
+
+/**
+ * Is this RCPT TO one of our reserved return-path probes? Compared
+ * case-insensitively on both halves: the local part is an opaque probe id (not
+ * a signed token, unlike `bounce+…`), so case-folding it changes nothing that
+ * matters, and refusing a case-folded copy would leak a probe into the mailbox
+ * lookup this rule exists to bypass.
+ */
+export function isReturnPathProbeRecipient(
+	address: string,
+	returnPathDomain: string | undefined
+): boolean {
+	const domain = normalizeReturnPathDomain(returnPathDomain)?.toLowerCase();
+	if (!domain) return false;
+	const normalized = address.trim().toLowerCase();
+	const at = normalized.lastIndexOf('@');
+	if (at < 0 || normalized.slice(at + 1) !== domain) return false;
+	const local = normalized.slice(0, at);
+	return (
+		local.startsWith(RETURN_PATH_PROBE_LOCAL_PART_PREFIX) &&
+		local.length > RETURN_PATH_PROBE_LOCAL_PART_PREFIX.length
+	);
+}
