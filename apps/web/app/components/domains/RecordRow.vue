@@ -84,10 +84,13 @@ const registrableZone = computed(
 // if set, otherwise the one derived from the MAIL FROM record.
 const returnPathHost = computed(() => props.domain.returnPathHost ?? mailFromHost.value);
 
-// Registration has settled far enough that DNS guidance is worth showing: the
-// registering placeholder and the registration-failure notice replace the
-// record sections rather than sitting alongside them.
-const showDnsGuidance = computed(
+// Registration has SETTLED: the domain is no longer mid-registration and is not
+// sitting on a registration failure. The registering placeholder and the
+// failure notice REPLACE the setup sections rather than sitting alongside them,
+// so this gates everything that only makes sense once the domain exists —
+// the DNS guidance, the propagation note, and the Yahoo CFL enrollment flow
+// (which is a feedback-loop wizard, not DNS guidance).
+const registrationSettled = computed(
 	() =>
 		props.domain.status !== 'registering' &&
 		!(props.domain.status === 'failed' && props.domain.lastRegistrationError)
@@ -435,7 +438,7 @@ const showDnsGuidance = computed(
 					     belongs here. Never enrolling is supported (D2); the panel owns its
 					     own divider so nothing renders when it has nothing to show. -->
 					<DomainsYahooCflPanel
-						v-if="showDnsGuidance"
+						v-if="registrationSettled"
 						:domain-id="domain._id"
 						:can-manage="canManageDomains"
 					/>
@@ -445,7 +448,7 @@ const showDnsGuidance = computed(
 					     itself shows a "not turned on yet" state when off so setup
 					     is not a chicken-and-egg. -->
 					<div
-						v-if="showReceivingDns && showDnsGuidance"
+						v-if="showReceivingDns && registrationSettled"
 						class="mt-4 pt-4 border-t border-border-subtle"
 					>
 						<DomainsReceivingDnsSection
@@ -456,7 +459,26 @@ const showDnsGuidance = computed(
 						/>
 					</div>
 
-					<DomainsDnsPropagationNote v-if="showDnsGuidance" />
+					<!-- Help Text -->
+					<div
+						v-if="registrationSettled"
+						class="mt-4 p-4 bg-bg-surface rounded-xl border border-border-subtle"
+					>
+						<p class="text-sm text-text-secondary">
+							<strong class="text-text-primary">Note:</strong> DNS changes can take up to 48 hours
+							to propagate. After adding these records, click "Verify Domain" to check the
+							configuration.
+							<a
+								href="https://docs.owlat.app/developer/self-hosting-dns-email"
+								target="_blank"
+								rel="noopener noreferrer"
+								class="inline-flex items-center gap-1 text-brand hover:underline ml-1"
+							>
+								Learn more
+								<Icon name="lucide:external-link" class="w-3 h-3" />
+							</a>
+						</p>
+					</div>
 				</div>
 			</div>
 		</Transition>
