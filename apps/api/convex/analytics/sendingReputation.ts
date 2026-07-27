@@ -33,6 +33,7 @@ import { internalMutation, type DatabaseReader, type MutationCtx } from '../_gen
 import type { Doc } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
 import { REPUTATION_THRESHOLDS, REPUTATION_MIN_SAMPLE_SIZE } from '@owlat/shared/reputation';
+import { startOfDayUtc } from '../lib/clock';
 
 // ============ RISK LEVEL THRESHOLDS ============
 
@@ -138,13 +139,6 @@ const RETENTION_MS = 60 * DAY_MS; // cleanup horizon
  * ~60 days × 8 = ~480 rows, still a small bounded scan.
  */
 const SHARD_COUNT = 8;
-
-/** Start-of-day timestamp (midnight UTC) for a given time. */
-export function startOfDayUtc(epochMs: number): number {
-	const d = new Date(epochMs);
-	d.setUTCHours(0, 0, 0, 0);
-	return d.getTime();
-}
 
 // ============ READ-SIDE SEAM (the only window summarizer) ============
 

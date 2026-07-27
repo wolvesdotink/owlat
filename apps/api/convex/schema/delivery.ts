@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { returnPathTables } from './returnPath';
 import { contentScanFlagValidator } from '../lib/convexValidators';
 import { ipReadinessFieldValidators } from '../delivery/readinessValidators';
 import {
@@ -22,6 +23,8 @@ import {
  * Spread into `defineSchema()` from schema.ts via `...deliveryTables`.
  */
 export const deliveryTables = {
+	...returnPathTables,
+
 	// Blocked Emails - email addresses that should not receive emails
 	// Used to protect sender reputation by excluding bounced, complained, or manually blocked addresses
 	blockedEmails: defineTable({

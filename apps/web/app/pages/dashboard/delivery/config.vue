@@ -64,6 +64,29 @@ const envSetCommand = computed(() => {
 
 const { copy, isCopied } = useCopyToClipboard();
 
+// Transport connection wizard (P2-4) — an OFFER, never a to-do item (plan D2).
+// Both reads are DNS-facing and non-secret, and both are answered ENTIRELY on
+// the server: which domain we sign as, and which transport is the REFERENCE arm,
+// are facts about the `domains` table and the configured transport surface, not
+// something this page can derive from the transport status. Passing no arguments
+// is what keeps them right — an earlier revision derived the domain here and got
+// an inert step 3, and derived the probe target from the ACTIVE provider, which
+// on a standalone deployment is our own MTA.
+//
+// Both are total: no verified signing domain answers `null`, and no relay
+// answers `transportId: null` with the unresolvable posture. Neither is an
+// error, and neither renders one.
+//
+// Both are passed through UNCHANGED, `undefined` included: `undefined` is the
+// read in flight and `null` is a resolved negative answer, and collapsing the
+// two renders a finding about a question that has not been answered yet.
+const { data: alignmentArms } = useOrganizationQuery(
+	api.delivery.alignmentPreflight.getAlignmentArms
+);
+const { data: returnPathReadiness } = useOrganizationQuery(
+	api.delivery.relayReturnPath.getReturnPathReadiness
+);
+
 // Inbound TLS-RPT (RFC 8460) roll-up — daily reports partners send us about
 // TLS negotiation when delivering mail to our MX. Member-safe (operator
 // deliverability telemetry, no credentials).
@@ -216,6 +239,18 @@ const {
 			<DeliveryTransportEditor
 				:current-provider="status.provider"
 				:current-outbound-tls-mode="status.outboundTlsMode"
+				@applied="refetchStatus"
+			/>
+
+			<!-- Optional guided "connect an ESP" flow: credentials → live send test
+			     → live-DNS alignment → return-path capability. Skipping it leaves the
+			     deployment fully functional on its own MTA (plan D2), so it renders as
+			     a plain offer with no warning state of any kind. -->
+			<DeliveryTransportConnectionWizard
+				:alignment-arms="alignmentArms"
+				:return-path-transport-id="returnPathReadiness?.transportId"
+				:return-path-capability="returnPathReadiness?.capability"
+				:can-send="canSend"
 				@applied="refetchStatus"
 			/>
 

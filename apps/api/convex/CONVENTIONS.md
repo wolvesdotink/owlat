@@ -445,6 +445,13 @@ export default defineSchema({
 Add new tables to the matching `schema/<domain>.ts` file. `defineSchema` does
 not accept spread directly, so the index file is the merge point.
 
+When the matching domain module is already at the file-size cap, add a
+feature-named `schema/<feature>.ts` sibling exporting its own
+`<feature>Tables` object and spread that into `defineSchema` too — for example
+`schema/sendAssignments.ts`, split out because `schema/delivery.ts` sits at the
+cap. That is the sanctioned escape hatch; do NOT add a file-size baseline entry
+to keep growing a capped domain module.
+
 ## Schema evolution (post-launch immutability)
 
 Pre-launch we move freely. Post-launch, any change to data on disk is a

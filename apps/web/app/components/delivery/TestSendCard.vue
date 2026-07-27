@@ -8,6 +8,14 @@ const props = defineProps<{
 	lastTestSucceededAt?: number | null;
 }>();
 
+/**
+ * Emitted once a test send settles, so an embedding flow (the transport
+ * connection wizard's step 2) can advance on the SAME machinery instead of
+ * running a parallel test path beside it. Purely additive: the card's standalone
+ * use on the delivery config page ignores it.
+ */
+const emit = defineEmits<{ result: [{ success: boolean }] }>();
+
 const { user } = useAuth();
 const { showToast } = useToast();
 
@@ -83,6 +91,7 @@ async function handleSendTest() {
 	}
 	if (result.success) showToast(`Test email accepted for ${to}`);
 	else testError.value = result.error ?? 'Test send failed.';
+	emit('result', { success: result.success });
 }
 </script>
 

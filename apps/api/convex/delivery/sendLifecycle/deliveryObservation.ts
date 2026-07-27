@@ -1,5 +1,5 @@
 import type { Doc } from '../../_generated/dataModel';
-import type { Effect } from './effects';
+import { transportOutcomeEffect, type Effect } from './effects';
 import { contactEmailOf } from './lookups';
 import type { EmailSendDoc, SendRef, SendStatus, TransactionalSendDoc } from './types';
 
@@ -88,6 +88,11 @@ export function reduceDeliveryObservation(
 		});
 	}
 	effects.push({ kind: 'daily_stats_bump', field: 'delivered', at });
+	// The per-cell, per-arm outcome counter (plan D5) belongs HERE, next to the
+	// shipped delivered counter above it that it has to agree with — see
+	// `transportOutcomeEventForTransition` for why the transition map cannot
+	// emit it.
+	effects.push(transportOutcomeEffect(ref, 'delivered', at));
 	effects.push({
 		kind: 'reputation_update',
 		eventType: 'deliver',

@@ -20,28 +20,63 @@ import {
 	type ProviderHealthStatus,
 	type ResolvedRoute,
 } from './routing';
-import { isSendProviderReady } from './capability';
-import { isSendProviderKind, type SendProviderKind } from './types';
-import { getOptional } from '../env';
-import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
-import {
-	destinationProviderForDomain,
-	isActionableDeliverabilitySignalSource,
-	isRouteStateFallbackActive,
-} from '@owlat/shared/deliverabilityRouting';
+import { extractDomainOrNull } from '@owlat/shared';
+import { resolveDestinationProvider } from './destinationProvider';
 import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
+import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
+import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
+import type { SendProviderKind } from './types';
+import {
+	candidateSendProviderKinds,
+	freshFallbackReasons,
+	isGlobalBreakerOpenState,
+	messageTypeValidator,
+	readySendProviderKinds,
+	relayDomainVerifiedFor,
+	type MessageType,
+} from './routeInputs';
 
-export type MessageType = Doc<'providerRoutes'>['messageType'];
+// `MessageType` and `messageTypeValidator` live in `routeInputs.ts` — the module
+// that holds what BOTH resolvers read — and are re-exported here for existing
+// importers, so the health-free cell seam never needs an import edge to this
+// module.
+export { messageTypeValidator, type MessageType };
 
-// Single source of truth for the message-type literal set (imported by
-// providerRoutes.ts so the two can't drift).
-export const messageTypeValidator = v.union(
-	v.literal('campaign'),
-	v.literal('transactional'),
-	v.literal('automation')
-);
+/**
+ * Per-message inputs the deliverability layer keys off. Shared by
+ * `resolveSendRouteFromDb` and its internal `deliverabilityInput` so the two
+ * shapes cannot drift.
+ */
+export interface SendRouteAddressContext {
+	to?: string;
+	from?: string;
+	now?: number;
+	baseOnly?: boolean;
+	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+}
+
+/**
+ * The one candidate kind whose envelope-sender control is decided by a PROBE
+ * rather than by the catalog (`yes` stamps its own VERP, `no` owns the envelope
+ * sender and would never honour ours). `null` when this route has none.
+ *
+ * Iterates the CATALOG rather than the candidate set so the answer does not
+ * depend on the order an operator happened to list providers in, and asks the
+ * catalog's own predicate so this gate and the probe sweep can never disagree
+ * about what is probe-decided.
+ */
+function probeableCandidateKind(
+	candidateKinds: ReadonlySet<SendProviderKind>
+): SendProviderKind | null {
+	for (const entry of SEND_PROVIDER_CATALOG) {
+		if (isProbeDecidedReturnPathKind(entry.kind) && candidateKinds.has(entry.kind)) {
+			return entry.kind;
+		}
+	}
+	return null;
+}
 
 /**
  * Resolve the send route for a message type from the current transaction.
@@ -52,13 +87,7 @@ export const messageTypeValidator = v.union(
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
 	messageType: MessageType,
-	addressContext?: {
-		to?: string;
-		from?: string;
-		now?: number;
-		baseOnly?: boolean;
-		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	}
+	addressContext?: SendRouteAddressContext
 ): Promise<ResolvedRoute | null> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
@@ -71,16 +100,7 @@ export async function resolveSendRouteFromDb(
 		status: h.status,
 		successRate: h.successRate,
 	}));
-	const candidateKinds = new Set<SendProviderKind>();
-	for (const provider of routeConfig?.providers ?? []) {
-		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
-	}
-	const envProvider = getOptional('EMAIL_PROVIDER');
-	if (isSendProviderKind(envProvider)) candidateKinds.add(envProvider);
-	const readyKinds = new Set<SendProviderKind>();
-	for (const kind of candidateKinds) {
-		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
-	}
+	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
 
 	const deliverability = addressContext?.baseOnly
 		? undefined
@@ -106,13 +126,7 @@ async function deliverabilityInput(
 	ctx: QueryCtx | MutationCtx,
 	routeConfig: Doc<'providerRoutes'> | null,
 	messageType: MessageType,
-	addressContext?: {
-		to?: string;
-		from?: string;
-		now?: number;
-		baseOnly?: boolean;
-		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	}
+	addressContext?: SendRouteAddressContext
 ) {
 	if (!addressContext?.to) return undefined;
 	const toDomain = extractDomainOrNull(addressContext.to);
@@ -124,16 +138,7 @@ async function deliverabilityInput(
 	} catch {
 		return undefined;
 	}
-	const learnedProvider = await ctx.db
-		.query('destinationProviderDomains')
-		.withIndex('by_org_domain', (q) =>
-			q.eq('organizationId', organizationId).eq('domain', toDomain)
-		)
-		.first();
-	const provider =
-		learnedProvider && learnedProvider.expiresAt >= now
-			? learnedProvider.destinationProvider
-			: destinationProviderForDomain(toDomain);
+	const provider = await resolveDestinationProvider(ctx, organizationId, toDomain, now);
 	const [providerCell, globalState, warmingState] = await Promise.all([
 		// Cell lookup: BOTH the controller's per-stream row and the stream-less row
 		// the MTA snapshot maintains, so neither can shadow the other.
@@ -146,25 +151,14 @@ async function deliverabilityInput(
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
-	// The relay is engaged when the infrastructure boolean says so OR when the
-	// resolved share (D1: `ownShare ?? (isFallbackActive ? 0 : 1)`) is below 1.
-	// A legacy row resolves to exactly its stored boolean, so this is unchanged
-	// today, and a stored share can never mask an infrastructure verdict.
-	//
 	// EVERY row of the cell is considered, not just the most specific one: the
-	// per-stream row carries the share and the stream-less row carries the
-	// infrastructure signals, so reading only one would drop a hard stop.
-	const freshActive = [globalState, providerCell.streamless, providerCell.perStream].filter(
-		(state): state is Doc<'deliverabilityRouteStates'> =>
-			state !== null &&
-			isRouteStateFallbackActive(state) &&
-			now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
-	);
-	// Advisory readings ("blocklist lookup unavailable", "part of the pool is
-	// ejected") are recorded on the state row for measurement, but they are not
-	// routing reasons and must never appear as the cause of a relay fallback.
-	const activeReasons = freshActive.flatMap((state) =>
-		state.signals.map((s) => s.source).filter(isActionableDeliverabilitySignalSource)
+	// per-stream row carries the controller's share and the stream-less row
+	// carries the infrastructure signals, so reading only one would drop a hard
+	// stop. `freshFallbackReasons` applies D1's share resolution and the
+	// advisory-signal filter for both call sites.
+	const activeReasons = freshFallbackReasons(
+		[globalState, providerCell.streamless, providerCell.perStream],
+		now
 	);
 	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
 	const isWarmupOverflow = Boolean(
@@ -175,79 +169,14 @@ async function deliverabilityInput(
 			warmingState.totalDailyCap > 0 &&
 			warmingState.totalSentToday >= warmingState.totalDailyCap)
 	);
-	const fromDomain = addressContext.from ? extractDomainOrNull(addressContext.from) : null;
-	const isRelayDomainVerified =
-		fromDomain && routeConfig?.deliverabilityFallback?.isEnabled
-			? await relayDomainVerified(
-					ctx,
-					fromDomain,
-					routeConfig.deliverabilityFallback.relayProviderType,
-					now
-				)
-			: false;
-	const isGlobalBreakerOpen = Boolean(
-		globalState &&
-		isRouteStateFallbackActive(globalState) &&
-		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-		globalState.signals.some((signal) => signal.source === 'breaker_open')
+	const isRelayDomainVerified = await relayDomainVerifiedFor(
+		ctx,
+		routeConfig,
+		addressContext.from,
+		now
 	);
+	const isGlobalBreakerOpen = isGlobalBreakerOpenState(globalState, now);
 	return { activeReasons, isWarmupOverflow, isRelayDomainVerified, isGlobalBreakerOpen };
-}
-
-async function relayDomainVerified(
-	ctx: QueryCtx | MutationCtx,
-	domainName: string,
-	relayProviderType: string,
-	now: number
-): Promise<boolean> {
-	if (relayProviderType !== 'ses') return false;
-	const domain = await ctx.db
-		.query('domains')
-		.withIndex('by_domain', (q) => q.eq('domain', domainName.toLowerCase()))
-		.first();
-	if (!domain) return false;
-	const identity = await ctx.db
-		.query('sendingDomainSesIdentities')
-		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-		.first();
-	if (
-		!identity?.dnsRecords ||
-		!identity.verificationResults ||
-		!identity.isProviderVerified ||
-		!identity.verifiedAt ||
-		now - identity.verifiedAt > SES_RELAY_PROOF_MAX_AGE_MS
-	)
-		return false;
-	const proof = identity.verificationResults;
-	const spfProofState =
-		identity.spfProofState ??
-		(identity.dnsRecords.spf ? 'dns_required' : 'not_applicable_manual_primary');
-	const spfSatisfied =
-		spfProofState === 'dns_required'
-			? Boolean(identity.dnsRecords.spf && proof.spf?.verified)
-			: domain.providerType === 'mta' &&
-				domain.status === 'verified' &&
-				!identity.dnsRecords.spf &&
-				!proof.spf;
-	const results = [
-		...(spfProofState === 'dns_required' ? [proof.spf] : []),
-		...(proof.dkim ?? []),
-		...(proof.mailFrom ?? []),
-	];
-	return Boolean(
-		spfSatisfied &&
-		identity.dkimTokens.length > 0 &&
-		proof.dkim?.length === identity.dkimTokens.length &&
-		proof.dkim.every((result) => result.verified) &&
-		identity.dnsRecords.mailFrom?.length &&
-		proof.mailFrom?.length === identity.dnsRecords.mailFrom.length &&
-		proof.mailFrom.every((result) => result.verified) &&
-		results.every((result) => {
-			if (!result || !Number.isFinite(result.lastChecked)) return false;
-			const age = now - result.lastChecked;
-			return age >= 0 && age <= SES_RELAY_PROOF_MAX_AGE_MS;
-		})
-	);
 }
 
 /**
@@ -306,17 +235,50 @@ export const resolveSendRoute = internalQuery({
 export async function resolveLastMileRoutePlanFromDb(
 	ctx: QueryCtx,
 	messageType: MessageType,
-	addressContext: { to: string; from: string }
+	addressContext: { to: string; from: string; now?: number }
 ): Promise<{
 	route: ResolvedRoute | null;
 	baseRoute: ResolvedRoute | null;
 	isMtaGoverned: boolean;
 	deferralCode?: RoutingDeferralCode;
+	/**
+	 * The return-path host a RELAY send may stamp as its VERP envelope sender
+	 * (plan G-08), or `undefined` to keep the composer's — the shipped
+	 * behaviour. Answered HERE, inside the routing query the send path already
+	 * runs, rather than in a second round trip from the dispatcher.
+	 */
+	relayReturnPathHost?: string | undefined;
 }> {
+	const now = addressContext.now ?? Date.now();
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
 		.first();
+	// Only a relay whose envelope-sender control is decided by OBSERVATION can
+	// carry our VERP address, so the gate is derived — not hard-coded — from the
+	// candidate set resolution itself uses: any kind the catalog marks `probe`.
+	// Deriving it from `candidateSendProviderKinds` is what keeps it from being
+	// narrower than what `resolveRoute` may return; the bring-your-own-relay
+	// install reaches its relay through the ENV fallback with no `providerRoutes`
+	// row at all, and gating on the row alone left every one of those sends
+	// unstamped while the sweep kept proving the capability.
+	//
+	// Candidates rather than the resolved route, because the warm-up overflow /
+	// breaker-open fallback selects its relay AFTER this query returns, and that
+	// route must still be stamped.
+	//
+	// COST: a route with NO probe-decided candidate (mta/ses/resend only) pays
+	// nothing. A route that CAN reach the relay — including a hybrid mta+smtp
+	// one, whose sends mostly resolve to the MTA — pays one indexed read of the
+	// transport's probe row on every governed send. That read is what
+	// `relayReturnPathHostFor` short-circuits on: only a relay already PROVEN to
+	// honour a custom return path goes on to read the From domain, so the
+	// common hybrid case stays at exactly one row.
+	const relayCandidateKind = probeableCandidateKind(candidateSendProviderKinds(routeConfig));
+	const relayReturnPathHost =
+		relayCandidateKind === null
+			? undefined
+			: await relayReturnPathHostFor(ctx, relayCandidateKind, addressContext.from, now);
 	const isHybrid = Boolean(
 		routeConfig?.deliverabilityFallback?.isEnabled &&
 		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
@@ -327,11 +289,22 @@ export async function resolveLastMileRoutePlanFromDb(
 			...addressContext,
 			baseOnly: true,
 		});
-		return { route, baseRoute, isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta' };
+		return {
+			route,
+			baseRoute,
+			isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta',
+			relayReturnPathHost,
+		};
 	} catch (error) {
 		const deferralCode = routingDeferralCode(error);
 		if (!deferralCode) throw error;
-		return { route: null, baseRoute: null, isMtaGoverned: isHybrid, deferralCode };
+		return {
+			route: null,
+			baseRoute: null,
+			isMtaGoverned: isHybrid,
+			deferralCode,
+			relayReturnPathHost,
+		};
 	}
 }
 
@@ -340,9 +313,16 @@ export const resolveLastMileRoutePlan = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.string(),
 		from: v.string(),
+		// No clock argument, deliberately — the sibling `resolveSendRoute` exposes
+		// none either. `now` lives on the …FromDb helper for tests, which call it
+		// directly; accepting one over the wire would let a backdated value revive
+		// a TTL-expired return-path verdict.
 	},
 	handler: async (ctx, args) =>
-		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, { to: args.to, from: args.from }),
+		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+		}),
 });
 
 /**
