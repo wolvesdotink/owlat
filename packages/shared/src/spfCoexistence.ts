@@ -21,44 +21,39 @@ export const SPF_MAX_DNS_LOOKUPS = 10;
 /** Mechanisms that each cost one DNS lookup (RFC 7208 §4.6.4). */
 const LOOKUP_MECHANISMS = ['include', 'a', 'mx', 'ptr', 'exists'] as const;
 
-export type SpfCoexistenceReason =
-	| 'ok'
-	| 'no_record'
-	| 'multiple_records'
-	| 'missing_mechanism'
-	| 'lookup_limit';
-
 export interface SpfCoexistenceInput {
 	/** Every TXT value published at the From domain, RFC 1035 chunks already joined. */
 	publishedTxtRecords: readonly string[];
 	/** Mechanisms both arms need (e.g. `ip4:203.0.113.10`, `include:amazonses.com`). */
 	requiredMechanisms: readonly string[];
-	/**
-	 * Known lookup cost of an `include:` target (the include itself plus every
-	 * nested lookup it performs). Unknown targets are counted as the 1 lookup the
-	 * include itself always costs — deliberately optimistic, because inventing a
-	 * larger number would block a record that actually evaluates.
-	 */
-	includeLookupCosts?: Readonly<Record<string, number>> | undefined;
-	/**
-	 * Mechanisms that must NOT be proposed for flattening — the two arms' own
-	 * mechanisms, without which there is no second arm to align.
-	 */
-	essentialMechanisms?: readonly string[] | undefined;
 }
 
-export interface SpfCoexistenceResult {
-	status: 'pass' | 'fail';
-	reason: SpfCoexistenceReason;
-	/** The single merged record both arms would share, or null when unmergeable. */
-	mergedRecord: string | null;
-	/** DNS-lookup term count of the merged record (0 when unmergeable). */
-	lookupCount: number;
-	/** Required mechanisms the published record does not carry (post-merge: none). */
-	missingMechanisms: string[];
-	/** The `include:` worth flattening to get back under the limit, when over it. */
-	flattenCandidate: string | null;
-}
+/**
+ * The verdict, as a discriminated union: each variant carries ONLY the fields
+ * that mean something for it. There is no `missingMechanisms: []` on a pass and
+ * no `flattenCandidate: null` on a missing mechanism, so a caller cannot read a
+ * field that was never computed.
+ */
+export type SpfCoexistenceResult =
+	| { kind: 'pass'; mergedRecord: string; lookupCount: number }
+	| { kind: 'no_record'; missingMechanisms: string[] }
+	| { kind: 'multiple_records'; recordCount: number }
+	| {
+			kind: 'missing_mechanism';
+			mergedRecord: string;
+			lookupCount: number;
+			missingMechanisms: string[];
+	  }
+	| {
+			kind: 'lookup_limit';
+			mergedRecord: string;
+			lookupCount: number;
+			/** The `include:` worth flattening to get back under the limit. */
+			flattenCandidate: string | null;
+	  };
+
+/** Every variant that is not a pass. */
+export type SpfCoexistenceFailure = Exclude<SpfCoexistenceResult, { kind: 'pass' }>;
 
 /** Strip the optional qualifier and lowercase a mechanism token. */
 function normalizeMechanism(token: string): string {
@@ -73,58 +68,42 @@ export function includeTarget(token: string): string | null {
 	return target === '' ? null : target;
 }
 
-/** DNS-lookup cost of one mechanism token (0 for `ip4:`/`ip6:`/`all`/unknown). */
-export function mechanismLookupCost(
-	token: string,
-	includeLookupCosts?: Readonly<Record<string, number>> | undefined
-): number {
+/**
+ * DNS-lookup cost of one mechanism token: 1 for a lookup term (`include`, `a`,
+ * `mx`, `ptr`, `exists`, `redirect=`), 0 for `ip4:`/`ip6:`/`all`/unknown.
+ *
+ * An `include:` is counted as the ONE lookup the include itself always costs.
+ * Its nested lookups are unknowable from a pure function, and inventing a larger
+ * number would block a record that actually evaluates.
+ */
+export function mechanismLookupCost(token: string): number {
 	const normalized = normalizeMechanism(token);
 	if (normalized.startsWith('redirect=')) return 1;
-	const target = includeTarget(token);
-	if (target !== null) {
-		const declared = includeLookupCosts?.[target];
-		return typeof declared === 'number' && Number.isFinite(declared) && declared > 0
-			? Math.floor(declared)
-			: 1;
-	}
+	if (includeTarget(token) !== null) return 1;
 	const name = normalized.split(/[:/]/, 1)[0] ?? '';
 	return (LOOKUP_MECHANISMS as readonly string[]).includes(name) ? 1 : 0;
 }
 
 /** Total DNS-lookup term count of a `v=spf1` record. */
-export function countSpfDnsLookups(
-	record: string,
-	includeLookupCosts?: Readonly<Record<string, number>> | undefined
-): number {
-	return parseSpfMechanisms(record).reduce(
-		(total, token) => total + mechanismLookupCost(token, includeLookupCosts),
-		0
-	);
+export function countSpfDnsLookups(record: string): number {
+	return parseSpfMechanisms(record).reduce((total, token) => total + mechanismLookupCost(token), 0);
 }
 
 /**
- * Pick the `include:` to flatten first: the costliest non-essential include,
- * breaking ties on the LAST occurrence so the recommendation is deterministic.
+ * Pick the `include:` to flatten first: the LAST non-essential include in the
+ * merged record, so the recommendation is deterministic. Essential mechanisms
+ * are the two arms' own — without them there is no second arm to align, so they
+ * are never proposed for flattening.
  */
-function pickFlattenCandidate(
-	record: string,
-	essential: ReadonlySet<string>,
-	includeLookupCosts?: Readonly<Record<string, number>> | undefined
-): string | null {
-	let best: string | null = null;
-	let bestCost = 0;
+function pickFlattenCandidate(record: string, essential: ReadonlySet<string>): string | null {
+	let candidate: string | null = null;
 	for (const token of parseSpfMechanisms(record)) {
-		const target = includeTarget(token);
-		if (target === null) continue;
+		if (includeTarget(token) === null) continue;
 		const normalized = normalizeMechanism(token);
 		if (essential.has(normalized)) continue;
-		const cost = mechanismLookupCost(token, includeLookupCosts);
-		if (cost >= bestCost) {
-			best = normalized;
-			bestCost = cost;
-		}
+		candidate = normalized;
 	}
-	return best;
+	return candidate;
 }
 
 /**
@@ -142,22 +121,11 @@ function pickFlattenCandidate(
  */
 export function evaluateSpfCoexistence(input: SpfCoexistenceInput): SpfCoexistenceResult {
 	const spfRecords = input.publishedTxtRecords.filter((txt) => isSpfRecord(txt));
-	const base: Omit<SpfCoexistenceResult, 'status' | 'reason'> = {
-		mergedRecord: null,
-		lookupCount: 0,
-		missingMechanisms: [],
-		flattenCandidate: null,
-	};
 	if (spfRecords.length === 0) {
-		return {
-			...base,
-			status: 'fail',
-			reason: 'no_record',
-			missingMechanisms: [...input.requiredMechanisms],
-		};
+		return { kind: 'no_record', missingMechanisms: [...input.requiredMechanisms] };
 	}
 	if (spfRecords.length > 1) {
-		return { ...base, status: 'fail', reason: 'multiple_records' };
+		return { kind: 'multiple_records', recordCount: spfRecords.length };
 	}
 	const published = spfRecords[0] ?? '';
 	const present = new Set(parseSpfMechanisms(published).map((token) => normalizeMechanism(token)));
@@ -165,38 +133,23 @@ export function evaluateSpfCoexistence(input: SpfCoexistenceInput): SpfCoexisten
 		(mechanism) => !present.has(normalizeMechanism(mechanism))
 	);
 	const merged = mergeSpfRecords(published, `v=spf1 ${input.requiredMechanisms.join(' ')}`);
-	const lookupCount = countSpfDnsLookups(merged, input.includeLookupCosts);
+	const lookupCount = countSpfDnsLookups(merged);
 	if (lookupCount > SPF_MAX_DNS_LOOKUPS) {
-		const essential = new Set(
-			(input.essentialMechanisms ?? input.requiredMechanisms).map((mechanism) =>
-				normalizeMechanism(mechanism)
-			)
-		);
+		const essential = new Set(input.requiredMechanisms.map(normalizeMechanism));
 		return {
-			status: 'fail',
-			reason: 'lookup_limit',
+			kind: 'lookup_limit',
 			mergedRecord: merged,
 			lookupCount,
-			missingMechanisms: missing,
-			flattenCandidate: pickFlattenCandidate(merged, essential, input.includeLookupCosts),
+			flattenCandidate: pickFlattenCandidate(merged, essential),
 		};
 	}
 	if (missing.length > 0) {
 		return {
-			status: 'fail',
-			reason: 'missing_mechanism',
+			kind: 'missing_mechanism',
 			mergedRecord: merged,
 			lookupCount,
 			missingMechanisms: missing,
-			flattenCandidate: null,
 		};
 	}
-	return {
-		status: 'pass',
-		reason: 'ok',
-		mergedRecord: merged,
-		lookupCount,
-		missingMechanisms: [],
-		flattenCandidate: null,
-	};
+	return { kind: 'pass', mergedRecord: merged, lookupCount };
 }

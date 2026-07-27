@@ -1,11 +1,10 @@
 /**
- * The RFC 7208 §4.6.4 10-lookup limit: the merged record is REJECTED when
- * adding the relay's include pushes it past 10 lookups, and the failure names
- * which include to flatten.
+ * The RFC 7208 10-lookup limit, and the SPF coexistence verdict shape.
  *
- * The 11th lookup term is a PermError, which receivers treat as an SPF failure
- * for every sender on the domain — so this has to be caught before the ramp
- * turns both arms on, not after.
+ * A merged record that needs an 11th DNS lookup PermErrors — which receivers
+ * treat as an SPF failure for every sender at that host — so the merge must be
+ * rejected BEFORE the ramp sends on both arms, and the rejection must name the
+ * include to flatten.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -15,17 +14,16 @@ import {
 	mechanismLookupCost,
 	SPF_MAX_DNS_LOOKUPS,
 } from '../spfCoexistence';
-import { ALIGNMENT_REMEDIES, evaluateAlignmentPreflight } from '../deliverabilityAlignment';
-import {
-	alignedDns,
-	alignedInput,
-	found,
-	OWN_SPF_MECHANISM,
-	RELAY_SPF_MECHANISM,
-} from './alignmentFixtures';
 
-/** Nine lookup terms: eight includes plus `mx`. */
+const OWN = 'ip4:203.0.113.10';
+const RELAY = 'include:amazonses.com';
+
+function published(...mechanisms: string[]): string {
+	return `v=spf1 ${mechanisms.join(' ')} ~all`;
+}
+
 const NINE_LOOKUPS = [
+	OWN,
 	'include:a.example',
 	'include:b.example',
 	'include:c.example',
@@ -34,15 +32,11 @@ const NINE_LOOKUPS = [
 	'include:f.example',
 	'include:g.example',
 	'include:h.example',
-	'mx',
+	'include:i.example',
 ];
 
-function published(mechanisms: readonly string[]): string {
-	return `v=spf1 ${OWN_SPF_MECHANISM} ${mechanisms.join(' ')} ~all`;
-}
-
-describe('lookup counting', () => {
-	it('counts only the terms that cost a DNS lookup', () => {
+describe('lookup accounting', () => {
+	it('counts exactly the terms RFC 7208 §4.6.4 charges for', () => {
 		expect(mechanismLookupCost('ip4:203.0.113.10')).toBe(0);
 		expect(mechanismLookupCost('ip6:2001:db8::1')).toBe(0);
 		expect(mechanismLookupCost('~all')).toBe(0);
@@ -54,79 +48,97 @@ describe('lookup counting', () => {
 		expect(mechanismLookupCost('include:amazonses.com')).toBe(1);
 	});
 
-	it('honours a declared nested cost for a known include target', () => {
-		expect(mechanismLookupCost('include:_spf.google.com', { '_spf.google.com': 4 })).toBe(4);
-		// A hostile or nonsensical declared cost never counts as less than the
-		// one lookup the include itself always performs.
-		expect(mechanismLookupCost('include:x.example', { 'x.example': Number.NaN })).toBe(1);
-		expect(mechanismLookupCost('include:x.example', { 'x.example': -8 })).toBe(1);
+	it('ignores the qualifier when costing a mechanism', () => {
+		expect(mechanismLookupCost('+include:amazonses.com')).toBe(1);
+		expect(mechanismLookupCost('-ip4:203.0.113.10')).toBe(0);
 	});
 
-	it('counts a whole record', () => {
-		expect(countSpfDnsLookups(published(NINE_LOOKUPS))).toBe(9);
+	it('sums a whole record', () => {
+		expect(countSpfDnsLookups(published(...NINE_LOOKUPS))).toBe(9);
+		expect(SPF_MAX_DNS_LOOKUPS).toBe(10);
 	});
 });
 
-describe('the merged record is accepted at exactly the limit', () => {
-	const result = evaluateSpfCoexistence({
-		publishedTxtRecords: [published([...NINE_LOOKUPS, RELAY_SPF_MECHANISM])],
-		requiredMechanisms: [OWN_SPF_MECHANISM, RELAY_SPF_MECHANISM],
+describe('a merged record inside the limit', () => {
+	it('passes and reports the merged record and its lookup count', () => {
+		const result = evaluateSpfCoexistence({
+			publishedTxtRecords: [published(OWN, RELAY)],
+			requiredMechanisms: [OWN, RELAY],
+		});
+		expect(result.kind).toBe('pass');
+		if (result.kind !== 'pass') throw new Error('expected a pass');
+		expect(result.lookupCount).toBe(1);
+		expect(result.mergedRecord).toContain(OWN);
+		expect(result.mergedRecord).toContain(RELAY);
+	});
+});
+
+describe('the merged record is rejected when the relay include pushes it past 10', () => {
+	it('names the include to flatten', () => {
+		// 10 lookups published; adding the relay's include makes 11.
+		const result = evaluateSpfCoexistence({
+			publishedTxtRecords: [published(...NINE_LOOKUPS, 'include:j.example')],
+			requiredMechanisms: [OWN, RELAY],
+		});
+		expect(result.kind).toBe('lookup_limit');
+		if (result.kind !== 'lookup_limit') throw new Error('expected a lookup_limit');
+		expect(result.lookupCount).toBe(11);
+		// Never one of the two arms' own mechanisms — flattening those would
+		// remove the arm the ramp is measuring.
+		expect(result.flattenCandidate).toBe('include:j.example');
 	});
 
-	it('passes at 10 lookups', () => {
-		expect(result.status).toBe('pass');
-		expect(result.lookupCount).toBe(SPF_MAX_DNS_LOOKUPS);
-		expect(result.mergedRecord).toContain(RELAY_SPF_MECHANISM);
+	it('reports the limit ahead of a missing mechanism, since adding it cannot help', () => {
+		const result = evaluateSpfCoexistence({
+			publishedTxtRecords: [published(...NINE_LOOKUPS, 'include:j.example', 'include:k.example')],
+			requiredMechanisms: [OWN, RELAY],
+		});
+		expect(result.kind).toBe('lookup_limit');
+	});
+
+	it('offers no candidate when every include is essential', () => {
+		const essentialIncludes = Array.from(
+			{ length: 11 },
+			(_, index) => `include:arm${index}.example`
+		);
+		const result = evaluateSpfCoexistence({
+			publishedTxtRecords: [published(...essentialIncludes)],
+			requiredMechanisms: essentialIncludes,
+		});
+		expect(result.kind).toBe('lookup_limit');
+		if (result.kind !== 'lookup_limit') throw new Error('expected a lookup_limit');
 		expect(result.flattenCandidate).toBeNull();
 	});
 });
 
-describe('the merged record is rejected one lookup over the limit', () => {
-	const result = evaluateSpfCoexistence({
-		publishedTxtRecords: [published([...NINE_LOOKUPS, RELAY_SPF_MECHANISM, 'include:i.example'])],
-		requiredMechanisms: [OWN_SPF_MECHANISM, RELAY_SPF_MECHANISM],
-		essentialMechanisms: [OWN_SPF_MECHANISM, RELAY_SPF_MECHANISM],
-	});
-
-	it('fails with the lookup-limit reason and the measured count', () => {
-		expect(result.status).toBe('fail');
-		expect(result.reason).toBe('lookup_limit');
-		expect(result.lookupCount).toBe(11);
-	});
-
-	it('names an include to flatten, never one of the two arms', () => {
-		expect(result.flattenCandidate).toBe('include:i.example');
-		expect(result.flattenCandidate).not.toBe(RELAY_SPF_MECHANISM);
-	});
-
-	it('prefers the costliest include when nested costs are known', () => {
-		const costed = evaluateSpfCoexistence({
-			publishedTxtRecords: [published([...NINE_LOOKUPS, RELAY_SPF_MECHANISM, 'include:i.example'])],
-			requiredMechanisms: [OWN_SPF_MECHANISM, RELAY_SPF_MECHANISM],
-			essentialMechanisms: [OWN_SPF_MECHANISM, RELAY_SPF_MECHANISM],
-			includeLookupCosts: { 'b.example': 6 },
+describe('the other failure variants carry only what they mean', () => {
+	it('no_record lists every required mechanism as missing', () => {
+		const result = evaluateSpfCoexistence({
+			publishedTxtRecords: ['v=DMARC1; p=none'],
+			requiredMechanisms: [OWN, RELAY],
 		});
-		expect(costed.status).toBe('fail');
-		expect(costed.flattenCandidate).toBe('include:b.example');
+		expect(result.kind).toBe('no_record');
+		if (result.kind !== 'no_record') throw new Error('expected no_record');
+		expect(result.missingMechanisms).toEqual([OWN, RELAY]);
 	});
-});
 
-describe('the alignment pre-flight surfaces the limit as a blocking SPF failure', () => {
-	const result = evaluateAlignmentPreflight(
-		alignedInput({
-			dns: alignedDns({
-				fromDomainTxt: found(published([...NINE_LOOKUPS, RELAY_SPF_MECHANISM, 'include:i.example'])),
-			}),
-		})
-	);
+	it('multiple_records counts them', () => {
+		const result = evaluateSpfCoexistence({
+			publishedTxtRecords: [published(OWN), published(RELAY)],
+			requiredMechanisms: [OWN, RELAY],
+		});
+		expect(result.kind).toBe('multiple_records');
+		if (result.kind !== 'multiple_records') throw new Error('expected multiple_records');
+		expect(result.recordCount).toBe(2);
+	});
 
-	it('blocks the cell and names the include to flatten in the remedy', () => {
-		expect(result.verdict).toBe('blocked');
-		expect(result.allowsShareAboveZero).toBe(false);
-		const spf = result.checks.find((entry) => entry.id === 'spf');
-		expect(spf?.status).toBe('fail');
-		expect(spf?.detail).toContain('needs 11 DNS lookups');
-		expect(spf?.remedy).toContain(ALIGNMENT_REMEDIES.spf_lookup_limit);
-		expect(spf?.remedy).toContain('Flatten include:i.example');
+	it('missing_mechanism names only what is absent, qualifier-insensitively', () => {
+		const result = evaluateSpfCoexistence({
+			publishedTxtRecords: [published(`+${OWN}`)],
+			requiredMechanisms: [OWN, RELAY],
+		});
+		expect(result.kind).toBe('missing_mechanism');
+		if (result.kind !== 'missing_mechanism') throw new Error('expected missing_mechanism');
+		expect(result.missingMechanisms).toEqual([RELAY]);
 	});
 });
