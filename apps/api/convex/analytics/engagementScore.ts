@@ -51,11 +51,7 @@
  * band of eight realistic timelines.
  */
 
-import {
-	ENGAGEMENT_BAND_CUTS,
-	engagementBandForScore,
-	type EngagementBand,
-} from '@owlat/shared/engagementBands';
+import { engagementBandForScore, type EngagementBand } from '@owlat/shared/engagementBands';
 
 // ─── Tunables ───────────────────────────────────────────────────────────────
 
@@ -88,13 +84,6 @@ export const SOFT_BOUNCE_PENALTY_BASE = 0.85;
 
 /** Saturation constant of the raw → 0-100 curve. See CALIBRATION above. */
 export const SATURATION_K = 9;
-
-/**
- * Band cut points. Re-exported from `@owlat/shared/engagementBands`, which is
- * the ONE definition — `apps/mta/src/intelligence/engagementPriority.ts` (the
- * consumer) imports the very same object, so producer and consumer cannot drift.
- */
-export const ENGAGEMENT_BANDS = ENGAGEMENT_BAND_CUTS;
 
 export type { EngagementBand };
 

@@ -3,7 +3,6 @@ import { ENGAGEMENT_BAND_CUTS } from '@owlat/shared/engagementBands';
 import type { ContactActivityType } from '../../contactActivities/catalog';
 import { toEngagementActivity } from '../engagementActivity';
 import {
-	ENGAGEMENT_BANDS,
 	ENGAGEMENT_WEIGHTS,
 	computeEngagementScore,
 	engagementBand,
@@ -258,8 +257,7 @@ describe('engagementBand', () => {
 	it('cuts exactly where the MTA priority bands cut', () => {
 		// The ONE definition, imported by the MTA's `mapToPriority` too — not a
 		// hand-copied literal that lets the two sides drift apart.
-		expect(ENGAGEMENT_BANDS).toBe(ENGAGEMENT_BAND_CUTS);
-		expect(ENGAGEMENT_BANDS).toEqual({ high: 80, medium: 50, low: 20 });
+		expect(ENGAGEMENT_BAND_CUTS).toEqual({ high: 80, medium: 50, low: 20 });
 		expect(engagementBand(100)).toBe('high');
 		expect(engagementBand(80)).toBe('high');
 		expect(engagementBand(79)).toBe('medium');
