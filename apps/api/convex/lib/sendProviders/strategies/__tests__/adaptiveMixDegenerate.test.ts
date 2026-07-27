@@ -1,0 +1,190 @@
+/**
+ * `adaptive_mix` — degenerate and hostile inputs.
+ *
+ * DEGENERATE IS NORMAL here, not exceptional: `s = 0` is every cell before the
+ * controller ever runs and every cell the relay is carrying, `s = 1` is every
+ * standalone deployment (D3), a transactional send has no contact row, and a
+ * fresh contact has no engagement score. Each of these is the COMMON case for
+ * somebody, so each has to be exactly right rather than merely non-throwing.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { adaptiveMixStrategy, decideMixAssignment } from '../adaptive_mix';
+import type { MixCellState } from '../adaptive_mix';
+import type { ProviderEntry } from '../types';
+import { assignAll, shareOfArm, syntheticContactIds } from './fixtures';
+
+const AUDIENCE = syntheticContactIds(5000, 'deg');
+const ENTRIES: ProviderEntry[] = [
+	{ providerType: 'mta', isEnabled: true },
+	{ providerType: 'ses', isEnabled: true },
+];
+
+describe('adaptive_mix — degenerate shares', () => {
+	it('s = 0 sends the whole cell to the reference arm (today’s behaviour)', () => {
+		const assignments = assignAll(AUDIENCE, { ownShare: 0 }, { campaignId: 'cmp' });
+		expect(shareOfArm(assignments, 'reference')).toBe(1);
+		expect(assignments.every((a) => a.basis === 'degenerate_reference')).toBe(true);
+		expect(assignments.every((a) => a.isCalibration === false)).toBe(true);
+	});
+
+	it('s = 0 stays on the reference arm even for the most engaged recipient', () => {
+		const decision = decideMixAssignment({
+			cell: { ownShare: 0, mixVersion: 9 },
+			recipient: { contactId: 'c', campaignId: 'cmp', engagementRank: 1 },
+		});
+		expect(decision.arm).toBe('reference');
+	});
+
+	it('s = 1 sends the whole cell to the own arm', () => {
+		const assignments = assignAll(AUDIENCE, { ownShare: 1 }, { campaignId: 'cmp' });
+		expect(shareOfArm(assignments, 'own')).toBe(1);
+		expect(assignments.every((a) => a.basis === 'degenerate_own')).toBe(true);
+		expect(assignments.every((a) => a.isCalibration === false)).toBe(true);
+	});
+
+	it('fails CLOSED on a corrupt share — NaN and ±Infinity never raise the own arm', () => {
+		// `clampOwnShare` (the shipped write-boundary clamp) sends EVERY
+		// non-finite value to the floor: degenerate evidence must never be able
+		// to push the own MTA's share up. A negative share clamps there too.
+		for (const ownShare of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -3]) {
+			const decision = decideMixAssignment({
+				cell: { ownShare },
+				recipient: { contactId: 'c', campaignId: 'cmp' },
+			});
+			expect(decision.arm).toBe('reference');
+			expect(decision.ownShare).toBe(0);
+		}
+	});
+});
+
+describe('adaptive_mix — missing identity and missing rank', () => {
+	it('falls back to the sendId key when there is no contactId', () => {
+		const first = decideMixAssignment({
+			cell: { ownShare: 0.5, mixVersion: 1 },
+			recipient: { fallbackKey: 'send-abc' },
+		});
+		const again = decideMixAssignment({
+			cell: { ownShare: 0.5, mixVersion: 1 },
+			recipient: { fallbackKey: 'send-abc' },
+		});
+		expect(again).toEqual(first);
+		expect(first.basis).not.toBe('unidentified');
+	});
+
+	it('the sendId fallback is still an unbiased split', () => {
+		const sendIds = syntheticContactIds(20_000, 'snd');
+		const own = sendIds.filter(
+			(fallbackKey) =>
+				decideMixAssignment({
+					cell: { ownShare: 0.3, mixVersion: 2 },
+					recipient: { fallbackKey },
+				}).arm === 'own'
+		).length;
+		expect(Math.abs(own / sendIds.length - 0.3)).toBeLessThan(0.015);
+	});
+
+	it('with NO identity at all it uses the supplied draw, and never invents "own"', () => {
+		const withDraw = decideMixAssignment({
+			cell: { ownShare: 0.5, mixVersion: 1 },
+			recipient: {},
+			randomUnit: 0.1,
+		});
+		expect(withDraw.arm).toBe('own');
+		const withoutDraw = decideMixAssignment({
+			cell: { ownShare: 0.5, mixVersion: 1 },
+			recipient: {},
+		});
+		expect(withoutDraw.arm).toBe('reference');
+		expect(withoutDraw.basis).toBe('unidentified');
+		expect(withoutDraw.isCalibration).toBe(false);
+	});
+
+	it('a missing engagement rank falls back to the random bucket, never to "own"', () => {
+		const assignments = assignAll(AUDIENCE, { ownShare: 0.2, mixVersion: 1 }, { campaignId: 'c' });
+		expect(assignments.some((a) => a.basis === 'stratified')).toBe(false);
+		expect(Math.abs(shareOfArm(assignments, 'own') - 0.2)).toBeLessThan(0.02);
+	});
+
+	it('a non-finite engagement rank is treated as unknown, not as the top', () => {
+		// The dangerous failure would be reading NaN/Infinity as "maximally
+		// engaged" and promoting the recipient to the own arm on no evidence.
+		for (const engagementRank of [Number.NaN, Number.POSITIVE_INFINITY]) {
+			const decision = decideMixAssignment({
+				cell: { ownShare: 0.5, mixVersion: 1 },
+				recipient: { contactId: 'c', campaignId: 'cmp', engagementRank },
+			});
+			expect(decision.basis).toBe('random');
+		}
+	});
+
+	it('an empty-string identity is not an identity', () => {
+		const decision = decideMixAssignment({
+			cell: { ownShare: 0.5 },
+			recipient: { contactId: '', fallbackKey: '' },
+		});
+		expect(decision.basis).toBe('unidentified');
+	});
+});
+
+describe('adaptive_mix — strategy-level degeneracy', () => {
+	it('returns null with no enabled providers', () => {
+		expect(adaptiveMixStrategy.select([], undefined)).toBeNull();
+	});
+
+	it('behaves like `single` when no recipient is supplied', () => {
+		const route = adaptiveMixStrategy.select(ENTRIES, 'pool-a', undefined);
+		expect(route).toEqual({ providerType: 'mta', ipPool: 'pool-a', source: 'org_config' });
+	});
+
+	it('still sends when NO reference transport is configured (D2)', () => {
+		// The additive-only third-party rule: a standalone deployment with only
+		// the own MTA must send every message, whatever the share says. Absence
+		// of an external account lowers confidence; it never blocks a send.
+		const ownOnly: ProviderEntry[] = [{ providerType: 'mta', isEnabled: true }];
+		for (const contactId of AUDIENCE.slice(0, 200)) {
+			const route = adaptiveMixStrategy.select(ownOnly, undefined, undefined, {
+				cell: { ownShare: 0.01, mixVersion: 1 },
+				recipient: { contactId, campaignId: 'cmp' },
+			});
+			expect(route?.providerType).toBe('mta');
+		}
+	});
+
+	it('still sends when the own MTA is not in the route', () => {
+		const referenceOnly: ProviderEntry[] = [{ providerType: 'ses', isEnabled: true }];
+		const route = adaptiveMixStrategy.select(referenceOnly, undefined, undefined, {
+			cell: { ownShare: 1, mixVersion: 1 },
+			recipient: { contactId: 'c', campaignId: 'cmp' },
+		});
+		expect(route?.providerType).toBe('ses');
+	});
+
+	it('ignores an unknown destination provider by construction', () => {
+		// The cell axis never reaches the decision function: the classifier's
+		// answer selects WHICH cell's share is read, and an unclassifiable
+		// domain is dropped upstream. So an "unknown provider" is simply a cell
+		// with no state, which resolves to the D1 default of s = 1.
+		const noState: MixCellState = { ownShare: 1 };
+		expect(decideMixAssignment({ cell: noState, recipient: { contactId: 'c' } }).arm).toBe('own');
+	});
+
+	it('never throws on a hostile combination of inputs', () => {
+		const shares = [Number.NaN, -1, 0, 0.5, 1, 2, Number.POSITIVE_INFINITY];
+		const versions = [undefined, Number.NaN, -5, 0, 1e9];
+		const ranks = [undefined, Number.NaN, -1, 0, 0.5, 1, 2];
+		for (const ownShare of shares) {
+			for (const mixVersion of versions) {
+				for (const engagementRank of ranks) {
+					const decision = decideMixAssignment({
+						cell: { ownShare, mixVersion },
+						recipient: { contactId: 'c', campaignId: 'cmp', engagementRank },
+					});
+					expect(['own', 'reference']).toContain(decision.arm);
+					expect(Number.isFinite(decision.ownShare)).toBe(true);
+					expect(Number.isInteger(decision.mixVersion)).toBe(true);
+				}
+			}
+		}
+	});
+});

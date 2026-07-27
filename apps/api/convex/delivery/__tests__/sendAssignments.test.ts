@@ -54,24 +54,43 @@ const { enqueueCampaignAction, enqueueTransactionalAction } = vi.hoisted(() => (
 // config, the configured-kind set and the relay-domain verification are
 // destination-provider INDEPENDENT, so a mixed page must prepare the seam ONCE
 // however many cells it touches.
-const { routeResolutions, seamPreparations } = vi.hoisted(() => ({
+//
+// `cellStateReads` is the one that pins the I/O bound now that the DECISION is
+// per recipient (`adaptive_mix` splits per recipient, so a per-cell answer
+// would be wrong for most of the batch). The seam memoizes each cell's
+// route-state rows, so N recipients still cost one READ per distinct cell.
+const { routeResolutions, seamPreparations, cellStateReads } = vi.hoisted(() => ({
 	routeResolutions: [] as string[],
 	seamPreparations: [] as string[],
+	cellStateReads: [] as string[],
 }));
 
 vi.mock('../../lib/sendProviders/cellRoute', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('../../lib/sendProviders/cellRoute')>();
 	return {
 		...actual,
-		prepareCellRouteResolver: async (
-			...args: Parameters<typeof actual.prepareCellRouteResolver>
-		): ReturnType<typeof actual.prepareCellRouteResolver> => {
+		prepareCellMixResolver: async (
+			...args: Parameters<typeof actual.prepareCellMixResolver>
+		): ReturnType<typeof actual.prepareCellMixResolver> => {
 			seamPreparations.push(args[1]);
-			const resolve = await actual.prepareCellRouteResolver(...args);
-			return async (destinationProvider) => {
+			const resolve = await actual.prepareCellMixResolver(...args);
+			return async (destinationProvider, recipient) => {
 				routeResolutions.push(destinationProvider);
-				return await resolve(destinationProvider);
+				return await resolve(destinationProvider, recipient);
 			};
+		},
+	};
+});
+
+vi.mock('../../lib/deliverabilityRouteState', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('../../lib/deliverabilityRouteState')>();
+	return {
+		...actual,
+		loadRouteStateCell: async (
+			...args: Parameters<typeof actual.loadRouteStateCell>
+		): ReturnType<typeof actual.loadRouteStateCell> => {
+			cellStateReads.push(args[2].destinationProvider);
+			return await actual.loadRouteStateCell(...args);
 		},
 	};
 });
@@ -120,6 +139,7 @@ function stubTransportEnv(kind: SendProviderKind): void {
 beforeEach(() => {
 	routeResolutions.length = 0;
 	seamPreparations.length = 0;
+	cellStateReads.length = 0;
 	enqueueCampaignAction.mockReset();
 	enqueueCampaignAction.mockResolvedValue(undefined);
 	enqueueTransactionalAction.mockReset();
@@ -856,7 +876,7 @@ describe('sendAssignments — campaign write path', () => {
 		// EVERY top-level function the cell seam transits. Kept in one place so
 		// the two guards below cannot cover different sets.
 		const seamFunctions = [
-			'prepareCellRouteResolver',
+			'prepareCellMixResolver',
 			'candidateSendProviderKinds',
 			'configuredSendProviderKinds',
 			'loadStreamlessRouteState',
@@ -880,7 +900,7 @@ describe('sendAssignments — campaign write path', () => {
 				/isSendProviderReady|readySendProviderKinds|selectedSendProviderReady|isDeliveryConfigured/
 			);
 		}
-		expect(topLevelFunctionBody(seamModuleSource, 'prepareCellRouteResolver')).not.toMatch(
+		expect(topLevelFunctionBody(seamModuleSource, 'prepareCellMixResolver')).not.toMatch(
 			/warmingState/
 		);
 		// …and the predicate it DOES use touches no context at all.
@@ -966,10 +986,11 @@ describe('sendAssignments — campaign write path', () => {
 		expect(routingSource).toMatch(/DOMAIN_CLASSIFICATION_REFRESH_MS/);
 	});
 
-	it('resolves the route ONCE per distinct destination provider, not per recipient', async () => {
-		// The only thing keeping the in-transaction resolution off O(N) is the
-		// per-destination-provider memo. Rows alone cannot show it: a
-		// per-recipient regression writes exactly the same rows.
+	it('reads each cell ONCE per distinct destination provider, deciding per recipient', async () => {
+		// The only thing keeping the in-transaction I/O off O(N) is the
+		// per-destination-provider memo inside the prepared seam. Rows alone
+		// cannot show it: a per-recipient regression writes exactly the same
+		// rows.
 		const t = convexTest(schema, modules);
 		const emails = [
 			...Array.from({ length: 20 }, (_, i) => `g${i}@gmail.com`),
@@ -985,7 +1006,14 @@ describe('sendAssignments — campaign write path', () => {
 			campaignArgs(campaignId, recipients)
 		);
 
-		expect([...routeResolutions].sort()).toEqual(['gmail', 'microsoft', 'other']);
+		// The DECISION is per recipient — under `adaptive_mix` the arm is a
+		// function of the recipient, so one answer per cell would be wrong for
+		// most of the batch.
+		expect(routeResolutions).toHaveLength(emails.length);
+		expect([...new Set(routeResolutions)].sort()).toEqual(['gmail', 'microsoft', 'other']);
+		// The READ is still once per distinct cell: the seam memoizes each cell's
+		// route-state rows, which is what keeps the enqueue transaction off O(N).
+		expect([...cellStateReads].sort()).toEqual(['gmail', 'microsoft', 'other']);
 		// And the provider-INDEPENDENT prologue (route config, configured-kind
 		// set, relay-domain verification) is paid for ONCE for the whole page,
 		// not once per cell.

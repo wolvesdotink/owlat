@@ -63,7 +63,7 @@ import {
 	type MessageType,
 } from './routeInputs';
 
-/** Batch-wide inputs for {@link prepareCellRouteResolver}. */
+/** Batch-wide inputs for {@link prepareCellMixResolver}. */
 export interface CellRouteContext {
 	/** Envelope From; feeds the shipped relay-domain verification input. */
 	readonly from?: string;
@@ -77,15 +77,6 @@ export interface CellRouteContext {
 	 */
 	readonly stream: DeliverabilityStream;
 }
-
-/**
- * Resolve one cell, given a batch's already-read inputs. Issues at most TWO
- * document reads per call — the cell's per-stream and stream-less
- * `deliverabilityRouteStates` rows, both indexed point reads.
- */
-export type CellRouteResolver = (
-	destinationProvider: DestinationProviderKey
-) => Promise<ResolvedRoute | null>;
 
 /**
  * A cell's answer for ONE recipient: the route, plus the mix decision that
@@ -113,29 +104,15 @@ export type CellMixResolver = (
 ) => Promise<CellRouteOutcome | null>;
 
 /**
- * Prepare-once, resolve-per-cell.
+ * Prepare-once, resolve-per-recipient.
  *
  * Three of the four inputs a cell decision needs — the route config, the
  * configured-kind set and the relay-domain verification — do not depend on the
  * destination provider at all. Reading them once per BATCH instead of once per
  * cell keeps a mixed page from issuing up to `DESTINATION_PROVIDER_KEYS.length`
  * redundant copies of each, and every read avoided is a read the enqueue
- * transaction does not carry.
- *
- * Route-only view of {@link prepareCellMixResolver}, kept for callers that have
- * no recipient in hand.
- */
-export async function prepareCellRouteResolver(
-	ctx: QueryCtx | MutationCtx,
-	messageType: MessageType,
-	context: CellRouteContext
-): Promise<CellRouteResolver> {
-	const resolve = await prepareCellMixResolver(ctx, messageType, context);
-	return async (destinationProvider) => (await resolve(destinationProvider))?.route ?? null;
-}
-
-/**
- * Prepare-once, resolve-per-recipient — the seam `adaptive_mix` needs.
+ * transaction does not carry. The cell's own two route-state rows are memoized
+ * per destination provider for the same reason.
  *
  * The mix decision is computed HERE rather than read back out of
  * `resolveRoute`: `decideMixAssignment` is pure and total (plan D15), so
