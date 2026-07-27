@@ -298,11 +298,16 @@ describe('seed probe ids are rejected by the tracking endpoints', () => {
 		expect(sends).toEqual([]);
 	});
 
-	it('/t/c/{probeId}/… redirects to "/" instead of 500ing the public endpoint', async () => {
+	it('/t/c/{probeId}/… resolves the signed target without 500ing or recording', async () => {
 		const t = setupTest();
-		// Signed with the probe id, exactly as the composer signs it — the HMAC
-		// genuinely verifies, so only the explicit probe guard stops this.
-		const path = await makeClickPath(PROBE_ID, 'https://example.com/landing?x=1');
+		// Signed with the probe id, exactly as the composer signs it. The HMAC
+		// genuinely verifies, so the probe follows the same hop a subscriber's
+		// click follows — what the explicit probe guard skips is everything
+		// ANALYTICS: no send lookup, no lifecycle transition, no click row. Without
+		// that guard the handler would call `getEmailSendForTracking` with a
+		// non-document id outside any try/catch and 500 a public endpoint.
+		const target = 'https://example.com/landing?x=1';
+		const path = await makeClickPath(PROBE_ID, target);
 
 		const errors: unknown[][] = [];
 		const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
@@ -311,11 +316,29 @@ describe('seed probe ids are rejected by the tracking endpoints', () => {
 		try {
 			const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
 			expect(res.status).toBe(302);
-			expect(res.headers.get('Location')).toBe('/');
+			expect(res.headers.get('Location')).toBe(new URL(target).toString());
 		} finally {
 			spy.mockRestore();
 		}
 		expect(errors).toEqual([]);
+		// Nothing countable was created by the probe's click.
+		const sends = await t.run(async (ctx) => ctx.db.query('emailSends').collect());
+		expect(sends).toEqual([]);
+	});
+
+	it('/t/c/{probeId}/… still refuses an unsigned or tampered target', async () => {
+		const t = setupTest();
+		const encodedUrl = utf8ToBase64Url('https://attacker.example/phish');
+		const forgedSig = bytesToBase64Url(new Uint8Array(32));
+
+		const res = await t.fetch(`/t/c/${PROBE_ID}/${encodedUrl}/${forgedSig}`, {
+			method: 'GET',
+			redirect: 'manual',
+		});
+		expect(res.status).toBe(302);
+		const location = res.headers.get('Location');
+		expect(location).toBe('/');
+		expect(location).not.toContain('attacker.example');
 	});
 });
 
