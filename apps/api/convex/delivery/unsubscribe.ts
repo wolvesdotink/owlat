@@ -43,12 +43,24 @@ export const SEED_PROBE_TOKEN_PREFIX = 'seedprobe:';
  * The organization travels IN the signed payload so the recording mutation has
  * an INDEPENDENT claim to assert against the row — exactly the boundary its
  * three sibling probe-writing mutations hold. Reading the org off the row it is
- * about to write would be a tautology, not a check. `.` is a safe separator:
- * `makeContactToken` already forbids `:` in a payload, a probe id is
- * `sp_` + 22 lowercase base32 chars, and the org id is matched up to the LAST
- * separator so only the probe id's shape has to be constrained.
+ * about to write would be a tautology, not a check.
+ *
+ * `.` is a safe separator because the org id is matched up to the LAST one, so
+ * only the probe id's shape has to be constrained — and a probe id is
+ * `sp_` + 22 lowercase base32 chars (`delivery/seedShadowCopy.ts`).
+ *
+ * `:` is the codec's OWN field separator, and `makeContactToken` does not
+ * forbid it — it interpolates whatever it is handed, and `verifyContactToken`'s
+ * `split(':')` arity check then rejects the result as `invalid_format` at
+ * redemption time. So the constraint is enforced HERE, loudly, rather than
+ * minting a token that can only ever fail: neither component may contain `:`.
+ * Both are machine-generated ids that never do, which makes this a programmer
+ * error, not an input-validation branch.
  */
 function encodeSeedProbeTokenPayload(organizationId: string, probeId: string): string {
+	if (organizationId.includes(':') || probeId.includes(':')) {
+		throw new Error('A seed probe token payload must not contain the codec separator.');
+	}
 	return `${organizationId}.${probeId}`;
 }
 
