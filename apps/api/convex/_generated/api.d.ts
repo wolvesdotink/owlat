@@ -64,6 +64,7 @@ import type * as analytics_reputationSnapshots from "../analytics/reputationSnap
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
 import type * as analytics_spamRate from "../analytics/spamRate.js";
 import type * as analytics_spendBudget from "../analytics/spendBudget.js";
+import type * as analytics_transportOutcomes from "../analytics/transportOutcomes.js";
 import type * as assistant_conversations from "../assistant/conversations.js";
 import type * as assistant_insights from "../assistant/insights.js";
 import type * as assistant_prompt from "../assistant/prompt.js";
@@ -692,6 +693,7 @@ import type * as schema_postmaster from "../schema/postmaster.js";
 import type * as schema_sendAssignments from "../schema/sendAssignments.js";
 import type * as schema_templates from "../schema/templates.js";
 import type * as schema_topics from "../schema/topics.js";
+import type * as schema_transportOutcomes from "../schema/transportOutcomes.js";
 import type * as schema_webhooks from "../schema/webhooks.js";
 import type * as seedAdmin from "../seedAdmin.js";
 import type * as seedDemo_index from "../seedDemo/index.js";
@@ -848,6 +850,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/sendingReputation": typeof analytics_sendingReputation;
   "analytics/spamRate": typeof analytics_spamRate;
   "analytics/spendBudget": typeof analytics_spendBudget;
+  "analytics/transportOutcomes": typeof analytics_transportOutcomes;
   "assistant/conversations": typeof assistant_conversations;
   "assistant/insights": typeof assistant_insights;
   "assistant/prompt": typeof assistant_prompt;
@@ -1476,6 +1479,7 @@ declare const fullApi: ApiFromModules<{
   "schema/sendAssignments": typeof schema_sendAssignments;
   "schema/templates": typeof schema_templates;
   "schema/topics": typeof schema_topics;
+  "schema/transportOutcomes": typeof schema_transportOutcomes;
   "schema/webhooks": typeof schema_webhooks;
   seedAdmin: typeof seedAdmin;
   "seedDemo/index": typeof seedDemo_index;
