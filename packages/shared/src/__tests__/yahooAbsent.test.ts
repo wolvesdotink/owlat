@@ -45,6 +45,8 @@ describe('the substitution table always yields a usable gate', () => {
 			source: 'yahoo_cfl',
 			thresholdRate: YAHOO_CFL_COMPLAINT_THRESHOLD,
 			confidence: 'high',
+			confidenceNote:
+				'Measurement confidence: high — Yahoo complaints for this domain are measured directly.',
 			isBlocking: false,
 		});
 	});
@@ -55,7 +57,7 @@ describe('the substitution table always yields a usable gate', () => {
 			expect(result.source).toBe('cfbl_address');
 			expect(result.confidence).toBe('medium');
 			expect(result.thresholdRate).toBe(YAHOO_CFL_COMPLAINT_THRESHOLD);
-			expect(result.caveat).toContain('Measurement confidence: medium');
+			expect(result.confidenceNote).toContain('Measurement confidence: medium');
 		}
 	});
 
@@ -65,7 +67,7 @@ describe('the substitution table always yields a usable gate', () => {
 			expect(result.source).toBe('unsubscribe_rate_proxy');
 			expect(result.confidence).toBe('low');
 			expect(result.thresholdRate).toBe(YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD);
-			expect(result.caveat).toContain('Measurement confidence: low');
+			expect(result.confidenceNote).toContain('Measurement confidence: low');
 		}
 	});
 
@@ -84,6 +86,9 @@ describe('the substitution table always yields a usable gate', () => {
 				// caller could interpret as an error or an unresolvable warning.
 				expect(YAHOO_COMPLAINT_SIGNAL_SOURCES).toContain(result.source);
 				expect(result.thresholdRate).toBeGreaterThan(0);
+				// The confidence sentence has ONE home — the pure function — so a UI can
+				// render it unconditionally and can never drift from this copy.
+				expect(result.confidenceNote).toContain('Measurement confidence:');
 			}
 		}
 	});
@@ -97,6 +102,7 @@ describe('the substitution table always yields a usable gate', () => {
 		// "error", "failed", "required", "incomplete", or "action needed".
 		const forbidden = ['error', 'failed', 'required', 'incomplete', 'action needed', 'must'];
 		for (const word of forbidden) {
+			expect(result.confidenceNote.toLowerCase()).not.toContain(word);
 			expect(result.caveat?.toLowerCase()).not.toContain(word);
 		}
 		expect(result.caveat).toContain('would measure complaints directly');

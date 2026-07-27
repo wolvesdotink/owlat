@@ -19,6 +19,7 @@ import {
 	YAHOO_CFL_SUBMISSION_PATIENCE_MS,
 	yahooCflGuidedSteps,
 	yahooCflPreconditionMet,
+	yahooComplaintSubstitution,
 	type YahooCflDkimPrecondition,
 	type YahooCflEnrollmentRecord,
 } from '../yahooCfl';
@@ -240,15 +241,52 @@ describe('a report is ground truth', () => {
 		expect(result.record.state).toBe('enrolled');
 	});
 
-	it('records a report even when the DKIM precondition is not met', () => {
-		// Yahoo is demonstrably sending us reports; our own view of the DKIM
-		// domain is irrelevant to that fact.
+	it('refuses to MANUFACTURE an enrollment from a report alone', () => {
+		// Everything the report path can gate on is report-supplied: the source-ISP
+		// token comes from the report's own `User-Agent` and the reported domain from
+		// its own RFC 5965 field. So a report may CONFIRM an enrollment the operator
+		// started, never create one — otherwise one crafted message to the FBL
+		// address would flip a never-enrolled domain to `enrolled` and hand the
+		// yahoo complaint gate a feed that reads ~0 forever.
+		for (const precondition of [READY, UNVERIFIED]) {
+			const result = applyYahooCflEvent(
+				emptyYahooCflEnrollment(),
+				{ kind: 'report_observed', at: T0 },
+				precondition
+			);
+			expect(result.changed).toBe(false);
+			expect(result.reason).toBe('not_submitted');
+			expect(result.record).toEqual(emptyYahooCflEnrollment());
+		}
+	});
+
+	it('confirms an awaiting enrollment regardless of the DKIM precondition', () => {
+		// Yahoo is demonstrably sending us reports for a domain the operator DID
+		// submit; our own view of the DKIM domain is irrelevant to that fact.
 		const result = applyYahooCflEvent(
-			emptyYahooCflEnrollment(),
+			{ state: 'awaiting_yahoo', submittedAt: T0 },
 			{ kind: 'report_observed', at: T0 },
 			UNVERIFIED
 		);
+		expect(result.changed).toBe(true);
 		expect(result.record.state).toBe('enrolled');
+	});
+
+	it('never lets a report alone yield high-confidence complaint measurement', () => {
+		// The adversarial end-to-end: the crafted report is refused, so the derived
+		// state stays `not_started` and the substitution keeps the tightened proxy
+		// with its confidence caveat (D14) instead of asserting direct measurement.
+		const forged = applyYahooCflEvent(
+			emptyYahooCflEnrollment(),
+			{ kind: 'report_observed', at: T0 },
+			READY
+		);
+		const { state } = deriveYahooCflState(forged.record, T0 + DAY);
+		expect(state).toBe('not_started');
+		const signal = yahooComplaintSubstitution({ enrollmentState: state, hasCfblAddress: false });
+		expect(signal.source).toBe('unsubscribe_rate_proxy');
+		expect(signal.confidence).toBe('low');
+		expect(signal.confidenceNote).toContain('Measurement confidence: low');
 	});
 });
 

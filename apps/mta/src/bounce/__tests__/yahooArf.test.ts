@@ -216,45 +216,88 @@ describe('a Yahoo CFL report through the shipped ARF processor', () => {
 		expect(destinationProviderForDomain('yahoo.com')).toBe(sourceIsp);
 	});
 
-	it('folds AOL — which Yahoo operates — into the same yahoo cell as the classifier does', () => {
-		const { parsed, parts } = buildArf({
-			feedbackReport: [
-				'Feedback-Type: abuse',
-				'User-Agent: AOL Feedback-Loop Post/1.0',
-				'Original-Rcpt-To: complainer@aol.com',
-				'Reported-Domain: mail.owlat.test',
-			].join('\r\n'),
-			originalMessage: 'From: news@mail.owlat.test',
-		});
-		const arf = tryParseARF(parsed, parts);
-		if (!arf) throw new Error('expected an ARF classification');
-		// The FBL token enum says `aol`; the CELL axis says `yahoo`, exactly as
-		// `destinationProviderForDomain('aol.com')` does.
-		expect(arf.sourceIsp).toBe('aol');
-		const { effects } = reduce({ kind: 'fbl', arf }, makeCtx());
-		const notify = effects.find((e) => e.kind === 'notify_convex');
-		if (notify?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
-		expect(notify.event.sourceIsp).toBe('yahoo');
-		expect(destinationProviderForDomain('aol.com')).toBe('yahoo');
-	});
+	// TABLE-DRIVEN over EVERY token `fblProcessor.isp()` can return, plus one it
+	// cannot: the ISP→cell map is the only thing standing between an FBL token and
+	// the ramp's cell axis, so an untested row is a typo that ships silently.
+	// `classifierDomain` pins the rows where the CELL must agree with the shipped
+	// address-domain classifier (`destinationProviderForDomain`) — a complaint that
+	// disagreed would land in a different cell than the send it complains about.
+	const ISP_ROWS: ReadonlyArray<{
+		userAgent: string;
+		token: string;
+		cell: string;
+		classifierDomain?: string;
+	}> = [
+		{ userAgent: 'Microsoft Feedback-Loop Post/1.0', token: 'microsoft', cell: 'microsoft' },
+		{ userAgent: 'Yahoo! Inc. Feedback-Loop/1.0', token: 'yahoo', cell: 'yahoo' },
+		{
+			userAgent: 'AOL Feedback-Loop Post/1.0',
+			token: 'aol',
+			cell: 'yahoo',
+			classifierDomain: 'aol.com',
+		},
+		{
+			userAgent: 'Google-Mail-Feedback/1.0',
+			token: 'google',
+			cell: 'gmail',
+			classifierDomain: 'gmail.com',
+		},
+		{ userAgent: 'Comcast Feedback-Loop Post/1.0', token: 'comcast', cell: 'other' },
+		{ userAgent: 'mail.ru abuse reporter/1.0', token: 'mailru', cell: 'other' },
+	];
 
-	it('maps the FBL `google` token onto the `gmail` cell key', () => {
+	it.each(ISP_ROWS)(
+		'maps the FBL `$token` token onto the `$cell` cell',
+		({ userAgent, token, cell, classifierDomain }) => {
+			const { parsed, parts } = buildArf({
+				feedbackReport: [
+					'Feedback-Type: abuse',
+					`User-Agent: ${userAgent}`,
+					'Original-Rcpt-To: complainer@example.test',
+					'Reported-Domain: mail.owlat.test',
+				].join('\r\n'),
+				originalMessage: 'From: news@mail.owlat.test',
+			});
+			const arf = tryParseARF(parsed, parts);
+			if (!arf) throw new Error('expected an ARF classification');
+			// The SHIPPED token enum, unchanged — it doubles as a bounded metric label.
+			expect(arf.sourceIsp).toBe(token);
+			const { effects } = reduce({ kind: 'fbl', arf }, makeCtx());
+			const notify = effects.find((e) => e.kind === 'notify_convex');
+			if (notify?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
+			expect(notify.event.sourceIsp).toBe(cell);
+			expect(DESTINATION_PROVIDER_KEYS).toContain(notify.event.sourceIsp);
+			if (classifierDomain !== undefined) {
+				expect(destinationProviderForDomain(classifierDomain)).toBe(cell);
+			}
+		}
+	);
+
+	it('forwards NOTHING for a token the cell map does not name', () => {
+		// An unmapped hint must not leak free text into the cell axis: the webhook
+		// event types `sourceIsp` as the destination-provider union, so an unknown
+		// token is simply not forwarded rather than coerced into `other`.
 		const { parsed, parts } = buildArf({
 			feedbackReport: [
 				'Feedback-Type: abuse',
-				'User-Agent: Google-Mail-Feedback/1.0',
-				'Original-Rcpt-To: complainer@gmail.com',
+				'User-Agent: Some-Unlisted-FBL-Operator/1.0',
+				'Original-Rcpt-To: complainer@example.test',
 				'Reported-Domain: mail.owlat.test',
 			].join('\r\n'),
 			originalMessage: 'From: news@mail.owlat.test',
 		});
 		const arf = tryParseARF(parsed, parts);
 		if (!arf) throw new Error('expected an ARF classification');
-		expect(arf.sourceIsp).toBe('google');
-		const { effects } = reduce({ kind: 'fbl', arf }, makeCtx());
+		const { effects } = reduce(
+			{ kind: 'fbl', arf: { ...arf, sourceIsp: 'unlisted-operator' } },
+			makeCtx()
+		);
 		const notify = effects.find((e) => e.kind === 'notify_convex');
 		if (notify?.kind !== 'notify_convex') throw new Error('expected a notify_convex effect');
-		expect(notify.event.sourceIsp).toBe('gmail');
+		expect(notify.event.sourceIsp).toBeUndefined();
+		// The complaint itself still lands — an unknown operator is not a dropped
+		// report, only an unattributed cell.
+		expect(notify.event.reportedDomain).toBe('mail.owlat.test');
 	});
 
 	it('lower-cases the reported domain so the Convex lookup matches the stored domain', () => {

@@ -106,8 +106,16 @@ function mountPanel(guide: unknown, canManage = true) {
 	});
 }
 
+// "Start over" names its consequence in a confirmation before it fires, so every
+// fixture has to decide what the operator answered.
+const confirmSpy = vi.fn((_message?: string) => true);
+
 beforeEach(() => {
 	queryArgs = undefined;
+	confirmSpy.mockClear();
+	confirmSpy.mockReturnValue(true);
+	vi.stubGlobal('confirm', confirmSpy);
+	window.confirm = confirmSpy;
 });
 
 describe('the four guided steps', () => {
@@ -191,6 +199,7 @@ describe('the controls', () => {
 		// A lapsed enrollment is re-submittable AND resettable — both are to-dos.
 		expect(w.find('[data-testid="yahoocfl-submit"]').exists()).toBe(true);
 		await w.get('[data-testid="yahoocfl-reset"]').trigger('click');
+		expect(confirmSpy).toHaveBeenCalledTimes(1);
 		await flushPromises();
 		expect(runs['resetEnrollment']).toHaveBeenCalledWith({ domainId: 'domain_1' });
 	});
@@ -202,7 +211,49 @@ describe('the controls', () => {
 				isVerified: false,
 			})
 		);
-		expect(w.get('[data-testid="yahoocfl-submit"]').attributes('disabled')).toBeDefined();
+		const submit = w.get('[data-testid="yahoocfl-submit"]');
+		expect(submit.attributes('disabled')).toBeDefined();
+		// The disabled state is read off the guide's own `blocked` step, not
+		// recomputed here: the panel has exactly one definition of the precondition.
+		expect(w.get('[data-testid="yahoocfl-step-submit_enrollment"]').attributes('data-status')).toBe(
+			'blocked'
+		);
+	});
+
+	it('states the reason Submit is disabled as VISIBLE, described text', () => {
+		const w = mountPanel(
+			guideFor({ state: 'not_started' }, 'not_started', {
+				domain: 'mail.example.com',
+				isVerified: false,
+			})
+		);
+		// A `title` on a disabled button is neither focusable nor announced, so the
+		// reason is real text the button points at.
+		const hint = w.get('[data-testid="yahoocfl-submit-blocked-reason"]');
+		expect(hint.text()).toContain('Verify this domain and its DKIM record first');
+		expect(w.get('[data-testid="yahoocfl-submit"]').attributes('aria-describedby')).toBe(
+			hint.attributes('id')
+		);
+	});
+
+	it('hides the blocked reason once the precondition is met', () => {
+		const w = mountPanel(NOT_STARTED);
+		expect(w.find('[data-testid="yahoocfl-submit-blocked-reason"]').exists()).toBe(false);
+		expect(w.get('[data-testid="yahoocfl-submit"]').attributes('disabled')).toBeUndefined();
+	});
+
+	it('does NOT reset unless the operator confirms, and names the consequence when asking', async () => {
+		confirmSpy.mockReturnValue(false);
+		const w = mountPanel(ENROLLED);
+		await w.get('[data-testid="yahoocfl-reset"]').trigger('click');
+		await flushPromises();
+		expect(runs['resetEnrollment']).not.toHaveBeenCalled();
+		const asked = String(confirmSpy.mock.calls[0]?.[0] ?? '');
+		// All three consequences are named: our record, Yahoo's own enrollment, and
+		// what happens to complaint measurement afterwards.
+		expect(asked).toContain('Our record is cleared');
+		expect(asked).toContain('Yahoo’s own enrollment is untouched');
+		expect(asked).toContain('unsubscribe-rate proxy');
 	});
 
 	it('shows no controls, and does not subscribe, for a member who cannot manage domains', () => {
@@ -237,6 +288,17 @@ describe('D2 — never enrolling is a supported configuration', () => {
 	});
 
 	it('renders nothing at all rather than a placeholder while the guide is absent', () => {
-		expect(mountPanel(undefined).find('[data-testid="yahoocfl-panel"]').exists()).toBe(false);
+		const w = mountPanel(undefined);
+		expect(w.find('[data-testid="yahoocfl-panel"]').exists()).toBe(false);
+		// Not even the section divider: an empty bordered strip is exactly what a
+		// member without `organization:manage`, the first paint, and a deleted domain
+		// would otherwise all render.
+		expect(w.html()).not.toContain('border-t');
+	});
+
+	it('owns its section divider so the divider follows the panel', () => {
+		expect(mountPanel(NOT_STARTED).get('[data-testid="yahoocfl-panel"]').classes()).toContain(
+			'border-t'
+		);
 	});
 });

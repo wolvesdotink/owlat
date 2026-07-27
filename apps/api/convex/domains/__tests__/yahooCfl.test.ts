@@ -96,6 +96,19 @@ async function seedDomain(
 	});
 }
 
+/**
+ * Seed a domain the operator HAS submitted to Yahoo.
+ *
+ * A report can only ever confirm an enrollment the operator started — an
+ * internet-triggered path is never allowed to manufacture one — so every fixture
+ * that exercises the observation write starts from `awaiting_yahoo`.
+ */
+async function seedSubmittedDomain(t: Harness, domain: string): Promise<Id<'domains'>> {
+	const domainId = await seedDomain(t, { domain });
+	await t.withIdentity(identity).mutation(api.domains.yahooCfl.submitEnrollment, { domainId });
+	return domainId;
+}
+
 async function enrollmentRows(t: Harness) {
 	return await t.run(async (ctx) => ctx.db.query('yahooCflEnrollments').collect());
 }
@@ -230,18 +243,26 @@ describe('report observation keeps the enrollment live', () => {
 		});
 	});
 
-	it('creates the row from a report alone when the operator never used the wizard', async () => {
+	it('never creates a row from a report alone — an internet-triggered path cannot enroll', async () => {
+		// ADVERSARIAL. Both facts the observation gates on are report-supplied, and
+		// the only authentication upstream is a VERP-attributed message id every
+		// recipient of every send already holds. So a crafted report must not be able
+		// to manufacture an enrollment (and with it the looser direct complaint
+		// threshold at `confidence: 'high'`) for a domain nobody enrolled.
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { domain: 'mail.h.test' });
-		await t.mutation(internal.domains.yahooCfl.observeReport, {
+		const domainId = await seedDomain(t, { domain: 'mail.h.test' });
+		const result = await t.mutation(internal.domains.yahooCfl.observeReport, {
 			reportedDomain: 'mail.h.test',
 			at: T0,
 		});
-		expect((await enrollmentRows(t))[0]).toMatchObject({
-			organizationId: 'org-a',
-			state: 'enrolled',
-			lastReportAt: T0,
-		});
+		expect(result).toMatchObject({ observed: true, state: 'not_started', reason: 'not_submitted' });
+		expect(await enrollmentRows(t)).toHaveLength(0);
+
+		// And the guide the operator sees still reports the substituted proxy.
+		const guide = await t.withIdentity(identity).query(api.domains.yahooCfl.getGuide, { domainId });
+		expect(guide?.state).toBe('not_started');
+		expect(guide?.complaintSignal.confidence).toBe('low');
+		expect(guide?.complaintSignal.source).toBe('unsubscribe_rate_proxy');
 	});
 
 	it('is a silent no-op for a domain this deployment does not send from', async () => {
@@ -269,7 +290,7 @@ describe('report observation keeps the enrollment live', () => {
 
 	it('does not rewind lastReportAt on a replayed, out-of-order report', async () => {
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { domain: 'mail.k.test' });
+		await seedSubmittedDomain(t, 'mail.k.test');
 		await t.mutation(internal.domains.yahooCfl.observeReport, {
 			reportedDomain: 'mail.k.test',
 			at: T0 + 10 * DAY,
@@ -285,7 +306,7 @@ describe('report observation keeps the enrollment live', () => {
 
 	it('COALESCES a burst of complaints into a single row patch (D16 / ADR-0042)', async () => {
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { domain: 'mail.burst.test' });
+		await seedSubmittedDomain(t, 'mail.burst.test');
 		// First report creates the row.
 		await t.mutation(internal.domains.yahooCfl.observeReport, {
 			reportedDomain: 'mail.burst.test',
@@ -344,7 +365,7 @@ describe('report observation keeps the enrollment live', () => {
 
 	it('leaves an existing row untouched when a garbage clock arrives', async () => {
 		const t = convexTest(schema, modules);
-		await seedDomain(t, { domain: 'mail.clock2.test' });
+		await seedSubmittedDomain(t, 'mail.clock2.test');
 		await t.mutation(internal.domains.yahooCfl.observeReport, {
 			reportedDomain: 'mail.clock2.test',
 			at: T0,
@@ -358,7 +379,7 @@ describe('report observation keeps the enrollment live', () => {
 
 	it('never touches another organization row: a foreign enrollment stays untouched', async () => {
 		const t = convexTest(schema, modules);
-		const domainId = await seedDomain(t, { domain: 'mail.l.test' });
+		const domainId = await seedSubmittedDomain(t, 'mail.l.test');
 		const foreignId = await t.run(async (ctx) =>
 			ctx.db.insert('yahooCflEnrollments', {
 				organizationId: 'org-other',
@@ -390,7 +411,7 @@ describe('report observation keeps the enrollment live', () => {
 describe('the re-check, derived on read', () => {
 	it('reads as lapsed after 90 silent days without any write or cron', async () => {
 		const t = convexTest(schema, modules);
-		const domainId = await seedDomain(t, { domain: 'mail.m.test' });
+		const domainId = await seedSubmittedDomain(t, 'mail.m.test');
 		await t.mutation(internal.domains.yahooCfl.observeReport, {
 			reportedDomain: 'mail.m.test',
 			at: T0,
@@ -418,7 +439,7 @@ describe('the re-check, derived on read', () => {
 
 	it('un-lapses the moment a report finally arrives', async () => {
 		const t = convexTest(schema, modules);
-		const domainId = await seedDomain(t, { domain: 'mail.o.test' });
+		const domainId = await seedSubmittedDomain(t, 'mail.o.test');
 		await t.mutation(internal.domains.yahooCfl.observeReport, {
 			reportedDomain: 'mail.o.test',
 			at: T0,
@@ -460,7 +481,8 @@ describe('D2 — never enrolling is a supported configuration', () => {
 			confidence: 'low',
 			isBlocking: false,
 		});
-		expect(guide?.complaintSignal.caveat).toContain('Measurement confidence: low');
+		expect(guide?.complaintSignal.confidenceNote).toContain('Measurement confidence: low');
+		expect(guide?.complaintSignal.caveat).toContain('would measure complaints directly');
 		// Reading the guide writes nothing: absence is not a row to be created.
 		expect(await enrollmentRows(t)).toHaveLength(0);
 	});
@@ -481,7 +503,7 @@ describe('D2 — never enrolling is a supported configuration', () => {
 
 	it('reports the yahoo CFL source at full confidence once enrolled', async () => {
 		const t = convexTest(schema, modules);
-		const domainId = await seedDomain(t, { domain: 'mail.r.test' });
+		const domainId = await seedSubmittedDomain(t, 'mail.r.test');
 		await t.mutation(internal.domains.yahooCfl.observeReport, {
 			reportedDomain: 'mail.r.test',
 			at: T0,

@@ -1210,6 +1210,24 @@ describe('dispatchInboundEvent — Yahoo CFL report observation', () => {
 		expect(calls).toEqual([TRANSITION, OBSERVE]);
 	});
 
+	it('keeps the SHIPPED short-circuit for a postbox-attributed complaint', async () => {
+		const { ctx, calls } = makeSelectiveCtx();
+		await dispatchInboundEvent(ctx, {
+			kind: 'email.complained',
+			providerMessageId: 'pb-abc123',
+			at: 7000,
+			deliveryDomain: 'production',
+			reportedDomain: 'mail.owlat.test',
+			sourceIsp: 'yahoo',
+		} as InboundEvent);
+		// The shipped handler returned here without doing anything further, and this
+		// piece preserves that exactly: a postbox complaint is not a campaign send,
+		// so the enrollment bookkeeping must not become the one thing that now runs
+		// on this path. Enrollment liveness is proved by ordinary production
+		// complaints instead.
+		expect(calls).toEqual([]);
+	});
+
 	it('still suppresses the complaint when observeReport THROWS', async () => {
 		const { ctx, calls } = makeSelectiveCtx(OBSERVE);
 		// No rejection escapes the dispatcher: the complaint dispatch completes.
