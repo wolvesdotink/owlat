@@ -54,3 +54,37 @@ export const deliverabilitySignalValidator = v.object({
 	severity: deliverabilitySignalSeverityValidator,
 	observedAt: v.number(),
 });
+
+/**
+ * Dual-transport alignment pre-flight (P3-5). Mirrors ALIGNMENT_CHECK_IDS /
+ * AlignmentCheckStatus / AlignmentVerdict in
+ * @owlat/shared/deliverabilityAlignment; parity is asserted in
+ * delivery/__tests__/alignmentBlocking.test.ts.
+ */
+export const alignmentCheckIdValidator = v.union(
+	v.literal('from_domain'),
+	v.literal('spf'),
+	v.literal('dkim'),
+	v.literal('dmarc')
+);
+
+/** `unknown` is "DNS could not answer" — a hold, never a pass and never a fail. */
+export const alignmentCheckStatusValidator = v.union(
+	v.literal('pass'),
+	v.literal('fail'),
+	v.literal('unknown')
+);
+
+export const alignmentVerdictValidator = v.union(
+	v.literal('aligned'),
+	v.literal('single_arm'),
+	v.literal('blocked'),
+	v.literal('unknown')
+);
+
+export const alignmentCheckValidator = v.object({
+	id: alignmentCheckIdValidator,
+	status: alignmentCheckStatusValidator,
+	detail: v.string(),
+	remedy: v.string(),
+});
