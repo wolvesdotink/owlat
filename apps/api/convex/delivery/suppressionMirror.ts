@@ -31,7 +31,7 @@ import { logError, logInfo } from '../lib/runtimeLog';
 import { getMtaConfig } from '../mail/mtaClient';
 
 // blockedEmails.reason — the Convex-side suppression vocabulary.
-export type BlockReason = 'bounced' | 'complained' | 'manual';
+export type BlockReason = 'bounced' | 'complained' | 'manual' | 'unengaged';
 
 // SuppressionReason — the MTA-side vocabulary (apps/mta/.../suppressionList.ts).
 // Kept in sync by hand: the two enums live in separate deploy units (Convex
@@ -48,9 +48,15 @@ export type MtaSuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
  */
 export function toMtaSuppressionReason(
 	reason: BlockReason,
-	bounceType?: 'hard' | 'soft',
+	bounceType?: 'hard' | 'soft'
 ): MtaSuppressionReason {
 	if (reason === 'complained') return 'complaint';
+	// A sunset suppression is a hygiene decision, not evidence the mailbox is
+	// broken, and it has a one-action restore path — so it rides the MTA's
+	// EXPIRING `manual` reason rather than a permanent `hard_bounce`. The
+	// authoritative record is the Convex `blockedEmails` row, which every send
+	// path gates on; the MTA copy is only the last-hop backstop.
+	if (reason === 'unengaged') return 'manual';
 	if (reason === 'bounced') {
 		// A hard bounce is permanent; a soft-bounce escalation is recoverable, so
 		// it rides the MTA's expiring `manual` reason rather than a permanent one.
@@ -70,7 +76,7 @@ export function toMtaSuppressionReason(
  */
 export async function scheduleSuppressionMirror(
 	ctx: MutationCtx,
-	args: { email: string; reason: BlockReason; bounceType?: 'hard' | 'soft' },
+	args: { email: string; reason: BlockReason; bounceType?: 'hard' | 'soft' }
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.mirror, {
 		email: args.email,
@@ -94,6 +100,7 @@ export const mirror = internalAction({
 			v.literal('bounced'),
 			v.literal('complained'),
 			v.literal('manual'),
+			v.literal('unengaged')
 		),
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 	},
@@ -122,9 +129,7 @@ export const mirror = internalAction({
 				}),
 			});
 			if (!res.ok) {
-				logError(
-					`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`,
-				);
+				logError(`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`);
 				return;
 			}
 			logInfo(`[suppressionMirror] mirrored ${args.email} (${mtaReason}) to MTA`);

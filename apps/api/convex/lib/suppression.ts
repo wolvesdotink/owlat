@@ -22,7 +22,9 @@
  */
 
 import type { QueryCtx, MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from './inputGuards';
+import { scheduleSuppressionMirror, type BlockReason } from '../delivery/suppressionMirror';
 
 /**
  * Is `rawEmail` on the suppression list? Normalizes the address to the same
@@ -33,7 +35,7 @@ import { normalizeEmail } from './inputGuards';
  */
 export async function isSuppressed(
 	ctx: QueryCtx | MutationCtx,
-	rawEmail: string,
+	rawEmail: string
 ): Promise<boolean> {
 	const blocked = await ctx.db
 		.query('blockedEmails')
@@ -53,8 +55,54 @@ export async function isSuppressed(
  * same way (`normalizeEmail`) so the comparison agrees with the stored keys.
  */
 export async function loadSuppressionSet(
-	ctx: QueryCtx | MutationCtx,
+	ctx: QueryCtx | MutationCtx
 ): Promise<ReadonlySet<string>> {
 	const records = await ctx.db.query('blockedEmails').collect(); // bounded: suppression list, one per blocked address
 	return new Set(records.map((b) => normalizeEmail(b.email)));
+}
+
+/**
+ * Add one address to the SHIPPED suppression list, then mirror it to the MTA's
+ * Redis backstop — the two halves every existing suppression site already does
+ * together (`delivery/sendLifecycle/effects.ts`'s `blocklist_insert`,
+ * `blockedEmails.add`). Callers that suppress programmatically go through here
+ * instead of hand-rolling the pair, so a new suppression source cannot forget
+ * the mirror and cannot invent a parallel suppression concept.
+ *
+ * IDEMPOTENT AND NEVER DESTRUCTIVE. An address already on the list is left
+ * exactly as it is and `null` is returned: an existing `bounced` /
+ * `complained` row carries stronger evidence than any later hygiene decision,
+ * and downgrading it would be data loss. Suppression here only ever INSERTS.
+ */
+export async function suppressEmail(
+	ctx: MutationCtx,
+	args: {
+		email: string;
+		reason: BlockReason;
+		bounceType?: 'hard' | 'soft' | undefined;
+		notes?: string | undefined;
+	}
+): Promise<Id<'blockedEmails'> | null> {
+	const normalized = normalizeEmail(args.email);
+	const existing = await ctx.db
+		.query('blockedEmails')
+		.withIndex('by_email', (q) => q.eq('email', normalized))
+		.first();
+	if (existing) return null;
+
+	const blockedEmailId = await ctx.db.insert('blockedEmails', {
+		email: normalized,
+		reason: args.reason,
+		...(args.bounceType ? { bounceType: args.bounceType } : {}),
+		...(args.notes ? { notes: args.notes } : {}),
+		createdAt: Date.now(),
+	});
+
+	await scheduleSuppressionMirror(ctx, {
+		email: normalized,
+		reason: args.reason,
+		...(args.bounceType ? { bounceType: args.bounceType } : {}),
+	});
+
+	return blockedEmailId;
 }
