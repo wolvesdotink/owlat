@@ -32,7 +32,12 @@
  */
 
 import { v } from 'convex/values';
-import { internalMutation, internalQuery, type MutationCtx } from '../_generated/server';
+import {
+	internalMutation,
+	internalQuery,
+	type DatabaseReader,
+	type MutationCtx,
+} from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import { extractDomainOrNull } from '@owlat/shared';
@@ -43,6 +48,7 @@ import {
 	type DeliverabilityStream,
 	type DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
+import { resolveNow } from '../lib/clock';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import {
 	normalizeDestinationDomain,
@@ -371,18 +377,30 @@ async function buildTransportLookup(
 }
 
 /**
- * Org-scoped lookup of the assignment recorded for one send. Org-leading
- * index: a caller holding another tenant's send id still gets nothing.
+ * THE assignment join. Reader-typed, so the query shell below, the transport
+ * outcome writer and any later consumer all resolve a send's (cell, arm,
+ * calibration) through ONE tenant-scoped lookup — a second copy of this index
+ * expression is a copy that will be missed when the index or the `.first()`
+ * choice changes.
+ *
+ * Org-leading: a caller holding another tenant's send id still gets nothing.
  */
+export async function readAssignmentForSend(
+	db: DatabaseReader,
+	organizationId: string,
+	sendId: string
+): Promise<Doc<'sendAssignments'> | null> {
+	return await db
+		.query('sendAssignments')
+		.withIndex('by_org_send', (q) => q.eq('organizationId', organizationId).eq('sendId', sendId))
+		.first();
+}
+
+/** Org-scoped lookup of the assignment recorded for one send. */
 export const getAssignmentForSend = internalQuery({
 	args: { organizationId: v.string(), sendId: v.string() },
 	handler: async (ctx, args) =>
-		await ctx.db
-			.query('sendAssignments')
-			.withIndex('by_org_send', (q) =>
-				q.eq('organizationId', args.organizationId).eq('sendId', args.sendId)
-			)
-			.first(),
+		await readAssignmentForSend(ctx.db, args.organizationId, args.sendId),
 });
 
 /**
@@ -458,8 +476,8 @@ export const cleanupExpiredAssignments = internalMutation({
 	args: { now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		// A non-finite `now` would make `cutoff` NaN and the sweep a silent
-		// no-op forever: fall back to the real clock instead.
-		const now = args.now !== undefined && Number.isFinite(args.now) ? args.now : Date.now();
+		// no-op forever: `resolveNow` falls back to the real clock instead.
+		const now = resolveNow(args.now);
 		const cutoff = now - SEND_ASSIGNMENT_RETENTION_MS;
 		const expired = await ctx.db
 			.query('sendAssignments')

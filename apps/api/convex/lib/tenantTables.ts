@@ -101,6 +101,9 @@ export const TENANT_TABLES = [
 	// Per-recipient tenant business data — a wipe that left it behind would
 	// leave the whole experiment record of a deleted org on disk.
 	'sendAssignments',
+	// Per-cell, per-arm outcome counters derived from that experiment record.
+	// Tenant sending history in aggregate form — a wipe must not leave it behind.
+	'transportOutcomes',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
 	'deliverySnapshots',
 	'sendDailyStats',

@@ -64,6 +64,8 @@ import type * as analytics_reputationSnapshots from "../analytics/reputationSnap
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
 import type * as analytics_spamRate from "../analytics/spamRate.js";
 import type * as analytics_spendBudget from "../analytics/spendBudget.js";
+import type * as analytics_transportOutcomeSummary from "../analytics/transportOutcomeSummary.js";
+import type * as analytics_transportOutcomes from "../analytics/transportOutcomes.js";
 import type * as assistant_conversations from "../assistant/conversations.js";
 import type * as assistant_insights from "../assistant/insights.js";
 import type * as assistant_prompt from "../assistant/prompt.js";
@@ -273,6 +275,7 @@ import type * as delivery_sendLifecycle_deliveryObservation from "../delivery/se
 import type * as delivery_sendLifecycle_effects from "../delivery/sendLifecycle/effects.js";
 import type * as delivery_sendLifecycle_feedbackReducers from "../delivery/sendLifecycle/feedbackReducers.js";
 import type * as delivery_sendLifecycle_lookups from "../delivery/sendLifecycle/lookups.js";
+import type * as delivery_sendLifecycle_outcomeAccounting from "../delivery/sendLifecycle/outcomeAccounting.js";
 import type * as delivery_sendLifecycle_reducers from "../delivery/sendLifecycle/reducers.js";
 import type * as delivery_sendLifecycle_types from "../delivery/sendLifecycle/types.js";
 import type * as delivery_sends from "../delivery/sends.js";
@@ -396,6 +399,7 @@ import type * as lib_auditLog from "../lib/auditLog.js";
 import type * as lib_authedFunctions from "../lib/authedFunctions.js";
 import type * as lib_automationConfigTypes from "../lib/automationConfigTypes.js";
 import type * as lib_autonomyRules from "../lib/autonomyRules.js";
+import type * as lib_clock from "../lib/clock.js";
 import type * as lib_codeAgentGuard from "../lib/codeAgentGuard.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_contactCountHelpers from "../lib/contactCountHelpers.js";
@@ -700,6 +704,7 @@ import type * as schema_returnPath from "../schema/returnPath.js";
 import type * as schema_sendAssignments from "../schema/sendAssignments.js";
 import type * as schema_templates from "../schema/templates.js";
 import type * as schema_topics from "../schema/topics.js";
+import type * as schema_transportOutcomes from "../schema/transportOutcomes.js";
 import type * as schema_webhooks from "../schema/webhooks.js";
 import type * as seedAdmin from "../seedAdmin.js";
 import type * as seedDemo_index from "../seedDemo/index.js";
@@ -856,6 +861,8 @@ declare const fullApi: ApiFromModules<{
   "analytics/sendingReputation": typeof analytics_sendingReputation;
   "analytics/spamRate": typeof analytics_spamRate;
   "analytics/spendBudget": typeof analytics_spendBudget;
+  "analytics/transportOutcomeSummary": typeof analytics_transportOutcomeSummary;
+  "analytics/transportOutcomes": typeof analytics_transportOutcomes;
   "assistant/conversations": typeof assistant_conversations;
   "assistant/insights": typeof assistant_insights;
   "assistant/prompt": typeof assistant_prompt;
@@ -1065,6 +1072,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/sendLifecycle/effects": typeof delivery_sendLifecycle_effects;
   "delivery/sendLifecycle/feedbackReducers": typeof delivery_sendLifecycle_feedbackReducers;
   "delivery/sendLifecycle/lookups": typeof delivery_sendLifecycle_lookups;
+  "delivery/sendLifecycle/outcomeAccounting": typeof delivery_sendLifecycle_outcomeAccounting;
   "delivery/sendLifecycle/reducers": typeof delivery_sendLifecycle_reducers;
   "delivery/sendLifecycle/types": typeof delivery_sendLifecycle_types;
   "delivery/sends": typeof delivery_sends;
@@ -1188,6 +1196,7 @@ declare const fullApi: ApiFromModules<{
   "lib/authedFunctions": typeof lib_authedFunctions;
   "lib/automationConfigTypes": typeof lib_automationConfigTypes;
   "lib/autonomyRules": typeof lib_autonomyRules;
+  "lib/clock": typeof lib_clock;
   "lib/codeAgentGuard": typeof lib_codeAgentGuard;
   "lib/constants": typeof lib_constants;
   "lib/contactCountHelpers": typeof lib_contactCountHelpers;
@@ -1492,6 +1501,7 @@ declare const fullApi: ApiFromModules<{
   "schema/sendAssignments": typeof schema_sendAssignments;
   "schema/templates": typeof schema_templates;
   "schema/topics": typeof schema_topics;
+  "schema/transportOutcomes": typeof schema_transportOutcomes;
   "schema/webhooks": typeof schema_webhooks;
   seedAdmin: typeof seedAdmin;
   "seedDemo/index": typeof seedDemo_index;

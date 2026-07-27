@@ -4,7 +4,7 @@ import { v } from 'convex/values';
 import type { DatabaseReader, MutationCtx } from '../_generated/server';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { startOfDayUtc } from '../analytics/sendingReputation';
+import { startOfDayUtc } from '../lib/clock';
 import { UNSUBSCRIBE_HONOR_WINDOW_MS } from '@owlat/shared/deliverabilityPolicy';
 
 export {

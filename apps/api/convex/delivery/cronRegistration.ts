@@ -76,6 +76,17 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
+	// Transport-outcome buckets share the assignment retention horizon (90 days):
+	// they are the aggregate the ramp controller reads, and the experiment record
+	// they were derived from is gone by then anyway. Sharded per (org, cell, arm,
+	// day), so the sweep keeps the per-cell read set bounded.
+	crons.interval(
+		'cleanup transport outcomes',
+		{ hours: 6 },
+		internal.analytics.transportOutcomes.cleanupExpiredOutcomes,
+		{}
+	);
+
 	crons.interval(
 		'cleanup MTA IP readiness alerts',
 		{ hours: 24 },
