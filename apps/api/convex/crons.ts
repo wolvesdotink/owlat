@@ -1,7 +1,7 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
-import { registerSeedPlacementCrons } from './analytics/seedPlacementCrons';
+import { registerAnalyticsCrons } from './analytics/cronRegistration';
 
 const crons = cronJobs();
 
@@ -74,9 +74,9 @@ crons.interval(
 // Clean up old webhook delivery logs weekly
 // Removes logs older than 30 days to prevent unbounded growth
 crons.interval('cleanup webhook logs', { hours: 168 }, internal.webhooks.cleanup.cleanupOldLogs);
-// Seed-placement probe ledger housekeeping (retention + the never-dispatched
-// write-off). Registered from its own domain sibling.
-registerSeedPlacementCrons(crons);
+// Sending-reputation maintenance + the seed-placement probe ledger, registered
+// from the analytics domain sibling.
+registerAnalyticsCrons(crons);
 crons.interval(
 	'cleanup MTA campaign alert receipts',
 	{ hours: 24 },
@@ -195,15 +195,6 @@ crons.interval(
 	{}
 );
 
-// Clean up sending-reputation buckets older than 60 days every hour (both
-// scopes). Risk is derived on read (ADR-0042), so no periodic recalculation.
-crons.interval(
-	'cleanup sending reputation',
-	{ hours: 1 },
-	internal.analytics.sendingReputation.recalculateAll,
-	{}
-);
-
 crons.interval(
 	'cleanup delivery compliance telemetry',
 	{ hours: 1 },
@@ -235,35 +226,6 @@ crons.interval(
 	'check complete deliverability posture',
 	{ hours: 24 },
 	internal.delivery.checklistSweep.runDaily,
-	{}
-);
-
-// Evaluate the org reputation window hourly and auto-escalate Abuse status when
-// risk is high/critical. Moved off the per-send-event hot path (FIX 3a-1): the
-// wide org-window summarize runs once per cron tick instead of once per
-// recipient. Abuse status dedupes transitions, so the deliverability gate still
-// trips — just on the cron cadence rather than per event.
-crons.interval(
-	'evaluate reputation auto-enforce',
-	{ hours: 1 },
-	internal.analytics.sendingReputation.evaluateAutoEnforce,
-	{}
-);
-
-// Write one daily reputation snapshot (delivery/bounce/complaint rate + sent
-// count of the rolling window) so the Delivery health page has a history to
-// draw its 30-day delivery-rate trend from, and prune points older than ~90
-// days in the same run. `summarize` only derives the current window, so without
-// this cron there is no time series to chart.
-//
-// Anchored to a fixed 00:05 UTC rather than a 24h interval: `crons.interval`
-// re-anchors to deploy/edit time, so a redeploy that drifts across midnight UTC
-// could skip a calendar day and leave a gap in the trend. A fixed daily slot
-// keeps exactly one snapshot per UTC day.
-crons.daily(
-	'write delivery snapshot',
-	{ hourUTC: 0, minuteUTC: 5 },
-	internal.analytics.reputationSnapshots.writeDailySnapshot,
 	{}
 );
 
