@@ -94,11 +94,20 @@ export function classifyPort25(targets: readonly Port25TargetResult[]): {
 	if (targets.some((target) => target.outcome === 'connected')) {
 		return { status: 'open', reason: 'connected' };
 	}
-	const timedOut = targets.filter((target) => target.outcome === 'timeout');
-	if (timedOut.length === targets.length && targets.length >= 2) {
+	// Only targets that produced a NETWORK-LEVEL answer can testify about egress.
+	// An MX that would not resolve, or a probe that failed before it opened a
+	// socket, says nothing about port 25 — counting it would let one DNS hiccup
+	// downgrade a genuine provider block to "unknown".
+	const answered = targets.filter(
+		(target) => target.outcome !== 'resolution_error' && target.outcome !== 'error'
+	);
+	const timedOut = answered.filter((target) => target.outcome === 'timeout');
+	// Silence — not a refusal, not an unreachable network — is the signature of a
+	// provider block, and it has to be consistent across at least two operators.
+	if (timedOut.length >= 2 && timedOut.length === answered.length) {
 		return { status: 'blocked', reason: 'all_targets_timed_out' };
 	}
-	if (timedOut.length > 0 && targets.length < 2) {
+	if (timedOut.length > 0 && answered.length < 2) {
 		return { status: 'unknown', reason: 'insufficient_targets' };
 	}
 	return { status: 'unknown', reason: 'inconclusive' };
@@ -116,27 +125,33 @@ export async function probePort25Egress(
 		deadlineTimer = setTimeout(() => resolve('deadline'), deadlineMs);
 	});
 
-	const probes = Promise.all(
-		domains.map(async (domain): Promise<Port25TargetResult> => {
-			const targetStartedAt = deps.now();
-			try {
-				const result = await probeSmtpReachability([ip], deps.reachability, domain);
-				const observation = result.ips[0];
-				return {
-					domain,
-					outcome: observation?.status === 'ok' ? 'connected' : outcomeFor(observation?.reason),
-					...(result.targetMx ? { mx: result.targetMx } : {}),
-					elapsedMs: deps.now() - targetStartedAt,
-				};
-			} catch {
-				return { domain, outcome: 'error', elapsedMs: deps.now() - targetStartedAt };
-			}
-		})
-	);
+	const probes = domains.map(async (domain): Promise<Port25TargetResult> => {
+		const targetStartedAt = deps.now();
+		try {
+			const result = await probeSmtpReachability([ip], deps.reachability, domain);
+			const observation = result.ips[0];
+			return {
+				domain,
+				outcome: observation?.status === 'ok' ? 'connected' : outcomeFor(observation?.reason),
+				...(result.targetMx ? { mx: result.targetMx } : {}),
+				elapsedMs: deps.now() - targetStartedAt,
+			};
+		} catch {
+			return { domain, outcome: 'error', elapsedMs: deps.now() - targetStartedAt };
+		}
+	});
 
 	try {
-		const settled = await Promise.race([probes, deadline]);
-		if (settled === 'deadline') {
+		// Race each target against the deadline INDIVIDUALLY: one operator that
+		// hangs must not discard the answers the others already gave us. A probe
+		// where Gmail connected and Yahoo never replied is `open`, not `unknown`.
+		const settled = await Promise.all(
+			probes.map((probe) => Promise.race([probe, deadline] as const))
+		);
+		const answered = settled.filter(
+			(result): result is Port25TargetResult => result !== 'deadline'
+		);
+		if (answered.length === 0) {
 			return {
 				ip,
 				status: 'unknown',
@@ -145,12 +160,21 @@ export async function probePort25Egress(
 				targets: [],
 			};
 		}
-		const { status, reason } = classifyPort25(settled);
-		return { ip, status, reason, checkedAt: deps.now(), targets: settled };
+		const { status, reason } = classifyPort25(answered);
+		const hung = settled.length - answered.length;
+		return {
+			ip,
+			status,
+			// Say why an inconclusive verdict is inconclusive: some targets never
+			// answered at all.
+			reason: status === 'unknown' && hung > 0 ? 'probe_deadline_exceeded' : reason,
+			checkedAt: deps.now(),
+			targets: answered,
+		};
 	} finally {
 		if (deadlineTimer) clearTimeout(deadlineTimer);
 		// The in-flight probes are already bounded by the shipped connect timeout;
 		// swallow their late rejection so the deadline path never leaks one.
-		void probes.catch(() => undefined);
+		for (const probe of probes) void probe.catch(() => undefined);
 	}
 }
