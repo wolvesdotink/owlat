@@ -296,6 +296,145 @@ describe('sendAssignments — campaign write path', () => {
 		expect(byCell.get('campaign:microsoft')?.arm).toBe('own');
 	});
 
+	it.each(['dnsbl_unknown', 'dnsbl_partial'] as const)(
+		'records mta/own for a cell whose only fresh signal is the ADVISORY %s',
+		async (source) => {
+			// `dnsbl_unknown` / `dnsbl_partial` are advisory readings ("the
+			// blocklist lookup did not answer", "part of the pool is ejected").
+			// Shipped routing filters them out of the fallback reasons, so the
+			// worker keeps sending through the own MTA. The assignment record has
+			// to agree: one unfiltered reason here would stamp `reference` on a
+			// cell whose lookup merely timed out and silently corrupt every
+			// downstream comparison. One filter, both call sites
+			// (`route.ts freshFallbackReasons`).
+			const t = convexTest(schema, modules);
+			vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
+			vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+			const { campaignId, recipients } = await seedRecipients(t, ['a@gmail.com']);
+			await t.run(async (ctx) => {
+				await seedVerifiedSesRelay(ctx, 'example.com');
+				await ctx.db.insert('providerRoutes', {
+					messageType: 'campaign' as const,
+					strategy: 'single' as const,
+					providers: [
+						{ providerType: 'mta', isEnabled: true },
+						{ providerType: 'ses', isEnabled: true },
+					],
+					deliverabilityFallback: {
+						isEnabled: true,
+						relayProviderType: 'ses',
+						isWarmupOverflowEnabled: false,
+					},
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				});
+				// Fresh AND flagged active — only the source is advisory.
+				await ctx.db.insert('deliverabilityRouteStates', {
+					organizationId: ORG,
+					destinationProvider: 'gmail' as const,
+					isFallbackActive: true,
+					signals: [{ source, severity: 'warning' as const, observedAt: Date.now() }],
+					snapshotGeneratedAt: Date.now(),
+					expiresAt: Date.now() + 600_000,
+					updatedAt: Date.now(),
+				});
+			});
+
+			await t.mutation(
+				internal.delivery.enqueue.enqueueCampaignEmails,
+				campaignArgs(campaignId, recipients)
+			);
+
+			const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
+			expect(rows).toHaveLength(1);
+			expect(rows[0]?.cell).toBe('campaign:gmail');
+			expect(rows[0]?.transport).toBe('mta');
+			expect(rows[0]?.arm).toBe('own');
+		}
+	);
+
+	it('writes NO assignment row under the non-deterministic workload_split strategy', async () => {
+		// `workload_split` draws at random on every `select()` call. The cell
+		// seam resolves ONCE per cell, while the worker draws again independently
+		// per recipient at dispatch — so a single draw stamped on N rows would be
+		// wrong for roughly half the batch. A guessed arm is worse than a missing
+		// row, so the honest record is silence until P2-5's deterministic
+		// per-recipient hash replaces the draw. The sends must still enqueue.
+		const t = convexTest(schema, modules);
+		vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
+		vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+		const emails = Array.from({ length: 8 }, (_, index) => `w${index}@gmail.com`);
+		const { campaignId, recipients } = await seedRecipients(t, emails);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign' as const,
+				strategy: 'workload_split' as const,
+				providers: [
+					{ providerType: 'mta', isEnabled: true, weight: 50 },
+					{ providerType: 'ses', isEnabled: true, weight: 50 },
+				],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		await t.mutation(
+			internal.delivery.enqueue.enqueueCampaignEmails,
+			campaignArgs(campaignId, recipients)
+		);
+
+		expect(await t.run(async (ctx) => ctx.db.query('sendAssignments').collect())).toEqual([]);
+		// Silence in the experiment record, never a blocked send.
+		expect(enqueueCampaignAction).toHaveBeenCalledTimes(emails.length);
+	});
+
+	it('records mta/own when providerHealth marks the MTA down (health is NOT an input)', async () => {
+		// Deliberate divergence, pinned so a future "fix" cannot quietly undo it:
+		// the cell seam does not read `providerHealth`. That document is
+		// read-modify-written once per dispatch, and pulling it into a campaign
+		// enqueue transaction that also performs ~50 workpool enqueues would
+		// drive OCC retries on a transaction that must not fail. Health-driven
+		// failover is re-resolved AUTHORITATIVELY by the worker at dispatch; this
+		// row records the DELIVERABILITY decision for the cell, which health does
+		// not participate in.
+		const t = convexTest(schema, modules);
+		vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'key');
+		vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
+		const { campaignId, recipients } = await seedRecipients(t, ['a@gmail.com']);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('providerRoutes', {
+				messageType: 'campaign' as const,
+				strategy: 'priority_failover' as const,
+				providers: [
+					{ providerType: 'mta', isEnabled: true },
+					{ providerType: 'ses', isEnabled: true },
+				],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+			await ctx.db.insert('providerHealth', {
+				providerType: 'mta',
+				status: 'down' as const,
+				recentSuccesses: 0,
+				recentFailures: 100,
+				successRate: 0,
+				avgLatencyMs: 0,
+				lastCheckedAt: Date.now(),
+				consecutiveFailures: 100,
+			});
+		});
+
+		await t.mutation(
+			internal.delivery.enqueue.enqueueCampaignEmails,
+			campaignArgs(campaignId, recipients)
+		);
+
+		const rows = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.transport).toBe('mta');
+		expect(rows[0]?.arm).toBe('own');
+	});
+
 	it('lets an UNPARSEABLE recipient poison neither the cell nor the real recipient rows', async () => {
 		// Degenerate input: a garbage address in the same batch as a real one.
 		// The garbage address has no nameable cell, so it gets no row at all —
@@ -577,6 +716,65 @@ describe('sendAssignments — campaign write path', () => {
 			'utf8'
 		);
 		expect(relayVerification).not.toMatch(/\.collect\(\)/);
+
+		// READ-SET GUARD. The `.collect()` / `providerHealth` assertions above
+		// only rule out the two failures we already know about; they say nothing
+		// about the NEXT hot document someone reaches for. So enumerate the
+		// tables the write path reads and pin the whole set. Every entry is here
+		// because its write rate is bounded independently of send volume:
+		//
+		//   providerRoutes                — admin-written (route config screen)
+		//   deliverabilityRouteStates     — written by the ip-reputation sync cron
+		//   destinationProviderDomains    — per-delivery observations, but the
+		//                                   writer is COOLED to at most one patch
+		//                                   per domain per hour (see
+		//                                   deliverabilityRouting.ts
+		//                                   DOMAIN_CLASSIFICATION_REFRESH_MS)
+		//   domains / sendingDomainSesIdentities — verification-written
+		//   sendAssignments               — the transaction's own table (the
+		//                                   matches come from this module's read
+		//                                   query and its retention sweep)
+		//
+		// Adding a table to the enqueue read set now fails here until someone
+		// states why its write rate is not proportional to sends.
+		const readSetSources = await Promise.all(
+			[
+				'../sendAssignments.ts',
+				'../../lib/sendProviders/destinationProvider.ts',
+				'../../lib/sendProviders/relayDomainVerification.ts',
+			].map(async (rel) => await fs.readFile(new URL(rel, import.meta.url), 'utf8'))
+		);
+		const seamSource = [
+			'resolveCellRouteFromDb',
+			'readySendProviderKinds',
+			'deliverabilityRouteStatesFor',
+			'freshFallbackReasons',
+			'isGlobalBreakerOpenState',
+			'relayDomainVerifiedFor',
+		]
+			.map((fn) => topLevelFunctionBody(routeSource, fn))
+			.join('\n');
+		const readTables = new Set<string>();
+		for (const source of [...readSetSources, seamSource]) {
+			for (const match of source.matchAll(/\.query\('([A-Za-z]+)'\)/g)) {
+				const table = match[1];
+				if (table !== undefined) readTables.add(table);
+			}
+		}
+		expect([...readTables].sort()).toEqual([
+			'deliverabilityRouteStates',
+			'destinationProviderDomains',
+			'domains',
+			'providerRoutes',
+			'sendAssignments',
+			'sendingDomainSesIdentities',
+		]);
+		// And the one entry above whose writer is send-driven must stay cooled.
+		const routingSource = await fs.readFile(
+			new URL('../deliverabilityRouting.ts', import.meta.url),
+			'utf8'
+		);
+		expect(routingSource).toMatch(/DOMAIN_CLASSIFICATION_REFRESH_MS/);
 	});
 
 	it('resolves the route ONCE per distinct destination provider, not per recipient', async () => {
