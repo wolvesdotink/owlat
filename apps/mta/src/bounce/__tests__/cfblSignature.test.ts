@@ -13,9 +13,31 @@
  * on the environment.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+
+/**
+ * Count every HMAC the module under test computes. Verification probes a range
+ * of time windows, so its COST is a security property (a junk-report flood must
+ * not become a CPU amplifier) and the only way to pin a cost is to count.
+ */
+const { hmacCalls } = vi.hoisted(() => ({ hmacCalls: { count: 0 } }));
+
+vi.mock('crypto', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('crypto')>();
+	return {
+		...actual,
+		default: actual,
+		createHmac: (...args: Parameters<typeof actual.createHmac>) => {
+			hmacCalls.count += 1;
+			return actual.createHmac(...args);
+		},
+	};
+});
+
 import {
+	ACCEPTED_FUTURE_WINDOWS,
 	ACCEPTED_PAST_WINDOWS,
+	MAX_HMACS_PER_TOKEN_PARSE,
 	buildCfblAddress,
 	buildCfblHeaders,
 	buildCfblToken,
@@ -167,7 +189,7 @@ describe('P2-7 (b) — CFBL signature', () => {
 					key: '',
 					now: NOW,
 				})
-			).toEqual({});
+			).toEqual({ outcome: 'no_key', headers: {} });
 		});
 
 		it('builds nothing for an empty or implausibly long message id', () => {
@@ -187,6 +209,46 @@ describe('P2-7 (b) — CFBL signature', () => {
 				ok: true,
 				messageId: 'send_abc123',
 			});
+		});
+	});
+
+	describe('verification cost is BOUNDED (the CPU-amplifier defence)', () => {
+		/** The oldest window verification will probe at all, in whole days back. */
+		const oldestProbedWindow = MAX_HMACS_PER_TOKEN_PARSE - ACCEPTED_FUTURE_WINDOWS - 1;
+
+		it('costs exactly MAX_HMACS_PER_TOKEN_PARSE on a maximally-old token', () => {
+			// The worst case for a token we really signed: it matches only on the
+			// very last window the expiry probe reaches, so every probe runs.
+			const address = buildCfblAddress('send_abc123', HOST, KEY, NOW - oldestProbedWindow * DAY)!;
+
+			hmacCalls.count = 0;
+			expect(parseCfblAddress(address, KEY, NOW)).toEqual({ ok: false, reason: 'expired' });
+
+			// Not "at most": the constant must be the ACTUAL bound, or its docstring
+			// is describing a cost nobody measured.
+			expect(hmacCalls.count).toBe(MAX_HMACS_PER_TOKEN_PARSE);
+		});
+
+		it('a forged MAC cannot cost more than the same bound', () => {
+			const forged = `fbl+${Buffer.from('send_abc123').toString('base64url')}+AAAAAAAAAAAAAA@${HOST}`;
+
+			hmacCalls.count = 0;
+			expect(parseCfblAddress(forged, KEY, NOW)).toEqual({ ok: false, reason: 'bad_signature' });
+
+			// A flood of junk is the reachable case: an attacker picks the MAC, so
+			// this is the cost they can force per report.
+			expect(hmacCalls.count).toBe(MAX_HMACS_PER_TOKEN_PARSE);
+		});
+
+		it('a current-window token costs one HMAC — the probe is lazy, not eager', () => {
+			const address = buildCfblAddress('send_abc123', HOST, KEY, NOW)!;
+
+			hmacCalls.count = 0;
+			expect(parseCfblAddress(address, KEY, NOW)).toEqual({ ok: true, messageId: 'send_abc123' });
+
+			// Windows are probed newest-first from the future skew window, so a
+			// legitimate fresh report costs two, not ninety-two.
+			expect(hmacCalls.count).toBe(ACCEPTED_FUTURE_WINDOWS + 1);
 		});
 	});
 

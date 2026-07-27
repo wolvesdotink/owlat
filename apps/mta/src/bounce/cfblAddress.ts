@@ -251,15 +251,40 @@ export interface CfblHeaderInput {
 	readonly now?: number | undefined;
 }
 
+/** Why a send did or did not carry the RFC 9477 pair. A bounded metric label. */
+export type CfblEmissionOutcome =
+	/** The pair was built and will ride the message. */
+	| 'emitted'
+	/** §3.1.3: the CFBL host is not the From domain or a child of it. */
+	| 'host_unaligned'
+	/** No `BOUNCE_VERP_KEY`: an unsigned complaint handle is worse than none. */
+	| 'no_key'
+	/** No return-path host, or a message id too long to encode. */
+	| 'no_address';
+
+/** What {@link buildCfblHeaders} produced, and why. */
+export interface CfblHeaderResult {
+	/** Bounded outcome for the emission counter. */
+	readonly outcome: CfblEmissionOutcome;
+	/** The headers to emit — EMPTY for every outcome other than `emitted`. */
+	readonly headers: Record<string, string>;
+}
+
 /**
  * Build the outbound RFC 9477 header set for one send.
  *
- * Returns an EMPTY record when the header cannot be emitted safely: no signing
- * key, no return-path host, an implausible message id, or a CFBL host that is
- * not aligned with the From domain (see {@link isCfblHostAlignedWithFrom}).
- * Emitting the header is unconditional and free otherwise — it depends on no
- * third-party account, no enrollment and no credential, so its absence is never
- * an error state and its presence never blocks a send.
+ * Returns an EMPTY header record — never an error — when the pair cannot be
+ * emitted safely: no signing key, no return-path host, an implausible message
+ * id, or a CFBL host that is not aligned with the From domain (see
+ * {@link isCfblHostAlignedWithFrom}). Emitting requires no third-party account,
+ * no enrollment and no credential, so its absence is never an error state and
+ * its presence never blocks a send.
+ *
+ * The `outcome` exists because SILENCE IS THE DEFAULT BRANCH: a deployment that
+ * has not registered a per-domain return-path host emits nothing, and a feature
+ * that is inert for most installs must at least be COUNTABLE. The caller feeds
+ * it to `mta_cfbl_emissions_total` so "CFBL is off for this domain, and why" is
+ * a bounded counter an operator can read. A counter is not a warning or a nag.
  *
  * `CFBL-Feedback-ID` carries the SAME signed token as the address local-part.
  * RFC 9477 §4.2 asks a report generator to copy it into the ARF's `Feedback-ID`
@@ -274,15 +299,21 @@ export interface CfblHeaderInput {
  * one a provider must ignore, and one an intermediary could rewrite to redirect
  * complaints.
  */
-export function buildCfblHeaders(input: CfblHeaderInput): Record<string, string> {
-	if (!isCfblHostAlignedWithFrom(input.cfblHost, input.fromDomain)) return {};
+export function buildCfblHeaders(input: CfblHeaderInput): CfblHeaderResult {
+	if (!isCfblHostAlignedWithFrom(input.cfblHost, input.fromDomain)) {
+		return { outcome: 'host_unaligned', headers: {} };
+	}
+	if (!resolveCfblKey(input.key)) return { outcome: 'no_key', headers: {} };
 	const address = buildCfblAddress(input.messageId, input.cfblHost, input.key, input.now);
-	if (!address) return {};
+	if (!address) return { outcome: 'no_address', headers: {} };
 	// Reuse the address's local-part suffix rather than signing twice.
 	const token = address.slice(CFBL_LOCAL_PREFIX.length + 1, address.lastIndexOf('@'));
 	return {
-		[CFBL_ADDRESS_HEADER]: buildCfblHeaderValue(address),
-		[CFBL_FEEDBACK_ID_HEADER]: token,
+		outcome: 'emitted',
+		headers: {
+			[CFBL_ADDRESS_HEADER]: buildCfblHeaderValue(address),
+			[CFBL_FEEDBACK_ID_HEADER]: token,
+		},
 	};
 }
 

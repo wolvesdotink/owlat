@@ -34,6 +34,7 @@ import {
 import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull, strictestOutboundTlsMode } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
+import { cfblEmissionsTotal } from '../monitoring/collector.js';
 import { pool, PoolOverCapError } from './connectionPool.js';
 import { prepareDaneAttempt, type DanePlan } from './daneVerify.js';
 import { buildAllMxFailedResult } from './mxBounce.js';
@@ -324,11 +325,18 @@ export async function sendToMx(
 	// and we sign once. So the pair is emitted only for a sending domain that has
 	// registered its own return-path host; on the shared global host we stay
 	// silent rather than publish a header every conforming provider ignores.
-	const feedbackHeaders = buildCfblHeaders({
+	//
+	// Silence is the DEFAULT branch (most domains use the shared global host), so
+	// the outcome is counted: `mta_cfbl_emissions_total{outcome="host_unaligned"}`
+	// is how an operator sees that CFBL is off for a domain, and why. Counting is
+	// not warning — nothing here can fail a send.
+	const cfbl = buildCfblHeaders({
 		messageId: job.messageId,
 		cfblHost: feedbackHost,
 		fromDomain: extractDomainOrNull(job.from) ?? '',
 	});
+	cfblEmissionsTotal.inc({ outcome: cfbl.outcome });
+	const feedbackHeaders = cfbl.headers;
 
 	// Compose + sign ONCE per job (W2/W3). The exact wire bytes are built a single
 	// time and the SAME signed bytes are retried across every MX host and TLS

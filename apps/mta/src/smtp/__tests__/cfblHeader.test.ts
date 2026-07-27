@@ -87,6 +87,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 import { sendToMx } from '../sender.js';
 import { getDkimOptions } from '../dkim.js';
 import { buildCfblHeaders, parseCfblAddress, parseCfblToken } from '../../bounce/cfblAddress.js';
+import { cfblEmissionsTotal } from '../../monitoring/collector.js';
 import * as dkimStore from '../dkimStore.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
@@ -167,6 +168,14 @@ function foldedHeaderValue(name: string): string | undefined {
 	return match?.[1]?.replace(/\r?\n[ \t]+/g, ' ').trim();
 }
 
+/** Total value of the emission counter for one bounded outcome. */
+async function emissionCount(outcome: string): Promise<number> {
+	const metric = await cfblEmissionsTotal.get();
+	return metric.values
+		.filter((value) => value.labels['outcome'] === outcome)
+		.reduce((sum, value) => sum + value.value, 0);
+}
+
 /** How many CFBL-Address field lines the wire actually carries. */
 function cfblAddressLines(): string[] {
 	return wireBytes()
@@ -198,6 +207,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 			response: { code: 250, text: '2.0.0 OK', lines: ['2.0.0 OK'] },
 		});
 		process.env['BOUNCE_VERP_KEY'] = SIGNING_KEY;
+		cfblEmissionsTotal.reset();
 		// Unsigned by default; the §3.1.4 block below swaps in a real RSA key.
 		vi.mocked(getDkimOptions).mockResolvedValue(undefined);
 	});
@@ -293,7 +303,38 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 					fromDomain: FROM_DOMAIN,
 					key: SIGNING_KEY,
 				})
-			).toEqual({});
+			).toEqual({ outcome: 'host_unaligned', headers: {} });
+		});
+
+		it('COUNTS the silent branch so an operator can see that CFBL is off, and why', async () => {
+			// Silence is the DEFAULT branch — the aligned host is opt-in admin setup
+			// — so an uncounted silence is a feature that is invisibly inert. A
+			// counter is not an error, a warning or a setup nag (D2): the send below
+			// succeeds either way, nothing is surfaced to the operator unless they
+			// go looking at /metrics.
+			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+			expect(await emissionCount('host_unaligned')).toBe(1);
+			expect(await emissionCount('emitted')).toBe(0);
+
+			await alignReturnPath();
+			await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+			expect(await emissionCount('emitted')).toBe(1);
+			expect(await emissionCount('host_unaligned')).toBe(1);
+		});
+
+		it('counts a missing signing key distinctly from an unaligned host', async () => {
+			await alignReturnPath();
+			delete process.env['BOUNCE_VERP_KEY'];
+
+			const result = await sendToMx(createJob(), createConfig(), redis, '10.0.0.1');
+
+			// An unsigned complaint handle is worse than none, so nothing is emitted
+			// — but the reason is distinguishable from the alignment branch, and the
+			// send is still delivered.
+			expect(result.success).toBe(true);
+			expect(headerLine('CFBL-Address')).toBeUndefined();
+			expect(await emissionCount('no_key')).toBe(1);
+			expect(await emissionCount('host_unaligned')).toBe(0);
 		});
 	});
 
@@ -522,7 +563,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 			});
 			// Over the RFC 5321 320-octet path cap → no header at all rather than a
 			// truncated (and therefore unverifiable) address.
-			expect(headers).toEqual({});
+			expect(headers).toEqual({ outcome: 'no_address', headers: {} });
 
 			const long = buildCfblHeaders({
 				messageId: 'm'.repeat(120),
@@ -530,7 +571,7 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 				fromDomain: 'bounces.example.com',
 				key: SIGNING_KEY,
 			});
-			const value = long['CFBL-Address'];
+			const value = long.headers['CFBL-Address'];
 			expect(value).toBeDefined();
 			expect(Buffer.byteLength(`CFBL-Address: ${value!}`, 'utf-8')).toBeLessThanOrEqual(
 				MAX_HEADER_LINE_OCTETS

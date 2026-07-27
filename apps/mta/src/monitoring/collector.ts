@@ -121,6 +121,24 @@ export const cfblAttributionsTotal = new Counter({
 });
 
 /**
+ * Outbound RFC 9477 emission outcomes, by bounded reason (`emitted`,
+ * `host_unaligned`, `no_key`, `no_address`).
+ *
+ * The §3.1.3 alignment rule makes SILENCE the default branch: a sending domain
+ * that has not registered its own return-path host carries no CFBL pair at all.
+ * That is a correct, D2-clean outcome — no error, no warning, no setup nag — but
+ * an invisible one, so it is counted here. `host_unaligned` dominating this
+ * counter is how an operator learns that CFBL is off for their domains and what
+ * would turn it on.
+ */
+export const cfblEmissionsTotal = new Counter({
+	name: 'mta_cfbl_emissions_total',
+	help: 'Outbound RFC 9477 CFBL header emissions, by outcome',
+	labelNames: ['outcome'] as const,
+	registers: [registry],
+});
+
+/**
  * CFBL signed-address verification REJECTIONS, by bounded reason
  * (`bad_signature`, `unsigned`, `expired`, `malformed_payload`, `oversized`,
  * `unverifiable`). The header invites unauthenticated parties to mail us, so a

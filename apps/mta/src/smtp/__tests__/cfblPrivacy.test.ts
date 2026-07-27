@@ -192,7 +192,7 @@ describe('P2-7 (e) — CFBL header privacy', () => {
 			fromDomain: 'acme.com',
 			key: SIGNING_KEY,
 		});
-		const token = built['CFBL-Feedback-ID']!;
+		const token = built.headers['CFBL-Feedback-ID']!;
 		const encodedId = token.split('+')[0]!;
 
 		expect(Buffer.from(encodedId, 'base64url').toString('utf-8')).toBe('send_abc123');
