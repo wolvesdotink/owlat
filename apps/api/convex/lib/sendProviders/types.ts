@@ -12,6 +12,7 @@
 
 import { getOptional } from '../env';
 import { isSendProviderKind, type SendProviderKind } from './catalog';
+import type { SendTransportId, SendTransportRecord } from './transports';
 
 /**
  * The provider kinds, as a runtime tuple so both the `SendProviderKind` type
@@ -196,11 +197,22 @@ export type EmailSendAttempt =
 
 // ─── Dispatch helper result ────────────────────────────────────────────────
 
+/**
+ * The extras union the dispatch boundary accepts. Dispatch is keyed by a
+ * transport id (a string), so it cannot narrow extras to the kind's own shape
+ * the way the old kind-keyed generic did — call sites pin their extras with
+ * `satisfies MtaExtras` / `satisfies ResendExtras` instead, which is checked at
+ * the site that actually builds the object.
+ */
+export type SendProviderExtras = ExtrasFor<SendProviderKind>;
+
 export interface DispatchResult {
 	/** Final attempt outcome. */
 	result: EmailSendAttempt;
-	/** Which provider was used (for downstream observability). */
+	/** Which provider kind was used (for downstream observability). */
 	providerType: SendProviderKind;
+	/** Which configured instance of that kind was used. */
+	transportId: SendTransportId;
 	/** Total elapsed across all attempts. */
 	latencyMs: number;
 	/** Number of attempts including retries. */
@@ -227,8 +239,17 @@ export interface SendProviderModule<K extends SendProviderKind> {
 	 * provider's message id, or failure with the raw error message and
 	 * the module's typed `EmailErrorCode`. The dispatch helper decides
 	 * retry based on the code.
+	 *
+	 * `transport` names WHICH configured instance of this kind to send through;
+	 * the adapter resolves its own credentials from it (see `../transportEnv.ts`).
+	 * The record itself carries no secrets, so it is safe to pass around — the
+	 * secrets stay inside the adapter.
 	 */
-	sendEmail(params: EmailSendParams, extras?: ExtrasFor<K>): Promise<EmailSendAttempt>;
+	sendEmail(
+		transport: SendTransportRecord,
+		params: EmailSendParams,
+		extras?: ExtrasFor<K>
+	): Promise<EmailSendAttempt>;
 
 	/**
 	 * Per-provider error-response parsing. The dispatch helper passes the raw

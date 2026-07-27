@@ -27,7 +27,11 @@ const CORE_SEND_PROVIDER_CATALOG = [
 		kind: 'ses',
 		label: 'Amazon SES',
 		retryDelays: [1_000, 5_000, 30_000],
-		requiredEnvVars: ['AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
+		// Every variable the adapter requires, region included: `ses/index.ts`
+		// reads AWS_SES_REGION through `transportEnvRequired`, so omitting it here
+		// would let a named instance resolve as configured and then fail on every
+		// send.
+		requiredEnvVars: ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
 	},
 	{
 		kind: 'resend',

@@ -488,6 +488,18 @@ crons.interval(
 	{ limit: 20 }
 );
 
+// Re-project stale contact engagement scores so a score decays on the clock,
+// not only when the contact acts. Bounded per tick IN DOCUMENTS (each contact
+// costs up to 500 activity reads), which is why this is hourly rather than
+// nightly: capacity comes from ticks, and `BACKFILL_CONTACTS_PER_HOUR` states
+// the resulting ceiling.
+crons.interval(
+	'backfill contact engagement scores',
+	{ hours: 1 },
+	internal.analytics.engagementScoreSync.backfillEngagementScores,
+	{}
+);
+
 // Append every bundled plugin cron (generated catalog) after the core crons,
 // each wrapped in the host runtime so flag/grant/env are rechecked per tick and
 // every run is attributed to its plugin. No-op when no plugin contributes crons.

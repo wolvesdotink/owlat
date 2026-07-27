@@ -48,8 +48,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isPostmasterEvent(event: MtaWebhookEvent): event is GooglePostmasterWebhookEvent {
-	return event.event === 'postmaster.authorize_domain' || event.event === 'postmaster.stats';
+	return (
+		event.event === 'postmaster.authorize_domain' ||
+		event.event === 'postmaster.stats' ||
+		event.event === 'postmaster.compliance'
+	);
 }
+
+const POSTMASTER_ACKNOWLEDGEMENT_KIND = {
+	'postmaster.authorize_domain': 'internal.postmaster_authorize_domain',
+	'postmaster.stats': 'internal.postmaster_stats',
+	'postmaster.compliance': 'internal.postmaster_compliance',
+} as const;
+
+type PostmasterAcknowledgementKind =
+	(typeof POSTMASTER_ACKNOWLEDGEMENT_KIND)[keyof typeof POSTMASTER_ACKNOWLEDGEMENT_KIND];
 
 async function deliverWithRetries<T>(
 	event: MtaWebhookEvent,
@@ -142,7 +155,7 @@ async function deliverWithRetries<T>(
 
 async function decodePostmasterAcknowledgement(
 	response: Response,
-	expectedKind: 'internal.postmaster_authorize_domain' | 'internal.postmaster_stats'
+	expectedKind: PostmasterAcknowledgementKind
 ): Promise<Exclude<PostmasterAcknowledgement, { disposition: 'delivery_failed' }> | null> {
 	const body = await response.text();
 	if (body.length > 1_024) return null;
@@ -178,10 +191,7 @@ export async function notifyPostmasterConvex(
 	config: MtaConfig,
 	options: NotifyConvexOptions = {}
 ): Promise<PostmasterAcknowledgement> {
-	const expectedKind =
-		event.event === 'postmaster.authorize_domain'
-			? 'internal.postmaster_authorize_domain'
-			: 'internal.postmaster_stats';
+	const expectedKind = POSTMASTER_ACKNOWLEDGEMENT_KIND[event.event];
 	const result = await deliverWithRetries(event, config, options, (response) =>
 		decodePostmasterAcknowledgement(response, expectedKind)
 	);

@@ -7,7 +7,14 @@
  * active openers/clickers first maximizes positive signals.
  *
  * This is a pure mapping function with no Redis state.
+ *
+ * The cut points themselves live in `@owlat/shared/engagementBands` because the
+ * producer (`apps/api/convex/analytics/engagementScore.ts`) calibrates its curve
+ * against exactly these three numbers. Both sides import the one definition, so
+ * moving a cut cannot silently re-band one half of the system.
  */
+
+import { ENGAGEMENT_BAND_CUTS } from '@owlat/shared/engagementBands';
 
 /**
  * Priority bands: lower number = higher priority (sent first)
@@ -28,9 +35,9 @@ export const PRIORITY_BANDS = {
  */
 export function mapToPriority(score?: number): number {
 	if (score === undefined || score === null) return PRIORITY_BANDS.DEFAULT;
-	if (score >= 80) return PRIORITY_BANDS.HIGH;
-	if (score >= 50) return PRIORITY_BANDS.MEDIUM;
-	if (score >= 20) return PRIORITY_BANDS.LOW;
+	if (score >= ENGAGEMENT_BAND_CUTS.high) return PRIORITY_BANDS.HIGH;
+	if (score >= ENGAGEMENT_BAND_CUTS.medium) return PRIORITY_BANDS.MEDIUM;
+	if (score >= ENGAGEMENT_BAND_CUTS.low) return PRIORITY_BANDS.LOW;
 	return PRIORITY_BANDS.COLD;
 }
 

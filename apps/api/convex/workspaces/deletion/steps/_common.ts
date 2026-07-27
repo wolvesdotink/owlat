@@ -40,6 +40,7 @@ export type OrganizationDeletionTable =
 	| 'gmailDomainVolumeRollups'
 	| 'gmailDomainVolumeRollupJobs'
 	| 'googlePostmasterStats'
+	| 'googlePostmasterCompliance'
 	| 'unsubscribeLatencyBuckets'
 	| 'threadPresence'
 	| 'threadReads'
@@ -206,6 +207,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('gmailDomainVolumeRollups'),
 	v.literal('gmailDomainVolumeRollupJobs'),
 	v.literal('googlePostmasterStats'),
+	v.literal('googlePostmasterCompliance'),
 	v.literal('unsubscribeLatencyBuckets'),
 	v.literal('threadPresence'),
 	v.literal('threadReads'),

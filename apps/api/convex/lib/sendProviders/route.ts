@@ -24,7 +24,11 @@ import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { getOptional } from '../env';
 import { extractDomainOrNull } from '@owlat/shared';
-import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import {
+	isActionableDeliverabilitySignalSource,
+	type ActionableDeliverabilitySignalSource,
+	type DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
 import { resolveDestinationProvider } from './destinationProvider';
 import { relayDomainVerified } from './relayDomainVerification';
 import { getSingletonOrganizationId } from '../sessionOrganization';
@@ -152,17 +156,30 @@ async function deliverabilityRouteStatesFor(
 	]);
 }
 
-/** Fallback reasons carried by the FRESH active route states, in order. */
+/**
+ * Fallback reasons carried by the FRESH active route states, in order.
+ *
+ * Advisory readings ("blocklist lookup unavailable", "part of the pool is
+ * ejected") are recorded on the state row for measurement, but they are not
+ * routing reasons and must never appear as the cause of a relay fallback —
+ * nor as the cause of a `reference` arm on a send assignment. One filter,
+ * both call sites.
+ */
 function freshFallbackReasons(
 	states: ReadonlyArray<Doc<'deliverabilityRouteStates'> | null>,
 	now: number
-) {
+): ActionableDeliverabilitySignalSource[] {
 	return states
 		.filter(
 			(state) =>
 				state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
 		)
-		.flatMap((state) => state?.signals.map((signal) => signal.source) ?? []);
+		.flatMap(
+			(state) =>
+				state?.signals
+					.map((signal) => signal.source)
+					.filter(isActionableDeliverabilitySignalSource) ?? []
+		);
 }
 
 /** True when the org-wide state carries a fresh `breaker_open` signal. */

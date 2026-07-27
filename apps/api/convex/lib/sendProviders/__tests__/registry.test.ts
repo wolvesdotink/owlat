@@ -38,7 +38,7 @@ describe('Send provider registry', () => {
 				kind: 'ses',
 				label: 'Amazon SES',
 				retryDelays: [1_000, 5_000, 30_000],
-				requiredEnvVars: ['AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
+				requiredEnvVars: ['AWS_SES_REGION', 'AWS_SES_ACCESS_KEY_ID', 'AWS_SES_SECRET_ACCESS_KEY'],
 			},
 			{
 				kind: 'resend',

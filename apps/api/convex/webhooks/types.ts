@@ -8,6 +8,10 @@ import type { Validator } from 'convex/values';
 import type { InboundEmailMessage } from '@owlat/channels';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DeliveryDomain } from '@owlat/shared';
+import type {
+	PostmasterComplianceCheck,
+	PostmasterDeliveryError,
+} from '@owlat/shared/mtaWebhookEvent';
 import type { WorkerEnvelopeInput, WorkerRetryState } from '../delivery/workerEnvelope';
 
 // ─── Inbound side ──────────────────────────────────────────────────────────
@@ -185,6 +189,22 @@ export type InboundEvent =
 			domain: string;
 			date: string;
 			userReportedSpamRatio: number;
+			// Google withholds a metric on days a domain had too little traffic,
+			// so every widened v2 field is optional by design.
+			spfSuccessRatio?: number;
+			dkimSuccessRatio?: number;
+			dmarcSuccessRatio?: number;
+			deliveryErrorRatio?: number;
+			deliveryErrors?: PostmasterDeliveryError[];
+			fetchedAt: number;
+	  }
+	| {
+			// The v2 Compliance Status verdict for one domain/day. Additive-only:
+			// an operator with no Google account simply never produces one.
+			kind: 'internal.postmaster_compliance';
+			domain: string;
+			date: string;
+			checks: PostmasterComplianceCheck[];
 			fetchedAt: number;
 	  }
 	| {
@@ -210,6 +230,37 @@ export type InboundEvent =
 	  };
 
 export type InboundEventKind = InboundEvent['kind'];
+
+/** The five optional Postmaster metrics that always travel together. */
+export interface PostmasterStatsMetrics {
+	spfSuccessRatio?: number;
+	dkimSuccessRatio?: number;
+	dmarcSuccessRatio?: number;
+	deliveryErrorRatio?: number;
+	deliveryErrors?: PostmasterDeliveryError[];
+}
+
+/**
+ * Carry only the widened Postmaster metrics Google actually reported.
+ *
+ * Google withholds a metric on a day a domain had too little traffic, and an
+ * absent metric must stay absent rather than become an explicit `undefined`
+ * that a Convex validator would reject. One definition, used by the adapter
+ * that reads the wire event and by the dispatcher that calls the ingest.
+ */
+export function postmasterStatsMetrics(source: PostmasterStatsMetrics): PostmasterStatsMetrics {
+	return {
+		...(source.spfSuccessRatio !== undefined ? { spfSuccessRatio: source.spfSuccessRatio } : {}),
+		...(source.dkimSuccessRatio !== undefined ? { dkimSuccessRatio: source.dkimSuccessRatio } : {}),
+		...(source.dmarcSuccessRatio !== undefined
+			? { dmarcSuccessRatio: source.dmarcSuccessRatio }
+			: {}),
+		...(source.deliveryErrorRatio !== undefined
+			? { deliveryErrorRatio: source.deliveryErrorRatio }
+			: {}),
+		...(source.deliveryErrors !== undefined ? { deliveryErrors: source.deliveryErrors } : {}),
+	};
+}
 
 export type InboundEventOf<K extends InboundEventKind> = Extract<InboundEvent, { kind: K }>;
 
