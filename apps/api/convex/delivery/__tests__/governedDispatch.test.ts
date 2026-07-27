@@ -128,6 +128,68 @@ describe('dispatchGovernedEmail', () => {
 		});
 	});
 
+	// G-02 — the envelope's engagement score is stamped onto MtaExtras. The
+	// exact-match assertion above is the companion regression: with NO score on
+	// the request the extras object is byte-for-byte what it always was.
+	describe('engagementScore on MtaExtras', () => {
+		async function extrasForScore(engagementScore: number | undefined) {
+			runMutation
+				.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })
+				.mockResolvedValueOnce({ ok: true });
+			resolveLastMileRouting.mockResolvedValue({
+				kind: 'ready',
+				providerKind: 'mta',
+				route: { ipPool: 'campaign' },
+				organizationId: 'org-1',
+				routingLease: 'lease-1',
+			});
+			sendProviderDispatch.mockResolvedValue({
+				result: { success: true, id: 'mta-1' },
+				providerType: 'mta',
+				latencyMs: 4,
+				attempts: 1,
+			});
+
+			await dispatchGovernedEmail(ctx, { ...baseRequest, engagementScore });
+
+			return sendProviderDispatch.mock.calls[0]?.[3] as Record<string, unknown>;
+		}
+
+		it('stamps a scored recipient onto the extras', async () => {
+			expect((await extrasForScore(87))['engagementScore']).toBe(87);
+		});
+
+		it('keeps a 0 ("cold") score — it is a real band, not an absence', async () => {
+			const extras = await extrasForScore(0);
+			expect(extras['engagementScore']).toBe(0);
+			expect('engagementScore' in extras).toBe(true);
+		});
+
+		it('OMITS the key for an unscored recipient (not 0, not null)', async () => {
+			const extras = await extrasForScore(undefined);
+			expect('engagementScore' in extras).toBe(false);
+			// Every shipped extra survives untouched.
+			expect(extras).toMatchObject({
+				messageId: 'send_send-row-1',
+				workAttemptId: expect.any(String),
+				routingReentryToken: 'reentry-token',
+				organizationId: 'org-1',
+				messageType: 'campaign',
+				deliveryDomain: 'production',
+				routingLease: 'lease-1',
+				allowWarmupOverflow: false,
+				ipPool: 'campaign',
+			});
+		});
+
+		it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 101])(
+			'treats the hostile score %p as unknown rather than clamping it',
+			async (score) => {
+				expect('engagementScore' in (await extrasForScore(score))).toBe(false);
+			}
+		);
+	});
+
 	it('preserves the original retry key when the provider rejects a stale lease', async () => {
 		runMutation
 			.mockResolvedValueOnce({ token: 'reentry-token', expiresAt: Date.now() })

@@ -290,6 +290,10 @@ export const sendSingleEmail = internalAction({
 			providerType: envelopeInput.providerType,
 			ipPool: envelopeInput.ipPool,
 			organizationId: envelopeInput.organizationId,
+			// Producer-supplied recipient engagement score. Rides the envelope so
+			// dispatch never point-reads a contact per send; absent for unscored
+			// contacts and for sends with no contact record at all.
+			engagementScore: envelopeInput.engagementScore,
 			sendRef:
 				envelopeInput.kind === 'campaign' && envelopeInput.emailSendId
 					? { kind: 'campaign', id: envelopeInput.emailSendId }
