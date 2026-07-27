@@ -12,6 +12,7 @@ import { internalMutation, type MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
 import { getUserIdFromSession } from '../lib/sessionOrganization';
+import { observationVerdict } from './observationFreshness';
 import {
 	derivePostmasterCards,
 	type PostmasterCard,
@@ -113,17 +114,6 @@ function isValidObservation(
 		fetchedAt <= now + FETCHED_AT_FUTURE_TOLERANCE_MS &&
 		isCanonicalDomain(domain)
 	);
-}
-
-/** What to do with an observation given what is already stored for its day. */
-type ObservationVerdict = 'stale' | 'replayed' | 'write';
-
-function observationVerdict(
-	storedFetchedAt: number | undefined,
-	fetchedAt: number
-): ObservationVerdict {
-	if (storedFetchedAt === undefined || storedFetchedAt < fetchedAt) return 'write';
-	return storedFetchedAt === fetchedAt ? 'replayed' : 'stale';
 }
 
 const INVALID_OBSERVATION = {
