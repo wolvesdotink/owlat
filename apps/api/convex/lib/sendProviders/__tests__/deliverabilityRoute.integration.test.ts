@@ -394,6 +394,20 @@ describe('DB-backed deliverability route verification', () => {
 		});
 	});
 
+	it('routes a whole-cell share on a HEALTHY row straight to the own MTA', async () => {
+		const t = await seedRouteState({ withSesIdentity: true });
+		await patchShare(t, 'microsoft', 1);
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@outlook.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({ providerType: 'mta', source: 'org_config' });
+	});
+
 	it('relays a partial share as a WHOLE cell today, and never on the share alone', async () => {
 		// Pinning the pre-controller semantics explicitly so P3-2's per-message
 		// split has to change an assertion rather than silently reinterpret the
