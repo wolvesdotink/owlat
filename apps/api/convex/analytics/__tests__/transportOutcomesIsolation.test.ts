@@ -17,7 +17,7 @@ import {
 	recordTransportOutcomeForSend,
 	summarizeTransportOutcomes,
 } from '../transportOutcomes';
-import { startOfDayUtc } from '../sendingReputation';
+import { startOfDayUtc } from '../../lib/clock';
 import { modules } from './testModules';
 import {
 	bucketRow,

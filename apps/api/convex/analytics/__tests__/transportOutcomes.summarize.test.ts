@@ -23,7 +23,7 @@ import {
 	type TransportOutcomeBucket,
 } from '../transportOutcomes';
 import { summarizeTransportOutcomeBuckets } from '../transportOutcomeSummary';
-import { startOfDayUtc } from '../sendingReputation';
+import { startOfDayUtc } from '../../lib/clock';
 import { modules } from './testModules';
 import {
 	bucketRow,
@@ -166,6 +166,21 @@ describe('summarizeTransportOutcomeBuckets (pure)', () => {
 		const buckets = [asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 7 }))];
 		expect(summarizeTransportOutcomeBuckets(buckets, { since: Number.NaN }).sent).toBe(7);
 		expect(summarizeTransportOutcomeBuckets(buckets, { until: Number.NaN }).sent).toBe(7);
+	});
+
+	it('reports freshness as the newest lastRecordedAt inside the window', () => {
+		// The controller may only INCREASE on fresh evidence, and it must learn
+		// how fresh through this one read seam rather than re-reading raw rows.
+		const buckets = [
+			asBucket(bucketRow({ periodStart: DAY - DAY_MS, shardKey: 0, sent: 1 })),
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 1, sent: 1 })),
+		];
+		expect(summarizeTransportOutcomeBuckets(buckets).lastRecordedAt).toBe(DAY);
+		// A bucket outside the window contributes neither counts nor freshness.
+		expect(summarizeTransportOutcomeBuckets(buckets, { until: DAY }).lastRecordedAt).toBe(
+			DAY - DAY_MS
+		);
+		expect(summarizeTransportOutcomeBuckets([]).lastRecordedAt).toBeNull();
 	});
 
 	it('is unaffected by the order the shards arrive in', () => {

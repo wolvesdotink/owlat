@@ -2,14 +2,18 @@
  * transportOutcomes — the write path (plan D5, ADR-0042 shape).
  *
  * Coverage here:
- *   - the PURE decision core: which counter each event bumps, and which Send
- *     lifecycle transition maps to which outcome event;
  *   - one SHIPPED lifecycle transition bumps exactly ONE shard of exactly ONE
- *     bucket, for every event type the lifecycle can produce;
+ *     bucket, for every event type the lifecycle can produce — including the
+ *     queued→terminal MTA path, the only one that emits two outcome effects;
+ *   - engagement rides the shipped UNIQUE open/click gate, so an outcome
+ *     counter can never disagree with the dashboard counter beside it;
  *   - the exclusions: `failed` is not a transport outcome, a duplicate
- *     transition records nothing twice, and a send with NO assignment row
- *     (a seed shadow copy, plan D18) never enters a denominator;
- *   - the aging sweep.
+ *     transition records nothing twice, a test preview records nothing, and a
+ *     send with NO assignment row (a seed shadow copy, plan D18) never enters a
+ *     denominator.
+ *
+ * The pure event→counter map is `transportOutcomesEvents.test.ts`; the aging
+ * sweep is `transportOutcomesRetention.test.ts`.
  */
 
 import { convexTest } from 'convex-test';
@@ -18,24 +22,20 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import {
-	recordTransportOutcomeForCell,
-	recordTransportOutcomeForSend,
-	TRANSPORT_OUTCOME_RETENTION_MS,
-} from '../transportOutcomes';
-import {
-	transportOutcomeCounters,
-	transportOutcomeEventForTransition,
-	type TransportOutcomeEvent,
-} from '../transportOutcomeSummary';
-import { startOfDayUtc } from '../sendingReputation';
+	reduceClicked,
+	reduceOpened,
+	type EmailSendDoc,
+	type SendRef,
+} from '../../delivery/sendLifecycle/reducers';
+import type { Effect } from '../../delivery/sendLifecycle/effects';
+import { recordTransportOutcomeForCell, recordTransportOutcomeForSend } from '../transportOutcomes';
 import { modules } from './testModules';
 import {
-	bucketRow,
-	DAY_MS,
 	GMAIL_CAMPAIGN_CELL,
 	OUTCOME_ORG,
 	readBuckets,
 	seedAssignedSend,
+	seedAssignedTestPreview,
 	sumCounter,
 } from './transportOutcomesFixtures';
 
@@ -56,56 +56,72 @@ afterEach(async () => {
 	await new Promise((resolve) => setTimeout(resolve, 25));
 });
 
-describe('transportOutcomeEventForTransition (pure)', () => {
-	it('maps every lifecycle transition that is a transport outcome', () => {
-		expect(transportOutcomeEventForTransition('sent')).toBe('sent');
-		expect(transportOutcomeEventForTransition('delivered')).toBe('delivered');
-		expect(transportOutcomeEventForTransition('opened')).toBe('opened');
-		expect(transportOutcomeEventForTransition('clicked')).toBe('clicked');
-		expect(transportOutcomeEventForTransition('complained')).toBe('complained');
-		expect(transportOutcomeEventForTransition('bounced', 'hard')).toBe('hard_bounced');
-		expect(transportOutcomeEventForTransition('bounced', 'soft')).toBe('soft_bounced');
+describe('engagement outcomes ride the shipped unique gate (pure reducers)', () => {
+	const SEND_ID = 'send_engagement' as Id<'emailSends'>;
+	const ref: SendRef = { kind: 'campaign', id: SEND_ID };
+
+	function campaignSend(overrides: Partial<EmailSendDoc> = {}): EmailSendDoc {
+		return {
+			_id: SEND_ID,
+			_creationTime: 0,
+			campaignId: 'campaign_engagement',
+			contactId: 'contact_engagement',
+			contactEmail: 'jane@example.com',
+			status: 'delivered',
+			...overrides,
+		} as unknown as EmailSendDoc;
+	}
+
+	const outcomeEvents = (effects: readonly Effect[]): string[] =>
+		effects.flatMap((effect) => (effect.kind === 'transport_outcome' ? [effect.event] : []));
+
+	it('emits the outcome effect beside the shipped unique-open counter, and only then', () => {
+		const first = reduceOpened(campaignSend(), { to: 'opened', at: 1_000 }, ref);
+		expect(outcomeEvents(first.effects)).toEqual(['opened']);
+		// The shipped unique-open counter is emitted for exactly the same events.
+		expect(
+			first.effects.some(
+				(effect) => effect.kind === 'daily_stats_bump' && effect.field === 'opened'
+			)
+		).toBe(true);
+
+		const reopen = reduceOpened(
+			campaignSend({ status: 'opened', openedAt: 1_000, openCount: 1 }),
+			{ to: 'opened', at: 2_000 },
+			ref
+		);
+		expect(outcomeEvents(reopen.effects)).toEqual([]);
 	});
 
-	it('does not map `failed` — a local non-delivery is not a transport outcome', () => {
-		expect(transportOutcomeEventForTransition('failed')).toBeNull();
+	it('emits it for a genuine FIRST open whose status cannot move', () => {
+		// The reducer reports `recorded`, not `transitioned`, because a terminal
+		// row's status stays put — which is why the dispatcher must not gate the
+		// effect on `applied === 'transitioned'`.
+		const result = reduceOpened(
+			campaignSend({ status: 'bounced', bounceType: 'hard' }),
+			{ to: 'opened', at: 3_000 },
+			ref
+		);
+		expect(result.applied).toBe('recorded');
+		expect(outcomeEvents(result.effects)).toEqual(['opened']);
 	});
 
-	it('treats a bounce of unknown hardness as soft (the conservative side)', () => {
-		expect(transportOutcomeEventForTransition('bounced')).toBe('soft_bounced');
-	});
-});
+	it('does the same for clicks, while the per-click customer webhook still fires', () => {
+		const first = reduceClicked(
+			campaignSend(),
+			{ to: 'clicked', at: 1_000, url: 'https://example.com/a' },
+			ref
+		);
+		expect(outcomeEvents(first.effects)).toEqual(['clicked']);
 
-describe('transportOutcomeCounters (pure)', () => {
-	const EVENTS: ReadonlyArray<[TransportOutcomeEvent, string]> = [
-		['sent', 'sent'],
-		['delivered', 'delivered'],
-		['deferred', 'deferred'],
-		['soft_bounced', 'softBounced'],
-		['hard_bounced', 'hardBounced'],
-		['complained', 'complained'],
-		['opened', 'opened'],
-		['clicked', 'clicked'],
-		['unsubscribed', 'unsubscribed'],
-	];
-
-	it('bumps exactly one general counter per event', () => {
-		for (const [event, counter] of EVENTS) {
-			expect(transportOutcomeCounters(event, false)).toEqual([counter]);
-		}
-	});
-
-	it('adds the calibration twin only for the three counters the gate reads', () => {
-		expect(transportOutcomeCounters('sent', true)).toEqual(['sent', 'calibrationSent']);
-		expect(transportOutcomeCounters('opened', true)).toEqual(['opened', 'calibrationOpened']);
-		expect(transportOutcomeCounters('clicked', true)).toEqual(['clicked', 'calibrationClicked']);
-	});
-
-	it('keeps a calibration bounce/complaint in the general counter only', () => {
-		expect(transportOutcomeCounters('hard_bounced', true)).toEqual(['hardBounced']);
-		expect(transportOutcomeCounters('soft_bounced', true)).toEqual(['softBounced']);
-		expect(transportOutcomeCounters('complained', true)).toEqual(['complained']);
-		expect(transportOutcomeCounters('delivered', true)).toEqual(['delivered']);
+		const second = reduceClicked(
+			campaignSend({ status: 'clicked', clickedAt: 1_000 }),
+			{ to: 'clicked', at: 2_000, url: 'https://example.com/b' },
+			ref
+		);
+		expect(outcomeEvents(second.effects)).toEqual([]);
+		// Unchanged shipped behaviour: every click still emits its own webhook.
+		expect(second.effects.some((effect) => effect.kind === 'customer_webhook')).toBe(true);
 	});
 });
 
@@ -202,6 +218,54 @@ describe('lifecycle transition → one shard of one bucket', () => {
 		expect(buckets[0]?.complained).toBe(1);
 	});
 
+	it('counts UNIQUE opens: a second `opened → opened` does not bump the counter', async () => {
+		const t = convexTest(schema, modules);
+		let sendId: Id<'emailSends'> | undefined;
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, { status: 'delivered', assignment: {} });
+			sendId = seeded.sendId;
+		});
+		if (!sendId) throw new Error('seed failed');
+
+		for (const at of [Date.now(), Date.now() + 1_000]) {
+			await t.mutation(internal.delivery.sendLifecycle.transition, {
+				send: { kind: 'campaign', id: sendId },
+				transition: { to: 'opened', at },
+			});
+		}
+
+		await t.run(async (ctx) => {
+			const buckets = await readBuckets(ctx);
+			// Image prefetch re-opens a message several times; the outcome counter
+			// must agree with the shipped unique-open dashboard counter.
+			expect(sumCounter(buckets, 'opened')).toBe(1);
+			// …and the shipped re-open accounting is untouched.
+			expect((await ctx.db.get(sendId!))?.openCount).toBe(2);
+		});
+	});
+
+	it('counts UNIQUE clicks: a second `clicked → clicked` does not bump the counter', async () => {
+		const t = convexTest(schema, modules);
+		let sendId: Id<'emailSends'> | undefined;
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, { status: 'opened', assignment: {} });
+			sendId = seeded.sendId;
+		});
+		if (!sendId) throw new Error('seed failed');
+
+		for (const url of ['https://example.com/a', 'https://example.com/b']) {
+			await t.mutation(internal.delivery.sendLifecycle.transition, {
+				send: { kind: 'campaign', id: sendId },
+				transition: { to: 'clicked', at: Date.now(), url },
+			});
+		}
+
+		await t.run(async (ctx) => {
+			expect(sumCounter(await readBuckets(ctx), 'clicked')).toBe(1);
+			expect((await ctx.db.get(sendId!))?.clickedLinks).toHaveLength(2);
+		});
+	});
+
 	it('records nothing for a `failed` transition', async () => {
 		const buckets = await runTransition('queued', {
 			to: 'failed',
@@ -261,6 +325,30 @@ describe('exclusions', () => {
 		});
 	});
 
+	it('records nothing for a transactional `test` preview', async () => {
+		// The exclusion is `withoutTestSendEffects` blanking the whole effect
+		// array one layer up. Pin it here: a future change that applied the
+		// outcome effect BEFORE that wrapper would silently feed member previews
+		// into the arm denominators, and nothing else in the suite would notice.
+		const t = convexTest(schema, modules);
+		let sendId: Id<'transactionalSends'> | undefined;
+		await t.run(async (ctx) => {
+			sendId = await seedAssignedTestPreview(ctx);
+		});
+		if (!sendId) throw new Error('seed failed');
+
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'transactional', id: sendId },
+			transition: { to: 'sent', at: Date.now(), providerMessageId: 'pm-preview' },
+		});
+
+		await t.run(async (ctx) => {
+			expect(await readBuckets(ctx)).toHaveLength(0);
+			// …and the preview still has its durable lifecycle evidence.
+			expect((await ctx.db.get(sendId!))?.status).toBe('sent');
+		});
+	});
+
 	it('does not double-count a duplicate transition', async () => {
 		const t = convexTest(schema, modules);
 		let sendId: Id<'emailSends'> | undefined;
@@ -311,52 +399,58 @@ describe('the deferral and unsubscribe counters', () => {
 	});
 });
 
-describe('aging sweep', () => {
-	it('drops buckets past the retention horizon and keeps everything inside it', async () => {
+describe('the queued → terminal MTA path (two outcome effects, one transition)', () => {
+	async function runMtaTerminal(
+		transition:
+			| { to: 'bounced'; at: number; bounceType: 'hard' | 'soft' }
+			| { to: 'complained'; at: number }
+			| { to: 'failed'; at: number; errorMessage: string; errorCode: string }
+	) {
 		const t = convexTest(schema, modules);
-		const now = startOfDayUtc(Date.now());
+		const providerMessageId = 'pm-mta-terminal';
 		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'transportOutcomes',
-				bucketRow({ periodStart: now - TRANSPORT_OUTCOME_RETENTION_MS - DAY_MS, shardKey: 0 })
-			);
-			await ctx.db.insert(
-				'transportOutcomes',
-				bucketRow({ periodStart: now - TRANSPORT_OUTCOME_RETENTION_MS - 5 * DAY_MS, shardKey: 3 })
-			);
-			await ctx.db.insert(
-				'transportOutcomes',
-				bucketRow({ periodStart: now - DAY_MS, shardKey: 1 })
-			);
-			await ctx.db.insert('transportOutcomes', bucketRow({ periodStart: now, shardKey: 2 }));
+			await seedAssignedSend(ctx, { status: 'queued', assignment: {}, providerMessageId });
 		});
+		await t.mutation(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId, {
+			providerMessageId,
+			transition,
+		});
+		return await t.run(async (ctx) => await readBuckets(ctx));
+	}
 
-		const result = await t.mutation(internal.analytics.transportOutcomes.cleanupExpiredOutcomes, {
-			now,
-		});
-		expect(result.deleted).toBe(2);
-
-		await t.run(async (ctx) => {
-			const remaining = await readBuckets(ctx);
-			expect(remaining).toHaveLength(2);
-			expect(remaining.every((row) => row.periodStart >= now - DAY_MS)).toBe(true);
-		});
+	it('records the `sent` denominator exactly once alongside a hard bounce', async () => {
+		// This is the one path that emits TWO outcome effects for a single
+		// transition — the queued-terminal `sent` accounting plus the bounce — so
+		// it is the one most at risk of inflating the denominator it re-supplies.
+		const buckets = await runMtaTerminal({ to: 'bounced', at: Date.now(), bounceType: 'hard' });
+		expect(sumCounter(buckets, 'sent')).toBe(1);
+		expect(sumCounter(buckets, 'hardBounced')).toBe(1);
+		expect(sumCounter(buckets, 'softBounced')).toBe(0);
+		expect(sumCounter(buckets, 'delivered')).toBe(0);
 	});
 
-	it('falls back to the real clock rather than sweeping nothing forever on a NaN clock', async () => {
-		const t = convexTest(schema, modules);
-		await t.run(async (ctx) => {
-			await ctx.db.insert(
-				'transportOutcomes',
-				bucketRow({
-					periodStart: Date.now() - TRANSPORT_OUTCOME_RETENTION_MS - DAY_MS,
-					shardKey: 0,
-				})
-			);
+	it('records `sent` and nothing else for post-DATA ambiguity', async () => {
+		// An envelope provably reached the wire, but the disposition is unknown:
+		// the denominator is owed, no outcome is.
+		const buckets = await runMtaTerminal({
+			to: 'failed',
+			at: Date.now(),
+			errorMessage: 'ambiguous post-data response',
+			errorCode: 'ambiguous_post_data',
 		});
-		const result = await t.mutation(internal.analytics.transportOutcomes.cleanupExpiredOutcomes, {
-			now: Number.NaN,
+		expect(sumCounter(buckets, 'sent')).toBe(1);
+		expect(sumCounter(buckets, 'hardBounced')).toBe(0);
+		expect(sumCounter(buckets, 'softBounced')).toBe(0);
+		expect(sumCounter(buckets, 'complained')).toBe(0);
+	});
+
+	it('records no `sent` for a local terminal failure that never reached the wire', async () => {
+		const buckets = await runMtaTerminal({
+			to: 'failed',
+			at: Date.now(),
+			errorMessage: 'connect ETIMEDOUT',
+			errorCode: 'timeout',
 		});
-		expect(result.deleted).toBe(1);
+		expect(buckets).toHaveLength(0);
 	});
 });

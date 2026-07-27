@@ -15,6 +15,7 @@ import {
 	createTestContact,
 	createTestEmailSend,
 } from '../../__tests__/factories';
+import { deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import type { TransportOutcomeArm, TransportOutcomeBucket } from '../transportOutcomeSummary';
 
 /** The org `getSingletonOrganizationId` is mocked to return in this suite. */
@@ -23,9 +24,16 @@ export const OUTCOME_ORG = 'org_outcomes';
 /** A second tenant, used only to prove reads and joins never cross tenants. */
 export const OTHER_ORG = 'org_other';
 
-/** `${stream}:${destinationProvider}` — a real key per @owlat/shared. */
-export const GMAIL_CAMPAIGN_CELL = 'campaign:gmail';
-export const MICROSOFT_CAMPAIGN_CELL = 'campaign:microsoft';
+/** Real, branded cell keys — built through the shared constructor, never typed
+ * out as strings, so a rename of the key format breaks the suite loudly. */
+export const GMAIL_CAMPAIGN_CELL = deliverabilityCellKey({
+	stream: 'campaign',
+	destinationProvider: 'gmail',
+});
+export const MICROSOFT_CAMPAIGN_CELL = deliverabilityCellKey({
+	stream: 'campaign',
+	destinationProvider: 'microsoft',
+});
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -90,6 +98,41 @@ export async function seedAssignedSend(
 	}
 
 	return { sendId, campaignId, contactId, email };
+}
+
+/**
+ * A transactional `test` PREVIEW send plus its assignment row.
+ *
+ * Test previews keep the durable lifecycle (routing re-entry needs it) but must
+ * never become telemetry: `withoutTestSendEffects` blanks the whole effect
+ * array, which is what keeps a preview out of the arm denominators. Seeding one
+ * WITH an assignment row is the only way to prove that exclusion still holds —
+ * the recorder would otherwise decline it for the unrelated reason that it has
+ * no assignment.
+ */
+export async function seedAssignedTestPreview(
+	ctx: { db: DatabaseWriter },
+	options: { readonly status?: Doc<'transactionalSends'>['status'] } = {}
+): Promise<Id<'transactionalSends'>> {
+	const sendId = await ctx.db.insert('transactionalSends', {
+		kind: 'test',
+		email: 'preview@example.com',
+		status: options.status ?? 'queued',
+		queuedAt: Date.now(),
+		providerType: 'mta',
+	});
+	await ctx.db.insert('sendAssignments', {
+		organizationId: OUTCOME_ORG,
+		sendId,
+		sendKind: 'transactional',
+		cell: GMAIL_CAMPAIGN_CELL,
+		transport: 'mta',
+		arm: 'own',
+		isCalibration: false,
+		mixVersion: 0,
+		assignedAt: Date.now(),
+	});
+	return sendId;
 }
 
 /** Every shard row of one (org, cell, arm) — the writer's whole footprint. */
