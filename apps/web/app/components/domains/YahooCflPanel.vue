@@ -97,9 +97,27 @@ const canReset = computed(
 // Yahoo will not accept an enrollment for a domain it cannot see our signature
 // on, so Submit stays disabled until the domain is verified AND signing. This
 // gates only the WIZARD — mail to Yahoo keeps flowing either way.
+//
+// The precondition is READ OFF THE GUIDE, not recomputed here: the backend
+// already expresses it as the submit step being `blocked`, and a second
+// definition in the component is a second thing to keep in sync.
 const isDkimReady = computed(
-	() => guide.value?.precondition.isVerified === true && !!guide.value?.precondition.dkimSelector
+	() => guide.value?.steps.find((s) => s.id === 'submit_enrollment')?.status !== 'blocked'
 );
+
+/**
+ * "Start over" clears OUR record — and, once the ramp's substitution table
+ * consumes it, drops the yahoo cell from the direct complaint threshold to the
+ * tighter unsubscribe proxy. That is a real consequence of one click, so it is
+ * named in full before the mutation fires.
+ */
+const RESET_CONFIRMATION = [
+	'Clear this domain’s Yahoo enrollment record?',
+	'',
+	'• Our record is cleared — the submitted and enrolled dates are lost.',
+	'• Yahoo’s own enrollment is untouched. If it is still live, the next Yahoo complaint will not restore this record; re-submit the form step to record it again.',
+	'• Yahoo complaint measurement falls back to the unsubscribe-rate proxy at a tighter threshold, with lower confidence.',
+].join('\n');
 
 async function submit() {
 	await submitEnrollment({ domainId: props.domainId });
@@ -108,12 +126,17 @@ async function confirm() {
 	await confirmEnrollment({ domainId: props.domainId });
 }
 async function reset() {
+	if (!window.confirm(RESET_CONFIRMATION)) return;
 	await resetEnrollment({ domainId: props.domainId });
 }
 </script>
 
 <template>
-	<div v-if="guide" class="pt-2" data-testid="yahoocfl-panel">
+	<!-- The section divider lives INSIDE the `v-if`: when there is nothing to show
+	     (a member without `organization:manage`, the first paint before the query
+	     resolves, a deleted domain) the panel must render NOTHING, not an empty
+	     bordered strip. -->
+	<div v-if="guide" class="mt-4 pt-4 border-t border-border-subtle" data-testid="yahoocfl-panel">
 		<div class="flex items-center justify-between gap-3">
 			<p class="text-xs font-medium text-text-tertiary uppercase tracking-wider">
 				Yahoo complaint feedback loop
@@ -175,11 +198,22 @@ async function reset() {
 				class="btn btn-primary text-sm py-1.5 px-3"
 				data-testid="yahoocfl-submit"
 				:disabled="isBusy || !isDkimReady"
-				:title="isDkimReady ? undefined : 'Verify the DKIM domain first'"
+				:aria-describedby="isDkimReady ? undefined : 'yahoocfl-submit-blocked'"
 				@click="submit"
 			>
 				{{ isSubmitting ? 'Saving…' : "I submitted Yahoo's form" }}
 			</button>
+			<!-- The reason a control is disabled must be VISIBLE: a `title` on a
+			     disabled button is neither focusable nor announced. -->
+			<p
+				v-if="canSubmit && !isDkimReady"
+				id="yahoocfl-submit-blocked"
+				class="text-xs text-text-secondary"
+				data-testid="yahoocfl-submit-blocked-reason"
+			>
+				Verify this domain and its DKIM record first — Yahoo will not accept an enrollment for a
+				domain it cannot see our signature on.
+			</p>
 			<button
 				v-if="canConfirm"
 				type="button"
@@ -205,10 +239,8 @@ async function reset() {
 		<!-- D14: say the quiet part. Which signal the yahoo cell actually runs on,
 		     and how confident it is. A caveat, never a warning and never a nag. -->
 		<p class="mt-3 text-xs text-text-tertiary" data-testid="yahoocfl-confidence">
-			<template v-if="guide.complaintSignal.caveat">{{ guide.complaintSignal.caveat }}</template>
-			<template v-else>
-				Measurement confidence: high — Yahoo complaints for this domain are measured directly.
-			</template>
+			{{ guide.complaintSignal.confidenceNote }}
+			<template v-if="guide.complaintSignal.caveat"> {{ guide.complaintSignal.caveat }}</template>
 		</p>
 	</div>
 </template>
