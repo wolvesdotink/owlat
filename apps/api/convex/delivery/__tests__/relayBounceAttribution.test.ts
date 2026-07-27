@@ -46,10 +46,17 @@ const RELAY_MESSAGE_ID = 'relay-message-id-abc';
  * would be an unexercised stub pretending to be coverage.
  */
 function actionCtx(t: ReturnType<typeof convexTest>): ActionCtx {
+	// The harness's `mutation`/`query` are generically typed over a specific
+	// function reference; the dispatcher hands them whichever reference its
+	// table picked, which no single instantiation can describe. Widen the
+	// harness once, here, rather than casting at each forwarding call.
+	const harness = t as unknown as {
+		mutation: (reference: unknown, args: unknown) => Promise<unknown>;
+		query: (reference: unknown, args: unknown) => Promise<unknown>;
+	};
 	return {
-		runMutation: (reference: unknown, args: unknown) =>
-			t.mutation(reference as never, args as never),
-		runQuery: (reference: unknown, args: unknown) => t.query(reference as never, args as never),
+		runMutation: (reference: unknown, args: unknown) => harness.mutation(reference, args),
+		runQuery: (reference: unknown, args: unknown) => harness.query(reference, args),
 	} as unknown as ActionCtx;
 }
 
