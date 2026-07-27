@@ -7,9 +7,13 @@
  * on the result (`RampGateGrade`), never a caller convention — see
  * `mayJustifyIncrease` in `gateTypes.ts` for why that distinction is the whole
  * defence against ramping on a weak signal.
+ *
+ * `weakestConfidence` lives here too, and for the same reason: how much a set of
+ * verdicts is worth is the same subject as how much one of them is worth, and
+ * `gateTypes.ts` says on its first line that it is types only.
  */
 
-import type { RampGateGrade } from './gateTypes';
+import type { RampGateConfidence, RampGateGrade } from './gateTypes';
 
 /**
  * Bounces, 4xx text and complaint feedback are measured on OUR OWN WIRE — they
@@ -44,3 +48,24 @@ export const WEAK_TRAILING_SIGNAL: RampGateGrade = {
 	confidence: 'low',
 	mayJustifyIncrease: false,
 };
+
+/** Confidence ordered worst-first, so an evaluation can report its weakest link. */
+const CONFIDENCE_RANK: Readonly<Record<RampGateConfidence, number>> = {
+	low: 0,
+	medium: 1,
+	high: 2,
+};
+
+/**
+ * The measurement confidence of a SET of verdicts: the weakest one present. A
+ * cell whose complaint signal is an unsubscribe proxy is a cell measured at
+ * medium confidence, however high its bounce data is, and the UI must say so
+ * (plan D14) rather than average the two into something reassuring.
+ */
+export function weakestConfidence(confidences: readonly RampGateConfidence[]): RampGateConfidence {
+	let weakest: RampGateConfidence = 'high';
+	for (const confidence of confidences) {
+		if (CONFIDENCE_RANK[confidence] < CONFIDENCE_RANK[weakest]) weakest = confidence;
+	}
+	return weakest;
+}

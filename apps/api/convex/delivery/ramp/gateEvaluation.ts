@@ -39,17 +39,17 @@ import {
 	evaluateSeedPlacementGate,
 	evaluateStandaloneSeedPlacementGate,
 } from './gates';
-import {
-	weakestConfidence,
-	type RampGateAggregationInput,
-	type RampGateConfidence,
-	type RampGateEvaluation,
-	type RampGateEvaluationInput,
-	type RampGateEvaluator,
-	type RampGateId,
-	type RampGateResult,
-	type RampGateStatus,
-	type RampVerdict,
+import { weakestConfidence } from './gateGrades';
+import type {
+	RampGateAggregationInput,
+	RampGateConfidence,
+	RampGateEvaluation,
+	RampGateEvaluationInput,
+	RampGateEvaluator,
+	RampGateId,
+	RampGateResult,
+	RampGateStatus,
+	RampVerdict,
 } from './gateTypes';
 import {
 	asTrailingEngagement,

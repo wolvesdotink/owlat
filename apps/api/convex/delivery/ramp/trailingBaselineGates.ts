@@ -42,7 +42,7 @@
  * environment.
  */
 
-import { isSmtpBlockCategory } from '@owlat/shared/smtpBlockCategories';
+import { SMTP_BLOCK_CATEGORIES } from '@owlat/shared/smtpBlockCategories';
 import { evaluateCeilingGate, type CeilingGateSpec } from './ceilingGate';
 import { ENGAGEMENT_GATE_THRESHOLDS } from './engagementConfig';
 import {
@@ -53,7 +53,13 @@ import {
 import { evaluateDeferralGate } from './gates';
 import { evidenceFreshness, safeRate } from './gateEvidence';
 import { DIRECT_MEASUREMENT, PROXY_MEASUREMENT, WEAK_TRAILING_SIGNAL } from './gateGrades';
-import type { RampGateEvaluationInput, RampGateResult, SmtpBlockObservation } from './gateTypes';
+import { oneArmedMeasurement } from './gateMeasurement';
+import type {
+	RampGateEvaluationInput,
+	RampGateHoldReason,
+	RampGateResult,
+	SmtpBlockObservation,
+} from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
 
 // ============================ gate 1 — hard bounce ==========================
@@ -80,7 +86,12 @@ export const TRAILING_HARD_BOUNCE_SPEC: CeilingGateSpec = {
 		arm: 'baseline',
 		maxAgeOf: (thresholds) => thresholds.maxBaselineAgeMs,
 		floorOf: (floors) => floors.hardBounce,
-		comparison: { kind: 'multiple', of: (t) => t.hardBounceTrailingMultiple },
+		// "AT MOST 1.5x": exactly 1.5x is inside the allowance.
+		comparison: {
+			kind: 'multiple',
+			of: (t) => t.hardBounceTrailingMultiple,
+			boundary: 'inclusive_pass',
+		},
 	},
 	grade: DIRECT_MEASUREMENT,
 };
@@ -142,7 +153,12 @@ export const UNSUBSCRIBE_PROXY_SPEC: CeilingGateSpec = {
 		arm: 'baseline',
 		maxAgeOf: (thresholds) => thresholds.maxBaselineAgeMs,
 		floorOf: (floors) => floors.complaint,
-		comparison: { kind: 'multiple', of: (t) => t.unsubscribeProxyMultiple },
+		// "AT OR ABOVE 3x is a complaint-equivalent breach": exactly 3.0x FAILS.
+		comparison: {
+			kind: 'multiple',
+			of: (t) => t.unsubscribeProxyMultiple,
+			boundary: 'inclusive_fail',
+		},
 	},
 	grade: PROXY_MEASUREMENT,
 };
@@ -165,11 +181,23 @@ export function evaluateStandaloneComplaintGate(input: RampGateEvaluationInput):
 
 // ================== gate 2 — deferral, plus block messages ==================
 
-/** The share of classified responses that were BLOCK messages, or `null`. */
+/**
+ * The share of classified responses that were BLOCK messages, or `null` when the
+ * row cannot express one.
+ *
+ * MORE BLOCKS THAN RESPONSES IS NOT A 100% BLOCK RATE — it is a producer bug, and
+ * `safeRate`'s clamp would turn it into the highest possible reading of the one
+ * signal in this module that HALTS a cell outright. `safeEngagementRate` exists a
+ * module away for exactly this reason: a clamp is the safe answer when it can
+ * only lose a verdict, and the wrong answer when it manufactures one. So the
+ * impossible row is treated as unmeasurable and the deferral rate behind it
+ * decides on its own.
+ */
 function blockRate(observation: SmtpBlockObservation): number | null {
 	const observed = safeOutcomeCount(observation.observed);
-	if (observed <= 0) return null;
-	return safeRate(safeOutcomeCount(observation.blocked) / observed);
+	const blocked = safeOutcomeCount(observation.blocked);
+	if (observed <= 0 || blocked > observed) return null;
+	return safeRate(blocked / observed);
 }
 
 /**
@@ -227,11 +255,12 @@ export function evaluateSmtpBlockMessages(input: RampGateEvaluationInput): RampG
 	}
 
 	// The COUNT says how much, the CATEGORIES say what. Both are required: a
-	// producer that counted a throttle as a block (or a legacy row whose categories
-	// predate this vocabulary) must not be able to halt a healthy cell, and the
-	// admin notification has nothing to name without them.
-	const blockingCategories = observation.categories.filter(isSmtpBlockCategory);
-	if (blockingCategories.length === 0) return null;
+	// producer that counted a throttle as a block must not be able to halt a
+	// healthy cell, and the admin notification has nothing to name without them.
+	// Membership only — the categories are narrowed to the shared vocabulary at
+	// the row-read boundary, so this side does a set test rather than re-guarding
+	// every element on every read.
+	if (!observation.categories.some((category) => SMTP_BLOCK_CATEGORIES.has(category))) return null;
 
 	const rate = blockRate(observation);
 	if (rate === null || rate < (thresholds.smtpBlockHalt as number)) return null;
@@ -241,13 +270,12 @@ export function evaluateSmtpBlockMessages(input: RampGateEvaluationInput): RampG
 		status: 'halt',
 		reason: 'block_message_detected',
 		measurement: {
+			...oneArmedMeasurement({
+				thresholdRate: thresholds.smtpBlockHalt as number,
+				ownSample: observed,
+				minSample,
+			}),
 			ownRate: rate,
-			referenceRate: null,
-			thresholdRate: thresholds.smtpBlockHalt as number,
-			toleranceValuePp: null,
-			ownSample: observed,
-			referenceSample: null,
-			minSample,
 		},
 		...DIRECT_MEASUREMENT,
 	};
@@ -267,6 +295,12 @@ export function evaluateSmtpBlockMessages(input: RampGateEvaluationInput): RampG
  * is indistinguishable from a 20% placement loss (plan D14). So the floor drops
  * from 0.95 to 0.85, the window widens to 7 days, and the minimum sample rises
  * from 400 to 2000.
+ *
+ * TWO of those three are constants here; the 7-day WINDOW is not, because the
+ * gate takes its windows as PARAMETERS (plan D15) and nothing in this piece
+ * builds one. It lands with the cron that summarises the window (P3), rather than
+ * sitting here as a constant with no consumer, asserted by a test to equal
+ * itself (plan D20: no speculative seams).
  *
  * AND IT MAY NEVER JUSTIFY AN INCREASE. `WEAK_TRAILING_SIGNAL` carries
  * `mayJustifyIncrease: false`, which the aggregator enforces: this gate can pull a
@@ -294,18 +328,52 @@ export function evaluateTrailingEngagementGate(input: EngagementGateInput): Ramp
 
 /**
  * THE BOUNDARY GUARD. Whatever gate-4 result a caller hands the standalone
- * evaluator, it is re-graded to the weak trailing signal before it can influence
- * anything.
+ * evaluator, it is re-graded to the weak trailing signal — AND RE-REASONED into
+ * the baseline vocabulary — before it can influence anything.
  *
  * Belt and braces, and worth the braces. `TRAILING_ENGAGEMENT_SPEC` already
- * produces the right grade, so in the intended flow this changes nothing — but the
- * engagement result is the ONE gate the aggregator receives pre-computed from
- * outside, and a caller that wired the CONCURRENT ratio into the standalone
- * evaluator would otherwise smuggle a high-confidence, increase-justifying verdict
- * into a deployment that has no second arm to have measured it with. The plan's
- * asymmetry would then be satisfied everywhere except at the one seam where it
- * could be bypassed.
+ * produces the right grade and the right reasons, so in the intended flow this
+ * changes nothing — but the engagement result is the ONE gate the aggregator
+ * receives pre-computed from outside, and a caller that wired the CONCURRENT
+ * ratio into the standalone evaluator would otherwise smuggle a high-confidence,
+ * increase-justifying verdict into a deployment that has no second arm to have
+ * measured it with. The plan's asymmetry would then be satisfied everywhere
+ * except at the one seam where it could be bypassed.
+ *
+ * RE-GRADING WITHOUT RE-REASONING IS HALF A GUARD. A hold reason exists to NAME
+ * THE THING TO FIX (plan D12), and `reference_*` names a second transport. A
+ * standalone deployment has none, so an audit row and an admin notification
+ * carrying `reference_evidence_stale` send the operator hunting a relay that does
+ * not exist — which is precisely why the `baseline_*` vocabulary was introduced.
  */
 export function asTrailingEngagement(result: RampGateResult): RampGateResult {
-	return { ...result, ...WEAK_TRAILING_SIGNAL };
+	switch (result.status) {
+		case 'fail':
+			return {
+				...result,
+				reason:
+					result.reason === 'reference_tolerance_breached'
+						? 'trailing_baseline_breached'
+						: result.reason,
+				...WEAK_TRAILING_SIGNAL,
+			};
+		case 'insufficient_data':
+			return { ...result, reason: asBaselineHoldReason(result.reason), ...WEAK_TRAILING_SIGNAL };
+		default:
+			return { ...result, ...WEAK_TRAILING_SIGNAL };
+	}
+}
+
+/** The `reference_*` hold reasons, restated about the cell's own past. */
+function asBaselineHoldReason(reason: RampGateHoldReason): RampGateHoldReason {
+	switch (reason) {
+		case 'reference_evidence_stale':
+			return 'baseline_evidence_stale';
+		case 'reference_sample_below_floor':
+			return 'baseline_sample_below_floor';
+		case 'reference_rate_unmeasurable':
+			return 'baseline_rate_unmeasurable';
+		default:
+			return reason;
+	}
 }

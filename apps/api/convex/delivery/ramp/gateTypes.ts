@@ -7,6 +7,7 @@
  * dashboard can share one vocabulary without importing either implementation.
  */
 
+import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
 import type { RampStreamConfig } from './gateConfig';
 
@@ -212,27 +213,6 @@ export interface RampGateGrade {
 	readonly mayJustifyIncrease: boolean;
 }
 
-/** Confidence ordered worst-first, so an evaluation can report its weakest link. */
-const CONFIDENCE_RANK: Readonly<Record<RampGateConfidence, number>> = {
-	low: 0,
-	medium: 1,
-	high: 2,
-};
-
-/**
- * The measurement confidence of a SET of verdicts: the weakest one present. A
- * cell whose complaint signal is an unsubscribe proxy is a cell measured at
- * medium confidence, however high its bounce data is, and the UI must say so
- * (plan D14) rather than average the two into something reassuring.
- */
-export function weakestConfidence(confidences: readonly RampGateConfidence[]): RampGateConfidence {
-	let weakest: RampGateConfidence = 'high';
-	for (const confidence of confidences) {
-		if (CONFIDENCE_RANK[confidence] < CONFIDENCE_RANK[weakest]) weakest = confidence;
-	}
-	return weakest;
-}
-
 interface RampGateResultBase extends RampGateGrade {
 	readonly gate: RampGateId;
 }
@@ -320,8 +300,14 @@ export interface SmtpBlockObservation {
 	 * The categories seen, for the audit row and the admin notification. Naming
 	 * the category is what turns "the ramp halted" into "Gmail is rejecting the
 	 * sending IP identity — check PTR and forward DNS".
+	 *
+	 * THE SHARED VOCABULARY, not free text. The stored row is
+	 * `v.array(v.string())`, so the narrowing happens ONCE where that row is read
+	 * (`isSmtpBlockCategory`) rather than on every element on every gate
+	 * evaluation — a string that is not a category the classifier can emit is not
+	 * evidence and must not reach the gate at all.
 	 */
-	readonly categories: readonly string[];
+	readonly categories: readonly SmtpFailureCategory[];
 	readonly observedAt: number;
 }
 

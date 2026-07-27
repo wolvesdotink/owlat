@@ -27,6 +27,7 @@ import type {
 } from './gateConfig';
 import { armEvidence, evidenceReason, insufficient, safeRate } from './gateEvidence';
 import type {
+	RampGateDecidedMeasurement,
 	RampGateEvaluationInput,
 	RampGateGrade,
 	RampGateId,
@@ -111,7 +112,26 @@ export interface CeilingSecondSeries {
  */
 export type CeilingComparison =
 	| { readonly kind: 'tolerance_pp'; readonly of: (t: RampGateThresholds) => PercentagePoints }
-	| { readonly kind: 'multiple'; readonly of: (t: RampGateThresholds) => number };
+	| {
+			readonly kind: 'multiple';
+			readonly of: (t: RampGateThresholds) => number;
+			/**
+			 * WHICH SIDE THE BOUNDARY ITSELF FALLS ON, because the plan's two
+			 * substitutions state it differently and one shared operator cannot be
+			 * right for both.
+			 *
+			 *  - `inclusive_pass` — the plan says gate 1 allows "AT MOST 1.5x the
+			 *    cell's own trailing rate", so exactly 1.5x PASSES (`own <= k*base`).
+			 *  - `inclusive_fail` — the plan says gate 3's unsubscribe proxy breaches
+			 *    "AT OR ABOVE 3x the trailing baseline", so exactly 3.0x FAILS
+			 *    (`own < k*base` to pass).
+			 *
+			 * Stated on the comparison rather than left to whichever operator the
+			 * cascade happens to use: a single `<=` shared by both would silently
+			 * move one of the plan's two thresholds by one send.
+			 */
+			readonly boundary: 'inclusive_pass' | 'inclusive_fail';
+	  };
 
 /**
  * A ceiling gate must be able to FAIL something. A spec with no absolute ceiling
@@ -136,7 +156,9 @@ export function ceilingGateSpecIsDecidable(
  *   3. Reference arm thin/stale/absent -> insufficient_data. The comparative
  *      half is unmeasurable, so the gate holds rather than passing on half a
  *      check.
- *   4. Otherwise, compare the arms.
+ *   4. A RELATIVE ceiling whose second series cannot act as a denominator ->
+ *      insufficient_data. See `relativeCeilingIsMeasurable`.
+ *   5. Otherwise, compare the arms.
  */
 export function evaluateCeilingGate(
 	spec: CeilingGateSpec,
@@ -228,22 +250,71 @@ export function evaluateCeilingGate(
 		);
 	}
 
-	const measurement = {
-		...shape,
-		// With the second series accepted, a relative gate can finally state the
-		// ceiling it actually applied.
-		...(comparison.kind === 'multiple'
-			? { thresholdRate: secondRate * comparison.of(thresholds) }
-			: {}),
-		ownRate,
-		referenceRate: secondRate,
-	} as const;
+	if (comparison.kind === 'tolerance_pp') {
+		return decide(
+			spec,
+			withinTolerance(ownRate, secondRate, comparison.of(thresholds), 'own_must_not_exceed'),
+			'reference_tolerance_breached',
+			{ ...shape, ownRate, referenceRate: secondRate }
+		);
+	}
 
-	const within =
-		comparison.kind === 'tolerance_pp'
-			? withinTolerance(ownRate, secondRate, comparison.of(thresholds), 'own_must_not_exceed')
-			: ownRate <= secondRate * comparison.of(thresholds);
+	// With the second series accepted, a relative gate can finally state the
+	// ceiling it actually applied.
+	const ceiling = secondRate * comparison.of(thresholds);
+	if (!relativeCeilingIsMeasurable(secondRate, ceiling, threshold)) {
+		return insufficient(
+			spec.gate,
+			evidenceReason('fresh', series.arm),
+			{ ...shape, ownRate, referenceRate: secondRate },
+			spec.grade
+		);
+	}
 
+	return decide(
+		spec,
+		comparison.boundary === 'inclusive_pass' ? ownRate <= ceiling : ownRate < ceiling,
+		'trailing_baseline_breached',
+		{ ...shape, thresholdRate: ceiling, ownRate, referenceRate: secondRate }
+	);
+}
+
+/**
+ * CAN A RELATIVE CEILING BE COMPUTED FROM THIS SERIES, AND CAN THE RESULT FAIL
+ * ANYTHING? Two ways it cannot, and both must HOLD rather than decide (plan D10).
+ *
+ * 1. A ZERO SECOND RATE IS A DIVISION BY ZERO WEARING A MULTIPLICATION'S CLOTHES.
+ *    `safeRate(0)` is a perfectly good rate and `armEvidence` only counts SENDS,
+ *    so a 40k-send trailing window with no hard bounces at all is fresh,
+ *    large-enough evidence with a rate of zero — and `k * 0` is a ceiling nothing
+ *    can be under. A cell that bounced one recipient in ten thousand, two orders
+ *    of magnitude inside the absolute ceiling, would be failed for it and halved.
+ *    Young and low-volume cells reach a zero-rate month routinely, and they are
+ *    exactly the population the standalone substitutions exist for.
+ *    `evaluateEngagementComparison` already refuses a zero denominator for the
+ *    same reason; this is that rule, on this side of the cascade.
+ * 2. A CEILING NOTHING CAN BREACH IS NOT A CEILING. A gate with no absolute
+ *    threshold (the unsubscribe proxy) is relative-only, so a second series whose
+ *    rate is high enough that `k * base` reaches 1 would pass every possible own
+ *    rate — an unfalsifiable gate that still contributes `increaseEvidence` and
+ *    still advances the clean streak. A poisoned or absurd baseline must buy
+ *    silence, never permission.
+ */
+function relativeCeilingIsMeasurable(
+	secondRate: number,
+	ceiling: number,
+	absoluteThreshold: RateFraction | null
+): boolean {
+	if (!(secondRate > 0)) return false;
+	return absoluteThreshold !== null || ceiling < 1;
+}
+
+function decide(
+	spec: CeilingGateSpec,
+	within: boolean,
+	failReason: 'reference_tolerance_breached' | 'trailing_baseline_breached',
+	measurement: RampGateDecidedMeasurement
+): RampGateResult {
 	return within
 		? {
 				gate: spec.gate,
@@ -255,10 +326,7 @@ export function evaluateCeilingGate(
 		: {
 				gate: spec.gate,
 				status: 'fail',
-				reason:
-					comparison.kind === 'tolerance_pp'
-						? 'reference_tolerance_breached'
-						: 'trailing_baseline_breached',
+				reason: failReason,
 				measurement,
 				...spec.grade,
 			};
