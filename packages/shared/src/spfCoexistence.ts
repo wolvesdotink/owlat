@@ -131,9 +131,14 @@ function pickFlattenCandidate(
  * Can both arms coexist in the domain's single SPF record?
  *
  * Fails when: no `v=spf1` record is published, MORE THAN ONE is (a PermError in
- * itself), a required mechanism is absent and cannot be merged in, or the merged
- * record exceeds the 10-lookup limit — in which case the result names the
- * include to flatten.
+ * itself), the PUBLISHED record does not already authorize a required mechanism,
+ * or the merged record exceeds the 10-lookup limit — in which case the result
+ * names the include to flatten.
+ *
+ * The judgement is on what is PUBLISHED, not on what we could merge: `ours ∪
+ * theirs` is only the operator's remedy text. The lookup-limit verdict is
+ * reported ahead of a missing mechanism, because a record already at the limit
+ * cannot be fixed by adding the missing mechanism to it.
  */
 export function evaluateSpfCoexistence(input: SpfCoexistenceInput): SpfCoexistenceResult {
 	const spfRecords = input.publishedTxtRecords.filter((txt) => isSpfRecord(txt));
