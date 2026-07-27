@@ -1,0 +1,309 @@
+/**
+ * transportOutcomes — the read path (plan D5: derive on read, never store).
+ *
+ * The summarizer is the single place a rate exists. Coverage here:
+ *   - it sums across ALL shards and ALL days in the window, so the write-side
+ *     shard split is invisible to readers;
+ *   - every rate is derived, and every zero denominator yields 0 rather than
+ *     NaN/Infinity;
+ *   - it is READER-TYPED: the identical function produces the identical numbers
+ *     from a query ctx and from a mutation ctx, which is what makes it
+ *     impossible for the controller and the dashboard to disagree;
+ *   - the window bounds are honoured and hostile inputs degrade to 0.
+ */
+
+import { convexTest } from 'convex-test';
+import { describe, expect, it } from 'vitest';
+import schema from '../../schema';
+import { internal } from '../../_generated/api';
+import {
+	recordTransportOutcomeForCell,
+	summarizeTransportOutcomes,
+	TRANSPORT_OUTCOME_SHARD_COUNT,
+	type TransportOutcomeBucket,
+} from '../transportOutcomes';
+import { summarizeTransportOutcomeBuckets } from '../transportOutcomeSummary';
+import { startOfDayUtc } from '../sendingReputation';
+import { modules } from './testModules';
+import {
+	bucketRow,
+	DAY_MS,
+	GMAIL_CAMPAIGN_CELL,
+	MICROSOFT_CAMPAIGN_CELL,
+	OUTCOME_ORG,
+} from './transportOutcomesFixtures';
+
+const DAY = startOfDayUtc(Date.UTC(2026, 6, 20, 13, 45));
+
+function asBucket(row: ReturnType<typeof bucketRow>): TransportOutcomeBucket {
+	// The pure summarizer only reads counters + periodStart; the system fields
+	// are irrelevant to it, which is exactly why it is testable without a db.
+	return { ...row, _id: 'x' as TransportOutcomeBucket['_id'], _creationTime: 0 };
+}
+
+describe('summarizeTransportOutcomeBuckets (pure)', () => {
+	it('sums across shards and days, and derives every rate on read', () => {
+		const summary = summarizeTransportOutcomeBuckets([
+			asBucket(
+				bucketRow({
+					periodStart: DAY,
+					shardKey: 0,
+					sent: 600,
+					delivered: 500,
+					deferred: 30,
+					softBounced: 40,
+					hardBounced: 20,
+					complained: 3,
+					opened: 250,
+					clicked: 50,
+					unsubscribed: 5,
+				})
+			),
+			asBucket(
+				bucketRow({
+					periodStart: DAY - DAY_MS,
+					shardKey: 5,
+					sent: 400,
+					delivered: 300,
+					deferred: 10,
+					softBounced: 20,
+					hardBounced: 20,
+					complained: 1,
+					opened: 150,
+					clicked: 30,
+					unsubscribed: 5,
+				})
+			),
+		]);
+
+		expect(summary.sent).toBe(1000);
+		expect(summary.delivered).toBe(800);
+		expect(summary.bounced).toBe(100);
+		expect(summary.deliveryRate).toBeCloseTo(0.8, 10);
+		expect(summary.deferralRate).toBeCloseTo(0.04, 10);
+		expect(summary.bounceRate).toBeCloseTo(0.1, 10);
+		expect(summary.hardBounceRate).toBeCloseTo(0.04, 10);
+		expect(summary.complaintRate).toBeCloseTo(0.004, 10);
+		expect(summary.openRate).toBeCloseTo(0.5, 10);
+		expect(summary.clickRate).toBeCloseTo(0.1, 10);
+		expect(summary.unsubscribeRate).toBeCloseTo(0.0125, 10);
+	});
+
+	it('returns 0 for every rate when the denominators are 0 (no division by zero)', () => {
+		const summary = summarizeTransportOutcomeBuckets([]);
+		for (const rate of [
+			summary.deliveryRate,
+			summary.deferralRate,
+			summary.bounceRate,
+			summary.hardBounceRate,
+			summary.complaintRate,
+			summary.openRate,
+			summary.clickRate,
+			summary.unsubscribeRate,
+			summary.calibrationOpenRate,
+			summary.calibrationClickRate,
+		]) {
+			expect(rate).toBe(0);
+			expect(Number.isNaN(rate)).toBe(false);
+		}
+		expect(summary.sent).toBe(0);
+	});
+
+	it('never divides an opened count by a zero delivered count', () => {
+		const summary = summarizeTransportOutcomeBuckets([
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 10, opened: 4 })),
+		]);
+		expect(summary.openRate).toBe(0);
+		expect(Number.isFinite(summary.openRate)).toBe(true);
+	});
+
+	it('treats NaN / negative / infinite counters as 0 rather than poisoning the cell', () => {
+		const summary = summarizeTransportOutcomeBuckets([
+			asBucket(
+				bucketRow({
+					periodStart: DAY,
+					shardKey: 0,
+					sent: Number.NaN,
+					delivered: Number.POSITIVE_INFINITY,
+					softBounced: -5,
+					hardBounced: 3,
+				})
+			),
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 1, sent: 100, delivered: 90 })),
+		]);
+		expect(summary.sent).toBe(100);
+		expect(summary.delivered).toBe(90);
+		expect(summary.softBounced).toBe(0);
+		expect(summary.bounced).toBe(3);
+		expect(summary.bounceRate).toBeCloseTo(0.03, 10);
+	});
+
+	it('drops buckets with a non-finite periodStart', () => {
+		const summary = summarizeTransportOutcomeBuckets([
+			asBucket(bucketRow({ periodStart: Number.NaN, shardKey: 0, sent: 50 })),
+		]);
+		expect(summary.sent).toBe(0);
+	});
+
+	it('honours the window: `since` is day-floored and `until` is exclusive', () => {
+		const buckets = [
+			asBucket(bucketRow({ periodStart: DAY - 2 * DAY_MS, shardKey: 0, sent: 1 })),
+			asBucket(bucketRow({ periodStart: DAY - DAY_MS, shardKey: 0, sent: 10 })),
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 100 })),
+		];
+		// A mid-day `since` must still include that whole day's bucket.
+		expect(summarizeTransportOutcomeBuckets(buckets, { since: DAY - DAY_MS + 3600_000 }).sent).toBe(
+			110
+		);
+		expect(summarizeTransportOutcomeBuckets(buckets, { since: DAY }).sent).toBe(100);
+		expect(summarizeTransportOutcomeBuckets(buckets, { until: DAY }).sent).toBe(11);
+		expect(
+			summarizeTransportOutcomeBuckets(buckets, { since: DAY - DAY_MS, until: DAY }).sent
+		).toBe(10);
+	});
+
+	it('ignores a non-finite window bound instead of returning nothing', () => {
+		const buckets = [asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 7 }))];
+		expect(summarizeTransportOutcomeBuckets(buckets, { since: Number.NaN }).sent).toBe(7);
+		expect(summarizeTransportOutcomeBuckets(buckets, { until: Number.NaN }).sent).toBe(7);
+	});
+
+	it('is unaffected by the order the shards arrive in', () => {
+		const buckets = [
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 7, sent: 3, delivered: 1 })),
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 2, sent: 5, delivered: 4 })),
+		];
+		expect(summarizeTransportOutcomeBuckets(buckets)).toEqual(
+			summarizeTransportOutcomeBuckets([...buckets].reverse())
+		);
+	});
+});
+
+describe('summarizeTransportOutcomes (reader-typed, over real rows)', () => {
+	it('sums every shard the writer spread events across', async () => {
+		const t = convexTest(schema, modules);
+		const events = TRANSPORT_OUTCOME_SHARD_COUNT * 12;
+		await t.run(async (ctx) => {
+			for (let i = 0; i < events; i += 1) {
+				await recordTransportOutcomeForCell(ctx, {
+					organizationId: OUTCOME_ORG,
+					cell: GMAIL_CAMPAIGN_CELL,
+					arm: 'own',
+					event: 'delivered',
+					isCalibration: false,
+				});
+			}
+		});
+
+		await t.run(async (ctx) => {
+			const rows = await ctx.db.query('transportOutcomes').collect();
+			// The point of the shard split: many rows, one answer.
+			expect(rows.length).toBeGreaterThan(1);
+			const summary = await summarizeTransportOutcomes(ctx.db, {
+				organizationId: OUTCOME_ORG,
+				cell: GMAIL_CAMPAIGN_CELL,
+				arm: 'own',
+			});
+			expect(summary.delivered).toBe(events);
+		});
+	});
+
+	it('gives a query ctx and a mutation ctx the identical numbers', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucketRow({
+					periodStart: startOfDayUtc(Date.now()),
+					shardKey: 1,
+					sent: 200,
+					delivered: 180,
+				})
+			);
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucketRow({
+					periodStart: startOfDayUtc(Date.now()),
+					shardKey: 6,
+					sent: 300,
+					delivered: 240,
+				})
+			);
+		});
+
+		const fromQuery = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
+			organizationId: OUTCOME_ORG,
+			cell: GMAIL_CAMPAIGN_CELL,
+		});
+		const fromMutationCtx = await t.run(
+			async (ctx) =>
+				await summarizeTransportOutcomes(ctx.db, {
+					organizationId: OUTCOME_ORG,
+					cell: GMAIL_CAMPAIGN_CELL,
+					arm: 'own',
+				})
+		);
+
+		expect(fromQuery.own).toEqual(fromMutationCtx);
+		expect(fromQuery.own.sent).toBe(500);
+		expect(fromQuery.own.deliveryRate).toBeCloseTo(0.84, 10);
+		// The other arm of the same cell is a separate, independent window.
+		expect(fromQuery.reference.sent).toBe(0);
+		expect(fromQuery.reference.deliveryRate).toBe(0);
+	});
+
+	it('never mixes arms or cells', async () => {
+		const t = convexTest(schema, modules);
+		const day = startOfDayUtc(Date.now());
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucketRow({ periodStart: day, shardKey: 0, sent: 10 })
+			);
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucketRow({ periodStart: day, shardKey: 0, arm: 'reference', sent: 20 })
+			);
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucketRow({ periodStart: day, shardKey: 0, cell: MICROSOFT_CAMPAIGN_CELL, sent: 40 })
+			);
+		});
+
+		const gmail = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
+			organizationId: OUTCOME_ORG,
+			cell: GMAIL_CAMPAIGN_CELL,
+		});
+		expect(gmail.own.sent).toBe(10);
+		expect(gmail.reference.sent).toBe(20);
+
+		const microsoft = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
+			organizationId: OUTCOME_ORG,
+			cell: MICROSOFT_CAMPAIGN_CELL,
+		});
+		expect(microsoft.own.sent).toBe(40);
+	});
+
+	it('applies the window at the index and in the summarizer alike', async () => {
+		const t = convexTest(schema, modules);
+		const day = startOfDayUtc(Date.now());
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucketRow({ periodStart: day - 10 * DAY_MS, shardKey: 0, sent: 1000 })
+			);
+			await ctx.db.insert(
+				'transportOutcomes',
+				bucketRow({ periodStart: day, shardKey: 0, sent: 7 })
+			);
+		});
+
+		const recent = await t.query(internal.analytics.transportOutcomes.getCellOutcomeSummary, {
+			organizationId: OUTCOME_ORG,
+			cell: GMAIL_CAMPAIGN_CELL,
+			since: day - DAY_MS,
+			until: day + DAY_MS,
+		});
+		expect(recent.own.sent).toBe(7);
+	});
+});
