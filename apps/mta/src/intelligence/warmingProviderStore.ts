@@ -35,7 +35,6 @@ import {
 	type ProviderCapDecision,
 } from './warmingProviderPolicy.js';
 import {
-	BULK_DAILY_TTL_SECONDS,
 	PROVIDER_DAILY_STATS_TTL_SECONDS,
 	PROVIDER_STATE_TTL_SECONDS,
 	READ_PROVIDER_WARMING_STATE_LUA,
@@ -53,7 +52,6 @@ const CODEC_VERSION = String(WARMING_PROVIDER_STATE_CODEC_VERSION);
 const STATE_TTL = String(PROVIDER_STATE_TTL_SECONDS);
 const STATS_TTL = String(PROVIDER_DAILY_STATS_TTL_SECONDS);
 const RECEIPT_TTL = String(DURABLE_EFFECT_IDEMPOTENCY_TTL_MS);
-const BULK_TTL = String(BULK_DAILY_TTL_SECONDS);
 
 /**
  * The (IP, provider, UTC day) triple every call in this module is scoped by.
@@ -129,7 +127,7 @@ export async function recordProviderWarmingSend(
 			STATE_TTL,
 			STATS_TTL,
 			countsBulk,
-			BULK_TTL,
+			STATS_TTL,
 			RECEIPT_TTL
 		);
 		return;
@@ -145,7 +143,7 @@ export async function recordProviderWarmingSend(
 		STATE_TTL,
 		STATS_TTL,
 		countsBulk,
-		BULK_TTL
+		STATS_TTL
 	);
 }
 

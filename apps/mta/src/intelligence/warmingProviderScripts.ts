@@ -15,10 +15,12 @@
 
 /** Provider state survives a quiet month, then expires with the IP's traffic. */
 export const PROVIDER_STATE_TTL_SECONDS = 30 * 24 * 60 * 60;
-/** Daily stats mirror the shipped 48h per-IP stats horizon. */
+/**
+ * Daily stats mirror the shipped 48h per-IP stats horizon. The bulk-pool
+ * pacing counter is a per-day denominator written by the same script and rides
+ * the same horizon.
+ */
 export const PROVIDER_DAILY_STATS_TTL_SECONDS = 172800;
-/** The bulk-pool pacing counter is a per-day denominator; same horizon. */
-export const BULK_DAILY_TTL_SECONDS = PROVIDER_DAILY_STATS_TTL_SECONDS;
 
 /**
  * Roll the provider's UTC day, then report its counters.

@@ -10,7 +10,6 @@ import {
 	readBulkSentToday,
 } from '../warmingProviderStore.js';
 import {
-	BULK_DAILY_TTL_SECONDS,
 	PROVIDER_DAILY_STATS_TTL_SECONDS,
 	PROVIDER_STATE_TTL_SECONDS,
 } from '../warmingProviderScripts.js';
@@ -58,7 +57,9 @@ describe('per-provider warming Redis discipline', () => {
 		expect(await redis.ttl(warmingProviderDailyStatsKey(ip, 'gmail', utcDate))).toBe(
 			PROVIDER_DAILY_STATS_TTL_SECONDS
 		);
-		expect(await redis.ttl(warmingBulkDailyKey(ip, utcDate))).toBe(BULK_DAILY_TTL_SECONDS);
+		expect(await redis.ttl(warmingBulkDailyKey(ip, utcDate))).toBe(
+			PROVIDER_DAILY_STATS_TTL_SECONDS
+		);
 	});
 
 	it('sets a TTL on every key the outcome and pressure paths create', async () => {
