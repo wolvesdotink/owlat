@@ -102,25 +102,31 @@ function strictestDeliveryProviderPolicy(
  * A missing DKIM key ships the message UNSIGNED (recoverable), and a signing
  * failure falls back to the unsigned bytes rather than a corrupt signature —
  * exactly the historic `stream`-plugin posture.
+ *
+ * `signed` reports what actually happened to THESE bytes, not what was
+ * configured: it is false both when no key exists and when signing threw. The
+ * CFBL emission outcome is derived from it (RFC 9477 §3.1.4 — an unsigned
+ * message carrying the pair is a header no conforming provider acts on), so
+ * "a key is configured" is not a good enough answer.
  */
 function buildSignedBytes(
 	job: EmailJob,
 	dkimConfig: DkimSigningKey | undefined,
 	verpAddress: string,
 	feedbackHeaders: Record<string, string>
-): Buffer {
+): { bytes: Buffer; signed: boolean } {
 	const raw = job.sealedMimeBase64
 		? Buffer.from(job.sealedMimeBase64, 'base64')
 		: composeStructured(job, verpAddress, feedbackHeaders).raw;
-	if (!dkimConfig) return raw;
+	if (!dkimConfig) return { bytes: raw, signed: false };
 	try {
-		return signMessage(raw, dkimConfig);
+		return { bytes: signMessage(raw, dkimConfig), signed: true };
 	} catch (err) {
 		logger.error(
 			{ err, domain: dkimConfig.domainName, selector: dkimConfig.keySelector },
 			'DKIM signing failed; shipping message unsigned'
 		);
-		return raw;
+		return { bytes: raw, signed: false };
 	}
 }
 
@@ -353,7 +359,6 @@ export async function sendToMx(
 				fromDomain: extractDomainOrNull(job.from) ?? '',
 				dkimSigned: dkimConfig !== undefined,
 			});
-	cfblEmissionsTotal.inc({ outcome: cfbl.outcome });
 	const feedbackHeaders = cfbl.headers;
 
 	// Compose + sign ONCE per job (W2/W3). The exact wire bytes are built a single
@@ -361,7 +366,22 @@ export async function sendToMx(
 	// profile — byte-identical, DKIM-stable retries (a strict improvement over the
 	// historic per-attempt recomposition). Both the structured-compose path and
 	// the sealed-mail raw path flow through the one signer.
-	const signedBytes = buildSignedBytes(job, dkimConfig, verpAddress, feedbackHeaders);
+	const { bytes: signedBytes, signed: dkimSigned } = buildSignedBytes(
+		job,
+		dkimConfig,
+		verpAddress,
+		feedbackHeaders
+	);
+
+	// Count the emission only once the bytes exist, and derive the outcome from
+	// what actually happened to them. `buildCfblHeaders` was gated on a key being
+	// CONFIGURED; signing can still throw, in which case the composer has already
+	// embedded the pair and we ship it unsigned. That is precisely the §3.1.4
+	// state `no_signature` exists to make visible, so the fallback is relabelled
+	// rather than reported as `emitted`. Nothing here can fail a send.
+	cfblEmissionsTotal.inc({
+		outcome: cfbl.outcome === 'emitted' && !dkimSigned ? 'no_signature' : cfbl.outcome,
+	});
 
 	// Announce the EHLO name that matches THIS bind IP's PTR record. In a
 	// multi-IP deployment each IP has its own reverse DNS, so a single static

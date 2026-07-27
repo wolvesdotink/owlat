@@ -136,7 +136,11 @@ export const cfblAttributionsTotal = new Counter({
  * MIME verbatim and are counted as `sealed_raw`, never as `emitted`, and a
  * message with no DKIM signature over its From domain is counted
  * `no_signature` because RFC 9477 §3.1.4 forbids a provider from acting on the
- * pair without one.
+ * pair without one. `no_signature` covers BOTH ways a send ends up unsigned:
+ * no key was configured, and a configured key threw during signing (the sender
+ * ships the unsigned bytes rather than a corrupt signature, and the pair the
+ * composer already embedded rides along inert). The label is therefore derived
+ * from the bytes that were actually built, not from the configuration.
  */
 export const cfblEmissionsTotal = new Counter({
 	name: 'mta_cfbl_emissions_total',
