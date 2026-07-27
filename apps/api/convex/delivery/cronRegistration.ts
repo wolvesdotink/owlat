@@ -31,6 +31,18 @@ export function registerDeliveryCrons(crons: Crons): void {
 	// Delivery surfaces. The MTA internally caches its TCP/25 probes, so this
 	// cadence does not create a connection storm against the probe target.
 	crons.interval('sync MTA health', { minutes: 2 }, internal.delivery.mtaHealth.sync, {});
+
+	// Relay return-path capability (plan G-08): settle probes that saw no bounce
+	// inside the timeout — exactly how a relay that REWRITES our envelope sender
+	// presents itself — then re-probe whatever is due, at most two per tick.
+	// Idempotent, and backing off (24h → 7d → 30d) because each probe costs the
+	// operator a real bounce. With no bring-your-own relay it is a no-op (D2).
+	crons.interval(
+		'sweep relay return-path probes',
+		{ hours: 1 },
+		internal.delivery.relayReturnPathProbe.sweepReturnPathProbes,
+		{}
+	);
 	crons.interval(
 		'refresh SES relay verification proofs',
 		{ hours: 24 },

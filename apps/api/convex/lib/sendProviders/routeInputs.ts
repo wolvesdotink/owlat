@@ -46,15 +46,28 @@ export const messageTypeValidator = v.union(
 );
 
 /**
- * The provider kinds this route config could select: the ones named on the
- * route plus the `EMAIL_PROVIDER` env fallback. Pure — no document reads.
+ * The provider kinds this route config could select: the ENABLED ones named on
+ * the route plus the `EMAIL_PROVIDER` env fallback. Pure — no document reads.
+ *
+ * Both sources, because resolution has both: a deployment only gets a
+ * `providerRoutes` row once an operator saves the routing screen, so on the
+ * canonical bring-your-own-relay install (`EMAIL_PROVIDER=smtp` + `SMTP_RELAY_*`,
+ * no routing row) the relay is reached exclusively through `resolveRoute`'s env
+ * fallback. Anything that asks "could this message go out over kind X?" must ask
+ * THIS function, or it will be narrower than what `resolveRoute` can return.
+ *
+ * Disabled entries are excluded HERE, in the one place, because `resolveRoute`
+ * drops them before readiness is ever asked (`routing.ts`) — so they can never
+ * be selected, and every caller deserves the same answer about that.
  */
 export function candidateSendProviderKinds(
 	routeConfig: Doc<'providerRoutes'> | null
 ): Set<SendProviderKind> {
 	const candidateKinds = new Set<SendProviderKind>();
 	for (const provider of routeConfig?.providers ?? []) {
-		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
+		if (provider.isEnabled && isSendProviderKind(provider.providerType)) {
+			candidateKinds.add(provider.providerType);
+		}
 	}
 	const envProvider = getOptional('EMAIL_PROVIDER');
 	if (isSendProviderKind(envProvider)) candidateKinds.add(envProvider);

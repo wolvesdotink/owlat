@@ -21,6 +21,7 @@ import {
 	buildReturnPathMailFromRecords,
 	buildSpfRecordValue,
 	parsePoolIps,
+	parseReturnPathRelaySpfTerms,
 	resolveSpfQualifier,
 } from '../../spf';
 import type { DnsRecord, DnsRecords } from '../../domains';
@@ -116,11 +117,18 @@ export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 		const returnPathHost = customReturnPathHost ?? getOptional('MTA_RETURN_PATH_DOMAIN')?.trim();
 		const poolIps = parsePoolIps(getOptional('MTA_IP_POOLS'));
 		const mailHost = customReturnPathHost ? getOptional('EHLO_HOSTNAME')?.trim() : undefined;
+		// Relay authorisation on the bounce host (plan G-08): the relay arm stamps
+		// the SAME `bounce+…@<host>` envelope sender, so unless the host's SPF
+		// authorises the relay too, measuring that arm would itself fail its SPF
+		// and degrade the reputation being measured. Unset ⇒ no terms, and the
+		// relay VERP stamp simply stays off.
+		const relaySpfTerms = parseReturnPathRelaySpfTerms(getOptional('MTA_RETURN_PATH_RELAY_SPF'));
 		const mailFromRecords = buildReturnPathMailFromRecords(
 			returnPathHost,
 			poolIps,
 			qualifier,
-			mailHost
+			mailHost,
+			relaySpfTerms
 		);
 		if (mailFromRecords) {
 			dnsRecords.mailFrom = mailFromRecords;

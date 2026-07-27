@@ -13,13 +13,15 @@
  * recipient blocklisted. The HMAC makes the token unforgeable: the MTA only
  * attributes (and therefore only suppresses on) tokens it actually signed.
  *
- * Signed format:  bounce+{base64url(messageId)}+{hmac}@bounces.owlat.com
- *   hmac = base64url( HMAC-SHA256(base64url(id) || ':' || window, key) )[:MAC_B64URL_LEN]
+ * The token grammar, the MAC and the acceptance window now live in
+ * `@owlat/shared/verp` because the Convex relay adapter has to stamp the SAME
+ * envelope sender on relayed sends (otherwise the relay arm produces no bounce
+ * data of its own and the transport comparison is biased toward whichever side
+ * reports fewer bounces). This module is the MTA-side wrapper: it keeps the
+ * env-resolved key and the ambient clock the existing MTA call sites rely on.
+ * Behaviour is unchanged.
  *
- * `window` is a coarse, monotonically-increasing time bucket so that a captured
- * token does not stay replayable forever. Verification accepts the current
- * window and a bounded number of recent windows to cover the days-long DSN
- * delivery delay (RFC 5321 §4.5.4.1 retry horizon is 4–5 days).
+ * Signed format:  bounce+{base64url(messageId)}+{hmac}@bounces.owlat.com
  *
  * The legacy/unsigned format (`bounce+{base64url(id)}@`) remains available only
  * to isolated compatibility tests that deliberately omit a key. Production
@@ -28,28 +30,26 @@
  */
 
 import {
-	currentSignedTokenWindow,
-	computeSignedTokenMac,
-	findSignedTokenWindowAge,
-	resolveSignedTokenKey,
-} from './signedToken.js';
+	buildVerpAddress as buildVerpAddressWithKey,
+	normalizeVerpKey,
+	parseVerpAddress as parseVerpAddressWithKey,
+} from '@owlat/shared/verp';
 
 /**
- * Domain-separation label for the VERP MAC. Empty by construction: the shipped
- * bounce tokens were signed over `{encodedId}:{window}` with no prefix, and
- * changing it would invalidate every token already in flight. The complaint
- * token in `cfblAddress.ts` carries a non-empty label, which is what keeps the
- * two families un-replayable against each other.
+ * Resolve the VERP signing key. Reading the env here (rather than threading it
+ * through every caller) keeps `buildVerpAddress`/`parseVerpAddress` drop-in for
+ * the existing call sites; tests pass the key explicitly. An empty/undefined
+ * key enables the unsigned compatibility helper used only by isolated tests;
+ * production startup rejects that configuration.
  */
-const VERP_MAC_LABEL = '';
-
-/**
- * How many *past* windows verification will accept in addition to the current
- * one. 6 prior days + today ≈ 7-day acceptance, covering the 4–5 day retry
- * horizon plus clock skew / late forwards. Tokens older than this no longer
- * verify and the bounce is dropped as unattributed.
- */
-const WINDOW_TOLERANCE = 6;
+function resolveVerpKey(explicit?: string): string | undefined {
+	// Normalised through the SHARED helper: Convex projects
+	// `MTA_BOUNCE_VERP_KEY` through the same one, so a `.env` value carrying a
+	// trailing newline or surrounding quotes-stripped whitespace resolves to the
+	// SAME HMAC key on both sides. Without this, every relay-stamped token would
+	// fail verification here — safely, but invisibly.
+	return normalizeVerpKey(explicit ?? process.env['BOUNCE_VERP_KEY']);
+}
 
 /**
  * Whether VERP token signing/verification is active for this deployment.
@@ -64,7 +64,7 @@ const WINDOW_TOLERANCE = 6;
  * @param key optional explicit key (defaults to BOUNCE_VERP_KEY)
  */
 export function isVerpSigningEnabled(key?: string): boolean {
-	return resolveSignedTokenKey(key) !== undefined;
+	return resolveVerpKey(key) !== undefined;
 }
 
 /**
@@ -85,18 +85,7 @@ export function buildVerpAddress(
 	key?: string,
 	now: number = Date.now()
 ): string {
-	const encoded = Buffer.from(messageId).toString('base64url');
-	const signingKey = resolveSignedTokenKey(key);
-	if (!signingKey) {
-		return `bounce+${encoded}@${returnPathDomain}`;
-	}
-	const mac = computeSignedTokenMac(
-		VERP_MAC_LABEL,
-		encoded,
-		currentSignedTokenWindow(now),
-		signingKey
-	);
-	return `bounce+${encoded}+${mac}@${returnPathDomain}`;
+	return buildVerpAddressWithKey(messageId, returnPathDomain, resolveVerpKey(key), now);
 }
 
 /**
@@ -116,38 +105,5 @@ export function parseVerpAddress(
 	key?: string,
 	now: number = Date.now()
 ): string | null {
-	// Grammar: bounce+<encodedId>[+<mac>]@... — `+` separates id and mac, so the
-	// encodedId capture must be `+`-free; the mac (when present) follows it.
-	const match = address.match(/^bounce\+([A-Za-z0-9_-]+)(?:\+([A-Za-z0-9_-]+))?@/);
-	if (!match?.[1]) return null;
-
-	const encodedId = match[1];
-	const presentedMac = match[2];
-	const signingKey = resolveSignedTokenKey(key);
-
-	if (signingKey) {
-		// Signed mode: a token with no MAC is unforgeable-proof-of-origin missing
-		// → reject (forged unsigned DSN). Otherwise verify the MAC across the
-		// accepted window range; any tamper of the id changes the encodedId the
-		// MAC was computed over, so a wrong MAC and a tampered id both fail here.
-		if (!presentedMac) return null;
-		const age = findSignedTokenWindowAge({
-			label: VERP_MAC_LABEL,
-			encodedId,
-			presentedMac,
-			key: signingKey,
-			now,
-			pastWindows: WINDOW_TOLERANCE,
-			futureWindows: 0,
-		});
-		if (age === null) return null;
-	}
-
-	// Decode the (now-authenticated, when signed) id back to the messageId.
-	try {
-		const decoded = Buffer.from(encodedId, 'base64url').toString('utf-8');
-		return decoded.length > 0 ? decoded : null;
-	} catch {
-		return null;
-	}
+	return parseVerpAddressWithKey(address, resolveVerpKey(key), now);
 }

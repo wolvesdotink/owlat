@@ -18,7 +18,7 @@ import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { extractArmoredCiphertext } from '@owlat/shared/secureMessage';
 import { isAllowedSnsHost } from './adapters/ses';
-import { isPostboxMessageId } from '../delivery/messageIdRouting';
+import { isPostboxMessageId, isReturnPathProbeMessageId } from '../delivery/messageIdRouting';
 import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { withTimeout } from '../lib/inputGuards';
 import { logError, logWarn } from '../lib/runtimeLog';
@@ -185,6 +185,17 @@ const DISPATCH: DispatchTable = {
 		);
 	},
 	'email.bounced': async (ctx, e) => {
+		// A return-path probe is not a Send: its bounce is the EVIDENCE that the
+		// relay preserved our VERP envelope sender — an attributed DSN cannot
+		// exist otherwise, because the signed token lives in the envelope
+		// recipient's local part — and it must never touch a campaign's numbers.
+		if (isReturnPathProbeMessageId(e.providerMessageId)) {
+			await ctx.runMutation(internal.delivery.relayReturnPath.recordProbeObservation, {
+				probeMessageId: e.providerMessageId,
+				at: e.at,
+			});
+			return;
+		}
 		if (isPostboxMessageId(e.providerMessageId)) {
 			// Postbox does not distinguish hard/soft at the per-recipient level —
 			// the Send lifecycle's `bounceType` is a campaign-side concern (drives
