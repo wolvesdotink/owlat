@@ -3,6 +3,7 @@ import type Redis from 'ioredis';
 import {
 	auditIp,
 	auditZonesFor,
+	classifyNeighbourAnswer,
 	getIpAuditRecord,
 	ipAuditIsDue,
 	neighbourAddresses,
@@ -197,6 +198,9 @@ describe('hostile and degenerate DNS responses are bounded', () => {
 		);
 		expect(record.neighbourhoodStatus).toBe('insufficient_data');
 		expect(record.neighbourhood).toEqual({ sampled: 0, listed: 0 });
+		// An address with no /24 cannot be sampled at all, so the missing sample is
+		// inert: it must not pin every IPv6 audit at low confidence forever.
+		expect(record.confidence).toBe('high');
 	});
 
 	it('samples the /24 without ever probing the address itself', () => {
@@ -206,6 +210,56 @@ describe('hostile and degenerate DNS responses are bounded', () => {
 		expect(neighbourAddresses('2001:db8::25', 16)).toEqual([]);
 		expect(neighbourAddresses('not-an-ip', 16)).toEqual([]);
 		expect(neighbourAddresses('203.0.113.33', 0)).toEqual([]);
+	});
+});
+
+/**
+ * The per-neighbour rule is the sole input to the only `unusable` verdict the
+ * /24 sample can produce on its own, so every branch is pinned here.
+ */
+describe('classifyNeighbourAnswer', () => {
+	it('does not count a neighbour that gave no definite answer', () => {
+		expect(classifyNeighbourAnswer('unknown', [])).toBeNull();
+		expect(classifyNeighbourAnswer('unknown', ['sbl'])).toBeNull();
+	});
+
+	it('counts a clean neighbour as clean', () => {
+		expect(classifyNeighbourAnswer('clean', [])).toBe(false);
+	});
+
+	it('excludes a decoded PBL-only listing: it is a policy statement about the range', () => {
+		expect(classifyNeighbourAnswer('listed', ['pbl'])).toBe(false);
+	});
+
+	it('counts any spam listing, including one alongside PBL', () => {
+		expect(classifyNeighbourAnswer('listed', ['sbl'])).toBe(true);
+		expect(classifyNeighbourAnswer('listed', ['pbl', 'css'])).toBe(true);
+	});
+
+	it('counts an undecodable listing: it is still a listing', () => {
+		expect(classifyNeighbourAnswer('listed', [])).toBe(true);
+	});
+
+	it('drives the noisy-/24 verdict end to end', async () => {
+		// Every neighbour answers CSS-listed; only the audited address is clean.
+		const record = await auditIp(
+			IP,
+			config(),
+			deps({
+				neighbourSampleSize: 16,
+				dns: {
+					resolve4: (hostname: string) => {
+						if (hostname === 'mail.example.com') return Promise.resolve([IP]);
+						if (hostname.startsWith('10.113.0.203.'))
+							return Promise.reject(codedError('ENOTFOUND'));
+						return Promise.resolve(['127.0.0.3']);
+					},
+					reverse: () => Promise.resolve(['mail.example.com']),
+				},
+			})
+		);
+		expect(record.neighbourhoodStatus).toBe('noisy');
+		expect(record.verdict).toBe('unusable');
 	});
 });
 
@@ -266,6 +320,26 @@ describe('the sweep is advisory and always terminates', () => {
 	it('returns no record rather than throwing on corrupt stored JSON', async () => {
 		const { redis, store } = fakeRedis();
 		store.set('mta:ip-audit:203.0.113.10', '{not json');
+		expect(await getIpAuditRecord(redis, IP)).toBeNull();
+	});
+
+	it('returns no record for valid JSON of the wrong shape', async () => {
+		const { redis, store } = fakeRedis();
+		// Written by an older build: parses fine, then throws on the first
+		// iteration of `findings`. It must read as ABSENT, not as a half-record.
+		store.set('mta:ip-audit:203.0.113.10', JSON.stringify({ ip: IP, checkedAt: 1 }));
+		expect(await getIpAuditRecord(redis, IP)).toBeNull();
+
+		store.set(
+			'mta:ip-audit:203.0.113.10',
+			JSON.stringify({ ip: IP, checkedAt: '1', findings: [], zones: [] })
+		);
+		expect(await getIpAuditRecord(redis, IP)).toBeNull();
+
+		store.set('mta:ip-audit:203.0.113.10', JSON.stringify([]));
+		expect(await getIpAuditRecord(redis, IP)).toBeNull();
+
+		store.set('mta:ip-audit:203.0.113.10', 'null');
 		expect(await getIpAuditRecord(redis, IP)).toBeNull();
 	});
 

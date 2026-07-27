@@ -24,11 +24,13 @@ import {
 	type IpAuditReport,
 	type IpAuditZoneId,
 	type IpAuditZoneObservation,
+	type SpamhausSublist,
 } from '@owlat/shared/ipAudit';
 import { ipAddressFamily, type IpAddressFamily } from '@owlat/shared/ipAddress';
+import { DNSBL_LISTS, dnsblZoneHost } from '@owlat/shared/dnsbl';
 import type { MtaConfig } from '../config.js';
 import { resolveEhloForIp } from '../config.js';
-import { lookupDnsblZone } from '../intelligence/dnsbl.js';
+import { lookupDnsblZone, type DnsblLookupResult } from '../intelligence/dnsbl.js';
 import { logger } from '../monitoring/logger.js';
 import { verifyFcrdns } from './fcrdns.js';
 import { probePort25Egress, type Port25ProbeResult } from './port25Probe.js';
@@ -91,10 +93,8 @@ export function auditZonesFor(
 ): { zoneId: IpAuditZoneId; zone: string | null }[] {
 	return IP_AUDIT_ZONES.filter((zone) => zone.addressFamilies.includes(family)).map((zone) => {
 		if (zone.id === 'abusix') {
-			return {
-				zoneId: zone.id,
-				zone: config.abusixDnsblApiKey ? `${config.abusixDnsblApiKey}.${zone.zone}` : null,
-			};
+			// The keyed composition lives with the zone definition, not here.
+			return { zoneId: zone.id, zone: dnsblZoneHost(DNSBL_LISTS.abusix, config.abusixDnsblApiKey) };
 		}
 		if (zone.id === 'invaluement') {
 			return { zoneId: zone.id, zone: config.invaluementDnsblZone ?? null };
@@ -146,13 +146,31 @@ async function observeZones(
 	);
 }
 
+/**
+ * Classify one neighbour's Spamhaus answer. Pure, and the sole input to the
+ * only verdict the /24 sample can produce on its own.
+ *
+ *   * `null`  — no definite answer; the neighbour is not counted at all.
+ *   * `false` — answered clean.
+ *   * `true`  — listed for spam. A whole /24 in the PBL is a policy statement
+ *     about the range, not evidence the neighbours are spamming, so a decoded
+ *     PBL-ONLY listing does not count; a listing whose return code we could not
+ *     decode does, because it is still a listing.
+ */
+export function classifyNeighbourAnswer(
+	status: DnsblLookupResult['status'],
+	sublists: readonly SpamhausSublist[]
+): boolean | null {
+	if (status === 'unknown') return null;
+	if (status === 'clean') return false;
+	return sublists.length === 0 || sublists.some((sublist) => sublist !== 'pbl');
+}
+
 async function observeNeighbourhood(
-	ip: string,
-	sampleSize: number,
+	neighbours: readonly string[],
 	timeoutMs: number,
 	deps: IpAuditDeps
 ): Promise<{ sampled: number; listed: number }> {
-	const neighbours = neighbourAddresses(ip, sampleSize);
 	if (neighbours.length === 0) return { sampled: 0, listed: 0 };
 	const spamhaus = IP_AUDIT_ZONES.find((zone) => zone.id === 'spamhaus');
 	if (!spamhaus) return { sampled: 0, listed: 0 };
@@ -163,15 +181,11 @@ async function observeNeighbourhood(
 				const result = await lookupDnsblZone(neighbour, 'spamhaus', spamhaus.zone, {
 					resolve4: deps.dns.resolve4,
 					timeoutMs,
+					// Advisory probe: a resolver outage must not emit one warn per
+					// neighbour on a path that gates nothing.
+					quiet: true,
 				});
-				if (result.status === 'unknown') return null;
-				if (result.status === 'clean') return false;
-				const sublists = decodeSpamhausAnswers(result.answers);
-				// A whole /24 in the PBL is a policy statement about the range, not
-				// evidence that the neighbours are spamming. Anything else counts —
-				// including a listing whose return code we could not decode, which is
-				// still a listing.
-				return sublists.length === 0 || sublists.some((sublist) => sublist !== 'pbl');
+				return classifyNeighbourAnswer(result.status, decodeSpamhausAnswers(result.answers));
 			} catch {
 				return null;
 			}
@@ -190,6 +204,7 @@ export async function auditIp(
 	const family = ipAddressFamily(ip);
 	const timeoutMs = deps.zoneTimeoutMs ?? ZONE_TIMEOUT_MS;
 	const sampleSize = deps.neighbourSampleSize ?? NEIGHBOUR_SAMPLE_OFFSETS.length;
+	const neighbours = neighbourAddresses(ip, sampleSize);
 	const ehlo = resolveEhloForIp(config, ip);
 
 	const [port25Detail, zones, neighbourhood, fcrdns] = await Promise.all([
@@ -205,7 +220,7 @@ export async function auditIp(
 		family
 			? observeZones(ip, config, family, timeoutMs, deps)
 			: Promise.resolve<IpAuditZoneObservation[]>([]),
-		observeNeighbourhood(ip, sampleSize, timeoutMs, deps),
+		observeNeighbourhood(neighbours, timeoutMs, deps),
 		verifyFcrdns(
 			ip,
 			[ehlo],
@@ -223,6 +238,9 @@ export async function auditIp(
 			? { verdict: fcrdns.verdict, ...(fcrdns.reason ? { reason: fcrdns.reason } : {}) }
 			: { verdict: 'error' },
 		neighbourhood,
+		// An IPv6 address has no /24 to sample, so an empty sample there is a fact
+		// about the address rather than a gap the operator could close.
+		neighbourhoodApplicable: neighbours.length > 0,
 	});
 	return { ...report, port25Detail };
 }
