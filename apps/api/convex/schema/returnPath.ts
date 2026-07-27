@@ -9,6 +9,31 @@
 
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import {
+	RETURN_PATH_PROBE_REASONS,
+	RETURN_PATH_PROBE_STATUSES,
+	SETTLED_RETURN_PATH_PROBE_REASONS,
+	SETTLED_RETURN_PATH_PROBE_STATUSES,
+} from '../lib/sendProviders/returnPathCapability';
+
+/**
+ * Table validators DERIVED from the probe state machine in
+ * `lib/sendProviders/returnPathCapability`, not re-listed beside it. Hand-copied
+ * literal sets are how a status added to the core silently fails to validate at
+ * the table — a drift that would surface as a write rejection on the send path.
+ */
+const probeStatusValidator = v.union(
+	...RETURN_PATH_PROBE_STATUSES.map((status) => v.literal(status))
+);
+const probeReasonValidator = v.union(
+	...RETURN_PATH_PROBE_REASONS.map((reason) => v.literal(reason))
+);
+const settledStatusValidator = v.union(
+	...SETTLED_RETURN_PATH_PROBE_STATUSES.map((status) => v.literal(status))
+);
+const settledReasonValidator = v.union(
+	...SETTLED_RETURN_PATH_PROBE_REASONS.map((reason) => v.literal(reason))
+);
 
 export const returnPathTables = {
 	// Custom return-path (VERP envelope sender) capability, observed per
@@ -25,17 +50,8 @@ export const returnPathTables = {
 	sendTransportReturnPathProbes: defineTable({
 		transportId: v.string(),
 		probeId: v.string(),
-		status: v.union(
-			v.literal('awaiting_delivery'),
-			v.literal('supported'),
-			v.literal('unsupported')
-		),
-		reason: v.union(
-			v.literal('awaiting_delivery'),
-			v.literal('observed_match'),
-			v.literal('rejected_by_relay'),
-			v.literal('no_bounce_observed')
-		),
+		status: probeStatusValidator,
+		reason: probeReasonValidator,
 		sentEnvelopeSender: v.string(),
 		startedAt: v.number(),
 		settledAt: v.optional(v.number()),
@@ -52,14 +68,10 @@ export const returnPathTables = {
 		// periodically switching off the very stamp it exists to confirm.
 		lastSettled: v.optional(
 			v.object({
-				status: v.union(v.literal('supported'), v.literal('unsupported')),
-				// No `awaiting_delivery`: that is the reason of a probe still in
-				// flight, and a SETTLED verdict can never carry it.
-				reason: v.union(
-					v.literal('observed_match'),
-					v.literal('rejected_by_relay'),
-					v.literal('no_bounce_observed')
-				),
+				// Both subsets exclude `awaiting_delivery`: that is the status/reason
+				// of a probe still in flight, and a SETTLED verdict can never carry it.
+				status: settledStatusValidator,
+				reason: settledReasonValidator,
 				settledAt: v.number(),
 			})
 		),

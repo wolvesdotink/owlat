@@ -77,11 +77,26 @@ export type ReturnPathProbeReason = (typeof RETURN_PATH_PROBE_REASONS)[number];
  * year. The re-probe periodically switching OFF the very stamp it exists to
  * confirm is the opposite of what it is for.
  */
+/**
+ * The subsets a SETTLED verdict may carry. `awaiting_delivery` is the status
+ * and reason of a probe still in flight, so a settled verdict admits neither —
+ * derived here rather than re-listed so a literal added above cannot drift out
+ * of the subsets, or out of the table validators that consume both
+ * (`schema/returnPath.ts`).
+ */
+export const SETTLED_RETURN_PATH_PROBE_STATUSES = RETURN_PATH_PROBE_STATUSES.filter(
+	(status): status is Exclude<ReturnPathProbeStatus, 'awaiting_delivery'> =>
+		status !== 'awaiting_delivery'
+);
+
+export const SETTLED_RETURN_PATH_PROBE_REASONS = RETURN_PATH_PROBE_REASONS.filter(
+	(reason): reason is Exclude<ReturnPathProbeReason, 'awaiting_delivery'> =>
+		reason !== 'awaiting_delivery'
+);
+
 export interface SettledReturnPathVerdict {
-	readonly status: Exclude<ReturnPathProbeStatus, 'awaiting_delivery'>;
-	// `awaiting_delivery` is the reason of a probe still in flight; a SETTLED
-	// verdict can never carry it, so the type does not admit it either.
-	readonly reason: Exclude<ReturnPathProbeReason, 'awaiting_delivery'>;
+	readonly status: (typeof SETTLED_RETURN_PATH_PROBE_STATUSES)[number];
+	readonly reason: (typeof SETTLED_RETURN_PATH_PROBE_REASONS)[number];
 	readonly settledAt: number;
 }
 
