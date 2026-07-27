@@ -92,17 +92,30 @@ function flattenContentType(raw: unknown): string {
  */
 export type CfblAttributionSource = 'rcpt_to' | 'feedback_id';
 
-export interface CfblAttribution {
-	/** The attributed internal message id, when a signature verified. */
-	readonly messageId?: string;
-	readonly source?: CfblAttributionSource;
-	/**
-	 * Verification failures worth counting. A value that simply isn't a CFBL
-	 * token (`not_cfbl`) is NOT listed — a DSN arriving at `bounce+…`, or an ARF
-	 * carrying Gmail's unrelated `Feedback-ID`, is normal traffic, not an attack.
-	 */
-	readonly rejections: readonly CfblRejectionReason[];
-}
+/**
+ * The verdict for one inbound report.
+ *
+ * A DISCRIMINATED UNION rather than a record of co-varying optionals: a message
+ * id and the source it came from are always both present or both absent, and
+ * `attributed` is what lets the consumer narrow to that pair exhaustively
+ * instead of re-deriving it from a two-field truthiness check the type system
+ * cannot verify. (`CfblParseResult` in `cfblAddress.ts` has the same shape.)
+ *
+ * `rejections` rides BOTH arms: a report may present several candidate tokens,
+ * so an attribution can succeed on one and still have counted a failure on
+ * another. A value that simply isn't a CFBL token (`not_cfbl`) is NOT listed —
+ * a DSN arriving at `bounce+…`, or an ARF carrying Gmail's unrelated
+ * `Feedback-ID`, is normal traffic, not an attack.
+ */
+export type CfblAttribution =
+	| {
+			readonly attributed: true;
+			/** The attributed internal message id. */
+			readonly messageId: string;
+			readonly source: CfblAttributionSource;
+			readonly rejections: readonly CfblRejectionReason[];
+	  }
+	| { readonly attributed: false; readonly rejections: readonly CfblRejectionReason[] };
 
 /**
  * UTF-16 code units of report text scanned for a `CFBL-Feedback-ID` /
@@ -142,7 +155,9 @@ export function resolveCfblAttribution(
 
 	if (input.rcptTo) {
 		const viaRcpt = parseCfblAddress(input.rcptTo, key, now);
-		if (viaRcpt.ok) return { messageId: viaRcpt.messageId, source: 'rcpt_to', rejections };
+		if (viaRcpt.ok) {
+			return { attributed: true, messageId: viaRcpt.messageId, source: 'rcpt_to', rejections };
+		}
 		record(viaRcpt.reason);
 	}
 
@@ -161,12 +176,17 @@ export function resolveCfblAttribution(
 		if (!presented.includes('+')) continue;
 		const viaFeedbackId = parseCfblToken(presented, key, now);
 		if (viaFeedbackId.ok) {
-			return { messageId: viaFeedbackId.messageId, source: 'feedback_id', rejections };
+			return {
+				attributed: true,
+				messageId: viaFeedbackId.messageId,
+				source: 'feedback_id',
+				rejections,
+			};
 		}
 		record(viaFeedbackId.reason);
 	}
 
-	return { rejections };
+	return { attributed: false, rejections };
 }
 
 /** Options threaded from the intake pipeline into ARF classification. */
@@ -242,7 +262,7 @@ export function tryParseARF(
 	for (const reason of cfbl.rejections) {
 		cfblRejectionsTotal.inc({ reason });
 	}
-	if (cfbl.messageId && cfbl.source) {
+	if (cfbl.attributed) {
 		originalMessageId = cfbl.messageId;
 		cfblAttributionsTotal.inc({ source: cfbl.source });
 	}
