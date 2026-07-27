@@ -103,11 +103,17 @@ export async function returnPathCapabilityFor(
  * Read-only and total, like the resolver it wraps: an id this deployment no
  * longer configures resolves to the unresolvable posture (degraded), never to
  * an error. Absence is a supported configuration (plan D2).
+ *
+ * No clock argument, deliberately — exactly as `resolveLastMileRoutePlan` in
+ * the routing seam refuses one. A settled verdict is only rejected once it is
+ * older than the probe TTL, so a backdated `at` would revive an EXPIRED
+ * `supported` verdict and report the cell comparable when it is not. `now`
+ * stays on {@link returnPathCapabilityFor} for tests, which call it directly.
  */
 export const transportReturnPathCapability = internalQuery({
-	args: { transportId: v.string(), at: v.number() },
+	args: { transportId: v.string() },
 	handler: async (ctx, args): Promise<ResolvedReturnPathCapability> =>
-		returnPathCapabilityFor(ctx, args.transportId, args.at),
+		returnPathCapabilityFor(ctx, args.transportId, Date.now()),
 });
 
 /**

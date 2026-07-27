@@ -191,12 +191,23 @@ describe('relay return-path probe persistence', () => {
 		});
 		const viaQuery = await t.query(
 			internal.delivery.relayReturnPath.transportReturnPathCapability,
-			{ transportId: TRANSPORT_ID, at: Date.now() }
+			{ transportId: TRANSPORT_ID }
 		);
 		// One resolution, two entry points — a dashboard read and the send path
 		// can never disagree about whether a cell is degraded.
 		expect(viaQuery).toEqual(await capability(t));
 		expect(viaQuery.capability).toBe('supported');
+
+		// The query takes NO clock: it reads its own, so an expired verdict
+		// cannot be revived by a caller-supplied timestamp. Advancing the fake
+		// clock past the TTL is the only way to move this answer.
+		vi.setSystemTime(T0 + 60_000 + RETURN_PATH_PROBE_TTL_MS);
+		const afterTtl = await t.query(
+			internal.delivery.relayReturnPath.transportReturnPathCapability,
+			{ transportId: TRANSPORT_ID }
+		);
+		expect(afterTtl.capability).toBe('unknown');
+		expect(measurementQualityOf(afterTtl)).toBe('degraded');
 	});
 
 	it('answers the callable query for an unconfigured transport without erroring', async () => {
@@ -205,7 +216,7 @@ describe('relay return-path probe persistence', () => {
 		const t = convexTest(schema, modules);
 		const resolved = await t.query(
 			internal.delivery.relayReturnPath.transportReturnPathCapability,
-			{ transportId: 'not-a-transport', at: Date.now() }
+			{ transportId: 'not-a-transport' }
 		);
 		expect(resolved.capability).toBe('unknown');
 	});
