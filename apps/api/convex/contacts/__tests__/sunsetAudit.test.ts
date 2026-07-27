@@ -171,7 +171,7 @@ describe('sunset restore path', () => {
 					now: NOW,
 				})
 		);
-		expect(result).toEqual({ restored: true, removedSuppression: true, reason: 'restored' });
+		expect(result).toEqual({ restored: true, removedSuppression: true, outcome: 'restored' });
 
 		await t.run(async (ctx) => {
 			const contact = await ctx.db.get(contactId);

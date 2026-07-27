@@ -322,12 +322,6 @@ export async function evaluateAndApplySunset(
 			});
 			return { verdict, applied: true };
 		}
-
-		default: {
-			const exhaustive: never = verdict.action;
-			void exhaustive;
-			return { verdict, applied: false };
-		}
 	}
 }
 

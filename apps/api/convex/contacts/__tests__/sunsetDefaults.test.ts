@@ -20,10 +20,6 @@ import { NOW, daysAgo, harness } from './sunsetFixtures';
  * an operator to discover a setting.
  */
 
-function harness() {
-	return convexTest(schema, modules);
-}
-
 describe('sunset defaults', () => {
 	it('is enabled at 180 / 270', () => {
 		expect(SUNSET_POLICY_DEFAULTS).toEqual({

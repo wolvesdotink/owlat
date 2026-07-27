@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import schema from '../../schema';
 import { createTestContact } from '../../__tests__/factories';
 import { isSuppressed, loadSuppressionSet } from '../../lib/suppression';
 import { toMtaSuppressionReason } from '../../delivery/suppressionMirror';
@@ -16,10 +17,6 @@ import { NOW, daysAgo, harness } from './sunsetFixtures';
  * and audience resolution, and is mirrored to the MTA backstop by the same
  * scheduled action every other suppression uses.
  */
-
-function harness() {
-	return convexTest(schema, modules);
-}
 
 async function suppressOne(t: ReturnType<typeof harness>, email: string) {
 	const contactId = await t.run(async (ctx) => {
