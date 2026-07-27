@@ -256,6 +256,14 @@ export const contactTables = {
 	// Sunset policies (deliverability plan P4-4) — per-topic tuning of the
 	// re-engagement/auto-suppression windows owned by `contacts/sunsetPolicy.ts`.
 	//
+	// The engine's suppressions land on the SHIPPED `blockedEmails` list with
+	// `reason: 'unengaged'` (schema/delivery.ts). That literal is distinct from
+	// 'manual' on purpose: it is the ONLY reason the engine's one-action restore
+	// path is allowed to remove — a hard bounce or a spam complaint is evidence
+	// the engine did not produce and must not erase — and an operator reading
+	// the blocklist has to be able to tell "never engaged" from "bounced" and
+	// from "a human blocked this".
+	//
 	// The table holds OVERRIDES ONLY. An empty table is the supported, shipped
 	// configuration: `SUNSET_POLICY_DEFAULTS` (enabled, 180/270) applies, so the
 	// protection is on out of the box rather than waiting for someone to opt in.

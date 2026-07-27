@@ -30,13 +30,7 @@ export const deliveryTables = {
 			v.literal('bounced'), // Hard bounce - email address doesn't exist
 			v.literal('complained'), // Recipient marked email as spam
 			v.literal('manual'), // Manually added to blocklist
-			// Sunset policy (P4-4): the contact ignored every message for the
-			// configured window, so the sunset engine suppressed it. Distinct
-			// from 'manual' on purpose — it is the ONLY reason the engine's
-			// one-action restore path is allowed to remove, and an operator
-			// reading the blocklist must be able to tell "never engaged" from
-			// "bounced" and from "a human blocked this".
-			v.literal('unengaged')
+			v.literal('unengaged') // Sunset policy — see contacts/sunsetPolicy.ts
 		),
 		// Bounce type classification (hard = permanent, soft = temporary)
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
