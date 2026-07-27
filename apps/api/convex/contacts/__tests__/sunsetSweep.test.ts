@@ -1,11 +1,9 @@
-import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
-import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
 import { SUNSET_BATCH_SIZE, SUNSET_STALE_MS } from '../sunset';
-import { DAY } from './sunsetFixtures';
+import { DAY, harness, type Harness } from './sunsetFixtures';
 
 /**
  * THE SWEEP IS BOUNDED, RESUMABLE AND DOES NOT RESCAN SETTLED CONTACTS
@@ -13,21 +11,6 @@ import { DAY } from './sunsetFixtures';
  * full-table walk: `sunsetEvaluatedAt` is both the freshness stamp and the
  * cursor, so a contact leaves the scanned range the moment it is looked at.
  */
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const contactsGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../contacts/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...contactsGlob };
-
-function harness() {
-	return convexTest(schema, modules);
-}
-
-type Harness = ReturnType<typeof harness>;
 
 const agoReal = (days: number): number => Date.now() - days * DAY;
 
@@ -223,5 +206,67 @@ describe('sunset sweep — it actually transitions contacts', () => {
 			expect(blocked[0]?.email).toBe('sweep-suppress@example.com');
 			expect(blocked[0]?.reason).toBe('unengaged');
 		});
+	});
+});
+
+describe('sunset sweep — self-scheduling', () => {
+	/**
+	 * The chain is what turns a 50-contact transaction into a
+	 * `SUNSET_CONTACTS_PER_TICK` tick, and the batch budget is what stops it
+	 * running forever. Every other case in this file passes
+	 * `batchesRemaining: 1`, which exercises neither.
+	 */
+	it('enqueues exactly one follow-up while budget remains', async () => {
+		const t = harness();
+		await seedQuietContacts(t, SUNSET_BATCH_SIZE + 5);
+
+		const result = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+			batchSize: SUNSET_BATCH_SIZE,
+			batchesRemaining: 2,
+		});
+
+		expect(result.isDone).toBe(false);
+		expect(result.isBudgetExhausted).toBe(false);
+
+		const scheduled = await t.run(
+			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled).toHaveLength(1);
+		expect(scheduled[0]!.args[0]).toMatchObject({ batchesRemaining: 1 });
+	});
+
+	it('stops chaining on the last batch of the budget', async () => {
+		const t = harness();
+		await seedQuietContacts(t, SUNSET_BATCH_SIZE + 5);
+
+		const result = await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+			batchSize: SUNSET_BATCH_SIZE,
+			batchesRemaining: 1,
+		});
+
+		expect(result.isDone).toBe(false);
+		// The book is bigger than this tick: the sweep says so rather than
+		// chaining past its ceiling.
+		expect(result.isBudgetExhausted).toBe(true);
+
+		const scheduled = await t.run(
+			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled).toHaveLength(0);
+	});
+
+	it('does not chain when the range is already drained', async () => {
+		const t = harness();
+		await seedQuietContacts(t, 2);
+
+		await t.mutation(internal.contacts.sunset.sweepSunsetPolicy, {
+			batchSize: SUNSET_BATCH_SIZE,
+			batchesRemaining: 5,
+		});
+
+		const scheduled = await t.run(
+			async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled).toHaveLength(0);
 	});
 });

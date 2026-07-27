@@ -1,12 +1,10 @@
-import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
-import schema from '../../schema';
 import { createTestContact } from '../../__tests__/factories';
 import { isSuppressed, loadSuppressionSet } from '../../lib/suppression';
 import { toMtaSuppressionReason } from '../../delivery/suppressionMirror';
 import { SUNSET_POLICY_DEFAULTS } from '../sunsetPolicy';
 import { evaluateAndApplySunset } from '../sunsetEngine';
-import { NOW, daysAgo } from './sunsetFixtures';
+import { NOW, daysAgo, harness } from './sunsetFixtures';
 
 /**
  * REGRESSION: the sunset engine REUSES the shipped suppression path — it does
@@ -18,15 +16,6 @@ import { NOW, daysAgo } from './sunsetFixtures';
  * and audience resolution, and is mirrored to the MTA backstop by the same
  * scheduled action every other suppression uses.
  */
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const contactsGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../contacts/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...contactsGlob };
 
 function harness() {
 	return convexTest(schema, modules);

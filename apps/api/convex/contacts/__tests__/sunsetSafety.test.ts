@@ -1,10 +1,8 @@
-import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
-import schema from '../../schema';
 import { createTestContact } from '../../__tests__/factories';
 import { evaluateSunset, SUNSET_POLICY_DEFAULTS } from '../sunsetPolicy';
 import { evaluateAndApplySunset } from '../sunsetEngine';
-import { DAY, NOW, daysAgo, facts, policy } from './sunsetFixtures';
+import { DAY, NOW, daysAgo, facts, harness, policy } from './sunsetFixtures';
 
 /**
  * THE BLOCKING SAFETY SUITE (deliverability plan P4-4).
@@ -14,15 +12,6 @@ import { DAY, NOW, daysAgo, facts, policy } from './sunsetFixtures';
  * missing input makes every suppressing path UNREACHABLE. If one of these fails,
  * the feature is not shippable.
  */
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const contactsGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../contacts/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...contactsGlob };
 
 describe('sunset safety — an empty activity history is never evidence of disengagement', () => {
 	it('holds a contact we have never sent to, however old the row is', () => {
@@ -104,7 +93,7 @@ describe('sunset safety — a bad clock never fires', () => {
 
 	it('holds on a hostile policy crafted to force an immediate suppression', () => {
 		const v = evaluateSunset(facts({ lastEngagementAt: daysAgo(1) }), {
-			enabled: true,
+			isEnabled: true,
 			reengageAfterDays: 0,
 			suppressAfterDays: 0,
 		});
@@ -129,7 +118,7 @@ describe('sunset safety — contacts that must never be touched', () => {
 
 describe('sunset safety — auto-suppression NEVER deletes data', () => {
 	it('leaves the contact, its timeline and its topics intact', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 
 		const { contactId, activityCount, topicCount } = await t.run(async (ctx) => {
 			const id = await ctx.db.insert(
@@ -202,7 +191,7 @@ describe('sunset safety — auto-suppression NEVER deletes data', () => {
 	});
 
 	it('does not suppress a contact whose only history is its creation', async () => {
-		const t = convexTest(schema, modules);
+		const t = harness();
 
 		const contactId = await t.run(async (ctx) =>
 			ctx.db.insert(
@@ -232,5 +221,119 @@ describe('sunset safety — auto-suppression NEVER deletes data', () => {
 			const blocked = await ctx.db.query('blockedEmails').collect();
 			expect(blocked).toHaveLength(0);
 		});
+	});
+});
+
+describe('sunset safety — a backfilled activity history never fakes disengagement', () => {
+	/**
+	 * THE INSERTION-ORDER TRAP. `contactActivities` rows are written in whatever
+	 * order they arrive, not in `occurredAt` order: a CSV/Mailchimp import or a
+	 * replayed webhook batch lands a run of HISTORICAL opens AFTER a genuinely
+	 * recent one. Any fact loader that leans on insertion order therefore reports
+	 * a stale "newest engagement", which inflates the quiet window and
+	 * auto-suppresses a contact that is actively opening our mail.
+	 *
+	 * The fixture writes the recent open FIRST and then backfills older ones, so
+	 * it fails against an insertion-ordered read and passes only against an
+	 * `occurredAt`-ordered index.
+	 */
+	async function seedBackfilledContact(t: ReturnType<typeof harness>, backfillCount: number) {
+		return await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'backfilled@example.com',
+					createdAt: daysAgo(900),
+					updatedAt: daysAgo(900),
+				})
+			);
+			await ctx.db.insert('contactActivities', {
+				contactId: id,
+				activityType: 'email_sent',
+				occurredAt: daysAgo(880),
+			});
+			// The genuinely newest engagement — written before everything older.
+			await ctx.db.insert('contactActivities', {
+				contactId: id,
+				activityType: 'email_opened',
+				occurredAt: daysAgo(2),
+			});
+			for (let i = 0; i < backfillCount; i += 1) {
+				await ctx.db.insert('contactActivities', {
+					contactId: id,
+					activityType: 'email_opened',
+					// Every one of these is far outside the suppression window.
+					occurredAt: daysAgo(500 + i * 10),
+				});
+			}
+			return id;
+		});
+	}
+
+	for (const backfillCount of [1, 3, 7, 25]) {
+		it(`holds when ${backfillCount} historical open(s) are written after a recent one`, async () => {
+			const t = harness();
+			const contactId = await seedBackfilledContact(t, backfillCount);
+
+			const applied = await t.run(async (ctx) => {
+				const contact = await ctx.db.get(contactId);
+				if (!contact) throw new Error('fixture contact missing');
+				return await evaluateAndApplySunset(ctx, {
+					contact,
+					policy: { ...SUNSET_POLICY_DEFAULTS },
+					now: NOW,
+				});
+			});
+
+			expect(applied.verdict.action).toBe('hold');
+			expect(applied.verdict.reason).toBe('engaged_recently');
+			expect(applied.applied).toBe(false);
+
+			// And nothing was suppressed on the way past.
+			await t.run(async (ctx) => {
+				const blocked = await ctx.db.query('blockedEmails').collect();
+				expect(blocked).toHaveLength(0);
+			});
+		});
+	}
+
+	it('measures the first send from the oldest occurredAt, not the first row written', async () => {
+		const t = harness();
+		const contactId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'late-import@example.com',
+					createdAt: daysAgo(900),
+					updatedAt: daysAgo(900),
+				})
+			);
+			// A recent send written first, then the true first send backfilled.
+			await ctx.db.insert('contactActivities', {
+				contactId: id,
+				activityType: 'email_sent',
+				occurredAt: daysAgo(10),
+			});
+			await ctx.db.insert('contactActivities', {
+				contactId: id,
+				activityType: 'email_sent',
+				occurredAt: daysAgo(800),
+			});
+			return id;
+		});
+
+		const applied = await t.run(async (ctx) => {
+			const contact = await ctx.db.get(contactId);
+			if (!contact) throw new Error('fixture contact missing');
+			return await evaluateAndApplySunset(ctx, {
+				contact,
+				policy: { ...SUNSET_POLICY_DEFAULTS },
+				now: NOW,
+			});
+		});
+
+		// 800 quiet days against a 270-day window: the engine only reaches this
+		// verdict if it read the OLDEST send rather than the first row written.
+		expect(applied.verdict.action).toBe('suppress');
 	});
 });

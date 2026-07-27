@@ -1,6 +1,4 @@
-import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
-import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
 import { SUNSET_POLICY_DEFAULTS } from '../sunsetPolicy';
@@ -9,7 +7,7 @@ import {
 	restoreSunsetSuppression,
 	setSunsetExemption,
 } from '../sunsetEngine';
-import { NOW, daysAgo } from './sunsetFixtures';
+import { NOW, daysAgo, harness, type Harness } from './sunsetFixtures';
 
 /**
  * EVERY AUTOMATIC TRANSITION IS AUDITED, and the restore path works and is
@@ -17,21 +15,6 @@ import { NOW, daysAgo } from './sunsetFixtures';
  * first-class answer to "who": the entry carries `userId: 'system'` and an
  * explicit `actor: 'sunset_engine'` detail alongside the decision's reason.
  */
-
-const rootGlob = import.meta.glob('../../**/*.*s');
-const contactsGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../contacts/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...contactsGlob };
-
-function harness() {
-	return convexTest(schema, modules);
-}
-
-type Harness = ReturnType<typeof harness>;
 
 async function seedContact(
 	t: Harness,
@@ -254,7 +237,7 @@ describe('sunset restore path', () => {
 				})
 		);
 		expect(result.restored).toBe(false);
-		expect(result.reason).toBe('not_sunset_suppressed');
+		expect(result.outcome).toBe('not_sunset_suppressed');
 		await t.run(async (ctx) => {
 			expect(await ctx.db.query('blockedEmails').collect()).toHaveLength(1);
 		});

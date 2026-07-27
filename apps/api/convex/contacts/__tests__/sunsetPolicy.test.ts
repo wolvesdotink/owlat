@@ -6,7 +6,7 @@ import {
 	SUNSET_POLICY_DEFAULTS,
 	type SunsetVerdict,
 } from '../sunsetPolicy';
-import { daysAgo, facts, policy } from './sunsetFixtures';
+import { daysAgo, facts, measured, policy } from './sunsetFixtures';
 
 /**
  * The N/M thresholds, per topic, across the five states a contact can be in
@@ -37,7 +37,7 @@ describe('evaluateSunset — the threshold table', () => {
 		expect(v.action).toBe('enter_reengagement');
 		expect(v.stage).toBe('reengagement');
 		expect(v.reason).toBe('quiet_past_reengage_window');
-		expect(Math.round(v.quietDays ?? 0)).toBe(181);
+		expect(Math.round(measured(v).quietDays)).toBe(181);
 	});
 
 	it('holds a contact already on the re-engagement track and still quiet', () => {
@@ -87,7 +87,7 @@ describe('evaluateSunset — the threshold table', () => {
 	it('measures quiet time from the first send when the contact never engaged', () => {
 		const v = verdict({ firstMessagedAt: daysAgo(300), lastEngagementAt: undefined });
 		expect(v.action).toBe('suppress');
-		expect(Math.round(v.quietDays ?? 0)).toBe(300);
+		expect(Math.round(measured(v).quietDays)).toBe(300);
 	});
 });
 
@@ -102,7 +102,7 @@ describe('evaluateSunset — the operator override at every stage', () => {
 	}
 
 	it('holds every stage when the policy is disabled', () => {
-		const v = verdict({ lastEngagementAt: daysAgo(999) }, policy({ enabled: false }));
+		const v = verdict({ lastEngagementAt: daysAgo(999) }, policy({ isEnabled: false }));
 		expect(v.action).toBe('hold');
 		expect(v.reason).toBe('policy_disabled');
 	});
@@ -128,7 +128,7 @@ describe('resolveSunsetPolicy', () => {
 
 	it('layers a deployment-wide override onto the default', () => {
 		expect(resolveSunsetPolicy({ globalOverride: { reengageAfterDays: 90 } })).toEqual({
-			enabled: true,
+			isEnabled: true,
 			reengageAfterDays: 90,
 			suppressAfterDays: 270,
 		});
@@ -151,9 +151,9 @@ describe('resolveSunsetPolicy', () => {
 
 	it('one topic opting out disables sunsetting for the whole contact', () => {
 		const resolved = resolveSunsetPolicy({
-			topicOverrides: [{ enabled: false }, { enabled: true }],
+			topicOverrides: [{ isEnabled: false }, { isEnabled: true }],
 		});
-		expect(resolved.enabled).toBe(false);
+		expect(resolved.isEnabled).toBe(false);
 	});
 
 	it('ignores a non-positive or non-finite override value', () => {
@@ -171,20 +171,20 @@ describe('isSunsetPolicyValid', () => {
 
 	it('rejects a backwards window pair', () => {
 		expect(
-			isSunsetPolicyValid({ enabled: true, reengageAfterDays: 300, suppressAfterDays: 100 })
+			isSunsetPolicyValid({ isEnabled: true, reengageAfterDays: 300, suppressAfterDays: 100 })
 		).toBe(false);
 	});
 
 	it('rejects a window below the floor', () => {
-		expect(isSunsetPolicyValid({ enabled: true, reengageAfterDays: 1, suppressAfterDays: 2 })).toBe(
-			false
-		);
+		expect(
+			isSunsetPolicyValid({ isEnabled: true, reengageAfterDays: 1, suppressAfterDays: 2 })
+		).toBe(false);
 	});
 
 	it('holds rather than guessing on an invalid policy', () => {
 		const v = verdict(
 			{ lastEngagementAt: daysAgo(999) },
-			{ enabled: true, reengageAfterDays: 300, suppressAfterDays: 100 }
+			{ isEnabled: true, reengageAfterDays: 300, suppressAfterDays: 100 }
 		);
 		expect(v.action).toBe('hold');
 		expect(v.reason).toBe('invalid_policy');

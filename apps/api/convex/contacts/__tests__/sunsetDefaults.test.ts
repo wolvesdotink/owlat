@@ -1,6 +1,4 @@
-import { convexTest } from 'convex-test';
 import { describe, it, expect } from 'vitest';
-import schema from '../../schema';
 import { createTestContact } from '../../__tests__/factories';
 import {
 	SUNSET_POLICY_DEFAULTS,
@@ -13,7 +11,7 @@ import {
 	loadSunsetPolicyRows,
 	resolveSunsetPolicyForContact,
 } from '../sunsetEngine';
-import { NOW, daysAgo } from './sunsetFixtures';
+import { NOW, daysAgo, harness } from './sunsetFixtures';
 
 /**
  * THE CONSERVATIVE DEFAULT IS ON OUT OF THE BOX (deliverability plan P4-4). A
@@ -22,15 +20,6 @@ import { NOW, daysAgo } from './sunsetFixtures';
  * an operator to discover a setting.
  */
 
-const rootGlob = import.meta.glob('../../**/*.*s');
-const contactsGlob = Object.fromEntries(
-	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
-		path.replace(/^\.\.\//, '../../contacts/'),
-		mod,
-	])
-);
-const modules = { ...rootGlob, ...contactsGlob };
-
 function harness() {
 	return convexTest(schema, modules);
 }
@@ -38,7 +27,7 @@ function harness() {
 describe('sunset defaults', () => {
 	it('is enabled at 180 / 270', () => {
 		expect(SUNSET_POLICY_DEFAULTS).toEqual({
-			enabled: true,
+			isEnabled: true,
 			reengageAfterDays: 180,
 			suppressAfterDays: 270,
 		});
@@ -134,7 +123,7 @@ describe('sunset defaults', () => {
 
 		// enabled + the re-engagement window are INHERITED; only the configured
 		// field moves.
-		expect(policy).toEqual({ enabled: true, reengageAfterDays: 180, suppressAfterDays: 540 });
+		expect(policy).toEqual({ isEnabled: true, reengageAfterDays: 180, suppressAfterDays: 540 });
 	});
 
 	it('a deployment-wide opt-out disables the engine everywhere', async () => {
@@ -154,7 +143,7 @@ describe('sunset defaults', () => {
 				occurredAt: daysAgo(480),
 			});
 			await ctx.db.insert('sunsetPolicies', {
-				enabled: false,
+				isEnabled: false,
 				createdAt: daysAgo(10),
 				updatedAt: daysAgo(10),
 			});
@@ -171,5 +160,96 @@ describe('sunset defaults', () => {
 
 		expect(applied.applied).toBe(false);
 		expect(applied.verdict.reason).toBe('policy_disabled');
+	});
+});
+
+describe('sunset defaults — a deployment-wide opt-out reaches topic members too', () => {
+	/**
+	 * The opt-out case above happens to cover a contact in ZERO topics, which
+	 * takes `resolveSunsetPolicy`'s early return and never exercises the
+	 * per-topic merge at all. These two pin the answer for a contact that IS in a
+	 * topic: a global `isEnabled: false` wins whether or not the topic has a row,
+	 * and whether or not that row says the engine is on. "Most lenient wins"
+	 * includes the deployment-wide policy — an operator who turned the engine off
+	 * everywhere means everywhere.
+	 */
+	async function seedTopicMember(
+		t: ReturnType<typeof harness>,
+		topicRow: { isEnabled?: boolean } | null
+	) {
+		return await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: `member-${topicRow === null ? 'norow' : String(topicRow.isEnabled)}@example.com`,
+					createdAt: daysAgo(500),
+					updatedAt: daysAgo(500),
+				})
+			);
+			const topicId = await ctx.db.insert('topics', { name: 'News', createdAt: daysAgo(500) });
+			await ctx.db.insert('contactTopics', { contactId: id, topicId, addedAt: daysAgo(500) });
+			await ctx.db.insert('sunsetPolicies', {
+				isEnabled: false,
+				createdAt: daysAgo(10),
+				updatedAt: daysAgo(10),
+			});
+			if (topicRow !== null) {
+				await ctx.db.insert('sunsetPolicies', {
+					topicId,
+					...topicRow,
+					createdAt: daysAgo(10),
+					updatedAt: daysAgo(10),
+				});
+			}
+			return id;
+		});
+	}
+
+	for (const [label, topicRow] of [
+		['no row of its own', null],
+		['a row that inherits', {}],
+		['a row that explicitly turns the engine ON', { isEnabled: true }],
+	] as const) {
+		it(`stays disabled for a topic member with ${label}`, async () => {
+			const t = harness();
+			const contactId = await seedTopicMember(t, topicRow);
+
+			const policy = await t.run(async (ctx) => {
+				const rows = await loadSunsetPolicyRows(ctx);
+				return await resolveSunsetPolicyForContact(ctx, contactId, rows);
+			});
+
+			expect(policy.isEnabled).toBe(false);
+		});
+	}
+
+	it('a topic opting out still disables the engine while the global row says ON', async () => {
+		const t = harness();
+		const contactId = await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({
+					email: 'topic-optout@example.com',
+					createdAt: daysAgo(500),
+					updatedAt: daysAgo(500),
+				})
+			);
+			const topicId = await ctx.db.insert('topics', { name: 'Quiet', createdAt: daysAgo(500) });
+			await ctx.db.insert('contactTopics', { contactId: id, topicId, addedAt: daysAgo(500) });
+			await ctx.db.insert('sunsetPolicies', {
+				topicId,
+				isEnabled: false,
+				createdAt: daysAgo(10),
+				updatedAt: daysAgo(10),
+			});
+			return id;
+		});
+
+		const policy = await t.run(async (ctx) => {
+			const rows = await loadSunsetPolicyRows(ctx);
+			return await resolveSunsetPolicyForContact(ctx, contactId, rows);
+		});
+
+		expect(policy.isEnabled).toBe(false);
 	});
 });
