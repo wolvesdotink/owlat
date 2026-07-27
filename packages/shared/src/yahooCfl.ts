@@ -201,16 +201,20 @@ export function applyYahooCflEvent(
 	if (!Number.isFinite(event.at) || event.at <= 0) return unchanged(record, 'invalid_timestamp');
 	switch (event.kind) {
 		case 'submit': {
-			if (!yahooCflPreconditionMet(precondition)) {
-				return unchanged(record, 'dkim_domain_not_ready');
-			}
 			// A LIVE enrollment has nothing to submit. A LAPSED one does: that is the
 			// whole point of the derived lapse, and re-submitting Yahoo's form is the
 			// documented remedy the fourth step names. So the refusal is keyed on the
 			// DERIVED state, not the stored one — `event.at` is the clock (D15: the
 			// clock is a parameter, never read here).
 			const derived = deriveYahooCflState(record, event.at).state;
+			// Checked BEFORE the precondition: a live enrollment on a domain that has
+			// since lost its DKIM readiness must not be told to "publish a DKIM record"
+			// for a domain Yahoo already accepted. A lapsed record derives as `lapsed`
+			// and still falls through to the precondition below.
 			if (derived === 'enrolled') return unchanged(record, 'already_enrolled');
+			if (!yahooCflPreconditionMet(precondition)) {
+				return unchanged(record, 'dkim_domain_not_ready');
+			}
 			// Built field by field rather than spread over `record`, because the fields
 			// it does NOT carry are the point: `enrolledAt` is dropped, since the
 			// enrollment being re-submitted for is no longer believed live and keeping
