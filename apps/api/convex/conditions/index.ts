@@ -99,6 +99,27 @@ export function conditionsLookupReadsPerContact(conditions: readonly Condition[]
 }
 
 /**
+ * How many DOCUMENT reads ONE call to {@link preloadConditionsLookupForContacts}
+ * costs regardless of batch size — each kind's fixed set-up.
+ *
+ * A batched scan calls the preload once per batch, so this is charged once per
+ * batch on top of the per-contact multiplier. Omitting it left the budget
+ * under-charged by a fixed cost on every batch, which is precisely the drift
+ * that makes a "bounded" scan overrun the Convex per-execution read limit.
+ */
+export function conditionsLookupReadsPerBatch(conditions: readonly Condition[]): number {
+	let reads = 0;
+	for (const [kind, list] of groupByKind(conditions)) {
+		reads += (
+			conditionTypeModuleFor(kind).lookupReadsPerBatch as (
+				conds: ConditionOfKind<typeof kind>[]
+			) => number
+		)(list as ConditionOfKind<typeof kind>[]);
+	}
+	return reads;
+}
+
+/**
  * Pre-fetch all data needed to evaluate `conditions` over many contacts in
  * O(1) per condition. Group conditions by kind, hand each batch to the kind's
  * module, and store the typed lookup keyed by kind.

@@ -77,5 +77,14 @@ export interface ConditionTypeModule<K extends ConditionKind, Lookup> {
 	 * return 0.
 	 */
 	lookupReadsPerContact(conditions: ConditionOfKind<K>[]): number;
+	/**
+	 * How many DOCUMENT reads `preloadLookupForContacts` costs ONCE PER CALL,
+	 * independent of how many contacts it is handed — the fixed set-up a kind
+	 * does before the per-contact point reads (resolving a property key to its
+	 * id, say). A batched caller pays this per BATCH, so leaving it off the
+	 * budget under-charges the scan by one fixed cost per batch. Kinds with no
+	 * set-up return 0.
+	 */
+	lookupReadsPerBatch(conditions: ConditionOfKind<K>[]): number;
 	evaluate(condition: ConditionOfKind<K>, contact: Doc<'contacts'>, lookup: Lookup): boolean;
 }

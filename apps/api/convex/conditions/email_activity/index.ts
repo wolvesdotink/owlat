@@ -53,6 +53,9 @@ export const emailActivityConditionModule: ConditionTypeModule<
 	lookupReadsPerContact() {
 		return 0; // denormalized onto the contact row; nothing to read.
 	},
+	lookupReadsPerBatch() {
+		return 0; // no set-up either.
+	},
 	evaluate(condition, contact) {
 		const hasActivity =
 			condition.field === 'opened' ? contact.hasOpened === true : contact.hasClicked === true;

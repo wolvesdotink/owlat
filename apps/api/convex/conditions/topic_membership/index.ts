@@ -8,6 +8,19 @@ export interface TopicMembershipLookup {
 
 const VALID_OPERATORS = new Set(['equals', 'not_equals']);
 
+/**
+ * The distinct topics a condition set reads. ONE definition, because
+ * `lookupReadsPerContact` is the multiplier the audience-scan document budget
+ * is charged with: if it ever drifted from what `preloadLookupForContacts`
+ * actually reads, the "bounded" scan would silently overrun the Convex
+ * per-execution read limit.
+ */
+function distinctTopicIds(conditions: readonly TopicMembershipCondition[]): Set<string> {
+	const topicIds = new Set<string>();
+	for (const c of conditions) topicIds.add(c.topicId as string);
+	return topicIds;
+}
+
 export const topicMembershipConditionModule: ConditionTypeModule<
 	'topic_membership',
 	TopicMembershipLookup
@@ -36,8 +49,7 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 	async preloadLookup(ctx, conditions) {
 		const lookup: TopicMembershipLookup = { membersByTopic: new Map() };
 
-		const topicIds = new Set<string>();
-		for (const c of conditions) topicIds.add(c.topicId as string);
+		const topicIds = distinctTopicIds(conditions);
 
 		for (const topicId of topicIds) {
 			const memberships = await ctx.db
@@ -52,8 +64,7 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 	async preloadLookupForContacts(ctx, conditions, contacts) {
 		const lookup: TopicMembershipLookup = { membersByTopic: new Map() };
 
-		const topicIds = new Set<string>();
-		for (const c of conditions) topicIds.add(c.topicId as string);
+		const topicIds = distinctTopicIds(conditions);
 		for (const topicId of topicIds) lookup.membersByTopic.set(topicId, new Set());
 
 		// Point-read each (contact, topic) membership via the by_contact_and_topic
@@ -76,9 +87,11 @@ export const topicMembershipConditionModule: ConditionTypeModule<
 	},
 	lookupReadsPerContact(conditions) {
 		// One `by_contact_and_topic` point read per (contact × distinct topic).
-		const topicIds = new Set<string>();
-		for (const c of conditions) topicIds.add(c.topicId as string);
-		return topicIds.size;
+		return distinctTopicIds(conditions).size;
+	},
+	lookupReadsPerBatch() {
+		// No set-up: the topic ids are already in the conditions.
+		return 0;
 	},
 	evaluate(condition, contact, lookup) {
 		const members = lookup.membersByTopic.get(condition.topicId as string);

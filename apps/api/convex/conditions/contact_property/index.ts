@@ -4,6 +4,22 @@ import type { ConditionTypeModule, ContactPropertyCondition, PropertyOperator } 
 
 const BUILT_IN_FIELDS = new Set(['email', 'firstName', 'lastName', 'source']);
 
+/**
+ * The distinct CUSTOM property keys a condition set reads (built-in fields live
+ * on the contact row and read nothing). ONE definition, because
+ * `lookupReadsPerContact` is the multiplier the audience-scan document budget is
+ * charged with: if it ever drifted from what `preloadLookupForContacts` actually
+ * reads, the "bounded" scan would silently overrun the Convex per-execution read
+ * limit.
+ */
+function distinctCustomFields(conditions: readonly ContactPropertyCondition[]): Set<string> {
+	const customFields = new Set<string>();
+	for (const c of conditions) {
+		if (!BUILT_IN_FIELDS.has(c.field)) customFields.add(c.field);
+	}
+	return customFields;
+}
+
 export interface ContactPropertyLookup {
 	propertyIds: Map<string, Id<'contactProperties'>>;
 	values: Map<string, unknown>;
@@ -96,10 +112,7 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 			values: new Map(),
 		};
 
-		const customFields = new Set<string>();
-		for (const c of conditions) {
-			if (!BUILT_IN_FIELDS.has(c.field)) customFields.add(c.field);
-		}
+		const customFields = distinctCustomFields(conditions);
 
 		// Resolve custom property IDs by key.
 		for (const key of customFields) {
@@ -129,10 +142,7 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 			values: new Map(),
 		};
 
-		const customFields = new Set<string>();
-		for (const c of conditions) {
-			if (!BUILT_IN_FIELDS.has(c.field)) customFields.add(c.field);
-		}
+		const customFields = distinctCustomFields(conditions);
 
 		// Resolve custom property IDs by key (bounded by the distinct keys named in
 		// the conditions, not by the population).
@@ -165,11 +175,12 @@ export const contactPropertyConditionModule: ConditionTypeModule<
 	lookupReadsPerContact(conditions) {
 		// One `by_contact_and_property` point read per (contact × distinct CUSTOM
 		// property). Built-in fields live on the contact row and read nothing.
-		const customFields = new Set<string>();
-		for (const c of conditions) {
-			if (!BUILT_IN_FIELDS.has(c.field)) customFields.add(c.field);
-		}
-		return customFields.size;
+		return distinctCustomFields(conditions).size;
+	},
+	lookupReadsPerBatch(conditions) {
+		// One `contactProperties.by_key` read per distinct custom property, done
+		// once per preload call — the same set `preloadLookupForContacts` resolves.
+		return distinctCustomFields(conditions).size;
 	},
 	evaluate(condition, contact, lookup) {
 		let fieldValue: unknown;
