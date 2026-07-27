@@ -25,10 +25,10 @@ import {
 	loadSunsetPolicyRows,
 	resolveSunsetPolicyForContact,
 } from './sunsetEngine';
-import { isClockCorroborated, latestSunsetInstant } from './sunsetPolicy';
+import { isClockCorroborated, latestSunsetInstant, MS_PER_DAY } from './sunsetPolicy';
 
 /** A contact is re-evaluated at most once a day. */
-export const SUNSET_STALE_MS = 24 * 60 * 60 * 1000;
+export const SUNSET_STALE_MS = MS_PER_DAY;
 
 /** Contacts inspected per transaction. Keeps one batch inside the read budget. */
 export const SUNSET_BATCH_SIZE = 50;
@@ -103,7 +103,7 @@ function clampArg(
  * the audit trail under a message that says nothing new. The first tick to
  * notice always reports; after that, once a day.
  */
-export const SUNSET_STALL_REPORT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const SUNSET_STALL_REPORT_INTERVAL_MS = MS_PER_DAY;
 
 // ─── The sweep ──────────────────────────────────────────────────────────────
 

@@ -50,7 +50,8 @@
  * `__tests__/sunset*.test.ts` are fully deterministic.
  */
 
-const MS_PER_DAY = 86_400_000;
+/** One day in milliseconds — the unit every sunset window and interval is written in. */
+export const MS_PER_DAY = 86_400_000;
 
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
