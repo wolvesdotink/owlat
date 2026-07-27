@@ -263,6 +263,21 @@ crons.daily(
 	{}
 );
 
+// Re-verify dual-transport alignment (P3-5) once a day: the two arms of a ramp
+// cell must stay indistinguishable to the receiver (same From domain, one SPF
+// record inside the 10-lookup limit, same DKIM d= with distinct selectors,
+// DMARC alignment on both), or the ramp measures our own DNS instead of
+// deliverability. A domain whose lookups did not resolve is re-checked on the
+// shorter unknown cadence by `nextCheckDueAt`, not by a second cron. Bounded to
+// a slice of due domains per run. With no reference transport the verdict is
+// `single_arm` — a supported configuration, never an error.
+crons.daily(
+	'verify dual-transport alignment',
+	{ hourUTC: 1, minuteUTC: 20 },
+	internal.delivery.alignmentPreflightGather.runAlignmentPreflightSweep,
+	{}
+);
+
 // Daily knowledge graph confidence decay and expiration cleanup
 crons.interval(
 	'knowledge graph maintenance',
