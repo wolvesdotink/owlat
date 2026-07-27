@@ -45,14 +45,14 @@ import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { resolveRoute, type ProviderRouteConfig, type ResolvedRoute } from './routing';
 import { isDeterministicRouteStrategy } from './strategies';
 import type { MixAssignment, MixContext, MixRecipientIdentity } from './strategies';
-import {
-	resolveOwnShare,
-	type DeliverabilityStream,
-	type DestinationProviderKey,
+import type {
+	DeliverabilityStream,
+	DestinationProviderKey,
 } from '@owlat/shared/deliverabilityRouting';
 import {
 	loadRouteStateCell,
 	loadStreamlessRouteState,
+	mixCellStateFor,
 	type RouteStateCellRows,
 } from '../deliverabilityRouteState';
 import {
@@ -162,20 +162,15 @@ export async function prepareCellMixResolver(
 			});
 			cellRows.set(destinationProvider, providerCell);
 		}
-		// D1 literally: `ownShare ?? (isFallbackActive ? 0 : 1)`, over
-		// `perStream ?? streamless` — the share convention `loadRouteStateCell`
-		// documents. The stream-less row carries no share of its own, so on a
-		// pre-controller cell this resolves to exactly the shipped boolean.
-		const shareRow = providerCell.perStream ?? providerCell.streamless;
 		const mixContext: MixContext | undefined =
 			isAdaptiveMix && recipient !== undefined
 				? {
 						kind: 'decide',
 						input: {
-							cell: {
-								ownShare: resolveOwnShare(shareRow),
-								mixVersion: shareRow?.mixVersion,
-							},
+							// D1's resolution expression, owned by one helper next to
+							// `loadRouteStateCell` so this site and the dispatch-time
+							// replay in `route.ts` can never drift apart.
+							cell: mixCellStateFor(providerCell),
 							recipient,
 							// The ONLY non-reproducible input the decision can take,
 							// and only for a recipient with neither a contact id nor

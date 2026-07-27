@@ -22,8 +22,11 @@ import {
 } from './routing';
 import { extractDomainOrNull } from '@owlat/shared';
 import { resolveDestinationProvider } from './destinationProvider';
-import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
-import { resolveOwnShare } from '@owlat/shared/deliverabilityRouting';
+import {
+	loadRouteStateCell,
+	loadStreamlessRouteState,
+	mixCellStateFor,
+} from '../deliverabilityRouteState';
 import type { MixContext } from './strategies';
 import { readAssignmentForSend } from '../../delivery/sendAssignments';
 import { getSingletonOrganizationId } from '../sessionOrganization';
@@ -127,11 +130,10 @@ async function mixContextFor(
 		stream: messageType,
 		destinationProvider,
 	});
-	const shareRow = cell.perStream ?? cell.streamless;
 	return {
 		kind: 'decide',
 		input: {
-			cell: { ownShare: resolveOwnShare(shareRow), mixVersion: shareRow?.mixVersion },
+			cell: mixCellStateFor(cell),
 			recipient: { fallbackKey: sendId ?? to ?? '' },
 		},
 	};
