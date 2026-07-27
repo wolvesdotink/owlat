@@ -213,6 +213,10 @@
 			"types": "./src/deliverabilityRouting.ts",
 			"import": "./src/deliverabilityRouting.ts"
 		},
+		"./yahooCfl": {
+			"types": "./src/yahooCfl.ts",
+			"import": "./src/yahooCfl.ts"
+		},
 		"./dnsbl": {
 			"types": "./src/dnsbl.ts",
 			"import": "./src/dnsbl.ts"
