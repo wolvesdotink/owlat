@@ -36,10 +36,23 @@ describe('external reputation provider guidance', () => {
 		expect(feedbackDoc).not.toMatch(/service.account/i);
 	});
 
-	it('keeps Microsoft automation limitations explicit instead of promising a scraper', () => {
+	it('documents the SNDS import against the Automated Data Access contract', () => {
+		// The page previously promised NO importer, because Microsoft's July 2026
+		// portal change left no stable URL to point at. The operator now supplies
+		// the Automated Data Access URL themselves, so the importer is documented
+		// — including the one thing it must never do (invent a rate from a band).
 		expect(feedbackDoc).toMatch(/Automated Data Access/);
-		expect(feedbackDoc).toMatch(/does not scrape|does not.*importer/i);
+		expect(feedbackDoc).toContain('SNDS_DATA_FEED_URLS');
+		expect(feedbackDoc).toMatch(/bearer capability/i);
+		expect(feedbackDoc).toMatch(/band/i);
+		expect(feedbackDoc).toMatch(/never turned into|not a rate/i);
 		expect(feedbackDoc).toMatch(/Junk Mail Reporting Program/);
+	});
+
+	it('states that Microsoft enrollment is optional, not an incomplete setup', () => {
+		expect(feedbackDoc).toMatch(/supported configuration/i);
+		expect(feedbackDoc).toMatch(/no request,\s+no row,\s+no error/i);
+		expect(feedbackDoc).toMatch(/SMTP reply\s+classification/i);
 	});
 });
 
