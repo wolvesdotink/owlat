@@ -73,7 +73,15 @@ export function alignmentGate(input: AlignmentGateInput): AlignmentGateVerdict {
 	}
 	const state = input.state;
 	if (state === null) return { allowsShareAboveZero: false, reason: 'not_yet_checked' };
-	if (state.verdict === 'single_arm') return { allowsShareAboveZero: true, reason: 'single_arm' };
+	// A STORED `single_arm` verdict is, by definition, a verdict recorded while no
+	// relay existed. Now that one does, it is not evidence of anything about the
+	// two arms — and it is the one verdict a domain can hold forever without being
+	// refreshed, so honouring it here would open the gate on a pre-relay row with
+	// no staleness bound at all. `referenceArm === 'none'` (handled above) is the
+	// ONLY single-arm ground for opening.
+	if (state.verdict === 'single_arm') {
+		return { allowsShareAboveZero: false, reason: 'not_yet_checked' };
+	}
 	const age = input.now - state.checkedAt;
 	if (
 		!Number.isFinite(age) ||

@@ -38,7 +38,6 @@ describe('the standalone matrix: the whole four-check table with no reference ar
 				reference: NO_REFERENCE,
 			});
 			expect(result.verdict).toBe('single_arm');
-			expect(result.allowsShareAboveZero).toBe(true);
 			expect(result.checks.map((check) => check.id)).toEqual([...ALIGNMENT_CHECK_IDS]);
 			for (const check of result.checks) {
 				expect(check.status).toBe('pass');
@@ -75,13 +74,32 @@ describe('the gate opens for a standalone deployment regardless of stored state'
 		}
 	});
 
-	it('opens from a stored single_arm verdict even when a relay was later added', () => {
+	// The mirror image of the rule above, and the boundary that keeps it honest: a
+	// STORED single_arm verdict was, by definition, recorded while no relay
+	// existed. Once one does exist, that row is not evidence about two arms — and
+	// it is the one verdict a domain can hold forever without ever being
+	// refreshed, so honouring it would open the gate on a pre-relay row with no
+	// staleness bound at all.
+	it('does NOT open from a stored single_arm verdict once a relay is configured', () => {
+		for (const checkedAt of [CHECKED_AT, CHECKED_AT - 10 * ALIGNMENT_STALE_AFTER_MS]) {
+			const gate = alignmentGate({
+				referenceArm: 'configured',
+				state: { verdict: 'single_arm', checkedAt },
+				now: CHECKED_AT,
+			});
+			expect(gate.allowsShareAboveZero).toBe(false);
+			expect(gate.reason).toBe('not_yet_checked');
+			expect(applyAlignmentGateToShare(0.25, gate)).toBe(0);
+		}
+	});
+
+	it('does NOT open from a stored single_arm verdict while the relay is undescribable', () => {
 		const gate = alignmentGate({
-			referenceArm: 'configured',
+			referenceArm: 'unknown',
 			state: { verdict: 'single_arm', checkedAt: CHECKED_AT },
 			now: CHECKED_AT,
 		});
-		expect(gate.allowsShareAboveZero).toBe(true);
-		expect(gate.reason).toBe('single_arm');
+		expect(gate.allowsShareAboveZero).toBe(false);
+		expect(gate.reason).toBe('reference_arm_unknown');
 	});
 });
