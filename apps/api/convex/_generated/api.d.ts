@@ -400,6 +400,7 @@ import type * as lib_contactScope from "../lib/contactScope.js";
 import type * as lib_convexValidators from "../lib/convexValidators.js";
 import type * as lib_cors from "../lib/cors.js";
 import type * as lib_credentialCrypto from "../lib/credentialCrypto.js";
+import type * as lib_deliverabilityRouteState from "../lib/deliverabilityRouteState.js";
 import type * as lib_emailAddress from "../lib/emailAddress.js";
 import type * as lib_emailHelpers from "../lib/emailHelpers.js";
 import type * as lib_emailProviders_domainVerification from "../lib/emailProviders/domainVerification.js";
@@ -1173,6 +1174,7 @@ declare const fullApi: ApiFromModules<{
   "lib/convexValidators": typeof lib_convexValidators;
   "lib/cors": typeof lib_cors;
   "lib/credentialCrypto": typeof lib_credentialCrypto;
+  "lib/deliverabilityRouteState": typeof lib_deliverabilityRouteState;
   "lib/emailAddress": typeof lib_emailAddress;
   "lib/emailHelpers": typeof lib_emailHelpers;
   "lib/emailProviders/domainVerification": typeof lib_emailProviders_domainVerification;
