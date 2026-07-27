@@ -15,24 +15,34 @@
  * an unresolved lookup into "no record" would report a misconfiguration that
  * may not exist, and laundering it into "aligned" would let a genuinely
  * misconfigured cell ramp.
+ *
+ * Outbound work is TIME-BOUNDED, like the shipped `MTA_STS_FETCH_TIMEOUT_MS`
+ * gather: a slow-drip nameserver must not be able to burn the action budget for
+ * every other domain in the sweep.
  */
 
 import { v } from 'convex/values';
-import dns from 'node:dns/promises';
+import { Resolver } from 'node:dns/promises';
 import {
+	ALIGNMENT_SWEEP_MAX_PAGES,
+	ALIGNMENT_SWEEP_PAGE_SIZE,
+	dkimRecordName,
 	evaluateAlignmentPreflight,
+	normalizeDomain,
 	type AlignmentArm,
 	type AlignmentDnsFacts,
 	type DnsTxtObservation,
 } from '@owlat/shared/deliverabilityAlignment';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
+import { logWarn } from '../lib/runtimeLog';
 // Type-only: a `'use node'` module must not pull a query/mutation module into
 // its bundle, and a type import is erased at build time.
 import type { AlignmentTarget } from './alignmentPreflight';
 
-/** Upper bound on domains re-checked per sweep (mirrors ALIGNMENT_SWEEP_LIMIT). */
-const SWEEP_LIMIT = 25;
+/** Per-lookup deadline, and how many times the resolver retries within it. */
+const ALIGNMENT_DNS_TIMEOUT_MS = 5_000;
+const ALIGNMENT_DNS_TRIES = 2;
 
 /** Injected DNS primitive so the failure mapping is testable without a network. */
 export interface AlignmentDnsDeps {
@@ -40,8 +50,13 @@ export interface AlignmentDnsDeps {
 	resolveTxt(name: string): Promise<string[][]>;
 }
 
+const boundedResolver = new Resolver({
+	timeout: ALIGNMENT_DNS_TIMEOUT_MS,
+	tries: ALIGNMENT_DNS_TRIES,
+});
+
 const defaultDeps: AlignmentDnsDeps = {
-	resolveTxt: (name) => dns.resolveTxt(name),
+	resolveTxt: (name) => boundedResolver.resolveTxt(name),
 };
 
 /** node:dns error codes that mean "authoritatively, there is no such record". */
@@ -66,13 +81,36 @@ function errorCodeOf(error: unknown): string {
 	return '';
 }
 
-/** One TXT observation, with the absent/unknown distinction preserved. */
+/** Sentinel for "the deadline fired first" — distinct from any resolver value. */
+const DEADLINE = Symbol('alignment-dns-deadline');
+
+async function withDeadline<T>(work: Promise<T>, timeoutMs: number): Promise<T | typeof DEADLINE> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			work,
+			new Promise<typeof DEADLINE>((resolve) => {
+				timer = setTimeout(() => resolve(DEADLINE), timeoutMs);
+			}),
+		]);
+	} finally {
+		if (timer !== undefined) clearTimeout(timer);
+	}
+}
+
+/**
+ * One TXT observation, with the absent/unknown distinction preserved and a hard
+ * deadline: a lookup that never settles is `unknown` (a hold), never a pass and
+ * never a fail.
+ */
 export async function observeTxt(
 	name: string,
-	deps: AlignmentDnsDeps = defaultDeps
+	deps: AlignmentDnsDeps = defaultDeps,
+	timeoutMs: number = ALIGNMENT_DNS_TIMEOUT_MS
 ): Promise<DnsTxtObservation> {
 	try {
-		const chunks = await deps.resolveTxt(name);
+		const chunks = await withDeadline(deps.resolveTxt(name), timeoutMs);
+		if (chunks === DEADLINE) return { state: 'unknown', failure: 'timeout' };
 		// RFC 1035 multi-string records are joined without a separator.
 		const records = chunks.map((parts) => parts.join(''));
 		return records.length === 0 ? { state: 'absent' } : { state: 'found', records };
@@ -83,11 +121,9 @@ export async function observeTxt(
 	}
 }
 
+/** Every DKIM TXT name one arm publishes at, spelled by the shared helper. */
 function dkimRecordNames(arm: AlignmentArm): string[] {
-	const dkimDomain = arm.dkimDomain.trim().toLowerCase().replace(/\.$/, '');
-	return arm.dkimSelectors.map(
-		(selector) => `${selector.trim().toLowerCase()}._domainkey.${dkimDomain}`
-	);
+	return arm.dkimSelectors.map((selector) => dkimRecordName(selector, arm.dkimDomain));
 }
 
 /** Gather every DNS fact one target needs. Bounded: 2 + one lookup per selector. */
@@ -95,57 +131,84 @@ export async function gatherAlignmentDns(
 	target: AlignmentTarget,
 	deps: AlignmentDnsDeps = defaultDeps
 ): Promise<AlignmentDnsFacts> {
-	const fromDomain = target.ownArm.fromDomain.trim().toLowerCase().replace(/\.$/, '');
-	const names = new Set<string>([
+	const fromDomain = normalizeDomain(target.ownArm.fromDomain);
+	const dkimNames = new Set<string>([
 		...dkimRecordNames(target.ownArm),
-		...(target.referenceArm ? dkimRecordNames(target.referenceArm) : []),
+		...(target.reference.kind === 'arm' ? dkimRecordNames(target.reference.arm) : []),
 	]);
-	const dkimTxt: Record<string, DnsTxtObservation> = {};
-	const [fromDomainTxt, dmarcTxt, ...dkimObservations] = await Promise.all([
+	const [fromDomainTxt, dmarcTxt, dkimEntries] = await Promise.all([
 		observeTxt(fromDomain, deps),
 		observeTxt(`_dmarc.${fromDomain}`, deps),
-		...[...names].map((name) => observeTxt(name, deps)),
+		Promise.all([...dkimNames].map(async (name) => [name, await observeTxt(name, deps)] as const)),
 	]);
-	[...names].forEach((name, index) => {
-		const observation = dkimObservations[index];
-		if (observation) dkimTxt[name] = observation;
-	});
-	return { fromDomainTxt, dmarcTxt, dkimTxt };
+	return { fromDomainTxt, dmarcTxt, dkimTxt: Object.fromEntries(dkimEntries) };
 }
 
 /**
- * Daily sweep: re-verify every due sending domain and persist its verdict.
- * Bounded per run; a domain whose lookups did not resolve is retried on the
- * shorter unknown cadence rather than waiting a full day.
+ * Alignment re-verification sweep, run hourly so the shorter UNKNOWN retry
+ * cadence (`ALIGNMENT_UNKNOWN_RETRY_MS`) is actually honoured — a domain whose
+ * lookups did not resolve is re-checked in about an hour, not in about a day,
+ * while a resolved domain is simply not due and costs one indexed read.
+ *
+ * Bounded per run and CONTINUED rather than truncated: each run walks at most
+ * `ALIGNMENT_SWEEP_MAX_PAGES` pages and, if more verified domains remain, hands
+ * the cursor to a scheduled continuation (the `checklistSweep` idiom). One
+ * target's failure never abandons the rest.
  */
 export const runAlignmentPreflightSweep = internalAction({
-	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args): Promise<{ checked: number }> => {
+	args: { cursor: v.optional(v.union(v.string(), v.null())) },
+	handler: async (ctx, args): Promise<{ checked: number; done: boolean }> => {
 		const now = Date.now();
-		const targets: AlignmentTarget[] = await ctx.runQuery(
-			internal.delivery.alignmentPreflight.listDueAlignmentTargets,
-			{ now, limit: args.limit ?? SWEEP_LIMIT }
-		);
-		for (const target of targets) {
-			const dnsFacts = await gatherAlignmentDns(target);
-			const result = evaluateAlignmentPreflight({
-				ownArm: target.ownArm,
-				referenceArm: target.referenceArm,
-				dns: dnsFacts,
-				checkedAt: now,
-			});
-			await ctx.runMutation(internal.delivery.alignmentPreflight.recordAlignmentResult, {
-				domain: target.domain,
-				verdict: result.verdict,
-				checks: result.checks,
-				degradedMeasurement: result.degradedMeasurement,
-				...(result.degradedMeasurementReason === null
-					? {}
-					: { degradedMeasurementReason: result.degradedMeasurementReason }),
-				checkedAt: result.checkedAt,
-				nextCheckDueAt: result.nextCheckDueAt,
-			});
+		let cursor = args.cursor ?? null;
+		let checked = 0;
+		let done = false;
+		for (let page = 0; page < ALIGNMENT_SWEEP_MAX_PAGES; page += 1) {
+			const slice = await ctx.runQuery(
+				internal.delivery.alignmentPreflight.listDueAlignmentTargets,
+				{ now, paginationOpts: { cursor, numItems: ALIGNMENT_SWEEP_PAGE_SIZE } }
+			);
+			for (const target of slice.targets) {
+				try {
+					const dnsFacts = await gatherAlignmentDns(target);
+					const result = evaluateAlignmentPreflight({
+						ownArm: target.ownArm,
+						reference: target.reference,
+						dns: dnsFacts,
+						checkedAt: now,
+					});
+					await ctx.runMutation(internal.delivery.alignmentPreflight.recordAlignmentResult, {
+						domain: target.domain,
+						verdict: result.verdict,
+						checks: result.checks,
+						degradedMeasurement: result.degradedMeasurement,
+						...(result.degradedMeasurementReason === null
+							? {}
+							: { degradedMeasurementReason: result.degradedMeasurementReason }),
+						checkedAt: result.checkedAt,
+						nextCheckDueAt: result.nextCheckDueAt,
+					});
+					checked += 1;
+				} catch (error) {
+					// One unreachable nameserver or one write conflict must not abandon
+					// every remaining due domain until the next run.
+					logWarn(
+						`[alignment] pre-flight failed for ${target.domain}: ${error instanceof Error ? error.message : String(error)}`
+					);
+				}
+			}
+			cursor = slice.continueCursor;
+			if (slice.isDone) {
+				done = true;
+				break;
+			}
 		}
-		return { checked: targets.length };
+		if (!done) {
+			await ctx.scheduler.runAfter(
+				500,
+				internal.delivery.alignmentPreflightGather.runAlignmentPreflightSweep,
+				{ cursor }
+			);
+		}
+		return { checked, done };
 	},
 });
