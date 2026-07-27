@@ -129,16 +129,26 @@ export async function recordContactActivity<L extends ContactActivityType>(
 	// Denormalize email open/click engagement onto the contact row so segment +
 	// automation `email_activity` conditions read an O(1) boolean off the
 	// already-loaded contact instead of scanning the unbounded contactActivities
-	// table. Monotonic (open/click never un-happens), so we only ever set true,
-	// and only when not already set — the per-contact patch is idempotent and
-	// skipped on the common (already-engaged) case. Patches the contact row, not
-	// a shared document, so writes spread across contacts (no OCC hotspot).
+	// table. The `hasOpened`/`hasClicked` half is monotonic (open/click never
+	// un-happens), so it only ever sets true, and only when not already set.
 	//
 	// The same contact read also feeds the engagement score's INCREMENTAL update
 	// (deliverability plan P0-2): folding the new activity into the cached decayed
 	// accumulator is O(1) — no activity-timeline read on this path — and both
-	// denormalizations land in ONE patch, so the writer still performs at most a
-	// single contact write per activity.
+	// denormalizations land in ONE patch.
+	//
+	// WRITE COST, STATED PLAINLY. This used to be ~0 contact writes per open
+	// after the first (the flag was already set, so nothing was patched). It is
+	// now EXACTLY ONE contact write for every open, click, bounce, complaint and
+	// reply — the five literals in ENGAGEMENT_DENORMALIZED_LITERALS — on the
+	// hottest write path in the product. That is accepted because the score has
+	// to decay against the accumulator's as-of instant, and an accumulator whose
+	// stamp did not advance is not a cheaper write, it is a wrong one. The cost
+	// is bounded: it is a patch of a PER-CONTACT row (never a shared document, so
+	// writes spread across contacts and there is no OCC hotspot), it touches only
+	// the engagement fields, it leaves `updatedAt` alone so nothing downstream
+	// sees the contact as edited, and it is still ONE write per activity — the
+	// insert above already made this transaction a write transaction.
 	if (ENGAGEMENT_DENORMALIZED_LITERALS.has(args.literal)) {
 		const contact = await ctx.db.get(args.contactId);
 		if (contact) {
