@@ -172,7 +172,12 @@ export const enqueueCampaignEmails = internalMutation({
 		abVariant: v.optional(v.union(v.literal('A'), v.literal('B'))),
 	},
 	handler: async (ctx, args) => {
-		let lastEnvelope: CampaignEnvelopeInput | undefined;
+		// The envelope the seed shadow copies are CLONED from. Every recipient on
+		// this page produces a byte-identical envelope apart from the per-contact
+		// fields the clone strips anyway, so any one of them is a faithful base —
+		// but it is pinned to the FIRST recipient so the probe's base cannot
+		// silently depend on iteration order.
+		let probeBaseEnvelope: CampaignEnvelopeInput | undefined;
 		for (const recipient of args.emails) {
 			// Narrow at the WRITE boundary, not only where dispatch reads it: a
 			// degenerate stored score (NaN / out-of-range, i.e. an upstream
@@ -210,7 +215,7 @@ export const enqueueCampaignEmails = internalMutation({
 				listId: args.listId,
 				...(engagementScore !== undefined ? { engagementScore } : {}),
 			};
-			lastEnvelope = envelopeInput;
+			probeBaseEnvelope ??= envelopeInput;
 			await campaignEmailPool.enqueueAction(
 				ctx,
 				internal.delivery.worker.sendSingleEmail,
@@ -233,12 +238,12 @@ export const enqueueCampaignEmails = internalMutation({
 		// page fan-out produces exactly one probe set per arm. With no seed
 		// mailboxes connected — the default — it is a no-op (D2) and can never
 		// fail the campaign it is measuring.
-		if (lastEnvelope && args.organizationId) {
+		if (probeBaseEnvelope && args.organizationId) {
 			await enqueueSeedShadowCopies(ctx, {
 				organizationId: args.organizationId,
 				campaignId: args.campaignId,
 				...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
-				base: lastEnvelope,
+				base: probeBaseEnvelope,
 				now: Date.now(),
 			});
 		}
