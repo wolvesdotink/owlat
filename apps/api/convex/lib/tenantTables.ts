@@ -165,6 +165,10 @@ export const TENANT_TABLES = [
 	'mailboxMoves',
 	'externalMailFolderSync',
 	'externalMailAccounts',
+	// Seed-mailbox placement probe ledger (deliverability gate 5). One row per
+	// shadow copy this org's sends dropped into its own seed mailboxes —
+	// org-scoped observation data, wiped with the org.
+	'seedPlacementProbes',
 	'mailboxMembers',
 	'pendingMailboxMembers',
 	'mailboxes',

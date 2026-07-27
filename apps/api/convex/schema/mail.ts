@@ -1,5 +1,6 @@
 import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
+import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
 import {
 	mailMessageAttachmentValidator,
 	mailDraftAttachmentValidator,
@@ -214,15 +215,7 @@ export const mailTables = {
 		// Mailbox provider of a seed account, on the routing cell's destination
 		// axis. Set at connect time from the account's domain/host; drives the
 		// per-provider placement roll-up. Seed rows only.
-		seedProvider: v.optional(
-			v.union(
-				v.literal('gmail'),
-				v.literal('microsoft'),
-				v.literal('yahoo'),
-				v.literal('apple'),
-				v.literal('other')
-			)
-		),
+		seedProvider: v.optional(destinationProviderValidator),
 		// Last time the operator was reminded to rotate this seed (consumer
 		// mailboxes go stale). Absent ⇒ never reminded; the reminder clock then
 		// runs from `createdAt`. A reminder is a nudge on a connected seed, never
