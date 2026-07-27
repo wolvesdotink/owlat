@@ -77,6 +77,29 @@ function groupByKind(conditions: readonly Condition[]): Map<ConditionKind, Condi
 }
 
 /**
+ * Sum one of the module registry's read-cost dimensions across every kind
+ * present in `conditions`.
+ *
+ * `groupByKind` erases the correlation between the map key and its bucket's
+ * element type, so calling a per-kind cost function needs a cast. Keeping that
+ * cast in ONE place is the point of this helper: each cost dimension is then a
+ * one-line export, and a future third dimension adds no third copy.
+ */
+function sumLookupReads(
+	conditions: readonly Condition[],
+	dimension: 'lookupReadsPerContact' | 'lookupReadsPerBatch'
+): number {
+	let reads = 0;
+	for (const [kind, list] of groupByKind(conditions)) {
+		const cost = conditionTypeModuleFor(kind)[dimension] as (
+			conds: ConditionOfKind<typeof kind>[]
+		) => number;
+		reads += cost(list as ConditionOfKind<typeof kind>[]);
+	}
+	return reads;
+}
+
+/**
  * How many DOCUMENT reads {@link preloadConditionsLookupForContacts} costs PER
  * CONTACT for `conditions` — the sum of each kind's own per-contact fan-out.
  *
@@ -87,15 +110,7 @@ function groupByKind(conditions: readonly Condition[]): Map<ConditionKind, Condi
  * limit; this is the multiplier that makes the budget honest.
  */
 export function conditionsLookupReadsPerContact(conditions: readonly Condition[]): number {
-	let reads = 0;
-	for (const [kind, list] of groupByKind(conditions)) {
-		reads += (
-			conditionTypeModuleFor(kind).lookupReadsPerContact as (
-				conds: ConditionOfKind<typeof kind>[]
-			) => number
-		)(list as ConditionOfKind<typeof kind>[]);
-	}
-	return reads;
+	return sumLookupReads(conditions, 'lookupReadsPerContact');
 }
 
 /**
@@ -108,15 +123,7 @@ export function conditionsLookupReadsPerContact(conditions: readonly Condition[]
  * that makes a "bounded" scan overrun the Convex per-execution read limit.
  */
 export function conditionsLookupReadsPerBatch(conditions: readonly Condition[]): number {
-	let reads = 0;
-	for (const [kind, list] of groupByKind(conditions)) {
-		reads += (
-			conditionTypeModuleFor(kind).lookupReadsPerBatch as (
-				conds: ConditionOfKind<typeof kind>[]
-			) => number
-		)(list as ConditionOfKind<typeof kind>[]);
-	}
-	return reads;
+	return sumLookupReads(conditions, 'lookupReadsPerBatch');
 }
 
 /**
