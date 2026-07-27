@@ -396,6 +396,7 @@ import type * as lib_auditLog from "../lib/auditLog.js";
 import type * as lib_authedFunctions from "../lib/authedFunctions.js";
 import type * as lib_automationConfigTypes from "../lib/automationConfigTypes.js";
 import type * as lib_autonomyRules from "../lib/autonomyRules.js";
+import type * as lib_clock from "../lib/clock.js";
 import type * as lib_codeAgentGuard from "../lib/codeAgentGuard.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_contactCountHelpers from "../lib/contactCountHelpers.js";
@@ -1183,6 +1184,7 @@ declare const fullApi: ApiFromModules<{
   "lib/authedFunctions": typeof lib_authedFunctions;
   "lib/automationConfigTypes": typeof lib_automationConfigTypes;
   "lib/autonomyRules": typeof lib_autonomyRules;
+  "lib/clock": typeof lib_clock;
   "lib/codeAgentGuard": typeof lib_codeAgentGuard;
   "lib/constants": typeof lib_constants;
   "lib/contactCountHelpers": typeof lib_contactCountHelpers;
