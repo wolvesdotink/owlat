@@ -494,55 +494,17 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 
 	let totalEnqueued = 0;
 
-	if (args.useTimezone) {
-		// Group by the recipient's IANA zone, then resolve the next
-		// `scheduledHour:scheduledMinute` local instant per zone — DST-correct,
-		// unlike a static UTC-offset table. Recipients without a valid zone fall
-		// back to the org-level timezone (General settings) when it is a valid
-		// zone, otherwise to UTC.
-		const now = Date.now();
-		const fallbackZone = isValidTimeZone(args.defaultTimezone) ? args.defaultTimezone : 'UTC';
-		const recipientsByZone = new Map<string, EmailEnqueueData[]>();
-		for (const recipient of emailsToEnqueue) {
-			const zone = isValidTimeZone(recipient.timezone) ? recipient.timezone : fallbackZone;
-			const bucket = recipientsByZone.get(zone);
-			if (bucket) bucket.push(recipient);
-			else recipientsByZone.set(zone, [recipient]);
-		}
-
-		for (const [zone, recipientsForZone] of recipientsByZone) {
-			const target = resolveNextSendTime(zone, args.scheduledHour!, args.scheduledMinute!, now);
-			const delayMs = Math.max(0, target - now);
+	// Both branches page through the SAME chunk size. `enqueueCampaignEmails`
+	// writes at least one workpool document AND one `sendAssignments` row per
+	// recipient in a single transaction, so an unchunked batch walks toward
+	// Convex's per-transaction write ceiling. The timezone branch used to hand
+	// an entire IANA-zone group over unchunked, which for a single-zone
+	// audience is the whole campaign in one mutation.
+	const CHUNK_SIZE = 50;
+	const scheduleChunks = async (recipients: EmailEnqueueData[], delayMs: number) => {
+		for (let i = 0; i < recipients.length; i += CHUNK_SIZE) {
+			const chunk = recipients.slice(i, i + CHUNK_SIZE);
 			await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
-				campaignId: args.campaignId,
-				emails: recipientsForZone.map((r) => ({
-					emailSendId: r.emailSendId,
-					contactId: r.contactId,
-					email: r.email,
-					firstName: r.firstName,
-					lastName: r.lastName,
-				})),
-				from: args.from,
-				replyTo: args.replyTo,
-				subject: args.subject,
-				htmlContent: args.htmlContent,
-				convexSiteUrl: args.convexSiteUrl,
-				siteUrl: args.siteUrl,
-				audienceType: args.audienceType,
-				viewInBrowserUrl: args.viewInBrowserUrl,
-				providerType: args.providerType,
-				ipPool: args.ipPool,
-				trackingBaseUrl: args.trackingBaseUrl,
-				organizationId: args.organizationId,
-				listId: args.listId,
-			});
-			totalEnqueued += recipientsForZone.length;
-		}
-	} else {
-		const CHUNK_SIZE = 50;
-		for (let i = 0; i < emailsToEnqueue.length; i += CHUNK_SIZE) {
-			const chunk = emailsToEnqueue.slice(i, i + CHUNK_SIZE);
-			await ctx.scheduler.runAfter(0, internal.delivery.enqueue.enqueueCampaignEmails, {
 				campaignId: args.campaignId,
 				emails: chunk.map((r) => ({
 					emailSendId: r.emailSendId,
@@ -566,6 +528,32 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 				listId: args.listId,
 			});
 		}
+	};
+
+	if (args.useTimezone) {
+		// Group by the recipient's IANA zone, then resolve the next
+		// `scheduledHour:scheduledMinute` local instant per zone — DST-correct,
+		// unlike a static UTC-offset table. Recipients without a valid zone fall
+		// back to the org-level timezone (General settings) when it is a valid
+		// zone, otherwise to UTC.
+		const now = Date.now();
+		const fallbackZone = isValidTimeZone(args.defaultTimezone) ? args.defaultTimezone : 'UTC';
+		const recipientsByZone = new Map<string, EmailEnqueueData[]>();
+		for (const recipient of emailsToEnqueue) {
+			const zone = isValidTimeZone(recipient.timezone) ? recipient.timezone : fallbackZone;
+			const bucket = recipientsByZone.get(zone);
+			if (bucket) bucket.push(recipient);
+			else recipientsByZone.set(zone, [recipient]);
+		}
+
+		for (const [zone, recipientsForZone] of recipientsByZone) {
+			const target = resolveNextSendTime(zone, args.scheduledHour!, args.scheduledMinute!, now);
+			const delayMs = Math.max(0, target - now);
+			await scheduleChunks(recipientsForZone, delayMs);
+			totalEnqueued += recipientsForZone.length;
+		}
+	} else {
+		await scheduleChunks(emailsToEnqueue, 0);
 		totalEnqueued += emailsToEnqueue.length;
 	}
 
