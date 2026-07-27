@@ -22,6 +22,10 @@
  * measurement confidence and substitutes a tighter proxy threshold for the
  * complaint gate. It never throws, never blocks a send, never blocks a phase
  * promotion, and never produces an error state or a "setup incomplete" nag.
+ *
+ * WHICH complaint signal that substitution picks lives in the sibling module
+ * `./yahooComplaintSignal` — a different concern with a different owner (P3-8's
+ * substitution table subsumes that file, not this state machine).
  */
 
 /**
@@ -200,16 +204,28 @@ export function applyYahooCflEvent(
 			if (!yahooCflPreconditionMet(precondition)) {
 				return unchanged(record, 'dkim_domain_not_ready');
 			}
-			if (record.state === 'enrolled') return unchanged(record, 'already_enrolled');
+			// A LIVE enrollment has nothing to submit. A LAPSED one does: that is the
+			// whole point of the derived lapse, and re-submitting Yahoo's form is the
+			// documented remedy the fourth step names. So the refusal is keyed on the
+			// DERIVED state, not the stored one — `event.at` is the clock (D15: the
+			// clock is a parameter, never read here).
+			const derived = deriveYahooCflState(record, event.at).state;
+			if (derived === 'enrolled') return unchanged(record, 'already_enrolled');
+			// Built field by field rather than spread over `record`, because the fields
+			// it does NOT carry are the point: `enrolledAt` is dropped, since the
+			// enrollment being re-submitted for is no longer believed live and keeping
+			// its confirmation date would give `deriveYahooCflState` a stale fallback
+			// origin. `lastReportAt` is KEPT — it is observed history, and it is what a
+			// fresh report has to beat for the liveness verdict to move.
 			return {
 				record: {
-					...record,
 					state: 'awaiting_yahoo',
 					dkimDomain: precondition.domain,
 					submittedAt: event.at,
+					...(record.lastReportAt === undefined ? {} : { lastReportAt: record.lastReportAt }),
 				},
 				changed: true,
-				reason: record.state === 'awaiting_yahoo' ? 'resubmitted' : 'submitted',
+				reason: derived === 'not_started' ? 'submitted' : 'resubmitted',
 			};
 		}
 		case 'confirm': {
@@ -330,10 +346,14 @@ export function yahooCflGuidedSteps(
 		{
 			id: 'submit_enrollment',
 			title: "Submit Yahoo's Complaint Feedback Loop form",
-			action: `Enroll the DKIM domain ${precondition.domain} at Yahoo's sender site and give the FBL address you already receive ARF reports on.`,
+			action: lapsed
+				? `Re-submit the form for ${precondition.domain} at Yahoo's sender site, then press "I submitted Yahoo's form" again.`
+				: `Enroll the DKIM domain ${precondition.domain} at Yahoo's sender site and give the FBL address you already receive ARF reports on.`,
 			verification:
 				'Yahoo emails a confirmation to the address on the form. Keep it — it names the exact domain that was accepted.',
-			status: !dkimReady ? 'blocked' : submitted ? 'done' : 'todo',
+			// A lapsed enrollment reopens this step: re-submitting is the documented
+			// remedy, and the affordance is live again (`yahooCflAvailableActions`).
+			status: !dkimReady ? 'blocked' : lapsed ? 'todo' : submitted ? 'done' : 'todo',
 			link: YAHOO_CFL_ENROLLMENT_URL,
 		},
 		{
@@ -368,109 +388,44 @@ export function yahooCflGuidedSteps(
 	];
 }
 
-// ── The complaint-gate substitution (D2 / P3-8) ─────────────────────────────
-
 /**
- * Which complaint signal the `yahoo` cell's gate 3 is actually running on.
- * ONE complaint pipeline, three sources — this names which one is live.
+ * WHICH CONTROLS THE GUIDED FLOW OFFERS RIGHT NOW.
+ *
+ * Lives in the pure core next to the state machine on purpose: an affordance is
+ * only correct if it agrees with what `applyYahooCflEvent` will actually do, and
+ * the one way to guarantee that is to derive both from the same place. A UI that
+ * re-derived it would be a second definition free to drift — and a control that
+ * fires a refused transition is a dead control (it changes nothing and, since a
+ * refusal is a reason rather than a throw, says nothing either).
+ *
+ * `submitBlockedByDkim` is deliberately separate from `canSubmit`: the control is
+ * still SHOWN when the DKIM precondition is unmet, so the flow can explain why it
+ * is not yet usable instead of hiding the step.
  */
-export const YAHOO_COMPLAINT_SIGNAL_SOURCES = [
-	'yahoo_cfl',
-	'cfbl_address',
-	'unsubscribe_rate_proxy',
-] as const;
-export type YahooComplaintSignalSource = (typeof YAHOO_COMPLAINT_SIGNAL_SOURCES)[number];
-
-/** Direct complaint evidence: the shipped 0.1% complaint-rate threshold. */
-export const YAHOO_CFL_COMPLAINT_THRESHOLD = 0.001;
-
-/**
- * The proxy threshold when no complaint feed exists at all. An unsubscribe is a
- * much weaker, much more common signal than a spam report, so the equivalent
- * trip point is TIGHTENED to 0.05% rather than reused at 0.1%.
- */
-export const YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD = 0.0005;
-
-export interface YahooComplaintSubstitution {
-	source: YahooComplaintSignalSource;
-	/** The rate at or above which gate 3 fails for the yahoo cell. */
-	thresholdRate: number;
-	confidence: 'high' | 'medium' | 'low';
-	/**
-	 * The confidence sentence shown on the cell, ALWAYS present — including the
-	 * `high` branch. One family of operator copy with ONE home: a UI that had to
-	 * supply the `high` sentence itself would be a second definition of the same
-	 * fact, free to drift from this one.
-	 */
-	confidenceNote: string;
-	/**
-	 * The optional follow-on sentence suggesting how to IMPROVE the measurement.
-	 * Present only when there is something to suggest (i.e. confidence is below
-	 * `high`). It is a suggestion, never a warning and never a nag.
-	 */
-	caveat?: string;
-	/**
-	 * Always `false`. Encoded as a field rather than left implicit so the D2
-	 * invariant is asserted by a test rather than assumed by a reader.
-	 */
-	isBlocking: false;
+export interface YahooCflAvailableActions {
+	/** Offer "I submitted Yahoo's form" — `not_started` or a lapsed enrollment. */
+	canSubmit: boolean;
+	/** Submit is shown but not yet usable: Yahoo cannot see our signature yet. */
+	submitBlockedByDkim: boolean;
+	/** Offer "Yahoo accepted the domain" — a submission is awaiting acceptance. */
+	canConfirm: boolean;
+	/** Offer "Start over" — anything at all has been recorded. */
+	canReset: boolean;
 }
 
-/**
- * Pick the live complaint source for the yahoo cell.
- *
- * Enrollment present → Yahoo's own CFL (high confidence). Otherwise fall back
- * to the RFC 9477 CFBL-Address feed when the send carried one (medium), and
- * failing that to the unsubscribe-rate proxy at the tightened threshold (low).
- * The confidence sentence is ALWAYS returned — a UI that had to supply the `high`
- * one itself would be a second home for the same copy, free to drift. There is no fourth branch: the gate ALWAYS has
- * a source, so absence can never surface as an error or an unresolvable warning.
- *
- * A `lapsed` enrollment is treated exactly like no enrollment — the point of the
- * derived lapse is that we can no longer trust the feed to be live.
- *
- * SCOPE NOTE (D3): P3-8 owns the ONE substitution table for every gate. When it
- * lands it SUBSUMES this function, and `YAHOO_CFL_COMPLAINT_THRESHOLD` /
- * `YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD` move into it — they must not be
- * re-declared there, or the controller and this wizard would end up with two
- * disagreeing definitions of the yahoo complaint gate. Until then this is the
- * only definition, and it exists so the wizard can state the live source
- * honestly rather than showing a blank gate.
- */
-export function yahooComplaintSubstitution(input: {
-	enrollmentState: YahooCflEnrollmentState;
-	hasCfblAddress: boolean;
-}): YahooComplaintSubstitution {
-	if (input.enrollmentState === 'enrolled') {
-		return {
-			source: 'yahoo_cfl',
-			thresholdRate: YAHOO_CFL_COMPLAINT_THRESHOLD,
-			confidence: 'high',
-			confidenceNote:
-				'Measurement confidence: high — Yahoo complaints for this domain are measured directly.',
-			isBlocking: false,
-		};
-	}
-	if (input.hasCfblAddress) {
-		return {
-			source: 'cfbl_address',
-			thresholdRate: YAHOO_CFL_COMPLAINT_THRESHOLD,
-			confidence: 'medium',
-			confidenceNote:
-				'Measurement confidence: medium — Yahoo complaints are counted from the CFBL-Address feed.',
-			caveat:
-				'Enrolling this domain in Yahoo’s Complaint Feedback Loop would measure complaints directly.',
-			isBlocking: false,
-		};
-	}
+export function yahooCflAvailableActions(
+	record: YahooCflEnrollmentRecord,
+	precondition: YahooCflDkimPrecondition,
+	nowMs: number
+): YahooCflAvailableActions {
+	const { state } = deriveYahooCflState(record, nowMs);
+	const canSubmit = state === 'not_started' || state === 'lapsed';
 	return {
-		source: 'unsubscribe_rate_proxy',
-		thresholdRate: YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD,
-		confidence: 'low',
-		confidenceNote:
-			'Measurement confidence: low — no Yahoo complaint feed, so unsubscribes stand in for complaints at a tighter threshold.',
-		caveat:
-			'Enrolling this domain in Yahoo’s Complaint Feedback Loop would measure complaints directly.',
-		isBlocking: false,
+		canSubmit,
+		submitBlockedByDkim: canSubmit && !yahooCflPreconditionMet(precondition),
+		canConfirm: state === 'awaiting_yahoo',
+		// Mirrors the `nothing_to_reset` refusal exactly, so the control is never
+		// offered for a record `reset` would decline to touch.
+		canReset: !(record.state === 'not_started' && record.submittedAt === undefined),
 	};
 }
