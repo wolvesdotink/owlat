@@ -19,11 +19,11 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { loadRemainingCapacityByDay } from '../delivery/warmingCapacity';
 import { audienceValidator, type StoredAudience } from './audience';
-import { countAudience } from './audienceResolution';
+import { countAudience } from './audienceCandidates';
 import {
 	capacityWithinHorizon,
-	MAX_PLAN_DAYS,
 	planCampaignCapacity,
+	totalPlannableCapacity,
 	usableDayCount,
 	type CampaignCapacityPlan,
 	type CampaignCapacitySchedule,
@@ -33,29 +33,42 @@ import { logWarn } from '../lib/runtimeLog';
 type Ctx = MutationCtx | QueryCtx;
 
 /**
- * Rows the gate may EXAMINE while sizing the audience. The gate runs inside
+ * DOCUMENTS the gate may read while sizing the audience. The gate runs inside
  * `campaigns.scheduling.schedule` and `campaigns.campaigns.sendNow`, where an
  * unbounded segment scan would both exceed the Convex per-execution read limit
  * — turning a failure to MEASURE into a blocked SEND — and pull the whole live
  * contacts table into the mutation's OCC read set (D16).
  *
  * DERIVATION. Convex allows 16,384 documents read per function execution. The
- * gate's scan costs up to TWO documents per examined row on its most expensive
- * shape (a topic membership plus its contact; a segment carrying a
- * `topic_membership` condition costs the contact plus one point-read per
- * referenced topic), and it is not the only reader in the mutation — the
- * enclosing `schedule` / `sendNow` also loads the campaign, template, domain,
- * sender and the suppression set. 8,000 examined rows leaves roughly half the
- * budget for everything else, which is the margin this number is chosen for.
+ * budget is charged in DOCUMENTS, not rows, because a row is not one document:
+ * a topic candidate costs the membership PLUS its contact, and a segment
+ * candidate costs the contact plus one point read per (contact × condition
+ * lookup), so a segment with two `topic_membership` conditions costs three
+ * documents per row. Charging rows would let this "bound" overrun the limit by
+ * 2-3x on exactly the audiences it exists for — and in production the limit
+ * THROWS, the fail-open catch swallows it, and the gate goes dark. The gate is
+ * also not the only reader in the mutation: the enclosing `schedule` /
+ * `sendNow` loads the campaign, template, domain and sender. 6,000 documents
+ * leaves 10,384 of the 16,384 for everything else.
  *
  * Exhausting it is NOT a refusal and NOT a silent pass: the partial count is
  * kept as a LOWER BOUND on the audience and compared against the capacity
- * inside the retention horizon (see `assessCampaignCapacity`). A floor already
+ * inside the retention horizon (see `measureCampaignCapacity`). A floor already
  * above that capacity is a sound refusal; only a floor below it is genuinely
- * unmeasured. That is why this ceiling can never quietly become the binding
- * constraint on whether the gate fires.
+ * unmeasured.
+ *
+ * THE HONEST INVARIANT — and its limit. The lower-bound rule only decides the
+ * case where the floor EXCEEDS horizon capacity, so THE GATE CAN ONLY BIND
+ * WHILE CAPACITY INSIDE THE RETENTION HORIZON IS BELOW WHAT THIS BUDGET CAN
+ * COUNT. Once a deployment's horizon capacity grows past that (three IPs clear
+ * a few thousand a day around schedule day 12), an audience larger than the
+ * budget can count is allowed through and its tail expires exactly as it did
+ * before this gate existed. That is a deliberate bound, not an oversight: the
+ * alternative is refusing sends on an unmeasured audience, which D2 forbids.
+ * The real fix for very large audiences is a denormalized audience-size
+ * counter — the same follow-up `COUNT_CEILING` names — not a bigger budget.
  */
-const AUDIENCE_EXAMINE_CEILING = 8_000;
+const AUDIENCE_DOCUMENT_BUDGET = 6_000;
 
 /**
  * Multi-day plan plus whether capacity could be measured at all.
@@ -128,14 +141,19 @@ async function measureCampaignCapacity(
 	// is already decided once the count exceeds everything the deployment could
 	// possibly send across the whole plan window, so there is no reason to stream
 	// tens of thousands of audience documents inside a send mutation.
-	const trailingRate = remainingCapacityByDay[remainingCapacityByDay.length - 1] ?? 0;
-	const projectedTotal =
-		remainingCapacityByDay.reduce((sum, day) => sum + day, 0) +
-		Math.max(0, MAX_PLAN_DAYS - remainingCapacityByDay.length) * trailingRate;
 	const counted = await countAudience(ctx, options.audience, {
-		ceiling: projectedTotal + 1,
-		examineCeiling: AUDIENCE_EXAMINE_CEILING,
+		ceiling: totalPlannableCapacity(remainingCapacityByDay) + 1,
+		documentBudget: AUDIENCE_DOCUMENT_BUDGET,
 	});
+
+	// The suppression set could not be read in full, so candidates were filtered
+	// through a SUBSET of the blocklist and `eligible` is an OVER-count. Unlike a
+	// spent read budget it bounds the audience in NEITHER direction, so it cannot
+	// license a refusal — it is simply "unmeasured".
+	if (counted.completeness === 'suppression_truncated') {
+		return { capacityKnown: false, fits: true };
+	}
+
 	// Ran out of read budget before the audience was sized. The partial count is
 	// still a valid LOWER BOUND on the audience, and a lower bound answers one
 	// question soundly: if even the floor already exceeds everything the horizon

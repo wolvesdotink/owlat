@@ -1430,8 +1430,12 @@ spec), Segment alone (covers one `kind` only).
 The module at `convex/campaigns/audienceResolution.ts` that owns the
 single mapping from an **Audience** to its eligible recipients
 (`CampaignRecipient[]`). One pure per-Contact *eligibility predicate*
-is the shared core; two thin entries route through it so a count can
-never disagree with a send:
+is the shared core; it lives with the unpaginated candidate stream and
+the counting core in the domain sibling
+`convex/campaigns/audienceCandidates.ts` (the split the ~500 LOC rule in
+`convex/CONVENTIONS.md` asks for; the dependency runs one way,
+`audienceResolution.ts` → `audienceCandidates.ts`). Two thin entries
+route through it so a count can never disagree with a send:
 - `resolveRecipients({ audience }) → CampaignRecipient[]` —
   internalQuery; the **Campaign send orchestrator (module)**'s
   audience-resolution step. Materializes the rows. (`frozenFilters`

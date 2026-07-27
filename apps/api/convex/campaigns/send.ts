@@ -3,7 +3,7 @@
 import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import type { CampaignRecipient } from './audienceResolution';
+import type { CampaignRecipient } from './audienceCandidates';
 import type { Id } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
