@@ -469,6 +469,31 @@ describe('P2-7 (a) — CFBL-Address header emission', () => {
 		expect(wireBytes()).not.toContain('CFBL-Address');
 	});
 
+	it('counts a sealed-mail send as sealed_raw, NEVER as emitted', async () => {
+		// The return-path host IS aligned here, so the only thing standing between
+		// this send and a CFBL pair is the sealed path shipping raw MIME verbatim.
+		// Counting it `emitted` would report a header that is provably not on the
+		// wire and defeat the question the counter exists to answer.
+		await alignReturnPath();
+		const sealed = Buffer.from(
+			'From: sender@acme.com\r\nTo: user@remote.test\r\nSubject: Sealed\r\n\r\nbody\r\n',
+			'utf-8'
+		).toString('base64');
+
+		const result = await sendToMx(
+			createJob({ sealedMimeBase64: sealed }),
+			createConfig(),
+			redis,
+			'10.0.0.1'
+		);
+
+		expect(result.success).toBe(true);
+		expect(wireBytes()).not.toContain('CFBL-Address');
+		expect(await emissionCount('sealed_raw')).toBe(1);
+		expect(await emissionCount('emitted')).toBe(0);
+		expect(await emissionCount('host_unaligned')).toBe(0);
+	});
+
 	describe('RFC 9477 §3.1.4 — both fields are covered by the DKIM h= tag', () => {
 		const SELECTOR = 'cfbl2026';
 

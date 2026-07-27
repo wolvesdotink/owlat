@@ -30,6 +30,7 @@ import {
 	CFBL_ADDRESS_HEADER,
 	CFBL_FEEDBACK_ID_HEADER,
 	buildCfblHeaders,
+	type CfblHeaderResult,
 } from '../bounce/cfblAddress.js';
 import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull, strictestOutboundTlsMode } from '@owlat/shared';
@@ -330,11 +331,19 @@ export async function sendToMx(
 	// the outcome is counted: `mta_cfbl_emissions_total{outcome="host_unaligned"}`
 	// is how an operator sees that CFBL is off for a domain, and why. Counting is
 	// not warning — nothing here can fail a send.
-	const cfbl = buildCfblHeaders({
-		messageId: job.messageId,
-		cfblHost: feedbackHost,
-		fromDomain: extractDomainOrNull(job.from) ?? '',
-	});
+	//
+	// Sealed mail short-circuits the whole question: `buildSignedBytes` ships
+	// `job.sealedMimeBase64` verbatim and never reaches the composer, so no
+	// composed header set can ride those bytes. Counting such a send as
+	// `emitted` would report a CFBL-Address that is provably not on the wire, so
+	// it gets its own bounded label and the builder is not consulted at all.
+	const cfbl: CfblHeaderResult = job.sealedMimeBase64
+		? { outcome: 'sealed_raw', headers: {} }
+		: buildCfblHeaders({
+				messageId: job.messageId,
+				cfblHost: feedbackHost,
+				fromDomain: extractDomainOrNull(job.from) ?? '',
+			});
 	cfblEmissionsTotal.inc({ outcome: cfbl.outcome });
 	const feedbackHeaders = cfbl.headers;
 

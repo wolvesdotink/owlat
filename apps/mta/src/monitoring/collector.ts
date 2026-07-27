@@ -130,6 +130,11 @@ export const cfblAttributionsTotal = new Counter({
  * an invisible one, so it is counted here. `host_unaligned` dominating this
  * counter is how an operator learns that CFBL is off for their domains and what
  * would turn it on.
+ *
+ * `outcome` is bounded to the `CfblEmissionOutcome` union: `emitted`,
+ * `host_unaligned`, `no_key`, `no_address`, `sealed_raw`. `emitted` means the
+ * pair is genuinely on the wire — sealed-mail sends ship raw MIME verbatim and
+ * are counted as `sealed_raw`, never as `emitted`.
  */
 export const cfblEmissionsTotal = new Counter({
 	name: 'mta_cfbl_emissions_total',
