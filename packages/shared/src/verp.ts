@@ -71,15 +71,32 @@ function verpWindow(now: number): number {
  * the *already base64url-encoded* id keeps the MAC input free of `@`/`+`/`=`
  * so the token grammar stays unambiguous.
  */
-function computeVerpMac(encodedId: string, window: number, key: string): string {
+export function computeSignedTokenMac(
+	label: string,
+	encodedId: string,
+	window: number,
+	key: string
+): string {
 	return createHmac('sha256', key)
-		.update(`${encodedId}:${window}`)
+		.update(`${label}${encodedId}:${window}`)
 		.digest('base64url')
 		.slice(0, VERP_MAC_B64URL_LEN);
 }
 
+/**
+ * The bounce family's MAC: the labelled primitive with an EMPTY label.
+ *
+ * Empty by construction — the shipped bounce tokens were signed over
+ * `{encodedId}:{window}` with no prefix, and changing it would invalidate every
+ * token already in flight. The complaint family carries a non-empty label,
+ * which is what keeps the two un-replayable against each other.
+ */
+function computeVerpMac(encodedId: string, window: number, key: string): string {
+	return computeSignedTokenMac('', encodedId, window, key);
+}
+
 /** Constant-time string compare that never throws on length mismatch. */
-function macsEqual(a: string, b: string): boolean {
+export function signedTokenMacsEqual(a: string, b: string): boolean {
 	if (a.length !== b.length) return false;
 	const ab = Buffer.from(a);
 	const bb = Buffer.from(b);
@@ -139,7 +156,7 @@ export function parseVerpAddress(
 		const base = verpWindow(now);
 		let verified = false;
 		for (let i = 0; i <= VERP_WINDOW_TOLERANCE; i++) {
-			if (macsEqual(computeVerpMac(encodedId, base - i, key), presentedMac)) {
+			if (signedTokenMacsEqual(computeVerpMac(encodedId, base - i, key), presentedMac)) {
 				verified = true;
 				break;
 			}

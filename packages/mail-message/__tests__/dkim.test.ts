@@ -101,8 +101,10 @@ const SIGNED_HEADERS = [
 	'content-transfer-encoding',
 	'list-unsubscribe',
 	'list-unsubscribe-post',
+	'cfbl-address',
+	'cfbl-feedback-id',
 ];
-const OVERSIGNED_HEADERS = ['from', 'subject', 'to'];
+const OVERSIGNED_HEADERS = ['from', 'subject', 'to', 'cfbl-address', 'cfbl-feedback-id'];
 
 function splitHeadersAndBody(raw: Buffer): { headerBuf: Buffer; bodyBuf: Buffer } {
 	let idx = raw.indexOf('\r\n\r\n');
@@ -322,15 +324,28 @@ describe('signMessage — bit-for-bit vs the current MTA signer (old wire-M3)', 
 		// The `raw empty body` corpus message carries exactly From, To, Subject.
 		// The real signer (apps/mta/src/smtp/dkim.ts) walks SIGNED_HEADERS in order
 		// (from, …, subject, …, to, …) emitting only the present ones, then appends
-		// the OVERSIGNED slots (from, subject, to). So its h= is, lowercased, a
-		// hand-verifiable literal — pinned here independently of the reconstruction.
+		// the OVERSIGNED slots (from, subject, to, cfbl-address, cfbl-feedback-id).
+		// So its h= is, lowercased, a hand-verifiable literal — pinned here
+		// independently of the reconstruction. Both CFBL fields are oversigned
+		// unconditionally (RFC 9477 defines no tiebreak between duplicate CFBL
+		// fields), so they appear in h= even on messages that carry no CFBL header
+		// at all.
 		const raw = corpus().find((c) => c.name === 'raw empty body')!.raw;
 		const sig = buildDkimSignatureLine(raw, signingKey, SIGN_TIME_MS).replace(/\r\n[ \t]+/g, ' ');
 		const hList = /(?:^|;|\s)h=([^;]+)/
 			.exec(sig)![1]!
 			.split(':')
 			.map((h) => h.trim().toLowerCase());
-		expect(hList).toEqual(['from', 'subject', 'to', 'from', 'subject', 'to']);
+		expect(hList).toEqual([
+			'from',
+			'subject',
+			'to',
+			'from',
+			'subject',
+			'to',
+			'cfbl-address',
+			'cfbl-feedback-id',
+		]);
 	});
 
 	it('the ported body hash equals mailauth relaxed dkimBody', () => {
