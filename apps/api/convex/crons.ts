@@ -1,5 +1,6 @@
 import { cronJobs } from 'convex/server';
 import { internal } from './_generated/api';
+import { registerDeliveryCrons } from './delivery/cronRegistration';
 import { registerBundledPluginCrons } from './plugins/cronRegistration';
 
 const crons = cronJobs();
@@ -167,39 +168,14 @@ crons.interval(
 	{}
 );
 
-// Sync IP warming state from MTA every 5 minutes
-crons.interval(
-	'sync warming state',
-	{ minutes: 5 },
-	internal.delivery.warmingSync.syncWarmingState
-);
-crons.interval(
-	'cleanup deliverability route state',
-	{ minutes: 5 },
-	internal.delivery.deliverabilityRouting.cleanupExpired,
-	{}
-);
+// Delivery-module maintenance (warming sync, route-state cleanup, MTA health,
+// relay return-path probes) is registered by the module that owns it.
+registerDeliveryCrons(crons);
 
-// Keep the built-in MTA's infrastructure readiness visible to reactive
-// Delivery surfaces. The MTA internally caches its TCP/25 probes, so this
-// cadence does not create a connection storm against the probe target.
-crons.interval('sync MTA health', { minutes: 2 }, internal.delivery.mtaHealth.sync, {});
 crons.interval(
 	'refresh SES relay verification proofs',
 	{ hours: 24 },
 	internal.domains.sesRelayMutations.scheduleVerificationRefresh,
-	{}
-);
-
-// Relay return-path capability (plan G-08): settle probes that saw no bounce
-// inside the timeout — exactly how a relay that REWRITES our envelope sender
-// presents itself — then re-probe whatever is due. Idempotent, and backing off
-// (24h → 7d → 30d) because each probe costs the operator a real bounce. With no
-// bring-your-own relay it is a no-op (plan D2).
-crons.interval(
-	'sweep relay return-path probes',
-	{ hours: 1 },
-	internal.delivery.relayReturnPathProbe.sweepReturnPathProbes,
 	{}
 );
 
