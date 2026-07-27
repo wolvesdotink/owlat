@@ -16,7 +16,8 @@ interface SegmentOption {
 interface RecipientCount {
 	eligible: number;
 	total: number;
-	capped?: boolean;
+	/** Mirrors `AudienceCount.completeness` (apps/api/convex/campaigns/audienceResolution.ts). */
+	completeness?: 'exact' | 'candidate_capped' | 'read_budget_exhausted';
 }
 
 const props = defineProps<{
@@ -42,7 +43,8 @@ const selectedSegment = computed(
 const formattedEligibleRecipients = computed(() => {
 	const eligible = props.audienceCount?.eligible ?? 0;
 	// Anything other than an exact enumeration is an "at least" reading.
-	const suffix = props.audienceCount && props.audienceCount.completeness !== 'exact' ? '+' : '';
+	const completeness = props.audienceCount?.completeness;
+	const suffix = completeness !== undefined && completeness !== 'exact' ? '+' : '';
 	return `${eligible.toLocaleString()}${suffix}`;
 });
 
