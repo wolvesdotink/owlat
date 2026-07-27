@@ -92,7 +92,31 @@ export const SUNSET_MIN_WINDOW_DAYS = 30;
  * HOLDING, which is always safe, and a false hold clears itself as soon as the
  * deployment writes fresh stamps.
  */
-export const SUNSET_MAX_CLOCK_LEAD_MS = 30 * 86_400_000;
+export const SUNSET_MAX_CLOCK_LEAD_MS = 30 * MS_PER_DAY;
+
+/**
+ * Is `now` corroborated by an independently-written earlier observation?
+ *
+ * PURE, and exported because the sweep must answer this question ONCE at the
+ * head of a tick — before it writes anything — rather than per contact after it
+ * has already stamped the row it is judging. A guard whose own writes become
+ * next tick's corroboration is a guard that fires once and then goes quiet.
+ *
+ * `corroboratingInstant === undefined` means "nothing to check against" (a
+ * deployment that has never swept), which is trusted: the blast-radius ceiling
+ * is what covers that case.
+ */
+export function isClockCorroborated(
+	now: number,
+	corroboratingInstant: number | undefined
+): boolean {
+	if (!Number.isFinite(now) || now <= 0) return false;
+	if (corroboratingInstant === undefined) return true;
+	if (!Number.isFinite(corroboratingInstant) || corroboratingInstant <= 0) return false;
+	// Ahead of `now`: the clock moved BACKWARDS since that stamp was written.
+	if (corroboratingInstant > now) return false;
+	return now - corroboratingInstant <= SUNSET_MAX_CLOCK_LEAD_MS;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -317,24 +341,15 @@ function isTrustworthyInstantOrAbsent(value: number | undefined, now: number): b
 export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): SunsetVerdict {
 	const stage = facts.stage;
 
-	// 1. The clock itself. A non-finite or non-positive `now` disqualifies every
-	//    later comparison, so nothing downstream may run.
-	if (!Number.isFinite(facts.now) || facts.now <= 0) return hold('clock_skew', stage);
-
-	// 1b. …and `now` against the caller's independent observation. A clock that
-	//     jumped forward passes every check in step 1 and then makes EVERY window
-	//     look covered at once, so this is the only guard standing between an NTP
-	//     glitch and the whole book being suppressed in one pass.
-	const corroborating = facts.corroboratingInstant;
-	if (corroborating !== undefined) {
-		if (!Number.isFinite(corroborating) || corroborating <= 0) {
-			return hold('clock_skew', stage);
-		}
-		// Ahead of `now`: the clock moved BACKWARDS since that stamp was written.
-		if (corroborating > facts.now) return hold('clock_skew', stage);
-		if (facts.now - corroborating > SUNSET_MAX_CLOCK_LEAD_MS) {
-			return hold('clock_skew', stage);
-		}
+	// 1. The clock itself — a non-finite or non-positive `now` disqualifies every
+	//    later comparison — and `now` against the caller's independent
+	//    observation. A clock that jumped forward is otherwise plausible and
+	//    makes EVERY window look covered at once, so this is the only guard
+	//    standing between an NTP glitch and the whole book being suppressed in
+	//    one pass. Callers that can abort BEFORE writing anything should call
+	//    `isClockCorroborated` themselves first (see `sunsetSweep.ts`).
+	if (!isClockCorroborated(facts.now, facts.corroboratingInstant)) {
+		return hold('clock_skew', stage);
 	}
 
 	// 2. Operator intent beats everything the engine might infer.
