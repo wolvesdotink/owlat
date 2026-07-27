@@ -39,6 +39,27 @@ export function safeRate(value: number | undefined | null): number | null {
 	return Math.min(1, value);
 }
 
+/**
+ * The SAME question for a gate whose polarity is inverted — and it needs a
+ * different answer, which is why it is a second function rather than a flag.
+ *
+ * `safeRate` clamps a value above 1 instead of dropping it because for gates 1,
+ * 2 and 3 HIGH IS BAD: a hard-bounce rate of 1.5 clamped to 1.0 still fails
+ * every ceiling, so the clamp is degenerate in the safe direction.
+ *
+ * The engagement gate inverts that: HIGH IS GOOD. A poisoned own-arm rate of 1.5
+ * clamped to 1.0 divides by any reference rate to something at or above the
+ * ratio floor, so the clamp would manufacture the ONE verdict the AIMD
+ * controller is allowed to raise a share on. Nothing on the real read path can
+ * produce a value above 1 (`summarizeTransportOutcomeBuckets` clamps at the read
+ * boundary), so a value above 1 arriving here is corruption and must be treated
+ * as "not measured" rather than as data.
+ */
+export function safeEngagementRate(value: number | undefined | null): number | null {
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1) return null;
+	return value;
+}
+
 export type ArmEvidence = 'fresh' | 'thin' | 'stale' | 'absent';
 
 /**
@@ -88,19 +109,37 @@ export function insufficient(
  * fresh and large enough but the RATE itself was not a number — a poisoned
  * bucket, which is a different operator story from a thin window and must not
  * be reported as one.
+ *
+ * THREE arms, not two. A hold reason exists to NAME THE THING TO FIX, and
+ * "reference" names a second transport an operator can go and look at. The
+ * slow-poison floor's second series is the cell's OWN past, so reporting
+ * `reference_evidence_stale` there would send that operator hunting for a relay
+ * problem that does not exist.
  */
 export function evidenceReason(
 	evidence: ArmEvidence,
-	arm: 'own' | 'reference'
+	arm: 'own' | 'reference' | 'baseline'
 ): RampGateHoldReason {
 	switch (evidence) {
 		case 'absent':
 			return 'evidence_absent';
 		case 'stale':
-			return arm === 'own' ? 'own_evidence_stale' : 'reference_evidence_stale';
+			return arm === 'own'
+				? 'own_evidence_stale'
+				: arm === 'reference'
+					? 'reference_evidence_stale'
+					: 'baseline_evidence_stale';
 		case 'thin':
-			return arm === 'own' ? 'own_sample_below_floor' : 'reference_sample_below_floor';
+			return arm === 'own'
+				? 'own_sample_below_floor'
+				: arm === 'reference'
+					? 'reference_sample_below_floor'
+					: 'baseline_sample_below_floor';
 		case 'fresh':
-			return arm === 'own' ? 'own_rate_unmeasurable' : 'reference_rate_unmeasurable';
+			return arm === 'own'
+				? 'own_rate_unmeasurable'
+				: arm === 'reference'
+					? 'reference_rate_unmeasurable'
+					: 'baseline_rate_unmeasurable';
 	}
 }
