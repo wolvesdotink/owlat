@@ -28,6 +28,7 @@
  */
 
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
+import { startOfDayUtc } from '../lib/clock';
 import {
 	summarizeTransportOutcomeBuckets,
 	type TransportOutcomeBucket,
@@ -36,10 +37,64 @@ import {
 import type { RampGateEvaluation, RampGateResult } from './ramp/gateTypes';
 import { RAMP_GATE_SAMPLE_FLOORS } from './ramp/gateConfig';
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+/** Declared ONCE for the whole feature; the query shell imports it from here. */
+export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** How many days of trend the screen renders at most — one bounded series. */
 export const DASHBOARD_MAX_TREND_DAYS = 30;
+
+// ============ WINDOW ============
+
+/** The evaluation window — the ramp's own weekly cadence, and NOT negotiable. */
+export const DASHBOARD_WINDOW_DAYS = 7;
+
+/**
+ * The trailing baseline gate 4b compares against. Its width is
+ * `BASELINE_DAYS - BASELINE_GAP_DAYS`, and the gap is exactly the evaluation
+ * window — so the baseline ends where the window begins.
+ */
+const BASELINE_DAYS = 30;
+const BASELINE_GAP_DAYS = DASHBOARD_WINDOW_DAYS;
+const BASELINE_WIDTH_DAYS = BASELINE_DAYS - BASELINE_GAP_DAYS;
+
+export interface DashboardWindow {
+	/** Inclusive start of the evaluation window, at UTC-day granularity. */
+	readonly sinceDay: number;
+	/** Exclusive end of the evaluation window. */
+	readonly untilDay: number;
+	/** Inclusive start of the slow-poison floor's trailing baseline. */
+	readonly baselineSinceDay: number;
+	/** Exclusive end of that baseline — equal to `sinceDay`, by construction. */
+	readonly baselineUntilDay: number;
+	/** The widest bound any sub-view derives: one index read has to cover it. */
+	readonly readSinceDay: number;
+}
+
+/**
+ * The one window every sub-view of the screen is derived from.
+ *
+ * THE EVALUATION WINDOW IS PINNED AT 7 DAYS and there is deliberately no way to
+ * ask for another one. The screen's whole premise is that it runs the code the
+ * ramp controller will run, and gate 4b's trailing baseline is contracted to be
+ * DISJOINT from the recent window it is compared against — a baseline that
+ * CONTAINS the recent window measures a decay against a baseline the decay has
+ * already dragged down, so the tripwire fires late. Deriving both from one
+ * function makes `baselineUntilDay === sinceDay` true by construction rather
+ * than true at the default and false everywhere else.
+ */
+export function dashboardWindow(now: number): DashboardWindow {
+	const untilDay = startOfDayUtc(now) + DAY_MS;
+	const sinceDay = untilDay - DASHBOARD_WINDOW_DAYS * DAY_MS;
+	const baselineSinceDay = sinceDay - BASELINE_WIDTH_DAYS * DAY_MS;
+	return {
+		sinceDay,
+		untilDay,
+		baselineSinceDay,
+		// Disjoint by construction: the baseline ends where the window begins.
+		baselineUntilDay: sinceDay,
+		readSinceDay: baselineSinceDay,
+	};
+}
 
 // ============ TREND ============
 
@@ -49,6 +104,24 @@ export interface DashboardTrendPoint {
 	readonly own: TransportOutcomeSummary;
 	/** `null` when no reference transport is configured (D2), not "no data". */
 	readonly reference: TransportOutcomeSummary | null;
+}
+
+/**
+ * Index rows by the UTC day they belong to, ONCE. The shell reads 30 days of
+ * shards per arm; summarizing each day by re-scanning the whole array would
+ * make one dashboard load quadratic in the read span for no reason.
+ */
+function bucketsByDay(
+	buckets: readonly TransportOutcomeBucket[]
+): Map<number, TransportOutcomeBucket[]> {
+	const byDay = new Map<number, TransportOutcomeBucket[]>();
+	for (const bucket of buckets) {
+		if (!Number.isFinite(bucket.periodStart)) continue;
+		const existing = byDay.get(bucket.periodStart);
+		if (existing === undefined) byDay.set(bucket.periodStart, [bucket]);
+		else existing.push(bucket);
+	}
+	return byDay;
 }
 
 /**
@@ -65,6 +138,8 @@ export function buildDashboardTrend(input: {
 }): DashboardTrendPoint[] {
 	const { ownBuckets, referenceBuckets, sinceDay, untilDay } = input;
 	if (!Number.isFinite(sinceDay) || !Number.isFinite(untilDay) || untilDay <= sinceDay) return [];
+	const ownByDay = bucketsByDay(ownBuckets);
+	const referenceByDay = referenceBuckets === null ? null : bucketsByDay(referenceBuckets);
 	const points: DashboardTrendPoint[] = [];
 	const days = Math.min(Math.ceil((untilDay - sinceDay) / DAY_MS), DASHBOARD_MAX_TREND_DAYS);
 	for (let index = 0; index < days; index += 1) {
@@ -72,11 +147,13 @@ export function buildDashboardTrend(input: {
 		const window = { since: day, until: day + DAY_MS };
 		points.push({
 			day,
-			own: summarizeTransportOutcomeBuckets(ownBuckets, window),
+			// The empty slice still goes through the summarizer: a zero-volume day
+			// must carry the same zeroed shape every other day carries.
+			own: summarizeTransportOutcomeBuckets(ownByDay.get(day) ?? [], window),
 			reference:
-				referenceBuckets === null
+				referenceByDay === null
 					? null
-					: summarizeTransportOutcomeBuckets(referenceBuckets, window),
+					: summarizeTransportOutcomeBuckets(referenceByDay.get(day) ?? [], window),
 		});
 	}
 	return points;
@@ -157,7 +234,13 @@ export interface DashboardCellView {
 	/** Fraction of the cell the own MTA carries, resolved through D1's helper. */
 	readonly ownShare: number;
 	readonly phaseCeiling: number | null;
-	readonly cleanStreak: number;
+	/**
+	 * Consecutive clean windows INCLUDING the one on screen — the evaluator's
+	 * number, not the STORED `deliverabilityRouteStates.cleanStreak`, which is the
+	 * PRIOR streak and is one lower whenever this window is clean. Two different
+	 * numbers under one name on one screen is how a reader learns to distrust it.
+	 */
+	readonly cleanStreakIncludingThisWindow: number;
 	readonly own: TransportOutcomeSummary;
 	/** `null` = standalone cell (D2), rendered with its confidence caveat. */
 	readonly reference: TransportOutcomeSummary | null;
@@ -191,7 +274,7 @@ export function buildDashboardCellView(input: {
 		cellKey: input.cellKey,
 		ownShare: input.ownShare,
 		phaseCeiling: input.phaseCeiling,
-		cleanStreak: evaluation.cleanStreak,
+		cleanStreakIncludingThisWindow: evaluation.cleanStreak,
 		own: input.own,
 		reference: input.reference,
 		verdict: evaluation.verdict,

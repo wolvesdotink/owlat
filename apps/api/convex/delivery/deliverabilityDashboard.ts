@@ -19,10 +19,10 @@
  * improve it. Nothing throws, nothing renders as an error, nothing is blocked.
  */
 
-import { v } from 'convex/values';
 import {
 	allDeliverabilityCells,
 	deliverabilityCellKey,
+	DESTINATION_PROVIDER_KEYS,
 	resolveOwnShare,
 	type DeliverabilityCell,
 } from '@owlat/shared/deliverabilityRouting';
@@ -30,7 +30,6 @@ import type { Doc } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
-import { startOfDayUtc } from '../lib/clock';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import {
 	summarizeTransportOutcomeBuckets,
@@ -45,57 +44,20 @@ import type { RampGateResult } from './ramp/gateTypes';
 import {
 	buildDashboardCellView,
 	buildDashboardTrend,
-	DASHBOARD_MAX_TREND_DAYS,
+	dashboardWindow,
 	type DashboardCellView,
+	type DashboardWindow,
 } from './deliverabilityDashboardView';
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-/** Default evaluation window — the ramp's own weekly cadence. */
-export const DASHBOARD_DEFAULT_WINDOW_DAYS = 7;
-
-/** The trailing baseline gate 4b compares against: `[now - 30d, now - 7d)`. */
-const BASELINE_DAYS = 30;
-const BASELINE_GAP_DAYS = 7;
 
 /** Route-state rows for one provider — one per stream plus the legacy row. */
 const ROUTE_STATE_SCAN_LIMIT = 16;
 
-interface DashboardWindow {
-	readonly sinceDay: number;
-	readonly untilDay: number;
-	readonly readSinceDay: number;
-}
-
 /**
- * Normalize the requested window to UTC-day granularity and clamp it to the
- * trend cap. `NaN`/`Infinity` are treated as "not supplied" rather than as an
- * empty window — `v.number()` is a float64 and a poisoned argument must not
- * blank a screen.
+ * Seed placement lands in a later piece (P1-7 owns the seed table and the
+ * confidence model with it). Declared ONCE so the per-cell judgement and the
+ * screen-level flag cannot drift apart on the day seeds arrive.
  */
-export function resolveDashboardWindow(
-	args: { readonly since?: number; readonly until?: number },
-	now: number
-): DashboardWindow {
-	const untilDay =
-		args.until !== undefined && Number.isFinite(args.until)
-			? startOfDayUtc(args.until) + DAY_MS
-			: startOfDayUtc(now) + DAY_MS;
-	const requestedSince =
-		args.since !== undefined && Number.isFinite(args.since)
-			? startOfDayUtc(args.since)
-			: untilDay - DASHBOARD_DEFAULT_WINDOW_DAYS * DAY_MS;
-	const floorDay = untilDay - DASHBOARD_MAX_TREND_DAYS * DAY_MS;
-	const sinceDay = Math.min(Math.max(requestedSince, floorDay), untilDay - DAY_MS);
-	// One read per (cell, arm) has to cover the widest sub-window anyone derives:
-	// the trailing baseline reaches 30 days back even when the screen is showing
-	// a week.
-	return {
-		sinceDay,
-		untilDay,
-		readSinceDay: Math.min(sinceDay, untilDay - BASELINE_DAYS * DAY_MS),
-	};
-}
+const SEED_COVERAGE_UNAVAILABLE = false;
 
 /**
  * The cell's route-state row: the per-stream row when the controller has
@@ -118,23 +80,26 @@ async function readRouteStatesByProvider(
 	organizationId: string
 ): Promise<Map<string, Doc<'deliverabilityRouteStates'>[]>> {
 	const byProvider = new Map<string, Doc<'deliverabilityRouteStates'>[]>();
-	for (const cell of allDeliverabilityCells()) {
-		if (byProvider.has(cell.destinationProvider)) continue;
+	// The index is provider-keyed, so the read is too: one bounded read per
+	// destination provider, shared by that provider's three streams.
+	for (const destinationProvider of DESTINATION_PROVIDER_KEYS) {
 		const rows = await ctx.db
 			.query('deliverabilityRouteStates')
 			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', cell.destinationProvider)
+				q.eq('organizationId', organizationId).eq('destinationProvider', destinationProvider)
 			)
 			.take(ROUTE_STATE_SCAN_LIMIT); // bounded: one row per stream, plus the legacy row
-		byProvider.set(cell.destinationProvider, rows);
+		byProvider.set(destinationProvider, rows);
 	}
 	return byProvider;
 }
 
 /**
  * Gate 4 (engagement) for one cell, over the same rows every other view uses.
- * `ownPriorBaseline` is the DISJOINT `[now - 30d, now - 7d)` window the
- * slow-poison floor contracts for; a young cell simply has none, and the floor
+ * `ownPriorBaseline` is the trailing window the slow-poison floor contracts for,
+ * and `dashboardWindow` guarantees it ENDS where the evaluation window begins —
+ * a baseline that overlapped the recent window would be dragged down by the very
+ * decay it exists to detect. A young cell simply has no baseline, and the floor
  * holds rather than failing.
  */
 function engagementGateFor(input: {
@@ -145,16 +110,14 @@ function engagementGateFor(input: {
 	readonly window: DashboardWindow;
 	readonly now: number;
 }): RampGateResult {
-	const baselineUntil = input.window.untilDay - BASELINE_GAP_DAYS * DAY_MS;
-	const baselineSince = input.window.untilDay - BASELINE_DAYS * DAY_MS;
 	return evaluateEngagementGate({
 		cell: input.cell,
 		own: input.own,
 		reference: input.reference,
 		ownRecent: input.own,
 		ownPriorBaseline: summarizeTransportOutcomeBuckets(input.ownBuckets, {
-			since: baselineSince,
-			until: baselineUntil,
+			since: input.window.baselineSinceDay,
+			until: input.window.baselineUntilDay,
 		}),
 		now: input.now,
 	});
@@ -185,18 +148,19 @@ export interface DeliverabilityDashboard {
 // the caller's own organization — no credentials, no recipient identities, and
 // no cross-tenant reach (org id comes from the session, not from args).
 export const getDeliverabilityDashboard = authedQuery({
-	args: {
-		since: v.optional(v.number()),
-		until: v.optional(v.number()),
-	},
-	handler: async (ctx, args): Promise<DeliverabilityDashboard> => {
+	// No arguments AT ALL, on purpose. The evaluation window is pinned to the
+	// ramp's 7-day cadence by `dashboardWindow` so that the gate verdicts on this
+	// screen are the verdicts the controller would reach; a caller-chosen window
+	// would silently change what the gates mean.
+	args: {},
+	handler: async (ctx): Promise<DeliverabilityDashboard> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
 		// The clock is read HERE, in the shell, and passed down: every decision
 		// function below it is pure (plan D15). There is deliberately no `now`
 		// argument — a caller-supplied clock on a public read is a way to make a
 		// stale window look fresh.
 		const now = Date.now();
-		const window = resolveDashboardWindow(args, now);
+		const window = dashboardWindow(now);
 		const referenceTransportId = await referenceRelayTransportId(ctx);
 		const hasReferenceArm = referenceTransportId !== null;
 		const routeStates = await readRouteStatesByProvider(ctx, organizationId);
@@ -250,7 +214,7 @@ export const getDeliverabilityDashboard = authedQuery({
 					own,
 					reference,
 					evaluation,
-					hasSeedCoverage: false,
+					hasSeedCoverage: SEED_COVERAGE_UNAVAILABLE,
 					trend: buildDashboardTrend({
 						ownBuckets,
 						referenceBuckets,
@@ -266,7 +230,7 @@ export const getDeliverabilityDashboard = authedQuery({
 			windowStart: window.sinceDay,
 			windowEnd: window.untilDay,
 			referenceTransportId,
-			hasSeedCoverage: false,
+			hasSeedCoverage: SEED_COVERAGE_UNAVAILABLE,
 			cells,
 		};
 	},

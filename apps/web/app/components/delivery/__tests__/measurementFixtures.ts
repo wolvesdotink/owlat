@@ -112,7 +112,7 @@ export function cellView(
 		cellKey: 'campaign:gmail',
 		ownShare: 0.25,
 		phaseCeiling: 0.5,
-		cleanStreak: 1,
+		cleanStreakIncludingThisWindow: 1,
 		own: armSummary({ sent: 1000, delivered: 980, deliveryRate: 0.98 }),
 		reference: armSummary({ sent: 900, delivered: 890, deliveryRate: 0.9889 }),
 		verdict: 'pass',
