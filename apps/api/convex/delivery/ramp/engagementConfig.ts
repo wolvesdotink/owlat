@@ -61,15 +61,16 @@ export interface EngagementGateThresholds {
 	/**
 	 * Gate 4's ratio floor: `ownRate / referenceRate` must be at least this.
 	 *
-	 * A RATIO, not a rate — the two are both small numbers and the measurement
-	 * carries it in `thresholdRate`, so the doc comment is the only thing that
-	 * keeps them apart. 0.95 means "the own arm may engage up to 5% RELATIVELY
-	 * worse than the reference arm over the same send".
+	 * A RATIO, not a rate. The two are both small numbers, so they do not share a
+	 * field: the measurement carries the multiple in `ratioFloor` and the absolute
+	 * rate it works out to in `thresholdRate`. 0.95 means "the own arm may engage
+	 * up to 5% RELATIVELY worse than the reference arm over the same send".
 	 */
 	readonly minRatio: number;
 	/**
-	 * The slow-poison floor: this window's engagement, as a ratio of the cell's
-	 * own 30-day trailing engagement.
+	 * The slow-poison floor: the recent window's engagement, as a ratio of the
+	 * cell's own PRIOR 30-day engagement (a window that excludes the recent one —
+	 * see `EngagementGateInput.ownPriorBaseline`).
 	 *
 	 * Deliberately wide (plan D14). A redesigned newsletter that engages 20%
 	 * worse is indistinguishable from a 20% placement loss, so a floor that
@@ -79,7 +80,7 @@ export interface EngagementGateThresholds {
 	 */
 	readonly absoluteFloorRatio: number;
 	/**
-	 * Calibration sends the 30-day trailing baseline must carry before the floor
+	 * Calibration sends the prior 30-day baseline must carry before the floor
 	 * check may decide. Roughly three weekly windows: a baseline thinner than
 	 * that is noise, and comparing against noise would retreat a healthy cell.
 	 */

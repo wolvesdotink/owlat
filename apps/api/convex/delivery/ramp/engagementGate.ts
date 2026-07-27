@@ -38,38 +38,49 @@
  * AND THE SLOW POISON. Every gate above is a comparison against something else
  * measured at the same time, which means reputation damage that accumulates
  * SMOOTHLY — a cell degrading a little every week, both arms drifting together,
- * nothing ever breaching a threshold — passes all of them. The weekly
- * absolute-floor check is the only defence against that: this window's
- * engagement against the cell's OWN 30-day trailing engagement. It lives in
- * this module because it shares the metric substitution and the calibration
- * restriction, and it only ever contributes a FAIL (see
- * `evaluateEngagementGate`), so a young cell with no baseline can never be held
- * back by it.
+ * nothing ever breaching a threshold — passes all of them. The absolute-floor
+ * check is the only defence against that: the cell's RECENT window against its
+ * own PRIOR 30-day window. It lives in this module because it shares the metric
+ * substitution and the calibration restriction, and it only ever contributes a
+ * FAIL (see `evaluateEngagementGate`), so a young cell with no baseline can
+ * never be held back by it.
+ *
+ * ONE COMPARISON, TWO SPECS. Both sub-gates are the same cascade — resolve the
+ * metric, take the two calibration sides, hold on unusable evidence, refuse a
+ * zero denominator, compare against a multiple of the second series — differing
+ * only in which series plays the second role, which sample floor it uses, which
+ * multiple applies and what a breach is called. That cascade IS the safety
+ * property, so it exists once (`evaluateEngagementComparison`) and the two
+ * differences are data (`RATIO_SPEC`, `FLOOR_SPEC`), exactly as `gates.ts` does
+ * for the two ceiling gates.
  *
  * PURE (plan D15): `now` is a parameter, nothing reads a clock, a database or
  * the environment, and every verdict carries the numbers that produced it
  * (plan D12).
  */
 
-import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import {
 	ENGAGEMENT_GATE_THRESHOLDS,
 	resolveEngagementMetric,
-	type EngagementGateThresholds,
 	type EngagementMetric,
 	type EngagementMetricOverrides,
 } from './engagementConfig';
-import type { RampStreamConfig } from './gateConfig';
-import { armEvidence, evidenceReason, insufficient, safeRate } from './gateEvidence';
+import { RAMP_STREAM_CONFIGS, type RampGateSampleFloors } from './gateConfig';
+import { armEvidence, evidenceReason, insufficient, safeEngagementRate } from './gateEvidence';
 import type { RampGateResult } from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
 import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
 
 export interface EngagementGateInput {
-	/** The cell's mailbox provider — it selects the metric (MPP handling). */
-	readonly destinationProvider: DestinationProviderKey;
-	/** Sample floors, freshness allowances and the stream's ramp constants. */
-	readonly config: RampStreamConfig;
+	/**
+	 * The cell being gated, as ONE value. `stream` selects the ramp constants and
+	 * `destinationProvider` selects the engagement metric, and carrying them
+	 * separately would let a transactional config travel with a Gmail campaign
+	 * cell and evaluate silently. The stream's `RampStreamConfig` is derived from
+	 * it here rather than passed in, so there is nothing to keep consistent.
+	 */
+	readonly cell: DeliverabilityCell;
 	/** Own-MTA arm outcomes for the concurrent window. */
 	readonly own: TransportOutcomeSummary;
 	/**
@@ -80,20 +91,28 @@ export interface EngagementGateInput {
 	 */
 	readonly reference: TransportOutcomeSummary | null;
 	/**
-	 * The own arm's trailing 30-day window, for the slow-poison floor. Absent
-	 * (a young cell) means the floor cannot decide — never that it fails.
+	 * The RECENT own-arm window the slow-poison floor measures — `[now - 7d, now)`
+	 * under the shipped weekly cadence, but the caller states its own window and
+	 * this module never assumes one.
+	 *
+	 * Required rather than defaulted to `own`: an hourly controller that omitted
+	 * it would silently compare one hour against thirty days under a check whose
+	 * whole premise is a slow trend, and the result would look like a verdict.
 	 */
-	readonly ownTrailingBaseline?: TransportOutcomeSummary | null;
+	readonly ownRecent: TransportOutcomeSummary;
 	/**
-	 * The own arm's last-7-day window, which the floor compares against the
-	 * baseline. Defaults to `own` when the caller evaluates on a weekly cadence
-	 * and the two are the same window.
+	 * The own arm's PRIOR 30-day window — `[now - 30d, now - 7d)`, DISJOINT from
+	 * `ownRecent`. Absent (a young cell) means the floor cannot decide, never that
+	 * it fails.
+	 *
+	 * The disjointness is the contract, not a detail. A trailing window that
+	 * CONTAINS the recent one measures the decay against a baseline the decay has
+	 * already dragged down, so the tripwire fires late and less often than its
+	 * constant implies — the failure mode that gave this field its name.
 	 */
-	readonly ownWeekly?: TransportOutcomeSummary | null;
+	readonly ownPriorBaseline?: TransportOutcomeSummary | null;
 	/** Per-evaluation metric substitutions; absent keys use the shipped table. */
 	readonly metricOverrides?: EngagementMetricOverrides;
-	/** Threshold overrides — supplied by tests and by nothing else today. */
-	readonly thresholds?: EngagementGateThresholds;
 	readonly now: number;
 }
 
@@ -108,99 +127,48 @@ function calibrationEngagement(
 ): { readonly sample: number; readonly rate: number | null } {
 	return {
 		sample: safeOutcomeCount(summary.calibrationSent),
-		rate: safeRate(metric === 'click' ? summary.calibrationClickRate : summary.calibrationOpenRate),
+		rate: safeEngagementRate(
+			metric === 'click' ? summary.calibrationClickRate : summary.calibrationOpenRate
+		),
 	};
 }
 
 /**
- * Gate 4a — the concurrent ratio.
- *
- * ORDERING, and why:
- *   1. Own arm absent/thin/stale/unmeasurable -> hold. We know nothing.
- *   2. Reference arm absent/thin/stale/unmeasurable -> hold. There is no ratio
- *      without a denominator, and plan D2 forbids an absent external account
- *      from producing anything worse than lower confidence.
- *   3. Reference engagement of exactly zero -> hold, NOT pass. A zero
- *      denominator is a division by zero, and "0/0 looks fine" is precisely the
- *      bug that would let a dead cell ramp to 100%.
- *   4. Otherwise compare R against the ratio floor. An own arm at zero against
- *      a healthy reference is R = 0, which FAILS — that is the signal this gate
- *      exists to catch.
+ * The four things that differ between the concurrent ratio and the slow-poison
+ * floor. Everything else about them is one cascade.
  */
-export function evaluateEngagementRatioGate(input: EngagementGateInput): RampGateResult {
-	const thresholds = input.config.thresholds;
-	const engagementThresholds = input.thresholds ?? ENGAGEMENT_GATE_THRESHOLDS;
-	const minSample = input.config.sampleFloors.engagement;
-	const metric = resolveEngagementMetric(input.destinationProvider, input.metricOverrides);
-
-	const own = calibrationEngagement(input.own, metric);
-	const reference = input.reference ? calibrationEngagement(input.reference, metric) : null;
-
-	const shape = {
-		thresholdRate: engagementThresholds.minRatio,
-		toleranceValuePp: null,
-		ownSample: own.sample,
-		referenceSample: reference?.sample ?? null,
-		minSample,
-	} as const;
-
-	const ownEvidence = armEvidence(input.own, own.sample, minSample, input.now, thresholds);
-	if (ownEvidence !== 'fresh' || own.rate === null) {
-		return insufficient('engagement_ratio', evidenceReason(ownEvidence, 'own'), {
-			...shape,
-			ownRate: own.rate,
-			referenceRate: reference?.rate ?? null,
-		});
-	}
-
-	const referenceEvidence = armEvidence(
-		input.reference,
-		reference?.sample ?? 0,
-		minSample,
-		input.now,
-		thresholds
-	);
-	if (referenceEvidence !== 'fresh' || !reference || reference.rate === null) {
-		return insufficient('engagement_ratio', evidenceReason(referenceEvidence, 'reference'), {
-			...shape,
-			ownRate: own.rate,
-			referenceRate: reference?.rate ?? null,
-		});
-	}
-
-	const measurement = { ...shape, ownRate: own.rate, referenceRate: reference.rate } as const;
-
-	// No denominator, no ratio. Both arms at zero lands here too, which is the
-	// correct answer for it: two dead arms are unmeasured, not comparable.
-	if (reference.rate <= 0) {
-		return insufficient('engagement_ratio', 'reference_rate_unmeasurable', measurement);
-	}
-
-	return own.rate / reference.rate >= engagementThresholds.minRatio
-		? {
-				gate: 'engagement_ratio',
-				status: 'pass',
-				reason: 'within_threshold',
-				measurement,
-			}
-		: {
-				gate: 'engagement_ratio',
-				status: 'fail',
-				reason: 'reference_tolerance_breached',
-				measurement,
-			};
+interface EngagementComparisonSpec {
+	/** The window being judged. */
+	readonly recentOf: (input: EngagementGateInput) => TransportOutcomeSummary;
+	readonly recentFloorOf: (floors: RampGateSampleFloors) => number;
+	/** The series it is judged against — a second transport, or the cell's past. */
+	readonly referenceOf: (input: EngagementGateInput) => TransportOutcomeSummary | null;
+	readonly referenceFloorOf: (floors: RampGateSampleFloors) => number;
+	/**
+	 * Which vocabulary a hold on the second series speaks. A hold reason names
+	 * the thing to fix, and "the relay" and "this cell's own history" are not the
+	 * same thing to fix.
+	 */
+	readonly referenceArm: 'reference' | 'baseline';
+	/** The recent rate must be at least this multiple of the reference rate. */
+	readonly ratioFloor: number;
+	readonly failReason: 'reference_tolerance_breached' | 'absolute_threshold_breached';
 }
 
+/** Gate 4a — the concurrent ratio, own arm against the reference transport. */
+const RATIO_SPEC: EngagementComparisonSpec = {
+	recentOf: (input) => input.own,
+	recentFloorOf: (floors) => floors.engagement,
+	referenceOf: (input) => input.reference,
+	referenceFloorOf: (floors) => floors.engagement,
+	referenceArm: 'reference',
+	ratioFloor: ENGAGEMENT_GATE_THRESHOLDS.minRatio,
+	failReason: 'reference_tolerance_breached',
+};
+
 /**
- * Gate 4b — THE SLOW-POISON FLOOR: this window's calibration engagement against
- * the cell's own 30-day trailing calibration engagement.
- *
- * WHY THE BASELINE IS THE "REFERENCE" ARM in the measurement. This check is
- * one-armed in transport terms but two-armed in shape: the cell's own past
- * plays the role the relay plays in gate 4a, so it reuses `referenceRate` /
- * `referenceSample` and the `reference_*` hold reasons rather than inventing a
- * parallel vocabulary the dashboard would have to learn. P1-7's trailing-
- * baseline evaluator makes exactly the same substitution for the whole gate set.
+ * Gate 4b — the slow-poison floor: the recent window against the cell's own
+ * prior 30-day window.
  *
  * WHY THE BASELINE IS ALSO CALIBRATION-ONLY. The stratified cohort gets WORSE as
  * the share ramps (top percentile first, then everyone else), so a trailing
@@ -208,27 +176,61 @@ export function evaluateEngagementRatioGate(input: EngagementGateInput): RampGat
  * on a perfectly healthy ramp. The random slice is the only series that is
  * comparable against its own past.
  */
-export function evaluateEngagementFloorGate(input: EngagementGateInput): RampGateResult {
-	const thresholds = input.config.thresholds;
-	const engagementThresholds = input.thresholds ?? ENGAGEMENT_GATE_THRESHOLDS;
-	const minSample = input.config.sampleFloors.engagement;
-	const metric = resolveEngagementMetric(input.destinationProvider, input.metricOverrides);
+const FLOOR_SPEC: EngagementComparisonSpec = {
+	recentOf: (input) => input.ownRecent,
+	recentFloorOf: (floors) => floors.engagementRecent,
+	referenceOf: (input) => input.ownPriorBaseline ?? null,
+	referenceFloorOf: () => ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample,
+	referenceArm: 'baseline',
+	ratioFloor: ENGAGEMENT_GATE_THRESHOLDS.absoluteFloorRatio,
+	failReason: 'absolute_threshold_breached',
+};
 
-	const recentSummary = input.ownWeekly ?? input.own;
-	const baselineSummary = input.ownTrailingBaseline ?? null;
+/**
+ * ORDERING, and why:
+ *   1. Recent window absent/thin/stale/unmeasurable -> hold. We know nothing.
+ *   2. Second series absent/thin/stale/unmeasurable -> hold. There is no ratio
+ *      without a denominator, and plan D2 forbids an absent external account
+ *      from producing anything worse than lower confidence.
+ *   3. A second series at exactly zero -> hold, NOT pass. A zero denominator is
+ *      a division by zero, and "0/0 looks fine" is precisely the bug that would
+ *      let a dead cell ramp to 100%.
+ *   4. Otherwise compare R against the floor. A recent window at zero against a
+ *      healthy second series is R = 0, which FAILS — that is the signal this
+ *      gate exists to catch.
+ *
+ * UNITS, because both numbers are small and neither is the other: the comparison
+ * is made on the dimensionless RATIO (so the boundary is exact rather than the
+ * nearest double to a product), and the measurement reports the multiple in
+ * `ratioFloor` and the absolute rate it works out to in `thresholdRate`.
+ */
+function evaluateEngagementComparison(
+	spec: EngagementComparisonSpec,
+	input: EngagementGateInput
+): RampGateResult {
+	const { thresholds, sampleFloors } = RAMP_STREAM_CONFIGS[input.cell.stream];
+	const metric = resolveEngagementMetric(input.cell.destinationProvider, input.metricOverrides);
+
+	const recentSummary = spec.recentOf(input);
+	const referenceSummary = spec.referenceOf(input);
+	const minSample = spec.recentFloorOf(sampleFloors);
+	const referenceMinSample = spec.referenceFloorOf(sampleFloors);
+
 	const recent = calibrationEngagement(recentSummary, metric);
-	const baseline = baselineSummary ? calibrationEngagement(baselineSummary, metric) : null;
-	const baselineRate = baseline?.rate ?? null;
-	const baselineFloorSample = engagementThresholds.baselineMinSample;
+	const reference = referenceSummary ? calibrationEngagement(referenceSummary, metric) : null;
 
-	const shape = {
-		// The threshold is only knowable once the baseline is: until then there is
-		// no absolute rate to report, and reporting 0 would read as "floor of 0%".
-		thresholdRate:
-			baselineRate === null ? 0 : baselineRate * engagementThresholds.absoluteFloorRatio,
+	/**
+	 * `thresholdRate` is a MULTIPLE of the second series' rate, so it is only
+	 * knowable once that rate has been accepted. Every hold therefore reports 0
+	 * rather than a floor derived from evidence the gate has just refused to use —
+	 * a number an operator would otherwise read off the dashboard as the live one.
+	 */
+	const holdShape = {
+		thresholdRate: 0,
+		ratioFloor: spec.ratioFloor,
 		toleranceValuePp: null,
 		ownSample: recent.sample,
-		referenceSample: baseline?.sample ?? null,
+		referenceSample: reference?.sample ?? null,
 		minSample,
 	} as const;
 
@@ -241,35 +243,43 @@ export function evaluateEngagementFloorGate(input: EngagementGateInput): RampGat
 	);
 	if (recentEvidence !== 'fresh' || recent.rate === null) {
 		return insufficient('engagement_ratio', evidenceReason(recentEvidence, 'own'), {
-			...shape,
+			...holdShape,
 			ownRate: recent.rate,
-			referenceRate: baselineRate,
+			referenceRate: reference?.rate ?? null,
 		});
 	}
 
-	const baselineEvidence = armEvidence(
-		baselineSummary,
-		baseline?.sample ?? 0,
-		baselineFloorSample,
+	const referenceEvidence = armEvidence(
+		referenceSummary,
+		reference?.sample ?? 0,
+		referenceMinSample,
 		input.now,
 		thresholds
 	);
-	if (baselineEvidence !== 'fresh' || !baseline || baseline.rate === null || baseline.rate <= 0) {
-		return insufficient('engagement_ratio', evidenceReason(baselineEvidence, 'reference'), {
-			...shape,
+	// A rate of exactly zero reaches `evidenceReason('fresh', …)` alongside a
+	// poisoned one, and correctly so: both mean "this series cannot act as a
+	// denominator", which is a hold and never a pass.
+	if (
+		referenceEvidence !== 'fresh' ||
+		!reference ||
+		reference.rate === null ||
+		reference.rate <= 0
+	) {
+		return insufficient('engagement_ratio', evidenceReason(referenceEvidence, spec.referenceArm), {
+			...holdShape,
 			ownRate: recent.rate,
-			referenceRate: baselineRate,
+			referenceRate: reference?.rate ?? null,
 		});
 	}
 
 	const measurement = {
-		...shape,
-		thresholdRate: baseline.rate * engagementThresholds.absoluteFloorRatio,
+		...holdShape,
+		thresholdRate: reference.rate * spec.ratioFloor,
 		ownRate: recent.rate,
-		referenceRate: baseline.rate,
+		referenceRate: reference.rate,
 	} as const;
 
-	return recent.rate >= measurement.thresholdRate
+	return recent.rate / reference.rate >= spec.ratioFloor
 		? {
 				gate: 'engagement_ratio',
 				status: 'pass',
@@ -279,9 +289,19 @@ export function evaluateEngagementFloorGate(input: EngagementGateInput): RampGat
 		: {
 				gate: 'engagement_ratio',
 				status: 'fail',
-				reason: 'absolute_threshold_breached',
+				reason: spec.failReason,
 				measurement,
 			};
+}
+
+/** Gate 4a — the concurrent ratio between the two arms of the same send. */
+export function evaluateEngagementRatioGate(input: EngagementGateInput): RampGateResult {
+	return evaluateEngagementComparison(RATIO_SPEC, input);
+}
+
+/** Gate 4b — the slow-poison floor against the cell's own prior window. */
+export function evaluateEngagementFloorGate(input: EngagementGateInput): RampGateResult {
+	return evaluateEngagementComparison(FLOOR_SPEC, input);
 }
 
 /**
@@ -290,7 +310,7 @@ export function evaluateEngagementFloorGate(input: EngagementGateInput): RampGat
  *
  * COMPOSITION, and why it is not a max-of-statuses fold. The ratio is the
  * measurement; the floor is a tripwire that only ever CONTRIBUTES A FAIL. A
- * holding floor — a young cell with no 30-day baseline, or a slice too thin to
+ * holding floor — a young cell with no prior baseline, or a slice too thin to
  * compare against its own past — must never hold the ramp, or a fresh
  * deployment could never take its first step. So:
  *

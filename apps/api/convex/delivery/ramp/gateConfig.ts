@@ -81,6 +81,15 @@ export interface RampGateSampleFloors {
 	readonly complaint: number;
 	/** Calibration-slice sends per arm for the concurrent engagement gate (D10). */
 	readonly engagement: number;
+	/**
+	 * Calibration-slice sends in the RECENT window of the slow-poison floor (D10).
+	 *
+	 * A distinct knob from `engagement` even though the two currently agree: they
+	 * govern different windows (one evaluation window vs the trailing recent one)
+	 * and a controller that changes its cadence must be able to move one without
+	 * silently moving the other.
+	 */
+	readonly engagementRecent: number;
 	/** Seeds per arm before the placement tripwire may return a verdict (D17). */
 	readonly seedPlacement: number;
 }
@@ -90,6 +99,7 @@ export const RAMP_GATE_SAMPLE_FLOORS: RampGateSampleFloors = {
 	deferral: 200,
 	complaint: 1000,
 	engagement: 400,
+	engagementRecent: 400,
 	seedPlacement: 5,
 };
 
