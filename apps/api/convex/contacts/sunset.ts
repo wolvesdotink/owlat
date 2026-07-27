@@ -17,6 +17,8 @@ import { restoreSunsetSuppression, setSunsetExemption } from './sunsetRestore';
 import {
 	SUNSET_MIN_WINDOW_DAYS,
 	SUNSET_POLICY_DEFAULTS,
+	isClockCorroborated,
+	latestSunsetInstant,
 	resolveSunsetPolicy,
 } from './sunsetPolicy';
 
@@ -42,6 +44,16 @@ export const getSunsetPolicies = authedQuery({
 				policy: policyShape,
 			})
 		),
+		/**
+		 * Whether the hourly sweep is currently refusing to run because the clock
+		 * is not corroborated, and when an operator last confirmed the clock. This
+		 * is the only place the stall is visible to a person: without it the engine
+		 * is silently off and the audit trail is the only clue.
+		 */
+		clock: v.object({
+			isSweepStalled: v.boolean(),
+			verifiedAt: v.union(v.number(), v.null()),
+		}),
 	}),
 	handler: async (ctx) => {
 		await requireOrgPermission(
@@ -50,8 +62,19 @@ export const getSunsetPolicies = authedQuery({
 			'Only owners and admins can view the sunset policy'
 		);
 		const rows = await loadSunsetPolicyRows(ctx);
-		const globalOverride = toSunsetOverride(rows.find((row) => row.topicId === undefined));
+		const globalRow = rows.find((row) => row.topicId === undefined);
+		const globalOverride = toSunsetOverride(globalRow);
 		const global = resolveSunsetPolicy({ globalOverride });
+
+		const newestEvaluated = await ctx.db
+			.query('contacts')
+			.withIndex('by_sunset_evaluated_at')
+			.order('desc')
+			.first();
+		const corroboratingInstant = latestSunsetInstant(
+			newestEvaluated?.sunsetEvaluatedAt,
+			globalRow?.clockVerifiedAt
+		);
 
 		const topics = await ctx.db.query('topics').collect(); // bounded: content categories
 		const byTopic = new Map<string, (typeof rows)[number]>();
@@ -70,7 +93,71 @@ export const getSunsetPolicies = authedQuery({
 					topicOverrides: [toSunsetOverride(byTopic.get(topic._id))],
 				}),
 			})),
+			clock: {
+				isSweepStalled: !isClockCorroborated(Date.now(), corroboratingInstant),
+				verifiedAt: globalRow?.clockVerifiedAt ?? null,
+			},
 		};
+	},
+});
+
+/**
+ * "I have checked this deployment's clock" — the operator's re-arm for a
+ * stalled sweep.
+ *
+ * The sweep refuses to run when `Date.now()` is not corroborated by the
+ * freshest evaluation stamp, AND the sweep is the only writer of those stamps.
+ * A deployment that was paused (or restored from a backup) for longer than the
+ * tolerance therefore cannot recover on its own — the guard would hold forever
+ * and a feature that ships ON would be silently off. This mutation is the way
+ * out, and it is deliberately a HUMAN action: the machine cannot distinguish
+ * "the clock jumped" from "nobody ran this for two months", so a person says
+ * which it was, and the saying is audited.
+ *
+ * It records a fresh instant on the deployment-wide row; the sweep treats that
+ * as the later corroboration source and runs on its next tick, writing real
+ * stamps again from then on. Nothing else about the policy changes, and no
+ * contact is suppressed by this call.
+ */
+export const confirmSunsetClock = authedMutation({
+	args: {},
+	returns: v.number(),
+	handler: async (ctx) => {
+		const session = await requireOrgPermission(
+			ctx,
+			'contacts:manage',
+			'Only owners and admins can confirm the sunset clock'
+		);
+
+		const now = Date.now();
+		const existing = await ctx.db
+			.query('sunsetPolicies')
+			.withIndex('by_topic', (q) => q.eq('topicId', undefined))
+			.first();
+		if (existing) {
+			await ctx.db.patch(existing._id, { clockVerifiedAt: now, updatedAt: now });
+		} else {
+			await ctx.db.insert('sunsetPolicies', {
+				clockVerifiedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		}
+
+		await recordAuditLog(ctx, {
+			userId: session.userId,
+			action: 'contact.sunset_clock_confirmed',
+			resource: 'settings',
+			resourceId: 'sunset_sweep',
+			details: {
+				clockVerifiedAt: now,
+				message:
+					`An operator confirmed this deployment's clock, so the sunset sweep ` +
+					`resumes from its next hourly tick.`,
+			},
+		});
+
+		return now;
 	},
 });
 

@@ -551,6 +551,65 @@ describe('sunset sweep — a host clock that disagrees with the stored stamps', 
 		expect(recovered.scanned).toBe(2);
 		expect(recovered.suppressed).toBe(2);
 	});
+
+	/**
+	 * THE STALL IS A PERMANENT CONDITION UNTIL A PERSON CLEARS IT, so reporting
+	 * it must be a BOUNDED write path: an hourly cron writing the identical audit
+	 * row forever would bury the rest of the trail under a message that says
+	 * nothing new.
+	 */
+	it('reports a persistent stall once, not once per tick', async () => {
+		const t = harness();
+		await seedSkewedBook(t, 2);
+
+		for (let tick = 0; tick < 5; tick += 1) {
+			await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+				batchSize: 10,
+				batchesRemaining: 1,
+			});
+		}
+
+		const summaries = await t.run(async (ctx) => {
+			const logs = await ctx.db.query('auditLogs').collect();
+			return logs.filter((log) => log.action === 'contact.sunset_sweep_summary');
+		});
+		expect(summaries).toHaveLength(1);
+	});
+
+	/**
+	 * AND THE STALL MUST BE CLEARABLE. The sweep is the ONLY writer of the stamps
+	 * it corroborates against, so a deployment paused past the tolerance can
+	 * never recover on its own — without an operator re-arm the engine would be
+	 * permanently and silently off.
+	 */
+	it('resumes after an operator confirms the clock, without touching the stamps', async () => {
+		const t = harness();
+		await seedSkewedBook(t, 2);
+
+		const stalled = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+		});
+		expect(stalled.isClockSkewed).toBe(true);
+
+		// The operator vouches for the clock — the only thing that changes is one
+		// stamp on the deployment-wide policy row.
+		await t.run(async (ctx) => {
+			await ctx.db.insert('sunsetPolicies', {
+				clockVerifiedAt: Date.now(),
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		const resumed = await t.mutation(internal.contacts.sunsetSweep.sweepSunsetPolicy, {
+			batchSize: 10,
+			batchesRemaining: 1,
+		});
+		expect(resumed.isClockSkewed).toBe(false);
+		expect(resumed.scanned).toBe(2);
+		expect(resumed.suppressed).toBe(2);
+	});
 });
 
 /**

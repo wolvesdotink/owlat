@@ -281,6 +281,17 @@ export const contactTables = {
 		isEnabled: v.optional(v.boolean()),
 		reengageAfterDays: v.optional(v.number()),
 		suppressAfterDays: v.optional(v.number()),
+		// THE OPERATOR'S RE-ARM STAMP, on the deployment-wide row only.
+		//
+		// The sweep refuses to run when `Date.now()` is not corroborated by the
+		// freshest evaluation stamp it wrote earlier — and the sweep is the only
+		// writer of those stamps, so a deployment that sat paused for longer than
+		// the tolerance can never refresh them on its own: the guard would latch
+		// on forever. This field is the way out. An operator who has checked the
+		// clock records that fact, and the sweep treats this instant as a second
+		// corroboration source, so the next tick runs and starts writing fresh
+		// stamps again. Absent on every deployment that never stalled.
+		clockVerifiedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
 	}).index('by_topic', ['topicId']),

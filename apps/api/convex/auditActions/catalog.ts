@@ -72,6 +72,11 @@ export const AUDIT_ACTION_LITERALS = [
 	// anything. A per-contact row answers "why this address"; only this one can
 	// answer "did the engine just act on a hundred people at once, and why".
 	action('contact.sunset_sweep_summary'),
+	// An operator vouching for the deployment's clock, which re-arms a sweep
+	// that stalled because its own freshness stamps had aged past the tolerance.
+	// The machine cannot tell "the clock jumped" from "nobody ran this for two
+	// months", so a person says which it was — on the record.
+	action('contact.sunset_clock_confirmed'),
 	// DOI lifecycle admin-attest. See ADR-0019.
 	action('doi.admin_attested'),
 	// Topic

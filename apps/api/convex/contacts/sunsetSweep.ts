@@ -25,7 +25,7 @@ import {
 	loadSunsetPolicyRows,
 	resolveSunsetPolicyForContact,
 } from './sunsetEngine';
-import { isClockCorroborated } from './sunsetPolicy';
+import { isClockCorroborated, latestSunsetInstant } from './sunsetPolicy';
 
 /** A contact is re-evaluated at most once a day. */
 export const SUNSET_STALE_MS = 24 * 60 * 60 * 1000;
@@ -95,6 +95,15 @@ function clampArg(
 	if (!Number.isFinite(value)) return whenUnreadable;
 	return Math.max(min, Math.min(value, max));
 }
+
+/**
+ * How often a PERSISTENT clock stall is re-reported. The stall is a condition
+ * an operator has to clear, and an hourly cron would otherwise write the same
+ * audit row 24 times a day for as long as it lasts — which buries the rest of
+ * the audit trail under a message that says nothing new. The first tick to
+ * notice always reports; after that, once a day.
+ */
+export const SUNSET_STALL_REPORT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 // ─── The sweep ──────────────────────────────────────────────────────────────
 
@@ -181,11 +190,25 @@ export const sweepSunsetPolicy = internalMutation({
 		// the guard against a jumped host clock costs a single point read per
 		// batch. Absent on a deployment that has never swept, which is exactly the
 		// case the blast-radius ceiling covers instead.
+		//
+		// THE OPERATOR'S RE-ARM STAMP IS A SECOND SOURCE, and it is what stops this
+		// guard from latching on forever. The sweep is the ONLY writer of the
+		// evaluation stamps, so a deployment paused for longer than the tolerance
+		// could never refresh them by itself: no tick would run, so no stamp would
+		// be written, so no tick would ever run again. `confirmSunsetClock`
+		// (contacts/sunset.ts) lets an operator who has checked the clock record
+		// that fact; the LATER of the two readings is what `now` is judged against.
+		const policyRows = await loadSunsetPolicyRows(ctx);
 		const newestEvaluated =
 			args.corroboratingInstant === undefined
 				? await ctx.db.query('contacts').withIndex('by_sunset_evaluated_at').order('desc').first()
 				: null;
-		const corroboratingInstant = args.corroboratingInstant ?? newestEvaluated?.sunsetEvaluatedAt;
+		const corroboratingInstant =
+			args.corroboratingInstant ??
+			latestSunsetInstant(
+				newestEvaluated?.sunsetEvaluatedAt,
+				policyRows.find((row) => row.topicId === undefined)?.clockVerifiedAt
+			);
 
 		// THE SKEW CHECK IS A HEAD-OF-TICK ABORT, NOT A PER-CONTACT HOLD.
 		//
@@ -198,33 +221,52 @@ export const sweepSunsetPolicy = internalMutation({
 		// corroboration source stays uncontaminated and every later tick
 		// re-detects the same skew until an operator fixes the clock.
 		if (!isClockCorroborated(now, corroboratingInstant)) {
-			logWarn(
-				`[sunsetSweep] tick aborted: the host clock is not corroborated by the ` +
-					`freshest stored evaluation stamp; no contacts were evaluated and nothing ` +
-					`was suppressed. Check NTP on this deployment.`
-			);
-			await recordAuditLog(ctx, {
-				userId: 'system',
-				action: 'contact.sunset_sweep_summary',
-				resource: 'settings',
-				resourceId: 'sunset_sweep',
-				details: {
-					actor: 'sunset_engine',
-					scanned: 0,
-					suppressed: 0,
-					reengaged: 0,
-					resumed: 0,
-					deferredSuppressions: 0,
-					suppressionCeiling: maxSuppressions,
-					isSuppressionCeilingHit: false,
-					isClockSkewed: true,
-					message:
-						`Sunset sweep skipped: this deployment's clock disagrees with the ` +
-						`timestamps it wrote earlier, so no contact was evaluated and none was ` +
-						`suppressed. Nothing changed. Sweeps resume automatically once the ` +
-						`clock is correct.`,
-				},
-			});
+			// A PERMANENT CONDITION MUST BE A BOUNDED WRITE PATH. The stall can only
+			// be cleared by a person, and the cron runs hourly, so reporting it every
+			// tick would write the identical row 24 times a day forever and drown the
+			// audit trail. Report the first tick that notices, then once a day.
+			const lastSummary = await ctx.db
+				.query('auditLogs')
+				.withIndex('by_action', (q) => q.eq('action', 'contact.sunset_sweep_summary'))
+				.order('desc')
+				.first();
+			const wasAlreadyReported =
+				lastSummary?.details?.['isClockSkewed'] === true &&
+				now - lastSummary.createdAt < SUNSET_STALL_REPORT_INTERVAL_MS &&
+				lastSummary.createdAt <= now;
+
+			if (!wasAlreadyReported) {
+				logWarn(
+					`[sunsetSweep] tick aborted: the host clock is not corroborated by the ` +
+						`freshest stored evaluation stamp; no contacts were evaluated and nothing ` +
+						`was suppressed. Check NTP on this deployment.`
+				);
+				await recordAuditLog(ctx, {
+					userId: 'system',
+					action: 'contact.sunset_sweep_summary',
+					resource: 'settings',
+					resourceId: 'sunset_sweep',
+					details: {
+						actor: 'sunset_engine',
+						scanned: 0,
+						suppressed: 0,
+						reengaged: 0,
+						resumed: 0,
+						deferredSuppressions: 0,
+						suppressionCeiling: maxSuppressions,
+						isSuppressionCeilingHit: false,
+						isClockSkewed: true,
+						message:
+							`Sunset sweep paused: this deployment's clock disagrees with the ` +
+							`timestamps it wrote earlier, so no contact was evaluated and none was ` +
+							`suppressed. Nothing changed, and nothing will be suppressed until ` +
+							`this clears. Check the system clock (NTP); if the clock is correct — ` +
+							`a deployment that was simply paused for a long time looks the same ` +
+							`from here — confirm it from the sunset policy settings to resume ` +
+							`sweeps. This message repeats at most once a day.`,
+					},
+				});
+			}
 			return {
 				scanned: 0,
 				reengaged: 0,
@@ -243,8 +285,6 @@ export const sweepSunsetPolicy = internalMutation({
 			.withIndex('by_sunset_evaluated_at', (q) => q.lt('sunsetEvaluatedAt', staleBefore))
 			.order('asc')
 			.take(batchSize);
-
-		const policyRows = await loadSunsetPolicyRows(ctx);
 
 		let scanned = 0;
 		let reengaged = 0;

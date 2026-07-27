@@ -642,3 +642,74 @@ describe('setSunsetPolicy — clearing an override back to inherited', () => {
 		expect(rows[0]?.reengageAfterDays).toBeUndefined();
 	});
 });
+
+/**
+ * THE RE-ARM. The sweep refuses to run when the clock is not corroborated, and
+ * the sweep is the only writer of the stamps it corroborates against — so a
+ * deployment paused past the tolerance cannot recover on its own. This is the
+ * one human action that clears it, and it is on the record.
+ */
+describe('confirmSunsetClock', () => {
+	it('records the confirmation on the deployment-wide row and audits it', async () => {
+		const t = harness();
+		const before = Date.now();
+
+		const verifiedAt = await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.confirmSunsetClock, {});
+		expect(verifiedAt).toBeGreaterThanOrEqual(before);
+
+		const rows = await readPolicyRows(t);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.topicId).toBeUndefined();
+		expect(rows[0]?.clockVerifiedAt).toBe(verifiedAt);
+		// It confirms a clock; it does not quietly change the policy.
+		expect(rows[0]?.isEnabled).toBeUndefined();
+		expect(rows[0]?.reengageAfterDays).toBeUndefined();
+		expect(rows[0]?.suppressAfterDays).toBeUndefined();
+
+		const audits = await t.run(async (ctx) => {
+			const logs = await ctx.db.query('auditLogs').collect();
+			return logs.filter((log) => log.action === 'contact.sunset_clock_confirmed');
+		});
+		expect(audits).toHaveLength(1);
+		expect(audits[0]?.userId).toBe('operator-1');
+		expect(audits[0]?.details?.['clockVerifiedAt']).toBe(verifiedAt);
+	});
+
+	it('updates the existing deployment-wide row instead of adding a second one', async () => {
+		const t = harness();
+		await t
+			.withIdentity(identity)
+			.mutation(api.contacts.sunset.setSunsetPolicy, { reengageAfterDays: 200 });
+
+		await t.withIdentity(identity).mutation(api.contacts.sunset.confirmSunsetClock, {});
+
+		const rows = await readPolicyRows(t);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]?.reengageAfterDays).toBe(200);
+		expect(typeof rows[0]?.clockVerifiedAt).toBe('number');
+	});
+
+	it('reports the stall, and its clearing, on the policy query', async () => {
+		const t = harness();
+		await t.run(async (ctx) => {
+			const id = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'stalled@example.com', createdAt: daysAgo(900) })
+			);
+			// A stamp far older than the clock tolerance: the sweep is stalled.
+			await ctx.db.patch(id, { sunsetEvaluatedAt: Date.now() - 365 * 86_400_000 });
+		});
+
+		const stalled = await t.withIdentity(identity).query(api.contacts.sunset.getSunsetPolicies, {});
+		expect(stalled.clock.isSweepStalled).toBe(true);
+		expect(stalled.clock.verifiedAt).toBeNull();
+
+		await t.withIdentity(identity).mutation(api.contacts.sunset.confirmSunsetClock, {});
+
+		const cleared = await t.withIdentity(identity).query(api.contacts.sunset.getSunsetPolicies, {});
+		expect(cleared.clock.isSweepStalled).toBe(false);
+		expect(typeof cleared.clock.verifiedAt).toBe('number');
+	});
+});
