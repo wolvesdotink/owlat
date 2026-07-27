@@ -25,6 +25,7 @@ import { utcDateKey } from '../../intelligence/warmingKeys.js';
 import { evaluateIntradayPacing, utcDayElapsedFraction } from '../../intelligence/warmingPacing.js';
 import {
 	providerCapVerdict,
+	readProviderVolumePressure,
 	readWarmingCapGateInputs,
 } from '../../intelligence/warmingProviderStore.js';
 import { logger } from '../../monitoring/logger.js';
@@ -55,12 +56,13 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 
 		const reservation = ctx.job.routingLease?.warmingReservation;
 		if (reservation?.ip === ctx.ip) {
-			// One pipelined read alongside the reservation refresh: a reserved
-			// attempt skips gates 2 and 3, but it still carries the retry-backoff
-			// signal into the outcome reducer.
-			const [current, gateInputs] = await Promise.all([
+			// One extra key alongside the reservation refresh — and only one: a
+			// reserved attempt skips gates 2 and 3 by design, so their inputs would
+			// be read and thrown away. It still carries the retry-backoff signal
+			// into the outcome reducer.
+			const [current, volumePressure] = await Promise.all([
 				warming.ensureWarmingReservation(deps.redis, reservation),
-				readWarmingCapGateInputs(deps.redis, ref),
+				readProviderVolumePressure(deps.redis, ctx.ip, providerKey),
 			]);
 			if (!current.allowed) {
 				return withhold(
@@ -82,7 +84,7 @@ export const warmingCapPhase: Phase<CtxWithIp, CtxWithProviderPressure> = {
 				ctx: {
 					...ctx,
 					job: { ...ctx.job, routingLease },
-					providerVolumePressure: gateInputs.volumePressure,
+					providerVolumePressure: volumePressure,
 				},
 			};
 		}
