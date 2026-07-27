@@ -133,6 +133,10 @@ export const AUDIT_ACTION_LITERALS = [
 	// Abuse-status changes (any source — admin override, MTA circuit breaker,
 	// reputation auto-enforcement). See ADR-0011.
 	action('abuse_status_changed'),
+	// Deliverability ramp — the AIMD controller changed a cell's own-MTA share.
+	// Fired only on an actual move (no-ops are audited in `mixDecisions`, which
+	// records EVERY evaluation). See the deliverability plan, decision D12.
+	action('deliverability_ramp.share_changed'),
 	// Postbox outbound state transitions (per recipient). Fired by the
 	// Postbox outbound lifecycle module on every transition. See ADR-0012.
 	action('postbox_outbound_transition'),
@@ -247,6 +251,7 @@ export const AUDIT_RESOURCE_LITERALS = [
 	'segment',
 	'platform_admin',
 	'instance_settings',
+	'deliverability_ramp',
 	'inbound_message',
 	'agent_config',
 	'autonomy_rule',

@@ -19,6 +19,7 @@ import {
  * Spread into `deliveryTables` from schema/delivery.ts.
  */
 export const deliverabilityRoutingTables = {
+	// Durable provider-slice fallback state materialized from the authenticated
 	// MTA snapshot. One row per tenant + destination provider (plus `all`).
 	deliverabilityRouteStates: defineTable({
 		organizationId: v.string(),
@@ -116,6 +117,12 @@ export const deliverabilityRoutingTables = {
 		// 100% of decisions carry one, so it is REQUIRED, not optional.
 		message: v.string(),
 		failedGate: v.optional(v.string()),
+		// THE ADMIN NOTIFICATION for a DECREASE (plan D12): the gate that broke and
+		// what to do about it. Present on every decrease and on no other decision,
+		// so "what retreated, and why" is one indexed read rather than a scan.
+		// Persistent and admin-visible, mirroring `mtaIpReadinessAlerts` — the
+		// shipped shape for a delivery incident an operator must see.
+		adminNotice: v.optional(v.string()),
 		frozenUntil: v.optional(v.number()),
 		// JSON snapshot of every gate's inputs and the hard-stop signals, so a
 		// decision can be replayed against the pure function that made it. A blob
@@ -126,5 +133,4 @@ export const deliverabilityRoutingTables = {
 		.index('by_cell_time', ['cell', 'at'])
 		.index('by_org_cell_time', ['organizationId', 'cell', 'at'])
 		.index('by_expires_at', ['expiresAt']),
-
 };
