@@ -154,6 +154,34 @@ describe('getCampaignSendEstimate — terminal branches', () => {
 			'Warming data not available yet. Your emails will be paced automatically.'
 		);
 	});
+
+	/**
+	 * The builder's `days === 0` sentinel, reached in production rather than only
+	 * in theory: an IP on schedule day 29 crosses day 30 (`Infinity`, no cap) on
+	 * the FIRST projected day, so the projection bounds today alone — and with
+	 * today's cap already spent, that is `[0]`. Nothing can be scheduled, so the
+	 * readout says how the send will be paced rather than quoting a day count.
+	 */
+	it('falls back to the pacing copy when the projection bounds only a spent day', async () => {
+		const t = convexTest(schema, modules);
+		await seedWarming(t, {
+			phase: 'ramp',
+			totalDailyCap: 30_000,
+			totalSentToday: 30_000,
+			currentDay: 29,
+		});
+
+		const estimate = await t.query(api.analytics.reputationQueries.getCampaignSendEstimate, {
+			recipientCount: 600,
+		});
+
+		expect(estimate.remainingToday).toBe(0);
+		expect(estimate.estimatedDays).toBe(1);
+		expect(estimate.isFullyWarmed).toBe(false);
+		expect(estimate.message).toBe(
+			'Your emails will be paced automatically against your current warm-up capacity.'
+		);
+	});
 });
 
 describe('getCampaignSendEstimate — day counts', () => {
