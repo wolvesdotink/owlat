@@ -2,11 +2,12 @@ import { v } from 'convex/values';
 import { extractDomainOrNull } from '@owlat/shared';
 import {
 	DESTINATION_PROVIDER_KEYS,
-	isAdvisoryDeliverabilitySignalSource,
+	isActionableDeliverabilitySignalSource,
 } from '@owlat/shared/deliverabilityRouting';
 import { internalMutation } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { contactEmailOf, loadSend, resolveProviderMessageId } from './sendLifecycle/lookups';
 import {
 	deliverabilitySignalValidator,
@@ -33,12 +34,9 @@ export const applySnapshot = internalMutation({
 	},
 	handler: async (ctx, args) => {
 		for (const provider of PROVIDERS) {
-			const existing = await ctx.db
-				.query('deliverabilityRouteStates')
-				.withIndex('by_org_provider', (q) =>
-					q.eq('organizationId', args.organizationId).eq('destinationProvider', provider)
-				)
-				.first();
+			// The MTA snapshot owns the LEGACY stream-less row: it reports
+			// infrastructure health for a provider slice, which is not per-stream.
+			const existing = await loadStreamlessRouteState(ctx, args.organizationId, provider);
 			if (existing && existing.snapshotGeneratedAt >= args.generatedAt) continue;
 
 			const signals = args.signals
@@ -49,8 +47,12 @@ export const applySnapshot = internalMutation({
 			// so the ramp controller and the dashboard can read them, but they must
 			// never on their own flip a provider slice onto the relay: "we could not
 			// measure" is neither evidence of health nor a routing verdict.
-			const degraded = signals.some(
-				(signal) => !isAdvisoryDeliverabilitySignalSource(signal.source)
+			// Only the four INFRASTRUCTURE sources flip the shipped boolean.
+			// Outcome-derived sources (bounce/complaint/engagement/placement) move
+			// the ramp controller's share instead, exactly like advisory readings
+			// they are persisted for measurement and never trigger fallback here.
+			const degraded = signals.some((signal) =>
+				isActionableDeliverabilitySignalSource(signal.source)
 			);
 			let persistedSignals = signals;
 			let isFallbackActive = existing?.isFallbackActive ?? false;
@@ -67,10 +69,10 @@ export const applySnapshot = internalMutation({
 				// Advisory readings are refreshed rather than preserved: they carry no
 				// routing weight and must reflect the latest snapshot.
 				persistedSignals = [
-					...(existing?.signals ?? []).filter(
-						(signal) => !isAdvisoryDeliverabilitySignalSource(signal.source)
+					...(existing?.signals ?? []).filter((signal) =>
+						isActionableDeliverabilitySignalSource(signal.source)
 					),
-					...signals.filter((signal) => isAdvisoryDeliverabilitySignalSource(signal.source)),
+					...signals.filter((signal) => !isActionableDeliverabilitySignalSource(signal.source)),
 				];
 				healthySince ??= args.appliedAt;
 				const healthyLongEnough = args.appliedAt - healthySince >= DELIVERABILITY_MIN_HEALTHY_MS;

@@ -27,7 +27,9 @@ import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import {
 	destinationProviderForDomain,
 	isActionableDeliverabilitySignalSource,
+	isRouteStateFallbackActive,
 } from '@owlat/shared/deliverabilityRouting';
+import { loadRouteStateForCell } from '../deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
@@ -133,24 +135,21 @@ async function deliverabilityInput(
 			? learnedProvider.destinationProvider
 			: destinationProviderForDomain(toDomain);
 	const [providerState, globalState, warmingState] = await Promise.all([
-		ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', provider)
-			)
-			.first(),
-		ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', 'all')
-			)
-			.first(),
+		// Cell lookup: the per-stream row when the controller has written one,
+		// otherwise the legacy stream-less row the MTA snapshot maintains.
+		loadRouteStateForCell(ctx, organizationId, provider, messageType),
+		loadRouteStateForCell(ctx, organizationId, 'all', messageType),
 		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
+	// `isFallbackActive` is read as a DERIVED VIEW of the share (D1): a legacy
+	// row resolves to exactly its stored boolean, so this is unchanged today.
 	const freshActive = [globalState, providerState].filter(
-		(state) => state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
+		(state) =>
+			isRouteStateFallbackActive(state) &&
+			state !== null &&
+			now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
 	);
 	// Advisory readings ("blocklist lookup unavailable", "part of the pool is
 	// ejected") are recorded on the state row for measurement, but they are not
@@ -179,7 +178,8 @@ async function deliverabilityInput(
 				)
 			: false;
 	const isGlobalBreakerOpen = Boolean(
-		globalState?.isFallbackActive &&
+		globalState &&
+		isRouteStateFallbackActive(globalState) &&
 		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
 		globalState.signals.some((signal) => signal.source === 'breaker_open')
 	);
