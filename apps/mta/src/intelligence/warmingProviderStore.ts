@@ -76,30 +76,6 @@ export interface ProviderCapCheck {
 	readonly providerCap: number;
 }
 
-/**
- * Check the provider dimension against the authoritative per-IP daily cap.
- *
- * An IP with no provider state (every IP before this change, and every provider
- * that has never shown pressure) resolves to the full per-IP cap, so the shipped
- * behaviour is the degenerate case.
- *
- * This is the HOT DISPATCH PATH and it is a PURE READ: one `hmget`, no `EVAL`,
- * no `EXPIRE`, no lazy day-reset `HSET`. The day roll is applied in TypeScript
- * (a `sentTodayReset` that is not today's date means the persisted counter
- * belongs to a finished day and reads as zero), the send script rolls the day
- * itself before it increments, and both write scripts refresh the state TTL —
- * so nothing is lost by never writing here, and the read can be served by a
- * replica.
- */
-export async function checkProviderCap(
-	redis: Redis,
-	ref: ProviderWarmingRef,
-	dailyCap: number
-): Promise<ProviderCapCheck> {
-	const state = await redis.hmget(warmingProviderStateKey(ref.ip, ref.provider), ...STATE_FIELDS);
-	return providerCapVerdict({ providerState: state, ref }, dailyCap);
-}
-
 /** Everything the warming-cap phase reads beyond the authoritative per-IP gate. */
 export interface WarmingCapGateInputs {
 	readonly ref: ProviderWarmingRef;
@@ -111,14 +87,27 @@ export interface WarmingCapGateInputs {
 	readonly volumePressure: number;
 }
 
+/** What a failed advisory read degrades to: exactly the shipped behaviour. */
+function shippedGateDefaults(ref: ProviderWarmingRef): WarmingCapGateInputs {
+	return { ref, providerState: [], bulkSentToday: 0, volumePressure: 0 };
+}
+
 /**
  * Read gates 2 and 3 and the retry-backoff signal in ONE round trip.
  *
  * All three keys live under the same `{warming:<ip>}` hash tag, so they are one
- * Redis Cluster slot and one pipeline; issuing them sequentially cost the hot
- * dispatch path three round trips just to build inputs for three PURE
- * functions. They do not need to be atomic with each other — each is an
- * advisory counter, and the per-IP cap above them is the authoritative gate.
+ * Redis Cluster slot; issuing them sequentially cost the hot dispatch path three
+ * round trips just to build inputs for three PURE functions. They do not need to
+ * be atomic with each other — each is an advisory counter, and the per-IP cap
+ * above them is the authoritative gate — so this is a plain `Promise.all`, which
+ * ioredis auto-pipelines into a single write to the socket, rather than an
+ * explicit `pipeline()` object.
+ *
+ * ADVISORY MEANS ADVISORY: a Redis failure here must never withhold an attempt
+ * the authoritative per-IP gate would have allowed, so the whole read degrades
+ * to the shipped defaults. `providerCapVerdict` resolves an empty state to the
+ * full per-IP cap and `evaluateIntradayPacing` fails open on a zero counter, so
+ * the degraded path IS shipped behaviour.
  *
  * The per-IP daily cap is NOT an input here: it is only known after the shipped
  * gate 1 has run, and keeping it out lets this read be issued CONCURRENTLY with
@@ -128,19 +117,22 @@ export async function readWarmingCapGateInputs(
 	redis: Redis,
 	ref: ProviderWarmingRef
 ): Promise<WarmingCapGateInputs> {
-	const results =
-		(await redis
-			.pipeline()
-			.hmget(warmingProviderStateKey(ref.ip, ref.provider), ...STATE_FIELDS)
-			.get(warmingBulkDailyKey(ref.ip, ref.utcDate))
-			.get(warmingProviderPressureKey(ref.ip, ref.provider))
-			.exec()) ?? [];
-	return {
-		ref,
-		providerState: pipelineValues(results[0]),
-		bulkSentToday: sanitizeCount(results[1]?.[1]),
-		volumePressure: sanitizeCount(results[2]?.[1]),
-	};
+	try {
+		const [providerState, bulkSentToday, volumePressure] = await Promise.all([
+			redis.hmget(warmingProviderStateKey(ref.ip, ref.provider), ...STATE_FIELDS),
+			redis.get(warmingBulkDailyKey(ref.ip, ref.utcDate)),
+			redis.get(warmingProviderPressureKey(ref.ip, ref.provider)),
+		]);
+		return {
+			ref,
+			providerState,
+			bulkSentToday: sanitizeCount(bulkSentToday),
+			volumePressure: sanitizeCount(volumePressure),
+		};
+	} catch (err) {
+		logger.debug({ err, ip: ref.ip, provider: ref.provider }, 'Warming advisory read failed');
+		return shippedGateDefaults(ref);
+	}
 }
 
 /**
@@ -208,15 +200,6 @@ export async function recordProviderWarmingSend(
 	);
 }
 
-/** Bulk-pool sends recorded for this IP today — intraday pacing's denominator. */
-export async function readBulkSentToday(
-	redis: Redis,
-	ip: string,
-	utcDate: string
-): Promise<number> {
-	return sanitizeCount(await redis.get(warmingBulkDailyKey(ip, utcDate)));
-}
-
 /** Count one bounce or deferral against the provider dimension. */
 export async function recordProviderWarmingOutcome(
 	redis: Redis,
@@ -275,13 +258,26 @@ export async function recordProviderVolumePressure(
 	return sanitizeCount(pressure);
 }
 
-/** Recent volume-pressure count used to lengthen this attempt's retry backoff. */
+/**
+ * Recent volume-pressure count used to lengthen this attempt's retry backoff.
+ *
+ * The narrow read for the path that needs ONLY this signal: an attempt holding a
+ * live warming reservation owns its slot and skips gates 2 and 3 by design, so
+ * reading their inputs would be two wasted keys and two extra chances to fail on
+ * the one path the phase promises capacity to. Degrades to `0` (no pressure, no
+ * lengthening) for the same reason `readWarmingCapGateInputs` does.
+ */
 export async function readProviderVolumePressure(
 	redis: Redis,
 	ip: string,
 	provider: DestinationProviderKey
 ): Promise<number> {
-	return sanitizeCount(await redis.get(warmingProviderPressureKey(ip, provider)));
+	try {
+		return sanitizeCount(await redis.get(warmingProviderPressureKey(ip, provider)));
+	} catch (err) {
+		logger.debug({ err, ip, provider }, 'Warming pressure read failed');
+		return 0;
+	}
 }
 
 export interface ProviderDayEvaluation {
