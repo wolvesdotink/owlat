@@ -72,6 +72,21 @@ export function mergeSpfRecords(existing: string, ours: string): string {
 }
 
 /**
+ * Does this mechanism token AUTHORIZE its match, or merely describe it?
+ *
+ * RFC 7208 §4.6.2 — only the default qualifier and the explicit `+` yield `pass`.
+ * `-` (fail), `~` (softfail) and `?` (neutral) match the same sources but do NOT
+ * authorize them, so `-ip4:203.0.113.10` is the OPPOSITE of an authorization.
+ *
+ * ONE spelling of that rule for every caller that has to answer "is this sender
+ * authorized?" — the exact-IP readiness check below and the dual-transport
+ * coexistence check in `./spfCoexistence` must never diverge on it.
+ */
+export function spfMechanismAuthorizes(token: string): boolean {
+	return !/^[?~-]/.test(token.trim());
+}
+
+/**
  * Machine-check the exact ip4/ip6 mechanism emitted for a source address.
  *
  * This deliberately does not claim to be a complete SPF evaluator (which would
@@ -88,7 +103,7 @@ export function spfRecordHasExactIpMechanism(record: string, address: string): b
 		// qualifier. Neutral/softfail/fail mechanisms do not authorize a source
 		// for this conservative readiness gate.
 		const normalizedMechanism = mechanism.toLowerCase().replace(/^\+/, '');
-		if (/^[?~-]/.test(mechanism)) return false;
+		if (!spfMechanismAuthorizes(mechanism)) return false;
 		if (!normalizedMechanism.startsWith(prefix)) return false;
 		return parseIpAddress(normalizedMechanism.slice(prefix.length))?.address === parsed.address;
 	});
