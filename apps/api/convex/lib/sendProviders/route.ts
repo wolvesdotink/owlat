@@ -41,6 +41,29 @@ export const messageTypeValidator = v.union(
 	v.literal('automation')
 );
 
+export type SendRouteAddressContext = {
+	to?: string;
+	from?: string;
+	now?: number;
+	baseOnly?: boolean;
+	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+};
+
+/**
+ * Everything ONE pass over the route tables yields: the route row that was
+ * read, the readiness verdict for every candidate provider kind, and the route
+ * `resolveRoute` selected from them. Callers that need more than the selected
+ * route — the campaign warming-cap gate needs the row and the readiness set
+ * too — consume this instead of re-reading `providerRoutes` and re-running
+ * `isSendProviderReady`, which would double the OCC read set they carry inside
+ * `schedule` / `sendNow`.
+ */
+export type SendRouteResolution = {
+	routeConfig: Doc<'providerRoutes'> | null;
+	readyKinds: ReadonlySet<SendProviderKind>;
+	route: ResolvedRoute | null;
+};
+
 /**
  * Resolve the send route for a message type from the current transaction.
  * Reads the route config (indexed) + all provider health, maps health rows
@@ -50,14 +73,21 @@ export const messageTypeValidator = v.union(
 export async function resolveSendRouteFromDb(
 	ctx: QueryCtx | MutationCtx,
 	messageType: MessageType,
-	addressContext?: {
-		to?: string;
-		from?: string;
-		now?: number;
-		baseOnly?: boolean;
-		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	}
+	addressContext?: SendRouteAddressContext
 ): Promise<ResolvedRoute | null> {
+	return (await resolveSendRouteResolutionFromDb(ctx, messageType, addressContext)).route;
+}
+
+/**
+ * The single pass behind {@link resolveSendRouteFromDb}, exposed for callers
+ * that also need the route row or the readiness set (see
+ * {@link SendRouteResolution}).
+ */
+export async function resolveSendRouteResolutionFromDb(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType,
+	addressContext?: SendRouteAddressContext
+): Promise<SendRouteResolution> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
@@ -90,27 +120,26 @@ export async function resolveSendRouteFromDb(
 		(kind) => readyKinds.has(kind),
 		deliverability
 	);
-	return resolved
-		? {
-				...resolved,
-				warmupOverflowEnabled: Boolean(
-					messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
-				),
-			}
-		: null;
+	return {
+		routeConfig,
+		readyKinds,
+		route: resolved
+			? {
+					...resolved,
+					warmupOverflowEnabled: Boolean(
+						messageType === 'campaign' &&
+						routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
+					),
+				}
+			: null,
+	};
 }
 
 async function deliverabilityInput(
 	ctx: QueryCtx | MutationCtx,
 	routeConfig: Doc<'providerRoutes'> | null,
 	messageType: MessageType,
-	addressContext?: {
-		to?: string;
-		from?: string;
-		now?: number;
-		baseOnly?: boolean;
-		forceRelayReason?: 'breaker_open' | 'warmup_overflow';
-	}
+	addressContext?: SendRouteAddressContext
 ) {
 	if (!addressContext?.to) return undefined;
 	const toDomain = extractDomainOrNull(addressContext.to);
