@@ -62,6 +62,7 @@ import type * as analytics_reporter from "../analytics/reporter.js";
 import type * as analytics_reputationQueries from "../analytics/reputationQueries.js";
 import type * as analytics_reputationSnapshots from "../analytics/reputationSnapshots.js";
 import type * as analytics_seedPlacement from "../analytics/seedPlacement.js";
+import type * as analytics_seedPlacementCrons from "../analytics/seedPlacementCrons.js";
 import type * as analytics_seedProbePoller from "../analytics/seedProbePoller.js";
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
 import type * as analytics_spamRate from "../analytics/spamRate.js";
@@ -524,6 +525,7 @@ import type * as mail_editLearningValidators from "../mail/editLearningValidator
 import type * as mail_externalAccountShared from "../mail/externalAccountShared.js";
 import type * as mail_externalAccounts from "../mail/externalAccounts.js";
 import type * as mail_externalAccountsActions from "../mail/externalAccountsActions.js";
+import type * as mail_externalAccountsSeed from "../mail/externalAccountsSeed.js";
 import type * as mail_externalDelivery from "../mail/externalDelivery.js";
 import type * as mail_externalSharedInbox from "../mail/externalSharedInbox.js";
 import type * as mail_filters from "../mail/filters.js";
@@ -839,6 +841,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/reputationQueries": typeof analytics_reputationQueries;
   "analytics/reputationSnapshots": typeof analytics_reputationSnapshots;
   "analytics/seedPlacement": typeof analytics_seedPlacement;
+  "analytics/seedPlacementCrons": typeof analytics_seedPlacementCrons;
   "analytics/seedProbePoller": typeof analytics_seedProbePoller;
   "analytics/sendingReputation": typeof analytics_sendingReputation;
   "analytics/spamRate": typeof analytics_spamRate;
@@ -1301,6 +1304,7 @@ declare const fullApi: ApiFromModules<{
   "mail/externalAccountShared": typeof mail_externalAccountShared;
   "mail/externalAccounts": typeof mail_externalAccounts;
   "mail/externalAccountsActions": typeof mail_externalAccountsActions;
+  "mail/externalAccountsSeed": typeof mail_externalAccountsSeed;
   "mail/externalDelivery": typeof mail_externalDelivery;
   "mail/externalSharedInbox": typeof mail_externalSharedInbox;
   "mail/filters": typeof mail_filters;
