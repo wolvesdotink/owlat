@@ -1,12 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
-import { checkCap, initializeWarming, recordSend } from '../warming.js';
+import { checkCap, evaluateDay, initializeWarming, recordSend } from '../warming.js';
 import {
 	checkProviderCap,
+	recordProviderVolumePressure,
+	recordProviderWarmingOutcome,
 	recordProviderWarmingSend,
 	evaluateProviderWarmingDay,
 } from '../warmingProviderStore.js';
+import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
 import {
 	effectiveProviderCap,
 	nextProviderCapMultiplier,
@@ -16,6 +19,7 @@ import {
 	type ProviderWarmingWindow,
 } from '../warmingProviderPolicy.js';
 import {
+	warmingDailyStatsKey,
 	warmingProviderDailyStatsKey,
 	warmingProviderStateKey,
 	warmingStateKey,
@@ -494,5 +498,125 @@ describe('per-(IP x mailbox provider) warming caps', () => {
 			'0.25'
 		);
 		expect(await redis.hget(warmingProviderStateKey(ip, 'microsoft'), 'cleanStreak')).toBe('1');
+	});
+});
+
+/**
+ * The SEAM, driven the way production drives it.
+ *
+ * Every case above seeds `warmingProviderDailyStatsKey` directly and calls
+ * `evaluateProviderWarmingDay` directly, which proves the decision but proves
+ * nothing about the window `evaluateDay` hands it. These cases record traffic
+ * through the store, roll the clock past UTC midnight, and run the hourly
+ * `evaluateDay` — the only path that runs in production.
+ */
+describe('per-provider caps as the hourly cron actually drives them', () => {
+	let redis: RealRedis;
+	const ip = '10.0.0.9';
+	const config = createTestConfig();
+	/** The COMPLETED day the traffic lands on. */
+	const DAY_N = '2026-07-26';
+	/** The day the cron ticks on — a partial window that must NOT be evaluated. */
+	const DAY_N1 = '2026-07-27';
+
+	beforeEach(async () => {
+		redis = new Redis() as unknown as RealRedis;
+		await redis.flushall();
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date(`${DAY_N}T09:00:00.000Z`));
+		await initializeWarming(redis, ip);
+		await redis.hset(warmingStateKey(ip), 'currentDay', '5', 'dailyCap', '700');
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	async function sendThrough(
+		provider: DestinationProviderKey,
+		count: number,
+		deferrals = 0
+	): Promise<void> {
+		for (let index = 0; index < count; index += 1) {
+			await recordProviderWarmingSend(redis, { ip, provider, utcDate: DAY_N }, 'campaign');
+		}
+		for (let index = 0; index < deferrals; index += 1) {
+			await recordProviderWarmingOutcome(redis, { ip, provider, utcDate: DAY_N }, 'deferred');
+		}
+	}
+
+	/** Roll to the next UTC day and give the per-IP guard a reason to arm. */
+	async function rollToNextDayWithTraffic(): Promise<void> {
+		vi.setSystemTime(new Date(`${DAY_N1}T00:30:00.000Z`));
+		await redis.hset(warmingDailyStatsKey(ip, DAY_N1), 'sent', '20');
+	}
+
+	it('tightens the provider whose COMPLETED day went bad, and leaves the clean one alone', async () => {
+		await sendThrough('microsoft', 500, 200);
+		await sendThrough('gmail', 500);
+		await rollToNextDayWithTraffic();
+
+		await evaluateDay(redis, ip, config);
+
+		// 200/500 deferred is far past the shipped deceleration threshold.
+		expect(await redis.hget(warmingProviderStateKey(ip, 'microsoft'), 'capMultiplier')).toBe('0.5');
+		// Gmail's state key exists (it sent), but nothing narrowed it.
+		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'capMultiplier')).toBeNull();
+		expect(
+			(await checkProviderCap(redis, { ip, provider: 'gmail', utcDate: DAY_N1 }, 700)).providerCap
+		).toBe(700);
+	});
+
+	it('feeds recorded volume-pressure verdicts into the same completed window', async () => {
+		await sendThrough('yahoo', 500);
+		for (let index = 0; index < PROVIDER_WARMING_POLICY.dailyPressureEventsForTighten; index += 1) {
+			await recordProviderVolumePressure(
+				redis,
+				{ ip, provider: 'yahoo', utcDate: DAY_N },
+				PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
+			);
+		}
+		await rollToNextDayWithTraffic();
+
+		await evaluateDay(redis, ip, config);
+
+		expect(await redis.hget(warmingProviderStateKey(ip, 'yahoo'), 'capMultiplier')).toBe('0.5');
+	});
+
+	it('HOLDS on a below-minimum-sample day rather than moving on thin evidence (D10)', async () => {
+		const thin = PROVIDER_WARMING_POLICY.minimumSampleSends - 1;
+		await sendThrough('microsoft', thin, thin);
+		await sendThrough('gmail', thin);
+		await rollToNextDayWithTraffic();
+
+		await evaluateDay(redis, ip, config);
+
+		expect(await redis.hget(warmingProviderStateKey(ip, 'microsoft'), 'capMultiplier')).toBeNull();
+		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'capMultiplier')).toBeNull();
+	});
+
+	it('does not judge the PARTIAL current day: same-day traffic moves nothing', async () => {
+		// Traffic on DAY_N1 only — exactly the shape the cron sees at 00:30 — is
+		// never the evaluated window, so no provider decision is taken from it.
+		vi.setSystemTime(new Date(`${DAY_N1}T00:30:00.000Z`));
+		for (let index = 0; index < 500; index += 1) {
+			await recordProviderWarmingSend(
+				redis,
+				{ ip, provider: 'microsoft', utcDate: DAY_N1 },
+				'campaign'
+			);
+		}
+		for (let index = 0; index < 200; index += 1) {
+			await recordProviderWarmingOutcome(
+				redis,
+				{ ip, provider: 'microsoft', utcDate: DAY_N1 },
+				'deferred'
+			);
+		}
+		await redis.hset(warmingDailyStatsKey(ip, DAY_N1), 'sent', '500');
+
+		await evaluateDay(redis, ip, config);
+
+		expect(await redis.hget(warmingProviderStateKey(ip, 'microsoft'), 'capMultiplier')).toBeNull();
 	});
 });

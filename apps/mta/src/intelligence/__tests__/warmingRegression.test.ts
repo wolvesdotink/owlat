@@ -42,6 +42,13 @@ describe('warming regression — schedule semantics are unchanged', () => {
 		vi.useRealTimers();
 	});
 
+	/**
+	 * The COMPLETED previous UTC day — the window the provider dimension is
+	 * evaluated against, because `today` is only ever a partial window when the
+	 * hourly cron arms the guard.
+	 */
+	const YESTERDAY = '2026-07-26';
+
 	async function seedCleanDay(sent: number): Promise<string> {
 		await initializeWarming(redis, ip);
 		const today = new Date().toISOString().split('T')[0]!;
@@ -54,7 +61,7 @@ describe('warming regression — schedule semantics are unchanged', () => {
 		const today = await seedCleanDay(700);
 		// Provider stats present: the new dimension must not give the hourly cron a
 		// second reason to advance the per-IP schedule.
-		await redis.hset(warmingProviderDailyStatsKey(ip, 'gmail', today), 'sent', '700');
+		await redis.hset(warmingProviderDailyStatsKey(ip, 'gmail', YESTERDAY), 'sent', '700');
 
 		for (let hour = 0; hour < 24; hour += 1) {
 			vi.setSystemTime(new Date(`2026-07-27T${String(hour).padStart(2, '0')}:30:00.000Z`));
@@ -71,8 +78,8 @@ describe('warming regression — schedule semantics are unchanged', () => {
 	});
 
 	it('produces the same state from 24 calls as from a single call', async () => {
-		const today = await seedCleanDay(700);
-		await redis.hset(warmingProviderDailyStatsKey(ip, 'gmail', today), 'sent', '700');
+		await seedCleanDay(700);
+		await redis.hset(warmingProviderDailyStatsKey(ip, 'gmail', YESTERDAY), 'sent', '700');
 		await evaluateDay(redis, ip, config);
 		const afterOne = await getWarmingState(redis, ip);
 		for (let hour = 0; hour < 23; hour += 1) {
@@ -82,9 +89,9 @@ describe('warming regression — schedule semantics are unchanged', () => {
 	});
 
 	it('keeps the published base schedule as a hard ceiling for the day it reaches', async () => {
-		const today = await seedCleanDay(700);
+		await seedCleanDay(700);
 		await redis.hset(
-			warmingProviderDailyStatsKey(ip, 'microsoft', today),
+			warmingProviderDailyStatsKey(ip, 'microsoft', YESTERDAY),
 			'sent',
 			'400',
 			'deferred',
@@ -103,10 +110,26 @@ describe('warming regression — schedule semantics are unchanged', () => {
 
 	it('does not arm the guard on a no-send day, and evaluates no provider dimension either', async () => {
 		await initializeWarming(redis, ip);
+		// A COMPLETE previous provider day that WOULD tighten if it were read —
+		// without it the provider half of this assertion proves nothing.
+		await redis.hset(
+			warmingProviderDailyStatsKey(ip, 'microsoft', YESTERDAY),
+			'sent',
+			'400',
+			'deferred',
+			'200'
+		);
+
 		await evaluateDay(redis, ip, config);
+
 		const state = await getWarmingState(redis, ip);
 		expect(state?.lastEvaluatedDate).toBe('');
 		expect(state?.currentDay).toBe(1);
+		// Zero per-IP sends returns BEFORE the provider call, so yesterday's
+		// provider evaluation is deferred to the next day that sends anything —
+		// no provider STATE key is created (the seeded daily-stats key is the only
+		// `provider:` key in the space).
+		expect(await redis.keys(`mta:warming:{warming:${ip}}:provider:*:state`)).toEqual([]);
 	});
 
 	it('advances again once the UTC date rolls over', async () => {

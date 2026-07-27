@@ -1,15 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import Redis from 'ioredis-mock';
-import type RealRedis from 'ioredis';
-
-vi.mock('../warming.js', () => ({
-	checkCap: vi.fn(),
-	ensureWarmingReservation: vi.fn(),
-}));
-vi.mock('../../monitoring/logger.js', () => ({
-	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
-
+import { describe, it, expect } from 'vitest';
 import {
 	bulkDailyCeiling,
 	evaluateIntradayPacing,
@@ -17,13 +6,7 @@ import {
 	pacedAllowance,
 	utcDayElapsedFraction,
 } from '../warmingPacing.js';
-import * as warming from '../warming.js';
-import { warmingCapPhase } from '../../dispatch/phases/warmingCap.js';
-import { recordProviderWarmingSend } from '../warmingProviderStore.js';
-import { warmingBulkDailyKey } from '../warmingKeys.js';
-import type { CtxWithIp, PhaseDeps } from '../../dispatch/types.js';
-import type { EmailJob, IpPoolType } from '../../types.js';
-import type { MtaConfig } from '../../config.js';
+import { ADAPTIVE_WARMING_POLICY } from '@owlat/shared/warming';
 
 const HOUR = 1 / 24;
 
@@ -102,21 +85,39 @@ describe('intraday pacing', () => {
 			expect(verdict).toMatchObject({ allowed: true, reason: 'transactional_exempt' });
 		});
 
-		it('holds a 20% safety headroom the bulk curve can never consume', () => {
-			const dailyCap = 10_000;
-			const ceiling = bulkDailyCeiling(dailyCap);
-			expect(dailyCap - ceiling).toBe(
-				dailyCap * INTRADAY_PACING_POLICY.transactionalHeadroomFraction
+		// 343 is not incidental: it is 700 after two 0.7 decelerations, and
+		// 0.2 * 343 is not an integer. Rounding the headroom UP there would put
+		// the ceiling at 274/343 = 0.7988 — below the shipped acceleration gate's
+		// usageRateMinimum — and silently disable acceleration for a bulk-only IP.
+		it.each([10_000, 343, 50, 7, 3])(
+			'holds a 20%% safety headroom the bulk curve can never consume (cap %i)',
+			(dailyCap) => {
+				const ceiling = bulkDailyCeiling(dailyCap);
+				expect(dailyCap - ceiling).toBeGreaterThanOrEqual(0);
+				expect(dailyCap - ceiling).toBeLessThanOrEqual(
+					dailyCap * INTRADAY_PACING_POLICY.transactionalHeadroomFraction
+				);
+				// The ceiling must stay REACHABLE by the shipped acceleration gate:
+				// a bulk-only IP sending exactly its ceiling still clears 0.8.
+				expect(ceiling / dailyCap).toBeGreaterThanOrEqual(
+					ADAPTIVE_WARMING_POLICY.acceleration.usageRateMinimum
+				);
+				// Even at the end of the day the bulk pool stops at the ceiling.
+				expect(
+					evaluateIntradayPacing({
+						dailyCap,
+						bulkSentToday: ceiling,
+						dayElapsedFraction: 1,
+						pool: 'campaign',
+					})
+				).toMatchObject({ allowed: false, allowance: ceiling });
+			}
+		);
+
+		it('reserves an exact fifth of a cap that divides evenly', () => {
+			expect(10_000 - bulkDailyCeiling(10_000)).toBe(
+				10_000 * INTRADAY_PACING_POLICY.transactionalHeadroomFraction
 			);
-			// Even at the end of the day the bulk pool stops at the ceiling.
-			expect(
-				evaluateIntradayPacing({
-					dailyCap,
-					bulkSentToday: ceiling,
-					dayElapsedFraction: 1,
-					pool: 'campaign',
-				})
-			).toMatchObject({ allowed: false, allowance: ceiling });
 		});
 	});
 
@@ -182,116 +183,8 @@ describe('intraday pacing', () => {
 		});
 	});
 
-	/**
-	 * The pure function above is only half the claim. What actually ships is the
-	 * warming-cap phase, and the counter IT feeds the curve is what decides
-	 * whether a small campaign is stretched.
-	 */
-	describe('as wired into the warming-cap phase', () => {
-		const IP = '10.0.0.21';
-		const UTC_DATE = '2026-07-27';
-		let redis: RealRedis;
-		let deps: PhaseDeps;
-
-		beforeEach(async () => {
-			vi.clearAllMocks();
-			vi.useFakeTimers();
-			vi.setSystemTime(new Date(`${UTC_DATE}T00:10:00.000Z`));
-			redis = new Redis() as unknown as RealRedis;
-			await redis.flushall();
-			deps = { redis, config: {} as MtaConfig };
-		});
-
-		afterEach(() => {
-			vi.useRealTimers();
-		});
-
-		function makeCtx(pool: IpPoolType): CtxWithIp {
-			const job: EmailJob = {
-				messageId: 'msg-pacing-1',
-				to: 'user@example.com',
-				from: 'sender@owlat.com',
-				subject: 'Test',
-				html: '<p>Hello</p>',
-				ipPool: pool,
-				organizationId: 'org-1',
-				dkimDomain: 'owlat.com',
-			};
-			return {
-				job,
-				domain: 'example.com',
-				destination: {
-					recipientDomain: 'example.com',
-					providerKey: 'gmail',
-					throttleKey: 'example.com',
-					mx: {
-						status: 'deliverable',
-						source: 'mx',
-						hosts: [{ exchange: 'mx.example.com', priority: 0 }],
-					},
-					daneDiscoveryAuthenticated: true,
-				},
-				fromDomain: 'owlat.com',
-				pool,
-				dedicatedIp: undefined,
-				ip: IP,
-				eligibilityGeneration: 1,
-			};
-		}
-
-		it('does not stretch a 50-recipient campaign behind 120 transactional sends', async () => {
-			// dailyCap 1000, 120 transactional sends by 00:10 UTC. Against the
-			// per-IP TOTAL the allowance (100) is already spent and every one of
-			// the 50 campaign sends would defer; against the BULK counter it is 0.
-			vi.mocked(warming.checkCap).mockResolvedValue({
-				allowed: true,
-				sentToday: 120,
-				dailyCap: 1000,
-			});
-			for (let index = 0; index < 120; index += 1) {
-				await recordProviderWarmingSend(
-					redis,
-					{ ip: IP, provider: 'gmail', utcDate: UTC_DATE },
-					'transactional'
-				);
-			}
-
-			for (let recipient = 0; recipient < 50; recipient += 1) {
-				const out = await warmingCapPhase.run(deps, makeCtx('campaign'));
-				expect(out.kind).toBe('continue');
-				await recordProviderWarmingSend(
-					redis,
-					{ ip: IP, provider: 'gmail', utcDate: UTC_DATE },
-					'campaign'
-				);
-			}
-			expect(await redis.get(warmingBulkDailyKey(IP, UTC_DATE))).toBe('50');
-		});
-
-		it('still paces a genuinely large campaign on the same IP', async () => {
-			vi.mocked(warming.checkCap).mockResolvedValue({
-				allowed: true,
-				sentToday: 900,
-				dailyCap: 1000,
-			});
-			await redis.set(warmingBulkDailyKey(IP, UTC_DATE), '800');
-
-			const out = await warmingCapPhase.run(deps, makeCtx('campaign'));
-
-			expect(out.kind).toBe('defer');
-		});
-
-		it('never starves transactional traffic behind a saturated bulk curve', async () => {
-			vi.mocked(warming.checkCap).mockResolvedValue({
-				allowed: true,
-				sentToday: 800,
-				dailyCap: 1000,
-			});
-			await redis.set(warmingBulkDailyKey(IP, UTC_DATE), '800');
-
-			const out = await warmingCapPhase.run(deps, makeCtx('transactional'));
-
-			expect(out.kind).toBe('continue');
-		});
-	});
+	// The phase-WIRING half of the claim — that the curve is fed the BULK counter
+	// and not the per-IP total — lives in the phase's own suite,
+	// apps/mta/src/dispatch/phases/__tests__/warmingCap.test.ts ('gate 3 —
+	// intraday pacing'). One ctx/ioredis-mock fixture, in the suite that owns it.
 });
