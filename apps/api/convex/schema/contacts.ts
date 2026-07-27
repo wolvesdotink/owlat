@@ -237,7 +237,15 @@ export const contactTables = {
 	})
 		.index('by_contact', ['contactId'])
 		.index('by_contact_and_type', ['contactId', 'activityType'])
-		.index('by_contact_and_occurred_at', ['contactId', 'occurredAt']),
+		.index('by_contact_and_occurred_at', ['contactId', 'occurredAt'])
+		// ADDITIVE (P4-4). `by_contact_and_type` orders WITHIN its key by
+		// `_creationTime`, i.e. by INSERTION, so a backfilled/imported batch of
+		// historical opens sorts after a genuinely newer one and any bounded probe
+		// of it can report a stale "newest engagement". Adding `occurredAt` to the
+		// key makes "the newest open this contact ever had" an exact single-row
+		// read (`.order('desc').first()`) instead of a heuristic — which matters
+		// because that instant is what auto-suppression is computed from.
+		.index('by_contact_type_and_occurred_at', ['contactId', 'activityType', 'occurredAt']),
 
 	// Sunset policies (deliverability plan P4-4) — per-topic tuning of the
 	// re-engagement/auto-suppression windows owned by `contacts/sunsetPolicy.ts`.
@@ -250,7 +258,7 @@ export const contactTables = {
 	// optional so an override can change one field and inherit the rest.
 	sunsetPolicies: defineTable({
 		topicId: v.optional(v.id('topics')),
-		enabled: v.optional(v.boolean()),
+		isEnabled: v.optional(v.boolean()),
 		reengageAfterDays: v.optional(v.number()),
 		suppressAfterDays: v.optional(v.number()),
 		createdAt: v.number(),
