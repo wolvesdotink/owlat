@@ -186,12 +186,13 @@ export interface SendAssignmentRecipient {
  *     first recipient and explicitly labels an advisory snapshot — stamps the
  *     first recipient's route onto every other cell.
  *   - The determinism verdict and the health-free semantics live INSIDE
- *     `resolveCellRouteFromDb`. A producer that resolved through
- *     `resolveSendRouteFromDb` (the transactional Template API does, for the
- *     envelope) holds a HEALTH-INFLUENCED answer drawn with `Math.random()`
- *     under `workload_split` — and the worker draws again independently at
- *     dispatch. Recording it would put a coin flip and a different resolution
- *     semantics into the same `transactional:*` cell as the seam's answers.
+ *     `resolveCellRouteFromDb`. A producer that resolved through the
+ *     AUTHORITATIVE per-message resolver (the transactional Template API does,
+ *     for the envelope) holds a HEALTH-INFLUENCED answer drawn with
+ *     `Math.random()` under `workload_split` — and the worker draws again
+ *     independently at dispatch. Recording it would put a coin flip, under a
+ *     second resolution semantics, into the same `transactional:*` cells the
+ *     other producers fill from the seam.
  *
  * The extra reads on the Template API's latency-sensitive path are the price
  * of one decision made in one place; the seam reads only indexed,

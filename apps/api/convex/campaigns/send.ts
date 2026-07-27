@@ -19,6 +19,17 @@ import { nanoid } from 'nanoid';
 // while an admin re-configures the provider; the stuck-send watchdog backstops
 // a lost reschedule.
 const NO_PROVIDER_RETRY_MS = 5 * 60 * 1000; // 5 minutes
+/**
+ * Recipients handed to ONE `enqueueCampaignEmails` mutation.
+ *
+ * Both enqueue branches page through this same size. That mutation writes at
+ * least one workpool document AND one `sendAssignments` row per recipient in a
+ * single transaction, so an unchunked batch walks toward Convex's
+ * per-transaction write ceiling. The timezone branch used to hand an entire
+ * IANA-zone group over unchunked, which for a single-zone audience is the
+ * whole campaign in one mutation.
+ */
+const CAMPAIGN_ENQUEUE_CHUNK_SIZE = 50;
 const LIFECYCLE_USER_SCHEDULER_TICK = 'system:scheduler_tick';
 const LIFECYCLE_USER_CONTENT_SCAN = 'system:content_scan';
 const LIFECYCLE_USER_ORCHESTRATOR = 'system:orchestrator';
@@ -494,16 +505,9 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 
 	let totalEnqueued = 0;
 
-	// Both branches page through the SAME chunk size. `enqueueCampaignEmails`
-	// writes at least one workpool document AND one `sendAssignments` row per
-	// recipient in a single transaction, so an unchunked batch walks toward
-	// Convex's per-transaction write ceiling. The timezone branch used to hand
-	// an entire IANA-zone group over unchunked, which for a single-zone
-	// audience is the whole campaign in one mutation.
-	const CHUNK_SIZE = 50;
 	const scheduleChunks = async (recipients: EmailEnqueueData[], delayMs: number) => {
-		for (let i = 0; i < recipients.length; i += CHUNK_SIZE) {
-			const chunk = recipients.slice(i, i + CHUNK_SIZE);
+		for (let i = 0; i < recipients.length; i += CAMPAIGN_ENQUEUE_CHUNK_SIZE) {
+			const chunk = recipients.slice(i, i + CAMPAIGN_ENQUEUE_CHUNK_SIZE);
 			await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
 				campaignId: args.campaignId,
 				emails: chunk.map((r) => ({
