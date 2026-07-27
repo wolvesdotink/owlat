@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { applyEffects } from '../../delivery/sendLifecycle/effects';
 import schema from '../../schema';
 import { createTestContact } from '../../__tests__/factories';
 import { isSuppressed, loadSuppressionSet, suppressEmail } from '../../lib/suppression';
@@ -213,6 +214,136 @@ describe('sunset suppression reuses the shipped path', () => {
 			expect(rows).toHaveLength(1);
 			expect(rows[0]?.reason).toBe('bounced');
 			expect(rows[0]?.bounceType).toBe('hard');
+		});
+	});
+
+	/**
+	 * THE HYGIENE ROW IS THE WEAKEST EVIDENCE CLASS THERE IS, and it must yield
+	 * to evidence about the MAILBOX.
+	 *
+	 * The address is still transactionally sendable by design, so it can still
+	 * hard-bounce or draw a complaint afterwards. If the shipped
+	 * `blocklist_insert` path treated the existing `unengaged` row as "already
+	 * suppressed, nothing to do", that evidence would be silently discarded: the
+	 * address would stay on the permissive scope forever, keep bouncing against a
+	 * young IP, never reach the MTA backstop, and read as "Unengaged" rather than
+	 * "Bounced" on the operator's suppression screen.
+	 */
+	describe('an engine-written row absorbs later mailbox-level evidence', () => {
+		async function transactionalSendId(t: ReturnType<typeof harness>) {
+			return await t.run(
+				async (ctx) =>
+					await ctx.db.insert('transactionalSends', {
+						kind: 'transactional' as const,
+						email: 'quiet-then-broken@example.com',
+						status: 'queued' as const,
+						providerType: 'mta',
+					})
+			);
+		}
+
+		it('upgrades an unengaged row to bounced, blocks every scope, and mirrors it', async () => {
+			const t = harness();
+			await suppressOne(t, 'quiet-then-broken@example.com');
+			const sendId = await transactionalSendId(t);
+
+			await t.run(async (ctx) => {
+				await applyEffects(ctx, [
+					{
+						kind: 'blocklist_insert',
+						email: 'quiet-then-broken@example.com',
+						reason: 'bounced',
+						bounceType: 'hard',
+						source: { kind: 'transactional', id: sendId },
+					},
+				]);
+			});
+
+			await t.run(async (ctx) => {
+				// ONE row, upgraded in place — not a second parallel suppression.
+				const rows = await ctx.db.query('blockedEmails').collect();
+				expect(rows).toHaveLength(1);
+				expect(rows[0]?.reason).toBe('bounced');
+				expect(rows[0]?.bounceType).toBe('hard');
+				expect(rows[0]?.sourceTransactionalSendId).toBe(sendId);
+				// The permissive scope now blocks: this is evidence about the mailbox.
+				expect(
+					await isSuppressed(ctx, 'quiet-then-broken@example.com', { scope: 'transactional' })
+				).toBe(true);
+			});
+
+			const scheduled = await t.run(
+				async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+			);
+			const mirror = scheduled.find((job) => job.name.includes('suppressionMirror'));
+			expect(mirror).toBeDefined();
+			expect(mirror?.args[0]).toMatchObject({
+				email: 'quiet-then-broken@example.com',
+				reason: 'bounced',
+				bounceType: 'hard',
+			});
+		});
+
+		it('upgrades an unengaged row to complained too', async () => {
+			const t = harness();
+			await suppressOne(t, 'quiet-then-broken@example.com');
+			const sendId = await transactionalSendId(t);
+
+			await t.run(async (ctx) => {
+				await applyEffects(ctx, [
+					{
+						kind: 'blocklist_insert',
+						email: 'quiet-then-broken@example.com',
+						reason: 'complained',
+						source: { kind: 'transactional', id: sendId },
+					},
+				]);
+			});
+
+			await t.run(async (ctx) => {
+				const rows = await ctx.db.query('blockedEmails').collect();
+				expect(rows).toHaveLength(1);
+				expect(rows[0]?.reason).toBe('complained');
+				expect(rows[0]?.bounceType).toBeUndefined();
+				expect(
+					await isSuppressed(ctx, 'quiet-then-broken@example.com', { scope: 'transactional' })
+				).toBe(true);
+			});
+
+			const scheduled = await t.run(
+				async (ctx) => await ctx.db.system.query('_scheduled_functions').collect()
+			);
+			expect(
+				scheduled.find((job) => job.name.includes('suppressionMirror'))?.args[0]
+			).toMatchObject({ reason: 'complained' });
+		});
+
+		it('does not downgrade a hard bounce back to a soft one', async () => {
+			const t = harness();
+			const sendId = await transactionalSendId(t);
+			await t.run(async (ctx) => {
+				await ctx.db.insert('blockedEmails', {
+					email: 'quiet-then-broken@example.com',
+					reason: 'bounced',
+					bounceType: 'hard',
+					createdAt: daysAgo(10),
+				});
+				await applyEffects(ctx, [
+					{
+						kind: 'blocklist_insert',
+						email: 'quiet-then-broken@example.com',
+						reason: 'bounced',
+						bounceType: 'soft',
+						source: { kind: 'transactional', id: sendId },
+					},
+				]);
+			});
+
+			await t.run(async (ctx) => {
+				const rows = await ctx.db.query('blockedEmails').collect();
+				expect(rows).toHaveLength(1);
+				expect(rows[0]?.bounceType).toBe('hard');
+			});
 		});
 	});
 
