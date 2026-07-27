@@ -223,8 +223,18 @@ export async function resolveLastMileRouting(
 			return { kind: 'defer', retryAfterMs: POLICY_HOLD_RETRY_MS, isPolicyHold: true };
 		}
 	}
+	// The warm-up-overflow / breaker-open relay fallback resolved above carries
+	// most relay traffic during a ramp, so it is the LAST route that may drop the
+	// VERP envelope sender: without it those bounces land at the relay and the
+	// arm reads artificially clean (plan G-08).
 	return withReconciliationSafety(
-		{ kind: 'ready', providerKind, route, organizationId },
+		{
+			kind: 'ready',
+			providerKind,
+			route,
+			organizationId,
+			stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+		},
 		input.mtaReconciliation
 	);
 }
