@@ -24,24 +24,53 @@
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from './inputGuards';
-import { scheduleSuppressionMirror, type BlockReason } from '../delivery/suppressionMirror';
+import {
+	isMarketingOnlyBlockReason,
+	scheduleSuppressionMirror,
+	type BlockReason,
+} from '../delivery/suppressionMirror';
 
 /**
- * Is `rawEmail` on the suppression list? Normalizes the address to the same
- * lowercase+trim key the blocklist stores, then does a single `by_email`
- * point read. The point read is the right shape for the per-send gate (one
- * recipient per call); use {@link loadSuppressionSet} when checking many
+ * WHAT KIND OF MAIL is being gated.
+ *
+ * `'marketing'` (the default) is the strict reading: every blocklist row blocks.
+ * Campaigns, automations and agent mail use it.
+ *
+ * `'transactional'` is the narrower one: rows whose reason is a MARKETING-ONLY
+ * hygiene decision (`unengaged` — see `delivery/suppressionMirror.ts`) do NOT
+ * block. Ignoring marketing engagement is not a request to stop receiving the
+ * receipt, the password reset or the double-opt-in confirmation you just asked
+ * for, and auto-suppressing a paying customer out of their own transactional
+ * mail would be a far worse defect than the one auto-suppression fixes. Bounce
+ * and complaint rows still block on this scope, because those are evidence
+ * about the MAILBOX rather than about the mail.
+ *
+ * DEFAULTING TO THE STRICT SCOPE IS DELIBERATE: a new call site that forgets to
+ * think about this gets the blocking behaviour, never the permissive one.
+ */
+export type SuppressionScope = 'marketing' | 'transactional';
+
+/**
+ * Is `rawEmail` on the suppression list for `scope`? Normalizes the address to
+ * the same lowercase+trim key the blocklist stores, then does a single
+ * `by_email` point read. The point read is the right shape for the per-send gate
+ * (one recipient per call); use {@link loadSuppressionSet} when checking many
  * candidates in a loop.
  */
 export async function isSuppressed(
 	ctx: QueryCtx | MutationCtx,
-	rawEmail: string
+	rawEmail: string,
+	options?: { scope?: SuppressionScope | undefined },
 ): Promise<boolean> {
 	const blocked = await ctx.db
 		.query('blockedEmails')
 		.withIndex('by_email', (q) => q.eq('email', normalizeEmail(rawEmail)))
 		.first();
-	return blocked !== null;
+	if (blocked === null) return false;
+	if ((options?.scope ?? 'marketing') === 'transactional') {
+		return !isMarketingOnlyBlockReason(blocked.reason);
+	}
+	return true;
 }
 
 /**
@@ -55,7 +84,7 @@ export async function isSuppressed(
  * same way (`normalizeEmail`) so the comparison agrees with the stored keys.
  */
 export async function loadSuppressionSet(
-	ctx: QueryCtx | MutationCtx
+	ctx: QueryCtx | MutationCtx,
 ): Promise<ReadonlySet<string>> {
 	const records = await ctx.db.query('blockedEmails').collect(); // bounded: suppression list, one per blocked address
 	return new Set(records.map((b) => normalizeEmail(b.email)));
@@ -73,6 +102,12 @@ export async function loadSuppressionSet(
  * exactly as it is and `null` is returned: an existing `bounced` /
  * `complained` row carries stronger evidence than any later hygiene decision,
  * and downgrading it would be data loss. Suppression here only ever INSERTS.
+ *
+ * THE MIRROR IS SKIPPED FOR MARKETING-ONLY REASONS. The MTA's suppression list
+ * is the LAST HOP — it sits under Convex and blocks everything, transactional
+ * mail included — so a bulk-hygiene decision must not reach it. The Convex row
+ * is the authoritative record either way, and every send path already gates on
+ * it at the scope that path cares about.
  */
 export async function suppressEmail(
 	ctx: MutationCtx,
@@ -105,11 +140,13 @@ export async function suppressEmail(
 		createdAt: args.now ?? Date.now(),
 	});
 
-	await scheduleSuppressionMirror(ctx, {
-		email: normalized,
-		reason: args.reason,
-		...(args.bounceType ? { bounceType: args.bounceType } : {}),
-	});
+	if (!isMarketingOnlyBlockReason(args.reason)) {
+		await scheduleSuppressionMirror(ctx, {
+			email: normalized,
+			reason: args.reason,
+			...(args.bounceType ? { bounceType: args.bounceType } : {}),
+		});
+	}
 
 	return blockedEmailId;
 }

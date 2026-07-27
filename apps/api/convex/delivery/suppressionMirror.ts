@@ -33,6 +33,39 @@ import { getMtaConfig } from '../mail/mtaClient';
 // blockedEmails.reason — the Convex-side suppression vocabulary.
 export type BlockReason = 'bounced' | 'complained' | 'manual' | 'unengaged';
 
+/**
+ * The reasons that are a MARKETING-HYGIENE decision about bulk mail, not
+ * evidence that the mailbox must never be written to again.
+ *
+ * `unengaged` (the sunset engine's auto-suppression) is the only one: it says
+ * "this person has ignored nine months of campaigns", which is a reason to stop
+ * sending campaigns and NOT a reason to stop sending the receipt, the password
+ * reset or the double-opt-in confirmation the same person just asked for. A
+ * hard bounce or a spam complaint is the opposite — those are evidence about
+ * the mailbox itself and gate every scope.
+ *
+ * Two consequences, both enforced in one place each:
+ *   - `lib/suppression.ts`'s `isSuppressed` ignores these reasons on the
+ *     transactional scope;
+ *   - they are never mirrored to the MTA's last-hop backstop (below), because
+ *     that list sits UNDER Convex and would block the transactional mail the
+ *     Convex-side gate just decided to allow.
+ */
+export const MARKETING_ONLY_BLOCK_REASONS = ['unengaged'] as const;
+
+export type MarketingOnlyBlockReason = (typeof MARKETING_ONLY_BLOCK_REASONS)[number];
+
+/** The reasons that DO reach the MTA backstop — everything not marketing-only. */
+export type MirroredBlockReason = Exclude<BlockReason, MarketingOnlyBlockReason>;
+
+const MARKETING_ONLY_SET: ReadonlySet<string> = new Set(MARKETING_ONLY_BLOCK_REASONS);
+
+export function isMarketingOnlyBlockReason(
+	reason: BlockReason
+): reason is MarketingOnlyBlockReason {
+	return MARKETING_ONLY_SET.has(reason);
+}
+
 // SuppressionReason — the MTA-side vocabulary (apps/mta/.../suppressionList.ts).
 // Kept in sync by hand: the two enums live in separate deploy units (Convex
 // backend vs the MTA service) with no shared type.
@@ -47,16 +80,10 @@ export type MtaSuppressionReason = 'hard_bounce' | 'complaint' | 'manual';
  * bounce / complaint must map to its permanent counterpart.
  */
 export function toMtaSuppressionReason(
-	reason: BlockReason,
-	bounceType?: 'hard' | 'soft'
+	reason: MirroredBlockReason,
+	bounceType?: 'hard' | 'soft',
 ): MtaSuppressionReason {
 	if (reason === 'complained') return 'complaint';
-	// A sunset suppression is a hygiene decision, not evidence the mailbox is
-	// broken, and it has a one-action restore path — so it rides the MTA's
-	// EXPIRING `manual` reason rather than a permanent `hard_bounce`. The
-	// authoritative record is the Convex `blockedEmails` row, which every send
-	// path gates on; the MTA copy is only the last-hop backstop.
-	if (reason === 'unengaged') return 'manual';
 	if (reason === 'bounced') {
 		// A hard bounce is permanent; a soft-bounce escalation is recoverable, so
 		// it rides the MTA's expiring `manual` reason rather than a permanent one.
@@ -73,10 +100,14 @@ export function toMtaSuppressionReason(
  * `runAfter(0, …)` so it runs in its own transaction-free action after the
  * originating mutation commits — Convex mutations can't `fetch`, and a failed
  * push must not roll back the insert.
+ *
+ * `reason` is the MIRRORED subset on purpose: the marketing-only reasons are
+ * excluded by the TYPE, so a future suppression source physically cannot push a
+ * bulk-hygiene decision onto a list that gates transactional mail too.
  */
 export async function scheduleSuppressionMirror(
 	ctx: MutationCtx,
-	args: { email: string; reason: BlockReason; bounceType?: 'hard' | 'soft' }
+	args: { email: string; reason: MirroredBlockReason; bounceType?: 'hard' | 'soft' },
 ): Promise<void> {
 	await ctx.scheduler.runAfter(0, internal.delivery.suppressionMirror.mirror, {
 		email: args.email,
@@ -100,7 +131,6 @@ export const mirror = internalAction({
 			v.literal('bounced'),
 			v.literal('complained'),
 			v.literal('manual'),
-			v.literal('unengaged')
 		),
 		bounceType: v.optional(v.union(v.literal('hard'), v.literal('soft'))),
 	},
@@ -129,7 +159,9 @@ export const mirror = internalAction({
 				}),
 			});
 			if (!res.ok) {
-				logError(`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`);
+				logError(
+					`[suppressionMirror] MTA /suppression returned ${res.status} for ${args.email}`,
+				);
 				return;
 			}
 			logInfo(`[suppressionMirror] mirrored ${args.email} (${mtaReason}) to MTA`);

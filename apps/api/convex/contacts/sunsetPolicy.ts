@@ -29,7 +29,11 @@
  *   - a disabled policy never fires;
  *   - an operator override never fires;
  *   - a non-finite / negative / skewed clock never fires (a timestamp in the
- *     future is evidence the clock is wrong, not that the contact is quiet);
+ *     future is evidence the clock is wrong, not that the contact is quiet),
+ *     and neither does a `now` that the caller's independent observation of
+ *     time does not support (`SUNSET_MAX_CLOCK_LEAD_MS`) — a clock cannot
+ *     validate itself, and a forward jump makes every window look covered at
+ *     once;
  *   - an EMPTY ACTIVITY HISTORY never fires — absence of history is not
  *     evidence of disengagement, it is absence of measurement;
  *   - a contact younger than the window it would be judged against never
@@ -68,6 +72,27 @@ export const SUNSET_POLICY_DEFAULTS: Readonly<SunsetPolicy> = Object.freeze({
 
 /** Lower bound on a configured window. Below this the policy is treated as invalid. */
 export const SUNSET_MIN_WINDOW_DAYS = 30;
+
+/**
+ * How far `now` may run ahead of an INDEPENDENTLY OBSERVED instant before the
+ * clock is treated as untrustworthy.
+ *
+ * WHY THIS EXISTS. Every other guard validates a FACT against `now`; nothing
+ * validates `now` itself beyond "finite and positive". A host clock that jumps
+ * forward (NTP glitch, a restored VM snapshot, a container with a dead RTC)
+ * therefore inflates tenure, quiet days AND the measurable span all at once, so
+ * every window is "covered" and the entire book qualifies for suppression in a
+ * single pass. A clock cannot check itself, so the caller supplies a second
+ * observation — see `SunsetFacts.corroboratingInstant` — and a `now` implausibly
+ * far ahead of it holds.
+ *
+ * 30 DAYS IS DELIBERATELY GENEROUS. The corroborating instant is a stamp this
+ * deployment wrote earlier, so a legitimately idle or paused install can be
+ * weeks behind. Being generous costs nothing: the failure mode of the guard is
+ * HOLDING, which is always safe, and a false hold clears itself as soon as the
+ * deployment writes fresh stamps.
+ */
+export const SUNSET_MAX_CLOCK_LEAD_MS = 30 * 86_400_000;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -118,6 +143,19 @@ export type SunsetReason =
  */
 export type SunsetFacts = {
 	now: number;
+	/**
+	 * A SECOND, INDEPENDENT READING OF TIME: the newest instant this deployment
+	 * is known to have written before this evaluation (the sweep passes the
+	 * freshest `contacts.sunsetEvaluatedAt` stamp in the table, which a previous
+	 * tick wrote under a previous reading of the clock).
+	 *
+	 * It is what lets `evaluateSunset` reject a `now` that is merely plausible
+	 * rather than merely malformed. Absent means "no second reading available"
+	 * (a deployment that has never swept), and absence HOLDS nobody — the
+	 * per-tick suppression ceiling in `contacts/sunset.ts` is the bound that
+	 * covers that case.
+	 */
+	corroboratingInstant?: number | undefined;
 	/** Contact row creation instant — the tenure clock. */
 	createdAt: number;
 	/** Newest open/click/reply, per the P0-2 engagement literals. */
@@ -282,6 +320,22 @@ export function evaluateSunset(facts: SunsetFacts, policy: SunsetPolicy): Sunset
 	// 1. The clock itself. A non-finite or non-positive `now` disqualifies every
 	//    later comparison, so nothing downstream may run.
 	if (!Number.isFinite(facts.now) || facts.now <= 0) return hold('clock_skew', stage);
+
+	// 1b. …and `now` against the caller's independent observation. A clock that
+	//     jumped forward passes every check in step 1 and then makes EVERY window
+	//     look covered at once, so this is the only guard standing between an NTP
+	//     glitch and the whole book being suppressed in one pass.
+	const corroborating = facts.corroboratingInstant;
+	if (corroborating !== undefined) {
+		if (!Number.isFinite(corroborating) || corroborating <= 0) {
+			return hold('clock_skew', stage);
+		}
+		// Ahead of `now`: the clock moved BACKWARDS since that stamp was written.
+		if (corroborating > facts.now) return hold('clock_skew', stage);
+		if (facts.now - corroborating > SUNSET_MAX_CLOCK_LEAD_MS) {
+			return hold('clock_skew', stage);
+		}
+	}
 
 	// 2. Operator intent beats everything the engine might infer.
 	if (!policy.isEnabled) return hold('policy_disabled', stage);

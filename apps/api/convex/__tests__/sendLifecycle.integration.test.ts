@@ -396,7 +396,7 @@ describe('sendLifecycle.transition — bounced', () => {
 
 			const activities = await ctx.db
 				.query('contactActivities')
-				.withIndex('by_contact_and_type', (q) =>
+				.withIndex('by_contact_type_and_occurred_at', (q) =>
 					q.eq('contactId', contactId!).eq('activityType', 'email_bounced')
 				)
 				.collect();
@@ -796,7 +796,7 @@ describe('sendLifecycle.transition — soft-bounce suppression', () => {
 
 			const activities = await ctx.db
 				.query('contactActivities')
-				.withIndex('by_contact_and_type', (q) =>
+				.withIndex('by_contact_type_and_occurred_at', (q) =>
 					q.eq('contactId', contactId!).eq('activityType', 'email_complained')
 				)
 				.collect();
@@ -906,7 +906,7 @@ describe('sendLifecycle.transition — complained', () => {
 
 			const activities = await ctx.db
 				.query('contactActivities')
-				.withIndex('by_contact_and_type', (q) =>
+				.withIndex('by_contact_type_and_occurred_at', (q) =>
 					q.eq('contactId', contactId!).eq('activityType', 'email_complained')
 				)
 				.collect();

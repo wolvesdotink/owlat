@@ -56,17 +56,65 @@ import {
  * two disagreeing definitions of "engaged", which is exactly what this module
  * exists not to have. `null` literals (a send is our action, not theirs) are
  * excluded by the same expression.
+ *
+ * Module-private: the quiet clock is reset by the WIDER set below, and exporting
+ * both would invite a caller to pick the wrong one.
  */
-export const SUNSET_ENGAGEMENT_LITERALS: readonly ContactActivityType[] =
+const SUNSET_ENGAGEMENT_LITERALS: readonly ContactActivityType[] =
 	CONTACT_ACTIVITY_TYPE_LITERALS.filter((literal) => {
 		const mapped = ENGAGEMENT_ACTIVITY_MAP[literal];
 		return mapped !== null && mapped !== 'bounce' && mapped !== 'complaint';
 	});
 
+/**
+ * The literals that are an EXPLICIT ACT BY THE CONTACT but carry no open/click
+ * weight, so the engagement SCORE correctly maps them to `null`.
+ *
+ * The score is an accumulator for "how warm is this address"; the sunset clock
+ * answers a different question — "is anyone home". Signing up, confirming a
+ * double opt-in, being admin-attested as confirmed, or writing to us are all
+ * unambiguous evidence that someone is home, and none of them belongs in a
+ * warmth score. Judging the quiet window by the score's literals alone means an
+ * old, long-quiet contact who fills in the signup form today still measures
+ * three hundred quiet days and is auto-suppressed by the next sweep — before the
+ * confirmation mail they are owed has even been read.
+ */
+const SUNSET_CONSENT_LITERALS = [
+	'topic_subscribed',
+	'topic_confirmed',
+	'doi_attested',
+	'inbound_received',
+] as const satisfies readonly ContactActivityType[];
+
+const SUNSET_CONSENT_LITERAL_SET: ReadonlySet<string> = new Set(SUNSET_CONSENT_LITERALS);
+
+/**
+ * THE ONE TABLE OF "WHAT RESETS THE QUIET CLOCK": every engagement literal plus
+ * every explicit-consent / inbound literal, in catalog order.
+ *
+ * Still derived from `CONTACT_ACTIVITY_TYPE_LITERALS` rather than hand-listed,
+ * so a renamed or removed catalog literal breaks the build here instead of
+ * silently shrinking the set. `__tests__/sunsetPolicy.test.ts` pins its exact
+ * contents, so a catalog change that drops one of them fails the suite too.
+ */
+export const SUNSET_QUIET_RESETTING_LITERALS: readonly ContactActivityType[] =
+	CONTACT_ACTIVITY_TYPE_LITERALS.filter(
+		(literal) =>
+			SUNSET_ENGAGEMENT_LITERALS.includes(literal) || SUNSET_CONSENT_LITERAL_SET.has(literal)
+	);
+
 export type SunsetTransition = {
 	verdict: SunsetVerdict;
 	/** True when the verdict actually changed something. `hold` never does. */
 	applied: boolean;
+	/**
+	 * True when a `suppress` verdict was REFUSED by the caller's blast-radius
+	 * ceiling rather than by the decision itself. The caller is expected to leave
+	 * the contact unsettled so a later tick can retry it, and to surface the
+	 * refusal — a suppression that silently does not happen is as confusing as
+	 * one that silently does.
+	 */
+	deferred: boolean;
 };
 
 // ─── Policy loading ─────────────────────────────────────────────────────────
@@ -141,7 +189,7 @@ export async function resolveSunsetPolicyForContact(
 // ─── Fact loading ───────────────────────────────────────────────────────────
 
 /**
- * Newest `occurredAt` across the contact's engagement activities, or undefined.
+ * Newest `occurredAt` across every quiet-clock-resetting activity, or undefined.
  *
  * EXACT, NOT PROBED. The read goes through `by_contact_type_and_occurred_at`,
  * whose key ends in `occurredAt`, so `.order('desc').first()` per literal IS the
@@ -152,12 +200,12 @@ export async function resolveSunsetPolicyForContact(
  * engagement inflates the quiet window and can auto-suppress an actively
  * engaged contact, so this read has to be exact rather than approximately right.
  */
-async function loadLastEngagementAt(
+async function loadLastQuietResetAt(
 	ctx: QueryCtx | MutationCtx,
 	contactId: Id<'contacts'>
 ): Promise<number | undefined> {
 	let newest: number | undefined;
-	for (const literal of SUNSET_ENGAGEMENT_LITERALS) {
+	for (const literal of SUNSET_QUIET_RESETTING_LITERALS) {
 		const row = await ctx.db
 			.query('contactActivities')
 			.withIndex('by_contact_type_and_occurred_at', (q) =>
@@ -179,12 +227,13 @@ async function loadLastEngagementAt(
 export async function loadSunsetFacts(
 	ctx: QueryCtx | MutationCtx,
 	contact: Doc<'contacts'>,
-	now: number
+	now: number,
+	corroboratingInstant?: number | undefined
 ): Promise<SunsetFacts> {
-	const email = contact.email;
-	const hasEmail = typeof email === 'string' && email.trim().length > 0;
-	const isAlreadySuppressed =
-		hasEmail && email !== undefined ? await isSuppressed(ctx, email) : false;
+	const rawEmail = contact.email;
+	const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+	const hasEmail = email.length > 0;
+	const isAlreadySuppressed = hasEmail ? await isSuppressed(ctx, email) : false;
 
 	// Same index, same reason as `loadLastEngagementAt`: the OLDEST send by
 	// `occurredAt`, not the first one that happened to be written.
@@ -196,10 +245,11 @@ export async function loadSunsetFacts(
 		.order('asc')
 		.first();
 
-	const lastEngagementAt = await loadLastEngagementAt(ctx, contact._id);
+	const lastEngagementAt = await loadLastQuietResetAt(ctx, contact._id);
 
 	return {
 		now,
+		...(corroboratingInstant !== undefined ? { corroboratingInstant } : {}),
 		createdAt: contact.createdAt,
 		...(lastEngagementAt !== undefined ? { lastEngagementAt } : {}),
 		...(firstSend !== null ? { firstMessagedAt: firstSend.occurredAt } : {}),
@@ -259,15 +309,24 @@ export async function evaluateAndApplySunset(
 		contact: Doc<'contacts'>;
 		policy: SunsetPolicy;
 		now: number;
+		/** See `SunsetFacts.corroboratingInstant`. */
+		corroboratingInstant?: number | undefined;
+		/**
+		 * The caller's blast-radius ceiling. `false` means "you may move this
+		 * contact onto the re-engagement track, but do NOT suppress it in this
+		 * pass" — the reversible half of the policy keeps running while the
+		 * irreversible half is held back. Defaults to allowed.
+		 */
+		canSuppress?: boolean | undefined;
 	}
 ): Promise<SunsetTransition> {
 	const { contact, policy, now } = args;
-	const facts = await loadSunsetFacts(ctx, contact, now);
+	const facts = await loadSunsetFacts(ctx, contact, now, args.corroboratingInstant);
 	const verdict = evaluateSunset(facts, policy);
 
 	switch (verdict.action) {
 		case 'hold':
-			return { verdict, applied: false };
+			return { verdict, applied: false, deferred: false };
 
 		case 'resume': {
 			await setStage(ctx, contact._id, 'engaged', now);
@@ -278,7 +337,7 @@ export async function evaluateAndApplySunset(
 				resourceId: contact._id,
 				details: auditDetails(contact, verdict),
 			});
-			return { verdict, applied: true };
+			return { verdict, applied: true, deferred: false };
 		}
 
 		case 'enter_reengagement': {
@@ -290,7 +349,7 @@ export async function evaluateAndApplySunset(
 				resourceId: contact._id,
 				details: auditDetails(contact, verdict),
 			});
-			return { verdict, applied: true };
+			return { verdict, applied: true, deferred: false };
 		}
 
 		case 'suppress': {
@@ -299,7 +358,13 @@ export async function evaluateAndApplySunset(
 			// rather than trusting it.
 			const email = contact.email;
 			if (email === undefined || email.trim().length === 0) {
-				return { verdict, applied: false };
+				return { verdict, applied: false, deferred: false };
+			}
+			// THE BLAST-RADIUS CEILING. Suppression is the one irreversible-feeling
+			// thing this engine does, so the caller gets to say "not any more in
+			// this pass" — and the refusal is reported rather than swallowed.
+			if (args.canSuppress === false) {
+				return { verdict, applied: false, deferred: true };
 			}
 			await suppressEmail(ctx, {
 				email,
@@ -320,7 +385,7 @@ export async function evaluateAndApplySunset(
 				// address suppressed" gets every input the engine saw, not a summary.
 				detailsBlob: JSON.stringify({ facts, policy, verdict }),
 			});
-			return { verdict, applied: true };
+			return { verdict, applied: true, deferred: false };
 		}
 	}
 }
@@ -336,7 +401,18 @@ export type SunsetRestoreResult = {
 	 * module also exports `SunsetReason` — the engine's decision vocabulary —
 	 * and the two are different vocabularies for different questions.
 	 */
-	outcome: 'restored' | 'not_found' | 'no_email' | 'not_sunset_suppressed';
+	outcome:
+		| 'restored'
+		| 'not_found'
+		| 'no_email'
+		| 'not_sunset_suppressed'
+		/**
+		 * The contact was not on the blocklist at all. Reported distinctly rather
+		 * than as a `restored`: with no row to remove, "restore" would silently
+		 * have been a bare exemption toggle, and an operator told "restored" would
+		 * reasonably believe a suppression had been lifted.
+		 */
+		| 'not_suppressed';
 };
 
 /**
@@ -350,6 +426,18 @@ export type SunsetRestoreResult = {
  * Restoring also sets the operator override (`sunsetExemptAt`). Without it the
  * very next sweep would see the same 270 quiet days and immediately re-suppress
  * the contact — "restore" that undoes itself within a day is not a restore.
+ *
+ * THE OVERRIDE IS PERMANENT AND VISIBLE, NOT PERMANENT AND HIDDEN. It has no
+ * expiry on purpose: an operator who reached for "restore" is asserting they
+ * know something the engine does not, and quietly re-arming auto-suppression
+ * after some interval would take that assertion away without telling anyone. It
+ * is instead SURFACED — `contacts.sunset.listSunsetStage` projects it as
+ * `isExempt`, the suppressions screen renders it, and
+ * `setSunsetContactExemption` clears it in one action — so "why is this contact
+ * never sunset" is always answerable and always reversible.
+ *
+ * A contact with NO blocklist row is reported as `not_suppressed` and nothing is
+ * written: restore restores, it does not double as an exemption toggle.
  */
 export async function restoreSunsetSuppression(
 	ctx: MutationCtx,
@@ -369,15 +457,17 @@ export async function restoreSunsetSuppression(
 		.withIndex('by_email', (q) => q.eq('email', normalizeEmail(email)))
 		.first();
 
-	if (blocked !== null && blocked.reason !== 'unengaged') {
+	if (blocked === null) {
+		// NOT A RESTORE. There is nothing suppressed to bring back, so this call
+		// does not quietly become `setSunsetExemption` — that is a separate,
+		// explicit operator action with its own audit entry.
+		return { restored: false, removedSuppression: false, outcome: 'not_suppressed' };
+	}
+	if (blocked.reason !== 'unengaged') {
 		return { restored: false, removedSuppression: false, outcome: 'not_sunset_suppressed' };
 	}
 
-	let removedSuppression = false;
-	if (blocked !== null) {
-		await ctx.db.delete(blocked._id);
-		removedSuppression = true;
-	}
+	await ctx.db.delete(blocked._id);
 
 	await ctx.db.patch(contact._id, {
 		sunsetStage: 'engaged',
@@ -393,13 +483,13 @@ export async function restoreSunsetSuppression(
 		resourceId: contact._id,
 		details: {
 			email,
-			removedSuppression,
+			removedSuppression: true,
 			fromStage: contact.sunsetStage ?? 'engaged',
 			exempted: true,
 		},
 	});
 
-	return { restored: true, removedSuppression, outcome: 'restored' };
+	return { restored: true, removedSuppression: true, outcome: 'restored' };
 }
 
 /** Toggle the operator override for one contact. Audited either way. */

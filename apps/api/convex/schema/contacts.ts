@@ -242,15 +242,21 @@ export const contactTables = {
 		occurredAt: v.number(),
 	})
 		.index('by_contact', ['contactId'])
-		.index('by_contact_and_type', ['contactId', 'activityType'])
 		.index('by_contact_and_occurred_at', ['contactId', 'occurredAt'])
-		// ADDITIVE (P4-4). `by_contact_and_type` orders WITHIN its key by
-		// `_creationTime`, i.e. by INSERTION, so a backfilled/imported batch of
-		// historical opens sorts after a genuinely newer one and any bounded probe
-		// of it can report a stale "newest engagement". Adding `occurredAt` to the
-		// key makes "the newest open this contact ever had" an exact single-row
-		// read (`.order('desc').first()`) instead of a heuristic — which matters
+		// REPLACES the old `by_contact_and_type` (P4-4), which was a strict prefix
+		// of this key and had no caller left once the sunset engine needed the
+		// ordering. That index ordered WITHIN its key by `_creationTime`, i.e. by
+		// INSERTION, so a backfilled/imported batch of historical opens sorted
+		// after a genuinely newer one and any bounded probe of it could report a
+		// stale "newest engagement". Adding `occurredAt` to the key makes "the
+		// newest open this contact ever had" an exact single-row read
+		// (`.order('desc').first()`) instead of a heuristic — which matters
 		// because that instant is what auto-suppression is computed from.
+		//
+		// SUPERSET, NOT SIBLING: an equality lookup on (contactId, activityType)
+		// rides this index unchanged, so nothing was lost by dropping the shorter
+		// one — and `contactActivities` is the highest-write table in the product,
+		// where a redundant index is a permanent tax on every send.
 		.index('by_contact_type_and_occurred_at', ['contactId', 'activityType', 'occurredAt']),
 
 	// Sunset policies (deliverability plan P4-4) — per-topic tuning of the

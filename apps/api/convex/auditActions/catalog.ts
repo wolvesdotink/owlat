@@ -68,6 +68,10 @@ export const AUDIT_ACTION_LITERALS = [
 	action('contact.sunset_exemption_changed'),
 	// Per-topic (or deployment-wide) window/enabled tuning.
 	action('contact.sunset_policy_updated'),
+	// One aggregated row per sweep tick that suppressed (or refused to suppress)
+	// anything. A per-contact row answers "why this address"; only this one can
+	// answer "did the engine just act on a hundred people at once, and why".
+	action('contact.sunset_sweep_summary'),
 	// DOI lifecycle admin-attest. See ADR-0019.
 	action('doi.admin_attested'),
 	// Topic
