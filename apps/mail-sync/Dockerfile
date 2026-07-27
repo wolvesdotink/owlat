@@ -18,12 +18,14 @@ RUN bun install --frozen-lockfile --filter @owlat/mail-sync
 # Copy mail-sync source + the workspace packages it imports (TypeScript source).
 # @owlat/mail-message is the ingest parser; it pulls in @owlat/mail-canon
 # (transitive workspace dep) for DKIM canonicalization, so both must be present
-# or tsc fails to resolve the module.
+# or tsc fails to resolve the module. @owlat/shared carries the seed-placement
+# wire contract (`@owlat/shared/seedPlacement`) the probe walker imports.
 COPY apps/mail-sync/tsconfig.json apps/mail-sync/
 COPY apps/mail-sync/src/ apps/mail-sync/src/
 COPY packages/smtp-client/ packages/smtp-client/
 COPY packages/mail-message/ packages/mail-message/
 COPY packages/mail-canon/ packages/mail-canon/
+COPY packages/shared/ packages/shared/
 
 # Typecheck first, then bundle the full runtime dependency graph. Bun workspace
 # node_modules entries are symlinks into the root install/package tree; copying
