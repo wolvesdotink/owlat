@@ -129,6 +129,21 @@ describe('not_started -> awaiting_yahoo -> enrolled', () => {
 			'already_enrolled'
 		);
 	});
+
+	it('does not blame DKIM for a live enrollment whose domain lost its readiness', () => {
+		// A domain can stop being `verified` (or lose its MTA identity row) long
+		// after Yahoo accepted it. Telling the operator to publish a DKIM record for
+		// a domain that is already enrolled is advice for the wrong problem, so the
+		// derived-state check runs BEFORE the precondition check.
+		const enrolled: YahooCflEnrollmentRecord = { state: 'enrolled', enrolledAt: T0 };
+		for (const precondition of [UNVERIFIED, NO_SELECTOR]) {
+			expect(applyYahooCflEvent(enrolled, { kind: 'submit', at: T0 + DAY }, precondition)).toEqual({
+				record: enrolled,
+				changed: false,
+				reason: 'already_enrolled',
+			});
+		}
+	});
 });
 
 describe('a report is ground truth', () => {
@@ -391,6 +406,40 @@ describe('re-submitting a lapsed enrollment — the "re-check it" path', () => {
 		expect(step?.action).toContain('Re-submit');
 	});
 
+	it('does not claim complaints are flowing on the re-submitted record', () => {
+		// The re-submitted record deliberately KEEPS `lastReportAt`, so the fourth
+		// step must key on "a report since THIS submission", not "a report ever".
+		// Otherwise it renders `done` ahead of the third step and asserts, in the
+		// present tense, that an enrollment we stopped believing was live one click
+		// ago is attributing complaints.
+		const again = applyYahooCflEvent(LAPSED, { kind: 'submit', at: LAPSED_NOW }, READY).record;
+		expect(again.lastReportAt).toBe(T0 + 2 * DAY);
+		const steps = yahooCflGuidedSteps(again, READY, LAPSED_NOW);
+		expect(steps.map((s) => s.id)).toEqual([
+			'verify_dkim_domain',
+			'submit_enrollment',
+			'confirm_enrollment',
+			'watch_reports',
+		]);
+		expect(steps.map((s) => s.status)).toEqual(['done', 'done', 'in_progress', 'blocked']);
+		const watch = steps[3];
+		expect(watch?.verification).toBe(
+			'A Yahoo complaint will appear on the delivery screens with source "yahoo".'
+		);
+	});
+
+	it('marks the fourth step done again once a report beats the new submission', () => {
+		const again = applyYahooCflEvent(LAPSED, { kind: 'submit', at: LAPSED_NOW }, READY).record;
+		const reported = applyYahooCflEvent(
+			again,
+			{ kind: 'report_observed', at: LAPSED_NOW + DAY },
+			READY
+		).record;
+		const steps = yahooCflGuidedSteps(reported, READY, LAPSED_NOW + DAY);
+		expect(steps.map((s) => s.status)).toEqual(['done', 'done', 'done', 'done']);
+		expect(steps[3]?.verification).toBe('Yahoo complaints are being attributed to this domain.');
+	});
+
 	it('completes the round trip: re-submit, then a report re-enrolls', () => {
 		const again = applyYahooCflEvent(LAPSED, { kind: 'submit', at: LAPSED_NOW }, READY).record;
 		const report = applyYahooCflEvent(
@@ -464,22 +513,42 @@ describe('available actions — the affordances the flow offers', () => {
 			{ state: 'enrolled', enrolledAt: T0, lastReportAt: T0 },
 		];
 		// Sampled across the whole lapse window so both the live and the lapsed
-		// derivation of every enrolled record is exercised.
-		for (const record of records) {
-			for (const offset of [DAY, YAHOO_CFL_LAPSE_SILENCE_MS + DAY]) {
-				const now = T0 + offset;
-				const actions = yahooCflAvailableActions(record, READY, now);
-				const attempts: { kind: 'submit' | 'confirm' | 'reset'; offered: boolean }[] = [
-					{ kind: 'submit', offered: actions.canSubmit },
-					{ kind: 'confirm', offered: actions.canConfirm },
-					{ kind: 'reset', offered: actions.canReset },
-				];
-				for (const attempt of attempts) {
-					if (!attempt.offered) continue;
-					const result = applyYahooCflEvent(record, { kind: attempt.kind, at: now }, READY);
-					expect(result.changed, `${attempt.kind} on ${JSON.stringify(record)} at +${offset}`).toBe(
-						true
-					);
+		// derivation of every enrolled record is exercised, and across every DKIM
+		// precondition so the ONE sanctioned offered-but-refused case is pinned
+		// rather than skipped: submit stays SHOWN when the precondition is unmet
+		// (`submitBlockedByDkim`) so the flow can explain why, and that flag is what
+		// the panel's disabled state and its `aria-describedby` reason hang off. A
+		// regression dropping it would leave a genuinely dead, enabled button.
+		const preconditions: [string, YahooCflDkimPrecondition][] = [
+			['READY', READY],
+			['UNVERIFIED', UNVERIFIED],
+			['NO_SELECTOR', NO_SELECTOR],
+		];
+		for (const [label, precondition] of preconditions) {
+			for (const record of records) {
+				for (const offset of [DAY, YAHOO_CFL_LAPSE_SILENCE_MS + DAY]) {
+					const now = T0 + offset;
+					const actions = yahooCflAvailableActions(record, precondition, now);
+					const attempts: { kind: 'submit' | 'confirm' | 'reset'; offered: boolean }[] = [
+						{ kind: 'submit', offered: actions.canSubmit },
+						{ kind: 'confirm', offered: actions.canConfirm },
+						{ kind: 'reset', offered: actions.canReset },
+					];
+					for (const attempt of attempts) {
+						if (!attempt.offered) continue;
+						const result = applyYahooCflEvent(
+							record,
+							{ kind: attempt.kind, at: now },
+							precondition
+						);
+						const where = `${attempt.kind} on ${JSON.stringify(record)} at +${offset} (${label})`;
+						if (attempt.kind === 'submit' && actions.submitBlockedByDkim) {
+							expect(result.changed, where).toBe(false);
+							expect(result.reason, where).toBe('dkim_domain_not_ready');
+							continue;
+						}
+						expect(result.changed, where).toBe(true);
+					}
 				}
 			}
 		}

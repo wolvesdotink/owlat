@@ -511,6 +511,23 @@ describe('the re-check, derived on read', () => {
 		const after = await asUser.query(api.domains.yahooCfl.getGuide, { domainId });
 		expect(after?.state).toBe('awaiting_yahoo');
 		expect(after?.actions).toMatchObject({ canSubmit: false, canConfirm: true, canReset: true });
+		// And the fourth step goes BACK to waiting rather than staying `done` off the
+		// kept `lastReportAt` — a re-submitted enrollment is not attributing
+		// complaints until one arrives for THIS submission.
+		expect(after?.steps.map((s) => s.status)).toEqual(['done', 'done', 'in_progress', 'blocked']);
+		expect(after?.steps.find((s) => s.id === 'watch_reports')?.verification).toContain(
+			'will appear on the delivery screens'
+		);
+
+		// A fresh report closes it again.
+		vi.setSystemTime(lapsedAt + DAY);
+		await t.mutation(internal.domains.yahooCfl.observeReport, {
+			reportedDomain: 'mail.relapse.test',
+			at: lapsedAt + DAY,
+		});
+		const reported = await asUser.query(api.domains.yahooCfl.getGuide, { domainId });
+		expect(reported?.state).toBe('enrolled');
+		expect(reported?.steps.map((s) => s.status)).toEqual(['done', 'done', 'done', 'done']);
 	});
 
 	it('never reads as lapsed for a state that was never enrolled', async () => {
