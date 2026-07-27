@@ -483,6 +483,7 @@ import type * as lib_sendProviders_strategies_workload_split_index from "../lib/
 import type * as lib_sendProviders_transportEnv from "../lib/sendProviders/transportEnv.js";
 import type * as lib_sendProviders_transports from "../lib/sendProviders/transports.js";
 import type * as lib_sendProviders_types from "../lib/sendProviders/types.js";
+import type * as lib_sendProviders_warmingCapGate from "../lib/sendProviders/warmingCapGate.js";
 import type * as lib_senderHeuristicsValidator from "../lib/senderHeuristicsValidator.js";
 import type * as lib_sendingLimits from "../lib/sendingLimits.js";
 import type * as lib_sessionOrganization from "../lib/sessionOrganization.js";
@@ -1260,6 +1261,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/transportEnv": typeof lib_sendProviders_transportEnv;
   "lib/sendProviders/transports": typeof lib_sendProviders_transports;
   "lib/sendProviders/types": typeof lib_sendProviders_types;
+  "lib/sendProviders/warmingCapGate": typeof lib_sendProviders_warmingCapGate;
   "lib/senderHeuristicsValidator": typeof lib_senderHeuristicsValidator;
   "lib/sendingLimits": typeof lib_sendingLimits;
   "lib/sessionOrganization": typeof lib_sessionOrganization;
