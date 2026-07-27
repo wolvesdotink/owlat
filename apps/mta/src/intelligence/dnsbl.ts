@@ -8,7 +8,14 @@
 import { resolve4 } from 'dns/promises';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import { DNSBL_LISTS, type DnsblListDefinition } from '@owlat/shared/dnsbl';
+import {
+	DNSBL_LIST_IDS,
+	DNSBL_LISTS,
+	dnsblZoneHost,
+	type DnsblListDefinition,
+	type DnsblListId,
+} from '@owlat/shared/dnsbl';
+import type { IpAuditZoneId } from '@owlat/shared/ipAudit';
 import {
 	ipAddressFamily,
 	reverseIpAddressForDns,
@@ -64,16 +71,14 @@ export function configuredDnsblZones(
 	config: Pick<MtaConfig, 'abusixDnsblApiKey'>,
 	addressFamily?: IpAddressFamily
 ): DnsblZone[] {
-	const zones: DnsblZone[] = [
-		{ ...DNSBL_LISTS.spamhaus, zone: 'zen.spamhaus.org' },
-		{ ...DNSBL_LISTS.barracuda, zone: 'b.barracudacentral.org' },
-		{ ...DNSBL_LISTS.spamcop, zone: 'bl.spamcop.net' },
-	];
-	if (config.abusixDnsblApiKey) {
-		zones.push({
-			...DNSBL_LISTS.abusix,
-			zone: `${config.abusixDnsblApiKey}.combined.mail.abusix.zone`,
-		});
+	// Zone hostnames live on DNSBL_LISTS so the routing sweep and the pre-flight
+	// IP audit can never drift apart. A keyed feed without its credential is
+	// simply absent here, exactly as before.
+	const zones: DnsblZone[] = [];
+	for (const id of DNSBL_LIST_IDS) {
+		const list = DNSBL_LISTS[id];
+		const zone = dnsblZoneHost(list, config.abusixDnsblApiKey);
+		if (zone) zones.push({ ...list, zone });
 	}
 	return addressFamily
 		? zones.filter((zone) => zone.addressFamilies.includes(addressFamily))
@@ -91,6 +96,13 @@ export function dnsblQueryName(ip: string, zone: string): string {
 export interface DnsblLookupDeps {
 	resolve4: (hostname: string) => Promise<string[]>;
 	timeoutMs?: number;
+	/**
+	 * Advisory callers (the /24 neighbourhood sample) set this so a resolver
+	 * outage logs at debug instead of emitting one warn per probed address. The
+	 * warn exists because ROUTING keeps a stale decision on `unknown`; a probe
+	 * that gates nothing has no such consequence to announce.
+	 */
+	quiet?: boolean;
 }
 
 export interface DnsblLookupResult {
@@ -116,12 +128,16 @@ function boundedAnswers(answers: readonly string[]): string[] {
  */
 export async function lookupDnsblZone(
 	ip: string,
-	listId: string,
+	listId: DnsblListId | IpAuditZoneId,
 	zone: string,
 	deps: DnsblLookupDeps = { resolve4 }
 ): Promise<DnsblLookupResult> {
 	const lookup = dnsblQueryName(ip, zone);
 	const timeoutMs = deps.timeoutMs ?? LOOKUP_TIMEOUT_MS;
+	const logUnknown = (fields: { ip: string; listId: string; errorCode: string }) => {
+		if (deps.quiet) logger.debug(fields, 'DNSBL check is unknown');
+		else logger.warn(fields, 'DNSBL check is unknown');
+	};
 
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
@@ -136,7 +152,7 @@ export async function lookupDnsblZone(
 		// is neither listing nor delisting evidence, so it must preserve a prior
 		// quarantine just like SERVFAIL/timeout.
 		if (listId === 'spamhaus' && result.some((addr) => addr.startsWith('127.255.255.'))) {
-			logger.warn({ ip, listId, errorCode: 'resolver_policy' }, 'DNSBL check is unknown');
+			logUnknown({ ip, listId, errorCode: 'resolver_policy' });
 			return { status: 'unknown', answers: boundedAnswers(result) };
 		}
 		return {
@@ -153,7 +169,7 @@ export async function lookupDnsblZone(
 		// confirmed decision (and fail closed for a never-observed address).
 		// Never log `zone` or the resolver message: keyed providers such as Abusix
 		// embed a credential in the queried hostname and resolver errors often echo it.
-		logger.warn({ ip, listId, errorCode }, 'DNSBL check is unknown');
+		logUnknown({ ip, listId, errorCode });
 		return { status: 'unknown', answers: [] };
 	} finally {
 		if (timeout) clearTimeout(timeout);
