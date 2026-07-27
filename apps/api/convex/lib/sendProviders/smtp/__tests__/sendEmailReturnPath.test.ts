@@ -41,7 +41,10 @@ const PARAMS = {
 };
 
 function lastEnvelope(): { from: string; to: string[]; data: Buffer } {
-	const call = sendMessage.mock.calls.at(-1)?.[0] as
+	// Not `.calls.at(-1)`: convex/tsconfig.json's lib is ES2021, where
+	// Array.prototype.at does not exist.
+	const calls = sendMessage.mock.calls;
+	const call = calls[calls.length - 1]?.[0] as
 		| { envelope: { from: string; to: string[]; data: Buffer } }
 		| undefined;
 	if (!call) throw new Error('sendMessage was never called');
@@ -72,7 +75,10 @@ describe('smtpSendProvider.sendEmail — the custom return path on the wire', ()
 		const attempt = await smtpSendProvider.sendEmail(TRANSPORT, PARAMS, {
 			customReturnPath: true,
 		});
-		expect(attempt.success).toBe(true);
+		// Narrows EmailSendAttempt to its success arm — `id` only exists there, and
+		// the assertion below is this file's strongest claim, so it must not rest on
+		// an unnarrowed read.
+		if (!attempt.success) throw new Error(attempt.errorMessage);
 		const envelope = lastEnvelope();
 		expect(envelope.from).not.toBe('news@example.com');
 		expect(envelope.from.endsWith('@bounces.example.com')).toBe(true);

@@ -9,6 +9,7 @@ import {
 } from '../../lib/sendProviders/returnPathCapability';
 import { returnPathProbeMessageId } from '../messageIdRouting';
 import { returnPathCapabilityFor } from '../relayReturnPath';
+import { resolveLastMileRoutePlanFromDb } from '../../lib/sendProviders/route';
 
 /**
  * Integration half of G-08's capability detection: the probe verdict is
@@ -40,16 +41,27 @@ beforeEach(() => {
 	vi.useFakeTimers({ toFake: ['Date'] });
 	vi.setSystemTime(T0);
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+	vi.useRealTimers();
+	vi.unstubAllEnvs();
+});
 
+/**
+ * Submits the probe and NARROWS the mutation's result union here, once. Every
+ * caller below asserts on `.status`, which only exists on the `ok` arm; an
+ * unresolvable transport is a fixture bug, not an outcome under test, so it
+ * throws rather than silently reading `undefined`.
+ */
 async function submit(t: ReturnType<typeof convexTest>, accepted = true) {
-	return await t.mutation(internal.delivery.relayReturnPath.recordProbeSubmission, {
+	const result = await t.mutation(internal.delivery.relayReturnPath.recordProbeSubmission, {
 		transportId: TRANSPORT_ID,
 		probeId: PROBE_ID,
 		sentEnvelopeSender: SENT,
 		accepted,
 		at: Date.now(),
 	});
+	if (!result.ok) throw new Error(`probe submission rejected: ${result.reason}`);
+	return result;
 }
 
 /**
