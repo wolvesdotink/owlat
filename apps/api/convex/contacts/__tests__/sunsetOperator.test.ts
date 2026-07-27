@@ -621,8 +621,9 @@ describe('setSunsetPolicy — clearing an override back to inherited', () => {
 			.mutation(api.contacts.sunset.setSunsetPolicy, { clearFields: ['isEnabled'] });
 
 		const audits = await readPolicyAudits(t);
-		expect(audits.at(-1)?.details?.['clearedFields']).toBe('isEnabled');
-		expect(audits.at(-1)?.details?.['isEnabled']).toBeNull();
+		const latest = audits[audits.length - 1];
+		expect(latest?.details?.['clearedFields']).toBe('isEnabled');
+		expect(latest?.details?.['isEnabled']).toBeNull();
 		const rows = await readPolicyRows(t);
 		expect(rows[0]?.isEnabled).toBeUndefined();
 	});
