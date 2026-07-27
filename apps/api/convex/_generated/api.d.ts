@@ -64,6 +64,7 @@ import type * as analytics_reputationSnapshots from "../analytics/reputationSnap
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
 import type * as analytics_spamRate from "../analytics/spamRate.js";
 import type * as analytics_spendBudget from "../analytics/spendBudget.js";
+import type * as analytics_transportOutcomeSummary from "../analytics/transportOutcomeSummary.js";
 import type * as analytics_transportOutcomes from "../analytics/transportOutcomes.js";
 import type * as assistant_conversations from "../assistant/conversations.js";
 import type * as assistant_insights from "../assistant/insights.js";
@@ -850,6 +851,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/sendingReputation": typeof analytics_sendingReputation;
   "analytics/spamRate": typeof analytics_spamRate;
   "analytics/spendBudget": typeof analytics_spendBudget;
+  "analytics/transportOutcomeSummary": typeof analytics_transportOutcomeSummary;
   "analytics/transportOutcomes": typeof analytics_transportOutcomes;
   "assistant/conversations": typeof assistant_conversations;
   "assistant/insights": typeof assistant_insights;
