@@ -466,6 +466,7 @@ import type * as lib_secretLeakScan from "../lib/secretLeakScan.js";
 import type * as lib_sendDailyStats from "../lib/sendDailyStats.js";
 import type * as lib_sendProviders_capability from "../lib/sendProviders/capability.js";
 import type * as lib_sendProviders_catalog from "../lib/sendProviders/catalog.js";
+import type * as lib_sendProviders_cellRoute from "../lib/sendProviders/cellRoute.js";
 import type * as lib_sendProviders_destinationProvider from "../lib/sendProviders/destinationProvider.js";
 import type * as lib_sendProviders_dispatch from "../lib/sendProviders/dispatch.js";
 import type * as lib_sendProviders_health from "../lib/sendProviders/health.js";
@@ -475,6 +476,7 @@ import type * as lib_sendProviders_pluginProvider from "../lib/sendProviders/plu
 import type * as lib_sendProviders_relayDomainVerification from "../lib/sendProviders/relayDomainVerification.js";
 import type * as lib_sendProviders_resend_index from "../lib/sendProviders/resend/index.js";
 import type * as lib_sendProviders_route from "../lib/sendProviders/route.js";
+import type * as lib_sendProviders_routeInputs from "../lib/sendProviders/routeInputs.js";
 import type * as lib_sendProviders_routing from "../lib/sendProviders/routing.js";
 import type * as lib_sendProviders_ses_index from "../lib/sendProviders/ses/index.js";
 import type * as lib_sendProviders_smtp_index from "../lib/sendProviders/smtp/index.js";
@@ -1248,6 +1250,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendDailyStats": typeof lib_sendDailyStats;
   "lib/sendProviders/capability": typeof lib_sendProviders_capability;
   "lib/sendProviders/catalog": typeof lib_sendProviders_catalog;
+  "lib/sendProviders/cellRoute": typeof lib_sendProviders_cellRoute;
   "lib/sendProviders/destinationProvider": typeof lib_sendProviders_destinationProvider;
   "lib/sendProviders/dispatch": typeof lib_sendProviders_dispatch;
   "lib/sendProviders/health": typeof lib_sendProviders_health;
@@ -1257,6 +1260,7 @@ declare const fullApi: ApiFromModules<{
   "lib/sendProviders/relayDomainVerification": typeof lib_sendProviders_relayDomainVerification;
   "lib/sendProviders/resend/index": typeof lib_sendProviders_resend_index;
   "lib/sendProviders/route": typeof lib_sendProviders_route;
+  "lib/sendProviders/routeInputs": typeof lib_sendProviders_routeInputs;
   "lib/sendProviders/routing": typeof lib_sendProviders_routing;
   "lib/sendProviders/ses/index": typeof lib_sendProviders_ses_index;
   "lib/sendProviders/smtp/index": typeof lib_sendProviders_smtp_index;
