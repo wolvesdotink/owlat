@@ -341,8 +341,15 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 	// Its own hash namespace, and — critically — no engagement rank anywhere in
 	// the key. Slice membership must be independent of engagement, or the gate
 	// that reads it is measuring cohort quality again (D8).
-	const sliceBucket =
-		calibrationBucketFor(input.recipient, mixVersion) ?? randomBucket(input.randomUnit);
+	//
+	// There is deliberately NO random fallback here. The arm draw may fall back
+	// to `randomUnit` when the recipient carries no stable identity; if the
+	// slice draw did the same it would read the SAME random unit, slice
+	// membership would become a deterministic function of the arm, and every
+	// calibration recipient of such a batch would land in one arm. An
+	// identity-less recipient has nothing stable to join a randomized
+	// comparison on, so it is simply not in the slice.
+	const sliceBucket = calibrationBucketFor(input.recipient, mixVersion);
 	const isCalibration = sliceBucket !== null && sliceBucket < sliceThreshold;
 
 	if (isCalibration) {
