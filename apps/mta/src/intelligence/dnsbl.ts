@@ -8,7 +8,14 @@
 import { resolve4 } from 'dns/promises';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import { DNSBL_LISTS, type DnsblListDefinition } from '@owlat/shared/dnsbl';
+import {
+	DNSBL_LIST_IDS,
+	DNSBL_LISTS,
+	dnsblZoneHost,
+	type DnsblListDefinition,
+	type DnsblListId,
+} from '@owlat/shared/dnsbl';
+import type { IpAuditZoneId } from '@owlat/shared/ipAudit';
 import {
 	ipAddressFamily,
 	reverseIpAddressForDns,
@@ -64,16 +71,14 @@ export function configuredDnsblZones(
 	config: Pick<MtaConfig, 'abusixDnsblApiKey'>,
 	addressFamily?: IpAddressFamily
 ): DnsblZone[] {
-	const zones: DnsblZone[] = [
-		{ ...DNSBL_LISTS.spamhaus, zone: 'zen.spamhaus.org' },
-		{ ...DNSBL_LISTS.barracuda, zone: 'b.barracudacentral.org' },
-		{ ...DNSBL_LISTS.spamcop, zone: 'bl.spamcop.net' },
-	];
-	if (config.abusixDnsblApiKey) {
-		zones.push({
-			...DNSBL_LISTS.abusix,
-			zone: `${config.abusixDnsblApiKey}.combined.mail.abusix.zone`,
-		});
+	// Zone hostnames live on DNSBL_LISTS so the routing sweep and the pre-flight
+	// IP audit can never drift apart. A keyed feed without its credential is
+	// simply absent here, exactly as before.
+	const zones: DnsblZone[] = [];
+	for (const id of DNSBL_LIST_IDS) {
+		const list = DNSBL_LISTS[id];
+		const zone = dnsblZoneHost(list, config.abusixDnsblApiKey);
+		if (zone) zones.push({ ...list, zone });
 	}
 	return addressFamily
 		? zones.filter((zone) => zone.addressFamilies.includes(addressFamily))
@@ -87,46 +92,97 @@ export function dnsblQueryName(ip: string, zone: string): string {
 	return `${reversed}.${zone}`;
 }
 
-/** Check a single IP against a single applicable DNSBL zone. */
-async function checkDnsbl(
+/** Resolver seam so callers (and tests) can supply their own DNS transport. */
+export interface DnsblLookupDeps {
+	resolve4: (hostname: string) => Promise<string[]>;
+	timeoutMs?: number;
+	/**
+	 * Advisory callers (the /24 neighbourhood sample) set this so a resolver
+	 * outage logs at debug instead of emitting one warn per probed address. The
+	 * warn exists because ROUTING keeps a stale decision on `unknown`; a probe
+	 * that gates nothing has no such consequence to announce.
+	 */
+	quiet?: boolean;
+}
+
+export interface DnsblLookupResult {
+	status: DnsblResult['status'];
+	/** Bounded copy of the raw A answers, for callers that decode return codes. */
+	answers: string[];
+}
+
+/** A hostile or misconfigured zone can answer with an unbounded RRset. */
+const MAX_RETAINED_ANSWERS = 16;
+const MAX_ANSWER_LENGTH = 45;
+
+function boundedAnswers(answers: readonly string[]): string[] {
+	return answers
+		.slice(0, MAX_RETAINED_ANSWERS)
+		.map((answer) => String(answer).slice(0, MAX_ANSWER_LENGTH));
+}
+
+/**
+ * Look one IP up in one DNSBL zone and return both the verdict and the raw
+ * answers. This is the single DNSBL lookup path in the MTA: the periodic
+ * routing checker and the pre-flight IP audit both go through it.
+ */
+export async function lookupDnsblZone(
 	ip: string,
-	listId: DnsblListDefinition['id'],
-	zone: string
-): Promise<DnsblResult['status']> {
+	listId: DnsblListId | IpAuditZoneId,
+	zone: string,
+	deps: DnsblLookupDeps = { resolve4 }
+): Promise<DnsblLookupResult> {
 	const lookup = dnsblQueryName(ip, zone);
+	const timeoutMs = deps.timeoutMs ?? LOOKUP_TIMEOUT_MS;
+	const logUnknown = (fields: { ip: string; listId: string; errorCode: string }) => {
+		if (deps.quiet) logger.debug(fields, 'DNSBL check is unknown');
+		else logger.warn(fields, 'DNSBL check is unknown');
+	};
 
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
 		const result = await Promise.race([
-			resolve4(lookup),
+			deps.resolve4(lookup),
 			new Promise<never>(
 				(_, reject) =>
-					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), LOOKUP_TIMEOUT_MS))
+					(timeout = setTimeout(() => reject(new Error('DNSBL lookup timeout')), timeoutMs))
 			),
 		]);
 		// Spamhaus reserves 127.255.255.x for resolver/configuration errors. That
 		// is neither listing nor delisting evidence, so it must preserve a prior
 		// quarantine just like SERVFAIL/timeout.
 		if (listId === 'spamhaus' && result.some((addr) => addr.startsWith('127.255.255.'))) {
-			logger.warn({ ip, listId, errorCode: 'resolver_policy' }, 'DNSBL check is unknown');
-			return 'unknown';
+			logUnknown({ ip, listId, errorCode: 'resolver_policy' });
+			return { status: 'unknown', answers: boundedAnswers(result) };
 		}
-		return result.some((addr) => addr.startsWith('127.')) ? 'listed' : 'unknown';
+		return {
+			status: result.some((addr) => addr.startsWith('127.')) ? 'listed' : 'unknown',
+			answers: boundedAnswers(result),
+		};
 	} catch (err: unknown) {
 		const errorCode = safeDnsErrorCode(err);
 		// NXDOMAIN/ENOTFOUND = not listed (this is the expected "clean" result)
 		if (CLEAN_DNS_ERROR_CODES.has(errorCode)) {
-			return 'clean';
+			return { status: 'clean', answers: [] };
 		}
 		// Resolver availability is not evidence of delisting. Preserve the last
 		// confirmed decision (and fail closed for a never-observed address).
 		// Never log `zone` or the resolver message: keyed providers such as Abusix
 		// embed a credential in the queried hostname and resolver errors often echo it.
-		logger.warn({ ip, listId, errorCode }, 'DNSBL check is unknown');
-		return 'unknown';
+		logUnknown({ ip, listId, errorCode });
+		return { status: 'unknown', answers: [] };
 	} finally {
 		if (timeout) clearTimeout(timeout);
 	}
+}
+
+/** Check a single IP against a single applicable DNSBL zone. */
+async function checkDnsbl(
+	ip: string,
+	listId: DnsblListDefinition['id'],
+	zone: string
+): Promise<DnsblResult['status']> {
+	return (await lookupDnsblZone(ip, listId, zone)).status;
 }
 
 /**
