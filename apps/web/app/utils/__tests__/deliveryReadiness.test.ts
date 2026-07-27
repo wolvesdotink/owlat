@@ -425,29 +425,31 @@ const BLOCKED_ROW = dualArmRow({
 });
 
 describe('summarizeDualArmAlignment', () => {
+	// "Nothing to say" is the ABSENCE of a summary, encoded once. There is no
+	// `not_applicable` state for a caller to forget to filter out.
 	it('says nothing at all with no rows, null rows, or only single_arm rows (D2)', () => {
 		for (const rows of [null, undefined, [], [dualArmRow({ verdict: 'single_arm' })]]) {
-			expect(summarizeDualArmAlignment(rows).state).toBe('not_applicable');
+			expect(summarizeDualArmAlignment(rows)).toBeUndefined();
 		}
 	});
 
 	it('ranks blocked above unknown above aligned', () => {
-		expect(summarizeDualArmAlignment([dualArmRow({ verdict: 'unknown' }), BLOCKED_ROW]).state).toBe(
-			'blocked'
-		);
 		expect(
-			summarizeDualArmAlignment([dualArmRow(), dualArmRow({ verdict: 'unknown' })]).state
+			summarizeDualArmAlignment([dualArmRow({ verdict: 'unknown' }), BLOCKED_ROW])?.state
+		).toBe('blocked');
+		expect(
+			summarizeDualArmAlignment([dualArmRow(), dualArmRow({ verdict: 'unknown' })])?.state
 		).toBe('unknown');
-		expect(summarizeDualArmAlignment([dualArmRow()]).state).toBe('aligned');
+		expect(summarizeDualArmAlignment([dualArmRow()])?.state).toBe('aligned');
 	});
 
 	it('carries the first failing remedy and the degraded reason', () => {
 		const summary = summarizeDualArmAlignment([
 			{ ...BLOCKED_ROW, isMeasurementDegraded: true, measurementDegradedReason: 'coarser bounces' },
 		]);
-		expect(summary.remedy).toContain('Flatten include:j.example');
-		expect(summary.degradedReason).toBe('coarser bounces');
-		expect(summary.domains).toEqual(['acme.com']);
+		expect(summary?.remedy).toContain('Flatten include:j.example');
+		expect(summary?.degradedReason).toBe('coarser bounces');
+		expect(summary?.domains).toEqual(['acme.com']);
 	});
 });
 

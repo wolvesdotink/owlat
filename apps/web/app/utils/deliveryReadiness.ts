@@ -2,12 +2,14 @@ import { summarizeOutboundAlignment, type OutboundTransportFacts } from '@owlat/
 import type { HealthTone } from '~/utils/healthTone';
 import {
 	dualArmAlignmentGate,
-	dualArmSummaryOrUndefined,
+	summarizeDualArmAlignment,
 	type ReadinessDualArmRow,
 	type ReadinessDualArmSummary,
 } from '~/utils/dualArmAlignment';
+import type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus } from '~/utils/readinessGate';
 
 export type { ReadinessDualArmRow, ReadinessDualArmSummary };
+export type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
 
 /**
  * The single source of truth for "can this instance actually send mail, and if
@@ -27,45 +29,6 @@ export type { ReadinessDualArmRow, ReadinessDualArmSummary };
  * mapping is unit-testable without mounting anything or reaching the Convex
  * client.
  */
-
-/**
- * The readiness gates, in the order the panel renders them. `mta-sts` is a
- * conditional gate — it appears only when the deployment is publishing an
- * MTA-STS policy in `enforce` mode whose DNS/policy isn't verified yet, so that
- * an unfinished inbound-TLS hardening step is surfaced without adding noise to
- * deployments that don't publish a policy.
- */
-export type ReadinessGateKey =
-	| 'transport'
-	| 'domain'
-	| 'authentication'
-	| 'alignment'
-	| 'dual-arm-alignment'
-	| 'mta-sts';
-
-/**
- * A gate's state:
- *  - `ready`     — satisfied.
- *  - `attention` — needs an action from the operator (a fix link is offered).
- *  - `pending`   — waiting on something external (DNS propagation) or not yet
- *                  applicable; no action the operator can take right now.
- */
-export type ReadinessGateStatus = 'ready' | 'attention' | 'pending';
-
-export interface ReadinessGate {
-	key: ReadinessGateKey;
-	/** Human title of the gate. */
-	title: string;
-	/** One plain-language line on where this gate stands. No jargon, no lecture. */
-	detail: string;
-	status: ReadinessGateStatus;
-	/** Shared health tone → token classes (see `healthTone.ts`). */
-	tone: HealthTone;
-	/** In-app route that resolves this gate, or `null` when there's nothing to do. */
-	actionHref: string | null;
-	/** Label for the fix link, or `null` when `actionHref` is `null`. */
-	actionLabel: string | null;
-}
 
 /** Overall readiness level for the panel's headline chip. */
 export type ReadinessLevel = 'ready' | 'blocked' | 'incomplete';
@@ -215,7 +178,7 @@ export function readinessInputFromSources(
 		transportMisaligned: alignmentSummary?.misaligned ?? false,
 		misalignedDomains: alignmentSummary?.misalignedDomains ?? [],
 		alignmentReason: alignmentSummary?.reason ?? null,
-		dualArmAlignment: dualArmSummaryOrUndefined(dualArmRows),
+		dualArmAlignment: summarizeDualArmAlignment(dualArmRows),
 	};
 }
 

@@ -10,7 +10,7 @@
  * Pure primitives in, plain data out — no Convex client, no DOM.
  */
 
-import type { HealthTone } from '~/utils/healthTone';
+import type { ReadinessGate } from '~/utils/readinessGate';
 
 /**
  * One sending domain's dual-transport alignment verdict, as
@@ -30,9 +30,16 @@ export interface ReadinessDualArmRow {
 	measurementDegradedReason: string | null;
 }
 
-/** What the dual-arm gate should say, or `not_applicable` for "say nothing". */
+/**
+ * What the dual-arm gate should say.
+ *
+ * "Say nothing" is `undefined` — the ABSENCE of a summary — and it is encoded
+ * exactly once, in `summarizeDualArmAlignment`'s return type. A
+ * `'not_applicable'` member here would be a second encoding of the same fact that
+ * every consumer would then have to remember to filter out.
+ */
 export interface ReadinessDualArmSummary {
-	state: 'not_applicable' | 'aligned' | 'unknown' | 'blocked';
+	state: 'aligned' | 'unknown' | 'blocked';
 	/** The domains the state is about, in the order returned. */
 	domains: string[];
 	/** The first failing check's remedy, or `null` when nothing is failing. */
@@ -41,35 +48,22 @@ export interface ReadinessDualArmSummary {
 	degradedReason: string | null;
 }
 
-/** The shape the readiness gate list expects back. Structural on purpose. */
-interface DualArmGate {
-	key: 'dual-arm-alignment';
-	title: string;
-	detail: string;
-	status: 'ready' | 'attention' | 'pending';
-	tone: HealthTone;
-	actionHref: string | null;
-	actionLabel: string | null;
-}
-
 const DOMAINS_HREF = '/dashboard/delivery/domains';
 
 /**
- * Fold the alignment pre-flight rows into one summary.
+ * Fold the alignment pre-flight rows into one summary, or `undefined` when there
+ * is NOTHING TO SAY — in which case no gate is rendered at all.
  *
- * `single_arm` rows are treated as NOTHING TO SAY, exactly like no rows at all:
- * a deployment with no reference transport must not be told about a check that
- * cannot apply to it (D2). A `blocked` verdict outranks an `unknown` one, and an
- * `unknown` outranks `aligned`, because that is the order an operator should read
- * them in.
+ * `single_arm` rows are nothing to say, exactly like no rows at all: a deployment
+ * with no reference transport must not be told about a check that cannot apply to
+ * it (D2). A `blocked` verdict outranks an `unknown` one, and an `unknown`
+ * outranks `aligned`, because that is the order an operator should read them in.
  */
 export function summarizeDualArmAlignment(
 	rows: readonly ReadinessDualArmRow[] | null | undefined
-): ReadinessDualArmSummary {
+): ReadinessDualArmSummary | undefined {
 	const relevant = (rows ?? []).filter((row) => row.verdict !== 'single_arm');
-	if (relevant.length === 0) {
-		return { state: 'not_applicable', domains: [], remedy: null, degradedReason: null };
-	}
+	if (relevant.length === 0) return undefined;
 	const degradedReason =
 		relevant.find((row) => row.isMeasurementDegraded)?.measurementDegradedReason ?? null;
 	const blocked = relevant.filter((row) => row.verdict === 'blocked');
@@ -97,14 +91,6 @@ export function summarizeDualArmAlignment(
 	};
 }
 
-/** `not_applicable` collapses to `undefined` so no gate is rendered at all. */
-export function dualArmSummaryOrUndefined(
-	rows: readonly ReadinessDualArmRow[] | null | undefined
-): ReadinessDualArmSummary | undefined {
-	const summary = summarizeDualArmAlignment(rows);
-	return summary.state === 'not_applicable' ? undefined : summary;
-}
-
 /**
  * The gate itself — rendered only when a reference transport is actually in play,
  * so a deployment running on the own MTA alone never sees it (D2).
@@ -114,7 +100,7 @@ export function dualArmSummaryOrUndefined(
  * own-MTA share; the instance keeps sending exactly as before. `unknown` is DNS
  * that has not answered — pending, with nothing for the operator to do.
  */
-export function dualArmAlignmentGate(summary: ReadinessDualArmSummary): DualArmGate {
+export function dualArmAlignmentGate(summary: ReadinessDualArmSummary): ReadinessGate {
 	const named = summary.domains.length > 0 ? ` (${summary.domains.join(', ')})` : '';
 	const title = 'Dual-transport alignment';
 	if (summary.state === 'blocked') {
