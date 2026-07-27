@@ -19,6 +19,7 @@ import { composeForSend } from '../sendComposition';
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
 import schema from '../../schema';
 import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { loadSeedAccounts } from '../../analytics/seedPlacement';
 import { campaignEmailPool } from '../workpool';
 import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
@@ -43,7 +44,7 @@ const CONTACT_ID = 'contact1' as Id<'contacts'>;
 const SEND_ID = 'send1' as Id<'emailSends'>;
 const CAMPAIGN_ID = 'campaign1' as Id<'campaigns'>;
 const PROBE_REF = 'probe1' as Id<'seedPlacementProbes'>;
-const PROBE_ID = 'sp_abcdefghij0123456789kl';
+const PROBE_ID = 'sp_a1b2c3d4e5f60718293a4b';
 const SEED_ADDRESS = 'owlat.seed.01@gmail.example';
 
 // A real campaign envelope. The template carries no personalization tokens so
@@ -250,9 +251,12 @@ const modules = { ...rootGlob, ...deliveryGlob };
 const NOW = 1_800_000_000_000;
 const ORG = 'org_seed_emission';
 
+const GMAIL_SEED_ADDRESS = 'owlat.seed.gmail@gmail.example';
+const MICROSOFT_SEED_ADDRESS = 'owlat.seed.ms@outlook.example';
+
 const SEEDS = [
-	{ address: 'owlat.seed.gmail@gmail.example', provider: 'gmail' as const, login: 'seed-g' },
-	{ address: 'owlat.seed.ms@outlook.example', provider: 'microsoft' as const, login: 'seed-m' },
+	{ address: GMAIL_SEED_ADDRESS, provider: 'gmail' as const, login: 'seed-g' },
+	{ address: MICROSOFT_SEED_ADDRESS, provider: 'microsoft' as const, login: 'seed-m' },
 ];
 
 async function connectSeeds(t: ReturnType<typeof convexTest>): Promise<void> {
@@ -509,5 +513,97 @@ describe('enqueueSeedShadowCopies — with seed mailboxes present', () => {
 		expect(counted.reputation).toEqual([]);
 		expect(counted.sends).toEqual([]);
 		expect(counted.transactional).toEqual([]);
+	});
+});
+
+/**
+ * A seed is only worth MAILING if the poller will walk it.
+ *
+ * `auth_error` is a seed whose credentials the operator has to re-enter. It
+ * still counts against the per-org connect cap and still appears in the
+ * roll-up's denominator — it is a seed they own, not one they removed — but the
+ * poller deliberately skips it (`CONNECTABLE_ACCOUNT_STATUSES`). Mailing it
+ * would burn real volume against the warming cap and the IP on a message
+ * nothing can ever observe, and leave an unclassified ledger row sitting for
+ * the whole 90-day retention.
+ */
+describe('enqueueSeedShadowCopies — a seed the poller will never walk', () => {
+	beforeEach(() => {
+		vi.mocked(campaignEmailPool.enqueueAction).mockClear();
+	});
+
+	async function setSeedStatus(
+		t: ReturnType<typeof convexTest>,
+		address: string,
+		status: 'connected' | 'auth_error' | 'disconnected'
+	): Promise<void> {
+		await t.run(async (ctx) => {
+			const accounts = await ctx.db.query('externalMailAccounts').collect();
+			for (const account of accounts) {
+				const mailbox = await ctx.db.get(account.mailboxId);
+				if (mailbox?.address === address) {
+					await ctx.db.patch(account._id, { status, updatedAt: NOW });
+				}
+			}
+		});
+	}
+
+	it('sends no shadow copy to a seed in auth_error', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		await setSeedStatus(t, GMAIL_SEED_ADDRESS, 'auth_error');
+		const campaignId = await makeCampaign(t);
+
+		const outcome = await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				base: { ...realSend, campaignId, organizationId: ORG },
+				now: NOW,
+			})
+		);
+
+		expect(outcome).toEqual({ enqueued: 1 });
+		const probes = await t.run(async (ctx) => ctx.db.query('seedPlacementProbes').collect());
+		expect(probes).toHaveLength(1);
+		expect(vi.mocked(campaignEmailPool.enqueueAction)).toHaveBeenCalledTimes(1);
+		// And the one that did go out is the CONNECTABLE seed, not the broken one.
+		const recipients = vi.mocked(campaignEmailPool.enqueueAction).mock.calls.map((call) => {
+			const envelope = call[2]?.['envelopeInput'] as CampaignEnvelopeInput | undefined;
+			return envelope?.to;
+		});
+		expect(recipients).toEqual([MICROSOFT_SEED_ADDRESS]);
+	});
+
+	it('sends no shadow copy to a disconnected seed either', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		for (const seed of SEEDS) await setSeedStatus(t, seed.address, 'disconnected');
+		const campaignId = await makeCampaign(t);
+
+		const outcome = await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				base: { ...realSend, campaignId, organizationId: ORG },
+				now: NOW,
+			})
+		);
+
+		expect(outcome).toEqual({ enqueued: 0 });
+		expect(vi.mocked(campaignEmailPool.enqueueAction)).not.toHaveBeenCalled();
+	});
+
+	it('an auth_error seed still counts in the roll-up denominator — it is one the operator owns', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		await setSeedStatus(t, GMAIL_SEED_ADDRESS, 'auth_error');
+
+		const live = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, NOW));
+		expect(live).toHaveLength(2);
+		const connectable = await t.run(async (ctx) =>
+			loadSeedAccounts(ctx.db, ORG, NOW, 'connectable')
+		);
+		expect(connectable.map((a) => a.address)).toEqual([MICROSOFT_SEED_ADDRESS]);
 	});
 });

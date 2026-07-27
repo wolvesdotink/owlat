@@ -274,7 +274,7 @@ describe('trackOpen (GET /t/o/...)', () => {
 // ============================================================================
 
 describe('seed probe ids are rejected by the tracking endpoints', () => {
-	const PROBE_ID = 'sp_abcdefghij0123456789kl';
+	const PROBE_ID = 'sp_a1b2c3d4e5f60718293a4b';
 
 	it('is shaped like a Convex id, which is why the guard has to be by name', () => {
 		expect(/^[a-zA-Z0-9_-]{10,}$/.test(PROBE_ID)).toBe(true);

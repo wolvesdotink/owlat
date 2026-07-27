@@ -4,7 +4,7 @@ import { internal } from '../../_generated/api';
 import schema from '../../schema';
 import { insertExternalAccountRow } from '../../mail/externalAccountShared';
 import { loadSeedAccounts } from '../seedPlacement';
-import type { Id } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
 import { modules } from './testModules';
 import {
 	planSeedHygiene,
@@ -144,7 +144,7 @@ describe('shouldRemindSeedRotation', () => {
 
 const NOW = 1_800_000_000_000;
 const ORG = 'org_hygiene';
-const PROBE_ID = 'sp_abcdefghij0123456789kl';
+const PROBE_ID = 'sp_a1b2c3d4e5f60718293a4b';
 
 const CREDS = {
 	emailAddress: 'owlat.seed.02@outlook.example',
@@ -285,7 +285,15 @@ describe('the hygiene plan is EXECUTED against the ledger row', () => {
 });
 
 describe('the rotation reminder surfaces on schedule', () => {
-	it('is due after the interval and is recorded, org-scoped', async () => {
+	/** Every rotation reminder written against the seed's mailbox. */
+	async function reminders(t: ReturnType<typeof convexTest>): Promise<Doc<'mailAuditLog'>[]> {
+		return t.run(async (ctx) => {
+			const rows = await ctx.db.query('mailAuditLog').collect();
+			return rows.filter((row) => row.event === 'seed_account.rotation_reminder');
+		});
+	}
+
+	it('is due after the interval and EMITS an operator-visible artifact, org-scoped', async () => {
 		const t = convexTest(schema, modules);
 		const { accountId } = await connectSeed(t);
 		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
@@ -297,22 +305,70 @@ describe('the rotation reminder surfaces on schedule', () => {
 		expect(due[0]?.rotationReminderDue).toBe(true);
 
 		expect(
-			await t.mutation(internal.analytics.seedPlacement.markSeedRotationReminded, {
+			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
 				organizationId: 'org_other',
 				accountId,
 				now: later,
 			})
-		).toEqual({ updated: false });
+		).toEqual({ emitted: false });
+		// A refused call emits nothing AND leaves the flag standing.
+		expect(await reminders(t)).toEqual([]);
+		const stillDue = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
+		expect(stillDue[0]?.rotationReminderDue).toBe(true);
 
 		expect(
-			await t.mutation(internal.analytics.seedPlacement.markSeedRotationReminded, {
+			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
 				organizationId: ORG,
 				accountId,
 				now: later,
 			})
-		).toEqual({ updated: true });
+		).toEqual({ emitted: true });
+
+		// THE ARTIFACT. A reminder that only flipped a timestamp is a reminder no
+		// human ever sees — the flag is cleared precisely because something was
+		// written to the trail the operator can read.
+		const emitted = await reminders(t);
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0]?.occurredAt).toBe(later);
+		expect(emitted[0]?.details).toContain('rotat');
+		// Advisory, and carrying no address or credential (D2 + the security rule).
+		expect(emitted[0]?.details ?? '').not.toContain('owlat.seed.02@outlook.example');
 
 		const after = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
 		expect(after[0]?.rotationReminderDue).toBe(false);
+	});
+
+	it('emits NOTHING and clears NOTHING when the reminder is not yet due', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+
+		expect(
+			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
+				organizationId: ORG,
+				accountId,
+				now: NOW + DAY,
+			})
+		).toEqual({ emitted: false });
+		expect(await reminders(t)).toEqual([]);
+
+		// The clock was never restarted, so the reminder still arrives on schedule.
+		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+		const due = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
+		expect(due[0]?.rotationReminderDue).toBe(true);
+	});
+
+	it('is emitted once, not once per sweep tick', async () => {
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+
+		for (const now of [later, later + 1000, later + 2000]) {
+			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
+				organizationId: ORG,
+				accountId,
+				now,
+			});
+		}
+		expect(await reminders(t)).toHaveLength(1);
 	});
 });

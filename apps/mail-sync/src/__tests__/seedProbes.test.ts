@@ -20,6 +20,9 @@ import {
 
 const NOW = 1_800_000_000_000;
 
+/** The one host the backend authorises the hygiene click against. */
+const HOST = 'track.example';
+
 interface Recorded {
 	probeId: string;
 	folderName: string | null;
@@ -30,6 +33,8 @@ function buildDeps(overrides: {
 	folders?: Record<string, string>;
 	hygiene?: Record<string, { markRead: boolean; click: boolean }>;
 	placements?: Record<string, 'inbox' | 'category' | 'spam' | 'deleted' | 'missing'>;
+	/** What the backend reports back from the rotation-reminder emission. */
+	reminderEmitted?: boolean;
 }): {
 	deps: SeedProbeDeps;
 	recorded: Recorded[];
@@ -61,7 +66,7 @@ function buildDeps(overrides: {
 		markRead: async (location) => {
 			markedRead.push(location);
 		},
-		linkTargets: async () => ['https://track.example/t/c/sp_x/abc/sig'],
+		linkTargets: async () => [`https://${HOST}/t/c/sp_x/abc/sig`],
 		close: async () => undefined,
 	};
 
@@ -81,8 +86,9 @@ function buildDeps(overrides: {
 				hygiene: overrides.hygiene?.[probeId] ?? { markRead: true, click: false },
 			};
 		},
-		markRotationReminded: async ({ accountId }) => {
+		emitRotationReminder: async ({ accountId }) => {
 			reminded.push(accountId);
+			return { emitted: overrides.reminderEmitted ?? true };
 		},
 		click: async (url) => {
 			clicked.push(url);
@@ -107,6 +113,7 @@ const account: SeedProbeWorkItem = {
 	probeIds: ['sp_a'],
 	expiredProbeIds: [],
 	rotationReminderDue: false,
+	clickHosts: [HOST],
 };
 
 describe('runSeedProbeSweep — classification', () => {
@@ -165,7 +172,7 @@ describe('runSeedProbeSweep — the hygiene EXECUTOR', () => {
 			hygiene: { sp_a: { markRead: true, click: true } },
 		});
 		const result = await runSeedProbeSweep(h.deps);
-		expect(h.clicked).toEqual(['https://track.example/t/c/sp_x/abc/sig']);
+		expect(h.clicked).toEqual([`https://${HOST}/t/c/sp_x/abc/sig`]);
 		expect(result.clicked).toBe(1);
 	});
 
@@ -194,6 +201,20 @@ describe('runSeedProbeSweep — the hygiene EXECUTOR', () => {
 		const result = await runSeedProbeSweep(h.deps);
 		expect(h.reminded).toEqual(['acct_1']);
 		expect(result.rotationReminders).toBe(1);
+	});
+
+	it('counts NO reminder when the backend emitted nothing', async () => {
+		// The sweep does not decide whether a reminder is due and it does not clear
+		// the flag: it offers the backend the chance, and the backend only records
+		// the reminder when it really emitted one. A tick that emits nothing leaves
+		// the flag standing for the next tick.
+		const h = buildDeps({
+			work: [{ ...account, rotationReminderDue: true }],
+			folders: { sp_a: 'INBOX' },
+			reminderEmitted: false,
+		});
+		const result = await runSeedProbeSweep(h.deps);
+		expect(result.rotationReminders).toBe(0);
 	});
 });
 
@@ -231,6 +252,7 @@ describe('runSeedProbeSweep — D2: absence is a supported configuration', () =>
 			markedRead: 0,
 			clicked: 0,
 			rotationReminders: 0,
+			unopened: 0,
 			cursor: null,
 		});
 		expect(h.opened()).toBe(0);
@@ -246,6 +268,60 @@ describe('runSeedProbeSweep — D2: absence is a supported configuration', () =>
 			},
 		};
 		await expect(runSeedProbeSweep(deps)).resolves.toMatchObject({ accounts: 1, classified: 0 });
+	});
+});
+
+/**
+ * THE PATH PRODUCTION ACTUALLY TAKES.
+ *
+ * `openSeedMailbox` catches every exception out of connect/LIST and returns
+ * `null`; it does not throw. A probe we could not look for is not a probe we
+ * failed to find, and classification is once-only — so recording this batch
+ * would burn a PERMANENT `missing` into the ledger for every outstanding probe
+ * on the account, and at scale manufacture a provider-wide collapse out of an
+ * expired app password or an IMAP maintenance window.
+ */
+describe('runSeedProbeSweep — a mailbox that could not be OPENED', () => {
+	function unopenableDeps(work: SeedProbeWorkItem[]) {
+		const h = buildDeps({ work });
+		const deps: SeedProbeDeps = { ...h.deps, openMailbox: async () => null };
+		return { h, deps };
+	}
+
+	it('records NOTHING for the outstanding probes and leaves the ledger untouched', async () => {
+		const { h, deps } = unopenableDeps([{ ...account, probeIds: ['sp_a', 'sp_b'] }]);
+		const result = await runSeedProbeSweep(deps);
+		expect(h.recorded).toEqual([]);
+		expect(result.classified).toBe(0);
+		expect(result.missing).toBe(0);
+		expect(result.unopened).toBe(1);
+		expect(result.accounts).toBe(1);
+	});
+
+	it('still reports the probes past the give-up horizon — only THAT may say missing', async () => {
+		const { h, deps } = unopenableDeps([
+			{ ...account, probeIds: ['sp_a'], expiredProbeIds: ['sp_old'] },
+		]);
+		const result = await runSeedProbeSweep(deps);
+		expect(h.recorded).toEqual([{ probeId: 'sp_old', folderName: null }]);
+		expect(result.missing).toBe(1);
+		expect(result.unopened).toBe(1);
+	});
+
+	it('marks nothing read and clicks nothing', async () => {
+		const { h, deps } = unopenableDeps([{ ...account, probeIds: ['sp_a'] }]);
+		await runSeedProbeSweep(deps);
+		expect(h.markedRead).toEqual([]);
+		expect(h.clicked).toEqual([]);
+	});
+
+	it('still offers the rotation reminder — an unreachable seed is the stalest of all', async () => {
+		const { h, deps } = unopenableDeps([
+			{ ...account, probeIds: ['sp_a'], rotationReminderDue: true },
+		]);
+		const result = await runSeedProbeSweep(deps);
+		expect(h.reminded).toEqual(['acct_1']);
+		expect(result.rotationReminders).toBe(1);
 	});
 });
 
@@ -276,7 +352,7 @@ describe('extractLinkTargets', () => {
  */
 describe('extractProbeLinkTargets — the RAW probe, transfer-encoded', () => {
 	const longUrl =
-		'https://track.example/t/c/sp_abcdefghij0123456789kl/9f2a4c6e8b0d2f4a6c8e0b2d4f6a8c0e/3f9d';
+		'https://track.example/t/c/sp_a1b2c3d4e5f60718293a4b/9f2a4c6e8b0d2f4a6c8e0b2d4f6a8c0e/3f9d';
 
 	function quotedPrintableMessage(url: string): string {
 		// Exactly the shape compose/encoding.ts produces: <=76 octet lines with a
@@ -303,7 +379,7 @@ describe('extractProbeLinkTargets — the RAW probe, transfer-encoded', () => {
 
 	it('yields a target the hygiene chooser will actually click', () => {
 		const targets = extractProbeLinkTargets(quotedPrintableMessage(longUrl));
-		expect(chooseHygieneClickTarget(targets)).toBe(longUrl);
+		expect(chooseHygieneClickTarget(targets, [HOST])).toBe(longUrl);
 	});
 
 	it('scanning the RAW source instead would have produced a broken URL', () => {
@@ -331,36 +407,76 @@ describe('extractProbeLinkTargets — the RAW probe, transfer-encoded', () => {
  * likely to be the footer's one-click unsubscribe.
  */
 describe('the hygiene click is chosen deliberately', () => {
+	const HOSTS = [HOST, 'convex.example', 'app.example', 'cdn.example', 'org.example'];
+
 	it('skips the unsubscribe and preference footer links', () => {
 		expect(
-			chooseHygieneClickTarget([
-				'https://convex.example/unsub/probe/token',
-				'https://app.example/preferences?token=abc',
-				'https://track.example/t/c/sp_x/abc/sig',
-			])
-		).toBe('https://track.example/t/c/sp_x/abc/sig');
+			chooseHygieneClickTarget(
+				[
+					'https://convex.example/unsub/probe/token',
+					'https://app.example/preferences?token=abc',
+					`https://${HOST}/t/c/sp_x/abc/sig`,
+				],
+				HOSTS
+			)
+		).toBe(`https://${HOST}/t/c/sp_x/abc/sig`);
 	});
 
 	it('skips the open pixel and any other image target', () => {
 		expect(
-			chooseHygieneClickTarget([
-				'https://track.example/t/o/sp_x',
-				'https://cdn.example/hero.png',
-				'https://org.example/read',
-			])
+			chooseHygieneClickTarget(
+				[`https://${HOST}/t/o/sp_x`, 'https://cdn.example/hero.png', 'https://org.example/read'],
+				HOSTS
+			)
 		).toBe('https://org.example/read');
 	});
 
 	it('clicks NOTHING rather than clicking an unsubscribe link', () => {
 		expect(
-			chooseHygieneClickTarget([
-				'https://convex.example/unsub/probe/token',
-				'mailto:unsubscribe@org.example',
-			])
+			chooseHygieneClickTarget(
+				['https://convex.example/unsub/probe/token', 'mailto:unsubscribe@org.example'],
+				HOSTS
+			)
 		).toBeUndefined();
 	});
 
 	it('is undefined for an empty template', () => {
-		expect(chooseHygieneClickTarget([])).toBeUndefined();
+		expect(chooseHygieneClickTarget([], HOSTS)).toBeUndefined();
+	});
+});
+
+/**
+ * The candidate links come out of a message sitting on a mail server we do not
+ * run, so the chooser is only allowed to hand back a target on one of THIS
+ * deployment's own origins — the set the backend ships with the work item.
+ */
+describe('the hygiene click stays on our own origins', () => {
+	it('never picks a target on a host the backend did not authorise', () => {
+		expect(
+			chooseHygieneClickTarget(
+				['https://somewhere-else.example/anything', `https://${HOST}/t/c/sp_x/abc/sig`],
+				[HOST]
+			)
+		).toBe(`https://${HOST}/t/c/sp_x/abc/sig`);
+	});
+
+	it('clicks nothing at all when no candidate is on an authorised host', () => {
+		expect(
+			chooseHygieneClickTarget(['https://somewhere-else.example/anything'], [HOST])
+		).toBeUndefined();
+	});
+
+	it('clicks nothing when the backend authorised no host at all', () => {
+		expect(chooseHygieneClickTarget([`https://${HOST}/t/c/sp_x/abc/sig`], [])).toBeUndefined();
+	});
+
+	it('matches the host, not a substring of it', () => {
+		expect(
+			chooseHygieneClickTarget([`https://${HOST}.evil.example/t/c/sp_x/abc/sig`], [HOST])
+		).toBeUndefined();
+	});
+
+	it('ignores a candidate that is not a parseable URL', () => {
+		expect(chooseHygieneClickTarget(['https://['], [HOST])).toBeUndefined();
 	});
 });

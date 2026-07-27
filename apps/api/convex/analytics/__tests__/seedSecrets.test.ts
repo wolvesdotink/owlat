@@ -138,7 +138,7 @@ describe('seed mailbox contents', () => {
 			if (!account) throw new Error('fixture missing');
 			const id = await ctx.db.insert('seedPlacementProbes', {
 				organizationId: ORG,
-				probeId: 'sp_abcdefghij0123456789kl',
+				probeId: 'sp_a1b2c3d4e5f60718293a4b',
 				accountId: account._id,
 				provider: 'gmail',
 				stream: 'campaign',
@@ -175,7 +175,7 @@ describe('the probe header', () => {
 		convexSiteUrl: 'https://convex.example',
 		siteUrl: 'https://app.example',
 	};
-	const probeId = 'sp_abcdefghij0123456789kl';
+	const probeId = 'sp_a1b2c3d4e5f60718293a4b';
 	const shadow = buildSeedShadowEnvelope(realSend, {
 		address: 'owlat.seed.01@gmail.example',
 		probeId,

@@ -38,7 +38,7 @@ vi.mock('../delivery/workpool', () => ({
 const modules = import.meta.glob('../**/*.*s');
 
 const ORG = 'org-seed-reentry';
-const PROBE_ID = 'sp_abcdefghij0123456789kl';
+const PROBE_ID = 'sp_a1b2c3d4e5f60718293a4b';
 
 beforeEach(() => {
 	enqueueAction.mockClear();
