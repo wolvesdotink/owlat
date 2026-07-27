@@ -106,7 +106,12 @@ export function registerDeliveryCrons(crons: Crons): void {
 	// feed a few times a day, so six-hourly is as fresh as the data gets. A
 	// deployment with no feed configured is a supported configuration: the poller
 	// returns immediately, writes nothing and raises nothing (D2).
-	crons.interval('poll Microsoft SNDS data feeds', { hours: 6 }, internal.delivery.snds.poll, {});
+	crons.interval(
+		'poll Microsoft SNDS data feeds',
+		{ hours: 6 },
+		internal.delivery.sndsPoll.poll,
+		{}
+	);
 
 	crons.interval(
 		'cleanup Microsoft SNDS telemetry',

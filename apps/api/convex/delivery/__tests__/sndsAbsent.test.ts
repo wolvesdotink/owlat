@@ -12,7 +12,7 @@ import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import { parseSndsFeedUrls } from '../snds';
+import { parseSndsFeedUrls } from '../sndsPoll';
 import { evaluateSndsGate, sndsPromotionPass, SNDS_ABSENT_SUBSTITUTION } from '../sndsGate';
 
 import { modules } from './helpers/convexModules';
@@ -28,7 +28,7 @@ describe('SNDS absent — the poller', () => {
 		const fetchMock = vi.fn(async () => new Response('', { status: 200 }));
 		vi.stubGlobal('fetch', fetchMock);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 
 		// The invariant is "nothing happened", NOT an exhaustive summary shape:
 		// asserting every key would make adding a diagnostic counter break the D2
@@ -43,7 +43,7 @@ describe('SNDS absent — the poller', () => {
 		// Polling again reports the same zeros: the not-enrolled summary is a fresh
 		// copy each time, so nothing a caller does to one poll's result can carry
 		// into the next through the module-level constant.
-		const again = await t.action(internal.delivery.snds.poll, {});
+		const again = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(again).toEqual(summary);
 	});
 

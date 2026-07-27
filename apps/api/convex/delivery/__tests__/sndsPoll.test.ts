@@ -360,7 +360,7 @@ describe('SNDS poll', () => {
 			vi.fn(async () => new Response(body, { status: 200 }))
 		);
 
-		const first = await t.action(internal.delivery.snds.poll, {});
+		const first = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(first.enrolled).toBe(true);
 		expect(first.ingested).toBe(2);
 		expect(first.feedsFailed).toBe(0);
@@ -369,7 +369,7 @@ describe('SNDS poll', () => {
 		// rewritten rather than acknowledged as replays. The advance is explicit —
 		// on the real clock the two polls could land in the same millisecond.
 		vi.setSystemTime(NOW + 60_000);
-		const second = await t.action(internal.delivery.snds.poll, {});
+		const second = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(second.ingested).toBe(2);
 		expect(second.replayed).toBe(0);
 
@@ -392,7 +392,7 @@ describe('SNDS poll', () => {
 			})
 		);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(summary).toMatchObject({ enrolled: true, feeds: 1, feedsFailed: 1, ingested: 0 });
 		expect(await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect())).toEqual([]);
 	});
@@ -414,7 +414,7 @@ describe('SNDS poll', () => {
 			)
 		);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(summary.ingested).toBe(0);
 		// Filtered in the action, so the ingest mutation is never called for them.
 		expect(summary.outOfWindow).toBe(2);
@@ -446,7 +446,7 @@ describe('SNDS poll', () => {
 			vi.fn(async () => new Response(bodies[call++] ?? '', { status: 200 }))
 		);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(summary).toMatchObject({ feeds: 2, observations: 1, ingested: 1, replayed: 0 });
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
@@ -469,13 +469,13 @@ describe('SNDS poll', () => {
 			)
 		);
 
-		const first = await t.action(internal.delivery.snds.poll, {});
+		const first = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(first).toMatchObject({ ingested: 1, replayed: 0 });
 
 		// The clock does NOT advance: the second poll stamps the identical
 		// `fetchedAt`, which is byte-for-byte the read already stored. It is
 		// acknowledged and counted, never written twice and never silently dropped.
-		const second = await t.action(internal.delivery.snds.poll, {});
+		const second = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(second).toMatchObject({ observations: 1, ingested: 0, replayed: 1, rejected: 0 });
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());

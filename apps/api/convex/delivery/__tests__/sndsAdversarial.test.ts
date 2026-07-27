@@ -29,7 +29,7 @@ import {
 	SNDS_INGEST_BATCH_SIZE,
 	SNDS_MAX_FEEDS,
 	SNDS_MAX_OBSERVATIONS_PER_POLL,
-} from '../snds';
+} from '../sndsPoll';
 
 import { modules } from './helpers/convexModules';
 const FEED_URL = 'https://snds.example.test/feed';
@@ -259,7 +259,7 @@ describe('replay, staleness and foreign IPs', () => {
 			)
 		);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(summary).toMatchObject({ ingested: 1, foreignIps: 1 });
 
 		const rows = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
@@ -297,7 +297,7 @@ describe('replay, staleness and foreign IPs', () => {
 			vi.fn(async () => new Response(body, { status: 200 }))
 		);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(summary.observations).toBe(cells);
 		expect(summary.ingested).toBe(cells);
 		expect(await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect())).toHaveLength(
@@ -328,7 +328,7 @@ describe('poll fan-out bounds', () => {
 			vi.fn(async () => new Response(body, { status: 200 }))
 		);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(summary.observations).toBe(SNDS_MAX_OBSERVATIONS_PER_POLL);
 		expect(summary.capped).toBe(25);
 		expect(summary.ingested).toBe(SNDS_MAX_OBSERVATIONS_PER_POLL);
@@ -356,7 +356,7 @@ describe('poll fan-out bounds', () => {
 			vi.fn(async () => new Response(body, { status: 200 }))
 		);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 		expect(summary.capped).toBe(stale);
 		const stored = await t.run(async (ctx) => ctx.db.query('sndsIpDailyStats').collect());
 		expect(stored).toHaveLength(SNDS_MAX_OBSERVATIONS_PER_POLL);
@@ -391,7 +391,7 @@ describe('poll fan-out bounds', () => {
 			})
 		);
 
-		const summary = await t.action(internal.delivery.snds.poll, {});
+		const summary = await t.action(internal.delivery.sndsPoll.poll, {});
 		// A feed that overruns is a FAILED feed, not a truncated one.
 		expect(summary).toMatchObject({ enrolled: true, feedsFailed: 1, ingested: 0 });
 		// The reader stopped near the cap rather than draining the whole stream.

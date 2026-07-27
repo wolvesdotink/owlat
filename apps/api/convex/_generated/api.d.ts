@@ -288,6 +288,7 @@ import type * as delivery_sends from "../delivery/sends.js";
 import type * as delivery_snds from "../delivery/snds.js";
 import type * as delivery_sndsFeed from "../delivery/sndsFeed.js";
 import type * as delivery_sndsGate from "../delivery/sndsGate.js";
+import type * as delivery_sndsPoll from "../delivery/sndsPoll.js";
 import type * as delivery_status from "../delivery/status.js";
 import type * as delivery_suppressionMirror from "../delivery/suppressionMirror.js";
 import type * as delivery_tokenValidation from "../delivery/tokenValidation.js";
@@ -1095,6 +1096,7 @@ declare const fullApi: ApiFromModules<{
   "delivery/snds": typeof delivery_snds;
   "delivery/sndsFeed": typeof delivery_sndsFeed;
   "delivery/sndsGate": typeof delivery_sndsGate;
+  "delivery/sndsPoll": typeof delivery_sndsPoll;
   "delivery/status": typeof delivery_status;
   "delivery/suppressionMirror": typeof delivery_suppressionMirror;
   "delivery/tokenValidation": typeof delivery_tokenValidation;
