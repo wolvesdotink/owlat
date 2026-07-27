@@ -153,7 +153,7 @@ export const listSeedProbeWork = internalQuery({
 				expiredProbeIds,
 				rotationReminderDue: shouldRemindSeedRotation({
 					connectedAt: account.createdAt,
-					lastRemindedAt: account.seedRotationRemindedAt,
+					lastAcknowledgedAt: account.seedRotationAcknowledgedAt,
 					now: args.now,
 				}),
 				clickHosts,

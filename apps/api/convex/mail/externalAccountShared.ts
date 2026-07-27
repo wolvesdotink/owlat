@@ -49,6 +49,17 @@ export function seedProviderOf(
 }
 
 /**
+ * How long a seed has been in service, in whole days.
+ *
+ * The one number the rotation nudge is allowed to carry. Age is not sensitive;
+ * the seed's ADDRESS is, so the audit payload names the provider and this, and
+ * nothing else.
+ */
+export function seedAgeDays(connectedAt: number, now: number): number {
+	return Math.max(0, Math.floor((now - connectedAt) / (24 * 60 * 60 * 1000)));
+}
+
+/**
  * The org's SEED accounts in the given statuses, up to `max` rows.
  *
  * Selects status THROUGH the `by_org_purpose_and_status` index rather than

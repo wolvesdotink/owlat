@@ -54,10 +54,12 @@ import {
 } from '@owlat/shared/seedPlacement';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import {
+	seedAgeDays,
 	seedProviderOf,
 	takeConnectableSeedAccounts,
 	takeLiveSeedAccounts,
 } from '../mail/externalAccountShared';
+import { recordAuditLog } from '../lib/auditLog';
 
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -133,7 +135,7 @@ function toSeedAccountView(
 		connectedAt: account.createdAt,
 		rotationReminderDue: shouldRemindSeedRotation({
 			connectedAt: account.createdAt,
-			lastRemindedAt: account.seedRotationRemindedAt,
+			lastAcknowledgedAt: account.seedRotationAcknowledgedAt,
 			now,
 		}),
 	};
@@ -176,15 +178,24 @@ export async function loadSeedAccounts(
 }
 
 /**
- * EMIT the "rotate this seed" nudge, and only then record that it was sent.
+ * EMIT the "rotate this seed" nudge into a log a human actually reads.
  *
- * The order is the whole point. An earlier shape had the sweep clear the
- * reminder flag and nothing actually deliver anything, so the 90-day clock
- * restarted every time and the reminder could never reach a human. Here the
- * operator-visible artifact — a `mailAuditLog` entry on the seed's mailbox, the
- * same trail the account's connect event lands in — is written FIRST, and
- * `seedRotationRemindedAt` is stamped only because it was written. A caller
- * that decides not to emit leaves the flag standing for the next tick.
+ * TWO earlier shapes were wrong, and the fix has to hold both properties at
+ * once. The first had the sweep clear a reminder flag and deliver nothing. The
+ * second delivered into `mailAuditLog` — a table with no reader anywhere in the
+ * product except the retention sweep that deletes from it — and then stamped
+ * the flag the roll-up derives due-ness from, so within one 15-minute tick of
+ * `rotationRemindersDue` ever becoming non-zero it was back to zero for another
+ * 90 days. A background worker extinguishing the only readable signal is the
+ * same defect wearing a different hat.
+ *
+ * So: the artifact goes through `recordAuditLog` into `auditLogs`, which
+ * `auditLogs.list` surfaces org-scoped to admins — a query the product really
+ * exposes. And due-ness now runs off `seedRotationAcknowledgedAt`, which ONLY
+ * an operator writes (`mail/externalAccountsSeed.acknowledgeSeedRotation`).
+ * `seedRotationRemindedAt` survives purely as this mutation's de-duplication
+ * stamp: it keeps a 15-minute sweep from writing one audit row per tick, and it
+ * cannot silence the nudge.
  *
  * The due-ness is re-derived HERE from the stored timestamps rather than
  * trusted from the worker: the worker's copy is a page that may be minutes old,
@@ -209,19 +220,31 @@ export const emitSeedRotationReminder = internalMutation({
 		// Re-check against the stored timestamps, not the worker's stale page.
 		const due = shouldRemindSeedRotation({
 			connectedAt: account.createdAt,
-			lastRemindedAt: account.seedRotationRemindedAt,
+			lastAcknowledgedAt: account.seedRotationAcknowledgedAt,
 			now: args.now,
 		});
 		if (!due) return { emitted: false as const };
+		// One row per un-acknowledged cycle, not one per sweep tick. A stamp older
+		// than the acknowledgement it follows belongs to a previous cycle.
+		const cycleStart = account.seedRotationAcknowledgedAt ?? account.createdAt;
+		const remindedAt = account.seedRotationRemindedAt;
+		if (remindedAt !== undefined && remindedAt >= cycleStart) {
+			return { emitted: false as const };
+		}
 
-		const ageDays = Math.floor((args.now - account.createdAt) / (24 * 60 * 60 * 1000));
 		// Provider + age only. No address, no credential, no mailbox contents.
-		await ctx.db.insert('mailAuditLog', {
-			mailboxId: account.mailboxId,
-			event: 'seed_account.rotation_reminder',
-			details: `deliverability seed mailbox (${account.seedProvider ?? 'other'}) has been in use for ${ageDays} days — rotating it keeps placement readings representative`,
-			occurredAt: args.now,
+		await recordAuditLog(ctx, {
+			userId: 'system',
+			organizationId: account.organizationId,
+			action: 'seed_mailbox.rotation_reminder',
+			resource: 'seed_mailbox',
+			resourceId: args.accountId,
+			details: {
+				provider: seedProviderOf(account),
+				ageDays: seedAgeDays(account.createdAt, args.now),
+			},
 		});
+		// De-duplication only: this stamp does NOT feed `shouldRemindSeedRotation`.
 		await ctx.db.patch(args.accountId, {
 			seedRotationRemindedAt: args.now,
 			updatedAt: args.now,

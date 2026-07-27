@@ -13,14 +13,22 @@
  * envelope.
  */
 
+import { v } from 'convex/values';
 import { internalMutation } from '../_generated/server';
+import { adminMutation } from '../lib/authedFunctions';
 import { requireAdminContext } from '../lib/sessionOrganization';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
-import { insertExternalAccountRow, takeLiveSeedAccounts } from './externalAccountShared';
+import {
+	insertExternalAccountRow,
+	seedAgeDays,
+	seedProviderOf,
+	takeLiveSeedAccounts,
+} from './externalAccountShared';
 import { connectFieldsValidator } from './externalAccounts';
 import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
+import { recordAuditLog } from '../lib/auditLog';
 import { SEED_ACCOUNTS_PER_ORG_LIMIT } from '@owlat/shared/seedPlacement';
-import { throwInvalidInput, throwAlreadyExists } from '../_utils/errors';
+import { throwInvalidInput, throwAlreadyExists, throwNotFound } from '../_utils/errors';
 
 /**
  * Connect a DELIVERABILITY SEED mailbox — step 1 of the placement probe.
@@ -97,5 +105,54 @@ export const _connectSeedInternal = internalMutation({
 			now,
 		});
 		return { mailboxId, externalAccountId: accountId };
+	},
+});
+
+/**
+ * The operator dismisses the "rotate this seed" nudge — the ONLY thing that
+ * restarts the 90-day rotation clock.
+ *
+ * Deliberately not something a background worker can do. `shouldRemindSeedRotation`
+ * measures from this timestamp, so if the placement sweep were allowed to write
+ * it, a due reminder would survive at most one 15-minute tick and no screen
+ * would ever render it. The sweep's own stamp (`seedRotationRemindedAt`)
+ * de-duplicates the audit entry and nothing more.
+ *
+ * D2: acknowledging is advisory housekeeping. Not acknowledging blocks nothing,
+ * and a never-rotated seed keeps being measured — it just measures less well.
+ *
+ * authz: adminMutation, matching `_connectSeedInternal` — a seed is org
+ * infrastructure, so its hygiene state is admin-owned.
+ */
+export const acknowledgeSeedRotation = adminMutation({
+	args: { accountId: v.id('externalMailAccounts') },
+	handler: async (ctx, args) => {
+		const s = await requireAdminContext(ctx);
+		const account = await ctx.db.get(args.accountId);
+		// Tenant scoping before existence: a foreign id must not be distinguishable
+		// from a missing one.
+		if (!account || account.organizationId !== s.activeOrganizationId) {
+			throwNotFound('Seed mailbox');
+		}
+		if (account.purpose !== 'seed') throwInvalidInput('Not a deliverability seed mailbox.');
+
+		const now = Date.now();
+		await ctx.db.patch(args.accountId, {
+			seedRotationAcknowledgedAt: now,
+			updatedAt: now,
+		});
+		// Provider + age only, exactly like the reminder it answers.
+		await recordAuditLog(ctx, {
+			userId: s.userId,
+			organizationId: s.activeOrganizationId,
+			action: 'seed_mailbox.rotation_acknowledged',
+			resource: 'seed_mailbox',
+			resourceId: args.accountId,
+			details: {
+				provider: seedProviderOf(account),
+				ageDays: seedAgeDays(account.createdAt, now),
+			},
+		});
+		return { acknowledgedAt: now };
 	},
 });
