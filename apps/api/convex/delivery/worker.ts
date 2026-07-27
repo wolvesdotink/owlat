@@ -17,6 +17,7 @@ import { assertMarketingOneClickHeaders, type EmailPurpose } from './marketingCo
 import { dispatchGovernedEmail } from './governedDispatch';
 import {
 	envelopeInputValidator,
+	isSeedShadowEnvelope,
 	retryStateValidator,
 	type WorkerEnvelopeInput,
 } from './workerEnvelope';
@@ -86,7 +87,7 @@ export function buildTransactionalListUnsubscribe(
  * shadow — passes through before dispatch.
  */
 export function assertSeedShadowExclusion(envelopeInput: WorkerEnvelopeInput): void {
-	if (envelopeInput.kind !== 'campaign' || envelopeInput.seedProbeId === undefined) return;
+	if (!isSeedShadowEnvelope(envelopeInput)) return;
 	if (
 		envelopeInput.emailSendId !== undefined ||
 		envelopeInput.contactInfo.contactId !== undefined

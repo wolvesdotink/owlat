@@ -10,12 +10,9 @@
  */
 import { convexTest } from 'convex-test';
 import { describe, it, expect, afterAll, beforeEach, vi } from 'vitest';
-import {
-	buildSeedShadowEnvelope,
-	enqueueSeedShadowCopies,
-	isSeedShadowEnvelope,
-} from '../seedShadowCopy';
+import { buildSeedShadowEnvelope, enqueueSeedShadowCopies } from '../seedShadowCopy';
 import type { CampaignEnvelopeInput } from '../seedShadowCopy';
+import { isSeedShadowEnvelope } from '../workerEnvelope';
 import { assertSeedShadowExclusion, buildComposeInput } from '../worker';
 import { assertMarketingOneClickHeaders } from '../marketingCompliance';
 import { composeForSend } from '../sendComposition';

@@ -116,16 +116,6 @@ export function buildSeedShadowEnvelope(
 }
 
 /**
- * True when this envelope is a seed shadow copy. A shadow copy must never be
- * countable, and a countable Send must never carry the probe header — the
- * invariant is ASSERTED on the composition path by
- * `delivery/worker.ts#assertSeedShadowExclusion`.
- */
-export function isSeedShadowEnvelope(envelope: WorkerEnvelopeInput): boolean {
-	return envelope.kind === 'campaign' && envelope.seedProbeId !== undefined;
-}
-
-/**
  * Generate an opaque probe id. Randomness lives here, at the edge — the pure
  * core never draws one.
  */

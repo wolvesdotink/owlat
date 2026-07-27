@@ -99,6 +99,24 @@ export function normalizeEngagementScore(score: number | undefined): number | un
 	return score;
 }
 
+/**
+ * True when this envelope is a seed shadow copy — the SINGLE predicate for
+ * "this is a placement probe, not a subscriber's mail". A shadow copy must
+ * never be countable, and a countable Send must never carry the probe header;
+ * that invariant is asserted on the composition path by
+ * `delivery/worker.ts#assertSeedShadowExclusion`, which narrows THROUGH this
+ * predicate rather than restating the shape.
+ *
+ * Lives beside the envelope type (not in `delivery/seedShadowCopy.ts`) so the
+ * `'use node'` worker can import it without pulling the probe ledger's Convex
+ * function module into the node bundle.
+ */
+export function isSeedShadowEnvelope(
+	envelope: WorkerEnvelopeInput
+): envelope is Extract<WorkerEnvelopeInput, { kind: 'campaign' }> & { seedProbeId: string } {
+	return envelope.kind === 'campaign' && envelope.seedProbeId !== undefined;
+}
+
 export const retryStateValidator = v.object({
 	attempt: v.number(),
 	startedAt: v.number(),
