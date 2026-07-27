@@ -17,15 +17,17 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-	YAHOO_CFL_COMPLAINT_THRESHOLD,
 	YAHOO_CFL_ENROLLMENT_STATES,
-	YAHOO_COMPLAINT_SIGNAL_SOURCES,
-	YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD,
 	yahooCflGuidedSteps,
-	yahooComplaintSubstitution,
 	emptyYahooCflEnrollment,
 	type YahooCflEnrollmentState,
 } from '../yahooCfl';
+import {
+	YAHOO_CFL_COMPLAINT_THRESHOLD,
+	YAHOO_COMPLAINT_SIGNAL_SOURCES,
+	YAHOO_UNSUBSCRIBE_PROXY_THRESHOLD,
+	yahooComplaintSubstitution,
+} from '../yahooComplaintSignal';
 
 const UNENROLLED_STATES: YahooCflEnrollmentState[] = ['not_started', 'awaiting_yahoo', 'lapsed'];
 

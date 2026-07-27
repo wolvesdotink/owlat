@@ -217,6 +217,10 @@
 			"types": "./src/yahooCfl.ts",
 			"import": "./src/yahooCfl.ts"
 		},
+		"./yahooComplaintSignal": {
+			"types": "./src/yahooComplaintSignal.ts",
+			"import": "./src/yahooComplaintSignal.ts"
+		},
 		"./dnsbl": {
 			"types": "./src/dnsbl.ts",
 			"import": "./src/dnsbl.ts"
