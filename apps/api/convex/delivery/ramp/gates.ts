@@ -15,7 +15,10 @@
  *
  * WHAT IS NOT HERE. Gate 4 (engagement ratio) lives in its own module because
  * of its MPP handling; the aggregator takes it as a pre-computed result. The
- * aggregator itself is in `gateEvaluation.ts`.
+ * aggregator itself is in `gateEvaluation.ts`. The "is this evidence usable at
+ * all" rules — freshness, clock skew, thin samples, poisoned rates — live in
+ * `gateEvidence.ts`, shared with gate 4 so the safety property has exactly one
+ * implementation.
  */
 
 import { ppToFraction } from './gateConfig';
@@ -25,10 +28,16 @@ import type {
 	RampGateThresholds,
 	RateFraction,
 } from './gateConfig';
+import {
+	armEvidence,
+	evidenceFreshness,
+	evidenceReason,
+	insufficient,
+	safeRate,
+	type ArmEvidence,
+} from './gateEvidence';
 import type {
 	RampGateEvaluationInput,
-	RampGateHoldMeasurement,
-	RampGateHoldReason,
 	RampGateId,
 	RampGateResult,
 	SeedPlacementObservation,
@@ -37,83 +46,6 @@ import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
 import type { TransportOutcomeSummary } from '../../analytics/transportOutcomeSummary';
 
 // ================================ helpers ===================================
-
-/**
- * A rate that is not a usable fraction is not a rate. A poisoned bucket must
- * never be able to produce a `pass`, so an unusable value becomes `null` and
- * every caller reads `null` as "not measured". A value above 1 (counts that
- * exceed `sent`) is clamped rather than dropped: it is degenerate, but it is
- * degenerate in the unsafe direction and must still be able to fail a gate.
- */
-function safeRate(value: number | undefined | null): number | null {
-	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
-	return Math.min(1, value);
-}
-
-type ArmEvidence = 'fresh' | 'thin' | 'stale' | 'absent';
-
-/**
- * THE anti-clock-skew rule, written once.
- *
- * A large window recorded three weeks ago says nothing about the share we are
- * about to raise today, and future-dated evidence (clock skew between the MTA
- * and Convex) is not trusted at all. Every observation this module reads —
- * outcome buckets and seed sweeps alike — goes through this one function, so
- * the safety property cannot be fixed in one place and left broken in the other.
- */
-function evidenceFreshness(
-	recordedAt: number | null | undefined,
-	now: number,
-	thresholds: RampGateThresholds
-): 'fresh' | 'stale' {
-	if (typeof recordedAt !== 'number' || !Number.isFinite(recordedAt)) return 'stale';
-	if (!Number.isFinite(now)) return 'stale';
-	if (recordedAt > now + thresholds.maxFutureSkewMs) return 'stale';
-	if (now - recordedAt > thresholds.maxEvidenceAgeMs) return 'stale';
-	return 'fresh';
-}
-
-/** Is an arm's evidence usable at all? Presence, then sample size, then freshness. */
-function armEvidence(
-	summary: TransportOutcomeSummary | null | undefined,
-	sample: number,
-	minSample: number,
-	now: number,
-	thresholds: RampGateThresholds
-): ArmEvidence {
-	if (!summary) return 'absent';
-	if (!(sample >= minSample)) return 'thin';
-	return evidenceFreshness(summary.lastRecordedAt, now, thresholds);
-}
-
-function insufficient(
-	gate: RampGateId,
-	reason: RampGateHoldReason,
-	measurement: RampGateHoldMeasurement
-): RampGateResult {
-	return { gate, status: 'insufficient_data', reason, measurement };
-}
-
-/**
- * The reason an unusable arm produces, mapped once so every gate agrees.
- *
- * Called only when the arm is unusable, so `fresh` here means the evidence was
- * fresh and large enough but the RATE itself was not a number — a poisoned
- * bucket, which is a different operator story from a thin window and must not
- * be reported as one.
- */
-function evidenceReason(evidence: ArmEvidence, arm: 'own' | 'reference'): RampGateHoldReason {
-	switch (evidence) {
-		case 'absent':
-			return 'evidence_absent';
-		case 'stale':
-			return arm === 'own' ? 'own_evidence_stale' : 'reference_evidence_stale';
-		case 'thin':
-			return arm === 'own' ? 'own_sample_below_floor' : 'reference_sample_below_floor';
-		case 'fresh':
-			return arm === 'own' ? 'own_rate_unmeasurable' : 'reference_rate_unmeasurable';
-	}
-}
 
 /**
  * The comparative half of a two-armed gate: is the own arm within `tolerance`
@@ -202,7 +134,14 @@ function evaluateCeilingGate(
 		minSample,
 	} as const;
 
-	const ownEvidence = armEvidence(input.own, ownSample, minSample, input.now, thresholds);
+	const ownEvidence = armEvidence(
+		input.own,
+		ownSample,
+		minSample,
+		input.now,
+		thresholds,
+		thresholds.maxEvidenceAgeMs
+	);
 	if (ownEvidence !== 'fresh' || ownRate === null) {
 		return insufficient(spec.gate, evidenceReason(ownEvidence, 'own'), {
 			...shape,
@@ -225,7 +164,8 @@ function evaluateCeilingGate(
 		referenceSample ?? 0,
 		minSample,
 		input.now,
-		thresholds
+		thresholds,
+		thresholds.maxEvidenceAgeMs
 	);
 	if (referenceEvidence !== 'fresh' || referenceRate === null) {
 		return insufficient(spec.gate, evidenceReason(referenceEvidence, 'reference'), {
@@ -285,7 +225,14 @@ export function evaluateDeferralGate(input: RampGateEvaluationInput): RampGateRe
 		minSample,
 	} as const;
 
-	const evidence = armEvidence(input.own, ownSample, minSample, input.now, thresholds);
+	const evidence = armEvidence(
+		input.own,
+		ownSample,
+		minSample,
+		input.now,
+		thresholds,
+		thresholds.maxEvidenceAgeMs
+	);
 	if (evidence !== 'fresh' || ownRate === null) {
 		return insufficient('deferral', evidenceReason(evidence, 'own'), { ...shape, ownRate });
 	}
@@ -338,7 +285,7 @@ function seedEvidence(
 	if (!observation) return 'absent';
 	const total = seedTotal(observation);
 	if (total <= 0 || total < minSeeds) return 'thin';
-	return evidenceFreshness(observation.observedAt, now, thresholds);
+	return evidenceFreshness(observation.observedAt, now, thresholds, thresholds.maxEvidenceAgeMs);
 }
 
 /**

@@ -9,12 +9,18 @@
  * derived fields deliberately, which is the only way a poisoned value gets in.
  */
 
+import type {
+	DeliverabilityCell,
+	DeliverabilityStream,
+	DestinationProviderKey,
+} from '@owlat/shared/deliverabilityRouting';
 import type { Id } from '../../../_generated/dataModel';
 import {
 	summarizeTransportOutcomeBuckets,
 	type TransportOutcomeBucket,
 	type TransportOutcomeSummary,
 } from '../../../analytics/transportOutcomeSummary';
+import type { EngagementGateInput } from '../engagementGate';
 import { RAMP_STREAM_CONFIGS, type RampStreamConfig } from '../gateConfig';
 import type { RampGateEvaluationInput, SeedPlacementObservation } from '../gateTypes';
 
@@ -70,7 +76,16 @@ function bucket(counts: ArmCounts): TransportOutcomeBucket {
 	};
 }
 
-/** Build an arm summary from counts through the REAL summarizer (ADR-0042). */
+/**
+ * Build an arm summary from counts through the REAL summarizer (ADR-0042).
+ *
+ * ONE builder for every suite, including the gate-4 ones: an arm can carry BOTH
+ * a stratified (general) engagement story and a calibration-slice one, so a
+ * suite can make the two disagree on purpose. That disagreement is the whole
+ * point of `engagementRatioCalibration.test.ts` — gate 4 must read the
+ * calibration numbers and ignore the general ones — and it needs no second,
+ * narrower count type to express it.
+ */
 export function arm(
 	counts: ArmCounts,
 	overrides: Partial<TransportOutcomeSummary> = {}
@@ -117,6 +132,33 @@ export function input(
 		config: CAMPAIGN_CONFIG,
 		reference: null,
 		previousCleanStreak: 0,
+		now: NOW,
+		...overrides,
+	};
+}
+
+/** A ramp cell, campaign-stream unless a suite says otherwise. */
+export function engagementCell(
+	destinationProvider: DestinationProviderKey,
+	stream: DeliverabilityStream = 'campaign'
+): DeliverabilityCell {
+	return { stream, destinationProvider };
+}
+
+/**
+ * Gate 4's input. Gmail (an opens-gated cell) and no reference arm by default.
+ *
+ * `ownRecent` defaults to `own` because most suites evaluate a single window and
+ * say so; the field is required on the real input precisely so a production
+ * caller cannot leave the window unstated.
+ */
+export function engagementInput(
+	overrides: Partial<EngagementGateInput> & { readonly own: TransportOutcomeSummary }
+): EngagementGateInput {
+	return {
+		cell: engagementCell('gmail'),
+		reference: null,
+		ownRecent: overrides.own,
 		now: NOW,
 		...overrides,
 	};
