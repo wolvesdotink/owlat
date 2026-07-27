@@ -16,6 +16,8 @@
  * about a number Microsoft never published.
  */
 
+import { normalizeIpAddress } from '@owlat/shared/ipAddress';
+
 /**
  * Complaint-rate bands, ordered. `unknown` is first and is NOT a severity: it
  * is the honest outcome for a day Microsoft withheld the band (too little
@@ -113,10 +115,9 @@ export const SNDS_MAX_FEED_BYTES = 4 * 1024 * 1024;
 export const SNDS_MAX_ROWS = 20_000;
 const MAX_LINE_LENGTH = 2_048;
 const MAX_COUNTER = 1_000_000_000_000;
-const DAY_MS = 24 * 60 * 60 * 1_000;
+/** One UTC day. The (IP, day) grain is the unit of everything stored here. */
+export const DAY_MS = 24 * 60 * 60 * 1_000;
 
-const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
-const IPV6_RE = /^[0-9a-f]{0,4}(?::[0-9a-f]{0,4}){2,7}$/;
 /** Keeps binary floating point from turning `0.3 * 10` into `2.999…`. */
 const BAND_EPSILON = 1e-9;
 
@@ -126,20 +127,18 @@ const HELO_RE = /^[a-z0-9](?:[a-z0-9._-]{0,251}[a-z0-9])?$/;
  * Canonicalize a feed IP. Returns `null` for anything that is not plainly an
  * address — the IP is a stored key and an allowlist input, so a lax parse here
  * would let a malformed row create junk keys forever.
+ *
+ * CANONICAL, not merely valid: `2001:0db8::1` and `2001:db8::1` are ONE address
+ * and must produce ONE table key, or the gate's trap-hit fold double-counts them
+ * and `MTA_IP_POOLS` matching starts depending on how the operator typed it.
+ * That is exactly the job of the shared RFC-5952 canonicalizer that
+ * `domains/spf.ts:parsePoolIps` already uses, so we reuse it rather than keeping
+ * a second, laxer address grammar here.
  */
 export function normalizeSndsIp(raw: string): string | null {
-	const value = raw.trim().toLowerCase();
+	const value = raw.trim();
 	if (value.length === 0 || value.length > 45) return null;
-	const ipv4 = value.match(IPV4_RE);
-	if (ipv4) {
-		const octets = ipv4.slice(1).map((part) => Number(part));
-		if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) return null;
-		// Reject `01.2.3.4` style padding so one address has exactly one key.
-		return ipv4.slice(1).some((part) => part.length > 1 && part.startsWith('0'))
-			? null
-			: octets.join('.');
-	}
-	return IPV6_RE.test(value) ? value : null;
+	return normalizeIpAddress(value.toLowerCase());
 }
 
 const TIMESTAMP_RE =
