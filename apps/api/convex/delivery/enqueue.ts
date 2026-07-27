@@ -117,15 +117,6 @@ export const deleteExpiredTestSend = internalMutation({
 });
 
 /**
- * Internal mutation to enqueue campaign emails to workpool (used for
- * timezone-delayed sending). Lives in a non-node file because mutations
- * cannot run in Node.js runtime.
- *
- * Each enqueue carries a typed `sendRef` in the workpool context so the
- * Send completion module can translate worker outcomes into Send lifecycle
- * transitions uniformly across kinds.
- */
-/**
  * One element of `enqueueCampaignEmails.emails` — the per-recipient slice of a
  * campaign enqueue. THE VALIDATOR IS THE SINGLE DEFINITION: producers
  * (`campaigns/send.ts`) build their batches against `CampaignEnqueueEmail`
@@ -146,6 +137,15 @@ export const campaignEnqueueEmailValidator = v.object({
 
 export type CampaignEnqueueEmail = Infer<typeof campaignEnqueueEmailValidator>;
 
+/**
+ * Internal mutation to enqueue campaign emails to workpool (used for
+ * timezone-delayed sending). Lives in a non-node file because mutations
+ * cannot run in Node.js runtime.
+ *
+ * Each enqueue carries a typed `sendRef` in the workpool context so the
+ * Send completion module can translate worker outcomes into Send lifecycle
+ * transitions uniformly across kinds.
+ */
 export const enqueueCampaignEmails = internalMutation({
 	args: {
 		campaignId: v.id('campaigns'),
