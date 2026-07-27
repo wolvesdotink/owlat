@@ -19,6 +19,7 @@ import {
 	type ProviderRouteConfig,
 	type ProviderHealthStatus,
 	type ResolvedRoute,
+	type DeliverabilityRouteInput,
 } from './routing';
 import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
@@ -50,18 +51,33 @@ export type SendRouteAddressContext = {
 };
 
 /**
- * Everything ONE pass over the route tables yields: the route row that was
- * read, the readiness verdict for every candidate provider kind, and the route
- * `resolveRoute` selected from them. Callers that need more than the selected
- * route — the campaign warming-cap gate needs the row and the readiness set
- * too — consume this instead of re-reading `providerRoutes` and re-running
- * `isSendProviderReady`, which would double the OCC read set they carry inside
- * `schedule` / `sendNow`.
+ * Everything the READ half of route resolution yields: the route row, the
+ * provider-health snapshots mapped to the strategy-facing shape, and the
+ * readiness verdict for every candidate provider kind. Callers that need more
+ * than the selected route — the campaign warming-cap gate needs the row and
+ * the readiness set too — load this once and select from it, instead of
+ * re-reading `providerRoutes` and re-running `isSendProviderReady`, which would
+ * double the OCC read set they carry inside `schedule` / `sendNow`.
  */
-export type SendRouteResolution = {
+export type SendRouteFacts = {
 	routeConfig: Doc<'providerRoutes'> | null;
+	healthStatuses: ProviderHealthStatus[];
+	/**
+	 * LOAD-BEARING TOTALITY INVARIANT — do not narrow. This set is computed over
+	 * EVERY kind named in `routeConfig.providers`, `isEnabled` or not, plus the
+	 * `EMAIL_PROVIDER` env default. It is POSITIVE-ONLY: "not ready" and "never
+	 * evaluated" are indistinguishable to a reader, so a kind missing from the
+	 * candidate pass silently reads as not-ready.
+	 *
+	 * `campaignWarmingCapBinds` (warmingCapGate.ts) walks `routeConfig.providers`
+	 * and asks `readyKinds.has(kind)` for each ENABLED entry rather than calling
+	 * `isSendProviderReady` again. Restricting the candidate pass below to the
+	 * subset `resolveRoute` happens to need would make those lookups answer
+	 * `false` for kinds that are in fact ready, and the gate would quote the
+	 * operator a multi-day plan for a campaign that fits. Pinned by the
+	 * disabled-entry fixtures in `__tests__/preflightBinding.test.ts`.
+	 */
 	readyKinds: ReadonlySet<SendProviderKind>;
-	route: ResolvedRoute | null;
 };
 
 /**
@@ -75,19 +91,24 @@ export async function resolveSendRouteFromDb(
 	messageType: MessageType,
 	addressContext?: SendRouteAddressContext
 ): Promise<ResolvedRoute | null> {
-	return (await resolveSendRouteResolutionFromDb(ctx, messageType, addressContext)).route;
+	const facts = await loadSendRouteFacts(ctx, messageType);
+	const deliverability = addressContext?.baseOnly
+		? undefined
+		: await deliverabilityInput(ctx, facts.routeConfig, messageType, addressContext);
+	return selectRouteFromFacts(facts, messageType, deliverability);
 }
 
 /**
- * The single pass behind {@link resolveSendRouteFromDb}, exposed for callers
- * that also need the route row or the readiness set (see
- * {@link SendRouteResolution}).
+ * The read half of {@link resolveSendRouteFromDb}: one pass over
+ * `providerRoutes` + `providerHealth` + provider readiness. Exposed so a caller
+ * that must survive a {@link selectRouteFromFacts} throw — `resolveRoute`
+ * signals an unusable relay configuration by throwing — still has the row and
+ * the readiness set it read (see {@link SendRouteFacts}).
  */
-export async function resolveSendRouteResolutionFromDb(
+export async function loadSendRouteFacts(
 	ctx: QueryCtx | MutationCtx,
-	messageType: MessageType,
-	addressContext?: SendRouteAddressContext
-): Promise<SendRouteResolution> {
+	messageType: MessageType
+): Promise<SendRouteFacts> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
@@ -99,6 +120,8 @@ export async function resolveSendRouteResolutionFromDb(
 		status: h.status,
 		successRate: h.successRate,
 	}));
+	// TOTAL over `routeConfig.providers` + the env default by contract — see the
+	// invariant on `SendRouteFacts.readyKinds` before narrowing this.
 	const candidateKinds = new Set<SendProviderKind>();
 	for (const provider of routeConfig?.providers ?? []) {
 		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
@@ -110,28 +133,32 @@ export async function resolveSendRouteResolutionFromDb(
 		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
 	}
 
-	const deliverability = addressContext?.baseOnly
-		? undefined
-		: await deliverabilityInput(ctx, routeConfig, messageType, addressContext);
+	return { routeConfig, healthStatuses, readyKinds };
+}
 
+/**
+ * The select half of {@link resolveSendRouteFromDb}: runs the pure
+ * `resolveRoute` dispatcher over already-loaded {@link SendRouteFacts}. Throws
+ * exactly what `resolveRoute` throws.
+ */
+export function selectRouteFromFacts(
+	facts: SendRouteFacts,
+	messageType: MessageType,
+	deliverability?: DeliverabilityRouteInput
+): ResolvedRoute | null {
 	const resolved = resolveRoute(
-		routeConfig as ProviderRouteConfig | null,
-		healthStatuses,
-		(kind) => readyKinds.has(kind),
+		facts.routeConfig as ProviderRouteConfig | null,
+		facts.healthStatuses,
+		(kind) => facts.readyKinds.has(kind),
 		deliverability
 	);
+	if (!resolved) return null;
 	return {
-		routeConfig,
-		readyKinds,
-		route: resolved
-			? {
-					...resolved,
-					warmupOverflowEnabled: Boolean(
-						messageType === 'campaign' &&
-						routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
-					),
-				}
-			: null,
+		...resolved,
+		warmupOverflowEnabled: Boolean(
+			messageType === 'campaign' &&
+			facts.routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
+		),
 	};
 }
 

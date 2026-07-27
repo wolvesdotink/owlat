@@ -10,31 +10,38 @@
  */
 
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
-import type { SendRouteResolution } from './route';
+import type { SendRouteFacts } from './route';
 import {
+	loadSendRouteFacts,
 	relayDomainVerified,
-	resolveSendRouteResolutionFromDb,
 	routingDeferralCode,
+	selectRouteFromFacts,
 } from './route';
+import type { ResolvedRoute } from './routing';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { extractDomainOrNull } from '@owlat/shared';
 
 /**
- * The base (pre-deliverability) campaign resolution — route row, readiness set
- * and selected route from ONE pass over the route tables — or `null` if the
- * shipped resolution cannot produce a route. `resolveRoute` signals an unusable
- * relay configuration by throwing; here that is not a failure to report but
- * simply "no MTA-only base route", which the caller reads as "the cap does not
- * bind", exactly as a `null` route does.
+ * The base (pre-deliverability) campaign resolution from ONE pass over the
+ * route tables: the route row, the readiness set, and the route the shipped
+ * resolver selected — or `route: null` when it cannot select one.
+ *
+ * `resolveRoute` signals an unusable relay configuration by throwing. That is
+ * not a failure to report here, but it also must NOT collapse the whole
+ * resolution: the facts it threw over — which providers are configured, enabled
+ * and ready — are exactly what the `workload_split` branch below decides from,
+ * and they are already read. Losing them was the source of the non-deterministic
+ * verdict: under `workload_split` the throw fires only on the draws where the
+ * weighted selector happened to land on the relay entry.
  */
-async function resolveCampaignBaseOrNull(
+async function resolveCampaignBase(
 	ctx: QueryCtx | MutationCtx
-): Promise<(SendRouteResolution & { route: NonNullable<SendRouteResolution['route']> }) | null> {
+): Promise<SendRouteFacts & { route: ResolvedRoute | null }> {
+	const facts = await loadSendRouteFacts(ctx, 'campaign');
 	try {
-		const resolution = await resolveSendRouteResolutionFromDb(ctx, 'campaign', { baseOnly: true });
-		return resolution.route ? { ...resolution, route: resolution.route } : null;
+		return { ...facts, route: selectRouteFromFacts(facts, 'campaign', undefined) };
 	} catch (error) {
-		if (routingDeferralCode(error)) return null;
+		if (routingDeferralCode(error)) return { ...facts, route: null };
 		throw error;
 	}
 }
@@ -65,20 +72,33 @@ async function resolveCampaignBaseOrNull(
  *     at all, so the projection is not an upper bound on what the campaign can
  *     send and refusing on it would be unsound.
  *
- *     WHAT COUNTS AS "not on the own MTA" DEPENDS ON THE STRATEGY. Under
- *     `workload_split` every enabled base provider carries a share of the
- *     audience, so a single non-MTA entry is enough to let part of the audience
- *     bypass the cap. Under `single` and `priority_failover` a second provider
- *     is a HEALTH failover, not a traffic split: with the MTA selected and
- *     healthy, 100% of campaign traffic still goes through it and the cap binds
- *     exactly as this gate describes. Those strategies therefore ask the
- *     SHIPPED resolution (`resolveSendRouteResolutionFromDb(..., { baseOnly: true })`)
- *     which base provider is actually selected, rather than re-deriving it.
+ *     WHAT COUNTS AS "not on the own MTA" DEPENDS ON THE STRATEGY, and so does
+ *     WHAT THE ANSWER MAY BE DERIVED FROM.
+ *
+ *     `workload_split` selects among the enabled+ready entries by WEIGHTED
+ *     RANDOM draw (strategies/workload_split), so the selected route is not a
+ *     function of the configuration and must never be consulted here: the card
+ *     requires a decidable predicate, and the preview query and the binding gate
+ *     are separate calls that would otherwise quote the operator two different
+ *     answers. Under this strategy EVERY enabled+ready entry carries a share of
+ *     the audience — including a relay entry that also serves as the
+ *     deliverability escape hatch — so the verdict is read off the enabled+ready
+ *     KIND SET alone, and one non-MTA entry is enough to let part of the
+ *     audience bypass the cap.
+ *
+ *     `single` (first enabled entry) and `priority_failover` (deterministic
+ *     order) select deterministically, and there a second provider is a HEALTH
+ *     failover rather than a traffic split: with the MTA selected and healthy,
+ *     100% of campaign traffic still goes through it and the cap binds exactly
+ *     as this gate describes. Those strategies therefore ask the SHIPPED
+ *     resolution which base provider is actually selected, rather than
+ *     re-deriving it.
  *
  * Either way the entries are judged READY, not merely enabled — `resolveRoute`
  * filters route entries through `isSendProviderReady`, so an enabled but
  * credential-less SES entry alongside the MTA is not a route and must not turn
- * this gate off.
+ * this gate off. Readiness comes from `SendRouteFacts.readyKinds`, which is
+ * total over `routeConfig.providers` by contract.
  *
  * Lives here rather than in the gate because this module already owns both
  * reads — the campaign route row and the relay-domain re-verification.
@@ -87,13 +107,8 @@ export async function campaignWarmingCapBinds(
 	ctx: QueryCtx | MutationCtx,
 	options: { fromEmail?: string | undefined; now: number }
 ): Promise<boolean> {
-	// ONE pass over the route tables. If nothing resolves — or resolution itself
-	// rejects the configuration — the campaign is not dispatching through a
-	// capped MTA: the send fails its own configuration checks long before
-	// capacity matters, and refusing here would be a second, wrong reason.
-	const base = await resolveCampaignBaseOrNull(ctx);
-	if (!base) return false;
-	const { routeConfig, readyKinds, route: baseRoute } = base;
+	// ONE pass over the route tables.
+	const { routeConfig, readyKinds, route: baseRoute } = await resolveCampaignBase(ctx);
 
 	const fallbackConfig = routeConfig?.deliverabilityFallback;
 	// Enabled route entries that are also READY — `resolveRoute` filters entries
@@ -110,20 +125,25 @@ export async function campaignWarmingCapBinds(
 	}
 
 	if (routeConfig?.strategy === 'workload_split') {
-		// The relay is an ESCAPE HATCH, not a normal campaign path: `resolveRoute`
-		// only selects it once a deliverability reason fires, so it is excluded
-		// here and judged on its own below.
-		const baseKinds: readonly SendProviderKind[] = fallbackConfig?.isEnabled
-			? enabledKinds.filter((kind) => kind !== fallbackConfig.relayProviderType)
-			: enabledKinds;
-		// No usable route entry: `resolveRoute` has ALREADY fallen through to the
-		// `EMAIL_PROVIDER` env default, so the resolved base route names the kind
-		// campaigns dispatch through — reading the env again would be a second
-		// place the two answers can disagree.
+		// DECIDE FROM THE CONFIGURATION, NEVER FROM THE SELECTED ROUTE. The
+		// weighted-random selector makes `baseRoute` a coin flip under this
+		// strategy. Every enabled+ready entry carries a share of the audience —
+		// a relay entry included, because here it is a normal traffic-carrying
+		// path and not only the deliverability escape hatch — so the whole set is
+		// the campaign's dispatch surface.
+		//
+		// No usable route entry at all: `resolveRoute` has ALREADY fallen through
+		// to the `EMAIL_PROVIDER` env default, so the resolved base route names
+		// the kind campaigns dispatch through — reading the env again would be a
+		// second place the two answers can disagree. That fallback is itself
+		// deterministic (`fallback()` in routing.ts ignores the strategy), so
+		// consulting `baseRoute` is sound in exactly this case. With no base route
+		// either, nothing is known about where campaigns dispatch: hold and allow.
 		const campaignKinds: readonly SendProviderKind[] =
-			baseKinds.length > 0 ? baseKinds : [baseRoute.providerType];
+			enabledKinds.length > 0 ? enabledKinds : baseRoute ? [baseRoute.providerType] : [];
+		if (campaignKinds.length === 0) return false;
 		if (!campaignKinds.every((kind) => kind === 'mta')) return false;
-	} else if (baseRoute.providerType !== 'mta') {
+	} else if (baseRoute?.providerType !== 'mta') {
 		return false;
 	}
 
