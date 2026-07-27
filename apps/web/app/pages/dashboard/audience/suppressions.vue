@@ -143,47 +143,51 @@ const handleDeleteBlockedEmail = async () => {
 	emailToDelete.value = null;
 };
 
-// Get reason badge class
-const getReasonBadgeClass = (reason: string) => {
-	switch (reason) {
-		case 'bounced':
-			return 'bg-error/20 text-error border-error/30';
-		case 'complained':
-			return 'bg-warning/20 text-warning border-warning/30';
-		case 'unengaged':
-			return 'bg-surface-raised text-text-secondary border-border';
-		default: // manual
-			return 'bg-brand/20 text-brand border-brand/30';
-	}
-};
+// One table per reason instead of three parallel switches — badge, icon and
+// label are the same decision made three times, and they drifted the moment a
+// fourth reason ('unengaged', the sunset engine's) was added to the schema.
+// Plain language, no jargon: the label explains WHY.
+const REASON_PRESENTATION = {
+	bounced: {
+		badge: 'bg-error/20 text-error border-error/30',
+		tone: 'text-error',
+		icon: 'lucide:mail',
+		label: "Bounced — mailbox doesn't exist",
+	},
+	complained: {
+		badge: 'bg-warning/20 text-warning border-warning/30',
+		tone: 'text-warning',
+		icon: 'lucide:message-square-warning',
+		label: 'Complained — marked a send as spam',
+	},
+	unengaged: {
+		badge: 'bg-surface-raised text-text-secondary border-border',
+		tone: 'text-text-secondary',
+		icon: 'lucide:moon',
+		label: 'Unengaged — ignored every message for months',
+	},
+	manual: {
+		badge: 'bg-brand/20 text-brand border-brand/30',
+		tone: 'text-brand',
+		icon: 'lucide:user-x',
+		label: 'Manually suppressed',
+	},
+} as const;
 
-// Get reason icon
-const getReasonIcon = (reason: string) => {
-	switch (reason) {
-		case 'bounced':
-			return 'lucide:mail';
-		case 'complained':
-			return 'lucide:message-square-warning';
-		case 'unengaged':
-			return 'lucide:moon';
-		default: // manual
-			return 'lucide:user-x';
-	}
-};
+const presentation = (reason: string) =>
+	REASON_PRESENTATION[reason as keyof typeof REASON_PRESENTATION] ?? REASON_PRESENTATION.manual;
 
-// Get reason label — plain language, no jargon. Explains WHY in the label itself.
-const getReasonLabel = (reason: string) => {
-	switch (reason) {
-		case 'bounced':
-			return "Bounced — mailbox doesn't exist";
-		case 'complained':
-			return 'Complained — marked a send as spam';
-		case 'unengaged':
-			return 'Unengaged — ignored every message for months';
-		default: // manual
-			return 'Manually suppressed';
-	}
-};
+// The stat row, driven by the table above rather than four hand-written cards.
+const reasonTiles = computed(() => {
+	const c = countsData.value;
+	if (!c) return [];
+	return [
+		{ key: 'bounced', label: 'Bounced', count: c.bounced },
+		{ key: 'complained', label: 'Complained', count: c.complained },
+		{ key: 'manual', label: 'Manual', count: c.manual },
+		{ key: 'unengaged', label: 'Unengaged', count: c.unengaged },
+	];
+});
 </script>
 
 <template>
@@ -251,31 +255,21 @@ const getReasonLabel = (reason: string) => {
 				</div>
 
 				<!-- Stats Cards -->
-				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+				<div v-if="countsData" class="grid grid-cols-2 md:grid-cols-5 gap-4">
 					<div class="card p-4">
 						<p class="text-sm text-text-secondary">Total suppressed</p>
 						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.total }}</p>
 					</div>
-					<div class="card p-4">
+					<div v-for="tile in reasonTiles" :key="tile.key" class="card p-4">
 						<div class="flex items-center gap-2">
-							<Icon name="lucide:mail" class="w-4 h-4 text-error" />
-							<p class="text-sm text-text-secondary">Bounced</p>
+							<Icon
+								:name="presentation(tile.key).icon"
+								class="w-4 h-4"
+								:class="presentation(tile.key).tone"
+							/>
+							<p class="text-sm text-text-secondary">{{ tile.label }}</p>
 						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.bounced }}</p>
-					</div>
-					<div class="card p-4">
-						<div class="flex items-center gap-2">
-							<Icon name="lucide:message-square-warning" class="w-4 h-4 text-warning" />
-							<p class="text-sm text-text-secondary">Complained</p>
-						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.complained }}</p>
-					</div>
-					<div class="card p-4">
-						<div class="flex items-center gap-2">
-							<Icon name="lucide:user-x" class="w-4 h-4 text-brand" />
-							<p class="text-sm text-text-secondary">Manual</p>
-						</div>
-						<p class="text-2xl font-semibold text-text-primary mt-1">{{ countsData.manual }}</p>
+						<p class="text-2xl font-semibold text-text-primary mt-1">{{ tile.count }}</p>
 					</div>
 				</div>
 
@@ -381,7 +375,7 @@ const getReasonLabel = (reason: string) => {
 									<div class="flex items-center gap-3">
 										<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
 											<Icon
-												:name="getReasonIcon(blockedEmail.reason)"
+												:name="presentation(blockedEmail.reason).icon"
 												class="w-4 h-4 text-text-secondary"
 											/>
 										</div>
@@ -394,10 +388,10 @@ const getReasonLabel = (reason: string) => {
 									<span
 										:class="[
 											'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
-											getReasonBadgeClass(blockedEmail.reason),
+											presentation(blockedEmail.reason).badge,
 										]"
 									>
-										{{ getReasonLabel(blockedEmail.reason) }}
+										{{ presentation(blockedEmail.reason).label }}
 									</span>
 								</td>
 								<td class="px-6 py-4 hidden md:table-cell">
