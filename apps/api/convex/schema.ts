@@ -10,6 +10,7 @@ import { contactTables } from './schema/contacts';
 import { authTables } from './schema/auth';
 import { instanceTables } from './schema/instance';
 import { templateTables } from './schema/templates';
+import { alignmentTables } from './schema/alignment';
 import { deliveryTables } from './schema/delivery';
 import { seedPlacementTables } from './schema/seedPlacement';
 import { inboxTables } from './schema/inbox';
@@ -43,6 +44,7 @@ export default defineSchema({
 	...templateTables,
 	...deliveryTables,
 	...seedPlacementTables,
+	...alignmentTables,
 	...inboxTables,
 	...autonomyTables,
 	...askEagernessTables,

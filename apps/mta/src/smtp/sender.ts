@@ -26,9 +26,16 @@ import { getStsTlsOptions, isMxAllowed } from './mtaSts.js';
 import { resolveTlsRequirements } from './tlsPolicy.js';
 import { resolveOutboundTlsMode } from './outboundTlsOverrides.js';
 import { buildVerpAddress } from '../bounce/verp.js';
+import {
+	CFBL_ADDRESS_HEADER,
+	CFBL_FEEDBACK_ID_HEADER,
+	buildCfblHeaders,
+	type CfblHeaderResult,
+} from '../bounce/cfblAddress.js';
 import { extractDomain } from '../queue/groups.js';
 import { extractDomainOrNull, strictestOutboundTlsMode } from '@owlat/shared';
 import { logger } from '../monitoring/logger.js';
+import { cfblEmissionsTotal } from '../monitoring/collector.js';
 import { pool, PoolOverCapError } from './connectionPool.js';
 import { prepareDaneAttempt, type DanePlan } from './daneVerify.js';
 import { buildAllMxFailedResult } from './mxBounce.js';
@@ -95,25 +102,64 @@ function strictestDeliveryProviderPolicy(
  * A missing DKIM key ships the message UNSIGNED (recoverable), and a signing
  * failure falls back to the unsigned bytes rather than a corrupt signature —
  * exactly the historic `stream`-plugin posture.
+ *
+ * `signed` reports what actually happened to THESE bytes, not what was
+ * configured: it is false both when no key exists and when signing threw. The
+ * CFBL emission outcome is derived from it (RFC 9477 §3.1.4 — an unsigned
+ * message carrying the pair is a header no conforming provider acts on), so
+ * "a key is configured" is not a good enough answer.
  */
 function buildSignedBytes(
 	job: EmailJob,
 	dkimConfig: DkimSigningKey | undefined,
-	verpAddress: string
-): Buffer {
+	verpAddress: string,
+	feedbackHeaders: Record<string, string>
+): { bytes: Buffer; signed: boolean } {
 	const raw = job.sealedMimeBase64
 		? Buffer.from(job.sealedMimeBase64, 'base64')
-		: composeStructured(job, verpAddress).raw;
-	if (!dkimConfig) return raw;
+		: composeStructured(job, verpAddress, feedbackHeaders).raw;
+	if (!dkimConfig) return { bytes: raw, signed: false };
 	try {
-		return signMessage(raw, dkimConfig);
+		return { bytes: signMessage(raw, dkimConfig), signed: true };
 	} catch (err) {
 		logger.error(
 			{ err, domain: dkimConfig.domainName, selector: dkimConfig.keySelector },
 			'DKIM signing failed; shipping message unsigned'
 		);
-		return raw;
+		return { bytes: raw, signed: false };
 	}
+}
+
+/** Lowercased CFBL field names the caller may never set (RFC 9477 §4). */
+const RESERVED_CFBL_HEADER_KEYS: ReadonlySet<string> = new Set([
+	CFBL_ADDRESS_HEADER.toLowerCase(),
+	CFBL_FEEDBACK_ID_HEADER.toLowerCase(),
+]);
+
+/**
+ * Drop every caller-supplied CFBL field, whatever its letter case.
+ *
+ * RFC 5322 field names are case-INSENSITIVE, so merging `{...job.headers,
+ * ...feedbackHeaders}` is not enough on its own: a `cfbl-address` key is a
+ * different object key from `CFBL-Address` and survives the spread, and the
+ * composer only de-duplicates structural headers. The wire would then carry an
+ * attacker-chosen complaint address ALONGSIDE the signed one, and RFC 9477
+ * defines no tiebreak for duplicates — a provider may pick either, or discard
+ * both. Either outcome hands a tenant the ability to redirect or silence its own
+ * complaint feedback.
+ *
+ * The strip is UNCONDITIONAL: it runs even when we emit no CFBL pair of our own
+ * (no signing key, unaligned host), because an unsigned complaint handle that we
+ * cannot verify is strictly worse than no handle at all.
+ */
+function withoutCfblHeaders(
+	headers: Record<string, string> | undefined
+): Record<string, string> | undefined {
+	if (!headers) return undefined;
+	const entries = Object.entries(headers).filter(
+		([name]) => !RESERVED_CFBL_HEADER_KEYS.has(name.toLowerCase())
+	);
+	return entries.length === Object.keys(headers).length ? headers : Object.fromEntries(entries);
 }
 
 /**
@@ -122,8 +168,16 @@ function buildSignedBytes(
  * HTML-derived fallback), the AMP alternative, decoded attachments, the tracing
  * headers, the VERP envelope, and a From-aligned Message-ID (a caller-supplied
  * Message-ID header wins).
+ *
+ * `feedbackHeaders` carries the RFC 9477 CFBL pair. Any caller-supplied CFBL
+ * field is STRIPPED from `job.headers` first — see {@link withoutCfblHeaders} —
+ * so a tenant can neither displace nor duplicate the signed one.
  */
-function composeStructured(job: EmailJob, verpAddress: string): { raw: Buffer } {
+function composeStructured(
+	job: EmailJob,
+	verpAddress: string,
+	feedbackHeaders: Record<string, string>
+): { raw: Buffer } {
 	const suppliedMessageIdKey = job.headers
 		? Object.keys(job.headers).find((h) => h.toLowerCase() === 'message-id')
 		: undefined;
@@ -141,6 +195,8 @@ function composeStructured(job: EmailJob, verpAddress: string): { raw: Buffer } 
 				}))
 			: undefined;
 
+	const callerHeaders = withoutCfblHeaders(job.headers);
+
 	return composeMessage({
 		from: job.from,
 		to: [job.to],
@@ -154,7 +210,8 @@ function composeStructured(job: EmailJob, verpAddress: string): { raw: Buffer } 
 		...(job.replyTo ? { replyTo: job.replyTo } : {}),
 		...(attachments ? { attachments } : {}),
 		headers: {
-			...job.headers,
+			...callerHeaders,
+			...feedbackHeaders,
 			'X-Owlat-Message-Id': job.messageId,
 			'X-Owlat-Org-Id': job.organizationId,
 		},
@@ -260,17 +317,71 @@ export async function sendToMx(
 	// ANY host — so a DSN arriving at the per-domain host still verifies and
 	// suppresses the right recipient (see bounce/verp.ts, bounce/server.ts).
 	const perDomainReturnPath = await getReturnPathHost(redis, job.dkimDomain.toLowerCase());
-	const verpAddress = buildVerpAddress(
-		job.messageId,
-		perDomainReturnPath ?? config.returnPathDomain
-	);
+	const feedbackHost = perDomainReturnPath ?? config.returnPathDomain;
+	const verpAddress = buildVerpAddress(job.messageId, feedbackHost);
+
+	// RFC 9477 CFBL-Address (P2-7): advertise a SIGNED complaint address on every
+	// composed outbound message. It rides the same host as the VERP return path —
+	// that host's MX already points at the bounce SMTP server and `fbl+…` is
+	// already accepted at RCPT time — so no new DNS, no new listener and, above
+	// all, no bilateral enrollment with any mailbox provider. Sealed-mail raw
+	// bytes are shipped verbatim and are deliberately untouched.
+	//
+	// RFC 9477 §3.1.3: when the CFBL host is not the From domain (or a child of
+	// it) the message must carry a SECOND DKIM signature aligned with that host,
+	// and we sign once. So the pair is emitted only for a sending domain that has
+	// registered its own return-path host; on the shared global host we stay
+	// silent rather than publish a header every conforming provider ignores.
+	//
+	// Silence is the DEFAULT branch (most domains use the shared global host), so
+	// the outcome is counted: `mta_cfbl_emissions_total{outcome="host_unaligned"}`
+	// is how an operator sees that CFBL is off for a domain, and why. Counting is
+	// not warning — nothing here can fail a send.
+	//
+	// Sealed mail short-circuits the whole question: `buildSignedBytes` ships
+	// `job.sealedMimeBase64` verbatim and never reaches the composer, so no
+	// composed header set can ride those bytes. Counting such a send as
+	// `emitted` would report a CFBL-Address that is provably not on the wire, so
+	// it gets its own bounded label and the builder is not consulted at all.
+	//
+	// RFC 9477 §3.1 also requires the RFC5322.From domain to be matched by a
+	// VALID DKIM signature, and §3.1.4 says a provider "SHALL NOT send a report
+	// message" otherwise. A single-domain self-host whose global return-path
+	// domain happens to align with From but which has registered no DKIM key
+	// sends unsigned, so `dkimConfig` presence gates emission too — otherwise we
+	// would publish exactly the inert, provider-discarded header the unaligned
+	// branch already refuses to publish.
+	const cfbl: CfblHeaderResult = job.sealedMimeBase64
+		? { outcome: 'sealed_raw', headers: {} }
+		: buildCfblHeaders({
+				messageId: job.messageId,
+				cfblHost: feedbackHost,
+				fromDomain: extractDomainOrNull(job.from) ?? '',
+				dkimSigned: dkimConfig !== undefined,
+			});
+	const feedbackHeaders = cfbl.headers;
 
 	// Compose + sign ONCE per job (W2/W3). The exact wire bytes are built a single
 	// time and the SAME signed bytes are retried across every MX host and TLS
 	// profile — byte-identical, DKIM-stable retries (a strict improvement over the
 	// historic per-attempt recomposition). Both the structured-compose path and
 	// the sealed-mail raw path flow through the one signer.
-	const signedBytes = buildSignedBytes(job, dkimConfig, verpAddress);
+	const { bytes: signedBytes, signed: dkimSigned } = buildSignedBytes(
+		job,
+		dkimConfig,
+		verpAddress,
+		feedbackHeaders
+	);
+
+	// Count the emission only once the bytes exist, and derive the outcome from
+	// what actually happened to them. `buildCfblHeaders` was gated on a key being
+	// CONFIGURED; signing can still throw, in which case the composer has already
+	// embedded the pair and we ship it unsigned. That is precisely the §3.1.4
+	// state `no_signature` exists to make visible, so the fallback is relabelled
+	// rather than reported as `emitted`. Nothing here can fail a send.
+	cfblEmissionsTotal.inc({
+		outcome: cfbl.outcome === 'emitted' && !dkimSigned ? 'no_signature' : cfbl.outcome,
+	});
 
 	// Announce the EHLO name that matches THIS bind IP's PTR record. In a
 	// multi-IP deployment each IP has its own reverse DNS, so a single static

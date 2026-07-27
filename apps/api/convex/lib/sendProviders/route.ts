@@ -27,7 +27,9 @@ import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import {
 	destinationProviderForDomain,
 	isActionableDeliverabilitySignalSource,
+	isRouteStateFallbackActive,
 } from '@owlat/shared/deliverabilityRouting';
+import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
@@ -132,32 +134,37 @@ async function deliverabilityInput(
 		learnedProvider && learnedProvider.expiresAt >= now
 			? learnedProvider.destinationProvider
 			: destinationProviderForDomain(toDomain);
-	const [providerState, globalState, warmingState] = await Promise.all([
-		ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', provider)
-			)
-			.first(),
-		ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', 'all')
-			)
-			.first(),
+	const [providerCell, globalState, warmingState] = await Promise.all([
+		// Cell lookup: BOTH the controller's per-stream row and the stream-less row
+		// the MTA snapshot maintains, so neither can shadow the other.
+		loadRouteStateCell(ctx, organizationId, { stream: messageType, destinationProvider: provider }),
+		// The global slice is infrastructure-wide and never per-stream: read the
+		// stream-less row directly so a per-stream `all` row could never hide the
+		// breaker_open signal the snapshot writes there.
+		loadStreamlessRouteState(ctx, organizationId, 'all'),
 		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
-	const freshActive = [globalState, providerState].filter(
-		(state) => state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
+	// The relay is engaged when the infrastructure boolean says so OR when the
+	// resolved share (D1: `ownShare ?? (isFallbackActive ? 0 : 1)`) is below 1.
+	// A legacy row resolves to exactly its stored boolean, so this is unchanged
+	// today, and a stored share can never mask an infrastructure verdict.
+	//
+	// EVERY row of the cell is considered, not just the most specific one: the
+	// per-stream row carries the share and the stream-less row carries the
+	// infrastructure signals, so reading only one would drop a hard stop.
+	const freshActive = [globalState, providerCell.streamless, providerCell.perStream].filter(
+		(state): state is Doc<'deliverabilityRouteStates'> =>
+			state !== null &&
+			isRouteStateFallbackActive(state) &&
+			now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
 	);
 	// Advisory readings ("blocklist lookup unavailable", "part of the pool is
 	// ejected") are recorded on the state row for measurement, but they are not
 	// routing reasons and must never appear as the cause of a relay fallback.
-	const activeReasons = freshActive.flatMap(
-		(state) =>
-			state?.signals.map((s) => s.source).filter(isActionableDeliverabilitySignalSource) ?? []
+	const activeReasons = freshActive.flatMap((state) =>
+		state.signals.map((s) => s.source).filter(isActionableDeliverabilitySignalSource)
 	);
 	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
 	const isWarmupOverflow = Boolean(
@@ -179,7 +186,8 @@ async function deliverabilityInput(
 				)
 			: false;
 	const isGlobalBreakerOpen = Boolean(
-		globalState?.isFallbackActive &&
+		globalState &&
+		isRouteStateFallbackActive(globalState) &&
 		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
 		globalState.signals.some((signal) => signal.source === 'breaker_open')
 	);
