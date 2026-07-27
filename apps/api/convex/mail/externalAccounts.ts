@@ -36,7 +36,7 @@ import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { getBetterAuthSessionWithRole, requireAdminContext } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
 import { insertExternalAccountRow, applyCredentialRotation } from './externalAccountShared';
@@ -397,12 +397,17 @@ export const _updateCredentialsInternal = internalMutation({
  * is no one-live-per-user guard: an operator connects a handful of seeds, and
  * a seed is not a personal inbox. Zero seed accounts stays a fully supported
  * configuration (D2) — this is opt-in, never a setup step.
+ *
+ * authz: requireAdminContext (a seed is org infrastructure, exactly like a team
+ * inbox) — every campaign the org sends will deliver a full copy to it.
  */
 export const _connectSeedInternal = internalMutation({
 	args: { ...connectFieldsValidator, seedProvider: destinationProviderValidator },
 	handler: async (ctx, args) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s || !s.activeOrganizationId || !s.role) throwForbidden('Not authenticated');
+		// Admin floor, for the same reason `_connectSharedInternal` has one: a seed
+		// is org infrastructure, and connecting one makes every campaign the org
+		// sends deliver a full copy into a mailbox the connecting member controls.
+		const s = await requireAdminContext(ctx);
 		const address = canonicalAddress(args.emailAddress);
 		const [, domain] = address.split('@');
 		if (!domain) throwInvalidInput('Invalid email address');
@@ -447,6 +452,15 @@ export const _getRowInternal = internalQuery({
  * Accounts the worker should hold a connection for. Excludes `auth_error`
  * (waiting on the user to fix credentials) and `disconnected`. No secrets — the
  * worker fetches the password per-account via getCredentialsForWorker.
+ *
+ * SEED mailboxes are excluded outright. A seed is not a user inbox: it exists
+ * only so the deliverability prober can look for its own shadow copies, and
+ * `schema/mail.ts` promises that "its mail is never indexed". Handing one to
+ * the inbound AccountManager would open an IMAP IDLE connection to the
+ * operator's personal consumer mailbox and ingest its entire contents — blobs
+ * and `mailMessages` rows — into Convex as an ordinary Postbox mailbox, plus
+ * re-ingest every shadow copy as inbound mail and race the prober's sweep on
+ * `\Seen`. The prober selects its own accounts via `by_purpose_and_status`.
  */
 export const listConnectableAccounts = internalQuery({
 	args: {},
@@ -460,15 +474,18 @@ export const listConnectableAccounts = internalQuery({
 						.collect() // bounded: connectable accounts per single-org deployment (tens)
 			)
 		);
-		return groups.flat().map((a) => ({
-			accountId: a._id,
-			mailboxId: a.mailboxId,
-			imapHost: a.imapHost,
-			imapPort: a.imapPort,
-			isImapSecure: a.isImapSecure,
-			imapUsername: a.imapUsername,
-			status: a.status,
-		}));
+		return groups
+			.flat()
+			.filter((a) => a.purpose !== 'seed')
+			.map((a) => ({
+				accountId: a._id,
+				mailboxId: a.mailboxId,
+				imapHost: a.imapHost,
+				imapPort: a.imapPort,
+				isImapSecure: a.isImapSecure,
+				imapUsername: a.imapUsername,
+				status: a.status,
+			}));
 	},
 });
 
