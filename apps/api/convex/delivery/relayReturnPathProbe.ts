@@ -156,8 +156,9 @@ export const runReturnPathProbe = internalAction({
 		// swallow every probe and grade every relay unsupported forever.
 		const probeRecipient = returnPathProbeRecipient(probeId, returnPathDomain);
 		let accepted = false;
-		// Fall back to the address we ASKED for if the send never reached the wire;
-		// a refusal is recorded as unsupported either way.
+		// Overwritten with the address the adapter actually put on the wire. The
+		// initialiser only matters for a relay that refused MAIL FROM outright,
+		// which is a genuine verdict and is recorded as unsupported.
 		let sentEnvelopeSender = probeFrom;
 		try {
 			// The adapter builds the VERP envelope sender with the SAME shipped
