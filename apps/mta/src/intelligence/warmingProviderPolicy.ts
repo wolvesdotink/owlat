@@ -30,13 +30,20 @@ export const PROVIDER_WARMING_POLICY = Object.freeze({
 	/** A narrowed provider always keeps at least one slot per day. */
 	minimumProviderCap: 1,
 	/**
-	 * Volume-pressure verdicts recorded for this provider SO FAR TODAY (the
-	 * cumulative count in the daily stats hash, not a consecutive run) that
-	 * force a tighten on their own.
+	 * DAILY EVALUATION GATE. Volume-pressure verdicts counted in the `pressure`
+	 * FIELD of `warmingProviderDailyStatsKey` (the 48h daily-stats hash) over the
+	 * evaluated window — a cumulative count for that whole UTC day, not a
+	 * consecutive run — at or above which the day tightens on its own.
 	 */
 	dailyPressureEventsForTighten: 3,
-	/** Volume-pressure counters expire; pressure is a recent-history signal. */
-	pressureTtlSeconds: 6 * 60 * 60,
+	/**
+	 * RETRY-BACKOFF SIGNAL, a DIFFERENT counter. TTL of the standalone
+	 * `warmingProviderPressureKey` string, whose value feeds
+	 * `pressureAdjustedDelayMs` and nothing else. It is a rolling recent-history
+	 * window, deliberately much shorter than the daily hash's horizon, so a burst
+	 * of throttling stops lengthening backoff once the provider goes quiet.
+	 */
+	retryPressureWindowTtlSeconds: 6 * 60 * 60,
 	/**
 	 * D10 — minimum sample. Below this many sends in the window the gate returns
 	 * `insufficient_data` and NOTHING moves: a single bounce must never be able

@@ -240,7 +240,7 @@ describe('deferral-aware retry', () => {
 				await recordProviderVolumePressure(
 					redis,
 					{ ip, provider: 'microsoft', utcDate },
-					PROVIDER_WARMING_POLICY.pressureTtlSeconds
+					PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
 				);
 			}
 			expect(await readProviderVolumePressure(redis, ip, 'microsoft')).toBe(3);
@@ -282,7 +282,7 @@ describe('deferral-aware retry', () => {
 				await recordProviderVolumePressure(
 					redis,
 					{ ip, provider: 'microsoft', utcDate },
-					PROVIDER_WARMING_POLICY.pressureTtlSeconds
+					PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
 				);
 			}
 			const evaluations = await evaluateProviderWarmingDay(redis, ip, utcDate);

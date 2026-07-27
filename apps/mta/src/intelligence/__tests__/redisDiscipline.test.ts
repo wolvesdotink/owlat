@@ -7,7 +7,9 @@ import {
 	recordProviderWarmingSend,
 	evaluateProviderWarmingDay,
 	checkProviderCap,
+	providerCapVerdict,
 	readBulkSentToday,
+	readWarmingCapGateInputs,
 } from '../warmingProviderStore.js';
 import {
 	PROVIDER_DAILY_STATS_TTL_SECONDS,
@@ -21,6 +23,7 @@ import {
 	warmingProviderStateKey,
 } from '../warmingKeys.js';
 import type { DurableEffectIdentity } from '../../lib/effectCheckpoint.js';
+import type { DestinationProviderKey } from '../../types.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -43,7 +46,7 @@ describe('per-provider warming Redis discipline', () => {
 		await redis.flushall();
 	});
 
-	function ref(provider: 'gmail' | 'microsoft' | 'yahoo' | 'apple' | 'other', date = utcDate) {
+	function ref(provider: DestinationProviderKey, date = utcDate) {
 		return { ip, provider, utcDate: date };
 	}
 
@@ -67,13 +70,13 @@ describe('per-provider warming Redis discipline', () => {
 		await recordProviderVolumePressure(
 			redis,
 			ref('yahoo'),
-			PROVIDER_WARMING_POLICY.pressureTtlSeconds
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
 		);
 		expect(await redis.ttl(warmingProviderDailyStatsKey(ip, 'yahoo', utcDate))).toBe(
 			PROVIDER_DAILY_STATS_TTL_SECONDS
 		);
 		expect(await redis.ttl(warmingProviderPressureKey(ip, 'yahoo'))).toBe(
-			PROVIDER_WARMING_POLICY.pressureTtlSeconds
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
 		);
 	});
 
@@ -112,6 +115,56 @@ describe('per-provider warming Redis discipline', () => {
 		expect(await warmingKeys()).toEqual([]);
 	});
 
+	it('never WRITES on the hot cap-read path, not even to roll a stale day', async () => {
+		// A live state hash whose counter belongs to a FINISHED day: the old read
+		// script rolled it in place (an HSET + an EXPIRE on every dispatch attempt).
+		await redis.hset(
+			warmingProviderStateKey(ip, 'gmail'),
+			'sentToday',
+			'900',
+			'sentTodayReset',
+			'2026-07-20',
+			'capMultiplier',
+			'0.5'
+		);
+		await redis.expire(warmingProviderStateKey(ip, 'gmail'), 60);
+
+		const gate = await checkProviderCap(redis, ref('gmail'), 1000);
+		const batched = await readWarmingCapGateInputs(redis, ref('gmail'));
+
+		// The stale counter reads as zero...
+		expect(gate.sentToday).toBe(0);
+		expect(providerCapVerdict(batched, 1000)).toEqual(gate);
+		// ...without the read having touched the row or its TTL.
+		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'sentToday')).toBe('900');
+		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'sentTodayReset')).toBe(
+			'2026-07-20'
+		);
+		expect(await redis.ttl(warmingProviderStateKey(ip, 'gmail'))).toBe(60);
+		// The next SEND is what rolls the day — the write path owns the reset.
+		await recordProviderWarmingSend(redis, ref('gmail'), 'campaign');
+		expect(await redis.hget(warmingProviderStateKey(ip, 'gmail'), 'sentToday')).toBe('1');
+		expect(await redis.ttl(warmingProviderStateKey(ip, 'gmail'))).toBe(PROVIDER_STATE_TTL_SECONDS);
+	});
+
+	it('reads the whole cap-gate input set in ONE pipelined round trip', async () => {
+		await recordProviderWarmingSend(redis, ref('microsoft'), 'campaign');
+		await recordProviderVolumePressure(
+			redis,
+			ref('microsoft'),
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
+		);
+		const before = await warmingKeys();
+
+		const inputs = await readWarmingCapGateInputs(redis, ref('microsoft'));
+
+		expect(inputs.bulkSentToday).toBe(1);
+		expect(inputs.volumePressure).toBe(1);
+		expect(providerCapVerdict(inputs, 1000)).toMatchObject({ allowed: true, sentToday: 1 });
+		// One read, and it created nothing.
+		expect(await warmingKeys()).toEqual(before);
+	});
+
 	it('creates no key when the daily evaluation has nothing to evaluate', async () => {
 		expect(await evaluateProviderWarmingDay(redis, ip, utcDate)).toEqual([]);
 		expect(await warmingKeys()).toEqual([]);
@@ -139,13 +192,13 @@ describe('per-provider warming Redis discipline', () => {
 		const first = await recordProviderVolumePressure(
 			redis,
 			ref('microsoft'),
-			PROVIDER_WARMING_POLICY.pressureTtlSeconds,
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds,
 			pressureIdentity
 		);
 		const replay = await recordProviderVolumePressure(
 			redis,
 			ref('microsoft'),
-			PROVIDER_WARMING_POLICY.pressureTtlSeconds,
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds,
 			pressureIdentity
 		);
 		expect(first).toBe(1);
@@ -161,13 +214,13 @@ describe('per-provider warming Redis discipline', () => {
 		await recordProviderVolumePressure(
 			redis,
 			ref('gmail'),
-			PROVIDER_WARMING_POLICY.pressureTtlSeconds
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
 		);
 		expect((await warmingKeys()).filter((key) => key.includes(':effect:'))).toEqual([]);
 	});
 
 	it('expires the pressure counter so pressure is always a RECENT-history signal', () => {
-		expect(PROVIDER_WARMING_POLICY.pressureTtlSeconds).toBeGreaterThan(0);
-		expect(PROVIDER_WARMING_POLICY.pressureTtlSeconds).toBeLessThanOrEqual(24 * 60 * 60);
+		expect(PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds).toBeGreaterThan(0);
+		expect(PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds).toBeLessThanOrEqual(24 * 60 * 60);
 	});
 });

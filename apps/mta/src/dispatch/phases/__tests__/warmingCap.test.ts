@@ -304,12 +304,12 @@ describe('warmingCapPhase', () => {
 		await recordProviderVolumePressure(
 			redis,
 			{ ip: IP, provider: 'gmail', utcDate: UTC_DATE },
-			PROVIDER_WARMING_POLICY.pressureTtlSeconds
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
 		);
 		await recordProviderVolumePressure(
 			redis,
 			{ ip: IP, provider: 'gmail', utcDate: UTC_DATE },
-			PROVIDER_WARMING_POLICY.pressureTtlSeconds
+			PROVIDER_WARMING_POLICY.retryPressureWindowTtlSeconds
 		);
 
 		const out = await warmingCapPhase.run(deps, makeCtx({ providerKey: 'gmail' }));
