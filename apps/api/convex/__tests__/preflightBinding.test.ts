@@ -873,10 +873,12 @@ describe('the capacity gate never blocks the schedule mutation', () => {
 				createTestCampaignSender({ email: 'sender@verified.example.com' })
 			);
 			const topicId = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
-			// Past the 3,000 contacts a 6,000-document budget buys on this shape (one
-			// contact + one topic-membership point read each), which is all it takes to
-			// prove the preload no longer collects the whole junction table.
-			for (let i = 0; i < 3_100; i += 1) {
+			// Comfortably past SEGMENT_LOOKUP_BATCH, so the scan drains several
+			// batches of point reads — which is what proves the preload no longer
+			// collects the whole junction table. Exhausting the budget is not this
+			// test's claim (the two cases above own that), and every extra member is
+			// another point read against a growing table under coverage.
+			for (let i = 0; i < 800; i += 1) {
 				const contactId = await ctx.db.insert(
 					'contacts',
 					createTestContact({ email: `member-${i}@big.test`, doiStatus: 'not_required' })
