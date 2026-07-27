@@ -122,7 +122,11 @@ export function gateStatusLabel(status: GateStatus): string {
 export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 	const { measurement } = gate;
 	if (gate.status === 'insufficient_data') {
-		switch (gate.reason) {
+		// Bound to a LOCAL: switching on `gate.reason` narrows `gate` itself, so the
+		// exhaustiveness check below would read a property off `never` instead of
+		// proving the union was covered.
+		const { reason } = gate;
+		switch (reason) {
 			case 'own_sample_below_floor':
 				return `Not enough data yet — ${formatNumber(measurement.ownSample)} of ${formatNumber(measurement.minSample)} sends this window.`;
 			case 'reference_sample_below_floor':
@@ -145,7 +149,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): string {
 				// any hold reason a later gate adds — say a baseline reason, whose
 				// sample is not this window's at all. A new `RampGateHoldReason` must
 				// fail the typecheck here and be given its own sentence.
-				const unhandled: never = gate.reason;
+				const unhandled: never = reason;
 				return unhandled;
 			}
 		}
