@@ -23,9 +23,10 @@ import {
 import { isSendProviderReady } from './capability';
 import { isSendProviderKind, type SendProviderKind } from './types';
 import { getOptional } from '../env';
-import { extractDomainOrNull, SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
+import { extractDomainOrNull } from '@owlat/shared';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import { resolveDestinationProvider } from './destinationProvider';
+import { relayDomainVerified } from './relayDomainVerification';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
 
@@ -81,16 +82,7 @@ export async function resolveSendRouteFromDb(
 		status: h.status,
 		successRate: h.successRate,
 	}));
-	const candidateKinds = new Set<SendProviderKind>();
-	for (const provider of routeConfig?.providers ?? []) {
-		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
-	}
-	const envProvider = getOptional('EMAIL_PROVIDER');
-	if (isSendProviderKind(envProvider)) candidateKinds.add(envProvider);
-	const readyKinds = new Set<SendProviderKind>();
-	for (const kind of candidateKinds) {
-		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
-	}
+	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
 
 	const deliverability = addressContext?.baseOnly
 		? undefined
@@ -110,6 +102,168 @@ export async function resolveSendRouteFromDb(
 				),
 			}
 		: null;
+}
+
+/**
+ * Which provider kinds are runtime-ready for this route config (credentials +
+ * flag + capability grant). Shared by the full resolver and the cell seam so
+ * the two cannot disagree about what "enabled" means.
+ */
+async function readySendProviderKinds(
+	ctx: QueryCtx | MutationCtx,
+	routeConfig: Doc<'providerRoutes'> | null
+): Promise<Set<SendProviderKind>> {
+	const candidateKinds = new Set<SendProviderKind>();
+	for (const provider of routeConfig?.providers ?? []) {
+		if (isSendProviderKind(provider.providerType)) candidateKinds.add(provider.providerType);
+	}
+	const envProvider = getOptional('EMAIL_PROVIDER');
+	if (isSendProviderKind(envProvider)) candidateKinds.add(envProvider);
+	const readyKinds = new Set<SendProviderKind>();
+	for (const kind of candidateKinds) {
+		if (await isSendProviderReady(ctx, kind)) readyKinds.add(kind);
+	}
+	return readyKinds;
+}
+
+/**
+ * The two `deliverabilityRouteStates` rows a decision keys off: the
+ * destination-provider row and the org-wide `all` row. Both indexed point
+ * reads (`by_org_provider`).
+ */
+async function deliverabilityRouteStatesFor(
+	ctx: QueryCtx | MutationCtx,
+	organizationId: string,
+	provider: DestinationProviderKey
+): Promise<[Doc<'deliverabilityRouteStates'> | null, Doc<'deliverabilityRouteStates'> | null]> {
+	return await Promise.all([
+		ctx.db
+			.query('deliverabilityRouteStates')
+			.withIndex('by_org_provider', (q) =>
+				q.eq('organizationId', organizationId).eq('destinationProvider', provider)
+			)
+			.first(),
+		ctx.db
+			.query('deliverabilityRouteStates')
+			.withIndex('by_org_provider', (q) =>
+				q.eq('organizationId', organizationId).eq('destinationProvider', 'all')
+			)
+			.first(),
+	]);
+}
+
+/** Fallback reasons carried by the FRESH active route states, in order. */
+function freshFallbackReasons(
+	states: ReadonlyArray<Doc<'deliverabilityRouteStates'> | null>,
+	now: number
+) {
+	return states
+		.filter(
+			(state) =>
+				state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
+		)
+		.flatMap((state) => state?.signals.map((signal) => signal.source) ?? []);
+}
+
+/** True when the org-wide state carries a fresh `breaker_open` signal. */
+function isGlobalBreakerOpenState(
+	globalState: Doc<'deliverabilityRouteStates'> | null,
+	now: number
+): boolean {
+	return Boolean(
+		globalState?.isFallbackActive &&
+		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+		globalState.signals.some((signal) => signal.source === 'breaker_open')
+	);
+}
+
+/** Relay-domain verification for the envelope From, when a relay is configured. */
+async function relayDomainVerifiedFor(
+	ctx: QueryCtx | MutationCtx,
+	routeConfig: Doc<'providerRoutes'> | null,
+	from: string | undefined,
+	now: number
+): Promise<boolean> {
+	const fromDomain = from ? extractDomainOrNull(from) : null;
+	if (!fromDomain || !routeConfig?.deliverabilityFallback?.isEnabled) return false;
+	return await relayDomainVerified(
+		ctx,
+		fromDomain,
+		routeConfig.deliverabilityFallback.relayProviderType,
+		now
+	);
+}
+
+/** Per-CELL inputs for {@link resolveCellRouteFromDb}. */
+export interface CellRouteContext {
+	/** The cell's destination provider — the axis the fallback is keyed on. */
+	readonly destinationProvider: DestinationProviderKey;
+	/** Envelope From; feeds the shipped relay-domain verification input. */
+	readonly from?: string;
+	readonly now: number;
+	readonly organizationId: string;
+}
+
+/**
+ * Per-CELL route resolution for BATCH callers, from cold/warm inputs only.
+ *
+ * `resolveSendRouteFromDb` is the authoritative per-message resolution and it
+ * reads `providerHealth` — a document that is read-modify-written once per
+ * dispatch (`health.ts recordSendResult`). Pulling that hotspot into a
+ * campaign enqueue transaction (which also performs ~50 workpool enqueues)
+ * would make every concurrent dispatch invalidate the enqueue's read set and
+ * drive OCC retries on a transaction that must not fail. So this seam answers
+ * the DELIVERABILITY question — "does this cell relay, and to which
+ * transport?" — from inputs that no send patches:
+ *
+ *   - `providerRoutes` (indexed, admin-written),
+ *   - `deliverabilityRouteStates` (`by_org_provider`, written by the
+ *     ip-reputation sync cron),
+ *   - the relay-domain verification (`domains` /
+ *     `sendingDomainSesIdentities`, both admin/verification-written).
+ *
+ * Deliberately NOT read here:
+ *   - `providerHealth` — health-driven failover stays with the worker's
+ *     authoritative re-resolution at dispatch (`governedDispatch.ts`);
+ *   - `warmingState` — warm-up overflow is a point-in-time volume condition,
+ *     and the timezone branch enqueues up to 24h before dispatch, so an
+ *     enqueue-time reading of it would predict nothing.
+ *
+ * Returns `null` when nothing can be recorded honestly (no route, or the
+ * org-wide delivery circuit is open — the message is not going anywhere
+ * right now, and a guessed arm is worse than a missing row).
+ */
+export async function resolveCellRouteFromDb(
+	ctx: QueryCtx | MutationCtx,
+	messageType: MessageType,
+	context: CellRouteContext
+): Promise<ResolvedRoute | null> {
+	const routeConfig = await ctx.db
+		.query('providerRoutes')
+		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
+		.first();
+	const [providerState, globalState] = await deliverabilityRouteStatesFor(
+		ctx,
+		context.organizationId,
+		context.destinationProvider
+	);
+	if (isGlobalBreakerOpenState(globalState, context.now)) return null;
+	const readyKinds = await readySendProviderKinds(ctx, routeConfig);
+	return resolveRoute(
+		routeConfig as ProviderRouteConfig | null,
+		undefined,
+		(kind) => readyKinds.has(kind),
+		{
+			activeReasons: freshFallbackReasons([globalState, providerState], context.now),
+			isWarmupOverflow: false,
+			isRelayDomainVerified: await relayDomainVerifiedFor(
+				ctx,
+				routeConfig,
+				context.from,
+				context.now
+			),
+		}
+	);
 }
 
 async function deliverabilityInput(
@@ -134,27 +288,13 @@ async function deliverabilityInput(
 	const provider =
 		addressContext.destinationProvider ??
 		(await resolveDestinationProvider(ctx, organizationId, toDomain, now));
-	const [providerState, globalState, warmingState] = await Promise.all([
-		ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', provider)
-			)
-			.first(),
-		ctx.db
-			.query('deliverabilityRouteStates')
-			.withIndex('by_org_provider', (q) =>
-				q.eq('organizationId', organizationId).eq('destinationProvider', 'all')
-			)
-			.first(),
+	const [[providerState, globalState], warmingState] = await Promise.all([
+		deliverabilityRouteStatesFor(ctx, organizationId, provider),
 		messageType === 'campaign' && routeConfig?.deliverabilityFallback?.isWarmupOverflowEnabled
 			? ctx.db.query('warmingState').first()
 			: Promise.resolve(null),
 	]);
-	const freshActive = [globalState, providerState].filter(
-		(state) => state?.isFallbackActive && now - state.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
-	);
-	const activeReasons = freshActive.flatMap((state) => state?.signals.map((s) => s.source) ?? []);
+	const activeReasons = freshFallbackReasons([globalState, providerState], now);
 	if (addressContext.forceRelayReason === 'breaker_open') activeReasons.unshift('breaker_open');
 	const isWarmupOverflow = Boolean(
 		addressContext.forceRelayReason === 'warmup_overflow' ||
@@ -164,78 +304,14 @@ async function deliverabilityInput(
 			warmingState.totalDailyCap > 0 &&
 			warmingState.totalSentToday >= warmingState.totalDailyCap)
 	);
-	const fromDomain = addressContext.from ? extractDomainOrNull(addressContext.from) : null;
-	const isRelayDomainVerified =
-		fromDomain && routeConfig?.deliverabilityFallback?.isEnabled
-			? await relayDomainVerified(
-					ctx,
-					fromDomain,
-					routeConfig.deliverabilityFallback.relayProviderType,
-					now
-				)
-			: false;
-	const isGlobalBreakerOpen = Boolean(
-		globalState?.isFallbackActive &&
-		now - globalState.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-		globalState.signals.some((signal) => signal.source === 'breaker_open')
+	const isRelayDomainVerified = await relayDomainVerifiedFor(
+		ctx,
+		routeConfig,
+		addressContext.from,
+		now
 	);
+	const isGlobalBreakerOpen = isGlobalBreakerOpenState(globalState, now);
 	return { activeReasons, isWarmupOverflow, isRelayDomainVerified, isGlobalBreakerOpen };
-}
-
-async function relayDomainVerified(
-	ctx: QueryCtx | MutationCtx,
-	domainName: string,
-	relayProviderType: string,
-	now: number
-): Promise<boolean> {
-	if (relayProviderType !== 'ses') return false;
-	const domain = await ctx.db
-		.query('domains')
-		.withIndex('by_domain', (q) => q.eq('domain', domainName.toLowerCase()))
-		.first();
-	if (!domain) return false;
-	const identity = await ctx.db
-		.query('sendingDomainSesIdentities')
-		.withIndex('by_domain', (q) => q.eq('domainId', domain._id))
-		.first();
-	if (
-		!identity?.dnsRecords ||
-		!identity.verificationResults ||
-		!identity.isProviderVerified ||
-		!identity.verifiedAt ||
-		now - identity.verifiedAt > SES_RELAY_PROOF_MAX_AGE_MS
-	)
-		return false;
-	const proof = identity.verificationResults;
-	const spfProofState =
-		identity.spfProofState ??
-		(identity.dnsRecords.spf ? 'dns_required' : 'not_applicable_manual_primary');
-	const spfSatisfied =
-		spfProofState === 'dns_required'
-			? Boolean(identity.dnsRecords.spf && proof.spf?.verified)
-			: domain.providerType === 'mta' &&
-				domain.status === 'verified' &&
-				!identity.dnsRecords.spf &&
-				!proof.spf;
-	const results = [
-		...(spfProofState === 'dns_required' ? [proof.spf] : []),
-		...(proof.dkim ?? []),
-		...(proof.mailFrom ?? []),
-	];
-	return Boolean(
-		spfSatisfied &&
-		identity.dkimTokens.length > 0 &&
-		proof.dkim?.length === identity.dkimTokens.length &&
-		proof.dkim.every((result) => result.verified) &&
-		identity.dnsRecords.mailFrom?.length &&
-		proof.mailFrom?.length === identity.dnsRecords.mailFrom.length &&
-		proof.mailFrom.every((result) => result.verified) &&
-		results.every((result) => {
-			if (!result || !Number.isFinite(result.lastChecked)) return false;
-			const age = now - result.lastChecked;
-			return age >= 0 && age <= SES_RELAY_PROOF_MAX_AGE_MS;
-		})
-	);
 }
 
 /**
