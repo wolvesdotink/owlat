@@ -29,10 +29,12 @@ import {
 } from '../../delivery/sendLifecycle/reducers';
 import type { Effect } from '../../delivery/sendLifecycle/effects';
 import { recordTransportOutcomeForCell, recordTransportOutcomeForSend } from '../transportOutcomes';
+import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../transportOutcomeSummary';
 import { modules } from './testModules';
 import {
 	GMAIL_CAMPAIGN_CELL,
 	OUTCOME_ORG,
+	pickCounters,
 	readBuckets,
 	seedAssignedSend,
 	seedAssignedTestPreview,
@@ -162,22 +164,63 @@ describe('lifecycle transition → one shard of one bucket', () => {
 		expect(buckets[0]?.organizationId).toBe(OUTCOME_ORG);
 		expect(buckets[0]?.cell).toBe(GMAIL_CAMPAIGN_CELL);
 		expect(buckets[0]?.arm).toBe('own');
-		expect(buckets[0]?.sent).toBe(1);
-		expect(buckets[0]?.delivered).toBe(0);
-		expect(buckets[0]?.calibrationSent).toBe(0);
+		expect(pickCounters(buckets[0])).toEqual({ ...ZERO_TRANSPORT_OUTCOME_TOTALS, sent: 1 });
 	});
 
 	it('records `delivered` on sent → delivered', async () => {
 		const buckets = await runTransition('sent', { to: 'delivered', at: Date.now() });
 		expect(buckets).toHaveLength(1);
-		expect(buckets[0]?.delivered).toBe(1);
-		expect(buckets[0]?.sent).toBe(0);
+		expect(pickCounters(buckets[0])).toEqual({ ...ZERO_TRANSPORT_OUTCOME_TOTALS, delivered: 1 });
+	});
+
+	// The delivered denominator is written by the delivery OBSERVATION, from
+	// whichever evidence arrives first — so an open that is the first evidence
+	// records BOTH counters, exactly like the shipped dashboard pair beside it.
+	// Without this, `opened` could exceed `delivered` and `openRate` could
+	// exceed 1.0 in any cell whose transport emits no delivery callback.
+	it('records `delivered` AND `opened` when an open is the first delivery evidence', async () => {
+		const buckets = await runTransition('sent', { to: 'opened', at: Date.now() });
+		expect(buckets).toHaveLength(1);
+		expect(pickCounters(buckets[0])).toEqual({
+			...ZERO_TRANSPORT_OUTCOME_TOTALS,
+			delivered: 1,
+			opened: 1,
+		});
+	});
+
+	it('does not double-count `delivered` when a provider callback follows the open', async () => {
+		const t = convexTest(schema, modules);
+		let sendId: Id<'emailSends'> | undefined;
+		await t.run(async (ctx) => {
+			const seeded = await seedAssignedSend(ctx, { status: 'sent', assignment: {} });
+			sendId = seeded.sendId;
+		});
+		if (!sendId) throw new Error('seed failed');
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId },
+			transition: { to: 'opened', at: Date.now() },
+		});
+		await t.mutation(internal.delivery.sendLifecycle.transition, {
+			send: { kind: 'campaign', id: sendId },
+			transition: { to: 'delivered', at: Date.now() + 1_000 },
+		});
+		await t.run(async (ctx) => {
+			const buckets = await readBuckets(ctx);
+			expect(sumCounter(buckets, 'delivered')).toBe(1);
+			expect(sumCounter(buckets, 'opened')).toBe(1);
+		});
 	});
 
 	it('records `opened` on delivered → opened', async () => {
 		const buckets = await runTransition('delivered', { to: 'opened', at: Date.now() });
 		expect(buckets).toHaveLength(1);
-		expect(buckets[0]?.opened).toBe(1);
+		// The seeded row carries no `deliveredAt`, so this open is also the first
+		// delivery observation — the same pair the dashboard records.
+		expect(pickCounters(buckets[0])).toEqual({
+			...ZERO_TRANSPORT_OUTCOME_TOTALS,
+			delivered: 1,
+			opened: 1,
+		});
 	});
 
 	it('records `clicked` on opened → clicked', async () => {
@@ -187,7 +230,11 @@ describe('lifecycle transition → one shard of one bucket', () => {
 			url: 'https://example.com/offer',
 		});
 		expect(buckets).toHaveLength(1);
-		expect(buckets[0]?.clicked).toBe(1);
+		expect(pickCounters(buckets[0])).toEqual({
+			...ZERO_TRANSPORT_OUTCOME_TOTALS,
+			delivered: 1,
+			clicked: 1,
+		});
 	});
 
 	it('records `hard_bounced` on sent → bounced(hard)', async () => {
@@ -197,8 +244,10 @@ describe('lifecycle transition → one shard of one bucket', () => {
 			bounceType: 'hard',
 		});
 		expect(buckets).toHaveLength(1);
-		expect(buckets[0]?.hardBounced).toBe(1);
-		expect(buckets[0]?.softBounced).toBe(0);
+		expect(pickCounters(buckets[0])).toEqual({
+			...ZERO_TRANSPORT_OUTCOME_TOTALS,
+			hardBounced: 1,
+		});
 	});
 
 	it('records `soft_bounced` on sent → bounced(soft)', async () => {
@@ -208,14 +257,22 @@ describe('lifecycle transition → one shard of one bucket', () => {
 			bounceType: 'soft',
 		});
 		expect(buckets).toHaveLength(1);
-		expect(buckets[0]?.softBounced).toBe(1);
-		expect(buckets[0]?.hardBounced).toBe(0);
+		expect(pickCounters(buckets[0])).toEqual({
+			...ZERO_TRANSPORT_OUTCOME_TOTALS,
+			softBounced: 1,
+		});
 	});
 
-	it('records `complained` on delivered → complained', async () => {
+	it('records `delivered` AND `complained` on delivered → complained', async () => {
 		const buckets = await runTransition('delivered', { to: 'complained', at: Date.now() });
 		expect(buckets).toHaveLength(1);
-		expect(buckets[0]?.complained).toBe(1);
+		// A complaint proves the message reached the mailbox, so it is delivery
+		// evidence for the shipped denominator too.
+		expect(pickCounters(buckets[0])).toEqual({
+			...ZERO_TRANSPORT_OUTCOME_TOTALS,
+			delivered: 1,
+			complained: 1,
+		});
 	});
 
 	it('counts UNIQUE opens: a second `opened → opened` does not bump the counter', async () => {

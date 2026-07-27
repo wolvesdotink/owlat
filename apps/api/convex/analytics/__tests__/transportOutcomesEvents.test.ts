@@ -18,7 +18,6 @@ import {
 describe('transportOutcomeEventForTransition (pure)', () => {
 	it('maps every lifecycle transition that is a transport outcome', () => {
 		expect(transportOutcomeEventForTransition('sent')).toBe('sent');
-		expect(transportOutcomeEventForTransition('delivered')).toBe('delivered');
 		expect(transportOutcomeEventForTransition('complained')).toBe('complained');
 		expect(transportOutcomeEventForTransition('bounced', 'hard')).toBe('hard_bounced');
 		expect(transportOutcomeEventForTransition('bounced', 'soft')).toBe('soft_bounced');
@@ -34,6 +33,15 @@ describe('transportOutcomeEventForTransition (pure)', () => {
 		// disagree with the dashboard over the same traffic (plan D5).
 		expect(transportOutcomeEventForTransition('opened')).toBeNull();
 		expect(transportOutcomeEventForTransition('clicked')).toBeNull();
+	});
+
+	it('does not map `delivered` — the delivery observation emits it once per send', () => {
+		// The shipped delivered denominator is written by whichever evidence
+		// arrives first (a provider callback, an open, a click, a complaint), and
+		// an explicit `delivered` transition out of any other state is a duplicate
+		// the runner drops. Mapping it here would under-count `delivered` against
+		// the dashboard and let the rates denominated on it exceed 1.0.
+		expect(transportOutcomeEventForTransition('delivered')).toBeNull();
 	});
 
 	it('treats a bounce of unknown hardness as soft (the conservative side)', () => {

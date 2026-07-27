@@ -117,6 +117,40 @@ describe('summarizeTransportOutcomeBuckets (pure)', () => {
 		expect(Number.isFinite(summary.openRate)).toBe(true);
 	});
 
+	it('clamps a rate whose numerator exceeds its denominator to 1', () => {
+		// The counters cannot get here through the shipped write path any more —
+		// `delivered >= opened` holds by construction. This is the read-boundary
+		// backstop for a legacy or partially-written bucket: a gate reads these
+		// numbers as ratios and must never be handed one above 1.
+		const summary = summarizeTransportOutcomeBuckets([
+			asBucket(
+				bucketRow({ periodStart: DAY, shardKey: 0, sent: 4, delivered: 3, opened: 9, clicked: 7 })
+			),
+		]);
+		expect(summary.openRate).toBe(1);
+		expect(summary.clickRate).toBe(1);
+	});
+
+	it('keeps openRate inside [0, 1] in a mixed cell (callback sends + open-only sends)', () => {
+		// The regression this pins: some sends in a cell get a provider
+		// `delivered` callback, others are only ever observed through their open.
+		// If the open-only sends did not also bump `delivered`, `opened` would
+		// exceed `delivered` here and `openRate` would read 1.67.
+		const summary = summarizeTransportOutcomeBuckets([
+			// three sends whose first evidence was the provider callback
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 0, sent: 5, delivered: 3 })),
+			// two sends whose ONLY evidence was the open — delivered and opened
+			// move together, exactly as the lifecycle now records them
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 1, delivered: 2, opened: 2 })),
+			// …plus opens on two of the callback sends
+			asBucket(bucketRow({ periodStart: DAY, shardKey: 2, opened: 2 })),
+		]);
+		expect(summary.delivered).toBe(5);
+		expect(summary.opened).toBe(4);
+		expect(summary.openRate).toBeLessThanOrEqual(1);
+		expect(summary.openRate).toBeCloseTo(0.8, 10);
+	});
+
 	it('treats NaN / negative / infinite counters as 0 rather than poisoning the cell', () => {
 		const summary = summarizeTransportOutcomeBuckets([
 			asBucket(

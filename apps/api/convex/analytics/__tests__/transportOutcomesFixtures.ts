@@ -16,7 +16,11 @@ import {
 	createTestEmailSend,
 } from '../../__tests__/factories';
 import { deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
-import type { TransportOutcomeArm, TransportOutcomeBucket } from '../transportOutcomeSummary';
+import type {
+	TransportOutcomeArm,
+	TransportOutcomeBucket,
+	TransportOutcomeTotals,
+} from '../transportOutcomeSummary';
 
 /** The org `getSingletonOrganizationId` is mocked to return in this suite. */
 export const OUTCOME_ORG = 'org_outcomes';
@@ -147,6 +151,34 @@ export async function readBuckets(
 			(input.cell === undefined || row.cell === input.cell) &&
 			(input.arm === undefined || row.arm === input.arm)
 	);
+}
+
+/**
+ * Every counter of one bucket, as a plain object shaped like
+ * `TransportOutcomeTotals`.
+ *
+ * Assert the WHOLE object per case (`{ ...ZERO_TRANSPORT_OUTCOME_TOTALS,
+ * delivered: 1 }`) rather than the one counter the case is named after: an
+ * outcome landing on the wrong counter, or failing to land at all, has to fail
+ * the test. A matrix that only checked the counter under test is exactly how a
+ * missing `delivered` bump once survived this suite.
+ */
+export function pickCounters(bucket: TransportOutcomeBucket | undefined): TransportOutcomeTotals {
+	if (!bucket) throw new Error('no bucket to read counters from');
+	return {
+		sent: bucket.sent,
+		delivered: bucket.delivered,
+		deferred: bucket.deferred,
+		softBounced: bucket.softBounced,
+		hardBounced: bucket.hardBounced,
+		complained: bucket.complained,
+		opened: bucket.opened,
+		clicked: bucket.clicked,
+		unsubscribed: bucket.unsubscribed,
+		calibrationSent: bucket.calibrationSent,
+		calibrationOpened: bucket.calibrationOpened,
+		calibrationClicked: bucket.calibrationClicked,
+	};
 }
 
 /** Sum one counter across every shard row returned. */
