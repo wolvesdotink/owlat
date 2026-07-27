@@ -65,6 +65,7 @@ import type * as analytics_reputationSnapshots from "../analytics/reputationSnap
 import type * as analytics_seedPlacement from "../analytics/seedPlacement.js";
 import type * as analytics_seedProbeLedger from "../analytics/seedProbeLedger.js";
 import type * as analytics_seedProbePoller from "../analytics/seedProbePoller.js";
+import type * as analytics_seedRotationSweep from "../analytics/seedRotationSweep.js";
 import type * as analytics_sendingReputation from "../analytics/sendingReputation.js";
 import type * as analytics_spamRate from "../analytics/spamRate.js";
 import type * as analytics_spendBudget from "../analytics/spendBudget.js";
@@ -864,6 +865,7 @@ declare const fullApi: ApiFromModules<{
   "analytics/seedPlacement": typeof analytics_seedPlacement;
   "analytics/seedProbeLedger": typeof analytics_seedProbeLedger;
   "analytics/seedProbePoller": typeof analytics_seedProbePoller;
+  "analytics/seedRotationSweep": typeof analytics_seedRotationSweep;
   "analytics/sendingReputation": typeof analytics_sendingReputation;
   "analytics/spamRate": typeof analytics_spamRate;
   "analytics/spendBudget": typeof analytics_spendBudget;
