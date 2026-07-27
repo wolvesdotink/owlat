@@ -81,11 +81,18 @@ export const ACCEPTED_FUTURE_WINDOWS = SIGNED_TOKEN_FUTURE_WINDOWS;
  * is where the 14-day complaint latency allowance is decided, because the dedup
  * and provenance retentions that must outlive a verifiable token read it too.
  * (13 prior days + today + one skew day = the shared 15-day span.)
+ *
+ * FLOORED, because this is a whole count of day buckets by construction: a
+ * horizon that is not a day multiple must round DOWN to a shorter acceptance
+ * span, never leave a fractional window that shifts the `age <=
+ * ACCEPTED_PAST_WINDOWS` boundary half a day while every derived integer (and
+ * therefore every cost test) stays put.
  */
-export const ACCEPTED_PAST_WINDOWS =
+export const ACCEPTED_PAST_WINDOWS = Math.floor(
 	MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS / (SIGNED_TOKEN_WINDOW_MS / 1000) -
-	1 -
-	ACCEPTED_FUTURE_WINDOWS;
+		1 -
+		ACCEPTED_FUTURE_WINDOWS
+);
 
 /**
  * How far back verification will probe PURELY to classify a rejection as
@@ -259,7 +266,17 @@ export type CfblEmissionOutcome =
 	| 'host_unaligned'
 	/** No `BOUNCE_VERP_KEY`: an unsigned complaint handle is worse than none. */
 	| 'no_key'
-	/** No return-path host, or a message id too long to encode. */
+	/**
+	 * Sealed mail: the raw MIME is shipped verbatim, so no composed header set
+	 * rides the bytes and {@link buildCfblHeaders} is never consulted. Reported
+	 * by the SENDER, not by this module.
+	 */
+	| 'sealed_raw'
+	/**
+	 * An empty or over-long message id, or an address over the 320-octet cap.
+	 * (A missing return-path host cannot reach here: an empty CFBL host fails
+	 * the §3.1.3 alignment test first and is counted as `host_unaligned`.)
+	 */
 	| 'no_address';
 
 /** What {@link buildCfblHeaders} produced, and why. */

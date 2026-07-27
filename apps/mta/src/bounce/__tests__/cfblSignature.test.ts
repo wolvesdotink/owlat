@@ -45,6 +45,7 @@ import {
 	parseCfblAddress,
 	parseCfblToken,
 } from '../cfblAddress.js';
+import { MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS, SIGNED_TOKEN_WINDOW_MS } from '../signedToken.js';
 import { buildVerpAddress, parseVerpAddress } from '../verp.js';
 
 const KEY = 'cfbl-signature-test-key';
@@ -249,6 +250,26 @@ describe('P2-7 (b) — CFBL signature', () => {
 			// Windows are probed newest-first from the future skew window, so a
 			// legitimate fresh report costs two, not ninety-two.
 			expect(hmacCalls.count).toBe(ACCEPTED_FUTURE_WINDOWS + 1);
+		});
+	});
+
+	describe('the acceptance horizon derives a WHOLE count of day windows', () => {
+		it('ACCEPTED_PAST_WINDOWS is an integer', () => {
+			// It is compared against an integer window age (`age <=
+			// ACCEPTED_PAST_WINDOWS`), so a fractional value would move the expiry
+			// boundary by a fraction of a day while every other derived integer —
+			// MAX_HMACS_PER_TOKEN_PARSE included — stayed put, and no cost test
+			// would notice. The floor makes a non-day-multiple horizon round DOWN.
+			expect(Number.isInteger(ACCEPTED_PAST_WINDOWS)).toBe(true);
+			expect(ACCEPTED_PAST_WINDOWS).toBeGreaterThan(0);
+		});
+
+		it('never accepts a token older than the shared horizon in signedToken.ts', () => {
+			// today + past windows + the skew window must fit inside the one constant
+			// that the dedup and provenance retentions are also derived from.
+			const spanDays = 1 + ACCEPTED_PAST_WINDOWS + ACCEPTED_FUTURE_WINDOWS;
+			const horizonDays = MAX_FEEDBACK_TOKEN_ACCEPTANCE_SECONDS / (SIGNED_TOKEN_WINDOW_MS / 1000);
+			expect(spanDays).toBeLessThanOrEqual(horizonDays);
 		});
 	});
 
