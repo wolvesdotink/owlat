@@ -217,6 +217,18 @@ const DISPATCH: DispatchTable = {
 		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
 	},
 	'email.complained': async (ctx, e) => {
+		// Keep a DKIM-domain-based feedback-loop enrollment (Yahoo's CFL) marked
+		// live. This is a pure OBSERVATION of the report the shipped ARF processor
+		// already parsed — one complaint pipeline, three sources, never a second
+		// parser. It runs before the attribution branches because both of them
+		// return, and it is a total no-op for an unknown or foreign domain, so it
+		// can never stop a complaint from reaching the blocklist.
+		if (e.sourceIsp === 'yahoo' && e.reportedDomain) {
+			await ctx.runMutation(internal.domains.yahooCfl.observeReport, {
+				reportedDomain: e.reportedDomain,
+				at: e.at,
+			});
+		}
 		// Recipient-only complaint (RFC 5965 §3.2): the FBL redacted the
 		// original Message-ID (e.g. Gmail), so there's no send to transition.
 		// Suppress the complainer directly by email — a complaint must always

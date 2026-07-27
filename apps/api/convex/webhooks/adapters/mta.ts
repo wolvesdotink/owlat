@@ -236,6 +236,14 @@ export const mtaAdapter: InboundAdapter = {
 				// Prefer Message-ID attribution; fall back to the recipient
 				// address (RFC 5965 §3.2) so a Gmail-redacted FBL still
 				// suppresses the complainer. Drop only when neither is present.
+				//
+				// `reportedDomain` / `sourceIsp` ride along on BOTH shapes: they are
+				// feedback-loop provenance (which of our DKIM domains, which ISP),
+				// independent of which attribution handle the report carried.
+				const feedbackProvenance = {
+					...(payload.reportedDomain ? { reportedDomain: payload.reportedDomain } : {}),
+					...(payload.sourceIsp ? { sourceIsp: payload.sourceIsp } : {}),
+				};
 				if (payload.messageId) {
 					return {
 						kind: 'email.complained',
@@ -243,6 +251,7 @@ export const mtaAdapter: InboundAdapter = {
 						at: payload.timestamp,
 						providerType: 'mta',
 						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+						...feedbackProvenance,
 					};
 				}
 				if (payload.recipient) {
@@ -252,6 +261,7 @@ export const mtaAdapter: InboundAdapter = {
 						at: payload.timestamp,
 						providerType: 'mta',
 						...(payload.deliveryDomain ? { deliveryDomain: payload.deliveryDomain } : {}),
+						...feedbackProvenance,
 					};
 				}
 				return null;
