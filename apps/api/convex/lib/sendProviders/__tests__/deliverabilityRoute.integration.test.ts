@@ -19,6 +19,7 @@ const NOW = 10_000_000;
 beforeEach(() => {
 	vi.stubEnv('MTA_API_URL', 'https://mta.internal');
 	vi.stubEnv('MTA_API_KEY', 'test-key');
+	vi.stubEnv('AWS_SES_REGION', 'us-east-1');
 	vi.stubEnv('AWS_SES_ACCESS_KEY_ID', 'access');
 	vi.stubEnv('AWS_SES_SECRET_ACCESS_KEY', 'secret');
 });
@@ -151,6 +152,44 @@ describe('DB-backed deliverability route verification', () => {
 			providerType: 'ses',
 			source: 'deliverability_fallback',
 		});
+	});
+
+	it('never reports an advisory reading as the fallback reason when both are persisted', async () => {
+		// This is exactly what applySnapshot's hysteresis branch writes: the
+		// actionable trigger is PRESERVED while the advisory reading is REFRESHED
+		// from the latest snapshot. Ordering the advisory reading first makes the
+		// actionable filter load-bearing — without it the operator would be told
+		// "blocklist lookup unavailable" caused a relay fallback that a confirmed
+		// listing actually caused.
+		const t = await seedRouteState({ withSesIdentity: true });
+		await t.run(async (ctx) => {
+			const state = await ctx.db
+				.query('deliverabilityRouteStates')
+				.withIndex('by_org_provider', (q) =>
+					q.eq('organizationId', 'org-a').eq('destinationProvider', 'gmail')
+				)
+				.first();
+			if (!state) throw new Error('missing gmail route state');
+			await ctx.db.patch(state._id, {
+				signals: [
+					{ source: 'dnsbl_unknown', severity: 'warning', observedAt: NOW },
+					{ source: 'dnsbl_listed', severity: 'critical', observedAt: NOW },
+				],
+			});
+		});
+		const route = await t.run((ctx) =>
+			resolveSendRouteFromDb(ctx, 'campaign', {
+				to: 'person@gmail.com',
+				from: 'Owlat <sender@example.com>',
+				now: NOW,
+			})
+		);
+		expect(route).toMatchObject({
+			providerType: 'ses',
+			source: 'deliverability_fallback',
+			deliverabilityReason: 'dnsbl_listed',
+		});
+		expect(route?.deliverabilityReason).not.toBe('dnsbl_unknown');
 	});
 
 	it('accepts explicit SES relay proof while the primary domain remains MTA-owned', async () => {

@@ -17,7 +17,7 @@ import { getInboundChannelAdapter } from '@owlat/channels';
 import { getOptional } from '../../lib/env';
 import { constantTimeEqual, hmacSha256Hex, missingSecretResult } from '../security';
 import type { InboundAdapter } from '../pipeline';
-import type { InboundEvent } from '../types';
+import { type InboundEvent, postmasterStatsMetrics } from '../types';
 import { isMtaWebhookEvent } from '@owlat/shared/mtaWebhookEvent';
 import type { WorkerEnvelopeInput } from '../../delivery/workerEnvelope';
 
@@ -32,6 +32,7 @@ function isSensitiveInternalPayload(rawBody: string): boolean {
 			isRecord(payload) &&
 			(payload['event'] === 'postmaster.authorize_domain' ||
 				payload['event'] === 'postmaster.stats' ||
+				payload['event'] === 'postmaster.compliance' ||
 				payload['event'] === 'deliverability.probe_observed')
 		);
 	} catch {
@@ -378,6 +379,18 @@ export const mtaAdapter: InboundAdapter = {
 					domain: payload.domain,
 					date: payload.date,
 					userReportedSpamRatio: payload.userReportedSpamRatio,
+					...postmasterStatsMetrics(payload),
+					fetchedAt: payload.timestamp,
+				};
+			}
+			case 'postmaster.compliance': {
+				// The shared contract already bounded and shape-checked `checks`.
+				if (!payload.domain || !payload.date || payload.checks === undefined) return null;
+				return {
+					kind: 'internal.postmaster_compliance',
+					domain: payload.domain,
+					date: payload.date,
+					checks: payload.checks,
 					fetchedAt: payload.timestamp,
 				};
 			}
@@ -405,7 +418,8 @@ export const mtaAdapter: InboundAdapter = {
 		}
 		if (
 			event.kind === 'internal.postmaster_authorize_domain' ||
-			event.kind === 'internal.postmaster_stats'
+			event.kind === 'internal.postmaster_stats' ||
+			event.kind === 'internal.postmaster_compliance'
 		) {
 			return postmasterAcknowledgement(event, dispatchResult);
 		}

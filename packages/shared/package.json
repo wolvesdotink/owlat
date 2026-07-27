@@ -165,6 +165,10 @@
 			"types": "./src/emailLimits.ts",
 			"import": "./src/emailLimits.ts"
 		},
+		"./engagementBands": {
+			"types": "./src/engagementBands.ts",
+			"import": "./src/engagementBands.ts"
+		},
 		"./reputation": {
 			"types": "./src/reputation.ts",
 			"import": "./src/reputation.ts"
@@ -184,6 +188,18 @@
 		"./ipAddress": {
 			"types": "./src/ipAddress.ts",
 			"import": "./src/ipAddress.ts"
+		},
+		"./ipAudit": {
+			"types": "./src/ipAudit.ts",
+			"import": "./src/ipAudit.ts"
+		},
+		"./ipAuditDelisting": {
+			"types": "./src/ipAuditDelisting.ts",
+			"import": "./src/ipAuditDelisting.ts"
+		},
+		"./ipAuditProviders": {
+			"types": "./src/ipAuditProviders.ts",
+			"import": "./src/ipAuditProviders.ts"
 		},
 		"./ipReadiness": {
 			"types": "./src/ipReadiness.ts",

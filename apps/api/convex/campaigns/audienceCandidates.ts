@@ -34,6 +34,13 @@ export interface CampaignRecipient {
 	lastName?: string;
 	timezone?: string;
 	language?: string;
+	/**
+	 * `contacts.engagementScore` (0-100) at resolution time. Projected here so
+	 * the enqueue path can put it on the send envelope for the MTA's
+	 * enqueue-time priority bands without a second read of the contact row.
+	 * Absent for a contact the scorer has not reached yet.
+	 */
+	engagementScore?: number;
 }
 
 /** Segment-filter shape — `frozenFilters` or the live Segment's `filters`. */
@@ -51,6 +58,7 @@ function projectRecipient(contact: Doc<'contacts'>): CampaignRecipient {
 		lastName: contact.lastName,
 		timezone: contact.timezone,
 		language: contact.language,
+		engagementScore: contact.engagementScore,
 	};
 }
 

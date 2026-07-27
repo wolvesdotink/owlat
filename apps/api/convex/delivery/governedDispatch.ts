@@ -9,6 +9,7 @@ import {
 import { internal } from '../_generated/api';
 import type { ActionCtx } from '../_generated/server';
 import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
+import { defaultSendTransportId } from '../lib/sendProviders/transports';
 import {
 	type EmailSendParams,
 	type ExtrasFor,
@@ -18,7 +19,7 @@ import {
 	type SendProviderKind,
 } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
-import type { WorkerEnvelopeInput } from './workerEnvelope';
+import { normalizeEngagementScore, type WorkerEnvelopeInput } from './workerEnvelope';
 import type { Id } from '../_generated/dataModel';
 
 export interface WorkerRetryState {
@@ -43,6 +44,13 @@ interface GovernedDispatchRequest<TEnvelope> {
 	providerType?: string;
 	ipPool?: string;
 	organizationId?: string;
+	/**
+	 * Recipient engagement score (0-100) carried on the send envelope. Stamped
+	 * onto `MtaExtras` for the MTA's enqueue-time priority bands. `undefined`
+	 * (unscored contact, or no contact at all) is OMITTED from the extras — it
+	 * is not `0`, which would claim the recipient is cold.
+	 */
+	engagementScore?: number;
 	sendRef?: SendRef;
 	retryState?: WorkerRetryState;
 	message: Omit<EmailSendParams, 'to' | 'from' | 'replyTo'>;
@@ -203,6 +211,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		});
 		if (!binding.ok) throw new Error(`Unable to bind MTA provider identity: ${binding.reason}`);
 	}
+	const engagementScore = normalizeEngagementScore(request.engagementScore);
 	const extras: ExtrasFor<SendProviderKind> =
 		providerKind === 'mta'
 			? ({
@@ -225,13 +234,17 @@ export async function dispatchGovernedEmail<TEnvelope>(
 					...((route?.ipPool ?? request.ipPool)
 						? { ipPool: (route?.ipPool ?? request.ipPool) as MtaIpPool }
 						: {}),
+					// Omitted, never zeroed, when the recipient has no score: the
+					// MTA reads absence as "unknown" and applies its DEFAULT band,
+					// whereas 0 would order the message behind every cold contact.
+					...(engagementScore !== undefined ? { engagementScore } : {}),
 				} satisfies MtaExtras)
 			: providerKind === 'resend'
 				? ({ idempotencyKey } satisfies ResendExtras)
 				: {};
 	const dispatched = await sendProviderDispatch(
 		ctx,
-		providerKind,
+		defaultSendTransportId(providerKind),
 		{
 			to: request.to,
 			from: request.from,

@@ -24,6 +24,7 @@ import { assistantTables } from './schema/assistant';
 import { draftStreamTables } from './schema/draftStream';
 import { e2eeTables } from './schema/e2ee';
 import { pluginTables } from './schema/plugins';
+import { postmasterTables } from './schema/postmaster';
 
 // Note: Team invites are now handled by BetterAuth organization plugin's invitation table
 
@@ -53,4 +54,5 @@ export default defineSchema({
 	...draftStreamTables,
 	...e2eeTables,
 	...pluginTables,
+	...postmasterTables,
 });

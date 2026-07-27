@@ -140,6 +140,7 @@ describe('selectRecipient — the eligibility predicate', () => {
 			lastName: 'Y',
 			timezone: 'Europe/Berlin',
 			language: 'de',
+			engagementScore: 61,
 		});
 		expect(selectRecipient(c, { requiresDoi: false, ...noBlocks })).toEqual({
 			_id: 'contact_x',
@@ -148,7 +149,21 @@ describe('selectRecipient — the eligibility predicate', () => {
 			lastName: 'Y',
 			timezone: 'Europe/Berlin',
 			language: 'de',
+			engagementScore: 61,
 		});
+	});
+
+	// G-02 (#459): `engagementScore` rides the recipient projection so the enqueue
+	// path can put it on the send envelope without re-reading the contact row. It
+	// has been dropped once by a module split already — pin it at BOTH layers.
+	it('projects engagementScore, and omits it when the scorer has not reached the contact', () => {
+		const scored = makeContact({ email: 'scored@y.com', engagementScore: 0 });
+		expect(selectRecipient(scored, { requiresDoi: false, ...noBlocks })?.engagementScore).toBe(0);
+
+		const unscored = makeContact({ email: 'unscored@y.com', engagementScore: undefined });
+		const projected = selectRecipient(unscored, { requiresDoi: false, ...noBlocks });
+		expect(projected).not.toBeNull();
+		expect(projected!.engagementScore).toBeUndefined();
 	});
 });
 
@@ -176,7 +191,13 @@ async function seed(t: TestConvex<typeof schema>): Promise<SeedResult> {
 
 		const mk = (o: Record<string, unknown>) => ctx.db.insert('contacts', createTestContact(o));
 
-		const aliceId = await mk({ email: 'alice@match.com', doiStatus: 'confirmed' });
+		// Alice carries an engagementScore; Bob does not (the scorer has not reached
+		// him). Both shapes must survive the projection — see the G-02 assertions.
+		const aliceId = await mk({
+			email: 'alice@match.com',
+			doiStatus: 'confirmed',
+			engagementScore: 73,
+		});
 		const bobId = await mk({ email: 'bob@match.com', doiStatus: 'confirmed' });
 		const charlieId = await mk({ email: 'charlie@match.com', doiStatus: 'pending' });
 		const daveId = await mk({ email: undefined, doiStatus: 'confirmed' });
@@ -224,6 +245,15 @@ describe('Audience resolution — count and send share one predicate', () => {
 		expect(count.eligible).toBe(resolved.length); // anti-drift
 		expect(count.total).toBe(6); // raw membership count
 		expect(count.total - count.eligible).toBe(4); // honest excluded gap
+
+		// G-02 (#459): the resolved recipient carries `engagementScore` through the
+		// real Convex entry point, not just through the pure predicate. A module
+		// split that drops the field off `projectRecipient` fails HERE.
+		const alice = resolved.find((r) => r.email === 'alice@match.com');
+		expect(alice?.engagementScore).toBe(73);
+		const bob = resolved.find((r) => r.email === 'bob@match.com');
+		expect(bob).toBeDefined();
+		expect(bob?.engagementScore).toBeUndefined();
 	});
 
 	it('segment: no DOI gate — includes DOI-pending; still gates emailless + suppressed + soft-deleted', async () => {

@@ -1,5 +1,9 @@
 /**
- * Suppression-list enforcement on the shared non-campaign Send chokepoint.
+ * `delivery/enqueue` — the Send enqueue chokepoints, covering the two concerns
+ * that live in this module: the SUPPRESSION GATE on the shared non-campaign
+ * chokepoint (PR-08) and what the producers put ON THE DURABLE ENVELOPE (G-02).
+ *
+ * ── PR-08: suppression-list enforcement ─────────────────────────────────────
  *
  * `delivery/enqueue.enqueueNonCampaignSend` is the single writer for both
  * non-campaign producers — automation email steps and agent approved-replies.
@@ -15,6 +19,22 @@
  *   (1) automation — a real `executeStep` run for a contact on the blocklist
  *       produces NO transactionalSends row and a skip outcome; the non-blocked
  *       positive control IS enqueued.
+ *
+ * ── G-02: `engagementScore` on the envelope (`:~470` onwards) ───────────────
+ *
+ * The producer half of the engagement-score threading. `MtaExtras.engagementScore`
+ * was declared, forwarded and consumed but never SET; the producers here are
+ * what now set it. Coverage:
+ *   - the non-campaign chokepoint's single indexed point read puts the contact
+ *     score on the automation envelope;
+ *   - an unscored contact, and a send with NO contact at all (with a scored
+ *     contact seeded at the same address as a negative control, proving no
+ *     lookup happens), OMIT the field — `0` is the "cold" band and would be a
+ *     different, wrong claim;
+ *   - the campaign chokepoint forwards the per-recipient score onto each
+ *     envelope independently;
+ *   - a DEGENERATE stored/passed score is normalised away at the WRITE
+ *     boundary so it can never enter a durable envelope.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
@@ -26,7 +46,9 @@ import {
 	createTestAutomation,
 	createTestAutomationStep,
 	createTestBlockedEmail,
+	createTestCampaign,
 	createTestContact,
+	createTestEmailSend,
 	createTestEmailTemplate,
 	createTestInstanceSettings,
 } from '../../__tests__/factories';
@@ -450,5 +472,247 @@ describe('automation email step — suppression enforcement', () => {
 		const stepRun = await t.run(async (ctx) => ctx.db.get(stepRunId));
 		expect(stepRun?.status).toBe('completed');
 		expect(stepRun?.emailSendId).toBe(rows[0]?._id);
+	});
+});
+
+// ─── G-02: the engagement score is put ON THE ENVELOPE by the producers ──────
+//
+// The score is read from the contact row the producer already holds (campaign
+// audience resolution) or with ONE indexed point read in the enqueue
+// transaction (non-campaign) — never per-recipient inside the dispatch action.
+// An unscored contact, and a send with no contact at all, OMIT the field: `0`
+// is the "cold" band and would be a different, wrong claim.
+
+describe('delivery.enqueue — engagementScore on the send envelope', () => {
+	it('puts the contact score on the automation envelope', async () => {
+		const t = convexTest(schema, modules);
+		const { transactionalEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+		const contactId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: 'scored@example.com', engagementScore: 64 })
+				)
+		);
+
+		await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			kind: 'automation',
+			email: 'scored@example.com',
+			contactId,
+			subject: 'Hi',
+			html: '<p>Hi</p>',
+			from: 'Owlat <noreply@example.com>',
+		});
+
+		const envelopeInput = enqueueAction.mock.calls[0]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		expect(envelopeInput?.['engagementScore']).toBe(64);
+	});
+
+	it('omits the field for an unscored contact', async () => {
+		const t = convexTest(schema, modules);
+		const { transactionalEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+		const contactId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert('contacts', createTestContact({ email: 'unscored@example.com' }))
+		);
+
+		await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			kind: 'automation',
+			email: 'unscored@example.com',
+			contactId,
+			subject: 'Hi',
+			html: '<p>Hi</p>',
+			from: 'Owlat <noreply@example.com>',
+		});
+
+		const envelopeInput = enqueueAction.mock.calls[0]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		expect(envelopeInput).toBeDefined();
+		expect('engagementScore' in envelopeInput!).toBe(false);
+	});
+
+	it('does not look up a contact — and carries no score — when the send has none', async () => {
+		const t = convexTest(schema, modules);
+		const { transactionalEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+		// A scored contact exists for the SAME address; with no contactId on the
+		// send there is no lookup, so the score must not leak onto the envelope.
+		await t.run(async (ctx) => {
+			await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'orphan@example.com', engagementScore: 91 })
+			);
+		});
+
+		await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			kind: 'agent_reply',
+			email: 'orphan@example.com',
+			subject: 'Re: Hi',
+			html: '<p>Re: Hi</p>',
+			from: 'Owlat <support@example.com>',
+		});
+
+		const envelopeInput = enqueueAction.mock.calls[0]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		expect(envelopeInput).toBeDefined();
+		expect('engagementScore' in envelopeInput!).toBe(false);
+	});
+
+	it('forwards the per-recipient score onto each campaign envelope', async () => {
+		const t = convexTest(schema, modules);
+		const { campaignEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(campaignEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+		const { campaignId, scored, unscored } = await t.run(async (ctx) => {
+			const campaign = await ctx.db.insert('campaigns', createTestCampaign());
+			const scoredContact = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'a@example.com', engagementScore: 77 })
+			);
+			const unscoredContact = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'b@example.com' })
+			);
+			return {
+				campaignId: campaign,
+				scored: {
+					contactId: scoredContact,
+					emailSendId: await ctx.db.insert(
+						'emailSends',
+						createTestEmailSend({
+							campaignId: campaign,
+							contactId: scoredContact,
+							status: 'queued',
+						})
+					),
+				},
+				unscored: {
+					contactId: unscoredContact,
+					emailSendId: await ctx.db.insert(
+						'emailSends',
+						createTestEmailSend({
+							campaignId: campaign,
+							contactId: unscoredContact,
+							status: 'queued',
+						})
+					),
+				},
+			};
+		});
+
+		await t.mutation(internal.delivery.enqueue.enqueueCampaignEmails, {
+			campaignId,
+			emails: [
+				{
+					emailSendId: scored.emailSendId,
+					contactId: scored.contactId,
+					email: 'a@example.com',
+					engagementScore: 77,
+				},
+				{
+					emailSendId: unscored.emailSendId,
+					contactId: unscored.contactId,
+					email: 'b@example.com',
+				},
+			],
+			from: 'Owlat <noreply@example.com>',
+			subject: 'Hi',
+			htmlContent: '<p>Hi</p>',
+		});
+
+		expect(enqueueAction).toHaveBeenCalledTimes(2);
+		const first = enqueueAction.mock.calls[0]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		const second = enqueueAction.mock.calls[1]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		expect(first?.['engagementScore']).toBe(77);
+		expect(second).toBeDefined();
+		expect('engagementScore' in second!).toBe(false);
+	});
+
+	// ── Adversarial: normalise at the WRITE boundary, not only on read ────────
+	//
+	// A degenerate stored score (an upstream scorer defect) must never enter the
+	// DURABLE envelope. It would be persisted into `routingReentry.envelopeInput`,
+	// handed to the MTA, and echoed back through the re-entry webhook — where a
+	// NaN returns as `null`, `envelopeInputValidator` (`v.optional(v.number())`)
+	// rejects it, and the deferred send's callback is silently dropped.
+
+	it('drops a degenerate STORED score at the non-campaign write boundary', async () => {
+		const t = convexTest(schema, modules);
+		const { transactionalEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+		const contactId = await t.run(
+			async (ctx) =>
+				await ctx.db.insert(
+					'contacts',
+					createTestContact({ email: 'degenerate@example.com', engagementScore: -1 })
+				)
+		);
+
+		await t.mutation(internal.delivery.enqueue.enqueueNonCampaignSend, {
+			kind: 'automation',
+			email: 'degenerate@example.com',
+			contactId,
+			subject: 'Hi',
+			html: '<p>Hi</p>',
+			from: 'Owlat <noreply@example.com>',
+		});
+
+		const envelopeInput = enqueueAction.mock.calls[0]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		expect(envelopeInput).toBeDefined();
+		// Unknown, NOT clamped to 0 — clamping would invent the "cold" band for a
+		// value that carries no information.
+		expect('engagementScore' in envelopeInput!).toBe(false);
+	});
+
+	it('drops a degenerate PASSED score at the campaign write boundary', async () => {
+		const t = convexTest(schema, modules);
+		const { campaignEmailPool } = await import('../workpool');
+		const enqueueAction = vi.mocked(campaignEmailPool.enqueueAction);
+		enqueueAction.mockClear();
+		const { campaignId, contactId, emailSendId } = await t.run(async (ctx) => {
+			const campaign = await ctx.db.insert('campaigns', createTestCampaign());
+			const contact = await ctx.db.insert(
+				'contacts',
+				createTestContact({ email: 'c@example.com' })
+			);
+			return {
+				campaignId: campaign,
+				contactId: contact,
+				emailSendId: await ctx.db.insert(
+					'emailSends',
+					createTestEmailSend({ campaignId: campaign, contactId: contact, status: 'queued' })
+				),
+			};
+		});
+
+		await t.mutation(internal.delivery.enqueue.enqueueCampaignEmails, {
+			campaignId,
+			emails: [{ emailSendId, contactId, email: 'c@example.com', engagementScore: 1_000 }],
+			from: 'Owlat <noreply@example.com>',
+			subject: 'Hi',
+			htmlContent: '<p>Hi</p>',
+		});
+
+		const envelopeInput = enqueueAction.mock.calls[0]?.[2]?.['envelopeInput'] as
+			| Record<string, unknown>
+			| undefined;
+		expect(envelopeInput).toBeDefined();
+		expect('engagementScore' in envelopeInput!).toBe(false);
 	});
 });
