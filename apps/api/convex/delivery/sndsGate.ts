@@ -63,6 +63,13 @@ export interface SndsGateSignal {
 	worstComplaintBand: SndsComplaintBand;
 	worstFilterResult: SndsFilterResult;
 	trapHits: number;
+	/**
+	 * Whether the read hit its row cap, so the window is a SUBSET of the stored
+	 * days. A truncated window may still show a breach — that is real evidence —
+	 * but it can never be evidence of cleanliness, so it forces `confidence: low`
+	 * and disqualifies the cell from promotion.
+	 */
+	truncated: boolean;
 	confidence: 'high' | 'low';
 }
 
@@ -80,6 +87,8 @@ export function buildSndsGateInput(args: {
 	enrolled: boolean;
 	windowDays: number;
 	observations: readonly SndsGateObservation[];
+	/** The caller's read hit its row cap, so these are only the newest days. */
+	truncated?: boolean;
 }): SndsGateInput {
 	if (!args.enrolled) {
 		return { available: false, reason: 'not_enrolled', substitution: SNDS_ABSENT_SUBSTITUTION };
@@ -102,7 +111,9 @@ export function buildSndsGateInput(args: {
 	}
 
 	// Confidence is about EVIDENCE, not about volume: a window in which Microsoft
-	// banded nothing tells us nothing, however many rows it contains.
+	// banded nothing tells us nothing, however many rows it contains. A truncated
+	// read is the same argument from the other end — we did not see every day.
+	const truncated = args.truncated === true;
 	const banded = complaintBandSeverity(worstComplaintBand) !== null;
 	return {
 		available: true,
@@ -113,7 +124,8 @@ export function buildSndsGateInput(args: {
 			worstComplaintBand,
 			worstFilterResult,
 			trapHits,
-			confidence: banded && days.size >= 2 ? 'high' : 'low',
+			truncated,
+			confidence: banded && days.size >= 2 && !truncated ? 'high' : 'low',
 		},
 	};
 }
@@ -128,22 +140,30 @@ export interface SndsGateThresholds {
 }
 
 /**
- * Microsoft treats complaint rates above roughly three tenths of a percent as
- * a problem, so `0_3_to_0_4` is the first breaching band. A yellow filter
- * result is a warning rather than a breach: it moves often and on its own it
- * would make the ramp chatter.
+ * DERIVATION: the plan fixes no SNDS-specific band, so this constant is the
+ * plan's own complaint gate expressed in Microsoft's vocabulary. That gate
+ * breaches at a 0.1 % complaint rate, and the first SNDS band at or above
+ * 0.1 % is `0_1_to_0_2` — so `lt_0_1` is the only passing band and the gate
+ * agrees with the complaint gate it sits beside instead of quietly running
+ * three times looser. A yellow filter result is a warning rather than a breach:
+ * it moves often and on its own it would make the ramp chatter.
  */
 export const DEFAULT_SNDS_GATE_THRESHOLDS: SndsGateThresholds = {
-	breachBand: '0_3_to_0_4',
+	breachBand: '0_1_to_0_2',
 	trapHitLimit: 0,
 	breachOnYellow: false,
 };
 
 export type SndsGateFailure = 'complaint_band' | 'filter_result' | 'spam_traps';
 
+/**
+ * The gate's verdict, in the controller's shared vocabulary
+ * (`pass` / `fail` / `insufficient_data`) so P3's controller consumes this gate
+ * through the one gate interface with no per-gate shim.
+ */
 export type SndsGateVerdict =
 	| { verdict: 'pass'; reason: string }
-	| { verdict: 'breach'; reason: string; failedSignal: SndsGateFailure }
+	| { verdict: 'fail'; reason: string; failedGate: SndsGateFailure }
 	| { verdict: 'insufficient_data'; reason: string; substitution: SndsSubstitution };
 
 /**
@@ -170,8 +190,8 @@ export function evaluateSndsGate(
 	const { signal } = input;
 	if (signal.trapHits > thresholds.trapHitLimit) {
 		return {
-			verdict: 'breach',
-			failedSignal: 'spam_traps',
+			verdict: 'fail',
+			failedGate: 'spam_traps',
 			reason: `Microsoft recorded ${signal.trapHits} spam-trap hit(s) in the last ${signal.windowDays} days.`,
 		};
 	}
@@ -180,8 +200,8 @@ export function evaluateSndsGate(
 		(thresholds.breachOnYellow && signal.worstFilterResult === 'yellow')
 	) {
 		return {
-			verdict: 'breach',
-			failedSignal: 'filter_result',
+			verdict: 'fail',
+			failedGate: 'filter_result',
 			reason: `Microsoft's SNDS filter result for at least one sending IP is ${signal.worstFilterResult}.`,
 		};
 	}
@@ -197,8 +217,8 @@ export function evaluateSndsGate(
 	const breachSeverity = complaintBandSeverity(thresholds.breachBand);
 	if (breachSeverity !== null && severity >= breachSeverity) {
 		return {
-			verdict: 'breach',
-			failedSignal: 'complaint_band',
+			verdict: 'fail',
+			failedGate: 'complaint_band',
 			// The BAND is named, never a percentage: SNDS never published one.
 			reason: `Microsoft's complaint band for at least one sending IP is ${signal.worstComplaintBand}, at or above ${thresholds.breachBand}.`,
 		};
@@ -207,4 +227,33 @@ export function evaluateSndsGate(
 		verdict: 'pass',
 		reason: `Microsoft's worst complaint band over the last ${signal.windowDays} days is ${signal.worstComplaintBand}.`,
 	};
+}
+
+/**
+ * The plan's s >= 0.5 promotion criterion for the Microsoft cell: "SNDS
+ * complaint band green for the relevant cell, within the last 7 days".
+ *
+ * PROMOTION IS STRICTLY STRONGER THAN `pass`. `pass` is "nothing broke" and is
+ * satisfied by `insufficient_data` holding steady; promotion is "we have
+ * POSITIVE evidence", so it demands an actually-banded green window that the
+ * read saw in full. Exported as a pure predicate beside the gate so P2/P3
+ * consume the criterion rather than re-deriving it from the raw signal — two
+ * derivations of one rule is exactly how the controller and the dashboard end
+ * up disagreeing about a number.
+ */
+export function sndsPromotionPass(
+	input: SndsGateInput,
+	thresholds: SndsGateThresholds = DEFAULT_SNDS_GATE_THRESHOLDS
+): boolean {
+	// Absent data never promotes. It also never demotes — that is `evaluateSndsGate`'s
+	// `insufficient_data`, and D2 keeps the ramp moving on the substituted signal.
+	if (!input.available) return false;
+	const { signal } = input;
+	if (signal.confidence !== 'high' || signal.truncated) return false;
+	if (evaluateSndsGate(input, thresholds).verdict !== 'pass') return false;
+	// Banded, and strictly below the first breaching band.
+	const severity = complaintBandSeverity(signal.worstComplaintBand);
+	const breachSeverity = complaintBandSeverity(thresholds.breachBand);
+	if (severity === null || breachSeverity === null) return false;
+	return severity < breachSeverity && signal.worstFilterResult !== 'red';
 }
