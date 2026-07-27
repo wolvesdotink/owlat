@@ -33,6 +33,10 @@ export const SIGNED_TOKEN_WINDOW_MS = 24 * 60 * 60 * 1000;
  * both token families because the MAC input is domain-separated by label.
  * Tests pass the key explicitly; an empty/undefined key means "unsigned", which
  * production startup rejects.
+ *
+ * Reading the env HERE, rather than threading it through every caller, is what
+ * keeps `buildVerpAddress` / `parseVerpAddress` / `buildCfblAddress` drop-in for
+ * their existing call sites.
  */
 export function resolveSignedTokenKey(explicit?: string): string | undefined {
 	const key = explicit ?? process.env['BOUNCE_VERP_KEY'];

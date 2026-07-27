@@ -52,17 +52,6 @@ const VERP_MAC_LABEL = '';
 const WINDOW_TOLERANCE = 6;
 
 /**
- * Resolve the VERP signing key. Reading the env here (rather than threading it
- * through every caller) keeps `buildVerpAddress`/`parseVerpAddress` drop-in for
- * the existing call sites; tests pass the key explicitly. An empty/undefined
- * key enables the unsigned compatibility helper used only by isolated tests;
- * production startup rejects that configuration.
- */
-function resolveVerpKey(explicit?: string): string | undefined {
-	return resolveSignedTokenKey(explicit);
-}
-
-/**
  * Whether VERP token signing/verification is active for this deployment.
  *
  * When this is true, attribution of a bounce/complaint to a send MUST come from
@@ -75,7 +64,7 @@ function resolveVerpKey(explicit?: string): string | undefined {
  * @param key optional explicit key (defaults to BOUNCE_VERP_KEY)
  */
 export function isVerpSigningEnabled(key?: string): boolean {
-	return resolveVerpKey(key) !== undefined;
+	return resolveSignedTokenKey(key) !== undefined;
 }
 
 /**
@@ -97,7 +86,7 @@ export function buildVerpAddress(
 	now: number = Date.now()
 ): string {
 	const encoded = Buffer.from(messageId).toString('base64url');
-	const signingKey = resolveVerpKey(key);
+	const signingKey = resolveSignedTokenKey(key);
 	if (!signingKey) {
 		return `bounce+${encoded}@${returnPathDomain}`;
 	}
@@ -134,7 +123,7 @@ export function parseVerpAddress(
 
 	const encodedId = match[1];
 	const presentedMac = match[2];
-	const signingKey = resolveVerpKey(key);
+	const signingKey = resolveSignedTokenKey(key);
 
 	if (signingKey) {
 		// Signed mode: a token with no MAC is unforgeable-proof-of-origin missing
