@@ -29,7 +29,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { v } from 'convex/values';
-import { isUsableVerpKey, normalizeReturnPathDomain } from '@owlat/shared/verp';
+import { isUsableVerpKey, normalizeReturnPathDomain, normalizeVerpKey } from '@owlat/shared/verp';
 import { internal } from '../_generated/api';
 import { internalAction } from '../_generated/server';
 import { getOptional } from '../lib/env';
@@ -64,11 +64,21 @@ export const runReturnPathProbe = internalAction({
 		}
 
 		const returnPathDomain = normalizeReturnPathDomain(getOptional('MTA_RETURN_PATH_DOMAIN'));
-		const verpKey = getOptional('MTA_BOUNCE_VERP_KEY')?.trim();
+		const verpKey = normalizeVerpKey(getOptional('MTA_BOUNCE_VERP_KEY'));
+		// The probe's FROM identity must be one the relay is already verified for.
+		// The return-path domain is NOT: its SPF authorises the MTA pool IPs, not
+		// the relay's, and mainstream relays (SendGrid, Mailgun, Brevo, Postmark)
+		// refuse an unverified From outright — which we would have recorded as
+		// `rejected_by_relay` and held against the CAPABILITY, denying it for a
+		// reason that has nothing to do with the envelope sender, on exactly the
+		// ESP relays this feature exists to measure. `DEFAULT_FROM_EMAIL` is the
+		// identity this deployment's real mail already leaves through, so it is
+		// verified by construction. Only RFC5321.MailFrom stays experimental.
+		const probeFrom = getOptional('DEFAULT_FROM_EMAIL')?.trim();
 		// A key the MTA would reject at startup can never verify the token this
 		// probe mints, so the DSN would arrive unattributable and the transport
 		// would be graded unsupported for the wrong reason. Don't spend a bounce.
-		if (!returnPathDomain || !isUsableVerpKey(verpKey)) {
+		if (!returnPathDomain || !isUsableVerpKey(verpKey) || !probeFrom) {
 			return { ran: false, reason: 'not_configured' };
 		}
 
@@ -90,7 +100,7 @@ export const runReturnPathProbe = internalAction({
 		let accepted = false;
 		// Fall back to the address we ASKED for if the send never reached the wire;
 		// a refusal is recorded as unsupported either way.
-		let sentEnvelopeSender = `postmaster@${returnPathDomain}`;
+		let sentEnvelopeSender = probeFrom;
 		try {
 			// The adapter builds the VERP envelope sender with the SAME shipped
 			// scheme a real send uses — there is exactly one VERP builder — and
@@ -101,7 +111,7 @@ export const runReturnPathProbe = internalAction({
 				transport,
 				{
 					to: probeRecipient,
-					from: `postmaster@${returnPathDomain}`,
+					from: probeFrom,
 					subject: 'Owlat return-path capability probe',
 					html: '<p>Automated return-path capability probe. No action is required.</p>',
 					text: 'Automated return-path capability probe. No action is required.',
@@ -129,8 +139,23 @@ export const runReturnPathProbe = internalAction({
 });
 
 /**
- * Expire stale probes, then probe every configured transport that could support
- * a custom return path.
+ * How many transports one hourly sweep may actually probe.
+ *
+ * The transport set is operator-controlled (`SEND_TRANSPORT_INSTANCES`), and
+ * each probe is a REAL relay send bounded only by `SMTP_SEND_TIMEOUT_MS` (30s)
+ * that deliberately manufactures a bounce. Unbounded, a deployment with a dozen
+ * declared relays would serialise a dozen 30s network sends inside one action
+ * and produce a dozen bounces in one burst — on accounts whose bounce rate is
+ * exactly what gets them suspended. Two per tick drains any realistic transport
+ * set within a few hours, and the per-transport backoff guarantees the queue
+ * empties rather than cycling.
+ */
+const MAX_PROBES_PER_SWEEP = 2;
+
+/**
+ * Expire stale probes, then probe the configured transports that could support
+ * a custom return path, at most {@link MAX_PROBES_PER_SWEEP} per tick — the
+ * next hourly tick takes the rest.
  *
  * This is what makes the capability REACHABLE in production: without a caller,
  * no relay ever leaves `unknown`, the VERP stamp is never enabled and the relay
@@ -150,6 +175,7 @@ export const sweepReturnPathProbes = internalAction({
 		);
 		let probed = 0;
 		for (const transport of listSendTransports()) {
+			if (probed >= MAX_PROBES_PER_SWEEP) break;
 			if (sendProviderCatalogEntry(transport.kind).supportsCustomReturnPath !== 'probe') continue;
 			const result: ReturnPathProbeRunResult = await ctx.runAction(
 				internal.delivery.relayReturnPathProbe.runReturnPathProbe,
