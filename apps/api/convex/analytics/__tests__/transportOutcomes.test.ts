@@ -39,6 +39,8 @@ import {
 	seedAssignedSend,
 	seedAssignedTestPreview,
 	sumCounter,
+	sumCounters,
+	uniqueBucketKeys,
 } from './transportOutcomesFixtures';
 
 // The singleton-org lookup goes through the BetterAuth component, which is not
@@ -180,8 +182,11 @@ describe('lifecycle transition → one shard of one bucket', () => {
 	// exceed 1.0 in any cell whose transport emits no delivery callback.
 	it('records `delivered` AND `opened` when an open is the first delivery evidence', async () => {
 		const buckets = await runTransition('sent', { to: 'opened', at: Date.now() });
-		expect(buckets).toHaveLength(1);
-		expect(pickCounters(buckets[0])).toEqual({
+		// TWO writes, so TWO independent shard draws: assert the bucket KEY is
+		// unique and sum the counters across whichever shards they landed on.
+		expect(uniqueBucketKeys(buckets)).toHaveLength(1);
+		expect(buckets.length).toBeLessThanOrEqual(2);
+		expect(sumCounters(buckets)).toEqual({
 			...ZERO_TRANSPORT_OUTCOME_TOTALS,
 			delivered: 1,
 			opened: 1,
@@ -213,10 +218,12 @@ describe('lifecycle transition → one shard of one bucket', () => {
 
 	it('records `opened` on delivered → opened', async () => {
 		const buckets = await runTransition('delivered', { to: 'opened', at: Date.now() });
-		expect(buckets).toHaveLength(1);
 		// The seeded row carries no `deliveredAt`, so this open is also the first
-		// delivery observation — the same pair the dashboard records.
-		expect(pickCounters(buckets[0])).toEqual({
+		// delivery observation — the same pair the dashboard records, and two
+		// writes across two shard draws.
+		expect(uniqueBucketKeys(buckets)).toHaveLength(1);
+		expect(buckets.length).toBeLessThanOrEqual(2);
+		expect(sumCounters(buckets)).toEqual({
 			...ZERO_TRANSPORT_OUTCOME_TOTALS,
 			delivered: 1,
 			opened: 1,
@@ -229,8 +236,9 @@ describe('lifecycle transition → one shard of one bucket', () => {
 			at: Date.now(),
 			url: 'https://example.com/offer',
 		});
-		expect(buckets).toHaveLength(1);
-		expect(pickCounters(buckets[0])).toEqual({
+		expect(uniqueBucketKeys(buckets)).toHaveLength(1);
+		expect(buckets.length).toBeLessThanOrEqual(2);
+		expect(sumCounters(buckets)).toEqual({
 			...ZERO_TRANSPORT_OUTCOME_TOTALS,
 			delivered: 1,
 			clicked: 1,
@@ -265,10 +273,11 @@ describe('lifecycle transition → one shard of one bucket', () => {
 
 	it('records `delivered` AND `complained` on delivered → complained', async () => {
 		const buckets = await runTransition('delivered', { to: 'complained', at: Date.now() });
-		expect(buckets).toHaveLength(1);
 		// A complaint proves the message reached the mailbox, so it is delivery
-		// evidence for the shipped denominator too.
-		expect(pickCounters(buckets[0])).toEqual({
+		// evidence for the shipped denominator too — two writes, two shard draws.
+		expect(uniqueBucketKeys(buckets)).toHaveLength(1);
+		expect(buckets.length).toBeLessThanOrEqual(2);
+		expect(sumCounters(buckets)).toEqual({
 			...ZERO_TRANSPORT_OUTCOME_TOTALS,
 			delivered: 1,
 			complained: 1,

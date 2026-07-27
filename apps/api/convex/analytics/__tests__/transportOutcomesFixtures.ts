@@ -21,6 +21,7 @@ import type {
 	TransportOutcomeBucket,
 	TransportOutcomeTotals,
 } from '../transportOutcomeSummary';
+import { ZERO_TRANSPORT_OUTCOME_TOTALS } from '../transportOutcomeSummary';
 
 /** The org `getSingletonOrganizationId` is mocked to return in this suite. */
 export const OUTCOME_ORG = 'org_outcomes';
@@ -162,6 +163,10 @@ export async function readBuckets(
  * outcome landing on the wrong counter, or failing to land at all, has to fail
  * the test. A matrix that only checked the counter under test is exactly how a
  * missing `delivered` bump once survived this suite.
+ *
+ * Use this ONLY where exactly one write is expected. A case that produces two
+ * outcome writes draws two INDEPENDENT shard keys, so reading a single row is a
+ * 1-in-`TRANSPORT_OUTCOME_SHARD_COUNT` coin flip — use `sumCounters` there.
  */
 export function pickCounters(bucket: TransportOutcomeBucket | undefined): TransportOutcomeTotals {
 	if (!bucket) throw new Error('no bucket to read counters from');
@@ -201,6 +206,45 @@ export function sumCounter(
 	>
 ): number {
 	return buckets.reduce((total, bucket) => total + bucket[counter], 0);
+}
+
+/**
+ * Every counter summed across every shard row handed in — the shard-blind
+ * equivalent of `pickCounters`, and the DEFAULT helper for the transition
+ * matrix.
+ *
+ * The shard key is drawn per WRITE, so a lifecycle transition that produces two
+ * outcome writes (an open that is also the first delivery evidence, say) lands
+ * on one row only by luck. Summing makes the assertion a statement about the
+ * bucket rather than about the random draw, and folding over the keys of
+ * `ZERO_TRANSPORT_OUTCOME_TOTALS` means a new counter column cannot be
+ * forgotten here.
+ */
+export function sumCounters(buckets: readonly TransportOutcomeBucket[]): TransportOutcomeTotals {
+	const totals: { -readonly [K in keyof TransportOutcomeTotals]: number } = {
+		...ZERO_TRANSPORT_OUTCOME_TOTALS,
+	};
+	for (const counter of Object.keys(totals) as (keyof TransportOutcomeTotals)[]) {
+		totals[counter] = sumCounter(buckets, counter);
+	}
+	return totals;
+}
+
+/**
+ * The distinct `(organizationId, cell, arm, periodStart)` keys the rows carry.
+ *
+ * A matrix case asserts `toHaveLength(1)` on this rather than on the row count:
+ * "one bucket" is a claim about the key, and the shard split underneath it is
+ * deliberately invisible to readers.
+ */
+export function uniqueBucketKeys(buckets: readonly TransportOutcomeBucket[]): string[] {
+	return [
+		...new Set(
+			buckets.map(
+				(bucket) => `${bucket.organizationId}|${bucket.cell}|${bucket.arm}|${bucket.periodStart}`
+			)
+		),
+	];
 }
 
 /** A zeroed bucket row, for tests that write buckets directly. */
