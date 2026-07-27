@@ -17,6 +17,7 @@ import {
 	type MtaIpPool,
 	type ResendExtras,
 	type SendProviderKind,
+	type SmtpExtras,
 } from '../lib/sendProviders';
 import { resolveLastMileRouting } from './lastMileRouting';
 import { normalizeEngagementScore, type WorkerEnvelopeInput } from './workerEnvelope';
@@ -216,7 +217,7 @@ export async function dispatchGovernedEmail<TEnvelope>(
 		};
 	}
 
-	const { providerKind, route, routingLease } = routing;
+	const { providerKind, route, routingLease, relayReturnPathHost } = routing;
 	// A seed probe has no Send row to bind a provider identity to — binding is
 	// the Send lifecycle's job, and a probe deliberately has no lifecycle (D18).
 	if (providerKind === 'mta' && request.sendRef.kind !== 'seedProbe') {
@@ -256,9 +257,22 @@ export async function dispatchGovernedEmail<TEnvelope>(
 				} satisfies MtaExtras)
 			: providerKind === 'resend'
 				? ({ idempotencyKey } satisfies ResendExtras)
-				: {};
+				: providerKind === 'smtp'
+					? // Relay arm (plan G-08): stamp OUR VERP envelope sender at the
+						// return-path host the routing pass authorised — the SAME host the
+						// direct-MX arm stamps for this From domain — so relayed bounces
+						// reach our own bounce server and both arms present the same
+						// envelope-sender domain. Resolved by the routing pass, not by a
+						// second query on the send path. No authorised host simply keeps
+						// the composer's envelope sender: the send is unchanged and its
+						// cell is graded degraded-measurement, never blocked (plan D2).
+						relayReturnPathHost === undefined
+						? ({} satisfies SmtpExtras)
+						: ({ returnPathHost: relayReturnPathHost } satisfies SmtpExtras)
+					: {};
 	const dispatched = await sendProviderDispatch(
 		ctx,
+		// The SAME instance the routing pass graded for return-path capability.
 		defaultSendTransportId(providerKind),
 		{
 			to: request.to,

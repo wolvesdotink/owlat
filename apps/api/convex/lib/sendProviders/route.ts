@@ -25,7 +25,11 @@ import { resolveDestinationProvider } from './destinationProvider';
 import { loadRouteStateCell, loadStreamlessRouteState } from '../deliverabilityRouteState';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
+import { relayReturnPathHostFor } from '../../delivery/relayReturnPath';
+import { isProbeDecidedReturnPathKind, SEND_PROVIDER_CATALOG } from './catalog';
+import type { SendProviderKind } from './types';
 import {
+	candidateSendProviderKinds,
 	freshFallbackReasons,
 	isGlobalBreakerOpenState,
 	messageTypeValidator,
@@ -51,6 +55,27 @@ export interface SendRouteAddressContext {
 	now?: number;
 	baseOnly?: boolean;
 	forceRelayReason?: 'breaker_open' | 'warmup_overflow';
+}
+
+/**
+ * The one candidate kind whose envelope-sender control is decided by a PROBE
+ * rather than by the catalog (`yes` stamps its own VERP, `no` owns the envelope
+ * sender and would never honour ours). `null` when this route has none.
+ *
+ * Iterates the CATALOG rather than the candidate set so the answer does not
+ * depend on the order an operator happened to list providers in, and asks the
+ * catalog's own predicate so this gate and the probe sweep can never disagree
+ * about what is probe-decided.
+ */
+function probeableCandidateKind(
+	candidateKinds: ReadonlySet<SendProviderKind>
+): SendProviderKind | null {
+	for (const entry of SEND_PROVIDER_CATALOG) {
+		if (isProbeDecidedReturnPathKind(entry.kind) && candidateKinds.has(entry.kind)) {
+			return entry.kind;
+		}
+	}
+	return null;
 }
 
 /**
@@ -210,17 +235,50 @@ export const resolveSendRoute = internalQuery({
 export async function resolveLastMileRoutePlanFromDb(
 	ctx: QueryCtx,
 	messageType: MessageType,
-	addressContext: { to: string; from: string }
+	addressContext: { to: string; from: string; now?: number }
 ): Promise<{
 	route: ResolvedRoute | null;
 	baseRoute: ResolvedRoute | null;
 	isMtaGoverned: boolean;
 	deferralCode?: RoutingDeferralCode;
+	/**
+	 * The return-path host a RELAY send may stamp as its VERP envelope sender
+	 * (plan G-08), or `undefined` to keep the composer's — the shipped
+	 * behaviour. Answered HERE, inside the routing query the send path already
+	 * runs, rather than in a second round trip from the dispatcher.
+	 */
+	relayReturnPathHost?: string | undefined;
 }> {
+	const now = addressContext.now ?? Date.now();
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
 		.first();
+	// Only a relay whose envelope-sender control is decided by OBSERVATION can
+	// carry our VERP address, so the gate is derived — not hard-coded — from the
+	// candidate set resolution itself uses: any kind the catalog marks `probe`.
+	// Deriving it from `candidateSendProviderKinds` is what keeps it from being
+	// narrower than what `resolveRoute` may return; the bring-your-own-relay
+	// install reaches its relay through the ENV fallback with no `providerRoutes`
+	// row at all, and gating on the row alone left every one of those sends
+	// unstamped while the sweep kept proving the capability.
+	//
+	// Candidates rather than the resolved route, because the warm-up overflow /
+	// breaker-open fallback selects its relay AFTER this query returns, and that
+	// route must still be stamped.
+	//
+	// COST: a route with NO probe-decided candidate (mta/ses/resend only) pays
+	// nothing. A route that CAN reach the relay — including a hybrid mta+smtp
+	// one, whose sends mostly resolve to the MTA — pays one indexed read of the
+	// transport's probe row on every governed send. That read is what
+	// `relayReturnPathHostFor` short-circuits on: only a relay already PROVEN to
+	// honour a custom return path goes on to read the From domain, so the
+	// common hybrid case stays at exactly one row.
+	const relayCandidateKind = probeableCandidateKind(candidateSendProviderKinds(routeConfig));
+	const relayReturnPathHost =
+		relayCandidateKind === null
+			? undefined
+			: await relayReturnPathHostFor(ctx, relayCandidateKind, addressContext.from, now);
 	const isHybrid = Boolean(
 		routeConfig?.deliverabilityFallback?.isEnabled &&
 		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
@@ -231,11 +289,22 @@ export async function resolveLastMileRoutePlanFromDb(
 			...addressContext,
 			baseOnly: true,
 		});
-		return { route, baseRoute, isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta' };
+		return {
+			route,
+			baseRoute,
+			isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta',
+			relayReturnPathHost,
+		};
 	} catch (error) {
 		const deferralCode = routingDeferralCode(error);
 		if (!deferralCode) throw error;
-		return { route: null, baseRoute: null, isMtaGoverned: isHybrid, deferralCode };
+		return {
+			route: null,
+			baseRoute: null,
+			isMtaGoverned: isHybrid,
+			deferralCode,
+			relayReturnPathHost,
+		};
 	}
 }
 
@@ -244,9 +313,16 @@ export const resolveLastMileRoutePlan = internalQuery({
 		messageType: messageTypeValidator,
 		to: v.string(),
 		from: v.string(),
+		// No clock argument, deliberately — the sibling `resolveSendRoute` exposes
+		// none either. `now` lives on the …FromDb helper for tests, which call it
+		// directly; accepting one over the wire would let a backdated value revive
+		// a TTL-expired return-path verdict.
 	},
 	handler: async (ctx, args) =>
-		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, { to: args.to, from: args.from }),
+		await resolveLastMileRoutePlanFromDb(ctx, args.messageType, {
+			to: args.to,
+			from: args.from,
+		}),
 });
 
 /**
