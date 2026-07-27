@@ -157,8 +157,11 @@ export const connect = authedAction({
  * itself and see where the copy lands. Entirely optional: an install with zero
  * seeds sends normally and every delivery screen renders cleanly (D2).
  */
-// authz: seed mailbox connect — authedAction (authenticated member) +
-// assertExternalEnabled gate; persistence in internal._connectSeedInternal.
+// authz: seed mailbox connect — the enforced floor is ADMIN. authedAction +
+// assertExternalEnabled here; the admin floor (requireAdminContext) and
+// persistence live in internal._connectSeedInternal, mirroring the shared
+// team-inbox twin below — a seed is org infrastructure, and connecting one
+// makes every campaign the org sends deliver a full copy into it.
 export const connectSeed = authedAction({
 	args: { ...credentialArgs, seedProvider: destinationProviderValidator },
 	handler: async (
@@ -167,7 +170,7 @@ export const connectSeed = authedAction({
 	): Promise<{ mailboxId: Id<'mailboxes'>; externalAccountId: Id<'externalMailAccounts'> }> => {
 		await assertExternalEnabled(ctx);
 		validateShape(args);
-		return await ctx.runMutation(internal.mail.externalAccounts._connectSeedInternal, {
+		return await ctx.runMutation(internal.mail.externalAccountsSeed._connectSeedInternal, {
 			...toConnectFields(args),
 			seedProvider: args.seedProvider,
 		});

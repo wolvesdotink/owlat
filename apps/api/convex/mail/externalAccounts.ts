@@ -19,6 +19,12 @@
  * model. The `scope='shared'` discriminator is what keeps a team inbox out of
  * the personal-external surfaces below.
  *
+ * A third path — the DELIVERABILITY SEED mailbox — lives in the sibling
+ * `mail/externalAccountsSeed.ts`. It reuses this file's `connectFieldsValidator`
+ * and the same sealed envelope, but a seed is not an inbox at all: the
+ * `purpose='seed'` discriminator keeps it off every personal-external surface
+ * below and out of `listConnectableAccounts`.
+ *
  *   Public:   getForCurrentUser, disconnect, purge
  *   Internal: _connectInternal, _updateCredentialsInternal (called by the
  *             connect actions after encryption), _getRowInternal,
@@ -36,12 +42,15 @@ import { v } from 'convex/values';
 import { internalQuery, internalMutation } from '../_generated/server';
 import { authedMutation, publicQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { getBetterAuthSessionWithRole, requireAdminContext } from '../lib/sessionOrganization';
+import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { provisionMailbox, canonicalAddress, resolveDeliverableMailbox } from './mailbox';
-import { insertExternalAccountRow, applyCredentialRotation } from './externalAccountShared';
+import {
+	insertExternalAccountRow,
+	applyCredentialRotation,
+	CONNECTABLE_ACCOUNT_STATUSES,
+} from './externalAccountShared';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { destinationProviderValidator } from '../delivery/deliverabilityValidators';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -388,58 +397,6 @@ export const _updateCredentialsInternal = internalMutation({
 	},
 });
 
-/**
- * Connect a DELIVERABILITY SEED mailbox — step 1 of the placement probe.
- *
- * Deliberately the same table, the same sealed-credential envelope and the
- * same IMAP client as every other external account (D4/no second credential
- * model); it differs only in what it is FOR. Unlike `_connectInternal` there
- * is no one-live-per-user guard: an operator connects a handful of seeds, and
- * a seed is not a personal inbox. Zero seed accounts stays a fully supported
- * configuration (D2) — this is opt-in, never a setup step.
- *
- * authz: requireAdminContext (a seed is org infrastructure, exactly like a team
- * inbox) — every campaign the org sends will deliver a full copy to it.
- */
-export const _connectSeedInternal = internalMutation({
-	args: { ...connectFieldsValidator, seedProvider: destinationProviderValidator },
-	handler: async (ctx, args) => {
-		// Admin floor, for the same reason `_connectSharedInternal` has one: a seed
-		// is org infrastructure, and connecting one makes every campaign the org
-		// sends deliver a full copy into a mailbox the connecting member controls.
-		const s = await requireAdminContext(ctx);
-		const address = canonicalAddress(args.emailAddress);
-		const [, domain] = address.split('@');
-		if (!domain) throwInvalidInput('Invalid email address');
-
-		const existingMailbox = await resolveDeliverableMailbox(ctx, address);
-		if (existingMailbox) {
-			throwAlreadyExists(`A mailbox for ${address} already exists.`);
-		}
-
-		const now = Date.now();
-		const mailboxId = await provisionMailbox(ctx, {
-			userId: s.userId,
-			organizationId: s.activeOrganizationId,
-			address,
-			domain,
-			displayName: args.emailAddress,
-			kind: 'external',
-		});
-		const accountId = await insertExternalAccountRow(ctx, {
-			userId: s.userId,
-			organizationId: s.activeOrganizationId,
-			mailboxId,
-			address,
-			seed: { seedProvider: args.seedProvider },
-			auditPrefix: 'deliverability seed ',
-			fields: args,
-			now,
-		});
-		return { mailboxId, externalAccountId: accountId };
-	},
-});
-
 /** Full row incl. ciphertext — internal only, for the worker-credential action. */
 export const _getRowInternal = internalQuery({
 	args: { accountId: v.id('externalMailAccounts') },
@@ -460,13 +417,13 @@ export const _getRowInternal = internalQuery({
  * operator's personal consumer mailbox and ingest its entire contents — blobs
  * and `mailMessages` rows — into Convex as an ordinary Postbox mailbox, plus
  * re-ingest every shadow copy as inbound mail and race the prober's sweep on
- * `\Seen`. The prober selects its own accounts via `by_purpose_and_status`.
+ * `\Seen`. The prober selects its own accounts via `by_purpose`.
  */
 export const listConnectableAccounts = internalQuery({
 	args: {},
 	handler: async (ctx) => {
 		const groups = await Promise.all(
-			(['pending', 'connected', 'error'] as const).map(
+			CONNECTABLE_ACCOUNT_STATUSES.map(
 				(status) =>
 					ctx.db
 						.query('externalMailAccounts')

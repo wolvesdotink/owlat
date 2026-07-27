@@ -122,7 +122,10 @@ export async function loadPersonalMailboxForUser(
 	userId: string
 ): Promise<Doc<'mailboxes'> | null> {
 	const mailbox = await ctx.db.get(mailboxId);
-	return mailbox?.scope !== 'shared' && mailbox?.userId === userId ? mailbox : null;
+	// 'shared' and 'seed' are both org infrastructure, never personal data.
+	return mailbox?.scope !== 'shared' && mailbox?.scope !== 'seed' && mailbox?.userId === userId
+		? mailbox
+		: null;
 }
 
 export type MessageAccessOutcome =
@@ -177,10 +180,15 @@ export async function loadAccessibleMailboxes(
 	userId: string,
 	activeOrganizationId: string
 ): Promise<Array<Doc<'mailboxes'>>> {
-	const owned = await ctx.db
+	const ownedRows = await ctx.db
 		.query('mailboxes')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
 		.collect(); // bounded: one user's own mailboxes (typically 1)
+	// A deliverability SEED mailbox carries the connecting admin's `userId`
+	// because it has no other owner, but it is org infrastructure, not an inbox:
+	// surfacing it would drop the operator's consumer address into their own
+	// Postbox as a mailbox that never syncs.
+	const owned = ownedRows.filter((m) => m.scope !== 'seed');
 	const seen = new Set<Id<'mailboxes'>>(owned.map((m) => m._id));
 	const out = [...owned];
 	const memberships = await ctx.db
@@ -191,6 +199,9 @@ export async function loadAccessibleMailboxes(
 		if (seen.has(row.mailboxId)) continue;
 		const mailbox = await ctx.db.get(row.mailboxId);
 		if (!mailbox) continue;
+		// Same reason as the owned side: `provisionMailbox` writes an implicit
+		// owner membership for every mailbox, including a seed's.
+		if (mailbox.scope === 'seed') continue;
 		// A membership row may only reach a mailbox in the caller's own org.
 		if (mailbox.organizationId !== activeOrganizationId) continue;
 		seen.add(mailbox._id);
