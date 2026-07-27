@@ -73,11 +73,11 @@ function result(gate: RampGateId, status: RampGateStatus): RampGateResult {
 
 describe('aggregateRampGates precedence', () => {
 	it('all pass -> pass, no failed gate, streak advances', () => {
-		const evaluation = aggregateRampGates(
-			[result('hard_bounce', 'pass'), result('complaint', 'pass')],
-			2,
-			EVALUATED_AT
-		);
+		const evaluation = aggregateRampGates({
+			perGate: [result('hard_bounce', 'pass'), result('complaint', 'pass')],
+			previousCleanStreak: 2,
+			now: EVALUATED_AT,
+		});
 		expect(evaluation.verdict).toBe('pass');
 		expect(evaluation.failedGate).toBeUndefined();
 		expect(evaluation.cleanStreak).toBe(3);
@@ -85,75 +85,75 @@ describe('aggregateRampGates precedence', () => {
 	});
 
 	it('a fail outranks any number of insufficient_data gates', () => {
-		const evaluation = aggregateRampGates(
-			[
+		const evaluation = aggregateRampGates({
+			perGate: [
 				result('hard_bounce', 'insufficient_data'),
 				result('complaint', 'fail'),
 				result('seed_placement', 'insufficient_data'),
 			],
-			5,
-			EVALUATED_AT
-		);
+			previousCleanStreak: 5,
+			now: EVALUATED_AT,
+		});
 		expect(evaluation.verdict).toBe('fail');
 		expect(evaluation.failedGate).toBe('complaint');
 		expect(evaluation.cleanStreak).toBe(0);
 	});
 
 	it('the deferral halt outranks an ordinary fail regardless of order', () => {
-		const failFirst = aggregateRampGates(
-			[result('hard_bounce', 'fail'), result('deferral', 'halt')],
-			4,
-			EVALUATED_AT
-		);
+		const failFirst = aggregateRampGates({
+			perGate: [result('hard_bounce', 'fail'), result('deferral', 'halt')],
+			previousCleanStreak: 4,
+			now: EVALUATED_AT,
+		});
 		expect(failFirst.verdict).toBe('halt');
 		expect(failFirst.failedGate).toBe('deferral');
 
-		const haltFirst = aggregateRampGates(
-			[result('deferral', 'halt'), result('hard_bounce', 'fail')],
-			4,
-			EVALUATED_AT
-		);
+		const haltFirst = aggregateRampGates({
+			perGate: [result('deferral', 'halt'), result('hard_bounce', 'fail')],
+			previousCleanStreak: 4,
+			now: EVALUATED_AT,
+		});
 		expect(haltFirst.verdict).toBe('halt');
 		expect(haltFirst.failedGate).toBe('deferral');
 		expect(haltFirst.cleanStreak).toBe(0);
 	});
 
 	it('insufficient_data outranks pass and HOLDS the streak', () => {
-		const evaluation = aggregateRampGates(
-			[result('hard_bounce', 'pass'), result('complaint', 'insufficient_data')],
-			3,
-			EVALUATED_AT
-		);
+		const evaluation = aggregateRampGates({
+			perGate: [result('hard_bounce', 'pass'), result('complaint', 'insufficient_data')],
+			previousCleanStreak: 3,
+			now: EVALUATED_AT,
+		});
 		expect(evaluation.verdict).toBe('insufficient_data');
 		expect(evaluation.failedGate).toBe('complaint');
 		expect(evaluation.cleanStreak).toBe(3);
 	});
 
 	it('an optional gate holding is ignored; an optional gate failing is not', () => {
-		const held = aggregateRampGates(
-			[result('hard_bounce', 'pass'), result('seed_placement', 'insufficient_data')],
-			0,
-			EVALUATED_AT
-		);
+		const held = aggregateRampGates({
+			perGate: [result('hard_bounce', 'pass'), result('seed_placement', 'insufficient_data')],
+			previousCleanStreak: 0,
+			now: EVALUATED_AT,
+		});
 		expect(held.verdict).toBe('pass');
 		expect(held.cleanStreak).toBe(1);
 
-		const failed = aggregateRampGates(
-			[result('hard_bounce', 'pass'), result('seed_placement', 'fail')],
-			7,
-			EVALUATED_AT
-		);
+		const failed = aggregateRampGates({
+			perGate: [result('hard_bounce', 'pass'), result('seed_placement', 'fail')],
+			previousCleanStreak: 7,
+			now: EVALUATED_AT,
+		});
 		expect(failed.verdict).toBe('fail');
 		expect(failed.failedGate).toBe('seed_placement');
 		expect(failed.cleanStreak).toBe(0);
 	});
 
 	it('names the FIRST gate at the winning rank', () => {
-		const evaluation = aggregateRampGates(
-			[result('hard_bounce', 'fail'), result('complaint', 'fail')],
-			1,
-			EVALUATED_AT
-		);
+		const evaluation = aggregateRampGates({
+			perGate: [result('hard_bounce', 'fail'), result('complaint', 'fail')],
+			previousCleanStreak: 1,
+			now: EVALUATED_AT,
+		});
 		expect(evaluation.failedGate).toBe('hard_bounce');
 	});
 
@@ -161,52 +161,62 @@ describe('aggregateRampGates precedence', () => {
 		// Nothing contributed: no gate at all, and then only an optional gate that
 		// is holding. `pass` is the one verdict that raises a share (D9), so it
 		// must be unreachable from zero evidence (D10).
-		const empty = aggregateRampGates([], 2, EVALUATED_AT);
+		const empty = aggregateRampGates({ perGate: [], previousCleanStreak: 2, now: EVALUATED_AT });
 		expect(empty.verdict).toBe('insufficient_data');
 		expect(empty.failedGate).toBeUndefined();
 		expect(empty.cleanStreak).toBe(2);
 
-		const optionalOnly = aggregateRampGates(
-			[result('seed_placement', 'insufficient_data')],
-			2,
-			EVALUATED_AT
-		);
+		const optionalOnly = aggregateRampGates({
+			perGate: [result('seed_placement', 'insufficient_data')],
+			previousCleanStreak: 2,
+			now: EVALUATED_AT,
+		});
 		expect(optionalOnly.verdict).toBe('insufficient_data');
 		expect(optionalOnly.cleanStreak).toBe(2);
 	});
 
 	it('flags a tripwire fail as requiring corroboration, and nothing else (D17)', () => {
-		const seedFail = aggregateRampGates(
-			[result('hard_bounce', 'pass'), result('seed_placement', 'fail')],
-			0,
-			EVALUATED_AT
-		);
+		const seedFail = aggregateRampGates({
+			perGate: [result('hard_bounce', 'pass'), result('seed_placement', 'fail')],
+			previousCleanStreak: 0,
+			now: EVALUATED_AT,
+		});
 		expect(seedFail.failedGate).toBe('seed_placement');
 		expect(seedFail.requiresCorroboration).toBe(true);
 
 		// A mandatory gate's fail is a measurement, not a tripwire.
 		expect(
-			aggregateRampGates([result('hard_bounce', 'fail')], 0, EVALUATED_AT).requiresCorroboration
+			aggregateRampGates({
+				perGate: [result('hard_bounce', 'fail')],
+				previousCleanStreak: 0,
+				now: EVALUATED_AT,
+			}).requiresCorroboration
 		).toBe(false);
 
 		// Already corroborated by a mandatory gate at the same rank: the mandatory
 		// gate is the one named, so nothing is pending.
 		expect(
-			aggregateRampGates(
-				[result('hard_bounce', 'fail'), result('seed_placement', 'fail')],
-				0,
-				EVALUATED_AT
-			).requiresCorroboration
+			aggregateRampGates({
+				perGate: [result('hard_bounce', 'fail'), result('seed_placement', 'fail')],
+				previousCleanStreak: 0,
+				now: EVALUATED_AT,
+			}).requiresCorroboration
 		).toBe(false);
 
 		expect(
-			aggregateRampGates([result('hard_bounce', 'pass')], 0, EVALUATED_AT).requiresCorroboration
+			aggregateRampGates({
+				perGate: [result('hard_bounce', 'pass')],
+				previousCleanStreak: 0,
+				now: EVALUATED_AT,
+			}).requiresCorroboration
 		).toBe(false);
 	});
 
 	it('carries every gate result through untouched for the audit row (D12)', () => {
 		const perGate = [result('hard_bounce', 'pass'), result('deferral', 'fail')];
-		expect(aggregateRampGates(perGate, 0, EVALUATED_AT).perGate).toEqual(perGate);
+		expect(
+			aggregateRampGates({ perGate, previousCleanStreak: 0, now: EVALUATED_AT }).perGate
+		).toEqual(perGate);
 	});
 });
 

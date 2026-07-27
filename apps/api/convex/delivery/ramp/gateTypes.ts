@@ -190,6 +190,26 @@ export interface RampGateEvaluationInput {
 }
 
 /**
+ * Arguments to the aggregation seam, as ONE object rather than a positional
+ * list.
+ *
+ * `previousCleanStreak` (a count of windows) and `now` (a millisecond epoch) are
+ * both plain numbers and are mutually assignable, so a positional signature lets
+ * a caller transpose them and still typecheck — producing a `cleanStreak` of
+ * `Math.floor(epoch)`, which satisfies K_CLEAN instantly, and an `evaluatedAt`
+ * of single digits. In the one module whose premise is that units are a
+ * type-level concern, that is not a risk worth taking; naming the fields removes
+ * it, and removes the positional churn P1-5/P1-7 would otherwise cause.
+ */
+export interface RampGateAggregationInput {
+	readonly perGate: readonly RampGateResult[];
+	/** Consecutive clean windows before this evaluation. */
+	readonly previousCleanStreak: number;
+	/** Millisecond epoch this evaluation runs against. */
+	readonly now: number;
+}
+
+/**
  * The gate interface (plan D3). TWO implementations, both taking the same input
  * and returning the same evaluation, so the controller is written once.
  */

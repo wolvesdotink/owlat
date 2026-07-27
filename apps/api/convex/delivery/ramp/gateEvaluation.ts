@@ -39,6 +39,7 @@ import {
 	evaluateSeedPlacementGate,
 } from './gates';
 import type {
+	RampGateAggregationInput,
 	RampGateEvaluation,
 	RampGateEvaluationInput,
 	RampGateEvaluator,
@@ -70,11 +71,8 @@ function contributes(result: RampGateResult): boolean {
  * the winning rank is the one named: gates are evaluated in the plan's
  * numbering, so the earliest, most fundamental problem is the one reported.
  */
-export function aggregateRampGates(
-	perGate: readonly RampGateResult[],
-	previousCleanStreak: number,
-	now: number
-): RampGateEvaluation {
+export function aggregateRampGates(args: RampGateAggregationInput): RampGateEvaluation {
+	const { perGate, previousCleanStreak, now } = args;
 	let contributed = false;
 	let contributedVerdict: RampVerdict = 'pass';
 	let failedGate: RampGateId | undefined;
@@ -140,6 +138,10 @@ export const referenceArmGateEvaluator: RampGateEvaluator = {
 		// measured this window", which contributes nothing rather than holding.
 		if (input.engagement) perGate.push(input.engagement);
 		perGate.push(evaluateSeedPlacementGate(input));
-		return aggregateRampGates(perGate, input.previousCleanStreak, input.now);
+		return aggregateRampGates({
+			perGate,
+			previousCleanStreak: input.previousCleanStreak,
+			now: input.now,
+		});
 	},
 };
