@@ -432,17 +432,38 @@ export const bindMtaProviderIdentity = internalMutation({
 	},
 });
 
-/** Apply an authenticated terminal MTA result to its pre-bound provisional Send. */
+/**
+ * Apply a terminal result our OWN MTA authenticated to the Send it names.
+ *
+ * Attribution is the EXACT `providerMessageId` match below: the id an MTA
+ * report carries is the one it was bound to (direct MX) or the one a signed
+ * VERP token decoded to (a bounce our own bounce server accepted). A send that
+ * has since been re-dispatched carries a different id and is not matched.
+ *
+ * Deliberately NOT restricted to `providerType === 'mta'`. A relay send stamped
+ * with our VERP envelope sender produces DSNs that land on OUR bounce server,
+ * so the MTA reports them exactly like a direct-MX bounce — while the Send row
+ * still records the transport it actually left through (`smtp`). Requiring the
+ * row to say `mta` dropped every one of those bounces as `send_not_found`,
+ * which is precisely the measurement bias the relay VERP stamp exists to remove
+ * (plan G-08).
+ *
+ * The queued-terminal relaxation stays MTA-only: only the direct-MX path binds
+ * a provisional identity while the row is still `queued`, so only it can
+ * legitimately go `queued → bounced` without an intervening `sent`.
+ */
 export const transitionMtaByProviderMessageId = internalMutation({
 	args: { providerMessageId: v.string(), transition: transitionInputValidator },
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
 		const ref = await resolveProviderMessageId(ctx, args.providerMessageId);
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		const send = await loadSend(ctx, ref);
-		if (!send || send.providerType !== 'mta' || send.providerMessageId !== args.providerMessageId) {
+		if (!send || send.providerMessageId !== args.providerMessageId) {
 			return { ok: false, reason: 'send_not_found' };
 		}
-		return await dispatch(ctx, ref, args.transition, { allowQueuedMtaTerminal: true });
+		return await dispatch(ctx, ref, args.transition, {
+			allowQueuedMtaTerminal: send.providerType === 'mta',
+		});
 	},
 });
 
