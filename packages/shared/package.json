@@ -217,6 +217,10 @@
 			"types": "./src/deliverabilityAlignment.ts",
 			"import": "./src/deliverabilityAlignment.ts"
 		},
+		"./deliverabilityAlignmentGate": {
+			"types": "./src/deliverabilityAlignmentGate.ts",
+			"import": "./src/deliverabilityAlignmentGate.ts"
+		},
 		"./spfCoexistence": {
 			"types": "./src/spfCoexistence.ts",
 			"import": "./src/spfCoexistence.ts"

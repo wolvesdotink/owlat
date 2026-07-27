@@ -16,7 +16,10 @@
  *     makes the arms incomparable (D11) — that is a hard failure here, not a
  *     warning. Per-STREAM subdomains are a different, legitimate thing.
  *  2. SPF — one record covering the MTA's addresses AND the relay's `include:`,
- *     within RFC 7208's 10-lookup limit (`./spfCoexistence`).
+ *     within RFC 7208's 10-lookup limit (`./spfCoexistence`). The own arm's
+ *     mechanisms must be KNOWN: a check that cannot name what authorizes our own
+ *     IPs would pass on a relay-only record, so zero own-arm mechanisms is
+ *     `unknown` (hold), never a pass.
  *  3. DKIM — both arms sign for the SAME `d=` with DISTINCT selectors, proven by
  *     live DNS.
  *  4. DMARC — a policy is published for the From domain and both arms' `d=`
@@ -31,6 +34,12 @@
  * trivially as `single_arm` — no error, no warning, no block. This is the single
  * easiest place in the plan to accidentally make an ESP mandatory.
  *
+ * The third reference state is the one that keeps that rule honest without
+ * opening a hole: a relay IS configured but its signing identity is not known to
+ * us. That is `unknown` — a HOLD — never `single_arm`, because answering "no
+ * second arm" for a transport we simply failed to describe would let two
+ * genuinely unaligned arms ramp.
+ *
  * DNS failure semantics: a timeout / SERVFAIL / REFUSED is UNKNOWN, never
  * "aligned" and never "misconfigured". Unknown HOLDS the cell (it cannot ramp)
  * without raising a failure, and is retried sooner than the daily cadence.
@@ -41,7 +50,7 @@
 
 import { organizationalDomain } from './spfAlignment';
 import { evaluateSpfCoexistence } from './spfCoexistence';
-import type { SpfCoexistenceResult } from './spfCoexistence';
+import type { SpfCoexistenceFailure } from './spfCoexistence';
 
 export const ALIGNMENT_CHECK_IDS = ['from_domain', 'spf', 'dkim', 'dmarc'] as const;
 export type AlignmentCheckId = (typeof ALIGNMENT_CHECK_IDS)[number];
@@ -54,8 +63,11 @@ export type AlignmentVerdict = 'aligned' | 'single_arm' | 'blocked' | 'unknown';
 /** Daily re-check cadence, and the faster retry for an unresolved lookup. */
 export const ALIGNMENT_RECHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const ALIGNMENT_UNKNOWN_RETRY_MS = 60 * 60 * 1000;
-/** Beyond this, a recorded verdict is no longer evidence of anything. */
-export const ALIGNMENT_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
+
+/** Domains re-checked per sweep page, so the cron stays bounded (D16). */
+export const ALIGNMENT_SWEEP_PAGE_SIZE = 5;
+/** Pages one sweep run walks before handing off to a scheduled continuation. */
+export const ALIGNMENT_SWEEP_MAX_PAGES = 5;
 
 export type DnsLookupFailure = 'timeout' | 'servfail' | 'refused' | 'error';
 
@@ -81,9 +93,30 @@ export interface AlignmentArm {
 	dkimSelectors: readonly string[];
 	/** SPF mechanisms this arm needs authorized, e.g. `ip4:…` / `include:…`. */
 	spfMechanisms: readonly string[];
-	/** False when the transport cannot carry our VERP return path (P2-3). */
+}
+
+/**
+ * The reference arm additionally declares whether it can carry our VERP return
+ * path (P2-3). The own MTA always can, so the flag lives HERE rather than on
+ * every arm — a field only one shape can meaningfully answer.
+ */
+export interface ReferenceAlignmentArm extends AlignmentArm {
+	/** False when the transport cannot carry our VERP return path. */
 	supportsCustomReturnPath: boolean;
 }
+
+/**
+ * How the second arm stands. Three states, not a boolean:
+ *  - `none`    — no reference transport at all. The supported standalone
+ *                deployment (D2): nothing to align, the gate opens.
+ *  - `unknown` — a relay IS configured but we cannot describe its signing
+ *                identity. HOLD; never laundered into `none`.
+ *  - `arm`     — the relay's identity is known and can be checked.
+ */
+export type ReferenceArmInput =
+	| { kind: 'none' }
+	| { kind: 'unknown'; detail: string }
+	| { kind: 'arm'; arm: ReferenceAlignmentArm };
 
 export interface AlignmentDnsFacts {
 	/** TXT at the From domain (the SPF record lives here). */
@@ -96,10 +129,8 @@ export interface AlignmentDnsFacts {
 
 export interface AlignmentPreflightInput {
 	ownArm: AlignmentArm;
-	/** null ⇒ no reference transport is configured. NOT an error (D2). */
-	referenceArm: AlignmentArm | null;
+	reference: ReferenceArmInput;
 	dns: AlignmentDnsFacts;
-	includeLookupCosts?: Readonly<Record<string, number>> | undefined;
 	checkedAt: number;
 }
 
@@ -135,6 +166,8 @@ export const ALIGNMENT_REMEDIES = {
 		'Add the missing mechanism to the existing v=spf1 record instead of publishing a second record.',
 	spf_lookup_limit:
 		'The merged SPF record exceeds the RFC 7208 10-lookup limit and will PermError.',
+	spf_own_arm_unknown:
+		'Set MTA_IP_POOLS so the pre-flight knows which addresses the own MTA sends from. Until then the SPF check cannot prove your own IPs are authorized, and the cell holds.',
 	dkim_missing_record: 'Publish the DKIM public key for this selector before ramping.',
 	dkim_revoked: 'The published DKIM key is empty (revoked). Republish the public key.',
 	dkim_domain_mismatch:
@@ -149,20 +182,27 @@ export const ALIGNMENT_REMEDIES = {
 		'This domain publishes adkim=s, so every arm must sign with d= exactly equal to the From domain.',
 	dns_unknown:
 		'DNS could not be resolved. The cell holds at its current share until the lookup succeeds; no configuration change is implied.',
+	reference_arm_unknown:
+		'A relay is configured but we cannot see the domain it signs and bounces as, so the two arms cannot be compared. Verify the relay for this sending domain (or turn the relay off to run on the own MTA alone).',
 } as const;
 
-export type AlignmentRemedyKey = keyof typeof ALIGNMENT_REMEDIES;
-
-function normalizeDomain(domain: string): string {
+/** Trim, lowercase and drop a trailing root dot. ONE spelling of a DNS name. */
+export function normalizeDomain(domain: string): string {
 	return domain.trim().toLowerCase().replace(/\.$/, '');
 }
 
-function dkimRecordName(selector: string, dkimDomain: string): string {
+/**
+ * The FULL TXT name a DKIM key is published at. The gather keys its observations
+ * by exactly this string and the evaluator looks them up by it, so both sides
+ * must call this one function — a second spelling silently turns every DKIM
+ * check into `unknown`.
+ */
+export function dkimRecordName(selector: string, dkimDomain: string): string {
 	return `${selector.trim().toLowerCase()}._domainkey.${normalizeDomain(dkimDomain)}`;
 }
 
-function unknownCheck(id: AlignmentCheckId, detail: string): AlignmentCheckResult {
-	return { id, status: 'unknown', detail, remedy: ALIGNMENT_REMEDIES.dns_unknown };
+function unknownCheck(id: AlignmentCheckId, detail: string, remedy?: string): AlignmentCheckResult {
+	return { id, status: 'unknown', detail, remedy: remedy ?? ALIGNMENT_REMEDIES.dns_unknown };
 }
 
 function pass(id: AlignmentCheckId, detail: string): AlignmentCheckResult {
@@ -186,8 +226,8 @@ function checkFromDomain(own: AlignmentArm, reference: AlignmentArm): AlignmentC
 	);
 }
 
-function spfRemedy(result: SpfCoexistenceResult): string {
-	switch (result.reason) {
+function spfRemedy(result: SpfCoexistenceFailure): string {
+	switch (result.kind) {
 		case 'no_record':
 			return ALIGNMENT_REMEDIES.spf_no_record;
 		case 'multiple_records':
@@ -198,45 +238,59 @@ function spfRemedy(result: SpfCoexistenceResult): string {
 			return result.flattenCandidate === null
 				? ALIGNMENT_REMEDIES.spf_lookup_limit
 				: `${ALIGNMENT_REMEDIES.spf_lookup_limit} Flatten ${result.flattenCandidate} to ip4/ip6 mechanisms to get back under the limit.`;
-		case 'ok':
-			return '';
+	}
+}
+
+function spfDetail(result: SpfCoexistenceFailure): string {
+	switch (result.kind) {
+		case 'no_record':
+			return 'No v=spf1 record is published on the From domain.';
+		case 'multiple_records':
+			return `${result.recordCount} v=spf1 records are published on the From domain; RFC 7208 allows one.`;
+		case 'missing_mechanism':
+			return `The published SPF record does not authorize ${result.missingMechanisms.join(', ')}.`;
+		case 'lookup_limit':
+			return `The merged SPF record needs ${result.lookupCount} DNS lookups; RFC 7208 allows 10.`;
 	}
 }
 
 function checkSpf(input: AlignmentPreflightInput, reference: AlignmentArm): AlignmentCheckResult {
-	const observation = input.dns.fromDomainTxt;
-	if (observation.state === 'unknown') {
+	const fromDomain = normalizeDomain(input.ownArm.fromDomain);
+	// A check that cannot name what authorizes OUR OWN addresses would pass on a
+	// relay-only record. That is not "aligned", it is "not knowable" — hold.
+	if (input.ownArm.spfMechanisms.length === 0) {
 		return unknownCheck(
 			'spf',
-			`SPF lookup for ${normalizeDomain(input.ownArm.fromDomain)} returned ${observation.failure}.`
+			`The own MTA's SPF mechanisms for ${fromDomain} are not known, so the record cannot be proven to authorize both arms.`,
+			ALIGNMENT_REMEDIES.spf_own_arm_unknown
 		);
 	}
-	const required = [...input.ownArm.spfMechanisms, ...reference.spfMechanisms];
+	const observation = input.dns.fromDomainTxt;
+	if (observation.state === 'unknown') {
+		return unknownCheck('spf', `SPF lookup for ${fromDomain} returned ${observation.failure}.`);
+	}
 	const result = evaluateSpfCoexistence({
 		publishedTxtRecords: observation.state === 'found' ? observation.records : [],
-		requiredMechanisms: required,
-		includeLookupCosts: input.includeLookupCosts,
-		essentialMechanisms: required,
+		requiredMechanisms: [...input.ownArm.spfMechanisms, ...reference.spfMechanisms],
 	});
-	if (result.status === 'pass') {
+	if (result.kind === 'pass') {
 		return pass(
 			'spf',
 			`One SPF record authorizes both arms (${result.lookupCount} of 10 DNS lookups used).`
 		);
 	}
-	const detail =
-		result.reason === 'lookup_limit'
-			? `The merged SPF record needs ${result.lookupCount} DNS lookups; RFC 7208 allows 10.`
-			: `SPF coexistence check failed: ${result.reason}.`;
-	return fail('spf', detail, spfRemedy(result));
+	return fail('spf', spfDetail(result), spfRemedy(result));
 }
 
-interface DkimArmObservation {
-	status: AlignmentCheckStatus;
-	detail: string;
-	remedy: string;
-	liveSelectors: string[];
-}
+/**
+ * One arm's DKIM state, as a union: a live arm carries selectors and nothing
+ * else, and a failure carries the copy that describes it. `detail`/`remedy` on a
+ * pass were fields that meant nothing.
+ */
+type DkimArmObservation =
+	| { kind: 'live'; selectors: string[] }
+	| { kind: 'unknown'; detail: string }
+	| { kind: 'fail'; detail: string; remedy: string };
 
 /** Resolve one arm's selectors: at least one live key is required. */
 function observeArmDkim(arm: AlignmentArm, dns: AlignmentDnsFacts): DkimArmObservation {
@@ -258,24 +312,24 @@ function observeArmDkim(arm: AlignmentArm, dns: AlignmentDnsFacts): DkimArmObser
 		}
 		live.push(selector.trim().toLowerCase());
 	}
-	if (live.length > 0) {
-		return { status: 'pass', detail: '', remedy: '', liveSelectors: live };
-	}
+	if (live.length > 0) return { kind: 'live', selectors: live };
 	if (sawUnknown) {
+		return { kind: 'unknown', detail: `DKIM lookup for ${arm.label} could not be resolved.` };
+	}
+	if (sawRevoked) {
 		return {
-			status: 'unknown',
-			detail: `DKIM lookup for ${arm.label} could not be resolved.`,
-			remedy: ALIGNMENT_REMEDIES.dns_unknown,
-			liveSelectors: [],
+			kind: 'fail',
+			detail: `${arm.label} publishes a revoked (empty p=) DKIM key.`,
+			remedy: ALIGNMENT_REMEDIES.dkim_revoked,
 		};
 	}
+	const names = arm.dkimSelectors
+		.map((selector) => dkimRecordName(selector, arm.dkimDomain))
+		.join(', ');
 	return {
-		status: 'fail',
-		detail: sawRevoked
-			? `${arm.label} publishes a revoked (empty p=) DKIM key.`
-			: `${arm.label} publishes no DKIM key at ${arm.dkimSelectors.map((selector) => dkimRecordName(selector, arm.dkimDomain)).join(', ') || '(no selector configured)'}.`,
-		remedy: sawRevoked ? ALIGNMENT_REMEDIES.dkim_revoked : ALIGNMENT_REMEDIES.dkim_missing_record,
-		liveSelectors: [],
+		kind: 'fail',
+		detail: `${arm.label} publishes no DKIM key at ${names || '(no selector configured)'}.`,
+		remedy: ALIGNMENT_REMEDIES.dkim_missing_record,
 	};
 }
 
@@ -290,21 +344,22 @@ function checkDkim(input: AlignmentPreflightInput, reference: AlignmentArm): Ali
 			ALIGNMENT_REMEDIES.dkim_domain_mismatch
 		);
 	}
-	const ownObservation = observeArmDkim(own, input.dns);
-	const referenceObservation = observeArmDkim(reference, input.dns);
-	for (const observation of [ownObservation, referenceObservation]) {
-		if (observation.status === 'fail') {
-			return fail('dkim', observation.detail, observation.remedy);
+	// A failure outranks an unknown: one pass over the pair, remembering the first
+	// unresolved arm in case neither failed.
+	let unresolved: string | null = null;
+	const liveSelectors: string[][] = [];
+	for (const arm of [own, reference]) {
+		const observation = observeArmDkim(arm, input.dns);
+		if (observation.kind === 'fail') return fail('dkim', observation.detail, observation.remedy);
+		if (observation.kind === 'unknown') {
+			unresolved ??= observation.detail;
+			continue;
 		}
+		liveSelectors.push(observation.selectors);
 	}
-	for (const observation of [ownObservation, referenceObservation]) {
-		if (observation.status === 'unknown') {
-			return unknownCheck('dkim', observation.detail);
-		}
-	}
-	const shared = ownObservation.liveSelectors.filter((selector) =>
-		referenceObservation.liveSelectors.includes(selector)
-	);
+	if (unresolved !== null) return unknownCheck('dkim', unresolved);
+	const [ownSelectors = [], referenceSelectors = []] = liveSelectors;
+	const shared = ownSelectors.filter((selector) => referenceSelectors.includes(selector));
 	if (shared.length > 0) {
 		return fail(
 			'dkim',
@@ -323,7 +378,7 @@ function checkDkim(input: AlignmentPreflightInput, reference: AlignmentArm): Ali
 	}
 	return pass(
 		'dkim',
-		`Both arms sign d=${ownDkimDomain} with distinct selectors (${ownObservation.liveSelectors.join(', ')} vs ${referenceObservation.liveSelectors.join(', ')}).`
+		`Both arms sign d=${ownDkimDomain} with distinct selectors (${ownSelectors.join(', ')} vs ${referenceSelectors.join(', ')}).`
 	);
 }
 
@@ -380,12 +435,13 @@ function verdictFor(checks: readonly AlignmentCheckResult[]): AlignmentVerdict {
 /**
  * The pre-flight. With no reference arm it returns `single_arm` and allows the
  * ramp — absence of a third-party transport is a SUPPORTED CONFIGURATION (D2).
+ * With a relay whose identity we cannot see it returns `unknown` and HOLDS.
  */
 export function evaluateAlignmentPreflight(
 	input: AlignmentPreflightInput
 ): AlignmentPreflightResult {
-	const reference = input.referenceArm;
-	if (reference === null) {
+	const reference = input.reference;
+	if (reference.kind === 'none') {
 		return {
 			verdict: 'single_arm',
 			checks: ALIGNMENT_CHECK_IDS.map((id) =>
@@ -398,76 +454,39 @@ export function evaluateAlignmentPreflight(
 			nextCheckDueAt: input.checkedAt + ALIGNMENT_RECHECK_INTERVAL_MS,
 		};
 	}
+	if (reference.kind === 'unknown') {
+		return {
+			verdict: 'unknown',
+			checks: ALIGNMENT_CHECK_IDS.map((id) =>
+				unknownCheck(id, reference.detail, ALIGNMENT_REMEDIES.reference_arm_unknown)
+			),
+			allowsShareAboveZero: false,
+			degradedMeasurement: false,
+			degradedMeasurementReason: null,
+			checkedAt: input.checkedAt,
+			nextCheckDueAt: input.checkedAt + ALIGNMENT_UNKNOWN_RETRY_MS,
+		};
+	}
+	const arm = reference.arm;
 	const checks = [
-		checkFromDomain(input.ownArm, reference),
-		checkSpf(input, reference),
-		checkDkim(input, reference),
-		checkDmarc(input, reference),
+		checkFromDomain(input.ownArm, arm),
+		checkSpf(input, arm),
+		checkDkim(input, arm),
+		checkDmarc(input, arm),
 	];
 	const verdict = verdictFor(checks);
-	const degradedMeasurement = !reference.supportsCustomReturnPath;
+	const degradedMeasurement = !arm.supportsCustomReturnPath;
 	return {
 		verdict,
 		checks,
 		allowsShareAboveZero: verdict === 'aligned',
 		degradedMeasurement,
 		degradedMeasurementReason: degradedMeasurement
-			? `${reference.label} cannot carry our custom return path, so bounce attribution on that arm is coarser. Measurement confidence is lowered; the ramp is not blocked.`
+			? `${arm.label} cannot carry our custom return path, so bounce attribution on that arm is coarser. Measurement confidence is lowered; the ramp is not blocked.`
 			: null,
 		checkedAt: input.checkedAt,
 		nextCheckDueAt:
 			input.checkedAt +
 			(verdict === 'unknown' ? ALIGNMENT_UNKNOWN_RETRY_MS : ALIGNMENT_RECHECK_INTERVAL_MS),
 	};
-}
-
-export type AlignmentGateReason =
-	| 'single_arm'
-	| 'aligned'
-	| 'blocked'
-	| 'unknown_hold'
-	| 'not_yet_checked'
-	| 'stale';
-
-export interface AlignmentGateState {
-	verdict: AlignmentVerdict;
-	checkedAt: number;
-}
-
-export interface AlignmentGateInput {
-	/** False ⇒ no reference transport. The gate opens regardless of state (D2). */
-	hasReferenceArm: boolean;
-	state: AlignmentGateState | null;
-	now: number;
-}
-
-export interface AlignmentGateVerdict {
-	allowsShareAboveZero: boolean;
-	reason: AlignmentGateReason;
-}
-
-/**
- * The controller's gate. Everything that is not a fresh, positive verdict HOLDS
- * the cell at s=0 — EXCEPT the single-arm case, which never depends on a stored
- * result at all, so a deployment with zero third-party accounts can never be
- * blocked by a pre-flight that has not run.
- */
-export function alignmentGate(input: AlignmentGateInput): AlignmentGateVerdict {
-	if (!input.hasReferenceArm) return { allowsShareAboveZero: true, reason: 'single_arm' };
-	const state = input.state;
-	if (state === null) return { allowsShareAboveZero: false, reason: 'not_yet_checked' };
-	if (state.verdict === 'single_arm') return { allowsShareAboveZero: true, reason: 'single_arm' };
-	if (!Number.isFinite(state.checkedAt) || input.now - state.checkedAt > ALIGNMENT_STALE_AFTER_MS) {
-		return { allowsShareAboveZero: false, reason: 'stale' };
-	}
-	if (state.verdict === 'aligned') return { allowsShareAboveZero: true, reason: 'aligned' };
-	return {
-		allowsShareAboveZero: false,
-		reason: state.verdict === 'unknown' ? 'unknown_hold' : 'blocked',
-	};
-}
-
-/** Apply the gate to a proposed share: a blocked cell can only be held at 0. */
-export function applyAlignmentGateToShare(share: number, gate: AlignmentGateVerdict): number {
-	return gate.allowsShareAboveZero ? share : 0;
 }
