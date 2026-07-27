@@ -118,9 +118,10 @@ export const seedPlacementTables = {
 		.index('by_org_and_sent_at', ['organizationId', 'sentAt'])
 		// Poller work selection: DISPATCHED probes only, oldest dispatch first.
 		.index('by_account_and_dispatched_at', ['accountId', 'dispatchedAt'])
-		// The abandonment sweep: probes with no `dispatchedAt` at all. `undefined`
-		// sorts before every number in a Convex index, so this is an exact-match
-		// lookup rather than a scan.
-		.index('by_dispatched_at_and_sent_at', ['dispatchedAt', 'sentAt'])
+		// The abandonment sweep: probes not yet written off AND never dispatched.
+		// `undefined` is an ordinary index value in Convex, so both are exact
+		// matches; a row leaves the range the moment it is written off, which is
+		// what keeps the batched sweep making progress.
+		.index('by_undispatched_watch', ['notDispatchedAt', 'dispatchedAt', 'sentAt'])
 		.index('by_expires_at', ['expiresAt']),
 };

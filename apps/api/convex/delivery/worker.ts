@@ -365,12 +365,17 @@ export const sendSingleEmail = internalAction({
 		// Attribute the probe to the arm the route ACTUALLY resolved to. Guessing
 		// from the requested `providerType` mis-files every default-routed probe,
 		// and the arm is the whole point of a placement observation.
+		// `dispatchedAt` is also what makes the probe searchable at all: the poller
+		// selects and expires work on it, so a probe that never gets here is never
+		// looked for and never classified `missing`.
 		if (
 			envelopeInput.kind === 'campaign' &&
 			envelopeInput.seedProbeRef !== undefined &&
+			envelopeInput.organizationId !== undefined &&
 			dispatchResult.success
 		) {
 			await ctx.runMutation(internal.analytics.seedPlacement.recordSeedProbeDispatch, {
+				organizationId: envelopeInput.organizationId,
 				probeRef: envelopeInput.seedProbeRef,
 				transportArm: dispatchResult.providerType === 'mta' ? 'own' : 'reference',
 				now: Date.now(),

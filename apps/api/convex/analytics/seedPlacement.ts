@@ -162,6 +162,14 @@ export const recordSeedProbeClassification = internalMutation({
 		if (!probe) return { recorded: false as const };
 		// Defense in depth at the poller boundary.
 		if (probe.organizationId !== args.organizationId) return { recorded: false as const };
+		// A probe we never handed to a transport is NOT evidence — it was never
+		// mailed, so no folder is the right answer and `missing` is the wrong one.
+		// The work selection already excludes it; this is the load-bearing check,
+		// because `missing` is the outcome that feeds the collapse tripwire and it
+		// must never be manufactured by our own queue.
+		if (probe.dispatchedAt === undefined) {
+			return { recorded: false as const, reason: 'never_dispatched' as const };
+		}
 
 		const classification = classifySeedFolder(args.folderName, probe.provider);
 		const hygiene = planSeedHygiene({
@@ -197,6 +205,7 @@ export const recordSeedProbeClassification = internalMutation({
  */
 export const recordSeedProbeDispatch = internalMutation({
 	args: {
+		organizationId: v.string(),
 		probeRef: v.id('seedPlacementProbes'),
 		transportArm: v.union(v.literal('own'), v.literal('reference')),
 		now: v.number(),
@@ -204,6 +213,9 @@ export const recordSeedProbeDispatch = internalMutation({
 	handler: async (ctx, args) => {
 		const probe = await ctx.db.get(args.probeRef);
 		if (!probe) return { recorded: false };
+		// Same defense in depth as its two siblings: a probe row is only ever
+		// writable through the organization that owns it.
+		if (probe.organizationId !== args.organizationId) return { recorded: false };
 		await ctx.db.patch(args.probeRef, {
 			transportArm: args.transportArm,
 			dispatchedAt: args.now,
@@ -310,6 +322,61 @@ export const getGateVerdict = internalQuery({
 			},
 		});
 		return { ...result, seedAccountCount: summary.seedAccountCount };
+	},
+});
+
+// ============ THE NEVER-DISPATCHED DISPOSITION ============
+
+/**
+ * How long a probe may sit un-dispatched before it is written off. Generous on
+ * purpose: a warming-capped deployment can hold a campaign page in the
+ * workpool for many hours, and a probe that eventually goes out is a perfectly
+ * good observation.
+ */
+export const SEED_PROBE_DISPATCH_HORIZON_MS = 48 * 60 * 60 * 1000;
+
+/** Rows one abandonment pass writes off before rescheduling itself. */
+const SEED_PROBE_ABANDON_BATCH = 200;
+
+/**
+ * Write off probes that were enqueued but never handed to a transport.
+ *
+ * They are given their OWN disposition rather than a placement: `missing` means
+ * "the provider accepted it and we cannot find it", which is gate 5's most
+ * alarming reading, and an undelivered probe means nothing of the sort. Worse,
+ * the thing that stops a probe being dispatched — deferrals, warming caps — is
+ * the very thing that breaches the corroborating deferral gate, so classifying
+ * these as `missing` would let gate 5 reach `fail` on an artifact of our own
+ * queue. Written off, they are simply not evidence, in either direction.
+ */
+export const abandonUndispatchedSeedProbes = internalMutation({
+	args: {},
+	handler: async (ctx) => {
+		const now = Date.now();
+		const stale = await ctx.db
+			.query('seedPlacementProbes')
+			.withIndex('by_undispatched_watch', (q) =>
+				q
+					.eq('notDispatchedAt', undefined)
+					.eq('dispatchedAt', undefined)
+					.lte('sentAt', now - SEED_PROBE_DISPATCH_HORIZON_MS)
+			)
+			.take(SEED_PROBE_ABANDON_BATCH);
+		for (const probe of stale) {
+			await ctx.db.patch(probe._id, { notDispatchedAt: now });
+		}
+		const abandoned = stale.length;
+		// A full batch means there is more to write off, and every row just
+		// patched has LEFT the index range, so the next pass sees new rows.
+		const hasMore = abandoned === SEED_PROBE_ABANDON_BATCH;
+		if (hasMore) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.analytics.seedPlacement.abandonUndispatchedSeedProbes,
+				{}
+			);
+		}
+		return { abandoned, hasMore };
 	},
 });
 

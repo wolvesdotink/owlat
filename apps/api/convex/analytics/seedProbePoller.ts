@@ -20,13 +20,24 @@ import { shouldRemindSeedRotation } from '@owlat/shared/seedPlacement';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 
 /**
- * How long after dispatch a probe becomes worth looking for. Filters run on
- * delivery, and a mailbox walked one second after the send would report
+ * How long after DISPATCH a probe becomes worth looking for. Filters run on
+ * delivery, and a mailbox walked one second after the handoff would report
  * `missing` for mail that simply has not arrived.
+ *
+ * Every horizon in this module keys off `dispatchedAt`, never off `sentAt`.
+ * `sentAt` is the ENQUEUE timestamp, and a probe can legitimately sit in the
+ * rate-limited campaign workpool for hours behind a warming cap — which is the
+ * common case for exactly the deployments this feature exists for. Searching on
+ * enqueue time would find nothing and write `missing`, manufacturing gate 5's
+ * most alarming outcome out of our own queue depth.
  */
 const SEED_PROBE_SETTLE_MS = 15 * 60 * 1000;
 
-/** Give up on a probe that never showed up; it is reported MISSING once. */
+/**
+ * Give up on a DISPATCHED probe that never showed up; it is reported MISSING
+ * once. A probe that was never dispatched never reaches this horizon — it is
+ * abandoned as non-evidence instead (`abandonUndispatchedSeedProbes`).
+ */
 const SEED_PROBE_GIVE_UP_MS = 24 * 60 * 60 * 1000;
 
 /** Bound on accounts walked in one sweep — a deployment has a handful of seeds. */
@@ -48,16 +59,14 @@ export interface SeedProbeWorkItem {
 	rotationReminderDue: boolean;
 }
 
-function isSeedAccount(account: Doc<'externalMailAccounts'>): boolean {
-	return account.purpose === 'seed' && account.status !== 'disconnected';
-}
-
 /**
  * Every seed mailbox with outstanding probe work.
  *
- * Scans the same three connectable statuses `listConnectableAccounts` does, so
- * a seed the operator has not fixed credentials for is simply skipped rather
- * than erroring.
+ * Selects on exactly (purpose, status): the same three connectable statuses
+ * `listConnectableAccounts` uses — so a seed the operator has not fixed
+ * credentials for is skipped rather than erroring — but through an index keyed
+ * on `purpose`, so a deployment with many ordinary external accounts cannot
+ * push every seed off the end of a bounded page and take gate 5 dark.
  */
 export const listSeedProbeWork = internalQuery({
 	args: { now: v.number() },
@@ -66,29 +75,38 @@ export const listSeedProbeWork = internalQuery({
 			(['pending', 'connected', 'error'] as const).map((status) =>
 				ctx.db
 					.query('externalMailAccounts')
-					.withIndex('by_status', (q) => q.eq('status', status))
+					.withIndex('by_purpose_and_status', (q) => q.eq('purpose', 'seed').eq('status', status))
 					.take(SEED_ACCOUNT_SCAN_LIMIT)
 			)
 		);
-		const accounts = groups.flat().filter(isSeedAccount);
+		const accounts: Doc<'externalMailAccounts'>[] = groups.flat();
 
 		const work: SeedProbeWorkItem[] = [];
 		for (const account of accounts) {
 			const mailbox = await ctx.db.get(account.mailboxId);
 			if (!mailbox) continue;
+			// DISPATCHED probes only, oldest handoff first. `gte(0)` is what excludes
+			// the never-dispatched rows: `undefined` sorts below every number in a
+			// Convex index, so an undispatched probe is not merely filtered out
+			// afterwards — it is outside the range entirely and can never be
+			// classified.
 			const probes = await ctx.db
 				.query('seedPlacementProbes')
-				.withIndex('by_account_and_sent_at', (q) =>
-					q.eq('accountId', account._id).lte('sentAt', args.now - SEED_PROBE_SETTLE_MS)
+				.withIndex('by_account_and_dispatched_at', (q) =>
+					q
+						.eq('accountId', account._id)
+						.gte('dispatchedAt', 0)
+						.lte('dispatchedAt', args.now - SEED_PROBE_SETTLE_MS)
 				)
-				.order('desc')
 				.take(SEED_PROBE_WORK_LIMIT);
 
 			const probeIds: string[] = [];
 			const expiredProbeIds: string[] = [];
 			for (const probe of probes) {
 				if (probe.placement !== undefined) continue;
-				if (args.now - probe.sentAt >= SEED_PROBE_GIVE_UP_MS) expiredProbeIds.push(probe.probeId);
+				const dispatchedAt = probe.dispatchedAt;
+				if (dispatchedAt === undefined) continue;
+				if (args.now - dispatchedAt >= SEED_PROBE_GIVE_UP_MS) expiredProbeIds.push(probe.probeId);
 				else probeIds.push(probe.probeId);
 			}
 			if (probeIds.length === 0 && expiredProbeIds.length === 0) continue;

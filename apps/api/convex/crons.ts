@@ -81,6 +81,14 @@ crons.interval(
 	internal.analytics.seedPlacement.deleteExpiredSeedProbes,
 	{}
 );
+// Write off seed probes that were enqueued but never handed to a transport, so
+// an undelivered probe can never be read as a placement `missing`.
+crons.interval(
+	'abandon undispatched seed probes',
+	{ hours: 6 },
+	internal.analytics.seedPlacement.abandonUndispatchedSeedProbes,
+	{}
+);
 crons.interval(
 	'cleanup MTA campaign alert receipts',
 	{ hours: 24 },
