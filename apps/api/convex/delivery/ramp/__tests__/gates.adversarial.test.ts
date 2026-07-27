@@ -264,6 +264,8 @@ describe('missing arms and missing gates', () => {
 				referenceSample: null,
 				minSample: 5,
 			},
+			confidence: 'medium',
+			mayJustifyIncrease: true,
 		};
 		const evaluation = aggregateRampGates({
 			perGate: [held],
@@ -289,6 +291,8 @@ describe('missing arms and missing gates', () => {
 					referenceSample: 10_000,
 					minSample: 200,
 				},
+				confidence: 'high',
+				mayJustifyIncrease: true,
 			},
 		];
 		const streak = (previousCleanStreak: number): number =>

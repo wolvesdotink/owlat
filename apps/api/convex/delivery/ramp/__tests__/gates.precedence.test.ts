@@ -32,6 +32,10 @@ function evaluate(built: RampGateEvaluationInput): RampGateEvaluation {
  * pretend to be.
  */
 function result(gate: RampGateId, status: RampGateStatus): RampGateResult {
+	// Every verdict carries a grade (plan D14). These synthetic answers are
+	// high-confidence and increase-justifying so that the PRECEDENCE contract is
+	// what this suite measures; the asymmetry has its own suite.
+	const grade = { confidence: 'high', mayJustifyIncrease: true } as const;
 	const shape = {
 		thresholdRate: 0,
 		toleranceValuePp: null,
@@ -46,6 +50,7 @@ function result(gate: RampGateId, status: RampGateStatus): RampGateResult {
 				status,
 				reason: 'within_threshold',
 				measurement: { ...shape, ownRate: 0, referenceRate: null },
+				...grade,
 			};
 		case 'fail':
 			return {
@@ -53,6 +58,7 @@ function result(gate: RampGateId, status: RampGateStatus): RampGateResult {
 				status,
 				reason: 'absolute_threshold_breached',
 				measurement: { ...shape, ownRate: 0, referenceRate: null },
+				...grade,
 			};
 		case 'halt':
 			return {
@@ -60,6 +66,7 @@ function result(gate: RampGateId, status: RampGateStatus): RampGateResult {
 				status,
 				reason: 'halt_threshold_breached',
 				measurement: { ...shape, ownRate: 0, referenceRate: null },
+				...grade,
 			};
 		case 'insufficient_data':
 			return {
@@ -67,6 +74,7 @@ function result(gate: RampGateId, status: RampGateStatus): RampGateResult {
 				status,
 				reason: 'evidence_absent',
 				measurement: { ...shape, ownRate: null, referenceRate: null },
+				...grade,
 			};
 	}
 }
