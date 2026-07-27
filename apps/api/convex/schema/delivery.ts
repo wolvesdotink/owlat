@@ -208,7 +208,11 @@ export const deliveryTables = {
 		strategy: v.union(
 			v.literal('single'), // Use one provider only
 			v.literal('priority_failover'), // Try providers in order, failover on error
-			v.literal('workload_split') // Split traffic by weight across providers
+			v.literal('workload_split'), // Split traffic by weight across providers
+			// Deterministic per-RECIPIENT split against the cell's controlled
+			// share (plan D7). Additive: no shipped row carries it, and the
+			// degenerate shares reproduce the shipped routing exactly.
+			v.literal('adaptive_mix')
 		),
 		// Ordered list of providers for this route
 		providers: v.array(

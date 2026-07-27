@@ -9,8 +9,17 @@
 
 import type { ActionableDeliverabilitySignalSource } from '@owlat/shared/deliverabilityRouting';
 import type { SendProviderKind } from '../types';
+import type { MixAssignmentInput } from './adaptive_mix/mix';
 
-export type SendRouteStrategyKind = 'single' | 'priority_failover' | 'workload_split';
+// Re-exported so the dispatcher and its callers can name the mix context
+// without reaching into the strategy folder that owns it.
+export type { MixAssignmentInput } from './adaptive_mix/mix';
+
+export type SendRouteStrategyKind =
+	| 'single'
+	| 'priority_failover'
+	| 'workload_split'
+	| 'adaptive_mix';
 
 export interface ProviderEntry {
 	providerType: SendProviderKind;
@@ -69,10 +78,16 @@ export interface SendRouteStrategyModule<K extends SendRouteStrategyKind> {
 	 * Pure function. Given enabled providers and (optionally) their
 	 * health statuses, return the chosen provider — or null if no
 	 * candidate is selectable (caller falls back).
+	 *
+	 * `mix` is the per-RECIPIENT context `adaptive_mix` splits against (plan
+	 * D7). It is optional and the shipped three ignore it: a strategy that
+	 * does not split per recipient has no use for one, and every caller that
+	 * has no recipient in hand (health probes, preflight) supplies none.
 	 */
 	select(
 		entries: readonly ProviderEntry[],
 		ipPool: string | undefined,
-		healthStatuses?: readonly ProviderHealthStatus[]
+		healthStatuses?: readonly ProviderHealthStatus[],
+		mix?: MixAssignmentInput
 	): ResolvedRoute | null;
 }

@@ -9,6 +9,7 @@
 import { singleStrategy } from './single';
 import { priorityFailoverStrategy } from './priority_failover';
 import { workloadSplitStrategy } from './workload_split';
+import { adaptiveMixStrategy } from './adaptive_mix';
 import type { SendRouteStrategyKind, SendRouteStrategyModule } from './types';
 
 export type {
@@ -18,11 +19,21 @@ export type {
 	ProviderHealthStatus,
 	ResolvedRoute,
 } from './types';
+export type {
+	MixArm,
+	MixAssignment,
+	MixAssignmentBasis,
+	MixAssignmentInput,
+	MixCellState,
+	MixRecipientIdentity,
+} from './adaptive_mix';
+export { decideMixAssignment, OWN_ARM_TRANSPORT_KIND } from './adaptive_mix';
 
 export const SEND_ROUTE_STRATEGIES = {
 	single: singleStrategy,
 	priority_failover: priorityFailoverStrategy,
 	workload_split: workloadSplitStrategy,
+	adaptive_mix: adaptiveMixStrategy,
 } as const;
 
 // Compile-time guard: each registry value must satisfy the module shape for
@@ -53,5 +64,10 @@ export function isDeterministicRouteStrategy(kind: string | undefined | null): b
 export function isSendRouteStrategyKind(
 	kind: string | undefined | null
 ): kind is SendRouteStrategyKind {
-	return kind === 'single' || kind === 'priority_failover' || kind === 'workload_split';
+	return (
+		kind === 'single' ||
+		kind === 'priority_failover' ||
+		kind === 'workload_split' ||
+		kind === 'adaptive_mix'
+	);
 }
