@@ -13,7 +13,8 @@
  * that claim was false). This module is the producer. The share controller's
  * stratified assignment (plan P2-5) derives a recipient's percentile within a
  * cell from the same score via `engagementPercentile` below — the scoring logic
- * is NOT duplicated there.
+ * is NOT duplicated there. The `contactActivities` catalog adapter lives in the
+ * sibling `engagementActivity.ts`, so this file stays closed arithmetic.
  *
  * THE MODEL. One exponentially-decayed accumulator, folded activity by
  * activity in chronological order:
@@ -32,8 +33,10 @@
  * 3. FOLD/INCREMENT EQUIVALENCE. Because a sum of exponentially-decayed terms
  *    itself decays exponentially, decaying the accumulator forward and adding
  *    one new term is EXACTLY a full recompute. The hot path can therefore do
- *    O(1) incremental work (`decayState` + `applyActivity`) and the nightly
- *    backfill's full recompute agrees with it. There is one code path.
+ *    O(1) incremental work and the nightly backfill's full recompute agrees
+ *    with it. "One code path" is literal, not aspirational: `foldActivity`
+ *    below is the ONLY place an activity is folded, and both the full
+ *    recompute's loop and the sync layer's hot path call it.
  * 4. TENURE PRIOR. A brand-new contact with no activity yet is not "cold" —
  *    it is UNMEASURED, and new subscribers are the best-performing cohort. The
  *    prior decays away over the first weeks, so a long-silent contact is cold
@@ -47,6 +50,12 @@
  * click plus a couple of opens". `__tests__/engagementScore.test.ts` pins the
  * band of eight realistic timelines.
  */
+
+import {
+	ENGAGEMENT_BAND_CUTS,
+	engagementBandForScore,
+	type EngagementBand,
+} from '@owlat/shared/engagementBands';
 
 // ─── Tunables ───────────────────────────────────────────────────────────────
 
@@ -81,13 +90,13 @@ export const SOFT_BOUNCE_PENALTY_BASE = 0.85;
 export const SATURATION_K = 9;
 
 /**
- * Band cut points. These MIRROR `PRIORITY_BANDS` in
- * `apps/mta/src/intelligence/engagementPriority.ts` (80/50/20) — the MTA is the
- * consumer, so the producer must speak the same cuts.
+ * Band cut points. Re-exported from `@owlat/shared/engagementBands`, which is
+ * the ONE definition — `apps/mta/src/intelligence/engagementPriority.ts` (the
+ * consumer) imports the very same object, so producer and consumer cannot drift.
  */
-export const ENGAGEMENT_BANDS = { high: 80, medium: 50, low: 20 } as const;
+export const ENGAGEMENT_BANDS = ENGAGEMENT_BAND_CUTS;
 
-export type EngagementBand = 'high' | 'medium' | 'low' | 'cold';
+export type { EngagementBand };
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -113,8 +122,21 @@ export type EngagementActivity = {
 export type EngagementScoreState = {
 	raw: number;
 	softBounceRaw: number;
-	/** A hard bounce or a spam complaint. Terminal — never cleared. */
+	/**
+	 * A hard bounce or a spam complaint. Sticky within the recompute lookback
+	 * window (see `suppressedAt`) rather than permanent: a bounce recorded in
+	 * error must have a reversal path, and "forever, with no way back" is not one.
+	 */
 	isSuppressed: boolean;
+	/**
+	 * `occurredAt` of the newest suppressing activity. This is what makes
+	 * suppression CLEARABLE: the full recompute only carries a cached suppression
+	 * forward while its instant is still inside the lookback window, so removing
+	 * or correcting the offending activity row un-suppresses the contact on the
+	 * next recompute (and `clearEngagementSuppression` forces one immediately).
+	 * Absent whenever `isSuppressed` is false.
+	 */
+	suppressedAt?: number | undefined;
 	/**
 	 * `engagementActivityKey` of the most recently folded activity. The hot path
 	 * collapses an immediately-repeated (kind, occurredAt) — a redelivered
@@ -156,9 +178,20 @@ export type EngagementScoreInputs = EngagementActivityCounts & {
 	decayedEngagement: number;
 	decayedSoftBounce: number;
 	tenurePrior: number;
+	/**
+	 * `SOFT_BOUNCE_PENALTY_BASE ^ decayedSoftBounce`, ALWAYS the real computed
+	 * value. Suppression is reported separately below rather than by zeroing this
+	 * — an operator reading the blob must be able to tell a hard-bounced contact
+	 * from a maximally soft-bounced one.
+	 */
 	penalty: number;
 	/** The saturating curve's argument — `(decayedEngagement + prior) * penalty`. */
 	raw: number;
+	/**
+	 * True when a hard bounce or complaint forced the score to 0. When set, the
+	 * other fields describe what the score WOULD have been.
+	 */
+	isSuppressed: boolean;
 };
 
 export type EngagementScoreResult = {
@@ -167,11 +200,17 @@ export type EngagementScoreResult = {
 	inputs: EngagementScoreInputs;
 };
 
-export const EMPTY_ENGAGEMENT_STATE: EngagementScoreState = {
+/**
+ * The fold base. Frozen and `Readonly` because it is a module-level singleton
+ * every fold starts from: a single stray mutation would silently poison every
+ * score in the deployment, so the language enforces the invariant rather than a
+ * test noticing after the fact.
+ */
+export const EMPTY_ENGAGEMENT_STATE: Readonly<EngagementScoreState> = Object.freeze({
 	raw: 0,
 	softBounceRaw: 0,
 	isSuppressed: false,
-};
+});
 
 /**
  * Identity of one folded activity. Two activities sharing a key are the same
@@ -199,7 +238,7 @@ function finite(value: number, fallback = 0): number {
  * (clock skew, an out-of-order replay) is a no-op rather than an amplification.
  */
 export function decayState(
-	state: EngagementScoreState,
+	state: Readonly<EngagementScoreState>,
 	fromAt: number,
 	toAt: number
 ): EngagementScoreState {
@@ -210,19 +249,28 @@ export function decayState(
 		isSuppressed: state.isSuppressed === true,
 		// Spread conditionally: an explicit `undefined` is not a storable Convex
 		// value, and this state is written straight onto the contact document.
+		...(state.suppressedAt !== undefined ? { suppressedAt: state.suppressedAt } : {}),
 		...(state.lastFoldedKey !== undefined ? { lastFoldedKey: state.lastFoldedKey } : {}),
 	};
 }
 
+/** The newer of two optional suppression instants. */
+function laterSuppression(a: number | undefined, b: number | undefined): number | undefined {
+	if (a === undefined) return b;
+	if (b === undefined) return a;
+	return Math.max(a, b);
+}
+
 /**
  * Fold one activity into an accumulator that is ALREADY decayed to the
- * activity's own timestamp.
+ * activity's own timestamp. Prefer `foldActivity`, which does the decaying for
+ * you and is the only fold both call sites use.
  */
 export function applyActivity(
-	state: EngagementScoreState,
-	kind: EngagementActivityKind
+	state: Readonly<EngagementScoreState>,
+	activity: EngagementActivity
 ): EngagementScoreState {
-	switch (kind) {
+	switch (activity.kind) {
 		case 'open':
 			return { ...state, raw: state.raw + ENGAGEMENT_WEIGHTS.open };
 		case 'click':
@@ -233,13 +281,59 @@ export function applyActivity(
 			return { ...state, softBounceRaw: state.softBounceRaw + SOFT_BOUNCE_WEIGHT };
 		case 'hard_bounce':
 		case 'complaint':
-			return { ...state, isSuppressed: true };
+			return {
+				...state,
+				isSuppressed: true,
+				suppressedAt: laterSuppression(state.suppressedAt, activity.occurredAt),
+			};
 		default: {
-			const exhaustive: never = kind;
+			const exhaustive: never = activity.kind;
 			void exhaustive;
-			return state;
+			return { ...state };
 		}
 	}
+}
+
+/**
+ * THE fold. Both the full recompute's loop and the sync layer's hot path go
+ * through here, so the two cannot drift (they used to carry a hand-copied fold
+ * each, with "there is one code path" true only in a docstring).
+ *
+ * Folds at `max(stateAt, activity.occurredAt)`: an activity that arrives LATE
+ * (a backfilled open, an out-of-order webhook) is decayed forward to the
+ * accumulator's instant rather than the accumulator being decayed backwards to
+ * the activity's. Arrival order therefore cannot change the answer. In the
+ * ordered-forward case — every iteration of the full recompute — the
+ * contribution's decay factor is exactly 1, so this reduces to "decay the base
+ * to the activity, add the term".
+ *
+ * Returns the new accumulator together with the instant it is as-of; the two
+ * are meaningless apart and must always travel together.
+ */
+export function foldActivity(
+	state: Readonly<EngagementScoreState>,
+	stateAt: number,
+	activity: EngagementActivity
+): { state: EngagementScoreState; stateAt: number } {
+	const foldAt = Math.max(stateAt, activity.occurredAt);
+	const base = decayState(state, stateAt, foldAt);
+	const contribution = decayState(
+		applyActivity(EMPTY_ENGAGEMENT_STATE, activity),
+		activity.occurredAt,
+		foldAt
+	);
+	const suppressedAt = laterSuppression(base.suppressedAt, contribution.suppressedAt);
+
+	return {
+		state: {
+			raw: base.raw + contribution.raw,
+			softBounceRaw: base.softBounceRaw + contribution.softBounceRaw,
+			isSuppressed: base.isSuppressed || contribution.isSuppressed,
+			...(suppressedAt !== undefined ? { suppressedAt } : {}),
+			lastFoldedKey: engagementActivityKey(activity.kind, activity.occurredAt),
+		},
+		stateAt: foldAt,
+	};
 }
 
 /**
@@ -247,28 +341,30 @@ export function applyActivity(
  * timestamp the accumulator is as-of (the contact's `engagementScoreUpdatedAt`).
  */
 export function scoreFromState(args: {
-	state: EngagementScoreState;
+	state: Readonly<EngagementScoreState>;
 	stateAt: number;
 	tenureStartedAt: number;
 	now: number;
-}): { score: number; state: EngagementScoreState; tenurePrior: number; penalty: number } {
+}): {
+	score: number;
+	state: EngagementScoreState;
+	tenurePrior: number;
+	penalty: number;
+	raw: number;
+} {
 	const state = decayState(args.state, args.stateAt, args.now);
-	if (state.isSuppressed) {
-		return { score: 0, state, tenurePrior: 0, penalty: 0 };
-	}
 
+	// Computed unconditionally, even when suppressed: the caller reports these as
+	// `inputs`, and an operator looking at a zeroed contact needs to see WHY it is
+	// zero (suppression) separately from what the curve said (raw/penalty).
 	const tenureMs = Math.max(0, finite(args.now) - finite(args.tenureStartedAt, args.now));
 	const tenurePrior = TENURE_PRIOR_WEIGHT * decayFactor(tenureMs, TENURE_PRIOR_HALF_LIFE_DAYS);
 	const penalty = Math.pow(SOFT_BOUNCE_PENALTY_BASE, state.softBounceRaw);
 	const raw = (state.raw + tenurePrior) * penalty;
-	const score = Math.round(100 * (1 - Math.exp(-raw / SATURATION_K)));
+	const curve = Math.round(100 * (1 - Math.exp(-raw / SATURATION_K)));
+	const score = state.isSuppressed ? 0 : Math.min(100, Math.max(0, finite(curve)));
 
-	return {
-		score: Math.min(100, Math.max(0, finite(score))),
-		state,
-		tenurePrior,
-		penalty,
-	};
+	return { score, state, tenurePrior, penalty, raw };
 }
 
 // ─── Full recompute ─────────────────────────────────────────────────────────
@@ -332,20 +428,17 @@ export function computeEngagementScore(args: {
 		complaintCount: 0,
 	};
 
-	let state = EMPTY_ENGAGEMENT_STATE;
+	// `foldActivity` stamps `lastFoldedKey` on every fold, so after the loop the
+	// state already carries the newest activity's identity — a hot-path fold of
+	// the very same (kind, occurredAt) is collapsed rather than doubled.
+	let state: EngagementScoreState = { ...EMPTY_ENGAGEMENT_STATE };
 	let stateAt = ordered[0]?.occurredAt ?? now;
 
 	for (const activity of ordered) {
-		state = applyActivity(decayState(state, stateAt, activity.occurredAt), activity.kind);
-		stateAt = activity.occurredAt;
+		const folded = foldActivity(state, stateAt, activity);
+		state = folded.state;
+		stateAt = folded.stateAt;
 		counts[COUNT_KEY_BY_KIND[activity.kind]] += 1;
-	}
-
-	// The newest folded activity's identity, so a hot-path fold of the very same
-	// (kind, occurredAt) after this recompute is collapsed rather than doubled.
-	const newest = ordered[ordered.length - 1];
-	if (newest !== undefined) {
-		state = { ...state, lastFoldedKey: engagementActivityKey(newest.kind, newest.occurredAt) };
 	}
 
 	const projected = scoreFromState({
@@ -366,20 +459,17 @@ export function computeEngagementScore(args: {
 			decayedSoftBounce: projected.state.softBounceRaw,
 			tenurePrior: projected.tenurePrior,
 			penalty: projected.penalty,
-			raw: (projected.state.raw + projected.tenurePrior) * projected.penalty,
+			raw: projected.raw,
+			isSuppressed: projected.state.isSuppressed,
 		},
 	};
 }
 
 // ─── Consumer helpers ───────────────────────────────────────────────────────
 
-/** The band a score falls in. Cuts mirror the MTA's `PRIORITY_BANDS`. */
+/** The band a score falls in. The shared cuts the MTA's `mapToPriority` uses. */
 export function engagementBand(score: number): EngagementBand {
-	if (!Number.isFinite(score)) return 'cold';
-	if (score >= ENGAGEMENT_BANDS.high) return 'high';
-	if (score >= ENGAGEMENT_BANDS.medium) return 'medium';
-	if (score >= ENGAGEMENT_BANDS.low) return 'low';
-	return 'cold';
+	return engagementBandForScore(score);
 }
 
 /**
@@ -404,39 +494,4 @@ export function engagementPercentile(cohortAscending: readonly number[], score: 
 		else high = mid;
 	}
 	return low / size;
-}
-
-// ─── Activity-type mapping ──────────────────────────────────────────────────
-
-/**
- * Map a `contactActivities` row onto a scoring activity. Returns `null` for the
- * activity types the score does not react to (topic changes, property edits,
- * `created`, `email_sent` — a send is our action, not the contact's).
- *
- * `bounceType` is free-form on the activity metadata; anything that is not an
- * explicit hard bounce is treated as soft (fail-soft: we would rather under-
- * suppress than zero a healthy contact on an unrecognised label).
- */
-export function toEngagementActivity(args: {
-	activityType: string;
-	occurredAt: number;
-	bounceType?: string | undefined;
-}): EngagementActivity | null {
-	switch (args.activityType) {
-		case 'email_opened':
-			return { kind: 'open', occurredAt: args.occurredAt };
-		case 'email_clicked':
-			return { kind: 'click', occurredAt: args.occurredAt };
-		case 'inbound_replied':
-			return { kind: 'reply', occurredAt: args.occurredAt };
-		case 'email_complained':
-			return { kind: 'complaint', occurredAt: args.occurredAt };
-		case 'email_bounced':
-			return {
-				kind: args.bounceType?.toLowerCase() === 'hard' ? 'hard_bounce' : 'soft_bounce',
-				occurredAt: args.occurredAt,
-			};
-		default:
-			return null;
-	}
 }
