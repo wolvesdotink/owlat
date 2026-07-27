@@ -144,6 +144,7 @@ export type OrganizationDeletionTable =
 	| 'contactActivities'
 	| 'contactIdentities'
 	| 'contactRelationships'
+	| 'sunsetPolicies'
 	| 'knowledgeRelations'
 	| 'knowledgeBackfillJobs'
 	| 'knowledgeEdgeBackfillJobs'
@@ -310,6 +311,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('contactActivities'),
 	v.literal('contactIdentities'),
 	v.literal('contactRelationships'),
+	v.literal('sunsetPolicies'),
 	v.literal('knowledgeRelations'),
 	v.literal('knowledgeBackfillJobs'),
 	v.literal('knowledgeEdgeBackfillJobs'),

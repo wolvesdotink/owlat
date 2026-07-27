@@ -171,6 +171,10 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'contactIdentities',
 	'contactRelationships',
 
+	// Per-topic sunset-policy overrides (P4-4) — configuration rows with no
+	// parent among the contact tables.
+	'sunsetPolicies',
+
 	// Independent definitions (no parent/child among themselves)
 	'contactProperties',
 	'topics',
@@ -384,6 +388,7 @@ export const ORGANIZATION_DELETION_STEPS = {
 	contactActivities: makeSweepStep('contactActivities'),
 	contactIdentities: makeSweepStep('contactIdentities'),
 	contactRelationships: makeSweepStep('contactRelationships'),
+	sunsetPolicies: makeSweepStep('sunsetPolicies'),
 	knowledgeRelations: makeSweepStep('knowledgeRelations'),
 	knowledgeBackfillJobs: makeSweepStep('knowledgeBackfillJobs'),
 	knowledgeEdgeBackfillJobs: makeSweepStep('knowledgeEdgeBackfillJobs'),

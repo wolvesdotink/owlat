@@ -36,6 +36,9 @@ export const TENANT_TABLES = [
 	'contactActivities',
 	'contactIdentities',
 	'contactRelationships',
+	// Per-topic sunset-policy overrides (P4-4). Configuration, not contact data,
+	// but it is tenant-owned and must not survive an org wipe.
+	'sunsetPolicies',
 	'emailSends',
 	'contacts',
 	'contactProperties',

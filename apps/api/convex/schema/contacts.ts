@@ -95,6 +95,26 @@ export const contactTables = {
 				lastFoldedKey: v.optional(v.string()),
 			})
 		),
+		// ─── Sunset policy (deliverability plan P4-4) ──────────────────────────
+		// Where this contact sits on the sunset track, owned by
+		// `contacts/sunsetEngine.ts`. ADDITIVE and optional: absent means
+		// `engaged`, so legacy rows read as "on the normal track" and no
+		// backfill is required.
+		sunsetStage: v.optional(
+			v.union(v.literal('engaged'), v.literal('reengagement'), v.literal('suppressed'))
+		),
+		// When `sunsetStage` last changed. Paired with the audit-log entry the
+		// transition wrote, so "when did the engine do this" is answerable off
+		// the contact row alone.
+		sunsetStageAt: v.optional(v.number()),
+		// Freshness stamp the daily sweep ranges over. Stamping it moves the row
+		// out of the stale range — the range IS the cursor (same shape as the
+		// engagement-score backfill), so a settled contact is not rescanned.
+		sunsetEvaluatedAt: v.optional(v.number()),
+		// Explicit operator override: while set, the sunset engine never moves
+		// this contact. Also set by the restore path, so a restored contact is
+		// not immediately re-suppressed by the next sweep.
+		sunsetExemptAt: v.optional(v.number()),
 		// Contact-level double opt-in status. Non-optional per ADR-0009 —
 		// the Contact resolution (module) writes 'not_required' at create
 		// time so undefined never appears in new rows. The DOI lifecycle
@@ -144,6 +164,13 @@ export const contactTables = {
 		// stamps `engagementScoreUpdatedAt = now`, which moves it out of the stale
 		// range — the range IS the cursor, and it cannot go stale.
 		.index('by_engagement_score_updated_at', ['engagementScoreUpdatedAt'])
+		// Cursor index for the daily sunset sweep (P4-4), the same shape as the
+		// engagement-score staleness index above: ascending order puts
+		// never-evaluated rows first (a missing field sorts before every number),
+		// then the stalest. Evaluating a contact stamps `sunsetEvaluatedAt = now`,
+		// which moves it out of the range — so the sweep resumes from where it
+		// stopped without carrying a cursor row of its own.
+		.index('by_sunset_evaluated_at', ['sunsetEvaluatedAt'])
 		// SEALED-AT-REST NOTE (Sealed Mail E8b): `searchableText` here indexes contact
 		// METADATA (name, email, company), not a sealed message body, so E8b at-rest
 		// body sealing does not apply to it — it is intentionally plaintext for search.
@@ -211,6 +238,24 @@ export const contactTables = {
 		.index('by_contact', ['contactId'])
 		.index('by_contact_and_type', ['contactId', 'activityType'])
 		.index('by_contact_and_occurred_at', ['contactId', 'occurredAt']),
+
+	// Sunset policies (deliverability plan P4-4) — per-topic tuning of the
+	// re-engagement/auto-suppression windows owned by `contacts/sunsetPolicy.ts`.
+	//
+	// The table holds OVERRIDES ONLY. An empty table is the supported, shipped
+	// configuration: `SUNSET_POLICY_DEFAULTS` (enabled, 180/270) applies, so the
+	// protection is on out of the box rather than waiting for someone to opt in.
+	// `topicId: undefined` is the single deployment-wide row; a row WITH a
+	// topicId layers on top of it for that topic's members. Every tunable is
+	// optional so an override can change one field and inherit the rest.
+	sunsetPolicies: defineTable({
+		topicId: v.optional(v.id('topics')),
+		enabled: v.optional(v.boolean()),
+		reengageAfterDays: v.optional(v.number()),
+		suppressAfterDays: v.optional(v.number()),
+		createdAt: v.number(),
+		updatedAt: v.number(),
+	}).index('by_topic', ['topicId']),
 
 	// Segments - saved contact filter configurations for reuse in campaigns
 	segments: defineTable({
