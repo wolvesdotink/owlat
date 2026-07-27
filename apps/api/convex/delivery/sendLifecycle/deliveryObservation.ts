@@ -1,5 +1,5 @@
 import type { Doc } from '../../_generated/dataModel';
-import type { Effect } from './effects';
+import { transportOutcomeEffect, type Effect } from './effects';
 import { contactEmailOf } from './lookups';
 import type { EmailSendDoc, SendRef, SendStatus, TransactionalSendDoc } from './types';
 
@@ -88,6 +88,15 @@ export function reduceDeliveryObservation(
 		});
 	}
 	effects.push({ kind: 'daily_stats_bump', field: 'delivered', at });
+	// The per-cell, per-arm outcome counter (plan D5) is emitted from INSIDE the
+	// new-observation branch, next to the shipped delivered counter it has to
+	// agree with. Delivery evidence is whatever arrives FIRST — a provider
+	// `delivered` callback, an open, a click or a complaint — so a `delivered`
+	// bump driven only by the transition map would under-count against the
+	// dashboard over the same traffic, and the open/click/unsubscribe rates
+	// denominated on it could then exceed 1.0. Recording it here makes
+	// `delivered >= opened` true by construction.
+	effects.push(transportOutcomeEffect(ref, 'delivered', at));
 	effects.push({
 		kind: 'reputation_update',
 		eventType: 'deliver',

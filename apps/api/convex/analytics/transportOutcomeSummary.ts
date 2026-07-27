@@ -114,6 +114,17 @@ export function transportOutcomeCounters(
  * So the engagement outcome effects are pushed by `reduceOpened`/`reduceClicked`
  * from inside their existing uniqueness gate, next to the shipped counter they
  * must agree with. Do not re-add them here.
+ *
+ * `delivered` is unmapped for the SAME reason. The shipped delivered
+ * denominator is written exactly once per send by `reduceDeliveryObservation`,
+ * from whichever delivery evidence arrives first — a provider `delivered`
+ * callback, an open, a click, or a complaint — and an explicit `delivered`
+ * transition out of any state other than `sent` is a duplicate that never
+ * reaches the effect runner. Mapping the transition would therefore under-count
+ * `delivered` against the dashboard over the same traffic, and would let the
+ * open/click/unsubscribe rates denominated on it exceed 1.0. The effect is
+ * pushed from inside that reducer's new-observation branch instead, which makes
+ * `delivered >= opened` true by construction.
  */
 export function transportOutcomeEventForTransition(
 	to: 'sent' | 'failed' | 'delivered' | 'opened' | 'clicked' | 'bounced' | 'complained',
@@ -122,12 +133,11 @@ export function transportOutcomeEventForTransition(
 	switch (to) {
 		case 'sent':
 			return 'sent';
-		case 'delivered':
-			return 'delivered';
 		case 'complained':
 			return 'complained';
 		case 'bounced':
 			return bounceType === 'hard' ? 'hard_bounced' : 'soft_bounced';
+		case 'delivered':
 		case 'opened':
 		case 'clicked':
 		case 'failed':
@@ -166,10 +176,12 @@ export interface TransportOutcomeTotals {
  *     gate comparing `unsubscribeRate` against `complaintRate` is comparing two
  *     differently-denominated numbers — convert, or compare like for like.
  *
- * Every rate here is bounded to [0, 1]: the open/click numerators count UNIQUE
- * opens and clicks, because the effects that feed them are emitted from inside
- * the lifecycle reducers' `isFirstOpen` / `isFirstClick` gate, exactly like the
- * shipped dashboard counters. See `transportOutcomeEventForTransition`.
+ * Every rate here is bounded to [0, 1], twice over. By construction: the
+ * open/click numerators count UNIQUE opens and clicks and their `delivered`
+ * denominator is bumped by the same delivery observation any open implies, so
+ * `delivered >= opened` holds — see `transportOutcomeEventForTransition`. And
+ * defensively: `rate()` clamps at the read boundary, so a legacy or
+ * partially-written bucket still cannot hand a gate a ratio above 1.
  */
 export interface TransportOutcomeSummary extends TransportOutcomeTotals {
 	/** softBounced + hardBounced — summed, never stored. */
@@ -223,7 +235,9 @@ export function safeOutcomeCount(value: number | undefined): number {
 
 /** Zero-denominator guard — the one place a division happens. */
 function rate(numerator: number, denominator: number): number {
-	return denominator > 0 ? numerator / denominator : 0;
+	// Clamped at the read boundary: a rate is a ratio, and a legacy or
+	// partially-written bucket must never hand a gate a value above 1.
+	return denominator > 0 ? Math.min(1, numerator / denominator) : 0;
 }
 
 export interface TransportOutcomeWindow {
