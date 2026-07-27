@@ -10,9 +10,9 @@ import {
 	smtpOutcomeJournalKeys,
 } from '../smtpOutcomeJournal.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
-import type { CtxWithIp } from '../../dispatch/types.js';
+import type { CtxWithProviderPressure } from '../../dispatch/types.js';
 
-function attempt(messageId: string): CtxWithIp {
+function attempt(messageId: string): CtxWithProviderPressure {
 	return {
 		job: {
 			messageId,
@@ -41,6 +41,7 @@ function attempt(messageId: string): CtxWithIp {
 		dedicatedIp: undefined,
 		ip: '192.0.2.1',
 		eligibilityGeneration: 1,
+		providerVolumePressure: 0,
 	};
 }
 
@@ -59,6 +60,47 @@ describe('SMTP outcome journal', () => {
 	beforeEach(async () => {
 		redis = new Redis();
 		await redis.flushall();
+	});
+
+	it('round-trips the per-provider volume pressure the reducer needs', async () => {
+		const enriched = { ...attempt('message-1'), providerVolumePressure: 3 };
+		const fresh = await reserveSmtpOutcome(redis, 'job-1', 'message-1', enriched, {
+			now: 100,
+			capacity: 10,
+		});
+		expect(fresh.kind).toBe('fresh');
+		if (fresh.kind !== 'fresh') return;
+		expect(fresh.entry.attempt.providerVolumePressure).toBe(3);
+
+		const replay = await reserveSmtpOutcome(redis, 'job-1', 'message-1', enriched, {
+			now: 200,
+			capacity: 10,
+		});
+		expect(replay.kind).toBe('existing');
+		if (replay.kind !== 'existing' || replay.entry.state !== 'in_flight') return;
+		expect(replay.entry.attempt.providerVolumePressure).toBe(3);
+	});
+
+	it('replays an entry written before the pressure dimension existed', async () => {
+		const legacy = attempt('message-legacy') as Record<string, unknown>;
+		delete legacy['providerVolumePressure'];
+		const fresh = await reserveSmtpOutcome(redis, 'job-legacy', 'message-legacy', legacy as never, {
+			now: 100,
+			capacity: 10,
+		});
+		expect(fresh.kind).toBe('fresh');
+
+		const replay = await reserveSmtpOutcome(
+			redis,
+			'job-legacy',
+			'message-legacy',
+			legacy as never,
+			{ now: 200, capacity: 10 }
+		);
+		expect(replay.kind).toBe('existing');
+		if (replay.kind !== 'existing' || replay.entry.state !== 'in_flight') return;
+		// Absent, not invalid: the entry replays and reads as "no recorded pressure".
+		expect(replay.entry.attempt.providerVolumePressure).toBe(0);
 	});
 
 	it('terminalizes to a retained tombstone while releasing journal capacity', async () => {

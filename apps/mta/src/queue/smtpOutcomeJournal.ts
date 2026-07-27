@@ -154,6 +154,7 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 		) {
 			throw new Error('SMTP outcome journal contains an invalid reservation');
 		}
+		normalizeAttemptSnapshot(entry['attempt']);
 		return entry as unknown as InFlightSmtpOutcome;
 	}
 	if (entry['state'] === 'effects_applied') {
@@ -173,7 +174,17 @@ function parseEntry(raw: string): SmtpOutcomeJournalEntry {
 	) {
 		throw new Error('SMTP outcome journal contains an invalid completed result');
 	}
+	normalizeAttemptSnapshot(entry['attempt']);
 	return entry as unknown as CompletedSmtpOutcome;
+}
+
+/** Fill in fields added after an entry was written, so a replay never sees a hole. */
+function normalizeAttemptSnapshot(value: unknown): void {
+	if (!value || typeof value !== 'object') return;
+	const attempt = value as Record<string, unknown>;
+	if (typeof attempt['providerVolumePressure'] !== 'number') {
+		attempt['providerVolumePressure'] = 0;
+	}
 }
 
 function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot {
@@ -190,11 +201,14 @@ function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot {
 	) {
 		return false;
 	}
-	// Reservations persisted before the per-provider pressure dimension carry no
-	// counter. Normalize rather than reject: a legacy in-flight entry must still
-	// replay, and "no recorded pressure" is exactly zero.
-	if (typeof attempt['providerVolumePressure'] !== 'number') {
-		attempt['providerVolumePressure'] = 0;
+	// Entries persisted before the per-provider pressure dimension carry no
+	// counter. Tolerated rather than rejected — a legacy in-flight entry must
+	// still replay — and normalized to zero by `normalizeAttemptSnapshot`.
+	if (
+		attempt['providerVolumePressure'] !== undefined &&
+		typeof attempt['providerVolumePressure'] !== 'number'
+	) {
+		return false;
 	}
 	const destination = attempt['destination'];
 	if (!destination || typeof destination !== 'object') return false;
@@ -276,6 +290,7 @@ export async function reserveSmtpOutcome(
 			dedicatedIp: attempt.dedicatedIp,
 			ip: attempt.ip,
 			eligibilityGeneration: attempt.eligibilityGeneration,
+			providerVolumePressure: attempt.providerVolumePressure,
 		},
 	};
 	const raw = JSON.stringify(entry);
