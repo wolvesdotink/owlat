@@ -112,8 +112,16 @@ export interface CellArmWindowQuery extends TransportOutcomeWindow {
  * Read one (org, cell, arm) window's shard rows. Org-leading and bounded: the
  * aging cron keeps a cell/arm at ≤90 days × SHARD_COUNT rows, and the day range
  * narrows it further.
+ *
+ * Exported for the ONE consumer that needs the rows rather than a single
+ * summary: the deliverability dashboard derives several disjoint sub-windows
+ * (the evaluation window, the trailing baseline, one point per day of trend)
+ * from one read, and re-runs `summarizeTransportOutcomeBuckets` over each. That
+ * keeps the derive-on-read rule intact — every rate it shows still comes out of
+ * the one summarizer — while costing one index read per (cell, arm) instead of
+ * one per sub-window. Do NOT sum these rows by hand anywhere.
  */
-async function readCellArmBuckets(
+export async function readCellArmBuckets(
 	db: DatabaseReader,
 	input: CellArmWindowQuery
 ): Promise<TransportOutcomeBucket[]> {
