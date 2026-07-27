@@ -66,7 +66,11 @@ import {
 	type EngagementMetric,
 	type EngagementMetricOverrides,
 } from './engagementConfig';
-import { RAMP_STREAM_CONFIGS, type RampGateSampleFloors } from './gateConfig';
+import {
+	RAMP_STREAM_CONFIGS,
+	type RampGateSampleFloors,
+	type RampGateThresholds,
+} from './gateConfig';
 import { armEvidence, evidenceReason, insufficient, safeEngagementRate } from './gateEvidence';
 import type { RampGateResult } from './gateTypes';
 import { safeOutcomeCount } from '../../analytics/transportOutcomeSummary';
@@ -134,8 +138,8 @@ function calibrationEngagement(
 }
 
 /**
- * The four things that differ between the concurrent ratio and the slow-poison
- * floor. Everything else about them is one cascade.
+ * The handful of things that differ between the concurrent ratio and the
+ * slow-poison floor. Everything else about them is one cascade.
  */
 interface EngagementComparisonSpec {
 	/** The window being judged. */
@@ -144,6 +148,18 @@ interface EngagementComparisonSpec {
 	/** The series it is judged against — a second transport, or the cell's past. */
 	readonly referenceOf: (input: EngagementGateInput) => TransportOutcomeSummary | null;
 	readonly referenceFloorOf: (floors: RampGateSampleFloors) => number;
+	/**
+	 * How old the second series is allowed to be, selected by the spec exactly as
+	 * its sample floor is.
+	 *
+	 * The two sub-gates disagree about this and MUST: gate 4a's reference arm is
+	 * the other half of the same send, so the concurrent "one clean window plus
+	 * slack" rule is the right one; gate 4b's is the cell's PRIOR 30-day window,
+	 * which ends a week ago by contract and is therefore stale under that rule on
+	 * every input that respects the contract — which would reduce the composed
+	 * gate to 4a alone and delete the only defence against a smooth decay.
+	 */
+	readonly referenceMaxAgeOf: (thresholds: RampGateThresholds) => number;
 	/**
 	 * Which vocabulary a hold on the second series speaks. A hold reason names
 	 * the thing to fix, and "the relay" and "this cell's own history" are not the
@@ -161,6 +177,7 @@ const RATIO_SPEC: EngagementComparisonSpec = {
 	recentFloorOf: (floors) => floors.engagement,
 	referenceOf: (input) => input.reference,
 	referenceFloorOf: (floors) => floors.engagement,
+	referenceMaxAgeOf: (thresholds) => thresholds.maxEvidenceAgeMs,
 	referenceArm: 'reference',
 	ratioFloor: ENGAGEMENT_GATE_THRESHOLDS.minRatio,
 	failReason: 'reference_tolerance_breached',
@@ -181,6 +198,7 @@ const FLOOR_SPEC: EngagementComparisonSpec = {
 	recentFloorOf: (floors) => floors.engagementRecent,
 	referenceOf: (input) => input.ownPriorBaseline ?? null,
 	referenceFloorOf: () => ENGAGEMENT_GATE_THRESHOLDS.baselineMinSample,
+	referenceMaxAgeOf: (thresholds) => thresholds.maxBaselineAgeMs,
 	referenceArm: 'baseline',
 	ratioFloor: ENGAGEMENT_GATE_THRESHOLDS.absoluteFloorRatio,
 	failReason: 'absolute_threshold_breached',
@@ -215,6 +233,7 @@ function evaluateEngagementComparison(
 	const referenceSummary = spec.referenceOf(input);
 	const minSample = spec.recentFloorOf(sampleFloors);
 	const referenceMinSample = spec.referenceFloorOf(sampleFloors);
+	const referenceMaxAgeMs = spec.referenceMaxAgeOf(thresholds);
 
 	const recent = calibrationEngagement(recentSummary, metric);
 	const reference = referenceSummary ? calibrationEngagement(referenceSummary, metric) : null;
@@ -239,7 +258,8 @@ function evaluateEngagementComparison(
 		recent.sample,
 		minSample,
 		input.now,
-		thresholds
+		thresholds,
+		thresholds.maxEvidenceAgeMs
 	);
 	if (recentEvidence !== 'fresh' || recent.rate === null) {
 		return insufficient('engagement_ratio', evidenceReason(recentEvidence, 'own'), {
@@ -254,7 +274,8 @@ function evaluateEngagementComparison(
 		reference?.sample ?? 0,
 		referenceMinSample,
 		input.now,
-		thresholds
+		thresholds,
+		referenceMaxAgeMs
 	);
 	// A rate of exactly zero reaches `evidenceReason('fresh', …)` alongside a
 	// poisoned one, and correctly so: both mean "this series cannot act as a
@@ -267,6 +288,12 @@ function evaluateEngagementComparison(
 	) {
 		return insufficient('engagement_ratio', evidenceReason(referenceEvidence, spec.referenceArm), {
 			...holdShape,
+			// A hold that NAMES the second series must report the floor that
+			// governed the second series. `holdShape.minSample` is the recent
+			// window's, and on the floor gate the two differ by 3x — an audit row
+			// (plan D12) reading `baseline_sample_below_floor` next to a floor the
+			// sample comfortably clears is a record an operator cannot act on.
+			minSample: referenceMinSample,
 			ownRate: recent.rate,
 			referenceRate: reference?.rate ?? null,
 		});
