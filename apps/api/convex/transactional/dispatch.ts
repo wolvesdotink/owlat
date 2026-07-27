@@ -309,14 +309,22 @@ export const dispatch = internalMutation({
 		// Experiment record (plan D7): the Template API is the primary producer
 		// of the `transactional` stream, so its cell axis would otherwise be
 		// populated only by agent 1:1 replies. Written inside THIS transaction,
-		// before the workpool enqueue, reusing the route already resolved for
-		// this exact recipient at step 8 rather than resolving it twice on a
-		// latency-sensitive path.
+		// before the workpool enqueue.
+		//
+		// It deliberately does NOT reuse `resolvedRoute` from step 8. That one
+		// comes from the authoritative per-message resolver, which is
+		// health-influenced and draws with `Math.random()` under
+		// `workload_split` — a draw the worker repeats independently at
+		// dispatch. Recording it would file a coin flip, under a second
+		// resolution semantics, into the same `transactional:*` cells the other
+		// producers fill from the health-free cell seam. The writer re-resolves
+		// through that one seam instead, which is also where the
+		// non-deterministic-strategy gate lives.
 		await recordSendAssignments(ctx, {
 			organizationId,
 			stream: 'transactional',
 			sendKind: 'transactional',
-			routing: { kind: 'preResolved', transport: resolvedRoute?.providerType },
+			routing: { messageType: 'transactional', from },
 			recipients: [{ sendId, email: args.email }],
 		});
 

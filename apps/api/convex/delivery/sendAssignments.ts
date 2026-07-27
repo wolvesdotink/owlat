@@ -171,37 +171,38 @@ export interface SendAssignmentRecipient {
 /**
  * How the transport for each recipient is obtained.
  *
- * `resolve` is the default and the correct one for any batch producer. The
- * deliverability fallback is keyed PER DESTINATION PROVIDER
- * (`deliverabilityRouteStates.by_org_provider`), so a producer-supplied
- * `providerType` — which campaign sending resolves ONCE per page from the
- * first recipient and explicitly labels an advisory snapshot — stamps the
- * first recipient's route onto every other cell. A row could then read
- * `arm: 'own'` while the message actually went through the relay, which
- * makes the experiment record worse than useless. So the writer re-resolves
+ * There is exactly ONE way, deliberately: the writer always re-resolves
  * in-transaction through the health-free cell seam
  * (`lib/sendProviders/route.ts resolveCellRouteFromDb`), once per DISTINCT
  * destination provider (at most `DESTINATION_PROVIDER_KEYS.length`
  * resolutions, never one per recipient).
  *
- * `preResolved` exists for the ONE producer that already resolved the route
- * for its single recipient in the same transaction (the transactional
- * Template API): repeating the resolution there would double the reads on
- * the latency-sensitive path for a guaranteed-identical answer.
+ * No producer may hand in a transport it resolved itself. Two reasons, both
+ * learned the hard way:
+ *
+ *   - The deliverability fallback is keyed PER DESTINATION PROVIDER
+ *     (`deliverabilityRouteStates.by_org_provider`), so a producer-supplied
+ *     `providerType` — which campaign sending resolves ONCE per page from the
+ *     first recipient and explicitly labels an advisory snapshot — stamps the
+ *     first recipient's route onto every other cell.
+ *   - The determinism verdict and the health-free semantics live INSIDE
+ *     `resolveCellRouteFromDb`. A producer that resolved through
+ *     `resolveSendRouteFromDb` (the transactional Template API does, for the
+ *     envelope) holds a HEALTH-INFLUENCED answer drawn with `Math.random()`
+ *     under `workload_split` — and the worker draws again independently at
+ *     dispatch. Recording it would put a coin flip and a different resolution
+ *     semantics into the same `transactional:*` cell as the seam's answers.
+ *
+ * The extra reads on the Template API's latency-sensitive path are the price
+ * of one decision made in one place; the seam reads only indexed,
+ * admin-written documents.
  */
-export type SendAssignmentRouting =
-	| {
-			readonly kind: 'resolve';
-			/** Route table to resolve against — the shipped `providerRoutes.messageType`. */
-			readonly messageType: MessageType;
-			/** Envelope From; feeds the shipped relay-domain verification input. */
-			readonly from?: string;
-	  }
-	| {
-			readonly kind: 'preResolved';
-			/** Transport the caller already resolved (`null` = unresolved → no row). */
-			readonly transport: SendProviderKind | null | undefined;
-	  };
+export interface SendAssignmentRouting {
+	/** Route table to resolve against — the shipped `providerRoutes.messageType`. */
+	readonly messageType: MessageType;
+	/** Envelope From; feeds the shipped relay-domain verification input. */
+	readonly from?: string;
+}
 
 export interface RecordSendAssignmentsInput {
 	/**
@@ -316,10 +317,6 @@ async function buildTransportLookup(
 	input: TransportLookupInput
 ): Promise<(destinationProvider: DestinationProviderKey) => SendProviderKind | null> {
 	const { routing } = input;
-	if (routing.kind === 'preResolved') {
-		const transport = routing.transport ?? null;
-		return () => transport;
-	}
 	const byProvider = new Map<DestinationProviderKey, SendProviderKind | null>();
 	for (const destinationProvider of input.destinationProviders) {
 		let resolvedTransport: SendProviderKind | null = null;

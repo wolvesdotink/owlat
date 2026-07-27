@@ -169,7 +169,7 @@ export const enqueueCampaignEmails = internalMutation({
 			organizationId: args.organizationId,
 			stream: 'campaign',
 			sendKind: 'campaign',
-			routing: { kind: 'resolve', messageType: 'campaign', from: args.from },
+			routing: { messageType: 'campaign', from: args.from },
 			recipients: args.emails.map((recipient) => ({
 				sendId: recipient.emailSendId,
 				email: recipient.email,
@@ -324,7 +324,7 @@ export const enqueueNonCampaignSend = internalMutation({
 			organizationId,
 			stream,
 			sendKind: 'transactional',
-			routing: { kind: 'resolve', messageType: stream, from: args.from },
+			routing: { messageType: stream, from: args.from },
 			recipients: [{ sendId, email: args.email }],
 		});
 
