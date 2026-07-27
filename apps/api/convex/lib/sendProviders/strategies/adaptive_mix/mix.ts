@@ -13,9 +13,11 @@
  * campaign forever: the two arms would then be two fixed COHORTS, and every
  * ratio the controller reads would be a comparison of cohort quality rather
  * than of transport quality. The `campaignId` salt is what makes the arms
- * comparable; the `mixVersion` salt re-randomizes the whole population every
- * time the controller moves the share, so a share change is a fresh draw and
- * not a re-labelling of the previous one.
+ * comparable — and a stream with no campaign at all (`automation`,
+ * `transactional`) salts with the SEND id instead, so its contacts are re-drawn
+ * per message rather than pinned. The `mixVersion` salt re-randomizes the whole
+ * population every time the controller moves the share, so a share change is a
+ * fresh draw and not a re-labelling of the previous one.
  *
  * THE STRATIFICATION / CALIBRATION SPLIT (D8) is the second reason. Stratified
  * assignment — send the own MTA the most engaged recipients first — is the
@@ -39,11 +41,11 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { bucketFor, MIX_BUCKET_SPACE } from './hash';
 
-export const MIX_ARMS = ['own', 'reference'] as const;
+const MIX_ARMS = ['own', 'reference'] as const;
 export type MixArm = (typeof MIX_ARMS)[number];
 
 /** Share below which the calibration slice is the wider 10%. */
-export const CALIBRATION_WIDE_SLICE_MAX_SHARE = 0.5;
+const CALIBRATION_WIDE_SLICE_MAX_SHARE = 0.5;
 /** Slice size while the cell is still mostly on the reference arm. */
 export const CALIBRATION_SLICE_BELOW_HALF = 0.1;
 /** Slice size once the own arm carries at least half the cell. */
@@ -82,13 +84,6 @@ export type MixAssignmentBasis =
 export interface MixCellState {
 	readonly ownShare: number;
 	readonly mixVersion?: number | undefined;
-	/**
-	 * Stratified assignment is the DEFAULT (D8); an explicit `false` selects
-	 * pure hash assignment for the whole cell.
-	 */
-	readonly isStratified?: boolean | undefined;
-	/** A graduated cell has no calibration slice left to carve (D9). */
-	readonly isGraduated?: boolean | undefined;
 }
 
 export interface MixRecipientIdentity {
@@ -97,10 +92,19 @@ export interface MixRecipientIdentity {
 	/** THE anti-cohort salt (D7). */
 	readonly campaignId?: string | undefined;
 	/**
-	 * Engagement percentile in `[0,1]`, 1 = most engaged, as produced by
-	 * `analytics/engagementScore.ts engagementPercentile` over this cell's
-	 * cohort. Absent means "unknown", which falls back to the random bucket —
-	 * never to the own arm.
+	 * Engagement percentile in `[0,1)`, 1 = most engaged, as produced by
+	 * `delivery/sendAssignmentRouting.ts buildEngagementRanker` on top of the
+	 * shipped `engagementPercentile`. Absent means "unknown", which falls back
+	 * to the random bucket — never to the own arm.
+	 *
+	 * The producer is responsible for TIE DISPERSION: `engagementPercentile`
+	 * hands every member of a tied group the group's UPPER percentile, so a
+	 * cohort that is entirely tied (a cold or freshly-imported list — the common
+	 * warming case) would rank everybody at 1.0 and the cut below would send the
+	 * WHOLE cell to the own arm for any `s > 0`, in the worst possible
+	 * direction. The ranker therefore spreads a tied group uniformly across the
+	 * percentile interval the group occupies, using each recipient's own stable
+	 * hash. This module states the contract; `buildEngagementRanker` holds it.
 	 */
 	readonly engagementRank?: number | undefined;
 	/**
@@ -137,16 +141,40 @@ export interface MixAssignment {
 }
 
 /**
+ * What the strategy splits against — the two ways a caller can know a
+ * recipient's arm, and the reason the recorded arm and the dispatched transport
+ * cannot disagree:
+ *
+ *   - `decide`: the caller holds the recipient's identity and the cell's share,
+ *     so the arm is DERIVED here. This is the enqueue path, where the decision
+ *     is taken and recorded.
+ *   - `assigned`: the caller holds an arm that was already decided and recorded
+ *     (`sendAssignments`). This is the DISPATCH path. It replays the recorded
+ *     decision rather than re-deriving it, because one input of the enqueue
+ *     decision — the recipient's engagement percentile within that batch's
+ *     cohort — is a property of the batch and is not reconstructible from one
+ *     message. Replaying the record is what makes the two agree by
+ *     construction; re-deriving would silently disagree for the stratified
+ *     majority of every cell.
+ */
+export type MixContext =
+	| { readonly kind: 'decide'; readonly input: MixAssignmentInput }
+	| { readonly kind: 'assigned'; readonly arm: MixArm };
+
+/**
  * Calibration slice size for a cell (D8): 10% below `s = 0.5`, 5% at or above
  * it, 0% once the cell graduates.
  *
- * A DEGENERATE cell (`s = 0` or `s = 1`) also has no slice: both arms of the
+ * GRADUATION NEEDS NO PARAMETER HERE. A graduated cell is by definition one
+ * pinned at `s = 1` (D9), which is the degenerate case below: both arms of the
  * split are the same arm, so a "randomized" slice would carry no comparison at
  * all — marking rows `isCalibration` there would feed the engagement-ratio gate
- * a sample with only one arm in it.
+ * a one-armed sample. `s = 0` is the mirror image. A separate `isGraduated`
+ * knob would have been a second, unwired way to say what the share already
+ * says; if P3 ever needs to zero the slice at a share below the ceiling, it can
+ * add the parameter then.
  */
-export function calibrationSliceFor(ownShare: number, isGraduated = false): number {
-	if (isGraduated) return 0;
+export function calibrationSliceFor(ownShare: number): number {
 	const share = clampOwnShare(ownShare);
 	if (share <= OWN_SHARE_FLOOR || share >= OWN_SHARE_CEILING) return 0;
 	return share < CALIBRATION_WIDE_SLICE_MAX_SHARE
@@ -179,12 +207,85 @@ function randomBucket(randomUnit: number | undefined): number | null {
 }
 
 /**
- * The salted key. `campaignId` is part of the salt even when absent (as the
- * empty segment) so the key SHAPE is fixed: a key built from two segments and a
- * key built from three must not be able to collide.
+ * The hash namespaces this module partitions its bucket space into. A CLOSED
+ * set, and typed: the arm bucket and the calibration bucket must never be able
+ * to agree, and a typo that made them agree would silently correlate slice
+ * membership with the arm — a bias no downstream test could distinguish from a
+ * real effect.
  */
-function mixKey(consumer: string, key: string, recipient: MixRecipientIdentity, version: number) {
-	return `${consumer}|${key}:${recipient.campaignId ?? ''}:${version}`;
+export type MixHashConsumer =
+	/** The arm bucket. */
+	| 'arm'
+	/** The randomized calibration slice. */
+	| 'calibration'
+	/** Tie dispersion inside an engagement-rank group (see below). */
+	| 'rank';
+
+/**
+ * THE ANTI-COHORT SALT (D7), resolved.
+ *
+ * A campaign passes its campaign id. A send with NO campaign — the whole
+ * `automation` and `transactional` streams — passes its send id as the fallback
+ * key, and THAT is the salt: a constant salt segment there would pin a contact
+ * to one arm for the entire life of a mix version, which is precisely the two
+ * fixed cohorts D7 exists to prevent, and `automation` is a first-class
+ * high-volume stream. With the send id in the salt the arm is re-drawn per
+ * MESSAGE and stays stable within one message, which is exactly the property
+ * the assignment row records.
+ */
+function saltFor(recipient: MixRecipientIdentity): string {
+	return recipient.campaignId ?? recipient.fallbackKey ?? '';
+}
+
+/**
+ * The salted key. The salt segment is present even when empty so the key SHAPE
+ * is fixed: a key built from two segments and a key built from three must not
+ * be able to collide.
+ */
+function mixKey(
+	consumer: MixHashConsumer,
+	key: string,
+	recipient: MixRecipientIdentity,
+	version: number
+) {
+	return `${consumer}|${key}:${saltFor(recipient)}:${version}`;
+}
+
+/**
+ * The recipient's arm bucket, or `null` when there is no stable identity to
+ * hash. Exported so tests assert against the key shape this module OWNS rather
+ * than hand-rebuilding it — a test that rebuilds the key keeps passing after
+ * the key changes, while testing a format the code no longer produces.
+ */
+export function armBucketFor(recipient: MixRecipientIdentity, mixVersion?: number): number | null {
+	const key = identityKey(recipient);
+	if (key === null) return null;
+	return bucketFor(mixKey('arm', key, recipient, normalizeMixVersion(mixVersion)));
+}
+
+/** The recipient's calibration-slice bucket, from its own partition. */
+export function calibrationBucketFor(
+	recipient: MixRecipientIdentity,
+	mixVersion?: number
+): number | null {
+	const key = identityKey(recipient);
+	if (key === null) return null;
+	return bucketFor(mixKey('calibration', key, recipient, normalizeMixVersion(mixVersion)));
+}
+
+/**
+ * A stable `[0,1)` draw for ONE key, used by the rank producer to disperse a
+ * tied engagement group across the percentile interval the group occupies.
+ *
+ * Its own partition, and deliberately NOT salted with the mix version or the
+ * campaign: it must be independent of the arm bucket (or the "random" tie-break
+ * would correlate with the arm and re-introduce the bias it exists to remove),
+ * and it is a property of the recipient's place in a cohort rather than of a
+ * controller decision.
+ */
+export function rankTieBreakUnit(key: string): number {
+	const consumer: MixHashConsumer = 'rank';
+	return bucketFor(`${consumer}|${key}`) / MIX_BUCKET_SPACE;
 }
 
 /**
@@ -202,11 +303,7 @@ function mixKey(consumer: string, key: string, recipient: MixRecipientIdentity, 
 export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 	const ownShare = clampOwnShare(input.cell.ownShare);
 	const mixVersion = normalizeMixVersion(input.cell.mixVersion);
-	const key = identityKey(input.recipient);
-	const bucket =
-		key !== null
-			? bucketFor(mixKey('arm', key, input.recipient, mixVersion))
-			: randomBucket(input.randomUnit);
+	const bucket = armBucketFor(input.recipient, mixVersion) ?? randomBucket(input.randomUnit);
 
 	if (ownShare <= OWN_SHARE_FLOOR) {
 		return {
@@ -240,16 +337,12 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 	}
 
 	const threshold = Math.round(ownShare * MIX_BUCKET_SPACE);
-	const sliceThreshold = Math.round(
-		calibrationSliceFor(ownShare, input.cell.isGraduated ?? false) * MIX_BUCKET_SPACE
-	);
+	const sliceThreshold = Math.round(calibrationSliceFor(ownShare) * MIX_BUCKET_SPACE);
 	// Its own hash namespace, and — critically — no engagement rank anywhere in
 	// the key. Slice membership must be independent of engagement, or the gate
 	// that reads it is measuring cohort quality again (D8).
 	const sliceBucket =
-		key !== null
-			? bucketFor(mixKey('calibration', key, input.recipient, mixVersion))
-			: randomBucket(input.randomUnit);
+		calibrationBucketFor(input.recipient, mixVersion) ?? randomBucket(input.randomUnit);
 	const isCalibration = sliceBucket !== null && sliceBucket < sliceThreshold;
 
 	if (isCalibration) {
@@ -263,16 +356,20 @@ export function decideMixAssignment(input: MixAssignmentInput): MixAssignment {
 		};
 	}
 
-	const rank =
-		input.cell.isStratified === false ? null : normalizeRank(input.recipient.engagementRank);
+	const rank = normalizeRank(input.recipient.engagementRank);
 	if (rank !== null) {
 		// The TOP `s` fraction. The plan sketch writes this as `rank < s`, which
 		// assumes a DESCENDING rank (0 = most engaged); the shipped
 		// `engagementPercentile` is ASCENDING (1 = most engaged), and inverting
 		// the comparison here rather than the rank keeps one definition of
 		// "percentile" in the codebase.
+		//
+		// The cutoff lives in RANK space, so it is written as the literal 1 and
+		// not as the share-space ceiling constant: the two domains happen to
+		// share an upper bound, which is a coincidence and not a meaning.
+		const stratifiedRankCutoff = 1 - ownShare;
 		return {
-			arm: rank >= OWN_SHARE_CEILING - ownShare ? 'own' : 'reference',
+			arm: rank >= stratifiedRankCutoff ? 'own' : 'reference',
 			isCalibration: false,
 			ownShare,
 			mixVersion,

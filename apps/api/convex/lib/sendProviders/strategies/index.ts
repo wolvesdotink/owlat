@@ -25,9 +25,17 @@ export type {
 	MixAssignmentBasis,
 	MixAssignmentInput,
 	MixCellState,
+	MixContext,
 	MixRecipientIdentity,
 } from './adaptive_mix';
-export { decideMixAssignment, OWN_ARM_TRANSPORT_KIND } from './adaptive_mix';
+export {
+	armBucketFor,
+	calibrationBucketFor,
+	decideMixAssignment,
+	rankTieBreakUnit,
+	DEFAULT_MIX_VERSION,
+	OWN_ARM_TRANSPORT_KIND,
+} from './adaptive_mix';
 
 export const SEND_ROUTE_STRATEGIES = {
 	single: singleStrategy,

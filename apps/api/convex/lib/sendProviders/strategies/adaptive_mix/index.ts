@@ -15,22 +15,29 @@
  * `s = 1` sends it all to the own MTA (what a cell with no state does today).
  *
  * The strategy IS deterministic (`isDeterministic: true`) — that is the point
- * of the piece — but only when it is given a recipient. Without a mix context
- * it has no recipient to hash and degrades to the first enabled provider, the
- * same answer `single` gives.
+ * of the piece — but only when it is given a mix context. WITHOUT ONE IT
+ * RETURNS NULL, and the caller falls back explicitly (the env fallback). It
+ * deliberately does NOT degrade to "the first enabled provider": that answer is
+ * `single`'s, it is silent, and it would put 100% of a split cell on one
+ * transport while the assignment rows recorded an `s`-proportioned split — every
+ * rate the controller then derives would be computed over denominators
+ * describing an experiment that never ran. A missing answer the caller has to
+ * handle is better than a confident wrong one.
  */
 
 import type { ProviderEntry, SendRouteStrategyModule } from '../types';
 import { decideMixAssignment } from './mix';
+import type { MixArm } from './mix';
 
 export {
+	armBucketFor,
+	calibrationBucketFor,
 	calibrationSliceFor,
 	decideMixAssignment,
+	rankTieBreakUnit,
 	DEFAULT_MIX_VERSION,
-	MIX_ARMS,
 	CALIBRATION_SLICE_AT_OR_ABOVE_HALF,
 	CALIBRATION_SLICE_BELOW_HALF,
-	CALIBRATION_WIDE_SLICE_MAX_SHARE,
 } from './mix';
 export type {
 	MixArm,
@@ -38,6 +45,8 @@ export type {
 	MixAssignmentBasis,
 	MixAssignmentInput,
 	MixCellState,
+	MixContext,
+	MixHashConsumer,
 	MixRecipientIdentity,
 } from './mix';
 export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
@@ -48,8 +57,15 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  */
 export const OWN_ARM_TRANSPORT_KIND = 'mta';
 
-function referenceEntryOf(entries: readonly ProviderEntry[]): ProviderEntry | undefined {
-	return entries.find((entry) => entry.providerType !== OWN_ARM_TRANSPORT_KIND);
+/** Both arms of a route, found in one pass so neither lookup can drift. */
+function armEntries(entries: readonly ProviderEntry[]): {
+	own: ProviderEntry | undefined;
+	reference: ProviderEntry | undefined;
+} {
+	return {
+		own: entries.find((entry) => entry.providerType === OWN_ARM_TRANSPORT_KIND),
+		reference: entries.find((entry) => entry.providerType !== OWN_ARM_TRANSPORT_KIND),
+	};
 }
 
 export const adaptiveMixStrategy: SendRouteStrategyModule<'adaptive_mix'> = {
@@ -58,19 +74,27 @@ export const adaptiveMixStrategy: SendRouteStrategyModule<'adaptive_mix'> = {
 	select(entries, ipPool, _healthStatuses, mix) {
 		const first = entries[0];
 		if (!first) return null;
-		// No recipient in hand — nothing to split. The enqueue-time cell seam and
-		// the dispatch-time resolver both supply one; a caller that does not
-		// (a health probe, a preflight check) gets `single`'s answer.
-		if (!mix) return { providerType: first.providerType, ipPool, source: 'org_config' };
+		// No mix context — no recipient to split on, and no recorded decision to
+		// replay. Answering anyway would be a guess; the caller falls back.
+		if (!mix) return null;
 
-		const decision = decideMixAssignment(mix);
-		const own = entries.find((entry) => entry.providerType === OWN_ARM_TRANSPORT_KIND);
-		const reference = referenceEntryOf(entries);
+		const decision = mix.kind === 'decide' ? decideMixAssignment(mix.input) : null;
+		const arm: MixArm = decision?.arm ?? (mix.kind === 'assigned' ? mix.arm : 'reference');
+		const { own, reference } = armEntries(entries);
 		// THE ADDITIVE-ONLY THIRD-PARTY RULE (D2): a cell whose share says
 		// "reference" on a deployment with no reference transport configured
 		// still sends — on the own MTA. Absence of an external account lowers
 		// measurement confidence; it never blocks a send.
-		const chosen = (decision.arm === 'own' ? own : reference) ?? own ?? reference ?? first;
-		return { providerType: chosen.providerType, ipPool, source: 'org_config' };
+		const chosen = (arm === 'own' ? own : reference) ?? own ?? reference ?? first;
+		return {
+			providerType: chosen.providerType,
+			ipPool,
+			source: 'org_config',
+			// The decision travels WITH the route, so the caller that records the
+			// experiment reads it instead of evaluating the same pure function a
+			// second time — one decision, in one place, with nothing to keep in
+			// agreement.
+			...(decision !== null ? { mix: decision } : {}),
+		};
 	},
 };

@@ -9,11 +9,9 @@
 
 import type { ActionableDeliverabilitySignalSource } from '@owlat/shared/deliverabilityRouting';
 import type { SendProviderKind } from '../types';
-import type { MixAssignmentInput } from './adaptive_mix/mix';
-
-// Re-exported so the dispatcher and its callers can name the mix context
-// without reaching into the strategy folder that owns it.
-export type { MixAssignmentInput } from './adaptive_mix/mix';
+// Local import only: `strategies/index.ts` is the ONE public path to the mix
+// types, so a caller cannot end up importing the same type by two routes.
+import type { MixAssignment, MixContext } from './adaptive_mix/mix';
 
 export type SendRouteStrategyKind =
 	| 'single'
@@ -48,6 +46,14 @@ export interface ResolvedRoute {
 	// never a phantom MTA.
 	source: 'org_config' | 'env_fallback' | 'deliverability_fallback';
 	/**
+	 * The per-recipient mix decision that produced this route, when the route
+	 * came from `adaptive_mix` DERIVING one (never when it replayed a recorded
+	 * arm, and never for the shipped strategies). Carried on the route so the
+	 * enqueue writer records the decision the router actually took instead of
+	 * evaluating the same pure function a second time.
+	 */
+	mix?: MixAssignment;
+	/**
 	 * Why the deliverability fallback engaged. Derived from the SHARED signal
 	 * taxonomy rather than re-spelled here, so an added advisory source (which
 	 * must never surface as a routing verdict) cannot silently become a legal
@@ -80,7 +86,8 @@ export interface SendRouteStrategyModule<K extends SendRouteStrategyKind> {
 	 * candidate is selectable (caller falls back).
 	 *
 	 * `mix` is the per-RECIPIENT context `adaptive_mix` splits against (plan
-	 * D7). It is optional and the shipped three ignore it: a strategy that
+	 * D7) — either a recipient to decide for or an already-recorded arm to
+	 * replay. It is optional and the shipped three ignore it: a strategy that
 	 * does not split per recipient has no use for one, and every caller that
 	 * has no recipient in hand (health probes, preflight) supplies none.
 	 */
@@ -88,6 +95,6 @@ export interface SendRouteStrategyModule<K extends SendRouteStrategyKind> {
 		entries: readonly ProviderEntry[],
 		ipPool: string | undefined,
 		healthStatuses?: readonly ProviderHealthStatus[],
-		mix?: MixAssignmentInput
+		mix?: MixContext
 	): ResolvedRoute | null;
 }
