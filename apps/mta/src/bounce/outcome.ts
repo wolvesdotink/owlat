@@ -10,10 +10,7 @@
  * See ADR-0007 follow-up #4 and CONTEXT.md's MTA dispatch section.
  */
 
-import {
-	isDestinationProviderKey,
-	type DestinationProviderKey,
-} from '@owlat/shared/deliverabilityRouting';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { BounceEffect } from './effects.js';
 import type { BasePhaseCtx, BounceAttempt } from './types.js';
 import { addressText, firstAddress } from '../inbound/parsedAddress.js';
@@ -104,7 +101,9 @@ function safeReportedDomain(value: string | undefined): string | undefined {
 }
 
 /**
- * The FBL ISP token → destination-provider CELL key.
+ * The FBL ISP token → destination-provider CELL key. The TOTAL mapping: every
+ * token `fblProcessor.isp()` can return has exactly one row here, and a token
+ * that is absent is not forwarded at all.
  *
  * `fblProcessor.isp()` resolves its own fixed token enum (it doubles as a
  * bounded Prometheus label), which is NOT the ramp's cell axis: it says `google`
@@ -112,7 +111,10 @@ function safeReportedDomain(value: string | undefined): string | undefined {
  * folds into `other`. `aol` maps to `yahoo` because that is exactly what the
  * SHIPPED classifier does with `aol.com` (`destinationProviderForDomain`) — the
  * two must agree or a Yahoo-operated complaint would land in a different cell
- * than the send it complains about.
+ * than the send it complains about. The two tokens that happen to spell a
+ * destination-provider key (`microsoft`, `yahoo`) are listed like every other
+ * one rather than passed through by a coincidence-of-spelling branch: a
+ * passthrough would make those rows unreachable dead code (D20).
  */
 const FBL_ISP_TO_CELL: Readonly<Record<string, DestinationProviderKey>> = {
 	microsoft: 'microsoft',
@@ -134,7 +136,6 @@ const FBL_ISP_TO_CELL: Readonly<Record<string, DestinationProviderKey>> = {
  */
 function safeSourceIsp(value: string | undefined): DestinationProviderKey | undefined {
 	if (value === undefined) return undefined;
-	if (isDestinationProviderKey(value)) return value;
 	return FBL_ISP_TO_CELL[value];
 }
 
