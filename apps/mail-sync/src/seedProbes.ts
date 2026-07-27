@@ -13,19 +13,21 @@
  *   - Mailbox CONTENTS never leave the worker. The only things reported back
  *     are a probe id and a folder NAME.
  *   - Credentials come from the shipped sealed-secret path and are never
- *     logged; log lines carry an account id and a provider, never an address,
- *     a password, or a subject.
+ *     logged; every log line about a seed account goes through
+ *     `toSeedAccountLogView`, which reduces it to an account id, a provider and
+ *     a domain — never a full address, a password, or a subject.
  *   - Every dependency is injected, so the whole sweep — including hygiene —
  *     is testable with no network at all.
  *   - D2: zero seed mailboxes means zero work items and a no-op sweep. It
  *     never throws, never warns, and never blocks anything.
  */
 
-import type {
-	SeedHygienePlan,
-	SeedPlacement,
-	SeedProbeWorkItem,
-	SeedProbeWorkPage,
+import {
+	toSeedAccountLogView,
+	type SeedHygienePlan,
+	type SeedPlacement,
+	type SeedProbeWorkItem,
+	type SeedProbeWorkPage,
 } from '@owlat/shared/seedPlacement';
 import { logger } from './logger.js';
 
@@ -200,10 +202,10 @@ export async function runSeedProbeSweep(
 			}
 		} catch (err) {
 			// Never log the address, the credentials, or anything from the mailbox.
-			logger.warn(
-				{ err, accountId: item.accountId, provider: item.provider },
-				'seed probe sweep failed for account'
-			);
+			// `toSeedAccountLogView` is the one shape a seed account may be logged
+			// in — it reduces the address to its domain — so the redaction rule is
+			// enforced by a function instead of by remembering it at each call site.
+			logger.warn({ err, ...toSeedAccountLogView(item) }, 'seed probe sweep failed for account');
 		} finally {
 			if (session) await session.close().catch(() => undefined);
 		}
