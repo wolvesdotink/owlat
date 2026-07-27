@@ -128,7 +128,16 @@ export function resolveListUnsubscribeHeader(
 	if (seedProbeId !== undefined) {
 		return {
 			scope: 'seedProbe',
-			header: getSeedProbeListUnsubscribeHeader(convexSiteUrl, seedProbeId),
+			// A shadow copy always carries its organization (it is cloned from a
+			// campaign envelope inside that org's enqueue transaction). The `?? ''`
+			// keeps the header present rather than dropping the RFC 8058 pair a
+			// campaign-shaped message must carry: an unattributable token simply
+			// records nothing when exercised.
+			header: getSeedProbeListUnsubscribeHeader(
+				convexSiteUrl,
+				envelopeInput.organizationId ?? '',
+				seedProbeId
+			),
 		};
 	}
 	const contactId = envelopeInput.contactInfo.contactId;

@@ -177,6 +177,7 @@ export const handleSeedProbeUnsubscribe = publicTokenEndpoint(
 			};
 		}
 		await ctx.runMutation(internal.analytics.seedPlacement.recordSeedProbeUnsubscribe, {
+			organizationId: validation.organizationId,
 			probeId: validation.probeId,
 			now: Date.now(),
 		});

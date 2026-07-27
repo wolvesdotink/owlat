@@ -35,6 +35,7 @@ import {
 	classifySeedFolder,
 	evaluateSeedPlacementGate,
 	planSeedHygiene,
+	SEED_ACCOUNTS_PER_ORG_LIMIT,
 	shouldRemindSeedRotation,
 	summarizeSeedPlacement,
 	type SeedGateResult,
@@ -46,11 +47,25 @@ import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting
 /** Rolling window the roll-up reads. Short enough that a collapse shows up fast. */
 export const SEED_PLACEMENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
+// ── The module's bounds, grouped: every page size and horizon in one place, so
+// the ledger's cost profile can be read without walking the file.
+
 /** Hard page bound — the ledger is never `.collect()`ed (D16). */
 const SEED_PROBE_SCAN_LIMIT = 500;
 
 /** Rows a single cleanup pass deletes before rescheduling itself. */
 const SEED_PROBE_CLEANUP_BATCH = 200;
+
+/** Rows one abandonment pass writes off before rescheduling itself. */
+const SEED_PROBE_ABANDON_BATCH = 200;
+
+/**
+ * How long a probe may sit un-dispatched before it is written off. Generous on
+ * purpose: a warming-capped deployment can hold a campaign page in the
+ * workpool for many hours, and a probe that eventually goes out is a perfectly
+ * good observation.
+ */
+export const SEED_PROBE_DISPATCH_HORIZON_MS = 48 * 60 * 60 * 1000;
 
 // ============ SEED ACCOUNTS ============
 
@@ -95,7 +110,10 @@ export async function loadSeedAccounts(
 		.withIndex('by_org_and_purpose', (q) =>
 			q.eq('organizationId', organizationId).eq('purpose', 'seed')
 		)
-		.take(50);
+		// NOT a silent truncation: `mail/externalAccountsSeed.ts` refuses the
+		// (limit+1)th seed at CONNECT time, so this page can only ever be short of
+		// the cap. A seed the operator connected is always measured.
+		.take(SEED_ACCOUNTS_PER_ORG_LIMIT);
 	const live = rows.filter((row) => row.status !== 'disconnected');
 	const views: SeedAccountView[] = [];
 	for (const row of live) {
@@ -164,6 +182,15 @@ export const recordSeedProbeClassification = internalMutation({
 		if (probe.dispatchedAt === undefined) {
 			return { recorded: false as const, reason: 'never_dispatched' as const };
 		}
+		// THE SINGLE ARBITER of "has this probe been classified". mail-sync runs as
+		// many replicas as the deployment scales to, and every one of them sweeps;
+		// without this the same probe is classified twice, marked read twice, and
+		// CLICKED twice — which is a real message to a real provider, teaching it a
+		// pattern no subscriber produces. Classification is once-only and the first
+		// writer wins; the loser gets a no-op, not an error.
+		if (probe.placement !== undefined) {
+			return { recorded: false as const, reason: 'already_classified' as const };
+		}
 
 		const classification = classifySeedFolder(args.folderName, probe.provider);
 		const hygiene = planSeedHygiene({
@@ -224,13 +251,18 @@ export const recordSeedProbeDispatch = internalMutation({
  * that the seed's one-click endpoint really works end to end.
  */
 export const recordSeedProbeUnsubscribe = internalMutation({
-	args: { probeId: v.string(), now: v.number() },
+	args: { organizationId: v.string(), probeId: v.string(), now: v.number() },
 	handler: async (ctx, args) => {
 		const probe = await ctx.db
 			.query('seedPlacementProbes')
 			.withIndex('by_probe_id', (q) => q.eq('probeId', args.probeId))
 			.unique();
 		if (!probe || probe.unsubscribedAt !== undefined) return { recorded: false };
+		// The same org boundary its three siblings hold. The caller's claim here is
+		// the SIGNED one-click token, which carries the organization alongside the
+		// probe id precisely so this assertion has something independent to check
+		// rather than reading the answer off the row it is about to write.
+		if (probe.organizationId !== args.organizationId) return { recorded: false };
 		await ctx.db.patch(probe._id, { unsubscribedAt: args.now });
 		return { recorded: true };
 	},
@@ -319,18 +351,32 @@ export const getGateVerdict = internalQuery({
 	},
 });
 
-// ============ THE NEVER-DISPATCHED DISPOSITION ============
+// ============ BATCHED LEDGER SWEEPS ============
 
 /**
- * How long a probe may sit un-dispatched before it is written off. Generous on
- * purpose: a warming-capped deployment can hold a campaign page in the
- * workpool for many hours, and a probe that eventually goes out is a perfectly
- * good observation.
+ * Run one bounded pass of a self-rescheduling ledger sweep.
+ *
+ * Both sweeps below have the identical shape — take a page off an index, apply
+ * a per-row write that REMOVES the row from that index's range, and reschedule
+ * immediately while the page came back full — so the shape lives here once.
+ * "The write leaves the range" is the invariant that makes the recursion
+ * terminate; a sweep whose write left the row in range would spin forever.
  */
-export const SEED_PROBE_DISPATCH_HORIZON_MS = 48 * 60 * 60 * 1000;
+async function sweepSeedProbeLedger<T>(options: {
+	page: () => Promise<T[]>;
+	apply: (row: T) => Promise<void>;
+	batch: number;
+	/** Re-run this sweep immediately; called only when the page came back full. */
+	reschedule: () => Promise<void>;
+}): Promise<{ processed: number; hasMore: boolean }> {
+	const rows = await options.page();
+	for (const row of rows) await options.apply(row);
+	const hasMore = rows.length === options.batch;
+	if (hasMore) await options.reschedule();
+	return { processed: rows.length, hasMore };
+}
 
-/** Rows one abandonment pass writes off before rescheduling itself. */
-const SEED_PROBE_ABANDON_BATCH = 200;
+// ============ THE NEVER-DISPATCHED DISPOSITION ============
 
 /**
  * Write off probes that were enqueued but never handed to a transport.
@@ -347,30 +393,32 @@ export const abandonUndispatchedSeedProbes = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		const now = Date.now();
-		const stale = await ctx.db
-			.query('seedPlacementProbes')
-			.withIndex('by_undispatched_watch', (q) =>
-				q
-					.eq('notDispatchedAt', undefined)
-					.eq('dispatchedAt', undefined)
-					.lte('sentAt', now - SEED_PROBE_DISPATCH_HORIZON_MS)
-			)
-			.take(SEED_PROBE_ABANDON_BATCH);
-		for (const probe of stale) {
-			await ctx.db.patch(probe._id, { notDispatchedAt: now });
-		}
-		const abandoned = stale.length;
-		// A full batch means there is more to write off, and every row just
-		// patched has LEFT the index range, so the next pass sees new rows.
-		const hasMore = abandoned === SEED_PROBE_ABANDON_BATCH;
-		if (hasMore) {
-			await ctx.scheduler.runAfter(
-				0,
-				internal.analytics.seedPlacement.abandonUndispatchedSeedProbes,
-				{}
-			);
-		}
-		return { abandoned, hasMore };
+		// Every row this patches LEAVES the index range, so the next pass sees new
+		// rows — the termination invariant `sweepSeedProbeLedger` documents.
+		const { processed, hasMore } = await sweepSeedProbeLedger({
+			batch: SEED_PROBE_ABANDON_BATCH,
+			reschedule: async () => {
+				await ctx.scheduler.runAfter(
+					0,
+					internal.analytics.seedPlacement.abandonUndispatchedSeedProbes,
+					{}
+				);
+			},
+			page: () =>
+				ctx.db
+					.query('seedPlacementProbes')
+					.withIndex('by_undispatched_watch', (q) =>
+						q
+							.eq('notDispatchedAt', undefined)
+							.eq('dispatchedAt', undefined)
+							.lte('sentAt', now - SEED_PROBE_DISPATCH_HORIZON_MS)
+					)
+					.take(SEED_PROBE_ABANDON_BATCH),
+			apply: async (probe) => {
+				await ctx.db.patch(probe._id, { notDispatchedAt: now });
+			},
+		});
+		return { abandoned: processed, hasMore };
 	},
 });
 
@@ -381,20 +429,28 @@ export const deleteExpiredSeedProbes = internalMutation({
 	args: {},
 	handler: async (ctx) => {
 		const now = Date.now();
-		const expired = await ctx.db
-			.query('seedPlacementProbes')
-			.withIndex('by_expires_at', (q) => q.lte('expiresAt', now))
-			.take(SEED_PROBE_CLEANUP_BATCH);
-		for (const row of expired) {
-			await ctx.db.delete(row._id);
-		}
 		// A full batch means there is more to drop. Continue immediately rather
 		// than waiting 24h — ten seeds x twenty campaigns a day outpaces a single
 		// bounded pass, and an unbounded ledger is not "retention-bounded" (D16).
 		// Same self-rescheduling idiom as `webhooks/cleanup.ts`.
-		if (expired.length === SEED_PROBE_CLEANUP_BATCH) {
-			await ctx.scheduler.runAfter(0, internal.analytics.seedPlacement.deleteExpiredSeedProbes, {});
-		}
-		return { deleted: expired.length, hasMore: expired.length === SEED_PROBE_CLEANUP_BATCH };
+		const { processed, hasMore } = await sweepSeedProbeLedger({
+			batch: SEED_PROBE_CLEANUP_BATCH,
+			reschedule: async () => {
+				await ctx.scheduler.runAfter(
+					0,
+					internal.analytics.seedPlacement.deleteExpiredSeedProbes,
+					{}
+				);
+			},
+			page: () =>
+				ctx.db
+					.query('seedPlacementProbes')
+					.withIndex('by_expires_at', (q) => q.lte('expiresAt', now))
+					.take(SEED_PROBE_CLEANUP_BATCH),
+			apply: async (row) => {
+				await ctx.db.delete(row._id);
+			},
+		});
+		return { deleted: processed, hasMore };
 	},
 });

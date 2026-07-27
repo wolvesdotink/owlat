@@ -37,12 +37,31 @@ export function getUnsubscribeUrl(siteUrl: string, contactId: string): string {
  */
 export const SEED_PROBE_TOKEN_PREFIX = 'seedprobe:';
 
+/**
+ * The token payload is `${organizationId}.${probeId}`.
+ *
+ * The organization travels IN the signed payload so the recording mutation has
+ * an INDEPENDENT claim to assert against the row — exactly the boundary its
+ * three sibling probe-writing mutations hold. Reading the org off the row it is
+ * about to write would be a tautology, not a check. `.` is a safe separator:
+ * `makeContactToken` already forbids `:` in a payload, a probe id is
+ * `sp_` + 22 lowercase base32 chars, and the org id is matched up to the LAST
+ * separator so only the probe id's shape has to be constrained.
+ */
+function encodeSeedProbeTokenPayload(organizationId: string, probeId: string): string {
+	return `${organizationId}.${probeId}`;
+}
+
 /** The one-click pair for a seed shadow copy. Target: POST /unsub/probe/{token}. */
 export function getSeedProbeListUnsubscribeHeader(
 	convexSiteUrl: string,
+	organizationId: string,
 	probeId: string
 ): { listUnsubscribe: string; listUnsubscribePost: string } {
-	const token = makeContactToken(SEED_PROBE_TOKEN_PREFIX, probeId);
+	const token = makeContactToken(
+		SEED_PROBE_TOKEN_PREFIX,
+		encodeSeedProbeTokenPayload(organizationId, probeId)
+	);
 	return {
 		listUnsubscribe: `<${convexSiteUrl}/unsub/probe/${encodeURIComponent(token)}>`,
 		listUnsubscribePost: 'List-Unsubscribe=One-Click',
@@ -51,12 +70,12 @@ export function getSeedProbeListUnsubscribeHeader(
 
 /**
  * The result of validating a seed-probe one-click token. Deliberately NOT
- * `TokenValidation`: the payload of a probe token is a PROBE id, and reading it
- * out of a field called `contactId` would erase at the boundary exactly the
- * namespace separation that makes the token safe.
+ * `TokenValidation`: the payload of a probe token is an ORG + PROBE id, and
+ * reading it out of a field called `contactId` would erase at the boundary
+ * exactly the namespace separation that makes the token safe.
  */
 export type SeedProbeTokenValidation =
-	| { valid: true; probeId: string }
+	| { valid: true; organizationId: string; probeId: string }
 	| { valid: false; reason: string };
 
 /** Validate a seed-probe one-click token (called by the httpAction handler). */
@@ -65,9 +84,16 @@ export const validateSeedProbeToken = internalAction({
 	handler: async (_ctx, args): Promise<SeedProbeTokenValidation> => {
 		const result = verifyContactToken(SEED_PROBE_TOKEN_PREFIX, args.token);
 		// Map at the boundary: the codec's field is named for the contact tokens
-		// it was written for; this namespace carries a probe id and nothing else.
+		// it was written for; this namespace carries an org + probe id and nothing
+		// else.
 		if (!result.valid) return { valid: false, reason: result.reason ?? 'invalid_token' };
-		return { valid: true, probeId: result.contactId };
+		const separator = result.contactId.lastIndexOf('.');
+		if (separator <= 0) return { valid: false, reason: 'invalid_format' };
+		return {
+			valid: true,
+			organizationId: result.contactId.slice(0, separator),
+			probeId: result.contactId.slice(separator + 1),
+		};
 	},
 });
 
