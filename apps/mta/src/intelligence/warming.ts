@@ -9,20 +9,20 @@
 
 import type Redis from 'ioredis';
 import { BASE_WARMING_SCHEDULE } from '../config.js';
-import {
-	ADAPTIVE_WARMING_POLICY,
-	getWarmingCapForDay,
-	LAST_FINITE_WARMING_CAP,
-} from '@owlat/shared/warming';
+import { LAST_FINITE_WARMING_CAP } from '@owlat/shared/warming';
 import type { MtaConfig } from '../config.js';
 import type { WarmingPhase, WarmingState } from '../types.js';
-import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { logger } from '../monitoring/logger.js';
 import type { DurableEffectIdentity } from '../lib/effectCheckpoint.js';
 import {
 	recordDailyWarmingOutcomeOnce,
 	recordUnreservedWarmingSendOnce,
 } from './warmingOutcomeStore.js';
+import { evaluateProviderWarmingDay } from './warmingProviderStore.js';
+import {
+	applyWarmingGraduation,
+	applyWarmingScheduleAdjustment,
+} from './warmingScheduleAdjustment.js';
 import {
 	CHECK_WARMING_CAP_ROLLOVER_LUA,
 	GET_NORMALIZED_WARMING_STATE_LUA,
@@ -32,6 +32,7 @@ import {
 	WARMING_RESERVATION_TTL_MS,
 } from './warmingScripts.js';
 import {
+	utcDateKey,
 	warmingDailyStatsKey,
 	warmingReservationReceiptKey,
 	warmingReservationsKey,
@@ -62,7 +63,7 @@ export async function reserveWarmingSlot(
 	reserved: number;
 	reservation?: WarmingReservation;
 }> {
-	const today = new Date(now).toISOString().split('T')[0]!;
+	const today = utcDateKey(now);
 	const expiresAt = now + WARMING_RESERVATION_TTL_MS;
 	const result = (await redis.eval(
 		RESERVE_WARMING_SLOT_LUA,
@@ -118,7 +119,7 @@ export async function ensureWarmingReservation(
 	reservation: WarmingReservation,
 	now = Date.now()
 ): Promise<{ allowed: boolean; reservation?: WarmingReservation }> {
-	const today = new Date(now).toISOString().split('T')[0]!;
+	const today = utcDateKey(now);
 	if (reservation.utcDate === today && (await isWarmingReservationValid(redis, reservation, now))) {
 		return { allowed: true, reservation };
 	}
@@ -151,7 +152,7 @@ export async function checkCap(
 	sentToday: number;
 	dailyCap: number;
 }> {
-	const today = new Date().toISOString().split('T')[0]!;
+	const today = utcDateKey();
 
 	// Atomic day-rollover reset: read the stored reset date, the cap, and
 	// (re)set the counter inside one Lua script so two concurrent workers at a
@@ -182,7 +183,7 @@ export async function recordSend(
 	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<void> {
 	const hashKey = warmingStateKey(ip);
-	const today = new Date().toISOString().split('T')[0]!;
+	const today = utcDateKey();
 	const statsKey = warmingDailyStatsKey(ip, today);
 	if (reservation) {
 		const recorded = Number(
@@ -226,7 +227,7 @@ export async function recordBounce(
 	ip: string,
 	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<void> {
-	const today = new Date().toISOString().split('T')[0]!;
+	const today = utcDateKey();
 	if (idempotencyIdentity) {
 		await recordDailyWarmingOutcomeOnce(redis, ip, today, 'bounced', idempotencyIdentity);
 		return;
@@ -242,7 +243,7 @@ export async function recordDeferral(
 	ip: string,
 	idempotencyIdentity?: DurableEffectIdentity
 ): Promise<void> {
-	const today = new Date().toISOString().split('T')[0]!;
+	const today = utcDateKey();
 	if (idempotencyIdentity) {
 		await recordDailyWarmingOutcomeOnce(redis, ip, today, 'deferred', idempotencyIdentity);
 		return;
@@ -255,7 +256,7 @@ export async function recordDeferral(
  */
 export async function initializeWarming(redis: Redis, ip: string): Promise<void> {
 	const hashKey = warmingStateKey(ip);
-	const today = new Date().toISOString().split('T')[0]!;
+	const today = utcDateKey();
 
 	const existing = await redis.hget(hashKey, 'startedAt');
 	if (existing) return; // Already initialized
@@ -295,7 +296,7 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	const state = await getWarmingState(redis, ip);
 	if (!state || state.phase === 'graduated') return;
 
-	const today = new Date().toISOString().split('T')[0]!;
+	const today = utcDateKey();
 
 	// Per-UTC-day idempotency guard. The cron calls evaluateDay hourly, but a
 	// schedule advance must happen AT MOST once per UTC day — otherwise a clean
@@ -322,145 +323,32 @@ export async function evaluateDay(redis: Redis, ip: string, config: MtaConfig): 
 	// schedule adjustment, after which the hourly cron must not re-advance today.
 	await redis.hset(hashKey, 'lastEvaluatedDate', today);
 
-	// CRITICAL HALT
-	if (
-		bounceRate > ADAPTIVE_WARMING_POLICY.halt.bounceRateExclusiveMin ||
-		deferralRate > ADAPTIVE_WARMING_POLICY.halt.deferralRateExclusiveMin
-	) {
-		await redis.hset(
-			hashKey,
-			'phase',
-			'plateau',
-			'bounceRate',
-			String(bounceRate),
-			'deferralRate',
-			String(deferralRate)
-		);
+	// Re-shape the per-(IP x mailbox provider) caps under the SAME per-UTC-day
+	// guard. This narrows or widens a provider's share of the per-IP cap; it
+	// never changes the per-IP schedule the branches below advance.
+	await evaluateProviderWarmingDay(redis, ip, today);
 
-		logger.error({ ip, bounceRate, deferralRate }, 'Warming HALTED — critical thresholds exceeded');
-
-		await notifyConvex(
-			{
-				event: 'ip.blocklisted',
-				ip,
-				severity: 'critical',
-				message: `Warming halted: bounce rate ${(bounceRate * 100).toFixed(1)}%, deferral rate ${(deferralRate * 100).toFixed(1)}%`,
-				timestamp: Date.now(),
-			},
-			config,
-			redis
-		).catch(() => {});
-		return;
-	}
-
-	// DECELERATE
-	if (
-		bounceRate > ADAPTIVE_WARMING_POLICY.deceleration.bounceRateExclusiveMin ||
-		deferralRate > ADAPTIVE_WARMING_POLICY.deceleration.deferralRateExclusiveMin
-	) {
-		const newDay = Math.max(
-			1,
-			state.currentDay * ADAPTIVE_WARMING_POLICY.deceleration.scheduleDayMultiplier
-		);
-		const newCap = Math.max(
-			ADAPTIVE_WARMING_POLICY.deceleration.minimumCap,
-			Math.floor(enforcedCap * ADAPTIVE_WARMING_POLICY.deceleration.capMultiplier)
-		);
-
-		await redis.hset(
-			hashKey,
-			'currentDay',
-			String(Math.floor(newDay)),
-			'dailyCap',
-			String(newCap),
-			'bounceRate',
-			String(bounceRate),
-			'deferralRate',
-			String(deferralRate),
-			'phase',
-			'ramp'
-		);
-
-		logger.warn({ ip, bounceRate, deferralRate, newCap }, 'Warming decelerated');
-		return;
-	}
-
-	// ACCELERATE (all conditions must be met)
-	if (
-		bounceRate < ADAPTIVE_WARMING_POLICY.acceleration.bounceRateExclusiveMax &&
-		deferralRate < ADAPTIVE_WARMING_POLICY.acceleration.deferralRateExclusiveMax &&
-		usageRate >= ADAPTIVE_WARMING_POLICY.acceleration.usageRateMinimum
-	) {
-		// Multiplication alone floors day 1 back to day 1 forever. A qualifying
-		// day must always make at least the normal one-day progress.
-		const newDay = Math.min(
-			Math.max(
-				state.currentDay + 1,
-				Math.floor(state.currentDay * ADAPTIVE_WARMING_POLICY.acceleration.scheduleDayMultiplier)
-			),
-			ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay + 1
-		);
-		const scheduledCap = getWarmingCapForDay(newDay);
-		// Infinity is the graduated state, not merely the day-30 checkpoint.
-		// Keep the last finite cap until the health gate below actually passes.
-		const newCap = Number.isFinite(scheduledCap) ? scheduledCap : enforcedCap;
-
-		await redis.hset(
-			hashKey,
-			'currentDay',
-			String(newDay),
-			'dailyCap',
-			String(newCap),
-			'bounceRate',
-			String(bounceRate),
-			'deferralRate',
-			String(deferralRate)
-		);
-
-		logger.info({ ip, newDay, newCap }, 'Warming accelerated');
-	} else {
-		// NORMAL: advance by 1 day
-		const newDay = state.currentDay + 1;
-		const scheduledCap = getWarmingCapForDay(newDay);
-		// A day-30 schedule position is still capped until graduation passes.
-		const newCap = Number.isFinite(scheduledCap) ? scheduledCap : enforcedCap;
-
-		await redis.hset(
-			hashKey,
-			'currentDay',
-			String(newDay),
-			'dailyCap',
-			String(newCap),
-			'bounceRate',
-			String(bounceRate),
-			'deferralRate',
-			String(deferralRate)
-		);
-	}
-
-	// CHECK GRADUATION
-	const updatedState = await getWarmingState(redis, ip);
-	if (
-		updatedState &&
-		updatedState.currentDay >= ADAPTIVE_WARMING_POLICY.graduation.minimumScheduleDay &&
-		bounceRate < ADAPTIVE_WARMING_POLICY.graduation.bounceRateExclusiveMax &&
-		updatedState.phase !== 'plateau'
-	) {
-		await redis.hset(hashKey, 'phase', 'graduated', 'dailyCap', String(Infinity));
-		logger.info({ ip, actualDays: updatedState.currentDay }, 'IP GRADUATED — warming complete');
-
-		await notifyConvex(
-			{
-				event: 'ip.warming_complete',
-				ip,
-				severity: 'info',
-				message: `IP ${ip} warming complete after ${updatedState.currentDay} days`,
-				timestamp: Date.now(),
-			},
-			config,
-			redis
-		).catch(() => {});
-	}
+	// The four-way schedule adjustment and the graduation gate live in
+	// `warmingScheduleAdjustment.ts`; both are unchanged from the shipped
+	// cascade and run exactly once, under the guard armed above.
+	const adjustment = await applyWarmingScheduleAdjustment(redis, ip, hashKey, config, {
+		state,
+		bounceRate,
+		deferralRate,
+		enforcedCap,
+		usageRate,
+	});
+	// As shipped: a halt or a deceleration ends the day here; only an advance is
+	// followed by the graduation check.
+	if (adjustment !== 'advanced') return;
+	await applyWarmingGraduation(
+		redis,
+		ip,
+		hashKey,
+		config,
+		await getWarmingState(redis, ip),
+		bounceRate
+	);
 }
 
 /**
