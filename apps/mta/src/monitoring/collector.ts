@@ -121,8 +121,7 @@ export const cfblAttributionsTotal = new Counter({
 });
 
 /**
- * Outbound RFC 9477 emission outcomes, by bounded reason (`emitted`,
- * `host_unaligned`, `no_key`, `no_address`).
+ * Outbound RFC 9477 emission outcomes, by bounded reason.
  *
  * The §3.1.3 alignment rule makes SILENCE the default branch: a sending domain
  * that has not registered its own return-path host carries no CFBL pair at all.
