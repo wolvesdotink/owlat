@@ -30,6 +30,8 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { getSingletonOrganizationId } from '../sessionOrganization';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../delivery/deliverabilityRouting';
+import { returnPathCapabilityFor } from '../../delivery/relayReturnPath';
+import { defaultSendTransportId } from './transports';
 
 export type MessageType = Doc<'providerRoutes'>['messageType'];
 
@@ -304,11 +306,21 @@ export async function resolveLastMileRoutePlanFromDb(
 	baseRoute: ResolvedRoute | null;
 	isMtaGoverned: boolean;
 	deferralCode?: RoutingDeferralCode;
+	/**
+	 * May a relay send stamp OUR VERP envelope sender (plan G-08)? Answered
+	 * HERE, inside the routing query the send path already runs, rather than in
+	 * a second round trip from the dispatcher — the hot send path should not
+	 * grow a query per message to read a deployment-scoped fact.
+	 */
+	relayStampVerpReturnPath: boolean;
 }> {
 	const routeConfig = await ctx.db
 		.query('providerRoutes')
 		.withIndex('by_message_type', (q) => q.eq('messageType', messageType))
 		.first();
+	const relayStampVerpReturnPath = (
+		await returnPathCapabilityFor(ctx, defaultSendTransportId('smtp'), Date.now())
+	).stampVerpReturnPath;
 	const isHybrid = Boolean(
 		routeConfig?.deliverabilityFallback?.isEnabled &&
 		routeConfig.providers.some((provider) => provider.isEnabled && provider.providerType === 'mta')
@@ -319,11 +331,22 @@ export async function resolveLastMileRoutePlanFromDb(
 			...addressContext,
 			baseOnly: true,
 		});
-		return { route, baseRoute, isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta' };
+		return {
+			route,
+			baseRoute,
+			isMtaGoverned: isHybrid || baseRoute?.providerType === 'mta',
+			relayStampVerpReturnPath,
+		};
 	} catch (error) {
 		const deferralCode = routingDeferralCode(error);
 		if (!deferralCode) throw error;
-		return { route: null, baseRoute: null, isMtaGoverned: isHybrid, deferralCode };
+		return {
+			route: null,
+			baseRoute: null,
+			isMtaGoverned: isHybrid,
+			deferralCode,
+			relayStampVerpReturnPath,
+		};
 	}
 }
 

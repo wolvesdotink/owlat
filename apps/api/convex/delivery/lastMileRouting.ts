@@ -31,6 +31,14 @@ export interface LastMileRoutingReady {
 	route: ResolvedRoute | null;
 	organizationId: string;
 	routingLease?: string;
+	/**
+	 * May a relay send stamp OUR VERP envelope sender, so a bounce the relay
+	 * generates reaches our own bounce server (plan G-08)? Carried on the
+	 * routing result because the routing query already read it — the send path
+	 * must not grow a second round trip per message for a deployment-scoped
+	 * fact. False unless the transport is PROVEN to honour a custom return path.
+	 */
+	stampRelayVerpReturnPath: boolean;
 }
 
 export interface LastMileRoutingDeferred {
@@ -104,7 +112,13 @@ export async function resolveLastMileRouting(
 		throw new Error('Delivery safety decision requires an organization identity.');
 	if (!plan.isMtaGoverned) {
 		return withReconciliationSafety(
-			{ kind: 'ready', providerKind, route, organizationId },
+			{
+				kind: 'ready',
+				providerKind,
+				route,
+				organizationId,
+				stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+			},
 			input.mtaReconciliation
 		);
 	}
@@ -112,7 +126,13 @@ export async function resolveLastMileRouting(
 	// Only a breaker route is eligible for an MTA half-open recovery probe.
 	if (route?.deliverabilityReason && route.deliverabilityReason !== 'breaker_open') {
 		return withReconciliationSafety(
-			{ kind: 'ready', providerKind, route, organizationId },
+			{
+				kind: 'ready',
+				providerKind,
+				route,
+				organizationId,
+				stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+			},
 			input.mtaReconciliation
 		);
 	}
@@ -162,7 +182,13 @@ export async function resolveLastMileRouting(
 		}
 		if (route?.deliverabilityReason === 'breaker_open' && !decision.isProviderProbe) {
 			return withReconciliationSafety(
-				{ kind: 'ready', providerKind, route, organizationId },
+				{
+					kind: 'ready',
+					providerKind,
+					route,
+					organizationId,
+					stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
+				},
 				input.mtaReconciliation
 			);
 		}
@@ -172,6 +198,7 @@ export async function resolveLastMileRouting(
 			route: plan.baseRoute,
 			organizationId,
 			routingLease: decision.leaseToken,
+			stampRelayVerpReturnPath: plan.relayStampVerpReturnPath,
 		};
 	}
 	if (input.mtaReconciliation) {
