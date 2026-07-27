@@ -318,6 +318,27 @@ describe('the hygiene plan is EXECUTED against the ledger row', () => {
 
 describe('the rotation reminder surfaces on schedule', () => {
 	/**
+	 * THE PRODUCTION PATH, end to end.
+	 *
+	 * The nudge is emitted by a Convex cron and nothing else — no IMAP session,
+	 * no credential, no worker — so these cases drive the cron mutation the way
+	 * the scheduler does, with the wall clock pinned (the cron takes no clock
+	 * from its caller, by design: a background sweep has no business being told
+	 * what time it is).
+	 */
+	async function sweep(
+		t: ReturnType<typeof convexTest>,
+		at: number
+	): Promise<{ reminded: number; examined: number; done: boolean }> {
+		const clock = vi.spyOn(Date, 'now').mockReturnValue(at);
+		try {
+			return await t.mutation(internal.analytics.seedRotationSweep.sweepSeedRotationReminders, {});
+		} finally {
+			clock.mockRestore();
+		}
+	}
+
+	/**
 	 * The reminders an OPERATOR can actually see — read back through
 	 * `auditLogs.list`, the admin query the product ships, not through a raw
 	 * table scan. An artifact only a test can find is not a reminder.
@@ -355,35 +376,20 @@ describe('the rotation reminder surfaces on schedule', () => {
 		}
 	}
 
-	it('is due after the interval and EMITS an artifact the operator can read, org-scoped', async () => {
+	it('is due after the interval and EMITS an artifact the operator can read', async () => {
 		const t = convexTest(schema, modules);
 		const { accountId } = await connectSeed(t);
 		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
 
 		const before = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, NOW));
 		expect(before[0]?.rotationReminderDue).toBe(false);
+		// A sweep before the interval says nothing at all.
+		expect(await sweep(t, NOW + DAY)).toMatchObject({ reminded: 0, examined: 1 });
+		expect(await reminders(t)).toEqual([]);
 
 		const due = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
 		expect(due[0]?.rotationReminderDue).toBe(true);
-
-		expect(
-			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
-				organizationId: 'org_other',
-				accountId,
-				now: later,
-			})
-		).toEqual({ emitted: false });
-		// A refused call emits nothing AND leaves the flag standing.
-		expect(await reminders(t)).toEqual([]);
-		expect(await remindersDue(t, later)).toBe(1);
-
-		expect(
-			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
-				organizationId: ORG,
-				accountId,
-				now: later,
-			})
-		).toEqual({ emitted: true });
+		expect(await sweep(t, later)).toMatchObject({ reminded: 1, done: true });
 
 		// THE ARTIFACT, through the shipped admin query.
 		const emitted = await reminders(t);
@@ -395,24 +401,71 @@ describe('the rotation reminder surfaces on schedule', () => {
 		expect(JSON.stringify(emitted[0])).not.toContain('owlat.seed.02@outlook.example');
 	});
 
+	it('reaches an IDLE seed — one with no probe work whatsoever (the round-3 defect)', async () => {
+		// The seed the operator most needs nudged is the one nothing is happening
+		// to: every probe long since classified, or none ever sent. While the
+		// emission hung off `listSeedProbeWork` this account produced no work item
+		// and therefore no reminder, for as long as the deployment stayed idle.
+		const t = convexTest(schema, modules);
+		await connectSeed(t);
+		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+
+		const work = await t.query(internal.analytics.seedProbePoller.listSeedProbeWork, {
+			now: later,
+			cursor: null,
+		});
+		expect(work.items).toEqual([]);
+
+		expect(await sweep(t, later)).toMatchObject({ reminded: 1, examined: 1, done: true });
+		expect(await reminders(t)).toHaveLength(1);
+		expect(await remindersDue(t, later)).toBe(1);
+	});
+
+	it('reaches a seed in auth_error — the one most in need of replacing', async () => {
+		// `CONNECTABLE_ACCOUNT_STATUSES` is the right filter for "can the worker
+		// open this mailbox" and exactly the wrong one for "should the operator be
+		// told to replace this seed", so the cron applies no status filter at all.
+		const t = convexTest(schema, modules);
+		const { accountId } = await connectSeed(t);
+		await t.run(async (ctx) => ctx.db.patch(accountId, { status: 'auth_error' as const }));
+		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+
+		// The IMAP poller still skips it — that half is unchanged and correct.
+		const work = await t.query(internal.analytics.seedProbePoller.listSeedProbeWork, {
+			now: later,
+			cursor: null,
+		});
+		expect(work.items).toEqual([]);
+
+		expect(await sweep(t, later)).toMatchObject({ reminded: 1 });
+		expect(await reminders(t)).toHaveLength(1);
+	});
+
+	it('scopes each artifact to the org that owns the seed', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeed(t);
+		await connectSeed(t, 'org_other', 'seed@other.example');
+		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
+
+		expect(await sweep(t, later)).toMatchObject({ reminded: 2, examined: 2 });
+		// The admin query is org-scoped, so the session's org sees ONE row: its own.
+		const emitted = await reminders(t);
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0]?.organizationId).toBe(ORG);
+		expect(JSON.stringify(emitted)).not.toContain('seed@other.example');
+	});
+
 	it('does NOT extinguish the due count — only an operator can (the round-2 defect)', async () => {
 		const t = convexTest(schema, modules);
 		const { accountId } = await connectSeed(t);
 		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
 		expect(await remindersDue(t, later)).toBe(1);
 
-		// Three sweep ticks, i.e. 45 minutes of the mail-sync worker doing its job
-		// with no human anywhere near it.
-		for (const now of [later, later + 1000, later + 2000]) {
-			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
-				organizationId: ORG,
-				accountId,
-				now,
-			});
-		}
+		// Three cron ticks with no human anywhere near them.
+		for (const now of [later, later + 1000, later + 2000]) await sweep(t, now);
 		// One audit row, not one per tick...
 		expect(await reminders(t)).toHaveLength(1);
-		// ...and the readable count is still standing. A background worker must
+		// ...and the readable count is still standing. A background sweep must
 		// never be able to clear the signal it just raised.
 		expect(await remindersDue(t, later + 2000)).toBe(1);
 
@@ -423,15 +476,9 @@ describe('the rotation reminder surfaces on schedule', () => {
 
 	it('emits NOTHING and clears NOTHING when the reminder is not yet due', async () => {
 		const t = convexTest(schema, modules);
-		const { accountId } = await connectSeed(t);
+		await connectSeed(t);
 
-		expect(
-			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
-				organizationId: ORG,
-				accountId,
-				now: NOW + DAY,
-			})
-		).toEqual({ emitted: false });
+		expect(await sweep(t, NOW + DAY)).toMatchObject({ reminded: 0 });
 		expect(await reminders(t)).toEqual([]);
 
 		// The clock was never restarted, so the reminder still arrives on schedule.
@@ -443,11 +490,7 @@ describe('the rotation reminder surfaces on schedule', () => {
 		const t = convexTest(schema, modules);
 		const { accountId } = await connectSeed(t);
 		const first = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
-		await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
-			organizationId: ORG,
-			accountId,
-			now: first,
-		});
+		await sweep(t, first);
 		const acknowledgedAt = first + DAY;
 		await acknowledge(t, accountId, acknowledgedAt);
 		expect(
@@ -456,14 +499,18 @@ describe('the rotation reminder surfaces on schedule', () => {
 
 		const second = acknowledgedAt + SEED_ROTATION_INTERVAL_MS + DAY;
 		expect(await remindersDue(t, second)).toBe(1);
-		expect(
-			await t.mutation(internal.analytics.seedPlacement.emitSeedRotationReminder, {
-				organizationId: ORG,
-				accountId,
-				now: second,
-			})
-		).toEqual({ emitted: true });
+		expect(await sweep(t, second)).toMatchObject({ reminded: 1 });
 		expect(await reminders(t)).toHaveLength(2);
+	});
+
+	it('is a silent no-op with no seed mailboxes connected at all (D2)', async () => {
+		const t = convexTest(schema, modules);
+		expect(await sweep(t, NOW + SEED_ROTATION_INTERVAL_MS)).toEqual({
+			reminded: 0,
+			examined: 0,
+			done: true,
+		});
+		expect(await reminders(t)).toEqual([]);
 	});
 
 	it('refuses to acknowledge another org’s seed', async () => {
