@@ -14,7 +14,7 @@ import { resolveRelayEnvelopeSender } from '../index';
  * alignment cannot have moved.
  */
 
-const KEY = 'alignment-key';
+const KEY = 'alignment-key-'.padEnd(32, 'x');
 const NOW = Date.UTC(2026, 6, 27, 9, 30, 0);
 
 const PARAMS = {

@@ -4,6 +4,7 @@ import {
 	BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK,
 	BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK,
 	resolveReturnPathCapability,
+	resolveReturnPathCapabilityForEntry,
 	widenBounceTolerance,
 } from '../returnPathCapability';
 import { resolveRelayEnvelopeSender } from '../smtp';
@@ -70,14 +71,22 @@ describe('D2 — absence blocks nothing', () => {
 	});
 
 	it('a transport with no declared capability fails closed to unsupported, not to an error', () => {
-		// Plugin-contributed transports declare nothing today.
-		const undeclared = SEND_PROVIDER_CATALOG.find(
-			(entry) => entry.supportsCustomReturnPath === undefined
-		);
-		if (!undeclared) return; // no undeclared transports bundled in this build
-		const resolved = resolveReturnPathCapability(undeclared.kind, null, T0);
+		// An EXPLICIT undeclared fixture, not a search of the live catalog: a
+		// plugin-contributed transport declares nothing, and a search-based
+		// assertion passes vacuously the day every bundled entry declares
+		// something — which is true of every core entry today.
+		const resolved = resolveReturnPathCapabilityForEntry({}, null, T0);
 		expect(resolved.capability).toBe('unsupported');
 		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(resolved.degraded).toBe(true);
+		// No declared feedback channel either ⇒ the widest tolerance, never a throw.
+		expect(resolved.bounceToleranceMultiplier).toBe(BOUNCE_TOLERANCE_MULTIPLIER_NO_FEEDBACK);
+	});
+
+	it('an undeclared transport that DOES report feedback still fails closed on the stamp', () => {
+		const resolved = resolveReturnPathCapabilityForEntry({ hasProviderFeedback: true }, null, T0);
+		expect(resolved.stampVerpReturnPath).toBe(false);
+		expect(resolved.bounceToleranceMultiplier).toBe(BOUNCE_TOLERANCE_MULTIPLIER_PROVIDER_FEEDBACK);
 	});
 
 	it('the send path still produces a usable envelope sender with zero configuration', () => {

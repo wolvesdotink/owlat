@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
 	RETURN_PATH_PROBE_RETRY_MS,
+	RETURN_PATH_PROBE_RETRY_SCHEDULE_MS,
 	RETURN_PATH_PROBE_TIMEOUT_MS,
 	RETURN_PATH_PROBE_TTL_MS,
 	isProbeDue,
 	isProbeTimedOut,
 	nextProbeState,
 	resolveReturnPathCapability,
+	returnPathProbeRetryMs,
+	unresolvableReturnPathCapability,
 	type ReturnPathProbeState,
 } from '../returnPathCapability';
 
@@ -55,13 +58,27 @@ describe('probe state machine', () => {
 		expect(state.reason).toBe('observed_match');
 	});
 
-	it('is case/whitespace tolerant on the observed address (RFC 5321 domains)', () => {
+	it('is whitespace tolerant, and case tolerant on the DOMAIN only', () => {
 		const state = nextProbeState(openProbe(), {
 			kind: 'observed',
-			envelopeSender: `  ${SENT.toUpperCase()} `,
+			envelopeSender: `  bounce+abc+mac@BOUNCES.EXAMPLE.COM `,
 			at: T0 + 5,
 		});
 		expect(state.status).toBe('supported');
+	});
+
+	it('ADVERSARIAL: a relay that CASE-FOLDS the VERP token has rewritten it', () => {
+		// The local part is a base64url token whose case is significant and whose
+		// MAC is checked case-sensitively: a case-folded DSN can never decode, so
+		// grading this `supported` would declare an arm comparable whose bounce
+		// stream is in fact silently empty.
+		const state = nextProbeState(openProbe(), {
+			kind: 'observed',
+			envelopeSender: SENT.toUpperCase(),
+			at: T0 + 5,
+		});
+		expect(state.status).toBe('unsupported');
+		expect(state.reason).toBe('rewritten_by_relay');
 	});
 
 	it('ADVERSARIAL: a relay that accepts then REWRITES the sender is unsupported', () => {
@@ -129,6 +146,48 @@ describe('re-probe schedule', () => {
 	it('an unsupported verdict is retried sooner — relay config changes', () => {
 		expect(isProbeDue(unsupported, T0 + RETURN_PATH_PROBE_RETRY_MS - 1)).toBe(false);
 		expect(isProbeDue(unsupported, T0 + RETURN_PATH_PROBE_RETRY_MS)).toBe(true);
+	});
+
+	it('BACKS OFF: every probe costs the operator a real bounce on their relay', () => {
+		const [first, second, third] = RETURN_PATH_PROBE_RETRY_SCHEDULE_MS;
+		expect(first).toBeLessThan(second);
+		expect(second).toBeLessThan(third);
+		expect(returnPathProbeRetryMs(1)).toBe(first);
+		expect(returnPathProbeRetryMs(2)).toBe(second);
+		expect(returnPathProbeRetryMs(3)).toBe(third);
+		// The last interval REPEATS — the cap. We never stop entirely, or an
+		// operator who fixes their relay could never be re-detected.
+		expect(returnPathProbeRetryMs(4)).toBe(third);
+		expect(returnPathProbeRetryMs(4000)).toBe(third);
+		// Degenerate counts fall back to the shortest interval, never to NaN.
+		expect(returnPathProbeRetryMs(undefined)).toBe(first);
+		expect(returnPathProbeRetryMs(0)).toBe(first);
+		expect(returnPathProbeRetryMs(-5)).toBe(first);
+		expect(returnPathProbeRetryMs(Number.NaN)).toBe(first);
+	});
+
+	it('applies the backoff to the stored attempt count', () => {
+		const fifth: ReturnPathProbeState = { ...unsupported, attempts: 5 };
+		const monthly = returnPathProbeRetryMs(5);
+		expect(isProbeDue(fifth, T0 + RETURN_PATH_PROBE_RETRY_MS)).toBe(false);
+		expect(isProbeDue(fifth, T0 + monthly - 1)).toBe(false);
+		expect(isProbeDue(fifth, T0 + monthly)).toBe(true);
+	});
+
+	it('ADVERSARIAL: a non-finite timestamp is DUE, never a permanent wedge', () => {
+		// A NaN makes every `>=` comparison false, which would freeze the probe
+		// open forever, freeze the capability at `unknown`, and leave no path back.
+		for (const degenerate of [Number.NaN, Number.POSITIVE_INFINITY]) {
+			expect(isProbeTimedOut(openProbe(degenerate), T0)).toBe(true);
+			expect(isProbeDue(openProbe(degenerate), T0)).toBe(true);
+			expect(isProbeDue({ ...unsupported, settledAt: degenerate }, T0)).toBe(true);
+			expect(isProbeDue({ ...supported, settledAt: degenerate }, T0)).toBe(true);
+			expect(isProbeDue(supported, degenerate)).toBe(true);
+		}
+		// A settled row with no settledAt at all falls back to startedAt.
+		expect(isProbeDue({ ...unsupported, startedAt: Number.NaN, settledAt: undefined }, T0)).toBe(
+			true
+		);
 	});
 });
 
@@ -211,6 +270,18 @@ describe('resolveReturnPathCapability', () => {
 			T0
 		);
 		expect(resolved.capability).toBe('unknown');
+	});
+
+	it('an unresolvable transport has the SAME posture as one with no evidence', () => {
+		// Built by the same grading function, so it can never drift from what a
+		// probeable-but-unprobed transport resolves to.
+		expect(unresolvableReturnPathCapability).toMatchObject({
+			capability: 'unknown',
+			stampVerpReturnPath: false,
+			degraded: true,
+			bounceToleranceMultiplier: resolveReturnPathCapability('smtp', null, T0)
+				.bounceToleranceMultiplier,
+		});
 	});
 
 	it('is total — no input combination throws', () => {
