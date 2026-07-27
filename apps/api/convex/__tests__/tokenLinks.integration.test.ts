@@ -17,7 +17,7 @@
 
 import { convexTest } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -259,6 +259,63 @@ describe('trackOpen (GET /t/o/...)', () => {
 		const res = await t.fetch('/t/o/not-a-valid-id', { method: 'GET' });
 		expect(res.status).toBe(200);
 		expect(res.headers.get('Content-Type')).toBe('image/gif');
+	});
+});
+
+// ============================================================================
+// Deliverability SEED PROBE ids at the shipped tracking endpoints
+//
+// A shadow copy carries the tracking pixel and the wrapped links a subscriber's
+// copy carries (those are exactly what a filter weighs), keyed by an OPAQUE
+// PROBE ID. A probe id is not a Convex document id — but it does satisfy the
+// generic `isValidConvexId` shape check, which is why both handlers have to
+// reject it BY NAME. Before that they logged an error on every probe open and
+// 500'd the public endpoint on every probe click.
+// ============================================================================
+
+describe('seed probe ids are rejected by the tracking endpoints', () => {
+	const PROBE_ID = 'sp_abcdefghij0123456789kl';
+
+	it('is shaped like a Convex id, which is why the guard has to be by name', () => {
+		expect(/^[a-zA-Z0-9_-]{10,}$/.test(PROBE_ID)).toBe(true);
+	});
+
+	it('/t/o/{probeId} returns the pixel and records no open', async () => {
+		const t = setupTest();
+		const errors: unknown[][] = [];
+		const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+			errors.push(args);
+		});
+		try {
+			const res = await t.fetch(`/t/o/${PROBE_ID}`, { method: 'GET' });
+			expect(res.status).toBe(200);
+			expect(res.headers.get('Content-Type')).toBe('image/gif');
+		} finally {
+			spy.mockRestore();
+		}
+		expect(errors).toEqual([]);
+		const sends = await t.run(async (ctx) => ctx.db.query('emailSends').collect());
+		expect(sends).toEqual([]);
+	});
+
+	it('/t/c/{probeId}/… redirects to "/" instead of 500ing the public endpoint', async () => {
+		const t = setupTest();
+		// Signed with the probe id, exactly as the composer signs it — the HMAC
+		// genuinely verifies, so only the explicit probe guard stops this.
+		const path = await makeClickPath(PROBE_ID, 'https://example.com/landing?x=1');
+
+		const errors: unknown[][] = [];
+		const spy = vi.spyOn(console, 'error').mockImplementation((...args) => {
+			errors.push(args);
+		});
+		try {
+			const res = await t.fetch(path, { method: 'GET', redirect: 'manual' });
+			expect(res.status).toBe(302);
+			expect(res.headers.get('Location')).toBe('/');
+		} finally {
+			spy.mockRestore();
+		}
+		expect(errors).toEqual([]);
 	});
 });
 

@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { extractLinkTargets } from '../seedMailbox.js';
+import { chooseHygieneClickTarget } from '../seedProbes.js';
 import {
 	runSeedProbeSweep,
 	type SeedMailboxSession,
@@ -203,5 +204,45 @@ describe('extractLinkTargets', () => {
 
 	it('returns nothing for a body with no links', () => {
 		expect(extractLinkTargets('<p>hi</p>')).toEqual([]);
+	});
+});
+
+/**
+ * "The occasional click" has to look like a subscriber reading the mail, which
+ * means it must be a CONTENT link. The first href in a template is just as
+ * likely to be the footer's one-click unsubscribe.
+ */
+describe('the hygiene click is chosen deliberately', () => {
+	it('skips the unsubscribe and preference footer links', () => {
+		expect(
+			chooseHygieneClickTarget([
+				'https://convex.example/unsub/probe/token',
+				'https://app.example/preferences?token=abc',
+				'https://track.example/t/c/sp_x/abc/sig',
+			])
+		).toBe('https://track.example/t/c/sp_x/abc/sig');
+	});
+
+	it('skips the open pixel and any other image target', () => {
+		expect(
+			chooseHygieneClickTarget([
+				'https://track.example/t/o/sp_x',
+				'https://cdn.example/hero.png',
+				'https://org.example/read',
+			])
+		).toBe('https://org.example/read');
+	});
+
+	it('clicks NOTHING rather than clicking an unsubscribe link', () => {
+		expect(
+			chooseHygieneClickTarget([
+				'https://convex.example/unsub/probe/token',
+				'mailto:unsubscribe@org.example',
+			])
+		).toBeUndefined();
+	});
+
+	it('is undefined for an empty template', () => {
+		expect(chooseHygieneClickTarget([])).toBeUndefined();
 	});
 });

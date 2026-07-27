@@ -8,14 +8,31 @@
  * late for the composition performed there and the whole file would fail to
  * collect (which is exactly what happened in review round 1).
  */
-import { describe, it, expect, afterAll } from 'vitest';
-import { buildSeedShadowEnvelope, isSeedShadowEnvelope } from '../seedShadowCopy';
+import { convexTest } from 'convex-test';
+import { describe, it, expect, afterAll, beforeEach, vi } from 'vitest';
+import {
+	buildSeedShadowEnvelope,
+	enqueueSeedShadowCopies,
+	isSeedShadowEnvelope,
+} from '../seedShadowCopy';
 import type { CampaignEnvelopeInput } from '../seedShadowCopy';
 import { assertSeedShadowExclusion, buildComposeInput } from '../worker';
 import { assertMarketingOneClickHeaders } from '../marketingCompliance';
 import { composeForSend } from '../sendComposition';
 import { SEED_PROBE_HEADER } from '@owlat/shared/seedPlacement';
+import schema from '../../schema';
+import { insertExternalAccountRow } from '../../mail/externalAccountShared';
+import { campaignEmailPool } from '../workpool';
+import { SEED_PROBE_RETENTION_MS } from '../../schema/seedPlacement';
 import type { Id } from '../../_generated/dataModel';
+
+// The Workpool component is not registered in convex-test, and the worker action
+// would need provider credentials. Stubbing it lets us assert exactly WHAT was
+// handed to the pool, which is the "identical transport" half of the claim.
+vi.mock('../workpool', () => ({
+	transactionalEmailPool: { enqueueAction: vi.fn().mockResolvedValue(undefined) },
+	campaignEmailPool: { enqueueAction: vi.fn().mockResolvedValue(undefined) },
+}));
 
 const PREV_SECRET = process.env['UNSUBSCRIBE_SECRET'];
 process.env['UNSUBSCRIBE_SECRET'] = 'test-unsubscribe-secret';
@@ -213,5 +230,288 @@ describe('D18 exclusion — a shadow copy is not a Send', () => {
 	it('keeps the campaign attribution needed for Feedback-ID without becoming countable', () => {
 		expect(shadow.campaignId).toBe(CAMPAIGN_ID);
 		expect(shadow.emailSendId).toBeUndefined();
+	});
+});
+
+// ── (b) THE EMISSION HALF: probes with seeds actually PRESENT ──────────────
+//
+// Everything above proves the shadow envelope is right. This proves the module
+// that produces it does: one ledger row and one pool item per seed, the
+// (org, campaign, variant) idempotency that stops the campaign walker minting a
+// duplicate probe set on every page, and the D18 denominator exclusion asserted
+// against the SHIPPED counters rather than by construction alone.
+
+const rootGlob = import.meta.glob('../../**/*.*s');
+const deliveryGlob = Object.fromEntries(
+	Object.entries(import.meta.glob('../**/*.*s')).map(([path, module]) => [
+		path.replace(/^\.\.\//, '../../delivery/'),
+		module,
+	])
+);
+const modules = { ...rootGlob, ...deliveryGlob };
+
+const NOW = 1_800_000_000_000;
+const ORG = 'org_seed_emission';
+
+const SEEDS = [
+	{ address: 'owlat.seed.gmail@gmail.example', provider: 'gmail' as const, login: 'seed-g' },
+	{ address: 'owlat.seed.ms@outlook.example', provider: 'microsoft' as const, login: 'seed-m' },
+];
+
+async function connectSeeds(t: ReturnType<typeof convexTest>): Promise<void> {
+	await t.run(async (ctx) => {
+		for (const seed of SEEDS) {
+			const [, domain] = seed.address.split('@');
+			const mailboxId = await ctx.db.insert('mailboxes', {
+				userId: 'user_1',
+				organizationId: ORG,
+				address: seed.address,
+				domain: domain ?? 'example',
+				kind: 'external' as const,
+				status: 'active' as const,
+				usedBytes: 0,
+				uidValidity: NOW,
+				createdAt: NOW,
+				updatedAt: NOW,
+			});
+			await insertExternalAccountRow(ctx, {
+				userId: 'user_1',
+				organizationId: ORG,
+				mailboxId,
+				address: seed.address,
+				seed: { seedProvider: seed.provider },
+				fields: {
+					emailAddress: seed.address,
+					imapHost: 'imap.example',
+					imapPort: 993,
+					isImapSecure: true,
+					smtpHost: 'smtp.example',
+					smtpPort: 587,
+					isSmtpSecure: false,
+					imapUsername: seed.login,
+					authMethod: 'password' as const,
+					secretCiphertext: 'ct',
+					secretIv: 'iv',
+					secretAuthTag: 'tag',
+					secretEnvelopeVersion: 1,
+				},
+				now: NOW,
+			});
+		}
+	});
+}
+
+async function makeCampaign(t: ReturnType<typeof convexTest>): Promise<Id<'campaigns'>> {
+	return t.run(async (ctx) =>
+		ctx.db.insert('campaigns', {
+			name: 'March',
+			subject: 'March newsletter',
+			status: 'sending' as const,
+			createdAt: NOW,
+			updatedAt: NOW,
+		})
+	);
+}
+
+describe('enqueueSeedShadowCopies — with seed mailboxes present', () => {
+	beforeEach(() => {
+		vi.mocked(campaignEmailPool.enqueueAction).mockClear();
+	});
+
+	it('writes one ledger row per seed with the full cell key', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		const campaignId = await makeCampaign(t);
+
+		const outcome = await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				abVariant: 'A',
+				base: { ...realSend, campaignId, organizationId: ORG },
+				now: NOW,
+			})
+		);
+		expect(outcome).toEqual({ enqueued: 2 });
+
+		const rows = await t.run(async (ctx) => ctx.db.query('seedPlacementProbes').collect());
+		expect(rows).toHaveLength(2);
+		expect(rows.map((r) => r.provider).sort()).toEqual(['gmail', 'microsoft']);
+		for (const row of rows) {
+			expect(row.organizationId).toBe(ORG);
+			expect(row.stream).toBe('campaign');
+			expect(row.campaignId).toBe(campaignId);
+			expect(row.abVariant).toBe('A');
+			expect(row.sentAt).toBe(NOW);
+			expect(row.expiresAt).toBe(NOW + SEED_PROBE_RETENTION_MS);
+			// Not dispatched yet — the worker stamps that, and nothing may read a
+			// probe as MISSING before it does.
+			expect(row.dispatchedAt).toBeUndefined();
+			expect(row.placement).toBeUndefined();
+		}
+	});
+
+	it('enqueues one worker action per seed carrying the cloned envelope', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		const campaignId = await makeCampaign(t);
+		await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				base: { ...realSend, campaignId, organizationId: ORG },
+				now: NOW,
+			})
+		);
+
+		const enqueueAction = vi.mocked(campaignEmailPool.enqueueAction);
+		expect(enqueueAction).toHaveBeenCalledTimes(2);
+		const rows = await t.run(async (ctx) => ctx.db.query('seedPlacementProbes').collect());
+		const probeIds = new Set(rows.map((r) => r.probeId));
+
+		for (const call of enqueueAction.mock.calls) {
+			const envelope = call[2]?.['envelopeInput'] as CampaignEnvelopeInput;
+			// IDENTICAL transport: same routing fields as the real send.
+			expect(envelope.from).toBe(realSend.from);
+			expect(envelope.providerType).toBe(realSend.providerType);
+			expect(envelope.ipPool).toBe(realSend.ipPool);
+			expect(envelope.template).toEqual(realSend.template);
+			// Addressed to a seed, tagged with its probe, and NOT countable.
+			expect(SEEDS.map((s) => s.address)).toContain(envelope.to);
+			expect(probeIds.has(envelope.seedProbeId ?? '')).toBe(true);
+			expect(envelope.seedProbeRef).toBeDefined();
+			expect(envelope.emailSendId).toBeUndefined();
+			expect(envelope.contactInfo.contactId).toBeUndefined();
+			// No `onComplete`: there is no Send lifecycle to complete (D18).
+			expect(call[3]).toBeUndefined();
+		}
+	});
+
+	it('is idempotent per (org, campaign, variant) across the walker pages', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		const campaignId = await makeCampaign(t);
+		const base = { ...realSend, campaignId, organizationId: ORG };
+
+		const first = await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				abVariant: 'A',
+				base,
+				now: NOW,
+			})
+		);
+		const second = await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				abVariant: 'A',
+				base,
+				now: NOW + 1_000,
+			})
+		);
+		expect(first).toEqual({ enqueued: 2 });
+		expect(second).toEqual({ enqueued: 0 });
+		expect(vi.mocked(campaignEmailPool.enqueueAction)).toHaveBeenCalledTimes(2);
+		const rows = await t.run(async (ctx) => ctx.db.query('seedPlacementProbes').collect());
+		expect(rows).toHaveLength(2);
+	});
+
+	it('gives the OTHER A/B arm its own probe set — they are different messages', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		const campaignId = await makeCampaign(t);
+		const base = { ...realSend, campaignId, organizationId: ORG };
+
+		await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				abVariant: 'A',
+				base,
+				now: NOW,
+			})
+		);
+		const armB = await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				abVariant: 'B',
+				base,
+				now: NOW,
+			})
+		);
+		expect(armB).toEqual({ enqueued: 2 });
+		const rows = await t.run(async (ctx) => ctx.db.query('seedPlacementProbes').collect());
+		expect(rows.filter((r) => r.abVariant === 'A')).toHaveLength(2);
+		expect(rows.filter((r) => r.abVariant === 'B')).toHaveLength(2);
+	});
+
+	it('does not answer "no probe set yet" once a campaign has many probe rows', async () => {
+		// The idempotency lookup used to be a bounded page plus a linear scan; past
+		// the bound it silently started minting a duplicate set on every page.
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		const campaignId = await makeCampaign(t);
+		await t.run(async (ctx) => {
+			const account = await ctx.db.query('externalMailAccounts').first();
+			if (!account) throw new Error('fixture missing');
+			for (let i = 0; i < 250; i += 1) {
+				await ctx.db.insert('seedPlacementProbes', {
+					organizationId: ORG,
+					probeId: `sp_pad${String(i).padStart(19, '0')}`,
+					accountId: account._id,
+					provider: 'gmail' as const,
+					stream: 'campaign' as const,
+					campaignId,
+					abVariant: 'B' as const,
+					sentAt: NOW - i,
+					expiresAt: NOW + SEED_PROBE_RETENTION_MS,
+				});
+			}
+		});
+
+		const outcome = await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				abVariant: 'B',
+				base: { ...realSend, campaignId, organizationId: ORG },
+				now: NOW,
+			})
+		);
+		expect(outcome).toEqual({ enqueued: 0 });
+		expect(vi.mocked(campaignEmailPool.enqueueAction)).not.toHaveBeenCalled();
+	});
+
+	/**
+	 * (b) The D18 denominator proof against the SHIPPED counters. A probe must
+	 * leave no trace in the campaign stat shards or in `sendingReputation` — the
+	 * two places a real Send is counted.
+	 */
+	it('writes no campaign stat shard and no sendingReputation event', async () => {
+		const t = convexTest(schema, modules);
+		await connectSeeds(t);
+		const campaignId = await makeCampaign(t);
+		await t.run(async (ctx) =>
+			enqueueSeedShadowCopies(ctx, {
+				organizationId: ORG,
+				campaignId,
+				base: { ...realSend, campaignId, organizationId: ORG },
+				now: NOW,
+			})
+		);
+
+		const counted = await t.run(async (ctx) => ({
+			shards: await ctx.db.query('campaignStatShards').collect(),
+			reputation: await ctx.db.query('sendingReputation').collect(),
+			sends: await ctx.db.query('emailSends').collect(),
+			transactional: await ctx.db.query('transactionalSends').collect(),
+		}));
+		expect(counted.shards).toEqual([]);
+		expect(counted.reputation).toEqual([]);
+		expect(counted.sends).toEqual([]);
+		expect(counted.transactional).toEqual([]);
 	});
 });

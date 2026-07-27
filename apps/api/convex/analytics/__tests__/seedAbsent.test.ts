@@ -136,7 +136,6 @@ describe('absence is never load-bearing', () => {
 			enqueueSeedShadowCopies(ctx, {
 				organizationId: ORG,
 				campaignId,
-				stream: 'campaign',
 				base: { ...base, campaignId },
 				now: NOW,
 			})
@@ -145,6 +144,13 @@ describe('absence is never load-bearing', () => {
 
 		const probes = await t.run(async (ctx) => ctx.db.query('seedPlacementProbes').collect());
 		expect(probes).toEqual([]);
+
+		// "Schedules nothing" is asserted, not merely claimed: absence must not
+		// leave a scheduled follow-up behind either.
+		const scheduled = await t.run(async (ctx) =>
+			ctx.db.system.query('_scheduled_functions').collect()
+		);
+		expect(scheduled).toEqual([]);
 	});
 
 	it('is idempotent and still silent when called again', async () => {
@@ -163,7 +169,6 @@ describe('absence is never load-bearing', () => {
 				enqueueSeedShadowCopies(ctx, {
 					organizationId: ORG,
 					campaignId,
-					stream: 'campaign',
 					base: { ...base, campaignId },
 					now: NOW + i,
 				})

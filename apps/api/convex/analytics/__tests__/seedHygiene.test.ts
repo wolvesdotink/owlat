@@ -225,6 +225,8 @@ describe('the hygiene plan is EXECUTED against the ledger row', () => {
 				provider: 'microsoft',
 				stream: 'campaign',
 				sentAt: NOW,
+				// A probe is only classifiable once it has actually been dispatched.
+				dispatchedAt: NOW,
 				expiresAt: NOW + 1_000,
 			})
 		);
@@ -293,16 +295,10 @@ describe('the rotation reminder surfaces on schedule', () => {
 		const { accountId } = await connectSeed(t);
 		const later = NOW + SEED_ROTATION_INTERVAL_MS + DAY;
 
-		const before = await t.query(internal.analytics.seedPlacement.listSeedAccounts, {
-			organizationId: ORG,
-			now: NOW,
-		});
+		const before = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, NOW));
 		expect(before[0]?.rotationReminderDue).toBe(false);
 
-		const due = await t.query(internal.analytics.seedPlacement.listSeedAccounts, {
-			organizationId: ORG,
-			now: later,
-		});
+		const due = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
 		expect(due[0]?.rotationReminderDue).toBe(true);
 
 		expect(
@@ -321,10 +317,7 @@ describe('the rotation reminder surfaces on schedule', () => {
 			})
 		).toEqual({ updated: true });
 
-		const after = await t.query(internal.analytics.seedPlacement.listSeedAccounts, {
-			organizationId: ORG,
-			now: later,
-		});
+		const after = await t.run(async (ctx) => loadSeedAccounts(ctx.db, ORG, later));
 		expect(after[0]?.rotationReminderDue).toBe(false);
 	});
 });
