@@ -33,6 +33,7 @@ import {
 	type YahooCflEnrollmentRecord,
 	type YahooCflEvent,
 	type YahooCflStoredState,
+	type YahooCflTransitionReason,
 } from '@owlat/shared/yahooCfl';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, type MutationCtx, type QueryCtx } from '../_generated/server';
@@ -51,7 +52,20 @@ function recordOf(row: Doc<'yahooCflEnrollments'> | null): YahooCflEnrollmentRec
 }
 
 /**
- * Load the org-scoped enrollment row. Scoping the LOOKUP (rather than
+ * One enrollment slot: where the row lives and what (if anything) is in it.
+ *
+ * The three values travel together everywhere — the loader produces them, the
+ * writer consumes them — so they are ONE value rather than three parameters
+ * repeated at every call site.
+ */
+interface EnrollmentSlot {
+	organizationId: string;
+	domainId: Id<'domains'>;
+	existing: Doc<'yahooCflEnrollments'> | null;
+}
+
+/**
+ * Load the org-scoped enrollment slot. Scoping the LOOKUP (rather than
  * filtering after the fact) is what makes a foreign row invisible: a report or
  * an operator action can never read, patch, or leak another tenant's row.
  */
@@ -59,13 +73,14 @@ async function loadEnrollment(
 	ctx: QueryCtx | MutationCtx,
 	organizationId: string,
 	domainId: Id<'domains'>
-): Promise<Doc<'yahooCflEnrollments'> | null> {
-	return await ctx.db
+): Promise<EnrollmentSlot> {
+	const existing = await ctx.db
 		.query('yahooCflEnrollments')
 		.withIndex('by_org_domain', (q) =>
 			q.eq('organizationId', organizationId).eq('domainId', domainId)
 		)
 		.first();
+	return { organizationId, domainId, existing };
 }
 
 /** The DKIM precondition: a verified domain that carries an MTA DKIM selector. */
@@ -86,29 +101,38 @@ async function preconditionFor(
 
 async function persist(
 	ctx: MutationCtx,
-	organizationId: string,
-	domainId: Id<'domains'>,
-	existing: Doc<'yahooCflEnrollments'> | null,
+	slot: EnrollmentSlot,
 	record: YahooCflEnrollmentRecord,
 	now: number
 ): Promise<void> {
-	const fields = {
-		state: record.state,
-		dkimDomain: record.dkimDomain,
-		submittedAt: record.submittedAt,
-		enrolledAt: record.enrolledAt,
-		lastReportAt: record.lastReportAt,
-		updatedAt: now,
-	};
-	if (existing) {
-		await ctx.db.patch(existing._id, fields);
+	if (slot.existing) {
+		// PATCH deletes a field given an explicit `undefined`, which is exactly what
+		// a `reset` needs: its record carries no timestamps and the row must not keep
+		// the old ones. Spelled out here because it is the one Convex behaviour this
+		// function depends on that is not obvious from the call site.
+		await ctx.db.patch(slot.existing._id, {
+			state: record.state,
+			dkimDomain: record.dkimDomain,
+			submittedAt: record.submittedAt,
+			enrolledAt: record.enrolledAt,
+			lastReportAt: record.lastReportAt,
+			updatedAt: now,
+		});
 		return;
 	}
+	// INSERT writes only the fields the record actually carries (the repo's
+	// spread-when-present idiom, same as `recordOf` above), so a fresh row never
+	// depends on insert accepting an explicit `undefined` for an optional field.
 	await ctx.db.insert('yahooCflEnrollments', {
-		organizationId,
-		domainId,
-		...fields,
+		organizationId: slot.organizationId,
+		domainId: slot.domainId,
+		state: record.state,
+		...(record.dkimDomain === undefined ? {} : { dkimDomain: record.dkimDomain }),
+		...(record.submittedAt === undefined ? {} : { submittedAt: record.submittedAt }),
+		...(record.enrolledAt === undefined ? {} : { enrolledAt: record.enrolledAt }),
+		...(record.lastReportAt === undefined ? {} : { lastReportAt: record.lastReportAt }),
 		createdAt: now,
+		updatedAt: now,
 	});
 }
 
@@ -121,21 +145,22 @@ async function runEvent(
 	ctx: MutationCtx,
 	domainId: Id<'domains'>,
 	event: YahooCflEvent
-): Promise<{ state: YahooCflStoredState; changed: boolean; reason: string }> {
+): Promise<{ state: YahooCflStoredState; changed: boolean; reason: YahooCflTransitionReason }> {
 	const session = await requireOrgPermission(ctx, 'organization:manage');
 	const domain = await ctx.db.get(domainId);
 	// An unknown domain is not an error state for the operator to resolve — it
-	// means the domain was deleted underneath the wizard. Report it as a reason.
-	if (!domain) return { state: 'not_started', changed: false, reason: 'dkim_domain_not_ready' };
-	const organizationId = session.activeOrganizationId;
-	const existing = await loadEnrollment(ctx, organizationId, domainId);
+	// means the domain was deleted underneath the wizard. Its OWN reason, never
+	// `dkim_domain_not_ready`: telling the operator to publish a DKIM record for a
+	// domain that no longer exists is advice they cannot act on.
+	if (!domain) return { state: 'not_started', changed: false, reason: 'domain_missing' };
+	const slot = await loadEnrollment(ctx, session.activeOrganizationId, domainId);
 	const transition = applyYahooCflEvent(
-		recordOf(existing),
+		recordOf(slot.existing),
 		event,
 		await preconditionFor(ctx, domain)
 	);
 	if (transition.changed) {
-		await persist(ctx, organizationId, domainId, existing, transition.record, event.at);
+		await persist(ctx, slot, transition.record, event.at);
 	}
 	return {
 		state: transition.record.state,
@@ -152,14 +177,15 @@ async function runEvent(
  * actually running on right now.
  */
 export const getGuide = authedQuery({
-	args: { domainId: v.id('domains'), hasCfblAddress: v.optional(v.boolean()) },
+	args: { domainId: v.id('domains') },
 	handler: async (ctx, args) => {
 		// Domain-level sending configuration, same gate as every other write on
 		// this wizard: only owners/admins see or change it.
 		const session = await requireOrgPermission(ctx, 'organization:manage');
 		const domain = await ctx.db.get(args.domainId);
 		if (!domain) return null;
-		const record = recordOf(await loadEnrollment(ctx, session.activeOrganizationId, args.domainId));
+		const slot = await loadEnrollment(ctx, session.activeOrganizationId, args.domainId);
+		const record = recordOf(slot.existing);
 		const precondition = await preconditionFor(ctx, domain);
 		const now = Date.now();
 		// The re-check, derived on read: `lapsed` is a function of the last observed
@@ -167,17 +193,24 @@ export const getGuide = authedQuery({
 		const { state, silentMs } = deriveYahooCflState(record, now);
 		return {
 			domain: domain.domain,
+			// The DERIVED state (`lapsed` included) is the only state reported —
+			// `enrollment.state` carries the stored one, so a consumer can never read
+			// two sources for the same fact.
 			state,
-			storedState: record.state,
 			silentMs,
 			enrollment: record,
 			precondition,
 			steps: yahooCflGuidedSteps(record, precondition, now),
 			// The yahoo cell's gate-3 source. Always present — absence of an
 			// enrollment substitutes, it never blanks the gate out (D2).
+			//
+			// `hasCfblAddress` is resolved SERVER-side and is `false` until P2-7 lands
+			// the RFC 9477 CFBL-Address feed: there is nothing to read yet, and a
+			// client-supplied flag steering the reported confidence and threshold
+			// would be a speculative seam (D20).
 			complaintSignal: yahooComplaintSubstitution({
 				enrollmentState: state,
-				hasCfblAddress: args.hasCfblAddress ?? false,
+				hasCfblAddress: false,
 			}),
 		};
 	},
@@ -216,11 +249,20 @@ export const resetEnrollment = authedMutation({
  *
  * This write is also the whole of the re-check: `lapsed` is derived from
  * `lastReportAt`, so a report both records the complaint and un-lapses the cell
- * with no second pass, no cron, and no chance of a stale verdict.
+ * with no second pass, no cron, and no chance of a stale verdict. The write is
+ * COALESCED in the pure core (`YAHOO_CFL_REPORT_COALESCE_MS`): complaints arrive
+ * in bursts and all of a domain's reports land on ONE row, so patching per report
+ * is the single-document OCC contention ADR-0042 was written about (D16).
  */
 export const observeReport = internalMutation({
 	args: { reportedDomain: v.string(), at: v.number() },
 	handler: async (ctx, args) => {
+		// This mutation is reachable from an internet-triggered path (an ARF report),
+		// so the clock it is handed is untrusted. A non-finite or non-positive `at`
+		// would be absorbed by the pure core's `Math.max` and pin the row
+		// permanently `enrolled` / never `lapsed`, holding the yahoo complaint gate
+		// on the looser direct threshold instead of the tightened proxy.
+		if (!Number.isFinite(args.at) || args.at <= 0) return { observed: false as const };
 		const name = args.reportedDomain.trim().toLowerCase();
 		if (name.length === 0 || name.length > 253) return { observed: false as const };
 		const domain = await ctx.db
@@ -231,14 +273,14 @@ export const observeReport = internalMutation({
 		// nothing about our enrollment; drop it rather than inventing a row.
 		if (!domain) return { observed: false as const };
 		const organizationId = await getSingletonOrganizationId(ctx);
-		const existing = await loadEnrollment(ctx, organizationId, domain._id);
+		const slot = await loadEnrollment(ctx, organizationId, domain._id);
 		const transition = applyYahooCflEvent(
-			recordOf(existing),
+			recordOf(slot.existing),
 			{ kind: 'report_observed', at: args.at },
 			await preconditionFor(ctx, domain)
 		);
 		if (transition.changed) {
-			await persist(ctx, organizationId, domain._id, existing, transition.record, args.at);
+			await persist(ctx, slot, transition.record, args.at);
 		}
 		return { observed: true as const, state: transition.record.state, reason: transition.reason };
 	},

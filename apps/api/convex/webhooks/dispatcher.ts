@@ -65,6 +65,42 @@ function recordUnresolvedBounce(
 	);
 }
 
+/**
+ * Keep a DKIM-domain-based feedback-loop enrollment (Yahoo's CFL) marked live.
+ *
+ * A pure OBSERVATION of the report the shipped ARF processor already parsed —
+ * one complaint pipeline, three sources, never a second parser. Three properties
+ * make it safe to run on the complaint path:
+ *
+ *  - it runs AFTER suppression, so a slow or failing observation cannot delay a
+ *    complaint reaching the blocklist;
+ *  - it CANNOT throw. `observeReport` resolves the singleton organization, which
+ *    rejects when a deployment has zero or several organizations, and any write
+ *    can conflict; either would otherwise abort the whole complaint dispatch and
+ *    cost us the complaint. A failure is logged and swallowed;
+ *  - PRODUCTION ONLY. Member-preview mail is deliberately excluded from every
+ *    measurement counter (`applyFeedbackProvenancePolicy` in the MTA), so preview
+ *    traffic must never mark an enrollment live or hold confidence at `high`.
+ */
+async function observeYahooCflReport(
+	ctx: ActionCtx,
+	e: InboundEventOf<'email.complained'>
+): Promise<void> {
+	if (e.sourceIsp !== 'yahoo' || !e.reportedDomain || e.deliveryDomain !== 'production') return;
+	try {
+		await ctx.runMutation(internal.domains.yahooCfl.observeReport, {
+			reportedDomain: e.reportedDomain,
+			at: e.at,
+		});
+	} catch (error) {
+		logWarn(
+			`[Webhook Dispatcher] yahoo CFL enrollment observation failed for ` +
+				`${e.reportedDomain}: ${error instanceof Error ? error.message : String(error)}. ` +
+				`The complaint itself was already processed; only the liveness bookkeeping was skipped.`
+		);
+	}
+}
+
 type Handler<K extends InboundEventKind> = (
 	ctx: ActionCtx,
 	event: InboundEventOf<K>
@@ -217,41 +253,34 @@ const DISPATCH: DispatchTable = {
 		recordUnresolvedBounce('email.bounced', e.providerMessageId, e.at, outcome);
 	},
 	'email.complained': async (ctx, e) => {
-		// Keep a DKIM-domain-based feedback-loop enrollment (Yahoo's CFL) marked
-		// live. This is a pure OBSERVATION of the report the shipped ARF processor
-		// already parsed — one complaint pipeline, three sources, never a second
-		// parser. It runs before the attribution branches because both of them
-		// return, and it is a total no-op for an unknown or foreign domain, so it
-		// can never stop a complaint from reaching the blocklist.
-		if (e.sourceIsp === 'yahoo' && e.reportedDomain) {
-			await ctx.runMutation(internal.domains.yahooCfl.observeReport, {
-				reportedDomain: e.reportedDomain,
-				at: e.at,
-			});
-		}
+		// SUPPRESSION FIRST, bookkeeping second. A complaint must always reach the
+		// blocklist, so the two attribution branches run to completion before the
+		// feedback-loop observation is even attempted.
+		//
 		// Recipient-only complaint (RFC 5965 §3.2): the FBL redacted the
 		// original Message-ID (e.g. Gmail), so there's no send to transition.
 		// Suppress the complainer directly by email — a complaint must always
 		// reach the blocklist, never evaporate into a metric.
 		if (!e.providerMessageId) {
-			if (!e.recipient || (e.providerType !== 'ses' && e.deliveryDomain !== 'production')) return;
-			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
-				email: e.recipient,
-				reason: 'complained',
-			});
-			return;
-		}
-		if (isPostboxMessageId(e.providerMessageId)) return;
-		const outcome = (await ctx.runMutation(
-			e.providerType === 'mta'
-				? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
-				: internal.delivery.sendLifecycle.transitionByProviderMessageId,
-			{
-				providerMessageId: e.providerMessageId,
-				transition: { to: 'complained', at: e.at },
+			if (e.recipient && (e.providerType === 'ses' || e.deliveryDomain === 'production')) {
+				await ctx.runMutation(internal.blockedEmails.addFromEvent, {
+					email: e.recipient,
+					reason: 'complained',
+				});
 			}
-		)) as TransitionOutcome;
-		recordUnresolvedBounce('email.complained', e.providerMessageId, e.at, outcome);
+		} else if (!isPostboxMessageId(e.providerMessageId)) {
+			const outcome = (await ctx.runMutation(
+				e.providerType === 'mta'
+					? internal.delivery.sendLifecycle.transitionMtaByProviderMessageId
+					: internal.delivery.sendLifecycle.transitionByProviderMessageId,
+				{
+					providerMessageId: e.providerMessageId,
+					transition: { to: 'complained', at: e.at },
+				}
+			)) as TransitionOutcome;
+			recordUnresolvedBounce('email.complained', e.providerMessageId, e.at, outcome);
+		}
+		await observeYahooCflReport(ctx, e);
 	},
 	'email.opened': async (ctx, e) => {
 		if (isPostboxMessageId(e.providerMessageId)) return;
