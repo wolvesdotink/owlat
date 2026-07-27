@@ -118,6 +118,13 @@ export function configuredSendProviderKinds(
  * routing reasons and must never appear as the cause of a relay fallback —
  * nor as the cause of a `reference` arm on a send assignment. One filter,
  * both call sites.
+ *
+ * Callers pass EVERY row a decision keys off — the org-wide row plus BOTH rows
+ * of the cell — because the per-stream row carries the controller's share and
+ * the stream-less row carries the infrastructure signals, so reading only one
+ * would drop a hard stop. "Active" is `isRouteStateFallbackActive`, the union
+ * of the stored boolean and D1's resolved share, so a legacy row still
+ * resolves to exactly its stored boolean.
  */
 export function freshFallbackReasons(
 	states: ReadonlyArray<Doc<'deliverabilityRouteStates'> | null>,
