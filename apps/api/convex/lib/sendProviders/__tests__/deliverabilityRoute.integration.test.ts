@@ -442,6 +442,84 @@ describe('DB-backed deliverability route verification', () => {
 		).toMatchObject({ providerType: 'mta', source: 'org_config' });
 	});
 
+	async function insertPerStreamRow(
+		t: Awaited<ReturnType<typeof seedRouteState>>,
+		destinationProvider: 'gmail' | 'all',
+		ownShare: number
+	) {
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: 'org-a',
+				destinationProvider,
+				stream: 'campaign',
+				ownShare,
+				// The controller's row carries the share and NOTHING else: signals are
+				// the MTA snapshot's, written on the stream-less row.
+				isFallbackActive: false,
+				signals: [],
+				snapshotGeneratedAt: NOW,
+				expiresAt: NOW + 86_400_000,
+				updatedAt: NOW,
+			});
+		});
+	}
+
+	it('still surfaces the stream-less infrastructure verdict when a per-stream row exists', async () => {
+		// Row-selection shadowing: a per-stream (org, gmail, campaign) row must not
+		// hide the stream-less gmail row the MTA snapshot writes the critical
+		// breaker signal onto. Reading only the most specific row would silently
+		// stop the relay fallback for campaign traffic.
+		const t = await seedRouteState({ withSesIdentity: true });
+		await insertPerStreamRow(t, 'gmail', 0.25);
+		expect(
+			await t.run((ctx) =>
+				resolveSendRouteFromDb(ctx, 'campaign', {
+					to: 'person@gmail.com',
+					from: 'sender@example.com',
+					now: NOW,
+				})
+			)
+		).toMatchObject({
+			providerType: 'ses',
+			source: 'deliverability_fallback',
+			deliverabilityReason: 'breaker_open',
+		});
+	});
+
+	it('still defers on the org-wide circuit when a per-stream `all` row exists', async () => {
+		const t = await seedRouteState({ withSesIdentity: true });
+		await t.run(async (ctx) => {
+			await ctx.db.insert('deliverabilityRouteStates', {
+				organizationId: 'org-a',
+				destinationProvider: 'all',
+				isFallbackActive: true,
+				signals: [{ source: 'breaker_open', severity: 'critical', observedAt: NOW }],
+				fallbackActiveSince: NOW,
+				snapshotGeneratedAt: NOW,
+				expiresAt: NOW + 86_400_000,
+				updatedAt: NOW,
+			});
+		});
+		// The global slice is infrastructure-wide and read stream-lessly, so this
+		// per-stream `all` row is invisible to it and cannot hide the breaker.
+		await insertPerStreamRow(t, 'all', 1);
+
+		vi.useFakeTimers();
+		vi.setSystemTime(NOW);
+		try {
+			expect(
+				await t.run((ctx) =>
+					resolveLastMileRoutePlanFromDb(ctx, 'campaign', {
+						to: 'person@gmail.com',
+						from: 'sender@example.com',
+					})
+				)
+			).toMatchObject({ route: null, deferralCode: 'GLOBAL_DELIVERY_CIRCUIT_OPEN' });
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('ignores an expired signal instead of creating a new relay decision', async () => {
 		const t = await seedRouteState({ withSesIdentity: true });
 		expect(

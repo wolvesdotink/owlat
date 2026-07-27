@@ -11,10 +11,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
-import {
-	loadRouteStateForCell,
-	loadStreamlessRouteState,
-} from '../../lib/deliverabilityRouteState';
+import { loadRouteStateCell, loadStreamlessRouteState } from '../../lib/deliverabilityRouteState';
 import {
 	DELIVERABILITY_SIGNAL_SOURCES,
 	DELIVERABILITY_STREAM_KEYS,
@@ -60,7 +57,11 @@ describe('legacy route-state rows', () => {
 		const t = convexTest(schema, modules);
 		await legacyRow(t, { destinationProvider: 'gmail', isFallbackActive: true });
 		for (const stream of DELIVERABILITY_STREAM_KEYS) {
-			const row = await t.run((ctx) => loadRouteStateForCell(ctx, 'org-a', 'gmail', stream));
+			const rows = await t.run((ctx) =>
+				loadRouteStateCell(ctx, 'org-a', { stream, destinationProvider: 'gmail' })
+			);
+			expect(rows.perStream).toBeNull();
+			const row = rows.streamless;
 			expect(row).not.toBeNull();
 			expect(row?.stream).toBeUndefined();
 			expect(row?.ownShare).toBeUndefined();
@@ -79,7 +80,11 @@ describe('legacy route-state rows', () => {
 
 	it('returns null — a fully own-MTA cell — when no row exists at all', async () => {
 		const t = convexTest(schema, modules);
-		const row = await t.run((ctx) => loadRouteStateForCell(ctx, 'org-a', 'yahoo', 'campaign'));
+		const rows = await t.run((ctx) =>
+			loadRouteStateCell(ctx, 'org-a', { stream: 'campaign', destinationProvider: 'yahoo' })
+		);
+		expect(rows.perStream).toBeNull();
+		const row = rows.streamless;
 		expect(row).toBeNull();
 		expect(resolveOwnShare(row)).toBe(1);
 		expect(isRouteStateFallbackActive(row)).toBe(false);
