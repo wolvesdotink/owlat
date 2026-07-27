@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
 	strategyFor,
+	isDeterministicRouteStrategy,
 	isSendRouteStrategyKind,
 	SEND_ROUTE_STRATEGIES,
 	type ProviderEntry,
@@ -10,6 +11,26 @@ import {
 import { resolveRoute, type ProviderRouteConfig } from '../routing';
 
 describe('Send route strategy registry', () => {
+	it('declares which strategies resolve deterministically', () => {
+		// Batch callers that RECORD the resolved transport (the send-assignment
+		// experiment record) resolve once per cell, while the worker resolves
+		// again per recipient at dispatch. Under a strategy that draws at random
+		// the two disagree, so the recorded arm would be a guess. This flag is
+		// how they find out, and it must stay exhaustive over the registry.
+		expect(SEND_ROUTE_STRATEGIES.single.isDeterministic).toBe(true);
+		expect(SEND_ROUTE_STRATEGIES.priority_failover.isDeterministic).toBe(true);
+		expect(SEND_ROUTE_STRATEGIES.workload_split.isDeterministic).toBe(false);
+		expect(isDeterministicRouteStrategy('single')).toBe(true);
+		expect(isDeterministicRouteStrategy('priority_failover')).toBe(true);
+		expect(isDeterministicRouteStrategy('workload_split')).toBe(false);
+		// An unrecognised or absent kind never reaches a strategy at all —
+		// `resolveRoute` falls straight through to the env fallback, which is
+		// deterministic.
+		for (const kind of ['least_loaded', '', undefined, null]) {
+			expect(isDeterministicRouteStrategy(kind)).toBe(true);
+		}
+	});
+
 	it('strategyFor returns the module for each kind', () => {
 		expect(strategyFor('single').kind).toBe('single');
 		expect(strategyFor('priority_failover').kind).toBe('priority_failover');

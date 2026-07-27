@@ -96,6 +96,11 @@ export const TENANT_TABLES = [
 	'deliverabilityEvidence',
 	'deliverabilityLoopbackAttempts',
 	'destinationProviderDomains',
+	// The transport-mix experiment record: one row per recipient per send,
+	// carrying organizationId and a sendId into emailSends/transactionalSends.
+	// Per-recipient tenant business data — a wipe that left it behind would
+	// leave the whole experiment record of a deleted org on disk.
+	'sendAssignments',
 	// Derived from sendingReputation (tenant data), so a tenant wipe must delete the org's delivery history too.
 	'deliverySnapshots',
 	'sendDailyStats',
